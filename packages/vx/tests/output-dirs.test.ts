@@ -17,6 +17,7 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
+  statSync,
   symlinkSync,
   utimesSync,
   writeFileSync,
@@ -126,6 +127,63 @@ describe('Cache.recordOutputDirs / outputDirsCurrent', () => {
     rmSync(root, { recursive: true, force: true })
   })
   const rows = () => cache.loadOutputDirsBatch(['h1']).get('h1') ?? []
+
+  // A sweep of output-index.ts (A-27): ctime moves on every write, so on a
+  // real file it masks the other fields of the skip-restore proof; each is
+  // held by a planted row that matches in all but that one field.
+  it('isOutputsCurrent trusts a row only when every field agrees', async () => {
+    const file = path.join(proj, 'dist/a.js')
+    const st = statSync(file)
+    const row = {
+      path: 'dist/a.js',
+      size: st.size,
+      mode: st.mode,
+      mtimeMs: st.mtimeMs,
+      ino: Number(st.ino),
+      ctimeMs: Math.floor(st.ctimeMs),
+    }
+    expect(await cache.isOutputsCurrent(proj, [row])).toBe(true)
+    for (const off of [
+      { size: row.size + 1 },
+      { mode: row.mode ^ 0o100 },
+      { mtimeMs: row.mtimeMs + 5 },
+      { ino: row.ino + 1 },
+    ]) {
+      expect(await cache.isOutputsCurrent(proj, [{ ...row, ...off }])).toBe(false)
+    }
+  })
+
+  it('a stamp is taken only for a file that still matches its row', async () => {
+    // Through the batch read, which flushes the pending stamps first.
+    const stamped = () => ({ ino: cache.loadOutputFilesBatch(['h1']).get('h1')![0]!.ino ?? null })
+    w('dist/a.js', 'changed and longer')
+    cache.recordOutputStamps('h1', proj, root)
+    expect(stamped().ino).toBeNull()
+    // CONTROL: the saved bytes back, same size and mtime as the row: stamped.
+    w('dist/a.js', 'x')
+    const r = cache.loadOutputFilesBatch(['h1']).get('h1')![0]!
+    utimesSync(path.join(proj, 'dist/a.js'), new Date(r.mtimeMs), new Date(r.mtimeMs))
+    cache.recordOutputStamps('h1', proj, root)
+    expect(stamped().ino).not.toBeNull()
+  })
+
+  it('a directory recorded absent that now exists is not current', async () => {
+    expect(await cache.outputDirsCurrent(proj, [{ path: 'gone', mtimeMs: -1 }])).toBe(true)
+    mkdirSync(path.join(proj, 'gone'))
+    expect(await cache.outputDirsCurrent(proj, [{ path: 'gone', mtimeMs: -1 }])).toBe(false)
+  })
+
+  it('the walk does not descend a symlinked directory', async () => {
+    mkdirSync(path.join(root, 'elsewhere', 'inner'), { recursive: true })
+    symlinkSync(path.join(root, 'elsewhere'), path.join(proj, 'dist/link'))
+    age()
+    await cache.recordOutputDirs('h1', proj, ['dist'])
+    expect(
+      rows()
+        .map((r) => r.path)
+        .sort(),
+    ).toEqual(['dist', 'dist/sub', 'dist/sub/deep'])
+  })
 
   it('records every directory under the prefix and reports current while nothing moves', async () => {
     await cache.recordOutputDirs('h1', proj, ['dist'])
