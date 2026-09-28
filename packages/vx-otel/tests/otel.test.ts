@@ -479,6 +479,42 @@ describe('OtelSink end-to-end', () => {
     expect(urls.length).toBeGreaterThan(0)
   })
 
+  // F-49: with traces off, each log record still named the run's trace and
+  // its task's span, which were never exported: the links led nowhere.
+  it('with traces off, log records name no trace or span; with them on, they do', async () => {
+    const linked = async (tracesEnabled: boolean) => {
+      const { cfg, calls } = mkConfig({ tracesEnabled })
+      const sink = new OtelSink(cfg)
+      const { onRecord } = sink
+      // Each executed task's output is one record: give the task some.
+      sink.onRecord = (r) => {
+        onRecord.call(sink, r)
+        if (r.kind === 'task.start') {
+          onRecord.call(sink, {
+            v: 1,
+            kind: 'task.log',
+            runId: 'run-1',
+            taskId: 'a#build',
+            stream: 'stdout',
+            chunk: 'built\n',
+            ts: 1020,
+          } as TelemetryRecord)
+        }
+      }
+      driveOneTask(sink)
+      await sink.flush()
+      const body = calls.find((c) => c.url.endsWith('/v1/logs'))!.body as {
+        resourceLogs: { scopeLogs: { logRecords: Record<string, unknown>[] }[] }[]
+      }
+      const rec = body.resourceLogs[0]!.scopeLogs[0]!.logRecords[0]!
+      return ['traceId' in rec, 'spanId' in rec]
+    }
+    expect([await linked(false), await linked(true)]).toEqual([
+      [false, false],
+      [true, true],
+    ])
+  })
+
   it('is never-fail: a throwing transport does not reject flush', async () => {
     const post = async () => {
       throw new Error('collector down')
@@ -1588,6 +1624,60 @@ describe('the standard OTLP env a pipeline already sets', () => {
       resolveOtelConfig({}, { ...base, OTEL_EXPORTER_OTLP_TIMEOUT: 'soon' })!.timeoutMs,
       resolveOtelConfig({}, { ...base, OTEL_EXPORTER_OTLP_TIMEOUT: '0' })!.timeoutMs,
     ]).toEqual([2500, 100, 15_000, 15_000])
+  })
+
+  // F-49: the spec appends `v1/<signal>` to the base URL's PATH; a base with
+  // a query had it stuck onto the query's last value.
+  it('a base endpoint with a query keeps it after the signal path', () => {
+    const urls = (endpoint: string) => {
+      const c = resolveOtelConfig({}, { OTEL_EXPORTER_OTLP_ENDPOINT: endpoint })!
+      return [c.tracesUrl, c.metricsUrl, c.logsUrl]
+    }
+    expect([
+      urls('https://c/otlp?tenant=a'),
+      urls('https://c/?t=a'),
+      urls('http://c:4318/'),
+    ]).toEqual([
+      [
+        'https://c/otlp/v1/traces?tenant=a',
+        'https://c/otlp/v1/metrics?tenant=a',
+        'https://c/otlp/v1/logs?tenant=a',
+      ],
+      ['https://c/v1/traces?t=a', 'https://c/v1/metrics?t=a', 'https://c/v1/logs?t=a'],
+      ['http://c:4318/v1/traces', 'http://c:4318/v1/metrics', 'http://c:4318/v1/logs'],
+    ])
+  })
+
+  it('OTEL_EXPORTER_OTLP_<SIGNAL>_TIMEOUT wins for its signal; the option tops both (F-49)', () => {
+    const t = (opts: Parameters<typeof resolveOtelConfig>[0], env: Record<string, string>) =>
+      resolveOtelConfig(opts, { ...base, ...env })!.signalTimeoutMs
+    expect([
+      t({}, { OTEL_EXPORTER_OTLP_TIMEOUT: '2500', OTEL_EXPORTER_OTLP_TRACES_TIMEOUT: '2000' }),
+      t({}, { OTEL_EXPORTER_OTLP_LOGS_TIMEOUT: 'soon' }),
+      t({ timeoutMs: 100 }, { OTEL_EXPORTER_OTLP_METRICS_TIMEOUT: '2000' }),
+    ]).toEqual([
+      { traces: 2000, metrics: 2500, logs: 2500 },
+      { traces: 15_000, metrics: 15_000, logs: 15_000 },
+      { traces: 100, metrics: 100, logs: 100 },
+    ])
+  })
+
+  // F-49: the Resource SDK spec discards the whole variable on a decoding
+  // error; a malformed escape was sent as written.
+  it('a malformed OTEL_RESOURCE_ATTRIBUTES is dropped whole and warned', () => {
+    const warns: string[] = []
+    const res = (raw: string) =>
+      resolveOtelConfig({}, { ...base, OTEL_RESOURCE_ATTRIBUTES: raw }, (m) => warns.push(m))!
+        .resource
+    expect([res('team=a%ZZb,env=ci'), res('team,env=ci'), res('team=a%20b,env=ci')]).toEqual([
+      {},
+      {},
+      { team: 'a b', env: 'ci' },
+    ])
+    expect(warns).toEqual([
+      '[vx-otel] OTEL_RESOURCE_ATTRIBUTES is malformed (team=a%ZZb) — none of it is used',
+      '[vx-otel] OTEL_RESOURCE_ATTRIBUTES is malformed (team) — none of it is used',
+    ])
   })
 
   it('OTEL_EXPORTER_OTLP_COMPRESSION: a signal’s own wins, the option tops both, junk warns', () => {

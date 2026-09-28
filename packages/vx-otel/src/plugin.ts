@@ -109,8 +109,46 @@ function envTimeout(raw: string | undefined): number | undefined {
   return Number.isFinite(ms) && ms > 0 ? ms : undefined
 }
 
+/**
+ * `v1/<signal>` appended to the base URL's PATH, as the exporter spec says:
+ * a base with a query had it glued onto the query's last value (F-49).
+ */
 function joinSignal(base: string, signal: string): string {
+  if (URL.canParse(base)) {
+    const url = new URL(base)
+    url.pathname = `${url.pathname.replace(/\/+$/, '')}/v1/${signal}`
+    return url.toString()
+  }
   return `${base.replace(/\/+$/, '')}/v1/${signal}`
+}
+
+/**
+ * `OTEL_RESOURCE_ATTRIBUTES`: `k=v,k=v`, percent-encoded. On a decoding
+ * error the Resource SDK spec discards the whole variable; a malformed
+ * escape was sent as written (F-49).
+ */
+function parseResourceAttributes(
+  raw: string | undefined,
+  warn: ((m: string) => void) | undefined,
+): Record<string, string> {
+  if (present(raw) === undefined) return {}
+  const out: Record<string, string> = {}
+  for (const pair of raw!.split(',')) {
+    if (pair.trim() === '') continue
+    const eq = pair.indexOf('=')
+    try {
+      if (eq <= 0) throw new Error('no key')
+      const key = decodeURIComponent(pair.slice(0, eq).trim())
+      if (key === '') throw new Error('no key')
+      out[key] = decodeURIComponent(pair.slice(eq + 1).trim())
+    } catch {
+      warn?.(
+        `[vx-otel] OTEL_RESOURCE_ATTRIBUTES is malformed (${pair.trim()}) — none of it is used`,
+      )
+      return {}
+    }
+  }
+  return out
 }
 
 /**
@@ -201,7 +239,7 @@ export function resolveOtelConfig(
   }
   // `OTEL_RESOURCE_ATTRIBUTES` (deployment.environment, team, …) was not
   // read, so a pipeline's resource identity never reached vx's telemetry.
-  const resource = parseOtlpHeaders(env['OTEL_RESOURCE_ATTRIBUTES'])
+  const resource = parseResourceAttributes(env['OTEL_RESOURCE_ATTRIBUTES'], warn)
   // vx speaks OTLP/HTTP JSON only; a signal the env sends over gRPC most
   // likely points at a gRPC port, and its failure warning says so.
   const grpc = (['traces', 'metrics', 'logs'] as const).filter(
@@ -247,6 +285,7 @@ export function resolveOtelConfig(
     }
     return pem.get(file)
   }
+  const timeoutMs = opts.timeoutMs ?? envTimeout(env['OTEL_EXPORTER_OTLP_TIMEOUT']) ?? 15_000
   const tls: Partial<Record<'traces' | 'metrics' | 'logs', OtlpTls>> = {}
   for (const signal of ['traces', 'metrics', 'logs'] as const) {
     const one: OtlpTls = {}
@@ -295,7 +334,14 @@ export function resolveOtelConfig(
     ...(tracesWanted && tracesUrl !== undefined ? {} : { tracesEnabled: false }),
     metricsEnabled: metricsWanted && metricsUrl !== undefined,
     logsEnabled: logsWanted && logsUrl !== undefined,
-    timeoutMs: opts.timeoutMs ?? envTimeout(env['OTEL_EXPORTER_OTLP_TIMEOUT']) ?? 15_000,
+    timeoutMs,
+    // A signal's own `OTEL_EXPORTER_OTLP_<SIGNAL>_TIMEOUT` wins over the
+    // shared one; it was not read (F-49). The option tops both.
+    signalTimeoutMs: {
+      traces: opts.timeoutMs ?? envTimeout(env['OTEL_EXPORTER_OTLP_TRACES_TIMEOUT']) ?? timeoutMs,
+      metrics: opts.timeoutMs ?? envTimeout(env['OTEL_EXPORTER_OTLP_METRICS_TIMEOUT']) ?? timeoutMs,
+      logs: opts.timeoutMs ?? envTimeout(env['OTEL_EXPORTER_OTLP_LOGS_TIMEOUT']) ?? timeoutMs,
+    },
     ...(opts.post ? { post: opts.post } : {}),
     ...(warn ? { warn } : {}),
   }
