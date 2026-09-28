@@ -343,6 +343,13 @@ sandboxed task, each granted its own directory inside (L-10): under the
 shared directory a task listed a concurrent task's `TMPDIR`, read what it
 kept there, and could replace its port bridge's socket, which lives in the
 task's own directory too.
+`vx-tasks` and each task directory are mode 0700, and `vx-tasks` must be
+this user's own real directory in a parent no other user may rewrite
+(others' write needs the sticky bit, as `/tmp` has): the shared directory
+is shared across users too, and one who made `vx-tasks` first renamed a
+running task's directory and planted their own under the name the host
+bridge dials (L-13). Anything else refuses the sandboxed task and names
+the directory; one of ours left open is closed.
 
 ## The environment SRT sets
 

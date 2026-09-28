@@ -26,12 +26,15 @@
 import path from 'node:path'
 import os from 'node:os'
 import {
+  chmodSync,
   closeSync,
+  lstatSync,
   mkdirSync,
   openSync,
   readlinkSync,
   realpathSync,
   rmSync,
+  statSync,
   unlinkSync,
 } from 'node:fs'
 import { mkdir, unlink } from 'node:fs/promises'
@@ -352,6 +355,39 @@ function taskTmpdir(tag: string): string {
  */
 function taskTmpRoot(): string {
   return path.join(sandboxTmpdir(), 'vx-tasks')
+}
+
+/**
+ * `taskTmpRoot()`, made or checked as this user's own before a task's
+ * directory goes in it. It sits in a shared temp dir: a user who made it
+ * first owned the parent of every task's TMPDIR and bridge socket, and
+ * renamed a running task's directory to plant their own under its name
+ * (probed, L-13) — the path the host bridge dials and the write grant is
+ * resolved from. A symlink, another owner, or a parent another user may
+ * rewrite is refused; one of ours left open to others is closed.
+ */
+function ownTaskTmpRoot(): string {
+  const root = taskTmpRoot()
+  mkdirSync(root, { recursive: true, mode: 0o700 })
+  const uid = process.getuid?.()
+  if (uid === undefined) return root
+  const st = lstatSync(root)
+  const parent = statSync(path.dirname(root))
+  // Group write is a umask-002 box's default; others' write is the hole,
+  // unless the sticky bit keeps them to their own entries (`/tmp`).
+  const parentShared = (parent.mode & 0o002) !== 0 && (parent.mode & 0o1000) === 0
+  if (
+    !st.isDirectory() ||
+    st.uid !== uid ||
+    (parent.uid !== uid && parent.uid !== 0) ||
+    parentShared
+  ) {
+    throw new UserError(
+      `sandbox: ${root} is not this user's own directory (a link, another owner, or a parent others may write); remove it, or point CLAUDE_CODE_TMPDIR at a private directory`,
+    )
+  }
+  if ((st.mode & 0o077) !== 0) chmodSync(root, 0o700)
+  return root
 }
 
 const liveTaskTmpdirs = new Set<string>()
@@ -798,8 +834,9 @@ export async function wrapSandboxedCommand(
   const userCommand = withForwardArgs(args.command, args.forwardArgs)
 
   const tag = xxh3hex(`${args.cwd}|${userCommand}|${process.hrtime.bigint()}`).slice(0, 16)
+  ownTaskTmpRoot()
   const tmp = taskTmpdir(tag)
-  mkdirSync(tmp, { recursive: true })
+  mkdirSync(tmp, { mode: 0o700 })
   trackTaskTmpdir(tmp)
   // After the tag: SRT keys violations by the command's first 100 chars.
   const inTmp = `export TMPDIR=${shellQuote(tmp)}; ${javaToolOptionsFix(

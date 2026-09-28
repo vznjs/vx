@@ -139,7 +139,19 @@
   with `--provenance`). Rows in `release-provenance.unsafe.test.ts`.
   Coordinator backlog 3.
 
+- L-13. `fix(exec)`: `vx-tasks` and every task directory were made at the
+  umask's mode (0755) in a temp dir any local user shares, and whoever
+  made `vx-tasks` first owned it. Probed as a second uid: it renamed root's
+  running task directory and planted its own under the name, the path the
+  host bridge dials and the write grant is realpath'd from. Now 0700, and
+  a `vx-tasks` that is a link, another user's, or in a parent others may
+  rewrite without the sticky bit is refused. Rows in
+  `sandbox-runtime.unsafe.test.ts`.
+
 ## Leads for other streams
+
+- B (sandbox): `src/exec/sandbox-runtime.ts` changed under L-13
+  (`ownTaskTmpRoot()` before a task directory is made).
 
 - B (sandbox): `src/exec/sandbox-runtime.ts` changed under L-10 (task
   tmpdirs and bridge sockets moved under a walled `vx-tasks/`); the lead

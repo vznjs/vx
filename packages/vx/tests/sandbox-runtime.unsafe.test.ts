@@ -7,8 +7,15 @@
 // skipping, because a skipped suite reports green and this one covers
 // the isolation boundary. A local host without the deps still skips.
 
-import { existsSync, readdirSync, readFileSync, readlinkSync, realpathSync } from 'node:fs'
-import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import {
+  existsSync,
+  readdirSync,
+  readFileSync,
+  readlinkSync,
+  realpathSync,
+  statSync,
+} from 'node:fs'
+import { chmod, chown, mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { createConnection } from 'node:net'
 import os from 'node:os'
 import path from 'node:path'
@@ -2161,6 +2168,105 @@ describe.skipIf(!available)('the sandbox temp directory', () => {
         await rm(tmpdir, { recursive: true, force: true })
         await resetSandbox()
       }
+    },
+    TIMEOUT,
+  )
+})
+
+describe.skipIf(!available)("vx's task directories are this user's own (L-13)", () => {
+  // `vx-tasks` sits in a shared temp dir. A user who made it first owned
+  // the parent of every task's TMPDIR and bridge socket: probed, another
+  // uid renamed a running task's directory and planted its own under the
+  // name the host bridge dials. Each row points CLAUDE_CODE_TMPDIR at a
+  // fresh directory and plants what that user could.
+  let base: string
+  const saved = process.env['CLAUDE_CODE_TMPDIR']
+  beforeEach(async () => {
+    base = realpathSync(await mkdtemp(path.join(os.tmpdir(), 'vx-l13-')))
+    process.env['CLAUDE_CODE_TMPDIR'] = base
+  })
+  afterEach(async () => {
+    if (saved === undefined) delete process.env['CLAUDE_CODE_TMPDIR']
+    else process.env['CLAUDE_CODE_TMPDIR'] = saved
+    await resetSandbox()
+    await rm(base, { recursive: true, force: true })
+  })
+  const runOne = async (): Promise<string> => {
+    await initSandbox()
+    const node = {
+      id: 'root#build',
+      projectDir: base,
+      taskName: 'build',
+      config: { exec: { command: 'true' } },
+    } as unknown as TaskNode
+    const { sandbox } = await sandboxRequestFor(
+      node,
+      { allow: { read: ['.'] } },
+      base,
+      undefined,
+      [],
+    )
+    const command = 'echo "$TMPDIR"; ls -ld "$TMPDIR" | cut -c1-10'
+    return runSandboxed({ command, cwd: base, env: process.env, ...sandbox }).then(
+      (r) => (r.exitCode === 0 ? r.stdout.trim() : `exit ${r.exitCode}`),
+      (e: unknown) => `refused: ${(e as Error).message}`,
+    )
+  }
+  const mode = (p: string): string => (statSync(p).mode & 0o777).toString(8)
+  const dirOf = (out: string): string => path.dirname(out.split('\n')[0]!)
+
+  it(
+    'the root and each task directory are 0700; a root of ours left open is closed',
+    async () => {
+      const root = path.join(base, 'vx-tasks')
+      await mkdir(root, { mode: 0o777 })
+      await chmod(root, 0o777)
+      const out = await runOne()
+      expect({ under: dirOf(out), root: mode(root), task: out.split('\n')[1] }).toEqual({
+        under: root,
+        root: '700',
+        task: 'drwx------',
+      })
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a planted link, or a parent others may rewrite, is refused',
+    async () => {
+      const elsewhere = path.join(base, 'elsewhere')
+      await mkdir(elsewhere)
+      await symlink(elsewhere, path.join(base, 'vx-tasks'))
+      const linked = await runOne()
+      await rm(path.join(base, 'vx-tasks'))
+      await chmod(base, 0o777)
+      const open = await runOne()
+      await chmod(base, 0o1777)
+      // CONTROL: the sticky bit keeps others to their own entries (`/tmp`).
+      const sticky = await runOne()
+      expect({
+        linked: linked.startsWith('refused: sandbox: ') && linked.includes('vx-tasks'),
+        open: open.startsWith('refused: sandbox: '),
+        sticky: dirOf(sticky),
+        planted: readdirSync(elsewhere),
+      }).toEqual({ linked: true, open: true, sticky: path.join(base, 'vx-tasks'), planted: [] })
+    },
+    TIMEOUT,
+  )
+
+  it.skipIf(process.getuid?.() !== 0)(
+    "another user's root is refused",
+    async () => {
+      const root = path.join(base, 'vx-tasks')
+      await mkdir(root, { mode: 0o700 })
+      await chown(root, 65534, 65534)
+      const out = await runOne()
+      await chown(root, 0, 0)
+      const ours = await runOne()
+      expect({ other: out.startsWith('refused: sandbox: '), ours: dirOf(ours) }).toEqual({
+        other: true,
+        ours: root,
+      })
     },
     TIMEOUT,
   )
