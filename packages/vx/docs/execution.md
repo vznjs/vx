@@ -512,8 +512,9 @@ starts (`wait`).
 Every surface uses one outcome vocabulary: task axis `success` /
 `failed` / `skipped` / `aborted` (+ `running` live), cache axis
 `miss` / `up-to-date` (fresh) / `local` / `remote`. The `--verbosity 1`
-table and `--report` spell the combinations out as `executed` /
-`restored-local` / `restored-remote` / `up-to-date`.
+table spells the combinations out as `success` / `restored-local` /
+`restored-remote` / `up-to-date`; `--report` keeps the two axes as its
+Status and Cache columns.
 
 The colors / framing modules:
 
@@ -621,8 +622,8 @@ were accepted and wrote nothing until item 992).
 
 - **`--summarize[=<path>]`** — per-run JSON to
   `<cacheDir>/runs/<run_id>.json` by default (or the explicit path).
-  Mirrors the `runs` table shape — one task entry per executed task
-  with status, hash, duration, cpu_ms, peak RSS, hrtime spans
+  Mirrors the `runs` table shape — one task entry per real task, hits
+  included, with status, hash, duration, cpu_ms, peak RSS, hrtime spans
   (bigint serialized as strings to preserve ns precision).
 - **`--profile[=<path>]`** — Chrome-trace JSON of every task's
   wallclock span. Default path: `profile.json` (cwd-relative). One

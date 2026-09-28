@@ -1833,7 +1833,7 @@ was not), and the cache tests.
   `logs/<hash>.{stdout,stderr}`. Adds run history for `vx stats`.
   Removes the per-entry manifest.
 - **v10 → v11** (PR #19): analytics columns added to the `runs`
-  table: `run_id` (ULID), `cpu_ms`, `peak_rss_bytes`,
+  table: `run_id` (UUIDv7), `cpu_ms`, `peak_rss_bytes`,
   `wallclock_start_ns` / `wallclock_end_ns`, `cache_hit`. All
   nullable; directly queryable via `sqlite3 cache.db`. The on-disk
   `<hash>/` layout itself was unchanged.
