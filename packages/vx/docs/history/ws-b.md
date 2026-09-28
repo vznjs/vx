@@ -706,3 +706,8 @@ again after that kill, a child nothing stops. `runSandboxed` now takes
 `sandbox-tracer-retry.unsafe.test.ts` cover it: one through
 `runSandboxed`, one through the local executor. Each is red without its
 line.
+
+B-39. `npm-pack.unsafe.test.ts`'s rows run `npm pack --dry-run` through
+`spawnSync` under bun's 5 s default timeout. On CI (#1772) the first row
+died at 5,048 ms with exit `null`, and locally a cold first run failed
+one row of 18. Both rows now take a 30 s timeout.
