@@ -1,12 +1,13 @@
 # @vzn/vx-migrate
 
-Everything for adopting [`@vzn/vx`](https://github.com/vznjs/vx) from Turborepo, Nx, moon or wireit, in one package with zero dependencies:
+Everything for adopting [`@vzn/vx`](https://github.com/vznjs/vx) from Turborepo, Nx, moon, wireit or lage, in one package with zero dependencies:
 
 - **`turbo()`** — run a Turbo repository under vx with nothing written. The plugin fills vx's `project` stage from `turbo.json` and each package's `package.json` scripts. A trial that commits nothing.
 - **`nx()`** — run an Nx repository under vx with nothing written: the same stage, filled from Nx's resolved project graph. Executor targets (`@nx/js:tsc`, `@nx/vite:build`, your own) run as themselves through **`nx-exec`**, one executor per process.
 - **`moon()`** — run a [moon](https://moonrepo.dev) workspace under vx with nothing written, from `.moon/` and each `moon.yml`.
 - **`wireit()`** — run a [wireit](https://github.com/google/wireit) workspace under vx with nothing written, from each `package.json`'s `wireit` block.
-- **`bunx @vzn/vx-migrate`** — write one `vx.config.ts` per workspace package from your `turbo.json`, an exported Nx project graph, `.moon/` or `wireit` blocks, plus the workspace file every run needs. Runs without a workspace file, so it is the first command, not the second.
+- **`lage()`** — run a [lage](https://microsoft.github.io/lage/) workspace under vx with nothing written, from `lage.config.js`.
+- **`bunx @vzn/vx-migrate`** — write one `vx.config.ts` per workspace package from your `turbo.json`, an exported Nx project graph, `.moon/`, `wireit` blocks or `lage.config.js`, plus the workspace file every run needs. Runs without a workspace file, so it is the first command, not the second.
 - **`turboCache()`** and **`nxCache()`** — keep the remote cache you have: any server speaking Turbo's `/v8/artifacts` API (Vercel's hosted cache included) or Nx's self-hosted `/v1/cache` spec.
 
 ```sh
@@ -171,6 +172,44 @@ Then `vx run build --all` runs each package's `wireit.build`, read from its `pac
 
 Not mapped, each a TODO or a note: the workspace root's scripts (vx has no root tasks), a dependency on a directory that is not a workspace package, a negated `output` (the task runs uncached), a wildcard output under `clean: false`, `cascade: false` (vx folds every dependency's key), an external env `default`, and `allowUsuallyExcludedPaths`. On lit/lit (53 packages) all 299 mapped tasks load.
 
+## `lage()` — run a lage workspace unchanged
+
+```ts
+// vx.workspace.ts
+import { defineWorkspace } from '@vzn/vx'
+import { lage } from '@vzn/vx-migrate'
+
+export default defineWorkspace({ plugins: [lage()] })
+```
+
+Then `vx run build --all` runs what `lage build` ran. The config (`lage.config.js`, `.cjs` or `.mjs`) is code: it is evaluated in a child `bun` once per run, and the mapping is keyed on the result, so an edit to a file it requires remaps.
+
+| lage (`pipeline`)                                | vx                                                                                                   |
+| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
+| `task` (npmScript), `options.script`, `taskArgs` | `exec.command`: the package's script (hooks folded); no script, a pass-through                       |
+| `task: [...]`                                    | `dependsOn`                                                                                          |
+| `pkg#task`                                       | replaces `task` for `pkg` (`enableTargetConfigMerging` deep-merges instead)                          |
+| `dependsOn`: `build`, `^build`, `pkg#build`      | the same                                                                                             |
+| `^^build`                                        | a `pkg#build` edge to every transitive dependency that has it                                        |
+| `type: 'noop'`                                   | a group task                                                                                         |
+| `type: 'worker'`, `options.worker`               | a **`lage-worker`** line: the module and its options, one process                                    |
+| `inputs` (none: every package file)              | `cache.inputs.files`                                                                                 |
+| `outputs`, else `cacheOptions.outputGlob`        | `cache.outputs.files`; neither: no cache (lage would cache every package file, which vx would clean) |
+| `environmentGlob` (target or `cacheOptions`)     | `cache.inputs.workspaceFiles` (a leading `/` is the root)                                            |
+| `cache: false`                                   | no `cache` block                                                                                     |
+
+Not mapped, each a TODO or a note: custom runner types (the task is skipped and an edge to it dropped), a worker whose options hold a function, root targets (`#task`, `//#task`, `<root package>#task`), a `shouldRun` function, and `weight` / `priority` / `stagedTarget`. On fluentui-react-native (85 packages) all 498 targets plan, and on lage's own repo all 196.
+
+### `lage-worker` — one worker, one process
+
+lage runs a `type: 'worker'` target by importing its module into a worker thread and calling the exported function (`run`, the default export, or the module) with `{ target, weight, taskArgs, abortSignal }`. `lage-worker` does the same in a process of its own, with the module path relative to the package and the options on the command line, so vx's key sees them:
+
+```bash
+lage-worker ../../scripts/worker/transpile.js --package @lage-run/cli --task transpile --options '{"flavor":"strict"}'
+```
+
+It is a Node bin (workers are Node programs: swc's binding, jest's pool). A module `shouldRun` export that returns false skips the target; a first SIGINT or SIGTERM aborts the worker's `abortSignal`, a second ends the process. Keep `@vzn/vx-migrate` installed while a config runs one.
+
 ## `nx-exec` — one Nx executor, one process
 
 ```
@@ -214,6 +253,10 @@ Reads the root pipeline (`tasks` in Turbo 2, `pipeline` in Turbo 1), per-package
 ### Nx
 
 Reads the **resolved** project graph only (`.nx/workspace-data/project-graph.json`; export one with `nx graph --file=.nx/workspace-data/project-graph.json`), through the same mapper `nx()` runs live — so a repo reads the same whether you migrate it or run it as it is. Targets Nx plugins infer at runtime are frozen as the snapshot saw them. `nx:run-commands` is the one shell line `nx()` runs (see [`nx:run-commands`](#nxrun-commands) above: where, parallel or in order, forwarded arguments, `env`, `readyWhen`) — storybook's `compile` is `cd ../../.. && node ./scripts/build/build-package.ts --cwd code/lib/cli`; a plain `command` is that shorthand; `nx:run-script` is the package's script body with its `pre<name>` / `post<name>` hooks folded in (or `yarn run <name>` when the body calls yarn's `run` builtin; an empty script is the placeholder with a todo), `nx:noop` is a group task; **every other executor is an `nx-exec` line** carrying the executor and its resolved options, no TODO — keep `nx` and `@vzn/vx-migrate` installed for as long as a config runs one, and replace the line with the bare command (`vite build`, `tsc -p …`) when the target leaves Nx. A target with `configurations` writes one task per configuration (`build`, `build:ci`). Named inputs expand from `nx.json` when readable. An output path is kept as written (`{projectRoot}/dist` → `dist`, `{projectRoot}/bin/tool` → `bin/tool`): vx reads a bare path as the file or the whole tree under it, so a directory and an extensionless binary both save and restore. vx derives package edges from `package.json`; an Nx graph edge with no manifest path (`implicitDependencies`, a tsconfig path) becomes, for each `^target` of the dependant, an explicit `pkg#target` edge to what Nx's own walk reaches — each dependency that has the target, and through one that lacks it, its dependencies — so the order and the key are Nx's.
+
+### lage
+
+Evaluates `lage.config.js` and maps it through the mapper `lage()` runs live; the table is [`lage()`](#lage--run-a-lage-workspace-unchanged)'s.
 
 ### wireit
 
@@ -297,7 +340,7 @@ The Nx spec has no existence probe, so `has` (the `--dry` prediction; the prefet
 
 ## Testing
 
-`bun test` runs the Turbo, Nx, moon and wireit plugins over fixture workspaces (the Nx one against a fake `nx` whose graph export and `runExecutor` are stubs, so the vx → `nx-exec` → executor → cache round trip is real), the migrate CLI over both sources, and each remote-cache wire against a strict in-memory implementation of its spec plus a full `vx run` round trip (miss → upload → local wipe → restore from the server). A separate suite points both plugins at a HOSTILE server — 500 on every request, 401, a server that never answers, and a body that is not an artifact — and pins that each one degrades to a miss with the run still green. `tests/nx-exec-live.test.ts` runs `nx-exec` against REAL Nx when `VX_NX_MODULES` names a directory whose `node_modules` holds `nx`, `@nx/js` and `typescript` (CI installs one under `packages/vx-migrate/.nx-live` and sets `VX_REQUIRE_NX=1`, so an absent install fails there instead of skipping).
+`bun test` runs the Turbo, Nx, moon, wireit and lage plugins over fixture workspaces (the Nx one against a fake `nx` whose graph export and `runExecutor` are stubs, so the vx → `nx-exec` → executor → cache round trip is real), the migrate CLI over both sources, and each remote-cache wire against a strict in-memory implementation of its spec plus a full `vx run` round trip (miss → upload → local wipe → restore from the server). A separate suite points both plugins at a HOSTILE server — 500 on every request, 401, a server that never answers, and a body that is not an artifact — and pins that each one degrades to a miss with the run still green. `tests/nx-exec-live.test.ts` runs `nx-exec` against REAL Nx when `VX_NX_MODULES` names a directory whose `node_modules` holds `nx`, `@nx/js` and `typescript` (CI installs one under `packages/vx-migrate/.nx-live` and sets `VX_REQUIRE_NX=1`, so an absent install fails there instead of skipping).
 
 ## History
 
