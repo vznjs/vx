@@ -450,6 +450,24 @@ describe.if(CHUNKING_SUPPORTED)('what the response means', () => {
     })
   })
 
+  // F-57: the partial logs are read best effort; one that failed its read
+  // replaced the execution's own failure with a read error.
+  it('a failed status whose partial logs cannot be read still refuses with the execution failure', async () => {
+    // Bytes that do not hash to their digest: a read that throws.
+    const lie = put('the real bytes')
+    fake.blobs.set(lie.hash, bytes('a forged copy!'))
+    const gone = D(lie)
+    for (const result of [
+      { exit_code: 137, stdout_digest: gone },
+      { exit_code: 137, stderr_digest: gone },
+    ]) {
+      fake.onExecute = () => ({ response: { status: { code: 4, message: 'timed out' }, result } })
+      await withExecutor(async (run) => {
+        expect(await refusal(run(request()))).toBe('vx/reapi: pkg#gen execution failed: timed out')
+      })
+    }
+  })
+
   it('stdout and stderr are delivered even when capture keeps no copy; the worker is reported', async () => {
     fake.onExecute = () => ({
       response: {

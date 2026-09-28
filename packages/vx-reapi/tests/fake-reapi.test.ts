@@ -95,6 +95,39 @@ describe.if(CHUNKING_SUPPORTED)('the fake REAPI server, read by the real client'
     }
   })
 
+  // F-57: the committed size check held only its F-44 case; dropping it
+  // whole went unheard.
+  it('a write the server commits short, as -1 uncompressed, or not at all when compressed, fails', async () => {
+    const c = client()
+    const outcome = async (compressed: boolean, commitAs: string, fillWith: number) => {
+      fake.caps.compressors = compressed ? ['ZSTD'] : []
+      await c.negotiate()
+      const data = new Uint8Array(2 * 1024 * 1024).fill(fillWith)
+      fake.commitAs = commitAs
+      return c.writeBlob(c.digestOf(data), data).then(
+        () => 'done',
+        (err: Error) => err.message.replace(/[0-9a-f]{64}/, '<h>'),
+      )
+    }
+    try {
+      expect([
+        await outcome(false, String(2 * 1024 * 1024 - 1), 11),
+        await outcome(false, '-1', 12),
+        await outcome(true, '0', 13),
+        await outcome(true, '', 14),
+      ]).toEqual([
+        `reapi: short write for <h>: ${2 * 1024 * 1024 - 1}/${2 * 1024 * 1024}`,
+        `reapi: short write for <h>: -1/${2 * 1024 * 1024}`,
+        expect.stringMatching(/^reapi: short write for <h>: 0\/\d+$/),
+        expect.stringMatching(/^reapi: short write for <h>: 0\/\d+$/),
+      ])
+    } finally {
+      fake.caps.compressors = []
+      fake.commitAs = undefined
+      c.close()
+    }
+  })
+
   it('ActionCache: an update is what the next get returns', async () => {
     const c = client()
     try {

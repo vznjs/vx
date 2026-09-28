@@ -189,6 +189,57 @@ describe('materialiseOutputs refuses what lands outside the workspace (L-2)', ()
     expect(await untouched()).toEqual({ victim: 'mine', outside: ['victim'] })
   })
 
+  // F-57: what a sweep of verifyLinks/resolveThrough left unheld.
+  it('an absolute target, a sibling sharing the root as a prefix, and three- and four-link chains lead out', async () => {
+    const via = { path: 'd/x', target: '..' }
+    const cases = [
+      [via, { path: 'd/y', target: `${cwd}/d/x/../../outside` }],
+      [via, { path: 'd/y', target: 'x/../../ws-evil' }],
+      [
+        { path: 'd/a', target: '..' },
+        { path: 'd/b', target: 'a/..' },
+        { path: 'd/y', target: 'b/../outside' },
+      ],
+      [
+        { path: 'd/a', target: '..' },
+        { path: 'd/b', target: 'a/..' },
+        { path: 'd/c', target: 'b' },
+        { path: 'd/y', target: 'c/../outside' },
+      ],
+    ]
+    const got: string[] = []
+    for (const output_symlinks of cases) {
+      got.push(await run({ output_symlinks }))
+      await rm(path.join(cwd, 'd'), { recursive: true, force: true })
+    }
+    expect(got).toEqual(
+      cases.map((c) => refused(`${path.join(cwd, 'd', 'y')} -> ${c[c.length - 1]!.target}`)),
+    )
+    expect(await untouched()).toEqual({ victim: 'mine', outside: ['victim'] })
+  })
+
+  it('CONTROL: a link to the root itself, and inside links under a root reached through a link, are written', async () => {
+    expect(await run({ output_symlinks: [{ path: 'r', target: '..' }] })).toBe('written')
+    const alias = path.join(top, 'alias')
+    await symlink(top, alias)
+    const viaAlias = {
+      taskId: 'pkg#build',
+      cwd: path.join(alias, 'ws', 'pkg'),
+      workspaceRoot: path.join(alias, 'ws'),
+      outputs: { files: ['**'], workspaceFiles: [] },
+    } as unknown as Parameters<typeof materialiseOutputs>[1]
+    const r = await materialiseOutputs(
+      client,
+      viaAlias,
+      { output_symlinks: [{ path: 'current', target: 'r' }] },
+      () => undefined,
+    ).then(
+      () => 'written',
+      (e: Error) => e.message,
+    )
+    expect(r).toBe('written')
+  })
+
   it('a link standing at an output file is replaced, never written through', async () => {
     await symlink(path.join(outside, 'victim'), path.join(cwd, 'out.txt'))
     const r = await run({ output_files: [{ path: 'out.txt', digest: blob('built') }] })
