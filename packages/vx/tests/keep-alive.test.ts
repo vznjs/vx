@@ -628,7 +628,7 @@ Bun.spawn = (cmd, opts) => {
     const dir = await addProject(
       root,
       'app',
-      `export default { tasks: { dev: { exec: { command: '(trap "" INT TERM; echo up > up.txt; while [ ! -f go ]; do sleep 0.02; done; echo late > late.txt) >/dev/null 2>&1 & wait' } } } }`,
+      `export default { tasks: { dev: { exec: { command: '(trap "" INT TERM; sh -c \\'echo $PPID\\' > child.pid; echo up > up.txt; while [ ! -f go ]; do sleep 0.02; done; echo late > late.txt) >/dev/null 2>&1 & wait' } } } }`,
     )
     const proc = track(
       Bun.spawn([process.execPath, BIN, 'run', 'dev', '--all'], {
@@ -645,10 +645,16 @@ Bun.spawn = (cmd, opts) => {
       if (Date.now() > deadline) throw new Error('the child never trapped the signal')
       await Bun.sleep(20)
     }
+    const child = Number(readFileSync(path.join(dir, 'child.pid'), 'utf8'))
+    expect(isAlive(child)).toBe(true)
     process.kill(-proc.pid, 'SIGINT')
     await Bun.sleep(200)
     process.kill(proc.pid, 'SIGKILL')
     expect(await proc.exited).toBe(137)
+    // The guard kills once the kernel has closed vx's pipe and the guard is
+    // scheduled: `go` written at vx's exit reached a loaded gate's child
+    // first (B-38). A child the guard missed outlives this wait and writes.
+    await waitForDead(child, 5_000)
     await Bun.write(path.join(dir, 'go'), '')
     await Bun.sleep(2_000)
     expect(existsSync(path.join(dir, 'late.txt'))).toBe(false)
