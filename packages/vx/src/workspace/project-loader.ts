@@ -515,6 +515,16 @@ export async function loadProjectConfigs(
 const WATCHED_BUILTINS: ReadonlyArray<readonly [string, object]> = [
   ['Object.prototype', Object.prototype],
   ['Array.prototype', Array.prototype],
+  // What vx itself runs on: `Bun.hash.xxHash3 = () => 7n` gave every task
+  // the key 00000000, and a changed command replayed the old output (D-75).
+  ['Bun', Bun],
+  ['Bun.hash', Bun.hash],
+  ['JSON', JSON],
+  ['Math', Math],
+  ['String.prototype', String.prototype],
+  ['Map.prototype', Map.prototype],
+  ['Set.prototype', Set.prototype],
+  ['Promise.prototype', Promise.prototype],
 ]
 
 type BuiltinSnapshot = ReadonlyArray<ReadonlyMap<PropertyKey, PropertyDescriptor>>
@@ -530,7 +540,7 @@ function builtinSnapshot(): BuiltinSnapshot {
 function builtinsChanged(changed: readonly string[], configPath?: string): UserError {
   const who = configPath === undefined ? 'a project config' : configPath
   return new UserError(
-    `${who} changed ${changed.join(', ')} while it was evaluated — a config must not change the built-ins: every other config is read through them, and the cache key does not see what they add`,
+    `${who} changed ${changed.join(', ')} while it was evaluated — a config must not change the built-ins vx runs on: other configs are read through them and cache keys are made with them`,
   )
 }
 

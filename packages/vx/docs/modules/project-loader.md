@@ -96,9 +96,12 @@ readers that reach it here.
   deadline (D-65). The guard is counted, so concurrent loads leave the
   real `process.exit` in place only once the last has left. An exit a
   config schedules for later (a timer) is not covered.
-- A first load may not change `Object.prototype` or `Array.prototype`:
-  every config is read through them, and the key folds each config's
-  own JSON, so `Object.prototype.exec` set in one config ran in another
+- A first load may not change the built-ins vx runs on:
+  `Object.prototype`, `Array.prototype`, `String`, `Map`, `Set` and
+  `Promise` prototypes, `Bun`, `Bun.hash`, `JSON` and `Math`. Every
+  config is read through them and cache keys are made with them
+  (`Bun.hash.xxHash3 = () => 7n` keyed every task 00000000, D-75), and
+  the key folds each config's own JSON, so `Object.prototype.exec` set in one config ran in another
   project's task and a cache hit replayed the old command after it
   changed (D-74). Each first load is compared with a snapshot taken
   before the round, before anything reads through them (a replaced
