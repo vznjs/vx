@@ -87,7 +87,11 @@ const defaultPost =
         if (retry === undefined || delay === undefined || deadline?.aborted === true) {
           throw err instanceof OtlpRetryable ? err.refused : err
         }
-        await sleepUnless(retry > 0 ? Math.min(retry, MAX_RETRY_AFTER_MS) : delay, deadline)
+        // The deadline ended the wait: core has given up on the flush, and
+        // the refusal is what to tell (F-46).
+        if (await sleepUnless(retry > 0 ? Math.min(retry, MAX_RETRY_AFTER_MS) : delay, deadline)) {
+          throw err instanceof OtlpRetryable ? err.refused : err
+        }
       }
     }
   }
@@ -115,12 +119,13 @@ class OtlpRetryable extends Error {
   }
 }
 
-function sleepUnless(ms: number, deadline: AbortSignal | undefined): Promise<void> {
+/** Resolves true when `deadline` ended the wait. */
+function sleepUnless(ms: number, deadline: AbortSignal | undefined): Promise<boolean> {
   return new Promise((resolve) => {
     const done = (): void => {
       clearTimeout(timer)
       deadline?.removeEventListener('abort', done)
-      resolve()
+      resolve(deadline?.aborted === true)
     }
     const timer = setTimeout(done, ms)
     deadline?.addEventListener('abort', done, { once: true })

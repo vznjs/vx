@@ -828,6 +828,30 @@ describe('every output the vx-github sweep found unheld', () => {
     ])
   })
 
+  // F-46: the deadline passed during the wait, the next POST threw an
+  // AbortError, and the warning named it instead of GitHub's 502.
+  it('a deadline during the wait ends the retries and warns the 502', async () => {
+    const { postCheckRun } = await import('../src/checks.js')
+    const warns: string[] = []
+    let calls = 0
+    const deadline = new AbortController()
+    setTimeout(() => deadline.abort(), 50)
+    const t0 = Date.now()
+    await postCheckRun({
+      env: { token: 't', repository: 'o/r', sha: 's', apiUrl: 'https://api' },
+      payload: {},
+      fetchFn: async (_url, init) => {
+        calls++
+        if (init.signal?.aborted === true) throw new DOMException('aborted', 'AbortError')
+        return { ok: false, status: 502, text: async () => 'bad gateway' }
+      },
+      warn: (m) => warns.push(m),
+      signal: deadline.signal,
+    })
+    expect([calls, warns]).toEqual([1, ['vx-github: check-run POST failed (502): bad gateway']])
+    expect(Date.now() - t0).toBeLessThan(150)
+  })
+
   it('a refused certificate is not retried; its message is warned (F-40)', async () => {
     const { postCheckRun } = await import('../src/checks.js')
     const warns: string[] = []
