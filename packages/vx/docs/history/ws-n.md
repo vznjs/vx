@@ -187,6 +187,12 @@ restore 1.27 s against 3.82 s, no-op 626 ms against 3.91 s
 (`benchmarks.md`). No mapping gap for `build`; the e2e targets' Nx
 `params: "forward"` edges are reported as unsupported, as designed.
 
+N-17. `turbo()` on unocss/unocss (Turbo 2.10.13): 42 tasks, 0 edge
+mismatches; `turbo()` names the `VITE_*` / `PUBLIC_*` env Turbo infers
+for vite and astro packages. 45.1 s cold against 47.3 s; warm Turbo
+wins (185 ms restore, 126 ms no-op against 859 and 770 ms) because
+one task re-runs every time under vx (lead A below).
+
 ## Candidates not built (2026-09-28)
 
 - Lerna without Nx: `lerna run <s>` (lerna 10.0.1, `prepNxOptions`)
@@ -266,3 +272,10 @@ restore 1.27 s against 3.82 s, no-op 626 ms against 3.91 s
   reads the old file. A mapper cannot know an undeclared reader. Worth
   a word in the failure: a task that fails reading a file another
   running task's clean just removed.
+- A: a task that rewrites an input with the same bytes is never cached.
+  unocss's `@unocss/vscode#build` (f05ee3a) runs `vscode-ext-gen`,
+  which rewrites `README.md` and its generated `meta.ts` unchanged;
+  `movedInput` counts any ctime inside the command's window as a move,
+  so the save is withheld on every run (550–900 ms per no-op) where
+  Turbo caches it. A digest compare for those paths would decide it by
+  content.
