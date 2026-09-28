@@ -163,6 +163,16 @@ so these reps ran with the network up. Lerna without Nx looked at and
 left: docusaurus has `useNx: false` and uses lerna only to version and
 publish; its builds are root fan-outs, which `workspaceScripts()` maps.
 
+N-14. `turbo()` on vueuse/vueuse (Turbo 2.10.12): the mapping plans
+Turbo's 12 tasks, `metadata#update` before `metadata#build` from the
+package `turbo.json`, `$TURBO_ROOT$` inputs as `workspaceFiles`. vx
+fails cold as checked in (an undeclared read of an output vx cleans
+first; lead A below); with the missing edge, 21.4 s cold against 29.2
+s, restore 263 ms against 128 ms (`benchmarks.md`). Harness: Turbo
+runs each script through `pnpm` on PATH, and the box's `/opt/node22`
+pnpm stalled 28 min fetching the repo's pinned pnpm 11.25; the
+install's pnpm goes first on PATH.
+
 ## Candidates not built (2026-09-28)
 
 - Lerna without Nx: `lerna run <s>` (lerna 10.0.1, `prepNxOptions`)
@@ -235,3 +245,10 @@ publish; its builds are root fan-outs, which `workspaceScripts()` maps.
   (`!development/test/router_test.html`, `!test/__temp`), so those 12
   run uncached under `wireit()`: dropping the `!` would clean the
   excluded file.
+- A: vx cleans a task's outputs before it runs; Turbo does not. On
+  vueuse (efdd69a) ten builds read `packages/metadata/index.json`, the
+  output of `metadata#update`, with no edge to it, so every vx cold run
+  fails (`index.json` gone for the 1.6 s `update` takes) where Turbo
+  reads the old file. A mapper cannot know an undeclared reader. Worth
+  a word in the failure: a task that fails reading a file another
+  running task's clean just removed.

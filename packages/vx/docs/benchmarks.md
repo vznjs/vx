@@ -811,6 +811,31 @@ the same.
 | --------- | ---------- | -------------- |
 | every run | **10.3 s** | 12.7 s (1.23×) |
 
+### vueuse/vueuse (Turbo 2.10.12, `turbo()`, `efdd69a`)
+
+`build` (12 tasks, `tsdown`) through `turbo()` with nothing written,
+against `turbo run build`; each tool's own `--cache-dir`, medians of
+three interleaved reps.
+
+As checked in, vx cannot run it cold: every package's `tsdown` config
+imports `packages/metadata/index.json`, the output of
+`@vueuse/metadata#update`, and `turbo.json` gives the builds no edge to
+it. vueuse's own `build` script runs `nr update` first, and Turbo never
+deletes an output before a task runs, so the old file is read. vx
+cleans `update`'s output before `update` runs, and the ten unordered
+builds fail reading it. With the edge the repo leaves implicit
+(`build` `dependsOn: ["@vueuse/metadata#update"]`), both run cold:
+
+| `build` | vx         | Turbo 2.10.12  |
+| ------- | ---------- | -------------- |
+| cold    | **21.4 s** | 29.2 s (1.36×) |
+| restore | 263 ms     | **128 ms**     |
+| no-op   | 246 ms     | **51–161 ms**  |
+
+Turbo's no-op alternates: its key for `metadata#update` flips between
+two values on consecutive runs (`84fcf722…`, `abaf2e87…`), so every
+other no-op rebuilds (7.3–7.7 s). vx's stays at 211–262 ms.
+
 ## Real repos re-measured (2026-09-27)
 
 Roadmap 2.5: astro and refine again, same revisions, harnesses and
