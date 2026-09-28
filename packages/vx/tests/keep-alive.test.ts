@@ -167,6 +167,42 @@ describe('foreground keep-alive ends when one requested server exits', () => {
     const summary = JSON.parse(readFileSync(path.join(root, 's.json'), 'utf8'))
     expect([summary.ok, summary.exitCode]).toEqual([false, 130])
   }, 20_000)
+  // C-46: a kept server keeps the persistent tasks it depends on. Under
+  // `--filter app` only app#dev was kept, and the api#dev it was started
+  // against was stopped at the end of the graph.
+  it('--filter keeps the persistent task a kept one depends on', async () => {
+    const server = (deps: string[]) => `export default { tasks: { dev: {
+      dependsOn: ${JSON.stringify(deps)},
+      exec: { command: 'echo $$ > pid.txt; echo READY; exec sleep 30', persistent: { readyWhen: 'READY' } },
+    } } }`
+    const api = await addProject(root, 'api', server([]))
+    const app = await addProject(root, 'app', { config: server(['^dev']), deps: { api: '0.0.0' } })
+    const proc = track(
+      Bun.spawn([process.execPath, BIN, 'run', 'dev', '--filter', 'app'], {
+        cwd: root,
+        stdout: 'pipe',
+        stderr: 'pipe',
+        env: { ...process.env, CI: '', GITHUB_ACTIONS: '', VX_KILL_GRACE_MS: '200' },
+      }),
+    )
+    let out = ''
+    const reading = (async () => {
+      for await (const chunk of proc.stdout) out += new TextDecoder().decode(chunk)
+    })()
+    const pids = [
+      await waitForPid(path.join(api, 'pid.txt'), 10_000),
+      await waitForPid(path.join(app, 'pid.txt'), 10_000),
+    ]
+    const deadline = Date.now() + 10_000
+    while (!out.includes('─ vx ') && Date.now() < deadline) await Bun.sleep(20)
+    const pinned = out.split('\n').filter((l) => l.trim().startsWith('▸'))
+    expect(pinned.map((l) => l.trim())).toEqual(['▸ api#dev running', '▸ app#dev running'])
+    expect(pids.map(isAlive)).toEqual([true, true])
+    proc.kill('SIGINT')
+    expect(await proc.exited).toBe(130)
+    await reading
+    expect(await Promise.all(pids.map((p) => waitForDead(p, 1_000)))).toEqual([true, true])
+  }, 20_000)
 })
 
 // Item 892: a persistent server that became ready and then died on its own
@@ -259,7 +295,10 @@ describe('a persistent server that dies before the run stops it', () => {
   // A server that writes srv.pid holds the dependant until vx has reaped it
   // (`kill -0` answers for a zombie): `gone` alone raced the Ctrl-C
   // against the reap, and CI signalled first (`said: []`).
-  const interrupted = async (srv: string): Promise<{ code: number; said: string[] }> => {
+  const interrupted = async (
+    srv: string,
+    tasks = ['e2e'],
+  ): Promise<{ code: number; said: string[]; tally: string | undefined }> => {
     const dir = await addProject(root, 'app', {
       config: `export default { tasks: {
         srv: { exec: { command: ${JSON.stringify(srv)}, persistent: { readyWhen: 'READY' } } },
@@ -270,7 +309,7 @@ describe('a persistent server that dies before the run stops it', () => {
       } }`,
     })
     const proc = track(
-      Bun.spawn([process.execPath, BIN, 'run', 'e2e', '--all', '--output-logs=none'], {
+      Bun.spawn([process.execPath, BIN, 'run', ...tasks, '--all', '--output-logs=none'], {
         cwd: root,
         stdout: 'pipe',
         stderr: 'pipe',
@@ -286,17 +325,19 @@ describe('a persistent server that dies before the run stops it', () => {
     }
     proc.kill('SIGINT')
     const code = await proc.exited
-    const said = (await text)
-      .join('')
-      .split('\n')
-      .filter((l) => l.startsWith('vx: '))
-    return { code, said }
+    const lines = (await text).join('').split('\n')
+    return {
+      code,
+      said: lines.filter((l) => l.startsWith('vx: ')),
+      tally: lines.find((l) => l.endsWith(' total') && /success|failed|aborted/.test(l))?.trim(),
+    }
   }
 
   it('a Ctrl-C does not name the servers it stopped as crashed', async () => {
     expect(await interrupted('touch gone; echo READY; exec sleep 30')).toEqual({
       code: 130,
       said: [],
+      tally: '1 success · 1 total',
     })
   }, 20_000)
 
@@ -306,6 +347,7 @@ describe('a persistent server that dies before the run stops it', () => {
     ).toEqual({
       code: 130,
       said: ['vx: app#srv exited with code 3 before the run stopped it'],
+      tally: '1 failed · 1 total',
     })
   }, 20_000)
 
@@ -316,6 +358,27 @@ describe('a persistent server that dies before the run stops it', () => {
       said: ['vx: app#srv exited with code 3'],
       pinned: [],
       tally: '1 failed · 1 success · 2 total',
+    })
+  }, 20_000)
+
+  // C-46: a kept server that ended cleanly before the end is no crash.
+  it('a requested server that exited 0 while its dependant ran leaves the run green', async () => {
+    await addProject(root, 'app', crashing('echo READY; sleep 0.1; touch gone; exit 0'))
+    expect(await run(root, ['srv', 'e2e'])).toEqual({
+      code: 0,
+      said: ['vx: app#srv exited with code 0'],
+      pinned: [],
+      tally: '2 success · 2 total',
+    })
+  }, 20_000)
+
+  // C-46: a KEPT server the Ctrl-C stopped is not failed by its own exit
+  // either; the rows above ask only of a dependency-only one.
+  it('a Ctrl-C does not fail the requested server it stopped', async () => {
+    expect(await interrupted('touch gone; echo READY; exec sleep 30', ['srv', 'e2e'])).toEqual({
+      code: 130,
+      said: [],
+      tally: '1 success · 1 total',
     })
   }, 20_000)
 })

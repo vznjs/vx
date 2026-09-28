@@ -205,4 +205,41 @@ describe('RunOptions.signal aborts a run in flight', () => {
     expect(r.outcomes.map((o) => o.status)).toEqual(['aborted'])
     expect(await Bun.file(path.join(root, 'packages', 'app', 'ran.txt')).exists()).toBe(false)
   }, 20_000)
+
+  // C-46: a stopped run's servers are already being torn down, so a
+  // `holdPersistent` caller (the watch loop) is handed none: it would own
+  // a stop() for a server that is going anyway.
+  it('a stopped holdPersistent run hands back no server', async () => {
+    const dir = await addProject(
+      root,
+      'app',
+      `
+        export default {
+          tasks: {
+            srv: { exec: { command: 'echo $$ > pid.txt; echo READY; exec sleep 30', persistent: { readyWhen: 'READY' } } },
+            e2e: { dependsOn: ['srv'], exec: { command: 'echo up > e2e.up; exec sleep 30' } },
+          },
+        }
+      `,
+    )
+    const ac = new AbortController()
+    const running = run({
+      cwd: root,
+      tasks: ['srv', 'e2e'],
+      projects: ['app'],
+      log: silent,
+      handleSignals: false,
+      holdPersistent: true,
+      signal: ac.signal,
+    })
+    const pid = await waitForPid(path.join(dir, 'pid.txt'), 10_000)
+    const up = Bun.file(path.join(dir, 'e2e.up'))
+    const deadline = Date.now() + 10_000
+    while (!((await up.exists()) && (await up.text()) === 'up\n') && Date.now() < deadline)
+      await Bun.sleep(20)
+    ac.abort()
+    const r = await running
+    expect([r.ok, r.persistent]).toEqual([false, undefined])
+    expect(await waitForDead(pid, 1_000)).toBe(true)
+  }, 20_000)
 })

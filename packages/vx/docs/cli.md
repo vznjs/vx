@@ -648,8 +648,9 @@ tracks the run live. Top to bottom:
 2. **Pinned persistent tasks** — `▸ <id> running` for every persistent
    task that became ready. The pin lives until run end, so it is the
    visible evidence the dev server is still alive. After the summary,
-   a requested persistent task keeps vx in the foreground until it —
-   or, with several, the first of them — exits; the rest are then torn
+   a requested persistent task keeps vx in the foreground, with the
+   persistent tasks it depends on, until it — or, with several, the
+   first of them — exits; the rest are then torn
    down (SIGTERM, `VX_KILL_GRACE_MS`, SIGKILL), one status line names
    the task and its code (`vx: app#dev exited with code 1; stopping 1
 other persistent task`), and a non-zero exit makes the run exit 1.

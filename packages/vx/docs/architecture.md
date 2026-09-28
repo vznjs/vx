@@ -387,7 +387,8 @@ restoreTier, … })` runs the DAG two-tier. Each ready node invokes
       `executeTask({ node, upstream, preProbed?, … })`.
    7. After the graph drains, dependency-only persistent subprocesses
       are `SIGTERM`ed (SIGKILL after the kill grace); persistent tasks
-      the user REQUESTED are kept alive and the process blocks at the
+      the user REQUESTED, and the persistent tasks they depend on, are
+      kept alive and the process blocks at the
       very end (after the summary) until the first of them exits — then
       one status line names it and its code, the others are torn down
       the same way, and a non-zero exit fails the run. Ctrl-C reaps

@@ -3,7 +3,7 @@
 // ownership moves to the run's registry, and this is the one place that
 // decides which of them outlive the graph and how the rest go down.
 
-import type { TaskNode } from '../graph/index.js'
+import { isGroupTask, type TaskNode } from '../graph/index.js'
 import { killGraceMs } from '../util/index.js'
 import { holdGroups, killTree, untilGroupsGone } from '../exec/index.js'
 
@@ -25,9 +25,12 @@ export interface KeepAlive {
 /**
  * A persistent task the user REQUESTED (or one surfaced for display) is the
  * run's whole purpose — it is left running and blocked on at the very end,
- * after the summary. Only in the real CLI foreground: a custom logger or
- * `handleSignals: false` (watch mode, embedders) expects `run()` to return,
- * not to sit on a server.
+ * after the summary. So is every persistent task a kept one depends on,
+ * directly or through groups: `vx run dev --filter app` stopped the api#dev
+ * its app#dev was started against (C-46). A one-shot's persistent deps are
+ * not kept on its account; it has finished with them. Only in the real CLI
+ * foreground: a custom logger or `handleSignals: false` (watch mode,
+ * embedders) expects `run()` to return, not to sit on a server.
  */
 export function selectKeepAlive(
   registry: ReadonlyMap<string, Child>,
@@ -36,12 +39,24 @@ export function selectKeepAlive(
 ): KeepAlive {
   const out: KeepAlive = { nodes: [], children: [] }
   if (!foreground) return out
-  for (const [id, child] of registry) {
+  const stack = [...registry.keys()].filter((id) => {
     const n = nodes.get(id)
-    if (n !== undefined && (n.requested || n.surfaced === true)) {
-      out.nodes.push(n)
-      out.children.push(child)
+    return n !== undefined && (n.requested || n.surfaced === true)
+  })
+  const reached = new Set<string>()
+  while (stack.length > 0) {
+    const id = stack.pop()!
+    if (reached.has(id)) continue
+    reached.add(id)
+    for (const dep of nodes.get(id)?.deps ?? []) {
+      const d = nodes.get(dep)
+      if (d !== undefined && (registry.has(dep) || isGroupTask(d))) stack.push(dep)
     }
+  }
+  for (const [id, child] of registry) {
+    if (!reached.has(id)) continue
+    out.nodes.push(nodes.get(id)!)
+    out.children.push(child)
   }
   return out
 }
