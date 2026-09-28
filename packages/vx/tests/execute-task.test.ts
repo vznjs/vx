@@ -1970,3 +1970,182 @@ describe('execute-task — `--force` reaches a remote executor through `refresh`
     TIMEOUT,
   )
 })
+
+// The execute-task.ts sweep's survivors (A-36): each row is red under its mutant.
+describe('execute-task edges', () => {
+  let b: Bench
+  const out: string[] = []
+  const log: Logger = {
+    status() {},
+    taskStdout(_n, c) {
+      out.push(c)
+    },
+    taskStderr() {},
+    taskComplete() {},
+  }
+  beforeEach(async () => {
+    b = await bench()
+    out.length = 0
+    await writeFile(path.join(b.dir, 'src.txt'), 'v1')
+  })
+  afterEach(async () => {
+    await closeBench(b)
+  })
+  const cached = (command: string, extra: Record<string, unknown> = {}): TaskNode['config'] =>
+    ({
+      exec: { command, ...extra },
+      cache: { inputs: { files: ['src.txt'] }, outputs: { files: ['out.txt'] } },
+    }) as TaskNode['config']
+
+  it('saves nothing over a folded upstream whose key no longer describes it', async () => {
+    const gen = node(b, { exec: { command: 'true' } }, 'proj#gen')
+    const run = async (unkeyed: boolean): Promise<TaskOutcome> =>
+      executeTask({
+        ...baseArgs(b, node(b, cached('echo x > out.txt')), log),
+        upstream: [
+          {
+            node: gen,
+            status: 'success',
+            exitCode: 0,
+            durationMs: 1,
+            hash: 'h-gen',
+            ...(unkeyed ? { unkeyed: true } : {}),
+          },
+        ],
+      })
+    const tainted = await run(true)
+    expect(await b.cache.get(tainted.hash!)).toBeNull()
+    const clean = await run(false) // CONTROL: the same upstream, keyed, saves.
+    expect(await b.cache.get(clean.hash!)).not.toBeNull()
+  })
+
+  it('an input rewritten by the command itself marks the outcome unkeyed and forgets the project', async () => {
+    const git = new GitFilesCache()
+    git.set(b.dir, ['src.txt'])
+    git.set(b.root, ['proj/src.txt'])
+    const o = await executeTask({
+      ...baseArgs(b, node(b, cached('echo v2 > src.txt && echo x > out.txt')), log),
+      gitFilesCache: git,
+      // With no dependants the unsaved branch after it is skipped, so the
+      // save's own check is the only thing that forgets (the two masked each
+      // other otherwise); a later task of the project still reads the facts.
+      noDependants: true,
+    })
+    expect([o.status, o.unkeyed, await b.cache.get(o.hash!), git.has(b.dir)]).toEqual([
+      'success',
+      true,
+      null,
+      false,
+    ])
+  })
+
+  it('with workspace outputs, a moved input forgets every partition', async () => {
+    const git = new GitFilesCache()
+    git.set(b.dir, ['src.txt'])
+    git.set(path.join(b.root, 'other'), ['x.txt'])
+    const cfg = {
+      exec: { command: 'echo v2 > src.txt && mkdir -p ../gen && echo x > ../gen/w.txt' },
+      cache: { inputs: { files: ['src.txt'] }, outputs: { files: [], workspaceFiles: ['gen/**'] } },
+    } as TaskNode['config']
+    await executeTask({
+      ...baseArgs(b, node(b, cfg), log),
+      gitFilesCache: git,
+      noDependants: true,
+    })
+    expect(git.has(path.join(b.root, 'other'))).toBe(false)
+  })
+
+  it('a lockfile the command rewrote marks the outcome unkeyed', async () => {
+    const watch = { moved: () => ['bun.lock'], say() {}, wrote() {} }
+    const o = await executeTask({
+      ...baseArgs(b, node(b, cached('echo x > out.txt')), log),
+      fingerprintWatch: watch as never,
+    })
+    expect([o.status, o.unkeyed]).toEqual(['success', true])
+  })
+
+  it('forwards args to a requested task only', async () => {
+    for (const requested of [true, false]) {
+      out.length = 0
+      await executeTask({
+        ...baseArgs(b, { ...node(b, { exec: { command: 'echo got' } }), requested }, log),
+        forwardArgs: ['--flag'],
+      })
+      expect(out.join('').trim()).toBe(requested ? 'got --flag' : 'got')
+    }
+  })
+
+  it("a step's own timeout and retries win over the run's", async () => {
+    const slow = await executeTask({
+      ...baseArgs(b, node(b, { exec: { command: 'sleep 0.3', timeout: 10_000 } }), log),
+      timeout: 50,
+    })
+    expect([slow.status, slow.timedOut]).toEqual(['success', undefined])
+    const tries = path.join(b.dir, 'tries')
+    const failing = await executeTask({
+      ...baseArgs(b, node(b, { exec: { command: `echo . >> ${tries}; exit 1`, retries: 0 } }), log),
+      retries: 2,
+    })
+    expect([failing.attempts, (await readFile(tries, 'utf8')).trim().split('\n').length]).toEqual([
+      undefined,
+      1,
+    ])
+  })
+
+  it('stops retrying at the first success', async () => {
+    const runs = path.join(b.dir, 'runs')
+    const o = await executeTask(
+      baseArgs(b, node(b, { exec: { command: `echo . >> ${runs}`, retries: 2 } }), log),
+    )
+    expect([
+      o.status,
+      o.attempts,
+      (await readFile(runs, 'utf8')).trim().split('\n').length,
+    ]).toEqual(['success', undefined, 1])
+  })
+
+  it('a run that writes no cache leaves the workspace outputs alone', async () => {
+    const stray = path.join(b.root, 'gen', 'keep.txt')
+    await mkdir(path.dirname(stray), { recursive: true })
+    await writeFile(stray, 'mine')
+    const cfg = {
+      exec: { command: 'true' },
+      cache: { inputs: { files: ['src.txt'] }, outputs: { files: [], workspaceFiles: ['gen/**'] } },
+    } as TaskNode['config']
+    await executeTask({ ...baseArgs(b, node(b, cfg), log), cachePolicy: READ_ONLY })
+    expect(await readFile(stray, 'utf8')).toBe('mine')
+  })
+
+  it('an executor that exits non-zero on the timeout reads as timed out', async () => {
+    const stubborn: TaskExecutor = {
+      name: 'stubborn',
+      execute: (req: ExecuteRequest) =>
+        new Promise((resolve) => {
+          req.signal?.addEventListener('abort', () =>
+            resolve({ exitCode: 143, durationMs: 1, stdout: '', stderr: '', violations: [] }),
+          )
+        }),
+    } as TaskExecutor
+    const o = await executeTask({
+      ...baseArgs(b, node(b, { exec: { command: 'true', timeout: 50 } }), log),
+      executor: stubborn,
+    })
+    expect([o.status, o.timedOut]).toEqual(['failed', true])
+  })
+
+  it('a restore that fails for any reason but a vanished artifact is not retried as a miss', async () => {
+    const first = await executeTask(baseArgs(b, node(b, cached('echo x > out.txt')), log))
+    expect(await b.cache.get(first.hash!)).not.toBeNull()
+    await rm(path.join(b.dir, 'out.txt')) // so the hit must restore
+    const blocked = spyOn(Cache.prototype, 'restoreOutputs').mockRejectedValue(
+      new UserError('restore was blocked'),
+    )
+    try {
+      await expect(
+        executeTask(baseArgs(b, node(b, cached('echo x > out.txt')), log)),
+      ).rejects.toThrow('restore was blocked')
+    } finally {
+      blocked.mockRestore()
+    }
+  })
+})
