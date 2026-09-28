@@ -414,3 +414,13 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   declined. `enabled: false` declines unless options name a cache. The
   timeouts stay vx's (Turbo's `0` is "none", which a deadline cannot
   take). Rows (`turbo-cache.test`): red without the fix.
+- **G-36.** Yarn Plug'n'Play, probed on a Yarn 4.9.1 workspace with
+  no `node_modules`: yarn() keys it right (a `left-pad` lock edit
+  re-keyed its one dependant, not the sibling), but turbo() inlined
+  the script body, and `node -e "require('left-pad')"` was
+  MODULE_NOT_FOUND: PnP resolves through `.pnp.cjs` and bins through
+  `yarn run`'s shims. Under PnP (`.yarnrc.yml` with no `nodeLinker`,
+  or `pnp`) every script now runs as `yarn run <name>`, as Turbo runs
+  it; `.yarnrc.yml` joins the mapping key. nx() is untouched: Nx
+  itself refuses PnP. Rows (`script-command.test`, `turbo.test`): red
+  without the fix.

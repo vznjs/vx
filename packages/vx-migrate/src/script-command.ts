@@ -15,7 +15,12 @@
 //   found` in every strapi package (2026-09-11), so such a script runs
 //   through `yarn run <name>`, exactly as Nx and Turbo run it — and yarn
 //   ≥ 2 runs no pre/post hooks, so none are folded there either.
+// - A Yarn Plug'n'Play workspace has no node_modules: a dependency's
+//   `require` resolves only through `.pnp.cjs` and its bins only through
+//   the shims `yarn run` writes, so inlined, `node -e "require('left-pad')"`
+//   was MODULE_NOT_FOUND (2026-09-28). Every script runs as `yarn run <name>`.
 
+import path from 'node:path'
 import { foldScriptHooks } from '@vzn/vx'
 
 const YARN_RUN_BUILTIN = /(^|&&|\|\||;|\(|\|)\s*run\s/
@@ -29,10 +34,22 @@ export function scriptCommand(
   name: string,
   body: string,
   scripts: Readonly<Record<string, unknown>> = {},
+  pnp = false,
 ): string {
+  if (pnp) return `yarn run ${name}`
   const hook = (h: string): string | undefined =>
     !LIFECYCLE.test(h) && usable(scripts[h]) ? scripts[h] : undefined
   const parts = [hook(`pre${name}`), body, hook(`post${name}`)]
   if (parts.some((p) => p !== undefined && YARN_RUN_BUILTIN.test(p))) return `yarn run ${name}`
   return foldScriptHooks(parts[0], body, parts[2])
+}
+
+/** Yarn ≥ 2 links Plug'n'Play unless `.yarnrc.yml` names another `nodeLinker`. */
+export async function yarnPnp(root: string): Promise<boolean> {
+  const rc = await Bun.file(path.join(root, '.yarnrc.yml'))
+    .text()
+    .catch(() => null)
+  if (rc === null) return false
+  const linker = /^nodeLinker:[ \t]*["']?([\w-]+)/m.exec(rc)?.[1]
+  return linker === undefined || linker === 'pnp'
 }
