@@ -4203,12 +4203,29 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
     })
     try {
       expect([
-        w.wrapped.startsWith(`exec ${Bun.which('bwrap')} `),
+        w.wrapped
+          .replace(/^SOCAT_DEFAULT_LISTEN_IP=4 /, '')
+          .startsWith(`exec ${Bun.which('bwrap')} `),
         w.wrapped.includes(`${Bun.which('socat')} TCP-LISTEN`),
       ]).toEqual([true, true])
     } finally {
       releaseBridges(w.tag)
     }
+  })
+
+  // A networked task reaches the run's proxy, whose verdict on a domain
+  // off the list is its own 403. On a host without IPv6, SRT's in-sandbox
+  // bridge (`socat TCP-LISTEN`, IPv6 by default in socat 1.8) never
+  // listened, and curl met "connection refused" (exit 7) instead (B-22).
+  it('a networked task reaches the proxy, which refuses a domain off the list', async () => {
+    await resetSandbox()
+    await initSandbox({ allowedDomains: ['a.test'] })
+    const r = await runSandboxed(
+      args(`curl -s -m 5 -o /dev/null -w '%{http_code}' http://b.test/`, {
+        config: resolveSandboxConfig({ allow: { network: ['a.test'] } }, dir),
+      }),
+    )
+    expect([r.exitCode, r.stdout]).toEqual([0, '403'])
   })
 
   it('tags each wrap uniquely and puts the tag first in the command', async () => {
