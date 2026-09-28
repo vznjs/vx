@@ -287,6 +287,21 @@ describe('task refusals the sweep found unheld (item 653)', () => {
     // CONTROL: a typo still gets the nearest spelling.
     expect(where({ dependOn: [] })).toBe('did you mean dependsOn?')
   })
+
+  it("names where vx keeps an Nx target's keys and Turbo's outputLogs (D-49)", () => {
+    const where = (task: Record<string, unknown>): string | undefined =>
+      taskRefusal({ exec: { command: 'x' }, ...task })?.split(' — ')[1]
+    expect(where({ continuous: true })).toBe('vx spells it `exec.persistent: {}`')
+    expect(where({ executor: 'nx:run-commands' })).toBe(
+      'vx spells it `exec.command`: vx runs one shell command (`nx()` from `@vzn/vx-migrate` runs an Nx executor as one)',
+    )
+    expect(where({ options: { command: 'x' } })).toBe(
+      'vx spells it `exec.command` (a run-commands `options.command`) and `exec.env`',
+    )
+    expect(where({ outputLogs: 'new-only' })).toBe(
+      'vx spells it the `--output-logs` flag of `vx run`',
+    )
+  })
 })
 
 /** A cached task over `inputs` / `outputs`, as its refusal message or null. */
@@ -473,5 +488,41 @@ describe('workspace fields another runner spells elsewhere (D-38)', () => {
     expect(where('cacheDirectory')).toBe('vx spells it `cacheDir`')
     // CONTROL: a typo still gets the nearest spelling.
     expect(where('concurency')).toBe('did you mean concurrency?')
+  })
+
+  it("names where vx keeps Nx's nx.json and Turbo's global keys (D-49)", () => {
+    const where = (key: string): string | undefined => {
+      try {
+        validateWorkspace({ [key]: {} } as never, 'vx.workspace.ts')
+      } catch (err) {
+        return (err as Error).message.split(' — ')[1]
+      }
+      return undefined
+    }
+    expect(where('defaultBase')).toBe(
+      'vx spells it the base in `--affected=<base>` (default `origin/HEAD`)',
+    )
+    expect(where('tasksRunnerOptions')).toBe(
+      'vx spells it a cache plugin in `plugins` (`nxCache()` from `@vzn/vx-migrate`)',
+    )
+    expect(where('globalPassThroughEnv')).toBe(
+      'vx spells it `exec.env.passThrough` on the tasks it passes to',
+    )
+  })
+
+  it('an Nx-style plugin name says what a vx plugin is (D-49)', () => {
+    const refusal = (plugins: unknown[]): string => {
+      try {
+        validateWorkspace({ plugins } as never, 'vx.workspace.ts')
+      } catch (err) {
+        return (err as Error).message
+      }
+      return ''
+    }
+    expect(refusal(['@nx/vite/plugin'])).toBe(
+      "vx.workspace.ts: `plugins[0]` must be an object — a plugin is what its package's function returns (`nx()` from `@vzn/vx-migrate`), not a module name",
+    )
+    // CONTROL: any other non-object keeps the plain refusal.
+    expect(refusal([42])).toBe('vx.workspace.ts: `plugins[0]` must be an object')
   })
 })

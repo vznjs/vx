@@ -245,11 +245,9 @@
           "{}",
           "{\"x\":\"y\"}"
         ],
-        "$CONFIG: `plugins[0]` must be an object": [
+        "$CONFIG: `plugins[0]` must be an object — a plugin is what its package's function returns (`nx()` from `@vzn/vx-migrate`), not a module name": [
           "[\"x\"]",
           "[\"\"]",
-          "[1]",
-          "[3000]",
           "[\"/x\"]",
           "[\"!/x\"]",
           "[\"../x\"]",
@@ -259,7 +257,8 @@
           "[\"**\"]",
           "[\"A=B\"]",
           "[\"A*\"]"
-        ]
+        ],
+        "$CONFIG: `plugins[0]` must be an object": ["[1]", "[3000]"]
       }
     },
     "keys": {}

@@ -471,3 +471,11 @@ packages/core`) selects the dependent whose `file:../lib` spec named
   `some`, which took a member holding a nested member, beside a member
   outside it, for the workspace root and left it unmapped. The D-45 row
   now holds that case.
+- **D-49** Keys pasted from project.json, nx.json and turbo.json were
+  refused as unknown fields that named no vx home: a target's
+  `executor`, `options` and `continuous`, Turbo's task `outputLogs`, and
+  the top-level `defaultBase`, `tasksRunnerOptions` and
+  `globalPassThroughEnv`. Each now ends `— vx spells it …`. A string in
+  `plugins` (Nx lists plugins by module name) adds that a vx plugin is
+  what its package's function returns. Rows: the D-49 rows of
+  `tests/config-schema-refusals.test.ts`.
