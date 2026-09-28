@@ -155,6 +155,26 @@ describe('defineWorkspace', () => {
     defineWorkspace({ notAWorkspaceKey: 1 })
   })
 
+  it('rejects an undeclared key beside a declared one (D-70)', () => {
+    // A lone unknown key fails TypeScript's weak-type check (above); beside
+    // a known one the generic skipped the excess-property check, so a typo
+    // type-checked. Each expect-error, unused without the fix, is an error.
+    // @ts-expect-error `concurency` is a typo of `concurrency`.
+    defineWorkspace({ plugins: [], concurency: 4 })
+    // @ts-expect-error Turbo's `pipeline` is not a WorkspaceConfig key.
+    defineWorkspace({ cacheDir: '.vx', pipeline: {} })
+    // @ts-expect-error `maxAge` is not a cacheRetention key.
+    defineWorkspace({ cacheRetention: { olderThan: '7d', maxAge: '1d' } })
+    // CONTROL: every declared key type-checks.
+    defineWorkspace({
+      concurrency: 4,
+      cacheDir: '.vx',
+      timeout: 1,
+      cacheRetention: { olderThan: '7d', maxSize: '1g' },
+      plugins: [],
+    })
+  })
+
   it('requires a plugin to carry a name', () => {
     defineWorkspace({
       // @ts-expect-error a plugin without a `name` is not a Plugin.

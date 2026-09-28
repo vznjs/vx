@@ -723,3 +723,12 @@ packages/core`) selects the dependent whose `file:../lib` spec named
   Probed clean on the way: package-graph linking (an unsatisfied range
   and an `npm:` alias stay external; `workspace:`, dev, peer and
   optional deps link; a self-dependency adds nothing).
+- **D-70** D-69's class in `defineWorkspace`: its test held only a lone
+  unknown key, which TypeScript's weak-type check refuses anyway; beside
+  a known key the generic skipped the excess-property check, so
+  `{ plugins: [], concurency: 4 }`, a `pipeline` beside `cacheDir` and a
+  `maxAge` in `cacheRetention` type-checked (probed). The same `Known`
+  intersection now covers the top level and `cacheRetention`. Row: the
+  D-70 row of `tests/config.test.ts`, three `@ts-expect-error` lines
+  (unused, so errors, without the fix) and a control with every key.
+  Declared breaking, as D-69 was.

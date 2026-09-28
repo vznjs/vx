@@ -534,7 +534,8 @@ type DependsOnEntry<K extends string> =
  * The keys of `T` that `Shape` does not declare, typed `never`. A generic
  * argument skips TypeScript's excess-property check, so a Turbo-shaped
  * `outputs` on a task, or `cwd` in `exec`, type-checked and failed only
- * when vx loaded the config (D-69); `never` puts the error on that line.
+ * when vx loaded the config (D-69), as did a typo beside a known key in
+ * `defineWorkspace` (D-70); `never` puts the error on that line.
  */
 type Known<T, Shape> = { [P in keyof T]: P extends keyof Shape ? unknown : never }
 
@@ -566,6 +567,14 @@ export function defineProject<const T extends ProjectConfig>(
   return config as T
 }
 
-export function defineWorkspace<T extends WorkspaceConfig>(config: T): T {
+export function defineWorkspace<T extends WorkspaceConfig>(
+  config: T &
+    Known<T, WorkspaceConfig> & {
+      cacheRetention?: Known<
+        At<T, 'cacheRetention'>,
+        NonNullable<WorkspaceConfig['cacheRetention']>
+      >
+    },
+): T {
   return config
 }
