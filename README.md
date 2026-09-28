@@ -155,15 +155,16 @@ tasks per row, medians; vx first, theirs second.
 | [medusajs/medusa](https://github.com/medusajs/medusa)       | Turbo   | 308 s / 315 s         | 3.86 s / 7.16 s | 947 ms / 3.29 s     |
 | [n8n-io/n8n](https://github.com/n8n-io/n8n)                 | Turbo   | 137.2 s / **133.7 s** | 8.27 s / 12.5 s | 842 ms / 1.36 s     |
 | [calcom/cal.com](https://github.com/calcom/cal.com)         | Turbo   | 245.7 s / 250.7 s     | 17.4 s / 19.9 s | 14.7 s / 18.5 s     |
-| [TanStack/query](https://github.com/TanStack/query)         | Nx      | 47.4 s / 55.1 s       | 656 ms / 1.98 s | 174 ms / 1.88 s     |
+| [TanStack/query](https://github.com/TanStack/query)         | Nx      | 34.6 s / 37.1 s       | 910 ms / 1.62 s | 291 ms / 1.60 s     |
 | [strapi/strapi](https://github.com/strapi/strapi)           | Nx      | 238.2 s / 245.7 s     | 1.61 s / 3.94 s | 341 ms / 4.02 s     |
 | [novuhq/novu](https://github.com/novuhq/novu)               | Nx      | 291.2 s / 299.4 s     | 3.10 s / 9.05 s | 655 ms / 8.55 s     |
-| [TanStack/router](https://github.com/TanStack/router)       | Nx      | 199.9 s / 226.7 s     | 1.00 s / 3.33 s | 505 ms / 3.21 s     |
+| [TanStack/router](https://github.com/TanStack/router)       | Nx      | 123.0 s / 138.0 s     | 1.27 s / 3.82 s | 626 ms / 3.91 s     |
 | [refinedev/refine](https://github.com/refinedev/refine)     | Nx      | 96.2 s / 105.9 s      | 1.06 s / 1.19 s | 303 ms / 1.16 s     |
 
 **Bold** marks the other tool winning. Versions, revisions, scopes and
 harness per repo: [benchmarks](packages/vx/docs/benchmarks.md) (astro
-and refine as re-measured on 2026-09-27, the rest 2026-09-10 and -11).
+and refine as re-measured on 2026-09-27, TanStack/query and
+TanStack/router through `nx()` on 2026-09-28, the rest 2026-09-10 and -11).
 
 ## How it compares
 
