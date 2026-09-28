@@ -787,7 +787,8 @@ project's directory, even if a `**/*` pattern would otherwise match.
 
 `workspace/nested-dirs.ts` computes the set of nested project
 directories (projects rooted inside this one) once per `vx run`, and
-adds them to the ignore list passed to every glob pass. The only way
+every glob pass drops a path under one of them (an ancestor lookup,
+A-11). The only way
 for project A to depend on project B's state via project-relative
 globs is `dependsOn` + upstream-hash propagation (step 10).
 
@@ -1106,8 +1107,9 @@ file AND symlink the output globs cover (a link is unlinked, never
 followed) and prunes the directories it emptied, so a task whose
 output changed shape — `dist/out` a directory one run and a file the
 next — restores either entry over the other's tree; a stray the globs
-do not cover that stands in an entry's way fails the restore naming
-it, not as a corrupt artifact. A directory on the way that is a
+do not cover, or an empty directory where the entry holds a file, that
+stands in an entry's way fails the restore naming it, not as a corrupt
+artifact (item 1094). A directory on the way that is a
 symbolic link OUT of the project (a `dist` made a link after the entry
 was saved) is never written through and never replaced — the link is
 the user's, and replacing it is the bug nx#37061 reports — so the
@@ -1152,8 +1154,8 @@ no migrations): `entries`, `runs`, `file_hashes`, `output_files`,
 `invocations`, `entry_inputs` and `config_evals` are dropped and
 recreated, while `config_closures` and `output_dirs` are kept.
 Two openers leave it untouched and say why (item 896): a reading verb
-(`vx why`, `vx last`, `vx info`, `vx cache prune --dry-run`) refuses an
-index it cannot read, and every opener, a run too, refuses a NEWER
+(`vx why`, `vx last`, `vx info`) refuses an index it cannot read
+(`vx cache prune --dry-run` previews the reset instead, item 1083), and every opener, a run too, refuses a NEWER
 schema. That one is another vx's index and history, and an older binary
 beside a newer one used to drop it.
 That open says so once, on the run's status line or the verb's stderr
