@@ -238,6 +238,22 @@ describe('the landing page', () => {
     expect(readFileSync(path.join(DIST, 'demo.svg'), 'utf8')).toContain('$ </tspan>')
   })
 
+  // It prints line by line, but a line is hidden only during its own delay:
+  // a renderer with no animation, or reduced motion, shows the whole run.
+  it('animates the demo without ever depending on the animation', () => {
+    const svg = readFileSync(path.join(DIST, 'demo.svg'), 'utf8')
+    const style = /<style>([\s\S]*?)<\/style>/.exec(svg)![1]!
+    const textRule = /(?:^|\n)\s*text \{([^}]*)\}/.exec(style)![1]!
+    expect(textRule).toContain('animation: hide 0.01s backwards')
+    expect(textRule).not.toContain('opacity')
+    expect(style).toContain('@media (prefers-reduced-motion: reduce) { text { animation: none; } }')
+    const delays = [...svg.matchAll(/<text [^>]*style="animation-delay:([\d.]+)s"/g)].map((m) =>
+      Number(m[1]),
+    )
+    expect(delays.length).toBe([...svg.matchAll(/<text /g)].length)
+    expect(delays).toEqual([...delays].sort((x, y) => x - y))
+  })
+
   it('draws the one picture, both layouts, and lists its six lines at their anchors', () => {
     const run = section(html, 'one-run')
     const figures = [...run.matchAll(/<figure\b[^>]*data-picture="([^"]+)"/g)].map((m) => m[1])
