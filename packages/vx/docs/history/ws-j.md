@@ -174,6 +174,14 @@
   a local install needs `npx vx`, the second run is `up-to-date` unless
   `dist/` is gone, a config runs without `@vzn/vx` installed (only the
   editor needs it), and the CI sample lacked `setup-bun`.
+- **J-28** The site's plugins guide against each plugin's source: otel's
+  `timeoutMs` reads `OTEL_EXPORTER_OTLP_TIMEOUT`, and `turbo()` / `nx()`
+  also fill `fingerprint` (claiming `turbo.json` or `nx.json`).
+- **J-30** Plugin CLIs run from source (`vx mcp` over stdio, the
+  `vx-migrate` bin) against the docs: two of `vx mcp`'s four database
+  tools read the cache, not run history; a verb's `run` may return a
+  promise; and the plugins guide's verb sample opened the cache in a
+  mode that can reset an old index (`Cache.inspect` now).
 
 ## Leads for other streams
 
@@ -226,3 +234,8 @@ task(s): nope.` and exits 0; cli.md says an undeclared name is
 - **K** `packages/vx-mcp/README.md:60` says the server is "about 200 lines"; `src/server.ts` is 231 (the site says 210).
 - **E** `vx init --mjs --dry` lists `would replace:` for existing `.ts` configs, but `vx init --mjs` without `--force` refuses and exits 1.
 - **E** `vx cache prune` rejects `--dry` (takes `--dry-run`) while `vx run` and `vx init` take `--dry`.
+- **K** `packages/vx-mcp/README.md:26` points Claude Code at `~/.claude/mcp.json`; it reads `.mcp.json` (or `claude mcp add`).
+- **E** `vx mcp --help` and `vx history --help` refuse the flag (exit 1), yet `vx completions` offers `--help` for every plugin verb.
+- **H** `getRunHistory`'s `successRate` counts only `status = 'success'` (`orchestrator/history.ts:111`), so a cache hit is a non-success; `failure-mode.ts` counts a hit as a pass.
+- **H** `packages/vx-migrate/src/turbo/index.ts` header names `vx migrate --from turbo`, a verb that no longer exists.
+- **J (ledger)** nx#35524 (n/a) and turborepo#9651 (n/a) may need other verdicts: vx re-keys every project on a catalog edit, and `turbo()`/`nx()` now fold pre/post hooks. Needs the upstream issue text, unread here.
