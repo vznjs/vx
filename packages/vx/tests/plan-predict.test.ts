@@ -160,6 +160,7 @@ async function planUnit(args: {
   history?: HistoryProvider
   downloadOf?: (id: string) => 'eager' | 'deferred' | 'never' | undefined
   downloadDowngrades?: ReadonlyArray<{ taskId: string; reason: string }>
+  executorOf?: (id: string) => string | undefined
 }): Promise<RunPlan> {
   return plan({
     nodes: args.nodes,
@@ -171,6 +172,7 @@ async function planUnit(args: {
     ...(args.cachePolicy !== undefined ? { cachePolicy: args.cachePolicy } : {}),
     ...(args.history !== undefined ? { history: args.history } : {}),
     ...(args.downloadOf !== undefined ? { downloadOf: args.downloadOf } : {}),
+    ...(args.executorOf !== undefined ? { executorOf: args.executorOf } : {}),
     ...(args.downloadDowngrades !== undefined
       ? { downloadDowngrades: args.downloadDowngrades }
       : {}),
@@ -533,6 +535,25 @@ describe('plan() — time prediction', () => {
     expect(p.predicted).toEqual({ wallMs: 0, workMs: 0, unknownCount: 0 })
     // The p50 is still attached — plan-format shows it on would-run lines only.
     expect(p.tasks.find((t) => t.node.id === 'a#warm')!.p50Ms).toBe(900)
+  })
+
+  it('costs a noop task at zero: the run skips it whatever its key (C-48)', async () => {
+    // A remote-only task no remote executor takes succeeds without running,
+    // so its p50 is the cost of a run that never happens.
+    const nodes = makeNodes([{ id: 'a#install' }, { id: 'a#build' }])
+    const hist = stubHistory({ 'a#install': 900, 'a#build': 100 })
+    const p = await planUnit({
+      nodes,
+      cache: stubCache(() => null).layer,
+      history: hist.provider,
+      executorOf: (id) => (id === 'a#install' ? 'noop' : undefined),
+    })
+
+    expect(p.tasks.map((t) => [t.node.id, t.executor])).toEqual([
+      ['a#install', 'noop'],
+      ['a#build', undefined],
+    ])
+    expect(p.predicted).toEqual({ wallMs: 100, workMs: 100, unknownCount: 0 })
   })
 
   it('counts a would-run task with no history instead of guessing a cost', async () => {

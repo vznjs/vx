@@ -1154,6 +1154,39 @@ describe('executor capability — end-to-end via run()', () => {
     }
   })
 
+  it("placement: --dry labels a noop'd remote-only task @noop with ONE executor (C-48)", async () => {
+    // The label is the plan's only word that the task will not run; with a
+    // single executor it was dropped with the others, and the line read as
+    // an execution.
+    const { workspaceRoot, cleanup } = await writeFixture()
+    try {
+      await Bun.write(
+        path.join(workspaceRoot, 'pkg-a/vx.config.mjs'),
+        `export default { tasks: {
+           install: {
+             exec: { command: 'echo i', remote: 'only' },
+             cache: { inputs: { files: ['package.json'] }, outputs: { files: ['deps/**'] } },
+           },
+           hello: { exec: { command: 'echo hi' } },
+         } }`,
+      )
+      await writeLocalWorkspace(workspaceRoot)
+      await gitInit(workspaceRoot)
+      const plan = await planRun({
+        cwd: workspaceRoot,
+        projects: ['pkg-a'],
+        tasks: ['install', 'hello'],
+        log: makeSilentLogger(),
+      })
+      expect(plan.tasks.map((t) => [t.node.id, t.executor])).toEqual([
+        ['pkg-a#install', 'noop'],
+        ['pkg-a#hello', undefined],
+      ])
+    } finally {
+      cleanup()
+    }
+  })
+
   it("remote:'only' with NO remote executor is a local NO-OP: never runs, never cleans", async () => {
     // The install-as-action contract's local half. The command is a loud
     // failure (`exit 1` + a tombstone write) so this test cannot pass by the

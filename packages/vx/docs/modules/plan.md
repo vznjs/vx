@@ -78,7 +78,8 @@ Piggybacks on `runGraph` with `concurrency: 1` and a planning
    calls a dependant of a persistent task by the key the run uses").
 4. Tasks with no `cache` block OR `--no-cache` set → `'no-cache'`.
 5. With a `history`, attach each would-run task's p50 and predict the
-   run (`predicted`: the critical path's wall time, the work sum, the
+   run (a task labelled `noop` does not run: the run skips a remote-only
+   task no remote executor takes) (`predicted`: the critical path's wall time, the work sum, the
    tasks without history); a broken history read fails open — the
    plan stands without the footer.
 6. Attach the executor label (`executorOf`) and the download mode
