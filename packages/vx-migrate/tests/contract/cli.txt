@@ -1,0 +1,32 @@
+vx-migrate --help: exit 0
+vx-migrate argv starts: (a flag)
+vx-migrate --from
+vx-migrate --dry
+vx-migrate --force
+vx-migrate --mjs
+vx-migrate --no-such-flag: exit 1
+nx-exec --help: exit 0
+nx-exec argv starts: <executor>
+nx-exec --project
+nx-exec --target
+nx-exec --configuration
+nx-exec --options
+nx-exec --dotenv
+nx-exec (no arguments): exit 2
+nx-env --help: exit 0
+nx-env argv starts: (a flag)
+nx-env --dotenv
+nx-env --envFile
+nx-env (no arguments): exit 2
+lage-worker --help: exit 0
+lage-worker argv starts: <module>
+lage-worker --package
+lage-worker --task
+lage-worker --options
+lage-worker (no arguments): exit 2
+vx-migrate --from turbo
+vx-migrate --from nx
+vx-migrate --from moon
+vx-migrate --from wireit
+vx-migrate --from lage
+vx-migrate --from scripts
