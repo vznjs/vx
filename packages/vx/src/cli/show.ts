@@ -117,22 +117,25 @@ export async function showCmd(args: readonly string[]): Promise<number> {
   const task = declaredTask(config, taskName)
   if (task === undefined) {
     throw new UserError(
-      `unknown task: "${meta.name}#${taskName}"${suggest(taskName, Object.keys(config?.tasks ?? {}))}`,
+      `unknown task: "${meta.name}#${taskName}"${suggest(taskName, Object.keys(config?.tasks ?? {}), `${meta.name}#`)}`,
     )
   }
   process.stdout.write(renderTask(meta.name, dir, taskName, task, parsed.format))
   return 0
 }
 
-/** Near misses by edit distance, plus partial names in either direction. */
-function suggest(query: string, candidates: readonly string[]): string {
+/**
+ * Near misses by edit distance, plus partial names in either direction.
+ * `prefix` makes each a spec the user can paste (`app#build`, not `build`).
+ */
+function suggest(query: string, candidates: readonly string[], prefix = ''): string {
   const q = query.toLowerCase()
   const near = new Set(nearMatches(query, candidates))
   for (const c of candidates) {
     const n = c.toLowerCase()
     if (n.includes(q) || q.includes(n)) near.add(c)
   }
-  return near.size > 0 ? ` — did you mean ${[...near].join(', ')}?` : ''
+  return near.size > 0 ? ` — did you mean ${[...near].map((n) => prefix + n).join(', ')}?` : ''
 }
 
 function projectDir(root: string, meta: ProjectMeta): string {

@@ -283,8 +283,8 @@ describe('vx show (e2e)', () => {
     async () => {
       const r = await vx(root, ['show', 'app#bui'])
       expect(r.code).toBe(1)
-      expect(r.err).toContain('unknown task')
-      expect(r.err).toContain('build')
+      // The hint is a spec to paste, as `vx run`'s is (E-34).
+      expect(r.err).toBe('vx: unknown task: "app#bui" — did you mean app#build, app#ci?\n')
     },
     TIMEOUT,
   )

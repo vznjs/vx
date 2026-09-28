@@ -1723,7 +1723,9 @@ build
 
 Unknown project / task names exit `1` with the same near-miss hint
 every verb gives (two edits, or a partial name); a bare name that is
-neither reads `unknown project or task: "buidl" — did you mean build?`.
+neither reads `unknown project or task: "buidl" — did you mean build?`,
+and a `pkg#task` hints whole specs (`unknown task: "app#bui" — did you
+mean app#build?`).
 
 Exit codes: `0` success; `1` parse error or unknown target.
 
