@@ -1127,3 +1127,89 @@ describe('nx(): a workspace whose root is the project', () => {
     TIMEOUT,
   )
 })
+
+describe('nx(): the graph snapshot, keyed and not', () => {
+  const plan = (log = silent()) => planRun({ cwd: root, tasks: ['lint'], log })
+
+  it(
+    'a failed export’s note leaves with the next export that succeeds',
+    async () => {
+      await plan()
+      const bin = path.join(root, 'node_modules', '.bin', 'nx')
+      const good = await Bun.file(bin).text()
+      await writeFile(bin, '#!/bin/sh\necho boom >&2\nexit 7\n')
+      await appendFile(path.join(root, 'nx.json'), '\n')
+      const failed = silent()
+      await plan(failed)
+      expect(failed.lines.some((l) => l.includes('running on the previous graph'))).toBe(true)
+      // Same graph, same nx.json: only the note tells the kept mapping apart.
+      await writeFile(bin, good)
+      const healed = silent()
+      await plan(healed)
+      expect(await nxCalls(root)).toBe(2)
+      expect(healed.lines.filter((l) => l.includes('running on the previous graph'))).toEqual([])
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a snapshot gone under a key still on disk is exported again',
+    async () => {
+      await plan()
+      const snaps = [...new Bun.Glob('**/nx-project-graph.json').scanSync({ cwd: root, dot: true })]
+      expect(snaps).toHaveLength(1)
+      await rm(path.join(root, snaps[0]!))
+      expect((await plan()).tasks.map((t) => t.node.id)).toEqual(['lib#lint'])
+      expect(await nxCalls(root)).toBe(2)
+    },
+    TIMEOUT,
+  )
+
+  // A `root` outside the git worktree has no key: freshness is the newest
+  // mtime among the files the graph is computed from.
+  it(
+    'outside git, a newer nx.json base, root or project manifest re-exports; nothing newer does not',
+    async () => {
+      const sub = await mkdtemp(path.join(tmpdir(), 'vx-nx-nogit-'))
+      try {
+        const rel = (p: string) => path.relative(sub, path.join(root, 'packages', p))
+        const g = structuredClone(GRAPH) as { graph: { nodes: Record<string, unknown> } }
+        const lib = g.graph.nodes['lib'] as { data: { root: string; targets: { lint: unknown } } }
+        lib.data.root = rel('lib')
+        lib.data.targets.lint = { command: 'echo lint' }
+        ;(g.graph.nodes['app'] as { data: { root: string } }).data.root = rel('app')
+        delete g.graph.nodes['ws']
+        await writeFile(path.join(sub, 'graph.json'), JSON.stringify(g))
+        await writeFile(path.join(sub, 'package.json'), '{"name":"nxroot","private":true}')
+        await writeFile(path.join(sub, 'base.json'), '{}')
+        await writeFile(
+          path.join(sub, 'nx.json'),
+          JSON.stringify({ extends: './base.json', namedInputs: {} }),
+        )
+        await fakeNx(sub)
+        await fakeNxCli(sub)
+        await workspace(`nx({ root: ${JSON.stringify(sub)} })`)
+        await plan()
+        let calls = 1
+        await plan()
+        expect(await nxCalls(sub)).toBe(calls)
+        const past = new Date('2020-01-01')
+        for (const f of [
+          path.join(sub, 'base.json'),
+          path.join(sub, 'package.json'),
+          path.join(root, 'packages', 'lib', 'project.json'),
+          path.join(root, 'packages', 'lib', 'package.json'),
+        ]) {
+          const later = new Date(Date.now() + 60_000)
+          await utimes(f, later, later)
+          await plan()
+          expect([f, await nxCalls(sub)]).toEqual([f, ++calls])
+          await utimes(f, past, past)
+        }
+      } finally {
+        await rm(sub, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+})
