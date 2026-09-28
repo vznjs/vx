@@ -1,4 +1,4 @@
-# `src/cli/watch.ts` — `vx watch` subcommand (and `watch-fs.ts`)
+# `src/cli/watch.ts` — `vx watch` subcommand (and `watch-fs.ts`, `watch-filter.ts`)
 
 ## Purpose
 
@@ -13,15 +13,20 @@ filesystem events.
 export async function watchCmd(args: readonly string[]): Promise<number>
 
 // The loop's parts, exported for the watch suites:
-export function isIgnoredWatchPath(rel: string): boolean // node_modules / .git / .vx segments, .tsbuildinfo / ~ suffixes
-export function makeWatchIgnore(...): (rel: string) => boolean // the above plus the cache dir and every declared output no task reads
-export function gitIgnored(workspaceRoot: string, paths: readonly string[]): Set<string> // one `git check-ignore --stdin`
 export async function watchedProjects(workspaceRoot, allProjects, scope, load?, staged?): Promise<ProjectMeta[]>
 export async function sweepConfigs(projects, workspaceRoot, load?): Promise<{ workspaceWide: boolean; … }>
-export function makeRootEventFilter(workspaceRoot: string, projectDirs: readonly string[], workspaceInputs: readonly string[]): (filename: string) => boolean
 export function memberEntries(base: string): ReadonlySet<string>
 export function watchRefusal(parsed: RunArgs): string | null // the refusal line for a flag watch cannot honour
 export function pendingAfterCycle(pending: ReadonlyMap<string, string>, aborted: boolean): [abs: string, label: string] | undefined
+
+// watch-filter.ts — which events matter, decided over paths alone:
+export function isIgnoredWatchPath(rel: string): boolean // node_modules / .git / .vx segments, .tsbuildinfo / ~ suffixes
+export function makeWatchIgnore(...): (rel: string) => boolean // the above plus the cache dir and every declared output no task reads
+export function gitIgnored(workspaceRoot: string, paths: readonly string[]): Set<string> // one `git check-ignore --stdin`
+export function makeRootEventFilter(workspaceRoot: string, projectDirs: readonly string[], workspaceInputs: readonly string[]): (filename: string) => boolean
+export function shapesWatchedSet(filename: string): boolean // a manifest, a config or a fingerprint file: re-read the watched set
+export function isWorkspaceFingerprintFile(name: string): boolean
+export function isWorkspaceConfigFile(name: string): boolean
 
 // watch-fs.ts — the file-system side, which knows nothing of tasks or cycles:
 export const IGNORED_SEGMENTS: string[] // node_modules / .git / .vx
