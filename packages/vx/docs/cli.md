@@ -1615,9 +1615,9 @@ never loads a second copy, and a workspace that runs the binary needs
 no `@vzn/vx` installed for it — the type-only form is still what the
 scaffold writes, because it types the same with no import to resolve
 in an editor without the package. A workspace that imports a PLUGIN
-package at runtime without having installed it is told so, with the
-install command. `--mjs` writes the same objects as `vx.config.mjs` and
-`vx.workspace.mjs`, with no import and no `satisfies`: a package whose
+package at runtime without having installed it is told so, and to
+install its dependencies. `--mjs` writes the same objects as `vx.config.mjs` and
+`vx.workspace.mjs`, with no type import and no `satisfies`: a package whose
 own `tsconfig` includes every `.ts` under it compiles a `vx.config.ts`
 into its dist (TanStack/query's `tsc --build`, 2026-09-11), and an
 `.mjs` is outside that include. `@vzn/vx-migrate` takes the same flag.
