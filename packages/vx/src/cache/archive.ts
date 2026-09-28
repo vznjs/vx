@@ -197,7 +197,8 @@ export interface PackArgs {
    * The project directory a symlinked output must resolve inside. vx reads
    * outputs outside the task's sandbox, so a link a sandboxed task planted
    * to a file it could not read (another project's, the user's home) packed
-   * that file into the artifact and the remote (L-23).
+   * that file into the artifact and the remote (L-23). A link to another
+   * output of the same artifact is packed wherever it is.
    */
   within?: string
 }
@@ -219,6 +220,17 @@ export interface ArtifactPlan {
 export async function planArtifact(args: PackArgs): Promise<ArtifactPlan> {
   const meta: MetaFile = { version: 1, files: {} }
   let withinReal: Promise<string> | undefined
+  // Where this artifact's own non-link outputs really are: a link to one of
+  // them packs bytes the task wrote itself. A root-anchored output tree is
+  // outside every project, so `gen/latest -> v2.txt` there was refused and
+  // the task never cached (J's lead).
+  let ownReal: Promise<Set<string>> | undefined
+  const ownOutputs = (): Promise<Set<string>> =>
+    (ownReal ??= Promise.all(
+      [...args.outputs.values()].map(async (abs) =>
+        (await lstat(abs)).isSymbolicLink() ? null : realpath(abs),
+      ),
+    ).then((all) => new Set(all.filter((p): p is string => p !== null))))
   if (args.key !== undefined) meta.key = args.key
   const exec = usageOf(args.exec)
   if (exec !== undefined) meta.exec = exec
@@ -246,7 +258,7 @@ export async function planArtifact(args: PackArgs): Promise<ArtifactPlan> {
         if (args.within !== undefined) {
           withinReal ??= realpath(args.within)
           const root = await withinReal
-          if (!src.startsWith(root + path.sep)) {
+          if (!src.startsWith(root + path.sep) && !(await ownOutputs()).has(src)) {
             throw new UserError(
               `output ${shown} is a symlink to ${src}, outside the project: vx packs a symlinked output as its target's bytes, and a project's outputs come from its own directory — emit a file there, or take it back with a '!' entry`,
             )
