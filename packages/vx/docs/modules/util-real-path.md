@@ -17,9 +17,12 @@ export function realPath(p: string): string
 - `realpathSync.native`: the OS's final path for `p`. Throws as
   `realpathSync` does.
 - On Linux and macOS it answers what `realpathSync` does.
+- Every canonical path in `src` comes from it (O-17), bar the sandbox's
+  two sites (stream B's; win32 refuses the sandbox).
 
 ## Tests
 
 `tests/real-path.test.ts` holds `realPath(os.tmpdir())` equal to
 `fs.promises.realpath` of it; the Windows job, whose temp dir is a short
-name, is the platform that can fail it.
+name, is the platform that can fail it. `tests/real-path-sites.test.ts`
+refuses a `realpathSync` anywhere else in `src`.

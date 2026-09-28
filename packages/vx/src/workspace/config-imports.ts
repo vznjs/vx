@@ -27,10 +27,11 @@
 //     closure, and the containment channel already selects the project that
 //     owns it.
 
-import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs'
+import { existsSync, readFileSync, statSync } from 'node:fs'
 import { realpath } from 'node:fs/promises'
 import { builtinModules } from 'node:module'
 import path from 'node:path'
+import { realPath } from '../util/index.js'
 import type { ProjectMeta } from './workspace.js'
 
 const BUILTINS = new Set(builtinModules)
@@ -281,7 +282,7 @@ function tsconfigTarget(spec: string, fromDir: string, memo?: TsconfigMemo): str
 /** A path as Bun names it: realpath'd when it exists. */
 function realpathOr(file: string): string {
   try {
-    return realpathSync(file)
+    return realPath(file)
   } catch {
     return file
   }

@@ -1,7 +1,7 @@
-import { realpathSync, statSync } from 'node:fs'
+import { statSync } from 'node:fs'
 import path from 'node:path'
 import type { ProjectConfig, WorkspaceConfig } from '../config.js'
-import { UserError, xxh3hex } from '../util/index.js'
+import { UserError, realPath, xxh3hex } from '../util/index.js'
 import { validateProjectConfig, validateWorkspace } from './config-schema.js'
 import { beginEvalRound, evaluateConfigFresh } from './config-eval.js'
 import { hasEsmExport, unprovidedBareImports } from './config-imports.js'
@@ -455,7 +455,7 @@ async function refuseStaleWorkspaceImports(configPath: string, since: number): P
     if (Math.floor(mtime) > since) {
       // The walk names real paths: a root reached through a symlink (macOS's
       // temp dir) named `../target/helper.mjs` from the link.
-      const from = path.dirname(realpathSync(configPath))
+      const from = path.dirname(realPath(configPath))
       throw new UserError(
         `${path.basename(configPath)} imports ${path.relative(from, file)}, which changed after this process loaded it; a running process cannot evaluate an imported module again — restart it to apply the edit`,
       )

@@ -6,7 +6,7 @@
 // index + unstaged — so it captures everything you touched and nothing
 // the base branch moved on with. Matches Turbo's `[<since>]` semantics.
 
-import { realpathSync, statSync } from 'node:fs'
+import { statSync } from 'node:fs'
 import { realpath } from 'node:fs/promises'
 import path from 'node:path'
 import {
@@ -15,6 +15,7 @@ import {
   UserError,
   gitSpawnRefusal,
   isExecutableMissing,
+  realPath,
   taskGlob,
 } from '../util/index.js'
 import { LOCKFILE_NAME } from './lockfile.js'
@@ -486,7 +487,7 @@ async function workspaceConfigChanged(
     }
   })
   if (config === undefined) return false
-  const root = realpathSync(workspaceRoot)
+  const root = realPath(workspaceRoot)
   for (const file of await configImports(config)) {
     if (set.has(path.relative(root, file).split(path.sep).join('/'))) return true
   }
@@ -656,7 +657,7 @@ function isDirectory(abs: string): boolean {
 
 function realpathOr(p: string): string {
   try {
-    return realpathSync(p)
+    return realPath(p)
   } catch {
     return p
   }

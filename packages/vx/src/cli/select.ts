@@ -5,7 +5,6 @@
 
 import readline from 'node:readline/promises'
 import path from 'node:path'
-import fs from 'node:fs'
 import {
   affectedProjects,
   refIsHead,
@@ -26,7 +25,7 @@ import {
 import type { ProjectConfig } from '../config.js'
 import type { ProjectEntry } from '../workspace/index.js'
 import { parseDependencySpec } from '../graph/index.js'
-import { nearest, UserError } from '../util/index.js'
+import { nearest, realPath, UserError } from '../util/index.js'
 import { claimedAffected, fingerprintClaims } from '../orchestrator/index.js'
 import { type CliLoadOptions, loadCliProjects, loadCliWorkspace } from './workspace-config.js'
 
@@ -137,7 +136,7 @@ export async function findCwdProject(cwd: string): Promise<string | null> {
     within((p) => p.dir) ??
     within((p) => {
       try {
-        return fs.realpathSync(p.dir)
+        return realPath(p.dir)
       } catch {
         return p.dir
       }

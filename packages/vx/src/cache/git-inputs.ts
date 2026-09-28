@@ -6,8 +6,8 @@
 // task declared. Nothing here reads a config or applies a boundary.
 
 import path from 'node:path'
-import { existsSync, lstatSync, realpathSync } from 'node:fs'
-import { UserError, executablePath, gitSpawnRefusal } from '../util/index.js'
+import { existsSync, lstatSync } from 'node:fs'
+import { UserError, executablePath, gitSpawnRefusal, realPath } from '../util/index.js'
 
 /** Three facts of the repository a directory is in, from one `git rev-parse`. */
 export interface RepoFacts {
@@ -706,7 +706,7 @@ export function attributeFilesOutsideTree(
   if (!['1', 'true', 'yes', 'on'].includes(noSystem)) {
     out.push('/etc/gitattributes')
     try {
-      const prefix = path.dirname(path.dirname(realpathSync(executablePath('git'))))
+      const prefix = path.dirname(path.dirname(realPath(executablePath('git'))))
       out.push(path.join(prefix, 'etc', 'gitattributes'))
     } catch {
       // No git to resolve: the enumeration has already refused the run.

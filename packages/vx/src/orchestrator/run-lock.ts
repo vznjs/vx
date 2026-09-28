@@ -60,12 +60,12 @@
 // serialize what it chose to overlap. The lock is taken by the first of
 // them and left by the last to release.
 
-import { readFileSync, realpathSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { rmdirSync, unlinkSync } from 'node:fs'
 import { mkdir, readdir, readFile, rename, rm, rmdir, unlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { isTmpdirRefusal, procfsIsOwn, TMPDIR_HINT, xxh3hex } from '../util/index.js'
+import { isTmpdirRefusal, procfsIsOwn, realPath, TMPDIR_HINT, xxh3hex } from '../util/index.js'
 
 /** Runs in this process currently holding the lock, per lock directory. */
 const heldHere = new Map<string, number>()
@@ -128,7 +128,7 @@ export function runLockPath(workspaceRoot: string, dir = os.tmpdir()): string {
   const resolved = path.resolve(workspaceRoot)
   let real = resolved
   try {
-    real = realpathSync(resolved)
+    real = realPath(resolved)
   } catch {
     // A root that is not there yet (a test's placeholder) keys by its spelling.
   }

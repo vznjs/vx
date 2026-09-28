@@ -77,7 +77,7 @@ its first error line and its expected/received diff.
      `pathToFileURL`;
    - `realpathSync` keeps an 8.3 short name (`RUNNER~1`) that git and
      `fs.promises.realpath` expand. A canonical path is `realPath`
-     (`realpathSync.native`, O-16).
+     (`realpathSync.native`, O-16; every site but the sandbox's, O-17).
 
    Case: NTFS is case-insensitive, but vx compares the spellings it
    produced itself (cwd, realpath, git), so no case folding goes in

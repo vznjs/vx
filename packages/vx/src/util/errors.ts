@@ -3,7 +3,7 @@
 //
 // `bin.ts` and the scheduler consult `isUserError` to decide what to print.
 
-import { realpathSync } from 'node:fs'
+import { realPath } from './real-path.js'
 import os from 'node:os'
 
 export class UserError extends Error {
@@ -120,7 +120,7 @@ export function isTmpdirRefusal(err: unknown): err is NodeJS.ErrnoException {
   // given is the only one it can carry.
   let real = tmp
   try {
-    real = realpathSync(tmp)
+    real = realPath(tmp)
   } catch {}
   return named.includes(tmp) || named.includes(real)
 }
