@@ -429,6 +429,11 @@ task picked`; neither prints a stack. Row in
   root (it said "not inside a project") and as the unresolved name's
   `Did you mean`. Found walking `vx init` → run → second run on a
   Turbo fixture; the rest of that walk read clean.
+- E-80 — `vx init` in a Turbo or Nx repo that shows a remote cache
+  (turbo.json `remoteCache`, or CI setting `TURBO_TOKEN` /
+  `NX_SELF_HOSTED_REMOTE_CACHE_SERVER`) declares `turboCache()` /
+  `nxCache()` too, naming the file; before, the repo's CI ran vx
+  without the remote cache it already had.
 
 ## First-five-minutes walk (2026-09-28)
 
