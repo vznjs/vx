@@ -239,6 +239,9 @@ const BATCH_ENTRY_OVERHEAD = 128
  *  default and 64 KiB leaves room for the envelope. */
 const SAFE_BATCH_BYTES = 4 * 1024 * 1024 - 64 * 1024
 
+/** Batches and streamed writes one `uploadBlobs` keeps in flight. */
+const UPLOAD_CONCURRENCY = 8
+
 /** A `Digest` in a request past its hash: size varint and field framing. */
 const FIND_MISSING_ENTRY_OVERHEAD = 16
 
@@ -814,6 +817,7 @@ export class ReapiClient {
       maxBatchBytes > 0
         ? Math.min(maxBatchBytes, SAFE_BATCH_BYTES)
         : this.negotiatedBatchBytes || SAFE_BATCH_BYTES
+    const jobs: Array<() => Promise<void>> = []
     let batch: Array<{ digest: Digest; data: Uint8Array }> = []
     let batched = 0
     for (const b of todo) {
@@ -826,18 +830,35 @@ export class ReapiClient {
       // 4 194 304 ceiling).
       const cost = b.digest.size_bytes + BATCH_ENTRY_OVERHEAD
       if (cost > budget) {
-        await this.writeBlob(b.digest, b.data)
+        jobs.push(() => this.writeBlob(b.digest, b.data))
         continue
       }
       if (batched + cost > budget) {
-        await this.batchUpdateBlobs(batch)
+        const full = batch
+        jobs.push(() => this.batchUpdateBlobs(full))
         batch = []
         batched = 0
       }
       batch.push(b)
       batched += cost
     }
-    await this.batchUpdateBlobs(batch)
+    if (batch.length > 0) jobs.push(() => this.batchUpdateBlobs(batch))
+    // UPLOAD_CONCURRENCY at once, not one after another: a grpc-go server
+    // grows its receive window from what it measures arriving, and one
+    // stream at a time held four 8 MB writes to 10.2 s through 15 ms each
+    // way, 0.49 s at once (F-34). The first failure stops the queue.
+    let next = 0
+    let failed = false
+    const worker = async (): Promise<void> => {
+      while (!failed && next < jobs.length) {
+        const job = jobs[next++]!
+        await job().catch((err: unknown) => {
+          failed = true
+          throw err
+        })
+      }
+    }
+    await Promise.all(Array.from({ length: Math.min(UPLOAD_CONCURRENCY, jobs.length) }, worker))
   }
 
   private rememberBatchBytes(advertised: number): number {
