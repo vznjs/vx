@@ -71,6 +71,11 @@ import {
   toRealPath,
   unique,
 } from './sandbox-paths.js'
+import {
+  canScopeDenyScan,
+  scopedMandatoryDenies,
+  srtDefaultWritePaths,
+} from './sandbox-deny-scan.js'
 import { parseStraceViolations, refusedWrites, reportableViolations } from './sandbox-violations.js'
 import {
   closeSignalChannel,
@@ -469,6 +474,9 @@ function bundledJavaAgent(): { javaAgentJarPath?: string } {
   return javaAgent
 }
 
+/** Whether this run's SRT scans at depth 1 and vx supplies the task-scoped denies (B-40). */
+let scopedDenyScan = false
+
 function linuxToolPaths(): { bwrapPath?: string; socatPath?: string } {
   if (process.platform !== 'linux') return {}
   const paths: { bwrapPath?: string; socatPath?: string } = {}
@@ -540,6 +548,7 @@ export async function initSandbox(opts?: {
   // Before SRT starts, so the very first task already has one.
   await mkdir(sandboxTmpdir(), { recursive: true })
   const { SandboxManager } = await loadSrt()
+  scopedDenyScan = process.platform === 'linux' && canScopeDenyScan(process.cwd())
   const config: Parameters<typeof SandboxManager.initialize>[0] = {
     network: {
       allowedDomains: [...(opts?.allowedDomains ?? [])],
@@ -549,6 +558,9 @@ export async function initSandbox(opts?: {
     filesystem: { denyRead: [], allowWrite: [], denyWrite: [] },
     ignoreViolations: DEFAULT_IGNORE_VIOLATIONS,
     ...linuxToolPaths(),
+    // SRT's own scan walks only the root's entries; `wrapSandboxedCommand`
+    // walks each task's write grants for the rest (B-40).
+    ...(scopedDenyScan ? { mandatoryDenySearchDepth: 1 } : {}),
     ...bundledJavaAgent(),
   }
   if (!srtUp) await unlinkStaleMuxSockets()
@@ -928,6 +940,14 @@ export async function wrapSandboxedCommand(
   const customConfig = buildCustomConfig(args, baselines)
   customConfig!.filesystem!.denyRead!.push(toRealPath(taskTmpRoot()))
   customConfig!.filesystem!.allowWrite!.push(toRealPath(tmp))
+  if (scopedDenyScan) {
+    customConfig!.filesystem!.denyWrite!.push(
+      ...scopedMandatoryDenies(process.cwd(), [
+        ...srtDefaultWritePaths(),
+        ...customConfig!.filesystem!.allowWrite!,
+      ]),
+    )
+  }
   // Seatbelt re-allows a read inside a denied region only by name; on Linux
   // a read grant over a write path would remount it read-only.
   if (process.platform === 'darwin') customConfig!.filesystem!.allowRead!.push(toRealPath(tmp))
