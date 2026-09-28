@@ -4292,7 +4292,8 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
 
   it('a spawn that throws is exit 127 with the reason, not a rejection', async () => {
     const r = await runSandboxed(args('true', { cwd: path.join(dir, 'gone') }))
-    expect([r.exitCode, r.violations]).toEqual([127, []])
+    // spawnFailed: no shell ran, so execute-task says nothing of a missing command (A-41).
+    expect([r.exitCode, r.violations, r.spawnFailed]).toEqual([127, [], true])
     expect(r.stderr).toContain('[vx] failed to spawn sandboxed task')
   })
 

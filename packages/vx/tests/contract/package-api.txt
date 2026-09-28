@@ -1083,6 +1083,7 @@ export interface RunResult {
   timedOut?: boolean
   cpuMs?: number
   peakRssBytes?: number
+  spawnFailed?: true
 }
 == type RunResult (src/orchestrator/run-report.ts)
 export interface RunResult {

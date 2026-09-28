@@ -1341,6 +1341,7 @@ async function runSandboxedOnce(
       durationMs: Date.now() - start,
       stdout: '',
       stderr,
+      spawnFailed: true,
       violations: [],
       tracerFailed: false,
     }

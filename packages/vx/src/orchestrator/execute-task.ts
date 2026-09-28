@@ -852,8 +852,10 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // The shell's 127 and 126 name the word and nothing about why — the
     // PATH vx built, or a `#!` line the file itself carries (items 257,
     // 258) — and an exit above 128 is a signal's number and nothing
-    // about what sent it (259). One frame line names the rule.
-    if (!res.timedOut) {
+    // about what sent it (259). One frame line names the rule. A spawn that
+    // threw ran no shell: its 127 is vx's, and the line would send the
+    // reader after a command that exists (A-41).
+    if (!res.timedOut && res.spawnFailed !== true) {
       const verdict = shellVerdict({
         code,
         command: step.command,
