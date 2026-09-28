@@ -622,6 +622,10 @@ declare what it writes as an output. Not seen: a file ADDED under an input glob
 mid-run (the listing is not taken again; the next run's key holds the
 file, so a stale hit needs it to vanish again). Cost: one `lstat` per
 input on a miss that saves; a hit runs no command and checks nothing.
+A file listed but gone before the key hashes it (an upstream that
+deletes a file its dependant's globs match) is keyed as absent, not
+read: the dependant failed as `internal error … ENOENT` on every run
+until A-55. Absent stays unmoved while it stays gone.
 Its dependants whose keys fold its key save nothing either,
 transitively: that key does not name the bytes they built from (`[vx] app#use: ran
 over app#gen's outputs, which its key no longer describes — …`). Until

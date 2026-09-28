@@ -3,6 +3,8 @@ import path from 'node:path'
 import type { TaskConfig, CacheConfig } from '../config.js'
 import type { ProjectFilesCache, WorkspaceFilesCache } from '../cache/index.js'
 import {
+  ABSENT_INPUT,
+  absentOr,
   type CacheKeyInput,
   type CacheLayer,
   FILE_HASH_RACY_MS,
@@ -138,12 +140,14 @@ export async function describeTaskInputs(
   const hash = await args.cache.key(input)
   const sorted = [...input.inputFiles].sort()
   const digests = await Promise.all(
-    sorted.map((f) => input.fileHashes?.get(f) ?? args.cache.hashFile(f)),
+    sorted.map((f) => input.fileHashes?.get(f) ?? args.cache.hashFile(f).catch(absentOr)),
   )
-  const files: InputFile[] = sorted.map((f, i) => ({
-    path: relPosix(input.workspaceRoot, f),
-    digest: digests[i]!,
-  }))
+  // A file gone since the enumeration is no input: the task will not read it.
+  const files: InputFile[] = sorted.flatMap((f, i) =>
+    digests[i] === ABSENT_INPUT
+      ? []
+      : [{ path: relPosix(input.workspaceRoot, f), digest: digests[i]! }],
+  )
   // The package.json digest is a per-run memo that may predate this
   // describe, so it is dated from the enumeration, the earliest a run
   // learns anything.
@@ -221,8 +225,12 @@ export async function movedInput(
     try {
       ctimeMs = lstatSync(f.path).ctimeMs
     } catch {
+      // Gone, as the key folded it (`ABSENT_INPUT`): unmoved.
+      if (f.digest === ABSENT_INPUT) continue
       return f.path
     }
+    // Back since the key folded it gone.
+    if (f.digest === ABSENT_INPUT) return f.path
     // A whole-second stamp may stand for any write in its second (two for
     // an even one, FAT's tick), one during the command included
     // (`racyWindowMs`).

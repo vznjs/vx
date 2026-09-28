@@ -90,6 +90,22 @@ import type { CacheKeyInput } from './layer.js'
 export const CACHE_VERSION = 'vx-cache-v36'
 
 /**
+ * The digest a key folds for an input gone between its enumeration and its
+ * hash: an upstream task that deletes a file its dependant's globs matched
+ * (a `clean` ahead of a `build`) failed the dependant as an internal error on
+ * every run (A-55). Not an identity any file has, so a run that finds the
+ * file keys apart from one that does not.
+ */
+export const ABSENT_INPUT = 'absent'
+
+/** `ABSENT_INPUT` for a file that is not there to read; any other error rethrown. */
+export function absentOr(err: unknown): string {
+  const code = (err as NodeJS.ErrnoException | null)?.code
+  if (code === 'ENOENT' || code === 'ENOTDIR') return ABSENT_INPUT
+  throw err
+}
+
+/**
  * Fold one task's key inputs into its 16-hex cache key. `hashFile` answers
  * for an input file the caller's `fileHashes` map does not cover (the git
  * blob OID of its worktree bytes); `relOf` renders an input file relative to
@@ -226,7 +242,9 @@ export async function foldKey(
     }
     if (out.length === sortedInputs.length) fileHashes = out
   }
-  fileHashes ??= await Promise.all(sortedInputs.map((f) => provided?.get(f) ?? hashFile(f)))
+  fileHashes ??= await Promise.all(
+    sortedInputs.map((f) => provided?.get(f) ?? hashFile(f).catch(absentOr)),
+  )
   for (let i = 0; i < sortedInputs.length; i++) {
     const file = sortedInputs[i]!
     const rel = relOf(file)
