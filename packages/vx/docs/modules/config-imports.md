@@ -178,7 +178,9 @@ provides — the ones Bun would auto-install from the npm registry when no
 "cannot find", measured 2026-09-16). The loader refuses such a config before
 evaluating it: `cannot find '<name>' — no node_modules above the config
 provides it; install the workspace's dependencies first`. Builtins, `@vzn/vx`
-(the core alias), and relative or absolute specifiers are never listed.
+(the core alias), relative or absolute specifiers, and package.json
+subpath imports (`#tasks`: Bun maps them inside the package and never asks
+the registry, D-28) are never listed.
 Nor is a specifier the nearest `tsconfig.json` (else `jsconfig.json`) maps,
 through `paths` or `baseUrl` with relative `extends` followed, to a file on
 disk: Bun loads that file and never reaches the registry (D-26).
