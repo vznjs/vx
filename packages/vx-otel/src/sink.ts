@@ -57,41 +57,104 @@ export interface OtelSinkConfig {
   warn?: (message: string) => void
 }
 
+const defaultPost =
+  (timeoutMs: number): PostFn =>
+  async (url, body, headers, deadline) => {
+    // A collector that sheds load (429, 502, 503, 504, or a reset
+    // connection) is retried twice, as the OTLP spec asks of exporters: the
+    // export was dropped whole on the first 503 (F-28). The flush deadline
+    // still bounds it all.
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await postOnce(url, body, headers, timeoutMs, deadline)
+      } catch (err) {
+        const retry = err instanceof OtlpRetryable ? err.afterMs : undefined
+        const delay = RETRY_DELAYS_MS[attempt]
+        if (retry === undefined || delay === undefined || deadline?.aborted === true) {
+          throw err instanceof OtlpRetryable ? err.refused : err
+        }
+        await sleepUnless(retry > 0 ? Math.min(retry, MAX_RETRY_AFTER_MS) : delay, deadline)
+      }
+    }
+  }
+
+const RETRY_DELAYS_MS = [200, 800] as const
+const MAX_RETRY_AFTER_MS = 2000
+const RETRYABLE_STATUS = new Set([429, 502, 503, 504])
+
+/** A failure worth another attempt; `afterMs` is the collector's Retry-After, or 0. */
+class OtlpRetryable extends Error {
+  constructor(
+    readonly refused: Error,
+    readonly afterMs: number,
+  ) {
+    super(refused.message)
+  }
+}
+
+function sleepUnless(ms: number, deadline: AbortSignal | undefined): Promise<void> {
+  return new Promise((resolve) => {
+    const done = (): void => {
+      clearTimeout(timer)
+      deadline?.removeEventListener('abort', done)
+      resolve()
+    }
+    const timer = setTimeout(done, ms)
+    deadline?.addEventListener('abort', done, { once: true })
+  })
+}
+
 // Takes the CONFIGURED timeout. It used to abort on a literal 15 s while
 // `timeoutMs` was resolved, defaulted and stored and then read by nobody, so
 // `otel({ timeoutMs: 1000 })` waited fifteen seconds on a hanging collector
 // (2026-09-19). Clearable timer, not AbortSignal.timeout: the latter's
 // internal timer is not unref'd and would keep a CLI process alive until it
 // fires, well after the POST resolved.
-const defaultPost =
-  (timeoutMs: number): PostFn =>
-  async (url, body, headers, deadline) => {
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), timeoutMs)
-    // Core's flush deadline ends the POST too: `timeoutMs` (15 s by
-    // default) alone held the process that long after the run (item 1055).
-    const onDeadline = (): void => controller.abort()
-    deadline?.addEventListener('abort', onDeadline, { once: true })
+async function postOnce(
+  url: string,
+  body: string,
+  headers: Record<string, string>,
+  timeoutMs: number,
+  deadline: AbortSignal | undefined,
+): Promise<void> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  // Core's flush deadline ends the POST too: `timeoutMs` (15 s by
+  // default) alone held the process that long after the run (item 1055).
+  const onDeadline = (): void => controller.abort()
+  deadline?.addEventListener('abort', onDeadline, { once: true })
+  try {
+    let res: Response
     try {
-      const res = await fetch(url, { method: 'POST', body, headers, signal: controller.signal })
-      // A collector that REFUSES the export still ANSWERS: only one that
-      // cannot be reached throws. Until this read the status, a 401 from a
-      // wrong token, a 404 from a wrong path and a 500 from a wedged
-      // collector each exported nothing and said nothing, for every run
-      // (walked the adopter's path, 2026-09-20). The body is the
-      // collector's own explanation, so a line of it rides the message.
-      const text = await res.text().catch(() => '')
-      if (!res.ok) throw new Error(`HTTP ${res.status}${detail(text)}`)
-      // OTLP's other silent loss: a 200 whose body says part of the export
-      // was dropped (over quota, past a limit). Success at the transport,
-      // missing data in the collector.
-      const rejected = partialSuccess(text)
-      if (rejected !== undefined) throw new Error(rejected)
-    } finally {
-      clearTimeout(timer)
-      deadline?.removeEventListener('abort', onDeadline)
+      res = await fetch(url, { method: 'POST', body, headers, signal: controller.signal })
+    } catch (err) {
+      // A connection that failed is worth a retry; one this side aborted is not.
+      if (controller.signal.aborted) throw err
+      throw new OtlpRetryable(err instanceof Error ? err : new Error(String(err)), 0)
     }
+    // A collector that REFUSES the export still ANSWERS: only one that
+    // cannot be reached throws. Until this read the status, a 401 from a
+    // wrong token, a 404 from a wrong path and a 500 from a wedged
+    // collector each exported nothing and said nothing, for every run
+    // (walked the adopter's path, 2026-09-20). The body is the
+    // collector's own explanation, so a line of it rides the message.
+    const text = await res.text().catch(() => '')
+    if (!res.ok) {
+      const refused = new Error(`HTTP ${res.status}${detail(text)}`)
+      if (!RETRYABLE_STATUS.has(res.status)) throw refused
+      const after = Number(res.headers.get('retry-after'))
+      throw new OtlpRetryable(refused, Number.isFinite(after) && after > 0 ? after * 1000 : 0)
+    }
+    // OTLP's other silent loss: a 200 whose body says part of the export
+    // was dropped (over quota, past a limit). Success at the transport,
+    // missing data in the collector.
+    const rejected = partialSuccess(text)
+    if (rejected !== undefined) throw new Error(rejected)
+  } finally {
+    clearTimeout(timer)
+    deadline?.removeEventListener('abort', onDeadline)
   }
+}
 
 /** One line of a collector's error body, bounded — it is remote text. */
 function detail(body: string): string {

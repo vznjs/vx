@@ -36,6 +36,9 @@ const RUN: RunContextRecord = {
 
 type Reply = { status: number; body: string; breakBody?: true }
 let reply: Reply = { status: 200, body: '{}' }
+/** Answered first, one per request, before `reply`; `hits` counts requests. */
+let queue: (Reply & { retryAfter?: string })[] = []
+let hits = 0
 let server: ReturnType<typeof Bun.serve>
 let url: string
 
@@ -45,6 +48,14 @@ beforeAll(() => {
     idleTimeout: 0,
     async fetch(req) {
       await req.text()
+      hits++
+      const next = queue.shift()
+      if (next !== undefined) {
+        return new Response(next.body, {
+          status: next.status,
+          headers: next.retryAfter === undefined ? {} : { 'retry-after': next.retryAfter },
+        })
+      }
       if (reply.breakBody === true) {
         // A body that dies mid-read: the status arrived, the text never does.
         const body = new ReadableStream({
@@ -303,4 +314,41 @@ describe('the transport, as the vx-otel sweep found it unheld', () => {
     })
     expect(lived).toBeLessThan(3_000)
   }, 15_000)
+})
+
+// F-28: a collector shedding load answers 429/503 for a moment; the export
+// was dropped whole on the first one. Retried twice, Retry-After honoured.
+describe('a collector that sheds load', () => {
+  const run = async (answers: (Reply & { retryAfter?: string })[]) => {
+    queue = answers
+    hits = 0
+    const t0 = Date.now()
+    const warnings = await exportWith({ status: 200, body: '{}' })
+    return { warnings, hits, ms: Date.now() - t0 }
+  }
+
+  it('a 503 then a 200 exports once more and says nothing', async () => {
+    const r = await run([{ status: 503, body: 'busy' }])
+    expect([r.warnings, r.hits]).toEqual([[], 2])
+  })
+
+  it('a 429 waits the Retry-After it names', async () => {
+    const r = await run([{ status: 429, body: '', retryAfter: '1' }])
+    expect([r.warnings, r.hits, r.ms >= 1000]).toEqual([[], 2, true])
+  })
+
+  it('three 503s warn with the last; a 400 is not retried', async () => {
+    const shed = await run([
+      { status: 503, body: '' },
+      { status: 503, body: '' },
+      { status: 503, body: 'still busy' },
+    ])
+    const refused = await run([{ status: 400, body: 'bad' }])
+    expect([
+      shed.hits,
+      shed.warnings.length,
+      shed.warnings[0]?.includes('HTTP 503: still busy'),
+    ]).toEqual([3, 1, true])
+    expect([refused.hits, refused.warnings.length]).toEqual([1, 1])
+  })
 })

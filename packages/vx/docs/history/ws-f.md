@@ -306,3 +306,10 @@ replay already reads). Execute plus restore of a 20-directory tree with a
 record: 295 → 234 ms through a proxy adding 15 ms each way (min of 5,
 interleaved). A restore failure still waits for the record. Rows red
 without the fix.
+
+F-28. vx-otel dropped an export whole on a collector's first 429 or 503,
+the answers the OTLP spec names as "retry later". The transport now
+retries 429, 502, 503, 504 and a failed connection twice (200 and 800 ms,
+or the Retry-After it names, at most 2 s), inside core's flush deadline;
+other refusals (400, 401, 500) still fail at once. Rows against a real
+HTTP server, red without the fix.
