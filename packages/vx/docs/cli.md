@@ -411,6 +411,14 @@ nearest flag the verb accepts when one is within two edits
 does this against its own usage line: `vx info --formt` hints
 `--format`, `vx lock --chek` hints `--check`.
 
+A task typed where the verb goes (`turbo build`, `nx build app`) is
+refused with the `vx run` that runs it: `vx build` names
+`vx run build --all` from the root and `vx run build` inside a project,
+`vx build app` names `vx run build --filter app`, and `vx app#build`
+names `vx run app#build`. It stays a refusal: a plugin verb of the same
+name is the verb, and would change what `vx build` means the day one
+was declared.
+
 **Optional-value flags take their value with `=` only.** `--affected`,
 `--exclude-dependencies`, `--dry`, `--graph`, `--summarize`, `--profile`,
 and `--report` are all valid bare, so a following word is

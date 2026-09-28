@@ -7,6 +7,7 @@ import { runCmd } from './run.js'
 import { CORE_VERBS, printHelp } from './help.js'
 import { pluginCommandHelp, resolvePluginCommand, pluginVerbs } from './plugin-commands.js'
 import { FOREIGN_VERBS } from './foreign-flags.js'
+import { taskVerbHint } from './task-verb.js'
 import { isUserError, MOVED_VERBS, nearest, UserError } from '../util/index.js'
 
 // Every verb but `run` is imported when invoked. `vx run` is the hot path
@@ -132,6 +133,13 @@ export async function run(argv: readonly string[]): Promise<number> {
       const moved = MOVED_VERBS[command] ?? FOREIGN_VERBS[command]
       if (moved !== undefined) {
         process.stderr.write(`${moved}${loadNote}\n`)
+        return 1
+      }
+      // A task typed where the verb goes (`turbo build`, `nx build app`),
+      // `turbo dev` included: a repo's own `dev` task beats the no-service note.
+      const task = loadNote === '' ? await taskVerbHint(command, rest, process.cwd()) : null
+      if (task !== null) {
+        process.stderr.write(`vx: ${task}\n`)
         return 1
       }
       if (command === 'serve' || command === 'dev') {
