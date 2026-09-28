@@ -531,6 +531,7 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
               `let cleanOutputs delete files outside it)`,
           )
         }
+        assertNoForeignToken(g, `${where}.cache.outputs.files`)
         if (namesDirItself(g)) {
           throw new UserError(
             `${where}.cache.outputs.files: "${g}" names the project directory itself and selects nothing — ` +
@@ -568,6 +569,7 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
               `use cache.inputs.workspaceFiles for workspace-root-relative inputs)`,
           )
         }
+        assertNoForeignToken(g, `${where}.cache.inputs.files`)
         if (namesDirItself(g)) {
           throw new UserError(
             `${where}.cache.inputs.files: "${g}" names the project directory itself and selects nothing — use "**" for everything under it`,
@@ -824,6 +826,36 @@ function ownFileCovered(glob: string, configPath: string): string | null {
 }
 
 /**
+ * Turbo's and Nx's glob tokens, pasted from turbo.json or project.json
+ * (D-50). vx expands none of them, so each is a literal that matches no
+ * file: an input list of `$TURBO_DEFAULT$` keyed the task on nothing and
+ * replayed a stale output after its source changed.
+ */
+const FOREIGN_TOKENS: readonly (readonly [string, string])[] = [
+  [
+    '$TURBO_DEFAULT$',
+    'Turbo\'s default input set, which vx does not have — list the files, such as "**" for everything in the project',
+  ],
+  [
+    '$TURBO_ROOT$',
+    "Turbo's workspace root — name the path without it in `workspaceFiles`, which is workspace-root-relative",
+  ],
+  ['{projectRoot}', "Nx's project root — drop it: `files` globs are project-relative already"],
+  [
+    '{workspaceRoot}',
+    "Nx's workspace root — name the path without it in `workspaceFiles`, which is workspace-root-relative",
+  ],
+]
+
+function assertNoForeignToken(glob: string, where: string): void {
+  for (const [token, meaning] of FOREIGN_TOKENS) {
+    if (glob.includes(token)) {
+      throw new UserError(`${where}: "${glob}" holds ${token}, ${meaning}`)
+    }
+  }
+}
+
+/**
  * `.`, `./`, `././` (with or without a `!`) name the directory itself, which
  * no matcher expands: the entry selected nothing and said so nowhere.
  * `./src/**` is fine — the resolver strips the `./` (`normalizeGlob`).
@@ -1032,6 +1064,7 @@ function validateWorkspaceGlobs(v: unknown, where: string, negation: boolean): v
           `entries are workspace-root-relative and must stay within the workspace root`,
       )
     }
+    assertNoForeignToken(g, where)
     if (namesDirItself(g)) {
       throw new UserError(
         `${where}: "${g}" names the workspace root itself and selects nothing — use "**" for everything under it`,
