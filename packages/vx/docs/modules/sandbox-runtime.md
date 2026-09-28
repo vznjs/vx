@@ -90,7 +90,9 @@ the corresponding SBPL rules to the END of the seatbelt profile SRT
 generated — last-match-wins is the only position where a rule of ours
 outranks one of SRT's. Measured 2026-09-05: the same rules injected after
 the `(deny default …)` header are inert in both directions. Filesystem
-grants still go through SRT's config, where they also work on Linux.
+grants still go through SRT's config, where they also work on Linux, bar
+`gitConfig`: SRT reads `filesystem.allowGitConfig` only at `initialize()`
+too, and vx adds no rule for it, so it is inert.
 
 The `network` case has no such workaround: SRT runs ONE filtering proxy
 per run and checks every request against `config.network.allowedDomains`
@@ -399,8 +401,10 @@ the directory; one of ours left open is closed.
 With the network restricted, SRT sets its own values over the ones vx
 built for the task: `SANDBOX_RUNTIME`, `TMPDIR` (above), the proxy
 variables (`HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `GRPC_PROXY`,
-`NO_PROXY` and their lowercase forms), `GIT_SSH_COMMAND`,
-`GIT_CONFIG_PARAMETERS`, and the CA-bundle variables when it has a CA
+`FTP_PROXY`, `NO_PROXY` and their lowercase forms, `RSYNC_PROXY`,
+`DOCKER_HTTP(S)_PROXY`, `CLOUDSDK_PROXY_*`,
+`CLAUDE_CODE_HOST_*_PROXY_PORT`), `GIT_SSH_COMMAND`,
+`GIT_CONFIG_PARAMETERS`, `JAVA_TOOL_OPTIONS` (below), and the CA-bundle variables when it has a CA
 (`NODE_EXTRA_CA_CERTS`, `SSL_CERT_FILE` and the others in its
 `CA_TRUST_VARS`). A task's `define` or `passThrough` of one of these
 names does not reach a sandboxed task: the sandbox's network goes through
