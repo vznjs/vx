@@ -277,3 +277,17 @@ packages/core`) selects the dependent whose `file:../lib` spec named
   strace shows, never reaches the registry for one, an unexported
   subpath included; the guard lets it through. Rows: the two D-29 rows
   of `tests/config-missing-import.test.ts`.
+- **D-30** D-26's guard followed an array `extends` (TS 5's form), and
+  Bun follows none: an alias only the array mapped was let through and
+  Bun went to the registry (strace: 30 connects). The guard follows a
+  string `extends` only. A sweep of the D-26 to D-29 code (32 mutants)
+  found nine more rules unheld, each probed against Bun and now held:
+  `paths` against `baseUrl`, inherited `paths` against the child's
+  `baseUrl` (Bun misses), a key's head, tail and overlap, a
+  `jsconfig.json`, a directory target with no index (Bun downloads), and
+  the realpath of a target reached through a symlinked directory. Four
+  survivors are equivalent: the per-file tsconfig memo, a package
+  `extends` read as a path (no such file), the alias pre-filter (it
+  gates only the scan), and the extra candidates of a deleted target
+  that carries an extension. Rows: the D-30 rows of
+  `tests/config-missing-import.test.ts` and `tests/affected.test.ts`.
