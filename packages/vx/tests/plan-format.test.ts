@@ -54,6 +54,17 @@ describe('formatPlanText', () => {
     expect(out).toContain('1 would run')
   })
 
+  it('an @noop task is counted as noop, not as a would-run with a cost', () => {
+    const out = formatPlanText({
+      tasks: [
+        { ...task('a#install', 'miss', '11111111', [], undefined, 5000), executor: 'noop' },
+        task('a#build', 'miss', '22222222', ['a#install'], undefined, 1000),
+      ],
+    })
+    expect(out).toMatch(/∅ {2}a#install {2}noop — would not run +11111111 {2}@noop\n/)
+    expect(out).toContain('2 task(s) planned, 1 would run, 1 noop.\n')
+  })
+
   it('handles all-miss plans without claiming any hits', () => {
     const out = formatPlanText({
       tasks: [task('a#x', 'miss', '11111111'), task('a#y', 'miss', '22222222')],

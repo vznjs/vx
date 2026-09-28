@@ -1287,6 +1287,49 @@ describe('executor capability — end-to-end via run()', () => {
     }
   })
 
+  it("remote:'only' that nobody takes: the plan's @noop and the run agree", async () => {
+    // The same workspace planned, then run: what --dry calls a noop the run
+    // must not execute, and its dependent must still run.
+    const { workspaceRoot, cleanup } = await writeFixture()
+    try {
+      await Bun.write(
+        path.join(workspaceRoot, 'pkg-a/vx.config.mjs'),
+        `export default { tasks: {
+           install: {
+             exec: { command: 'echo ran > tombstone.txt', remote: 'only' },
+             cache: { inputs: { files: ['package.json'] }, outputs: { files: ['deps/**'] } },
+           },
+           build: {
+             exec: { command: 'echo b > out.txt' },
+             dependsOn: ['install'],
+             cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+           },
+         } }`,
+      )
+      await Bun.write(path.join(workspaceRoot, 'pkg-a/src/x.txt'), 'x')
+      await writeLocalWorkspace(workspaceRoot)
+      await gitInit(workspaceRoot)
+      const opts = {
+        cwd: workspaceRoot,
+        projects: ['pkg-a'],
+        tasks: ['build'],
+        log: makeSilentLogger(),
+        handleSignals: false,
+      }
+      const plan = await planRun(opts)
+      expect(Object.fromEntries(plan.tasks.map((t) => [t.node.id, t.executor ?? null]))).toEqual({
+        'pkg-a#install': 'noop',
+        'pkg-a#build': null,
+      })
+      const summary = await run(opts)
+      expect(summary.ok).toBe(true)
+      expect(await Bun.file(path.join(workspaceRoot, 'pkg-a/out.txt')).exists()).toBe(true)
+      expect(await Bun.file(path.join(workspaceRoot, 'pkg-a/tombstone.txt')).exists()).toBe(false)
+    } finally {
+      cleanup()
+    }
+  })
+
   it("remote:'only' WITH a remote executor ships there, flagged, and stays off this disk", async () => {
     const { workspaceRoot, cleanup } = await writeFixture()
     try {

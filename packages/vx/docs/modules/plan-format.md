@@ -85,7 +85,8 @@ remote)"), and the name is what a reader can act on. One label is not an
 executor: `@noop` marks a `remote: 'only'` task no remote executor took —
 it will not run ANYWHERE this run (dependents use the machine's ambient
 state), and showing the local executor's name there would promise an
-execution that never happens. See
+execution that never happens. Its line reads `∅ … noop — would not run`
+and the summary counts it as `noop`, never as would-run. See
 [`schema.md` § `remote`](../schema.md#remote-optional) for what pins a task
 locally and what `'only'` means.
 

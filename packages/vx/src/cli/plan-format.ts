@@ -28,11 +28,14 @@ export function formatPlanText(plan: RunPlan): string {
   let remote = 0
   let miss = 0
   let nocache = 0
+  let noop = 0
   for (const t of real) {
-    const sym = symbolFor(t.cacheStatus)
-    const desc = describe(t.cacheStatus)
+    // `@noop`: the run succeeds it without running, whatever its key says.
+    const skipped = t.executor === 'noop'
+    const sym = skipped ? '∅' : symbolFor(t.cacheStatus)
+    const desc = skipped ? 'noop — would not run' : describe(t.cacheStatus)
     const shortHash = t.hash ? t.hash.slice(0, 8) : ''
-    const executes = t.cacheStatus === 'miss' || t.cacheStatus === 'no-cache'
+    const executes = !skipped && (t.cacheStatus === 'miss' || t.cacheStatus === 'no-cache')
     const eta = executes && t.p50Ms !== undefined ? `  ~${formatDuration(t.p50Ms)}` : ''
     // Placement, by EXECUTOR NAME rather than a local/remote word: the
     // summary line below already spends "local" and "remote" on the cache
@@ -48,7 +51,8 @@ export function formatPlanText(plan: RunPlan): string {
     if (taskDesc) {
       lines.push(`     ${' '.repeat(idWidth)}  ${taskDesc}`)
     }
-    if (t.cacheStatus === 'hit-local') local++
+    if (skipped) noop++
+    else if (t.cacheStatus === 'hit-local') local++
     else if (t.cacheStatus === 'hit-remote') remote++
     else if (t.cacheStatus === 'miss') miss++
     else if (t.cacheStatus === 'no-cache') nocache++
@@ -62,6 +66,7 @@ export function formatPlanText(plan: RunPlan): string {
   if (hits > 0) summary.push(`${hits} cache hit${hits === 1 ? '' : 's'} (${hitParts.join(', ')})`)
   if (miss > 0) summary.push(`${miss} would run`)
   if (nocache > 0) summary.push(`${nocache} no-cache`)
+  if (noop > 0) summary.push(`${noop} noop`)
   lines.push('')
   lines.push(summary.join(', ') + '.')
 
