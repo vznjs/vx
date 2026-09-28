@@ -128,7 +128,12 @@ against Nx 105.9 s / 1.19 s / 1.16 s. CI's runner queue, 119 CI runs
 (max 1,010), runs 253 s either way; Linux jobs wait 2–18 s. So macOS
 job-minutes set the queue. A CI cache hits the core shards on 4 of
 369 of the day's commits, 52 with `docs/history/**` out of their key
-(nothing reads it): not worth a cache step on every macOS job.
+(nothing reads it): not worth a cache step on every macOS job. Refuted on the runner:
+twice the cores (`--concurrency 200%`, #1331). Here the 12 shards on 3
+pinned cores keep 1.7 busy, and 6 at a time cut 112.3 → 74.2 s; on
+macOS CI 6 workers took 189.38 s against 189.37 at 3, each task twice
+as long. That runner is CPU-bound; this container's idle cores were
+the container's. 6 shards instead of 12: 114.5 s against 113.3, a tie.
 
 ## Leads for other streams
 
