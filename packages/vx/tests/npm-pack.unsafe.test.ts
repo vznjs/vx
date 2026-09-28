@@ -59,43 +59,55 @@ function packed(dir: string): Packed['files'] {
   return (JSON.parse(r.out.slice(r.out.indexOf('['))) as Packed[])[0]!.files
 }
 
+// `npm pack` is a Node start plus a tree walk: a cold npm on a loaded
+// gate took past bun's 5 s default and the row died mid-spawn (B-39).
+const PACK_TIMEOUT_MS = 30_000
+
 const update = process.env['VX_UPDATE_CONTRACT'] === '1' && process.env['CI'] !== 'true'
 
 describe('the npm tarballs', () => {
   for (const { name, dir } of packages) {
     const file = path.join(RECORDS, `${name.replace('@vzn/', '')}.txt`)
 
-    it(`${name}: its file list agrees with tests/contract/pack/, no strays, none too large`, () => {
-      const files = packed(dir)
-      const live =
-        files
-          .map((f) => f.path)
-          .sort()
-          .join('\n') + '\n'
-      if (update) writeFileSync(file, live)
-      expect({
-        stray: files.filter((f) => STRAY.test(f.path)).map((f) => f.path),
-        oversize: files.filter((f) => f.size > SIZE_CAP).map((f) => `${f.path} (${f.size} B)`),
-      }).toEqual({ stray: [], oversize: [] })
-      expect(live).toBe(readFileSync(file, 'utf8'))
-    })
+    it(
+      `${name}: its file list agrees with tests/contract/pack/, no strays, none too large`,
+      () => {
+        const files = packed(dir)
+        const live =
+          files
+            .map((f) => f.path)
+            .sort()
+            .join('\n') + '\n'
+        if (update) writeFileSync(file, live)
+        expect({
+          stray: files.filter((f) => STRAY.test(f.path)).map((f) => f.path),
+          oversize: files.filter((f) => f.size > SIZE_CAP).map((f) => `${f.path} (${f.size} B)`),
+        }).toEqual({ stray: [], oversize: [] })
+        expect(live).toBe(readFileSync(file, 'utf8'))
+      },
+      PACK_TIMEOUT_MS,
+    )
 
-    it(`${name}: every exports and bin target is in the tarball`, () => {
-      const list = new Set(packed(dir).map((f) => f.path))
-      const manifest = JSON.parse(readFileSync(path.join(dir, 'package.json'), 'utf8')) as {
-        exports?: unknown
-        bin?: Record<string, string>
-      }
-      const targets: string[] = []
-      const walk = (v: unknown): void => {
-        if (typeof v === 'string') targets.push(v)
-        else if (v !== null && typeof v === 'object') for (const x of Object.values(v)) walk(x)
-      }
-      walk(manifest.exports)
-      walk(manifest.bin)
-      expect(targets.length).toBeGreaterThan(0)
-      expect(targets.map((t) => t.replace(/^\.\//, '')).filter((t) => !list.has(t))).toEqual([])
-    })
+    it(
+      `${name}: every exports and bin target is in the tarball`,
+      () => {
+        const list = new Set(packed(dir).map((f) => f.path))
+        const manifest = JSON.parse(readFileSync(path.join(dir, 'package.json'), 'utf8')) as {
+          exports?: unknown
+          bin?: Record<string, string>
+        }
+        const targets: string[] = []
+        const walk = (v: unknown): void => {
+          if (typeof v === 'string') targets.push(v)
+          else if (v !== null && typeof v === 'object') for (const x of Object.values(v)) walk(x)
+        }
+        walk(manifest.exports)
+        walk(manifest.bin)
+        expect(targets.length).toBeGreaterThan(0)
+        expect(targets.map((t) => t.replace(/^\.\//, '')).filter((t) => !list.has(t))).toEqual([])
+      },
+      PACK_TIMEOUT_MS,
+    )
   }
 
   it('a record exists for each package, and none for another', () => {
