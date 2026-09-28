@@ -498,6 +498,34 @@ rather than `node.deps` (the same node), and both git-snapshot marks
 (item 643: no reader of a deferred producer's outputs is in the run).
 No defect.
 
+## C-36: hold `keyed-projects.ts`' and `excluded-keys.ts`' surviving mutants
+
+Swept both files (14 + 27 mutants over 9 files): 22 caught, 19
+survived. 8 are equivalent: the set's add order, the push-time memo
+check (the pop-time one answers), `keyOnly` before `nodes` (disjoint),
+the empty-seed return, the group arm of `foldsExcludedKey` (a group
+has no `cache`, and a derived key always has a hash), the derive
+memos at pop and push (a repeat derives the same key, at most once per
+edge), and walking the taint through `keyedDeps` (a count question,
+below). The other 11 are held now: `keyed-projects.test.ts` (a shared
+subgraph walked once, counted by `get`s; groups whose members a
+`graph` plugin left in another order share one hash; a group carrying
+`cache.inputs.tasks` still folds all); `stale-hit.test.ts` (every
+skipped dependency of every dependant keyed, one losing two edges;
+under `--continue=always` a task folding no skipped key saves, so the
+synthetic outcome is a success; and the forwarded-arguments row, empty
+since item 980 kept a requested dependency's edge, now requests a task
+beneath the skipped one); `taint-tracker.test.ts` (a 64-diamond ladder,
+whose mutant never finishes: held by a hang, not a failing row). No
+defect in either file; two found beside them, both in this slice. A
+restore-tier hit with an order-only edge threw in `keyUpstream` (fixed
+in C-39). Open: under `--exclude-dependencies`, `keyedProjects` walks
+`node.deps`, counting an order-only edge the key never folds and missing
+the dropped ones it does (probed: `app#test`'s keyed set held `ui`,
+whose edit left the key unchanged), so with `cache.inputs.tasks:
+['^*']` the sandbox grants a link the key does not answer for; the fix
+walks `keyedDeps` plus each `excludedUpstream` node's deps.
+
 ## Leads for other streams
 
 - **E:** a plugin command's plain `throw` (`commands.probe.run` throwing
@@ -577,3 +605,8 @@ No defect.
   output directories by run end, so the next hit skips the walk" read
   `outputDirRows` as `[]` once in a full gate under load (two sweeps
   beside it); 3 of 3 alone and its shard alone pass. Cause not found.
+- **D:** `config-eval.test.ts` › "a REJECTED evaluation does not poison
+  a later one" failed on #1618's macOS job: `config worker did not
+answer within 250ms` where the config's own error was due. The row
+  gives the worker a 250 ms budget; the same content passed that job a
+  rebase earlier.

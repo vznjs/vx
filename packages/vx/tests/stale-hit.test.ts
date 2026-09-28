@@ -1801,17 +1801,99 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
     TIMEOUT,
   )
 
+  // A requested dependency keeps its edge (item 980), so the requested task
+  // the derivation keys is one BELOW a skipped one: `base#build` under the
+  // skipped `lib#build`. A requested task folds what `--` forwards.
   it(
-    'a skipped dependency that is requested folds the forwarded arguments, as the full run does',
+    'a requested task beneath a skipped one folds the forwarded arguments, as the full run does',
     async () => {
-      await libApp()
+      await baseLibApp()
       const hashOf = (...flags: string[]): string => {
         const plan = JSON.parse(
-          vx(root, 'run', 'app#build', 'lib#build', '--dry=json', ...flags, '--', '--mode=ci'),
+          vx(root, 'run', 'app#build', 'base#build', '--dry=json', ...flags),
         ) as { tasks: Array<{ id: string; hash: string }> }
         return plan.tasks.find((t) => t.id === 'app#build')!.hash
       }
-      expect(hashOf('--exclude-dependencies')).toBe(hashOf())
+      const forwarded = ['--', '--mode=ci']
+      const full = hashOf(...forwarded)
+      expect([hashOf('--exclude-dependencies=build', ...forwarded), full === hashOf()]).toEqual([
+        full,
+        false,
+      ])
+    },
+    TIMEOUT,
+  )
+
+  // Two scheduled tasks each lose an edge, one of them two: every dropped
+  // task is keyed, not the first task's nor the first of a task's list.
+  it(
+    'every skipped dependency of every dependant is keyed, as the full run does',
+    async () => {
+      const { lib } = await baseLibApp()
+      await write(path.join(lib, 'package.json'), '{"name":"lib","version":"1.0.0"}')
+      const tool = path.join(root, 'packages', 'tool')
+      const top = path.join(root, 'packages', 'top')
+      await write(path.join(tool, 'package.json'), '{"name":"tool","version":"1.0.0"}')
+      await write(
+        path.join(tool, 'vx.config.mjs'),
+        `export default { tasks: { build: {
+           exec: { command: 'true' },
+           cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+         } } }\n`,
+      )
+      await write(path.join(tool, 'src', 't.txt'), 't')
+      await write(
+        path.join(top, 'package.json'),
+        '{"name":"top","version":"1.0.0","dependencies":{"tool":"workspace:*"}}',
+      )
+      await write(
+        path.join(top, 'vx.config.mjs'),
+        `export default { tasks: { build: {
+           dependsOn: ['^build'],
+           exec: { command: 'true' },
+           cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+         } } }\n`,
+      )
+      await write(path.join(top, 'src', 't.txt'), 't')
+      await write(
+        path.join(root, 'packages', 'app', 'package.json'),
+        '{"name":"app","version":"1.0.0","dependencies":{"lib":"workspace:*","base":"workspace:*"}}',
+      )
+      git(root, 'add', '-A')
+      git(root, 'commit', '-q', '-m', 'two dependants')
+      const hashes = (...flags: string[]): string[] => {
+        const plan = JSON.parse(
+          vx(root, 'run', 'app#build', 'top#build', '--dry=json', ...flags),
+        ) as { tasks: Array<{ id: string; hash: string }> }
+        return ['app#build', 'top#build'].map((id) => plan.tasks.find((t) => t.id === id)!.hash)
+      }
+      expect(hashes('--exclude-dependencies')).toEqual(hashes())
+    },
+    TIMEOUT,
+  )
+
+  // `--continue=always` taints a task behind a failed upstream, and the
+  // skipped dependency reaches the task as a synthetic outcome: one that
+  // reads as failed would withhold the save of a task that folds nothing.
+  it(
+    'under --continue=always a task that folds no skipped key still saves',
+    async () => {
+      const { app } = await libApp()
+      await write(
+        path.join(app, 'vx.config.mjs'),
+        `export default { tasks: { build: {
+           dependsOn: ['^build'],
+           exec: { command: 'mkdir -p dist && cat src/a.txt > dist/app.txt' },
+           cache: { inputs: { files: ['src/**'], tasks: [] }, outputs: { files: ['dist/**'] } },
+         } } }\n`,
+      )
+      git(root, 'add', '-A')
+      git(root, 'commit', '-q', '-m', 'app folds no task')
+      const out = vx(root, 'run', 'app#build', '--exclude-dependencies', '--continue=always')
+      expect([
+        out.includes('1 miss'),
+        vx(root, 'run', 'app#build').includes('1 up-to-date'),
+      ]).toEqual([true, true])
     },
     TIMEOUT,
   )
