@@ -249,3 +249,10 @@ The last `miss-save.ts` survivors: the workspace-row filter in the snapshot's `e
 
 - Rows (`output-dirs.test.ts`): `isOutputsCurrent` trusts a row only when every field agrees (a planted row off by one field); a stamp is taken only for a file that still matches its row, with a control. Five survivors red under them.
 - Equivalent, no row: an unstamped row (`ino` undefined never equals a real inode), a dir recorded absent that now exists (its mtime is never −1), and the walk's symlink guard (a symlink's dirent never reports a directory).
+
+### A-28 (2026-09-28, sweep: `archive.ts`)
+
+15 mutants of the restore's safety checks (every name refusal, the three `..` spellings, the destination and link-out containment): 12 caught. Every `..` row carries an inner `/../`, so the leading and trailing clauses of `hasParentSegment` were unheld, even as a pair with the containment check.
+
+- Rows (`archive-security.test.ts`): a trailing `..` (`outputs/x/..`, which names the destination itself) and a leading `..`, each refused by the name clause's own message. Both red under their mutant.
+- Unreachable alone: the destination-containment check, which every `..` spelling now meets after the name check (item 486 records the pair as deliberate).

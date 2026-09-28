@@ -192,6 +192,19 @@ describe('archive restore — path-traversal defense', () => {
     await expect(restore(tar, dest)).rejects.toThrow(/name escapes via/i)
   })
 
+  // The other two spellings of a `..` segment, each held by its own
+  // clause's message (A-28): every row above carries an inner `/../`, so
+  // the leading and trailing clauses of `hasParentSegment` were unheld.
+  it('rejects a trailing `..` (outputs/x/..), which names the destination itself', async () => {
+    const tar = tarWithEntry('outputs/x/..', new TextEncoder().encode('pwned'))
+    await expect(restore(tar, dest)).rejects.toThrow(/name escapes via/i)
+  })
+
+  it('rejects a leading `..` (../outputs/escape.txt)', async () => {
+    const tar = tarWithEntry('../outputs/escape.txt', new TextEncoder().encode('pwned'))
+    await expect(restore(tar, dest)).rejects.toThrow(/name escapes via/i)
+  })
+
   it('rejects entry with double `..` (outputs/../../escape.txt)', async () => {
     const body = new TextEncoder().encode('pwned')
     const tar = tarWithEntry('outputs/../../escape.txt', body)
