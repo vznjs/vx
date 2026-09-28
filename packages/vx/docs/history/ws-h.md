@@ -480,6 +480,16 @@ or `description` prose does not, except where the name is a property
 `bun` from `info.json` failed naming both leaves; mutating the prose rule
 either way failed the unit row.
 
+## H-40: how vx finds a workspace is a record
+
+The versioning table froze no discovery: dropping `workspaces.packages`,
+reordering `vx.config.ts` before `.mts`, or changing which root a member
+resolves to passed every contract test. `tests/contract/discovery.json`
+records, from the real discovery on fixtures, each layout's projects,
+the root found from inside a member, and every config file name
+precedence (project and workspace). Differential: swapping the first two
+`PROJECT_CONFIG_FILENAMES` failed it; restored, passes.
+
 ## Leads for other streams
 
 - **A:** a task that rewrites its own input with the same bytes is never

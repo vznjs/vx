@@ -19,6 +19,7 @@
     "docs/turbo-nx-support.md",
     "tests/contract/turbo-nx",
     "tests/contract/vx-lock.json",
-    "tests/contract/cli-surface.json"
+    "tests/contract/cli-surface.json",
+    "tests/contract/discovery.json"
   ]
 }

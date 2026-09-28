@@ -19,6 +19,7 @@ adds to them, and only a major removes or changes one.
 | The CLI: verbs, flags, exit codes, and the machine-readable outputs (`--dry=json`, `--graph`, `--summarize`, `vx mcp`'s tools)                                         | `docs/cli.md`; verbs, flags and their values recorded in `tests/contract/cli-surface.json`; exit codes recorded in `tests/contract/exit-codes.json`; `--dry=json`, `--summarize` and `--graph` recorded in `tests/contract/cli-wire.json`; `vx mcp`'s tools in `packages/vx-mcp/tests/contract/tools.json` |
 | The lock file: `vx-lock.json`, what `vx lock` writes and `vx lock --check` / `--frozen` read                                                                           | `src/workspace/lockfile.ts` (`LOCKFILE_VERSION`), `docs/cli.md`; recorded in `tests/contract/vx-lock.json`                                                                                                                                                                                                 |
 | The environment variables vx reads (`VX_*`)                                                                                                                            | `docs/cli.md` § Environment variables vx reads, held to the source by `tests/env-doc-drift.test.ts`; recorded in `tests/contract/cli-surface.json`                                                                                                                                                         |
+| Workspace discovery: which manifests make a root and list its projects, which root a run from inside a member finds, and which config file names load, in which order  | `src/workspace/workspace.ts`, `src/workspace/project-loader.ts`; recorded in `tests/contract/discovery.json`                                                                                                                                                                                               |
 | What each npm package ships: the files `npm publish` uploads for `@vzn/vx` and every plugin                                                                            | `scripts/build-npm.ts`; recorded in `tests/contract/pack/`                                                                                                                                                                                                                                                 |
 | Task-glob semantics: which paths a pattern selects (item 667 made `[` literal; that reading is now part of the contract)                                               | `docs/schema.md`, `docs/caching.md`                                                                                                                                                                                                                                                                        |
 
@@ -178,6 +179,13 @@ tag fails there instead of passing.
   the CLI's source spells and fixed grammar probes (numbers, durations,
   sizes, cache modes) it takes. A dropped verb, flag, value or variable is
   a removed line there.
+- **Workspace discovery.** `tests/contract-discovery.test.ts` builds a
+  fixture for each layout (`pnpm-workspace.yaml`, `workspaces` as an
+  array or `{ packages }`, a negated and a recursive glob, both manifests
+  at once, none), asks the real discovery for its projects and for the
+  root found from inside a member, and loads every precedence of the four
+  project and four workspace config file names. The answers are
+  `tests/contract/discovery.json`.
 - **Exit codes.** `tests/contract-exit-codes.test.ts` drives each
   documented outcome (a task failing, an unknown task, flag or verb,
   nothing affected, an unwritable `--graph`, `cache prune` without a
