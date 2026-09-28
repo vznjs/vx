@@ -88,6 +88,37 @@ describe('resolveSharedOutputs: the edge orders a pair in either direction', () 
     expect(ts[2]!.todos[0]).toContain('"b" also declares')
   })
 
+  it('with a ^-edge keeper, a third task is still checked against a kept sibling', () => {
+    // Later passes re-check a pair only against their own keeper; with the
+    // keeper holding the ^ edge they pick it again, so only the kept list
+    // sees b and c unordered.
+    const ts = resolveSharedOutputs([
+      task('a', ['dist/**'], ['^build']),
+      task('b', ['dist/**'], ['a']),
+      task('c', ['dist/**'], ['a']),
+    ])
+    expect(cached(ts)).toEqual([true, true, false])
+    expect(ts[2]!.todos[0]).toContain('"b" also declares')
+  })
+
+  it('a kept task it does not overlap needs no edge', () => {
+    const ts = resolveSharedOutputs([
+      task('a', ['dist/**'], ['^build']),
+      task('b', ['dist/x'], ['a']),
+      task('c', ['dist/y'], ['a']),
+    ])
+    expect(cached(ts)).toEqual([true, true, true])
+  })
+
+  it('a same-project edge is not a ^ edge: the first declared keeps', () => {
+    const ts = resolveSharedOutputs([
+      task('a', ['out/**']),
+      task('b', ['out/**'], ['lint']),
+      { name: 'lint', todos: [], task: { exec: { command: 'lint' } } },
+    ])
+    expect(cached(ts)).toEqual([true, false, false])
+  })
+
   it('a dependsOn cycle terminates', () => {
     const ts = resolveSharedOutputs([
       task('x', ['dist/**'], ['y']),

@@ -322,3 +322,11 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   `DIGEST_VERSION` value (the memo's identity; a row would restate the
   constant) and the unprefixed-message branch (every parser names its
   file).
+- **G-25.** A mutation sweep of `vx-migrate/src/shared-outputs.ts` (22
+  mutants): 14 caught, one hang (a cycle without its `seen` set), seven
+  survived. Three were real and each now has a row
+  (`helpers-sweep.test` › the edge orders a pair): a third task is
+  checked against every kept sibling, not only a `^`-edge keeper; a
+  kept task it does not overlap needs no edge; a same-project edge is
+  not a `^` edge. Four are equivalent: a non-string or empty output
+  list never overlaps, and a `^name` in the local walk names no task.
