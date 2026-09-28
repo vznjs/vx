@@ -10,7 +10,8 @@ Write the two optional run artifacts:
   / Perfetto visualization.
 
 Both are no-ops when the corresponding `RunOptions` field is
-undefined.
+undefined. The summary's wire is `RunSummaryJson`; `schemas/summary.json`
+states it and `tests/cli-json-schemas.test.ts` holds it.
 
 ## Public surface
 
@@ -27,6 +28,41 @@ export interface SummarizeArgs {
   exitCode?: number // the exit code where it is not `ok ? 0 : 1`: a stopping signal's
   outcomes: readonly TaskOutcome[]
   flaky?: readonly FlakyFinding[] // detectFlaky's findings → per-task `flaky`
+}
+
+export interface SummaryTaskJson {
+  id: string
+  project: string
+  task: string
+  status: TaskOutcome['status']
+  exitCode: number
+  durationMs: number
+  hash: string | null
+  noCache?: true
+  flaky?: { passes: number; failures: number; attempts: number }
+  cpuMs?: number
+  peakRssBytes?: number
+  storedCpuMs?: number
+  storedPeakRssBytes?: number
+  admissionHeldMs?: number
+  blockedBy?: string
+  timedOut?: true
+  sandboxViolations?: number
+  notReady?: 'timeout' | 'exited' | 'spawn'
+  wallclockStartNs?: string
+  wallclockEndNs?: string
+}
+
+export interface RunSummaryJson {
+  runId: string
+  ok: boolean
+  exitCode: number
+  startedAt: string
+  endedAt: string
+  totalMs: number
+  tasks: SummaryTaskJson[]
+  aborted: SummaryTaskJson[]
+  summary: Tally
 }
 
 export interface ProfileArgs {

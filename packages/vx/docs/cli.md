@@ -841,7 +841,7 @@ don't change the run's exit code — the run already happened.
 
 ### `--summarize[=<path>]`
 
-Writes a per-run JSON file:
+Writes a per-run JSON file; `schemas/summary.json` is its JSON Schema:
 
 ```json
 {

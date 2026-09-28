@@ -37,6 +37,12 @@ import type {
 } from '../src/orchestrator/index.js'
 import type { PruneResult } from '../src/cache/layer.js'
 import type { TaskNode } from '../src/graph/index.js'
+import type { Tally } from '../src/orchestrator/tally.js'
+import {
+  writeRunSummary,
+  type RunSummaryJson,
+  type SummaryTaskJson,
+} from '../src/orchestrator/run-artifacts.js'
 import { formatPlanJson, type PlanTaskJson } from '../src/cli/plan-format.js'
 import { declaredPaths, validate } from './helpers/json-schema.js'
 import { PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
@@ -106,6 +112,7 @@ const outputs: Record<string, unknown[]> = {
   last: [],
   cache: [],
   plan: [],
+  summary: [],
 }
 
 function vx(args: string[]): { code: number; out: string; err: string } {
@@ -184,6 +191,85 @@ beforeAll(async () => {
       }),
     ),
   )
+  const sum = path.join(root, 'summary.json')
+  expect(vx(['run', 'build', '--filter', 'app...', `--summarize=${sum}`]).code).toBe(0)
+  outputs['summary']!.push(JSON.parse(readFileSync(sum, 'utf8')))
+  // The rows only a timeout, a sandbox, an admit policy, a remote hit, a
+  // flake and a Ctrl-C provoke, built by hand through the same writer.
+  const summaryNode = (id: string, cached: boolean) =>
+    ({
+      id,
+      projectName: id.split('#')[0],
+      taskName: id.split('#')[1],
+      config: {
+        exec: { command: 'true' },
+        ...(cached ? { cache: { inputs: { files: [] }, outputs: { files: [] } } } : {}),
+      },
+    }) as unknown as TaskNode
+  await writeRunSummary({
+    target: sum,
+    cacheDir: root,
+    cwd: root,
+    runId: 'r1',
+    startedAtMs: 0,
+    endedAtMs: 1,
+    totalMs: 1,
+    ok: false,
+    exitCode: 130,
+    outcomes: [
+      {
+        node: summaryNode('a#build', true),
+        status: 'cache-hit-remote',
+        exitCode: 0,
+        durationMs: 1,
+        hash: 'k1',
+        storedCpuMs: 1,
+        storedPeakRssBytes: 2,
+        admissionHeldMs: 3,
+        wallclockStartNs: 1n,
+        wallclockEndNs: 2n,
+      },
+      {
+        node: summaryNode('a#test', false),
+        status: 'failed',
+        exitCode: 1,
+        durationMs: 1,
+        hash: 'k2',
+        cpuMs: 1,
+        peakRssBytes: 2,
+        timedOut: true,
+        sandboxViolations: 1,
+      },
+      {
+        node: summaryNode('a#dev', false),
+        status: 'failed',
+        exitCode: 1,
+        durationMs: 0,
+        notReady: 'timeout',
+      },
+      {
+        node: summaryNode('a#e2e', false),
+        status: 'skipped',
+        exitCode: 0,
+        durationMs: 0,
+        blockedBy: 'a#test',
+      },
+      { node: summaryNode('a#lint', false), status: 'aborted', exitCode: 130, durationMs: 0 },
+    ],
+    flaky: [
+      {
+        taskId: 'a#test',
+        project: 'a',
+        task: 'test',
+        hash: 'k2',
+        status: 'failed',
+        attempts: 2,
+        passes: 1,
+        failures: 1,
+      },
+    ],
+  })
+  outputs['summary']!.push(JSON.parse(readFileSync(sum, 'utf8')))
   // History older than run ids: `vx why` falls back to the cache entry.
   const db = new Database(path.join(root, '.vx', 'cache', 'cache.db'))
   db.run("UPDATE runs SET run_id = NULL WHERE project = 'lib' AND task = 'build'")
@@ -200,7 +286,7 @@ afterAll(async () => {
   await rm(root, { recursive: true, force: true })
 })
 
-const VERBS = ['show', 'info', 'why', 'last', 'cache', 'plan']
+const VERBS = ['show', 'info', 'why', 'last', 'cache', 'plan', 'summary']
 
 describe('read verbs hold their --format json to a checked-in schema', () => {
   it('ships one schema per read verb, and nothing else', () => {
@@ -438,6 +524,63 @@ describe('each schema object is its source type', () => {
     )
     expect(props('plan', 'properties', 'downloadDowngrades', 'items')).toEqual(
       keys<NonNullable<RunPlan['downloadDowngrades']>[number]>({ taskId: true, reason: true }),
+    )
+  })
+
+  it('summary', () => {
+    expect(props('summary')).toEqual(
+      keys<RunSummaryJson>({
+        runId: true,
+        ok: true,
+        exitCode: true,
+        startedAt: true,
+        endedAt: true,
+        totalMs: true,
+        tasks: true,
+        aborted: true,
+        summary: true,
+      }),
+    )
+    expect(def('summary', 'task')).toEqual(
+      keys<SummaryTaskJson>({
+        id: true,
+        project: true,
+        task: true,
+        status: true,
+        exitCode: true,
+        durationMs: true,
+        hash: true,
+        noCache: true,
+        flaky: true,
+        cpuMs: true,
+        peakRssBytes: true,
+        storedCpuMs: true,
+        storedPeakRssBytes: true,
+        admissionHeldMs: true,
+        blockedBy: true,
+        timedOut: true,
+        sandboxViolations: true,
+        notReady: true,
+        wallclockStartNs: true,
+        wallclockEndNs: true,
+      }),
+    )
+    expect(def('summary', 'task', 'properties', 'flaky')).toEqual(
+      keys<NonNullable<SummaryTaskJson['flaky']>>({ passes: true, failures: true, attempts: true }),
+    )
+    expect(props('summary', 'properties', 'summary')).toEqual(
+      keys<Tally>({
+        successful: true,
+        failed: true,
+        skipped: true,
+        cachedLocal: true,
+        restoredLocal: true,
+        restoredRemote: true,
+        upToDate: true,
+        cachedRemote: true,
+        aborted: true,
+        total: true,
+      }),
     )
   })
 
