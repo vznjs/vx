@@ -130,8 +130,9 @@ export interface VxPlugin {
    * Admission over the worker count: asked for every task about to start
    * on this machine, with the tasks running here right now. Return `false`
    * to hold it until something finishes (it is asked again then). Asked
-   * many times per run, so it must be cheap and synchronous; a throw is
-   * reported once and the plugin admits from then on — a policy never
+   * many times per run, so it must be cheap and synchronous; a throw, or
+   * an answer that is a Promise, is reported once and the plugin admits
+   * from then on — a policy never
    * breaks a run. Restore-tier hits and tasks on an executor pool hold no
    * local resources and are never asked. When several plugins answer, all
    * must admit. Core keeps no notion of what a task needs: a plugin that
@@ -144,7 +145,8 @@ export interface VxPlugin {
 
   /**
    * Verbs this plugin adds to the `vx` CLI, keyed by name. Consulted only
-   * for a verb core does not know — core's own verbs always win — and only
+   * for a verb core does not know — a verb named like a core verb is
+   * refused at load — and only
    * when the cwd is inside a workspace that declares the plugin. `vx help`
    * lists them under "Plugin commands". A verb's exit code is the process
    * exit code; a thrown `UserError` prints cleanly, like core's own.
@@ -348,6 +350,18 @@ export type PluginHookName =
   | 'onRunStatus'
   | 'onRunEnd'
 
+// A Record so the compiler holds it to `PluginHookName` both ways: a name
+// missing here, or one the type lacks, does not compile.
+const HOOK_NAMES: Record<PluginHookName, true> = {
+  onRunStart: true,
+  onTaskStart: true,
+  onTaskStdout: true,
+  onTaskStderr: true,
+  onTaskComplete: true,
+  onRunStatus: true,
+  onRunEnd: true,
+}
+
 export interface PluginHookHandlers {
   onRunStart: (info: RunStartInfo) => void | Promise<void>
   onTaskStart: (node: TaskNode) => void | Promise<void>
@@ -508,6 +522,13 @@ export async function installPlugins(args: InstallPluginsArgs): Promise<() => vo
         },
       },
       on(hook, handler) {
+        // A misspelt name ('taskComplete') subscribed a handler that never
+        // ran, and no word of it; a config file has no type-checker (H-16).
+        if (!Object.hasOwn(HOOK_NAMES, hook)) {
+          throw new Error(
+            `ctx.on: unknown hook '${String(hook)}' (one of ${Object.keys(HOOK_NAMES).join(', ')})`,
+          )
+        }
         const fail = (err: unknown): void => {
           if (disabled.has(plugin.name)) return
           disabled.add(plugin.name)

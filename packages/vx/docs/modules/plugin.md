@@ -12,30 +12,36 @@ behavior lives in the plugin package (vite-style), not in core.
 
 ## Capabilities
 
-| Capability             | Consulted by         | Contract                                                                                                                                                             |
-| ---------------------- | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `executor(ctx)`        | `plugin-host.ts`     | return a `TaskExecutor` or decline; ALL kept in order, first accepting runs                                                                                          |
-| `config(ws, ctx)`      | every verb, first    | edit the workspace config in place before anything is derived from it (`cacheDir` too); re-validated after EACH plugin                                               |
-| `project(cfg, ctx)`    | per loaded config    | add/remove/edit a project's tasks in place; core re-validates after EACH plugin, by name                                                                             |
-| `graph(nodes, ctx)`    | after graph build    | edit `deps`/`requested` in place; the builder's checks run again (item 981)                                                                                          |
-| `key(task, ctx)`       | per task, at hash    | `{ name: value }` material folded into the key and named in `vx why`                                                                                                 |
-| `fingerprint`          | claim, static        | `{ files, affected(change, ctx) }`: the workspace-fingerprint files this plugin keys per project; one claimant each                                                  |
-| `schedule(nodes, ctx)` | before scheduling    | task id → weight, merged over the structural baseline; later plugin wins per task                                                                                    |
-| `admit(task, ctx)`     | every local dispatch | `false` holds a ready task beside `ctx.running` until something finishes (with nothing running, it is overridden, by name); sync, cheap; a throw admits from then on |
-| `commands`             | unknown CLI verb     | `{ verb: { description, run(argv, ctx) } }`; core verbs win; listed by `vx help`                                                                                     |
-| `cache(ctx)`           | run setup            | return a `CacheLayer` or decline; ALL kept in order and chained (see chained-cache.md)                                                                               |
-| `telemetry(ctx)`       | `telemetry-host.ts`  | return sink(s) or decline                                                                                                                                            |
-| `setup(ctx)`           | `installPlugins`     | validate config; throw `UserError`                                                                                                                                   |
-| `teardown()`           | end-of-run           | flush/close; crash-isolated, 3s-bounded                                                                                                                              |
+| Capability             | Consulted by         | Contract                                                                                                                                                                          |
+| ---------------------- | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `executor(ctx)`        | `plugin-host.ts`     | return a `TaskExecutor` or decline; ALL kept in order, first accepting runs                                                                                                       |
+| `config(ws, ctx)`      | every verb, first    | edit the workspace config in place before anything is derived from it (`cacheDir` too); re-validated after EACH plugin                                                            |
+| `project(cfg, ctx)`    | per loaded config    | add/remove/edit a project's tasks in place; core re-validates after EACH plugin, by name                                                                                          |
+| `graph(nodes, ctx)`    | after graph build    | edit `deps`/`requested` in place; the builder's checks run again (item 981)                                                                                                       |
+| `key(task, ctx)`       | per task, at hash    | `{ name: value }` material folded into the key and named in `vx why`                                                                                                              |
+| `fingerprint`          | claim, static        | `{ files, affected(change, ctx) }`: the workspace-fingerprint files this plugin keys per project; one claimant each                                                               |
+| `schedule(nodes, ctx)` | before scheduling    | task id → weight, merged over the structural baseline; later plugin wins per task                                                                                                 |
+| `admit(task, ctx)`     | every local dispatch | `false` holds a ready task beside `ctx.running` until something finishes (with nothing running, it is overridden, by name); sync, cheap; a throw or a Promise admits from then on |
+| `commands`             | unknown CLI verb     | `{ verb: { description, run(argv, ctx) } }`; a core verb's name is refused; `vx help`                                                                                             |
+| `cache(ctx)`           | run setup            | return a `CacheLayer` or decline; ALL kept in order and chained (see chained-cache.md)                                                                                            |
+| `telemetry(ctx)`       | `telemetry-host.ts`  | return sink(s) or decline                                                                                                                                                         |
+| `setup(ctx)`           | `installPlugins`     | validate config; throw `UserError`                                                                                                                                                |
+| `teardown()`           | end-of-run           | flush/close; crash-isolated, 3s-bounded                                                                                                                                           |
 
 ## Invariants
 
 - **Decline-fast**: every capability must return `undefined` cheaply
   when unconfigured — a plain run with declared-but-unconfigured
   plugins is zero-overhead (measured ~116ms unchanged).
-- `setup` throws fail the run with a clean error naming the plugin;
-  everything else is crash-isolated (observability never breaks a run),
-  an async hook's rejection as its throw.
+- A throw in `setup`, a stage (`config`, `project`, `graph`, `key`,
+  `schedule`) or an `executor` / `cache` factory fails the run in one
+  line naming the plugin and the hook: what a plugin shapes is
+  load-bearing. The observers are isolated (observability never breaks a
+  run): a `telemetry` factory or sink, a `ctx.on` handler and `teardown`
+  are warned and switched off,
+  and a throwing `admit` (or one that answers a Promise) admits from then
+  on. An async hook's rejection counts as its throw. `ctx.on` with a
+  hook name it does not know fails the load (H-16).
 - `teardown()` and every telemetry sink's `flush()` ARE invoked at
   end-of-run, each under try/catch and a time bound — plugins may rely
   on them to drain buffers. A run a SIGINT/SIGTERM/SIGHUP stops is no

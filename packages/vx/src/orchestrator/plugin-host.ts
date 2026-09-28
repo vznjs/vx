@@ -323,7 +323,15 @@ export function buildAdmission(
     for (const plugin of answering) {
       if (broken.has(plugin)) continue
       try {
-        if (plugin.admit!(task, ctx) !== false) continue
+        const verdict: unknown = plugin.admit!(task, ctx)
+        // An `async admit` answers a Promise: truthy, so it admitted every
+        // task and its policy never ran, and its rejection was unhandled and
+        // ended the run with a stack (H-16). Named once, admitting after.
+        if (verdict instanceof Promise) {
+          verdict.catch(() => {})
+          throw new Error('returned a Promise; admit is synchronous')
+        }
+        if (verdict !== false) continue
         if (running.size > 0) return false
         if (!overridden.has(plugin)) {
           overridden.add(plugin)
