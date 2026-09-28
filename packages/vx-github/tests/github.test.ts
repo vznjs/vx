@@ -109,6 +109,31 @@ describe('renderJobSummary', () => {
     expect(md).toContain('- **lib#build** — exit 3 · blocked app#build, web#build\n')
   })
 
+  it('what failures blocked is found in one pass, however many failed', () => {
+    // A scan of every task per failure: 10 000 failures of 20 000 tasks
+    // rendered in 1.3 s, 35 ms grouped (F-38).
+    const walks = (failures: number): number => {
+      const tasks = Array.from({ length: failures }, (_, i) => [
+        task({ taskId: `f${i}#build`, status: 'failed', exitCode: 1 }),
+        task({ taskId: `s${i}#build`, status: 'skipped', exitCode: 1, blockedBy: `f${i}#build` }),
+      ]).flat()
+      const s = summary(tasks)
+      let n = 0
+      const counted = new Proxy(s.tasks, {
+        get(target, key, receiver) {
+          if (key === 'filter' || key === 'map' || key === 'forEach' || key === Symbol.iterator) n++
+          return Reflect.get(target, key, receiver)
+        },
+      })
+      const md = renderJobSummary({ ...s, tasks: counted })
+      expect(md).toContain(
+        `- **f${failures - 1}#build** — exit 1 · blocked s${failures - 1}#build\n`,
+      )
+      return n
+    }
+    expect(walks(50)).toBe(walks(1))
+  })
+
   it('a persistent task that never became ready reads its reason', () => {
     const md = renderJobSummary(
       summary([task({ taskId: 'b#dev', status: 'failed', exitCode: 1, notReady: 'timeout' })]),

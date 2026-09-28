@@ -395,3 +395,10 @@ and for a Tree's files alike; directories are still fenced and made
 before any file is written into them. 2 000 small output files, no
 latency: 1 167 → 254 ms; a 2 000-directory Tree: 2 146 → 1 519 ms (min
 of 5, interleaved). Rows red without the fix.
+
+F-38. vx-github's job summary found the tasks each failure blocked by
+scanning every task once per failure, so a mass failure rendered in
+quadratic time: 10 000 failures of 20 000 tasks took 1.3 s of the
+flush's bounded time. Blocked tasks are now grouped by their blocker in
+one pass: 1 310 → 35 ms, output byte-identical (a mixed 3 000-task
+summary compared against main's). Row red without the fix.
