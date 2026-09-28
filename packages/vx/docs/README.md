@@ -207,7 +207,7 @@ contract, and cross-module imports go through it only, enforced by
 | `exec/`         | per-task execution primitives (spawn, env, sandbox), the local executor (the floor) |
 | `util/`         | small shared helpers                                                                |
 
-Every source file has a page under [`modules/`](./modules/). Tests live
+Every source file is documented under [`modules/`](./modules/). Tests live
 in `tests/`. The published plugin packages are `@vzn/vx-reapi` (Bazel
 remote cache and remote execution), `@vzn/vx-otel` (OpenTelemetry
 traces, metrics and logs), `@vzn/vx-github` (job summary and Checks API),
