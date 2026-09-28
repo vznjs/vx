@@ -1664,6 +1664,17 @@ it is left verbatim, and so is one whose target becomes no task (a
 lifecycle script, or a hook folded into another script): a group over
 it would name a task nothing defines (D-12).
 
+`vx init --plugin <seam>` writes a plugin instead: `plugins/<seam>.ts`,
+a small runnable plugin for that seam (`executor`, `cache`,
+`telemetry`, `schedule`, `admit`, `commands`, `project`, `graph`,
+`key`), and `plugins/<seam>.test.ts`, which drives it through `run()`
+(`bun test`, with `@vzn/vx` installed). It prints the line that
+declares it in `vx.workspace.ts`. An existing file is refused without
+`--force`; `--dry` names the files and writes nothing. The two files are
+`packages/vx-plugin-examples/plugins`, which the gate runs, copied into
+core (`src/cli/plugin-templates.ts`) and held equal by
+`tests/plugin-templates.unsafe.test.ts` (H-21).
+
 ## `vx migrate`
 
 Moved out of core on 2026-09-10: the Turbo and Nx mappers are
