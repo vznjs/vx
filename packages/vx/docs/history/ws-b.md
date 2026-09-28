@@ -667,3 +667,11 @@ sandboxed, 488 plain, so ~17 ms per task, besides the child processes
 - Refuted: taking the temp dir's `rm` off the event loop. Interleaved,
   7 runs per arm: min 3,241 → 3,336 ms, median 3,467 → 3,551; the loop
   was not the bottleneck. Not shipped.
+
+B-34. The text plan and the run agree on a remote-only noop (supervisor
+lead; C-48 had labelled it `@noop` and kept it out of the prediction).
+`--dry`'s line still read `cache miss — would exec` and its summary
+counted the task under "would run"; the line now reads `∅ … noop —
+would not run` and the summary counts `noop`. A row in
+`plugin-capabilities.test.ts` plans then runs one workspace: `@noop` in
+the plan, no tombstone after the run, the dependent built.
