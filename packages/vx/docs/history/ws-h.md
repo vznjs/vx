@@ -312,6 +312,22 @@ re-exported namespaces (core's record is unchanged). The API-break law
 diffs these records against the last tag too: a line dropped from
 `vx-mcp.txt` under a probe tag turned it red.
 
+## H-27: a PR that breaks the API says so in its title
+
+The break law judged commits since the last tag, after the merge; a
+reviewer saw nothing in the title. `api-break.unsafe.test.ts` now also
+diffs the API records between a PR's base and head (CI passes both with
+the title, H-23) and fails unless the title is `type!:`. A probe PR that
+dropped `mcp` from `vx-mcp.txt`, or deleted the record, failed under
+`fix:` and passed under `fix!:`. It fixed H-25's record listing:
+`git ls-tree <ref>:./<dir>` lists nothing, so a record deleted since the
+tag was never diffed.
+
+H-25 itself merged while F-42 added a `vx-github` option and turned main
+red; #1600 re-recorded it. Two PRs in flight, one changing a plugin's
+exports and one its record, cannot see each other: the record lands
+behind.
+
 ## Leads for other streams
 
 - **F:** `vx mcp`'s tools are a frozen 1.0 output (`versioning-1.0.md`), held only by name (`server.test.ts`): their input schemas and result shapes have no record.
