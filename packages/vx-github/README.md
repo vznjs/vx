@@ -19,7 +19,8 @@ export default defineWorkspace({
 ```
 
 That's the whole setup. On a GitHub Actions runner (`GITHUB_STEP_SUMMARY`
-set) every `vx run` appends a summary block: verdict headline, stats
+set) every `vx run` appends a summary block, on its own line after
+anything another step wrote: verdict headline, stats
 (tasks / executed / cache hits / duration), failures called out above the
 per-task table with their exit code, the signal an exit above 128
 stands for (`exit 137 (128 + SIGKILL)`, as the run's own frame and
