@@ -89,6 +89,12 @@
   ingest bound (L-5) saw a byte. The signed body is now held to core's
   ceiling at zstd's bound, by its length header or a running count. Row
   in `turbo-cache-sweep.test.ts`. The G lead it came from is closed.
+- L-9. `fix(vx-migrate)`: `turboCache()`'s batch query read its JSON
+  reply whole, with only the request's timeout for a bound: a reply that
+  ran on took memory until it ended. It is now read no further than 4 KiB
+  per hash asked plus 64 KiB; past that it is no answer, and each hash is
+  asked on its own, as for any other non-answer. Row in
+  `turbo-cache-sweep.test.ts`. The G lead it came from is closed.
 
 ## Leads for other streams
 
@@ -113,6 +119,3 @@
 - D (config): the purity gate lets `new Worker('./x.ts')` through; the
   worker's file is outside the hashed closure, so its reads (env, clock)
   can be cached stale.
-- G (adoption): `turboCache()`'s `hasMany` reads its JSON reply with no
-  byte bound (the request's timeout is the only one); the signed-body half
-  of this lead is L-8.

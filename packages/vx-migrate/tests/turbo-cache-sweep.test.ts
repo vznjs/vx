@@ -119,6 +119,32 @@ describe('what a status means', () => {
     )
   })
 
+  it('a batch reply past its bound is no answer, read no further (L-9)', async () => {
+    let pulled = 0
+    const chunk = new Uint8Array(64 * 1024).fill(32)
+    const { fetchImpl } = stub(
+      () =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            pull(c) {
+              if (pulled >= 64 * 1024 * 1024) return c.close()
+              pulled += chunk.byteLength
+              c.enqueue(chunk)
+            },
+          }),
+        ),
+    )
+    expect({
+      answer: await cacheWith(fetchImpl).hasMany(['aa']),
+      stopped: pulled < 1024 * 1024,
+    }).toEqual({ answer: null, stopped: true })
+    // A length header past the bound is not read at all.
+    const { fetchImpl: declared } = stub(
+      () => new Response('{}', { headers: { 'content-length': String(1024 * 1024) } }),
+    )
+    expect(await cacheWith(declared).hasMany(['aa'])).toBeNull()
+  })
+
   it('a duration header of 0 or Infinity is no duration', async () => {
     for (const d of ['0', 'Infinity']) {
       const { fetchImpl } = stub(() => new Response('x', { headers: { 'x-artifact-duration': d } }))
