@@ -114,7 +114,7 @@ export function listRuns(db: Database, args: ListRunsArgs = {}): RunSummaryRow[]
 /**
  * One `vx run` invocation header — every `invocations` column, camelCased,
  * `tags` parsed to a `Record<string,string>` and `dirty`/`ci`/`exitOk`
- * surfaced as booleans. Superset of the old `InvocationRow`: the SPA's
+ * surfaced as booleans. The SPA's
  * existing fields (runId / startedAt / endedAt / taskCount / failedCount /
  * hitCount / totalDurationMs) are all present, so existing views keep working.
  */
@@ -146,9 +146,6 @@ export interface InvocationDetail {
   vxVersion: string
   tags: Record<string, string>
 }
-
-/** @deprecated kept as an alias of `InvocationDetail` for older callers. */
-export type InvocationRow = InvocationDetail
 
 interface InvocationRawRow {
   runId: string

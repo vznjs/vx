@@ -34,7 +34,6 @@ vx lock [--check]
 vx init [--dry] [--force] [--mjs]
 vx show [PROJECT[#TASK] | TASK] [--format pretty|json]
 vx info [--format pretty|json] [--cache-dir <path>]
-vx stats              # deprecated alias of vx info
 vx why [TASK | PKG#TASK] [--run <runId>] [--format pretty|json] [--cache-dir <path>]
 vx last [runId] [--list[=N]] [--format pretty|json] [--cache-dir <path>]
 vx upgrade [tag]      # self-update a compiled binary
@@ -1856,9 +1855,6 @@ cgroupLimitBytes }`, the limit null when none binds), `cacheDir`, `cacheVersion`
 declared }`, `declared` the count of tasks with `exec.sandbox`). The
   pretty rows render this object;
   there is no second source.
-- `vx stats` is a **deprecated alias** of `vx info` (info absorbed
-  it); its stdout is byte-identical, and it prints
-  `vx stats is deprecated; use vx info` once on stderr.
 
 ## `vx why`
 
@@ -1939,6 +1935,12 @@ Removed (owner, 2026-09-11). It was a core verb until 2026-09-10 and the
 copy plus `--filter` on the build. Typing `vx prune` prints that and
 exits 1 — unless a declared plugin claims the verb through the
 `commands` seam, which is how a workspace would bring it back.
+
+## `vx stats`
+
+Removed (H-19). It was an alias of `vx info`, which absorbed it, and
+warned on every use. Typing `vx stats` points at `vx info` and exits 1 —
+unless a declared plugin claims the verb through the `commands` seam.
 
 ## `vx last`
 

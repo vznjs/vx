@@ -1,6 +1,6 @@
 // `vx info` — workspace doctor printout. One screen of environment +
 // workspace + cache facts for bug reports and quick sanity checks.
-// `vx stats` is a deprecated alias (info absorbed it). The facts come
+// The facts come
 // from the orchestrator's `collectInfo` (doctor.ts), which `vx mcp` reads
 // too; this file parses the flags and renders the rows.
 

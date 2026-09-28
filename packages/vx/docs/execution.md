@@ -11,7 +11,7 @@ terminal and a task succeeding or failing. Read it alongside
  ┌─ CLI dispatch (src/bin.ts → src/cli/index.ts → src/cli/run.ts)
  │    1. bin.ts spawns; forwards process.argv to cli.run().
  │    2. cli/index.ts dispatches by subcommand (run / watch / cache /
- │       lock / init / upgrade / show / info / stats / why / last /
+ │       lock / init / upgrade / show / info / why / last /
  │       completions / help / version); any other verb is asked of the
  │       workspace's plugins (`commands` seam — `vx mcp` is one).
  │    3. cli/run.ts:parseRunArgs(argv) → RunArgs (validated; resolves

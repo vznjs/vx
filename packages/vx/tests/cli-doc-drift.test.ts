@@ -147,7 +147,10 @@ describe('docs/cli.md — the `vx info --format json` list is the InfoFacts obje
     const doc = await Bun.file(new URL('../docs/cli.md', import.meta.url).pathname).text()
     const start = doc.indexOf('- `--format json` prints the same facts')
     expect(start).toBeGreaterThan(-1)
-    const bullet = doc.slice(start, doc.indexOf('\n- ', start + 1))
+    // The bullet ends at the next bullet or, when it is the section's
+    // last, at the next heading.
+    const ends = ['\n- ', '\n## '].map((s) => doc.indexOf(s, start + 1)).filter((i) => i >= 0)
+    const bullet = doc.slice(start, Math.min(...ends))
     const named = new Set(Array.from(bullet.matchAll(/`(\w+)`/g), (m) => m[1] as string))
     for (const shape of bullet.matchAll(/`[[{][^`]*`/g)) {
       for (const k of shape[0].matchAll(/\w+/g)) named.add(k[0])
@@ -308,7 +311,7 @@ describe('docs/cli.md documents every verb the dispatcher answers', () => {
     const block = /MOVED_VERBS: Readonly<Record<string, string>> = \{([\s\S]*?)\n\}/.exec(moved)
     expect(block).not.toBeNull()
     const names = [...block![1]!.matchAll(/^  (\w+):/gm)].map((m) => m[1]!)
-    expect(names.sort()).toEqual(['migrate', 'prune'])
+    expect(names.sort()).toEqual(['migrate', 'prune', 'stats'])
     for (const name of names) {
       // The doc keeps the section (people search for the verb) and says it
       // is gone, rather than dropping it and leaving a dead end.

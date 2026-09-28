@@ -558,14 +558,14 @@ describe('vx info (e2e)', () => {
   )
 
   it(
-    'vx stats is an alias: byte-identical stdout, one deprecation line on stderr',
+    'vx stats is gone: a pointer to vx info, exit 1, nothing on stdout',
     async () => {
-      const info = await vx(root, ['info'])
       const stats = await vx(root, ['stats'])
-      expect(stats.code).toBe(0)
-      expect(stats.out).toBe(info.out)
-      expect(info.err).toBe('')
-      expect(stats.err).toBe('vx stats is deprecated; use vx info\n')
+      expect([stats.code, stats.out, stats.err]).toEqual([
+        1,
+        '',
+        'vx stats was removed (H-19): run `vx info`, which prints the same report\n',
+      ])
     },
     TIMEOUT,
   )

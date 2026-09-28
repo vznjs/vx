@@ -141,7 +141,6 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     '                       task counts, cache dir/entries/size, recent runs,',
     '                       lock status.',
     '      --format <fmt>   pretty (default) | json.',
-    '  vx stats             Deprecated: alias of vx info.',
     "  vx why <task>        Why did this task re-run? Compares the task's latest",
     '                       run (or --run <id>) against its previous run: names the',
     '                       exact changed cache-key components (files / env / runtime',
