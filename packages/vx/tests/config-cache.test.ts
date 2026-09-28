@@ -786,6 +786,18 @@ describe('loadProjectConfig with an eval cache', () => {
     ])
   })
 
+  it('the watch list reads a config the lexer refuses, and leaves out node_modules (D-20)', async () => {
+    // A division is a `/` the lexer will not guess at; the watch list falls
+    // back to a plain scan, or `vx watch` never saw the preset change.
+    const preset = await write('packages/w/preset.mjs', "export const cmd = 'echo w'\n")
+    await write('packages/w/node_modules/p/i.mjs', 'export const x = 1\n')
+    const cfg = await write(
+      'packages/w/vx.config.mjs',
+      "import { cmd } from './preset.mjs'\nimport { x } from './node_modules/p/i.mjs'\nconst n = 4 / 2\nexport default { tasks: { build: { exec: { command: cmd + n + x } } } }\n",
+    )
+    expect(await configImports(cfg)).toEqual([await realpath(preset)])
+  })
+
   it("a config linked in from elsewhere keys the imports beside its REAL path, not the link's (item 950)", async () => {
     const shared = await write('shared/preset.mjs', "export const cmd = 'echo shared-one'\n")
     await write(
