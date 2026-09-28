@@ -563,6 +563,63 @@ describe('LayeredCache', () => {
     expect(remote.puts).toBe(5)
   })
 
+  it('drainUploads() waits for an upload still running once the queue is empty', async () => {
+    const gates = new Map<string, () => void>()
+    const done: string[] = []
+    const layered = new LayeredCache(local, {
+      ...remote.layer,
+      async put(hash) {
+        await new Promise<void>((r) => gates.set(hash, r))
+        done.push(hash)
+      },
+    })
+    const outFile = path.join(projectDir, 'dist', 'out.txt')
+    await mkdir(path.dirname(outFile), { recursive: true })
+    for (const hash of ['h-a', 'h-b']) {
+      await writeFile(outFile, hash)
+      await layered.save({
+        hash,
+        projectDir,
+        outputFiles: [outFile],
+        entry: { taskId: 'pkg#build', command: 'x', durationMs: 1, stdout: '' },
+      })
+    }
+    while (gates.size < 2) await Bun.sleep(1)
+    let drained = false
+    const drain = layered.drainUploads().then(() => (drained = true))
+    gates.get('h-a')!()
+    while (done.length < 1) await Bun.sleep(1)
+    await Bun.sleep(5)
+    expect(drained).toBe(false)
+    gates.get('h-b')!()
+    await drain
+    expect(done).toEqual(['h-a', 'h-b'])
+  })
+
+  it('an onRemoteError that throws still degrades the call to a miss', async () => {
+    remote.failAll = true
+    const layered = makeLayered({
+      onRemoteError: () => {
+        throw new Error('sink broke')
+      },
+    })
+    expect(await layered.get('h-sink')).toBeNull()
+    expect(await layered.has('h-sink')).toBeNull()
+  })
+
+  it('an artifact gone between its ingest and the read is a miss, not a hit', async () => {
+    await saveSample(makeLayered(), 'h-gone')
+    await wipeLocal()
+    const layered = makeLayered()
+    const read = local.getIngested.bind(local)
+    // A concurrent prune on a shared cache dir removes the artifact.
+    spyOn(local, 'getIngested').mockImplementation(async (hash) => {
+      await rm(local.outputsPath(hash), { force: true })
+      return read(hash)
+    })
+    expect(await layered.get('h-gone')).toBeNull()
+  })
+
   it('key() is identical to local.key()', async () => {
     const layered = makeLayered()
     const input = {
@@ -1049,7 +1106,13 @@ describe('LayeredCache', () => {
       expect(await said('https://user:secret@cache.example.com/v1/cache?token=t0k#frag')).toEqual([
         'probe h1 at https://cache.example.com/v1/cache failed: down',
       ])
-      // Controls: a clean URL and a gRPC `host:port` print as given.
+      // A query alone is stripped too: a token rides there without userinfo.
+      expect(await said('https://cache.example.com/v1/cache?token=t0k')).toEqual([
+        'probe h1 at https://cache.example.com/v1/cache failed: down',
+      ])
+      // Controls: a clean URL and a gRPC `host:port` print as given, and a
+      // name no URL parser reads prints as given, never throws.
+      expect(await said('cache.internal')).toEqual(['probe h1 at cache.internal failed: down'])
       expect(await said('https://cache.example.com/v1/cache')).toEqual([
         'probe h1 at https://cache.example.com/v1/cache failed: down',
       ])
