@@ -554,6 +554,12 @@ export class Cache implements CacheLayer {
     readable(() => {
       this.db.exec('PRAGMA busy_timeout = 5000')
       this.db.exec('PRAGMA journal_mode = WAL')
+      // Keep `-wal` and `-shm` when the last connection closes. A closed
+      // index otherwise deletes them, and a cache directory this user may
+      // not write (a CI cache restored read-only) cannot make them again:
+      // every open there failed `attempt to write a readonly database`
+      // before the not-writable refusal could name the directory (O-10).
+      if (!absent) this.db.fileControl(SQLITE_FCNTL_PERSIST_WAL, 1)
       this.db.exec('PRAGMA synchronous = NORMAL')
       this.db.exec('PRAGMA foreign_keys = ON')
       this.db.exec(`
@@ -1872,6 +1878,13 @@ export class Cache implements CacheLayer {
     return path.join(this.cacheDir, `${hash}.tar.zst`)
   }
 }
+
+/**
+ * SQLite's file-control opcode (sqlite3.h). Spelled here, not imported from
+ * `bun:sqlite`'s `constants`: the playground bundles this file against a
+ * shim that exports only `Database`.
+ */
+const SQLITE_FCNTL_PERSIST_WAL = 10
 
 /**
  * Close for real. A plain `close()` leaves the connection open while any
