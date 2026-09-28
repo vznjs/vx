@@ -67,8 +67,9 @@ remote and, up to three, the tasks the eligibility gate kept eager and
 why.
 
 **Placement** renders as a trailing `@<executor-name>` on tasks the plan
-placed on an executor — and ONLY when the workspace declared more than one,
-since with a single executor every line would carry the same label:
+placed on an executor — and ONLY when the workspace declared more than one
+(`@noop` excepted, below), since with a single executor every line would
+carry the same label:
 
 ```
 would run:

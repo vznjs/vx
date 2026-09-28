@@ -46,4 +46,5 @@ between two writes is not caught.
 Callers: `orchestrator/execute-task.ts` (live output, captured stdout),
 `orchestrator/hit-restore.ts` (a replayed hit's stdout),
 `orchestrator/framed-output.ts`, `orchestrator/events.ts` and
-`orchestrator/telemetry.ts` (the command), `cli/show.ts`.
+`orchestrator/telemetry.ts` (the command), `cli/show.ts`; `maskedCommand`
+is on `@vzn/vx` for `@vzn/vx-mcp`'s `listTasks` (L-26).
