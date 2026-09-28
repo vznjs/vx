@@ -229,3 +229,11 @@ caught, no other bug): rows now hold its five real survivors (a non-JSON
 or evicted duration is unknown, not 0; an entry at another path is no
 hit; put records exit 0; the duration is read before the artifact), each
 driven red.
+
+F-22. vx-otel sent a run's spans in one request, and its logs in another:
+20 000 tasks made a 23 MiB trace, and otelcol 0.161 refused it whole
+(`request body too large`, its 20 MiB default); logs ran 16 MiB at the
+same size. Both now go at most 1 000 items to a request, sent together;
+a failure warns once per signal with how many requests failed. 20 000 and
+50 000 tasks export clean against the same collector. Rows red without
+the fix.

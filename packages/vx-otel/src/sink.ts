@@ -272,10 +272,10 @@ export class OtelSink implements TelemetrySink {
 
   private async shipTraces(vxVersion: string): Promise<void> {
     if (this.cfg.tracesEnabled === false || this.spans.length === 0) return
-    const body = JSON.stringify(
-      buildTraceRequest(this.cfg.serviceName, vxVersion, this.spans, this.cfg.resource),
+    const bodies = batches(this.spans).map((spans) =>
+      JSON.stringify(buildTraceRequest(this.cfg.serviceName, vxVersion, spans, this.cfg.resource)),
     )
-    await this.send('traces', this.cfg.tracesUrl, body)
+    await this.send('traces', this.cfg.tracesUrl, bodies)
   }
 
   private async shipMetrics(): Promise<void> {
@@ -289,7 +289,7 @@ export class OtelSink implements TelemetrySink {
         this.cfg.resource,
       ),
     )
-    await this.send('metrics', this.cfg.metricsUrl, body)
+    await this.send('metrics', this.cfg.metricsUrl, [body])
   }
 
   private async shipLogs(vxVersion: string): Promise<void> {
@@ -297,45 +297,72 @@ export class OtelSink implements TelemetrySink {
     const workspaceId = this.run?.workspaceId ?? ''
     const bundle = this.logs.drain(this.runId, workspaceId)
     if (bundle.tasks.length === 0) return
-    const body = JSON.stringify(
-      buildLogsRequest({
-        serviceName: this.cfg.serviceName,
-        resource: this.cfg.resource,
-        vxVersion,
-        runId: this.runId,
-        workspaceId,
-        entries: bundle.tasks,
-        timeUnixNano: nanos(this.summary?.endedAt ?? Date.now()),
-        ...(this.traceId ? { traceId: this.traceId } : {}),
-        spanIdFor: (taskId) => this.taskSpanId.get(taskId),
-      }),
+    const bodies = batches(bundle.tasks).map((entries) =>
+      JSON.stringify(
+        buildLogsRequest({
+          serviceName: this.cfg.serviceName,
+          resource: this.cfg.resource,
+          vxVersion,
+          runId: this.runId,
+          workspaceId,
+          entries,
+          timeUnixNano: nanos(this.summary?.endedAt ?? Date.now()),
+          ...(this.traceId ? { traceId: this.traceId } : {}),
+          spanIdFor: (taskId) => this.taskSpanId.get(taskId),
+        }),
+      ),
     )
-    await this.send('logs', this.cfg.logsUrl, body)
+    await this.send('logs', this.cfg.logsUrl, bodies)
   }
 
-  private async send(signal: OtelSignal, url: string, body: string): Promise<void> {
+  /** POSTs every body at once; one warning per signal, however many fail. */
+  private async send(signal: OtelSignal, url: string, bodies: readonly string[]): Promise<void> {
     const headers: Record<string, string> = {
       'content-type': 'application/json',
       ...this.cfg.headers,
       ...this.cfg.signalHeaders[signal],
     }
-    try {
-      await this.cfg.post(url, body, headers, this.deadline)
-    } catch (err) {
-      // export is fully optional — a down collector never affects a run
-      // Name the URL: three signals ship concurrently and each is caught
-      // here on its own, so a bare "export failed" cannot tell a down
-      // collector from one misconfigured signal endpoint.
-      // An HTTP POST to a gRPC port fails with a transport error that
-      // names neither; the env that asked for gRPC is the likely cause.
-      const hint = this.cfg.grpc.includes(signal)
-        ? ` — the env asks for OTLP over gRPC, and vx sends OTLP/HTTP JSON only: point it at the collector's HTTP endpoint (port 4318)`
-        : ''
-      this.cfg.warn?.(
-        `[vx-otel] export failed for ${shownUrl(url)}: ${err instanceof Error ? err.message : String(err)}${hint}`,
+    const failed = (
+      await Promise.all(
+        bodies.map((body) =>
+          // Through a promise, so a transport that throws before it awaits is caught too.
+          Promise.resolve()
+            .then(() => this.cfg.post(url, body, headers, this.deadline))
+            .then(
+              () => undefined,
+              (err: unknown) => (err instanceof Error ? err.message : String(err)),
+            ),
+        ),
       )
-    }
+    ).filter((m) => m !== undefined)
+    // export is fully optional — a down collector never affects a run
+    if (failed.length === 0) return
+    // Name the URL: three signals ship concurrently and each is caught
+    // here on its own, so a bare "export failed" cannot tell a down
+    // collector from one misconfigured signal endpoint.
+    // An HTTP POST to a gRPC port fails with a transport error that
+    // names neither; the env that asked for gRPC is the likely cause.
+    const hint = this.cfg.grpc.includes(signal)
+      ? ` — the env asks for OTLP over gRPC, and vx sends OTLP/HTTP JSON only: point it at the collector's HTTP endpoint (port 4318)`
+      : ''
+    const share = bodies.length > 1 ? ` (${failed.length} of ${bodies.length} requests)` : ''
+    this.cfg.warn?.(`[vx-otel] export failed for ${shownUrl(url)}: ${failed[0]}${share}${hint}`)
   }
+}
+
+/**
+ * Items per OTLP request. A run's spans went in ONE request, and 20 000 tasks
+ * made 23 MiB, past a collector's 20 MiB default: `request body too large`,
+ * the whole trace lost (F-22). 1 000 spans is ~1.2 MiB; the SDKs batch 512.
+ */
+const ITEMS_PER_REQUEST = 1000
+
+function batches<T>(items: readonly T[]): T[][] {
+  const out: T[][] = []
+  for (let i = 0; i < items.length; i += ITEMS_PER_REQUEST) {
+    out.push(items.slice(i, i + ITEMS_PER_REQUEST))
+  }
+  return out
 }
 
 /**

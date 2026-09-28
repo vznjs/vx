@@ -1589,3 +1589,84 @@ describe('the standard OTLP env a pipeline already sets', () => {
     ])
   })
 })
+
+// F-22: a run's spans (and its logs) went in ONE request each; 20 000 tasks
+// made a 23 MiB trace, refused whole by a collector's 20 MiB default.
+describe('a large run ships in requests a collector accepts', () => {
+  const drive = async (n: number, post: (url: string, body: string) => Promise<void>) => {
+    const warns: string[] = []
+    const { cfg } = mkConfig({ metricsEnabled: false, post, warn: (m) => warns.push(m) })
+    const sink = new OtelSink(cfg)
+    sink.onRecord({
+      v: 1,
+      kind: 'run.start',
+      run: RUN,
+      total: n,
+      ts: 1000,
+      startedAt: 1000,
+    } as TelemetryRecord)
+    const tasks: TaskTelemetry[] = []
+    for (let i = 0; i < n; i++) {
+      const t: TaskTelemetry = {
+        taskId: `p${i}#build`,
+        project: `p${i}`,
+        task: 'build',
+        status: 'success',
+        cacheSource: 'miss',
+        exitCode: 0,
+        durationMs: 1,
+      }
+      tasks.push(t)
+      sink.onRecord({
+        v: 1,
+        kind: 'task.start',
+        runId: 'run-1',
+        taskId: t.taskId,
+        ts: 1001,
+      } as TelemetryRecord)
+      sink.onRecord({
+        v: 1,
+        kind: 'task.log',
+        runId: 'run-1',
+        taskId: t.taskId,
+        stream: 'stdout',
+        chunk: 'ok',
+        ts: 1002,
+      } as TelemetryRecord)
+      sink.onRecord({ v: 1, kind: 'task.end', runId: 'run-1', ts: 1050, ...t } as TelemetryRecord)
+    }
+    sink.onRecord({ v: 1, kind: 'run.end', runId: 'run-1', ts: 1100 } as TelemetryRecord)
+    sink.onRunSummary(summaryFor(RUN, tasks))
+    await sink.flush()
+    return warns
+  }
+
+  it('at most 1 000 spans or log records per request, none lost', async () => {
+    const per: Record<string, number[]> = {}
+    await drive(2500, async (url, body) => {
+      const b = JSON.parse(body) as Record<
+        string,
+        { scopeSpans?: { spans: unknown[] }[]; scopeLogs?: { logRecords: unknown[] }[] }[]
+      >
+      const r = Object.values(b)[0]![0]!
+      const n = r.scopeSpans?.[0]!.spans.length ?? r.scopeLogs?.[0]!.logRecords.length ?? 0
+      ;(per[url] ??= []).push(n)
+    })
+    expect(
+      Object.fromEntries(Object.entries(per).map(([u, ns]) => [u, ns.sort((a, b) => b - a)])),
+    ).toEqual({
+      'http://c/v1/traces': [1000, 1000, 501],
+      'http://c/v1/logs': [1000, 1000, 500],
+    })
+  })
+
+  it('a down collector warns once per signal, with how many requests failed', async () => {
+    const warns = await drive(1500, async () => {
+      throw new Error('refused')
+    })
+    expect(warns.sort()).toEqual([
+      '[vx-otel] export failed for http://c/v1/logs: refused (2 of 2 requests)',
+      '[vx-otel] export failed for http://c/v1/traces: refused (2 of 2 requests)',
+    ])
+  })
+})
