@@ -186,6 +186,37 @@ describe('applyMigration', () => {
     expect(stdout.trimEnd().split('\n').at(-1)).toBe('next: vx run lint --all')
   })
 
+  it("writes a plan's import lines and a raw expression as code, not as strings (D-22)", async () => {
+    // The Nx and Turbo mappers hand over an import and a value that must
+    // stay code (`nxExec`); quoted, the config names a string, not the call.
+    mkdirSync(path.join(root, 'app'))
+    const p = plan([['app', [task('build', { exec: { command: { raw: 'cmd()' } } })]]])
+    p.projects[0]!.importLines = ["import { cmd } from './cmd.mjs'"]
+    await apply(p, { format: 'mjs' })
+    const file = readFileSync(path.join(root, 'app', 'vx.config.mjs'), 'utf8')
+    expect(file).toContain("\nimport { cmd } from './cmd.mjs'\n")
+    expect(file).toContain('\n        command: cmd(),\n')
+  })
+
+  it('--force over a config of the SAME name keeps the one it wrote (D-22)', async () => {
+    // Only a config of another extension is replaced; unlinked after the
+    // write, the same name would leave the project with no config at all.
+    mkdirSync(path.join(root, 'app'))
+    const existing = path.join(root, 'app', 'vx.config.ts')
+    writeFileSync(existing, 'export default {}\n')
+    const metas = [
+      {
+        name: 'app',
+        dir: path.join(root, 'app'),
+        packageJson: { name: 'app' },
+        configPath: existing,
+      },
+    ]
+    await apply(plan([['app', [task('build', exec('tsc'))]]]), { metas, force: true })
+    expect(readFileSync(existing, 'utf8')).toContain("command: 'tsc'")
+    expect(stdout).not.toContain('replaced:')
+  })
+
   it('renders null, drops undefined, writes {} for an empty object, and quotes only a key that needs it', async () => {
     mkdirSync(path.join(root, 'app'))
     await apply(

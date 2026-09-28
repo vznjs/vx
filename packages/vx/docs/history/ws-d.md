@@ -214,3 +214,13 @@ packages/core`) selects the dependent whose `file:../lib` spec named
   rounds; A/A 433–445). Row: `tests/affected.test.ts` "a specifier
   spelled with an escape still reaches its importer (D-23)", red with
   the textual pass narrowed to a literal `./`.
+- **D-22** Mutation sweep of `migration.ts` (30 mutants). Three
+  behaviour survivors, now rows in `tests/migration.test.ts`: the
+  same-name guard on `--force` replacement (without it the config just
+  written was unlinked), and a plan's import lines and raw expressions
+  (the mappers' `nxExec` calls) rendered as code.
+  The helpers of `config-schema.ts` (34 mutants) held: every mutant that
+  applied was caught; item 653's sweep had already pinned them. So did
+  `lockfile.ts` (15, all caught) and the rest of `affected.ts` (23: three
+  equivalent — the unreadable-root sentinel, the no-positive guard of
+  `workspaceGlobsMatch`, the non-blob branch of the batch read).
