@@ -103,6 +103,15 @@
   walled from every task, each granted its own directory. Coordinator
   go-ahead, outside L's slice. Row in `sandbox-runtime.unsafe.test.ts`;
   the bridge-socket rows follow the socket into the task's directory.
+- L-11. `fix(orchestrator)`: the value of a secret-named variable (`TOKEN`,
+  `SECRET`, `KEY`, `PASSWORD`, `PASSWD`, `CREDENTIAL`; vx's env or a
+  task's `define`) reached the terminal, the cached stdout every hit
+  replays, the `$ command` line, telemetry records and `vx show` as
+  written. It is now masked `***` at each: task output by a streaming
+  mask (a value split across chunks is still caught), captured stdout
+  whole, a replayed hit's stdout, the command where it is shown. 9 µs
+  per hit that prints (144 env vars), none for a silent hit. Rows in
+  `secret-mask.test.ts`. Coordinator backlog 2.
 
 ## Leads for other streams
 

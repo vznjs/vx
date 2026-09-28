@@ -20,7 +20,7 @@ import {
   WORKSPACE_OUTPUT_PREFIX,
 } from '../cache/index.js'
 import type { TaskOutcome } from '../graph/index.js'
-import { asTrees, span, taskGlob, wholeSubtreePrefixes } from '../util/index.js'
+import { asTrees, secretMask, span, taskGlob, wholeSubtreePrefixes } from '../util/index.js'
 import type { ExecuteArgs } from './execute-task.js'
 import { entryHolds } from './miss-save.js'
 
@@ -263,7 +263,12 @@ export async function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome> 
       ])
     }
   }
-  if (hit.stdout) log.taskStdout(node, hit.stdout)
+  if (hit.stdout) {
+    // An entry saved before masking, or by another machine, can hold a
+    // secret-named variable's value (L-11). Asked only of a hit that prints.
+    const secrets = secretMask(process.env, node.config.exec?.env?.define)
+    log.taskStdout(node, secrets === null ? hit.stdout : secrets.mask(hit.stdout))
+  }
   const status =
     hit.exitCode !== 0 ? 'failed' : hit.source === 'remote' ? 'cache-hit-remote' : 'cache-hit'
   // `restored` distinguishes "we just wrote files to disk" from

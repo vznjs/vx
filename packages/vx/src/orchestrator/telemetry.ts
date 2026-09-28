@@ -17,7 +17,7 @@
 // core calls INTO; those are the behavior capabilities, kept separate.
 
 import type { TaskOutcome, TaskStatus } from '../graph/index.js'
-import { settleWithin, teardownTimeoutMs } from '../util/index.js'
+import { maskedCommand, settleWithin, teardownTimeoutMs } from '../util/index.js'
 import type { RunEvent, RunEventSubscriber } from './events.js'
 
 /** Bumped when the record shape changes. Readers MUST check `v`. */
@@ -438,7 +438,8 @@ export function createTelemetrySource(args: {
           task: node.taskName,
           ts,
         }
-        if (node.config.exec.command !== undefined) rec.command = node.config.exec.command
+        if (node.config.exec.command !== undefined)
+          rec.command = maskedCommand(node.config.exec.command, node.config.exec.env?.define)
         deliver(rec)
         return
       }

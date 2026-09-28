@@ -33,7 +33,7 @@ import {
   PersistentReadyError,
 } from '../exec/index.js'
 import { isGroupTask, RestoreDemoted, type TaskNode, type TaskOutcome } from '../graph/index.js'
-import { killGraceMs, relPosix, span } from '../util/index.js'
+import { killGraceMs, maskedEmitter, relPosix, secretMask, span } from '../util/index.js'
 import { SIGNAL_SHUTDOWN_GRACE_MS } from './signals.js'
 import { executorLabel } from './plugin-host.js'
 import {
@@ -779,8 +779,13 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         await sweepPlaceholders(placeholders)
         throw err
       })
-      .finally(() => clearTimeout(timeoutTimer))
+      .finally(() => {
+        clearTimeout(timeoutTimer)
+        flushMasked()
+      })
     endExec()
+    if (secrets !== null)
+      res = { ...res, stdout: secrets.mask(res.stdout), stderr: secrets.mask(res.stderr) }
     // An executor that stopped on the timeout's abort exits non-zero; say
     // why, so the frame, the retry line and `timedOut` read as a timeout.
     if (timeoutFired && res.exitCode !== 0 && res.timedOut !== true) {
@@ -878,6 +883,11 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     }
   }
 
+  // The values of secret-named variables, masked in what the task prints
+  // and what the cache keeps of it (L-11); null when there are none.
+  const secrets = secretMask(process.env, env, step.env?.define)
+  let flushMasked = (): void => {}
+
   // Pass or fail, the command may have written where its project's
   // run-start facts describe; a remote executor wrote on its own disk.
   const writeReach =
@@ -935,6 +945,12 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   }
 
   async function buildRequest(): Promise<ExecuteRequest> {
+    const out = secrets && maskedEmitter(secrets, (t) => log.taskStdout(node, t))
+    const err = secrets && maskedEmitter(secrets, (t) => log.taskStderr(node, t))
+    flushMasked = () => {
+      out?.end()
+      err?.end()
+    }
     const base: ExecuteRequest = {
       taskId: node.id,
       workspaceRoot: args.workspaceRoot,
@@ -944,8 +960,8 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       env,
       envDefine: step.env?.define ?? {},
       capture,
-      onStdout: (chunk) => log.taskStdout(node, chunk),
-      onStderr: (chunk) => log.taskStderr(node, chunk),
+      onStdout: out ? (chunk) => out.push(chunk) : (chunk) => log.taskStdout(node, chunk),
+      onStderr: err ? (chunk) => err.push(chunk) : (chunk) => log.taskStderr(node, chunk),
       ...(args.liveChildren !== undefined ? { liveChildren: args.liveChildren } : {}),
       signal: requestSignal(),
       ...(effectiveTimeout !== undefined ? { timeoutMs: effectiveTimeout } : {}),

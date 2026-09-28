@@ -9,6 +9,7 @@
 import { exitSignal } from '../exec/index.js'
 import type { TaskNode, TaskOutcome } from '../graph/index.js'
 import { isGroupTask } from '../graph/index.js'
+import { maskedCommand } from '../util/index.js'
 import type { Logger } from './logger.js'
 import type { RunContext } from './summary.js'
 
@@ -340,7 +341,8 @@ export function projectNode(node: TaskNode): TaskView {
     surfaced: node.surfaced === true,
     persistent: node.config.exec?.persistent !== undefined,
   }
-  if (node.config.exec?.command !== undefined) view.command = node.config.exec.command
+  if (node.config.exec?.command !== undefined)
+    view.command = maskedCommand(node.config.exec.command, node.config.exec.env?.define)
   return view
 }
 
