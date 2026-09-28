@@ -388,3 +388,34 @@ describe('a shared link shows the card', () => {
     expect([png.readUInt32BE(16), png.readUInt32BE(20)]).toEqual([1200, 630])
   })
 })
+
+// Search engines index what the sitemap lists; each such page names its own
+// URL as canonical (a trailing-slash twin splits its rank), carries a
+// description (the snippet under the link) and points at the sitemap. The
+// docs pages get all three from Starlight; the standalone landing had none
+// of the first and last until K-9.
+describe('every page the sitemap lists', () => {
+  const SITE = process.env['SITE_URL'] ?? 'https://vznjs.github.io'
+  const urls = [
+    ...readFileSync(path.join(DIST, 'sitemap-0.xml'), 'utf8').matchAll(/<loc>([^<]+)<\/loc>/g),
+  ].map((m) => m[1]!)
+
+  it('includes the landing, and every docs page Starlight built', () => {
+    expect(urls).toContain(`${SITE}${BASE}`)
+    expect(urls.length).toBeGreaterThan(50)
+  })
+
+  it('names itself canonical, describes itself and links the sitemap', () => {
+    const bad: string[] = []
+    for (const url of urls) {
+      const rel = url.slice(`${SITE}${BASE}`.length)
+      const html = readFileSync(path.join(DIST, rel, 'index.html'), 'utf8')
+      const canonical = /<link rel="canonical" href="([^"]*)"/.exec(html)?.[1]
+      if (canonical !== url) bad.push(`${url}: canonical ${canonical}`)
+      if (!/<meta name="description" content="[^"]+"/.test(html)) bad.push(`${url}: no description`)
+      if (!html.includes(`<link rel="sitemap" href="${BASE}sitemap-index.xml"`))
+        bad.push(`${url}: no sitemap link`)
+    }
+    expect(bad).toEqual([])
+  })
+})
