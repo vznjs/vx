@@ -73,6 +73,14 @@
     ingest (`scanArtifact`) are the only two, and both check the `.vx-sum`
     (L-19); vx-reapi writes outputs from CAS blobs it digest-checks (L-3).
     No bug.
+16. Plugin and config loading. Discovery skips `node_modules` and dot
+    directories, so no installed package is taken for a workspace
+    project. A helper a config imports reached Bun's registry
+    auto-install (L-22).
+17. Other children that run user code. `nx()` runs the workspace's own
+    `node_modules/.bin/nx`, never `npx`; `nx-exec.cjs` runs under Node,
+    which never auto-installs; `turbo()` spawns nothing. The lage loader
+    was fixed in L-22. No bug.
 
 ## Items
 
@@ -285,3 +293,7 @@
 - D (config): the purity gate lets `new Worker('./x.ts')` through; the
   worker's file is outside the hashed closure, so its reads (env, clock)
   can be cached stale.
+- migrate: in a compiled vx, `loadLageConfig` spawns `process.execPath`,
+  which is the vx binary, so `-e` prints `vx: unknown command: -e` and
+  `lage()` fails. Probed: `BUN_BE_BUN=1` in the child's env runs it as
+  Bun.
