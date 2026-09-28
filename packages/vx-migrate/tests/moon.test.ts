@@ -401,6 +401,60 @@ tasks:
     },
     TIMEOUT,
   )
+  it(
+    'inferTasksFromScripts: scripts are tasks under moon.yml; a command resets args; dev/start/serve are local',
+    async () => {
+      // adobe/leonardo's shape (moon 1.41 printed each value below).
+      await moon1()
+      await write(
+        '.moon/toolchain.yml',
+        `node:\n  packageManager: 'pnpm'\n  inferTasksFromScripts: true\n`,
+      )
+      await write(
+        'packages/core/package.json',
+        JSON.stringify({
+          name: '@x/lib',
+          scripts: {
+            start: 'node .',
+            test: 'node --test',
+            'test:types': 'tsd',
+            prepublishOnly: 'x',
+          },
+        }),
+      )
+      await write(
+        'packages/core/moon.yml',
+        `type: 'library'
+tasks:
+  test:
+    command: ['node', '--test', 'test/*.test.js']
+  test-types:
+    command: ['pnpm', 'test:types']
+  serve:
+    command: 'vite preview'
+`,
+      )
+      git()
+      const tasks = await tasksOf([
+        '@x/lib#start',
+        '@x/lib#test',
+        '@x/lib#test-types',
+        '@x/lib#serve',
+      ])
+      const cmd = (id: string) => tasks.get(id)!.config.exec?.command
+      expect(cmd('@x/lib#start')).toBe('pnpm run start')
+      expect(cmd('@x/lib#test')).toBe("node --test 'test/*.test.js'")
+      expect(cmd('@x/lib#test-types')).toBe('pnpm test:types')
+      for (const id of ['@x/lib#start', '@x/lib#serve']) {
+        expect(tasks.get(id)!.config.exec?.persistent).toBeDefined()
+        expect(tasks.get(id)!.config.cache).toBeUndefined()
+      }
+      expect(tasks.get('@x/lib#test')!.config.exec?.persistent).toBeUndefined()
+      const all = await planRun({ cwd: root, tasks: ['prepublishOnly'], log: silent() })
+      expect(all.tasks).toEqual([])
+    },
+    TIMEOUT,
+  )
 })
 
 describe('moon() — moon 2 (moonrepo/moon)', () => {

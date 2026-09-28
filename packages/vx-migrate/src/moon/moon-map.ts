@@ -26,7 +26,7 @@ import path from 'node:path'
 import { UserError, type ProjectMeta } from '@vzn/vx'
 import { minimatchToVx } from '../glob-grammar.js'
 import { shellQuote } from '../nx-command.js'
-import { relPosix } from '../paths.js'
+import { packageScripts, relPosix } from '../paths.js'
 import { pruneDanglingEdges } from '../dangling-edges.js'
 import { pruneOrphanPersistentNotes } from '../persistent-note.js'
 import { resolveSharedOutputs } from '../shared-outputs.js'
@@ -380,7 +380,13 @@ function fold(layers: readonly Raw[]): Raw {
         if (field in out) next[field] = out[field]
         continue
       }
-      const strategy = options[MERGE_OPTION[field]] ?? options['merge'] ?? 'append'
+      // A layer that sets `command` sets its args with it: the earlier
+      // command's args go (leonardo: an inferred `pnpm run test` under a
+      // declared `[node, --test, …]` is `node --test …`, moon 1.41).
+      const strategy =
+        field === 'args' && layer['command'] !== undefined && layer['command'] !== null
+          ? 'replace'
+          : (options[MERGE_OPTION[field]] ?? options['merge'] ?? 'append')
       const a = out[field]
       const b = layer[field]
       if (a === undefined || strategy === 'replace') next[field] = b
@@ -413,6 +419,7 @@ function projectTasks(
   p: MoonProject,
   global: Raw,
   inherited: readonly TaskFile[],
+  inferred: ReadonlyMap<string, Raw>,
 ): {
   tasks: Map<string, Raw>
   groups: Map<string, string[]>
@@ -456,6 +463,9 @@ function projectTasks(
   if (isRaw(p.file['fileGroups'])) {
     for (const [g, v] of Object.entries(p.file['fileGroups'])) groups.set(g, strings(v))
   }
+  // A task inferred from a package.json script is the project's own, and
+  // its moon.yml declaration of the same name merges over it.
+  for (const [name, t] of inferred) layers.set(name, [...(layers.get(name) ?? []), normLayer(t)])
   if (isRaw(p.file['tasks'])) {
     for (const [name, t] of Object.entries(p.file['tasks'])) {
       if (isRaw(t)) layers.set(name, [...(layers.get(name) ?? []), normLayer(t)])
@@ -524,6 +534,8 @@ interface Ctx {
    * does not: moon's `^` reaches them, vx's `^` follows the package graph.
    */
   moonOnlyDeps: readonly string[]
+  /** moon 2's rules, where they differ from moon 1's. */
+  v2: boolean
   opts: MapMoonOptions
 }
 
@@ -760,9 +772,13 @@ function mapTask(
     }
   }
   const preset = def['preset']
+  // moon 1 makes a task named dev, start or serve `local` unless it says
+  // otherwise (leonardo's inferred `start`, jsx-email's `dev`).
+  const local =
+    def['local'] === true || (!ctx.v2 && def['local'] === undefined && LOCAL_NAMES.has(name))
   const persistent =
     options['persistent'] === true ||
-    def['local'] === true ||
+    (options['persistent'] !== false && local) ||
     preset === 'server' ||
     preset === 'watcher'
 
@@ -853,7 +869,11 @@ function mapTask(
   }
 
   const cacheable =
-    command !== undefined && !persistent && options['cache'] !== false && options['cache'] !== 'off'
+    !(local && options['cache'] === undefined) &&
+    command !== undefined &&
+    !persistent &&
+    options['cache'] !== false &&
+    options['cache'] !== 'off'
   if (cacheable) {
     const outputs = mapOutputs(ctx, def, todos)
     if (outputs !== null) {
@@ -894,23 +914,23 @@ export async function mapMoonWorkspace(
     names.set(p.id, p.meta.name)
     names.set(p.meta.name, p.meta.name)
   }
+  const node = isRaw(toolchain['node']) ? toolchain['node'] : {}
+  const inferScripts = node['inferTasksFromScripts'] === true
+  const packageManager = typeof node['packageManager'] === 'string' ? node['packageManager'] : 'npm'
   const unknownKeys = new Set<string>()
   const resolved = await Promise.all(
     projects.map(async (p) => {
       const facts = await factsOf(p, configured)
-      return { p, ...projectTasks(p, global, inheritedFiles(files, facts, v2, unknownKeys)) }
+      const inferred = inferScripts ? scriptTasks(p.meta, packageManager) : new Map<string, Raw>()
+      return {
+        p,
+        ...projectTasks(p, global, inheritedFiles(files, facts, v2, unknownKeys), inferred),
+      }
     }),
   )
   for (const k of unknownKeys) {
     notes.push(
       `note: task files with inheritedBy.${k} are not inherited — vx-migrate does not know that condition; declare their tasks in a vx.config`,
-    )
-  }
-  const inferScripts =
-    isRaw(toolchain['node']) && toolchain['node']['inferTasksFromScripts'] === true
-  if (inferScripts) {
-    notes.push(
-      'note: node.inferTasksFromScripts is not mapped — package.json scripts become tasks only where a moon.yml declares them',
     )
   }
   const remote = isRaw(workspace['remote']) ? workspace['remote']['host'] : undefined
@@ -943,6 +963,7 @@ export async function mapMoonWorkspace(
       emitted,
       emittedAnywhere,
       moonOnlyDeps: moonOnlyDeps(p, names),
+      v2,
       opts,
     }
     const mapped = [...tasks].map(([name, def]) =>
@@ -954,6 +975,30 @@ export async function mapMoonWorkspace(
   for (const p of out) resolveSharedOutputs(p.tasks)
   pruneOrphanPersistentNotes(out, opts.persistentTodo)
   return { projects: out, notes }
+}
+
+const LOCAL_NAMES = new Set(['dev', 'start', 'serve'])
+
+// npm's own lifecycle scripts, which moon does not turn into tasks.
+const LIFECYCLE =
+  /^(pre|post)?(install|publish|pack|version|prepare|prepublishOnly|uninstall|shrinkwrap)$/
+
+/**
+ * `node.inferTasksFromScripts` (moon 1): each package.json script is a
+ * task running `<packageManager> run <script>`, its id the script name with
+ * `:` as `-` (leonardo: `test:types` is `test-types`). A `pre`/`post` hook
+ * runs inside its script's `run`, so it is no task of its own.
+ */
+function scriptTasks(meta: ProjectMeta, packageManager: string): Map<string, Raw> {
+  const scripts = packageScripts(meta)
+  const out = new Map<string, Raw>()
+  for (const [name, body] of Object.entries(scripts)) {
+    if (typeof body !== 'string' || body === '' || LIFECYCLE.test(name)) continue
+    const hook = /^(pre|post)(.+)$/.exec(name)
+    if (hook !== null && Object.hasOwn(scripts, hook[2]!)) continue
+    out.set(name.replaceAll(':', '-'), { command: [packageManager, 'run', name] })
+  }
+  return out
 }
 
 const PACKAGE_DEP_FIELDS = [
