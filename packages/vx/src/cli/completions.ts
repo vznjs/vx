@@ -101,7 +101,8 @@ export async function completionsCmd(
     return 1
   }
   const verbs = [...CORE_VERBS.filter((v) => v !== 'help' && v !== 'version'), 'help', 'version']
-  for (const v of pluginVerbs) if (!verbs.includes(v)) verbs.push(v)
+  // No overlap to skip: the workspace load refuses a plugin verb named like a core one.
+  verbs.push(...pluginVerbs)
   process.stdout.write(completionScript(shell as CompletionShell, verbs))
   return 0
 }

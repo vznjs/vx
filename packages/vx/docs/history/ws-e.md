@@ -350,3 +350,11 @@ task picked`; neither prints a stack. Row in
   (`uncached`) had no row; it has one. `watchedProjects`' whole-scope
   shortcut survives as an equivalent mutant: the walk returns the same
   set.
+- E-61 — Sweep of `help.ts` and `bin.ts`: five mutants, four caught.
+  `documentedFlags` reading only the flag an option line opens with
+  survived (today's prose names only run's own flags); it takes the
+  text now and a fixture row pins it.
+- E-62 — Sweep of `info.ts` and `completions.ts`: five mutants, four
+  caught. The survivor, completions skipping a plugin verb named like a
+  core one, was unreachable (the load refuses the shadow, pinned in
+  `tests/plugin-commands.test.ts`); it is gone.
