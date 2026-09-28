@@ -168,6 +168,12 @@ Globs every `package.json` matching the patterns (`Bun.Glob`,
   cross-package deps work) but contribute no tasks.
 - `node_modules` paths are explicitly skipped even when a
   pathological `**` glob would match them.
+- The root package is a project too when it holds a
+  `vx.config.{ts,mts,js,mjs}` and no glob lists `.` (D-39): a
+  workspace-root task (Turbo's `//#task`, a root `tsc -b`) without
+  changing the package manager's member list. Its globs stop at every
+  member, as any parent project's do. Design:
+  `docs/design/root-project-2026-09-28.md`.
 
 Returns the project list sorted by `name`.
 

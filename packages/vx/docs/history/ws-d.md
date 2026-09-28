@@ -368,3 +368,17 @@ packages/core`) selects the dependent whose `file:../lib` spec named
   where vx keeps each (per-package `tasks`, `cache.inputs.env`, a cache
   plugin, `concurrency`, `cacheDir`). The refusal names it. Row: the
   D-38 row of `tests/config-schema-refusals.test.ts`.
+- **D-39** Workspace-root tasks (supervisor, from stream N's FURN
+  finding): a `vx.config` at a root the package globs do not list was
+  ignored, so `a#test` depending on `root#build` refused with "no such
+  project" and every adoption path dropped its root tasks. The root
+  package is now a project when it holds a config; boundaries, the key
+  and `--affected` are the existing root-member rules (design:
+  `docs/design/root-project-2026-09-28.md`; a root `tsc -b` that reads
+  members declares `cache.inputs.workspaceFiles` or runs uncached).
+  Rows: `tests/root-project.test.ts` (discovery, the edge, a member
+  edit leaving the root's key and a root file moving it, `--affected`),
+  all four red before. A claim the draft made and a probe refuted:
+  npm accepts `.` in `workspaces` (it links the root into its own
+  `node_modules`); `!.` normalizes to an empty negative and excludes
+  nothing, so the draft's promise for it was cut.
