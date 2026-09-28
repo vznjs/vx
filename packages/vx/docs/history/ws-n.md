@@ -51,6 +51,24 @@ and lage (25, 196) plan clean.
   no-outputs rule, the evaluated-config key, `pkg#task` replacing; a
   worker runs, caches and fails through `lage-worker`).
 
+N-4. `moon()` on three more real moon 1 repos (adobe/leonardo, jsx-email,
+astro-shield), each diffed against `moon query tasks` (milesj/boost's
+own config fails moon's validation), found three rules the first two
+repos lacked, now mapped:
+`node.inferTasksFromScripts` (leonardo: package.json scripts are tasks,
+`<pm> run <script>`, `test:types` as `test-types`, under moon.yml's
+declaration); a task named `dev`, `start` or `serve` is `local` unless it
+says otherwise (jsx-email's `dev` and leonardo's inferred `start` were
+cached and blocking); and a layer that sets `command` replaces the args
+before it (leonardo's `node --test` ran as `node run test --test`).
+astro-shield: 0 differences. Left as moon differs: moon quotes a string
+command's shell syntax (`rm -rf 'dist/*'`), and drops an inherited
+`~:build` edge when the project excludes `build` and redefines it (vx
+keeps the edge: more ordering, never a stale hit).
+
+- Rows: `tests/moon.test.ts` › inferTasksFromScripts (red with each rule
+  removed, the lifecycle filter included).
+
 ## Candidates not built (2026-09-28)
 
 - Lerna without Nx: `lerna run <s>` (lerna 10.0.1, `prepNxOptions`)
