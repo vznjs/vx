@@ -63,7 +63,7 @@ export interface SaveLane {
 export function createSaveLane(cap: number, onError: (err: unknown) => void): SaveLane
 ```
 
-`markUnsaved` is step 5 alone, for a miss that ran here and saves
+`markUnsaved` is step 3 alone, for a miss that ran here and saves
 nothing (it failed, the policy writes nothing, an upstream failed): its
 outputs are resolved and marked exactly as a save's are. Before it, a
 reader after such a task kept the snapshot's index OIDs for them and
@@ -103,14 +103,7 @@ the upstream's output rows, which the save writes.
    the sandbox's scratch, and in a single-package workspace they do so
    without the shell noticing, so this line is the only signal (item
    444).
-3. `cache.save` — entry, output rows and `entry_inputs` rows in one
-   transaction; no exit code, because the contract accepts none and the
-   caller's `exitCode === 0` gate is the invariant.
-4. A snapshot request (`outputDirSnapshots`) — whole-subtree prefixes
-   for the hit path's directory-mtime check, recorded at run end from
-   the run's list; a caller with no list gets no snapshot (recording
-   here fell inside the racy window and was always refused, item 637).
-5. `markOutputsChanged` / `markWorkspaceOutputsChanged` /
+3. `markOutputsChanged` / `markWorkspaceOutputsChanged` /
    `invalidateWorkspacePartition` — the git snapshot learns the exact
    paths, not "everything changed"; on a 1,000-package cold run that
    is one `git ls-files` spawn per project not made. The last two mask
@@ -118,13 +111,20 @@ the upstream's output rows, which the save writes.
    before the producer wrote keys from an empty set with both gone, and
    a later run whose real set is empty hits that artifact
    (`stale-hit.test.ts`, "written mid-run", item 637).
+4. `cache.save` — entry, output rows and `entry_inputs` rows in one
+   transaction; no exit code, because the contract accepts none and the
+   caller's `exitCode === 0` gate is the invariant.
+5. A snapshot request (`outputDirSnapshots`) — whole-subtree prefixes
+   for the hit path's directory-mtime check, recorded at run end from
+   the run's list; a caller with no list gets no snapshot (recording
+   here fell inside the racy window and was always refused, item 637).
 
 Not here: the deferred-download path (`--download=none`), which saves
 no artifact and registers a closure instead (`execute-task.ts`).
 
 ## Tests
 
-`tests/cache*.test.ts`, `tests/outputs-*.test.ts`, the stale-hit pins
+`tests/cache*.test.ts`, `tests/output-*.test.ts`, the stale-hit pins
 in `tests/execute-task*.test.ts`, and the git-marking pins in
-`tests/inputs.test.ts`; the split itself is covered by the whole gate
+`tests/miss-save-marks.test.ts`; the split itself is covered by the whole gate
 passing unchanged.
