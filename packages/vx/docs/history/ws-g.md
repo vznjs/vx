@@ -569,3 +569,12 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   `concurrency` and `cacheRetention` through the `config` stage when
   `vx.workspace.ts` sets none. Rows (`workspace-keys.test`): red
   without the stage or the `global` read.
+- **G-51.** G-49's noisiest todo: `{ dependentTasksOutputFiles }` sat
+  on 881 tasks of three real Nx repos (TanStack/router, nx-examples,
+  typescript-eslint). It names no gap: Nx hashes the outputs of the
+  tasks this one depends on, and vx folds those tasks' keys (their
+  inputs, transitively) through `dependsOn`, from which the outputs
+  follow. It is now read as nothing. The turbo-nx-support contract
+  calls it supported, and names #1802's target-glob expansion under
+  `dependsOn`. Row (`nx-helpers-sweep` › fileset, input and each
+  fold-through object form): exact todo list, red without the change.

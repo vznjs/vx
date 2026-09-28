@@ -4,7 +4,7 @@
 // project, else a workspace one; `{ env }` and
 // `{ runtime }` map to their vx twins, `{ json }` to its whole file; `^x` is recorded for the mapper to
 // resolve over the project graph (nx-upstream.ts). What vx folds through `dependsOn` already
-// (`dependentTasksOutputFiles`, `externalDependencies`) is a todo saying
+// (`dependentTasksOutputFiles`) is nothing; `externalDependencies` is a todo saying
 // so. Extracted from `buildTask` in item 606.
 
 import { nxWorkspacePath, underProject } from './nx-outputs.js'
@@ -128,13 +128,11 @@ export function expandNxInputs(
         )
         return
       }
-      if (o.dependentTasksOutputFiles !== undefined) {
-        todos.push(
-          "input {dependentTasksOutputFiles: …}: vx already folds each dependency's cache key " +
-            '(its inputs, never its outputs) through dependsOn — a change upstream is a key change here',
-        )
-        return
-      }
+      // Nx hashes the outputs of the tasks this one depends on; vx folds
+      // those tasks' keys (their inputs, transitively) through `dependsOn`,
+      // and an output follows from its inputs. Nothing to map, and the todo
+      // it was sat on 881 tasks of three real Nx repos (G-49).
+      if (o.dependentTasksOutputFiles !== undefined) return
       if (typeof o.input === 'string') {
         if (o.dependencies === true) {
           into.upstream.push({ name: o.input, of: 'deps' })

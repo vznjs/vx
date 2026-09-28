@@ -69,7 +69,7 @@ describe('expandNxInputs', () => {
     expect(got.todos).toEqual([
       'input "!^prod": a negated dependency input — map manually',
       'input {externalDependencies: ["react"]}: vx keys every task on the lockfile (the whole file, or with a @vzn/vx-lockfile plugin the project\'s and the root\'s dependencies) — safe to drop unless only another project installs one',
-      "input {dependentTasksOutputFiles: …}: vx already folds each dependency's cache key (its inputs, never its outputs) through dependsOn — a change upstream is a key change here",
+      // `dependentTasksOutputFiles` is nothing to map: vx folds the upstream keys (G-49).
     ])
   })
 })
