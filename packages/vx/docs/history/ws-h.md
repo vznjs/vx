@@ -137,6 +137,17 @@ by `plugins-guide-snippets.test.ts`, and run under Ctrl-C in a scratch
 workspace: no child left). Row: `plugin-executor-abort.test.ts`, green with
 the forward, a 20 s timeout without it.
 
+## H-11: the 1.0 release checklist
+
+`versioning-1.0.md` said when 1.0 takes effect but not how to cut it.
+§ Releasing 1.0 lists the six steps in order, each with how it is checked:
+milestone 3 and the soak, the contract records (the gate runs every
+`contract-*.test.ts`), the notes (`git diff --stat <last-tag> --
+packages/vx/tests/contract/` lists every surface that moved), the plugins
+on npm, the README's status section, the tag. Pinned: every record the
+contract table names must exist (`contract-versioning-doc.test.ts`; a
+misspelt record path fails it).
+
 ## H-12: `exec.timeout` reaches a plugin executor
 
 Found writing H-10's guide example: core passes `timeoutMs` to an executor
@@ -175,6 +186,16 @@ stderr line naming the executor. The local executor is exempt by identity
 `plugin-executor-abort.test.ts` "an executor that ignores the signal",
 both at the 20 s test timeout without the bound.
 
+## H-15: release notes from Conventional Commits
+
+`auto-release.yml` used GitHub's generated notes: every merged PR title,
+docs and tests among them, and nothing marked a breaking change.
+`scripts/release-notes.ts` now writes them from the commits since the
+last tag: breaking changes (`type!:` or a `BREAKING CHANGE:` footer)
+first, then Features, Fixes, Performance, and one count for the rest.
+Rows: `release-notes.test.ts`; three mutants of the classifier each
+turn a row red.
+
 ## H-16: hook contract sweep — `async admit`, `ctx.on` typos
 
 Each hook's documented guarantee, driven from a scratch workspace. Two
@@ -191,16 +212,6 @@ a core verb's name refused, schedule weights checked, telemetry factory
 isolated. Rows: `plugin-pipeline.test.ts` "an async policy…",
 `plugin.test.ts` "a hook name ctx.on does not know…", each red without
 its fix.
-
-## H-15: release notes from Conventional Commits
-
-`auto-release.yml` used GitHub's generated notes: every merged PR title,
-docs and tests among them, and nothing marked a breaking change.
-`scripts/release-notes.ts` now writes them from the commits since the
-last tag: breaking changes (`type!:` or a `BREAKING CHANGE:` footer)
-first, then Features, Fixes, Performance, and one count for the rest.
-Rows: `release-notes.test.ts`; three mutants of the classifier each
-turn a row red.
 
 ## H-17: runnable example plugins, one per seam
 
@@ -312,6 +323,15 @@ re-exported namespaces (core's record is unchanged). The API-break law
 diffs these records against the last tag too: a line dropped from
 `vx-mcp.txt` under a probe tag turned it red.
 
+## H-26: the documented configs load under the current schema
+
+Nothing loaded the configs the docs, the site and `examples/` show, so a
+schema change could refuse one and pass. `tests/config-corpus.unsafe.test.ts`
+finds them (38 today), imports each and validates it; dropping
+`description` from the task fields turns two red. It found one broken:
+`schema.md`'s shared-inputs sample called `defineProject` without
+importing it. Two fences are sketches by design and are named in the test.
+
 ## H-27: a PR that breaks the API says so in its title
 
 The break law judged commits since the last tag, after the merge; a
@@ -328,15 +348,6 @@ red; #1600 re-recorded it. Two PRs in flight, one changing a plugin's
 exports and one its record, cannot see each other: the record lands
 behind.
 
-## H-26: the documented configs load under the current schema
-
-Nothing loaded the configs the docs, the site and `examples/` show, so a
-schema change could refuse one and pass. `tests/config-corpus.unsafe.test.ts`
-finds them (38 today), imports each and validates it; dropping
-`description` from the task fields turns two red. It found one broken:
-`schema.md`'s shared-inputs sample called `defineProject` without
-importing it. Two fences are sketches by design and are named in the test.
-
 ## H-28: a header 72 characters or longer fails the Conventional Commits check
 
 CONTRIBUTING and CLAUDE.md set the first line under 72 characters, and
@@ -344,6 +355,16 @@ H-23's check read only the shape: 39 of main's last 300 subjects are
 longer. `conventionalError` now refuses a header of 72 or more, so a PR
 title or commit that long fails CI; a 71-character row passes, a
 72-character one fails, and it passes without the rule.
+
+## H-29: `vx mcp`'s tools join the contract records
+
+`versioning-1.0.md` froze `vx mcp`'s tools and only their names were held
+(H-24's lead). `vx-mcp/tests/contract-tools.test.ts` records each tool's
+input schema and its answer's key paths from a workspace with two real
+runs, in `vx-mcp/tests/contract/tools.json`; renaming `hitRate24h` turns
+it red. Types stay out: `memory.cgroupLimitBytes` is a number in a
+container and null on CI's runners. One seeded run with a peak makes the
+optional `maxPeakRssBytes` reachable on every host.
 
 ## H-30: the CLI's exit codes are a contract record
 
@@ -389,19 +410,24 @@ links exactly the packages it names from the checkout (`@vzn/vx-migrate`
 is not on npm, which the README already says). Rewriting a run line to
 `npx vx build --all` fails three rows, each naming the line.
 
+## H-34: a same-bytes self-rewrite stays unsaved, and why
+
+unocss's `@unocss/vscode#build` rewrites `README.md` with the same bytes,
+so vx never saves it and Turbo wins every warm run. The proposed fix,
+re-hash the inputs whose stat moved and save when every digest matches
+the key, is the check item 1015 replaced: applied to `movedInput`, it
+fails `inputs-moved.test.ts`'s edited-and-reverted row (the edit's output
+filed under the original key), the same-bytes row and the unit row. The
+gap stays and `benchmarks.md` says why beside the unocss numbers. Lead
+for A below.
+
 ## Leads for other streams
 
-## H-29: `vx mcp`'s tools join the contract records
-
-`versioning-1.0.md` froze `vx mcp`'s tools and only their names were held
-(H-24's lead). `vx-mcp/tests/contract-tools.test.ts` records each tool's
-input schema and its answer's key paths from a workspace with two real
-runs, in `vx-mcp/tests/contract/tools.json`; renaming `hitRate24h` turns
-it red. Types stay out: `memory.cgroupLimitBytes` is a number in a
-container and null on CI's runners. One seeded run with a peak makes the
-optional `maxPeakRssBytes` reachable on every host.
-
-## Leads for other streams
+- **A:** a task that rewrites its own input with the same bytes is never
+  saved (H-34, unocss `vscode#build`). Content alone cannot tell that
+  from an edit reverted mid-run (item 1015); knowing the task was the only
+  writer can: the sandbox recording the task's own writes, then saving
+  when every moved input matches its digest and only this task wrote it.
 
 - **D / B:** `sandbox.ignore` names that loaded and did nothing: done in D-4.
 - **D:** `dependsOn` accepts `['']` and `['!x']` at load; whether the graph
@@ -431,14 +457,3 @@ optional `maxPeakRssBytes` reachable on every host.
   step 1 promises a deprecated surface "warns once per run, naming what
   replaces it", from the CLI's parser. A stderr line keeps `cli.md`'s
   "byte-identical output" true on stdout. Pre-1.0 it may also simply go.
-
-## H-11: the 1.0 release checklist
-
-`versioning-1.0.md` said when 1.0 takes effect but not how to cut it.
-§ Releasing 1.0 lists the six steps in order, each with how it is checked:
-milestone 3 and the soak, the contract records (the gate runs every
-`contract-*.test.ts`), the notes (`git diff --stat <last-tag> --
-packages/vx/tests/contract/` lists every surface that moved), the plugins
-on npm, the README's status section, the tag. Pinned: every record the
-contract table names must exist (`contract-versioning-doc.test.ts`; a
-misspelt record path fails it).
