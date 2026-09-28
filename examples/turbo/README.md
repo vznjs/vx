@@ -11,6 +11,9 @@ npx vx run test --all    # lib#build, app#build, app#test: 3 miss
 npx vx run test --all    # 3 up-to-date
 ```
 
+`@vzn/vx-migrate` is not on npm yet (its first publish is pending), so
+`npm install` fails here until it is.
+
 When you want configs of your own, `bunx @vzn/vx-migrate` writes a
 `vx.config.ts` per package from the same `turbo.json`. They derive the
 same cache keys, so the cache `turbo()` filled still hits.

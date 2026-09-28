@@ -6,6 +6,10 @@ description: Run a Turborepo, Nx, moon, wireit or lage repo under vx with no fil
 Run your Turborepo, Nx, moon, wireit or lage repo under vx today, and move its config to
 TypeScript at your own pace.
 
+> `@vzn/vx-migrate` is not on npm yet: its first publish is pending. The
+> steps below are the ones to run once it is; `examples/turbo` runs them
+> against this repo's packages on every commit.
+
 ## Turborepo
 
 1. Install: `bun add -d @vzn/vx @vzn/vx-migrate`.
