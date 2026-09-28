@@ -6,7 +6,7 @@
 import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { configImportOwners, unprovidedBareImports } from '../src/workspace/config-imports.js'
 import { loadProjectConfig } from '../src/workspace/project-loader.js'
 
@@ -308,6 +308,43 @@ describe('configImportOwners under a NON-CANONICAL workspace root', () => {
     // selected every project unconditionally.
     await writeFile(path.join(root, 'other.ts'), 'export const o = 1\n')
     expect(await owners(['other.ts'])).toEqual([])
+  })
+
+  // A level's configs are read together (D-23), so a low ulimit refuses
+  // the read, not the file. Read as "no edges", it answered a clean tree:
+  // the project importing the changed preset never ran (D-63).
+  const refusingConfigRead = (code: string) => {
+    const file = Bun.file
+    const config = path.join(real, 'app', 'vx.config.ts')
+    return spyOn(Bun, 'file').mockImplementation(((p: string, o?: BlobPropertyBag) => {
+      const f = file(p, o)
+      if (p !== config) return f
+      const err = Object.assign(new Error(`${code}: refused, open '${p}'`), { code })
+      return Object.assign(Object.create(f), { text: () => Promise.reject(err) })
+    }) as typeof Bun.file)
+  }
+
+  it('a config read refused for want of descriptors fails the pass, not the edge', async () => {
+    const spy = refusingConfigRead('EMFILE')
+    try {
+      expect(
+        await owners(['preset.ts']).then(
+          () => 'resolved',
+          (e: NodeJS.ErrnoException) => e.code,
+        ),
+      ).toBe('EMFILE')
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  it('CONTROL: a config that cannot be read for itself contributes no edges', async () => {
+    const spy = refusingConfigRead('EACCES')
+    try {
+      expect(await owners(['preset.ts'])).toEqual([])
+    } finally {
+      spy.mockRestore()
+    }
   })
 
   it('a TS config is scanned with the TS loader, so its edges survive its type syntax', async () => {

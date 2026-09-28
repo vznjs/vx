@@ -103,6 +103,14 @@ run leaves out; the rest are refusals.
   hint the rest of the run gives (probed at `ulimit -n` 12, 16 and 22 on
   a 20-project fixture); at 10 the run printed nothing at all.
 
+- H: `sandbox-runtime.unsafe.test.ts` › "a SIGKILLed task's port bridge
+  leaves no socket behind" failed once in the gate (2026-09-28): two
+  `-<port>.sock` files while the task ran, one left after. Passed 3 of 3
+  alone. Its `socks()` reads every `vx-task-<pid>-<tag>` directory under
+  the shared root, other processes' included, so a concurrent task
+  bridging the same port number counts; unproven which pid held the
+  extra. Scoping the scan to `vx-task-${process.pid}-` would remove it.
+
 ## Entries
 
 - **D-1** `--affected` selects the project a new nested project took
@@ -596,3 +604,13 @@ packages/core`) selects the dependent whose `file:../lib` spec named
   (analogjs: 1 of 21 `build` tasks today). It gives the refusals at the
   boundary, what does not change, open questions for watch and lock, and
   the slices for D, C, H and G/N.
+- **D-63** Failure class after D-60, grepped across the slice: the
+  `--affected` config-import walk reads a level of configs together,
+  and an `EMFILE` there read the config as having no imports, so a
+  changed preset selected nothing and `--affected` reported a clean
+  tree. The read now rethrows an out-of-descriptors error. The slice's
+  other swallowing catches stat (no descriptor), parse bytes already
+  held, or read one file synchronously; none holds a level open. Rows:
+  the D-63 rows of `tests/config-missing-import.test.ts`, a `Bun.file`
+  spy refusing the config's read with `EMFILE` (red without the fix)
+  and an `EACCES` control that still reads as no edges.

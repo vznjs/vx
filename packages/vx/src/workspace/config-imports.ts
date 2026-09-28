@@ -32,6 +32,7 @@ import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs'
 import { realpath } from 'node:fs/promises'
 import { builtinModules } from 'node:module'
 import path from 'node:path'
+import { isOutOfFds } from '../util/index.js'
 import type { ProjectMeta } from './workspace.js'
 
 const BUILTINS = new Set(builtinModules)
@@ -472,7 +473,10 @@ export async function configImportOwners(a: ConfigImportOwnersArgs): Promise<Set
         visited.add(file)
         try {
           return { file, source: await Bun.file(file).text() }
-        } catch {
+        } catch (err) {
+          // Out of descriptors is this level's width, not the file: read as
+          // no edges, it dropped every project the import selects (D-63).
+          if (isOutOfFds(err)) throw err
           return null // unreadable: no edges, and not this pass's problem to report
         }
       }),
