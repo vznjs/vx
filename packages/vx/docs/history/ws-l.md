@@ -113,6 +113,13 @@
     follows `--` counted; no task output. No bug.
 26. `vx watch`. A changed path only selects what reruns; no path reaches a
     shell or a command line. No bug.
+27. The docs playground. The reader's config runs in a Worker made from a
+    Blob URL, away from the page; no config comes from the URL; results
+    reach the page as `textContent`. No bug.
+28. `vx-schedule-history` reads only core's own run history. No bug.
+29. A named pipe in an input glob or as an output. Input hashing skips it
+    (a run with a FIFO under `src/**` finished at once), and the save
+    refuses an output that is not a regular file. No bug.
 
 ## Items
 
