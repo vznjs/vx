@@ -66,9 +66,11 @@ running `vx run lint test typecheck` goes red the day `typecheck` is
 renamed, instead of silently running two of three. Under a scope a git
 diff chose (`--affected`, a `[ref]` filter) a bare name is judged against
 the whole workspace instead, since which projects hold it depends on what
-changed: `vx run test --affected` after a docs-only commit exits 0 with
-`No affected project declares task(s): test.` and a name no project
-declares is still refused (item 1024).
+changed: `vx run test --affected` after a commit that changed only a
+project without `test` exits 0 with `No affected project declares
+task(s): test.`, and a name no project declares is still refused (item
+1024). A diff that touched no project stops before that check:
+`nothing affected since <ref>` on stderr, exit 0, a typo unseen.
 
 (No `-V` for version; `vx --version` only — matches Turbo.)
 
