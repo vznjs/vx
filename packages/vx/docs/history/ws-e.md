@@ -402,6 +402,19 @@ task picked`; neither prints a stack. Row in
 - E-72 — `--summarize` gets `schemas/summary.json`; `SummaryTaskJson`
   and `RunSummaryJson` type the writer (it built a
   `Record<string, unknown>`).
+- E-73 — `vx init` beside `turbo.json(c)` or `nx.json` writes only
+  `vx.workspace.ts` declaring `turbo()` / `nx()` (turbo wins), and a
+  `next:` line that installs what the file imports with the lockfile's
+  manager and runs the build. `@vzn/vx-migrate` is not on npm yet, so
+  that install fails until it is published.
+- E-74 — `cli/foreign-flags.ts`: every Turbo `run` and Nx
+  `run-many`/`affected` flag on `vx run` is same, an alias rewritten
+  before the parse, or a refusal naming the vx spelling; `vx run-many`
+  and `vx affected` point at `vx run`. cli.md's table is rendered from
+  it and pinned; `--graph=x.svg` no longer writes DOT into an `.svg`.
+- E-75 — a task typed as a verb (`vx build`, `vx build app`,
+  `vx app#build`) is refused with its `vx run`; a plugin verb of the
+  name still wins.
 
 ## First-five-minutes walk (2026-09-28)
 
