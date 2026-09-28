@@ -32,23 +32,22 @@ Same graph, commands and concurrency: [how it is measured](https://vznjs.github.
 
 ## Try it on your repo
 
-In a Turborepo or Nx workspace, add one file (`npx @vzn/vx init` writes
-it and prints the command to run next):
-
-```ts
-// vx.workspace.ts
-import { defineWorkspace } from '@vzn/vx'
-import { turbo } from '@vzn/vx-migrate' // Nx: import { nx } and use nx()
-
-export default defineWorkspace({ plugins: [turbo()] })
-```
-
-Then:
+In a Turborepo or Nx workspace:
 
 ```sh
 npm install -D @vzn/vx @vzn/vx-migrate
+npx vx init                 # writes vx.workspace.ts, below; nothing else
 npx vx run build --all      # your turbo.json or Nx targets, run by vx
 npx vx run build --all      # again: up-to-date in milliseconds
+```
+
+The one file `vx init` writes (in an Nx repo, `nx` for `turbo`):
+
+```ts
+import type { WorkspaceConfig } from '@vzn/vx'
+import { turbo } from '@vzn/vx-migrate'
+
+export default { plugins: [turbo()] } satisfies WorkspaceConfig
 ```
 
 Nothing is rewritten. `@vzn/vx-migrate` is not on npm yet (first publish

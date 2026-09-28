@@ -160,6 +160,9 @@
   install vx, `npx vx init` writes the `satisfies WorkspaceConfig` file
   shown, and its `next:` line installs `@vzn/vx-migrate` and runs the
   build. The page leads with Turbo and Nx; moon, wireit and lage stay below.
+- **K-28** README and landing "Try it": install, `npx vx init`, two runs,
+  then the file init writes. `try-it.unsafe.test.ts` runs init and holds
+  the shown file to the written one (fails when they differ).
 
 ## Leads for other streams
 
