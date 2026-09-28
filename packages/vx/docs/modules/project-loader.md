@@ -108,6 +108,11 @@ readers that reach it here.
   `Array.prototype.includes` broke the JSON-data walk itself); what
   changed is put back, a failed load's too, and the load is refused
   naming the property.
+- A first load may not change `process.env` either: a config that set
+  a variable gave it to every project's `passThrough` and to vx's own
+  `VX_*` reads, and a repeat load, in a worker, gave it to neither
+  (D-76). The same snapshot, compare, put back and refuse; a task gets
+  a value through `exec.env.define` or the host's `passThrough`.
 - A first load has the Worker's deadline too (`VX_CONFIG_WORKER_TIMEOUT_MS`,
   30 s): a top-level await that never settles fails the load, naming
   the config and the budget, where it hung `vx run` silently (D-66).
