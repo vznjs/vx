@@ -146,7 +146,7 @@ const MAX_CLOSURE_FILES = 32
 // `require` without naming it as `arguments[1]`, and one reading a file
 // outside its closure so replayed the old bytes (D-36).
 const IMPURE_RE =
-  /\b(?:process|Bun|globalThis|global|self|fetch|Date|Temporal|Intl|crypto|performance|navigator|require|eval|Function|constructor|localeCompare|await|toLocale\w*|Reflect|getPrototypeOf|setPrototypeOf|getOwnPropertyNames|getOwnPropertyDescriptor|getOwnPropertyDescriptors|__proto__|prototype|__defineGetter__|__defineSetter__|__lookupGetter__|__lookupSetter__|random|prompt|confirm|alert|arguments)\b|import\s*\.\s*meta|\bimport\s*\(/
+  /\b(?:process|Bun|globalThis|global|self|fetch|Date|Temporal|Intl|crypto|performance|navigator|require|eval|Function|constructor|localeCompare|await|toLocale\w*|Reflect|getPrototypeOf|setPrototypeOf|getOwnPropertyNames|getOwnPropertyDescriptor|getOwnPropertyDescriptors|__proto__|prototype|__defineGetter__|__defineSetter__|__lookupGetter__|__lookupSetter__|random|prompt|confirm|alert|arguments|Worker)\b|import\s*\.\s*meta|\bimport\s*\(/
 
 /** Literal text that names a way to `Function` when used as a computed key. */
 const IMPURE_LITERAL_RE = /constructor|__proto__|prototype/

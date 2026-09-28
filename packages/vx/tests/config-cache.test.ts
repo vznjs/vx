@@ -302,6 +302,9 @@ describe('configEvalKey', () => {
     "prompt('mode?')",
     "confirm('prod?')",
     "alert('continue?')",
+    // A worker runs a file outside the hashed closure, so what it reads
+    // (env, clock) reached a cached evaluation unseen (D-59).
+    "new Worker('./w.mjs')",
   ])('refuses to cache a config that mentions %s', async (expr) => {
     const cfg = await write(
       'packages/r/vx.config.mjs',
