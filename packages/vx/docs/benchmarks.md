@@ -932,6 +932,19 @@ as an output (the build rewrites `exports`, with the same bytes), so
 output dropped, the rewrite of an input during the run would still
 withhold the save (the unocss row above); the fix is core's.
 
+### shadcn-ui/ui (Turbo 2.9.18, `turbo()`, `984f435`)
+
+`turbo run build --filter=./packages/*` against `vx run build --filter
+'./packages/*'` through `turbo()` with nothing written: the same 3
+tasks and edges (`typecheck`'s 5 match too). From the `/mnt` bind
+mount, as unocss above.
+
+| `build` | vx         | Turbo 2.9.18   |
+| ------- | ---------- | -------------- |
+| cold    | **21.4 s** | 24.4 s (1.14×) |
+| restore | **221 ms** | 567 ms (2.57×) |
+| no-op   | **216 ms** | 545 ms (2.52×) |
+
 ## Real repos re-measured (2026-09-27)
 
 Roadmap 2.5: astro and refine again, same revisions, harnesses and
