@@ -227,10 +227,11 @@ function predictPlan(tasks: PlannedTask[]): PlanPrediction {
   const byId = new Map(tasks.map((t) => [t.node.id, t]))
   const dependents = new Map<string, string[]>()
   const indeg = new Map<string, number>()
+  // Every dep is a planned task: the task graph refuses a dep it does not
+  // hold, and every task of it runs in plan().
   for (const t of tasks) {
-    const deps = t.deps.filter((d) => byId.has(d))
-    indeg.set(t.node.id, deps.length)
-    for (const d of deps) {
+    indeg.set(t.node.id, t.deps.length)
+    for (const d of t.deps) {
       const list = dependents.get(d)
       if (list) list.push(t.node.id)
       else dependents.set(d, [t.node.id])

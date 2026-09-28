@@ -594,6 +594,22 @@ charges (per-chunk overhead, a sliced chunk, an empty chunk), the whole
 and eviction stopping at exactly the budget. CRLF and a pair split
 across chunks pass through verbatim.
 
+## C-45: hold `plan.ts`'s surviving mutants
+
+Swept `orchestrator/plan.ts` (40 mutants, 44 files): 37 caught (one by
+the type-check alone), 3 survived. `concurrency: 1` → 8 is equivalent
+(the plan's work is order-free). `predictPlan`'s `byId.has` dep filter
+was dead: the task graph refuses an unknown dep, so every dep of a
+planned task is planned; it is gone. A row in `plan-predict.test.ts`
+holds the last: `--cache=local:w` and `remote:w` each plan a miss with no
+probe (`--force` holds both write axes, so either could go).
+
+Open defect, not fixed (it needs a plan vocabulary decision): an
+`exec.remote: 'only'` task no remote executor takes plans as
+`miss — would exec`, and the run then does nothing. With one executor
+the plan carries no `@noop` label either, and the task counts in
+"would run" and the time prediction.
+
 ## Leads for other streams
 
 - **E:** a plugin command's plain `throw` (`commands.probe.run` throwing
