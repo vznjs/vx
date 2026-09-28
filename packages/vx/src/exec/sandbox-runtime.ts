@@ -678,15 +678,19 @@ export function resolveSandboxConfig(
     r.weakerNetworkIsolation = cfg.weakerNetworkIsolation
   }
   if (cfg.ignore !== undefined) {
-    // Relative patterns anchor at the project dir; `~` ones are taken as
-    // written. A pattern is not a path, but its literal head is: both
+    // Relative patterns anchor at the project dir, `~` ones at the home
+    // directory, as a grant's are (a `~` pattern kept as written matched no
+    // recorded path). A pattern is not a path, but its literal head is: both
     // producers record where a denial LANDS, so the head is canonicalized
     // like every other side of the policy. Anchored at a project reached
     // through a link (macOS's `/var`), no pattern matched and the denial it
     // named failed the task (B-2).
     const anchor = (pat: string): string => {
-      if (pat.startsWith('~')) return pat
-      const abs = path.isAbsolute(pat) ? pat : path.join(projectDir, pat)
+      const abs = pat.startsWith('~')
+        ? path.join(os.homedir(), pat.slice(1))
+        : path.isAbsolute(pat)
+          ? pat
+          : path.join(projectDir, pat)
       const wild = abs.search(BUN_GLOB_WILDCARDS)
       const head = wild === -1 ? abs : abs.slice(0, abs.lastIndexOf(path.sep, wild)) || path.sep
       return toRealPath(head) + abs.slice(head.length)
@@ -906,10 +910,11 @@ function ownGroupCommand(
   // the tracer attached, so one it inherited (the watcher, SRT's network
   // bridges) that exits first sent the command on untraced, and under
   // `--seccomp-bpf` its `execve` failed ENOSYS. A fresh fork has none.
-  // An async list starts with SIGINT and SIGQUIT ignored, and a shell
-  // cannot trap what it was started ignoring: SRT's bash may put them
-  // back before the `exec` (dash may not), so a task's `trap … INT` hears
-  // vx's cancellation as it does untraced.
+  // POSIX lets an async list start with SIGINT and SIGQUIT ignored, and a
+  // shell cannot trap what it was started ignoring: bash 5.2 ignores them
+  // for a backgrounded simple command (the first cut here, whose task's
+  // `trap … INT` never fired) but not for a brace group, so the `trap -`
+  // is for a bash that does; SRT's bash may put them back (dash may not).
   const tracer = [
     executablePath('strace'),
     '-DD',

@@ -7,7 +7,7 @@
 // skipping, because a skipped suite reports green and this one covers
 // the isolation boundary. A local host without the deps still skips.
 
-import { existsSync, readdirSync, readFileSync, realpathSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, readlinkSync, realpathSync } from 'node:fs'
 import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { createConnection } from 'node:net'
 import os from 'node:os'
@@ -34,6 +34,7 @@ import {
   portBridgeSocket,
 } from '../src/exec/sandbox-runtime.js'
 import { localBindingOn } from '../src/exec/sandbox-paths.js'
+import { killTree } from '../src/exec/kill-tree.js'
 import {
   deniedCalls,
   parseStraceViolations,
@@ -2943,6 +2944,20 @@ describe('reportableViolations', () => {
       await rm(d, { recursive: true, force: true })
     }
   })
+
+  // A `~` pattern was kept as written and matched no target: every producer
+  // records an absolute path, so `ignore: { read: ['~/.cache/*'] }`
+  // silenced nothing (sweep of B-11, `ign-tilde`).
+  it('matches an `ignore` pattern under `~`', () => {
+    // Nothing is created: `os.homedir()` is read once per process, so the
+    // row names paths under the real home that no one has.
+    const home = realpathSync(os.homedir())
+    const cfg = resolveSandboxConfig({ ignore: { read: ['~/.vx-ignore-probe/*'] } }, home)
+    const produced = [linux(`${home}/.vx-ignore-probe/x`), linux(`${home}/.vx-ignore-kept`)]
+    expect(lines(reportableViolations(produced, { within: home, config: cfg }))).toEqual([
+      `openat(x) = -1 ENOENT  [${home}/.vx-ignore-kept]`,
+    ])
+  })
 })
 
 describe.skipIf(process.platform !== 'darwin')('nested seatbelt', () => {
@@ -4206,6 +4221,62 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
   // moment the task's shell exits, and the pipe closes with it. On Linux
   // the post-exit drain bound is therefore unreachable in a sandbox; it is
   // the guard on a platform without a PID namespace.
+  // B-11: strace writes the host's trace log through fd 5 and the watcher
+  // reads the signal channel on fd 3; the command sees neither, so it can
+  // neither forge a trace line nor read vx's signals.
+  it("the command's shell holds neither the trace log nor the signal channel", async () => {
+    const r = await runSandboxed(
+      args('for fd in 3 5; do (: >&$fd) 2>/dev/null && echo "$fd open" || echo "$fd closed"; done'),
+    )
+    expect(r.stdout).toBe('3 closed\n5 closed\n')
+  })
+
+  // The watcher signals the command's GROUP: a child the command's shell
+  // waits on hears vx's SIGTERM too, as it does untraced. The child writes
+  // its marker once its trap is set.
+  it("vx's signal reaches the command's children, not only its shell", async () => {
+    const live = new Set<ReturnType<typeof Bun.spawn>>()
+    const done = runSandboxed(
+      args(
+        // The shell waits its child out on TERM: the namespace ends with the
+        // shell, and would otherwise take the child mid-trap.
+        `trap 'wait' TERM; sh -c 'trap "echo child > got.txt; exit 0" TERM; echo up > ready.txt; while :; do sleep 0.05; done' & wait`,
+        {
+          config: resolveSandboxConfig(
+            { allow: { read: ['.'], write: ['got.txt', 'ready.txt'] } },
+            dir,
+          ),
+          liveChildren: live,
+          // Bounds the mutant, whose child never hears the signal.
+          timeoutMs: 10_000,
+        },
+      ),
+    )
+    const ready = path.join(dir, 'ready.txt')
+    while (!existsSync(ready) || readFileSync(ready, 'utf8').trim() !== 'up') await Bun.sleep(20)
+    for (const c of live) killTree(c, 'SIGTERM')
+    await done
+    expect(readFileSync(path.join(dir, 'got.txt'), 'utf8')).toBe('child\n')
+  })
+
+  it("keeps no descriptor on a traced task's log", async () => {
+    // The descriptors that name a trace log, not the count of all: other
+    // rows' descriptors come and go while this one runs.
+    const logFds = (): string[] =>
+      readdirSync('/proc/self/fd').flatMap((fd) => {
+        try {
+          const to = readlinkSync(path.join('/proc/self/fd', fd))
+          return path.basename(to).startsWith('vx-strace-') ? [to] : []
+        } catch {
+          return []
+        }
+      })
+    // The child has its own copy: vx's closes once the spawn is made (with
+    // the close deleted, one stays per task, on the removed log).
+    for (let i = 0; i < 3; i++) await runSandboxed(args('true'))
+    expect(logFds()).toEqual([])
+  })
+
   it('returns promptly when a backgrounded grandchild holds the pipe open', async () => {
     const t0 = Date.now()
     const r = await runSandboxed(args('sleep 10 & echo up'))

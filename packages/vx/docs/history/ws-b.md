@@ -41,6 +41,11 @@ In order of harm:
   after 2.2 s. The file alone passed 13 of 13 twice. The proxy's count
   looks read before the attempt reached it under load.
 
+- `watch-loop-members.test.ts` › a root package.json's workspaces that add
+  a glob watch the packages they name: timed out ("d joins the set")
+  under the full gate's load on 2026-09-28, 2 of 2 green alone. Its
+  `until` deadline is a claim about time under load.
+
 ## Entries
 
 B-1. A glob grant's hit on a wall is not a grant of it (lead 1). On
@@ -261,3 +266,42 @@ Now 30 (min of 40, A/B interleaved against `origin/main`, A/A within
   can reach a wall on macOS through the same regex (covered by this fix's
   write rules, no darwin runtime row yet); `systemInfo`, `machLookup`,
   `unixSockets` and `pty` have no darwin runtime row.
+
+B-13. Sweep of `sandbox-runtime.ts` after B-11: 52 mutants, 33 caught.
+It found one defect: a `~` ignore pattern was kept as written, and since
+every producer records an absolute path, `ignore: { read: ['~/.cache/*'] }`
+silenced nothing.
+
+- Fix (`resolveSandboxConfig`): a `~` pattern anchors at the home
+  directory, as a grant does. `modules/sandbox-runtime.md`.
+- Rows, each red under its mutant:
+  - `sandbox-runtime.unsafe.test.ts` › matches an `ignore` pattern under
+    `~`; the command's shell holds neither the trace log nor the signal
+    channel (fds 5 and 3); a timeout's signal reaches the command's
+    children, not only its shell (the watcher's `-$c`); leaves no
+    descriptor on a traced task's log.
+  - `sandbox-tracer-retry.unsafe.test.ts` › strace's word split across
+    two chunks, or as the last unterminated line, is still heard; a task
+    that timed out is not run again.
+- Equivalent: `trap - INT QUIT`, since bash 5.2 does not ignore SIGINT
+  for a backgrounded brace group (measured; the comment now says so).
+  `fresh = all.length` re-delivers ring records, which Linux's
+  `refusedWrites` de-duplicates. Stale tags left in the exit set only
+  grow the set.
+- Gaps left as leads:
+  - the untraced wrapper (no strace, or a persistent server) is never
+    driven for the watcher's `-$$` or fd 3;
+  - a relative `../x` trace under a cwd reached through a link
+    (`canonicalBaselines`' cwd);
+  - a literal ignore entry that is itself a link;
+  - the task side's port socket after a SIGKILLed namespace;
+  - `releaseBridges`' deferred reset with two live servers and a bridged
+    one-shot.
+- Also recorded:
+  - Probe refuted: stalling vx's event loop 300 ms per output chunk did
+    not truncate a task's output after it exited.
+  - macOS `localBinding` stays wide, documented: seatbelt has no network
+    namespace, so narrowing a port list would refuse a task's own
+    ephemeral server.
+  - Lead: `-DD`'s attach under Yama `ptrace_scope=1` is proven only by
+    the CI runner; this container has no Yama.
