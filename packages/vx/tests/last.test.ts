@@ -304,7 +304,7 @@ describe('parseLastArgs', () => {
     expect(parseLastArgs(['--cache-dir']).error).toMatch(/requires a path/)
     expect(parseLastArgs(['--cache-dir', '--list']).error).toMatch(/got flag/)
     expect(parseLastArgs(['--nope']).error).toMatch(/unknown flag/)
-    expect(parseLastArgs(['a', 'b']).error).toMatch(/unexpected argument/)
+    expect(parseLastArgs(['a', 'b']).error).toBe('unexpected argument: b (see `vx last --help`)')
   })
 
   it('--list N takes its count in the space form, and a run id beside --list is refused (item 899)', () => {

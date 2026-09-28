@@ -35,7 +35,8 @@ export function parseShowArgs(args: readonly string[]): ShowArgs {
     else if (a.startsWith('--format=')) format = a.slice('--format='.length)
     else if (a.startsWith('-'))
       return { ...out, error: `unknown flag: ${a}${flagHint('show', a)}${seeHelp('show')}` }
-    else if (out.target !== undefined) return { ...out, error: `unexpected argument: ${a}` }
+    else if (out.target !== undefined)
+      return { ...out, error: `unexpected argument: ${a}${seeHelp('show')}` }
     // An empty name is a part of every name: its "did you mean" listed the
     // whole workspace.
     else if (a === '') return { ...out, error: 'empty target (omit it to list every project)' }

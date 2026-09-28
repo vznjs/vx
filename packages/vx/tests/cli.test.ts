@@ -1755,7 +1755,9 @@ describe('parseRunArgs', () => {
     expect(parseRunArgs(['build', '--retry', '-1']).error).toMatch(/non-negative/)
     expect(parseRunArgs(['build', '--retry=1.5']).error).toMatch(/non-negative/)
     // Missing value.
-    expect(parseRunArgs(['build', '--retry']).error).toMatch(/--retry requires a value/)
+    expect(parseRunArgs(['build', '--retry']).error).toBe(
+      '--retry requires a value (a non-negative integer)',
+    )
   })
 
   it('parses --timeout <ms> / --timeout=<ms> and validates it', () => {
@@ -1766,7 +1768,9 @@ describe('parseRunArgs', () => {
     expect(parseRunArgs(['build', '--timeout', '0']).error).toMatch(/positive integer/)
     expect(parseRunArgs(['build', '--timeout=-5']).error).toMatch(/positive integer/)
     // Missing value.
-    expect(parseRunArgs(['build', '--timeout']).error).toMatch(/--timeout requires a value/)
+    expect(parseRunArgs(['build', '--timeout']).error).toBe(
+      '--timeout requires a value (a positive integer, in ms)',
+    )
   })
 
   it('captures trailing args after `--` as forwardArgs', () => {
@@ -1802,7 +1806,20 @@ describe('parseRunArgs', () => {
   })
 
   it('rejects missing flag value', () => {
-    expect(parseRunArgs(['build', '--filter']).error).toMatch(/requires a value/)
+    expect(parseRunArgs(['build', '--filter']).error).toBe(
+      '--filter requires a value (a project name, glob or path, e.g. --filter app)',
+    )
+    // Each value-taking flag says what the value is, not only that it is missing.
+    expect(
+      ['--concurrency', '--cache', '--verbosity', '--tag'].map(
+        (f) => parseRunArgs(['build', f]).error,
+      ),
+    ).toEqual([
+      '--concurrency requires a value (a positive integer, or a share of the cores such as 50%)',
+      '--cache requires a value (a spec like local:r, local:rw, remote:, or local:,remote:rw)',
+      '--verbosity requires a value (a non-negative integer)',
+      '--tag requires a value (k=v)',
+    ])
   })
 
   it('-F short alias is no longer recognized', () => {
@@ -1979,10 +1996,18 @@ describe('parsePruneArgs', () => {
   // reaches the cache as a size limit. Neither refusal had a row (E-9's
   // sweep deleted each with the suite green).
   it('refuses a value it cannot parse instead of pruning by it', () => {
-    expect(parsePruneArgs(['--older-than', 'abc'])).toEqual({ error: 'invalid duration: abc' })
-    expect(parsePruneArgs(['--older-than', '1.5d'])).toEqual({ error: 'invalid duration: 1.5d' })
-    expect(parsePruneArgs(['--max-size', 'abc'])).toEqual({ error: 'invalid size: abc' })
-    expect(parsePruneArgs(['--max-size', '1.5G'])).toEqual({ error: 'invalid size: 1.5G' })
+    expect(parsePruneArgs(['--older-than', 'abc'])).toEqual({
+      error: 'invalid duration: abc (e.g. 30d, 24h, 60m)',
+    })
+    expect(parsePruneArgs(['--older-than', '1.5d'])).toEqual({
+      error: 'invalid duration: 1.5d (e.g. 30d, 24h, 60m)',
+    })
+    expect(parsePruneArgs(['--max-size', 'abc'])).toEqual({
+      error: 'invalid size: abc (e.g. 500M, 1G)',
+    })
+    expect(parsePruneArgs(['--max-size', '1.5G'])).toEqual({
+      error: 'invalid size: 1.5G (e.g. 500M, 1G)',
+    })
   })
 
   it('rejects missing flag values', () => {

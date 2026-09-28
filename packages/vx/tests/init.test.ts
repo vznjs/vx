@@ -164,7 +164,8 @@ describe('parseInitArgs', () => {
     // pointer, not the positional one.
     [['-d'], 'unknown flag: -d', undefined],
     [['-'], 'unknown flag: -', undefined],
-    // Only a bare word is a positional, and it gets no help pointer.
+    // Only a bare word is a positional; it gets the pointer too, as
+    // `vx lock` and `vx upgrade` give it.
     [['turbo.json'], 'unexpected argument: turbo.json', undefined],
   ])('%p', (argv, error, parsed) => {
     const out = parseInitArgs(argv as string[])
@@ -174,9 +175,7 @@ describe('parseInitArgs', () => {
     } else {
       expect(out.error).toBeDefined()
       expect(out.error!.startsWith(error as string)).toBe(true)
-      expect(out.error!.includes('vx init --help')).toBe(
-        (error as string).startsWith('unknown flag'),
-      )
+      expect(out.error!.endsWith(' (see `vx init --help`)')).toBe(true)
     }
   })
 })

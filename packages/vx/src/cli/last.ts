@@ -65,7 +65,8 @@ export function parseLastArgs(args: readonly string[]): LastArgs {
     }
     if (a.startsWith('-'))
       return { ...out, error: `unknown flag: ${a}${flagHint('last', a)}${seeHelp('last')}` }
-    if (out.runId !== undefined) return { ...out, error: `unexpected argument: ${a}` }
+    if (out.runId !== undefined)
+      return { ...out, error: `unexpected argument: ${a}${seeHelp('last')}` }
     out.runId = a
   }
   // One run's replay or a list of runs, not both: the id was dropped.
