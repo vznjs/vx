@@ -113,12 +113,10 @@ export async function pluginVerbs(cwd = process.cwd()): Promise<string[]> {
 export async function pluginCommandHelp(cwd = process.cwd()): Promise<string[]> {
   const ws = await workspacePlugins(cwd).catch(() => null)
   if (ws === null || 'loadError' in ws) return []
+  // A verb has one owner: the workspace load refuses two plugins declaring it.
   const lines: string[] = []
-  const seen = new Set<string>()
   for (const plugin of ws.plugins) {
     for (const [verb, command] of Object.entries(plugin.commands ?? {})) {
-      if (seen.has(verb)) continue
-      seen.add(verb)
       lines.push(`  vx ${verb.padEnd(17)} ${command.description} (${plugin.name})`)
     }
   }
