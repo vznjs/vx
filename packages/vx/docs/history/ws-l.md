@@ -44,6 +44,11 @@
    cache stores only configs that read no `process`, so no env value is
    at rest there. A hit's replayed stdout is as trusted as its outputs.
    No bug.
+10. What a remote or a peer can reach. vx-reapi's TLS follows the
+    endpoint's scheme (`grpcs://`/`https://`) or `tls`, Bazel's convention:
+    a token over `grpc://` is the config's choice. The host side of a port
+    bridge binds 127.0.0.1, as the unsandboxed server would. Git's input
+    enumeration is `-z` with `--` before every pathspec. No bug.
 
 ## Items
 
