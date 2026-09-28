@@ -965,3 +965,69 @@ describe('a remote-only task cannot participate in a collision', () => {
     )
   })
 })
+
+// C-30: the mutation sweep of task-graph.ts found each of these deletable
+// with the core suite green.
+describe('collision rows the C-30 sweep found unheld', () => {
+  it('a remote-only task is exempt on either side of a pair', () => {
+    expect(() =>
+      graph({ core: { a: task(['dist/**']), b: remoteOnlyTask(['dist/**']) } }),
+    ).not.toThrow()
+    expect(() =>
+      graph({
+        a: { build: remoteOnlyTask([], ['b/dist/a.txt']) },
+        b: { build: task(['dist/**']) },
+      }),
+    ).not.toThrow()
+    expect(() =>
+      graph({
+        a: { build: task([], ['b/dist/a.txt']) },
+        b: { build: remoteOnlyTask(['dist/**']) },
+      }),
+    ).not.toThrow()
+  })
+
+  it("a root-anchored literal beside, not inside, a project's glob is allowed", () => {
+    // The path index pairs them (the literal lies under the glob's head);
+    // the overlap test is what clears them.
+    expect(() =>
+      graph({ a: { build: task([], ['b/dist/a.txt']) }, b: { build: task(['dist/*.js']) } }),
+    ).not.toThrow()
+  })
+
+  it('a task is never compared with itself across the two namespaces', () => {
+    const nodes = graphNodes({ a: { build: task(['dist/**'], ['a/dist/x.txt']) } })
+    expect(nodes.get('a#build')?.addsToOutputsOf).toBeUndefined()
+  })
+
+  it('a project at the workspace root is compared in its own namespace', () => {
+    const entry = (name: string, dir: string, tasks: Record<string, TaskConfig>) =>
+      [name, { name, dir, config: { tasks } as ProjectConfig } as ProjectEntry] as const
+    const nodes = buildTaskGraph({
+      projects: new Map([
+        entry('root', '/w', { build: task(['dist/**']) }),
+        entry('a', '/w/a', {
+          build: { ...task([], ['dist/a.txt']), dependsOn: ['root#build'] } as TaskConfig,
+        }),
+      ]),
+      packageGraph: { directDeps: () => [] } as unknown as PackageGraph,
+      requested: [
+        { project: 'root', task: 'build' },
+        { project: 'a', task: 'build' },
+      ],
+      workspaceRoot: '/w',
+    })
+    expect([
+      nodes.get('a#build')?.addsToOutputsOf,
+      nodes.get('root#build')?.outputsAddedToBy,
+    ]).toEqual([['root#build'], ['dist/a.txt']])
+  })
+
+  it('outputsOverlap: identical globs overlap; a subtree covers only its own directory', () => {
+    expect([
+      outputsOverlap('dist/*.js', 'dist/*.js'),
+      outputsOverlap('dist/**', 'dist/x/*.js'),
+      outputsOverlap('dist/**', 'distx/*.js'),
+    ]).toEqual([true, true, false])
+  })
+})

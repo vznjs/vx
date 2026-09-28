@@ -393,6 +393,38 @@ the workers (not 1, not every key), the context's task id, command and
 refused miss), no batch probe with no stable key, and a handle that
 resolves when key derivation throws. No defect.
 
+## C-30: hold task-graph.ts's surviving mutants
+
+Swept `graph/task-graph.ts`: 145 mutants over the five graph files
+(task-graph, wildcard-depends, output-collision, plan-predict,
+project-loader), plus 6 respelled where the first spelling did not
+compile or only tripped lint. 101 caught by the suite, 1 by the
+type-check (`every` → `some` in the across-namespace own-glob test), 5
+held only by a hang in the row named for them (the surface walk's
+visited set, the cycle walk's BLACK skip and GRAY test, the literal
+`continue` in the path index under the 4,000-task row, the dep check
+under a graph plugin). 14 are equivalent: `held` and the own-project
+short cut beside `declaredAnywhere` (a holder declares the name), the
+Frame's `added`/`pending` resets and the pending `nodes.has` (same
+order, same deps), the literal-literal arm (each literal's `/**` twin
+answers), the reach walk's seen check and memo, the one-task bucket
+and no-root-output gates, the mixed-pair swap (root-anchored entries
+come first), the cycle walk's BLACK start skip and unknown-dep skip
+(`checkGraph` refuses one first). New rows hold the other 24, each
+failing under its mutant: `task-graph.test.ts` (an unrequested group
+surfaces nothing, an anchored request is not also a bare name, an
+empty scope reports nothing, depth-first node order, a malformed entry
+named with its task, a pattern in the project half of `pkg#task`, the
+cycle named without its lead-in, and `excludeDependencies`: no
+order-only edge a kept edge gives, only the nearest scheduled tasks,
+sorted, and each walk once per node, counted by `get`s on twelve
+diamonds); `output-collision.test.ts` (remote-only on either side,
+both namespaces; a root-anchored literal beside a project glob; a task
+against itself across namespaces; a project at the workspace root;
+identical globs, and `dist/**` against `distx/*.js`). Not run: the
+survivors against the other 25 files that name the region (rows added
+regardless), error wording beyond the rows above. No defect.
+
 ## Leads for other streams
 
 - **E:** a plugin command's plain `throw` (`commands.probe.run` throwing
