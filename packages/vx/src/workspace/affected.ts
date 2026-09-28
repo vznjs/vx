@@ -7,6 +7,7 @@
 // the base branch moved on with. Matches Turbo's `[<since>]` semantics.
 
 import { realpathSync, statSync } from 'node:fs'
+import { realpath } from 'node:fs/promises'
 import path from 'node:path'
 import {
   asTrees,
@@ -240,7 +241,12 @@ export async function affectedProjects(args: AffectedArgs): Promise<Set<string>>
     }
   }
 
-  const owned = projectsContaining(args.workspaceRoot, changed, args.projects)
+  const realDirs = new Map(
+    await Promise.all(
+      args.projects.map(async (p) => [p.dir, await realpath(p.dir).catch(() => p.dir)] as const),
+    ),
+  )
+  const owned = projectsContaining(args.workspaceRoot, changed, args.projects, realDirs)
   for (const name of claimedOwned) owned.add(name)
 
   // A manifest edit can drop an edge today's graph no longer shows: a
@@ -277,6 +283,7 @@ export async function affectedProjects(args: AffectedArgs): Promise<Set<string>>
     projects: args.projects,
     changed,
     skip: owned,
+    realDirs,
   })) {
     owned.add(name)
   }
@@ -659,6 +666,7 @@ function projectsContaining(
   workspaceRoot: string,
   changedRelPaths: readonly string[],
   projects: readonly ProjectMeta[],
+  realDirs: ReadonlyMap<string, string>,
 ): Set<string> {
   // Index projects by their (canonical) dir, then for each changed path walk
   // its ancestor dirs bottom-up until one is a project dir. The FIRST hit is
@@ -676,7 +684,7 @@ function projectsContaining(
   // too. One realpath per member, and only on an --affected run.
   const realRoot = realpathOr(workspaceRoot)
   for (const p of projects) {
-    const real = realpathOr(p.dir)
+    const real = realDirs.get(p.dir) ?? p.dir
     const rel = path.relative(realRoot, real)
     if (rel.startsWith('..') || path.isAbsolute(rel)) continue
     const spelled = path.resolve(workspaceRoot, rel)

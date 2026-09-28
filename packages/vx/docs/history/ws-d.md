@@ -224,3 +224,12 @@ packages/core`) selects the dependent whose `file:../lib` spec named
   `lockfile.ts` (15, all caught) and the rest of `affected.ts` (23: three
   equivalent — the unreadable-root sentinel, the no-positive guard of
   `workspaceGlobsMatch`, the non-blob branch of the batch read).
+- **D-24** `--affected` realpath'd every project dir twice, in the
+  containment pass and in the config-import walk. It asks once, in
+  `affectedProjects`, and hands the answers to both
+  (`ConfigImportOwnersArgs.realDirs`): at 5,000 projects a one-file
+  change 157 → 141 ms (min of 10, three interleaved rounds; A/A
+  154–160). Rows: the containment and import-closure rows of
+  `tests/affected.test.ts`, the moved-root and linked-member ones among
+  them. The `json-data.ts` sweep (19 mutants) held: its one survivor,
+  reporting only the first finding, is what every caller reads.
