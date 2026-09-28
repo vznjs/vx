@@ -397,3 +397,17 @@ Lead from N (vueuse, efdd69a): ten builds read `packages/metadata/index.json`, c
 
 - The two methods are additive on the public `GitFilesCache` (`tests/contract/package-api.txt` regenerated; 0.x).
 - Rows (`cleaned-tracked-reader.test.ts`): the line, exact; silent for an untracked file, the failing task's own clean, a file written back, and a task that succeeds. The clean note, the tracked test, the other-task test, the still-missing test and the failure gate are each red under their own mutant. Workspace-output cleans are not noted: no row would hold it.
+
+### A-49 — sweep of the remote layering: `chained-cache.ts`, `layered-cache.ts`, `run-history.ts` (2026-09-28)
+
+82 mutants. `chained-cache.ts` 23/23 caught. `run-history.ts` 14/17; three equivalent (the empty and one-row fast paths of `recordRuns`, and `<` against `<=` on the 30-day cutoff's millisecond). `layered-cache.ts` 36/42; five held by new rows in `layered-cache.test.ts`, each red under its mutant:
+
+- an endpoint no URL parser reads prints as given (without `URL.canParse` the constructor threw);
+- a query alone is stripped from the printed endpoint (a token rode there with no userinfo);
+- `drainUploads()` waits for an upload still running once the queue is empty;
+- an `onRemoteError` that throws still degrades the call to a miss;
+- an artifact gone between its ingest and the read (a concurrent prune) is a miss; without the null check it came back as a `{ source: 'remote' }` hit with no entry.
+
+Equivalent: `close()` clearing the repeat counts (a handle closes once).
+
+Measured first (1,000-project `vx-bench` workspace, hermetic git): warm 98–112 ms, cold 2.7 s. The cold save path's A-owned CPU is spread flat (index commit 186 ms, rename 127, the artifact re-scan 135, output globbing 115, of about 3.1 s on a saturated main thread), with no single lever over 6 %, so nothing was changed. Under this box's own git config (`core.checkStat=minimal`) every input hashes from disk, which is correct.
