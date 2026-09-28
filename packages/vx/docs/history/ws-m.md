@@ -73,3 +73,16 @@ It now asserts a peak above that mark plus the slack. Still red with the
 pre-M-2 fixed 600 MB under a 700 MB parent.
 
 ## Leads for other streams
+
+- A: A-20 let a same-project dependant restore ahead of a producer whose
+  output tree holds its outputs; M-5 closed it in `dependsOnSiblingOutputs`.
+  Any further narrowing of that gate keeps the write overlap in view.
+- L: the L-6 row (`sandbox-runtime.unsafe.test.ts`, one task's unixSockets
+  grant) ran `socat` on macOS CI and failed "command not found" (run
+  36359822591); it needs the sandbox availability gate the other rows use.
+- J: `npm-launcher.test.ts` › a signal sent to the launcher alone reaches
+  the binary: macOS CI, run 36365513736 (`ws-l/sandbox-private-tmp`, a diff
+  that does not touch the launcher). The launcher exited 130 and the fake
+  binary's INT trap never wrote `heard` (ENOENT). Once in the survey; cause
+  unproven. The forward is gated on `inForeground()`, which reads `ps` on
+  macOS.
