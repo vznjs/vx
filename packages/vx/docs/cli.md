@@ -1771,7 +1771,10 @@ What a Turbo or Nx user types into `vx run` (and `vx watch`): each flag
 vx takes as it is (`same`), rewrites to its own spelling before the
 parse (`alias`), or refuses with the vx way to say it (`refuse`) —
 none is dropped in silence. `vx run-many` and `vx affected` name the
-`vx run` that does the same. The table is `cli/foreign-flags.ts`,
+`vx run` that does the same. Nx's `project:target` (`vx run web:build`,
+when `web` declares `build`) is answered with `vx run web#build`: from
+outside a project in place of "not inside a project", in scope as the
+unresolved name's `Did you mean`. The table is `cli/foreign-flags.ts`,
 rendered; `tests/foreign-flags.test.ts` drives every row and holds this
 copy to the source.
 

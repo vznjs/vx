@@ -16,6 +16,7 @@ import {
 import type { ContinueMode } from '../graph/index.js'
 import { type CachePolicy, FULL_CACHE_POLICY, parseCachePolicy } from '../cache/index.js'
 import { findCwdProject, pickTask, resolveFilters } from './select.js'
+import { nxTargetHint } from './task-verb.js'
 import { MAX_TIMEOUT_MS, isUserError, parseDecimalInt, machineParallelism } from '../util/index.js'
 import { formatGraphDot, formatPlanJson, formatPlanText } from './plan-format.js'
 
@@ -512,6 +513,8 @@ export async function resolveRunOptions(
   } else {
     const cwdProject = await findCwdProject(cwd)
     if (!cwdProject) {
+      const nx = await nxTargetHint(tasks, cwd)
+      if (nx !== null) return { error: nx }
       return {
         error:
           'not inside a project. Pass --all for every project, --filter <pattern> to filter, or run from within a project directory.',
