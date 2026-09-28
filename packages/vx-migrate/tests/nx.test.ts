@@ -800,6 +800,20 @@ describe('nx.json is a claimed root file (item 961)', () => {
 })
 
 describe('nx(): what the sweep found unheld', () => {
+  it(
+    'nx.json `sync.globalGenerators` is said once per run',
+    async () => {
+      await writeFile(
+        path.join(root, 'nx.json'),
+        JSON.stringify({ namedInputs: {}, sync: { globalGenerators: ['@acme/tools:sync-env'] } }),
+      )
+      const log = silent()
+      await planRun({ cwd: root, tasks: ['lint'], log })
+      expect(log.lines.filter((l) => l.includes('sync.globalGenerators'))).toHaveLength(1)
+    },
+    TIMEOUT,
+  )
+
   const graphWith = (edit: (g: typeof GRAPH) => void) => {
     const g = structuredClone(GRAPH)
     edit(g)

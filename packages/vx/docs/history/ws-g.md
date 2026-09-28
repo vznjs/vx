@@ -400,3 +400,9 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   `nx sync`); the defaults say nothing. Row (`nx-map-sweep.test`): red
   without the fix. Found comparing Nx 23.2.1's target keys with the
   mapper's.
+- **G-34.** nx() says nx.json's `sync.globalGenerators` once per run
+  (and `vx-migrate --from nx` in its notes). Nx runs them before a
+  run's tasks; G-33 reported the per-target `syncGenerators` and these
+  stayed silent. The mapper returns workspace-wide `notes` beside its
+  projects. Rows (`nx-map-sweep.test`, `nx.test`): each red without its
+  line.

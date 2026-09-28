@@ -148,6 +148,7 @@ async function index(
     cacheable: new Set(),
     attached: new Set(metas.map((m) => m.name)),
   })
+  notes.push(...mapped.notes)
   const byName = new Map<string, GeneratedProject>()
   const visited = new Set(metas.map((m) => m.name))
   const unattached: string[] = []
