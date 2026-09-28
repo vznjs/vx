@@ -1078,6 +1078,51 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
     expect(r.ok).toBe(false)
   })
 
+  // ─── A task's temp directory is its own ─────────────────────────
+
+  it(
+    "a task cannot read a concurrent task's TMPDIR (L-10)",
+    async () => {
+      // SRT binds its whole temp dir writable into every task, where each
+      // task's TMPDIR lived: b listed a's and read what a kept there. The
+      // probe reads both layouts, the old (`vx-task-*` at the top) and the
+      // walled one, for as long as a holds its file.
+      const shared =
+        process.env['CLAUDE_CODE_TMPDIR'] || process.env['CLAUDE_TMPDIR'] || '/tmp/claude'
+      const task = (command: string): string => `
+        export default {
+          tasks: {
+            probe: {
+              exec: {
+                command: ${JSON.stringify(command)},
+                sandbox: { allow: { read: ['.'], write: ['out.txt'] } },
+              },
+            },
+          },
+        }
+      `
+      await addProject(fixture.root, 'holder', {
+        config: task(
+          'echo L10-SECRET > "$TMPDIR/secret" && cat "$TMPDIR/secret" > out.txt; sleep 3',
+        ),
+      })
+      await addProject(fixture.root, 'prober', {
+        config: task(
+          `for i in $(seq 40); do cat ${shared}/vx-task-*/secret ${shared}/vx-tasks/*/secret 2>/dev/null | grep -q L10 && break; sleep 0.05; done; cat ${shared}/vx-task-*/secret ${shared}/vx-tasks/*/secret > out.txt 2>/dev/null; true`,
+        ),
+      })
+      const r = await run({ cwd: fixture.root, tasks: ['probe'], log: collectingLogger(fixture) })
+      expectOk(r, fixture)
+      const out = (p: string): string =>
+        readFileSync(path.join(fixture.root, 'packages', p, 'out.txt'), 'utf8').trim()
+      expect({ holder: out('holder'), prober: out('prober') }).toEqual({
+        holder: 'L10-SECRET',
+        prober: '',
+      })
+    },
+    TIMEOUT,
+  )
+
   // ─── Unix sockets are a per-task grant ──────────────────────────
 
   it(
@@ -3515,13 +3560,19 @@ describe('localBinding port list — the pure halves', () => {
     try {
       set('CLAUDE_CODE_TMPDIR', '')
       set('CLAUDE_TMPDIR', undefined)
-      expect(portBridgeSocket('t', 1)).toBe('/tmp/claude/vx-port-t-1.sock')
+      expect(portBridgeSocket('t', 1)).toBe(
+        `/tmp/claude/vx-tasks/vx-task-${process.pid}-t/vx-port-t-1.sock`,
+      )
       set('CLAUDE_CODE_TMPDIR', undefined)
       set('CLAUDE_TMPDIR', '/legacy')
-      expect(portBridgeSocket('t', 1)).toBe('/legacy/vx-port-t-1.sock')
+      expect(portBridgeSocket('t', 1)).toBe(
+        `/legacy/vx-tasks/vx-task-${process.pid}-t/vx-port-t-1.sock`,
+      )
       // CONTROL: the current name wins over the older one.
       set('CLAUDE_CODE_TMPDIR', '/current')
-      expect(portBridgeSocket('t', 1)).toBe('/current/vx-port-t-1.sock')
+      expect(portBridgeSocket('t', 1)).toBe(
+        `/current/vx-tasks/vx-task-${process.pid}-t/vx-port-t-1.sock`,
+      )
     } finally {
       set('CLAUDE_CODE_TMPDIR', saved[0])
       set('CLAUDE_TMPDIR', saved[1])

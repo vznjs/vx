@@ -329,7 +329,7 @@ SRT points every sandboxed task's `TMPDIR` at one host directory
 across runs. A file one task wrote there was the next task's, and the
 next run's, undeclared input: a cached reader replayed the first value it
 saw after the writer changed it (item 965). Each task now gets its own,
-`vx-task-<pid>-<tag>` under it, exported as `TMPDIR` after the command's
+`vx-tasks/vx-task-<pid>-<tag>` under it, exported as `TMPDIR` after the command's
 tag (SRT keys violations by the first 100 characters), created before the
 spawn and removed with the task's bridges at its end, or at exit. A
 `kill -9` runs no exit hook and leaves it. A sweep of the directories whose
@@ -337,7 +337,11 @@ owner's pid is gone was tried and refused: a nested vx (this repo's own
 test shards) sees another pid namespace, where the outer vx's pid reads as
 dead, and the sweep removed the outer task's `TMPDIR` mid-run. The shared
 directory itself stays writable (SRT's policy grants it): a command that
-names it outright still reaches it.
+names it outright still reaches it. `vx-tasks` is walled from every
+sandboxed task, each granted its own directory inside (L-10): under the
+shared directory a task listed a concurrent task's `TMPDIR`, read what it
+kept there, and could replace its port bridge's socket, which lives in the
+task's own directory too.
 
 ## The environment SRT sets
 

@@ -95,10 +95,21 @@
   per hash asked plus 64 KiB; past that it is no answer, and each hash is
   asked on its own, as for any other non-answer. Row in
   `turbo-cache-sweep.test.ts`. The G lead it came from is closed.
+- L-10. `fix(exec)`: SRT binds its whole temp dir (`/tmp/claude`)
+  writable into every sandboxed task, where each task's `TMPDIR` and port
+  bridge socket lived: a task listed and read a concurrent task's
+  `TMPDIR` (probed: `L10-SECRET` read across projects) and could replace
+  its bridge socket. vx's per-task state now lives under `vx-tasks/`,
+  walled from every task, each granted its own directory. Coordinator
+  go-ahead, outside L's slice. Row in `sandbox-runtime.unsafe.test.ts`;
+  the bridge-socket rows follow the socket into the task's directory.
 
 ## Leads for other streams
 
-- B (sandbox), PROVEN by probe: every sandboxed task shares SRT's
+- B (sandbox): `src/exec/sandbox-runtime.ts` changed under L-10 (task
+  tmpdirs and bridge sockets moved under a walled `vx-tasks/`); the lead
+  below is closed by it.
+- B (sandbox), PROVEN by probe, CLOSED by L-10: every sandboxed task shares SRT's
   writable `/tmp/claude`, where the task tmpdirs (`vx-task-*`) and the
   port-bridge sockets (`vx-port-<tag>-<port>.sock`) live. Task b ran
   `cat /tmp/claude/*/secret` and printed what a concurrent task a wrote to
