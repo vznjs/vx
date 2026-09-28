@@ -409,15 +409,24 @@ describe('a root project stops at the walls: nested projects, .git, .vx', () => 
     },
   )
 
-  // A write grant whose bind IS a wall is refused like one that holds it,
-  // and one whose bind only shares a wall's name prefix stays (B-16).
-  it('a write grant binding a wall itself is refused; a name-prefix sibling is not', async () => {
+  // A write grant whose bind IS a wall is refused like one that holds it:
+  // on Linux a file grant binds its directory, so `.git/x.txt` binds
+  // `.git` (macOS binds the file itself, inside the wall) (B-16).
+  it.skipIf(process.platform !== 'linux')(
+    'a write grant whose bind is a wall itself is refused',
+    async () => {
+      await walled()
+      const gitDir = path.join(root, '.git')
+      await expect(
+        sandboxRequestFor(rootNode(), { allow: { write: ['.git/x.txt'] } }, root, undefined, []),
+      ).rejects.toThrow(`the grant binding ${gitDir} would make ${gitDir} writable`)
+    },
+  )
+
+  // And one whose bind only shares a wall's name prefix stays (B-16).
+  it('a write grant beside a wall that shares its name prefix stays', async () => {
     await walled()
     await mkdir(path.join(root, 'packages/c-docs'), { recursive: true })
-    const gitDir = path.join(root, '.git')
-    await expect(
-      sandboxRequestFor(rootNode(), { allow: { write: ['.git/x.txt'] } }, root, undefined, []),
-    ).rejects.toThrow(`the grant binding ${gitDir} would make ${gitDir} writable`)
     const r = await sandboxRequestFor(
       rootNode(),
       { allow: { write: ['packages/c/'] } },
