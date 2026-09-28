@@ -147,6 +147,15 @@
 - **K-25** And unocss/unocss (N-17, `turbo()`, nothing written). Turbo wins
   its restore and no-op (bold): one task rewrites its own input
   (`README.md`), so vx reruns it; `benchmarks.md` says why.
+- **K-26** "vx on real Turbo and Nx repos" (`/benchmarks/real-repos/`): one
+  row per repo with versions, setup, date and a link to its
+  `benchmarks.md` section, plus why the other tool wins where it does.
+  `packages/vx-bench/real-repos.json` is the data; `update-site.ts` renders
+  the page and README's table from it (`check.site` holds both, a row
+  naming a missing section fails). The README claimed "nothing rewritten"
+  for every row: strapi and novu ran on `vx-migrate`-written configs,
+  medusa and cal.com with a bench output list, vueuse with one edge
+  added; the page says so per row. vueuse joins the table.
 
 ## Leads for other streams
 

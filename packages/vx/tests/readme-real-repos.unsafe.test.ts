@@ -1,5 +1,6 @@
-// The README's "Tried on real repos" table quotes benchmarks.md, and a
-// re-measure that changes a number there must change it here too. Each
+// The README's "Tried on real repos" table (and the site page generated
+// beside it from packages/vx-bench/real-repos.json) quotes benchmarks.md,
+// and a re-measure that changes a number there must change the data too. Each
 // cell is "vx / theirs"; both must sit on one row of a benchmarks.md
 // table, which is how every real-repo result is recorded. The README is
 // the repo root's, hence the unsafe suite.
@@ -18,7 +19,7 @@ const section = readme.slice(
 const rows = section.split('\n').filter((l) => l.startsWith('| ['))
 
 describe("the README's real-repo table", () => {
-  it('lists the twelve benched repos', () => {
+  it('lists the thirteen benched repos', () => {
     expect(rows.map((r) => /\[([^\]]+)\]/.exec(r)![1])).toEqual([
       'solidjs/solid',
       'withastro/astro',
@@ -27,6 +28,7 @@ describe("the README's real-repo table", () => {
       'n8n-io/n8n',
       'calcom/cal.com',
       'unocss/unocss',
+      'vueuse/vueuse',
       'TanStack/query',
       'strapi/strapi',
       'novuhq/novu',
@@ -50,7 +52,7 @@ describe("the README's real-repo table", () => {
         if (!found) missing.push(`${row.slice(0, 30)}…: ${ours} / ${theirs}`)
       }
     }
-    expect(rows.length * 3).toBe(36)
+    expect(rows.length * 3).toBe(39)
     expect(missing).toEqual([])
   })
 })

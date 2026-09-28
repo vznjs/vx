@@ -19,8 +19,9 @@ export default defineProject({
     },
 
     // The landing page's benchmark rows, the benchmarks doc's stress
-    // section and the README's benchmark table are generated
-    // from results.json by update-site.ts; `--check` fails when any
+    // section, the README's benchmark and real-repo tables and the site's
+    // real-repos page are generated from results.json and real-repos.json
+    // by update-site.ts; `--check` fails when any
     // drifted. All live outside this project, so the task declares the
     // reads and folds the files as inputs.
     'check.site': {
@@ -35,6 +36,7 @@ export default defineProject({
               '../vx-docs/src/pages/index.astro',
               '../vx/docs/benchmarks.md',
               '../../README.md',
+              '../vx-docs/src/content/docs/benchmarks/real-repos.md',
             ],
             systemInfo: ['vfs.disk-space'],
           },
@@ -42,11 +44,12 @@ export default defineProject({
       },
       cache: {
         inputs: {
-          files: ['update-site.ts', 'results.json'],
+          files: ['update-site.ts', 'results.json', 'real-repos.json'],
           workspaceFiles: [
             'packages/vx-docs/src/pages/index.astro',
             'packages/vx/docs/benchmarks.md',
             'README.md',
+            'packages/vx-docs/src/content/docs/benchmarks/real-repos.md',
           ],
         },
         outputs: { files: [] },
