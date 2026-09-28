@@ -8,7 +8,18 @@ name: Windows
 on:
   push:
     branches: [main]
+  # Only a PR that can change what Windows sees: the account's job cap
+  # counts Windows runners too, and running it on every PR halved the
+  # merge rate (43/h to 21/h, 2026-09-28).
   pull_request:
+    paths:
+      - .github/workflows/windows.yml
+      - packages/vx/src/exec/**
+      - packages/vx/src/util/which.ts
+      - packages/vx/src/cache/archive.ts
+      - packages/vx/src/cache/cache.ts
+      - packages/vx/src/orchestrator/run-lock.ts
+      - packages/vx/scripts/test-shard.ts
   workflow_dispatch:
 
 # Every newer push supersedes an older run, main's included: no release
@@ -21,11 +32,7 @@ jobs:
   core-windows:
     name: core tests (Windows, not required)
     runs-on: windows-latest
-    timeout-minutes: 15
-    # A Windows runner on every PR queued every stream behind it
-    # (2026-09-28: 15 runs waiting). Main and stream O's own branches
-    # carry it until it is required.
-    if: github.event_name != 'pull_request' || startsWith(github.head_ref, 'ws-o/')
+    timeout-minutes: 12
 
     steps:
       # The runner's git checks out CRLF (core.autocrlf=true), and every
@@ -57,7 +64,7 @@ jobs:
       # outlives its killed shard holds the pipe.
       - name: bun test shards (core, windows, data)
         if: always()
-        timeout-minutes: 10
+        timeout-minutes: 8
         shell: bash
         working-directory: packages/vx
         run: |
@@ -65,8 +72,8 @@ jobs:
           for i in $(seq 1 12); do
             echo "::group::shard $i"
             files=$(bun scripts/test-shard.ts $i 12) && [ -n "$files" ] || { echo "shard $i: the dealer dealt nothing"; exit 1; }
-            timeout 60 bun test --only-failures $files || { echo "shard $i: exit $?"; rc=1; }
+            timeout 45 bun test --only-failures $files || { echo "shard $i: exit $?"; rc=1; }
             echo "::endgroup::"
           done
-          timeout 60 bun test --only-failures ./tests/*.unsafe.test.ts || { echo "unsafe: exit $?"; rc=1; }
+          timeout 45 bun test --only-failures ./tests/*.unsafe.test.ts || { echo "unsafe: exit $?"; rc=1; }
           exit $rc
