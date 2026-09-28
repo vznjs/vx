@@ -26,9 +26,19 @@ job now sets `core.autocrlf false` before checkout (a root
 `.gitattributes` would give every path an `eol`, and vx would then
 trust no index OID on any OS), and the paths come from
 `import.meta.dir` or `Bun.file(url)`. Row: `file-url-paths.test.ts`,
-red with any one site put back. The job also runs only on main and on
-`ws-o/` PRs: at 03:12 UTC fifteen runs sat queued, and a Windows runner
-held for up to 30 min per PR was part of that.
+red with any one site put back.
+
+The job also held main's CI. Inside `ci.yml`, run 36371549761 (B-16)
+sat 40 minutes in the data step while Linux, macOS and plugins had
+passed, and main's concurrency group cancelled every later main run
+while it was queued: no verdict on main from 02:37 UTC. The cause of the
+40 minutes was the same broken dealer: its `$(…)` came back empty, so
+every shard was a bare `bun test` of the whole suite. The job now lives
+in `windows.yml` with its own concurrency group, cancels any older run
+(main's too), is bounded at 15 minutes (10 for the data step, 60 s per
+shard), and stops when the dealer deals nothing. It runs only on main
+and on `ws-o/` PRs: at 03:12 UTC fifteen runs sat queued, and a Windows
+runner held for 30 minutes per PR was part of that.
 
 ## Leads for other streams
 

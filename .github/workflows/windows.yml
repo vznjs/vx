@@ -1,0 +1,72 @@
+name: Windows
+
+# Stream O (docs/design/windows-2026-09.md). NOT REQUIRED: vx does not run
+# on Windows yet, and this job's red is the list of what is left. Its own
+# workflow and concurrency group, so it can never hold CI's: inside ci.yml
+# a 40-minute Windows job kept main's run open, and every main run after
+# it was cancelled while queued (2026-09-28, 02:37 to 03:47 UTC).
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Every newer push supersedes an older run, main's included: no release
+# or verdict waits on this workflow.
+concurrency:
+  group: windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  core-windows:
+    name: core tests (Windows, not required)
+    runs-on: windows-latest
+    timeout-minutes: 15
+    # A Windows runner on every PR queued every stream behind it
+    # (2026-09-28: 15 runs waiting). Main and stream O's own branches
+    # carry it until it is required.
+    if: github.event_name != 'pull_request' || startsWith(github.head_ref, 'ws-o/')
+
+    steps:
+      # The runner's git checks out CRLF (core.autocrlf=true), and every
+      # doc pin matches `\n`. A root .gitattributes would do the same for
+      # every Windows clone, but it gives every path an `eol`, and vx then
+      # trusts no index OID and re-hashes every input on every OS.
+      - run: git config --global core.autocrlf false
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.2
+
+      - run: bun install --frozen-lockfile
+
+      # Every task here declares exec.sandbox, and vx refuses a sandbox it
+      # cannot give (the runtime's Windows backend is not wired), so this
+      # step stops at the first task until it is.
+      - name: vx run test (core, windows)
+        run: bun packages/vx/src/bin.ts run test --filter @vzn/vx
+
+      # DATA, not vx: the same shards as bare `bun test`, so the failures
+      # past the sandbox refusal are on record. Goes when the step above
+      # runs the suite. A dealer that fails or deals nothing stops the step:
+      # an empty `$(…)` made a bare `bun test` run the WHOLE suite as every
+      # shard, which is how the step sat for 40 minutes. Bounded twice
+      # besides: `timeout` per shard, and the step, because a child that
+      # outlives its killed shard holds the pipe.
+      - name: bun test shards (core, windows, data)
+        if: always()
+        timeout-minutes: 10
+        shell: bash
+        working-directory: packages/vx
+        run: |
+          rc=0
+          for i in $(seq 1 12); do
+            echo "::group::shard $i"
+            files=$(bun scripts/test-shard.ts $i 12) && [ -n "$files" ] || { echo "shard $i: the dealer dealt nothing"; exit 1; }
+            timeout 60 bun test --only-failures $files || { echo "shard $i: exit $?"; rc=1; }
+            echo "::endgroup::"
+          done
+          timeout 60 bun test --only-failures ./tests/*.unsafe.test.ts || { echo "unsafe: exit $?"; rc=1; }
+          exit $rc
