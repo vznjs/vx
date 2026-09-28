@@ -390,3 +390,10 @@ A-44 left a task with a `!` output entry on the per-hit walk (`wholeSubtreePrefi
 ### A-47 — sweep of A-44/A-46's schema guards and helpers (2026-09-28)
 
 13 mutants, no defect. Schema (7): the `!/` absolute refusal, negation-only for `files` and `workspaceFiles`, `!!` for both, the own-file skip on `!`, the empty-list early return — each caught (config-schema contract, schema-doc-drift, loader rows). Helpers (6): `splitNegations`'s `!` test and `changedSince`'s size and mtime halves caught; three equivalent — `outputMatcher`'s and `resolveOutputs`' empty-positive returns (an empty positive list selects nothing either way) and `outputExcludes(positive)` (a `!node_modules/…` entry's first segment is `!node_modules`, never `node_modules`, so it never lifts the exclusion).
+
+### A-48 — a failure names the clean that removed a committed file it may read (2026-09-28)
+
+Lead from N (vueuse, efdd69a): ten builds read `packages/metadata/index.json`, committed and the output of `metadata#update`, with no edge to it. vx cleans outputs before a run where Turbo does not, so every cold run failed with `cat: ../metadata/index.json: No such file or directory` and nothing more (reproduced with two projects). `GitFilesCache.noteClean` records which of a clean's paths git tracks, before `markOutputsChanged` drops their OIDs; a task that exits non-zero gets one line per such file another task removed and is still missing (at most three), naming that task and the `dependsOn` it needs.
+
+- The two methods are additive on the public `GitFilesCache` (`tests/contract/package-api.txt` regenerated; 0.x).
+- Rows (`cleaned-tracked-reader.test.ts`): the line, exact; silent for an untracked file, the failing task's own clean, a file written back, and a task that succeeds. The clean note, the tracked test, the other-task test, the still-missing test and the failure gate are each red under their own mutant. Workspace-output cleans are not noted: no row would hold it.

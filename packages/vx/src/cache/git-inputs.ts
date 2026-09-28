@@ -201,6 +201,30 @@ export class GitFilesCache extends Map<string, readonly string[]> {
     }
   }
 
+  /** Tracked files a task's clean removed this run, and whose clean (A-48). */
+  private trackedCleans: Array<{ path: string; by: string }> = []
+
+  /**
+   * Note which of the files a task's clean just removed git tracks. Called
+   * before `markOutputsChanged`, which drops their OIDs. A committed output
+   * another task reads with no edge to its producer is gone for as long as
+   * the producer runs (vueuse's `metadata/index.json`, N's dogfood), and the
+   * reader failed naming only the missing file (A-48).
+   */
+  noteClean(by: string, dir: string, rels: readonly string[]): void {
+    const oids = this.oids.get(dir)
+    if (oids === undefined) return
+    for (const rel of rels) {
+      const abs = path.resolve(dir, rel)
+      if (oids.has(abs)) this.trackedCleans.push({ path: abs, by })
+    }
+  }
+
+  /** The tracked files other tasks' cleans removed that are still missing. */
+  trackedCleansMissing(except: string): Array<{ path: string; by: string }> {
+    return this.trackedCleans.filter((c) => c.by !== except && !existsSync(c.path))
+  }
+
   /** Trusted index OIDs for a project (abs path → oid), if any survive. */
   oidsFor(projectDir: string): ReadonlyMap<string, string> | undefined {
     return this.oids.get(projectDir)
