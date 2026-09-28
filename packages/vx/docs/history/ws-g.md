@@ -340,3 +340,16 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   executors read both) and the project's other targets (the injected
   one joins them). `turbo-cache-sweep.test`: a bare CR is refused and
   U+00FF, Latin-1's last, is not (Bun 1.4.2's `Headers` does the same).
+- **G-27.** A mutation sweep of nx()'s `index.ts` outside G-21's graph
+  key (38 mutants): 28 caught (one after its broken first spelling),
+  ten survived. Three only make the key read more (a root's trailing
+  slash, `''` as `.`, a matched node's manifest read again). Seven were
+  live and are now held (`nx.test` › the graph snapshot, keyed and not):
+  - the graph load's notes are in the mapping key, so a failed export's
+    note leaves with the next export that succeeds instead of replaying
+    from the kept mapping;
+  - a snapshot deleted under a key still on disk is exported again;
+  - a `root` outside the git worktree (no key; core refuses a run
+    outside git, so this is the only way to reach the mtime fallback)
+    re-exports on a newer nx.json base, root manifest, `project.json`
+    or package manifest, and not otherwise.
