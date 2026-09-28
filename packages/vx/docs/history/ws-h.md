@@ -225,6 +225,20 @@ checks out full history and sets `VX_REQUIRE_TAGS=1` (no tag = a failure). Rows:
 break); the law, red with one member deleted from the record and no
 marker.
 
+## H-19: remove the `vx stats` alias and the dead `InvocationRow` type
+
+The deprecation sweep before 1.0 found two surfaces kept only for
+compatibility: `vx stats`, an alias of `vx info` that warned on every
+use, and `InvocationRow`, a deprecated type alias no file imports. Both
+are removed; `vx stats` now prints a pointer to `vx info` and exits 1
+(`MOVED_VERBS`, as `vx prune` does), and a plugin may declare `stats`.
+Kept on purpose: the run lock's `pid` holder file, which a vx from
+before item 759 still writes, so two versions running during an upgrade
+still exclude each other. The commit is marked breaking, so H-15's notes
+list it and H-18's law accepts it. Rows: `show-info.test.ts` (the
+pointer), `dispatched-verbs.test.ts` (the verbs a plugin may not
+declare).
+
 ## Leads for other streams
 
 - **D / B:** `sandbox.ignore` names that loaded and did nothing: done in D-4.

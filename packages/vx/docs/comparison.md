@@ -313,7 +313,7 @@ prune` policy at the end of every run that writes the local cache,
 
 - `vx watch <task>` — debounced re-run loop.
 - `--output-logs full|errors-only|hash-only|none`.
-- `vx info` (absorbed `vx stats`; the alias remains).
+- `vx info` (absorbed `vx stats`, since removed).
 - Artifact integrity at the ingest boundary — core refuses a remote
   artifact that decompresses past its ceiling, is not a vx archive, or
   records a key other than the one it was fetched under; `@vzn/vx-reapi`

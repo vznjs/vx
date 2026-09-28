@@ -61,9 +61,6 @@ export async function run(argv: readonly string[]): Promise<number> {
       return await (await import('./upgrade.js')).upgradeCmd(rest)
     case 'show':
       return await (await import('./show.js')).showCmd(rest)
-    case 'stats': // deprecated alias — `vx info` absorbed `vx stats`
-      process.stderr.write('vx stats is deprecated; use vx info\n')
-      return await (await import('./info.js')).infoCmd(rest)
     case 'info':
       return await (await import('./info.js')).infoCmd(rest)
     case 'why':

@@ -15,7 +15,7 @@ import {
   type WorkspaceConfig,
 } from '../config.js'
 import {
-  DISPATCHED_VERBS,
+  CORE_VERBS,
   MAX_TIMEOUT_MS,
   nearest,
   normalizeGlob,
@@ -174,7 +174,7 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
           // would run the first declared and hide the second. Here, in the
           // schema, so every loader of the file — a run, a reading verb, the
           // plugin-verb lookup — refuses it the same way.
-          if (DISPATCHED_VERBS.includes(verb)) {
+          if ((CORE_VERBS as readonly string[]).includes(verb)) {
             throw new UserError(
               `${configPath}: plugin '${plug.name}' declares command '${verb}', a core verb — core verbs cannot be shadowed`,
             )

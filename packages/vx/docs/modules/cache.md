@@ -450,7 +450,7 @@ interface CacheStats {
 `stats(opts?)` takes an optional `{ project }` scope, narrowing both the
 entry aggregate and the 24h run aggregate to that project.
 
-Surfaced by `vx info` (and its `vx stats` alias).
+Surfaced by `vx info`.
 
 ## What this does NOT do
 

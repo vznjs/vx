@@ -154,7 +154,6 @@ export type {
   CacheKeyExplanation,
   InputDiffEntry,
   InvocationDetail,
-  InvocationRow,
   ListInvocationsArgs,
   ListRunsArgs,
   RunDetail,

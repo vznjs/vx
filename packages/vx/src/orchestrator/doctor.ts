@@ -243,7 +243,7 @@ async function sandboxFact(declared: number): Promise<InfoFacts['sandbox']> {
 
 /**
  * The doctor's output is pasted into bug reports and compared between
- * invocations (`vx stats` is pinned byte-identical to `vx info`), so a
+ * invocations, so a
  * reason must not carry this process's id. The Linux runtime names its
  * mux socket after the pid (`srt-mux-<pid>-<n>.sock`), and a listen that
  * fails — a nested sandbox, a read-only tmpdir — quotes that path.
