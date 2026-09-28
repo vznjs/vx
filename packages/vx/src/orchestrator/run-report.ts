@@ -113,9 +113,16 @@ function fmtDuration(ms: number): string {
  * unvalidated names and shipped WITHOUT this escape, so a `|` in a task name
  * or an output path shifted its columns. One definition, so the two
  * cannot disagree about what a cell may contain.
+ *
+ * A pipe splits the row unless an ODD run of backslashes precedes it (GFM
+ * reads `\\` as one escaped backslash), so a pipe after an odd run is already
+ * escaped and one more backslash would free it: `a\|b` became `a\\|b`, two
+ * cells. A lone `\r` ends a line too.
  */
 export function escapeMarkdownCell(value: string): string {
-  return value.replace(/\|/g, '\\|').replace(/\r?\n/g, ' ')
+  return value
+    .replace(/(\\*)\|/g, (pipe, run: string) => (run.length % 2 === 0 ? `${run}\\|` : pipe))
+    .replace(/\r\n|\r|\n/g, ' ')
 }
 
 const cell = escapeMarkdownCell

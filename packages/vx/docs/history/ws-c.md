@@ -537,6 +537,22 @@ key does not answer for. It now walks `keyedDeps` plus
 which `PreparedRun` carries now (contract pin regenerated). Rows in
 `keyed-projects.test.ts`, one per half, red with the old walk.
 
+## C-42: `escapeMarkdownCell` freed an escaped pipe and kept a lone CR
+
+Swept `run-report.ts` (50 mutants over 14 files): 43 caught, 7
+survived. 2 are equivalent (the `success` status arm, which the default
+answers; `cell` on the cache word, a fixed vocabulary). The other 5 are
+held in `run-report.test.ts`: the whole document by `toBe` (headline
+separator, both blank lines, `success` counted apart from the total),
+a `|` in the blocking task a status cell names, and every line break
+flattened. Probing the escape with two GFM parsers (micromark, marked)
+found two defects: `a\|b` became `a\\|b`, an escaped backslash then a
+free pipe, so the row gained a cell; and a lone `\r` split the row. The
+escape now adds a backslash only to a pipe after an even run, and
+flattens `\r` too. `vx-github`'s ids are unchanged (its inline escape
+doubles every backslash first). HTML in a name still renders as HTML;
+GitHub sanitises it and the table holds.
+
 ## Leads for other streams
 
 - **E:** a plugin command's plain `throw` (`commands.probe.run` throwing
@@ -621,3 +637,7 @@ which `PreparedRun` carries now (contract pin regenerated). Rows in
 answer within 250ms` where the config's own error was due. The row
   gives the worker a 250 ms budget; the same content passed that job a
   rebase earlier.
+- **E:** `ci-output.test.ts` › "a CI log receives the CLI plain" runs
+  eleven vx verbs under bun's 5 s default. In C-42's gate it took
+  5.33 s, the harness killed the in-flight `vx why`, and the row read
+  its exit as 1. Alone it passes (4/4). A per-row timeout would fit.
