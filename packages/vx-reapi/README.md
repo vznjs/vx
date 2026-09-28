@@ -30,6 +30,14 @@ from the environment, and `VX_REAPI_EXECUTE=1` turns on remote execution the
 way `execute: true` does (off by default: a plugin must not move where a
 build runs merely by being configured for caching).
 
+TLS uses the system roots unless told otherwise. A server behind a private
+CA takes `tlsCertificate` (or `VX_REAPI_TLS_CERTIFICATE`), a PEM file of
+that CA; one that asks for mutual TLS takes `tlsClientCertificate` and
+`tlsClientKey` (`VX_REAPI_TLS_CLIENT_CERTIFICATE` / `VX_REAPI_TLS_CLIENT_KEY`)
+— Bazel's `--tls_certificate`, `--tls_client_certificate` and
+`--tls_client_key`. Any of them turns TLS on; a file that cannot be read
+is refused at startup, naming the setting.
+
 ## How a vx cache key becomes a REAPI entry
 
 A CAS digest is the sha256 of the **content**, so it cannot be derived from a

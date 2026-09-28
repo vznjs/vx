@@ -129,7 +129,10 @@ function hashOf(resource: string): string {
   return m[1]!
 }
 
-export async function startFakeReapi(): Promise<FakeReapi> {
+/** `credentials`: serve TLS (and ask for a client certificate) instead of plaintext. */
+export async function startFakeReapi(
+  opts: { credentials?: grpc.ServerCredentials } = {},
+): Promise<FakeReapi> {
   const v2 = (
     grpc.loadPackageDefinition(
       protoLoader.loadSync('build/bazel/remote/execution/v2/remote_execution.proto', LOAD_OPTIONS),
@@ -495,11 +498,15 @@ export async function startFakeReapi(): Promise<FakeReapi> {
   })
 
   await new Promise<void>((resolve, reject) => {
-    server.bindAsync('127.0.0.1:0', grpc.ServerCredentials.createInsecure(), (err, port) => {
-      if (err) return reject(err)
-      fake.endpoint = `127.0.0.1:${port}`
-      resolve()
-    })
+    server.bindAsync(
+      '127.0.0.1:0',
+      opts.credentials ?? grpc.ServerCredentials.createInsecure(),
+      (err, port) => {
+        if (err) return reject(err)
+        fake.endpoint = `127.0.0.1:${port}`
+        resolve()
+      },
+    )
   })
   return fake
 }
