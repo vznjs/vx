@@ -342,7 +342,7 @@ export async function mapNxWorkspace(
     for (const t of tasks) {
       if (nodeName !== undefined)
         followNxGraph(t.task, nodeName, meta.name, nxEdges, metaByNode, emittedIds, reached)
-      dropUnheldDeps(t.task, emitted)
+      dropUnheldDeps(t, emitted, emittedIds)
     }
     projects.push({
       name: meta.name,
@@ -465,15 +465,27 @@ export async function readNxJsonFacts(root: string): Promise<NxJsonFacts> {
   }
 }
 
-function dropUnheldDeps(task: Record<string, unknown> | null, emitted: ReadonlySet<string>): void {
+function dropUnheldDeps(
+  t: GeneratedTask,
+  emitted: ReadonlySet<string>,
+  emittedIds: ReadonlySet<string>,
+): void {
+  const task = t.task
   const deps = task?.['dependsOn']
   if (task === null || !Array.isArray(deps)) return
   // A pattern (`^build-*`, `*` in core's dependency syntax) may match
   // nothing; core takes that, as Nx does.
-  const kept = deps.filter(
-    (d) =>
-      typeof d !== 'string' || !d.startsWith('^') || d.includes('*') || emitted.has(d.slice(1)),
-  )
+  const kept = deps.filter((d) => {
+    if (typeof d !== 'string' || d.includes('*')) return true
+    if (d.startsWith('^')) return emitted.has(d.slice(1))
+    // `pkg#task` on a project no package holds (the root project with no
+    // vx.config) refused the whole run as "no such project".
+    if (!d.includes('#') || emittedIds.has(d)) return true
+    t.todos.push(
+      `dependsOn ${JSON.stringify(d)}: no vx project runs it — edge dropped, and the key misses it`,
+    )
+    return false
+  })
   if (kept.length === deps.length) return
   // A group keeps its (now empty) list: `dependsOn` is all a group is.
   if (kept.length > 0 || task['exec'] === undefined) task['dependsOn'] = kept

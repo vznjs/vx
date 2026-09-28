@@ -358,6 +358,43 @@ describe('nx()', () => {
     TIMEOUT,
   )
 
+  // Core makes a root with a vx.config a project (D-39); the root Nx
+  // project's targets attach to it by directory, and an edge to one holds.
+  it(
+    'a root vx.config attaches the root Nx project, and an edge to its target holds',
+    async () => {
+      const g = structuredClone(GRAPH) as unknown as {
+        graph: { nodes: Record<string, { data: { targets: Record<string, unknown> } }> }
+      }
+      g.graph.nodes['ws'] = {
+        data: { root: '.', targets: { prep: { command: 'echo p' } } },
+      } as never
+      ;(g.graph.nodes['lib']!.data.targets['lint'] as Record<string, unknown>)['dependsOn'] = [
+        { projects: ['ws'], target: 'prep' },
+      ]
+      await writeFile(path.join(root, 'graph.json'), JSON.stringify(g))
+      await workspace("nx({ graph: 'graph.json' })")
+      const log = silent()
+      const unattached = 'Nx project(s) ws have no workspace package to attach targets to'
+      // Unattached, the edge is dropped with a todo: it refused the run.
+      const lone = await planRun({ cwd: root, tasks: ['lint'], log })
+      expect(lone.tasks.map((t) => t.node.id)).toEqual(['lib#lint'])
+      const text = log.lines.join('\n')
+      expect(text).toContain(
+        `${unattached} (the workspace root: a vx.config there makes it a project) — run those targets with nx, or add one`,
+      )
+      expect(text).toContain(
+        'dependsOn "ws#prep": no vx project runs it — edge dropped, and the key misses it',
+      )
+      await writeFile(path.join(root, 'vx.config.mjs'), 'export default { tasks: {} }\n')
+      const attached = silent()
+      const plan = await planRun({ cwd: root, tasks: ['lint'], log: attached })
+      expect(plan.tasks.map((t) => t.node.id).sort()).toEqual(['lib#lint', 'ws#prep'])
+      expect(attached.lines.join('\n')).not.toContain(unattached)
+    },
+    TIMEOUT,
+  )
+
   it(
     'graph: <file> reads an exported graph and never runs nx',
     async () => {
