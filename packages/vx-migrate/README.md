@@ -182,7 +182,7 @@ Then `vx run build --all` runs each package's `wireit.build`, read from its `pac
 | `service`, `service.readyWhen.lineMatches` | `exec.persistent`, `exec.persistent.readyWhen`                                         |
 | `clean`                                    | nothing: vx cleans outputs before every run, as wireit's default does                  |
 
-Not mapped, each a TODO or a note: the workspace root's `//#` tasks when the root has no `vx.config` (with one, they map as `turbo()`'s do), a dependency on a directory that is not a workspace package, a negated `output` (the task runs uncached), a task with `clean: false` (vx cleans outputs before every run, and such an output may be a source; the task runs uncached), `cascade: false` (vx folds every dependency's key), an external env `default`, and `allowUsuallyExcludedPaths`. On lit/lit (53 packages) all 299 mapped tasks load.
+Not mapped, each a TODO or a note: a dependency on a directory that is not a workspace package, a task with `clean: false` (vx cleans outputs before every run, and such an output may be a source; the task runs uncached), `cascade: false` (vx folds every dependency's key), an external env `default`, and `allowUsuallyExcludedPaths`. On lit/lit (53 packages) all 299 mapped tasks load.
 
 ## `lage()` — run a lage workspace unchanged
 
@@ -278,7 +278,7 @@ bunx @vzn/vx-migrate --help    # the usage, exit 0
 
 ### Turbo
 
-Reads the root pipeline (`tasks` in Turbo 2, `pipeline` in Turbo 1), per-package `turbo.json` `extends` overlays and each package's scripts, through the same mapper `turbo()` runs live — so a repo reads the same whether you migrate it or run it as it is. Turbo's global fields become a generated root `vx-preset.ts` each config imports and spreads: TypeScript composition replaces global config.
+Reads the root pipeline (`tasks` in Turbo 2, `pipeline` in Turbo 1), per-package `turbo.json` `extends` overlays and each package's scripts, through the same mapper `turbo()` runs live — so a repo reads the same whether you migrate it or run it as it is. Turbo's global fields become a generated root `vx-preset.ts` each config imports and spreads: TypeScript composition replaces global config. Turbo's `//#` root tasks are written to a `vx.config.ts` at the workspace root, which makes the root a project (core's D-39), and a package task's `//#x` edge reaches it.
 
 | Turborepo                           | vx                                                                                     |
 | ----------------------------------- | -------------------------------------------------------------------------------------- |

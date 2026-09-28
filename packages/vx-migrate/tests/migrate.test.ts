@@ -136,6 +136,39 @@ async function makeTurboWorkspace(): Promise<string> {
   return root
 }
 
+// Turbo's `//#` root tasks: the CLI writes the root's vx.config.ts, which
+// is what makes core read the root as a project (D-39); the live plugin can
+// only say so. Five of eleven real Turbo repos had root tasks, and 36 edges
+// to them were dropped (G-49).
+describe('vx migrate (turbo): root tasks', () => {
+  let root: string
+  beforeAll(async () => {
+    root = await makeRoot('vx-migrate-turbo-root-')
+    await writeFile(
+      path.join(root, 'package.json'),
+      JSON.stringify({ name: 'fixture-root', private: true, scripts: { gen: 'node gen.js' } }),
+    )
+    await writeFile(
+      path.join(root, 'turbo.json'),
+      JSON.stringify({
+        tasks: { '//#gen': { outputs: ['out/**'] }, build: { dependsOn: ['//#gen'] } },
+      }),
+    )
+    await addPackage(root, 'app', { build: 'tsc -b' })
+    expect((await vx(root, [])).code).toBe(0)
+  })
+  afterAll(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it('writes the root config with its //# task, and the edge to it holds', async () => {
+    const rootConfig = await loadProjectConfig(path.join(root, 'vx.config.ts'))
+    expect(Object.keys(rootConfig.tasks ?? {})).toEqual(['gen'])
+    const app = await loadProjectConfig(path.join(root, 'packages', 'app', 'vx.config.ts'))
+    expect((app.tasks as Record<string, TaskConfig>).build!.dependsOn).toEqual(['fixture-root#gen'])
+  })
+})
+
 describe('vx migrate (turbo)', () => {
   let root: string
   let result: VxResult

@@ -578,3 +578,13 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   calls it supported, and names #1802's target-glob expansion under
   `dependsOn`. Row (`nx-helpers-sweep` › fileset, input and each
   fold-through object form): exact todo list, red without the change.
+- **G-52.** G-49's `//#` root tasks through the CLI: five of eleven real
+  Turbo repos (react-notion-x, cal.com, connect-es, create-t3-turbo,
+  next.js) declare root tasks, and with no root `vx.config` the 11
+  tasks were a note and 36 edges to them were dropped. The live plugin
+  can only name the fix (G-45); `bunx @vzn/vx-migrate` now makes it:
+  when turbo.json has a `//#` task and no glob lists the root, the root
+  package joins the mapping, its `vx.config.ts` is written (the opt-in
+  core reads, D-39), and `//#x` edges reach it. The README's migrate
+  list no longer names negated outputs (stale since G-44). Row
+  (`migrate.test` › vx migrate (turbo): root tasks): red without it.
