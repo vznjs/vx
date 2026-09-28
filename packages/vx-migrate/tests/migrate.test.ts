@@ -161,6 +161,18 @@ describe('vx migrate (turbo): root tasks', () => {
     await rm(root, { recursive: true, force: true })
   })
 
+  it('adds no second root, and none that takes a package name', async () => {
+    const meta = (name: string, dir: string) =>
+      ({ name, dir, packageJson: { name } as never, configPath: null }) as const
+    const app = meta('app', path.join(root, 'packages', 'app'))
+    const already = await migrateTurbo(root, [app, meta('fixture-root', root)])
+    expect(already.projects.map((p) => p.name)).toEqual(['app', 'fixture-root'])
+    const clash = await migrateTurbo(root, [
+      meta('fixture-root', path.join(root, 'packages', 'app')),
+    ])
+    expect(clash.projects.map((p) => p.name)).toEqual(['fixture-root'])
+  })
+
   it('writes the root config with its //# task, and the edge to it holds', async () => {
     const rootConfig = await loadProjectConfig(path.join(root, 'vx.config.ts'))
     expect(Object.keys(rootConfig.tasks ?? {})).toEqual(['gen'])
