@@ -31,12 +31,13 @@ the local store:
 
 - ends in a CRC-32 of its entries: a byte changed in transit or at rest
   makes the hit a miss, never a replay of the damaged bytes;
-- records the cache key it was packed under, and is refused under
-  another;
-- carries only the files the task declares as outputs, each a regular
-  file under the task's project or declared workspace path: traversal,
-  links, devices and names that escape are refused before anything
-  lands, and a refused archive leaves nothing behind;
+- on arrival, records the cache key it was packed under, and is
+  refused under another (a local read-back is not re-checked);
+- on arrival, carries only the files the task declares as outputs;
+- lands each file under the task's project or declared workspace path:
+  traversal and names that escape are refused before anything lands, a
+  refused archive leaves nothing behind, and links and devices are
+  never written;
 - is bounded: a decompression bomb, an oversized header or body, and a
   remote answer larger than asked for are refused as they are read.
 
@@ -49,8 +50,10 @@ that leads out of it.
 A task with `exec.sandbox` runs where only what it declares exists:
 
 - reads of the workspace outside the task's project and grants fail;
-- writes outside its declared outputs fail;
-- the network is closed except to the domains granted;
+- writes outside its `allow.write` grants fail (declared outputs grant
+  none);
+- the network is closed except to the domains granted, one union per
+  run: a task granted any domain reaches every domain the run grants;
 - its temp directory and port-bridge socket are its own (mode 0700),
   unreachable from another task and another local user.
 
@@ -70,9 +73,10 @@ task is never cached. See [Sandboxing tasks](https://vznjs.github.io/vx/guides/s
 
 ## Secrets
 
-The value of a variable whose name holds `TOKEN`, `SECRET`, `KEY`,
-`PASSWORD`, `PASSWD` or `CREDENTIAL`, or that a task lists in
-`exec.env.secret`, is printed as `***` wherever vx shows, stores or
+The value, of 6 characters or more, of a variable whose name holds
+`TOKEN`, `SECRET`, `KEY`, `PASSWORD`, `PASSWD` or `CREDENTIAL` (not one
+ending `_FILE`, `_PATH` or `_DIR`, nor `GIT_CONFIG_KEY_<n>`), or that a
+task lists in `exec.env.secret`, is printed as `***` wherever vx shows, stores or
 exports it: task output, the stdout a hit replays, commands, telemetry
 and `vx show`. Values in the run history are digests under a per-store
 salt, and what follows `--` on the command line reaches telemetry as a
