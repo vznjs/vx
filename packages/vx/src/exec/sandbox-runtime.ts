@@ -446,6 +446,28 @@ async function unlinkStaleMuxSockets(): Promise<void> {
  * B-19). A tool vx cannot find is left to SRT's own dependency check,
  * whose refusal names it.
  */
+let javaAgent: { javaAgentJarPath?: string } | undefined
+
+/**
+ * The JVM proxy agent SRT ships, named so SRT need not look for it. SRT's
+ * search lists `npm root -g` among its candidates before trying any, so it
+ * spawned npm on every init (~110 ms, the bulk of `vx info`'s sandbox
+ * probe) even though the jar sits beside it. Absent (a compiled vx), SRT
+ * searches as before.
+ */
+function bundledJavaAgent(): { javaAgentJarPath?: string } {
+  if (javaAgent) return javaAgent
+  javaAgent = {}
+  try {
+    const dist = path.dirname(require.resolve('@anthropic-ai/sandbox-runtime'))
+    const jar = path.join(dist, '..', 'vendor', 'java-proxy-agent', 'srt-proxy-agent.jar')
+    if (existsSync(jar)) javaAgent = { javaAgentJarPath: jar }
+  } catch {
+    // unresolvable: SRT searches
+  }
+  return javaAgent
+}
+
 function linuxToolPaths(): { bwrapPath?: string; socatPath?: string } {
   if (process.platform !== 'linux') return {}
   const paths: { bwrapPath?: string; socatPath?: string } = {}
@@ -526,6 +548,7 @@ export async function initSandbox(opts?: {
     filesystem: { denyRead: [], allowWrite: [], denyWrite: [] },
     ignoreViolations: DEFAULT_IGNORE_VIOLATIONS,
     ...linuxToolPaths(),
+    ...bundledJavaAgent(),
   }
   if (!srtUp) await unlinkStaleMuxSockets()
   await SandboxManager.initialize(
