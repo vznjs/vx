@@ -316,7 +316,9 @@ describe('vx show (e2e)', () => {
     async () => {
       const r = await vx(root, ['show', 'app#'])
       expect(r.code).toBe(1)
-      expect(r.err).toContain(`missing task name after '#' in "app#"`)
+      expect(r.err.trim()).toBe(
+        `vx show: missing task name after '#' in "app#" (vx show app lists the tasks)`,
+      )
     },
     TIMEOUT,
   )

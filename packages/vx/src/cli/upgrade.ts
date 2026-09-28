@@ -105,11 +105,15 @@ export function releaseAsset(release: unknown, name: string): ReleaseAsset {
       typeof a === 'object' && a !== null && (a as { name?: unknown }).name === name,
   )
   if (asset === undefined) {
-    throw new UserError(`vx upgrade: release ${tag} has no asset ${name} for this platform`)
+    throw new UserError(
+      `vx upgrade: release ${tag} has no asset ${name} for this platform — nothing replaced; npm install -g @vzn/vx@latest installs it instead`,
+    )
   }
   const url = asset.browser_download_url
   if (typeof url !== 'string' || url.length === 0) {
-    throw new UserError(`vx upgrade: release ${tag} names no download for ${name}`)
+    throw new UserError(
+      `vx upgrade: release ${tag} names no download for ${name} — nothing replaced; npm install -g @vzn/vx@latest installs it instead`,
+    )
   }
   const digest = asset.digest
   const m = typeof digest === 'string' ? /^sha256:([0-9a-f]{64})$/i.exec(digest) : null
@@ -217,13 +221,15 @@ export async function replaceBinary(
 ): Promise<void> {
   const res = await fetchOrRefuse(url, { redirect: 'follow' }, 'download the release asset')
   if (!res.ok) {
-    throw new UserError(`vx upgrade: download failed (${res.status}) — ${url}`)
+    throw new UserError(
+      `vx upgrade: download failed (${res.status}) — ${url} — nothing replaced; re-run`,
+    )
   }
   const bytes = new Uint8Array(
     await readOrRefuse(() => res.arrayBuffer(), url, 'download the release asset'),
   )
   if (bytes.byteLength === 0) {
-    throw new UserError(`vx upgrade: empty download — ${url}`)
+    throw new UserError(`vx upgrade: empty download — ${url} — nothing replaced; re-run`)
   }
   const got = new Bun.CryptoHasher('sha256').update(bytes).digest('hex')
   if (got !== sha256.toLowerCase()) {
