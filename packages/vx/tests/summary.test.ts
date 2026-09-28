@@ -179,6 +179,30 @@ describe('formatRunSummary', () => {
     expect(lines[1]).toBe('─ vx ' + '─'.repeat(57))
     expect(lines.find((l) => l.startsWith('  projects'))).toBeUndefined()
     expect(lines.find((l) => l.startsWith('  info'))).toBeUndefined()
+    expect(lines.find((l) => l.startsWith('  result'))).toBeUndefined()
+  })
+
+  it('ends with the run in one line: tasks, cached, time; all cached; failures first', () => {
+    const ctx = { version: '0.0.0', packageCount: 1, remoteCacheEnabled: false }
+    const result = (outcomes: TaskOutcome[], ms: number): string | undefined =>
+      formatRunSummary(outcomes, ms, { enabled: false }, ctx).at(-1)
+    expect(
+      result(
+        [
+          outcome('a#x', 'cache-hit'),
+          outcome('b#x', 'cache-hit-remote'),
+          outcome('c#x', 'success'),
+        ],
+        3200,
+      ),
+    ).toBe('  result    3 tasks · 2 cached (66%) · 3.20s')
+    expect(result([outcome('a#x', 'cache-hit')], 23)).toBe('  result    1 task · all cached · 23ms')
+    expect(result([outcome('a#x', 'failed', 1), outcome('b#x', 'success')], 40)).toBe(
+      '  result    2 tasks · 1 failed · 0 cached (0%) · 40ms',
+    )
+    expect(formatRunSummary([], 5, { enabled: false }, ctx).find((l) => l.includes('result'))).toBe(
+      undefined,
+    )
   })
 })
 

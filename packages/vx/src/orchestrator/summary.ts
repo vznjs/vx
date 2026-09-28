@@ -260,10 +260,35 @@ export function formatSummarySection(
       )
     }
     lines.push('', row('info', join(info)), row('time', `${formatDuration(totalMs)}${spread}`))
+    // The run in one line, last, where the eye lands: what a Turbo user
+    // reads first in its own summary (tasks, cached, time), in vx's words.
+    if (stats.total > 0) lines.push(row('result', resultLine(stats, hits, totalMs, colors)))
   } else {
     lines.push('', row('time', `${formatDuration(totalMs)}${spread}`))
   }
   return lines
+}
+
+/**
+ * `42 tasks · 38 cached (90%) · 3.2s`, `2 tasks · all cached · 23ms`,
+ * with the failures first when there are any. Cached is every hit (up to
+ * date, restored locally or remotely) over every counted task.
+ */
+function resultLine(
+  stats: SummaryStats,
+  hits: number,
+  totalMs: number,
+  colors: ColorSupport,
+): string {
+  const parts = [`${stats.total} task${stats.total === 1 ? '' : 's'}`]
+  if (stats.failed > 0) parts.push(paint(ERROR, `${stats.failed} failed`, colors, { bold: true }))
+  parts.push(
+    hits === stats.total
+      ? paint(SUCCESS, 'all cached', colors, { bold: true })
+      : `${hits} cached (${Math.floor((hits / stats.total) * 100)}%)`,
+  )
+  parts.push(formatDuration(totalMs))
+  return parts.join(` ${paint('', '\u00b7', colors, { dim: true })} `)
 }
 
 // Local byte formatter — the orchestrator can't import cli/format.ts

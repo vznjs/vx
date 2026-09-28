@@ -92,7 +92,7 @@ describe('the run ends with each failed task’s last lines', () => {
       const r = vx(ws, {}, ['run', 'chatty', '--all'])
       expect(r.code).toBe(0)
       const lines = r.out.replace(/\n$/, '').split('\n')
-      expect(lines.at(-1)).toMatch(/^ {2}time {6}\d/)
+      expect(lines.at(-1)).toMatch(/^ {2}result {4}1 task · /)
       expect(lines.filter((l) => l.startsWith('  Failed:'))).toEqual([])
     },
     TIMEOUT,
