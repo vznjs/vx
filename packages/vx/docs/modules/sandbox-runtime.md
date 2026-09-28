@@ -145,6 +145,7 @@ export interface SandboxViolation {
   line: string
   timestamp: Date
   target?: string
+  hint?: true // vx's own note, shown but never counted (B-20)
   path?: string
   ignorable?: readonly ('read' | 'write' | 'network' | 'systemInfo')[]
 }

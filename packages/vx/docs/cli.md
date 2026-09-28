@@ -316,7 +316,8 @@ only when a stage's output does). A root file a plugin's stages read
 without importing it is seen when the plugin CLAIMS it
 (`VxPlugin.fingerprint`): `turbo()` claims `turbo.json` and
 `turbo.jsonc`, `nx()` claims `nx.json`, `lage()` claims
-`lage.config.{js,cjs,mjs}`, and an edit asks the claimant,
+`lage.config.{js,cjs,mjs}`, `workspaceScripts()` the root
+`package.json`, and an edit asks the claimant,
 which answers every project (item 961).
 
 **A file your config IMPORTS selects that project.** vx hashes the
@@ -325,8 +326,9 @@ the cache key — and selection follows the same rule. Editing
 `shared/preset.ts` selects every project whose config imports it,
 directly or through another shared file, even though the file belongs
 to no project and no `workspaceFiles` glob names it. The scan is
-STATIC (nothing is evaluated) and follows RELATIVE specifiers only; a
-bare specifier is a package, and a lockfile change already selects
+STATIC (nothing is evaluated) and follows RELATIVE specifiers, and a
+bare one the nearest tsconfig maps through `paths` or `baseUrl`; any
+other bare specifier is a package, and a lockfile change already selects
 everything. It stops at a project boundary: a config importing
 `../../packages/lib/preset.ts` gets the edge, but `preset.ts`'s own
 imports inside `lib` do not reach further — `lib` is already selected
@@ -923,9 +925,9 @@ child exited first; `exitCode` is then its own) or `spawn` (the spawn
 itself failed). Every label reads it, `failed (never ready: timed out,
 exit 1)`.
 
-**`sandboxViolations`** is present only on a sandboxed task the sandbox
-recorded violations for — the count the frame's SANDBOX VIOLATIONS
-section lists, and the reason the task failed (its exit is forced to 1
+**`sandboxViolations`** is present only on a sandboxed task with a
+SANDBOX VIOLATIONS section — the count of its denials (vx's own notes
+there count none), and the reason the task failed (its exit is forced to 1
 when it was 0); every label counts it, `failed (exit 1, 2 sandbox
 violations)`.
 
@@ -1691,10 +1693,10 @@ core (`src/cli/plugin-templates.ts`) and held equal by
 
 Moved out of core on 2026-09-10: the Turbo and Nx mappers are
 `@vzn/vx-migrate`, their own package, run without a workspace file. It
-maps moon, wireit and lage too —
+maps moon, wireit, lage and root fan-out scripts (`pnpm -r build`) too —
 
 ```
-bunx @vzn/vx-migrate           # turbo.json, an Nx graph, .moon/, wireit or lage.config.js → vx.config.ts
+bunx @vzn/vx-migrate           # turbo.json, an Nx graph, .moon/, wireit, lage.config.js or fan-out scripts → vx.config.ts
 bunx @vzn/vx-migrate --dry     # print the generated files instead of writing
 bunx @vzn/vx-migrate --force   # overwrite existing vx.config.* / vx-preset.ts
 bunx @vzn/vx-migrate --from nx # disambiguate when several runners are checked in
@@ -2154,7 +2156,8 @@ write ../shared/notes.txt
 Every section is conditional: the `$ <command>` line only for an
 executed task (success or failed — a hit replays its stored output and
 shows none), `STDOUT` / `STDERR` only when the stream is non-empty,
-`SANDBOX VIOLATIONS (N)` only when the sandbox recorded some. The
+`SANDBOX VIOLATIONS (N)` only when the sandbox recorded some or vx
+has a note on a failure. The
 header carries the outcome (`restored-local • abc12345`, `failed (exit
 N)`, …) and the footer repeats it after the duration. A test renders
 this block and checks it against this page, byte for byte.
