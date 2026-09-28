@@ -73,6 +73,16 @@
     ingest (`scanArtifact`) are the only two, and both check the `.vx-sum`
     (L-19); vx-reapi writes outputs from CAS blobs it digest-checks (L-3).
     No bug.
+16. Plugin and config loading. Discovery skips `node_modules` and dot
+    directories, so no installed package is taken for a workspace
+    project. A helper a config imports reached Bun's registry
+    auto-install (L-22).
+17. Other children that run user code. `nx()` runs the workspace's own
+    `node_modules/.bin/nx`, never `npx`; `nx-exec.cjs` runs under Node,
+    which never auto-installs; `turbo()` spawns nothing. The lage loader
+    was fixed in L-22. No bug.
+18. What vx reads on a task's behalf. The save packs outputs outside the
+    sandbox and followed a symlinked output to any target (L-23).
 
 ## Items
 
@@ -251,6 +261,14 @@
   missing `--no-env-file`), and so does vx-migrate's child that
   evaluates a `lage.config.js`; a compiled binary never auto-installed.
   Rows: a local registry sees no request, red without the flag.
+- L-23. `fix(cache)`: vx packs a symlinked output as its target's bytes,
+  reading it outside the task's sandbox, so a sandboxed task that linked
+  `dist/x` to a file it could not read (another project's) had that file
+  packed into its artifact and the remote (probed). The save now
+  `lstat`s each output (no extra call for a file), resolves a link, and
+  refuses one whose real target is outside the project; the body is read
+  from the resolved path. Row: e2e, no artifact holds the target's bytes,
+  red without the bound; the in-project `link` shape still caches.
 
 ## Leads for other streams
 
@@ -285,3 +303,7 @@
 - D (config): the purity gate lets `new Worker('./x.ts')` through; the
   worker's file is outside the hashed closure, so its reads (env, clock)
   can be cached stale.
+- migrate: in a compiled vx, `loadLageConfig` spawns `process.execPath`,
+  which is the vx binary, so `-e` prints `vx: unknown command: -e` and
+  `lage()` fails. Probed: `BUN_BE_BUN=1` in the child's env runs it as
+  Bun.

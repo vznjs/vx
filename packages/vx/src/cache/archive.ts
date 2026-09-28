@@ -38,7 +38,7 @@
 // otherwise silently loses the claim rather than acting on it.
 
 import { chmodSync, renameSync, statSync, utimesSync } from 'node:fs'
-import { mkdir, readlink, realpath, rmdir, stat, unlink, writeFile } from 'node:fs/promises'
+import { lstat, mkdir, readlink, realpath, rmdir, stat, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { UserError } from '../util/index.js'
 import { TarFormatError, type TarInput, tarEntries, tarPack, tarSize } from './tar-stream.js'
@@ -193,6 +193,13 @@ export interface PackArgs {
   outputs: ReadonlyMap<string, string>
   /** The producing execution's usage, when the runner reported it. */
   exec?: ExecUsage | undefined
+  /**
+   * The project directory a symlinked output must resolve inside. vx reads
+   * outputs outside the task's sandbox, so a link a sandboxed task planted
+   * to a file it could not read (another project's, the user's home) packed
+   * that file into the artifact and the remote (L-23).
+   */
+  within?: string
 }
 
 /** A packed artifact's plan: its entries with their stats, and the tar's exact size. */
@@ -206,11 +213,12 @@ export interface ArtifactPlan {
  * mtime) and lay out the tar — stdout first, the outputs, the sidecar
  * last — with its exact size, so the caller can choose the one-call pack
  * for a small artifact and the streamed one for a large one before a
- * byte is read. A symlinked output is stored as its target's content, as
- * it always was.
+ * byte is read. A symlinked output is stored as its target's content,
+ * when that target is inside `within`.
  */
 export async function planArtifact(args: PackArgs): Promise<ArtifactPlan> {
   const meta: MetaFile = { version: 1, files: {} }
+  let withinReal: Promise<string> | undefined
   if (args.key !== undefined) meta.key = args.key
   const exec = usageOf(args.exec)
   if (exec !== undefined) meta.exec = exec
@@ -221,14 +229,31 @@ export async function planArtifact(args: PackArgs): Promise<ArtifactPlan> {
       // directory, or a dangling one, has no bytes to pack: refuse loudly
       // rather than store an entry that restores to nothing.
       const shown = name.startsWith('outputs/') ? name.slice('outputs/'.length) : name
-      const st = await stat(abs).catch((err: NodeJS.ErrnoException) => {
+      const dangling = (err: NodeJS.ErrnoException): never => {
         if (err.code === 'ENOENT') {
           throw new UserError(
             `output ${shown} is a dangling symlink: vx stores regular files only — emit a file there, or narrow cache.outputs.files to the files the task produces, or take it back with a '!' entry`,
           )
         }
         throw err
-      })
+      }
+      // lstat, so a regular file costs no second call; only a link is
+      // resolved, and its body is read from the path this check resolved.
+      let src = abs
+      let st = await lstat(abs)
+      if (st.isSymbolicLink()) {
+        src = await realpath(abs).catch(dangling)
+        if (args.within !== undefined) {
+          withinReal ??= realpath(args.within)
+          const root = await withinReal
+          if (!src.startsWith(root + path.sep)) {
+            throw new UserError(
+              `output ${shown} is a symlink to ${src}, outside the project: vx packs a symlinked output as its target's bytes, and a project's outputs come from its own directory — emit a file there, or take it back with a '!' entry`,
+            )
+          }
+        }
+        st = await stat(src).catch(dangling)
+      }
       if (!st.isFile()) {
         throw new UserError(
           `output ${shown} is not a regular file (a symlink to a directory?): vx stores regular files only — emit a file there, or narrow cache.outputs.files to the files the task produces, or take it back with a '!' entry`,
@@ -240,7 +265,7 @@ export async function planArtifact(args: PackArgs): Promise<ArtifactPlan> {
       meta.files[name] = [mode, Math.floor(st.mtimeMs)]
       return {
         name,
-        abs,
+        abs: src,
         size: st.size,
         mode,
         // ustar's octal field holds no sign: an mtime before 1970 made the
