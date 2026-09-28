@@ -326,6 +326,55 @@ describe('table cells are escaped — a task name is arbitrary user input', () =
   })
 })
 
+describe('C-42: what the sweep left unheld', () => {
+  it('renders the whole document, byte for byte', () => {
+    // A failed task makes `success` differ from the total; the separators and
+    // the blank lines are what a GFM consumer parses the heading, headline and
+    // table apart by.
+    const md = report(
+      [
+        view({ taskId: 'a#build', durationMs: 1200 }),
+        view({ taskId: 'a#test', status: 'failed', exitCode: 1, durationMs: 300 }),
+      ],
+      false,
+    )
+    expect(md).toBe(
+      [
+        '## vx run — failed',
+        '',
+        '**2 tasks** · 1 success · 1 failed · 0 cached · 1.50s total',
+        '',
+        '| Task | Status | Cache | Duration |',
+        '| --- | --- | --- | --- |',
+        '| a#build | success | miss | 1.20s |',
+        '| a#test | failed (exit 1) | miss | 300ms |',
+        '',
+      ].join('\n'),
+    )
+  })
+
+  it('escapes a pipe in the blocking task named in a status cell', () => {
+    const md = report([view({ taskId: 'a#b', status: 'skipped', blockedBy: 'a#x|y' })])
+    expect(rows(md)[0]).toBe('| a#b | skipped (blocked by a#x\\|y) | — | 100ms |')
+  })
+
+  it('flattens every line break, including a lone CR', () => {
+    // A lone `\r` is a GFM line ending: unflattened it split the row in two.
+    const md = report([view({ taskId: 'a#x\ny\rz\r\nw' })])
+    expect(rows(md)).toEqual(['| a#x y z w | success | miss | 100ms |'])
+  })
+
+  it('leaves a pipe an odd backslash run already escapes, so it cannot free it', () => {
+    // `a\|b` became `a\\|b`: GFM reads an escaped backslash, then a free pipe,
+    // and the row gained a column. An even run gets the one backslash it needs.
+    const md = report([view({ taskId: 'a#x\\|y' }), view({ taskId: 'a#p\\\\|q\\\\\\|r' })])
+    expect(rows(md)).toEqual([
+      '| a#x\\|y | success | miss | 100ms |',
+      '| a#p\\\\\\|q\\\\\\|r | success | miss | 100ms |',
+    ])
+  })
+})
+
 describe('structure', () => {
   it('always ends with a newline', () => {
     // Appended to `$GITHUB_STEP_SUMMARY`, which is shared with other steps —
