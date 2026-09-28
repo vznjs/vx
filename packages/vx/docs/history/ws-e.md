@@ -382,6 +382,10 @@ task picked`; neither prints a stack. Row in
   run hit, and its header note no longer names a `build` TODO that a
   repo with no `build` script never got (nrwl/nx-examples: "carries a
   TODO" over "0 TODOs"). From the first-five-minutes walk below.
+- E-67 — the duplicate-package-name refusal gives root-relative paths
+  in a stable order and the way on: rename one, or a `!` workspace
+  glob. sveltejs/kit (pnpm accepts two test apps of one name) died on
+  the first command with two absolute paths and no next step.
 
 ## First-five-minutes walk (2026-09-28)
 
