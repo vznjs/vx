@@ -296,3 +296,11 @@ packages/core`) selects the dependent whose `file:../lib` spec named
   gates only the scan), and the extra candidates of a deleted target
   that carries an extension. Rows: the D-30 rows of
   `tests/config-missing-import.test.ts` and `tests/affected.test.ts`.
+- **D-31** `vx init` folded `prebuild` / `postbuild` into `build`'s
+  command in a Yarn 2+ workspace, which runs no such hooks (probed with
+  Yarn 4.5.0: `yarn run build` printed BUILD alone; npm, pnpm 10, bun and
+  yarn 1 printed PRE BUILD POST): the migrated task ran scripts the
+  user's `yarn build` never did, and the hook is usually `rm -rf dist`.
+  Under the nearest `packageManager: yarn@2+`, or a Berry `yarn.lock`,
+  each hook is a task of its own. Row: the D-31 row of
+  `tests/init.test.ts`.
