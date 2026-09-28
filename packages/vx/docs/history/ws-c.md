@@ -468,6 +468,17 @@ ended the run. The suite never deferred after the lane drained; a
 `save-lane.test.ts` row does, and asserts the save starts at once. No
 defect.
 
+## C-39: a restore-tier hit with an order-only edge no longer throws
+
+Under `--exclude-dependencies`, a task left an order-only edge (`test`
+after the excluded `gen`) that hit the cache dispatched in the restore
+tier before `gen` settled; the scheduler handed it the outcomes so far,
+holes included, and `keyUpstream`'s order-only filter read `.node` of a
+hole: `TypeError: undefined is not an object` and a failed run, on the
+second `vx run` of a saved task (C-36's probe). A hole now stays a hole,
+as it does with no order-only edge. Rows in `upstream.test.ts`, the unit
+and the run, both red without the change.
+
 ## Leads for other streams
 
 - **E:** a plugin command's plain `throw` (`commands.probe.run` throwing
