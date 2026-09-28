@@ -377,6 +377,7 @@ Semantics:
 interface ExecEnv {
   passThrough?: string[] // names taken from host process.env; exact names, a wildcard is refused
   define?: Record<string, string> // explicit name=value pairs
+  secret?: string[] // names whose values are masked (`***`) whatever the name; see Masking
 }
 ```
 
@@ -469,7 +470,9 @@ remote cache receives), the `$ command` line, telemetry records and
 `vx show`. A value
 split across two output chunks is still caught; the output holds back
 that many characters until the next chunk. A plugin that reads a task's
-config directly sees it as written.
+config directly sees it as written. A secret whose name holds none of
+those words (`GH_PAT`, `NPM_AUTH`) is listed in `exec.env.secret`, and is
+then masked in the same places.
 
 Two `node_modules/.bin` directories are prepended to `PATH` so
 installed tools (`oxlint`, `vite`, etc.) work without `npx`: the

@@ -167,6 +167,16 @@ describe('task refusals the sweep found unheld (item 653)', () => {
         `${CFG}: tasks.t.exec.env.passThrough: wildcards in env names are not supported (got ${JSON.stringify(n)}) — list explicit env var names instead`,
       )
     }
+    // L-14: `env.secret` names the variables masked whatever their name.
+    for (const n of ['A=B', 'A\0B', '', 'GH_*']) {
+      expect(taskRefusal({ exec: { command: 'x', env: { secret: [n] } } })).toBe(
+        `${CFG}: tasks.t.exec.env.secret must be an array of env var names (non-empty, no '=', NUL or wildcard)`,
+      )
+    }
+    expect(taskRefusal({ exec: { command: 'x', env: { secret: 'GH_PAT' } } })).toBe(
+      `${CFG}: tasks.t.exec.env.secret must be an array of env var names (non-empty, no '=', NUL or wildcard)`,
+    )
+    expect(taskRefusal({ exec: { command: 'x', env: { secret: ['GH_PAT'] } } })).toBeNull()
     // Controls: a name with no `=` or NUL, and a value holding `=`, pass.
     expect(define({ A_B: 'x=y' })).toBeNull()
     expect(taskRefusal({ exec: { command: 'x', env: { passThrough: ['A_B'] } } })).toBeNull()

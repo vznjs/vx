@@ -130,7 +130,7 @@ describe('an unknown key is refused at every object level of a config', () => {
     const config = full()
     inject(config, 'tasks.t.exec.env', 'passthrough')
     expect(() => validateProjectConfig(config as Config, 'walk')).toThrow(
-      /exec\.env has unknown field "passthrough" \(allowed: define, passThrough\) — did you mean passThrough\?/,
+      /exec\.env has unknown field "passthrough" \(allowed: define, passThrough, secret\) — did you mean passThrough\?/,
     )
   })
 })

@@ -342,7 +342,7 @@ export function projectNode(node: TaskNode): TaskView {
     persistent: node.config.exec?.persistent !== undefined,
   }
   if (node.config.exec?.command !== undefined)
-    view.command = maskedCommand(node.config.exec.command, node.config.exec.env?.define)
+    view.command = maskedCommand(node.config.exec.command, node.config.exec.env)
   return view
 }
 
