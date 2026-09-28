@@ -10,6 +10,7 @@ import {
   splitTaskId,
   unresolvedRequests,
   type ProjectEntry,
+  type TaskNode,
 } from '../src/graph/task-graph.js'
 import { UserError } from '../src/util/index.js'
 
@@ -1295,5 +1296,215 @@ describe('buildTaskGraph — depth is not bounded by the call stack', () => {
     expect((thrown as Error).message).toBe(
       `Cycle detected in task graph: ${[...ids, 'p0#build'].join(' -> ')}`,
     )
+  })
+})
+
+// C-30: the mutation sweep of task-graph.ts found each of these deletable
+// with the core suite green.
+describe('task-graph.ts rows the C-30 sweep found unheld', () => {
+  const thrown = (fn: () => unknown): string | undefined => {
+    try {
+      fn()
+    } catch (err) {
+      return (err as Error).message
+    }
+    return undefined
+  }
+
+  it('surfaces nothing for a group that was not itself requested', () => {
+    const nodes = buildTaskGraph({
+      projects: projects(
+        project('app', {
+          build: { ...cmd('b'), dependsOn: ['checks'] },
+          checks: group(['lint']),
+          lint: cmd('l'),
+        }),
+      ),
+      packageGraph: packageGraph({}),
+      requested: [{ project: 'app', task: 'build' }],
+    })
+    expect([markSurfacedDeps(nodes), nodes.get('app#lint')?.surfaced]).toEqual([0, undefined])
+  })
+
+  it('an anchored request is never also read as a bare task name', () => {
+    // A task name may hold `#` (splitTaskId splits on the first), so `x`
+    // can declare a task literally named `app#build`.
+    const ps = projects(
+      project('app', { build: cmd('b') }),
+      project('x', { 'app#build': cmd('x') }),
+    )
+    expect(expandRequested(['app#build'], ['app', 'x'], ps)).toEqual([
+      { project: 'app', task: 'build' },
+    ])
+  })
+
+  it('an empty candidate scope reports nothing unresolved', () => {
+    const ps = projects(project('app', { build: cmd('b') }))
+    expect([
+      unresolvedRequests(['build', 'nope'], [], ps),
+      unresolvedRequests(['build', 'nope'], ['app'], ps),
+    ]).toEqual([[], ['nope']])
+  })
+
+  it('adds nodes depth-first: each target of one entry with its subtree before the next', () => {
+    const nodes = buildTaskGraph({
+      projects: projects(
+        project('app', {
+          all: group(['build.*']),
+          'build.a': { ...cmd('a'), dependsOn: ['gen.a'] },
+          'build.b': { ...cmd('b'), dependsOn: ['gen.b'] },
+          'gen.a': cmd('ga'),
+          'gen.b': cmd('gb'),
+        }),
+      ),
+      packageGraph: packageGraph({}),
+      requested: [{ project: 'app', task: 'all' }],
+    })
+    expect([...nodes.keys()]).toEqual([
+      'app#all',
+      'app#build.a',
+      'app#gen.a',
+      'app#build.b',
+      'app#gen.b',
+    ])
+  })
+
+  it('a malformed dependsOn entry is named with the task that declares it', () => {
+    const message = thrown(() =>
+      buildTaskGraph({
+        projects: projects(project('app', { build: { ...cmd('b'), dependsOn: ['^'] } })),
+        packageGraph: packageGraph({}),
+        requested: [{ project: 'app', task: 'build' }],
+      }),
+    )
+    expect(message).toBe('Task app#build: Invalid dependency spec "^": "^" with no task name')
+  })
+
+  it('a pattern in the project half of pkg#task is refused as a pattern', () => {
+    const message = thrown(() =>
+      buildTaskGraph({
+        projects: projects(
+          project('app', { build: { ...cmd('b'), dependsOn: ['lib*#build'] } }),
+          project('lib1', { build: cmd('l') }),
+        ),
+        packageGraph: packageGraph({}),
+        requested: [{ project: 'app', task: 'build' }],
+      }),
+    )
+    expect(message).toBe(
+      'Task app#build: dependsOn patterns are not supported in the "pkg#task" form (got "lib*#build")',
+    )
+  })
+
+  it('names only the cycle, not the path that led into it', () => {
+    const message = thrown(() =>
+      buildTaskGraph({
+        projects: projects(
+          project('p', {
+            a: { ...cmd('a'), dependsOn: ['b'] },
+            b: { ...cmd('b'), dependsOn: ['c'] },
+            c: { ...cmd('c'), dependsOn: ['b'] },
+          }),
+        ),
+        packageGraph: packageGraph({}),
+        requested: [{ project: 'p', task: 'a' }],
+      }),
+    )
+    expect(message).toBe('Cycle detected in task graph: p#b -> p#c -> p#b')
+  })
+
+  it('excludeDependencies adds no order-only edge a kept edge already gives', () => {
+    const nodes = buildTaskGraph({
+      projects: projects(
+        project('p', {
+          test: { ...cmd('t'), dependsOn: ['gen', 'build'] },
+          gen: { ...cmd('g'), dependsOn: ['build'] },
+          build: cmd('b'),
+        }),
+      ),
+      packageGraph: packageGraph({}),
+      requested: [{ project: 'p', task: 'test' }],
+    })
+    excludeDependencies(nodes, ['gen'])
+    const test = nodes.get('p#test')!
+    expect({ deps: test.deps, orderOnly: test.orderOnly }).toEqual({
+      deps: ['p#build'],
+      orderOnly: undefined,
+    })
+    expect('orderOnly' in test).toBe(false)
+  })
+
+  it('excludeDependencies orders only on the nearest scheduled tasks, sorted into deps', () => {
+    // gen (excluded) reaches a and c, both scheduled; a's own dep z is
+    // scheduled through a and needs no edge from test.
+    const nodes = buildTaskGraph({
+      projects: projects(
+        project('p', {
+          test: { ...cmd('t'), dependsOn: ['gen', 'b'] },
+          gen: { ...cmd('g'), dependsOn: ['a', 'c'] },
+          a: { ...cmd('a'), dependsOn: ['z'] },
+          b: cmd('b'),
+          c: cmd('c'),
+          z: cmd('z'),
+        }),
+      ),
+      packageGraph: packageGraph({}),
+      requested: [
+        { project: 'p', task: 'test' },
+        { project: 'p', task: 'a' },
+        { project: 'p', task: 'c' },
+      ],
+    })
+    excludeDependencies(nodes, ['gen'])
+    const test = nodes.get('p#test')!
+    expect({ deps: test.deps, orderOnly: test.orderOnly }).toEqual({
+      deps: ['p#a', 'p#b', 'p#c'],
+      orderOnly: ['p#a', 'p#c'],
+    })
+  })
+
+  describe('excludeDependencies walks each node once, not once per path', () => {
+    // Twelve stacked diamonds: a walk without its seen set reads the
+    // bottom once per path (2^12), so the count of `get`s tells the two
+    // apart without a clock.
+    class CountingMap<K, V> extends Map<K, V> {
+      gets = 0
+      override get(key: K): V | undefined {
+        this.gets++
+        return super.get(key)
+      }
+    }
+    const diamonds = (): CountingMap<string, TaskNode> => {
+      const tasks: Record<string, TaskConfig> = { top: { ...cmd('t'), dependsOn: ['d0'] } }
+      const levels = 12
+      for (let i = 0; i < levels; i++) {
+        tasks[`d${i}`] = { ...cmd('d'), dependsOn: [`l${i}`, `r${i}`] }
+        const below = i + 1 < levels ? [`d${i + 1}`] : []
+        tasks[`l${i}`] = { ...cmd('l'), dependsOn: below }
+        tasks[`r${i}`] = { ...cmd('r'), dependsOn: below }
+      }
+      const built = buildTaskGraph({
+        projects: projects(project('app', tasks)),
+        packageGraph: packageGraph({}),
+        requested: [{ project: 'app', task: 'top' }],
+      })
+      return new CountingMap(built)
+    }
+
+    it('the schedule walk', () => {
+      const nodes = diamonds()
+      const { keyOnly } = excludeDependencies(nodes, ['none'])
+      expect([nodes.size, keyOnly.size, nodes.gets <= 300]).toEqual([37, 0, true])
+    })
+
+    it('the order walk through what left the schedule', () => {
+      const nodes = diamonds()
+      const { keyOnly, dropped } = excludeDependencies(nodes, ['d0'])
+      expect([keyOnly.size, [...dropped], nodes.gets <= 300]).toEqual([
+        36,
+        [['app#top', ['app#d0']]],
+        true,
+      ])
+    })
   })
 })
