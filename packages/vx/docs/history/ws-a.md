@@ -287,3 +287,10 @@ The last `miss-save.ts` survivors: the workspace-row filter in the snapshot's `e
 
 - Rows: `undeclared-writes.test.ts` › "the stability gate reads the reach": an undeclared writer, a cached rewriter two hops up, and a rewriter writing outside its project, each reached through a task that may write nothing, still make the reader unstable (with a control); an uncached task is never probed up front. `stable-keys.test.ts`: a negated `**` reaches nothing; a prefix stops at the first wildcard segment. Each red under its mutant.
 - Equivalent: `ProjectSet.or` without a copy only adds producers to sets already stored (more unstable, never less); a dependency missing from the graph never happens, as the graph is closed.
+
+### A-33 (2026-09-28, sweep: `git-inputs.ts`)
+
+55 mutants over the eleven files that reach it: 47 caught, 8 survived. No defect.
+
+- Rows (`stale-hit.test.ts`): an input edited under `--skip-worktree` moves the key (the removal row passed without the `S` flag: the save's moved-input check refused the missing file, masking it); `core.fileMode` read false as `no`, `off` and `0` too; a non-UTF-8 name inside an embedded repository is refused. Each red under its mutant.
+- Equivalent: OIDs for conflict stages (the path is dirty, so untrusted), a failed `check-attr` whose output is then parsed (empty), the attributes walk past the repository root and a status path outside the prefix (both only widen distrust), and a trusted file gone at restamp (dirty, so already dropped).
