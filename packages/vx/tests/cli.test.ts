@@ -1429,7 +1429,10 @@ describe('parseRunArgs', () => {
     expect(parseRunArgs(['build', '--concurrency=200%']).concurrency).toBe(cores * 2)
     expect(parseRunArgs(['build', '--concurrency', '1%']).concurrency).toBeGreaterThanOrEqual(1)
     expect(parseRunArgs(['build', '--concurrency', '%']).error).toBeDefined()
-    expect(parseRunArgs(['build', '-c', '4']).error).toMatch(/unknown flag: -c/)
+    // `-c` is no concurrency short form: it is Nx's --configuration, refused by name.
+    expect(parseRunArgs(['build', '-c', '4']).error).toBe(
+      '-c (nx): a configuration is its own task: `vx run <target>:<configuration>`',
+    )
     // A near miss names the documented flag; a far one gets no guess.
     expect(parseRunArgs(['build', '--concurency', '4']).error).toBe(
       'unknown flag: --concurency (did you mean --concurrency?) (see `vx run --help`)',
@@ -1674,7 +1677,8 @@ describe('parseRunArgs', () => {
   it('parses --exclude-dependencies as "all" with no value', () => {
     expect(parseRunArgs(['build', '--exclude-dependencies']).excludeDependencies).toBe('all')
     expect(parseRunArgs(['build', '--ignore-depends-on']).error).toMatch(/unknown flag/)
-    expect(parseRunArgs(['build', '--only']).error).toMatch(/unknown flag/)
+    // Turbo's spelling of it (foreign-flags.ts).
+    expect(parseRunArgs(['build', '--only']).excludeDependencies).toBe('all')
   })
 
   it('the camelCase spelling the flag shipped with names the kebab-case one', () => {
@@ -1715,7 +1719,8 @@ describe('parseRunArgs', () => {
     expect(parseRunArgs(['build', '--dry']).dry).toBe('text')
     expect(parseRunArgs(['build', '--dry=text']).dry).toBe('text')
     expect(parseRunArgs(['build', '--dry=json']).dry).toBe('json')
-    expect(parseRunArgs(['build', '--dry-run']).error).toMatch(/unknown flag: --dry-run/)
+    // Turbo's spelling (foreign-flags.ts); `vx cache prune --dry-run` is its own flag.
+    expect(parseRunArgs(['build', '--dry-run']).dry).toBe('text')
   })
 
   it('rejects invalid --dry=<format>', () => {
@@ -1826,8 +1831,9 @@ describe('parseRunArgs', () => {
     expect(parseRunArgs(['build', '-f']).error).toMatch(/unknown flag: -f/)
   })
 
-  it('-p / --project is no longer recognized', () => {
-    expect(parseRunArgs(['build', '-p', 'foo']).error).toMatch(/unknown flag: -p/)
+  it("-p is Nx's --projects, a filter; --project is no flag", () => {
+    expect(parseRunArgs(['build', '-p', 'foo']).filters).toEqual(['foo'])
+    expect(parseRunArgs(['build', '--project', 'foo']).error).toMatch(/unknown flag: --project/)
   })
 
   it('rejects missing flag value', () => {

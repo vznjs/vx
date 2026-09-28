@@ -6,6 +6,7 @@ import { VERSION } from '../version.js'
 import { runCmd } from './run.js'
 import { CORE_VERBS, printHelp } from './help.js'
 import { pluginCommandHelp, resolvePluginCommand, pluginVerbs } from './plugin-commands.js'
+import { FOREIGN_VERBS } from './foreign-flags.js'
 import { isUserError, MOVED_VERBS, nearest, UserError } from '../util/index.js'
 
 // Every verb but `run` is imported when invoked. `vx run` is the hot path
@@ -45,8 +46,9 @@ export async function run(argv: readonly string[]): Promise<number> {
         // for the whole reference: it printed 145 lines and no hint.
         const resolved = await resolvePluginCommand(verb)
         const unknown = resolved === null || 'declaredVerbs' in resolved
-        if (unknown && MOVED_VERBS[verb] !== undefined) {
-          process.stderr.write(`${MOVED_VERBS[verb]}\n`)
+        const pointer = MOVED_VERBS[verb] ?? FOREIGN_VERBS[verb]
+        if (unknown && pointer !== undefined) {
+          process.stderr.write(`${pointer}\n`)
           return 1
         }
         if (unknown) {
@@ -127,7 +129,7 @@ export async function run(argv: readonly string[]): Promise<number> {
       // A verb core owned once (`migrate`, `prune`) and a package owns now:
       // the pointer, but only after the plugins had their chance — a
       // workspace that declares a plugin verb of that name keeps it.
-      const moved = MOVED_VERBS[command]
+      const moved = MOVED_VERBS[command] ?? FOREIGN_VERBS[command]
       if (moved !== undefined) {
         process.stderr.write(`${moved}${loadNote}\n`)
         return 1
