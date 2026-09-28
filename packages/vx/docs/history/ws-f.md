@@ -456,3 +456,11 @@ pipeline that set only `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` (or the
 logs one) exported nothing and said nothing, though each signal ships
 only to its own url. The plugin now declines only when no signal has an
 endpoint; one without its own stays off. Row red without the fix.
+
+F-44. vx-reapi read a compressed ByteStream write the server answered
+with `committed_size: -1` as a short write and failed the upload. The
+spec says a server that already holds the blob (or sees another client
+upload it at once) ends a compressed write early with exactly that, and
+the client should not retry: two actions sharing an input could fail
+each other. `-1` on a compressed write is now done. The fake server can
+answer it; row red without the fix.
