@@ -225,6 +225,11 @@ build rewrites `package.json` with the same bytes (`git status` clean),
 so the A lead on same-bytes input rewrites (unocss, N-17) would let a
 mapping that drops that output cache them.
 
+N-22. `turbo()` on shadcn-ui/ui (Turbo 2.9.18): `build` over
+`./packages/*` (3 tasks) and `typecheck` (5) plan as Turbo does, 0 edge
+mismatches. 21.4 s cold against 24.4 s, restore 221 ms against 567 ms,
+no-op 216 ms against 545 ms (`benchmarks.md`). No mapping gap.
+
 ## Candidates not built (2026-09-28)
 
 - Lerna without Nx: `lerna run <s>` (lerna 10.0.1, `prepNxOptions`)
