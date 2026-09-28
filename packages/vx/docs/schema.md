@@ -915,8 +915,8 @@ A path taken back is not cleaned before a run or a restore, not saved,
 not accepted from a remote artifact, and not hidden from `vx watch`;
 it stays an input, so an edit to it moves the key. A list of only `!`
 entries selects nothing and is refused, and `!!x` is refused as it is
-for inputs. The directory short-circuit on a warm hit needs every glob
-to be a whole subtree, so a task with a `!` entry keeps the walk.
+for inputs. The directory short-circuit on a warm hit reads the
+positive globs, so a task with a `!` entry keeps it (A-46).
 `workspaceFiles` takes `!` the same way.
 
 **Cleaning semantics** (one of vx's strict-output-ownership rules):

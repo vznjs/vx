@@ -4,7 +4,7 @@
 // path is not cleaned before a run or a restore, not saved, not accepted
 // from a remote, not hidden from `vx watch` — and it stays an input, so an
 // edit to it moves the key.
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, utimesSync } from 'node:fs'
 import { rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -80,6 +80,32 @@ describe('a negated output', () => {
       expect([read('dist/a.js'), read('dist/sub/gen.js')]).toEqual(['A1', 'g\n'])
       // Not cleaned, not overwritten, and its directory not pruned.
       expect([read('dist/sub/fixture.txt'), read('dist/keep.txt')]).toEqual(['F2', 'K1'])
+    },
+    TIMEOUT,
+  )
+
+  it(
+    "keeps the warm hit's directory snapshot, and a stray still forces the restore",
+    async () => {
+      await build()
+      // Aged past the racy window, so the next hit records the directories.
+      const old = new Date(Date.now() - 60_000)
+      for (const d of ['dist', 'dist/sub']) utimesSync(path.join(app, d), old, old)
+      const hit = (await build())['app#build']!
+      expect(hit.status).toBe('cache-hit')
+      const cache = new Cache(path.join(fx.root, '.vx', 'cache'))
+      try {
+        const rows = (await cache.getMany([hit.hash!])).get(hit.hash!)?.outputDirRows
+        expect(rows?.map((d) => d.path).sort()).toEqual(['dist', 'dist/sub'])
+      } finally {
+        cache.close()
+      }
+      await writeFile(path.join(app, 'dist', 'stray.js'), 'x')
+      expect((await build())['app#build']!.status).toBe('cache-hit')
+      expect([existsSync(path.join(app, 'dist', 'stray.js')), read('dist/keep.txt')]).toEqual([
+        false,
+        'K1',
+      ])
     },
     TIMEOUT,
   )

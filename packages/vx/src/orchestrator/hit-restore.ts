@@ -20,7 +20,14 @@ import {
   WORKSPACE_OUTPUT_PREFIX,
 } from '../cache/index.js'
 import type { TaskOutcome } from '../graph/index.js'
-import { asTrees, secretMask, span, taskGlob, wholeSubtreePrefixes } from '../util/index.js'
+import {
+  asTrees,
+  secretMask,
+  span,
+  splitNegations,
+  taskGlob,
+  wholeSubtreePrefixes,
+} from '../util/index.js'
 import type { ExecuteArgs } from './execute-task.js'
 import { entryHolds } from './miss-save.js'
 
@@ -51,7 +58,10 @@ export async function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome> 
   const outputs = cacheCfg?.outputs.files ?? []
   const wsOutputs = cacheCfg?.outputs.workspaceFiles ?? []
   const anyOutputs = outputs.length > 0 || wsOutputs.length > 0
-  const dirPrefixes = wholeSubtreePrefixes(outputs)
+  // The directories the positive globs cover whole. A `!` entry inside one
+  // leaves the snapshot sound: a file added or removed there still bumps a
+  // recorded directory, and the walk that follows applies the `!` (A-46).
+  const dirPrefixes = wholeSubtreePrefixes(splitNegations(outputs).positive)
   const cleanArgs = {
     projectDir: node.projectDir,
     outputs,
