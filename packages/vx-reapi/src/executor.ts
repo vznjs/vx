@@ -691,89 +691,112 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
       const treeGrafts: TreeGraft[] = []
       const symlinkGrafts: { path: string; target: string }[] = []
       const localUpstreamPaths: string[] = []
-      for (const up of req.inputs.upstream) {
-        // LOCAL DISK IS TRUTH when the upstream's outputs are materialised
-        // here (core restored or produced them before this task started).
-        // Grafting from the remote execution record instead can DIVERGE: two
-        // machines racing a nondeterministic miss leave the artifact store
-        // and the execution record holding results of DIFFERENT executions
-        // under one pure-input key, and a worker fed the record would see
-        // bytes this machine's own tasks do not. The graft is for outputs
-        // that exist nowhere locally — a remote-only upstream.
-        // "Materialised here" has to be CHECKED, not assumed. `up.outputs`
-        // comes from the local index, which records what an entry contains —
-        // not whether those files are on this disk right now. A task whose
-        // producer ran remotely and did not bring its outputs home has index
-        // rows and no files, and the tree build then dies on `stat` with
-        // ENOENT naming a path the user never asked about. When they are
-        // genuinely absent, the record graft is the correct source, which is
-        // the branch below.
-        const present = up.outputs.filter((rel) => existsSync(path.join(req.workspaceRoot, rel)))
-        if (present.length > 0) {
-          if (present.length !== up.outputs.length) {
-            warn(
-              `vx/reapi: ${up.taskId} has ${up.outputs.length - present.length} output(s) recorded ` +
-                `but missing on disk — grafting is not possible for a partial set, using what is here`,
+      // Every upstream at once, and each one's trees at once (F-30): a
+      // remote-only upstream costs a record read, a probe and a read per
+      // tree, and in sequence N upstreams cost N times that.
+      const grafts = await Promise.all(
+        req.inputs.upstream.map(
+          async (
+            up,
+          ): Promise<{
+            local?: string[]
+            files?: FileGraft[]
+            trees?: TreeGraft[]
+            symlinks?: { path: string; target: string }[]
+          }> => {
+            // LOCAL DISK IS TRUTH when the upstream's outputs are materialised
+            // here (core restored or produced them before this task started).
+            // Grafting from the remote execution record instead can DIVERGE: two
+            // machines racing a nondeterministic miss leave the artifact store
+            // and the execution record holding results of DIFFERENT executions
+            // under one pure-input key, and a worker fed the record would see
+            // bytes this machine's own tasks do not. The graft is for outputs
+            // that exist nowhere locally — a remote-only upstream.
+            // "Materialised here" has to be CHECKED, not assumed. `up.outputs`
+            // comes from the local index, which records what an entry contains —
+            // not whether those files are on this disk right now. A task whose
+            // producer ran remotely and did not bring its outputs home has index
+            // rows and no files, and the tree build then dies on `stat` with
+            // ENOENT naming a path the user never asked about. When they are
+            // genuinely absent, the record graft is the correct source, which is
+            // the branch below.
+            const present = up.outputs.filter((rel) =>
+              existsSync(path.join(req.workspaceRoot, rel)),
             )
-          }
-          localUpstreamPaths.push(...present)
-          continue
-        }
-        const record = await client.getActionResult(execDigestFor(up.hash))
-        if (record === null) continue
-        // A record can OUTLIVE its blobs: the AC and the CAS evict on
-        // independent schedules. On THIS branch nothing is local (that is
-        // why we are grafting), so an evicted blob has no local path to
-        // demote to — the declared upstream's outputs exist NOWHERE. An
-        // action shipped without them is not a degraded build, it is a
-        // different one: a command that tolerates the absence exits 0, and
-        // vx caches that result under a key asserting those inputs were
-        // present. Which upstream bytes a command reads is unknowable —
-        // that is what `dependsOn` declares — so refuse, exactly as core's
-        // own materialisation path does. Verified in one round trip.
-        const referenced = [
-          ...(record.output_files ?? []).map((f) => f.digest),
-          ...(record.output_directories ?? []).map((d) => d.tree_digest),
-        ]
-        const gone = await client.findMissingBlobs(referenced)
-        if (gone.length > 0) {
-          throw new UserError(
-            `vx/reapi: upstream ${up.taskId} outputs evicted from the remote store (${gone.length} blob(s)) and never materialised locally — re-run it (e.g. --force)`,
-          )
-        }
-        for (const f of record.output_files ?? []) {
-          fileGrafts.push({
-            path: f.path, // recorded workspace-relative — see the record write below
-            digest: f.digest,
-            isExecutable: f.is_executable === true,
-          })
-        }
-        // A record's symlinks are outputs too (a worker's own, and a glob's
-        // last-segment matches since item 911); without them the action ran
-        // without an input it declared, and its result was cached (item 920).
-        for (const sl of record.output_symlinks ?? []) {
-          symlinkGrafts.push({ path: sl.path, target: sl.target })
-        }
-        for (const d of record.output_directories ?? []) {
-          const treeBlob = await client.readBlob(d.tree_digest)
-          if (treeBlob === null) {
-            // Raced an eviction between the completeness check and this
-            // read; on this branch no local copy exists, so the loss is
-            // real and silently dropping the graft is the same wrong-result
-            // hazard as an evicted file.
-            throw new UserError(
-              `vx/reapi: upstream ${up.taskId} tree ${d.tree_digest.hash.slice(0, 12)} evicted from CAS — re-run it (e.g. --force)`,
+            if (present.length > 0) {
+              if (present.length !== up.outputs.length) {
+                warn(
+                  `vx/reapi: ${up.taskId} has ${up.outputs.length - present.length} output(s) recorded ` +
+                    `but missing on disk — grafting is not possible for a partial set, using what is here`,
+                )
+              }
+              return { local: present }
+            }
+            const record = await client.getActionResult(execDigestFor(up.hash))
+            if (record === null) return {}
+            // A record can OUTLIVE its blobs: the AC and the CAS evict on
+            // independent schedules. On THIS branch nothing is local (that is
+            // why we are grafting), so an evicted blob has no local path to
+            // demote to — the declared upstream's outputs exist NOWHERE. An
+            // action shipped without them is not a degraded build, it is a
+            // different one: a command that tolerates the absence exits 0, and
+            // vx caches that result under a key asserting those inputs were
+            // present. Which upstream bytes a command reads is unknowable —
+            // that is what `dependsOn` declares — so refuse, exactly as core's
+            // own materialisation path does. Verified in one round trip.
+            const referenced = [
+              ...(record.output_files ?? []).map((f) => f.digest),
+              ...(record.output_directories ?? []).map((d) => d.tree_digest),
+            ]
+            const gone = await client.findMissingBlobs(referenced)
+            if (gone.length > 0) {
+              throw new UserError(
+                `vx/reapi: upstream ${up.taskId} outputs evicted from the remote store (${gone.length} blob(s)) and never materialised locally — re-run it (e.g. --force)`,
+              )
+            }
+            const files = (record.output_files ?? []).map((f) => ({
+              path: f.path, // recorded workspace-relative — see the record write below
+              digest: f.digest,
+              isExecutable: f.is_executable === true,
+            }))
+            // A record's symlinks are outputs too (a worker's own, and a glob's
+            // last-segment matches since item 911); without them the action ran
+            // without an input it declared, and its result was cached (item 920).
+            const symlinks = (record.output_symlinks ?? []).map((sl) => ({
+              path: sl.path,
+              target: sl.target,
+            }))
+            const trees = await Promise.all(
+              (record.output_directories ?? []).map(async (d): Promise<TreeGraft | null> => {
+                const treeBlob = await client.readBlob(d.tree_digest)
+                if (treeBlob === null) {
+                  // Raced an eviction between the completeness check and this
+                  // read; on this branch no local copy exists, so the loss is
+                  // real and silently dropping the graft is the same wrong-result
+                  // hazard as an evicted file.
+                  throw new UserError(
+                    `vx/reapi: upstream ${up.taskId} tree ${d.tree_digest.hash.slice(0, 12)} evicted from CAS — re-run it (e.g. --force)`,
+                  )
+                }
+                const decodedTree = decodeTreeWithBytes(treeBlob)
+                if (decodedTree.root === undefined) return null
+                return {
+                  path: d.path,
+                  root: decodedTree.root,
+                  children: decodedTree.children,
+                  childDigests: decodedTree.childDigests,
+                }
+              }),
             )
-          }
-          const decodedTree = decodeTreeWithBytes(treeBlob)
-          if (decodedTree.root === undefined) continue
-          treeGrafts.push({
-            path: d.path,
-            root: decodedTree.root,
-            children: decodedTree.children,
-            childDigests: decodedTree.childDigests,
-          })
-        }
+            return { files, symlinks, trees: trees.filter((t) => t !== null) }
+          },
+        ),
+      )
+      for (const g of grafts) {
+        localUpstreamPaths.push(...(g.local ?? []))
+        fileGrafts.push(...(g.files ?? []))
+        treeGrafts.push(...(g.trees ?? []))
+        symlinkGrafts.push(...(g.symlinks ?? []))
       }
 
       // The key folds the project's package.json whether or not a glob

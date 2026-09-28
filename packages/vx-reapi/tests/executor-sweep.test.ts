@@ -589,6 +589,39 @@ describe.if(CHUNKING_SUPPORTED)('upstream outputs', () => {
     })
   })
 
+  it('remote upstreams are read at once, not one after another', async () => {
+    // In sequence each upstream's record read and probe waited on the one
+    // before: 8 upstreams cost 681 ms through a 15 ms proxy, 234 at once (F-30).
+    const keys = ['up-0', 'up-1', 'up-2'].map((hash, i) => {
+      fake.actions.set(execDigestFor(hash).hash, {
+        exit_code: 0,
+        output_files: [{ path: `lib/dist/${i}.js`, digest: put(`r${i}`), is_executable: false }],
+      })
+      return execDigestFor(hash).hash
+    })
+    await withExecutor(async (run) => {
+      const base = request()
+      const ups = ['up-0', 'up-1', 'up-2'].map((hash, i) =>
+        upstream({ taskId: `lib#b${i}`, hash, outputs: [] }),
+      )
+      const from = fake.calls.length
+      await run(request({ inputs: { ...base.inputs!, upstream: ups } }))
+      const calls = fake.calls.slice(from)
+      const reads = calls.flatMap((c, i) =>
+        c.method === 'GetActionResult' &&
+        keys.includes((c.request['action_digest'] as { hash: string }).hash)
+          ? [i]
+          : [],
+      )
+      const firstProbe = calls.findIndex((c) => c.method === 'FindMissingBlobs')
+      expect({ reads: reads.length, beforeProbe: reads.every((i) => i < firstProbe) }).toEqual({
+        reads: 3,
+        beforeProbe: true,
+      })
+      expect([0, 1, 2].map((i) => inputRoot().has(`lib/dist/${i}.js`))).toEqual([true, true, true])
+    })
+  })
+
   it('a grafted upstream Tree whose child bytes are not ours still ships a whole input root', async () => {
     const file = { name: 'f', digest: sha256(new Uint8Array()), is_executable: false }
     const raw = concat([
