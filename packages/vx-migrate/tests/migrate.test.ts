@@ -35,6 +35,32 @@ async function vx(root: string, args: string[]): Promise<VxResult> {
   return { code, out, err }
 }
 
+/**
+ * The report's TODO block as id → reasons. A reason several tasks share
+ * prints once under their ids (`a#b, c#d:` then the reason indented), so a
+ * regex for `id: reason` misses a grouped one and its negation passes.
+ */
+function todosOf(out: string): Map<string, string[]> {
+  const lines = out.split('\n')
+  const start = lines.findIndex((l) => / TODOs?:$/.test(l))
+  const map = new Map<string, string[]>()
+  const add = (id: string, reason: string): void => {
+    map.set(id, [...(map.get(id) ?? []), reason])
+  }
+  for (let i = start + 1; i < lines.length && lines[i]!.startsWith('  '); i++) {
+    const line = lines[i]!
+    const grouped = /^  (\S+#\S+(?:, \S+#\S+)*)(?: and \d+ more)?:$/.exec(line)
+    if (grouped !== null) {
+      for (const id of grouped[1]!.split(', ')) add(id, lines[i + 1]!.slice(4))
+      i++
+      continue
+    }
+    const single = /^  (\S+#\S+): (.*)$/.exec(line)
+    if (single !== null) add(single[1]!, single[2]!)
+  }
+  return map
+}
+
 const CORE_PKG = path.resolve(import.meta.dir, '..', '..', 'vx')
 
 async function makeRoot(prefix: string): Promise<string> {
@@ -269,7 +295,7 @@ describe('vx migrate (turbo)', () => {
     TIMEOUT,
   )
 
-  it('reports clean/TODO counts and lists each TODO as project#task: reason', () => {
+  it('reports clean/TODO counts and lists each TODO under its project#task', () => {
     // app: codegen + lint clean; build 3 TODOs ($TURBO_ROOT$ dep,
     // output negation, env wildcard — the $TURBO_ROOT$ input now maps
     // to inputs.workspaceFiles instead of a TODO), test 1 (interactive).
@@ -278,10 +304,16 @@ describe('vx migrate (turbo)', () => {
     // TODO: it counts as clean (item 602).
     expect(result.out).toContain('3 tasks migrated clean')
     expect(result.out).toContain('6 TODO')
-    expect(result.out).toMatch(/app#build: .*\$TURBO_ROOT\$/)
-    expect(result.out).not.toMatch(/app#dev: .*readyWhen/)
-    expect(result.out).toMatch(/app#test: .*interactive/)
-    expect(result.out).toMatch(/lib#build: /)
+    const todos = todosOf(result.out)
+    expect([...todos.keys()].sort()).toEqual(['app#build', 'app#test', 'lib#build'])
+    expect(todos.get('app#build')!.map((r) => r.split(' ')[0])).toEqual([
+      'dependsOn',
+      'env',
+      'output',
+    ])
+    expect(todos.get('app#build')![0]).toContain('$TURBO_ROOT$')
+    expect(todos.get('app#test')!.join()).toContain('interactive')
+    expect(todos.get('lib#build')).toHaveLength(2)
   })
 
   it('TODO comments are comments in the generated file', async () => {
@@ -611,16 +643,18 @@ describe('vx migrate (nx)', () => {
   it('reports nx TODO reasons per task', () => {
     expect(result.out).not.toMatch(/\^production/)
     // {workspaceRoot}/<path> entries map to workspaceFiles — no TODO.
-    expect(result.out).not.toMatch(/pkg-a#build: .*workspaceRoot/)
-    expect(result.out).toMatch(/pkg-a#build: .*externalDependencies/)
-    expect(result.out).toMatch(/pkg-a#build: .*params/)
+    const todos = todosOf(result.out)
+    const aBuild = todos.get('pkg-a#build')!.join('\n')
+    expect(aBuild).not.toMatch(/workspaceRoot/)
+    expect(aBuild).toMatch(/externalDependencies/)
+    expect(aBuild).toMatch(/params/)
     // An executor is no gap any more: nx-exec runs it. Its lifetime still is.
     expect(result.out).not.toMatch(/no shell equivalent/)
     // Nothing depends on serve: no readiness note to report (item 602).
-    expect(result.out).not.toMatch(/pkg-a#serve: persistent task/)
+    expect(todos.has('pkg-a#serve')).toBe(false)
     // No `inputs` is Nx's own default set, not a gap (item 591).
     expect(result.out).not.toMatch(/cache enabled with no declared inputs/)
-    expect(result.out).not.toMatch(/pkg-b#build: .*cwd/)
+    expect(todos.get('pkg-b#build')?.join() ?? '').not.toMatch(/cwd/)
   })
 
   it(

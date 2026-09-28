@@ -15,6 +15,7 @@ import {
   type GeneratedTask,
   type MigrationPlan,
 } from '../src/workspace/index.js'
+import { CACHE_TODO } from '../src/workspace/migration.js'
 import { UserError } from '../src/util/index.js'
 import { withForwardArgs } from '../src/exec/index.js'
 
@@ -158,6 +159,44 @@ describe('applyMigration', () => {
     const lines = stdout.split('\n')
     expect(lines).toContain('1 task migrated clean, 1 TODO:')
     expect(lines).toContain('  app#e2e: why')
+  })
+
+  it('a reason several tasks share prints once, under their ids', async () => {
+    mkdirSync(path.join(root, 'app'))
+    mkdirSync(path.join(root, 'lib'))
+    await apply(
+      plan([
+        ['app', [task('dev', exec('x'), ['set readyWhen']), task('e2e', exec('y'), ['why'])]],
+        ['lib', [task('dev', exec('x'), ['set readyWhen'])]],
+      ]),
+    )
+    const lines = stdout.split('\n')
+    const at = lines.indexOf('0 tasks migrated clean, 3 TODOs:')
+    expect(lines.slice(at + 1, at + 4)).toEqual([
+      '  app#dev, lib#dev:',
+      '    set readyWhen',
+      '  app#e2e: why',
+    ])
+    // Past five ids the rest is a count: the generated files name each.
+    stdout = ''
+    const many = ['a', 'b', 'c', 'd', 'e', 'f', 'g'].map((n) => task(n, exec('x'), ['r']))
+    await apply(plan([['app', many]]), { force: true })
+    expect(stdout.split('\n')).toContain('  app#a, app#b, app#c, app#d, app#e and 2 more:')
+  })
+
+  it('says a cache block makes the second run hit when no task caches', async () => {
+    const hint = 'no task caches yet: add the cache block a TODO shows, and a second run hits'
+    mkdirSync(path.join(root, 'app'))
+    await apply(plan([['app', [task('build', exec('tsc'), [CACHE_TODO])]]]))
+    expect(stdout.split('\n')).toContain(hint)
+    // A task that already caches: the run can hit, and the line would mislead.
+    stdout = ''
+    const built = { ...exec('tsc'), cache: { inputs: { files: [] }, outputs: { files: [] } } }
+    await apply(plan([['app', [task('build', built), task('pack', exec('x'), [CACHE_TODO])]]]), {
+      force: true,
+    })
+    expect(stdout).toContain('1 task migrated clean, 1 TODO:')
+    expect(stdout.split('\n')).not.toContain(hint)
   })
 
   it('no TODOs is plural and takes no colon', async () => {

@@ -1692,6 +1692,11 @@ it is left verbatim, and so is one whose target becomes no task (a
 lifecycle script, or a hook folded into another script): a group over
 it would name a task nothing defines (D-12).
 
+The report lists each TODO once per reason: tasks that share one are
+named together (the first five, then a count; the files carry each),
+and when no task caches it says a cache block from a TODO makes the
+second run a hit.
+
 `vx init --plugin <seam>` writes a plugin instead: `plugins/<seam>.ts`,
 a small runnable plugin for that seam (`executor`, `cache`,
 `telemetry`, `schedule`, `admit`, `commands`, `project`, `graph`,

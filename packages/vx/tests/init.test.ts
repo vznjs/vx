@@ -913,6 +913,22 @@ describe('vx init on a workspace with no scripts', () => {
   })
 })
 
+describe('vx init with no build script', () => {
+  it('names no cache TODO it did not write', async () => {
+    const root = await makeRoot('vx-init-nobuild-')
+    await addPackage(root, 'app', { codegen: 'echo gen' })
+    try {
+      const r = await vx(root, ['init', '--dry'])
+      expect(r.code).toBe(0)
+      expect(r.out).toContain('1 task migrated clean, 0 TODOs')
+      expect(r.out).toContain('so no task got a cache block\n')
+      expect(r.out).not.toContain('a TODO')
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+})
+
 describe('vx init (package.json scripts)', () => {
   let root: string
   beforeAll(async () => {
@@ -953,6 +969,9 @@ describe('vx init (package.json scripts)', () => {
       expect(text).toContain("import type { ProjectConfig } from '@vzn/vx'")
       expect(text).toContain('} satisfies ProjectConfig')
       expect(r.out).toContain('next: vx run build --all')
+      expect(r.out).toContain(
+        'no task caches yet: add the cache block a TODO shows, and a second run hits',
+      )
       expect(text).toContain('TODO(vx-migrate): cache: add `cache: {')
       expect(text).toContain('TODO(vx-migrate): persistent')
       Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
