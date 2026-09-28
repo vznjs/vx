@@ -340,7 +340,18 @@ function unlinkOnExit(file: string): void {
  * that names it outright still reaches it.
  */
 function taskTmpdir(tag: string): string {
-  return path.join(sandboxTmpdir(), `vx-task-${process.pid}-${tag}`)
+  return path.join(taskTmpRoot(), `vx-task-${process.pid}-${tag}`)
+}
+
+/**
+ * The parent of every task's own temp directory, walled off from every
+ * sandboxed task, each granted its own directory inside: SRT binds its
+ * whole temp dir writable into every task, so a task listed and read what
+ * a concurrent one kept in its TMPDIR, or replaced its port bridge's
+ * socket (L-10).
+ */
+function taskTmpRoot(): string {
+  return path.join(sandboxTmpdir(), 'vx-tasks')
 }
 
 const liveTaskTmpdirs = new Set<string>()
@@ -799,6 +810,11 @@ export async function wrapSandboxedCommand(
 
   const baselines = canonicalBaselines(args)
   const customConfig = buildCustomConfig(args, baselines)
+  customConfig!.filesystem!.denyRead!.push(toRealPath(taskTmpRoot()))
+  customConfig!.filesystem!.allowWrite!.push(toRealPath(tmp))
+  // Seatbelt re-allows a read inside a denied region only by name; on Linux
+  // a read grant over a write path would remount it read-only.
+  if (process.platform === 'darwin') customConfig!.filesystem!.allowRead!.push(toRealPath(tmp))
   // Linux: the ports a list grants are bridged out of the task's network
   // namespace. The task's side of each bridge is a socat in front of the
   // user command, so it goes INTO the sandboxed command; the host side is
@@ -972,7 +988,7 @@ export function bridgedPorts(c: Pick<ResolvedSandboxConfig, 'localBinding'>): nu
 
 /** Where a bridge's unix socket lives: the sandbox tmpdir, bound read-write on both sides. */
 export function portBridgeSocket(tag: string, port: number): string {
-  return path.join(sandboxTmpdir(), `vx-port-${tag}-${port}.sock`)
+  return path.join(taskTmpdir(tag), `vx-port-${tag}-${port}.sock`)
 }
 
 /**

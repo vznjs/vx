@@ -22,12 +22,20 @@ function freePort(): number {
   return port
 }
 
-/** The bridge sockets for `port`, whatever their task's tag. */
+/** The bridge sockets for `port`, whatever their task's tag: each in its task's own directory (L-10). */
 function sockets(port: number): string[] {
-  const dir = path.dirname(portBridgeSocket('t', port))
-  return readdirSync(dir)
-    .filter((n) => n.startsWith('vx-port-') && n.endsWith(`-${port}.sock`))
-    .map((n) => path.join(dir, n))
+  const root = path.dirname(path.dirname(portBridgeSocket('t', port)))
+  if (!existsSync(root)) return []
+  return readdirSync(root).flatMap((task) => {
+    const dir = path.join(root, task)
+    try {
+      return readdirSync(dir)
+        .filter((n) => n.startsWith('vx-port-') && n.endsWith(`-${port}.sock`))
+        .map((n) => path.join(dir, n))
+    } catch {
+      return []
+    }
+  })
 }
 
 describe.skipIf(!available || process.platform !== 'linux')('a port bridge’s socket', () => {
@@ -93,17 +101,24 @@ describe.skipIf(!available || process.platform !== 'linux')('a port bridge’s s
       const { portBridgeSocket } = await import(${JSON.stringify(path.resolve(import.meta.dir, '../src/exec/sandbox-runtime.ts'))})
       await exec.initSandbox({ allowAllUnixSockets: true })
       const dir = ${JSON.stringify(dir)}
-      const tmp = path.dirname(portBridgeSocket('t', ${port}))
+      const root = path.dirname(path.dirname(portBridgeSocket('t', ${port})))
       const mine = (n) => n.startsWith('vx-port-') && n.endsWith('-${port}.sock')
-      const before = readdirSync(tmp).filter(mine)
+      const all = () => {
+        try {
+          return readdirSync(root).flatMap((t) => {
+            try { return readdirSync(path.join(root, t)).filter(mine).map((n) => path.join(root, t, n)) } catch { return [] }
+          })
+        } catch { return [] }
+      }
+      const before = all()
       void exec.runSandboxed({
         command: 'sleep 5', cwd: dir, env: process.env, baseAllowRead: [dir], baseDenyRead: [],
         reportWithin: dir, reportLinked: [],
         config: exec.resolveSandboxConfig({ allow: { localBinding: [${port}] } }, dir),
       })
       for (let i = 0; i < 500; i++) {
-        const n = readdirSync(tmp).filter(mine).find((x) => !before.includes(x))
-        if (n !== undefined) { console.log(path.join(tmp, n)); process.exit(0) }
+        const n = all().find((x) => !before.includes(x))
+        if (n !== undefined) { console.log(n); process.exit(0) }
         await Bun.sleep(10)
       }
       process.exit(3)
