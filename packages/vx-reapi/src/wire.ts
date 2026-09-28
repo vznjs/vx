@@ -868,13 +868,28 @@ export class ReapiClient {
     return answers.flatMap((res) => res.missing_blob_digests ?? [])
   }
 
-  /** `GetActionResult`; `null` on NOT_FOUND — a miss is not an error. */
-  async getActionResult(action: Digest): Promise<ActionResult | null> {
+  /**
+   * `GetActionResult`; `null` on NOT_FOUND — a miss is not an error.
+   * `inline` asks the server to return stdout and the named output files in
+   * the reply. The spec lets it decline (and requires it past the message
+   * limit), so a caller reads `stdout_raw` / `contents` when present and
+   * fetches otherwise.
+   */
+  async getActionResult(
+    action: Digest,
+    inline?: { stdout: boolean; files: readonly string[] },
+  ): Promise<ActionResult | null> {
     try {
       return await unary<ActionResult>(
         this.svc.ac,
         'getActionResult',
-        { instance_name: this.instance, action_digest: action },
+        {
+          instance_name: this.instance,
+          action_digest: action,
+          ...(inline === undefined
+            ? {}
+            : { inline_stdout: inline.stdout, inline_output_files: inline.files }),
+        },
         this.meta(),
         this.boundedMeta(),
       )

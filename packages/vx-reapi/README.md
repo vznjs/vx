@@ -36,12 +36,13 @@ A CAS digest is the sha256 of the **content**, so it cannot be derived from a
 vx cache key before the bytes exist — `has(key)` could never answer. The
 ActionCache supplies the missing indirection:
 
-| vx                   | REAPI                                                         |
-| -------------------- | ------------------------------------------------------------- |
-| cache key            | synthetic action digest — `sha256("vx-reapi-v1\0" + key)`     |
-| artifact (`tar.zst`) | one CAS blob, referenced by the ActionResult's `output_files` |
-| task duration        | `stdout_raw` on the ActionResult                              |
-| cache miss           | `GetActionResult` → `NOT_FOUND`                               |
+| vx                   | REAPI                                                                                                                                                    |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| cache key            | synthetic action digest — `sha256("vx-reapi-v1\0" + key)`                                                                                                |
+| artifact (`tar.zst`) | one CAS blob, referenced by the ActionResult's `output_files`                                                                                            |
+| task duration        | `stdout_raw` on the ActionResult                                                                                                                         |
+| cache miss           | `GetActionResult` → `NOT_FOUND`                                                                                                                          |
+| cache hit            | `GetActionResult` asking for stdout and the artifact inline: a server that honours it (bazel-remote, up to ~1 MiB) answers a small hit in one round trip |
 
 The `vx-reapi-v1` prefix does two jobs: it keeps vx keys out of the address
 space of real Bazel action digests on a shared server, and it makes a future

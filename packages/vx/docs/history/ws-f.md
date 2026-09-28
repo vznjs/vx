@@ -280,3 +280,13 @@ Both now start together: 130 → 98 ms per hit through a proxy adding 15 ms
 each way (min of 15, interleaved A/B against main). Live suite against
 bazel-remote 17 of 17. F-21's order row now requires the overlap; red
 without the fix.
+
+F-25. vx-reapi's GetActionResult on a hit asked for nothing inline, so a
+hit always spent a ByteStream Read on its artifact (and, on bazel-remote,
+another on its duration). It now asks for stdout and the artifact inline;
+bazel-remote honours both up to ~1 MiB (a 5 MiB artifact still streams)
+and the spec lets any server decline. Inline bytes are held to their
+digest; a mismatch streams. A 64 KiB hit: 132 ms on main, 99 with F-24,
+66 now (15 ms each way, min of 15, interleaved). A replayed execution
+record's read asks for its stdout inline too. Live suite 17 of 17. Rows
+red without the fix.

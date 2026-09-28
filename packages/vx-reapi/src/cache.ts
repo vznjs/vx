@@ -109,16 +109,30 @@ export class ReapiRemoteCache {
    * waits only for its first message, so the call is not left paused.
    */
   async get(hash: string): Promise<{ body: Response; durationMs: number | undefined } | null> {
-    const result = await this.client.getActionResult(actionDigestFor(hash))
+    // Inline: a server that honours it answers a small hit in this one round
+    // trip, duration and artifact both (bazel-remote inlines up to ~1 MiB);
+    // one that declines costs nothing (F-25).
+    const result = await this.client.getActionResult(actionDigestFor(hash), {
+      stdout: true,
+      files: [ARTIFACT_PATH],
+    })
     if (result === null) return null
     const file = result.output_files?.find((f) => f.path === ARTIFACT_PATH)
     // An AC entry whose blob has been evicted from CAS is a MISS, not an
     // error: the two stores are pruned independently and a dangling entry is
     // an ordinary state, not a fault.
     if (file === undefined) return null
+    // Inline bytes are held to the digest they ride with, as fetched ones
+    // are: a mismatch streams the blob instead (F-8's rule).
+    const inline =
+      file.contents !== undefined &&
+      file.contents.length > 0 &&
+      digestOf(file.contents).hash === file.digest.hash
+        ? file.contents
+        : undefined
     const [durationMs, body] = await Promise.all([
       this.durationOf(result),
-      this.client.readBlobStream(file.digest),
+      inline === undefined ? this.client.readBlobStream(file.digest) : inline,
     ])
     if (body === null) return null
     return { body: new Response(body), durationMs }

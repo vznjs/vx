@@ -167,6 +167,16 @@ describe.if(CHUNKING_SUPPORTED)('the execution record', () => {
     expect(await readFile(path.join(root, 'pkg', 'empty.txt'), 'utf8')).toBe('')
   })
 
+  // F-25: the record's stdout, which a server may keep in CAS, cost the
+  // replay a Read of its own; asked inline, a server that honours it sends it.
+  it('the record is read asking for its stdout inline', async () => {
+    fake.actions.set(execDigestFor('k-inline-rec').hash, { exit_code: 0, stdout_raw: bytes('hi') })
+    const mark = fake.calls.length
+    const res = await withExecutor((run) => run(request({ cacheKey: 'k-inline-rec' })))
+    const read = fake.calls.slice(mark).find((c) => c.method === 'GetActionResult')!.request
+    expect([res.stdout, read['inline_stdout']]).toEqual(['hi', true])
+  })
+
   it('a record with a blob gone, an unreadable record, and --force each execute', async () => {
     fake.actions.set(execDigestFor('k-gone').hash, {
       exit_code: 0,
