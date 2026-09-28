@@ -221,10 +221,10 @@ export function flagHint(verb: string, arg: string): string {
  * reading every flag on it put `--check` in the list, so `vx run --chek`
  * was told "did you mean --check?" and `--check` was then refused.
  */
-export function documentedFlags(verb: string): string[] {
+export function documentedFlags(verb: string, text = helpText()): string[] {
   const flags = new Set<string>()
   let inVerb = false
-  for (const line of helpText().split('\n')) {
+  for (const line of text.split('\n')) {
     if (/^[A-Z][A-Za-z ]*(?: \(for [a-z]+\))?:$/.test(line))
       inVerb = line.endsWith(`(for ${verb}):`)
     if (!inVerb) continue
