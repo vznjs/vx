@@ -135,7 +135,12 @@ export class TaskLogBuffer {
     }
     if (acc.chars > TASK_LOG_TAIL_CHARS && acc.chunks.length === 1) {
       const only = acc.chunks[0]!
-      const keep = only.slice(only.length - TASK_LOG_TAIL_CHARS)
+      let start = only.length - TASK_LOG_TAIL_CHARS
+      // A cut between a surrogate pair would open the tail on a lone low
+      // surrogate, which a sink's UTF-8 encode turns into U+FFFD.
+      const first = only.charCodeAt(start)
+      if (first >= 0xdc00 && first <= 0xdfff) start++
+      const keep = only.slice(start)
       acc.truncatedHeadChars += only.length - keep.length
       acc.chunks[0] = keep
       acc.chars = keep.length

@@ -580,6 +580,20 @@ waits for the third `x` in `attempts` (bounded at 10 s), then 0.3 s.
 Proven with each attempt slowed by 0.15 s: red on the old `slow`,
 green on the new.
 
+## C-43: a tail cut split a surrogate pair (`task-log-buffer.ts`)
+
+Slicing one over-cap chunk to its last `TASK_LOG_TAIL_CHARS` could keep
+the low half of a pair, so the tail opened on a lone surrogate a sink
+encodes as U+FFFD. The cut now skips it. Sweep: 56 mutants, 42 caught,
+14 survived; six equivalent (`>=` on an exact-cap slice, the wire
+version's value and its literal, the early budget return and its `<`,
+the stub skip) and
+eight held by new rows in `task-log-buffer.test.ts`: exact budget
+charges (per-chunk overhead, a sliced chunk, an empty chunk), the whole
+`takeEntry` shape, drain order after a replaced retention, `size()`,
+and eviction stopping at exactly the budget. CRLF and a pair split
+across chunks pass through verbatim.
+
 ## Leads for other streams
 
 - **E:** a plugin command's plain `throw` (`commands.probe.run` throwing

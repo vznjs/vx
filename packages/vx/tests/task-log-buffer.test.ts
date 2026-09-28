@@ -349,3 +349,84 @@ describe('TaskLogBuffer — drain', () => {
     ])
   })
 })
+
+describe('TaskLogBuffer — exact edges (C-43)', () => {
+  it('a tail cut never opens on half a surrogate pair', () => {
+    const T = TASK_LOG_TAIL_CHARS
+    const buf = new TaskLogBuffer()
+    // The cut lands between the emoji's two halves: the low half goes too.
+    buf.append('p#split', 'x😀' + 'y'.repeat(T - 1))
+    buf.finish('p#split', 'failed', 'miss')
+    const split = buf.takeEntry('p#split')!
+    expect(split.content).toBe('y'.repeat(T - 1))
+    expect([split.charsFull, split.truncatedHeadChars]).toEqual([T + 2, 3])
+    // CONTROL: a cut just before the pair keeps it whole.
+    buf.append('p#whole', 'xx😀' + 'y'.repeat(T - 2))
+    buf.finish('p#whole', 'failed', 'miss')
+    const whole = buf.takeEntry('p#whole')!
+    expect(whole.content).toBe('😀' + 'y'.repeat(T - 2))
+    expect(whole.truncatedHeadChars).toBe(2)
+  })
+
+  it('keeps CRLF and a pair split across chunks verbatim; an empty chunk costs nothing', () => {
+    const buf = new TaskLogBuffer()
+    for (const c of ['a\r\n', '\ud83d', '', '\ude00', 'b\r\n']) buf.append('p#a', c)
+    buf.finish('p#a', 'success', 'miss')
+    // 8 chars in 4 chunks at 24 char-equivalents each.
+    expect(buf.budgetUsed()).toBe(8 + 4 * 24)
+    expect(buf.takeEntry('p#a')!.content).toBe('a\r\n😀b\r\n')
+  })
+
+  it('a sliced chunk is charged for what it kept', () => {
+    const buf = new TaskLogBuffer()
+    buf.append('p#a', 'x'.repeat(TASK_LOG_TAIL_CHARS + 4))
+    buf.finish('p#a', 'success', 'miss')
+    expect(buf.budgetUsed()).toBe(TASK_LOG_TAIL_CHARS + 24)
+  })
+
+  it('takeEntry returns the whole entry: hash, status and pre-cap size', () => {
+    const buf = new TaskLogBuffer()
+    buf.append('p#a', 'h'.repeat(10))
+    buf.append('p#a', 'x'.repeat(TASK_LOG_TAIL_CHARS))
+    buf.finish('p#a', 'failed', 'miss', 'hash-a')
+    const { content, ...rest } = buf.takeEntry('p#a')!
+    expect(content).toBe('x'.repeat(TASK_LOG_TAIL_CHARS))
+    expect(rest).toEqual({
+      taskId: 'p#a',
+      hash: 'hash-a',
+      status: 'failed',
+      charsFull: TASK_LOG_TAIL_CHARS + 10,
+      truncatedHeadChars: 10,
+    })
+  })
+
+  it('a replaced retention drains in its NEW finish order', () => {
+    // A Map keeps a re-set key in its first slot, so only the seq sort
+    // puts the second finish after p#f2.
+    const buf = new TaskLogBuffer()
+    for (const id of ['p#f1', 'p#f2', 'p#f1']) {
+      buf.append(id, 'boom')
+      buf.finish(id, 'failed', 'miss')
+    }
+    expect(buf.size()).toBe(2)
+    expect(buf.drain('r', 'ws').tasks.map((t) => t.taskId)).toEqual(['p#f2', 'p#f1'])
+  })
+
+  it('eviction stops at exactly the budget', () => {
+    const B = RUN_LOG_BUDGET_CHARS
+    const T = TASK_LOG_TAIL_CHARS
+    const buf = new TaskLogBuffer()
+    buf.append('p#a', 'a'.repeat(100))
+    buf.finish('p#a', 'success', 'miss')
+    // Fillers whose charges sum to B exactly, so evicting p#a lands on it.
+    const full = Math.floor(B / (T + 24))
+    const last = B - full * (T + 24) - 24
+    for (let i = 0; i <= full; i++) {
+      buf.append(`p#s${i}`, 'x'.repeat(i < full ? T : last))
+      buf.finish(`p#s${i}`, 'success', 'miss')
+    }
+    expect(buf.budgetUsed()).toBe(B)
+    const stubbed = buf.drain('r', 'ws').tasks.filter((t) => t.content === '')
+    expect(stubbed.map((t) => t.taskId)).toEqual(['p#a'])
+  })
+})
