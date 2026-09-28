@@ -743,3 +743,14 @@ packages/core`) selects the dependent whose `file:../lib` spec named
   which names what it allows. Each direction caught by its own mutant:
   a key dropped from a list or added to it, a field added to a type
   (type errors), a field dropped from a validator set (a red row).
+- **D-72** Mutation sweep of D-68's load pool (10 mutants, the six
+  loader suites): nine caught (the synchronous hit path, both stores,
+  both closure paths, the throw, one lane, width 1, a rethrowing lane).
+  The survivor was equivalent: without the `continue`, a failed entry
+  pushed `undefined` into a result that the rethrow then discarded. The
+  collection now records the evaluations and closures of the loads that
+  succeeded, throws the first failure, and only then maps the configs,
+  so no line is dead; its three mutants (the last failure kept, the
+  evaluations dropped, the throw dropped) are caught. Probed clean on
+  the way: package-graph build is linear to 5,000 projects (2–3 µs a
+  project; the run's 40 ms stage was the one-shot run's JIT).
