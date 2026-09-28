@@ -738,6 +738,18 @@ const FOREIGN_FIELDS: ReadonlyMap<ReadonlySet<string>, Readonly<Record<string, s
     },
   ],
   [EXEC_FIELDS, { cmd: '`command`', script: '`command`' }],
+  // A package's turbo.json and Nx's project.json keys, written into a
+  // project's vx.config (D-56). `tags` had read as a typo of `tasks`.
+  [
+    PROJECT_FIELDS,
+    {
+      targets: '`tasks` (a target is a task: `exec.command`, `dependsOn`, `cache`)',
+      extends: 'an imported module spread into `tasks` (a vx.config is code; nothing is inherited)',
+      implicitDependencies: 'a `dependsOn` entry `pkg#task`, or a package.json dependency',
+      name: 'the package.json `name` (a project is named by its package)',
+      tags: '`--filter` (a name glob or a directory) to select projects',
+    },
+  ],
   // Turbo's turbo.json and Nx's nx.json keys, written into vx.workspace
   // (D-38).
   [

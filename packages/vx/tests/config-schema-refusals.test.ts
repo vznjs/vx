@@ -588,3 +588,35 @@ describe("Turbo's env exclusion (D-53)", () => {
     expect(cacheRefusal({ files: ['**'], env: ['A!B'] })).toBeNull()
   })
 })
+
+describe("a package turbo.json's and Nx project.json's keys (D-56)", () => {
+  // `tags` read as a typo of `tasks`, and `targets` or `extends` named no
+  // home at all.
+  it('names where vx keeps each one', () => {
+    const where = (field: Record<string, unknown>): string | undefined => {
+      try {
+        validateProjectConfig({ ...field, tasks: {} } as never, CFG)
+      } catch (err) {
+        return (err as Error).message.split(' — ')[1]
+      }
+      return undefined
+    }
+    expect(where({ targets: {} })).toBe(
+      'vx spells it `tasks` (a target is a task: `exec.command`, `dependsOn`, `cache`)',
+    )
+    expect(where({ extends: ['//'] })).toBe(
+      'vx spells it an imported module spread into `tasks` (a vx.config is code; nothing is inherited)',
+    )
+    expect(where({ implicitDependencies: ['b'] })).toBe(
+      'vx spells it a `dependsOn` entry `pkg#task`, or a package.json dependency',
+    )
+    expect(where({ name: 'a' })).toBe(
+      'vx spells it the package.json `name` (a project is named by its package)',
+    )
+    expect(where({ tags: ['scope:a'] })).toBe(
+      'vx spells it `--filter` (a name glob or a directory) to select projects',
+    )
+    // CONTROL: a typo of `tasks` still gets the nearest spelling.
+    expect(where({ taks: {} })).toBe('did you mean tasks?')
+  })
+})

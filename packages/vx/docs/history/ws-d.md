@@ -525,3 +525,12 @@ packages/core`) selects the dependent whose `file:../lib` spec named
   was excluded. A leading `!` is now refused in all three lists, the way
   their wildcards are. Row: the D-53 row of
   `tests/config-schema-refusals.test.ts`.
+- **D-55** Mutation sweep of D-49 to D-53 in `config-schema.ts` (24
+  mutants: each foreign key, each glob token, the `^` form and its `!`
+  strip, the `{options.…}` display, the three env-negation sites and the
+  plugin-string message): all caught.
+- **D-56** Keys pasted from a package's turbo.json or an Nx project.json
+  into a project's vx.config were refused naming no home, and `tags`
+  was hinted as a typo of `tasks`. `targets`, `extends`,
+  `implicitDependencies`, `name` and `tags` now end `— vx spells it …`.
+  Row: the D-56 row of `tests/config-schema-refusals.test.ts`.
