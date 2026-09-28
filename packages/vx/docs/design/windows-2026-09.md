@@ -7,9 +7,11 @@ replaces the 2026-09-10 "Windows is WSL" decision (coordinator,
 2026-09-28). Linux and macOS behaviour does not change: every fix is a
 separator-neutral rewrite or a `win32` branch.
 
-CI: `core-windows` in `ci.yml`, `continue-on-error` and not required
-until green. Queue cost on the first run (2026-09-28): 34 s to a runner
-(macOS 82 s, Linux 2 s), 25 s of `bun install`.
+CI: `.github/workflows/windows.yml`, not required until green, in its
+own concurrency group so it never holds CI's. It runs on main and on
+`ws-o/` PRs only, with a 15-minute bound. Queue cost on the first run
+(2026-09-28): 34 s to a runner (macOS 82 s, Linux 2 s), 25 s of
+`bun install`. Under fifteen streams' load the whole run queued 9 min.
 
 ## Decisions
 
