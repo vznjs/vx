@@ -80,7 +80,7 @@ export async function showCmd(args: readonly string[]): Promise<number> {
   const bareTask = projectName !== undefined && taskName === undefined && !byName.has(projectName)
   const scope = projectName === undefined || bareTask ? 'all' : [projectName]
 
-  const projects = await loadCliProjects(root, metas, scope)
+  const projects = await loadCliProjects(root, metas, scope, { noCreate: true })
 
   if (parsed.target === undefined) {
     process.stdout.write(renderList(root, metas, projects, parsed.format))

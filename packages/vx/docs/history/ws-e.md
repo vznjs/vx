@@ -245,3 +245,10 @@ task picked`; neither prints a stack. Row in
 - E-37 — `vx init` with no `package.json` here or above printed the
   lookup's "Could not find a workspace root"; it now says to create one
   (`bun init` or `npm init -y`) first. Row in `tests/init.test.ts`.
+- E-38 — `vx show` in a workspace that never ran created `.vx/cache`
+  (it opened the eval cache to store its evaluations), against item
+  900's "a reading verb makes nothing on disk". With no cache directory
+  it now evaluates without one; with one, it still stores. Also struck
+  cli.md's claim that a real prune creates an empty cache (E-7 changed
+  that). Rows in `tests/inspect-no-create.test.ts`,
+  `tests/workspace-config.test.ts`.

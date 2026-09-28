@@ -57,7 +57,9 @@ describe('a reading verb makes nothing on disk', () => {
   it(
     'on a workspace that never ran, no verb creates the cache directory',
     async () => {
-      for (const args of VERBS) {
+      // `show` takes no --cache-dir, so it is not in VERBS; it evaluated
+      // configs through the cache and opened (made) one (E-38).
+      for (const args of [...VERBS, ['show'], ['show', 'app#build']]) {
         await vx(root, args)
         expect({ args, made: existsSync(path.join(root, '.vx')) }).toEqual({ args, made: false })
       }

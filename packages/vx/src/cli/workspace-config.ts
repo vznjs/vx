@@ -88,6 +88,12 @@ export interface CliLoadOptions {
   cacheDir?: string
   /** `--frozen`: configs come from `vx-lock.json`, not evaluation. */
   frozen?: boolean
+  /**
+   * A reading verb (`vx show`) makes nothing on disk (item 900): with no
+   * cache directory yet, it evaluates without the cache rather than
+   * create one.
+   */
+  noCreate?: boolean
 }
 
 /**
@@ -113,8 +119,11 @@ export async function loadCliProjects(
   // glob could select live what the run then treats otherwise.
   const lock = opts.frozen === true ? await readLockfile(workspaceRoot) : null
   if (opts.frozen === true && lock === null) throw new UserError(FROZEN_WITHOUT_LOCK)
-  const cache = new Cache(cacheDir, { read: true, write: true }, workspaceRoot)
-  noteSchemaReset(cache, warnToStderr)
+  const cache =
+    opts.noCreate === true && !existsSync(cacheDir)
+      ? null
+      : new Cache(cacheDir, { read: true, write: true }, workspaceRoot)
+  if (cache !== null) noteSchemaReset(cache, warnToStderr)
   try {
     const loaded = await loadProjects({
       workspaceRoot,
@@ -125,15 +134,18 @@ export async function loadCliProjects(
       seeds: scope,
       closure: false,
       lock,
-      evalCache: {
-        store: cache,
-        workspaceRoot,
-        workspaceFingerprint: await computeWorkspaceFingerprint(workspaceRoot),
-      },
+      evalCache:
+        cache === null
+          ? undefined
+          : {
+              store: cache,
+              workspaceRoot,
+              workspaceFingerprint: await computeWorkspaceFingerprint(workspaceRoot),
+            },
       warn: warnToStderr,
     })
     return loaded.projects
   } finally {
-    cache.close()
+    cache?.close()
   }
 }
