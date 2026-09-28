@@ -3918,6 +3918,95 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
     }
   })
 
+  // A literal `ignore` entry is realpath'd WHOLE: a denial through a link
+  // lands on the link's target, which is what the record names, so the
+  // entry naming the link silences it (sweep of B-11, `ign-nowild-dirname`).
+  it('an `ignore` entry naming a link silences the denial it leads to', async () => {
+    await mkdir(path.join(dir, 'proj'))
+    await mkdir(path.join(dir, 'other'))
+    await writeFile(path.join(dir, 'other', 'secret'), 's')
+    await symlink('../other/secret', path.join(dir, 'proj', 'link'))
+    const proj = path.join(dir, 'proj')
+    const cat = async (ignore?: string[]) =>
+      (
+        await runSandboxed({
+          ...args('cat link'),
+          cwd: proj,
+          baseAllowRead: [],
+          baseDenyRead: [dir],
+          config: resolveSandboxConfig(
+            { allow: { read: ['.'] }, ...(ignore ? { ignore: { read: ignore } } : {}) },
+            proj,
+          ),
+        })
+      ).violations.map((v) => v.line)
+    // Positive first: unsilenced, the record names the target.
+    expect([await cat(), await cat(['link'])]).toEqual([
+      [`openat(link) = -1 ENOENT  [${dir}/other/secret]`],
+      [],
+    ])
+  })
+
+  // A relative `../x` in the trace resolves against the cwd the KERNEL
+  // walked: reached through a link, its physical parent, not the lexical
+  // one (sweep of B-11, `base-cwd`).
+  it('reports a relative denial under a linked cwd at its physical path', async () => {
+    await mkdir(path.join(dir, 'a', 'proj'), { recursive: true })
+    await mkdir(path.join(dir, 'a', 'sib'))
+    await writeFile(path.join(dir, 'a', 'sib', 'secret'), 's')
+    await symlink(path.join(dir, 'a', 'proj'), path.join(dir, 'link'))
+    const cwd = path.join(dir, 'link')
+    const r = await runSandboxed({
+      ...args('cat ../sib/secret'),
+      cwd,
+      baseAllowRead: [],
+      baseDenyRead: [dir],
+      config: resolveSandboxConfig({ allow: { read: ['.'] } }, cwd),
+    })
+    expect(r.violations.map((v) => v.line)).toEqual([
+      `openat(../sib/secret) = -1 ENOENT  [${dir}/a/sib/secret]`,
+    ])
+  })
+
+  // The task's socat unlinks its port's socket on a graceful exit, so the
+  // host-side unlink shows only when the namespace dies by SIGKILL: a task
+  // that ignores the timeout's TERM (sweep of B-11, `rb-unlinksock`).
+  it("a SIGKILLed task's port bridge leaves no socket behind", async () => {
+    const l = Bun.listen({ hostname: '127.0.0.1', port: 0, socket: { data() {} } })
+    const port = l.port
+    l.stop(true)
+    const socks = (): string[] =>
+      readdirSync(path.dirname(portBridgeSocket('x', port))).filter((n) =>
+        n.endsWith(`-${port}.sock`),
+      )
+    // A port list's bridge needs a unix socket inside: the run lifts
+    // SRT's AF_UNIX filter for it, as `prepareSandbox` does.
+    await resetSandbox()
+    await initSandbox({ allowAllUnixSockets: true })
+    const grace = process.env['VX_KILL_GRACE_MS']
+    process.env['VX_KILL_GRACE_MS'] = '200'
+    let during: string[] = []
+    try {
+      const r = await runSandboxed(
+        // It says `up` once its side of the bridge is listening.
+        args(
+          `trap '' TERM; until ls ${path.dirname(portBridgeSocket('x', port))}/vx-port-*-${port}.sock >/dev/null 2>&1; do sleep 0.02; done; echo up; sleep 10`,
+          {
+            config: resolveSandboxConfig({ allow: { localBinding: [port] } }, dir),
+            timeoutMs: 1_000,
+            onStdout: () => void (during = socks()),
+          },
+        ),
+      )
+      // Positive first: the socket existed while the task ran, and the
+      // kill was the grace's.
+      expect([during.length, r.timedOut, socks()]).toEqual([1, true, []])
+    } finally {
+      if (grace === undefined) delete process.env['VX_KILL_GRACE_MS']
+      else process.env['VX_KILL_GRACE_MS'] = grace
+    }
+  })
+
   it('tags each wrap uniquely and puts the tag first in the command', async () => {
     // SRT's macOS store keys a record by the command's first 100 bytes, so
     // two tasks running one command in one directory must still differ.
