@@ -37,10 +37,14 @@ it(
         cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
       } } }\n`,
     })
-    // Keeps the run alive past the racy window after a's save.
+    // Keeps the run alive past the racy window after a's writes. After a, by
+    // the edge: run beside it, a late start of a under load ended the run
+    // inside the window and the snapshot was refused (C's lead; a delayed a
+    // reproduces it).
     await addProject(fixture.root, 'b', {
       files: {},
-      config: `export default { tasks: { build: { exec: { command: 'sleep 0.15' } } } }\n`,
+      deps: { a: '*' },
+      config: `export default { tasks: { build: { dependsOn: ['^build'], exec: { command: 'sleep 0.15' } } } }\n`,
     })
     const r = await run({
       cwd: fixture.root,

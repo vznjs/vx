@@ -374,3 +374,7 @@ Supervisor, from N's lit dogfood (#1603): core refused `!` in `cache.outputs`, s
 - Probes with no defect (2026-09-28): a config reading `process.env` at load re-evaluates per value; a SIGKILLed restore's `.vx-tmp-*` stays out of every artifact; A-43's `additive` gate is held by three `stale-hit` rows.
 - Refuted lead (C): "a persistent upstream folds nothing into a dependant's key" — a cached e2e behind a dev server hit on its second run and re-ran after the server's source changed; `caching.md` is right. N's flaky `execute-task` row was fixed by cb71c40.
 - Lead for C and E: the failed-task output tail needs `RunRecord` to carry it before `run-history.ts` can store it; a column nothing writes is dead code, so C's half lands first or one stream takes all three with the coordinator's leave.
+
+### A-45 — the cold-snapshot row orders its keep-alive after the build (2026-09-28)
+
+Lead from C: `output-dirs-snapshot.test.ts` › "a cold build records its output directories by run end…" read no directory rows once in a loaded gate. Its keep-alive (`b`, `sleep 0.15`) ran beside `a`; a late `a` ended the run inside the racy window and the run-end snapshot was refused. A delayed `a` (`sleep 0.3 &&`) reproduces it; `b` now depends on `a`, and the row passes with the delay. Not reproduced by CPU load alone (15 runs at 2× cores).
