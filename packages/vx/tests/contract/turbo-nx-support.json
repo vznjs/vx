@@ -607,7 +607,7 @@
   {
     "key": "project.json targets.*.dependsOn",
     "status": "mapped",
-    "reason": "`project:target` becomes `pkg#target`; project patterns and tags resolved; `params: forward` gets a TODO."
+    "reason": "`project:target` becomes `pkg#target`; project patterns and tags resolved; a target glob (`test:e2e--*`) expands over the workspace's target names, as Nx 19.5+ does; `params: forward` gets a TODO."
   },
   {
     "key": "project.json targets.*.command",
@@ -671,8 +671,8 @@
   },
   {
     "key": "inputs: {dependentTasksOutputFiles, transitive}",
-    "status": "not-supported",
-    "reason": "Dropped with a TODO; vx folds each dependency's cache key instead."
+    "status": "supported",
+    "reason": "Nothing to map: vx folds each dependency's cache key (its inputs, transitively) through `dependsOn`, and an output follows from its inputs."
   },
   {
     "key": "inputs: {json, fields, excludeFields}",

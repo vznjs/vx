@@ -144,7 +144,7 @@ Every key `turbo.json`, `nx.json` and `project.json` accept, read from the upstr
 | `targets.*.defaultConfiguration` | supported | The base task carries the default configuration's options, as `nx run` does. |
 | `targets.*.configurations` | mapped, with a note | One task per configuration (`build:ci`); `^` edges run dependencies' default configuration, with a TODO. |
 | `targets.*.inputs` | mapped, with a note | Expanded into `cache.inputs`; none means `default` and `^default`; forms without an equivalent get TODOs. |
-| `targets.*.dependsOn` | mapped, with a note | `project:target` becomes `pkg#target`; project patterns and tags resolved; `params: forward` gets a TODO. |
+| `targets.*.dependsOn` | mapped, with a note | `project:target` becomes `pkg#target`; project patterns and tags resolved; a target glob (`test:e2e--*`) expands over the workspace's target names, as Nx 19.5+ does; `params: forward` gets a TODO. |
 | `targets.*.command` | mapped, with a note | Run as the `run-commands` shorthand: one POSIX sh line. |
 | `targets.*.cache` | supported | `cache: true` (or `cacheableOperations`) gives a cache block; persistent tasks stay uncached. |
 | `targets.*.continuous` | mapped, with a note | An uncached `exec.persistent` task, with a `readyWhen` note when something depends on it. |
@@ -162,5 +162,5 @@ Every key `turbo.json`, `nx.json` and `project.json` accept, read from the upstr
 | `{runtime}` | supported | Becomes `cache.inputs.workspaceRuntime`, run at the workspace root as Nx does. |
 | `{env}` | supported | Goes to `cache.inputs.env` and `exec.env.passThrough`. |
 | `{externalDependencies}` | not supported | Dropped with a TODO; vx keys every task on the lockfile already. |
-| `{dependentTasksOutputFiles, transitive}` | not supported | Dropped with a TODO; vx folds each dependency's cache key instead. |
+| `{dependentTasksOutputFiles, transitive}` | supported | Nothing to map: vx folds each dependency's cache key (its inputs, transitively) through `dependsOn`, and an output follows from its inputs. |
 | `{json, fields, excludeFields}` | mapped, with a note | The whole file is hashed, a superset of the selected fields. |
