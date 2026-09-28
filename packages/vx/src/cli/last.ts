@@ -17,7 +17,7 @@ import {
 import { formatElapsed, UserError } from '../util/index.js'
 import { findWorkspaceRoot } from '../workspace/index.js'
 import { cliCacheDir, parseCacheDirFlag, warnToStderr } from './workspace-config.js'
-import { resolveRunId } from './run-id.js'
+import { resolveRunId, shortRunId } from './run-id.js'
 
 interface LastArgs {
   runId?: string
@@ -195,7 +195,7 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
       for (const inv of invocations) {
         const verdict = inv.exitOk ? 'ok    ' : 'FAILED'
         process.stdout.write(
-          `${verdict} ${fmtWhen(inv.startedAt)}  ${inv.runId}  ` +
+          `${verdict} ${fmtWhen(inv.startedAt)}  ${shortRunId(db, inv.runId)}  ` +
             `${inv.taskCount} task${inv.taskCount === 1 ? '' : 's'} · ${inv.hitCount} hit${inv.hitCount === 1 ? '' : 's'}` +
             `${inv.failedCount > 0 ? ` · ${inv.failedCount} failed` : ''} · ${fmtMs(inv.totalDurationMs)}  $ ${inv.command}\n`,
         )
