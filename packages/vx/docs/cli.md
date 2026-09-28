@@ -31,7 +31,7 @@ vx run [OPTIONS] [TASK | PKG#TASK ...] [-- forwarded-args...]
 vx watch [OPTIONS] TASK [-- forwarded-args...]
 vx cache prune [--older-than <duration>] [--max-size <size>] [--dry-run] [--cache-dir <path>]
 vx lock [--check]
-vx init [--dry] [--force] [--mjs]
+vx init [--dry] [--force] [--mjs] [--plugin <seam>]
 vx show [PROJECT[#TASK] | TASK] [--format pretty|json]
 vx info [--format pretty|json] [--cache-dir <path>]
 vx why [TASK | PKG#TASK] [--run <runId>] [--format pretty|json] [--cache-dir <path>]
@@ -103,7 +103,8 @@ If no task name is given:
   as an interrupted run does; Ctrl-D exits `1` with `no task picked`.
   A workspace with no task exits `1` naming how to declare one (under
   `tasks` in a vx.config, or `vx init`).
-- **Not a TTY** — exits `1` with `missing task name (stdin is not a TTY)`.
+- **Not a TTY** — exits `1` with
+  `missing task name (stdin is not a TTY, so no picker; vx run <task>, e.g. vx run build)`.
 
 Exit codes:
 
@@ -314,7 +315,8 @@ selection cannot tell which. It is not in the fingerprint (a key moves
 only when a stage's output does). A root file a plugin's stages read
 without importing it is seen when the plugin CLAIMS it
 (`VxPlugin.fingerprint`): `turbo()` claims `turbo.json` and
-`turbo.jsonc`, `nx()` claims `nx.json`, and an edit asks the claimant,
+`turbo.jsonc`, `nx()` claims `nx.json`, `lage()` claims
+`lage.config.{js,cjs,mjs}`, and an edit asks the claimant,
 which answers every project (item 961).
 
 **A file your config IMPORTS selects that project.** vx hashes the
@@ -1586,11 +1588,11 @@ bare `(403)` (item 1098).
 Scaffold a workspace that comes from nowhere: one `vx.config.ts` per
 package from its `package.json` scripts, plus a `vx.workspace.ts` of
 `{ plugins: [] }` whose comment says running and caching here are the
-floor, so it declares no executor or cache. The same mapping as `@vzn/vx-migrate
---from scripts`, with the same `--dry` / `--force` flags; the one
-difference is a workspace with no scripts at all, which `init` still
-scaffolds (the workspace file, a printed example config, and the next
-command to run) where `migrate` reports nothing to convert. A root
+floor, so it declares no executor or cache. `@vzn/vx-migrate` takes the
+same `--dry` / `--force` flags but reads a runner's config (turbo, nx,
+moon, wireit, lage), never bare scripts. A workspace with no scripts at
+all still gets the workspace file, a printed example config, and the
+next command to run. A root
 `package.json` with no `workspaces` field is single-project mode, and
 when `packages/*/package.json` files sit below it unreached, both
 `init` and a run that finds no config say so instead ("package.json
@@ -1688,13 +1690,14 @@ core (`src/cli/plugin-templates.ts`) and held equal by
 ## `vx migrate`
 
 Moved out of core on 2026-09-10: the Turbo and Nx mappers are
-`@vzn/vx-migrate`, their own package, run without a workspace file —
+`@vzn/vx-migrate`, their own package, run without a workspace file. It
+maps moon, wireit and lage too —
 
 ```
-bunx @vzn/vx-migrate           # turbo.json or .nx/workspace-data/project-graph.json → vx.config.ts
+bunx @vzn/vx-migrate           # turbo.json, an Nx graph, .moon/, wireit or lage.config.js → vx.config.ts
 bunx @vzn/vx-migrate --dry     # print the generated files instead of writing
 bunx @vzn/vx-migrate --force   # overwrite existing vx.config.* / vx-preset.ts
-bunx @vzn/vx-migrate --from nx # disambiguate when both runners are checked in
+bunx @vzn/vx-migrate --from nx # disambiguate when several runners are checked in
 ```
 
 — and `package.json` scripts are `vx init` (above). Typing `vx migrate`
