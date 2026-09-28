@@ -90,6 +90,14 @@ run leaves out; the rest are refusals.
   CA-signing proxy fails until each task passes it through. Worth a
   decision on whether CA trust belongs in the default env.
 
+- C: a `vx.config` with an extension discovery does not read (`.cts`,
+  `.cjs`, `.json`, `.jsx`, `.tsx`; probed) is ignored, and a run then
+  says "No package declares a vx.config — run `vx init`", which reads
+  wrong to someone who wrote one. Discovery cannot flag it without
+  breaking its platform-uniform answer or adding stats on macOS (both
+  measured paths, `findConfigFile`); `initHint` in `run.ts` could look for
+  a misnamed file only on that failure path.
+
 ## Entries
 
 - **D-1** `--affected` selects the project a new nested project took
@@ -534,3 +542,7 @@ packages/core`) selects the dependent whose `file:../lib` spec named
   was hinted as a typo of `tasks`. `targets`, `extends`,
   `implicitDependencies`, `name` and `tags` now end `— vx spells it …`.
   Row: the D-56 row of `tests/config-schema-refusals.test.ts`.
+- **D-57** Mutation sweep of every refusal guard in `config-schema.ts`
+  (72 mutants: each `if` in front of a `throw new UserError`, turned
+  off): all caught, the plugin `backend` refusal by
+  `tests/project-loader.test.ts`.
