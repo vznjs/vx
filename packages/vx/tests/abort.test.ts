@@ -150,6 +150,37 @@ describe('RunOptions.signal aborts a run in flight', () => {
     expect(await waitForDead(pid, 1_000)).toBe(true)
   }, 20_000)
 
+  // C-19: an abort names no signal, so the task hears SIGTERM; one that
+  // forwarded SIGINT for it survived the suite.
+  it('an embedder abort reaches the task as SIGTERM', async () => {
+    const dir = await addProject(
+      root,
+      'app',
+      `export default { tasks: { t: { exec: {
+        command: "trap 'echo SIGINT > got.txt; exit 0' INT; trap 'echo SIGTERM > got.txt; exit 0' TERM; echo $$ > pid.txt; while :; do sleep 0.05; done",
+      } } } }`,
+    )
+    const ac = new AbortController()
+    // The trap is the subject: a long grace keeps the SIGKILL off it.
+    process.env['VX_KILL_GRACE_MS'] = '5000'
+    try {
+      const running = run({
+        cwd: root,
+        tasks: ['t'],
+        projects: ['app'],
+        log: silent,
+        handleSignals: false,
+        signal: ac.signal,
+      })
+      await waitForPid(path.join(dir, 'pid.txt'), 10_000)
+      ac.abort()
+      expect((await running).ok).toBe(false)
+    } finally {
+      process.env['VX_KILL_GRACE_MS'] = '200'
+    }
+    expect(await Bun.file(path.join(dir, 'got.txt')).text()).toBe('SIGTERM\n')
+  }, 20_000)
+
   it('an already-aborted signal runs nothing: every task completes aborted', async () => {
     await addProject(
       root,

@@ -107,6 +107,33 @@ describe('foreground keep-alive ends when one requested server exits', () => {
     }, 20_000)
   }
 
+  // C-19: the teardown's default signal. No one pressed Ctrl-C here, so
+  // the others get SIGTERM; a SIGINT in its place survived the suite.
+  it('a server that exits stops the other with SIGTERM', async () => {
+    const dir = await addProject(
+      root,
+      'app',
+      `export default { tasks: {
+        dev: { exec: {
+          command: "trap 'echo SIGINT > got.txt; exit 0' INT; trap 'echo SIGTERM > got.txt; exit 0' TERM; echo $$ > pid.txt; echo READY; while :; do sleep 0.05; done",
+          persistent: { readyWhen: 'READY' },
+        } },
+        other: { exec: { command: 'echo READY; sleep 0.3; exit 0', persistent: { readyWhen: 'READY' } } },
+      } }`,
+    )
+    const proc = track(
+      Bun.spawn([process.execPath, BIN, 'run', 'dev', 'other', '--all'], {
+        cwd: root,
+        stdout: 'ignore',
+        stderr: 'ignore',
+        env: { ...process.env, VX_KILL_GRACE_MS: '5000' },
+      }),
+    )
+    await waitForPid(path.join(dir, 'pid.txt'), 10_000)
+    expect(await proc.exited).toBe(0)
+    expect(readFileSync(path.join(dir, 'got.txt'), 'utf8')).toBe('SIGTERM\n')
+  }, 20_000)
+
   // turborepo#12920: Ctrl-C during the foreground wait after the summary
   // did not end the run.
   it('SIGINT after the summary exits 130 and takes the server down', async () => {
