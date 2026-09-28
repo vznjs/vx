@@ -1324,7 +1324,10 @@ async function runSandboxedOnce(
   const { wrapped, tag, srtCommand, baselines, forwardsSignals, traced } =
     await wrapSandboxedCommand({ ...args, ...(useStrace ? { trace: useStrace } : {}) })
   const takeRecords = collectRecords(SandboxManager.getSandboxViolationStore(), srtCommand)
-  const straceLog = traced ? path.join(os.tmpdir(), `vx-strace-${tag}.log`) : undefined
+  // Beside the task directories, which every sandbox replaces with its own:
+  // in the shared temp dir a concurrent task read this log, every path
+  // this task opened (L-25).
+  const straceLog = traced ? path.join(taskTmpRoot(), `vx-strace-${tag}.log`) : undefined
   if (straceLog) unlinkOnExit(straceLog)
   let proc: ReturnType<typeof Bun.spawn>
   let traceFd: number | undefined
