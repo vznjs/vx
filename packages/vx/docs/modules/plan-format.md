@@ -10,6 +10,18 @@ DOT. Pure functions; no I/O.
 
 ```ts
 export function formatPlanText(plan: RunPlan): string
+export interface PlanTaskJson {
+  id: string
+  project: string
+  task: string
+  hash: string
+  cacheStatus: CacheStatus
+  deps: readonly string[]
+  p50Ms?: number
+  executor?: string
+  download?: 'deferred'
+  description?: string
+}
 export function formatPlanJson(plan: RunPlan): string
 export function formatGraphDot(plan: RunPlan): string
 ```
@@ -78,7 +90,8 @@ locally and what `'only'` means.
 
 ## `formatPlanJson`
 
-JSON-friendly object:
+JSON-friendly object, each task a `PlanTaskJson`; `schemas/plan.json`
+states it and `tests/cli-json-schemas.test.ts` holds it:
 
 ```json
 {

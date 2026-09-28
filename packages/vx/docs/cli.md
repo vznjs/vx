@@ -795,7 +795,8 @@ Status legend:
 | `○`    | group task (suppressed in human view; in DOT + JSON)                                       |
 
 `--dry=json` emits the same data as a structured object, alone on stdout
-(a stage's warnings go to stderr):
+(a stage's warnings go to stderr); `schemas/plan.json` is its JSON
+Schema, held like the read verbs' (see Machine-readable output):
 
 ```json
 {
