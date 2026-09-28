@@ -754,3 +754,12 @@ packages/core`) selects the dependent whose `file:../lib` spec named
   evaluations dropped, the throw dropped) are caught. Probed clean on
   the way: package-graph build is linear to 5,000 projects (2–3 µs a
   project; the run's 40 ms stage was the one-shot run's JIT).
+- **D-73** Sweep of D-63 to D-67's guards, the branches their own rows
+  never named: dropping the first load's `clearTimeout(deadline)` was
+  caught (an end-to-end run held open 30 s). Dropping the config
+  Worker's `await quiet` survived: the redirect was set up behind an
+  awaited `import('node:console')`, and the first evaluation raced it
+  and lost only in principle (the config's own import is slower). The
+  Worker now builds its console from `globalThis.console.Console`,
+  synchronously, before `onmessage` is set, so there is no race and no
+  line to drop; the D-64 row still catches a dropped redirect.
