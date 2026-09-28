@@ -324,6 +324,18 @@ forked child is reported too — a single-line match dropped those, which
 made the violation list incomplete under concurrency. Without `strace`
 on PATH the sandbox still ENFORCES; only the structured list is lost.
 
+A task that failed with nothing to show gets vx's own notes beside the
+failure, each a `SandboxViolation` marked `hint`: the cwd it cannot read
+(the one denial macOS never logs), a write placeholder it never wrote, a
+dependency read through a withheld link. They are shown with the denials
+and never counted as one, so the `(N sandbox violations)` label and
+fail-on-violation count denials only; the placeholder's note had read
+"1 sandbox violation" beside a failure of the task's own. The cwd note
+asks whether a read grant covers the cwd, and on Linux also whether one
+lies inside it: bwrap builds the path to a bind, so the cwd lists, and a
+root's `read: ['.']`, bound as its children around the walls, drew the
+note on every failure (B-20).
+
 ## A task's temp directory
 
 SRT points every sandboxed task's `TMPDIR` at one host directory

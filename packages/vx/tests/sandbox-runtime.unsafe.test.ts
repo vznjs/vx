@@ -800,9 +800,12 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
       })
       const r = await run({ cwd: fixture.root, tasks: ['build'], log: collectingLogger(fixture) })
       expect(r.ok).toBe(false)
-      const lines =
-        r.outcomes.find((o) => o.node.id === 'dirgrant#build')?.sandboxViolationLines ?? []
+      const outcome = r.outcomes.find((o) => o.node.id === 'dirgrant#build')
+      const lines = outcome?.sandboxViolationLines ?? []
       expect(lines.some((l) => l.includes('write grant `dist` named nothing on disk'))).toBe(true)
+      // The note is vx's, beside a failure of the task's own: no denial is
+      // counted (B-20; the label read "1 sandbox violation").
+      expect(outcome?.sandboxViolations).toBe(0)
       expect(lines.some((l) => l.includes('spell the grant `dist/`'))).toBe(true)
       expect(existsSync(path.join(projDir, 'dist'))).toBe(false)
     },
@@ -2055,7 +2058,8 @@ describe.skipIf(!available || process.platform !== 'linux')(
           await workspace('root', { cache: true, dependsOn: [] })
           const denied = testOutcome(await runTest(link))
           expect(denied?.status).toBe('failed')
-          expect(denied?.sandboxViolations).toBe(2)
+          // One denial; the withheld-link line beside it is vx's note (B-20).
+          expect(denied?.sandboxViolations).toBe(1)
           await writeFile(
             path.join(fixture.root, 'packages', 'x-app', 'vx.config.mjs'),
             appConfig('root', { cache: true, dependsOn: ['^source'] }),
@@ -4392,9 +4396,30 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
 
     it('is added to a failure with nothing to show, when no grant covers the cwd', async () => {
       await mkdir(path.join(dir, 'sub'))
-      const r = await runSandboxed(args('exit 3', { baseAllowRead: [path.join(dir, 'sub')] }))
+      await mkdir(path.join(dir, 'proj'))
+      const r = await runSandboxed(
+        args('exit 3', { cwd: path.join(dir, 'proj'), baseAllowRead: [path.join(dir, 'sub')] }),
+      )
       expect([r.exitCode, notes(r)]).toEqual([3, [true]])
     })
+
+    // A root's `read: ['.']` is bound as its children around the walls
+    // (`wallOff`), and bwrap builds the path to a bind: the cwd lists. The
+    // note fired on every failing root task that listed its cwd (B-20).
+    it.skipIf(process.platform !== 'linux')(
+      'is not added on Linux when a grant lies inside the cwd, which then lists',
+      async () => {
+        await mkdir(path.join(dir, 'sub'))
+        const r = await runSandboxed(
+          args('ls >/dev/null && exit 3', {
+            baseAllowRead: [path.join(dir, 'sub')],
+            baseDenyRead: [dir],
+            config: resolveSandboxConfig({}, dir),
+          }),
+        )
+        expect([r.exitCode, notes(r)]).toEqual([3, []])
+      },
+    )
 
     it('is added when the only grant is a sibling whose name prefixes the cwd', async () => {
       // `<dir>/proj` is a string prefix of `<dir>/proj-x` and covers none

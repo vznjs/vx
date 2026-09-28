@@ -802,7 +802,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // ENOENT; the line beside it names the package and how to key it. Only
     // with a denial there, so it never reddens a pass.
     for (const w of reachedWithheld(withheld, violations)) {
-      violations.push({ timestamp: new Date(), line: withheldLinkLine(node.id, w) })
+      violations.push({ timestamp: new Date(), hint: true, line: withheldLinkLine(node.id, w) })
     }
     // A placeholder the task never wrote is not its output: take it back
     // before the outputs are collected. On a failure it is also the one
@@ -812,6 +812,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       for (const p of untouched) {
         violations.push({
           timestamp: new Date(),
+          hint: true,
           line: untouchedPlaceholderLine(node.projectDir, p),
         })
       }
@@ -829,7 +830,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // the cache key never folded is not a safe thing to replay. A task that
     // survives the denial is the dangerous case, not the harmless one:
     // that is precisely the run that succeeds and caches a wrong result.
-    if (userSandbox && violations.length > 0 && code === 0) code = 1
+    if (userSandbox && violations.some((v) => v.hint !== true) && code === 0) code = 1
     // A declared sandbox fails the task on any violation — that is its
     // whole contract. `userSandbox` is the only way a task is sandboxed,
     // so this reads as "sandboxed and it tripped".
@@ -1150,7 +1151,8 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     wallclockEndNs,
     ...(finalViolations.length > 0
       ? {
-          sandboxViolations: finalViolations.length,
+          // vx's own notes ride with the lines and are no denial (B-20).
+          sandboxViolations: finalViolations.filter((v) => v.hint !== true).length,
           sandboxViolationLines: finalViolations.map((v) => v.line),
         }
       : {}),

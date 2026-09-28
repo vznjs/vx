@@ -407,3 +407,25 @@ with no sandbox at all.
   false "no read access to the cwd" hint for a root `read: ['.']` that
   `wallOff` punched; vx's own hints counted as violations; SRT's bridge
   `socat` on a host without IPv6.
+
+B-20. Two of J-33's leads, both about vx's own notes beside a failure.
+
+- The cwd note was false for a root project. It fired when no read grant
+  covered the task's cwd, but on Linux `wallOff` binds a root's
+  `read: ['.']` as its children around the walls, and bwrap builds the
+  path to a bind, so the cwd lists. Every failing root task was told its
+  cwd was unreadable while it had just listed it (reproduced: `ls && exit
+3` drew the note). Fix (`readableUnder`): on Linux a grant inside the
+  cwd counts too; macOS keeps the cover rule, since seatbelt grants no
+  parent.
+- vx's notes were counted as violations: the cwd note, an untouched
+  placeholder and a withheld link all went into the `(N sandbox
+violations)` count. A task that failed on its own read "1 sandbox
+  violation". Fix: a note is a `SandboxViolation` with `hint: true`
+  (public type, additive), shown with the lines and never counted, nor
+  failing a task.
+- Rows (`sandbox-runtime.unsafe.test.ts`), each red without its fix:
+  - the ungranted-cwd note is not added on Linux when a grant lies
+    inside the cwd, which then lists (the first row's cwd moved beside
+    its grant, keeping its premise on both platforms);
+  - a literal write grant that meant a directory counts no violation.

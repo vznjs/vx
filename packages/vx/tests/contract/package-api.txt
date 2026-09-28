@@ -1154,6 +1154,7 @@ export interface SandboxViolation {
   line: string
   timestamp: Date
   target?: string
+  hint?: true
   path?: string
   ignorable?: readonly ('read' | 'write' | 'network' | 'systemInfo')[]
 }
