@@ -15,8 +15,15 @@ import type { Database } from 'bun:sqlite'
 import { EXECUTED_RUNS_SQL } from '../cache/index.js'
 import { failureModeOf, mixedOutcomeKeysSql } from './failure-mode.js'
 import type { FailureMode } from './failure-mode.js'
+import { isPassStatus, TASK_STATUSES } from './telemetry.js'
 
 const DEFAULT_RECENT = 50
+
+// A hit is recorded as `cache-hit` / `cache-hit-remote` and replays a
+// success; the list is derived so a new status cannot miss it.
+const PASS_STATUSES = `(${TASK_STATUSES.filter(isPassStatus)
+  .map((s) => `'${s}'`)
+  .join(', ')})`
 
 /** Per (project#task) — last RECENT runs collapsed into a summary. */
 export interface TaskHistory {
@@ -108,7 +115,7 @@ export class LocalHistoryProvider implements HistoryProvider {
         r.project,
         r.task,
         COUNT(*) AS total,
-        SUM(CASE WHEN r.status = 'success' THEN 1 ELSE 0 END) AS successes,
+        SUM(CASE WHEN r.status IN ${PASS_STATUSES} THEN 1 ELSE 0 END) AS successes,
         SUM(CASE WHEN r.cache_hit = 1 THEN 1 ELSE 0 END) AS hits,
         SUM(CASE WHEN r.status = 'failed' THEN 1 ELSE 0 END) AS failures,
         SUM(CASE WHEN r.attempts > 1 THEN 1 ELSE 0 END) AS retried,
@@ -159,21 +166,21 @@ export class LocalHistoryProvider implements HistoryProvider {
     // nondeterminism); a green history never pays for it.
     const mixed = this.mixedOutcomeKeys(
       floor,
-      rows.filter((r) => (r.failures || 0) > 0 && (r.retried || 0) === 0),
+      rows.filter((r) => r.failures > 0 && r.retried === 0),
     )
 
     for (const row of rows) {
       const key = `${row.project}#${row.task}`
-      const total = row.total || 0
-      const counts = { total, failures: row.failures || 0, retried: row.retried || 0 }
+      const total = row.total
+      const counts = { total, failures: row.failures, retried: row.retried }
       const durations = row.ds === null ? undefined : row.ds.split(',').map(Number)
       if (durations !== undefined) durations.sort((a, b) => a - b)
       out.set(key, {
         runs: total,
         p50DurationMs: durations ? pickPercentile(durations, 0.5) : undefined,
         p99DurationMs: durations ? pickPercentile(durations, 0.99) : undefined,
-        successRate: total > 0 ? (row.successes || 0) / total : 0,
-        hitRate: total > 0 ? (row.hits || 0) / total : 0,
+        successRate: row.successes / total,
+        hitRate: row.hits / total,
         failureMode: failureModeOf(counts, () => mixed.get(key) ?? 0),
         ...(row.rss !== null ? { maxPeakRssBytes: row.rss } : {}),
         ...(row.cpu !== null ? { maxCpuParallelism: row.cpu } : {}),
@@ -207,8 +214,8 @@ export class LocalHistoryProvider implements HistoryProvider {
   }
 }
 
+// A group holds at least one row, so every SUM is a number and `sorted` is
+// never empty; q < 1 keeps the index inside it.
 function pickPercentile(sorted: number[], q: number): number {
-  if (sorted.length === 0) return 0
-  const idx = Math.min(sorted.length - 1, Math.floor(q * sorted.length))
-  return sorted[idx]!
+  return sorted[Math.floor(q * sorted.length)]!
 }

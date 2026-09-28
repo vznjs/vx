@@ -118,7 +118,8 @@ The same rule, applied at the end of every run and by the doctor:
   the definition of "mixed" cannot fork between the window, the
   all-time count, the run's findings and the doctor's list.
 - Percentiles are over the slice's executed-success rows; rates count
-  every executed row.
+  every executed row. A hit is a success in `successRate` (the pass
+  statuses, from `isPassStatus`).
 
 ## Tests
 
