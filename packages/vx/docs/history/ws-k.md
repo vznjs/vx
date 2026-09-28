@@ -36,6 +36,16 @@
   real colored output as `public/demo.svg`. `examples.unsafe.test.ts`
   runs its `--check`, which fails when anything but a timing or the
   worker count differs from a fresh run (red with one word changed).
+- **K-8** `examples/turbo` (coordinator backlog 3): a Turbo repo plus a
+  `vx.workspace.ts` with `turbo()`. `examples.unsafe.test.ts` runs it
+  unchanged (cold, then all cache hits), deletes the workspace file, runs
+  the `vx-migrate` CLI (3 clean, 0 TODOs) and runs again: all three hit
+  the cache `turbo()` filled, the README's migration claim end to end
+  (red when the two derive different keys).
+- Backlog 2 (vs Turbo / vs Nx pages) not built: `compare.mdx` names each
+  choice per tool with sources, `parity.md` maps every Turbo and Nx
+  feature to a test, and the owner's short-site design caps the Docs;
+  two more pages would restate them.
 
 ## Leads for other streams
 

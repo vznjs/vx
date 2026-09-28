@@ -1,0 +1,11 @@
+{
+  "name": "vx-example-turbo",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "devDependencies": {
+    "@vzn/vx": "latest",
+    "@vzn/vx-migrate": "latest"
+  }
+}
