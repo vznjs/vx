@@ -335,3 +335,11 @@ packages/core`) selects the dependent whose `file:../lib` spec named
   task (probed: 2.3.4, then 2.4.0), the event as the script's name; a
   folded hook's own event and any other `$npm_*` get a TODO. Row: the
   D-34 row of `tests/init.test.ts`.
+- **D-35** Mutation sweep of the D-31 to D-34 code in
+  `migrate-scripts.ts` (24 mutants). Five rules were unheld and are
+  held now: `packageManager: yarn@1.x` still folds; `npm@<version>` is
+  npm and reads its `.npmrc`; a commented-out `.npmrc` line is no
+  setting; the nearest lockfile decides (a Bun one under a Berry root
+  folds); a `$npm_*` read twice is one TODO. Two survivors are
+  equivalent: the memo, and `yarn@[2-9]` for a Yarn 10 that does not
+  exist. Rows: the two D-35 rows of `tests/init.test.ts`.
