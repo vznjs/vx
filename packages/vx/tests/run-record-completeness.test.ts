@@ -81,12 +81,12 @@ function readRecorded(root: string): { header: HeaderRow; rows: TaskRow[] } {
   const db = new Database(path.join(root, '.vx', 'cache', 'cache.db'), { readonly: true })
   try {
     const headers = db
-      .prepare('SELECT run_id, task_count, failed_count, exit_ok FROM invocations')
+      .query('SELECT run_id, task_count, failed_count, exit_ok FROM invocations')
       .all() as HeaderRow[]
     expect(headers).toHaveLength(1)
     const header = headers[0]!
     const rows = db
-      .prepare('SELECT project, task, status, hash FROM runs WHERE run_id = ? ORDER BY project')
+      .query('SELECT project, task, status, hash FROM runs WHERE run_id = ? ORDER BY project')
       .all(header.run_id) as TaskRow[]
     return { header, rows }
   } finally {

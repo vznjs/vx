@@ -89,7 +89,7 @@ async function verb(
 
 function pokeVersion(value: string): void {
   const db = new Database(path.join(root, '.vx', 'cache', 'cache.db'))
-  db.prepare("UPDATE schema_meta SET value = ? WHERE key = 'version'").run(value)
+  db.query("UPDATE schema_meta SET value = ? WHERE key = 'version'").run(value)
   db.close()
 }
 
@@ -233,8 +233,8 @@ describe('a schema reset says so once', () => {
   // every key; the all-miss run it causes is announced like a reset.
   function pokeFormat(value: string | null): void {
     const db = new Database(path.join(root, '.vx', 'cache', 'cache.db'))
-    if (value === null) db.prepare("DELETE FROM schema_meta WHERE key = 'cache_version'").run()
-    else db.prepare("UPDATE schema_meta SET value = ? WHERE key = 'cache_version'").run(value)
+    if (value === null) db.query("DELETE FROM schema_meta WHERE key = 'cache_version'").run()
+    else db.query("UPDATE schema_meta SET value = ? WHERE key = 'cache_version'").run(value)
     db.close()
   }
 

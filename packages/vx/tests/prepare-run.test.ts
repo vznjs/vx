@@ -45,7 +45,12 @@ beforeEach(async () => {
   Bun.spawnSync(['git', 'init', '-q'], { cwd: root })
 })
 
+// A row that reads `nodes` alone leaves its cache open, and Windows cannot
+// delete a directory holding an open file (EBUSY). Closing twice is safe.
+const opened: Array<Awaited<ReturnType<typeof prepareRun>>> = []
+
 afterEach(async () => {
+  for (const p of opened.splice(0)) p.cache.close()
   await rm(root, { recursive: true, force: true })
 })
 
@@ -91,7 +96,7 @@ async function prepare(
     excludeDependencies?: 'all' | string[]
   } = {},
 ): Promise<Awaited<ReturnType<typeof prepareRun>>> {
-  return await prepareRun(
+  const p = await prepareRun(
     {
       cwd: opts.cwd ?? root,
       tasks: opts.tasks ?? ['build'],
@@ -103,6 +108,8 @@ async function prepare(
     },
     log,
   )
+  opened.push(p)
+  return p
 }
 
 describe('scoped config loading reaches every project a run can need', () => {

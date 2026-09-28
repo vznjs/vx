@@ -949,7 +949,7 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
         readonly: true,
       })
       try {
-        const rows = db.prepare('SELECT project, task FROM runs ORDER BY task').all() as Array<{
+        const rows = db.query('SELECT project, task FROM runs ORDER BY task').all() as Array<{
           project: string
           task: string
         }>
@@ -1434,7 +1434,7 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
       let totalAfterMiss = 0
       {
         const db = new Database(dbPath, { readonly: true })
-        const invs = db.prepare('SELECT * FROM invocations').all() as Array<Record<string, unknown>>
+        const invs = db.query('SELECT * FROM invocations').all() as Array<Record<string, unknown>>
         expect(invs).toHaveLength(1)
         const inv = invs[0]!
         expect(inv.command).toBe('vx run build --all')
@@ -1450,7 +1450,7 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
         // The miss saved an entry with its input fingerprint rows. They're
         // keyed by the entry hash — reachable via runs.hash for this task.
         const rows = db
-          .prepare(
+          .query(
             `SELECT ei.kind, ei.name FROM entry_inputs ei
              JOIN runs r ON r.hash = ei.entry_hash
              WHERE r.project = ? AND r.task = ?`,
@@ -1461,9 +1461,8 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
         expect(kinds.has('package')).toBe(true)
         expect(kinds.has('workspace')).toBe(true)
         expect(rows.some((r) => r.kind === 'file')).toBe(true)
-        totalAfterMiss = (
-          db.prepare('SELECT COUNT(*) AS n FROM entry_inputs').get() as { n: number }
-        ).n
+        totalAfterMiss = (db.query('SELECT COUNT(*) AS n FROM entry_inputs').get() as { n: number })
+          .n
         expect(totalAfterMiss).toBeGreaterThan(0)
         db.close()
       }
@@ -1479,21 +1478,19 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
 
       {
         const db = new Database(dbPath, { readonly: true })
-        const invs = db
-          .prepare('SELECT run_id FROM invocations ORDER BY started_at')
-          .all() as Array<{
+        const invs = db.query('SELECT run_id FROM invocations ORDER BY started_at').all() as Array<{
           run_id: string
         }>
         expect(invs).toHaveLength(2)
         // Warm run adds no entry_inputs rows.
         const totalAfterHit = (
-          db.prepare('SELECT COUNT(*) AS n FROM entry_inputs').get() as { n: number }
+          db.query('SELECT COUNT(*) AS n FROM entry_inputs').get() as { n: number }
         ).n
         expect(totalAfterHit).toBe(totalAfterMiss)
         // But the hit's invocation header is still recorded.
         const hitRunId = invs[1]!.run_id
         const hitInv = db
-          .prepare('SELECT hit_local_count, hit_count FROM invocations WHERE run_id = ?')
+          .query('SELECT hit_local_count, hit_count FROM invocations WHERE run_id = ?')
           .get(hitRunId) as { hit_local_count: number; hit_count: number }
         expect(hitInv.hit_local_count).toBe(1)
         expect(hitInv.hit_count).toBe(1)

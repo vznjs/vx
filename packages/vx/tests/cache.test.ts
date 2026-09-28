@@ -1473,7 +1473,7 @@ describe('Cache storage (v10)', () => {
     // keep.
     // @ts-expect-error: private member access for testing
     const db = cache.db as import('bun:sqlite').Database
-    const insert = db.prepare(
+    const insert = db.query(
       `INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, stdout, created_at, accessed_at)
        VALUES (?, 'pkg', 'build', 'noop', 0, 0, 10, '', 1, ?)`,
     )
@@ -1481,7 +1481,7 @@ describe('Cache storage (v10)', () => {
     seedRow(cache, insert, 'h-at', 1000)
 
     const remaining = (): string[] =>
-      (db.prepare('SELECT hash FROM entries ORDER BY hash').all() as Array<{ hash: string }>).map(
+      (db.query('SELECT hash FROM entries ORDER BY hash').all() as Array<{ hash: string }>).map(
         (r) => r.hash,
       )
 
@@ -1508,7 +1508,7 @@ describe('Cache storage (v10)', () => {
     // arithmetic this pins is exact.
     // @ts-expect-error: private member access for testing
     const db = cache.db as import('bun:sqlite').Database
-    const insert = db.prepare(
+    const insert = db.query(
       `INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, stdout, created_at, accessed_at)
        VALUES (?, 'pkg', 'build', 'noop', 0, 0, ?, '', 1, ?)`,
     )
@@ -1520,7 +1520,7 @@ describe('Cache storage (v10)', () => {
     expect(result.evicted).toBe(1)
     expect(result.bytesFreed).toBe(100)
     expect(
-      (db.prepare('SELECT hash FROM entries ORDER BY hash').all() as Array<{ hash: string }>).map(
+      (db.query('SELECT hash FROM entries ORDER BY hash').all() as Array<{ hash: string }>).map(
         (r) => r.hash,
       ),
     ).toEqual(['h-warm-a', 'h-warm-b'])
@@ -1536,7 +1536,7 @@ describe('Cache storage (v10)', () => {
     // gets wrong.
     // @ts-expect-error: private member access for testing
     const db = cache.db as import('bun:sqlite').Database
-    const insert = db.prepare(
+    const insert = db.query(
       `INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, stdout, created_at, accessed_at)
        VALUES (?, 'pkg', 'build', 'noop', 0, 0, 100, '', 1, ?)`,
     )
@@ -1550,7 +1550,7 @@ describe('Cache storage (v10)', () => {
     expect(result.evicted).toBe(1)
     expect(result.bytesFreed).toBe(100)
     expect(
-      (db.prepare('SELECT hash FROM entries ORDER BY hash').all() as Array<{ hash: string }>).map(
+      (db.query('SELECT hash FROM entries ORDER BY hash').all() as Array<{ hash: string }>).map(
         (r) => r.hash,
       ),
     ).toEqual(['h-middle', 'h-newest'])
@@ -1569,7 +1569,7 @@ describe('Cache storage (v10)', () => {
     //             still on disk under a 100-byte cap
     // @ts-expect-error: private member access for testing
     const db = cache.db as import('bun:sqlite').Database
-    const insert = db.prepare(
+    const insert = db.query(
       `INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, stdout, created_at, accessed_at)
        VALUES (?, 'pkg', 'build', 'noop', 0, 0, 100, '', 1, ?)`,
     )
@@ -1581,7 +1581,7 @@ describe('Cache storage (v10)', () => {
     expect(result.evicted).toBe(2)
     expect(result.bytesFreed).toBe(200)
     expect(
-      (db.prepare('SELECT hash FROM entries ORDER BY hash').all() as Array<{ hash: string }>).map(
+      (db.query('SELECT hash FROM entries ORDER BY hash').all() as Array<{ hash: string }>).map(
         (r) => r.hash,
       ),
     ).toEqual(['h-warm-b'])
@@ -1741,7 +1741,7 @@ describe('Cache storage (v10)', () => {
     // multi-chunk DELETE path plus the JS-side victims filter.
     // @ts-expect-error: private member access for testing
     const db = cache.db as import('bun:sqlite').Database
-    const insert = db.prepare(
+    const insert = db.query(
       `INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, stdout, created_at, accessed_at)
        VALUES (?, 'pkg', 'build', 'noop', 0, 0, 10, '', 1, 1)`,
     )
@@ -1760,7 +1760,7 @@ describe('Cache storage (v10)', () => {
     // real entry is what goes, and the phantom row is left to its grace.
     // @ts-expect-error: private member access for testing
     const db = cache.db as import('bun:sqlite').Database
-    const insert = db.prepare(
+    const insert = db.query(
       `INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, stdout, created_at, accessed_at)
        VALUES (?, 'pkg', 'build', 'noop', 0, 0, ?, '', 1, ?)`,
     )
@@ -1772,7 +1772,7 @@ describe('Cache storage (v10)', () => {
       evicted: 1,
       bytesFreed: 100,
     })
-    const rows = db.prepare('SELECT hash FROM entries ORDER BY hash').all() as Array<{
+    const rows = db.query('SELECT hash FROM entries ORDER BY hash').all() as Array<{
       hash: string
     }>
     expect(rows.map((x) => x.hash)).toEqual(['h-phantom'])
@@ -1784,7 +1784,7 @@ describe('Cache storage (v10)', () => {
     // real entry to make room for them.
     // @ts-expect-error: private member access for testing
     const db = cache.db as import('bun:sqlite').Database
-    const insert = db.prepare(
+    const insert = db.query(
       `INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, stdout, created_at, accessed_at)
        VALUES (?, 'pkg', 'build', 'noop', 0, 0, ?, '', 1, ?)`,
     )
@@ -1796,7 +1796,7 @@ describe('Cache storage (v10)', () => {
     // bytes are on no disk either, so none is counted (item 1081).
     insert.run('h-fresh', 1_000_000, Date.now())
     const rows = (): string[] =>
-      (db.prepare('SELECT hash FROM entries ORDER BY hash').all() as Array<{ hash: string }>).map(
+      (db.query('SELECT hash FROM entries ORDER BY hash').all() as Array<{ hash: string }>).map(
         (r) => r.hash,
       )
 
@@ -1957,7 +1957,7 @@ describe('Cache storage (v10)', () => {
     // Read back via the underlying DB to confirm the columns were stored.
     // Reaches past the public API on purpose — this is a schema test.
     // @ts-expect-error: private member access for testing
-    const row = cache.db.prepare('SELECT * FROM runs WHERE hash = ?').get('h-v11') as {
+    const row = cache.db.query('SELECT * FROM runs WHERE hash = ?').get('h-v11') as {
       run_id: string
       cpu_ms: number
       peak_rss_bytes: number
@@ -1981,7 +1981,7 @@ describe('Cache storage (v10)', () => {
       endedAt: Date.now() + 1,
     })
     // @ts-expect-error: private member access for testing
-    const row = cache.db.prepare('SELECT * FROM runs WHERE hash = ?').get('h-v11-null') as {
+    const row = cache.db.query('SELECT * FROM runs WHERE hash = ?').get('h-v11-null') as {
       run_id: unknown
       cpu_ms: unknown
       cache_hit: unknown
@@ -2125,7 +2125,7 @@ describe('Cache storage (v10)', () => {
       cacheHit: true,
     })
     // @ts-expect-error: private member access for testing
-    const row = cache.db.prepare('SELECT * FROM runs WHERE hash = ?').get('h-remote') as {
+    const row = cache.db.query('SELECT * FROM runs WHERE hash = ?').get('h-remote') as {
       status: string
       cache_hit: number
       run_id: string
@@ -2383,7 +2383,7 @@ describe('Cache schema/version recovery', () => {
 
     const raw = new Database(dbPath)
     const tables = (
-      raw.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as Array<{
+      raw.query("SELECT name FROM sqlite_master WHERE type='table'").all() as Array<{
         name: string
       }>
     )
@@ -2393,7 +2393,7 @@ describe('Cache schema/version recovery', () => {
     const now = Date.now()
     for (const t of tables) {
       if (t === 'schema_meta') continue
-      const cols = raw.prepare(`PRAGMA table_info(${t})`).all() as Array<{
+      const cols = raw.query(`PRAGMA table_info(${t})`).all() as Array<{
         name: string
         type: string
       }>
@@ -2405,7 +2405,7 @@ describe('Cache schema/version recovery', () => {
           : `'x'`,
       )
       raw
-        .prepare(
+        .query(
           `INSERT OR REPLACE INTO ${t}(${cols.map((c) => c.name).join(',')}) VALUES (${vals.join(',')})`,
         )
         .run()
@@ -2415,13 +2415,13 @@ describe('Cache schema/version recovery', () => {
     const before = Object.fromEntries(
       tables.map((t) => [
         t,
-        (raw.prepare(`SELECT COUNT(*) AS n FROM ${t}`).get() as { n: number }).n,
+        (raw.query(`SELECT COUNT(*) AS n FROM ${t}`).get() as { n: number }).n,
       ]),
     )
     // `schema_meta` holds the schema version, the cache format (item 671)
     // and the `file_hashes` sweep's clock (item 1082).
     expect(before).toEqual(Object.fromEntries(tables.map((t) => [t, t === 'schema_meta' ? 3 : 1])))
-    raw.prepare("UPDATE schema_meta SET value = 'v0-ancient' WHERE key = 'version'").run()
+    raw.query("UPDATE schema_meta SET value = 'v0-ancient' WHERE key = 'version'").run()
     raw.close()
 
     const c2 = new Cache(cacheDir)
@@ -2430,7 +2430,7 @@ describe('Cache schema/version recovery', () => {
 
     const after = new Database(dbPath)
     const survivors = tables
-      .filter((t) => (after.prepare(`SELECT COUNT(*) AS n FROM ${t}`).get() as { n: number }).n > 0)
+      .filter((t) => (after.query(`SELECT COUNT(*) AS n FROM ${t}`).get() as { n: number }).n > 0)
       .sort()
     after.close()
     expect(survivors).toEqual(['config_closures', 'schema_meta'])
@@ -2470,9 +2470,7 @@ describe('Cache schema/version recovery', () => {
     // they share a single underlying file via WAL.
     const { Database } = await import('bun:sqlite')
     const db = new Database(path.join(cacheDir, 'cache.db'))
-    db.prepare(
-      "UPDATE schema_meta SET value = 'unknown-future-version' WHERE key = 'version'",
-    ).run()
+    db.query("UPDATE schema_meta SET value = 'unknown-future-version' WHERE key = 'version'").run()
     db.close()
 
     // Round 2: opening a fresh Cache detects the mismatch, drops the
@@ -2494,7 +2492,7 @@ describe('Cache schema/version recovery', () => {
       const db = c2.dbHandle()
       const tables = (
         db
-          .prepare(
+          .query(
             "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('invocations','entry_inputs')",
           )
           .all() as Array<{ name: string }>
@@ -2657,7 +2655,7 @@ describe('Cache.recordRunBundle (Tier 3)', () => {
       cache.recordRunBundle({ runs, invocation: invocation(runId) })
       const db = cache.dbHandle()
 
-      const inv = db.prepare('SELECT * FROM invocations WHERE run_id = ?').get(runId) as Record<
+      const inv = db.query('SELECT * FROM invocations WHERE run_id = ?').get(runId) as Record<
         string,
         unknown
       >
@@ -2674,7 +2672,7 @@ describe('Cache.recordRunBundle (Tier 3)', () => {
 
       // recordRunBundle does NOT touch entry_inputs — those ride the
       // save transaction (a warm run that only hits writes none).
-      const total = db.prepare('SELECT COUNT(*) AS n FROM entry_inputs').get() as { n: number }
+      const total = db.query('SELECT COUNT(*) AS n FROM entry_inputs').get() as { n: number }
       expect(total.n).toBe(0)
 
       // The runs rows landed in the same transaction.
@@ -2757,13 +2755,13 @@ describe('Cache.recordRunBundle (Tier 3)', () => {
     try {
       const db = reopened.dbHandle()
       const ids = (
-        db.prepare('SELECT run_id FROM invocations ORDER BY run_id').all() as { run_id: string }[]
+        db.query('SELECT run_id FROM invocations ORDER BY run_id').all() as { run_id: string }[]
       ).map((r) => r.run_id)
       expect(ids).toEqual(['recent-run'])
       // The runs half: this row asserted the header alone until item 633,
       // and the `DELETE FROM runs` beside it survived deletion.
       const hashes = (
-        db.prepare('SELECT hash FROM runs ORDER BY hash').all() as { hash: string }[]
+        db.query('SELECT hash FROM runs ORDER BY hash').all() as { hash: string }[]
       ).map((r) => r.hash)
       expect(hashes).toEqual(['h-recent-run'])
     } finally {
@@ -2787,8 +2785,8 @@ describe('Cache.recordRunBundle (Tier 3)', () => {
     ])
     const old = Date.now() - 40 * 24 * 60 * 60 * 1000
     const db = cache.dbHandle()
-    db.prepare('UPDATE config_evals SET created_at = ? WHERE key = ?').run(old, 'k-old')
-    db.prepare('UPDATE config_closures SET created_at = ? WHERE config_path = ?').run(
+    db.query('UPDATE config_evals SET created_at = ? WHERE key = ?').run(old, 'k-old')
+    db.query('UPDATE config_closures SET created_at = ? WHERE config_path = ?').run(
       old,
       '/w/old/vx.config.ts',
     )
@@ -2816,7 +2814,7 @@ describe('Cache.recordRunBundle (Tier 3)', () => {
       ])
       const db = cache.dbHandle()
       const rows = db
-        .prepare('SELECT kind, name, hash FROM entry_inputs WHERE entry_hash = ? ORDER BY kind')
+        .query('SELECT kind, name, hash FROM entry_inputs WHERE entry_hash = ? ORDER BY kind')
         .all('h-save') as Array<{ kind: string; name: string; hash: string }>
       expect(rows).toHaveLength(4)
       expect(rows.map((r) => r.kind).sort()).toEqual(['config', 'env', 'file', 'upstream'])
@@ -2834,7 +2832,7 @@ describe('Cache.recordRunBundle (Tier 3)', () => {
         { kind: 'config', name: 'config', hash: 'cfg' },
         { kind: 'file', name: 'src/x.ts', hash: 'oid-x' },
       ])
-      const after1 = (db.prepare('SELECT COUNT(*) AS n FROM entry_inputs').get() as { n: number }).n
+      const after1 = (db.query('SELECT COUNT(*) AS n FROM entry_inputs').get() as { n: number }).n
       expect(after1).toBe(2)
 
       // Warm: a cache hit never calls save, so it writes nothing. We
@@ -2856,7 +2854,7 @@ describe('Cache.recordRunBundle (Tier 3)', () => {
         ],
         invocation: invocation('warm-run'),
       })
-      const after2 = (db.prepare('SELECT COUNT(*) AS n FROM entry_inputs').get() as { n: number }).n
+      const after2 = (db.query('SELECT COUNT(*) AS n FROM entry_inputs').get() as { n: number }).n
       expect(after2).toBe(after1)
 
       // And even a defensive re-save of the same hash (INSERT OR IGNORE)
@@ -2865,7 +2863,7 @@ describe('Cache.recordRunBundle (Tier 3)', () => {
         { kind: 'config', name: 'config', hash: 'cfg' },
         { kind: 'file', name: 'src/x.ts', hash: 'oid-x' },
       ])
-      const after3 = (db.prepare('SELECT COUNT(*) AS n FROM entry_inputs').get() as { n: number }).n
+      const after3 = (db.query('SELECT COUNT(*) AS n FROM entry_inputs').get() as { n: number }).n
       expect(after3).toBe(after1)
     } finally {
       cache.close()
@@ -2880,7 +2878,7 @@ describe('Cache.recordRunBundle (Tier 3)', () => {
       cache.recordRunBundle({ runs: [], invocation: inv })
       const row = cache
         .dbHandle()
-        .prepare('SELECT dirty, commit_sha, branch FROM invocations WHERE run_id = ?')
+        .query('SELECT dirty, commit_sha, branch FROM invocations WHERE run_id = ?')
         .get(runId) as { dirty: number | null; commit_sha: string | null; branch: string | null }
       expect(row.dirty).toBeNull()
       expect(row.commit_sha).toBeNull()
@@ -2901,13 +2899,10 @@ describe('Cache.recordRunBundle (Tier 3)', () => {
     try {
       const n = c2
         .dbHandle()
-        .prepare('SELECT COUNT(*) AS n FROM entry_inputs WHERE entry_hash = ?')
+        .query('SELECT COUNT(*) AS n FROM entry_inputs WHERE entry_hash = ?')
         .get('h-persist') as { n: number }
       expect(n.n).toBe(1)
-      const inv = c2
-        .dbHandle()
-        .prepare('SELECT command FROM invocations WHERE run_id = ?')
-        .get(runId)
+      const inv = c2.dbHandle().query('SELECT command FROM invocations WHERE run_id = ?').get(runId)
       expect(inv).not.toBeNull()
     } finally {
       c2.close()

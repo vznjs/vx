@@ -103,7 +103,7 @@ describe('Cache.getMany agrees with Cache.get', () => {
     try {
       await seed(cache, ['aa'])
       const db = cache.dbHandle()
-      const clone = db.prepare(
+      const clone = db.query(
         `INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, stdout, created_at, accessed_at)
          SELECT ?, project, task, command, exit_code, duration_ms, size_bytes, stdout, created_at, accessed_at FROM entries WHERE hash = 'aa'`,
       )

@@ -1,5 +1,5 @@
 // `Cache.close()` closed nothing: bun:sqlite defers a plain `close()` while a
-// `db.prepare()` statement lives, and the cache keeps several, so `cache.db`
+// prepared statement lives, and the cache keeps several, so `cache.db`
 // and its `-wal` and `-shm` stayed open. On Windows the cache directory then
 // could not be deleted (EBUSY in every suite that opens a cache, O-10); on
 // every OS an embedder leaked three descriptors per run. Unsafe: it reads

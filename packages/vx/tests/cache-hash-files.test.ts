@@ -159,7 +159,7 @@ describe('Cache.hashFiles', () => {
       const plant = () =>
         cache
           .dbHandle()
-          .prepare(
+          .query(
             'UPDATE file_hashes SET mtime_ms = ?, size_bytes = ?, ctime_ms = ?, ino = ?, content_hash = ? WHERE path = ?',
           )
           .run(
@@ -277,7 +277,7 @@ describe('file_hashes retention', () => {
   function seed(p: string, seenAt: number): void {
     cache
       .dbHandle()
-      .prepare(
+      .query(
         "INSERT INTO file_hashes(path, mtime_ms, size_bytes, ctime_ms, ino, content_hash, seen_at) VALUES (?, 1, 1, 1, 1, 'x', ?)",
       )
       .run(p, seenAt)

@@ -77,7 +77,7 @@ describe('interrupted run publishes nothing', () => {
       const dbPath = path.join(cacheDir, 'cache.db')
       if (existsSync(dbPath)) {
         const db = new Database(dbPath, { readonly: true })
-        const n = db.prepare('SELECT COUNT(*) AS n FROM entries').get() as { n: number }
+        const n = db.query('SELECT COUNT(*) AS n FROM entries').get() as { n: number }
         db.close()
         expect(n.n).toBe(0)
       }

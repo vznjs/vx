@@ -118,7 +118,7 @@ describe('Cache.hashFile (mtime+size fast path)', () => {
     const f = path.join(dir, 'young.txt')
     const rows = () =>
       (
-        cache.dbHandle().prepare('SELECT COUNT(*) AS n FROM file_hashes WHERE path = ?').get(f) as {
+        cache.dbHandle().query('SELECT COUNT(*) AS n FROM file_hashes WHERE path = ?').get(f) as {
           n: number
         }
       ).n
@@ -131,7 +131,7 @@ describe('Cache.hashFile (mtime+size fast path)', () => {
         inWindow = true
         expect(rows()).toBe(0) // fresh: hashed, not memoised
       }
-      cache.dbHandle().prepare('DELETE FROM file_hashes WHERE path = ?').run(f)
+      cache.dbHandle().query('DELETE FROM file_hashes WHERE path = ?').run(f)
     }
     expect(inWindow).toBe(true) // the box managed one write+hash inside the window
     const first = await cache.hashFile(f)
