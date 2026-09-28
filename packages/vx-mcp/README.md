@@ -23,7 +23,7 @@ export default defineWorkspace({
 Then point your agent at it:
 
 ```jsonc
-// Claude Code: ~/.claude/mcp.json (or `claude mcp add vx -- vx mcp`)
+// Claude Code: .mcp.json at the workspace root (or `claude mcp add vx -- vx mcp`)
 { "mcpServers": { "vx": { "command": "vx", "args": ["mcp"] } } }
 ```
 
@@ -57,7 +57,7 @@ next `vx run` to reset, and old run history is never pruned by a read.
 
 MCP over stdio is newline-delimited JSON-RPC 2.0 and three methods
 (`initialize`, `tools/list`, `tools/call`); a batch, which the 2025-03-26 revision allows, is answered as one array. `src/server.ts` speaks it in
-about 200 lines with no dependencies, where the reference SDK pulls
+about 230 lines with no dependencies, where the reference SDK pulls
 in an HTTP stack this transport never touches. `@vzn/vx` is the only peer.
 What a config or plugin stage prints while a tool loads the workspace
 goes to stderr: `console`, `process.stdout`, `Bun.write(Bun.stdout, …)`
@@ -79,3 +79,6 @@ is an `isError` result.
   the plugin; `vx mcp` exists only where `vx.workspace.ts` says `mcp()`.
 - **Empty stats.** No `vx run` has happened in this workspace yet, or the
   agent runs from a different workspace.
+- **`… a running process cannot evaluate an imported module again`.** A
+  file a config imports changed while the server ran; Bun cannot load a
+  module twice. Restart the agent (or its MCP server) to apply the edit.

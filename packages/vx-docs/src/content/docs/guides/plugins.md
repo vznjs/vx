@@ -369,4 +369,4 @@ export default defineWorkspace({ plugins: [mcp()] })
 | `getWorkspaceInfo` | What `vx info` says: versions, plugins, cache, sandbox           |
 
 Nothing it exposes can run a task or write the cache. The server speaks
-MCP in about 210 lines, with no dependencies.
+MCP in about 230 lines, with no dependencies.
