@@ -141,8 +141,9 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   list, and writes only inside its stream's slice.
 - Commits and PR titles: Conventional Commits (owner, 2026-09-27),
   `type(scope): imperative summary`, first line < 72 chars, body says
-  why. Types: feat fix perf refactor test docs ci build chore; scope is
-  the module or package (`cache`, `cli`, `vx-reapi`). One coherent
+  why. Types: feat fix perf refactor test docs ci build chore revert; scope is
+  the module or package (`cache`, `cli`, `vx-reapi`). CI holds a PR's title and
+  commits to it (`tests/conventional-commits.unsafe.test.ts`). One coherent
   change per commit. Commit early; assume interruption.
 - A feature is not done until its docs land in the same commit.
 

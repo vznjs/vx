@@ -98,6 +98,11 @@ jobs:
           # The API-break law needs the last v* tag (full history above);
           # without one it fails here instead of passing.
           VX_REQUIRE_TAGS: '1'
+          # A PR's title and its commits are held to Conventional Commits
+          # (tests/conventional-commits.unsafe.test.ts); a push passes none.
+          VX_PR_TITLE: ${{ github.event.pull_request.title }}
+          VX_PR_BASE: ${{ github.event.pull_request.base.sha }}
+          VX_PR_HEAD: ${{ github.event.pull_request.head.sha }}
           # Same reason as the sandbox flag: the two `armWatcher` rows prove
           # the NATIVE watcher delivers, and where it does not `vx watch`
           # silently falls back to polling. Bun 1.3.11 on the cloud container

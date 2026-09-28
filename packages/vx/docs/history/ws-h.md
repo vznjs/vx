@@ -278,6 +278,19 @@ rule on today's tag (v0.0.100) would have cut it on the next merge. The workflow
 (`--next <last> <sha>`) where it computed the patch in shell. Rows:
 `release-notes.test.ts` "nextVersion" on fixed commit lists.
 
+## H-23: CI holds PR titles and commits to Conventional Commits
+
+The convention (owner, 2026-09-27) held only while someone watched. The
+repo rebase-merges, so each commit subject lands on main as written, and
+the release notes and version (H-15, H-22) read them.
+`scripts/conventional.ts` is the rule (`type(scope)!: summary`, a known
+type); `tests/conventional-commits.unsafe.test.ts` applies it to the PR
+title and to every non-merge commit in base..head, which `ci.yml` passes
+from the pull_request event (`VX_PR_TITLE`, `VX_PR_BASE`, `VX_PR_HEAD`);
+a push and a local gate pass none. Rows: `conventional.test.ts` (which
+headers pass, and why others fail); the law, red on main's old
+`… (#764)` subjects and on the title `Add a thing`.
+
 ## Leads for other streams
 
 - **D / B:** `sandbox.ignore` names that loaded and did nothing: done in D-4.
