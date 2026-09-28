@@ -1,0 +1,126 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "vx last --format json",
+  "description": "`vx last [runId] [--failed]` prints a run; `--list` prints an array of invocations, newest first.",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["invocation", "tasks"],
+      "properties": {
+        "invocation": { "$ref": "#/$defs/invocation" },
+        "tasks": { "type": "array", "items": { "$ref": "#/$defs/task" } }
+      }
+    },
+    { "type": "array", "items": { "$ref": "#/$defs/invocation" } }
+  ],
+  "$defs": {
+    "invocation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runId",
+        "command",
+        "requestedTasks",
+        "cachePolicy",
+        "concurrency",
+        "flow",
+        "startedAt",
+        "endedAt",
+        "totalDurationMs",
+        "taskCount",
+        "failedCount",
+        "hitCount",
+        "hitLocalCount",
+        "hitRemoteCount",
+        "exitOk",
+        "commitSha",
+        "branch",
+        "dirty",
+        "ci",
+        "ciProvider",
+        "host",
+        "os",
+        "arch",
+        "vxVersion",
+        "tags"
+      ],
+      "properties": {
+        "runId": { "type": "string" },
+        "command": { "type": "string" },
+        "requestedTasks": { "type": "array", "items": { "type": "string" } },
+        "cachePolicy": { "type": "string" },
+        "concurrency": { "type": "integer" },
+        "flow": { "enum": ["focused", "broad", null] },
+        "startedAt": { "type": "integer", "description": "epoch ms" },
+        "endedAt": { "type": "integer", "description": "epoch ms" },
+        "totalDurationMs": { "type": "number" },
+        "taskCount": { "type": "integer" },
+        "failedCount": { "type": "integer" },
+        "hitCount": { "type": "integer" },
+        "hitLocalCount": { "type": "integer" },
+        "hitRemoteCount": { "type": "integer" },
+        "exitOk": { "type": "boolean" },
+        "commitSha": { "type": ["string", "null"] },
+        "branch": { "type": ["string", "null"] },
+        "dirty": { "type": ["boolean", "null"] },
+        "ci": { "type": "boolean" },
+        "ciProvider": { "type": ["string", "null"] },
+        "host": { "type": ["string", "null"] },
+        "os": { "type": ["string", "null"] },
+        "arch": { "type": ["string", "null"] },
+        "vxVersion": { "type": "string" },
+        "tags": { "type": "object", "additionalProperties": { "type": "string" } }
+      }
+    },
+    "task": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runId",
+        "project",
+        "task",
+        "status",
+        "exitCode",
+        "durationMs",
+        "startedAt",
+        "endedAt",
+        "cacheHit",
+        "cached",
+        "hash",
+        "cpuMs",
+        "peakRssBytes",
+        "wallclockStartNs",
+        "wallclockEndNs",
+        "blockedBy",
+        "timedOut",
+        "sandboxViolations",
+        "notReady"
+      ],
+      "properties": {
+        "runId": { "type": ["string", "null"] },
+        "project": { "type": "string" },
+        "task": { "type": "string" },
+        "status": { "type": "string" },
+        "exitCode": { "type": "integer" },
+        "durationMs": { "type": "number" },
+        "startedAt": { "type": "integer", "description": "epoch ms" },
+        "endedAt": { "type": "integer", "description": "epoch ms" },
+        "cacheHit": { "type": ["boolean", "null"] },
+        "cached": { "type": ["boolean", "null"] },
+        "hash": { "type": "string" },
+        "cpuMs": { "type": ["number", "null"] },
+        "peakRssBytes": { "type": ["integer", "null"] },
+        "wallclockStartNs": {
+          "type": ["string", "null"],
+          "description": "decimal nanoseconds from the run's start"
+        },
+        "wallclockEndNs": { "type": ["string", "null"] },
+        "blockedBy": { "type": ["string", "null"] },
+        "timedOut": { "type": ["boolean", "null"] },
+        "sandboxViolations": { "type": ["integer", "null"] },
+        "notReady": { "enum": ["timeout", "exited", "spawn", null] }
+      }
+    }
+  }
+}

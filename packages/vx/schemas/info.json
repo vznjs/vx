@@ -1,0 +1,128 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "vx info --format json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "vx",
+    "bun",
+    "bunSupported",
+    "git",
+    "gitStatusCache",
+    "workspaceRoot",
+    "projects",
+    "tasks",
+    "configErrors",
+    "plugins",
+    "workers",
+    "memory",
+    "cacheDir",
+    "cacheVersion",
+    "schemaVersion",
+    "cacheEntries",
+    "cacheBytes",
+    "orphans",
+    "runs24h",
+    "hits24h",
+    "flakyTasks",
+    "lockfile",
+    "sandbox"
+  ],
+  "properties": {
+    "vx": { "type": "string" },
+    "bun": { "type": "string" },
+    "bunSupported": { "type": "boolean" },
+    "git": { "type": ["string", "null"] },
+    "gitStatusCache": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["fsmonitor", "untrackedCache"],
+      "properties": { "fsmonitor": { "type": "boolean" }, "untrackedCache": { "type": "boolean" } }
+    },
+    "workspaceRoot": { "type": "string" },
+    "projects": { "type": "integer" },
+    "tasks": { "type": "integer" },
+    "configErrors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "message"],
+        "properties": { "path": { "type": "string" }, "message": { "type": "string" } }
+      }
+    },
+    "plugins": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "seams"],
+        "properties": {
+          "name": { "type": "string" },
+          "seams": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "workers": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["count", "source", "cores", "cpuQuota"],
+      "properties": {
+        "count": { "type": "integer" },
+        "source": { "enum": ["workspace", "cgroup", "cores"] },
+        "cores": { "type": "integer" },
+        "cpuQuota": { "type": ["number", "null"] }
+      }
+    },
+    "memory": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["usableBytes", "totalBytes", "cgroupLimitBytes"],
+      "properties": {
+        "usableBytes": { "type": "integer" },
+        "totalBytes": { "type": "integer" },
+        "cgroupLimitBytes": { "type": ["integer", "null"] }
+      }
+    },
+    "cacheDir": { "type": "string" },
+    "cacheVersion": { "type": "string" },
+    "schemaVersion": { "type": "string" },
+    "cacheEntries": { "type": "integer" },
+    "cacheBytes": { "type": "integer" },
+    "orphans": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifacts", "bytes"],
+      "properties": { "artifacts": { "type": "integer" }, "bytes": { "type": "integer" } }
+    },
+    "runs24h": { "type": "integer" },
+    "hits24h": { "type": "integer" },
+    "flakyTasks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["taskId", "project", "task", "keys", "passes", "failures"],
+        "properties": {
+          "taskId": { "type": "string" },
+          "project": { "type": "string" },
+          "task": { "type": "string" },
+          "keys": { "type": "integer" },
+          "passes": { "type": "integer" },
+          "failures": { "type": "integer" }
+        }
+      }
+    },
+    "lockfile": { "type": "boolean" },
+    "sandbox": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["available", "reason", "declared"],
+      "properties": {
+        "available": { "type": "boolean" },
+        "reason": { "type": "string" },
+        "declared": { "type": "integer" }
+      }
+    }
+  }
+}

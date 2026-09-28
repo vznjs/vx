@@ -33,6 +33,7 @@
     "npm-launcher.mjs",
     "index.ts",
     "src",
+    "schemas",
     "README.md"
   ],
   "engines": {
