@@ -1251,7 +1251,9 @@ notice on stderr (`no OS watch events within 2000 ms; polling every
 250 ms instead`). Where the watcher is known not to deliver — a sandbox
 without FSEvents access on macOS, a network mount, a container bind —
 `VX_WATCH_POLL=1` polls from the start and skips the 2 s probe; the loop
-says so once (`vx watch: polling every 250 ms (VX_WATCH_POLL)`). The
+says so once (`vx watch: polling every 250 ms (VX_WATCH_POLL)`). A
+watcher the OS refuses for its watch limit (`ENOSPC`, `EMFILE`) is
+polled too, with a notice naming the limit to raise. The
 poller walks the same tree the event filter keeps: the always-ignored
 segments and the run's declared output containers are never sampled.
 It samples each file's later clock of mtime and ctime, so a replacement
