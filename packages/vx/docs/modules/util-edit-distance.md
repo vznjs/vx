@@ -16,7 +16,7 @@ nearMatches(name, candidates, limit = 3): string[]
 
 - `nearest` is THE hint: the closest candidate within `maxEdits`, or
   nothing — an exact match is not a hint, and anything further would
-  guess rather than help. `cli/run.ts` widens to three edits only among
+  guess rather than help. `flagHint` (`cli/help.ts`) widens to three edits only among
   flags sharing a five-character stem (`--retries` → `--retry`), so
   `--zzz` never reaches `--all`.
 - `nearMatches` is for the inspection verbs (`why`, `prune`) that list

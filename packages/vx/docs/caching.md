@@ -1162,7 +1162,7 @@ all-miss run that follows is explained; the artifacts it orphaned are
 -- src/cache/cache.ts schema (SCHEMA_VERSION = 'v28')
 
 CREATE TABLE schema_meta (
-  key   TEXT PRIMARY KEY,  -- 'version', 'cache_version', 'orphans_swept_at', 'file_hashes_swept_at'
+  key   TEXT PRIMARY KEY,  -- 'version', 'cache_version', 'orphans_swept_at', 'file_hashes_swept_at', 'value_salt'
   value TEXT NOT NULL
 );
 
@@ -1345,7 +1345,7 @@ CREATE TABLE entry_inputs (
   entry_hash TEXT NOT NULL,          -- == entries.hash / runs.hash
   kind       TEXT NOT NULL,          -- file|env|runtime|ws-runtime|upstream|package|config|forward|workspace|plugin
   name       TEXT NOT NULL,          -- file: workspace-rel path; env: var name; upstream: task id; …
-  hash       TEXT NOT NULL,          -- env|runtime|ws-runtime|forward|plugin: xxh3hex(value); an unset env var: 'unset'
+  hash       TEXT NOT NULL,          -- env|runtime|ws-runtime|forward|plugin: xxh3hex(salt + value); an unset env var: 'unset'
   PRIMARY KEY (entry_hash, kind, name),
   FOREIGN KEY (entry_hash) REFERENCES entries(hash) ON DELETE CASCADE
 );

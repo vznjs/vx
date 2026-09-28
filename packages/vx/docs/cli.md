@@ -98,6 +98,8 @@ If no task name is given:
   across the workspace, prints `description` next to each, prompts
   for a number, runs the chosen one. Ctrl-C at the prompt exits `130`
   as an interrupted run does; Ctrl-D exits `1` with `no task picked`.
+  A workspace with no task exits `1` naming how to declare one (under
+  `tasks` in a vx.config, or `vx init`).
 - **Not a TTY** — exits `1` with `missing task name (stdin is not a TTY)`.
 
 Exit codes:
@@ -725,7 +727,9 @@ tuning cannot change what a command produces.
 
 One safety gate: a task whose outputs another task's `cache.inputs`
 globs could read on disk is silently kept eager, because deferring it
-would make that key depend on whether the bytes arrived. `--dry` reports
+would make that key depend on whether the bytes arrived. A task with no
+`cache` that a cached task depends on counts as reading its whole
+project (C-16). `--dry` reports
 how many tasks would keep their outputs remote and names each downgrade,
 so a run that defers nothing says why. A run in which any task declares a
 `cache.inputs.runtime` / `workspaceRuntime` command defers **nothing**:
@@ -1861,7 +1865,8 @@ vx why [TASK | PKG#TASK] [--run <runId>] [--format pretty|json] [--cache-dir <pa
 ```
 
 By default it compares the task's **latest** recorded run against its
-immediately-previous run; `--run <id>` pins a specific run. History is
+immediately-previous run; `--run <id>` pins a specific run (a task that
+run did not run is refused, pointing at `vx last --list`). History is
 the cache directory's, not the checkout's: worktrees that share one
 `--cache-dir` share one history, so the previous run may be another
 worktree's (its branch is in `vx last`), and its edits read as changes. Latest and

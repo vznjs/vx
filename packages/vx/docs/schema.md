@@ -173,6 +173,10 @@ build: { exec: { command: 'tsc -b', timeout: 120_000 } }
   SIGTERMed and the task fails — see `persistent` below. A persistent
   task that's ready on spawn (no `readyWhen`) becomes ready before the
   timer can fire, so the timeout is a no-op for it.
+- On a **plugin executor**, the timeout aborts the request's `signal`
+  instead (core cannot kill a process the executor spawned); a non-zero
+  exit after it is reported timed out, and an executor still running
+  after the kill grace is abandoned (H-12, H-14).
 
 **Upper bound.** `timeout` must be at most **2147483647 ms (~24.8 days)**,
 the largest delay a timer can hold. A larger value does _not_ mean "no
