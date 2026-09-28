@@ -41,6 +41,9 @@ next: npm install -D @vzn/vx-migrate && npx vx run build --all
 `vx.workspace.ts` that does not declare `turbo()` is left alone: add it
 to the plugins, or `--force` replaces the file.
 
+Where the repo shows a remote cache (an enabled `remoteCache` in turbo.json, or
+`TURBO_TOKEN` in a CI file), the file declares `turboCache()` too.
+
 ### Try it in five minutes
 
 [`examples/turbo`](https://github.com/vznjs/vx/tree/main/examples/turbo)
@@ -93,6 +96,7 @@ The command itself comes from your `package.json` script, with its
 1. Install vx: `npm install -D @vzn/vx` (pnpm: `pnpm add -D -w @vzn/vx`).
 2. Run `npx vx init`. Beside `nx.json` it writes this `vx.workspace.ts`
    and nothing else. With `turbo.json` there too, it declares `turbo()`.
+   A CI file that names `NX_SELF_HOSTED_REMOTE_CACHE_SERVER` adds `nxCache()`.
 3. Run the `next:` line it prints. It installs `@vzn/vx-migrate`, then
    runs what `nx run-many -t build` ran, under vx's cache.
 4. Write the resolved graph: `nx graph --file=.nx/workspace-data/project-graph.json`. `vx-migrate` reads it and never guesses from `nx.json`.
