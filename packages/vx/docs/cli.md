@@ -1688,7 +1688,10 @@ A script reading `$npm_package_version`, `$npm_package_name` or
 `$npm_lifecycle_event`, which every manager sets and vx does not, gets
 them under `exec.env.define`, the first two read from an imported
 `package.json` so a version bump reaches them; any other `$npm_*` it
-reads gets a TODO (D-34).
+reads gets a TODO (D-34). Among several packages, the workspace root is
+not mapped: its scripts run the workspace (`npm run build --workspaces`),
+and a hand-written root config stays as written (D-45); a single-package
+repo's root is its project and maps.
 A script that is nothing but `npm run <other>` (`pnpm <other>`, `yarn
 <other>`, `bun run <other>`, `npm test`, `npm start`) becomes a **group**
 over `<other>` — `dependsOn` and no command — so the graph runs and

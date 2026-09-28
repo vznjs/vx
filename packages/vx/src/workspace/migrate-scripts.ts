@@ -243,7 +243,20 @@ function upstreamBuildOnWorker(tasks: GeneratedTask[]): void {
 export function migrateScripts(metas: readonly ProjectMeta[]): MigrationPlan {
   const projects: GeneratedProject[] = []
   const hookMemo = new Map<string, boolean>()
+  // The workspace root among members: its scripts run the workspace
+  // (`npm run build --workspaces`, `pnpm -r build`), and a root task made
+  // of one ran every member's build again under `--all`. Since D-39 a
+  // hand-written root config makes the root a project, and `--force`
+  // replaced it so (D-45). A lone package is its repo's project and maps.
+  const root = metas.length > 1 ? workspaceRootOf(metas) : undefined
+  const notes: string[] = []
+  if (root !== undefined) {
+    notes.push(
+      `${root.name} (the workspace root) not mapped: its scripts run the workspace; declare its own tasks in its vx.config by hand`,
+    )
+  }
   for (const meta of metas) {
+    if (meta === root) continue
     const scripts = scriptsOf(meta)
     const runsHooks = runsScriptHooks(meta.dir, hookMemo)
     const runnable = Object.keys(scripts).filter(
@@ -350,6 +363,13 @@ export function migrateScripts(metas: readonly ProjectMeta[]): MigrationPlan {
     ],
     projects,
     extraFiles: [],
-    notes: [],
+    notes,
   }
+}
+
+/** The member whose directory holds every other member's, if one does. */
+function workspaceRootOf(metas: readonly ProjectMeta[]): ProjectMeta | undefined {
+  const outer = metas.reduce((a, b) => (b.dir.length < a.dir.length ? b : a))
+  const prefix = outer.dir.endsWith(path.sep) ? outer.dir : outer.dir + path.sep
+  return metas.every((m) => m === outer || m.dir.startsWith(prefix)) ? outer : undefined
 }

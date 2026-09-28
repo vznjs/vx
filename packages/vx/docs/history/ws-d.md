@@ -432,3 +432,14 @@ packages/core`) selects the dependent whose `file:../lib` spec named
   `{dir}[ref]`). Parity probe with no other gap: ten name, scope, path
   and `...` / `^` forms and the bare `[ref]` forms select what Turbo
   selects. Rows: the D-44 rows of `tests/filter.test.ts`.
+- **D-45** D-39 made a root with a hand-written `vx.config` a project, so
+  `vx init --force` replaced that config with the root's scripts: a
+  `build: npm run build --workspaces` became a root task (with `^build`)
+  that ran every member's build again under `--all`. `vx init` no longer
+  maps the workspace root when it has members (their dirs under its
+  own), and says so; a single-package repo's root still maps. Parity
+  probes against Turbo 2.8.17 with no gap: seven negation, expansion and
+  multi-filter combinations, `--affected` with dependents, a root-level
+  file no package owns (neither selects), and package-graph edges over
+  dev, peer and optional dependencies. Row: the D-45 row of
+  `tests/init.test.ts`.
