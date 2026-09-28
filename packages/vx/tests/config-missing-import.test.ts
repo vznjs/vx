@@ -101,6 +101,14 @@ describe('unprovidedBareImports', () => {
     expect(unprovidedBareImports("import a from '@s/tasks'", app, 'ts')).toEqual(['@s/tasks'])
   })
 
+  it('a package.json subpath import is never listed (D-28)', async () => {
+    // Bun resolves `#tasks` through the package's own `imports` field and
+    // never reaches the registry for a `#` name (strace: no connect), so
+    // refusing it refused a config Bun evaluates.
+    const src = `import { cmd } from '#tasks'\nimport x from '#lib/x.ts'\nimport y from 'nope-pkg'\n`
+    expect(unprovidedBareImports(src, dir, 'ts')).toEqual(['nope-pkg'])
+  })
+
   it('a require() bare import reaches the scan — the fast path agrees with it', async () => {
     // `hasBareCandidate` is a textual pre-filter and a source it rejects
     // is never scanned at all, so its regex must not be narrower than

@@ -71,7 +71,10 @@ const SPECIFIER =
 
 /** Whether a specifier is one the walk would have to look up at all. */
 function needsLookup(spec: string): boolean {
-  if (spec.includes(':') || BUILTINS.has(spec)) return false
+  // `#x` is a package.json `imports` entry: Bun maps it inside the
+  // package and never asks the registry, as no npm name opens with `#`
+  // (D-28).
+  if (spec.startsWith('#') || spec.includes(':') || BUILTINS.has(spec)) return false
   return !(spec === '@vzn/vx' || spec.startsWith('@vzn/vx/'))
 }
 

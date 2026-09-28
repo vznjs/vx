@@ -260,3 +260,9 @@ packages/core`) selects the dependent whose `file:../lib` spec named
   importing only `@vzn/vx` 136–140 → 140–144 ms (noise); every config
   importing a package under its own tsconfig 138–145 → 200–204 ms.
   Row: the D-27 row of `tests/affected.test.ts`.
+- **D-28** A config importing through its package.json `imports` field
+  (`import { cmd } from '#tasks'`) was refused as `cannot find` with no
+  node_modules to provide it. Bun maps a `#` name inside the package and
+  never asks the registry for one (strace: no connect, against 30 for
+  an unknown package name), so the guard no longer lists it. Row: the
+  D-28 row of `tests/config-missing-import.test.ts`.
