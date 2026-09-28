@@ -9,7 +9,7 @@
 // anything depending on one, and `exec.remote: false` never reach an
 // executor. This declines the rest of what it cannot honour.
 
-import { mkdir, writeFile, chmod, realpath, rm, symlink, unlink } from 'node:fs/promises'
+import { mkdir, writeFile, chmod, readlink, realpath, rm, symlink, unlink } from 'node:fs/promises'
 import { constants, existsSync } from 'node:fs'
 import path from 'node:path'
 import { isLiteralPattern, isUserError, normalizeGlob, UserError } from '@vzn/vx'
@@ -1452,6 +1452,7 @@ export async function materialiseOutputs(
       whole ? null : isDeclared,
     )
   }
+  await fence.verifyLinks()
 }
 
 /**
@@ -1471,6 +1472,7 @@ export async function materialiseOutputs(
 class Fence {
   private realRoot: string | undefined
   private readonly checked = new Set<string>()
+  private readonly links: { abs: string; target: string }[] = []
   private readonly root: string
 
   constructor(root: string) {
@@ -1520,6 +1522,27 @@ class Fence {
       throw this.refuse(`${abs} -> ${target}`)
     }
     await placeSymlink(target, abs, created)
+    this.links.push({ abs, target })
+  }
+
+  /**
+   * Every placed link, resolved as the OS follows it. The text check above
+   * collapses `x/..` where the OS follows `x`: with `x -> ..` placed, `y ->
+   * x/../../outside` reads as inside and leads out (F-47). Judged once all
+   * are placed, since a later link changes what an earlier one names. An
+   * escaping link is removed before the refusal.
+   */
+  async verifyLinks(): Promise<void> {
+    this.realRoot ??= await realpath(this.root).catch(() => this.root)
+    for (const { abs, target } of this.links) {
+      const to = await resolveThrough(
+        path.isAbsolute(target) ? target : `${path.dirname(abs)}${path.sep}${target}`,
+      )
+      if (to !== this.realRoot && !to.startsWith(this.realRoot + path.sep)) {
+        await rm(abs, { force: true })
+        throw this.refuse(`${abs} -> ${target}`)
+      }
+    }
   }
 
   private refuse(what: string): UserError {
@@ -1565,6 +1588,35 @@ async function writeOutput(
     await unlink(abs)
     await writeFile(abs, bytes, { flag: WRITE_NOFOLLOW })
   })
+}
+
+/**
+ * `p` as the OS resolves it: one component at a time, a link's target
+ * spliced in where it stands, so `x/..` leaves what `x` names. Bun's
+ * `realpath` collapses `..` as text before it follows a link, which is the
+ * very reading this must not make. A missing component is taken as text;
+ * a loop (which the OS refuses to follow) stops where it is.
+ */
+async function resolveThrough(p: string): Promise<string> {
+  const parts = (s: string): string[] => s.split(/[\\/]/).filter((c) => c !== '' && c !== '.')
+  let at = path.parse(p).root
+  const todo = parts(p)
+  for (let hops = 0; todo.length > 0;) {
+    const c = todo.shift()!
+    if (c === '..') {
+      at = path.dirname(at)
+      continue
+    }
+    const next = path.join(at, c)
+    const target = await readlink(next).catch(() => null)
+    if (target === null || ++hops > 40) {
+      at = next
+      continue
+    }
+    if (path.isAbsolute(target)) at = path.parse(target).root
+    todo.unshift(...parts(target))
+  }
+  return at
 }
 
 async function placeSymlink(

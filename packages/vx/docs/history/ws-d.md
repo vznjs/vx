@@ -361,3 +361,10 @@ packages/core`) selects the dependent whose `file:../lib` spec named
   relative text import of a file outside the workspace is in the key's
   closure and seen changing, a backdated mtime included; the other
   refusals of the probe set already named field and fix.
+- **D-38** D-37 at the top of `vx.workspace`: Turbo's `pipeline`,
+  `tasks`, `globalEnv`, `globalDependencies` and `remoteCache`, and
+  Nx's `targetDefaults`, `namedInputs`, `parallel` and
+  `cacheDirectory`, were refused as unknown fields with no word of
+  where vx keeps each (per-package `tasks`, `cache.inputs.env`, a cache
+  plugin, `concurrency`, `cacheDir`). The refusal names it. Row: the
+  D-38 row of `tests/config-schema-refusals.test.ts`.

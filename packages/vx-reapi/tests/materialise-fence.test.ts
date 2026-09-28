@@ -151,6 +151,44 @@ describe('materialiseOutputs refuses what lands outside the workspace (L-2)', ()
     expect(await untouched()).toEqual({ victim: 'mine', outside: ['victim'] })
   })
 
+  // F-47: each target was judged as text, but the OS follows the links the
+  // result already placed: `x -> ..` then `y -> x/../../outside` reads
+  // as `pkg/outside` and leads to `<top>/outside`. Either order.
+  it('a link that leads out through another link the result placed', async () => {
+    const escape = { path: 'd/y', target: 'x/../../outside' }
+    const via = { path: 'd/x', target: '..' }
+    const placed = async () =>
+      lstat(path.join(cwd, 'd', 'y')).then(
+        () => true,
+        () => false,
+      )
+    for (const output_symlinks of [
+      [via, escape],
+      [escape, via],
+    ]) {
+      const r = await run({ output_symlinks })
+      expect([r, await placed()]).toEqual([
+        refused(`${path.join(cwd, 'd', 'y')} -> x/../../outside`),
+        false,
+      ])
+      await rm(path.join(cwd, 'd'), { recursive: true, force: true })
+    }
+    const d = tree({
+      files: [],
+      directories: [],
+      symlinks: [
+        { name: 'x', target: '..' },
+        { name: 'y', target: 'x/../../outside' },
+      ],
+    })
+    const r = await run({ output_directories: [{ path: 'd', tree_digest: d }] })
+    expect([r, await placed()]).toEqual([
+      refused(`${path.join(cwd, 'd', 'y')} -> x/../../outside`),
+      false,
+    ])
+    expect(await untouched()).toEqual({ victim: 'mine', outside: ['victim'] })
+  })
+
   it('a link standing at an output file is replaced, never written through', async () => {
     await symlink(path.join(outside, 'victim'), path.join(cwd, 'out.txt'))
     const r = await run({ output_files: [{ path: 'out.txt', digest: blob('built') }] })

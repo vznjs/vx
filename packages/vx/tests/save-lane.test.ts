@@ -56,6 +56,20 @@ describe('createSaveLane', () => {
     expect(order).toEqual(['a', 'b', 'c'])
   })
 
+  it('a slot a settled save held is free: the next defer starts at once', async () => {
+    // Each settle frees its slot. A lane that kept a settled save's slot
+    // would, once full, queue every later save behind nothing, and the
+    // scheduler waits on each save: the run never ends.
+    const lane = createSaveLane(1, () => undefined)
+    await lane.defer(async () => undefined)
+    let started = false
+    const next = lane.defer(async () => {
+      started = true
+    })
+    expect(started).toBe(true)
+    await next
+  })
+
   it('a failed save reaches onError, frees its slot, and its defer settles rather than rejects', async () => {
     const errors: string[] = []
     const lane = createSaveLane(1, (e) => errors.push(String(e)))

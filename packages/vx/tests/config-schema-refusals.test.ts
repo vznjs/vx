@@ -451,3 +451,27 @@ describe('sandbox refusals the sweep found unheld (item 653)', () => {
     ).toBeNull()
   })
 })
+
+describe('workspace fields another runner spells elsewhere (D-38)', () => {
+  it('names where vx keeps each one', () => {
+    const where = (key: string): string | undefined => {
+      try {
+        validateWorkspace({ [key]: {} } as never, 'vx.workspace.ts')
+      } catch (err) {
+        return (err as Error).message.split(' — ')[1]
+      }
+      return undefined
+    }
+    expect(where('pipeline')).toBe(
+      "vx spells it each package's `vx.config` `tasks` (`bunx @vzn/vx-migrate` writes them from turbo.json)",
+    )
+    expect(where('remoteCache')).toBe(
+      'vx spells it a cache plugin in `plugins` (`turboCache()` or `nxCache()` from `@vzn/vx-migrate`)',
+    )
+    expect(where('globalEnv')).toBe('vx spells it `cache.inputs.env` on the tasks it keys')
+    expect(where('parallel')).toBe('vx spells it `concurrency`')
+    expect(where('cacheDirectory')).toBe('vx spells it `cacheDir`')
+    // CONTROL: a typo still gets the nearest spelling.
+    expect(where('concurency')).toBe('did you mean concurrency?')
+  })
+})
