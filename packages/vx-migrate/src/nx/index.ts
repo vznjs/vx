@@ -264,6 +264,12 @@ async function graphInputKey(
     cacheRel !== '' &&
     !cacheRel.startsWith('..') &&
     (p === cacheRel || p.startsWith(`${cacheRel}/`))
+  // Nx's own caches, written by the export itself: under a root project
+  // (a standalone repo) that does not ignore them, each export moved the key
+  // and the next run exported again. `.nx/installation` pins Nx's version
+  // and stays in.
+  const nxCache = (p: string): boolean =>
+    p.startsWith('.nx/cache/') || p.startsWith('.nx/workspace-data/')
   // What can move the graph: a file under a project root (its sources, the
   // configs a plugin infers targets from), or a root file Nx reads. A task's
   // stray write at the root (a report, a log) is not, and counting it
@@ -280,7 +286,7 @@ async function graphInputKey(
     const p = r.slice(3)
     // A rename or copy carries its source as the next record.
     if (r[0] === 'R' || r[0] === 'C') i++
-    if (!inCache(p) && graphFile(p)) listed.push(p)
+    if (!inCache(p) && !nxCache(p) && graphFile(p)) listed.push(p)
   }
   // A manifest needs no read of its own: git lists it when it is edited, and
   // HEAD moves when an edit is committed (reading all 2,000 cost 50 ms at

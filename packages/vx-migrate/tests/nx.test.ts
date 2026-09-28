@@ -1015,3 +1015,69 @@ describe('nx(): the mapping cache', () => {
     TIMEOUT,
   )
 })
+
+// A standalone Nx repo: the workspace root is the one project, so every
+// file under it is the project's. Nx's own graph cache counted as one, and
+// every run exported the graph again. Also G-21's unheld root arms: a root
+// project's sources move the key, vx's snapshot under it does not.
+describe('nx(): a workspace whose root is the project', () => {
+  let solo: string
+  const graph = {
+    graph: {
+      nodes: {
+        solo: {
+          name: 'solo',
+          type: 'app',
+          data: {
+            root: '.',
+            targets: {
+              lint: { executor: 'nx:run-commands', options: { command: 'echo lint' } },
+            },
+          },
+        },
+      },
+      dependencies: { solo: [] },
+    },
+  }
+  beforeEach(async () => {
+    solo = await mkdtemp(path.join(tmpdir(), 'vx-nx-solo-'))
+    await writeFile(
+      path.join(solo, 'package.json'),
+      JSON.stringify({ name: 'solo', private: true }),
+    )
+    await writeFile(path.join(solo, 'nx.json'), JSON.stringify({ namedInputs: {} }))
+    // The fake's call counter is the one file ignored: `.vx` and `.nx` are
+    // not, so the row sees whether vx's snapshot or Nx's own graph cache
+    // (the fake writes `.nx/workspace-data`, as Nx does) moves the key.
+    await writeFile(path.join(solo, '.gitignore'), 'node_modules\nnx-calls\n')
+    await writeFile(path.join(solo, 'graph.json'), JSON.stringify(graph))
+    await mkdir(path.join(solo, 'src'), { recursive: true })
+    await writeFile(path.join(solo, 'src', 'main.js'), '// v1\n')
+    await fakeNx(solo)
+    await fakeNxCli(solo)
+    await Bun.write(
+      path.join(solo, 'vx.workspace.mjs'),
+      localWorkspaceSource(['nx()'], `import { nx } from ${JSON.stringify(PLUGIN_INDEX)}\n`),
+    )
+    Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: solo })
+    Bun.spawnSync({ cmd: ['git', 'add', '-A'], cwd: solo })
+  })
+  afterEach(async () => {
+    await rm(solo, { recursive: true, force: true })
+  })
+
+  it(
+    'its own source edit re-exports; the caches vx and Nx write under it do not',
+    async () => {
+      const plan = await planRun({ cwd: solo, tasks: ['lint'], log: silent() })
+      expect(plan.tasks.map((t) => t.node.id)).toEqual(['solo#lint'])
+      expect(await nxCalls(solo)).toBe(1)
+      await planRun({ cwd: solo, tasks: ['lint'], log: silent() })
+      expect(await nxCalls(solo)).toBe(1)
+      await writeFile(path.join(solo, 'src', 'main.js'), '// v2\n')
+      await planRun({ cwd: solo, tasks: ['lint'], log: silent() })
+      expect(await nxCalls(solo)).toBe(2)
+    },
+    TIMEOUT,
+  )
+})
