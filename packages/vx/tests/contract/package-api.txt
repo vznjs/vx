@@ -254,6 +254,8 @@ export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
 export function machineMemoryBytes(probe: CgroupProbe = {}): number
 == function machineParallelism (src/util/cgroup.ts)
 export function machineParallelism(probe: CgroupProbe = {}): number
+== function maskedCommand (src/util/secret-mask.ts)
+export function maskedCommand(command: string, env?: TaskEnvSecrets): string
 == function normalizeGlob (src/util/paths.ts)
 export function normalizeGlob(glob: string): string
 == function outputsOverlap (src/graph/task-graph.ts)
@@ -1180,6 +1182,11 @@ export interface TaskConfig {
   exec?: ExecConfig
   dependsOn?: readonly string[]
   cache?: CacheConfig
+}
+== type TaskEnvSecrets (src/util/secret-mask.ts)
+export interface TaskEnvSecrets {
+  readonly define?: Readonly<Record<string, string>>
+  readonly secret?: readonly string[]
 }
 == type TaskExecutor (src/exec/executor.ts)
 export interface TaskExecutor {
