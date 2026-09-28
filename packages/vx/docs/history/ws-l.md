@@ -143,6 +143,12 @@
     Ubuntu's signed apt sources only; `docs.yml` deploys from `main` and
     a dispatch, each action pinned. `ci.yml` and `windows.yml` named no
     token permissions (L-29).
+36. `npm.yml` and `release.yml` grant write scopes per job, only to the
+    job that publishes or uploads.
+37. A cache token across a redirect. `nxCache()` and `turboCache()`
+    leave redirects to Bun's fetch, which drops `Authorization` on a
+    cross-origin hop and keeps it on a same-origin one; pinned by
+    `vx-migrate/tests/token-redirect.test.ts`.
 
 ## Items
 
