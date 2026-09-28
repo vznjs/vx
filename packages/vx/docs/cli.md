@@ -1663,9 +1663,12 @@ as npm hands them to the script and not its hooks (item 905). The
 command is a small shell function, `vx_script`, around the three parts;
 it carries a TODO saying so; a `pre<x>` with no `x` stays a task of its own, and
 npm's lifecycle hooks (`prepack`, `prepublishOnly`, …) are never tasks.
-Yarn 2+ runs no such hooks, so where it owns the package (the nearest
-`packageManager: yarn@2+`, or a Berry `yarn.lock`) every `pre<x>` and
-`post<x>` is a task of its own (D-31).
+Where the package's manager runs no such hooks every `pre<x>` and
+`post<x>` is a task of its own: Yarn 2+ (the nearest `packageManager:
+yarn@2+`, or a Berry `yarn.lock`, D-31), npm under `ignore-scripts=true`
+in the `.npmrc` beside its lockfile, pnpm under
+`enable-pre-post-scripts=false` there or `enablePrePostScripts: false` in
+`pnpm-workspace.yaml` (D-33). Bun and Yarn 1 run them whatever those say.
 A script that is nothing but `npm run <other>` (`pnpm <other>`, `yarn
 <other>`, `bun run <other>`, `npm test`, `npm start`) becomes a **group**
 over `<other>` — `dependsOn` and no command — so the graph runs and

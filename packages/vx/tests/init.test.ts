@@ -382,6 +382,57 @@ describe('migrateScripts', () => {
     }
   })
 
+  it('npm and pnpm told to skip hooks keep pre/post apart; Bun and pnpm otherwise fold (D-33)', async () => {
+    // Probed with a prebuild / build / postbuild trio: `npm run build`
+    // under `ignore-scripts=true` printed BUILD alone, as did `pnpm run
+    // build` under `enable-pre-post-scripts=false` or `enablePrePostScripts:
+    // false`; Bun and pnpm under `ignore-scripts=true` printed all three.
+    const root = await mkdtemp(path.join(os.tmpdir(), 'vx-hookcfg-'))
+    try {
+      const app = path.join(root, 'packages', 'app')
+      await mkdir(app, { recursive: true })
+      const scripts = { prebuild: 'rm -rf dist', build: 'tsc' }
+      const names = (): string[] =>
+        (
+          migrateScripts([
+            {
+              name: 'app',
+              dir: app,
+              packageJson: { name: 'app', scripts } as never,
+              configPath: null,
+            },
+          ]).projects[0]?.tasks ?? []
+        )
+          .map((t) => t.name)
+          .sort()
+      const apart = ['build', 'prebuild']
+      const at = async (lock: string, files: Record<string, string>): Promise<string[]> => {
+        await rm(root, { recursive: true, force: true })
+        await mkdir(app, { recursive: true })
+        await writeFile(path.join(root, lock), '')
+        for (const [f, body] of Object.entries(files)) await writeFile(path.join(root, f), body)
+        return names()
+      }
+      expect(await at('package-lock.json', { '.npmrc': 'ignore-scripts=true\n' })).toEqual(apart)
+      expect(await at('pnpm-lock.yaml', { '.npmrc': 'enable-pre-post-scripts = false\n' })).toEqual(
+        apart,
+      )
+      expect(
+        await at('pnpm-lock.yaml', {
+          'pnpm-workspace.yaml': 'packages: []\nenablePrePostScripts: false\n',
+        }),
+      ).toEqual(apart)
+      // CONTROL: the setting a manager ignores, or none, folds the hook.
+      expect(await at('pnpm-lock.yaml', { '.npmrc': 'ignore-scripts=true\n' })).toEqual(['build'])
+      expect(await at('bun.lock', { '.npmrc': 'ignore-scripts=true\n' })).toEqual(['build'])
+      expect(await at('package-lock.json', { '.npmrc': 'ignore-scripts=false\n' })).toEqual([
+        'build',
+      ])
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   it("npm's lifecycle scripts are never tasks, but a hook of one is a task of its own", () => {
     // `postprepare` is npm's hook of `prepare`, and `prepare` is npm's own —
     // so it wraps nothing here and has to stand alone or it disappears.

@@ -318,3 +318,12 @@ packages/core`) selects the dependent whose `file:../lib` spec named
   landed (no credentials; the registry's `own` package unchanged since
   2022; Bun still 1.4.2), and such verbs are listed from source now,
   never run.
+- **D-33** D-31's class, two more managers: npm under
+  `ignore-scripts=true` in the project `.npmrc`, and pnpm under
+  `enable-pre-post-scripts=false` or `enablePrePostScripts: false` in
+  `pnpm-workspace.yaml`, run no `pre` / `post` hooks (probed: BUILD
+  alone, also from a member with the setting at the root), and
+  `vx init` folded them in. The manager is the nearest `packageManager`
+  or lockfile and its settings are read beside it; pnpm's
+  `ignore-scripts` and Bun's lockfile under any `.npmrc` still fold, as
+  they run the hooks. Row: the D-33 row of `tests/init.test.ts`.
