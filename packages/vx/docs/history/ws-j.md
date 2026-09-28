@@ -142,6 +142,21 @@
   `TaskNode`, sandbox types), wrong behaviour (`--affected` diffs from
   the merge base, `gha` in any mode, `maxRSS` units, `EDQUOT`, the
   status region's rows) and exports each page's own list omitted.
+- **J-21** caching.md and flows.md against the source: the status
+  spawn's `--ignored=matching`, the local short-circuit's up-front keys,
+  `file_hashes_swept_at`, the rename inside the save transaction, prune
+  unlinking before its DELETE and keeping phantoms under an hour,
+  `cli/plan-format.ts`, and `has()` in place of HEAD.
+- **J-22** schema.md against the source: `exec.command` runs as
+  `sh -c`, `--` args are shell-quoted (bare when safe, else single
+  quotes; not `JSON.stringify`), `!` negation subtracts in any order, and
+  the always-ignored set also holds `**/vx-lock.json` and `**/*.bun-build`.
+- **J-24** comparison.md and patterns.md against the source: filters
+  start from the empty set unless all exclude (not a divergence), the
+  artifact also holds `workspace-outputs/` and `.vx-meta.json`, `vx init`
+  folds pre/post scripts, `cacheRetention` is a workspace field,
+  `@vzn/vx-lockfile` has four lockfiles, a dead CLAUDE.md "P1" pointer,
+  and the run-history tables live in `cache/schema.ts`.
 
 ## Leads for other streams
 
@@ -190,3 +205,4 @@ restart it to apply the edit`).
 task(s): nope.` and exits 0; cli.md says an undeclared name is
   refused (it is, exit 1, once a configured project is affected).
 - **CLI** `vx init --help` shows `--mjs` in its usage but no row for it.
+- **sandbox** CI `@vzn/vx-docs#build` finished (`Complete!`) then died 137 on `strace: ptrace(PTRACE_LISTEN…): Input/output error` (PR #1310, 2026-09-28): item 925's fault reaches the docs build too.
