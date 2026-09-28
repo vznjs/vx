@@ -304,3 +304,12 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   second run with nothing changed does not; red without the fix. It
   also holds G-21's root-project arm; the cache-dir arm stays
   equivalent (the cache dir ignores itself).
+- **G-24.** A mutation sweep of `vx-lockfile/src/index.ts` (9 mutants):
+  5 caught. Dropping the `extraFiles` wiring, or bun's
+  `patchFiles`, survived: item 1014's rows hand the patch content to
+  the digest by hand, so an edited Bun patch keeping every key through
+  the plugin went unseen. Row (`bun.test` › an edit to a patch file
+  bun.lock names re-keys every project): red on both. Unheld: the
+  `DIGEST_VERSION` value (the memo's identity; a row would restate the
+  constant) and the unprefixed-message branch (every parser names its
+  file).

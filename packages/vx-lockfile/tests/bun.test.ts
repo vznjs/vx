@@ -503,6 +503,21 @@ describe('vx run with bun() declared', () => {
     expect(affectedIds(root, 'build')).toEqual(['a#build', 'b#build', 'c#build'])
   })
 
+  // Item 1014 through the plugin: the parser's rows hand `files` in by
+  // hand, and dropping the wiring that asks the claim for them (a sweep
+  // mutant of index.ts) kept every key when the patch was edited.
+  it('an edit to a patch file bun.lock names re-keys every project', async () => {
+    await mkdir(path.join(root, 'patches'), { recursive: true })
+    await writeFile(path.join(root, 'patches', 'bar.patch'), 'v1\n')
+    await writeFile(
+      path.join(root, 'bun.lock'),
+      lock({ top: '"patchedDependencies": { "bar@2.0.0": "patches/bar.patch" },' }),
+    )
+    const before = await hashes()
+    await writeFile(path.join(root, 'patches', 'bar.patch'), 'v2\n')
+    expect(moved(before, await hashes())).toEqual(['a#build', 'b#build', 'c#build'])
+  })
+
   it('`--affected` selects the projects the bump reaches', async () => {
     const git = (...args: string[]) =>
       Bun.spawnSync({
