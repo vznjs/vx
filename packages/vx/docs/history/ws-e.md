@@ -51,8 +51,10 @@ What did not:
 - B: the sandbox runtime's init runs `getGlobalNpmPaths`
   (`generate-seccomp-filter.js`, an `execSync`), 128 ms of `vx info`'s
   321 ms (compiled binary, this repo; CPU profile of the
-  `trySandboxedTrue` probe). A run that arms the sandbox likely pays it
-  too; unmeasured.
+  `trySandboxedTrue` probe). Measured since: the `execSync` is
+  `findJar` → `getJavaProxyAgentJarPath` (152 ms), plus `updateConfig`
+  103 ms; in source mode that is 260 of `vx info`'s 567 ms, and a warm
+  `vx run lint --all` spends 342 of 491 ms in `miss: build request`.
 - B: the unsafe suite's row "a traced sandboxed one-shot task's
   children die with vx that is descheduled after the spawn" failed once
   on PR 1254's CI (a diff that touched only a watch test); main was
@@ -252,3 +254,28 @@ task picked`; neither prints a stack. Row in
   cli.md's claim that a real prune creates an empty cache (E-7 changed
   that). Rows in `tests/inspect-no-create.test.ts`,
   `tests/workspace-config.test.ts`.
+- E-39 — `vx why` with no recorded run said only "no runs"; it points
+  at `vx last`, or says nothing has run here yet. Row in
+  `tests/why.test.ts`.
+- E-40 — `cli/watch.ts` split again: which paths are events
+  (`isIgnoredWatchPath`, `makeWatchIgnore`, `gitIgnored`,
+  `makeRootEventFilter`) is `cli/watch-filter.ts`. No behaviour change.
+- E-41 — `vx watch` with no task says the form
+  (`vx watch <task>, e.g. vx watch build`). E-33's control row now
+  uses `info format`, which the positional guard alone decides.
+- E-42 — `vx last <id>` and `vx why --run <id>` take a unique prefix
+  of the 36-char run id (`cli/run-id.ts`); a shared prefix exits 1 and
+  lists its runs. Row in `tests/last.test.ts`.
+- E-43 — three refusals named no next step: `vx run` with no task and
+  no TTY (now the form and why no picker opened), a `--filter` typo
+  beside a match (now the nearest project, as the all-missed error
+  says) and a picker answer out of range (now the range). Rows in
+  `tests/cli.test.ts`, `tests/select.test.ts`,
+  `tests/cli-picker.test.ts`.
+- Probe, refuted: CLI startup. Source mode loads one shared module
+  graph (~50 ms) for every verb, `--version` included; a lazy `run.ts`
+  or dropping `cli/index.ts`'s re-exports saves under 5 ms. The
+  compiled binary answers `--version` in 18 ms. The cost worth cutting
+  is B's sandbox init above.
+- Mutation: E-38's `noCreate` guard replaced by `false` reddens
+  `tests/inspect-no-create.test.ts`.

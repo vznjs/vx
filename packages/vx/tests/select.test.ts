@@ -103,6 +103,9 @@ describe('resolveFilters', () => {
     // CONTROL: a name that matched nothing beside one that did IS said.
     const typo = await quiet(() => resolveFilters(root, ['app', 'nosuch']))
     expect(typo.stderr).toBe('vx: filter "nosuch" matched no projects\n')
+    // A typo beside a match names the nearest project, as the all-missed error does.
+    const near = await quiet(() => resolveFilters(root, ['app', 'apq']))
+    expect(near.stderr).toBe('vx: filter "apq" matched no projects. Did you mean app?\n')
   })
 
   it('only an INCLUDED diff makes the selection diff-chosen', async () => {

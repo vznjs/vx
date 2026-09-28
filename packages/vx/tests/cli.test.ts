@@ -303,7 +303,9 @@ describe('cli run()', () => {
     // not the picker: the line says so, or a user in CI is left wondering
     // why nothing was asked (item 621).
     expect(await run(['run'])).toBe(1)
-    expect(stderr).toContain('vx run: missing task name (stdin is not a TTY)')
+    expect(stderr).toBe(
+      'vx run: missing task name (stdin is not a TTY, so no picker; vx run <task>, e.g. vx run build) (see `vx run --help`)\n',
+    )
   })
 
   it('rejects run with bad flag value (parser error surfaced)', async () => {

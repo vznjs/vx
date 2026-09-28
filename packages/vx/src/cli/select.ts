@@ -305,7 +305,10 @@ export async function resolveFilters(
   }
   // Something matched, so the run proceeds; a pattern that matched nothing
   // alongside it is still worth a line — it is probably a typo.
-  for (const f of unmatched) process.stderr.write(`vx: filter "${f}" matched no projects\n`)
+  for (const f of unmatched)
+    process.stderr.write(
+      `vx: filter "${f}" matched no projects${didYouMeanProject([f], projects)}\n`,
+    )
   let staged: Map<string, ProjectEntry> | undefined
   if (stagedPromise !== undefined) {
     try {
@@ -398,7 +401,9 @@ export async function pickTask(
     }
     const n = Number(answer)
     if (!Number.isInteger(n) || n < 1 || n > entries.length) {
-      process.stderr.write(`vx run: invalid selection: ${answer}\n`)
+      process.stderr.write(
+        `vx run: invalid selection: ${answer} (type a number from 1 to ${entries.length})\n`,
+      )
       return null
     }
     return entries[n - 1] ?? null
