@@ -1,21 +1,22 @@
 # @vzn/vx-plugin-examples
 
-One small, runnable plugin per seam. Each file is a complete plugin, and
-`tests/examples.test.ts` runs each through vx's `run()` (or the CLI, for
-the verb), so an example that stops working turns the gate red. Private:
-copy what you need.
+One small, runnable plugin per seam, each beside its own test:
+`plugins/<seam>.ts` and `plugins/<seam>.test.ts`, which drives the plugin
+through vx's `run()`. The gate runs every test, so an example that stops
+working turns it red. `vx init --plugin <seam>` writes the same two files
+into your workspace.
 
-| Seam        | File                                   | What it does                                                                       |
-| ----------- | -------------------------------------- | ---------------------------------------------------------------------------------- |
-| `executor`  | [`src/executor.ts`](src/executor.ts)   | runs a task's command in its own process group; stops it on the request's `signal` |
-| `cache`     | [`src/cache.ts`](src/cache.ts)         | a directory as the remote store, behind `LayeredCache`                             |
-| `telemetry` | [`src/telemetry.ts`](src/telemetry.ts) | appends one JSON line per run to a file                                            |
-| `schedule`  | [`src/schedule.ts`](src/schedule.ts)   | named tasks start first                                                            |
-| `admit`     | [`src/admit.ts`](src/admit.ts)         | at most one task of a name runs at a time                                          |
-| `commands`  | [`src/commands.ts`](src/commands.ts)   | `vx cache-dir` prints the cache directory                                          |
-| `project`   | [`src/project.ts`](src/project.ts)     | each `package.json` script becomes a task                                          |
-| `graph`     | [`src/graph.ts`](src/graph.ts)         | tasks of a name run one after another across projects                              |
-| `key`       | [`src/key.ts`](src/key.ts)             | folds environment variables into every cache key                                   |
+| Seam        | File                                           | What it does                                                                       |
+| ----------- | ---------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `executor`  | [`plugins/executor.ts`](plugins/executor.ts)   | runs a task's command in its own process group; stops it on the request's `signal` |
+| `cache`     | [`plugins/cache.ts`](plugins/cache.ts)         | a directory as the remote store, behind `LayeredCache`                             |
+| `telemetry` | [`plugins/telemetry.ts`](plugins/telemetry.ts) | appends one JSON line per run to a file                                            |
+| `schedule`  | [`plugins/schedule.ts`](plugins/schedule.ts)   | named tasks start first                                                            |
+| `admit`     | [`plugins/admit.ts`](plugins/admit.ts)         | at most one task of a name runs at a time                                          |
+| `commands`  | [`plugins/commands.ts`](plugins/commands.ts)   | `vx cache-dir` prints the cache directory                                          |
+| `project`   | [`plugins/project.ts`](plugins/project.ts)     | each `package.json` script becomes a task                                          |
+| `graph`     | [`plugins/graph.ts`](plugins/graph.ts)         | tasks of a name run one after another across projects                              |
+| `key`       | [`plugins/key.ts`](plugins/key.ts)             | folds environment variables into every cache key                                   |
 
 Use one in `vx.workspace.ts`:
 

@@ -9,6 +9,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { parseInitArgs } from '../src/cli/index.js'
+import { PLUGIN_TEMPLATES } from '../src/cli/plugin-templates.js'
 import { delegatedScript, loadProjectConfig, migrateScripts } from '../src/workspace/index.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
@@ -979,6 +980,45 @@ describe('vx init writes what the next run reads', () => {
         fix: 'pnpm run lint#fix',
         todo: true,
       })
+    },
+    TIMEOUT,
+  )
+})
+
+describe('vx init --plugin <seam>', () => {
+  it(
+    "writes the seam's plugin and its test, refuses to overwrite, and names the seams",
+    async () => {
+      const root = await mkdtemp(path.join(os.tmpdir(), 'vx-init-plugin-'))
+      try {
+        await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'ws' }))
+        const ok = await vx(root, ['init', '--plugin', 'key'])
+        expect([ok.code, ok.err]).toEqual([0, ''])
+        expect(ok.out.split('\n')[0]).toBe('wrote plugins/key.ts and plugins/key.test.ts')
+        expect(await Bun.file(path.join(root, 'plugins', 'key.ts')).text()).toBe(
+          PLUGIN_TEMPLATES['key']!.plugin,
+        )
+        expect(await Bun.file(path.join(root, 'plugins', 'key.test.ts')).text()).toBe(
+          PLUGIN_TEMPLATES['key']!.test,
+        )
+        const again = await vx(root, ['init', '--plugin', 'key'])
+        expect([again.code, again.err]).toEqual([
+          1,
+          'vx init: plugins/key.ts exists; --force overwrites it\n',
+        ])
+        const bad = await vx(root, ['init', '--plugin', 'nope'])
+        expect([bad.code, bad.err]).toEqual([
+          1,
+          `vx init: --plugin takes a seam: one of ${Object.keys(PLUGIN_TEMPLATES).join(', ')} (got 'nope')\n`,
+        ])
+        // --dry writes nothing.
+        const dry = await vx(root, ['init', '--plugin=graph', '--dry'])
+        expect(dry.code).toBe(0)
+        expect(existsSync(path.join(root, 'plugins', 'graph.ts'))).toBe(false)
+        expect(existsSync(path.join(root, 'plugins', 'key.ts'))).toBe(true)
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
     },
     TIMEOUT,
   )

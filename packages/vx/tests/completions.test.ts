@@ -67,6 +67,7 @@ const ARGV: Readonly<Record<string, readonly string[]>> = {
   '--dry-run': [],
   '--check': [],
   '--mjs': [],
+  '--plugin': ['key'],
   '--format': ['json'],
   '--run': ['id'],
   '--list': [],

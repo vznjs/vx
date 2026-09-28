@@ -12,7 +12,8 @@ const SRC = path.resolve(import.meta.dir, '..', 'src')
 
 // Each entry names the path the site probes; all are files by construction.
 const FILE_PATH_SITES: Record<string, number> = {
-  'cli/init.ts': 3, // turbo.json, nx.json, the Nx project-graph json
+  'cli/init.ts': 4, // turbo.json, nx.json, the Nx project-graph json, a scaffold's file
+  'cli/plugin-templates.ts': 2, // the cache example's has() and get(): artifact file paths
   'orchestrator/doctor.ts': 1, // the lockfile
   'orchestrator/task-hash.ts': 1, // a file to hash
   'workspace/affected.ts': 1, // a file to read bytes from

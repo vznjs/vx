@@ -252,6 +252,20 @@ are `.ts`/`.js` only, editors complete them from `src/config.ts`'s
 types, and those types are already held to the validator both ways
 (`contract-config-schema.test.ts`).
 
+## H-21: `vx init --plugin <seam>` scaffolds a runnable plugin
+
+`vx init --plugin <seam>` writes `plugins/<seam>.ts` and
+`plugins/<seam>.test.ts` for any of the nine seams, and prints the
+line that declares it. The files are H-17's examples, now one plugin
+and one standalone test per seam side by side
+(`packages/vx-plugin-examples/plugins`), so the gate runs exactly what a
+user gets. Core cannot import a sibling package, so
+`src/cli/plugin-templates.ts` is a generated copy, held to the examples
+byte for byte by `plugin-templates.unsafe.test.ts`. A scaffolded test
+was run in a fresh workspace with `@vzn/vx` linked: green. Rows:
+`init.test.ts` "vx init --plugin <seam>" (written bytes, the overwrite
+refusal, the unknown seam, `--dry`).
+
 ## Leads for other streams
 
 - **D / B:** `sandbox.ignore` names that loaded and did nothing: done in D-4.

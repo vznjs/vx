@@ -15,6 +15,7 @@ hook costs nothing. Declare it in `vx.workspace.ts`
 it, call `run()` from `@vzn/vx` on a throwaway workspace. One runnable
 plugin per seam, each held by a test that runs it, is in
 [`packages/vx-plugin-examples`](https://github.com/vznjs/vx/tree/main/packages/vx-plugin-examples).
+`vx init --plugin <seam>` writes one, with its test, into your workspace.
 
 This one gives every TypeScript package a `typecheck` task:
 
