@@ -6,7 +6,7 @@
 // silently when it goes wrong, so the assertion is the exact tree after
 // each hit, read fresh — never "the run was green".
 
-import { lstat, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { lstat, mkdir, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
@@ -183,6 +183,52 @@ describe('an output directory that is a symlink inside the project (e2e)', () =>
         await rm(path.join(dir, 'real-out', 'out.js'))
         expect((await status())?.['status']).toBe('cache-hit')
         expect(await readFile(path.join(dir, 'dist', 'out.js'), 'utf8')).toBe('v1\n')
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+})
+
+// vx packs outputs outside the task's sandbox, following a link to its
+// target: a link a sandboxed task planted to a file it could not read
+// (another project's, the home directory's) put that file's bytes in the
+// artifact and the remote (L-23). The `link` shape above, a link inside
+// the project, is the control that still caches.
+describe('a symlinked output that leaves the project (e2e)', () => {
+  it(
+    'fails the save loudly and stores none of the target',
+    async () => {
+      const root = await makeWorkspace({ prefix: 'vx-output-linkout-' })
+      try {
+        const other = await addProject(root, 'other', { files: { 'secret.txt': 'L23-SECRET\n' } })
+        const target = path.join(other, 'secret.txt')
+        await addProject(root, 'app', {
+          config: `
+            export default {
+              tasks: {
+                build: {
+                  exec: { command: 'rm -rf dist && mkdir dist && ln -s ${JSON.stringify(target).slice(1, -1)} dist/out' },
+                  cache: { inputs: { files: ['package.json'] }, outputs: { files: ['dist/**'] } },
+                },
+              },
+            }
+          `,
+        })
+        const r = await summarized(root, ['app#build'])
+        expect(r.code).toBe(0)
+        expect(r.text).toContain(
+          `output dist/out is a symlink to ${await realpath(target)}, outside the project`,
+        )
+        const again = await summarized(root, ['app#build'])
+        expect(again.tasks.get('app#build')?.['status']).toBe('success')
+        const held: string[] = []
+        for await (const f of new Bun.Glob('**/*.tar.zst').scan({ cwd: root, dot: true })) {
+          const tar = Bun.zstdDecompressSync(await Bun.file(path.join(root, f)).bytes())
+          if (new TextDecoder().decode(tar).includes('L23-SECRET')) held.push(f)
+        }
+        expect(held).toEqual([])
       } finally {
         await rm(root, { recursive: true, force: true })
       }

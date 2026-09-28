@@ -1304,6 +1304,7 @@ export class Cache implements CacheLayer {
       stdout: args.entry.stdout ?? '',
       outputs: this.outputsOf(args),
       exec: usageOfEntry(args.entry),
+      within: args.projectDir,
     })
     if (plan.size > this.artifactCeiling) {
       throw new Error(

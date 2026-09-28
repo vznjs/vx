@@ -81,6 +81,8 @@
     `node_modules/.bin/nx`, never `npx`; `nx-exec.cjs` runs under Node,
     which never auto-installs; `turbo()` spawns nothing. The lage loader
     was fixed in L-22. No bug.
+18. What vx reads on a task's behalf. The save packs outputs outside the
+    sandbox and followed a symlinked output to any target (L-23).
 
 ## Items
 
@@ -259,6 +261,14 @@
   missing `--no-env-file`), and so does vx-migrate's child that
   evaluates a `lage.config.js`; a compiled binary never auto-installed.
   Rows: a local registry sees no request, red without the flag.
+- L-23. `fix(cache)`: vx packs a symlinked output as its target's bytes,
+  reading it outside the task's sandbox, so a sandboxed task that linked
+  `dist/x` to a file it could not read (another project's) had that file
+  packed into its artifact and the remote (probed). The save now
+  `lstat`s each output (no extra call for a file), resolves a link, and
+  refuses one whose real target is outside the project; the body is read
+  from the resolved path. Row: e2e, no artifact holds the target's bytes,
+  red without the bound; the in-project `link` shape still caches.
 
 ## Leads for other streams
 

@@ -1131,7 +1131,9 @@ local copy (item 942); now the read is a miss and the task runs. On the save sid
 as a regular file (a hit that finds the task's own link still current
 leaves it); a link to a directory, or a dangling one, has no bytes to
 store, so the save refuses it by name rather than cache an entry that
-restores to nothing. The clean before exec and restore removes every
+restores to nothing. So does a link whose target is outside the
+project: vx reads outputs outside the task's sandbox, and a planted
+link packed a file the task could not read (L-23). The clean before exec and restore removes every
 file AND symlink the output globs cover (a link is unlinked, never
 followed) and prunes the directories it emptied, so a task whose
 output changed shape — `dist/out` a directory one run and a file the
