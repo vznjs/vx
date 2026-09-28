@@ -1,0 +1,213 @@
+{
+  "listTasks": {
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "project": {
+          "type": "string"
+        }
+      }
+    },
+    "answer": [
+      "projects",
+      "projects[]",
+      "projects[].dir",
+      "projects[].name",
+      "projects[].tasks",
+      "projects[].tasks[]",
+      "projects[].tasks[].cached",
+      "projects[].tasks[].command",
+      "projects[].tasks[].dependsOn",
+      "projects[].tasks[].id",
+      "projects[].tasks[].name"
+    ]
+  },
+  "getCacheStats": {
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "scope": {
+          "oneOf": [
+            {
+              "type": "string",
+              "enum": [
+                "all"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "project": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "project"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "answer": [
+      "entryCount",
+      "hitCountLast24h",
+      "hitRate24h",
+      "runCountLast24h",
+      "scope",
+      "totalBytes"
+    ]
+  },
+  "getRunHistory": {
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "project": {
+          "type": "string"
+        },
+        "task": {
+          "type": "string"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 500,
+          "default": 50
+        }
+      }
+    },
+    "answer": [
+      "history",
+      "history[]",
+      "history[].failureMode",
+      "history[].hitRate",
+      "history[].id",
+      "history[].maxCpuParallelism",
+      "history[].maxPeakRssBytes",
+      "history[].p50DurationMs",
+      "history[].p99DurationMs",
+      "history[].runs",
+      "history[].successRate",
+      "limit",
+      "runs",
+      "runs[]",
+      "runs[].cacheHit",
+      "runs[].durationMs",
+      "runs[].endedAt",
+      "runs[].exitCode",
+      "runs[].project",
+      "runs[].runId",
+      "runs[].startedAt",
+      "runs[].status",
+      "runs[].task"
+    ]
+  },
+  "explainCacheKey": {
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "taskId": {
+          "type": "string",
+          "description": "project#task"
+        }
+      },
+      "required": [
+        "taskId"
+      ]
+    },
+    "answer": [
+      "latestEntry",
+      "latestEntry.command",
+      "latestEntry.createdAt",
+      "latestEntry.durationMs",
+      "latestEntry.exitCode",
+      "latestEntry.hash",
+      "latestEntry.sizeBytes",
+      "note",
+      "project",
+      "task",
+      "taskId"
+    ]
+  },
+  "whyDidThisRerun": {
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "runId": {
+          "type": "string",
+          "description": "A run id from getRunHistory; omitted = the latest run of the task"
+        },
+        "taskId": {
+          "type": "string",
+          "description": "project#task"
+        }
+      },
+      "required": [
+        "taskId"
+      ]
+    },
+    "answer": [
+      "found",
+      "hashChanged",
+      "note",
+      "previousRun",
+      "previousRun.cacheHit",
+      "previousRun.hash",
+      "previousRun.startedAt",
+      "previousRun.status",
+      "runId",
+      "taskId",
+      "thisRun",
+      "thisRun.cacheHit",
+      "thisRun.cached",
+      "thisRun.hash",
+      "thisRun.startedAt",
+      "thisRun.status"
+    ]
+  },
+  "getWorkspaceInfo": {
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    },
+    "answer": [
+      "bun",
+      "bunSupported",
+      "cacheBytes",
+      "cacheDir",
+      "cacheEntries",
+      "cacheVersion",
+      "configErrors",
+      "flakyTasks",
+      "git",
+      "gitStatusCache",
+      "gitStatusCache.fsmonitor",
+      "gitStatusCache.untrackedCache",
+      "hits24h",
+      "lockfile",
+      "memory",
+      "memory.cgroupLimitBytes",
+      "memory.totalBytes",
+      "memory.usableBytes",
+      "orphans",
+      "orphans.artifacts",
+      "orphans.bytes",
+      "plugins",
+      "projects",
+      "runs24h",
+      "sandbox",
+      "sandbox.available",
+      "sandbox.declared",
+      "sandbox.reason",
+      "schemaVersion",
+      "tasks",
+      "vx",
+      "workers",
+      "workers.cores",
+      "workers.count",
+      "workers.cpuQuota",
+      "workers.source",
+      "workspaceRoot"
+    ]
+  }
+}
