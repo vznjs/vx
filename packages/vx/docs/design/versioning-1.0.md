@@ -116,6 +116,16 @@ the reviewer sees it before the merge.
   A deliberate change regenerates the
   record with `VX_UPDATE_CONTRACT=1` (the command is in the test's
   header) and names the change in the release notes.
+- **The documented configs.** `tests/config-corpus.unsafe.test.ts`
+  finds every `ts` fence that calls `defineProject(` or
+  `defineWorkspace(` in `docs/` (history and design aside) and the
+  site's hand-authored pages, and every config under `examples/`,
+  imports each and runs the loader's validator on it. A fence whose
+  first line names a path (`// presets/ts-build.ts`) is written there,
+  so a config can import what its page showed. A schema change that
+  refuses a documented config fails here; the fences that are not
+  programs are named in the test, with why. `vx-migrate`'s writers are
+  held by their own suites, which load each config they write.
 - **The plugin API and the package's exports.**
   `tests/contract-package-api.test.ts` reads, from the source, every
   declaration `src/index.ts` exports and every type those name,

@@ -1429,6 +1429,8 @@ was deliberately rejected — the language already does this). Plain TS
 arrays:
 
 ```ts
+import { defineProject } from '@vzn/vx'
+
 const srcInputs = ['src/**', 'tsconfig.json']
 
 export default defineProject({

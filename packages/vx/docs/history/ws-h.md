@@ -328,6 +328,15 @@ red; #1600 re-recorded it. Two PRs in flight, one changing a plugin's
 exports and one its record, cannot see each other: the record lands
 behind.
 
+## H-26: the documented configs load under the current schema
+
+Nothing loaded the configs the docs, the site and `examples/` show, so a
+schema change could refuse one and pass. `tests/config-corpus.unsafe.test.ts`
+finds them (38 today), imports each and validates it; dropping
+`description` from the task fields turns two red. It found one broken:
+`schema.md`'s shared-inputs sample called `defineProject` without
+importing it. Two fences are sketches by design and are named in the test.
+
 ## Leads for other streams
 
 - **F:** `vx mcp`'s tools are a frozen 1.0 output (`versioning-1.0.md`), held only by name (`server.test.ts`): their input schemas and result shapes have no record.
