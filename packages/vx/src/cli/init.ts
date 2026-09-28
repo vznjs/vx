@@ -149,7 +149,11 @@ async function adopt(
   args: InitArgs,
 ): Promise<number> {
   const name = `vx.workspace.${args.mjs ? 'mjs' : 'ts'}`
-  const body = `import { ${runner} } from '@vzn/vx-migrate'\n\nexport default { plugins: [${runner}()] }`
+  const remote = remoteCacheSignal(root, runner)
+  const cache = REMOTE_CACHE[runner]
+  const imports = remote === undefined ? runner : `${runner}, ${cache}`
+  const plugins = remote === undefined ? `${runner}()` : `${runner}(), ${cache}()`
+  const body = `import { ${imports} } from '@vzn/vx-migrate'\n\nexport default { plugins: [${plugins}] }`
   const text = args.mjs
     ? `${body}\n`
     : `import type { WorkspaceConfig } from '@vzn/vx'\n${body} satisfies WorkspaceConfig\n`
@@ -167,17 +171,67 @@ async function adopt(
     if (existing !== undefined && existing !== name) await unlink(path.join(root, existing))
     await Bun.write(path.join(root, name), text)
   }
-  const wrote =
-    existing !== undefined && !args.force
-      ? `${existing} already declares ${runner}().`
-      : args.dry
-        ? `would write ${name} (dry run, nothing written).`
-        : `wrote ${name}.`
+  const kept = existing !== undefined && !args.force
+  const wrote = kept
+    ? `${existing} already declares ${runner}().`
+    : args.dry
+      ? `would write ${name} (dry run, nothing written).`
+      : `wrote ${name}.`
+  const cacheLine =
+    remote === undefined
+      ? ''
+      : kept && !readFileSync(path.join(root, existing), 'utf8').includes(`${cache}(`)
+        ? `${remote}: add ${cache}() from @vzn/vx-migrate to its plugins and vx shares that remote cache.\n`
+        : kept
+          ? ''
+          : `${cache}(): ${remote}, so vx shares that remote cache (inert where the variable is unset).\n`
   process.stdout.write(
     `vx init: ${source} found — ${runner}() from @vzn/vx-migrate runs this repo as it is; nothing else written.\n` +
-      `${wrote}\n\nnext: ${adoptionNext(root, runner, source)}\n`,
+      `${wrote}\n${cacheLine}\nnext: ${adoptionNext(root, runner, source)}\n`,
   )
   return 0
+}
+
+const REMOTE_CACHE = { turbo: 'turboCache', nx: 'nxCache' } as const
+
+/** The variable each runner's self-hosted remote cache is set by, as its plugin reads it. */
+const REMOTE_CACHE_ENV = { turbo: 'TURBO_TOKEN', nx: 'NX_SELF_HOSTED_REMOTE_CACHE_SERVER' } as const
+
+const CI_FILES = ['.gitlab-ci.yml', '.circleci/config.yml']
+
+/**
+ * Where the repo shows a remote cache its runner uses, or undefined: turbo.json's
+ * enabled `remoteCache`, or a CI file that sets the runner's cache variable (a
+ * local repo holds no token; CI does).
+ */
+function remoteCacheSignal(root: string, runner: 'turbo' | 'nx'): string | undefined {
+  if (runner === 'turbo') {
+    for (const f of ['turbo.json', 'turbo.jsonc']) {
+      let rc: unknown
+      try {
+        rc = (
+          Bun.JSONC.parse(readFileSync(path.join(root, f), 'utf8')) as { remoteCache?: unknown }
+        )?.remoteCache
+      } catch {
+        continue
+      }
+      if (typeof rc === 'object' && rc !== null && (rc as { enabled?: unknown }).enabled !== false)
+        return `${f} names a remoteCache`
+    }
+  }
+  const variable = REMOTE_CACHE_ENV[runner]
+  const workflows = new Bun.Glob('.github/workflows/*.{yml,yaml}')
+  const files = [...workflows.scanSync({ cwd: root, dot: true })].sort().concat(CI_FILES)
+  for (const f of files) {
+    let text: string
+    try {
+      text = readFileSync(path.join(root, f), 'utf8')
+    } catch {
+      continue
+    }
+    if (text.includes(variable)) return `${f} sets ${variable}`
+  }
+  return undefined
 }
 
 type PackageManager = 'pnpm' | 'yarn' | 'bun' | 'npm'

@@ -799,6 +799,84 @@ describe('vx init — the generated build is not a cached no-op', () => {
     }
   }, 60_000)
 
+  it('a remote cache the repo shows is declared beside the runner, and named', async () => {
+    const rows: Record<string, unknown> = {}
+    for (const [label, files] of [
+      ['turbo.json remoteCache', { 'turbo.json': '{ "remoteCache": { "teamId": "t" } }\n' }],
+      [
+        'workflow TURBO_TOKEN',
+        {
+          'turbo.json': '{}\n',
+          '.github/workflows/ci.yml': 'env:\n  TURBO_TOKEN: ${{ secrets.T }}\n',
+        },
+      ],
+      [
+        'nx gitlab',
+        {
+          'nx.json': '{}\n',
+          '.gitlab-ci.yml': 'variables:\n  NX_SELF_HOSTED_REMOTE_CACHE_SERVER: https://c\n',
+        },
+      ],
+      ['disabled', { 'turbo.json': '{ "remoteCache": { "enabled": false } }\n' }],
+      ['nx with a Turbo token', { 'nx.json': '{}\n', '.gitlab-ci.yml': 'TURBO_TOKEN: x\n' }],
+    ] as [string, Record<string, string>][]) {
+      const root = await makeScriptsWorkspace()
+      try {
+        for (const [f, text] of Object.entries(files)) await Bun.write(path.join(root, f), text)
+        const r = await vx(root, ['init', '--dry', '--mjs'])
+        rows[label] = [r.code, r.out.split('\n').filter((l) => /import|Cache/.test(l))]
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    }
+    expect(rows).toEqual({
+      'turbo.json remoteCache': [
+        0,
+        [
+          "import { turbo, turboCache } from '@vzn/vx-migrate'",
+          'export default { plugins: [turbo(), turboCache()] }',
+          'turboCache(): turbo.json names a remoteCache, so vx shares that remote cache (inert where the variable is unset).',
+        ],
+      ],
+      'workflow TURBO_TOKEN': [
+        0,
+        [
+          "import { turbo, turboCache } from '@vzn/vx-migrate'",
+          'export default { plugins: [turbo(), turboCache()] }',
+          'turboCache(): .github/workflows/ci.yml sets TURBO_TOKEN, so vx shares that remote cache (inert where the variable is unset).',
+        ],
+      ],
+      'nx gitlab': [
+        0,
+        [
+          "import { nx, nxCache } from '@vzn/vx-migrate'",
+          'export default { plugins: [nx(), nxCache()] }',
+          'nxCache(): .gitlab-ci.yml sets NX_SELF_HOSTED_REMOTE_CACHE_SERVER, so vx shares that remote cache (inert where the variable is unset).',
+        ],
+      ],
+      disabled: [0, ["import { turbo } from '@vzn/vx-migrate'"]],
+      'nx with a Turbo token': [0, ["import { nx } from '@vzn/vx-migrate'"]],
+    })
+  }, 60_000)
+
+  it('a kept workspace file that lacks the cache plugin is told to add it', async () => {
+    const root = await makeScriptsWorkspace()
+    try {
+      await Bun.write(path.join(root, 'turbo.json'), '{ "remoteCache": {} }\n')
+      const mine =
+        "import { turbo } from '@vzn/vx-migrate'\nexport default { plugins: [turbo()] }\n"
+      await Bun.write(path.join(root, 'vx.workspace.mjs'), mine)
+      const r = await vx(root, ['init'])
+      expect(r.out.split('\n').slice(1, 3)).toEqual([
+        'vx.workspace.mjs already declares turbo().',
+        'turbo.json names a remoteCache: add turboCache() from @vzn/vx-migrate to its plugins and vx shares that remote cache.',
+      ])
+      expect(await Bun.file(path.join(root, 'vx.workspace.mjs')).text()).toBe(mine)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   it('an existing workspace file is kept, named, or replaced under --force', async () => {
     const root = await makeScriptsWorkspace()
     try {

@@ -1614,7 +1614,13 @@ config live, so no task is copied. The `next:` line is one command:
 install what the file imports and is missing, with the manager the
 lockfile names, then run the config's `build` (else its first task).
 An existing workspace file is kept and named unless it already
-declares the plugin; `--force` replaces it.
+declares the plugin; `--force` replaces it. When the repo shows a remote
+cache — turbo.json's `remoteCache` (unless `enabled: false`), or
+`TURBO_TOKEN` / `NX_SELF_HOSTED_REMOTE_CACHE_SERVER` set in
+`.github/workflows/*`, `.gitlab-ci.yml` or `.circleci/config.yml` — it
+declares `turboCache()` / `nxCache()` beside the runner and names the
+file that showed it (a kept file lacking it is told to add it); the
+plugin is inert where its variable is unset.
 
 Anywhere else it scaffolds a workspace that comes from nowhere: one `vx.config.ts` per
 package from its `package.json` scripts, plus a `vx.workspace.ts` of
