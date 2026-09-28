@@ -302,3 +302,11 @@ The last `miss-save.ts` survivors: the workspace-row filter in the snapshot's `e
 - Rows: `cache-get-many.test.ts`: `getMany` past a 900-hash chunk; `has()` with its artifact gone; a write-disabled cache saves nothing. `cache.test.ts`: a size prune passes over an older row whose artifact is gone. `remote-artifact-names.test.ts`: an undeclared project output and an undeclared workspace output are each refused alone (the mixed row masked either half). Each red under its mutant.
 - Equivalent: the row mode's `& 0o777` (the sidecar already holds permission bits only).
 - Unheld here: a restore's `EACCES` (needs a non-root user), eviction on a read-only cache, the prune retry and access flush on `SQLITE_FULL` (the unsafe disk-full suite, which skips on this box), and a foreign artifact's bare `outputs/` directory entry.
+
+### A-35 (2026-09-28, sweep: `upstream.ts`)
+
+19 mutants over the eleven files that reach it: 17 caught, 2 survived. No defect.
+
+- Row (`upstream.test.ts`): `^*` alone takes the dep-workspace upstreams and leaves the same-project one; every row that used it also held `*`. Red under its mutant.
+- `excluded-keys.ts` and `keyed-projects.ts` swept too: 17 mutants, 13 caught. Row (`taint-tracker.test.ts`): a cached persistent task building on a skipped key is not counted as unsaved (it saves nothing). Red under its mutant.
+- Equivalent: the member order of a group's expansion (the key sorts its graft by hash, and the other caller asks only whether any member is unkeyed); a group's fold filter and excluded-key seed (a group has no filter, so every member folds); the keyed-projects memo (a repeated walk, same answer).

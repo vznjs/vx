@@ -77,6 +77,11 @@ describe('filterUpstreamHashes', () => {
     expect(out.some(([, h]) => h === 'h-foo')).toBe(false)
   })
 
+  it('^* alone takes the dep-workspace upstreams and leaves the same-project one (A-35)', () => {
+    const up = [outcome('self#a', 'h-a'), outcome('dep#b', 'h-b')]
+    expect(filterUpstreamHashes(up, ['^*'], 'self', 'self#build')).toEqual([['dep#b', 'h-b']])
+  })
+
   it('!^noisy (dep-workspace negation) removes only that dep task', () => {
     const up = [outcome('dep#noisy', 'h-noisy')]
     // `^*` selects every dep-workspace upstream; `!^noisy` deletes noisy.

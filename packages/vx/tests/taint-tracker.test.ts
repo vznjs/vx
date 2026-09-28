@@ -214,7 +214,11 @@ describe('excludedTaint — which scheduled tasks build on a skipped key', () =>
 
   it('reaches every dependant of a seed, counting only what would save', () => {
     const nodes = new Map<string, TaskNode>()
+    // A cached persistent task saves nothing whatever it builds on (A-35).
+    const serve = task('app#serve', ['app#seed'], true)
+    ;(serve.config as { exec?: object }).exec = { command: 'serve', persistent: {} }
     for (const n of [
+      serve,
       task('app#top', ['app#mid'], true),
       task('app#mid', ['app#seed'], false),
       skipped(task('app#seed', [], true)),
