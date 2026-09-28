@@ -23,8 +23,8 @@
 // hook is usually `rimraf dist`); and a script that is nothing but
 // `<pm> run <other>` becomes a GROUP over `<other>`, so the graph sees the
 // dependency instead of a package-manager subprocess it cannot cache.
-// Yarn 2+ runs no such hooks (probed: `yarn run build` printed BUILD alone),
-// so under it `prebuild` is a script like any other (D-31).
+// Where the manager runs no such hooks (Yarn 2+, D-31; npm or pnpm told
+// not to, D-33) `prebuild` is a script like any other.
 
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
@@ -95,34 +95,56 @@ const OWN_COMMANDS: Readonly<Record<string, ReadonlySet<string>>> = {
 }
 
 /**
- * Whether the package manager that owns `dir` is Yarn 2+: the nearest
- * `packageManager: yarn@<2+>`, or the nearest lockfile being a Berry
- * `yarn.lock` (it opens with `__metadata:`). Another lockfile, or none,
- * is a manager that runs `pre` / `post` hooks.
+ * Whether the package manager that owns `dir` runs `pre` / `post` hooks
+ * around a script. The manager is the nearest `packageManager` field or
+ * lockfile, and its settings are read beside it, as each reads them for a
+ * member too. Probed with a `prebuild` / `build` / `postbuild` trio: Yarn
+ * 2+ runs none (D-31); npm runs none under `ignore-scripts=true` in
+ * `.npmrc`; pnpm runs none under `enable-pre-post-scripts=false` there or
+ * `enablePrePostScripts: false` in `pnpm-workspace.yaml` (D-33); Bun and
+ * Yarn 1 run them whatever those say. No manager found is npm's default.
  */
-function isYarnBerry(dir: string, memo: Map<string, boolean>): boolean {
+function runsScriptHooks(dir: string, memo: Map<string, boolean>): boolean {
   const known = memo.get(dir)
   if (known !== undefined) return known
-  let answer: boolean | undefined
-  const manifest = path.join(dir, 'package.json')
-  try {
-    const pm = (JSON.parse(readFileSync(manifest, 'utf8')) as { packageManager?: unknown })
-      .packageManager
-    if (typeof pm === 'string') answer = /^yarn@([2-9]|\d{2,})/.test(pm)
-  } catch {}
-  if (answer === undefined) {
-    const lock = path.join(dir, 'yarn.lock')
-    if (existsSync(lock)) answer = readFileSync(lock, 'utf8').includes('\n__metadata:')
-    else if (
-      ['package-lock.json', 'pnpm-lock.yaml', 'bun.lock', 'bun.lockb'].some((f) =>
-        existsSync(path.join(dir, f)),
-      )
-    )
-      answer = false
+  const read = (f: string): string | undefined => {
+    try {
+      return readFileSync(path.join(dir, f), 'utf8')
+    } catch {
+      return undefined
+    }
   }
-  if (answer === undefined) {
+  let manager: string | undefined
+  try {
+    const pm = (JSON.parse(read('package.json') ?? '') as { packageManager?: unknown })
+      .packageManager
+    if (typeof pm === 'string')
+      manager = /^yarn@([2-9]|\d{2,})/.test(pm) ? 'berry' : pm.split('@')[0]
+  } catch {}
+  if (manager === undefined) {
+    const yarnLock = read('yarn.lock')
+    if (yarnLock !== undefined) manager = yarnLock.includes('\n__metadata:') ? 'berry' : 'yarn'
+    else if (existsSync(path.join(dir, 'pnpm-lock.yaml'))) manager = 'pnpm'
+    else if (existsSync(path.join(dir, 'package-lock.json'))) manager = 'npm'
+    else if (['bun.lock', 'bun.lockb'].some((f) => existsSync(path.join(dir, f)))) manager = 'bun'
+  }
+  let answer: boolean
+  if (manager === undefined) {
     const up = path.dirname(dir)
-    answer = up === dir ? false : isYarnBerry(up, memo)
+    answer = up === dir ? true : runsScriptHooks(up, memo)
+  } else {
+    const npmrc = read('.npmrc') ?? ''
+    const set = (key: string, value: string): boolean =>
+      new RegExp(`^\\s*${key}\\s*=\\s*${value}\\s*$`, 'm').test(npmrc)
+    answer =
+      manager === 'berry'
+        ? false
+        : manager === 'npm'
+          ? !set('ignore-scripts', 'true')
+          : manager === 'pnpm'
+            ? !set('enable-pre-post-scripts', 'false') &&
+              !/^enablePrePostScripts:\s*false\s*$/m.test(read('pnpm-workspace.yaml') ?? '')
+            : true
   }
   memo.set(dir, answer)
   return answer
@@ -178,10 +200,10 @@ function upstreamBuildOnWorker(tasks: GeneratedTask[]): void {
 
 export function migrateScripts(metas: readonly ProjectMeta[]): MigrationPlan {
   const projects: GeneratedProject[] = []
-  const berry = new Map<string, boolean>()
+  const hookMemo = new Map<string, boolean>()
   for (const meta of metas) {
     const scripts = scriptsOf(meta)
-    const runsHooks = !isYarnBerry(meta.dir, berry)
+    const runsHooks = runsScriptHooks(meta.dir, hookMemo)
     const runnable = Object.keys(scripts).filter(
       (n) => typeof scripts[n] === 'string' && scripts[n] !== '',
     )
