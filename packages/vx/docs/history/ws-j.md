@@ -157,6 +157,23 @@
   folds pre/post scripts, `cacheRetention` is a workspace field,
   `@vzn/vx-lockfile` has four lockfiles, a dead CLAUDE.md "P1" pointer,
   and the run-history tables live in `cache/schema.ts`.
+- **J-25** Site internals and benchmarks.md prose against the code: only
+  the landing draws with `Diagram` (imported pages still use Mermaid),
+  `update-site.ts` has no n8n panel (it rewrites the landing rows, the
+  README chart and the stress section), and "directory symlinks are
+  STATUS Next" named no item (the save refuses one by name).
+- **J-27** Docs against 21 merges from other streams: the salted value
+  digest (`value_salt`), the flag hint's home (`flagHint`), the per-task
+  unix-socket lift, the remote-body bound, plugin executors' timeout
+  and abandon, re-validation after each config hook, `vx why`'s
+  `what to do:` block, the `--run` and empty-picker hints, an uncached
+  task folded as a reader, and output-nesting in the stability gate.
+- **J-29** First-run walk on a pnpm monorepo (quickstart, configure,
+  ci): npm refuses `workspace:*` (`pnpm add -D`), `vx init` also writes
+  `vx.workspace.ts` and caches nothing until a `cache` block is added,
+  a local install needs `npx vx`, the second run is `up-to-date` unless
+  `dist/` is gone, a config runs without `@vzn/vx` installed (only the
+  editor needs it), and the CI sample lacked `setup-bun`.
 
 ## Leads for other streams
 
@@ -206,3 +223,6 @@ task(s): nope.` and exits 0; cli.md says an undeclared name is
   refused (it is, exit 1, once a configured project is affected).
 - **CLI** `vx init --help` shows `--mjs` in its usage but no row for it.
 - **sandbox** CI `@vzn/vx-docs#build` finished (`Complete!`) then died 137 on `strace: ptrace(PTRACE_LISTEN…): Input/output error` (PR #1310, 2026-09-28): item 925's fault reaches the docs build too.
+- **K** `packages/vx-mcp/README.md:60` says the server is "about 200 lines"; `src/server.ts` is 231 (the site says 210).
+- **E** `vx init --mjs --dry` lists `would replace:` for existing `.ts` configs, but `vx init --mjs` without `--force` refuses and exits 1.
+- **E** `vx cache prune` rejects `--dry` (takes `--dry-run`) while `vx run` and `vx init` take `--dry`.
