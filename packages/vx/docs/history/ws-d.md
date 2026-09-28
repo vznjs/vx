@@ -479,3 +479,11 @@ packages/core`) selects the dependent whose `file:../lib` spec named
   `plugins` (Nx lists plugins by module name) adds that a vx plugin is
   what its package's function returns. Rows: the D-49 rows of
   `tests/config-schema-refusals.test.ts`.
+- **D-50** A Turbo or Nx glob token pasted into a vx glob list
+  (`$TURBO_DEFAULT$`, `$TURBO_ROOT$`, `{projectRoot}`, `{workspaceRoot}`)
+  was taken as a literal that matched no file. `inputs.files:
+['$TURBO_DEFAULT$']` keyed the task on nothing, and after a source
+  edit the run said up-to-date and kept the old output (probed); a
+  first-run warning was the only sign. Each token is now refused in
+  inputs, outputs and `workspaceFiles`, naming what to write. Row: the
+  D-50 row of `tests/config-schema-refusals.test.ts`.

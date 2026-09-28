@@ -526,3 +526,24 @@ describe('workspace fields another runner spells elsewhere (D-38)', () => {
     expect(refusal([42])).toBe('vx.workspace.ts: `plugins[0]` must be an object')
   })
 })
+
+describe("Turbo's and Nx's glob tokens (D-50)", () => {
+  // vx expands none of them: `$TURBO_DEFAULT$` as the input list keyed the
+  // task on no file, and an edited source replayed the old output.
+  it('is refused in each glob list, naming what vx writes instead', () => {
+    expect(cacheRefusal({ files: ['$TURBO_DEFAULT$'] })).toBe(
+      `${CFG}: tasks.t.cache.inputs.files: "$TURBO_DEFAULT$" holds $TURBO_DEFAULT$, Turbo's default input set, which vx does not have — list the files, such as "**" for everything in the project`,
+    )
+    expect(cacheRefusal({ files: ['**', '{projectRoot}/src/**'] })).toBe(
+      `${CFG}: tasks.t.cache.inputs.files: "{projectRoot}/src/**" holds {projectRoot}, Nx's project root — drop it: \`files\` globs are project-relative already`,
+    )
+    expect(cacheRefusal({ files: ['**'], workspaceFiles: ['$TURBO_ROOT$/tsconfig.json'] })).toBe(
+      `${CFG}: tasks.t.cache.inputs.workspaceFiles: "$TURBO_ROOT$/tsconfig.json" holds $TURBO_ROOT$, Turbo's workspace root — name the path without it in \`workspaceFiles\`, which is workspace-root-relative`,
+    )
+    expect(cacheRefusal({ files: ['**'] }, { files: ['{workspaceRoot}/dist/**'] })).toBe(
+      `${CFG}: tasks.t.cache.outputs.files: "{workspaceRoot}/dist/**" holds {workspaceRoot}, Nx's workspace root — name the path without it in \`workspaceFiles\`, which is workspace-root-relative`,
+    )
+    // CONTROL: a brace alternation and a `$` in a name are globs.
+    expect(cacheRefusal({ files: ['{src,lib}/**', 'a$b.txt'] })).toBeNull()
+  })
+})
