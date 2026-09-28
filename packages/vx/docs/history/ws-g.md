@@ -391,3 +391,12 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   that set it; it is now the vx task's `description`. Row
   (`turbo-map-sweep.test`): red without the fix. Also drops the unused
   `type Gaps` import in `nx/index.ts` (C's lead).
+- **G-33.** nx() reports `parallelism: false` and `syncGenerators`
+  (both in Nx 23.2.1's project schema). They were dropped in silence:
+  a target Nx runs alone (an e2e suite that owns a port or a database)
+  ran beside others under vx, and Nx's sync generators
+  (`@nx/js:typescript-sync` keeping tsconfig references current) never
+  ran. Each is now a todo naming its stand-in (`--concurrency 1`,
+  `nx sync`); the defaults say nothing. Row (`nx-map-sweep.test`): red
+  without the fix. Found comparing Nx 23.2.1's target keys with the
+  mapper's.

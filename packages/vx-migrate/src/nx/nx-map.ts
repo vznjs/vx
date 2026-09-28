@@ -51,6 +51,8 @@ interface NxTarget {
   dependsOn?: unknown[]
   cache?: boolean
   continuous?: boolean
+  parallelism?: boolean
+  syncGenerators?: unknown[]
   metadata?: { nonAtomizedTarget?: unknown }
 }
 
@@ -492,6 +494,19 @@ function buildTask(
   const cacheEnabled = !persistent && cacheWanted
   if (persistent && cacheWanted) {
     todos.push('Nx caches this target, and vx never caches a persistent task — uncached here')
+  }
+  // Both were dropped in silence: a target Nx runs alone ran beside others.
+  if (target.parallelism === false) {
+    todos.push(
+      '`parallelism: false`: Nx runs this target alone, and vx has no per-task exclusivity — ' +
+        'run it with `--concurrency 1` where it must not share the machine',
+    )
+  }
+  if (Array.isArray(target.syncGenerators) && target.syncGenerators.length > 0) {
+    todos.push(
+      `\`syncGenerators\` (${target.syncGenerators.map((g) => JSON.stringify(g)).join(', ')}): ` +
+        'Nx runs them before the target, and vx does not — run `nx sync` when they are out of date',
+    )
   }
   if (cacheEnabled && mapped !== null) {
     // No `inputs` is Nx's `default` and `^default`: the project's
