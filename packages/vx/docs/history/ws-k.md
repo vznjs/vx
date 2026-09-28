@@ -110,6 +110,8 @@
   and vx has adopters to name only as benched repos (K-14).
 - **K-16** README's real-repo table gains kindspells/astro-shield against
   moon (N-6's `moon()` run), so it names all three adopted tools.
+- **K-17** And FormidableLabs/spectacle against wireit and microsoft/lage
+  against lage (N's `wireit()` and `lage()` runs; lage wins cold, bold).
 
 ## Leads for other streams
 
