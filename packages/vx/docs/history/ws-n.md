@@ -230,6 +230,12 @@ N-22. `turbo()` on shadcn-ui/ui (Turbo 2.9.18): `build` over
 mismatches. 21.4 s cold against 24.4 s, restore 221 ms against 567 ms,
 no-op 216 ms against 545 ms (`benchmarks.md`). No mapping gap.
 
+N-23. `nx()` on TanStack/form (Nx 23.2.1): `build`, `test:lib`,
+`test:types`, `test:eslint` and `test:build` plan as Nx does over 171
+tasks, 0 edge mismatches; tests pass, rerun all hits. `build` over the
+14 packages: 40.3 s cold against 44.2 s, restore 335 ms against
+1.16 s, no-op 247 ms against 1.15 s. No mapping gap.
+
 ## Candidates not built (2026-09-28)
 
 - Lerna without Nx: `lerna run <s>` (lerna 10.0.1, `prepNxOptions`)
