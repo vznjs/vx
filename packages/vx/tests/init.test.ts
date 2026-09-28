@@ -433,6 +433,39 @@ describe('migrateScripts', () => {
     }
   })
 
+  it('a script reading $npm_package_* gets it defined, from the manifest (D-34)', () => {
+    // npm, pnpm, bun and yarn set these for a script and vx sets none: the
+    // migrated `echo $npm_package_version` printed an empty string.
+    const p = project({
+      v: 'echo $npm_package_version ${npm_package_name} $npm_lifecycle_event $npm_config_x',
+      prebuild: 'echo $npm_lifecycle_event',
+      build: 'tsc',
+      plain: 'echo hi',
+    })
+    const tasks = Object.fromEntries((p?.tasks ?? []).map((t) => [t.name, t]))
+    expect(p?.importLines).toEqual(["import pkg from './package.json' with { type: 'json' }"])
+    expect(tasks['v']?.task).toEqual({
+      exec: {
+        command: 'echo $npm_package_version ${npm_package_name} $npm_lifecycle_event $npm_config_x',
+        env: {
+          define: {
+            npm_package_version: { raw: 'pkg.version' },
+            npm_package_name: { raw: 'pkg.name' },
+            npm_lifecycle_event: 'v',
+          },
+        },
+      },
+    })
+    expect(tasks['v']?.todos.filter((t) => t.includes('$npm_'))).toEqual([
+      'the script reads $npm_config_x, which the package manager sets and vx does not: define it under exec.env.define or drop it',
+    ])
+    // A folded hook ran under its own event name, which the task cannot give it.
+    expect(tasks['build']?.todos.some((t) => t.includes('$npm_lifecycle_event'))).toBe(true)
+    // CONTROL: a script reading none gets no env and imports nothing.
+    expect(tasks['plain']?.task).toEqual({ exec: { command: 'echo hi' } })
+    expect(project({ plain: 'echo hi' })?.importLines).toEqual([])
+  })
+
   it("npm's lifecycle scripts are never tasks, but a hook of one is a task of its own", () => {
     // `postprepare` is npm's hook of `prepare`, and `prepare` is npm's own —
     // so it wraps nothing here and has to stand alone or it disappears.

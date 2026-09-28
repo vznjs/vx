@@ -1669,6 +1669,11 @@ yarn@2+`, or a Berry `yarn.lock`, D-31), npm under `ignore-scripts=true`
 in the `.npmrc` beside its lockfile, pnpm under
 `enable-pre-post-scripts=false` there or `enablePrePostScripts: false` in
 `pnpm-workspace.yaml` (D-33). Bun and Yarn 1 run them whatever those say.
+A script reading `$npm_package_version`, `$npm_package_name` or
+`$npm_lifecycle_event`, which every manager sets and vx does not, gets
+them under `exec.env.define`, the first two read from an imported
+`package.json` so a version bump reaches them; any other `$npm_*` it
+reads gets a TODO (D-34).
 A script that is nothing but `npm run <other>` (`pnpm <other>`, `yarn
 <other>`, `bun run <other>`, `npm test`, `npm start`) becomes a **group**
 over `<other>` — `dependsOn` and no command — so the graph runs and
