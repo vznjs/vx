@@ -619,6 +619,8 @@ export interface SandboxedRunArgs {
   onStderr?: (chunk: string) => void
   /** See `RunOptions.liveChildren` — same contract for sandboxed spawns. */
   liveChildren?: Set<ReturnType<typeof Bun.spawn>>
+  /** `ExecuteRequest.signal`: once aborted, the tracer retry spawns nothing. */
+  signal?: AbortSignal
   /** See `RunOptions.timeoutMs` — SIGTERM the child after this many ms. */
   timeoutMs?: number
   /** See `CaptureConfig` — which streams are retained on the result. */
@@ -1226,12 +1228,14 @@ const TRACER_RETRY_LINE =
  * strace runs detached (`-DD`), and a tracer that dies leaves the command
  * running untraced — but the trace then stops short, and a denial after it
  * goes unreported. So an attempt whose stderr carries strace's own word is
- * run once more, whatever its exit: the sandbox kept its writes to what it
+ * run once more, whatever its exit, unless the run is stopping: the sandbox kept its writes to what it
  * declared, so a second run redoes, not doubles, it.
  */
 export async function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRunResult> {
   const { tracerFailed, ...first } = await runSandboxedOnce(args)
-  if (!tracerFailed) return first
+  // A stopping run has killed the children it holds; a retry would be one
+  // spawned after that kill.
+  if (!tracerFailed || args.signal?.aborted === true) return first
   args.onStderr?.(TRACER_RETRY_LINE)
   const { tracerFailed: _again, ...second } = await runSandboxedOnce(args)
   return {

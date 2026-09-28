@@ -46,6 +46,7 @@ export function localExecutor(): TaskExecutor {
         reportWithin: req.sandbox.reportWithin,
         reportLinked: req.sandbox.reportLinked,
         config: req.sandbox.config,
+        ...(req.signal !== undefined ? { signal: req.signal } : {}),
       })
     },
   }
