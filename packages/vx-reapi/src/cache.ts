@@ -103,8 +103,10 @@ export class ReapiRemoteCache {
 
   /**
    * The artifact streams from the ByteStream read into core's ingest. The
-   * duration is read first so the artifact's call is never left paused
-   * behind a second round trip.
+   * duration (which a server may have moved into CAS) is read alongside the
+   * artifact's open, not before it: one round trip less per remote hit
+   * (130 → 99 ms at 15 ms one-way against bazel-remote, F-24). The open
+   * waits only for its first message, so the call is not left paused.
    */
   async get(hash: string): Promise<{ body: Response; durationMs: number | undefined } | null> {
     const result = await this.client.getActionResult(actionDigestFor(hash))
@@ -114,8 +116,10 @@ export class ReapiRemoteCache {
     // error: the two stores are pruned independently and a dangling entry is
     // an ordinary state, not a fault.
     if (file === undefined) return null
-    const durationMs = await this.durationOf(result)
-    const body = await this.client.readBlobStream(file.digest)
+    const [durationMs, body] = await Promise.all([
+      this.durationOf(result),
+      this.client.readBlobStream(file.digest),
+    ])
     if (body === null) return null
     return { body: new Response(body), durationMs }
   }
