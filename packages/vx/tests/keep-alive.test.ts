@@ -580,12 +580,14 @@ Bun.spawn = (cmd, opts) => {
     // `& wait` shell dies at once and the server traps the signal and
     // cleans up slowly. The runner let the group go at the shell's exit;
     // the shutdown now holds it until its SIGKILL sweep (item 865). The
-    // server marks the SIGTERM, then writes a second later.
+    // server marks the SIGTERM, then writes a second later. READY waits for
+    // the server's trap: a shutdown that came first ended it untrapped, and
+    // no mark ever came (a loaded gate, B-17).
     const dir = await addProject(
       root,
       'app',
       `export default { tasks: {
-        dev: { exec: { command: 'sh -c "trap \\\\"echo t > term.txt; sleep 1; echo late > late.txt\\\\" TERM; while :; do sleep 0.05; done" >/dev/null 2>&1 & echo $$ > shell.pid; echo READY; wait', persistent: { readyWhen: 'READY' } } },
+        dev: { exec: { command: 'sh -c "trap \\\\"echo t > term.txt; sleep 1; echo late > late.txt\\\\" TERM; echo up > up.txt; while :; do sleep 0.05; done" >/dev/null 2>&1 & until [ -s up.txt ]; do sleep 0.02; done; echo $$ > shell.pid; echo READY; wait', persistent: { readyWhen: 'READY' } } },
         e2e: { dependsOn: ['dev'], exec: { command: 'true' } },
       } }`,
     )
