@@ -76,7 +76,7 @@ The MCP server is how an agent *reads* the build. The other half of
 working with agents is letting one *run* the build safely, and that is
 what the rest of vx already is: explicit inputs, [strict
 outputs](../strict-output-ownership/), a [sandbox](../the-sandbox/) that
-denies undeclared reads and network, and a
+denies undeclared reads and any domain no task of the run lists, and a
 [teardown](../ctrl-c/) that leaves nothing running when the agent's
 session is cancelled. An agent that can only run declared commands
 against declared paths is an agent you can leave alone with the
