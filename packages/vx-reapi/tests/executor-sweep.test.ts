@@ -919,11 +919,12 @@ describe.if(CHUNKING_SUPPORTED)('the Action it builds, beyond the Action', () =>
   })
 
   it('a stall that fires during the re-attach backoff still bounds the task', async () => {
-    // Execute and the first WaitExecution each drop at once, so the stall
-    // (200 ms from Execute's EXECUTING) fires inside the second backoff,
-    // 100 → 500 ms; the WaitExecution after it would hold forever. Heard in
-    // the backoff it lands near 200 ms; heard only when the backoff ends,
-    // near 500.
+    // Execute and the first two WaitExecutions each drop at once, so the
+    // stall (700 ms from Execute's EXECUTING) fires inside the third
+    // backoff, 500 → 2100 ms; the WaitExecution after it would hold forever.
+    // Heard in the backoff it lands near 700 ms; heard only when the backoff
+    // ends, near 2100. The second backoff (100 → 500) left a bound of 350
+    // 150 ms over the honest path, inside a loaded runner's stall (M-8).
     let release!: () => void
     const forever = new Promise<void>((r) => {
       release = r
@@ -932,7 +933,7 @@ describe.if(CHUNKING_SUPPORTED)('the Action it builds, beyond the Action', () =>
     let t0 = 0
     fake.onExecute = (_r, method) => {
       if (method === 'Execute') t0 = Date.now()
-      return method === 'Execute' || waits++ === 0
+      return method === 'Execute' || waits++ < 2
         ? { stages: ['EXECUTING'], error: { code: grpc.status.UNAVAILABLE, details: 'drop' } }
         : { stages: ['EXECUTING'], hold: forever }
     }
@@ -942,16 +943,16 @@ describe.if(CHUNKING_SUPPORTED)('the Action it builds, beyond the Action', () =>
           refusal(
             Promise.race([
               run(request()),
-              Bun.sleep(1000).then(() => {
+              Bun.sleep(3000).then(() => {
                 throw new Error('the stall was lost in the backoff')
               }),
             ]),
           ),
-        { executeTimeoutMs: 200 },
+        { executeTimeoutMs: 700 },
       )
       const elapsed = Date.now() - t0
-      expect(refused).toContain('was still executing 200ms after the worker started it')
-      expect([waits, elapsed < 350]).toEqual([1, true])
+      expect(refused).toContain('was still executing 700ms after the worker started it')
+      expect([waits, elapsed < 1400]).toEqual([2, true])
     } finally {
       release()
     }

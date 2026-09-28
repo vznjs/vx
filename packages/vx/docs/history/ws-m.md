@@ -79,6 +79,15 @@ about the machine; a stalled loop delays all three timers alike. The row
 now bounds the spread between the three settles (< 60 ms; serial is 120).
 Red under a mutant that chains the calls; 0 of 40 under 6 CPU burners.
 
+M-8. A sweep after M-7: 53 upper bounds on wall time under
+`packages/*/tests/`. M-7's red had 90 ms of slack; one other row had
+under 500: vx-reapi `executor-sweep.test.ts` › a stall that fires during
+the re-attach backoff (honest ~200 ms, bound 350, broken ~500). Its stall
+now lands in the third backoff (honest ~700, bound 1,400, broken ~2,100).
+Red with the backoff deaf to the abort; 0 of 20 under 6 CPU burners. The
+next tightest (`wedged.test.ts` 159 and 260, `signal-handling.test.ts`
+984) keep 500 ms or more and never went red in the survey.
+
 ## Leads for other streams
 
 - A: A-20 let a same-project dependant restore ahead of a producer whose
