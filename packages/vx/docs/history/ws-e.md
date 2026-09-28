@@ -330,3 +330,10 @@ task picked`; neither prints a stack. Row in
 - E-55 — `vx last` replaying a failed run ends with the command that
   re-runs the failures, carrying the run's forwarded arguments. Rows in
   `tests/last.test.ts`, with an ok run as the control.
+- E-54 — `vx why`'s upstream what-to-do line printed a placeholder
+  (`vx why <that task>`) under a row naming the task; it prints the
+  command for each dependency that moved.
+- E-56 — `vx last --failed` replays the latest failed run past any
+  green one since, and narrows `--list` to failures.
+- E-57 — `vx watch`'s six "cannot watch" / "cannot re-read" catch
+  blocks share one `sayCannot`. No behaviour change.
