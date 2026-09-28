@@ -112,9 +112,12 @@ export function expandNxInputs(
         return
       }
       if (o.externalDependencies !== undefined) {
+        // Not the project's package.json: Nx's inferred targets name root
+        // devDependencies (eslint, vitest), which only the lockfile keys.
         todos.push(
-          `input {externalDependencies: ${JSON.stringify(o.externalDependencies)}}: vx hashes ` +
-            "the project's package.json into every key — usually safe to drop",
+          `input {externalDependencies: ${JSON.stringify(o.externalDependencies)}}: vx keys ` +
+            'every task on the lockfile (the whole file, or with a @vzn/vx-lockfile plugin the ' +
+            "project's and the root's dependencies) — safe to drop unless only another project installs one",
         )
         return
       }
