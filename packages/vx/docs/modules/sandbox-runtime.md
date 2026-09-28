@@ -115,6 +115,7 @@ export interface SandboxAvailability {
 export function probeSandbox(opts?: { weakerNested?: boolean }): Promise<SandboxAvailability>
 export function initSandbox(opts?: {
   allowedDomains?: readonly string[] // the run's union
+  deniedDomains?: readonly string[] // every task's deny.network, refused to all (B-21)
   allowAllUnixSockets?: boolean // some task asks; the lift is set per task's wrap
 }): Promise<void>
 export function resetSandbox(): Promise<void>
