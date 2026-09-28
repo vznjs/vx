@@ -196,3 +196,10 @@ packages/core`) selects the dependent whose `file:../lib` spec named
   Equivalent: the namespace-import refusal (the default-import check
   covers it), the blob header in `blobOidOf` (its identities meet no
   store's), and `BUN_OPTIONS` (Bun 1.4.2 puts it in `execArgv`).
+- **D-21** A migration TODO holding a line break ended its `//`
+  comment in the written config, and the rest was code the next run
+  evaluated: the file failed to parse, or ran what the text said. A
+  reason can quote a manifest's own text (the Nx mapper's `env.${k}`
+  names the key). Each line, ` ` and ` ` included, stays
+  inside the comment. Row: `tests/migration.test.ts` "a TODO holding a
+  line break stays a comment in the written config (D-21)".

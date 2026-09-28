@@ -126,6 +126,28 @@ describe('applyMigration', () => {
     ).toBe('refusing to overwrite existing files (pass --force to overwrite):\n  app/vx.config.mjs')
   })
 
+  it('a TODO holding a line break stays a comment in the written config (D-21)', async () => {
+    mkdirSync(path.join(root, 'app'))
+    await apply(
+      plan([
+        [
+          'app',
+          [
+            task('build', exec('tsc'), [
+              'env key "A\nexport const leaked = 1" is not set',
+              'and\u2028export const two = 2\r\nthree',
+            ]),
+          ],
+        ],
+      ]),
+      { format: 'mjs' },
+    )
+    const file = path.join(root, 'app', 'vx.config.mjs')
+    const mod = (await import(file)) as Record<string, unknown>
+    expect(Object.keys(mod)).toEqual(['default'])
+    expect(readFileSync(file, 'utf8')).toContain('    //   export const leaked = 1" is not set')
+  })
+
   it('counts a skipped target as neither clean nor a TODO, in the singular', async () => {
     mkdirSync(path.join(root, 'app'))
     await apply(

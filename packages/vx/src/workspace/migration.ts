@@ -357,7 +357,13 @@ function renderConfigFile(
   if (p.importLines.length > 0) lines.push(...p.importLines)
   lines.push('', 'export default {', '  tasks: {')
   for (const t of p.tasks) {
-    for (const todo of t.todos) lines.push(`    // TODO(vx-migrate): ${todo}`)
+    // A reason can quote a manifest's own text (an Nx `env` key), and a
+    // line break there ended the comment: the rest was code in the file
+    // the next run evaluates (D-21). Each line stays inside the comment.
+    for (const todo of t.todos) {
+      const [first, ...rest] = todo.split(/\r\n|[\n\r\u2028\u2029]/)
+      lines.push(`    // TODO(vx-migrate): ${first}`, ...rest.map((l) => `    //   ${l}`))
+    }
     if (t.task === null) continue // skipped target — the TODO above explains
     // `__proto__: {…}` in a literal SETS the prototype, quoted or not, and
     // the run refused the config (item 1033); a computed key is a property.

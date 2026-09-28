@@ -29,7 +29,7 @@ export interface GeneratedProject {
 }
 export interface GeneratedTask {
   name: string
-  todos: string[] // rendered as `// TODO(vx-migrate): …` and listed in the report
+  todos: string[] // rendered as `// TODO(vx-migrate): …` (a line break continues the comment) and listed in the report
   task: Record<string, unknown> | null // TaskConfig-shaped; arrays may hold a RawExpr splice
 }
 export interface RawExpr {
