@@ -965,89 +965,104 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
       // so a dependent in ANY project can graft them at the right place.
       // Written for every successful remote execution, not just remote-only
       // tasks: it is what lets a 50-task chain flow worker→CAS→worker.
-      if (req.cacheKey !== undefined && (result.exit_code ?? 0) === 0 && tree.moved.length === 0) {
-        // A whole-tree capture's path is '' — the working directory itself,
-        // which `${wd}/` spelled `pkg/`: never matched by a decomposition,
-        // and grafted as a directory with an empty name (item 1040).
-        const rebase = (rel: string): string =>
-          workingDirectory === ''
-            ? rel
-            : rel === ''
-              ? workingDirectory
-              : `${workingDirectory}/${rel}`
-        // Stdout rides the record as a blob so a short-circuited repeat run
-        // can replay it. Best-effort: a record without it replays empty,
-        // never wrong bytes.
-        let stdoutDigest: Digest | undefined
-        const stdoutBytes = new TextEncoder().encode(stdout)
-        if (stdoutBytes.length > 0) {
-          const d = sha256(stdoutBytes)
-          const missing = await client.findMissingBlobs([d]).catch(() => [d])
-          const uploaded =
-            missing.length === 0
-              ? true
-              : await client.writeBlob(d, stdoutBytes).then(
-                  () => true,
-                  () => false,
+      // The record is written while the outputs come down: the two share
+      // nothing, and in turn the record's round trips (a stdout blob, Tree
+      // reads, the update) all sat before the first output byte (F-27).
+      const recording: Promise<void> =
+        req.cacheKey !== undefined && (result.exit_code ?? 0) === 0 && tree.moved.length === 0
+          ? (async (cacheKey: string): Promise<void> => {
+              // A whole-tree capture's path is '' — the working directory itself,
+              // which `${wd}/` spelled `pkg/`: never matched by a decomposition,
+              // and grafted as a directory with an empty name (item 1040).
+              const rebase = (rel: string): string =>
+                workingDirectory === ''
+                  ? rel
+                  : rel === ''
+                    ? workingDirectory
+                    : `${workingDirectory}/${rel}`
+              // Stdout rides the record as a blob so a short-circuited repeat run
+              // can replay it. Best-effort: a record without it replays empty,
+              // never wrong bytes.
+              let stdoutDigest: Digest | undefined
+              const stdoutBytes = new TextEncoder().encode(stdout)
+              // Small stdout rides the record itself (`stdout_raw`), which the
+              // replay reads as it reads a digest: two CAS round trips fewer (F-27).
+              const inlineStdout =
+                stdoutBytes.length > 0 && stdoutBytes.length <= INLINE_STDOUT_BYTES
+              if (stdoutBytes.length > 0 && !inlineStdout) {
+                const d = sha256(stdoutBytes)
+                const missing = await client.findMissingBlobs([d]).catch(() => [d])
+                const uploaded =
+                  missing.length === 0
+                    ? true
+                    : await client.writeBlob(d, stdoutBytes).then(
+                        () => true,
+                        () => false,
+                      )
+                if (uploaded) stdoutDigest = d
+              }
+              // A coarse capture is split into the paths its glob really names
+              // before it is recorded — see decomposeOutputDir.
+              const declaredGlobs = [
+                ...req.outputs.workspaceFiles,
+                ...req.outputs.files.map((g) => (projectRel === '' ? g : `${projectRel}/${g}`)),
+              ].map((g) => normalizeGlob(g))
+              const recorded: DecomposedOutputs = {
+                directories: [],
+                files: (result.output_files ?? []).map((f) => ({
+                  path: rebase(f.path),
+                  digest: f.digest,
+                  is_executable: f.is_executable === true,
+                })),
+                symlinks: (result.output_symlinks ?? []).map((sl) => ({
+                  path: rebase(sl.path),
+                  target: sl.target,
+                })),
+              }
+              for (const d of result.output_directories ?? []) {
+                const rebased = { path: rebase(d.path), tree_digest: d.tree_digest }
+                // The record is best-effort like its write below: a Read that
+                // fails while splitting failed a task whose action had succeeded.
+                const split = await decomposeOutputDir(client, rebased, declaredGlobs, warn).catch(
+                  (err: unknown) => {
+                    warn(
+                      `vx/reapi: could not read the Tree for ${rebased.path} (${errText(err)}) — recording it whole`,
+                    )
+                    return { directories: [rebased], files: [], symlinks: [] }
+                  },
                 )
-          if (uploaded) stdoutDigest = d
-        }
-        // A coarse capture is split into the paths its glob really names
-        // before it is recorded — see decomposeOutputDir.
-        const declaredGlobs = [
-          ...req.outputs.workspaceFiles,
-          ...req.outputs.files.map((g) => (projectRel === '' ? g : `${projectRel}/${g}`)),
-        ].map((g) => normalizeGlob(g))
-        const recorded: DecomposedOutputs = {
-          directories: [],
-          files: (result.output_files ?? []).map((f) => ({
-            path: rebase(f.path),
-            digest: f.digest,
-            is_executable: f.is_executable === true,
-          })),
-          symlinks: (result.output_symlinks ?? []).map((sl) => ({
-            path: rebase(sl.path),
-            target: sl.target,
-          })),
-        }
-        for (const d of result.output_directories ?? []) {
-          const rebased = { path: rebase(d.path), tree_digest: d.tree_digest }
-          // The record is best-effort like its write below: a Read that
-          // fails while splitting failed a task whose action had succeeded.
-          const split = await decomposeOutputDir(client, rebased, declaredGlobs, warn).catch(
-            (err: unknown) => {
-              warn(
-                `vx/reapi: could not read the Tree for ${rebased.path} (${errText(err)}) — recording it whole`,
-              )
-              return { directories: [rebased], files: [], symlinks: [] }
-            },
-          )
-          recorded.directories.push(...split.directories)
-          recorded.files.push(...split.files)
-          recorded.symlinks.push(...split.symlinks)
-        }
-        await client
-          .updateActionResult(execDigestFor(req.cacheKey), {
-            exit_code: 0,
-            ...(stdoutDigest === undefined ? {} : { stdout_digest: stdoutDigest }),
-            output_files: recorded.files,
-            output_directories: recorded.directories,
-            output_symlinks: recorded.symlinks,
-          })
-          .catch((err: Error) =>
-            warn(`vx/reapi: could not record execution for ${req.taskId}: ${err.message}`),
-          )
-      }
-
+                recorded.directories.push(...split.directories)
+                recorded.files.push(...split.files)
+                recorded.symlinks.push(...split.symlinks)
+              }
+              await client
+                .updateActionResult(execDigestFor(cacheKey), {
+                  exit_code: 0,
+                  ...(stdoutDigest === undefined ? {} : { stdout_digest: stdoutDigest }),
+                  ...(inlineStdout ? { stdout_raw: stdoutBytes } : {}),
+                  output_files: recorded.files,
+                  output_directories: recorded.directories,
+                  output_symlinks: recorded.symlinks,
+                })
+                .catch((err: Error) =>
+                  warn(`vx/reapi: could not record execution for ${req.taskId}: ${err.message}`),
+                )
+            })(req.cacheKey!)
+          : Promise.resolve()
       // A remote-only task's outputs stay remote — materialising node_modules
       // onto the submitter's disk is precisely what `remote: 'only'` forbids.
       // `--download=none` defers the same transfer WITHOUT making it
       // permanent: the bytes stay in the CAS and core gets a closure to pull
       // them if a locally-placed consumer turns out to need them.
       const deferred = req.remoteOnly !== true && req.download === 'deferred'
-      if (req.remoteOnly !== true && !deferred) {
-        await materialiseOutputs(client, matReq, result, warn)
-      }
+      const materialised =
+        req.remoteOnly !== true && !deferred
+          ? materialiseOutputs(client, matReq, result, warn)
+          : Promise.resolve()
+      // Both settle before a restore failure is thrown: the record is still
+      // written when the outputs cannot come down, as it was in turn.
+      const [, restored] = await Promise.allSettled([recording, materialised])
+      if (restored.status === 'rejected') throw restored.reason
 
       return {
         exitCode: result.exit_code ?? 0,
@@ -1519,6 +1534,9 @@ async function placeSymlink(
     await symlink(target, abs)
   }
 }
+
+/** Stdout up to this size is recorded inline (`stdout_raw`) rather than as a CAS blob. */
+const INLINE_STDOUT_BYTES = 64 * 1024
 
 /** Small blobs a tree restore holds in memory at once, fetched batched. */
 const TREE_FETCH_WINDOW_BYTES = 64 * 1024 * 1024
