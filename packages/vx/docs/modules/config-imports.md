@@ -29,17 +29,13 @@ export function unprovidedBareImports(
 export function hasEsmExport(source: string, loader: 'ts' | 'js'): boolean
 
 export interface ConfigImportOwnersArgs {
-  /* workspaceRoot, projects, changed paths */
-}
-export function configImportOwners(a: ConfigImportOwnersArgs): Promise<Set<string>>
-
-export function configImportOwners(a: {
   workspaceRoot: string
   projects: readonly ProjectMeta[]
   changed: readonly string[] // workspace-relative POSIX
   skip: ReadonlySet<string> // already-selected projects
   realDirs?: ReadonlyMap<string, string> // project dir → realpath, when the caller has them
-}): Promise<Set<string>>
+}
+export function configImportOwners(a: ConfigImportOwnersArgs): Promise<Set<string>>
 ```
 
 ## How it works

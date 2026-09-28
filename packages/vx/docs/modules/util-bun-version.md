@@ -79,8 +79,8 @@ A compiled binary carries its own Bun and the row never says it.
 - the comparison, major then minor then patch, over seven versions asserted as
   one set;
 - a canary suffix judged by its release, junk treated as ancient;
-- the doctor case, which asserts the row is flagged **exactly when this Bun is
-  below the floor** — the same claim on a conforming runtime and on one below
+- the doctor case, which asserts `bunSupported` is false **exactly when this Bun
+  is below the floor** — the same claim on a conforming runtime and on one below
   it, which is the only way a guard about the runtime can be tested on both;
 - and the property the first draft broke: a clean invocation still writes
   nothing to stderr.
