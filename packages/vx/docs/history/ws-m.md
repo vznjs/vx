@@ -65,4 +65,11 @@ green and `app/[id]/page.js` was gone. Invariant 2 of
 - Row: `stable-keys.test.ts` › stays unstable when its own outputs meet
   another task's (red without the fix). The stress: 0 of 60 with it.
 
+M-6. M-2's row went red on macOS (run 36362997599): the heavy child
+allocated 713 MB and read a 690 MB peak. The full allocation was a
+platform claim the row did not need: its subject is that the child's own
+peak is reported above the parent's mark (the sibling row pins the unit).
+It now asserts a peak above that mark plus the slack. Still red with the
+pre-M-2 fixed 600 MB under a 700 MB parent.
+
 ## Leads for other streams
