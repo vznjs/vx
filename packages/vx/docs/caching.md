@@ -1001,6 +1001,10 @@ same way: a save is `[vx] cache save failed: save of <hash> could not
 open a file (EMFILE: …) — … raise the limit (ulimit -n 4096) and
 re-run`, and a restore fails the task with that hint, never as a
 corrupt artifact (A-39).
+A restore that cannot READ its artifact (a cache directory another
+user owns) names the cache, not the outputs: `restore of <hash> could
+not read its artifact (EACCES: …). Make the cache directory readable
+by this user, or point cacheDir / --cache-dir at one that is.` (A-40).
 
 ```
 <workspaceRoot>/.vx/cache/                  (configurable via vx.workspace.ts cacheDir)

@@ -742,6 +742,39 @@ describe('Cache storage (v10)', () => {
     },
   )
 
+  // A-40: the refused path is the artifact, so the remedy is the cache
+  // directory's; it said "could not write its outputs" and named the tree.
+  it.skipIf(skipAsRoot('restoreOutputs() of an artifact this user cannot read names the cache'))(
+    'restoreOutputs() of an artifact this user cannot read names the cache',
+    async () => {
+      const { chmod, mkdir, writeFile } = await import('node:fs/promises')
+      const outFile = path.join(projectDir, 'dist', 'out.txt')
+      await mkdir(path.dirname(outFile), { recursive: true })
+      await writeFile(outFile, 'produced')
+      await cache.save({
+        hash: 'h-unread',
+        projectDir,
+        outputFiles: [outFile],
+        entry: { taskId: 'pkg#build', command: 'x', durationMs: 1, stdout: '' },
+      })
+      const artifact = path.join(cacheDir, 'h-unread.tar.zst')
+      await chmod(artifact, 0o000)
+      try {
+        const err = await cache.restoreOutputs('h-unread', projectDir).then(
+          () => undefined,
+          (e: unknown) => e,
+        )
+        expect(err).toBeInstanceOf(UserError)
+        expect((err as Error).message).toBe(
+          `restore of h-unread could not read its artifact (EACCES: EACCES: permission denied, open '${artifact}'). ` +
+            `Make the cache directory readable by this user, or point cacheDir / --cache-dir at one that is.`,
+        )
+      } finally {
+        await chmod(artifact, 0o644)
+      }
+    },
+  )
+
   // Item 670: a legal entry under a destination deep enough that the two
   // together pass PATH_MAX is the workspace's location, not a bad artifact.
   it('restoreOutputs() into a directory too deep for its output names says so, as a user error', async () => {
