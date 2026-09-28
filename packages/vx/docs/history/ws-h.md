@@ -468,6 +468,18 @@ accepts. The parser map moved to `tests/helpers/cli-parsers.ts`, shared
 with completions.test. Differential: a record without `hash-only` fails,
 and `contractBreaks` names it lost; adding it back is no break.
 
+## H-39: a `--format json` schema is a record the break law reads
+
+`schemas/<verb>.json` is checked in, shipped, and held to the source
+types by cli-json-schemas, but it sat outside `tests/contract/`, so
+dropping a field from `vx info --format json` (type and schema edited
+together) needed no `!`. The law now reads `schemas/` too: a lost
+property, `required` entry, type or enum value breaks; reworded `title`
+or `description` prose does not, except where the name is a property
+(`show`'s `description` field). Differential: under a probe tag, dropping
+`bun` from `info.json` failed naming both leaves; mutating the prose rule
+either way failed the unit row.
+
 ## Leads for other streams
 
 - **A:** a task that rewrites its own input with the same bytes is never

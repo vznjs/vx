@@ -1,6 +1,6 @@
 // The break law: a change since the last release that breaks any contract
-// record — tests/contract/ (the vendored upstream schemas aside) and
-// vx-mcp's tools record, each read as `contractBreaks` reads it — fails
+// record — tests/contract/ (the vendored upstream schemas aside), the
+// `--format json` schemas in schemas/ and vx-mcp's tools record, each read as `contractBreaks` reads it — fails
 // here unless
 // a commit since that tag says so (`type!:` or a `BREAKING CHANGE:`
 // footer), which is also what puts it at the top of the release notes
@@ -27,6 +27,7 @@ const lastTag = tags[0] ?? ''
 
 /** The contract records vx holds (not the vendored upstream schemas beside them). */
 const CONTRACT_DIR = 'tests/contract/'
+const RECORD_DIRS = [CONTRACT_DIR, 'schemas/']
 const EXTRA_RECORDS = ['../vx-mcp/tests/contract/tools.json']
 const isRecord = (f: string): boolean => f !== '' && !f.startsWith(`${CONTRACT_DIR}turbo-nx/`)
 
@@ -38,12 +39,14 @@ const isRecord = (f: string): boolean => f !== '' && !f.startsWith(`${CONTRACT_D
 function recordBreaks(from: string, to?: string): string[] {
   const listed = (ref: string): string[] =>
     // `ls-tree <ref>:./<dir>` lists nothing; a path argument is relative to cwd.
-    git('ls-tree', '-r', '--name-only', ref, CONTRACT_DIR).out.split('\n').filter(isRecord)
+    git('ls-tree', '-r', '--name-only', ref, ...RECORD_DIRS)
+      .out.split('\n')
+      .filter(isRecord)
   const walk = (dir: string): string[] =>
     readdirSync(path.join(ROOT, dir), { withFileTypes: true }).flatMap((e) =>
       e.isDirectory() ? walk(`${dir}${e.name}/`) : [`${dir}${e.name}`],
     )
-  const inTo = to === undefined ? walk(CONTRACT_DIR).filter(isRecord) : listed(to)
+  const inTo = to === undefined ? RECORD_DIRS.flatMap(walk).filter(isRecord) : listed(to)
   const records = [...new Set([...listed(from), ...inTo, ...EXTRA_RECORDS])].sort()
   return records.flatMap((record) => {
     const before = git('show', `${from}:./${record}`)

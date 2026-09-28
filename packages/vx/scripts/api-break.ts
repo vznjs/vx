@@ -37,12 +37,12 @@ function leaves(
   v: unknown,
   at = '',
   out: string[] = [],
-  skip?: (key: string) => boolean,
+  skip?: (key: string, at: string) => boolean,
 ): string[] {
   if (Array.isArray(v)) for (const x of v) leaves(x, `${at}[]`, out, skip)
   else if (v !== null && typeof v === 'object') {
     for (const [k, x] of Object.entries(v)) {
-      if (skip?.(k) === true) continue
+      if (skip?.(k, at) === true) continue
       leaves(x, at === '' ? k : `${at}.${k}`, out, skip)
     }
   } else out.push(`${at}=${JSON.stringify(v)}`)
@@ -55,6 +55,9 @@ const gone = (before: readonly string[], after: readonly string[]): string[] => 
 }
 
 /** vx's support for a Turbo or Nx key, best first: a step down is a break. */
+/** A JSON Schema's prose, not its shape; under `properties` the same word is a field. */
+const ANNOTATIONS = new Set(['title', 'description', '$comment', 'examples'])
+
 const SUPPORT = ['supported', 'mapped', 'not-supported', 'not-applicable']
 
 /**
@@ -90,6 +93,13 @@ export function contractBreaks(record: string, before: string, after: string): s
   if (name === 'config-schema.json') {
     const message = (k: string): boolean => k.startsWith('$CONFIG')
     return gone(leaves(b, '', [], message), leaves(a, '', [], message))
+  }
+  if (record.startsWith('schemas/')) {
+    // A `--format json` output's schema: a lost property, `required` entry,
+    // type or enum value is a break; reworded prose is not.
+    const prose = (k: string, at: string): boolean =>
+      ANNOTATIONS.has(k) && !at.endsWith('properties')
+    return gone(leaves(b, '', [], prose), leaves(a, '', [], prose))
   }
   if (name === 'config-schema-rules.json') {
     const keys = (v: unknown): string[] => leaves(v).map((l) => l.slice(0, l.indexOf('=')))
