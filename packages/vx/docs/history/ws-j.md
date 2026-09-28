@@ -193,6 +193,17 @@
   one wrong claim, that the sandbox checks declared inputs (it checks
   reads against `exec.sandbox.allow.read`, kept apart from
   `cache.inputs`).
+- **J-33** Sandboxing guide and schema.md's `exec.sandbox` run on Linux:
+  network is per run (a task that declares none reaches every domain
+  another task of the run lists; reproduced: alone `000`, beside a
+  `network: ['registry.npmjs.org']` task `200`), `network: true` adds
+  no domain, `deny.network` refuses nothing, and a linked package is
+  readable by its real path.
+- **J-34** J-33's class, grepped: sandbox-runtime.md and
+  sandbox-request.md said a no-network task is never handed the proxy
+  and `network: true` skips it; the sandbox post said the baseline has
+  no network; the sandboxing guide promised only declared network
+  exists and showed `deny.network` without saying it refuses nothing.
 
 ## Leads for other streams
 
