@@ -105,6 +105,8 @@ export interface FakeReapi {
   cutWrite: number | undefined
   /** QueryWriteStatus answers `complete` for every resource. */
   reportComplete: boolean
+  /** A compressed Write of a blob already held answers `committed_size: -1`, as the spec lets it. */
+  heldCompressedMinusOne: boolean
   /** Digests BatchUpdateBlobs rejects with INVALID_ARGUMENT. */
   readonly rejectBatch: Set<string>
   /** A Read sends one message and then waits to be cancelled. */
@@ -167,6 +169,7 @@ export async function startFakeReapi(
     },
     cutWrite: undefined,
     reportComplete: false,
+    heldCompressedMinusOne: false,
     rejectBatch: new Set(),
     holdReads: false,
     cutReads: 0,
@@ -388,6 +391,13 @@ export async function startFakeReapi(
         if (cut !== undefined) {
           partial.set(resource, joined.subarray(0, cut))
           return cb({ code: grpc.status.UNAVAILABLE, details: `cut after ${cut} bytes` })
+        }
+        if (
+          fake.heldCompressedMinusOne &&
+          ZSTD_RESOURCE.test(resource) &&
+          fake.blobs.has(hashOf(resource))
+        ) {
+          return cb(null, { committed_size: '-1' })
         }
         const data = ZSTD_RESOURCE.test(resource) ? Bun.zstdDecompressSync(joined) : joined
         fake.blobs.set(hashOf(resource), new Uint8Array(data))
