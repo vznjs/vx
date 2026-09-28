@@ -411,3 +411,7 @@ Lead from N (vueuse, efdd69a): ten builds read `packages/metadata/index.json`, c
 Equivalent: `close()` clearing the repeat counts (a handle closes once).
 
 Measured first (1,000-project `vx-bench` workspace, hermetic git): warm 98–112 ms, cold 2.7 s. The cold save path's A-owned CPU is spread flat (index commit 186 ms, rename 127, the artifact re-scan 135, output globbing 115, of about 3.1 s on a saturated main thread), with no single lever over 6 %, so nothing was changed. Under this box's own git config (`core.checkStat=minimal`) every input hashes from disk, which is correct.
+
+### A-51 — the wedged-worker row's recovery gets its own budget (2026-09-28, D's file, J's lead)
+
+`config-eval.test.ts` › "rejects a wedged worker … then recovers" went red on macOS CI twice (#1503, #1738): the recovery evaluation kept the 250 ms budget set for the wedge, and that budget also covers the fresh worker's spawn. The recovery now runs under 4,000 ms; a kept wedged worker still fails it, rejected at 4,000 or held past the 5,000 the row waits. The mutant that keeps the handle (`worker = null` dropped in the timer) passes both the old and the new row, since the worker's close handler nulls it too.
