@@ -1181,7 +1181,9 @@ run...` precedes it.
    an edit, nor is the `dist` directory itself coming and going (a
    literal entry covers its whole tree, as in the schema), unless some
    task reads the path as an input (an in-place formatter's `src/**`
-   output still leaves a `build` reading `src/**` watching it, item 946) — and neither do `node_modules`,
+   output still leaves a `build` reading `src/**` watching it, item 946;
+   a task's own outputs are no input of it, so a `turbo()` task reading
+   `**/*` does not re-run on its own `dist/`) — and neither do `node_modules`,
    `.git` or the cache directory. A write the task did NOT declare (a
    task with no `cache` block declares nothing) is caught by state,
    judged once the bytes have settled: a file whose bytes did not

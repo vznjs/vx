@@ -56,8 +56,12 @@ export interface ConfigSweep {
   workspaceWide: boolean
   workspaceInputs: string[]
   outputs: Map<string, string[]>
-  /** Declared input globs per directory they are relative to, the counterweight to `outputs`. */
-  inputs: Map<string, string[]>
+  /**
+   * Each task's input globs per directory they are relative to, the
+   * counterweight to `outputs`; the task's own outputs ride along as `!`
+   * entries, as its key leaves them out.
+   */
+  inputs: Map<string, string[][]>
   /** Projects with a task that has a command and no cache: it reads what it likes, git-ignored files included. */
   uncached: Set<string>
   /** Files the project configs import by relative path (item 949). */
@@ -86,7 +90,19 @@ export async function sweepConfigs(
   load: CliLoadOptions = {},
 ): Promise<ConfigSweep> {
   const outputs = new Map<string, string[]>()
-  const inputs = new Map<string, string[]>()
+  const inputs = new Map<string, string[][]>()
+  // One task's inputs, less what it writes itself: the key leaves a task's
+  // own outputs out of its inputs, so a turbo() task reading `**/*` does not
+  // read the `dist/` it builds, and its write is no edit to watch.
+  const addInputs = (
+    dir: string,
+    files: readonly string[] | undefined,
+    own: readonly string[] | undefined,
+  ): void => {
+    if (files === undefined || files.length === 0) return
+    const minus = (own ?? []).filter((o) => !o.startsWith('!')).map((o) => `!${o}`)
+    inputs.set(dir, [...(inputs.get(dir) ?? []), [...files, ...minus]])
+  }
   const addTo = (
     into: Map<string, string[]>,
     dir: string,
@@ -104,8 +120,12 @@ export async function sweepConfigs(
       if (task.cache === undefined && task.exec !== undefined && task.exec.persistent === undefined)
         uncached.add(dir)
       for (const g of task.cache?.inputs?.workspaceFiles ?? []) workspaceInputs.add(g)
-      addTo(inputs, dir, task.cache?.inputs?.files)
-      addTo(inputs, workspaceRoot, task.cache?.inputs?.workspaceFiles)
+      addInputs(dir, task.cache?.inputs?.files, task.cache?.outputs?.files)
+      addInputs(
+        workspaceRoot,
+        task.cache?.inputs?.workspaceFiles,
+        task.cache?.outputs?.workspaceFiles,
+      )
       add(dir, task.cache?.outputs?.files)
       add(workspaceRoot, task.cache?.outputs?.workspaceFiles)
     }

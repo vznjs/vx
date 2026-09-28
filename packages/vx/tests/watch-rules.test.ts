@@ -65,10 +65,30 @@ describe("a path some task reads is never ignored as another task's output (item
   it('an input under a declared output still counts; an output nobody reads does not', () => {
     const dir = path.resolve('/w/app')
     const outputs = new Map([[dir, ['src/**', 'dist/**']]])
-    const ignore = makeWatchIgnore('/w/.vx', outputs, new Map([[dir, ['src/**', '!src/*.md']]]))
+    const ignore = makeWatchIgnore('/w/.vx', outputs, new Map([[dir, [['src/**', '!src/*.md']]]]))
     expect([ignore(dir, 'src/a.txt'), ignore(dir, 'dist/out.txt')]).toEqual([false, true])
     // CONTROL: without the input map, the same output hides the same path.
     expect(makeWatchIgnore('/w/.vx', outputs)(dir, 'src/a.txt')).toBe(true)
+  })
+
+  it("a task's own outputs are no input of it, and stay one of a task that reads them", () => {
+    // turbo() reads `**/*` by default: its own `dist/` write re-ran every save once more.
+    const dir = path.resolve('/w/app')
+    const outputs = new Map([[dir, ['dist/**']]])
+    const own = makeWatchIgnore('/w/.vx', outputs, new Map([[dir, [['**/*', '!dist/**']]]]))
+    // `dist` itself too: the clean before a miss prunes it and the task re-creates it.
+    expect([own(dir, 'dist/a.js'), own(dir, 'dist'), own(dir, 'src/a.js')]).toEqual([
+      true,
+      true,
+      false,
+    ])
+    // Another task reading `dist/**` (a bundle check) keeps the write an edit.
+    const read = makeWatchIgnore(
+      '/w/.vx',
+      outputs,
+      new Map([[dir, [['**/*', '!dist/**'], ['dist/**']]]]),
+    )
+    expect(read(dir, 'dist/a.js')).toBe(false)
   })
 })
 
@@ -225,6 +245,11 @@ describe('the sweep sees what a run sees', () => {
     const swept = await sweepConfigs(metas, root)
     expect(swept.workspaceWide).toBe(true)
     expect([...swept.outputs]).toEqual([[path.join(root, 'packages', 'bare'), ['dist/**']]])
+    // Each task's inputs, less its own outputs, as its key reads them.
+    expect([...swept.inputs]).toEqual([
+      [path.join(root, 'packages', 'bare'), [['src/**', '!dist/**']]],
+      [root, [['tsconfig.base.json']]],
+    ])
   })
 })
 
