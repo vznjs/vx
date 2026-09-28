@@ -86,6 +86,12 @@ started_at DESC LIMIT n`, which orders each task by an arbitrary run:
 - C (resolved on main by H-10): `ExecuteRequest` carries no abort signal,
   so Ctrl-C does not cancel a remote Execute (wired in F-15).
 
+- core: `runner.test.ts` "an exec-wrapped process is the direct child" sleeps a
+  fixed 50 ms before reading `/proc/<pid>/comm`; under a loaded gate
+  (load 6.6) it read `JITWorker`, Bun's clone before the exec, and failed
+  (2026-09-28, F-30's gate; green alone). Patch: poll `comm` until it
+  leaves Bun's name, bounded at 2 s, instead of the sleep.
+
 ## Merged
 
 F-1. vx-reapi retries INTERNAL as it retries UNAVAILABLE. Probe, Bun 1.4.2,
@@ -330,3 +336,11 @@ the fix. Refuted on the way: vx-mcp's getRunHistory ranks pairs with
 on the real schema every filter keeps the `started_at` index scan, so
 the newest run is met first and the ranking holds (a bare table with a
 `task` filter did drop the latest task).
+
+F-31. vx-reapi's execution record splits a `dir/*` output into one Tree
+per match, and uploaded each with a probe and a Write of its own, one
+after another. They now go up through one probe and batches (a Tree
+past the batch limit still streams); a failed probe or batch writes each
+as before. 100 packages: 7.1 → 0.44 s cold, 3.4 → 0.26 s warm, through
+a proxy adding 15 ms each way (min of 7, interleaved). Row red without
+the fix.

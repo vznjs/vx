@@ -312,6 +312,31 @@ describe.if(CHUNKING_SUPPORTED)('the record’s output directories', () => {
     expect(record.output_symlinks ?? []).toEqual([])
   })
 
+  it("the matches' Trees go up in one probe and one batch, not one round trip each", async () => {
+    // Per match a probe and a Write: 100 packages cost 3.4 s through a
+    // proxy adding 15 ms each way, 0.26 s batched (F-31).
+    const kids = Object.fromEntries(['a', 'b', 'c'].map((n) => [n, dir([`${n}.js`])]))
+    const top = dir([], kids)
+    executeReturning('mods', fake.put(encodeTree(top, Object.values(kids))))
+    const from = fake.calls.length
+    await refusal(run('k-batch', ['mods/*']))
+    const recorded = recordOf('k-batch').map((d) => d.tree_digest.hash)
+    expect(recorded.length).toBe(3)
+    const names = (c: (typeof fake.calls)[number]): string[] =>
+      (
+        (c.request['blob_digests'] ?? c.request['requests'] ?? []) as Array<{
+          hash?: string
+          digest?: { hash: string }
+        }>
+      ).map((d) => d.hash ?? d.digest!.hash)
+    const touching = fake.calls
+      .slice(from)
+      .filter((c) => names(c).some((h) => recorded.includes(h)))
+      .map((c) => `${c.method}:${names(c).filter((h) => recorded.includes(h)).length}`)
+    expect(touching).toEqual(['FindMissingBlobs:3', 'BatchUpdateBlobs:3'])
+    expect(recorded.every((h) => fake.blobs.has(h))).toBe(true)
+  })
+
   // `dist/` with files, a symlink, and directories; `gen` is a file in `a` and
   // a directory in `b`, and the local glob saves both.
   const mixedDist = () => {
