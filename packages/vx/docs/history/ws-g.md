@@ -482,3 +482,10 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   (N=9); the warm wall is noise (215 vs 224 ms min, 265 vs 261 median,
   N=21). Rows (`nx-map-sweep`, `nx-upstream`): an unreached project
   has no twin; red without the fix.
+- **G-43.** Mutation sweep of G-36..G-42's code: eight mutants, four
+  caught. In G-42's twin walk: the output sort was dead (the walk's
+  order is already deterministic), so it went; the `wanted` guard
+  and `{ input, projects }`'s `want` survived, since the sweep's
+  `tasksOf` kept the last of two same-named tasks and no row asked
+  for a named project's twin. `tasksOf` now refuses a task mapped
+  twice; a diamond row and the `projects` row hold both.
