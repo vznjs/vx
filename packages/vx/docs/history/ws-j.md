@@ -259,6 +259,16 @@
   `GIT_CONFIG_KEY_<n>`; a write grant exposing `.git`, `.vx` or a
   nested project is refused (probed); the baseline writes its own
   `TMPDIR`; a denied read is reported only where strace attaches.
+- **J-49** architecture.md and patterns.md against source (patterns
+  held): vx-otel exports logs, vx-schedule-history fills `commands`
+  (`vx history`), and `workspaceScripts()` (N-5) joins the plugin
+  tables; N-5 also made `--from scripts` valid, so J-39's `vx init`
+  line was corrected in turn.
+- **J-50** docs against the 58 non-docs merges since 02:55: an even
+  stamp widens the racy window by two seconds, `--affected` follows
+  tsconfig `paths`, vx's sandbox hints count as no violation,
+  `vx help <name>` refuses a non-verb, and `workspaceScripts()` joins
+  the fingerprint and migrate lists.
 
 ## Leads for other streams
 
@@ -355,3 +365,14 @@ task(s): nope.` and exits 0; cli.md says an undeclared name is
   precedence omits `--timeout`; `concurrency` "number of CPUs" ignores
   the cgroup cap; `dependsOn` `'^name'` "every transitive" (it is the
   nearest holders). Found in J-48.
+- **A** `src/orchestrator/task-hash.ts:226-227` comment says a
+  whole-second stamp covers any write "in its second"; since A-38 an
+  even stamp covers two (found in J-50).
+- **N/E** `src/util/verbs.ts:29-30`: the `vx migrate` pointer says
+  vx-migrate maps "turbo.json or an Nx project graph"; it also maps
+  moon, wireit, lage and fan-out scripts (found in J-50).
+- **E/K** A quickstart user with a common tsconfig (`rootDir: "src"`,
+  composite) gets `tsconfig.tsbuildinfo` at the package root, outside
+  `dist/**`: vx wipes `dist` on a miss, `tsc -b` sees itself current and
+  writes nothing, and the run saves an empty artifact with only a
+  warning. No page claims otherwise; a first-run trap (found in J-51).
