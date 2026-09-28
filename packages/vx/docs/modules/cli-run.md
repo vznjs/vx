@@ -131,7 +131,8 @@ If `--dry` or `--graph` is set:
    or an empty plan → exits 1 with `no projects declare task(s): …`
    (plus `Did you mean <task>?` when a declared task, or for `pkg#task`
    a runnable spec, is within two edits), before any DOT / JSON is
-   written.
+   written. An empty plan from an `--affected` or diff filter exits 0
+   (`no affected project declares task(s): …`).
 
 ## Verbose summary
 
@@ -157,13 +158,15 @@ the duration right-aligned.
   unknown-flag errors.
 - Scope resolution matrix (default / `--all` / `--filter` /
   `pkg#task`).
-- Interactive picker (TTY input mocked).
 - `--affected` end-to-end against a git fixture.
-- Planning paths (`--dry` text/json, `--graph` stdout/file).
+- Planning paths (`--dry` text/json, `--graph` stdout).
 - Verbose summary formatting.
-- `--summarize` and `--profile` artifact emission.
 - Forwarded args (cache-key folding tested in
-  `tests/orchestrator.test.ts`).
+  `tests/task-hash-derive.test.ts`).
+
+The picker (TTY input mocked) is `tests/cli-picker.test.ts`; `--graph`
+to a file is `tests/run-output-paths.test.ts`; `--summarize` /
+`--profile` emission is `tests/run-artifacts.test.ts`.
 
 ## Replacing this module
 

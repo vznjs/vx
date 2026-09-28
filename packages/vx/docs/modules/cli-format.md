@@ -14,7 +14,7 @@ export { formatBytes } from '../util/index.js' // (n: number) => string
 ```
 
 Human-readable byte size with `B / KB / MB / GB / TB / PB` suffixes
-and one decimal of precision below 10 of any unit. Powers of 1024.
+and one decimal of precision below 10 of any unit but PB. Powers of 1024.
 
 | Input            | Output   |
 | ---------------- | -------- |
@@ -31,7 +31,7 @@ and one decimal of precision below 10 of any unit. Powers of 1024.
 - `vx cache prune` output (`Pruned N entries (1.3 GB freed)`, and the
   orphaned artifacts it reaped).
 - The `vx info` doctor printout: the
-  cache-size line (`cache entries    N (1.3 GB)`).
+  cache-size line (`cache entries:    N (1.3 GB)`).
 - `vx last`: each executed task's peak RSS.
 - The run's `cacheRetention` line (`vx: cache retention evicted N entries (1.3 GB)`).
 - Re-exported from `cli/index.ts` for the verbs a plugin adds.
