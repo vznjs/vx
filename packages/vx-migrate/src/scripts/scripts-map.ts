@@ -118,6 +118,13 @@ function pnpmFanOut(w: string[]): FanOut | null {
       filtered = true
       if (v.startsWith('!')) out.exclude.push(v.slice(1))
       else out.include.push(v)
+    } else if (a === '-C' || a === '--dir' || a.startsWith('--dir=')) {
+      // `pnpm -C packages/pinia build` runs the script in that one package
+      // (pinia's own `build`, 98587ca).
+      const v = flagValue(w, i, a === '-C' ? '-C' : '--dir')
+      if (v === undefined) return null
+      filtered = true
+      out.include.push(v.startsWith('.') ? v : `./${v}`)
     } else if (/^--(workspace-concurrency|reporter|aggregate-output)/.test(a)) {
       if (!a.includes('=') && !a.startsWith('--aggregate-output')) i.n++
     } else if (a.startsWith('-')) continue
@@ -156,8 +163,14 @@ function npmFanOut(w: string[]): FanOut | null {
 }
 
 function yarnFanOut(w: string[]): FanOut | null {
-  if (w[0] !== 'workspaces') return null
   const out: FanOut = { tool: 'yarn', script: '', include: [], exclude: [], sorted: true }
+  // `yarn workspace <name> [run] <script>`: the script in one workspace.
+  if (w[0] === 'workspace' && w[1] !== undefined) {
+    out.include.push(w[1])
+    out.script = (w[2] === 'run' ? w[3] : w[2]) ?? ''
+    return out.script === '' ? null : out
+  }
+  if (w[0] !== 'workspaces') return null
   // yarn 1: `yarn workspaces run <script>`, one after another in order.
   if (w[1] === 'run') {
     out.script = w[2] ?? ''

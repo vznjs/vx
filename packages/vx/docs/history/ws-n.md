@@ -110,6 +110,17 @@ of them workers through `lage-worker`): 284 ms no-op against lage's
 TypeScript loaded where `lage-worker` starts a process per target
 (`benchmarks.md`). No mapping gap: both ran the same 71 targets.
 
+N-9. `workspaceScripts()` dogfooded on vuejs/pinia (pnpm 11.21): its
+`build` is `pnpm run -C packages/pinia build && …`, one package per
+command, which the mapper did not read, so the repo's main build mapped
+to nothing. `pnpm -C <dir>` / `--dir` and `yarn workspace <name>
+<script>` now select that one package. 10.0 s against `pnpm build`'s
+13.6 s, vx running `nuxt` and `testing` side by side after `pinia`
+(`benchmarks.md`).
+
+- Rows: `tests/scripts.test.ts` › parseFanOut (`-C`, `--dir=`, `yarn
+  workspace`).
+
 ## Candidates not built (2026-09-28)
 
 - Lerna without Nx: `lerna run <s>` (lerna 10.0.1, `prepNxOptions`)
