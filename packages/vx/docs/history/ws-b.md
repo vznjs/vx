@@ -714,6 +714,16 @@ again after that kill, a child nothing stops. `runSandboxed` now takes
 `runSandboxed`, one through the local executor. Each is red without its
 line.
 
+B-38. `keep-alive.test.ts` › a kill -9 in a Ctrl-C's grace failed the
+gate once (`late.txt` present). The row wrote `go` as soon as vx exited,
+but the group guard kills only after the kernel has closed vx's pipe
+and the guard has been scheduled, so a loaded gate's child could see
+`go` first. Stopping the guard (`SIGSTOP`) for 300 ms across vx's kill
+fails the old row 3 of 3. The row now reads the child's pid, checks it
+is alive, and waits (at most 5 s) for it to die before writing `go`. A
+guard that never kills still fails the row: the child outlives the wait
+and writes. With the teardown's `holdGroups` emptied the row is red.
+
 B-39. `npm-pack.unsafe.test.ts`'s rows run `npm pack --dry-run` through
 `spawnSync` under bun's 5 s default timeout. On CI (#1772) the first row
 died at 5,048 ms with exit `null`, and locally a cold first run failed
