@@ -67,13 +67,24 @@ jobs:
         timeout-minutes: 8
         shell: bash
         working-directory: packages/vx
+        # Four shards at a time (the runner has four cores; vx runs them side
+        # by side too), each into its own log. What is printed is only each
+        # shard's counts, failing rows and their first error lines: the whole
+        # output ran to 24,000 lines, past what an API tail reads.
         run: |
-          rc=0
+          out="$RUNNER_TEMP/shards"; mkdir -p "$out"
+          shard() { local n=$1; shift; timeout 100 bun test --only-failures "$@" > "$out/$n.log" 2>&1; echo $? > "$out/$n.rc"; }
           for i in $(seq 1 12); do
-            echo "::group::shard $i"
             files=$(bun scripts/test-shard.ts $i 12) && [ -n "$files" ] || { echo "shard $i: the dealer dealt nothing"; exit 1; }
-            timeout 45 bun test --only-failures $files || { echo "shard $i: exit $?"; rc=1; }
-            echo "::endgroup::"
+            shard "shard-$i" $files &
+            [ $((i % 4)) -eq 0 ] && wait
           done
-          timeout 45 bun test --only-failures ./tests/*.unsafe.test.ts || { echo "unsafe: exit $?"; rc=1; }
+          shard unsafe ./tests/*.unsafe.test.ts
+          rc=0
+          for f in "$out"/*.log; do
+            n=$(basename "$f" .log); code=$(cat "$out/$n.rc")
+            echo "== $n: exit $code"
+            [ "$code" = 0 ] || rc=1
+            grep -aE '^\(fail\)|^error:|^ *[0-9]+ (pass|fail|skip)$|EBUSY|EPERM|ENOENT' "$f" | head -60
+          done
           exit $rc
