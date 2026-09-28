@@ -440,6 +440,9 @@ task picked`; neither prints a stack. Row in
 - E-82 — the footer's projects legend reads `N in run · M total`: it
   said `affected` on every run, which a Turbo user reads as git-changed
   on a plain `--all`.
+- E-83 — `vx watch <task>` judges inputs of the tasks it reaches only:
+  over a `turbo()` package, `vx watch build` re-ran once more on each
+  save because `lint`'s `**/*` took build's own `dist/` for an edit.
 
 ## First-five-minutes walk (2026-09-28)
 
