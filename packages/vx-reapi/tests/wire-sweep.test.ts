@@ -258,18 +258,47 @@ describe.if(CHUNKING_SUPPORTED)('batches', () => {
       const mark = fake.calls.length
       await c.uploadBlobs(blobs, 1000)
       const calls = fake.calls.slice(mark)
-      expect(calls.map((x) => x.method)).toEqual([
-        'FindMissingBlobs',
-        'BatchUpdateBlobs',
-        'Write',
-        'BatchUpdateBlobs',
-      ])
+      // After the probe the uploads run at once, so their order is not the claim.
+      expect(calls[0]!.method).toBe('FindMissingBlobs')
+      expect(
+        calls
+          .slice(1)
+          .map((x) => x.method)
+          .sort(),
+      ).toEqual(['BatchUpdateBlobs', 'BatchUpdateBlobs', 'Write'])
       const sent = calls
         .filter((x) => x.method === 'BatchUpdateBlobs')
         .flatMap((x) =>
           (x.request['requests'] as { digest: { hash: string } }[]).map((r) => r.digest.hash),
         )
       expect(sent).not.toContain(blobs[0]!.digest.hash)
+    })
+  })
+
+  it('uploads: the streamed writes run at once, not one after another', async () => {
+    // One stream at a time held four 8 MB writes to 10.2 s through a proxy
+    // adding 15 ms each way against bazel-remote, 0.49 s at once (F-34).
+    await using({}, async (c) => {
+      const blobs = [fill(2000, 11), fill(2000, 12), fill(2000, 13)].map((data) => ({
+        digest: c.digestOf(data),
+        data,
+      }))
+      let inFlight = 0
+      let peak = 0
+      const write = c.writeBlob.bind(c)
+      c.writeBlob = async (digest, source) => {
+        peak = Math.max(peak, ++inFlight)
+        try {
+          await write(digest, source)
+        } finally {
+          inFlight--
+        }
+      }
+      await c.uploadBlobs(blobs, 1000)
+      expect({ peak, stored: blobs.every((b) => fake.blobs.has(b.digest.hash)) }).toEqual({
+        peak: 3,
+        stored: true,
+      })
     })
   })
 })

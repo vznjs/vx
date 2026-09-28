@@ -352,3 +352,12 @@ connection. Two 4 MB reads through a proxy adding 15 ms each way:
 3982 → 116 ms against bazel-remote, 3988 → 142 against the fake (min of
 5, interleaved). Uploads are bound by the server's window, not ours.
 Live suite 17 of 17. Row red without the fix.
+
+F-34. vx-reapi's `uploadBlobs` (remote-execution inputs, split record
+Trees) sent its batches and streamed writes one after another. A grpc-go
+server grows its receive window from what it measures arriving, and one
+stream at a time kept it small: each 1 MiB of a write waited 130–850 ms
+for the window. Up to 8 now run at once and the first failure stops the
+queue. Against bazel-remote through a proxy adding 15 ms each way: four
+8 MB blobs 10.15 → 0.53 s, 400 of 64 KiB 1147 → 685 ms (min of 5,
+interleaved). Live suite 17 of 17. Row red without the fix.
