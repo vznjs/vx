@@ -49,12 +49,12 @@ export default defineProject({
 | `read`         | paths or globs: package-relative, absolute or `~/`                |
 | `write`        | paths or globs; a directory ends in `/` or is a glob (`dist/**`)  |
 | `network`      | `true`, or a list of domains (`*.sentry.io`)                      |
-| `localBinding` | bind localhost ports; a list (`[3000]`) makes them reachable from outside |
+| `localBinding` | bind localhost ports (macOS; Linux needs no grant); a list (`[3000]`) makes them reachable from outside |
 | `unixSockets`  | `true`, or socket paths (Linux: any path)                         |
 | `systemInfo`   | sysctl names a tool probes (`vfs.disk-space`)                     |
 | `machLookup`   | macOS services (`com.apple.FSEvents`)                             |
 | `pty`          | a terminal                                                        |
-| `gitConfig`    | writes to `.git/config`                                           |
+| `gitConfig`    | inert: SRT drops the per-task flag                                |
 
 ## The boundary is the project
 

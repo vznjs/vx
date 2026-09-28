@@ -980,10 +980,10 @@ interface SandboxGrants {
   network?: true | string[] // an allowlist of domains; `true` adds none (below)
   systemInfo?: string[] // sysctl names, e.g. 'vfs.disk-space' (macOS)
   unixSockets?: true | string[] // AF_UNIX bind/connect, all or by path (Linux: any path)
-  localBinding?: boolean | number[] // bind and reach localhost ports; a list also exposes them to the host
+  localBinding?: boolean | number[] // bind and reach localhost ports (macOS; Linux needs no grant); a list also exposes them to the host
   machLookup?: string[] // mach global-names (macOS)
   pty?: boolean // acquire a TTY
-  gitConfig?: boolean // write .git/config
+  gitConfig?: boolean // inert: SRT drops the per-task flag
 }
 ```
 
