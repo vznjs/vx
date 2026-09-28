@@ -49,6 +49,16 @@ describe('turbo-map: what the sweep found unheld', () => {
     )
   })
 
+  // Turbo 2.11.5's schema has it, and Turbo refuses a key it does not
+  // know: it is a real key, and a todo for it was noise.
+  it('a task’s `description` is the vx task’s description, with no todo', async () => {
+    const t = await taskOf(
+      { tasks: { build: { description: 'Compile the package', outputs: [] } } },
+      { a: { scripts: { build: 'b' } } },
+    )
+    expect([t.task?.['description'], t.todos]).toEqual(['Compile the package', []])
+  })
+
   it('turbo 1’s `pipeline` is read like `tasks`', async () => {
     const t = await taskOf(
       { pipeline: { build: { outputs: ['dist/**'] } } },

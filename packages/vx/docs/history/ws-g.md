@@ -384,3 +384,10 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   error. Every manager now refuses markers by name with the install
   that fixes it. Row (`refusal-message.test`): red without the fix.
   Found probing each parser with a conflicted lockfile.
+- **G-32.** turbo() maps a task's `description`. Turbo 2.11.5's schema
+  has the key and Turbo refuses a task key it does not know (measured:
+  `bogusKey` fails the parse, `description` does not), yet turbo()
+  reported it as "no vx equivalent — map it manually" on every task
+  that set it; it is now the vx task's `description`. Row
+  (`turbo-map-sweep.test`): red without the fix. Also drops the unused
+  `type Gaps` import in `nx/index.ts` (C's lead).

@@ -58,6 +58,7 @@ const KNOWN_TASK_KEYS = new Set([
   'outputLogs',
   'dotEnv',
   'command',
+  'description',
 ])
 
 // Turbo's per-task `outputLogs` against vx's per-run `--output-logs`.
@@ -756,6 +757,7 @@ function buildTask(
   }
 
   const task: Record<string, unknown> = { exec }
+  if (typeof def['description'] === 'string') task.description = def['description']
   if (deps.length > 0) task.dependsOn = deps
 
   if (cacheEnabled) {
