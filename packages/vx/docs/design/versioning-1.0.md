@@ -19,6 +19,7 @@ adds to them, and only a major removes or changes one.
 | The CLI: verbs, flags, exit codes, and the machine-readable outputs (`--dry=json`, `--graph`, `--summarize`, `vx mcp`'s tools)                                         | `docs/cli.md`; exit codes recorded in `tests/contract/exit-codes.json`; `--dry=json`, `--summarize` and `--graph` recorded in `tests/contract/cli-wire.json`; `vx mcp`'s tools in `packages/vx-mcp/tests/contract/tools.json` |
 | The lock file: `vx-lock.json`, what `vx lock` writes and `vx lock --check` / `--frozen` read                                                                           | `src/workspace/lockfile.ts` (`LOCKFILE_VERSION`), `docs/cli.md`; recorded in `tests/contract/vx-lock.json`                                                                                                                    |
 | The environment variables vx reads (`VX_*`)                                                                                                                            | `docs/cli.md` § Environment variables vx reads, held to the source by `tests/env-doc-drift.test.ts`                                                                                                                           |
+| What each npm package ships: the files `npm publish` uploads for `@vzn/vx` and every plugin                                                                            | `scripts/build-npm.ts`; recorded in `tests/contract/pack/`                                                                                                                                                                    |
 | Task-glob semantics: which paths a pattern selects (item 667 made `[` literal; that reading is now part of the contract)                                               | `docs/schema.md`, `docs/caching.md`                                                                                                                                                                                           |
 
 ## What 1.0 freezes, exactly
@@ -174,6 +175,13 @@ the reviewer sees it before the merge.
   environment a live evaluation would read differently). A change to the
   format, to how `configHash` is taken, or to `LOCKFILE_VERSION` fails
   here; a lock written by 1.x is valid for every later 1.x.
+- **The npm tarballs.** `tests/npm-pack.unsafe.test.ts` emits every
+  package the release publishes, runs `npm pack --dry-run --json` on
+  each, and compares the file list with `tests/contract/pack/<package>.txt`.
+  A test or fixture file, a file over 512 KiB, or an `exports` / `bin`
+  target the tarball lacks fails, naming the file. The packed `@vzn/vx`
+  and `@vzn/vx-migrate` are then installed with npm into a Turbo repo, and
+  `turbo()` builds it, then hits.
 - **The machine-readable run outputs.** `--dry=json` and the
   `--summarize` file are wire objects built field by field
   (`formatPlanJson`, `writeRunSummary`), not a serialized type, so the

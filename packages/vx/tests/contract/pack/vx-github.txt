@@ -1,0 +1,8 @@
+LICENSE
+README.md
+index.ts
+package.json
+src/checks.ts
+src/index.ts
+src/plugin.ts
+src/summary.ts

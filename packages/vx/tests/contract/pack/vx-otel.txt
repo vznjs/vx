@@ -1,0 +1,8 @@
+LICENSE
+README.md
+index.ts
+package.json
+src/index.ts
+src/otlp.ts
+src/plugin.ts
+src/sink.ts

@@ -421,6 +421,19 @@ filed under the original key), the same-bytes row and the unit row. The
 gap stays and `benchmarks.md` says why beside the unocss numbers. Lead
 for A below.
 
+## H-35: what each npm package ships is a contract record
+
+Nothing held what `npm publish` uploads, and the plugins have never been
+published. `npm-pack.unsafe.test.ts` emits every package with
+`scripts/build-npm.ts`, packs each with `npm pack --dry-run --json`, and
+compares its file list with `tests/contract/pack/<package>.txt`; a stray
+test or fixture, a file over 512 KiB, or an `exports` / `bin` target the
+tarball lacks fails, naming it. A `src/probe.test.ts` in vx-mcp failed the
+list row; dropping `src` from its `files` failed both. The packed `@vzn/vx`
+and `@vzn/vx-migrate` install with npm into a Turbo repo, where `turbo()`
+builds (the launcher falls back to `bun src/bin.ts`) and then hits: G's
+by-hand check, now a row.
+
 ## Leads for other streams
 
 - **A:** a task that rewrites its own input with the same bytes is never
