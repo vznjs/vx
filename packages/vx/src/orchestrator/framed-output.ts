@@ -26,6 +26,7 @@
 // `--ui=stream` mode.
 
 import { isGroupTask, type TaskNode, type TaskOutcome } from '../graph/index.js'
+import { maskedCommand } from '../util/index.js'
 import { paint, type ColorSupport } from './colors.js'
 import { formatDuration } from './summary.js'
 import { outcomeLabel, skippedReason } from './events.js'
@@ -104,7 +105,11 @@ export function formatTaskBlock(
   if (forceCommand || outcome.status === 'success' || outcome.status === 'failed') {
     // No section label for the command (owner cut it) — the dim `$ `
     // line under the header reads as the command on its own.
-    lines.push('', corner(`$ ${node.config.exec?.command ?? ''}`), '')
+    lines.push(
+      '',
+      corner(`$ ${maskedCommand(node.config.exec?.command ?? '', node.config.exec?.env?.define)}`),
+      '',
+    )
   }
 
   pushStreamSection(lines, stdout, 'STDOUT', SUCCESS, body.droppedStdout ?? 0, colors)
@@ -386,7 +391,7 @@ export function formatTaskSkippedLine(
  */
 export function formatFrameOpen(node: TaskNode, colors: ColorSupport = NO_COLOR): string {
   const corner = (t: string) => paint('', t, colors, { dim: true })
-  const cmd = node.config.exec?.command ?? ''
+  const cmd = maskedCommand(node.config.exec?.command ?? '', node.config.exec?.env?.define)
   const mark = isPersistentNode(node) ? `${paint(ACCENT, '▸', colors)} ` : ''
   return `${corner('┌─')} ${mark}${paintTaskId(node, colors, { bold: true })} ${corner('>')} $ ${cmd}`
 }

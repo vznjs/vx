@@ -458,6 +458,17 @@ matches Turbo's `passThroughEnv` semantics and exists for two reasons:
   with different `FOO=bar` set would produce different outputs and
   the user would never know why.
 
+**Masking.** The value of a variable whose name holds `TOKEN`, `SECRET`,
+`KEY`, `PASSWORD`, `PASSWD` or `CREDENTIAL` (vx's own environment or a
+task's `define`, six characters or more) is printed as `***` wherever vx
+shows it: the task's output, the stdout the cache keeps and a hit
+replays, the command a cache entry stores (what `vx why` prints and a
+remote cache receives), the `$ command` line, telemetry records and
+`vx show`. A value
+split across two output chunks is still caught; the output holds back
+that many characters until the next chunk. A plugin that reads a task's
+config directly sees it as written.
+
 Two `node_modules/.bin` directories are prepended to `PATH` so
 installed tools (`oxlint`, `vite`, etc.) work without `npx`: the
 project's own, then the WORKSPACE ROOT's, where a monorepo's shared

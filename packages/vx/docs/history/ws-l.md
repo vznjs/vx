@@ -17,12 +17,26 @@
    remote `cd` was unquoted (L-7). The config purity gate is not a
    security boundary (a config is the user's code); its `Worker` gap is
    a staleness lead for D.
-5. Secrets. No plaintext value reaches a log, report, event or the
-   index; the digests `vx why` prints were unkeyed (L-4). vx-reapi puts
-   env values in the uploaded Command on the execute path, by design.
+5. Secrets. vx's own records hold no plaintext value, but the digests
+   `vx why` prints were unkeyed (L-4), and a value a task printed or a
+   config inlined reached the terminal, the cached stdout, telemetry and
+   `vx show` (L-11). vx-reapi puts env values in the uploaded Command on
+   the execute path, by design.
 6. `vx upgrade`: SHA-256 verified before a byte is written, the rename
    last; provenance is out of its reach and says so (item 1096). No bug.
    `vx mcp`'s tools are read-only and take no paths. No bug.
+
+7. `vx mcp` inputs (coordinator backlog 1): every tool validates its
+   arguments' shape, SQL is parameterized, a project name is matched by
+   name (never a glob or a path), and no tool takes a path. The stdin
+   line buffer is unbounded, but its only writer is the agent that spawned
+   the server. No bug.
+8. Lockfile parsers against hostile input (backlog 4): entries are held in
+   Maps; a dependency cycle folds through core's `reachDigests` (a 20,000
+   package npm lock with a cycle digests in 164 ms); yarn classic's
+   `fields` ignores a `__proto__` string. A top-level `__proto__` field is
+   dropped from bun's and pnpm's global material, but no package manager
+   writes or reads one, so no install can differ. No bug.
 
 ## Items
 
@@ -103,6 +117,18 @@
   walled from every task, each granted its own directory. Coordinator
   go-ahead, outside L's slice. Row in `sandbox-runtime.unsafe.test.ts`;
   the bridge-socket rows follow the socket into the task's directory.
+- L-11. `fix(orchestrator)`: the value of a secret-named variable (`TOKEN`,
+  `SECRET`, `KEY`, `PASSWORD`, `PASSWD`, `CREDENTIAL`; vx's env or a
+  task's `define`) reached the terminal, the cached stdout every hit
+  replays, the `$ command` line, telemetry records and `vx show` as
+  written. It is now masked `***` at each: task output by a streaming
+  mask (a value split across chunks is still caught; a server's too),
+  captured stdout
+  whole, a replayed hit's stdout, the command where it is shown and in
+  the cache entry (`vx why`, a remote cache). `vx why`'s env digests and
+  `vx last` were probed clean. 9 µs
+  per hit that prints (144 env vars), none for a silent hit. Rows in
+  `secret-mask.test.ts`. Coordinator backlog 2.
 - L-12. `ci(release)`: the release binaries carried no provenance:
   `vx upgrade`'s SHA-256 comes from the release API that serves the asset,
   so whoever could replace the asset replaced its digest too (item 1096).

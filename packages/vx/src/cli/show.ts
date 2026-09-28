@@ -9,7 +9,7 @@
 import type { ProjectConfig, TaskConfig } from '../config.js'
 import { declaredTask } from '../graph/index.js'
 import { flagHint, seeHelp } from './help.js'
-import { nearMatches, relPosix, UserError } from '../util/index.js'
+import { nearMatches, relPosix, secretMask, UserError } from '../util/index.js'
 import { loadCliProjects } from './workspace-config.js'
 import {
   findWorkspaceRoot,
@@ -153,6 +153,45 @@ function projectDir(root: string, meta: ProjectMeta): string {
   return rel === '' ? '.' : rel
 }
 
+/**
+ * A task as `vx show` prints it: a secret-named variable's value masked
+ * wherever it appears, in `env.define` and in the command a TS config
+ * built from `process.env` (L-11).
+ */
+function shownTask(task: TaskConfig): TaskConfig {
+  const exec = task.exec
+  if (exec === undefined) return task
+  const define = exec.env?.define
+  const secrets = secretMask(process.env, define)
+  if (secrets === null) return task
+  return {
+    ...task,
+    exec: {
+      ...exec,
+      ...(exec.command !== undefined ? { command: secrets.mask(exec.command) } : {}),
+      ...(define !== undefined
+        ? {
+            env: {
+              ...exec.env,
+              define: Object.fromEntries(
+                Object.entries(define).map(([k, v]) => [k, secrets.mask(v)]),
+              ),
+            },
+          }
+        : {}),
+    },
+  }
+}
+
+/** A project config with each task as `shownTask` prints it. */
+function shownConfig(config: ProjectConfig | null): ProjectConfig | null {
+  if (config?.tasks === undefined) return config
+  return {
+    ...config,
+    tasks: Object.fromEntries(Object.entries(config.tasks).map(([n, t]) => [n, shownTask(t)])),
+  }
+}
+
 function renderList(
   root: string,
   metas: readonly ProjectMeta[],
@@ -198,7 +237,8 @@ function renderProject(
   if (format === 'json') {
     // Round-trip so the printed object is exactly the JSON form of the
     // resolved config (drops `undefined` fields).
-    return `${JSON.stringify(JSON.parse(JSON.stringify({ name, dir, config })), null, 2)}\n`
+    const shown = shownConfig(config)
+    return `${JSON.stringify(JSON.parse(JSON.stringify({ name, dir, config: shown })), null, 2)}\n`
   }
   const head = `${name} — ${dir}`
   const tasks = Object.entries(config?.tasks ?? {})
@@ -216,7 +256,7 @@ function renderTask(
   format: 'pretty' | 'json',
 ): string {
   if (format === 'json') {
-    const obj = { name, dir, task: taskName, config: task }
+    const obj = { name, dir, task: taskName, config: shownTask(task) }
     return `${JSON.stringify(JSON.parse(JSON.stringify(obj)), null, 2)}\n`
   }
   return `${name} — ${dir}\n\n${taskBlock(taskName, task)}`
@@ -233,7 +273,7 @@ function renderTaskAcross(
       name: p.name,
       dir: relPosix(root, p.dir) || '.',
       task: taskName,
-      config: p.config.tasks![taskName],
+      config: shownTask(p.config.tasks![taskName]!),
     }))
     return `${JSON.stringify(JSON.parse(JSON.stringify(list)), null, 2)}\n`
   }
@@ -246,7 +286,8 @@ function renderTaskAcross(
 }
 
 /** Every field the run reads, in the order the schema declares them. */
-function taskBlock(taskName: string, task: TaskConfig): string {
+function taskBlock(taskName: string, raw: TaskConfig): string {
+  const task = shownTask(raw)
   const rows: [string, string][] = []
   const list = (xs: readonly string[] | undefined): string | undefined =>
     xs === undefined ? undefined : xs.join(', ')
