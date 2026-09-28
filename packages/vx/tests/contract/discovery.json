@@ -1,0 +1,51 @@
+{
+  "projects: pnpm-workspace.yaml": [
+    "a packages/a",
+    "b packages/b"
+  ],
+  "root from packages/a/src: pnpm-workspace.yaml": ".",
+  "root from apps/c: pnpm-workspace.yaml": ".",
+  "projects: package.json workspaces": [
+    "a packages/a",
+    "b packages/b",
+    "c apps/c"
+  ],
+  "root from packages/a/src: package.json workspaces": ".",
+  "root from apps/c: package.json workspaces": ".",
+  "projects: package.json workspaces.packages": [
+    "c apps/c"
+  ],
+  "root from packages/a/src: package.json workspaces.packages": "packages/a",
+  "root from apps/c: package.json workspaces.packages": ".",
+  "projects: a negated glob": [
+    "a packages/a"
+  ],
+  "root from packages/a/src: a negated glob": ".",
+  "root from apps/c: a negated glob": "apps/c",
+  "projects: a recursive glob": [
+    "a packages/a",
+    "b packages/b",
+    "nested packages/a/nested"
+  ],
+  "root from packages/a/src: a recursive glob": ".",
+  "root from apps/c: a recursive glob": "apps/c",
+  "projects: pnpm-workspace.yaml beside package.json workspaces": [
+    "a packages/a",
+    "b packages/b"
+  ],
+  "root from packages/a/src: pnpm-workspace.yaml beside package.json workspaces": ".",
+  "root from apps/c: pnpm-workspace.yaml beside package.json workspaces": ".",
+  "projects: package.json without workspaces": [
+    "root ."
+  ],
+  "root from packages/a/src: package.json without workspaces": "packages/a",
+  "root from apps/c: package.json without workspaces": "apps/c",
+  "project config: vx.config.ts + vx.config.mts + vx.config.js + vx.config.mjs": "vx.config.ts",
+  "project config: vx.config.mts + vx.config.js + vx.config.mjs": "vx.config.mts",
+  "project config: vx.config.js + vx.config.mjs": "vx.config.js",
+  "project config: vx.config.mjs": "vx.config.mjs",
+  "workspace config: vx.workspace.ts + vx.workspace.mts + vx.workspace.js + vx.workspace.mjs": "vx.workspace.ts",
+  "workspace config: vx.workspace.mts + vx.workspace.js + vx.workspace.mjs": "vx.workspace.mts",
+  "workspace config: vx.workspace.js + vx.workspace.mjs": "vx.workspace.js",
+  "workspace config: vx.workspace.mjs": "vx.workspace.mjs"
+}
