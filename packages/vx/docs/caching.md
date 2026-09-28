@@ -1190,9 +1190,9 @@ hit replays it with pure SQL, never decompressing the artifact).
 
 `schema_meta.version` is the gate: an index written by an EARLIER
 `SCHEMA_VERSION` is reset on the first run after an upgrade (pre-alpha:
-no migrations): `entries`, `runs`, `file_hashes`, `output_files`,
-`invocations`, `entry_inputs` and `config_evals` are dropped and
-recreated, while `config_closures` and `output_dirs` are kept.
+no migrations): every table but `schema_meta` is dropped and recreated,
+so each comes back in its current shape (A-54: `config_closures` and
+`output_dirs` kept an earlier vx's columns).
 Two openers leave it untouched and say why (item 896): a reading verb
 (`vx why`, `vx last`, `vx info`) refuses an index it cannot read
 (`vx cache prune --dry-run` previews the reset instead, item 1083), and every opener, a run too, refuses a NEWER
@@ -1204,7 +1204,7 @@ all-miss run that follows is explained; the artifacts it orphaned are
 `vx cache prune`'s to reap.
 
 ```sql
--- src/cache/cache.ts schema (SCHEMA_VERSION = 'v28')
+-- src/cache/schema.ts (SCHEMA_VERSION = 'v28', in cache.ts)
 
 CREATE TABLE schema_meta (
   key   TEXT PRIMARY KEY,  -- 'version', 'cache_version', 'orphans_swept_at', 'file_hashes_swept_at', 'value_salt'

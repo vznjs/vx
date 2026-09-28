@@ -61,7 +61,9 @@ describe('the docs quote the current CACHE_VERSION and SCHEMA_VERSION', () => {
   })
 
   it('caching.md heads its schema block with the current SCHEMA_VERSION', () => {
-    expect(doc).toContain(`-- src/cache/cache.ts schema (SCHEMA_VERSION = '${SCHEMA_VERSION}')`)
+    expect(doc).toContain(
+      `-- src/cache/schema.ts (SCHEMA_VERSION = '${SCHEMA_VERSION}', in cache.ts)`,
+    )
   })
 
   it('modules/cache.md quotes both constants as they are', () => {

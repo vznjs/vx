@@ -622,7 +622,7 @@ export class Cache implements CacheLayer {
             }
             if (found === SCHEMA_VERSION) return null
             this.db.exec(
-              'DROP TABLE IF EXISTS entries; DROP TABLE IF EXISTS runs; DROP TABLE IF EXISTS file_hashes; DROP TABLE IF EXISTS output_files; DROP TABLE IF EXISTS invocations; DROP TABLE IF EXISTS run_task_inputs; DROP TABLE IF EXISTS entry_inputs; DROP TABLE IF EXISTS config_evals;',
+              'DROP TABLE IF EXISTS entries; DROP TABLE IF EXISTS runs; DROP TABLE IF EXISTS file_hashes; DROP TABLE IF EXISTS output_files; DROP TABLE IF EXISTS invocations; DROP TABLE IF EXISTS run_task_inputs; DROP TABLE IF EXISTS entry_inputs; DROP TABLE IF EXISTS config_evals; DROP TABLE IF EXISTS config_closures; DROP TABLE IF EXISTS output_dirs;',
             )
             this.db
               .prepare("UPDATE schema_meta SET value = ? WHERE key = 'version'")

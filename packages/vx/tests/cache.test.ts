@@ -2358,7 +2358,7 @@ describe('Cache schema/version recovery', () => {
     await rm(workspaceRoot, { recursive: true, force: true })
   })
 
-  it('a SCHEMA_VERSION reset leaves NO row behind but the two that may stay', async () => {
+  it('a SCHEMA_VERSION reset leaves NO row behind but its own version', async () => {
     // Item 504. The row below names two tables; this one quantifies over
     // every table the schema creates, because the hazard is a table ADDED
     // later and left out of the DROP list — stale rows under a new schema,
@@ -2366,13 +2366,12 @@ describe('Cache schema/version recovery', () => {
     //
     // Measured, and the drop list is NOT the whole mechanism: two tables
     // are absent from it and only one of them survives.
-    //   output_dirs      absent from the list, still CLEARED — with
-    //                    foreign_keys on, DROP TABLE fires the ON DELETE
-    //                    CASCADE from its entries(hash) reference.
-    //   config_closures  absent, and it SURVIVES. That is safe rather than
-    //                    lucky: a closure is a stat-index feeding config
-    //                    key derivation, so a stale one changes the KEY (a
-    //                    miss, then a rewrite), never the answer.
+    //   output_dirs      dropped since A-54; before, its rows went by the
+    //                    ON DELETE CASCADE from entries(hash) and its old
+    //                    columns stayed.
+    //   config_closures  dropped since A-54 (it SURVIVED before, safely:
+    //                    a stale closure only changes a config key), so a
+    //                    reset also renews its SHAPE (the row below).
     //   schema_meta      holds the sentinel the gate just wrote; dropping
     //                    it would lose the version it is recording.
     //
@@ -2436,7 +2435,48 @@ describe('Cache schema/version recovery', () => {
       .filter((t) => (after.query(`SELECT COUNT(*) AS n FROM ${t}`).get() as { n: number }).n > 0)
       .sort()
     after.close()
-    expect(survivors).toEqual(['config_closures', 'schema_meta'])
+    expect(survivors).toEqual(['schema_meta'])
+  })
+
+  it("a SCHEMA_VERSION reset renews every table's columns, not only its rows", async () => {
+    // A table left out of the DROP list kept the shape an earlier vx made:
+    // a column a later schema adds would fail every insert on an upgraded
+    // cache and never on a fresh one, which is all a test makes (A-54).
+    const { Database } = await import('bun:sqlite')
+    new Cache(cacheDir).close()
+    const dbPath = path.join(cacheDir, 'cache.db')
+    const columns = (db: InstanceType<typeof Database>): Record<string, string[]> =>
+      Object.fromEntries(
+        (
+          db
+            .query(
+              "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
+            )
+            .all() as Array<{
+            name: string
+          }>
+        ).map(({ name }) => [
+          name,
+          (db.query(`PRAGMA table_info(${name})`).all() as Array<{ name: string }>).map(
+            (c) => c.name,
+          ),
+        ]),
+      )
+    const raw = new Database(dbPath)
+    const fresh = columns(raw)
+    for (const t of Object.keys(fresh)) {
+      if (t === 'schema_meta') continue
+      raw.exec(`DROP TABLE ${t}; CREATE TABLE ${t} (old_shape TEXT)`)
+    }
+    raw.query("UPDATE schema_meta SET value = 'v0-ancient' WHERE key = 'version'").run()
+    raw.close()
+    new Cache(cacheDir).close()
+    const after = new Database(dbPath)
+    try {
+      expect(columns(after)).toEqual(fresh)
+    } finally {
+      after.close()
+    }
   })
 
   it('SCHEMA_VERSION mismatch wipes entries + runs and recreates cleanly', async () => {

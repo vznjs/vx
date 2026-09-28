@@ -14,8 +14,8 @@ export interface WorkspaceConfig {
    */
   timeout?: number
   /**
-   * Evict from the local cache at the end of every run that writes to it,
-   * by the same policy `vx cache prune` takes as flags: entries not used
+   * Evict from the local cache at the end of every run, whatever its
+   * `--cache` policy (a remote hit is ingested under any), by the same policy `vx cache prune` takes as flags: entries not used
    * for `olderThan` (`30d`, `12h`), then least-recently-used entries
    * until the cache is under `maxSize` (`10G`, `500MB`). Either or both.
    * Omitted → nothing is evicted unless you run `vx cache prune`. Never

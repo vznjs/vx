@@ -424,3 +424,10 @@ An input this user cannot read (mode 000, another user's file) failed its task w
 ### A-51 — the wedged-worker row's recovery gets its own budget (2026-09-28, D's file, J's lead)
 
 `config-eval.test.ts` › "rejects a wedged worker … then recovers" went red on macOS CI twice (#1503, #1738): the recovery evaluation kept the 250 ms budget set for the wedge, and that budget also covers the fresh worker's spawn. The recovery now runs under 4,000 ms; a kept wedged worker still fails it, rejected at 4,000 or held past the 5,000 the row waits. The mutant that keeps the handle (`worker = null` dropped in the timer) passes both the old and the new row, since the worker's close handler nulls it too.
+
+### A-54 — a schema reset renews every table; J's stale claims (2026-09-28)
+
+J's `output_dirs` lead: its rows did go at a `SCHEMA_VERSION` reset (the `ON DELETE CASCADE` from `entries`, as item 504 pinned), but it and `config_closures` were not in the DROP list, so both kept the columns an earlier vx made. A column a later schema adds would fail every insert on an upgraded cache and never on a fresh one, which is all a test makes. Both are dropped now; `caching.md` says so.
+
+- Rows (`cache.test.ts`): "a SCHEMA_VERSION reset renews every table's columns" (each table rebuilt in an old shape before the reset); the survivors row now reads `['schema_meta']`. Both red without the fix.
+- J's stale claims: `config.ts`'s `cacheRetention` JSDoc (every run, whatever its `--cache` policy, since A-7); `task-hash.ts`'s whole-second comment (two seconds for an even stamp, A-38); `caching.md`'s schema header and its drift pin name `schema.ts`, where the DDL lives since A-21. Two were already true: `schema.ts`'s stdout comment and execute-task's capture comment.
