@@ -44,14 +44,14 @@ A CAS digest is the sha256 of the **content**, so it cannot be derived from a
 vx cache key before the bytes exist — `has(key)` could never answer. The
 ActionCache supplies the missing indirection:
 
-| vx                   | REAPI                                                                                                                                                    |
-| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| cache key            | synthetic action digest — `sha256("vx-reapi-v1\0" + key)`                                                                                                |
-| artifact (`tar.zst`) | one CAS blob, referenced by the ActionResult's `output_files`                                                                                            |
-| task duration        | `stdout_raw` on the ActionResult                                                                                                                         |
-| cache miss           | `GetActionResult` → `NOT_FOUND`                                                                                                                          |
-| cache hit            | `GetActionResult` asking for stdout and the artifact inline: a server that honours it (bazel-remote, up to ~1 MiB) answers a small hit in one round trip |
-| cache save           | an artifact up to 256 KiB goes in one `BatchUpdateBlobs`, unprobed; a larger one is probed with `FindMissingBlobs` and streamed only if missing          |
+| vx                   | REAPI                                                                                                                                                            |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| cache key            | synthetic action digest — `sha256("vx-reapi-v1\0" + key)`                                                                                                        |
+| artifact (`tar.zst`) | one CAS blob, referenced by the ActionResult's `output_files`                                                                                                    |
+| task duration        | `stdout_raw` on the ActionResult                                                                                                                                 |
+| cache miss           | `GetActionResult` → `NOT_FOUND`                                                                                                                                  |
+| cache hit            | `GetActionResult` asking for stdout and the artifact inline: a server that honours it (bazel-remote, up to ~1 MiB) answers a small hit in one round trip         |
+| cache save           | an artifact up to 256 KiB is read once and goes in one `BatchUpdateBlobs`, unprobed; a larger one is probed with `FindMissingBlobs` and streamed only if missing |
 
 The `vx-reapi-v1` prefix does two jobs: it keeps vx keys out of the address
 space of real Bazel action digests on a shared server, and it makes a future
