@@ -1,13 +1,14 @@
 ---
 title: The diagram kit
-description: The one build-time SVG component every picture on the site is drawn with, and the data it draws from, each part rendered with the toy monorepo.
+description: The site's build-time SVG picture component and the data it draws from, each part rendered with the toy monorepo.
 ---
 
 import Diagram from '../../../components/guide/diagram/Diagram.astro'
 import { lanes } from '../../../components/guide/diagram/diagram.js'
 
-Every picture on the site is one component, `Diagram`, drawing one value
-of `Picture`: boxes, arrows between them, notes and frames. It renders SVG
+`Diagram` draws one value of `Picture`: boxes, arrows between them, notes
+and frames. The landing's picture uses it; the pages imported from
+`packages/vx/docs` still draw with Mermaid. It renders SVG
 into the page when the site is built, so the picture is there with no
 script, in both themes, and at any width. The data is documented in
 `packages/vx-docs/src/components/guide/diagram/README.md`; this page renders

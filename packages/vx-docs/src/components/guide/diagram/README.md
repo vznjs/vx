@@ -1,6 +1,7 @@
 # The diagram kit
 
-Every picture on the site is one component, `Diagram.astro`, drawing one
+`Diagram.astro` draws the landing's picture (the pages imported from
+`packages/vx/docs` still use Mermaid) from one
 value of `Picture` (`diagram.ts`). It renders SVG into the page at build
 time: no client script, no Mermaid, readable in both themes and at any
 width. The look is one stylesheet, `diagram.css`: the landing's mono
