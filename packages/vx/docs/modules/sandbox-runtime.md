@@ -95,9 +95,10 @@ grants still go through SRT's config, where they also work on Linux.
 The `network` case has no such workaround: SRT runs ONE filtering proxy
 per run and checks every request against `config.network.allowedDomains`
 from `initialize()` (`sandbox-manager.js:238` in 0.0.76). `run()` therefore arms it
-with the union of every domain any sandboxed task declared. Per-task
-enforcement survives where it counts — a task that declared no domains is
-never handed the proxy's port, so it reaches nothing at all.
+with the union of every domain any sandboxed task declared. Every
+sandboxed task is handed that proxy, so a task that declared no domains
+still reaches the union, and `deniedDomains` is always empty
+(schema.md § `exec.sandbox`).
 
 ## Public surface
 
