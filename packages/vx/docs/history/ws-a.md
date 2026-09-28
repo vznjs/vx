@@ -294,3 +294,11 @@ The last `miss-save.ts` survivors: the workspace-row filter in the snapshot's `e
 
 - Rows (`stale-hit.test.ts`): an input edited under `--skip-worktree` moves the key (the removal row passed without the `S` flag: the save's moved-input check refused the missing file, masking it); `core.fileMode` read false as `no`, `off` and `0` too; a non-UTF-8 name inside an embedded repository is refused. Each red under its mutant.
 - Equivalent: OIDs for conflict stages (the path is dirty, so untrusted), a failed `check-attr` whose output is then parsed (empty), the attributes walk past the repository root and a status path outside the prefix (both only widen distrust), and a trusted file gone at restamp (dirty, so already dropped).
+
+### A-34 (2026-09-28, sweep: core `cache.ts`)
+
+49 mutants over the 26 files that reach it: 36 caught, 13 survived. No defect.
+
+- Rows: `cache-get-many.test.ts`: `getMany` past a 900-hash chunk; `has()` with its artifact gone; a write-disabled cache saves nothing. `cache.test.ts`: a size prune passes over an older row whose artifact is gone. `remote-artifact-names.test.ts`: an undeclared project output and an undeclared workspace output are each refused alone (the mixed row masked either half). Each red under its mutant.
+- Equivalent: the row mode's `& 0o777` (the sidecar already holds permission bits only).
+- Unheld here: a restore's `EACCES` (needs a non-root user), eviction on a read-only cache, the prune retry and access flush on `SQLITE_FULL` (the unsafe disk-full suite, which skips on this box), and a foreign artifact's bare `outputs/` directory entry.

@@ -1722,6 +1722,29 @@ describe('Cache storage (v10)', () => {
     expect(await cache.get('h-bulk-999')).toBeNull()
   })
 
+  it('prune() by size passes over an older row whose artifact is gone (A-34)', async () => {
+    // LRU order reaches the phantom first; it is no candidate, so the one
+    // real entry is what goes, and the phantom row is left to its grace.
+    // @ts-expect-error: private member access for testing
+    const db = cache.db as import('bun:sqlite').Database
+    const insert = db.prepare(
+      `INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, stdout, created_at, accessed_at)
+       VALUES (?, 'pkg', 'build', 'noop', 0, 0, ?, '', 1, ?)`,
+    )
+    const now = Date.now()
+    insert.run('h-phantom', 1_000_000, now - 2000)
+    seedRow(cache, insert, 'h-real', 100, now - 1000)
+    const r = await cache.prune({ maxBytes: 50 })
+    expect({ evicted: r.evicted, bytesFreed: r.bytesFreed }).toEqual({
+      evicted: 1,
+      bytesFreed: 100,
+    })
+    const rows = db.prepare('SELECT hash FROM entries ORDER BY hash').all() as Array<{
+      hash: string
+    }>
+    expect(rows.map((x) => x.hash)).toEqual(['h-phantom'])
+  })
+
   it('prune() drops a row whose artifact is gone and evicts nothing for its bytes (item 975)', async () => {
     // A row whose artifact was deleted by hand is never a hit, and its
     // bytes are on no disk; `--max-size` counted them and evicted the one
