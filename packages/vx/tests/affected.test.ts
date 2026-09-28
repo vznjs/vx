@@ -718,11 +718,15 @@ describe('affectedProjects', () => {
     expect([...out]).toEqual(['a'])
   })
 
-  it('selects a project whose changed file name contains a quote or backslash', async () => {
-    await writeFile(path.join(root, 'packages/b/we"ird\\name.ts'), 'v1')
-    const out = await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects })
-    expect([...out]).toEqual(['b'])
-  })
+  // Windows forbids `"` in a name and reads `\\` as a separator.
+  it.skipIf(process.platform === 'win32')(
+    'selects a project whose changed file name contains a quote or backslash',
+    async () => {
+      await writeFile(path.join(root, 'packages/b/we"ird\\name.ts'), 'v1')
+      const out = await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects })
+      expect([...out]).toEqual(['b'])
+    },
+  )
 
   it('selects a project whose only change is an untracked file', async () => {
     // `git diff` never reports untracked-but-not-ignored files, yet input

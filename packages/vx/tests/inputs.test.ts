@@ -465,13 +465,14 @@ describe('resolveInputs — git ls-files path (v14)', () => {
   // no file). Tracked and untracked alike, since the two travel different
   // columns of the same listing.
   it('names with spaces, quotes, backslashes and non-ASCII enter the input set intact', async () => {
-    const odd = ['with spaces.txt', 'café.ts', 'quo"te.txt', 'back\\slash.txt']
+    // Windows forbids `"` in a name and reads `\\` as a separator.
+    const posixOnly = process.platform === 'win32' ? [] : ['quo"te.txt', 'back\\slash.txt']
+    const odd = ['with spaces.txt', 'café.ts', ...posixOnly]
     await write(path.join(projectDir, 'src', 'with spaces.txt'))
     await write(path.join(projectDir, 'src', 'café.ts'))
     await git(root, 'add', '.')
     await git(root, 'commit', '-q', '-m', 'init')
-    await write(path.join(projectDir, 'src', 'quo"te.txt'))
-    await write(path.join(projectDir, 'src', 'back\\slash.txt'))
+    for (const n of posixOnly) await write(path.join(projectDir, 'src', n))
 
     const got = await resolveInputs({
       projectDir,
