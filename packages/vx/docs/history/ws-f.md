@@ -422,3 +422,14 @@ the fix: `OTEL_EXPORTER_OTLP_CERTIFICATE` for vx-otel,
 `NODE_EXTRA_CA_CERTS` for a GHES host behind a private CA (Bun's fetch
 trusts it; probed). Rows red without the fix, the reset control holds
 both ways.
+
+F-41. vx-reapi reached a TLS server with the system roots and no client
+certificate, so a server behind a private CA, or one that asks for
+mutual TLS (EngFlow, a self-hosted Buildbarn), was unreachable. The
+plugin now takes `tlsCertificate`, `tlsClientCertificate` and
+`tlsClientKey` (or `VX_REAPI_TLS_*`), PEM files read at startup, as
+Bazel's `--tls_*` flags; any of them turns TLS on, and an unreadable
+file is refused naming its setting, as is a client certificate
+without its key or the reverse. Rows against the fake server over
+TLS and mutual TLS, certificates made per run by openssl; red without
+the fix. The README pin now holds the three variables.

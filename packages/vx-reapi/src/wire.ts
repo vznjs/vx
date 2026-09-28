@@ -359,8 +359,13 @@ export interface ReapiOptions {
   instanceName?: string
   /** Sent on every call (auth, routing). */
   headers?: Record<string, string>
-  /** TLS. Default: infer from an `https://`/`grpcs://` endpoint, else insecure. */
+  /** TLS. Default: on with any PEM below or an `https://`/`grpcs://` endpoint, else insecure. */
   tls?: boolean
+  /** PEM of the CA that signed the server's certificate, in place of the system roots. */
+  tlsCaPem?: string
+  /** PEM of a client certificate and its key, for a server that asks for mutual TLS. */
+  tlsClientCertPem?: string
+  tlsClientKeyPem?: string
   /** Reported in REAPI `RequestMetadata.tool_details`. */
   toolName?: string
   toolVersion?: string
@@ -468,11 +473,23 @@ export class ReapiClient {
 
   constructor(opts: ReapiOptions) {
     assertBunSupportsChunking()
-    const tls = opts.tls ?? /^(https|grpcs):\/\//.test(opts.endpoint)
+    const pem = (text: string | undefined): Buffer | null =>
+      text === undefined ? null : Buffer.from(text)
+    const tls =
+      opts.tls ??
+      (opts.tlsCaPem !== undefined ||
+        opts.tlsClientCertPem !== undefined ||
+        /^(https|grpcs):\/\//.test(opts.endpoint))
     const target = opts.endpoint.replace(/^(https?|grpcs?):\/\//, '')
     this.svc = loadServices(
       target,
-      tls ? grpc.credentials.createSsl() : grpc.credentials.createInsecure(),
+      tls
+        ? grpc.credentials.createSsl(
+            pem(opts.tlsCaPem),
+            pem(opts.tlsClientKeyPem),
+            pem(opts.tlsClientCertPem),
+          )
+        : grpc.credentials.createInsecure(),
     )
     this.instance = opts.instanceName ?? ''
     this.headers = opts.headers ?? {}

@@ -9,6 +9,7 @@
 // Imports core only through the public `@vzn/vx` specifier, like every other
 // plugin, so nothing here depends on core's internal layout.
 
+import { readFileSync } from 'node:fs'
 import {
   definePlugin,
   LayeredCache,
@@ -89,6 +90,19 @@ export interface ReapiPluginOptions extends Partial<ReapiOptions> {
   platform?: Record<string, string>
   /** Concurrent remote tasks; becomes the scheduler's pool for this executor. */
   capacity?: number
+  /**
+   * PEM file of the CA that signed the server's certificate, for a server
+   * behind a private CA. Falls back to `VX_REAPI_TLS_CERTIFICATE`. Bazel's
+   * `--tls_certificate`.
+   */
+  tlsCertificate?: string
+  /**
+   * PEM files of a client certificate and its key, for a server that asks
+   * for mutual TLS (`VX_REAPI_TLS_CLIENT_CERTIFICATE` / `_KEY`). Bazel's
+   * `--tls_client_certificate` / `--tls_client_key`.
+   */
+  tlsClientCertificate?: string
+  tlsClientKey?: string
 }
 
 /**
@@ -109,10 +123,59 @@ function connection(options: ReapiPluginOptions): ReapiOptions | undefined {
   if (endpoint === undefined || endpoint === '') return undefined
   assertEndpoint(endpoint, from)
   const instanceName = options.instanceName ?? process.env['VX_REAPI_INSTANCE']
+  // A server behind a private CA, or one that asks for a client
+  // certificate, was unreachable: TLS used the system roots and no client
+  // pair (F-41). Each is a PEM file, read here; one that cannot be read is
+  // a setting to fix, refused naming it.
+  const pem = (
+    option: string | undefined,
+    name: string,
+    fromEnv: string | undefined,
+    env: string,
+  ): string | undefined => {
+    const file = option ?? fromEnv?.trim()
+    if (file === undefined || file === '') return undefined
+    try {
+      return readFileSync(file, 'utf8')
+    } catch (err) {
+      const from = option !== undefined ? `\`reapi({ ${name} })\`` : env
+      throw new UserError(
+        `vx/reapi: ${from} names ${file}, which cannot be read (${(err as NodeJS.ErrnoException).code ?? String(err)})`,
+      )
+    }
+  }
+  const tlsCaPem = pem(
+    options.tlsCertificate,
+    'tlsCertificate',
+    process.env['VX_REAPI_TLS_CERTIFICATE'],
+    'VX_REAPI_TLS_CERTIFICATE',
+  )
+  const tlsClientCertPem = pem(
+    options.tlsClientCertificate,
+    'tlsClientCertificate',
+    process.env['VX_REAPI_TLS_CLIENT_CERTIFICATE'],
+    'VX_REAPI_TLS_CLIENT_CERTIFICATE',
+  )
+  const tlsClientKeyPem = pem(
+    options.tlsClientKey,
+    'tlsClientKey',
+    process.env['VX_REAPI_TLS_CLIENT_KEY'],
+    'VX_REAPI_TLS_CLIENT_KEY',
+  )
+  // grpc-js refuses either one alone, with a message that names neither
+  // setting.
+  if ((tlsClientCertPem === undefined) !== (tlsClientKeyPem === undefined)) {
+    throw new UserError(
+      'vx/reapi: a client certificate and its key go together — set both tlsClientCertificate and tlsClientKey (VX_REAPI_TLS_CLIENT_CERTIFICATE / VX_REAPI_TLS_CLIENT_KEY), or neither',
+    )
+  }
   return {
     ...options,
     endpoint,
     ...(instanceName === undefined ? {} : { instanceName }),
+    ...(tlsCaPem === undefined ? {} : { tlsCaPem }),
+    ...(tlsClientCertPem === undefined ? {} : { tlsClientCertPem }),
+    ...(tlsClientKeyPem === undefined ? {} : { tlsClientKeyPem }),
   }
 }
 
