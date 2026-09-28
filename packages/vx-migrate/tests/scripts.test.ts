@@ -116,6 +116,26 @@ describe('parseFanOut', () => {
         'yarn workspace @x/app test',
         { tool: 'yarn', script: 'test', include: ['@x/app'], exclude: [], sorted: true },
       ],
+      [
+        // docusaurus' `watch`: lerna through the package manager.
+        'pnpm lerna run --parallel watch',
+        { tool: 'lerna', script: 'watch', include: [], exclude: [], sorted: false },
+      ],
+      [
+        'yarn exec lerna run test --ignore docs',
+        { tool: 'lerna', script: 'test', include: [], exclude: ['docs'], sorted: true },
+      ],
+      [
+        // unocss' `deploy`: one package's script through npm's prefix.
+        'npm -C docs run build',
+        { tool: 'npm', script: 'build', include: ['./docs'], exclude: [], sorted: true },
+      ],
+      [
+        'npm --prefix=packages/a test',
+        { tool: 'npm', script: 'test', include: ['./packages/a'], exclude: [], sorted: true },
+      ],
+      ['npm -C docs install', null],
+      ['pnpm lerna version --exact', null],
       ['pnpm -r exec attw --pack .', null],
       ['pnpm run test:types', null],
       ['npm run build', null],

@@ -134,6 +134,18 @@ a project"). npm's `--workspace <path>` now selects by path.
   script's packages — runs every noted command with `--dry=json`
   (red on the old note: `vx run test` exits 1 at the root).
 
+N-11. A scan of 32 cloned repos' root scripts for fan-outs the parser
+returned null on: docusaurus' `watch` is `pnpm lerna run --parallel
+watch` (lerna through the manager; only `npx lerna` was read), and
+unocss' `deploy` / `docs` are `npm -C <dir> run <script>` (npm's
+prefix, one package). Both now map. Left unmapped on purpose: a
+fan-out inside `concurrently "…"` or behind `cross-env` (shell the
+parser does not take apart), npm/cli's `node . run` (npm running
+itself).
+
+- Rows: `tests/scripts.test.ts` › parseFanOut (`pnpm lerna`, `yarn
+  exec lerna`, `npm -C`, `npm --prefix=`; red without the change).
+
 ## Candidates not built (2026-09-28)
 
 - Lerna without Nx: `lerna run <s>` (lerna 10.0.1, `prepNxOptions`)
