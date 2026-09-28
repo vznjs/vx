@@ -229,7 +229,8 @@ export default defineWorkspace({ plugins: [workspaceScripts()] })
 | `pnpm -r --filter './packages/*' build`  | `build` in those packages, after `^build`     |
 | `pnpm -r --parallel dev`                 | `dev` in each package, persistent, no edges   |
 | `pnpm -r build && pnpm -r test`          | `test` after its package's `build`            |
-| `pnpm build`                             | `vx run build`                                |
+| `pnpm build`                             | `vx run build --all`                          |
+| `"build:examples": "pnpm -F '@example/*' build"` | noted as `vx run build --filter '@example/*'` |
 
 Nothing is cached until a package's `vx.config.ts` declares its inputs and
 outputs. With no fan-out scripts at all, `vx init` writes the configs.

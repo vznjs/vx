@@ -12,6 +12,7 @@
 
 import path from 'node:path'
 import type { ProjectMeta } from '@vzn/vx'
+import { shellQuote } from '../nx-command.js'
 import { packageScripts, relPosix } from '../paths.js'
 import { pruneOrphanPersistentNotes } from '../persistent-note.js'
 import { scriptCommand } from '../script-command.js'
@@ -153,7 +154,8 @@ function npmFanOut(w: string[]): FanOut | null {
     if (a === '--workspaces' || a === '-ws') all = true
     else if (a === '--workspace' || a.startsWith('--workspace=') || a === '-w') {
       const v = flagValue(w, i, a === '-w' ? '-w' : '--workspace')
-      if (v !== undefined) out.include.push(v)
+      // npm takes a name or a path; a path is `./`-rooted in the filter DSL.
+      if (v !== undefined) out.include.push(/^[^@.].*\//.test(v) ? `./${v}` : v)
     } else if (a === '--') break
     else if (a.startsWith('-')) continue
     else if (out.script === '') out.script = a
@@ -349,6 +351,9 @@ export function mapScriptsWorkspace(
       continue
     }
     const before: string[] = []
+    // What the team types instead: each fan-out as `vx run`, its selectors as
+    // `--filter` (vx's DSL is pnpm's) where they narrow the script's holders.
+    const runs: { script: string; filters: string[] }[] = []
     for (const [k, fan] of fans.entries()) {
       if (fan === null) {
         rootOnly.push(`${rootName} (\`${parsed.cmds[k]}\`)`)
@@ -369,10 +374,19 @@ export function mapScriptsWorkspace(
           `note: root script ${rootName}: a since-ref selector (\`[ref]\`) selects by git history, which a mapping cannot — every package with the script takes it`,
         )
       }
-      for (const m of members) {
+      const holders = members.filter((m) => {
+        const b = packageScripts(m)[fan.script]
+        return typeof b === 'string' && b !== ''
+      })
+      runs.push({
+        script: fan.script,
+        filters:
+          !unknownSelector && holders.every((m) => selected.has(m.name))
+            ? []
+            : [...fan.include, ...fan.exclude.map((e) => `!${e}`)],
+      })
+      for (const m of holders) {
         if (!selected.has(m.name)) continue
-        const body2 = packageScripts(m)[fan.script]
-        if (typeof body2 !== 'string' || body2 === '') continue
         let tasks = planned.get(m.name)
         if (tasks === undefined) planned.set(m.name, (tasks = new Map()))
         const entry = tasks.get(fan.script) ?? { sorted: false, after: new Set<string>() }
@@ -382,9 +396,18 @@ export function mapScriptsWorkspace(
       }
       before.push(fan.script)
     }
-    // `pnpm ci` is `vx run build test`: the name a team types, said once.
-    if (before.length > 0 && !before.includes(rootName)) {
-      renamed.push(`\`${rootName}\` is \`vx run ${[...new Set(before)].join(' ')}\``)
+    // `pnpm ci` is `vx run build test --all`: the command a team types, said once.
+    const narrowed = runs.some((r) => r.filters.length > 0)
+    if (runs.length > 0 && (narrowed || !before.includes(rootName))) {
+      // From the root, a bare `vx run` names no project: `--all` is the fan-out.
+      const flags = (fs: string[]) =>
+        fs.length === 0 ? ' --all' : fs.map((f) => ` --filter ${shellQuote(f)}`).join('')
+      const key = (r: (typeof runs)[number]) => flags(r.filters)
+      const same = runs.every((r) => key(r) === key(runs[0]!))
+      const line = same
+        ? `vx run ${[...new Set(before)].join(' ')}${key(runs[0]!)}`
+        : runs.map((r) => `vx run ${r.script}${key(r)}`).join(' && ')
+      renamed.push(`\`${rootName}\` is \`${line}\``)
     }
   }
   if (rootOnly.length > 0) {
