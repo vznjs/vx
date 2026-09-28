@@ -424,6 +424,27 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   it; `.yarnrc.yml` joins the mapping key. nx() is untouched: Nx
   itself refuses PnP. Rows (`script-command.test`, `turbo.test`): red
   without the fix.
+- **G-37.** nx() and Nx 23 inferred targets (`@nx/js/typescript`,
+  `@nx/vite`, `@nx/vitest`, `@nx/jest`, `@nx/eslint`; no project.json):
+  all 20 targets map, run, hit warm and restore. One stale hit:
+  `@nx/vitest`'s `{ json: "{workspaceRoot}/tsconfig.json", fields:
+  ["compilerOptions"] }` was a "not representable" todo and dropped, so
+  a `compilerOptions` edit was a hit where Nx re-ran. A `{ json }` input
+  now keys its whole file (a superset of the fields). Row
+  (`nx-helpers-sweep.test`): red without the fix.
+- **G-38.** Real-repo proof of the four lockfile parsers: every
+  `name@version` bumped as its manager would (integrity, pnpm key
+  renames), `importerDigests` diffed against an independent closure
+  walker. pnpm vuejs/core@4ab865a 481/481 exact; npm
+  microsoft/playwright@b9a34ac 408/408; bun sst/opencode@03e6717
+  375/375; yarn 4 jestjs/jest@202dd8a 209/250 exact, 41 over, 0
+  under. The yarn over-keys are one fallback, `resolveDescriptor`'s
+  every-entry-of-the-name (item 903): 39 are peer ranges no entry
+  keys (hoisted, so arguably real edges), 2 are root `resolutions`
+  overrides (`type-fest@1.4.0` re-keyed 23 projects, not 1). Honouring
+  `resolutions` needs the root package.json's text in the digest; the
+  claim hands the parser content hashes only, a core seam, so the
+  over-key (safe: never a stale hit) stays.
 - **G-39.** An Nx output whose `{options.x}` is unset (falsy) is
   dropped, as Nx's `getOutputsForTargetAndConfiguration` drops it. It
   was a "not a literal string" todo on every inferred `@nx/eslint`

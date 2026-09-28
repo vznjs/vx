@@ -106,6 +106,7 @@ installed.
 | `{workspaceRoot}/file`               | `cache.inputs.workspaceFiles`                             |
 | `{ "env": "VAR" }`                   | `cache.inputs.env` **and** `exec.env.passThrough`         |
 | `{ "runtime": "<cmd>" }`             | `cache.inputs.workspaceRuntime`: it runs at the workspace root, as Nx's does |
+| `{ "json": "<file>", "fields": … }`  | the whole file in `files` / `workspaceFiles`: a superset of the fields |
 | `outputs`                            | `cache.outputs.files` (or `workspaceFiles` for `dist/<project>`) |
 | `nx build app`                       | `vx run app#build`                                        |
 | `nx run app:build:production`        | `vx run app#build:production`                             |
