@@ -66,6 +66,12 @@
   alone. The README links the playground (K-1's study: Biome, Oxc and
   Ruff link theirs). Backlog 2-3, a "Why vx" post, not written: the
   blog's `what-vx-is`, `why-vx-is-fast` and `honest-benchmarks` say it.
+- **K-10** Issue and PR templates (coordinator backlog 2-2): a bug form
+  that asks for `vx info` (the doctor `cli.md` names "for bug reports")
+  and a repro, a feature form that asks whether it could be a plugin,
+  contact links to the docs and private vulnerability reporting
+  (SECURITY.md), and a PR template with the gate. CONTRIBUTING named
+  imperative commits where the repo uses Conventional Commits.
 
 ## Leads for other streams
 
