@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'bun:test'
-import { expandGroupUpstream, filterUpstreamHashes } from '../src/orchestrator/upstream.js'
+import { appendFile, rm } from 'node:fs/promises'
+import path from 'node:path'
+import { run } from '../src/orchestrator/index.js'
+import {
+  expandGroupUpstream,
+  filterUpstreamHashes,
+  keyUpstream,
+} from '../src/orchestrator/upstream.js'
+import { addProject, makeWorkspace, silentLogger, TIMEOUT } from './helpers/orchestrator-fixture.js'
 import type { TaskNode, TaskOutcome } from '../src/graph/index.js'
 import { UserError } from '../src/util/index.js'
 
@@ -259,4 +267,61 @@ describe('expandGroupUpstream', () => {
     }
     expect([ids(expandGroupUpstream([bottom])), reads]).toEqual([['p#leaf'], 49])
   })
+})
+
+describe('keyUpstream', () => {
+  it('keeps a hole where a dependency has not settled, with order-only edges', () => {
+    const node = { id: 'a#t', deps: ['a#x', 'a#y'], orderOnly: ['a#x'] } as unknown as TaskNode
+    const y = { node: { id: 'a#y' }, status: 'success' } as unknown as TaskOutcome
+    const upstream = [undefined, y] as unknown as TaskOutcome[]
+    expect(keyUpstream(node, upstream)).toEqual([undefined, y] as unknown as TaskOutcome[])
+  })
+
+  // `--exclude-dependencies` leaves `test` an order-only edge to `gen`;
+  // `test` hits the cache, dispatches in the restore tier before `gen`
+  // settles, and its key read `.node` of the hole (C-36's probe).
+  it(
+    'a restore-tier hit with an order-only edge runs before its dependency settles',
+    async () => {
+      const fixture = await makeWorkspace('vx-keyupstream-')
+      try {
+        const ui = await addProject(fixture.root, '@x/ui', {
+          files: { 'src/index.js': 'export const ui = 1\n' },
+          config: `export default { tasks: { build: {
+            exec: { command: 'true' },
+            cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+          } } }`,
+        })
+        await addProject(fixture.root, '@x/app', {
+          deps: { '@x/ui': 'workspace:*' },
+          files: { 'src/index.js': 'export const app = 1\n' },
+          config: `export default { tasks: {
+            gen: {
+              exec: { command: 'true' },
+              dependsOn: ['^build'],
+              cache: { inputs: { files: ['src/**'], tasks: [] }, outputs: { files: [] } },
+            },
+            test: {
+              exec: { command: 'true' },
+              dependsOn: ['gen'],
+              cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+            },
+          } }`,
+        })
+        const log = silentLogger(fixture)
+        expect((await run({ cwd: fixture.root, tasks: ['@x/app#test'], log })).ok).toBe(true)
+        await appendFile(path.join(ui, 'src', 'index.js'), '// edit\n')
+        const r = await run({
+          cwd: fixture.root,
+          tasks: ['@x/app#test', '@x/ui#build'],
+          excludeDependencies: ['gen'],
+          log,
+        })
+        expect(r.ok).toBe(true)
+      } finally {
+        await rm(fixture.root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
 })
