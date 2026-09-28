@@ -1107,3 +1107,119 @@ describe('a rate-limited check-run POST', () => {
     ])
   })
 })
+
+// F-55: a mutation sweep of summary.ts and plugin.ts (206 mutants, 19 real
+// survivors) found these unheld.
+describe('the summary, as its second sweep found it unheld', () => {
+  const ctx = { workspaceRoot: '/w', cacheDir: '/c', warn: () => undefined }
+  const line = (md: string, prefix: string) => md.split('\n').find((l) => l.startsWith(prefix))
+
+  it('failures beside aborts are a failed run, not a cancelled one', () => {
+    const md = renderJobSummary(
+      summary(
+        [
+          task({ status: 'failed', exitCode: 1 }),
+          task({ taskId: 'b#build', status: 'aborted' as TaskTelemetry['status'] }),
+        ],
+        { abortedCount: 1, exitOk: false },
+      ),
+    )
+    expect(md.split('\n')[0]).toBe('## ❌ vx run')
+    // Only the failure is a Failure: the aborted task is in the table alone.
+    expect(md).toContain('- **a#build** — exit 1\n')
+    expect(md).not.toContain('- **b#build**')
+  })
+
+  it('violations: none says nothing, one is singular, two plural', () => {
+    const failure = (sandboxViolations: number) =>
+      line(
+        renderJobSummary(summary([task({ status: 'failed', exitCode: 1, sandboxViolations })])),
+        '- **a#build**',
+      )
+    expect([failure(0), failure(1), failure(2)]).toEqual([
+      '- **a#build** — exit 1',
+      '- **a#build** — exit 1 · 1 sandbox violation',
+      '- **a#build** — exit 1 · 2 sandbox violations',
+    ])
+  })
+
+  it('each task is one table row, the failures first', () => {
+    const md = renderJobSummary(
+      summary([
+        task({}),
+        task({ taskId: 'x#y', status: 'failed', exitCode: 1 }),
+        task({ taskId: 'c#d' }),
+      ]),
+    )
+    expect(md.split('\n').filter((l) => /^\| (a#build|x#y|c#d) \|/.test(l))).toEqual([
+      '| x#y | ❌ failed | 1.2s |',
+      '| a#build | ✅ ran | 1.2s |',
+      '| c#d | ✅ ran | 1.2s |',
+    ])
+  })
+
+  it('90 s reads 1m 30s', () => {
+    const md = renderJobSummary(summary([task({ durationMs: 90_000 })]))
+    expect(line(md, '| a#build |')).toBe('| a#build | ✅ ran | 1m 30s |')
+  })
+
+  it('every inline class is escaped in an id: in the table, a failure and a blocked id', () => {
+    const id = 'a#\\`_[x]<!--'
+    const esc = 'a#\\\\\\`\\_\\[x\\]\\<!--'
+    const md = renderJobSummary(
+      summary([
+        task({ taskId: id, status: 'failed', exitCode: 1 }),
+        task({ taskId: `b${id}`, status: 'skipped', blockedBy: id }),
+      ]),
+    )
+    expect([line(md, `| ${esc} |`), line(md, `- **${esc}**`)]).toEqual([
+      `| ${esc} | ❌ failed | 1.2s |`,
+      `- **${esc}** — exit 1 · blocked b${esc}`,
+    ])
+  })
+
+  it('a code span holds a run of backticks and one at either end', () => {
+    const footer = (command: string) =>
+      line(renderJobSummary(summary([task({})], { run: { ...RUN, command } })), '<sub>')!.split(
+        ' · ',
+      )[1]
+    expect([footer('a ``b`` c'), footer('`a'), footer('a`')]).toEqual([
+      '```a ``b`` c```',
+      '`` `a ``',
+      '`` a` ``',
+    ])
+  })
+
+  it('the summaryFile option wins over GITHUB_STEP_SUMMARY', async () => {
+    const prev = process.env['GITHUB_STEP_SUMMARY']
+    process.env['GITHUB_STEP_SUMMARY'] = '/tmp/from-env.md'
+    try {
+      const files: string[] = []
+      const sink = github({
+        summaryFile: '/tmp/from-option.md',
+        checks: false,
+        append: async (f) => void files.push(f),
+      }).telemetry!(ctx) as GithubSummarySink
+      sink.onRunSummary!(summary([task({})]))
+      await sink.flush!()
+      expect(files).toEqual(['/tmp/from-option.md'])
+    } finally {
+      if (prev === undefined) delete process.env['GITHUB_STEP_SUMMARY']
+      else process.env['GITHUB_STEP_SUMMARY'] = prev
+    }
+  })
+
+  it('after a one-byte file the page still starts on its own line', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'vx-gh-lead-'))
+    try {
+      const file = path.join(dir, 's.md')
+      await writeFile(file, 'x')
+      const sink = github({ summaryFile: file, checks: false }).telemetry!(ctx) as GithubSummarySink
+      sink.onRunSummary!(summary([task({})]))
+      await sink.flush!()
+      expect((await readFile(file, 'utf8')).startsWith('x\n## ✅ vx run')).toBe(true)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+})
