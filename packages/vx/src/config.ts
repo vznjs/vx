@@ -531,6 +531,17 @@ type DependsOnEntry<K extends string> =
   | `${string}*${string}`
 
 /**
+ * The keys of `T` that `Shape` does not declare, typed `never`. A generic
+ * argument skips TypeScript's excess-property check, so a Turbo-shaped
+ * `outputs` on a task, or `cwd` in `exec`, type-checked and failed only
+ * when vx loaded the config (D-69); `never` puts the error on that line.
+ */
+type Known<T, Shape> = { [P in keyof T]: P extends keyof Shape ? unknown : never }
+
+/** `T[P]` when `T` has it; `unknown` (no keys to check) when it does not. */
+type At<T, P extends PropertyKey> = T extends { readonly [Q in P]?: infer V } ? V : unknown
+
+/**
  * Identity function — exists only so TypeScript narrows literal types
  * and, crucially, **validates `dependsOn` against this project's own
  * task names**. A bare entry that isn't a declared task key is a compile
@@ -538,13 +549,19 @@ type DependsOnEntry<K extends string> =
  * free strings. Runtime behavior is unchanged (it returns its input).
  */
 export function defineProject<const T extends ProjectConfig>(
-  config: T & {
-    tasks?: {
-      [K in keyof NonNullable<T['tasks']>]?: {
-        dependsOn?: readonly DependsOnEntry<Extract<keyof NonNullable<T['tasks']>, string>>[]
+  config: T &
+    Known<T, ProjectConfig> & {
+      tasks?: {
+        [K in keyof NonNullable<T['tasks']>]?: Known<NonNullable<T['tasks']>[K], TaskConfig> & {
+          dependsOn?: readonly DependsOnEntry<Extract<keyof NonNullable<T['tasks']>, string>>[]
+          exec?: Known<At<NonNullable<T['tasks']>[K], 'exec'>, ExecConfig>
+          cache?: Known<At<NonNullable<T['tasks']>[K], 'cache'>, CacheConfig> & {
+            inputs?: Known<At<At<NonNullable<T['tasks']>[K], 'cache'>, 'inputs'>, CacheInputs>
+            outputs?: Known<At<At<NonNullable<T['tasks']>[K], 'cache'>, 'outputs'>, CacheOutputs>
+          }
+        }
       }
-    }
-  },
+    },
 ): T {
   return config as T
 }

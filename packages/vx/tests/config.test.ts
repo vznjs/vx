@@ -53,6 +53,66 @@ describe('defineProject', () => {
     })
   })
 
+  it('rejects a key the schema does not declare, at each level (D-69)', () => {
+    // A generic argument skips the excess-property check, so each of these
+    // type-checked and was refused only when vx loaded the config. Unused,
+    // an expect-error is itself an error, so each line holds its level.
+    defineProject({
+      tasks: { build: { exec: { command: 'tsc' } } },
+      // @ts-expect-error Turbo's `pipeline` is not a ProjectConfig key.
+      pipeline: {},
+    })
+    defineProject({
+      // @ts-expect-error vx spells it `cache.outputs.files`.
+      tasks: { build: { exec: { command: 'tsc' }, outputs: ['dist/**'] } },
+    })
+    defineProject({
+      // @ts-expect-error `cwd` is not an ExecConfig key.
+      tasks: { build: { exec: { command: 'tsc', cwd: 'x' } } },
+    })
+    defineProject({
+      tasks: {
+        build: {
+          exec: { command: 'tsc' },
+          // @ts-expect-error `remote` is not a CacheConfig key.
+          cache: { inputs: { files: [] }, outputs: { files: [] }, remote: true },
+        },
+      },
+    })
+    defineProject({
+      tasks: {
+        build: {
+          exec: { command: 'tsc' },
+          // @ts-expect-error `globs` is not a CacheInputs key.
+          cache: { inputs: { files: [], globs: [] }, outputs: { files: [] } },
+        },
+      },
+    })
+    defineProject({
+      tasks: {
+        build: {
+          exec: { command: 'tsc' },
+          // @ts-expect-error `logs` is not a CacheOutputs key.
+          cache: { inputs: { files: [] }, outputs: { files: [], logs: 1 } },
+        },
+      },
+    })
+    // CONTROL: every declared key, a conditional spread and a cross-task
+    // dependsOn still type-check.
+    const ci = process.env['CI'] === '1'
+    defineProject({
+      tasks: {
+        build: {
+          description: 'd',
+          dependsOn: ['^build'],
+          exec: { command: 'tsc', env: { passThrough: ['A'] }, ...(ci ? { timeout: 1000 } : {}) },
+          cache: { inputs: { files: ['src/**'], env: ['X'] }, outputs: { files: ['dist/**'] } },
+        },
+        lint: { exec: { command: 'x' }, dependsOn: ['build'] },
+      },
+    })
+  })
+
   it('requires cache.inputs.files — the one declaration vx will not infer', () => {
     // Architecture principle #2: caching is opt-in and `cache.inputs.files`
     // is REQUIRED; there is no inferred-input path. The requirement lives

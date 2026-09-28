@@ -58,7 +58,12 @@ export function defineWorkspace<T extends WorkspaceConfig>(config: T): T
 `T['tasks']` that types each task's `dependsOn` entries against the
 project's own task names (`'build'`, `'^build'`, a `pkg#task`), so a
 typo in a same-project dependency is a type error at the call site;
-`const T` keeps the literal types.
+`const T` keeps the literal types. The same intersection types every
+key the schema does not declare as `never`, at the top, on each task,
+and in its `exec`, `cache`, `cache.inputs` and `cache.outputs`: a
+generic argument skips TypeScript's excess-property check, so a
+Turbo-shaped `outputs` on a task or a `cwd` in `exec` type-checked and
+failed only when vx loaded the config (D-69).
 
 `TaskConfig.dependsOn` is `readonly string[]` (Turbo/Nx
 micro-syntax — see [`schema.md`](../schema.md)).

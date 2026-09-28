@@ -355,13 +355,19 @@ free strings. Runtime behavior is unchanged (it returns its input).
 
 ```ts
 export function defineProject<const T extends ProjectConfig>(
-  config: T & {
-    tasks?: {
-      [K in keyof NonNullable<T['tasks']>]?: {
-        dependsOn?: readonly DependsOnEntry<Extract<keyof NonNullable<T['tasks']>, string>>[]
+  config: T &
+    Known<T, ProjectConfig> & {
+      tasks?: {
+        [K in keyof NonNullable<T['tasks']>]?: Known<NonNullable<T['tasks']>[K], TaskConfig> & {
+          dependsOn?: readonly DependsOnEntry<Extract<keyof NonNullable<T['tasks']>, string>>[]
+          exec?: Known<At<NonNullable<T['tasks']>[K], 'exec'>, ExecConfig>
+          cache?: Known<At<NonNullable<T['tasks']>[K], 'cache'>, CacheConfig> & {
+            inputs?: Known<At<At<NonNullable<T['tasks']>[K], 'cache'>, 'inputs'>, CacheInputs>
+            outputs?: Known<At<At<NonNullable<T['tasks']>[K], 'cache'>, 'outputs'>, CacheOutputs>
+          }
+        }
       }
-    }
-  },
+    },
 ): T
 ```
 
