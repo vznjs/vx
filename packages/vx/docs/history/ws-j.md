@@ -357,6 +357,16 @@
   util-bun-version, util-secret-mask, playground): `configImportOwners`
   is declared once, and bun-version.test.ts asserts `bunSupported`,
   not a flagged row. Every module page has now been walked.
+- **J-73** docs against the 37 code commits merged 06:45–08:30Z:
+  `.vx-sum` in every artifact entry list, `!` outputs (A-44), the
+  sandbox's keyed walk (C-40), `DeferredOutputs.size` gone, the
+  foreign-field hint, the root-project import exception (D-41, also
+  cli.md), and vx-otel declining only with no endpoint.
+- **J-74** guides/configure.md and guides/ci.md walked on a 4-package
+  fixture: an `inputs.env` name alone reaches no vx-reapi worker,
+  `exec.timeout` is in the key (the other timeout sources are not),
+  and the CI sample's push trigger broke every new branch's first
+  push (an all-zeros `before` is a bad object to `--affected`).
 
 ## Leads for other streams
 
@@ -522,3 +532,6 @@ extra` ignores the extra argument and exits 0 where every other verb
 - **B/C** source comments `cache/layer.ts:553` and `orchestrator/plan.ts:7` say the remote prediction is an HTTP HEAD; core calls `has()`, whose cost the plugin decides (REAPI: `getActionResult` + `findMissingBlobs`). optimizations.md row 22 says both `AbortError` and `TimeoutError` are caught; `vx-migrate/src/remote-deadline.ts` names only `TimeoutError` (others still degrade to a miss). (J-71)
 - **A** `util/bun-version.ts:35` documents `unsupportedBunMessage` as "the warning a CLI entry prints once, before the verb runs", and `tests/bun-version.test.ts:4` says "`bin.ts` warns now"; no source calls it (only `vx info`'s row reports the floor). De-claim or drop the export. (J-72)
 - **G/N** vx-migrate's turbo, nx and wireit mappers still say "vx outputs have no negation" and run `!`-output tasks uncached (`turbo-map.ts:936,955`, `wireit-map.ts:235`), though core takes `!` since A-44: lit's 12 wireit tasks still run uncached. Over-running only. **K** the vx-migrate README (lines 53, 58, 109, 176, 278) repeats "no negation" and "no workspace-root tasks", false since A-44 and D-39. (J-73)
+- **F** `reapi({ endpoint })` against a refused port made a 5-task `run build --all` take 17.5 s wall (summary said 6.45 s) and a `--dry` with `execute: true` 13 s: a down server is a miss, but every run pays over 10 s. (J-74)
+- **E** `vx why` on a dependent that ran under `--continue=always` and was not saved says "re-executed on the same key (--no-cache / --force, or unrelated)", not the real cause. (J-74)
+- **A/C** `tests/output-dirs.test.ts` › "does not descend a symlinked directory, records a missing prefix as absent, and nothing over the cap" timed out its hook (14.6 s) on Linux CI on history-only #1690.
