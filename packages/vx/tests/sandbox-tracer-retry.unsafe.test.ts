@@ -35,10 +35,13 @@ describe.skipIf(!available || process.platform !== 'linux' || realStrace === nul
           `[ "$1" = "--version" ] && exec ${realStrace} "$@"`,
           `n=$(cat ${dir}/count 2>/dev/null); n=\${n:-0}`,
           `echo $((n+1)) > ${dir}/count`,
+          `[ -e ${dir}/early ] && echo 'strace: early' >&2`,
           `${realStrace} "$@"`,
           'rc=$?',
           `if [ "$n" = 0 ] && [ ! -e ${dir}/calm ]; then`,
-          '  echo "strace: ptrace(PTRACE_LISTEN,pid:1,sig:0): Input/output error" >&2',
+          `  if [ -e ${dir}/split ]; then printf 'stra' >&2; sleep 0.3; printf 'ce: cut\\n' >&2`,
+          `  elif [ -e ${dir}/bare ]; then printf 'strace: bare' >&2`,
+          '  else echo "strace: ptrace(PTRACE_LISTEN,pid:1,sig:0): Input/output error" >&2; fi',
           `  [ -e ${dir}/zero ] && exit $rc`,
           '  exit 1',
           'fi',
@@ -57,7 +60,7 @@ describe.skipIf(!available || process.platform !== 'linux' || realStrace === nul
       await rm(dir, { recursive: true, force: true })
     })
 
-    const run = (command: string) => {
+    const run = (command: string, timeoutMs?: number) => {
       let streamed = ''
       return runSandboxed({
         command,
@@ -70,6 +73,7 @@ describe.skipIf(!available || process.platform !== 'linux' || realStrace === nul
         // The fake runs inside the sandbox, where strace now runs (B-11).
         config: resolveSandboxConfig({ allow: { write: ['count'] } }, dir),
         onStderr: (s) => void (streamed += s),
+        ...(timeoutMs === undefined ? {} : { timeoutMs }),
       }).then(async (r) => ({
         exitCode: r.exitCode,
         stdout: r.stdout,
@@ -97,6 +101,26 @@ describe.skipIf(!available || process.platform !== 'linux' || realStrace === nul
           "strace: ptrace(PTRACE_LISTEN,pid:1,sig:0): Input/output error\n[vx] the sandbox's tracer (strace) failed on its own; running the task again\n",
         calls: 2,
       })
+    })
+
+    // The key is a LINE of strace's: one that arrives in two chunks, or
+    // ends the stream with no newline, is still one.
+    it("strace's word split across two chunks is still heard", async () => {
+      await writeFile(path.join(dir, 'split'), '')
+      const r = await run('echo ran')
+      expect([r.stdout, r.calls]).toEqual(['ran\nran\n', 2])
+    })
+
+    it("strace's word as the last, unterminated line is still heard", async () => {
+      await writeFile(path.join(dir, 'bare'), '')
+      const r = await run('echo ran')
+      expect([r.stdout, r.calls]).toEqual(['ran\nran\n', 2])
+    })
+
+    it('a task that timed out is not run again, whatever strace said', async () => {
+      await writeFile(path.join(dir, 'early'), '')
+      const r = await run('sleep 5', 500)
+      expect(r.calls).toBe(1)
     })
 
     it('a task that fails on its own, strace well, is run once (control)', async () => {

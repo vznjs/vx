@@ -291,7 +291,8 @@ export function refusedWrites(
    kept. The task's `ignore` patterns are applied last: each list
    silences the operations of its kind, a pattern matching a record's
    target exactly or as a glob. A relative pattern anchors at the
-   project, and a pattern's literal head is canonicalized as the
+   project, a `~` one at the home directory (kept as written, it matched
+   no recorded path, B-13), and a pattern's literal head is canonicalized as the
    records are, so a project reached through a link (macOS's `/var`)
    is silenced where it lands (B-2).
 5. **`resetSandbox`** tears down SRT's proxy servers + (on macOS) the
@@ -563,3 +564,11 @@ hot-reloaded it, and had it torn down after (item 884).
 Pinned in the unsafe suite on Linux: a sandboxed server on a listed port
 answers a downstream task's fetch and the host's, and after the run the
 port is closed; the control with `localBinding: true` is refused.
+
+macOS has no network namespace to bridge out of: `localBinding`, a list
+or `true`, lets the task bind any loopback port and reach any, the
+host's own services included (`macProfileRules`). Narrowing a list to its
+ports would refuse the ephemeral port a task's own test server binds,
+which Linux allows inside the namespace, so the list stays wide there:
+on macOS a task under `localBinding` can read a local service vx does
+not key on (B-13).
