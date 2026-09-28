@@ -40,7 +40,8 @@ export interface PlannedTask {
   /**
    * Name of the executor this task would be PLACED on. Attached only when
    * the workspace declares more than one executor — with a single one every
-   * line would carry the same label and say nothing. Absent for group tasks
+   * line would carry the same label and say nothing — except `'noop'`: a
+   * remote-only task no remote executor takes, which the run skips. Absent for group tasks
    * and persistent tasks, which never reach an executor.
    */
   executor?: string
@@ -105,7 +106,7 @@ export interface PlanArgs {
   /** When provided, per-task p50s are attached and `RunPlan.predicted` is
    *  computed. Failing open: a history error yields a plan without them. */
   history?: HistoryProvider
-  /** Placement lookup (`run.ts`), passed only when >1 executor is declared. */
+  /** Placement lookup (`placement.ts`): >1 executor declared, or a `noop` task. */
   executorOf?: (id: string) => string | undefined
 }
 
@@ -212,6 +213,8 @@ function downgradeField(args: PlanArgs): {
 
 /** A task the plan expects to EXECUTE (a no-cache task executes every run). */
 function wouldRun(t: PlannedTask): boolean {
+  // A `noop` task succeeds without running (execute-task.ts), whatever its key.
+  if (t.executor === 'noop') return false
   return t.cacheStatus === 'miss' || t.cacheStatus === 'no-cache'
 }
 

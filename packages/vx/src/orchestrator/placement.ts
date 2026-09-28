@@ -144,8 +144,11 @@ export function placeTasks(
 }
 
 /**
- * `executorOf` for `planRun`, or nothing. Declining plugins, a single
- * executor, or a resolution error all yield nothing: `--dry` is an
+ * `executorOf` for `planRun`, or nothing. A remote-only task no remote
+ * executor takes is labelled `noop` whatever the executor count: the run
+ * does nothing for it, and a plan line without the label promises an
+ * execution. Otherwise declining plugins, a single executor, or a
+ * resolution error all yield nothing: `--dry` is an
  * inspection command and must not fail over a label. The error is still
  * said, on the status line, in the plugin's name: the run this plan
  * previews would refuse on it, and a plan that hid that would read as
@@ -188,11 +191,15 @@ export async function planExecutorOf(
           remoteOnly: placements.remoteOnly,
         })
   return {
-    ...(executors.length < 2
+    ...(executors.length < 2 && placements.remoteOnlyNoop.size === 0
       ? {}
       : {
           executorOf: (id: string) =>
-            placements.remoteOnlyNoop.has(id) ? 'noop' : placements.executors.get(id)?.name,
+            placements.remoteOnlyNoop.has(id)
+              ? 'noop'
+              : executors.length < 2
+                ? undefined
+                : placements.executors.get(id)?.name,
         }),
     ...(download === undefined
       ? {}

@@ -610,6 +610,17 @@ Open defect, not fixed (it needs a plan vocabulary decision): an
 the plan carries no `@noop` label either, and the task counts in
 "would run" and the time prediction.
 
+## C-48: a `noop` remote-only task plans as `@noop` and costs nothing
+
+C-45 found the plan and the run disagree on an `exec.remote: 'only'`
+task no remote executor takes: the run skips it ("nothing ran"), the
+plan said `miss — would exec`, with no label under one executor, and
+counted its p50 in the prediction. `planExecutorOf` now labels it
+`noop` whatever the executor count, and `plan()`'s would-run test
+excludes a `noop` task. A unit row (prediction) and an e2e row (one
+executor) are red without the fix. The status word itself is E's
+formatter (lead below).
+
 ## Leads for other streams
 
 - **E:** a plugin command's plain `throw` (`commands.probe.run` throwing
@@ -698,3 +709,11 @@ answer within 250ms` where the config's own error was due. The row
   eleven vx verbs under bun's 5 s default. In C-42's gate it took
   5.33 s, the harness killed the in-flight `vx why`, and the row read
   its exit as 1. Alone it passes (4/4). A per-row timeout would fit.
+- **E:** `cli/plan-format.ts` counts a task `executes` by its
+  `cacheStatus` alone, so a `@noop` task (C-48) still reads
+  `miss — would exec @noop` and counts in "would run". It should read
+  as skipped: `t.executor === 'noop'` is the test `plan.ts` uses.
+- **F:** `vx-github` `github.test.ts` › "a deadline during the wait ends
+  the retries and warns the 502" asserts the call returns within 150 ms
+  of a 50 ms deadline; C-48's gate measured 170 ms under load (3/3 green
+  alone). The bound is a claim about the box, not the code.

@@ -788,7 +788,9 @@ executor, each row carries the one the task would land on (`@spy-remote`;
 `@local` for the floor; `@noop` for an `exec.remote: 'only'` task no
 remote accepts, which the run would skip rather than run here) and the
 JSON object carries it as `executor`. With one executor there is
-nothing to choose and the column is absent. If an executor hook throws
+nothing to choose and the column is absent, except `@noop`, which a
+remote-only task carries whatever the count; it costs nothing in the
+prediction. If an executor hook throws
 or returns something that is not an executor, the plan still prints —
 `--dry` never fails over a label — but says so on the status line, in
 the plugin's name: `[vx] placement not shown — plugin 'x' … (the run
