@@ -1,5 +1,9 @@
 import { describe, expect, it, spyOn } from 'bun:test'
-import { computeReverseDepCount, tieredReverseDepCount } from '../src/graph/priorities.js'
+import {
+  computeReverseDepCount,
+  mergePriorities,
+  tieredReverseDepCount,
+} from '../src/graph/priorities.js'
 import { runGraph, type TaskOutcome } from '../src/graph/scheduler.js'
 import { machineParallelism } from '../src/util/index.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
@@ -432,6 +436,40 @@ describe('runGraph', () => {
         node('p#c', ['p#a', 'p#b']),
         node('p#d', ['p#c']),
         node('p#e', ['p#d']),
+      )
+      expect(Object.fromEntries(computeReverseDepCount(m))).toEqual({
+        'p#root': 5,
+        'p#a': 3,
+        'p#b': 3,
+        'p#c': 2,
+        'p#d': 1,
+        'p#e': 0,
+      })
+    })
+
+    it('counts past the first 32-bit word of the closure', () => {
+      // The closure is a bitset of 32-bit words per node. Every other row
+      // has fewer than 32 nodes, so the word count, the word index and the
+      // popcount's upper bytes could all be wrong with the suite green.
+      // 65 nodes is three words, the last holding one bit.
+      const leaves = Array.from({ length: 63 }, (_, i) => node(`p#l${i}`, ['p#mid']))
+      const m = nodes(node('p#root'), node('p#mid', ['p#root']), ...leaves)
+      const counts = computeReverseDepCount(m)
+      expect(counts.get('p#root')).toBe(64)
+      expect(counts.get('p#mid')).toBe(63)
+      expect(leaves.map((l) => counts.get(l.id))).toEqual(leaves.map(() => 0))
+    })
+
+    it('counts the same whatever order the graph was inserted in', () => {
+      // The diamond above, dependents first: a sweep in insertion order
+      // folds each closure before it is complete.
+      const m = nodes(
+        node('p#e', ['p#d']),
+        node('p#d', ['p#c']),
+        node('p#c', ['p#a', 'p#b']),
+        node('p#b', ['p#root']),
+        node('p#a', ['p#root']),
+        node('p#root'),
       )
       expect(Object.fromEntries(computeReverseDepCount(m))).toEqual({
         'p#root': 5,
@@ -1141,6 +1179,20 @@ describe('runGraph — priorities override', () => {
     // second on insertion order alone.
     expect(started.slice(0, 2)).toEqual(['p#scored', 'p#hub'])
     expect(started.indexOf('p#leaf')).toBeGreaterThan(started.indexOf('p#hub'))
+  })
+
+  it('an override of 1 outranks a baseline of 2^20 - 1', () => {
+    // A baseline count is below the node count, and the scale is what
+    // keeps every override above it. The rows above use baselines of 5,
+    // which a scale of 1 << 3 already clears.
+    const out = mergePriorities(
+      new Map([
+        ['p#hub', 2 ** 20 - 1],
+        ['p#scored', 0],
+      ]),
+      new Map([['p#scored', 1]]),
+    )
+    expect(out.get('p#scored')!).toBeGreaterThan(out.get('p#hub')!)
   })
 
   it('EQUAL overrides break on the baseline', async () => {
