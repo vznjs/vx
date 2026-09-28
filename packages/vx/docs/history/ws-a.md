@@ -420,3 +420,7 @@ An input this user cannot read (mode 000, another user's file) failed its task w
 - Probes, no defect: output names holding a newline, tab, `#`, `%41` or a quote save and restore byte-exact; a backslash name, a dangling link and a link to a directory are each refused at save by name, and the task runs uncached. A remote `put` that never settles holds `drainUploads()`, as documented (item 856).
 - Declined: indexing a save from its plan instead of re-scanning the artifact it just packed (about 135 ms of main-thread CPU in a 3.1 s cold run over 1,000 projects). The re-scan is the check that the packed bytes are a well-formed artifact.
 - Lead for E: after a run whose save failed, `vx why` says "re-executed on the same key (--no-cache / --force, or unrelated)"; the cause was the failed save, which no run record carries.
+
+### A-51 — the wedged-worker row's recovery gets its own budget (2026-09-28, D's file, J's lead)
+
+`config-eval.test.ts` › "rejects a wedged worker … then recovers" went red on macOS CI twice (#1503, #1738): the recovery evaluation kept the 250 ms budget set for the wedge, and that budget also covers the fresh worker's spawn. The recovery now runs under 4,000 ms; a kept wedged worker still fails it, rejected at 4,000 or held past the 5,000 the row waits. The mutant that keeps the handle (`worker = null` dropped in the timer) passes both the old and the new row, since the worker's close handler nulls it too.
