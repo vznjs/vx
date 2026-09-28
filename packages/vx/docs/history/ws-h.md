@@ -353,6 +353,19 @@ drives fifteen documented outcomes through the binary against one
 workspace and records each code in `tests/contract/exit-codes.json`; every
 failing case was checked to fail for its documented reason, not another.
 
+## H-31: every Turbo and Nx config key has a stated vx status
+
+vx runs Turbo and Nx repos unchanged, and nothing said which keys that
+covers. `tests/contract/turbo-nx/` vendors `@turbo/types` 2.11.5's and
+`nx` 23.2.1's schemas; `turbo-nx-support.test.ts` reads every key from
+them (136: roots, tasks and targets, `remoteCache`, `futureFlags`,
+`boundaries`, `targetDefaults`, Nx input forms) and requires one row each
+in `turbo-nx-support.json`. The first table missed
+`futureFlags.experimentalPythonWorkspaces` and the test named it. The page
+is `docs/turbo-nx-support.md`, served at `/compare/turbo-nx-support/` and
+linked from the README. The site's import cleared stale generated pages at
+the top level only, so it now clears them at any depth.
+
 ## Leads for other streams
 
 ## H-29: `vx mcp`'s tools join the contract records

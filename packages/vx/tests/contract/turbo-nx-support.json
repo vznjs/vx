@@ -1,0 +1,682 @@
+[
+  {
+    "key": "turbo.json $schema",
+    "status": "not-applicable",
+    "reason": "Editor schema hint only; the mapper never reads it."
+  },
+  {
+    "key": "turbo.json agentGuidance",
+    "status": "not-applicable",
+    "reason": "Guidance for AI agents, not task or cache config; vx ignores it."
+  },
+  {
+    "key": "turbo.json boundaries",
+    "status": "not-applicable",
+    "reason": "Turbo's import-rule checker; vx has no module-boundary rules and ignores it."
+  },
+  {
+    "key": "turbo.json cacheDir",
+    "status": "not-supported",
+    "reason": "Ignored without a warning; vx uses its own `cacheDir` in `vx.workspace.ts`."
+  },
+  {
+    "key": "turbo.json cacheMaxAge",
+    "status": "not-supported",
+    "reason": "Ignored without a warning; prune with `vx cache prune --older-than`."
+  },
+  {
+    "key": "turbo.json cacheMaxSize",
+    "status": "not-supported",
+    "reason": "Ignored without a warning; prune with `vx cache prune --max-size`."
+  },
+  {
+    "key": "turbo.json concurrency",
+    "status": "not-supported",
+    "reason": "Ignored without a warning; use `--concurrency` or the workspace's `concurrency`."
+  },
+  {
+    "key": "turbo.json daemon",
+    "status": "not-applicable",
+    "reason": "vx has no daemon by design."
+  },
+  {
+    "key": "turbo.json dangerouslyDisablePackageManagerCheck",
+    "status": "not-applicable",
+    "reason": "Turbo's package-manager check; vx has none."
+  },
+  {
+    "key": "turbo.json envMode",
+    "status": "mapped",
+    "reason": "Strict is vx's behaviour; `loose` gets a note, since vx passes only declared variables."
+  },
+  {
+    "key": "turbo.json extends",
+    "status": "supported",
+    "reason": "Package configs' `extends` chains are followed as Turbo does; cycles and missing parents are refused."
+  },
+  {
+    "key": "turbo.json futureFlags",
+    "status": "mapped",
+    "reason": "The flags are not read; what they gate (`global`, structured inputs) is detected by shape."
+  },
+  {
+    "key": "turbo.json global",
+    "status": "mapped",
+    "reason": "`inputs`, `env` and `passThroughEnv` are read as the `global*` fields they replace; `envMode: loose` gets a note."
+  },
+  {
+    "key": "turbo.json globalDependencies",
+    "status": "mapped",
+    "reason": "Becomes `cache.inputs.workspaceFiles`; `$NAME` entries become env inputs."
+  },
+  {
+    "key": "turbo.json globalEnv",
+    "status": "mapped",
+    "reason": "Added to every task's `cache.inputs.env` and passthrough; a wildcard name is dropped with a note."
+  },
+  {
+    "key": "turbo.json globalPassThroughEnv",
+    "status": "mapped",
+    "reason": "Added to every task's `exec.env.passThrough`, not hashed; a wildcard name is dropped with a note."
+  },
+  {
+    "key": "turbo.json noUpdateNotifier",
+    "status": "not-applicable",
+    "reason": "Turbo CLI update notice."
+  },
+  {
+    "key": "turbo.json remoteCache",
+    "status": "mapped",
+    "reason": "`turboCache()` reads `apiUrl`, `teamId`, `teamSlug` and `enabled`, below env vars and options."
+  },
+  {
+    "key": "turbo.json tags",
+    "status": "not-applicable",
+    "reason": "Package tags feed only Turbo boundaries; never read."
+  },
+  {
+    "key": "turbo.json tasks",
+    "status": "supported",
+    "reason": "Each task (or Turbo 1 `pipeline`) becomes a vx task for the packages that declare the script."
+  },
+  {
+    "key": "turbo.json ui",
+    "status": "not-applicable",
+    "reason": "Terminal UI choice."
+  },
+  {
+    "key": "turbo.json tasks.*.cache",
+    "status": "supported",
+    "reason": "`cache: false` means no cache block: the task always runs."
+  },
+  {
+    "key": "turbo.json tasks.*.dependsOn",
+    "status": "mapped",
+    "reason": "Same syntax; edges to tasks nobody runs are dropped; `$TURBO_ROOT$` deps get a TODO; `$NAME` becomes env."
+  },
+  {
+    "key": "turbo.json tasks.*.description",
+    "status": "supported",
+    "reason": "Copied to the task's `description`."
+  },
+  {
+    "key": "turbo.json tasks.*.env",
+    "status": "mapped",
+    "reason": "Goes to `cache.inputs.env` and `exec.env.passThrough`; wildcard names get a TODO."
+  },
+  {
+    "key": "turbo.json tasks.*.inputs",
+    "status": "mapped",
+    "reason": "Globs translated; `$TURBO_DEFAULT$` becomes `**/*`, `$TURBO_ROOT$` workspace files; unsafe globs get a TODO."
+  },
+  {
+    "key": "turbo.json tasks.*.interactive",
+    "status": "not-supported",
+    "reason": "Reported as a key with no vx equivalent, then ignored."
+  },
+  {
+    "key": "turbo.json tasks.*.interruptible",
+    "status": "not-supported",
+    "reason": "Reported as a key with no vx equivalent, then ignored."
+  },
+  {
+    "key": "turbo.json tasks.*.outputLogs",
+    "status": "mapped",
+    "reason": "`new-only` is vx's default; other values get a TODO pointing at `--output-logs`."
+  },
+  {
+    "key": "turbo.json tasks.*.outputs",
+    "status": "mapped",
+    "reason": "Become `cache.outputs`, negations kept; vx cleans outputs, so a wildcard first segment leaves the task uncached with a TODO."
+  },
+  {
+    "key": "turbo.json tasks.*.passThroughEnv",
+    "status": "mapped",
+    "reason": "Goes to `exec.env.passThrough`, not hashed; wildcard names get a TODO."
+  },
+  {
+    "key": "turbo.json tasks.*.persistent",
+    "status": "mapped",
+    "reason": "An uncached `exec.persistent` task, with a `readyWhen` TODO when something depends on it."
+  },
+  {
+    "key": "turbo.json tasks.*.with",
+    "status": "not-supported",
+    "reason": "Reported as a key with no vx equivalent, then ignored."
+  },
+  {
+    "key": "turbo.json tasks.*.inputs[].from",
+    "status": "not-supported",
+    "reason": "Ignored; vx folds each dependency's cache key instead of its outputs."
+  },
+  {
+    "key": "turbo.json tasks.*.inputs[].globs",
+    "status": "mapped",
+    "reason": "For `startup` and `jit` entries, keyed like plain input strings."
+  },
+  {
+    "key": "turbo.json tasks.*.inputs[].mode",
+    "status": "mapped",
+    "reason": "`startup` and `jit` are keyed alike (no separate pass); `dependencyOutputs` adds nothing."
+  },
+  {
+    "key": "turbo.json tasks.*.inputs[].withDefaults",
+    "status": "mapped",
+    "reason": "`true` adds `$TURBO_DEFAULT$`: every package file."
+  },
+  {
+    "key": "turbo.json remoteCache.apiUrl",
+    "status": "supported",
+    "reason": "The cache URL when neither the option nor `TURBO_API` is set, as in Turbo."
+  },
+  {
+    "key": "turbo.json remoteCache.enabled",
+    "status": "mapped",
+    "reason": "`false` turns `turboCache()` off unless its options name a cache."
+  },
+  {
+    "key": "turbo.json remoteCache.loginUrl",
+    "status": "not-applicable",
+    "reason": "Used only by `turbo login`; vx has no login."
+  },
+  {
+    "key": "turbo.json remoteCache.preflight",
+    "status": "not-supported",
+    "reason": "Ignored; `turboCache()` sends no CORS preflight."
+  },
+  {
+    "key": "turbo.json remoteCache.signature",
+    "status": "not-supported",
+    "reason": "The flag is ignored; signing is on whenever a signature key is set."
+  },
+  {
+    "key": "turbo.json remoteCache.teamId",
+    "status": "supported",
+    "reason": "Used when neither the option nor `TURBO_TEAMID` is set."
+  },
+  {
+    "key": "turbo.json remoteCache.teamSlug",
+    "status": "supported",
+    "reason": "Used when neither the option nor `TURBO_TEAM` is set."
+  },
+  {
+    "key": "turbo.json remoteCache.timeout",
+    "status": "not-supported",
+    "reason": "Not read; set `turboCache({ timeoutMs })` (default 30 s)."
+  },
+  {
+    "key": "turbo.json remoteCache.uploadTimeout",
+    "status": "not-supported",
+    "reason": "Not read; set `turboCache({ uploadTimeoutMs })` (default 60 s)."
+  },
+  {
+    "key": "turbo.json futureFlags.affectedUsingTaskInputs",
+    "status": "not-supported",
+    "reason": "Ignored; `--affected` selects projects from vx's own git diff."
+  },
+  {
+    "key": "turbo.json futureFlags.errorsOnlyShowHash",
+    "status": "not-supported",
+    "reason": "Ignored."
+  },
+  {
+    "key": "turbo.json futureFlags.experimentalCargoWorkspaces",
+    "status": "not-supported",
+    "reason": "Ignored; vx discovers projects from `package.json` workspaces only."
+  },
+  {
+    "key": "turbo.json futureFlags.experimentalGoWorkspaces",
+    "status": "not-supported",
+    "reason": "Ignored; vx discovers projects from `package.json` workspaces only."
+  },
+  {
+    "key": "turbo.json futureFlags.experimentalObservability",
+    "status": "not-applicable",
+    "reason": "Turbo telemetry export; vx's is a telemetry plugin."
+  },
+  {
+    "key": "turbo.json futureFlags.experimentalPythonWorkspaces",
+    "status": "not-supported",
+    "reason": "Ignored; vx discovers projects from `package.json` workspaces only."
+  },
+  {
+    "key": "turbo.json futureFlags.filterUsingTasks",
+    "status": "not-supported",
+    "reason": "Ignored; `--filter` keeps vx's semantics."
+  },
+  {
+    "key": "turbo.json futureFlags.githubActionsRemoteBaseRefFallback",
+    "status": "not-supported",
+    "reason": "Ignored; `--affected` defaults to `origin/HEAD`, else `HEAD~1`."
+  },
+  {
+    "key": "turbo.json futureFlags.globalConfiguration",
+    "status": "supported",
+    "reason": "The `global` block is read whenever present, flag or not."
+  },
+  {
+    "key": "turbo.json futureFlags.longerSignatureKey",
+    "status": "mapped",
+    "reason": "Not read; `turboCache()` always requires a signature key of at least 32 bytes."
+  },
+  {
+    "key": "turbo.json futureFlags.pruneIncludesGlobalFiles",
+    "status": "not-applicable",
+    "reason": "Affects only `turbo prune`; vx has none."
+  },
+  {
+    "key": "turbo.json futureFlags.strictTaskEntrypointSelection",
+    "status": "not-supported",
+    "reason": "Ignored."
+  },
+  {
+    "key": "turbo.json futureFlags.watchUsingTaskInputs",
+    "status": "not-supported",
+    "reason": "Ignored; `vx watch` watches each task's declared inputs."
+  },
+  {
+    "key": "turbo.json boundaries.dependencies",
+    "status": "not-applicable",
+    "reason": "A Turbo boundaries import rule."
+  },
+  {
+    "key": "turbo.json boundaries.dependents",
+    "status": "not-applicable",
+    "reason": "A Turbo boundaries import rule."
+  },
+  {
+    "key": "turbo.json boundaries.implicitDependencies",
+    "status": "not-applicable",
+    "reason": "A Turbo boundaries import rule."
+  },
+  {
+    "key": "turbo.json boundaries.tags",
+    "status": "not-applicable",
+    "reason": "A Turbo boundaries tag rule."
+  },
+  {
+    "key": "nx.json implicitDependencies",
+    "status": "not-supported",
+    "reason": "The top-level map is not read."
+  },
+  {
+    "key": "nx.json affected",
+    "status": "not-supported",
+    "reason": "Ignored; `--affected` defaults to `origin/HEAD` or takes a base."
+  },
+  {
+    "key": "nx.json extends",
+    "status": "supported",
+    "reason": "The chain is followed and merged as Nx does, before named inputs are read."
+  },
+  {
+    "key": "nx.json defaultBase",
+    "status": "not-supported",
+    "reason": "Ignored; `--affected` defaults to `origin/HEAD` or takes a base."
+  },
+  {
+    "key": "nx.json tasksRunnerOptions",
+    "status": "mapped",
+    "reason": "Only `default.options.cacheableOperations` is read, as the legacy cached-targets list."
+  },
+  {
+    "key": "nx.json namedInputs",
+    "status": "mapped",
+    "reason": "Expanded per project (project entries win) into each task's `cache.inputs`; vx has no named inputs."
+  },
+  {
+    "key": "nx.json targetDefaults",
+    "status": "mapped",
+    "reason": "Applied by Nx while it builds the graph vx reads; vx sees the merged targets."
+  },
+  {
+    "key": "nx.json workspaceLayout",
+    "status": "not-applicable",
+    "reason": "Where generators create projects; vx has no generators."
+  },
+  {
+    "key": "nx.json cli",
+    "status": "not-applicable",
+    "reason": "Nx CLI and generator defaults."
+  },
+  {
+    "key": "nx.json generators",
+    "status": "not-applicable",
+    "reason": "Generator defaults; vx has no generators."
+  },
+  {
+    "key": "nx.json plugins",
+    "status": "mapped",
+    "reason": "Targets Nx plugins infer arrive in the graph; `bunx @vzn/vx-migrate` freezes them as written."
+  },
+  {
+    "key": "nx.json tui",
+    "status": "not-applicable",
+    "reason": "Nx terminal UI."
+  },
+  {
+    "key": "nx.json defaultProject",
+    "status": "not-supported",
+    "reason": "Ignored; name tasks as `pkg#task` or select with `--filter`."
+  },
+  {
+    "key": "nx.json nxCloudAccessToken",
+    "status": "not-applicable",
+    "reason": "Nx Cloud credential; `nxCache()` talks to self-hosted `/v1/cache` servers."
+  },
+  {
+    "key": "nx.json nxCloudUrl",
+    "status": "not-applicable",
+    "reason": "Nx Cloud endpoint; `nxCache()` talks to self-hosted `/v1/cache` servers."
+  },
+  {
+    "key": "nx.json nxCloudEncryptionKey",
+    "status": "not-applicable",
+    "reason": "Nx Cloud artifact encryption."
+  },
+  {
+    "key": "nx.json neverConnectToCloud",
+    "status": "not-applicable",
+    "reason": "Nx Cloud opt-out; vx never connects to Nx Cloud."
+  },
+  {
+    "key": "nx.json parallel",
+    "status": "not-supported",
+    "reason": "Ignored; use `--concurrency` or the workspace's `concurrency`."
+  },
+  {
+    "key": "nx.json cacheDirectory",
+    "status": "not-supported",
+    "reason": "Ignored; vx uses its own `cacheDir`."
+  },
+  {
+    "key": "nx.json useDaemonProcess",
+    "status": "not-applicable",
+    "reason": "vx has no daemon; Nx's setting still applies when vx asks Nx for the graph."
+  },
+  {
+    "key": "nx.json useInferencePlugins",
+    "status": "mapped",
+    "reason": "Applied by Nx when it builds the graph; vx sees the targets that result."
+  },
+  {
+    "key": "nx.json analytics",
+    "status": "not-applicable",
+    "reason": "Nx usage analytics."
+  },
+  {
+    "key": "nx.json release",
+    "status": "not-applicable",
+    "reason": "Nx versioning and publishing; `nx-release-publish` targets still run through `nx-exec`."
+  },
+  {
+    "key": "nx.json sync",
+    "status": "not-supported",
+    "reason": "Global sync generators never run; vx warns once per run to run `nx sync`."
+  },
+  {
+    "key": "nx.json migrate",
+    "status": "not-applicable",
+    "reason": "Settings for `nx migrate`."
+  },
+  {
+    "key": "nx.json conformance",
+    "status": "not-applicable",
+    "reason": "Nx Powerpack conformance rules."
+  },
+  {
+    "key": "nx.json owners",
+    "status": "not-applicable",
+    "reason": "Nx Powerpack CODEOWNERS generation."
+  },
+  {
+    "key": "nx.json targetDefaults.*.filter",
+    "status": "mapped",
+    "reason": "Applied by Nx while it builds the graph vx reads."
+  },
+  {
+    "key": "nx.json targetDefaults.*.executor",
+    "status": "mapped",
+    "reason": "Merged into targets by Nx, then mapped as `targets.*.executor`."
+  },
+  {
+    "key": "nx.json targetDefaults.*.command",
+    "status": "mapped",
+    "reason": "Merged into targets by Nx, then run as `targets.*.command`."
+  },
+  {
+    "key": "nx.json targetDefaults.*.metadata",
+    "status": "mapped",
+    "reason": "Merged into targets by Nx, then read as `targets.*.metadata`."
+  },
+  {
+    "key": "nx.json targetDefaults.*.options",
+    "status": "mapped",
+    "reason": "Merged into targets by Nx, then passed on as `targets.*.options`."
+  },
+  {
+    "key": "nx.json targetDefaults.*.outputs",
+    "status": "mapped",
+    "reason": "Merged into targets by Nx, then mapped as `targets.*.outputs`."
+  },
+  {
+    "key": "nx.json targetDefaults.*.defaultConfiguration",
+    "status": "mapped",
+    "reason": "Merged into targets by Nx, then read as `targets.*.defaultConfiguration`."
+  },
+  {
+    "key": "nx.json targetDefaults.*.configurations",
+    "status": "mapped",
+    "reason": "Merged into targets by Nx, then one task per configuration."
+  },
+  {
+    "key": "nx.json targetDefaults.*.continuous",
+    "status": "mapped",
+    "reason": "Merged into targets by Nx, then a persistent, uncached task."
+  },
+  {
+    "key": "nx.json targetDefaults.*.parallelism",
+    "status": "not-supported",
+    "reason": "`parallelism: false` gets a TODO to run with `--concurrency 1`."
+  },
+  {
+    "key": "nx.json targetDefaults.*.inputs",
+    "status": "mapped",
+    "reason": "Merged into targets by Nx, then expanded as `targets.*.inputs`."
+  },
+  {
+    "key": "nx.json targetDefaults.*.dependsOn",
+    "status": "mapped",
+    "reason": "Merged into targets by Nx, then mapped as `targets.*.dependsOn`."
+  },
+  {
+    "key": "nx.json targetDefaults.*.cache",
+    "status": "mapped",
+    "reason": "Merged into targets by Nx, then read as `targets.*.cache`."
+  },
+  {
+    "key": "nx.json targetDefaults.*.syncGenerators",
+    "status": "not-supported",
+    "reason": "Gets a TODO to run `nx sync`; vx never runs sync generators."
+  },
+  {
+    "key": "project.json name",
+    "status": "mapped",
+    "reason": "Used in `nx-exec` lines and `project:target` edges; the vx project takes the `package.json` name."
+  },
+  {
+    "key": "project.json root",
+    "status": "supported",
+    "reason": "Graph nodes are matched to workspace packages by root directory."
+  },
+  {
+    "key": "project.json sourceRoot",
+    "status": "mapped",
+    "reason": "Not read by the mapper; executors still see it through `nx-exec`."
+  },
+  {
+    "key": "project.json projectType",
+    "status": "not-applicable",
+    "reason": "App-or-library metadata for generators and tooling."
+  },
+  {
+    "key": "project.json generators",
+    "status": "not-applicable",
+    "reason": "Per-project generator defaults; vx has no generators."
+  },
+  {
+    "key": "project.json namedInputs",
+    "status": "mapped",
+    "reason": "Merged over `nx.json`'s and expanded into each task's cache inputs."
+  },
+  {
+    "key": "project.json targets",
+    "status": "mapped",
+    "reason": "Each target becomes a vx task, plus one per non-default configuration."
+  },
+  {
+    "key": "project.json tags",
+    "status": "mapped",
+    "reason": "Used only to resolve `tag:` patterns in `dependsOn`; vx has no project tags."
+  },
+  {
+    "key": "project.json implicitDependencies",
+    "status": "mapped",
+    "reason": "Graph edges without a `package.json` link become explicit `pkg#target` edges for `^target`."
+  },
+  {
+    "key": "project.json metadata",
+    "status": "mapped",
+    "reason": "Only `targetGroups` is read, to find non-atomized targets' `.env` files."
+  },
+  {
+    "key": "project.json release",
+    "status": "not-applicable",
+    "reason": "Nx release settings."
+  },
+  {
+    "key": "project.json targets.*.executor",
+    "status": "mapped",
+    "reason": "`run-commands` and `run-script` become shell lines, `noop` a group task; others run through `nx-exec`."
+  },
+  {
+    "key": "project.json targets.*.options",
+    "status": "mapped",
+    "reason": "Passed as `nx-exec`'s `--options` or rendered into `run-commands`; `{args.*}` forwarding gets a TODO."
+  },
+  {
+    "key": "project.json targets.*.outputs",
+    "status": "mapped",
+    "reason": "Tokens and `{options.x}` resolved; paths outside the project become workspace files; negations kept."
+  },
+  {
+    "key": "project.json targets.*.defaultConfiguration",
+    "status": "supported",
+    "reason": "The base task carries the default configuration's options, as `nx run` does."
+  },
+  {
+    "key": "project.json targets.*.configurations",
+    "status": "mapped",
+    "reason": "One task per configuration (`build:ci`); `^` edges run dependencies' default configuration, with a TODO."
+  },
+  {
+    "key": "project.json targets.*.inputs",
+    "status": "mapped",
+    "reason": "Expanded into `cache.inputs`; none means `default` and `^default`; forms without an equivalent get TODOs."
+  },
+  {
+    "key": "project.json targets.*.dependsOn",
+    "status": "mapped",
+    "reason": "`project:target` becomes `pkg#target`; project patterns and tags resolved; `params: forward` gets a TODO."
+  },
+  {
+    "key": "project.json targets.*.command",
+    "status": "mapped",
+    "reason": "Run as the `run-commands` shorthand: one POSIX sh line."
+  },
+  {
+    "key": "project.json targets.*.cache",
+    "status": "supported",
+    "reason": "`cache: true` (or `cacheableOperations`) gives a cache block; persistent tasks stay uncached."
+  },
+  {
+    "key": "project.json targets.*.continuous",
+    "status": "mapped",
+    "reason": "An uncached `exec.persistent` task, with a `readyWhen` note when something depends on it."
+  },
+  {
+    "key": "project.json targets.*.parallelism",
+    "status": "not-supported",
+    "reason": "`parallelism: false` gets a TODO to run with `--concurrency 1`; vx has no per-task exclusivity."
+  },
+  {
+    "key": "project.json targets.*.metadata",
+    "status": "mapped",
+    "reason": "Only `nonAtomizedTarget` is read, to find `.env` files."
+  },
+  {
+    "key": "project.json targets.*.syncGenerators",
+    "status": "not-supported",
+    "reason": "Gets a TODO to run `nx sync`; vx never runs sync generators."
+  },
+  {
+    "key": "inputs: a string",
+    "status": "mapped",
+    "reason": "Named inputs expanded, token paths made project or workspace globs, `^name` folded over dependencies."
+  },
+  {
+    "key": "inputs: {fileset, dependencies}",
+    "status": "mapped",
+    "reason": "The fileset becomes a glob; with `dependencies: true` it is folded through the dependencies."
+  },
+  {
+    "key": "inputs: {projects, dependencies, input}",
+    "status": "mapped",
+    "reason": "Folded through the named projects' inputs (a superset); unknown project names get a TODO."
+  },
+  {
+    "key": "inputs: {runtime}",
+    "status": "supported",
+    "reason": "Becomes `cache.inputs.workspaceRuntime`, run at the workspace root as Nx does."
+  },
+  {
+    "key": "inputs: {env}",
+    "status": "supported",
+    "reason": "Goes to `cache.inputs.env` and `exec.env.passThrough`."
+  },
+  {
+    "key": "inputs: {externalDependencies}",
+    "status": "not-supported",
+    "reason": "Dropped with a TODO; vx keys every task on the lockfile already."
+  },
+  {
+    "key": "inputs: {dependentTasksOutputFiles, transitive}",
+    "status": "not-supported",
+    "reason": "Dropped with a TODO; vx folds each dependency's cache key instead."
+  },
+  {
+    "key": "inputs: {json, fields, excludeFields}",
+    "status": "mapped",
+    "reason": "The whole file is hashed, a superset of the selected fields."
+  }
+]
