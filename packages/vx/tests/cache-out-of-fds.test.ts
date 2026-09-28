@@ -20,7 +20,9 @@ beforeEach(() => {
 afterEach(() => rmSync(root, { recursive: true, force: true }))
 
 /** Save `p/dist/a.js` (or restore it after a save), with the fd table full for the call. */
-async function outOfFds(op: 'save' | 'restore'): Promise<{ name: string; message: string }> {
+async function outOfFds(
+  op: 'save' | 'restore' | 'open',
+): Promise<{ name: string; message: string }> {
   const script = path.join(root, 'probe.ts')
   await Bun.write(
     script,
@@ -34,10 +36,15 @@ const cache = new Cache(root + '/cache')
 const args = { hash: 'h1', projectDir: proj, outputFiles: [proj + '/dist/a.js'], entry: { taskId: 'p#b', command: 'x', durationMs: 1, stdout: '' } }
 if (${JSON.stringify(op)} === 'restore') await cache.save(args)
 const held = []
+if (${JSON.stringify(op)} === 'open') cache.close()
 try { for (;;) held.push(openSync('/dev/null', 'r')) } catch {}
+// One free: the directory's own writes succeed, and SQLite's -wal or
+// -shm is the open the table refuses.
+if (${JSON.stringify(op)} === 'open') closeSync(held.pop())
 let out
 try {
-  await (${JSON.stringify(op)} === 'save' ? cache.save(args) : cache.restoreOutputs('h1', proj, root))
+  const op = ${JSON.stringify(op)}
+  await (op === 'open' ? new Cache(root + '/cache') : op === 'save' ? cache.save(args) : cache.restoreOutputs('h1', proj, root))
   out = { name: 'none', message: '' }
 } catch (e) {
   out = { name: e.name, message: e.message }
@@ -73,5 +80,27 @@ describe('a process out of file descriptors', () => {
       name: 'UserError',
       message: `save of h1 could not open a file (EMFILE: too many open files, open '${output}') — ${HINT}`,
     })
+  })
+})
+
+describe('opening the cache out of file descriptors', () => {
+  it('names the limit, not a bare SQLite error (A-56)', async () => {
+    expect(await outOfFds('open')).toEqual({
+      name: 'UserError',
+      message: `the cache index ${root}/cache/cache.db could not be opened (unable to open database file) — ${HINT}`,
+    })
+  })
+
+  it('control: an index SQLite cannot open for another reason keeps its own error', async () => {
+    const { mkdirSync } = await import('node:fs')
+    const { Cache } = await import('../src/cache/index.js')
+    mkdirSync(path.join(root, 'cache', 'cache.db'), { recursive: true })
+    const err = await Promise.resolve()
+      .then(() => new Cache(path.join(root, 'cache')))
+      .then(
+        () => null,
+        (e: unknown) => e as Error,
+      )
+    expect([err?.name, err?.message.includes(HINT)]).toEqual(['SQLiteError', false])
   })
 })

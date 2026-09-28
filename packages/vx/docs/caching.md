@@ -1021,7 +1021,10 @@ A process out of file descriptors (`EMFILE`, `ENFILE`) is named the
 same way: a save is `[vx] cache save failed: save of <hash> could not
 open a file (EMFILE: …) — … raise the limit (ulimit -n 4096) and
 re-run`, and a restore fails the task with that hint, never as a
-corrupt artifact (A-39).
+corrupt artifact (A-39). Opening the index is named the same way: SQLite reports a
+descriptor it could not get as `unable to open database file`, and vx
+says `the cache index <path> could not be opened (…) — …raise the limit`
+(A-56).
 A restore that cannot READ its artifact (a cache directory another
 user owns) names the cache, not the outputs: `restore of <hash> could
 not read its artifact (EACCES: …). Make the cache directory readable
