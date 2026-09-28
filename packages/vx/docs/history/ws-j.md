@@ -337,6 +337,26 @@
   config-eval key seed folds vx's version, any non-inspecting handle
   prunes config rows, a `workspace:<range>` peer must be satisfied,
   and stable-keys' instability rules and one signature were wrong.
+- **J-68** eight CLI/output module pages against source: a
+  diff-selected empty plan exits 0, four test references named files
+  without the rows, cli-doc-drift checks only that a flag is in
+  `help.ts`, PB prints with no decimal, and `vx info`'s line has a
+  colon.
+- **J-70** security.md against source and a real run: the key and
+  declared outputs are checked on arrival, not on a local read-back
+  (an artifact copied over another restored as a hit), links and
+  devices are skipped, declared outputs grant no sandbox write, the
+  network allowlist is the run's union, and masking skips short
+  values and path-named keys. api.md's wrong comments went to leads.
+- **J-71** patterns.md and optimizations.md against source and a real
+  run: a failed task's dependents are skipped, not aborted; Turbo's
+  value is `dependencies-successful`; remote prediction calls `has()`,
+  not an HTTP HEAD; the artifact sidecar also carries the key and exec
+  usage; tar hardlinks are skipped, not rejected.
+- **J-72** the last five pages (cli-cache, config-imports,
+  util-bun-version, util-secret-mask, playground): `configImportOwners`
+  is declared once, and bun-version.test.ts asserts `bunSupported`,
+  not a flagged row. Every module page has now been walked.
 
 ## Leads for other streams
 
@@ -494,3 +514,11 @@ extra` ignores the extra argument and exits 0 where every other verb
 - **B (cache correctness, security)** the `cache.inputs.runtime` probe (`cache/inputs.ts:386`) spawns a bare `sh` on a PATH led by the project's `node_modules/.bin`, so a dependency shipping a `sh` bin interprets the probe and its output enters the key. `util/which.ts` fixed this class for task commands; `executablePath('sh')` would close it. (J-69)
 - **A** `util/errors.ts` `gitSpawnRefusal` comment still names "a watch judgement" (the watch judge swallows the failed spawn); `tests/framed-output.test.ts:430`'s title says "section headers render dim" while it asserts bold coloured labels. (J-69)
 - **B** `tests/runner.test.ts:1213` "a timed-out command returns only once its group is gone" failed on macOS CI on docs-only #1660 (`durationMs` 143, wants ≥ 400). Likely the backgrounded child's `trap "" TERM` is not yet installed when the 100 ms timeout's TERM lands; wait on a marker the child writes after its trap before the timeout counts. (J-68)
+- **B (cache correctness)** a local restore never compares the artifact's recorded key or its declared outputs: `writeArtifactAndIndex` checks `scanned.key !== hash` on arrival only (`cache/cache.ts:1416`), `extractArtifactStream` reads neither. A real run with artifact A copied over B restored A's bytes as a green local hit. Security.md now says "on arrival" (J-70).
+- **A/C** `api.md` is generated from source doc comments, so these need source fixes then `VX_UPDATE_CONTRACT=1`: `VxPlugin` (`orchestrator/plugin.ts:31`) names a `src/plugins/` that does not exist, "no fallback outside the list" (the local floor), and a bare `{ name, setup }` plugin that `definePlugin` and the loader refuse; `splitTaskId` says a `#` in a task name is legal (`taskNameProblem` refuses it, item 1000); `CacheLayer` calls `Cache` "the local v10 implementation". (J-70)
+- **Coordinator** CLAUDE.md's live invariants say `CACHE_VERSION` `vx-cache-v35`; `vx info` reports `vx-cache-v36`. (J-70)
+- **L** security.md:87 says every CI action is SHA-pinned "held by a test"; on main only `attest-build-provenance` is held, the general law (`supply-chain.unsafe.test.ts`, L-18) sits on unmerged `ws-l/supply-chain`. True once that merges. (J-70)
+- **B (blocking CI)** `tests/runner.test.ts` rows `:1213` and `:570` failed 3 of 4 macOS runs on docs-only #1660 and #1664 (`durationMs` 143–156 vs ≥ 400): the backgrounded child's `trap "" TERM` is likely not installed when the 100 ms timeout's TERM lands. Wait on a marker the child writes after its trap before the timeout counts. (J-68, J-69)
+- **B/C** source comments `cache/layer.ts:553` and `orchestrator/plan.ts:7` say the remote prediction is an HTTP HEAD; core calls `has()`, whose cost the plugin decides (REAPI: `getActionResult` + `findMissingBlobs`). optimizations.md row 22 says both `AbortError` and `TimeoutError` are caught; `vx-migrate/src/remote-deadline.ts` names only `TimeoutError` (others still degrade to a miss). (J-71)
+- **A** `util/bun-version.ts:35` documents `unsupportedBunMessage` as "the warning a CLI entry prints once, before the verb runs", and `tests/bun-version.test.ts:4` says "`bin.ts` warns now"; no source calls it (only `vx info`'s row reports the floor). De-claim or drop the export. (J-72)
+- **G/N** vx-migrate's turbo, nx and wireit mappers still say "vx outputs have no negation" and run `!`-output tasks uncached (`turbo-map.ts:936,955`, `wireit-map.ts:235`), though core takes `!` since A-44: lit's 12 wireit tasks still run uncached. Over-running only. **K** the vx-migrate README (lines 53, 58, 109, 176, 278) repeats "no negation" and "no workspace-root tasks", false since A-44 and D-39. (J-73)
