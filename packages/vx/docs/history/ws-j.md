@@ -269,6 +269,14 @@
   tsconfig `paths`, vx's sandbox hints count as no violation,
   `vx help <name>` refuses a non-verb, and `workspaceScripts()` joins
   the fingerprint and migrate lists.
+- **J-51** quickstart and sandboxing guide walked on a fresh fixture:
+  the quickstart held (pinned samples match real output); a linked
+  package opens only to a command task, not a group task, and the
+  refusal names the link path from the workspace root.
+- **J-52** every documented flag of show, info, why, last, lock, cache
+  and help run on a fixture: `vx why` needs a task, a changed-file row
+  names the path from the workspace root, and `vx last --list` ids are
+  13 characters at least.
 
 ## Leads for other streams
 
@@ -376,3 +384,19 @@ task(s): nope.` and exits 0; cli.md says an undeclared name is
   `dist/**`: vx wipes `dist` on a miss, `tsc -b` sees itself current and
   writes nothing, and the run saves an empty artifact with only a
   warning. No page claims otherwise; a first-run trap (found in J-51).
+- **E** From J-52's runs: `help.ts:51` and `why.ts`'s header show
+  `vx why [TASK | PKG#TASK]` though the task is required; `vx help why
+extra` ignores the extra argument and exits 0 where every other verb
+  refuses; `vx why app#build --run zzz` says "run zzz has no row for
+  app#build" for an unknown run (`vx last zzz` says "no recorded run");
+  `vx lock --help` prints a doubled blank line; the lock note says "1
+  project has no vx.config; their tasks are never frozen".
+- **L** Since L-14 `exec.env.secret` names are masked too, but comments
+  still say only "secret-named": `src/util/secret-mask.ts:1` and `:40`,
+  `orchestrator/hit-restore.ts:268`, `orchestrator/execute-task.ts:893`
+  (found in J-53).
+- **A** `tests/output-dirs-snapshot.test.ts` › "a cold build records its
+  output directories by run end" failed once in a local gate on main
+  (6e7cb615, shard 12, 2026-09-28 05:4x): `outputDirRows` read `[]`
+  where `['dist']` was expected (line 57); the file passed 3 of 3 bare
+  runs after. A write the row reads before it lands, under gate load.
