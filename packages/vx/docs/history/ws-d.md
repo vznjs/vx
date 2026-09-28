@@ -244,3 +244,10 @@ packages/core`) selects the dependent whose `file:../lib` spec named
   `package.json` and `pnpm-workspace.yaml` loads; one package reached
   twice (directly and through a link under a second glob) is refused as
   a duplicate, as npm does (bun accepts it).
+- **D-26** A config importing through a tsconfig `paths` or `baseUrl`
+  alias was refused as `cannot find` with no node_modules to provide it,
+  though Bun resolves the alias from the nearest `tsconfig.json` and
+  loads the file with no network. The guard now asks that tsconfig
+  (relative `extends` followed) and lets a specifier through only when
+  its target exists; one that maps nowhere is still refused. Rows: the
+  two D-26 rows of `tests/config-missing-import.test.ts`.

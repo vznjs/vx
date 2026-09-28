@@ -25,7 +25,7 @@
 //     closure, and the containment channel already selects the project that
 //     owns it.
 
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync, statSync } from 'node:fs'
 import { realpath } from 'node:fs/promises'
 import { builtinModules } from 'node:module'
 import path from 'node:path'
@@ -130,9 +130,108 @@ export function unprovidedBareImports(
       if (up === dir) break
       dir = up
     }
-    if (!provided && !out.includes(spec)) out.push(spec)
+    if (!provided && tsconfigTarget(spec, fromDir) === undefined && !out.includes(spec)) {
+      out.push(spec)
+    }
   }
   return out
+}
+
+/** The nearest `tsconfig.json`, else `jsconfig.json`, at or above `dir`: Bun reads that one alone. */
+function nearestTsconfig(dir: string): string | undefined {
+  for (let d = path.resolve(dir); ;) {
+    for (const name of ['tsconfig.json', 'jsconfig.json']) {
+      if (existsSync(path.join(d, name))) return path.join(d, name)
+    }
+    const up = path.dirname(d)
+    if (up === d) return undefined
+    d = up
+  }
+}
+
+interface CompilerPaths {
+  paths?: Record<string, unknown>
+  /** What `paths` targets resolve against: `baseUrl`, else the config's own dir. */
+  pathsBase?: string
+  baseUrl?: string
+}
+
+/**
+ * `compilerOptions.paths` and `baseUrl` after `extends`, each resolved
+ * against the config that set it. A package `extends` is not followed: its
+ * paths are unseen, so a specifier only they map stays refused.
+ */
+function compilerPaths(file: string, depth = 0): CompilerPaths {
+  let json: unknown
+  try {
+    json = Bun.JSONC.parse(readFileSync(file, 'utf8'))
+  } catch {
+    return {}
+  }
+  if (typeof json !== 'object' || json === null) return {}
+  const dir = path.dirname(file)
+  const out: CompilerPaths = {}
+  const ext = (json as { extends?: unknown }).extends
+  for (const base of typeof ext === 'string' ? [ext] : Array.isArray(ext) ? ext : []) {
+    if (depth > 8 || typeof base !== 'string' || !base.startsWith('.')) continue
+    const f = path.resolve(dir, base)
+    Object.assign(out, compilerPaths(f.endsWith('.json') ? f : f + '.json', depth + 1))
+  }
+  const opts = (json as { compilerOptions?: unknown }).compilerOptions
+  if (typeof opts !== 'object' || opts === null) return out
+  const { baseUrl, paths } = opts as { baseUrl?: unknown; paths?: unknown }
+  if (typeof baseUrl === 'string') out.baseUrl = path.resolve(dir, baseUrl)
+  if (typeof paths === 'object' && paths !== null) {
+    out.paths = paths as Record<string, unknown>
+    out.pathsBase = out.baseUrl ?? dir
+  } else if (out.paths !== undefined && out.baseUrl !== undefined) {
+    out.pathsBase = out.baseUrl
+  }
+  return out
+}
+
+/** The file Bun loads for an extensionless or extensioned path, or undefined. */
+function fileAt(target: string): string | undefined {
+  for (const f of [
+    target,
+    ...RESOLVED_EXTENSIONS.map((e) => target + e),
+    ...RESOLVED_EXTENSIONS.map((e) => path.join(target, 'index' + e)),
+  ]) {
+    try {
+      if (statSync(f).isFile()) return f
+    } catch {}
+  }
+  return undefined
+}
+
+/**
+ * The local file a bare specifier names through the nearest tsconfig's
+ * `paths` or `baseUrl`, as Bun resolves it (D-26): an alias whose target
+ * exists loads from disk and never reaches the registry.
+ */
+function tsconfigTarget(spec: string, fromDir: string): string | undefined {
+  const cfg = nearestTsconfig(fromDir)
+  if (cfg === undefined) return undefined
+  const { paths, pathsBase, baseUrl } = compilerPaths(cfg)
+  for (const [key, targets] of Object.entries(paths ?? {})) {
+    const star = key.indexOf('*')
+    let hole: string
+    if (star === -1) {
+      if (spec !== key) continue
+      hole = ''
+    } else {
+      const head = key.slice(0, star)
+      const tail = key.slice(star + 1)
+      if (spec.length < key.length - 1 || !spec.startsWith(head) || !spec.endsWith(tail)) continue
+      hole = spec.slice(head.length, spec.length - tail.length)
+    }
+    for (const t of Array.isArray(targets) ? targets : []) {
+      if (typeof t !== 'string') continue
+      const hit = fileAt(path.resolve(pathsBase!, t.replace('*', hole)))
+      if (hit !== undefined) return hit
+    }
+  }
+  return baseUrl === undefined ? undefined : fileAt(path.resolve(baseUrl, spec))
 }
 
 /**

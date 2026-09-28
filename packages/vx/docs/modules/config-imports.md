@@ -173,4 +173,7 @@ provides — the ones Bun would auto-install from the npm registry when no
 evaluating it: `cannot find '<name>' — no node_modules above the config
 provides it; install the workspace's dependencies first`. Builtins, `@vzn/vx`
 (the core alias), and relative or absolute specifiers are never listed.
+Nor is a specifier the nearest `tsconfig.json` (else `jsconfig.json`) maps,
+through `paths` or `baseUrl` with relative `extends` followed, to a file on
+disk: Bun loads that file and never reaches the registry (D-26).
 `tests/config-missing-import.test.ts`.

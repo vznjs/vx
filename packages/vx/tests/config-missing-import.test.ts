@@ -61,6 +61,46 @@ describe('unprovidedBareImports', () => {
     expect(unprovidedBareImports(src, dir, 'ts')).toEqual(['@acme/missing'])
   })
 
+  it('a tsconfig paths or baseUrl alias with a target on disk is provided (D-26)', async () => {
+    // Bun resolves `paths` and `baseUrl` from the nearest tsconfig.json,
+    // `extends` followed, and loads the target from disk; refusing it
+    // refused a config Bun evaluates without the network.
+    await mkdir(path.join(dir, 'shared', 'lib'), { recursive: true })
+    await writeFile(path.join(dir, 'shared', 'tasks.ts'), 'export const x = 1\n')
+    await writeFile(path.join(dir, 'shared', 'lib', 'index.ts'), 'export const y = 1\n')
+    await writeFile(
+      path.join(dir, 'tsconfig.base.json'),
+      `{ // JSONC, as tsc reads it
+        "compilerOptions": { "baseUrl": ".", "paths": {
+          "@s/*": ["gone/*", "shared/*"], "@lib": ["shared/lib"], "@gone/*": ["gone/*"] } } }`,
+    )
+    const from = path.join(dir, 'packages', 'app')
+    await mkdir(from, { recursive: true })
+    await writeFile(path.join(from, 'tsconfig.json'), '{ "extends": "../../tsconfig.base" }')
+    const src = `
+      import a from '@s/tasks'
+      import b from '@lib'
+      import c from 'shared/tasks'
+      import d from '@gone/x'
+      import e from '@s/none'
+    `
+    expect(unprovidedBareImports(src, from, 'ts')).toEqual(['@gone/x', '@s/none'])
+  })
+
+  it('CONTROL: only the NEAREST tsconfig maps — one above it is not read (D-26)', async () => {
+    await mkdir(path.join(dir, 'shared'), { recursive: true })
+    await writeFile(path.join(dir, 'shared', 'tasks.ts'), 'export const x = 1\n')
+    await writeFile(
+      path.join(dir, 'tsconfig.json'),
+      '{ "compilerOptions": { "paths": { "@s/*": ["./shared/*"] } } }',
+    )
+    const app = path.join(dir, 'app')
+    await mkdir(app)
+    expect(unprovidedBareImports("import a from '@s/tasks'", app, 'ts')).toEqual([])
+    await writeFile(path.join(app, 'tsconfig.json'), '{ "compilerOptions": {} }')
+    expect(unprovidedBareImports("import a from '@s/tasks'", app, 'ts')).toEqual(['@s/tasks'])
+  })
+
   it('a require() bare import reaches the scan — the fast path agrees with it', async () => {
     // `hasBareCandidate` is a textual pre-filter and a source it rejects
     // is never scanned at all, so its regex must not be narrower than
