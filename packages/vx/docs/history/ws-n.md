@@ -236,6 +236,13 @@ tasks, 0 edge mismatches; tests pass, rerun all hits. `build` over the
 14 packages: 40.3 s cold against 44.2 s, restore 335 ms against
 1.16 s, no-op 247 ms against 1.15 s. No mapping gap.
 
+N-24. `turbo()` on create-t3-turbo (Turbo 2.5.8): `build`, `lint`,
+`typecheck` and `format` plan as Turbo does (42 tasks, script-less
+`topo` nodes passed through), 0 edge mismatches. `lint`: 27.2 s cold
+against 29.6 s, restore 199 ms against 340 ms, no-op 174 ms against
+342 ms. No mapping gap; `typecheck` sharing `build`'s tsbuildinfo runs
+uncached by design.
+
 ## Candidates not built (2026-09-28)
 
 - Lerna without Nx: `lerna run <s>` (lerna 10.0.1, `prepNxOptions`)
@@ -251,6 +258,13 @@ tasks, 0 edge mismatches; tests pass, rerun all hits. `build` over the
   stage fills discovered ones). Blocked on a discovery seam.
 
 ## Leads for other streams
+
+- B: `npm-pack.unsafe.test.ts` › "installed from the tarballs with
+  npm, turbo() builds a Turbo repo, then hits" hit its 180 s timeout in
+  2 of 4 local full gates (2026-09-28): `npm install -D <tarballs>`
+  never exited (code null). Alone, and as `test.bun.unsafe` through vx,
+  it passes in 13 s and 91 s. Cause unproven; npm's log rotated away.
+  A per-spawn timeout that prints npm's output would name it.
 
 - A: `execute-task.test.ts` › "trusts recorded directories without
   re-recording them; a restore leaves its snapshot to run end" failed
