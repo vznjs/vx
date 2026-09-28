@@ -461,6 +461,19 @@ describe('applyFilters with the workspace root as a project', () => {
     expect(sel('./apps')).toEqual(['admin', 'docs', 'web'])
   })
 
+  it("`//` is the root project, Turbo's name for it (D-46)", () => {
+    // Turbo 2.8.17, probed: `//`, `!//`, `...//` and `//[HEAD]` select by
+    // the root. vx matched `//` as a name and refused "Did you mean a?".
+    expect(sel('//')).toEqual(['root'])
+    expect(sel('!//')).toEqual(['admin', 'bar', 'docs', 'web'])
+    expect(sel('...//')).toEqual(['root', 'web'])
+    expect(parseFilter('//[HEAD]', ROOT)).toMatchObject({ gitSince: 'HEAD', matcher: ROOT })
+    // A root that is no project selects nothing, never every project under it.
+    const members = projects.filter((p) => p.name !== 'root')
+    const pick = [...applyFilters({ filters: [parseFilter('//', ROOT)], projects: members, graph })]
+    expect(pick).toEqual([])
+  })
+
   it('a project nested in a project is left out of the outer path (D-43)', () => {
     const nested = [...projects, mkProject('web-example', `${ROOT}/apps/web/examples/x`)]
     const g = buildPackageGraph(nested)
