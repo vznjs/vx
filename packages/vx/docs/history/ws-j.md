@@ -386,6 +386,17 @@
   (C-46), `ConfigSweep.inputs` holds a glob list per task, `--dry`
   prints `∅` for an `@noop` task (B-34), and a remote hit's entry row
   stores the masked command.
+- **J-69** seventeen util/output module pages: UUIDv7 ids carry a
+  12-bit counter and 62 random bits, section labels are bold (only
+  corners and rules dim, also cli.md), logger modes, the watch judge
+  swallows a failed git spawn, the runtime probe's `sh` resolves on a
+  PATH led by `node_modules/.bin`, and edit-distance callers. Blocked
+  most of the day on B's macOS runner rows; merged after a rebase.
+- **J-79** docs against 36 commits merged 10:55–17:25Z: the summary
+  footer's `result` row, repeat config loads in `LOAD_WIDTH` lanes
+  (D-68), `nonJsonPaths` naming getters and setters (D-67),
+  `defineWorkspace`'s `Known<T, WorkspaceConfig>` (D-70), and
+  `SandboxedRunArgs.signal` (B-36).
 
 ## Leads for other streams
 
