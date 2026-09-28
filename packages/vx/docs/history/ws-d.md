@@ -304,3 +304,17 @@ packages/core`) selects the dependent whose `file:../lib` spec named
   Under the nearest `packageManager: yarn@2+`, or a Berry `yarn.lock`,
   each hook is a task of its own. Row: the D-31 row of
   `tests/init.test.ts`.
+- **D-32** `vx init` read `pnpm docs`, `pnpm version`, `bun deploy`,
+  `yarn check` and a dozen more as delegations to the script of that
+  name, and made a group over a script the manager never runs: pnpm
+  hands npm's own commands to npm whatever the scripts say, Bun
+  reserves names, Yarn 1 has verbs Yarn 4 dropped. The tables now come
+  from each manager's own list (pnpm 10.33.0's `commandNames` and npm
+  pass-through, `bun --help` and its reserved names, `yarn help` of
+  1.22.22 and 4.5.0), and `bun lint`, which runs the script, left Bun's.
+  Rows: the D-32 rows of the `delegatedScript` table in
+  `tests/init.test.ts`. Probe rule learned: a sweep over a manager's
+  verbs ran `publish`, `login` and `upgrade` in a scratch package; none
+  landed (no credentials; the registry's `own` package unchanged since
+  2022; Bun still 1.4.2), and such verbs are listed from source now,
+  never run.

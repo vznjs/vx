@@ -67,20 +67,28 @@ export function delegatedScript(command: string): string | null {
 }
 
 /** What `<manager> <name>`, with no `run`, runs as the manager's own command. */
+// Listing a name that runs the script only keeps the command verbatim, so
+// each set leans wide; missing one of the manager's own made a group over
+// a script the manager never runs (D-32: `pnpm docs` opened npm's docs page,
+// `bun deploy` answered "reserved", `yarn check` verified dependencies).
 const OWN_COMMANDS: Readonly<Record<string, ReadonlySet<string>>> = {
-  // `bun --help`, Bun 1.4.2, with the short aliases.
+  // `bun --help`, Bun 1.4.2, the short aliases, and the names it reserves
+  // or runs itself (probed: `bun lint` runs the script).
   bun: new Set(
-    'run test x repl exec install i add a remove rm update audit outdated link unlink publish patch pm info why build init create c upgrade feedback lint'.split(
+    'run test x repl exec install i add a remove rm update audit dedupe prune outdated link unlink publish patch pm info why build init create c upgrade feedback list deploy config login logout whoami help'.split(
       ' ',
     ),
   ),
+  // pnpm 10.33.0's `commandNames`, and the npm commands it passes through
+  // to npm whatever the scripts say.
   pnpm: new Set(
-    'add install i update up remove rm link unlink import rebuild prune fetch patch audit list ls outdated why exec dlx create init publish pack store env setup config root bin licenses deploy doctor'.split(
+    'add approve-builds audit bin c cache cat-file cat-index ci clean-install completion config create dedupe deploy dislink dlx doctor env exec fetch find-hash get i ic ignored-builds import init install install-clean install-test it la licenses link list ll ln ls m multi outdated pack patch patch-commit patch-remove prune publish rb rebuild recursive remove restart rm root run run-script self-update server set setup store un uni uninstall unlink up update upgrade why access adduser bugs deprecate dist-tag docs edit find home info issues login logout owner ping prefix profile pkg repo s se search set-script show star stars team token unpublish unstar v version view whoami xmas help'.split(
       ' ',
     ),
   ),
+  // `yarn help`, Yarn 1.22.22 and Yarn 4.5.0: one set for both.
   yarn: new Set(
-    'add install remove upgrade up info init link unlink pack publish why workspace workspaces config cache dlx exec bin node plugin set version constraints npm patch explain dedupe'.split(
+    'access add audit autoclean bin cache check config constraints create dedupe dlx exec explain files generate-lock-entry global help import info init install licenses link list login logout node npm outdated owner pack patch patch-commit plugin policies publish rebuild remove run search set stage tag team unlink unplug up upgrade upgrade-interactive version versions why workspace workspaces'.split(
       ' ',
     ),
   ),
