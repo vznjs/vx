@@ -571,3 +571,19 @@ reach, withheld hints), 21 mutants: 18 caught, 3 now held.
 - Rows: `sandbox-request.test.ts` › the unix-socket union (a bound port
   on Linux, on darwin, an empty list) and › reachedWithheld (by path,
   not by name prefix, and a denial with no path).
+
+B-28. Sweep of `runner.ts`'s `armTimeout` and `drainOrAbort`, 12
+mutants: 10 caught, 1 unobservable (`settle` leaving the SIGKILL timer
+armed: it is unref'd and names a reaped group), 1 now held: `settle`
+SIGKILLed at once instead of after what is left of the grace, and no row
+saw a TERM handler cut short.
+
+- Row: `runner.test.ts` › settle() lets a grandchild that traps the
+  SIGTERM finish inside the grace (red with the window at 0).
+- Measured, not changed: a warm `vx run lint --all` spends ~200 ms
+  arming the sandbox on its one miss (SRT import ~50, the probe's
+  sandboxed `true` ~35, SRT `initialize` ~115). ~100 of the last is
+  SRT's `initializeLinuxNetworkBridge`: its first check finds socat not
+  yet listening, then it sleeps `i * 100` ms. SRT starts the bridge on
+  every Linux init. The fix is upstream (poll at a few ms); a bun patch
+  reaches only this repo, and arming earlier taxes every all-hit run.

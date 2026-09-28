@@ -546,6 +546,38 @@ describe('armTimeout — what settle() disarms and what it reaps', () => {
       } catch {}
     }
   })
+  it('settle() lets a grandchild that traps the SIGTERM finish inside the grace', async () => {
+    // The grace is the time a TERM handler is promised; settle() SIGKILLs
+    // only what is left when it runs out, never at once.
+    const prev = process.env['VX_KILL_GRACE_MS']
+    process.env['VX_KILL_GRACE_MS'] = '600'
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-grace-'))
+    const marker = path.join(dir, 'done')
+    const proc = Bun.spawn(
+      [
+        'sh',
+        '-c',
+        `sh -c 'trap "sleep 0.15; echo ok > ${marker}; exit 0" TERM; echo $$; sleep 30 & wait' & sleep 30`,
+      ],
+      { stdout: 'pipe', stderr: 'ignore', detached: true },
+    )
+    const reader = (proc.stdout as ReadableStream<Uint8Array>).getReader()
+    const gc = Number(new TextDecoder().decode((await reader.read()).value).trim())
+    try {
+      const handle = armTimeout(proc, 50)
+      await proc.exited
+      await handle.settle()
+      expect(await Bun.file(marker).exists()).toBe(true)
+    } finally {
+      if (prev === undefined) delete process.env['VX_KILL_GRACE_MS']
+      else process.env['VX_KILL_GRACE_MS'] = prev
+      reader.releaseLock()
+      try {
+        process.kill(gc, 'SIGKILL')
+      } catch {}
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
 })
 
 describe('runPersistent — what its exit bookkeeping keeps', () => {
