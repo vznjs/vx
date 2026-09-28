@@ -20,6 +20,7 @@ import {
 import type { TaskExecutor, TaskInputs } from '../src/exec/index.js'
 import { Cache, ChainedCache } from '../src/cache/index.js'
 import { loadWorkspaceConfig } from '../src/workspace/index.js'
+import { machineParallelism } from '../src/util/index.js'
 import { PLUGIN_IMPORT, pluginSource, testPlugin } from './helpers/plugin.js'
 
 async function writeFixture(): Promise<{ workspaceRoot: string; cleanup: () => void }> {
@@ -1110,6 +1111,44 @@ describe('executor capability — end-to-end via run()', () => {
         log: makeSilentLogger(),
       })
       expect(plan.tasks.every((t) => t.executor === undefined)).toBe(true)
+    } finally {
+      cleanup()
+    }
+  })
+
+  it("placement: --dry hands an executor factory the run's context, warn and concurrency", async () => {
+    // With no `--concurrency` and no workspace `concurrency`, a run's worker
+    // count is what the machine allows; the plan's factory sees the same.
+    const { workspaceRoot, cleanup } = await writeFixture()
+    try {
+      await Bun.write(
+        path.join(workspaceRoot, 'vx.workspace.mjs'),
+        localWorkspaceSource([
+          pluginSource(
+            'org/ctx',
+            `{ executor(ctx) {
+               ctx.warn('ctx concurrency ' + ctx.concurrency)
+               return {
+                 name: 'ctx-remote',
+                 remote: true,
+                 async execute() { throw new Error('plan mode must not execute') },
+               }
+             },
+           }`,
+          ),
+        ]),
+      )
+      await gitInit(workspaceRoot)
+      const status: string[] = []
+      await planRun({
+        cwd: workspaceRoot,
+        projects: ['pkg-a'],
+        tasks: ['hello'],
+        log: makeSilentLogger((line) => status.push(line)),
+      })
+      expect(status.filter((l) => l.startsWith('ctx concurrency'))).toEqual([
+        `ctx concurrency ${machineParallelism()}`,
+      ])
     } finally {
       cleanup()
     }

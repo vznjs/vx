@@ -4,15 +4,18 @@
 // such rule until 2026-09-16 (item 335), so a sandboxed cacheable task was
 // offered to a remote executor that enforces no sandbox and reports no
 // violations.
+import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import {
   UNPLACED_EXECUTOR,
+  hasPooledExecutor,
   locallyPlaced,
   pinnedLocalSet,
   placeTasks,
+  poolOfPlacement,
 } from '../src/orchestrator/placement.js'
 import type { Placements } from '../src/orchestrator/placement.js'
-import type { TaskExecutor } from '../src/exec/executor.js'
+import type { TaskExecutor, TaskPlacement } from '../src/exec/executor.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
 
 function node(id: string, exec: Record<string, unknown>, deps: string[] = []): TaskNode {
@@ -86,6 +89,45 @@ describe('pinnedLocalSet', () => {
     expect([...set].sort()).toEqual(['a#build', 'b#test'])
   })
 
+  it('every dependant of a pinned task is pinned, not only the first', () => {
+    const set = pinnedLocalSet(
+      graph(
+        node('a#dev', { persistent: {} }),
+        node('b#e2e', {}, ['a#dev']),
+        node('c#e2e', {}, ['a#dev']),
+      ),
+    )
+    expect([...set].sort()).toEqual(['a#dev', 'b#e2e', 'c#e2e'])
+  })
+
+  // Each task is walked once: a ladder of 40 diamonds has 2^40 paths from
+  // its top to the pinned bottom, and a walk that re-entered a pinned task
+  // followed every one of them. The walk is synchronous, so it runs in a
+  // child a deadline can kill; the pristine walk takes milliseconds.
+  it('a ladder of 40 diamonds pinned at its bottom is walked once per task', async () => {
+    const code = `
+      import { pinnedLocalSet } from ${JSON.stringify(path.resolve(import.meta.dir, '../src/orchestrator/placement.ts'))}
+      const node = (id, exec, deps) => [id, { id, deps, config: { exec: { command: 'true', ...exec } } }]
+      const nodes = [node('app#base', { persistent: {} }, [])]
+      let below = ['app#base']
+      for (let i = 0; i < 40; i++) {
+        const level = ['app#l' + i + 'a', 'app#l' + i + 'b']
+        for (const id of level) nodes.push(node(id, {}, below))
+        below = level
+      }
+      console.log(pinnedLocalSet(new Map(nodes)).size)
+    `
+    const child = Bun.spawn([process.execPath, '-e', code], {
+      env: { ...process.env },
+      stdout: 'pipe',
+      timeout: 4_000,
+    })
+    expect([await child.exited, (await new Response(child.stdout).text()).trim()]).toEqual([
+      0,
+      '81',
+    ])
+  })
+
   // `vx run app#t0 --dry` on this chain threw `RangeError` here once the
   // builder (item 737) and the excluded-key walk (741) stopped recursing:
   // the set recursed once per edge.
@@ -148,6 +190,125 @@ describe('placeTasks (item 650)', () => {
     expect(asks.sort((x, y) => x[0].localeCompare(y[0]))).toEqual([
       ['a#build', true],
       ['b#lint', false],
+    ])
+  })
+})
+
+describe('placeTasks — what an executor is offered, and where a task lands', () => {
+  const taker = (
+    name: string,
+    fields: Partial<TaskExecutor>,
+    offered: TaskPlacement[] = [],
+  ): TaskExecutor => ({
+    name,
+    accepts: (t) => {
+      offered.push(t)
+      return true
+    },
+    execute: () => {
+      throw new Error('never runs')
+    },
+    ...fields,
+  })
+
+  it('accepts() is offered the task as placement describes it', () => {
+    const offered: TaskPlacement[] = []
+    const lib = node('lib#build', { command: 'tsc -b', sandbox: {} })
+    ;(lib.config as { cache?: unknown }).cache = { inputs: { files: ['src/**'] } }
+    placeTasks(graph(lib, node('app#lint', { command: 'oxlint' })), [taker('x', {}, offered)])
+    expect(offered).toEqual([
+      {
+        taskId: 'lib#build',
+        projectName: 'lib',
+        projectDir: '/w/lib',
+        command: 'tsc -b',
+        pinnedLocal: true,
+        cacheable: true,
+      },
+      {
+        taskId: 'app#lint',
+        projectName: 'app',
+        projectDir: '/w/app',
+        command: 'oxlint',
+        pinnedLocal: false,
+        cacheable: false,
+      },
+    ])
+  })
+
+  it('the first executor in declaration order that takes a task gets it', () => {
+    const first = taker('first', {})
+    const p = placeTasks(graph(node('a#build', {})), [first, taker('second', {})])
+    expect(p.executors.get('a#build')).toBe(first)
+  })
+
+  it("an 'only' task is remote-only where a remote executor took it, a noop elsewhere", () => {
+    const remote = taker('remote', {
+      remote: true,
+      accepts: (t) => t.taskId !== 'a#declined',
+    })
+    const p = placeTasks(
+      graph(
+        node('a#shipped', { remote: 'only' }),
+        node('a#declined', { remote: 'only' }),
+        node('a#plain', {}),
+        node('a#here', { remote: false }),
+      ),
+      [
+        remote,
+        taker('declared-local', { remote: false, accepts: (t) => t.taskId !== 'a#declined' }),
+        taker('local', {}),
+      ],
+    )
+    expect([
+      [...p.remoteOnly],
+      [...p.remoteOnlyNoop],
+      [...p.executors].map(([id, e]) => [id, e.name]),
+    ]).toEqual([
+      ['a#shipped'],
+      ['a#declined'],
+      [
+        ['a#shipped', 'remote'],
+        ['a#declined', 'local'],
+        ['a#plain', 'remote'],
+        ['a#here', 'declared-local'],
+      ],
+    ])
+  })
+})
+
+describe('hasPooledExecutor / poolOfPlacement', () => {
+  const exec = (name: string, capacity?: number): TaskExecutor =>
+    ({
+      name,
+      execute: () => {
+        throw new Error('not called')
+      },
+      ...(capacity === undefined ? {} : { capacity }),
+    }) as TaskExecutor
+
+  it('a list is pooled when any executor declares a capacity', () => {
+    expect([
+      hasPooledExecutor([exec('local')]),
+      hasPooledExecutor([exec('pool', 4), exec('local')]),
+    ]).toEqual([false, true])
+  })
+
+  it("a task's pool is its executor's name and capacity; the floor's is none", () => {
+    const poolOf = poolOfPlacement({
+      executors: new Map([
+        ['a#x', exec('pool-x', 4)],
+        ['a#y', exec('pool-y', 2)],
+        ['a#z', exec('local')],
+      ]),
+      remoteOnlyNoop: new Set(),
+      remoteOnly: new Set(),
+    })
+    expect([poolOf('a#x'), poolOf('a#y'), poolOf('a#z'), poolOf('a#unplaced')]).toEqual([
+      { name: 'pool-x', capacity: 4 },
+      { name: 'pool-y', capacity: 2 },
+      undefined,
+      undefined,
     ])
   })
 })
