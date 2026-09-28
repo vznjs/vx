@@ -490,6 +490,18 @@ the root found from inside a member, and every config file name
 precedence (project and workspace). Differential: swapping the first two
 `PROJECT_CONFIG_FILENAMES` failed it; restored, passes.
 
+## H-41: what vx-otel sends is a record
+
+Dashboards and alerts key on vx-otel's span names, attribute keys and
+metric names, but only its exports were recorded: renaming `vx.cpu_ms`
+passed every contract test. `packages/vx-otel/tests/contract/otlp.txt`
+records the shape of the traces, metrics and logs the sink posts for one
+run with every telemetry field set (`Required<…>`, so a new field must
+be given a value): each path, attribute key and OTLP value type, and the
+span kind, temporality, monotonicity and severity. The break law reads it
+by lost lines. Differential: renaming `vx.cpu_ms` failed it; restored,
+passes.
+
 ## Leads for other streams
 
 - **A:** a task that rewrites its own input with the same bytes is never
