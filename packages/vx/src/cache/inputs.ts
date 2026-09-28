@@ -25,6 +25,7 @@ import {
   isExecutableMissing,
   isLiteralPattern,
   normalizeGlob,
+  shellArgv,
   slashBraceExpansions,
   taskGlob,
   UserError,
@@ -382,15 +383,16 @@ async function runRuntimeCommand(
   const prefix = binDirs.join(path.delimiter)
   let proc
   try {
-    proc = Bun.spawn(['sh', '-c', command], {
+    const argv = process.platform === 'win32' ? shellArgv(command) : ['sh', '-c', command]
+    proc = Bun.spawn(argv, {
       cwd,
       env: { ...process.env, PATH: ambient ? `${prefix}${path.delimiter}${ambient}` : prefix },
       stdin: 'ignore',
       stdout: 'pipe',
       stderr: 'pipe',
       // Its own group, so the probe's whole tree can be taken down with vx
-      // (`killProbesOnExit`).
-      detached: true,
+      // (`killProbesOnExit`). Windows has no groups.
+      detached: process.platform !== 'win32',
     })
   } catch (err) {
     // The probe runs through `sh -c` like a task: a box without sh names

@@ -6,7 +6,7 @@
 
 import { existsSync, readFileSync } from 'node:fs'
 import { constants as osConstants } from 'node:os'
-import { executablePath, isExecutableMissing, killGraceMs } from '../util/index.js'
+import { shellArgv, isExecutableMissing, killGraceMs } from '../util/index.js'
 import {
   closeSignalChannel,
   holdGroups,
@@ -18,6 +18,10 @@ import {
   spawnGuarded,
   untilGroupsGone,
 } from './kill-tree.js'
+
+const WIN32 = process.platform === 'win32'
+/** `sh` names itself in its errors; `bun exec` on Windows keeps its own. */
+const SH_ARGV0 = WIN32 ? {} : { argv0: 'sh' }
 
 export interface RunResult {
   exitCode: number
@@ -204,6 +208,8 @@ const SHELL_BUILTINS = new Set([
  * the shell.
  */
 export function execWrap(command: string): string {
+  // Bun's shell, the task shell on Windows, has no `exec`.
+  if (WIN32) return command
   const first = execWord(command)
   return first === undefined ? command : `exec ${command}`
 }
@@ -439,13 +445,11 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
     const signalFd = opts.signalChannel === true
     child = spawnGuarded((guard) =>
       Bun.spawn(
-        [
-          executablePath('sh'),
-          '-c',
+        shellArgv(
           (guard === undefined ? '' : guardLine(signalFd ? 4 : 3)) + execWrap(opts.command),
-        ],
+        ),
         {
-          argv0: 'sh',
+          ...SH_ARGV0,
           cwd: opts.cwd,
           env: opts.env as Record<string, string>,
           // A pipe vx holds and never writes: stdin stays open while vx
@@ -464,8 +468,9 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
           ],
           // Its own session and process group, so a kill reaches what it
           // forked (kill-tree.ts). stdin is a pipe, so a background group
-          // never stops on a terminal read.
-          detached: true,
+          // never stops on a terminal read. Windows has no groups, and a
+          // detached child there has no console.
+          detached: !WIN32,
         },
       ),
     )
@@ -666,23 +671,17 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
   let proc: ReturnType<typeof Bun.spawn>
   try {
     proc = spawnGuarded((guard) =>
-      Bun.spawn(
-        [
-          executablePath('sh'),
-          '-c',
-          (guard === undefined ? '' : guardLine(3)) + execWrap(fullCommand),
-        ],
-        {
-          argv0: 'sh',
-          cwd: opts.cwd,
-          env: opts.env as Record<string, string>,
-          stdio: ['ignore', 'pipe', 'pipe', ...(guard === undefined ? [] : [guard])],
-          // Its own session and process group, so a kill reaches what it
-          // forked (kill-tree.ts). stdin is ignored, so a background group
-          // never stops on a terminal read.
-          detached: true,
-        },
-      ),
+      Bun.spawn(shellArgv((guard === undefined ? '' : guardLine(3)) + execWrap(fullCommand)), {
+        ...SH_ARGV0,
+        cwd: opts.cwd,
+        env: opts.env as Record<string, string>,
+        stdio: ['ignore', 'pipe', 'pipe', ...(guard === undefined ? [] : [guard])],
+        // Its own session and process group, so a kill reaches what it
+        // forked (kill-tree.ts). stdin is ignored, so a background group
+        // never stops on a terminal read. Windows has no groups, and a
+        // detached child there has no console.
+        detached: !WIN32,
+      }),
     )
   } catch (err) {
     const stderr = spawnFailureText(err, opts.cwd)

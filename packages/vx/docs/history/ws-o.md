@@ -11,6 +11,12 @@ run stopped at the first task: every task here declares `exec.sandbox`,
 and vx refused it (`sandbox not available`), as it should. Queue: 34 s
 to a Windows runner (macOS 82 s, Linux 2 s), 25 s of `bun install`.
 
+O-3. Windows ships no `sh`, so every task and runtime probe exited 127.
+On win32 the task shell is `bun exec` (`shellArgv`, `util/which.ts`),
+with no `exec` wrap, no kill guard (an `sh` script over process groups)
+and no `detached` spawn (a detached child has no console). Linux and
+macOS spawn exactly as before.
+
 ## Leads for other streams
 
 - B: `@anthropic-ai/sandbox-runtime` 0.0.76 ships a Windows backend

@@ -19,9 +19,13 @@ until green. Queue cost on the first run (2026-09-28): 34 s to a runner
    POSIX-ish syntax (`&&`, `|`, `$(…)`, `VAR=x cmd`, redirects) that
    `bun run` already uses for scripts on Windows. It is still one
    process per task, spawned the way `sh -c` is, so kill and resource
-   accounting stay per task. A compiled vx spawns itself with
-   `BUN_BE_BUN=1`. The command string is unchanged, so the key is too.
-   `sh` stays the shell on Linux and macOS.
+   accounting stay per task. The command string is unchanged, so the
+   key is too. `sh` stays the shell on Linux and macOS. Bun's shell is a
+   subset (Bun 1.4.2, probed): it has no `exec`, so vx does not wrap;
+   background `&` is refused; and a missing command exits 1, not 127,
+   so vx's "not found" hint does not fire there. A compiled vx has no
+   `bun` to spawn: `BUN_BE_BUN=1` makes it one, but it would reach the
+   task's own children, so the choice waits for the Windows binary.
 2. **Kill: `taskkill /T /F /PID <pid>`.** Windows has no process groups,
    and `process.kill(-pid)` is ESRCH there, which `killTree` reads as
    "group gone", so today nothing is killed. `/T` walks the parent-pid
