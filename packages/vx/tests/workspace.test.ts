@@ -1,7 +1,8 @@
+import * as fsp from 'node:fs/promises'
 import { mkdir, mkdtemp, readFile, rename, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, spyOn, vi } from 'bun:test'
 import {
   findWorkspaceRoot,
   listProjects,
@@ -922,6 +923,74 @@ describe('loadWorkspace at a public boundary (D-58)', () => {
     } finally {
       await rm(dir, { recursive: true, force: true })
     }
+  })
+})
+
+describe('discovery out of file descriptors (D-60)', () => {
+  // Under a low `ulimit -n` every member read fails with EMFILE, and the
+  // catches that mean "absent" read the workspace as empty: a run said "No
+  // package matched the workspace's package globs" (lead from A). The spy is
+  // restored after each row, so no other file sees it.
+  const emfile = (): never => {
+    throw Object.assign(new Error('EMFILE: too many open files'), { code: 'EMFILE' })
+  }
+  let root: string
+  beforeEach(async () => {
+    root = await makeWorkspace({ prefix: 'vx-emfile-' })
+    await addProject(root, 'a', { config: 'export default { tasks: {} }\n' })
+  })
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+  const listed = async (): Promise<string> => {
+    const ws = await loadWorkspace(root)
+    return (await listProjects(ws)).map((p) => p.name).join(',')
+  }
+
+  // One read site each: the member glob's listing of `packages/`, and the
+  // config lookup's listing of the member itself.
+  // The config lookup lists the member on Linux and stats each config name
+  // elsewhere (`findConfigFile`), so its row fails both: each platform
+  // meets the one it takes (the stat path is the macOS job's).
+  it.each([
+    ['the member listing', (p: string) => p.endsWith(`${path.sep}packages`)],
+    [
+      'the config lookup',
+      (p: string) =>
+        p.endsWith(path.join('packages', 'a')) || path.basename(p).startsWith('vx.config.'),
+    ],
+  ])('fails %s, never lists an empty workspace', async (_site, hit) => {
+    expect(await listed()).toBe('a')
+    const realReaddir = fsp.readdir
+    const realStat = fsp.stat
+    const readdirSpy = spyOn(fsp, 'readdir').mockImplementation(((p: string, o: never) =>
+      hit(String(p)) ? Promise.resolve().then(emfile) : realReaddir(p, o)) as never)
+    const statSpy = spyOn(fsp, 'stat').mockImplementation(((p: string, o: never) =>
+      hit(String(p)) ? Promise.resolve().then(emfile) : realStat(p, o)) as never)
+    const err = await listed().then(
+      () => null,
+      (e: unknown) => e as NodeJS.ErrnoException,
+    )
+    readdirSpy.mockRestore()
+    statSpy.mockRestore()
+    expect(err?.code).toBe('EMFILE')
+  })
+
+  it("fails on a member's package.json read the same way", async () => {
+    const real = Bun.file
+    const spy = spyOn(Bun, 'file').mockImplementation(((p: string) =>
+      p.endsWith('package.json') && p.includes('packages')
+        ? { text: async () => emfile() }
+        : real(p)) as never)
+    const err = await listed().then(
+      () => null,
+      (e: unknown) => e as NodeJS.ErrnoException,
+    )
+    spy.mockRestore()
+    expect(err?.code).toBe('EMFILE')
+    // CONTROL: a directory that is not there is still absent, not a failure.
+    await rm(path.join(root, 'packages', 'a'), { recursive: true, force: true })
+    expect(await listed()).toBe('')
   })
 })
 

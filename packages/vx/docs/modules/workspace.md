@@ -8,6 +8,10 @@ subtracts from what the positive globs found — a literal one excludes
 its tree, and a wildcard one is matched against the member's manifest
 (`<pattern>/package.json`) as pnpm matches it, so `!**/test/**` excludes
 `packages/test` itself (item 986) — in both discovery and the root-claim walk.
+A read that finds nothing (a missing directory, a dangling link, no
+config) is absent; a read the process could not make, out of file
+descriptors (`EMFILE`, `ENFILE`), fails discovery with the `ulimit -n`
+hint, where it had read the workspace as empty (D-60).
 A symlinked member is found by any glob without `**` (`packages/*`,
 `packages/{a,b}`, `pack*/*`); only `packages/*` found one until item 987.
 Under `**` links are not followed, so the scan never walks a pnpm
