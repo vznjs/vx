@@ -57,6 +57,17 @@ async function waitForPid(file: string, timeoutMs: number): Promise<number> {
   throw new Error(`timed out waiting for a pid in ${file}`)
 }
 
+/** Wait for a marker's CONTENT, never its existence (CLAUDE.md, item 876). */
+async function waitForContent(file: string, want: string, timeoutMs: number): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    const f = Bun.file(file)
+    if ((await f.exists()) && (await f.text()) === want) return
+    await Bun.sleep(20)
+  }
+  throw new Error(`timed out waiting for ${JSON.stringify(want)} in ${file}`)
+}
+
 const silentLogger: Logger = {
   status() {},
   taskStdout() {},
@@ -261,7 +272,10 @@ describe('signal handling during vx run (e2e)', () => {
           export default {
             tasks: {
               stubborn: {
-                exec: { command: "trap '' INT TERM; echo $$ > pid.txt; exec sleep 30" },
+                exec: {
+                  command:
+                    "trap 'echo heard > heard.txt' INT TERM; echo $$ > pid.txt; while :; do sleep 0.05; done",
+                },
               },
             },
           }
@@ -278,7 +292,9 @@ describe('signal handling during vx run (e2e)', () => {
 
       const started = Date.now()
       proc.kill('SIGINT')
-      await Bun.sleep(100)
+      // The second only once vx has heard the first: two back to back can
+      // land as one, and then the row drives the first-signal path.
+      await waitForContent(path.join(dir, 'heard.txt'), 'heard\n', 10_000)
       proc.kill('SIGINT')
       const code = await proc.exited
       expect(code).toBe(130)
@@ -302,7 +318,10 @@ describe('signal handling during vx run (e2e)', () => {
           export default {
             tasks: {
               stubborn: {
-                exec: { command: "trap '' INT TERM; echo $$ > pid.txt; exec sleep 30" },
+                exec: {
+                  command:
+                    "trap 'echo heard > heard.txt' INT TERM; echo $$ > pid.txt; while :; do sleep 0.05; done",
+                },
               },
             },
           }
@@ -318,7 +337,7 @@ describe('signal handling during vx run (e2e)', () => {
       expect(isAlive(pid)).toBe(true)
 
       proc.kill('SIGINT')
-      await Bun.sleep(100)
+      await waitForContent(path.join(dir, 'heard.txt'), 'heard\n', 10_000)
       proc.kill('SIGTERM')
       const code = await proc.exited
       // 130, not 143: SIGINT ended this run.

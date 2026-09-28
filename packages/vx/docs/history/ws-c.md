@@ -219,6 +219,15 @@ every child and closes the cache, exit 130; the listener row covers
 SIGHUP; a kept server's stop and an embedder's abort arrive as SIGTERM.
 No defect in the file.
 
+## C-21: send the second signal once vx has heard the first
+
+The two second-signal rows in `signal-handling.test.ts` slept 100 ms
+between the signals, and two sent back to back can land as one (then
+the row drives the first-signal path, items 862, 863). The task now
+traps each signal with a `heard` marker, and the second goes once vx has
+forwarded the first. Both rows still fail under their mutants (no
+second-signal path; the second's exit code).
+
 ## Leads for other streams
 
 - **E:** a plugin command's plain `throw` (`commands.probe.run` throwing
