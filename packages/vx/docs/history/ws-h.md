@@ -377,6 +377,18 @@ Tampering one `configHash` fails both rows; dropping `--frozen` fails the
 run row. The versioning table now names the lock file and the `VX_*`
 variables vx reads.
 
+## H-33: the README's try-it steps run as written
+
+The README and the landing lead with one `vx.workspace.ts` and three
+commands, and nothing ran them. `try-it.unsafe.test.ts` extracts both from
+the README, holds the landing's copy equal, and runs them on a Turbo repo
+(`examples/turbo` without its workspace file) and an Nx repo (the file's
+own `nx()` variant, a stand-in `nx` that only exports the graph): the
+first `npx vx run build --all` builds, the second hits. The install line
+links exactly the packages it names from the checkout (`@vzn/vx-migrate`
+is not on npm, which the README already says). Rewriting a run line to
+`npx vx build --all` fails three rows, each naming the line.
+
 ## Leads for other streams
 
 ## H-29: `vx mcp`'s tools join the contract records
