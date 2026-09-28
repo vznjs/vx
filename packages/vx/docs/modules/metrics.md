@@ -6,7 +6,7 @@ Pure functions over the run-history tables (`runs`, `invocations`,
 `entries`, `entry_inputs`) — one canonical home for every aggregate,
 so `vx last`, `vx why`, and any out-of-process reader (`@vzn/vx-mcp`'s
 `explainCacheKey` / `whyDidThisRerun` tools) ask the same questions
-the same way. The schema itself is owned by `src/cache/cache.ts`; this
+the same way. The schema itself is owned by `src/cache/schema.ts`; this
 module only reads it.
 
 ## Public surface

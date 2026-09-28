@@ -156,8 +156,9 @@ other walker: a project outside a git work tree is a `UserError`
    something there. The lock file is vx's own frozen-config metadata,
    never a task input; the `.bun-build` intermediate is a transient a
    concurrent compile is mid-write.
-5. **Boundary ignores** — every nested project's directory (relative
-   to this project) → `<rel>/**`. Cross-project isolation contract.
+5. **Boundary ignores** — a path under a nested project's directory
+   (relative to this project), by ancestor lookup, not a glob (A-11).
+   Cross-project isolation contract.
 6. **Own outputs** — declared `cache.outputs.files` are excluded.
    Prevents self-invalidation.
 7. **Existence check** — `git ls-files --cached` can surface a
@@ -189,9 +190,10 @@ host's `process.env`):
 
 - Globs run against the project dir (a literal is a tree here too).
 - `.git` and `.vx` excluded whatever the glob (`OUTPUT_NEVER`: no task
-  produces them and their loss is unrecoverable). Nothing else is —
-  `ALWAYS_IGNORE` does not apply here, since `node_modules/**` is an
-  install task's legitimate output.
+  produces them and their loss is unrecoverable), and every
+  `node_modules` unless a glob names one (A-13): `**/*.js` cleaned the
+  installed files, while an install task's `node_modules/**` keeps them.
+  The same holds for `resolveWorkspaceOutputs`.
 - Nested-project subtrees excluded (boundary isolation).
 - **No gitignore filter** — outputs like `dist/` are usually
   gitignored on purpose, and we still want to capture them.

@@ -77,7 +77,7 @@ export function refIsHead(workspaceRoot: string, ref: string): boolean
    (`@vzn/vx-lockfile`) selects the projects whose dependency closure
    moved instead — [`lockfile-claim.md`](./lockfile-claim.md); one that
    appeared or went still selects everything.
-5. Otherwise each changed path reaches a project through **three
+5. Otherwise each changed path reaches a project through **four
    channels**, and the union is returned:
    - **Containment.** Walk the path's ancestor dirs bottom-up until one
      is a project dir; the first hit is the DEEPEST containing project,

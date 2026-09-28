@@ -103,7 +103,8 @@ caches.
      `vx: retrying <id> (attempt <k>/<total>) after exit <code>` stderr
      line between attempts, which ends `after a timeout` instead when
      the attempt was killed by `timeout`. The final outcome (and the
-     cached stdout) is the last attempt's; `TaskOutcome.attempts` is
+     cached stdout) is the last attempt's, its `durationMs` every
+     attempt's; `TaskOutcome.attempts` is
      set when > 1.
    - `wallclockEndNs = process.hrtime.bigint() - runStartHrTimeNs`.
 5. **If exit 0 + caching enabled**: the key is re-checked
@@ -210,8 +211,8 @@ each signal carries what sends it — SIGKILL the OOM killer or a kill,
 SIGSEGV/SIGBUS/SIGILL/SIGFPE a crash in native code, SIGABRT an
 assertion or a JS runtime's heap limit, SIGPIPE a reader that left,
 SIGXCPU/SIGXFSZ a ulimit, SIGSYS a seccomp filter or the sandbox. A
-SIGINT/SIGTERM the runner saw is the abort path's (the task reverts to
-aborted) and gets no line. A timed-out step gets no line either: its
+SIGINT/SIGTERM the runner saw gets no line: the task is aborted when
+the run is stopping, else failed. A timed-out step gets no line either: its
 own line names the timeout. Pinned in `tests/shell-verdict.test.ts` on real files and
 end to end in `tests/tool-not-on-path.test.ts` and
 `tests/signal-death.test.ts`.
