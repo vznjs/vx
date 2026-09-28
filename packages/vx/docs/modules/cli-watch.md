@@ -14,11 +14,20 @@ export async function watchCmd(args: readonly string[]): Promise<number>
 
 // The loop's parts, exported for the watch suites:
 export function watchRefusal(parsed: RunArgs): string | null // the refusal line for a flag watch cannot honour
-export function pendingAfterCycle(pending: ReadonlyMap<string, string>, aborted: boolean): [abs: string, label: string] | undefined
+export function pendingAfterCycle(
+  pending: ReadonlyMap<string, string>,
+  aborted: boolean,
+): [abs: string, label: string] | undefined
 
 // watch-set.ts — what is watched: the projects a cycle can run, what their
 // configs declare, the member dirs a package glob can grow:
-export async function watchedProjects(workspaceRoot, allProjects, scope, load?, staged?): Promise<ProjectMeta[]>
+export async function watchedProjects(
+  workspaceRoot,
+  allProjects,
+  scope,
+  load?,
+  staged?,
+): Promise<ProjectMeta[]>
 export interface ConfigSweep {
   workspaceWide: boolean
   workspaceInputs: string[]
@@ -35,9 +44,17 @@ export function sameMembers(a: ReadonlySet<string>, b: ReadonlySet<string>): boo
 
 // watch-filter.ts — which events matter, decided over paths alone:
 export function isIgnoredWatchPath(rel: string): boolean // node_modules / .git / .vx segments, .tsbuildinfo / ~ suffixes
-export function makeWatchIgnore(...): (rel: string) => boolean // the above plus the cache dir and every declared output no task reads
+export function makeWatchIgnore(
+  cacheDir,
+  outputs?,
+  inputs?,
+): (base: string, filename: string) => boolean // the above plus the cache dir and every declared output no task reads
 export function gitIgnored(workspaceRoot: string, paths: readonly string[]): Set<string> // one `git check-ignore --stdin`
-export function makeRootEventFilter(workspaceRoot: string, projectDirs: readonly string[], workspaceInputs: readonly string[]): (filename: string) => boolean
+export function makeRootEventFilter(
+  workspaceRoot: string,
+  projectDirs: readonly string[],
+  workspaceInputs: readonly string[],
+): (filename: string) => boolean
 export function shapesWatchedSet(filename: string): boolean // a manifest, a config or a fingerprint file: re-read the watched set
 export function isWorkspaceFingerprintFile(name: string): boolean
 export function isWorkspaceConfigFile(name: string): boolean
@@ -54,8 +71,19 @@ export interface ArmedWatcher {
   watcher: fs.FSWatcher
   ready: Promise<boolean> // true once the watcher reported the probe, false on timeout
 }
-export function pollWatcher(dir: string, recursive: boolean, onEvent: (filename: string) => void, intervalMs?: number): WatchHandle
-export function armWatcher(dir: string, recursive: boolean, onEvent: (filename: string) => void, timeoutMs?: number): ArmedWatcher
+export function pollWatcher(
+  dir: string,
+  recursive: boolean,
+  onEvent: (filename: string) => void,
+  intervalMs?: number,
+  skipDir?: (rel: string) => boolean,
+): WatchHandle
+export function armWatcher(
+  dir: string,
+  recursive: boolean,
+  onEvent: (filename: string) => void,
+  timeoutMs?: number,
+): ArmedWatcher
 export function modifiedBefore(abs: string, t: number): boolean
 export function fsClockNow(dir: string): number
 ```
@@ -64,7 +92,8 @@ export function fsClockNow(dir: string): number
 (`0` on clean Ctrl+C; `1` on parser / scope error). `armWatcher` proves
 delivery before the loop trusts a watcher (a probe file the watcher
 must report within the timeout); `pollWatcher` is the fallback that
-re-walks the tree when the platform's watcher never does.
+re-walks the tree when the platform's watcher never does, or when the
+OS watch limit refuses one (`ENOSPC` / `EMFILE`, E-49).
 
 ## Flag surface
 
@@ -90,7 +119,8 @@ are refused too: they format one run's result.
 3. Enumerate projects in the resolved scope via `listProjects`. Empty
    scope → exit 1.
 4. **Initial run.** Print `vx watch: initial run...`; call
-   `orchestrator.run(opts)`.
+   `orchestrator.run(opts)`. One that ran nothing and failed (a task
+   no project declares) exits 1.
 5. **Watch loop** (`runWatchLoop`):
    - For each project a cycle can run (`watchedProjects`: the scope
      plus its transitive dependencies through `buildPackageGraph` with
