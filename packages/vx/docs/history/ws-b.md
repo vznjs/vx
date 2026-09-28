@@ -328,3 +328,17 @@ red under its mutant (`sandbox-runtime.unsafe.test.ts`):
 - a SIGKILLed task's port bridge leaves no socket behind: the task's socat
   unlinks it only on a graceful exit, so the host's unlink shows only when
   the namespace dies by the grace's SIGKILL (`rb-unlinksock`).
+
+B-17. `keep-alive.test.ts` › a kill -9 in the persistent shutdown's grace
+takes the server a dead shell left: red once under the full gate (no
+`term.txt` within 10 s), 3 of 3 green alone. The server is a backgrounded
+`sh -c "trap … TERM; …"` and the task said READY at once, so under load
+the shutdown's SIGTERM could land before the trap was set, and the
+server died unmarked.
+
+- Fix (the row): the server writes a marker once its trap is set, and
+  the task says READY only after it. Proven: with the trap delayed 0.5 s,
+  the old form fails and the new form passes.
+- The class, grepped: `signal-handling.test.ts`'s trapped server writes
+  its pid after its trap, and the test waits on it; `keep-alive`'s
+  `outlivesVx` rows end by SIGKILL, which no trap changes.
