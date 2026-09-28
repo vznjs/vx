@@ -157,6 +157,13 @@ hour and 3:46 in the second, runs 4:06; Linux waits 0:02. About 55
 macOS jobs an hour at ~4 min: the queue is job count, not job
 length. 15 s off a job frees ~6 %.
 
+I-15. The queue an hour on, 113 CI runs 01:00–02:00 on 2026-09-28:
+macOS waits 2:40 median (max 7:19) against 6:41 (22:32) the hour
+before, for 64 macOS jobs against 55. The darwin step moved only 3:46
+→ 3:40, so the drop is runner supply, not I-12. Day A/B, 1,000
+packages warm, 15 rounds, compiled: 4b7c396a 203.9 ms median (min
+183.6), main 396a3045 200.6 (181.0), A/A 196.9 (177.5), a tie.
+
 ## Leads for other streams
 
 - **Owner / coordinator: skip macOS where it cannot differ from
@@ -245,6 +252,10 @@ length. 15 s off a job frees ~6 %.
   029aa62d: a pid passed `isAlive`, then exited before
   `readFileSync(/proc/<pid>/stat)`, which threw ENOENT. Reading the stat
   should count a vanished pid as dead.
+- **B: "runSandboxed, driven directly › a SIGKILLed task's port bridge
+  leaves no socket behind" fails on CI** (`sandbox-runtime.unsafe`):
+  #1301's run on 2026-09-27 and main at 69923eca (run 36367605356,
+  2026-09-28 01:52). Linux job, 1,246 ms.
 - **F: `wedged.test.ts` › "RST_STREAM(INTERNAL_ERROR) reads as INTERNAL
   and is retried" failed once in a local gate (I-3): `sent` 3 where 4
   is expected, 2,199 ms, on c2f0fa79; green on the next gate at

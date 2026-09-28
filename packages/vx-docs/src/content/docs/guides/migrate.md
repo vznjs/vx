@@ -1,9 +1,9 @@
 ---
 title: Migrate
-description: Run a Turborepo, Nx or moon repo under vx with no file rewritten, then let `bunx @vzn/vx-migrate` write vx.config.ts files when you are ready.
+description: Run a Turborepo, Nx, moon, wireit or lage repo under vx with no file rewritten, then let `bunx @vzn/vx-migrate` write vx.config.ts files when you are ready.
 ---
 
-Run your Turborepo, Nx or moon repo under vx today, and move its config to
+Run your Turborepo, Nx, moon, wireit or lage repo under vx today, and move its config to
 TypeScript at your own pace.
 
 ## Turborepo
@@ -151,6 +151,63 @@ project with no `package.json` there is reported, not run.
 
 The full table and what is not mapped: the
 [`@vzn/vx-migrate` README](https://github.com/vznjs/vx/tree/main/packages/vx-migrate#moon--run-a-moon-workspace-unchanged).
+
+## wireit
+
+1. Install: `bun add -d @vzn/vx @vzn/vx-migrate`.
+2. Add this `vx.workspace.ts`. It is the only new file.
+3. Run `vx run build --all`. It runs each package's `wireit.build`, under vx's cache.
+4. Preview the configs with `bunx @vzn/vx-migrate --dry`, then write them with `bunx @vzn/vx-migrate`.
+
+```ts
+// vx.workspace.ts
+import { defineWorkspace } from '@vzn/vx'
+import { wireit } from '@vzn/vx-migrate'
+
+export default defineWorkspace({ plugins: [wireit()] })
+```
+
+| wireit                         | vx                                                |
+| ------------------------------ | ------------------------------------------------- |
+| `command`                      | `exec.command`                                    |
+| `dependencies`: `../pkg:build` | `dependsOn`: `pkg#build`                          |
+| `files` + `output`             | `cache.inputs.files` + `cache.outputs.files`      |
+| `env`: `{ "external": true }`  | `cache.inputs.env` **and** `exec.env.passThrough` |
+| `service`                      | `exec.persistent` (with `readyWhen`)              |
+| `npm run build`                | `vx run build`                                    |
+
+The full table: the
+[`@vzn/vx-migrate` README](https://github.com/vznjs/vx/tree/main/packages/vx-migrate#wireit--run-a-wireit-workspace-unchanged).
+
+## lage
+
+1. Install: `bun add -d @vzn/vx @vzn/vx-migrate`.
+2. Add this `vx.workspace.ts`. It is the only new file.
+3. Run `vx run build --all`. It runs what `lage build` ran, under vx's cache.
+4. Preview the configs with `bunx @vzn/vx-migrate --dry`, then write them with `bunx @vzn/vx-migrate`.
+
+```ts
+// vx.workspace.ts
+import { defineWorkspace } from '@vzn/vx'
+import { lage } from '@vzn/vx-migrate'
+
+export default defineWorkspace({ plugins: [lage()] })
+```
+
+| lage                                | vx                                                 |
+| ----------------------------------- | -------------------------------------------------- |
+| `pipeline.build: ['^build']`        | `dependsOn: ['^build']`                            |
+| `^^transpile`                       | a `pkg#transpile` edge per transitive dependency   |
+| `inputs` / `outputs`                | `cache.inputs.files` / `cache.outputs.files`       |
+| `cacheOptions.environmentGlob`      | `cache.inputs.workspaceFiles`                      |
+| `type: 'noop'`                      | a group task                                       |
+| `type: 'worker'` | a `lage-worker` line: the module, one process |
+| `lage build --to app`               | `vx run app#build`                                 |
+
+A target with no `outputs` and no `cacheOptions.outputGlob` runs
+uncached: lage would cache every package file, and vx cleans outputs
+before a run. The full table: the
+[`@vzn/vx-migrate` README](https://github.com/vznjs/vx/tree/main/packages/vx-migrate#lage--run-a-lage-workspace-unchanged).
 
 ## Common problems
 

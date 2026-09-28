@@ -122,4 +122,30 @@ describe.if(CHUNKING_SUPPORTED)('the cache layer, past the sweep', () => {
       [['inline artifact', 5], 0, true, [ARTIFACT], ['the real bytes', undefined]],
     )
   })
+
+  // F-26: every save probed FindMissingBlobs first, a round trip of its own
+  // to skip an upload no larger than the probe for a small artifact.
+  it('a small artifact is batch-sent unprobed; a large one is probed; a refused batch streams', async () => {
+    const methods = async (key: string, size: number) => {
+      const mark = fake.calls.length
+      await cache.put(key, new Blob([new Uint8Array(size).fill(size % 251)]), { durationMs: 1 })
+      return fake.calls.slice(mark).map((c) => c.method)
+    }
+    const small = await methods('k-small', 1024)
+    const large = await methods('k-large', 300 * 1024)
+    fake.fail('BatchUpdateBlobs', grpc.status.INVALID_ARGUMENT)
+    const refused = await methods('k-refused', 2048)
+    expect([
+      small,
+      large.includes('FindMissingBlobs'),
+      refused.slice(0, 2),
+      refused.at(-1),
+    ]).toEqual([
+      ['BatchUpdateBlobs', 'UpdateActionResult'],
+      true,
+      ['BatchUpdateBlobs', 'Write'],
+      'UpdateActionResult',
+    ])
+    expect(await restored('k-refused')).toEqual([String.fromCharCode(2048 % 251).repeat(2048), 1])
+  })
 })

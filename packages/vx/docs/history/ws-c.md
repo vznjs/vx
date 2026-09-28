@@ -228,6 +228,18 @@ traps each signal with a `heard` marker, and the second goes once vx has
 forwarded the first. Both rows still fail under their mutants (no
 second-signal path; the second's exit code).
 
+## C-23: keep a clean taint answer only once the chain below has settled
+
+`taintTracker` kept a clean answer once a node's direct deps had
+settled, while a dep further down still ran. Under `--continue=always`
+a late restore-tier hit asked about `h3` (hit ← `h2` ← `h1` ← a slow
+`gen`) before `gen` failed; `h3` stayed clean, `ship` on it saved the
+partial tree on its healthy key, and the next healthy run replayed
+`PARTIAL` as a hit (3/3). A clean answer is now kept only when every dep
+has settled and its own answer is kept; taint stays final at once. Found
+by the `admission.ts` sweep (C-20). Row: `taint-tracker.test.ts` (red
+without the change); the run above gives `success GOOD` with it.
+
 ## Leads for other streams
 
 - **E:** a plugin command's plain `throw` (`commands.probe.run` throwing
@@ -276,3 +288,8 @@ second-signal path; the second's exit code).
   (all three tasks moved, `affectedIds` `[]`). Proposed: the claim
   names the extra files it read (`lockfile-claim.ts` has them), and
   `affected.ts` treats a change to one as a change to the lockfile.
+- **B:** `sandbox-runtime.unsafe.test.ts` › "a SIGKILLed task's port
+  bridge leaves no socket behind" failed on #1413's CI with `ENOENT`
+  scanning `/tmp/claude/vx-tasks/vx-task-<pid>-x`: the row reads the
+  bridge socket's directory after the task went, and the directory can
+  be gone by then. Green in the same PR's local gate.

@@ -129,6 +129,15 @@
   `vx last` were probed clean. 9 µs
   per hit that prints (144 env vars), none for a silent hit. Rows in
   `secret-mask.test.ts`. Coordinator backlog 2.
+- L-12. `ci(release)`: the release binaries carried no provenance:
+  `vx upgrade`'s SHA-256 comes from the release API that serves the asset,
+  so whoever could replace the asset replaced its digest too (item 1096).
+  release.yml now attests every binary it uploads
+  (`actions/attest-build-provenance`, pinned by commit; darwin after the
+  re-sign), verifiable with `gh attestation verify`. The npm launcher
+  downloads nothing (the binaries ride npm platform packages published
+  with `--provenance`). Rows in `release-provenance.unsafe.test.ts`.
+  Coordinator backlog 3.
 
 ## Leads for other streams
 

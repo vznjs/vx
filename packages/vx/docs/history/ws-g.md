@@ -360,3 +360,19 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   (which shadows it, and Turbo refuses) is not keyed as an absent one.
   Two are equivalent: the dirs list and the package name are already
   in the manifests' part of the key.
+- **G-29.** nx()'s mapping key read `nx.json` alone, while the mapper
+  resolves named inputs from its whole `extends` chain (item 1050): an
+  edit to a base's `namedInputs` kept the mapping, and every task ran
+  on the old inputs. The key reads the chain now (`readNxJson`'s
+  files). Row (`nx.test` › the mapping cache › an edit to the nx.json
+  base maps afresh): red without the fix. Found by auditing what each
+  adoption mapper reads against its key after G-28; the rest of both
+  mappers' reads, and the lockfile plugins' patches, are keyed. A
+  re-sweep of `nxCache()` after G-23's rewrite: 28 mutants, all caught.
+- **G-30.** A sweep of G-20's reservation checks in
+  `vx-schedule-history` (10 mutants): 7 caught, 3 survived. Two were
+  live and are now held by the G-20 row: a NaN `cpus` beside a valid
+  `memory` reserves no cores (the row had only a negative one, which
+  admits either way), and a `null` entry is neither a crash nor a
+  warning. `{}` for "no reservations declared" is equivalent to
+  `undefined`.

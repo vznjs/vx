@@ -92,7 +92,7 @@ const textOf = (file: string): Promise<string> =>
     .catch(() => '\0absent')
 
 /**
- * Everything the mapping reads: the graph, nx.json, every package manifest
+ * Everything the mapping reads: the graph, nx.json and its `extends` chain, every package manifest
  * and the package.json of each graph node no package matches (its
  * synthetic project's name), the `.env` names in every project dir,
  * NX_LOAD_DOT_ENV_FILES, whether the bins the tasks run are installed,
@@ -118,9 +118,11 @@ async function nxReads(
       ['nx', 'package.json'],
     ].map((p) => Bun.file(path.join(root, 'node_modules', ...p)).exists()),
   )
+  // nx.json's whole `extends` chain: the mapper reads named inputs from it.
+  const chain = (await readNxJson(root).catch(() => null))?.files ?? [path.join(root, 'nx.json')]
   return [
     graphText,
-    await textOf(path.join(root, 'nx.json')),
+    ...(await Promise.all(chain.map(textOf))),
     JSON.stringify(metas.map((m) => [m.name, m.dir, m.packageJson])),
     ...(await Promise.all(unmatched.map((r) => textOf(path.join(root, r, 'package.json'))))),
     JSON.stringify(

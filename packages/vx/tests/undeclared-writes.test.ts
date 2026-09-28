@@ -375,8 +375,8 @@ describe('undeclaredWriteReach — where a task may have written that nothing de
 })
 
 describe('the stability gate reads the reach', () => {
-  /** Commit the fixture, then classify it as run() does: is `app#build` probed up front? */
-  async function upFront(): Promise<boolean> {
+  /** Commit the fixture, then classify it as run() does: is `id` probed up front? */
+  async function upFront(id = 'app#build'): Promise<boolean> {
     gitIn(root)('add', '-A')
     gitIn(root)('commit', '-q', '-m', 'init')
     const lines: string[] = []
@@ -395,7 +395,7 @@ describe('the stability gate reads the reach', () => {
         hashCache: prepared.hashCache,
         concurrency: 4,
       })
-      return sc.preProbed.has('app#build')
+      return sc.preProbed.has(id)
     } finally {
       prepared.cache.close()
     }
@@ -456,6 +456,108 @@ describe('the stability gate reads the reach', () => {
     "a grant that leaves the producer's project makes a reader in another project unstable",
     async () => {
       expect(await crossProject('../app/gen/**')).toBe(false)
+    },
+    TIMEOUT,
+  )
+
+  /** `app#build` (declared `dist/**`, reading `config.json`) after `chain` in its own project. */
+  async function throughChain(
+    tasks: string,
+    buildDeps: string,
+    buildInputs = '',
+  ): Promise<boolean> {
+    await addProject(root, 'app', {
+      config: `
+        export default {
+          tasks: {
+            ${tasks}
+            build: {
+              dependsOn: ${buildDeps},
+              exec: { command: 'true' },
+              cache: { inputs: { files: ['config.json']${buildInputs} }, outputs: { files: ['dist/**'] } },
+            },
+          },
+        }
+      `,
+      files: { 'config.json': 'X' },
+    })
+    return upFront()
+  }
+  // Runs nothing and may write nothing: it passes its upstream's reach on
+  // without being unstable itself, so the reader's answer is the reach's.
+  const QUIET = `{ exec: { command: 'true', sandbox: { allow: { read: ['.'] } } } }`
+
+  it(
+    'an undeclared writer reached through a quiet task still makes the reader unstable',
+    async () => {
+      expect(
+        await throughChain(
+          `gen: { exec: { command: 'cp seed.txt config.json' } },
+           mid: { dependsOn: ['gen'], ...${QUIET} },`,
+          "['mid']",
+        ),
+      ).toBe(false)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a cached rewriter two quiet tasks up still makes an unfolding reader unstable',
+    async () => {
+      expect(
+        await throughChain(
+          `fmt: { exec: { command: 'true' }, cache: { inputs: { files: ['**'] }, outputs: { files: [] } } },
+           mid: { dependsOn: ['fmt'], ...${QUIET} },
+           mid2: { dependsOn: ['mid'], ...${QUIET} },`,
+          "['mid2']",
+          ', tasks: []',
+        ),
+      ).toBe(false)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a cached rewriter writing outside its project, a quiet task up, makes an unfolding reader unstable',
+    async () => {
+      await addProject(root, 'other', { config: 'export default { tasks: {} }' })
+      expect(
+        await throughChain(
+          `fmt: {
+             exec: { command: 'true', sandbox: { allow: { read: ['.'], write: ['../other/**'] } } },
+             cache: { inputs: { files: ['**'] }, outputs: { files: [] } },
+           },
+           mid: { dependsOn: ['fmt'], ...${QUIET} },`,
+          "['mid']",
+          ', tasks: []',
+        ),
+      ).toBe(false)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'control: the quiet chain alone leaves the reader stable',
+    async () => {
+      expect(
+        await throughChain(
+          `mid: ${QUIET},
+           mid2: { dependsOn: ['mid'], ...${QUIET} },`,
+          "['mid2']",
+          ', tasks: []',
+        ),
+      ).toBe(true)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'an uncached task is never probed up front, stable or not',
+    async () => {
+      await addProject(root, 'app', {
+        config: `export default { tasks: { build: { dependsOn: ['mid'], exec: { command: 'true' } }, mid: ${QUIET} } }`,
+      })
+      expect(await upFront('app#mid')).toBe(false)
     },
     TIMEOUT,
   )

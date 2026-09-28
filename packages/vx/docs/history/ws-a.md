@@ -280,3 +280,10 @@ The last `miss-save.ts` survivors: the workspace-row filter in the snapshot's `e
 
 - Rows (`inputs.test.ts` › "inputs.ts edges"): a tracked file replaced by a directory is not an input, what it holds is; an additive task owns a file it rewrote at the same size, or at the same mtime; a clean never removes the project directory it emptied; an additive clean prunes a parent whose recorded directory is already gone; a workspace-output clean prunes what it emptied. `stale-hit.test.ts` › a `workspaceFiles` input with a non-UTF-8 name is refused. Each red under its mutant.
 - Unheld: an output directory whose realpath fails is refused (I18). It needs a directory that the scan listed and that left before the realpath: a race with the task, not a fixture.
+
+### A-32 (2026-09-28, sweep: `stable-keys.ts`)
+
+43 mutants over the eight files that reach it: 35 caught, 8 survived. No defect.
+
+- Rows: `undeclared-writes.test.ts` › "the stability gate reads the reach": an undeclared writer, a cached rewriter two hops up, and a rewriter writing outside its project, each reached through a task that may write nothing, still make the reader unstable (with a control); an uncached task is never probed up front. `stable-keys.test.ts`: a negated `**` reaches nothing; a prefix stops at the first wildcard segment. Each red under its mutant.
+- Equivalent: `ProjectSet.or` without a copy only adds producers to sets already stored (more unstable, never less); a dependency missing from the graph never happens, as the graph is closed.

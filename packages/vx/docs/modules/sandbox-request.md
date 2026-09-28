@@ -82,9 +82,9 @@ export function mayWriteFingerprint(node: TaskNode, workspaceRoot: string): bool
   through a live runtime, so what it carries had no witness of any kind
   and three separate widenings of it survived a whole-suite mutation
   sweep (item 537). `network: true` is deliberately absent from
-  `domains` — it SKIPS the proxy rather than passing through it, so
-  folding it in as `*` would widen the allowlist every other task in the
-  run is filtered against. An empty `unixSockets` list means none, and
+  `domains`: folding it in as `*` would widen the allowlist every other
+  task in the run is filtered against. So `true` adds no domain; the
+  task reaches only the union. An empty `unixSockets` list means none, and
   `weakerNested` takes EVERY, so one task's opt-in cannot weaken the
   profile the others run under.
 - `sandboxRequestFor` builds the sandbox half of one request, plus the

@@ -182,6 +182,17 @@
   tools read the cache, not run history; a verb's `run` may return a
   promise; and the plugins guide's verb sample opened the cache in a
   mode that can reset an old index (`Cache.inspect` now).
+- **J-31** upstream-ledger.md notes against the code (no verdict
+  changed): the task env also carries bin `PATH` and `VX_RUN_*`, a
+  reverted edit is caught (item 1015), a shared `cacheDir` does serve a
+  second checkout, the fingerprint holds `.npmrc` and `bunfig.toml`, a
+  `passThrough` wildcard is refused, `VX_RUN_WORKSPACE` holds a path,
+  a catalog edit re-keys every project; the intro drops the unused
+  "untested" verdict.
+- **J-32** The site's compare and playground pages against the code:
+  one wrong claim, that the sandbox checks declared inputs (it checks
+  reads against `exec.sandbox.allow.read`, kept apart from
+  `cache.inputs`).
 
 ## Leads for other streams
 
@@ -239,3 +250,9 @@ task(s): nope.` and exits 0; cli.md says an undeclared name is
 - **H** `getRunHistory`'s `successRate` counts only `status = 'success'` (`orchestrator/history.ts:111`), so a cache hit is a non-success; `failure-mode.ts` counts a hit as a pass.
 - **H** `packages/vx-migrate/src/turbo/index.ts` header names `vx migrate --from turbo`, a verb that no longer exists.
 - **J (ledger)** nx#35524 (n/a) and turborepo#9651 (n/a) may need other verdicts: vx re-keys every project on a catalog edit, and `turbo()`/`nx()` now fold pre/post hooks. Needs the upstream issue text, unread here.
+- **B (security)** Sandbox network is per run: a task with no `network` reaches every domain any task of the run allows; `network: true` opens nothing past the union; `deny.network` is never enforced (`initSandbox` passes `deniedDomains: []`). The comments in `exec/sandbox-runtime.ts` `initSandbox` and `exec/sandbox-binds.ts` `buildCustomConfig` claim otherwise.
+- **B (security)** The wrapped `sh -c "exec bwrap …"` resolves `bwrap` (and SRT's in-sandbox `socat`) on the TASK's PATH, so a dependency's `node_modules/.bin/bwrap` or `socat` replaces the sandbox tool; the comment near `runSandboxed` says vx's own PATH.
+- **B** A root project with `read: ['.']` that exits non-zero with no violation gets the false "grants no read access to the task's own working directory" hint: `wallOff` punches `.git`/`.vx` out of `'.'`, so `readableUnder` misses the cwd (`sandbox-runtime.ts` ~1378).
+- **B** vx's own hints (untouched placeholder, withheld link) are counted as sandbox violations in the "(N sandbox violation)" line.
+- **B** On a host without IPv6, SRT's in-sandbox `socat TCP-LISTEN:3128` fails and its error goes to /dev/null: every networked task sees only "connection refused on localhost:3128".
+- **M (via coordinator)** `sandbox-runtime.unsafe.test.ts` › "a SIGKILLed task's port bridge leaves no socket behind" fails with `ENOENT: no such file or directory, scandir '/tmp/claude/vx-tasks/vx-task-<pid>-x'` (`tests/sandbox-runtime.unsafe.test.ts:4030`): on CI for PR #1412 (history only) and in a local gate on main 2026-09-28 01:50. The row (B-15, 53144ba) read the bridge socket's dir after L-10 (18bfb32) moved per-task temp dirs; fixed by 34a6c14.

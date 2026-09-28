@@ -43,6 +43,7 @@ ActionCache supplies the missing indirection:
 | task duration        | `stdout_raw` on the ActionResult                                                                                                                         |
 | cache miss           | `GetActionResult` → `NOT_FOUND`                                                                                                                          |
 | cache hit            | `GetActionResult` asking for stdout and the artifact inline: a server that honours it (bazel-remote, up to ~1 MiB) answers a small hit in one round trip |
+| cache save           | an artifact up to 256 KiB goes in one `BatchUpdateBlobs`, unprobed; a larger one is probed with `FindMissingBlobs` and streamed only if missing          |
 
 The `vx-reapi-v1` prefix does two jobs: it keeps vx keys out of the address
 space of real Bazel action digests on a shared server, and it makes a future
@@ -94,7 +95,8 @@ bazel-remote sends when the call's `grpc-timeout` runs out first (a
 
 Every successful remote execution writes an execution record under the
 task's vx key (`vx-reapi-exec-v1`), listing its outputs by digest plus
-its stdout. A later run whose vx cache missed but whose key already has
+its stdout (inline up to 64 KiB, a CAS blob past it), written while the
+outputs come down. A later run whose vx cache missed but whose key already has
 a record skips the Merkle build, the upload pass and `Execute`
 entirely: the outputs are already in the CAS, and stdout replays from
 the record. `--force` bypasses it.

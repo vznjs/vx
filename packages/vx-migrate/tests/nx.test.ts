@@ -1049,6 +1049,33 @@ describe('nx(): the mapping cache', () => {
     TIMEOUT,
   )
 
+  // The mapper reads named inputs from nx.json's whole `extends` chain; the
+  // key read only nx.json, so a base's edit replayed the old inputs.
+  it(
+    'an edit to the nx.json base maps afresh',
+    async () => {
+      await writeFile(
+        path.join(root, 'base.json'),
+        JSON.stringify({ namedInputs: { src: ['{projectRoot}/src/**/*'] } }),
+      )
+      await writeFile(path.join(root, 'nx.json'), JSON.stringify({ extends: './base.json' }))
+      const g = structuredClone(GRAPH)
+      g.graph.nodes.lib.data.targets.build.inputs = ['src']
+      await writeFile(path.join(root, 'graph.json'), JSON.stringify(g))
+      const inputs = async () =>
+        (await planRun({ cwd: root, tasks: ['lib#build'], log: silent() })).tasks.find(
+          (t) => t.node.id === 'lib#build',
+        )!.node.config.cache?.inputs.files
+      expect(await inputs()).toEqual(['src/**/*'])
+      await writeFile(
+        path.join(root, 'base.json'),
+        JSON.stringify({ namedInputs: { src: ['{projectRoot}/lib/**/*'] } }),
+      )
+      expect(await inputs()).toEqual(['lib/**/*'])
+    },
+    TIMEOUT,
+  )
+
   it(
     'NX_LOAD_DOT_ENV_FILES maps afresh',
     async () => {

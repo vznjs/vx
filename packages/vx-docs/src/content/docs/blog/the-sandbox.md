@@ -32,7 +32,8 @@ lint: {
 ## One allow-list, no inheritance
 
 `sandbox: {}` is the baseline: reads nothing in the workspace, writes
-nothing, no network. Not even the project's own directory, which is why
+nothing, no network of its own (a run's domain lists are one union
+every sandboxed task reaches; schema.md § `exec.sandbox`). Not even the project's own directory, which is why
 `read: ['.']` is the first line of nearly every real block. The read wall
 stands at the workspace root: `~/.cache` and `/etc` stay readable, and
 fold into no key. On top of the baseline

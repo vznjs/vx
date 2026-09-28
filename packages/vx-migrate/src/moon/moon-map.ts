@@ -27,6 +27,7 @@ import { UserError, type ProjectMeta } from '@vzn/vx'
 import { minimatchToVx } from '../glob-grammar.js'
 import { shellQuote } from '../nx-command.js'
 import { relPosix } from '../paths.js'
+import { pruneDanglingEdges } from '../dangling-edges.js'
 import { pruneOrphanPersistentNotes } from '../persistent-note.js'
 import { resolveSharedOutputs } from '../shared-outputs.js'
 
@@ -974,49 +975,4 @@ function moonOnlyDeps(p: MoonProject, names: ReadonlyMap<string, string>): strin
     if (pkg !== undefined && pkg !== p.meta.name && !declared.has(pkg)) out.push(pkg)
   }
   return uniq(out)
-}
-
-/**
- * Edges to a task that mapped to nothing (a token with no vx form, a no-op
- * with no deps) are dropped with a todo, to a fixed point: core refuses an
- * edge to a task no project declares, and that refusal failed the run.
- */
-function pruneDanglingEdges(projects: MoonMappedProject[]): void {
-  for (;;) {
-    const live = new Map<string, Set<string>>()
-    const anywhere = new Set<string>()
-    for (const p of projects) {
-      const names = new Set(p.tasks.filter((t) => t.task !== null).map((t) => t.name))
-      live.set(p.name, names)
-      for (const n of names) anywhere.add(n)
-    }
-    let changed = false
-    for (const p of projects) {
-      for (const t of p.tasks) {
-        const deps = t.task?.['dependsOn']
-        if (!Array.isArray(deps)) continue
-        const kept = deps.filter((d: string) => {
-          const hash = d.indexOf('#')
-          if (d.startsWith('^')) return anywhere.has(d.slice(1))
-          const ok =
-            hash === -1
-              ? live.get(p.name)!.has(d)
-              : live.get(d.slice(0, hash))?.has(d.slice(hash + 1))
-          if (!ok) t.todos.push(`dep ${JSON.stringify(d)}: that task has no vx form — edge dropped`)
-          return ok === true
-        })
-        if (kept.length === deps.length) continue
-        changed = true
-        if (kept.length > 0) t.task!['dependsOn'] = kept
-        else {
-          delete t.task!['dependsOn']
-          if (t.task!['exec'] === undefined) {
-            t.todos.push('a no-op task with no deps left — nothing to run')
-            t.task = null
-          }
-        }
-      }
-    }
-    if (!changed) return
-  }
 }

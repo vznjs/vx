@@ -1,6 +1,6 @@
 ---
 title: Sandboxing tasks
-description: Run a task where only the workspace files and network you declared exist, so an undeclared read fails the task instead of hiding in the cache.
+description: Run a task where only the workspace files you declared exist, so an undeclared read fails the task instead of hiding in the cache.
 ---
 
 Prove a task reads only what it declares.
@@ -42,7 +42,7 @@ export default defineProject({
 
 ## What you can grant
 
-`allow` takes every key below. `deny` takes only `network`. `ignore` takes `read`, `write`, `systemInfo` and `network`, as patterns, and refuses the rest.
+`allow` takes every key below. `deny` takes only `network`. Domain lists are one union per run, which every sandboxed task reaches, and `deny.network` refuses nothing today. `ignore` takes `read`, `write`, `systemInfo` and `network`, as patterns, and refuses the rest.
 
 | Key            | Grants                                                            |
 | -------------- | ----------------------------------------------------------------- |

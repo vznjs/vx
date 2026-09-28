@@ -69,6 +69,18 @@ describe('taintTracker — which upstream outcomes poison a task', () => {
     expect(clean.judge(node('c'), [from('b', 'cache-hit')])).toBe(false)
   })
 
+  // C-23: `c`'s answer was kept once its direct dep `b` had settled, while
+  // `a` below `b` still ran. When `a` failed, whatever hung off `c` was
+  // judged clean and saved the partial tree on its healthy key.
+  it('a clean answer is not kept while a dep further down still runs', () => {
+    const t = taintTracker(true, NONE, graph({ a: [], b: ['a'], c: ['b'] }))
+    t.settled(from('b', 'cache-hit'))
+    t.settled(from('c', 'cache-hit'))
+    expect(t.judge(node('d'), [from('c', 'cache-hit')])).toBe(false)
+    t.settled(from('a', 'failed'))
+    expect(t.judge(node('d'), [from('c', 'cache-hit')])).toBe(true)
+  })
+
   it('a 50,000-deep chain of early hits is judged without a frame per hop', () => {
     const DEPTH = 50_000
     const edges: Record<string, string[]> = {}
