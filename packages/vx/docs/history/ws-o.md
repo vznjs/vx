@@ -82,6 +82,31 @@ four at a time, 100 s each, into their own logs, and only counts,
 failing rows and first error lines are printed. Actions runs bash with
 `-e`, which ended the first version at the first red shard; `set +e`.
 
+O-10. `Cache.close()` closed nothing: bun:sqlite defers a plain close
+while a `db.prepare()` statement lives, so `cache.db` and its `-wal`
+and `-shm` stayed open, and on Windows every suite that opened a cache
+failed to delete its temp dir (EBUSY). `close(true)` finalizes and
+closes. A real close deletes the WAL files, which a cache dir this user
+cannot write could not make again; `SQLITE_FCNTL_PERSIST_WAL` keeps
+them. The cache-suite EBUSY rows are gone (run 36382535808).
+
+O-11. Rows compared `path.relative(...)` against `/`-spelled paths and
+failed on Windows for the test, not vx. They compare `relPosix`, and a
+law refuses the shape. Its new file moved the shard deal and exposed
+`run-lock-fs.test.ts`'s order dependence: `mock.module` does not rebind
+a `run-lock.ts` a shard-mate loaded first, so the row imports a fresh
+instance.
+
+O-12. Rows whose subject cannot exist on Windows skip there, each with
+its reason: strace, seatbelt, the socat bridge, a resolved sandbox
+config, the process-group guard, a `:` file name, the shebang launch.
+
+O-13. Fixtures still held files after O-10: `db.prepare()` in tests,
+`prepare-run` rows that never closed their cache, a history row's plain
+close, and a layered-cache row that deleted the live index. Tests read
+SQLite through `db.query()` (a law with a `/proc/self/fd` row holds
+it).
+
 ## Windows data, first real run (2026-09-28, #1489's head)
 
 The data step still ran out its 10 minutes, so this is part of the
@@ -117,6 +142,19 @@ Past the harness fixes, by class:
   are set there, so a green Windows run may exit 1. To probe on a run
   that passes.
 
+## Windows data after O-10 (run 36382535808)
+
+- EBUSY left: `prepare-run`, `plan-predict`, `run-record-completeness`,
+  `history`, `layered-cache` (O-13), `kill-tree-hold` (O-12), and
+  `plugin-executor-abort`: under Git's `sh` an `exec sleep` is a new
+  process, `child.kill()` leaves it, and it holds the cwd.
+- Fixture names Windows forbids: `quo"te.txt`, `we"ird`, `pkg*`.
+- To read one by one: `configEvalKey` and eval-cache rows,
+  `resolveInputs — runtime values`, the overlapping-outputs rows,
+  `vx last (e2e)`, output-dir stamps, the shutdown-signal rows.
+- Open: does Bun's Windows shim for a package bin keep the shebang's
+  `--no-env-file`? The `.env` row now skips there (O-12).
+
 ## Leads for other streams
 
 - B: `@anthropic-ai/sandbox-runtime` 0.0.76 ships a Windows backend
@@ -132,3 +170,14 @@ Past the harness fixes, by class:
 - A: O-10 changes `cache.ts`'s four `Database` close sites to
   `closeDb` (`close(true)`): a plain close left the index open. Any new
   close site in the cache wants the same.
+- B/M: the port-bridge socket row finds its socket by
+  `vx-task-<pid>-`; stale `/tmp/claude/vx-tasks` dirs from earlier runs
+  met a reused pid and the row saw two sockets (local gate, O-11).
+- C/B: `keep-alive.test.ts` sends SIGINT, sleeps 200 ms, then SIGKILLs
+  vx as "still in its grace"; vx had exited (ESRCH) in O-11's gate. A
+  timed wait standing for a state; wait on a marker.
+- Owner of `output-dirs-snapshot.test.ts`: it keeps the run alive with
+  `sleep 0.15` so the first task's `dist` passes `OUTPUT_DIRS_RACY_MS`
+  (50) by run end. Under gate load that task took over 100 ms and the
+  rows were refused (O-14's local gate; passes alone 3/3). Wait on the
+  save's time, not a sleep.
