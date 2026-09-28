@@ -1879,7 +1879,9 @@ worktree's (its branch is in `vx last`), and its edits read as changes. Latest a
 previous are the order runs were recorded, not their clock: a clock that
 stepped back once swapped the two and diffed the edit backwards. A bare task
 name resolves when exactly one project ran it (several → an error
-listing the candidates; unknown → include-match suggestions).
+listing the candidates; unknown → include-match suggestions, or, with
+none near, a pointer to `vx last --list`, or word that nothing has run
+yet).
 
 An **unchanged** key has three endings, and the verdict distinguishes
 them rather than calling all three a re-run: the run was served from
