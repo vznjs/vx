@@ -534,3 +534,29 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   The `//#x` todo with no root project and the `$TURBO_ROOT$` one no
   longer say vx has no root tasks. Row (`turbo.test` › a member edit
   re-keys it): red without the fix.
+- **G-49.** The Turbo/Nx mapper-gap inventory (supervisor, 2026-09-28):
+  `vx-migrate --dry` over 11 Turbo repos (trpc ec0b0a4, unocss f05ee3a,
+  cal.com 54343aa, shadcn-ui 984f435, formbricks 817a656, dub 21c57ae,
+  create-t3-turbo 8f945b7, trigger.dev 8fe554a, react-notion-x 03c5e88,
+  connect-es 49773cd, next.js e32cb8e) and 3 Nx (typescript-eslint
+  0bbe5e7, TanStack/router 41ebd28, nx-examples 3a884ec). No Turbo task
+  key or Nx target field is dropped silently. The mapper's own gaps,
+  ranked by repos × tasks: `dependentTasksOutputFiles` /
+  `externalDependencies` todos that vx already covers (3 repos, 915
+  tasks, noise); `//#` root tasks with no root `vx.config` (5 repos,
+  opt-in by design, G-45); an Nx target glob in `dependsOn` (TanStack's
+  `test:e2e--*`, 140 tasks, edges lost); `syncGenerators` (2 repos);
+  `params: forward` (2); an unpropagated `^` configuration (1); and two
+  silent top-level keys, Turbo `cacheMaxSize` (formbricks) and nx.json
+  `parallel` (TanStack, nx-examples). Core's, not the mapper's: shared
+  output paths (9 repos, 211 tasks), `parallelism: false`, env
+  wildcards and framework inference, `outputLogs`, `interactive`, a
+  wildcard-first output. The top edge loss is mapped here: a target
+  glob (Nx's `*|{}()[`) expands over every target name in the
+  workspace, as Nx's `expandWildcardTargetConfiguration` does, before
+  the `project:`/`^` rules; a match another entry names literally is
+  that entry's edge. Rows (`nx-helpers-sweep` › a target glob expands…,
+  `nx.test` › a ^target no project has…): red without the expansion or
+  its wiring. Also probed: the packed `@vzn/vx` + `@vzn/vx-migrate`
+  tarballs install and run turbo() with all four bins linked; no
+  offline row (core pulls sandbox-runtime from the registry).

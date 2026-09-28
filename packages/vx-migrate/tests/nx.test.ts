@@ -149,21 +149,22 @@ describe('nx()', () => {
       // Nx gives `^prepack` no edges when no project has the target. Passed
       // through, core refuses a `^name` no project declares (nx#32779), so
       // the mapper drops it — both the string and the object form. A
-      // pattern matching nothing is legal in both and stays.
+      // pattern is Nx's to expand over the workspace's target names: one
+      // matching nothing is no edge, one matching `build` is `^build`.
       const graph = structuredClone(GRAPH) as {
         graph: { nodes: { app: { data: { targets: Record<string, unknown> } } } }
       }
       graph.graph.nodes.app.data.targets['test'] = {
         executor: 'nx:run-commands',
         options: { command: 'echo test' },
-        dependsOn: ['^prepack', '^bui*', '^build', { target: 'typecheck', dependencies: true }],
+        dependsOn: ['^prepack', '^bui*', '^zzz*', { target: 'typecheck', dependencies: true }],
       }
       await writeFile(path.join(root, 'graph.json'), JSON.stringify(graph))
       const plan = await planRun({ cwd: root, tasks: ['test'], log: silent() })
       expect(plan.tasks.map((t) => t.node.id).sort()).toEqual(['app#test', 'lib#build'])
       const test = plan.tasks.find((t) => t.node.id === 'app#test')!.node
       expect(test.deps).toEqual(['lib#build'])
-      expect(test.config.dependsOn).toEqual(['^bui*', '^build'])
+      expect(test.config.dependsOn).toEqual(['^build'])
     },
     TIMEOUT,
   )
