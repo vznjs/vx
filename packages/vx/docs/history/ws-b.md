@@ -696,3 +696,13 @@ per-task costs (the realpaths of `canonicalBaselines`, `toRealPath` and
 `throughLinks`) canonicalize paths a task could relink, and each decides
 a grant or a refusal, so B-33's list has nothing left that vx can cut
 alone.
+
+B-36. The tracer retry spawns nothing once the run is stopping (lead 4).
+`localExecutor` never passed `ExecuteRequest.signal` to `runSandboxed`,
+and the retry did not ask about it. A stop kills the children the run
+holds, so an attempt that ended with strace's own line would be run
+again after that kill, a child nothing stops. `runSandboxed` now takes
+`signal` and does not retry once it is aborted. Two rows in
+`sandbox-tracer-retry.unsafe.test.ts` cover it: one through
+`runSandboxed`, one through the local executor. Each is red without its
+line.

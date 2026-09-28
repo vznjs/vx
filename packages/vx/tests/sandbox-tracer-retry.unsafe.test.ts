@@ -13,7 +13,13 @@ import { realpathSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { initSandbox, resetSandbox, resolveSandboxConfig, runSandboxed } from '../src/exec/index.js'
+import {
+  initSandbox,
+  localExecutor,
+  resetSandbox,
+  resolveSandboxConfig,
+  runSandboxed,
+} from '../src/exec/index.js'
 import { sandboxAvailable } from './helpers/sandbox-gate.js'
 
 const available = await sandboxAvailable('sandbox tracer retry test')
@@ -63,7 +69,7 @@ describe.skipIf(!available || process.platform !== 'linux' || realStrace === nul
       await rm(dir, { recursive: true, force: true })
     })
 
-    const run = (command: string, timeoutMs?: number) => {
+    const run = (command: string, timeoutMs?: number, signal?: AbortSignal) => {
       let streamed = ''
       return runSandboxed({
         command,
@@ -77,6 +83,7 @@ describe.skipIf(!available || process.platform !== 'linux' || realStrace === nul
         config: resolveSandboxConfig({ allow: { write: ['count'] } }, dir),
         onStderr: (s) => void (streamed += s),
         ...(timeoutMs === undefined ? {} : { timeoutMs }),
+        ...(signal === undefined ? {} : { signal }),
       }).then(async (r) => ({
         exitCode: r.exitCode,
         stdout: r.stdout,
@@ -124,6 +131,47 @@ describe.skipIf(!available || process.platform !== 'linux' || realStrace === nul
       await writeFile(path.join(dir, 'early'), '')
       const r = await run('sleep 5', 500)
       expect(r.calls).toBe(1)
+    })
+
+    // A stopping run has killed the children it holds; a retry would spawn
+    // one after that kill, which nothing stops.
+    it('a task whose run is stopping is not run again, whatever strace said', async () => {
+      const stop = new AbortController()
+      stop.abort()
+      const r = await run('echo ran', undefined, stop.signal)
+      expect([r.stdout, r.streamed, r.calls]).toEqual([
+        'ran\n',
+        'strace: ptrace(PTRACE_LISTEN,pid:1,sig:0): Input/output error\n',
+        1,
+      ])
+    })
+
+    it("the local executor hands the run's stop to the sandboxed run", async () => {
+      const stop = new AbortController()
+      stop.abort()
+      const r = await localExecutor().execute({
+        taskId: 'a#t',
+        workspaceRoot: dir,
+        outputs: { files: [], workspaceFiles: [] },
+        command: 'echo ran',
+        forwardArgs: [],
+        cwd: dir,
+        env: process.env,
+        envDefine: {},
+        capture: { stdout: true, stderr: true },
+        onStdout: () => {},
+        onStderr: () => {},
+        signal: stop.signal,
+        sandbox: {
+          baseAllowRead: [dir],
+          baseDenyRead: [],
+          reportWithin: dir,
+          reportLinked: [],
+          config: resolveSandboxConfig({ allow: { write: ['count'] } }, dir),
+        },
+      })
+      const calls = Number((await readFile(path.join(dir, 'count'), 'utf8')).trim())
+      expect([r.stdout, calls]).toEqual(['ran\n', 1])
     })
 
     it('a task that fails on its own, strace well, is run once (control)', async () => {
