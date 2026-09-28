@@ -595,7 +595,20 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
       watchers.push(pollWatcher(dir, recursive, onEvent, POLL_INTERVAL_MS, skipUnder(dir)))
       return handle
     }
-    const armed = armWatcher(dir, recursive, onEvent)
+    let armed: ReturnType<typeof armWatcher>
+    try {
+      armed = armWatcher(dir, recursive, onEvent)
+    } catch (err) {
+      // The OS's watch limit, not the directory: the loop said "watching"
+      // and never fired. The poller needs no watch slot.
+      const code = (err as NodeJS.ErrnoException).code
+      if (code !== 'ENOSPC' && code !== 'EMFILE') throw err
+      watchers.push(pollWatcher(dir, recursive, onEvent, POLL_INTERVAL_MS, skipUnder(dir)))
+      process.stderr.write(
+        `vx watch: ${dir}: the OS watch limit is reached (${code}); polling every ${POLL_INTERVAL_MS} ms instead — raise it (Linux: sysctl fs.inotify.max_user_watches) to watch natively\n`,
+      )
+      return handle
+    }
     watchers.push(armed.watcher)
     proofs.push(
       armed.ready.then((ok) => {
