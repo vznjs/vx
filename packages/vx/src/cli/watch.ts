@@ -24,6 +24,7 @@ import {
 } from '../util/index.js'
 import { asTrees } from '../cache/index.js'
 import { parseRunArgs, resolveRunOptions, type RunArgs } from './run.js'
+import { seeHelp } from './help.js'
 import {
   fingerprintClaims,
   forwardedSignal,
@@ -245,7 +246,9 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
     return 1
   }
   if (parsed.tasks.length === 0) {
-    process.stderr.write(`vx watch: missing task name\n`)
+    process.stderr.write(
+      `vx watch: missing task name (vx watch <task>, e.g. vx watch build)${seeHelp('watch')}\n`,
+    )
     return 1
   }
 

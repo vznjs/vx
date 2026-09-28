@@ -927,9 +927,11 @@ describe('vx watch command (parser-side validation)', () => {
     vi.restoreAllMocks()
   })
 
-  it('rejects watch with no task name', async () => {
+  it('rejects watch with no task name, and says how to name one', async () => {
     expect(await run(['watch'])).toBe(1)
-    expect(stderr).toContain('missing task name')
+    expect(stderr).toBe(
+      'vx watch: missing task name (vx watch <task>, e.g. vx watch build) (see `vx watch --help`)\n',
+    )
   })
 
   it('rejects watch with --dry', async () => {
