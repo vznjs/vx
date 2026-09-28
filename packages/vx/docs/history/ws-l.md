@@ -340,6 +340,15 @@
   (probed). `getContext`, the one context the prefetch and the lookup
   share, masks it; the local short-circuit never runs with a remote.
   Row: a remote hit's entry row reads `***`, red without the mask.
+- L-28. `ci`: `npm.yml` and `release.yml` pasted
+  `github.event.inputs.version || github.event.release.tag_name` (and
+  `inputs.tag`) into `run:` scripts, where GitHub expands it before the
+  shell parses; a tag holding `$(…)` would run in the job that holds
+  npm's OIDC token, and the unvalidated version was pasted into later
+  steps too. The four sites take it through `env`, and npm's resolve
+  step refuses anything but a version. Law: `supply-chain.unsafe.test.ts`
+  rejects `github.event.*`, `inputs.*` or `github.head_ref` in a `run:`
+  block (red on the four sites before), with a checker row.
 
 ## Leads for other streams
 
