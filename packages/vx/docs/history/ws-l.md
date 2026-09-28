@@ -55,6 +55,10 @@
     `quoteTsLiteral` (`__proto__` included), reasons into line comments.
     `vx watch` turns file events into reruns only; vx-schedule-history
     reads core's own run history. No bug.
+12. Self-update and launch. `vx upgrade` takes the asset URL the release
+    API names unchecked, but refuses the bytes unless they match the
+    SHA-256 the same API publishes, before any rename. The npm launcher's
+    source fallback runs `vxSourceEntry` from its own package.json. No bug.
 
 ## Items
 
