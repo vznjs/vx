@@ -132,19 +132,14 @@ describe('NxRemoteCache against the spec server', () => {
     expect(await (await c.get('aa11'))!.body.bytes()).toEqual(body) // immutable record kept
   })
 
-  it('has is a GET whose body the following get reuses — one transfer, not two', async () => {
-    const c = cache()
-    const n = srv.seen.length
-    expect(await c.has('aa11')).toBe(true)
-    expect(srv.seen.length).toBe(n + 1)
-    expect(await (await c.get('aa11'))!.body.text()).toBe('zstd-tar-bytes')
-    expect(srv.seen.length).toBe(n + 1)
-    expect(await c.has('bb22')).toBe(false)
-  })
-
-  it('a probe no get follows is cancelled by the next, so its response holds no connection', async () => {
+  // Core asks `has` only for a `--dry` prediction; no `get` follows it.
+  // The kept response the next probe released held the last one's
+  // connection until the deadline.
+  it('has is a GET whose body is cancelled before it answers; a get fetches afresh', async () => {
     const cancelled: string[] = []
+    let fetched = 0
     const streamed = (async (url: string) => {
+      fetched++
       const hash = url.slice(url.lastIndexOf('/') + 1)
       return new Response(
         new ReadableStream<Uint8Array>({
@@ -160,14 +155,13 @@ describe('NxRemoteCache against the spec server', () => {
       streamed,
     )
     expect(await c.has('aa11')).toBe(true)
-    expect(await c.has('bb22')).toBe(true)
     expect(cancelled).toEqual(['aa11'])
-    // The kept response is the one the following get hands over, unread.
-    const got = await c.get('bb22')
+    const got = await c.get('aa11')
     const reader = got!.body.body!.getReader()
-    expect(new TextDecoder().decode((await reader.read()).value)).toBe('bb22')
+    expect(new TextDecoder().decode((await reader.read()).value)).toBe('aa11')
     await reader.cancel()
-    expect(cancelled).toEqual(['aa11', 'bb22'])
+    expect({ fetched, cancelled }).toEqual({ fetched: 2, cancelled: ['aa11', 'aa11'] })
+    expect(await cache().has('bb22')).toBe(false)
   })
 
   it('a bad token throws ONCE even when the calls are concurrent', async () => {

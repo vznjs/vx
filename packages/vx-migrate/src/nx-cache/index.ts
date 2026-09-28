@@ -76,11 +76,10 @@ export function resolveNxCacheConfig(
 
 /**
  * The seam implementation over Nx's two endpoints. The spec has no
- * existence probe, so `has` is a GET whose unread response is kept for the
- * `get` that follows it (the prefetch pass asks exactly that way), which
- * makes a probe plus a fetch one transfer instead of two; a probe that no
- * `get` follows has its body cancelled by the next, so it holds no
- * connection. Bodies stream: `get` returns the `fetch` Response and `put`
+ * existence probe, so `has` (core asks it only for a `--dry` prediction;
+ * the prefetch pass calls `get`) is a GET whose body is cancelled before
+ * it answers, so no probe holds a connection. It kept the response for a
+ * `get` of the same hash, which no caller makes. Bodies stream: `get` returns the `fetch` Response and `put`
  * sends the Blob core hands it. `put` treats `409` as success:
  * the record is immutable and content-addressed, so "already there" is the
  * outcome wanted. An auth failure (401/403) throws ONCE — LayeredCache
@@ -90,7 +89,6 @@ export function resolveNxCacheConfig(
  */
 export class NxRemoteCache implements RemoteCacheLayer {
   private disabled = false
-  private last: { hash: string; res: Response } | undefined
   readonly endpoint: string
   constructor(
     private readonly config: NxCacheConfig,
@@ -147,18 +145,13 @@ export class NxRemoteCache implements RemoteCacheLayer {
   }
 
   async get(hash: string): Promise<{ body: Response; durationMs: number | undefined } | null> {
-    const res = await this.take(hash)
+    const res = await this.fetch(hash)
     // The Nx wire carries no producing-task duration.
     return res === null ? null : { body: res, durationMs: undefined }
   }
 
-  private async take(hash: string): Promise<Response | null> {
+  private async fetch(hash: string): Promise<Response | null> {
     if (this.disabled) return null
-    if (this.last?.hash === hash) {
-      const { res } = this.last
-      this.last = undefined
-      return res
-    }
     const res = await this.request('GET', hash)
     if (res === undefined) return null
     if (res.status === 404) return null
@@ -167,10 +160,9 @@ export class NxRemoteCache implements RemoteCacheLayer {
   }
 
   async has(hash: string): Promise<boolean> {
-    const res = await this.take(hash)
+    const res = await this.fetch(hash)
     if (res === null) return false
-    await this.last?.res.body?.cancel()
-    this.last = { hash, res }
+    await res.body?.cancel()
     return true
   }
 

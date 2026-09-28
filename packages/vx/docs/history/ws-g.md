@@ -304,6 +304,15 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   second run with nothing changed does not; red without the fix. It
   also holds G-21's root-project arm; the cache-dir arm stays
   equivalent (the cache dir ignores itself).
+- **G-23.** nxCache()'s `has` kept its unread response for a `get` of
+  the same hash, and the README and docstring said the prefetch pass
+  asks that way. It does not: prefetch calls `get`; core asks `has`
+  only for a `--dry` prediction, and nothing follows it. The kept
+  state served nothing and held the last probe's connection until the
+  deadline. `has` now cancels its body before it answers. Row
+  (`nx-cache.test` › has is a GET whose body is cancelled before it
+  answers): red on the old code; the two rows that pinned the reuse
+  are gone with it.
 - **G-24.** A mutation sweep of `vx-lockfile/src/index.ts` (9 mutants):
   5 caught. Dropping the `extraFiles` wiring, or bun's
   `patchFiles`, survived: item 1014's rows hand the patch content to
