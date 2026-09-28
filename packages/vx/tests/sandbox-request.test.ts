@@ -104,6 +104,17 @@ describe('the run-wide union SRT is armed with', () => {
     expect(u?.domains.slice().sort()).toEqual(['a.test', 'b.test', 'shared.test'])
   })
 
+  // SRT reads `allowGitConfig` run-wide; the union is what makes the run
+  // set it per wrap (B-41).
+  it("`gitConfig` is the run's when any task grants it", () => {
+    expect([
+      sandboxRunUnion([sandboxed({ allow: { gitConfig: true } }, 'p#a'), sandboxed({}, 'p#b')])
+        ?.gitConfig,
+      sandboxRunUnion([sandboxed({ allow: { gitConfig: false } }, 'p#a'), sandboxed({}, 'p#b')])
+        ?.gitConfig,
+    ]).toEqual([true, false])
+  })
+
   // The proxy is the run's, so a deny is too: it refuses a domain for
   // every task. Before B-21 it refused nothing (the list was always empty).
   it('denied domains are the UNION of every task’s `deny.network`, deduped', () => {

@@ -64,6 +64,8 @@ export interface SandboxRunUnion {
   deniedDomains: string[]
   /** Whether SRT's all-or-nothing `socket(AF_UNIX)` filter is lifted for the run. */
   unixSockets: boolean
+  /** Whether any task grants `gitConfig`, which SRT reads run-wide and vx sets per wrap (B-41). */
+  gitConfig: boolean
   /** Whether EVERY sandboxed task accepts the weaker nested profile. */
   weakerNested: boolean
 }
@@ -75,6 +77,7 @@ export function sandboxRunUnion(nodes: Iterable<TaskNode>): SandboxRunUnion | nu
   const domains = new Set<string>()
   const denied = new Set<string>()
   let unixSockets = false
+  let gitConfig = false
   for (const n of sandboxed) {
     const allow = n.config.exec?.sandbox?.allow
     const net = allow?.network
@@ -87,8 +90,9 @@ export function sandboxRunUnion(nodes: Iterable<TaskNode>): SandboxRunUnion | nu
     if (sockets === true || (Array.isArray(sockets) && sockets.length > 0)) unixSockets = true
     const lb = allow?.localBinding
     if (Array.isArray(lb) && lb.length > 0 && process.platform === 'linux') unixSockets = true
+    if (allow?.gitConfig === true) gitConfig = true
   }
-  return { domains: [...domains], deniedDomains: [...denied], unixSockets, weakerNested }
+  return { domains: [...domains], deniedDomains: [...denied], unixSockets, gitConfig, weakerNested }
 }
 
 /**
@@ -115,7 +119,7 @@ export function sandboxRunUnion(nodes: Iterable<TaskNode>): SandboxRunUnion | nu
 export function prepareSandbox(nodes: Iterable<TaskNode>): SandboxArmer | null {
   const union = sandboxRunUnion(nodes)
   if (union === null) return null
-  const { domains, deniedDomains, unixSockets, weakerNested } = union
+  const { domains, deniedDomains, unixSockets, gitConfig, weakerNested } = union
   let pending: Promise<void> | undefined
   let armed = false
   return {
@@ -131,6 +135,7 @@ export function prepareSandbox(nodes: Iterable<TaskNode>): SandboxArmer | null {
             allowedDomains: domains,
             deniedDomains,
             ...(unixSockets ? { allowAllUnixSockets: true } : {}),
+            ...(gitConfig ? { gitConfig: true } : {}),
           })
         } catch (err) {
           // A throw from the runtime itself (its bridge needs socat, which

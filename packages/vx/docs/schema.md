@@ -1021,7 +1021,7 @@ interface SandboxGrants {
   localBinding?: boolean | number[] // bind and reach localhost ports (macOS; Linux needs no grant); a list also exposes them to the host
   machLookup?: string[] // mach global-names (macOS)
   pty?: boolean // acquire a TTY
-  gitConfig?: boolean // inert: SRT drops the per-task flag
+  gitConfig?: boolean // write the repository's .git/config (this task only)
 }
 ```
 

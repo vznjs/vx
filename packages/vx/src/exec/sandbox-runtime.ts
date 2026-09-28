@@ -412,14 +412,16 @@ function trackTaskTmpdir(dir: string): void {
 let srtUp = false
 /**
  * The run's config while one of its tasks lifts SRT's `socket(AF_UNIX)`
- * block, else undefined. SRT reads the lift from its run-wide config, so
- * one task's `unixSockets` or port list lifted it for every sandboxed task
- * of the run, and a task that asked for neither reached the host's docker
- * or ssh-agent socket (L-6). Such a run sets the lift per task, for the
- * span of its wrap, which is when SRT reads it.
+ * block or grants `gitConfig`, else undefined. SRT reads both from its
+ * run-wide config, so one task's `unixSockets` or port list lifted the
+ * block for every sandboxed task of the run, and a task that asked for
+ * neither reached the host's docker or ssh-agent socket (L-6); the
+ * per-task `allowGitConfig` vx passed was never read at all (B-41). Such a
+ * run sets both per task, for the span of its wrap, which is when SRT
+ * reads them.
  */
-let socketRun: Parameters<SrtModule['SandboxManager']['updateConfig']>[0] | undefined
-/** Wraps of a `socketRun`, one at a time: each holds SRT's config for its task. */
+let perTaskRun: Parameters<SrtModule['SandboxManager']['updateConfig']>[0] | undefined
+/** Wraps of a `perTaskRun`, one at a time: each holds SRT's config for its task. */
 let wrapTurn: Promise<unknown> = Promise.resolve()
 
 /**
@@ -540,6 +542,8 @@ export async function initSandbox(opts?: {
    * sets it for each task's own wrap (L-6).
    */
   allowAllUnixSockets?: boolean
+  /** Whether any task of the run grants `gitConfig`: SRT reads it run-wide, so it is set per wrap (B-41). */
+  gitConfig?: boolean
 }): Promise<void> {
   // A reset a server's exit started unawaited: a watch cycle stops its
   // server and starts its run at once, and an init under that reset
@@ -571,7 +575,7 @@ export async function initSandbox(opts?: {
     true,
   )
   srtUp = true
-  socketRun = opts?.allowAllUnixSockets === true ? config : undefined
+  perTaskRun = opts?.allowAllUnixSockets === true || opts?.gitConfig === true ? config : undefined
   // `initialize()` returns early once SRT is up, and on Linux the
   // availability probe brought it up with an EMPTY config before the run's
   // own call — so the run's allowlist and unix-socket allowance never
@@ -607,7 +611,7 @@ export async function resetSandbox(): Promise<void> {
     const { SandboxManager } = await loadSrt()
     await SandboxManager.reset()
     srtUp = false
-    socketRun = undefined
+    perTaskRun = undefined
     availabilityCache.clear()
     straceAvailableCache = undefined
   })()
@@ -942,10 +946,11 @@ export async function wrapSandboxedCommand(
   customConfig!.filesystem!.allowWrite!.push(toRealPath(tmp))
   if (scopedDenyScan) {
     customConfig!.filesystem!.denyWrite!.push(
-      ...scopedMandatoryDenies(process.cwd(), [
-        ...srtDefaultWritePaths(),
-        ...customConfig!.filesystem!.allowWrite!,
-      ]),
+      ...scopedMandatoryDenies(
+        process.cwd(),
+        [...srtDefaultWritePaths(), ...customConfig!.filesystem!.allowWrite!],
+        args.config.gitConfig === true,
+      ),
     )
   }
   // Seatbelt re-allows a read inside a denied region only by name; on Linux
@@ -967,6 +972,7 @@ export async function wrapSandboxedCommand(
     inner,
     customConfig,
     ports.length > 0 || asksUnixSockets(args.config),
+    args.config.gitConfig === true,
   )
   if (process.platform === 'darwin') {
     const rules = [
@@ -1099,19 +1105,21 @@ function asksUnixSockets(c: Pick<ResolvedSandboxConfig, 'unixSockets'>): boolean
   return c.unixSockets === true || (c.unixSockets !== undefined && c.unixSockets.length > 0)
 }
 
-/** SRT's wrap, with the socket lift this task asked for or none (L-6). */
+/** SRT's wrap, with the socket lift and the git-config grant this task asked for, or none (L-6, B-41). */
 function wrapForTask(
   SandboxManager: SrtModule['SandboxManager'],
   command: string,
   customConfig: Parameters<SrtModule['SandboxManager']['wrapWithSandbox']>[2],
   sockets: boolean,
+  gitConfig: boolean,
 ): Promise<string> {
-  const run = socketRun
+  const run = perTaskRun
   if (run === undefined) return SandboxManager.wrapWithSandbox(command, undefined, customConfig)
   const turn = wrapTurn.then(() => {
     SandboxManager.updateConfig({
       ...run,
       network: { ...run.network, allowAllUnixSockets: sockets },
+      filesystem: { ...run.filesystem, allowGitConfig: gitConfig },
     })
     return SandboxManager.wrapWithSandbox(command, undefined, customConfig)
   })
