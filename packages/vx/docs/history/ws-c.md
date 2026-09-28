@@ -253,6 +253,16 @@ barrier leaves the registry (`inflight.test.ts`); a vanished artifact
 kept out of the tier runs in its own slot (`vanished-artifact.test.ts`).
 The sweep found C-23's stale hit.
 
+## C-26: hold the Ctrl-C control until vx has reaped the server
+
+`keep-alive.test.ts`'s "a server that died before the Ctrl-C is still
+named" turned main red: the server touched `gone` and then exited, and
+the dependant's go-ahead let the test send SIGINT before vx had reaped
+it, so vx judged it stopped by the run (`said: []`). The server now
+writes its pid and the dependant waits until `kill -0` fails. The row's
+server sleeps 0.3 s between `gone` and its exit, so the old wait fails
+it every time.
+
 ## Leads for other streams
 
 - **E:** a plugin command's plain `throw` (`commands.probe.run` throwing

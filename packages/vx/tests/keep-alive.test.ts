@@ -253,13 +253,16 @@ describe('a persistent server that dies before the run stops it', () => {
   // and was named as a crash. The dependant holds on in its INT trap, so the
   // server is reaped before that question: the report was 4 in 6 without
   // the hold. The control: a server that died BEFORE the stop is named.
+  // A server that writes srv.pid holds the dependant until vx has reaped it
+  // (`kill -0` answers for a zombie): `gone` alone raced the Ctrl-C
+  // against the reap, and CI signalled first (`said: []`).
   const interrupted = async (srv: string): Promise<{ code: number; said: string[] }> => {
     const dir = await addProject(root, 'app', {
       config: `export default { tasks: {
         srv: { exec: { command: ${JSON.stringify(srv)}, persistent: { readyWhen: 'READY' } } },
         e2e: {
           dependsOn: ['srv'],
-          exec: { command: "while [ ! -f gone ]; do sleep 0.02; done; trap 'sleep 0.3; exit 1' INT; echo up > e2e.up; while :; do sleep 0.02; done" },
+          exec: { command: "while [ ! -f gone ]; do sleep 0.02; done; if [ -f srv.pid ]; then while kill -0 $(cat srv.pid) 2>/dev/null; do sleep 0.02; done; fi; trap 'sleep 0.3; exit 1' INT; echo up > e2e.up; while :; do sleep 0.02; done" },
         },
       } }`,
     })
@@ -295,7 +298,9 @@ describe('a persistent server that dies before the run stops it', () => {
   }, 20_000)
 
   it('CONTROL: a server that died before the Ctrl-C is still named', async () => {
-    expect(await interrupted('echo READY; sleep 0.1; touch gone; exit 3')).toEqual({
+    expect(
+      await interrupted('echo $$ > srv.pid; echo READY; sleep 0.1; touch gone; sleep 0.3; exit 3'),
+    ).toEqual({
       code: 130,
       said: ['vx: app#srv exited with code 3 before the run stopped it'],
     })
