@@ -407,6 +407,7 @@ export class Cache implements CacheLayer {
 
   private readonly db: Database
   private readonly insertEntry: ReturnType<Database['prepare']>
+  private readonly deleteEntryRow: ReturnType<Database['prepare']>
   private readonly selectEntry: ReturnType<Database['prepare']>
   private readonly bumpAccessed: ReturnType<Database['prepare']>
   private readonly touched = new Set<string>()
@@ -642,6 +643,7 @@ export class Cache implements CacheLayer {
 
     createTables(this.db)
 
+    this.deleteEntryRow = this.db.prepare('DELETE FROM entries WHERE hash = ?')
     this.insertEntry = this.db.prepare(`
       INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, stdout, created_at, accessed_at, cpu_ms, peak_rss_bytes)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -951,6 +953,39 @@ export class Cache implements CacheLayer {
     return this.outputs.outputDirsCurrent(projectDir, rows)
   }
   async restoreOutputs(hash: string, projectDir: string, workspaceRoot?: string): Promise<void> {
+    try {
+      await this.restoreOutputsOnce(hash, projectDir, workspaceRoot)
+    } catch (err) {
+      if (!(err instanceof CorruptArtifactError)) throw err
+      // Bad bytes under a good key failed the task on every run until
+      // `--force`, since nothing rewrote them (J's lead, nx#30338). The
+      // entry goes, and the caller runs the task, whose save stores it
+      // again; running is always correct, only slower than a hit.
+      if (this.write) await this.dropEntry(hash)
+      throw new ArtifactVanishedError(
+        hash,
+        `${err.message}; ${this.write ? 'dropped it' : 'left it (this cache is read-only)'}`,
+        err,
+      )
+    }
+  }
+
+  /** Remove one entry: its artifact first, then its rows (as `prune` orders them). */
+  private async dropEntry(hash: string): Promise<void> {
+    await rm(this.tarPath(hash), { force: true })
+    try {
+      this.deleteEntryRow.run(hash)
+    } catch (err) {
+      if (!isIndexFull(err)) throw err
+      this.deleteEntryRow.run(hash)
+    }
+  }
+
+  private async restoreOutputsOnce(
+    hash: string,
+    projectDir: string,
+    workspaceRoot?: string,
+  ): Promise<void> {
     // In-process extraction — no fork+exec on the hot path
     // (~5-10ms reclaimed per hit vs the prior subprocess `tar -xf`).
     //

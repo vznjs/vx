@@ -417,8 +417,8 @@ export class LayeredCache implements CacheLayer {
     } catch (err) {
       // The bytes came off the network — a corrupt/truncated remote
       // artifact must degrade to a cache miss (task re-executes), not
-      // crash the run. Local-layer reads outside this block still
-      // propagate: local corruption is a real fault, not a network one.
+      // crash the run. A corrupt LOCAL artifact is a miss too, one level
+      // down: `Cache.restoreOutputs` drops it (A-52).
       this.reportRemoteError('download', hash, err)
       return false
     }

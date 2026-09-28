@@ -476,11 +476,22 @@ export class CorruptArtifactError extends Error {
  * `cacheRetention` of another workspace sharing the cache directory. The
  * bytes are not wrong, they are gone, so the entry is a MISS and the task
  * runs (execute-task.ts); nothing about the cache needs throwing away.
+ * Also thrown, with its `reason`, for an artifact whose bytes ARE wrong
+ * (`CorruptArtifactError` at restore): the entry is dropped and it is a
+ * miss the same way, so the task's save stores it again (A-52).
  */
 export class ArtifactVanishedError extends Error {
-  constructor(public readonly hash: string) {
+  constructor(
+    public readonly hash: string,
+    /** Why the entry cannot be restored, when it is not gone but unreadable. */
+    reason?: string,
+    /** The `CorruptArtifactError` behind a `reason`. */
+    cause?: unknown,
+  ) {
     super(
-      `its cache artifact ${hash} vanished before the restore (a prune or another run's retention)`,
+      reason ??
+        `its cache artifact ${hash} vanished before the restore (a prune or another run's retention)`,
+      cause === undefined ? undefined : { cause },
     )
     this.name = 'ArtifactVanishedError'
   }
