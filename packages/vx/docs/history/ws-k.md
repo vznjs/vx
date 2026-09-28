@@ -80,6 +80,11 @@
   rejected list, and this repo's own CI keeps no `.vx`, so a recipe
   could not be walked here. Backlog 3-2 (recipe pages) held: the owner's
   short-site design caps the Docs at six pages.
+- **K-13** moon in the README's comparison table (coordinator backlog
+  3-4): each cell from moon's own docs at master (ddd8c035), linked in
+  a footnote; the cached-run row reads "not measured", no number
+  invented. Where the docs say nothing (a per-task sandbox, OTel), the
+  cell reads "No" and the footnote says the docs describe none.
 
 ## Leads for other streams
 
