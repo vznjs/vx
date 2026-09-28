@@ -204,6 +204,13 @@
   tar reader held under 3,000 mutations (TarFormatError only, no hang),
   and the cache wraps anything else a restore or ingest throws as a
   corrupt artifact. Supervisor backlog 2. Row in `config-cache.test.ts`.
+- L-18. `test(ci)`: every third-party action already ran from a full
+  commit SHA and every `npm publish` carried `--provenance`, but nothing
+  held either: a tag ref or a dropped flag would have gone in unseen. A
+  law in `supply-chain.unsafe.test.ts` now does, over every workflow and
+  composite action, with the checker's own refusals pinned. There is no
+  checksum file to attest: `vx upgrade` checks the digest the release API
+  publishes, and each binary is attested (L-12). Supervisor backlog 2.
 - L-19. `fix(cache)`: nothing checked an artifact entry's BODY. Tar sums
   headers only; neither zstd writer asks for a frame checksum; so a byte
   flipped in a raw zstd block (incompressible output) decoded clean, and
