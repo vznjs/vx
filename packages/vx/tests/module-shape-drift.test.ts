@@ -112,6 +112,7 @@ const SHAPES: ReadonlyArray<[page: string, source: string, name: string]> = [
   ['upgrade', 'cli/upgrade.ts', 'ReleaseAsset'],
   ['cli-watch', 'cli/watch-fs.ts', 'ArmedWatcher'],
   ['cli-watch', 'cli/watch-set.ts', 'ConfigSweep'],
+  ['cli-watch', 'cli/watch-judge.ts', 'JudgeContext'],
   ['logger', 'orchestrator/logger.ts', 'OutputView'],
   ['colors', 'orchestrator/colors.ts', 'ColorSupport'],
   ['colors', 'orchestrator/colors.ts', 'PaintOptions'],
