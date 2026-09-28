@@ -70,7 +70,12 @@ export async function showCmd(args: readonly string[]): Promise<number> {
         ? parsed.target
         : parsed.target.slice(0, hashAt)
   const taskName = hashAt === -1 ? undefined : parsed.target!.slice(hashAt + 1)
-  if (taskName === '') throw new UserError(`missing task name after '#' in "${parsed.target}"`)
+  if (taskName === '') {
+    const list = projectName === '' ? 'vx show' : `vx show ${projectName}`
+    throw new UserError(
+      `vx show: missing task name after '#' in "${parsed.target}" (${list} lists the tasks)`,
+    )
+  }
   if (projectName !== undefined && (taskName !== undefined || byName.has(projectName))) {
     if (!byName.has(projectName)) {
       throw new UserError(

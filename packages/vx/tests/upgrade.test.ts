@@ -111,7 +111,9 @@ describe('replaceBinary', () => {
         await Bun.write(dest, 'old')
         await expect(
           replaceBinary(dest, 'https://example.invalid/asset', FAKE_SHA),
-        ).rejects.toThrow(/download failed \(404\)/)
+        ).rejects.toThrow(
+          'vx upgrade: download failed (404) — https://example.invalid/asset — nothing replaced; re-run',
+        )
         expect(await readFile(dest, 'utf8')).toBe('old')
       },
     )
@@ -188,7 +190,7 @@ describe('replaceBinary', () => {
         }
         expect(caught).toBeInstanceOf(UserError)
         expect((caught as Error).message).toBe(
-          'vx upgrade: empty download — https://example.invalid/empty',
+          'vx upgrade: empty download — https://example.invalid/empty — nothing replaced; re-run',
         )
         expect(await readFile(dest, 'utf8')).toBe('old')
       },
@@ -407,7 +409,7 @@ describe('releaseAsset', () => {
       message = (err as Error).message
     }
     expect(message).toBe(
-      'vx upgrade: release (unknown) has no asset vx-linux-x64 for this platform',
+      'vx upgrade: release (unknown) has no asset vx-linux-x64 for this platform — nothing replaced; npm install -g @vzn/vx@latest installs it instead',
     )
   })
 
@@ -424,7 +426,9 @@ describe('releaseAsset', () => {
     } catch (err) {
       message = (err as Error).message
     }
-    expect(message).toBe('vx upgrade: release v0.0.21 names no download for vx-linux-x64')
+    expect(message).toBe(
+      'vx upgrade: release v0.0.21 names no download for vx-linux-x64 — nothing replaced; npm install -g @vzn/vx@latest installs it instead',
+    )
   })
 
   it('refuses a digest one hex digit too long', () => {
