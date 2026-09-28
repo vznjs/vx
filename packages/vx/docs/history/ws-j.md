@@ -214,6 +214,21 @@
   project stops before the task-name check (`nothing affected since
 <ref>` on stderr, exit 0, a typo unseen); the doc said a typo is
   always refused. Same gap as J-19's selection lead.
+- **J-37** Every config example in schema.md and the configure guide,
+  run from source: two schema.md examples no longer loaded (the full
+  example's `inputs.tasks: ['^build']` without `^build` in `dependsOn`;
+  the `NODE_OPTIONS` snippet without `cache.outputs`). All else held.
+- **J-38** caching.md's local-layer claims run from source: all held
+  but one; only `vx run` says `cannot create cache directory`, while
+  the readers and `vx cache prune` find no cache and go on.
+- **J-39** docs caught up to recent merges: moon/wireit/lage in the
+  plugin tables and `vx migrate`, `--plugin` in the init synopsis,
+  current duration/size and non-TTY messages, the removed `stats`
+  alias; `vx init` no longer cites `vx-migrate --from scripts`, which
+  vx-migrate rejects.
+- **J-40** parity.md and optimizations.md run against source: two
+  stale claims — `Bun.color` sees a handful of hex strings, not four;
+  sandboxing is not under comparison's "Where vx is ahead".
 
 ## Leads for other streams
 
