@@ -246,6 +246,13 @@ const FIND_MISSING_ENTRY_OVERHEAD = 16
 const MAX_MESSAGE_BYTES = 256 * 1024 * 1024
 
 /**
+ * The receive window the client offers, per stream and per connection.
+ * HTTP/2's default 64 KiB moves one window per round trip: a read at 30 ms
+ * round trip ran at 2 MB/s (8 MB in 3988 ms, 142 ms at 16 MiB; F-32).
+ */
+const FLOW_CONTROL_WINDOW = 16 * 1024 * 1024
+
+/**
  * All five service stubs share ONE channel. Constructing them independently
  * opens one HTTP/2 connection per service to the same endpoint — five times
  * the sockets, five times the flow-control state, and a server that sees five
@@ -261,6 +268,7 @@ function loadServices(target: string, creds: grpc.ChannelCredentials): ServiceCl
   const opts = {
     'grpc.max_receive_message_length': MAX_MESSAGE_BYTES,
     'grpc.max_send_message_length': MAX_MESSAGE_BYTES,
+    'grpc-node.flow_control_window': FLOW_CONTROL_WINDOW,
   }
   const cas = new v2['ContentAddressableStorage']!(target, creds, opts)
   const shared = { ...opts, channelOverride: cas.getChannel() }
