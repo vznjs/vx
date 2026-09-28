@@ -1466,7 +1466,8 @@ stored hashes AND re-evaluates every config in the current
 environment, `Bun.deepEquals`-comparing against the frozen objects —
 catching eval-time env and import-closure drift that byte hashes
 cannot see. The CI recipe is `vx lock --check && vx run … --frozen`.
-Full design: `docs/design/config-lock-2026-06.md`.
+Full design: `docs/design/config-lock-2026-06.md`. A lock written by a
+1.x vx stays valid for every later 1.x (`tests/contract-lockfile.test.ts`).
 
 A project with no `vx.config.*` — its tasks from a plugin's `project`
 stage (`turbo()` from `@vzn/vx-migrate`), or none at all — has nothing

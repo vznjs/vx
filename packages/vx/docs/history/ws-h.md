@@ -366,6 +366,17 @@ is `docs/turbo-nx-support.md`, served at `/compare/turbo-nx-support/` and
 linked from the README. The site's import cleared stale generated pages at
 the top level only, so it now clears them at any depth.
 
+## H-32: a committed `vx-lock.json` stays valid across releases
+
+The lock is checked in and read by `vx lock --check` and `--frozen` in CI,
+and nothing held its format: a change to how `configHash` is taken would
+have failed every user's `--check`. `contract-lockfile.test.ts` records the
+lock for one fixture in `tests/contract/vx-lock.json`, byte for byte, and
+requires the committed copy to pass `--check` and drive a `--frozen` run.
+Tampering one `configHash` fails both rows; dropping `--frozen` fails the
+run row. The versioning table now names the lock file and the `VX_*`
+variables vx reads.
+
 ## Leads for other streams
 
 ## H-29: `vx mcp`'s tools join the contract records

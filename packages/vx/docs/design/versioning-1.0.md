@@ -17,6 +17,8 @@ adds to them, and only a major removes or changes one.
 | The package's exports                                                                                                                                                  | `src/index.ts`; names pinned by `package-boundaries.unsafe.test.ts`, shapes by `tests/contract/package-api.txt`                                                                                                               |
 | The first-party plugin packages' exports (`@vzn/vx-reapi`, `@vzn/vx-otel`, …)                                                                                          | each package's `src/index.ts`; recorded in `tests/contract/plugin-api/`, one file per package                                                                                                                                 |
 | The CLI: verbs, flags, exit codes, and the machine-readable outputs (`--dry=json`, `--graph`, `--summarize`, `vx mcp`'s tools)                                         | `docs/cli.md`; exit codes recorded in `tests/contract/exit-codes.json`; `--dry=json`, `--summarize` and `--graph` recorded in `tests/contract/cli-wire.json`; `vx mcp`'s tools in `packages/vx-mcp/tests/contract/tools.json` |
+| The lock file: `vx-lock.json`, what `vx lock` writes and `vx lock --check` / `--frozen` read                                                                           | `src/workspace/lockfile.ts` (`LOCKFILE_VERSION`), `docs/cli.md`; recorded in `tests/contract/vx-lock.json`                                                                                                                    |
+| The environment variables vx reads (`VX_*`)                                                                                                                            | `docs/cli.md` § Environment variables vx reads, held to the source by `tests/env-doc-drift.test.ts`                                                                                                                           |
 | Task-glob semantics: which paths a pattern selects (item 667 made `[` literal; that reading is now part of the contract)                                               | `docs/schema.md`, `docs/caching.md`                                                                                                                                                                                           |
 
 ## What 1.0 freezes, exactly
@@ -165,6 +167,13 @@ the reviewer sees it before the merge.
   policy, `lock --check`, …) through the real binary against one fixture
   workspace and compares each exit code with
   `tests/contract/exit-codes.json`.
+- **The lock file.** `tests/contract-lockfile.test.ts` locks one fixture
+  workspace and compares the file with `tests/contract/vx-lock.json` byte
+  for byte, then writes the committed lock back and requires
+  `vx lock --check` to pass and `vx run --frozen` to run from it (under an
+  environment a live evaluation would read differently). A change to the
+  format, to how `configHash` is taken, or to `LOCKFILE_VERSION` fails
+  here; a lock written by 1.x is valid for every later 1.x.
 - **The machine-readable run outputs.** `--dry=json` and the
   `--summarize` file are wire objects built field by field
   (`formatPlanJson`, `writeRunSummary`), not a serialized type, so the
