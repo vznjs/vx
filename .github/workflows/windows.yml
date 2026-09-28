@@ -88,6 +88,6 @@ jobs:
             n=$(basename "$f" .log); code=$(cat "$out/$n.rc")
             echo "== $n: exit $code"
             [ "$code" = 0 ] || rc=1
-            grep -aE '^\(fail\)|^error:|^ *[0-9]+ (pass|fail|skip)$|EBUSY|EPERM|ENOENT' "$f" | head -60
+            grep -aE '^\(fail\)|^error:|^[-+] |^ *[0-9]+ (pass|fail|skip)$|EBUSY|EPERM|ENOENT' "$f" | grep -avE '^[-+] +(Expected|Received) ' | head -150
           done
           exit $rc
