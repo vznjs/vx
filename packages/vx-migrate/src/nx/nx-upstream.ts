@@ -295,41 +295,32 @@ export function planNxUpstream(
     const out = new Map<string, GeneratedTask[]>()
     for (let i = 0; i < queue.length; i++) {
       const [node, name] = queue[i]!
-      {
-        const todos: string[] = []
-        const inputs = emptyNxInputs()
-        expandOwn(node, name, inputs, todos)
-        const members = component.get(node) ?? [node]
-        const peers = new Set(members.length > 1 ? members : [])
-        const edges = new Set<string>()
-        fold(node, name, peers, inputs, todos, edges)
-        // A nested `^other` in this project's `name` input.
-        for (const u of inputs.upstream) {
-          if (u.of !== 'deps') foldProjects(u.name, u.of, inputs, todos, edges)
-          else if (u.name !== name) fold(node, u.name, peers, inputs, todos, edges)
-        }
-        const cacheInputs: Record<string, unknown> = { files: inputs.files }
-        if (inputs.wsFiles.length > 0) cacheInputs.workspaceFiles = inputs.wsFiles
-        if (inputs.envNames.length > 0) cacheInputs.env = inputs.envNames
-        if (inputs.runtimeCmds.length > 0) cacheInputs.workspaceRuntime = inputs.runtimeCmds
-        const task: Record<string, unknown> = { exec: { command: 'true' } }
-        if (isFileset(name))
-          task.description = `Nx fileset ${name} of this project and what it reaches`
-        if (edges.size > 0) task.dependsOn = [...edges].sort()
-        task.cache = { inputs: cacheInputs, outputs: { files: [] } }
-        const list = out.get(node) ?? []
-        list.push({ name: inputTask(name), task, todos })
-        out.set(node, list)
+      const todos: string[] = []
+      const inputs = emptyNxInputs()
+      expandOwn(node, name, inputs, todos)
+      const members = component.get(node) ?? [node]
+      const peers = new Set(members.length > 1 ? members : [])
+      const edges = new Set<string>()
+      fold(node, name, peers, inputs, todos, edges)
+      // A nested `^other` in this project's `name` input.
+      for (const u of inputs.upstream) {
+        if (u.of !== 'deps') foldProjects(u.name, u.of, inputs, todos, edges)
+        else if (u.name !== name) fold(node, u.name, peers, inputs, todos, edges)
       }
+      const cacheInputs: Record<string, unknown> = { files: inputs.files }
+      if (inputs.wsFiles.length > 0) cacheInputs.workspaceFiles = inputs.wsFiles
+      if (inputs.envNames.length > 0) cacheInputs.env = inputs.envNames
+      if (inputs.runtimeCmds.length > 0) cacheInputs.workspaceRuntime = inputs.runtimeCmds
+      const task: Record<string, unknown> = { exec: { command: 'true' } }
+      if (isFileset(name))
+        task.description = `Nx fileset ${name} of this project and what it reaches`
+      if (edges.size > 0) task.dependsOn = [...edges].sort()
+      task.cache = { inputs: cacheInputs, outputs: { files: [] } }
+      const list = out.get(node) ?? []
+      list.push({ name: inputTask(name), task, todos })
+      out.set(node, list)
     }
-    // Discovery order is the walk's; the config is the same whatever order it ran.
-    const sorted = new Map<string, GeneratedTask[]>()
-    for (const node of [...out.keys()].sort())
-      sorted.set(
-        node,
-        out.get(node)!.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0)),
-      )
-    return sorted
+    return out
   }
 
   return { namedOf, resolve, inputTasks }

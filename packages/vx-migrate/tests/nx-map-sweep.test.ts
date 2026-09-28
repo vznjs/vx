@@ -36,7 +36,15 @@ async function tasksOf(
   dependencies: unknown = {},
 ): Promise<Map<string, GeneratedTask>> {
   const m = await mapNxWorkspace(root, metas, { nodes, dependencies } as NxGraph, OPTS)
-  return new Map(m.projects.flatMap((p) => p.tasks.map((t) => [`${p.name}#${t.name}`, t])))
+  const out = new Map<string, GeneratedTask>()
+  for (const p of m.projects) {
+    for (const t of p.tasks) {
+      // A Map would keep the last of two tasks one project names alike.
+      if (out.has(`${p.name}#${t.name}`)) throw new Error(`${p.name}#${t.name} mapped twice`)
+      out.set(`${p.name}#${t.name}`, t)
+    }
+  }
+  return out
 }
 
 describe('nx-map: what the sweep found unheld', () => {
@@ -526,6 +534,10 @@ describe('nx-map: `^` inputs fold over the project graph through twins', () => {
       inputs: { files: [] },
       todos: ['input project "ghost" is not a graph node — map manually'],
     })
+    // The edge's twin exists: a reader's `projects` is what reaches it.
+    expect(shape(t.get('base#nx-input:production'))).toEqual(
+      twin(undefined, { files: ['**/*', '!**/*.spec.ts'] }),
+    )
   })
 
   it('a project without the named input: its twin says so', async () => {
@@ -543,6 +555,14 @@ describe('nx-map: `^` inputs fold over the project graph through twins', () => {
       inputs: { files: [], workspaceFiles: ['packages/lib/src/**'] },
       todos: [],
     })
+  })
+
+  it('a twin two readers reach is mapped once', async () => {
+    const t = await graph(['^production'], undefined, { app: ['lib', 'base'], lib: ['base'] })
+    expect([...t.keys()].filter((id) => id.includes('nx-input'))).toEqual([
+      'lib#nx-input:production',
+      'base#nx-input:production',
+    ])
   })
 
   it('a project cycle: a twin carries its peers’ files, and edges leave the cycle only', async () => {
