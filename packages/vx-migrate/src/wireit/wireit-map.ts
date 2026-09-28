@@ -8,8 +8,10 @@
 // wireit's rules followed here (its README, 0.14.13; lit/lit, 2026-09-28):
 // - a task is cached only when both `files` and `output` are set; either
 //   missing means it always runs;
-// - `output` is deleted before a run unless `clean: false`, as vx cleans,
-//   so a wildcard output is safe to clean except under `clean: false`;
+// - `output` is deleted before a run unless `clean: false`, as vx cleans;
+//   under `clean: false` an output may be a file wireit never deletes
+//   (spectacle's one-page example reads and writes its tracked
+//   `index.html`), so such a task runs uncached;
 // - a dependency is `script` in the package, or `<relative dir>:<script>`
 //   (it starts with `.`), and one that is a plain npm script runs it;
 // - `env` sets a value (a string) or names an external input
@@ -184,15 +186,15 @@ function mapWireitTask(ctx: Ctx, name: string, cfg: Raw): WireitMappedTask {
 
   const files = cfg['files']
   const output = cfg['output']
-  if (command !== undefined && !persistent && Array.isArray(files) && Array.isArray(output)) {
-    const cache = mapCache(
-      ctx,
-      strings(files),
-      strings(output),
-      cfg['clean'] === false,
-      external,
-      todos,
+  const cached =
+    command !== undefined && !persistent && Array.isArray(files) && Array.isArray(output)
+  if (cached && cfg['clean'] === false && strings(output).length > 0) {
+    todos.push(
+      "clean: false — wireit keeps this task's outputs and vx deletes them before every run, " +
+        'which here may be a source file; task runs uncached',
     )
+  } else if (cached) {
+    const cache = mapCache(ctx, strings(files), strings(output), external, todos)
     if (cache !== null) task['cache'] = cache
   }
   return { name, todos, task }
@@ -202,7 +204,6 @@ function mapCache(
   ctx: Ctx,
   files: readonly string[],
   output: readonly string[],
-  noClean: boolean,
   env: readonly string[],
   todos: string[],
 ): Raw | null {
@@ -237,16 +238,6 @@ function mapCache(
       todos.push(
         `output ${JSON.stringify(o)}: a negation, a path outside the package or glob syntax vx ` +
           'cannot take — task runs uncached; declare the exact outputs in a vx.config to cache it',
-      )
-      return null
-    }
-    // wireit deletes its outputs before a run unless `clean: false`, as vx
-    // does; under `clean: false` a wildcard first segment may reach sources
-    // wireit never deleted.
-    if (noClean && /[*?{[]/.test(glob.split('/')[0] ?? '')) {
-      todos.push(
-        `output ${JSON.stringify(o)}: clean: false and a wildcard first segment — vx cleans ` +
-          'outputs before every run and this one may reach the sources; task runs uncached',
       )
       return null
     }
