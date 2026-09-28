@@ -1544,7 +1544,10 @@ running executable (`vx upgrade <tag>` pins a specific release; default
 latest; a second tag is refused, not dropped). A download that does not match the digest replaces nothing —
 `the download did not match the release's SHA-256 … nothing replaced` —
 and a release that publishes no digest for the asset is refused before
-the download. Named
+the download. The digest comes from the same API as the asset, so it
+proves the transfer, not who built the bytes: every release binary also
+carries a Sigstore-signed build-provenance attestation, checked with
+`gh attestation verify vx-<target> --repo vznjs/vx`. Named
 `upgrade` per CLI convention (`bun upgrade`, `deno upgrade`). Refuses
 when running from source — use `git pull` — and when the binary is
 npm's: an npm install runs the platform package's compiled binary
