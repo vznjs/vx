@@ -25,12 +25,17 @@ import { bun } from '@vzn/vx-lockfile'
 //              30 s leaf that the structural order starts LAST (it
 //              unblocks one task), and on 2026-09-10 it was the 29 s tail
 //              of a 99 s gate whose deps were done by the second second.
+//              The unsafe suite is the core's longest task (46 s on macOS
+//              CI, the shards 31–45) and the structural order started it
+//              last: its final 33 s ran alone on a 3-core runner (I-12).
 export default defineWorkspace({
   plugins: [
     otel(),
     github(),
     mcp(),
     bun(),
-    scheduleHistoryPlugin({ assume: { '@vzn/vx-docs#build': 30_000 } }),
+    scheduleHistoryPlugin({
+      assume: { '@vzn/vx-docs#build': 30_000, '@vzn/vx#test.bun.unsafe': 46_000 },
+    }),
   ],
 })
