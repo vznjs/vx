@@ -204,6 +204,11 @@
   tar reader held under 3,000 mutations (TarFormatError only, no hang),
   and the cache wraps anything else a restore or ingest throws as a
   corrupt artifact. Supervisor backlog 2. Row in `config-cache.test.ts`.
+- L-20. `docs`: SECURITY.md said how to report and what is in scope,
+  but nothing said what vx trusts, what it checks on bytes it did not
+  write, or what the sandbox does not stop. `docs/security.md` (on the
+  site as Security model, linked from SECURITY.md) does, each claim
+  drawn from the code and the items that hold it. Supervisor backlog 3.
 
 ## Leads for other streams
 

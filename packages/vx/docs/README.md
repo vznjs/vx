@@ -174,6 +174,7 @@ seam in a plugin.
 | Understand the overall shape                                           | [`architecture.md`](./architecture.md)                                   |
 | Author a `vx.config.ts`                                                | [`schema.md`](./schema.md)                                               |
 | Reason about caching                                                   | [`caching.md`](./caching.md)                                             |
+| Know what vx trusts and what the sandbox stops                         | [`security.md`](./security.md)                                           |
 | Trace what `vx run` actually does                                      | [`execution.md`](./execution.md)                                         |
 | See each scenario as a diagram                                         | [`flows.md`](./flows.md)                                                 |
 | See every perf decision + invariant                                    | [`optimizations.md`](./optimizations.md)                                 |
