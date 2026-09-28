@@ -502,6 +502,17 @@ span kind, temporality, monotonicity and severity. The break law reads it
 by lost lines. Differential: renaming `vx.cpu_ms` failed it; restored,
 passes.
 
+## H-42: vx-migrate's command lines are a record
+
+Configs vx-migrate writes call `nx-exec`, `nx-env` and `lage-worker`, so
+a 1.x that changed their argv would break a config 1.0 wrote; nothing
+recorded them, nor `vx-migrate`'s own flags. `packages/vx-migrate/tests/contract/cli.txt`
+records, from each bin spawned, its `--help` and usage-error exit codes,
+its leading positionals and each flag its usage names (one line each, so
+an added flag is no break), and the sources `--from` takes. The break
+law reads it. Differential: dropping `--envFile` from `nx-env`'s usage
+failed it; restored, passes.
+
 ## Leads for other streams
 
 - **A:** a task that rewrites its own input with the same bytes is never
