@@ -450,3 +450,9 @@ bytes), and a 5 GiB output decoded short. Sizes are now exact to 2^53
 negative int32, the exit code) still reads back as its low 32 bits.
 Rows against protobufjs and round trips, red without the fix; the
 negative exit code row holds both ways.
+
+F-45. vx-otel declined whenever no traces endpoint was set, so a
+pipeline that set only `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` (or the
+logs one) exported nothing and said nothing, though each signal ships
+only to its own url. The plugin now declines only when no signal has an
+endpoint; one without its own stays off. Row red without the fix.
