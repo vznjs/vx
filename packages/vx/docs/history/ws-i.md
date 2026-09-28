@@ -121,6 +121,16 @@ same plugin in every arm: 3e927f9c 449 ms median (min 382), 4b7c396a
 vx 48.0 s / 478 ms / 249 ms (cold / restore / no-op) against Turbo
 57.9 s / 1.43 s / 1.38 s.
 
+I-12. macOS CI runs the core suite at twice its cores
+(`--concurrency 200%`). The macOS job, not Linux, sets the runner
+queue: 119 CI runs 22:37–23:30 on 2026-09-27, macOS waited 105 s
+median before I-8 and 426 after (max 1,010) and ran 253 s either way;
+Linux waited 2–18 s. The suite waits more than it computes: the 12
+shards, 3 at a time pinned to 3 cores, keep 1.7 cores busy. 6 at a
+time, 3 interleaved reps: wall 112.3 s median (111.2–115.6) against
+74.2 (72.3–75.8), CPU 190 s against 191. Refuted: 6 shards instead of
+12 at 3 at a time, 114.5 s against 113.3.
+
 ## Leads for other streams
 
 - **G: `nx()` costs ~100 ms per warm run on refine.** No-op, 15

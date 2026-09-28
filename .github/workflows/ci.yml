@@ -262,12 +262,16 @@ jobs:
       # cap is 10 240, which the whole suite in one process does not clear.
       # No VX_REQUIRE_SANDBOX here (see the job comment), so the sandbox
       # suites skip; the canary below is what watches enforcement.
+      # Twice the cores: the suite keeps 1.7 of 3 cores busy (it waits on
+      # watch windows, children and timers), and six at once cut the
+      # shards' wall 112 → 72 s on 3 cores for the same CPU (I-12). The
+      # queue for macOS runners is what this job costs every PR.
       - name: vx run test (core, darwin)
         env:
           # FSEvents delivers the watch probe here; the rows must not vanish
           # quietly if that changes (see the linux job for the reasoning).
           VX_REQUIRE_WATCH_EVENTS: '1'
-        run: bun packages/vx/src/bin.ts run test --filter @vzn/vx
+        run: bun packages/vx/src/bin.ts run test --filter @vzn/vx --concurrency 200%
 
       # DATA COLLECTION, not a gate: the sandbox suites are class-gated on
       # darwin CI because sandbox-exec misbehaves under load here — including
