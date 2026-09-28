@@ -139,6 +139,10 @@
     reach shells through `env` in `auto-release` and `ci.yml` (the PR
     title included); `npm.yml` and `release.yml` pasted the release tag
     into scripts (L-28).
+35. The runner and docs workflows. The runner action installs from
+    Ubuntu's signed apt sources only; `docs.yml` deploys from `main` and
+    a dispatch, each action pinned. `ci.yml` and `windows.yml` named no
+    token permissions (L-29).
 
 ## Items
 
@@ -360,6 +364,11 @@
   step refuses anything but a version. Law: `supply-chain.unsafe.test.ts`
   rejects `github.event.*`, `inputs.*` or `github.head_ref` in a `run:`
   block (red on the four sites before), with a checker row.
+- L-29. `ci`: `ci.yml` and `windows.yml` declared no `permissions:`, so
+  the jobs that run a PR's code took the repository's default token,
+  which may write. Both are now `contents: read` (checkout is all they
+  need; vx-github writes the job summary, which takes no token). Law:
+  every workflow declares a top-level `permissions:`, red on the two.
 
 ## Leads for other streams
 

@@ -99,4 +99,5 @@ checks each download's SHA-256 before it replaces anything; npm packages
 publish with provenance; every third-party action in CI runs from a
 full commit SHA; and a workflow hands an event's or a dispatcher's value
 to a script through `env`, never pasted in (a release tag is checked as a
-version first). A test holds each rule.
+version first); every workflow names its token's permissions, and CI's
+is read-only. A test holds each rule.
