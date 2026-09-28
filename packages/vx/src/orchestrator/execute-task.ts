@@ -9,7 +9,9 @@ import {
   cleanWorkspaceOutputs,
   type OutputStamp,
   ownOutputsSince,
+  ownWorkspaceOutputsSince,
   stampOutputs,
+  stampWorkspaceOutputs,
   FULL_CACHE_POLICY,
   type GitFilesCache,
 } from '../cache/index.js'
@@ -616,6 +618,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // earlier run are its command's to clean, as they are under Turbo.
   const additive = (node.addsToOutputsOf?.length ?? 0) > 0
   let stampedBefore: ReadonlyMap<string, OutputStamp> | undefined
+  let wsStampedBefore: ReadonlyMap<string, OutputStamp> | undefined
 
   // Cache lookup. On hit, time the user-perceived restore op
   // (clean+restore+log-replay) — that's what the framed-block footer
@@ -756,7 +759,12 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       endClean()
       args.gitFilesCache?.markOutputsChanged(node.projectDir, cleanedRels)
     }
-    if (willWrite && !deferralRequested && wsOutputs.length > 0) {
+    if (additive && willWrite && !deferralRequested && wsOutputs.length > 0) {
+      // A root-anchored addition is stamped as the project one above: a
+      // glob clean deleted the upstream's files before this task, which
+      // reads them, ran (A-43).
+      wsStampedBefore ??= await stampWorkspaceOutputs(wsCleanArgs)
+    } else if (willWrite && !deferralRequested && wsOutputs.length > 0) {
       // Root-anchored deletions can land in other projects' dirs; mark
       // them so stale per-project git snapshots can't survive the wipe.
       const cleanedWsRels = await cleanWorkspaceOutputs(wsCleanArgs)
@@ -1028,8 +1036,13 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       additive && stampedBefore !== undefined
         ? await ownOutputsSince(cleanArgs, stampedBefore)
         : undefined
+    const ownWsOutputFiles =
+      additive && wsStampedBefore !== undefined
+        ? await ownWorkspaceOutputsSince(wsCleanArgs, wsStampedBefore)
+        : undefined
     const { landed } = await saveMiss({
       ...(ownOutputFiles !== undefined ? { ownOutputFiles } : {}),
+      ...(ownWsOutputFiles !== undefined ? { ownWsOutputFiles } : {}),
       node,
       hash,
       cache,

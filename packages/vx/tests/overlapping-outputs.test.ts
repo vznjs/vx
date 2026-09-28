@@ -260,6 +260,57 @@ describe('overlapping outputs, addition shape at the workspace root', () => {
   )
 })
 
+// SAME TREE at the root (A-43): the dependant declares `gen` too and reads
+// what build wrote there. Its miss cleaned `gen` by glob before it ran,
+// taking build's `gen/a.txt`, so its read failed; only the project-output
+// half of an addition was stamped instead of cleaned.
+describe('overlapping outputs, same tree at the workspace root', () => {
+  const config = `
+    export default {
+      tasks: {
+        build: {
+          exec: { command: 'mkdir -p ../../gen && cp src/a.txt ../../gen/a.txt' },
+          cache: { inputs: { files: ['src/**'] }, outputs: { files: [], workspaceFiles: ['gen'] } },
+        },
+        individual: {
+          dependsOn: ['build'],
+          exec: { command: 'cp ../../gen/a.txt ../../gen/b.txt && cat srcb/b.txt >> ../../gen/b.txt' },
+          cache: {
+            inputs: { files: ['srcb/**'], tasks: [] },
+            outputs: { files: [], workspaceFiles: ['gen'] },
+          },
+        },
+      },
+    }
+  `
+  let ws: Ws
+  beforeEach(async () => {
+    ws = await workspace('A1', 'B1', config)
+  })
+  afterEach(async () => {
+    await rm(ws.root, { recursive: true, force: true })
+  })
+
+  it(
+    "the dependant's miss keeps build's files, and its entry holds only its own",
+    async () => {
+      const cold = await run({ cwd: ws.root, tasks: ['build', 'individual'], log: silent })
+      expect(statusOf(cold)).toEqual({ build: 'success', individual: 'success' })
+      const gen = (f: string): string => readFileSync(path.join(ws.root, 'gen', f), 'utf8')
+      expect([gen('a.txt'), gen('b.txt')]).toEqual(['A1', 'A1B1'])
+      const hash = cold.outcomes.find((o) => o.node.id.endsWith('#individual'))!.hash!
+      const cache = new Cache(path.join(ws.root, '.vx', 'cache'))
+      try {
+        const rows = cache.loadOutputFilesBatch([hash]).get(hash) ?? []
+        expect(rows.map((r) => r.path)).toEqual(['workspace-outputs/gen/b.txt'])
+      } finally {
+        cache.close()
+      }
+    },
+    TIMEOUT,
+  )
+})
+
 // A root-anchored output inside another project's `files` tree, with the
 // edge (item 1088's addition): the dependant's glob, rebased to the root,
 // covers the upstream's own rows, and the upstream's current-check keeps a

@@ -643,7 +643,18 @@ export async function stampOutputs(args: {
   outputs: string[]
   nestedProjectDirs: string[]
 }): Promise<Map<string, OutputStamp>> {
-  const files = await resolveOutputs(args)
+  return stampFiles(await resolveOutputs(args))
+}
+
+/** `stampOutputs` for root-anchored `cache.outputs.workspaceFiles` (A-43). */
+export async function stampWorkspaceOutputs(args: {
+  workspaceRoot: string
+  outputs: string[]
+}): Promise<Map<string, OutputStamp>> {
+  return stampFiles(await resolveWorkspaceOutputs(args))
+}
+
+function stampFiles(files: readonly string[]): Map<string, OutputStamp> {
   const out = new Map<string, OutputStamp>()
   for (const f of files) {
     try {
@@ -668,7 +679,21 @@ export async function ownOutputsSince(
   args: { projectDir: string; outputs: string[]; nestedProjectDirs: string[] },
   before: ReadonlyMap<string, OutputStamp>,
 ): Promise<string[]> {
-  const after = await resolveOutputs(args)
+  return changedSince(await resolveOutputs(args), before)
+}
+
+/** `ownOutputsSince` for root-anchored `cache.outputs.workspaceFiles` (A-43). */
+export async function ownWorkspaceOutputsSince(
+  args: { workspaceRoot: string; outputs: string[] },
+  before: ReadonlyMap<string, OutputStamp>,
+): Promise<string[]> {
+  return changedSince(await resolveWorkspaceOutputs(args), before)
+}
+
+function changedSince(
+  after: readonly string[],
+  before: ReadonlyMap<string, OutputStamp>,
+): string[] {
   const own: string[] = []
   for (const f of after) {
     const was = before.get(f)
