@@ -3,7 +3,7 @@
 // files, as encoding.test.ts does; the tree rows build real input trees.
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { createHash } from 'node:crypto'
-import { chmod, mkdir, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import protobuf from 'protobufjs'
@@ -281,6 +281,27 @@ function dangling(
 }
 
 describe('buildInputTree', () => {
+  it('reads inputs concurrently, and the tree is the one a serial read built', async () => {
+    // One read at a time, 2 000 small inputs cost 304 ms; 51 at once (F-36).
+    await mkdir(path.join(root, 'conc'), { recursive: true })
+    const paths = ['e', 'a', 'd', 'b', 'c'].map((n) => `conc/${n}.txt`)
+    for (const p of paths) await writeFile(path.join(root, p), p)
+    let inFlight = 0
+    let peak = 0
+    const readFile = async (abs: string): Promise<Uint8Array> => {
+      peak = Math.max(peak, ++inFlight)
+      await Bun.sleep(5)
+      inFlight--
+      return new Uint8Array(await Bun.file(abs).arrayBuffer())
+    }
+    const tree = await buildInputTree({ workspaceRoot: root, paths, readFile })
+    expect(peak).toBe(5)
+    // One read at a time, through the default reader, is the reference.
+    const serial = await buildInputTree({ workspaceRoot: root, paths: [...paths].sort() })
+    expect(tree.root).toEqual(serial.root)
+    expect(tree.fileCount).toBe(5)
+  })
+
   it('a grafted Tree whose child bytes are not ours still resolves every directory', async () => {
     const file = { name: 'f', digest: sha256(new Uint8Array()), is_executable: false }
     const raw = concat([
