@@ -16,13 +16,13 @@
 // a timeout, what a `preProbed` entry is allowed to skip, and how a hit is
 // classified.
 
-import { existsSync, readdirSync } from 'node:fs'
+import { existsSync, readdirSync, utimesSync } from 'node:fs'
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { addProject, gitInit, makeWorkspace as makeWorkspaceRoot } from './helpers/workspace.js'
-import { Cache, GitFilesCache, type CacheEntry } from '../src/cache/index.js'
+import { Cache, GitFilesCache, OUTPUT_DIRS_RACY_MS, type CacheEntry } from '../src/cache/index.js'
 import { localExecutor } from '../src/exec/local-executor.js'
 import { UserError } from '../src/util/index.js'
 import type { TaskNode, TaskOutcome } from '../src/graph/index.js'
@@ -30,6 +30,7 @@ import type { ExecuteRequest, TaskExecutor } from '../src/exec/index.js'
 import type { Logger } from '../src/orchestrator/index.js'
 import { run } from '../src/orchestrator/index.js'
 import { executeTask, restoreHit } from '../src/orchestrator/execute-task.js'
+import type { OutputDirSnapshot } from '../src/orchestrator/miss-save.js'
 import { computeTaskHash } from '../src/orchestrator/task-hash.js'
 
 const TIMEOUT = 30_000
@@ -994,10 +995,9 @@ describe('execute-task — cache-hit materialization', () => {
     async () => {
       // A `lint`-shaped cacheable task materializes nothing, so claiming
       // `restored: true` would put "local-cache" on a row where not one byte
-      // moved. The `&& anyOutputs` conjunct is what keeps that honest; the
-      // skip-restore branch above cannot cover it, because with no declared
-      // outputs there is no fingerprint to compare and `skipRestore` stays
-      // false on every hit.
+      // moved. Two guards keep that honest, and each alone holds this row:
+      // `skipRestore` starts true for such a task, and `restored` also
+      // requires a declared output (C-24).
       await addProject(
         fixture.root,
         'lintish',
@@ -1113,18 +1113,121 @@ describe('execute-task — restoreHit classification (entry shapes a run() canno
     // is what the hit skipped. Collapsing them is how `--report`'s headline
     // once reported "4ms saved" for a task that takes seconds. 4321ms is far
     // enough from any real restore that the two cannot be confused.
+    // The probe started 250 ms before the restore, so this run's cost counts
+    // from there.
     const hit = await seedEntry('ddddeeeeffff0000', 'REPLAYED-STDOUT')
     const f: Fixture = { root: b.root, out: [], err: [] }
+    const args = baseArgs(b, node(b, NO_OUTPUT_TASK), capturingLogger(f))
     const o = await restoreHit({
-      args: baseArgs(b, node(b, NO_OUTPUT_TASK), capturingLogger(f)),
+      args,
       hash: 'ddddeeeeffff0000',
+      hit,
+      cacheOpStart: performance.now() - 250,
+      taskStartNs: 7n,
+    })
+    expect(f.out.join('')).toBe('REPLAYED-STDOUT')
+    expect(o.storedDurationMs).toBe(4321)
+    expect(o.durationMs).toBeGreaterThanOrEqual(250)
+    expect(o.durationMs).toBeLessThan(4321)
+    // The wallclock window is run-relative, from the start it was handed.
+    expect(o.wallclockStartNs).toBe(7n)
+    expect(o.wallclockEndNs).toBeLessThanOrEqual(process.hrtime.bigint() - args.runStartHrTimeNs)
+  })
+})
+
+// A sweep of hit-restore.ts (C-24): which rows and snapshots a hit reads
+// and writes had no witness. The local `Cache` always hands its rows over,
+// so a run() cannot show the lazy load a third-party layer's entry needs,
+// and a perf-only branch (the directory short-circuit, the snapshot kept
+// for run end) changes no status a run() prints.
+describe('execute-task — what restoreHit reads and records', () => {
+  let b: Bench
+  beforeEach(async () => {
+    b = await bench()
+  })
+  afterEach(async () => {
+    await closeBench(b)
+  })
+
+  const DIST_TASK = {
+    exec: { command: 'echo should-not-run' },
+    cache: { inputs: { files: [] }, outputs: { files: ['dist/**'] } },
+  }
+  const out = (): string => path.join(b.dir, 'dist', 'o.txt')
+  const quiet = (): Logger => capturingLogger({ root: '', out: [], err: [] })
+
+  /** A saved and stamped `dist/o.txt`, as a miss leaves it. */
+  async function seedDist(hash: string): Promise<CacheEntry> {
+    await mkdir(path.join(b.dir, 'dist'), { recursive: true })
+    await writeFile(out(), 'v1')
+    await b.cache.save({
+      hash,
+      projectDir: b.dir,
+      outputFiles: [out()],
+      entry: { taskId: 'proj#build', command: 'x', durationMs: 1, stdout: '' },
+    })
+    b.cache.recordOutputStamps(hash, b.dir, b.root)
+    const hit = await b.cache.get(hash)
+    if (hit === null) throw new Error('fixture: seeded entry did not read back')
+    return hit
+  }
+
+  const restore = (hash: string, hit: CacheEntry, snapshots?: OutputDirSnapshot[]) =>
+    restoreHit({
+      args: {
+        ...baseArgs(b, node(b, DIST_TASK), quiet()),
+        ...(snapshots !== undefined ? { outputDirSnapshots: snapshots } : {}),
+      },
+      hash,
       hit,
       cacheOpStart: performance.now(),
       taskStartNs: 0n,
     })
-    expect(f.out.join('')).toBe('REPLAYED-STDOUT')
-    expect(o.storedDurationMs).toBe(4321)
-    expect(o.durationMs).toBeLessThan(4321)
+
+  it('reads the rows a layer handed over, and loads them when it handed none', async () => {
+    const hash = 'aaaa0000bbbb1111'
+    const hit = await seedDist(hash)
+    const load = spyOn(b.cache, 'loadOutputFilesBatch')
+    expect((await restore(hash, hit)).restored).toBe(false)
+    expect(load).not.toHaveBeenCalled()
+    // A layer's entry without rows: the untouched tree is still current…
+    const { outputRows: _rows, ...bare } = hit
+    expect((await restore(hash, bare)).restored).toBe(false)
+    expect(load).toHaveBeenCalledTimes(1)
+    // …and a wiped one is restored, never taken for an entry that saved nothing.
+    await rm(path.join(b.dir, 'dist'), { recursive: true })
+    expect((await restore(hash, bare)).restored).toBe(true)
+    expect(await readFile(out(), 'utf8')).toBe('v1')
+  })
+
+  it('trusts recorded directories without re-recording them; a restore leaves its snapshot to run end', async () => {
+    const hash = 'cccc2222dddd3333'
+    await seedDist(hash)
+    const old = new Date(Date.now() - 10 * OUTPUT_DIRS_RACY_MS - 1)
+    utimesSync(path.join(b.dir, 'dist'), old, old)
+    await b.cache.recordOutputDirs(hash, b.dir, ['dist'])
+    const hit = (await b.cache.get(hash))!
+    expect(hit.outputDirRows?.map((r) => r.path)).toEqual(['dist'])
+    const current = spyOn(b.cache, 'outputDirsCurrent')
+    const record = spyOn(b.cache, 'recordOutputDirs')
+    expect((await restore(hash, hit)).restored).toBe(false)
+    expect(current).toHaveBeenCalledTimes(1)
+    expect(await current.mock.results[0]!.value).toBe(true)
+    expect(record).not.toHaveBeenCalled()
+    // A rewritten file under a moved directory: the walk finds the same
+    // set, the stat refuses it, and the restore that follows renames into
+    // `dist` inside the racy window — so its snapshot goes on the run's
+    // list, never recorded here.
+    await writeFile(out(), 'v2')
+    const now = new Date()
+    utimesSync(path.join(b.dir, 'dist'), now, now)
+    const snapshots: OutputDirSnapshot[] = []
+    expect((await restore(hash, hit, snapshots)).restored).toBe(true)
+    expect(record).not.toHaveBeenCalled()
+    expect(await readFile(out(), 'utf8')).toBe('v1')
+    expect(snapshots.map((s) => [s.hash, s.projectDir, s.prefixes])).toEqual([
+      [hash, b.dir, ['dist']],
+    ])
   })
 })
 

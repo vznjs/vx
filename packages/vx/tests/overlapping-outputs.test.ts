@@ -260,6 +260,52 @@ describe('overlapping outputs, addition shape at the workspace root', () => {
   )
 })
 
+// A root-anchored output inside another project's `files` tree, with the
+// edge (item 1088's addition): the dependant's glob, rebased to the root,
+// covers the upstream's own rows, and the upstream's current-check keeps a
+// path it recorded (`expectedWsRels.has(rel)`). Without that arm the
+// upstream restored on every hit and wiped what the dependant added, which
+// then restored too (C-24: a mutant the suite passed).
+describe("overlapping outputs: a root-anchored upstream under a project's dependant", () => {
+  let root: string
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it(
+    'both hit up-to-date: the upstream keeps its own rows under what the dependant adds',
+    async () => {
+      root = await makeWorkspace({ prefix: 'vx-ovl-ws-' })
+      await addProject(root, 'a', {
+        files: { 'src/a.txt': 'A1' },
+        config: `export default { tasks: { build: {
+          exec: { command: 'mkdir -p ../b/dist && cp src/a.txt ../b/dist/a.txt' },
+          cache: { inputs: { files: ['src/**'] }, outputs: { files: [], workspaceFiles: ['packages/b/dist'] } },
+        } } }`,
+      })
+      const b = await addProject(root, 'b', {
+        files: { 'src/b.txt': 'B1' },
+        config: `export default { tasks: { build: {
+          dependsOn: ['a#build'],
+          exec: { command: 'cp src/b.txt dist/b.txt' },
+          cache: { inputs: { files: ['src/**'], tasks: [] }, outputs: { files: ['dist'] } },
+        } } }`,
+      })
+      const byId = (r: Awaited<ReturnType<typeof run>>): Record<string, string> =>
+        Object.fromEntries(
+          r.outcomes.map((o) => [o.node.id, o.status + (o.restored ? '+restored' : '')]),
+        )
+      const cold = await run({ cwd: root, tasks: ['build'], log: silent })
+      expect(byId(cold)).toEqual({ 'a#build': 'success', 'b#build': 'success' })
+      const warm = await run({ cwd: root, tasks: ['build'], log: silent })
+      expect(byId(warm)).toEqual({ 'a#build': 'cache-hit', 'b#build': 'cache-hit' })
+      expect(readFileSync(path.join(b, 'dist', 'a.txt'), 'utf8')).toBe('A1')
+      expect(readFileSync(path.join(b, 'dist', 'b.txt'), 'utf8')).toBe('B1')
+    },
+    TIMEOUT,
+  )
+})
+
 // The run-end directory snapshot of each side of the same-tree pair (A-25).
 // An upstream's tree also holds what its dependant added, and the snapshot
 // ignores those files; an additive task's rows need only be present among
