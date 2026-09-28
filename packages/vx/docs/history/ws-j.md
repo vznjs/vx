@@ -229,6 +229,16 @@
 - **J-40** parity.md and optimizations.md run against source: two
   stale claims — `Bun.color` sees a handful of hex strings, not four;
   sandboxing is not under comparison's "Where vx is ahead".
+- **J-41** glossary and "why vx is fast" run against source: the
+  glossary held; an additive task cleans nothing before exec (only its
+  rows before a restore; also in configure), and `git status`, not
+  `ls-files`, lists untracked files.
+- **J-42** comparison.md's CRLF bullet said a converting Windows
+  checkout could diverge; a filtered file now drops its index OID and
+  is hashed from worktree bytes (`dropFilteredOids`).
+- **J-43** module pages for the sixteen most-changed source files of
+  the last twelve hours: ten stale claims on six pages (scheduler,
+  execute-task, affected, inputs, metrics, cli-watch).
 
 ## Leads for other streams
 
@@ -293,3 +303,7 @@ task(s): nope.` and exits 0; cli.md says an undeclared name is
 - **B** On a host without IPv6, SRT's in-sandbox `socat TCP-LISTEN:3128` fails and its error goes to /dev/null: every networked task sees only "connection refused on localhost:3128".
 - **M (via coordinator)** `sandbox-runtime.unsafe.test.ts` › "a SIGKILLed task's port bridge leaves no socket behind" fails with `ENOENT: no such file or directory, scandir '/tmp/claude/vx-tasks/vx-task-<pid>-x'` (`tests/sandbox-runtime.unsafe.test.ts:4030`): on CI for PR #1412 (history only) and in a local gate on main 2026-09-28 01:50. The row (B-15, 53144ba) read the bridge socket's dir after L-10 (18bfb32) moved per-task temp dirs; fixed by 34a6c14.
 - **A** A corrupt LOCAL artifact fails its task every run (`internal error in app#build: CorruptArtifactError: … zstd decode failed`, `failed miss`) until `--force`, with no hint; a corrupt remote one degrades to a miss (nx#30338's shape, local side).
+- **E/B** `src/orchestrator/shell-verdict.ts:82-83` says a SIGINT/SIGTERM
+  the runner saw reverts the task to aborted; since c23d176 an outside
+  stop is failed unless the run is stopping. A comment claiming what
+  the code no longer does (found in J-43).
