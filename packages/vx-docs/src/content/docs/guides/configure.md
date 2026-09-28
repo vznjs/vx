@@ -108,8 +108,8 @@ export default defineProject({
 
 Declared outputs are wiped before every run and every restore, so `dist/`
 ends as the cache stored it; a hit that finds them already as stored skips
-both. A task that adds files beside an upstream task's outputs wipes only
-the files it recorded. A failed task is never saved. `--force` runs
+both. A task that adds files beside an upstream task's outputs wipes
+nothing before a run and only the files it recorded before a restore. A failed task is never saved. `--force` runs
 and refreshes the cache; `--no-cache` ignores it.
 
 A fully cached 3,270-task run: vx 510ms, Turborepo 760ms, Nx 3.59s
