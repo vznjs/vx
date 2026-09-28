@@ -49,6 +49,12 @@
     a token over `grpc://` is the config's choice. The host side of a port
     bridge binds 127.0.0.1, as the unsandboxed server would. Git's input
     enumeration is `-z` with `--` before every pathspec. No bug.
+11. Writers and local state. The migration writer takes each project's
+    directory from the repo it migrates, whose Nx graph already runs that
+    repo's plugins: no boundary to cross. Rendered task names go through
+    `quoteTsLiteral` (`__proto__` included), reasons into line comments.
+    `vx watch` turns file events into reruns only; vx-schedule-history
+    reads core's own run history. No bug.
 
 ## Items
 
