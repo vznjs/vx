@@ -98,6 +98,15 @@ describe('parseCachePolicy', () => {
     })
   })
 
+  it('reads segments with spaces around them', () => {
+    expect(parseCachePolicy(' local:r , remote: ')).toEqual({
+      localRead: true,
+      localWrite: false,
+      remoteRead: false,
+      remoteWrite: false,
+    })
+  })
+
   it('flag order is irrelevant (wr == rw)', () => {
     expect(parseCachePolicy('local:wr')).toEqual(parseCachePolicy('local:rw'))
   })
