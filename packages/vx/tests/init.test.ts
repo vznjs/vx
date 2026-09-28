@@ -9,6 +9,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { parseInitArgs } from '../src/cli/index.js'
+import { adoptionNext } from '../src/cli/init.js'
 import { PLUGIN_TEMPLATES } from '../src/cli/plugin-templates.js'
 import { delegatedScript, loadProjectConfig, migrateScripts } from '../src/workspace/index.js'
 import { vxInvocation } from '../src/workspace/migration.js'
@@ -711,36 +712,121 @@ describe('vx init — the generated build is not a cached no-op', () => {
     }
   })
 
-  it('names a turbo.jsonc it did not read (Turbo 2.5+, item 938)', async () => {
+  it('a Turbo repo gets vx.workspace.ts declaring turbo() and nothing else', async () => {
+    // Turbo 2.5+ reads `turbo.jsonc` as well (item 938).
+    for (const file of ['turbo.json', 'turbo.jsonc']) {
+      const root = await makeScriptsWorkspace()
+      try {
+        await Bun.write(path.join(root, file), '{ "tasks": { "compile": {} } }\n')
+        const r = await vx(root, ['init'])
+        expect({ code: r.code, err: r.err }).toEqual({ code: 0, err: '' })
+        expect(r.out).toBe(
+          `vx init: ${file} found — turbo() from @vzn/vx-migrate runs this repo as it is; nothing else written.\n` +
+            'wrote vx.workspace.ts.\n\n' +
+            'next: npm install -D @vzn/vx-migrate && vx run compile --all\n',
+        )
+        expect(await Bun.file(path.join(root, 'vx.workspace.ts')).text()).toBe(
+          "import type { WorkspaceConfig } from '@vzn/vx'\n" +
+            "import { turbo } from '@vzn/vx-migrate'\n\n" +
+            'export default { plugins: [turbo()] } satisfies WorkspaceConfig\n',
+        )
+        expect(existsSync(path.join(root, 'packages', 'app', 'vx.config.ts'))).toBe(false)
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    }
+  })
+
+  it('an Nx repo gets nx(); turbo.json beside nx.json gets turbo()', async () => {
+    for (const [markers, runner] of [
+      [['nx.json'], 'nx'],
+      [['nx.json', 'turbo.json'], 'turbo'],
+    ] as [string[], string][]) {
+      const root = await makeScriptsWorkspace()
+      try {
+        for (const m of markers) await Bun.write(path.join(root, m), '{}\n')
+        const r = await vx(root, ['init', '--dry'])
+        expect(r.code).toBe(0)
+        expect(r.out).toContain(`import { ${runner} } from '@vzn/vx-migrate'`)
+        expect(r.out).toContain(`export default { plugins: [${runner}()] }`)
+        expect(r.out).toContain('would write vx.workspace.ts (dry run, nothing written).')
+        expect(existsSync(path.join(root, 'vx.workspace.ts'))).toBe(false)
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    }
+    // An exported graph with no nx.json is no Nx workspace nx() can claim:
+    // the scripts are read, as in any repo.
     const root = await makeScriptsWorkspace()
     try {
-      await Bun.write(path.join(root, 'turbo.jsonc'), '{ "tasks": { "build": {} } }\n')
-      const r = await vx(root, ['init'])
-      expect(r.code).toBe(0)
-      expect(`${r.out}${r.err}`).toContain(
-        'note: turbo.jsonc found and not read — `bunx @vzn/vx-migrate` maps it',
+      await Bun.write(path.join(root, '.nx', 'workspace-data', 'project-graph.json'), '{}\n')
+      const r = await vx(root, ['init', '--dry'])
+      expect(r.out).toContain('vx init: package.json scripts → vx.config.ts')
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  }, 60_000)
+
+  it('an existing workspace file is kept, named, or replaced under --force', async () => {
+    const root = await makeScriptsWorkspace()
+    try {
+      await Bun.write(path.join(root, 'turbo.json'), '{}\n')
+      const mine = 'export default { plugins: [] }\n'
+      await Bun.write(path.join(root, 'vx.workspace.mjs'), mine)
+      const refused = await vx(root, ['init'])
+      expect(refused.code).toBe(1)
+      expect(refused.err).toBe(
+        'vx init: vx.workspace.mjs exists; add turbo() from @vzn/vx-migrate to its plugins, or --force replaces it\n',
       )
+      expect(await Bun.file(path.join(root, 'vx.workspace.mjs')).text()).toBe(mine)
+      const forced = await vx(root, ['init', '--force'])
+      expect(forced.code).toBe(0)
+      expect(existsSync(path.join(root, 'vx.workspace.mjs'))).toBe(false)
+      expect(await Bun.file(path.join(root, 'vx.workspace.ts')).text()).toContain('turbo()')
+      // Declared already: nothing to write, and the next step still said.
+      const again = await vx(root, ['init'])
+      expect(again.code).toBe(0)
+      expect(again.out).toContain('vx.workspace.ts already declares turbo().')
+      expect(again.out).toContain('next: npm install -D @vzn/vx-migrate && vx run build --all')
     } finally {
       await rm(root, { recursive: true, force: true })
     }
   })
 
-  it('names a turbo.json it did not read, with both ways to use it', async () => {
-    // `init` maps scripts only; on a Turbo repo it used to generate the
-    // scripts' TODOs and say nothing about the edges turbo.json declares.
-    const root = await makeScriptsWorkspace()
+  it("the next step installs with the repo's own package manager, what is missing only", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'vx-init-next-'))
+    const ua = process.env['npm_config_user_agent']
     try {
-      await Bun.write(path.join(root, 'turbo.json'), '{ "tasks": { "build": {} } }\n')
-      const r = await vx(root, ['init'])
-      expect(r.code).toBe(0)
-      const text = `${r.out}${r.err}`
-      expect(text).toContain('vx init: package.json scripts → vx.config.ts')
-      expect(text).toContain('note: turbo.json found and not read — `bunx @vzn/vx-migrate` maps it')
-      expect(text).toContain('`plugins: [turbo()]` from @vzn/vx-migrate')
-      // The control — the package reads it, so the note would be false
-      // there — lives in packages/vx-migrate/tests, the only place that
-      // may spawn its bin.
+      await writeFile(path.join(root, 'nx.json'), '{ "targetDefaults": { "compile": {} } }')
+      const rows: string[] = []
+      delete process.env['npm_config_user_agent']
+      rows.push(adoptionNext(root, 'nx', 'nx.json'))
+      for (const [lock, agent] of [
+        ['package-lock.json', 'npm/10'],
+        ['bun.lock', 'bun/1.4'],
+        ['yarn.lock', 'yarn/4'],
+        ['pnpm-lock.yaml', 'pnpm/10'],
+      ]) {
+        await writeFile(path.join(root, lock!), '')
+        process.env['npm_config_user_agent'] = agent
+        rows.push(adoptionNext(root, 'nx', 'nx.json'))
+      }
+      await mkdir(path.join(root, 'node_modules', '@vzn', 'vx-migrate'), { recursive: true })
+      await writeFile(path.join(root, 'node_modules', '@vzn', 'vx-migrate', 'package.json'), '{}')
+      rows.push(adoptionNext(root, 'nx', 'nx.json'))
+      const all = '@vzn/vx @vzn/vx-migrate'
+      expect(rows).toEqual([
+        `npm install -D ${all} && vx run compile --all`,
+        `npm install -D ${all} && npx vx run compile --all`,
+        // The first lockfile in pnpm, yarn, bun, npm order names the manager.
+        `bun add -d ${all} && bunx vx run compile --all`,
+        `yarn add -D ${all} && yarn vx run compile --all`,
+        `pnpm add -D -w ${all} && pnpm vx run compile --all`,
+        'pnpm add -D -w @vzn/vx && pnpm vx run compile --all',
+      ])
     } finally {
+      if (ua === undefined) delete process.env['npm_config_user_agent']
+      else process.env['npm_config_user_agent'] = ua
       await rm(root, { recursive: true, force: true })
     }
   })
@@ -781,35 +867,6 @@ describe('vx init — the generated build is not a cached no-op', () => {
       await rm(root, { recursive: true, force: true })
     }
   })
-
-  it('the Nx note answers to EITHER marker, and turbo wins over both', async () => {
-    // Two ways to recognise an Nx workspace — `nx.json`, and the exported
-    // graph under `.nx/workspace-data/` — joined by an `||` that one fixture
-    // cannot tell apart: whichever marker it writes, the other member can be
-    // deleted and the note still appears. So each gets its own fixture, and
-    // the `else if` gets the case where both a turbo.json and an nx.json sit
-    // in the same root and only ONE note is right.
-    for (const [marker, alsoTurbo] of [
-      ['nx.json', false],
-      [path.join('.nx', 'workspace-data', 'project-graph.json'), false],
-      ['nx.json', true],
-    ] as [string, boolean][]) {
-      const root = await makeScriptsWorkspace()
-      try {
-        await Bun.write(path.join(root, marker), '{}\n')
-        if (alsoTurbo) await Bun.write(path.join(root, 'turbo.json'), '{}\n')
-        const r = await vx(root, ['init', '--dry'])
-        expect(r.code).toBe(0)
-        const text = `${r.out}${r.err}`
-        expect(text.includes('an Nx workspace found and not read')).toBe(!alsoTurbo)
-        // Both ways to use it, as the turbo.json note names both of its own.
-        expect(text.includes('`plugins: [nx()]` from @vzn/vx-migrate')).toBe(!alsoTurbo)
-        expect(text.includes('turbo.json found and not read')).toBe(alsoTurbo)
-      } finally {
-        await rm(root, { recursive: true, force: true })
-      }
-    }
-  }, 60_000)
 
   it('a run in a workspace with no vx config at all names `vx init`', async () => {
     const root = await makeRoot('vx-init-first-run-')
