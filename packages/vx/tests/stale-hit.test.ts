@@ -145,49 +145,55 @@ describe('stale cache hits', () => {
     },
     TIMEOUT,
   )
-  it(
-    'under core.fileMode=false an executable bit still re-keys the task',
-    async () => {
-      // git reports no chmod then, so the file stays trusted at its index
-      // mode, and the task replayed the output a plain input built (item
-      // 1076). WSL's DrvFs writes this setting.
-      await write(path.join(root, 'package.json'), JSON.stringify({ name: 'root', private: true }))
-      await write(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
-      await writeLocalWorkspace(root)
-      const pkg = path.join(root, 'packages', 'p')
-      await write(path.join(pkg, 'package.json'), JSON.stringify({ name: 'p', version: '1.0.0' }))
-      await write(path.join(pkg, 'src', 'run.sh'), 'echo hi\n')
-      await write(
-        path.join(pkg, 'vx.config.mjs'),
-        `export default { tasks: { build: {
+  // Every spelling git reads as false (A-33).
+  for (const off of ['false', 'no', 'off', '0']) {
+    it(
+      `under core.fileMode=${off} an executable bit still re-keys the task`,
+      async () => {
+        // git reports no chmod then, so the file stays trusted at its index
+        // mode, and the task replayed the output a plain input built (item
+        // 1076). WSL's DrvFs writes this setting.
+        await write(
+          path.join(root, 'package.json'),
+          JSON.stringify({ name: 'root', private: true }),
+        )
+        await write(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
+        await writeLocalWorkspace(root)
+        const pkg = path.join(root, 'packages', 'p')
+        await write(path.join(pkg, 'package.json'), JSON.stringify({ name: 'p', version: '1.0.0' }))
+        await write(path.join(pkg, 'src', 'run.sh'), 'echo hi\n')
+        await write(
+          path.join(pkg, 'vx.config.mjs'),
+          `export default { tasks: { build: {
            exec: { command: 'mkdir -p dist && (test -x src/run.sh && echo exec || echo plain) > dist/o' },
            cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
          } } }\n`,
-      )
-      git(root, 'init', '-q')
-      git(root, 'config', 'core.fileMode', 'false')
-      git(root, 'add', '-A')
-      git(root, 'commit', '-q', '-m', 'init')
-      const out = path.join(pkg, 'dist', 'o')
-      const step = async (): Promise<[string, string]> => {
-        const said = vx(root, 'run', 'build', '--all')
-        const word = /1 miss/.test(said) ? 'miss' : 'hit'
-        return [word, (await readFile(out, 'utf8')).trim()]
-      }
-      const seen: Array<[string, string]> = [await step()]
-      await chmod(path.join(pkg, 'src', 'run.sh'), 0o755)
-      seen.push(await step())
-      // Control: back to the committed mode, back to the first entry.
-      await chmod(path.join(pkg, 'src', 'run.sh'), 0o644)
-      seen.push(await step())
-      expect(seen).toEqual([
-        ['miss', 'plain'],
-        ['miss', 'exec'],
-        ['hit', 'plain'],
-      ])
-    },
-    TIMEOUT,
-  )
+        )
+        git(root, 'init', '-q')
+        git(root, 'config', 'core.fileMode', off)
+        git(root, 'add', '-A')
+        git(root, 'commit', '-q', '-m', 'init')
+        const out = path.join(pkg, 'dist', 'o')
+        const step = async (): Promise<[string, string]> => {
+          const said = vx(root, 'run', 'build', '--all')
+          const word = /1 miss/.test(said) ? 'miss' : 'hit'
+          return [word, (await readFile(out, 'utf8')).trim()]
+        }
+        const seen: Array<[string, string]> = [await step()]
+        await chmod(path.join(pkg, 'src', 'run.sh'), 0o755)
+        seen.push(await step())
+        // Control: back to the committed mode, back to the first entry.
+        await chmod(path.join(pkg, 'src', 'run.sh'), 0o644)
+        seen.push(await step())
+        expect(seen).toEqual([
+          ['miss', 'plain'],
+          ['miss', 'exec'],
+          ['hit', 'plain'],
+        ])
+      },
+      TIMEOUT,
+    )
+  }
   it(
     'a round trip between two entries whose outputs carry one fixed mtime restores the right bytes',
     async () => {
@@ -685,22 +691,26 @@ describe('stale cache hits', () => {
     TIMEOUT,
   )
 
-  it(
-    'editing an assume-unchanged input moves the key',
-    async () => {
-      // The sibling of the skip-worktree row above, and the half nothing
-      // held. `--assume-unchanged` is the OTHER way to tell git to stop
-      // looking at a worktree file — people use it on a tracked config
-      // they edit locally and never commit — and `git ls-files -v` marks
-      // it with a LOWERCASE letter (`h`) where skip-worktree is `S`.
-      // Both are silent in `git status --porcelain`, so both keep a
-      // trusted index OID that no longer describes the disk. Dropping
-      // only the lowercase half of that guard passes the entire repo.
-      await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
-      await writeLocalWorkspace(root)
-      await write(
-        path.join(root, 'vx.config.mjs'),
-        `export default {
+  // Each flag, edited in place: removing the file (the row above) is
+  // also caught by the save's moved-input check, which masked the `S`
+  // half of the guard (A-33).
+  for (const flag of ['--assume-unchanged', '--skip-worktree']) {
+    it(
+      `editing an input flagged ${flag} moves the key`,
+      async () => {
+        // The sibling of the skip-worktree row above, and the half nothing
+        // held. `--assume-unchanged` is the OTHER way to tell git to stop
+        // looking at a worktree file — people use it on a tracked config
+        // they edit locally and never commit — and `git ls-files -v` marks
+        // it with a LOWERCASE letter (`h`) where skip-worktree is `S`.
+        // Both are silent in `git status --porcelain`, so both keep a
+        // trusted index OID that no longer describes the disk. Dropping
+        // only the lowercase half of that guard passes the entire repo.
+        await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+        await writeLocalWorkspace(root)
+        await write(
+          path.join(root, 'vx.config.mjs'),
+          `export default {
            tasks: {
              build: {
                exec: { command: 'mkdir -p dist && cat src/*.txt > dist/out.txt' },
@@ -708,29 +718,30 @@ describe('stale cache hits', () => {
              },
            },
          }`,
-      )
-      await write(path.join(root, 'src/a.txt'), 'A')
-      await write(path.join(root, '.gitignore'), 'dist/\n.vx/\n')
-      git(root, 'init', '-q')
-      git(root, 'config', 'user.email', 'test@vx.local')
-      git(root, 'config', 'user.name', 'vx test')
-      git(root, 'add', '-A')
-      git(root, 'commit', '-q', '-m', 'initial')
+        )
+        await write(path.join(root, 'src/a.txt'), 'A')
+        await write(path.join(root, '.gitignore'), 'dist/\n.vx/\n')
+        git(root, 'init', '-q')
+        git(root, 'config', 'user.email', 'test@vx.local')
+        git(root, 'config', 'user.name', 'vx test')
+        git(root, 'add', '-A')
+        git(root, 'commit', '-q', '-m', 'initial')
 
-      git(root, 'update-index', '--assume-unchanged', 'src/a.txt')
-      vx(root, 'run', 'build')
-      expect(await readFile(path.join(root, 'dist/out.txt'), 'utf8')).toBe('A')
+        git(root, 'update-index', flag, 'src/a.txt')
+        vx(root, 'run', 'build')
+        expect(await readFile(path.join(root, 'dist/out.txt'), 'utf8')).toBe('A')
 
-      // git still reports nothing — that is the whole point of the flag —
-      // so the only thing that can move the key is vx distrusting the OID.
-      await write(path.join(root, 'src/a.txt'), 'B')
-      const status = Bun.spawnSync({ cmd: ['git', 'status', '--porcelain'], cwd: root })
-      expect(status.stdout.toString().trim()).toBe('')
-      vx(root, 'run', 'build')
-      expect(await readFile(path.join(root, 'dist/out.txt'), 'utf8')).toBe('B')
-    },
-    TIMEOUT,
-  )
+        // git still reports nothing — that is the whole point of the flag —
+        // so the only thing that can move the key is vx distrusting the OID.
+        await write(path.join(root, 'src/a.txt'), 'B')
+        const status = Bun.spawnSync({ cmd: ['git', 'status', '--porcelain'], cwd: root })
+        expect(status.stdout.toString().trim()).toBe('')
+        vx(root, 'run', 'build')
+        expect(await readFile(path.join(root, 'dist/out.txt'), 'utf8')).toBe('B')
+      },
+      TIMEOUT,
+    )
+  }
 
   it(
     'a text filter declared at the workspace root reaches a SCOPED run too',
@@ -1310,6 +1321,26 @@ describe.skipIf(process.platform === 'darwin')('a name that is not UTF-8', () =>
       TIMEOUT,
     )
   }
+
+  it(
+    'one inside an embedded repository is refused too, not dropped',
+    async () => {
+      // The outer repo lists `src/vendor/` alone; vx asks its own git for
+      // the files, and that listing carries the name too (A-33).
+      const src = await project('mkdir -p dist && cat src/*/* > dist/all')
+      const vendor = path.join(src, 'vendor')
+      await write(path.join(vendor, 'ok'), 'o')
+      await writeFile(badIn(vendor), 'bad1')
+      git(vendor, 'init', '-q')
+      git(vendor, 'add', '-A')
+      git(vendor, 'commit', '-q', '-m', 'init')
+      git(root, 'init', '-q')
+      const first = vxExit(root, 'run', 'build')
+      expect([first.code, first.out]).toEqual([1, expect.stringContaining('src/vendor/x�y')])
+      expect(first.out).toContain('not valid UTF-8')
+    },
+    TIMEOUT,
+  )
 
   it(
     'a workspaceFiles input by that name is refused too, not dropped',
