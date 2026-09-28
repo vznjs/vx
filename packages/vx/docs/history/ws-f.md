@@ -577,3 +577,17 @@ and the warn callbacks (a descriptor count and a stderr capture each).
 Checked on the way: F-52's refusal of `#` in a task filter stands, since
 config loading refuses `#` in a task name (item 1000); core's
 `splitTaskId` comment calling such a name legal is stale.
+
+F-55. A mutation sweep of vx-github's `summary.ts` and `plugin.ts` (206
+mutants: 151 caught, 18 equivalent, 2 no-op controls, 19 real survivors
+in 16 behaviours) found no bug and these unheld: failures beside aborts
+headed as a failed run (not cancelled) and aborts kept out of Failures;
+a failure with 0 violations saying nothing, 1 singular; one table row
+per task, failures first; 90 s as `1m 30s`; every inline escape class
+in an id (`\`, backtick, `_`, `[`/`]`, `<`/`>`; `<!--` hides the rest
+of a page) in the table, a failure and a blocked id; a code span around
+a backtick run or one at either end; the `summaryFile` option over
+`GITHUB_STEP_SUMMARY`; the lead newline after a one-byte file. Rows now
+hold each (23 re-driven). Left: literal cap and suffix text, blank-line
+placement, the Latin-1 header boundary, the constructor's dead `sizeOf`
+default.
