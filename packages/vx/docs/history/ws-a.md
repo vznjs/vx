@@ -264,4 +264,5 @@ The last `miss-save.ts` survivors: the workspace-row filter in the snapshot's `e
 - Fix: the prefix is read under `ustar\0` only.
 - Rows (`tar-stream.test.ts`): the GNU header with a POSIX control; lone zero blocks between entries and at the end; a NUL typeflag; a skipped pax `g`; an archive ending after an extended header, and inside padding; a pax size past 2^53; a Blob body that disagrees with its size; a size past the octal field; a stat mode's type bits dropped. Each red under its mutant.
 - Equivalent: a pax record with an empty key (never read), a ustar split leaving an empty name (read back the same), the checksum's last space (already written by the fill), an empty chunk pushed.
+- `policy.ts` and `config-evals.ts` swept: 24 mutants, 23 caught; the survivor dropped the segment trim, now held by `cache.test.ts` › "reads segments with spaces around them".
 - The zero-length pax record (T6) hangs the reader under its mutant, so `bun test` never ends: caught by a timeout, not a row.
