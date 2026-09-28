@@ -22,6 +22,24 @@ import { turbo } from '@vzn/vx-migrate'
 export default defineWorkspace({ plugins: [turbo()] })
 ```
 
+### Try it in five minutes
+
+[`examples/turbo`](https://github.com/vznjs/vx/tree/main/examples/turbo)
+is a Turbo repo with that `vx.workspace.ts` added. Every line below is
+what a test runs on each commit (`packages/vx/tests/examples.unsafe.test.ts`).
+
+```sh
+npm install && git init && git add -A && git commit -m init
+npx vx run test --all      # 3 miss: lib#build, app#build, app#test
+npx vx run test --all      # 3 up-to-date
+bunx @vzn/vx-migrate       # 3 tasks migrated clean, 0 TODOs
+git add -A && git commit -m migrate
+npx vx run test --all      # 3 up-to-date: the written configs derive the same keys
+rm vx.workspace.ts         # drop turbo(); the configs stand alone
+git add -A && git commit -m done
+npx vx run test --all      # 3 up-to-date
+```
+
 | Turborepo (`turbo.json`)                                    | vx (`vx.config.ts`)                                                      |
 | ----------------------------------------------------------- | ------------------------------------------------------------------------ |
 | `tasks` / `pipeline`                                        | `tasks`                                                                  |
