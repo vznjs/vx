@@ -361,3 +361,12 @@ for the window. Up to 8 now run at once and the first failure stops the
 queue. Against bazel-remote through a proxy adding 15 ms each way: four
 8 MB blobs 10.15 → 0.53 s, 400 of 64 KiB 1147 → 685 ms (min of 5,
 interleaved). Live suite 17 of 17. Row red without the fix.
+
+F-33. vx-otel ignored `OTEL_EXPORTER_OTLP_COMPRESSION`, so a pipeline
+set for gzip sent every export as raw JSON. It and each signal's own
+`OTEL_EXPORTER_OTLP_<SIGNAL>_COMPRESSION` are now read (the
+`compression` option tops both); `gzip` sends the body gzipped with
+`content-encoding: gzip`, compressed once, not per retry; any other
+value warns and sends uncompressed. A 1 000-task trace: 971 KB → 33 KB
+for 4 ms of gzip. A live collector (0.161.0) took the gzipped export.
+Rows red without the fix.

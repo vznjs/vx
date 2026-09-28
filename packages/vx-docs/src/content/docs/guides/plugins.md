@@ -324,6 +324,7 @@ export default defineWorkspace({
 | `metrics`         | `OTEL_METRICS_EXPORTER=none` turns it off | `true`               |
 | `logs`            | `OTEL_LOGS_EXPORTER=none` turns it off | `true`                  |
 | `timeoutMs`       | `OTEL_EXPORTER_OTLP_TIMEOUT`           | `15000`                 |
+| `compression`     | `OTEL_EXPORTER_OTLP_COMPRESSION` (and `_<SIGNAL>_`) | `'none'`   |
 
 | Signal            | Carries                                                                                                   |
 | ----------------- | --------------------------------------------------------------------------------------------------------- |
