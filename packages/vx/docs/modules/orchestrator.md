@@ -85,7 +85,7 @@ export interface RunSummary {
    zero sinks are contributed, so a plain run adds no subscriber and
    builds no records. The pipeline stages (`config`, `project`,
    `graph`, `key`, `schedule`) ran earlier, inside `prepareRun`.
-5. **Run-level state.** `runId` (ULID) + `runStartHrTimeNs` anchor +
+5. **Run-level state.** `runId` (UUIDv7) + `runStartHrTimeNs` anchor +
    `liveChildren` set + `persistentRegistry` map. SIGINT/SIGTERM/SIGHUP
    handlers installed here, removed in a `finally`.
 6. **Sandbox prepare.** `prepareSandbox(nodes)` — null when no node
