@@ -32,7 +32,15 @@ export type PostFn = (
   body: string,
   headers: Record<string, string>,
   signal?: AbortSignal,
+  tls?: OtlpTls,
 ) => Promise<void>
+
+/** PEM text from `OTEL_EXPORTER_OTLP_*CERTIFICATE` / `*CLIENT_KEY`, as fetch takes it. */
+export interface OtlpTls {
+  ca?: string
+  cert?: string
+  key?: string
+}
 
 export type OtelSignal = 'traces' | 'metrics' | 'logs'
 
@@ -50,6 +58,8 @@ export interface OtelSinkConfig {
   signalHeaders?: Partial<Record<OtelSignal, Record<string, string>>>
   /** Signals sent gzipped (`OTEL_EXPORTER_OTLP_COMPRESSION=gzip`). */
   gzip?: readonly OtelSignal[]
+  /** Per signal: a collector's CA, and a client certificate for mutual TLS. */
+  tls?: Partial<Record<OtelSignal, OtlpTls>>
   /** False under `OTEL_TRACES_EXPORTER=none`; absent is true. */
   tracesEnabled?: boolean
   metricsEnabled: boolean
@@ -61,7 +71,7 @@ export interface OtelSinkConfig {
 
 const defaultPost =
   (timeoutMs: number): PostFn =>
-  async (url, json, headers, deadline) => {
+  async (url, json, headers, deadline, tls) => {
     // Compressed once, not per attempt; the header says the sink asked.
     const body = headers['content-encoding'] === 'gzip' ? Bun.gzipSync(json) : json
     // A collector that sheds load (429, 502, 503, 504, or a reset
@@ -70,7 +80,7 @@ const defaultPost =
     // still bounds it all.
     for (let attempt = 0; ; attempt++) {
       try {
-        return await postOnce(url, body, headers, timeoutMs, deadline)
+        return await postOnce(url, body, headers, timeoutMs, deadline, tls)
       } catch (err) {
         const retry = err instanceof OtlpRetryable ? err.afterMs : undefined
         const delay = RETRY_DELAYS_MS[attempt]
@@ -120,6 +130,7 @@ async function postOnce(
   headers: Record<string, string>,
   timeoutMs: number,
   deadline: AbortSignal | undefined,
+  tls: OtlpTls | undefined,
 ): Promise<void> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
@@ -130,7 +141,13 @@ async function postOnce(
   try {
     let res: Response
     try {
-      res = await fetch(url, { method: 'POST', body, headers, signal: controller.signal })
+      res = await fetch(url, {
+        method: 'POST',
+        body,
+        headers,
+        signal: controller.signal,
+        ...(tls === undefined ? {} : { tls }),
+      })
     } catch (err) {
       // A connection that failed is worth a retry; one this side aborted is not.
       if (controller.signal.aborted) throw err
@@ -234,6 +251,7 @@ export class OtelSink implements TelemetrySink {
       resource: config.resource ?? {},
       grpc: config.grpc ?? [],
       gzip: config.gzip ?? [],
+      tls: config.tls ?? {},
       headers: config.headers,
       signalHeaders: config.signalHeaders ?? {},
       tracesEnabled: config.tracesEnabled !== false,
@@ -397,7 +415,7 @@ export class OtelSink implements TelemetrySink {
         bodies.map((body) =>
           // Through a promise, so a transport that throws before it awaits is caught too.
           Promise.resolve()
-            .then(() => this.cfg.post(url, body, headers, this.deadline))
+            .then(() => this.cfg.post(url, body, headers, this.deadline, this.cfg.tls[signal]))
             .then(
               () => undefined,
               (err: unknown) => (err instanceof Error ? err.message : String(err)),
