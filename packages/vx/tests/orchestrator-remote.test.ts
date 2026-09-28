@@ -222,6 +222,56 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
     TIMEOUT,
   )
 
+  // A local save stores the masked command (L-11), but a remote hit's
+  // ingest wrote the one the lookup carried, raw: the token a config
+  // inlined sat in cache.db, where `vx why` and `vx mcp` read it (L-27).
+  it(
+    'a remote hit stores the command with its secret masked',
+    async () => {
+      const fixture = await makeFixture('vx-remote-mask-')
+      const remote = startArtifactEndpoint()
+      try {
+        await addProject(fixture.root, 'app', {
+          files: { 'src/in.txt': 'v1' },
+          config: `
+            export default {
+              tasks: {
+                build: {
+                  exec: {
+                    command: 'echo tok-l27-secret > /dev/null; echo built > out.txt',
+                    env: { define: { L27_TOKEN: 'tok-l27-secret' }, secret: ['L27_TOKEN'] },
+                  },
+                  cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+                },
+              },
+            }
+          `,
+        })
+        const opts = {
+          cwd: fixture.root,
+          tasks: ['build'],
+          log: silentLogger(fixture),
+          remoteCache: remote.layer,
+        }
+        expect((await run(opts)).outcomes[0]!.status).toBe('success')
+        await rm(path.join(fixture.root, '.vx'), { recursive: true, force: true })
+        expect((await run(opts)).outcomes[0]!.status).toBe('cache-hit-remote')
+        const db = new Database(path.join(fixture.root, '.vx', 'cache', 'cache.db'), {
+          readonly: true,
+        })
+        const stored = db
+          .query<{ command: string }, []>('SELECT command FROM entries')
+          .all()
+          .map((r) => r.command)
+        db.close()
+        expect(stored).toEqual(['echo *** > /dev/null; echo built > out.txt'])
+      } finally {
+        await rm(fixture.root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
   it(
     'planRun (--dry) predicts hit-remote via HEAD — no artifact download, no local ingest',
     async () => {
