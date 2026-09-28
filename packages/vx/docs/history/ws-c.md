@@ -553,6 +553,22 @@ flattens `\r` too. `vx-github`'s ids are unchanged (its inline escape
 doubles every backslash first). HTML in a name still renders as HTML;
 GitHub sanitises it and the table holds.
 
+## C-41: hold `failure-mode.ts`'s surviving mutants
+
+Swept `orchestrator/failure-mode.ts` (55 mutants, 10 files): 46
+caught, 9 survived. 2 are equivalent: `detectFlaky`'s two empty-list
+early returns (the rest of the function asks nothing and returns `[]`
+on an empty list). A third survives only by SQLite's current sorter:
+`flakyTasks` ordering without its last `task` key, since the grouped
+subquery emits in project, task order and the sorter keeps it. SQL
+does not promise that, so the key stays. Four `failure-mode.test.ts` rows hold the
+other 6: the chunk row also fails the last key of the first chunk (a
+slice one short dropped it); two tasks of one project sharing a key
+string stay apart (the key without `task` mixed them); a failure and a
+retried pass cost one query, the scan, not a probe first (two guards on
+the probe list); a failure tie breaks by passes, then project, then
+task. No defect.
+
 ## Leads for other streams
 
 - **E:** a plugin command's plain `throw` (`commands.probe.run` throwing
