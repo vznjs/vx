@@ -329,7 +329,7 @@ to no project and no `workspaceFiles` glob names it. The scan is
 STATIC (nothing is evaluated) and follows RELATIVE specifiers, and a
 bare one the nearest tsconfig maps through `paths` or `baseUrl`; any
 other bare specifier is a package, and a lockfile change already selects
-everything. It stops at a project boundary: a config importing
+everything. It stops at a project boundary (a root project's files excepted): a config importing
 `../../packages/lib/preset.ts` gets the edge, but `preset.ts`'s own
 imports inside `lib` do not reach further — `lib` is already selected
 by containment. Import your helpers by bare specifier to opt out. See

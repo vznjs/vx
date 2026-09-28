@@ -73,7 +73,9 @@ rules (a plugin may not shadow a core verb; a verb has one owner).
   `cache.inputs`, `cache.outputs`, and the workspace top level. The
   message is `<level> has unknown field "<key>" (allowed: …)` plus
   ` — did you mean <x>?` when a candidate is within two edits
-  (`util/edit-distance.ts`), never a guess beyond that.
+  (`util/edit-distance.ts`), never a guess beyond that; another
+  runner's spelling (`FOREIGN_FIELDS`: Turbo's `outputs`, Nx's
+  `targetDefaults`) ends ` — vx spells it <x>` instead (D-37, D-38).
 - `cache` needs both `inputs` and `outputs`; a persistent task may not
   carry `cache`; `dependsOn` entries are validated as specs.
 - Globs may not carry a `..` path segment, a negation alone, or a

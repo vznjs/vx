@@ -95,8 +95,6 @@ the typo refusal under the flag; `tests/taint-tracker.test.ts` ›
 - Verify a dropped dependency's outputs against its key. Proving a tree
   current is `hit-restore.ts`'s job on a hit; here the conservative
   answer (no save) costs one re-run on the next full run.
-- Widen the sandbox's keyed set (`keyed-projects.md`), which walks the
-  scheduled `deps`: a key that folds more than that set names is safe.
 - Hide the dropped dependency from an executor. `excludedUpstream`
   reaches the executor with the live upstream, so an input-shipping
   executor's `TaskInputs.upstream` lists it with the key a full run

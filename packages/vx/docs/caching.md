@@ -579,8 +579,8 @@ is on):
    `computeTaskHash` runs.
 3. The artifact — one `stdout` entry (bounded: the first and last 8 Mi
    characters of the task's output, the dropped middle named where it was), the `outputs/<rel>` (+
-   `workspace-outputs/<rel>`) entries and the `.vx-meta.json` sidecar —
-   is packed in-process (no staging dir, no subprocess) into a
+   `workspace-outputs/<rel>`) entries, the `.vx-meta.json` sidecar and
+   the `.vx-sum` checksum — is packed in-process (no staging dir, no subprocess) into a
    single `<hash>.tar.zst`, written to a temp name and validated.
 4. One `BEGIN IMMEDIATE` SQLite transaction renames the artifact into
    place and upserts the `entries` row (taskId, command, exit code,
