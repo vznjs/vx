@@ -125,6 +125,27 @@ describe('nx-map: what the sweep found unheld', () => {
     ])
   })
 
+  // Nx runs them before a run's tasks; they were dropped in silence.
+  it('nx.json `sync.globalGenerators` is one workspace note; none says nothing', async () => {
+    const a = await meta('a')
+    const graph = {
+      nodes: { a: node('packages/a', { lint: { command: 'eslint .' } }) },
+      dependencies: {},
+    } as NxGraph
+    const before = await mapNxWorkspace(root, [a], graph, OPTS)
+    await writeFile(
+      path.join(root, 'nx.json'),
+      JSON.stringify({ sync: { globalGenerators: ['@acme/tools:sync-env'] } }),
+    )
+    const after = await mapNxWorkspace(root, [a], graph, OPTS)
+    expect([before.notes, after.notes]).toEqual([
+      [],
+      [
+        'nx.json `sync.globalGenerators` ("@acme/tools:sync-env"): Nx runs them before a run, and vx does not — run `nx sync` when they are out of date',
+      ],
+    ])
+  })
+
   it('a cached target with no inputs and no nx.json default reads the whole project', async () => {
     const a = await meta('a')
     const t = await tasksOf([a], {

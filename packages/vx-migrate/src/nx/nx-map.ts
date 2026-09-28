@@ -117,6 +117,8 @@ export interface MapNxOptions {
 
 export interface NxMapping {
   readonly projects: GeneratedProject[]
+  /** Workspace-wide gaps, one line each. */
+  readonly notes: string[]
 }
 
 function normRel(p: string): string {
@@ -132,7 +134,7 @@ export async function mapNxWorkspace(
   const nodeMap = graph.nodes
   const g = graph
 
-  const { namedInputs, cacheable } = await readNxJsonFacts(root)
+  const { namedInputs, cacheable, globalSync } = await readNxJsonFacts(root)
   const mapOpts: MapNxOptions = { ...opts, cacheable: new Set([...opts.cacheable, ...cacheable]) }
 
   const metaByRel = new Map<string, ProjectMeta>()
@@ -308,7 +310,14 @@ export async function mapNxWorkspace(
   }
 
   pruneOrphanPersistentNotes(projects, opts.persistentTodo)
-  return { projects }
+  const notes =
+    globalSync.length === 0
+      ? []
+      : [
+          `nx.json \`sync.globalGenerators\` (${globalSync.map((g) => JSON.stringify(g)).join(', ')}): ` +
+            'Nx runs them before a run, and vx does not — run `nx sync` when they are out of date',
+        ]
+  return { projects, notes }
 }
 
 /**
@@ -351,6 +360,8 @@ function variants(targetName: string, target: NxTarget): Variant[] {
 interface NxJsonFacts {
   readonly namedInputs: Record<string, unknown[]> | null
   readonly cacheable: ReadonlySet<string>
+  /** `sync.globalGenerators`: Nx runs them before a run's tasks. */
+  readonly globalSync: readonly string[]
 }
 
 /**
@@ -384,13 +395,14 @@ export async function readNxJson(
 }
 
 export async function readNxJsonFacts(root: string): Promise<NxJsonFacts> {
-  const none: NxJsonFacts = { namedInputs: null, cacheable: new Set() }
+  const none: NxJsonFacts = { namedInputs: null, cacheable: new Set(), globalSync: [] }
   try {
     const read = await readNxJson(root)
     if (read === null) return none
     const parsed = read.json as {
       namedInputs?: unknown
       tasksRunnerOptions?: { default?: { options?: { cacheableOperations?: unknown } } }
+      sync?: { globalGenerators?: unknown }
     }
     const named = parsed?.namedInputs
     const ops = parsed?.tasksRunnerOptions?.default?.options?.cacheableOperations
@@ -400,6 +412,9 @@ export async function readNxJsonFacts(root: string): Promise<NxJsonFacts> {
       cacheable: new Set(
         Array.isArray(ops) ? ops.filter((o): o is string => typeof o === 'string') : [],
       ),
+      globalSync: Array.isArray(parsed?.sync?.globalGenerators)
+        ? parsed.sync.globalGenerators.filter((g): g is string => typeof g === 'string')
+        : [],
     }
   } catch {
     // An unreadable nx.json (or base) just degrades named-input refs to TODOs.
