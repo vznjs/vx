@@ -106,7 +106,8 @@ export default defineProject({
 | Always excluded        | `node_modules`, `.git`, `.vx`, `*.tsbuildinfo`, `vx-lock.json`, `*.bun-build`, files git ignores, the task's own outputs, a nested project's files |
 | Out, when you say so   | a dependency only for order: `cache.inputs.tasks: []`, as the [dev task](#dev-tasks) does |
 
-Declared outputs are wiped before every run and every restore, so `dist/`
+Declared outputs are wiped before every run that writes the cache and every
+restore, so `dist/`
 ends as the cache stored it; a hit that finds them already as stored skips
 both. A task that adds files beside an upstream task's outputs wipes
 nothing before a run and only the files it recorded before a restore. A failed task is never saved. `--force` runs
@@ -224,7 +225,7 @@ export default defineWorkspace({
 | `concurrency`    | tasks at once; `--concurrency <n>` overrides it for one run           |
 | `cacheDir`       | where the local cache lives; add it to `.gitignore`                   |
 | `timeout`        | a default task timeout in ms; default none                            |
-| `cacheRetention` | evict at the end of every run that writes the cache: `olderThan` unused, then least recently used past `maxSize`; default none |
+| `cacheRetention` | evict at the end of every run: `olderThan` unused, then least recently used past `maxSize`; default none |
 
 For a timeout, the first one set wins: a task's `exec.timeout`, then
 `--timeout <ms>`, then `VX_TASK_TIMEOUT`, then this. It is never in a

@@ -1222,7 +1222,7 @@ interface WorkspaceConfig {
   root) is refused before anything is written, since its `*`
   `.gitignore` would hide the sources from git and the cache keys.
 - **`cacheRetention`** — the `vx cache prune` policy, applied at the
-  end of every run that writes the local cache: entries unused for
+  end of every run: entries unused for
   `olderThan` (`30d`, `12h`, `90m`, `45s`) go first, then the
   least-recently-used until the cache is under `maxSize` (`10G`,
   `500MB`, `64KB`; a bare number is refused as a typo, `10B` is not).
