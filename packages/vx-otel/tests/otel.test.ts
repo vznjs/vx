@@ -1181,6 +1181,34 @@ describe('a signal ships only to its own url (item 807)', () => {
     })
   })
 
+  it('a metrics-only or logs-only endpoint exports that signal alone (F-45)', async () => {
+    // Only a traces url kept the plugin in: a pipeline that set just a
+    // metrics or logs endpoint declined whole and exported nothing.
+    const posted = async (env: Record<string, string>): Promise<string[] | undefined> => {
+      const urls: string[] = []
+      const cfg = resolveOtelConfig({ post: async (url) => void urls.push(url) }, env)
+      if (cfg === undefined) return undefined
+      const sink = new OtelSink(cfg)
+      sink.onRecord({ v: 1, kind: 'run.start', run: RUN, total: 0, ts: 1000 } as TelemetryRecord)
+      sink.onRecord({ v: 1, kind: 'run.end', runId: 'run-1', ts: 1100 } as TelemetryRecord)
+      sink.onRunSummary(summaryFor(RUN, []))
+      await sink.flush()
+      return urls.sort()
+    }
+    expect([
+      await posted({ OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: 'http://m/v1/metrics' }),
+      await posted({}),
+    ]).toEqual([['http://m/v1/metrics'], undefined])
+    // A logs-only endpoint: logs on, the others off (a log needs task output to post).
+    const logs = resolveOtelConfig({}, { OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: 'http://l/v1/logs' })
+    expect([logs?.tracesEnabled, logs?.metricsEnabled, logs?.logsEnabled, logs?.logsUrl]).toEqual([
+      false,
+      false,
+      true,
+      'http://l/v1/logs',
+    ])
+  })
+
   it('a signal asked for by name with no url says so once, and stays off', () => {
     const warns: string[] = []
     const c = resolveOtelConfig(
