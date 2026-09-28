@@ -41,12 +41,16 @@ until green. Queue cost on the first run (2026-09-28): 34 s to a runner
    (lead in `ws-o.md`). Until it lands, a repo whose tasks all declare
    `exec.sandbox` (this one) cannot run through vx on Windows, so the CI
    job also runs the shards as bare `bun test` to get data.
-5. **Cache keys: Windows is its own key space.** Today no key part names
-   the platform. Windows cannot see an exec bit (`core.fileMode=false`,
-   `st.mode` is 0o666), and it writes CRLF under `autocrlf`. Its
-   artifacts would be replayed on Linux without `+x`, and the other way
-   round. On win32 alone, the key folds `win32`. Linux and macOS keys do
-   not move, so `CACHE_VERSION` does not bump.
+5. **Cache keys: no platform part, as between Linux and macOS.** No
+   key part names the platform today. A native output built on one OS
+   already needs a declared input to be shared across OSes, for example
+   `cache.inputs.runtime: ['node -p process.platform']`. Windows adds two
+   differences. It cannot see an exec bit (`core.fileMode=false`,
+   `st.mode` 0o666), so a 100755 input keys as 100644 there: a miss,
+   not a stale hit. And its artifacts restore on Linux without `+x`:
+   the same class as a native binary, with the same answer (a lead for
+   J: `caching.md` should say it). Folding `win32` would also move
+   every pinned-key row on the Windows job.
 6. **Archive: POSIX entry names, and no mode on win32.** Entry names are
    built with `path.relative` (`cache.ts` `outputsOf`), so they hold `\`
    on Windows, and `assertSafeName` refuses them: no Windows artifact
@@ -86,8 +90,7 @@ until green. Queue cost on the first run (2026-09-28): 34 s to a runner
 Correctness before reach, so the first thing Windows gets right is the
 cache:
 
-1. Key space (5) and archive names and modes (6): a Windows artifact
-   that restores, and never on Linux.
+1. Archive names and modes (6): a Windows artifact that restores.
 2. The shell (1), so that any task runs.
 3. Kill and signals (2, 3), so that a timeout or Ctrl-C leaves nothing
    behind.

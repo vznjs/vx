@@ -19,3 +19,7 @@ to a Windows runner (macOS 82 s, Linux 2 s), 25 s of `bun install`.
   It is also the only way this repo's own suite runs through vx there.
 - B: on win32 the sandbox refusal says "install it (Linux: apt install
   bubblewrap socat ripgrep …)". That advice is wrong there.
+- J: `caching.md` should say that a Windows artifact restores on Linux
+  without an exec bit (Windows cannot see one), the same class as a
+  native binary shared across OSes, with the same answer: a declared
+  `cache.inputs.runtime` such as `node -p process.platform`.
