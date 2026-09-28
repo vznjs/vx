@@ -173,7 +173,7 @@ describe.if(CHUNKING_SUPPORTED)('the REAPI cache layer streams against a fake se
       const sent = writes.slice(before)
       expect(sent.length).toBe(1)
       expect(sent[0]!.length).toBe(Math.ceil(body.length / CHUNK_BYTES))
-      expect(sent[0]!.every((n) => n === CHUNK_BYTES)).toBe(true)
+      expect(sent[0]!.slice(0, -1).every((n) => n === CHUNK_BYTES)).toBe(true)
       const got = await cache.get('k-large')
       expect(got!.body).toBeInstanceOf(Response)
       expect(got!.durationMs).toBe(11)

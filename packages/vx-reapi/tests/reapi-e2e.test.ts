@@ -56,7 +56,7 @@ describe.if(run)('REAPI round-trip against a live server', () => {
 
   it('stores and restores an artifact larger than one chunk, byte-identical', async () => {
     // The shape that made Bun's http2 hang: a blob spanning many ByteStream
-    // messages. 1 MB over 128 KB chunks is 8 messages.
+    // messages. 1 MB over the 65535-byte default is 17 messages.
     const cache = new ReapiRemoteCache({ endpoint })
     try {
       const key = `vx-key-${nonce()}`
@@ -154,8 +154,8 @@ describe.if(run)('chunkBytes is a real escape hatch, not just an option', () => 
   // So the escape hatch has to be exercised against a real server, or it is
   // just a field nobody has proven routes anywhere.
   it.each([
-    ['default 128 KB', undefined],
-    ['SAFE_CHUNK_BYTES', 65535],
+    ['the default (65535)', undefined],
+    ['128 KB', 128 * 1024],
   ])('round-trips a multi-chunk artifact at %s', async (_label, chunkBytes) => {
     const cache = new ReapiRemoteCache({
       endpoint,

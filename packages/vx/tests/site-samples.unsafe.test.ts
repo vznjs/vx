@@ -153,23 +153,19 @@ describe('the configure guide names the essential allowlist', () => {
 
 // The remote-execution guide is the CI page's section now.
 describe('the CI guide states the wire chunk sizes', () => {
-  it('its uploads bullet names CHUNK_BYTES in KB and the SAFE_CHUNK_BYTES retry size', () => {
+  it('its uploads bullet names the default chunk, which is SAFE_CHUNK_BYTES', () => {
     const wire = readFileSync(
       path.resolve(import.meta.dir, '..', '..', 'vx-reapi', 'src', 'wire.ts'),
       'utf8',
     )
-    const chunk = /export const CHUNK_BYTES = (\d+) \* 1024/.exec(wire)
-    const safe = /export const SAFE_CHUNK_BYTES = (\d+)/.exec(wire)
+    const chunk = /export const CHUNK_BYTES = (\d+)$/m.exec(wire)
+    const safe = /export const SAFE_CHUNK_BYTES = (\d+)$/m.exec(wire)
     expect(chunk).not.toBeNull()
     expect(safe).not.toBeNull()
     const page = section(readFileSync(path.join(GUIDES, 'ci.md'), 'utf8'), 'Remote execution')
-    const m =
-      /- Uploads chunk at (\d+) KB[\s\S]*?retries once\s+at (\d+) bytes — `SAFE_CHUNK_BYTES`/.exec(
-        page,
-      )
+    const m = /- Uploads chunk at (\d+) bytes \(`SAFE_CHUNK_BYTES`\)/.exec(page)
     expect(m).not.toBeNull()
-    expect(m![1]).toBe(chunk![1])
-    expect(m![2]).toBe(safe![1])
+    expect([m![1], chunk![1]]).toEqual([safe![1], safe![1]])
   })
 })
 

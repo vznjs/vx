@@ -32,23 +32,23 @@ function varintBytes(n: number): Uint8Array {
  * fixed by #31584 — which is why the ceiling ROSE from ~64 KB on 1.3.x to
  * ~216 KB on 1.4.0 rather than the hang disappearing.
  *
- * 128 KB is MEASURED safe against bazel-remote on Bun >= 1.4 and is the
- * shipped default. It is NOT safe on Bun 1.3.x — hence `MIN_BUN` and
- * `assertBunSupportsChunking()`.
- *
- * `SAFE_CHUNK_BYTES` (65535, the RFC 7540 default initial window every peer
- * must honour with no WINDOW_UPDATE at all) is the value with no
- * peer-dependence. A deployment whose server is not bazel-remote and which
- * sees uploads wedge should pass `chunkBytes: SAFE_CHUNK_BYTES`.
+ * The default is therefore `SAFE_CHUNK_BYTES` (65535, the RFC 7540 default
+ * initial window every peer must honour with no WINDOW_UPDATE at all), the
+ * one size with no peer-dependence. 128 KB was the default and stalled a
+ * 1 MiB write against bazel-remote in 2 of 12 fresh runs on Bun 1.4.2, each
+ * costing the call's 30 s deadline before the downgrade below retried it;
+ * 65535 stalled in none (F-20). It costs ~45% on a 32 MiB upload
+ * (390 → 590 ms on loopback), far below one expected stall. A larger
+ * `chunkBytes` stays available, with the downgrade as its net.
  *
  * Full probe matrix: `docs/design/plugin-executor-reapi-2026-08.md` §14.
  */
-export const CHUNK_BYTES = 128 * 1024
+export const CHUNK_BYTES = 65535
 
 /**
  * The largest message needing no `WINDOW_UPDATE` from any conformant peer, so
- * the one size with no peer-dependence. The escape hatch when a server's
- * flow-control behaviour trips the Bun defect above.
+ * the one size with no peer-dependence: the default, and what a larger
+ * `chunkBytes` downgrades to when a write stalls.
  */
 export const SAFE_CHUNK_BYTES = 65535
 
@@ -386,9 +386,9 @@ export interface ReapiOptions {
    */
   metaTimeoutMs?: number
   /**
-   * Bytes per ByteStream message. Defaults to `CHUNK_BYTES` (128 KB). Drop to
-   * `SAFE_CHUNK_BYTES` if uploads wedge against your server — the ceiling is
-   * peer-dependent, see the note on `CHUNK_BYTES`.
+   * Bytes per ByteStream message. Defaults to `CHUNK_BYTES` (65535, the size
+   * with no peer-dependence); a larger value risks the stall described on
+   * `CHUNK_BYTES`, retried once at `SAFE_CHUNK_BYTES`.
    */
   chunkBytes?: number
 }
