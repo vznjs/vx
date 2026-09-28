@@ -379,7 +379,14 @@ describe('a shared link shows the card', () => {
       expect(meta(html, 'og:image')).toEqual([`${SITE}${BASE}og.png`])
       expect(meta(html, 'twitter:card')).toEqual(['summary_large_image'])
     }
-    expect(meta(page(), 'og:title')).toEqual(['vx — Bend time. Not the rules.'])
+    expect(meta(page(), 'og:title')).toEqual([
+      'vx — a fast, correct task runner for JavaScript monorepos',
+    ])
+    // The search result's and the card's headline says what vx is: the
+    // cinematic landing's slogan outlived the page it headed.
+    expect(/<title>([^<]*)<\/title>/.exec(page())?.[1]).toBe(
+      'vx — a fast, correct task runner for JavaScript monorepos',
+    )
   })
 
   it('the card is a 1200×630 PNG', () => {

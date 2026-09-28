@@ -94,6 +94,20 @@
   The rest of the backlog had shipped: demo SVG (K-6), chart (K-1),
   CONTRIBUTING (K-7), social card and meta (K-3), and the site's code
   blocks already carry copy buttons.
+- **K-15** The landing's `<title>` and `og:title`, the headline of a
+  search result and of a shared link's card, read "vx — Bend time. Not
+  the rules.", the slogan of the cinematic landing site-short replaced;
+  they now say what vx is, as the hero does. Coordinator backlog 5's
+  other asks exist: the terminal demo SVG from a real run (K-6, in the
+  quick start so install stays on the first screen), CONTRIBUTING with
+  the gate and Conventional Commits (K-7, K-10; the stream protocol is
+  the maintainers' plan, not a contributor's), the social card and
+  meta on every page (K-3, held for the landing and a docs page), the
+  chart from results.json (K-1, held by `check.site`). The first
+  screens of vite.dev, biomejs.dev and uv share headline, install copy,
+  two CTAs and a visual, which the landing has; their subhead and logo
+  strip are not added: the site-short design fixes the hero at one line
+  and vx has adopters to name only as benched repos (K-14).
 
 ## Leads for other streams
 
