@@ -70,6 +70,12 @@ readers that reach it here.
   `"Project config at <path> did not export a default object"`
   (`Workspace config at …` for a workspace file) — from
   the same check on both paths.
+- Both paths read the same environment: each Worker request carries the
+  parent's `process.env` as it is at that moment, and the Worker syncs to
+  it before the import. A Worker otherwise starts with the process's
+  startup environment, so a config reading a variable the process set
+  since saw it on the first load and not on later ones, and an
+  embedder's second `run()` derived a different key (D-61).
 - A Promise default export is awaited on both paths, so an async
   config resolves to its object on the first load and in the Worker
   alike (D-5). The awaited value is checked again, a workspace

@@ -579,3 +579,13 @@ packages/core`) selects the dependent whose `file:../lib` spec named
   the branch) and the `package.json` read, spies restored per row, with
   a control that a missing directory is still absent. The root walk's
   manifest read and a link's stat share the helper the rows hold.
+- **D-61** Lead from L: two in-process `run()` calls on a config that
+  reads `process.env` derived different keys. Probed: a Bun Worker
+  starts with the process's STARTUP environment, so the first load (in
+  process) saw a variable set since and every Worker re-evaluation did
+  not. Each Worker request now carries the parent's `process.env`, and
+  the Worker syncs to it (deletions included) before the import. The
+  in-process fixture now hits on one key across three runs. Row: the
+  D-61 row of `tests/config-eval.test.ts`, one evaluation round with a
+  new file per call; red without the fix, and each half (assign,
+  delete) caught by its mutant.

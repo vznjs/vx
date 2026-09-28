@@ -42,7 +42,17 @@ import { nonJsonMessage, nonJsonPaths, type NonJsonValue } from './json-data.js'
 const WORKER_SRC = `
 const nonJsonPaths = ${nonJsonPaths.toString()}
 self.onmessage = async (e) => {
-  const { id, path } = e.data
+  const { id, path, env } = e.data
+  // A Worker starts with the process's STARTUP environment, not the
+  // parent's process.env as written since (probed): a config reading an
+  // env var set in-process evaluated with it on the first load and without
+  // it on every later one, and an embedder's second run() derived a
+  // different key (D-61). Each request carries the parent's env now.
+  // Through globalThis: the playground bundles this source as a string, and
+  // its free-global scan reads a bare process after a paren as code.
+  const live = globalThis.process.env
+  for (const k of Object.keys(live)) if (!(k in env)) delete live[k]
+  Object.assign(live, env)
   try {
     const ns = await import(path)
     // Awaited as the in-process load's async return flattens it: a Promise
@@ -238,7 +248,7 @@ export async function evaluateConfigFresh(configPath: string): Promise<unknown> 
         }
       }, budget)
       timer.unref?.()
-      w.postMessage({ id, path: abs })
+      w.postMessage({ id, path: abs, env: { ...process.env } })
     })
     const [nonJson] = reply.nonJson
     if (nonJson !== undefined) throw new UserError(nonJsonMessage(configPath, nonJson))
