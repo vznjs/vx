@@ -243,6 +243,16 @@ against 29.6 s, restore 199 ms against 340 ms, no-op 174 ms against
 342 ms. No mapping gap; `typecheck` sharing `build`'s tsbuildinfo runs
 uncached by design.
 
+N-25. `nx()` on TanStack/table (Nx 23.2.1): six targets plan as Nx
+does (1,350 tasks, a root `vx.config.mjs` making the root's `format` a
+task). Gap: the `public` named input lists `{projectRoot}/dist`, each
+project's own `build` output; vx refuses a path git does not list, so
+every build failed. `nx()` now drops a path input inside an output the
+project's own targets declare, with one grouped todo
+(`nx-upstream.test.ts`, red without the fix). `build` over 18 packages:
+28.7 s cold against 32.6 s, restore 1.57 s against 3.81 s, no-op 1.42 s
+against 3.74 s.
+
 ## Candidates not built (2026-09-28)
 
 - Lerna without Nx: `lerna run <s>` (lerna 10.0.1, `prepNxOptions`)
@@ -258,6 +268,20 @@ uncached by design.
   stage fills discovered ones). Blocked on a discovery seam.
 
 ## Leads for other streams
+
+- A: core's `ESSENTIAL_ENV` passes no proxy variables (`HTTPS_PROXY`,
+  `NO_PROXY`, `NODE_EXTRA_CA_CERTS`); Nx passes the whole environment.
+  On a box whose only egress is a proxy, a task that fetches hangs
+  under vx: TanStack/table's ember-table `build` (a rollup plugin runs
+  `pnpm ember-tsc`, and pnpm self-installs its pinned version) never
+  exited (2026-09-28). A user behind a corporate proxy meets it on
+  every such task, with no error to name the cause.
+- L: `sandbox-runtime.unsafe.test.ts` › "a SIGKILLed task's port
+  bridge leaves no socket behind" failed once in a full gate (`during`
+  2 sockets, one left over) and passes 3/3 alone. `socks()` matches
+  `-<port>.sock` in every task's directory under the shared root; a
+  concurrent task given the same ephemeral port lands in its count.
+  Matching the row's own tag would settle it.
 
 - B: `npm-pack.unsafe.test.ts` › "installed from the tarballs with
   npm, turbo() builds a Turbo repo, then hits" hit its 180 s timeout in

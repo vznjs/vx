@@ -993,6 +993,24 @@ fails under both tools on this box, so `lint` is measured.
 | restore | **199 ms** | 340 ms (1.71×) |
 | no-op   | **174 ms** | 342 ms (1.97×) |
 
+### TanStack/table (Nx 23.2.1, `nx()`, `21d713f`)
+
+`nx run-many -t build` over the 18 packages against `vx run build
+--filter './packages/*'` through `nx()`, with an empty root
+`vx.config.mjs` so the root project's `format` (every `build` depends
+on it) is a task. Over `--all` the 419 `build`, 37 `test:build`, 21
+`test:lib`, 20 `test:eslint`, 436 `test:types` and 417 `test:e2e`
+tasks match Nx's, edges too. Each project's `public` input lists its
+own `dist`, which failed the run until `nx()` dropped a path input
+inside the project's outputs (N-25). Both tools rerun the uncached
+`format` (prettier over the repo, about 1 s) on every run.
+
+| `build` | vx         | Nx 23.2.1      |
+| ------- | ---------- | -------------- |
+| cold    | **28.7 s** | 32.6 s (1.14×) |
+| restore | **1.57 s** | 3.81 s (2.42×) |
+| no-op   | **1.42 s** | 3.74 s (2.64×) |
+
 ## Real repos re-measured (2026-09-27)
 
 Roadmap 2.5: astro and refine again, same revisions, harnesses and
