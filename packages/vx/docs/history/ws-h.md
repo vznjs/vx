@@ -345,6 +345,14 @@ longer. `conventionalError` now refuses a header of 72 or more, so a PR
 title or commit that long fails CI; a 71-character row passes, a
 72-character one fails, and it passes without the rule.
 
+## H-30: the CLI's exit codes are a contract record
+
+`versioning-1.0.md` froze the CLI's exit codes, and they lived only in
+`cli.md`'s prose and in scattered rows. `contract-exit-codes.test.ts`
+drives fifteen documented outcomes through the binary against one
+workspace and records each code in `tests/contract/exit-codes.json`; every
+failing case was checked to fail for its documented reason, not another.
+
 ## Leads for other streams
 
 ## H-29: `vx mcp`'s tools join the contract records

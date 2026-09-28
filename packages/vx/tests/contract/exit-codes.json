@@ -1,0 +1,17 @@
+{
+  "run: every task succeeds: vx run build --all": 0,
+  "run: a task fails: vx run fail --all": 1,
+  "run: a task no project declares: vx run nope --all": 1,
+  "run: an unknown flag: vx run build --no-such-flag": 1,
+  "run: nothing affected since the ref: vx run build --affected=HEAD": 0,
+  "run: --dry=json: vx run build --all --dry=json": 0,
+  "run: --graph to an unwritable path: vx run build --all --graph=package.json/g.dot": 1,
+  "an unknown verb: vx no-such-verb": 1,
+  "watch: a rejected flag: vx watch build --all --dry": 1,
+  "cache prune: no policy: vx cache prune": 1,
+  "cache prune: a policy: vx cache prune --older-than 1d": 0,
+  "lock: write: vx lock": 0,
+  "lock --check: up to date: vx lock --check": 0,
+  "show: vx show": 0,
+  "info: vx info": 0
+}
