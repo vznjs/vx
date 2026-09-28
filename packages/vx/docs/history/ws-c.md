@@ -377,6 +377,22 @@ row now takes the lock in a child whose preload swaps `procfs.ts` for a
 foreign one; green in both orders, and red with `startTime`'s procfs
 guard removed.
 
+## C-31: hold `remote-prefetch.ts`'s surviving mutants
+
+Swept `orchestrator/remote-prefetch.ts` (32 mutants, 11 files): 19
+caught, 13 survived. 4 are equivalent: the hash `Set` (core's key folds
+the task id, so no two stable keys share a hash), the empty-pool return
+(one pump finds nothing), the worker floor (every boundary refuses a
+concurrency below 1) and `args.concurrency` for the capped count (an
+extra pump exits at once). The e2e rows saw the pass only through the
+wire, where execute-task's own GETs and context race it, so a new
+`remote-prefetch.test.ts` drives `startRemotePrefetch` over a prepared
+run with a recording layer and holds the other 9: pulls in flight equal
+the workers (not 1, not every key), the context's task id, command and
+`workspaceFiles` (emptied, a remote hit of a task declaring one is a
+refused miss), no batch probe with no stable key, and a handle that
+resolves when key derivation throws. No defect.
+
 ## Leads for other streams
 
 - **E:** a plugin command's plain `throw` (`commands.probe.run` throwing
@@ -452,3 +468,7 @@ guard removed.
   hands `RunRecord` the failed task's `recapTail` (the ring the
   end-of-run recap already keeps, `failure-recap.ts`), and E prints it
   in the replay. One PR across the three slices, or A's column first.
+- **A:** `output-dirs-snapshot.test.ts` › "a cold build records its
+  output directories by run end, so the next hit skips the walk" read
+  `outputDirRows` as `[]` once in a full gate under load (two sweeps
+  beside it); 3 of 3 alone and its shard alone pass. Cause not found.
