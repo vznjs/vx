@@ -121,6 +121,19 @@ to nothing. `pnpm -C <dir>` / `--dir` and `yarn workspace <name>
 - Rows: `tests/scripts.test.ts` › parseFanOut (`-C`, `--dir=`, `yarn
   workspace`).
 
+N-10. `workspaceScripts()` on withastro/starlight (3ec633b): `build`
+fans `build` over `@astrojs/*`, `build:examples` over `@example/*`,
+and vx holds one `build` task, so `vx run build` ran all five packages
+where `pnpm build` ran two. The note that names each root script's vx
+command now carries its selectors as `--filter` (vx's DSL is pnpm's)
+whenever they narrow the script's holders, and `--all` otherwise: the
+old `` `ci` is `vx run build test` `` refused at the root ("not inside
+a project"). npm's `--workspace <path>` now selects by path.
+
+- Row: `tests/scripts.test.ts` › each noted `vx run` selects the root
+  script's packages — runs every noted command with `--dry=json`
+  (red on the old note: `vx run test` exits 1 at the root).
+
 ## Candidates not built (2026-09-28)
 
 - Lerna without Nx: `lerna run <s>` (lerna 10.0.1, `prepNxOptions`)
