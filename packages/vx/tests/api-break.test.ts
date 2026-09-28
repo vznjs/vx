@@ -141,4 +141,49 @@ describe('contractBreaks', () => {
       ),
     ).toEqual(['turbo.json tasks: supported → not-supported'])
   })
+
+  it('a --format json schema breaks on a lost field, required entry or type, not on prose', () => {
+    const schema = (o: object): string =>
+      j({
+        title: 'vx show --format json',
+        type: 'object',
+        required: ['name', 'description'],
+        properties: {
+          name: { type: 'string', description: 'the project' },
+          description: { type: ['string', 'null'] },
+        },
+        ...o,
+      })
+    const before = schema({})
+    const brk = (after: string): string[] => contractBreaks('schemas/show.json', before, after)
+    // Reworded prose, and a field added, are no break.
+    expect(
+      brk(
+        schema({
+          title: 'vx show',
+          required: ['name', 'description', 'root'],
+          properties: {
+            name: { type: 'string', description: 'its name' },
+            description: { type: ['string', 'null'] },
+            root: { type: 'string' },
+          },
+        }),
+      ),
+    ).toEqual([])
+    // A field named like an annotation is still a field.
+    expect(
+      brk(schema({ properties: { name: { type: 'string', description: 'the project' } } })),
+    ).toEqual([
+      '- properties.description.type[]="string"',
+      '- properties.description.type[]="null"',
+    ])
+    expect(brk(schema({ required: ['name'] }))).toEqual(['- required[]="description"'])
+    expect(
+      brk(
+        schema({
+          properties: { name: { type: 'number' }, description: { type: ['string', 'null'] } },
+        }),
+      ),
+    ).toEqual(['- properties.name.type="string"'])
+  })
 })
