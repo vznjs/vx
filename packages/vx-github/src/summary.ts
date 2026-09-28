@@ -110,6 +110,18 @@ export function renderJobSummary(summary: RunSummaryRecord, title = 'vx run'): s
   lines.push('')
 
   if (failed.length > 0) {
+    // What each failure cost: the tasks that never started because of it
+    // (the record's `blockedBy` names the root of each block). Grouped once:
+    // a scan of every task per failure took 1.3 s for 10 000 failures of
+    // 20 000 tasks (F-38).
+    const blockedBy = new Map<string, string[]>()
+    for (const s of summary.tasks) {
+      if (s.status !== 'skipped' || s.blockedBy === undefined) continue
+      const list = blockedBy.get(s.blockedBy)
+      const id = escapeMarkdownCell(escapeInline(s.taskId))
+      if (list === undefined) blockedBy.set(s.blockedBy, [id])
+      else list.push(id)
+    }
     lines.push('### Failures')
     lines.push('')
     for (const t of failed) {
@@ -117,11 +129,7 @@ export function renderJobSummary(summary: RunSummaryRecord, title = 'vx run'): s
       // say it (the shell's convention, so a command exiting 137 on its
       // own reads the same).
       const signal = exitSignal(t.exitCode)
-      // What the failure cost: the tasks that never started because of it
-      // (the record's `blockedBy` names the root of each block).
-      const blocked = summary.tasks
-        .filter((s) => s.status === 'skipped' && s.blockedBy === t.taskId)
-        .map((s) => escapeMarkdownCell(escapeInline(s.taskId)))
+      const blocked = blockedBy.get(t.taskId) ?? []
       lines.push(
         `- **${escapeMarkdownCell(escapeInline(t.taskId))}** — ${t.notReady !== undefined ? `never ready (${t.notReady === 'timeout' ? 'timed out' : t.notReady === 'exited' ? 'exited' : 'spawn failed'}), exit ${t.exitCode}` : t.timedOut === true ? `timed out, exit ${t.exitCode}` : `exit ${t.exitCode}${signal === undefined ? '' : ` (128 + ${signal})`}`}${t.sandboxViolations !== undefined && t.sandboxViolations > 0 ? ` · ${t.sandboxViolations} sandbox violation${t.sandboxViolations === 1 ? '' : 's'}` : ''}${blocked.length > 0 ? ` · blocked ${blocked.join(', ')}` : ''}`,
       )
