@@ -74,7 +74,7 @@ export function parsePruneArgs(args: readonly string[]): PruneArgs {
         return { error: `--older-than requires a value (e.g. 30d, 24h, 60m)` }
       }
       const ms = parseDuration(v)
-      if (ms === null) return { error: `invalid duration: ${v}` }
+      if (ms === null) return { error: `invalid duration: ${v} (e.g. 30d, 24h, 60m)` }
       // `0d` evicts everything ever cached. That is far more often a
       // computed-to-zero retention than an intent, and no other flag
       // combination expresses "wipe the cache" — so refuse it and name
@@ -91,7 +91,7 @@ export function parsePruneArgs(args: readonly string[]): PruneArgs {
         return { error: `--max-size requires a value (e.g. 500M, 1G)` }
       }
       const bytes = parseSize(v)
-      if (bytes === null) return { error: `invalid size: ${v}` }
+      if (bytes === null) return { error: `invalid size: ${v} (e.g. 500M, 1G)` }
       if (bytes === 0) {
         return {
           error: `--max-size 0 would evict every entry — delete the cache directory instead`,

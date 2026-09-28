@@ -346,7 +346,7 @@ describe('parseWhyArgs', () => {
     expect(parseWhyArgs(['build', '--cache-dir', '--format']).error).toMatch(/got flag/)
     expect(parseWhyArgs(['--format', 'xml']).error).toContain('invalid --format')
     expect(parseWhyArgs(['--run=']).error).toContain('invalid --run')
-    expect(parseWhyArgs(['a', 'b']).error).toContain('unexpected argument')
+    expect(parseWhyArgs(['a', 'b']).error).toBe('unexpected argument: b (see `vx why --help`)')
   })
 
   it.each([

@@ -48,7 +48,7 @@ export function parseInitArgs(args: readonly string[]): InitArgs {
     else if (a === '--mjs') out.mjs = true
     else if (a.startsWith('-'))
       return { ...out, error: `unknown flag: ${a}${flagHint('init', a)}${seeHelp('init')}` }
-    else return { ...out, error: `unexpected argument: ${a}` }
+    else return { ...out, error: `unexpected argument: ${a}${seeHelp('init')}` }
   }
   return out
 }

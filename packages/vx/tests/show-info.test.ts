@@ -691,7 +691,7 @@ describe('parseShowArgs', () => {
 
   it('rejects unknown flags and extra positionals', () => {
     expect(parseShowArgs(['--bogus']).error).toBe('unknown flag: --bogus (see `vx show --help`)')
-    expect(parseShowArgs(['a', 'b']).error).toBe('unexpected argument: b')
+    expect(parseShowArgs(['a', 'b']).error).toBe('unexpected argument: b (see `vx show --help`)')
   })
 })
 

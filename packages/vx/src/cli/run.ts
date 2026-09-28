@@ -150,11 +150,19 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
     const a = before[i]
     if (a === '--filter' || a?.startsWith('--filter=')) {
       const v = a === '--filter' ? before[++i] : a.slice('--filter='.length)
-      if (v === undefined || v === '') return { ...out, error: `--filter requires a value` }
+      if (v === undefined || v === '')
+        return {
+          ...out,
+          error: `--filter requires a value (a project name, glob or path, e.g. --filter app)`,
+        }
       out.filters.push(v)
     } else if (a === '--concurrency' || a?.startsWith('--concurrency=')) {
       const v = a === '--concurrency' ? before[++i] : a.slice('--concurrency='.length)
-      if (v === undefined) return { ...out, error: `--concurrency requires a value` }
+      if (v === undefined)
+        return {
+          ...out,
+          error: `--concurrency requires a value (a positive integer, or a share of the cores such as 50%)`,
+        }
       const n = parseConcurrency(v)
       if (n === null)
         return {
@@ -193,7 +201,8 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
       out.frozen = true
     } else if (a === '--retry' || a?.startsWith('--retry=')) {
       const v = a === '--retry' ? before[++i] : a.slice('--retry='.length)
-      if (v === undefined) return { ...out, error: `--retry requires a value` }
+      if (v === undefined)
+        return { ...out, error: `--retry requires a value (a non-negative integer)` }
       const n = parseDecimalInt(v)
       if (n === null) {
         return { ...out, error: `--retry must be a non-negative integer, got: ${v}` }
@@ -201,7 +210,8 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
       out.retries = n
     } else if (a === '--timeout' || a?.startsWith('--timeout=')) {
       const v = a === '--timeout' ? before[++i] : a.slice('--timeout='.length)
-      if (v === undefined) return { ...out, error: `--timeout requires a value` }
+      if (v === undefined)
+        return { ...out, error: `--timeout requires a value (a positive integer, in ms)` }
       const n = parseDecimalInt(v)
       if (n !== null && n > MAX_TIMEOUT_MS) {
         // Not "effectively no limit" — setTimeout reduces a delay past 2^31-1
@@ -243,7 +253,11 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
       out.cacheDir = v
     } else if (a === '--cache' || a?.startsWith('--cache=')) {
       const v = a === '--cache' ? before[++i] : a.slice('--cache='.length)
-      if (v === undefined) return { ...out, error: `--cache requires a value` }
+      if (v === undefined)
+        return {
+          ...out,
+          error: `--cache requires a value (a spec like local:r, local:rw, remote:, or local:,remote:rw)`,
+        }
       // A spec with no segment at all applies NOTHING, so `--cache=`
       // (an empty shell var, or someone reaching for "no cache") left
       // all four axes ON — the opposite of the intent. Reject it; an
@@ -283,7 +297,8 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
       out.continueMode = v
     } else if (a === '--verbosity' || a?.startsWith('--verbosity=')) {
       const v = a === '--verbosity' ? before[++i] : a.slice('--verbosity='.length)
-      if (v === undefined) return { ...out, error: `--verbosity requires a value` }
+      if (v === undefined)
+        return { ...out, error: `--verbosity requires a value (a non-negative integer)` }
       const n = parseDecimalInt(v)
       if (n === null) return { ...out, error: `invalid verbosity: ${v} (a non-negative integer)` }
       out.verbosity = n
@@ -317,7 +332,7 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
       out.affected = a.slice('--affected='.length)
     } else if (a === '--tag' || a?.startsWith('--tag=')) {
       const raw = a === '--tag' ? before[++i] : a.slice('--tag='.length)
-      if (raw === undefined) return { ...out, error: `${a} requires a value` }
+      if (raw === undefined) return { ...out, error: `${a} requires a value (k=v)` }
       // Split on the FIRST `=` so values may contain `=` (e.g. a URL).
       const eq = raw.indexOf('=')
       if (eq <= 0) return { ...out, error: `invalid --tag (expected k=v): ${raw}` }
