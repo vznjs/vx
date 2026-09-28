@@ -142,7 +142,7 @@ any, after `run()` has drained every upload and prefetch.
 
 ## Delegation
 
-`key / recordRunBundle / stats / prune / restoreOutputs / close` are pure
+`key / recordRunBundle / stats / prune / restoreOutputs` are pure
 delegations to the local `Cache`. The remote layer doesn't participate
 in cache identity, run history, or eviction — those are workspace-
 local concerns.
