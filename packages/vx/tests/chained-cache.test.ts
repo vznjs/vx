@@ -270,6 +270,67 @@ describe('resolveCache — chaining', () => {
   )
 
   it(
+    'one layer failing in two methods is told once per method, not once per layer',
+    withTwo(async (a, b) => {
+      const warned: string[] = []
+      const plugins: VxPlugin[] = [
+        testPlugin('org/broken', { cache: () => failing(b, ['get', 'has']) }),
+      ]
+      const resolved = await resolveCache(plugins, {
+        ...baseCtx,
+        warn: (m) => warned.push(m),
+        localCache: a,
+        policy,
+      })
+      await resolved.get('x')
+      await resolved.has('x')
+      await resolved.get('y')
+      expect(warned).toEqual([
+        "[vx] plugin 'org/broken' failed in cache get: get boom; a miss there; the next layer answers",
+        "[vx] plugin 'org/broken' failed in cache has: has boom; a miss there; the next layer answers",
+      ])
+    }),
+  )
+
+  it(
+    'the local floor failing is named as the local cache',
+    withTwo(async (a, b) => {
+      const warned: string[] = []
+      const resolved = await resolveCache([testPlugin('org/other', { cache: () => b })], {
+        ...baseCtx,
+        warn: (m) => warned.push(m),
+        localCache: failing(a, ['get']) as Cache,
+        policy,
+      })
+      expect({ got: await resolved.get('x'), warned }).toEqual({
+        got: null,
+        warned: [
+          '[vx] the local cache failed in cache get: get boom; a miss there; the next layer answers',
+        ],
+      })
+    }),
+  )
+
+  it(
+    'a layer two plugins return is named for the first that declared it',
+    withTwo(async (a, b) => {
+      const warned: string[] = []
+      const broken = failing(b, ['get'])
+      const resolved = await resolveCache(
+        [
+          testPlugin('org/first', { cache: () => broken }),
+          testPlugin('org/second', { cache: () => broken }),
+        ],
+        { ...baseCtx, warn: (m) => warned.push(m), localCache: a, policy },
+      )
+      await resolved.get('x')
+      expect(warned).toEqual([
+        "[vx] plugin 'org/first' failed in cache get: get boom; a miss there; the next layer answers",
+      ])
+    }),
+  )
+
+  it(
     'a layer that WRAPS the local handle subsumes a bare local layer beside it',
     withTwo(async (a) => {
       const layered = new LayeredCache(a, noRemote)

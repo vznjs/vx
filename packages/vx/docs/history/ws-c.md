@@ -192,6 +192,20 @@ rest the per-hit output stats and the execute path (the one repeat,
 slot back at ready, so one-shot tasks never starve behind it; `run.ts`'s
 only clean seam is the ~40-line footer, which removes no duplication.
 
+## C-17: hold `plugin-host.ts`'s surviving mutants
+
+A sweep of 110 mutants: 75 caught, 4 inconclusive, 31 survived, of which
+7 are equivalent (the key's part sort, a second fingerprint claimant the
+schema refuses, `Number.isFinite` on a non-number, …). The other 24 are
+held now by rows in `plugin-pipeline.test.ts` (stages skipped by a plugin
+without them, graph blame, key-part numbering, schedule refusals, every
+admit policy asked, a silent or throwing policy), `chained-cache.test.ts`
+(a layer failing twice, the local floor named, a shared layer's owner),
+`plugin-capabilities.test.ts` (an empty executor name) and
+`plugin-teardown.test.ts` (a throwing teardown's message, the next still
+torn down). No defect in the file. Harness note: a per-mutant `TMPDIR`
+under the scratchpad pushed the sandbox socket past `sun_path`.
+
 ## Leads for other streams
 
 - **E:** a plugin command's plain `throw` (`commands.probe.run` throwing

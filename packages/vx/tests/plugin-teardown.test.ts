@@ -122,6 +122,26 @@ describe('teardownPlugins — a dropped result is reported', () => {
     await teardownPlugins([{ name: 'org/plain' }], (m) => warnings.push(m))
     expect(warnings).toEqual([])
   })
+
+  it('a teardown that throws is told by its message, and the next plugin, sync and returning nothing, still tears down in silence', async () => {
+    const warnings: string[] = []
+    let after = false
+    await teardownPlugins(
+      [
+        testPlugin('org/bad', {
+          teardown: () => {
+            throw new Error('boom')
+          },
+        }),
+        testPlugin('org/sync', { teardown: () => void (after = true) }),
+      ],
+      (m) => warnings.push(m),
+    )
+    expect({ after, warnings }).toEqual({
+      after: true,
+      warnings: ["[vx] plugin 'org/bad' teardown failed: boom"],
+    })
+  })
 })
 
 describe('the lifecycle is reached on a run that FAILED', () => {
