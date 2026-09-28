@@ -754,6 +754,12 @@ export interface SandboxViolation {
    * `openat(../x) = -1 ENOENT  [/x]` say the same thing.
    */
   target?: string
+  /**
+   * vx's own note beside a failure (the cwd it cannot read, a placeholder
+   * the task never wrote, a withheld link), not a denial: shown with the
+   * denials, never counted as one (B-20).
+   */
+  hint?: true
   /** Absolute, when `target` is a path at all. */
   path?: string
   ignorable?: readonly ('read' | 'write' | 'network' | 'systemInfo')[]
@@ -1420,6 +1426,7 @@ async function runSandboxedOnce(
   if (exitCode !== 0 && violations.length === 0 && !readableUnder(args.cwd, grantedRead)) {
     violations.push({
       timestamp: new Date(),
+      hint: true,
       line:
         `vx: this sandbox grants no read access to the task's own working directory ` +
         `(${args.cwd}), so a command that reads or lists it fails with whatever error it ` +
@@ -1464,9 +1471,16 @@ async function runSandboxedOnce(
  */
 function readableUnder(dir: string, granted: readonly string[]): boolean {
   const target = toRealPath(dir)
+  const under = (a: string, b: string): boolean =>
+    a === b || a.startsWith(b.endsWith(path.sep) ? b : b + path.sep)
   return granted.some((p) => {
     const g = toRealPath(p)
-    return target === g || target.startsWith(g.endsWith(path.sep) ? g : g + path.sep)
+    // On Linux a grant INSIDE the cwd makes the cwd listable too: bwrap
+    // builds the path to the bind. A root's `read: ['.']` is bound as its
+    // children around the walls (`wallOff`), so every failing root task
+    // was told its cwd was unreadable while it listed it (B-20). Seatbelt
+    // grants no parent, so on macOS the cwd itself must be covered.
+    return under(target, g) || (process.platform === 'linux' && under(g, target))
   })
 }
 
