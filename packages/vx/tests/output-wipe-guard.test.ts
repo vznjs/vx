@@ -8,6 +8,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { resolveOutputs } from '../src/cache/inputs.js'
+import { relPosix } from '../src/util/index.js'
 
 describe('resolveOutputs never names .git or .vx', () => {
   let root: string
@@ -24,17 +25,14 @@ describe('resolveOutputs never names .git or .vx', () => {
 
   it('a `**` output reaches dist, never the repository, the cache, or an unnamed node_modules', async () => {
     const files = await resolveOutputs({ projectDir: root, outputs: ['**'], nestedProjectDirs: [] })
-    expect(files.map((f) => path.relative(root, f))).toEqual(['dist/a.js'])
+    expect(files.map((f) => relPosix(root, f))).toEqual(['dist/a.js'])
     // Named, node_modules is an install task's output (A-13).
     const named = await resolveOutputs({
       projectDir: root,
       outputs: ['**', 'node_modules/**'],
       nestedProjectDirs: [],
     })
-    expect(named.map((f) => path.relative(root, f))).toEqual([
-      'dist/a.js',
-      'node_modules/a/index.js',
-    ])
+    expect(named.map((f) => relPosix(root, f))).toEqual(['dist/a.js', 'node_modules/a/index.js'])
   })
 
   it('naming them outright is refused the same way', async () => {
@@ -43,6 +41,6 @@ describe('resolveOutputs never names .git or .vx', () => {
       outputs: ['.git/**', '.vx/**', 'dist/**'],
       nestedProjectDirs: [],
     })
-    expect(files.map((f) => path.relative(root, f))).toEqual(['dist/a.js'])
+    expect(files.map((f) => relPosix(root, f))).toEqual(['dist/a.js'])
   })
 })

@@ -36,7 +36,7 @@ import {
   resolveOutputs,
   stampOutputs,
 } from '../src/cache/inputs.js'
-import { UserError } from '../src/util/index.js'
+import { UserError, relPosix } from '../src/util/index.js'
 import { skipAsRoot } from './helpers/nonroot-gate.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 import { run } from '../src/orchestrator/index.js'
@@ -503,7 +503,7 @@ describe('resolveInputs — git ls-files path (v14)', () => {
       ownOutputs: [],
       nestedProjectDirs: [],
     })
-    const rels = got.files.map((p) => path.relative(projectDir, p))
+    const rels = got.files.map((p) => relPosix(projectDir, p))
     expect(rels).toContain(path.join('src', 'keep.ts'))
     expect(rels).not.toContain(path.join('src', 'skip.ts'))
   })
@@ -526,7 +526,7 @@ describe('resolveInputs — git ls-files path (v14)', () => {
       ownOutputs: [],
       nestedProjectDirs: [],
     })
-    const rels = got.files.map((p) => path.relative(projectDir, p))
+    const rels = got.files.map((p) => relPosix(projectDir, p))
     expect(rels).toContain(path.join('src', 'gen', 'deep', 'made.ts'))
     expect(rels).not.toContain(path.join('src', 'gen', 'node_modules', 'dep', 'index.js'))
   })
@@ -547,9 +547,7 @@ describe('resolveInputs — git ls-files path (v14)', () => {
       ownOutputs: [],
       nestedProjectDirs: [],
     })
-    expect(got.files.map((p) => path.relative(projectDir, p))).toEqual([
-      path.join('src', 'fresh.ts'),
-    ])
+    expect(got.files.map((p) => relPosix(projectDir, p))).toEqual([path.join('src', 'fresh.ts')])
   })
 
   it('gitignored files are excluded (workspace-root .gitignore)', async () => {
@@ -565,7 +563,7 @@ describe('resolveInputs — git ls-files path (v14)', () => {
       ownOutputs: [],
       nestedProjectDirs: [],
     })
-    const rels = got.files.map((p) => path.relative(projectDir, p))
+    const rels = got.files.map((p) => relPosix(projectDir, p))
     expect(rels).toContain(path.join('src', 'index.ts'))
     expect(rels).not.toContain('secret.txt')
   })
@@ -585,7 +583,7 @@ describe('resolveInputs — git ls-files path (v14)', () => {
       ownOutputs: [],
       nestedProjectDirs: [],
     })
-    const rels = got.files.map((p) => path.relative(projectDir, p))
+    const rels = got.files.map((p) => relPosix(projectDir, p))
     expect(rels).not.toContain('local-only.tmp')
   })
 
@@ -606,9 +604,7 @@ describe('resolveInputs — git ls-files path (v14)', () => {
       ownOutputs: [],
       nestedProjectDirs: [],
     })
-    expect(got.files.map((p) => path.relative(projectDir, p))).toEqual([
-      path.join('src', 'index.ts'),
-    ])
+    expect(got.files.map((p) => relPosix(projectDir, p))).toEqual([path.join('src', 'index.ts')])
   })
 
   it('declared outputs still excluded under the git path', async () => {
@@ -626,7 +622,7 @@ describe('resolveInputs — git ls-files path (v14)', () => {
       ownOutputs: ['dist/**'],
       nestedProjectDirs: [],
     })
-    const rels = got.files.map((p) => path.relative(projectDir, p))
+    const rels = got.files.map((p) => relPosix(projectDir, p))
     expect(rels).toContain(path.join('src', 'index.ts'))
     expect(rels).not.toContain(path.join('dist', 'index.js'))
   })
@@ -644,7 +640,7 @@ describe('resolveInputs — git ls-files path (v14)', () => {
       ownOutputs: [],
       nestedProjectDirs: [inner],
     })
-    const rels = got.files.map((p) => path.relative(projectDir, p))
+    const rels = got.files.map((p) => relPosix(projectDir, p))
     expect(rels).toContain(path.join('src', 'outer.ts'))
     expect(rels).not.toContain(path.join('inner', 'src', 'inner.ts'))
   })
@@ -660,9 +656,7 @@ describe('resolveInputs — git ls-files path (v14)', () => {
       ownOutputs: [],
       nestedProjectDirs: [],
     })
-    expect(got.files.map((p) => path.relative(projectDir, p))).toEqual([
-      path.join('src', 'keep.ts'),
-    ])
+    expect(got.files.map((p) => relPosix(projectDir, p))).toEqual([path.join('src', 'keep.ts')])
   })
 
   it('node_modules under a project is always excluded (defense in depth)', async () => {
@@ -682,7 +676,7 @@ describe('resolveInputs — git ls-files path (v14)', () => {
       ownOutputs: [],
       nestedProjectDirs: [],
     })
-    const rels = got.files.map((p) => path.relative(projectDir, p))
+    const rels = got.files.map((p) => relPosix(projectDir, p))
     expect(rels).toContain(path.join('src', 'index.ts'))
     expect(rels).not.toContain(path.join('node_modules', 'dep', 'index.js'))
   })
@@ -704,7 +698,7 @@ describe('resolveInputs — git ls-files path (v14)', () => {
       ownOutputs: [],
       nestedProjectDirs: [],
     })
-    const rels = got.files.map((p) => path.relative(projectDir, p))
+    const rels = got.files.map((p) => relPosix(projectDir, p))
     expect(rels).toContain(path.join('src', 'index.ts'))
     expect(rels).not.toContain('.18bf7d9ff3ffeffe-00000001.bun-build')
   })
@@ -789,7 +783,7 @@ describe('resolveInputs — gitFilesCache memoization', () => {
     })
     // First call saw the real `src.ts`; second saw only the memo'd entry.
     void first
-    const relsSecond = second.files.map((p) => path.relative(projectDir, p))
+    const relsSecond = second.files.map((p) => relPosix(projectDir, p))
     expect(relsSecond).toEqual([]) // 'from-memo.ts' doesn't exist on disk → filtered out
   })
 
@@ -816,7 +810,7 @@ describe('resolveInputs — gitFilesCache memoization', () => {
       gitFilesCache,
       projectFilesCache,
     })
-    return r.files.map((f) => path.relative(projectDir, f))
+    return r.files.map((f) => relPosix(projectDir, f))
   }
 
   it('a second task with the same declaration reuses the resolved list', async () => {
@@ -1287,7 +1281,7 @@ describe('inputs.ts edges', () => {
       nestedProjectDirs: [],
       envSource: {},
     })
-    expect(r.files.map((f) => path.relative(root, f))).toEqual(['a.txt', 'x/in'])
+    expect(r.files.map((f) => relPosix(root, f))).toEqual(['a.txt', 'x/in'])
   })
 
   it('an additive task owns a file it rewrote at the same size, or at the same mtime', async () => {
@@ -1303,10 +1297,7 @@ describe('inputs.ts edges', () => {
     await writeFile(path.join(root, 'dist', 'same-mtime'), 'bbbbbbbb')
     await utimes(path.join(root, 'dist', 'same-mtime'), old, old) // new size, same mtime
     const own = await ownOutputsSince(args, before)
-    expect(own.map((f) => path.relative(root, f)).sort()).toEqual([
-      'dist/same-mtime',
-      'dist/same-size',
-    ])
+    expect(own.map((f) => relPosix(root, f)).sort()).toEqual(['dist/same-mtime', 'dist/same-size'])
   })
 
   it('a clean never removes the project directory itself, even when it empties it', async () => {

@@ -10,6 +10,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
 import { resolveInputs, resolveOutputs } from '../src/cache/index.js'
+import { relPosix } from '../src/util/index.js'
 
 let root: string
 
@@ -33,7 +34,7 @@ beforeEach(() => {
 afterEach(() => rmSync(root, { recursive: true, force: true }))
 
 const nestedProjectDirs = () => [path.join(root, 'pkg*'), path.join(root, 'a/b')]
-const rel = (files: readonly string[]) => files.map((f) => path.relative(root, f)).sort()
+const rel = (files: readonly string[]) => files.map((f) => relPosix(root, f)).sort()
 
 it('inputs: a nested project is out, a sibling its name would match as a glob is in', async () => {
   const resolved = await resolveInputs({

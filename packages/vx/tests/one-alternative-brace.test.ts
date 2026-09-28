@@ -9,6 +9,7 @@ import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { resolveInputs } from '../src/cache/inputs.js'
 import type { CacheInputs } from '../src/config.js'
+import { relPosix } from '../src/util/index.js'
 
 let root: string
 let projectDir: string
@@ -39,7 +40,7 @@ async function resolve(inputs: CacheInputs): Promise<string[]> {
     ownOutputs: [],
     nestedProjectDirs: [],
   })
-  return r.files.map((f) => path.relative(root, f)).sort()
+  return r.files.map((f) => relPosix(root, f)).sort()
 }
 
 async function refusal(inputs: CacheInputs): Promise<string> {
