@@ -376,3 +376,11 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   admits either way), and a `null` entry is neither a crash nor a
   warning. `{}` for "no reservations declared" is equivalent to
   `undefined`.
+- **G-31.** A yarn classic `yarn.lock` with git merge conflict markers
+  parsed without a word: the line parser took the second side and read
+  `<<<<<<< HEAD` as an entry, so the key named an install that may not
+  be the one on disk (a stale hit when another checkout holds that side
+  cleanly). pnpm, npm, bun and berry refused only through a parse
+  error. Every manager now refuses markers by name with the install
+  that fixes it. Row (`refusal-message.test`): red without the fix.
+  Found probing each parser with a conflicted lockfile.

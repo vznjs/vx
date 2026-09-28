@@ -24,6 +24,24 @@ function refusal(plugin: unknown, file: string, text: string): string {
 }
 
 describe('a lockfile the plugin cannot read', () => {
+  // Yarn classic's line parser took the second side of a conflict in
+  // silence; the others refused only through a parse error.
+  it('holding git merge conflict markers is refused by every manager', () => {
+    const conflicted = (head: string) =>
+      `${head}\n<<<<<<< HEAD\nleft-pad@^1.0.0:\n  version "1.3.0"\n=======\nleft-pad@^1.0.0:\n  version "1.2.0"\n>>>>>>> other\n`
+    expect([
+      refusal(yarn(), 'yarn.lock', conflicted('# yarn lockfile v1\n')),
+      refusal(pnpm(), 'pnpm-lock.yaml', conflicted("lockfileVersion: '9.0'")),
+      refusal(npm(), 'package-lock.json', conflicted('{')),
+      refusal(bun(), 'bun.lock', conflicted('{')),
+    ]).toEqual([
+      'yarn.lock: holds git merge conflict markers — regenerate it with `yarn install` (as of the base ref)',
+      'pnpm-lock.yaml: holds git merge conflict markers — regenerate it with `pnpm install` (as of the base ref)',
+      'package-lock.json: holds git merge conflict markers — regenerate it with `npm install` (as of the base ref)',
+      'bun.lock: holds git merge conflict markers — regenerate it with `bun install` (as of the base ref)',
+    ])
+  })
+
   it('is named once, by each parser’s own message, with the install that fixes it', () => {
     expect([
       refusal(pnpm(), 'pnpm-lock.yaml', '- a\n'),

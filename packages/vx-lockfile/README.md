@@ -37,7 +37,7 @@ Every package the project can reach, by resolved identity (name, version, integr
 
 A project the lockfile has no entry for folds the root's digest alone — the only `node_modules` it can resolve from. A phantom dependency (imported, never declared by the project or the root — a sibling's package hoisted to the root) is not in any closure; declare it.
 
-A lockfile the parser cannot read **refuses the run**, naming the file, the reason and the install that regenerates it. That is deliberate: the alternative to reading the lockfile is keying on nothing, and a key that is missing material is a stale hit waiting to happen. Under `--affected` the refusal also says which side could not be read — the working tree's copy, or the one at the base ref (a lockfile-migration commit hits the second).
+A lockfile the parser cannot read **refuses the run**, naming the file, the reason and the install that regenerates it. That is deliberate: the alternative to reading the lockfile is keying on nothing, and a key that is missing material is a stale hit waiting to happen. Under `--affected` the refusal also says which side could not be read — the working tree's copy, or the one at the base ref (a lockfile-migration commit hits the second). A lockfile holding git merge conflict markers is refused the same way: it names two installs at once, and yarn classic's format parsed one side of it without a word.
 
 ## Cost
 

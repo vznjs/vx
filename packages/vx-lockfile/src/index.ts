@@ -66,6 +66,8 @@ const MANAGERS = {
   },
 } satisfies Record<string, Manager>
 
+const CONFLICT = /^(?:<{7}|={7}|>{7})(?: |$)/m
+
 function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
   const scope = options.scope ?? 'project'
   if (scope !== 'project' && scope !== 'workspace') {
@@ -83,6 +85,11 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
       ...(manager.extraFiles !== undefined ? { extraFiles: manager.extraFiles } : {}),
       digest: (text, files) => {
         try {
+          // A conflicted lockfile names two installs at once. Yarn
+          // classic's line parser took the second side without a word, so
+          // the key named an install that may not be the one on disk.
+          if (CONFLICT.test(text))
+            throw new Error(`${manager.file}: holds git merge conflict markers`)
           return manager.digest(text, files)
         } catch (err) {
           // The parsers name their own file, so prefixing unconditionally
