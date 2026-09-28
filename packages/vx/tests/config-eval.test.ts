@@ -25,7 +25,11 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { configEvalWorkerCount, evaluateConfigFresh } from '../src/workspace/config-eval.js'
+import {
+  beginEvalRound,
+  configEvalWorkerCount,
+  evaluateConfigFresh,
+} from '../src/workspace/config-eval.js'
 import { loadProjectConfig, loadWorkspaceConfig } from '../src/workspace/project-loader.js'
 import type { ProjectConfig } from '../src/config.js'
 
@@ -494,6 +498,38 @@ describe('the evaluation deadline', () => {
       5000,
     )
     expect(after).toBe('RESOLVED {"tasks":{"ok":{}}}')
+  }, 15_000)
+
+  it('a deadline inside a held round retires the wedged worker, so the next config loads (D-17)', async () => {
+    // A round held open across sequential loads (item 694) keeps its
+    // worker; a busy loop blocks that worker's thread, so kept after the
+    // deadline it would time out every later config in the round.
+    process.env[BUDGET_ENV] = '250'
+    const end = beginEvalRound()
+    try {
+      const busy = await settleOrHang(evaluateConfigFresh(await write('while (true) {}\n')), 5000)
+      expect(busy).toBe('REJECTED config worker did not answer within 250ms')
+      const next = await settleOrHang(
+        evaluateConfigFresh(await write('export default { tasks: { ok: {} } }\n')),
+        5000,
+      )
+      expect(next).toBe('RESOLVED {"tasks":{"ok":{}}}')
+    } finally {
+      end()
+    }
+  }, 15_000)
+
+  it('an uncaught throw in the worker rejects at once, naming it, not at the deadline (D-17)', async () => {
+    // A throw from a config's microtask escapes the evaluation's try and
+    // reaches the worker's `error` event; unheard, the load waited out the
+    // budget and said only that the worker did not answer.
+    process.env[BUDGET_ENV] = '10000'
+    const file = await write(
+      "queueMicrotask(() => { throw new Error('micro boom') })\nexport default {}\n",
+    )
+    const out = await settleOrHang(evaluateConfigFresh(file), 5000)
+    expect(out.startsWith('REJECTED config worker failed:')).toBe(true)
+    expect(out).toContain('micro boom')
   }, 15_000)
 
   it('rejects the whole wedged round at the FIRST deadline, not each at its own', async () => {
