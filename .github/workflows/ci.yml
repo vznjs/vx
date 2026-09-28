@@ -262,8 +262,26 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
+      # Every task here declares exec.sandbox, and vx refuses a sandbox it
+      # cannot give (the runtime's Windows backend is not wired), so this
+      # step stops at the first task until it is.
       - name: vx run test (core, windows)
         run: bun packages/vx/src/bin.ts run test --filter @vzn/vx
+
+      # DATA, not vx: the same shards as bare `bun test`, so the failures
+      # past the sandbox refusal are on record. Goes when the step above
+      # runs the suite.
+      - name: bun test shards (core, windows, data)
+        if: always()
+        shell: bash
+        working-directory: packages/vx
+        run: |
+          rc=0
+          for i in $(seq 1 12); do
+            bun test --only-failures $(bun scripts/test-shard.ts $i 12) || rc=1
+          done
+          bun test --only-failures ./tests/*.unsafe.test.ts || rc=1
+          exit $rc
 
   #
   # Deliberately NO VX_REQUIRE_SANDBOX here: the macOS sandbox suites are a
