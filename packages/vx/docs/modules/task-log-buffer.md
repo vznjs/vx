@@ -49,7 +49,8 @@ what it cut:
 
 - **Per task**: only the last `TASK_LOG_TAIL_CHARS` are kept — whole
   chunks evicted from the head, no concatenation until drain, so a
-  cache-hit replay (one big chunk) is one array push. `charsFull` and
+  cache-hit replay (one big chunk) is one array push. A single over-cap
+  chunk is sliced to its tail, never between a surrogate pair. `charsFull` and
   `truncatedHeadChars` ride with the entry, so "we truncated this"
   never reads as "this task printed nothing".
 - **On finish**: a cache hit is DROPPED (the executed run already
