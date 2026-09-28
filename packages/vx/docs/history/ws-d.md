@@ -763,3 +763,19 @@ packages/core`) selects the dependent whose `file:../lib` spec named
   Worker now builds its console from `globalThis.console.Console`,
   synchronously, before `onmessage` is set, so there is no race and no
   line to drop; the D-64 row still catches a dropped redirect.
+- **D-74** Failure class: a config that changes the built-ins. A first
+  load runs in process, and `Object.prototype.exec = {…}` in project a
+  gave project b's cache-declaring `build` (no `exec` of its own) that
+  command. The key folds b's own JSON, so changing a's command replayed
+  the old output as up-to-date (probed: CMD-ONE replayed under CMD-TWO,
+  a stale hit on a green run). Each first load is now compared with a
+  snapshot of `Object.prototype` and `Array.prototype` taken before the
+  round, before its validation reads through them (a replaced
+  `Array.prototype.includes` turned the JSON-data walk's own check into
+  "a cyclic reference"); what changed is put back and the load refused,
+  naming the property, and the round's end puts back what a failed load
+  changed. Rows: the D-74 rows of `tests/project-loader.test.ts`, each
+  in a child: an added property refused and removed, a replaced one
+  restored, a failing config's own error with its change taken back, a
+  clean control; three red without the fix, and the per-load check and
+  the end-of-round restore each caught by its mutant.

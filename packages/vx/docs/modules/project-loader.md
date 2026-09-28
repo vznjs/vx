@@ -96,6 +96,15 @@ readers that reach it here.
   deadline (D-65). The guard is counted, so concurrent loads leave the
   real `process.exit` in place only once the last has left. An exit a
   config schedules for later (a timer) is not covered.
+- A first load may not change `Object.prototype` or `Array.prototype`:
+  every config is read through them, and the key folds each config's
+  own JSON, so `Object.prototype.exec` set in one config ran in another
+  project's task and a cache hit replayed the old command after it
+  changed (D-74). Each first load is compared with a snapshot taken
+  before the round, before anything reads through them (a replaced
+  `Array.prototype.includes` broke the JSON-data walk itself); what
+  changed is put back, a failed load's too, and the load is refused
+  naming the property.
 - A first load has the Worker's deadline too (`VX_CONFIG_WORKER_TIMEOUT_MS`,
   30 s): a top-level await that never settles fails the load, naming
   the config and the budget, where it hung `vx run` silently (D-66).
