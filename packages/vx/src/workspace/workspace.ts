@@ -507,9 +507,13 @@ export async function listProjects(workspace: Workspace): Promise<ProjectMeta[]>
   // Run all package globs concurrently. Disk-bound walks parallelize
   // well; serializing them just stretches the discovery phase by N×.
   const { positive, negative } = splitPackageGlobs(workspace.packageGlobs)
-  const perPattern = await Promise.all(
-    positive.map((pattern) => memberDirs(workspace.root, pattern)),
-  )
+  // A root the globs do not list is a project when it holds a vx config
+  // (D-39): the package manager's member list stays the manager's, and
+  // the root's globs stop at every member as any parent project's do.
+  const [perPattern, rootConfig] = await Promise.all([
+    Promise.all(positive.map((pattern) => memberDirs(workspace.root, pattern))),
+    findConfigFile(workspace.root),
+  ])
   const matches = new Set<string>()
   for (const arr of perPattern) {
     for (const m of arr) {
@@ -517,6 +521,7 @@ export async function listProjects(workspace: Workspace): Promise<ProjectMeta[]>
       matches.add(m)
     }
   }
+  if (rootConfig !== null) matches.add(workspace.root)
 
   // Per-project discovery: the manifest read answers "is there a
   // package.json" (an ENOENT is the "not a member" answer, at the cost of
