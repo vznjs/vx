@@ -569,6 +569,17 @@ retried pass cost one query, the scan, not a probe first (two guards on
 the probe list); a failure tie breaks by passes, then project, then
 task. No defect.
 
+## C-44: hold `later` behind selfkill's third attempt, not a flat 0.3 s
+
+`aborted-outcome.test.ts` › "a task killed by a signal vx did not send
+is a failure" failed in C-42's gate: `later.txt` existed. `later`
+waited on `slow` (`sleep 0.3`), and selfkill's three attempts had to
+fail inside that window for fail-fast to trip first; fail-fast lets
+in-flight tasks finish, so a loaded box lost the race. `slow` now
+waits for the third `x` in `attempts` (bounded at 10 s), then 0.3 s.
+Proven with each attempt slowed by 0.15 s: red on the old `slow`,
+green on the new.
+
 ## Leads for other streams
 
 - **E:** a plugin command's plain `throw` (`commands.probe.run` throwing
