@@ -672,6 +672,10 @@ describe('the evaluation deadline', () => {
     try {
       const busy = await settleOrHang(evaluateConfigFresh(await write('while (true) {}\n')), 5000)
       expect(busy).toBe('REJECTED config worker did not answer within 250ms')
+      // The next load spawns a fresh worker, which a 250 ms budget does not
+      // cover on a loaded box (A-51's shape; M-13). A kept wedged worker
+      // still fails it, rejected at 4000 ms or held past 5000.
+      process.env[BUDGET_ENV] = '4000'
       const next = await settleOrHang(
         evaluateConfigFresh(await write('export default { tasks: { ok: {} } }\n')),
         5000,

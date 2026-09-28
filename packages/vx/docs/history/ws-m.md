@@ -131,6 +131,15 @@ a foreign procfs. The mock now answers false only while its file runs.
 Red running the two files in one process before; green after. It is the
 only `mock.module` of a vx module.
 
+M-13. `config-eval.test.ts` › a deadline inside a held round retires
+the wedged worker (D-17): the load after the deadline spawns a fresh
+worker under the 250 ms budget set for the wedge, the shape A-51 fixed
+in its sibling row (red twice on macOS). A probe on that path, pinned
+to one loaded CPU, took 233-5289 ms and missed 250 ms 14 times in 15
+(idle: 23-39 ms). That load now runs under 4000 ms. A kept wedged
+worker (the timer's terminate dropped) still fails the row, rejected
+at 4000 ms. No other row expects a success under a small budget.
+
 ## Leads for other streams
 
 - A: A-20 let a same-project dependant restore ahead of a producer whose
