@@ -1,0 +1,112 @@
+{
+  "verbs": {
+    "cache": [
+      "--cache-dir",
+      "--dry-run",
+      "--format",
+      "--help",
+      "--max-size",
+      "--older-than"
+    ],
+    "completions": [
+      "--help"
+    ],
+    "help": [
+      "--help"
+    ],
+    "info": [
+      "--cache-dir",
+      "--format",
+      "--help"
+    ],
+    "init": [
+      "--dry",
+      "--force",
+      "--help",
+      "--mjs",
+      "--plugin"
+    ],
+    "last": [
+      "--cache-dir",
+      "--failed",
+      "--format",
+      "--help",
+      "--list"
+    ],
+    "lock": [
+      "--check",
+      "--help"
+    ],
+    "run": [
+      "--affected",
+      "--all",
+      "--cache",
+      "--cache-dir",
+      "--concurrency",
+      "--continue",
+      "--download",
+      "--dry",
+      "--exclude-dependencies",
+      "--filter",
+      "--force",
+      "--frozen",
+      "--graph",
+      "--help",
+      "--no-cache",
+      "--output-logs",
+      "--profile",
+      "--report",
+      "--report-file",
+      "--retry",
+      "--summarize",
+      "--tag",
+      "--timeout",
+      "--verbosity"
+    ],
+    "show": [
+      "--format",
+      "--help"
+    ],
+    "upgrade": [
+      "--help"
+    ],
+    "version": [
+      "--help"
+    ],
+    "watch": [
+      "--affected",
+      "--all",
+      "--cache",
+      "--cache-dir",
+      "--concurrency",
+      "--continue",
+      "--download",
+      "--exclude-dependencies",
+      "--filter",
+      "--force",
+      "--frozen",
+      "--help",
+      "--no-cache",
+      "--output-logs",
+      "--retry",
+      "--tag",
+      "--timeout"
+    ],
+    "why": [
+      "--cache-dir",
+      "--format",
+      "--help",
+      "--run"
+    ]
+  },
+  "env": [
+    "VX_CONFIG_WORKER_TIMEOUT_MS",
+    "VX_KILL_GRACE_MS",
+    "VX_RUN_TASK",
+    "VX_RUN_WORKSPACE",
+    "VX_TASK_TIMEOUT",
+    "VX_TEARDOWN_TIMEOUT_MS",
+    "VX_TIMING",
+    "VX_WATCH_POLL"
+  ]
+}

@@ -447,6 +447,16 @@ status that got worse. Against v0.0.185 main has no unmarked break; under
 a probe tag, an exit code changed and a pack line dropped each failed,
 named.
 
+## H-37: the CLI's verbs, flags and variables are a record
+
+The versioning table froze verbs, flags and `VX_*` variables, but only
+drift tests held them, each against a doc a removal also edits: dropping
+`--tag` from the parser, help and cli.md passed. `tests/contract/cli-surface.json`
+records each verb's flags (`verbFlags`, parser-held) and the variables
+the source reads (the walk env-doc-drift uses, now `tests/helpers/env-reads.ts`),
+so a removal is a reviewed diff and, with H-36, a break. Differential:
+a record without `--tag` fails; restored, passes.
+
 ## Leads for other streams
 
 - **A:** a task that rewrites its own input with the same bytes is never
