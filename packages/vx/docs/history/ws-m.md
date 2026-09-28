@@ -121,6 +121,16 @@ with the clock pinned so the old stamp fell on a whole second; red with
 an even-second stamp 0-2 s old. `output-dirs.test.ts`'s `age()` already
 steps off whole seconds.
 
+M-12. `util-procfs.test.ts` › says yes exactly when /proc's own record
+of this process carries our pid: `procfsIsOwn()` read false on main (run
+36404065979, shard 2). `run-lock-fs.test.ts` mocks the util barrel with
+`procfsIsOwn: () => false`; Bun rebinds that export in `procfs.ts`
+itself for the rest of the process, and a second `mock.module` does not
+undo it. Every later file in the shard, `helpers/alive.ts` included, saw
+a foreign procfs. The mock now answers false only while its file runs.
+Red running the two files in one process before; green after. It is the
+only `mock.module` of a vx module.
+
 ## Leads for other streams
 
 - A: A-20 let a same-project dependant restore ahead of a producer whose

@@ -9,7 +9,7 @@
 import * as fsPromises from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
+import { afterAll, afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import * as util from '../src/util/index.js'
 
 const real = { ...fsPromises }
@@ -52,7 +52,18 @@ await mock.module('node:fs/promises', () => ({
     return real.unlink(p)
   },
 }))
-await mock.module('../src/util/index.js', () => ({ ...realUtil, procfsIsOwn: () => false }))
+// Mocking the barrel rebinds `procfsIsOwn` in procfs.ts itself, for the
+// rest of the process, and a second mock.module does not undo it:
+// util-procfs.test.ts read false on a shard it shared with this file
+// (M-12). So the mock answers false only while this file runs.
+let foreign = true
+afterAll(() => {
+  foreign = false
+})
+await mock.module('../src/util/index.js', () => ({
+  ...realUtil,
+  procfsIsOwn: () => !foreign && realUtil.procfsIsOwn(),
+}))
 // A fresh instance: a shard-mate that loaded run-lock.ts first keeps the real
 // `procfsIsOwn` binding, and the mock above never reached it (O-11's deal).
 const FRESH: string = '../src/orchestrator/run-lock.js?procfs-mocked'
