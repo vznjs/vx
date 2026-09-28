@@ -1606,7 +1606,7 @@ function injectProfileRules(wrapped: string, rules: readonly string[]): string {
  * literal head. On Linux `expandGrants` drops such a hit before the bind
  * (B-1); seatbelt matches a glob as a path regex, with no hit to drop.
  */
-function wallsGlobsReach(grants: readonly string[], walls: readonly string[]): string[] {
+export function wallsGlobsReach(grants: readonly string[], walls: readonly string[]): string[] {
   const heads = grants
     .filter((g) => !isMountableLiteral(g))
     .map((g) => path.dirname(g.slice(0, g.search(MOUNT_WILDCARDS))))
