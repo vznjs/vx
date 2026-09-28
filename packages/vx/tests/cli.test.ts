@@ -254,8 +254,9 @@ describe('cli run()', () => {
       ['why', 'x', '--rn', '1'],
       ['cache', 'prune', '--dry-rn'],
       ['run', 'build', '--concurency', '2'],
-      // CONTROL: a positional is not a flag, and gets no hint.
-      ['info', 'zzz'],
+      // CONTROL: a positional is not a flag, and gets no hint, even one two
+      // edits from a flag the verb takes.
+      ['info', 'format'],
     ]) {
       stderr = ''
       // `last` and `why` refuse by throwing, which bin.ts prints as-is.
@@ -275,7 +276,7 @@ describe('cli run()', () => {
       'vx why: unknown flag: --rn (did you mean --run?) (see `vx why --help`)',
       'vx cache prune: unknown argument: --dry-rn (did you mean --dry-run?) (see `vx cache --help`)',
       'vx run: unknown flag: --concurency (did you mean --concurrency?) (see `vx run --help`)',
-      'vx info: unknown argument: zzz (see `vx info --help`)',
+      'vx info: unknown argument: format (see `vx info --help`)',
     ])
   })
 
