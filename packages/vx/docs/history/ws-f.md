@@ -220,3 +220,12 @@ tree of 70 000 files (a `node_modules`) is a 4.9 MB request, past a
 server's 4 MiB default receive limit, and the task failed
 RESOURCE_EXHAUSTED on every attempt. The list is now split by encoded
 size, the requests sent together. Row red without the fix.
+
+F-21. vx-reapi's cache layer threw when the hit's DURATION (metadata a
+server may move into CAS) could not be read, and core dropped the valid
+hit as a miss; the duration is now unknown instead. Row red without the
+fix (`15 DATA_LOSS`). From a mutation sweep of `cache.ts` (50 mutants, 44
+caught, no other bug): rows now hold its five real survivors (a non-JSON
+or evicted duration is unknown, not 0; an entry at another path is no
+hit; put records exit 0; the duration is read before the artifact), each
+driven red.
