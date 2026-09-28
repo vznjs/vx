@@ -425,6 +425,25 @@ identical globs, and `dist/**` against `distx/*.js`). Not run: the
 survivors against the other 25 files that name the region (rows added
 regardless), error wording beyond the rows above. No defect.
 
+## C-33: hold `shell-verdict.ts`'s surviving mutants, read `#!` as UTF-8
+
+A sweep of 57 mutants over 4 files (`shell-verdict`, `signal-death`,
+`tool-not-on-path`, `execute-task`): 33 caught, 24 survived. Defect:
+`fileVerdict` read the file as latin1, so a `#!` interpreter at a
+non-ASCII path that exists was named missing (`interp-Ã©`); it now reads
+bytes, keeps the first 256 (the kernel's), and decodes UTF-8. Rows in
+`shell-verdict.test.ts` hold the rest: a `#!` line with no newline, a
+tab or a leading space around the interpreter, a relative interpreter
+(the kernel resolves it from the task's directory, so no lookup), `#`
+without `!`, the 256-byte cap (in bytes, not characters), a read refused (a `0o111` file, non-root only: a sandboxed shard refuses a socket's listen), every `SIGNAL_WHY` line whole, the
+fallback reason (SIGUSR1), and a signal name the platform lacks. Re-run
+(58, one more for the new read): 56 caught, 2 left. Equivalent: `signal
+!== undefined &&` before `signal === 'SIGINT'`. Second defect: the mode
+test asked for any execute bit (`0o111`), root's rule, so a `0o654` file
+the task's user owns was named executable; it now asks `accessSync(file,
+X_OK)`. Its row runs only as non-root: red without the fix and green with
+it, run as a `probe` user.
+
 ## Leads for other streams
 
 - **E:** a plugin command's plain `throw` (`commands.probe.run` throwing
