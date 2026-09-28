@@ -140,8 +140,11 @@ function trailingCommentStart(command: string): number {
 export function withForwardArgs(command: string, args: readonly string[] | undefined): string {
   if (!args || args.length === 0) return command
   const quoted = args.map(shellQuote).join(' ')
-  const comment = trailingCommentStart(command)
+  let comment = trailingCommentStart(command)
   if (comment < 0) return `${command} ${quoted}`
+  // A comment-only last line after a commented line: the args go before
+  // the earliest comment, or they land inside it (`echo one # c\n# two`).
+  for (let c = comment; c >= 0; c = trailingCommentStart(command.slice(0, c).trimEnd())) comment = c
   return `${command.slice(0, comment).trimEnd()} ${quoted} ${command.slice(comment)}`
 }
 
