@@ -236,3 +236,59 @@ describe('a symlinked output that leaves the project (e2e)', () => {
     TIMEOUT,
   )
 })
+
+// A root-anchored output tree is outside every project, so a link there to
+// another file of the same tree (`gen/latest -> v2.txt`) was refused as
+// leaving the project, and the task never cached (J's lead). The task wrote
+// that file, so packing it leaks nothing; a link to another project's file
+// is still refused.
+describe('a symlinked workspace output (e2e)', () => {
+  const config = (link: string): string => `
+    export default {
+      tasks: {
+        build: {
+          exec: { command: 'mkdir -p ../../gen && echo v2 > ../../gen/v2.txt && ln -sfn ${link} ../../gen/latest' },
+          cache: { inputs: { files: ['package.json'] }, outputs: { files: [], workspaceFiles: ['gen/**'] } },
+        },
+      },
+    }
+  `
+
+  it(
+    'to another output of its own caches, and restores as its bytes',
+    async () => {
+      const root = await makeWorkspace({ prefix: 'vx-ws-output-link-' })
+      try {
+        await addProject(root, 'app', { config: config('v2.txt') })
+        const r = await summarized(root, ['app#build'])
+        expect([r.code, r.text.includes('cache save failed')]).toEqual([0, false])
+        await rm(path.join(root, 'gen'), { recursive: true, force: true })
+        const again = await summarized(root, ['app#build'])
+        expect(again.tasks.get('app#build')?.['status']).toBe('cache-hit')
+        expect(await readFile(path.join(root, 'gen', 'latest'), 'utf8')).toBe('v2\n')
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
+    "to another project's file is still refused",
+    async () => {
+      const root = await makeWorkspace({ prefix: 'vx-ws-output-linkout-' })
+      try {
+        const other = await addProject(root, 'other', { files: { 'secret.txt': 'L23-SECRET\n' } })
+        const target = path.join(other, 'secret.txt')
+        await addProject(root, 'app', { config: config(JSON.stringify(target).slice(1, -1)) })
+        const r = await summarized(root, ['app#build'])
+        expect(r.text).toContain(
+          `output workspace-outputs/gen/latest is a symlink to ${await realpath(target)}, outside the project`,
+        )
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+})
