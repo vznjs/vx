@@ -155,6 +155,7 @@ here, itself or in a brace group.
 |                                              | `src/exec/sandbox-violations.ts` — strace pass, seatbelt record description, report filters (see sandbox-runtime.md). |
 |                                              | `src/exec/sandbox-binds.ts` — bwrap-honourable write grants, read-grant punching, the SRT custom config.              |
 |                                              | `src/exec/sandbox-paths.ts` — `toRealPath`, `absolutize`, `atOrUnder`, `isUnderAny`, `unique`.                        |
+|                                              | `src/exec/sandbox-deny-scan.ts` — SRT's mandatory write denies, scanned within each task's write grants.              |
 | [`executor.md`](./executor.md)               | `src/exec/executor.ts` — `TaskExecutor` contract + `selectExecutor`.                                                  |
 |                                              | `src/exec/local-executor.ts` — the floor: run it here (see executor.md, plugins.md).                                  |
 

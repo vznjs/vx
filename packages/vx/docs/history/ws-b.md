@@ -29,6 +29,15 @@ In order of harm:
    projects, `.git` and `.vx` under seatbelt. Needs a darwin probe
    (seatbelt precedence of a deny inside an allow) before a fix.
 
+## Leads (B, open)
+
+- On Linux a task's `exec.sandbox` git-config grant never reaches SRT's
+  scan: `linuxGetMandatoryDenyPaths` reads `allowGitConfig` from the
+  run's `initialize` config, and vx passes it only per wrap
+  (`sandbox-binds.ts`). A `.git/config` in a write grant stays
+  read-only either way (B-40's scan keeps that behaviour). Probe it
+  before any fix.
+
 ## Leads for other streams
 
 - **A:** a local save decodes and re-parses the artifact it just packed
@@ -752,3 +761,36 @@ itself against run-to-run noise. The first profile had put 2,100
 `file_hashes` lookups on this run. They came from the host's git config
 (`core.checkStat=minimal`, so vx rightly stops trusting the index), and
 under `GIT_CONFIG_GLOBAL=/dev/null` there are none.
+
+B-40. SRT's mandatory-deny scan, scoped to each task's write grants
+(supervisor lead: the deny scan's cost per task, other than the refuted
+memo). Before the change, SRT walked the whole workspace root with
+`rg --max-depth 3` on every wrap and kept a hit only inside a write
+grant. Removing the scan outright (a probe) halved a sandboxed
+1,090-package run, 24.3 s → 12.5 s. Capping rg's threads was measured
+and not shipped: interleaved min 24,077 → 23,943 ms, noise.
+
+The fix: vx starts SRT at `mandatoryDenySearchDepth: 1`, and
+`scopedMandatoryDenies` walks each task's write grants to the same depth
+and adds what it finds to `denyWrite`. It uses SRT's name rules and
+SRT's hit-to-deny mapping. It is stricter than rg: no `.gitignore`,
+`node_modules` included, symlinks counted by name. A glob character in a
+deny path refuses the task, and a root with one keeps SRT's own scan.
+
+Interleaved A/B with the before arm from a worktree:
+
+| Fixture                             | Before, min / median | After, min / median |
+| ----------------------------------- | -------------------- | ------------------- |
+| 1,090 sandboxed packages (min of 3) | 25,362 / 25,818 ms   | 14,679 / 14,793 ms  |
+| 200 packages (5 runs)               | 3,293 / 3,508 ms     | 2,817 / 2,975 ms    |
+
+Rows:
+
+- `sandbox-deny-scan.unsafe.test.ts` builds the same wrap from SRT's
+  whole-root scan and from depth 1 plus the scoped denies, for grants
+  `a,g`, `.` and `..`. bwrap's deny binds are equal.
+- A wiring row checks the task wrap's `denyWrite`.
+- `sandbox-deny-scan.test.ts` holds the stricter cases and the
+  refusal.
+- Mutations of depth, case folding, the `.git/config` mapping, the
+  whole-root grant and the wiring are each red.

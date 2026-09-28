@@ -1167,6 +1167,11 @@ some task declares `exec.sandbox`); on an unsupported platform a
 sandboxed task fails fast rather than running unsandboxed. Linux needs
 `bubblewrap`, `socat` and `ripgrep` installed (the runtime expands its
 mandatory deny globs with `rg`); a missing one is named with the install.
+Inside a write grant, a file named like a shell or tool config
+(`.bashrc`, `.zshrc`, `.gitconfig`, `.mcp.json`, …), anything under
+`.vscode/` or `.idea/`, and `.git/hooks` or `.git/config` stay read-only
+to the task, down to three levels below the workspace root, ignored by
+git or not.
 
 **macOS cannot nest.** `sandbox_apply` is refused inside a sandboxed
 process, so a task that itself sandboxes something (vx's own test suite)
