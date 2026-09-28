@@ -71,6 +71,11 @@ started_at DESC LIMIT n`, which orders each task by an arbitrary run:
 - C (resolved on main): leads 4 and 5 by item 1055 (the flush signal,
   wired into both sinks); the runtime-probe lead by C-2 (such a task is
   pinned local, and vx-reapi is never offered a pinned task).
+- M/C: on macOS CI, `runner.test.ts` › "the peak is the child's own"
+  read a heavy child's peak RSS under its floor (723 648 512 < 747 634 688)
+  on two unrelated F PRs (#1266, #1355); a platform unit/slack question.
+- A: on macOS CI, `task-glob-brackets.test.ts` › "an upstream's hit sets
+  aside the route a dependant adds" failed once on an F PR (#1294).
 - C (resolved on main by H-10): `ExecuteRequest` carries no abort signal,
   so Ctrl-C does not cancel a remote Execute (wired in F-15).
 
@@ -237,3 +242,13 @@ same size. Both now go at most 1 000 items to a request, sent together;
 a failure warns once per signal with how many requests failed. 20 000 and
 50 000 tasks export clean against the same collector. Rows red without
 the fix.
+
+F-23. F-22's batches bounded a request's ITEMS, not its bytes, and a log
+tail is bounded in characters: JSON writes a control character as six
+bytes, so 64 failed tasks printing control bytes made one 23 MiB logs
+request, refused whole. A body past 4 MiB is now split in half until it
+fits (probe: 9 requests of at most 3 MiB). From a mutation sweep of
+`sink.ts` (114 mutants, 30 real survivors): rows now hold id lengths, a
+started-less task's span id, a task span's start, status and run
+attributes as shipped, the exact `wants`, and the part-failed, throwing
+and unparsable-URL warnings. Rows red without each.

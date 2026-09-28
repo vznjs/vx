@@ -1670,3 +1670,195 @@ describe('a large run ships in requests a collector accepts', () => {
     ])
   })
 })
+
+// F-23: a sweep of sink.ts (114 mutants) — its byte-bound bug and the rows
+// its real survivors lacked.
+describe('the sink, past its sweep', () => {
+  type Span = {
+    traceId: string
+    spanId: string
+    parentSpanId?: string
+    name: string
+    startTimeUnixNano: string
+    status: { code: number }
+    attributes: { key: string; value: { stringValue?: string; intValue?: string } }[]
+  }
+  const spansOf = (calls: { url: string; body: Record<string, unknown> }[]): Span[] =>
+    calls
+      .filter((c) => c.url.endsWith('/v1/traces'))
+      .flatMap(
+        (c) =>
+          (c.body as { resourceSpans: { scopeSpans: { spans: Span[] }[] }[] }).resourceSpans[0]!
+            .scopeSpans[0]!.spans,
+      )
+  const attr = (s: Span, k: string) => {
+    const v = s.attributes.find((a) => a.key === k)?.value
+    return v?.stringValue ?? v?.intValue
+  }
+  const task = (over: Partial<TaskTelemetry> = {}): TaskTelemetry => ({
+    taskId: 'a#build',
+    project: 'a',
+    task: 'build',
+    status: 'success',
+    cacheSource: 'miss',
+    exitCode: 0,
+    durationMs: 1000,
+    ...over,
+  })
+  const start = (sink: OtelSink) =>
+    sink.onRecord({
+      v: 1,
+      kind: 'run.start',
+      run: RUN,
+      total: 1,
+      ts: 900,
+      startedAt: 900,
+    } as TelemetryRecord)
+
+  it('one logs request stays under 4 MiB however the tails escape (the bug)', async () => {
+    const sizes: number[] = []
+    const { cfg } = mkConfig({
+      tracesEnabled: false,
+      metricsEnabled: false,
+      post: async (url, body) =>
+        void (url.endsWith('/v1/logs') && sizes.push(Buffer.byteLength(body))),
+    })
+    const sink = new OtelSink(cfg)
+    start(sink)
+    for (let i = 0; i < 64; i++) {
+      const t = task({ taskId: `p${i}#build`, status: 'failed', exitCode: 1 })
+      sink.onRecord({
+        v: 1,
+        kind: 'task.start',
+        runId: 'run-1',
+        taskId: t.taskId,
+        ts: 901,
+      } as TelemetryRecord)
+      sink.onRecord({
+        v: 1,
+        kind: 'task.log',
+        runId: 'run-1',
+        taskId: t.taskId,
+        stream: 'stdout',
+        chunk: '\x01'.repeat(128 * 1024),
+        ts: 902,
+      } as TelemetryRecord)
+      sink.onRecord({ v: 1, kind: 'task.end', runId: 'run-1', ts: 903, ...t } as TelemetryRecord)
+    }
+    await sink.flush()
+    expect([sizes.length > 1, sizes.every((n) => n <= 4 * 1024 * 1024)]).toEqual([true, true])
+  })
+
+  it('ids, a task span’s start, status and run attributes, as the sink ships them', async () => {
+    const { cfg, calls } = mkConfig({ metricsEnabled: false, logsEnabled: false })
+    const sink = new OtelSink(cfg)
+    start(sink)
+    sink.onRecord({
+      v: 1,
+      kind: 'task.start',
+      runId: 'run-1',
+      taskId: 'a#build',
+      ts: 1000,
+    } as TelemetryRecord)
+    sink.onRecord({
+      v: 1,
+      kind: 'task.end',
+      runId: 'run-1',
+      ts: 5000,
+      ...task({ status: 'failed', exitCode: 1 }),
+    } as TelemetryRecord)
+    // A skipped task ends with no start: it still gets a span id.
+    sink.onRecord({
+      v: 1,
+      kind: 'task.end',
+      runId: 'run-1',
+      ts: 5000,
+      ...task({ taskId: 'b#build', status: 'skipped' }),
+    } as TelemetryRecord)
+    sink.onRecord({ v: 1, kind: 'run.end', runId: 'run-1', ts: 6000 } as TelemetryRecord)
+    await sink.flush()
+    const spans = spansOf(calls)
+    const a = spans.find(
+      (s) => s.name === 'vx.task' && attr(s, 'cicd.pipeline.task.name') === 'a#build',
+    )!
+    const b = spans.find(
+      (s) => s.name === 'vx.task' && attr(s, 'cicd.pipeline.task.name') === 'b#build',
+    )!
+    expect([
+      spans.every((s) => /^[0-9a-f]{32}$/.test(s.traceId) && /^[0-9a-f]{16}$/.test(s.spanId)),
+      spans
+        .filter((s) => s.name === 'vx.task')
+        .every((s) => /^[0-9a-f]{16}$/.test(s.parentSpanId ?? '')),
+      /^[0-9a-f]{16}$/.test(b.spanId),
+      a.startTimeUnixNano,
+      a.status.code,
+      [
+        attr(a, 'cicd.pipeline.run.id'),
+        attr(a, 'vx.workspace.id'),
+        attr(a, 'vx.task.run_started_at'),
+      ],
+    ]).toEqual([true, true, true, '1000000000', 2, ['run-1', RUN.workspaceId, '900']])
+  })
+
+  it('what the sink asks core for, with logs on and off', () => {
+    const on = new OtelSink(mkConfig().cfg)
+    const off = new OtelSink(mkConfig({ logsEnabled: false }).cfg)
+    expect([on.wants, off.wants]).toEqual([
+      ['run.start', 'task.start', 'task.log', 'task.end', 'run.end'],
+      ['run.start', 'task.start', 'task.end', 'run.end'],
+    ])
+  })
+
+  it('a part-failed export, a throwing transport and an unparsable URL each warn once, right', async () => {
+    const run = async (
+      n: number,
+      post: (url: string, body: string) => Promise<void>,
+      over = {},
+    ) => {
+      const warns: string[] = []
+      const { cfg } = mkConfig({
+        metricsEnabled: false,
+        logsEnabled: false,
+        post,
+        warn: (m: string) => warns.push(m),
+        ...over,
+      })
+      const sink = new OtelSink(cfg)
+      start(sink)
+      for (let i = 0; i < n; i++) {
+        sink.onRecord({
+          v: 1,
+          kind: 'task.end',
+          runId: 'run-1',
+          ts: 1000,
+          ...task({ taskId: `p${i}#build` }),
+        } as TelemetryRecord)
+      }
+      sink.onRecord({ v: 1, kind: 'run.end', runId: 'run-1', ts: 2000 } as TelemetryRecord)
+      await sink.flush()
+      return warns
+    }
+    let posts = 0
+    const partly = await run(2499, async () => {
+      if (++posts === 2) throw new Error('second refused')
+    })
+    let exact = 0
+    await run(999, async () => void exact++)
+    const sync = await run(1, (() => {
+      throw new Error('sync')
+    }) as never)
+    const unparsable = await run(
+      1,
+      async () => {
+        throw new Error('down')
+      },
+      { tracesUrl: 'http://u:tok@h:99999/v1/traces' },
+    )
+    expect([partly, exact, sync, unparsable]).toEqual([
+      ['[vx-otel] export failed for http://c/v1/traces: second refused (1 of 3 requests)'],
+      1,
+      ['[vx-otel] export failed for http://c/v1/traces: sync'],
+      ['[vx-otel] export failed for (an unparsable URL): down'],
+    ])
+  })
+})
