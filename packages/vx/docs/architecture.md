@@ -242,7 +242,8 @@ The cache is not a single file. It is composed:
   `outputs/<rel>` + `workspace-outputs/<rel>`; metadata lives in the
   SQLite `entries` row).
   The constructor takes the local slice of the 4-axis `CachePolicy`
-  (`{ read, write }`) and gates only the task-artifact `get`/`save`.
+  (`{ read, write }`) and gates the task-artifact `get`/`save`, the
+  config-evaluation store and the file-hash memo's writes.
 - **`layered-cache.ts`** — composes local + a remote layer behind the
   same `CacheLayer` interface, and declares **`RemoteCacheLayer`** —
   the seam (`has`/`get`/`put`, plus an optional `hasMany`) a remote wire client must
@@ -650,8 +651,8 @@ https://ui.perfetto.dev). See
 [`cli.md` § Run artifacts](./cli.md#run-artifacts---summarize---profile).
 
 CI scripts that want live numbers can `sqlite3 cache.db` directly, or
-use the query layer (`orchestrator/metrics.ts`, exported from
-`@vzn/vx`). In **core** there is no HTTP layer and no UI — the cache
+use the query layer (`orchestrator/metrics.ts`; `@vzn/vx` exports
+`latestRunId` and `whyDidThisRerunQuery`). In **core** there is no HTTP layer and no UI — the cache
 file is the API. Anything that wants a dashboard or an HTTP surface
 builds it on the `telemetry` capability, out of process; core never
 grows a server.
