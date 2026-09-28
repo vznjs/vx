@@ -66,6 +66,12 @@ readers that reach it here.
   no-op fast path).
 - On a repeat load the path is evaluated in a Worker instead, and the
   resolved object comes back as JSON.
+- Configs the cache does not answer load 64 at a time (`LOAD_WIDTH`),
+  not one after another: 1,000 cold configs' `load configs` went from
+  226 to 164 ms (D-68). Results keep the order they were asked in, a
+  failure stops none of the others (their evaluations are stored for the
+  next attempt), and the error thrown is the first in that order. A hit
+  is taken synchronously, so the warm path is unchanged.
 - The default export must be a non-null object. Anything else throws
   `"Project config at <path> did not export a default object"`
   (`Workspace config at …` for a workspace file) — from

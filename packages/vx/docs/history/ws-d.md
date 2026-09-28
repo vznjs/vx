@@ -114,7 +114,11 @@ run leaves out; the rest are refusals.
   › "is removed when the task ends": SRT's own
   `/tmp/claude-http-*.sock` was gone ("the bridge process may have
   died"); 2 of 2 alone. Both are sockets under the shared `/tmp`, under
-  the gate's parallel load; what removed the second is unproven.
+  the gate's parallel load; what removed the second is unproven. A third
+  gate (D-68's) failed `output-memory.unsafe.test.ts` › "stays flat while
+  a never-ready task floods stdout (no line break)": the long run's
+  growth over the short one was 189 MiB against a bound of 64; 5 of 5
+  alone.
 
 - E: a config's `console.log` on its first load (in process) lands in
   stdout ahead of `vx show --format json` (probed), so the JSON does not
@@ -688,3 +692,16 @@ packages/core`) selects the dependent whose `file:../lib` spec named
   a throwing one, a setter alone), each on both paths, red without the
   fix, the setter branch caught by its mutant; the row that held a
   throwing read in the worker now uses a Proxy trap, which still throws.
+- **D-68** Cost cut: cold config loading. `loadProjectConfigs` awaited
+  each first load in turn, and the in-process imports were ~110 ms of
+  a ~230 ms cold `load configs` at 1,000 projects. In isolation 1,000
+  imports took 157 ms one at a time, 61 at 64 wide, 46 unbounded. Misses
+  now load 64 at a time; hits stay synchronous. Interleaved, cache wiped
+  per run, min of 5: 226 to 164 ms cold; warm tied (min of 9: 23.0 and
+  22.3 ms; a first cut that sent hits through the lanes cost the warm
+  path ~2.5 ms). Rows: the D-68 rows of `tests/project-loader.test.ts`:
+  a config that settles only once a later one has run (deadlocks at
+  width 1, caught), results in the order asked, and the first failure
+  in order thrown when a later one fails sooner (caught by the
+  last-failure mutant). Stopping new loads after a failure was dropped:
+  nothing observed it, and storing the rest helps the next attempt.

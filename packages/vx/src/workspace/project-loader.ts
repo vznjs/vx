@@ -291,6 +291,8 @@ export interface LoadProjectConfigOptions {
  * order given, so a failure names the first broken file the way a
  * one-by-one load did). A single-path load is the one-element case.
  */
+const LOAD_WIDTH = 64
+
 export async function loadProjectConfigs(
   configPaths: readonly string[],
   opts?: LoadProjectConfigOptions,
@@ -372,7 +374,6 @@ export async function loadProjectConfigs(
       }
     }
   }
-  const out: ProjectConfig[] = []
   // What the round learned, written ONCE at the end: one transaction per
   // table where each evaluation was its own (1,000 configs cold: 100 ms of
   // autocommit inserts against 5, item 615). Written in `finally`, so a
@@ -380,73 +381,107 @@ export async function loadProjectConfigs(
   // evaluation.
   const evals: Array<readonly [string, string]> = []
   const learnedClosures: Array<readonly [string, readonly string[]]> = []
+  interface Loaded {
+    config: ProjectConfig
+    evaluated?: readonly [string, string]
+    closure?: readonly [string, readonly string[]]
+  }
+  const loadOne = async (entry: (typeof prepared)[number]): Promise<Loaded> => {
+    const { configPath, cacheKey } = entry
+    // A fast key that missed: the closure is stale or the file changed.
+    // Take the slow path for this one config, which re-indexes it.
+    let bytes = entry.bytes
+    let closure = entry.closure
+    let key = cacheKey
+    if (entry.indexed) {
+      bytes = await Bun.file(configPath).bytes()
+      const keyed = await configEvalKey({
+        configPath,
+        bytes,
+        workspaceRoot: evalCache!.workspaceRoot,
+        workspaceFingerprint: evalCache!.workspaceFingerprint,
+        ...slowKeyHash,
+      })
+      key = keyed?.key ?? null
+      closure = keyed !== null && keyed.indexable ? keyed.closure : undefined
+      const slowRow = key === null ? null : (store!.getConfigEval(key) ?? null)
+      const slowHit = slowRow === null ? undefined : storedConfig(slowRow)
+      if (slowHit !== undefined) {
+        return closure === undefined
+          ? { config: slowHit }
+          : { config: slowHit, closure: [configPath, closure] }
+      }
+    }
+    // A REPEAT load in this process re-evaluates in a worker, because the
+    // bust above cannot reach the config's import closure — see
+    // config-eval.ts. A FIRST load keeps the in-process import, so the
+    // single `vx run` hot path never pays for a worker.
+    const repeat = loadedConfigs.has(configPath)
+    loadedConfigs.add(configPath)
+    if (repeat) refuseUnprovidedImports(bytes!, configPath, 'Project')
+    const mod = repeat
+      ? await evaluateConfigFresh(configPath).catch((err: unknown) => {
+          throw configLoadError(err, configPath, 'Project') ?? err
+        })
+      : await loadDefaultExport(configPath, 'Project', bytes!)
+    assertDefaultObject(mod, 'Project', configPath)
+    // Validation runs HERE, on whichever object we ended up with, so a
+    // malformed config reports the identical UserError whether it was
+    // evaluated in-process or in a worker.
+    validateProjectConfig(mod as ProjectConfig, configPath)
+    const json = JSON.stringify(mod)
+    // A tree of its own, as a hit and the lock hand out. The module object
+    // shares what the config shares: one preset's task in two configs, one
+    // `exec` in two tasks. A `project` hook that edits in place then edited
+    // them all, so a cold run ran `echo P +plug +plug` where the warm run
+    // and `--frozen` ran `echo P +plug`, under another key (item 967). A
+    // config is JSON data (config-schema.ts), so the copy loses nothing.
+    const config = JSON.parse(json) as ProjectConfig
+    if (key === null) return { config }
+    return closure === undefined
+      ? { config, evaluated: [key, json] }
+      : { config, evaluated: [key, json], closure: [configPath, closure] }
+  }
   // One worker for every repeat load in this round, however many there are.
   const endRound = beginEvalRound()
   try {
-    for (const entry of prepared) {
-      const { configPath, cacheKey } = entry
-      const hit = cacheKey === null ? undefined : hits.get(cacheKey)
+    // Loaded LOAD_WIDTH at a time: one import after another put 1,000 cold
+    // configs at ~160 ms of imports where 64 at once take ~60 (D-68), and
+    // the width bounds the files a module load may hold open. A failure
+    // stops nothing (the rest are evaluated and stored for the next
+    // attempt); the error thrown is the first in order, as the serial
+    // loop's was.
+    const results: Array<Loaded | { failed: unknown }> = []
+    // A hit is taken here, synchronously as before: through the lanes each
+    // cost the warm path a call and an await.
+    const misses: number[] = []
+    for (let i = 0; i < prepared.length; i++) {
+      const key = prepared[i]!.cacheKey
+      const hit = key === null ? undefined : hits.get(key)
       // Stored AFTER validation, so a hit needs none; the key covers every
       // byte the evaluation could have read.
       const cached = hit === undefined ? undefined : storedConfig(hit)
-      if (cached !== undefined) {
-        out.push(cached)
-        continue
-      }
-      // A fast key that missed: the closure is stale or the file changed.
-      // Take the slow path for this one config, which re-indexes it.
-      let bytes = entry.bytes
-      let closure = entry.closure
-      let key = cacheKey
-      if (entry.indexed) {
-        bytes = await Bun.file(configPath).bytes()
-        const keyed = await configEvalKey({
-          configPath,
-          bytes,
-          workspaceRoot: evalCache!.workspaceRoot,
-          workspaceFingerprint: evalCache!.workspaceFingerprint,
-          ...slowKeyHash,
-        })
-        key = keyed?.key ?? null
-        closure = keyed !== null && keyed.indexable ? keyed.closure : undefined
-        const slowRow = key === null ? null : (store!.getConfigEval(key) ?? null)
-        const slowHit = slowRow === null ? undefined : storedConfig(slowRow)
-        if (slowHit !== undefined) {
-          out.push(slowHit)
-          if (closure !== undefined) learnedClosures.push([configPath, closure])
-          continue
-        }
-      }
-      // A REPEAT load in this process re-evaluates in a worker, because the
-      // bust above cannot reach the config's import closure — see
-      // config-eval.ts. A FIRST load keeps the in-process import, so the
-      // single `vx run` hot path never pays for a worker.
-      const repeat = loadedConfigs.has(configPath)
-      loadedConfigs.add(configPath)
-      if (repeat) refuseUnprovidedImports(bytes!, configPath, 'Project')
-      const mod = repeat
-        ? await evaluateConfigFresh(configPath).catch((err: unknown) => {
-            throw configLoadError(err, configPath, 'Project') ?? err
-          })
-        : await loadDefaultExport(configPath, 'Project', bytes!)
-      assertDefaultObject(mod, 'Project', configPath)
-      // Validation runs HERE, on whichever object we ended up with, so a
-      // malformed config reports the identical UserError whether it was
-      // evaluated in-process or in a worker.
-      validateProjectConfig(mod as ProjectConfig, configPath)
-      const json = JSON.stringify(mod)
-      if (key !== null) {
-        evals.push([key, json])
-        if (closure !== undefined) learnedClosures.push([configPath, closure])
-      }
-      // A tree of its own, as a hit and the lock hand out. The module object
-      // shares what the config shares: one preset's task in two configs, one
-      // `exec` in two tasks. A `project` hook that edits in place then edited
-      // them all, so a cold run ran `echo P +plug +plug` where the warm run
-      // and `--frozen` ran `echo P +plug`, under another key (item 967). A
-      // config is JSON data (config-schema.ts), so the copy loses nothing.
-      out.push(JSON.parse(json) as ProjectConfig)
+      if (cached !== undefined) results[i] = { config: cached }
+      else misses.push(i)
     }
+    let next = 0
+    const lane = async (): Promise<void> => {
+      while (next < misses.length) {
+        const i = misses[next++]!
+        results[i] = await loadOne(prepared[i]!).catch((err: unknown) => ({ failed: err }))
+      }
+    }
+    await Promise.all(Array.from({ length: Math.min(LOAD_WIDTH, misses.length) }, lane))
+    const out: ProjectConfig[] = []
+    for (const r of results) {
+      if ('failed' in r) continue
+      if (r.evaluated !== undefined) evals.push(r.evaluated)
+      if (r.closure !== undefined) learnedClosures.push(r.closure)
+      out.push(r.config)
+    }
+    const first = results.find((r) => 'failed' in r)
+    if (first !== undefined) throw (first as { failed: unknown }).failed
+    return out
   } finally {
     endRound()
     if (store !== undefined) {
@@ -460,7 +495,6 @@ export async function loadProjectConfigs(
       }
     }
   }
-  return out
 }
 
 export async function loadProjectConfig(
