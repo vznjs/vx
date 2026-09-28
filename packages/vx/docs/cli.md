@@ -1723,6 +1723,18 @@ like what `vx init` writes: both hand a plan to core's migration seam
 against overwriting, writes and reports. The mapping rules live in the
 package's README.
 
+## Machine-readable output
+
+`vx show`, `vx info`, `vx why` and `vx last` take `--format json`. Each
+prints one JSON document whose shape is a checked-in JSON Schema
+(draft 2020-12) shipped with the package: `schemas/show.json`,
+`schemas/info.json`, `schemas/why.json`, `schemas/last.json`
+(`node_modules/@vzn/vx/schemas/` in an install). Every object closes its
+key set, so a field vx adds is a schema change, never a surprise.
+`tests/cli-json-schemas.test.ts` holds each verb's output to its schema,
+each declared field to some output, and each object's keys to the
+source type.
+
 ## `vx show`
 
 Introspect the workspace's **live resolved configs** — what a run

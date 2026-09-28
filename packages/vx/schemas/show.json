@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "vx show --format json",
+  "description": "`vx show` lists projects; `vx show <project>` prints one project's resolved config; `vx show <project>#<task>` one task's; `vx show <task>` that task in every project declaring it. A secret value is masked.",
+  "oneOf": [
+    { "type": "array", "items": { "$ref": "#/$defs/listRow" } },
+    { "$ref": "#/$defs/project" },
+    { "$ref": "#/$defs/task" },
+    { "type": "array", "items": { "$ref": "#/$defs/task" } }
+  ],
+  "$defs": {
+    "listRow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "dir", "tasks"],
+      "properties": {
+        "name": { "type": "string" },
+        "dir": {
+          "type": "string",
+          "description": "relative to the workspace root, POSIX separators"
+        },
+        "tasks": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "project": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "dir", "config"],
+      "properties": {
+        "name": { "type": "string" },
+        "dir": { "type": "string" },
+        "config": {
+          "type": ["object", "null"],
+          "description": "null when the package has no vx config and no plugin gave it one",
+          "additionalProperties": false,
+          "properties": {
+            "tasks": { "type": "object", "additionalProperties": { "$ref": "#/$defs/taskConfig" } }
+          }
+        }
+      }
+    },
+    "task": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "dir", "task", "config"],
+      "properties": {
+        "name": { "type": "string" },
+        "dir": { "type": "string" },
+        "task": { "type": "string" },
+        "config": { "$ref": "#/$defs/taskConfig" }
+      }
+    },
+    "stringList": { "type": "array", "items": { "type": "string" } },
+    "taskConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "description": { "type": "string" },
+        "dependsOn": { "$ref": "#/$defs/stringList" },
+        "exec": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["command"],
+          "properties": {
+            "command": { "type": "string" },
+            "remote": { "enum": [true, false, "only"] },
+            "timeout": { "type": "number", "description": "ms" },
+            "retries": { "type": "integer" },
+            "env": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "passThrough": { "$ref": "#/$defs/stringList" },
+                "define": { "type": "object", "additionalProperties": { "type": "string" } },
+                "secret": { "$ref": "#/$defs/stringList" }
+              }
+            },
+            "persistent": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": { "readyWhen": { "type": "string" } }
+            },
+            "sandbox": {
+              "type": "object",
+              "description": "as declared; its fields are the `exec.sandbox` section of the config schema"
+            }
+          }
+        },
+        "cache": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["inputs", "outputs"],
+          "properties": {
+            "inputs": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["files"],
+              "properties": {
+                "files": { "$ref": "#/$defs/stringList" },
+                "workspaceFiles": { "$ref": "#/$defs/stringList" },
+                "env": { "$ref": "#/$defs/stringList" },
+                "tasks": { "$ref": "#/$defs/stringList" },
+                "runtime": { "$ref": "#/$defs/stringList" },
+                "workspaceRuntime": { "$ref": "#/$defs/stringList" }
+              }
+            },
+            "outputs": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["files"],
+              "properties": {
+                "files": { "$ref": "#/$defs/stringList" },
+                "workspaceFiles": { "$ref": "#/$defs/stringList" }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -366,3 +366,13 @@ task picked`; neither prints a stack. Row in
 - Sweeps of `util/num.ts` and `util/timing.ts`: ten mutants, ten
   caught. With E-45..E-62 every file in this stream's slice has had a
   sweep batch.
+- E-64 — `cli/watch-fs.ts`: `WatcherPool`, the watchers a loop holds
+  (arm, the first-event proof, close-all), out of `watch.ts` (818 →
+  743 lines). No behaviour change.
+- E-65 — `schemas/{show,info,why,last}.json`: each read verb's
+  `--format json` as a checked-in JSON Schema, shipped. A test holds
+  every output to its schema (closed key sets), every declared field
+  to some output, and each object's keys to its source type through
+  the compiler (`keys<T>`), so a field added to `InfoFacts` fails until
+  the schema names it. A hundred-line subset validator in
+  `tests/helpers/json-schema.ts`; no dependency.
