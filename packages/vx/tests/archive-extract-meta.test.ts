@@ -22,6 +22,7 @@ import { afterAll, describe, expect, it } from 'bun:test'
 import { extractArtifactStream, packArtifact, scanArtifact } from '../src/cache/archive.js'
 import { tarPack, type TarInput } from '../src/cache/tar-stream.js'
 import { streamOf } from './helpers/stream.js'
+import { withSum } from './helpers/artifact-sum.js'
 
 const dir = mkdtempSync(path.join(os.tmpdir(), 'vx-archive-meta-'))
 afterAll(() => rmSync(dir, { recursive: true, force: true }))
@@ -32,7 +33,7 @@ const fresh = (): string => mkdtempSync(path.join(dir, `d${n++}-`))
 async function bareTar(inputs: TarInput[]): Promise<Uint8Array> {
   const chunks: Uint8Array[] = []
   for await (const c of tarPack([{ name: 'stdout', size: 0, body: '' }, ...inputs])) chunks.push(c)
-  return new Uint8Array(await new Blob(chunks).arrayBuffer())
+  return await withSum(new Uint8Array(await new Blob(chunks).arrayBuffer()))
 }
 
 describe('an artifact with no sidecar', () => {

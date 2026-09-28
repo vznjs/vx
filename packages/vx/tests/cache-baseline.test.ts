@@ -27,6 +27,7 @@ import { scanArtifact } from '../src/cache/archive.js'
 import { streamOf } from './helpers/stream.js'
 import { Cache } from '../src/cache/cache.js'
 import { xxh3, xxh3hex } from '../src/util/hash.js'
+import { withSum } from './helpers/artifact-sum.js'
 
 // CI auto-scales budgets ~3× to cover shared-runner variance; dev
 // runs the calibration-tight values unless VX_PERF_SCALE is set
@@ -777,6 +778,7 @@ describePerf('cache baseline: SQLite writes', () => {
 })
 
 describePerf('scanArtifact — foreign tar dialects', () => {
+  const withSumOf = (parts: Uint8Array[]) => withSum(concat(parts))
   /**
    * PAX extended-header records (typeflag 'x' / 'g') are what BSD tar —
    * the macOS default — emits per entry for xattrs and nanosecond
@@ -842,7 +844,7 @@ describePerf('scanArtifact — foreign tar dialects', () => {
 
     const { entries } = await scanArtifact(
       streamOf(
-        concat([
+        await withSumOf([
           makeHeader({ name: 'PaxHeaders/main.js', size: paxBody.length, typeFlag: 'x' }),
           makeDataBlock(paxBody),
           makeHeader({ name: 'outputs/main.js', size: realBody.length, typeFlag: '0' }),
@@ -864,7 +866,7 @@ describePerf('scanArtifact — foreign tar dialects', () => {
     const realBody = new TextEncoder().encode('x')
     const { entries } = await scanArtifact(
       streamOf(
-        concat([
+        await withSumOf([
           makeHeader({ name: 'pax_global_header', size: globalPax.length, typeFlag: 'g' }),
           makeDataBlock(globalPax),
           makeHeader({ name: 'outputs/a.txt', size: realBody.length, typeFlag: '0' }),

@@ -242,7 +242,7 @@ export interface CacheStats {
 // an unchanged key, or when the container changes); SCHEMA_VERSION
 // gates the SQLite schema, and a bump drops every table — which is why
 // the first run after one says so and names `vx cache prune`.
-export const CACHE_VERSION = 'vx-cache-v35' // key-fold.ts
+export const CACHE_VERSION = 'vx-cache-v36' // key-fold.ts
 export const SCHEMA_VERSION = 'v28'
 export function noteSchemaReset(cache: Cache, warn: (message: string) => void): void
 
@@ -370,11 +370,13 @@ row, so a hit replays it without opening the artifact.
 `save()`:
 
 1. Packs the entry — `stdout`, `outputs/<rel>`,
-   `workspace-outputs/<rel>` and the `.vx-meta.json` sidecar — into
+   `workspace-outputs/<rel>`, the `.vx-meta.json` sidecar and the
+   `.vx-sum` CRC-32 of the entries before it (v36) — into
    `<cacheDir>/<hash>.tar.zst.tmp-<pid>-…` (streamed; an artifact of
    4 MiB or less is packed in memory and written there).
-2. Scans the temp as a restore would (a readable archive, a `stdout`
-   entry, its own key in the sidecar); a failure removes the temp.
+2. Scans the temp as a restore would (a readable archive whose sum
+   matches, a `stdout` entry, its own key in the sidecar); a failure
+   removes the temp.
 3. In one `BEGIN IMMEDIATE` transaction, `rename(2)`s the temp to
    `<cacheDir>/<hash>.tar.zst` and writes the `entries` row
    (`ON CONFLICT(hash) DO UPDATE …`), the `output_files` rows and the
@@ -476,7 +478,7 @@ Outputs` additionally refuses when the archive cannot produce an output
 
 ## `CACHE_VERSION` / `SCHEMA_VERSION`
 
-`CACHE_VERSION` is currently `'vx-cache-v35'`; `SCHEMA_VERSION` is
+`CACHE_VERSION` is currently `'vx-cache-v36'`; `SCHEMA_VERSION` is
 `'v28'`. Bump `CACHE_VERSION` when:
 
 - A new field is added to the cache KEY derivation (folded inside

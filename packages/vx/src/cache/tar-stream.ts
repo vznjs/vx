@@ -246,7 +246,8 @@ export interface TarInput {
   mode?: number
   /** Seconds since epoch; the sidecar carries the millisecond value. */
   mtime?: number
-  body: Blob | Uint8Array | string
+  /** An iterable is read once, in order, as the entry is written (`size` is its length). */
+  body: Blob | Uint8Array | string | AsyncIterable<Uint8Array>
 }
 
 const encoder = new TextEncoder()
@@ -326,6 +327,9 @@ function needsPax(name: string): boolean {
   return bytes.byteLength > 100 && splitForUstar(bytes) === null
 }
 
+const isChunks = (b: TarInput['body']): b is AsyncIterable<Uint8Array> =>
+  typeof b === 'object' && Symbol.asyncIterator in b
+
 /** The exact number of bytes `tarPack` writes for these inputs. */
 export function tarSize(inputs: readonly TarInput[]): number {
   let size = BLOCK * 2
@@ -360,9 +364,10 @@ export async function* tarPack(
       headerName = encoder.encode(input.name).subarray(0, 100)
     }
     yield header(headerName, input.size, '0', mode, mtime)
-    if (input.body instanceof Blob) {
+    if (input.body instanceof Blob || isChunks(input.body)) {
       let n = 0
-      for await (const chunk of input.body.stream()) {
+      const chunks = input.body instanceof Blob ? input.body.stream() : input.body
+      for await (const chunk of chunks) {
         n += chunk.byteLength
         yield chunk
       }
