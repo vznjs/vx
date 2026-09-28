@@ -298,7 +298,7 @@ upstream repos.
 
 11. **Cache TTL / size caps in config — shipped (2026-09-23, item 658) as `cacheRetention`.** `defineWorkspace({ cacheRetention: {
 olderThan: '30d', maxSize: '10G' } })` applies the `vx cache
-prune` policy at the end of every run that writes the local cache,
+prune` policy at the end of every run,
     only when something is due.
     - Turbo: `cacheMaxAge`, `cacheMaxSize` (verified in the 2.10
       configuration reference).
