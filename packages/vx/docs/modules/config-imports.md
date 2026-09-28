@@ -143,21 +143,14 @@ flows into its resolved config. Following it would make the walk's cost
 the size of an arbitrary project's source tree rather than the shared
 tooling set.
 
-**When the workspace root is ITSELF a project, transitivity through
-shared files disappears.** vx supports a root `"."` member (this repo
-uses one for core `@vzn/vx`), and that project's directory is the whole
-workspace — so every `shared/**` file is "owned" and the walk stops at
-the first hop. `app`'s config importing `shared/flag.mjs` still selects
-`app` when `flag.mjs` changes; it does NOT when `shared/deep.mjs`
-changes and only `flag.mjs` imports it. In a root-is-a-project
-workspace, keep config helpers one hop from the config, or import them
-by a specifier the containment channel already covers.
-
-Measured for context rather than asserted: full descent from that
-relative-import config reached 78 files in 15 ms here, so the cost of
-closing this is not scan time — it is that an arbitrary project's
-source tree becomes the walk's bound, and that every edit inside it
-selects the importing project.
+**When the workspace root is ITSELF a project** (a `"."` member, or a
+root `vx.config` since D-39), its directory is the whole workspace, so
+every `shared/**` file is owned by it. The walk descends through the
+root project's own files as through unowned ones (D-41): they are the
+same shared tooling, and a member's config importing `shared/flag.mjs`,
+which imports `shared/deep.mjs`, is selected when `deep.mjs` changes.
+It stopped at the first hop before, and left that importer out while
+its key moved. A member's files still stop the walk.
 
 ## Known over-selection
 
