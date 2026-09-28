@@ -177,7 +177,9 @@ blocked them.
 
 ## 5. `vx watch` — debounce + reentrancy
 
-Owner: `cli/watch.ts`. One recursive `fs.watch` per project dir plus a
+Owners: `cli/watch.ts`, `cli/watch-set.ts` (what is watched),
+`cli/watch-filter.ts` (the path filter), `cli/watch-fs.ts` (watchers,
+and the stat poller where they fail). One recursive `fs.watch` per project dir plus a
 non-recursive watch of the workspace root, which fires for the
 workspace fingerprint files (lockfiles), `vx.workspace.*`, the root
 `package.json` and root files a plugin claims. When any task declares

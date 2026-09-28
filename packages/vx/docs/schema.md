@@ -964,7 +964,7 @@ unsandboxed.** Full walkthrough in the
 ```ts
 interface SandboxConfig {
   allow?: SandboxGrants // what the command may do
-  deny?: { network?: string[] } // domains to refuse; not enforced today (below)
+  deny?: { network?: string[] } // domains to refuse, run-wide (below)
   ignore?: SandboxIgnore // violations to leave out of the report
   weakerWhenNested?: boolean // Linux: let a sandboxed task sandbox (default false)
   weakerNetworkIsolation?: boolean // macOS: host-proxy net, lower isolation (default false)

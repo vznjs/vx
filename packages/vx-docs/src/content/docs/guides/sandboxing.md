@@ -42,7 +42,7 @@ export default defineProject({
 
 ## What you can grant
 
-`allow` takes every key below. `deny` takes only `network`. Domain lists are one union per run, which every sandboxed task reaches, and `deny.network` refuses nothing today. `ignore` takes `read`, `write`, `systemInfo` and `network`, as patterns, and refuses the rest.
+`allow` takes every key below. `deny` takes only `network`. Domain lists are one union per run, which every sandboxed task reaches; `deny.network` is refused to every sandboxed task. `ignore` takes `read`, `write`, `systemInfo` and `network`, as patterns, and refuses the rest.
 
 | Key            | Grants                                                            |
 | -------------- | ----------------------------------------------------------------- |
