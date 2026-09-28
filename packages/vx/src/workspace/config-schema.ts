@@ -722,6 +722,26 @@ const FOREIGN_FIELDS: ReadonlyMap<ReadonlySet<string>, Readonly<Record<string, s
     },
   ],
   [EXEC_FIELDS, { cmd: '`command`', script: '`command`' }],
+  // Turbo's turbo.json and Nx's nx.json keys, written into vx.workspace
+  // (D-38).
+  [
+    WORKSPACE_FIELDS,
+    {
+      pipeline:
+        "each package's `vx.config` `tasks` (`bunx @vzn/vx-migrate` writes them from turbo.json)",
+      tasks:
+        "each package's `vx.config` `tasks` (`bunx @vzn/vx-migrate` writes them from turbo.json)",
+      targetDefaults:
+        "each package's `vx.config` `tasks`, sharing defaults through an imported module",
+      namedInputs: 'a module each `vx.config` imports, spread into `cache.inputs.files`',
+      globalEnv: '`cache.inputs.env` on the tasks it keys',
+      globalDependencies: '`cache.inputs.workspaceFiles` on the tasks it keys',
+      remoteCache:
+        'a cache plugin in `plugins` (`turboCache()` or `nxCache()` from `@vzn/vx-migrate`)',
+      parallel: '`concurrency`',
+      cacheDirectory: '`cacheDir`',
+    },
+  ],
 ])
 
 function assertKnownFields(value: object, allowed: ReadonlySet<string>, where: string): void {
