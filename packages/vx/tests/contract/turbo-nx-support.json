@@ -21,18 +21,18 @@
   },
   {
     "key": "turbo.json cacheMaxAge",
-    "status": "not-supported",
-    "reason": "Ignored without a warning; prune with `vx cache prune --older-than`."
+    "status": "mapped",
+    "reason": "turbo() fills `cacheRetention.olderThan` when `vx.workspace.ts` sets no retention; weeks become days, `\"0\"` is off."
   },
   {
     "key": "turbo.json cacheMaxSize",
-    "status": "not-supported",
-    "reason": "Ignored without a warning; prune with `vx cache prune --max-size`."
+    "status": "mapped",
+    "reason": "turbo() fills `cacheRetention.maxSize` when `vx.workspace.ts` sets no retention; `\"0\"` is off."
   },
   {
     "key": "turbo.json concurrency",
-    "status": "not-supported",
-    "reason": "Ignored without a warning; use `--concurrency` or the workspace's `concurrency`."
+    "status": "mapped",
+    "reason": "turbo() fills the workspace's `concurrency` when `vx.workspace.ts` sets none (`\"50%\"` of the cores too)."
   },
   {
     "key": "turbo.json daemon",
@@ -401,8 +401,8 @@
   },
   {
     "key": "nx.json parallel",
-    "status": "not-supported",
-    "reason": "Ignored; use `--concurrency` or the workspace's `concurrency`."
+    "status": "mapped",
+    "reason": "nx() fills the workspace's `concurrency` when `vx.workspace.ts` sets none."
   },
   {
     "key": "nx.json cacheDirectory",

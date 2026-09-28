@@ -17,9 +17,9 @@ Every key `turbo.json`, `nx.json` and `project.json` accept, read from the upstr
 | `agentGuidance` | not applicable | Guidance for AI agents, not task or cache config; vx ignores it. |
 | `boundaries` | not applicable | Turbo's import-rule checker; vx has no module-boundary rules and ignores it. |
 | `cacheDir` | not supported | Ignored without a warning; vx uses its own `cacheDir` in `vx.workspace.ts`. |
-| `cacheMaxAge` | not supported | Ignored without a warning; prune with `vx cache prune --older-than`. |
-| `cacheMaxSize` | not supported | Ignored without a warning; prune with `vx cache prune --max-size`. |
-| `concurrency` | not supported | Ignored without a warning; use `--concurrency` or the workspace's `concurrency`. |
+| `cacheMaxAge` | mapped, with a note | turbo() fills `cacheRetention.olderThan` when `vx.workspace.ts` sets no retention; weeks become days, `"0"` is off. |
+| `cacheMaxSize` | mapped, with a note | turbo() fills `cacheRetention.maxSize` when `vx.workspace.ts` sets no retention; `"0"` is off. |
+| `concurrency` | mapped, with a note | turbo() fills the workspace's `concurrency` when `vx.workspace.ts` sets none (`"50%"` of the cores too). |
 | `daemon` | not applicable | vx has no daemon by design. |
 | `dangerouslyDisablePackageManagerCheck` | not applicable | Turbo's package-manager check; vx has none. |
 | `envMode` | mapped, with a note | Strict is vx's behaviour; `loose` gets a note, since vx passes only declared variables. |
@@ -98,7 +98,7 @@ Every key `turbo.json`, `nx.json` and `project.json` accept, read from the upstr
 | `nxCloudUrl` | not applicable | Nx Cloud endpoint; `nxCache()` talks to self-hosted `/v1/cache` servers. |
 | `nxCloudEncryptionKey` | not applicable | Nx Cloud artifact encryption. |
 | `neverConnectToCloud` | not applicable | Nx Cloud opt-out; vx never connects to Nx Cloud. |
-| `parallel` | not supported | Ignored; use `--concurrency` or the workspace's `concurrency`. |
+| `parallel` | mapped, with a note | nx() fills the workspace's `concurrency` when `vx.workspace.ts` sets none. |
 | `cacheDirectory` | not supported | Ignored; vx uses its own `cacheDir`. |
 | `useDaemonProcess` | not applicable | vx has no daemon; Nx's setting still applies when vx asks Nx for the graph. |
 | `useInferencePlugins` | mapped, with a note | Applied by Nx when it builds the graph; vx sees the targets that result. |
