@@ -19,6 +19,20 @@ itself needs toolchain plugins from GHCR, unreachable here.
 - Rows: `tests/moon.test.ts` (each red with its rule removed: the `**/*`
   default, the `dependsOn` edges, final-option merges, the `.env` probe).
 
+N-2. `wireit()` and `vx-migrate --from wireit`. A wireit workspace (lit's
+shape: npm workspaces, `wireit` blocks in each package.json) runs under
+vx; the CLI writes the same tasks. `files` + `output` are the cache
+block (wireit caches only with both), `../pkg:script` is `pkg#script`, a
+plain npm script a dependency names runs as a task, `service` is
+persistent with its `readyWhen`. On lit/lit all 299 tasks across 53
+packages plan; its `packages/react` and `packages/context` list
+`../../../rollup-common.js`, a path outside the repo, reported as a todo.
+The dangling-edge prune moon and wireit share moved to
+`src/dangling-edges.ts`.
+
+- Rows: `tests/wireit.test.ts` (each red with its rule removed: both
+  arrays for a cache, the `../` climb, `readyWhen`, the plain-script task).
+
 ## Candidates not built (2026-09-28)
 
 - Lerna without Nx: `lerna run <s>` (lerna 10.0.1, `prepNxOptions`)
