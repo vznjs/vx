@@ -2,6 +2,9 @@
 // the plugin undone. Driven through a stub `fetch`, so a row can read the
 // exact request and serve the exact response it is about.
 import { describe, expect, it } from 'bun:test'
+import { mkdtemp, readdir, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
 import { artifactTag, resolveTurboCacheConfig, TurboRemoteCache } from '../src/index.js'
 
 const TOKEN = 't'
@@ -159,6 +162,48 @@ describe('the upload', () => {
 })
 
 describe('the signed download', () => {
+  it('a body past the bound is refused as it passes it, and its temp removed (L-8)', async () => {
+    // Written whole before its tag is checked, a body that never ended
+    // filled the temp's disk. The source counts what it gave.
+    const key = 'k'.repeat(40)
+    const dir = await mkdtemp(path.join(tmpdir(), 'vx-l8-'))
+    let pulled = 0
+    const chunk = new Uint8Array(64 * 1024)
+    const { fetchImpl } = stub(
+      () =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            pull(c) {
+              if (pulled >= 64 * 1024 * 1024) return c.close()
+              pulled += chunk.byteLength
+              c.enqueue(chunk)
+            },
+          }),
+          { headers: { 'x-artifact-tag': 'x' } },
+        ),
+    )
+    const cache = new TurboRemoteCache(
+      resolveTurboCacheConfig({ ...BASE, teamId: 'team_1', signatureKey: key }, {})!,
+      fetchImpl,
+      dir,
+      Bun.sleep,
+      1024 * 1024,
+    )
+    try {
+      const got = await cache.get('aa').then(
+        () => 'resolved',
+        (e: Error) => e.message,
+      )
+      expect({ got, stopped: pulled < 8 * 1024 * 1024, left: await readdir(dir) }).toEqual({
+        got: 'the signed artifact runs past 1048576 bytes — treated as a miss',
+        stopped: true,
+        left: [],
+      })
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
   it('a tag of the wrong length is a refusal, not a RangeError', async () => {
     const key = 'k'.repeat(40)
     const good = await artifactTag(Buffer.from(key), 'aa', 'team_1', new Blob(['x']))
