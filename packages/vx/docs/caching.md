@@ -606,7 +606,7 @@ learned — the enumeration's start for an index OID, the describe for a
 hashed file — is hashed again and compared, and a file that is gone has
 moved. A file written at or after the describe (just before the command)
 has moved whatever it holds (a whole-second stamp counts as any moment
-of its second, in both checks): an input changed and changed BACK while the
+of its second, an even one of two, in both checks): an input changed and changed BACK while the
 command ran matched its digest again, and its output, built from the
 edit, was filed under the key and restored over the original (item
 1015). When one moved, the task's result stands but no entry is saved,
