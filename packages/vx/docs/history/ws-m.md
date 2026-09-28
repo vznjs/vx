@@ -89,6 +89,15 @@ next tightest (`wedged.test.ts` 159 and 260, and
 `signal-handling.test.ts` 984) keep 500 ms or more and never went red in
 the survey.
 
+M-9. `keep-alive.test.ts` › a server exiting 1 tears the other down: red
+on macOS (run 36381538775, N-7's PR, a vx-migrate diff), the family the
+survey counted four times. `other` exited 0.3 s after it started and vx
+stopped `dev` within its 200 ms grace; the row checked `dev` alive only
+after polling for its pid, and a loaded runner read it after the
+teardown. `other` now exits once the row, having seen `dev` alive,
+writes `go`. A 600 ms stall before the check reddened both rows without
+it and passes with it.
+
 ## Leads for other streams
 
 - A: A-20 let a same-project dependant restore ahead of a producer whose
