@@ -370,13 +370,13 @@ The child process gets, in priority order (lowest first):
 4. **PATH augmentation** — `<projectDir>/node_modules/.bin`, then
    `<workspaceRoot>/node_modules/.bin`, are prepended so installed
    tools (`oxlint`, `vite`, etc.) work without `npx`. Never a sibling
-   project's bin; those stay invisible. A task that exits 127 or 126 gets one more frame line
+   project's bin; those stay invisible. A task whose shell exits 127 or 126 gets one more frame line
    (`orchestrator/shell-verdict.ts`): for a bare word, that 127 is the
    shell's "command not found", the word (when the command is a plain
    `word args…`), the two bin directories vx puts first, and that a
    sibling project's bin is never visible, and on 126 `chmod +x`; for
    a word with a slash, what the file says — missing (the resolved
-   path), a directory, no execute bit, a `#!` interpreter that does
+   path), a directory, not executable by this user, a `#!` interpreter that does
    not exist (a CRLF line ending is named as such), or no `#!` line.
    An exit above 128 gets the same line for its signal: which one, and
    what sends it (the OOM killer, a crash in native code, an abort, a
