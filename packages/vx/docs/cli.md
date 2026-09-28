@@ -1727,6 +1727,8 @@ Unknown project / task names exit `1` with the same near-miss hint
 every verb gives (two edits, or a partial name); a bare name that is
 neither reads `unknown project or task: "buidl" — did you mean build?`.
 
+An empty target (`vx show ''`) is refused: omit it to list every project.
+
 Exit codes: `0` success; `1` parse error or unknown target.
 
 Two runs on one workspace take turns: the second waits for the first's

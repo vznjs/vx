@@ -9,7 +9,7 @@ import { Database } from 'bun:sqlite'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { gitIn, makeWorkspace as makeWorkspaceRoot } from './helpers/workspace.js'
-import { parseWhyArgs } from '../src/cli/index.js'
+import { parseShowArgs, parseWhyArgs } from '../src/cli/index.js'
 import { WHAT_TO_DO } from '../src/cli/why.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
@@ -327,6 +327,12 @@ describe('parseWhyArgs', () => {
       runId: 'r1',
       format: 'json',
     })
+  })
+
+  it('an empty target is no target, and vx show refuses one (E-35)', () => {
+    // As a query '' is a part of every name: its hint listed the workspace.
+    expect(parseWhyArgs([''])).toEqual({ format: 'pretty' })
+    expect(parseShowArgs(['']).error).toBe('empty target (omit it to list every project)')
   })
 
   it('rejects unknown flags, bad formats, empty --run, extra positionals', () => {

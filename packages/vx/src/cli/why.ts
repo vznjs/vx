@@ -86,7 +86,8 @@ export function parseWhyArgs(args: readonly string[]): WhyArgs {
     if (a.startsWith('-'))
       return { ...out, error: `unknown flag: ${a}${flagHint('why', a)}${seeHelp('why')}` }
     if (out.target !== undefined) return { ...out, error: `unexpected argument: ${a}` }
-    out.target = a
+    // Empty is no task: read as a query it matched every recorded one.
+    if (a !== '') out.target = a
   }
   return out
 }
