@@ -7,6 +7,7 @@
 // these would classify tasks the lazy path then refuses, or let prune evict
 // entries a warm run just used.
 
+import { existsSync } from 'node:fs'
 import { rm, mkdir, mkdtemp, unlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -92,6 +93,55 @@ describe('Cache.getMany agrees with Cache.get', () => {
       cache.stats() // flushes the deferred touches
       expect(stamp('aa')).toBeGreaterThan(1)
       expect(stamp('bb')).toBeGreaterThan(1)
+    } finally {
+      cache.close()
+    }
+  })
+
+  it('reads past a 900-hash chunk without dropping the hash at its edge (A-34)', async () => {
+    const cache = new Cache(cacheDir)
+    try {
+      await seed(cache, ['aa'])
+      const db = cache.dbHandle()
+      const clone = db.prepare(
+        `INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, stdout, created_at, accessed_at)
+         SELECT ?, project, task, command, exit_code, duration_ms, size_bytes, stdout, created_at, accessed_at FROM entries WHERE hash = 'aa'`,
+      )
+      const hashes = Array.from({ length: 1801 }, (_, i) => `h${i}`)
+      db.transaction(() => {
+        for (const h of hashes) clone.run(h)
+      })()
+      for (const h of hashes) await writeFile(path.join(cacheDir, `${h}.tar.zst`), '')
+      expect((await cache.getMany(hashes)).size).toBe(hashes.length)
+    } finally {
+      cache.close()
+    }
+  })
+
+  it('has() answers null for a row whose artifact is gone (A-34)', async () => {
+    const cache = new Cache(cacheDir)
+    try {
+      await seed(cache, ['aa', 'bb'])
+      await unlink(path.join(cacheDir, 'bb.tar.zst'))
+      expect([await cache.has('aa'), await cache.has('bb')]).toEqual(['local', null])
+    } finally {
+      cache.close()
+    }
+  })
+
+  it('a cache with local writes off saves nothing (A-34)', async () => {
+    const off = new Cache(cacheDir, { read: true, write: false })
+    try {
+      await seed(off, ['aa'])
+    } finally {
+      off.close()
+    }
+    const cache = new Cache(cacheDir)
+    try {
+      expect([await cache.get('aa'), existsSync(path.join(cacheDir, 'aa.tar.zst'))]).toEqual([
+        null,
+        false,
+      ])
     } finally {
       cache.close()
     }

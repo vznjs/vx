@@ -90,6 +90,39 @@ describe('a remote artifact names only what its task declares', () => {
     TIMEOUT,
   )
 
+  // The row above mixes both halves, so either half alone masked the other
+  // (A-34): each is refused on its own here.
+  it.each([
+    ['a project output', 'outputs/src/in.txt', 'packages/app/src/in.txt'],
+    ['a workspace output', 'workspace-outputs/packages/other/file.txt', 'packages/other/file.txt'],
+  ] as const)(
+    'one naming only an undeclared %s is a miss, and writes nothing there',
+    async (_label, name, landed) => {
+      const fx = await makeWorkspace('vx-names-')
+      try {
+        await addProject(fx.root, 'app', { files: { 'src/in.txt': 'v1' }, config: CFG })
+        const remote = await serving(fx.root, { 'outputs/out.txt': 'remote\n', [name]: 'FOREIGN' })
+        const r = await run({
+          cwd: fx.root,
+          tasks: ['build'],
+          log: silentLogger(fx),
+          remoteCache: remote,
+        })
+        const at = path.join(fx.root, landed)
+        expect({
+          statuses: r.outcomes.map((o) => o.status),
+          landed: existsSync(at) ? await readFile(at, 'utf8') : null,
+        }).toEqual({
+          statuses: ['success'],
+          landed: landed.endsWith('in.txt') ? 'v1' : null,
+        })
+      } finally {
+        await rm(fx.root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
   it(
     'one holding a file as a directory too is a miss, and the next run without it is a local hit',
     async () => {
