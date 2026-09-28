@@ -427,9 +427,9 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
 - **G-37.** nx() and Nx 23 inferred targets (`@nx/js/typescript`,
   `@nx/vite`, `@nx/vitest`, `@nx/jest`, `@nx/eslint`; no project.json):
   all 20 targets map, run, hit warm and restore. One stale hit:
-  `@nx/vitest`'s `{ json: "{workspaceRoot}/tsconfig.json", fields:
-  ["compilerOptions"] }` was a "not representable" todo and dropped, so
-  a `compilerOptions` edit was a hit where Nx re-ran. A `{ json }` input
+  `@nx/vitest` infers a `json` input on the root `tsconfig.json`,
+  fields `compilerOptions`; it was a "not representable" todo and
+  dropped, so a `compilerOptions` edit was a hit where Nx re-ran. A `{ json }` input
   now keys its whole file (a superset of the fields). Row
   (`nx-helpers-sweep.test`): red without the fix.
 - **G-38.** Real-repo proof of the four lockfile parsers: every
