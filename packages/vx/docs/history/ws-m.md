@@ -72,6 +72,15 @@ peak is reported above the parent's mark (the sibling row pins the unit).
 It now asserts a peak above that mark plus the slack. Still red with the
 pre-M-2 fixed 600 MB under a 700 MB parent.
 
+M-7. Main went red on the merge of two green PRs: B-15 (01:32 UTC) added
+`sandbox-runtime.unsafe.test.ts` › a SIGKILLed task's port bridge leaves no
+socket behind, reading the socket dir of a fixed tag `'x'`; L-10 (01:45)
+moved each task's socket into its own `vx-tasks/vx-task-<pid>-<tag>` dir,
+which no run with tag `'x'` makes. ENOENT on three unrelated PRs within a
+minute (C, D, J). The row now waits on `$TMPDIR` inside the task and lists
+this process's task dirs outside. Red again with both the host unlink and
+L-10's dir removal taken out; the two now mask each other.
+
 ## Leads for other streams
 
 - A: A-20 let a same-project dependant restore ahead of a producer whose
