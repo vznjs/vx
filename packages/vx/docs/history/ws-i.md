@@ -135,6 +135,13 @@ macOS CI 6 workers took 189.38 s against 189.37 at 3, each task twice
 as long. That runner is CPU-bound; this container's idle cores were
 the container's. 6 shards instead of 12: 114.5 s against 113.3, a tie.
 
+I-12. The unsafe suite starts first on a fresh runner (`assume` 46 s
+in `vx.workspace.ts`). On macOS CI it is core's longest task (46 s,
+shards 31–45) and the structural order started it last, alone for its
+final 33 s on 3 workers. macOS vx wall 189.37 s → 174.13 s, average
+task 35.59 → 34.69 s (runs 36358360131, 36361790839; one each, the
+task average as the runner-speed control).
+
 ## Leads for other streams
 
 - **G: `nx()` costs ~100 ms per warm run on refine.** No-op, 15
