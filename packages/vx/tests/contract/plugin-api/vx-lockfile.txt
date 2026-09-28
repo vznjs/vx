@@ -1,0 +1,86 @@
+== function bun (src/index.ts)
+export function bun(options: LockfileOptions = {}): VxPlugin
+== function importerDigests (src/bun.ts)
+export function importerDigests(
+  lock: Lockfile,
+  files: ReadonlyMap<string, string> = new Map(),
+): ReadonlyMap<string, string>
+== function importerDigests (src/npm.ts)
+export function importerDigests(lock: Lockfile): ReadonlyMap<string, string>
+== function importerDigests (src/pnpm.ts)
+export function importerDigests(lock: Lockfile): ReadonlyMap<string, string>
+== function importerDigests (src/yarn.ts)
+export function importerDigests(lock: Lockfile): ReadonlyMap<string, string>
+== function npm (src/index.ts)
+export function npm(options: LockfileOptions = {}): VxPlugin
+== function parseLockfile (src/bun.ts)
+export function parseLockfile(text: string): Lockfile
+== function parseLockfile (src/npm.ts)
+export function parseLockfile(text: string): Lockfile
+== function parseLockfile (src/pnpm.ts)
+export function parseLockfile(text: string): Lockfile
+== function parseLockfile (src/yarn.ts)
+export function parseLockfile(text: string): Lockfile
+== function patchFiles (src/bun.ts)
+export function patchFiles(text: string): string[]
+== function pnpm (src/index.ts)
+export function pnpm(options: LockfileOptions = {}): VxPlugin
+== function stable (src/pnpm.ts)
+export function stable(v: unknown): string
+== function yarn (src/index.ts)
+export function yarn(options: LockfileOptions = {}): VxPlugin
+== type Entry (src/bun.ts)
+export interface Entry {
+  readonly id: string
+  readonly deps: ReadonlyMap<string, string>
+  readonly resolution: string
+}
+== type Entry (src/npm.ts)
+export interface Entry {
+  readonly deps: ReadonlyMap<string, string>
+  readonly resolution: string
+  readonly link: string | undefined
+  readonly isWorkspace: boolean
+}
+== type Entry (src/yarn.ts)
+export interface Entry {
+  readonly deps: ReadonlyMap<string, string>
+  readonly resolution: string
+}
+== type Lockfile (src/bun.ts)
+export interface Lockfile {
+  readonly version: string
+  readonly workspaces: ReadonlyMap<string, ReadonlyMap<string, string>>
+  readonly workspaceDirs: ReadonlyMap<string, string>
+  readonly packages: ReadonlyMap<string, Entry>
+  readonly global: string
+}
+== type Lockfile (src/npm.ts)
+export interface Lockfile {
+  readonly version: number
+  readonly packages: ReadonlyMap<string, Entry>
+  readonly global: string
+}
+== type Lockfile (src/pnpm.ts)
+export interface Lockfile {
+  readonly version: string
+  readonly importers: ReadonlyMap<string, ReadonlyMap<string, string>>
+  readonly snapshots: ReadonlyMap<string, ReadonlyMap<string, string>>
+  readonly resolutions: ReadonlyMap<string, string>
+  readonly patches: ReadonlyMap<string, string>
+  readonly global: string
+}
+== type Lockfile (src/yarn.ts)
+export interface Lockfile {
+  readonly generation: 'berry' | 'classic'
+  readonly entries: ReadonlyMap<string, Entry>
+  readonly descriptors: ReadonlyMap<string, string>
+  readonly workspaces: ReadonlyMap<string, string>
+  readonly names: ReadonlyMap<string, readonly string[]>
+  readonly builtinPatches: ReadonlyMap<string, string>
+  readonly global: string
+}
+== type LockfileOptions (src/index.ts)
+export interface LockfileOptions {
+  readonly scope?: 'project' | 'workspace'
+}

@@ -1,0 +1,2 @@
+== function mcp (src/index.ts)
+export function mcp(): VxPlugin

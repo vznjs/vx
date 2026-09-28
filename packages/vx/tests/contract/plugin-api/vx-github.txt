@@ -1,0 +1,44 @@
+== function buildCheckRunPayload (src/checks.ts)
+export function buildCheckRunPayload(args: {
+  summary: RunSummaryRecord
+  markdown: string
+  name: string
+  sha: string
+}): Record<string, unknown>
+== function clampSummary (src/checks.ts)
+export function clampSummary(markdown: string): string
+== function github (src/plugin.ts)
+export function github(options: GithubPluginOptions = {}): VxPlugin
+== function postCheckRun (src/checks.ts)
+export async function postCheckRun(args: {
+  env: CheckRunEnv
+  payload: Record<string, unknown>
+  fetchFn: FetchFn
+  warn: (m: string) => void
+  signal?: AbortSignal
+}): Promise<void>
+== function renderJobSummary (src/summary.ts)
+export function renderJobSummary(summary: RunSummaryRecord, title = 'vx run'): string
+== function resolveCheckRunEnv (src/checks.ts)
+export function resolveCheckRunEnv(env: Record<string, string | undefined>): CheckRunEnv | null
+== type CheckRunEnv (src/checks.ts)
+export interface CheckRunEnv {
+  token: string
+  repository: string
+  sha: string
+  apiUrl: string
+}
+== type FetchFn (src/checks.ts)
+export type FetchFn = (
+  url: string,
+  init: { method: string; headers: Record<string, string>; body: string; signal?: AbortSignal },
+) => Promise<{ ok: boolean; status: number; text(): Promise<string> }>
+== type GithubPluginOptions (src/plugin.ts)
+export interface GithubPluginOptions {
+  summaryFile?: string
+  title?: string
+  checks?: boolean
+  checkName?: string
+  append?: (file: string, markdown: string) => Promise<void>
+  fetchFn?: FetchFn
+}

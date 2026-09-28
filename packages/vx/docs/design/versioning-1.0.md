@@ -15,6 +15,7 @@ adds to them, and only a major removes or changes one.
 | The config schema: every field `vx.config.ts` and `vx.workspace.ts` accept, and what each means                                                                        | `src/workspace/config-schema.ts`, `docs/schema.md`; recorded in `tests/contract/config-schema.json`                                                                                     |
 | The plugin API: the hooks in `PLUGIN_HOOKS`, `definePlugin`, `CacheLayer` / `RemoteCacheLayer`, `TaskExecutor`, and the telemetry records (`TELEMETRY_SCHEMA_VERSION`) | `src/orchestrator/plugin.ts`, `src/cache/layer.ts`, `src/cache/layered-cache.ts`, `src/exec/executor.ts`, `src/orchestrator/telemetry.ts`; recorded in `tests/contract/package-api.txt` |
 | The package's exports                                                                                                                                                  | `src/index.ts`; names pinned by `package-boundaries.unsafe.test.ts`, shapes by `tests/contract/package-api.txt`                                                                         |
+| The first-party plugin packages' exports (`@vzn/vx-reapi`, `@vzn/vx-otel`, …)                                                                                          | each package's `src/index.ts`; recorded in `tests/contract/plugin-api/`, one file per package                                                                                           |
 | The CLI: verbs, flags, exit codes, and the machine-readable outputs (`--dry=json`, `--graph`, `--summarize`, `vx mcp`'s tools)                                         | `docs/cli.md`; `--dry=json`, `--summarize` and `--graph` recorded in `tests/contract/cli-wire.json`                                                                                     |
 | Task-glob semantics: which paths a pattern selects (item 667 made `[` literal; that reading is now part of the contract)                                               | `docs/schema.md`, `docs/caching.md`                                                                                                                                                     |
 
@@ -88,8 +89,8 @@ records the surface as the code produces it, in a committed file, so a
 change is a reviewed diff of that file and never a side effect.
 
 A break must also be declared. `tests/api-break.unsafe.test.ts` diffs
-`tests/contract/package-api.txt` against the same file at the last `v*`
-tag: a declaration or a line of one gone is a break (`scripts/api-break.ts`),
+`tests/contract/package-api.txt` and each `tests/contract/plugin-api/*.txt`
+against the same file at the last `v*` tag: a declaration or a line of one gone is a break (`scripts/api-break.ts`),
 and it fails unless a commit since the tag is marked `type!:` or carries a
 `BREAKING CHANGE:` footer, which also heads the release notes
 (`scripts/release-notes.ts`). CI's Linux job checks out full history and
@@ -124,6 +125,13 @@ sets `VX_REQUIRE_TAGS=1`, so a missing tag fails there instead of passing.
   `VxPlugin`'s members to `PLUGIN_HOOKS`. The façade snapshot in
   `package-boundaries.unsafe.test.ts` still pins the export names;
   this pins their shapes. Regenerate the same way.
+- **The plugin packages' exports.**
+  `tests/contract-plugin-api.unsafe.test.ts` reads each workspace
+  package with an `exports` entry (`@vzn/vx-reapi`, `@vzn/vx-otel`, …)
+  the same way, from its `src/index.ts`, and compares it with
+  `tests/contract/plugin-api/<package>.txt`; a package without a
+  record, or a record without a package, fails. A type the package
+  takes from `@vzn/vx` is held by core's record, not again here.
 - **The machine-readable run outputs.** `--dry=json` and the
   `--summarize` file are wire objects built field by field
   (`formatPlanJson`, `writeRunSummary`), not a serialized type, so the
