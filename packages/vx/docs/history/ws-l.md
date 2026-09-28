@@ -124,7 +124,9 @@
   written. It is now masked `***` at each: task output by a streaming
   mask (a value split across chunks is still caught; a server's too),
   captured stdout
-  whole, a replayed hit's stdout, the command where it is shown. 9 µs
+  whole, a replayed hit's stdout, the command where it is shown and in
+  the cache entry (`vx why`, a remote cache). `vx why`'s env digests and
+  `vx last` were probed clean. 9 µs
   per hit that prints (144 env vars), none for a silent hit. Rows in
   `secret-mask.test.ts`. Coordinator backlog 2.
 

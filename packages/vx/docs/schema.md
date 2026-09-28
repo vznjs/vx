@@ -462,7 +462,9 @@ matches Turbo's `passThroughEnv` semantics and exists for two reasons:
 `KEY`, `PASSWORD`, `PASSWD` or `CREDENTIAL` (vx's own environment or a
 task's `define`, six characters or more) is printed as `***` wherever vx
 shows it: the task's output, the stdout the cache keeps and a hit
-replays, the `$ command` line, telemetry records and `vx show`. A value
+replays, the command a cache entry stores (what `vx why` prints and a
+remote cache receives), the `$ command` line, telemetry records and
+`vx show`. A value
 split across two output chunks is still caught; the output holds back
 that many characters until the next chunk. A plugin that reads a task's
 config directly sees it as written.

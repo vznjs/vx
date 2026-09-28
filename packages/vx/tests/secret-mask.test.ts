@@ -4,6 +4,7 @@
 // `process.env`, put the value in all four.
 
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { Database } from 'bun:sqlite'
 import { rm } from 'node:fs/promises'
 import path from 'node:path'
 import { run } from '../src/orchestrator/index.js'
@@ -169,7 +170,16 @@ describe('a secret-named value in what vx prints, stores and exports', () => {
       ],
       { cwd: root, env: { ...process.env, NO_COLOR: '1' } },
     )
+    // The entry's command: `vx why` prints it, a remote cache receives it.
+    const db = new Database(path.join(root, '.vx', 'cache', 'cache.db'), { readonly: true })
+    const stored = db
+      .query<{ command: string }, []>('SELECT command FROM entries')
+      .all()
+      .map((r) => r.command)
+      .join('\n')
+    db.close()
     const all = [
+      stored,
       miss.text,
       miss.telemetry,
       hit.text,
@@ -180,6 +190,6 @@ describe('a secret-named value in what vx prints, stores and exports', () => {
       ok: [miss.ok, hit.ok],
       leaked: all.filter((t) => t.includes(SECRET) || t.includes(DEFINED)).length,
       masked: all.map((t) => t.includes(MASKED)),
-    }).toEqual({ ok: [true, true], leaked: 0, masked: [true, true, true, true, true] })
+    }).toEqual({ ok: [true, true], leaked: 0, masked: [true, true, true, true, true, true] })
   })
 })

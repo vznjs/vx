@@ -893,6 +893,9 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // and what the cache keeps of it (L-11); null when there are none.
   const secrets = secretMask(process.env, env, step.env?.define)
   let flushMasked = (): void => {}
+  // The entry's command is shown by `vx why` and sent with the entry to a
+  // remote cache: a value a config interpolated stays out of both.
+  const storedCommand = secrets?.mask(step.command) ?? step.command
 
   // Pass or fail, the command may have written where its project's
   // run-start facts describe; a remote executor wrote on its own disk.
@@ -1009,7 +1012,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         hash,
         entry: {
           taskId: node.id,
-          command: step.command,
+          command: storedCommand,
           durationMs: result.durationMs,
           stdout: result.stdout,
           ...(result.cpuMs !== undefined ? { cpuMs: result.cpuMs } : {}),
@@ -1034,7 +1037,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       outputs,
       wsOutputs,
       captured,
-      command: step.command,
+      command: storedCommand,
       durationMs: result.durationMs,
       stdout: result.stdout,
       ...(result.cpuMs !== undefined ? { cpuMs: result.cpuMs } : {}),
