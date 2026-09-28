@@ -277,6 +277,15 @@
   and help run on a fixture: `vx why` needs a task, a changed-file row
   names the path from the workspace root, and `vx last --list` ids are
   13 characters at least.
+- **J-53** module pages against source changed since 03:55: five
+  stale claims on four pages (secret-mask signatures and
+  `exec.env.secret`, `initSandbox` `deniedDomains`, the import scan's
+  alias branch, the scheduler's plain fd-exhaustion report).
+- **J-54** every documented `vx run` flag and mode run on a fixture
+  (filters, `--affected`, cache axes, numbers, continue, retry,
+  timeout, output modes, reports, `--`, signals, help): one row
+  wrong — a persistent task exits the run 1 only when it exits
+  non-zero after ready.
 
 ## Leads for other streams
 
@@ -400,3 +409,9 @@ extra` ignores the extra argument and exits 0 where every other verb
   (6e7cb615, shard 12, 2026-09-28 05:4x): `outputDirRows` read `[]`
   where `['dist']` was expected (line 57); the file passed 3 of 3 bare
   runs after. A write the row reads before it lands, under gate load.
+- **E** From J-54's runs: `vx run --help` usage shows `[TASK | PKG#TASK]`
+  without `...` though several tasks are accepted; `vx info --formt` /
+  `vx lock --chek` say "unknown argument" where `vx run` says "unknown
+  flag"; bare `--affected` with `refs/remotes/origin/HEAD` pointing at a
+  deleted branch fails `git ref "origin/master" did not resolve` instead
+  of the HEAD~1 fallback or the no-base hint.
