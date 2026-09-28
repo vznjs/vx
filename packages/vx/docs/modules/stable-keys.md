@@ -15,7 +15,7 @@ can never drift on the stability gate.
   two paths must agree, item 727: a key only one path had gave its
   dependents a second key a `--force` run never saved under;
   `keyed-projects.test.ts` R4 compares them).
-- `dependsOnSiblingOutputs(node, upstreamOutputProjects, hasWsOutputUpstream)`
+- `dependsOnSiblingOutputs(node, upstreamOutputProjects, hasWsOutputUpstream, dirByProject?, sameProject?)`
   — the conservative gate, fed the TRANSITIVE-upstream output producers
   `deriveStableKeys` accumulates in topo order. The key is preliminary
   (→ unstable) when a same-project upstream declares `outputs.files`
@@ -23,9 +23,10 @@ can never drift on the stability gate.
   a `test` reading `src/**` after a `build` writing `dist/**` is stable),
   when a same-project upstream may write undeclared (every input), when
   its own `outputs.files` meet another same-project task's (M-5: restored
-  early, it raced the producer's restore), or the task reads
-  `cache.inputs.workspaceFiles` (boundary-free) and ANY upstream declares
-  outputs — `outputs.files` in any project OR `outputs.workspaceFiles`.
+  early, it raced the producer's restore), when ANY upstream declares
+  `outputs.workspaceFiles` (it may land in this project), or the task
+  reads `cache.inputs.workspaceFiles` whose literal prefixes reach an
+  upstream `outputs.files` producer's directory.
   Transitive because a producer reached through a no-output intermediate
   still poisons the key. A task with no `cache` block is a producer too,
   where `undeclaredWriteReach` (`sandbox-request.md`) says it may write:
@@ -56,8 +57,7 @@ can never drift on the stability gate.
   run re-checks it before a lazy probe (`fingerprint-watch.md`).
   Only a key that leaves some dependency's key out can be preliminary
   for a cached rewriter, so a graph with no `cache.inputs.tasks` filter
-  and no persistent task (which has no key to fold) builds none of the
-  sets: building them cost about 2 ms (median) of a 27 ms memoised walk
+  builds none of the sets: building them cost about 2 ms (median) of a 27 ms memoised walk
   over the 3,000-task bench.
 
 The helpers (`synthUpstream`, `foldedBy`, `topoOrder`) are internal and

@@ -130,8 +130,8 @@ entry decides alone: a registry `buffer@^6` devDependency beside a
 copy in all four (turborepo#12640). Alone, a peer on a workspace key is
 an edge whatever its spec, since bun and yarn hoist the workspace copy
 and resolve the import to it even for an unmet range or a tag (npm
-refuses to install an unmet peer); a path or alias spec still resolves
-to its target.
+refuses to install an unmet peer); a `workspace:`, alias or path spec
+resolves as an installed one does.
 
 **pnpm.** pnpm 9 and later default `link-workspace-packages` to false
 and then link only `workspace:`, `file:` and `link:` specs: with pnpm
