@@ -38,6 +38,7 @@ export function configImportOwners(a: {
   projects: readonly ProjectMeta[]
   changed: readonly string[] // workspace-relative POSIX
   skip: ReadonlySet<string> // already-selected projects
+  realDirs?: ReadonlyMap<string, string> // project dir → realpath, when the caller has them
 }): Promise<Set<string>>
 ```
 

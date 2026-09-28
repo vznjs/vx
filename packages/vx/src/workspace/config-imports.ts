@@ -198,6 +198,12 @@ export interface ConfigImportOwnersArgs {
   changed: readonly string[]
   /** Already-selected projects; their configs need no scan. */
   skip: ReadonlySet<string>
+  /**
+   * Each project dir's realpath, when the caller already has them: the
+   * containment pass needs the same answers, and asking twice cost 5,000
+   * realpaths at 5,000 projects (D-24).
+   */
+  realDirs?: ReadonlyMap<string, string>
 }
 
 /**
@@ -207,11 +213,14 @@ export interface ConfigImportOwnersArgs {
  * `/var/folders/…` while its realpath is `/private/var/folders/…`; comparing
  * the two matches nothing and fails exactly like "found no imports".
  */
-async function realDirIndex(projects: readonly ProjectMeta[]): Promise<Map<string, string>> {
+async function realDirIndex(
+  projects: readonly ProjectMeta[],
+  known: ReadonlyMap<string, string> | undefined,
+): Promise<Map<string, string>> {
   const out = new Map<string, string>()
   await Promise.all(
     projects.map(async (p) => {
-      out.set(await realpath(p.dir).catch(() => p.dir), p.name)
+      out.set(known?.get(p.dir) ?? (await realpath(p.dir).catch(() => p.dir)), p.name)
     }),
   )
   return out
@@ -249,7 +258,7 @@ export async function configImportOwners(a: ConfigImportOwnersArgs): Promise<Set
     }),
   )
   if (roots.size === 0) return selected
-  const dirToName = await realDirIndex(a.projects)
+  const dirToName = await realDirIndex(a.projects, a.realDirs)
 
   // target → the files that import it. Reversed up front so one BFS from the
   // changed set answers every root at once, instead of a walk per root.
