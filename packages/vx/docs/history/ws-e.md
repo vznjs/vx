@@ -389,6 +389,19 @@ task picked`; neither prints a stack. Row in
 - E-68 — `vx cache prune --format json` and `schemas/cache.json`
   (dryRun, evicted, bytesFreed, orphans, orphanBytes), held by the E-65
   test; the one read-ish verb that had only prose.
+- E-69 — `vx init`'s `next:` line names the runner that started it
+  (`npx vx run …`, `bunx @vzn/vx run …` with nothing installed); a bare
+  `vx` only with no runner. From `npm_config_user_agent`, probed per
+  runner (plain `bun file.ts` sets none).
+- E-70 — `vx history --format json` (@vzn/vx-schedule-history) gets
+  `schemas/history.json`: the plugin's suite holds its keys to its
+  types, core's unsafe suite the printed output to it; the plugin's
+  test key folds `schemas/**`.
+- E-71 — `vx run --dry=json` gets `schemas/plan.json`; `PlanTaskJson`
+  types the wire; an end-to-end and a hand-built plan held to it.
+- E-72 — `--summarize` gets `schemas/summary.json`; `SummaryTaskJson`
+  and `RunSummaryJson` type the writer (it built a
+  `Record<string, unknown>`).
 
 ## First-five-minutes walk (2026-09-28)
 
@@ -401,9 +414,16 @@ walked on fixtures.
 - Turbo: 11 configs written though the note says turbo.json was not
   read and names `vx-migrate`; 13 TODOs as 13 long lines (E-66); no
   task caches, so the `next:` run can never hit (E-66). The `next:`
-  line names `vx`, which a `bunx` user does not have on PATH.
+  line names `vx`, which a `bunx` user does not have on PATH (E-69).
 - Nx: one root `codegen` script, 0 TODOs, and a header saying `build`
   carries one (E-66).
 - sveltejs/kit: the first command refuses — two test apps share a
-  package name (pnpm accepts it) — and the refusal names no way on.
+  package name (pnpm accepts it) — and the refusal names no way on (E-67).
   With one excluded: 354 tasks, 139 TODOs of two reasons (E-66).
+- The README's npm path, end to end on a fixture: install with npm,
+  `npx vx init`, paste the TODO's cache block, then a miss, an
+  up-to-date run, and a local restore after `rm -rf dist`.
+- Leads, not taken: in a Turbo repo `vx init` writes configs though
+  `turbo()` runs it unchanged (whether init should offer the plugin
+  instead is the owner's call); the summary says `up-to-date` where
+  `vx last` says `cache-hit` for the same run.
