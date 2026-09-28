@@ -73,7 +73,7 @@ export async function configImports(configPath: string): Promise<string[]>
 ## Key
 
 `configEvalKey({ configPath, bytes, workspaceFingerprint })` folds, in
-order: `CONFIG_EVAL_VERSION` (3 since 2026-09-24, item 701: an evaluation cached before configs had to be JSON data may hold what JSON made of a `Map` or a hole, which the rule now refuses; 2 since 2026-09-03: the key folds each closure file's git blob id, not its bytes), `Bun.version`, the workspace fingerprint
+order: `CONFIG_EVAL_VERSION` (3 since 2026-09-24, item 701: an evaluation cached before configs had to be JSON data may hold what JSON made of a `Map` or a hole, which the rule now refuses; 2 since 2026-09-03: the key folds each closure file's git blob id, not its bytes), vx's version, `Bun.version`, the workspace fingerprint
 (lockfiles — covers package imports), the transpile inputs (the
 `bunfig.toml` Bun loaded at startup — the cwd's and the global one —
 and the process's flags and `BUN_OPTIONS`: a `[define]` is a bare
@@ -158,8 +158,8 @@ author.
   directions, even when an `evalCache` is passed beside it.
 - The store honours the run's local read/write axes: `--cache=local:`
   neither reads nor writes it.
-- Rows not written for 30 days are pruned on a writing handle's
-  `Cache.close()` (never a reading verb's). A hit does not
+- Rows not written for 30 days are pruned on any handle's
+  `Cache.close()` but a reading verb's, whatever its write axis. A hit does not
   refresh a row (a write per config on every warm run), so a config that hit
   for thirty days is evaluated once more and stored again.
 
