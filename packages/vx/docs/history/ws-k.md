@@ -72,6 +72,14 @@
   contact links to the docs and private vulnerability reporting
   (SECURITY.md), and a PR template with the gate. CONTRIBUTING named
   imperative commits where the repo uses Conventional Commits.
+- **K-12** moon on the front pages (coordinator backlog 3-3): stream N
+  shipped `moon()` and `vx-migrate --from moon`, and the README's
+  adoption section, plugin table and the landing's freedom card still
+  named only Turborepo and Nx. Backlog 3-1 (a vx GitHub Action that
+  caches `.vx`) declined: "CI-provider features" is on CLAUDE.md's
+  rejected list, and this repo's own CI keeps no `.vx`, so a recipe
+  could not be walked here. Backlog 3-2 (recipe pages) held: the owner's
+  short-site design caps the Docs at six pages.
 
 ## Leads for other streams
 
