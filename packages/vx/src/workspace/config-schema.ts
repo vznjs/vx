@@ -848,6 +848,14 @@ const FOREIGN_TOKENS: readonly (readonly [string, string])[] = [
 ]
 
 function assertNoForeignToken(glob: string, where: string): void {
+  // `^production`: Nx's named input of the dependencies (D-51). No file
+  // starts with `^` in practice, while a bare `default` can be a directory,
+  // so only the upstream form is refused; the bare one keeps the warning.
+  if ((glob.startsWith('!') ? glob.slice(1) : glob).startsWith('^')) {
+    throw new UserError(
+      `${where}: "${glob}" starts with ^, Nx's named input of the dependencies — vx keys a task on its dependencies through \`dependsOn\` (\`^build\`); list this project's files here`,
+    )
+  }
   for (const [token, meaning] of FOREIGN_TOKENS) {
     if (glob.includes(token)) {
       throw new UserError(`${where}: "${glob}" holds ${token}, ${meaning}`)

@@ -611,7 +611,11 @@ a pattern (`src/*/` is the trees under `src`, `src/*/**`). A bare `.` or
 `{projectRoot}` and `{workspaceRoot}`, pasted from turbo.json or
 project.json, are refused in every glob list with what to write instead
 (D-50): vx expands none of them, so each matched no file and a task
-keyed on `$TURBO_DEFAULT$` alone replayed a stale output.
+keyed on `$TURBO_DEFAULT$` alone replayed a stale output. A glob that
+starts with `^` (Nx's `^production`, the dependencies' named input) is
+refused too (D-51): vx keys a task on its dependencies through
+`dependsOn`. A bare named input (`default`) can be a directory, so it
+is taken as one and only warns when it matches nothing.
 
 The wildcards are `*`, `**`, `?` and a brace set `{a,b}`. A bracket is a
 **literal character**, not a character class: `app/[id]/**` is the route
