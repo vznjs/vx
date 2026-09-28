@@ -240,6 +240,19 @@ has settled and its own answer is kept; taint stays final at once. Found
 by the `admission.ts` sweep (C-20). Row: `taint-tracker.test.ts` (red
 without the change); the run above gives `success GOOD` with it.
 
+## C-20: hold `admission.ts`'s surviving mutants
+
+A sweep of 48 mutants: 25 caught, 22 survived, 1 inconclusive; 8 of the
+23 are equivalent (the root memo shortcut, a group or persistent task the
+schema already refuses a `cache` on, a per-run map's delete, …). The
+other 15 are held now: a clean answer given while a dep runs is not
+kept, a settled chain is walked once and a failed dep not at all, a seed
+and a disabled tracker never walk (`taint-tracker.test.ts`); a
+write-only or read-only run does not join a sibling, and a finished
+barrier leaves the registry (`inflight.test.ts`); a vanished artifact
+kept out of the tier runs in its own slot (`vanished-artifact.test.ts`).
+The sweep found C-23's stale hit.
+
 ## Leads for other streams
 
 - **E:** a plugin command's plain `throw` (`commands.probe.run` throwing

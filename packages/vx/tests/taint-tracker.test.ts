@@ -109,6 +109,80 @@ describe('taintTracker — which upstream outcomes poison a task', () => {
     expect(t.judge(node('b'), [from('a', 'failed')])).toBe(false)
   })
 
+  // A graph whose lookups are counted: the walk reads a node's deps once per
+  // visit, so the count is what an ask cost. Past `limit` it throws, so a
+  // walk that never ends fails the row instead of hanging the file.
+  const counted = (edges: Record<string, string[]>, limit = 1_000) => {
+    const g = graph(edges)
+    let gets = 0
+    const nodes = {
+      get: (id: string) => {
+        if (++gets > limit) throw new Error('the walk did not end')
+        return g.get(id)
+      },
+    } as unknown as ReadonlyMap<string, TaskNode>
+    return { nodes, gets: () => gets }
+  }
+
+  // A hit's dependent can be asked while a dep below the hit still runs.
+  // "Clean so far" is not an answer to keep: that dep may yet fail.
+  it('a clean answer given while a dep is still running is not kept', () => {
+    const { nodes } = counted({ a: [], b: ['a'], c: ['b'] })
+    const t = taintTracker(true, NONE, nodes)
+    t.settled(from('c', 'cache-hit'))
+    t.settled(from('b', 'cache-hit'))
+    expect(t.judge(node('x'), [from('c', 'cache-hit')])).toBe(false)
+    expect(t.judge(node('x'), [from('b', 'cache-hit')])).toBe(false)
+    t.settled(from('a', 'failed'))
+    expect(t.judge(node('x'), [from('b', 'cache-hit')])).toBe(true)
+  })
+
+  it('a settled answer is walked once, and a failed dep is not walked', () => {
+    const edges: Record<string, string[]> = { e: ['f', 'g'], f: ['h'], g: [], h: [] }
+    for (let i = 0; i < 10; i++) edges[`t${i}`] = i < 9 ? [`t${i + 1}`] : []
+    const { nodes, gets } = counted(edges)
+    const t = taintTracker(true, NONE, nodes)
+    for (let i = 0; i < 9; i++) t.settled(from(`t${i}`, 'cache-hit'))
+    t.settled(from('t9', 'success'))
+    t.settled(from('e', 'cache-hit'))
+    t.settled(from('f', 'failed'))
+    t.settled(from('h', 'success'))
+    const cost: number[] = []
+    const ask = (dep: string): boolean => {
+      const before = gets()
+      const tainted = t.judge(node('x'), [from(dep, 'cache-hit')])
+      cost.push(gets() - before)
+      return tainted
+    }
+    // `e` is tainted by `f` while `g` still runs: taint only grows, so it
+    // is kept at once.
+    expect([ask('t5'), ask('t0'), ask('t0'), ask('e'), ask('e')]).toEqual([
+      false,
+      false,
+      false,
+      true,
+      true,
+    ])
+    expect(cost).toEqual([9, 9, 0, 1, 0])
+  })
+
+  it('a seed is tainted without a walk below it', () => {
+    const { nodes, gets } = counted({ s: ['a'], a: [] })
+    const t = taintTracker(false, new Set(['s']), nodes)
+    t.settled(from('a', 'success'))
+    t.settled(from('s', 'success'))
+    expect(t.judge(node('x'), [from('s', 'success')])).toBe(true)
+    expect(gets()).toBe(0)
+  })
+
+  it('a disabled tracker never walks', () => {
+    const { nodes, gets } = counted(EDGES)
+    const t = taintTracker(false, NONE, nodes)
+    t.settled(from('a', 'success'))
+    expect(t.judge(node('b'), [from('a', 'success')])).toBe(false)
+    expect(gets()).toBe(0)
+  })
+
   it('disabled unless the run is --continue=always: nothing is poison', () => {
     // The zero-cost gate for every other mode. Only `always` ever executes a
     // task behind a failure, so the other modes carry no check at all.

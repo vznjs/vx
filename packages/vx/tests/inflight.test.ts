@@ -129,6 +129,8 @@ describe('in-flight dedup', () => {
       expect(b.ok).toBe(true)
       // One real execution; the second run joined the first and restored.
       expect(await counter(root)).toBe('x')
+      // The embedder's registry outlives the runs: each barrier leaves it.
+      expect(inflight.size).toBe(0)
     } finally {
       await rm(root, { recursive: true, force: true })
     }
@@ -194,6 +196,39 @@ describe('in-flight dedup', () => {
       await rm(root, { recursive: true, force: true })
     }
   }, 60_000)
+
+  // A run that cannot both write the entry and read it back gains nothing
+  // by waiting on a sibling, so it must not wait. Each copy of `meet` waits
+  // for the other to start: a joiner parked behind its sibling never does,
+  // and the sibling gives up.
+  for (const [name, cache] of [
+    ['write-only', { localRead: false, localWrite: true, remoteRead: false, remoteWrite: false }],
+    ['read-only', { localRead: true, localWrite: false, remoteRead: false, remoteWrite: false }],
+  ] as const) {
+    it(`a ${name} run does not join a sibling`, async () => {
+      const root = await makeWorkspace()
+      try {
+        await writeFile(
+          path.join(root, 'vx.config.mjs'),
+          `export default {
+  tasks: {
+    meet: {
+      exec: { command: 'printf s >> starts.txt; i=0; until [ $(wc -c < starts.txt) -ge 2 ]; do i=$((i+1)); [ $i -gt 200 ] && exit 1; sleep 0.05; done' },
+      cache: { inputs: { files: ['input.txt'] }, outputs: { files: [] } },
+    },
+  },
+}
+`,
+        )
+        const inflight = new Map<string, Promise<void>>()
+        const opts: RunOptions = { cwd: root, tasks: ['meet'], log: silent, inflight, cache }
+        const [a, b] = await Promise.all([run(opts), run(opts)])
+        expect([a.ok, b.ok]).toEqual([true, true])
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    }, 30_000)
+  }
 
   it('without a shared registry, concurrent duplicates BOTH execute', async () => {
     const root = await makeWorkspace()
