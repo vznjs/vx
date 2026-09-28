@@ -186,3 +186,13 @@ packages/core`) selects the dependent whose `file:../lib` spec named
   (the `node_modules` skips bound it). `show-info.test.ts` failed under
   every mutant, equivalent ones included, and was dropped from the set:
   its alias row compares two runs over the mutated tree.
+- **D-20** Mutation sweep of `config-cache.ts` (35 mutants). Three
+  behaviour survivors, now rows: `execArgv` in the transpile inputs (a
+  `--define` on Bun's command line, which the bunfig row does not
+  reach; flipping it would have replayed the old evaluation,
+  `tests/config-staleness.test.ts`), and in the `vx watch` import list
+  the plain-scan fallback for a config the lexer refuses (a division)
+  and the `node_modules` skip (`tests/config-cache.test.ts`).
+  Equivalent: the namespace-import refusal (the default-import check
+  covers it), the blob header in `blobOidOf` (its identities meet no
+  store's), and `BUN_OPTIONS` (Bun 1.4.2 puts it in `execArgv`).

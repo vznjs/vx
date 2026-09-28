@@ -408,6 +408,42 @@ describe('what the transpiler was told besides the bytes', () => {
     },
     TIMEOUT,
   )
+
+  it(
+    "a --define on Bun's command line is in the eval key too: flipping it re-evaluates (D-20)",
+    async () => {
+      // The flag reaches the transpiler through `execArgv`, not a file.
+      const pkg = path.join(root, 'packages/a')
+      await mkdir(pkg, { recursive: true })
+      await writeFile(
+        path.join(root, 'package.json'),
+        JSON.stringify({ name: 'r', private: true, workspaces: ['packages/*'] }),
+      )
+      await writeLocalWorkspace(root)
+      await writeFile(path.join(pkg, 'package.json'), JSON.stringify({ name: 'a' }))
+      await writeFile(
+        path.join(pkg, 'vx.config.ts'),
+        "declare const BUILD_MODE: string\nexport default { tasks: { build: { exec: { command: 'echo MODE_' + BUILD_MODE } } } }\n",
+      )
+      git(root, 'init', '-q')
+      const CLI = path.join(import.meta.dir, '..', 'src', 'bin.ts')
+      const build = (mode: string) => {
+        const p = Bun.spawnSync({
+          cmd: ['bun', '--define', `BUILD_MODE="${mode}"`, CLI, 'run', 'build'],
+          cwd: pkg,
+          stdout: 'pipe',
+          stderr: 'pipe',
+          env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1' },
+        })
+        const out = p.stdout.toString() + p.stderr.toString()
+        return [p.exitCode, /MODE_\w+/.exec(out)?.[0] ?? out]
+      }
+      expect(build('dev')).toEqual([0, 'MODE_dev'])
+      expect(build('dev')).toEqual([0, 'MODE_dev'])
+      expect(build('prod')).toEqual([0, 'MODE_prod'])
+    },
+    TIMEOUT,
+  )
 })
 
 describe('a config the project stage edits in place', () => {
