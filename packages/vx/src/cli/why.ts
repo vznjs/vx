@@ -108,7 +108,11 @@ function suggest(query: string, ids: readonly string[]): string {
     }
     hits = nearMatches(query, byTask.keys()).flatMap((t) => byTask.get(t) ?? [])
   }
-  return hits.length > 0 ? ` — did you mean ${hits.slice(0, 3).join(', ')}?` : ''
+  if (hits.length > 0) return ` — did you mean ${hits.slice(0, 3).join(', ')}?`
+  // No near name: say where to look, or that there is nothing yet.
+  return ids.length === 0
+    ? `; nothing has run here yet (vx run ${query}, then vx why)`
+    : '; `vx last --list` shows what has run'
 }
 
 /**

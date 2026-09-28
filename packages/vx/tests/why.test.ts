@@ -507,11 +507,13 @@ describe('vx why (e2e) — the exact lines', () => {
   )
 
   it(
-    'an id with no runs and no near miss is refused without a hint; no target is refused',
+    'an id with no runs and no near miss points at vx last; no target is refused',
     async () => {
       const none = await vx(root, ['why', 'app#zzzzzzzz'])
       expect(none.code).toBe(1)
-      expect(err(none)).toBe('vx why: no recorded runs for "app#zzzzzzzz"')
+      expect(err(none)).toBe(
+        'vx why: no recorded runs for "app#zzzzzzzz"; `vx last --list` shows what has run',
+      )
       const bare = await vx(root, ['why'])
       expect(bare.code).toBe(1)
       expect(err(bare)).toBe('vx why: <task> required (e.g. vx why app#build, or vx why build)')
@@ -625,6 +627,21 @@ describe('vx why (e2e) — the exact lines', () => {
     },
     TIMEOUT,
   )
+})
+
+describe('vx why in a workspace that never ran (E-39)', () => {
+  it('says nothing has run yet, and how to change that', async () => {
+    const root = await makeWorkspace()
+    try {
+      const r = await vx(root, ['why', 'app#build'])
+      expect({ code: r.code, err: r.err }).toEqual({
+        code: 1,
+        err: 'vx why: no recorded runs for "app#build"; nothing has run here yet (vx run app#build, then vx why)\n',
+      })
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  }, 30_000)
 })
 
 describe('vx why — what to do', () => {
