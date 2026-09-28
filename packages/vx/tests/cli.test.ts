@@ -61,7 +61,7 @@ describe('cli run()', () => {
 
   // `vx help run` printed the whole reference until item 1035: the
   // argument was dropped. It is the same cut `vx run --help` prints.
-  it('`vx help <verb>` prints that verb’s help, the whole reference otherwise', async () => {
+  it('`vx help <verb>` prints that verb’s help, the whole reference with no verb', async () => {
     expect(await run(['run', '--help'])).toBe(0)
     const cut = stdout
     stdout = ''
@@ -71,10 +71,18 @@ describe('cli run()', () => {
     expect(await run(['help'])).toBe(0)
     const whole = stdout
     expect(whole).not.toBe(cut)
-    stdout = ''
-    expect(await run(['help', 'no-such-verb'])).toBe(0)
-    expect(stdout).toBe(whole)
     expect(stderr).toBe('')
+    // A name that is no verb is a typo, answered as `vx rnu` is, not with
+    // the whole reference and no word.
+    stdout = ''
+    expect(await run(['help', 'rnu'])).toBe(1)
+    expect(await run(['help', 'no-such-verb'])).toBe(1)
+    expect({ stdout, stderr }).toEqual({
+      stdout: '',
+      stderr:
+        'vx help: unknown command: rnu. Did you mean run? (see `vx help`)\n' +
+        'vx help: unknown command: no-such-verb (see `vx help`)\n',
+    })
   })
 
   // Every argument error points at the verb's own help, which is only
