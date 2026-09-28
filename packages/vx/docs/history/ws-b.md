@@ -496,3 +496,12 @@ networked task's curl exited 7, allowed domain or not. That was the
 - With the bridge up, this container showed B-21's defect directly: a
   domain in a task's `deny.network` got the proxy's 502 (allowed, dialed)
   where an unlisted one got 403.
+
+B-23. B-21's refusal proven on the wire. B-21 was held only by the
+config SRT received; no row saw the proxy refuse. With B-22's bridge
+working here, one does.
+
+- Row: `sandbox-runtime.unsafe.test.ts` › the proxy refuses a denied
+  domain the allow glob covers: `ads.a.test` gets the proxy's 403,
+  `cdn.a.test` (allowed control) its 502 from the failed lookup. With
+  `deniedDomains: []` in `initSandbox` the denied one gets 502 (red).

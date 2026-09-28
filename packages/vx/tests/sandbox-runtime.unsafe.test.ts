@@ -4228,6 +4228,27 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
     expect([r.exitCode, r.stdout]).toEqual([0, '403'])
   })
 
+  // A task's `deny.network` is the run's: SRT's one proxy checks the
+  // denied list before the allowed one, and only from `initialize()`.
+  // Before B-21 the list never reached it, so a domain the allow glob
+  // covered passed the proxy (a 502 from its failed lookup, never the
+  // proxy's 403). The allowed control shows the glob does let one through.
+  it('the proxy refuses a denied domain the allow glob covers', async () => {
+    await resetSandbox()
+    await initSandbox({ allowedDomains: ['*.a.test'], deniedDomains: ['ads.a.test'] })
+    const config = resolveSandboxConfig(
+      { allow: { network: ['*.a.test'] }, deny: { network: ['ads.a.test'] } },
+      dir,
+    )
+    const code = async (host: string) =>
+      (
+        await runSandboxed(
+          args(`curl -s -m 5 -o /dev/null -w '%{http_code}' http://${host}/`, { config }),
+        )
+      ).stdout
+    expect([await code('ads.a.test'), await code('cdn.a.test')]).toEqual(['403', '502'])
+  })
+
   it('tags each wrap uniquely and puts the tag first in the command', async () => {
     // SRT's macOS store keys a record by the command's first 100 bytes, so
     // two tasks running one command in one directory must still differ.
