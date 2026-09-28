@@ -448,6 +448,28 @@ describe('applyFilters with the workspace root as a project', () => {
   it('a path glob minus one path selects every other app and nothing else', () => {
     expect(sel('./apps/*', '!./apps/docs')).toEqual(['admin', 'web'])
   })
+
+  it("a path naming a project's own dir is that project, as Turbo and pnpm read it (D-43)", () => {
+    // Turbo 2.8.17 and pnpm 10, probed: `--filter .` runs the root task
+    // alone. vx read every path as "at or under", so `.` selected every
+    // project and a root project could not be named by its path.
+    expect(sel('.')).toEqual(['root'])
+    expect(sel('{.}')).toEqual(['root'])
+    expect(sel('!.')).toEqual(['admin', 'bar', 'docs', 'web'])
+    expect(sel('./apps/web')).toEqual(['web'])
+    // CONTROL: a directory that is no project keeps "at or under".
+    expect(sel('./apps')).toEqual(['admin', 'docs', 'web'])
+  })
+
+  it('a project nested in a project is left out of the outer path (D-43)', () => {
+    const nested = [...projects, mkProject('web-example', `${ROOT}/apps/web/examples/x`)]
+    const g = buildPackageGraph(nested)
+    const pick = (raw: string): string[] =>
+      [...applyFilters({ filters: [parseFilter(raw, ROOT)], projects: nested, graph: g })].sort()
+    expect(pick('./apps/web')).toEqual(['web'])
+    expect(pick('./apps/web/examples/x')).toEqual(['web-example'])
+    expect(pick('./apps/web/examples')).toEqual(['web-example'])
+  })
 })
 
 // turborepo#8599: a member discovered through a `./`-prefixed package glob

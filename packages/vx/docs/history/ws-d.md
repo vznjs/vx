@@ -415,3 +415,11 @@ packages/core`) selects the dependent whose `file:../lib` spec named
   project locks (`configPath: vx.config.ts`), runs `--frozen` and passes
   `vx lock --check`; `vx watch` on a root task ran it once in 11 s with
   no cycle from its own `.vx` or output writes.
+- **D-43** A path filter read every path as "at or under" its
+  directory, so with a root project (D-39) `--filter .` selected every
+  project, and `./packages/app` took the examples nested in it. Turbo
+  2.8.17 and pnpm 10 (probed) read a path naming a package's directory
+  as that package alone: `--filter .` runs the root task only. vx now
+  does; a directory that is no package keeps the "at or under" reading
+  (Turbo selects nothing there, and vx refuses an empty selection).
+  Rows: the two D-43 rows of `tests/filter.test.ts`.
