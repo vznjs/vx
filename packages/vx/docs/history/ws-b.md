@@ -336,8 +336,10 @@ is red under its mutant:
 - `sandbox-request.test.ts`:
   - a root reached through a link is punched around its walls (the walls
     are canonical; unrealpath'd, `read: ['.']` stayed whole);
-  - a write grant binding a wall itself is refused, and a name-prefix
-    sibling is not;
+  - a write grant binding a wall itself is refused (Linux, where a file
+    grant binds its directory; macOS binds the file), and a name-prefix
+    sibling is not (the first push asserted the refusal on macOS too, and
+    the macOS job caught it);
   - a glob hit sharing a wall's name prefix is still a grant.
 - `seatbelt-profile.test.ts` (darwin code driven on any platform):
   - `wallsGlobsReach`, now exported: the walls at or under a glob's head,
