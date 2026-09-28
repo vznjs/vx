@@ -743,6 +743,33 @@ describe('every output the vx-github sweep found unheld', () => {
     ])
   })
 
+  // F-29: one 503 from GitHub cost the run its check.
+  it('a 503 or a dropped connection is retried; a 400 is not', async () => {
+    const { postCheckRun } = await import('../src/checks.js')
+    const env = { token: 't', repository: 'o/r', sha: 's', apiUrl: 'https://api' }
+    const warns: string[] = []
+    const through = async (answers: (number | 'drop')[]) => {
+      let calls = 0
+      await postCheckRun({
+        env,
+        payload: {},
+        fetchFn: async () => {
+          const a = answers[calls++] ?? 201
+          if (a === 'drop') throw new Error('connection reset')
+          return { ok: a < 300, status: a, text: async () => '' }
+        },
+        warn: (m) => warns.push(m),
+      })
+      return calls
+    }
+    expect([await through([503]), await through(['drop']), await through([400]), warns]).toEqual([
+      2,
+      2,
+      1,
+      ['vx-github: check-run POST failed (400): '],
+    ])
+  })
+
   it('an empty GITHUB_STEP_SUMMARY declines like a missing one', () => {
     const prev = { ...process.env }
     process.env['GITHUB_STEP_SUMMARY'] = ''

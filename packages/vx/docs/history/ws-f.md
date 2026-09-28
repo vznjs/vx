@@ -313,3 +313,9 @@ retries 429, 502, 503, 504 and a failed connection twice (200 and 800 ms,
 or the Retry-After it names, at most 2 s), inside core's flush deadline;
 other refusals (400, 401, 500) still fail at once. Rows against a real
 HTTP server, red without the fix.
+
+F-29. vx-github's check-run POST gave up on GitHub's first 502, 503 or 504
+or a dropped connection, and the run had no check. Those are now retried
+twice (200 and 800 ms) inside the flush deadline; a retry after a 502
+GitHub did process adds a same-name run, which GitHub shows as one. Rate
+limits (F-13) and refusals still warn at once. Row red without the fix.
