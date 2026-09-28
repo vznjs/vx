@@ -127,8 +127,11 @@ export class ReapiRemoteCache {
     // The server normalised our inline bytes into CAS (bazel-remote does).
     // An absent digest arrives as `null` on this path (proto-loader's
     // message default, as `this_readStream` in executor.ts records).
+    // The duration is metadata: a read of it that fails (retries spent, a
+    // blob failing its digest) leaves it unknown, where it made core drop a
+    // valid hit as a miss (F-21).
     if ((result.stdout_digest?.size_bytes ?? 0) > 0) {
-      const raw = await this.client.readBlob(result.stdout_digest!)
+      const raw = await this.client.readBlob(result.stdout_digest!).catch(() => null)
       return decodeDuration(raw ?? undefined)
     }
     return undefined
