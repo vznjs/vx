@@ -328,8 +328,9 @@ Protocol features in use, not just reachable:
   addresses, plus **output symlinks**. A tree's small files are fetched
   together across its directories (`BatchReadBlobs`, 64 MiB at a time),
   not one call per directory.
-- **Upload minimality** — `FindMissingBlobs` first, then batched blobs while
-  they fit the server's budget and ByteStream beyond it.
+- **Upload minimality** — `FindMissingBlobs` first (split so no request
+  passes a 4 MiB message), then batched blobs while they fit the server's
+  budget and ByteStream beyond it.
 
 ## Remote execution
 

@@ -239,6 +239,9 @@ const BATCH_ENTRY_OVERHEAD = 128
  *  default and 64 KiB leaves room for the envelope. */
 const SAFE_BATCH_BYTES = 4 * 1024 * 1024 - 64 * 1024
 
+/** A `Digest` in a request past its hash: size varint and field framing. */
+const FIND_MISSING_ENTRY_OVERHEAD = 16
+
 /** grpc's 4 MiB receive default is far below REAPI's real message sizes. */
 const MAX_MESSAGE_BYTES = 256 * 1024 * 1024
 
@@ -837,14 +840,32 @@ export class ReapiClient {
   /** The subset of `digests` the server does NOT have — the upload-minimality primitive. */
   async findMissingBlobs(digests: readonly Digest[]): Promise<Digest[]> {
     if (digests.length === 0) return []
-    const res = await unary<{ missing_blob_digests?: Digest[] }>(
-      this.svc.cas,
-      'findMissingBlobs',
-      { instance_name: this.instance, blob_digests: digests },
-      this.meta(),
-      this.boundedMeta(),
+    // One request per SAFE_BATCH_BYTES of digests: a server's receive limit
+    // (4 MiB by default) refused an input tree of 70 000 files in one
+    // message, RESOURCE_EXHAUSTED on every attempt.
+    const groups: Digest[][] = [[]]
+    let size = 0
+    for (const d of digests) {
+      const cost = d.hash.length + FIND_MISSING_ENTRY_OVERHEAD
+      if (size + cost > SAFE_BATCH_BYTES && groups.at(-1)!.length > 0) {
+        groups.push([])
+        size = 0
+      }
+      groups.at(-1)!.push(d)
+      size += cost
+    }
+    const answers = await Promise.all(
+      groups.map((group) =>
+        unary<{ missing_blob_digests?: Digest[] }>(
+          this.svc.cas,
+          'findMissingBlobs',
+          { instance_name: this.instance, blob_digests: group },
+          this.meta(),
+          this.boundedMeta(),
+        ),
+      ),
     )
-    return res.missing_blob_digests ?? []
+    return answers.flatMap((res) => res.missing_blob_digests ?? [])
   }
 
   /** `GetActionResult`; `null` on NOT_FOUND — a miss is not an error. */
