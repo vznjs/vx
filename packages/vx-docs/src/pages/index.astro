@@ -1,11 +1,11 @@
 ---
-// vx landing page — the whole story on one page (design/site-short-2026-09.md
-// § The shape): the hero, the one diagram with its six callouts, the first
-// benchmark, and the four pillars. Standalone (its own nav, footer and
-// theme), static, one script for the copy button. Every measurement is
-// written by packages/vx-bench/update-site.ts (check.site guards it) from
-// results.json: the benchRows block and the graph's size in the #bench
-// kicker and sub. tests/landing.test.ts holds the rest of the page.
+// vx landing page, for a Turborepo or Nx user first (owner, 2026-09-28):
+// the hero, the benchmark table and why it is faster, how to try it on your
+// repo, then the one diagram with its six callouts and the four pillars.
+// Standalone (its own nav, footer and theme), static, one script for the
+// copy button. The benchTable block and the graph's size in the #bench
+// kicker are written by packages/vx-bench/update-site.ts from results.json
+// (check.site guards them). tests/landing.test.ts holds the rest.
 import Diagram from '../components/guide/diagram/Diagram.astro'
 import { CALLOUTS, oneRun } from '../components/landing/one-run.js'
 import '../styles/landing.css'
@@ -13,9 +13,9 @@ import '../styles/landing.css'
 const base = import.meta.env.BASE_URL // '/vx/' on Pages, '/' on a custom domain
 const href = (p: string) => `${base}${p}`
 const GH = 'https://github.com/vznjs/vx'
-const TITLE = 'vx — a fast, correct task runner for JavaScript monorepos'
+const TITLE = 'vx — a faster runner for your Turborepo or Nx repo'
 const DESCRIPTION =
-  'A fast, correct task runner and cache for JavaScript monorepos. MIT, no paywall, no cloud, no account.'
+  'Keep turbo.json or nx.json and run it unchanged, with seconds of overhead where others add minutes. MIT, no account.'
 // Absolute, as a link preview fetches it from wherever the link was pasted.
 const siteUrl = new URL(base, Astro.site).href
 
@@ -57,85 +57,35 @@ const pillars = [
     icon: '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 019.9-1"/>',
     tone: 'var(--vx-warn)',
     title: 'Freedom',
-    body: 'MIT, no paywall, no cloud, no account; bring a Turborepo, Nx or moon repo unchanged.',
+    body: 'MIT, no paywall, no cloud, no account; bring a Turborepo or Nx repo unchanged.',
     more: 'Migrate',
     doc: href('guides/migrate/'),
   },
 ]
 
-const benchRows = [
-  {
-    task: 'Cold build · from scratch',
-    bars: [
-      { name: 'baseline', val: 218000, disp: '3m 38s', c: 'var(--c-baseline)' },
-      { name: 'vx', val: 226450, disp: '3m 46s', c: 'var(--phosphor)', best: true },
-      { name: 'turbo', val: 313463, disp: '5m 13s', c: 'var(--c-turbo)' },
-      { name: 'nx', val: 2084171, disp: '34m 44s', c: 'var(--c-nx)' },
-    ],
-  },
-  {
-    task: 'Fully cached · nothing to rebuild',
-    bars: [
-      { name: 'baseline', val: 0, disp: '0', c: 'var(--c-baseline)' },
-      { name: 'vx', val: 510, disp: '510ms', c: 'var(--phosphor)', best: true },
-      { name: 'turbo', val: 760, disp: '760ms', c: 'var(--c-turbo)' },
-      { name: 'nx', val: 3594, disp: '3.59s', c: 'var(--c-nx)' },
-    ],
-  },
-  {
-    task: 'Restoring outputs · cache → disk',
-    bars: [
-      { name: 'baseline', val: 0, disp: '0', c: 'var(--c-baseline)' },
-      { name: 'vx', val: 777, disp: '777ms', c: 'var(--phosphor)', best: true },
-      { name: 'turbo', val: 1174, disp: '1.17s', c: 'var(--c-turbo)' },
-      { name: 'nx', val: 4149, disp: '4.15s', c: 'var(--c-nx)' },
-    ],
-  },
-  {
-    task: 'CPU burned · cold build, user + system',
-    bars: [
-      { name: 'baseline', val: 0, disp: '0', c: 'var(--c-baseline)' },
-      { name: 'vx', val: 34610, disp: '34.61s', c: 'var(--phosphor)', best: true },
-      { name: 'turbo', val: 73079, disp: '1m 13s', c: 'var(--c-turbo)' },
-      { name: 'nx', val: 6846039, disp: '114m 06s', c: 'var(--c-nx)' },
-    ],
-  },
+const benchTable = [
+  { label: 'Cold build: time the runner adds', vx: '8 s', turbo: '1 min 35 s', nx: '31 min' },
+  { label: 'Cold build: CPU burned', vx: '35 s', turbo: '1 min 13 s', nx: '114 min' },
+  { label: 'Fully cached run', vx: '510 ms', turbo: '760 ms', nx: '3.59 s' },
+  { label: 'Overhead per package', vx: '8 ms', turbo: '88 ms', nx: '1,712 ms' },
 ]
 
-// The cold row's overhead reads in ONE unit for every runner — clock time
-// over the ideal schedule, `+m:ss` — as the generator prints it (owner,
-// 2026-09-10: never a percentage for one runner and a multiple for another).
-const cold = benchRows[0]!
-const coldBar = (name: string) => cold.bars.find((b) => b.name === name)!
-const coldBase = coldBar('baseline')
-const clock = (ms: number): string => {
-  const m = Math.floor(ms / 60_000)
-  const sec = Math.round((ms - m * 60_000) / 1000)
-  return `${m}:${String(sec).padStart(2, '0')}`
-}
-// What each runner adds, as one more row of the same panel, so the
-// multiples are of vx's overhead.
-const overheadRow = {
-  task: 'Runner overhead · cold build over the ideal schedule',
-  bars: [
-    { name: 'vx', c: 'var(--phosphor)' },
-    { name: 'turbo', c: 'var(--c-turbo)' },
-    { name: 'nx', c: 'var(--c-nx)' },
-  ].map((r) => ({
-    ...r,
-    val: coldBar(r.name).val - coldBase.val,
-    disp: `+${clock(coldBar(r.name).val - coldBase.val)}`,
-    ...(r.name === 'vx' ? { best: true } : {}),
-  })),
-}
-type Bar = { name: string; val: number; disp: string; c: string; best?: boolean }
-/** Every competitor bar reads as a multiple of vx's; vx's own reads "fastest". */
-const times = (b: Bar, best: number): string => {
-  if (b.name === 'baseline') return ''
-  if (b.best) return 'fastest'
-  const r = b.val / best
-  return r >= 10 ? `${Math.round(r)}× vx` : `${r.toFixed(1)}× vx`
-}
+// Why it is faster: three reasons, one short sentence each.
+const reasons = [
+  { term: 'Nothing boots per task.', line: 'No daemon, no Node process per task: vx spawns your command.' },
+  { term: 'Hashing without reading.', line: 'On a clean tree, cache keys come from git’s index.' },
+  { term: 'One pass over the repo.', line: 'One git walk per run; each stat and lookup happens once.' },
+]
+
+// Try it: the file a Turborepo or Nx repo adds, and the three commands.
+const workspaceFile = `// vx.workspace.ts
+import { defineWorkspace } from '@vzn/vx'
+import { turbo } from '@vzn/vx-migrate' // Nx: import { nx } and use nx()
+
+export default defineWorkspace({ plugins: [turbo()] })`
+const tryCommands = `npm install -D @vzn/vx @vzn/vx-migrate
+npx vx run build --all      # your turbo.json or Nx targets, run by vx
+npx vx run build --all      # again: up-to-date in milliseconds`
 
 const footCols = {
   docs: [
@@ -222,7 +172,8 @@ const footCols = {
 
       <section class="hero">
         <div class="container">
-          <h1>A fast, correct task runner for <span class="phosphor">JavaScript monorepos</span>.</h1>
+          <h1>A faster runner for your <span class="phosphor">Turborepo or Nx</span> repo.</h1>
+          <p class="lede">Keep <code>turbo.json</code> or <code>nx.json</code> and run it unchanged.</p>
           <div class="actions">
             <button class="install-pill" data-copy="npm install -g @vzn/vx" type="button">
               <span class="dollar">$</span>
@@ -250,6 +201,67 @@ const footCols = {
         </div>
       </section>
 
+      <section class="section" id="bench">
+        <div class="container">
+          <div class="section-head">
+            <p class="vx-kicker">// 3,270 tasks · 1,090 packages · 100 layers · identical commands, identical concurrency</p>
+            <h2>Seconds of overhead where others add minutes.</h2>
+          </div>
+          <div class="bench-panel">
+            <table class="bench-table">
+              <thead>
+                <tr>
+                  <th scope="col"></th>
+                  <th scope="col" class="vx">vx</th>
+                  <th scope="col">Turborepo</th>
+                  <th scope="col">Nx</th>
+                </tr>
+              </thead>
+              <tbody>
+                {
+                  benchTable.map((r) => (
+                    <tr>
+                      <th scope="row">{r.label}</th>
+                      <td class="vx">{r.vx}</td>
+                      <td>{r.turbo}</td>
+                      <td>{r.nx}</td>
+                    </tr>
+                  ))
+                }
+              </tbody>
+            </table>
+          </div>
+          <ul class="reasons">
+            {
+              reasons.map((r) => (
+                <li>
+                  <strong>{r.term}</strong> {r.line}
+                </li>
+              ))
+            }
+          </ul>
+          <div class="section-links">
+            <a class="section-link" href={href('benchmarks/')}>Benchmarks: tables, methodology, reproduce it <span class="arr">→</span></a>
+            <a class="section-link" href={href('compare/')}>When another tool is the better pick <span class="arr">→</span></a>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="try">
+        <div class="container">
+          <div class="section-head">
+            <p class="vx-kicker">// one file, three commands</p>
+            <h2>Try it on your repo.</h2>
+          </div>
+          <pre class="code"><code>{workspaceFile}</code></pre>
+          <pre class="code"><code>{tryCommands}</code></pre>
+          <p class="sub">Nothing is rewritten; <code>@vzn/vx-migrate</code> reaches npm with its first publish.</p>
+          <div class="section-links">
+            <a class="section-link" href={href('guides/migrate/')}>Migrate: parity, own configs, your remote cache <span class="arr">→</span></a>
+          </div>
+        </div>
+      </section>
+
       <section class="section" id="one-run">
         <div class="container">
           <div class="section-head">
@@ -270,59 +282,6 @@ const footCols = {
                 ))
               }
             </ol>
-          </div>
-        </div>
-      </section>
-
-      <section class="section" id="bench">
-        <div class="container">
-          <div class="section-head">
-            <p class="vx-kicker">// 3,270 tasks · 1,090 packages · 100 layers · identical commands, identical concurrency</p>
-            <h2>First in every row.</h2>
-            <p class="sub">The same synthetic 3,270-task graph under vx, Turborepo and Nx, each bar a multiple of vx.</p>
-          </div>
-          <div class="bench-panel">
-            <div class="bench-legend">
-              <span class="legend"><span class="sw" style="background:var(--phosphor)"></span>vx</span>
-              <span class="legend"><span class="sw" style="background:var(--c-turbo)"></span>turborepo</span>
-              <span class="legend"><span class="sw" style="background:var(--c-nx)"></span>nx</span>
-            </div>
-            <div class="bench-rows">
-              {
-                [overheadRow, ...benchRows].map((r) => {
-                  const sorted = [...r.bars.map((b) => b.val)].sort((a, b) => b - a)
-                  const outlier = sorted.length > 1 && sorted[0]! > 10 * sorted[1]!
-                  const rowMax = (outlier ? sorted[1]! : sorted[0]!) * 1.05
-                  const best = r.bars.find((x) => x.best)?.val ?? 1
-                  return (
-                    <div class="bench-row">
-                      <p class="task">{r.task}</p>
-                      {r.bars.map((b) => {
-                        const clipped = b.val > rowMax
-                        const pct = clipped ? 100 : (b.val / rowMax) * 100
-                        return (
-                          <div
-                            class={`bench-bar${b.best ? ' best' : ''}${b.name === 'baseline' ? ' baseline' : ''}${clipped ? ' clipped' : ''}`}
-                            style={`--c:${b.c};--w:${pct}%`}
-                          >
-                            <span class="name">{b.name}</span>
-                            <span class="track">
-                              <span class="fill" />
-                            </span>
-                            <span class="disp">{b.disp}</span>
-                            <span class="ratio">{times(b, best)}</span>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )
-                })
-              }
-            </div>
-          </div>
-          <div class="section-links">
-            <a class="section-link" href={href('benchmarks/')}>Benchmarks: tables, methodology, reproduce it <span class="arr">→</span></a>
-            <a class="section-link" href={href('compare/')}>When another tool is the better pick <span class="arr">→</span></a>
           </div>
         </div>
       </section>

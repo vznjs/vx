@@ -129,6 +129,12 @@
   so), three reasons it is faster, the rest below. moon, wireit and lage
   cut from the README (N removes the adapters); the chart SVGs and their
   generator went with the chart.
+- **K-21** The landing, the same way: hero "A faster runner for your
+  Turborepo or Nx repo." with its sub, the bars become the README's table
+  (`update-site.ts` writes one `benchTable` for both, so they cannot
+  disagree), three reasons under it, a "Try it on your repo" section, then
+  the picture and pillars; the Freedom card drops moon. Title and
+  description follow. Checked on a phone: cells stay on one line.
 
 ## Leads for other streams
 

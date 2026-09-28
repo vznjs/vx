@@ -1,12 +1,13 @@
-// The landing page is the whole story (design/site-short-2026-09.md § The
-// shape, § Laws): the hero, the one picture with its six callouts, the one
-// benchmark, and the four pillars. These rows read the page as it shipped,
+// The landing page is the whole story, for a Turborepo or Nx user first
+// (owner, 2026-09-28; design/site-short-2026-09.md § Laws): the hero, the
+// benchmark table and why, how to try it, the one picture with its six
+// callouts, and the four pillars. These rows read the page as it shipped,
 // `dist/index.html`, which the `build` task writes, and the picture as data
 // (src/components/landing/one-run.ts). What the design says is written out
 // here by hand, never read from the module it holds.
 //
 // The measurements are not checked here: `@vzn/vx-bench#check.site` holds
-// the benchRows block and the graph's size to results.json.
+// the benchTable block and the graph's size to results.json.
 
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
@@ -18,7 +19,7 @@ const DIST = path.resolve(import.meta.dir, '../dist')
 const BASE = (process.env['BASE_PATH'] ?? '/vx').replace(/\/?$/, '/')
 
 // Every section below the hero, top to bottom.
-const SECTIONS = ['one-run', 'bench', 'pillars']
+const SECTIONS = ['bench', 'try', 'one-run', 'pillars']
 
 // The six lines under the picture, as the design writes them, each at the
 // anchor the old chapters redirect to.
@@ -214,10 +215,13 @@ describe('the landing page', () => {
   const h1At = html.indexOf('<h1')
   const hero = html.slice(h1At, html.indexOf('<section', h1At))
 
-  it('says what vx is in one line, then the picture, the benchmark and the pillars', () => {
+  it('says what vx is for a Turbo or Nx repo in one line, then the sections in order', () => {
     const h1 = [...html.matchAll(/<h1\b[^>]*>([\s\S]*?)<\/h1>/g)]
     expect(h1).toHaveLength(1)
-    expect(text(h1[0]![1]!)).toBe('A fast, correct task runner for JavaScript monorepos.')
+    expect(text(h1[0]![1]!)).toBe('A faster runner for your Turborepo or Nx repo.')
+    expect(text(/<p class="lede">([\s\S]*?)<\/p>/.exec(hero)![1]!)).toBe(
+      'Keep turbo.json or nx.json and run it unchanged.',
+    )
     const ids = [...html.matchAll(/<section\b[^>]*\bid="([\w-]+)"/g)]
     expect(ids.map((m) => m[1])).toEqual(SECTIONS)
     expect(h1[0]!.index!).toBeLessThan(ids[0]!.index!)
@@ -269,10 +273,42 @@ describe('the landing page', () => {
     expect(run).not.toMatch(/<script\b|\son[a-z]+=/)
   })
 
-  it('holds exactly one benchmark section, the first one', () => {
+  // The numbers are check.site's; the shape is here: vx first, one row per
+  // number a Turbo or Nx user weighs, and three reasons under it.
+  it('holds one benchmark table, vx, Turborepo and Nx, and why it is faster', () => {
     const bench = section(html, 'bench')
-    expect(text(bench)).toContain('First in every row.')
+    expect(text(bench)).toContain('Seconds of overhead where others add minutes.')
     expect([...html.matchAll(/class="bench-panel"/g)]).toHaveLength(1)
+    const cols = [...bench.matchAll(/<th scope="col"[^>]*>([\s\S]*?)<\/th>/g)].map((m) =>
+      text(m[1]!),
+    )
+    expect(cols).toEqual(['', 'vx', 'Turborepo', 'Nx'])
+    const rows = [...bench.matchAll(/<th scope="row"[^>]*>([\s\S]*?)<\/th>/g)].map((m) =>
+      text(m[1]!),
+    )
+    expect(rows).toEqual([
+      'Cold build: time the runner adds',
+      'Cold build: CPU burned',
+      'Fully cached run',
+      'Overhead per package',
+    ])
+    const reasons = [...bench.matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/g)].map((m) => text(m[1]!))
+    expect(reasons).toHaveLength(3)
+  })
+
+  // One file and three commands, for either tool, and no promise npm keeps
+  // yet: the plugin's first publish is the owner's.
+  it('shows how to try it on a Turbo or Nx repo', () => {
+    const tryIt = text(section(html, 'try'))
+    for (const s of [
+      "import { turbo } from '@vzn/vx-migrate'",
+      'nx()',
+      'export default defineWorkspace({ plugins: [turbo()] })',
+      'npm install -D @vzn/vx @vzn/vx-migrate',
+      'npx vx run build --all',
+      'reaches npm with its first publish',
+    ])
+      expect(tryIt).toContain(s)
   })
 
   it('carries the four pillars in order, each an icon, a title, one short sentence and its page', () => {
@@ -395,13 +431,11 @@ describe('a shared link shows the card', () => {
       expect(meta(html, 'og:image')).toEqual([`${SITE}${BASE}og.png`])
       expect(meta(html, 'twitter:card')).toEqual(['summary_large_image'])
     }
-    expect(meta(page(), 'og:title')).toEqual([
-      'vx — a fast, correct task runner for JavaScript monorepos',
-    ])
+    expect(meta(page(), 'og:title')).toEqual(['vx — a faster runner for your Turborepo or Nx repo'])
     // The search result's and the card's headline says what vx is: the
     // cinematic landing's slogan outlived the page it headed.
     expect(/<title>([^<]*)<\/title>/.exec(page())?.[1]).toBe(
-      'vx — a fast, correct task runner for JavaScript monorepos',
+      'vx — a faster runner for your Turborepo or Nx repo',
     )
   })
 

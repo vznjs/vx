@@ -320,126 +320,6 @@ body:has(.vx-landing) {
   border-radius: var(--radius-xl);
   overflow: hidden;
 }
-.bench-legend {
-  display: flex;
-  gap: 20px;
-}
-.legend {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  font: var(--fw-medium) 12px/1 var(--font-mono);
-  color: var(--text-mut);
-}
-.legend .sw {
-  width: 10px;
-  height: 10px;
-  border-radius: 2px;
-}
-.bench-rows {
-  padding: 8px 36px 30px;
-}
-.bench-row {
-  padding: 20px 0;
-  border-bottom: 1px solid var(--line-faint);
-}
-.bench-row:last-child {
-  border-bottom: none;
-}
-.bench-row .task {
-  font: var(--fw-medium) var(--text-sm) / 1 var(--font-mono);
-  color: var(--text-hi);
-  margin: 0 0 12px;
-}
-.bench-bar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 7px;
-}
-.bench-bar .name {
-  width: 52px;
-  font: 11px/1 var(--font-mono);
-  color: var(--text-faint);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
-.bench-bar .track {
-  flex: 1;
-  height: 22px;
-  background: var(--ink-800);
-  border-radius: var(--radius-xs);
-  overflow: hidden;
-}
-.bench-bar .fill {
-  display: block;
-  width: var(--w);
-  height: 100%;
-  background: var(--c);
-  border-radius: var(--radius-xs);
-  transform-origin: left;
-  animation: bench-grow 0.9s var(--ease-out) both;
-  animation-delay: 0.1s;
-}
-.bench-bar.best .fill {
-  box-shadow: 0 0 16px color-mix(in srgb, var(--c) 50%, transparent);
-}
-/* A bar more than ten times the next runner's is drawn at full width with a
-   break at its end — the number beside it is exact; the bar is not. */
-.bench-bar.clipped .fill {
-  -webkit-mask-image: linear-gradient(
-    to right,
-    #000 calc(100% - 28px),
-    transparent calc(100% - 26px),
-    #000 calc(100% - 20px),
-    transparent calc(100% - 18px),
-    #000 calc(100% - 12px),
-    transparent
-  );
-  mask-image: linear-gradient(
-    to right,
-    #000 calc(100% - 28px),
-    transparent calc(100% - 26px),
-    #000 calc(100% - 20px),
-    transparent calc(100% - 18px),
-    #000 calc(100% - 12px),
-    transparent
-  );
-}
-/* The theoretical best case: a hollow, dashed bar so the gap to it reads as overhead. */
-.bench-bar.baseline .fill {
-  background: transparent;
-  border: 1px dashed var(--c-baseline);
-  box-shadow: none;
-}
-.bench-bar.baseline .name,
-.bench-bar.baseline .disp {
-  color: var(--c-baseline);
-}
-@keyframes bench-grow {
-  from {
-    transform: scaleX(0);
-  }
-  to {
-    transform: scaleX(1);
-  }
-}
-.bench-bar .disp {
-  width: 72px;
-  text-align: right;
-  font: var(--fw-regular) 13px/1 var(--font-mono);
-  color: var(--text-mut);
-}
-.bench-bar.best .disp {
-  font-weight: var(--fw-bold);
-  color: var(--phosphor-bright);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .bench-bar .fill {
-    animation: none;
-  }
-}
 
 /* ============================================================
    Footer
@@ -504,7 +384,7 @@ body:has(.vx-landing) {
    Page sections. Static. Three repeated primitives, each exactly the
    same everywhere it appears: the section head (kicker, h2, one line),
    the card (icon, title, one sentence, a docs link), the benchmark
-   panel (legend, rows of bars, every competitor a multiple of vx).
+   panel (one table, vx first).
    ============================================================ */
 .vx-landing h1 {
   font: var(--fw-bold) clamp(40px, 5.6vw, 72px) / 1.02 var(--font-display);
@@ -563,6 +443,11 @@ body:has(.vx-landing) {
 }
 .hero h1 {
   max-width: 15em;
+}
+.hero .lede {
+  font: var(--fw-regular) 20px / 1.5 var(--font-body);
+  color: var(--text-mut);
+  margin: 18px 0 0;
 }
 /* A real run of examples/basic (scripts/terminal-demo.ts), its own dark
    window on either theme. */
@@ -634,31 +519,69 @@ body:has(.vx-landing) {
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
 }
-.bench-legend {
-  margin-bottom: 18px;
+
+/* ---- the benchmark table and why ---- */
+.bench-table {
+  width: 100%;
+  border-collapse: collapse;
+  font: var(--fw-regular) 15px / 1.4 var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }
-.bench-bar .fill {
-  animation: none;
-}
-.bench-bar .name {
-  width: 96px;
-  font-size: 13px;
-}
-.bench-bar .disp {
-  width: 76px;
-  font-size: 14px;
-}
-.bench-bar .ratio {
-  width: 84px;
-  font: var(--fw-medium) 13px/1 var(--font-mono);
-  color: var(--text-mut);
+.bench-table th,
+.bench-table td {
+  padding: 12px 14px;
   text-align: right;
+  border-bottom: 1px solid var(--line-faint);
+  color: var(--text-mut);
 }
-.bench-bar.best .ratio {
-  color: var(--phosphor);
+.bench-table tr:last-child th,
+.bench-table tr:last-child td {
+  border-bottom: none;
 }
-.bench-row .task {
-  font-size: 14px;
+.bench-table th[scope='row'] {
+  text-align: left;
+  font-family: var(--font-body);
+  color: var(--text-hi);
+}
+.bench-table thead th {
+  font-weight: var(--fw-semibold);
+  color: var(--text-hi);
+}
+.bench-table td {
+  white-space: nowrap;
+}
+.bench-table .vx {
+  font-weight: var(--fw-bold);
+  color: var(--phosphor-bright);
+}
+.reasons {
+  list-style: none;
+  margin: 32px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+  font: var(--fw-regular) 17px / 1.5 var(--font-body);
+  color: var(--text-mut);
+}
+.reasons strong {
+  color: var(--text-hi);
+}
+
+/* ---- try it ---- */
+.code {
+  margin: 0 0 14px;
+  padding: 18px 20px;
+  overflow-x: auto;
+  background: var(--bg-sunken);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  font: 14px / 1.55 var(--font-mono);
+  color: var(--text-hi);
+}
+.sub code,
+.hero .lede code {
+  font: 0.92em var(--font-mono);
+  color: var(--text-hi);
 }
 
 /* ---- the card ---- */
@@ -766,31 +689,11 @@ body:has(.vx-landing) {
   .bench-panel {
     padding: 16px 16px 4px;
   }
-  /* labels on one line, the bar full-width on its own: three labels leave a phone no track */
-  .bench-bar {
-    display: grid;
-    grid-template-columns: auto 1fr auto;
-    grid-template-areas:
-      'name disp ratio'
-      'track track track';
-    gap: 6px 12px;
-    margin-bottom: 12px;
+  .bench-table {
+    font-size: 13px;
   }
-  .bench-bar .name {
-    grid-area: name;
-    width: auto;
-  }
-  .bench-bar .disp {
-    grid-area: disp;
-    width: auto;
-    text-align: right;
-  }
-  .bench-bar .ratio {
-    grid-area: ratio;
-    width: auto;
-    font-size: 11px;
-  }
-  .bench-bar .track {
-    grid-area: track;
+  .bench-table th,
+  .bench-table td {
+    padding: 10px 6px;
   }
 }

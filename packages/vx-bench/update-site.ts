@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// Rewrite the landing page's benchmark rows and the graph's size, the
+// Rewrite the landing page's benchmark table and the graph's size, the
 // README's benchmark table and the benchmarks doc's stress-shape section,
 // from packages/vx-bench/results.json — the file `packages/vx-bench/compare.ts`
 // commits. The site is a rendering of the runner's output, never hand-typed
@@ -71,78 +71,12 @@ const x = (a: Row, key: keyof Row): string => `${(Number(a[key]) / Number(vx[key
 // says how the runner grows with the codebase.
 const perPkg = (r: Row): number => Math.round((Number(r.fresh) - B.fresh) / d.packages)
 
-// ---- landing page ----
-const bar = (name: string, val: number, c: string, best = false): string =>
-  `      { name: '${name}', val: ${Math.round(val)}, disp: '${disp(val)}', c: '${c}'${best ? ', best: true' : ''} },`
-const row = (task: string, key: keyof Row, baseKey: keyof Results['baseline']): string =>
-  [
-    '  {',
-    `    task: '${task}',`,
-    '    bars: [',
-    bar('baseline', B[baseKey], 'var(--c-baseline)'),
-    bar('vx', Number(vx[key]), 'var(--phosphor)', true),
-    bar('turbo', Number(turbo[key]), 'var(--c-turbo)'),
-    bar('nx', Number(nx[key]), 'var(--c-nx)'),
-    '    ],',
-    '  },',
-  ].join('\n')
-// The baseline is THEORETICAL: cold is the tasks' own durations under an
-// ideal schedule; a cached run, a restore and the CPU a runner burns are 0
-// in theory — everything drawn is the runner (owner's definition,
-// 2026-09-03). The measured floors (one git walk, a raw copy, the task
-// shells under xargs) stay in packages/vx-bench/RESULTS.md as context.
-const zeroRow = (task: string, key: keyof Row): string =>
-  [
-    '  {',
-    `    task: '${task}',`,
-    '    bars: [',
-    "      { name: 'baseline', val: 0, disp: '0', c: 'var(--c-baseline)' },",
-    bar('vx', Number(vx[key]), 'var(--phosphor)', true),
-    bar('turbo', Number(turbo[key]), 'var(--c-turbo)'),
-    bar('nx', Number(nx[key]), 'var(--c-nx)'),
-    '    ],',
-    '  },',
-  ].join('\n')
-const rowsBlock =
-  'const benchRows = [\n' +
-  [
-    row('Cold build · from scratch', 'fresh', 'fresh'),
-    zeroRow('Fully cached · nothing to rebuild', 'warmNoRestore'),
-    zeroRow('Restoring outputs · cache → disk', 'warmRestore'),
-    zeroRow('CPU burned · cold build, user + system', 'freshCpu'),
-  ].join('\n') +
-  '\n]\n'
-
-const landingPath = path.join(ROOT, 'packages/vx-docs/src/pages/index.astro')
-let landing = readFileSync(landingPath, 'utf8')
-landing = rewrite(landing, /const benchRows = \[\n[\s\S]*?\n\]\n/, rowsBlock, 'the benchRows block')
-function rewrite(text: string, re: RegExp, to: string, what: string): string {
-  if (!re.test(text)) throw new Error(`index.astro: ${what} not found`)
-  return text.replace(re, to)
-}
-// The graph's size, where the page names it: the panel's kicker and its
-// sub.
-landing = rewrite(
-  landing,
-  /\/\/ [\d,]+ tasks · [\d,]+ packages · \d+ layers ·/,
-  `// ${nodes.toLocaleString('en-US')} tasks · ${d.packages.toLocaleString('en-US')} packages · ${d.layers} layers ·`,
-  'the benchmark kicker',
-)
-landing = rewrite(
-  landing,
-  /synthetic [\d,]+-task graph/,
-  `synthetic ${nodes.toLocaleString('en-US')}-task graph`,
-  "the benchmark panel's graph size",
-)
-
-const docPath = path.join(ROOT, 'packages/vx/docs/benchmarks.md')
-const docIn = readFileSync(docPath, 'utf8')
-// ---- README benchmark table ----
-// The README's first screen (owner, 2026-09-28): one row per number a Turbo
-// or Nx user weighs, a unit in every cell, no prose of numbers. Hand-typed,
-// it drifted (559 ms where the committed run said 510, 2026-09-10); rendered
-// here, checked with the rest.
-const readmePath = path.join(ROOT, 'README.md')
+// ---- the table the README and the landing lead with ----
+// One row per number a Turbo or Nx user weighs, a unit in every cell, no
+// prose of numbers (owner, 2026-09-28). The baseline is THEORETICAL: the
+// tasks' own durations under an ideal schedule; a cached run and the CPU a
+// runner burns are 0 in theory, so every number is the runner's (owner,
+// 2026-09-03).
 const span = (ms: number): string => {
   const s = Math.round(ms / 1000)
   if (s < 60) return `${s} s`
@@ -155,6 +89,43 @@ const table = [
   ['Fully cached run', (r: Row) => disp(r.warmNoRestore).replace(/(\d)(ms|s)$/, '$1 $2')],
   ['Overhead per package', (r: Row) => `${perPkg(r).toLocaleString('en-US')} ms`],
 ] as const
+const tableBlock =
+  'const benchTable = [\n' +
+  table
+    .map(
+      ([label, f]) =>
+        `  { label: '${label}', vx: '${f(vx)}', turbo: '${f(turbo)}', nx: '${f(nx)}' },`,
+    )
+    .join('\n') +
+  '\n]\n'
+
+// ---- landing page ----
+const landingPath = path.join(ROOT, 'packages/vx-docs/src/pages/index.astro')
+let landing = readFileSync(landingPath, 'utf8')
+landing = rewrite(
+  landing,
+  /const benchTable = \[\n[\s\S]*?\n\]\n/,
+  tableBlock,
+  'the benchTable block',
+)
+function rewrite(text: string, re: RegExp, to: string, what: string): string {
+  if (!re.test(text)) throw new Error(`index.astro: ${what} not found`)
+  return text.replace(re, to)
+}
+// The graph's size, where the page names it: the panel's kicker.
+landing = rewrite(
+  landing,
+  /\/\/ [\d,]+ tasks · [\d,]+ packages · \d+ layers ·/,
+  `// ${nodes.toLocaleString('en-US')} tasks · ${d.packages.toLocaleString('en-US')} packages · ${d.layers} layers ·`,
+  'the benchmark kicker',
+)
+
+const docPath = path.join(ROOT, 'packages/vx/docs/benchmarks.md')
+const docIn = readFileSync(docPath, 'utf8')
+// ---- README benchmark table ----
+// Hand-typed, the README's numbers drifted (559 ms where the committed run
+// said 510, 2026-09-10); rendered here, checked with the rest.
+const readmePath = path.join(ROOT, 'README.md')
 const readmeBlock = `<!-- bench:start — generated by packages/vx-bench/update-site.ts from results.json; do not hand-edit -->
 
 | ${d.packages.toLocaleString('en-US')} packages, ${nodes.toLocaleString('en-US')} tasks | vx | Turborepo | Nx |
