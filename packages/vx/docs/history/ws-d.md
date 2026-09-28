@@ -546,3 +546,12 @@ packages/core`) selects the dependent whose `file:../lib` spec named
   (72 mutants: each `if` in front of a `throw new UserError`, turned
   off): all caught, the plugin `backend` refusal by
   `tests/project-loader.test.ts`.
+- **D-58** Guard sweep of the rest of `src/workspace/` (20 mutants, each
+  `if` before a `throw new UserError` turned off, against the 37 test
+  files that import these modules): 19 caught, `filter.ts`'s empty
+  selector by `tests/cli.test.ts`. `loadWorkspace`'s refusal of a root
+  with neither manifest survived: the CLI never reaches it, but the
+  function is public API, so a row now holds it and its comment no
+  longer calls it unreachable. `affected.ts`'s "cat-file --batch ended
+  before" guard also survived: it defends against a truncated stream
+  that real git does not produce, so it stays unheld and is recorded.

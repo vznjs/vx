@@ -904,6 +904,27 @@ describe('malformed workspace manifests', () => {
   })
 })
 
+describe('loadWorkspace at a public boundary (D-58)', () => {
+  // The CLI reaches it through findWorkspaceRoot, which never returns such a
+  // directory; `loadWorkspace` is public API (src/index.ts), and a direct call
+  // on a directory with neither manifest is refused, never loaded as nothing.
+  it('refuses a root with neither pnpm-workspace.yaml nor package.json', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-ws-bare-'))
+    try {
+      const err = await loadWorkspace(dir).then(
+        () => null,
+        (e: unknown) => e as Error,
+      )
+      expect(err).toBeInstanceOf(UserError)
+      expect(err?.message).toBe(
+        `workspace root ${dir} has neither pnpm-workspace.yaml nor package.json`,
+      )
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+})
+
 describe('memberBaseDirs', () => {
   // The directories `vx watch` arms so a package APPEARING or disappearing
   // is heard as one directory entry, with no walk. Only the `<dir>/*`
