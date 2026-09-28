@@ -158,4 +158,57 @@ describe('a full disk', () => {
       cache.close()
     }
   })
+
+  it('prune retries its row delete once when the first meets a full index (A-37)', async () => {
+    // The row above frees the space before the delete runs, so the retry
+    // itself was never reached: here the first delete fails regardless.
+    const cache = new Cache(cacheDir)
+    try {
+      await save(cache, 'h1')
+      const db = cache.dbHandle()
+      const real = db.transaction.bind(db)
+      let failed = 0
+      const spy = spyOn(db, 'transaction').mockImplementation(((fn: () => void) => {
+        const tx = real(fn)
+        return (() => {
+          if (failed === 0 && fn.toString().includes('DELETE FROM entries')) {
+            failed++
+            throw Object.assign(new Error('database or disk is full'), { code: 'SQLITE_FULL' })
+          }
+          return tx()
+        }) as typeof tx
+      }) as typeof db.transaction)
+      try {
+        expect((await cache.prune({ maxBytes: 1 })).evicted).toBe(1)
+      } finally {
+        spy.mockRestore()
+      }
+      expect([failed, db.prepare('SELECT COUNT(*) AS n FROM entries').get()]).toEqual([1, { n: 0 }])
+    } finally {
+      cache.close()
+    }
+  })
+
+  it('the access-time flush gives way to a full index (A-37)', async () => {
+    const cache = new Cache(cacheDir)
+    try {
+      await save(cache, 'h1')
+      expect(await cache.get('h1')).not.toBeNull() // queues an accessed_at write
+      const db = cache.dbHandle()
+      const real = db.prepare.bind(db)
+      const spy = spyOn(db, 'prepare').mockImplementation(((sql: string) => {
+        if (sql.startsWith('UPDATE entries SET accessed_at')) {
+          throw Object.assign(new Error('database or disk is full'), { code: 'SQLITE_FULL' })
+        }
+        return real(sql)
+      }) as typeof db.prepare)
+      try {
+        expect(cache.stats().entryCount).toBe(1)
+      } finally {
+        spy.mockRestore()
+      }
+    } finally {
+      cache.close()
+    }
+  })
 })
