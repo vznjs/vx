@@ -343,3 +343,10 @@ packages/core`) selects the dependent whose `file:../lib` spec named
   folds); a `$npm_*` read twice is one TODO. Two survivors are
   equivalent: the memo, and `yarn@[2-9]` for a Yarn 10 that does not
   exist. Rows: the two D-35 rows of `tests/init.test.ts`.
+- **D-36** A CommonJS `vx.config.js` reaching `require` as
+  `arguments[1]` never spelled a denied word, so it was cached as pure:
+  one reading a file outside its closure
+  (`arguments[1]('fs').readFileSync(…)`) printed `one` after the file
+  said `two`. `arguments` joins the deny-list. `module` does not:
+  `module.require` spells `require` and was refused already (the row's
+  control). Rows: the D-36 rows of `tests/config-cache.test.ts`.

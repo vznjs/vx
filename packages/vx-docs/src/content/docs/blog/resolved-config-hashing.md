@@ -82,7 +82,8 @@ without naming it (`Reflect`, `getPrototypeOf`, `setPrototypeOf`,
 `__defineGetter__`, `__defineSetter__`, `__lookupGetter__`,
 `__lookupSetter__`), `import.meta`, `random` (as a word, so a
 destructured `Math.random` too), `prompt`, `confirm` and `alert` (they
-read the terminal) and a dynamic `import()` — the aliases and the property-name routes to each
+read the terminal), `arguments` (a CommonJS config's `arguments[1]` is
+`require`) and a dynamic `import()` — the aliases and the property-name routes to each
 (`global['proc' + 'ess']`, `({}).constructor.constructor`) included.
 A string literal naming `constructor`, `__proto__` or `prototype`
 evaluates live too. The list stops accidental impurity; a config built
