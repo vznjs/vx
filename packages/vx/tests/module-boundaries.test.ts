@@ -182,7 +182,7 @@ describe('the raw config load has only its two sanctioned uses', () => {
     expect([...callers.keys()].sort()).toEqual([
       'cli/lock.ts',
       'cli/select.ts',
-      'cli/watch.ts',
+      'cli/watch-set.ts',
       'orchestrator/doctor.ts',
     ])
 

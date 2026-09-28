@@ -1,4 +1,4 @@
-# `src/cli/watch.ts` — `vx watch` subcommand (and `watch-fs.ts`, `watch-filter.ts`)
+# `src/cli/watch.ts` — `vx watch` subcommand (and `watch-fs.ts`, `watch-filter.ts`, `watch-set.ts`)
 
 ## Purpose
 
@@ -13,11 +13,25 @@ filesystem events.
 export async function watchCmd(args: readonly string[]): Promise<number>
 
 // The loop's parts, exported for the watch suites:
-export async function watchedProjects(workspaceRoot, allProjects, scope, load?, staged?): Promise<ProjectMeta[]>
-export async function sweepConfigs(projects, workspaceRoot, load?): Promise<{ workspaceWide: boolean; … }>
-export function memberEntries(base: string): ReadonlySet<string>
 export function watchRefusal(parsed: RunArgs): string | null // the refusal line for a flag watch cannot honour
 export function pendingAfterCycle(pending: ReadonlyMap<string, string>, aborted: boolean): [abs: string, label: string] | undefined
+
+// watch-set.ts — what is watched: the projects a cycle can run, what their
+// configs declare, the member dirs a package glob can grow:
+export async function watchedProjects(workspaceRoot, allProjects, scope, load?, staged?): Promise<ProjectMeta[]>
+export interface ConfigSweep {
+  workspaceWide: boolean
+  workspaceInputs: string[]
+  outputs: Map<string, string[]>
+  inputs: Map<string, string[]>
+  uncached: Set<string>
+  configImports: string[]
+  workspaceConfigImports: string[]
+  staged: Map<string, ProjectEntry> | null
+}
+export async function sweepConfigs(projects, workspaceRoot, load?): Promise<ConfigSweep>
+export function memberEntries(base: string): ReadonlySet<string>
+export function sameMembers(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean
 
 // watch-filter.ts — which events matter, decided over paths alone:
 export function isIgnoredWatchPath(rel: string): boolean // node_modules / .git / .vx segments, .tsbuildinfo / ~ suffixes

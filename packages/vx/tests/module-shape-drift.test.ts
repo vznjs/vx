@@ -111,6 +111,7 @@ const SHAPES: ReadonlyArray<[page: string, source: string, name: string]> = [
   ['git-inputs', 'cache/git-inputs.ts', 'GitEnumeration'],
   ['upgrade', 'cli/upgrade.ts', 'ReleaseAsset'],
   ['cli-watch', 'cli/watch-fs.ts', 'ArmedWatcher'],
+  ['cli-watch', 'cli/watch-set.ts', 'ConfigSweep'],
   ['logger', 'orchestrator/logger.ts', 'OutputView'],
   ['colors', 'orchestrator/colors.ts', 'ColorSupport'],
   ['colors', 'orchestrator/colors.ts', 'PaintOptions'],
