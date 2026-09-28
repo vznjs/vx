@@ -94,11 +94,39 @@ describe('the run lock, through a mocked file system', () => {
     Promise.race([p, Bun.sleep(1_000).then(() => 'waiting' as const)])
 
   it('where procfs is not this namespace, an entry names no start time', async () => {
-    const release = await acquireRunLock('/w/app', { dir, log })
-    expect(await real.readdir(lockDir())).toEqual([
-      expect.stringMatching(new RegExp(`^h-${process.pid}-x-\\d+$`)),
+    // A child of its own: the entry's name is read once per process, so a
+    // file that took a lock earlier in this one fixed it with a start time
+    // (CI shard 10). The child's preload swaps procfs.ts for a foreign one.
+    const src = path.join(import.meta.dir, '..', 'src')
+    const preload = path.join(dir, 'foreign-procfs.ts')
+    await real.writeFile(
+      preload,
+      `Bun.plugin({ setup(b) { b.onLoad({ filter: /util[\\\\/]procfs\\.ts$/ }, () => ({ contents: 'export function procfsIsOwn() { return false }', loader: 'ts' })) } })`,
+    )
+    const script = path.join(dir, 'take.ts')
+    await real.writeFile(
+      script,
+      [
+        `import { readdirSync } from 'node:fs'`,
+        `import { acquireRunLock, runLockPath } from ${JSON.stringify(path.join(src, 'orchestrator', 'run-lock.ts'))}`,
+        `const release = await acquireRunLock('/w/app', { dir: ${JSON.stringify(dir)}, log: () => {} })`,
+        `console.log(JSON.stringify({ pid: process.pid, names: readdirSync(runLockPath('/w/app', ${JSON.stringify(dir)})) }))`,
+        `await release()`,
+      ].join('\n'),
+    )
+    const child = Bun.spawn([process.execPath, '--preload', preload, script], {
+      stdout: 'pipe',
+      stderr: 'pipe',
+      env: { ...process.env },
+    })
+    const [out, err, code] = await Promise.all([
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+      child.exited,
     ])
-    await release()
+    expect({ code, err }).toEqual({ code: 0, err: '' })
+    const { pid, names } = JSON.parse(out) as { pid: number; names: string[] }
+    expect(names).toEqual([`h-${pid}-x-1`])
   })
 
   it('a start time procfs cannot check is trusted: the live holder is waited for', async () => {
