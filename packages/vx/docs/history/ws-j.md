@@ -376,6 +376,11 @@
   symlinked output whose target leaves the project is refused
   (schema.md), and `vx init` beside `turbo.json` or `nx.json` writes
   only a `vx.workspace.ts` declaring `turbo()` or `nx()` (quickstart).
+- **J-77** docs against 11 code commits merged 09:20–10:20Z: a
+  remote-only task plans as `@noop` whatever the executor count, the
+  strace log sits beside the task directories, a typed task or
+  foreign verb is answered before `unknown command`, a spaced image
+  path after `--graph` is refused, and vx-mcp masks via `maskedCommand`.
 
 ## Leads for other streams
 
@@ -547,3 +552,4 @@ extra` ignores the extra argument and exits 0 where every other verb
 - **G/N** `nx()` wrote `workspaceFiles: ['shared.json', 'shared.json']` when a file was both a `{workspaceRoot}` input and a `json` input (harmless duplicate). (J-75)
 - **A** (unrun) d478d5de passes the project dir as `within` to `planArtifact`, so a symlinked `outputs.workspaceFiles` output whose target is inside the workspace but outside the project is likely refused "outside the project". (J-76)
 - **E/N** (unrun) `adoptionNext` prints `yarn add -D @vzn/vx @vzn/vx-migrate` in a yarn repo; at a Yarn 1 workspace root that errors without `-W` (the pnpm branch passes `-w`). (J-76)
+- **E** (perf, unrun) since a2bb22f9 any unknown verb, a typo like `vx buidl` included, loads every project config before printing `unknown command`. (J-77)
