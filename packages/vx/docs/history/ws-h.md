@@ -192,6 +192,16 @@ isolated. Rows: `plugin-pipeline.test.ts` "an async policy…",
 `plugin.test.ts` "a hook name ctx.on does not know…", each red without
 its fix.
 
+## H-15: release notes from Conventional Commits
+
+`auto-release.yml` used GitHub's generated notes: every merged PR title,
+docs and tests among them, and nothing marked a breaking change.
+`scripts/release-notes.ts` now writes them from the commits since the
+last tag: breaking changes (`type!:` or a `BREAKING CHANGE:` footer)
+first, then Features, Fixes, Performance, and one count for the rest.
+Rows: `release-notes.test.ts`; three mutants of the classifier each
+turn a row red.
+
 ## Leads for other streams
 
 - **D / B:** `sandbox.ignore` names that loaded and did nothing: done in D-4.
