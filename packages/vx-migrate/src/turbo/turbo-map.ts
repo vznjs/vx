@@ -138,12 +138,74 @@ export async function turboConfigFile(dir: string): Promise<string | null> {
 
 async function readTurboJson(file: string, root: string): Promise<TurboJson> {
   const text = await Bun.file(file).text()
+  let parsed: unknown
   try {
     // turbo.json allows comments + trailing commas.
-    return (Bun.JSONC.parse(text) ?? {}) as TurboJson
+    parsed = Bun.JSONC.parse(text) ?? {}
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     throw new UserError(`failed to parse ${relPosix(root, file)}: ${msg}`)
+  }
+  checkTurboShape(parsed, relPosix(root, file))
+  return parsed as TurboJson
+}
+
+const isRecord = (v: unknown): v is Record<string, unknown> =>
+  typeof v === 'object' && v !== null && !Array.isArray(v)
+
+const TOP_LISTS = [
+  'globalDependencies',
+  'globalEnv',
+  'globalPassThroughEnv',
+  'globalDotEnv',
+  'extends',
+]
+const GLOBAL_LISTS = ['inputs', 'env', 'passThroughEnv']
+const TASK_LISTS = ['dependsOn', 'outputs', 'env', 'passThroughEnv', 'with', 'dotEnv']
+const TASK_FLAGS = ['cache', 'persistent', 'interactive']
+
+/**
+ * The shape of every field the mapper reads, refused by name. A number
+ * where turbo.json holds a list reached the mapper's loops: `"dependsOn":
+ * true` printed `TypeError: true is not iterable` with its stack from
+ * `bunx @vzn/vx-migrate` (fuzzed, L-15). Turbo refuses the same file.
+ */
+function checkTurboShape(cfg: unknown, label: string): void {
+  const refuse = (at: string, what: string): never => {
+    throw new UserError(`${label}: ${at} must be ${what}`)
+  }
+  const list = (v: unknown, at: string): void => {
+    if (v !== undefined && (!Array.isArray(v) || v.some((x) => typeof x !== 'string')))
+      refuse(at, 'an array of strings')
+  }
+  if (!isRecord(cfg)) refuse('the file', 'a JSON object')
+  const c = cfg as Record<string, unknown>
+  for (const k of TOP_LISTS) list(c[k], k)
+  if (c['global'] !== undefined) {
+    if (!isRecord(c['global'])) refuse('global', 'an object')
+    for (const k of GLOBAL_LISTS) list((c['global'] as Record<string, unknown>)[k], `global.${k}`)
+  }
+  for (const field of ['tasks', 'pipeline']) {
+    const tasks = c[field]
+    if (tasks === undefined) continue
+    if (!isRecord(tasks)) refuse(field, 'an object of tasks')
+    for (const [name, def] of Object.entries(tasks as Record<string, unknown>)) {
+      const at = `${field}.${JSON.stringify(name)}`
+      if (!isRecord(def)) refuse(at, 'an object')
+      const d = def as Record<string, unknown>
+      for (const k of TASK_LISTS) list(d[k], `${at}.${k}`)
+      // Turbo 2.11 adds `{ mode, globs, withDefaults }` entries (`flatInputs`).
+      const inputs = d['inputs']
+      if (
+        inputs !== undefined &&
+        (!Array.isArray(inputs) || inputs.some((x) => typeof x !== 'string' && !isRecord(x)))
+      )
+        refuse(`${at}.inputs`, 'an array of globs')
+      for (const k of TASK_FLAGS)
+        if (d[k] !== undefined && typeof d[k] !== 'boolean') refuse(`${at}.${k}`, 'true or false')
+      if (d['outputLogs'] !== undefined && typeof d['outputLogs'] !== 'string')
+        refuse(`${at}.outputLogs`, 'a string')
+    }
   }
 }
 

@@ -169,6 +169,12 @@
   a `vx-tasks` that is a link, another user's, or in a parent others may
   rewrite without the sticky bit is refused. Rows in
   `sandbox-runtime.unsafe.test.ts`.
+- L-15. `fix(vx-migrate)`: fuzzing turbo.json's shape found fifteen
+  fields whose wrong type reached a mapper loop as a TypeError;
+  `"dependsOn": true` printed `TypeError: true is not iterable` with its
+  stack from `bunx @vzn/vx-migrate`. Every field the mapper reads is now
+  checked at read and refused by file and name. Supervisor backlog 2.
+  Rows in `turbo-map-sweep.test.ts`.
 
 ## Leads for other streams
 
