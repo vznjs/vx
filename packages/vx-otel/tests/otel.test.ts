@@ -2051,3 +2051,74 @@ describe('the sink, past its sweep', () => {
     ])
   })
 })
+
+// F-56: a mutation sweep of plugin.ts (226 mutants, 157 caught) found these
+// unheld, and one bug (the timeout past a timer's range).
+describe('the OTLP env, as its second sweep found it unheld', () => {
+  const base = { OTEL_EXPORTER_OTLP_ENDPOINT: 'http://c' }
+
+  it('a metrics or logs header no request can carry is dropped too', () => {
+    const warns: string[] = []
+    const c = resolveOtelConfig(
+      {},
+      {
+        ...base,
+        OTEL_EXPORTER_OTLP_METRICS_HEADERS: 'Authorization=a%0Ab,x-m=1',
+        OTEL_EXPORTER_OTLP_LOGS_HEADERS: 'Authorization=a%0Ab,x-l=1',
+      },
+      (m) => warns.push(m),
+    )!
+    expect([c.signalHeaders?.metrics, c.signalHeaders?.logs, warns.length > 0]).toEqual([
+      { 'x-m': '1' },
+      { 'x-l': '1' },
+      true,
+    ])
+  })
+
+  it('a header value: CR, NUL and past Latin-1 are dropped; é and a trailing newline kept', () => {
+    const warns: string[] = []
+    const c = resolveOtelConfig(
+      {
+        headers: { cr: 'a\rb', nul: 'a\0b', wide: 'aĀb', both: 'Ā\nb', latin: 'é', trail: 'v\n' },
+      },
+      base,
+      (m) => warns.push(m),
+    )!
+    expect([c.headers, warns.sort()]).toEqual([
+      { latin: 'é', trail: 'v\n' },
+      [
+        '[vx-otel] header "both" holds a line break or NUL, which no HTTP header can carry — not sent (its value is not printed)',
+        '[vx-otel] header "cr" holds a line break or NUL, which no HTTP header can carry — not sent (its value is not printed)',
+        '[vx-otel] header "nul" holds a line break or NUL, which no HTTP header can carry — not sent (its value is not printed)',
+        '[vx-otel] header "wide" holds a character past Latin-1, which no HTTP header can carry — not sent (its value is not printed)',
+      ],
+    ])
+  })
+
+  it('OTEL_TRACES_EXPORTER=otlp keeps traces on (control for =none)', () => {
+    expect(resolveOtelConfig({}, { ...base, OTEL_TRACES_EXPORTER: 'otlp' })!.tracesEnabled).toBe(
+      undefined,
+    )
+  })
+
+  it('OTEL_RESOURCE_ATTRIBUTES: decoded, trimmed keys; a value may hold =; the last duplicate wins', () => {
+    const warns: string[] = []
+    const res = (raw: string) =>
+      resolveOtelConfig({}, { ...base, OTEL_RESOURCE_ATTRIBUTES: raw }, (m) => warns.push(m))!
+        .resource
+    expect([res(' team%20a = x ,'), res('q=a=b'), res('k=1,k=2'), res('=v,env=ci')]).toEqual([
+      { 'team a': 'x' },
+      { q: 'a=b' },
+      { k: '2' },
+      {},
+    ])
+    expect(warns).toEqual([
+      '[vx-otel] OTEL_RESOURCE_ATTRIBUTES is malformed (=v) — none of it is used',
+    ])
+  })
+
+  it('an empty endpoint option falls back like an empty env var', () => {
+    const c = resolveOtelConfig({ tracesEndpoint: '', endpoint: '' }, base)!
+    expect(c.tracesUrl).toBe('http://c/v1/traces')
+  })
+})

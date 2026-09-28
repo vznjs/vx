@@ -591,3 +591,19 @@ a backtick run or one at either end; the `summaryFile` option over
 hold each (23 re-driven). Left: literal cap and suffix text, blank-line
 placement, the Latin-1 header boundary, the constructor's dead `sizeOf`
 default.
+
+F-56. vx-otel armed each request's timer with the configured timeout as
+given, and a timer past 2^31-1 ms fires after 1 ms: an
+`OTEL_EXPORTER_OTLP_TIMEOUT` of `1e10` aborted every export at once. It
+is now held to 2^31-1 ms. Found by a mutation sweep of `plugin.ts` (226
+mutants: 157 caught, 69 survived), whose real survivors now have rows
+(23 re-driven): `otel()` reading `process.env` and warning through its
+context; metrics and logs headers no request can carry dropped; a
+header value's CR, NUL and past-Latin-1 refusals, `é` and a trailing
+newline kept, a line break reported before a wide character;
+`OTEL_TRACES_EXPORTER=otlp` keeping traces on; `OTEL_RESOURCE_ATTRIBUTES`
+decoded and trimmed keys, a value holding `=`, the last duplicate
+winning, a trailing comma, an empty key refused; an empty endpoint
+option falling back. Left: precedence rows (headers, compression,
+per-signal timeouts), gRPC/compression trims, header-name token edges,
+the non-URL `joinSignal` fallback.
