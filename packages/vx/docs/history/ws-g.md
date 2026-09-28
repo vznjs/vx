@@ -277,3 +277,13 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   nothing, named in the one options warning; `0` is taken silently.
   Row (`resource-estimates` › a declared reservation axis that is no
   number above 0 reserves nothing): red without the fix.
+- **G-22.** nx() in a standalone Nx repo (the workspace root is the one
+  project) exported the graph on every run. Every file under the root
+  was a project file, and the export writes Nx's own
+  `.nx/workspace-data/` (and `.nx/cache/`): a repo that does not ignore
+  them saw the key move each time. Both are now out of the key;
+  `.nx/installation` (Nx's pinned version) stays in. Row (`nx.test` ›
+  a workspace whose root is the project): a source edit re-exports, a
+  second run with nothing changed does not; red without the fix. It
+  also holds G-21's root-project arm; the cache-dir arm stays
+  equivalent (the cache dir ignores itself).
