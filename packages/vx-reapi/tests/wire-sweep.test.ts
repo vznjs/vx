@@ -2,6 +2,7 @@
 // row fails with one line of the client undone. Driven through the offline
 // fake (helpers/fake-reapi.ts), which records what the client sent.
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
+import http2 from 'node:http2'
 import path from 'node:path'
 import * as grpc from '@grpc/grpc-js'
 import protobuf from 'protobufjs'
@@ -523,5 +524,35 @@ describe.if(CHUNKING_SUPPORTED)('writes', () => {
       const methods = await callsOf(() => c.writeBlob(c.digestOf(data), data))
       expect(methods).toEqual(['Write', 'QueryWriteStatus'])
     })
+  })
+})
+
+describe('flow control', () => {
+  it('the client offers a 16 MiB receive window, per stream and per connection', async () => {
+    // At HTTP/2's default 64 KiB a read moves one window per round trip:
+    // 8 MB took 3988 ms through a proxy adding 15 ms each way, 142 ms at
+    // 16 MiB (F-32).
+    const seen: { stream?: number | undefined; connection?: number | undefined } = {}
+    const server = http2.createServer()
+    server.on('session', (session) => {
+      session.on('remoteSettings', (settings) => (seen.stream = settings.initialWindowSize))
+    })
+    server.on('stream', (stream: http2.ServerHttp2Stream) => {
+      seen.connection = stream.session?.state.remoteWindowSize
+      stream.respond(
+        { ':status': 200, 'content-type': 'application/grpc', 'grpc-status': '12' },
+        { endStream: true },
+      )
+    })
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+    const { port } = server.address() as { port: number }
+    const c = new ReapiClient({ endpoint: `127.0.0.1:${port}` })
+    try {
+      await c.findMissingBlobs([{ hash: 'a'.repeat(64), size_bytes: 1 }]).catch(() => {})
+      expect(seen).toEqual({ stream: 16 * 1024 * 1024, connection: 16 * 1024 * 1024 })
+    } finally {
+      c.close()
+      server.close()
+    }
   })
 })

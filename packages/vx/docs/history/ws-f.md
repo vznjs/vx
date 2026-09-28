@@ -344,3 +344,11 @@ past the batch limit still streams); a failed probe or batch writes each
 as before. 100 packages: 7.1 → 0.44 s cold, 3.4 → 0.26 s warm, through
 a proxy adding 15 ms each way (min of 7, interleaved). Row red without
 the fix.
+
+F-32. vx-reapi's client offered HTTP/2's default 64 KiB receive window,
+so a read moved one window per round trip: 2 MB/s at a 30 ms round
+trip, whatever the link. It now offers 16 MiB per stream and per
+connection. Two 4 MB reads through a proxy adding 15 ms each way:
+3982 → 116 ms against bazel-remote, 3988 → 142 against the fake (min of
+5, interleaved). Uploads are bound by the server's window, not ours.
+Live suite 17 of 17. Row red without the fix.
