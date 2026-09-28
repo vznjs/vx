@@ -559,11 +559,13 @@ Bun.spawn = (cmd, opts) => {
     // and runs out the grace. The runner let the group go when the shell
     // exited, so a `kill -9` of vx inside the grace left the child to
     // nobody: the teardown holds its groups until its SIGKILL sweep is
-    // done (item 865).
+    // done (item 865). The child waits on `go`, which the row writes only
+    // after the kill: a `sleep 1` let vx end in the grace before a loaded
+    // CI's SIGKILL came, and the kill found no vx (ESRCH).
     const dir = await addProject(
       root,
       'app',
-      `export default { tasks: { dev: { exec: { command: '(trap "" INT TERM; sleep 1; echo late > late.txt) >/dev/null 2>&1 & echo $! > pid.txt; wait' } } } }`,
+      `export default { tasks: { dev: { exec: { command: '(trap "" INT TERM; echo up > up.txt; while [ ! -f go ]; do sleep 0.02; done; echo late > late.txt) >/dev/null 2>&1 & wait' } } } }`,
     )
     const proc = track(
       Bun.spawn([process.execPath, BIN, 'run', 'dev', '--all'], {
@@ -574,11 +576,17 @@ Bun.spawn = (cmd, opts) => {
         detached: true,
       }),
     )
-    await waitForPid(path.join(dir, 'pid.txt'), 10_000)
+    const up = path.join(dir, 'up.txt')
+    const deadline = Date.now() + 10_000
+    while (!(existsSync(up) && readFileSync(up, 'utf8') === 'up\n')) {
+      if (Date.now() > deadline) throw new Error('the child never trapped the signal')
+      await Bun.sleep(20)
+    }
     process.kill(-proc.pid, 'SIGINT')
     await Bun.sleep(200)
     process.kill(proc.pid, 'SIGKILL')
     expect(await proc.exited).toBe(137)
+    await Bun.write(path.join(dir, 'go'), '')
     await Bun.sleep(2_000)
     expect(existsSync(path.join(dir, 'late.txt'))).toBe(false)
   }, 20_000)
