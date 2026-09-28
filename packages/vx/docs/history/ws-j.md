@@ -286,6 +286,17 @@
   timeout, output modes, reports, `--`, signals, help): one row
   wrong — a persistent task exits the run 1 only when it exits
   non-zero after ready.
+- **J-55** plugins guide walked as an author: `vx init --plugin` for
+  all nine seams, the seven samples type-checked and run, every
+  "What core refuses" row driven; one claim wrong — the runnable
+  examples cover nine seams, not every seam.
+- **J-56** comparison.md's claims about vx against source (compare.mdx
+  held): vx-migrate's six sources, workspace env inputs rejected by
+  design rather than a gap, and the bin is `vx-migrate` — core has no
+  `migrate` verb.
+- **J-57** the docs index (README.md) and internals/diagrams against
+  source: the diagrams page held; the index claimed a page per source
+  file (145 files, 96 pages — a slice lives with its module).
 
 ## Leads for other streams
 
@@ -415,3 +426,9 @@ extra` ignores the extra argument and exits 0 where every other verb
   flag"; bare `--affected` with `refs/remotes/origin/HEAD` pointing at a
   deleted branch fails `git ref "origin/master" did not resolve` instead
   of the HEAD~1 fallback or the no-base hint.
+- **N** `packages/vx-migrate/src/index.ts:33` says "the Turbo, Nx and
+  moon project stages"; wireit and lage are exported below it (found in
+  J-56).
+- **A** `output-dirs-snapshot.test.ts` (the row logged in J-52's batch)
+  failed again in a local gate at 06:30 on main, same line 57 `[]` for
+  `['dist']`: two of the last four gates. Not load noise to wave off.
