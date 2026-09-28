@@ -945,6 +945,21 @@ mount, as unocss above.
 | restore | **221 ms** | 567 ms (2.57×) |
 | no-op   | **216 ms** | 545 ms (2.52×) |
 
+### TanStack/form (Nx 23.2.1, `nx()`, `555509c`)
+
+`nx run-many -t build` over the 14 packages against `vx run build
+--filter './packages/*'` through `nx()` with nothing written: the same
+14 tasks and edges. Over `--all` the 57 `build`, 17 `test:lib`, 52
+`test:types`, 17 `test:eslint` and 28 `test:build` tasks match too;
+the three root-only targets have no package to attach to. `test:lib`
+and `test:types` pass and a second run is 75 hits in 67 ms.
+
+| `build` | vx         | Nx 23.2.1      |
+| ------- | ---------- | -------------- |
+| cold    | **40.3 s** | 44.2 s (1.10×) |
+| restore | **335 ms** | 1.16 s (3.45×) |
+| no-op   | **247 ms** | 1.15 s (4.64×) |
+
 ## Real repos re-measured (2026-09-27)
 
 Roadmap 2.5: astro and refine again, same revisions, harnesses and
