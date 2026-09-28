@@ -385,3 +385,25 @@ server died unmarked.
 - The class, grepped: `signal-handling.test.ts`'s trapped server writes
   its pid after its trap, and the test waits on it; `keep-alive`'s
   `outlivesVx` rows end by SIGKILL, which no trap changes.
+
+B-19. A dependency's `bwrap` replaced the sandbox (J-33's security lead).
+SRT writes a bare `bwrap` into the command vx spawns, and a bare `socat`
+into its in-sandbox network bridge. That shell runs with the TASK's
+environment, whose PATH leads with `node_modules/.bin`. A fake `bwrap`
+there ran instead: the task printed what the fake chose and exited 0,
+with no sandbox at all.
+
+- Fix (`initSandbox`, `linuxToolPaths`): SRT is handed vx's own paths
+  for `bwrap` and `socat` (`bwrapPath`, `socatPath`), resolved on vx's
+  PATH as `sh` and `strace` are. A tool vx cannot find is left to SRT's
+  dependency check. The `exec` prefix now matches the absolute path.
+  `modules/sandbox-runtime.md`.
+- Row: `sandbox-runtime.unsafe.test.ts` › a `bwrap` or `socat` first on
+  the task's PATH is not the sandbox's: the command runs and its
+  undeclared write is refused, and the wrapped command execs vx's
+  `bwrap` and names vx's `socat`. Red with either path dropped, or both.
+- J-33's other B leads, still open: network isolation is per run
+  (`deny.network` unenforced, `network: true` capped at the union); the
+  false "no read access to the cwd" hint for a root `read: ['.']` that
+  `wallOff` punched; vx's own hints counted as violations; SRT's bridge
+  `socat` on a host without IPv6.

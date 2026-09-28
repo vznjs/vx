@@ -4065,6 +4065,42 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
     }
   })
 
+  // The command vx spawns runs with the TASK's environment, and SRT wrote
+  // a bare `bwrap` into it: a dependency's `node_modules/.bin/bwrap` first
+  // on that PATH ran in its place, and the task ran unsandboxed, exit 0
+  // (B-19). The sandbox's tools are vx's, by path.
+  it("a `bwrap` or `socat` first on the task's PATH is not the sandbox's", async () => {
+    const bin = path.join(dir, 'bin')
+    await mkdir(bin)
+    for (const tool of ['bwrap', 'socat']) {
+      await writeFile(path.join(bin, tool), `#!/bin/sh\necho ESCAPED-${tool}\n`, { mode: 0o755 })
+    }
+    const env = { ...process.env, PATH: `${bin}:${process.env['PATH'] ?? ''}` }
+    // Sandboxed: the command ran, and its undeclared write was refused.
+    const r = await runSandboxed({ ...args('echo inside; touch made'), env })
+    expect([r.stdout, r.exitCode, existsSync(path.join(dir, 'made'))]).toEqual([
+      'inside\n',
+      1,
+      false,
+    ])
+    await resetSandbox()
+    await initSandbox({ allowedDomains: ['example.com'] })
+    const w = await wrapSandboxedCommand({
+      ...args('true', {
+        config: resolveSandboxConfig({ allow: { network: ['example.com'] } }, dir),
+      }),
+      env,
+    })
+    try {
+      expect([
+        w.wrapped.startsWith(`exec ${Bun.which('bwrap')} `),
+        w.wrapped.includes(`${Bun.which('socat')} TCP-LISTEN`),
+      ]).toEqual([true, true])
+    } finally {
+      releaseBridges(w.tag)
+    }
+  })
+
   it('tags each wrap uniquely and puts the tag first in the command', async () => {
     // SRT's macOS store keys a record by the command's first 100 bytes, so
     // two tasks running one command in one directory must still differ.
