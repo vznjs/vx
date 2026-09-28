@@ -3,7 +3,7 @@
 // undefined) outside GitHub Actions — no `GITHUB_STEP_SUMMARY` file to write
 // and no cost — so declaring `github()` is safe in every environment, the
 // same decline pattern as `otel()`.
-import { appendFile } from 'node:fs/promises'
+import { appendFile, stat } from 'node:fs/promises'
 import { definePlugin, type RunSummaryRecord, type TelemetrySink, type VxPlugin } from '@vzn/vx'
 import {
   buildCheckRunPayload,
@@ -12,7 +12,7 @@ import {
   type CheckRunEnv,
   type FetchFn,
 } from './checks.js'
-import { clampJobSummary, renderJobSummary } from './summary.js'
+import { clampJobSummary, MAX_JOB_SUMMARY_BYTES, renderJobSummary } from './summary.js'
 
 export interface GithubPluginOptions {
   /**
@@ -37,6 +37,11 @@ export interface GithubPluginOptions {
   append?: (file: string, markdown: string) => Promise<void>
   /** Test seam — inject the Checks API transport. Defaults to fetch. */
   fetchFn?: FetchFn
+  /**
+   * Test seam — bytes the summary file already holds. Defaults to its size
+   * on disk; with `append` injected, 0 (that writer owns the file).
+   */
+  sizeOf?: (file: string) => Promise<number>
 }
 
 export class GithubSummarySink implements TelemetrySink {
@@ -51,6 +56,8 @@ export class GithubSummarySink implements TelemetrySink {
     private readonly append: (file: string, markdown: string) => Promise<void>,
     private readonly warn: (m: string) => void,
     private readonly check?: { env: CheckRunEnv; name: string; fetchFn: FetchFn },
+    /** Bytes the summary file already holds. */
+    private readonly sizeOf: (file: string) => Promise<number> = async () => 0,
   ) {}
 
   onRunSummary(summary: RunSummaryRecord): void {
@@ -68,9 +75,19 @@ export class GithubSummarySink implements TelemetrySink {
     // not thrown: a telemetry sink may never break a run.
     try {
       // Clamped: past GitHub's 1 MiB cap the runner drops the summary whole,
-      // so a bounded page beats none. The check-run payload has its own,
+      // so a bounded page beats none. The cap covers the step's whole file,
+      // and a page clamped to 1 MiB after another writer's output lost both
+      // (F-42): the room is what is left. The check-run payload has its own,
       // smaller cap and is clamped where it is built.
-      await this.append(this.file, clampJobSummary(markdown))
+      const used = await this.sizeOf(this.file)
+      const page = clampJobSummary(markdown, MAX_JOB_SUMMARY_BYTES - used)
+      if (page === '') {
+        this.warn(
+          `vx-github: ${this.file} already holds ${used} bytes of GitHub's 1 MiB job summary cap — no room for vx's page`,
+        )
+      } else {
+        await this.append(this.file, page)
+      }
     } catch (err) {
       this.warn(
         `vx-github: could not write the job summary to ${this.file}: ${err instanceof Error ? err.message : String(err)}`,
@@ -142,6 +159,14 @@ export function github(options: GithubPluginOptions = {}): VxPlugin {
         append,
         (m) => ctx.warn(m),
         check,
+        options.sizeOf ??
+          (options.append !== undefined
+            ? async () => 0
+            : (f: string) =>
+                stat(f).then(
+                  (st) => st.size,
+                  () => 0,
+                )),
       )
     },
   })

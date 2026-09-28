@@ -3,7 +3,7 @@
 // the job summary. No GitHub API involved in wave one — the summary is a
 // file the Actions runner renders.
 import { describe, expect, it } from 'bun:test'
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { run } from '@vzn/vx'
@@ -223,6 +223,39 @@ describe('github() activation', () => {
     // needs, and they are rendered before the table.
     expect(written.startsWith('## ')).toBe(true)
     expect(written).toContain('**25000** tasks')
+  })
+
+  it('the cap is the step file’s: what other writers left is the room (F-42)', async () => {
+    // GitHub caps the step's whole summary file; a page clamped to 1 MiB
+    // after 900 KB of another tool's output made 1.9 MiB, refused whole.
+    const dir = await mkdtemp(path.join(tmpdir(), 'vx-gh-sum-'))
+    try {
+      const run = async (already: number): Promise<{ size: number; warns: string[] }> => {
+        const file = path.join(dir, `summary-${already}.md`)
+        await writeFile(file, 'x'.repeat(already))
+        const warns: string[] = []
+        const sink = github({ summaryFile: file, checks: false }).telemetry!({
+          ...ctx,
+          warn: (m: string) => warns.push(m),
+        }) as GithubSummarySink
+        const many = Array.from({ length: 25_000 }, (_, i) =>
+          task({ taskId: `project-with-a-long-name-${i}#build` }),
+        )
+        sink.onRunSummary!(summary(many))
+        await sink.flush!()
+        return { size: (await stat(file)).size, warns }
+      }
+      const shared = await run(900_000)
+      expect(shared.size).toBeLessThanOrEqual(MAX_JOB_SUMMARY_BYTES)
+      expect(shared.size).toBeGreaterThan(900_000)
+      const full = await run(MAX_JOB_SUMMARY_BYTES - 10)
+      expect(full.size).toBe(MAX_JOB_SUMMARY_BYTES - 10)
+      expect(full.warns).toEqual([
+        `vx-github: ${path.join(dir, `summary-${MAX_JOB_SUMMARY_BYTES - 10}.md`)} already holds ${MAX_JOB_SUMMARY_BYTES - 10} bytes of GitHub's 1 MiB job summary cap — no room for vx's page`,
+      ])
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
   })
 
   it('CONTROL: an ordinary summary is appended whole, with no truncation tell', async () => {
