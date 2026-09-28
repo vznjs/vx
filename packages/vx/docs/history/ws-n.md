@@ -88,6 +88,12 @@ script, the Lerna-without-Nx case.
   project-discovery seam; core finds projects only from package-manager
   manifests, and a Rush repo has none at its root. Routed to D below.
 
+N-6. `moon()` dogfooded on kindspells/astro-shield (moon 1.41.7): the same
+four commands under both tools, 2.64 s cold and 111 ms no-op against
+moon's 3.78 s and 2.37 s (`benchmarks.md` § Adoption paths on real
+repos). No mapping gap. moon's own warm run here is 4.2 s with the
+network up: its version check times out behind the proxy.
+
 ## Candidates not built (2026-09-28)
 
 - Lerna without Nx: `lerna run <s>` (lerna 10.0.1, `prepNxOptions`)
@@ -103,6 +109,16 @@ script, the Lerna-without-Nx case.
   stage fills discovered ones). Blocked on a discovery seam.
 
 ## Leads for other streams
+
+- D, for `rush()` (what it needs, exactly): (1) `findWorkspaceRoot`
+  accepts a directory holding `vx.workspace.{ts,mjs}` as a root, since a
+  Rush root has no `package.json` or `pnpm-workspace.yaml`; (2) the
+  `config` stage (or a new discovery hook) may add project directories,
+  each holding a `package.json`, which core then loads as it loads a
+  package glob's. With both, `rush()` reads `rush.json` `projects[]
+.projectFolder` in that hook and maps `common/config/rush/command-line.json`
+  bulk and phased commands and each `config/rush-project.json`
+  `operationSettings` outputs in the `project` stage.
 
 - D: core refuses a workspace with two packages of one name ("Duplicate
   package name"), and vite (`playground/hmr` and
