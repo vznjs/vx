@@ -92,15 +92,19 @@ records the surface as the code produces it, in a committed file, so a
 change is a reviewed diff of that file and never a side effect.
 
 A break must also be declared. `tests/api-break.unsafe.test.ts` diffs
-`tests/contract/package-api.txt` and each `tests/contract/plugin-api/*.txt`
-against the same file at the last `v*` tag: a declaration or a line of one gone is a break (`scripts/api-break.ts`),
-and it fails unless a commit since the tag is marked `type!:` or carries a
-`BREAKING CHANGE:` footer, which also heads the release notes
-(`scripts/release-notes.ts`). CI's Linux job checks out full history and
-sets `VX_REQUIRE_TAGS=1`, so a missing tag fails there instead of passing.
-On a PR, a second row diffs the same records between the PR's base and
-head: a break there fails unless the PR's title is marked `type!:`, so
-the reviewer sees it before the merge.
+every contract record — each file under `tests/contract/` but the
+vendored upstream schemas, and `vx-mcp`'s tools record — against the same
+file at the last `v*` tag, each read its own way (`contractBreaks` in
+`scripts/api-break.ts`): the API records by section, a pack list or a
+record of leaves by what it lost (a changed value is lost too), the config
+schema by the fields and accepted values it lost (a reworded refusal is
+not a break), its rules by the combinations it lost, and the Turbo/Nx
+table by a key whose status got worse. A break fails unless a commit
+since the tag is marked `type!:` or carries a `BREAKING CHANGE:` footer,
+which also heads the release notes (`scripts/release-notes.ts`); on a PR,
+the same diff between its base and head needs the title marked `type!:`.
+CI's Linux job checks out full history and sets `VX_REQUIRE_TAGS=1`, so a
+missing tag fails there instead of passing.
 
 - **The config schema.** `tests/contract-config-schema.test.ts`
   discovers every level and field the validator accepts (by injecting

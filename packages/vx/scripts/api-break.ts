@@ -31,3 +31,69 @@ export function apiBreaks(before: string, after: string): string[] {
   }
   return breaks
 }
+
+/** Every `path=value` leaf of a JSON value; an array's items share `path[]`. */
+function leaves(
+  v: unknown,
+  at = '',
+  out: string[] = [],
+  skip?: (key: string) => boolean,
+): string[] {
+  if (Array.isArray(v)) for (const x of v) leaves(x, `${at}[]`, out, skip)
+  else if (v !== null && typeof v === 'object') {
+    for (const [k, x] of Object.entries(v)) {
+      if (skip?.(k) === true) continue
+      leaves(x, at === '' ? k : `${at}.${k}`, out, skip)
+    }
+  } else out.push(`${at}=${JSON.stringify(v)}`)
+  return out
+}
+
+const gone = (before: readonly string[], after: readonly string[]): string[] => {
+  const now = new Set(after)
+  return [...new Set(before)].filter((l) => !now.has(l)).map((l) => `- ${l}`)
+}
+
+/** vx's support for a Turbo or Nx key, best first: a step down is a break. */
+const SUPPORT = ['supported', 'mapped', 'not-supported', 'not-applicable']
+
+/**
+ * What a change to the contract record named `record` (a path under
+ * `tests/contract/`, or a package's own record) breaks, one line per break.
+ * Each record's own reading: the API records by section, a pack list or a
+ * record of leaves by what left it (a changed value leaves too), the
+ * config schema by the fields and accepted values it lost (a reworded
+ * refusal is no break), its rules by the combinations it lost, and the
+ * Turbo/Nx table by a key whose status got worse.
+ */
+export function contractBreaks(record: string, before: string, after: string): string[] {
+  const name = record.split('/').pop()!
+  if (record.includes('package-api') || record.includes('plugin-api/')) {
+    return apiBreaks(before, after)
+  }
+  if (name.endsWith('.txt')) {
+    const lines = (t: string): string[] => t.split('\n').filter((l) => l !== '')
+    return gone(lines(before), lines(after))
+  }
+  const parse = (t: string): unknown => (t === '' ? {} : JSON.parse(t))
+  const [b, a] = [parse(before), parse(after)]
+  if (name === 'turbo-nx-support.json') {
+    type Row = { key: string; status: string }
+    const now = new Map((a as Row[]).map((r) => [r.key, r.status]))
+    return (b as Row[]).flatMap((r) => {
+      const s = now.get(r.key)
+      return s !== undefined && SUPPORT.indexOf(s) > SUPPORT.indexOf(r.status)
+        ? [`${r.key}: ${r.status} → ${s}`]
+        : []
+    })
+  }
+  if (name === 'config-schema.json') {
+    const message = (k: string): boolean => k.startsWith('$CONFIG')
+    return gone(leaves(b, '', [], message), leaves(a, '', [], message))
+  }
+  if (name === 'config-schema-rules.json') {
+    const keys = (v: unknown): string[] => leaves(v).map((l) => l.slice(0, l.indexOf('=')))
+    return gone(keys(b), keys(a))
+  }
+  return gone(leaves(b), leaves(a))
+}

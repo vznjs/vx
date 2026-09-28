@@ -434,6 +434,19 @@ and `@vzn/vx-migrate` install with npm into a Turbo repo, where `turbo()`
 builds (the launcher falls back to `bun src/bin.ts`) and then hits: G's
 by-hand check, now a row.
 
+## H-36: a break of any contract record must be declared
+
+The break law (H-25, H-27) read only the API records: dropping a config
+field, a `--dry=json` key, an exit code, an MCP answer key or a shipped
+file needed no `!`. `contractBreaks` reads every record under
+`tests/contract/` (the vendored upstream schemas aside) and vx-mcp's, each
+its own way: API records by section, pack lists and leaf records by what
+they lost, the config schema by fields and accepted values (a reworded
+refusal is no break), its rules by combinations, the Turbo/Nx table by a
+status that got worse. Against v0.0.185 main has no unmarked break; under
+a probe tag, an exit code changed and a pack line dropped each failed,
+named.
+
 ## Leads for other streams
 
 - **A:** a task that rewrites its own input with the same bytes is never

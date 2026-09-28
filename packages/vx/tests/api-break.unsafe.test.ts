@@ -1,6 +1,7 @@
-// The API-break law: a change since the last release that removes or
-// changes a declaration in tests/contract/package-api.txt, or in a plugin
-// package's tests/contract/plugin-api/<package>.txt, fails here unless
+// The break law: a change since the last release that breaks any contract
+// record — tests/contract/ (the vendored upstream schemas aside) and
+// vx-mcp's tools record, each read as `contractBreaks` reads it — fails
+// here unless
 // a commit since that tag says so (`type!:` or a `BREAKING CHANGE:`
 // footer), which is also what puts it at the top of the release notes
 // (scripts/release-notes.ts). Every green main commit is released, so the
@@ -11,12 +12,10 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { expect, it } from 'bun:test'
-import { apiBreaks } from '../scripts/api-break.js'
+import { contractBreaks } from '../scripts/api-break.js'
 import { commitsBetween, isBreaking } from '../scripts/release-notes.js'
 
 const ROOT = path.resolve(import.meta.dir, '..')
-const RECORD = 'tests/contract/package-api.txt'
-const PLUGIN_RECORDS = 'tests/contract/plugin-api'
 
 function git(...args: string[]): { ok: boolean; out: string } {
   const r = Bun.spawnSync(['git', ...args], { cwd: ROOT })
@@ -26,29 +25,26 @@ function git(...args: string[]): { ok: boolean; out: string } {
 const tags = git('tag', '--list', 'v*', '--merged', 'HEAD', '--sort=-v:refname').out.split('\n')
 const lastTag = tags[0] ?? ''
 
+/** The contract records vx holds (not the vendored upstream schemas beside them). */
+const CONTRACT_DIR = 'tests/contract/'
+const EXTRA_RECORDS = ['../vx-mcp/tests/contract/tools.json']
+const isRecord = (f: string): boolean => f !== '' && !f.startsWith(`${CONTRACT_DIR}turbo-nx/`)
+
 /**
- * What changed in the API records from `from` to `to` (the working tree
- * when omitted), one line per break, each naming its record. A record
- * `from` had and `to` lacks is every line of it gone.
+ * What changed in the contract records from `from` to `to` (the working
+ * tree when omitted), one line per break, each naming its record
+ * (`contractBreaks`). A record `from` had and `to` lacks broke whole.
  */
 function recordBreaks(from: string, to?: string): string[] {
   const listed = (ref: string): string[] =>
     // `ls-tree <ref>:./<dir>` lists nothing; a path argument is relative to cwd.
-    git('ls-tree', '--name-only', ref, `${PLUGIN_RECORDS}/`)
-      .out.split('\n')
-      .map((f) => path.basename(f))
-  const inTo =
-    to === undefined
-      ? existsSync(path.join(ROOT, PLUGIN_RECORDS))
-        ? readdirSync(path.join(ROOT, PLUGIN_RECORDS))
-        : []
-      : listed(to)
-  const records = [
-    RECORD,
-    ...[...new Set([...listed(from), ...inTo])]
-      .filter((f) => f.endsWith('.txt'))
-      .map((f) => `${PLUGIN_RECORDS}/${f}`),
-  ]
+    git('ls-tree', '-r', '--name-only', ref, CONTRACT_DIR).out.split('\n').filter(isRecord)
+  const walk = (dir: string): string[] =>
+    readdirSync(path.join(ROOT, dir), { withFileTypes: true }).flatMap((e) =>
+      e.isDirectory() ? walk(`${dir}${e.name}/`) : [`${dir}${e.name}`],
+    )
+  const inTo = to === undefined ? walk(CONTRACT_DIR).filter(isRecord) : listed(to)
+  const records = [...new Set([...listed(from), ...inTo, ...EXTRA_RECORDS])].sort()
   return records.flatMap((record) => {
     const before = git('show', `${from}:./${record}`)
     if (!before.ok) return [] // the record did not exist then
@@ -59,11 +55,11 @@ function recordBreaks(from: string, to?: string): string[] {
     } else if (existsSync(path.join(ROOT, record))) {
       after = readFileSync(path.join(ROOT, record), 'utf8')
     }
-    return apiBreaks(before.out, after).map((b) => `${record}: ${b}`)
+    return contractBreaks(record, before.out, after).map((b) => `${record}: ${b}`)
   })
 }
 
-it('a break of the package API since the last release is marked breaking', () => {
+it('a break of a contract record since the last release is marked breaking', () => {
   // A checkout with no tags (actions/checkout's default depth 1) cannot
   // answer: where CI sets VX_REQUIRE_TAGS that is a failure, never a pass.
   if (lastTag === '') {
@@ -81,7 +77,7 @@ it('a break of the package API since the last release is marked breaking', () =>
     marked.length > 0
       ? []
       : [
-          `package API breaks since ${lastTag}, and no commit since says so:`,
+          `the contract breaks since ${lastTag}, and no commit since says so:`,
           ...breaks,
           'Mark the commit `type(scope)!: …` or add a `BREAKING CHANGE: …` footer; the release notes list it.',
         ],
@@ -91,7 +87,7 @@ it('a break of the package API since the last release is marked breaking', () =>
 // A PR's reviewers see the break in its title. CI's PR runs pass the title,
 // base and head (conventional-commits.unsafe.test.ts); elsewhere there is
 // no PR to judge.
-it('a PR that breaks an API record says so in its title', () => {
+it('a PR that breaks a contract record says so in its title', () => {
   const title = process.env['VX_PR_TITLE'] ?? ''
   const base = process.env['VX_PR_BASE'] ?? ''
   const head = process.env['VX_PR_HEAD'] ?? ''
@@ -101,7 +97,7 @@ it('a PR that breaks an API record says so in its title', () => {
     breaks.length === 0 || isBreaking({ subject: title, body: '' })
       ? []
       : [
-          `this PR breaks the package API and its title does not say so: ${title}`,
+          `this PR breaks the contract and its title does not say so: ${title}`,
           ...breaks,
           'Mark the title `type(scope)!: …`.',
         ],
