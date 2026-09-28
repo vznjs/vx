@@ -54,6 +54,11 @@ import {
 } from './watch-fs.js'
 import { memberEntries, sameMembers, sweepConfigs, watchedProjects } from './watch-set.js'
 
+/** One line for a watcher or re-read the OS refused; the loop goes on without it. */
+function sayCannot(what: string, err: unknown): void {
+  process.stderr.write(`vx watch: ${what}: ${err instanceof Error ? err.message : String(err)}\n`)
+}
+
 /** Wait this long after the last filesystem event before re-running. */
 const DEBOUNCE_MS = 150
 
@@ -643,8 +648,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
       })
       perProject.set(proj.dir, handle)
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      process.stderr.write(`vx watch: cannot watch ${proj.dir}: ${msg}\n`)
+      sayCannot(`cannot watch ${proj.dir}`, err)
     }
   }
   const armRoot = (): void => {
@@ -677,8 +681,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
             }
           })
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      process.stderr.write(`vx watch: cannot watch workspace root: ${msg}\n`)
+      sayCannot(`cannot watch workspace root`, err)
     }
   }
   // One recursive watcher per project, unless workspace-wide: each project
@@ -733,8 +736,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
           }),
         )
       } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
-        process.stderr.write(`vx watch: cannot watch ${dir}: ${msg}\n`)
+        sayCannot(`cannot watch ${dir}`, err)
         continue
       }
       if (afterReread && fs.existsSync(manifest)) arrived()
@@ -791,8 +793,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
           }),
         )
       } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
-        process.stderr.write(`vx watch: cannot watch ${dir}: ${msg}\n`)
+        sayCannot(`cannot watch ${dir}`, err)
       }
     }
   }
@@ -807,8 +808,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
     try {
       next = await args.rediscover()
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      process.stderr.write(`vx watch: cannot re-read the workspace: ${msg}\n`)
+      sayCannot(`cannot re-read the workspace`, err)
       return
     }
     projectDirs = next.projects.map((p) => p.dir)
@@ -893,8 +893,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
           }),
         )
       } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
-        process.stderr.write(`vx watch: cannot watch ${base}: ${msg}\n`)
+        sayCannot(`cannot watch ${base}`, err)
       }
     }
   }
