@@ -1,4 +1,4 @@
-// `vx-migrate [--from turbo|nx|moon|wireit|lage] [--dry] [--force] [--mjs]` — one
+// `vx-migrate [--from turbo|nx|moon|wireit|lage|scripts] [--dry] [--force] [--mjs]` — one
 // vx.config.ts per workspace package from an existing Turbo, Nx, moon, wireit or lage
 // setup. Source auto-detect: turbo.json → Turbo;
 // .nx/workspace-data/project-graph.json → Nx (the resolved snapshot);
@@ -20,6 +20,9 @@ import {
 import { migrateLage } from './migrate-lage.js'
 import { migrateMoon } from './migrate-moon.js'
 import { migrateNx, NX_GRAPH_REL } from './migrate-nx.js'
+import { migrateScripts } from './migrate-scripts.js'
+import { rootScripts } from './scripts/index.js'
+import { parseFanOut } from './scripts/scripts-map.js'
 import { migrateWireit } from './migrate-wireit.js'
 import { migrateTurbo } from './migrate-turbo.js'
 import { lageConfigFile } from './lage/lage-map.js'
@@ -34,6 +37,7 @@ export * from './nx/index.js'
 export * from './moon/index.js'
 export * from './wireit/index.js'
 export * from './lage/index.js'
+export * from './scripts/index.js'
 export * from './turbo-cache/index.js'
 export * from './nx-cache/index.js'
 
@@ -42,13 +46,14 @@ export interface MigrateArgs {
   force: boolean
   /** `vx.config.mjs` (and `vx-preset.mjs`) instead of `.ts`. */
   mjs: boolean
-  from?: 'turbo' | 'nx' | 'moon' | 'wireit' | 'lage'
+  from?: 'turbo' | 'nx' | 'moon' | 'wireit' | 'lage' | 'scripts'
   /** `--help` / `-h`: the usage on stdout, exit 0 (as `nx-env --help`). */
   help?: boolean
   error?: string
 }
 
-const USAGE = 'usage: vx-migrate [--from turbo|nx|moon|wireit|lage] [--dry] [--force] [--mjs]'
+const USAGE =
+  'usage: vx-migrate [--from turbo|nx|moon|wireit|lage|scripts] [--dry] [--force] [--mjs]'
 
 export function parseMigrateArgs(args: readonly string[]): MigrateArgs {
   const out: MigrateArgs = { dry: false, force: false, mjs: false }
@@ -59,10 +64,17 @@ export function parseMigrateArgs(args: readonly string[]): MigrateArgs {
     else if (a === '--mjs') out.mjs = true
     else if (a === '--from' || a?.startsWith('--from=')) {
       const v = a === '--from' ? args[++i] : a.slice('--from='.length)
-      if (v !== 'turbo' && v !== 'nx' && v !== 'moon' && v !== 'wireit' && v !== 'lage') {
+      if (
+        v !== 'turbo' &&
+        v !== 'nx' &&
+        v !== 'moon' &&
+        v !== 'wireit' &&
+        v !== 'lage' &&
+        v !== 'scripts'
+      ) {
         return {
           ...out,
-          error: `--from must be turbo, nx, moon, wireit or lage (package.json scripts: \`vx init\`)`,
+          error: `--from must be turbo, nx, moon, wireit, lage or scripts (package.json scripts: \`vx init\`)`,
         }
       }
       out.from = v
@@ -71,6 +83,14 @@ export function parseMigrateArgs(args: readonly string[]): MigrateArgs {
     else return { ...out, error: `unexpected argument: ${a}\n${USAGE}` }
   }
   return out
+}
+
+/** Whether a root script fans a script out to the packages. */
+async function hasFanOut(root: string): Promise<boolean> {
+  const scripts = await rootScripts(root)
+  return Object.values(scripts).some(
+    (b) => typeof b === 'string' && b.split(/&&|;/).some((c) => parseFanOut(c.trim()) !== null),
+  )
 }
 
 /** The command: detect the source, map it, hand the plan to core. Returns the exit code. */
@@ -131,6 +151,29 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
       format,
     })
   }
+  // The last source: a root package.json whose scripts fan out through the
+  // package manager. Every other runner wins over it, as it wraps them too.
+  const fanOuts =
+    parsed.from === 'scripts' || (parsed.from === undefined && found.length === 0)
+      ? await hasFanOut(root)
+      : false
+  if (parsed.from === 'scripts' || fanOuts) {
+    if (!fanOuts) {
+      throw new UserError(
+        '--from scripts, but no root package.json script fans out (`pnpm -r`, `npm --workspaces`, …) — for package.json scripts, run `vx init`',
+      )
+    }
+    return applyMigration({
+      root,
+      metas,
+      plan: await migrateScripts(root, metas),
+      source: 'package.json scripts',
+      verb: 'vx-migrate',
+      dry: parsed.dry,
+      force: parsed.force,
+      format: parsed.mjs ? 'mjs' : 'ts',
+    })
+  }
   if (parsed.from === 'lage' || (parsed.from === undefined && found[0]?.[0] === 'lage')) {
     if (lageFile === null)
       throw new UserError('--from lage, but no lage.config.js at the workspace root')
@@ -178,7 +221,7 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
       )
     } else {
       throw new UserError(
-        'nothing to migrate: no turbo.json, Nx, moon or lage workspace and no wireit script — ' +
+        'nothing to migrate: no turbo.json, Nx, moon or lage workspace, no wireit script and no root script that fans out — ' +
           'for package.json scripts, run `vx init`',
       )
     }

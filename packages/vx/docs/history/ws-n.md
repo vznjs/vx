@@ -69,6 +69,25 @@ keeps the edge: more ordering, never a stale hit).
 - Rows: `tests/moon.test.ts` › inferTasksFromScripts (red with each rule
   removed, the lifecycle filter included).
 
+N-5. `workspaceScripts()` and `vx-migrate --from scripts`: a workspace
+whose root scripts fan out through the package manager (`pnpm -r`,
+`--filter`, `npm --workspaces`, `yarn workspaces foreach`, `bun --filter`,
+`lerna run`) runs under vx, each fan-out a task in the packages it
+selects, `^name` where the tool sorts, uncached. The last source the CLI
+detects (every orchestrator wins over it). Checked against `pnpm -r`
+10.34 at concurrency 1 on pinia (`size`, `test:dts`), starlight (`build`,
+`build:examples`) and react-day-picker: pnpm's packages are vx's (a
+package any root script fans out to takes the task), and pnpm's order
+breaks no vx edge. vite, vitest and sveltekit could not be loaded: core
+refuses their workspaces (lead below). Also covers `lerna run` in a root
+script, the Lerna-without-Nx case.
+
+- Rows: `tests/scripts.test.ts` (each red with its rule removed: `^`
+  edges, chain order, `--parallel`, exclusion, path selection).
+- Decision (supervisor, 2026-09-28): `rush()` waits on a core
+  project-discovery seam; core finds projects only from package-manager
+  manifests, and a Rush repo has none at its root. Routed to D below.
+
 ## Candidates not built (2026-09-28)
 
 - Lerna without Nx: `lerna run <s>` (lerna 10.0.1, `prepNxOptions`)
@@ -84,6 +103,14 @@ keeps the edge: more ordering, never a stale hit).
   stage fills discovered ones). Blocked on a discovery seam.
 
 ## Leads for other streams
+
+- D: core refuses a workspace with two packages of one name ("Duplicate
+  package name"), and vite (`playground/hmr` and
+  `playground/module-graph`), vitest (`test/e2e/dts/*`) and sveltekit
+  (`packages/kit/test/build-errors/apps/*`) each have such test fixtures,
+  which pnpm accepts. None of the three can run under vx.
+- H: `PERSISTENT_TASK_NAMES` is not on the façade; `workspaceScripts()`
+  keeps a copy of its five names.
 
 - C / B: `keep-alive.test.ts` › "a kill -9 in a Ctrl-C's grace takes the
   child of a shell that died on the signal" failed once in a local gate

@@ -1013,8 +1013,9 @@ describe('parseMigrateArgs', () => {
   it('positionals error', () => {
     expect(parseMigrateArgs(['turbo']).error).toContain('turbo')
   })
-  it('--from scripts is not a source here (it is `vx init`)', () => {
-    expect(parseMigrateArgs(['--from', 'scripts']).error).toContain('vx init')
+  it('--from scripts is the fan-out source; another name still names `vx init`', () => {
+    expect(parseMigrateArgs(['--from', 'scripts']).from).toBe('scripts')
+    expect(parseMigrateArgs(['--from', 'package.json']).error).toContain('vx init')
   })
 })
 
@@ -1196,7 +1197,8 @@ describe('vx migrate (nx) — a server target is persistent', () => {
 // ─── Item 817's sweep: each row fails with one line of the writer undone ──
 
 describe('the writer: what the sweep found unheld', () => {
-  const USAGE = 'usage: vx-migrate [--from turbo|nx|moon|wireit|lage] [--dry] [--force] [--mjs]'
+  const USAGE =
+    'usage: vx-migrate [--from turbo|nx|moon|wireit|lage|scripts] [--dry] [--force] [--mjs]'
 
   it('parseMigrateArgs: --from=<source>, --help, and an unknown flag by name', () => {
     expect(parseMigrateArgs(['--from=nx'])).toEqual({

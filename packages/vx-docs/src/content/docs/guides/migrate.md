@@ -209,6 +209,30 @@ uncached: lage would cache every package file, and vx cleans outputs
 before a run. The full table: the
 [`@vzn/vx-migrate` README](https://github.com/vznjs/vx/tree/main/packages/vx-migrate#lage--run-a-lage-workspace-unchanged).
 
+## pnpm, npm, yarn or bun workspaces
+
+A root `package.json` that runs `pnpm -r build`, `npm run test --workspaces`
+or `yarn workspaces foreach -t run build` runs under vx with
+`workspaceScripts()`:
+
+```ts
+// vx.workspace.ts
+import { defineWorkspace } from '@vzn/vx'
+import { workspaceScripts } from '@vzn/vx-migrate'
+
+export default defineWorkspace({ plugins: [workspaceScripts()] })
+```
+
+| Root script                              | vx                                            |
+| ---------------------------------------- | --------------------------------------------- |
+| `pnpm -r --filter './packages/*' build`  | `build` in those packages, after `^build`     |
+| `pnpm -r --parallel dev`                 | `dev` in each package, persistent, no edges   |
+| `pnpm -r build && pnpm -r test`          | `test` after its package's `build`            |
+| `pnpm build`                             | `vx run build`                                |
+
+Nothing is cached until a package's `vx.config.ts` declares its inputs and
+outputs. With no fan-out scripts at all, `vx init` writes the configs.
+
 ## Common problems
 
 - **A task always runs.** vx caches only a task with a `cache` block. `vx-migrate` fills it from `turbo.json`, the Nx graph or `.moon/`.
