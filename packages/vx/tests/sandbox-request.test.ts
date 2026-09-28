@@ -103,6 +103,17 @@ describe('the run-wide union SRT is armed with', () => {
     expect(u?.domains.slice().sort()).toEqual(['a.test', 'b.test', 'shared.test'])
   })
 
+  // The proxy is the run's, so a deny is too: it refuses a domain for
+  // every task. Before B-21 it refused nothing (the list was always empty).
+  it('denied domains are the UNION of every task’s `deny.network`, deduped', () => {
+    const u = sandboxRunUnion([
+      sandboxed({ allow: { network: ['*.a.test'] }, deny: { network: ['ads.a.test'] } }, 'proj#a'),
+      sandboxed({ deny: { network: ['ads.a.test', 'x.test'] } }, 'proj#b'),
+      sandboxed({}, 'proj#c'),
+    ])
+    expect(u?.deniedDomains.slice().sort()).toEqual(['ads.a.test', 'x.test'])
+  })
+
   it('`network: true` contributes NO domain: it skips the proxy, it does not widen it', () => {
     // The naive fold adds `*` here, and that is the dangerous direction:
     // `true` means this task bypasses the proxy entirely (docs/schema.md),

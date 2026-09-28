@@ -56,6 +56,11 @@ export interface SandboxArmer {
 export interface SandboxRunUnion {
   /** Domains the run's filtering proxy will accept, in declaration order. */
   domains: string[]
+  /**
+   * Domains the proxy refuses, whichever task asks: every task's
+   * `deny.network`. The proxy is the run's, so a deny is too (B-21).
+   */
+  deniedDomains: string[]
   /** Whether SRT's all-or-nothing `socket(AF_UNIX)` filter is lifted for the run. */
   unixSockets: boolean
   /** Whether EVERY sandboxed task accepts the weaker nested profile. */
@@ -67,6 +72,7 @@ export function sandboxRunUnion(nodes: Iterable<TaskNode>): SandboxRunUnion | nu
   if (sandboxed.length === 0) return null
   const weakerNested = sandboxed.every((n) => n.config.exec?.sandbox?.weakerWhenNested === true)
   const domains = new Set<string>()
+  const denied = new Set<string>()
   let unixSockets = false
   for (const n of sandboxed) {
     const allow = n.config.exec?.sandbox?.allow
@@ -75,12 +81,13 @@ export function sandboxRunUnion(nodes: Iterable<TaskNode>): SandboxRunUnion | nu
     // proxy rather than going through it, so folding it in as `*` would
     // widen the allowlist every OTHER task in the run is filtered against.
     if (Array.isArray(net)) for (const d of net) domains.add(d)
+    for (const d of n.config.exec?.sandbox?.deny?.network ?? []) denied.add(d)
     const sockets = allow?.unixSockets
     if (sockets === true || (Array.isArray(sockets) && sockets.length > 0)) unixSockets = true
     const lb = allow?.localBinding
     if (Array.isArray(lb) && lb.length > 0 && process.platform === 'linux') unixSockets = true
   }
-  return { domains: [...domains], unixSockets, weakerNested }
+  return { domains: [...domains], deniedDomains: [...denied], unixSockets, weakerNested }
 }
 
 /**
@@ -107,7 +114,7 @@ export function sandboxRunUnion(nodes: Iterable<TaskNode>): SandboxRunUnion | nu
 export function prepareSandbox(nodes: Iterable<TaskNode>): SandboxArmer | null {
   const union = sandboxRunUnion(nodes)
   if (union === null) return null
-  const { domains, unixSockets, weakerNested } = union
+  const { domains, deniedDomains, unixSockets, weakerNested } = union
   let pending: Promise<void> | undefined
   let armed = false
   return {
@@ -121,6 +128,7 @@ export function prepareSandbox(nodes: Iterable<TaskNode>): SandboxArmer | null {
           if (!avail.available) throw new UserError(`sandbox not available: ${avail.reason}`)
           await initSandbox({
             allowedDomains: domains,
+            deniedDomains,
             ...(unixSockets ? { allowAllUnixSockets: true } : {}),
           })
         } catch (err) {

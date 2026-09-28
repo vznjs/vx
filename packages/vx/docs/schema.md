@@ -1053,9 +1053,10 @@ per `vx run` and checks every request against the allowlist that proxy
 was started with: the union of every domain list any sandboxed task in
 the graph declared. Every sandboxed task is handed that proxy. So a task
 that declares no network reaches the domains another task of the run
-listed, `network: true` reaches only those (nothing in a run with no
-list), and `deny.network` refuses nothing: the proxy starts with an
-empty deny list. On Linux a refused request fails only through the
+listed, and `network: true` reaches only those (nothing in a run with no
+list). `deny.network` is the run's too: the proxy starts with the union
+of every task's denies and refuses those domains to every task, checked
+before the allowlist (B-21). On Linux a refused request fails only through the
 task's own exit; no violation is reported.
 
 **Baseline** (`sandbox: {}`): the task reads nothing in the workspace,

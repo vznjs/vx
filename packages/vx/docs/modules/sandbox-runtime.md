@@ -97,8 +97,12 @@ per run and checks every request against `config.network.allowedDomains`
 from `initialize()` (`sandbox-manager.js:238` in 0.0.76). `run()` therefore arms it
 with the union of every domain any sandboxed task declared. Every
 sandboxed task is handed that proxy, so a task that declared no domains
-still reaches the union, and `deniedDomains` is always empty
-(schema.md § `exec.sandbox`).
+still reaches the union. `deniedDomains` is the union of every task's
+`deny.network` (`sandboxRunUnion`), refused to every task; it was always
+empty, and a deny refused nothing, until B-21 (schema.md §
+`exec.sandbox`). Per-task filtering is out of reach: SRT's filter hears a
+host and port, and the command's name rides in the proxy username, which
+the sandboxed process writes, so one task could claim another's list.
 
 ## Public surface
 
