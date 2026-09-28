@@ -1,30 +1,45 @@
 ---
 title: Migrate
-description: Run a Turborepo, Nx, moon, wireit or lage repo under vx with no file rewritten, then let `bunx @vzn/vx-migrate` write vx.config.ts files when you are ready.
+description: Run a Turborepo or Nx repo under vx with one new file, written by `vx init`, then let `bunx @vzn/vx-migrate` write vx.config.ts files when you are ready.
 ---
 
-Run your Turborepo, Nx, moon, wireit or lage repo under vx today, and move its config to
-TypeScript at your own pace.
+Run your Turborepo or Nx repo under vx today, and move its config to
+TypeScript at your own pace. moon, wireit and lage repos are further down.
 
-> `@vzn/vx-migrate` is not on npm yet: its first publish is pending. The
-> steps below are the ones to run once it is; `examples/turbo` runs them
+> `@vzn/vx-migrate` is not on npm yet: its first publish is pending, so
+> the install in `vx init`'s `next:` line fails until then. The steps
+> below are the ones to run once it is; `examples/turbo` runs them
 > against this repo's packages on every commit.
 
 ## Turborepo
 
-1. Install: `bun add -d @vzn/vx @vzn/vx-migrate`.
-2. Add this `vx.workspace.ts`. It is the only new file.
-3. Run `vx run build --all`. It runs what `turbo run build` ran, under vx's cache.
+1. Install vx: `npm install -D @vzn/vx` (pnpm: `pnpm add -D -w @vzn/vx`).
+2. Run `npx vx init`. Beside `turbo.json` or `turbo.jsonc` it writes this
+   `vx.workspace.ts` and nothing else, then prints a `next:` line.
+3. Run that line. It installs `@vzn/vx-migrate` with your lockfile's
+   manager, then runs what `turbo run build` ran, under vx's cache.
 4. Preview the configs with `bunx @vzn/vx-migrate --dry`, then write them with `bunx @vzn/vx-migrate`. It never overwrites a file without `--force`.
 5. Review each `TODO(vx-migrate)` comment. A package with its own `vx.config.ts` keeps it; `turbo()` fills only the rest.
 
 ```ts
-// vx.workspace.ts
-import { defineWorkspace } from '@vzn/vx'
+// vx.workspace.ts, as vx init writes it
+import type { WorkspaceConfig } from '@vzn/vx'
 import { turbo } from '@vzn/vx-migrate'
 
-export default defineWorkspace({ plugins: [turbo()] })
+export default { plugins: [turbo()] } satisfies WorkspaceConfig
 ```
+
+```text
+$ npx vx init
+vx init: turbo.json found — turbo() from @vzn/vx-migrate runs this repo as it is; nothing else written.
+wrote vx.workspace.ts.
+
+next: npm install -D @vzn/vx-migrate && npx vx run build --all
+```
+
+`vx init --dry` prints the file instead of writing it. An existing
+`vx.workspace.ts` that does not declare `turbo()` is left alone: add it
+to the plugins, or `--force` replaces the file.
 
 ### Try it in five minutes
 
@@ -75,18 +90,20 @@ The command itself comes from your `package.json` script, with its
 
 ## Nx
 
-1. Install: `bun add -d @vzn/vx @vzn/vx-migrate`.
-2. Add this `vx.workspace.ts`. It is the only new file.
-3. Run `vx run build --all`. It runs what `nx run-many -t build` ran, under vx's cache.
+1. Install vx: `npm install -D @vzn/vx` (pnpm: `pnpm add -D -w @vzn/vx`).
+2. Run `npx vx init`. Beside `nx.json` it writes this `vx.workspace.ts`
+   and nothing else. With `turbo.json` there too, it declares `turbo()`.
+3. Run the `next:` line it prints. It installs `@vzn/vx-migrate`, then
+   runs what `nx run-many -t build` ran, under vx's cache.
 4. Write the resolved graph: `nx graph --file=.nx/workspace-data/project-graph.json`. `vx-migrate` reads it and never guesses from `nx.json`.
 5. Preview the configs with `bunx @vzn/vx-migrate --dry`, then write them with `bunx @vzn/vx-migrate`.
 
 ```ts
-// vx.workspace.ts
-import { defineWorkspace } from '@vzn/vx'
+// vx.workspace.ts, as vx init writes it
+import type { WorkspaceConfig } from '@vzn/vx'
 import { nx } from '@vzn/vx-migrate'
 
-export default defineWorkspace({ plugins: [nx()] })
+export default { plugins: [nx()] } satisfies WorkspaceConfig
 ```
 
 Executor targets keep running as executors. Each becomes one `nx-exec`
