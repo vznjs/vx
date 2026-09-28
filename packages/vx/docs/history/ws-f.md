@@ -627,3 +627,16 @@ refusing with the execution's failure. A suspected fence escape
 (`fence.dir`). Left: exact batch-budget boundaries, the receive limit
 on the other stubs, `tls: false` beside a CA, and equivalents (varint
 paths past 2^53 the decoders never meet, `path.join`'s own `..`).
+
+F-58. A mutation sweep of vx-github's `checks.ts` (150 mutants: 108
+caught, 12 equivalent, 30 real survivors) found no bug and these
+unheld, now rows (23 re-driven): the POST reaching a GHES `apiUrl`;
+502 and 504 retried, 500, 429 and 403 not; three blips tried three
+times 200 then 800 ms apart; every `CERT` refusal tried once with the
+NODE_EXTRA_CA_CERTS hint; a drop then the deadline during the wait
+warning once, at once; a page under 65535 units but over 65535 bytes
+clamped, an ASCII one to exactly 65535 bytes; a 40-hex sha kept whole;
+one aborted task with nothing failed titled cancelled. Left: the
+abort-guard pair (equivalent: `sleepUnless` answers an aborted signal
+at once), the retry timer's clearTimeout, the suffix's text, a thrown
+non-Error's text.
