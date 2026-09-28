@@ -1,0 +1,152 @@
+{
+  "$comment": "One row per real Turbo or Nx repo benched against its own tool. update-site.ts renders README.md's real-repo table and the site's benchmarks/real-repos page from it; each row's heading names its section in packages/vx/docs/benchmarks.md, where the harness and every number are recorded. Values are vx / theirs; a ** marks the side that wins when it is theirs.",
+  "rows": [
+    {
+      "repo": "solidjs/solid",
+      "tool": "Turbo",
+      "version": "2.10.10",
+      "setup": "`turbo()`, nothing written",
+      "date": "2026-09-10",
+      "heading": "A real Turbo repo: solidjs/solid (2026-09-10)",
+      "cold": ["40.6 s", "45.5 s"],
+      "restore": ["66 ms", "127 ms"],
+      "noop": ["51 ms", "95 ms"]
+    },
+    {
+      "repo": "withastro/astro",
+      "tool": "Turbo",
+      "version": "2.10.2",
+      "setup": "`turbo()`; `turbo.json` inputs fixed so Turbo stops hashing its own outputs",
+      "date": "2026-09-27",
+      "heading": "Real repos re-measured (2026-09-27)",
+      "cold": ["48.0 s", "57.9 s"],
+      "restore": ["478 ms", "1.43 s"],
+      "noop": ["249 ms", "1.38 s"]
+    },
+    {
+      "repo": "payloadcms/payload",
+      "tool": "Turbo",
+      "version": "2.10.4",
+      "setup": "`turbo()`, nothing written",
+      "date": "2026-09-11",
+      "heading": "payloadcms/payload (45 `build` tasks, pnpm 10, Turbo 2.10.4)",
+      "cold": ["126.9 s", "127.5 s"],
+      "restore": ["3.44 s", "3.46 s"],
+      "noop": ["256 ms", "**237 ms**"],
+      "why": "A tie within noise. On every hit vx stats all 14,430 recorded output files to prove they are intact; Turbo checks nothing on disk."
+    },
+    {
+      "repo": "medusajs/medusa",
+      "tool": "Turbo",
+      "version": "1.13.4",
+      "setup": "`turbo()` plus a bench output list (its `turbo.json` outputs are a negation glob `turbo()` runs uncached)",
+      "date": "2026-09-11",
+      "heading": "medusajs/medusa (83 `build` + `build:plugin` tasks, yarn 3, Turbo 1.13.4)",
+      "cold": ["308 s", "315 s"],
+      "restore": ["3.86 s", "7.16 s"],
+      "noop": ["947 ms", "3.29 s"]
+    },
+    {
+      "repo": "n8n-io/n8n",
+      "tool": "Turbo",
+      "version": "2.9.18",
+      "setup": "`turbo()`, nothing written",
+      "date": "2026-09-11",
+      "heading": "n8n-io/n8n (70 `build` tasks, pnpm 12, Turbo 2.9.18, Node 24)",
+      "cold": ["137.2 s", "**133.7 s**"],
+      "restore": ["8.27 s", "12.5 s"],
+      "noop": ["842 ms", "1.36 s"],
+      "why": "The cold build is `n8n-nodes-base#build`, 55 s alone, plus what fits around it; vx is 2.6% behind there."
+    },
+    {
+      "repo": "calcom/cal.com",
+      "tool": "Turbo",
+      "version": "2.7.1",
+      "setup": "`turbo()` plus a bench output list (`.next` minus its 110 `node_modules` symlinks)",
+      "date": "2026-09-11",
+      "heading": "calcom/cal.com (13 `build` tasks, yarn 3, Turbo 2.7.1, scope `@calcom/web...`)",
+      "cold": ["245.7 s", "250.7 s"],
+      "restore": ["17.4 s", "19.9 s"],
+      "noop": ["14.7 s", "18.5 s"]
+    },
+    {
+      "repo": "unocss/unocss",
+      "tool": "Turbo",
+      "version": "2.10.13",
+      "setup": "`turbo()`, nothing written",
+      "date": "2026-09-28",
+      "heading": "unocss/unocss (Turbo 2.10.13, `turbo()`, `f05ee3a`)",
+      "cold": ["45.1 s", "47.3 s"],
+      "restore": ["859 ms", "**185 ms**"],
+      "noop": ["770 ms", "**126 ms**"],
+      "why": "One task, `@unocss/vscode#build`, rewrites its own `README.md` input on every run. vx will not save a result whose input changed under it, so it reruns that task each time; the other 41 are a 160 ms no-op."
+    },
+    {
+      "repo": "vueuse/vueuse",
+      "tool": "Turbo",
+      "version": "2.10.12",
+      "setup": "`turbo()` plus one `dependsOn` edge its `turbo.json` leaves implicit",
+      "date": "2026-09-28",
+      "heading": "vueuse/vueuse (Turbo 2.10.12, `turbo()`, `efdd69a`)",
+      "cold": ["21.4 s", "29.2 s"],
+      "restore": ["263 ms", "**128 ms**"],
+      "noop": ["246 ms", "**51–161 ms**"],
+      "why": "Turbo restores this repo faster, and its no-op alternates: its key for one task flips between two values on consecutive runs, so every other no-op rebuilds (7.3–7.7 s)."
+    },
+    {
+      "repo": "TanStack/query",
+      "tool": "Nx",
+      "version": "23.2.1",
+      "setup": "`nx()`, nothing written",
+      "date": "2026-09-28",
+      "heading": "TanStack/query (Nx 23.2.1, `nx()`, `2e1ad64`)",
+      "cold": ["34.6 s", "37.1 s"],
+      "restore": ["910 ms", "1.62 s"],
+      "noop": ["291 ms", "1.60 s"]
+    },
+    {
+      "repo": "strapi/strapi",
+      "tool": "Nx",
+      "version": "20.8.4",
+      "setup": "configs written by `vx-migrate --from nx`",
+      "date": "2026-09-11",
+      "heading": "strapi/strapi (39 `build` tasks, yarn 4, Nx 20.8.4, `parallel: 8`, `--nx-ignore-cycles`)",
+      "cold": ["238.2 s", "245.7 s"],
+      "restore": ["1.61 s", "3.94 s"],
+      "noop": ["341 ms", "4.02 s"]
+    },
+    {
+      "repo": "novuhq/novu",
+      "tool": "Nx",
+      "version": "21.3.11",
+      "setup": "configs written by `vx-migrate --from nx`",
+      "date": "2026-09-11",
+      "heading": "novuhq/novu (37 `build` tasks, pnpm 11, Nx 21.3.11, `parallel: 4`)",
+      "cold": ["291.2 s", "299.4 s"],
+      "restore": ["3.10 s", "9.05 s"],
+      "noop": ["655 ms", "8.55 s"]
+    },
+    {
+      "repo": "TanStack/router",
+      "tool": "Nx",
+      "version": "23.2.1",
+      "setup": "`nx()`, nothing written",
+      "date": "2026-09-28",
+      "heading": "TanStack/router (Nx 23.2.1, `nx()`, `41ebd28`)",
+      "cold": ["123.0 s", "138.0 s"],
+      "restore": ["1.27 s", "3.82 s"],
+      "noop": ["626 ms", "3.91 s"]
+    },
+    {
+      "repo": "refinedev/refine",
+      "tool": "Nx",
+      "version": "18.2.2",
+      "setup": "`nx()`, nothing written",
+      "date": "2026-09-27",
+      "heading": "Real repos re-measured (2026-09-27)",
+      "cold": ["96.2 s", "105.9 s"],
+      "restore": ["1.06 s", "1.19 s"],
+      "noop": ["303 ms", "1.16 s"]
+    }
+  ]
+}

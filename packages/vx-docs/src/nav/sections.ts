@@ -68,6 +68,7 @@ const SIDEBAR_GROUPS: Record<'Docs' | 'Reference', SidebarItem[]> = {
       label: 'Benchmarks',
       items: [
         { label: 'The numbers', link: '/benchmarks/' },
+        { label: 'Real Turbo and Nx repos', link: '/benchmarks/real-repos/' },
         { label: 'Why vx is fast', link: '/concepts/why-vx-is-fast/' },
       ],
     },
