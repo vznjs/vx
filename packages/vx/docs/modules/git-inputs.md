@@ -34,6 +34,8 @@ export class GitFilesCache extends Map<string, readonly string[]> {
   setWorktreeDirty(dirty: boolean | null): void // what `git status` said, for the run context
   get worktreeDirty(): boolean | null
   markOutputsChanged(projectDir: string, relPaths: readonly string[]): void // a save or restore wrote these
+  noteClean(by: string, dir: string, rels: readonly string[]): void // which of a clean's paths git tracks (A-48)
+  trackedCleansMissing(except: string): Array<{ path: string; by: string }> // another task's clean removed it; still gone
   markWorkspaceOutputsChanged(workspaceRoot: string, relPaths: readonly string[]): void
   invalidateWorkspacePartition(): void
   clear(): void // every partition AND its OIDs and pending marks (a write that reached the workspace)

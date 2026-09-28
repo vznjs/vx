@@ -757,6 +757,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       const endClean = span('miss: clean outputs')
       const cleanedRels = await cleanOutputs(cleanArgs)
       endClean()
+      args.gitFilesCache?.noteClean(node.id, node.projectDir, cleanedRels)
       args.gitFilesCache?.markOutputsChanged(node.projectDir, cleanedRels)
     }
     if (additive && willWrite && !deferralRequested && wsOutputs.length > 0) {
@@ -872,6 +873,18 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         signal: res.signal,
       })
       if (verdict !== undefined) log.taskStderr(node, `\n${verdict}\n`)
+      // A committed file another task's clean removed, still gone: vx
+      // cleans outputs before a run where Turbo does not, so a reader with
+      // no edge to the producer fails naming only the file (A-48).
+      if (code !== 0) {
+        for (const c of (args.gitFilesCache?.trackedCleansMissing(node.id) ?? []).slice(0, 3)) {
+          const rel = path.relative(args.workspaceRoot, c.path).split(path.sep).join('/')
+          log.taskStderr(
+            node,
+            `\n[vx] ${rel} is tracked by git, and ${c.by} removed it as an output before its run; it is still missing. A task that reads it needs dependsOn on ${c.by}.\n`,
+          )
+        }
+      }
     }
     return { result: res, exitCode: code }
   }

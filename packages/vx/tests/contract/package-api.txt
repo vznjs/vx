@@ -92,6 +92,8 @@ export class GitFilesCache extends Map<string, readonly string[]> {
   markOutputsChanged(projectDir: string, relPaths: readonly string[]): void
   markWorkspaceOutputsChanged(workspaceRoot: string, relPaths: readonly string[]): void
   invalidateWorkspacePartition(): void
+  noteClean(by: string, dir: string, rels: readonly string[]): void
+  trackedCleansMissing(except: string): Array<{ path: string; by: string }>
   oidsFor(projectDir: string): ReadonlyMap<string, string> | undefined
   setOids(projectDir: string, oids: Map<string, string>): void
   snapshotFor(projectDir: string, inputGlobs: readonly Bun.Glob[]): readonly string[] | undefined
