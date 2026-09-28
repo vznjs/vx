@@ -35,8 +35,9 @@ The cache key for one task is a **16-hex xxHash3 digest**, seed-chained
 over (in order):
 
 1. **`CACHE_VERSION`** — the key-derivation sentinel
-   (currently `'vx-cache-v36'`, in `src/cache/key-fold.ts`). Bumped only
-   when the key derivation format changes. See
+   (currently `'vx-cache-v36'`, in `src/cache/key-fold.ts`). Bumped when
+   the key derivation or the artifact container changes, or stored bytes
+   are wrong under an unchanged key. See
    [§ Bumping CACHE_VERSION](#bumping-cache_version).
 2. **`taskId`** — `${projectName}#${taskName}`. Two tasks with
    identical everything else still produce distinct keys — protects
@@ -483,7 +484,7 @@ The trade is the one every mtime-based skip accepts, already documented
 for files: a deliberately forged directory mtime (`touch -r`) hides a
 stray. Both directions are pinned in `tests/output-dirs.test.ts`.
 
-Hard invariants:
+Hard invariants of the remote prefetch:
 
 - **Remote-only.** This entire path is gated on a `LayeredCache` being
   configured. A local-only run never prefetches; its up-front keys and
@@ -1442,9 +1443,8 @@ moat.
   the row; the artifact is only opened when outputs actually restore.
 - **One artifact = one wire payload.** The same tar.zst bytes serve
   local storage and the remote round-trip — no repacking.
-- **One handle, one schema-meta sentinel.** Schema mismatch drops
-  and recreates the tables (pre-alpha; § SQLite tables names the two
-  it keeps) — there's no migration code to maintain.
+- **One handle, one schema-meta sentinel.** An older schema drops
+  and recreates every table but `schema_meta` (pre-alpha) — there's no migration code to maintain.
 
 ## Config evaluation cache
 
