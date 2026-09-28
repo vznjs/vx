@@ -355,6 +355,13 @@ the wrapped command sets `SOCAT_DEFAULT_LISTEN_IP=4`, socat's own switch
 for the listen family (`hostHasIpv6`: `/proc/net/if_inet6`, asked once);
 a host with IPv6 is untouched (B-22).
 
+`initSandbox` names the JVM proxy agent SRT ships (`javaAgentJarPath`,
+`bundledJavaAgent`). SRT's own search builds its candidate list with
+`npm root -g` in it before trying the bundled path, so every init
+spawned npm, about 110 ms of `vx info` and of a run's first sandboxed
+task. Where the jar is not on disk (a compiled vx), SRT searches as
+before (B-25).
+
 ## A task's temp directory
 
 SRT points every sandboxed task's `TMPDIR` at one host directory
