@@ -20,12 +20,13 @@
 //     the lockfile moves, which the workspace fingerprint already covers.
 //     A tsconfig `paths` / `baseUrl` alias is the exception: Bun loads it
 //     from disk (D-27).
-//   - Descend only through files owned by NO project. A config reaching into
-//     another project (say a site's `vx.config.ts` importing
-//     `../core/src/index.ts`) records that edge and STOPS there — following
-//     it would drag substantially all of that project's `src/` into the
-//     closure, and the containment channel already selects the project that
-//     owns it.
+//   - Descend only through files owned by NO project, or by a ROOT project
+//     (whose own files are the shared tooling that is otherwise unowned,
+//     D-41). A config reaching into another project (say a site's
+//     `vx.config.ts` importing `../core/src/index.ts`) records that edge
+//     and STOPS there — following it would drag substantially all of that
+//     project's `src/` into the closure, and the containment channel
+//     already selects the project that owns it.
 
 import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs'
 import { realpath } from 'node:fs/promises'
@@ -452,6 +453,9 @@ export async function configImportOwners(a: ConfigImportOwnersArgs): Promise<Set
   )
   if (roots.size === 0) return selected
   const dirToName = await realDirIndex(a.projects, a.realDirs)
+  // A root project owns every file no member owns: the shared tooling the
+  // walk descends through when the root is no project (D-41).
+  const rootOwner = dirToName.get(workspaceRoot)
 
   // target → the files that import it. Reversed up front so one BFS from the
   // changed set answers every root at once, instead of a walk per root.
@@ -484,8 +488,10 @@ export async function configImportOwners(a: ConfigImportOwnersArgs): Promise<Set
         const list = importedBy.get(target)
         if (list) list.push(file)
         else importedBy.set(target, [file])
-        // Descend ONLY through unowned files — see the header.
-        if (ownerOf(target, dirToName) === undefined) frontier.push(target)
+        // Descend ONLY through unowned files, or the root project's own:
+        // see the header.
+        const owner = ownerOf(target, dirToName)
+        if (owner === undefined || owner === rootOwner) frontier.push(target)
       }
     }
   }
