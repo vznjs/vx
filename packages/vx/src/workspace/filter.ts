@@ -8,7 +8,8 @@
 //   <pattern>^...    only the transitive deps of pattern (excluding the matched package)
 //   ...^<pattern>    only the transitive dependents of pattern (excluding the matched package)
 //   !<pattern>       exclude packages matching pattern from the selection
-//   [<since>]        projects affected since the given git ref
+//   [<since>]        projects affected since the given git ref; after a name
+//                    or {dir} selector, the selected ones only (D-44)
 //                    (Turbo-style; resolved upstream of applyFilters via
 //                    `affectedProjects` since it needs FS + git access)
 //
@@ -34,8 +35,9 @@ export interface ParsedFilter {
   matcher: string
   /**
    * When non-undefined, this filter is a git-relative `[<since>]`
-   * selector. The matcher field is unused; the CLI resolves the ref
-   * to a concrete set of project names before calling applyFilters.
+   * selector: bare (`matcher` empty), or narrowing a name or `{dir}`
+   * selector (`@scope/*[main]`, D-44). The CLI resolves the ref to a
+   * concrete set of project names before calling applyFilters.
    */
   gitSince?: string
   /** A path form carrying a glob (`./packages/*`): matched over the root-relative project dir. */
@@ -82,6 +84,18 @@ export function parseFilter(raw: string, workspaceRoot: string): ParsedFilter {
     }
   }
 
+  // `<selector>[<since>]`: the selected packages that changed since the
+  // ref (D-44). Turbo and pnpm read `@scope/*[HEAD]` and `{./apps/*}[main]`
+  // so; vx read the whole as one name glob and matched nothing.
+  let gitSince: string | undefined
+  // An unbraced path keeps its brackets: `./packages/[abc]` is a glob
+  // class, and Turbo takes a directory with a ref only as `{dir}[ref]`.
+  const scoped = /^(.+)\[([^\]]+)\]$/.exec(s)
+  if (scoped !== null && !scoped[1]!.startsWith('./') && scoped[1] !== '.') {
+    s = scoped[1]!
+    gitSince = scoped[2]!
+  }
+
   // `...`, `!`, `^...`: the operators with no project between them. An
   // empty name glob matched nothing and was hinted "Did you mean a?", and
   // an empty exclude (`!$UNSET`) excluded nothing, so every project ran
@@ -120,6 +134,7 @@ export function parseFilter(raw: string, workspaceRoot: string): ParsedFilter {
     isPath,
     matcher,
     ...(pathGlob !== undefined ? { pathGlob, pathRoot: workspaceRoot } : {}),
+    ...(gitSince !== undefined ? { gitSince } : {}),
   }
 }
 
@@ -132,8 +147,15 @@ function matchProjects(
   // is pure; git access happens upstream). Use the provided set as
   // the match set for this filter.
   if (filter.gitSince !== undefined) {
-    return [...(affectedByFilter?.get(filter) ?? new Set())]
+    const changed = affectedByFilter?.get(filter) ?? new Set<string>()
+    if (filter.matcher === '') return [...changed]
+    return matchSelector(filter, projects).filter((name) => changed.has(name))
   }
+  return matchSelector(filter, projects)
+}
+
+/** The projects a name or path selector names, git ranges aside. */
+function matchSelector(filter: ParsedFilter, projects: ProjectMeta[]): string[] {
   const out: string[] = []
   if (filter.isPath) {
     // A path naming a project's own directory is that project, as Turbo and

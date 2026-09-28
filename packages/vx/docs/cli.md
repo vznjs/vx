@@ -167,6 +167,7 @@ two edits, or when exactly one scoped project's name after its `/` is
 | `...<pattern>`  | Match + all transitive dependents.                                                                                                                                                                              |
 | `<pattern>^...` | Only the transitive dependencies, excluding the matched package itself.                                                                                                                                         |
 | `...^<pattern>` | Only the transitive dependents, excluding the matched package itself.                                                                                                                                           |
+| `<sel>[<ref>]`  | The packages `<sel>` (a name pattern or `{<dir>}`) selects that changed since `<ref>`, as Turbo and pnpm read `@scope/*[main]` (D-44).                                                                          |
 
 An edge is a `package.json` workspace dependency (`dependencies`,
 `devDependencies`, `peerDependencies`, `optionalDependencies`; a peer

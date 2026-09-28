@@ -423,3 +423,12 @@ packages/core`) selects the dependent whose `file:../lib` spec named
   does; a directory that is no package keeps the "at or under" reading
   (Turbo selects nothing there, and vx refuses an empty selection).
   Rows: the two D-43 rows of `tests/filter.test.ts`.
+- **D-44** A selector narrowed by a git range (`@scope/*[HEAD]`,
+  `{./apps/*}[main]`) was read as one name glob and refused "no
+  projects matched". Turbo 2.8.17 (probed) and pnpm read it as the
+  selected packages that changed since the ref, and vx now does, the
+  `...` / `^` expansions after it. An unbraced `./` path keeps its
+  brackets as a glob class (Turbo takes a directory with a ref only as
+  `{dir}[ref]`). Parity probe with no other gap: ten name, scope, path
+  and `...` / `^` forms and the bare `[ref]` forms select what Turbo
+  selects. Rows: the D-44 rows of `tests/filter.test.ts`.
