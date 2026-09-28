@@ -155,6 +155,7 @@ export default defineProject({
             'VX_REQUIRE_SANDBOX',
             'VX_REQUIRE_WATCH_EVENTS',
             'VX_REQUIRE_NONROOT',
+            'VX_REQUIRE_TAGS',
             'VX_SMALL_DISK',
           ],
           define: GIT_HERMETIC,

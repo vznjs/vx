@@ -213,6 +213,18 @@ env var). The guide's snippets were type-checked only; these run, so a
 seam that moves under an example turns the gate red. Linked from the
 plugins guide's first section.
 
+## H-18: a package API break must be declared
+
+`tests/api-break.unsafe.test.ts` diffs the package API record against the
+last `v*` tag's copy. A removed declaration, or a line gone from one (a
+removed member, a changed signature), is a break, and it fails the gate
+unless a commit since the tag is `type!:` or has a `BREAKING CHANGE:`
+footer, which H-15's notes then list first. Every green main commit is
+released, so the last tag is main's last green commit. CI's Linux job
+checks out full history and sets `VX_REQUIRE_TAGS=1` (no tag = a failure). Rows: `api-break.test.ts` (what is a
+break); the law, red with one member deleted from the record and no
+marker.
+
 ## Leads for other streams
 
 - **D / B:** `sandbox.ignore` names that loaded and did nothing: done in D-4.

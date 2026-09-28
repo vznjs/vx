@@ -87,6 +87,14 @@ A surface is frozen only if a change to it fails a test. Each pin
 records the surface as the code produces it, in a committed file, so a
 change is a reviewed diff of that file and never a side effect.
 
+A break must also be declared. `tests/api-break.unsafe.test.ts` diffs
+`tests/contract/package-api.txt` against the same file at the last `v*`
+tag: a declaration or a line of one gone is a break (`scripts/api-break.ts`),
+and it fails unless a commit since the tag is marked `type!:` or carries a
+`BREAKING CHANGE:` footer, which also heads the release notes
+(`scripts/release-notes.ts`). CI's Linux job checks out full history and
+sets `VX_REQUIRE_TAGS=1`, so a missing tag fails there instead of passing.
+
 - **The config schema.** `tests/contract-config-schema.test.ts`
   discovers every level and field the validator accepts (by injecting
   an unknown key at each level of a valid seed config and reading the

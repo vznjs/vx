@@ -20,17 +20,22 @@ const SECTIONS = [
 
 const HEADER = /^(\w+)(?:\(([^)]*)\))?(!)?: (.+)$/
 
+/** `type!:` / `type(scope)!:`, or a `BREAKING CHANGE:` footer line. */
+export function isBreaking({ subject, body }: Commit): boolean {
+  return HEADER.exec(subject)?.[3] === '!' || /^BREAKING[ -]CHANGE: /m.test(body)
+}
+
 export function releaseNotes(commits: readonly Commit[]): string {
   const breaking: string[] = []
   const listed = new Map<string, string[]>(SECTIONS.map(([type]) => [type, []]))
   let other = 0
-  for (const { subject, body } of commits) {
-    const m = HEADER.exec(subject)
+  for (const commit of commits) {
+    const m = HEADER.exec(commit.subject)
     if (m === null) {
       other++
       continue
     }
-    const [, type, scope, bang, summary] = m as unknown as [
+    const [, type, scope, , summary] = m as unknown as [
       string,
       string,
       string | undefined,
@@ -38,7 +43,7 @@ export function releaseNotes(commits: readonly Commit[]): string {
       string,
     ]
     const line = `- ${scope ? `**${scope}:** ` : ''}${summary}`
-    if (bang === '!' || /^BREAKING[ -]CHANGE: /m.test(body)) breaking.push(line)
+    if (isBreaking(commit)) breaking.push(line)
     const section = listed.get(type)
     if (section === undefined) other++
     else section.push(line)
@@ -55,7 +60,7 @@ export function releaseNotes(commits: readonly Commit[]): string {
 }
 
 /** The commits in `from..to`, oldest first; `from` empty means all history up to `to`. */
-function commitsBetween(from: string, to: string, cwd?: string): Commit[] {
+export function commitsBetween(from: string, to: string, cwd?: string): Commit[] {
   const range = from === '' ? to : `${from}..${to}`
   const r = Bun.spawnSync(['git', 'log', '--reverse', '--format=%s%x00%b%x1e', range], {
     ...(cwd !== undefined ? { cwd } : {}),
