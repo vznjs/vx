@@ -492,9 +492,10 @@ in [`design/turbo-nx-test-gaps.md`](./design/turbo-nx-test-gaps.md).
 - **No `.gitattributes` CRLF normalization in the fallback.** Turbo's
   manual-hash fallback replicates git's CRLF conversion so it matches
   `git hash-object` under `text=auto` / `autocrlf`. vx's in-process
-  fallback hashes raw bytes (`blob <len>\0` + content) — identical to
-  the index OID on Linux/macOS; a CRLF-converting Windows checkout
-  could diverge. Document this if/when Windows ships.
+  fallback hashes raw bytes (`blob <len>\0` + content), and a file
+  under a clean filter (`text`/`eol`/`ident`/`filter`/`autocrlf`) drops
+  its index OID for that worktree hash, so the key follows the bytes
+  the task reads (`dropFilteredOids`, `cache/git-inputs.ts`).
 - **No `.gitattributes` binary detection.** Same root: raw bytes; no
   text-vs-binary distinction needed at hash time.
 
