@@ -180,8 +180,13 @@
   fields whose wrong type reached a mapper loop as a TypeError;
   `"dependsOn": true` printed `TypeError: true is not iterable` with its
   stack from `bunx @vzn/vx-migrate`. Every field the mapper reads is now
-  checked at read and refused by file and name. Supervisor backlog 2.
-  Rows in `turbo-map-sweep.test.ts`.
+  checked at read and refused by file and name; the Nx graph's reader had
+  eight of the same class, fixed the same way. moon, wireit and lage held
+  (their readers guard each field; a non-object file is refused
+  upstream), and the lockfile parsers threw only Errors, caught at the
+  plugin with the file named, and never hung (500 truncations and
+  mutations each). Supervisor backlog 2. Rows in `turbo-map-sweep.test.ts`
+  and `nx-map-sweep.test.ts`.
 
 ## Leads for other streams
 
