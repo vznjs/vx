@@ -28,6 +28,9 @@ import { bun } from '@vzn/vx-lockfile'
 //              The unsafe suite is the core's longest task (46 s on macOS
 //              CI, the shards 31–45) and the structural order started it
 //              last: its final 33 s ran alone on a 3-core runner (I-12).
+//              On Linux CI the reapi and migrate suites (38 s, 27 s) wait
+//              on only their own install and started last, the tail of the
+//              gate by 22 s (I-13).
 export default defineWorkspace({
   plugins: [
     otel(),
@@ -35,7 +38,12 @@ export default defineWorkspace({
     mcp(),
     bun(),
     scheduleHistoryPlugin({
-      assume: { '@vzn/vx-docs#build': 30_000, '@vzn/vx#test.bun.unsafe': 46_000 },
+      assume: {
+        '@vzn/vx-docs#build': 30_000,
+        '@vzn/vx#test.bun.unsafe': 46_000,
+        '@vzn/vx-reapi#test': 38_000,
+        '@vzn/vx-migrate#test': 27_000,
+      },
     }),
   ],
 })

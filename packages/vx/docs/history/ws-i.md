@@ -138,9 +138,16 @@ the container's. 6 shards instead of 12: 114.5 s against 113.3, a tie.
 I-12. The unsafe suite starts first on a fresh runner (`assume` 46 s
 in `vx.workspace.ts`). On macOS CI it is core's longest task (46 s,
 shards 31–45) and the structural order started it last, alone for its
-final 33 s on 3 workers. macOS vx wall 189.37 s → 174.13 s, average
-task 35.59 → 34.69 s (runs 36358360131, 36361790839; one each, the
-task average as the runner-speed control).
+final 33 s on 3 workers. macOS wall against the work over 3 workers
+(runner speeds differ): 189.37 s for 166 s of work, 88 % packed,
+before; 174.13 s for 162 (93 %) and 234.09 s for 216 (92 %) after,
+the unsafe suite starting first in both (jobs 108730471028,
+108740256876, 108742538229).
+
+I-13. Linux CI's tail, the same way: `@vzn/vx-reapi#test` (38 s)
+started at 170 s of a 208 s `vx run ci` and ended it 22 s after the
+last shard; 773 s of work over 4 workers is 193 s (job 108742538414).
+`assume` now names it and `@vzn/vx-migrate#test` (27 s).
 
 ## Leads for other streams
 
