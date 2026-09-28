@@ -10,8 +10,9 @@ import {
   run,
 } from '../src/cli/index.js'
 import { formatRunReportMarkdown } from '../src/orchestrator/index.js'
-import { mkdir, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
+import os from 'node:os'
 import { planned } from './helpers/parity.js'
 import { makeWorkspace } from './helpers/workspace.js'
 import { editDistance, MOVED_VERBS, nearest } from '../src/util/index.js'
@@ -327,7 +328,16 @@ describe('cli run()', () => {
     // The suite's stdin is not a terminal, so this is the non-TTY refusal,
     // not the picker: the line says so, or a user in CI is left wondering
     // why nothing was asked (item 621).
-    expect(await run(['run'])).toBe(1)
+    // Outside any workspace there are no task names to offer.
+    const origCwd = process.cwd()
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-run-no-task-'))
+    try {
+      process.chdir(dir)
+      expect(await run(['run'])).toBe(1)
+    } finally {
+      process.chdir(origCwd)
+      await rm(dir, { recursive: true, force: true })
+    }
     expect(stderr).toBe(
       'vx run: missing task name (stdin is not a TTY, so no picker; vx run <task>, e.g. vx run build) (see `vx run --help`)\n',
     )

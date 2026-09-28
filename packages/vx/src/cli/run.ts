@@ -16,7 +16,7 @@ import {
 import type { ContinueMode } from '../graph/index.js'
 import { type CachePolicy, FULL_CACHE_POLICY, parseCachePolicy } from '../cache/index.js'
 import { findCwdProject, pickTask, resolveFilters } from './select.js'
-import { nxTargetHint } from './task-verb.js'
+import { nxTargetHint, taskNamesHere } from './task-verb.js'
 import { MAX_TIMEOUT_MS, isUserError, parseDecimalInt, machineParallelism } from '../util/index.js'
 import { formatGraphDot, formatPlanJson, formatPlanText } from './plan-format.js'
 
@@ -555,6 +555,9 @@ export async function resolveRunOptions(
   return opts
 }
 
+/** How many task names a run with no task names before `and N more`. */
+const TASKS_SHOWN = 12
+
 export async function runCmd(args: readonly string[]): Promise<number> {
   const parsed = parseRunArgs(args)
   if (parsed.error) {
@@ -570,8 +573,15 @@ export async function runCmd(args: readonly string[]): Promise<number> {
   // explicit anchored positional.
   if (tasks.length === 0) {
     if (!process.stdin.isTTY) {
+      const names = await taskNamesHere(cwd)
+      const shown = (names ?? []).slice(0, TASKS_SHOWN)
+      const more = (names?.length ?? 0) - shown.length
+      const tasksHere =
+        shown.length === 0
+          ? 'vx run <task>, e.g. vx run build'
+          : `tasks here: ${shown.join(', ')}${more > 0 ? ` and ${more} more` : ''}`
       process.stderr.write(
-        `vx run: missing task name (stdin is not a TTY, so no picker; vx run <task>, e.g. vx run build)${seeHelp('run')}\n`,
+        `vx run: missing task name (stdin is not a TTY, so no picker; ${tasksHere})${seeHelp('run')}\n`,
       )
       return 1
     }

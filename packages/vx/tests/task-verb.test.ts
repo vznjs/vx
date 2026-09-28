@@ -76,6 +76,27 @@ describe('a task typed as a verb', () => {
     expect(run(root, 'app:nope', '--all')[1]).toBe('No projects declare task(s): app:nope.\n')
   })
 
+  it('`vx run` with no task and no terminal names the tasks here', async () => {
+    const bare = (cwd: string): string =>
+      Bun.spawnSync({ cmd: [process.execPath, BIN, 'run'], cwd, stdin: 'ignore' }).stderr.toString()
+    const line = (tasks: string): string =>
+      `vx run: missing task name (stdin is not a TTY, so no picker; tasks here: ${tasks}) (see \`vx run --help\`)\n`
+    expect(bare(root)).toBe(line('build, dev'))
+    const many = await addProject(
+      root,
+      'many',
+      `export default { tasks: { ${Array.from({ length: 14 }, (_, i) => `t${String(i).padStart(2, '0')}: { exec: { command: 'true' } }`).join(', ')} } }`,
+    )
+    try {
+      expect(bare(many)).toBe(
+        line('t00, t01, t02, t03, t04, t05, t06, t07, t08, t09, t10, t11 and 2 more'),
+      )
+      expect(bare(path.join(root, 'packages', 'lib'))).toBe(line('build, dev'))
+    } finally {
+      await rm(many, { recursive: true, force: true })
+    }
+  })
+
   it('a plugin verb of the same name is the verb', async () => {
     const ws = path.join(root, 'vx.workspace.mjs')
     const before = await Bun.file(ws).text()
