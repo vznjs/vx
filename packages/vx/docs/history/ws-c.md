@@ -455,6 +455,19 @@ marks its trap and then waits on a `go` file the row writes only after
 the kill; green with the pause, and red on `late.txt` with the group
 guard's SIGKILL removed.
 
+## C-35: hold save-lane.ts's surviving mutants
+
+Swept `orchestrator/save-lane.ts` (15 mutants, 10 files): 12 caught,
+3 survived. 2 are equivalent: settling before or after starting the
+next queued save, and dropping the running entry before or after it
+(`start` is synchronous and reads no count; a settle's reaction runs a
+microtask later either way). The third, `running.delete(p)` gone, kept
+a settled save's slot: once the lane filled, every later save queued
+behind nothing and the scheduler, which waits on each save, never
+ended the run. The suite never deferred after the lane drained; a
+`save-lane.test.ts` row does, and asserts the save starts at once. No
+defect.
+
 ## Leads for other streams
 
 - **E:** a plugin command's plain `throw` (`commands.probe.run` throwing
