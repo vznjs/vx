@@ -180,6 +180,22 @@ function npmEnv(
   return { define, unset, readsManifest }
 }
 
+/**
+ * A script that never exits by design (D-40): a `watch` segment in its
+ * name (`build:watch`, `watch-css`), a `--watch` flag, `tsc -w` /
+ * `rollup -w`, or nodemon. Run as a plain task it held its dependents
+ * forever. A bare `-w` elsewhere is not read: `npm run x -w pkg` is a
+ * workspace.
+ */
+function isWatcher(name: string, command: string): boolean {
+  if (name.split(/[:\-_.]/).includes('watch')) return true
+  return (
+    /(?:^|\s)--watch(?:All)?(?:[=\s]|$)/.test(command) ||
+    /\b(?:tsc|rollup)\b[^&|;]*\s-w(?:\s|$)/.test(command) ||
+    /(?:^|[\s&|;])nodemon\b/.test(command)
+  )
+}
+
 function scriptsOf(meta: ProjectMeta): Record<string, unknown> {
   // package.json is a boundary: `scripts` is whatever the file holds. A
   // string or an array would enumerate its indices as script names.
@@ -298,7 +314,7 @@ export function migrateScripts(metas: readonly ProjectMeta[]): MigrationPlan {
         )
       }
       const task: Record<string, unknown> = { exec }
-      if (PERSISTENT_TASK_NAMES.has(name)) {
+      if (PERSISTENT_TASK_NAMES.has(name) || isWatcher(name, own)) {
         exec['persistent'] = {}
         todos.push(PERSISTENT_TODO)
       }

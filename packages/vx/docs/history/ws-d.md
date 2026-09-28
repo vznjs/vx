@@ -56,6 +56,12 @@ run leaves out; the rest are refusals.
   and 36380291678), the kill under strace's
   `ptrace(PTRACE_LISTEN,pid:61,sig:0): Input/output error`: the
   item-925 class reaching a task other than the output-memory floods.
+- N: core holds a workspace-root task since D-39 (a root `vx.config.*`
+  makes the root a project; design
+  `docs/design/root-project-2026-09-28.md`), so the Turbo and Nx mappers
+  can emit Turbo's `//#task` and an Nx root project's targets instead of
+  dropping them; the root is named by its `package.json` `name`, and a
+  root task that reads members declares `cache.inputs.workspaceFiles`.
 
 ## Entries
 
@@ -391,3 +397,9 @@ packages/core`) selects the dependent whose `file:../lib` spec named
   unowned ones (the same shared tooling); a member's files still stop
   it. Row: `tests/affected.test.ts` › "selects the importer two hops
   out, through files the root owns (D-41)", the old limit row flipped.
+- **D-40** `vx init` left a watcher a plain task (stream N, on
+  docusaurus: `build:watch` is `tsc --build --watch`), so a dependent
+  waited on a script that never exits. A `watch` segment in the name, a
+  `--watch` flag, `tsc -w` / `rollup -w` or nodemon now makes it
+  persistent. A bare `-w` is not read (npm's workspace flag), nor
+  `--watchman`. Row: the D-40 row of `tests/init.test.ts`.

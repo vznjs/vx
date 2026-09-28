@@ -516,6 +516,46 @@ describe('migrateScripts', () => {
     expect(todos.filter((t) => t.includes('$npm_config_x'))).toHaveLength(1)
   })
 
+  it('a watcher is persistent by its name or its flag (D-40)', () => {
+    // docusaurus's `build:watch` (`tsc --build --watch`) and `copy:watch`
+    // were plain tasks: a dependent waited on a script that never exits.
+    const persistent = (scripts: Record<string, string>): string[] =>
+      (project(scripts)?.tasks ?? [])
+        .filter((t) => (t.task?.['exec'] as { persistent?: unknown } | undefined)?.persistent)
+        .map((t) => t.name)
+        .sort()
+    expect(
+      persistent({
+        'build:watch': 'tsc --build',
+        'watch-css': 'sass src:dist',
+        'copy:assets': 'node copy.js --watch',
+        types: 'tsc -w',
+        bundle: 'rollup -c -w',
+        serve2: 'nodemon src/index.js',
+        jest: 'jest --watchAll',
+        opts: 'esbuild app.ts --watch=forever',
+      }),
+    ).toEqual([
+      'build:watch',
+      'bundle',
+      'copy:assets',
+      'jest',
+      'opts',
+      'serve2',
+      'types',
+      'watch-css',
+    ])
+    // CONTROL: `-w` is npm's workspace flag, `--watchman` is jest's, and a
+    // `watcher` name is not a `watch` segment.
+    expect(
+      persistent({
+        b: 'npm run build -w pkg',
+        t: 'jest --watchman',
+        watcher: 'node watcher-report.js',
+      }),
+    ).toEqual([])
+  })
+
   it("npm's lifecycle scripts are never tasks, but a hook of one is a task of its own", () => {
     // `postprepare` is npm's hook of `prepare`, and `prepare` is npm's own —
     // so it wraps nothing here and has to stand alone or it disappears.
