@@ -233,28 +233,50 @@ describe('vx watch loop (e2e)', () => {
     expect(await readFile(path.join(f.dir, 'dist', 'out.txt'), 'utf8')).toBe('polled\n')
   }, 40_000)
 
-  it('an OS watch limit falls back to polling and says how to raise it', async () => {
-    // Every fs.watch refused as a full inotify table refuses it. Before,
-    // each arm printed "cannot watch", the loop said "watching", and no edit
-    // ever re-ran.
-    const shim = path.join(f.root, 'no-watch-slots.ts')
+  // Every fs.watch refused with `code`, as a full inotify table (ENOSPC) or
+  // fd table (EMFILE) refuses it.
+  const refusingWatch = async (code: string): Promise<string> => {
+    const shim = path.join(f.root, 'refusing-watch.ts')
     await writeFile(
       shim,
       "import fs from 'node:fs'\n" +
-        "fs.watch = (() => { throw Object.assign(new Error('ENOSPC: System limit for number of file watchers reached'), { code: 'ENOSPC' }) }) as typeof fs.watch\n",
+        `fs.watch = (() => { throw Object.assign(new Error('${code}: refused'), { code: '${code}' }) }) as typeof fs.watch\n`,
     )
+    return shim
+  }
+
+  it.each(['ENOSPC', 'EMFILE'])(
+    'an OS watch limit (%s) falls back to polling and says how to raise it',
+    async (code) => {
+      // Before, each arm printed "cannot watch", the loop said "watching",
+      // and no edit ever re-ran.
+      const shim = await refusingWatch(code)
+      f.watch = startWatch(f.root, ['--all'], { BUN_OPTIONS: `--preload ${shim}` })
+      const w = f.watch
+      await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
+      await initialOnly(w, f.log)
+      expect(w.err()).toContain(
+        // The directory is left out: macOS's temp dir is reached through a link.
+        `: the OS watch limit is reached (${code}); polling every 250 ms instead — raise it (Linux: sysctl fs.inotify.max_user_watches) to watch natively\n`,
+      )
+      expect(w.err()).not.toContain('cannot watch')
+
+      await writeFile(path.join(f.dir, 'src', 'a.txt'), 'polled\n')
+      await until(async () => (await executions(f.log)) === 2, 'the re-run after an edit, polled')
+    },
+    40_000,
+  )
+
+  it('CONTROL: a refusal that is not a limit is not papered over by the poller', async () => {
+    // A directory this user may not watch is the directory's fault; polling
+    // it would hide that. It is still named, as before.
+    const shim = await refusingWatch('EACCES')
     f.watch = startWatch(f.root, ['--all'], { BUN_OPTIONS: `--preload ${shim}` })
     const w = f.watch
     await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
-    await initialOnly(w, f.log)
-    expect(w.err()).toContain(
-      // The directory is left out: macOS's temp dir is reached through a link.
-      ': the OS watch limit is reached (ENOSPC); polling every 250 ms instead — raise it (Linux: sysctl fs.inotify.max_user_watches) to watch natively\n',
-    )
-    expect(w.err()).not.toContain('cannot watch')
-
-    await writeFile(path.join(f.dir, 'src', 'a.txt'), 'polled\n')
-    await until(async () => (await executions(f.log)) === 2, 'the re-run after an edit, polled')
+    expect(w.err()).toContain('cannot watch')
+    expect(w.err()).toContain('EACCES: refused')
+    expect(w.err()).not.toContain('polling every')
   }, 40_000)
 
   it('a first sighting is a change when it moved after the arm, whatever its mtime says', async () => {

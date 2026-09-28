@@ -14,7 +14,7 @@ import { mkdir, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { planned } from './helpers/parity.js'
 import { makeWorkspace } from './helpers/workspace.js'
-import { editDistance, nearest } from '../src/util/index.js'
+import { editDistance, MOVED_VERBS, nearest } from '../src/util/index.js'
 
 describe('cli run()', () => {
   let stdout: string
@@ -83,6 +83,11 @@ describe('cli run()', () => {
         'vx help: unknown command: rnu. Did you mean run? (see `vx help`)\n' +
         'vx help: unknown command: no-such-verb (see `vx help`)\n',
     })
+    // A verb core once owned points where it went, as `vx migrate` does.
+    stderr = ''
+    expect(await run(['help', 'migrate'])).toBe(1)
+    expect(stderr).toBe(`${MOVED_VERBS['migrate']}\n`)
+    expect(stderr.startsWith('vx migrate moved to @vzn/vx-migrate')).toBe(true)
   })
 
   // Every argument error points at the verb's own help, which is only

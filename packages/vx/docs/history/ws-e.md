@@ -314,3 +314,13 @@ task picked`; neither prints a stack. Row in
   and plugin verbs, a moved verb's pointer). A plugin verb, or a
   workspace that fails to load, still gets the reference. Rows in
   `tests/cli.test.ts`, `tests/plugin-commands.test.ts`.
+- E-49 — An OS watch limit (`ENOSPC`, `EMFILE`) made each arm print
+  "cannot watch" while the loop said "watching" and never fired; the
+  arm falls back to the poller with a line naming the limit to raise.
+  Rows preload an `fs.watch` that refuses.
+- E-51 — An empty `--run` or `--format` in `why`/`last` says what the
+  flag takes, both spellings.
+- E-53 — Mutation sweep over E-46..E-52's guards: seven mutants, four
+  caught. Rows now hold the three that survived: the EMFILE half of the
+  watch fallback, that a refusal that is not a limit (EACCES) still
+  names the directory rather than polling, and `vx help <moved verb>`.
