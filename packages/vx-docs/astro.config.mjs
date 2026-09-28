@@ -109,7 +109,7 @@ export default defineConfig({
           tag: 'meta',
           attrs: {
             property: 'og:image:alt',
-            content: 'vx: a fast, correct task runner for JavaScript monorepos',
+            content: 'vx: a faster runner for your Turborepo or Nx repo',
           },
         },
       ],
