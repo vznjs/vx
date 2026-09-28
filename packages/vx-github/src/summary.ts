@@ -43,22 +43,23 @@ function statusLabel(t: TaskTelemetry): string {
  * own bench generates (5 000 projects × four tasks), so it is reachable
  * rather than theoretical. Cut from the END: the verdict, the stats line and
  * the Failures section are rendered first, and they are what a reader needs.
- * This bounds vx's OWN contribution; the file is shared with whatever else
- * the step wrote.
+ * The cap is the step's whole file, so the room is what other writers in
+ * the step have left (F-42).
  */
 export const MAX_JOB_SUMMARY_BYTES = 1024 * 1024
 
-export function clampJobSummary(markdown: string): string {
+export function clampJobSummary(markdown: string, room = MAX_JOB_SUMMARY_BYTES): string {
   // The cap is BYTES, and the page is not ASCII: every status label is an
   // emoji (4 bytes, 2 UTF-16 units) and every separator a `·` or a `—`
   // (2 and 3 bytes, 1 unit). Measured in `.length`, a clamped page of those
   // rows came out past 1 MiB and GitHub refused it whole (item 806). A unit
   // is at most 3 bytes, so a short page skips the encode.
-  if (markdown.length * 3 <= MAX_JOB_SUMMARY_BYTES) return markdown
+  if (markdown.length * 3 <= room) return markdown
   const bytes = new TextEncoder().encode(markdown)
-  if (bytes.byteLength <= MAX_JOB_SUMMARY_BYTES) return markdown
+  if (bytes.byteLength <= room) return markdown
   const suffix = '\n\n…truncated by @vzn/vx-github (GitHub caps a job summary at 1 MiB)\n'
-  let end = MAX_JOB_SUMMARY_BYTES - new TextEncoder().encode(suffix).byteLength
+  let end = room - new TextEncoder().encode(suffix).byteLength
+  if (end <= 0) return ''
   // Back up off a continuation byte, so the cut never splits a character.
   while (end > 0 && (bytes[end]! & 0xc0) === 0x80) end--
   return new TextDecoder().decode(bytes.subarray(0, end)) + suffix

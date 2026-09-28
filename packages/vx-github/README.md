@@ -86,5 +86,5 @@ names that variable.
 
 Both artifacts are bounded by GitHub's own limits, because exceeding
 either loses the whole thing rather than its tail: the check-run output
-at 65 535 characters, the job summary at 1 MiB counted in bytes (about 19 000 task rows; fewer when task names are not ASCII), cut on a character boundary.
+at 65 535 characters, the job summary at 1 MiB counted in bytes (about 19 000 task rows; fewer when task names are not ASCII), cut on a character boundary. GitHub's cap is the step's whole summary file, so the page fits in what earlier writers in the step left; with no room it is skipped with a warning.
 Past either, what is written ends with a line saying it was truncated.

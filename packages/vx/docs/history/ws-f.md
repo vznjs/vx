@@ -433,3 +433,11 @@ file is refused naming its setting, as is a client certificate
 without its key or the reverse. Rows against the fake server over
 TLS and mutual TLS, certificates made per run by openssl; red without
 the fix. The README pin now holds the three variables.
+
+F-42. vx-github clamped its job summary to 1 MiB on its own, but GitHub's
+cap is the step's whole summary file: a page appended after another
+tool's 900 KB made 1.9 MB and GitHub refused both. The page now fits in
+what the file has left, and with no room it is skipped with a warning.
+Row red without the fix (the file reached 1 948 576 bytes). Tests that
+inject `append` no longer read a real `/tmp` path's size (a new `sizeOf`
+seam; a 1 MB `/tmp/sumfile.md` left by an earlier run turned them red).
