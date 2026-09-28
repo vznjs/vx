@@ -17,6 +17,7 @@ interface PruneArgs {
   olderThanMs?: number
   maxBytes?: number
   dryRun?: boolean
+  format?: 'pretty' | 'json'
   cacheDir?: string // `--cache-dir`: prune the cache a run with the same flag uses
   error?: string
 }
@@ -32,6 +33,7 @@ vx cache prune --older-than <duration>
 vx cache prune --max-size <size>
 vx cache prune --older-than 7d --max-size 500M   # both
 vx cache prune --max-size 1G --dry-run           # say what the policy would reap; delete nothing
+vx cache prune --max-size 1G --format json       # schemas/cache.json
 vx cache prune --older-than 30d --cache-dir <path>
 ```
 

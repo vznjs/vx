@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "vx cache prune --format json",
+  "description": "What the policy evicted and the orphan sweep reaped; with dryRun, what they would.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["dryRun", "evicted", "bytesFreed", "orphans", "orphanBytes"],
+  "properties": {
+    "dryRun": { "type": "boolean" },
+    "evicted": {
+      "type": "integer",
+      "description": "index entries evicted by the age / size policy"
+    },
+    "bytesFreed": {
+      "type": "integer",
+      "description": "bytes those entries occupied, per the index"
+    },
+    "orphans": {
+      "type": "integer",
+      "description": "artifacts and temp files with no index row, reaped"
+    },
+    "orphanBytes": { "type": "integer" }
+  }
+}

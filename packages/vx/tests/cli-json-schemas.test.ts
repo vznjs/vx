@@ -33,6 +33,7 @@ import type {
   RunSummaryRow,
   WhyDidThisRerun,
 } from '../src/orchestrator/index.js'
+import type { PruneResult } from '../src/cache/layer.js'
 import { declaredPaths, validate } from './helpers/json-schema.js'
 import { PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
@@ -94,7 +95,7 @@ const KITCHEN = `export default {
 }`
 
 let root: string
-const outputs: Record<string, unknown[]> = { show: [], info: [], why: [], last: [] }
+const outputs: Record<string, unknown[]> = { show: [], info: [], why: [], last: [], cache: [] }
 
 function vx(args: string[]): { code: number; out: string; err: string } {
   const p = Bun.spawnSync({
@@ -150,13 +151,15 @@ beforeAll(async () => {
   // A config that does not load: \`vx info\` names it.
   await addProject(root, 'broken', { config: 'export default { tasks: 1 }' })
   json('info', [])
+  json('cache', ['prune', '--max-size', '1K', '--dry-run'])
+  json('cache', ['prune', '--max-size', '1K'])
 }, TIMEOUT)
 
 afterAll(async () => {
   await rm(root, { recursive: true, force: true })
 })
 
-const VERBS = ['show', 'info', 'why', 'last']
+const VERBS = ['show', 'info', 'why', 'last', 'cache']
 
 describe('read verbs hold their --format json to a checked-in schema', () => {
   it('ships one schema per read verb, and nothing else', () => {
@@ -358,6 +361,18 @@ describe('each schema object is its source type', () => {
         durationMs: true,
         sizeBytes: true,
         createdAt: true,
+      }),
+    )
+  })
+
+  it('cache', () => {
+    expect(props('cache')).toEqual(
+      keys<PruneResult & { dryRun: boolean }>({
+        dryRun: true,
+        evicted: true,
+        bytesFreed: true,
+        orphans: true,
+        orphanBytes: true,
       }),
     )
   })
