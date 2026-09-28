@@ -466,6 +466,56 @@ describe('migrateScripts', () => {
     expect(project({ plain: 'echo hi' })?.importLines).toEqual([])
   })
 
+  it('the hook rules read the manager as each writes itself (D-35)', async () => {
+    // A sweep of D-31 to D-34 found these unheld: each flips a fold.
+    const root = await mkdtemp(path.join(os.tmpdir(), 'vx-hookrules-'))
+    try {
+      const app = path.join(root, 'app')
+      const names = (): string[] =>
+        (
+          migrateScripts([
+            {
+              name: 'app',
+              dir: app,
+              packageJson: { name: 'app', scripts: { prebuild: 'x', build: 'y' } } as never,
+              configPath: null,
+            },
+          ]).projects[0]?.tasks ?? []
+        )
+          .map((t) => t.name)
+          .sort()
+      const at = async (files: Record<string, string>): Promise<string[]> => {
+        await rm(root, { recursive: true, force: true })
+        await mkdir(app, { recursive: true })
+        for (const [f, body] of Object.entries(files)) {
+          await mkdir(path.dirname(path.join(root, f)), { recursive: true })
+          await writeFile(path.join(root, f), body)
+        }
+        return names()
+      }
+      const pm = (v: string): string => JSON.stringify({ private: true, packageManager: v })
+      // Yarn 1 named in `packageManager` runs hooks; npm named with its
+      // version is npm, and reads its `.npmrc`.
+      expect(await at({ 'package.json': pm('yarn@1.22.22') })).toEqual(['build'])
+      expect(
+        await at({ 'package.json': pm('npm@10.9.0'), '.npmrc': 'ignore-scripts=true\n' }),
+      ).toEqual(['build', 'prebuild'])
+      // A commented-out setting is no setting.
+      expect(await at({ 'package-lock.json': '{}', '.npmrc': '# ignore-scripts=true\n' })).toEqual([
+        'build',
+      ])
+      // The nearest lockfile decides: Bun's under a Berry root folds.
+      expect(await at({ 'package.json': pm('yarn@4.5.0'), 'app/bun.lock': '' })).toEqual(['build'])
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('a $npm_* read twice is one TODO (D-35)', () => {
+    const todos = project({ v: 'echo $npm_config_x $npm_config_x' })?.tasks[0]?.todos ?? []
+    expect(todos.filter((t) => t.includes('$npm_config_x'))).toHaveLength(1)
+  })
+
   it("npm's lifecycle scripts are never tasks, but a hook of one is a task of its own", () => {
     // `postprepare` is npm's hook of `prepare`, and `prepare` is npm's own —
     // so it wraps nothing here and has to stand alone or it disappears.
