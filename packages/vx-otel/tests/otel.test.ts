@@ -1899,7 +1899,12 @@ describe('the sink, past its sweep', () => {
       startedAt: 900,
     } as TelemetryRecord)
 
-  it('one logs request stays under 4 MiB however the tails escape (the bug)', async () => {
+  // F-53: the limit is BYTES; an ASCII escape is one byte a character, so a
+  // cut that counted characters passed. `€` is three.
+  it.each([
+    ['\x01', 'an escaped control'],
+    ['€', 'a multibyte character'],
+  ])('one logs request stays under 4 MiB however the tails escape (%#: %s)', async (ch) => {
     const sizes: number[] = []
     const { cfg } = mkConfig({
       tracesEnabled: false,
@@ -1924,7 +1929,7 @@ describe('the sink, past its sweep', () => {
         runId: 'run-1',
         taskId: t.taskId,
         stream: 'stdout',
-        chunk: '\x01'.repeat(128 * 1024),
+        chunk: ch.repeat(128 * 1024),
         ts: 902,
       } as TelemetryRecord)
       sink.onRecord({ v: 1, kind: 'task.end', runId: 'run-1', ts: 903, ...t } as TelemetryRecord)
