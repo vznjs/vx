@@ -4530,6 +4530,44 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
         : JSON.parse(out)
     }
 
+    it('an strace before 5.3 traces without --seccomp-bpf, one after with it', async () => {
+      // `--seccomp-bpf` came in strace 5.3; an older one refuses the flag.
+      const real = Bun.which('strace')!
+      const src = path.resolve(import.meta.dir, '..', 'src', 'exec', 'sandbox-runtime.ts')
+      const seccomp = async (version: string): Promise<unknown> => {
+        const bin = path.join(dir, `bin-${version}`)
+        await mkdir(bin)
+        await writeFile(
+          path.join(bin, 'strace'),
+          `#!/bin/sh\n[ "$1" = --version ] && { echo "strace -- version ${version}"; exit 0; }\nexec ${real} "$@"\n`,
+          { mode: 0o755 },
+        )
+        const script = [
+          `import { initSandbox, resetSandbox, runSandboxed, resolveSandboxConfig } from ${JSON.stringify(src)}`,
+          `const forms = []`,
+          `const spawn = Bun.spawn`,
+          `Bun.spawn = (cmd, ...rest) => { if (Array.isArray(cmd) && cmd[0].endsWith('/strace') && cmd.includes('-o')) forms.push(cmd.includes('--seccomp-bpf')); return spawn(cmd, ...rest) }`,
+          `await initSandbox()`,
+          `const dir = ${JSON.stringify(dir)}`,
+          `await runSandboxed({ command: 'true', cwd: dir, env: process.env, baseAllowRead: [dir], baseDenyRead: [], reportWithin: dir, reportLinked: [], config: resolveSandboxConfig({}, dir) })`,
+          `console.log(JSON.stringify(forms))`,
+          `await resetSandbox()`,
+        ].join('\n')
+        const p = Bun.spawnSync({
+          cmd: [process.execPath, '-e', script],
+          env: { ...process.env, PATH: `${bin}:${process.env['PATH']}` },
+          stdout: 'pipe',
+          stderr: 'pipe',
+        })
+        const out = p.stdout.toString().trim()
+        return out === ''
+          ? { exit: p.exitCode, stderr: p.stderr.toString().slice(0, 400) }
+          : JSON.parse(out)
+      }
+      // The probe's own trace carries the form the tasks get.
+      expect([await seccomp('5.2'), await seccomp('6.1')]).toEqual([[false], [true]])
+    })
+
     it('a strace whose --version fails is not used, and is asked once', async () => {
       const bin = path.join(dir, 'bin')
       await mkdir(bin)

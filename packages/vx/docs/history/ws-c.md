@@ -526,6 +526,17 @@ whose edit left the key unchanged), so with `cache.inputs.tasks:
 ['^*']` the sandbox grants a link the key does not answer for; the fix
 walks `keyedDeps` plus each `excludedUpstream` node's deps.
 
+## C-40: under --exclude-dependencies, K(T) is what the key folds
+
+`keyedProjects` walked `node.deps`: it counted an order-only edge the key
+never folds and missed the dropped dependencies it does (C-36's probe:
+`app#test` with `gen` excluded listed `ui`, whose edit leaves its key
+unchanged), so a sandboxed task that saves was granted a sibling link the
+key does not answer for. It now walks `keyedDeps` plus
+`excludedUpstream`, and below a dropped task the run's `keyOnly` map,
+which `PreparedRun` carries now (contract pin regenerated). Rows in
+`keyed-projects.test.ts`, one per half, red with the old walk.
+
 ## Leads for other streams
 
 - **E:** a plugin command's plain `throw` (`commands.probe.run` throwing

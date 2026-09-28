@@ -64,6 +64,15 @@
     invocation line it and telemetry carry counts what follows `--`
     instead of quoting it (item 1057; the CLI passes no line of its own).
     No bug.
+14. The local cache directory. `cacheDir` may name a shared directory
+    (the orphan sweep's name rule says so), and whoever can write there is
+    trusted as a remote is; the default is the workspace's `.vx`, made
+    under the user's umask, and an artifact is as readable as the `dist/`
+    it came from. No bug.
+15. Every way an artifact enters. Restore (`extractArtifactStream`) and
+    ingest (`scanArtifact`) are the only two, and both check the `.vx-sum`
+    (L-19); vx-reapi writes outputs from CAS blobs it digest-checks (L-3).
+    No bug.
 
 ## Items
 

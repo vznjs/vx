@@ -382,3 +382,12 @@ packages/core`) selects the dependent whose `file:../lib` spec named
   npm accepts `.` in `workspaces` (it links the root into its own
   `node_modules`); `!.` normalizes to an empty negative and excludes
   nothing, so the draft's promise for it was cut.
+- **D-41** `--affected` left a member out when a helper two hops from
+  its config changed, in any workspace whose root is a project: the
+  root owns every file no member owns, and the config-import walk
+  stopped at the first root-owned file, a limit a row pinned as
+  deliberate. D-39 made that shape every root with a `vx.config`, so the
+  walk now descends through the root project's own files as through
+  unowned ones (the same shared tooling); a member's files still stop
+  it. Row: `tests/affected.test.ts` › "selects the importer two hops
+  out, through files the root owns (D-41)", the old limit row flipped.

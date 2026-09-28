@@ -80,13 +80,16 @@ export class GithubSummarySink implements TelemetrySink {
       // (F-42): the room is what is left. The check-run payload has its own,
       // smaller cap and is clamped where it is built.
       const used = await this.sizeOf(this.file)
-      const page = clampJobSummary(markdown, MAX_JOB_SUMMARY_BYTES - used)
+      // After another writer the page starts on its own line: one that left
+      // no final newline ran vx's heading into its paragraph (F-51).
+      const lead = used > 0 ? '\n' : ''
+      const page = clampJobSummary(markdown, MAX_JOB_SUMMARY_BYTES - used - lead.length)
       if (page === '') {
         this.warn(
           `vx-github: ${this.file} already holds ${used} bytes of GitHub's 1 MiB job summary cap — no room for vx's page`,
         )
       } else {
-        await this.append(this.file, page)
+        await this.append(this.file, lead + page)
       }
     } catch (err) {
       this.warn(

@@ -6,7 +6,7 @@
 // selection the hash path applies (`selectFoldedDeps`).
 
 import { isGroupTask, type TaskNode } from '../graph/index.js'
-import { selectFoldedDeps, type FoldCandidate } from './upstream.js'
+import { keyedDeps, selectFoldedDeps, type FoldCandidate } from './upstream.js'
 
 /**
  * A run's keyed-set lookup: for a task, the directories of every project
@@ -31,7 +31,9 @@ import { selectFoldedDeps, type FoldCandidate } from './upstream.js'
  */
 export function keyedProjects(
   nodes: ReadonlyMap<string, TaskNode>,
+  keyOnly: ReadonlyMap<string, TaskNode> = new Map(),
 ): (node: TaskNode) => ReadonlySet<string> {
+  const nodeOf = (id: string): TaskNode => nodes.get(id) ?? keyOnly.get(id)!
   const below = new Map<string, ReadonlySet<string>>()
   // Post-order on an explicit stack: a fold is as deep as the graph, and a
   // recursion per edge threw `RangeError` at the 50,000 the builder takes
@@ -47,7 +49,7 @@ export function keyedProjects(
         continue
       }
       if (deps === undefined) {
-        frame[1] = folded(node, nodes)
+        frame[1] = folded(node, nodeOf)
         for (const { node: dep } of frame[1]) if (!below.has(dep.id)) stack.push([dep, undefined])
         continue
       }
@@ -63,11 +65,22 @@ export function keyedProjects(
   }
 }
 
-/** The dependencies `node`'s key folds, per the hash path's rules above. */
-function folded(node: TaskNode, nodes: ReadonlyMap<string, TaskNode>): FoldCandidate[] {
+/**
+ * The dependencies `node`'s key folds, per the hash path's rules above, as
+ * `keyUpstream` hands them to the key: the scheduled ones less the edges
+ * `--exclude-dependencies` left for order alone, plus the dropped ones it
+ * keys all the same (`excludedUpstream`), whose own dependencies the walk
+ * reads from the run's `keyOnly` map. `node.deps` held the order-only
+ * edges and lacked the dropped ones: the sandbox granted a sibling the key
+ * does not answer for.
+ */
+function folded(node: TaskNode, nodeOf: (id: string) => TaskNode): FoldCandidate[] {
   const candidates: FoldCandidate[] = []
-  for (const id of node.deps) {
-    const dep = nodes.get(id)!
+  for (const id of keyedDeps(node)) {
+    const dep = nodeOf(id)
+    candidates.push({ node: dep, unit: foldUnit(dep) })
+  }
+  for (const { node: dep } of node.excludedUpstream ?? []) {
     candidates.push({ node: dep, unit: foldUnit(dep) })
   }
   if (isGroupTask(node)) return candidates

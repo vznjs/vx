@@ -258,6 +258,30 @@ describe('github() activation', () => {
     }
   })
 
+  // F-51: a step writer that left no final newline (`printf 'coverage 91%'`)
+  // ran vx's heading into its paragraph. The page starts on its own line.
+  it('the page starts on a new line after another writer; an empty file gets none', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'vx-gh-sum-'))
+    try {
+      const run = async (before: string): Promise<string> => {
+        const file = path.join(dir, `s-${before.length}.md`)
+        await writeFile(file, before)
+        const sink = github({ summaryFile: file, checks: false }).telemetry!(
+          ctx,
+        ) as GithubSummarySink
+        sink.onRunSummary!(summary([task({})]))
+        await sink.flush!()
+        return (await readFile(file, 'utf8')).split('\n').slice(0, 2).join('\n')
+      }
+      expect([await run('coverage 91%'), await run('')]).toEqual([
+        'coverage 91%\n## ✅ vx run',
+        '## ✅ vx run\n',
+      ])
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
   it('CONTROL: an ordinary summary is appended whole, with no truncation tell', async () => {
     const writes: string[] = []
     const sink = github({
@@ -670,7 +694,7 @@ describe('every output the vx-github sweep found unheld', () => {
   it.each([
     [999, '999ms'],
     [1000, '1.0s'],
-    [59_999, '60.0s'],
+    [59_999, '1m 0s'],
     [60_000, '1m 0s'],
     [125_000, '2m 5s'],
   ])('a duration of %d ms reads %s', (ms, shown) => {
@@ -934,6 +958,26 @@ describe('what the F-6 sweep found unheld', () => {
 
   it('a duration rounds before it splits: 119.7 s is 2m 0s, not 1m 60s', () => {
     expect([119_700, 61_000, 3_599_600].map(durationOf)).toEqual(['2m 0s', '1m 1s', '60m 0s'])
+  })
+
+  // F-51: each tier rounded its own way, so a duration that rounds up to the
+  // next tier printed in the one below: 59.96 s as `60.0s`, 999.6 ms as `1000ms`.
+  it('a duration that rounds up to the next tier prints in it', () => {
+    expect([59_960, 999.6, 59_940, 999.4].map(durationOf)).toEqual([
+      '1m 0s',
+      '1.0s',
+      '59.9s',
+      '999ms',
+    ])
+  })
+
+  // F-51: CommonMark reads a lone CR as a line ending; the footer's code
+  // span kept it, and the span broke across two lines.
+  it('a CR in the command is a space in the footer, like a newline', () => {
+    const md = renderJobSummary(
+      summary([task({})], { run: { ...RUN, command: 'vx run a\rb\r\nc' } }),
+    )
+    expect(md).toContain('· `vx run a b c` · ')
   })
 
   it('the page ends in a newline, so a second run in the step starts its own heading', () => {

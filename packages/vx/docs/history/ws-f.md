@@ -51,6 +51,10 @@ started_at DESC LIMIT n`, which orders each task by an arbitrary run:
 
 ## Leads for other streams
 
+- C: `orchestrator/run-report.ts`'s table-cell escape replaces `\r?\n`
+  only, so a lone CR (a CommonMark line ending) in a task id ends a
+  markdown table row early, vx-github's rows included; `/\r\n?|\n/`
+  covers it (F-51 review).
 - C: core's telemetry flush deadline (`settleWithin`) bounds `run()` but
   passes the sink no signal, so a sink cannot stop its own work when the
   deadline passes; the pending export keeps the process alive.
@@ -515,3 +519,11 @@ once and those bytes hashed and sent. A large one keeps its two
 streamed passes. Row red without the fix. The cache path's review
 found no wrong-bytes hit (upload before the AC entry, streamed and
 inline hits held to size and digest, namespaced keys).
+
+F-51. vx-github's summary broke in three places. A step writer that
+left no final newline (`printf 'coverage 91%'`) ran vx's heading into
+its paragraph; after another writer the page now starts on its own
+line. A duration picked its tier before rounding, so 59.96 s printed
+`60.0s` and 999.6 ms `1000ms` (a sweep row had pinned `60.0s` for
+59 999 ms; corrected in place). And the footer's code span kept a lone
+CR, a CommonMark line ending. Rows red without each fix.

@@ -632,3 +632,18 @@ among them; `atOrUnder` (`sandbox-paths.ts`) is the one copy, and
   Unheld: an strace before 5.3 still given the seccomp form; detection
   is memoized per process and the wrap does not carry the trace, so a
   row needs `runSandboxed` in a subprocess with a fake strace.
+
+B-32. The strace-version branch B-31's sweep left unheld: an strace
+before 5.3 was trusted with `--seccomp-bpf`, which it refuses, and no row
+saw which form the detection picked.
+
+- Row: `sandbox-runtime.unsafe.test.ts` › an strace before 5.3 traces
+  without --seccomp-bpf, one after with it (a fake strace reports 5.2
+  or 6.1; the probe's own trace carries the form; red with the form
+  fixed either way).
+- Measured, nothing to cut: a sandboxed miss's request build is ~5 ms
+  (`linkedDeps` 4.4 avg; the config, walls and placeholders under 1),
+  28 lint tasks at `--concurrency 1`. The ~2 s `miss: build request`
+  sum at 4 workers is the one arm (~200 ms) every waiting worker
+  awaits. The root `node_modules` scan repeats per task but may not be
+  memoized: an unsandboxed task can write there (principle 9's limit).

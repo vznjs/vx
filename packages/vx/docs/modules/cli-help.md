@@ -72,8 +72,8 @@ plugin.
 When adding / changing a flag in `cli/run.ts` or `cli/cache.ts`,
 update the help text here too. `tests/cli-doc-drift.test.ts` holds
 the help to the parser: every flag `parseRunArgs` accepts appears in
-a `(for run)` section, so a flag added to the parser and not to the
-text fails the gate.
+`help.ts`, so a flag added to the parser and not to the text fails the
+gate.
 
 ## Tests
 

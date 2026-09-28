@@ -1494,6 +1494,7 @@ describe('parseRunArgs', () => {
     expect(flagsIn(verbHelpText('cache'))).toEqual([
       '--cache-dir',
       '--dry-run',
+      '--format',
       '--max-size',
       '--older-than',
     ])
