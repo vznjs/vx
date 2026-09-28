@@ -184,6 +184,7 @@ the registry, D-28) are never listed. Nor is a self-reference: a
 specifier naming the package the config sits in, whose nearest
 `package.json` has `exports`, resolves inside it (D-29).
 Nor is a specifier the nearest `tsconfig.json` (else `jsconfig.json`) maps,
-through `paths` or `baseUrl` with relative `extends` followed, to a file on
+through `paths` or `baseUrl` with a relative string `extends` followed (Bun
+follows no array `extends`, D-30), to a file on
 disk: Bun loads that file and never reaches the registry (D-26).
 `tests/config-missing-import.test.ts`.

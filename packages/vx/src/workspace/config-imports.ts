@@ -171,10 +171,11 @@ function compilerPaths(file: string, memo?: TsconfigMemo, depth = 0): CompilerPa
   if (typeof json !== 'object' || json === null) return {}
   const dir = path.dirname(file)
   const out: CompilerPaths = {}
+  // A string only: Bun follows no array `extends` (TS 5's form), and an
+  // alias only an array maps went to the registry (D-30).
   const ext = (json as { extends?: unknown }).extends
-  for (const base of typeof ext === 'string' ? [ext] : Array.isArray(ext) ? ext : []) {
-    if (depth > 8 || typeof base !== 'string' || !base.startsWith('.')) continue
-    const f = path.resolve(dir, base)
+  if (typeof ext === 'string' && ext.startsWith('.') && depth <= 8) {
+    const f = path.resolve(dir, ext)
     Object.assign(out, compilerPaths(f.endsWith('.json') ? f : f + '.json', memo, depth + 1))
   }
   const opts = (json as { compilerOptions?: unknown }).compilerOptions

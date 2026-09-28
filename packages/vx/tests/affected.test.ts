@@ -1722,6 +1722,23 @@ describe('affectedProjects: config import closures', () => {
     const out = await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects })
     expect([...out].sort()).toEqual(['app', 'lib'])
   })
+
+  it('PIN: an alias through a symlinked dir names the file git reports (D-30)', async () => {
+    // Bun loads the alias target by its real path, and the diff names the
+    // real path; the edge must too, or the importer is missed.
+    await symlink('shared', path.join(root, 'linked'))
+    await writeFile(
+      path.join(root, 'tsconfig.json'),
+      '{ "compilerOptions": { "paths": { "@l/*": ["./linked/*"] } } }',
+    )
+    await writeFile(
+      path.join(root, 'packages/lib/vx.config.mjs'),
+      `import { B } from '@l/b.mjs'\nexport default { tasks: {} }\n`,
+    )
+    await git(root, 'add', '-A')
+    await git(root, 'commit', '-q', '-m', 'lib imports b through a link')
+    expect(await editThenSelect('shared/b.mjs', 'export const B = 2\n')).toEqual(['lib'])
+  })
 })
 
 // The root `"."` member is a supported (and, in this repo, load-bearing)

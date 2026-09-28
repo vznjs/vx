@@ -138,6 +138,64 @@ describe('unprovidedBareImports', () => {
     expect(unprovidedBareImports(src, dir, 'ts')).toEqual([])
   })
 
+  it('an array `extends` is not followed: Bun reads none of it (D-30)', async () => {
+    // Bun follows only a string `extends`; letting an alias only an array
+    // maps through sent Bun to the registry (strace: 30 connects).
+    await mkdir(path.join(dir, 'shared'), { recursive: true })
+    await writeFile(path.join(dir, 'shared', 't.ts'), 'export const x = 1\n')
+    await writeFile(
+      path.join(dir, 'base.json'),
+      '{ "compilerOptions": { "paths": { "@a/*": ["./shared/*"] } } }',
+    )
+    const app = path.join(dir, 'app')
+    await mkdir(app)
+    await writeFile(path.join(app, 'tsconfig.json'), '{ "extends": ["../base.json"] }')
+    expect(unprovidedBareImports("import a from '@a/t'", app, 'ts')).toEqual(['@a/t'])
+    await writeFile(path.join(app, 'tsconfig.json'), '{ "extends": "../base.json" }')
+    expect(unprovidedBareImports("import a from '@a/t'", app, 'ts')).toEqual([])
+  })
+
+  it('a tsconfig alias maps as Bun maps it, key and base alike (D-30)', async () => {
+    // Each case below is one Bun resolves (or refuses) that way, probed:
+    // a sweep of the D-26 rules found each unheld.
+    await mkdir(path.join(dir, 'shared'), { recursive: true })
+    await writeFile(path.join(dir, 'shared', 't.ts'), 'export const x = 1\n')
+    const app = path.join(dir, 'app')
+    await mkdir(app)
+    const at = async (tsconfig: string, spec: string): Promise<string[]> => {
+      await writeFile(path.join(app, 'tsconfig.json'), tsconfig)
+      return unprovidedBareImports(`import a from '${spec}'`, app, 'ts')
+    }
+    // `paths` targets resolve against `baseUrl` when it is set.
+    const based = '{ "compilerOptions": { "baseUrl": "../shared", "paths": { "@c/*": ["./*"] } } }'
+    expect(await at(based, '@c/t')).toEqual([])
+    // Inherited `paths` resolve against the child's `baseUrl`: Bun misses.
+    await writeFile(
+      path.join(dir, 'base.json'),
+      '{ "compilerOptions": { "paths": { "@a/*": ["./shared/*"] } } }',
+    )
+    const inherits = '{ "extends": "../base.json", "compilerOptions": { "baseUrl": "../shared" } }'
+    expect(await at(inherits, '@a/t')).toEqual(['@a/t'])
+    // A key matches by its head AND its tail, never overlapping.
+    const keys =
+      '{ "compilerOptions": { "paths": { "@s/*": ["../shared/*"], "@t/*-x": ["../shared/*"], "ab*ba": ["../shared/t.ts"] } } }'
+    expect(await at(keys, '@s/t')).toEqual([])
+    expect(await at(keys, 'xx/t')).toEqual(['xx/t'])
+    expect(await at(keys, '@t/t-y')).toEqual(['@t/t-y'])
+    expect(await at(keys, 'aba')).toEqual(['aba'])
+    expect(await at(keys, 'abba')).toEqual([])
+    // A target that is a directory with no index is no file: Bun downloads.
+    await mkdir(path.join(dir, 'shared', 'empty'))
+    expect(await at(keys, '@s/empty')).toEqual(['@s/empty'])
+    // A jsconfig.json stands in when no tsconfig.json sits beside it.
+    await rm(path.join(app, 'tsconfig.json'))
+    await writeFile(
+      path.join(app, 'jsconfig.json'),
+      '{ "compilerOptions": { "paths": { "@j/*": ["../shared/*"] } } }',
+    )
+    expect(unprovidedBareImports("import a from '@j/t'", app, 'ts')).toEqual([])
+  })
+
   it('a require() bare import reaches the scan — the fast path agrees with it', async () => {
     // `hasBareCandidate` is a textual pre-filter and a source it rejects
     // is never scanned at all, so its regex must not be narrower than
