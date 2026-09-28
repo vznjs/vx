@@ -15,6 +15,25 @@ import { executablePath, procfsIsOwn } from '../util/index.js'
 
 export type Child = ReturnType<typeof Bun.spawn>
 
+const WIN32 = process.platform === 'win32'
+
+/**
+ * Windows has no process groups (`kill(-pid)` is ESRCH, which read as
+ * "gone" and killed nothing) and no polite signal a console task hears
+ * from another process, so every stop is `taskkill /T /F`: the child and
+ * every descendant it still parents. A grandchild whose parent already
+ * exited is out of the tree's reach (docs/design/windows-2026-09.md).
+ */
+function killTreeWin32(child: Child): void {
+  try {
+    Bun.spawn(['taskkill', '/T', '/F', '/PID', String(child.pid)], {
+      stdio: ['ignore', 'ignore', 'ignore'],
+    })
+  } catch {
+    child.kill()
+  }
+}
+
 /**
  * A child whose polite signals go down a pipe instead of to its group: a
  * Linux sandboxed task. The group there is bwrap's, whose monitor dies of
@@ -208,6 +227,7 @@ export function killTree(child: Child, signal: 'SIGINT' | 'SIGTERM' | 'SIGKILL')
   // A pid of 0 would name OUR group (kill(0)): a child that never
   // spawned has nothing to kill.
   if (!(child.pid > 0) || goneGroups.has(child)) return
+  if (WIN32) return killTreeWin32(child)
   const fd = signal === 'SIGKILL' ? undefined : channels.get(child)
   if (fd !== undefined) {
     try {
@@ -277,6 +297,8 @@ export async function untilGroupsGone(
  */
 function groupAlive(child: Child): boolean {
   if (!(child.pid > 0) || goneGroups.has(child)) return false
+  // No groups: the tree kill is `taskkill /T`, and the leader is what is left to ask.
+  if (WIN32) return child.exitCode === null && child.signalCode === null
   try {
     process.kill(-child.pid, 0)
   } catch (err) {
