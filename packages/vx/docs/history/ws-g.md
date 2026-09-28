@@ -360,3 +360,10 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   (which shadows it, and Turbo refuses) is not keyed as an absent one.
   Two are equivalent: the dirs list and the package name are already
   in the manifests' part of the key.
+- **G-30.** A sweep of G-20's reservation checks in
+  `vx-schedule-history` (10 mutants): 7 caught, 3 survived. Two were
+  live and are now held by the G-20 row: a NaN `cpus` beside a valid
+  `memory` reserves no cores (the row had only a negative one, which
+  admits either way), and a `null` entry is neither a crash nor a
+  warning. `{}` for "no reservations declared" is equivalent to
+  `undefined`.
