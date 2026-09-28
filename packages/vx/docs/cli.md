@@ -423,7 +423,8 @@ was declared.
 **Optional-value flags take their value with `=` only.** `--affected`,
 `--exclude-dependencies`, `--dry`, `--graph`, `--summarize`, `--profile`,
 and `--report` are all valid bare, so a following word is
-always read as a task name — `vx run --affected build` means "run
+read as a task name (a `--graph` word ending `.svg`, `.png`, `.json`
+and the like is refused, see § Turbo and Nx flags) — `vx run --affected build` means "run
 `build`, affected scope", and there is no way to tell that apart from
 "`build` is the git base". Write `--graph=out.dot` or
 `--affected=origin/main`. Getting it wrong is loud, not silent: the value
