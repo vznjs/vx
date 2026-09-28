@@ -176,6 +176,11 @@
   names masked whatever they are called, in every place L-11 masks.
   Supervisor backlog 1. Rows in `secret-mask.test.ts` and
   `config-schema-refusals.test.ts`.
+- L-16. `fix(vx-lockfile)`: fuzzing the lockfile parsers found no hang
+  and no stack, but a malformed bun.lock refused on the key path as a bare
+  "JSONC Parse error": its patch files are read before the digest, outside
+  the wrapper that names the file and the install that fixes it. Both
+  reads go through one wrapper now. Row in `refusal-message.test.ts`.
 
 ## Leads for other streams
 
