@@ -108,6 +108,7 @@ function isCertificateRefusal(err: unknown): boolean {
 }
 
 const RETRY_DELAYS_MS = [200, 800] as const
+const MAX_TIMER_MS = 2 ** 31 - 1
 const MAX_RETRY_AFTER_MS = 2000
 const RETRYABLE_STATUS = new Set([429, 502, 503, 504])
 
@@ -149,7 +150,9 @@ async function postOnce(
   tls: OtlpTls | undefined,
 ): Promise<void> {
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  // A timer past 2^31-1 ms fires after 1 ms: OTEL_EXPORTER_OTLP_TIMEOUT=1e10
+  // aborted every export at once (F-56). Held to the longest a timer waits.
+  const timer = setTimeout(() => controller.abort(), Math.min(timeoutMs, MAX_TIMER_MS))
   // Core's flush deadline ends the POST too: `timeoutMs` (15 s by
   // default) alone held the process that long after the run (item 1055).
   const onDeadline = (): void => controller.abort()

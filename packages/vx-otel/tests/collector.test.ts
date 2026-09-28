@@ -541,3 +541,62 @@ describe('the sink, as its second sweep found it unheld', () => {
     ])
   })
 })
+
+// F-56: from the plugin's sweep.
+describe('the plugin and transport, as the plugin sweep found them', () => {
+  it('a timeout past 2^31-1 ms waits for the collector, not 1 ms', async () => {
+    // A timer past 2^31-1 ms fires after 1 ms: OTEL_EXPORTER_OTLP_TIMEOUT=1e10
+    // aborted every export at once.
+    const slow = Bun.serve({
+      port: 0,
+      fetch: async () => {
+        await Bun.sleep(100)
+        return new Response('{}')
+      },
+    })
+    try {
+      const warnings: string[] = []
+      const sink = new OtelSink({
+        tracesUrl: `http://127.0.0.1:${slow.port}/v1/traces`,
+        metricsUrl: '',
+        logsUrl: '',
+        serviceName: 'vx',
+        headers: {},
+        metricsEnabled: false,
+        logsEnabled: false,
+        timeoutMs: 1e10,
+        warn: (m) => warnings.push(m),
+      })
+      driveOneTask(sink)
+      await sink.flush()
+      expect(warnings).toEqual([])
+    } finally {
+      await slow.stop(true)
+    }
+  })
+
+  it('otel() reads process.env and warns through the context', async () => {
+    const { otel } = await import('../src/plugin.js')
+    const keys = ['OTEL_EXPORTER_OTLP_ENDPOINT', 'OTEL_EXPORTER_OTLP_COMPRESSION'] as const
+    const prev = keys.map((k) => process.env[k])
+    process.env['OTEL_EXPORTER_OTLP_ENDPOINT'] = url
+    process.env['OTEL_EXPORTER_OTLP_COMPRESSION'] = 'zstd'
+    try {
+      const warns: string[] = []
+      const sink = otel().telemetry!({
+        workspaceRoot: '/w',
+        cacheDir: '/c',
+        warn: (m: string) => warns.push(m),
+      } as never)
+      expect([sink !== undefined, warns]).toEqual([
+        true,
+        ['[vx-otel] compression "zstd" is not gzip or none — sent uncompressed'],
+      ])
+    } finally {
+      keys.forEach((k, i) => {
+        if (prev[i] === undefined) delete process.env[k]
+        else process.env[k] = prev[i]
+      })
+    }
+  })
+})
