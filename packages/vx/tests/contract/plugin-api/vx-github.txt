@@ -41,4 +41,5 @@ export interface GithubPluginOptions {
   checkName?: string
   append?: (file: string, markdown: string) => Promise<void>
   fetchFn?: FetchFn
+  sizeOf?: (file: string) => Promise<number>
 }
