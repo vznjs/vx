@@ -198,9 +198,10 @@ digest not asked for is dropped.
 
 A verified blob still lands where the server's ActionResult says, so its
 paths are held to the workspace: an output path or Tree name that climbs
-out (`..`, absolute), a link whose target leaves the workspace, and a
+out (`..`, absolute), a link whose target leaves the workspace (read as
+the OS follows it, through the links the result placed), and a
 directory that resolves out through a link are refused before anything
-is written; a link standing at an output file is replaced, never written
+is written through them; a link standing at an output file is replaced, never written
 through; a Tree file's setuid and setgid bits are dropped.
 
 ## Artifacts stream
