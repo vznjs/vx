@@ -46,14 +46,18 @@ afterEach(() => {
   rmSync(root, { recursive: true, force: true })
 })
 
-/** Write `AAAA`, hash it at `stamp + 120 ms`, rewrite it `BBBB`, hash again. */
-async function rewriteInOneSecond(hash: (f: string) => Promise<string>): Promise<boolean> {
+/** Write `AAAA`, hash it at `stamp + at` ms, rewrite it `BBBB`, hash again. */
+async function rewriteInOneSecond(
+  hash: (f: string) => Promise<string>,
+  at = 120,
+  again = 700,
+): Promise<boolean> {
   const f = path.join(root, 'x.txt')
   writeFileSync(f, 'AAAA')
-  setSystemTime(new Date(stamp + 120))
+  setSystemTime(new Date(stamp + at))
   const first = await hash(f)
   writeFileSync(f, 'BBBB')
-  setSystemTime(new Date(stamp + 700))
+  setSystemTime(new Date(stamp + again))
   const second = await hash(f)
   return second !== first
 }
@@ -74,6 +78,22 @@ describe('a whole-second stamp', () => {
     expect(await rewriteInOneSecond(batch)).toBe(true)
     stamp = SECOND + 7
     expect(await rewriteInOneSecond(batch)).toBe(false)
+  })
+
+  // FAT32 keeps even seconds (2 s): a write at 12:00:01.800 is stamped
+  // 12:00:00, so a hash 1.2 s after the stamp passed a one-second widening
+  // and a same-size rewrite later in those two seconds kept every field.
+  it('keeps a file written 1.2 s before its hash out of the memo on an even second', async () => {
+    const one = (f: string) => cache.hashFile(f)
+    const batch = async (f: string) => (await cache.hashFiles([f])).get(f)!
+    stamp = SECOND
+    expect(SECOND % 2000).toBe(0)
+    expect(await rewriteInOneSecond(one, 1200, 1800)).toBe(true)
+    expect(await rewriteInOneSecond(batch, 1200, 1800)).toBe(true)
+    // Control: an odd second at the same age is past its window; FAT never
+    // writes one, and ext3's second ended 200 ms before the hash.
+    stamp = SECOND + 1000
+    expect(await rewriteInOneSecond(one, 1200, 1800)).toBe(false)
   })
 
   it('makes a file stamped in the second of its fact a suspect of the re-check', async () => {
