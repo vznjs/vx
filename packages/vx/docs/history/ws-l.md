@@ -120,6 +120,14 @@
 29. A named pipe in an input glob or as an output. Input hashing skips it
     (a run with a FIFO under `src/**` finished at once), and the save
     refuses an output that is not a regular file. No bug.
+30. A config that never finishes. The worker path terminates its thread at
+    the budget, but the first, in-process load races the import against a
+    timer, which a synchronous loop never lets fire: `while (true) {}` at a
+    config's top level hung `vx run` silently (probed, 45 s). A config is
+    trusted code, so a lead for D, not a security fix.
+31. vx-reapi's token and TLS. gRPC follows no redirect; its headers go to
+    the configured endpoint only, over TLS per the scheme or `tls`
+    (audit 10). No bug.
 
 ## Items
 
@@ -371,6 +379,11 @@
   config that reads `process.env` derived different keys (no hit, even
   without wiping `.vx`); the same config through the CLI hits. A literal
   config hits in-process. Unexplained; an embedder of `run()` would miss.
+- D (config), from audit 30: the in-process first load's deadline
+  (`project-loader.ts`, D-66) cannot fire on a synchronous loop, so
+  `while (true) {}` in a config hangs `vx run` with no word; the worker
+  path's `terminate` does not. Moving the first load off the main thread
+  is a perf trade to measure.
 - migrate: in a compiled vx, `loadLageConfig` spawns `process.execPath`,
   which is the vx binary, so `-e` prints `vx: unknown command: -e` and
   `lage()` fails. Probed: `BUN_BE_BUN=1` in the child's env runs it as
