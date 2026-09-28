@@ -68,6 +68,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - uses: oven-sh/setup-bun@v2 # the runner has no Bun
       - run: npm install -g @vzn/vx
       - run: bun install --frozen-lockfile
       - run: >

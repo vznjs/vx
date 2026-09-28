@@ -12,8 +12,11 @@ that binary.
 
 ## Install
 
-1. Install it at the workspace root: `npm install -D @vzn/vx`.
-2. Run `vx init`. It writes a `vx.config.ts` per package from its scripts.
+1. Install it at the workspace root: `npm install -D @vzn/vx` (in a pnpm
+   workspace, `pnpm add -D @vzn/vx`: npm refuses `workspace:*`).
+2. Run `npx vx init`. It writes a `vx.config.ts` per package from its
+   scripts, and a `vx.workspace.ts`. No task gets a `cache` block, so
+   nothing is cached yet: add the one each `build`'s TODO shows.
 3. Or write one by hand, beside a package's `package.json`.
 
 ## Config
@@ -45,7 +48,7 @@ export default defineProject({
 
 ```bash
 vx run build --all        # every package, in dependency order
-vx run build              # ⇢ success local — a hit that restored dist/
+vx run build              # ⇢ success local — a hit; restores dist/ if deleted
 vx run test --affected    # what changed, and its dependents
 vx run build --all --dry  # the plan; runs nothing
 vx run build --graph      # the task graph as Graphviz DOT
@@ -72,7 +75,7 @@ or Nx repo as it is: [Migrate](../guides/migrate/).
 ## Common problems
 
 - **Only one package ran.** `vx run build` runs the package you are in. Add `--all`.
-- **A config cannot import `@vzn/vx`.** Add it as a devDependency, even with the release binary.
+- **The editor cannot resolve `@vzn/vx`.** Add it as a devDependency. vx itself runs a config without it.
 - **`vx requires git`.** Run `git init` at the workspace root.
 - **A package has no `vx.config.ts`.** It has no tasks, and `^build` reaches through it to the nearest package that has one.
 - **A package has nothing to build, but others depend on it.** Give it `build: { dependsOn: [] }`, so their `^build` waits on nothing.
