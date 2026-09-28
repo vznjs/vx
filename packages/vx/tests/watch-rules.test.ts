@@ -11,15 +11,12 @@ import fs, { chmodSync, existsSync, statSync } from 'node:fs'
 import os from 'node:os'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'bun:test'
 import path from 'node:path'
+import { memberEntries, pendingAfterCycle, sweepConfigs, watchCmd } from '../src/cli/watch.js'
 import {
   isIgnoredWatchPath,
   makeRootEventFilter,
   makeWatchIgnore,
-  memberEntries,
-  pendingAfterCycle,
-  sweepConfigs,
-  watchCmd,
-} from '../src/cli/watch.js'
+} from '../src/cli/watch-filter.js'
 import {
   armWatcher,
   fsClockNow,
@@ -328,8 +325,10 @@ describe('the root-file trigger set does not drift from the fingerprint', () => 
     // key folds it, `--affected` widens on it, and `vx watch` silently never
     // re-runs on it. The loop looks alive while ignoring the one edit that
     // invalidates the entire workspace.
-    const src = await Bun.file(path.join(import.meta.dir, '..', 'src', 'cli', 'watch.ts')).text()
-    expect(src).toContain('WORKSPACE_FINGERPRINT_FILES')
+    const read = (f: string) => Bun.file(path.join(import.meta.dir, '..', 'src', 'cli', f)).text()
+    // The filter reads the constant; the loop must not hand-roll a copy either.
+    expect(await read('watch-filter.ts')).toContain('WORKSPACE_FINGERPRINT_FILES')
+    const src = (await read('watch.ts')) + (await read('watch-filter.ts'))
     // No hand-rolled literals: re-adding the list fails HERE rather than
     // silently reintroducing the drift — and this guard is not redundant with
     // the lockfile e2e in cli.test.ts. Measured: with the hand-rolled list
