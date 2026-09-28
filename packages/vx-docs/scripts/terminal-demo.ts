@@ -1,10 +1,10 @@
 #!/usr/bin/env bun
 // The terminal demo on the README and the landing: examples/basic run under
 // this checkout's vx, cold then warm, its real colored output drawn as an
-// SVG. Nothing in the picture is typed by hand; `--check` re-runs it and
-// fails when anything but a timing or the worker count differs from the
-// committed file (core's tests/examples.unsafe.test.ts runs the check, the
-// suite that may read examples/ and spawn git).
+// SVG that prints line by line. Nothing in the picture is typed by hand;
+// `--check` re-runs it and fails when anything but a timing or the worker
+// count differs from the committed file (core's tests/examples.unsafe.test.ts
+// runs the check, the suite that may read examples/ and spawn git).
 //
 //   bun packages/vx-docs/scripts/terminal-demo.ts          # rewrite public/demo.svg
 //   bun packages/vx-docs/scripts/terminal-demo.ts --check  # exit 1 if it drifted
@@ -65,13 +65,23 @@ function parseAnsi(line: string): Span[] {
 const esc = (s: string): string =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 
+// Lines appear one after another, as a terminal prints them. Each line is
+// hidden only until its delay (`backwards` fill), so a renderer that runs
+// no animation, or asks for reduced motion, shows the whole picture.
+const STEP = 0.12
+// The pause after a typed command, before its output starts.
+const RUN = 0.6
+
 function render(lines: Span[][]): string {
   const lineH = 19
   const top = 44
   const W = 760
   const H = top + lines.length * lineH + 14
+  let at = 0
   const body = lines
     .map((spans, i) => {
+      const delay = at
+      at += spans[0]?.text === '$ ' ? RUN : STEP
       const tspans = spans
         .map((s) => {
           const attrs = [
@@ -84,12 +94,14 @@ function render(lines: Span[][]): string {
           return attrs ? `<tspan ${attrs}>${esc(s.text)}</tspan>` : esc(s.text)
         })
         .join('')
-      return `  <text x="18" y="${top + i * lineH}">${tspans}</text>`
+      return `  <text x="18" y="${top + i * lineH}" style="animation-delay:${delay.toFixed(2)}s">${tspans}</text>`
     })
     .join('\n')
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="vx run ci --all, cold: three tasks run; again: three up-to-date.">
   <style>
-    text { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace; font-size: 13px; fill: #e6edf3; white-space: pre; }
+    text { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace; font-size: 13px; fill: #e6edf3; white-space: pre; animation: hide 0.01s backwards; }
+    @keyframes hide { from, to { opacity: 0; } }
+    @media (prefers-reduced-motion: reduce) { text { animation: none; } }
   </style>
   <rect width="${W}" height="${H}" rx="10" fill="#0d1117"/>
   <circle cx="20" cy="18" r="6" fill="#ff5f57"/><circle cx="40" cy="18" r="6" fill="#febc2e"/><circle cx="60" cy="18" r="6" fill="#28c840"/>
@@ -101,7 +113,7 @@ ${body}
 /** What `--check` compares: the text and its styling, never a duration or the core count. */
 function normalize(svg: string): string {
   return svg
-    .replace(/height="\d+"|viewBox="[^"]*"|y="\d+"/g, '')
+    .replace(/height="\d+"|viewBox="[^"]*"|y="\d+"|style="animation-delay:[^"]*"/g, '')
     .replace(/\d+(\.\d+)?(ms|s)\b/g, 'N')
     .replace(/\d+ workers/g, 'N workers')
     .replace(/ +/g, ' ')

@@ -116,6 +116,10 @@
   added to the study. Each pattern already shipped but the animated demo
   (K-19). vuejs/pinia stays out of the real-repo table: neither side
   caches, so it has no restore or no-op cell.
+- **K-19** `demo.svg` prints line by line (0.12 s a line, 0.6 s after a
+  command). A line is hidden only during its own delay (`backwards` fill),
+  so no animation or reduced motion still shows the whole run; the landing
+  test holds that.
 
 ## Leads for other streams
 
