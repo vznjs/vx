@@ -82,6 +82,14 @@ readers that reach it here.
   JSON-RPC stream, whose own redirect covers only the parent thread, and
   a second tool call's config output landed between two responses
   (D-64). The first load prints where the process's stdout points.
+- A config that calls `process.exit` while it evaluates fails the load,
+  at the config's line, on both paths: "process.exit(0) in a config: a
+  config exports its object; it cannot end the run". In process
+  it ended vx mid-load (`exit(0)` was a green run that ran nothing); in
+  the Worker it ended the Worker unheard, and the load waited out its
+  deadline (D-65). The guard is counted, so concurrent loads leave the
+  real `process.exit` in place only once the last has left. An exit a
+  config schedules for later (a timer) is not covered.
 - A Promise default export is awaited on both paths, so an async
   config resolves to its object on the first load and in the Worker
   alike (D-5). The awaited value is checked again, a workspace

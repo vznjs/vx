@@ -3,7 +3,7 @@ import path from 'node:path'
 import type { ProjectConfig, WorkspaceConfig } from '../config.js'
 import { UserError, xxh3hex } from '../util/index.js'
 import { validateProjectConfig, validateWorkspace } from './config-schema.js'
-import { beginEvalRound, evaluateConfigFresh } from './config-eval.js'
+import { beginEvalRound, CONFIG_EXIT, evaluateConfigFresh } from './config-eval.js'
 import { hasEsmExport, unprovidedBareImports } from './config-imports.js'
 import {
   configEvalKey,
@@ -136,6 +136,7 @@ async function loadDefaultExport(
     holdSource(hash, source)
   }
   let ns: { default?: unknown }
+  const unguard = guardExit()
   try {
     ns = (await import(specifier)) as { default?: unknown }
   } catch (err) {
@@ -145,12 +146,35 @@ async function loadDefaultExport(
     }
     throw configLoadError(err, configPath, kind) ?? err
   } finally {
+    unguard()
     if (source !== null) releaseSource(hash)
   }
   const mod = ns?.default
   assertDefaultObject(mod, kind, configPath)
   return mod
 }
+
+/**
+ * A config's `process.exit` ended vx mid-load: `exit(0)` was a green run
+ * that ran nothing and printed nothing (D-65). While any config evaluates
+ * in process it throws instead, at the config's line. vx's own exit is
+ * signal forwarding's, which a run installs after its load and removes
+ * when it ends.
+ */
+let evaluating = 0
+let ownExit: typeof process.exit = process.exit
+function guardExit(): () => void {
+  if (evaluating++ === 0) {
+    ownExit = process.exit
+    process.exit = configExit
+  }
+  return () => {
+    if (--evaluating === 0) process.exit = ownExit
+  }
+}
+const configExit = ((code?: number | string | null) => {
+  throw new Error(`process.exit(${code ?? ''}) in a config: ${CONFIG_EXIT}`)
+}) as typeof process.exit
 
 /**
  * A bare import nothing above the config provides is refused BEFORE the
