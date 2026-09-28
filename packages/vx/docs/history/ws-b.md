@@ -31,6 +31,13 @@ In order of harm:
 
 ## Leads for other streams
 
+- **A:** a local save decodes and re-parses the artifact it just packed
+  (`save: scan`, about 0.1 ms per save, B-37). The checks there guard
+  the ingest boundary, and vx's own bytes could skip them. A save also
+  runs about 6 SQLite statements plus a `renameSync` (0.33 ms).
+- **watch:** `watch-loop.test.ts` › a server that rewrites a file in its
+  project is named after three restarts (item 948) timed out on #1772's
+  CI (15 s, no notice) and passes 4 of 4 locally.
 - **E:** a remote-only task no remote executor takes still reads `miss`
   after the run: `run-report.ts` `cacheWord`, the logger's and
   `summary.ts`'s miss counts, `run-artifacts.ts` and the event view all
@@ -711,3 +718,27 @@ B-39. `npm-pack.unsafe.test.ts`'s rows run `npm pack --dry-run` through
 `spawnSync` under bun's 5 s default timeout. On CI (#1772) the first row
 died at 5,048 ms with exit `null`, and locally a cold first run failed
 one row of 18. Both rows now take a 30 s timeout.
+
+B-37. The unsandboxed per-task path, profiled (supervisor lead: vx's
+per-package overhead). The fixture is `vx-bench/generate.ts` with 300
+projects and 600 forced misses (`test` runs `true`), on 4 cores. vx's
+own CPU is about 1.9 s against 0.35 s warm, so about 2.6 ms per miss.
+
+The three largest costs:
+
+1. `spawn`, 0.57 ms per task on the main thread. Bun's spawn waits
+   until the child reaches `execve`, so the wait grows with CPU
+   contention: 0.33 ms idle, 4.7 ms with 4 busy loops on 4 cores. It is
+   native. `argv0`, an absolute path, 3,000 open descriptors and a
+   400 MB heap do not change it.
+2. The save's SQLite transaction and `renameSync`, 0.33 ms (`src/cache`,
+   stream A's slice; lead above).
+3. The save's re-scan of its own artifact, about 0.1 ms (also A's).
+
+Everything in exec or orchestrator is 0.06 ms per task or less:
+`ownRssHighWater` 0.05, `guardWrite` 0.04, `secretMask` 0.03 (144
+variables, 30 µs). None of them is worth a change that must then prove
+itself against run-to-run noise. The first profile had put 2,100
+`file_hashes` lookups on this run. They came from the host's git config
+(`core.checkStat=minimal`, so vx rightly stops trusting the index), and
+under `GIT_CONFIG_GLOBAL=/dev/null` there are none.
