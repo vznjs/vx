@@ -18,7 +18,7 @@ const section = readme.slice(
 const rows = section.split('\n').filter((l) => l.startsWith('| ['))
 
 describe("the README's real-repo table", () => {
-  it('lists the twelve benched repos', () => {
+  it('lists the fourteen benched repos', () => {
     expect(rows.map((r) => /\[([^\]]+)\]/.exec(r)![1])).toEqual([
       'solidjs/solid',
       'withastro/astro',
@@ -32,6 +32,8 @@ describe("the README's real-repo table", () => {
       'TanStack/router',
       'refinedev/refine',
       'kindspells/astro-shield',
+      'FormidableLabs/spectacle',
+      'microsoft/lage',
     ])
   })
 
@@ -50,7 +52,7 @@ describe("the README's real-repo table", () => {
         if (!found) missing.push(`${row.slice(0, 30)}…: ${ours} / ${theirs}`)
       }
     }
-    expect(rows.length * 3).toBe(36)
+    expect(rows.length * 3).toBe(42)
     expect(missing).toEqual([])
   })
 })
