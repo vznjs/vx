@@ -148,22 +148,31 @@ Turbo and Nx feature is in vx, pinned by a test:
 
 ## How it compares
 
-|                           | vx                                        | Turborepo                      | Nx               |
-| ------------------------- | ----------------------------------------- | ------------------------------ | ---------------- |
-| Fully cached, 1,090 pkgs¹ | **510 ms**                                | 760 ms                         | 3.59 s           |
-| Config                    | TypeScript, evaluated into the cache key  | JSON (static)                  | JSON (static)    |
-| Output ownership          | **Strict**: wiped before exec and restore | Additive (stale files survive) | Additive         |
-| Clean-tree hashing        | **Zero reads** (git index OIDs)           | git OIDs                       | re-hash / daemon |
-| Daemon required for speed | **No**                                    | Optional                       | Yes              |
-| Per-task sandbox          | **Yes**: kernel-level, opt-in             | No                             | No               |
-| Plugin API                | **Yes**: every pipeline stage             | No                             | Yes (TS-tied)    |
-| OTel CI/CD spans          | **Yes**: `otel()` plugin, no OTel SDK     | No                             | Paid             |
-| Install                   | **Single binary**; no Bun, Node optional  | npm + Node                     | npm + Node       |
+|                           | vx                                        | Turborepo                      | Nx               | moon²                          |
+| ------------------------- | ----------------------------------------- | ------------------------------ | ---------------- | ------------------------------ |
+| Fully cached, 1,090 pkgs¹ | **510 ms**                                | 760 ms                         | 3.59 s           | not measured                   |
+| Config                    | TypeScript, evaluated into the cache key  | JSON (static)                  | JSON (static)    | YAML, Pkl and others (static)  |
+| Output ownership          | **Strict**: wiped before exec and restore | Additive (stale files survive) | Additive         | Glob outputs pruned on restore |
+| Clean-tree hashing        | **Zero reads** (git index OIDs)           | git OIDs                       | re-hash / daemon | `git hash-object`              |
+| Daemon required for speed | **No**                                    | Optional                       | Yes              | Optional (experimental)        |
+| Per-task sandbox          | **Yes**: kernel-level, opt-in             | No                             | No               | No                             |
+| Plugin API                | **Yes**: every pipeline stage             | No                             | Yes (TS-tied)    | WASM toolchains, extensions    |
+| OTel CI/CD spans          | **Yes**: `otel()` plugin, no OTel SDK     | No                             | Paid             | No                             |
+| Install                   | **Single binary**; no Bun, Node optional  | npm + Node                     | npm + Node       | Single binary                  |
 
 ¹ Warm, nothing to rebuild, the graph charted above. Every gap, and
 when another tool is the better pick:
 [comparison](packages/vx/docs/comparison.md) ·
 [vx, Turborepo, Nx, Bazel](https://vznjs.github.io/vx/compare/).
+
+² From moon's own docs (2026-09-28): [config](https://github.com/moonrepo/moon/blob/master/website/docs/config/overview.mdx),
+[outputs](https://github.com/moonrepo/moon/blob/master/website/docs/config/project.mdx),
+[hashing](https://github.com/moonrepo/moon/blob/master/website/docs/guides/debug-task.mdx),
+[daemon](https://github.com/moonrepo/moon/blob/master/website/docs/guides/daemon.mdx),
+[plugins](https://github.com/moonrepo/moon/blob/master/website/docs/guides/wasm-plugins.mdx),
+[install](https://github.com/moonrepo/moon/blob/master/website/docs/install.mdx);
+they describe no per-task sandbox and no OpenTelemetry export. Already on
+moon: `moon()` runs it unchanged.
 
 ## Plugins
 
