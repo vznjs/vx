@@ -72,6 +72,13 @@ peak is reported above the parent's mark (the sibling row pins the unit).
 It now asserts a peak above that mark plus the slack. Still red with the
 pre-M-2 fixed 600 MB under a 700 MB parent.
 
+M-7. `util-settle.test.ts` › runs three concurrent deadlines in parallel
+turned main red (run 36374404433, shard-11): three 60 ms budgets took
+152 ms against a 150 ms bound. M-1's recap named it. A total is a claim
+about the machine; a stalled loop delays all three timers alike. The row
+now bounds the spread between the three settles (< 60 ms; serial is 120).
+Red under a mutant that chains the calls; 0 of 40 under 6 CPU burners.
+
 ## Leads for other streams
 
 - A: A-20 let a same-project dependant restore ahead of a producer whose

@@ -271,17 +271,21 @@ describe('settleWithin — every call gets its own budget', () => {
   // neighbour must not spend anyone else's budget.
   it('runs three concurrent deadlines in parallel, not in series', async () => {
     const started = Date.now()
-    const outcomes = await Promise.all([
-      settleWithin(never(), 60),
-      settleWithin(never(), 60),
-      settleWithin(never(), 60),
-    ])
-    const elapsed = Date.now() - started
+    const settled: number[] = []
+    const outcomes = await Promise.all(
+      [0, 1, 2].map((i) =>
+        settleWithin(never(), 60).then((ok) => {
+          settled[i] = Date.now()
+          return ok
+        }),
+      ),
+    )
     expect(outcomes).toEqual([false, false, false])
-    // One shared timer would still be ~60ms; three SERIALISED budgets would
-    // be ~180ms. Measured 61ms.
-    expect(elapsed).toBeGreaterThanOrEqual(35)
-    expect(elapsed).toBeLessThan(150)
+    expect(Math.min(...settled) - started).toBeGreaterThanOrEqual(35)
+    // SERIALISED budgets settle 60ms apart, a spread of 120. The spread, not
+    // the total: a loaded shard stalls all three timers alike, and a total
+    // under 150 read 152 on main (M-7). Measured 0-1ms.
+    expect(Math.max(...settled) - Math.min(...settled)).toBeLessThan(60)
   }, 10_000)
 
   // A short deadline firing must not cancel a longer one running beside it —
