@@ -93,6 +93,16 @@ four commands under both tools, 2.64 s cold and 111 ms no-op against
 moon's 3.78 s and 2.37 s (`benchmarks.md` § Adoption paths on real
 repos). No mapping gap. moon's own warm run here is 4.2 s with the
 network up: its version check times out behind the proxy.
+N-7. `wireit()` dogfooded on FormidableLabs/spectacle (wireit 0.14.13):
+21.5 s cold and 387 ms no-op against wireit's 22.2 s and 593 ms
+(`benchmarks.md`). The first run deleted the tracked
+`examples/one-page/index.html`: its script declares the file as input
+and output with `clean: false`, and vx cleans outputs before a run. A
+`clean: false` task with outputs now runs uncached (was: only one with a
+wildcard first segment).
+
+- Row: `tests/wireit.test.ts` › clean: false with an output that is also
+  an input (red on the old rule: the file is gone and the task fails).
 
 ## Candidates not built (2026-09-28)
 

@@ -173,7 +173,7 @@ Then `vx run build --all` runs each package's `wireit.build`, read from its `pac
 | `service`, `service.readyWhen.lineMatches` | `exec.persistent`, `exec.persistent.readyWhen`                                         |
 | `clean`                                    | nothing: vx cleans outputs before every run, as wireit's default does                  |
 
-Not mapped, each a TODO or a note: the workspace root's scripts (vx has no root tasks), a dependency on a directory that is not a workspace package, a negated `output` (the task runs uncached), a wildcard output under `clean: false`, `cascade: false` (vx folds every dependency's key), an external env `default`, and `allowUsuallyExcludedPaths`. On lit/lit (53 packages) all 299 mapped tasks load.
+Not mapped, each a TODO or a note: the workspace root's scripts (vx has no root tasks), a dependency on a directory that is not a workspace package, a negated `output` (the task runs uncached), a task with `clean: false` (vx cleans outputs before every run, and such an output may be a source; the task runs uncached), `cascade: false` (vx folds every dependency's key), an external env `default`, and `allowUsuallyExcludedPaths`. On lit/lit (53 packages) all 299 mapped tasks load.
 
 ## `lage()` — run a lage workspace unchanged
 

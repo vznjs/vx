@@ -748,6 +748,23 @@ under vx on this box: the proxy's CA reaches moon's tasks with the whole
 environment and not vx's isolated one, the gap `moon()` names in its
 note.
 
+### FormidableLabs/spectacle (wireit 0.14.13, `wireit()`, `e9dde74`)
+
+`pnpm build`, the root wireit group over two packages and five examples
+(tsup, tsc, five webpack builds), against `vx run build --all`.
+
+| `build`                       | vx         | wireit 0.14.13 |
+| ----------------------------- | ---------- | -------------- |
+| cold (caches + outputs wiped) | **21.5 s** | 22.2 s (1.03×) |
+| warm, outputs wiped (restore) | **394 ms** | 574 ms (1.46×) |
+| warm, nothing wiped (no-op)   | **387 ms** | 593 ms (1.53×) |
+
+vx's warm rows carry one task it runs every time: `examples/one-page`
+declares `index.html` as both input and output with `clean: false`, and
+vx cleans outputs before a run, so `wireit()` maps it uncached (260 ms
+of each warm row). The first run found it: mapped cached, the clean
+deleted the tracked `index.html` and the task failed.
+
 ## Real repos re-measured (2026-09-27)
 
 Roadmap 2.5: astro and refine again, same revisions, harnesses and

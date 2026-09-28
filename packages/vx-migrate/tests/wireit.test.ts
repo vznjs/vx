@@ -216,6 +216,34 @@ describe('wireit()', () => {
     },
     TIMEOUT,
   )
+  it(
+    'clean: false with an output that is also an input runs uncached and keeps the file',
+    async () => {
+      // spectacle's examples/one-page (e9dde74): `index.html` is both, and
+      // the cleaned run deleted the tracked file and failed.
+      const manifest = JSON.parse(
+        await Bun.file(path.join(root, 'packages/util/package.json')).text(),
+      )
+      manifest.scripts = { ...manifest.scripts, page: 'wireit' }
+      manifest.wireit.page = {
+        command: 'cat index.html > page.tmp && mv page.tmp index.html',
+        clean: false,
+        files: ['index.html'],
+        output: ['index.html'],
+      }
+      await write('packages/util/package.json', JSON.stringify(manifest))
+      await write('packages/util/index.html', '<p>one page</p>\n')
+      Bun.spawnSync({ cmd: ['git', 'add', '-A'], cwd: root })
+      const log = silent()
+      const r = await run({ cwd: root, tasks: ['@l/util#page'], log, handleSignals: false })
+      expect(r.ok).toBe(true)
+      expect(r.outcomes[0]!.node.config.cache).toBeUndefined()
+      expect(await Bun.file(path.join(root, 'packages/util/index.html')).text()).toBe(
+        '<p>one page</p>\n',
+      )
+    },
+    TIMEOUT,
+  )
 })
 
 describe('vx-migrate --from wireit', () => {
