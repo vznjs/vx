@@ -210,6 +210,22 @@ describe('delegatedScript', () => {
     ['pnpm test', 'test'],
     ['yarn add', null],
     ['yarn test', 'test'],
+    // D-32, each probed with a script of that name present: the manager's
+    // own command ran, or it ran the script.
+    ['pnpm docs', null], // npm's docs page
+    ['pnpm version', null],
+    ['pnpm info', null],
+    ['pnpm server', null],
+    ['pnpm dev', 'dev'],
+    ['bun deploy', null], // "reserved for future use"
+    ['bun config', null],
+    ['bun list', null],
+    ['bun lint', 'lint'],
+    ['yarn check', null], // yarn 1's integrity check; Yarn 4 runs the script, and one set serves both
+    ['yarn list', null],
+    ['yarn audit', null],
+    ['yarn search', null], // Yarn 4's
+    ['yarn lint', 'lint'],
   ])('%s → %p', (command, expected) => {
     expect(delegatedScript(command)).toBe(expected)
   })

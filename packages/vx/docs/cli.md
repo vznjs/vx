@@ -1675,8 +1675,10 @@ command takes `^build` and the cache TODO, since a group has nothing
 to cache; it and the groups on the way drop the wait on `build` a
 `typecheck` or `test` would carry, since they are the build (D-16). Bare, a package manager's own command is not a script: `bun test`
 is Bun's test runner, `bun build` its bundler, `pnpm install` and `yarn
-add` the managers' verbs, so each stays a command (item 908); `pnpm
-test` and `yarn test` do run the script. Arguments, flags or a `&&`
+add` the managers' verbs, so each stays a command (item 908), and so do
+the names each manager reserves or hands on: `pnpm docs` and `pnpm
+version` (npm's), `bun deploy`, `yarn check` (D-32); `pnpm test`, `yarn
+test` and `bun lint` do run the script. Arguments, flags or a `&&`
 chain make it a real command again and
 it is left verbatim, and so is one whose target becomes no task (a
 lifecycle script, or a hook folded into another script): a group over
