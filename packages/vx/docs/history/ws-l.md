@@ -108,6 +108,11 @@
     (`followSymlinks: false`). No bug.
 24. What `vx mcp` hands an agent. `listTasks` returned a task's command
     unmasked (L-26); the other tools read stored, masked rows.
+25. What vx-github posts. The check run and job summary carry escaped
+    task ids, statuses, durations and the invocation line with what
+    follows `--` counted; no task output. No bug.
+26. `vx watch`. A changed path only selects what reruns; no path reaches a
+    shell or a command line. No bug.
 
 ## Items
 
