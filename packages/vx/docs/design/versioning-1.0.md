@@ -95,6 +95,9 @@ and it fails unless a commit since the tag is marked `type!:` or carries a
 `BREAKING CHANGE:` footer, which also heads the release notes
 (`scripts/release-notes.ts`). CI's Linux job checks out full history and
 sets `VX_REQUIRE_TAGS=1`, so a missing tag fails there instead of passing.
+On a PR, a second row diffs the same records between the PR's base and
+head: a break there fails unless the PR's title is marked `type!:`, so
+the reviewer sees it before the merge.
 
 - **The config schema.** `tests/contract-config-schema.test.ts`
   discovers every level and field the validator accepts (by injecting
