@@ -1,5 +1,11 @@
 # The site, short (owner, 2026-09-24)
 
+> 2026-09-28 (owner: "hard to parse … we care turbo and nx"): the landing
+> now leads a Turborepo or Nx user: a one-line hero and its sub, the
+> benchmark as one vx / Turborepo / Nx table with three reasons, then "Try
+> it on your repo", then the picture and the pillars (K-21). The rest of
+> this page stands.
+
 The owner, after the Guide shipped: "The website is still terrible. It
 should be short but visualizing. Maybe one diagram that has all the
 examples. And we don't need 2 benches. Leave first. Focus on
