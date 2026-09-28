@@ -28,7 +28,7 @@ export {
   type SchemaReset,
   SCHEMA_VERSION,
 } from './cache.js'
-export { CACHE_VERSION } from './key-fold.js'
+export { ABSENT_INPUT, absentOr, CACHE_VERSION } from './key-fold.js'
 export {
   cleanOutputs,
   cleanWorkspaceOutputs,
