@@ -48,10 +48,12 @@ const nonJsonPaths = ${nonJsonPaths.toString()}
 // config printing on a repeat load wrote into it: the server's own redirect
 // covers the parent thread only (D-64). This worker only evaluates configs,
 // so every route to fd 1 is stderr's, Bun's own included (item 1069).
-const quiet = (async () => {
+// Synchronous, before any message: an awaited import of the Console left
+// the first evaluation racing its own redirect (D-73).
+{
   const P = globalThis.process
   const B = globalThis.Bun
-  const { Console } = await import('node:console')
+  const Console = globalThis.console.Console
   globalThis.console = Object.assign(new Console(P.stderr, P.stderr), {
     write: (...data) => {
       const text = data.join('')
@@ -68,9 +70,8 @@ const quiet = (async () => {
   P.exit = (code) => {
     throw new Error('process.exit(' + (code ?? '') + ') in a config: ' + ${JSON.stringify(CONFIG_EXIT)})
   }
-})()
+}
 self.onmessage = async (e) => {
-  await quiet
   const { id, path, env } = e.data
   // A Worker starts with the process's STARTUP environment, not the
   // parent's process.env as written since (probed): a config reading an
