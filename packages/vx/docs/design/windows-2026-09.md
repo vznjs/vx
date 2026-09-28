@@ -1,6 +1,8 @@
 # vx on Windows (2026-09-28, stream O)
 
-**Status: the plan. Items land as `O-<n>` in `docs/history/ws-o.md`.**
+**Status: stopped (owner, 2026-09-28): Windows users run WSL.** The code
+that landed is listed in `docs/history/ws-o.md` § Windows-only code paths;
+removing it waits on the owner's word.
 
 Goal: vx runs and caches on Windows under Bun, with no WSL. This
 replaces the 2026-09-10 "Windows is WSL" decision (coordinator,
