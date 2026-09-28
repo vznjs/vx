@@ -104,6 +104,27 @@ describe('nx-map: what the sweep found unheld', () => {
     )
   })
 
+  // Nx 23.2.1's project schema has both; each was dropped in silence.
+  it('`parallelism: false` and `syncGenerators` are todos; their defaults say nothing', async () => {
+    const a = await meta('a')
+    const t = await tasksOf([a], {
+      a: node('packages/a', {
+        e2e: { command: 'playwright test', parallelism: false },
+        typecheck: { command: 'tsc', syncGenerators: ['@nx/js:typescript-sync'] },
+        lint: { command: 'eslint .', parallelism: true, syncGenerators: [] },
+      }),
+    })
+    expect([t.get('a#e2e')!.todos, t.get('a#typecheck')!.todos, t.get('a#lint')!.todos]).toEqual([
+      [
+        '`parallelism: false`: Nx runs this target alone, and vx has no per-task exclusivity — run it with `--concurrency 1` where it must not share the machine',
+      ],
+      [
+        '`syncGenerators` ("@nx/js:typescript-sync"): Nx runs them before the target, and vx does not — run `nx sync` when they are out of date',
+      ],
+      [],
+    ])
+  })
+
   it('a cached target with no inputs and no nx.json default reads the whole project', async () => {
     const a = await meta('a')
     const t = await tasksOf([a], {
