@@ -3,7 +3,7 @@ import path from 'node:path'
 import type { ProjectConfig, WorkspaceConfig } from '../config.js'
 import { UserError, xxh3hex } from '../util/index.js'
 import { validateProjectConfig, validateWorkspace } from './config-schema.js'
-import { beginEvalRound, CONFIG_EXIT, evaluateConfigFresh } from './config-eval.js'
+import { beginEvalRound, CONFIG_EXIT, evalBudgetMs, evaluateConfigFresh } from './config-eval.js'
 import { hasEsmExport, unprovidedBareImports } from './config-imports.js'
 import {
   configEvalKey,
@@ -137,8 +137,26 @@ async function loadDefaultExport(
   }
   let ns: { default?: unknown }
   const unguard = guardExit()
+  let deadline: ReturnType<typeof setTimeout> | undefined
   try {
-    ns = (await import(specifier)) as { default?: unknown }
+    // The worker's budget, here too: a top-level await that never settled
+    // while a timer kept the loop alive hung `vx run` for good, silently
+    // (D-66).
+    const budget = evalBudgetMs()
+    ns = (await Promise.race([
+      import(specifier),
+      new Promise<never>((_, reject) => {
+        deadline = setTimeout(
+          () =>
+            reject(
+              new UserError(
+                `${kind} config ${configPath} did not finish evaluating within ${budget}ms (VX_CONFIG_WORKER_TIMEOUT_MS)`,
+              ),
+            ),
+          budget,
+        )
+      }),
+    ])) as { default?: unknown }
   } catch (err) {
     // A served module's frames name its specifier; the user wrote the path.
     if (err instanceof Error && err.stack !== undefined) {
@@ -146,6 +164,7 @@ async function loadDefaultExport(
     }
     throw configLoadError(err, configPath, kind) ?? err
   } finally {
+    clearTimeout(deadline)
     unguard()
     if (source !== null) releaseSource(hash)
   }

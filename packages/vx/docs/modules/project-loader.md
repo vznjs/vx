@@ -90,6 +90,11 @@ readers that reach it here.
   deadline (D-65). The guard is counted, so concurrent loads leave the
   real `process.exit` in place only once the last has left. An exit a
   config schedules for later (a timer) is not covered.
+- A first load has the Worker's deadline too (`VX_CONFIG_WORKER_TIMEOUT_MS`,
+  30 s): a top-level await that never settles fails the load, naming
+  the config and the budget, where it hung `vx run` silently (D-66).
+  The evaluation itself cannot be cancelled; a timer it left running
+  still holds the process open after the run reports.
 - A Promise default export is awaited on both paths, so an async
   config resolves to its object on the first load and in the Worker
   alike (D-5). The awaited value is checked again, a workspace

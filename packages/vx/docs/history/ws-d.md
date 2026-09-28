@@ -124,6 +124,14 @@ run leaves out; the rest are refusals.
   redirect inside the loader would also catch vx's own writes made
   meanwhile, so the verb is the place.
 
+- E: a config that leaves a handle open (`setInterval(() => {}, 1000)`
+  at top level, a client's socket) keeps `vx run` alive after it has
+  printed its result: the run succeeded and the process never exited
+  (probed, killed at 15 s). `bin.ts` lets the loop drain on purpose, so
+  a pipe is not cut; once the verdict is set and stdout and stderr have
+  drained, an exit would end it. D-66's refused first load holds open
+  the same way when its config's timer is alive.
+
 ## Entries
 
 - **D-1** `--affected` selects the project a new nested project took
@@ -655,3 +663,14 @@ packages/core`) selects the dependent whose `file:../lib` spec named
   refused with `process.exit` restored after; each guard, the save and
   the restore caught by its own mutant (the concurrency pair only once
   the slow load enters first and exits last).
+- **D-66** Failure class: a config that never settles. The Worker had a
+  deadline; a first load (in process) had none, so a top-level await
+  that never settled while a timer kept the loop alive hung `vx run`
+  with nothing printed (probed, killed at 45 s). The first load now
+  races the same budget (`evalBudgetMs`, `VX_CONFIG_WORKER_TIMEOUT_MS`)
+  and fails naming the config, releasing D-65's exit guard. Refuted on
+  the way: an unref'd deadline does not let a pending import's loop
+  drain, so the budget fires either way. Row: the D-66 row of
+  `tests/config-eval.test.ts`, in a child that exits itself: the named
+  refusal at 300 ms and `process.exit` given back; red without the race
+  (killed), and the guard's release caught by its mutant.
