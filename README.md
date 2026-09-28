@@ -114,6 +114,10 @@ When you want configs of your own, one command writes them:
 bunx @vzn/vx-migrate      # vx.config.ts per package, from turbo.json or an Nx graph
 ```
 
+The written configs derive the same cache keys, so what `turbo()` cached
+still hits: [`examples/turbo`](examples/turbo) runs both steps on every
+commit.
+
 `turboCache()` and `nxCache()` keep the remote cache you have (Turbo's
 `/v8/artifacts` API, Vercel's included, or Nx's `/v1/cache`). What each
 Turbo and Nx feature is in vx, pinned by a test:

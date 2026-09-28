@@ -1,0 +1,4 @@
+.vx/
+node_modules/
+dist/
+.turbo/

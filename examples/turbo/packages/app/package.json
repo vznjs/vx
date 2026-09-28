@@ -1,0 +1,11 @@
+{
+  "name": "app",
+  "private": true,
+  "dependencies": {
+    "lib": "workspace:*"
+  },
+  "scripts": {
+    "build": "mkdir -p dist && cat ../lib/dist/*.js src/main.js > dist/app.js",
+    "test": "grep -q \"greet('vx')\" dist/app.js"
+  }
+}

@@ -1,7 +1,7 @@
-// The starter under examples/ is what a README tells a new user to copy, so
-// it must run: each example is copied to a fresh git repo, `@vzn/vx`
-// linked to this checkout, and `vx run ci --all` driven through a cold run,
-// a warm one and an edit. examples/ lives outside packages/vx, which a
+// The starters under examples/ are what a README tells a new user to copy,
+// so they must run: each is copied to a fresh git repo, the @vzn packages
+// it imports linked to this checkout, and `vx run` driven through a cold
+// run, a warm one and a change. examples/ lives outside packages/vx, which a
 // sandboxed shard cannot read — hence the unsafe suite.
 import {
   cpSync,
@@ -18,27 +18,49 @@ import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
 
 const CORE = path.resolve(import.meta.dir, '..')
-const EXAMPLE = path.resolve(CORE, '..', '..', 'examples', 'basic')
+const PACKAGES = path.dirname(CORE)
+const EXAMPLES = path.resolve(PACKAGES, '..', 'examples')
 const BIN = path.join(CORE, 'src', 'bin.ts')
-const root = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'vx-example-')))
-afterAll(() => rmSync(root, { recursive: true, force: true }))
+const roots: string[] = []
+afterAll(() => {
+  for (const r of roots) rmSync(r, { recursive: true, force: true })
+})
 
-function git(...args: string[]): void {
-  const r = Bun.spawnSync({
-    cmd: ['git', '-c', 'user.email=t@t', '-c', 'user.name=t', ...args],
-    cwd: root,
-    stdout: 'ignore',
-    stderr: 'pipe',
-  })
-  if (r.exitCode !== 0) throw new Error(`git ${args.join(' ')}: ${r.stderr.toString()}`)
+/** A fresh git repo holding `examples/<name>`, with `links` (package dirs) as its @vzn deps. */
+function fixture(name: string, links: string[]): string {
+  const root = realpathSync(mkdtempSync(path.join(os.tmpdir(), `vx-example-${name}-`)))
+  roots.push(root)
+  cpSync(path.join(EXAMPLES, name), root, { recursive: true })
+  mkdirSync(path.join(root, 'node_modules', '@vzn'), { recursive: true })
+  for (const dir of links) {
+    symlinkSync(path.join(PACKAGES, dir), path.join(root, 'node_modules', '@vzn', dir))
+  }
+  commit(root)
+  return root
+}
+
+function commit(root: string): void {
+  for (const args of [
+    ['init', '-q'],
+    ['add', '-A'],
+    ['commit', '-qm', 'step'],
+  ]) {
+    const r = Bun.spawnSync({
+      cmd: ['git', '-c', 'user.email=t@t', '-c', 'user.name=t', ...args],
+      cwd: root,
+      stdout: 'ignore',
+      stderr: 'pipe',
+    })
+    if (r.exitCode !== 0) throw new Error(`git ${args.join(' ')}: ${r.stderr.toString()}`)
+  }
 }
 
 let n = 0
-/** One `vx run ci --all`: its exit and each task's status, from --summarize. */
-function run(): { exit: number; status: Record<string, string> } {
-  const summary = path.join(root, '..', `${path.basename(root)}-${n++}.json`)
+/** One `vx run <task> --all`: its exit and each task's status, from --summarize. */
+function run(root: string, task: string): { exit: number; status: Record<string, string> } {
+  const summary = path.join(path.dirname(root), `${path.basename(root)}-${n++}.json`)
   const r = Bun.spawnSync({
-    cmd: [process.execPath, BIN, 'run', 'ci', '--all', `--summarize=${summary}`],
+    cmd: [process.execPath, BIN, 'run', task, '--all', `--summarize=${summary}`],
     cwd: root,
     env: { ...process.env, CI: 'true' },
     stdout: 'pipe',
@@ -54,32 +76,64 @@ function run(): { exit: number; status: Record<string, string> } {
 }
 
 describe('examples/basic', () => {
-  cpSync(EXAMPLE, root, { recursive: true })
-  mkdirSync(path.join(root, 'node_modules', '@vzn'), { recursive: true })
-  symlinkSync(CORE, path.join(root, 'node_modules', '@vzn', 'vx'))
-  git('init', '-q')
-  git('add', '-A')
-  git('commit', '-qm', 'init')
+  const root = fixture('basic', ['vx'])
 
   it('builds cold, replays warm, and re-runs what an edit reaches', () => {
     // `ci` is a group: it runs nothing, so the summary has no row for it.
     const tasks = ['app#build', 'app#test', 'lib#build']
-    const cold = run()
+    const cold = run(root, 'ci')
     expect(cold.exit).toBe(0)
     expect(Object.keys(cold.status).sort()).toEqual(tasks)
     expect(cold.status['lib#build']).toBe('success')
-    const warm = run()
+    const warm = run(root, 'ci')
     expect(warm.exit).toBe(0)
     expect(warm.status['lib#build']).toBe('cache-hit')
     expect(warm.status['app#test']).toBe('cache-hit')
     writeFileSync(path.join(root, 'packages/lib/src/greet.js'), 'const greet = (n) => `hi, ${n}`\n')
-    const edited = run()
+    const edited = run(root, 'ci')
     expect(edited.exit).toBe(0)
     expect([
       edited.status['lib#build'],
       edited.status['app#build'],
       edited.status['app#test'],
     ]).toEqual(['success', 'success', 'success'])
+  })
+})
+
+// The adoption path the README sells: a Turbo repo runs under turbo() with
+// nothing rewritten, and the configs `vx-migrate` writes later derive the
+// same keys, so the cache turbo() filled still hits.
+describe('examples/turbo', () => {
+  const root = fixture('turbo', ['vx', 'vx-migrate'])
+  const all = (status: string) => ({
+    'app#build': status,
+    'app#test': status,
+    'lib#build': status,
+  })
+
+  it('runs the Turbo repo unchanged, cold then warm', () => {
+    const cold = run(root, 'test')
+    expect(cold.exit).toBe(0)
+    expect(cold.status).toEqual(all('success'))
+    const warm = run(root, 'test')
+    expect(warm.exit).toBe(0)
+    expect(warm.status).toEqual(all('cache-hit'))
+  })
+
+  it('migrates to written configs that hit the cache turbo() filled', () => {
+    rmSync(path.join(root, 'vx.workspace.ts'))
+    const migrate = Bun.spawnSync({
+      cmd: [process.execPath, path.join(PACKAGES, 'vx-migrate', 'src', 'bin.ts')],
+      cwd: root,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    expect(migrate.exitCode).toBe(0)
+    expect(migrate.stdout.toString()).toContain('3 tasks migrated clean, 0 TODOs')
+    commit(root)
+    const after = run(root, 'test')
+    expect(after.exit).toBe(0)
+    expect(after.status).toEqual(all('cache-hit'))
   })
 })
 
