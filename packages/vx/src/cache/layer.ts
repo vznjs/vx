@@ -385,12 +385,16 @@ export const FILE_HASH_RACY_MS = 50
  * write passed a 50 ms window: the memo served the first bytes' digest for
  * a same-size rewrite 120 ms on (A-2, reproduced on an ext2 mount). A stamp
  * with no sub-second part is read as such a second and widens the window by
- * it, as git judges racy entries at its index's own granularity. Pass the
- * UNFLOORED stamp: a kernel's nanosecond stamp lands on a whole second about
- * once in 10^9, one set through a millisecond `utimes` once in a thousand,
- * and either is then trusted a second later — never wrongly.
+ * it, as git judges racy entries at its index's own granularity. FAT32
+ * keeps even seconds, so an even stamp widens by two: a hash 1.2 s after
+ * one passed the single second and a rewrite later in the pair kept every
+ * field (A-38). Pass the UNFLOORED stamp: a kernel's nanosecond stamp lands
+ * on a whole second about once in 10^9, one set through a millisecond
+ * `utimes` once in a thousand, and either is then trusted up to two seconds
+ * later — never wrongly.
  */
 export function racyWindowMs(stampMs: number, windowMs: number): number {
+  if (stampMs % 2000 === 0) return windowMs + 2000
   return stampMs % 1000 === 0 ? windowMs + 1000 : windowMs
 }
 

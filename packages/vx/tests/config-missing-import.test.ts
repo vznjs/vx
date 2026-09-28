@@ -109,6 +109,35 @@ describe('unprovidedBareImports', () => {
     expect(unprovidedBareImports(src, dir, 'ts')).toEqual(['nope-pkg'])
   })
 
+  it('a self-reference to the enclosing package with exports is never listed (D-29)', async () => {
+    // Bun resolves `@acme/self/tasks` through the nearest package.json
+    // when it names that package and has `exports`, and never reaches the
+    // registry for it (strace: no connect).
+    await writeFile(
+      path.join(dir, 'package.json'),
+      JSON.stringify({ name: '@acme/self', exports: { './tasks': './tasks.ts' } }),
+    )
+    const from = path.join(dir, 'config')
+    await mkdir(from)
+    const src = `import a from '@acme/self/tasks'\nimport b from '@acme/other'\n`
+    expect(unprovidedBareImports(src, from, 'ts')).toEqual(['@acme/other'])
+  })
+
+  it('CONTROL: a self-name without exports, or past a nearer package.json, is listed (D-29)', async () => {
+    await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: '@acme/self' }))
+    const src = `import a from '@acme/self/tasks'\n`
+    expect(unprovidedBareImports(src, dir, 'ts')).toEqual(['@acme/self/tasks'])
+    await writeFile(
+      path.join(dir, 'package.json'),
+      JSON.stringify({ name: '@acme/self', exports: { './tasks': './tasks.ts' } }),
+    )
+    const inner = path.join(dir, 'inner')
+    await mkdir(inner)
+    await writeFile(path.join(inner, 'package.json'), JSON.stringify({ name: 'inner' }))
+    expect(unprovidedBareImports(src, inner, 'ts')).toEqual(['@acme/self/tasks'])
+    expect(unprovidedBareImports(src, dir, 'ts')).toEqual([])
+  })
+
   it('a require() bare import reaches the scan — the fast path agrees with it', async () => {
     // `hasBareCandidate` is a textual pre-filter and a source it rejects
     // is never scanned at all, so its regex must not be narrower than

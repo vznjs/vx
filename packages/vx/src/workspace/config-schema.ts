@@ -347,6 +347,16 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
             )
           }
         }
+        const secret = (env as { secret?: unknown }).secret
+        if (
+          secret !== undefined &&
+          (!Array.isArray(secret) ||
+            secret.some((n) => !isEnvName(n) || BUN_GLOB_WILDCARDS.test(n)))
+        ) {
+          throw new UserError(
+            `${where}.exec.env.secret must be an array of env var names (non-empty, no '=', NUL or wildcard)`,
+          )
+        }
         const define = (env as { define?: unknown }).define
         if (define !== undefined) {
           if (typeof define !== 'object' || define === null || Array.isArray(define)) {
@@ -641,7 +651,7 @@ const EXEC_FIELDS = new Set([
   'sandbox',
 ])
 const PERSISTENT_FIELDS = new Set(['readyWhen'])
-const ENV_FIELDS = new Set(['passThrough', 'define'])
+const ENV_FIELDS = new Set(['passThrough', 'define', 'secret'])
 const CACHE_FIELDS = new Set(['inputs', 'outputs'])
 const CACHE_INPUT_FIELDS = new Set([
   'files',

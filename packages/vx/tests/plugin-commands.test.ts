@@ -243,6 +243,19 @@ describe('plugin commands', () => {
     expect(await cli(['hello'])).toBe(7)
   })
 
+  it('two plugins declaring one verb is refused at load, so no verb has two owners', async () => {
+    // The help list and the dispatcher lean on this: neither dedups.
+    const SHADOW = pluginSource(
+      'org/shadow',
+      `{ commands: { hello: { description: 'shadowed', run() { return 9 } } } }`,
+    )
+    await Bun.write(path.join(root, 'vx.workspace.mjs'), localWorkspaceSource([HELLO, SHADOW]))
+    expect(await cli(['hello'])).toBe(1)
+    expect(err.join('')).toContain(
+      "plugins 'org/hello' and 'org/shadow' both declare command 'hello' — a verb has one owner",
+    )
+  })
+
   it("a plugin verb's warnings reach stderr, one line each", async () => {
     await Bun.write(
       path.join(root, 'vx.workspace.mjs'),

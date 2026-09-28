@@ -101,8 +101,9 @@ export class ArtifactVanishedError extends Error {
 export const FILE_HASH_RACY_MS = 50
 
 // The window for one stamp: `windowMs`, plus a second when the stamp has no
-// sub-second part (a file system that keeps whole seconds) — the file
-// hasher, the output-directory snapshot and the re-check all ask it (A-2).
+// sub-second part (a file system that keeps whole seconds), two on an even
+// second (FAT32) — the file hasher, the output-directory snapshot and the
+// re-check all ask it (A-2, A-38).
 export function racyWindowMs(stampMs: number, windowMs: number): number
 
 export class Cache implements CacheLayer {

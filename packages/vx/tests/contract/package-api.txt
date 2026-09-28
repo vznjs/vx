@@ -501,6 +501,7 @@ export interface ExecConfig {
 export interface ExecEnv {
   passThrough?: string[]
   define?: Record<string, string>
+  secret?: string[]
 }
 == type ExecuteRequest (src/exec/executor.ts)
 export interface ExecuteRequest {

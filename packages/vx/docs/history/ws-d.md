@@ -47,6 +47,10 @@ run leaves out; the rest are refusals.
   `core.checkStat=minimal` / `core.trustctime=false` (this container's)
   A-6 trusts no OID and the sibling control fails. Isolate it
   (`GIT_CONFIG_GLOBAL=/dev/null` in the fixture's git env).
+- C/E: `output-memory.unsafe.test.ts` "stays flat while a never-ready
+  task floods stdout (carriage-return only)" read `long - short` 140
+  MiB against its 64 bound once in a gate with no other gate running
+  (2026-09-28); green on the re-run.
 
 ## Entries
 
@@ -266,3 +270,10 @@ packages/core`) selects the dependent whose `file:../lib` spec named
   never asks the registry for one (strace: no connect, against 30 for
   an unknown package name), so the guard no longer lists it. Row: the
   D-28 row of `tests/config-missing-import.test.ts`.
+- **D-29** A config importing its own package by name
+  (`import { preset } from '@acme/self/tasks'`, the nearest
+  `package.json` naming `@acme/self` with `exports`) was refused as
+  `cannot find`. Bun resolves a self-reference inside the package and,
+  strace shows, never reaches the registry for one, an unexported
+  subpath included; the guard lets it through. Rows: the two D-29 rows
+  of `tests/config-missing-import.test.ts`.

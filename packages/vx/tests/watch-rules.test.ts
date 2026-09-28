@@ -228,6 +228,34 @@ describe('the sweep sees what a run sees', () => {
   })
 })
 
+describe('sweepConfigs: which projects read what they like', () => {
+  // A task with a command and no cache reads files no key names, git-ignored
+  // ones included, so its project's writes stay events. A persistent server
+  // is not such a reader: its own logs would re-run the loop forever.
+  it('a plain uncached task counts; a persistent one and a cached one do not', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'vx-watch-uncached-'))
+    try {
+      await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
+      await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'r', private: true }))
+      const configs: Record<string, string> = {
+        tool: `export default { tasks: { gen: { exec: { command: 'true' } } } }\n`,
+        svc: `export default { tasks: { dev: { exec: { command: 'true', persistent: { readyWhen: 'up' } } } } }\n`,
+        lib: `export default { tasks: { build: { exec: { command: 'true' }, cache: { inputs: { files: ['src/**'] } } } } }\n`,
+      }
+      for (const [name, config] of Object.entries(configs)) {
+        await mkdir(path.join(root, 'packages', name), { recursive: true })
+        await writeFile(path.join(root, 'packages', name, 'package.json'), JSON.stringify({ name }))
+        await writeFile(path.join(root, 'packages', name, 'vx.config.mjs'), config)
+      }
+      const metas = await listProjects(await loadWorkspace(root))
+      const swept = await sweepConfigs(metas, root)
+      expect([...swept.uncached]).toEqual([path.join(root, 'packages', 'tool')])
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+})
+
 describe('the recursive root watcher keeps only the events a key can see', () => {
   // With any `inputs.workspaceFiles` declared, ONE recursive watcher hears
   // every write in the workspace. Before this rule it triggered on all of

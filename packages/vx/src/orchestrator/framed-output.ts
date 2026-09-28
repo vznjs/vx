@@ -107,7 +107,7 @@ export function formatTaskBlock(
     // line under the header reads as the command on its own.
     lines.push(
       '',
-      corner(`$ ${maskedCommand(node.config.exec?.command ?? '', node.config.exec?.env?.define)}`),
+      corner(`$ ${maskedCommand(node.config.exec?.command ?? '', node.config.exec?.env)}`),
       '',
     )
   }
@@ -391,7 +391,7 @@ export function formatTaskSkippedLine(
  */
 export function formatFrameOpen(node: TaskNode, colors: ColorSupport = NO_COLOR): string {
   const corner = (t: string) => paint('', t, colors, { dim: true })
-  const cmd = maskedCommand(node.config.exec?.command ?? '', node.config.exec?.env?.define)
+  const cmd = maskedCommand(node.config.exec?.command ?? '', node.config.exec?.env)
   const mark = isPersistentNode(node) ? `${paint(ACCENT, '▸', colors)} ` : ''
   return `${corner('┌─')} ${mark}${paintTaskId(node, colors, { bold: true })} ${corner('>')} $ ${cmd}`
 }

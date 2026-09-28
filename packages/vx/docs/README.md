@@ -210,11 +210,12 @@ contract, and cross-module imports go through it only, enforced by
 Every source file has a page under [`modules/`](./modules/). Tests live
 in `tests/`. The published plugin packages are `@vzn/vx-reapi` (Bazel
 remote cache and remote execution), `@vzn/vx-otel` (OpenTelemetry
-traces and metrics), `@vzn/vx-github` (job summary and Checks API),
+traces, metrics and logs), `@vzn/vx-github` (job summary and Checks API),
 `@vzn/vx-lockfile` (per-project keys from the package manager's
 lockfile), `@vzn/vx-schedule-history` (order by the critical path
 learned from run history), `@vzn/vx-mcp` (`vx mcp`, a server for AI
-agents) and `@vzn/vx-migrate` (a Turbo repo run unchanged, a Turbo or
-Nx remote cache kept, `vx.config.ts` written from either), each
+agents) and `@vzn/vx-migrate` (a Turbo, Nx, moon, wireit, lage or
+scripts-only repo run unchanged, a Turbo or Nx remote cache kept,
+`vx.config.ts` written from any of them), each
 importing core only through the public `@vzn/vx` specifier — a
 boundary the test suite enforces.

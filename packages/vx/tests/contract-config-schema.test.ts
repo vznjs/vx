@@ -76,7 +76,7 @@ const LEVEL_TYPES: Record<'workspace' | 'project', Record<string, string[]>> = {
       persistent: true,
       sandbox: true,
     }),
-    'tasks.*.exec.env': keys<ExecEnv>({ passThrough: true, define: true }),
+    'tasks.*.exec.env': keys<ExecEnv>({ passThrough: true, define: true, secret: true }),
     'tasks.*.exec.persistent': keys<PersistentConfig>({ readyWhen: true }),
     'tasks.*.exec.sandbox': keys<SandboxConfig>({
       allow: true,
@@ -160,7 +160,7 @@ function projectSeed(): Record<string, unknown> {
           command: 'true',
           remote: false,
           timeout: 1000,
-          env: { passThrough: ['CI'], define: { A: 'b' } },
+          env: { passThrough: ['CI'], define: { A: 'b' }, secret: ['CI'] },
           persistent: { readyWhen: 'ready' },
           sandbox: {
             allow: grants,

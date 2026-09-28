@@ -38,25 +38,23 @@ export interface SecretMask {
 /**
  * The mask for these variables (a process's env, a task's `define`), or
  * null when none is secret-named with a value worth masking: the common
- * run pays one name test per variable and nothing per byte.
+ * run pays one name test per variable and nothing per byte. `named` are
+ * the task's `env.secret`: masked whatever the name.
  */
 export function secretMask(
-  ...sources: ReadonlyArray<Readonly<Record<string, string | undefined>> | undefined>
+  sources: ReadonlyArray<Readonly<Record<string, string | undefined>> | undefined>,
+  named: readonly string[] = [],
 ): SecretMask | null {
   const values = new Set<string>()
+  const add = (value: string | undefined): void => {
+    if (value !== undefined && value.length >= MIN_SECRET_CHARS) values.add(value)
+  }
   for (const source of sources) {
     if (source === undefined) continue
     for (const name in source) {
-      const value = source[name]
-      if (
-        value !== undefined &&
-        value.length >= MIN_SECRET_CHARS &&
-        SECRET_NAME.test(name) &&
-        !NOT_SECRET.test(name)
-      ) {
-        values.add(value)
-      }
+      if (SECRET_NAME.test(name) && !NOT_SECRET.test(name)) add(source[name])
     }
+    for (const name of named) add(source[name])
   }
   if (values.size === 0) return null
   // Longest first, so a value holding another is replaced whole.
@@ -107,9 +105,15 @@ export function secretMask(
   }
 }
 
-/** A task's command as vx shows it: its secret-named values masked. */
-export function maskedCommand(command: string, define?: Readonly<Record<string, string>>): string {
-  return secretMask(process.env, define)?.mask(command) ?? command
+/** A task's command as vx shows it: its secret values masked. */
+export function maskedCommand(command: string, env?: TaskEnvSecrets): string {
+  return secretMask([process.env, env?.define], env?.secret)?.mask(command) ?? command
+}
+
+/** What of a task's `exec.env` names its secrets. */
+export interface TaskEnvSecrets {
+  readonly define?: Readonly<Record<string, string>>
+  readonly secret?: readonly string[]
 }
 
 /**

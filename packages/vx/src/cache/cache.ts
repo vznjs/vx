@@ -36,6 +36,8 @@ import {
   formatBytes,
   isDiskFull,
   isFsRefusal,
+  isOutOfFds,
+  OUT_OF_FDS_HINT,
   relPosix,
   span,
   splitTaskId,
@@ -1052,6 +1054,13 @@ export class Cache implements CacheLayer {
           `restore of ${hash} into ${projectDir} could not write its outputs (${code}: ${err.message}). ${remedy}`,
         )
       }
+      // The process is out of descriptors: the artifact is fine, and
+      // calling it corrupt sent the reader after the cache (A-39).
+      if (isOutOfFds(err)) {
+        throw new UserError(
+          `restore of ${hash} into ${projectDir} could not open a file (${err.message}) — ${OUT_OF_FDS_HINT}`,
+        )
+      }
       // The artifact itself is gone: the read names its path (`bytes()`
       // opens it; a staged file's ENOENT names the temp below).
       if (code === 'ENOENT' && (err as NodeJS.ErrnoException).path === src) {
@@ -1127,7 +1136,18 @@ export class Cache implements CacheLayer {
     // again in `writeArtifactAndIndex` cost every save two thread-pool
     // round trips for an EEXIST and a stat (item 630).
     const endPack = span('save: pack')
-    const compressed = await this.packArtifactToTemp(this.tempPath(args.hash), args)
+    const compressed = await this.packArtifactToTemp(this.tempPath(args.hash), args).catch(
+      (err: unknown) => {
+        // A save that could not open an output names the limit, not only
+        // the file, which is fine (A-39).
+        if (isOutOfFds(err)) {
+          throw new UserError(
+            `save of ${args.hash} could not open a file (${err.message}) — ${OUT_OF_FDS_HINT}`,
+          )
+        }
+        throw err
+      },
+    )
     endPack()
     await this.guard(() =>
       this.writeArtifactAndIndex(args.hash, compressed, {
@@ -1211,12 +1231,12 @@ export class Cache implements CacheLayer {
   }): Map<string, string> {
     const outputs = new Map<string, string>()
     for (const f of args.outputFiles) {
-      outputs.set(`outputs/${path.relative(args.projectDir, f)}`, f)
+      outputs.set(`outputs/${relPosix(args.projectDir, f)}`, f)
     }
     // Caller passes workspaceRoot whenever workspaceOutputFiles is
     // non-empty; the rels are root-anchored by construction.
     for (const f of args.workspaceOutputFiles ?? []) {
-      outputs.set(`${WORKSPACE_OUTPUT_PREFIX}${path.relative(args.workspaceRoot!, f)}`, f)
+      outputs.set(`${WORKSPACE_OUTPUT_PREFIX}${relPosix(args.workspaceRoot!, f)}`, f)
     }
     return outputs
   }

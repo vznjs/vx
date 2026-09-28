@@ -310,6 +310,35 @@ end, and the duration and wallclock window; `overlapping-outputs.test.ts`
 entry) and `stale-hit.test.ts` (a root-anchored file the hit restores is
 marked). No defect in the file.
 
+## C-27: hold run-lock.ts's surviving mutants
+
+Swept `orchestrator/run-lock.ts` (68 mutants, 8 files): 39 caught, 29
+survived. 6 are equivalent: the `pid` presence check before its read
+(the read fails the same way), `Number.isInteger` beside `pid > 0`
+(NaN fails both), the `continue` after a reclaim, either kind, and a
+legacy reclaim by unlink instead of `rm -r` (one more poll, same end),
+`?? 1` as `?? 0` in the release (a keep-alive row failed once under it
+and passed on re-run: a flake). New rows hold the other 23, each
+failing under its mutant: one exit hook per process;
+an entry that only contains a holder name, a pid file of `0` or one
+that cannot be read are reclaimed; a live `x` entry is waited for; a
+legacy pid file's start time is checked, and again when rewritten
+mid-wait; comm holding `) `; one procfs read per holder per wait. A new
+`run-lock-fs.test.ts` mocks `node:fs/promises` for the refusals root
+cannot provoke (EACCES on readdir and unlink, EEXIST on rename, EPERM
+from kill), the wait's poll count, the pid-file grace under a stopped
+clock, procfs of another namespace, and a taking landing inside a held
+release unlink (its own entry, its exit cleanup). No defect.
+
+## C-29: an out-of-descriptors error in a task is a refusal, not an internal error
+
+The scheduler asked only `isUserError` and `isFsRefusal`, so a task
+that threw `EMFILE` or `ENFILE` printed `[vx] internal error in <id>`.
+It now prints the one line `bin.ts` prints (E-50): the message and
+`OUT_OF_FDS_HINT`. Rows in `scheduler.test.ts`, one per code, red
+without the change. A run under `ulimit -n 30` did not reach this path:
+the spawn failed first (the lead for A and B below).
+
 ## Leads for other streams
 
 - **E:** a plugin command's plain `throw` (`commands.probe.run` throwing
@@ -371,3 +400,9 @@ marked). No defect in the file.
   And `cleanOutputPaths` refuses a directory at an additive task's
   recorded path (`ERR_FS_EISDIR`, the task fails, named), where the glob
   clean replaces one.
+- **A, B:** under a low `ulimit -n` a task whose spawn fails with
+  `EMFILE` (`socketpair`) exits 127 (`runner.ts`), and `execute-task.ts`
+  then adds `shellVerdict`'s "command not found … not on this task's
+  PATH" line: 17 of 21 tasks at `ulimit -n 30`, each told to install a
+  command that exists. The spawn failure should carry a flag the verdict
+  skips, and `spawnFailureText` could name `OUT_OF_FDS_HINT`.

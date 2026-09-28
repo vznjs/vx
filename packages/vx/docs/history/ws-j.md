@@ -239,6 +239,26 @@
 - **J-43** module pages for the sixteen most-changed source files of
   the last twelve hours: ten stale claims on six pages (scheduler,
   execute-task, affected, inputs, metrics, cli-watch).
+- **J-44** migrate and CI guides run against source: all held but the
+  CI sample, whose lone `checks: write` dropped `contents: read`
+  (a private checkout fails), and the migrate guide's source list,
+  which missed wireit and lage.
+- **J-45** configure guide and internals index run against source and
+  a fixture: `cacheRetention` evicts after every run, a `--no-cache`
+  one included (probe: 2 entries evicted; also schema, comparison);
+  outputs are wiped only by a run that writes the cache.
+- **J-46** flows.md and execution.md against the last twelve hours of
+  runtime changes: an outside stop is `failed` not `aborted` (also
+  cli.md), `deny.network` is enforced run-wide since B-21 (sandboxing
+  guide, schema.md), and the watch loop's owners span four files.
+- **J-47** the rest of caching.md against source (constants held):
+  nested projects drop by ancestor lookup, `prune --dry-run` previews
+  an earlier-schema reset, and an empty directory can block a restore.
+- **J-48** schema.md's field prose against source (error tables
+  probed): masking skips `_FILE`/`_PATH`/`_DIR` and
+  `GIT_CONFIG_KEY_<n>`; a write grant exposing `.git`, `.vx` or a
+  nested project is refused (probed); the baseline writes its own
+  `TMPDIR`; a denied read is reported only where strace attaches.
 
 ## Leads for other streams
 
@@ -307,3 +327,31 @@ task(s): nope.` and exits 0; cli.md says an undeclared name is
   the runner saw reverts the task to aborted; since c23d176 an outside
   stop is failed unless the run is stopping. A comment claiming what
   the code no longer does (found in J-43).
+- **A** `src/config.ts:17` JSDoc says `cacheRetention` evicts after
+  "every run that writes to it"; `evictIfDue` ignores the write axis
+  and a `--no-cache` run evicts (found in J-45).
+- **D** `tests/config-eval.test.ts` › "rejects a wedged worker … then
+  recovers" failed on macOS CI (PR #1503, shard 4): the recovery eval
+  got `config worker did not answer within 250ms` (line 500). The row
+  keeps the 250 ms budget for the fresh worker's first answer, which a
+  loaded runner's spawn can miss (D-17, c503448).
+- **E** `vx why`'s note "this task recorded no cache key (skipped, or a
+  persistent task)" (`orchestrator/metrics.ts` ~464, ~609) predates
+  6a3c035, which gives a persistent task a key; the configure guide
+  and a blog post quote it (found in J-46).
+- **C (Windows)** Pages still say tasks run through `sh -c` everywhere
+  or that Windows is unsupported, while 9b2b889 runs tasks through
+  `bun exec` on win32: comparison.md ~199 and ~384, optimizations.md
+  ~70, site quickstart ~8/~89, sandboxing ~70. Left for the Windows
+  stream to settle once the port lands (found in J-46).
+- **A** `tests/caching-doc-drift.test.ts:64` pins caching.md's
+  `-- src/cache/cache.ts schema (SCHEMA_VERSION = 'v28')`; the DDL
+  moved to `src/cache/schema.ts` in A-21 (34fb1a3). Retarget the pin
+  and the line together (found in J-47).
+- **B/C** `src/config.ts` doc comments (they generate `docs/api.md`)
+  are stale: `SandboxConfig` "writes nothing" (it writes its TMPDIR);
+  `SandboxGrants.network` "`true` allows all" / "omitted means no
+  network" (the allowlist is one union per run); `WorkspaceConfig.timeout`
+  precedence omits `--timeout`; `concurrency` "number of CPUs" ignores
+  the cgroup cap; `dependsOn` `'^name'` "every transitive" (it is the
+  nearest holders). Found in J-48.

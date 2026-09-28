@@ -154,7 +154,7 @@ function projectDir(root: string, meta: ProjectMeta): string {
 }
 
 /**
- * A task as `vx show` prints it: a secret-named variable's value masked
+ * A task as `vx show` prints it: a secret variable's value masked
  * wherever it appears, in `env.define` and in the command a TS config
  * built from `process.env` (L-11).
  */
@@ -162,7 +162,7 @@ function shownTask(task: TaskConfig): TaskConfig {
   const exec = task.exec
   if (exec === undefined) return task
   const define = exec.env?.define
-  const secrets = secretMask(process.env, define)
+  const secrets = secretMask([process.env, define], exec.env?.secret)
   if (secrets === null) return task
   return {
     ...task,

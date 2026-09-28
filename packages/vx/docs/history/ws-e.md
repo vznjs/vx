@@ -337,3 +337,16 @@ task picked`; neither prints a stack. Row in
   green one since, and narrows `--list` to failures.
 - E-57 — `vx watch`'s six "cannot watch" / "cannot re-read" catch
   blocks share one `sayCannot`. No behaviour change.
+- E-58 — Mutation sweep of older `src/cli` guards (`--filter` empty,
+  `--cache=` empty, `--timeout` zero, the empty-walk selection, the
+  show `#` target, `--list`'s space form and its range): seven mutants,
+  six caught. The `--list` ceiling (500) had no row; it has one.
+- E-59 — Sweep of `plugin-commands.ts` and `workspace-config.ts`: five
+  mutants, four caught. The survivor, `vx help`'s dedup of a verb two
+  plugins declare, was unreachable (the load refuses two owners); it is
+  gone, and a row pins the refusal through the CLI.
+- E-60 — Sweep of the watch helpers: six mutants, four caught. A
+  persistent task not counting as a project that reads what it likes
+  (`uncached`) had no row; it has one. `watchedProjects`' whole-scope
+  shortcut survives as an equivalent mutant: the walk returns the same
+  set.

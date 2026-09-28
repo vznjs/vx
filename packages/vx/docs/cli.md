@@ -1589,7 +1589,8 @@ package from its `package.json` scripts, plus a `vx.workspace.ts` of
 `{ plugins: [] }` whose comment says running and caching here are the
 floor, so it declares no executor or cache. `@vzn/vx-migrate` takes the
 same `--dry` / `--force` flags but reads a runner's config (turbo, nx,
-moon, wireit, lage), never bare scripts. A workspace with no scripts at
+moon, wireit, lage) or root scripts that fan out (`--from scripts`);
+per-package scripts alone are `init`'s. A workspace with no scripts at
 all still gets the workspace file, a printed example config, and the
 next command to run. A root
 `package.json` with no `workspaces` field is single-project mode, and

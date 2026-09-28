@@ -180,7 +180,9 @@ evaluating it: `cannot find '<name>' — no node_modules above the config
 provides it; install the workspace's dependencies first`. Builtins, `@vzn/vx`
 (the core alias), relative or absolute specifiers, and package.json
 subpath imports (`#tasks`: Bun maps them inside the package and never asks
-the registry, D-28) are never listed.
+the registry, D-28) are never listed. Nor is a self-reference: a
+specifier naming the package the config sits in, whose nearest
+`package.json` has `exports`, resolves inside it (D-29).
 Nor is a specifier the nearest `tsconfig.json` (else `jsconfig.json`) maps,
 through `paths` or `baseUrl` with relative `extends` followed, to a file on
 disk: Bun loads that file and never reaches the registry (D-26).

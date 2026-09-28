@@ -377,6 +377,7 @@ Semantics:
 interface ExecEnv {
   passThrough?: string[] // names taken from host process.env; exact names, a wildcard is refused
   define?: Record<string, string> // explicit name=value pairs
+  secret?: string[] // names whose values are masked (`***`) whatever the name; see Masking
 }
 ```
 
@@ -461,14 +462,17 @@ matches Turbo's `passThroughEnv` semantics and exists for two reasons:
 
 **Masking.** The value of a variable whose name holds `TOKEN`, `SECRET`,
 `KEY`, `PASSWORD`, `PASSWD` or `CREDENTIAL` (vx's own environment or a
-task's `define`, six characters or more) is printed as `***` wherever vx
+task's `define`, six characters or more; not a name ending `_FILE`,
+`_PATH` or `_DIR`, nor git's `GIT_CONFIG_KEY_<n>`) is printed as `***` wherever vx
 shows it: the task's output, the stdout the cache keeps and a hit
 replays, the command a cache entry stores (what `vx why` prints and a
 remote cache receives), the `$ command` line, telemetry records and
 `vx show`. A value
 split across two output chunks is still caught; the output holds back
 that many characters until the next chunk. A plugin that reads a task's
-config directly sees it as written.
+config directly sees it as written. A secret whose name holds none of
+those words (`GH_PAT`, `NPM_AUTH`) is listed in `exec.env.secret`, and is
+then masked in the same places.
 
 Two `node_modules/.bin` directories are prepended to `PATH` so
 installed tools (`oxlint`, `vite`, etc.) work without `npx`: the
@@ -1032,7 +1036,9 @@ Spell a directory as a bare literal and the task's own `mkdir` meets
 vx removes the empty file it made (it takes back any placeholder the
 task never wrote, so an unwritten one is never archived as an output).
 A grant that leaves the project through a symlink is refused: the grant
-binds the path it names, and vx follows no link out of the project.
+binds the path it names, and vx follows no link out of the project. So
+is one whose bind would make `.git`, `.vx` or a nested project writable:
+a file grant at a single-package workspace's root binds the root.
 
 **A write grant is readable, and on Linux it reads WIDER than it looks.**
 A write path is readable too (`tsc --incremental` re-reads its own
@@ -1061,7 +1067,7 @@ before the allowlist (B-21). On Linux a refused request fails only through the
 task's own exit; no violation is reported.
 
 **Baseline** (`sandbox: {}`): the task reads nothing in the workspace,
-writes nothing and reaches no domain no task of the run lists — not even its own project
+writes nothing but its own `TMPDIR` and reaches no domain no task of the run lists — not even its own project
 directory, which is why `allow: { read: ['.'] }` is the first line of
 almost every real block. The read wall is the WORKSPACE ROOT: a path
 outside it (`~/.cache`, `/etc`, the toolchain) is readable and folds into
@@ -1116,7 +1122,9 @@ outside the workspace is not walled (above).
 
 **Policy: fail on violation.** An undeclared read, or a write the
 sandbox refuses, fails the task, and a failed task is never cached.
-Activation is lazy (only when
+On Linux a denied read is reported only where `strace` is on PATH and
+may attach; elsewhere the sandbox still denies it, and the task fails
+only if the command does. Activation is lazy (only when
 some task declares `exec.sandbox`); on an unsupported platform a
 sandboxed task fails fast rather than running unsandboxed. Linux needs
 `bubblewrap`, `socat` and `ripgrep` installed (the runtime expands its

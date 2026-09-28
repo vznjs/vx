@@ -326,7 +326,7 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // A server's output masked as a one-shot task's is (L-11); `readyWhen`
   // is matched on the raw chunks, before this. Its held tail is flushed by
   // the idle timer: a server never ends on the way to a flush.
-  const serverSecrets = secretMask(process.env, env, step.env?.define)
+  const serverSecrets = secretMask([process.env, env, step.env?.define], step.env?.secret)
   const serverOut = serverSecrets && maskedEmitter(serverSecrets, (t) => log.taskStdout(node, t))
   const serverErr = serverSecrets && maskedEmitter(serverSecrets, (t) => log.taskStderr(node, t))
   const persistentOpts: Parameters<typeof runPersistent>[0] = {
@@ -892,7 +892,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
 
   // The values of secret-named variables, masked in what the task prints
   // and what the cache keeps of it (L-11); null when there are none.
-  const secrets = secretMask(process.env, env, step.env?.define)
+  const secrets = secretMask([process.env, env, step.env?.define], step.env?.secret)
   let flushMasked = (): void => {}
   // The entry's command is shown by `vx why` and sent with the entry to a
   // remote cache: a value a config interpolated stays out of both.

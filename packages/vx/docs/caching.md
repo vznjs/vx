@@ -274,10 +274,11 @@ over (in order):
     A file changed within `FILE_HASH_RACY_MS` (50 ms) of its stat is
     hashed but not memoised; a ctime with no sub-second part, as a
     file system that keeps whole seconds writes it (ext3, HFS+,
-    FAT/exFAT, some NFS), widens that window by a second, since a
-    rewrite later in the same second keeps the stamp (`racyWindowMs`;
-    until 2026-09-27, A-2, such a rewrite of the same size was a hit on
-    the first bytes' output). That is the same value the index holds whenever no filter applies,
+    FAT/exFAT, some NFS), widens that window by a second, and an even
+    second by two, since FAT32 keeps even seconds; a rewrite later in
+    the same stamp keeps it (`racyWindowMs`; until 2026-09-27, A-2 and
+    A-38, such a rewrite of the same size was a hit on the first bytes'
+    output). That is the same value the index holds whenever no filter applies,
     so a file's contribution doesn't flip across dirty↔clean
     transitions. Folded as `(relPath, identity)` pairs, sorted for
     stability across OSes and walk orders. The identity is the OID
@@ -995,6 +996,11 @@ write is only a memo: the file-hash memo, the output stamps and the
 access times are skipped and the run goes on; a prune unlinks the
 artifacts first, so the rows it then deletes have room to go, and a
 save's temp file is removed when its write fails.
+A process out of file descriptors (`EMFILE`, `ENFILE`) is named the
+same way: a save is `[vx] cache save failed: save of <hash> could not
+open a file (EMFILE: …) — … raise the limit (ulimit -n 4096) and
+re-run`, and a restore fails the task with that hint, never as a
+corrupt artifact (A-39).
 
 ```
 <workspaceRoot>/.vx/cache/                  (configurable via vx.workspace.ts cacheDir)

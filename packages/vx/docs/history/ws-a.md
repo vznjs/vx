@@ -301,7 +301,7 @@ The last `miss-save.ts` survivors: the workspace-row filter in the snapshot's `e
 
 - Rows: `cache-get-many.test.ts`: `getMany` past a 900-hash chunk; `has()` with its artifact gone; a write-disabled cache saves nothing. `cache.test.ts`: a size prune passes over an older row whose artifact is gone. `remote-artifact-names.test.ts`: an undeclared project output and an undeclared workspace output are each refused alone (the mixed row masked either half). Each red under its mutant.
 - Equivalent: the row mode's `& 0o777` (the sidecar already holds permission bits only).
-- Held as non-root, so not a survivor: a restore's `EACCES` (`cache.test.ts` skips it as root; driven as `probe` it is red under its mutant, A-37). Held by A-37: eviction on a read-only cache, the prune retry and the access flush on `SQLITE_FULL`. Still unheld: a foreign artifact's bare `outputs/` directory entry.
+- Held as non-root, so not a survivor: a restore's `EACCES` (`cache.test.ts` skips it as root; driven as `probe` it is red under its mutant, A-37). Held by A-37: eviction on a read-only cache, the prune retry and the access flush on `SQLITE_FULL`. A foreign artifact's bare `outputs/` directory entry is not a gap (corrected A-38): `scanArtifact` skips every non-regular entry and the tar reader strips a regular entry's trailing slash, so no entry reaches the row code as `outputs/`; C29/C30 are equivalent.
 
 ### A-35 (2026-09-28, sweep: `upstream.ts`)
 
@@ -323,3 +323,16 @@ A-34 logged four `cache.ts` survivors as out of reach on this box. One was held 
 
 - Rows (`execute-task.test.ts` › "execute-task edges"): no save over a folded upstream marked unkeyed (with a keyed control); a command that rewrites its own input comes out unkeyed and unsaved, and the run forgets its project, or every partition with workspace outputs; a rewritten lockfile marks the outcome unkeyed; forwarded args reach the requested task only; a step's own timeout and retries win over the run's; retrying stops at the first success; a run that writes no cache leaves workspace outputs alone; an executor that exits non-zero on the timeout reads as timed out; a restore failing for any reason but a vanished artifact is not retried as a miss. Each red under its mutant.
 - A masking pair: the save's key check and the unsaved branch after it both forget the project, so neither half was held. The rows run with `noDependants`, where the check is the only forget.
+
+### A-38 — an even-second stamp widens the racy window by two (2026-09-28)
+
+FAT32 keeps even seconds. A file stamped 12:00:00, hashed at 12:00:01.2, passed A-2's one-second widening and was memoised; a same-size rewrite at 12:00:01.8 kept every stat field, so the memo served the first bytes' digest. `racyWindowMs` now adds 2 s to a stamp on an even second. Cost: an ext3 file on an even second is re-hashed for one more second.
+
+- Row (`whole-second-stamps.test.ts`): single and batched hash, red without the fix; control on an odd second at the same age stays memoised. No FAT mount here (no `vfat` in the kernel), so the stamp is simulated as A-2's rows do.
+- Refuted lead: a warm-run CPU profile at 1,000 projects put 41 ms of native `get` under `getConfigEval`. A counter showed all 1,000 configs took the batched fast key and none the single-key path; the attribution was the profile's, not a cost.
+
+### A-39 — out of file descriptors is named, not a corrupt artifact (2026-09-28)
+
+Lead from E. Under a full fd table a restore threw `CorruptArtifactError` (the artifact was fine) and a save threw the bare `EMFILE` naming an output. Both now throw a `UserError` with `OUT_OF_FDS_HINT`. The scheduler side (`isFsRefusal` only) is C's.
+
+- Rows (`cache-out-of-fds.test.ts`): a child under `ulimit -n 128` holds every descriptor, then saves or restores; exact messages, each red without the fix.
