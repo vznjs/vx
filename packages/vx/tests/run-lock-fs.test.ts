@@ -53,7 +53,12 @@ await mock.module('node:fs/promises', () => ({
   },
 }))
 await mock.module('../src/util/index.js', () => ({ ...realUtil, procfsIsOwn: () => false }))
-const { acquireRunLock, runLockPath } = await import('../src/orchestrator/run-lock.js')
+// A fresh instance: a shard-mate that loaded run-lock.ts first keeps the real
+// `procfsIsOwn` binding, and the mock above never reached it (O-11's deal).
+const FRESH: string = '../src/orchestrator/run-lock.js?procfs-mocked'
+const { acquireRunLock, runLockPath } = (await import(
+  FRESH
+)) as typeof import('../src/orchestrator/run-lock.js')
 
 describe('the run lock, through a mocked file system', () => {
   let dir = ''
