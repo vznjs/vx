@@ -32,7 +32,7 @@ export interface ArmedWatcher {
 }
 
 /** How often the fallback re-walks a watched tree. */
-export const POLL_INTERVAL_MS = 250
+const POLL_INTERVAL_MS = 250
 
 /**
  * Directory names the fallback never descends into WHEN no better filter is
@@ -244,5 +244,96 @@ export function fsClockNow(dir: string): number {
     return at
   } catch {
     return Date.now()
+  }
+}
+
+/** A handle that watches nothing: a slot a drop emptied, an arm not made. */
+export const CLOSED: WatchHandle = { close() {} }
+
+/**
+ * Every watcher `vx watch` arms. Each OS watcher proves delivery or is
+ * swapped for the poller in its slot; an OS watch limit (ENOSPC, EMFILE)
+ * goes straight to the poller; `VX_WATCH_POLL=1` polls from the start.
+ * `skip` is what the poller leaves unsampled, asked on each walk.
+ */
+export class WatcherPool {
+  private readonly watchers: WatchHandle[] = []
+  private readonly proofs: Promise<void>[] = []
+  // `VX_WATCH_POLL=1` skips the OS watcher entirely. Where it is known not
+  // to work — a sandbox with no `machLookup` for `com.apple.FSEvents`, a
+  // network mount, a container bind — the attempt costs a denied syscall
+  // and a two-second wait before the fallback takes over anyway.
+  private readonly forcePoll = (process.env['VX_WATCH_POLL'] ?? '') !== ''
+
+  constructor(private readonly skip: (dir: string, rel: string) => boolean) {
+    if (this.forcePoll)
+      process.stderr.write(`vx watch: polling every ${POLL_INTERVAL_MS} ms (VX_WATCH_POLL)\n`)
+  }
+
+  private poll(dir: string, recursive: boolean, onEvent: (filename: string) => void): WatchHandle {
+    return pollWatcher(dir, recursive, onEvent, POLL_INTERVAL_MS, (rel) => this.skip(dir, rel))
+  }
+
+  // By slot, not by handle: an OS watcher that never proves delivery is
+  // swapped for a poller in place, and a drop must close what is there.
+  arm(dir: string, recursive: boolean, onEvent: (filename: string) => void): WatchHandle {
+    const watchers = this.watchers
+    const at = watchers.length
+    const handle: WatchHandle = {
+      close: () => {
+        watchers[at]?.close()
+        watchers[at] = CLOSED
+      },
+    }
+    if (this.forcePoll) {
+      watchers.push(this.poll(dir, recursive, onEvent))
+      return handle
+    }
+    let armed: ArmedWatcher
+    try {
+      armed = armWatcher(dir, recursive, onEvent)
+    } catch (err) {
+      // The OS's watch limit, not the directory: the loop said "watching"
+      // and never fired. The poller needs no watch slot.
+      const code = (err as NodeJS.ErrnoException).code
+      if (code !== 'ENOSPC' && code !== 'EMFILE') throw err
+      watchers.push(this.poll(dir, recursive, onEvent))
+      process.stderr.write(
+        `vx watch: ${dir}: the OS watch limit is reached (${code}); polling every ${POLL_INTERVAL_MS} ms instead — raise it (Linux: sysctl fs.inotify.max_user_watches) to watch natively\n`,
+      )
+      return handle
+    }
+    watchers.push(armed.watcher)
+    this.proofs.push(
+      armed.ready.then((ok) => {
+        if (ok) return
+        armed.watcher.close()
+        // Dropped by a rearm before its proof settled: nothing to swap in.
+        if (watchers[at] !== armed.watcher) return
+        // The watcher never proved delivery, so it is not one: an FSEvents
+        // stream the OS refused, a filesystem that reports nothing. Swap in
+        // the poller rather than run a loop that silently never fires.
+        watchers[at] = this.poll(dir, recursive, onEvent)
+        process.stderr.write(
+          `vx watch: ${dir}: no OS watch events within ${WATCH_PROBE_TIMEOUT_MS} ms; polling every ${POLL_INTERVAL_MS} ms instead\n`,
+        )
+      }),
+    )
+    return handle
+  }
+
+  /** Settles once every arm so far has proved delivery or fallen back. */
+  async proved(): Promise<void> {
+    await Promise.all(this.proofs)
+  }
+
+  closeAll(): void {
+    for (const w of this.watchers) {
+      try {
+        w.close()
+      } catch {
+        // ignore
+      }
+    }
   }
 }

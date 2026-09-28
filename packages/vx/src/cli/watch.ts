@@ -41,14 +41,7 @@ import {
   makeWatchIgnore,
   shapesWatchedSet,
 } from './watch-filter.js'
-import {
-  armWatcher,
-  fsClockNow,
-  pollWatcher,
-  POLL_INTERVAL_MS,
-  WATCH_PROBE_TIMEOUT_MS,
-  type WatchHandle,
-} from './watch-fs.js'
+import { CLOSED, fsClockNow, type WatchHandle, WatcherPool } from './watch-fs.js'
 import { ChangeJudge } from './watch-judge.js'
 import { memberEntries, sameMembers, sweepConfigs, watchedProjects } from './watch-set.js'
 
@@ -313,8 +306,6 @@ interface Rediscovered {
   packageDirs: ReadonlySet<string>
 }
 
-const CLOSED: WatchHandle = { close() {} }
-
 async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
   const { opts, stop, workspaceRoot, projects, cacheDir } = args
   // The watched set as of the last cycle: `rearm` replaces these after an
@@ -414,73 +405,13 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
   /** Since the last cycle, a member came or went, or a file that shapes the watched set changed (`shapesWatchedSet`). */
   let reread = false
 
-  const watchers: WatchHandle[] = []
-  const proofs: Promise<void>[] = []
-  // `VX_WATCH_POLL=1` skips the OS watcher entirely. Where it is known not
-  // to work — a sandbox with no `machLookup` for `com.apple.FSEvents`, a
-  // network mount, a container bind — the attempt costs a denied syscall
-  // and a two-second wait before the fallback takes over anyway.
-  const forcePoll = (process.env['VX_WATCH_POLL'] ?? '') !== ''
-  if (forcePoll)
-    process.stderr.write(`vx watch: polling every ${POLL_INTERVAL_MS} ms (VX_WATCH_POLL)\n`)
   // The poller skips exactly what the event filter would drop: the
   // unconditional segments AND this run's declared output containers. Read
   // through `isIgnoredPath` rather than captured, because `rearm` replaces
   // the filter when the selection changes.
-  const skipUnder =
-    (dir: string) =>
-    (rel: string): boolean =>
-      isIgnoredPath(dir, rel)
-  // By slot, not by handle: an OS watcher that never proves delivery is
-  // swapped for a poller in place, and a drop must close what is there.
-  const arm = (
-    dir: string,
-    recursive: boolean,
-    onEvent: (filename: string) => void,
-  ): WatchHandle => {
-    const at = watchers.length
-    const handle: WatchHandle = {
-      close: () => {
-        watchers[at]?.close()
-        watchers[at] = CLOSED
-      },
-    }
-    if (forcePoll) {
-      watchers.push(pollWatcher(dir, recursive, onEvent, POLL_INTERVAL_MS, skipUnder(dir)))
-      return handle
-    }
-    let armed: ReturnType<typeof armWatcher>
-    try {
-      armed = armWatcher(dir, recursive, onEvent)
-    } catch (err) {
-      // The OS's watch limit, not the directory: the loop said "watching"
-      // and never fired. The poller needs no watch slot.
-      const code = (err as NodeJS.ErrnoException).code
-      if (code !== 'ENOSPC' && code !== 'EMFILE') throw err
-      watchers.push(pollWatcher(dir, recursive, onEvent, POLL_INTERVAL_MS, skipUnder(dir)))
-      process.stderr.write(
-        `vx watch: ${dir}: the OS watch limit is reached (${code}); polling every ${POLL_INTERVAL_MS} ms instead — raise it (Linux: sysctl fs.inotify.max_user_watches) to watch natively\n`,
-      )
-      return handle
-    }
-    watchers.push(armed.watcher)
-    proofs.push(
-      armed.ready.then((ok) => {
-        if (ok) return
-        armed.watcher.close()
-        // Dropped by a rearm before its proof settled: nothing to swap in.
-        if (watchers[at] !== armed.watcher) return
-        // The watcher never proved delivery, so it is not one: an FSEvents
-        // stream the OS refused, a filesystem that reports nothing. Swap in
-        // the poller rather than run a loop that silently never fires.
-        watchers[at] = pollWatcher(dir, recursive, onEvent, POLL_INTERVAL_MS, skipUnder(dir))
-        process.stderr.write(
-          `vx watch: ${dir}: no OS watch events within ${WATCH_PROBE_TIMEOUT_MS} ms; polling every ${POLL_INTERVAL_MS} ms instead\n`,
-        )
-      }),
-    )
-    return handle
-  }
+  const pool = new WatcherPool((dir, rel) => isIgnoredPath(dir, rel))
+  const arm = (dir: string, recursive: boolean, onEvent: (filename: string) => void): WatchHandle =>
+    pool.arm(dir, recursive, onEvent)
 
   /** The instant the watchers go live, on the mtime clock (see `fsClockNow`): a path last modified before it is the initial run's, not an edit. */
   const armedAt = fsClockNow(cacheDir)
@@ -704,7 +635,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
     armImports()
     // A new arm proves delivery like the first ones: an edit in the new
     // package right after this cycle is seen, not lost in the gap.
-    await Promise.all(proofs)
+    await pool.proved()
     process.stdout.write(`${watchingLine(next.projects.length)}\n`)
   }
 
@@ -763,19 +694,13 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
 
   // "watching" is a promise that an edit from now on is seen; every
   // watcher has proved (or been given 2 s to prove) delivery first.
-  await Promise.all(proofs)
+  await pool.proved()
 
   process.stdout.write(`\n${watchingLine(projects.length)}; press Ctrl+C to stop\n`)
 
   return await new Promise<number>((resolve) => {
     const cleanup = async (): Promise<void> => {
-      for (const w of watchers) {
-        try {
-          w.close()
-        } catch {
-          // ignore
-        }
-      }
+      pool.closeAll()
       if (debounceTimer) clearTimeout(debounceTimer)
       // The aborted cycle is tearing its children down; resolve only once
       // it has returned, so the process never exits over a live child.
