@@ -32,7 +32,7 @@ export interface ConfigSweep {
   workspaceWide: boolean
   workspaceInputs: string[]
   outputs: Map<string, string[]>
-  inputs: Map<string, string[]>
+  inputs: Map<string, string[][]>
   uncached: Set<string>
   configImports: string[]
   workspaceConfigImports: string[]
@@ -271,12 +271,12 @@ reasons:
 
 Watch mode re-invokes `orchestrator.run` per cycle with
 `holdPersistent: true`, so the requested persistent tasks a cycle
-started are handed back running (`RunSummary.persistent`) instead of
-being stopped when its graph ends. The loop holds them while it idles;
-the next cycle calls their `stop()` before its run, and the stop path
-calls it after the in-flight cycle returns. A dependency-only
-persistent task is still stopped at the end of its cycle, as under
-`vx run`. So a `persistent` dev server is up between cycles and
+started, and the persistent tasks they depend on, are handed back
+running (`RunSummary.persistent`) instead of being stopped when its
+graph ends. The loop holds them while it idles; the next cycle calls
+their `stop()` before its run, and the stop path calls it after the
+in-flight cycle returns. Any other persistent task is still stopped at
+the end of its cycle, as under `vx run`. So a `persistent` dev server is up between cycles and
 re-spawned by each one. Until 2026-09-24 the server was stopped at the
 END of each cycle and was dead whenever watch sat idle
 (`tests/watch-loop.test.ts` › "the dev server stays up while watch

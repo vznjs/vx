@@ -806,6 +806,7 @@ Status legend:
 | `↓`    | cache hit (remote) — entry would be fetched from the layer                                 |
 | `▶`    | cache miss — task would execute (under `--force` too: nothing is read, what runs is saved) |
 | `·`    | no-cache — task opts out (no `cache` block, or `--no-cache`)                               |
+| `∅`    | `@noop` — task would not run anywhere                                                      |
 | `○`    | group task (suppressed in human view; in DOT + JSON)                                       |
 
 `--dry=json` emits the same data as a structured object, alone on stdout
