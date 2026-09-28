@@ -297,6 +297,14 @@
 - **J-57** the docs index (README.md) and internals/diagrams against
   source: the diagrams page held; the index claimed a page per source
   file (145 files, 96 pages — a slice lives with its module).
+- **J-58** all eleven Mermaid blocks in the core docs parsed with
+  mermaid 12 and checked against source: flow 1 did not render (a `;`
+  in a label ended the statement); five labels named a call, field,
+  variable or exit code that is no longer so.
+- **J-59** every `vx watch`, `vx init` and `vx completions` mode run on
+  fixtures: the missing-plugin hint names no install command, `--mjs`
+  keeps a `package.json` import when a script reads `npm_package_*`,
+  and `vx watch a b` already runs several tasks (modules/cli-watch).
 
 ## Leads for other streams
 
@@ -432,3 +440,7 @@ extra` ignores the extra argument and exits 0 where every other verb
 - **A** `output-dirs-snapshot.test.ts` (the row logged in J-52's batch)
   failed again in a local gate at 06:30 on main, same line 57 `[]` for
   `['dist']`: two of the last four gates. Not load noise to wave off.
+- **D/E** `src/workspace/project-loader.ts:216-219`: any unresolved
+  `@vzn/vx*` import is told `bun add -d @vzn/vx`, naming core, not the
+  missing package (`cannot find '@vzn/vx-otel'; … bun add -d @vzn/vx`;
+  reproduced in J-59).
