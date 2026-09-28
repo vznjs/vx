@@ -14,6 +14,7 @@ export function helpText(pluginCommands: readonly string[] = []): string
 export function verbHelpText(verb: string): string
 export function documentedFlags(verb: string): string[]
 export function seeHelp(verb: string): string
+export function flagHint(verb: string, arg: string): string // ` (did you mean --x?)` or '', every verb's unknown-flag refusal
 export function acceptedFlags(verb: string): string[] // Usage-line flags; `[OPTIONS]` adds run's, less watch's refusals
 export const WATCH_REFUSED_FLAGS: readonly string[]
 export { CORE_VERBS } from '../util/index.js'
@@ -38,8 +39,8 @@ same text cut to one verb — the title, the `Usage:` lines that name
 the verb, and every blank-line-delimited section that is `(for
 <verb>)` or lists a `vx <verb>` form — plus a `Full reference: vx
 help` trailer; a verb the text does not know gets the whole reference.
-There is no second list: the cut reads the text, as `documentedFlags`
-(the `(did you mean …)` source) does.
+There is no second list: the cut reads the text, as `acceptedFlags`
+(the `(did you mean …)` source, via `flagHint`) does.
 
 ## Sections (current)
 

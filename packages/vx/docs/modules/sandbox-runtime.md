@@ -110,7 +110,7 @@ export interface SandboxAvailability {
 export function probeSandbox(opts?: { weakerNested?: boolean }): Promise<SandboxAvailability>
 export function initSandbox(opts?: {
   allowedDomains?: readonly string[] // the run's union
-  allowAllUnixSockets?: boolean
+  allowAllUnixSockets?: boolean // some task asks; the lift is set per task's wrap
 }): Promise<void>
 export function resetSandbox(): Promise<void>
 
@@ -528,9 +528,11 @@ proxy bridges), and spawns the host side, `portBridgeHostArgv`: one
 `socat TCP-LISTEN:<port>,bind=127.0.0.1,fork UNIX-CONNECT:<sock>,retry=…`
 per port. The unix socket lives in the sandbox tmpdir, bound read-write on
 both sides. The task's side has to CREATE a unix socket under SRT's seccomp
-filter, so `prepareSandbox` arms `allowAllUnixSockets` for the run whenever
-a task declares a port list (or `unixSockets`) — per run, like the proxy
-allowlist, because SRT reads it at `initialize()` only. `releaseBridges(tag)`
+filter, so `prepareSandbox` passes `allowAllUnixSockets` when any task
+declares a port list (or `unixSockets`), and `wrapSandboxedCommand` then
+sets SRT's lift for each task's own wrap, one wrap at a time: SRT reads it
+from its run-wide config, and a run-wide lift let a task that declared no
+socket reach the host's docker or ssh-agent socket (L-6). `releaseBridges(tag)`
 stops the host side: `runSandboxed` calls it after the child exits (and
 when the spawn itself fails), the persistent path on the server's exit,
 `resetSandbox` for whatever is left. Each host socat is spawned through

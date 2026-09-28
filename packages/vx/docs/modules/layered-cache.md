@@ -62,7 +62,9 @@ wire `new Response(readableStream)`, bytes in hand `new Blob([bytes])`.
 `Cache.ingest` writes it to its temp with `Bun.write`, which streams a
 `Response` and copies a file `Blob` without collecting either, then
 validates from the temp; a body that fails mid-stream or fails validation
-leaves no temp. `put` receives `Bun.file(<local artifact>)`, opened when
+leaves no temp. A body past the artifact ceiling's zstd bound (by its
+length header, its Blob size, or a running count) is refused before it
+fills the disk (L-5). `put` receives `Bun.file(<local artifact>)`, opened when
 the plugin reads it, so a queued upload holds a path, not a buffer; a
 plugin that must digest first reads `body.stream()` twice. The one
 exception is `--cache=local:,remote:rw`: with no local artifact the bytes

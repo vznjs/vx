@@ -137,8 +137,9 @@ flowchart TD
     W --> X[executeTask reuses preProbed —<br/>no second cache.get]
 ```
 
-The stability gate is shared: a task whose inputs an upstream may write
-has a preliminary key and is never probed early. The upstreams counted
+The stability gate is shared: a task whose inputs an upstream may write,
+or whose outputs meet another same-project task's (M-5), has a
+preliminary key and is never probed early. The upstreams counted
 are transitive (a producer reached through a no-output intermediate
 still counts): tasks declaring outputs, uncached tasks that may write
 into their project or elsewhere in the workspace

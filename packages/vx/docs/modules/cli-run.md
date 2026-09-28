@@ -79,9 +79,9 @@ export async function resolveRunOptions(
    `--exclude-dependencies`) accept either the bare form or `=<value>`.
 3. Unknown flags + missing values + invalid integers → returned via
    `RunArgs.error`. The handler short-circuits to exit 1. An unknown
-   flag names the nearest documented `vx run` flag within two edits
-   (`documentedFlags('run')` reads the help text's `(for run)` sections,
-   so there is no second list to drift).
+   flag names the nearest flag `vx run` accepts (`flagHint('run', arg)`
+   in `help.ts`, which every verb's refusal shares; it reads the help
+   text, so there is no second list to drift).
 4. Mutually-exclusive combinations checked at the end:
    `--dry` + `--graph`; either + `--summarize` / `--profile` /
    `--report` / `--report-file` (they skip execution; the artifacts need

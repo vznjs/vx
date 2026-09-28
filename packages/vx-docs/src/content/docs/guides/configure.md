@@ -130,6 +130,9 @@ app#build — run 019f5a02-…
 
   what changed (1 component, 41 unchanged):
     changed file  packages/app/src/index.ts  a1b2c3… → d4e5f6…
+
+  what to do:
+    file  an edit re-runs by design; a file the task does not read belongs out of cache.inputs.files
 ```
 
 | The verdict line says | It means |
