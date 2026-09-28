@@ -1223,3 +1223,122 @@ describe('the summary, as its second sweep found it unheld', () => {
     }
   })
 })
+
+// F-58: a mutation sweep of checks.ts (150 mutants, 30 real survivors)
+// found these unheld.
+describe('the check run, as its second sweep found it unheld', () => {
+  const env = { token: 't', repository: 'o/r', sha: 'a'.repeat(40), apiUrl: 'https://api' }
+  /** Answers in turn ('drop' throws, a string throws with that code); the calls' times. */
+  const post = async (
+    answers: (number | 'drop' | { code: string })[],
+    over: { apiUrl?: string; signal?: AbortSignal } = {},
+  ) => {
+    const { postCheckRun } = await import('../src/checks.js')
+    const warns: string[] = []
+    const urls: string[] = []
+    const at: number[] = []
+    await postCheckRun({
+      env: { ...env, ...(over.apiUrl === undefined ? {} : { apiUrl: over.apiUrl }) },
+      payload: {},
+      fetchFn: async (url, init) => {
+        urls.push(url)
+        at.push(Date.now())
+        if (init.signal?.aborted === true) throw new DOMException('aborted', 'AbortError')
+        const a = answers[urls.length - 1] ?? 201
+        if (a === 'drop') throw new Error('connection reset')
+        if (typeof a === 'object') throw Object.assign(new TypeError('refused'), a)
+        return { ok: a < 300, status: a, text: async () => '' }
+      },
+      warn: (m) => warns.push(m),
+      ...(over.signal === undefined ? {} : { signal: over.signal }),
+    })
+    return { warns, urls, at }
+  }
+
+  it('the POST goes to the API url it is given', async () => {
+    const { urls } = await post([], { apiUrl: 'https://ghe.corp/api/v3' })
+    expect(urls).toEqual(['https://ghe.corp/api/v3/repos/o/r/check-runs'])
+  })
+
+  it('502 and 504 are retried; 500, 429 and 403 are not', async () => {
+    const calls = async (status: number) => (await post([status])).urls.length
+    expect([
+      await calls(502),
+      await calls(504),
+      await calls(500),
+      await calls(429),
+      await calls(403),
+    ]).toEqual([2, 2, 1, 1, 1])
+  })
+
+  it('three blips: three tries, 200 then 800 ms apart', async () => {
+    const { at, warns } = await post([503, 503, 503])
+    expect([at.length, at[1]! - at[0]! >= 190, at[2]! - at[1]! >= 790, warns.length]).toEqual([
+      3,
+      true,
+      true,
+      1,
+    ])
+  }, 10_000)
+
+  it('each CERT refusal is tried once and warns with the NODE_EXTRA_CA_CERTS hint', async () => {
+    const hint = " — for a host behind a private CA, set NODE_EXTRA_CA_CERTS to its CA's PEM file"
+    const got = []
+    for (const code of [
+      'SELF_SIGNED_CERT_IN_CHAIN',
+      'DEPTH_ZERO_SELF_SIGNED_CERT',
+      'CERT_HAS_EXPIRED',
+    ]) {
+      const r = await post([{ code }])
+      got.push([r.urls.length, r.warns])
+    }
+    expect(got).toEqual(
+      Array.from({ length: 3 }, () => [1, [`vx-github: check-run POST failed: refused${hint}`]]),
+    )
+  })
+
+  it('a drop, then the deadline during the wait: one warning, at once', async () => {
+    const deadline = new AbortController()
+    setTimeout(() => deadline.abort(), 50)
+    const t0 = Date.now()
+    const r = await post(['drop'], { signal: deadline.signal })
+    expect([r.warns, Date.now() - t0 < 150]).toEqual([
+      ['vx-github: check-run POST failed: the flush deadline passed before it could be retried'],
+      true,
+    ])
+  })
+
+  it('a page under 65535 units but over 65535 bytes is clamped, and keeps all it can', async () => {
+    const { clampSummary } = await import('../src/checks.js')
+    const bytes = (s: string) => new TextEncoder().encode(s).byteLength
+    const wide = clampSummary('€'.repeat(30_000))
+    expect([
+      wide.includes('truncated by @vzn/vx-github'),
+      bytes(wide) <= 65_535,
+      bytes(wide) >= 65_535 - 2,
+      bytes(clampSummary('x'.repeat(70_000))),
+    ]).toEqual([true, true, true, 65_535])
+  })
+
+  it('the sha is kept whole', async () => {
+    const { resolveCheckRunEnv } = await import('../src/checks.js')
+    const sha = 'f'.repeat(40)
+    expect(
+      resolveCheckRunEnv({ GITHUB_TOKEN: 't', GITHUB_REPOSITORY: 'o/r', GITHUB_SHA: sha })!.sha,
+    ).toBe(sha)
+  })
+
+  it('one aborted task and nothing failed is cancelled', async () => {
+    const { buildCheckRunPayload } = await import('../src/checks.js')
+    const p = buildCheckRunPayload({
+      summary: summary([task({})], { exitOk: false, abortedCount: 1, failedCount: 0 }),
+      markdown: 'm',
+      name: 'vx',
+      sha: 'a',
+    })
+    expect([p['conclusion'], (p['output'] as { title: string }).title]).toEqual([
+      'cancelled',
+      'cancelled · 1 aborted',
+    ])
+  })
+})
