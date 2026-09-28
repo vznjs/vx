@@ -85,6 +85,15 @@
   a footnote; the cached-run row reads "not measured", no number
   invented. Where the docs say nothing (a per-task sandbox, OTel), the
   cell reads "No" and the footnote says the docs describe none.
+- **K-14** "Tried on real repos" (coordinator backlog 4): the README
+  quoted one real repo (solid); benchmarks.md holds eleven, six against
+  Turbo and five against Nx. The README now lists all eleven, vx /
+  theirs for cold, restore and no-op, bold where the other tool wins
+  (payload's no-op, n8n's cold). `readme-real-repos.unsafe.test.ts`
+  holds each pair to one benchmarks.md row, red with one digit changed.
+  The rest of the backlog had shipped: demo SVG (K-6), chart (K-1),
+  CONTRIBUTING (K-7), social card and meta (K-3), and the site's code
+  blocks already carry copy buttons.
 
 ## Leads for other streams
 
