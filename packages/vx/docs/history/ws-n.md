@@ -181,6 +181,12 @@ keeps a task-to-cache record in `.nx/workspace-data/*.db`: a wiped
 cache directory under a kept database replays 25 "hits" that restore
 nothing.
 
+N-16. `nx()` on TanStack/router (Nx 23.2.1): 43 build tasks, 0 edge
+mismatches against Nx's task graph. 123.0 s cold against 138.0 s,
+restore 1.27 s against 3.82 s, no-op 626 ms against 3.91 s
+(`benchmarks.md`). No mapping gap for `build`; the e2e targets' Nx
+`params: "forward"` edges are reported as unsupported, as designed.
+
 ## Candidates not built (2026-09-28)
 
 - Lerna without Nx: `lerna run <s>` (lerna 10.0.1, `prepNxOptions`)

@@ -856,6 +856,20 @@ directory: with the directory gone and the database kept, Nx reported
 25 of 25 tasks as local cache hits and restored no file (`build/` and
 `dist/` stayed absent).
 
+### TanStack/router (Nx 23.2.1, `nx()`, `41ebd28`)
+
+`nx run-many --target=build --exclude='examples/**' --exclude='e2e/**'`
+against `vx run build --all --filter '!./examples/**' --filter
+'!./e2e/**'` through `nx()` with nothing written: the same 43 build
+tasks and the same edges (plus 28 `nx-input` twins). Same harness as
+TanStack/query above.
+
+| `build` | vx          | Nx 23.2.1       |
+| ------- | ----------- | --------------- |
+| cold    | **123.0 s** | 138.0 s (1.12×) |
+| restore | **1.27 s**  | 3.82 s (3.01×)  |
+| no-op   | **626 ms**  | 3.91 s (6.25×)  |
+
 ## Real repos re-measured (2026-09-27)
 
 Roadmap 2.5: astro and refine again, same revisions, harnesses and
