@@ -3,7 +3,7 @@
 ## Purpose
 
 Every near-miss hint core prints — task names, `pkg#task` halves,
-project names, flags, verbs, `--continue` modes — goes through one
+project names, flags, verbs, config keys — goes through one
 rule, so a typo is hinted the same way wherever it is typed.
 
 ## Public surface
@@ -19,7 +19,7 @@ nearMatches(name, candidates, limit = 3): string[]
   guess rather than help. `flagHint` (`cli/help.ts`) widens to three edits only among
   flags sharing a five-character stem (`--retries` → `--retry`), so
   `--zzz` never reaches `--all`.
-- `nearMatches` is for the inspection verbs (`why`, `prune`) that list
+- `nearMatches` is for the inspection verbs (`why`, `show`) that list
   a few candidates instead of picking one: nearest by distance first,
   then case-insensitive containment either way, never `name` itself.
 

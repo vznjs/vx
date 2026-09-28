@@ -1298,6 +1298,11 @@ function didYouMean(
   const hints = new Set<string>()
   for (const spec of unresolved) {
     const at = spec.indexOf('#')
+    const nx = nxProjectTarget(spec, projects)
+    if (nx !== undefined) {
+      hints.add(nx)
+      continue
+    }
     if (at < 0) {
       const t = nearest(spec, allTasks)
       if (t !== undefined) hints.add(t)
@@ -1313,6 +1318,23 @@ function didYouMean(
     if (t !== undefined) hints.add(`${proj}#${t}`)
   }
   return hints.size === 0 ? '' : ` Did you mean ${[...hints].join(', ')}?`
+}
+
+/**
+ * Nx's `project:target` (`nx run web:build`) as vx spells it, `web#build`,
+ * when that project declares that task; a name with a colon is otherwise
+ * a task of its own (`build:prod`).
+ */
+export function nxProjectTarget(
+  spec: string,
+  projects: ReadonlyMap<string, ProjectEntry>,
+): string | undefined {
+  const colon = spec.indexOf(':')
+  if (colon <= 0 || spec.includes('#')) return undefined
+  const [project, task] = [spec.slice(0, colon), spec.slice(colon + 1)]
+  return projects.get(project)?.config.tasks?.[task] === undefined
+    ? undefined
+    : `${project}#${task}`
 }
 
 /** The executed, keyed outcomes of a run — what flakiness is judged on. */

@@ -1614,7 +1614,13 @@ config live, so no task is copied. The `next:` line is one command:
 install what the file imports and is missing, with the manager the
 lockfile names, then run the config's `build` (else its first task).
 An existing workspace file is kept and named unless it already
-declares the plugin; `--force` replaces it.
+declares the plugin; `--force` replaces it. When the repo shows a remote
+cache — turbo.json's `remoteCache` (unless `enabled: false`), or
+`TURBO_TOKEN` / `NX_SELF_HOSTED_REMOTE_CACHE_SERVER` set in
+`.github/workflows/*`, `.gitlab-ci.yml` or `.circleci/config.yml` — it
+declares `turboCache()` / `nxCache()` beside the runner and names the
+file that showed it (a kept file lacking it is told to add it); the
+plugin is inert where its variable is unset.
 
 Anywhere else it scaffolds a workspace that comes from nowhere: one `vx.config.ts` per
 package from its `package.json` scripts, plus a `vx.workspace.ts` of
@@ -1771,7 +1777,10 @@ What a Turbo or Nx user types into `vx run` (and `vx watch`): each flag
 vx takes as it is (`same`), rewrites to its own spelling before the
 parse (`alias`), or refuses with the vx way to say it (`refuse`) —
 none is dropped in silence. `vx run-many` and `vx affected` name the
-`vx run` that does the same. The table is `cli/foreign-flags.ts`,
+`vx run` that does the same. Nx's `project:target` (`vx run web:build`,
+when `web` declares `build`) is answered with `vx run web#build`: from
+outside a project in place of "not inside a project", in scope as the
+unresolved name's `Did you mean`. The table is `cli/foreign-flags.ts`,
 rendered; `tests/foreign-flags.test.ts` drives every row and holds this
 copy to the source.
 
@@ -2283,8 +2292,8 @@ header carries the outcome (`restored-local • abc12345`, `failed (exit
 N)`, …) and the footer repeats it after the duration. A test renders
 this block and checks it against this page, byte for byte.
 
-Section headers (`├─ …`) and frame corners render dim; the id keeps
-its identity coloring. Content lines are **raw** — no left border, no
+Frame corners and rules render dim, section labels (`├─ …`) bold in
+their state colour; the id keeps its identity coloring. Content lines are **raw** — no left border, no
 indent — so long lines wrap without colliding with frame glyphs and
 copy/paste yields the verbatim output. Every block (and every live
 frame close in focused flow) is followed by a blank line so frames

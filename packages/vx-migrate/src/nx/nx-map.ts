@@ -492,6 +492,20 @@ function dropUnheldDeps(
   else delete task['dependsOn']
 }
 
+const targetNamesMemo = new WeakMap<object, string[]>()
+/** Every target name in the graph, once per graph: what an Nx target glob expands over. */
+function allTargetNames(nodeMap: Readonly<Record<string, NxNode>>): string[] {
+  let names = targetNamesMemo.get(nodeMap)
+  if (names === undefined) {
+    const set = new Set<string>()
+    for (const n of Object.values(nodeMap))
+      for (const t of Object.keys(n?.data?.targets ?? {})) set.add(t)
+    names = [...set]
+    targetNamesMemo.set(nodeMap, names)
+  }
+  return names
+}
+
 function buildTask(
   meta: ProjectMeta,
   projectRel: string,
@@ -548,6 +562,7 @@ function buildTask(
           tags: ((n?.data as { tags?: unknown } | undefined)?.tags as string[] | undefined) ?? [],
         })),
       ),
+    allTargetNames(nodeMap),
   )
 
   // Nx's rule, not a guess: a target is cached when it says `cache: true`

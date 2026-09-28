@@ -381,6 +381,11 @@
   strace log sits beside the task directories, a typed task or
   foreign verb is answered before `unknown command`, a spaced image
   path after `--graph` is refused, and vx-mcp masks via `maskedCommand`.
+- **J-78** docs against 6 code commits merged 10:20–10:55Z: `vx watch`
+  hands back the requested persistent tasks and those they depend on
+  (C-46), `ConfigSweep.inputs` holds a glob list per task, `--dry`
+  prints `∅` for an `@noop` task (B-34), and a remote hit's entry row
+  stores the masked command.
 
 ## Leads for other streams
 
@@ -553,3 +558,5 @@ extra` ignores the extra argument and exits 0 where every other verb
 - **A** (unrun) d478d5de passes the project dir as `within` to `planArtifact`, so a symlinked `outputs.workspaceFiles` output whose target is inside the workspace but outside the project is likely refused "outside the project". (J-76)
 - **E/N** (unrun) `adoptionNext` prints `yarn add -D @vzn/vx @vzn/vx-migrate` in a yarn repo; at a Yarn 1 workspace root that errors without `-W` (the pnpm branch passes `-w`). (J-76)
 - **E** (perf, unrun) since a2bb22f9 any unknown verb, a typo like `vx buidl` included, loads every project config before printing `unknown command`. (J-77)
+- **B/L (security)** before 8685d239 a remote hit wrote the raw command, any inlined token included, into cache.db's entry row, where `vx why` and `vx mcp` read it; rows ingested before the fix still hold it and nothing scrubs them (unchecked whether a later write replaces them). **C** `orchestrator/options.ts:176`'s `holdPersistent` docstring still says only "the requested persistent tasks" are handed back (C-46 keeps their persistent deps too). (J-78)
+- **B** `tests/sandbox-bridge-socket.unsafe.test.ts` › "a port bridge's socket is removed when the task ends" failed once in a full local gate on docs-only J-69 ("Linux HTTP bridge socket does not exist … The bridge process may have died", 6.2 s) and passed 2/2 alone right after. **B (blocking CI)** root cause of `runner.test.ts` › "a timed-out command returns only once its group is gone": the grandchild's `trap "" TERM` can run after the 100 ms TERM, so it dies with the shell and `settle()` returns at once; fix by ignoring TERM before the fork (`trap "" TERM; sleep 30 & trap - TERM; wait`) — posted on #1664. (J-69)

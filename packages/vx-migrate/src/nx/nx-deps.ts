@@ -49,15 +49,61 @@ export function matchNxProjects(
   return [...out]
 }
 
-export function mapNxDeps(
+/** Nx's `isGlobPattern`: a target holding one of these is a pattern. */
+const TARGET_GLOB = /[*|{}()[]/
+
+/**
+ * Nx (19.5+) expands a target glob in `dependsOn` over every target name
+ * in the workspace (`expandWildcardTargetConfiguration`), after reading a
+ * `project:` head, and keeps the edge where the project has the target.
+ * Read as `project:target`, TanStack/router's `test:e2e--*` named project
+ * `test` and each of 140 aggregators lost the modes it fans out to
+ * (2026-09-28).
+ */
+function expandTargetGlobs(
   entries: readonly unknown[],
+  targetNames: readonly string[],
+  isProject: (name: string) => boolean,
+): unknown[] {
+  const expand = (pattern: string): string[] => {
+    const glob = new Bun.Glob(pattern)
+    return targetNames.filter((t) => glob.match(t))
+  }
+  // A glob's match another entry names already is that entry's edge (`^bui*` beside `^build`).
+  const literal = new Set(entries.filter((d) => typeof d === 'string'))
+  const fresh = (ds: string[]): string[] => ds.filter((d) => !literal.has(d))
+  return entries.flatMap((d): unknown[] => {
+    if (typeof d === 'string') {
+      if (!TARGET_GLOB.test(d)) return [d]
+      if (d.startsWith('^')) return fresh(expand(d.slice(1)).map((t) => `^${t}`))
+      const colon = d.indexOf(':')
+      const head = colon > 0 ? d.slice(0, colon) : ''
+      if (head !== '' && isProject(head)) {
+        return fresh(expand(d.slice(colon + 1)).map((t) => `${head}:${t}`))
+      }
+      return fresh(expand(d))
+    }
+    if (d && typeof d === 'object') {
+      const t = (d as Record<string, unknown>).target
+      if (typeof t === 'string' && TARGET_GLOB.test(t)) {
+        return expand(t).map((target) => ({ ...(d as Record<string, unknown>), target }))
+      }
+    }
+    return [d]
+  })
+}
+
+export function mapNxDeps(
+  raw: readonly unknown[],
   metaByNode: ReadonlyMap<string, ProjectMeta>,
   ownTarget: (name: string) => boolean,
   taskNameFor: TaskNameFor,
   hasTarget: HasTarget,
   todos: string[],
   matchProjects: (patterns: readonly string[]) => string[] = (ps) => [...ps],
+  targetNames: readonly string[] = [],
 ): string[] {
+  const entries = expandTargetGlobs(raw, targetNames, (p) => metaByNode.has(p))
   const deps: string[] = []
   for (const d of entries) {
     if (typeof d === 'string') {

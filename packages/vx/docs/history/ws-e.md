@@ -425,6 +425,15 @@ task picked`; neither prints a stack. Row in
 - E-78 — the footer ends with a `result` row, the run in one line:
   `42 tasks · 38 cached (90%) · 3.20s`, `all cached` when every task
   hit, `N failed` after the count. About 5 µs per run.
+- E-79 — Nx's `vx run web:build` names `vx run web#build`, from the
+  root (it said "not inside a project") and as the unresolved name's
+  `Did you mean`. Found walking `vx init` → run → second run on a
+  Turbo fixture; the rest of that walk read clean.
+- E-80 — `vx init` in a Turbo or Nx repo that shows a remote cache
+  (turbo.json `remoteCache`, or CI setting `TURBO_TOKEN` /
+  `NX_SELF_HOSTED_REMOTE_CACHE_SERVER`) declares `turboCache()` /
+  `nxCache()` too, naming the file; before, the repo's CI ran vx
+  without the remote cache it already had.
 
 ## First-five-minutes walk (2026-09-28)
 

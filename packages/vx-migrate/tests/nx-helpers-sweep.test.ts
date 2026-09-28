@@ -157,6 +157,42 @@ describe('mapNxDeps', () => {
     }
   }
 
+  // Nx 19.5+ expands a target glob over every target name in the workspace
+  // and keeps each edge the project has. Read as `project:target`,
+  // TanStack/router's `test:e2e--*` named project `test` and each of 140
+  // aggregators lost the modes it fans out to (2026-09-28).
+  it('a target glob expands over the workspace target names, in each form', () => {
+    const names = ['build', 'build-esm', 'test:e2e--chromium', 'test:e2e--firefox', 'lint']
+    const todos: string[] = []
+    const got = mapNxDeps(
+      [
+        'test:e2e--*',
+        'ui:build*',
+        '^lint',
+        '^lin[t]',
+        { target: 'build-{esm,cjs}', projects: ['ui'] },
+      ],
+      byNode,
+      (t) => t.startsWith('test:e2e--'),
+      () => null,
+      (p, t) => p === 'ui' && (t === 'build' || t === 'build-esm'),
+      todos,
+      (ps) => [...ps],
+      names,
+    )
+    expect({ got, todos }).toEqual({
+      got: [
+        'test:e2e--chromium',
+        'test:e2e--firefox',
+        '@acme/ui#build',
+        '@acme/ui#build-esm',
+        '^lint',
+        '@acme/ui#build-esm',
+      ],
+      todos: [],
+    })
+  })
+
   // Nx reads `projects: "ui"` as `["ui"]`, and `params: "ignore"` is its
   // default: the string form dropped the edge as unrepresentable, and every
   // `params` drew a todo about forwarding (item 1053).

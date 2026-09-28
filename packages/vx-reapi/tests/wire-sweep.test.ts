@@ -275,6 +275,36 @@ describe.if(CHUNKING_SUPPORTED)('batches', () => {
     })
   })
 
+  // F-57: from the sweep of the pool (F-34).
+  it('uploads: every blob of several batches is stored', async () => {
+    await using({}, async (c) => {
+      const blobs = [fill(300, 21), fill(300, 22), fill(300, 23), fill(300, 24), fill(300, 25)].map(
+        (data) => ({ digest: c.digestOf(data), data }),
+      )
+      await c.uploadBlobs(blobs, 1000)
+      expect(blobs.filter((b) => !fake.blobs.has(b.digest.hash)).length).toBe(0)
+    })
+  })
+
+  it('uploads: a refused write rejects the upload and stops the queue', async () => {
+    await using({}, async (c) => {
+      const blobs = Array.from({ length: 12 }, (_, i) => fill(2000, 40 + i)).map((data) => ({
+        digest: c.digestOf(data),
+        data,
+      }))
+      fake.fail('Write', grpc.status.INVALID_ARGUMENT, 1)
+      const mark = fake.calls.length
+      const outcome = await c.uploadBlobs(blobs, 1000).then(
+        () => 'resolved',
+        (e: Error) => e.message.split(':')[0],
+      )
+      // A queue that ran on would start the rest after the rejection: let it.
+      await Bun.sleep(30)
+      const writes = fake.calls.slice(mark).filter((x) => x.method === 'Write').length
+      expect([outcome !== 'resolved', writes < 12]).toEqual([true, true])
+    })
+  })
+
   it('uploads: the streamed writes run at once, not one after another', async () => {
     // One stream at a time held four 8 MB writes to 10.2 s through a proxy
     // adding 15 ms each way against bazel-remote, 0.49 s at once (F-34).

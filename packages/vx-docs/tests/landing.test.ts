@@ -296,15 +296,16 @@ describe('the landing page', () => {
     expect(reasons).toHaveLength(3)
   })
 
-  // One file and three commands, for either tool, and no promise npm keeps
-  // yet: the plugin's first publish is the owner's.
+  // Four commands and the one file `vx init` writes, for either tool, and
+  // no promise npm keeps yet: the plugin's first publish is the owner's.
   it('shows how to try it on a Turbo or Nx repo', () => {
     const tryIt = text(section(html, 'try'))
     for (const s of [
       "import { turbo } from '@vzn/vx-migrate'",
-      'nx()',
-      'export default defineWorkspace({ plugins: [turbo()] })',
+      'in an Nx repo, nx for turbo',
+      'export default { plugins: [turbo()] } satisfies WorkspaceConfig',
       'npm install -D @vzn/vx @vzn/vx-migrate',
+      'npx vx init',
       'npx vx run build --all',
       'reaches npm with its first publish',
     ])

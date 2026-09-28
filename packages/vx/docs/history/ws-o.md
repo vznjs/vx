@@ -155,6 +155,42 @@ Past the harness fixes, by class:
 - Open: does Bun's Windows shim for a package bin keep the shebang's
   `--no-env-file`? The `.env` row now skips there (O-12).
 
+## Windows-only code paths (2026-09-28)
+
+The owner stopped native Windows: Windows users run WSL. Removal waits
+on the owner's word (a removal branch was blocked in-session). What exists
+only for Windows on main:
+
+- CI: `.github/workflows/windows.yml` (the job, its path gate, the data
+  step).
+- Shell: `util/which.ts` `shellArgv`'s `bun exec` branch; `exec/runner.ts`
+  `WIN32`, `SH_ARGV0`, `execWrap`'s early return, `detached: !WIN32` (two
+  spawns); `cache/inputs.ts` the runtime probe's argv and `detached` (O-3).
+- Kill: `exec/kill-tree.ts` `startGuard`'s return, `killTreeWin32`
+  (taskkill), `groupAlive`'s leader check (O-3, O-4).
+- Env: `exec/env.ts` `ESSENTIAL_ENV` from `SYSTEMROOT` on (the older set
+  and O-7's), and its pins: `schema.md`, `execution.md`, `modules/env.md`,
+  the configure guide, `env.test.ts`, `doc-class-pins`, `module-shape-drift`,
+  `site-samples`, `execution-doc-drift`.
+- Run lock: `orchestrator/run-lock.ts` `renameWin32` (O-5).
+- Archive: `cache/archive.ts` `WIN32`, `LINK_SEP`, the 0o644 pack mode,
+  the skipped `chmod`, `resolveThrough`'s drive root (O-2).
+- Paths: `util/real-path.ts` and its six sites in
+  `workspace/config-cache.ts` (8.3 short names, O-16); `cli/upgrade.ts`
+  `isBunfsPath`'s `B:\~BUN` form and its `upgrade.test.ts` rows.
+- Tests: the win32 skips of O-12 (`cgroup`, `dotenv-isolation`,
+  `kill-tree-hold`, `sandbox-runtime.unsafe`, `seatbelt-profile`) and O-14
+  (`affected`, `inputs`, `nested-boundary`); `real-path.test.ts`;
+  `runner.test.ts`'s two `skipIf(win32)`; `no-auto-install.unsafe`'s win32
+  skip; `gates.test.ts`'s absent-`getuid` branch.
+- Docs: this design doc, `modules/util-which.md`, `modules/util-real-path.md`,
+  the Windows row of `modules/sandbox-runtime.md`.
+
+Platform-neutral, to keep on removal: the real SQLite close and its WAL
+(O-10), fixtures that close what they open (O-13), `relPosix` for entry
+and row names (O-2, O-11), and paths from `import.meta.dir` /
+`Bun.file(url)` over a URL's percent-encoded pathname (O-6).
+
 ## Leads for other streams
 
 - B: `@anthropic-ai/sandbox-runtime` 0.0.76 ships a Windows backend
