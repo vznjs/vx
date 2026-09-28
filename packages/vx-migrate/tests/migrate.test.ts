@@ -1196,7 +1196,7 @@ describe('vx migrate (nx) — a server target is persistent', () => {
 // ─── Item 817's sweep: each row fails with one line of the writer undone ──
 
 describe('the writer: what the sweep found unheld', () => {
-  const USAGE = 'usage: vx-migrate [--from turbo|nx|moon|wireit] [--dry] [--force] [--mjs]'
+  const USAGE = 'usage: vx-migrate [--from turbo|nx|moon|wireit|lage] [--dry] [--force] [--mjs]'
 
   it('parseMigrateArgs: --from=<source>, --help, and an unknown flag by name', () => {
     expect(parseMigrateArgs(['--from=nx'])).toEqual({
