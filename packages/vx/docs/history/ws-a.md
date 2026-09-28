@@ -336,3 +336,9 @@ FAT32 keeps even seconds. A file stamped 12:00:00, hashed at 12:00:01.2, passed 
 Lead from E. Under a full fd table a restore threw `CorruptArtifactError` (the artifact was fine) and a save threw the bare `EMFILE` naming an output. Both now throw a `UserError` with `OUT_OF_FDS_HINT`. The scheduler side (`isFsRefusal` only) is C's.
 
 - Rows (`cache-out-of-fds.test.ts`): a child under `ulimit -n 128` holds every descriptor, then saves or restores; exact messages, each red without the fix.
+
+### A-40 — an unreadable artifact names the cache, not the outputs (2026-09-28)
+
+A restore refused on the artifact itself (`EACCES` on `<hash>.tar.zst`) said "could not write its outputs" and told the reader to make the output paths writable. The refusal's path is the artifact, so it now names the cache directory and `cacheDir` / `--cache-dir`.
+
+- Row (`cache.test.ts`, skipAsRoot, driven as `probe`): exact message, red without the fix.

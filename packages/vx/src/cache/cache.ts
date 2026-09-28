@@ -1046,6 +1046,14 @@ export class Cache implements CacheLayer {
       // Same distinction for a tree the process cannot write into — a
       // `dist/` another user owns, a read-only checkout, a full disk: the
       // artifact is intact, the tree is not the process's to change.
+      // A refusal to READ the artifact is the cache directory's, not the
+      // outputs': the old line sent the reader to the wrong tree (A-40).
+      if (isFsRefusal(err) && err.path === src) {
+        throw new UserError(
+          `restore of ${hash} could not read its artifact (${code}: ${err.message}). ` +
+            `Make the cache directory readable by this user, or point cacheDir / --cache-dir at one that is.`,
+        )
+      }
       if (isFsRefusal(err)) {
         const remedy = isDiskFull(err)
           ? 'Free space on that disk and re-run.'
