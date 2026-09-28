@@ -979,6 +979,14 @@ goes back to the schedule and runs once they are done, never in the
 restore's slot: built before them, its bytes would be saved under the
 healthy key (`tests/vanished-artifact.test.ts`).
 
+A local artifact whose bytes are wrong (a failed checksum, a torn
+write, one past the artifact ceiling, an entry missing a recorded
+output) is a miss the same way: `[vx] <id>: cache: corrupt artifact
+for <hash>: …; dropped it — running it`. The entry is dropped, so the
+task's save stores the key again; it failed the task as an internal
+error on every run until `--force` before A-52. A cache the run may
+only read keeps the entry (`…; left it (this cache is read-only)`).
+
 ## Storage layout
 
 The run must be able to write here — it records its history at the

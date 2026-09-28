@@ -253,3 +253,53 @@ describe('a cache artifact that vanishes before its restore', () => {
     TIMEOUT,
   )
 })
+
+// A LOCAL artifact whose bytes are wrong (a torn write, a bad disk, a hand
+// edit) failed its task as an internal error on every run until --force:
+// nothing rewrote the entry (J's lead, nx#30338's shape). It is dropped
+// and the task runs; its save stores the key again (A-52).
+describe('a local cache artifact whose bytes are corrupt', () => {
+  let root: string
+  beforeEach(async () => {
+    root = await makeWorkspace({ prefix: 'vx-corrupt-local-' })
+  })
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it(
+    'is dropped and the task runs; the next run is a hit',
+    async () => {
+      const dir = await addProject(root, 'app', {
+        files: { 'src/a.txt': 'a' },
+        config: `export default { tasks: { build: {
+          exec: { command: 'mkdir -p dist && cp src/a.txt dist/a.txt' },
+          cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+        } } }`,
+      })
+      const quiet = (): Logger => logger({ status: [], complete: [], started: [] })
+      const cold = await run({ cwd: root, tasks: ['build'], log: quiet() })
+      const hash = cold.outcomes[0]!.hash!
+      const cache = new Cache(path.join(root, '.vx', 'cache'))
+      const artifact = cache.outputsPath(hash)
+      cache.close()
+      await Bun.write(artifact, new Uint8Array([0xde, 0xad, 0xbe, 0xef]))
+      await rm(path.join(dir, 'dist'), { recursive: true, force: true })
+
+      const seen: Seen = { status: [], complete: [], started: [] }
+      const healed = await run({ cwd: root, tasks: ['build'], log: logger(seen) })
+      expect(seen.complete).toEqual(['app#build success'])
+      expect(seen.status.filter((l) => l.includes('corrupt'))).toEqual([
+        `[vx] app#build: cache: corrupt artifact for ${hash}: artifact is not a readable archive; dropped it — running it`,
+      ])
+      expect(healed.ok).toBe(true)
+
+      await rm(path.join(dir, 'dist'), { recursive: true, force: true })
+      const next: Seen = { status: [], complete: [], started: [] }
+      await run({ cwd: root, tasks: ['build'], log: logger(next) })
+      expect(next.complete).toEqual(['app#build cache-hit'])
+      expect(await readFile(path.join(dir, 'dist/a.txt'), 'utf8')).toBe('a')
+    },
+    TIMEOUT,
+  )
+})

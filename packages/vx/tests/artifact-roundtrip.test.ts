@@ -402,17 +402,24 @@ describe('restoreOutputs refuses to report a hit it cannot materialize', () => {
     expect(gone).toBeInstanceOf(ArtifactVanishedError)
     expect((gone as ArtifactVanishedError).hash).toBe('gone')
 
-    // CONTROL: the other path still reports the other thing, so the
-    // assertion above is specific to the vanished case and not a class
-    // every restore failure happens to carry.
+    // CONTROL: bad bytes are a miss too since A-52, but they carry the
+    // corruption as the cause and the entry is dropped, so the next save
+    // stores the key again; a vanished artifact carries no cause.
+    expect((gone as Error).cause).toBeUndefined()
     await saveEntry('garbled')
     await Bun.write(cache.outputsPath('garbled'), new Uint8Array([0xde, 0xad, 0xbe, 0xef]))
     await rm(path.join(projectDir, 'dist'), { recursive: true, force: true })
 
     const garbled = await cache.restoreOutputs('garbled', projectDir).catch((e: unknown) => e)
-    expect(garbled).toBeInstanceOf(CorruptArtifactError)
-    expect(garbled).not.toBeInstanceOf(ArtifactVanishedError)
-    expect((garbled as Error).message).toMatch(/artifact is not a readable archive/)
+    expect(garbled).toBeInstanceOf(ArtifactVanishedError)
+    expect((garbled as Error).cause).toBeInstanceOf(CorruptArtifactError)
+    expect((garbled as Error).message).toBe(
+      'cache: corrupt artifact for garbled: artifact is not a readable archive; dropped it',
+    )
+    expect([
+      await Bun.file(cache.outputsPath('garbled')).exists(),
+      await cache.get('garbled'),
+    ]).toEqual([false, null])
   })
 
   it('throws when the artifact cannot produce an output the index recorded', async () => {
@@ -469,6 +476,23 @@ describe('restoreOutputs refuses to report a hit it cannot materialize', () => {
     await rm(path.join(projectDir, 'dist'), { recursive: true, force: true })
   })
 
+  it('leaves a corrupt entry in place under a cache this run may only read', async () => {
+    await saveEntry('ro-garbled')
+    await Bun.write(cache.outputsPath('ro-garbled'), new Uint8Array([0xde, 0xad, 0xbe, 0xef]))
+    await rm(path.join(projectDir, 'dist'), { recursive: true, force: true })
+    const ro = new Cache(cacheDir, { read: true, write: false })
+    try {
+      const err = await ro.restoreOutputs('ro-garbled', projectDir).catch((e: unknown) => e)
+      expect([err instanceof ArtifactVanishedError, (err as Error).message]).toEqual([
+        true,
+        'cache: corrupt artifact for ro-garbled: artifact is not a readable archive; left it (this cache is read-only)',
+      ])
+    } finally {
+      ro.close()
+    }
+    expect(await Bun.file(cache.outputsPath('ro-garbled')).exists()).toBe(true)
+  })
+
   it('carries the underlying error as the CAUSE of an unreadable archive', async () => {
     // run.ts prints the cause beside the message precisely because "a
     // CorruptArtifactError over an ENOENT is a race, not a bad archive" —
@@ -485,7 +509,7 @@ describe('restoreOutputs refuses to report a hit it cannot materialize', () => {
       caught = err
     }
     expect((caught as Error).message).toMatch(/artifact is not a readable archive/)
-    expect((caught as Error).cause).toBeInstanceOf(Error)
+    expect(((caught as Error).cause as Error).cause).toBeInstanceOf(Error)
   })
 
   it('restores normally when the artifact is intact (control)', async () => {

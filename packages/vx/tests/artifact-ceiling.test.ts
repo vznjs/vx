@@ -130,26 +130,27 @@ describe('an output set past the artifact ceiling', () => {
     expect(hit.outcomes.map((o) => o.status)).toEqual(['cache-hit'])
   })
 
-  it('a restore enforces the same ceiling: an artifact past it is refused, loudly', async () => {
-    // A local artifact a restore refuses is a real fault, not a miss
-    // (layered-cache.ts): the task fails naming the cap, never replays.
+  it('a restore enforces the same ceiling: an artifact past it is dropped, and the task runs', async () => {
+    // A local artifact past the cap is never replayed; since A-52 it is a
+    // miss that says why, not a failure on every run until --force.
     await workspace(CEILING / 2)
     await run({ cwd: root, tasks: ['build'], log: collecting([]) })
     await rm(path.join(root, 'packages', 'big', 'dist'), { recursive: true, force: true })
-    // The scheduler hands a task's crash to the task's own stderr.
-    const lines: string[] = []
-    const refused = await run({
+    const status: string[] = []
+    const r = await run({
       cwd: root,
       tasks: ['build'],
-      log: { ...collecting([]), taskStderr: (_n, c) => void lines.push(c.trimEnd()) },
+      log: collecting(status),
       artifactCeiling: 1024,
     })
-    expect(refused.outcomes.map((o) => o.status)).toEqual(['failed'])
-    expect(lines.filter((l) => l.startsWith('[vx] internal error'))).toEqual([
+    expect(r.outcomes.map((o) => o.status)).toEqual(['success'])
+    expect(status.filter((l) => l.includes('corrupt artifact'))).toEqual([
       expect.stringMatching(
-        /^\[vx\] internal error in big#build: CorruptArtifactError: cache: corrupt artifact for [0-9a-f]+: declares \d+ decompressed bytes \(> 1024 cap\)$/,
+        /^\[vx\] big#build: cache: corrupt artifact for [0-9a-f]+: declares \d+ decompressed bytes \(> 1024 cap\); dropped it — running it$/,
       ),
     ])
+    // The run's own save is refused by the same cap, so nothing is left.
+    expect(await artifactFiles(root)).toEqual([])
   })
 
   it('an ingest enforces it too: remote bytes past it never land', async () => {
