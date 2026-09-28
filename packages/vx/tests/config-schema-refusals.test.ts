@@ -570,3 +570,21 @@ describe("Turbo's and Nx's glob tokens (D-50)", () => {
     expect(cacheRefusal({ files: ['**'] }, { files: ['{options,dist}/**'] })).toBeNull()
   })
 })
+
+describe("Turbo's env exclusion (D-53)", () => {
+  // `!SECRET` takes a name back out of a Turbo wildcard; vx has none, so it
+  // was a variable named `!SECRET`, and nothing said so.
+  it('is refused in each env list', () => {
+    expect(cacheRefusal({ files: ['**'], env: ['API_URL', '!SECRET'] })).toBe(
+      `${CFG}: tasks.t.cache.inputs.env: "!SECRET" is Turbo's exclusion from a wildcard — vx lists names explicitly, so leave SECRET out`,
+    )
+    expect(taskRefusal({ exec: { command: 'x', env: { passThrough: ['!AWS_KEY'] } } })).toBe(
+      `${CFG}: tasks.t.exec.env.passThrough: "!AWS_KEY" is Turbo's exclusion from a wildcard — vx lists names explicitly, so leave AWS_KEY out`,
+    )
+    expect(taskRefusal({ exec: { command: 'x', env: { secret: ['!TOKEN'] } } })).toContain(
+      'exec.env.secret: "!TOKEN" is Turbo\'s exclusion',
+    )
+    // CONTROL: a `!` inside a name is the name.
+    expect(cacheRefusal({ files: ['**'], env: ['A!B'] })).toBeNull()
+  })
+})
