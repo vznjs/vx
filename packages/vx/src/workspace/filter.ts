@@ -1,7 +1,7 @@
 // Filter DSL — pnpm-style selectors for `--filter`.
 //
 //   <pattern>        name glob, `*` = any characters (e.g. foo, @scope/*)
-//   ./<dir>          packages whose dir is at or under <dir> (relative to workspace root)
+//   ./<dir>          the package at <dir>, else the packages under it (relative to workspace root)
 //   {<dir>}          same as ./<dir>
 //   <pattern>...     pattern + its transitive workspace dependencies
 //   ...<pattern>     pattern + its transitive workspace dependents
@@ -136,9 +136,15 @@ function matchProjects(
   }
   const out: string[] = []
   if (filter.isPath) {
+    // A path naming a project's own directory is that project, as Turbo and
+    // pnpm read it: `.` is the root project, never every project under the
+    // root, and `./packages/app` leaves the examples nested in it (D-43).
+    // A directory that is no project keeps the "at or under" reading.
+    const exact = projects.find((p) => p.dir === filter.matcher)
+    if (exact !== undefined) return [exact.name]
     const prefix = filter.matcher + path.sep
     for (const p of projects) {
-      if (p.dir === filter.matcher || p.dir.startsWith(prefix)) out.push(p.name)
+      if (p.dir.startsWith(prefix)) out.push(p.name)
     }
     // A path that names a project directory literally means that directory,
     // as git reads a pathspec, even when it holds glob characters
