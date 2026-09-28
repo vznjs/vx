@@ -457,3 +457,12 @@ packages/core`) selects the dependent whose `file:../lib` spec named
   selects the root project, and nothing when the root is no project
   (read as `.` it would select every project there). Row: the D-46 row
   of `tests/filter.test.ts`.
+- **D-47** Mutation sweep of D-43, D-44 and D-46 in `filter.ts` (12
+  mutants). Three survived, all in D-44's selector and range split:
+  the `./` guard (the control path did not end in `]`), the `.` guard
+  (`.[HEAD]` is a name, as Turbo 2.8.17 reads it) and the greedy
+  selector group (`{./libs/[c]*}[HEAD]` takes the last bracket as the
+  ref, as Turbo does). A row now holds each. Also probed without a gap:
+  a root config importing a member's file re-evaluates on its edit, and
+  `--affected` gives that edit to both projects; an Nx root project named
+  apart from its package attaches its targets through `nx()`.

@@ -547,5 +547,21 @@ describe('a selector narrowed by a git range (D-44)', () => {
   it('CONTROL: an unbraced path keeps its brackets as a glob class', () => {
     const f = parseFilter('./libs/[c]ore', ROOT)
     expect([f.gitSince, f.isPath]).toEqual([undefined, true])
+    // Ending in the class, the path reaches the range split and passes it.
+    const g = parseFilter('./libs/[c]', ROOT)
+    expect([g.gitSince, g.isPath, g.matcher]).toEqual([undefined, true, `${ROOT}/libs/[c]`])
+  })
+
+  it('`.[ref]` is a name, as Turbo reads it; a directory takes a ref only braced', () => {
+    // Turbo 2.8.17: "No package found with name '.[HEAD]'"; `{.}[HEAD]` works.
+    const f = parseFilter('.[HEAD]', ROOT)
+    expect([f.gitSince, f.isPath, f.matcher]).toEqual([undefined, false, '.[HEAD]'])
+  })
+
+  it('a braced path glob with a class takes the last bracket as the ref', () => {
+    // Turbo 2.8.17 selects by `{./packages/[a]*}[HEAD~1]`.
+    const f = parseFilter('{./libs/[c]*}[HEAD]', ROOT)
+    expect([f.gitSince, f.isPath]).toEqual(['HEAD', true])
+    expect(sel('{./libs/[c]*}[HEAD]', ['core', '@s/lib'])).toEqual(['core'])
   })
 })
