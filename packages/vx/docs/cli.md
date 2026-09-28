@@ -1739,6 +1739,8 @@ neither reads `unknown project or task: "buidl" — did you mean build?`,
 and a `pkg#task` hints whole specs (`unknown task: "app#bui" — did you
 mean app#build?`).
 
+An empty target (`vx show ''`) is refused: omit it to list every project.
+
 Exit codes: `0` success; `1` parse error or unknown target.
 
 Two runs on one workspace take turns: the second waits for the first's
