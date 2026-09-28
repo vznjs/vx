@@ -492,7 +492,11 @@ describe('the evaluation deadline', () => {
 
     // Recovery is the other half: the timeout path nulls the worker handle, so
     // the next cycle builds a fresh one. If it did not, one hiccup would wedge
-    // every later config load for the life of the process.
+    // every later config load for the life of the process. Its budget is
+    // generous: 250 ms also had to cover the fresh worker's spawn, which a
+    // loaded macOS runner missed (PR #1503, #1738). A kept wedged worker
+    // still fails it, rejected at 4000 ms or held past 5000.
+    process.env[BUDGET_ENV] = '4000'
     const after = await settleOrHang(
       evaluateConfigFresh(await write('export default { tasks: { ok: {} } }\n')),
       5000,
