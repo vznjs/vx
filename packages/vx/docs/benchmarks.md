@@ -870,6 +870,26 @@ TanStack/query above.
 | restore | **1.27 s**  | 3.82 s (3.01×)  |
 | no-op   | **626 ms**  | 3.91 s (6.25×)  |
 
+### unocss/unocss (Turbo 2.10.13, `turbo()`, `f05ee3a`)
+
+`turbo run build --filter='./packages-*/*'` against `vx run build
+--filter './packages-*/*'` through `turbo()` with nothing written: the
+same 42 tasks and the same edges. Medians of three interleaved reps.
+The repo runs from a bind mount at `/mnt`: under the scratch path,
+tsx's IPC socket passed the 108-byte `sun_path` limit and `prepare`
+failed.
+
+| `build` | vx         | Turbo 2.10.13  |
+| ------- | ---------- | -------------- |
+| cold    | **45.1 s** | 47.3 s (1.05×) |
+| restore | 859 ms     | **185 ms**     |
+| no-op   | 770 ms     | **126 ms**     |
+
+vx's warm rows are one task: `@unocss/vscode#build` runs
+`vscode-ext-gen`, which rewrites `README.md` and its generated `meta.ts` with the same bytes, so vx withholds its save
+(`README.md changed after its key was taken`) and runs it again every
+time, 550–900 ms. The other 41 are a 160 ms no-op.
+
 ## Real repos re-measured (2026-09-27)
 
 Roadmap 2.5: astro and refine again, same revisions, harnesses and
