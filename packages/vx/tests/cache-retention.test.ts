@@ -7,7 +7,7 @@
 // evicts nothing.
 
 import { Database } from 'bun:sqlite'
-import { mkdir, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -17,6 +17,7 @@ import type { WorkspaceConfig } from '../src/config.js'
 import { run, type Logger } from '../src/index.js'
 import { validateWorkspace } from '../src/workspace/config-schema.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
+import { skipAsRoot } from './helpers/nonroot-gate.js'
 
 const DAY = 86_400_000
 
@@ -84,6 +85,31 @@ describe('Cache.evictIfDue', () => {
       producer.close()
     }
   })
+
+  // Root writes anywhere, so this skips there unless VX_REQUIRE_NONROOT says it must run.
+  it.skipIf(skipAsRoot('a cache this user cannot write evicts nothing (A-37)'))(
+    'a cache this user cannot write evicts nothing (A-37)',
+    async () => {
+      const writer = new Cache(cacheDir)
+      try {
+        await seed(writer, ['aa'])
+      } finally {
+        writer.close()
+      }
+      await chmod(cacheDir, 0o555)
+      try {
+        const reader = new Cache(cacheDir)
+        try {
+          expect(await reader.evictIfDue({ maxBytes: 1 })).toBeNull()
+          expect(existsSync(path.join(cacheDir, 'aa.tar.zst'))).toBe(true)
+        } finally {
+          reader.close()
+        }
+      } finally {
+        await chmod(cacheDir, 0o755)
+      }
+    },
+  )
 
   it('evicts an entry unused for longer than maxAge, and only that one', async () => {
     const cache = new Cache(cacheDir)

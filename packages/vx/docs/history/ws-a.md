@@ -301,7 +301,7 @@ The last `miss-save.ts` survivors: the workspace-row filter in the snapshot's `e
 
 - Rows: `cache-get-many.test.ts`: `getMany` past a 900-hash chunk; `has()` with its artifact gone; a write-disabled cache saves nothing. `cache.test.ts`: a size prune passes over an older row whose artifact is gone. `remote-artifact-names.test.ts`: an undeclared project output and an undeclared workspace output are each refused alone (the mixed row masked either half). Each red under its mutant.
 - Equivalent: the row mode's `& 0o777` (the sidecar already holds permission bits only).
-- Unheld here: a restore's `EACCES` (needs a non-root user), eviction on a read-only cache, the prune retry and access flush on `SQLITE_FULL` (the unsafe disk-full suite, which skips on this box), and a foreign artifact's bare `outputs/` directory entry.
+- Held as non-root, so not a survivor: a restore's `EACCES` (`cache.test.ts` skips it as root; driven as `probe` it is red under its mutant, A-37). Held by A-37: eviction on a read-only cache, the prune retry and the access flush on `SQLITE_FULL`. Still unheld: a foreign artifact's bare `outputs/` directory entry.
 
 ### A-35 (2026-09-28, sweep: `upstream.ts`)
 
@@ -310,3 +310,9 @@ The last `miss-save.ts` survivors: the workspace-row filter in the snapshot's `e
 - Row (`upstream.test.ts`): `^*` alone takes the dep-workspace upstreams and leaves the same-project one; every row that used it also held `*`. Red under its mutant.
 - `excluded-keys.ts` and `keyed-projects.ts` swept too: 17 mutants, 13 caught. Row (`taint-tracker.test.ts`): a cached persistent task building on a skipped key is not counted as unsaved (it saves nothing). Red under its mutant.
 - Equivalent: the member order of a group's expansion (the key sorts its graft by hash, and the other caller asks only whether any member is unkeyed); a group's fold filter and excluded-key seed (a group has no filter, so every member folds); the keyed-projects memo (a repeated walk, same answer).
+
+### A-37 (2026-09-28, left by A-34)
+
+A-34 logged four `cache.ts` survivors as out of reach on this box. One was held all along: the restore `EACCES` row skips as root, and run as `probe` it is red under its mutant (the sweep method's rule for a root-run sweep).
+
+- Rows: `cache-disk-full.test.ts`: prune retries its row delete once on a full index (the row there freed the space before the delete, so the retry never ran); the access-time flush gives way to a full index through `stats()`. `cache-retention.test.ts`: a cache this user cannot write evicts nothing (non-root; driven as `probe`). Each red under its mutant.
