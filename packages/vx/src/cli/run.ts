@@ -156,7 +156,11 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
       const v = a === '--concurrency' ? before[++i] : a.slice('--concurrency='.length)
       if (v === undefined) return { ...out, error: `--concurrency requires a value` }
       const n = parseConcurrency(v)
-      if (n === null) return { ...out, error: `invalid concurrency: ${v}` }
+      if (n === null)
+        return {
+          ...out,
+          error: `invalid concurrency: ${v} (a positive integer, or a share of the cores such as 50%)`,
+        }
       out.concurrency = n
     } else if (a === '--all') {
       out.all = true
@@ -281,14 +285,14 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
       const v = a === '--verbosity' ? before[++i] : a.slice('--verbosity='.length)
       if (v === undefined) return { ...out, error: `--verbosity requires a value` }
       const n = parseDecimalInt(v)
-      if (n === null) return { ...out, error: `invalid verbosity: ${v}` }
+      if (n === null) return { ...out, error: `invalid verbosity: ${v} (a non-negative integer)` }
       out.verbosity = n
     } else if (a === '--dry') {
       out.dry = 'text'
     } else if (a?.startsWith('--dry=')) {
       const fmt = a.slice('--dry='.length)
       if (fmt !== 'text' && fmt !== 'json') {
-        return { ...out, error: `invalid --dry value: ${fmt}` }
+        return { ...out, error: `invalid --dry value: ${fmt} (text or json)` }
       }
       out.dry = fmt
     } else if (a === '--graph') {
