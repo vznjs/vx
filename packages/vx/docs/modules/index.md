@@ -20,7 +20,9 @@ use, when one appears.
 
 The table names every export: the values column is the runtime symbol
 set, the types column every `export type`, and
-`tests/module-shape-drift.test.ts` holds both columns to the file.
+`tests/module-shape-drift.test.ts` holds both columns to the file. Each
+export's declaration and doc comment are in [the API reference](../api.md),
+generated from the source.
 
 | Group               | Values                                                                                                                            | Types                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | ------------------- | --------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |

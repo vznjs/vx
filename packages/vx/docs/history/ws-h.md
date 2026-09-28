@@ -239,6 +239,19 @@ list it and H-18's law accepts it. Rows: `show-info.test.ts` (the
 pointer), `dispatched-verbs.test.ts` (the verbs a plugin may not
 declare).
 
+## H-20: an API reference generated from the source
+
+`docs/api.md` lists every export of `@vzn/vx` with its declaration (as
+the package-API contract records it) and the doc comment above it.
+`tests/api-reference.test.ts` generates it from `src/index.ts` and fails
+when the committed page differs, so a changed signature or comment
+cannot leave the page stale (`VX_UPDATE_CONTRACT=1` rewrites it). The
+public-surface page links it. The page is generated, so oxfmt skips it.
+Declined from the same backlog: a JSON Schema for the config files. They
+are `.ts`/`.js` only, editors complete them from `src/config.ts`'s
+types, and those types are already held to the validator both ways
+(`contract-config-schema.test.ts`).
+
 ## Leads for other streams
 
 - **D / B:** `sandbox.ignore` names that loaded and did nothing: done in D-4.
