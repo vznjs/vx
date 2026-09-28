@@ -279,6 +279,19 @@ isolation). New rows: every dependant of a pinned task is pinned; a
 pool lookup; `--dry` hands the executor factory `warn` and the machine's
 `concurrency`. Each fails under its mutant.
 
+## C-25: hold `priorities.ts`'s surviving mutants
+
+A sweep of 39 mutants: 22 caught, 17 survived, of which 5 are equivalent
+(`1 << r` for `1 << (r & 31)`, a shift already taken mod 32; the tier
+guards `nodes.has(dep)` and `nodes.has(id)`, since the restore tier is
+built from the same nodes; the cycle default, since the graph builder
+refuses a cycle; an override's `?? 0` for a task not in the graph). The
+other 12 are held now by three rows in `scheduler.test.ts`: counts on a
+65-node graph (three closure words: word count, word index, fold and
+popcount past the first word), counts on a graph inserted dependents
+first (the topo pass), and an override of 1 above a baseline of
+2^20 - 1 (the scale). No defect in the file.
+
 ## Leads for other streams
 
 - **E:** a plugin command's plain `throw` (`commands.probe.run` throwing
