@@ -307,6 +307,25 @@ describe('plan() — cache-status prediction', () => {
     }
   })
 
+  it('calls a run that only writes, on EITHER write axis, a miss that saves (C-45)', async () => {
+    // `--force` holds both write axes, so it cannot tell which one the gate
+    // reads: `--cache=local:w` and `--cache=remote:w` each save what runs.
+    const seen: Array<[string, unknown, string[]]> = []
+    for (const [name, policy] of [
+      ['local:w', { ...NO_CACHE, localWrite: true }],
+      ['remote:w', { ...NO_CACHE, remoteWrite: true }],
+    ] as const) {
+      const nodes = makeNodes([{ id: 'a#build' }])
+      const cache = stubCache(() => 'local')
+      const p = await planUnit({ nodes, cache: cache.layer, cachePolicy: policy })
+      seen.push([name, statusById(p), cache.probes])
+    }
+    expect(seen).toEqual([
+      ['local:w', { 'a#build': 'miss' }, []],
+      ['remote:w', { 'a#build': 'miss' }, []],
+    ])
+  })
+
   it('reports miss (not hit) when the probe finds the artifact nowhere', async () => {
     const nodes = makeNodes([{ id: 'a#build' }])
     const cache = stubCache(() => null)
