@@ -51,6 +51,11 @@ run leaves out; the rest are refusals.
   task floods stdout (carriage-return only)" read `long - short` 140
   MiB against its 64 bound once in a gate with no other gate running
   (2026-09-28); green on the re-run.
+- B: CI's `@vzn/vx-docs#build` died by SIGKILL (exit 137) after astro
+  had finished, on two PRs in an hour (2026-09-28, runs 36375024471
+  and 36380291678), the kill under strace's
+  `ptrace(PTRACE_LISTEN,pid:61,sig:0): Input/output error`: the
+  item-925 class reaching a task other than the output-memory floods.
 
 ## Entries
 
