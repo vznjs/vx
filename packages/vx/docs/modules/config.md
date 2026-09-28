@@ -99,6 +99,14 @@ The function body is a one-liner today and that's by design.
 ## Invariants
 
 - The exported types and helpers are the **only** public contract.
+- The types and `config-schema.ts` name the same keys at every level
+  (workspace, `cacheRetention`, project, task, `exec`, `exec.env`,
+  `exec.persistent`, `exec.sandbox` and its `allow` / `deny` /
+  `ignore`, `cache`, `cache.inputs`, `cache.outputs`):
+  `tests/config-types-schema.test.ts` holds each list to the type with
+  the type-checker and to the validator by its own refusal (D-71). With
+  undeclared keys typed `never` (D-69, D-70), a drift either way is a
+  config that loads but does not type-check, or the reverse.
   Internal modules import them; user code imports them via `@vzn/vx`.
 - No field is optional in the schema if it's required for correctness.
   When `cache` is provided, `cache.inputs.files` and

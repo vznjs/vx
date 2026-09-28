@@ -732,3 +732,14 @@ packages/core`) selects the dependent whose `file:../lib` spec named
   D-70 row of `tests/config.test.ts`, three `@ts-expect-error` lines
   (unused, so errors, without the fix) and a control with every key.
   Declared breaking, as D-69 was.
+- **D-71** Pin: the config types and the validator name the same keys.
+  D-69 and D-70 made an undeclared key a type error, so a field the
+  validator accepts but the type lacks would be a config that loads and
+  fails `tsc`. Nothing held the two together; diffed from source at 14
+  levels, they agree today. `tests/config-types-schema.test.ts` lists
+  each level's keys once and holds the list to the TYPE with the
+  type-checker (`satisfies` for every entry, an `Exhaustive` check for
+  every key) and to the VALIDATOR through its refusal of an unknown key,
+  which names what it allows. Each direction caught by its own mutant:
+  a key dropped from a list or added to it, a field added to a type
+  (type errors), a field dropped from a validator set (a red row).
