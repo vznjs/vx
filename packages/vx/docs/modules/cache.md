@@ -89,8 +89,8 @@ export type SaveArgs = {
 // archive entry name.
 export const WORKSPACE_OUTPUT_PREFIX = 'workspace-outputs/'
 
-// `restoreOutputs` found no artifact where the probe found one: a MISS
-// (execute-task.ts runs the task), not a corrupt cache.
+// `restoreOutputs` found no artifact where the probe found one, or a
+// corrupt one (A-52): a MISS (execute-task.ts runs the task).
 export class ArtifactVanishedError extends Error {
   readonly hash: string
 }
@@ -406,9 +406,11 @@ Reads via `get()` are non-blocking thanks to WAL.
 - Throws `ArtifactVanishedError` when the artifact is gone (removed
   after the probe: a `vx cache prune` in another shell, another
   workspace's retention on a shared `--cache-dir`) — the caller treats
-  that entry as a miss and runs the task. Throws `CorruptArtifactError`
-  when the artifact is not a readable archive or lacks an output the
-  index recorded, and `ArchiveSecurityError` on an unsafe name or an
+  that entry as a miss and runs the task. An artifact that is not a
+  readable archive or lacks an output the index recorded
+  (`CorruptArtifactError`) is dropped, unless the cache is read-only,
+  and throws `ArtifactVanishedError` the same way (A-52). Throws
+  `ArchiveSecurityError` on an unsafe name or an
   escape by name. A directory on the tree side that links out of the
   anchor is the tree's fault, not the artifact's: a `UserError` naming
   the link and its target (it is kept, never written through). A link
