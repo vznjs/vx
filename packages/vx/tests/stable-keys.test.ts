@@ -183,6 +183,9 @@ describe('workspaceInputsReach — a workspace reader against its producers', ()
     expect(workspaceInputsReach(['turbo.json'], ['.'])).toBe(true)
     // Negations never reach.
     expect(workspaceInputsReach(['!packages/a/**'], ['packages/a'])).toBe(false)
+    expect(workspaceInputsReach(['!**/*.md'], ['packages/a'])).toBe(false)
+    // The prefix stops at the first wildcard segment: `packages`, not `packages/src`.
+    expect(workspaceInputsReach(['packages/*/src/**'], ['packages/a'])).toBe(true)
   })
 
   it('the gate uses the reach when it knows the dirs, and stays conservative when it does not', () => {
