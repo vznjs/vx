@@ -133,14 +133,17 @@ async function decomposeOutputDir(
   for (const rest of wild) walk(tree.root, rest, entry.path)
   if (out.length + files.length + symlinks.length === 0) return whole
 
-  // Upload the Tree blobs the new entries point at. ByteStream rather than a
-  // batch: a Tree for a real dependency directory is megabytes, and batching
-  // several into one message trips the server's own 4 MiB receive limit.
-  for (const e of out) {
-    const data = (e as unknown as { __data: Uint8Array }).__data
-    const missing = await client.findMissingBlobs([e.tree_digest]).catch(() => [e.tree_digest])
-    if (missing.length > 0) await client.writeBlob(e.tree_digest, data)
-  }
+  // Upload the Tree blobs the new entries point at: one probe for all, the
+  // small ones batched, one past the batch limit streamed. One probe and
+  // write per entry cost 100 packages 3.4 s through 15 ms each way (F-31).
+  // A failed probe or batch still uploads: each blob is written.
+  const blobs = out.map((e) => ({
+    digest: e.tree_digest,
+    data: (e as unknown as { __data: Uint8Array }).__data,
+  }))
+  await client.uploadBlobs(blobs).catch(async () => {
+    for (const b of blobs) await client.writeBlob(b.digest, b.data)
+  })
   return {
     directories: out.map((e) => ({ path: e.path, tree_digest: e.tree_digest })),
     files,
