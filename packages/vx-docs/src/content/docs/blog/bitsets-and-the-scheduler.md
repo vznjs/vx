@@ -85,7 +85,8 @@ running here right now, and a `false` holds the ready task until
 something finishes. Core keeps no notion of what a task needs — a
 developer cannot know a linker's peak RSS, and it changes with every
 dependency bump — so `@vzn/vx-schedule-history` learns it: the runner
-records every execution's CPU time and peak RSS, and the plugin packs
+records every execution's CPU time and peak RSS (none for a sandboxed
+task on Linux), and the plugin packs
 the largest seen, with headroom, against the machine's memory. It is
 admission control, not enforcement; nothing is cgroup-limited or
 reniced, and a task that exceeds its reservation is the job of
