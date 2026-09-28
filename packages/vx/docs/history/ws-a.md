@@ -35,7 +35,7 @@
 
 ## Leads for other streams
 
-- D: the workspace fingerprint folds lockfiles, `pnpm-workspace.yaml` and
+- DONE (D-7). D: the workspace fingerprint folds lockfiles, `pnpm-workspace.yaml` and
   `.yarnrc.yml`, not `.npmrc` / `bunfig.toml`, which change what an
   install lays down under an unchanged lockfile. Unprobed.
 - C: `run-lock.ts` says "the cache itself is safe (SQLite waits,
@@ -411,3 +411,12 @@ Lead from N (vueuse, efdd69a): ten builds read `packages/metadata/index.json`, c
 Equivalent: `close()` clearing the repeat counts (a handle closes once).
 
 Measured first (1,000-project `vx-bench` workspace, hermetic git): warm 98–112 ms, cold 2.7 s. The cold save path's A-owned CPU is spread flat (index commit 186 ms, rename 127, the artifact re-scan 135, output globbing 115, of about 3.1 s on a saturated main thread), with no single lever over 6 %, so nothing was changed. Under this box's own git config (`core.checkStat=minimal`) every input hashes from disk, which is correct.
+
+### A-50 — an unreadable input names the read, not a write (2026-09-28)
+
+An input this user cannot read (mode 000, another user's file) failed its task with `EACCES: permission denied, open '…' — a path vx must write is not writable by this user`: the scheduler gives every `EACCES` the write hint. `FileHashes.hashFileFromDisk` now throws a `UserError` naming the path, that vx reads it to derive a cache key, and the remedy. The batch `hashFiles` already reads a failure as an absent identity and is unchanged. `caching.md` says so.
+
+- Row: `unreadable-input.test.ts` (skips as root; driven as `probe`): the exact line, with a readable run as control. Red without the fix.
+- Probes, no defect: output names holding a newline, tab, `#`, `%41` or a quote save and restore byte-exact; a backslash name, a dangling link and a link to a directory are each refused at save by name, and the task runs uncached. A remote `put` that never settles holds `drainUploads()`, as documented (item 856).
+- Declined: indexing a save from its plan instead of re-scanning the artifact it just packed (about 135 ms of main-thread CPU in a 3.1 s cold run over 1,000 projects). The re-scan is the check that the packed bytes are a well-formed artifact.
+- Lead for E: after a run whose save failed, `vx why` says "re-executed on the same key (--no-cache / --force, or unrelated)"; the cause was the failed save, which no run record carries.
