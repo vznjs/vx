@@ -16,7 +16,9 @@ that binary.
    workspace, `pnpm add -D @vzn/vx`: npm refuses `workspace:*`).
 2. Run `npx vx init`. It writes a `vx.config.ts` per package from its
    scripts, and a `vx.workspace.ts`. No task gets a `cache` block, so
-   nothing is cached yet: add the one each `build`'s TODO shows.
+   nothing is cached yet: add the one each `build`'s TODO shows. Beside
+   `turbo.json` or `nx.json` it writes only a `vx.workspace.ts` that
+   declares `turbo()` or `nx()`.
 3. Or write one by hand, beside a package's `package.json`.
 
 ## Config
