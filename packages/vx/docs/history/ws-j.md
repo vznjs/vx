@@ -367,6 +367,15 @@
   `exec.timeout` is in the key (the other timeout sources are not),
   and the CI sample's push trigger broke every new branch's first
   push (an all-zeros `before` is a bad object to `--affected`).
+- **J-75** guides/migrate.md and guides/plugins.md walked on fixtures
+  (Turbo walk, mapping table, an Nx snapshot, every plugin sample
+  run): a `project`-stage refusal names the project's config file,
+  not `vx.workspace`, and the cache sample's `put` swallowed a failed
+  upload (fetch resolves on a 500). migrate.md matched.
+- **J-76** docs against 17 code commits merged 08:25–09:20Z: a
+  symlinked output whose target leaves the project is refused
+  (schema.md), and `vx init` beside `turbo.json` or `nx.json` writes
+  only a `vx.workspace.ts` declaring `turbo()` or `nx()` (quickstart).
 
 ## Leads for other streams
 
@@ -535,3 +544,6 @@ extra` ignores the extra argument and exits 0 where every other verb
 - **F** `reapi({ endpoint })` against a refused port made a 5-task `run build --all` take 17.5 s wall (summary said 6.45 s) and a `--dry` with `execute: true` 13 s: a down server is a miss, but every run pays over 10 s. (J-74)
 - **E** `vx why` on a dependent that ran under `--continue=always` and was not saved says "re-executed on the same key (--no-cache / --force, or unrelated)", not the real cause. (J-74)
 - **A/C** `tests/output-dirs.test.ts` › "does not descend a symlinked directory, records a missing prefix as absent, and nothing over the cap" timed out its hook (14.6 s) on Linux CI on history-only #1690.
+- **G/N** `nx()` wrote `workspaceFiles: ['shared.json', 'shared.json']` when a file was both a `{workspaceRoot}` input and a `json` input (harmless duplicate). (J-75)
+- **A** (unrun) d478d5de passes the project dir as `within` to `planArtifact`, so a symlinked `outputs.workspaceFiles` output whose target is inside the workspace but outside the project is likely refused "outside the project". (J-76)
+- **E/N** (unrun) `adoptionNext` prints `yarn add -D @vzn/vx @vzn/vx-migrate` in a yarn repo; at a Yarn 1 workspace root that errors without `-W` (the pnpm branch passes `-w`). (J-76)
