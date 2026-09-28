@@ -53,6 +53,29 @@ describe('a task typed as a verb', () => {
     expect(err.split('\n')[0]).toBe('vx: unknown command: buidl (see `vx help`)')
   })
 
+  it("Nx's `project:target` on vx run names the `project#task` it means", () => {
+    const run = (cwd: string, ...args: string[]): [number, string, string] => {
+      const p = Bun.spawnSync({ cmd: [process.execPath, BIN, 'run', ...args], cwd })
+      return [p.exitCode, p.stdout.toString(), p.stderr.toString()]
+    }
+    expect(run(root, 'app:build', 'lib:dev')).toEqual([
+      1,
+      '',
+      "vx run: `app:build lib:dev` is Nx's project:target: vx run app#build lib#dev\n",
+    ])
+    expect(run(root, 'app:build', '--all')[1]).toBe(
+      'No projects declare task(s): app:build. Did you mean app#build?\n',
+    )
+    expect(run(path.join(root, 'packages', 'lib'), 'lib:build')[1]).toBe(
+      'No projects declare task(s): lib:build. Did you mean lib#build?\n',
+    )
+    // A task the project does not declare is no Nx spelling: the plain lines stand.
+    expect(run(root, 'app:nope')[2]).toBe(
+      'vx run: not inside a project. Pass --all for every project, --filter <pattern> to filter, or run from within a project directory.\n',
+    )
+    expect(run(root, 'app:nope', '--all')[1]).toBe('No projects declare task(s): app:nope.\n')
+  })
+
   it('a plugin verb of the same name is the verb', async () => {
     const ws = path.join(root, 'vx.workspace.mjs')
     const before = await Bun.file(ws).text()

@@ -4,6 +4,7 @@
 // does it. It stays a refusal: a verb that runs whatever task shares its
 // name would change meaning the day a plugin declares that verb.
 
+import { nxProjectTarget } from '../orchestrator/index.js'
 import { findWorkspaceRoot, listProjects, loadWorkspace } from '../workspace/index.js'
 import { findCwdProject } from './select.js'
 import { loadCliProjects } from './workspace-config.js'
@@ -15,16 +16,8 @@ export async function taskVerbHint(
   cwd: string,
 ): Promise<string | null> {
   if (command.includes('#')) return `\`${command}\` is a task: vx run ${command}`
-  let projects: Awaited<ReturnType<typeof loadCliProjects>>
-  try {
-    const root = await findWorkspaceRoot(cwd)
-    projects = await loadCliProjects(root, await listProjects(await loadWorkspace(root)), 'all', {
-      noCreate: true,
-    })
-  } catch {
-    // No workspace, or a config that does not load: the plain unknown-command line stands.
-    return null
-  }
+  const projects = await workspaceProjects(cwd)
+  if (projects === null) return null
   if (![...projects.values()].some((p) => p.config.tasks?.[command] !== undefined)) return null
   // Nx's `nx build app`: the word after the target is its project.
   const project = rest[0] !== undefined && projects.has(rest[0]) ? rest[0] : undefined
@@ -35,4 +28,31 @@ export async function taskVerbHint(
         ? `vx run ${command} --all`
         : `vx run ${command}`
   return `\`${command}\` is a task here, not a command: ${run}`
+}
+
+/**
+ * `vx run web:build` outside a project, as `nx run web:build` is typed:
+ * the `vx run` of each name that is Nx's `project:target` here, or null.
+ */
+export async function nxTargetHint(tasks: readonly string[], cwd: string): Promise<string | null> {
+  if (!tasks.some((t) => t.includes(':'))) return null
+  const projects = await workspaceProjects(cwd)
+  if (projects === null) return null
+  const specs = tasks.map((t) => nxProjectTarget(t, projects))
+  if (specs.some((s) => s === undefined)) return null
+  return `\`${tasks.join(' ')}\` is Nx's project:target: vx run ${specs.join(' ')}`
+}
+
+async function workspaceProjects(
+  cwd: string,
+): Promise<Awaited<ReturnType<typeof loadCliProjects>> | null> {
+  try {
+    const root = await findWorkspaceRoot(cwd)
+    return await loadCliProjects(root, await listProjects(await loadWorkspace(root)), 'all', {
+      noCreate: true,
+    })
+  } catch {
+    // No workspace, or a config that does not load: the caller's plain line stands.
+    return null
+  }
 }
