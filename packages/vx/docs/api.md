@@ -1348,6 +1348,7 @@ export interface PreparedRun {
   hasRemoteLayer: boolean
   priorities: ReadonlyMap<string, number>
   nodes: Map<string, TaskNode>
+  keyOnly: ReadonlyMap<string, TaskNode>
   unresolvedTasks: readonly string[]
   projects: ReadonlyMap<string, ProjectEntry>
   anyProjectConfig: boolean

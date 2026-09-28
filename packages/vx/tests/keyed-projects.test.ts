@@ -12,7 +12,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import type { TaskConfig } from '../src/config.js'
 import type { TaskNode } from '../src/graph/index.js'
 import { keyedProjects } from '../src/orchestrator/keyed-projects.js'
-import { run } from '../src/orchestrator/index.js'
+import { prepareRun, run } from '../src/orchestrator/index.js'
 import {
   addProject,
   FORCE,
@@ -399,4 +399,78 @@ describe('K(T) is what moves the key (R4)', () => {
       TIMEOUT,
     )
   }
+})
+
+// Under `--exclude-dependencies` the key folds what `keyUpstream` hands it:
+// the scheduled edges less the order-only ones, plus the dropped ones'
+// keys. The walk read `node.deps`, which holds the order-only edges and
+// lacks the dropped ones (C-36's probe).
+describe('K(T) under --exclude-dependencies', () => {
+  async function keyedOfTest(
+    genTasks: string,
+  ): Promise<{ keyed: string[]; ui: string; app: string }> {
+    const fixture = await makeWorkspace('vx-keyed-exclude-')
+    try {
+      const ui = await addProject(fixture.root, '@x/ui', {
+        files: { 'src/index.js': 'export const ui = 1\n' },
+        config: `export default { tasks: { build: {
+          exec: { command: 'true' },
+          cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+        } } }`,
+      })
+      const app = await addProject(fixture.root, '@x/app', {
+        deps: { '@x/ui': 'workspace:*' },
+        files: { 'src/index.js': 'export const app = 1\n' },
+        config: `export default { tasks: {
+          gen: {
+            exec: { command: 'true' },
+            dependsOn: ['^build'],
+            cache: { inputs: { files: ['src/**']${genTasks} }, outputs: { files: [] } },
+          },
+          test: {
+            exec: { command: 'true' },
+            dependsOn: ['gen'],
+            cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+          },
+        } }`,
+      })
+      const prepared = await prepareRun(
+        {
+          cwd: fixture.root,
+          tasks: ['@x/app#test', '@x/ui#build'],
+          excludeDependencies: ['gen'],
+          log: silentLogger(fixture),
+        },
+        silentLogger(fixture),
+      )
+      try {
+        const test = prepared.nodes.get('@x/app#test')!
+        expect(test.orderOnly).toEqual(['@x/ui#build'])
+        const keyed = [...keyedProjects(prepared.nodes, prepared.keyOnly)(test)].sort()
+        return { keyed, ui, app }
+      } finally {
+        prepared.cache.close()
+      }
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true })
+    }
+  }
+
+  it(
+    'an order-only edge keys nothing: a dropped gen that folds no task keys its own project only',
+    async () => {
+      const { keyed, app } = await keyedOfTest(', tasks: []')
+      expect(keyed).toEqual([app])
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a dropped dependency keys what it folds: gen over ^build keys ui through it',
+    async () => {
+      const { keyed, ui, app } = await keyedOfTest('')
+      expect(keyed).toEqual([app, ui].sort())
+    },
+    TIMEOUT,
+  )
 })

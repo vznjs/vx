@@ -618,7 +618,7 @@ async function runOnBus(
     }
 
     const sandboxArmer = prepareSandbox(nodes.values())
-    const keyed = keyedProjects(nodes)
+    const keyed = keyedProjects(nodes, prepared.keyOnly)
     const outputDirSnapshots: OutputDirSnapshot[] = []
     // Saves run off the execution slot, twice the cap at once (memory:
     // each pack holds an artifact's bytes); a failed save is a miss next
