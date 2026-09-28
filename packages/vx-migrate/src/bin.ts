@@ -1,4 +1,4 @@
-#!/usr/bin/env -S bun --no-env-file
+#!/usr/bin/env -S bun --no-env-file --no-install
 // `bunx @vzn/vx-migrate` — the adoption tool's own entry. Core's error
 // classes are honoured the way `vx` honours them: a UserError is one line
 // on stderr, anything else is a crash worth a stack.

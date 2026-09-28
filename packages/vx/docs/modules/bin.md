@@ -46,7 +46,7 @@ compiled binary no second copy of core transpiled from `node_modules`
 `vx` is shipped two ways:
 
 1. **As a Bun-runnable script** — `bin: "src/bin.ts"` in `package.json`,
-   shebang `#!/usr/bin/env -S bun --no-env-file`. Bun runs the
+   shebang `#!/usr/bin/env -S bun --no-env-file --no-install`. Bun runs the
    TypeScript directly.
 2. **As a standalone binary** — `bun build --compile
 --no-compile-autoload-dotenv --minify --bytecode --target=bun-<target>
@@ -59,6 +59,13 @@ where every `passThrough` and essential variable and every `VX_*` switch
 is read: a task saw a value no shell had set (item 1089). Running the
 source as `bun src/bin.ts`, as this repository's own gate does, is not
 the shebang, and Bun loads a `.env` there.
+
+`--no-install` keeps Bun from auto-installing a bare import no
+`node_modules` provides: a helper a config imports fetched the package
+from the registry and ran it (L-22; the config file itself was already
+refused before evaluation). The npm launcher's source fallback passes
+both flags; a compiled binary never auto-installs. `bun src/bin.ts` is
+not the shebang here either.
 
 ## What this does NOT do
 

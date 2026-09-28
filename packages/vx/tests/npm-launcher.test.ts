@@ -117,6 +117,8 @@ describe.skipIf(NODE === null)('npm launcher', () => {
     const r = run(['--version'], [binDir, '/usr/bin', '/bin'])
     expect(r.code).toBe(0)
     // The launcher locates the source beside its own REAL path (import.meta.url).
-    expect(r.out).toBe(`fake bun: ${path.join(realpathSync(pkgDir), 'src', 'bin.ts')} --version\n`)
+    expect(r.out).toBe(
+      `fake bun: --no-env-file --no-install ${path.join(realpathSync(pkgDir), 'src', 'bin.ts')} --version\n`,
+    )
   })
 })
