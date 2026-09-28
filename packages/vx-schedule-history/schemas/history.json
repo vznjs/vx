@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "vx history --format json",
+  "description": "What @vzn/vx-schedule-history learned per task, and the reservation it packs.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["window", "budgets", "tasks"],
+  "properties": {
+    "window": { "type": "integer", "description": "recent runs per task the history reads" },
+    "budgets": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cpus", "memory"],
+      "properties": {
+        "cpus": { "type": "integer", "description": "the run's worker count" },
+        "memory": { "type": "number", "description": "megabytes" }
+      }
+    },
+    "tasks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "runs",
+          "p50DurationMs",
+          "maxPeakRssBytes",
+          "maxCpuParallelism",
+          "reservation",
+          "declared"
+        ],
+        "properties": {
+          "id": { "type": "string", "description": "project#task" },
+          "runs": { "type": "integer" },
+          "p50DurationMs": { "type": ["number", "null"] },
+          "maxPeakRssBytes": { "type": ["integer", "null"] },
+          "maxCpuParallelism": { "type": ["number", "null"] },
+          "reservation": {
+            "type": ["object", "null"],
+            "additionalProperties": false,
+            "properties": {
+              "cpus": { "type": "number" },
+              "memory": { "type": "number", "description": "megabytes" }
+            }
+          },
+          "declared": {
+            "type": "boolean",
+            "description": "the reservation came from the options, not the history"
+          }
+        }
+      }
+    }
+  }
+}

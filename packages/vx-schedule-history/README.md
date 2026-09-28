@@ -77,7 +77,9 @@ history: last 20 runs · budgets 4 cores (the default worker count; --concurrenc
 
 `--format json` emits `{ window, budgets, tasks }` with every task's
 `runs`, `p50DurationMs`, `maxPeakRssBytes`, `maxCpuParallelism`,
-`reservation` and `declared`. A cache hit's row carries the producing
+`reservation` and `declared`; `schemas/history.json` (shipped) is its
+JSON Schema, held to the output by core's
+`tests/plugin-json-schemas.unsafe.test.ts`. A cache hit's row carries the producing
 execution's usage, so a task restored from a remote cache shows a
 reservation on a machine that never executed it. A task lighter than
 vx itself has no peak on record (the runner reports one only above its
