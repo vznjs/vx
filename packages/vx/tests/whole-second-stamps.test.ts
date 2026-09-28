@@ -80,20 +80,22 @@ describe('a whole-second stamp', () => {
     expect(await rewriteInOneSecond(batch)).toBe(false)
   })
 
-  // FAT32 keeps even seconds (2 s): a write at 12:00:01.800 is stamped
-  // 12:00:00, so a hash 1.2 s after the stamp passed a one-second widening
-  // and a same-size rewrite later in those two seconds kept every field.
-  it('keeps a file written 1.2 s before its hash out of the memo on an even second', async () => {
+  // FAT32 keeps even seconds (2 s): a write at 12:00:01.990 is stamped
+  // 12:00:00, so a hash 1.99 s after the stamp passed a one-second widening
+  // and a same-size rewrite later in those two seconds kept every field. The
+  // stamp is an even second that is not a multiple of four, and the hash sits
+  // near the pair's end, so a narrower rule or widening is caught too.
+  it('keeps a file written 1.99 s before its hash out of the memo on an even second', async () => {
     const one = (f: string) => cache.hashFile(f)
     const batch = async (f: string) => (await cache.hashFiles([f])).get(f)!
-    stamp = SECOND
-    expect(SECOND % 2000).toBe(0)
-    expect(await rewriteInOneSecond(one, 1200, 1800)).toBe(true)
-    expect(await rewriteInOneSecond(batch, 1200, 1800)).toBe(true)
+    stamp = SECOND + 2000
+    expect([stamp % 2000, stamp % 4000]).toEqual([0, 2000])
+    expect(await rewriteInOneSecond(one, 1990, 1995)).toBe(true)
+    expect(await rewriteInOneSecond(batch, 1990, 1995)).toBe(true)
     // Control: an odd second at the same age is past its window; FAT never
-    // writes one, and ext3's second ended 200 ms before the hash.
+    // writes one, and ext3's second ended 990 ms before the hash.
     stamp = SECOND + 1000
-    expect(await rewriteInOneSecond(one, 1200, 1800)).toBe(false)
+    expect(await rewriteInOneSecond(one, 1990, 1995)).toBe(false)
   })
 
   it('makes a file stamped in the second of its fact a suspect of the re-check', async () => {
