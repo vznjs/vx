@@ -378,3 +378,9 @@ Supervisor, from N's lit dogfood (#1603): core refused `!` in `cache.outputs`, s
 ### A-45 — the cold-snapshot row orders its keep-alive after the build (2026-09-28)
 
 Lead from C: `output-dirs-snapshot.test.ts` › "a cold build records its output directories by run end…" read no directory rows once in a loaded gate. Its keep-alive (`b`, `sleep 0.15`) ran beside `a`; a late `a` ended the run inside the racy window and the run-end snapshot was refused. A delayed `a` (`sleep 0.3 &&`) reproduces it; `b` now depends on `a`, and the row passes with the delay. Not reproduced by CPU load alone (15 runs at 2× cores).
+
+### A-46 — a task with a `!` output keeps the warm hit's directory snapshot (2026-09-28)
+
+A-44 left a task with a `!` output entry on the per-hit walk (`wholeSubtreePrefixes` refuses a `!` glob), unmeasured. Measured on 300 projects, warm no-op, `['dist/**', '!dist/keep.txt']`, main against the patch on two pre-warmed copies, 8 interleaved rounds: min 227 → 192 ms, median ~267 → 226 ms. `hit-restore` now takes the prefixes from the positive globs; the snapshot stays sound, since a file added or removed under a `!` path still bumps a recorded directory and the walk that follows applies the `!`.
+
+- Row (`negated-outputs.test.ts` › "keeps the warm hit's directory snapshot…"): an aged hit records `dist` and `dist/sub`, red without the change; a stray still forces the restore and the `!` file is kept. The run-end snapshot of a cold miss (`miss-save`) keeps the old prefixes: the first aged hit records them either way, and no row would hold it.
