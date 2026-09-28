@@ -555,3 +555,9 @@ packages/core`) selects the dependent whose `file:../lib` spec named
   longer calls it unreachable. `affected.ts`'s "cat-file --batch ended
   before" guard also survived: it defends against a truncated stream
   that real git does not produce, so it stays unheld and is recorded.
+- **D-59** Lead from L: the config purity gate let `new Worker('./x.ts')`
+  through, and the worker's file is outside the hashed closure, so what
+  it reads (env, clock) could reach a cached evaluation stale. `Worker`
+  joins the deny-list (`IMPURE_RE`, and the word lists in
+  `config-cache.md` and the resolved-config-hashing post). Row: the
+  `new Worker` case of `tests/config-cache.test.ts`, red without it.
