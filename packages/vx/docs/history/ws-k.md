@@ -173,6 +173,9 @@
   vx-github's the summary footer, vx-mcp's `.mcp.json`, its 230 lines and
   the imported-module restart; vx-migrate's Turbo table says the
   `readyWhen` TODO needs a dependant. J-73's "no negation" was gone.
+- **K-33** Quickstart's Common problems names J-51's `tsc -b` trap: with
+  `rootDir: "src"` the buildinfo sits outside `dist/`, so a miss writes
+  nothing (tsc 7.0.2, both layouts probed).
 
 ## Leads for other streams
 
