@@ -109,6 +109,48 @@ describe('a secret-named value in what vx prints, stores and exports', () => {
     return { ok: r.ok, text: chunks.join(''), telemetry: JSON.stringify(records) }
   }
 
+  it("a server's output is masked too", async () => {
+    await addProject(root, 'srv', {
+      config: `
+        export default {
+          tasks: {
+            dev: {
+              exec: {
+                command: 'echo "leak $API_TOKEN"; echo ready; exec sleep 30',
+                env: { passThrough: ['API_TOKEN'] },
+                persistent: { readyWhen: 'ready' },
+              },
+            },
+          },
+        }
+      `,
+    })
+    const chunks: string[] = []
+    const r = await run({
+      cwd: root,
+      tasks: ['dev'],
+      projects: ['srv'],
+      log: defaultLogger(
+        { enabled: false },
+        { mode: 'focused' },
+        {
+          write: (c: string) => (chunks.push(c), true),
+        },
+      ),
+      handleSignals: false,
+    })
+    const text = chunks.join('')
+    expect({
+      ok: r.ok,
+      leaked: text.includes(SECRET),
+      masked: text.includes(`leak ${MASKED}`),
+    }).toEqual({
+      ok: true,
+      leaked: false,
+      masked: true,
+    })
+  })
+
   it('never shows the value; the miss and the replaying hit print the mask', async () => {
     const miss = await once()
     const hit = await once()

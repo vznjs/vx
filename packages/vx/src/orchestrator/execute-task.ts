@@ -323,12 +323,18 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
     bridgeTag = wrapped.tag
     signalChannel = wrapped.forwardsSignals
   }
+  // A server's output masked as a one-shot task's is (L-11); `readyWhen`
+  // is matched on the raw chunks, before this. Its held tail is flushed by
+  // the idle timer: a server never ends on the way to a flush.
+  const serverSecrets = secretMask(process.env, env, step.env?.define)
+  const serverOut = serverSecrets && maskedEmitter(serverSecrets, (t) => log.taskStdout(node, t))
+  const serverErr = serverSecrets && maskedEmitter(serverSecrets, (t) => log.taskStderr(node, t))
   const persistentOpts: Parameters<typeof runPersistent>[0] = {
     command,
     cwd: node.projectDir,
     env,
-    onStdout: (chunk) => log.taskStdout(node, chunk),
-    onStderr: (chunk) => log.taskStderr(node, chunk),
+    onStdout: serverOut ? (chunk) => serverOut.push(chunk) : (chunk) => log.taskStdout(node, chunk),
+    onStderr: serverErr ? (chunk) => serverErr.push(chunk) : (chunk) => log.taskStderr(node, chunk),
     ...(args.liveChildren !== undefined ? { liveChildren: args.liveChildren } : {}),
     ...(signalChannel ? { signalChannel } : {}),
   }
