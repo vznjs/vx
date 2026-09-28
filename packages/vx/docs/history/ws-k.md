@@ -138,6 +138,8 @@
 - **K-22** `examples/turbo` and the migrate guide said `npm install`
   would fetch `@vzn/vx-migrate`, which is not on npm (404, first publish
   pending, STATUS item 1). Both now say so in one line.
+- **K-23** The social card (`og.png`, `og.svg`) and its alt text carry
+  the new hero, "A faster runner for your Turborepo or Nx repo."
 
 ## Leads for other streams
 
