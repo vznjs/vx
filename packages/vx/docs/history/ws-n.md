@@ -200,6 +200,12 @@ projects only through the package manager, so `nx()` attached one of
 the 21 `build` tasks Nx plans and named the other 31 projects as
 unattachable. No benchmark: nothing comparable runs. Lead D below.
 
+N-19. `nx()` on typescript-eslint (Nx 23.2.1): 16 build tasks from
+the `@nx/js/typescript` inference plugin, 0 edge mismatches once Nx's
+short project names (`parser`) map to package names. 16.8 s cold
+against 17.8 s, restore 1.50 s against 2.95 s, no-op 1.11 s against
+2.96 s (`benchmarks.md`). No mapping gap.
+
 ## Candidates not built (2026-09-28)
 
 - Lerna without Nx: `lerna run <s>` (lerna 10.0.1, `prepNxOptions`)
