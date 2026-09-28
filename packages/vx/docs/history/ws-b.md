@@ -31,6 +31,10 @@ In order of harm:
 
 ## Leads for other streams
 
+- H: `isLocalExecutor`'s false arm (core's executor bounded like a plugin
+  after an abort) has no row: `boundAfterAbort`'s grace and the local
+  SIGKILL share `killGraceMs`, so a row would race the two (2026-09-28).
+
 - Windows CI (not required), 2026-09-28, on #1514: every row of
   `local-shortcircuit.test.ts` hit `EBUSY` in its fixture `rm`, and
   `output-wipe-guard.test.ts` expects `dist/a.js` where Windows gives
@@ -611,3 +615,20 @@ what the task had left running.
 
 - Rows: `runner.test.ts` › runCommand — the rows its sweep asked for
   (three).
+
+B-31. One path-containment check. "`p` is `dir` or below it" was written
+out ten times in the sandbox code, three spellings of the root case
+among them; `atOrUnder` (`sandbox-paths.ts`) is the one copy, and
+`sandbox-request.ts`' `within`, `assertWriteStaysHome`'s `inside` and
+`readableUnder`'s `under` go. `modules/sandbox-runtime.md`.
+
+- Swept alongside, no row: `local-executor.ts` (3 mutants, 1 caught;
+  the false arm is the H lead above), and `sandbox-runtime.ts`' code
+  since B-16 (19 mutants, 8 caught). Equivalent here: the jar memo, the
+  jar's existence (source mode always has it), tool paths on darwin
+  (SRT ignores them), IPv4 forced with IPv6 absent, the one-time warning.
+  Not drivable here: the probe without `-DD` (Yama) or without
+  `--seccomp-bpf`, `readableUnder`'s Linux-only arm (a darwin hint).
+  Unheld: an strace before 5.3 still given the seccomp form; detection
+  is memoized per process and the wrap does not carry the trace, so a
+  row needs `runSandboxed` in a subprocess with a fake strace.

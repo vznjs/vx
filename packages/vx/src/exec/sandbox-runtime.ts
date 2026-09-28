@@ -64,6 +64,7 @@ import {
 } from '../util/index.js'
 import { bindableWrites, buildCustomConfig } from './sandbox-binds.js'
 import {
+  atOrUnder,
   isMountableLiteral,
   localBindingOn,
   MOUNT_WILDCARDS,
@@ -719,16 +720,14 @@ function canonicalBaselines(
 function assertWriteStaysHome(grant: string, real: string, projectDir: string): void {
   if (grant.startsWith('~') || path.isAbsolute(grant)) return
   const lexical = path.resolve(projectDir, grant)
-  const inside = (p: string, dir: string): boolean =>
-    p === dir || p.startsWith(dir.endsWith(path.sep) ? dir : dir + path.sep)
-  if (!inside(lexical, projectDir)) return
+  if (!atOrUnder(lexical, projectDir)) return
   const home = toRealPath(projectDir)
   // `toRealPath` stops at a DANGLING link and keeps its own path, which is
   // inside; the link's target is where a write through it would land.
   const target = throughLinks(real)
-  if (inside(real, home) && inside(target, home)) return
+  if (atOrUnder(real, home) && atOrUnder(target, home)) return
   throw new UserError(
-    `exec.sandbox.allow.write: "${grant}" resolves through a symlink to ${inside(real, home) ? target : real}, outside the ` +
+    `exec.sandbox.allow.write: "${grant}" resolves through a symlink to ${atOrUnder(real, home) ? target : real}, outside the ` +
       `project — a write grant binds the path it names in the project, and vx does not follow a ` +
       `link out of it. Remove the link, or grant the target by its own path.`,
   )
@@ -1557,8 +1556,6 @@ async function runSandboxedOnce(
  */
 function readableUnder(dir: string, granted: readonly string[]): boolean {
   const target = toRealPath(dir)
-  const under = (a: string, b: string): boolean =>
-    a === b || a.startsWith(b.endsWith(path.sep) ? b : b + path.sep)
   return granted.some((p) => {
     const g = toRealPath(p)
     // On Linux a grant INSIDE the cwd makes the cwd listable too: bwrap
@@ -1566,7 +1563,7 @@ function readableUnder(dir: string, granted: readonly string[]): boolean {
     // children around the walls (`wallOff`), so every failing root task
     // was told its cwd was unreadable while it listed it (B-20). Seatbelt
     // grants no parent, so on macOS the cwd itself must be covered.
-    return under(target, g) || (process.platform === 'linux' && under(g, target))
+    return atOrUnder(target, g) || (process.platform === 'linux' && atOrUnder(g, target))
   })
 }
 
@@ -1736,9 +1733,7 @@ export function wallsGlobsReach(grants: readonly string[], walls: readonly strin
   const heads = grants
     .filter((g) => !isMountableLiteral(g))
     .map((g) => path.dirname(g.slice(0, g.search(MOUNT_WILDCARDS))))
-  return walls.filter((w) =>
-    heads.some((h) => w === h || w.startsWith(h === path.sep ? h : h + path.sep)),
-  )
+  return walls.filter((w) => heads.some((h) => atOrUnder(w, h)))
 }
 
 /**
@@ -1760,7 +1755,7 @@ export function darwinWallRules(
     for (const w of walls) {
       const at = `(subpath "${sbplResolvedPath(w, 'wall')}")`
       const kept = literals
-        .filter((l) => isMountableLiteral(l) && (l === w || l.startsWith(w + path.sep)))
+        .filter((l) => isMountableLiteral(l) && atOrUnder(l, w))
         .map((l) => `(require-not (subpath "${sbplResolvedPath(l, 'grant')}"))`)
       rules.push(
         kept.length === 0
@@ -1827,12 +1822,12 @@ function expandGrants(
     for (const hit of scanOrNothing(pattern, base)) {
       const abs = path.join(base, hit)
       const real = toRealPath(abs)
-      if (real !== home && !real.startsWith(home + path.sep)) continue
+      if (!atOrUnder(real, home)) continue
       // A hit that IS a wall, or lies inside one, was matched, not named:
       // `read: ['*']` in a root project bound `.git` and `.vx`, and
       // `packages/*` a nested project its key excludes (B-1). A grant that
       // names a wall literally never reaches this loop and stays.
-      if (walls.some((w) => real === w || real.startsWith(w + path.sep))) continue
+      if (walls.some((w) => atOrUnder(real, w))) continue
       out.push(abs)
       hits++
     }
