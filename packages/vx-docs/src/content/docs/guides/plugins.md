@@ -72,7 +72,7 @@ interface VxPlugin {
   executor?(ctx): TaskExecutor | undefined
   cache?(ctx): CacheLayer | undefined
   telemetry?(ctx): TelemetrySink | TelemetrySink[] | undefined
-  commands?: { [verb]: { description: string; run(argv, ctx): number } }
+  commands?: { [verb]: { description: string; run(argv, ctx): number | Promise<number> } }
   setup?(ctx): void | Promise<void>
   teardown?(): void | Promise<void>
 }
@@ -129,7 +129,7 @@ export function mcp(): VxPlugin {
       mcp: {
         description: 'serve run history to an AI agent over stdio',
         async run(argv, ctx) {
-          const db = new Cache(ctx.cacheDir).dbHandle() // the tables `vx why` reads
+          const db = Cache.inspect(ctx.cacheDir).dbHandle() // read-only: never resets the index
           void argv
           void db
           return 0 // the exit code
