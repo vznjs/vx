@@ -252,6 +252,10 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 30
     continue-on-error: true
+    # A Windows runner for up to 30 min on every PR queued every stream
+    # behind it (2026-09-28: 15 runs waiting). Main and stream O's own
+    # branches carry it until it is required.
+    if: github.event_name != 'pull_request' || startsWith(github.head_ref, 'ws-o/')
 
     steps:
       # The runner's git checks out CRLF (core.autocrlf=true), and every

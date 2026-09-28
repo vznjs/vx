@@ -26,7 +26,9 @@ job now sets `core.autocrlf false` before checkout (a root
 `.gitattributes` would give every path an `eol`, and vx would then
 trust no index OID on any OS), and the paths come from
 `import.meta.dir` or `Bun.file(url)`. Row: `file-url-paths.test.ts`,
-red with any one site put back.
+red with any one site put back. The job also runs only on main and on
+`ws-o/` PRs: at 03:12 UTC fifteen runs sat queued, and a Windows runner
+held for up to 30 min per PR was part of that.
 
 ## Leads for other streams
 
