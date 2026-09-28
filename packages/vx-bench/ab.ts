@@ -1,0 +1,100 @@
+#!/usr/bin/env bun
+/**
+ * Interleaved A/B of vx on warm workspaces, the method CLAUDE.md's first
+ * principle asks of every perf claim: one workspace copy per arm, warmed by
+ * that arm; rounds that run every arm once in a rotated order; min and
+ * median per arm; an A/A arm (the same vx twice) as the noise floor.
+ *
+ *   bun packages/vx-bench/ab.ts <rounds> <label>=<vx>@<workspace>... -- <vx args>
+ *   bun packages/vx-bench/ab.ts 15 base=/tmp/vx-old@/tmp/w1 main=/tmp/vx-new@/tmp/w2 \
+ *     aa=/tmp/vx-new2@/tmp/w3 -- run build --all
+ *
+ * <vx> is a compiled binary or a checkout (its packages/vx/src/bin.ts runs
+ * under this Bun). A real repo's copies each link their own plugin build
+ * (`node_modules/@vzn/vx-migrate`) to the arm's checkout. The runs see git's
+ * defaults: this container's global config (`core.checkStat=minimal`) makes
+ * vx re-hash every input (A-6), which is the config, not the arm.
+ * Prints each arm's min and median, then every sample as one JSON line.
+ */
+import { statSync } from 'node:fs'
+import path from 'node:path'
+import { benchEnv } from './bench-env.js'
+
+export interface Arm {
+  label: string
+  vx: string
+  workspace: string
+}
+
+/** `<label>=<vx>@<workspace>`; the workspace is everything after the last `@`. */
+export function parseArm(spec: string): Arm {
+  const eq = spec.indexOf('=')
+  const at = spec.lastIndexOf('@')
+  if (eq <= 0 || at <= eq + 1 || at === spec.length - 1) {
+    throw new Error(`arm "${spec}" is not <label>=<vx>@<workspace>`)
+  }
+  return { label: spec.slice(0, eq), vx: spec.slice(eq + 1, at), workspace: spec.slice(at + 1) }
+}
+
+/** The arms' order in round `r`: rotated by one each round, so no arm always runs first. */
+export function roundOrder(r: number, arms: number): number[] {
+  return Array.from({ length: arms }, (_, i) => (i + r) % arms)
+}
+
+export function summarize(samples: readonly number[]): { min: number; median: number } {
+  const s = [...samples].sort((a, b) => a - b)
+  const mid = s.length >> 1
+  return { min: s[0]!, median: s.length % 2 === 1 ? s[mid]! : (s[mid - 1]! + s[mid]!) / 2 }
+}
+
+function command(vx: string): string[] {
+  return statSync(vx).isDirectory()
+    ? [process.execPath, path.join(vx, 'packages/vx/src/bin.ts')]
+    : [vx]
+}
+
+async function time(arm: Arm, args: readonly string[]): Promise<number> {
+  const t0 = Bun.nanoseconds()
+  const p = Bun.spawn({
+    cmd: [...command(arm.vx), ...args],
+    cwd: arm.workspace,
+    stdout: 'ignore',
+    stderr: 'pipe',
+    env: benchEnv({ NO_COLOR: '1', GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' }),
+  })
+  const code = await p.exited
+  if (code !== 0) {
+    const err = await new Response(p.stderr).text()
+    throw new Error(`${arm.label} exited ${code}:\n${err.slice(-2000)}`)
+  }
+  return (Bun.nanoseconds() - t0) / 1e6
+}
+
+if (import.meta.main) {
+  const argv = process.argv.slice(2)
+  const dash = argv.indexOf('--')
+  const rounds = Number(argv[0])
+  if (dash < 2 || !Number.isInteger(rounds) || rounds < 1) {
+    throw new Error('usage: ab.ts <rounds> <label>=<vx>@<workspace>... -- <vx args>')
+  }
+  const arms = argv.slice(1, dash).map(parseArm)
+  const args = argv.slice(dash + 1)
+  // Warmed by its own arm: a cold key (an arm's first run on a copy) is not
+  // the warm path, and the second run proves the hits.
+  for (const arm of arms) for (let i = 0; i < 2; i++) await time(arm, args)
+  const samples = arms.map(() => [] as number[])
+  for (let r = 0; r < rounds; r++) {
+    for (const i of roundOrder(r, arms.length)) samples[i]!.push(await time(arms[i]!, args))
+  }
+  for (const [i, arm] of arms.entries()) {
+    const { min, median } = summarize(samples[i]!)
+    console.log(
+      `${arm.label.padEnd(8)} min ${min.toFixed(1)}  median ${median.toFixed(1)}  n=${rounds}`,
+    )
+  }
+  console.log(
+    JSON.stringify(
+      Object.fromEntries(arms.map((a, i) => [a.label, samples[i]!.map((x) => +x.toFixed(1))])),
+    ),
+  )
+}
