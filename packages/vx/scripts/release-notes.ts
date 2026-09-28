@@ -55,7 +55,7 @@ export function releaseNotes(commits: readonly Commit[]): string {
 }
 
 /** The commits in `from..to`, oldest first; `from` empty means all history up to `to`. */
-export function commitsBetween(from: string, to: string, cwd?: string): Commit[] {
+function commitsBetween(from: string, to: string, cwd?: string): Commit[] {
   const range = from === '' ? to : `${from}..${to}`
   const r = Bun.spawnSync(['git', 'log', '--reverse', '--format=%s%x00%b%x1e', range], {
     ...(cwd !== undefined ? { cwd } : {}),
