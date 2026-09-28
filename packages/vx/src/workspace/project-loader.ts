@@ -386,6 +386,7 @@ export async function loadProjectConfigs(
     evaluated?: readonly [string, string]
     closure?: readonly [string, readonly string[]]
   }
+  const builtins = builtinSnapshot()
   const loadOne = async (entry: (typeof prepared)[number]): Promise<Loaded> => {
     const { configPath, cacheKey } = entry
     // A fast key that missed: the closure is stale or the file changed.
@@ -424,6 +425,10 @@ export async function loadProjectConfigs(
           throw configLoadError(err, configPath, 'Project') ?? err
         })
       : await loadDefaultExport(configPath, 'Project', bytes!)
+    // Before anything reads through them: a replaced `Array.prototype.includes`
+    // turned the JSON-data walk's own check into "a cyclic reference".
+    const changed = repeat ? [] : restoreBuiltins(builtins)
+    if (changed.length > 0) throw builtinsChanged(changed, configPath)
     assertDefaultObject(mod, 'Project', configPath)
     // Validation runs HERE, on whichever object we ended up with, so a
     // malformed config reports the identical UserError whether it was
@@ -480,7 +485,9 @@ export async function loadProjectConfigs(
         if (r.closure !== undefined) learnedClosures.push(r.closure)
       }
     }
+    const changed = restoreBuiltins(builtins)
     if (first !== undefined) throw first.failed
+    if (changed.length > 0) throw builtinsChanged(changed)
     return results.map((r) => (r as Loaded).config)
   } finally {
     endRound()
@@ -495,6 +502,70 @@ export async function loadProjectConfigs(
       }
     }
   }
+}
+
+/**
+ * The built-in prototypes a config's object is read through. A config that
+ * set `Object.prototype.exec` gave every other project's task that
+ * command, and the key, which folds each config's own JSON, never saw it:
+ * a hit replayed under a key that did not name what ran (D-74). A first
+ * load runs in this process, so the round compares them before and after,
+ * puts back what changed (a failed load too) and refuses.
+ */
+const WATCHED_BUILTINS: ReadonlyArray<readonly [string, object]> = [
+  ['Object.prototype', Object.prototype],
+  ['Array.prototype', Array.prototype],
+]
+
+type BuiltinSnapshot = ReadonlyArray<ReadonlyMap<PropertyKey, PropertyDescriptor>>
+
+function builtinSnapshot(): BuiltinSnapshot {
+  return WATCHED_BUILTINS.map(
+    ([, proto]) =>
+      new Map(Reflect.ownKeys(proto).map((k) => [k, Object.getOwnPropertyDescriptor(proto, k)!])),
+  )
+}
+
+/** Loads run together, so the config named is the one whose load saw the change. */
+function builtinsChanged(changed: readonly string[], configPath?: string): UserError {
+  const who = configPath === undefined ? 'a project config' : configPath
+  return new UserError(
+    `${who} changed ${changed.join(', ')} while it was evaluated — a config must not change the built-ins: every other config is read through them, and the cache key does not see what they add`,
+  )
+}
+
+/** Puts back what changed since `before`, naming each property it put back. */
+function restoreBuiltins(before: BuiltinSnapshot): string[] {
+  const changed: string[] = []
+  WATCHED_BUILTINS.forEach(([name, proto], i) => {
+    const was = before[i]!
+    for (const key of Reflect.ownKeys(proto)) {
+      const prior = was.get(key)
+      const now = Object.getOwnPropertyDescriptor(proto, key)!
+      if (prior !== undefined && sameDescriptor(prior, now)) continue
+      changed.push(`${name}.${String(key)}`)
+      if (prior === undefined) Reflect.deleteProperty(proto, key)
+      else Object.defineProperty(proto, key, prior)
+    }
+    for (const [key, prior] of was) {
+      if (!Object.hasOwn(proto, key)) {
+        changed.push(`${name}.${String(key)}`)
+        Object.defineProperty(proto, key, prior)
+      }
+    }
+  })
+  return changed
+}
+
+function sameDescriptor(a: PropertyDescriptor, b: PropertyDescriptor): boolean {
+  return (
+    a.value === b.value &&
+    a.get === b.get &&
+    a.set === b.set &&
+    a.writable === b.writable &&
+    a.enumerable === b.enumerable &&
+    a.configurable === b.configurable
+  )
 }
 
 export async function loadProjectConfig(

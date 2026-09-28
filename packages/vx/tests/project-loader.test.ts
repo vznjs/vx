@@ -1325,3 +1325,84 @@ describe('first loads run together (D-68)', () => {
     expect(got).toBe('early in order')
   })
 })
+
+describe('a config that changes the built-ins (D-74)', () => {
+  // `Object.prototype.exec` set in one config gave another project's task
+  // that command, and the key, folding each config's own JSON, never saw
+  // it. A child each: without the check the pollution outlives the load.
+  let dir: string
+  beforeEach(async () => {
+    dir = await mkdtemp(path.join(os.tmpdir(), 'vx-d74-'))
+  })
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true })
+  })
+  const REFUSAL = (who: string, props: string) =>
+    `${who} changed ${props} while it was evaluated — a config must not change the built-ins: every other config is read through them, and the cache key does not see what they add`
+  const drive = async (configs: string[], after: string): Promise<unknown> => {
+    const files: string[] = []
+    for (const [i, body] of configs.entries()) {
+      const file = path.join(dir, `p${i}`, 'vx.config.mjs')
+      await mkdir(path.dirname(file), { recursive: true })
+      await writeFile(file, body)
+      files.push(file)
+    }
+    const driver = path.join(dir, 'drive.ts')
+    await writeFile(
+      driver,
+      `import { loadProjectConfigs } from ${JSON.stringify(path.resolve(import.meta.dir, '../src/workspace/project-loader.ts'))}\n` +
+        `const includes = Array.prototype.includes\n` +
+        `const got = await loadProjectConfigs(${JSON.stringify(files)}).then(() => 'loaded', (e) => e.message)\n` +
+        `console.error(JSON.stringify({ got, after: ${after}, files: ${JSON.stringify(files)} }))\n`,
+    )
+    const p = Bun.spawn({ cmd: [process.execPath, driver], stdout: 'pipe', stderr: 'pipe' })
+    const [, err] = await Promise.all([p.exited, new Response(p.stderr).text()])
+    const { files: _, ...rest } = JSON.parse(err) as Record<string, unknown>
+    return { ...rest, first: files[0] }
+  }
+  const task = "export default { tasks: { t: { exec: { command: 'true' } } } }\n"
+  const firstFile = () => path.join(dir, 'p0', 'vx.config.mjs')
+
+  it('refuses an added property, names it, and takes it back', async () => {
+    expect(
+      await drive(
+        ["Object.prototype.exec = { command: 'echo PWNED' }\n" + task, task],
+        "'exec' in {}",
+      ),
+    ).toEqual({
+      got: REFUSAL(firstFile(), 'Object.prototype.exec'),
+      after: false,
+      first: firstFile(),
+    })
+  })
+
+  it('refuses a replaced one and puts the original back', async () => {
+    expect(
+      await drive(
+        ['Array.prototype.includes = () => true\n' + task],
+        'Array.prototype.includes === includes',
+      ),
+    ).toEqual({
+      got: REFUSAL(firstFile(), 'Array.prototype.includes'),
+      after: true,
+      first: firstFile(),
+    })
+  })
+
+  it('a config that fails after changing one: its own error, and the change taken back', async () => {
+    expect(
+      await drive(
+        ["Object.prototype.cache = {}\nthrow new Error('broken')\n" + task],
+        "'cache' in {}",
+      ),
+    ).toEqual({ got: 'broken', after: false, first: firstFile() })
+  })
+
+  it('CONTROL: configs that leave the built-ins alone load', async () => {
+    expect(await drive([task, task], "'exec' in {}")).toEqual({
+      got: 'loaded',
+      after: false,
+      first: firstFile(),
+    })
+  })
+})
