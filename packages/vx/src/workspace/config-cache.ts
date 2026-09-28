@@ -28,9 +28,9 @@
 // `vx lock` both go through `JSON.stringify` — so a cached config derives
 // the same cache key as a live evaluation of the same bytes.
 
-import { lstatSync, readFileSync, realpathSync, statSync } from 'node:fs'
+import { lstatSync, readFileSync, statSync } from 'node:fs'
 import path from 'node:path'
-import { xxh3 } from '../util/index.js'
+import { realPath, xxh3 } from '../util/index.js'
 import { VERSION } from '../version.js'
 
 /** Bump when the key derivation or the stored shape changes. */
@@ -395,8 +395,8 @@ const EXPLICIT_EXT = /\.(?:m?[jt]s|cjs|cts)$/
  * per run (`read-once.unsafe.test.ts`).
  */
 function realDirOf(file: string): string {
-  if (lstatSync(file).isSymbolicLink()) return path.dirname(realpathSync(file))
-  return realpathSync(path.dirname(file))
+  if (lstatSync(file).isSymbolicLink()) return path.dirname(realPath(file))
+  return realPath(path.dirname(file))
 }
 
 /** Each workspace root's real path, asked once per process. */
@@ -418,7 +418,7 @@ function reachedThroughNoLink(file: string, realDir: string, root: string | unde
   if (root === undefined) return true
   let realRoot = realRoots.get(root)
   if (realRoot === undefined) {
-    realRoot = realpathSync(root)
+    realRoot = realPath(root)
     realRoots.set(root, realRoot)
   }
   return path.relative(realRoot, realDir) === path.relative(root, dir)
@@ -427,7 +427,7 @@ function reachedThroughNoLink(file: string, realDir: string, root: string | unde
 /** A regular file reached through no symlink: the path IS the file. */
 function isCanonicalFile(file: string): boolean {
   try {
-    return realpathSync(file) === file && statSync(file).isFile()
+    return realPath(file) === file && statSync(file).isFile()
   } catch {
     return false
   }
@@ -500,7 +500,7 @@ export async function configEvalKey(a: ConfigEvalKeyArgs): Promise<ConfigEvalKey
           // workspace under /var vs /private/var), and the key folds the
           // path — a spelling that drifts between runs is a spurious miss
           // and a duplicated memo row.
-          resolved = realpathSync(Bun.resolveSync(spec, dir))
+          resolved = realPath(Bun.resolveSync(spec, dir))
         } catch {
           return null
         }
@@ -574,7 +574,7 @@ export async function configImports(configPath: string): Promise<string[]> {
       let resolved: string
       try {
         dir ??= realDirOf(file)
-        resolved = realpathSync(Bun.resolveSync(spec, dir))
+        resolved = realPath(Bun.resolveSync(spec, dir))
       } catch {
         continue
       }

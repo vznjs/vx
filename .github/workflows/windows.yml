@@ -16,6 +16,7 @@ on:
       - .github/workflows/windows.yml
       - packages/vx/src/exec/**
       - packages/vx/src/util/which.ts
+      - packages/vx/src/util/real-path.ts
       - packages/vx/src/cache/archive.ts
       - packages/vx/src/cache/cache.ts
       - packages/vx/src/orchestrator/run-lock.ts
