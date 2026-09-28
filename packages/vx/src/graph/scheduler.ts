@@ -1,4 +1,10 @@
-import { fsRefusalHint, isFsRefusal, isUserError } from '../util/index.js'
+import {
+  fsRefusalHint,
+  isFsRefusal,
+  isOutOfFds,
+  isUserError,
+  OUT_OF_FDS_HINT,
+} from '../util/index.js'
 import { computeReverseDepCount, mergePriorities, tieredReverseDepCount } from './priorities.js'
 import type { TaskNode } from './task-graph.js'
 
@@ -732,8 +738,12 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
             // `cache.inputs.runtime` command), not a vx bug — report it
             // plainly, never as an "internal error".
             let line: string
-            if (isUserError(err) || isFsRefusal(err)) {
-              const text = isUserError(err) ? message : `${message} — ${fsRefusalHint(err)}`
+            // Out of descriptors is the environment's limit too: a stack
+            // naming a file that was fine sent the user after the file.
+            if (isUserError(err) || isFsRefusal(err) || isOutOfFds(err)) {
+              const text = isUserError(err)
+                ? message
+                : `${message} — ${isOutOfFds(err) ? OUT_OF_FDS_HINT : fsRefusalHint(err)}`
               const first = refusedBy.get(text)
               if (first === undefined) refusedBy.set(text, id)
               line = `[vx] ${id}: ${first === undefined ? text : `as ${first} above`}\n`

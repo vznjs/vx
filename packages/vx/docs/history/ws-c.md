@@ -330,6 +330,15 @@ from kill), the wait's poll count, the pid-file grace under a stopped
 clock, procfs of another namespace, and a taking landing inside a held
 release unlink (its own entry, its exit cleanup). No defect.
 
+## C-29: an out-of-descriptors error in a task is a refusal, not an internal error
+
+The scheduler asked only `isUserError` and `isFsRefusal`, so a task
+that threw `EMFILE` or `ENFILE` printed `[vx] internal error in <id>`.
+It now prints the one line `bin.ts` prints (E-50): the message and
+`OUT_OF_FDS_HINT`. Rows in `scheduler.test.ts`, one per code, red
+without the change. A run under `ulimit -n 30` did not reach this path:
+the spawn failed first (the lead for A and B below).
+
 ## Leads for other streams
 
 - **E:** a plugin command's plain `throw` (`commands.probe.run` throwing
@@ -391,3 +400,9 @@ release unlink (its own entry, its exit cleanup). No defect.
   And `cleanOutputPaths` refuses a directory at an additive task's
   recorded path (`ERR_FS_EISDIR`, the task fails, named), where the glob
   clean replaces one.
+- **A, B:** under a low `ulimit -n` a task whose spawn fails with
+  `EMFILE` (`socketpair`) exits 127 (`runner.ts`), and `execute-task.ts`
+  then adds `shellVerdict`'s "command not found … not on this task's
+  PATH" line: 17 of 21 tasks at `ulimit -n 30`, each told to install a
+  command that exists. The spawn failure should carry a flag the verdict
+  skips, and `spawnFailureText` could name `OUT_OF_FDS_HINT`.
