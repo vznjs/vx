@@ -214,7 +214,7 @@ Every option falls back to the tool's own environment variable; with nothing con
 | `timeoutMs`   | —                                          | per-request deadline (default 30 s)                           |
 | `retries`     | —                                          | resends, as `turboCache()`'s (default 1)                      |
 
-The Nx spec has no existence probe, so `has` (the `--dry` prediction and the prefetch pass) is a `GET` whose body the following `get` reuses — one transfer, not two. The wire carries no producing-task duration, so a remote hit reports none.
+The Nx spec has no existence probe, so `has` (the `--dry` prediction; the prefetch pass calls `get`) is a `GET` whose body is cancelled before it answers. The wire carries no producing-task duration, so a remote hit reports none.
 
 ## Remote-cache behaviour (both)
 

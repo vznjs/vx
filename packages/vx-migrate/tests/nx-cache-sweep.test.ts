@@ -88,16 +88,4 @@ describe('the requests', () => {
       new NxRemoteCache({ server: SERVER, timeoutMs: 1000, retries: 0 }, fetchImpl).get('aa'),
     ).rejects.toThrow('HTTP 500')
   })
-
-  it('the probe’s response serves ONE get: the next get fetches again', async () => {
-    let n = 0
-    const { fetchImpl, calls } = stub(() => new Response(`body ${++n}`))
-    const c = new NxRemoteCache({ server: SERVER, timeoutMs: 1000, retries: 0 }, fetchImpl)
-    expect(await c.has('aa')).toBe(true)
-    const first = await c.get('aa')
-    expect(await first!.body.text()).toBe('body 1')
-    const second = await c.get('aa')
-    expect(await second!.body.text()).toBe('body 2')
-    expect(calls.length).toBe(2)
-  })
 })
