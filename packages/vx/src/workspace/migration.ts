@@ -5,6 +5,7 @@
 // tool wrote it. Core knows no source format here: a mapper returns a
 // `MigrationPlan` and this file does the rest.
 
+import { existsSync } from 'node:fs'
 import { unlink } from 'node:fs/promises'
 import path from 'node:path'
 import { relPosix, UserError } from '../util/index.js'
@@ -304,9 +305,38 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
   if (!cached && todos.has(CACHE_TODO)) {
     report.push('', 'no task caches yet: add the cache block a TODO shows, and a second run hits')
   }
-  report.push('', `next: vx run ${firstTask} --all`)
+  const installed = existsSync(path.join(root, 'node_modules', '@vzn', 'vx', 'package.json'))
+  report.push(
+    '',
+    `next: ${vxInvocation(process.env['npm_config_user_agent'], installed)} run ${firstTask} --all`,
+  )
   process.stdout.write(`${report.join('\n')}\n`)
   return 0
+}
+
+/**
+ * How the user runs vx, for the report's `next:` line. After `npx vx init`
+ * or `bunx @vzn/vx init` a bare `vx` is on no PATH (the first-five-minutes
+ * walk, 2026-09-28), so the line names the runner that started this
+ * process — npx, pnpm, yarn and Bun each set `npm_config_user_agent` — and
+ * the spec it resolves: the installed bin, else the package, since a bare
+ * `bunx vx` or `npx vx` would fetch an unrelated package named `vx`. No
+ * runner (a global install, the compiled binary): `vx`.
+ */
+export function vxInvocation(userAgent: string | undefined, installed: boolean): string {
+  const runner = /^(npm|pnpm|yarn|bun)\//.exec(userAgent ?? '')?.[1]
+  switch (runner) {
+    case 'npm':
+      return installed ? 'npx vx' : 'npx @vzn/vx'
+    case 'bun':
+      return installed ? 'bunx vx' : 'bunx @vzn/vx'
+    case 'pnpm':
+      return installed ? 'pnpm vx' : 'pnpm dlx @vzn/vx'
+    case 'yarn':
+      return installed ? 'yarn vx' : 'yarn dlx @vzn/vx'
+    default:
+      return 'vx'
+  }
 }
 
 /** Ids named per shared TODO; the files carry each one (sveltejs/kit: 92 persistent tasks). */
