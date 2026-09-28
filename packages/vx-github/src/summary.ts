@@ -24,10 +24,11 @@ const STATUS_LABEL: Record<string, string> = {
 }
 
 // Rounded once, then split: rounding the remainder after flooring the
-// minutes printed 119.7 s as `1m 60s`.
+// minutes printed 119.7 s as `1m 60s`. The tier is chosen by the rounded
+// value: 59.96 s printed `60.0s` and 999.6 ms `1000ms` (F-51).
 function fmtMs(ms: number): string {
-  if (ms < 1000) return `${Math.round(ms)}ms`
-  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`
+  if (Math.round(ms) < 1000) return `${Math.round(ms)}ms`
+  if (Math.round(ms / 100) < 600) return `${(ms / 1000).toFixed(1)}s`
   const s = Math.round(ms / 1000)
   return `${Math.floor(s / 60)}m ${s % 60}s`
 }
@@ -80,7 +81,8 @@ function escapeInline(s: string): string {
  * showed as `\|`, and a backtick ended the span early (item 1058).
  */
 function codeSpan(raw: string): string {
-  const s = raw.replace(/\r?\n/g, ' ')
+  // A lone CR is a line ending too (CommonMark), and broke the span (F-51).
+  const s = raw.replace(/\r\n?|\n/g, ' ')
   const longest = Math.max(0, ...(s.match(/`+/g) ?? []).map((r) => r.length))
   const fence = '`'.repeat(longest + 1)
   const pad = s.startsWith('`') || s.endsWith('`') ? ' ' : ''
