@@ -20,6 +20,7 @@
 // that implements neither still prefetches, per-hash.
 
 import type { TaskNode } from '../graph/index.js'
+import { maskedCommand } from '../util/index.js'
 import type { CacheLayer, GitFilesCache } from '../cache/index.js'
 import type { HashCache } from './task-hash.js'
 import { deriveStableKeys } from './stable-keys.js'
@@ -114,7 +115,9 @@ export function getContext(node: TaskNode, command: string) {
   const outputs = node.config.cache?.outputs
   return {
     taskId: node.id,
-    command,
+    // Stored in the entry row a remote hit inserts: masked as a save's is,
+    // or the token a config inlined sat in cache.db (L-27).
+    command: maskedCommand(command, node.config.exec?.env),
     outputs: { files: outputs?.files ?? [], workspaceFiles: outputs?.workspaceFiles ?? [] },
   }
 }

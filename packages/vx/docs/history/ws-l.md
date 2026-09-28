@@ -314,6 +314,12 @@
   often a remote model, read the token a config inlined (probed). The
   façade exports `maskedCommand` and `listTasks` uses it. Row: a declared
   secret reads `***` and an undeclared value stays, red without the mask.
+- L-27. `fix(cache)`: a local save stores the masked command (L-11), but a
+  remote hit's ingest wrote the command the lookup carried, raw, so the
+  token a config inlined sat in cache.db for `vx why` and `vx mcp`
+  (probed). `getContext`, the one context the prefetch and the lookup
+  share, masks it; the local short-circuit never runs with a remote.
+  Row: a remote hit's entry row reads `***`, red without the mask.
 
 ## Leads for other streams
 
@@ -349,6 +355,10 @@
 - D (config): the purity gate lets `new Worker('./x.ts')` through; the
   worker's file is outside the hashed closure, so its reads (env, clock)
   can be cached stale.
+- D (config), from L-27's probe: two in-process `run()` calls on one
+  config that reads `process.env` derived different keys (no hit, even
+  without wiping `.vx`); the same config through the CLI hits. A literal
+  config hits in-process. Unexplained; an embedder of `run()` would miss.
 - migrate: in a compiled vx, `loadLageConfig` spawns `process.execPath`,
   which is the vx binary, so `-e` prints `vx: unknown command: -e` and
   `lage()` fails. Probed: `BUN_BE_BUN=1` in the child's env runs it as
