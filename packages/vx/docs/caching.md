@@ -979,8 +979,9 @@ same way (its `--dry-run` only reads, and reads). The readers (`vx show`, `why`,
 `last`, `info`) open such a directory read-only and go on: a config
 that misses the evaluation cache is evaluated live and not stored.
 Where the directory cannot be created at all (a read-only checkout with
-no cache yet) every verb says `cannot create cache directory <path>
-(EACCES: …)`, naming the workspace `cacheDir` field and `--cache-dir`.
+no cache yet) a run says `cannot create cache directory <path>
+(EACCES: …)`, naming the workspace `cacheDir` field and `--cache-dir`;
+the readers and `vx cache prune` find no cache and go on.
 A full disk is the same kind of failure and is reported the same way,
 never as a corrupt artifact and never as a stack: a save that runs out
 of room is `[vx] cache save failed: ENOSPC …` (the task's work ran, the
