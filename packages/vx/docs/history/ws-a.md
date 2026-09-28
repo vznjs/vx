@@ -316,3 +316,10 @@ The last `miss-save.ts` survivors: the workspace-row filter in the snapshot's `e
 A-34 logged four `cache.ts` survivors as out of reach on this box. One was held all along: the restore `EACCES` row skips as root, and run as `probe` it is red under its mutant (the sweep method's rule for a root-run sweep).
 
 - Rows: `cache-disk-full.test.ts`: prune retries its row delete once on a full index (the row there freed the space before the delete, so the retry never ran); the access-time flush gives way to a full index through `stats()`. `cache-retention.test.ts`: a cache this user cannot write evicts nothing (non-root; driven as `probe`). Each red under its mutant.
+
+### A-36 (2026-09-28, sweep: `execute-task.ts`)
+
+39 mutants over the twelve files that reach it: 27 caught, 12 survived. No defect.
+
+- Rows (`execute-task.test.ts` › "execute-task edges"): no save over a folded upstream marked unkeyed (with a keyed control); a command that rewrites its own input comes out unkeyed and unsaved, and the run forgets its project, or every partition with workspace outputs; a rewritten lockfile marks the outcome unkeyed; forwarded args reach the requested task only; a step's own timeout and retries win over the run's; retrying stops at the first success; a run that writes no cache leaves workspace outputs alone; an executor that exits non-zero on the timeout reads as timed out; a restore failing for any reason but a vanished artifact is not retried as a miss. Each red under its mutant.
+- A masking pair: the save's key check and the unsaved branch after it both forget the project, so neither half was held. The rows run with `noDependants`, where the check is the only forget.
