@@ -256,6 +256,14 @@ async function getRunHistory(
   const limit = parseLimit(args['limit'])
   const projectFilter = parseFilter(args['project'], 'project')
   const taskFilter = parseFilter(args['task'], 'task')
+  // A task name cannot hold `#`: `task: "a#build"` matched nothing and
+  // answered an empty success, where the other tools take that form (F-52).
+  if (taskFilter?.includes('#')) {
+    const [p, t] = splitTaskId(taskFilter)
+    throw new UserError(
+      `getRunHistory: task is a task name, not "project#task" — pass project ${JSON.stringify(p)} and task ${JSON.stringify(t)}`,
+    )
+  }
 
   const cache = Cache.inspect(ctx.cacheDir)
   try {
@@ -275,7 +283,8 @@ async function getRunHistory(
     const pairs = db
       .query(`SELECT DISTINCT project, task FROM runs ${clause} ORDER BY started_at DESC LIMIT ?`)
       .all(...params, limit) as { project: string; task: string }[]
-    if (pairs.length === 0) return { runs: [], history: [] }
+    // The applied limit rides every answer, the empty one too (F-52).
+    if (pairs.length === 0) return { limit, runs: [], history: [] }
     const ids = pairs.map((p) => `${p.project}#${p.task}`)
     const table = await new LocalHistoryProvider(db).loadFor(ids)
     const history = ids
@@ -340,33 +349,37 @@ async function explainCacheKey(
   const [project, task] = splitTaskId(taskId)
   const cache = Cache.inspect(ctx.cacheDir)
   try {
-    const entry = cache
-      .dbHandle()
-      .query(
-        `SELECT hash, command, exit_code AS exitCode, duration_ms AS durationMs,
-                size_bytes AS sizeBytes, created_at AS createdAt
-         FROM entries WHERE project = ? AND task = ? ORDER BY created_at DESC LIMIT 1`,
-      )
-      .get(project, task) as
-      | {
-          hash: string
-          command: string
-          exitCode: number
-          durationMs: number
-          sizeBytes: number
-          createdAt: number
-        }
-      | undefined
     return {
       taskId,
       project,
       task,
-      latestEntry: entry ?? null,
+      latestEntry: latestEntryOf(cache.dbHandle(), project, task),
       note: 'the persisted entry metadata; the per-component input breakdown is `vx why <task>`',
     }
   } finally {
     cache.close()
   }
+}
+
+/** The task's newest cache entry's metadata, or null. */
+function latestEntryOf(db: ReturnType<Cache['dbHandle']>, project: string, task: string) {
+  const entry = db
+    .query(
+      `SELECT hash, command, exit_code AS exitCode, duration_ms AS durationMs,
+              size_bytes AS sizeBytes, created_at AS createdAt
+       FROM entries WHERE project = ? AND task = ? ORDER BY created_at DESC LIMIT 1`,
+    )
+    .get(project, task) as
+    | {
+        hash: string
+        command: string
+        exitCode: number
+        durationMs: number
+        sizeBytes: number
+        createdAt: number
+      }
+    | undefined
+  return entry ?? null
 }
 
 async function whyDidThisRerun(
@@ -388,7 +401,23 @@ async function whyDidThisRerun(
     // `vx why`'s default, through the same query: an agent has no run id
     // until it asks for history, and the latest run is the usual question.
     const runId = given ?? latestRunId(db, taskId)
-    if (runId === null) throw new UserError(`whyDidThisRerun: no recorded runs for ${taskId}`)
+    if (runId === null) {
+      // Runs recorded before run ids existed leave none to name: `vx why`
+      // answers the latest cache entry then, and so does this; it said the
+      // task had no recorded runs (F-52).
+      const [project, task] = splitTaskId(taskId)
+      if (
+        db.query('SELECT 1 FROM runs WHERE project = ? AND task = ? LIMIT 1').get(project, task) ===
+        null
+      ) {
+        throw new UserError(`whyDidThisRerun: no recorded runs for ${taskId}`)
+      }
+      return {
+        found: false,
+        latestEntry: latestEntryOf(db, project, task),
+        note: `the recorded runs of ${taskId} carry no run id; latestEntry is its latest cache entry`,
+      }
+    }
     // The canonical query, not a copy: two implementations of this once
     // answered differently about rows that recorded no cache key.
     return { ...whyDidThisRerunQuery(db, runId, taskId) }

@@ -221,6 +221,13 @@ async function call(root: string, tool: string, args: unknown): Promise<Record<s
   })
 }
 
+/** A handler's refusal message, or 'answered'. */
+const callError = (root: string, tool: string, args: unknown): Promise<string> =>
+  call(root, tool, args).then(
+    () => 'answered',
+    (e: Error) => e.message,
+  )
+
 type Stats = {
   scope: unknown
   entryCount: number
@@ -231,7 +238,7 @@ type Stats = {
 }
 type HistoryEntry = { id: string; runs: number; p50DurationMs?: number; failureMode: string }
 type RunRow = { runId: string | null; project: string; task: string; status: string }
-type History = { runs: RunRow[]; history: HistoryEntry[] }
+type History = { limit?: number; runs: RunRow[]; history: HistoryEntry[] }
 type Explain = {
   taskId: string
   project: string
@@ -614,8 +621,21 @@ describe('getRunHistory — filters narrow the data', () => {
   })
 
   it('an unknown project answers a shaped empty, not the whole workspace', async () => {
-    const none = (await call(MAIN.root, 'getRunHistory', { project: 'NOPE' })) as History
-    expect(none).toEqual({ runs: [], history: [] })
+    const none = (await call(MAIN.root, 'getRunHistory', {
+      project: 'NOPE',
+      limit: 10_000,
+    })) as History
+    // F-52: the README says every answer carries the limit it applied; the
+    // empty one did not, and this row pinned the gap.
+    expect(none).toEqual({ limit: 500, runs: [], history: [] })
+  })
+
+  // F-52: a task name cannot hold `#`, so `task: "a#build"` matched nothing
+  // and answered an empty success; the other tools take that form.
+  it('a project#task given as the task filter is refused by name', async () => {
+    expect(await callError(MAIN.root, 'getRunHistory', { task: '@t/alpha#build' })).toBe(
+      'getRunHistory: task is a task name, not "project#task" — pass project "@t/alpha" and task "build"',
+    )
   })
 
   it('a non-string filter is REFUSED rather than silently ignored', async () => {
@@ -1079,6 +1099,47 @@ describe('whyDidThisRerun', () => {
     }
   })
 
+  // F-52: runs recorded before run ids existed made latestRunId null, and
+  // the tool said the task had no recorded runs. `vx why` falls back to the
+  // latest cache entry; so does the tool.
+  it('runs without run ids answer the latest cache entry, not "no recorded runs"', async () => {
+    const root = makeWorkspace('no-run-id')
+    try {
+      seed(root, (cache) => {
+        const r = mkRun({ project: 'p', task: 'build', hash: 'h-old' })
+        delete (r as { runId?: string }).runId
+        cache.recordRuns([r])
+        seedEntry(cache, {
+          project: 'p',
+          task: 'build',
+          hash: 'h-old',
+          command: 'build',
+          sizeBytes: 1,
+          durationMs: 1,
+          createdAt: Date.now(),
+        })
+      })
+      const got = (await call(root, 'whyDidThisRerun', { taskId: 'p#build' })) as Record<
+        string,
+        unknown
+      >
+      expect([
+        got['found'],
+        (got['latestEntry'] as { hash: string } | null)?.hash,
+        got['note'],
+      ]).toEqual([
+        false,
+        'h-old',
+        'the recorded runs of p#build carry no run id; latestEntry is its latest cache entry',
+      ])
+      expect(await callError(root, 'whyDidThisRerun', { taskId: 'p#never' })).toBe(
+        'whyDidThisRerun: no recorded runs for p#never',
+      )
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   it('answers found: false for an unknown run id without inventing a verdict', async () => {
     const got = (await call(MAIN.root, 'whyDidThisRerun', {
       runId: 'does-not-exist',
@@ -1146,7 +1207,7 @@ describe('an empty cache answers a shaped empty', () => {
     const stats = (await call(empty, 'getCacheStats', {})) as Stats
     expect(stats).toMatchObject({ entryCount: 0, totalBytes: 0, runCountLast24h: 0 })
 
-    expect(await call(empty, 'getRunHistory', {})).toEqual({ runs: [], history: [] })
+    expect(await call(empty, 'getRunHistory', {})).toEqual({ limit: 50, runs: [], history: [] })
 
     const explain = (await call(empty, 'explainCacheKey', { taskId: 'a#b' })) as Explain
     expect(explain.latestEntry).toBeNull()

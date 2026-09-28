@@ -55,6 +55,17 @@ started_at DESC LIMIT n`, which orders each task by an arbitrary run:
   only, so a lone CR (a CommonMark line ending) in a task id ends a
   markdown table row early, vx-github's rows included; `/\r\n?|\n/`
   covers it (F-51 review).
+
+- C: `vx mcp` resolves the cache directory once, at server start
+  (`ctx.cacheDir`), so a `cacheDir` changed in vx.workspace.ts while it
+  serves leaves the cache tools and `getWorkspaceInfo` on the old one,
+  while `listTasks` re-resolves it per call. `resolveCacheDir` is not on
+  `@vzn/vx`; a command context that resolves it per call, or the export,
+  lets the tools follow.
+- C: `vx why --run` and `vx last` take a run-id prefix (`resolveRunId`,
+  cli/run-id.ts), as `vx last --list` prints it, but `@vzn/vx` does not
+  export it, so vx-mcp's `whyDidThisRerun` answers `found: false` for a
+  prefix `vx why` resolves. Exporting it lets the tool take the same ids.
 - C: core's telemetry flush deadline (`settleWithin`) bounds `run()` but
   passes the sink no signal, so a sink cannot stop its own work when the
   deadline passes; the pending export keeps the process alive.
@@ -527,3 +538,12 @@ line. A duration picked its tier before rounding, so 59.96 s printed
 `60.0s` and 999.6 ms `1000ms` (a sweep row had pinned `60.0s` for
 59 999 ms; corrected in place). And the footer's code span kept a lone
 CR, a CommonMark line ending. Rows red without each fix.
+
+F-52. vx-mcp's tools answered three questions wrong. `getRunHistory`'s
+empty answer dropped the `limit` the README says every answer carries
+(lead 10; two rows had pinned the gap, corrected in place). A
+`project#task` passed as its `task` filter could never match (a task
+name holds no `#`) and answered an empty success; it is refused, naming
+the two filters to pass. And `whyDidThisRerun` on a task whose runs
+predate run ids said it had no recorded runs; it answers the latest
+cache entry, as `vx why` does. Rows red without each fix.
