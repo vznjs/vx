@@ -51,10 +51,15 @@ describe('resolveTurboCacheConfig, exactly', () => {
       msg('ghp_SECRET€'),
       msg('ghp_SECRET\n'),
       msg('sécret'),
+      // A CR alone, and U+00FF, Latin-1's last: Bun's Headers refuses the one, takes the other.
+      msg('ghp_SECRET\rline2'),
+      msg('secretÿ'),
     ]).toEqual([
       'vx/turbo-cache: the token holds a line break or NUL, which no HTTP header can carry — check the secret (it is not printed)',
       'vx/turbo-cache: the token holds a character past Latin-1, which no HTTP header can carry — check the secret (it is not printed)',
       '(no refusal)',
+      '(no refusal)',
+      'vx/turbo-cache: the token holds a line break or NUL, which no HTTP header can carry — check the secret (it is not printed)',
       '(no refusal)',
     ])
   })

@@ -19,7 +19,10 @@ const GRAPH = {
       type: 'app',
       data: {
         root: 'packages/app',
-        targets: { build: { executor: '@nx/js:tsc', options: { fromProjectJson: true } } },
+        targets: {
+          build: { executor: '@nx/js:tsc', options: { fromProjectJson: true } },
+          lint: { executor: '@nx/eslint:lint', options: {} },
+        },
       },
     },
     lib: { name: 'lib', type: 'lib', data: { root: 'packages/lib', targets: {} } },
@@ -106,6 +109,10 @@ describe('nx-exec', () => {
       nxJson: { namedInputs: { default: ['x'] } },
       projects: ['app', 'lib'],
       taskGraph: 'absent',
+      verbose: false,
+      // The injected target joins project.json's others; it does not replace them.
+      targets: ['build', 'lint'],
+      graph: ['object', 'object'],
     })
     // The daemon is off before nx loads; the executor ran (the file is there).
     expect(rec['env']).toEqual({ NX_DAEMON: 'false' })
@@ -187,6 +194,11 @@ describe('nx-exec', () => {
         '--options must be a JSON object',
       ],
       [['x:y', '--project', 'app', '--target'], '--target needs a value'],
+      [['x:y', '--project', '', '--target', 'build'], '--project is required'],
+      [
+        ['x:y', '--project', 'app', '--target', 'build', '--options', 'null'],
+        '--options must be a JSON object',
+      ],
     ]
     for (const [args, message] of rows) {
       const r = await nxExec(args)
@@ -197,11 +209,18 @@ describe('nx-exec', () => {
       })
       expect(await Bun.file(path.join(root, 'record.json')).exists()).toBe(false)
     }
-    const help = await nxExec(['--help'])
-    expect({ code: help.code, out: help.out.startsWith('usage: nx-exec <executor>') }).toEqual({
-      code: 0,
-      out: true,
-    })
+    for (const flag of ['--help', '-h']) {
+      const help = await nxExec([flag])
+      expect({
+        flag,
+        code: help.code,
+        out: help.out.startsWith('usage: nx-exec <executor>'),
+      }).toEqual({
+        flag,
+        code: 0,
+        out: true,
+      })
+    }
   })
 
   it('no cached graph: computed in-process with the daemon off, then run', async () => {
@@ -232,6 +251,54 @@ describe('nx-exec', () => {
     const r = await nxExec(['x:y', '--project', 'app', '--target', 'build'])
     expect(r.code).toBe(0)
     expect(await Bun.file(path.join(root, 'computed.marker')).exists()).toBe(true)
+  })
+
+  it('a cache whose nodes are null falls through too', async () => {
+    await writeFile(
+      path.join(root, '.nx', 'workspace-data', 'project-graph.json'),
+      '{"nodes":null}',
+    )
+    await writeFile(path.join(root, 'fallback-graph.json'), JSON.stringify(GRAPH))
+    const r = await nxExec(['x:y', '--project', 'app', '--target', 'build'])
+    expect(r.code).toBe(0)
+    expect(await Bun.file(path.join(root, 'computed.marker')).exists()).toBe(true)
+  })
+
+  it('a graph missing externalNodes or dependencies gets them empty, as executors read both', async () => {
+    const { dependencies: _, ...bare } = GRAPH
+    await writeFile(
+      path.join(root, '.nx', 'workspace-data', 'project-graph.json'),
+      JSON.stringify(bare),
+    )
+    const r = await nxExec(['x:y', '--project', 'app', '--target', 'build'])
+    expect(r.code).toBe(0)
+    expect((await record())['context']).toMatchObject({ graph: ['object', 'object'] })
+  })
+
+  it('NX_VERBOSE_LOGGING=true is the context’s isVerbose', async () => {
+    const r = await nxExec(['x:y', '--project', 'app', '--target', 'build'], {
+      NX_VERBOSE_LOGGING: 'true',
+    })
+    expect(r.code).toBe(0)
+    expect((await record())['context']).toMatchObject({ verbose: true })
+  })
+
+  it('--dotenv repeats: every file is loaded, none is an override', async () => {
+    await writeFile(path.join(cwd, 'a.env'), 'OTHER=1\n')
+    await writeFile(path.join(cwd, 'b.env'), 'FROM_DOTENV=b\n')
+    const r = await nxExec([
+      'x:y',
+      '--project',
+      'app',
+      '--target',
+      'build',
+      '--dotenv',
+      'a.env',
+      '--dotenv=b.env',
+    ])
+    expect({ code: r.code, err: r.err }).toEqual({ code: 0, err: '' })
+    const rec = await record()
+    expect([rec['env'], rec['overrides']]).toEqual([{ NX_DAEMON: 'false', FROM_DOTENV: 'b' }, {}])
   })
 
   it('NX_DAEMON set by the caller is kept', async () => {

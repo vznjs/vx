@@ -330,3 +330,13 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   kept task it does not overlap needs no edge; a same-project edge is
   not a `^` edge. Four are equivalent: a non-string or empty output
   list never overlaps, and a `^name` in the local walk names no task.
+- **G-26.** A mutation sweep of `vx-migrate`'s `nx-exec.cjs` (29
+  mutants) and `remote-token.ts` (6), neither swept before: 23 caught
+  (one only by `nx.test`'s dotenv row), 12 survived, each now held.
+  `nx-exec.test`: `-h`, an empty `--project`, `--options null`, a cache
+  whose `nodes` is null, a repeated `--dotenv` (every file loaded, none
+  an override), `NX_VERBOSE_LOGGING`, and the fake Nx now records the
+  graph's `externalNodes` / `dependencies` (filled when absent, as
+  executors read both) and the project's other targets (the injected
+  one joins them). `turbo-cache-sweep.test`: a bare CR is refused and
+  U+00FF, Latin-1's last, is not (Bun 1.4.2's `Headers` does the same).

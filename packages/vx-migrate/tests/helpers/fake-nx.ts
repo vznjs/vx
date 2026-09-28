@@ -118,6 +118,9 @@ exports.runExecutor = async (description, overrides, context) => {
       nxJson: context.nxJsonConfiguration,
       projects: Object.keys(context.projectsConfigurations.projects),
       taskGraph: context.taskGraph === undefined ? 'absent' : 'present',
+      verbose: context.isVerbose,
+      targets: Object.keys(node.data.targets),
+      graph: [typeof context.projectGraph.externalNodes, typeof context.projectGraph.dependencies],
     },
     env: { NX_DAEMON: process.env.NX_DAEMON, FROM_DOTENV: process.env.FROM_DOTENV },
   }))
