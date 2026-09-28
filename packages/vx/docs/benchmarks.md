@@ -895,6 +895,25 @@ replaced, and with it the edited-and-reverted row in
 it needs to know the task was the only writer (`caching.md` § the
 re-check before a save).
 
+### typescript-eslint (Nx 23.2.1, `nx()`, `0bbe5e7`)
+
+`nx run-many -t build --exclude website website-eslint` against `vx
+run build --all --filter '!website' --filter
+'!@typescript-eslint/website-eslint'` through `nx()` with nothing
+written: the same 16 build tasks, inferred by `@nx/js/typescript`, and
+the same edges. Executor targets run through `nx-exec`, on PATH as an
+install of `@vzn/vx-migrate` puts it. The repo runs from a bind mount
+at `/mnt` (tsx's socket path, as unocss above).
+
+| `build` | vx         | Nx 23.2.1      |
+| ------- | ---------- | -------------- |
+| cold    | **16.8 s** | 17.8 s (1.06×) |
+| restore | **1.50 s** | 2.95 s (1.97×) |
+| no-op   | **1.11 s** | 2.96 s (2.67×) |
+
+Both no-ops run `types#copy-ast-spec`, which Nx declares
+`cache: false` (540 ms of vx's 1.11 s).
+
 ## Real repos re-measured (2026-09-27)
 
 Roadmap 2.5: astro and refine again, same revisions, harnesses and
