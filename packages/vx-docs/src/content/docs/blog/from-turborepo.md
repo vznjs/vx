@@ -78,6 +78,7 @@ already doing.
 | `$TURBO_ROOT$/file`                            | `cache.inputs.workspaceFiles`                           |
 | `dotEnv` (Turbo 1)                              | `cache.inputs.runtime`: a probe that hashes the `.env` files |
 | `command` (Turbo 2.11) | the task's `exec.command`; `null` is no task |
+| `description` | the task's `description` |
 | `globalDependencies`, `globalEnv`, `globalPassThroughEnv`, `globalDotEnv` | a generated `vx-preset.ts` you import and spread |
 
 Those are every key the mapper knows. Any other key in a task becomes
