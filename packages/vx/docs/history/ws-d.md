@@ -251,3 +251,12 @@ packages/core`) selects the dependent whose `file:../lib` spec named
   (relative `extends` followed) and lets a specifier through only when
   its target exists; one that maps nowhere is still refused. Rows: the
   two D-26 rows of `tests/config-missing-import.test.ts`.
+- **D-27** `--affected` missed a project whose config imports a file
+  through a tsconfig `paths` alias: the import walk read only relative
+  specifiers, so editing or deleting the aliased file selected nothing
+  while the task re-keyed. The walk now follows a bare specifier the
+  nearest tsconfig maps, and scans for one only when the config quotes
+  such a specifier. At 5,000 projects a one-file change: configs
+  importing only `@vzn/vx` 136–140 → 140–144 ms (noise); every config
+  importing a package under its own tsconfig 138–145 → 200–204 ms.
+  Row: the D-27 row of `tests/affected.test.ts`.

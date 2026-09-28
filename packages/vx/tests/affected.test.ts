@@ -1696,6 +1696,32 @@ describe('affectedProjects: config import closures', () => {
     const out = await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects })
     expect([...out].sort()).toEqual(['lib'])
   })
+
+  it('PIN: a tsconfig paths alias is an import edge, its deletion too (D-27)', async () => {
+    // Bun resolves `@shared/*` through the nearest tsconfig.json and loads
+    // the file from disk, so editing it re-keys lib's task; the walk read
+    // only relative specifiers and selected nothing.
+    await writeFile(
+      path.join(root, 'tsconfig.json'),
+      '{ "compilerOptions": { "paths": { "@shared/*": ["./shared/*"] } } }',
+    )
+    await writeFile(
+      path.join(root, 'packages/lib/vx.config.mjs'),
+      `import { FLAG } from '@shared/flag.mjs'\nexport default { tasks: {} }\n`,
+    )
+    await git(root, 'add', '-A')
+    await git(root, 'commit', '-q', '-m', 'lib imports flag by alias')
+    expect(
+      await editThenSelect('shared/flag.mjs', `import './deep.mjs'\nexport const FLAG=2\n`),
+    ).toEqual(['app', 'lib'])
+    expect(await editThenSelect('shared/deep.mjs', `export const DEEP = 2\n`)).toEqual([
+      'app',
+      'lib',
+    ])
+    await rm(path.join(root, 'shared/flag.mjs'))
+    const out = await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects })
+    expect([...out].sort()).toEqual(['app', 'lib'])
+  })
 })
 
 // The root `"."` member is a supported (and, in this repo, load-bearing)

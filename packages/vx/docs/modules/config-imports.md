@@ -80,7 +80,13 @@ would run every such project on a README edit.
 
 **Relative specifiers only.** A bare specifier is a package; it moves
 when the lockfile moves, and the workspace fingerprint already selects
-everything on a lockfile change.
+everything on a lockfile change. The exception is a bare specifier the
+nearest tsconfig maps through `paths` or `baseUrl`: Bun loads its target
+from disk, so it is an edge like a relative one, a deleted target
+included (D-27). A config quoting no bare specifier such a tsconfig
+maps is not scanned for one; at 5,000 configs that each import a
+package and sit under a tsconfig, the lookup costs a one-file change
+140 → 200 ms, and nothing when the configs import only `@vzn/vx`.
 
 **No descent past a project boundary.** This is what makes the walk
 affordable. When this repo's docs package config still imported core by
