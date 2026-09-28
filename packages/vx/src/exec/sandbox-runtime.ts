@@ -401,6 +401,31 @@ async function unlinkStaleMuxSockets(): Promise<void> {
 }
 
 /**
+ * The sandbox's own tools, by the paths vx resolves on its own PATH. SRT
+ * writes a bare `bwrap` (and, in the network bridge, a bare `socat`) into
+ * the command the task's shell runs, with the TASK's environment: a
+ * dependency's `node_modules/.bin/bwrap`, first on that PATH, ran in
+ * bwrap's place and the task ran unsandboxed with exit 0 (J-33's lead,
+ * B-19). A tool vx cannot find is left to SRT's own dependency check,
+ * whose refusal names it.
+ */
+function linuxToolPaths(): { bwrapPath?: string; socatPath?: string } {
+  if (process.platform !== 'linux') return {}
+  const paths: { bwrapPath?: string; socatPath?: string } = {}
+  try {
+    paths.bwrapPath = executablePath('bwrap')
+  } catch {
+    // SRT's dependency check says so
+  }
+  try {
+    paths.socatPath = executablePath('socat')
+  } catch {
+    // SRT's dependency check says so
+  }
+  return paths
+}
+
+/**
  * One-time SRT initialization per orchestrator run. Starts the proxy
  * servers + (on macOS) the violation log monitor. Safe to call repeatedly
  * — SRT itself returns early on the second call.
@@ -441,6 +466,7 @@ export async function initSandbox(opts?: {
     },
     filesystem: { denyRead: [], allowWrite: [], denyWrite: [] },
     ignoreViolations: DEFAULT_IGNORE_VIOLATIONS,
+    ...linuxToolPaths(),
   }
   if (!srtUp) await unlinkStaleMuxSockets()
   await SandboxManager.initialize(
@@ -845,7 +871,7 @@ export async function wrapSandboxedCommand(
   // sandboxed server and all it forked outlived vx (turborepo#9666). Now
   // the namespace goes with vx, a `setsid` daemon inside included, a
   // traced one-shot task too: its strace runs inside (B-11).
-  if (process.platform === 'linux' && wrapped.startsWith('bwrap ')) wrapped = `exec ${wrapped}`
+  if (process.platform === 'linux' && /^\S*bwrap /.test(wrapped)) wrapped = `exec ${wrapped}`
   if (args.server === true) liveServers.add(tag)
   if (ports.length > 0) spawnHostBridges(ports, tag)
   return {
