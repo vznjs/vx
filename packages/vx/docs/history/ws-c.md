@@ -263,6 +263,22 @@ writes its pid and the dependant waits until `kill -0` fails. The row's
 server sleeps 0.3 s between `gone` and its exit, so the old wait fails
 it every time.
 
+## C-22: hold placement.ts's surviving mutants
+
+Swept `orchestrator/placement.ts` (56 mutants, 114 files; cut short at
+40): 32 caught, 5 survived, 2 inconclusive (caught only by the
+scheduler's timing row: the walk's seen check, the plan's
+`concurrency`), 1 equivalent (the `pinned.size === 0` early return: the
+walk of an empty stack changes nothing). Not run: the `planExecutorOf`
+download / label mutants, `UNPLACED_EXECUTOR`, `hasPooledExecutor`,
+`poolOfPlacement` (the new pool rows kill the last two's six in
+isolation). New rows: every dependant of a pinned task is pinned; a
+40-diamond ladder is walked once per task (a child with a deadline);
+`accepts()` sees the exact placement; first taker in declaration order;
+`'only'` lands in `remoteOnly` / `remoteOnlyNoop`; pooled lists and
+pool lookup; `--dry` hands the executor factory `warn` and the machine's
+`concurrency`. Each fails under its mutant.
+
 ## Leads for other streams
 
 - **E:** a plugin command's plain `throw` (`commands.probe.run` throwing
