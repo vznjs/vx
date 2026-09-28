@@ -38,7 +38,7 @@ burns 35 s of CPU in vx, 73 s in Turborepo and 114 minutes in Nx; a
 fully cached run replays the graph in 510 ms.
 <!-- bench:end -->
 
-Measured on eleven real Turborepo and Nx repos too: [tried on real repos](#tried-on-real-repos).
+Measured on twelve real Turborepo, Nx and moon repos too: [tried on real repos](#tried-on-real-repos).
 
 ## Install
 
@@ -145,24 +145,25 @@ Turbo and Nx feature is in vx, pinned by a test:
 
 ## Tried on real repos
 
-Eleven public monorepos, each run with its own `turbo.json` or Nx graph
+Twelve public monorepos, each run with its own `turbo.json`, Nx graph or moon config
 and nothing rewritten, against the tool it ships with. Both tools on the same machine and
 tasks per row, medians; vx first, theirs second. Where the other tool
 wins, the row says so.
 
-| Repo                                                        | Against | Cold build            | Restore outputs | Nothing to do       |
-| ----------------------------------------------------------- | ------- | --------------------- | --------------- | ------------------- |
-| [solidjs/solid](https://github.com/solidjs/solid)           | Turbo   | 40.6 s / 45.5 s       | 66 ms / 127 ms  | 51 ms / 95 ms       |
-| [withastro/astro](https://github.com/withastro/astro)       | Turbo   | 48.0 s / 57.9 s       | 478 ms / 1.43 s | 249 ms / 1.38 s     |
-| [payloadcms/payload](https://github.com/payloadcms/payload) | Turbo   | 126.9 s / 127.5 s     | 3.44 s / 3.46 s | 256 ms / **237 ms** |
-| [medusajs/medusa](https://github.com/medusajs/medusa)       | Turbo   | 308 s / 315 s         | 3.86 s / 7.16 s | 947 ms / 3.29 s     |
-| [n8n-io/n8n](https://github.com/n8n-io/n8n)                 | Turbo   | 137.2 s / **133.7 s** | 8.27 s / 12.5 s | 842 ms / 1.36 s     |
-| [calcom/cal.com](https://github.com/calcom/cal.com)         | Turbo   | 245.7 s / 250.7 s     | 17.4 s / 19.9 s | 14.7 s / 18.5 s     |
-| [TanStack/query](https://github.com/TanStack/query)         | Nx      | 47.4 s / 55.1 s       | 656 ms / 1.98 s | 174 ms / 1.88 s     |
-| [strapi/strapi](https://github.com/strapi/strapi)           | Nx      | 238.2 s / 245.7 s     | 1.61 s / 3.94 s | 341 ms / 4.02 s     |
-| [novuhq/novu](https://github.com/novuhq/novu)               | Nx      | 291.2 s / 299.4 s     | 3.10 s / 9.05 s | 655 ms / 8.55 s     |
-| [TanStack/router](https://github.com/TanStack/router)       | Nx      | 199.9 s / 226.7 s     | 1.00 s / 3.33 s | 505 ms / 3.21 s     |
-| [refinedev/refine](https://github.com/refinedev/refine)     | Nx      | 96.2 s / 105.9 s      | 1.06 s / 1.19 s | 303 ms / 1.16 s     |
+| Repo                                                                  | Against | Cold build            | Restore outputs | Nothing to do       |
+| --------------------------------------------------------------------- | ------- | --------------------- | --------------- | ------------------- |
+| [solidjs/solid](https://github.com/solidjs/solid)                     | Turbo   | 40.6 s / 45.5 s       | 66 ms / 127 ms  | 51 ms / 95 ms       |
+| [withastro/astro](https://github.com/withastro/astro)                 | Turbo   | 48.0 s / 57.9 s       | 478 ms / 1.43 s | 249 ms / 1.38 s     |
+| [payloadcms/payload](https://github.com/payloadcms/payload)           | Turbo   | 126.9 s / 127.5 s     | 3.44 s / 3.46 s | 256 ms / **237 ms** |
+| [medusajs/medusa](https://github.com/medusajs/medusa)                 | Turbo   | 308 s / 315 s         | 3.86 s / 7.16 s | 947 ms / 3.29 s     |
+| [n8n-io/n8n](https://github.com/n8n-io/n8n)                           | Turbo   | 137.2 s / **133.7 s** | 8.27 s / 12.5 s | 842 ms / 1.36 s     |
+| [calcom/cal.com](https://github.com/calcom/cal.com)                   | Turbo   | 245.7 s / 250.7 s     | 17.4 s / 19.9 s | 14.7 s / 18.5 s     |
+| [TanStack/query](https://github.com/TanStack/query)                   | Nx      | 47.4 s / 55.1 s       | 656 ms / 1.98 s | 174 ms / 1.88 s     |
+| [strapi/strapi](https://github.com/strapi/strapi)                     | Nx      | 238.2 s / 245.7 s     | 1.61 s / 3.94 s | 341 ms / 4.02 s     |
+| [novuhq/novu](https://github.com/novuhq/novu)                         | Nx      | 291.2 s / 299.4 s     | 3.10 s / 9.05 s | 655 ms / 8.55 s     |
+| [TanStack/router](https://github.com/TanStack/router)                 | Nx      | 199.9 s / 226.7 s     | 1.00 s / 3.33 s | 505 ms / 3.21 s     |
+| [refinedev/refine](https://github.com/refinedev/refine)               | Nx      | 96.2 s / 105.9 s      | 1.06 s / 1.19 s | 303 ms / 1.16 s     |
+| [kindspells/astro-shield](https://github.com/kindspells/astro-shield) | moon    | 2.64 s / 3.78 s       | 125 ms / 2.46 s | 111 ms / 2.37 s     |
 
 **Bold** marks the other tool winning. Versions, revisions, scopes and
 harness per repo: [benchmarks](packages/vx/docs/benchmarks.md) (astro
