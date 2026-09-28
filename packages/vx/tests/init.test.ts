@@ -112,6 +112,22 @@ describe('vx init source detection', () => {
 
 // ─── Parser ───────────────────────────────────────────────────────────
 
+describe('vx init with nothing to start from', () => {
+  it('names the next step when no package.json is here or above (E-37)', async () => {
+    // Directly under the temp dir: no parent of it holds a package.json.
+    const empty = await mkdtemp(path.join(os.tmpdir(), 'vx-init-none-'))
+    try {
+      const r = await vx(empty, ['init'])
+      expect({ code: r.code, err: r.err }).toEqual({
+        code: 1,
+        err: 'vx init: no package.json here or in any parent directory; create one (`bun init` or `npm init -y`) and run vx init again\n',
+      })
+    } finally {
+      await rm(empty, { recursive: true, force: true })
+    }
+  })
+})
+
 describe('parseInitArgs', () => {
   it('defaults', () => {
     expect(parseInitArgs([])).toEqual({ dry: false, force: false, mjs: false })
