@@ -312,6 +312,31 @@
 - **J-61** benchmarks.md's reproduction claims against vx-bench (every
   script, flag, count and timing mark): one wrong — `run.ts` prints
   the median and every rep, so the table's best-of-5 is the min.
+- **J-62** recent-merge claims against source: a shell exit 126/127
+  and the `X_OK` probe (execution, execute-task), comparison §9's
+  pre/post, `WatcherPool` lives in `watch-fs.ts`, flows §5 names
+  `watch-judge.ts`, dependency-spec has no `raw`, and plugin-commands
+  returns the one plugin declaring a verb (the load refuses two).
+- **J-63** guides/sandboxing.md and schema.md's `exec.sandbox` walked
+  on fixtures: a Linux `unixSockets` path list opens every socket,
+  `strace` is what fails an undeclared read (not only names it), and
+  `weakerWhenNested` holds only when every sandboxed task sets it.
+- **J-64** the leads J-63 left, against SRT's source and real runs:
+  `gitConfig` is inert (SRT reads it only from its init config),
+  `localBinding` does nothing on Linux, and sandbox-runtime.md's SRT
+  environment list lacked five proxy families it sets.
+- **J-65** eight cache module pages against source: outputs are
+  marked changed before the save (miss-save, deferred-outputs),
+  `LayeredCache.close()` summarises failures before delegating, the
+  run summary carries four more totals, and four test references
+  named files or rows that do not exist.
+- **J-66** eight orchestrator module pages against source: admission
+  named test rows that do not exist, `outcomeWord` also returns
+  `aborted`, and the sandbox port bridge also calls `killTree`.
+- **J-67** eight workspace/graph module pages against source: the
+  config-eval key seed folds vx's version, any non-inspecting handle
+  prunes config rows, a `workspace:<range>` peer must be satisfied,
+  and stable-keys' instability rules and one signature were wrong.
 
 ## Leads for other streams
 
@@ -459,3 +484,13 @@ extra` ignores the extra argument and exits 0 where every other verb
   lage, wireit and scripts still inline the script, and the vx-migrate
   README:54 says "same rules for `nx:run-script`". `turbo()` also reads
   `.yarnrc.yml` without claiming it as a fingerprint (found in J-62).
+- **B** sandbox (security): on Linux a `unixSockets` path list, or a `localBinding` port list, opens EVERY AF_UNIX socket to the task (SRT's seccomp cannot filter by path), incl. `/var/run/docker.sock` or an ssh-agent socket. Docs now say so (J-63); consider refusing a path list on Linux, or warning.
+- **B** sandbox (cache correctness): with no `strace` on PATH an undeclared read is denied but unreported, so the task passes and caches; `vx info` still says "available" and the run prints no warning. Surface it in `vx info` and the run.
+- **B** sandbox: the "SANDBOX VIOLATIONS (N)" header counts hint lines, so it disagrees with the status count ("(2)" vs "1 sandbox violation"; "(1)" with no count for the `File exists` hint).
+- **B** sandbox (product bug): `allow.gitConfig` is inert. vx passes `allowGitConfig` per call (`sandbox-binds.ts:185`), SRT reads it only from the init config (`getAllowGitConfig`). The unsafe row at `sandbox-runtime.unsafe.test.ts:3625` checks only that the field is set. Set it on the init config or drop the key. Docs say inert (J-64).
+- **B** sandbox (security, moderate): SRT's mandatory deny of `.git/config` and `.git/hooks` searches 3 levels from the workspace root, so a nested repo at depth 4 inside a write grant (`p/work/.git/config`) was writable with `gitConfig: false`; a task could plant `core.fsmonitor` there.
+- **C** `orchestrator/plugin-host.ts` `resolveCache` comment says "One layer is used as is"; one plugin layer that does not wrap the local handle is chained with the local store at the tail. `cache/layered-cache.ts` `doPullFromRemote` comment names an `x-artifact-duration` HTTP header the seam does not carry. (J-65)
+- **B/C** `Cache.close()` prunes month-old run history and `config_evals`/`config_closures` rows on any non-inspecting handle, including a `--cache=local:` or `local:r` run that config-cache.md says neither reads nor writes the store (`cache/cache.ts:1880`). Misses only, no stale hit. (J-67)
+- **B (cache correctness, security)** the `cache.inputs.runtime` probe (`cache/inputs.ts:386`) spawns a bare `sh` on a PATH led by the project's `node_modules/.bin`, so a dependency shipping a `sh` bin interprets the probe and its output enters the key. `util/which.ts` fixed this class for task commands; `executablePath('sh')` would close it. (J-69)
+- **A** `util/errors.ts` `gitSpawnRefusal` comment still names "a watch judgement" (the watch judge swallows the failed spawn); `tests/framed-output.test.ts:430`'s title says "section headers render dim" while it asserts bold coloured labels. (J-69)
+- **B** `tests/runner.test.ts:1213` "a timed-out command returns only once its group is gone" failed on macOS CI on docs-only #1660 (`durationMs` 143, wants ≥ 400). Likely the backgrounded child's `trap "" TERM` is not yet installed when the 100 ms timeout's TERM lands; wait on a marker the child writes after its trap before the timeout counts. (J-68)
