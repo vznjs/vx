@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import {
   configLoadError,
   loadProjectConfig,
+  loadProjectConfigs,
   loadWorkspaceConfig,
 } from '../src/workspace/project-loader.js'
 import { PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
@@ -1267,5 +1268,60 @@ describe('configLoadError classifies by shape, not by instanceof', () => {
     expect(configLoadError(null, '/w/p/c.ts', 'project')).toBeNull()
     // A name without a message is not one of Bun's either.
     expect(configLoadError({ name: 'BuildMessage' }, '/w/p/c.ts', 'project')).toBeNull()
+  })
+})
+
+describe('first loads run together (D-68)', () => {
+  // One import after another put 1,000 cold configs at ~160 ms of imports;
+  // 64 at a time take ~60. These rows hold what the serial loop promised.
+  let dir: string
+  beforeEach(async () => {
+    dir = await mkdtemp(path.join(os.tmpdir(), 'vx-d68-'))
+  })
+  afterEach(async () => {
+    delete (globalThis as { __vxD68?: unknown }).__vxD68
+    delete process.env['VX_CONFIG_WORKER_TIMEOUT_MS']
+    await rm(dir, { recursive: true, force: true })
+  })
+  const config = async (name: string, body: string): Promise<string> => {
+    const file = path.join(dir, name, 'vx.config.mjs')
+    await mkdir(path.dirname(file), { recursive: true })
+    await writeFile(file, body)
+    return file
+  }
+  const task = (command: string) =>
+    `export default { tasks: { t: { exec: { command: '${command}' } } } }\n`
+
+  it('overlap: a config waiting on a later one loads, where one at a time never would', async () => {
+    // `a` settles only when `b` has run. In order, one at a time, `a` held
+    // the loop until its deadline.
+    process.env['VX_CONFIG_WORKER_TIMEOUT_MS'] = '2000'
+    const a = await config(
+      'a',
+      'await new Promise((r) => { globalThis.__vxD68 = r })\n' + task('echo a'),
+    )
+    const b = await config('b', 'globalThis.__vxD68?.()\n' + task('echo b'))
+    const got = await loadProjectConfigs([a, b])
+    expect(got.map((c) => c.tasks?.['t']?.exec?.command)).toEqual(['echo a', 'echo b'])
+  })
+
+  it('keeps the order it was given, whichever load settles first', async () => {
+    const slow = await config('slow', 'await Bun.sleep(50)\n' + task('echo slow'))
+    const fast = await config('fast', task('echo fast'))
+    const got = await loadProjectConfigs([slow, fast])
+    expect(got.map((c) => c.tasks?.['t']?.exec?.command)).toEqual(['echo slow', 'echo fast'])
+  })
+
+  it('throws the first failure in order, not the first to fail', async () => {
+    const early = await config(
+      'early',
+      "await Bun.sleep(50)\nthrow new Error('early in order')\n" + task('x'),
+    )
+    const late = await config('late', "throw new Error('late in order')\n" + task('x'))
+    const got = await loadProjectConfigs([early, late]).then(
+      () => 'loaded',
+      (e: Error) => e.message,
+    )
+    expect(got).toBe('early in order')
   })
 })
