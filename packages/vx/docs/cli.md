@@ -2037,7 +2037,7 @@ The plugin's name is its package name, which `definePlugin` reads from
 `import.meta`; a plain object is refused when the workspace loads.
 
 (`@vzn/vx-mcp` ships exactly this: declare `mcp()` and `vx mcp` serves
-six read-only tools to AI agents — four over the run history, one
+six read-only tools to AI agents — four over the cache database, one
 over the resolved task catalog, one the workspace doctor's facts.
 `@vzn/vx-schedule-history` adds `vx history`: what it learned per task
 and the reservation its `admit` hook packs.) The dispatcher tries core's verbs
