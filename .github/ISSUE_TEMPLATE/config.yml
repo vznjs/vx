@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Documentation
+    url: https://vznjs.github.io/vx/
+    about: Quickstart, guides, the CLI and config reference.
+  - name: Report a vulnerability
+    url: https://github.com/vznjs/vx/security/advisories/new
+    about: Privately, never in a public issue (SECURITY.md).

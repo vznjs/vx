@@ -1,0 +1,26 @@
+name: Bug report
+description: vx did something wrong — a stale hit, a crash, a wrong exit code, a doc that lies.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what you expected
+      description: The command you ran and what it printed. A stale cache hit is the worst class of bug; say so if it is one.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: The smallest workspace that shows it. A `vx.config.ts` and the commands are usually enough; `examples/basic` is a starting point.
+    validations:
+      required: true
+  - type: textarea
+    id: info
+    attributes:
+      label: vx info
+      description: Paste the output of `vx info`, run at the workspace root.
+      render: text
+    validations:
+      required: true

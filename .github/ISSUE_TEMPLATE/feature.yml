@@ -1,0 +1,16 @@
+name: Feature request
+description: Something vx should do. Many features are plugins on a documented seam; say if yours could be.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What you are trying to do, and what stops you today.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you propose
+      description: How it would look in a `vx.config.ts`, on the CLI, or as a plugin hook. How Turbo or Nx does it helps.

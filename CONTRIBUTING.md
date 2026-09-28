@@ -36,8 +36,9 @@ run ci --all` runs lint (oxlint type-aware + oxfmt), every package's
 - **Docs land in the same commit.** `packages/vx/docs/` is the source of
   truth; the site imports it. `packages/vx/docs/STATUS.md` is the living
   handoff — record what shipped and why there.
-- **Commits:** imperative present, first line under 72 characters, body
-  says why. One coherent change per commit.
+- **Commits and PR titles:** Conventional Commits (`fix(cache): …`),
+  first line under 72 characters, body says why. One coherent change per
+  commit.
 - **Plugins** are `definePlugin(import.meta, hooks)` on the documented
   seams (`packages/vx/docs/design/pipeline-2026-09.md`); core names no
   plugin and ships no technology plugin — those are the community's.
