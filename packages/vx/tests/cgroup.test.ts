@@ -9,6 +9,8 @@ import {
   machineParallelism,
 } from '../src/util/cgroup.js'
 
+const WIN32 = process.platform === 'win32'
+
 const GiB = 1024 ** 3
 /** What an unlimited v1 memory level writes (PAGE_COUNTER_MAX × 4 KiB). */
 const V1_UNLIMITED = '9223372036854771712'
@@ -92,7 +94,8 @@ describe('cgroupMemoryLimitBytes', () => {
     expect(cgroupMemoryLimitBytes(probe())).toBeUndefined()
   })
 
-  it('a cgroup path holding a colon is walked whole', () => {
+  // cgroups are Linux's, and Windows forbids `:` in a file name.
+  it.skipIf(WIN32)('a cgroup path holding a colon is walked whole', () => {
     // /proc/self/cgroup is `<id>:<controllers>:<path>`, split on the first
     // two colons only: the path is everything after them.
     file('a:b/memory.max', `${2 * GiB}\n`)

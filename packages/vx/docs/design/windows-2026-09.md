@@ -90,6 +90,12 @@ PR that touches the Windows paths, with a 12-minute bound. Queue cost on the fir
 11. **Not in the way:** `/proc` and cgroup readers are already
     `linux`-gated, git spawns need nothing, and `Bun.which` applies
     PATHEXT.
+12. **Tests of another platform's subject** skip on win32, each with its
+    reason: strace, seatbelt, the socat port bridge and a resolved
+    sandbox config (the sandbox is refused), a cgroup path with `:`,
+    the shebang launch, and the
+    process-group guard (win32 starts none). A row whose subject exists on Windows is
+    fixed, never skipped.
 
 ## Order
 

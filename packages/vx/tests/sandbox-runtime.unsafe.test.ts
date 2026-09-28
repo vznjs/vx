@@ -56,6 +56,8 @@ import { validateProjectConfig } from '../src/workspace/index.js'
 import { prepareSandbox, sandboxRequestFor } from '../src/orchestrator/sandbox-request.js'
 import type { TaskNode } from '../src/graph/index.js'
 
+const WIN32 = process.platform === 'win32'
+
 const TIMEOUT = 60_000
 
 interface Fixture {
@@ -2489,42 +2491,46 @@ describe('resolveSandboxConfig', () => {
     },
   )
 
-  it('collapses a whole-subtree pattern to its directory, and a single-level one NEVER', async () => {
-    // The collapse is documented as "not a widening": `<d>/**` already
-    // covered every file under `<d>`, so folding it to `<d>` only adds the
-    // directory entry. That reasoning is exactly what fails for `<d>/*`,
-    // which covers the immediate children and nothing deeper — folding THAT
-    // to `<d>` would hand the task the directory itself and everything
-    // created in it later.
-    //
-    // The `**` half is pinned e2e above ("a whole-directory pattern grants
-    // the directory"). The single-star half was not pinned at all: widening
-    // the collapse regex to accept one star left the whole repo green, and
-    // this is a GRANT, so the two halves are one boundary.
-    const root = await mkdtemp(path.join(os.tmpdir(), 'vx-sbx-collapse-'))
-    try {
-      const sub = path.join(root, 'sub')
-      await mkdir(sub)
-      await Bun.write(path.join(sub, 'a.txt'), 'a')
-      const real = realpathSync(root)
-      const realSub = path.join(real, 'sub')
+  // Windows refuses exec.sandbox: no config is resolved there.
+  it.skipIf(WIN32)(
+    'collapses a whole-subtree pattern to its directory, and a single-level one NEVER',
+    async () => {
+      // The collapse is documented as "not a widening": `<d>/**` already
+      // covered every file under `<d>`, so folding it to `<d>` only adds the
+      // directory entry. That reasoning is exactly what fails for `<d>/*`,
+      // which covers the immediate children and nothing deeper — folding THAT
+      // to `<d>` would hand the task the directory itself and everything
+      // created in it later.
+      //
+      // The `**` half is pinned e2e above ("a whole-directory pattern grants
+      // the directory"). The single-star half was not pinned at all: widening
+      // the collapse regex to accept one star left the whole repo green, and
+      // this is a GRANT, so the two halves are one boundary.
+      const root = await mkdtemp(path.join(os.tmpdir(), 'vx-sbx-collapse-'))
+      try {
+        const sub = path.join(root, 'sub')
+        await mkdir(sub)
+        await Bun.write(path.join(sub, 'a.txt'), 'a')
+        const real = realpathSync(root)
+        const realSub = path.join(real, 'sub')
 
-      const deep = resolveSandboxConfig({ allow: { read: ['sub/**'] } }, root)
-      expect(deep.allowRead).toContain(realSub)
+        const deep = resolveSandboxConfig({ allow: { read: ['sub/**'] } }, root)
+        expect(deep.allowRead).toContain(realSub)
 
-      const shallow = resolveSandboxConfig({ allow: { read: ['sub/*'] } }, root)
-      expect(shallow.allowRead).not.toContain(realSub)
-      // CONTROL: it still granted something UNDER sub, so the row above is
-      // the collapse and not an empty resolution. Deliberately not the
-      // expanded child path: `expandGrants` glob-expands on Linux only
-      // (`platform !== 'linux'` returns early), so macOS keeps the literal
-      // `sub/*` while Linux yields `sub/a.txt`. What both must show is a
-      // grant BELOW sub and never sub itself, which is the claim anyway.
-      expect(shallow.allowRead.some((p) => p.startsWith(realSub + path.sep))).toBe(true)
-    } finally {
-      await rm(root, { recursive: true, force: true })
-    }
-  })
+        const shallow = resolveSandboxConfig({ allow: { read: ['sub/*'] } }, root)
+        expect(shallow.allowRead).not.toContain(realSub)
+        // CONTROL: it still granted something UNDER sub, so the row above is
+        // the collapse and not an empty resolution. Deliberately not the
+        // expanded child path: `expandGrants` glob-expands on Linux only
+        // (`platform !== 'linux'` returns early), so macOS keeps the literal
+        // `sub/*` while Linux yields `sub/a.txt`. What both must show is a
+        // grant BELOW sub and never sub itself, which is the claim anyway.
+        expect(shallow.allowRead.some((p) => p.startsWith(realSub + path.sep))).toBe(true)
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+  )
 
   it('canonicalizes symlinked paths, including non-existent suffixes', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'vx-sbx-realpath-'))
@@ -2693,7 +2699,8 @@ describe('deniedCalls (strace trace parsing)', () => {
   })
 })
 
-describe('parseStraceViolations (the deny anchor and the dedup key)', () => {
+// strace is Linux's; Windows refuses exec.sandbox.
+describe.skipIf(WIN32)('parseStraceViolations (the deny anchor and the dedup key)', () => {
   let dir = ''
   beforeEach(async () => {
     dir = realpathSync(await mkdtemp(path.join(os.tmpdir(), 'vx-strace-')))
@@ -2834,7 +2841,7 @@ describe('parseStraceViolations (the deny anchor and the dedup key)', () => {
  * parsed the seatbelt shape only, so on Linux every out-of-project
  * denial was reported and no `ignore` pattern ever matched.
  */
-describe('reportableViolations', () => {
+describe.skipIf(WIN32)('reportableViolations', () => {
   // Real-path anchored: both producers canonicalize before they record,
   // and on macOS `/tmp` is a symlink — a literal `/tmp/...` fixture would
   // pass or fail for the wrong reason.
@@ -3656,7 +3663,8 @@ describe('localBinding accepts a boolean or a port list', () => {
   })
 })
 
-describe('localBinding port list — the pure halves', () => {
+// The bridge is a unix socket and socat; Windows refuses exec.sandbox.
+describe.skipIf(WIN32)('localBinding port list — the pure halves', () => {
   // Item 652: the bridge's socket lives in SRT's temp directory, resolved
   // exactly as SRT resolves it. No row set the variables, so an EMPTY
   // `CLAUDE_CODE_TMPDIR` (a socket at `/vx-port-…`, the filesystem root)
