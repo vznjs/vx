@@ -85,8 +85,9 @@ under 500: vx-reapi `executor-sweep.test.ts` › a stall that fires during
 the re-attach backoff (honest ~200 ms, bound 350, broken ~500). Its stall
 now lands in the third backoff (honest ~700, bound 1,400, broken ~2,100).
 Red with the backoff deaf to the abort; 0 of 20 under 6 CPU burners. The
-next tightest (`wedged.test.ts` 159 and 260, `signal-handling.test.ts`
-984) keep 500 ms or more and never went red in the survey.
+next tightest (`wedged.test.ts` 159 and 260, and
+`signal-handling.test.ts` 984) keep 500 ms or more and never went red in
+the survey.
 
 ## Leads for other streams
 
