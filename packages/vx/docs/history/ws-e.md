@@ -434,6 +434,9 @@ task picked`; neither prints a stack. Row in
   `NX_SELF_HOSTED_REMOTE_CACHE_SERVER`) declares `turboCache()` /
   `nxCache()` too, naming the file; before, the repo's CI ran vx
   without the remote cache it already had.
+- E-81 — the `result` row counts cached over the tasks that have a
+  cache; the rest read `N no-cache`: `vx run dev` said
+  `0 cached (0%)` for a task that could never hit.
 
 ## First-five-minutes walk (2026-09-28)
 

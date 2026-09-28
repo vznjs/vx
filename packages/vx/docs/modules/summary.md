@@ -103,8 +103,9 @@ cells. `projects` (affected vs workspace total) leads the meter stack;
 A blank line separates the meters from the `info` row (worker pool +
 cache mode, and `admit held N tasks · Ns` when a policy held any — a
 sum, said as one), the `time` row and the `result` row (`N tasks · N
-cached (P%) · time`, `all cached` when every task hit, `N failed` after
-the count; none on an empty run). `projects` and `info` only
+cached (P%) · time` over the tasks that have a cache, `all cached` when
+each of them hit, `N no-cache` for the rest, `N failed` after the
+count; none on an empty run). `projects` and `info` only
 render when a `RunContext` is passed (the final footer); the live
 region shows the meters alone. The block above is
 `formatRunSummary` on four successes of 239, 190, 215 and 216 ms with

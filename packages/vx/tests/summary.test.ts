@@ -186,19 +186,25 @@ describe('formatRunSummary', () => {
     const ctx = { version: '0.0.0', packageCount: 1, remoteCacheEnabled: false }
     const result = (outcomes: TaskOutcome[], ms: number): string | undefined =>
       formatRunSummary(outcomes, ms, { enabled: false }, ctx).at(-1)
+    // A miss is an executed task that has a cache; `outcome()` has none.
+    const miss = (id: string, status: TaskOutcome['status'] = 'success'): TaskOutcome => {
+      const o = outcome(id, status, status === 'failed' ? 1 : 0)
+      return { ...o, node: { ...o.node, config: { ...o.node.config, cache: {} } } as TaskNode }
+    }
     expect(
-      result(
-        [
-          outcome('a#x', 'cache-hit'),
-          outcome('b#x', 'cache-hit-remote'),
-          outcome('c#x', 'success'),
-        ],
-        3200,
-      ),
+      result([outcome('a#x', 'cache-hit'), outcome('b#x', 'cache-hit-remote'), miss('c#x')], 3200),
     ).toBe('  result    3 tasks · 2 cached (66%) · 3.20s')
     expect(result([outcome('a#x', 'cache-hit')], 23)).toBe('  result    1 task · all cached · 23ms')
-    expect(result([outcome('a#x', 'failed', 1), outcome('b#x', 'success')], 40)).toBe(
+    expect(result([miss('a#x', 'failed'), miss('b#x')], 40)).toBe(
       '  result    2 tasks · 1 failed · 0 cached (0%) · 40ms',
+    )
+    // A task with no cache never could hit: counted apart, never a miss.
+    expect(result([outcome('a#dev', 'success')], 37)).toBe('  result    1 task · 1 no-cache · 37ms')
+    expect(
+      result([outcome('a#x', 'cache-hit'), outcome('b#dev', 'success'), miss('c#x')], 50),
+    ).toBe('  result    3 tasks · 1 cached (50%) · 1 no-cache · 50ms')
+    expect(result([outcome('a#x', 'cache-hit'), outcome('b#dev', 'failed', 1)], 50)).toBe(
+      '  result    2 tasks · 1 failed · all cached · 1 no-cache · 50ms',
     )
     expect(formatRunSummary([], 5, { enabled: false }, ctx).find((l) => l.includes('result'))).toBe(
       undefined,

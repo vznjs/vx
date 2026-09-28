@@ -2328,8 +2328,10 @@ the two legends sum alike). The `time` spread counts executed tasks
 only — a hit's restore time never enters it — which is why one executed
 task reads as its own max, avg and min. The `result` row is the run in
 one line, last: tasks, cached (every hit, local or remote, over every
-task) and the wall time — `3 tasks · all cached · 40ms` when nothing
-ran, with `N failed` after the count on a red run. A test renders this run and
+task with a cache) and the wall time — `3 tasks · all cached · 40ms`
+when nothing that could hit ran, with `N failed` after the count on a
+red run. A task with no `cache` block could never hit, so it is
+counted apart (`1 task · 1 no-cache · 37ms` for `vx run dev`). A test renders this run and
 checks it against this page, byte for byte.
 
 Group tasks emit no framed block by design (they aren't real tasks);
