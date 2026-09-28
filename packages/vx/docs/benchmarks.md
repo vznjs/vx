@@ -914,6 +914,24 @@ at `/mnt` (tsx's socket path, as unocss above).
 Both no-ops run `types#copy-ast-spec`, which Nx declares
 `cache: false` (540 ms of vx's 1.11 s).
 
+### trpc/trpc (Turbo 2.10.12, `turbo()`, `ec0b0a4`)
+
+`turbo --filter=./packages/* build` against `vx run build --filter
+'./packages/*'` through `turbo()` with nothing written: the same 7
+tasks and edges. From the `/mnt` bind mount, as unocss above.
+
+| `build` | vx        | Turbo 2.10.12 |
+| ------- | --------- | ------------- |
+| cold    | **7.8 s** | 8.1 s (1.04×) |
+| restore | 6.57 s    | **210 ms**    |
+| no-op   | 6.37 s    | **143 ms**    |
+
+Five of the seven `build` tasks list the package's own `package.json`
+as an output (the build rewrites `exports`, with the same bytes), so
+`turbo()` runs them uncached (N-20): every vx run builds them. Were the
+output dropped, the rewrite of an input during the run would still
+withhold the save (the unocss row above); the fix is core's.
+
 ## Real repos re-measured (2026-09-27)
 
 Roadmap 2.5: astro and refine again, same revisions, harnesses and
