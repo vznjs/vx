@@ -264,7 +264,14 @@ describe.if(CHUNKING_SUPPORTED)('the record’s output directories', () => {
       return planned(req, method)
     }
     const warns: string[] = []
-    expect(await refusal(run('k-readfail', ['mods/*'], warns))).toBe('resolved')
+    // remoteOnly: nothing comes down, so the record's is the only Read (the
+    // download's read of the same Tree starts first since F-35).
+    const readFail = request({
+      cacheKey: 'k-readfail',
+      outputs: { files: ['mods/*'], workspaceFiles: [] },
+      remoteOnly: true,
+    })
+    expect(await refusal(runOne(readFail, warns))).toBe('resolved')
     expect(recordOf('k-readfail').map((d) => d.path)).toEqual(['pkg/mods'])
     expect(warns.filter((w) => w.includes('recording it whole'))).toEqual([
       'vx/reapi: could not read the Tree for pkg/mods (15 DATA_LOSS: injected DATA_LOSS) — recording it whole',

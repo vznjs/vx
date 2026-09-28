@@ -972,10 +972,31 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
       // A line per task said the same thing to everyone, every run.
       const worker = result.execution_metadata?.worker
 
-      const [stdout, stderr] = await Promise.all([
+      // A remote-only task's outputs stay remote — materialising node_modules
+      // onto the submitter's disk is precisely what `remote: 'only'` forbids.
+      // `--download=none` defers the same transfer WITHOUT making it
+      // permanent: the bytes stay in the CAS and core gets a closure to pull
+      // them if a locally-placed consumer turns out to need them.
+      // Started before the logs are read, not after: a server that keeps
+      // stdout in CAS cost every execution that Read before the first
+      // output byte (F-35).
+      const deferred = req.remoteOnly !== true && req.download === 'deferred'
+      const materialised =
+        req.remoteOnly !== true && !deferred
+          ? materialiseOutputs(client, matReq, result, warn)
+          : Promise.resolve()
+      const logs = Promise.all([
         this_readStream(client, result.stdout_raw, result.stdout_digest),
         this_readStream(client, result.stderr_raw, result.stderr_digest),
       ])
+      // Settled below with the outputs; a log that cannot be read still
+      // fails the task, after the outputs have landed or failed.
+      logs.catch(() => undefined)
+      materialised.catch(() => undefined)
+      const [stdout, stderr] = await logs.catch(async (err: unknown) => {
+        await materialised.catch(() => undefined)
+        throw err
+      })
       // DELIVERY is unconditional; `capture` governs RETENTION only. Core
       // sets `capture: { stdout: willWrite, stderr: false }` meaning "do not
       // keep a copy in memory" — the local executor still streams both to the
@@ -1015,7 +1036,11 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
               // replay reads as it reads a digest: two CAS round trips fewer (F-27).
               const inlineStdout =
                 stdoutBytes.length > 0 && stdoutBytes.length <= INLINE_STDOUT_BYTES
-              if (stdoutBytes.length > 0 && !inlineStdout) {
+              // A larger one the server already keeps in CAS is recorded by
+              // its digest: no hash, probe or upload of our own (F-35).
+              if (!inlineStdout && result.stdout_digest !== undefined && stdoutBytes.length > 0) {
+                stdoutDigest = result.stdout_digest
+              } else if (stdoutBytes.length > 0 && !inlineStdout) {
                 const d = sha256(stdoutBytes)
                 const missing = await client.findMissingBlobs([d]).catch(() => [d])
                 const uploaded =
@@ -1074,16 +1099,6 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
                   warn(`vx/reapi: could not record execution for ${req.taskId}: ${err.message}`),
                 )
             })(req.cacheKey!)
-          : Promise.resolve()
-      // A remote-only task's outputs stay remote — materialising node_modules
-      // onto the submitter's disk is precisely what `remote: 'only'` forbids.
-      // `--download=none` defers the same transfer WITHOUT making it
-      // permanent: the bytes stay in the CAS and core gets a closure to pull
-      // them if a locally-placed consumer turns out to need them.
-      const deferred = req.remoteOnly !== true && req.download === 'deferred'
-      const materialised =
-        req.remoteOnly !== true && !deferred
-          ? materialiseOutputs(client, matReq, result, warn)
           : Promise.resolve()
       // Both settle before a restore failure is thrown: the record is still
       // written when the outputs cannot come down, as it was in turn.
