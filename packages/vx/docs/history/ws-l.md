@@ -91,6 +91,17 @@
     `vx-tasks` is its own (probed: a sibling's is absent), and the rest of
     `/tmp` is readable, as documented; vx's own strace logs sat there
     (L-25).
+21. Verbs that read or delete local state. `vx run` always evaluates
+    configs live; `vx-lock.json` is an audit only, and `vx lock --check`
+    refuses a malformed or tampered lock by name (probed four shapes).
+    `vx cache prune` deletes only names the artifact pattern admits
+    (item 968). The `weakerWhenNested` `/proc` lead stays unprobed: this
+    box runs the full profile, so the weaker one never runs. No bug.
+22. Telemetry. `vx-otel` exports task output as log records from the
+    bus, whose chunks `maskedEmitter` masks on the one-shot and the
+    persistent path alike; the command is masked in the task view
+    (L-11, L-14). An executor's thrown message is printed unmasked, but a
+    plugin executor is trusted code with a config's reach. No bug.
 
 ## Items
 
