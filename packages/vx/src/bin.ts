@@ -1,6 +1,12 @@
 #!/usr/bin/env -S bun --no-env-file
 import { registerCoreAlias, run } from './cli/index.js'
-import { fsRefusalHint, isFsRefusal, isUserError } from './util/index.js'
+import {
+  fsRefusalHint,
+  isFsRefusal,
+  isOutOfFds,
+  isUserError,
+  OUT_OF_FDS_HINT,
+} from './util/index.js'
 
 // Every `import … from '@vzn/vx'` this process evaluates — a plugin
 // package, a workspace or project config — resolves to THIS core, not to
@@ -38,6 +44,8 @@ async function main(): Promise<void> {
       // it produced `vx: vx why: …` (walkthrough, 2026-09-04).
       const m = err.message
       process.stderr.write(m.startsWith('vx ') ? `${m}\n` : `vx: ${m}\n`)
+    } else if (isOutOfFds(err)) {
+      process.stderr.write(`vx: ${err.message} — ${OUT_OF_FDS_HINT}\n`)
     } else if (isFsRefusal(err)) {
       // The file system's refusal names the path; the stack would name
       // the verb's write, which the reader cannot act on either.

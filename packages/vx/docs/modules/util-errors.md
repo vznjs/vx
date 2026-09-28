@@ -22,6 +22,8 @@ export function isDiskFull(err: unknown): err is NodeJS.ErrnoException // ENOSPC
 export const DISK_FULL_HINT: string
 export function isFsRefusal(err: unknown): err is NodeJS.ErrnoException // either of the two
 export function fsRefusalHint(err: NodeJS.ErrnoException): string
+export function isOutOfFds(err: unknown): err is NodeJS.ErrnoException // EMFILE, ENFILE
+export const OUT_OF_FDS_HINT: string // "raise the limit (ulimit -n 4096)"
 export function isTmpdirRefusal(err: unknown): err is NodeJS.ErrnoException // a path under os.tmpdir() missing, a file, or unwritable
 export const TMPDIR_HINT: string // "point TMPDIR at a writable directory"
 
@@ -31,7 +33,9 @@ export function gitSpawnRefusal(cwd: string): UserError // the one refusal for a
 
 `UserError` instances have `.name === 'UserError'`. `bin.ts` prints
 `err.message` for anything `isUserError` admits; a file-system refusal
-(`isFsRefusal`) as its message plus `fsRefusalHint`; anything else with
+(`isFsRefusal`) as its message plus `fsRefusalHint`; a process out of
+file descriptors (`isOutOfFds`) as its message plus `OUT_OF_FDS_HINT`;
+anything else with
 its stack. Every one sets exit code 1 — nothing is re-thrown.
 `isTmpdirRefusal` is not `bin.ts`'s: the sandbox runtime and the run
 lock ask it and add `TMPDIR_HINT` to their own message, because a

@@ -1772,7 +1772,9 @@ the disk has no room for (`ENOSPC`, `EDQUOT`) exits 1 with one line
 naming the path, `vx: EACCES: permission denied, open '…/vx-lock.json'
 — a path vx must write is not writable by this user` (or `— the disk
 that path is on is full`), never a stack. Inside a run the task's line
-says the same.
+says the same. A process out of file descriptors (`EMFILE`, `ENFILE`;
+macOS starts a shell at 256) exits 1 with the error and `— the process
+is out of file descriptors; raise the limit (ulimit -n 4096) and re-run`.
 
 ## `vx info`
 
