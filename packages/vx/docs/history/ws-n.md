@@ -156,6 +156,13 @@ reads as core words it.
 - Row: `tests/migrate.test.ts` › a repo core finds no workspace root in
   (moon, Rush, and an empty dir as the control; red without the change).
 
+N-13. `workspaceScripts()` on withastro/starlight against pnpm 11.22:
+10.3 s against 12.7 s for `build`, the same two builds in the same
+order (`benchmarks.md`). pnpm stalls offline (81 s under `unshare -n`),
+so these reps ran with the network up. Lerna without Nx looked at and
+left: docusaurus has `useNx: false` and uses lerna only to version and
+publish; its builds are root fan-outs, which `workspaceScripts()` maps.
+
 ## Candidates not built (2026-09-28)
 
 - Lerna without Nx: `lerna run <s>` (lerna 10.0.1, `prepNxOptions`)
@@ -204,6 +211,7 @@ reads as core words it.
   within the 200 ms after SIGINT) and passed 3/3 alone. The row's kill
   assumes vx outlives the grace; a timed wait, not a marker. Again in
   the N-12 gate (2026-09-28, 06:55, same line 580), 5/5 green alone.
+  Fixed by C-38 (vx held in the grace until its kill -9).
 
 - G: `DOTENV_PROBE` is now in `turbo/turbo-map.ts` and
   `moon/moon-map.ts`; move it to a shared module (N may not edit
