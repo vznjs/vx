@@ -133,14 +133,14 @@ Turbo-aware cache server can transit our blobs unchanged.
 
 ### Scheduler + execution
 
-| Pattern                                                  | Source                                             | vx source                                                                   |
-| -------------------------------------------------------- | -------------------------------------------------- | --------------------------------------------------------------------------- |
-| Topological order, bounded parallelism                   | Turbo + Nx                                         | `src/graph/scheduler.ts`                                                    |
-| Cascade abort: failed task's transitive dependents abort | Turbo (mid-mode) + Nx                              | `src/graph/scheduler.ts`                                                    |
-| Independent siblings continue past failure               | Turbo `--continue=continue-tasks-with-no-deps`     | `src/graph/scheduler.ts`                                                    |
-| Persistent / long-running tasks (dev servers)            | Turbo `persistent`, Nx `continuous`                | `src/exec/runner.ts` (`runPersistent`) + `src/orchestrator/execute-task.ts` |
-| Project-local `node_modules/.bin` on PATH                | Turbo + pnpm                                       | `src/exec/env.ts` (`binPaths`)                                              |
-| Implicit project-`package.json` invalidation             | Turbo (via lockfile) + Nx (`externalDependencies`) | `src/orchestrator/task-hash.ts` ("Matches Turbo and Nx")                    |
+| Pattern                                                       | Source                                             | vx source                                                                   |
+| ------------------------------------------------------------- | -------------------------------------------------- | --------------------------------------------------------------------------- |
+| Topological order, bounded parallelism                        | Turbo + Nx                                         | `src/graph/scheduler.ts`                                                    |
+| Cascade skip: failed task's transitive dependents are skipped | Turbo (mid-mode) + Nx                              | `src/graph/scheduler.ts`                                                    |
+| Independent siblings continue past failure                    | Turbo `--continue=dependencies-successful`         | `src/graph/scheduler.ts`                                                    |
+| Persistent / long-running tasks (dev servers)                 | Turbo `persistent`, Nx `continuous`                | `src/exec/runner.ts` (`runPersistent`) + `src/orchestrator/execute-task.ts` |
+| Project-local `node_modules/.bin` on PATH                     | Turbo + pnpm                                       | `src/exec/env.ts` (`binPaths`)                                              |
+| Implicit project-`package.json` invalidation                  | Turbo (via lockfile) + Nx (`externalDependencies`) | `src/orchestrator/task-hash.ts` ("Matches Turbo and Nx")                    |
 
 ### Output handling
 
