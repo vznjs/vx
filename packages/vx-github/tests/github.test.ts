@@ -795,6 +795,29 @@ describe('every output the vx-github sweep found unheld', () => {
     ])
   })
 
+  it('a refused certificate is not retried; its message is warned (F-40)', async () => {
+    const { postCheckRun } = await import('../src/checks.js')
+    const warns: string[] = []
+    let calls = 0
+    await postCheckRun({
+      env: { token: 't', repository: 'o/r', sha: 's', apiUrl: 'https://ghes' },
+      payload: {},
+      fetchFn: async () => {
+        calls++
+        throw Object.assign(new TypeError('unable to verify the first certificate'), {
+          code: 'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
+        })
+      },
+      warn: (m) => warns.push(m),
+    })
+    expect([calls, warns]).toEqual([
+      1,
+      [
+        "vx-github: check-run POST failed: unable to verify the first certificate — for a host behind a private CA, set NODE_EXTRA_CA_CERTS to its CA's PEM file",
+      ],
+    ])
+  })
+
   it('an empty GITHUB_STEP_SUMMARY declines like a missing one', () => {
     const prev = { ...process.env }
     process.env['GITHUB_STEP_SUMMARY'] = ''
