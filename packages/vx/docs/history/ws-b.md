@@ -476,3 +476,23 @@ armed it with the run's allowlist union and an empty deny list. A task's
   sandboxed curl reaches no proxy at all (exit 7, allowed or not). The
   refusal rests on SRT's `filterNetworkRequest`, which checks
   `deniedDomains` first (read in 0.0.76).
+
+B-22. No sandboxed network on a host without IPv6 (J-33's lead). SRT's
+in-sandbox bridge is `socat TCP-LISTEN:3128`, and socat 1.8 opens that
+as an IPv6 socket. Here (no `/proc/net/if_inet6`) it failed with
+"Address family not supported by protocol" into /dev/null, and every
+networked task's curl exited 7, allowed domain or not. That was the
+"proxy unreachable" behind B-21's unproven refusal.
+
+- Fix (`wrapSandboxedCommand`, `hostHasIpv6`): without IPv6 the wrapped
+  command sets `SOCAT_DEFAULT_LISTEN_IP=4`, socat's switch for the
+  listen family. It covers the one-shot and persistent spawns alike;
+  with IPv6 nothing changes. `modules/sandbox-runtime.md`.
+- Row: `sandbox-runtime.unsafe.test.ts` › a networked task reaches the
+  proxy, which refuses a domain off the list (its 403). Red here without
+  the fix. CI's runners have IPv6, so there it passes either way.
+- B-19's row read the wrapped command's first word as `exec`; with the
+  assignment in front on a host without IPv6, it now strips that first.
+- With the bridge up, this container showed B-21's defect directly: a
+  domain in a task's `deny.network` got the proxy's 502 (allowed, dialed)
+  where an unlisted one got 403.

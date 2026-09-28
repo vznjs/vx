@@ -346,6 +346,14 @@ lies inside it: bwrap builds the path to a bind, so the cwd lists, and a
 root's `read: ['.']`, bound as its children around the walls, drew the
 note on every failure (B-20).
 
+SRT's in-sandbox network bridge is `socat TCP-LISTEN:3128` (and 1080),
+which socat 1.8 opens as an IPv6 socket. On a host without IPv6 it
+failed ("Address family not supported by protocol") into /dev/null, and
+every networked task met only a refused connection on the proxy. There
+the wrapped command sets `SOCAT_DEFAULT_LISTEN_IP=4`, socat's own switch
+for the listen family (`hostHasIpv6`: `/proc/net/if_inet6`, asked once);
+a host with IPv6 is untouched (B-22).
+
 ## A task's temp directory
 
 SRT points every sandboxed task's `TMPDIR` at one host directory

@@ -29,6 +29,7 @@ import {
   chmodSync,
   closeSync,
   lstatSync,
+  existsSync,
   mkdirSync,
   openSync,
   readlinkSync,
@@ -459,6 +460,21 @@ function linuxToolPaths(): { bwrapPath?: string; socatPath?: string } {
     // SRT's dependency check says so
   }
   return paths
+}
+
+/**
+ * Whether this Linux host speaks IPv6. SRT's in-sandbox network bridge is
+ * `socat TCP-LISTEN:3128`, and socat 1.8 opens that as an IPv6 socket: on
+ * a host without IPv6 it failed ("Address family not supported by
+ * protocol"), its error went to /dev/null, and every networked task met
+ * only "connection refused" on the proxy (J-33's lead, B-22). Without
+ * IPv6 the wrapped command sets `SOCAT_DEFAULT_LISTEN_IP=4`, socat's own
+ * switch for the listen family; with it nothing changes. Asked once.
+ */
+let hasIpv6: boolean | undefined
+function hostHasIpv6(): boolean {
+  hasIpv6 ??= existsSync('/proc/net/if_inet6')
+  return hasIpv6
 }
 
 /**
@@ -922,6 +938,8 @@ export async function wrapSandboxedCommand(
   // the namespace goes with vx, a `setsid` daemon inside included, a
   // traced one-shot task too: its strace runs inside (B-11).
   if (process.platform === 'linux' && /^\S*bwrap /.test(wrapped)) wrapped = `exec ${wrapped}`
+  if (process.platform === 'linux' && !hostHasIpv6())
+    wrapped = `SOCAT_DEFAULT_LISTEN_IP=4 ${wrapped}`
   if (args.server === true) liveServers.add(tag)
   if (ports.length > 0) spawnHostBridges(ports, tag)
   return {
