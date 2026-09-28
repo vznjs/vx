@@ -35,7 +35,7 @@ vx init [--dry] [--force] [--mjs] [--plugin <seam>]
 vx show [PROJECT[#TASK] | TASK] [--format pretty|json]
 vx info [--format pretty|json] [--cache-dir <path>]
 vx why [TASK | PKG#TASK] [--run <runId>] [--format pretty|json] [--cache-dir <path>]
-vx last [runId] [--list[=N]] [--format pretty|json] [--cache-dir <path>]
+vx last [runId] [--list[=N]] [--failed] [--format pretty|json] [--cache-dir <path>]
 vx upgrade [tag]      # self-update a compiled binary
 vx completions bash|zsh|fish
 
@@ -1982,7 +1982,7 @@ surface. A run a Ctrl-C (or SIGTERM, SIGHUP) stopped records nothing,
 so `vx last` still shows the run before it.
 
 ```
-vx last [runId] [--list[=N]] [--format pretty|json] [--cache-dir <path>]
+vx last [runId] [--list[=N]] [--failed] [--format pretty|json] [--cache-dir <path>]
 ```
 
 Bare `vx last` replays the most recent run: a header (verdict, command,
@@ -2007,7 +2007,9 @@ a hit's row tells. `--format json` lists every row.
 `vx last --list` prints the N most recent runs (default 10) with their
 run ids, each cut to the shortest prefix no other run shares (`--list 5`
 and `--list=5` alike); `vx last <runId>` replays a
-specific one, and the two do not combine. `--format json`
+specific one, and the two do not combine. `--failed` replays the latest
+run that failed, past any green one since, and with `--list` lists only
+failed runs. `--format json`
 emits `{ invocation, tasks }` for scripting, and `--list --format json`
 an array of the same `invocation` objects, newest first. An unknown run id fails
 loud and points at `--list`. A run id may be typed as a unique prefix; a
