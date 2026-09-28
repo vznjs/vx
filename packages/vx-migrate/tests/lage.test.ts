@@ -9,6 +9,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { loadProjectConfig, planRun, run, type Logger } from '@vzn/vx'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
+import { loadLageConfig } from '../src/lage/lage-map.js'
 
 const PLUGIN_INDEX = path.resolve(import.meta.dir, '..', 'src', 'index.ts')
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
@@ -291,6 +292,45 @@ describe('vx-migrate --from lage', () => {
       expect(out).toContain('lage.config.js → vx.config.ts')
       const config = await loadProjectConfig(path.join(root, 'packages/app/vx.config.ts'))
       expect(config.tasks!['bundle']).toEqual(live as never)
+    },
+    TIMEOUT,
+  )
+})
+
+describe('loadLageConfig', () => {
+  it(
+    'a require no node_modules provides is refused without asking the registry (L-22)',
+    async () => {
+      const dir = await mkdtemp(path.join(tmpdir(), 'vx-lage-noinstall-'))
+      const asked: string[] = []
+      using registry = Bun.serve({
+        port: 0,
+        hostname: '127.0.0.1',
+        fetch(req) {
+          asked.push(new URL(req.url).pathname)
+          return new Response('{}', { status: 404 })
+        },
+      })
+      const saved = { ...process.env }
+      try {
+        const file = path.join(dir, 'lage.config.js')
+        await writeFile(file, `require('is-odd')\nmodule.exports = { pipeline: {} }\n`)
+        const url = `http://127.0.0.1:${registry.port}/`
+        process.env['BUN_CONFIG_REGISTRY'] = url
+        process.env['NPM_CONFIG_REGISTRY'] = url
+        process.env['BUN_INSTALL_CACHE_DIR'] = path.join(dir, '.bun-cache')
+        await loadLageConfig(dir, file).then(
+          () => expect.unreachable(),
+          (err: Error) => expect(err.message).toContain('failed to load lage.config.js: '),
+        )
+        expect(asked).toEqual([])
+      } finally {
+        for (const k of ['BUN_CONFIG_REGISTRY', 'NPM_CONFIG_REGISTRY', 'BUN_INSTALL_CACHE_DIR']) {
+          if (saved[k] === undefined) delete process.env[k]
+          else process.env[k] = saved[k]
+        }
+        await rm(dir, { recursive: true, force: true })
+      }
     },
     TIMEOUT,
   )

@@ -248,8 +248,9 @@
   the registry and ran it (probed: `is-odd` and `is-number` fetched). The
   shebangs of `vx` and `vx-migrate` and the npm launcher's source
   fallback now run Bun with `--no-install` (the launcher also gained the
-  missing `--no-env-file`); a compiled binary never auto-installed. Row:
-  a local registry sees no request, red without the flag.
+  missing `--no-env-file`), and so does vx-migrate's child that
+  evaluates a `lage.config.js`; a compiled binary never auto-installed.
+  Rows: a local registry sees no request, red without the flag.
 
 ## Leads for other streams
 

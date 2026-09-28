@@ -70,7 +70,9 @@ process.stdout.write(JSON.stringify(c ?? {}, (_k, v) => (typeof v === 'function'
 
 /** The evaluated config, functions marked; a config that throws is refused with its message. */
 export async function loadLageConfig(root: string, file: string): Promise<Raw> {
-  const proc = Bun.spawn([process.execPath, '-e', LOAD, file], {
+  // --no-install: a require no node_modules provides is refused, never
+  // fetched from the registry and run (L-22).
+  const proc = Bun.spawn([process.execPath, '--no-install', '-e', LOAD, file], {
     cwd: root,
     env: { ...process.env },
     stdout: 'pipe',
