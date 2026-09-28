@@ -18,6 +18,8 @@
 //
 //   - RELATIVE specifiers only. A bare specifier is a package; it moves when
 //     the lockfile moves, which the workspace fingerprint already covers.
+//     A tsconfig `paths` / `baseUrl` alias is the exception: Bun loads it
+//     from disk (D-27).
 //   - Descend only through files owned by NO project. A config reaching into
 //     another project (say a site's `vx.config.ts` importing
 //     `../core/src/index.ts`) records that edge and STOPS there — following
@@ -25,7 +27,7 @@
 //     closure, and the containment channel already selects the project that
 //     owns it.
 
-import { existsSync, readFileSync, statSync } from 'node:fs'
+import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs'
 import { realpath } from 'node:fs/promises'
 import { builtinModules } from 'node:module'
 import path from 'node:path'
@@ -137,18 +139,6 @@ export function unprovidedBareImports(
   return out
 }
 
-/** The nearest `tsconfig.json`, else `jsconfig.json`, at or above `dir`: Bun reads that one alone. */
-function nearestTsconfig(dir: string): string | undefined {
-  for (let d = path.resolve(dir); ;) {
-    for (const name of ['tsconfig.json', 'jsconfig.json']) {
-      if (existsSync(path.join(d, name))) return path.join(d, name)
-    }
-    const up = path.dirname(d)
-    if (up === d) return undefined
-    d = up
-  }
-}
-
 interface CompilerPaths {
   paths?: Record<string, unknown>
   /** What `paths` targets resolve against: `baseUrl`, else the config's own dir. */
@@ -161,7 +151,9 @@ interface CompilerPaths {
  * against the config that set it. A package `extends` is not followed: its
  * paths are unseen, so a specifier only they map stays refused.
  */
-function compilerPaths(file: string, depth = 0): CompilerPaths {
+function compilerPaths(file: string, memo?: TsconfigMemo, depth = 0): CompilerPaths {
+  const known = memo?.get(file)
+  if (known !== undefined) return known
   let json: unknown
   try {
     json = Bun.JSONC.parse(readFileSync(file, 'utf8'))
@@ -175,7 +167,7 @@ function compilerPaths(file: string, depth = 0): CompilerPaths {
   for (const base of typeof ext === 'string' ? [ext] : Array.isArray(ext) ? ext : []) {
     if (depth > 8 || typeof base !== 'string' || !base.startsWith('.')) continue
     const f = path.resolve(dir, base)
-    Object.assign(out, compilerPaths(f.endsWith('.json') ? f : f + '.json', depth + 1))
+    Object.assign(out, compilerPaths(f.endsWith('.json') ? f : f + '.json', memo, depth + 1))
   }
   const opts = (json as { compilerOptions?: unknown }).compilerOptions
   if (typeof opts !== 'object' || opts === null) return out
@@ -187,6 +179,7 @@ function compilerPaths(file: string, depth = 0): CompilerPaths {
   } else if (out.paths !== undefined && out.baseUrl !== undefined) {
     out.pathsBase = out.baseUrl
   }
+  memo?.set(file, out)
   return out
 }
 
@@ -204,15 +197,45 @@ function fileAt(target: string): string | undefined {
   return undefined
 }
 
+/** Paths per directory and per tsconfig file, memoised across one walk. */
+type TsconfigMemo = Map<string, CompilerPaths>
+
 /**
- * The local file a bare specifier names through the nearest tsconfig's
- * `paths` or `baseUrl`, as Bun resolves it (D-26): an alias whose target
- * exists loads from disk and never reaches the registry.
+ * The paths of the nearest `tsconfig.json`, else `jsconfig.json`, at or
+ * above `dir`: Bun reads that one alone.
  */
-function tsconfigTarget(spec: string, fromDir: string): string | undefined {
-  const cfg = nearestTsconfig(fromDir)
-  if (cfg === undefined) return undefined
-  const { paths, pathsBase, baseUrl } = compilerPaths(cfg)
+function pathsAt(dir: string, memo?: TsconfigMemo): CompilerPaths {
+  const known = memo?.get(dir)
+  if (known !== undefined) return known
+  const file = ['tsconfig.json', 'jsconfig.json'].map((n) => path.join(dir, n)).find(existsSync)
+  const up = path.dirname(dir)
+  const cp = file !== undefined ? compilerPaths(file, memo) : up === dir ? {} : pathsAt(up, memo)
+  memo?.set(dir, cp)
+  return cp
+}
+
+/**
+ * Whether `source` quotes a bare specifier the nearest tsconfig maps: the
+ * textual pass that keeps a config importing only packages unscanned, as
+ * D-23's keeps one importing nothing relative (D-27).
+ */
+function hasAliasCandidate(source: string, fromDir: string, memo: TsconfigMemo): boolean {
+  SPECIFIER.lastIndex = 0
+  for (let m = SPECIFIER.exec(source); m !== null; m = SPECIFIER.exec(source)) {
+    const spec = m[1] ?? m[2] ?? ''
+    if (needsLookup(spec) && tsconfigBases(spec, fromDir, memo).length > 0) return true
+  }
+  return false
+}
+
+/**
+ * The paths a bare specifier names through the nearest tsconfig's `paths`
+ * (each matching target, in order) or `baseUrl`, before extensions: Bun
+ * tries them ahead of `node_modules`.
+ */
+function tsconfigBases(spec: string, fromDir: string, memo?: TsconfigMemo): string[] {
+  const { paths, pathsBase, baseUrl } = pathsAt(path.resolve(fromDir), memo)
+  const out: string[] = []
   for (const [key, targets] of Object.entries(paths ?? {})) {
     const star = key.indexOf('*')
     let hole: string
@@ -226,12 +249,39 @@ function tsconfigTarget(spec: string, fromDir: string): string | undefined {
       hole = spec.slice(head.length, spec.length - tail.length)
     }
     for (const t of Array.isArray(targets) ? targets : []) {
-      if (typeof t !== 'string') continue
-      const hit = fileAt(path.resolve(pathsBase!, t.replace('*', hole)))
-      if (hit !== undefined) return hit
+      if (typeof t === 'string') out.push(path.resolve(pathsBase!, t.replace('*', hole)))
     }
   }
-  return baseUrl === undefined ? undefined : fileAt(path.resolve(baseUrl, spec))
+  if (baseUrl !== undefined) out.push(path.resolve(baseUrl, spec))
+  return out
+}
+
+/**
+ * The local file a bare specifier names through the nearest tsconfig, as
+ * Bun resolves it (D-26): an alias whose target exists loads from disk and
+ * never reaches the registry.
+ */
+function tsconfigTarget(spec: string, fromDir: string, memo?: TsconfigMemo): string | undefined {
+  for (const base of tsconfigBases(spec, fromDir, memo)) {
+    const hit = fileAt(base)
+    if (hit !== undefined) return hit
+  }
+  return undefined
+}
+
+/** A path as Bun names it: realpath'd when it exists. */
+function realpathOr(file: string): string {
+  try {
+    return realpathSync(file)
+  } catch {
+    return file
+  }
+}
+
+/** A path and, bare of an extension, the files Bun would try for it. */
+function expansions(named: string): string[] {
+  if (path.extname(named) !== '') return [named]
+  return [named, ...RESOLVED_EXTENSIONS.flatMap((e) => [named + e, path.join(named, 'index' + e)])]
 }
 
 /**
@@ -251,8 +301,14 @@ const RELATIVE_CANDIDATE = /["'`](?:\.\.?\/|[^"'`\n]*\\)/
  * reason. `import type` is erased by `scanImports` and so contributes no edge,
  * which is correct: an erased import cannot move a resolved value.
  */
-function scanLocalImports(source: string, fromDir: string, loader: 'ts' | 'js'): string[] {
-  if (!RELATIVE_CANDIDATE.test(source)) return []
+function scanLocalImports(
+  source: string,
+  fromDir: string,
+  loader: 'ts' | 'js',
+  memo: TsconfigMemo,
+): string[] {
+  const aliased = hasAliasCandidate(source, fromDir, memo)
+  if (!aliased && !RELATIVE_CANDIDATE.test(source)) return []
   let specifiers: string[]
   try {
     specifiers = scanner(loader)
@@ -263,7 +319,16 @@ function scanLocalImports(source: string, fromDir: string, loader: 'ts' | 'js'):
   }
   const out: string[] = []
   for (const spec of specifiers) {
-    if (!spec.startsWith('./') && !spec.startsWith('../')) continue
+    if (!spec.startsWith('./') && !spec.startsWith('../')) {
+      // A tsconfig alias is a local import Bun resolves by path (D-27); a
+      // target the change deleted still names its paths, as below.
+      if (!aliased || spec.startsWith('.') || spec.startsWith('/') || !needsLookup(spec)) continue
+      const bases = tsconfigBases(spec, fromDir, memo)
+      const hit = bases.map(fileAt).find((f) => f !== undefined)
+      if (hit !== undefined) out.push(realpathOr(hit))
+      else out.push(...bases.flatMap(expansions))
+      continue
+    }
     try {
       out.push(Bun.resolveSync(spec, fromDir))
     } catch {
@@ -273,12 +338,7 @@ function scanLocalImports(source: string, fromDir: string, loader: 'ts' | 'js'):
       // of an extension, the files Bun would have tried), so the deleted
       // path in the diff still reaches its importer (item 958). Selection
       // may widen; it is never hashed.
-      const named = path.resolve(fromDir, spec)
-      out.push(named)
-      if (path.extname(spec) === '') {
-        for (const ext of RESOLVED_EXTENSIONS)
-          out.push(named + ext, path.join(named, 'index' + ext))
-      }
+      out.push(...expansions(path.resolve(fromDir, spec)))
     }
   }
   return out
@@ -361,6 +421,7 @@ export async function configImportOwners(a: ConfigImportOwnersArgs): Promise<Set
 
   // target → the files that import it. Reversed up front so one BFS from the
   // changed set answers every root at once, instead of a walk per root.
+  const tsconfigs: TsconfigMemo = new Map()
   const importedBy = new Map<string, string[]>()
   const visited = new Set<string>()
   // A level at a time, its files read together: one awaited read per
@@ -383,7 +444,7 @@ export async function configImportOwners(a: ConfigImportOwnersArgs): Promise<Set
       if (entry === null) continue
       const { file, source } = entry
       const loader = TS_EXT.has(path.extname(file)) ? 'ts' : 'js'
-      for (const target of scanLocalImports(source, path.dirname(file), loader)) {
+      for (const target of scanLocalImports(source, path.dirname(file), loader, tsconfigs)) {
         if (!target.startsWith(workspaceRoot + path.sep)) continue
         if (target.split(path.sep).includes('node_modules')) continue
         const list = importedBy.get(target)
