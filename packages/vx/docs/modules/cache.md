@@ -221,7 +221,7 @@ export interface RunRecord {
   startedAt: number // ms-epoch
   endedAt: number // ms-epoch
   // v11 analytics columns (all optional; populated by runner / orchestrator)
-  runId?: string // ULID shared across all tasks in one `vx run`
+  runId?: string // UUIDv7 shared across all tasks in one `vx run`
   cpuMs?: number // user + system CPU time from Bun.spawn rusage
   peakRssBytes?: number // peak resident set size
   wallclockStartNs?: bigint // hrtime span relative to run t=0

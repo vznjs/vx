@@ -1218,7 +1218,7 @@ CREATE TABLE runs (
   forward_args        TEXT,             -- salted xxh3 of the JSON-encoded `--` args; null when none
   started_at          INTEGER NOT NULL, -- ms-epoch
   ended_at            INTEGER NOT NULL,
-  run_id              TEXT,             -- ULID shared across all tasks in one invocation
+  run_id              TEXT,             -- UUIDv7 shared across all tasks in one invocation
   cpu_ms              INTEGER,
   peak_rss_bytes      INTEGER,
   wallclock_start_ns  INTEGER,          -- bigint; serialized as SQLite INTEGER (signed 64-bit)
@@ -1320,7 +1320,7 @@ CREATE TABLE output_dirs (
 -- command, git/CI/host context, tags, and run-level counts. Recorded
 -- atomically alongside `runs` via recordRunBundle (one transaction).
 CREATE TABLE invocations (
-  run_id            TEXT PRIMARY KEY,         -- ULID, == runs.run_id
+  run_id            TEXT PRIMARY KEY,         -- UUIDv7, == runs.run_id
   command           TEXT NOT NULL,            -- full argv, e.g. "vx run build --all"
   requested_tasks   TEXT NOT NULL,            -- JSON string[] of options.tasks
   cache_policy      TEXT NOT NULL,            -- compact flags, e.g. "lR,lW,rR,rW"
