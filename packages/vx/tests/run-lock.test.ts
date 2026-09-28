@@ -380,4 +380,54 @@ process.kill(process.pid, 'SIGKILL')
     expect(await held()).toEqual([holderOf(other.pid)])
     other.end()
   })
+
+  it('takings in one process add one exit hook, not one each', async () => {
+    // A long-lived embedder (`vx watch`) takes the lock once per run; a
+    // hook per taking would pass the listener cap after ten runs.
+    await (
+      await acquireRunLock('/w/app', { dir, log })
+    )()
+    const hooks = process.listenerCount('exit')
+    for (let i = 0; i < 3; i++) {
+      await (
+        await acquireRunLock('/w/app', { dir, log })
+      )()
+    }
+    expect(process.listenerCount('exit')).toBe(hooks)
+  })
+
+  it('an entry that only contains a holder name is not a holder: reclaimed after a poll', async () => {
+    const other = await otherHolder()
+    try {
+      const [entry] = await readdir(lockDir())
+      await rm(path.join(lockDir(), entry!))
+      await writeFile(path.join(lockDir(), `${entry}.tmp`), '')
+      const acquired = acquireRunLock('/w/app', { dir, log })
+      const first = await Promise.race([acquired, Bun.sleep(1_000).then(() => 'waiting' as const)])
+      expect(first).not.toBe('waiting')
+      expect(await held()).toEqual([holderOf(process.pid)])
+      await (
+        await acquired
+      )()
+    } finally {
+      other.end()
+    }
+  })
+
+  it("an older vx's pid file that names no process is reclaimed after a poll", async () => {
+    // Pid 0 is this process group to kill(2), so it would read as alive;
+    // a pid file that cannot be read names nobody either.
+    for (const write of [() => writeFile(pidFile(), '0\n'), () => mkdir(pidFile())]) {
+      await mkdir(lockDir())
+      await write()
+      const acquired = acquireRunLock('/w/app', { dir, log })
+      const first = await Promise.race([acquired, Bun.sleep(1_000).then(() => 'waiting' as const)])
+      expect(first).not.toBe('waiting')
+      expect(await held()).toEqual([holderOf(process.pid)])
+      await (
+        await acquired
+      )()
+    }
+    expect(lines).toEqual([])
+  })
 })
