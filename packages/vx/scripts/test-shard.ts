@@ -16,7 +16,7 @@
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
-const here = path.dirname(new URL(import.meta.url).pathname)
+const here = import.meta.dir
 const TESTS = path.join(here, '..', 'tests')
 const TABLE = path.join(TESTS, 'shard-weights.json')
 

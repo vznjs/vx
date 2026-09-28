@@ -17,6 +17,17 @@ with no `exec` wrap, no kill guard (an `sh` script over process groups)
 and no `detached` spawn (a detached child has no console). Linux and
 macOS spawn exactly as before.
 
+O-6. The Windows job's data was noise: 64 of 460 unsafe rows failed,
+and every shard was dealt no files. `scripts/test-shard.ts` took its
+dir from `new URL(import.meta.url).pathname`, which is `\D:\a\…` on
+Windows, and 14 doc pins read files the same way. The runner also
+checks out CRLF (`core.autocrlf=true`), and the pins match `\n`. The
+job now sets `core.autocrlf false` before checkout (a root
+`.gitattributes` would give every path an `eol`, and vx would then
+trust no index OID on any OS), and the paths come from
+`import.meta.dir` or `Bun.file(url)`. Row: `file-url-paths.test.ts`,
+red with any one site put back.
+
 ## Leads for other streams
 
 - B: `@anthropic-ai/sandbox-runtime` 0.0.76 ships a Windows backend

@@ -29,13 +29,13 @@ import type { TaskOutcome } from '../src/graph/scheduler.js'
  * failing loudly is the intended outcome, not a silent pass.
  */
 async function parserFlags(): Promise<Set<string>> {
-  const src = await Bun.file(new URL('../src/cli/run.ts', import.meta.url).pathname).text()
+  const src = await Bun.file(new URL('../src/cli/run.ts', import.meta.url)).text()
   return new Set(Array.from(src.matchAll(/'(--[a-zA-Z][a-zA-Z-]*)=?'/g), (m) => m[1] as string))
 }
 
 /** Flag names in the `### Flags` table of docs/cli.md, one per row. */
 async function documentedFlags(): Promise<Set<string>> {
-  const doc = await Bun.file(new URL('../docs/cli.md', import.meta.url).pathname).text()
+  const doc = await Bun.file(new URL('../docs/cli.md', import.meta.url)).text()
   const start = doc.indexOf('### Flags')
   expect(start).toBeGreaterThan(-1)
   const names = new Set<string>()
@@ -56,7 +56,7 @@ describe('vx help names every flag the run parser accepts', () => {
   // documented in cli.md but absent from `vx help` until 2026-09-16 (item
   // 300): the reference was pinned to the parser, the help was not.
   it('every parser flag appears in help.ts', async () => {
-    const help = await Bun.file(new URL('../src/cli/help.ts', import.meta.url).pathname).text()
+    const help = await Bun.file(new URL('../src/cli/help.ts', import.meta.url)).text()
     const missing = [...(await parserFlags())]
       .filter((f) => !new RegExp(`${f}(?![a-zA-Z-])`).test(help))
       .sort()
@@ -69,7 +69,7 @@ describe('docs/comparison.md names only flags vx has', () => {
   // parsed; the callout named the retired --excludeDependencies until
   // 2026-09-16 (item 308).
   it('every --flag in the Quick CLI flag map section is a parser flag (or --version / --help)', async () => {
-    const doc = await Bun.file(new URL('../docs/comparison.md', import.meta.url).pathname).text()
+    const doc = await Bun.file(new URL('../docs/comparison.md', import.meta.url)).text()
     const start = doc.indexOf('## Quick CLI flag map')
     const end = doc.indexOf('## Config schema comparison')
     expect(start).toBeGreaterThan(-1)
@@ -107,7 +107,7 @@ describe('docs/cli.md Flags table matches the run parser', () => {
 
 describe('docs/cli.md — the `vx info` sample quotes the current versions', () => {
   it('cache versions row', async () => {
-    const doc = await Bun.file(new URL('../docs/cli.md', import.meta.url).pathname).text()
+    const doc = await Bun.file(new URL('../docs/cli.md', import.meta.url)).text()
     // The renderer pads every label to the widest; the sample is its output.
     expect(doc).toMatch(
       new RegExp(
@@ -128,9 +128,7 @@ describe('docs/cli.md — the `vx info --format json` list is the InfoFacts obje
     // An interface's body, doc comments dropped: `FlakyTask` is the
     // element type `flakyTasks` names, declared in failure-mode.ts.
     const body = async (file: string, name: string): Promise<string> => {
-      const src = await Bun.file(
-        new URL(`../src/orchestrator/${file}`, import.meta.url).pathname,
-      ).text()
+      const src = await Bun.file(new URL(`../src/orchestrator/${file}`, import.meta.url)).text()
       const open = src.indexOf(`export interface ${name} {`)
       expect(open).toBeGreaterThan(-1)
       return src.slice(open, src.indexOf('\n}\n', open)).replace(/\/\*\*[\s\S]*?\*\//g, '')
@@ -144,7 +142,7 @@ describe('docs/cli.md — the `vx info --format json` list is the InfoFacts obje
     const literals = new Set(Array.from(code.matchAll(/'(\w+)'/g), (m) => m[1] as string))
     expect(topLevel.has('vx') && topLevel.has('sandbox')).toBe(true)
 
-    const doc = await Bun.file(new URL('../docs/cli.md', import.meta.url).pathname).text()
+    const doc = await Bun.file(new URL('../docs/cli.md', import.meta.url)).text()
     const start = doc.indexOf('- `--format json` prints the same facts')
     expect(start).toBeGreaterThan(-1)
     // The bullet ends at the next bullet or, when it is the section's
@@ -208,7 +206,7 @@ describe('docs/cli.md — the broad-run sample is what the renderer prints', () 
         },
       ),
     ].join('\n')
-    const doc = await Bun.file(new URL('../docs/cli.md', import.meta.url).pathname).text()
+    const doc = await Bun.file(new URL('../docs/cli.md', import.meta.url)).text()
     const marker = 'A broad run looks like:\n\n```\n'
     const start = doc.indexOf(marker)
     expect(start).toBeGreaterThan(-1)
@@ -247,7 +245,7 @@ describe('docs/cli.md — the frame sample is what the renderer prints', () => {
       { stdout: '2 pass\n1 fail\n', stderr: 'error: expected 3, got 2\n' },
       { enabled: false },
     ).replace(/\n$/, '')
-    const doc = await Bun.file(new URL('../docs/cli.md', import.meta.url).pathname).text()
+    const doc = await Bun.file(new URL('../docs/cli.md', import.meta.url)).text()
     const marker = 'copy/paste yields the verbatim output.'
     // The block sits just above that sentence: take the fenced block that precedes it.
     const end = doc.lastIndexOf('\n```\n', doc.indexOf(marker))
@@ -264,8 +262,7 @@ describe('docs/cli.md documents every verb the dispatcher answers', () => {
   // place the reference enumerates the verbs, had lost `vx why` and `vx last`
   // — both with full sections further down, neither reachable by scanning the
   // index. Hold the synopsis to the dispatcher so the next verb lands in both.
-  const read = (rel: string): Promise<string> =>
-    Bun.file(new URL(rel, import.meta.url).pathname).text()
+  const read = (rel: string): Promise<string> => Bun.file(new URL(rel, import.meta.url)).text()
 
   /** The fenced block under `## Top-level shape`, Core and Meta together. */
   async function synopsis(): Promise<string> {

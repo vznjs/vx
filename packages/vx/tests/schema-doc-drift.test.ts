@@ -297,7 +297,7 @@ const CASES: Array<[string, () => string | null | Promise<string | null>]> = [
  * against the wrong surface.
  */
 async function documentedRows(anchor: string): Promise<string[]> {
-  const doc = await Bun.file(new URL('../docs/schema.md', import.meta.url).pathname).text()
+  const doc = await Bun.file(new URL('../docs/schema.md', import.meta.url)).text()
   const at = doc.indexOf(anchor)
   expect(at).toBeGreaterThan(-1)
   const rows: string[] = []
@@ -551,8 +551,8 @@ describe('docs/schema.md reprints the config interfaces as they are', () => {
     [...body.matchAll(/^ {2}(\w+)\??[:(]/gm)].map((m) => m[1] as string)
 
   it('every interface block matches src/config.ts, in both directions', async () => {
-    const doc = await Bun.file(new URL('../docs/schema.md', import.meta.url).pathname).text()
-    const src = await Bun.file(new URL('../src/config.ts', import.meta.url).pathname).text()
+    const doc = await Bun.file(new URL('../docs/schema.md', import.meta.url)).text()
+    const src = await Bun.file(new URL('../src/config.ts', import.meta.url)).text()
     const blocks = [...doc.matchAll(/^interface (\w+) \{\n([\s\S]*?)^\}/gm)]
     expect(blocks.length).toBeGreaterThan(8)
     const drift: Record<string, { missing: string[]; invented: string[] }> = {}
