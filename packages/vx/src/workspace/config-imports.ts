@@ -135,7 +135,12 @@ export function unprovidedBareImports(
       if (up === dir) break
       dir = up
     }
-    if (!provided && tsconfigTarget(spec, fromDir) === undefined && !out.includes(spec)) {
+    if (
+      !provided &&
+      !selfReference(pkg, fromDir) &&
+      tsconfigTarget(spec, fromDir) === undefined &&
+      !out.includes(spec)
+    ) {
       out.push(spec)
     }
   }
@@ -285,6 +290,31 @@ function realpathOr(file: string): string {
 function expansions(named: string): string[] {
   if (path.extname(named) !== '') return [named]
   return [named, ...RESOLVED_EXTENSIONS.flatMap((e) => [named + e, path.join(named, 'index' + e)])]
+}
+
+/**
+ * Whether `pkg` names the package `fromDir` sits in, and that package has
+ * `exports`: Bun resolves such a self-reference inside it and never asks
+ * the registry, an unexported subpath included (strace, D-29).
+ */
+function selfReference(pkg: string, fromDir: string): boolean {
+  for (let dir = path.resolve(fromDir); ;) {
+    const manifest = path.join(dir, 'package.json')
+    if (existsSync(manifest)) {
+      try {
+        const json = JSON.parse(readFileSync(manifest, 'utf8')) as {
+          name?: unknown
+          exports?: unknown
+        }
+        return json.name === pkg && json.exports !== undefined
+      } catch {
+        return false
+      }
+    }
+    const up = path.dirname(dir)
+    if (up === dir) return false
+    dir = up
+  }
 }
 
 /**
