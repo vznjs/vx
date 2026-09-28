@@ -169,7 +169,7 @@ describe('formatRunSummary', () => {
       },
     )
     expect(lines[2]).toBe('  projects  ' + '▰'.repeat(13) + '▱'.repeat(37))
-    expect(lines[3]).toBe('            1 affected · 4 total')
+    expect(lines[3]).toBe('            1 in run · 4 total')
     // local-only mode reads on the info row (no worker count here)
     expect(lines).toContain('  info      local cache')
   })

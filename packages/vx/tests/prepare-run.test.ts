@@ -228,7 +228,7 @@ describe('scoped config loading reaches every project a run can need', () => {
   it(
     'counts every config-bearing project, in scope or not',
     async () => {
-      // `workspaceProjectCount` feeds the footer's `N affected · N total` bar, so
+      // `workspaceProjectCount` feeds the footer's `N in run · N total` bar, so
       // it must describe the WORKSPACE while `nodes` describes the run. Deriving
       // it from the loaded set would make the bar read 1-of-1 on every scoped run.
       await pkg('app', cfg(task('build')))

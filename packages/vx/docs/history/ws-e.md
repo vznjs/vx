@@ -437,6 +437,9 @@ task picked`; neither prints a stack. Row in
 - E-81 — the `result` row counts cached over the tasks that have a
   cache; the rest read `N no-cache`: `vx run dev` said
   `0 cached (0%)` for a task that could never hit.
+- E-82 — the footer's projects legend reads `N in run · M total`: it
+  said `affected` on every run, which a Turbo user reads as git-changed
+  on a plain `--all`.
 
 ## First-five-minutes walk (2026-09-28)
 

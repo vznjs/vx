@@ -543,7 +543,7 @@ describe('vx run with bun() declared', () => {
     })
     const out = new TextDecoder().decode(r.stdout) + new TextDecoder().decode(r.stderr)
     expect(r.exitCode).toBe(0)
-    expect(out).toContain('2 affected · 3 total')
+    expect(out).toContain('2 in run · 3 total')
     expect(out).not.toContain('a#build')
   })
 })

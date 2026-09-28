@@ -4,7 +4,7 @@
 
 Format the closing footer block — this is the run's **only** banner.
 The top-of-run header was removed; the run context (version, requested
-tasks, project/task/worker counts, cache mode, affected-scope bar) now
+tasks, project/task/worker counts, cache mode, projects-in-run bar) now
 rides the footer above the result meters, printed once at the end where
 the eye lands. Always printed after a `vx run` invocation completes
 (success or failure). Counts only real tasks — group nodes are filtered
@@ -30,7 +30,7 @@ export interface SummaryStats {
 
 export interface RunContext {
   version: string
-  packageCount: number // projects covered → the bar's "affected" half
+  packageCount: number // projects covered → the bar's "in run" half
   concurrency?: number // worker-pool size (info row)
   remoteCacheEnabled: boolean
   workspaceProjectCount?: number // total projects → the bar's denominator
@@ -86,7 +86,7 @@ meters-only section the region renders.
 ```
 ─ vx 0.0.0 ───────────────────────────────────────────────────
   projects  ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱
-            1 affected · 2 total
+            1 in run · 2 total
   tasks     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
             4 success · 4 total
   cache     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
@@ -98,7 +98,7 @@ meters-only section the region renders.
 ```
 
 Labels pad to 8, bars start at column 12, the rule + bars span 50
-cells. `projects` (affected vs workspace total) leads the meter stack;
+cells. `projects` (the projects in the run vs the workspace total) leads the meter stack;
 `tasks` and `cache` follow, the tasks legend carrying a dim `N total`.
 A blank line separates the meters from the `info` row (worker pool +
 cache mode, and `admit held N tasks · Ns` when a policy held any — a

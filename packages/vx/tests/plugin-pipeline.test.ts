@@ -738,11 +738,11 @@ describe('fingerprint claim — a plugin keys a lockfile per project', () => {
       const scoped = vx('run', 'build', '--affected=HEAD')
       expect(scoped).toContain('b#build')
       expect(scoped).not.toContain('a#build')
-      expect(scoped).toContain('1 affected · 2 total')
+      expect(scoped).toContain('1 in run · 2 total')
       // CONTROL: bytes the plugin cannot read ("cannot tell") select both.
       await writeFile(path.join(root, 'pnpm-lock.yaml'), 'v3\n')
       const widened = vx('run', 'build', '--affected=HEAD')
-      expect(widened).toContain('2 affected · 2 total')
+      expect(widened).toContain('2 in run · 2 total')
     },
     TIMEOUT,
   )
