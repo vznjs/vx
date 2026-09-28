@@ -444,6 +444,17 @@ the task's user owns was named executable; it now asks `accessSync(file,
 X_OK)`. Its row runs only as non-root: red without the fix and green with
 it, run as a `probe` user.
 
+## C-38: hold vx in the Ctrl-C grace until its kill -9 lands
+
+`keep-alive.test.ts`'s "a kill -9 in a Ctrl-C's grace takes the child
+of a shell that died on the signal" failed on main shard 1 with ESRCH:
+the child it waits on slept 1 s, so vx ended in its grace when the child
+did, and a loaded runner's SIGKILL 200 ms after the SIGINT found no vx.
+A 1 s pause before the SIGINT reproduces it every time. The child now
+marks its trap and then waits on a `go` file the row writes only after
+the kill; green with the pause, and red on `late.txt` with the group
+guard's SIGKILL removed.
+
 ## Leads for other streams
 
 - **E:** a plugin command's plain `throw` (`commands.probe.run` throwing
