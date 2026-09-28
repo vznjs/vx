@@ -215,6 +215,12 @@
   likes is trusted as a writer (turboCache's signature is the one
   authenticated wire), and REAPI's CAS holds each blob to its digest
   (L-3). Supervisor backlog 1. Rows in `artifact-checksum.test.ts`.
+- L-21. `test(vx-migrate)`: the tampering proxy of supervisor backlog 1,
+  per wire. A Turbo or Nx cache server that hands back an artifact whose
+  tar is intact but one output byte changed is now a miss that rebuilds
+  (L-19's sum), held end to end through `turboCache()` and `nxCache()`;
+  each row replays the altered bytes as a hit with the sum check
+  disabled. REAPI's CAS already holds each blob to its digest (L-3).
 
 ## Leads for other streams
 
