@@ -172,6 +172,13 @@ A/A 416.9 (318.7), a tie; 749af7ad's fewer `nx()` twins do not show
 at this spread. Item 1075's whole-repo `git status` (G lead) is still
 on main.
 
+I-18. `ab.ts` reports a failed run's stdout, where vx names the failed
+task: stderr alone showed astro's failure as nothing. astro's warm
+no-op is not re-measurable on this box now: main moves `astro#build`'s
+key, the copy rebuilds, and its `pnpm install` (and the pinned pnpm's
+self-install) cannot reach the registry from a task, whose environment
+carries no proxy.
+
 ## Leads for other streams
 
 - **Owner / coordinator: skip macOS where it cannot differ from

@@ -47,6 +47,12 @@ export function summarize(samples: readonly number[]): { min: number; median: nu
   return { min: s[0]!, median: s.length % 2 === 1 ? s[mid]! : (s[mid - 1]! + s[mid]!) / 2 }
 }
 
+/** What a failed run said: the tail of stdout, where vx reports a failed task, then stderr. */
+export function failure(label: string, code: number, stdout: string, stderr: string): string {
+  const tail = (s: string) => s.trimEnd().split('\n').slice(-40).join('\n')
+  return [`${label} exited ${code}`, tail(stdout), tail(stderr)].filter((s) => s !== '').join('\n')
+}
+
 function command(vx: string): string[] {
   return statSync(vx).isDirectory()
     ? [process.execPath, path.join(vx, 'packages/vx/src/bin.ts')]
@@ -58,15 +64,18 @@ async function time(arm: Arm, args: readonly string[]): Promise<number> {
   const p = Bun.spawn({
     cmd: [...command(arm.vx), ...args],
     cwd: arm.workspace,
-    stdout: 'ignore',
+    // Kept for a failure: vx reports a failed task on stdout, so stderr
+    // alone showed an astro run's `pnpm install` failure as nothing.
+    stdout: 'pipe',
     stderr: 'pipe',
     env: benchEnv({ NO_COLOR: '1', GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' }),
   })
-  const code = await p.exited
-  if (code !== 0) {
-    const err = await new Response(p.stderr).text()
-    throw new Error(`${arm.label} exited ${code}:\n${err.slice(-2000)}`)
-  }
+  const [code, out, err] = await Promise.all([
+    p.exited,
+    new Response(p.stdout).text(),
+    new Response(p.stderr).text(),
+  ])
+  if (code !== 0) throw new Error(failure(arm.label, code, out, err))
   return (Bun.nanoseconds() - t0) / 1e6
 }
 
