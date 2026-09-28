@@ -78,7 +78,6 @@ export function isWorkspaceConfigFile(name: string): boolean
 export const IGNORED_SEGMENTS: string[] // node_modules / .git / .vx
 export const WATCH_PROBE = '.vx-watch-probe'
 export const WATCH_PROBE_TIMEOUT_MS = 2_000
-export const POLL_INTERVAL_MS = 250
 export interface WatchHandle {
   close(): void
 }
@@ -101,6 +100,13 @@ export function armWatcher(
 ): ArmedWatcher
 export function modifiedBefore(abs: string, t: number): boolean
 export function fsClockNow(dir: string): number
+export const CLOSED: WatchHandle // watches nothing: a dropped slot, an arm not made
+export class WatcherPool {
+  constructor(skip: (dir: string, rel: string) => boolean) // what the poller leaves unsampled
+  arm(dir: string, recursive: boolean, onEvent: (filename: string) => void): WatchHandle // OS watcher, poller on no proof, an OS watch limit or VX_WATCH_POLL
+  proved(): Promise<void> // every arm so far proved delivery or fell back
+  closeAll(): void
+}
 ```
 
 `cli/index.ts` dispatches `vx watch <...>` here. Returns the exit code
