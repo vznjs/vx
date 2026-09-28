@@ -350,6 +350,22 @@ select a name it prefixes (task or project half), and a group expands
 in its members' order while an empty group expands to nothing. None
 could give a stale hit. No defect in the file.
 
+## C-32: hold `dependency-spec.ts`'s surviving mutants
+
+A sweep of 54 mutants over 16 files: 38 caught, 16 survived, 1 of them
+equivalent (a lazy `.*?` for `.*`, the same set under `^…$`). The other
+15 are held now by rows in `dependency-spec.test.ts`: each character
+`compileTaskPattern` escapes (`+ ? ^ $ { } ( ) | \`, and every `.`, not
+the first) is matched literally, since a task name may hold one and a
+regex reading is a wrong edge; `*` matches the empty run and every `*`
+expands; a `*` inside a name makes a pattern; the error message is
+compared whole, raw spec included. Seven follow-up mutants, run after
+the rows: 3 caught, 4 survived: dropping only `{`, `}` or `]` from the
+escape set is equivalent (a lone one is literal in a non-unicode
+regex), and `DependencySpecError.raw` is read by nothing (dead). No
+defect in the file.
+`DependencySpecError.raw` is dropped: nothing read it.
+
 ## Leads for other streams
 
 - **E:** a plugin command's plain `throw` (`commands.probe.run` throwing
