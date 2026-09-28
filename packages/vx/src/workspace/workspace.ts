@@ -558,8 +558,15 @@ export async function listProjects(workspace: Workspace): Promise<ProjectMeta[]>
     }
     const previous = seenName.get(pkg.name)
     if (previous) {
+      // pnpm accepts two manifests of one name (sveltejs/kit's test apps,
+      // the first-five-minutes walk, 2026-09-28); vx cannot, since a
+      // project is addressed by it. Say which two, short, and the way on.
       throw new UserError(
-        `Duplicate package name "${pkg.name}" in workspace: ${previous} and ${dir}`,
+        `Duplicate package name "${pkg.name}" in workspace: ${[previous, dir]
+          .map((d) => relPosix(workspace.root, d))
+          .sort()
+          .join(' and ')}; ` +
+          'vx names a project by its package name — rename one, or leave one out with a `!` pattern in the workspace globs',
       )
     }
     seenName.set(pkg.name, dir)

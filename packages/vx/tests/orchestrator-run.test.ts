@@ -404,7 +404,11 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
 
       await expect(
         run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) }),
-      ).rejects.toThrow(/Duplicate package name "dup"/)
+      ).rejects.toThrow(
+        new Error(
+          'Duplicate package name "dup" in workspace: packages/a and packages/b; vx names a project by its package name — rename one, or leave one out with a `!` pattern in the workspace globs',
+        ),
+      )
     },
     TIMEOUT,
   )
