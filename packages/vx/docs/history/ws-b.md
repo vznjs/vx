@@ -39,6 +39,14 @@ In order of harm:
 - Cache: `execute-task.test.ts` › "trusts recorded directories without
   re-recording them…" failed once in a full local gate (restore false
   after a `utimes` on the dir), 2026-09-28; 3/3 alone.
+  Also `output-dirs-snapshot.test.ts` › "a cold build records its output
+  directories by run end…" once in a full gate, 2026-09-28; 2/2 alone.
+- O: on the Windows job (#1552, 2026-09-28) about twenty pure rows of
+  `sandbox-runtime.unsafe.test.ts` fail: `resolveSandboxConfig`'s
+  subtree collapse, `parseStraceViolations`' anchors, the
+  `reportableViolations` rows, localBinding's socket-path halves and
+  the `/dev/tty` row. They build POSIX paths for a Linux/macOS-only
+  feature; skip them on win32 or make the paths native.
 
 - E/C: a task failing on a vx sandbox refusal (`exec.sandbox.allow.write: …`)
   gets "(no output)" in the failure footer; the reason prints only above.
@@ -554,3 +562,12 @@ decodes `{ stream: true }`, and nothing held it.
   seam, an fd or no stream, an already-aborted signal) › reports
   nothing without a usage › readyWhen matches a character split across
   two writes.
+
+B-27. Sweep of `sandbox-request.ts`'s pure parts (run union, write
+reach, withheld hints), 21 mutants: 18 caught, 3 now held.
+`reachedWithheld` had no row at all, and nothing held that a
+`localBinding` port lifts the run's unix sockets on Linux alone.
+
+- Rows: `sandbox-request.test.ts` › the unix-socket union (a bound port
+  on Linux, on darwin, an empty list) and › reachedWithheld (by path,
+  not by name prefix, and a denial with no path).
