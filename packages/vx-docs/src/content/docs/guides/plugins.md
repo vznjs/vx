@@ -285,7 +285,7 @@ A verb that throws anything but a `UserError` fails in one line, no stack:
 | Package                     | Hooks it fills                             |
 | --------------------------- | ------------------------------------------ |
 | `@vzn/vx-reapi`             | `cache`, `executor` ([CI and remote](../ci/#remote-cache)) |
-| `@vzn/vx-migrate`           | `project` (`turbo()`, `nx()`), `cache` (`turboCache()`, `nxCache()`) ([Migrate](../migrate/)) |
+| `@vzn/vx-migrate`           | `project`, `fingerprint` (`turbo()`, `nx()`), `cache` (`turboCache()`, `nxCache()`) ([Migrate](../migrate/)) |
 | `@vzn/vx-lockfile`          | `fingerprint`, `key` ([Lockfiles](../configure/#lockfiles)) |
 | `@vzn/vx-schedule-history`  | `schedule`, `admit`, `commands`            |
 | `@vzn/vx-otel`              | `telemetry` ([below](#opentelemetry))      |
@@ -322,7 +322,7 @@ export default defineWorkspace({
 | `headers`         | `OTEL_EXPORTER_OTLP_HEADERS` (`k=v,…`) | `{}`                    |
 | `metrics`         | `OTEL_METRICS_EXPORTER=none` turns it off | `true`               |
 | `logs`            | `OTEL_LOGS_EXPORTER=none` turns it off | `true`                  |
-| `timeoutMs`       | none                                   | `15000`                 |
+| `timeoutMs`       | `OTEL_EXPORTER_OTLP_TIMEOUT`           | `15000`                 |
 
 | Signal            | Carries                                                                                                   |
 | ----------------- | --------------------------------------------------------------------------------------------------------- |
