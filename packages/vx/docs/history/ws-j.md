@@ -251,6 +251,14 @@
   runtime changes: an outside stop is `failed` not `aborted` (also
   cli.md), `deny.network` is enforced run-wide since B-21 (sandboxing
   guide, schema.md), and the watch loop's owners span four files.
+- **J-47** the rest of caching.md against source (constants held):
+  nested projects drop by ancestor lookup, `prune --dry-run` previews
+  an earlier-schema reset, and an empty directory can block a restore.
+- **J-48** schema.md's field prose against source (error tables
+  probed): masking skips `_FILE`/`_PATH`/`_DIR` and
+  `GIT_CONFIG_KEY_<n>`; a write grant exposing `.git`, `.vx` or a
+  nested project is refused (probed); the baseline writes its own
+  `TMPDIR`; a denied read is reported only where strace attaches.
 
 ## Leads for other streams
 
@@ -340,3 +348,10 @@ task(s): nope.` and exits 0; cli.md says an undeclared name is
   `-- src/cache/cache.ts schema (SCHEMA_VERSION = 'v28')`; the DDL
   moved to `src/cache/schema.ts` in A-21 (34fb1a3). Retarget the pin
   and the line together (found in J-47).
+- **B/C** `src/config.ts` doc comments (they generate `docs/api.md`)
+  are stale: `SandboxConfig` "writes nothing" (it writes its TMPDIR);
+  `SandboxGrants.network` "`true` allows all" / "omitted means no
+  network" (the allowlist is one union per run); `WorkspaceConfig.timeout`
+  precedence omits `--timeout`; `concurrency` "number of CPUs" ignores
+  the cgroup cap; `dependsOn` `'^name'` "every transitive" (it is the
+  nearest holders). Found in J-48.
