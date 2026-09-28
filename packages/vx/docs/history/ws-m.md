@@ -154,3 +154,15 @@ at 4000 ms. No other row expects a success under a small budget.
   binary's INT trap never wrote `heard` (ENOENT). Once in the survey; cause
   unproven. The forward is gated on `inForeground()`, which reads `ps` on
   macOS.
+- B: `keep-alive.test.ts` › a kill -9 in the persistent shutdown's grace
+  takes the server a dead shell left. The server writes `late.txt` 1 s
+  after its SIGTERM mark, a timed fuse, and the row's kill comes after
+  the shell's reap plus 100 ms: a gap of 1 s before the kill turns it
+  red (`late.txt` exists), 100 ms passes. B-38 gated row 620's child on
+  a `go` file written after its death; this row needs the same. E's
+  sandboxed gate saw a keep-alive grace row fail once at ~17:50.
+- B: `sandbox-bridge-socket.unsafe.test.ts` failed once in E's gate
+  (~17:50), error not recorded. Not reproduced: 2 full sandboxed gates
+  and 5 runs under 16 CPU hogs. The bridge socket binds 30-60 ms after
+  the run starts (120-350 ms under load) against the row's 1 s task
+  and 2 s wait. The failure text is needed to go further.
