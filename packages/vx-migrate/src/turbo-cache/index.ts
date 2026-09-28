@@ -220,6 +220,29 @@ export function resolveTurboCacheConfig(
   }
 }
 
+/** A response's text, or null (the rest cancelled) once it passes `max` bytes. */
+async function boundedText(res: Response, max: number): Promise<string | null> {
+  if (Number(res.headers.get('content-length') ?? 0) > max) {
+    await res.body?.cancel()
+    return null
+  }
+  const reader = res.body?.getReader()
+  if (reader === undefined) return ''
+  const parts: Uint8Array[] = []
+  let n = 0
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    n += value.byteLength
+    if (n > max) {
+      await reader.cancel()
+      return null
+    }
+    parts.push(value)
+  }
+  return Buffer.concat(parts).toString('utf8')
+}
+
 /**
  * A signed body is written whole before its tag can be checked, so a
  * server that never ended one filled the temp's disk (L-8). Core refuses
@@ -323,7 +346,12 @@ export class TurboRemoteCache implements RemoteCacheLayer {
     })
     if (res === undefined) return new Set()
     if (res.status !== 200) return null
-    const info = (await res.json()) as Record<string, unknown>
+    // An answer per hash is a few hundred bytes of ArtifactInfo; a reply
+    // past this bound is no answer, read no further than the bound (L-9).
+    const bound = hashes.length * 4096 + 64 * 1024
+    const text = await boundedText(res, bound)
+    if (text === null) return null
+    const info = JSON.parse(text) as Record<string, unknown>
     // Each hash answers ArtifactInfo, null, or `{ error: { message } }`; an
     // error entry is not a stored artifact, and it was counted as one (a GET
     // spent on a 404, item 929).
