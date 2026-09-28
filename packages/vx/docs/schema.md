@@ -417,7 +417,7 @@ highest priority:
    build; if one does, say so explicitly:
 
    ```ts
-   cache: { inputs: { files: ['src/**'], env: ['NODE_OPTIONS'] } }
+   cache: { inputs: { files: ['src/**'], env: ['NODE_OPTIONS'] }, outputs: { files: [] } }
    ```
 
    That folds its value into the key. The two axes are orthogonal on
@@ -1344,7 +1344,7 @@ export default defineProject({
     package: {
       description: 'pack the npm tarball',
       exec: { command: 'rm -rf pkg && npm pack --pack-destination ./pkg' },
-      dependsOn: ['build', 'test'],
+      dependsOn: ['build', 'test', '^build'],
       cache: {
         inputs: {
           files: ['package.json'],
