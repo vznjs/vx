@@ -310,6 +310,21 @@ describe('configEvalKey', () => {
     expect(await keyOf(cfg)).toBeNull()
   })
 
+  it.each(["arguments[1]('fs')", "module.require('fs')"])(
+    'refuses to cache a CommonJS config that reaches require as %s (D-36)',
+    async (req) => {
+      // `arguments[1]` is `require` in a CommonJS module and never spells
+      // it: a config reading a file outside its closure this way replayed
+      // the old bytes after the file changed. CONTROL: `module.require`
+      // names the word, and was refused before.
+      const cfg = await write(
+        'packages/c/vx.config.js',
+        `module.exports = { tasks: { t: { exec: { command: 'echo ' + ${req}.readFileSync('/etc/hostname', 'utf8') } } } }\n`,
+      )
+      expect(await keyOf(cfg)).toBeNull()
+    },
+  )
+
   it('refuses when the impurity sits in an imported file, not the config', async () => {
     await write('shared/env.mjs', 'export const mode = process.env.MODE ?? "dev"\n')
     const cfg = await write(

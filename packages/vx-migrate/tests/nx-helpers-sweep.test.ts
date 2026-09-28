@@ -29,6 +29,21 @@ describe('expandNxInputs', () => {
     expect([got.files, got.todos]).toEqual([['src/**'], []])
   })
 
+  // @nx/vitest infers `{ json: "{workspaceRoot}/tsconfig.json", fields:
+  // ["compilerOptions"] }`; dropped, a compilerOptions edit was a hit.
+  it('a {json} input keys its whole file', () => {
+    const got = inputs([
+      { json: '{workspaceRoot}/tsconfig.json', fields: ['compilerOptions'] },
+      { json: '{projectRoot}/package.json' },
+      { json: 'tsconfig.base.json' },
+    ])
+    expect([got.files, got.wsFiles, got.todos]).toEqual([
+      ['package.json'],
+      ['tsconfig.json', 'tsconfig.base.json'],
+      [],
+    ])
+  })
+
   it('fileset, input and each fold-through object form', () => {
     const got = inputs(
       [
@@ -96,6 +111,18 @@ describe('mapNxOutputs', () => {
         'output "!{projectRoot}/dist/cache": vx outputs cannot exclude — the other outputs also save what it excludes',
       ],
     })
+  })
+
+  it('an output whose option is unset is dropped, as Nx drops it', () => {
+    for (const outputFile of [undefined, '', 0, false, null]) {
+      expect(
+        out(['{options.outputFile}', '{projectRoot}/dist'], 'packages/a', { outputFile }),
+      ).toEqual({
+        outFiles: ['dist'],
+        wsOutFiles: [],
+        todos: [],
+      })
+    }
   })
 
   it('a non-string option and an unknown token are reported', () => {

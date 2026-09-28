@@ -368,12 +368,15 @@ function serialise(node: DirNode, blobs: Blob[], seen: Set<string>): Digest {
 // without a client call, so the four messages whose bytes are load-bearing
 // are encoded here, field by field, per the REAPI schema.
 
+// Arithmetic, not bit operators: those are 32-bit, and a size of 4 GiB or
+// more encoded modulo 2^32 — a Digest naming other bytes (F-43). Exact to
+// 2^53, past any file.
 function varint(n: number): Uint8Array {
   const out: number[] = []
   let v = n
   while (v >= 0x80) {
-    out.push((v & 0x7f) | 0x80)
-    v >>>= 7
+    out.push((v % 0x80) | 0x80)
+    v = Math.floor(v / 0x80)
   }
   out.push(v)
   return new Uint8Array(out)
@@ -846,14 +849,19 @@ function decodeDigestBytes(buf: Uint8Array): Digest {
 
 function readVarintAt(buf: Uint8Array, at: number): [number, number] {
   let result = 0
+  let low = 0
   let shift = 0
   let i = at
   for (;;) {
     const byte = buf[i++]
-    if (byte === undefined) return [result >>> 0, i]
-    result |= (byte & 0x7f) << shift
+    if (byte === undefined) break
+    // Added, not OR-ed: a size of 4 GiB or more wrapped to 32 bits (F-43).
+    // Past 2^53 the value is a negative int32 sent as ten bytes (an exit
+    // code): its low 32 bits, which `| 0` reads back as the negative.
+    result += (byte & 0x7f) * 2 ** shift
+    if (shift < 32) low |= (byte & 0x7f) << shift
     if ((byte & 0x80) === 0) break
     shift += 7
   }
-  return [result >>> 0, i]
+  return [result <= Number.MAX_SAFE_INTEGER ? result : low >>> 0, i]
 }

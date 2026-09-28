@@ -41,7 +41,8 @@ check), history recording 12 ms, cache open 9 ms, and ~50 ms of process
 start + module load + exit outside the table. The 1.7 s cold run is the
 1000 `cp` commands.
 
-Reproduce: `bun packages/vx-bench/run.ts 1000 5`.
+Reproduce: `bun packages/vx-bench/run.ts 1000 5` (it prints the median
+and every rep; the best is the min).
 
 ### A second machine, same shape (2026-09-20)
 

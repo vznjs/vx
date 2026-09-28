@@ -379,7 +379,9 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
       const persistent = (exec as { persistent?: unknown }).persistent
       if (persistent !== undefined) {
         if (typeof persistent !== 'object' || persistent === null) {
-          throw new UserError(`${where}.exec.persistent must be an object (or omitted)`)
+          throw new UserError(
+            `${where}.exec.persistent must be an object (or omitted) — \`persistent: {}\`, or \`{ readyWhen: '<regex>' }\` to wait for a line`,
+          )
         }
         // The one nested object that had no unknown-key check while every
         // sibling did — and the failure it let through is the quiet kind:
@@ -451,7 +453,9 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
     }
     if (cache !== undefined) {
       if (typeof cache !== 'object' || cache === null) {
-        throw new UserError(`${where}.cache must be an object when present`)
+        throw new UserError(
+          `${where}.cache must be an object when present — \`cache: { inputs: { files: [...] }, outputs: { files: [...] } }\`, or no \`cache\` for a task that never caches`,
+        )
       }
       assertKnownFields(cache, CACHE_FIELDS, `${where}.cache`)
       const inputs = (cache as { inputs?: unknown }).inputs
@@ -697,6 +701,29 @@ export const REMOVED_FIELDS: ReadonlyMap<
   ],
 ])
 
+/**
+ * Another runner's spelling of a field vx has under another name, by the
+ * level that meets it (D-37): a Turbo `outputs: [...]` or Nx `command` on
+ * a task was refused as an unknown field that named neither the field
+ * nor where vx keeps it.
+ */
+const FOREIGN_FIELDS: ReadonlyMap<ReadonlySet<string>, Readonly<Record<string, string>>> = new Map([
+  [
+    TASK_FIELDS,
+    {
+      inputs: '`cache.inputs.files`',
+      outputs: '`cache.outputs.files`',
+      env: '`cache.inputs.env` (to key the task on a variable) or `exec.env` (to pass one)',
+      passThroughEnv: '`exec.env.passThrough`',
+      command: '`exec.command`',
+      cmd: '`exec.command`',
+      script: '`exec.command`',
+      persistent: '`exec.persistent: {}`',
+    },
+  ],
+  [EXEC_FIELDS, { cmd: '`command`', script: '`command`' }],
+])
+
 function assertKnownFields(value: object, allowed: ReadonlySet<string>, where: string): void {
   // `typeof [] === 'object'`, so an array reaches here and its indices read
   // as fields: `outputs: ['dist/**']` (Turbo's spelling) was refused as
@@ -717,10 +744,15 @@ function assertKnownFields(value: object, allowed: ReadonlySet<string>, where: s
       }
       // The nearest accepted spelling first: the list says what the level
       // takes, the hint says which one was meant.
+      const foreign = FOREIGN_FIELDS.get(allowed)?.[key]
       const near = nearest(key, allowed)
       throw new UserError(
         `${where} has unknown field "${key}" (allowed: ${[...allowed].sort().join(', ')})` +
-          (near === undefined ? '' : ` — did you mean ${near}?`),
+          (foreign !== undefined
+            ? ` — vx spells it ${foreign}`
+            : near === undefined
+              ? ''
+              : ` — did you mean ${near}?`),
       )
     }
   }

@@ -58,8 +58,10 @@ const hex = (b: Uint8Array): string => Buffer.from(b).toString('hex')
 const D = (hash: string, size_bytes: number) => ({ hash, size_bytes })
 
 describe('the encoders against protobufjs', () => {
-  it('a digest size at a varint boundary, and one past 2^31', () => {
-    for (const size of [128, 2 ** 31 + 5]) {
+  it('a digest size at a varint boundary, one past 2^31, and past 2^32', () => {
+    // Past 2^32 the size was encoded modulo 2^32 by 32-bit bit operators:
+    // a 5 GiB file's digest named 1 GiB (F-43).
+    for (const size of [128, 2 ** 31 + 5, 2 ** 32 + 5, 5 * 2 ** 30, 2 ** 40 + 3]) {
       expect(hex(encodeDigest(D('a', size)))).toBe(ref('Digest', D('a', size)))
     }
   })
@@ -196,6 +198,12 @@ describe('the decoders', () => {
   it('a digest size past two varint bytes survives the round trip', () => {
     const dir: Directory = { files: [file], directories: [], symlinks: [] }
     expect(decodeDirectory(encodeDirectory(dir)).files[0]!.digest).toEqual(D('h', 70_000))
+  })
+
+  it('a digest size past 2^32 survives the round trip (F-43)', () => {
+    const big = { ...file, digest: D('h', 5 * 2 ** 30 + 7) }
+    const dir: Directory = { files: [big], directories: [], symlinks: [] }
+    expect(decodeDirectory(encodeDirectory(dir)).files[0]!.digest).toEqual(D('h', 5 * 2 ** 30 + 7))
   })
 
   it('an explicit is_executable = 0 reads as false', () => {

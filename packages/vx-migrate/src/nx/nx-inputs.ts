@@ -2,7 +2,7 @@
 // the project's scope (nx.json's merged under its own); a path's tokens
 // interpolate as Nx's do, and it is a project glob when it lands in the
 // project, else a workspace one; `{ env }` and
-// `{ runtime }` map to their vx twins; `^x` is recorded for the mapper to
+// `{ runtime }` map to their vx twins, `{ json }` to its whole file; `^x` is recorded for the mapper to
 // resolve over the project graph (nx-upstream.ts). What vx folds through `dependsOn` already
 // (`dependentTasksOutputFiles`, `externalDependencies`) is a todo saying
 // so. Extracted from `buildTask` in item 606.
@@ -101,6 +101,14 @@ export function expandNxInputs(
         // nothing here (nx-examples' inferred `typecheck` carries both).
         if (o.dependencies === true) into.upstream.push({ name: o.fileset, of: 'deps' })
         else expand(o.fileset, seen)
+        return
+      }
+      if (typeof o.json === 'string') {
+        // `{ json, fields }` hashes only those fields; the whole file is a
+        // superset. Reported and dropped, a `compilerOptions` edit to the
+        // root tsconfig.json was a hit where Nx re-ran (@nx/vitest infers
+        // it, 2026-09-28).
+        expand(o.json.includes('{') ? o.json : `{workspaceRoot}/${o.json}`, seen)
         return
       }
       if (o.externalDependencies !== undefined) {

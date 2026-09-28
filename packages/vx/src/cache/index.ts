@@ -40,7 +40,9 @@ export {
   type WorkspaceFilesCache,
   cleanOutputPaths,
   ownOutputsSince,
+  ownWorkspaceOutputsSince,
   stampOutputs,
+  stampWorkspaceOutputs,
   type OutputStamp,
 } from './inputs.js'
 export {

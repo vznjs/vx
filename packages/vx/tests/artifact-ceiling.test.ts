@@ -69,9 +69,9 @@ describe('an output set past the artifact ceiling', () => {
     })
     expect(miss.ok).toBe(true)
     expect(miss.outcomes.map((o) => o.status)).toEqual(['success'])
-    // 64 KiB of output plus the tar's headers and stdout / sidecar entries.
+    // 64 KiB of output plus the tar's headers and stdout / sidecar / sum entries.
     expect(lines.filter((l) => l.includes('cache save failed'))).toEqual([
-      '[vx] cache save failed: big#build is not cached: its outputs pack to 67 KB, past the ' +
+      '[vx] cache save failed: big#build is not cached: its outputs pack to 68 KB, past the ' +
         '64 KB artifact ceiling a restore enforces — narrow cache.outputs.files',
     ])
     // No artifact and no temp left behind it.

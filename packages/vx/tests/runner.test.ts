@@ -1171,3 +1171,76 @@ describe('runPersistent — the rows its sweep asked for', () => {
     }
   })
 })
+
+describe('runCommand — the rows its sweep asked for', () => {
+  let dir: string
+  beforeEach(async () => {
+    dir = await mkdtemp(path.join(os.tmpdir(), 'vx-runcmd-'))
+  })
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true })
+  })
+
+  it('a missing working directory is a spawn failure, not a missing sh', async () => {
+    const r = await runCommand({
+      command: 'true',
+      cwd: path.join(dir, 'gone'),
+      env: { PATH: process.env.PATH ?? '' },
+    })
+    expect([r.exitCode, r.spawnFailed, r.stderr.includes('failed to spawn task')]).toEqual([
+      127,
+      true,
+      true,
+    ])
+    expect(r.stderr).not.toContain('Install a POSIX sh')
+  })
+
+  it.skipIf(process.platform === 'win32')(
+    'a timed-out command returns only once its group is gone',
+    async () => {
+      // The shell dies on the timeout's TERM; its child ignores it. runCommand
+      // waits out the grace for the group, then SIGKILLs what is left.
+      const prev = process.env['VX_KILL_GRACE_MS']
+      process.env['VX_KILL_GRACE_MS'] = '400'
+      try {
+        const r = await runCommand({
+          command: `sh -c 'trap "" TERM; exec sleep 30' & wait`,
+          cwd: dir,
+          env: { PATH: process.env.PATH ?? '' },
+          timeoutMs: 100,
+        })
+        expect(r.timedOut).toBe(true)
+        expect(r.durationMs).toBeGreaterThanOrEqual(400)
+      } finally {
+        if (prev === undefined) delete process.env['VX_KILL_GRACE_MS']
+        else process.env['VX_KILL_GRACE_MS'] = prev
+      }
+    },
+    10_000,
+  )
+
+  it.skipIf(process.platform === 'win32')(
+    'a finished command is struck from the guard: what it left runs past a vx kill -9',
+    async () => {
+      const runner = path.resolve(import.meta.dir, '..', 'src', 'exec', 'runner.ts')
+      const script = `
+        const { runCommand } = await import(${JSON.stringify(runner)})
+        await runCommand({
+          command: '(sleep 1; echo late > late.txt) >/dev/null 2>&1 & echo up > up.txt',
+          cwd: ${JSON.stringify(dir)},
+          env: { PATH: process.env.PATH ?? '' },
+        })
+        process.kill(process.pid, 'SIGKILL')
+      `
+      const proc = Bun.spawn([process.execPath, '-e', script], {
+        stdout: 'ignore',
+        stderr: 'ignore',
+      })
+      expect(await proc.exited).toBe(137)
+      expect(await Bun.file(path.join(dir, 'up.txt')).exists()).toBe(true)
+      await Bun.sleep(2_000)
+      expect(await Bun.file(path.join(dir, 'late.txt')).exists()).toBe(true)
+    },
+    20_000,
+  )
+})

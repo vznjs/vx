@@ -600,3 +600,14 @@ a ready server at `timeoutMs` (held as a pair).
 
 - Rows: `runner.test.ts` › runPersistent — the rows its sweep asked for
   (seven).
+
+B-30. Sweep of `runCommand` and `spawnFailureText`, 19 mutants: 13
+caught, 1 unobservable (a timed-out run aborting its streams: `settle`
+has reaped the group, so a drain ends at once), 1 unreachable in a row
+(the out-of-fds hint), 4 now held: a missing cwd blamed on `sh`, the
+`spawnFailed` flag, a timed-out run returning before its group was gone,
+and a finished run left on the guard's list, so a vx `kill -9` killed
+what the task had left running.
+
+- Rows: `runner.test.ts` › runCommand — the rows its sweep asked for
+  (three).

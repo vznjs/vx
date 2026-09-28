@@ -40,6 +40,16 @@ const text = (s: string) => new TextEncoder().encode(s)
 const withResult = (resultBytes: Uint8Array) => ld(1, resultBytes)
 
 describe('ExecuteResponse, from protobufjs', () => {
+  it('an output size past 2^32 decodes whole, not modulo 2^32 (F-43)', () => {
+    const decoded = decodeExecuteResponseBytes(
+      encode({ result: { outputFiles: [{ path: 'huge', digest: D('h', 5 * 2 ** 30 + 7) }] } }),
+    )
+    expect(decoded.result?.output_files?.[0]?.digest).toEqual({
+      hash: 'h',
+      size_bytes: 5 * 2 ** 30 + 7,
+    })
+  })
+
   it('a negative exit code, the stderr digest, a size past 16 bits, and the execution timestamps', () => {
     const decoded = decodeExecuteResponseBytes(
       encode({

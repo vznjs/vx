@@ -39,6 +39,7 @@ import {
 } from '../src/cache/archive.js'
 import { tarPack } from '../src/cache/tar-stream.js'
 import { streamOf } from './helpers/stream.js'
+import { withSum } from './helpers/artifact-sum.js'
 
 // ─── tar fixture helpers (same pattern as cache-baseline.test.ts) ────
 
@@ -102,10 +103,10 @@ function tarWithEntry(name: string, body: Uint8Array, typeFlag = '0'): Uint8Arra
 
 /** The composition the cache uses, over odd-sized chunks so entry boundaries never line up. */
 async function restore(bytes: Uint8Array, dest: string, wsDest?: string): Promise<Set<string>> {
-  return await extractArtifactStream(streamOf(bytes), dest, wsDest)
+  return await extractArtifactStream(streamOf(await withSum(bytes)), dest, wsDest)
 }
 
-const scan = (bytes: Uint8Array) => scanArtifact(streamOf(bytes))
+const scan = async (bytes: Uint8Array) => scanArtifact(streamOf(await withSum(bytes)))
 
 // ─── Tests ──────────────────────────────────────────────────────────
 
@@ -939,7 +940,7 @@ describe("the sidecar carries the producing execution's usage", () => {
   // so a machine that never ran the task (a fresh runner on a remote hit)
   // still learns it — and every wire ships the bytes verbatim, so no seam
   // moves. Additive: an artifact without it reads exactly as before.
-  const scan = (bytes: Uint8Array) => scanArtifact(streamOf(bytes))
+  const scan = async (bytes: Uint8Array) => scanArtifact(streamOf(await withSum(bytes)))
   const usage = { cpuMs: 12_345, peakRssBytes: 640 * 1024 * 1024 }
 
   it('round-trips cpuMs and peakRssBytes through pack and scan', async () => {

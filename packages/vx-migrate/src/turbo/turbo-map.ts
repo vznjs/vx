@@ -14,7 +14,7 @@ import path from 'node:path'
 import { isLiteralPattern, type ProjectMeta, UserError } from '@vzn/vx'
 import { minimatchToVx } from '../glob-grammar.js'
 import { shellQuote } from '../nx-command.js'
-import { scriptCommand } from '../script-command.js'
+import { scriptCommand, yarnPnp } from '../script-command.js'
 import { resolveSharedOutputs } from '../shared-outputs.js'
 import { packageScripts, relPosix } from '../paths.js'
 import { pruneOrphanPersistentNotes } from '../persistent-note.js'
@@ -511,6 +511,7 @@ export async function mapTurboWorkspace(
     )
   }
   const rootCfg = withGlobal(await readTurboJson(rootFile, root))
+  const pnp = await yarnPnp(root)
   const rootTasks = tasksOf(rootCfg)
 
   // Turbo 1 lists an env var as `$NAME` among `globalDependencies` (and a
@@ -639,7 +640,7 @@ export async function mapTurboWorkspace(
         buildTask(
           name,
           defFor(name)!,
-          override ?? scriptCommand(name, script as string, scripts),
+          override ?? scriptCommand(name, script as string, scripts, pnp),
           own,
           defFor,
           emitted,

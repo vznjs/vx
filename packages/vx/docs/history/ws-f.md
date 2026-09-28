@@ -441,3 +441,26 @@ what the file has left, and with no room it is skipped with a warning.
 Row red without the fix (the file reached 1 948 576 bytes). Tests that
 inject `append` no longer read a real `/tmp` path's size (a new `sizeOf`
 seam; a 1 MB `/tmp/sumfile.md` left by an earlier run turned them red).
+
+F-43. vx-reapi encoded and decoded protobuf varints with 32-bit bit
+operators, so a size of 4 GiB or more went modulo 2^32: a 5 GiB input
+file's Digest named 1 GiB (an input root the server holds under other
+bytes), and a 5 GiB output decoded short. Sizes are now exact to 2^53
+(arithmetic, not bit operators); a ten-byte varint past that (a
+negative int32, the exit code) still reads back as its low 32 bits.
+Rows against protobufjs and round trips, red without the fix; the
+negative exit code row holds both ways.
+
+F-45. vx-otel declined whenever no traces endpoint was set, so a
+pipeline that set only `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` (or the
+logs one) exported nothing and said nothing, though each signal ships
+only to its own url. The plugin now declines only when no signal has an
+endpoint; one without its own stays off. Row red without the fix.
+
+F-44. vx-reapi read a compressed ByteStream write the server answered
+with `committed_size: -1` as a short write and failed the upload. The
+spec says a server that already holds the blob (or sees another client
+upload it at once) ends a compressed write early with exactly that, and
+the client should not retry: two actions sharing an input could fail
+each other. `-1` on a compressed write is now done. The fake server can
+answer it; row red without the fix.

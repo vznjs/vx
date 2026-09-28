@@ -49,7 +49,7 @@ const textOf = (file: string): Promise<string> =>
 
 /**
  * Everything the mapping reads: the root's and each package's
- * `turbo.json` / `turbo.jsonc`, and every package manifest.
+ * `turbo.json` / `turbo.jsonc`, every package manifest and `.yarnrc.yml`.
  */
 async function run(root: string, metas: readonly ProjectMeta[]): Promise<AdoptionRun> {
   const dirs = [root, ...metas.map((m) => m.dir)]
@@ -61,6 +61,7 @@ async function run(root: string, metas: readonly ProjectMeta[]): Promise<Adoptio
     reads: [
       JSON.stringify(dirs),
       ...configs,
+      await textOf(path.join(root, '.yarnrc.yml')),
       JSON.stringify(metas.map((m) => [m.name, m.dir, m.packageJson])),
     ],
     map: () => mapAll(root, metas),
