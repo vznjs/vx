@@ -193,6 +193,13 @@ for vite and astro packages. 45.1 s cold against 47.3 s; warm Turbo
 wins (185 ms restore, 126 ms no-op against 859 and 770 ms) because
 one task re-runs every time under vx (lead A below).
 
+N-18. `nx()` on analogjs/analog (40cc8b4, Nx 23.2.1): an integrated Nx
+repo, where `pnpm-workspace.yaml` lists only `apps/docs-analog` and
+every library is an Nx project by its `project.json` alone. vx finds
+projects only through the package manager, so `nx()` attached one of
+the 21 `build` tasks Nx plans and named the other 31 projects as
+unattachable. No benchmark: nothing comparable runs. Lead D below.
+
 ## Candidates not built (2026-09-28)
 
 - Lerna without Nx: `lerna run <s>` (lerna 10.0.1, `prepNxOptions`)
@@ -279,3 +286,12 @@ one task re-runs every time under vx (lead A below).
   so the save is withheld on every run (550–900 ms per no-op) where
   Turbo caches it. A digest compare for those paths would decide it by
   content.
+- D / coordinator, for `nx()` (Turbo and Nx are the only adoption
+  paths, owner 2026-09-28): an integrated Nx repo does not run under
+  vx. analogjs/analog (40cc8b4) keeps its libraries out of
+  `pnpm-workspace.yaml`; each is an Nx project by `project.json`, and
+  some (`@analogjs/router`) have a `package.json` no workspace lists.
+  `nx()` attaches 1 of Nx's 21 `build` tasks. It needs the discovery
+  hook asked for above (a plugin names project directories), taking a
+  directory with a `project.json` and no `package.json` too; `nx()`
+  would name every graph node's `root`.
