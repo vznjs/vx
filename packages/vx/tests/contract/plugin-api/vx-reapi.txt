@@ -1,0 +1,315 @@
+== class ReapiClient (src/wire.ts)
+export class ReapiClient {
+  readonly metaTimeoutMs: number
+  actionId
+  toolInvocationId
+  constructor(opts: ReapiOptions)
+  async capabilities(): Promise<ServerCapabilities>
+  async negotiate(prefer?: {
+    digestFunction?: DigestFunctionName
+    compression?: boolean
+  }): Promise<void>
+  get digest(): DigestFunctionName
+  get compressionEnabled(): boolean
+  digestOf(data: Uint8Array): Digest
+  async queryWriteStatus(
+    resourceName: string,
+  ): Promise<{ committedSize: number; complete: boolean } | null>
+  async batchUpdateBlobs(
+    blobs: ReadonlyArray<{ digest: Digest; data: Uint8Array }>,
+  ): Promise<void>
+  async batchReadBlobs(
+    digests: readonly Digest[],
+    maxBatchBytes = 0,
+  ): Promise<Map<string, Uint8Array>>
+  async uploadBlobs(
+    blobs: ReadonlyArray<{ digest: Digest; data: Uint8Array }>,
+    maxBatchBytes = 0,
+  ): Promise<void>
+  async findMissingBlobs(digests: readonly Digest[]): Promise<Digest[]>
+  async getActionResult(
+    action: Digest,
+    inline?: { stdout: boolean; files: readonly string[] },
+  ): Promise<ActionResult | null>
+  async updateActionResult(action: Digest, result: ActionResult): Promise<void>
+  async writeBlob(digest: Digest, source: Uint8Array | Blob): Promise<void>
+  async readBlob(digest: Digest): Promise<Uint8Array | null>
+  async readBlobStream(digest: Digest): Promise<ReadableStream<Uint8Array> | null>
+  async execute(
+    actionDigest: Digest,
+    opts: ExecuteOptions = {},
+    signal?: AbortSignal,
+  ): Promise<Operation>
+  waitExecution(
+    operationName: string,
+    signal?: AbortSignal,
+    onStage?: (stage: string) => void,
+  ): Promise<Operation>
+  async splitBlob(blobDigest: Digest): Promise<{ chunks: Digest[]; chunkingFunction: string }>
+  async spliceBlob(chunkDigests: readonly Digest[], expected?: Digest): Promise<Digest>
+  async getTree(rootDigest: Digest): Promise<Directory[]>
+  close(): void
+}
+== class ReapiRemoteCache (src/cache.ts)
+export class ReapiRemoteCache {
+  readonly endpoint: string
+  constructor(opts: ReapiOptions)
+  async has(hash: string): Promise<boolean>
+  async get(hash: string): Promise<{ body: Response; durationMs: number | undefined } | null>
+  async put(hash: string, body: Blob, meta: { durationMs: number }): Promise<void>
+  close(): void
+}
+== const CHUNK_BYTES (src/wire.ts)
+export const CHUNK_BYTES = 65535
+== const COMPRESSOR (src/merkle.ts)
+export const COMPRESSOR = { IDENTITY: 0, ZSTD: 1, DEFLATE: 2, BROTLI: 3 } as const
+== const DIGEST_FUNCTION (src/merkle.ts)
+export const DIGEST_FUNCTION = {
+  UNKNOWN: 0,
+  SHA256: 1,
+  SHA1: 2,
+  MD5: 3,
+  VSO: 4,
+  SHA384: 5,
+  SHA512: 6,
+  MURMUR3: 7,
+  BLAKE3: 8,
+} as const
+== const MIN_BUN (src/wire.ts)
+export const MIN_BUN = [1, 4, 0] as const
+== const OUTPUT_DIRECTORY_FORMAT (src/merkle.ts)
+export const OUTPUT_DIRECTORY_FORMAT = {
+  TREE_ONLY: 0,
+  DIRECTORY_ONLY: 1,
+  TREE_AND_DIRECTORY: 2,
+} as const
+== const SAFE_CHUNK_BYTES (src/wire.ts)
+export const SAFE_CHUNK_BYTES = 65535
+== function acceptsTask (src/executor.ts)
+export function acceptsTask(task: TaskPlacement): boolean
+== function assertBunSupportsChunking (src/wire.ts)
+export function assertBunSupportsChunking(version: string = Bun.version): void
+== function buildInputTree (src/merkle.ts)
+export async function buildInputTree(args: {
+  workspaceRoot: string
+  paths: readonly string[]
+  readFile?: (abs: string) => Promise<Uint8Array>
+  ensureDirs?: readonly string[]
+  fileGrafts?: readonly FileGraft[]
+  symlinkGrafts?: readonly { path: string; target: string }[]
+  treeGrafts?: readonly TreeGraft[]
+  expected?: ReadonlyMap<string, string>
+}): Promise<InputTree>
+== function canDigest (src/merkle.ts)
+export function canDigest(fn: DigestFunctionName): boolean
+== function decodeDirectory (src/merkle.ts)
+export function decodeDirectory(buf: Uint8Array): Directory
+== function decodeTree (src/merkle.ts)
+export function decodeTree(buf: Uint8Array): { root?: Directory; children: Directory[] }
+== function digestWith (src/merkle.ts)
+export function digestWith(fn: DigestFunctionName, data: Uint8Array): Digest
+== function encodeAction (src/merkle.ts)
+export function encodeAction(a: {
+  commandDigest: Digest
+  inputRootDigest: Digest
+  timeoutSeconds?: number
+  doNotCache?: boolean
+  salt?: Uint8Array
+  platform?: ReadonlyArray<{ name: string; value: string }>
+}): Uint8Array
+== function encodeCommand (src/merkle.ts)
+export function encodeCommand(c: CommandSpec): Uint8Array
+== function encodeDigest (src/merkle.ts)
+export function encodeDigest(d: Digest): Uint8Array
+== function encodeDirectory (src/merkle.ts)
+export function encodeDirectory(dir: Directory): Uint8Array
+== function encodeNodeProperties (src/merkle.ts)
+export function encodeNodeProperties(np: NodeProperties): Uint8Array
+== function globToOutputPath (src/executor.ts)
+export function globToOutputPath(glob: string): string
+== function outputPathSets (src/executor.ts)
+export function outputPathSets(
+  req: ExecuteRequest,
+  workingDirectory: string,
+  projectRel = '',
+): OutputPathSets
+== function reapi (src/index.ts)
+export function reapi(options: ReapiPluginOptions = {}): VxPlugin
+== function reapiExecutor (src/executor.ts)
+export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = {}): TaskExecutor
+== function sha256 (src/merkle.ts)
+export function sha256(data: Uint8Array): Digest
+== type ActionResult (src/wire.ts)
+export interface ActionResult {
+  exit_code?: number
+  output_files?: Array<{
+    path: string
+    digest: Digest
+    is_executable?: boolean
+    contents?: Uint8Array
+  }>
+  output_directories?: Array<{ path: string; tree_digest: Digest }>
+  output_symlinks?: Array<{ path: string; target: string }>
+  stdout_digest?: Digest
+  stdout_raw?: Uint8Array
+  stderr_digest?: Digest
+  stderr_raw?: Uint8Array
+  execution_metadata?: {
+    worker?: string
+    execution_start_timestamp?: unknown
+    execution_completed_timestamp?: unknown
+  }
+}
+== type Blob (src/merkle.ts)
+export interface Blob {
+  digest: Digest
+  data: Uint8Array
+}
+== type CommandSpec (src/merkle.ts)
+interface CommandSpec {
+  arguments: readonly string[]
+  environmentVariables: ReadonlyArray<{ name: string; value: string }>
+  outputPaths: readonly string[]
+  workingDirectory: string
+  platform: ReadonlyArray<{ name: string; value: string }>
+  legacyOutputFiles?: readonly string[]
+  legacyOutputDirectories?: readonly string[]
+  outputNodeProperties?: readonly string[]
+  outputDirectoryFormat?: number
+}
+== type Digest (src/wire.ts)
+export interface Digest {
+  hash: string
+  size_bytes: number
+}
+== type DigestFunctionName (src/merkle.ts)
+export type DigestFunctionName = keyof typeof DIGEST_FUNCTION
+== type Directory (src/wire.ts)
+export interface Directory {
+  files: FileNode[]
+  directories: DirectoryNode[]
+  symlinks: SymlinkNode[]
+}
+== type DirectoryNode (src/wire.ts)
+export interface DirectoryNode {
+  name: string
+  digest: Digest
+}
+== type ExecuteOptions (src/wire.ts)
+export interface ExecuteOptions {
+  skipCacheLookup?: boolean
+  inlineStdout?: boolean
+  inlineStderr?: boolean
+  inlineOutputFiles?: readonly string[]
+  priority?: number
+  resultsCachePriority?: number
+  onStage?: (stage: string) => void
+}
+== type ExecuteResponse (src/wire.ts)
+export interface ExecuteResponse {
+  result?: ActionResult
+  cached_result?: boolean
+  status?: { code?: number; message?: string }
+  message?: string
+}
+== type FileGraft (src/merkle.ts)
+export interface FileGraft {
+  path: string
+  digest: Digest
+  isExecutable: boolean
+}
+== type FileNode (src/wire.ts)
+export interface FileNode {
+  name: string
+  digest: Digest
+  is_executable: boolean
+  node_properties?: { unixMode?: number; mtimeMs?: number }
+}
+== type InputTree (src/merkle.ts)
+export interface InputTree {
+  root: Digest
+  blobs: Blob[]
+  fileCount: number
+  shadowed: string[]
+  moved: string[]
+}
+== type NodeProperties (src/merkle.ts)
+export interface NodeProperties {
+  unixMode?: number
+  mtimeMs?: number
+}
+== type Operation (src/wire.ts)
+export interface Operation {
+  name: string
+  done: boolean
+  error?: { code?: number; message?: string }
+  response?: { type_url?: string; value?: Uint8Array }
+  metadata?: { type_url?: string; value?: Uint8Array }
+}
+== type OutputPathSets (src/executor.ts)
+export interface OutputPathSets {
+  outputPaths: string[]
+  legacyFiles: string[]
+  legacyDirectories: string[]
+}
+== type ReapiExecutorOptions (src/executor.ts)
+export interface ReapiExecutorOptions {
+  executeTimeoutMs?: number
+  platform?: Record<string, string>
+  capacity?: number
+  priority?: number
+  salt?: string
+  warn?: (message: string) => void
+}
+== type ReapiOptions (src/wire.ts)
+export interface ReapiOptions {
+  endpoint: string
+  instanceName?: string
+  headers?: Record<string, string>
+  tls?: boolean
+  tlsCaPem?: string
+  tlsClientCertPem?: string
+  tlsClientKeyPem?: string
+  toolName?: string
+  toolVersion?: string
+  correlatedInvocationsId?: string
+  onWarn?: (message: string) => void
+  callTimeoutMs?: number
+  metaTimeoutMs?: number
+  chunkBytes?: number
+}
+== type ReapiPluginOptions (src/index.ts)
+export interface ReapiPluginOptions extends Partial<ReapiOptions> {
+  executeTimeoutMs?: number
+  endpoint?: string
+  execute?: boolean
+  platform?: Record<string, string>
+  capacity?: number
+  tlsCertificate?: string
+  tlsClientCertificate?: string
+  tlsClientKey?: string
+}
+== type ServerCapabilities (src/wire.ts)
+export interface ServerCapabilities {
+  digestFunctions: string[]
+  maxBatchBytes: number
+  acUpdateEnabled: boolean
+  execEnabled: boolean
+  supportedCompressors: string[]
+  supportedBatchCompressors: string[]
+  symlinkAbsolutePathStrategy: string
+  splitBlobSupport: boolean
+  spliceBlobSupport: boolean
+}
+== type SymlinkNode (src/wire.ts)
+export interface SymlinkNode {
+  name: string
+  target: string
+}
+== type TreeGraft (src/merkle.ts)
+export interface TreeGraft {
+  path: string
+  root: Directory
+  children: Directory[]
+  childDigests?: readonly string[]
+}

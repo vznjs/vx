@@ -1,0 +1,44 @@
+== function admits (src/index.ts)
+export function admits(
+  id: string,
+  running: readonly string[],
+  reservations: ReadonlyMap<string, ResourceEstimate>,
+  budgets: Budgets,
+): boolean
+== function criticalPathPriorities (src/critical-path.ts)
+export function criticalPathPriorities(
+  nodes: readonly TaskNode[],
+  history: HistoryTable,
+  assume: Readonly<Record<string, number>> = {},
+): ReadonlyMap<string, number>
+== function resourceEstimates (src/index.ts)
+export function resourceEstimates(
+  nodes: ReadonlyMap<string, TaskNode>,
+  history: HistoryTable,
+  headroom = DEFAULT_HEADROOM,
+): ReadonlyMap<string, ResourceEstimate>
+== function scheduleHistoryPlugin (src/index.ts)
+export function scheduleHistoryPlugin(options: ScheduleHistoryOptions = {}): VxPlugin
+== function withDeclared (src/index.ts)
+export function withDeclared(
+  learned: ReadonlyMap<string, ResourceEstimate>,
+  declared: Readonly<Record<string, ResourceEstimate>> | undefined,
+): ReadonlyMap<string, ResourceEstimate>
+== type Budgets (src/index.ts)
+export interface Budgets {
+  readonly cpus: number
+  readonly memory: number
+}
+== type ResourceEstimate (src/index.ts)
+export interface ResourceEstimate {
+  readonly cpus?: number
+  readonly memory?: number
+}
+== type ScheduleHistoryOptions (src/index.ts)
+export interface ScheduleHistoryOptions {
+  readonly window?: number
+  readonly resources?: false | { readonly headroom?: number }
+  readonly memory?: number
+  readonly reservations?: Readonly<Record<string, ResourceEstimate>>
+  readonly assume?: Readonly<Record<string, number>>
+}

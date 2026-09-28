@@ -256,23 +256,62 @@ function resolve(file: string, name: string, seen = new Set<string>()): Declarat
   return undefined
 }
 
+/** `import * as X from '…'` in `m`: X → module. */
+function namespaces(m: Module): Map<string, string> {
+  const out = new Map<string, string>()
+  for (const b of m.lines.join('\n').matchAll(/^import \* as ([\w$]+) from '([^']+)'/gm)) {
+    const target = resolveSpecifier(m.file, b[2]!)
+    if (target !== undefined) out.set(b[1]!, target)
+  }
+  return out
+}
+
 /**
- * The surface `entry` exports: every declaration it re-exports, and every
+ * Every declaration `file` exports: its own `export function|const|class|type…`,
+ * `export {…}` with or without `from`, and `export *`. A namespace it
+ * re-exports (`import * as x` then `export { x }`) contributes that
+ * module's exports.
+ */
+function exportedDeclarations(file: string, seen = new Set<string>()): Declaration[] {
+  if (seen.has(file)) return []
+  seen.add(file)
+  const m = load(file)
+  const text = m.lines.join('\n')
+  const out: Declaration[] = []
+  const add = (name: string, from: string): void => {
+    const ns = namespaces(load(from)).get(name)
+    if (ns !== undefined) return void out.push(...exportedDeclarations(ns, seen))
+    const d = resolve(from, name)
+    if (d === undefined) throw new Error(`${name}: exported from ${from} but declared nowhere`)
+    out.push(d)
+  }
+  for (const line of m.lines) {
+    const d = line.startsWith('export ') ? DECL.exec(line) : null
+    if (d !== null) add(d[5]!, file)
+  }
+  for (const b of text.matchAll(/^export (?:type )?\{([^}]*)\}( from '[^']+')?/gm)) {
+    for (const raw of b[1]!.split(',')) {
+      const spec = raw.trim().replace(/^type /, '')
+      if (spec === '') continue
+      const [orig, local = orig] = spec.split(/ as /).map((x) => x.trim())
+      if (b[2] === undefined) add(orig!, file)
+      else {
+        const [name, target] = bindings(m).get(local!)!
+        add(name, target)
+      }
+    }
+  }
+  for (const t of starExports(m)) out.push(...exportedDeclarations(t, seen))
+  return out
+}
+
+/**
+ * The surface `entry` exports: every declaration it exports, and every
  * type those name, transitively. Keyed `kind name (file)`, sorted.
  */
 export function surfaceOf(entry: string, root: string): Map<string, string[]> {
   const out = new Map<string, string[]>()
-  const queue: Array<[string, Declaration]> = []
-  const exported = [...bindings(load(entry)).keys()].filter((local) =>
-    new RegExp(`^export (?:type )?\\{[^}]*\\b${local}\\b[^}]*\\} from`, 'm').test(
-      load(entry).lines.join('\n'),
-    ),
-  )
-  for (const name of exported) {
-    const d = resolve(entry, name)
-    if (d === undefined) throw new Error(`${name}: exported from ${entry} but declared nowhere`)
-    queue.push([name, d])
-  }
+  const queue: Array<[string, Declaration]> = exportedDeclarations(entry).map((d) => [d.name, d])
   const done = new Set<string>()
   while (queue.length > 0) {
     const [, d] = queue.shift()!

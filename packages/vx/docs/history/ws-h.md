@@ -301,6 +301,17 @@ line; that mutant turns it red. The contract table names the record for
 the three outputs. `vx mcp`'s tools, the fourth output that table names,
 are still held only by name (lead for F).
 
+## H-25: each plugin package's exports are a contract record
+
+Core's exports were recorded (`package-api.txt`) and the plugin packages'
+were not: renaming `reapi()`'s options or dropping `vx-lockfile`'s `bun()`
+passed every test. `tests/contract-plugin-api.unsafe.test.ts` records each
+package with an `exports` entry in `tests/contract/plugin-api/<package>.txt`,
+and `api-surface.ts` now reads an entry's own declarations, `export *` and
+re-exported namespaces (core's record is unchanged). The API-break law
+diffs these records against the last tag too: a line dropped from
+`vx-mcp.txt` under a probe tag turned it red.
+
 ## Leads for other streams
 
 - **F:** `vx mcp`'s tools are a frozen 1.0 output (`versioning-1.0.md`), held only by name (`server.test.ts`): their input schemas and result shapes have no record.
