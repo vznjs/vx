@@ -77,5 +77,4 @@ plugin may throw its own class named `UserError` without importing core's.
 
 `isExecutableMissing(err)` is Bun's `ENOENT` for a spawn that could not
 run at all, and `gitSpawnRefusal(cwd)` the one `UserError` for a git that
-is not on PATH — the input enumeration, `--affected` and the watch judge
-all say it (item 241): install git, not "git init".
+is not on PATH — the input enumeration and `--affected` say it (item 241): install git, not "git init".

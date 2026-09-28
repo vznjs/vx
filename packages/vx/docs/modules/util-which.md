@@ -45,7 +45,8 @@ export function shellArgv(script: string): string[]
 ## Not here
 
 The `cache.inputs.runtime` probe (`cache/inputs.ts`) still spawns a
-bare `sh`, against vx's ambient PATH (on Windows, `shellArgv`).
+bare `sh`, against vx's ambient PATH led by the task's
+`node_modules/.bin` (on Windows, `shellArgv`).
 
 ## Tests
 

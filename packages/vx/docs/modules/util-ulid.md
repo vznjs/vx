@@ -5,8 +5,8 @@
 Stamp every `vx run` invocation with a sortable, collision-resistant
 id (`run_id`) that's shared across every task in that invocation.
 It keys the `invocations` header row (`run_id`) and every `runs` row
-of that invocation, so analytics queries group by run and range-scan
-a time window on the id column with no index on the time column.
+of that invocation, so queries group by run and id order is time
+order.
 
 ## Public surface
 
@@ -16,7 +16,8 @@ export function ulid(): string
 
 A thin wrapper over `Bun.randomUUIDv7()`: a 36-character UUIDv7 in the
 standard hex-with-hyphens form (RFC 9562) — a 48-bit millisecond
-timestamp leads, 74 bits of randomness fill the rest. The function
+timestamp leads, then a 12-bit counter (random start each
+millisecond) and 62 random bits. The function
 keeps its old name; the value has not been a Crockford-base32 ULID
 since the hand-rolled generator gave way to Bun's built-in, which
 covers the same guarantees with zero custom code.
@@ -25,7 +26,7 @@ covers the same guarantees with zero custom code.
 
 - **Lexicographically sortable** by time (millisecond resolution):
   later ids sort after earlier ones.
-- **Collision-resistant** under parallelism — 74 bits of randomness
+- **Collision-resistant** under parallelism — 62 random bits
   is plenty for the "two `vx run` invocations within the same ms"
   case.
 - **No dependencies, no custom code.**

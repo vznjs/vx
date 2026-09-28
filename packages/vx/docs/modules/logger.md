@@ -69,8 +69,8 @@ the mode; `ci: true` whenever `CI` is truthy.
 
 ## Default logger behavior by mode
 
-- **`full`** — frames for executed work / failures / skips,
-  one-liners for quiet cache hits, frames for hits with replayed
+- **`full`** — frames for executed work / failures,
+  one-liners for skips and quiet cache hits, frames for hits with replayed
   stdout. With `gha`, non-failed blocks are wrapped in
   `::group::<id> (<outcome word> <duration>)` … `::endgroup::`;
   failed blocks stay ungrouped and are preceded by
@@ -79,8 +79,8 @@ the mode; `ci: true` whenever `CI` is truthy.
   reason, `failed (timed out, exit 143)`; a persistent task that never
   became ready, `never ready: …`; a sandboxed task its violation count).
 - **`focused`** — requested non-group nodes stream stdout/stderr raw
-  and live (cache-hit replay included); a quiet hit prints the hit
-  one-liner; a skipped requested task prints the skipped one-liner
+  and live (cache-hit replay included); a quiet hit prints a full
+  frame; a skipped requested task prints the skipped one-liner
   with its blocker (`• blocked by lib#build`). Dependency-pulled
   nodes are silent on success/hit and fully framed on failure.
 - **`broad`** — executed tasks print one
