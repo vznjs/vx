@@ -674,3 +674,17 @@ packages/core`) selects the dependent whose `file:../lib` spec named
   `tests/config-eval.test.ts`, in a child that exits itself: the named
   refusal at 300 ms and `process.exit` given back; red without the race
   (killed), and the guard's release caught by its mutant.
+- **D-67** Failure class: a getter in a config. A read of the config
+  called it each time (`vx show` printed `echo read-3` for a counting
+  `get command()`), so the key, the schema check and the command could
+  each see another value, and a throwing one surfaced as vx's own stack
+  with the `?vx-held=` query in it. The JSON-data walk reads each
+  property by descriptor and refuses a getter or setter by path, never
+  calling it, on both paths (`nonJsonPaths` is the workers' too). Cost:
+  2.1 to 4.7–5.2 ms per 1,000 configs in the walk (per-key descriptor;
+  one `getOwnPropertyDescriptors` per object was 8.1); the warm path
+  calls the walk zero times (counted on the 1,000-project bench). Rows:
+  three KINDS entries of `tests/config-eval.test.ts` (a varying getter,
+  a throwing one, a setter alone), each on both paths, red without the
+  fix, the setter branch caught by its mutant; the row that held a
+  throwing read in the worker now uses a Proxy trap, which still throws.

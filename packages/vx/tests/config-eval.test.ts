@@ -478,16 +478,17 @@ describe('evaluateConfigFresh: errors cross the boundary', () => {
     expect(viaWorker?.name).toBe('TypeError')
   })
 
-  it("rejects with the getter's own message when reading the config throws, instead of hanging", async () => {
+  it("rejects with the trap's own message when reading the config throws, instead of hanging", async () => {
     // The worker reads every value before it replies (the JSON-data walk,
-    // then `JSON.stringify`), so a throwing getter throws there. It must be
+    // then `JSON.stringify`), so a throwing read throws there. It must be
     // caught and travel back as an error: an uncaught one posts no reply at
     // all and leaves the caller waiting out the full deadline. (A cyclic
     // config and a bigint, the two throws this row held before item 701,
-    // are now refused by name on both paths — below.)
-    const body = `export default { get tasks() { throw new Error('getter says no') } }\n`
+    // and a getter, since D-67, are now refused by name on both paths —
+    // below. A proxy's trap still throws in the walk.)
+    const body = `export default new Proxy({ tasks: {} }, { getOwnPropertyDescriptor() { throw new Error('trap says no') } })\n`
     expect(await settleOrHang(evaluateConfigFresh(await write(body)), 5000)).toBe(
-      'REJECTED getter says no',
+      'REJECTED trap says no',
     )
   })
 
@@ -927,6 +928,26 @@ describe('a config is JSON data, on every path (item 701)', () => {
       `export default new Map()\n`,
       'the default export',
       'an instance of Map',
+    ],
+    // D-67: a getter is code. Read three times per load, it could answer
+    // the key, the check and the command differently.
+    [
+      'a getter',
+      `let n = 0\nexport default { tasks: { build: { exec: { get command() { return 'echo ' + ++n } } } } }\n`,
+      'tasks.build.exec.command',
+      'a getter',
+    ],
+    [
+      'a getter that throws, never called',
+      `export default { tasks: { build: { get exec() { throw new Error('called') } } } }\n`,
+      'tasks.build.exec',
+      'a getter',
+    ],
+    [
+      'a setter with no getter',
+      `export default { tasks: { build: { exec: { command: 'true' }, set description(v) {} } } }\n`,
+      'tasks.build.description',
+      'a setter',
     ],
   ]
 

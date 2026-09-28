@@ -51,8 +51,10 @@ config through a worker that hands it back as JSON, so a value JSON
 cannot carry would be dropped, rewritten or refused depending on the
 path. vx refuses it on every path, before the schema: a function, a
 symbol, a bigint, `NaN` or `±Infinity`, `undefined` inside an array
-(JSON writes `null`), a cycle, and any object that is not a plain object
-or an array (a `Date`, `Map`, `Set`, `RegExp` or class instance). An
+(JSON writes `null`), a cycle, a getter or setter (code that each read
+may answer differently; vx never calls it), and any object that is not a
+plain object or an array (a `Date`, `Map`, `Set`, `RegExp` or class
+instance). An
 `undefined` property is fine: JSON drops it and the schema reads it as
 absent, which is what a conditional spread
 (`...(ci ? { retries: 2 } : {})`) relies on. The workspace config is not
@@ -1572,7 +1574,7 @@ lists the messages a user meets most:
 | ----------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `did not export a default object`                                                                                 | Forgot `export default`, or exported a non-object.                                                                                                                                                                             |
 | `tasks must be an object keyed by task name`                                                                      | `tasks` is not an object — an ARRAY included.                                                                                                                                                                                  |
-| `<path> is <what> — a config must be JSON data, because the cache key folds its JSON`                             | A value JSON cannot carry, anywhere in the config: a function, a symbol, a bigint, `NaN` / `±Infinity`, `undefined` inside an array, a cycle, or an object that is not plain (`Date`, `Map`, `RegExp`, a class instance).      |
+| `<path> is <what> — a config must be JSON data, because the cache key folds its JSON`                             | A value JSON cannot carry, anywhere in the config: a function, a symbol, a bigint, `NaN` / `±Infinity`, `undefined` in an array, a cycle, a getter or an object that is not plain (`Date`, `Map`, `RegExp`, a class instance). |
 | `<level> has unknown field "<key>"`                                                                               | Typo'd / unsupported key (see below).                                                                                                                                                                                          |
 | `<level> has field "<key>", which vx <version> removed — use <replacement>`                                       | A field an earlier release accepted (`exec.resources`, removed in 0.0.19). The message names what replaced it (`design/versioning-1.0.md` § Deprecation).                                                                      |
 | `<level> must be an object (fields: <fields>), not an array`                                                      | An array where an object goes — `outputs: ['dist/**']` (Turbo's spelling) is `outputs: { files: ['dist/**'] }`, and the message says so.                                                                                       |
