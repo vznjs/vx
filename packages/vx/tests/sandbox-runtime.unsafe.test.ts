@@ -3882,6 +3882,42 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
     expect([r.exitCode, r.stdout]).toEqual([0, "a b|c'd|"])
   })
 
+  // A run's reset waits while a server lives (item 882), and the LAST
+  // server's release runs it. One server of two stopping must not: the
+  // reset releases every bridge no server owns, a one-shot's still running
+  // (sweep of B-11, `rb-deferred`). A task's temp directory goes with its
+  // bridges, synchronously, so it is what the row reads.
+  it("a server that stops while another runs leaves a running task's bridge alone", async () => {
+    const port = (): number => {
+      const l = Bun.listen({ hostname: '127.0.0.1', port: 0, socket: { data() {} } })
+      const p = l.port
+      l.stop(true)
+      return p
+    }
+    const wrap = (server: boolean) =>
+      wrapSandboxedCommand(
+        args('true', {
+          config: resolveSandboxConfig({ allow: { localBinding: [port()] } }, dir),
+          ...(server ? { server: true } : {}),
+        }),
+      )
+    const tmpOf = (w: { taggedCommand: string }): string =>
+      /export TMPDIR=([^;]+);/.exec(w.taggedCommand)![1]!.replaceAll("'", '')
+    const a = await wrap(true)
+    const b = await wrap(true)
+    await resetSandbox()
+    const one = await wrap(false)
+    try {
+      releaseBridges(a.tag)
+      const kept = existsSync(tmpOf(one))
+      // Positive: the last server's release runs the deferred reset.
+      releaseBridges(b.tag)
+      expect([kept, existsSync(tmpOf(one))]).toEqual([true, false])
+    } finally {
+      releaseBridges(one.tag)
+    }
+  })
+
   it('tags each wrap uniquely and puts the tag first in the command', async () => {
     // SRT's macOS store keys a record by the command's first 100 bytes, so
     // two tasks running one command in one directory must still differ.
@@ -4147,6 +4183,43 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
         calls: ['which strace', 'strace --version'],
       })
     })
+
+    // Untraced (no strace here, or a persistent server) the command is
+    // `exec`'d by the shell that forks the watcher: it must see no fd 3,
+    // and the watcher must signal its GROUP, `-$$` (sweep of B-11,
+    // `og-run-fd3`, `og-watch-pp`). The traced twins drive the other form.
+    it('untraced, the command holds no signal channel and vx reaches its children', async () => {
+      const bin = path.join(dir, 'bin')
+      await mkdir(bin)
+      await writeFile(path.join(bin, 'strace'), '#!/bin/sh\nexit 1\n', { mode: 0o755 })
+      const src = path.resolve(import.meta.dir, '..', 'src', 'exec')
+      const script = [
+        `import { initSandbox, resetSandbox, runSandboxed, resolveSandboxConfig } from ${JSON.stringify(path.join(src, 'sandbox-runtime.ts'))}`,
+        `import { killTree } from ${JSON.stringify(path.join(src, 'kill-tree.ts'))}`,
+        `import { existsSync, readFileSync } from 'node:fs'`,
+        `const dir = ${JSON.stringify(dir)}`,
+        `const args = (command, extra = {}) => ({ command, cwd: dir, env: process.env, baseAllowRead: [dir], baseDenyRead: [], reportWithin: dir, reportLinked: [], config: resolveSandboxConfig({ allow: { read: ['.'], write: ['got.txt', 'ready.txt'] } }, dir), ...extra })`,
+        `await initSandbox()`,
+        `const fd = (await runSandboxed(args('(: >&3) 2>/dev/null && echo open || echo closed'))).stdout.trim()`,
+        `const live = new Set()`,
+        `const done = runSandboxed(args(\`trap 'wait' TERM; sh -c 'trap "echo child > got.txt; exit 0" TERM; echo up > ready.txt; while :; do sleep 0.05; done' & wait\`, { liveChildren: live, timeoutMs: 10000 }))`,
+        `while (!existsSync(dir + '/ready.txt') || readFileSync(dir + '/ready.txt', 'utf8').trim() !== 'up') await Bun.sleep(20)`,
+        `for (const c of live) killTree(c, 'SIGTERM')`,
+        `await done`,
+        `console.log(JSON.stringify({ fd, got: readFileSync(dir + '/got.txt', 'utf8') }))`,
+        `await resetSandbox()`,
+      ].join('\n')
+      const p = Bun.spawnSync({
+        cmd: [process.execPath, '-e', script],
+        env: { ...process.env, PATH: `${bin}:${process.env['PATH']}` },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      expect([p.stdout.toString().trim(), p.stderr.toString().slice(0, 400)]).toEqual([
+        JSON.stringify({ fd: 'closed', got: 'child\n' }),
+        '',
+      ])
+    }, 20_000)
 
     it('no strace on PATH is no tracing, and is found out once', async () => {
       // Every binary the runtime needs, and no strace.

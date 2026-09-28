@@ -290,13 +290,13 @@ silenced nothing.
   grow the set.
 - Gaps left as leads:
   - the untraced wrapper (no strace, or a persistent server) is never
-    driven for the watcher's `-$$` or fd 3;
+    driven for the watcher's `-$$` or fd 3 (B-14);
   - a relative `../x` trace under a cwd reached through a link
     (`canonicalBaselines`' cwd);
   - a literal ignore entry that is itself a link;
   - the task side's port socket after a SIGKILLed namespace;
   - `releaseBridges`' deferred reset with two live servers and a bridged
-    one-shot.
+    one-shot (B-14).
 - Also recorded:
   - Probe refuted: stalling vx's event loop 300 ms per output chunk did
     not truncate a task's output after it exited.
@@ -305,3 +305,14 @@ silenced nothing.
     ephemeral server.
   - Lead: `-DD`'s attach under Yama `ptrace_scope=1` is proven only by
     the CI runner; this container has no Yama.
+
+B-14. Two of B-13's leads pinned, each row red under its mutant. The code
+already held; nothing pinned it.
+
+- Rows (`sandbox-runtime.unsafe.test.ts`):
+  - a server that stops while another runs leaves a running task's bridge
+    alone: only the LAST server's release runs the deferred reset, which
+    releases every bridge no server owns (`rb-deferred`);
+  - untraced (strace refused), the command holds no signal channel and vx
+    reaches its children: the `exec` form's `3<&-` and the watcher's
+    `-$$` (`og-run-fd3`, `og-watch-pp`).
