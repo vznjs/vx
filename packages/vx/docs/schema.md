@@ -608,7 +608,8 @@ is `!gen`), an inner `/./` segment, a doubled `//`, and a trailing `/` on
 a pattern (`src/*/` is the trees under `src`, `src/*/**`). A bare `.` or
 `./` names the project directory itself and is refused at load — write
 `**`. Turbo's `$TURBO_DEFAULT$` and `$TURBO_ROOT$` and Nx's
-`{projectRoot}` and `{workspaceRoot}`, pasted from turbo.json or
+`{projectRoot}`, `{workspaceRoot}`, `{projectName}` and `{options.…}`
+(D-52), pasted from turbo.json or
 project.json, are refused in every glob list with what to write instead
 (D-50): vx expands none of them, so each matched no file and a task
 keyed on `$TURBO_DEFAULT$` alone replayed a stale output. A glob that

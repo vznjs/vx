@@ -842,6 +842,11 @@ const FOREIGN_TOKENS: readonly (readonly [string, string])[] = [
   ],
   ['{projectRoot}', "Nx's project root — drop it: `files` globs are project-relative already"],
   [
+    '{options.',
+    'an Nx target option, which vx does not interpolate — write the path the option names',
+  ],
+  ['{projectName}', "Nx's project name, which vx does not interpolate — write the name"],
+  [
     '{workspaceRoot}',
     "Nx's workspace root — name the path without it in `workspaceFiles`, which is workspace-root-relative",
   ],
@@ -858,7 +863,8 @@ function assertNoForeignToken(glob: string, where: string): void {
   }
   for (const [token, meaning] of FOREIGN_TOKENS) {
     if (glob.includes(token)) {
-      throw new UserError(`${where}: "${glob}" holds ${token}, ${meaning}`)
+      const shown = token.endsWith('.') ? `${token}…}` : token
+      throw new UserError(`${where}: "${glob}" holds ${shown}, ${meaning}`)
     }
   }
 }

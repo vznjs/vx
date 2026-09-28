@@ -497,3 +497,8 @@ packages/core`) selects the dependent whose `file:../lib` spec named
   glob starting with `^` is now refused, pointing at `dependsOn`. A bare
   named input (`default`) stays a path: it can be a directory. Row: the
   D-51 row of `tests/config-schema-refusals.test.ts`.
+- **D-52** Nx's `{options.outputPath}` as an output matched no file: the
+  miss saved an empty artifact and a later hit restored no build (probed;
+  inputs already refused it as a one-alternative brace). D-50's token
+  list now holds `{options.…}` and `{projectName}`. Row: the D-52 row of
+  `tests/config-schema-refusals.test.ts`.
