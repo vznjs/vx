@@ -318,6 +318,35 @@ describe('DECODER round-trip — protobufjs encodes, we decode', () => {
     expect(d.result?.execution_metadata?.worker).toBe('worker-7')
   })
 
+  // F-48: a v2.0 server names its links only in the deprecated
+  // output_file_symlinks (10) and output_directory_symlinks (11); they were
+  // dropped, so the link was never restored or recorded. A v2.1 server
+  // fills both generations, and the new one wins.
+  it('a v2.0 server’s legacy symlinks are read; output_symlinks wins over them', async () => {
+    const { decodeExecuteResponseBytes } = await import('../src/executor.js')
+    const legacy = {
+      output_file_symlinks: [{ path: 'bin/tool', target: '../lib/tool' }],
+      output_directory_symlinks: [{ path: 'current', target: 'v2' }],
+    }
+    const v20 = decodeExecuteResponseBytes(
+      new Uint8Array(refNonEmpty('ExecuteResponse', { result: legacy })),
+    )
+    const v21 = decodeExecuteResponseBytes(
+      new Uint8Array(
+        refNonEmpty('ExecuteResponse', {
+          result: { ...legacy, output_symlinks: [{ path: 'bin/tool', target: '../lib/tool' }] },
+        }),
+      ),
+    )
+    expect([v20.result?.output_symlinks, v21.result?.output_symlinks]).toEqual([
+      [
+        { path: 'bin/tool', target: '../lib/tool' },
+        { path: 'current', target: 'v2' },
+      ],
+      [{ path: 'bin/tool', target: '../lib/tool' }],
+    ])
+  })
+
   it('a failed execution with server logs survives', async () => {
     const { decodeExecuteResponseBytes } = await import('../src/executor.js')
     const logDigest = sha256(new TextEncoder().encode('worker log text'))

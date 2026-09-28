@@ -427,6 +427,29 @@ describe.if(CHUNKING_SUPPORTED)('what the response means', () => {
     })
   })
 
+  // F-48: a worker that hit its timeout answers DEADLINE_EXCEEDED WITH the
+  // partial result; the task failed showing none of what the command printed.
+  it('a failed status still delivers the partial stdout and stderr it carries', async () => {
+    fake.onExecute = () => ({
+      response: {
+        status: { code: 4, message: 'timed out' },
+        result: { exit_code: 137, stdout_raw: bytes('half'), stderr_digest: D(put('stuck')) },
+      },
+    })
+    let out = ''
+    let err = ''
+    await withExecutor(async (run) => {
+      const refused = await refusal(
+        run(request({ onStdout: (c: string) => (out += c), onStderr: (c: string) => (err += c) })),
+      )
+      expect([refused, out, err]).toEqual([
+        'vx/reapi: pkg#gen execution failed: timed out',
+        'half',
+        'stuck',
+      ])
+    })
+  })
+
   it('stdout and stderr are delivered even when capture keeps no copy; the worker is reported', async () => {
     fake.onExecute = () => ({
       response: {
