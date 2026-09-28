@@ -1,0 +1,120 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "vx run --summarize",
+  "description": "Every task's outcome in one run: <cacheDir>/runs/<runId>.json, or the --summarize=<path> file.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "runId",
+    "ok",
+    "exitCode",
+    "startedAt",
+    "endedAt",
+    "totalMs",
+    "tasks",
+    "aborted",
+    "summary"
+  ],
+  "properties": {
+    "runId": { "type": "string" },
+    "ok": { "type": "boolean", "description": "the run's verdict: exitCode is 0" },
+    "exitCode": { "type": "integer" },
+    "startedAt": { "type": "string", "description": "ISO 8601" },
+    "endedAt": { "type": "string", "description": "ISO 8601" },
+    "totalMs": { "type": "number" },
+    "tasks": {
+      "type": "array",
+      "description": "every counted task: not a group, not aborted",
+      "items": { "$ref": "#/$defs/task" }
+    },
+    "aborted": {
+      "type": "array",
+      "description": "tasks a shutdown signal killed; in no bucket and no total",
+      "items": { "$ref": "#/$defs/task" }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "successful",
+        "failed",
+        "skipped",
+        "cachedLocal",
+        "restoredLocal",
+        "restoredRemote",
+        "upToDate",
+        "cachedRemote",
+        "aborted",
+        "total"
+      ],
+      "properties": {
+        "successful": { "type": "integer" },
+        "failed": { "type": "integer" },
+        "skipped": { "type": "integer" },
+        "cachedLocal": { "type": "integer" },
+        "restoredLocal": { "type": "integer" },
+        "restoredRemote": { "type": "integer" },
+        "upToDate": { "type": "integer" },
+        "cachedRemote": { "type": "integer" },
+        "aborted": { "type": "integer" },
+        "total": { "type": "integer" }
+      }
+    }
+  },
+  "$defs": {
+    "task": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "project", "task", "status", "exitCode", "durationMs", "hash"],
+      "properties": {
+        "id": { "type": "string" },
+        "project": { "type": "string" },
+        "task": { "type": "string" },
+        "status": {
+          "enum": ["success", "cache-hit", "cache-hit-remote", "failed", "skipped", "aborted"]
+        },
+        "exitCode": { "type": "integer" },
+        "durationMs": { "type": "number" },
+        "hash": { "type": ["string", "null"] },
+        "noCache": {
+          "const": true,
+          "description": "the task declares no cache block: it could never hit"
+        },
+        "flaky": {
+          "type": "object",
+          "description": "this key both passed and failed on record, or the task needed a retry",
+          "additionalProperties": false,
+          "required": ["passes", "failures", "attempts"],
+          "properties": {
+            "passes": { "type": "integer" },
+            "failures": { "type": "integer" },
+            "attempts": { "type": "integer" }
+          }
+        },
+        "cpuMs": { "type": "number" },
+        "peakRssBytes": { "type": "integer" },
+        "storedCpuMs": {
+          "type": "number",
+          "description": "a hit: what the producing execution used"
+        },
+        "storedPeakRssBytes": { "type": "integer" },
+        "admissionHeldMs": {
+          "type": "number",
+          "description": "an admit policy held it with a worker free"
+        },
+        "blockedBy": {
+          "type": "string",
+          "description": "a skipped task: the failed task at the root of what blocked it"
+        },
+        "timedOut": { "const": true },
+        "sandboxViolations": { "type": "integer" },
+        "notReady": { "enum": ["timeout", "exited", "spawn"] },
+        "wallclockStartNs": {
+          "type": "string",
+          "description": "decimal nanoseconds from the run's start"
+        },
+        "wallclockEndNs": { "type": "string" }
+      }
+    }
+  }
+}

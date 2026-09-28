@@ -15,7 +15,7 @@
 
 import path from 'node:path'
 import { isGroupTask, type TaskOutcome } from '../graph/index.js'
-import { tallyOutcomes } from './tally.js'
+import { tallyOutcomes, type Tally } from './tally.js'
 import type { FlakyFinding } from './failure-mode.js'
 
 export interface SummarizeArgs {
@@ -36,8 +36,45 @@ export interface SummarizeArgs {
   flaky?: readonly FlakyFinding[]
 }
 
+/** One task of `--summarize`: the wire, stated by `schemas/summary.json`. */
+export interface SummaryTaskJson {
+  id: string
+  project: string
+  task: string
+  status: TaskOutcome['status']
+  exitCode: number
+  durationMs: number
+  hash: string | null
+  noCache?: true
+  flaky?: { passes: number; failures: number; attempts: number }
+  cpuMs?: number
+  peakRssBytes?: number
+  storedCpuMs?: number
+  storedPeakRssBytes?: number
+  admissionHeldMs?: number
+  blockedBy?: string
+  timedOut?: true
+  sandboxViolations?: number
+  notReady?: 'timeout' | 'exited' | 'spawn'
+  wallclockStartNs?: string
+  wallclockEndNs?: string
+}
+
+/** The `--summarize` document. */
+export interface RunSummaryJson {
+  runId: string
+  ok: boolean
+  exitCode: number
+  startedAt: string
+  endedAt: string
+  totalMs: number
+  tasks: SummaryTaskJson[]
+  aborted: SummaryTaskJson[]
+  summary: Tally
+}
+
 /** One task's entry. Shared by `tasks` and `aborted` so they read alike. */
-function taskEntry(o: TaskOutcome, flaky?: FlakyFinding): Record<string, unknown> {
+function taskEntry(o: TaskOutcome, flaky?: FlakyFinding): SummaryTaskJson {
   return {
     id: o.node.id,
     project: o.node.projectName,
@@ -99,7 +136,7 @@ export async function writeRunSummary(args: SummarizeArgs): Promise<string> {
   const aborted = args.outcomes.filter((o) => !isGroupTask(o.node) && o.status === 'aborted')
   const flakyById = new Map((args.flaky ?? []).map((f) => [f.taskId, f]))
   const exitCode = args.exitCode ?? (args.ok ? 0 : 1)
-  const payload = {
+  const payload: RunSummaryJson = {
     runId: args.runId,
     // The run-level verdict, first: a consumer gating on this artifact must
     // not have to re-derive it by re-implementing the bucket rules.
