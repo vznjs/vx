@@ -47,6 +47,34 @@ so far, and `os.homedir()`, npm and git read these. Seven names join
 changes there), with the three pages that list it. Row: `env.test.ts`
 › passes the Windows home and system variables, red without them.
 
+O-4. On Windows no stop killed anything. `kill(-pid)` is ESRCH there
+(no process groups), which `killTree` read as "the group is gone", so
+a timeout, a Ctrl-C and a persistent task's teardown all left the tree
+running. On win32 every stop is `taskkill /T /F`, and a group's
+liveness is its leader's.
+
+O-8. The Windows job still took a runner on every stream-O PR, and the
+account's job cap counts Windows runners: merges fell from 43 to 21 an
+hour (coordinator, 03:57 UTC). A PR runs it only when it touches
+`exec/`, the win32 files (`util/which.ts`, `cache/archive.ts`,
+`cache/cache.ts`, `orchestrator/run-lock.ts`), the shard dealer or the
+workflow. The job is bounded at 12 minutes, the data step at 8, a shard
+at 45 s. A filter from `vx run --affected` is the better rule once a
+task names the Windows suite.
+
+## Windows data, first real run (2026-09-28, #1489's head)
+
+The data step still ran out its 10 minutes, so this is part of the
+suite. Two classes so far:
+
+- `EBUSY` removing a fixture's temp dir in `afterEach` (the
+  short-circuit suite): something still holds a file in it open.
+  Windows refuses to delete an open file, POSIX does not care.
+  Whether vx or the test leaves it open is not yet known.
+- Tests compare `path.relative(...)` against `'dist/a.js'`
+  (`output-wipe-guard.test.ts`): `resolveOutputs` is right to return
+  native paths, and the rows assume `/`.
+
 ## Leads for other streams
 
 - B: `@anthropic-ai/sandbox-runtime` 0.0.76 ships a Windows backend
