@@ -141,8 +141,10 @@ const MAX_CLOSURE_FILES = 32
 // passes: the gate stops accidental impurity, not a config written to
 // defeat it. `random` is denied as a word, not as `Math.random`: a
 // destructured `const { random } = Math` was cached as pure (item 1036).
+// `prompt`, `confirm` and `alert` read the user's terminal, and a cached
+// evaluation replayed the first answer (D-25).
 const IMPURE_RE =
-  /\b(?:process|Bun|globalThis|global|self|fetch|Date|Temporal|Intl|crypto|performance|navigator|require|eval|Function|constructor|localeCompare|await|toLocale\w*|Reflect|getPrototypeOf|setPrototypeOf|getOwnPropertyNames|getOwnPropertyDescriptor|getOwnPropertyDescriptors|__proto__|prototype|__defineGetter__|__defineSetter__|__lookupGetter__|__lookupSetter__|random)\b|import\s*\.\s*meta|\bimport\s*\(/
+  /\b(?:process|Bun|globalThis|global|self|fetch|Date|Temporal|Intl|crypto|performance|navigator|require|eval|Function|constructor|localeCompare|await|toLocale\w*|Reflect|getPrototypeOf|setPrototypeOf|getOwnPropertyNames|getOwnPropertyDescriptor|getOwnPropertyDescriptors|__proto__|prototype|__defineGetter__|__defineSetter__|__lookupGetter__|__lookupSetter__|random|prompt|confirm|alert)\b|import\s*\.\s*meta|\bimport\s*\(/
 
 /** Literal text that names a way to `Function` when used as a computed key. */
 const IMPURE_LITERAL_RE = /constructor|__proto__|prototype/
