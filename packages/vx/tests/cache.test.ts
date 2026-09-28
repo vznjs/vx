@@ -54,6 +54,8 @@ describe('zstdContentSize (frame-header parse)', () => {
     // desc 0x21 = fcsFlag 0 + singleSegment 1 + dictIdFlag 1 → 1 dict-id byte,
     // then a 1-byte FCS. The dict byte (0xAB) must be skipped, not read as size.
     expect(zstdContentSize(new Uint8Array([...MAGIC, 0x21, 0xab, 50]))).toBe(50n)
+    // dictIdFlag 3 is FOUR bytes, not three.
+    expect(zstdContentSize(new Uint8Array([...MAGIC, 0x23, 1, 2, 3, 4, 77]))).toBe(77n)
   })
   it('returns null for a streaming frame that omits the content size', () => {
     // desc 0x00 = fcsFlag 0 + singleSegment 0 → FCS field is 0 bytes (absent);
@@ -63,6 +65,8 @@ describe('zstdContentSize (frame-header parse)', () => {
   it('returns null for a too-short buffer or a wrong magic number', () => {
     expect(zstdContentSize(new Uint8Array([0x28, 0xb5, 0x2f]))).toBeNull()
     expect(zstdContentSize(new Uint8Array([0x00, 0x00, 0x00, 0x00, 0x20, 1]))).toBeNull()
+    // A header cut inside its FCS field (4 bytes asked, 2 there).
+    expect(zstdContentSize(new Uint8Array([...MAGIC, 0xa0, 0x00, 0x01]))).toBeNull()
   })
 })
 

@@ -57,6 +57,11 @@ describe('a body of more than one zstd frame', () => {
     expect(await decode(bomb, 1_000_000)).toBe(50_100)
     expect(oneCall).not.toHaveBeenCalled()
   })
+
+  it('at exactly the cap decodes whole: the count refuses past it, not at it', async () => {
+    expect(await decode(bomb, 50_100)).toBe(50_100)
+    await expect(decode(bomb, 50_099)).rejects.toBeInstanceOf(CorruptArtifactError)
+  })
 })
 
 describe('one frame (control)', () => {
@@ -67,6 +72,48 @@ describe('one frame (control)', () => {
       oneCall.mockClear()
       expect(await decode(Bun.zstdCompressSync(body), 10_000_000)).toBe(body.length)
       expect(oneCall).toHaveBeenCalledTimes(1)
+    }
+  })
+
+  it('takes the one call through RLE blocks, a content checksum, and an empty body', async () => {
+    // Each shape walks a different step of the frame check: an RLE block
+    // holds one byte whatever it expands to, a checksum is four bytes past
+    // the last block, and an empty body's last block header ends the buffer.
+    const runs = new Uint8Array(300_000).fill(7)
+    const rle = Bun.zstdCompressSync(runs)
+    const body = new Uint8Array(100).fill(3)
+    const plain = Bun.zstdCompressSync(body)
+    const sum = Number(Bun.hash.xxHash64(body) & 0xffffffffn)
+    const checked = concat(plain, new Uint8Array(new Uint32Array([sum]).buffer))
+    checked[4] = checked[4]! | 0b100
+    const cases: Array<[Uint8Array, number]> = [
+      [rle, runs.length],
+      [checked, body.length],
+      [Bun.zstdCompressSync(new Uint8Array(0)), 0],
+    ]
+    for (const [frame, size] of cases) {
+      oneCall.mockClear()
+      expect(await decode(frame, 10_000_000)).toBe(size)
+      expect(oneCall).toHaveBeenCalledTimes(1)
+    }
+  })
+
+  it('refuses a large file by its declaration, before decoding a byte', async () => {
+    // Past the stream threshold the file is read as a stream, but its
+    // first bytes are still asked for the declared size.
+    const noise = concat(
+      ...Array.from({ length: 80 }, () => crypto.getRandomValues(new Uint8Array(65_536))),
+    )
+    const frame = Bun.zstdCompressSync(noise)
+    expect(frame.length).toBeGreaterThan(4 * 1024 * 1024) // CONTROL: the stream path
+    const f = Bun.file(path.join(os.tmpdir(), `vx-zstd-large-${process.pid}.zst`))
+    await Bun.write(f, frame)
+    try {
+      await expect(decode(f, 1_000_000)).rejects.toThrow(
+        `declares ${noise.length} decompressed bytes (> 1000000 cap)`,
+      )
+    } finally {
+      await f.delete()
     }
   })
 })
