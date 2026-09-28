@@ -345,8 +345,9 @@ export async function loadProjectConfigs(
       const hit = cacheKey === null ? undefined : hits.get(cacheKey)
       // Stored AFTER validation, so a hit needs none; the key covers every
       // byte the evaluation could have read.
-      if (hit !== undefined) {
-        out.push(JSON.parse(hit) as ProjectConfig)
+      const cached = hit === undefined ? undefined : storedConfig(hit)
+      if (cached !== undefined) {
+        out.push(cached)
         continue
       }
       // A fast key that missed: the closure is stale or the file changed.
@@ -365,9 +366,10 @@ export async function loadProjectConfigs(
         })
         key = keyed?.key ?? null
         closure = keyed !== null && keyed.indexable ? keyed.closure : undefined
-        const slowHit = key === null ? null : (store!.getConfigEval(key) ?? null)
-        if (slowHit !== null) {
-          out.push(JSON.parse(slowHit) as ProjectConfig)
+        const slowRow = key === null ? null : (store!.getConfigEval(key) ?? null)
+        const slowHit = slowRow === null ? undefined : storedConfig(slowRow)
+        if (slowHit !== undefined) {
+          out.push(slowHit)
           if (closure !== undefined) learnedClosures.push([configPath, closure])
           continue
         }
@@ -487,4 +489,21 @@ export async function loadWorkspaceConfig(root: string): Promise<WorkspaceConfig
     return mod
   }
   return null
+}
+
+/**
+ * A stored evaluation, or undefined when the row is not one: a row cut
+ * short (a crash mid-write, a bad disk) failed every later run with a
+ * `SyntaxError` stack from this loader until the cache was wiped
+ * (fuzzed, L-17). As a miss it is evaluated again and the row replaced.
+ */
+function storedConfig(json: string): ProjectConfig | undefined {
+  try {
+    const v: unknown = JSON.parse(json)
+    return typeof v === 'object' && v !== null && !Array.isArray(v)
+      ? (v as ProjectConfig)
+      : undefined
+  } catch {
+    return undefined
+  }
 }

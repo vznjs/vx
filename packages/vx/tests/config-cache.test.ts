@@ -568,6 +568,30 @@ describe('loadProjectConfig with an eval cache', () => {
     expect(store.batchGets).toBe(before + 1) // one lookup for the round
   })
 
+  // L-17: a row cut short (a crash mid-write, a bad disk) failed every
+  // later run with a SyntaxError stack from the loader until the cache
+  // was wiped. It is a miss: evaluated again, the row replaced.
+  it('a stored evaluation that is not a JSON object is a miss, evaluated and replaced', async () => {
+    const a = await write(
+      'packages/a/vx.config.mjs',
+      "export default { tasks: { build: { exec: { command: 'a' } } } }\n",
+    )
+    const store = new MemoryStore()
+    const evalCache = { store, workspaceFingerprint: 'fp' }
+    await loadProjectConfig(a, { evalCache })
+    const [key] = [...store.rows.keys()]
+    const got: string[] = []
+    for (const bad of ['{"tasks":{"build"', 'null', '[]', '']) {
+      store.rows.set(key!, bad)
+      // Twice: the round with the memo's closure (fast key) and the one after.
+      for (let i = 0; i < 2; i++) {
+        const [c] = await loadProjectConfigs([a], { evalCache })
+        got.push(`${c?.tasks?.build?.exec?.command}:${JSON.parse(store.rows.get(key!)!) !== null}`)
+      }
+    }
+    expect(got).toEqual(Array(8).fill('a:true'))
+  })
+
   it('a round writes what it learned once per table, and keys the slow path from bytes, not the memo', async () => {
     const preset = await write('shared/batch-preset.mjs', "export const cmd = 'echo b'\n")
     const cfgs: string[] = []

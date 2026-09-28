@@ -187,6 +187,13 @@
   plugin with the file named, and never hung (500 truncations and
   mutations each). Supervisor backlog 2. Rows in `turbo-map-sweep.test.ts`
   and `nx-map-sweep.test.ts`.
+- L-17. `fix(workspace)`: a config-eval row cut short (a crash
+  mid-write, a bad disk) failed every later run with a `SyntaxError`
+  stack from the loader until the cache was wiped (probed). A row that is
+  not a JSON object is a miss now: evaluated again, the row replaced. The
+  tar reader held under 3,000 mutations (TarFormatError only, no hang),
+  and the cache wraps anything else a restore or ingest throws as a
+  corrupt artifact. Supervisor backlog 2. Row in `config-cache.test.ts`.
 
 ## Leads for other streams
 
