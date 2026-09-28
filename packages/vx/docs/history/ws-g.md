@@ -461,3 +461,24 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   is from G-37's probe: an atomized `test-ci--<file>` whose coverage
   dir sits under `test`'s runs uncached; caching both would let one
   restore over the other's outputs.
+- **G-41.** turbo() + yarn() on callstack/reassure@29c4611 (Yarn
+  4.11, `node-modules` linker, 8 workspaces): 6 builds ran, warm
+  rerun 6 up-to-date in 34 ms, a wiped `lib/` restored. A checksum
+  edit to `@react-native-community/cli`, installed for
+  `test-apps/native` alone, re-keyed all six: a peer range matches no
+  lockfile key, so the edge reaches every entry of the name (213 of
+  217 such edges are peers). Kept: under `node-modules` an unprovided
+  optional peer loads whatever copy is hoisted, so the edge is real.
+  Only under PnP could it drop, and the parser cannot see
+  `.yarnrc.yml`'s `nodeLinker` (the claim hands it hashes, as for
+  G-38's `resolutions`). Both wait on one core seam: extra files'
+  content in `digest`.
+- **G-42.** nx() emits an `nx-input:<name>` twin only where an edge
+  reaches it, not in every project for every name asked (Next 25). On
+  a synthetic 300-project graph (200 libs, 100 apps, `^production` on
+  `build` and `test`): 300 → 181 twins, the same 781 tasks planned
+  with identical keys. A/B, interleaved, before arm a `main` worktree:
+  `load configs` warm 28.5 → 25.6 ms at min (N=11), cold 62.1 → 57.5
+  (N=9); the warm wall is noise (215 vs 224 ms min, 265 vs 261 median,
+  N=21). Rows (`nx-map-sweep`, `nx-upstream`): an unreached project
+  has no twin; red without the fix.
