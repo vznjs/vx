@@ -39,6 +39,9 @@ import path from 'node:path'
 import { MAX_TIMEOUT_MS, UserError } from '../util/index.js'
 import { nonJsonMessage, nonJsonPaths, type NonJsonValue } from './json-data.js'
 
+/** Why a config's `process.exit` throws, on both load paths (D-65). */
+export const CONFIG_EXIT = 'a config exports its object; it cannot end the run'
+
 const WORKER_SRC = `
 const nonJsonPaths = ${nonJsonPaths.toString()}
 // The parent's stdout is a verb's JSON or vx mcp's JSON-RPC stream, and a
@@ -60,6 +63,11 @@ const quiet = (async () => {
   const ownBunWrite = B.write
   B.write = (dest, ...rest) => ownBunWrite(dest === B.stdout ? B.stderr : dest, ...rest)
   B.stdout.writer = (...args) => B.stderr.writer(...args)
+  // An exit here ended the worker unheard, and the load waited out its
+  // whole deadline to say the worker did not answer (D-65).
+  P.exit = (code) => {
+    throw new Error('process.exit(' + (code ?? '') + ') in a config: ' + ${JSON.stringify(CONFIG_EXIT)})
+  }
 })()
 self.onmessage = async (e) => {
   await quiet

@@ -116,6 +116,14 @@ run leaves out; the rest are refusals.
   died"); 2 of 2 alone. Both are sockets under the shared `/tmp`, under
   the gate's parallel load; what removed the second is unproven.
 
+- E: a config's `console.log` on its first load (in process) lands in
+  stdout ahead of `vx show --format json` (probed), so the JSON does not
+  parse; `vx mcp` redirects around its own serving (item 922) and D-64
+  covers repeat loads. A verb that promises machine output could
+  redirect stdout the same way while it loads the workspace; a global
+  redirect inside the loader would also catch vx's own writes made
+  meanwhile, so the verb is the place.
+
 ## Entries
 
 - **D-1** `--affected` selects the project a new nested project took
@@ -627,10 +635,23 @@ packages/core`) selects the dependent whose `file:../lib` spec named
   to stderr. Row: the D-64 row of `tests/config-eval.test.ts`, a child
   process whose fd 1 stays empty while five routes print; red without
   the fix, and each of the four redirects caught by its own mutant.
-  Open: a first load still prints to stdout, so a printing config
-  corrupts `vx show --format json`; a global redirect around the
-  in-process import would also catch vx's own writes made meanwhile.
+  A first load still prints to stdout: a lead for E.
   Refuted on the way: a warm-path cost in the slice. At 1,000 projects
   the `workspace config` span (17 ms) is mostly the git spawns started
   there on purpose, to overlap discovery; the slice's own reads take
   1–5 ms per stage.
+- **D-65** Failure class: a config that calls `process.exit`. On a first
+  load (in process) it ended vx mid-load: `exit(0)` made a
+  `vx run build --all` green, with no task run and nothing printed
+  (probed). On a
+  repeat load it ended the config Worker unheard, and the load waited
+  out its whole deadline to say the worker did not answer. While a
+  config evaluates, `process.exit` now throws, naming the call, at the
+  config's line: counted in process (restored when the last concurrent
+  load leaves), permanent in the Worker. An exit scheduled for later (a
+  timer) is not covered. Rows: the D-65 rows of
+  `tests/config-eval.test.ts`, the Worker's refusal inside 2 s of a 5 s
+  budget and, in a child process, two concurrent first loads both
+  refused with `process.exit` restored after; each guard, the save and
+  the restore caught by its own mutant (the concurrency pair only once
+  the slow load enters first and exits last).

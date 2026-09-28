@@ -290,6 +290,56 @@ describe('evaluateConfigFresh: the environment (D-61)', () => {
   })
 })
 
+describe('a config that calls process.exit (D-65)', () => {
+  const EXITING =
+    "process.exit(0)\nexport default { tasks: { t: { exec: { command: 'true' } } } }\n"
+  const REFUSAL = 'process.exit(0) in a config: a config exports its object; it cannot end the run'
+
+  it('is refused by the worker at once, not at the deadline', async () => {
+    // The exit ended the worker unheard; the load waited out its budget.
+    process.env[BUDGET_ENV] = '5000'
+    const file = await write(EXITING)
+    const end = beginEvalRound()
+    const t0 = performance.now()
+    try {
+      const got = await evaluateConfigFresh(file).then(
+        () => 'resolved',
+        (e: Error) => e.message,
+      )
+      expect({ got, fast: performance.now() - t0 < 2_000 }).toEqual({ got: REFUSAL, fast: true })
+    } finally {
+      end()
+    }
+  })
+
+  it('is refused on the first load, in process, and vx lives on with its own exit', async () => {
+    // A child: without the guard the exit ends the process that loads it,
+    // and a test runner that exits 0 is a silent pass. `exit(0)` was a
+    // green `vx run` that ran nothing and printed nothing.
+    // Two loads at once: the guard is counted, so neither the first to
+    // leave nor the last to enter gives the exit back early. `slow` is still
+    // evaluating when `file` enters and leaves, and exits after that.
+    const file = await write(EXITING)
+    const slow = await write('await new Promise((r) => setTimeout(r, 300))\n' + EXITING)
+    const driver = path.join(root, 'first-load.ts')
+    await writeFile(
+      driver,
+      `import { loadProjectConfig } from ${JSON.stringify(path.resolve(import.meta.dir, '../src/workspace/project-loader.ts'))}\n` +
+        `const own = process.exit\n` +
+        `const got = await Promise.all([${JSON.stringify(slow)}, ${JSON.stringify(file)}].map((f) =>\n` +
+        `  loadProjectConfig(f).then(() => 'loaded', (e) => e.message)))\n` +
+        `console.error(JSON.stringify({ got, restored: process.exit === own }))\n` +
+        `process.exit(3)\n`,
+    )
+    const p = Bun.spawn({ cmd: [process.execPath, driver], stdout: 'pipe', stderr: 'pipe' })
+    const [code, err] = await Promise.all([p.exited, new Response(p.stderr).text()])
+    expect({ code, err }).toEqual({
+      code: 3,
+      err: JSON.stringify({ got: [REFUSAL, REFUSAL], restored: true }) + '\n',
+    })
+  }, 20_000)
+})
+
 describe('evaluateConfigFresh: what a config prints (D-64)', () => {
   it("goes to stderr on every route, never the parent's stdout", async () => {
     // A repeat load evaluates here, and `vx mcp`'s redirect covers only the
