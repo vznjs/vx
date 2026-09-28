@@ -30,6 +30,7 @@ import { packageScripts, relPosix } from '../paths.js'
 import { pruneDanglingEdges } from '../dangling-edges.js'
 import { pruneOrphanPersistentNotes } from '../persistent-note.js'
 import { resolveSharedOutputs } from '../shared-outputs.js'
+import { DOTENV_PROBE } from '../dotenv-probe.js'
 
 type Raw = Record<string, unknown>
 
@@ -492,15 +493,6 @@ function projectTasks(
   for (const name of layers.keys()) resolve(name)
   return { tasks, groups, implicitDeps, implicitInputs }
 }
-
-/**
- * Every `.env`-shaped file under the probe's directory, name and bytes:
- * git ignores them, so a glob over git's files keys none of them, and moon
- * hashes the ones a task names. A superset, so an edit to one misses and
- * nothing else is lost (turbo-map's probe, item 1032).
- */
-const DOTENV_PROBE =
-  'find . \\( -name node_modules -o -name .git \\) -prune -o -type f \\( -name \'.env*\' -o -name \'*.env\' \\) -print | LC_ALL=C sort | while IFS= read -r f; do echo "$f"; cat -- "$f"; echo; done'
 
 const ENV_FILE_TODO =
   "options.envFile: moon loads the file into the task's environment and vx does not — the " +

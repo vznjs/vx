@@ -519,3 +519,8 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   the root. The README's line on negated outputs, stale since G-44,
   is corrected. Rows (`nx.test` › a root vx.config attaches…): red
   without either half.
+- **G-47.** `DOTENV_PROBE`, the `.env` probe turbo() and moon() key a
+  gitignored `.env` by, lived as two copies (stream N's lead: N may not
+  edit `turbo/`); a fix to one would have keyed the same files two
+  ways. One module, `src/dotenv-probe.ts`, now holds it; the string is
+  unchanged, so no key moves.
