@@ -244,7 +244,19 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
       const kinds = [...new Set(diff.entries.map((e) => e.kind))].filter((k) => k in WHAT_TO_DO)
       if (kinds.length > 0) {
         lines.push('', '  what to do:')
-        for (const k of kinds) lines.push(`    ${k.padEnd(kindW)}  ${WHAT_TO_DO[k]}`)
+        // An upstream row names the task to ask next: the command, not a
+        // placeholder to fill in from the row above.
+        const upstream = diff.entries.filter((e) => e.kind === 'upstream').map((e) => e.name)
+        for (const k of kinds) {
+          const todo =
+            k === 'upstream'
+              ? WHAT_TO_DO[k]!.replace(
+                  '`vx why <that task>`',
+                  upstream.map((n) => `\`vx why ${n}\``).join(', '),
+                )
+              : WHAT_TO_DO[k]
+          lines.push(`    ${k.padEnd(kindW)}  ${todo}`)
+        }
       }
     } else if (why.hashChanged === true) {
       lines.push(`  detail     ${diff.note}`)

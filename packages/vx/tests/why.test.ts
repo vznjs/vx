@@ -266,6 +266,10 @@ describe('vx why (e2e) — every component kind names its row', () => {
       const up = await why({ APP_MODE: 'prod' })
       expect(up).toMatch(/what changed \(1 component, \d+ unchanged\)/)
       expect(up).toMatch(/changed\s+upstream\s+lib#build\s+\w+ → \w+/)
+      // What to do names the task to ask next, not a placeholder.
+      expect(up).toContain(
+        "  what to do:\n    upstream  a dependency's key moved; `vx why lib#build` says why\n",
+      )
 
       // CONTROL: a hit carries no row.
       await vx(root, ['run', 'build', '--all'], { APP_MODE: 'prod' })
