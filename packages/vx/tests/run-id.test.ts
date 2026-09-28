@@ -3,7 +3,7 @@
 
 import { Database } from 'bun:sqlite'
 import { describe, expect, it } from 'bun:test'
-import { resolveRunId } from '../src/cli/run-id.js'
+import { resolveRunId, shortRunId } from '../src/cli/run-id.js'
 
 function db(ids: readonly string[]): Database {
   const d = new Database(':memory:')
@@ -42,5 +42,30 @@ describe('resolveRunId', () => {
       resolveRunId(d, 'x', 'vx last'),
       resolveRunId(d, 'zz', 'vx last'),
     ]).toEqual(['abc', 'abd', 'x', null])
+  })
+})
+
+describe('shortRunId', () => {
+  const clock = '01a0e5ca-f86b'
+  it('the shortest prefix no neighbour shares, never under the 13-char clock', () => {
+    const a = `${clock}-7001-aaaa`
+    const b = `${clock}-7002-aaaa`
+    const c = `${clock}-7002-abbb`
+    const lone = '01a0e5cb-0000-7000-aaaa'
+    const d = db([a, b, c, lone])
+    // Each against the id sorted before it AND the one after it.
+    expect([a, b, c, lone].map((id) => shortRunId(d, id))).toEqual([
+      `${clock}-7001`,
+      `${clock}-7002-aa`,
+      `${clock}-7002-ab`,
+      '01a0e5cb-0000',
+    ])
+    // What it prints resolves back to the run it names.
+    expect([a, b, c, lone].map((id) => resolveRunId(d, shortRunId(d, id), 'vx last'))).toEqual([
+      a,
+      b,
+      c,
+      lone,
+    ])
   })
 })

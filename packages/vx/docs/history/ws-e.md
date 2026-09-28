@@ -285,3 +285,13 @@ task picked`; neither prints a stack. Row in
   (`tests/run-id.test.ts`), and `vx why`'s filter that keeps a stored
   kind the map does not know from printing `undefined` (a `legacy` row
   in `tests/why.test.ts`).
+- E-44 — `vx upgrade`'s failed or empty download says nothing was
+  replaced and to re-run; a release without this platform's asset
+  points at npm. `vx show app#` names the verb and says
+  `vx show app` lists the tasks. Rows in `tests/upgrade.test.ts`,
+  `tests/show-info.test.ts`.
+- E-48 — `vx last --list` prints each run id cut to the shortest prefix
+  no other run shares, never under its 13-char clock (`shortRunId`, two
+  indexed neighbour lookups); E-42 resolves it back. Rows in
+  `tests/run-id.test.ts`; dropping either neighbour or the floor
+  reddens them.
