@@ -77,15 +77,15 @@ const reasons = [
   { term: 'One pass over the repo.', line: 'One git walk per run; each stat and lookup happens once.' },
 ]
 
-// Try it: the file a Turborepo or Nx repo adds, and the three commands.
-const workspaceFile = `// vx.workspace.ts
-import { defineWorkspace } from '@vzn/vx'
-import { turbo } from '@vzn/vx-migrate' // Nx: import { nx } and use nx()
-
-export default defineWorkspace({ plugins: [turbo()] })`
+// Try it: four commands, and the one file `vx init` writes.
 const tryCommands = `npm install -D @vzn/vx @vzn/vx-migrate
+npx vx init                 # writes vx.workspace.ts, below; nothing else
 npx vx run build --all      # your turbo.json or Nx targets, run by vx
 npx vx run build --all      # again: up-to-date in milliseconds`
+const workspaceFile = `import type { WorkspaceConfig } from '@vzn/vx'
+import { turbo } from '@vzn/vx-migrate'
+
+export default { plugins: [turbo()] } satisfies WorkspaceConfig`
 
 const footCols = {
   docs: [
@@ -250,11 +250,12 @@ const footCols = {
       <section class="section" id="try">
         <div class="container">
           <div class="section-head">
-            <p class="vx-kicker">// one file, three commands</p>
+            <p class="vx-kicker">// four commands, one file</p>
             <h2>Try it on your repo.</h2>
           </div>
-          <pre class="code"><code>{workspaceFile}</code></pre>
           <pre class="code"><code>{tryCommands}</code></pre>
+          <p class="sub">The one file <code>vx init</code> writes (in an Nx repo, <code>nx</code> for <code>turbo</code>):</p>
+          <pre class="code"><code>{workspaceFile}</code></pre>
           <p class="sub">Nothing is rewritten; <code>@vzn/vx-migrate</code> reaches npm with its first publish.</p>
           <div class="section-links">
             <a class="section-link" href={href('guides/migrate/')}>Migrate: parity, own configs, your remote cache <span class="arr">→</span></a>

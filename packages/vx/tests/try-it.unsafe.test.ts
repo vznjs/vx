@@ -1,7 +1,8 @@
-// The README and the site's landing lead with "Try it on your repo": one
-// `vx.workspace.ts` and three commands. This runs them as written on a
-// Turbo repo and an Nx repo, so a step that drifts from what works fails
-// here, naming the line. The page reads outside packages/vx (README.md,
+// The README and the site's landing lead with "Try it on your repo": four
+// commands and the one `vx.workspace.ts` that `vx init` writes. This runs
+// them as written on a Turbo repo and an Nx repo, and holds the shown file
+// to the written one, so a step that drifts from what works fails here,
+// naming the line. The page reads outside packages/vx (README.md,
 // the site), and the run spawns npx, which a sandboxed shard cannot host —
 // hence the unsafe suite.
 //
@@ -206,13 +207,11 @@ describe('the README and landing "Try it on your repo" steps run as written', ()
     expect(landingSteps()).toEqual(readme)
   })
 
-  it('the README gives one workspace file, an install, and two runs', () => {
+  it('the README gives an install, vx init, two runs, and the file init writes', () => {
     expect(readme.workspaceFile).toContain('plugins: [turbo()]')
-    expect(readme.commands.map((l) => INSTALL.test(l.replace(/\s+#.*$/, '').trim()))).toEqual([
-      true,
-      false,
-      false,
-    ])
+    const bare = readme.commands.map((l) => l.replace(/\s+#.*$/, '').trim())
+    expect(bare.map((l) => INSTALL.test(l))).toEqual([true, false, false, false])
+    expect(bare[1]).toBe('npx vx init')
   })
 
   const cases: Array<[string, () => string, (file: string) => string, Record<string, string>]> = [
@@ -224,7 +223,7 @@ describe('the README and landing "Try it on your repo" steps run as written', ()
         standInNx(root)
         return root
       },
-      // The file's own comment: `Nx: import { nx } and use nx()`.
+      // The README's own words: `in an Nx repo, nx for turbo`.
       (f) =>
         f
           .replace('import { turbo }', 'import { nx }')
@@ -238,14 +237,14 @@ describe('the README and landing "Try it on your repo" steps run as written', ()
       const root = make()
       const file = adapt(readme.workspaceFile)
       expect(file).not.toContain(name === 'a Turbo repo' ? 'plugins: [nx()]' : 'plugins: [turbo()]')
-      writeFileSync(path.join(root, 'vx.workspace.ts'), file)
       commit(root)
-      const [install, first, second] = readme.commands as [string, string, string]
+      const [install, init, first, second] = readme.commands as [string, string, string, string]
       const want = (status: string) =>
         Object.fromEntries(Object.keys(tasks).map((t) => [t, status]))
       const results: Array<[string, number | null, Record<string, string> | string]> = []
       for (const [line, status] of [
         [install, ''],
+        [init, 'file'],
         [first, 'success'],
         [second, 'cache-hit'],
       ] as const) {
@@ -254,10 +253,19 @@ describe('the README and landing "Try it on your repo" steps run as written', ()
           results.push([line, r.code, r.out.slice(-400)])
           break
         }
-        results.push([line, r.code, status === '' ? '' : lastStatuses(root)])
+        results.push([
+          line,
+          r.code,
+          status === ''
+            ? ''
+            : status === 'file'
+              ? readFileSync(path.join(root, 'vx.workspace.ts'), 'utf8')
+              : lastStatuses(root),
+        ])
       }
       expect(results).toEqual([
         [install, 0, ''],
+        [init, 0, file],
         [first, 0, want('success')],
         [second, 0, want('cache-hit')],
       ])
