@@ -95,4 +95,31 @@ describe.if(CHUNKING_SUPPORTED)('the cache layer, past the sweep', () => {
       proto.readBlobStream = readBlobStream
     }
   })
+
+  // F-25: GetActionResult asked for nothing inline, so every hit spent a
+  // Read on its artifact and (bazel-remote) one on its duration.
+  it('a hit the server inlines takes no Read; inline bytes that do not match are streamed', async () => {
+    const art = bytes('inline artifact')
+    const d = fake.put(art)
+    fake.actions.set(actionDigestFor('k-inline').hash, {
+      exit_code: 0,
+      output_files: [{ path: ARTIFACT, digest: d, is_executable: false, contents: art }],
+      stdout_raw: bytes('{"durationMs":5}'),
+    })
+    const bad = fake.put(bytes('the real bytes'))
+    fake.actions.set(actionDigestFor('k-inline-bad').hash, {
+      exit_code: 0,
+      output_files: [
+        { path: ARTIFACT, digest: bad, is_executable: false, contents: bytes('forged') },
+      ],
+    })
+    const mark = fake.calls.length
+    const good = await restored('k-inline')
+    const asked = fake.calls.slice(mark).find((c) => c.method === 'GetActionResult')!.request
+    const readsGood = fake.calls.slice(mark).filter((c) => c.method === 'Read').length
+    const forged = await restored('k-inline-bad')
+    expect([good, readsGood, asked['inline_stdout'], asked['inline_output_files'], forged]).toEqual(
+      [['inline artifact', 5], 0, true, [ARTIFACT], ['the real bytes', undefined]],
+    )
+  })
 })

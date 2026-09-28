@@ -563,12 +563,16 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
         // decide whether a dependency's bytes exist at all, and treating a
         // failure there as "carry on" is how an action runs without its
         // inputs and caches the result.
-        const prior = await client.getActionResult(execDigestFor(req.cacheKey)).catch((err) => {
-          warn(
-            `vx/reapi: ${req.taskId} could not read its execution record (${errText(err)}) — executing`,
-          )
-          return null
-        })
+        // stdout asked inline: a server that moved it into CAS otherwise
+        // costs the replay a Read for it (F-25).
+        const prior = await client
+          .getActionResult(execDigestFor(req.cacheKey), { stdout: true, files: [] })
+          .catch((err) => {
+            warn(
+              `vx/reapi: ${req.taskId} could not read its execution record (${errText(err)}) — executing`,
+            )
+            return null
+          })
         if (prior !== null) {
           const referenced = [
             ...(prior.output_files ?? []).map((f) => f.digest),
