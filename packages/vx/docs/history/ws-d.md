@@ -143,3 +143,14 @@ packages/core`) selects the dependent whose `file:../lib` spec named
   Equivalent: the path glob's trailing-slash strip (`path.relative`
   never ends in one), the literal-then-glob order, and an empty walk
   reported for a pattern that also matched nothing.
+- **D-16** `vx init` wrote a task cycle for a `build` that delegates to
+  a script that waits for `build` by convention:
+  `build: npm run typecheck` made `typecheck` wait for `build`, and the
+  run refused `a#build -> a#typecheck -> a#build`. The worker and every
+  group on the way drop `build`. Found by a mutation sweep of
+  `migrate-scripts.ts` (33 mutants), which also left the walk's cycle
+  guard unheld: mutual groups hung `vx init`. Row: `tests/init.test.ts`
+  "the task a delegating `build` reaches never waits for `build`
+  (D-16)". Equivalent: the first-dependency pick (a `build` group has
+  one), the `build` exclusion and both dedups (each masks the others),
+  the empty project and empty script guards.
