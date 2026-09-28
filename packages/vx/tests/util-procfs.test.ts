@@ -7,7 +7,11 @@
 
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'bun:test'
-import { procfsIsOwn } from '../src/util/procfs.js'
+// A fresh instance: run-lock-fs.test.ts mocks `procfsIsOwn` for its whole
+// process, and a shard that deals both files here read the mock (shard 2,
+// 2026-09-28).
+const REAL: string = '../src/util/procfs.js?real'
+const { procfsIsOwn } = (await import(REAL)) as typeof import('../src/util/procfs.js')
 
 /** Our pid as `/proc` reports it, or undefined where there is no procfs. */
 function procfsPid(): number | undefined {
