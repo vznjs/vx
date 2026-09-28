@@ -25,7 +25,7 @@ run removes on its way out (`orchestrator.md`).
   wire's task and outcome shapes; `RunStartInfo` is the run's.
 - The outcome vocabulary, one copy for every surface: `outcomeWord`
   (`success` / `restored-local` / `restored-remote` / `up-to-date` /
-  `failed` / `skipped`), `outcomeLabel` (the word with a failure's
+  `failed` / `skipped` / `aborted`), `outcomeLabel` (the word with a failure's
   reason or a skip's blocker), `failedLabel`, `skippedLabel` and
   `skippedReason`. The frame footer, the run report, the terminal
   summary and `--summarize` all read these.
