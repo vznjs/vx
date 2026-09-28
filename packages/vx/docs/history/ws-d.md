@@ -779,3 +779,13 @@ packages/core`) selects the dependent whose `file:../lib` spec named
   restored, a failing config's own error with its change taken back, a
   clean control; three red without the fix, and the per-load check and
   the end-of-round restore each caught by its mutant.
+- **D-75** D-74's class beyond the prototypes: a config that set
+  `Bun.hash.xxHash3 = () => 7n` gave every task the key 00000000, and a
+  changed command replayed the old output as up-to-date (probed, a
+  stale hit on a green run). A replaced `JSON.stringify` did not reach
+  the key (probed clean). The watched set grows to what vx runs on:
+  `Bun`, `Bun.hash`, `JSON`, `Math` and the `String`, `Map`, `Set` and
+  `Promise` prototypes, each measured stable across a run's worth of
+  Bun calls (no lazy property changes shape). Row: the D-75 row of
+  `tests/project-loader.test.ts`, the hash refused and put back; red
+  with `Bun.hash` dropped from the set.

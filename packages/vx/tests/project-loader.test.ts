@@ -1338,7 +1338,7 @@ describe('a config that changes the built-ins (D-74)', () => {
     await rm(dir, { recursive: true, force: true })
   })
   const REFUSAL = (who: string, props: string) =>
-    `${who} changed ${props} while it was evaluated — a config must not change the built-ins: every other config is read through them, and the cache key does not see what they add`
+    `${who} changed ${props} while it was evaluated — a config must not change the built-ins vx runs on: other configs are read through them and cache keys are made with them`
   const drive = async (configs: string[], after: string): Promise<unknown> => {
     const files: string[] = []
     for (const [i, body] of configs.entries()) {
@@ -1387,6 +1387,14 @@ describe('a config that changes the built-ins (D-74)', () => {
       after: true,
       first: firstFile(),
     })
+  })
+
+  it('refuses a replaced hash, the one every cache key is made with (D-75)', async () => {
+    // `Bun.hash.xxHash3 = () => 7n` gave every task the key 00000000: a
+    // changed command replayed the old output as up-to-date.
+    expect(
+      await drive(['Bun.hash.xxHash3 = () => 7n\n' + task], 'Bun.hash.xxHash3("x") !== 7n'),
+    ).toEqual({ got: REFUSAL(firstFile(), 'Bun.hash.xxHash3'), after: true, first: firstFile() })
   })
 
   it('a config that fails after changing one: its own error, and the change taken back', async () => {
