@@ -147,9 +147,31 @@ the unsafe suite starting first in both (jobs 108730471028,
 I-13. Linux CI's tail, the same way: `@vzn/vx-reapi#test` (38 s)
 started at 170 s of a 208 s `vx run ci` and ended it 22 s after the
 last shard; 773 s of work over 4 workers is 193 s (job 108742538414).
-`assume` now names it and `@vzn/vx-migrate#test` (27 s).
+`assume` now names it and `@vzn/vx-migrate#test` (27 s). After (job
+108744590486): 183.09 s for 706 s of work, 97 % packed; the last shard
+ends the run.
+
+I-14. The queue after I-12 and I-13, 118 CI runs 00:00–01:00 on
+2026-09-28: macOS waits 7:50 median (max 22:32) in the first half
+hour and 3:46 in the second, runs 4:06; Linux waits 0:02. About 55
+macOS jobs an hour at ~4 min: the queue is job count, not job
+length. 15 s off a job frees ~6 %.
 
 ## Leads for other streams
+
+- **Owner / coordinator: skip macOS where it cannot differ from
+  Linux (I-14).** 135 of 436 commits since 2026-09-27 touch nothing the
+  macOS job can see differently: not core's `src/`, `tests/`,
+  `scripts/` or manifests, not `vx-schedule-history` or the
+  playground (the macOS job runs them), not `ci.yml`, the runner
+  action, `bun.lock`, the root manifests or `README.md`. The rest is
+  docs, stream history, other plugins and the site, which only text
+  laws read, and Linux runs those. That is ~31 % of macOS jobs.
+  `--affected` cannot decide it: nearly every PR writes
+  `packages/vx/docs/history/`, which makes `@vzn/vx` affected. It
+  needs a path rule (a `dorny/paths-filter`-style job output or a
+  workflow `paths-ignore` on a split job), and that decides what gates
+  a merge.
 
 - **G: `nx()` costs ~100 ms per warm run on refine.** No-op, 15
   interleaved rounds: `nx()` median 396 ms (min 364), A/A copy 393
