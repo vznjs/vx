@@ -510,3 +510,12 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   does the mapper now. With no root project the note says how to make
   one. Rows (`turbo.test` › root tasks, and its control): red without
   the fix.
+- **G-46.** nx() and a root project (D-39): a root with a `vx.config`
+  already takes the Nx root project's targets by directory, now held by
+  a row. Without one, an explicit edge to a root target
+  (`{ projects: ["ws"], target: "prep" }`) refused the whole run as "no
+  such project"; it is dropped with a todo naming the key it misses, as
+  item 1051 dropped a `^target`. The unattached note names the fix for
+  the root. The README's line on negated outputs, stale since G-44,
+  is corrected. Rows (`nx.test` › a root vx.config attaches…): red
+  without either half.

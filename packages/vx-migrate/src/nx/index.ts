@@ -152,12 +152,15 @@ async function index(
   const byName = new Map<string, GeneratedProject>()
   const visited = new Set(metas.map((m) => m.name))
   const unattached: string[] = []
+  let rootUnattached = false
   for (const project of mapped.projects) {
     // The mapper synthesizes a project for a graph node no package
     // matches — the root project, usually. The stage visits packages,
-    // so those targets have nowhere to go; say so once.
+    // so those targets have nowhere to go; say so once. A root with a
+    // vx.config is a project (core's D-39), and its targets attach.
     if (!visited.has(project.name)) {
       unattached.push(project.name)
+      if (path.resolve(project.dir) === path.resolve(root)) rootUnattached = true
       continue
     }
     byName.set(project.name, project)
@@ -165,7 +168,9 @@ async function index(
   if (unattached.length > 0) {
     notes.push(
       `Nx project(s) ${unattached.join(', ')} have no workspace package to attach targets to ` +
-        '(the root project, usually) — run those targets with nx, or declare them in a vx.config',
+        (rootUnattached
+          ? '(the workspace root: a vx.config there makes it a project) — run those targets with nx, or add one'
+          : '— run those targets with nx, or declare them in a vx.config'),
     )
   }
   // The bins executor lines and `.env`-loading lines start with: installed
