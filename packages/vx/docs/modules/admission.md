@@ -94,10 +94,11 @@ no lane, at once.
 ## Tests
 
 `tests/inflight.test.ts` (two runs sharing a registry execute a key
-once; the joiner hits; the barrier is released on failure),
+once and leave it empty; the joiner hits; a restore-tier task, a
+write-only and a read-only run do not join),
 `tests/continue-taint.test.ts` (the tainted task runs and does not
-save; taint reaches the grand-dependent; other modes skip; a hit
-between the failure and the dependent carries it),
+save; taint reaches the grand-dependent; a hit between the failure
+and the dependent carries it),
 `tests/taint-tracker.test.ts` (each poisoning status, a seed with no
 failure upstream, a hit judged before its deps settled, a 50,000-deep
 chain of hits).
