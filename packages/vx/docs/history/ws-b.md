@@ -449,3 +449,30 @@ violations)` count. A task that failed on its own read "1 sandbox
     inside the cwd, which then lists (the first row's cwd moved beside
     its grant, keeping its premise on both platforms);
   - a literal write grant that meant a directory counts no violation.
+
+B-21. `deny.network` refused nothing (J-33's network lead). SRT's proxy
+filters every request against the lists `initialize()` was given, and vx
+armed it with the run's allowlist union and an empty deny list. A task's
+`deny.network` reached SRT only per call, where the proxy never looks.
+
+- Fix (`sandboxRunUnion`, `prepareSandbox`, `initSandbox`): the run's
+  deny list is the union of every task's `deny.network`, refused to
+  every task and checked before the allowlist, as the allowlist is
+  already the union's. The per-call comments in `sandbox-binds.ts` that
+  claimed otherwise are de-claimed. `schema.md`,
+  `modules/sandbox-runtime.md`.
+- Per task stays out of reach. SRT's filter hears only host and port,
+  and the command's name rides in the proxy username, which the
+  sandboxed process writes, so a task could claim another's list.
+  `network: true` still reaches only the union.
+- Rows, each red without the fix:
+  - `sandbox-request.test.ts` › denied domains are the union of every
+    task's `deny.network`;
+  - `sandbox-runtime.unsafe.test.ts` › hands SRT the run's domain union
+    (now with the deny list), and arming a run hands SRT every task's
+    domains, denied ones included (`prepareSandbox` → `initSandbox`,
+    which nothing drove before).
+- Not proven here: a request actually refused. This container's
+  sandboxed curl reaches no proxy at all (exit 7, allowed or not). The
+  refusal rests on SRT's `filterNetworkRequest`, which checks
+  `deniedDomains` first (read in 0.0.76).

@@ -479,6 +479,13 @@ function linuxToolPaths(): { bwrapPath?: string; socatPath?: string } {
 export async function initSandbox(opts?: {
   allowedDomains?: readonly string[]
   /**
+   * Every domain any sandboxed task of the run denies. The proxy is the
+   * run's, so a deny refuses it for every task, as the allowlist is the
+   * union's; before B-21 the list was always empty and a `deny.network`
+   * refused nothing.
+   */
+  deniedDomains?: readonly string[]
+  /**
    * Whether any task of the run lifts SRT's seccomp block on
    * `socket(AF_UNIX)`: one that declares `unixSockets` or a `localBinding`
    * port list (the port bridge is a unix socket the task's side has to
@@ -497,7 +504,7 @@ export async function initSandbox(opts?: {
   const config: Parameters<typeof SandboxManager.initialize>[0] = {
     network: {
       allowedDomains: [...(opts?.allowedDomains ?? [])],
-      deniedDomains: [],
+      deniedDomains: [...(opts?.deniedDomains ?? [])],
       ...(opts?.allowAllUnixSockets === true ? { allowAllUnixSockets: true } : {}),
     },
     filesystem: { denyRead: [], allowWrite: [], denyWrite: [] },

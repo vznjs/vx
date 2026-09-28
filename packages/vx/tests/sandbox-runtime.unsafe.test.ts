@@ -53,7 +53,7 @@ import { isAlive, waitForDead } from './helpers/alive.js'
 import { SandboxManager } from '@anthropic-ai/sandbox-runtime'
 import * as violations from '../src/exec/sandbox-violations.js'
 import { validateProjectConfig } from '../src/workspace/index.js'
-import { sandboxRequestFor } from '../src/orchestrator/sandbox-request.js'
+import { prepareSandbox, sandboxRequestFor } from '../src/orchestrator/sandbox-request.js'
 import type { TaskNode } from '../src/graph/index.js'
 
 const TIMEOUT = 60_000
@@ -4698,13 +4698,37 @@ describe.skipIf(!available || process.platform !== 'linux')('the runtime lifecyc
     await resetSandbox()
     const spy = spyOn(SandboxManager, 'updateConfig')
     try {
-      await initSandbox({ allowedDomains: ['a.test'] })
+      await initSandbox({ allowedDomains: ['a.test'], deniedDomains: ['ads.a.test'] })
       const cfg = spy.mock.calls.at(-1)?.[0] as {
-        network?: { allowedDomains?: string[] }
+        network?: { allowedDomains?: string[]; deniedDomains?: string[] }
         ignoreViolations?: unknown
       }
       expect(cfg.network?.allowedDomains).toEqual(['a.test'])
+      // SRT's proxy checks this list first, for every task (B-21).
+      expect(cfg.network?.deniedDomains).toEqual(['ads.a.test'])
       expect(cfg.ignoreViolations).toEqual({ '*': ['kern.iossupportversion'] })
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  it("arming a run hands SRT every task's domains, denied ones included", async () => {
+    await resetSandbox()
+    const node = (id: string, sandbox: Record<string, unknown>) =>
+      ({ id, config: { exec: { command: 'true', sandbox } } }) as unknown as TaskNode
+    const spy = spyOn(SandboxManager, 'updateConfig')
+    try {
+      await prepareSandbox([
+        node('p#a', { allow: { network: ['*.a.test'] }, deny: { network: ['ads.a.test'] } }),
+        node('p#b', { allow: { network: ['b.test'] } }),
+      ])!.arm()
+      const cfg = spy.mock.calls.at(-1)?.[0] as {
+        network?: { allowedDomains?: string[]; deniedDomains?: string[] }
+      }
+      expect([cfg.network?.allowedDomains, cfg.network?.deniedDomains]).toEqual([
+        ['*.a.test', 'b.test'],
+        ['ads.a.test'],
+      ])
     } finally {
       spy.mockRestore()
     }

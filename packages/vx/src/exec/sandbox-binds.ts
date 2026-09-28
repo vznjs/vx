@@ -157,9 +157,10 @@ export function punchWritePaths(readPath: string, writePaths: readonly string[])
  * produce the SRT customConfig. Path arrays are unioned and deduped; every
  * read grant is punched around the write grants (`punchWritePaths`).
  *
- * Network: `allow.network` missing → block all (allowedDomains: []);
- * `true` → allow all (['*']); a domain list → exactly that list.
- * `deny.network` is always passed as deniedDomains.
+ * Network: the lists are passed as the task declared them, but SRT's
+ * proxy filters by the RUN's lists from `initialize()`, never these: a
+ * task reaches the run's allowlist union less its deny union
+ * (`sandboxRunUnion`, B-21), whatever it declared here.
  */
 export function buildCustomConfig(
   args: Pick<SandboxedRunArgs, 'config'>,
@@ -185,9 +186,8 @@ export function buildCustomConfig(
     },
   }
 
-  // `allow.network` / `deny.network` become SRT's domain lists. SRT requires
-  // both to be present on any network config, so we always supply both;
-  // omitted means no network at all.
+  // SRT requires both lists on any network config, so both are supplied;
+  // its proxy filters by the run's lists, not these (see above).
   custom.network = {
     allowedDomains: c.network === true ? ['*'] : [...(c.network ?? [])],
     deniedDomains: [...(c.denyNetwork ?? [])],
