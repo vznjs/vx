@@ -51,6 +51,12 @@
   page never named bubblewrap, socat and ripgrep, nor the git-config
   refusal's escape (`GIT_CONFIG_GLOBAL=/dev/null`, item A-18), both hit
   in this stream's own first gate.
+- **K-9** Search (coordinator backlog 2-1): of the 230 pages the sitemap
+  lists, only the landing named no canonical URL and no sitemap link
+  (Starlight writes both on the docs pages; the 40 pages without a
+  description are redirect stubs, `noindex` and out of the sitemap).
+  `landing.test.ts` now holds canonical, description and sitemap link
+  for every page the sitemap lists.
 
 ## Leads for other streams
 
