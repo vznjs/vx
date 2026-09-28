@@ -1,7 +1,8 @@
-// `vx-migrate [--from turbo|nx] [--dry] [--force] [--mjs]` — one vx.config.ts per
-// workspace package from an existing Turbo or Nx setup. Source auto-detect:
-// turbo.json → Turbo; .nx/workspace-data/project-graph.json → Nx (the
-// resolved snapshot). The mappers return a plan; core's migration seam
+// `vx-migrate [--from turbo|nx|moon] [--dry] [--force] [--mjs]` — one
+// vx.config.ts per workspace package from an existing Turbo, Nx or moon
+// setup. Source auto-detect: turbo.json → Turbo;
+// .nx/workspace-data/project-graph.json → Nx (the resolved snapshot);
+// .moon/workspace.yml → moon. The mappers return a plan; core's migration seam
 // (`applyMigration`) renders, guards, writes and reports, so what this
 // package writes reads exactly like what `vx init` writes.
 
@@ -15,14 +16,17 @@ import {
   type MigrationPlan,
   UserError,
 } from '@vzn/vx'
+import { migrateMoon } from './migrate-moon.js'
 import { migrateNx, NX_GRAPH_REL } from './migrate-nx.js'
 import { migrateTurbo } from './migrate-turbo.js'
+import { moonWorkspaceFile } from './moon/moon-map.js'
 import { turboConfigFile } from './turbo/turbo-map.js'
 
-// The four plugins: the Turbo and Nx project stages (a repo runs
+// The plugins: the Turbo, Nx and moon project stages (a repo runs
 // unchanged), and the two remote caches speaking Turbo's and Nx's wire.
 export * from './turbo/index.js'
 export * from './nx/index.js'
+export * from './moon/index.js'
 export * from './turbo-cache/index.js'
 export * from './nx-cache/index.js'
 
@@ -31,13 +35,13 @@ export interface MigrateArgs {
   force: boolean
   /** `vx.config.mjs` (and `vx-preset.mjs`) instead of `.ts`. */
   mjs: boolean
-  from?: 'turbo' | 'nx'
+  from?: 'turbo' | 'nx' | 'moon'
   /** `--help` / `-h`: the usage on stdout, exit 0 (as `nx-env --help`). */
   help?: boolean
   error?: string
 }
 
-const USAGE = 'usage: vx-migrate [--from turbo|nx] [--dry] [--force] [--mjs]'
+const USAGE = 'usage: vx-migrate [--from turbo|nx|moon] [--dry] [--force] [--mjs]'
 
 export function parseMigrateArgs(args: readonly string[]): MigrateArgs {
   const out: MigrateArgs = { dry: false, force: false, mjs: false }
@@ -48,8 +52,11 @@ export function parseMigrateArgs(args: readonly string[]): MigrateArgs {
     else if (a === '--mjs') out.mjs = true
     else if (a === '--from' || a?.startsWith('--from=')) {
       const v = a === '--from' ? args[++i] : a.slice('--from='.length)
-      if (v !== 'turbo' && v !== 'nx') {
-        return { ...out, error: `--from must be turbo or nx (package.json scripts: \`vx init\`)` }
+      if (v !== 'turbo' && v !== 'nx' && v !== 'moon') {
+        return {
+          ...out,
+          error: `--from must be turbo, nx or moon (package.json scripts: \`vx init\`)`,
+        }
       }
       out.from = v
     } else if (a === '--help' || a === '-h') return { ...out, help: true }
@@ -77,13 +84,41 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
   const hasTurbo = turboFile !== null
   const hasGraph = await Bun.file(path.join(root, NX_GRAPH_REL)).exists()
   const hasNxJson = await Bun.file(path.join(root, 'nx.json')).exists()
+  const moonFile = await moonWorkspaceFile(root)
 
-  // Evaluating teams routinely have both runners checked in — never
+  // Evaluating teams routinely have two runners checked in — never
   // ask anyone to delete anything; --from disambiguates.
-  if (parsed.from === undefined && hasTurbo && (hasGraph || hasNxJson)) {
+  const found = (
+    [
+      ['turbo', hasTurbo, 'turbo.json'],
+      ['nx', hasGraph || hasNxJson, 'an nx workspace'],
+      ['moon', moonFile !== null, 'a moon workspace'],
+    ] as const
+  ).filter(([, present]) => present)
+  if (parsed.from === undefined && found.length > 1) {
+    const what = found.map(([, , label]) => label)
+    const listed =
+      what.length === 2
+        ? `both ${what[0]} and ${what[1]}`
+        : `${what.slice(0, -1).join(', ')} and ${what.at(-1)}`
     throw new UserError(
-      'both turbo.json and an nx workspace are present — pass --from turbo or --from nx',
+      `${listed} are present — pass ${found.map(([id]) => `--from ${id}`).join(' or ')}`,
     )
+  }
+  if (parsed.from === 'moon' || (parsed.from === undefined && found[0]?.[0] === 'moon')) {
+    if (moonFile === null)
+      throw new UserError('--from moon, but no .moon/workspace.yml at the workspace root')
+    const format: MigrationFormat = parsed.mjs ? 'mjs' : 'ts'
+    return applyMigration({
+      root,
+      metas,
+      plan: await migrateMoon(root, metas),
+      source: path.relative(root, moonFile),
+      verb: 'vx-migrate',
+      dry: parsed.dry,
+      force: parsed.force,
+      format,
+    })
   }
   if (parsed.from === 'turbo' && !hasTurbo) {
     throw new UserError('--from turbo, but no turbo.json at the workspace root')
@@ -105,7 +140,7 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
       )
     } else {
       throw new UserError(
-        'nothing to migrate: no turbo.json and no Nx workspace at the workspace root — ' +
+        'nothing to migrate: no turbo.json, Nx or moon workspace at the workspace root — ' +
           'for package.json scripts, run `vx init`',
       )
     }

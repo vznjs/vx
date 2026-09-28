@@ -1,9 +1,9 @@
 ---
 title: Migrate
-description: Run a Turborepo or Nx repo under vx with no file rewritten, then let `bunx @vzn/vx-migrate` write vx.config.ts files when you are ready.
+description: Run a Turborepo, Nx or moon repo under vx with no file rewritten, then let `bunx @vzn/vx-migrate` write vx.config.ts files when you are ready.
 ---
 
-Run your Turborepo or Nx repo under vx today, and move its config to
+Run your Turborepo, Nx or moon repo under vx today, and move its config to
 TypeScript at your own pace.
 
 ## Turborepo
@@ -98,9 +98,45 @@ installed.
 Generators, Nx Console and module-boundary rules have no vx equivalent;
 keep Nx for those.
 
+## moon
+
+1. Install: `bun add -d @vzn/vx @vzn/vx-migrate`.
+2. Add this `vx.workspace.ts`. It is the only new file.
+3. Run `vx run build --all`. It runs what `moon run :build` ran, under vx's cache.
+4. Preview the configs with `bunx @vzn/vx-migrate --dry`, then write them with `bunx @vzn/vx-migrate`.
+
+```ts
+// vx.workspace.ts
+import { defineWorkspace } from '@vzn/vx'
+import { moon } from '@vzn/vx-migrate'
+
+export default defineWorkspace({ plugins: [moon()] })
+```
+
+vx runs the projects your package manager's workspaces list; a moon
+project with no `package.json` there is reported, not run.
+
+| moon                                   | vx                                                     |
+| -------------------------------------- | ------------------------------------------------------ |
+| `.moon/tasks.yml`, `.moon/tasks/*.yml` | inherited as moon inherits them (by name, or `inheritedBy`) |
+| `command` + `args`                     | `exec.command`                                         |
+| `deps`: `^:build`, `app:build`         | `dependsOn`: `^build`, `app#build`                     |
+| `inputs` (none: every project file)    | `cache.inputs.files`                                   |
+| `@group(sources)`                      | the file group's entries                               |
+| `/tsconfig.json`                       | `cache.inputs.workspaceFiles`                          |
+| `$VAR` input                           | `cache.inputs.env` **and** `exec.env.passThrough`      |
+| `outputs`                              | `cache.outputs.files`                                  |
+| `options.cache: false`                 | no `cache` block                                       |
+| `local: true`, `preset: server`        | `exec.persistent: {}`                                  |
+| `moon run app:build`                   | `vx run app#build`                                     |
+| `moon run :build --affected`           | `vx run build --affected`                              |
+
+The full table and what is not mapped: the
+[`@vzn/vx-migrate` README](https://github.com/vznjs/vx/tree/main/packages/vx-migrate#moon--run-a-moon-workspace-unchanged).
+
 ## Common problems
 
-- **A task always runs.** vx caches only a task with a `cache` block. `vx-migrate` fills it from `turbo.json` or the Nx graph.
+- **A task always runs.** vx caches only a task with a `cache` block. `vx-migrate` fills it from `turbo.json`, the Nx graph or `.moon/`.
 - **An env var is missing in the command.** vx isolates the environment: list it in `exec.env.passThrough` ([Environment variables](../configure/#environment-variables)).
 - **`vx run build` ran one package.** Without `--all`, vx runs the package you are in.
 
