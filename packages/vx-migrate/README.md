@@ -1,11 +1,12 @@
 # @vzn/vx-migrate
 
-Everything for adopting [`@vzn/vx`](https://github.com/vznjs/vx) from Turborepo, Nx or moon, in one package with zero dependencies:
+Everything for adopting [`@vzn/vx`](https://github.com/vznjs/vx) from Turborepo, Nx, moon or wireit, in one package with zero dependencies:
 
 - **`turbo()`** — run a Turbo repository under vx with nothing written. The plugin fills vx's `project` stage from `turbo.json` and each package's `package.json` scripts. A trial that commits nothing.
 - **`nx()`** — run an Nx repository under vx with nothing written: the same stage, filled from Nx's resolved project graph. Executor targets (`@nx/js:tsc`, `@nx/vite:build`, your own) run as themselves through **`nx-exec`**, one executor per process.
 - **`moon()`** — run a [moon](https://moonrepo.dev) workspace under vx with nothing written, from `.moon/` and each `moon.yml`.
-- **`bunx @vzn/vx-migrate`** — write one `vx.config.ts` per workspace package from your `turbo.json`, an exported Nx project graph or `.moon/`, plus the workspace file every run needs. Runs without a workspace file, so it is the first command, not the second.
+- **`wireit()`** — run a [wireit](https://github.com/google/wireit) workspace under vx with nothing written, from each `package.json`'s `wireit` block.
+- **`bunx @vzn/vx-migrate`** — write one `vx.config.ts` per workspace package from your `turbo.json`, an exported Nx project graph, `.moon/` or `wireit` blocks, plus the workspace file every run needs. Runs without a workspace file, so it is the first command, not the second.
 - **`turboCache()`** and **`nxCache()`** — keep the remote cache you have: any server speaking Turbo's `/v8/artifacts` API (Vercel's hosted cache included) or Nx's self-hosted `/v1/cache` spec.
 
 ```sh
@@ -145,6 +146,31 @@ Then `vx run build --all` runs each project's moon `build`. Read: `.moon/workspa
 
 Not mapped, each a TODO or a note: a project that is not a package-manager workspace package (vx discovers projects from `package.json` workspaces), a tag target (`#tag:task`) or an all-projects dep (`:task`), a token with no vx form (`@meta`, `@envs`; the task is skipped and an edge to it dropped), `node.inferTasksFromScripts`, and `options.affectedFiles`, `interactive`, `mutex`, `os`. moon passes a task the whole environment and vx an isolated one: list what a task reads as a `$VAR` input. A `remote.host` in `.moon/workspace.yml` is a Bazel REAPI server; [`@vzn/vx-reapi`](../vx-reapi)'s `reapi()` stores vx's artifacts there, and a note says so. Every value here was checked against `moon query tasks` (1.41.7 on moonrepo/examples, 2.5.5 on a moon 2 fixture).
 
+## `wireit()` — run a wireit workspace unchanged
+
+```ts
+// vx.workspace.ts
+import { defineWorkspace } from '@vzn/vx'
+import { wireit } from '@vzn/vx-migrate'
+
+export default defineWorkspace({ plugins: [wireit()] })
+```
+
+Then `vx run build --all` runs each package's `wireit.build`, read from its `package.json`.
+
+| wireit (`package.json` `wireit.<script>`)  | vx                                                                                     |
+| ------------------------------------------ | -------------------------------------------------------------------------------------- |
+| `command`                                  | `exec.command`; none is a group task (`dependsOn` only)                                |
+| `dependencies`: `build`, `../pkg:build`    | `dependsOn`: `build`, `pkg-name#build`                                                 |
+| a dependency that is a plain npm script    | a task running that script (its `pre`/`post` hooks folded in), uncached                |
+| `files` **and** `output` both set          | `cache.inputs.files` / `cache.outputs.files`; either missing, no cache (wireit's rule) |
+| a `../` file                               | `cache.inputs.workspaceFiles`                                                          |
+| `env`: `"value"` / `{ external: true }`    | `exec.env.define` / `cache.inputs.env` **and** `exec.env.passThrough`                  |
+| `service`, `service.readyWhen.lineMatches` | `exec.persistent`, `exec.persistent.readyWhen`                                         |
+| `clean`                                    | nothing: vx cleans outputs before every run, as wireit's default does                  |
+
+Not mapped, each a TODO or a note: the workspace root's scripts (vx has no root tasks), a dependency on a directory that is not a workspace package, a negated `output` (the task runs uncached), a wildcard output under `clean: false`, `cascade: false` (vx folds every dependency's key), an external env `default`, and `allowUsuallyExcludedPaths`. On lit/lit (53 packages) all 299 mapped tasks load.
+
 ## `nx-exec` — one Nx executor, one process
 
 ```
@@ -188,6 +214,10 @@ Reads the root pipeline (`tasks` in Turbo 2, `pipeline` in Turbo 1), per-package
 ### Nx
 
 Reads the **resolved** project graph only (`.nx/workspace-data/project-graph.json`; export one with `nx graph --file=.nx/workspace-data/project-graph.json`), through the same mapper `nx()` runs live — so a repo reads the same whether you migrate it or run it as it is. Targets Nx plugins infer at runtime are frozen as the snapshot saw them. `nx:run-commands` is the one shell line `nx()` runs (see [`nx:run-commands`](#nxrun-commands) above: where, parallel or in order, forwarded arguments, `env`, `readyWhen`) — storybook's `compile` is `cd ../../.. && node ./scripts/build/build-package.ts --cwd code/lib/cli`; a plain `command` is that shorthand; `nx:run-script` is the package's script body with its `pre<name>` / `post<name>` hooks folded in (or `yarn run <name>` when the body calls yarn's `run` builtin; an empty script is the placeholder with a todo), `nx:noop` is a group task; **every other executor is an `nx-exec` line** carrying the executor and its resolved options, no TODO — keep `nx` and `@vzn/vx-migrate` installed for as long as a config runs one, and replace the line with the bare command (`vite build`, `tsc -p …`) when the target leaves Nx. A target with `configurations` writes one task per configuration (`build`, `build:ci`). Named inputs expand from `nx.json` when readable. An output path is kept as written (`{projectRoot}/dist` → `dist`, `{projectRoot}/bin/tool` → `bin/tool`): vx reads a bare path as the file or the whole tree under it, so a directory and an extensionless binary both save and restore. vx derives package edges from `package.json`; an Nx graph edge with no manifest path (`implicitDependencies`, a tsconfig path) becomes, for each `^target` of the dependant, an explicit `pkg#target` edge to what Nx's own walk reaches — each dependency that has the target, and through one that lacks it, its dependencies — so the order and the key are Nx's.
+
+### wireit
+
+Reads each `package.json`'s `wireit` block through the mapper `wireit()` runs live; the table is [`wireit()`](#wireit--run-a-wireit-workspace-unchanged)'s.
 
 ### moon
 
@@ -267,7 +297,7 @@ The Nx spec has no existence probe, so `has` (the `--dry` prediction; the prefet
 
 ## Testing
 
-`bun test` runs the Turbo, Nx and moon plugins over fixture workspaces (the Nx one against a fake `nx` whose graph export and `runExecutor` are stubs, so the vx → `nx-exec` → executor → cache round trip is real), the migrate CLI over both sources, and each remote-cache wire against a strict in-memory implementation of its spec plus a full `vx run` round trip (miss → upload → local wipe → restore from the server). A separate suite points both plugins at a HOSTILE server — 500 on every request, 401, a server that never answers, and a body that is not an artifact — and pins that each one degrades to a miss with the run still green. `tests/nx-exec-live.test.ts` runs `nx-exec` against REAL Nx when `VX_NX_MODULES` names a directory whose `node_modules` holds `nx`, `@nx/js` and `typescript` (CI installs one under `packages/vx-migrate/.nx-live` and sets `VX_REQUIRE_NX=1`, so an absent install fails there instead of skipping).
+`bun test` runs the Turbo, Nx, moon and wireit plugins over fixture workspaces (the Nx one against a fake `nx` whose graph export and `runExecutor` are stubs, so the vx → `nx-exec` → executor → cache round trip is real), the migrate CLI over both sources, and each remote-cache wire against a strict in-memory implementation of its spec plus a full `vx run` round trip (miss → upload → local wipe → restore from the server). A separate suite points both plugins at a HOSTILE server — 500 on every request, 401, a server that never answers, and a body that is not an artifact — and pins that each one degrades to a miss with the run still green. `tests/nx-exec-live.test.ts` runs `nx-exec` against REAL Nx when `VX_NX_MODULES` names a directory whose `node_modules` holds `nx`, `@nx/js` and `typescript` (CI installs one under `packages/vx-migrate/.nx-live` and sets `VX_REQUIRE_NX=1`, so an absent install fails there instead of skipping).
 
 ## History
 

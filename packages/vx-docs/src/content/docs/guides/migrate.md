@@ -1,9 +1,9 @@
 ---
 title: Migrate
-description: Run a Turborepo, Nx or moon repo under vx with no file rewritten, then let `bunx @vzn/vx-migrate` write vx.config.ts files when you are ready.
+description: Run a Turborepo, Nx, moon or wireit repo under vx with no file rewritten, then let `bunx @vzn/vx-migrate` write vx.config.ts files when you are ready.
 ---
 
-Run your Turborepo, Nx or moon repo under vx today, and move its config to
+Run your Turborepo, Nx, moon or wireit repo under vx today, and move its config to
 TypeScript at your own pace.
 
 ## Turborepo
@@ -151,6 +151,33 @@ project with no `package.json` there is reported, not run.
 
 The full table and what is not mapped: the
 [`@vzn/vx-migrate` README](https://github.com/vznjs/vx/tree/main/packages/vx-migrate#moon--run-a-moon-workspace-unchanged).
+
+## wireit
+
+1. Install: `bun add -d @vzn/vx @vzn/vx-migrate`.
+2. Add this `vx.workspace.ts`. It is the only new file.
+3. Run `vx run build --all`. It runs each package's `wireit.build`, under vx's cache.
+4. Preview the configs with `bunx @vzn/vx-migrate --dry`, then write them with `bunx @vzn/vx-migrate`.
+
+```ts
+// vx.workspace.ts
+import { defineWorkspace } from '@vzn/vx'
+import { wireit } from '@vzn/vx-migrate'
+
+export default defineWorkspace({ plugins: [wireit()] })
+```
+
+| wireit                         | vx                                                |
+| ------------------------------ | ------------------------------------------------- |
+| `command`                      | `exec.command`                                    |
+| `dependencies`: `../pkg:build` | `dependsOn`: `pkg#build`                          |
+| `files` + `output`             | `cache.inputs.files` + `cache.outputs.files`      |
+| `env`: `{ "external": true }`  | `cache.inputs.env` **and** `exec.env.passThrough` |
+| `service`                      | `exec.persistent` (with `readyWhen`)              |
+| `npm run build`                | `vx run build`                                    |
+
+The full table: the
+[`@vzn/vx-migrate` README](https://github.com/vznjs/vx/tree/main/packages/vx-migrate#wireit--run-a-wireit-workspace-unchanged).
 
 ## Common problems
 

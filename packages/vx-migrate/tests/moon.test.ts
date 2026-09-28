@@ -481,7 +481,7 @@ tasks:
         '[@vzn/vx-migrate] @s/c#odd: the command uses a moon token vx has no form for — task skipped; write the command by hand',
       )
       expect(log.lines).toContain(
-        '[@vzn/vx-migrate] @s/c#use: dep "odd": that task has no vx form — edge dropped',
+        '[@vzn/vx-migrate] @s/c#use: edge "odd": that task has no vx form — edge dropped',
       )
       expect(log.lines).toContain(
         "[@vzn/vx-migrate] note: moon's remote cache (grpcs://cache.example.dev) speaks Bazel REAPI — `reapi()` from @vzn/vx-reapi stores vx artifacts on the same server under vx keys",
