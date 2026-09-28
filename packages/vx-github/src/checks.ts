@@ -49,6 +49,15 @@ export function resolveCheckRunEnv(env: Record<string, string | undefined>): Che
   }
 }
 
+/** fetch refused the server's certificate (untrusted, expired, wrong name). */
+function isCertificateRefusal(err: unknown): boolean {
+  const code = (err as { code?: unknown } | null)?.code
+  return (
+    typeof code === 'string' &&
+    (code.includes('CERT') || code === 'UNABLE_TO_VERIFY_LEAF_SIGNATURE')
+  )
+}
+
 /**
  * GitHub caps `output.summary` at 65535 characters; truncate with a tell.
  * Counted in UTF-8 bytes, which is never fewer than the characters, so
@@ -138,7 +147,11 @@ export async function postCheckRun(args: {
         res = await post()
         if (!CHECK_RETRY_STATUS.has(res.status) || delay === undefined) break
       } catch (err) {
-        if (delay === undefined || args.signal?.aborted === true) throw err
+        // A refused certificate (a GHES host behind a private CA) fails the
+        // same way every time: not retried (F-40).
+        if (delay === undefined || args.signal?.aborted === true || isCertificateRefusal(err)) {
+          throw err
+        }
       }
       if (args.signal?.aborted === true) break
       await Bun.sleep(delay)
@@ -159,8 +172,12 @@ export async function postCheckRun(args: {
       args.warn(`vx-github: check-run POST failed (${res.status})${hint}: ${body.slice(0, 200)}`)
     }
   } catch (err) {
+    // A GHES host behind a private CA: Bun's fetch trusts a CA named there.
+    const hint = isCertificateRefusal(err)
+      ? " — for a host behind a private CA, set NODE_EXTRA_CA_CERTS to its CA's PEM file"
+      : ''
     args.warn(
-      `vx-github: check-run POST failed: ${err instanceof Error ? err.message : String(err)}`,
+      `vx-github: check-run POST failed: ${err instanceof Error ? err.message : String(err)}${hint}`,
     )
   }
 }

@@ -411,3 +411,14 @@ that asks for a client certificate refused the connection.
 handed to fetch; a file that cannot be read warns once and is not used.
 Rows against a real TLS server, certificates made per run by openssl
 (no key checked in), red without the fix.
+
+F-40. vx-otel and vx-github retried a fetch that failed on the server's
+certificate as if the connection had dropped: an untrusted, expired or
+misnamed certificate fails the same way each time, and the two retries
+spent a second of the flush deadline before the same warning. A code
+naming a certificate (or `UNABLE_TO_VERIFY_LEAF_SIGNATURE`) is now
+thrown at once; a reset connection is still retried. The warning names
+the fix: `OTEL_EXPORTER_OTLP_CERTIFICATE` for vx-otel,
+`NODE_EXTRA_CA_CERTS` for a GHES host behind a private CA (Bun's fetch
+trusts it; probed). Rows red without the fix, the reset control holds
+both ways.
