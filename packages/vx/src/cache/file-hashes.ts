@@ -11,6 +11,7 @@ import { lstatSync, readlinkSync } from 'node:fs'
 import path from 'node:path'
 import { fileIdentity, repoFacts } from './git-inputs.js'
 import { FILE_HASH_RACY_MS, isIndexFull, racyWindowMs } from './layer.js'
+import { isPermissionError, UserError } from '../util/index.js'
 
 const FILE_HASHES_SWEPT_AT = 'file_hashes_swept_at'
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -301,7 +302,19 @@ export class FileHashStore {
    * spawn per file.
    */
   private async hashFileFromDisk(filePath: string): Promise<string> {
-    return this.hashBytes(await Bun.file(filePath).bytes(), filePath)
+    let bytes: Uint8Array
+    try {
+      bytes = await Bun.file(filePath).bytes()
+    } catch (err) {
+      // Left raw, the scheduler added the write hint to an input vx only
+      // reads: "a path vx must write is not writable by this user".
+      if (!isPermissionError(err)) throw err
+      throw new UserError(
+        `${filePath} is not readable by this user (${err.code}), and vx reads it to derive a ` +
+          'cache key. Make it readable, or, for a task input, take it out of cache.inputs.files.',
+      )
+    }
+    return this.hashBytes(bytes, filePath)
   }
 
   /**

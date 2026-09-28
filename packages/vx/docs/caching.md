@@ -1014,6 +1014,10 @@ A restore that cannot READ its artifact (a cache directory another
 user owns) names the cache, not the outputs: `restore of <hash> could
 not read its artifact (EACCES: …). Make the cache directory readable
 by this user, or point cacheDir / --cache-dir at one that is.` (A-40).
+An input the key must hash that this user cannot read fails its task
+naming the read: `<path> is not readable by this user (EACCES), and vx
+reads it to derive a cache key. Make it readable, or, for a task input,
+take it out of cache.inputs.files.` (A-50).
 
 ```
 <workspaceRoot>/.vx/cache/                  (configurable via vx.workspace.ts cacheDir)
