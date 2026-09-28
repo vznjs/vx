@@ -172,3 +172,17 @@ packages/core`) selects the dependent whose `file:../lib` spec named
   before the worker evaluates it (D-18)". Equivalent: the stale-import
   check's `Math.floor` (sub-millisecond) and moving its baseline on
   each load (a refused load never moves it).
+- **D-19** Mutation sweep of `workspace.ts` (35 mutants). Seven
+  behaviour survivors, now rows in `tests/workspace.test.ts`: a literal
+  negation's `/` boundary (`!packages/a` kept `packages/ab`), the dot
+  and `node_modules` skips under `packages/*`, the nested and root
+  `node_modules` skips under a deep glob (pnpm installs where
+  `packages/**` looks), the unreached hint's `node_modules` skip (a
+  single-package repo's dependencies named as members it left out) and
+  its "and N more". Equivalent: the `.` member in `claimsMember` (a
+  member is below the root), the negation's trailing-slash strip (the
+  member strip ran first), the wildcard negation (the manifest match
+  covers it), `.` in `memberBaseDirs`, symlink following under `**`
+  (the `node_modules` skips bound it). `show-info.test.ts` failed under
+  every mutant, equivalent ones included, and was dropped from the set:
+  its alias row compares two runs over the mutated tree.

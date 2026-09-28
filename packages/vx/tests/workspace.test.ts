@@ -7,6 +7,8 @@ import {
   listProjects,
   loadWorkspace,
   memberBaseDirs,
+  unreachedHint,
+  unreachedPackages,
 } from '../src/workspace/workspace.js'
 import { applyFilters, parseFilter } from '../src/workspace/filter.js'
 import { UserError } from '../src/util/index.js'
@@ -358,6 +360,75 @@ describe('listProjects', () => {
       const projects = await listProjects(ws)
       expect(projects.map((p) => p.name).sort()).toEqual(['a'])
     }
+  })
+
+  it('a literal negation excludes its directory, not a sibling that shares its prefix (D-19)', async () => {
+    await writeFile(
+      path.join(dir, 'package.json'),
+      JSON.stringify({ name: 'r', workspaces: ['packages/*', '!packages/a'] }),
+    )
+    for (const name of ['a', 'ab']) {
+      await mkdir(path.join(dir, 'packages', name), { recursive: true })
+      await writeFile(path.join(dir, 'packages', name, 'package.json'), JSON.stringify({ name }))
+    }
+    const projects = await listProjects(await loadWorkspace(dir))
+    expect(projects.map((p) => p.name)).toEqual(['ab'])
+  })
+
+  it('`packages/*` passes over a dot directory and node_modules, as the package managers do (D-19)', async () => {
+    await writeFile(
+      path.join(dir, 'package.json'),
+      JSON.stringify({ name: 'r', workspaces: ['packages/*'] }),
+    )
+    for (const [rel, name] of [
+      ['packages/a', 'a'],
+      ['packages/.cache', 'cache'],
+      ['packages/node_modules', 'dep'],
+    ] as const) {
+      await mkdir(path.join(dir, rel), { recursive: true })
+      await writeFile(path.join(dir, rel, 'package.json'), JSON.stringify({ name }))
+    }
+    const projects = await listProjects(await loadWorkspace(dir))
+    expect(projects.map((p) => p.name)).toEqual(['a'])
+  })
+
+  it('a deep glob never reaches into node_modules, nested or at the root (D-19)', async () => {
+    // pnpm installs each package's dependencies in its own node_modules,
+    // right where `packages/**` looks; `**` reaches the root's.
+    for (const [globs, want] of [
+      [['packages/**'], ['a']],
+      [['**'], ['a', 'r']],
+    ] as const) {
+      await rm(dir, { recursive: true, force: true })
+      await mkdir(dir, { recursive: true })
+      await writeFile(
+        path.join(dir, 'package.json'),
+        JSON.stringify({ name: 'r', workspaces: globs }),
+      )
+      for (const [rel, name] of [
+        ['packages/a', 'a'],
+        ['packages/a/node_modules/dep', 'dep'],
+        ['node_modules/top', 'top'],
+      ] as const) {
+        await mkdir(path.join(dir, rel), { recursive: true })
+        await writeFile(path.join(dir, rel, 'package.json'), JSON.stringify({ name }))
+      }
+      const projects = await listProjects(await loadWorkspace(dir))
+      expect(projects.map((p) => p.name)).toEqual([...want])
+    }
+  })
+
+  it("a single-package repo's installed dependencies are not unreached members (D-19)", async () => {
+    // The hint names the package.json files a root with no `workspaces`
+    // leaves out; node_modules holds the repo's dependencies, not those.
+    await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'r' }))
+    for (const rel of ['node_modules/dep', 'node_modules/@s/dep', 'tools/gen']) {
+      await mkdir(path.join(dir, rel), { recursive: true })
+      await writeFile(path.join(dir, rel, 'package.json'), JSON.stringify({ name: rel }))
+    }
+    expect(await unreachedPackages(await loadWorkspace(dir))).toEqual(['tools/gen'])
+    // Past three, the hint counts the rest.
+    expect(unreachedHint(['a', 'b', 'c', 'd'])).toContain('not: a, b, c and 1 more.')
   })
 
   it('a member glob keeps npm/pnpm semantics: a bracket is a class there (item 667)', async () => {
