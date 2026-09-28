@@ -29,7 +29,7 @@ released binary carries its own Bun and the row never says it.
 # Core
 vx run [OPTIONS] [TASK | PKG#TASK ...] [-- forwarded-args...]
 vx watch [OPTIONS] TASK [-- forwarded-args...]
-vx cache prune [--older-than <duration>] [--max-size <size>] [--dry-run] [--cache-dir <path>]
+vx cache prune [--older-than <duration>] [--max-size <size>] [--dry-run] [--format pretty|json] [--cache-dir <path>]
 vx lock [--check]
 vx init [--dry] [--force] [--mjs] [--plugin <seam>]
 vx show [PROJECT[#TASK] | TASK] [--format pretty|json]
@@ -1334,6 +1334,7 @@ subcommand".
 vx cache prune --older-than <duration>     # Drop entries last accessed before now - duration.
 vx cache prune --max-size <size>            # After age-based pruning, evict LRU until under <size>.
 vx cache prune ... --dry-run                # Say what either policy would reap; delete nothing.
+vx cache prune ... --format json            # { dryRun, evicted, bytesFreed, orphans, orphanBytes }
 vx cache prune ... --cache-dir <path>       # The cache a run with the same flag uses.
 ```
 
@@ -1730,10 +1731,11 @@ package's README.
 
 ## Machine-readable output
 
-`vx show`, `vx info`, `vx why` and `vx last` take `--format json`. Each
-prints one JSON document whose shape is a checked-in JSON Schema
-(draft 2020-12) shipped with the package: `schemas/show.json`,
-`schemas/info.json`, `schemas/why.json`, `schemas/last.json`
+`vx show`, `vx info`, `vx why`, `vx last` and `vx cache prune` take
+`--format json`. Each prints one JSON document whose shape is a
+checked-in JSON Schema (draft 2020-12) shipped with the package:
+`schemas/show.json`, `schemas/info.json`, `schemas/why.json`,
+`schemas/last.json`, `schemas/cache.json`
 (`node_modules/@vzn/vx/schemas/` in an install). Every object closes its
 key set, so a field vx adds is a schema change, never a surprise.
 `tests/cli-json-schemas.test.ts` holds each verb's output to its schema,

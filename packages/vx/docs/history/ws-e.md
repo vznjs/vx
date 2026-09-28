@@ -386,6 +386,9 @@ task picked`; neither prints a stack. Row in
   in a stable order and the way on: rename one, or a `!` workspace
   glob. sveltejs/kit (pnpm accepts two test apps of one name) died on
   the first command with two absolute paths and no next step.
+- E-68 — `vx cache prune --format json` and `schemas/cache.json`
+  (dryRun, evicted, bytesFreed, orphans, orphanBytes), held by the E-65
+  test; the one read-ish verb that had only prose.
 
 ## First-five-minutes walk (2026-09-28)
 
@@ -397,8 +400,8 @@ walked on fixtures.
 
 - Turbo: 11 configs written though the note says turbo.json was not
   read and names `vx-migrate`; 13 TODOs as 13 long lines (E-66); no
-  task caches, so the `next:` run can never hit (E-66). `next: vx run
-…` names `vx`, which a `bunx` user does not have on PATH.
+  task caches, so the `next:` run can never hit (E-66). The `next:`
+  line names `vx`, which a `bunx` user does not have on PATH.
 - Nx: one root `codegen` script, 0 TODOs, and a header saying `build`
   carries one (E-66).
 - sveltejs/kit: the first command refuses — two test apps share a

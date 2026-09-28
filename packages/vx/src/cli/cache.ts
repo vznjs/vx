@@ -59,6 +59,7 @@ interface PruneArgs {
   olderThanMs?: number
   maxBytes?: number
   dryRun?: boolean
+  format?: 'pretty' | 'json'
   /** `--cache-dir`: prune the cache a run with the same flag uses. */
   cacheDir?: string
   error?: string
@@ -110,6 +111,12 @@ export function parsePruneArgs(args: readonly string[]): PruneArgs {
       out.maxBytes = bytes
     } else if (a === '--dry-run') {
       out.dryRun = true
+    } else if (a === '--format' || a?.startsWith('--format=')) {
+      const v = a === '--format' ? args[++i] : a.slice('--format='.length)
+      if (v !== 'pretty' && v !== 'json') {
+        return { error: `--format must be pretty or json${seeHelp('cache')}` }
+      }
+      out.format = v
     } else {
       const cd = parseCacheDirFlag(args, i)
       if (cd === null)
@@ -151,10 +158,10 @@ async function pruneCmd(args: readonly string[]): Promise<number> {
   // to find that out made it: `.vx/cache` with a database and a
   // `.gitignore`, where item 900 had held the dry run to making nothing
   // (and a read-only checkout was refused as unwritable instead).
+  const dry = parsed.dryRun === true
+  const json = parsed.format === 'json'
   if (!existsSync(dir)) {
-    process.stdout.write(
-      parsed.dryRun === true ? 'Would prune 0 entries (0 B)\n' : 'Pruned 0 entries (0 B freed)\n',
-    )
+    printPruned({ evicted: 0, bytesFreed: 0, orphans: 0, orphanBytes: 0 }, dry, json)
     return 0
   }
   if (parsed.dryRun === true) {
@@ -163,7 +170,7 @@ async function pruneCmd(args: readonly string[]): Promise<number> {
       warnToStderr(
         `[vx] the cache index is schema ${earlier.found} from an earlier vx: the prune resets it first, and every artifact past the hour's grace is then an orphan`,
       )
-      printPruned({ evicted: 0, bytesFreed: 0, ...earlier }, true)
+      printPruned({ evicted: 0, bytesFreed: 0, ...earlier }, true, json)
       return 0
     }
   }
@@ -187,7 +194,7 @@ async function pruneCmd(args: readonly string[]): Promise<number> {
     if (parsed.olderThanMs !== undefined) opts.olderThanMs = parsed.olderThanMs
     if (parsed.maxBytes !== undefined) opts.maxBytes = parsed.maxBytes
     if (parsed.dryRun) opts.dryRun = true
-    printPruned(await cache.prune(opts), parsed.dryRun === true)
+    printPruned(await cache.prune(opts), dry, json)
   } finally {
     cache.close()
     await releaseRunLock()
@@ -198,7 +205,15 @@ async function pruneCmd(args: readonly string[]): Promise<number> {
 function printPruned(
   result: { evicted: number; bytesFreed: number; orphans: number; orphanBytes: number },
   dry: boolean,
+  json: boolean,
 ): void {
+  if (json) {
+    const { evicted, bytesFreed, orphans, orphanBytes } = result
+    process.stdout.write(
+      `${JSON.stringify({ dryRun: dry, evicted, bytesFreed, orphans, orphanBytes })}\n`,
+    )
+    return
+  }
   const orphans =
     result.orphans > 0
       ? `, ${dry ? 'would reap' : 'reaped'} ${result.orphans} orphaned artifact${result.orphans === 1 ? '' : 's'} (${formatBytes(result.orphanBytes)})`

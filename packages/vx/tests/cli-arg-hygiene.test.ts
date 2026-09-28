@@ -260,6 +260,19 @@ describe('vx cache prune value parsing', () => {
     expect(parsePruneArgs(['--cache-dir', '--older-than=30d']).error).toMatch(/got flag/)
   })
 
+  it('--format takes pretty or json, in either spelling', () => {
+    expect(parsePruneArgs(['--max-size=1G', '--format', 'json']).format).toBe('json')
+    expect(parsePruneArgs(['--format=pretty', '--max-size=1G']).format).toBe('pretty')
+    expect(parsePruneArgs(['--max-size=1G']).format).toBeUndefined()
+    const seeHelp = ' (see `vx cache --help`)'
+    expect(parsePruneArgs(['--max-size=1G', '--format', 'xml']).error).toBe(
+      `--format must be pretty or json${seeHelp}`,
+    )
+    expect(parsePruneArgs(['--max-size=1G', '--format']).error).toBe(
+      `--format must be pretty or json${seeHelp}`,
+    )
+  })
+
   it('rejects an empty = value rather than reading it as "prune nothing"', () => {
     // Must read as a missing VALUE, not as the unknown-argument error the
     // = form produced before it was recognised at all.
