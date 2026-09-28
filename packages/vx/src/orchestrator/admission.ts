@@ -64,8 +64,9 @@ export function taintTracker(
     u !== undefined && (failed(u) || taintOf(u.node.id))
   // Post-order over the settled deps with an explicit stack: a chain of
   // restore-tier hits is judged in one ask, and a recursion would take a
-  // frame per hop. Memoized once every dep has settled; until then the
-  // answer may still grow.
+  // frame per hop. Taint is final at once; a clean answer only once every
+  // dep has settled and its own answer is kept, since a dep below a settled
+  // one may still fail (C-23).
   const taintOf = (root: string): boolean => {
     const known = memo.get(root)
     if (known !== undefined) return known
@@ -95,7 +96,7 @@ export function taintTracker(
           return u !== undefined && (failed(u) || valueOf(d) === true)
         })
       local.set(id, taint)
-      if (taint || deps.every((d) => outcomes.has(d))) memo.set(id, taint)
+      if (taint || deps.every((d) => outcomes.has(d) && memo.has(d))) memo.set(id, taint)
     }
     return valueOf(root)!
   }
