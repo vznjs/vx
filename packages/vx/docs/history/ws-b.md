@@ -292,9 +292,9 @@ silenced nothing.
   - the untraced wrapper (no strace, or a persistent server) is never
     driven for the watcher's `-$$` or fd 3 (B-14);
   - a relative `../x` trace under a cwd reached through a link
-    (`canonicalBaselines`' cwd);
-  - a literal ignore entry that is itself a link;
-  - the task side's port socket after a SIGKILLed namespace;
+    (`canonicalBaselines`' cwd) (B-15);
+  - a literal ignore entry that is itself a link (B-15);
+  - the task side's port socket after a SIGKILLed namespace (B-15);
   - `releaseBridges`' deferred reset with two live servers and a bridged
     one-shot (B-14).
 - Also recorded:
@@ -316,3 +316,15 @@ already held; nothing pinned it.
   - untraced (strace refused), the command holds no signal channel and vx
     reaches its children: the `exec` form's `3<&-` and the watcher's
     `-$$` (`og-run-fd3`, `og-watch-pp`).
+
+B-15. The rest of B-13's leads pinned. The code held each time; each row is
+red under its mutant (`sandbox-runtime.unsafe.test.ts`):
+
+- an `ignore` entry naming a link silences the denial it leads to: a
+  literal entry is realpath'd whole, since the record names the target
+  (`ign-nowild-dirname`);
+- a relative denial under a linked cwd is reported at its physical path,
+  the cwd the kernel walked (`base-cwd`);
+- a SIGKILLed task's port bridge leaves no socket behind: the task's socat
+  unlinks it only on a graceful exit, so the host's unlink shows only when
+  the namespace dies by the grace's SIGKILL (`rb-unlinksock`).
