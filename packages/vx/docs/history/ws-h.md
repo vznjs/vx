@@ -337,6 +337,14 @@ finds them (38 today), imports each and validates it; dropping
 `schema.md`'s shared-inputs sample called `defineProject` without
 importing it. Two fences are sketches by design and are named in the test.
 
+## H-28: a header 72 characters or longer fails the Conventional Commits check
+
+CONTRIBUTING and CLAUDE.md set the first line under 72 characters, and
+H-23's check read only the shape: 39 of main's last 300 subjects are
+longer. `conventionalError` now refuses a header of 72 or more, so a PR
+title or commit that long fails CI; a 71-character row passes, a
+72-character one fails, and it passes without the rule.
+
 ## Leads for other streams
 
 - **F:** `vx mcp`'s tools are a frozen 1.0 output (`versioning-1.0.md`), held only by name (`server.test.ts`): their input schemas and result shapes have no record.

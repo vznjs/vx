@@ -19,3 +19,7 @@ remote artifact whose digest does not match.
 
 What is not: the behaviour of the commands you configure, or of a
 plugin published by someone else.
+
+What vx trusts, what it checks and what the sandbox does and does not stop:
+[packages/vx/docs/security.md](packages/vx/docs/security.md), on the site as
+Security model.

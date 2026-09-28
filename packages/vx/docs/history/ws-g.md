@@ -451,3 +451,13 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   `lint` target (`{options.outputFile}`, G-37's probe). A set
   non-string option keeps its todo. Row (`nx-helpers-sweep.test`): red
   without the fix.
+- **G-40.** nx()'s `externalDependencies` todo said vx hashes the
+  project's package.json; Nx's inferred targets name root
+  devDependencies (eslint, vitest) no project manifest holds. What
+  keys them is the lockfile: the whole file in core's fingerprint, or
+  a lockfile plugin's project closure, which folds the root
+  importer's (`lockfile-claim.ts`). The todo now says so, and names
+  the one case left: a package only another project installs. Left as
+  is from G-37's probe: an atomized `test-ci--<file>` whose coverage
+  dir sits under `test`'s runs uncached; caching both would let one
+  restore over the other's outputs.

@@ -18,7 +18,6 @@ export type DependencySpec =
   | { kind: 'wildcardDeps'; negated: boolean } // '^*'
 
 export class DependencySpecError extends Error {
-  readonly raw: string
   constructor(raw: string, message: string) // message: `Invalid dependency spec "<raw>": <message>`
 }
 

@@ -30,9 +30,9 @@ that is green on CI's pinned 1.4.2:
 
 - `fs.watch` never reports a DOT-prefixed filename. A plain file is
   delivered, `.vx-watch-probe` is dropped, in both recursive modes — and
-  that probe is precisely how `watch.ts:armWatcher` proves a watcher is
+  that probe is precisely how `watch-fs.ts:armWatcher` proves a watcher is
   live, so every `vx watch` below the floor falls back to polling. Not
-  silently: the loop already swaps in `pollWatcher` and says so on stderr
+  silently: `WatcherPool` already swaps in `pollWatcher` and says so on stderr
   (`no OS watch events within … ms; polling every … ms instead`), which is
   why this one degrades rather than breaks.
 

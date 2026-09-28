@@ -305,6 +305,13 @@
   fixtures: the missing-plugin hint names no install command, `--mjs`
   keeps a `package.json` import when a script reads `npm_package_*`,
   and `vx watch a b` already runs several tasks (modules/cli-watch).
+- **J-60** execution.md walked on fixtures (env, PATH, signals, grace,
+  timeouts, retries, persistent tasks): run ids are UUIDv7 not ULID
+  (six pages), a sandboxed task also gets the sandbox's proxy, CA and
+  `TMPDIR` values, and large output is capped in the cached replay.
+- **J-61** benchmarks.md's reproduction claims against vx-bench (every
+  script, flag, count and timing mark): one wrong — `run.ts` prints
+  the median and every rep, so the table's best-of-5 is the min.
 
 ## Leads for other streams
 
@@ -444,3 +451,11 @@ extra` ignores the extra argument and exits 0 where every other verb
   `@vzn/vx*` import is told `bun add -d @vzn/vx`, naming core, not the
   missing package (`cannot find '@vzn/vx-otel'; … bun add -d @vzn/vx`;
   reproduced in J-59).
+- **bench** `packages/vx-bench/compare.ts` ~650: a comment says the
+  baseline floors "take one [minute]"; two passes over 2,180 one-second
+  sleeps at `-P 10` take ~9 min, as benchmarks.md says (found in J-61).
+- **N** Since the Yarn PnP change (035c3868) only `turbo()` runs
+  `yarn run` under PnP (`turbo-map.ts:643`); `nx()` (`nx-map.ts:714`),
+  lage, wireit and scripts still inline the script, and the vx-migrate
+  README:54 says "same rules for `nx:run-script`". `turbo()` also reads
+  `.yarnrc.yml` without claiming it as a fingerprint (found in J-62).

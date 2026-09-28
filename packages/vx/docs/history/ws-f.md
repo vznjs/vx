@@ -464,3 +464,23 @@ upload it at once) ends a compressed write early with exactly that, and
 the client should not retry: two actions sharing an input could fail
 each other. `-1` on a compressed write is now done. The fake server can
 answer it; row red without the fix.
+
+F-46. vx-otel and vx-github retried past core's flush deadline: a
+deadline that passed during the wait after a 503 or 502 let the loop
+POST again (vx-github's `Bun.sleep` also ran its full 200 or 800 ms),
+and the warning named the AbortError, not the collector's or GitHub's
+answer. The wait now ends at the deadline and the last answer is
+warned. Rows red without each fix. Refuted again on the way:
+getRunHistory's DISTINCT order, on the real schema, with a task filter
+and 50 older runs (a three-column table drops the latest; the real one
+scans `runs_started_at` newest-first for every filter).
+
+F-47. vx-reapi judged a server's symlink target as text, but the OS
+follows the links the result already placed: with `x -> ..`, a link
+`y -> x/../../outside` read as inside the project and led out of the
+workspace (output symlinks and Tree SymlinkNodes, either order). Once
+all are placed, each link is now resolved component by component as
+the OS follows it, and one that leaves is removed and refused. Bun's
+`realpath` collapses `..` as text before following a link (probed:
+ENOENT where coreutils answers the outside directory), so it could
+not judge this. Row red without the fix, both orders and the Tree.

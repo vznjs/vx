@@ -222,6 +222,11 @@
   likes is trusted as a writer (turboCache's signature is the one
   authenticated wire), and REAPI's CAS holds each blob to its digest
   (L-3). Supervisor backlog 1. Rows in `artifact-checksum.test.ts`.
+- L-20. `docs`: SECURITY.md said how to report and what is in scope,
+  but nothing said what vx trusts, what it checks on bytes it did not
+  write, or what the sandbox does not stop. `docs/security.md` (on the
+  site as Security model, linked from SECURITY.md) does, each claim
+  drawn from the code and the items that hold it. Supervisor backlog 3.
 
 ## Leads for other streams
 
