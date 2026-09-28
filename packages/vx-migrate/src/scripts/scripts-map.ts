@@ -93,14 +93,18 @@ export function parseFanOut(command: string): FanOut | null {
   const w = words(command)
   if (w === null) return null
   while (w.length > 0 && /^[A-Za-z_][A-Za-z0-9_]*=/.test(w[0]!)) w.shift()
-  const [bin, ...rest] = w
+  let [bin, ...rest] = w
+  // `pnpm lerna run watch`, `yarn exec lerna …`: lerna through the manager
+  // (docusaurus' `watch`, 2026-09-28).
+  if (bin === 'npx' || bin === 'pnpm' || bin === 'yarn' || bin === 'bunx') {
+    const at = rest[0] === 'exec' ? 1 : 0
+    if (rest[at] === 'lerna') [bin, ...rest] = rest.slice(at)
+  }
   if (bin === 'pnpm') return pnpmFanOut(rest)
   if (bin === 'npm') return npmFanOut(rest)
   if (bin === 'yarn') return yarnFanOut(rest)
   if (bin === 'bun') return bunFanOut(rest)
-  if (bin === 'lerna' || (bin === 'npx' && rest[0] === 'lerna')) {
-    return lernaFanOut(bin === 'npx' ? rest.slice(1) : rest)
-  }
+  if (bin === 'lerna') return lernaFanOut(rest)
   return null
 }
 
@@ -140,6 +144,14 @@ function pnpmFanOut(w: string[]): FanOut | null {
 }
 
 function npmFanOut(w: string[]): FanOut | null {
+  // `npm -C docs run build` runs one package's script (unocss' `deploy`).
+  let prefix: string | undefined
+  while (w[0] === '-C' || w[0] === '--prefix' || w[0]?.startsWith('--prefix=') === true) {
+    const i = { n: 0 }
+    prefix = flagValue(w, i, w[0] === '-C' ? '-C' : '--prefix')
+    if (prefix === undefined) return null
+    w = w.slice(i.n + 1)
+  }
   if (w[0] !== 'run' && w[0] !== 'run-script' && w[0] !== 'test') return null
   const out: FanOut = {
     tool: 'npm',
@@ -159,6 +171,9 @@ function npmFanOut(w: string[]): FanOut | null {
     } else if (a === '--') break
     else if (a.startsWith('-')) continue
     else if (out.script === '') out.script = a
+  }
+  if (prefix !== undefined && !all && out.include.length === 0) {
+    out.include.push(prefix.startsWith('.') ? prefix : `./${prefix}`)
   }
   if (!all && out.include.length === 0) return null
   return out.script === '' ? null : out

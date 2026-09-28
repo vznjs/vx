@@ -230,11 +230,11 @@ For a repo whose root `package.json` scripts fan one script out through the pack
 | `pnpm -r [run] build`, `pnpm --filter <sel> build`                             | `build` in each selected package, `dependsOn: ['^build']` (pnpm sorts by the graph)            |
 | `--filter ./packages/*`, `@scope/*`, `!name`, `name...`, `...name`             | the same selection: a path glob, a name glob, an exclusion, with dependencies, with dependents |
 | `--parallel`, `--no-sort`                                                      | no `^` edge                                                                                    |
-| `pnpm -C <dir> build`, `pnpm --dir <dir> build`, `yarn workspace <name> build` | `build` in that one package                                                                    |
-| `npm run build --workspaces`, `--workspace <name>`                             | `^build` (npm runs in declaration order; the graph's order holds for any declaration)          |
+| `pnpm -C <dir> build`, `npm -C <dir> run build`, `yarn workspace <name> build` | `build` in that one package                                                                    |
+| `npm run build --workspaces`, `--workspace <name or path>`                     | `^build` (npm runs in declaration order; the graph's order holds for any declaration)          |
 | `yarn workspaces run build`, `yarn workspaces foreach [-t] [-p] run build`     | `^build`, none under `-p` without `-t`                                                         |
 | `bun --filter <sel> build`                                                     | `^build`                                                                                       |
-| `lerna run build [--scope] [--ignore] [--parallel] [--no-sort]`                | as pnpm                                                                                        |
+| `[pnpm \| yarn \| npx] lerna run build [--scope] [--ignore] [--parallel]`      | as pnpm                                                                                        |
 | `a && b` in one root script                                                    | `b`'s task depends on `a`'s in the same package (every `a` runs before any `b`)                |
 | `dev`, `start`, `serve`, `watch`, `preview`                                    | `exec.persistent`                                                                              |
 
