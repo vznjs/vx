@@ -589,3 +589,10 @@ packages/core`) selects the dependent whose `file:../lib` spec named
   D-61 row of `tests/config-eval.test.ts`, one evaluation round with a
   new file per call; red without the fix, and each half (assign,
   delete) caught by its mutant.
+- **D-62** Design note for N's discovery-seam lead
+  (`docs/design/discover-seam-2026-09-28.md`, proposed): a `discover`
+  hook through which a plugin names project directories, so `nx()` can
+  attach an integrated Nx repo's projects that no package manager lists
+  (analogjs: 1 of 21 `build` tasks today). It gives the refusals at the
+  boundary, what does not change, open questions for watch and lock, and
+  the slices for D, C, H and G/N.
