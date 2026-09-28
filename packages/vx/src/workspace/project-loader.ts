@@ -472,16 +472,16 @@ export async function loadProjectConfigs(
       }
     }
     await Promise.all(Array.from({ length: Math.min(LOAD_WIDTH, misses.length) }, lane))
-    const out: ProjectConfig[] = []
+    let first: { failed: unknown } | undefined
     for (const r of results) {
-      if ('failed' in r) continue
-      if (r.evaluated !== undefined) evals.push(r.evaluated)
-      if (r.closure !== undefined) learnedClosures.push(r.closure)
-      out.push(r.config)
+      if ('failed' in r) first ??= r
+      else {
+        if (r.evaluated !== undefined) evals.push(r.evaluated)
+        if (r.closure !== undefined) learnedClosures.push(r.closure)
+      }
     }
-    const first = results.find((r) => 'failed' in r)
-    if (first !== undefined) throw (first as { failed: unknown }).failed
-    return out
+    if (first !== undefined) throw first.failed
+    return results.map((r) => (r as Loaded).config)
   } finally {
     endRound()
     if (store !== undefined) {
