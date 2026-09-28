@@ -424,3 +424,9 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   it; `.yarnrc.yml` joins the mapping key. nx() is untouched: Nx
   itself refuses PnP. Rows (`script-command.test`, `turbo.test`): red
   without the fix.
+- **G-39.** An Nx output whose `{options.x}` is unset (falsy) is
+  dropped, as Nx's `getOutputsForTargetAndConfiguration` drops it. It
+  was a "not a literal string" todo on every inferred `@nx/eslint`
+  `lint` target (`{options.outputFile}`, G-37's probe). A set
+  non-string option keeps its todo. Row (`nx-helpers-sweep.test`): red
+  without the fix.

@@ -98,6 +98,18 @@ describe('mapNxOutputs', () => {
     })
   })
 
+  it('an output whose option is unset is dropped, as Nx drops it', () => {
+    for (const outputFile of [undefined, '', 0, false, null]) {
+      expect(
+        out(['{options.outputFile}', '{projectRoot}/dist'], 'packages/a', { outputFile }),
+      ).toEqual({
+        outFiles: ['dist'],
+        wsOutFiles: [],
+        todos: [],
+      })
+    }
+  })
+
   it('a non-string option and an unknown token are reported', () => {
     expect(out(['{options.outDir}', '{foo}/x'], 'packages/a', { outDir: 42 }).todos).toEqual([
       'output "{options.outDir}": option "outDir" is not a literal string — resolve manually',
