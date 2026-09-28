@@ -387,3 +387,11 @@ of file-system round trips on every execution. Up to 32 now read at
 once and go into the tree in the same sorted order: 301 → 51 ms (min of
 7, interleaved). The first failure stops the reads. Row red without the
 fix; two unused imports in the files went with it.
+
+F-37. vx-reapi restored remote outputs one file at a time: fence,
+mkdir, fetch when not batched, write, chmod, each awaited before the
+next file began. Up to 32 files now go at once, for loose output files
+and for a Tree's files alike; directories are still fenced and made
+before any file is written into them. 2 000 small output files, no
+latency: 1 167 → 254 ms; a 2 000-directory Tree: 2 146 → 1 519 ms (min
+of 5, interleaved). Rows red without the fix.

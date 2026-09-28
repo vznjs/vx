@@ -21,6 +21,7 @@ import {
   encodeAction,
   encodeCommand,
   encodeTree,
+  mapBounded,
   sha256,
   type Blob,
   type FileGraft,
@@ -1394,7 +1395,7 @@ export async function materialiseOutputs(
   const small = files.filter((f) => f.digest.size_bytes > 0 && f.digest.size_bytes <= 1024 * 1024)
   const batched = await client.batchReadBlobs(small.map((f) => f.digest))
 
-  for (const f of files) {
+  await mapBounded(files, WRITE_CONCURRENCY, async (f) => {
     const abs = fence.lexical(req.cwd, f.path)
     await fence.dir(path.dirname(abs))
     await makeDir(path.dirname(abs), created)
@@ -1416,13 +1417,13 @@ export async function materialiseOutputs(
         : (batched.get(f.digest.hash) ?? (await client.readBlob(f.digest)))
     if (bytes === null) {
       missing(f.path, f.digest.hash, abs)
-      continue
+      return
     }
     await writeOutput(abs, bytes, created)
     // REAPI carries the executable bit per output; a build that produces a
     // script and a later task that runs it depends on it surviving.
     if (f.is_executable === true) await chmod(abs, 0o755)
-  }
+  })
 
   // `OutputSymlink` — a declared output that is a link, not a file. Restoring
   // it as a copy would silently change what the next task sees.
@@ -1664,14 +1665,14 @@ async function materialiseTree(
     const batched = await client.batchReadBlobs(
       window.filter((w) => isSmall(w.f)).map((w) => w.f.digest),
     )
-    for (const { abs, f } of window) {
+    await mapBounded(window, WRITE_CONCURRENCY, async ({ abs, f }) => {
       const bytes =
         f.digest.size_bytes === 0
           ? new Uint8Array()
           : (batched.get(f.digest.hash) ?? (await client.readBlob(f.digest)))
       if (bytes === null) {
         missing(abs, f.digest.hash, abs)
-        continue
+        return
       }
       await writeOutput(abs, bytes, created)
       if (f.is_executable) await chmod(abs, 0o755)
@@ -1679,9 +1680,12 @@ async function materialiseTree(
       const mode = f.node_properties?.unixMode
       // Permission bits only: a server's setuid or setgid bit is not a build output's.
       if (mode !== undefined) await chmod(abs, mode & 0o777)
-    }
+    })
     i = j
   }
 }
+
+/** Output files `materialiseOutputs` writes at once. */
+const WRITE_CONCURRENCY = 32
 
 const toPosix = (p: string): string => p.split(path.sep).join('/')

@@ -133,7 +133,7 @@ function canonicaliseTree(graft: TreeGraft): { root: Digest; blobs: Blob[] } {
 const READ_CONCURRENCY = 32
 
 /** `f` over `items`, at most `limit` at once, results in input order; the first failure stops it. */
-async function mapBounded<T, R>(
+export async function mapBounded<T, R>(
   items: readonly T[],
   limit: number,
   f: (item: T) => Promise<R>,
