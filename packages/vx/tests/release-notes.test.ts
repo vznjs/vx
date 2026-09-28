@@ -1,6 +1,6 @@
 // The notes auto-release.yml writes for each release (scripts/release-notes.ts).
 import { describe, expect, it } from 'bun:test'
-import { parseLog, releaseNotes } from '../scripts/release-notes.js'
+import { nextVersion, parseLog, releaseNotes } from '../scripts/release-notes.js'
 
 const c = (subject: string, body = ''): { subject: string; body: string } => ({ subject, body })
 
@@ -65,5 +65,27 @@ describe('parseLog', () => {
       { subject: 'feat: a', body: 'line 1\n\nline 3\n' },
       { subject: 'fix(x): b', body: '' },
     ])
+  })
+})
+
+describe('nextVersion', () => {
+  it('before 1.0: a feat or a breaking change is a minor, anything else a patch', () => {
+    expect(nextVersion('v0.4.2', [c('fix: a'), c('docs: b')])).toBe('0.4.3')
+    expect(nextVersion('v0.4.2', [c('fix: a'), c('feat(cli): b')])).toBe('0.5.0')
+    expect(nextVersion('v0.4.2', [c('fix!: a')])).toBe('0.5.0')
+    expect(nextVersion('v0.4.2', [c('fix: a', 'BREAKING CHANGE: gone')])).toBe('0.5.0')
+    expect(nextVersion('v0.4.2', [])).toBe('0.4.3')
+  })
+
+  it('from 1.0: breaking is a major, feat a minor, the rest a patch', () => {
+    expect(nextVersion('v1.2.3', [c('feat: a'), c('refactor!: b')])).toBe('2.0.0')
+    expect(nextVersion('1.2.3', [c('feat: a'), c('fix: b')])).toBe('1.3.0')
+    expect(nextVersion('v1.2.3', [c('perf: a')])).toBe('1.2.4')
+  })
+
+  it('the first release is 0.0.1, and below 0.1.0 every release is a patch', () => {
+    expect(nextVersion('', [c('feat: a')])).toBe('0.0.1')
+    // Cutting 0.1.0 is the owner's (roadmap-1.0.md, item 1.4).
+    expect(nextVersion('v0.0.100', [c('feat!: a')])).toBe('0.0.101')
   })
 })

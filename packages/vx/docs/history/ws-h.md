@@ -266,6 +266,18 @@ was run in a fresh workspace with `@vzn/vx` linked: green. Rows:
 `init.test.ts` "vx init --plugin <seam>" (written bytes, the overwrite
 refusal, the unknown seam, `--dry`).
 
+## H-22: the release version follows the commits
+
+`auto-release.yml` bumped the patch on every release and left minors and
+majors to a hand-cut release. `nextVersion` in `scripts/release-notes.ts`
+now picks it from the Conventional Commits since the last tag: before
+1.0 a `feat` or a breaking change is a minor, anything else a patch;
+from 1.0 a breaking change is a major. Below 0.1.0 it stays a patch:
+the roadmap reserves cutting 0.1.0 to the owner (item 1.4), and the
+rule on today's tag (v0.0.100) would have cut it on the next merge. The workflow calls it
+(`--next <last> <sha>`) where it computed the patch in shell. Rows:
+`release-notes.test.ts` "nextVersion" on fixed commit lists.
+
 ## Leads for other streams
 
 - **D / B:** `sandbox.ignore` names that loaded and did nothing: done in D-4.
