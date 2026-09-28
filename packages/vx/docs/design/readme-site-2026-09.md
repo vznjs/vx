@@ -59,18 +59,18 @@ from the container, 403, so a stars-sorted search of repos created since
 The ten patterns a second pass named (uv, ruff, bun, biome, vite,
 turborepo, oxc, rolldown), each against where vx stands:
 
-| Pattern                        | Seen in                | vx                                                                                     |
-| ------------------------------ | ---------------------- | -------------------------------------------------------------------------------------- |
-| One-line hero                  | all eight              | README and landing title (K-15)                                                        |
-| Benchmark chart above the fold | uv, ruff, biome        | dark/light SVG from `results.json`, held by `check.site` (K-1)                         |
-| One-line install               | uv, bun, biome         | `npm install -D @vzn/vx`                                                               |
-| Three-command quick start      | uv, bun, vite          | `vx init`, one cache block, `vx run build` twice                                       |
-| Terminal demo as SVG           | uv (transcript), biome | `demo.svg` from a real run, held by `terminal-demo.ts --check` (K-6); animated in K-19 |
-| Why in three bullets           | ruff, uv               | six bullets: each is a claim a comparison row backs; not cut                           |
-| Comparison table               | biome, turborepo       | Turbo, Nx, moon columns (K-13)                                                         |
-| Used by / real repos           | oxc, vite, biome       | fourteen benched repos (K-14, K-16, K-17)                                              |
-| Minimal badges                 | uv (3), ruff (5)       | four; rolldown shows eleven, the outlier                                               |
-| Social preview image           | all eight              | 1200×630 `og.png` on every page (K-3)                                                  |
+| Pattern                        | Seen in                | vx                                                                                                                                    |
+| ------------------------------ | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| One-line hero                  | all eight              | README and landing title (K-15)                                                                                                       |
+| Benchmark chart above the fold | uv, ruff, biome        | a generated vx / Turborepo / Nx table, one unit per cell (K-20, owner: the chart and a prose paragraph of numbers were hard to parse) |
+| One-line install               | uv, bun, biome         | `npm install -D @vzn/vx`                                                                                                              |
+| Three-command quick start      | uv, bun, vite          | `vx init`, one cache block, `vx run build` twice                                                                                      |
+| Terminal demo as SVG           | uv (transcript), biome | `demo.svg` from a real run, held by `terminal-demo.ts --check` (K-6); animated in K-19                                                |
+| Why in three bullets           | ruff, uv               | six bullets: each is a claim a comparison row backs; not cut                                                                          |
+| Comparison table               | biome, turborepo       | Turbo and Nx columns (K-13; moon cut in K-20)                                                                                         |
+| Used by / real repos           | oxc, vite, biome       | eleven benched Turbo and Nx repos (K-14; moon, wireit and lage cut in K-20)                                                           |
+| Minimal badges                 | uv (3), ruff (5)       | four; rolldown shows eleven, the outlier                                                                                              |
+| Social preview image           | all eight              | 1200×630 `og.png` on every page (K-3)                                                                                                 |
 
 Rolldown adds one: a "try it in the browser" link (StackBlitz). vx has
 the playground (K-11). It defers everything else to its site, pattern 9.

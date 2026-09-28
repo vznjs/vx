@@ -120,6 +120,15 @@
   command). A line is hidden only during its own delay (`backwards` fill),
   so no animation or reduced motion still shows the whole run; the landing
   test holds that.
+- **K-20** README top rewritten for a Turbo or Nx user (owner, 2026-09-28:
+  "hard to parse … remove moon"): the hero says what vx is for them, a
+  vx / Turborepo / Nx table `update-site.ts` generates (time added, CPU,
+  fully cached, per package; a unit in every cell) replaces the chart and
+  the paragraph of numbers, then "Try it on your repo" (`turbo()` /
+  `nx()`, one file and three commands; the plugin is not on npm yet, said
+  so), three reasons it is faster, the rest below. moon, wireit and lage
+  cut from the README (N removes the adapters); the chart SVGs and their
+  generator went with the chart.
 
 ## Leads for other streams
 
