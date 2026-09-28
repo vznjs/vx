@@ -31,6 +31,7 @@ const DOCS = path.resolve(import.meta.dir, '..', '..', 'vx-docs', 'src', 'conten
 const CLASS_PAGES = {
   remoteCacheLayer: [
     'README.md',
+    'api.md',
     'architecture.md',
     'cli.md',
     'comparison.md',

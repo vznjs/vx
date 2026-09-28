@@ -353,3 +353,10 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
     outside git, so this is the only way to reach the mtime fallback)
     re-exports on a newer nx.json base, root manifest, `project.json`
     or package manifest, and not otherwise.
+- **G-28.** A mutation sweep of turbo()'s `index.ts` (16 mutants): 12
+  caught, four survived. Two were live mapping-cache holes, each now a
+  row (`turbo.test` › the mapping cache): a package `turbo.jsonc`
+  edit maps afresh, and an empty `turbo.json` beside a `turbo.jsonc`
+  (which shadows it, and Turbo refuses) is not keyed as an absent one.
+  Two are equivalent: the dirs list and the package name are already
+  in the manifests' part of the key.

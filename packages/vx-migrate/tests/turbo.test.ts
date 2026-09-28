@@ -656,6 +656,15 @@ describe('turbo(): the mapping cache', () => {
       'echo lint',
     ],
     [
+      'a package turbo.jsonc',
+      () =>
+        writeFile(
+          path.join(root, 'packages', 'app', 'turbo.jsonc'),
+          '{ "extends": ["//"], "tasks": { "lint": { "cache": false } } }',
+        ),
+      'echo lint',
+    ],
+    [
       'a package manifest',
       () =>
         writeFile(
@@ -670,6 +679,17 @@ describe('turbo(): the mapping cache', () => {
     await edit()
     expect(await lint()).toBe(expected)
   })
+  // An empty turbo.json is not an absent one: it shadows the turbo.jsonc
+  // beside it, and Turbo refuses it; keyed alike, a hit ran the old mapping.
+  it('an empty turbo.json beside a turbo.jsonc maps afresh, and is refused', async () => {
+    const dir = path.join(root, 'packages', 'app')
+    await writeFile(path.join(dir, 'turbo.jsonc'), '{ "extends": ["//"], "tasks": {} }')
+    await lint()
+    await tamperMapping(root, 'turbo')
+    await writeFile(path.join(dir, 'turbo.json'), '')
+    await expect(lint()).rejects.toThrow('failed to parse packages/app/turbo.json')
+  })
+
   // A hit is the whole mapping: its notes and todos warn as the miss did.
   // Restored as nothing, a cached run dropped every warning.
   it('a hit warns what the miss warned', async () => {

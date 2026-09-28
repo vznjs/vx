@@ -178,6 +178,8 @@ interface Declaration {
   kind: Kind
   file: string
   text: string[]
+  /** The declaration's line in its file, 0-based. */
+  line: number
 }
 
 const DECL =
@@ -202,7 +204,7 @@ function declarationIn(m: Module, name: string): Declaration | undefined {
         text.push(...signature(m.lines, j).lines)
       }
     }
-    return { name, kind, file: m.file, text }
+    return { name, kind, file: m.file, text, line: i }
   }
   return undefined
 }
@@ -289,4 +291,50 @@ export function surfaceOf(entry: string, root: string): Map<string, string[]> {
     }
   }
   return new Map([...out].sort(([a], [b]) => a.localeCompare(b)))
+}
+
+/** The doc-comment block right above line `line` of `file`, as plain text; '' when none. */
+function docAbove(file: string, line: number): string {
+  const lines = readFileSync(file, 'utf8').split('\n')
+  let end = line - 1
+  while (end >= 0 && lines[end]!.trim() === '') end--
+  if (end < 0 || !lines[end]!.trim().endsWith('*/')) return ''
+  let start = end
+  while (start >= 0 && !lines[start]!.trim().startsWith('/**')) start--
+  if (start < 0) return ''
+  return lines
+    .slice(start, end + 1)
+    .map((l) => l.trim().replace(/^\/\*\*\s?|\s?\*\/$|^\*\s?/g, ''))
+    .join('\n')
+    .trim()
+}
+
+/** One export `entry` names: where it is declared, its recorded text and its doc comment. */
+export interface ExportEntry {
+  name: string
+  kind: Kind
+  file: string
+  text: string[]
+  doc: string
+}
+
+/** Every name `entry` exports (not the types they name), sorted by name. */
+export function exportsOf(entry: string, root: string): ExportEntry[] {
+  const out: ExportEntry[] = []
+  const m = load(entry)
+  const text = m.lines.join('\n')
+  for (const name of bindings(m).keys()) {
+    if (!new RegExp(`^export (?:type )?\\{[^}]*\\b${name}\\b[^}]*\\} from`, 'm').test(text))
+      continue
+    const d = resolve(entry, name)
+    if (d === undefined) throw new Error(`${name}: exported from ${entry} but declared nowhere`)
+    out.push({
+      name,
+      kind: d.kind,
+      file: path.relative(root, d.file),
+      text: d.text,
+      doc: docAbove(d.file, d.line),
+    })
+  }
+  return out.sort((a, b) => a.name.localeCompare(b.name))
 }

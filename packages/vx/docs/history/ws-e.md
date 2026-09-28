@@ -279,3 +279,9 @@ task picked`; neither prints a stack. Row in
   is B's sandbox init above.
 - Mutation: E-38's `noCreate` guard replaced by `false` reddens
   `tests/inspect-no-create.test.ts`.
+- E-45 — Mutation sweep over this stream's new guards (E-29..E-44):
+  ten mutants, eight caught. Two survived and now have rows: the
+  "more than 5" count of an ambiguous run-id prefix
+  (`tests/run-id.test.ts`), and `vx why`'s filter that keeps a stored
+  kind the map does not know from printing `undefined` (a `legacy` row
+  in `tests/why.test.ts`).

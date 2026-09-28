@@ -1311,6 +1311,35 @@ describe.skipIf(process.platform === 'darwin')('a name that is not UTF-8', () =>
     )
   }
 
+  it(
+    'a workspaceFiles input by that name is refused too, not dropped',
+    async () => {
+      // The workspace half keeps its own copy of the refusal (A-31).
+      await project('mkdir -p dist && cat shared/* > dist/all')
+      await write(
+        path.join(root, 'vx.config.mjs'),
+        `export default { tasks: { build: {
+           exec: { command: 'mkdir -p dist && cat shared/* > dist/all' },
+           cache: { inputs: { files: ['src/**'], workspaceFiles: ['shared/**'] }, outputs: { files: ['dist/**'] } },
+         } } }\n`,
+      )
+      await write(path.join(root, 'shared', 'ok'), 'o')
+      await writeFile(badIn(path.join(root, 'shared')), 'bad1')
+      git(root, 'init', '-q')
+      git(root, 'add', '-A')
+      git(root, 'commit', '-q', '-m', 'init')
+      const first = vxExit(root, 'run', 'build')
+      expect([first.code, first.out]).toEqual([1, expect.stringContaining('shared/x�y')])
+      expect(first.out).toContain('not valid UTF-8')
+      // CONTROL: the same file under a UTF-8 name is an input like any other.
+      await rm(badIn(path.join(root, 'shared')))
+      await write(path.join(root, 'shared', 'xy'), 'bad1')
+      expect(vxExit(root, 'run', 'build').code).toBe(0)
+      expect(await readFile(path.join(root, 'dist', 'all'), 'utf8')).toBe('obad1')
+    },
+    TIMEOUT,
+  )
+
   // CONTROL past the gate: a name that really holds U+FFFD is valid UTF-8,
   // reads like any other, and must not be taken for a lossy one.
   it(
