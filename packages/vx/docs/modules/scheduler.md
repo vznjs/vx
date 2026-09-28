@@ -195,8 +195,8 @@ save (`ExecuteArgs.taintedUpstream`), since a healthy key over bytes
 built on a partial tree would be the next clean run's stale hit. A
 skipped outcome names the failed or aborted task at the root of its
 block (`blockedBy`); fail-fast's skips name nothing. A rejected
-`execute` promise becomes a `failed` outcome; a `UserError` or a
-file-system refusal reports plainly, once per run (a repeat says `as
+`execute` promise becomes a `failed` outcome; a `UserError`, a
+file-system refusal or running out of descriptors reports plainly, once per run (a repeat says `as
 <id> above`), anything else as `[vx] internal error in <id>`. The line
 goes to `onError` before the outcome lands (stderr when absent); a run
 gives it the task's own stderr, so the task's frame and the failure

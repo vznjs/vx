@@ -15,9 +15,14 @@ export interface SecretMask {
   stream(): { push(chunk: string): string; end(): string }
 }
 export function secretMask(
-  ...sources: (Record<string, string | undefined> | undefined)[]
+  sources: readonly (Record<string, string | undefined> | undefined)[],
+  named?: readonly string[], // the task's `exec.env.secret`: masked whatever the name
 ): SecretMask | null
-export function maskedCommand(command: string, define?: Record<string, string>): string
+export interface TaskEnvSecrets {
+  readonly define?: Record<string, string>
+  readonly secret?: readonly string[]
+}
+export function maskedCommand(command: string, env?: TaskEnvSecrets): string
 export function maskedEmitter(
   mask: SecretMask,
   emit: (text: string) => void,
@@ -27,8 +32,8 @@ export function maskedEmitter(
 
 A variable is masked when its name holds `TOKEN`, `SECRET`, `KEY`,
 `PASSWORD`, `PASSWD` or `CREDENTIAL`, it does not end `_FILE`, `_PATH`
-or `_DIR` and is not git's `GIT_CONFIG_KEY_<n>`, and its value has six
-characters or more. No such variable: `secretMask` is null and nothing is
+or `_DIR` and is not git's `GIT_CONFIG_KEY_<n>`, or the task names it in
+`exec.env.secret` (L-14), and its value has six characters or more. No such variable: `secretMask` is null and nothing is
 paid per byte.
 
 `stream()` holds back only a tail that could begin a value, so a value

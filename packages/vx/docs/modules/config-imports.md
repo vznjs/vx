@@ -52,8 +52,8 @@ does not apply.
 
 1. Roots are every project's `configPath`, minus `skip`.
 2. Read each level of the walk together, scan each file (a file with no
-   quoted `./`, `../` or escape skips the scan), keep specifiers starting with `./` or `../`,
-   resolve them, and record the REVERSE edge `target → importer`.
+   quoted `./`, `../`, escape or tsconfig alias skips the scan), keep specifiers starting with `./` or `../`
+   and tsconfig aliases, resolve them, and record the REVERSE edge `target → importer`.
    Targets outside the workspace, or under `node_modules`, are dropped.
 3. **Descend only through files owned by NO project.** A config
    reaching into another project records the edge and stops.
