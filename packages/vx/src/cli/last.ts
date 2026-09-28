@@ -17,6 +17,7 @@ import {
 import { formatElapsed, UserError } from '../util/index.js'
 import { findWorkspaceRoot } from '../workspace/index.js'
 import { cliCacheDir, parseCacheDirFlag, warnToStderr } from './workspace-config.js'
+import { resolveRunId } from './run-id.js'
 
 interface LastArgs {
   runId?: string
@@ -204,7 +205,7 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
 
     const inv =
       parsed.runId !== undefined
-        ? getInvocation(db, parsed.runId)
+        ? getInvocation(db, resolveRunId(db, parsed.runId, 'vx last') ?? parsed.runId)
         : (listInvocations(db, { limit: 1 })[0] ?? null)
     if (inv === null || inv === undefined) {
       throw new UserError(

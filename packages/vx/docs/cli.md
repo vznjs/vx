@@ -1871,8 +1871,9 @@ vx why [TASK | PKG#TASK] [--run <runId>] [--format pretty|json] [--cache-dir <pa
 ```
 
 By default it compares the task's **latest** recorded run against its
-immediately-previous run; `--run <id>` pins a specific run (a task that
-run did not run is refused, pointing at `vx last --list`). History is
+immediately-previous run; `--run <id>` pins a specific run (a unique
+prefix of the id is enough; a task that run did not run is refused,
+pointing at `vx last --list`). History is
 the cache directory's, not the checkout's: worktrees that share one
 `--cache-dir` share one history, so the previous run may be another
 worktree's (its branch is in `vx last`), and its edits read as changes. Latest and
@@ -1976,7 +1977,8 @@ run ids (`--list 5` and `--list=5` alike); `vx last <runId>` replays a
 specific one, and the two do not combine. `--format json`
 emits `{ invocation, tasks }` for scripting, and `--list --format json`
 an array of the same `invocation` objects, newest first. An unknown run id fails
-loud and points at `--list`.
+loud and points at `--list`. A run id may be typed as a unique prefix; a
+prefix several runs share fails and lists them.
 
 `vx why`, `vx last`, `vx info` and `vx cache prune` all read the cache
 a run wrote, so each takes `--cache-dir <path>` with `vx run`'s rules

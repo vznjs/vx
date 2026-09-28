@@ -93,6 +93,31 @@ describe('vx last (e2e)', () => {
   })
 
   it(
+    'a run id may be typed as a unique prefix; a shared one lists its runs (E-42)',
+    async () => {
+      const list = await vx(root, ['last', '--list', '--format', 'json'])
+      const ids = (JSON.parse(list.out) as Array<{ runId: string }>).map((r) => r.runId)
+      expect(ids).toHaveLength(2)
+      let common = 0
+      while (ids[0]![common] === ids[1]![common]) common++
+      // One character past what the two share names the newer one alone.
+      const unique = await vx(root, ['last', ids[0]!.slice(0, common + 1)])
+      expect({ code: unique.code, head: unique.out.split('\n')[0] }).toEqual({
+        code: 0,
+        head: `run ${ids[0]} — ok`,
+      })
+      const why = await vx(root, ['why', 'app#build', '--run', ids[1]!.slice(0, common + 1)])
+      expect(why.out.split('\n')[0]).toBe(`app#build — run ${ids[1]}`)
+      const shared = await vx(root, ['last', ids[0]!.slice(0, common)])
+      expect({ code: shared.code, err: shared.err }).toEqual({
+        code: 1,
+        err: `vx last: run id ${ids[0]!.slice(0, common)} is the start of 2 runs — type more of it:\n  ${ids[0]}\n  ${ids[1]}\n`,
+      })
+    },
+    TIMEOUT,
+  )
+
+  it(
     'replays the latest run: header + per-task line, no re-execution',
     async () => {
       const r = await vx(root, ['last'])

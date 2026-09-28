@@ -46,7 +46,8 @@ For the high-level data flow, read
 The remaining subcommand parsers —
 `src/cli/{lock,show,info,last,why,init}.ts`
 — are user-facing commands documented in [`docs/cli.md`](../cli.md)
-rather than as module pages. `tests/doc-references.test.ts` holds this index
+rather than as module pages; `src/cli/run-id.ts` resolves the run id
+`last` and `why` take, whole or a unique prefix. `tests/doc-references.test.ts` holds this index
 to the tree: every `src/**/*.ts` except the `index.ts` files is named
 here, itself or in a brace group.
 
