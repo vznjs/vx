@@ -16,7 +16,7 @@ adds to them, and only a major removes or changes one.
 | The plugin API: the hooks in `PLUGIN_HOOKS`, `definePlugin`, `CacheLayer` / `RemoteCacheLayer`, `TaskExecutor`, and the telemetry records (`TELEMETRY_SCHEMA_VERSION`) | `src/orchestrator/plugin.ts`, `src/cache/layer.ts`, `src/cache/layered-cache.ts`, `src/exec/executor.ts`, `src/orchestrator/telemetry.ts`; recorded in `tests/contract/package-api.txt` |
 | The package's exports                                                                                                                                                  | `src/index.ts`; names pinned by `package-boundaries.unsafe.test.ts`, shapes by `tests/contract/package-api.txt`                                                                         |
 | The first-party plugin packages' exports (`@vzn/vx-reapi`, `@vzn/vx-otel`, …)                                                                                          | each package's `src/index.ts`; recorded in `tests/contract/plugin-api/`, one file per package                                                                                           |
-| The CLI: verbs, flags, exit codes, and the machine-readable outputs (`--dry=json`, `--graph`, `--summarize`, `vx mcp`'s tools)                                         | `docs/cli.md`; `--dry=json`, `--summarize` and `--graph` recorded in `tests/contract/cli-wire.json`                                                                                     |
+| The CLI: verbs, flags, exit codes, and the machine-readable outputs (`--dry=json`, `--graph`, `--summarize`, `vx mcp`'s tools)                                         | `docs/cli.md`; `--dry=json`, `--summarize` and `--graph` recorded in `tests/contract/cli-wire.json`; `vx mcp`'s tools in `packages/vx-mcp/tests/contract/tools.json`                    |
 | Task-glob semantics: which paths a pattern selects (item 667 made `[` literal; that reading is now part of the contract)                                               | `docs/schema.md`, `docs/caching.md`                                                                                                                                                     |
 
 ## What 1.0 freezes, exactly
@@ -116,6 +116,12 @@ the reviewer sees it before the merge.
   A deliberate change regenerates the
   record with `VX_UPDATE_CONTRACT=1` (the command is in the test's
   header) and names the change in the release notes.
+- **`vx mcp`'s tools.** `packages/vx-mcp/tests/contract-tools.test.ts`
+  calls each tool `listTools()` names against a workspace with real runs
+  and records its input schema and every key path of its answer in
+  `packages/vx-mcp/tests/contract/tools.json`. Key paths, not types: the
+  doctor's facts are null on one host and numbers on another; the cache
+  tools' values are held by `tools.test.ts`.
 - **The documented configs.** `tests/config-corpus.unsafe.test.ts`
   finds every `ts` fence that calls `defineProject(` or
   `defineWorkspace(` in `docs/` (history and design aside) and the

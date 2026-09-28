@@ -347,7 +347,17 @@ title or commit that long fails CI; a 71-character row passes, a
 
 ## Leads for other streams
 
-- **F:** `vx mcp`'s tools are a frozen 1.0 output (`versioning-1.0.md`), held only by name (`server.test.ts`): their input schemas and result shapes have no record.
+## H-29: `vx mcp`'s tools join the contract records
+
+`versioning-1.0.md` froze `vx mcp`'s tools and only their names were held
+(H-24's lead). `vx-mcp/tests/contract-tools.test.ts` records each tool's
+input schema and its answer's key paths from a workspace with two real
+runs, in `vx-mcp/tests/contract/tools.json`; renaming `hitRate24h` turns
+it red. Types stay out: `memory.cgroupLimitBytes` is a number in a
+container and null on CI's runners. One seeded run with a peak makes the
+optional `maxPeakRssBytes` reachable on every host.
+
+## Leads for other streams
 
 - **D / B:** `sandbox.ignore` names that loaded and did nothing: done in D-4.
 - **D:** `dependsOn` accepts `['']` and `['!x']` at load; whether the graph
