@@ -99,6 +99,210 @@
       "--run"
     ]
   },
+  "values": {
+    "cache --cache-dir": [
+      "*"
+    ],
+    "cache --format": [
+      "json",
+      "pretty"
+    ],
+    "cache --max-size": [
+      "10K",
+      "1G",
+      "2T",
+      "30m",
+      "500M"
+    ],
+    "cache --older-than": [
+      "12h",
+      "1d",
+      "30m",
+      "30s",
+      "500M"
+    ],
+    "info --cache-dir": [
+      "*"
+    ],
+    "info --format": [
+      "json",
+      "pretty"
+    ],
+    "init --plugin": [
+      "admit",
+      "cache",
+      "commands",
+      "executor",
+      "graph",
+      "key",
+      "project",
+      "schedule",
+      "telemetry"
+    ],
+    "last --cache-dir": [
+      "*"
+    ],
+    "last --format": [
+      "json",
+      "pretty"
+    ],
+    "last --list": [
+      "1",
+      "10",
+      "2"
+    ],
+    "run --affected": [
+      "*"
+    ],
+    "run --cache": [
+      "local:r",
+      "local:rw",
+      "local:w",
+      "remote:r",
+      "remote:rw",
+      "remote:w"
+    ],
+    "run --cache-dir": [
+      "*"
+    ],
+    "run --concurrency": [
+      "1",
+      "10",
+      "2"
+    ],
+    "run --continue": [
+      "always",
+      "dependencies-successful",
+      "deps-ok",
+      "never"
+    ],
+    "run --download": [
+      "all",
+      "none",
+      "toplevel"
+    ],
+    "run --dry": [
+      "json",
+      "text"
+    ],
+    "run --exclude-dependencies": [
+      "*"
+    ],
+    "run --filter": [
+      "*"
+    ],
+    "run --graph": [
+      "*"
+    ],
+    "run --output-logs": [
+      "errors-only",
+      "full",
+      "hash-only",
+      "none"
+    ],
+    "run --profile": [
+      "*"
+    ],
+    "run --report": [
+      "markdown"
+    ],
+    "run --report-file": [
+      "*"
+    ],
+    "run --retry": [
+      "0",
+      "1",
+      "10",
+      "2"
+    ],
+    "run --summarize": [
+      "*"
+    ],
+    "run --tag": [
+      "k=v"
+    ],
+    "run --timeout": [
+      "1",
+      "10",
+      "2"
+    ],
+    "run --verbosity": [
+      "0",
+      "1",
+      "10",
+      "2"
+    ],
+    "show --format": [
+      "json",
+      "pretty"
+    ],
+    "watch --affected": [
+      "*"
+    ],
+    "watch --cache": [
+      "local:r",
+      "local:rw",
+      "local:w",
+      "remote:r",
+      "remote:rw",
+      "remote:w"
+    ],
+    "watch --cache-dir": [
+      "*"
+    ],
+    "watch --concurrency": [
+      "1",
+      "10",
+      "2"
+    ],
+    "watch --continue": [
+      "always",
+      "dependencies-successful",
+      "deps-ok",
+      "never"
+    ],
+    "watch --download": [
+      "all",
+      "none",
+      "toplevel"
+    ],
+    "watch --exclude-dependencies": [
+      "*"
+    ],
+    "watch --filter": [
+      "*"
+    ],
+    "watch --output-logs": [
+      "errors-only",
+      "full",
+      "hash-only",
+      "none"
+    ],
+    "watch --retry": [
+      "0",
+      "1",
+      "10",
+      "2"
+    ],
+    "watch --tag": [
+      "k=v"
+    ],
+    "watch --timeout": [
+      "1",
+      "10",
+      "2"
+    ],
+    "why --cache-dir": [
+      "*"
+    ],
+    "why --format": [
+      "json",
+      "pretty"
+    ],
+    "why --run": [
+      "*"
+    ]
+  },
   "env": [
     "VX_CONFIG_WORKER_TIMEOUT_MS",
     "VX_KILL_GRACE_MS",
