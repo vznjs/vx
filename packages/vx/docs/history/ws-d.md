@@ -233,3 +233,14 @@ packages/core`) selects the dependent whose `file:../lib` spec named
   `tests/affected.test.ts`, the moved-root and linked-member ones among
   them. The `json-data.ts` sweep (19 mutants) held: its one survivor,
   reporting only the first finding, is what every caller reads.
+- **D-25** A config calling `prompt()`, `confirm()` or `alert()` was
+  cached as pure: Bun implements all three and they read the user's
+  terminal, so the evaluation cache replayed the first answer on every
+  later run. The three words join the purity deny-list; an entry cached
+  before this evaluates live now (its key is no longer computed), so no
+  `CACHE_VERSION` bump. Rows: `tests/config-cache.test.ts` "refuses to
+  cache a config that mentions prompt('mode?')" and its two siblings,
+  red before the fix. Probes that found no defect: a UTF-8 BOM in
+  `package.json` and `pnpm-workspace.yaml` loads; one package reached
+  twice (directly and through a link under a second glob) is refused as
+  a duplicate, as npm does (bun accepts it).

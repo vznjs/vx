@@ -126,7 +126,8 @@ closure is provably pure:
   `__defineGetter__`, `__defineSetter__`, `__lookupGetter__`,
   `__lookupSetter__`; item 957), `random` (the word, not only
   `Math.random`: one destructured from Math was cached as pure, item
-  1036), `import.meta`, or a dynamic `import(`;
+  1036), `prompt`, `confirm` and `alert` (they read the user's terminal;
+  D-25), `import.meta`, or a dynamic `import(`;
 - no string literal holds `constructor`, `__proto__` or `prototype`: as
   a computed key (`fn['constructor']`) it is `Function`, and the literal
   was stripped before the words above were tested (item 957);

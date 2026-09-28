@@ -297,6 +297,11 @@ describe('configEvalKey', () => {
     'Object.getOwnPropertyNames(Object.getPrototypeOf(() => 0)).find((n) => n.length === 11)',
     "Reflect.get(() => 0, 'x')",
     '(() => 0).__proto__',
+    // The three globals Bun implements that read the user's terminal: a
+    // cached evaluation replayed the first answer on every later run (D-25).
+    "prompt('mode?')",
+    "confirm('prod?')",
+    "alert('continue?')",
   ])('refuses to cache a config that mentions %s', async (expr) => {
     const cfg = await write(
       'packages/r/vx.config.mjs',
