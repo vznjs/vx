@@ -54,6 +54,8 @@
   `EMFILE` as an empty workspace: `No projects declare task(s): build. No
 package matched the workspace's package globs`. Found while reproducing
   A-41; not traced.
+- G: since A-44 core takes `!` in `cache.outputs`, so the mappers can pass it through. `turbo-map.ts` still runs a task uncached when a `!` narrows a wildcard (medusa's `*/**` minus `!src/**`, `!node_modules/**`) and todo-drops one under a literal root; `nx-outputs.ts` drops every `!` output with a todo. Mapped as-is, the clean, save and restore leave the taken-back paths alone and they stay inputs.
+- J: `benchmarks.md` (the medusa note) says vx has "no output negation" and runs that task uncached; true until A-44.
 - C: the run-end output-directory snapshot (lead 4) vouches for a stray an unsandboxed dependant writes into an upstream's output directory after its save or restore, so later hits skip the walk and the stray survives, green. The fix needs `run.ts` (the snapshot call) and `hit-restore.ts` (its direct call) to pass the task's additions predicate, so the snapshot can refuse a file outside the entry's rows and outside the additions; `OutputIndex.recordOutputDirs` can take the predicate.
 
 ## Record
@@ -384,3 +386,7 @@ Lead from C: `output-dirs-snapshot.test.ts` › "a cold build records its output
 A-44 left a task with a `!` output entry on the per-hit walk (`wholeSubtreePrefixes` refuses a `!` glob), unmeasured. Measured on 300 projects, warm no-op, `['dist/**', '!dist/keep.txt']`, main against the patch on two pre-warmed copies, 8 interleaved rounds: min 227 → 192 ms, median ~267 → 226 ms. `hit-restore` now takes the prefixes from the positive globs; the snapshot stays sound, since a file added or removed under a `!` path still bumps a recorded directory and the walk that follows applies the `!`.
 
 - Row (`negated-outputs.test.ts` › "keeps the warm hit's directory snapshot…"): an aged hit records `dist` and `dist/sub`, red without the change; a stray still forces the restore and the `!` file is kept. The run-end snapshot of a cold miss (`miss-save`) keeps the old prefixes: the first aged hit records them either way, and no row would hold it.
+
+### A-47 — sweep of A-44/A-46's schema guards and helpers (2026-09-28)
+
+13 mutants, no defect. Schema (7): the `!/` absolute refusal, negation-only for `files` and `workspaceFiles`, `!!` for both, the own-file skip on `!`, the empty-list early return — each caught (config-schema contract, schema-doc-drift, loader rows). Helpers (6): `splitNegations`'s `!` test and `changedSince`'s size and mtime halves caught; three equivalent — `outputMatcher`'s and `resolveOutputs`' empty-positive returns (an empty positive list selects nothing either way) and `outputExcludes(positive)` (a `!node_modules/…` entry's first segment is `!node_modules`, never `node_modules`, so it never lifts the exclusion).
