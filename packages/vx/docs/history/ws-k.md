@@ -57,6 +57,15 @@
   description are redirect stubs, `noindex` and out of the sitemap).
   `landing.test.ts` now holds canonical, description and sitemap link
   for every page the sitemap lists.
+- **K-11** A five-minute migration tutorial (coordinator backlog 2-4):
+  the migrate guide walks `examples/turbo` from `turbo()` to written
+  configs to no `turbo()` at all, each step's output the one
+  `examples.unsafe.test.ts` asserts. The test now follows the guide as
+  written: the workspace file stays through the CLI (K-8 had deleted it
+  first, a path the guide does not take), and the configs then hit
+  alone. The README links the playground (K-1's study: Biome, Oxc and
+  Ruff link theirs). Backlog 2-3, a "Why vx" post, not written: the
+  blog's `what-vx-is`, `why-vx-is-fast` and `honest-benchmarks` say it.
 
 ## Leads for other streams
 

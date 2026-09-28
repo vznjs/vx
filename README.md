@@ -93,7 +93,8 @@ npx vx run build --all    # restored from the cache, not rebuilt
 Or copy [`examples/basic`](examples/basic), a two-package starter CI
 runs on every commit. More: [Quickstart](https://vznjs.github.io/vx/quickstart/) ·
 [Configure](https://vznjs.github.io/vx/guides/configure/) ·
-[CLI](packages/vx/docs/cli.md) · [every config field](packages/vx/docs/schema.md).
+[CLI](packages/vx/docs/cli.md) · [every config field](packages/vx/docs/schema.md) ·
+[playground](https://vznjs.github.io/vx/playground/) (the planner, in your browser).
 
 ## Already on Turborepo or Nx?
 

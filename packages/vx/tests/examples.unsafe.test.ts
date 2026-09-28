@@ -120,8 +120,10 @@ describe('examples/turbo', () => {
     expect(warm.status).toEqual(all('cache-hit'))
   })
 
+  // The migrate guide's steps as written: the workspace file stays (the
+  // CLI never overwrites one), then turbo() goes and the configs stand alone.
   it('migrates to written configs that hit the cache turbo() filled', () => {
-    rmSync(path.join(root, 'vx.workspace.ts'))
+    const workspace = readFileSync(path.join(root, 'vx.workspace.ts'), 'utf8')
     const migrate = Bun.spawnSync({
       cmd: [process.execPath, path.join(PACKAGES, 'vx-migrate', 'src', 'bin.ts')],
       cwd: root,
@@ -129,11 +131,23 @@ describe('examples/turbo', () => {
       stderr: 'pipe',
     })
     expect(migrate.exitCode).toBe(0)
-    expect(migrate.stdout.toString()).toContain('3 tasks migrated clean, 0 TODOs')
+    const out = migrate.stdout.toString()
+    expect(out).toContain('3 tasks migrated clean, 0 TODOs')
+    expect(out.slice(out.indexOf('files written:')).split('\n').slice(1, 3)).toEqual([
+      '  packages/app/vx.config.ts',
+      '  packages/lib/vx.config.ts',
+    ])
+    expect(readFileSync(path.join(root, 'vx.workspace.ts'), 'utf8')).toBe(workspace)
     commit(root)
-    const after = run(root, 'test')
-    expect(after.exit).toBe(0)
-    expect(after.status).toEqual(all('cache-hit'))
+    const kept = run(root, 'test')
+    expect(kept.exit).toBe(0)
+    expect(kept.status).toEqual(all('cache-hit'))
+
+    rmSync(path.join(root, 'vx.workspace.ts'))
+    commit(root)
+    const alone = run(root, 'test')
+    expect(alone.exit).toBe(0)
+    expect(alone.status).toEqual(all('cache-hit'))
   })
 })
 
