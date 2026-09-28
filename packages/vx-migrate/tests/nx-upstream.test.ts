@@ -118,9 +118,12 @@ describe('nx-upstream: what the sweep found unheld', () => {
   })
 
   it('a self edge in the Nx graph is no dependency', async () => {
-    const t = await graph({ inputs: ['^production'], edges: { app: ['app', 'lib'], lib: [] } })
+    const t = await graph({
+      inputs: ['^production'],
+      edges: { app: ['app', 'lib'], lib: ['lib', 'base'] },
+    })
     expect(depsOf(t.get('app#test'))).toEqual(['lib#nx-input:production'])
-    expect(depsOf(t.get('app#nx-input:production'))).toEqual(['lib#nx-input:production'])
+    expect(depsOf(t.get('lib#nx-input:production'))).toEqual(['base#nx-input:production'])
   })
 
   it('`{input, projects}` naming a node with no vx project folds its files in', async () => {

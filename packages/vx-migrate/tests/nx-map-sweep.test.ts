@@ -469,9 +469,9 @@ describe('nx-map: `^` inputs fold over the project graph through twins', () => {
 
   it('`^production` with no dependsOn is the direct dependencies’ twins, chained', async () => {
     const t = await graph(['default', '^production'])
+    // No twin for `app`: no task reaches it (Next 25).
     expect([...t.keys()]).toEqual([
       'app#test',
-      'app#nx-input:production',
       'lib#build',
       'lib#nx-input:production',
       'base#nx-input:production',
@@ -545,7 +545,7 @@ describe('nx-map: `^` inputs fold over the project graph through twins', () => {
     })
   })
 
-  it('a project cycle: each twin carries its peers’ files, and edges leave the cycle only', async () => {
+  it('a project cycle: a twin carries its peers’ files, and edges leave the cycle only', async () => {
     const t = await graph(['^production'], undefined, {
       app: ['lib'],
       lib: ['app', 'base'],
@@ -561,12 +561,8 @@ describe('nx-map: `^` inputs fold over the project graph through twins', () => {
         workspaceFiles: ['packages/app/**/*', '!packages/app/**/*.spec.ts'],
       }),
     )
-    expect(shape(t.get('app#nx-input:production'))).toEqual(
-      twin(['base#nx-input:production'], {
-        files: ['**/*', '!**/*.spec.ts'],
-        workspaceFiles: ['packages/lib/src/**'],
-      }),
-    )
+    // Nothing outside the cycle reaches `app`, so it has no twin.
+    expect(t.has('app#nx-input:production')).toBe(false)
   })
 })
 

@@ -54,7 +54,7 @@ export interface NxUpstream {
    * needs, with a transparent node's files added to `into`.
    */
   resolve(node: string, into: NxInputs, todos: string[]): string[]
-  /** Each project's `nx-input:<name>` tasks, for every name `resolve` was asked for. */
+  /** Each project's `nx-input:<name>` tasks, for every twin an edge reaches. */
   inputTasks(): Map<string, GeneratedTask[]>
 }
 
@@ -207,12 +207,16 @@ export function planNxUpstream(
     for (const c of from.runtimeCmds) if (!into.runtimeCmds.includes(c)) into.runtimeCmds.push(c)
   }
 
-  const needed = new Set<string>()
-  const queue: string[] = []
-  const need = (name: string): void => {
-    if (needed.has(name)) return
-    needed.add(name)
-    queue.push(name)
+  // The twins some edge reaches, and only those: one per project per name
+  // was a twin no task depends on for every project nothing depends on,
+  // loaded and keyed on every run (Next 25).
+  const wanted = new Set<string>()
+  const queue: Array<readonly [node: string, name: string]> = []
+  const want = (node: string, name: string): void => {
+    const key = `${node}\0${name}`
+    if (wanted.has(key)) return
+    wanted.add(key)
+    queue.push([node, name])
   }
 
   // `name` of everything `self` reaches, as edges to twins, except
@@ -235,7 +239,7 @@ export function planNxUpstream(
       for (const e of r.edges) {
         if (peers.has(e)) continue
         edges.add(`${metaByNode.get(e)!.name}#${inputTask(name)}`)
-        need(name)
+        want(e, name)
       }
     }
     for (const p of peers) if (p !== self) files.add(p)
@@ -267,7 +271,7 @@ export function planNxUpstream(
       const meta = metaByNode.get(p)
       if (meta !== undefined) {
         edges.add(`${meta.name}#${inputTask(u.name)}`)
-        need(u.name)
+        want(p, u.name)
       } else if (isProject(p)) {
         const r = under(p, u.name)
         merge(r.inputs, into)
@@ -289,10 +293,9 @@ export function planNxUpstream(
 
   const inputTasks = (): Map<string, GeneratedTask[]> => {
     const out = new Map<string, GeneratedTask[]>()
-    const projects = [...metaByNode.keys()].sort()
-    while (queue.length > 0) {
-      const name = queue.shift()!
-      for (const node of projects) {
+    for (let i = 0; i < queue.length; i++) {
+      const [node, name] = queue[i]!
+      {
         const todos: string[] = []
         const inputs = emptyNxInputs()
         expandOwn(node, name, inputs, todos)
@@ -319,7 +322,14 @@ export function planNxUpstream(
         out.set(node, list)
       }
     }
-    return out
+    // Discovery order is the walk's; the config is the same whatever order it ran.
+    const sorted = new Map<string, GeneratedTask[]>()
+    for (const node of [...out.keys()].sort())
+      sorted.set(
+        node,
+        out.get(node)!.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0)),
+      )
+    return sorted
   }
 
   return { namedOf, resolve, inputTasks }
