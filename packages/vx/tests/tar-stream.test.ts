@@ -255,7 +255,7 @@ describe('tarEntries', () => {
   })
 
   it('refuses a pax size that is not a whole number of bytes (L-1)', async () => {
-    for (const size of ['0.5', '-1', '1e3', '', '0x10']) {
+    for (const size of ['0.5', '-1', '1e3', '', '0x10', '9007199254740993']) {
       const pax = enc.encode(paxRecord('size', size))
       const tar = concat(
         header({ name: 'PaxHeaders/x', size: pax.byteLength, type: 'x' }),
@@ -317,6 +317,65 @@ describe('tarEntries', () => {
     await expect(collect(tar)).rejects.toThrow(/checksum/)
   })
 
+  it('reads no prefix from an old GNU header, whose 345 holds atime and ctime', async () => {
+    // `tar --format=gnu -G` writes magic `ustar  ` and fills atime/ctime
+    // at 345; only POSIX `ustar\0` puts a name prefix there.
+    const times = (magic: string) =>
+      header({
+        name: 'f.txt',
+        size: 1,
+        type: '0',
+        pre: (h) => {
+          h.set(enc.encode(magic), 257)
+          h.set(enc.encode('15256333614\u000015256333614\u0000'), 345)
+        },
+      })
+    const gnu = concat(times('ustar  \0'), padTo512(enc.encode('z')), EOF_BLOCKS)
+    expect((await collect(gnu)).map((e) => e.name)).toEqual(['f.txt'])
+    // Control: the same bytes under POSIX magic are a prefix.
+    const posix = concat(times('ustar\u000000'), padTo512(enc.encode('z')), EOF_BLOCKS)
+    expect((await collect(posix)).map((e) => e.name)).toEqual(['15256333614/f.txt'])
+  })
+
+  it('reads on past a lone zero block, and ends at a lone one at the end', async () => {
+    // Two zero blocks in a row end the archive; one between entries does
+    // not, however many entries apart the lone ones are.
+    const zero = new Uint8Array(512)
+    const entry = (name: string) =>
+      concat(header({ name, size: 1, type: '0' }), padTo512(enc.encode('z')))
+    const tar = concat(zero, entry('outputs/a'), zero, entry('outputs/b'), EOF_BLOCKS)
+    expect((await collect(tar)).map((e) => e.name)).toEqual(['outputs/a', 'outputs/b'])
+    const lone = concat(entry('outputs/a'), zero)
+    expect((await collect(lone)).map((e) => e.name)).toEqual(['outputs/a'])
+  })
+
+  it('reads a NUL typeflag as a regular file', async () => {
+    const tar = concat(
+      header({ name: 'outputs/f', size: 1, type: '\0' }),
+      padTo512(enc.encode('z')),
+      EOF_BLOCKS,
+    )
+    expect((await collect(tar)).map((e) => e.type)).toEqual(['0'])
+  })
+
+  it('skips a pax global header (g) and applies nothing from it', async () => {
+    const pax = enc.encode(paxRecord('path', 'outputs/global'))
+    const tar = concat(
+      header({ name: 'PaxHeaders/g', size: pax.byteLength, type: 'g' }),
+      padTo512(pax),
+      header({ name: 'outputs/f', size: 1, type: '0' }),
+      padTo512(enc.encode('z')),
+      EOF_BLOCKS,
+    )
+    expect((await collect(tar)).map((e) => e.name)).toEqual(['outputs/f'])
+  })
+
+  it('refuses an archive that ends right after an extended header', async () => {
+    const pax = enc.encode(paxRecord('path', 'outputs/p'))
+    const tar = header({ name: 'PaxHeaders/x', size: pax.byteLength, type: 'x' })
+    await expect(collect(tar)).rejects.toThrow('archive ends inside an extended header')
+  })
+
   it('refuses a truncated archive rather than yielding a short entry', async () => {
     const full = concat(
       header({ name: 'outputs/f.txt', size: 1000, type: '0' }),
@@ -324,6 +383,9 @@ describe('tarEntries', () => {
       EOF_BLOCKS,
     )
     await expect(collect(full.subarray(0, 512 + 300))).rejects.toThrow(/ends inside/)
+    await expect(collect(full.subarray(0, 512 + 1000))).rejects.toThrow(
+      'archive ends inside padding after outputs/f.txt',
+    )
     await expect(collect(full.subarray(0, 512 + 1024))).rejects.toThrow(
       /end-of-archive|ends inside/,
     )
@@ -447,14 +509,30 @@ describe('tarPack', () => {
     expect([...files.keys()].sort()).toEqual([...names].sort())
   })
 
-  it('refuses a body whose length disagrees with its declared size', async () => {
-    const bad = [{ name: 'outputs/x', size: 5, body: 'abc' }]
-    await expect(
-      (async () => {
-        for await (const _ of tarPack(bad)) {
-          /* drain */
-        }
-      })(),
-    ).rejects.toThrow(TarFormatError)
+  const pack = async (inputs: Parameters<typeof tarPack>[0]): Promise<Uint8Array> => {
+    const parts: Uint8Array[] = []
+    for await (const c of tarPack(inputs)) parts.push(c)
+    return concat(...parts)
+  }
+
+  it('refuses a body whose length disagrees with its declared size, string or Blob', async () => {
+    await expect(pack([{ name: 'outputs/x', size: 5, body: 'abc' }])).rejects.toThrow(
+      'outputs/x: 3 bytes, 5 declared',
+    )
+    await expect(pack([{ name: 'outputs/x', size: 5, body: new Blob(['abc']) }])).rejects.toThrow(
+      'outputs/x: 3 bytes read, 5 declared',
+    )
+  })
+
+  it('refuses a size past the 12-byte octal field rather than spilling into the next', async () => {
+    const size = 8 ** 11
+    await expect(pack([{ name: 'outputs/x', size, body: '' }])).rejects.toThrow(
+      `value ${size} does not fit a 12-byte field`,
+    )
+  })
+
+  it('writes only the permission bits of a stat mode', async () => {
+    const tar = await pack([{ name: 'outputs/x', size: 1, mode: 0o100755, body: 'z' }])
+    expect(new TextDecoder().decode(tar.subarray(100, 107))).toBe('0000755')
   })
 })

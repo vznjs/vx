@@ -256,3 +256,12 @@ The last `miss-save.ts` survivors: the workspace-row filter in the snapshot's `e
 
 - Rows (`archive-security.test.ts`): a trailing `..` (`outputs/x/..`, which names the destination itself) and a leading `..`, each refused by the name clause's own message. Both red under their mutant.
 - Unreachable alone: the destination-containment check, which every `..` spelling now meets after the name check (item 486 records the pair as deliberate).
+
+### A-29 (2026-09-28, sweep: `tar-stream.ts`)
+
+42 mutants over the four files that reach it: 26 caught, 16 survived. One was a defect: the prefix read accepted any magic starting `ustar`, so an old GNU header (`ustar  `, atime and ctime at 345, filled by `tar --format=gnu -G`) named its entry `<atime>…/<name>`. The docs already claimed the POSIX gate.
+
+- Fix: the prefix is read under `ustar\0` only.
+- Rows (`tar-stream.test.ts`): the GNU header with a POSIX control; lone zero blocks between entries and at the end; a NUL typeflag; a skipped pax `g`; an archive ending after an extended header, and inside padding; a pax size past 2^53; a Blob body that disagrees with its size; a size past the octal field; a stat mode's type bits dropped. Each red under its mutant.
+- Equivalent: a pax record with an empty key (never read), a ustar split leaving an empty name (read back the same), the checksum's last space (already written by the fill), an empty chunk pushed.
+- The zero-length pax record (T6) hangs the reader under its mutant, so `bun test` never ends: caught by a timeout, not a row.

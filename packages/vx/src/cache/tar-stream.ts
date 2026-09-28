@@ -174,8 +174,10 @@ export async function* tarEntries(stream: ReadableStream<Uint8Array>): AsyncGene
     const size = pendingSize ?? octal(h, 124, 12)
     const mtimeMs = octal(h, 136, 12) * 1000
     const padded = Math.ceil(size / BLOCK) * BLOCK
-    const magic = field(h, 257, 6)
-    const prefix = magic.startsWith('ustar') ? field(h, 345, 155) : ''
+    // POSIX `ustar\0` only: old GNU's `ustar  ` keeps atime and ctime at
+    // 345, and `-G` fills them, so a prefix read there named every entry
+    // `<atime>…/<name>`.
+    const prefix = field(h, 257, 6) === 'ustar' ? field(h, 345, 155) : ''
     const rawName = field(h, 0, 100)
     let name = pendingPath ?? (prefix ? `${prefix}/${rawName}` : rawName)
     pendingPath = undefined
