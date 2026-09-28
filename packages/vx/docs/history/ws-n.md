@@ -218,6 +218,13 @@ export it), held to the loader in both directions.
 - Rows: `tests/own-file-outputs.test.ts` (the loader agreement table;
   the turbo and nx rows each fail with their call site undone).
 
+N-21. `turbo()` on trpc/trpc, benchmarked after N-20: 7.8 s cold
+against 8.1 s; warm runs 6.4–6.6 s against 143–210 ms, because the five
+`build` tasks whose outputs hold `package.json` run every time. Their
+build rewrites `package.json` with the same bytes (`git status` clean),
+so the A lead on same-bytes input rewrites (unocss, N-17) would let a
+mapping that drops that output cache them.
+
 ## Candidates not built (2026-09-28)
 
 - Lerna without Nx: `lerna run <s>` (lerna 10.0.1, `prepNxOptions`)
