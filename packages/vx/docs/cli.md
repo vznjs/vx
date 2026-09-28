@@ -169,6 +169,8 @@ two edits, or when exactly one scoped project's name after its `/` is
 | `<pattern>^...` | Only the transitive dependencies, excluding the matched package itself.                                                                                                                                         |
 | `...^<pattern>` | Only the transitive dependents, excluding the matched package itself.                                                                                                                                           |
 | `<sel>[<ref>]`  | The packages `<sel>` (a name pattern or `{<dir>}`) selects that changed since `<ref>`, as Turbo and pnpm read `@scope/*[main]` (D-44).                                                                          |
+| `!<pattern>`    | Exclude packages matching `<pattern>`, from everything the includes select, in any order.                                                                                                                       |
+| `[<git-ref>]`   | Projects whose files changed since `<git-ref>` (`main`, `HEAD~5`, …).                                                                                                                                           |
 
 An edge is a `package.json` workspace dependency (`dependencies`,
 `devDependencies`, `peerDependencies`, `optionalDependencies`; a peer
@@ -185,8 +187,6 @@ both, so selection follows both: `vx run test --filter '...app'` runs
 `e2e#test` even though `e2e` has no manifest dependency on `app`. There
 is no `implicitDependencies` field — declare the edge where the task
 needs it.
-| `!<pattern>` | Exclude packages matching `<pattern>`, from everything the includes select, in any order. |
-| `[<git-ref>]` | Projects whose files changed since `<git-ref>` (`main`, `HEAD~5`, …). |
 
 A filter that names no project (`...`, a bare `!`) is refused, and one
 whose pattern matched but whose walk selected nothing says what it
@@ -1682,11 +1682,6 @@ included) is kept, and `--force` REPLACES a package's config of another
 extension (`replaced:` in the report) rather than writing a second one
 the loader would choose between by its order (item 1033).
 
-On a repo that already has `turbo.json` or an Nx workspace, `init`
-still maps scripts only and says so, naming the richer path:
-`bunx @vzn/vx-migrate` (which auto-detects the source) or `plugins: [turbo()]`
-/ `plugins: [nx()]` from `@vzn/vx-migrate`.
-
 A missing `vx.workspace.*` is not an error. A run where no package has
 a config fails before any task, exit 1:
 ``No projects declare task(s): build. No package declares a vx.config — run `vx init` to write one per package from its package.json scripts.``
@@ -2258,7 +2253,8 @@ Actions pass `--report-file="$GITHUB_STEP_SUMMARY"`.
 
 `vx run` emits framed blocks. Stdout/stderr from each task is
 buffered until completion, then dumped inside the block — so
-concurrent tasks never interleave their lines.
+concurrent tasks never interleave their lines. A lone requested task
+streams live instead (§ Output).
 
 Frame anatomy:
 
