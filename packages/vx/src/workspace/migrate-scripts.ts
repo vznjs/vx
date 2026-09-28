@@ -150,6 +150,35 @@ function runsScriptHooks(dir: string, memo: Map<string, boolean>): boolean {
   return answer
 }
 
+const MANIFEST_IMPORT = "import pkg from './package.json' with { type: 'json' }"
+
+/**
+ * The `$npm_*` variables a command reads. Every manager sets them for a
+ * script (probed: npm, pnpm, bun and yarn printed the version, the name
+ * and the script's name) and vx sets none, so a migrated `echo
+ * $npm_package_version` printed nothing (D-34). The name and version are
+ * read from the manifest at evaluation, so a bump reaches them; the event
+ * is the script's own name, which a folded hook does not share.
+ */
+function npmEnv(
+  command: string,
+  script: string,
+  folded: boolean,
+): { define: Record<string, unknown>; unset: string[]; readsManifest: boolean } {
+  const define: Record<string, unknown> = {}
+  const unset: string[] = []
+  let readsManifest = false
+  for (const [, v] of command.matchAll(/\$\{?(npm_[A-Za-z0-9_]+)/g)) {
+    if (v! in define || unset.includes(v!)) continue
+    if (v === 'npm_package_name' || v === 'npm_package_version') {
+      define[v] = { raw: v === 'npm_package_name' ? 'pkg.name' : 'pkg.version' }
+      readsManifest = true
+    } else if (v === 'npm_lifecycle_event' && !folded) define[v] = script
+    else unset.push(v!)
+  }
+  return { define, unset, readsManifest }
+}
+
 function scriptsOf(meta: ProjectMeta): Record<string, unknown> {
   // package.json is a boundary: `scripts` is whatever the file holds. A
   // string or an array would enumerate its indices as script names.
@@ -227,6 +256,7 @@ export function migrateScripts(metas: readonly ProjectMeta[]): MigrationPlan {
       return hookOf === null || !has(hookOf[2]!) || LIFECYCLE.test(hookOf[2]!)
     }
     const tasks: GeneratedTask[] = []
+    let readsManifest = false
     for (const name of names) {
       if (!isTask(name)) continue
 
@@ -261,9 +291,18 @@ export function migrateScripts(metas: readonly ProjectMeta[]): MigrationPlan {
           `npm ran ${hooks.map((h) => `\`${h}\``).join(' and ')} around this script without being asked; folded into the command in that order`,
         )
       }
-      const task: Record<string, unknown> = { exec: { command } }
+      const exec: Record<string, unknown> = { command }
+      const npm = npmEnv(command, name, hooks.length > 0)
+      if (Object.keys(npm.define).length > 0) exec['env'] = { define: npm.define }
+      if (npm.readsManifest) readsManifest = true
+      for (const v of npm.unset) {
+        todos.push(
+          `the script reads $${v}, which the package manager sets and vx does not: define it under exec.env.define or drop it`,
+        )
+      }
+      const task: Record<string, unknown> = { exec }
       if (PERSISTENT_TASK_NAMES.has(name)) {
-        task['exec'] = { command, persistent: {} }
+        exec['persistent'] = {}
         todos.push(PERSISTENT_TODO)
       }
       if (name === 'build') {
@@ -284,7 +323,10 @@ export function migrateScripts(metas: readonly ProjectMeta[]): MigrationPlan {
       })
     }
     upstreamBuildOnWorker(tasks)
-    if (tasks.length > 0) projects.push({ name: meta.name, dir: meta.dir, importLines: [], tasks })
+    if (tasks.length > 0) {
+      const importLines = readsManifest ? [MANIFEST_IMPORT] : []
+      projects.push({ name: meta.name, dir: meta.dir, importLines, tasks })
+    }
   }
   return {
     headerNotes: [

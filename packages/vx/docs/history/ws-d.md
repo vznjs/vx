@@ -327,3 +327,11 @@ packages/core`) selects the dependent whose `file:../lib` spec named
   or lockfile and its settings are read beside it; pnpm's
   `ignore-scripts` and Bun's lockfile under any `.npmrc` still fold, as
   they run the hooks. Row: the D-33 row of `tests/init.test.ts`.
+- **D-34** A migrated script reading `$npm_package_version` (or the
+  name, or `$npm_lifecycle_event`) printed an empty string: npm, pnpm,
+  bun and yarn all set them for a script (probed) and vx sets none.
+  `vx init` now defines the three under `exec.env.define`, the name and
+  version from `import pkg from './package.json'` so a bump reaches the
+  task (probed: 2.3.4, then 2.4.0), the event as the script's name; a
+  folded hook's own event and any other `$npm_*` get a TODO. Row: the
+  D-34 row of `tests/init.test.ts`.
