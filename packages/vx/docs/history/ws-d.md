@@ -705,3 +705,21 @@ packages/core`) selects the dependent whose `file:../lib` spec named
   in order thrown when a later one fails sooner (caught by the
   last-failure mutant). Stopping new loads after a failure was dropped:
   nothing observed it, and storing the rest helps the next attempt.
+- **D-69** Failure class: `defineProject` let any key through. Its
+  argument is a generic `T`, and TypeScript skips the excess-property
+  check for an inferred one, so `outputs` on a task, `cwd` in `exec`,
+  a top-level `pipeline` and a stray key in `cache`, `cache.inputs` or
+  `cache.outputs` all type-checked (probed with a named fixture under
+  `oxlint --type-check`) and failed only at load, where the runtime
+  message is good. A `Known<T, Shape>` intersection types every
+  undeclared key `never`, so the error sits on that key's line. Row: the
+  D-69 row of `tests/config.test.ts`, one `@ts-expect-error` per level
+  (each unused, so an error, without the fix) and a control with every
+  declared key, a conditional spread and a cross-task `dependsOn`.
+  Declared breaking (`fix(config)!:`): the signature's lines changed in
+  `tests/contract/package-api.txt`, and a config that type-checked with
+  an undeclared key now fails `tsc`, though vx already refused it at
+  load.
+  Probed clean on the way: package-graph linking (an unsatisfied range
+  and an `npm:` alias stay external; `workspace:`, dev, peer and
+  optional deps link; a self-dependency adds nothing).

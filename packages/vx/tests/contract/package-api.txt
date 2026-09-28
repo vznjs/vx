@@ -199,13 +199,19 @@ export async function collectInfo(cwd: string, opts: CollectInfoOptions = {}): P
 export function definePlugin(origin: PluginOrigin, hooks: PluginHooks): VxPlugin
 == function defineProject (src/config.ts)
 export function defineProject<const T extends ProjectConfig>(
-  config: T & {
-    tasks?: {
-      [K in keyof NonNullable<T['tasks']>]?: {
-        dependsOn?: readonly DependsOnEntry<Extract<keyof NonNullable<T['tasks']>, string>>[]
+  config: T &
+    Known<T, ProjectConfig> & {
+      tasks?: {
+        [K in keyof NonNullable<T['tasks']>]?: Known<NonNullable<T['tasks']>[K], TaskConfig> & {
+          dependsOn?: readonly DependsOnEntry<Extract<keyof NonNullable<T['tasks']>, string>>[]
+          exec?: Known<At<NonNullable<T['tasks']>[K], 'exec'>, ExecConfig>
+          cache?: Known<At<NonNullable<T['tasks']>[K], 'cache'>, CacheConfig> & {
+            inputs?: Known<At<At<NonNullable<T['tasks']>[K], 'cache'>, 'inputs'>, CacheInputs>
+            outputs?: Known<At<At<NonNullable<T['tasks']>[K], 'cache'>, 'outputs'>, CacheOutputs>
+          }
+        }
       }
-    }
-  },
+    },
 ): T
 == function defineWorkspace (src/config.ts)
 export function defineWorkspace<T extends WorkspaceConfig>(config: T): T
@@ -292,6 +298,8 @@ export interface ApplyMigrationArgs {
   notes?: readonly string[]
   format?: MigrationFormat
 }
+== type At (src/config.ts)
+type At<T, P extends PropertyKey> = T extends { readonly [Q in P]?: infer V } ? V : unknown
 == type BaseContext (src/orchestrator/plugin.ts)
 interface BaseContext {
   readonly workspaceRoot: string
@@ -703,6 +711,8 @@ export interface InvocationRecord {
 }
 == type KeyHookContext (src/orchestrator/plugin.ts)
 export interface KeyHookContext extends BaseContext {}
+== type Known (src/config.ts)
+type Known<T, Shape> = { [P in keyof T]: P extends keyof Shape ? unknown : never }
 == type LayeredCacheOptions (src/cache/layered-cache.ts)
 export interface LayeredCacheOptions {
   onRemoteError?: (err: Error) => void
