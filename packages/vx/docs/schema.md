@@ -891,8 +891,8 @@ even when gitignored (they usually are).
 
 A **symlink** the globs match is an output: it is captured as its
 target's bytes and restored as a regular file, and the clean unlinks
-it (never following it). A link to a directory, or a dangling one,
-cannot be stored — the save refuses it by name and caches nothing, so
+it (never following it). A link to a directory, a dangling one, or
+one whose target is outside the project cannot be stored — the save refuses it by name and caches nothing, so
 the next run executes again. The clean also prunes the directories it
 emptied, so an output that is a directory one run and a file the next
 restores either way.
