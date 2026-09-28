@@ -67,6 +67,10 @@ export function foldScriptHooks(
   return `vx_script() {\n${parts.join(' && ')}\n}\nvx_script`
 }
 
+/** The cache block the task that builds should declare, as a TODO on it. */
+export const CACHE_TODO =
+  "cache: add `cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } }` with this package's real inputs and outputs — without it the task always runs and every file here, what it writes included, folds into the key its dependents fold; a block with EMPTY outputs would be a cached no-op, not an uncached task"
+
 /** The one wording every mapper emits for a task it made persistent. */
 export const PERSISTENT_TODO =
   'persistent task — set persistent.readyWhen (regex matched against output) so ' +
@@ -219,12 +223,23 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
     for (const f of replaced) await unlink(f)
   }
 
-  const todoList: string[] = []
+  // One reason, its tasks: on a Turbo template the same two-line cache TODO
+  // printed five times and the persistent one eight (the first-five-minutes
+  // walk, 2026-09-28), and the list read as noise.
+  const todos = new Map<string, string[]>()
+  let todoCount = 0
   let clean = 0
+  let cached = false
   for (const p of plan.projects) {
     for (const t of p.tasks) {
       if (t.todos.length === 0 && t.task !== null) clean++
-      for (const reason of t.todos) todoList.push(`${p.name}#${t.name}: ${reason}`)
+      if (t.task !== null && 'cache' in t.task) cached = true
+      for (const reason of t.todos) {
+        todoCount++
+        const ids = todos.get(reason) ?? []
+        ids.push(`${p.name}#${t.name}`)
+        todos.set(reason, ids)
+      }
     }
   }
   const report: string[] = []
@@ -262,9 +277,16 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
     report.push(
       '',
       `${clean} task${clean === 1 ? '' : 's'} migrated clean, ` +
-        `${todoList.length} TODO${todoList.length === 1 ? '' : 's'}${todoList.length > 0 ? ':' : ''}`,
+        `${todoCount} TODO${todoCount === 1 ? '' : 's'}${todoCount > 0 ? ':' : ''}`,
     )
-    for (const line of todoList) report.push(`  ${line}`)
+    for (const [reason, ids] of todos) {
+      if (ids.length === 1) report.push(`  ${ids[0]}: ${reason}`)
+      else {
+        const shown = ids.slice(0, TODO_IDS_SHOWN).join(', ')
+        const more = ids.length - TODO_IDS_SHOWN
+        report.push(`  ${shown}${more > 0 ? ` and ${more} more` : ''}:`, `    ${reason}`)
+      }
+    }
     report.push(...plan.notes)
     report.push(dry ? 'files (dry run, nothing written):' : 'files written:')
     for (const f of files) report.push(`  ${f.relPath}`)
@@ -277,10 +299,18 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
     plan.projects.flatMap((p) => p.tasks.map((t) => t.name)).find((n) => n === 'build') ??
     plan.projects[0]?.tasks[0]?.name ??
     'build'
+  // A run of tasks none of which caches is never a hit, and a first try
+  // that runs twice to see the cache work saw it run twice.
+  if (!cached && todos.has(CACHE_TODO)) {
+    report.push('', 'no task caches yet: add the cache block a TODO shows, and a second run hits')
+  }
   report.push('', `next: vx run ${firstTask} --all`)
   process.stdout.write(`${report.join('\n')}\n`)
   return 0
 }
+
+/** Ids named per shared TODO; the files carry each one (sveltejs/kit: 92 persistent tasks). */
+const TODO_IDS_SHOWN = 5
 
 const EXAMPLE_BODY = `export default {
   tasks: {

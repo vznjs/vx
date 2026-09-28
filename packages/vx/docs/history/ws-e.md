@@ -376,3 +376,27 @@ task picked`; neither prints a stack. Row in
   the compiler (`keys<T>`), so a field added to `InfoFacts` fails until
   the schema names it. A hundred-line subset validator in
   `tests/helpers/json-schema.ts`; no dependency.
+- E-66 — `vx init`'s report groups its TODOs by reason (ids, first
+  five then a count; sveltejs/kit printed 139 lines of two reasons),
+  says when no task caches that a TODO's cache block makes the second
+  run hit, and its header note no longer names a `build` TODO that a
+  repo with no `build` script never got (nrwl/nx-examples: "carries a
+  TODO" over "0 TODOs"). From the first-five-minutes walk below.
+
+## First-five-minutes walk (2026-09-28)
+
+`bunx @vzn/vx@latest init` (0.0.122) on t3-oss/create-t3-turbo,
+nrwl/nx-examples and sveltejs/kit (a pnpm workspace, no orchestrator).
+Running a clone's own scripts was refused in this container, so the
+walk stops at init/show/`--dry` there; a run and its warm hit are
+walked on fixtures.
+
+- Turbo: 11 configs written though the note says turbo.json was not
+  read and names `vx-migrate`; 13 TODOs as 13 long lines (E-66); no
+  task caches, so the `next:` run can never hit (E-66). `next: vx run
+…` names `vx`, which a `bunx` user does not have on PATH.
+- Nx: one root `codegen` script, 0 TODOs, and a header saying `build`
+  carries one (E-66).
+- sveltejs/kit: the first command refuses — two test apps share a
+  package name (pnpm accepts it) — and the refusal names no way on.
+  With one excluded: 354 tasks, 139 TODOs of two reasons (E-66).

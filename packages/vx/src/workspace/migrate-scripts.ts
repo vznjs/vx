@@ -37,6 +37,7 @@ import {
   type MigrationPlan,
   PERSISTENT_TASK_NAMES,
   PERSISTENT_TODO,
+  CACHE_TODO,
 } from './migration.js'
 
 // `lint` is not here: a linter reads sources, and an edge to `build`
@@ -187,10 +188,6 @@ function scriptsOf(meta: ProjectMeta): Record<string, unknown> {
   return raw as Record<string, unknown>
 }
 
-/** The cache block the task that builds should declare, as a TODO on it. */
-const CACHE_TODO =
-  "cache: add `cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } }` with this package's real inputs and outputs — without it the task always runs and every file here, what it writes included, folds into the key its dependents fold; a block with EMPTY outputs would be a cached no-op, not an uncached task"
-
 /**
  * A `build` that only delegates (`build: pnpm run compile`) is a group over
  * its target, and the `^build` edge every `build` carries belongs on the
@@ -330,7 +327,10 @@ export function migrateScripts(metas: readonly ProjectMeta[]): MigrationPlan {
   }
   return {
     headerNotes: [
-      'each script became a task with its command verbatim; caching needs declared inputs and outputs, so no task got a cache block — `build`, or the script it delegates to, carries a TODO showing the one to add',
+      // Where to add one is the TODO's to say, when there is one: an Nx repo
+      // whose only script is `codegen` read "`build` carries a TODO" over
+      // "0 TODOs" (the first-five-minutes walk, 2026-09-28).
+      'each script became a task with its command verbatim; caching needs declared inputs and outputs, so no task got a cache block',
     ],
     projects,
     extraFiles: [],
