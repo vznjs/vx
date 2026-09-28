@@ -105,6 +105,10 @@ env var alone no longer auto-exports — you must declare `otel()` in
 `vx.workspace.ts`. Telemetry is observe-only and can never change, slow, or
 fail a run (every export is buffered, time-bounded, and swallows errors).
 
+A collector shedding load (`429`, `502`, `503`, `504`, or a dropped
+connection) is retried twice, 200 then 800 ms apart or after the
+`Retry-After` it names (at most 2 s), inside the end-of-run deadline.
+
 Swallowed, but not silent: an export that does not land warns once per
 signal URL, naming what happened — a collector that cannot be reached, one
 that refuses the request (`HTTP 401`, `404`, `500`, with the collector's own
