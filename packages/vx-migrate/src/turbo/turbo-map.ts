@@ -18,6 +18,7 @@ import { scriptCommand, yarnPnp } from '../script-command.js'
 import { resolveSharedOutputs, takingBack } from '../shared-outputs.js'
 import { packageScripts, relPosix } from '../paths.js'
 import { pruneOrphanPersistentNotes } from '../persistent-note.js'
+import { DOTENV_PROBE } from '../dotenv-probe.js'
 
 /** `path.relative` with forward slashes — the shape an ESM specifier or a report line needs. */
 interface TurboTask {
@@ -432,14 +433,6 @@ function isDotenvGlob(glob: string): boolean {
   const last = glob.slice(glob.lastIndexOf('/') + 1)
   return last.startsWith('.env') || last.endsWith('.env')
 }
-
-/**
- * Every `.env`-shaped file under the probe's directory, name and bytes, in
- * a stable order: a superset of what a `.env` glob names, so a change to
- * one misses and nothing else is lost. node_modules and .git are pruned.
- */
-const DOTENV_PROBE =
-  'find . \\( -name node_modules -o -name .git \\) -prune -o -type f \\( -name \'.env*\' -o -name \'*.env\' \\) -print | LC_ALL=C sort | while IFS= read -r f; do echo "$f"; cat -- "$f"; echo; done'
 
 /** Turbo 1's env dependency, `$NAME`, as the name; null for anything else, `$TURBO_…$` tokens included. */
 function envDependency(entry: string): string | null {
