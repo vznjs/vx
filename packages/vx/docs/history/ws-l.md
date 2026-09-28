@@ -128,6 +128,16 @@
 31. vx-reapi's token and TLS. gRPC follows no redirect; its headers go to
     the configured endpoint only, over TLS per the scheme or `tls`
     (audit 10). No bug.
+32. Release caches. `release.yml` restores no cache (no `actions/cache`,
+    no remote cache declared), so no PR run can seed what a release
+    builds. No bug.
+33. The npm launcher resolves its platform binary from its own
+    `node_modules` (`require.resolve` beside itself), and its source
+    fallback runs the user's `bun` from `PATH`. No bug.
+34. Workflow injection. No `pull_request_target`; `auto-release` runs only
+    on a successful CI `push` to main, never a fork's PR; event values
+    reach shells through `env`, never pasted into a script (the PR title
+    in `ci.yml` included). No bug.
 
 ## Items
 
