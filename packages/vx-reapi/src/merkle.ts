@@ -10,7 +10,7 @@
 // same-size rewrite within the mtime's resolution (F-7).
 
 import { createHash, type Hash } from 'node:crypto'
-import { lstat, readlink, stat } from 'node:fs/promises'
+import { lstat, readlink } from 'node:fs/promises'
 import path from 'node:path'
 import type { Digest, Directory, DirectoryNode, FileNode, SymlinkNode } from './wire.js'
 
@@ -129,6 +129,31 @@ function canonicaliseTree(graft: TreeGraft): { root: Digest; blobs: Blob[] } {
   return { root: rebuild(graft.root), blobs }
 }
 
+/** File-system reads `buildInputTree` keeps in flight. */
+const READ_CONCURRENCY = 32
+
+/** `f` over `items`, at most `limit` at once, results in input order; the first failure stops it. */
+async function mapBounded<T, R>(
+  items: readonly T[],
+  limit: number,
+  f: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const out: R[] = []
+  let next = 0
+  let failed = false
+  const worker = async (): Promise<void> => {
+    while (!failed && next < items.length) {
+      const i = next++
+      out[i] = await f(items[i]!).catch((err: unknown) => {
+        failed = true
+        throw err
+      })
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker))
+  return out
+}
+
 /**
  * Build the input root from workspace-relative paths. `executableFor` decides
  * the executable bit, which REAPI carries per file and which a build that
@@ -170,7 +195,10 @@ export async function buildInputTree(args: {
   // sorts every node's names at encode time, and it has to, because grafts are
   // inserted after this loop and no ordering here could reach them. Sorted
   // anyway so a warning naming several paths reads the same run to run.
-  for (const rel of [...args.paths].sort()) {
+  // Read READ_CONCURRENCY at once, inserted in sorted order below: one at a
+  // time, 2 000 small inputs cost 304 ms of file-system round trips (F-36).
+  const sorted = [...args.paths].sort()
+  const reads = await mapBounded(sorted, READ_CONCURRENCY, async (rel) => {
     const abs = path.join(args.workspaceRoot, rel)
     // lstat, not stat: a symlinked input must be REPRESENTED as a symlink.
     // Following it would upload the target's bytes under the link's path —
@@ -182,13 +210,22 @@ export async function buildInputTree(args: {
     } catch (err) {
       // Gone since the key saw it: the key describes a file this tree lacks.
       if (args.expected?.has(rel) === true && (err as NodeJS.ErrnoException).code === 'ENOENT') {
-        moved.push(rel)
-        continue
+        return { kind: 'gone' as const }
       }
       throw err
     }
-    if (st.isSymbolicLink()) {
-      const target = await readlink(abs)
+    if (st.isSymbolicLink()) return { kind: 'link' as const, target: await readlink(abs) }
+    if (!st.isFile()) return { kind: 'other' as const }
+    return { kind: 'file' as const, data: await read(abs), mode: st.mode }
+  })
+  for (const [i, rel] of sorted.entries()) {
+    const got = reads[i]!
+    if (got.kind === 'gone') {
+      moved.push(rel)
+      continue
+    }
+    if (got.kind === 'link') {
+      const target = got.target
       const want = args.expected?.get(rel)
       if (want !== undefined && !carriesOid(new TextEncoder().encode(target), want)) moved.push(rel)
       const parts = rel.split('/')
@@ -204,8 +241,8 @@ export async function buildInputTree(args: {
       node.symlinks.set(parts[parts.length - 1]!, { name: parts[parts.length - 1]!, target })
       continue
     }
-    if (!st.isFile()) continue
-    const data = await read(abs)
+    if (got.kind === 'other') continue
+    const data = got.data
     const want = args.expected?.get(rel)
     if (want !== undefined && !carriesOid(data, want)) moved.push(rel)
     // Hashed from the bytes just read, never memoised by (path, size,
@@ -232,7 +269,7 @@ export async function buildInputTree(args: {
     node.files.set(parts[parts.length - 1]!, {
       name: parts[parts.length - 1]!,
       digest,
-      is_executable: (st.mode & 0o100) !== 0,
+      is_executable: (got.mode & 0o100) !== 0,
     })
     fileCount++
   }

@@ -380,3 +380,10 @@ own stdout digest. Execute to restored through a proxy adding 15 ms
 each way, 100 KB stdout in CAS: 256 → 220 ms (min of 7, interleaved).
 Rows red without the fix; the record's failed-Tree-read row now runs
 remote-only, since the download's read of that Tree comes first.
+
+F-36. vx-reapi's input tree for a remote execution read its files one at
+a time (lstat, then read, per file), so 2 000 small inputs cost 304 ms
+of file-system round trips on every execution. Up to 32 now read at
+once and go into the tree in the same sorted order: 301 → 51 ms (min of
+7, interleaved). The first failure stops the reads. Row red without the
+fix; two unused imports in the files went with it.
