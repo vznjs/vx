@@ -40,6 +40,7 @@ export function cleanUrlFor(srcRel: string): string {
   if (srcRel === 'README.md') return 'overview/'
   if (srcRel === 'modules/README.md') return 'modules/'
   if (srcRel === 'modules/index.md') return 'modules/public-surface/'
+  if (srcRel === 'turbo-nx-support.md') return 'compare/turbo-nx-support/'
   // Astro slugs each path segment (github-slugger), which lowercases and
   // drops punctuation: `design/roadmap-1.0.md` is served at
   // `design/roadmap-10/`. tests/site-links.test.ts holds the two to agree.
@@ -57,6 +58,8 @@ export function outRelFor(srcRel: string): string {
   // `src/index.ts`'s page would be the directory's index too: both wrote
   // `modules/index.md`, and the scan's order chose which page the site kept.
   if (srcRel === 'modules/index.md') return 'modules/public-surface.md'
+  // Beside the hand-authored compare page, whose URL it extends.
+  if (srcRel === 'turbo-nx-support.md') return 'compare/turbo-nx-support.md'
   return srcRel
 }
 
@@ -274,9 +277,10 @@ export async function importDocs(docsDir = DOCS_DIR, outDir = OUT_DIR): Promise<
   // one build, 2026-09-03). A name manifest cannot do this — a deleted source
   // is exactly the name a manifest no longer has — so generated pages are
   // self-describing: each carries GENERATED_MARK in its frontmatter, and any
-  // top-level page carrying it is cleared. Authored pages never carry it.
+  // page carrying it is cleared, at any depth (`compare/turbo-nx-support.md`
+  // sits beside an authored page). Authored pages never carry it.
   await mkdir(outDir, { recursive: true })
-  for (const f of new Glob('*.md').scanSync({ cwd: outDir })) {
+  for (const f of new Glob('**/*.md').scanSync({ cwd: outDir })) {
     const head = (await Bun.file(path.join(outDir, f)).text()).slice(0, 400)
     if (head.includes(GENERATED_MARK)) await rm(path.join(outDir, f), { force: true })
   }

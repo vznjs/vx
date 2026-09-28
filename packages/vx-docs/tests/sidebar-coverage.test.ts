@@ -27,12 +27,14 @@ const INTERNALS = ['/overview/', '/architecture/', '/optimizations/', '/patterns
 const OUT_OF_SIDEBAR = /^\/(?:modules|design|internals|blog)\//
 
 /**
- * Top-level pages the last `import` generated, as file names. A generated
+ * Pages the last `import` generated, as paths under the content directory. A generated
  * page carries the import script's frontmatter mark; the hand-authored
  * pages beside them (introduction, quickstart, …) do not and are tracked.
  */
 function importedPages(): string[] {
-  return readdirSync(CONTENT)
+  // Any depth but modules/ and design/, which the .gitignore lists whole.
+  return readdirSync(CONTENT, { recursive: true, encoding: 'utf8' })
+    .filter((f) => !/^(modules|design)\//.test(f))
     .filter(
       (f) =>
         f.endsWith('.md') &&

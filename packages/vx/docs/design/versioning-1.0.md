@@ -122,6 +122,14 @@ the reviewer sees it before the merge.
   `packages/vx-mcp/tests/contract/tools.json`. Key paths, not types: the
   doctor's facts are null on one host and numbers on another; the cache
   tools' values are held by `tools.test.ts`.
+- **Turbo and Nx config support.** `tests/turbo-nx-support.test.ts`
+  lists every key `turbo.json`, `nx.json` and `project.json` accept from
+  vendored upstream schemas (`tests/contract/turbo-nx/`, versions in its
+  `SOURCE.md`) and requires one row per key in
+  `tests/contract/turbo-nx-support.json`: supported, mapped, not supported
+  or not applicable, with a reason. A key a new upstream release adds
+  fails until it is classified; `docs/turbo-nx-support.md` is the table
+  rendered.
 - **The documented configs.** `tests/config-corpus.unsafe.test.ts`
   finds every `ts` fence that calls `defineProject(` or
   `defineWorkspace(` in `docs/` (history and design aside) and the

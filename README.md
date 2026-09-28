@@ -52,7 +52,8 @@ npx vx run build --all      # again: up-to-date in milliseconds
 
 Nothing is rewritten. `@vzn/vx-migrate` is not on npm yet (first publish
 pending); [`examples/turbo`](examples/turbo) runs this setup on every
-commit.
+commit. Which `turbo.json`, `nx.json` and `project.json` keys vx honours,
+key by key: [Turbo and Nx config support](https://vznjs.github.io/vx/compare/turbo-nx-support/).
 
 ## Why it is faster
 
