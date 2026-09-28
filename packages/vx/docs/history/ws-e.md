@@ -358,3 +358,11 @@ task picked`; neither prints a stack. Row in
   caught. The survivor, completions skipping a plugin verb named like a
   core one, was unreachable (the load refuses the shadow, pinned in
   `tests/plugin-commands.test.ts`); it is gone.
+- E-63 — `cli/watch-judge.ts`: what counts as a change (the settled
+  state gate, the self-write window, the git-ignored rule for uncached
+  projects, the 3-cycle notice) is `ChangeJudge`; the loop keeps when
+  to judge and what to run. `watch.ts` 950 → 818 lines. No behaviour
+  change.
+- Sweeps of `util/num.ts` and `util/timing.ts`: ten mutants, ten
+  caught. With E-45..E-62 every file in this stream's slice has had a
+  sweep batch.
