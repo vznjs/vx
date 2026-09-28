@@ -111,6 +111,16 @@ tested against the main it branched from: B-15 × L-10 (a socket-dir
 row, fixed by L) and F-42 × H-25 (a plugin API record without F-42's
 new option, fixed in a81149e).
 
+M-11. `execute-task.test.ts` › trusts recorded directories without
+re-recording them: `recordOutputDirs` recorded `[]` on CI (#1662, run
+36395618238, shard 10). The row stamped `dist` 501 ms back from now; a
+stamp on a whole second widens the racy window by 1 s (2 s on an even
+one, A-38), so one run in a thousand read `dist` as racy. The product
+rule is right. The row now stamps an even second 4-6 s back. Reproduced
+with the clock pinned so the old stamp fell on a whole second; red with
+an even-second stamp 0-2 s old. `output-dirs.test.ts`'s `age()` already
+steps off whole seconds.
+
 ## Leads for other streams
 
 - A: A-20 let a same-project dependant restore ahead of a producer whose
