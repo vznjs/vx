@@ -49,6 +49,79 @@ const META_ENTRY = '.vx-meta.json'
 /** Archive entry name of the always-present stdout record. */
 const STDOUT_ENTRY = 'stdout'
 
+/**
+ * The last entry: a CRC-32 over every entry before it, each its name, a
+ * NUL, then its body, as 8 lowercase hex digits (v36, L-19). Nothing else
+ * checks an entry's BODY: tar sums its headers only, and neither zstd
+ * writer asks for a frame checksum, so a byte flipped in a raw zstd block
+ * (incompressible output: an image, a wasm, a tarball) decoded clean and
+ * replayed wrong bytes under a green hit — 1,141 of 1,141 flips in a
+ * random 8 KB body went unseen (probed). A CRC catches that transit or
+ * storage damage; it is no defense against a store that forges artifacts,
+ * which keys cannot tell apart from honest ones either.
+ */
+const SUM_ENTRY = '.vx-sum'
+const SUM_SIZE = 8
+
+/** The running CRC-32 over entries' names and bodies, as `SUM_ENTRY` defines it. */
+class EntrySum {
+  private crc = 0
+  entry(name: string): void {
+    this.crc = Bun.hash.crc32(new TextEncoder().encode(`${name}\0`), this.crc)
+  }
+  add(chunk: Uint8Array): void {
+    this.crc = Bun.hash.crc32(chunk, this.crc)
+  }
+  async *through(body: AsyncIterable<Uint8Array>): AsyncGenerator<Uint8Array> {
+    for await (const chunk of body) {
+      this.add(chunk)
+      yield chunk
+    }
+  }
+  hex(): string {
+    return (this.crc >>> 0).toString(16).padStart(SUM_SIZE, '0')
+  }
+}
+
+/**
+ * The reader's half: every regular entry is hashed as it is consumed, and
+ * `check` is handed the sum entry's body. An archive whose sum is absent,
+ * wrong, or followed by another entry is refused before anything it held
+ * is committed.
+ */
+class SumCheck {
+  private readonly sum = new EntrySum()
+  private seen: boolean = false
+  /** The entry's body, hashed as the caller reads it; null for the sum entry itself (checked here). */
+  async body(
+    name: string,
+    body: AsyncIterable<Uint8Array>,
+  ): Promise<AsyncIterable<Uint8Array> | null> {
+    if (this.seen) throw new TarFormatError(`entry ${name} follows the artifact's checksum`)
+    if (name === SUM_ENTRY) {
+      const got = await textOf(body)
+      if (got !== this.sum.hex()) {
+        throw new TarFormatError(
+          `artifact content does not match its checksum (${got}, read ${this.sum.hex()})`,
+        )
+      }
+      this.seen = true
+      return null
+    }
+    this.sum.entry(name)
+    return this.sum.through(body)
+  }
+  done(): void {
+    if (!this.seen) throw new TarFormatError('artifact carries no checksum')
+  }
+}
+
+const drain = async (body: AsyncIterable<Uint8Array>): Promise<void> => {
+  for await (const _ of body) {
+    // read through the checksum
+  }
+}
+
 const WIN32 = process.platform === 'win32'
 // A Windows link target may be spelled with either separator.
 const LINK_SEP = WIN32 ? /[\\/]/ : '/'
@@ -190,12 +263,36 @@ export async function planArtifact(args: PackArgs): Promise<ArtifactPlan> {
     })),
     { name: META_ENTRY, size: metaBytes.byteLength, body: metaBytes },
   ]
-  return { inputs, size: tarSize(inputs) }
+  return { inputs, size: tarSize([...inputs, sumInput('0'.repeat(SUM_SIZE))]) }
 }
 
 /** The tar as a stream: each output is read from disk as it is written. */
 export function packArtifactStream(plan: ArtifactPlan): ReadableStream<Uint8Array> {
-  return streamOf(tarPack(plan.inputs))
+  return streamOf(tarPack(summed(plan.inputs)))
+}
+
+const sumInput = (hex: string): TarInput => ({ name: SUM_ENTRY, size: SUM_SIZE, body: hex })
+
+/**
+ * The inputs with each body hashed as `tarPack` reads it, then the sum
+ * entry: `tarPack` drains one input before it asks for the next, so the
+ * sum is whole when it is asked for.
+ */
+async function* summed(inputs: readonly TarInput[]): AsyncGenerator<TarInput> {
+  const sum = new EntrySum()
+  for (const i of inputs) {
+    sum.entry(i.name)
+    if (i.body instanceof Blob) {
+      yield { ...i, body: sum.through(i.body.stream()) }
+    } else if (typeof i.body === 'string' || i.body instanceof Uint8Array) {
+      const bytes = typeof i.body === 'string' ? new TextEncoder().encode(i.body) : i.body
+      sum.add(bytes)
+      yield { ...i, body: bytes }
+    } else {
+      yield { ...i, body: sum.through(i.body) }
+    }
+  }
+  yield sumInput(sum.hex())
 }
 
 /**
@@ -212,7 +309,7 @@ export async function packArtifactBytes(plan: ArtifactPlan): Promise<Uint8Array>
   )
   const out = new Uint8Array(plan.size)
   let off = 0
-  for await (const chunk of tarPack(inputs)) {
+  for await (const chunk of tarPack(summed(inputs))) {
     out.set(chunk, off)
     off += chunk.byteLength
   }
@@ -256,10 +353,13 @@ export async function scanArtifact(tar: ReadableStream<Uint8Array>): Promise<{
   let exec: ExecUsage | undefined
   let key: string | undefined
   let stdout: string | null = null
+  const check = new SumCheck()
   for await (const e of tarEntries(tar)) {
     if (e.type !== '0') continue
+    const body = await check.body(e.name, e.body)
+    if (body === null) continue
     if (e.name === META_ENTRY) {
-      const parsed = JSON.parse(await textOf(e.body)) as MetaFile
+      const parsed = JSON.parse(await textOf(body)) as MetaFile
       meta = parsed.files ?? {}
       // The ingest side is the untrusted boundary: a foreign sidecar's
       // usage is taken only when it is a plain non-negative number.
@@ -268,9 +368,11 @@ export async function scanArtifact(tar: ReadableStream<Uint8Array>): Promise<{
       continue
     }
     assertSafeName(e.name)
-    if (e.name === STDOUT_ENTRY) stdout = await textOf(e.body)
+    if (e.name === STDOUT_ENTRY) stdout = await textOf(body)
+    else await drain(body)
     seen.push({ name: e.name, size: e.size, mtimeMs: e.mtimeMs })
   }
+  check.done()
   return {
     entries: seen.map((s) => {
       const m = meta[s.name]
@@ -322,26 +424,28 @@ export async function extractArtifactStream(
   const headerMtime = new Map<string, number>()
   let meta: MetaFile['files'] = {}
   try {
+    const check = new SumCheck()
     for await (const e of tarEntries(tar)) {
       if (e.type !== '0') continue
+      const body = await check.body(e.name, e.body)
+      if (body === null) continue
       if (e.name === META_ENTRY) {
-        meta = (JSON.parse(await textOf(e.body)) as MetaFile).files ?? {}
+        meta = (JSON.parse(await textOf(body)) as MetaFile).files ?? {}
         continue
       }
       assertSafeName(e.name)
       const dest = x.destFor(e.name)
-      if (dest === null || dest.rel.length === 0) continue
+      if (dest === null || dest.rel.length === 0) {
+        await drain(body)
+        continue
+      }
       const target = path.join(dest.base, dest.rel)
       await x.assertContained(dest.base, target, e.name)
       provided.add(e.name)
       headerMtime.set(e.name, e.mtimeMs)
-      await x.stage(
-        e.name,
-        dest.base,
-        target,
-        e.size <= SMALL_ENTRY ? await bytesOf(e.body) : e.body,
-      )
+      await x.stage(e.name, dest.base, target, e.size <= SMALL_ENTRY ? await bytesOf(body) : body)
     }
+    check.done()
     verify?.(provided)
     // The sidecar's stat is the truth, a mode of 000 and an mtime at or
     // before the epoch included (`SOURCE_DATE_EPOCH=0`). Without one, a

@@ -18,6 +18,7 @@ import { UserError, xxh3hex } from '../src/util/index.js'
 import { skipAsRoot } from './helpers/nonroot-gate.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 import { run } from '../src/orchestrator/index.js'
+import { withSum } from './helpers/artifact-sum.js'
 
 /**
  * A row straight into the index, with a stand-in artifact: prune drops a
@@ -1124,7 +1125,7 @@ describe('Cache storage (v10)', () => {
     //
     // So the disk assertion below is not decoration; it is the half no
     // other row covers.
-    const tar = await new Bun.Archive({ 'outputs/dist/app.js': 'BUILT' }).bytes()
+    const tar = await withSum(await new Bun.Archive({ 'outputs/dist/app.js': 'BUILT' }).bytes())
     const bytes = new Uint8Array(await Bun.zstdCompress(tar))
     await expect(
       cache.ingest('h-no-stdout', new Blob([bytes]), {
@@ -1260,7 +1261,9 @@ describe('Cache storage (v10)', () => {
       stdout: 'streamed',
       'outputs/dist/a.js': 'a',
       '.vx-meta.json': JSON.stringify({ version: 1, key: 'h-sizeless', files: {} }),
-    }).bytes()
+    })
+      .bytes()
+      .then(withSum)
     const sizeless = new Uint8Array(
       await new Response(
         new Blob([tar]).stream().pipeThrough(new CompressionStream('zstd')),

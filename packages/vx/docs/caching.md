@@ -35,7 +35,7 @@ The cache key for one task is a **16-hex xxHash3 digest**, seed-chained
 over (in order):
 
 1. **`CACHE_VERSION`** — the key-derivation sentinel
-   (currently `'vx-cache-v35'`, in `src/cache/key-fold.ts`). Bumped only
+   (currently `'vx-cache-v36'`, in `src/cache/key-fold.ts`). Bumped only
    when the key derivation format changes. See
    [§ Bumping CACHE_VERSION](#bumping-cache_version).
 2. **`taskId`** — `${projectName}#${taskName}`. Two tasks with
@@ -1020,7 +1020,8 @@ by this user, or point cacheDir / --cache-dir at one that is.` (A-40).
     ├── outputs/<rel>                       declared output files, project-relative (when any)
     ├── workspace-outputs/<rel>             declared outputs.workspaceFiles,
     │                                       WORKSPACE-ROOT-relative (when any)
-    └── .vx-meta.json                       per-output [mode, mtimeMs] sidecar
+    ├── .vx-meta.json                       per-output [mode, mtimeMs] sidecar
+    └── .vx-sum                             CRC-32 of every entry above (v36)
 ```
 
 `<hash>` is the 16-hex xxh3 key. The `workspace-outputs/` namespace is
@@ -1081,6 +1082,20 @@ past the 2.0 GB artifact ceiling a restore enforces`), and nothing is
 stored for a later run to hit and fail to restore. Left to the scan, a
 2.2 GB output paid the whole compress and a decode (6 to 14 s) to learn
 the same thing and called the task's outputs a corrupt artifact.
+
+The last entry, `.vx-sum`, is a CRC-32 over every entry before it (each
+its name, a NUL, then its body) as 8 hex digits. Tar sums its headers
+only and neither zstd writer asks for a frame checksum, so a byte flipped
+in a raw zstd block (incompressible output: an image, a wasm, a tarball)
+decoded clean and a hit replayed the wrong bytes: 1,141 of 1,141 flips in
+a random 8 KB body went unseen (L-19). Scan and restore hash every entry
+as they read it and refuse an artifact whose sum is absent, wrong, or
+followed by another entry, before anything it holds lands; the refusal
+is a corrupt artifact, so a restore degrades to a miss and an ingest
+stores nothing. It catches damage in transit or at rest, not a store that
+forges artifacts: nothing a key carries can tell those from honest ones.
+Its cost is the CRC's (~10 GB/s): a 32 MB restore 11.3 → 14.4 ms and
+1,000 small files 16.2 → 18.9 ms on tmpfs, min of 15.
 
 Tar headers carry mode and second mtimes. vx needs both permission bits (a lost executable bit builds cold
 and breaks warm) and millisecond mtimes (the skip-restore probe compares
@@ -1524,6 +1539,11 @@ was not), and the cache tests.
 
 ### History
 
+- **v35 → v36**: the container changes (L-19). Every artifact ends in a
+  `.vx-sum` entry, a CRC-32 over the entries before it, and scan and
+  restore refuse one whose sum is absent or wrong: a byte flipped in a
+  raw zstd block restored as a hit, undetected. A v35 artifact carries no
+  sum, so the bump retires them rather than refusing each on read.
 - **v34 → v35**: the container changes (item 943). The sidecar records
   the cache key the artifact was packed under, and ingest refuses bytes
   whose key is not the one it asked for, or that record none. Nothing
