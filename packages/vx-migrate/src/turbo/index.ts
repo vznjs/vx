@@ -8,12 +8,13 @@
 // A task the package's own vx.config already declares wins; the plugin never
 // overwrites a user's hand.
 
+import { availableParallelism } from 'node:os'
 import path from 'node:path'
 import type { ProjectMeta, VxPlugin } from '@vzn/vx'
 import { type AdoptionRun, adoptionPlugin } from '../adoption-plugin.js'
 import type { AdoptionMapping } from '../mapping-cache.js'
 import { collectGaps } from '../plugin-gaps.js'
-import { mapTurboWorkspace, type TurboMappedProject } from './turbo-map.js'
+import { mapTurboWorkspace, turboConfigFile, type TurboMappedProject } from './turbo-map.js'
 
 /** The note every persistent task carries; like every gap, reported once per run for all its tasks. */
 const PERSISTENT_NOTE =
@@ -39,7 +40,64 @@ export function turbo(options: TurboPluginOptions = {}): VxPlugin {
     // At the workspace root only: a claim is a root name (a `root` elsewhere
     // is not claimed; its edits select as any unowned file does).
     options.root === undefined ? ['turbo.json', 'turbo.jsonc'] : [],
+    async (workspace, ctx) => {
+      const keys = await workspaceKeys(options.root ?? ctx.workspaceRoot)
+      if (workspace.concurrency === undefined && keys.concurrency !== undefined)
+        workspace.concurrency = keys.concurrency
+      if (workspace.cacheRetention === undefined && keys.cacheRetention !== undefined)
+        workspace.cacheRetention = keys.cacheRetention
+    },
   )
+}
+
+/**
+ * turbo.json's workspace keys vx has a home for, top level or under
+ * `global`: `concurrency` (`"10"`, `"50%"` of the cores) and the local
+ * cache's `cacheMaxSize` / `cacheMaxAge` (`"0"` is off; weeks become days).
+ * Read by nothing, a repo that capped its cache at 10GB (formbricks) grew
+ * it without bound under vx. A value core cannot parse is left to core's
+ * refusal, which names the field.
+ */
+async function workspaceKeys(root: string): Promise<{
+  concurrency?: number
+  cacheRetention?: { maxSize?: string; olderThan?: string }
+}> {
+  const file = await turboConfigFile(root)
+  if (file === null) return {}
+  let raw: Record<string, unknown>
+  try {
+    raw = (Bun.JSONC.parse(await Bun.file(file).text()) ?? {}) as Record<string, unknown>
+  } catch {
+    return {} // the mapping refuses the file, naming it
+  }
+  const global = (typeof raw['global'] === 'object' ? raw['global'] : null) as Record<
+    string,
+    unknown
+  > | null
+  const read = (key: string): string | undefined => {
+    const v = global?.[key] ?? raw[key]
+    return typeof v === 'string' && v.trim() !== '' && v.trim() !== '0' ? v.trim() : undefined
+  }
+  const out: { concurrency?: number; cacheRetention?: { maxSize?: string; olderThan?: string } } =
+    {}
+  const c = read('concurrency')
+  if (c !== undefined) {
+    const pct = /^(\d+)%$/.exec(c)
+    const n = pct
+      ? Math.max(1, Math.floor((availableParallelism() * Number(pct[1])) / 100))
+      : Number(c)
+    if (Number.isInteger(n) && n > 0) out.concurrency = n
+  }
+  const maxSize = read('cacheMaxSize')
+  const age = read('cacheMaxAge')
+  const olderThan = age?.replace(/^(\d+)w$/i, (_, w: string) => `${Number(w) * 7}d`)
+  if (maxSize !== undefined || olderThan !== undefined) {
+    out.cacheRetention = {
+      ...(maxSize !== undefined ? { maxSize } : {}),
+      ...(olderThan !== undefined ? { olderThan } : {}),
+    }
+  }
+  return out
 }
 
 const textOf = (file: string): Promise<string> =>
