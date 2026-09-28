@@ -558,19 +558,35 @@ export async function mapTurboWorkspace(
     pass: envNames('globalPassThroughEnv', rootCfg.globalPassThroughEnv ?? []),
   }
 
+  // The workspace root as a project (a `vx.config` there, D-39) holds
+  // Turbo's `//#task`s; Turbo runs no plain task in the root package.
+  const rootMeta = metas.find((m) => path.resolve(m.dir) === path.resolve(root))
   const files = new Map<string, TurboJson>([[ROOT, rootCfg]])
   for (const meta of metas) {
+    if (meta === rootMeta) continue
     const file = await turboConfigFile(meta.dir)
     if (file !== null) files.set(meta.name, await readTurboJson(file, root))
   }
 
-  for (const key of Object.keys(rootTasks)) {
-    if (key.startsWith('//#')) {
-      notes.push(`note: root task ${key} not migrated — vx has no workspace-root tasks`)
+  const rootTaskNames = Object.keys(rootTasks)
+    .filter((k) => k.startsWith(`${ROOT}#`) && !optedOut(rootTasks[k]!))
+    .map((k) => k.slice(ROOT.length + 1))
+  if (rootMeta === undefined) {
+    for (const name of rootTaskNames) {
+      notes.push(
+        `note: root task ${ROOT}#${name} not migrated — the workspace root is no project; ` +
+          'a vx.config at the root makes it one',
+      )
     }
   }
 
   const definitions = (meta: ProjectMeta) => {
+    if (meta === rootMeta) {
+      const defined = new Set(rootTaskNames)
+      const defFor = (name: string): TurboTask | undefined =>
+        defined.has(name) ? definitionOf(ROOT, name, [rootCfg]) : undefined
+      return { defined, defFor }
+    }
     const chain = turboChain(meta.name, files)
     const defined = new Set(taskNamesFor(meta.name, chain, files))
     const defFor = (name: string): TurboTask | undefined =>
@@ -649,6 +665,7 @@ export async function mapTurboWorkspace(
           opts,
           relPosix(root, meta.dir),
           rootDotenv,
+          rootMeta?.name,
         ),
       )
     }
@@ -692,6 +709,7 @@ function buildTask(
   opts: MapTurboOptions,
   pkgDir: string,
   rootDotenv: boolean,
+  rootName: string | undefined,
 ): TurboMappedTask {
   const todos: string[] = []
   // A glob that climbs out of the package (`../../packages/app-store/
@@ -769,10 +787,12 @@ function buildTask(
       }
       const hashAt = d.indexOf('#')
       if (hashAt !== -1) {
-        const pkg = d.slice(0, hashAt)
+        // `//#x` is the root project's `x`, named as vx names it.
+        const pkg = d.startsWith(`${ROOT}#`) ? (rootName ?? ROOT) : d.slice(0, hashAt)
         const task = d.slice(hashAt + 1)
         if (emitted.get(pkg)?.has(task)) {
-          if (!deps.includes(d)) deps.push(d)
+          const edge = `${pkg}#${task}`
+          if (!deps.includes(edge)) deps.push(edge)
         } else
           todos.push(
             `dependsOn ${JSON.stringify(d)}: ${pkg} declares no ${task} script — edge dropped`,

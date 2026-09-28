@@ -501,3 +501,12 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   `turbo-map-sweep`, `nx-helpers-sweep`, `helpers-sweep`): red without
   the fix. wireit(), lage() and moon() still refuse `!`; theirs is
   stream N's slice.
+- **G-45.** turbo() runs Turbo's root tasks. Core makes a root with a
+  `vx.config` a project (D-39); on one, `//#task` keys map to that
+  project from the root `package.json` scripts, and `//#x` in a
+  package task's `dependsOn` is an edge to `<root name>#x` (it was a
+  note and a dropped edge, so a build waiting on a root codegen ran
+  first). Turbo runs no plain task in the root package, and neither
+  does the mapper now. With no root project the note says how to make
+  one. Rows (`turbo.test` › root tasks, and its control): red without
+  the fix.
