@@ -319,6 +319,53 @@ describe('migrateScripts', () => {
     expect(cacheTodos({ build: 'tsc -b', test: 'v' })).toEqual({ build: 1, test: 0 })
   })
 
+  it('under Yarn 2+ a pre/post script is a task of its own, never folded (D-31)', async () => {
+    // Yarn Berry runs no `pre` / `post` hooks (probed with 4.5.0: `yarn run
+    // build` printed BUILD alone), and folding them made the migrated task
+    // run scripts the user's `yarn build` never did.
+    const root = await mkdtemp(path.join(os.tmpdir(), 'vx-berry-'))
+    try {
+      const app = path.join(root, 'packages', 'app')
+      await mkdir(app, { recursive: true })
+      const scripts = { prebuild: 'rm -rf dist', build: 'tsc', postbuild: 'echo done' }
+      const tasks = (): Record<string, unknown> =>
+        Object.fromEntries(
+          (
+            migrateScripts([
+              {
+                name: 'app',
+                dir: app,
+                packageJson: { name: 'app', scripts } as never,
+                configPath: null,
+              },
+            ]).projects[0]?.tasks ?? []
+          ).map((t) => [t.name, t.task]),
+        )
+      const own = {
+        prebuild: { exec: { command: 'rm -rf dist' } },
+        build: { exec: { command: 'tsc' }, dependsOn: ['^build'] },
+        postbuild: { exec: { command: 'echo done' } },
+      }
+      await writeFile(
+        path.join(root, 'package.json'),
+        JSON.stringify({ private: true, packageManager: 'yarn@4.5.0' }),
+      )
+      expect(tasks()).toEqual(own)
+      // No `packageManager`: a Berry lockfile says the same.
+      await writeFile(path.join(root, 'package.json'), JSON.stringify({ private: true }))
+      await writeFile(path.join(root, 'yarn.lock'), '# generated\n\n__metadata:\n  version: 8\n')
+      expect(tasks()).toEqual(own)
+      // CONTROL: yarn 1's lockfile, and npm's, fold the hooks as they run them.
+      await writeFile(path.join(root, 'yarn.lock'), '# yarn lockfile v1\n')
+      expect(Object.keys(tasks())).toEqual(['build'])
+      await rm(path.join(root, 'yarn.lock'))
+      await writeFile(path.join(root, 'package-lock.json'), '{}')
+      expect(Object.keys(tasks())).toEqual(['build'])
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   it("npm's lifecycle scripts are never tasks, but a hook of one is a task of its own", () => {
     // `postprepare` is npm's hook of `prepare`, and `prepare` is npm's own —
     // so it wraps nothing here and has to stand alone or it disappears.

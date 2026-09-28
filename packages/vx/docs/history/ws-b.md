@@ -519,3 +519,16 @@ without them. Also swept: `env.ts`, 16 mutants, all caught.
   commented line, red without the fix; quoted words before a comment;
   `#` after a closing quote; `#` after `;`) and › execWord (blanks,
   `~`, `!`, `\`, five builtins).
+
+B-25. Sandbox init spawned `npm root -g` (E's lead: 260 ms of `vx
+info`). SRT's `findJar` lists `getGlobalNpmPaths()` in an array literal
+beside the bundled jar, so the spawn ran before any candidate was tried,
+once per process. `vx info` here, 15 interleaved runs per arm: median
+429 → 316 ms, min 399 → 304.
+
+- Fix (`initSandbox`, `bundledJavaAgent`): pass SRT's own
+  `javaAgentJarPath` when the jar is on disk; SRT then returns before
+  its search. `modules/sandbox-runtime.md`.
+- Row: `sandbox-runtime.unsafe.test.ts` › initializes without asking npm
+  where the global root is (a fake `npm` on PATH; SRT's own init asks,
+  the control; red without the fix).

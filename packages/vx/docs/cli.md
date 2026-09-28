@@ -34,7 +34,7 @@ vx lock [--check]
 vx init [--dry] [--force] [--mjs] [--plugin <seam>]
 vx show [PROJECT[#TASK] | TASK] [--format pretty|json]
 vx info [--format pretty|json] [--cache-dir <path>]
-vx why [TASK | PKG#TASK] [--run <runId>] [--format pretty|json] [--cache-dir <path>]
+vx why (TASK | PKG#TASK) [--run <runId>] [--format pretty|json] [--cache-dir <path>]
 vx last [runId] [--list[=N]] [--failed] [--format pretty|json] [--cache-dir <path>]
 vx upgrade [tag]      # self-update a compiled binary
 vx completions bash|zsh|fish
@@ -1663,6 +1663,9 @@ as npm hands them to the script and not its hooks (item 905). The
 command is a small shell function, `vx_script`, around the three parts;
 it carries a TODO saying so; a `pre<x>` with no `x` stays a task of its own, and
 npm's lifecycle hooks (`prepack`, `prepublishOnly`, …) are never tasks.
+Yarn 2+ runs no such hooks, so where it owns the package (the nearest
+`packageManager: yarn@2+`, or a Berry `yarn.lock`) every `pre<x>` and
+`post<x>` is a task of its own (D-31).
 A script that is nothing but `npm run <other>` (`pnpm <other>`, `yarn
 <other>`, `bun run <other>`, `npm test`, `npm start`) becomes a **group**
 over `<other>` — `dependsOn` and no command — so the graph runs and
@@ -1895,7 +1898,7 @@ per-component input fingerprints core persists on every miss. Read-only over the
 `cache.db`: no config evaluation, no re-hash.
 
 ```
-vx why [TASK | PKG#TASK] [--run <runId>] [--format pretty|json] [--cache-dir <path>]
+vx why (TASK | PKG#TASK) [--run <runId>] [--format pretty|json] [--cache-dir <path>]
 ```
 
 By default it compares the task's **latest** recorded run against its
@@ -1930,7 +1933,7 @@ app#build — run 019f5a02-…
   verdict    cache key changed between the previous run and this one (inputs differ)
 
   what changed (1 component, 41 unchanged):
-    changed file  src/input.txt  3fe2a1b0… → 91c47d22…
+    changed file  packages/app/src/input.txt  3fe2a1b0… → 91c47d22…
 
   what to do:
     file  an edit re-runs by design; a file the task does not read belongs out of cache.inputs.files
@@ -2008,7 +2011,7 @@ thousand rows otherwise, with the one failure a screen above the
 prompt — and the sixteen shown are the slowest restores, the one thing
 a hit's row tells. `--format json` lists every row.
 `vx last --list` prints the N most recent runs (default 10) with their
-run ids, each cut to the shortest prefix no other run shares (`--list 5`
+run ids, each cut to the shortest prefix no other run shares, 13 characters at least (`--list 5`
 and `--list=5` alike); `vx last <runId>` replays a
 specific one, and the two do not combine. `--failed` replays the latest
 run that failed, past any green one since, and with `--list` lists only

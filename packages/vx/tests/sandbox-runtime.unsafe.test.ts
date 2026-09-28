@@ -4732,6 +4732,35 @@ describe.skipIf(!available || process.platform !== 'linux')('the runtime lifecyc
     await resetSandbox()
   })
 
+  // SRT's search for its JVM proxy agent lists `npm root -g` among its
+  // candidates before trying any, so every init spawned npm (~110 ms of
+  // `vx info`). vx names the jar SRT ships. Each arm is a fresh process:
+  // SRT memoizes both answers. The control is SRT's own init, which asks.
+  it('initializes without asking npm where the global root is', async () => {
+    const tmp = await mkdtemp(path.join(os.tmpdir(), 'vx-npm-'))
+    try {
+      await writeFile(path.join(tmp, 'npm'), `#!/bin/sh\necho x >> ${tmp}/asked\n`, { mode: 0o755 })
+      const src = path.resolve(import.meta.dir, '../src/exec/sandbox-runtime.ts')
+      const asked = async (init: string): Promise<boolean> => {
+        await rm(path.join(tmp, 'asked'), { force: true })
+        const p = Bun.spawn(['bun', '-e', `${init}; process.exit(0)`], {
+          env: { ...process.env, PATH: `${tmp}:${process.env.PATH}` },
+          stdout: 'ignore',
+          stderr: 'ignore',
+        })
+        expect(await p.exited).toBe(0)
+        return existsSync(path.join(tmp, 'asked'))
+      }
+      const srt = `const { SandboxManager: M } = await import('@anthropic-ai/sandbox-runtime'); await M.initialize({ network: { allowedDomains: [], deniedDomains: [] }, filesystem: { denyRead: [], allowWrite: [], denyWrite: [] } })`
+      expect([
+        await asked(srt),
+        await asked(`const m = await import(${JSON.stringify(src)}); await m.initSandbox()`),
+      ]).toEqual([true, false])
+    } finally {
+      await rm(tmp, { recursive: true, force: true })
+    }
+  }, 30_000)
+
   it("hands SRT the run's domain union and vx's default ignore list", async () => {
     await resetSandbox()
     const spy = spyOn(SandboxManager, 'updateConfig')

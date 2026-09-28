@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import type { GeneratedTask, ProjectMeta } from '@vzn/vx'
+import { UserError, type GeneratedTask, type ProjectMeta } from '@vzn/vx'
 import { mapNxWorkspace, parseNxGraph, readNxJsonFacts, type NxGraph } from '../src/nx/nx-map.js'
 
 let root: string
@@ -567,5 +567,53 @@ describe('nx-map: `^` inputs fold over the project graph through twins', () => {
         workspaceFiles: ['packages/lib/src/**'],
       }),
     )
+  })
+})
+
+describe('nx-map: a node field of the wrong type is refused by name (L-15)', () => {
+  // Fuzzed: eight shapes reached a mapper loop as a TypeError, as
+  // turbo.json's did (`"dependsOn": true` → `true is not iterable`).
+  const refusal = (nodes: unknown) => {
+    try {
+      parseNxGraph(JSON.stringify({ graph: { nodes, dependencies: {} } }), 'graph.json')
+      return 'parsed'
+    } catch (e) {
+      return e instanceof UserError ? e.message : `NOT A UserError: ${String(e)}`
+    }
+  }
+  const t = (target: unknown) => ({
+    a: { data: { root: 'packages/a', targets: { build: target } } },
+  })
+
+  it('names the node, the target and the field', () => {
+    expect([
+      refusal(t({ command: 'tsc', dependsOn: true })),
+      refusal(t({ command: 'tsc', outputs: [1] })),
+      refusal(t(null)),
+      refusal(t({ executor: [] })),
+      refusal({ a: { data: { root: 1 } } }),
+      refusal({ a: { name: [] } }),
+    ]).toEqual([
+      'graph.json: nodes."a".data.targets."build".dependsOn must be an array of targets',
+      'graph.json: nodes."a".data.targets."build".outputs must be an array of strings',
+      'graph.json: nodes."a".data.targets."build" must be an object',
+      'graph.json: nodes."a".data.targets."build".executor must be a string',
+      'graph.json: nodes."a".data.root must be a string',
+      'graph.json: nodes."a".name must be a string',
+    ])
+  })
+
+  it('CONTROL: the same fields of the right type parse', () => {
+    expect(
+      refusal(
+        t({
+          executor: 'nx:run-commands',
+          options: { command: 'tsc' },
+          dependsOn: ['^build', { target: 'gen' }],
+          inputs: ['default', { env: 'CI' }],
+          outputs: ['{projectRoot}/dist'],
+        }),
+      ),
+    ).toBe('parsed')
   })
 })

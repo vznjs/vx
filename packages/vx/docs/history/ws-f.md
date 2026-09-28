@@ -402,3 +402,12 @@ quadratic time: 10 000 failures of 20 000 tasks took 1.3 s of the
 flush's bounded time. Blocked tasks are now grouped by their blocker in
 one pass: 1 310 → 35 ms, output byte-identical (a mixed 3 000-task
 summary compared against main's). Row red without the fix.
+
+F-39. vx-otel did not read the OTLP spec's TLS files, so a collector
+behind a private CA failed every export on its certificate, and one
+that asks for a client certificate refused the connection.
+`OTEL_EXPORTER_OTLP_CERTIFICATE`, `_CLIENT_CERTIFICATE` and
+`_CLIENT_KEY` (and each signal's own) are now read once per run and
+handed to fetch; a file that cannot be read warns once and is not used.
+Rows against a real TLS server, certificates made per run by openssl
+(no key checked in), red without the fix.

@@ -810,3 +810,51 @@ describe('turbo-map: envMode "loose"', () => {
     ]).toEqual([1, 1, 0, 0])
   })
 })
+
+describe('turbo-map: a field of the wrong type is refused by name (L-15)', () => {
+  // Fuzzed: `"dependsOn": true` printed `TypeError: true is not iterable`
+  // with its stack from `bunx @vzn/vx-migrate`; fifteen such shapes each
+  // reached a mapper loop as a TypeError.
+  const refusal = (turbo: unknown, pkg?: unknown) =>
+    map(turbo, {
+      web: { scripts: { build: 'tsc' }, ...(pkg !== undefined ? { turbo: pkg } : {}) },
+    }).then(
+      () => 'mapped',
+      (e: unknown) => (e instanceof UserError ? e.message : `NOT A UserError: ${String(e)}`),
+    )
+
+  it('names the file and the field', async () => {
+    const cases: Array<[unknown, unknown?]> = [
+      [{ tasks: { build: { dependsOn: true } } }],
+      [{ globalDependencies: 1, tasks: {} }],
+      [{ tasks: { build: { inputs: null } } }],
+      [{ tasks: [] }],
+      [{ tasks: { build: { cache: 'no' } } }],
+      [{ tasks: { build: {} } }, { extends: ['//'], tasks: { build: { outputs: [null] } } }],
+      [[]],
+    ]
+    const got: string[] = []
+    for (const [turbo, pkg] of cases) got.push(await refusal(turbo, pkg))
+    expect(got).toEqual([
+      'turbo.json: tasks."build".dependsOn must be an array of strings',
+      'turbo.json: globalDependencies must be an array of strings',
+      'turbo.json: tasks."build".inputs must be an array of globs',
+      'turbo.json: tasks must be an object of tasks',
+      'turbo.json: tasks."build".cache must be true or false',
+      'packages/web/turbo.json: tasks."build".outputs must be an array of strings',
+      'turbo.json: the file must be a JSON object',
+    ])
+  })
+
+  it('CONTROL: the same fields of the right type map', async () => {
+    expect(
+      await refusal(
+        {
+          globalDependencies: ['a'],
+          tasks: { build: { dependsOn: ['^build'], inputs: [], cache: true } },
+        },
+        { extends: ['//'], tasks: { build: { outputs: ['dist/**'] } } },
+      ),
+    ).toBe('mapped')
+  })
+})

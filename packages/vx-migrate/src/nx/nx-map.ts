@@ -100,7 +100,50 @@ export function parseNxGraph(text: string, label: string): NxGraph {
         'or { nodes, dependencies }',
     )
   }
+  checkNxNodes(nodes as Record<string, unknown>, label)
   return { nodes: nodes as Record<string, NxNode>, dependencies: g.dependencies }
+}
+
+const isRecord = (v: unknown): v is Record<string, unknown> =>
+  typeof v === 'object' && v !== null && !Array.isArray(v)
+
+/**
+ * The shape of every node field the mapper reads, refused by name. A
+ * number where the graph holds a list reached the mapper's loops as a
+ * TypeError: `"dependsOn": true` threw `true is not iterable` (fuzzed,
+ * L-15, as turbo.json's reader did).
+ */
+function checkNxNodes(nodes: Record<string, unknown>, label: string): void {
+  const refuse = (at: string, what: string): never => {
+    throw new UserError(`${label}: ${at} must be ${what}`)
+  }
+  const optional = (v: unknown, at: string, ok: (v: unknown) => boolean, what: string): void => {
+    if (v !== undefined && !ok(v)) refuse(at, what)
+  }
+  const strings = (v: unknown) => Array.isArray(v) && v.every((x) => typeof x === 'string')
+  const entries = (v: unknown) =>
+    Array.isArray(v) && v.every((x) => typeof x === 'string' || isRecord(x))
+  for (const [id, node] of Object.entries(nodes)) {
+    const at = `nodes.${JSON.stringify(id)}`
+    if (!isRecord(node)) refuse(at, 'an object')
+    const n = node as Record<string, unknown>
+    optional(n['name'], `${at}.name`, (v) => typeof v === 'string', 'a string')
+    optional(n['data'], `${at}.data`, isRecord, 'an object')
+    const data = (n['data'] ?? {}) as Record<string, unknown>
+    optional(data['root'], `${at}.data.root`, (v) => typeof v === 'string', 'a string')
+    optional(data['targets'], `${at}.data.targets`, isRecord, 'an object of targets')
+    for (const [name, target] of Object.entries((data['targets'] ?? {}) as object)) {
+      const t = `${at}.data.targets.${JSON.stringify(name)}`
+      if (!isRecord(target)) refuse(t, 'an object')
+      const tt = target as Record<string, unknown>
+      optional(tt['dependsOn'], `${t}.dependsOn`, entries, 'an array of targets')
+      optional(tt['inputs'], `${t}.inputs`, entries, 'an array of inputs')
+      optional(tt['outputs'], `${t}.outputs`, strings, 'an array of strings')
+      optional(tt['options'], `${t}.options`, isRecord, 'an object')
+      for (const k of ['executor', 'command'])
+        optional(tt[k], `${t}.${k}`, (v) => typeof v === 'string', 'a string')
+    }
+  }
 }
 
 export interface MapNxOptions {
