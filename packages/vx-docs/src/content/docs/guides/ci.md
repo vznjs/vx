@@ -63,6 +63,7 @@ jobs:
   ci:
     runs-on: ubuntu-latest
     permissions:
+      contents: read # checkout; naming any permission drops the rest
       checks: write # the PR check; the job summary needs nothing
     steps:
       - uses: actions/checkout@v4

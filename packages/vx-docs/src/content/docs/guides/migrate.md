@@ -236,7 +236,7 @@ outputs. With no fan-out scripts at all, `vx init` writes the configs.
 
 ## Common problems
 
-- **A task always runs.** vx caches only a task with a `cache` block. `vx-migrate` fills it from `turbo.json`, the Nx graph or `.moon/`.
+- **A task always runs.** vx caches only a task with a `cache` block. `vx-migrate` fills it from `turbo.json`, the Nx graph, `.moon/`, wireit scripts or `lage.config.js`.
 - **An env var is missing in the command.** vx isolates the environment: list it in `exec.env.passThrough` ([Environment variables](../configure/#environment-variables)).
 - **`vx run build` ran one package.** Without `--all`, vx runs the package you are in.
 
