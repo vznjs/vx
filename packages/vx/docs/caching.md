@@ -1029,7 +1029,9 @@ is ~2.4× the one-call cost per byte, so a small artifact is packed in
 memory and compressed in one call — tiny saves unchanged within
 noise). Ingest lists entries through the reader without materialising
 a byte, and **restore streams it**: the zstd
-frame is decoded and the tar read as it arrives — ustar name/prefix,
+frame is decoded and the tar read as it arrives — ustar name/prefix
+(the prefix under POSIX `ustar\0` magic only: old GNU's `ustar  ` keeps
+atime there, A-29),
 pax `path`/`size`, GNU long names, header checksums, truncation; an
 extended header (read whole) past 1 MiB or a pax `size` that is not a
 whole number is refused as corrupt, since a 1 GiB pax header costs 2 GiB
