@@ -290,6 +290,43 @@ describe('evaluateConfigFresh: the environment (D-61)', () => {
   })
 })
 
+describe('evaluateConfigFresh: what a config prints (D-64)', () => {
+  it("goes to stderr on every route, never the parent's stdout", async () => {
+    // A repeat load evaluates here, and `vx mcp`'s redirect covers only the
+    // parent thread: the second tool call's config output landed between two
+    // JSON-RPC responses. A child process, so its fd 1 is readable.
+    const config = await write(
+      "console.log('from console.log')\nconsole.info('from console.info')\n" +
+        "process.stdout.write('from stdout.write\\n')\n" +
+        "await Bun.write(Bun.stdout, 'from Bun.write\\n')\n" +
+        "const w = Bun.stdout.writer(); w.write('from a writer\\n'); await w.flush()\n" +
+        "export default { tasks: { t: { exec: { command: 'true' } } } }\n",
+    )
+    const driver = path.join(root, 'driver.ts')
+    await writeFile(
+      driver,
+      `import { beginEvalRound, evaluateConfigFresh } from ${JSON.stringify(path.resolve(import.meta.dir, '../src/workspace/config-eval.ts'))}\n` +
+        `const end = beginEvalRound()\n` +
+        `const c = await evaluateConfigFresh(${JSON.stringify(config)})\n` +
+        `end()\n` +
+        `process.stderr.write('config ' + JSON.stringify(c) + '\\n')\n`,
+    )
+    const p = Bun.spawn({ cmd: [process.execPath, driver], stdout: 'pipe', stderr: 'pipe' })
+    const [code, out, err] = await Promise.all([
+      p.exited,
+      new Response(p.stdout).text(),
+      new Response(p.stderr).text(),
+    ])
+    expect({ code, out, err }).toEqual({
+      code: 0,
+      out: '',
+      err:
+        'from console.log\nfrom console.info\nfrom stdout.write\nfrom Bun.write\nfrom a writer\n' +
+        'config {"tasks":{"t":{"exec":{"command":"true"}}}}\n',
+    })
+  }, 20_000)
+})
+
 describe('evaluateConfigFresh: errors cross the boundary', () => {
   // Each case below rejects from inside the WORKER. A rejection clears its own
   // deadline in the `finally`, so nothing is left armed to drain — these used

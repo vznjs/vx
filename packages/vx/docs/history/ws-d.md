@@ -110,6 +110,11 @@ run leaves out; the rest are refusals.
   the shared root, other processes' included, so a concurrent task
   bridging the same port number counts; unproven which pid held the
   extra. Scoping the scan to `vx-task-${process.pid}-` would remove it.
+  A second gate the same day failed `sandbox-bridge-socket.unsafe.test.ts`
+  › "is removed when the task ends": SRT's own
+  `/tmp/claude-http-*.sock` was gone ("the bridge process may have
+  died"); 2 of 2 alone. Both are sockets under the shared `/tmp`, under
+  the gate's parallel load; what removed the second is unproven.
 
 ## Entries
 
@@ -614,3 +619,18 @@ packages/core`) selects the dependent whose `file:../lib` spec named
   the D-63 rows of `tests/config-missing-import.test.ts`, a `Bun.file`
   spy refusing the config's read with `EMFILE` (red without the fix)
   and an `EACCES` control that still reads as no edges.
+- **D-64** Failure class: a config's output under `vx mcp`. The server
+  redirects the parent thread's stdout (item 922), but a repeat load
+  evaluates in the config Worker, whose console and stdout are its own:
+  the second `listTasks` call's `console.log` landed between the two
+  JSON-RPC responses (probed). The Worker now routes every stdout route
+  to stderr. Row: the D-64 row of `tests/config-eval.test.ts`, a child
+  process whose fd 1 stays empty while five routes print; red without
+  the fix, and each of the four redirects caught by its own mutant.
+  Open: a first load still prints to stdout, so a printing config
+  corrupts `vx show --format json`; a global redirect around the
+  in-process import would also catch vx's own writes made meanwhile.
+  Refuted on the way: a warm-path cost in the slice. At 1,000 projects
+  the `workspace config` span (17 ms) is mostly the git spawns started
+  there on purpose, to overlap discovery; the slice's own reads take
+  1–5 ms per stage.

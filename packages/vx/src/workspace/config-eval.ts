@@ -41,7 +41,28 @@ import { nonJsonMessage, nonJsonPaths, type NonJsonValue } from './json-data.js'
 
 const WORKER_SRC = `
 const nonJsonPaths = ${nonJsonPaths.toString()}
+// The parent's stdout is a verb's JSON or vx mcp's JSON-RPC stream, and a
+// config printing on a repeat load wrote into it: the server's own redirect
+// covers the parent thread only (D-64). This worker only evaluates configs,
+// so every route to fd 1 is stderr's, Bun's own included (item 1069).
+const quiet = (async () => {
+  const P = globalThis.process
+  const B = globalThis.Bun
+  const { Console } = await import('node:console')
+  globalThis.console = Object.assign(new Console(P.stderr, P.stderr), {
+    write: (...data) => {
+      const text = data.join('')
+      P.stderr.write(text)
+      return text.length
+    },
+  })
+  P.stdout.write = (...args) => P.stderr.write(...args)
+  const ownBunWrite = B.write
+  B.write = (dest, ...rest) => ownBunWrite(dest === B.stdout ? B.stderr : dest, ...rest)
+  B.stdout.writer = (...args) => B.stderr.writer(...args)
+})()
 self.onmessage = async (e) => {
+  await quiet
   const { id, path, env } = e.data
   // A Worker starts with the process's STARTUP environment, not the
   // parent's process.env as written since (probed): a config reading an
