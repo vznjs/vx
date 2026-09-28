@@ -34,6 +34,12 @@ export interface OtelPluginOptions {
   logs?: boolean
   /** Per-request timeout (ms). Falls back to `OTEL_EXPORTER_OTLP_TIMEOUT`, else 15000. */
   timeoutMs?: number
+  /**
+   * `'gzip'` sends every signal gzipped. Falls back to each signal's
+   * `OTEL_EXPORTER_OTLP_<SIGNAL>_COMPRESSION`, then `OTEL_EXPORTER_OTLP_COMPRESSION`,
+   * else `'none'`.
+   */
+  compression?: 'gzip' | 'none'
   /** Test seam — inject the POST transport. Defaults to fetch. */
   post?: PostFn
 }
@@ -201,6 +207,22 @@ export function resolveOtelConfig(
         ?.trim()
         .toLowerCase() === 'grpc',
   )
+  // `OTEL_EXPORTER_OTLP_COMPRESSION=gzip` was not read, and a pipeline
+  // configured for it sent every export uncompressed (F-33).
+  let badCompression = false
+  const gzip = (['traces', 'metrics', 'logs'] as const).filter((signal) => {
+    const name = `OTEL_EXPORTER_OTLP_${signal.toUpperCase()}_COMPRESSION`
+    const raw =
+      opts.compression ?? present(env[name]) ?? present(env['OTEL_EXPORTER_OTLP_COMPRESSION'])
+    const value = raw?.trim().toLowerCase()
+    if (value === undefined || value === 'none') return false
+    if (value === 'gzip') return true
+    if (!badCompression) {
+      badCompression = true
+      warn?.(`[vx-otel] compression ${JSON.stringify(raw)} is not gzip or none — sent uncompressed`)
+    }
+    return false
+  })
   return {
     tracesUrl,
     metricsUrl: metricsUrl ?? tracesUrl,
@@ -212,6 +234,7 @@ export function resolveOtelConfig(
       'vx',
     resource,
     grpc,
+    gzip,
     headers: clean({ ...parseOtlpHeaders(env['OTEL_EXPORTER_OTLP_HEADERS']), ...opts.headers }),
     // A signal's own `OTEL_EXPORTER_OTLP_<SIGNAL>_HEADERS` wins over the
     // shared ones, as the spec orders them; they were not read (item 923).

@@ -1562,6 +1562,72 @@ describe('the standard OTLP env a pipeline already sets', () => {
     ]).toEqual([2500, 100, 15_000, 15_000])
   })
 
+  it('OTEL_EXPORTER_OTLP_COMPRESSION: a signal’s own wins, the option tops both, junk warns', () => {
+    const warns: string[] = []
+    const gzipOf = (opts: Parameters<typeof resolveOtelConfig>[0], env: Record<string, string>) =>
+      resolveOtelConfig(opts, { ...base, ...env }, (m) => warns.push(m))!.gzip
+    expect([
+      gzipOf({}, {}),
+      gzipOf({}, { OTEL_EXPORTER_OTLP_COMPRESSION: 'GZIP' }),
+      gzipOf(
+        {},
+        {
+          OTEL_EXPORTER_OTLP_COMPRESSION: 'gzip',
+          OTEL_EXPORTER_OTLP_LOGS_COMPRESSION: 'none',
+          OTEL_EXPORTER_OTLP_METRICS_COMPRESSION: ' ',
+        },
+      ),
+      gzipOf({}, { OTEL_EXPORTER_OTLP_TRACES_COMPRESSION: 'gzip' }),
+      gzipOf({ compression: 'none' }, { OTEL_EXPORTER_OTLP_COMPRESSION: 'gzip' }),
+      gzipOf({ compression: 'gzip' }, {}),
+      gzipOf({}, { OTEL_EXPORTER_OTLP_COMPRESSION: 'zstd' }),
+    ]).toEqual([
+      [],
+      ['traces', 'metrics', 'logs'],
+      ['traces', 'metrics'],
+      ['traces'],
+      [],
+      ['traces', 'metrics', 'logs'],
+      [],
+    ])
+    expect(warns).toEqual(['[vx-otel] compression "zstd" is not gzip or none — sent uncompressed'])
+  })
+
+  it('a gzip export reaches the collector gzipped, and decodes to the same OTLP', async () => {
+    // The env was not read: a pipeline set for gzip sent raw JSON (F-33).
+    const got: { encoding: string | null; spans: number }[] = []
+    const server = Bun.serve({
+      port: 0,
+      fetch: async (req) => {
+        const raw = new Uint8Array(await req.arrayBuffer())
+        const encoding = req.headers.get('content-encoding')
+        const text = new TextDecoder().decode(encoding === 'gzip' ? Bun.gunzipSync(raw) : raw)
+        const body = JSON.parse(text) as {
+          resourceSpans: { scopeSpans: { spans: unknown[] }[] }[]
+        }
+        got.push({ encoding, spans: body.resourceSpans[0]!.scopeSpans[0]!.spans.length })
+        return new Response('{}')
+      },
+    })
+    try {
+      const sink = new OtelSink(
+        resolveOtelConfig(
+          { metrics: false, logs: false },
+          {
+            OTEL_EXPORTER_OTLP_ENDPOINT: `http://localhost:${server.port}`,
+            OTEL_EXPORTER_OTLP_COMPRESSION: 'gzip',
+          },
+        )!,
+      )
+      sink.onRecord({ v: 2, kind: 'run.start', run: RUN, total: 1, ts: 0, startedAt: 0 })
+      sink.onRecord({ v: 2, kind: 'run.end', runId: RUN.runId, ts: 10 })
+      await sink.flush()
+      expect(got).toEqual([{ encoding: 'gzip', spans: 1 }])
+    } finally {
+      await server.stop(true)
+    }
+  })
+
   it('a failed export under a gRPC protocol says vx sends OTLP/HTTP only', async () => {
     const warns: string[] = []
     const cfg = resolveOtelConfig(

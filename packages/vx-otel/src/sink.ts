@@ -48,6 +48,8 @@ export interface OtelSinkConfig {
   headers: Record<string, string>
   /** Per signal, over `headers`. */
   signalHeaders?: Partial<Record<OtelSignal, Record<string, string>>>
+  /** Signals sent gzipped (`OTEL_EXPORTER_OTLP_COMPRESSION=gzip`). */
+  gzip?: readonly OtelSignal[]
   /** False under `OTEL_TRACES_EXPORTER=none`; absent is true. */
   tracesEnabled?: boolean
   metricsEnabled: boolean
@@ -59,7 +61,9 @@ export interface OtelSinkConfig {
 
 const defaultPost =
   (timeoutMs: number): PostFn =>
-  async (url, body, headers, deadline) => {
+  async (url, json, headers, deadline) => {
+    // Compressed once, not per attempt; the header says the sink asked.
+    const body = headers['content-encoding'] === 'gzip' ? Bun.gzipSync(json) : json
     // A collector that sheds load (429, 502, 503, 504, or a reset
     // connection) is retried twice, as the OTLP spec asks of exporters: the
     // export was dropped whole on the first 503 (F-28). The flush deadline
@@ -112,7 +116,7 @@ function sleepUnless(ms: number, deadline: AbortSignal | undefined): Promise<voi
 // fires, well after the POST resolved.
 async function postOnce(
   url: string,
-  body: string,
+  body: string | Uint8Array,
   headers: Record<string, string>,
   timeoutMs: number,
   deadline: AbortSignal | undefined,
@@ -229,6 +233,7 @@ export class OtelSink implements TelemetrySink {
       serviceName: config.serviceName,
       resource: config.resource ?? {},
       grpc: config.grpc ?? [],
+      gzip: config.gzip ?? [],
       headers: config.headers,
       signalHeaders: config.signalHeaders ?? {},
       tracesEnabled: config.tracesEnabled !== false,
@@ -380,10 +385,12 @@ export class OtelSink implements TelemetrySink {
 
   /** POSTs every body at once; one warning per signal, however many fail. */
   private async send(signal: OtelSignal, url: string, bodies: readonly string[]): Promise<void> {
+    const gzip = this.cfg.gzip.includes(signal)
     const headers: Record<string, string> = {
       'content-type': 'application/json',
       ...this.cfg.headers,
       ...this.cfg.signalHeaders[signal],
+      ...(gzip ? { 'content-encoding': 'gzip' } : {}),
     }
     const failed = (
       await Promise.all(
