@@ -29,5 +29,5 @@ the repository, which stays their source of truth.
 
 ## Writing the site
 
-- [The diagram kit](diagrams/): the build-time SVG components the Guide
-  draws with, each rendered.
+- [The diagram kit](diagrams/): the build-time SVG picture component, each
+  part rendered.

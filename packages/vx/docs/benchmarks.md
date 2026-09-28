@@ -347,7 +347,7 @@ skips the work.
 bun packages/vx-bench/compare.ts                 # 100 layers × 11 (3,270 nodes) — the full shape (slow)
 bun packages/vx-bench/compare.ts 10 5 1          # 46 packages, 10 layers — quick
 BASELINE_ONLY=1 bun packages/vx-bench/compare.ts # recompute only the baseline floors against the committed rows (~9 min)
-bun packages/vx-bench/update-site.ts             # rewrite the landing page and this doc's stress section from results.json, and the landing's n8n panel from this doc (--check to verify)
+bun packages/vx-bench/update-site.ts             # rewrite the landing page, the README's bench sentence and chart, and this doc's stress section from results.json (--check to verify)
 BUILD_SLEEP=0 bun packages/vx-bench/compare.ts 20 11 2   # deep graph, pure framework overhead
 ```
 
@@ -478,7 +478,7 @@ cal.com's `@calcom/web#build` writes 110 symlinks to `node_modules`
 directories under `.next/node_modules`, which vx's artifact format does
 not store, so the bench names the rest of `.next` — everything
 `next start` reads — and Turbo's artifact carries the 110 links too.
-Directory symlinks in artifacts are STATUS Next.
+An artifact still stores no directory symlink; the save refuses one by name.
 
 ### withastro/astro (32 `build` tasks, pnpm 10, Turbo 2.10.2)
 
