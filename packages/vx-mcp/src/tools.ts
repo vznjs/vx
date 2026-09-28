@@ -12,6 +12,7 @@ import {
   collectInfo,
   loadResolvedProjects,
   LocalHistoryProvider,
+  maskedCommand,
   splitTaskId,
   UserError,
   latestRunId,
@@ -172,7 +173,8 @@ async function listTasks(
         name: taskName,
         id: `${p.name}#${taskName}`,
         ...(task.description !== undefined ? { description: task.description } : {}),
-        command: task.exec?.command ?? null,
+        // Masked as `vx show` masks it: an agent is often a remote model (L-26).
+        command: task.exec ? maskedCommand(task.exec.command, task.exec.env) : null,
         dependsOn: task.dependsOn ?? [],
         cached: task.cache !== undefined,
         ...(task.exec?.persistent !== undefined ? { persistent: true } : {}),

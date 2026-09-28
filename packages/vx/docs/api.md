@@ -1046,6 +1046,16 @@ one. The default worker count.
 export function machineParallelism(probe: CgroupProbe = {}): number
 ```
 
+## `maskedCommand`
+
+function · `src/util/secret-mask.ts`
+
+A task's command as vx shows it: its secret values masked.
+
+```ts
+export function maskedCommand(command: string, env?: TaskEnvSecrets): string
+```
+
 ## `MigrationFormat`
 
 type · `src/workspace/migration.ts`

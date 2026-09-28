@@ -1556,3 +1556,47 @@ describe('the tools, as their second sweep found them unheld', () => {
     ])
   })
 })
+
+// `vx show` masked a declared secret in a task's command, but `listTasks`
+// handed the raw command to the agent, often a remote model (L-26). The
+// undeclared value in the control task shows: only the declared name masks.
+describe('listTasks masks a declared secret in a command', () => {
+  it('a secret-named value reads as ***; an undeclared one stays', async () => {
+    const root = mkdtempSync(path.join(tmpdir(), 'vx-mcp-mask-'))
+    const saved = { token: process.env['VX_L26_TOKEN'], plain: process.env['VX_L26_PLAIN'] }
+    try {
+      writeFileSync(
+        path.join(root, 'package.json'),
+        JSON.stringify({ name: 'ws', private: true, workspaces: ['packages/*'] }),
+      )
+      const dir = path.join(root, 'packages', 'a')
+      await Bun.write(path.join(dir, 'package.json'), JSON.stringify({ name: 'a' }))
+      await Bun.write(
+        path.join(dir, 'vx.config.mjs'),
+        `export default { tasks: {
+  deploy: { exec: { command: \`deploy --token \${process.env.VX_L26_TOKEN}\`, env: { secret: ['VX_L26_TOKEN'] } } },
+  plain: { exec: { command: \`echo \${process.env.VX_L26_PLAIN}\` } },
+} }
+`,
+      )
+      process.env['VX_L26_TOKEN'] = 'tok-l26-secret'
+      process.env['VX_L26_PLAIN'] = 'not-secret'
+      const r = (await call(root, 'listTasks', {})) as {
+        projects: { tasks: { id: string; command: string | null }[] }[]
+      }
+      expect(r.projects.flatMap((p) => p.tasks.map((t) => [t.id, t.command]))).toEqual([
+        ['a#deploy', 'deploy --token ***'],
+        ['a#plain', 'echo not-secret'],
+      ])
+    } finally {
+      for (const [k, v] of [
+        ['VX_L26_TOKEN', saved.token],
+        ['VX_L26_PLAIN', saved.plain],
+      ] as const) {
+        if (v === undefined) delete process.env[k]
+        else process.env[k] = v
+      }
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+})

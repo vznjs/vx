@@ -102,6 +102,12 @@
     persistent path alike; the command is masked in the task view
     (L-11, L-14). An executor's thrown message is printed unmasked, but a
     plugin executor is trusted code with a config's reach. No bug.
+23. What vx-reapi uploads. A symlinked input is sent as a link node
+    (`lstat`, its target string), never its target's bytes, and core's
+    input glob does not descend into a symlinked directory
+    (`followSymlinks: false`). No bug.
+24. What `vx mcp` hands an agent. `listTasks` returned a task's command
+    unmasked (L-26); the other tools read stored, masked rows.
 
 ## Items
 
@@ -303,6 +309,11 @@
   with its own. Row: a concurrent task greps the shared temp dir while the
   other runs and finds nothing, red without the move; the rows that follow
   the log now look in the task root.
+- L-26. `fix(vx-mcp)`: `vx show` masks a task's secret values in its
+  command (L-14), but `listTasks` returned the command raw, so an agent,
+  often a remote model, read the token a config inlined (probed). The
+  façade exports `maskedCommand` and `listTasks` uses it. Row: a declared
+  secret reads `***` and an undeclared value stays, red without the mask.
 
 ## Leads for other streams
 
