@@ -4,6 +4,7 @@
 // history in cache.db is the only replay surface, and this verb reads it.
 // Read-only — no config evaluation, no re-hash, no cache probe.
 
+import type { Database } from 'bun:sqlite'
 import { Cache, noteSchemaReset } from '../cache/index.js'
 import { formatBytes } from './format.js'
 import { flagHint, seeHelp } from './help.js'
@@ -11,6 +12,7 @@ import {
   exitSignal,
   getInvocation,
   getRun,
+  type InvocationDetail,
   listInvocations,
   type RunSummaryRow,
 } from '../orchestrator/index.js'
@@ -22,6 +24,8 @@ import { resolveRunId, shortRunId } from './run-id.js'
 interface LastArgs {
   runId?: string
   list?: number
+  /** Only runs that failed: the latest one replayed, or the list narrowed. */
+  failed?: boolean
   format: 'pretty' | 'json'
   /** `--cache-dir`: read the history a run with the same flag wrote. */
   cacheDir?: string
@@ -46,6 +50,10 @@ export function parseLastArgs(args: readonly string[]): LastArgs {
         return { ...out, error: `invalid --list: ${lv} (expected 1..500)` }
       }
       out.list = n
+      continue
+    }
+    if (a === '--failed') {
+      out.failed = true
       continue
     }
     if (a === '--format' || a.startsWith('--format=')) {
@@ -82,7 +90,18 @@ export function parseLastArgs(args: readonly string[]): LastArgs {
       error: `a run id and --list do not combine: replay ${out.runId}, or list runs`,
     }
   }
+  if (out.runId !== undefined && out.failed === true) {
+    return { ...out, error: `a run id and --failed do not combine: replay ${out.runId}` }
+  }
   return out
+}
+
+/** The `limit` most recent runs that failed, newest first. */
+function failedInvocations(db: Database, limit: number): InvocationDetail[] {
+  const ids = db
+    .query('SELECT run_id FROM invocations WHERE exit_ok = 0 ORDER BY rowid DESC LIMIT ?')
+    .all(limit) as Array<{ run_id: string }>
+  return ids.map((r) => getInvocation(db, r.run_id)).filter((i) => i !== null)
 }
 
 const fmtWhen = (ms: number): string => new Date(ms).toISOString()
@@ -190,7 +209,10 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
     const db = cache.dbHandle()
 
     if (parsed.list !== undefined) {
-      const invocations = listInvocations(db, { limit: parsed.list })
+      const invocations =
+        parsed.failed === true
+          ? failedInvocations(db, parsed.list)
+          : listInvocations(db, { limit: parsed.list })
       if (parsed.format === 'json') {
         process.stdout.write(`${JSON.stringify(invocations)}\n`)
         return 0
@@ -213,12 +235,16 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
     const inv =
       parsed.runId !== undefined
         ? getInvocation(db, resolveRunId(db, parsed.runId, 'vx last') ?? parsed.runId)
-        : (listInvocations(db, { limit: 1 })[0] ?? null)
+        : parsed.failed === true
+          ? (failedInvocations(db, 1)[0] ?? null)
+          : (listInvocations(db, { limit: 1 })[0] ?? null)
     if (inv === null || inv === undefined) {
       throw new UserError(
         parsed.runId !== undefined
           ? `vx last: no recorded run ${parsed.runId} (vx last --list shows recent runs)`
-          : 'vx last: no recorded runs yet — run something first',
+          : parsed.failed === true
+            ? 'vx last: no recorded run failed'
+            : 'vx last: no recorded runs yet — run something first',
       )
     }
     const detail = getRun(db, inv.runId)

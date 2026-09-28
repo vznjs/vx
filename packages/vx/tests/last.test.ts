@@ -305,6 +305,45 @@ describe('vx last (e2e)', () => {
     },
     TIMEOUT,
   )
+
+  it(
+    '--failed replays the latest failed run past a green one, and narrows --list',
+    async () => {
+      const failed = await vx(root, ['run', 'boom', '--all'])
+      expect(failed.code).not.toBe(0)
+      expect((await vx(root, ['run', 'build', '--all'])).code).toBe(0)
+      // CONTROL: the plain replay is the green run.
+      expect((await vx(root, ['last'])).out.split('\n')[0]).toEndWith('— ok')
+      const r = await vx(root, ['last', '--failed'])
+      expect({ code: r.code, head: r.out.split('\n').slice(0, 2) }).toEqual({
+        code: 0,
+        head: [expect.stringMatching(/^run \S+ — FAILED$/), '  $ vx run boom --all'],
+      })
+      const all = (await vx(root, ['last', '--list', '20'])).out.trim().split('\n')
+      const only = (await vx(root, ['last', '--list', '20', '--failed'])).out.trim().split('\n')
+      expect(all.some((l) => l.startsWith('ok'))).toBe(true)
+      expect(only).toEqual(all.filter((l) => l.startsWith('FAILED')))
+    },
+    TIMEOUT,
+  )
+
+  it(
+    '--failed where nothing failed says so',
+    async () => {
+      const clean = await makeWorkspace()
+      try {
+        await vx(clean, ['run', 'build', '--all'])
+        const r = await vx(clean, ['last', '--failed'])
+        expect({ code: r.code, err: r.err.trim() }).toEqual({
+          code: 1,
+          err: 'vx last: no recorded run failed',
+        })
+      } finally {
+        await rm(clean, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
 })
 
 describe('parseLastArgs', () => {
@@ -313,6 +352,10 @@ describe('parseLastArgs', () => {
     expect(parseLastArgs(['abc']).runId).toBe('abc')
     expect(parseLastArgs(['--list']).list).toBe(10)
     expect(parseLastArgs(['--list=25']).list).toBe(25)
+    expect(parseLastArgs(['--failed', '--list']).failed).toBe(true)
+    expect(parseLastArgs(['01a0', '--failed']).error).toBe(
+      'a run id and --failed do not combine: replay 01a0',
+    )
     expect(parseLastArgs(['--list=0']).error).toMatch(/1\.\.500/)
     expect(parseLastArgs(['--format', 'json']).format).toBe('json')
     expect(parseLastArgs(['--format=pretty']).format).toBe('pretty')

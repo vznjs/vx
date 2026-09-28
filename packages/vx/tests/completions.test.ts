@@ -71,6 +71,7 @@ const ARGV: Readonly<Record<string, readonly string[]>> = {
   '--format': ['json'],
   '--run': ['id'],
   '--list': [],
+  '--failed': [],
 }
 
 /** Each verb's own parser; the error it returns for `argv`, or null. */
