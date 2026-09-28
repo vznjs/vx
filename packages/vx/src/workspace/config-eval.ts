@@ -132,12 +132,12 @@ interface Pending {
 }
 
 /**
- * How long a single config evaluation may take before we treat the worker as
- * wedged. Real evaluations are ~10 ms; this exists only so a killed or hung
- * worker cannot stall a long-lived process indefinitely. Read per call so a
- * test can drive the deadline instead of waiting it out.
+ * How long a single config evaluation may take, in the worker or in process
+ * (D-66). Real evaluations are ~10 ms; this exists only so a hung config or a
+ * killed worker cannot stall a run or a long-lived process indefinitely. Read
+ * per call so a test can drive the deadline instead of waiting it out.
  */
-function workerTimeoutMs(): number {
+export function evalBudgetMs(): number {
   const raw = process.env['VX_CONFIG_WORKER_TIMEOUT_MS']
   // Same kind of value as the teardown deadline, so the same treatment: a
   // BOUND on a worker that may be wedged, with no "no limit" reading. Falls
@@ -266,7 +266,7 @@ export async function evaluateConfigFresh(configPath: string): Promise<unknown> 
     // otherwise take milliseconds. Nothing else bounds it: there is no
     // run-level timeout. The budget is enormous next to the ~10 ms a real
     // evaluation costs, so it can only fire on a genuine wedge.
-    const budget = workerTimeoutMs()
+    const budget = evalBudgetMs()
     const reply = await new Promise<WorkerReply>((resolve, reject) => {
       pending.set(id, { resolve, reject })
       timer = setTimeout(() => {

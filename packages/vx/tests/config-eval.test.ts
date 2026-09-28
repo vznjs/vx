@@ -340,6 +340,43 @@ describe('a config that calls process.exit (D-65)', () => {
   }, 20_000)
 })
 
+describe('a first load that never settles (D-66)', () => {
+  it('fails at the budget, naming the config, and gives process.exit back', async () => {
+    // In process there was no deadline: a top-level await that never
+    // settled while a timer held the loop open hung `vx run` silently.
+    // A child, which exits itself: the config's timer outlives the load.
+    const file = await write(
+      'await new Promise(() => { setInterval(() => {}, 1000) })\nexport default { tasks: {} }\n',
+    )
+    const driver = path.join(root, 'never-settles.ts')
+    await writeFile(
+      driver,
+      `import { loadProjectConfig } from ${JSON.stringify(path.resolve(import.meta.dir, '../src/workspace/project-loader.ts'))}\n` +
+        `const own = process.exit\n` +
+        `const got = await loadProjectConfig(${JSON.stringify(file)}).then(() => 'loaded', (e) => e.message)\n` +
+        `console.error(JSON.stringify({ got, restored: process.exit === own }))\n` +
+        `process.exit(3)\n`,
+    )
+    const p = Bun.spawn({
+      cmd: [process.execPath, driver],
+      env: { ...process.env, [BUDGET_ENV]: '300' },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    const killer = setTimeout(() => p.kill('SIGKILL'), 8_000)
+    const [code, err] = await Promise.all([p.exited, new Response(p.stderr).text()])
+    clearTimeout(killer)
+    expect({ code, err }).toEqual({
+      code: 3,
+      err:
+        JSON.stringify({
+          got: `Project config ${file} did not finish evaluating within 300ms (VX_CONFIG_WORKER_TIMEOUT_MS)`,
+          restored: true,
+        }) + '\n',
+    })
+  }, 20_000)
+})
+
 describe('evaluateConfigFresh: what a config prints (D-64)', () => {
   it("goes to stderr on every route, never the parent's stdout", async () => {
     // A repeat load evaluates here, and `vx mcp`'s redirect covers only the
@@ -706,7 +743,7 @@ describe('the evaluation deadline', () => {
   //     1ms (printing a TimeoutOverflowWarning), and then reports the failure
   //     as "did not answer within 999999999999ms" — a message that cannot be
   //     true and points nowhere near the cause.
-  // A clamp (and treating 0 as "no deadline") belongs in workerTimeoutMs.
+  // A clamp (and treating 0 as "no deadline") belongs in evalBudgetMs.
   it('deadlines instantly on 0 \u2014 DEFECT, still pinned', async () => {
     // STILL A DEFECT, and deliberately left as one: `0` is a SEPARATE mechanism
     // from the 32-bit ceiling below, and its repair is a real design question
