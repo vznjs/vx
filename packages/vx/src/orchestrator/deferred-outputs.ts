@@ -58,10 +58,6 @@ export class DeferredOutputs {
     return [...this.entries.keys()].sort()
   }
 
-  get size(): number {
-    return this.entries.size
-  }
-
   /**
    * Materialise every deferred producer in `node`'s TRANSITIVE dependency
    * closure. Which upstream bytes a command reads is unknowable — that is

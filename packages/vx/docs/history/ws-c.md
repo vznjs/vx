@@ -479,6 +479,25 @@ second `vx run` of a saved task (C-36's probe). A hole now stays a hole,
 as it does with no order-only edge. Rows in `upstream.test.ts`, the unit
 and the run, both red without the change.
 
+## C-37: hold `deferred-outputs.ts`'s surviving mutants
+
+A sweep of 54 mutants over `tally.ts` (26, 16 files that assert its
+counts or the lines built from them) and `deferred-outputs.ts` (28, 7
+files): every `tally.ts` mutant caught (one did not compile, re-spelled
+and caught). In `deferred-outputs.ts` 12 survived. Rows in
+`download-policy.test.ts` (`DeferredOutputs`, the registry without a
+run) hold 7: `pending()` sorted, not in registration order; the
+producers of one consumer fetched concurrently (each starts before any
+ends); a 20-rung diamond closure walked once per task (without `seen`
+it is 2^20 lookups, counted by `get`s); and a fetch that stays in its
+project (a nested project's file survives the wipe, and the saved
+entry holds exactly the fetched file, under its hash). The `size`
+getter had no caller; removed. Equivalent: the `needed.length === 0`
+return (`Promise.all([])`), the first stack frame read from the map
+rather than `node.deps` (the same node), and both git-snapshot marks
+(item 643: no reader of a deferred producer's outputs is in the run).
+No defect.
+
 ## Leads for other streams
 
 - **E:** a plugin command's plain `throw` (`commands.probe.run` throwing
