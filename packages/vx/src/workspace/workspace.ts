@@ -4,6 +4,7 @@ import path from 'node:path'
 import type { ProjectConfig, WorkspaceConfig } from '../config.js'
 import {
   BUN_GLOB_WILDCARDS,
+  isOutOfFds,
   relPosix,
   slashBraceExpansions,
   UserError,
@@ -84,7 +85,8 @@ export async function findWorkspaceRoot(
     let globs: string[] | null
     try {
       globs = await readPackageGlobs(dir, reads)
-    } catch {
+    } catch (err) {
+      if (isOutOfFds(err)) throw err
       // An unparseable manifest is still a root SIGNAL (the pre-existing
       // behaviour probed only for existence); it just can't claim members.
       // `loadWorkspace` surfaces the parse error if this dir is chosen.
@@ -405,8 +407,8 @@ async function memberDirs(root: string, pattern: string): Promise<string[]> {
     let entries: import('node:fs').Dirent[]
     try {
       entries = await readdir(base, { withFileTypes: true })
-    } catch {
-      return []
+    } catch (err) {
+      return absent(err, [])
     }
     const dirs: string[] = []
     for (const e of entries) {
@@ -416,8 +418,8 @@ async function memberDirs(root: string, pattern: string): Promise<string[]> {
         try {
           if ((await stat(path.join(base, e.name))).isDirectory())
             dirs.push(path.join(base, e.name))
-        } catch {
-          // dangling link: not a member
+        } catch (err) {
+          absent(err, undefined) // dangling link: not a member
         }
       }
     }
@@ -468,8 +470,8 @@ async function findConfigFile(dir: string): Promise<string | null> {
     let entries: Dirent[]
     try {
       entries = await readdir(dir, { withFileTypes: true })
-    } catch {
-      return null
+    } catch (err) {
+      return absent(err, null)
     }
     // By precedence slot, not a Map per directory, and no `path.join`: at
     // 5,000 projects that cut `listProjects` from 53.5 to 47.7 ms (min of
@@ -499,9 +501,20 @@ const CONFIG_RANK = new Map(PROJECT_CONFIG_FILENAMES.map((n, i) => [n, i]))
 async function isFile(p: string): Promise<boolean> {
   try {
     return (await stat(p)).isFile()
-  } catch {
-    return false
+  } catch (err) {
+    return absent(err, false)
   }
+}
+
+/**
+ * A read that found nothing is absent; one the process could not make is
+ * not. Out of descriptors (`EMFILE`), every member read failed, and the
+ * catches here read the workspace as empty: "No package matched the
+ * workspace's package globs" (D-60).
+ */
+function absent<T>(err: unknown, value: T): T {
+  if (isOutOfFds(err)) throw err
+  return value
 }
 
 export async function listProjects(workspace: Workspace): Promise<ProjectMeta[]> {
@@ -537,7 +550,7 @@ export async function listProjects(workspace: Workspace): Promise<ProjectMeta[]>
         findConfigFile(dir),
         Bun.file(pkgJsonPath)
           .text()
-          .catch(() => null),
+          .catch((err: unknown) => absent(err, null)),
       ])
       if (text === null) return null
       const pkg = parsePackageJson(text, pkgJsonPath)

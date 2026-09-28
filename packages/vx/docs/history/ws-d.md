@@ -98,6 +98,11 @@ run leaves out; the rest are refusals.
   measured paths, `findConfigFile`); `initHint` in `run.ts` could look for
   a misnamed file only on that failure path.
 
+- A: out of file descriptors, the cache's SQLite open fails as a raw
+  `vx: SQLiteError: unable to open database file` without the `ulimit -n`
+  hint the rest of the run gives (probed at `ulimit -n` 12, 16 and 22 on
+  a 20-project fixture); at 10 the run printed nothing at all.
+
 ## Entries
 
 - **D-1** `--affected` selects the project a new nested project took
@@ -561,3 +566,16 @@ packages/core`) selects the dependent whose `file:../lib` spec named
   joins the deny-list (`IMPURE_RE`, and the word lists in
   `config-cache.md` and the resolved-config-hashing post). Row: the
   `new Worker` case of `tests/config-cache.test.ts`, red without it.
+- **D-60** Lead from A: under a low `ulimit -n`, discovery read `EMFILE`
+  as an empty workspace ("No package matched the workspace's package
+  globs"). Every catch that means "absent" (the member listing, the
+  config lookup, a member's `package.json`, the root walk's manifest
+  read, a link's stat, `isFile`) now rethrows an out-of-descriptors
+  error through `absent()`, so the run fails with the `ulimit -n` hint.
+  Rows: the D-60 rows of `tests/workspace.test.ts` hold the member
+  listing, the config lookup (its `readdir` on Linux and its `isFile`
+  stats elsewhere; the macOS job caught the first version, which spied
+  only `readdir`, and the stat path was then driven on Linux by forcing
+  the branch) and the `package.json` read, spies restored per row, with
+  a control that a missing directory is still absent. The root walk's
+  manifest read and a link's stat share the helper the rows hold.
