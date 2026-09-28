@@ -1211,12 +1211,12 @@ export class Cache implements CacheLayer {
   }): Map<string, string> {
     const outputs = new Map<string, string>()
     for (const f of args.outputFiles) {
-      outputs.set(`outputs/${path.relative(args.projectDir, f)}`, f)
+      outputs.set(`outputs/${relPosix(args.projectDir, f)}`, f)
     }
     // Caller passes workspaceRoot whenever workspaceOutputFiles is
     // non-empty; the rels are root-anchored by construction.
     for (const f of args.workspaceOutputFiles ?? []) {
-      outputs.set(`${WORKSPACE_OUTPUT_PREFIX}${path.relative(args.workspaceRoot!, f)}`, f)
+      outputs.set(`${WORKSPACE_OUTPUT_PREFIX}${relPosix(args.workspaceRoot!, f)}`, f)
     }
     return outputs
   }
