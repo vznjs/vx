@@ -33,6 +33,9 @@ describe.skipIf(!available || process.platform !== 'linux' || realStrace === nul
         [
           '#!/bin/sh',
           `[ "$1" = "--version" ] && exec ${realStrace} "$@"`,
+          // The detection's own probe traces `true` (B-18): passed through, uncounted.
+          'for a; do last=$a; done',
+          `case "$last" in */true) exec ${realStrace} "$@";; esac`,
           `n=$(cat ${dir}/count 2>/dev/null); n=\${n:-0}`,
           `echo $((n+1)) > ${dir}/count`,
           `[ -e ${dir}/early ] && echo 'strace: early' >&2`,

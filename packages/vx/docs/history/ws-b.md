@@ -386,6 +386,26 @@ server died unmarked.
   its pid after its trap, and the test waits on it; `keep-alive`'s
   `outlivesVx` rows end by SIGKILL, which no trap changes.
 
+B-18. A host that refuses ptrace failed every sandboxed task. Detection
+asked only `strace --version`, which answers where ptrace is refused
+(Yama's `ptrace_scope` 2 or 3, a container's seccomp profile). Every
+task then failed twice, the retry included, on
+`strace: attach: ptrace(PTRACE_SEIZE…): Operation not permitted`.
+Reproduced with a fake strace that answers `--version` and refuses the
+attach, as the real one does when its `-DD` tracer cannot seize.
+
+- Fix (`wantsStraceDetection`, `traceAttaches`): detection also traces
+  `true` once per run with a task's own flags. A refusal means no
+  tracing, said once on stderr; bwrap still enforces. The probe costs
+  about 9 ms (`strace --version` alone is 4.5).
+  `modules/sandbox-runtime.md`.
+- Row: `sandbox-runtime.unsafe.test.ts` › strace detection › a strace
+  that may not attach is not used, and is asked once. Red without the
+  fix. The tracer-retry fake passes the probe through uncounted.
+- Open: whether `-DD`'s grandchild tracer may attach under Yama
+  `ptrace_scope=1` (Ubuntu's default) is proven only by CI's runner.
+  Where it may not, this probe now keeps tasks green, untraced.
+
 B-19. A dependency's `bwrap` replaced the sandbox (J-33's security lead).
 SRT writes a bare `bwrap` into the command vx spawns, and a bare `socat`
 into its in-sandbox network bridge. That shell runs with the TASK's
