@@ -242,6 +242,29 @@ jobs:
   # SQLITE_IOERR_VNODE). The platform-divergence classes it guards are tar
   # formats, filesystem/symlink semantics and SQLite behaviour — all covered
   # by the core suite with no extra services.
+  # Windows (stream O, docs/design/windows-2026-09.md). NOT REQUIRED and
+  # allowed to fail: vx does not run on Windows yet, and this job is the
+  # list of what is left. `continue-on-error` keeps the run's conclusion
+  # (and so auto-release.yml) off it; the job's own red is the signal.
+  # It becomes required, and loses continue-on-error, when it is green.
+  core-windows:
+    name: core tests (Windows, not required)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    continue-on-error: true
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.2
+
+      - run: bun install --frozen-lockfile
+
+      - name: vx run test (core, windows)
+        run: bun packages/vx/src/bin.ts run test --filter @vzn/vx
+
   #
   # Deliberately NO VX_REQUIRE_SANDBOX here: the macOS sandbox suites are a
   # recorded load-flaky class (sandbox-exec under concurrent load — see the
