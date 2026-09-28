@@ -952,7 +952,7 @@ unsandboxed.** Full walkthrough in the
 ```ts
 interface SandboxConfig {
   allow?: SandboxGrants // what the command may do
-  deny?: { network?: string[] } // domains refused before `allow.network`
+  deny?: { network?: string[] } // domains to refuse; not enforced today (below)
   ignore?: SandboxIgnore // violations to leave out of the report
   weakerWhenNested?: boolean // Linux: let a sandboxed task sandbox (default false)
   weakerNetworkIsolation?: boolean // macOS: host-proxy net, lower isolation (default false)
@@ -961,7 +961,7 @@ interface SandboxConfig {
 interface SandboxGrants {
   read?: string[] // paths or globs, project-relative or absolute
   write?: string[] // paths or globs; a write grant is readable too
-  network?: true | string[] // true = anywhere, or an allowlist of domains
+  network?: true | string[] // an allowlist of domains; `true` adds none (below)
   systemInfo?: string[] // sysctl names, e.g. 'vfs.disk-space' (macOS)
   unixSockets?: true | string[] // AF_UNIX bind/connect, all or by path
   localBinding?: boolean | number[] // bind and reach localhost ports; a list also exposes them to the host
@@ -1037,16 +1037,18 @@ still fails. macOS matches paths rather than mounting, so a file grant
 stays exact there. Pinned both ways in
 `tests/sandbox-runtime.unsafe.test.ts` (2026-09-20).
 
-**`network` domain lists are per-RUN, not per-task.** SRT runs one
-filtering proxy per `vx run` and checks every request against the
-allowlist that proxy was started with, so vx arms it with the union of
-every domain any sandboxed task in the graph declared. What stays
-per-task is the thing that matters: a task that declares no network is
-never handed the proxy's port, so it reaches nothing. `network: true`
-skips the proxy entirely.
+**`network` is per-RUN, not per-task.** SRT runs one filtering proxy
+per `vx run` and checks every request against the allowlist that proxy
+was started with: the union of every domain list any sandboxed task in
+the graph declared. Every sandboxed task is handed that proxy. So a task
+that declares no network reaches the domains another task of the run
+listed, `network: true` reaches only those (nothing in a run with no
+list), and `deny.network` refuses nothing: the proxy starts with an
+empty deny list. On Linux a refused request fails only through the
+task's own exit; no violation is reported.
 
 **Baseline** (`sandbox: {}`): the task reads nothing in the workspace,
-writes nothing and reaches no network — not even its own project
+writes nothing and reaches no domain no task of the run lists — not even its own project
 directory, which is why `allow: { read: ['.'] }` is the first line of
 almost every real block. The read wall is the WORKSPACE ROOT: a path
 outside it (`~/.cache`, `/etc`, the toolchain) is readable and folds into

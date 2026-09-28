@@ -58,7 +58,8 @@ export default defineProject({
 
 ## The boundary is the project
 
-A task never reaches another package or a root file you did not grant.
+A task never reaches another package or a root file you did not grant,
+bar the linked packages of step 2.
 That wall is silent. An undeclared touch of the task's own files fails the
 task, and a failed task is never cached.
 
