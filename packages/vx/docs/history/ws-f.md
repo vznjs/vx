@@ -319,3 +319,14 @@ or a dropped connection, and the run had no check. Those are now retried
 twice (200 and 800 ms) inside the flush deadline; a retry after a 502
 GitHub did process adds a same-name run, which GitHub shows as one. Rate
 limits (F-13) and refusals still warn at once. Row red without the fix.
+
+F-30. vx-reapi read each remote-only upstream's execution record, probed
+its blobs and read its trees one upstream after another, so a task with
+N such upstreams waited N times the round trips. All upstreams, and each
+one's trees, are now read at once: 8 upstreams 681 → 234 ms through a
+proxy adding 15 ms each way (min of 7, interleaved A/B). Row red without
+the fix. Refuted on the way: vx-mcp's getRunHistory ranks pairs with
+`SELECT DISTINCT … ORDER BY started_at`, which SQL leaves undefined, but
+on the real schema every filter keeps the `started_at` index scan, so
+the newest run is met first and the ranking holds (a bare table with a
+`task` filter did drop the latest task).
