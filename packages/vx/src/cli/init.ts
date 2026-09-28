@@ -5,7 +5,8 @@
 // `vx init --plugin <seam>` writes a runnable plugin for one seam and its
 // test instead (plugin-templates.ts, the examples the gate runs).
 
-import { mkdir } from 'node:fs/promises'
+import { existsSync, readFileSync } from 'node:fs'
+import { mkdir, unlink } from 'node:fs/promises'
 import path from 'node:path'
 import { flagHint, seeHelp } from './help.js'
 import { PLUGIN_TEMPLATES } from './plugin-templates.js'
@@ -17,6 +18,7 @@ import {
   listProjects,
   loadWorkspace,
   migrateScripts,
+  WORKSPACE_CONFIG_FILENAMES,
 } from '../workspace/index.js'
 
 export interface InitArgs {
@@ -76,7 +78,6 @@ export async function initCmd(args: readonly string[]): Promise<number> {
   // richer source (dependsOn, inputs, outputs) and was ignored without a
   // word — the walkthrough on a Turbo repo (2026-09-09) got the scripts'
   // TODOs and none of the edges turbo.json already declared.
-  const notes: string[] = []
   // Turbo 2.5+ reads `turbo.jsonc` as well (item 938).
   let turbo: string | undefined
   for (const name of ['turbo.json', 'turbo.jsonc']) {
@@ -85,21 +86,14 @@ export async function initCmd(args: readonly string[]): Promise<number> {
       break
     }
   }
-  if (turbo !== undefined) {
-    notes.push(
-      `${turbo} found and not read — ` +
-        '`bunx @vzn/vx-migrate` maps it (dependsOn, inputs, ' +
-        'outputs), or `plugins: [turbo()]` from @vzn/vx-migrate runs it with nothing written',
-    )
-  } else if (
-    (await Bun.file(path.join(root, 'nx.json')).exists()) ||
-    (await Bun.file(path.join(root, '.nx', 'workspace-data', 'project-graph.json')).exists())
-  ) {
-    notes.push(
-      'an Nx workspace found and not read — `bunx @vzn/vx-migrate --from nx` maps its ' +
-        'exported project graph, or `plugins: [nx()]` from @vzn/vx-migrate runs it with ' +
-        'nothing written',
-    )
+  // A Turbo or Nx repo already says its tasks: the runner's own config is
+  // the source, and `turbo()` / `nx()` read it live. Writing a config per
+  // package from the scripts dropped every edge turbo.json declares (the
+  // first-five-minutes walk, 2026-09-28); the workspace file alone is the
+  // whole adoption, and `bunx @vzn/vx-migrate` stays for freezing it.
+  if (turbo !== undefined) return adopt(root, 'turbo', turbo, parsed)
+  if (await Bun.file(path.join(root, 'nx.json')).exists()) {
+    return adopt(root, 'nx', 'nx.json', parsed)
   }
   return applyMigration({
     root,
@@ -110,7 +104,6 @@ export async function initCmd(args: readonly string[]): Promise<number> {
     dry: parsed.dry,
     force: parsed.force,
     init: true,
-    notes,
     format: parsed.mjs ? 'mjs' : 'ts',
   })
 }
@@ -142,4 +135,93 @@ async function scaffoldPlugin(seam: string, args: InitArgs): Promise<number> {
       `Test it: bun test plugins/${seam}.test.ts (needs @vzn/vx installed)\n`,
   )
   return 0
+}
+
+/**
+ * `vx init` in a Turbo or Nx repo: `vx.workspace.ts` declaring the plugin
+ * that runs the repo as it is, nothing else, and the one command that gets
+ * from here to a run.
+ */
+async function adopt(
+  root: string,
+  runner: 'turbo' | 'nx',
+  source: string,
+  args: InitArgs,
+): Promise<number> {
+  const name = `vx.workspace.${args.mjs ? 'mjs' : 'ts'}`
+  const body = `import { ${runner} } from '@vzn/vx-migrate'\n\nexport default { plugins: [${runner}()] }`
+  const text = args.mjs
+    ? `${body}\n`
+    : `import type { WorkspaceConfig } from '@vzn/vx'\n${body} satisfies WorkspaceConfig\n`
+  const existing = WORKSPACE_CONFIG_FILENAMES.find((f) => existsSync(path.join(root, f)))
+  if (existing !== undefined && !args.force) {
+    const declared = readFileSync(path.join(root, existing), 'utf8').includes(`${runner}(`)
+    if (!declared) {
+      throw new UserError(
+        `vx init: ${existing} exists; add ${runner}() from @vzn/vx-migrate to its plugins, or --force replaces it`,
+      )
+    }
+  } else if (args.dry) {
+    process.stdout.write(`── ${name} ──\n${text}\n`)
+  } else {
+    if (existing !== undefined && existing !== name) await unlink(path.join(root, existing))
+    await Bun.write(path.join(root, name), text)
+  }
+  const wrote =
+    existing !== undefined && !args.force
+      ? `${existing} already declares ${runner}().`
+      : args.dry
+        ? `would write ${name} (dry run, nothing written).`
+        : `wrote ${name}.`
+  process.stdout.write(
+    `vx init: ${source} found — ${runner}() from @vzn/vx-migrate runs this repo as it is; nothing else written.\n` +
+      `${wrote}\n\nnext: ${adoptionNext(root, runner, source)}\n`,
+  )
+  return 0
+}
+
+type PackageManager = 'pnpm' | 'yarn' | 'bun' | 'npm'
+
+const LOCKFILES: ReadonlyArray<[string, PackageManager]> = [
+  ['pnpm-lock.yaml', 'pnpm'],
+  ['yarn.lock', 'yarn'],
+  ['bun.lock', 'bun'],
+  ['bun.lockb', 'bun'],
+  ['package-lock.json', 'npm'],
+]
+
+const INSTALL: Record<PackageManager, string> = {
+  pnpm: 'pnpm add -D -w',
+  yarn: 'yarn add -D',
+  bun: 'bun add -d',
+  npm: 'npm install -D',
+}
+
+const EXEC: Record<PackageManager, string> = { pnpm: 'pnpm', yarn: 'yarn', bun: 'bunx', npm: 'npx' }
+
+/** Install what the workspace file imports, if missing, then run the repo's build. */
+export function adoptionNext(root: string, runner: 'turbo' | 'nx', source: string): string {
+  const pm = LOCKFILES.find(([f]) => existsSync(path.join(root, f)))?.[1] ?? 'npm'
+  const missing = ['@vzn/vx', '@vzn/vx-migrate'].filter(
+    (p) => !existsSync(path.join(root, 'node_modules', p, 'package.json')),
+  )
+  // A global vx (no runner started this one) runs the workspace's plugins as they are.
+  const vx = process.env['npm_config_user_agent'] === undefined ? 'vx' : `${EXEC[pm]} vx`
+  const task = firstTask(path.join(root, source), runner)
+  const run = `${vx} run ${task} --all`
+  return missing.length === 0 ? run : `${INSTALL[pm]} ${missing.join(' ')} && ${run}`
+}
+
+/** `build` when the runner's config names it, else the first task it names. */
+function firstTask(file: string, runner: 'turbo' | 'nx'): string {
+  let text: string
+  try {
+    text = readFileSync(file, 'utf8')
+  } catch {
+    return 'build'
+  }
+  if (/"build"\s*:/.test(text)) return 'build'
+  const field = runner === 'turbo' ? '(?:tasks|pipeline)' : 'targetDefaults'
+  const first = new RegExp(`"${field}"\\s*:\\s*\\{\\s*"([^"]+)"`).exec(text)?.[1]
+  return first ?? 'build'
 }

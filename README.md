@@ -32,7 +32,8 @@ Same graph, commands and concurrency: [how it is measured](https://vznjs.github.
 
 ## Try it on your repo
 
-In a Turborepo or Nx workspace, add one file:
+In a Turborepo or Nx workspace, add one file (`npx @vzn/vx init` writes
+it and prints the command to run next):
 
 ```ts
 // vx.workspace.ts

@@ -1589,7 +1589,16 @@ bare `(403)` (item 1098).
 
 ## `vx init`
 
-Scaffold a workspace that comes from nowhere: one `vx.config.ts` per
+In a Turbo or Nx repo (a `turbo.json`, `turbo.jsonc` or `nx.json` at
+the root) it writes `vx.workspace.ts` declaring `turbo()` or `nx()`
+from `@vzn/vx-migrate` and nothing else: those read the repo's own
+config live, so no task is copied. The `next:` line is one command:
+install what the file imports and is missing, with the manager the
+lockfile names, then run the config's `build` (else its first task).
+An existing workspace file is kept and named unless it already
+declares the plugin; `--force` replaces it.
+
+Anywhere else it scaffolds a workspace that comes from nowhere: one `vx.config.ts` per
 package from its `package.json` scripts, plus a `vx.workspace.ts` of
 `{ plugins: [] }` whose comment says running and caching here are the
 floor, so it declares no executor or cache. `@vzn/vx-migrate` takes the
