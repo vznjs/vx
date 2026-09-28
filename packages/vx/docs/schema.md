@@ -1622,7 +1622,7 @@ run the task without the variables it was written to have. The error
 names the offending key, lists what that level accepts, and adds the
 nearest accepted spelling when one is within two edits:
 `tasks.build.exec.env has unknown field "passthrough" (allowed: define,
-passThrough) — did you mean passThrough?`. A field another runner spells
+passThrough, secret) — did you mean passThrough?`. A field another runner spells
 on the task names vx's home for it instead (D-37): Turbo's `outputs`,
 `inputs`, `env`, `passThroughEnv`, `persistent` and `outputLogs`, Nx's
 target `executor`, `options` and `continuous` (D-49), and a `command`
