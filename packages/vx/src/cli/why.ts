@@ -61,7 +61,8 @@ export function parseWhyArgs(args: readonly string[]): WhyArgs {
     // got two different diagnoses depending on how it was typed.
     if (a === '--run' || a.startsWith('--run=')) {
       const rv = a === '--run' ? args[++i] : a.slice(6)
-      if (rv === undefined || rv === '') return { ...out, error: 'invalid --run: empty' }
+      if (rv === undefined || rv === '')
+        return { ...out, error: '--run requires a run id (`vx last --list` shows them)' }
       out.runId = rv
       continue
     }
@@ -71,7 +72,10 @@ export function parseWhyArgs(args: readonly string[]): WhyArgs {
         // An omitted value reads as empty, not as the literal word "undefined".
         return {
           ...out,
-          error: `invalid --format: ${fv ?? ''} (expected pretty | json)`,
+          error:
+            fv === undefined || fv === ''
+              ? '--format requires a value (pretty | json)'
+              : `invalid --format: ${fv} (expected pretty | json)`,
         }
       }
       out.format = fv

@@ -51,7 +51,13 @@ export function parseLastArgs(args: readonly string[]): LastArgs {
     if (a === '--format' || a.startsWith('--format=')) {
       const fv = a === '--format' ? args[++i] : a.slice(9)
       if (fv !== 'pretty' && fv !== 'json') {
-        return { ...out, error: `invalid --format: ${fv ?? ''} (expected pretty | json)` }
+        return {
+          ...out,
+          error:
+            fv === undefined || fv === ''
+              ? '--format requires a value (pretty | json)'
+              : `invalid --format: ${fv} (expected pretty | json)`,
+        }
       }
       out.format = fv
       continue

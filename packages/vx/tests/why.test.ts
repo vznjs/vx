@@ -345,21 +345,25 @@ describe('parseWhyArgs', () => {
     expect(parseWhyArgs(['build', '--cache-dir=']).error).toMatch(/requires a path/)
     expect(parseWhyArgs(['build', '--cache-dir', '--format']).error).toMatch(/got flag/)
     expect(parseWhyArgs(['--format', 'xml']).error).toContain('invalid --format')
-    expect(parseWhyArgs(['--run=']).error).toContain('invalid --run')
+    expect(parseWhyArgs(['--run=']).error).toBe(
+      '--run requires a run id (`vx last --list` shows them)',
+    )
     expect(parseWhyArgs(['a', 'b']).error).toBe('unexpected argument: b (see `vx why --help`)')
   })
 
   it.each([
-    ['--run', 'invalid --run'],
-    ['--format', 'invalid --format'],
+    ['--run', '--run requires a run id (`vx last --list` shows them)'],
+    ['--format', '--format requires a value (pretty | json)'],
   ])('names %s when its value is omitted, instead of calling it unknown', (flag, expected) => {
     // A trailing flag used to consume a non-existent argv slot, fall through
     // to the catch-all, and be reported as `unknown flag: --run` — false, and
     // silent about the real mistake. The `=` spelling of the SAME mistake
-    // already said `invalid --run: empty`, so one omitted value got two
+    // said something else (`invalid --run: empty`), so one omitted value got two
     // different diagnoses depending on how it was typed.
     const err = parseWhyArgs(['app#build', flag]).error
-    expect({ flag, err }).toEqual({ flag, err: expect.stringContaining(expected) })
+    expect({ flag, err }).toEqual({ flag, err: expected })
+    // The `=` spelling of the same mistake reads the same.
+    expect(parseWhyArgs(['app#build', `${flag}=`]).error).toBe(expected)
     expect(err).not.toContain('unknown flag')
     // And never the literal word "undefined" — an omitted value is empty.
     expect(err).not.toContain('undefined')
