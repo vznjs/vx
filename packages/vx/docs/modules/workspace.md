@@ -172,7 +172,7 @@ Globs every `package.json` matching the patterns (`Bun.Glob`,
   pathological `**` glob would match them.
 - The root package is a project too when it holds a
   `vx.config.{ts,mts,js,mjs}` and no glob lists `.` (D-39): a
-  workspace-root task (Turbo's `//#task`, a root `tsc -b`) without
+  workspace-root task (Turbo's `//#task`, an Nx root project) without
   changing the package manager's member list. Its globs stop at every
   member, as any parent project's do. Design:
   `docs/design/root-project-2026-09-28.md`.
