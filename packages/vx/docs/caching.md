@@ -996,6 +996,11 @@ write is only a memo: the file-hash memo, the output stamps and the
 access times are skipped and the run goes on; a prune unlinks the
 artifacts first, so the rows it then deletes have room to go, and a
 save's temp file is removed when its write fails.
+A process out of file descriptors (`EMFILE`, `ENFILE`) is named the
+same way: a save is `[vx] cache save failed: save of <hash> could not
+open a file (EMFILE: …) — … raise the limit (ulimit -n 4096) and
+re-run`, and a restore fails the task with that hint, never as a
+corrupt artifact (A-39).
 
 ```
 <workspaceRoot>/.vx/cache/                  (configurable via vx.workspace.ts cacheDir)
