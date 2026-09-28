@@ -15,6 +15,10 @@ Everything for adopting [`@vzn/vx`](https://github.com/vznjs/vx) from Turborepo,
 npm install -D @vzn/vx @vzn/vx-migrate   # or: pnpm add -D · yarn add -D · bun add -d
 ```
 
+In a Turbo or Nx repo, `npx vx init` writes the `vx.workspace.ts` that
+declares `turbo()` or `nx()` and prints the install-and-run line. Add
+`turboCache()` or `nxCache()` to keep your remote cache:
+
 ```ts
 // vx.workspace.ts — a Turbo repo, unchanged, with its remote cache
 import { defineWorkspace } from '@vzn/vx'

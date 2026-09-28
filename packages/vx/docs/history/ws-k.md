@@ -167,6 +167,8 @@
   or `nx.json`: there `vx init` writes configs from scripts.
 - **K-30** create-t3-turbo (N-24) joins the real-repos table and page:
   one `real-repos.json` row; vx leads cold, restore and no-op.
+- **K-31** `@vzn/vx-migrate`'s README says `npx vx init` writes the
+  `turbo()` / `nx()` workspace file; the snippet adds the remote cache.
 
 ## Leads for other streams
 
