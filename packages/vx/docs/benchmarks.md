@@ -131,6 +131,23 @@ switching the warm-hit path to sync calls made the 1000-project run
 macOS rejects (SIGKILL on launch); an ad-hoc `codesign -s - --force`
 repairs it, which the release workflow now does on a macOS runner.
 
+### A/B two builds
+
+`packages/vx-bench/ab.ts` is the method the numbers here use: one
+workspace copy per arm, warmed by that arm, rounds that run every arm
+once in a rotated order, min and median per arm, and an A/A arm (the
+same vx twice) as the noise floor. An arm is a compiled binary or a
+checkout; the runs see git's defaults and no `BUN_OPTIONS`.
+
+```bash
+bun packages/vx-bench/ab.ts 15 base=/tmp/vx-old@/tmp/w1 main=/tmp/vx-new@/tmp/w2 \
+  aa=/tmp/vx-new2@/tmp/w3 -- run build --all
+```
+
+A real repo's copies each link `node_modules/@vzn/vx-migrate` (or the
+plugin under test) to their arm's checkout, so a plugin change is
+measured with its own core.
+
 ## Head-to-head, 2026-09-03 (46 packages, `packages/vx-bench/compare.ts 10 5 1`)
 
 Same workspace, identical commands, every runner pinned to concurrency

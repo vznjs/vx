@@ -164,6 +164,14 @@ before, for 64 macOS jobs against 55. The darwin step moved only 3:46
 packages warm, 15 rounds, compiled: 4b7c396a 203.9 ms median (min
 183.6), main 396a3045 200.6 (181.0), A/A 196.9 (177.5), a tie.
 
+I-17. `packages/vx-bench/ab.ts`: the interleaved A/B every number here
+uses, committed (it lived in scratch and was lost once). refine's
+warm no-op, main 4bd7e2e5 against 4b7c396a, 15 rounds, each arm its
+own `vx-migrate`: 416.2 ms median (min 295.0) against 402.4 (315.4),
+A/A 416.9 (318.7), a tie; 749af7ad's fewer `nx()` twins do not show
+at this spread. Item 1075's whole-repo `git status` (G lead) is still
+on main.
+
 ## Leads for other streams
 
 - **Owner / coordinator: skip macOS where it cannot differ from
