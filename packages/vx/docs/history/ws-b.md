@@ -647,3 +647,23 @@ saw which form the detection picked.
   sum at 4 workers is the one arm (~200 ms) every waiting worker
   awaits. The root `node_modules` scan repeats per task but may not be
   memoized: an unsandboxed task can write there (principle 9's limit).
+
+B-33. Where a sandboxed task's cost goes (supervisor lead: cut what
+repeats per task). Fixture: 200 projects, one uncached `true` each,
+sandboxed and not; `bun --cpu-prof` of vx. vx's CPU: 3,835 ms
+sandboxed, 488 plain, so ~17 ms per task, besides the child processes
+(bwrap, strace, rg, socat) that dominate the wall (3.4 s vs 0.35 s).
+
+- SRT, ~9 ms: `generateFilesystemArgs` per wrap. Its mandatory-deny
+  scan runs `rg` from `process.cwd()` (vx's cwd, the workspace root), so
+  every task repeats one scan and its symlink walks. Not memoized: it
+  decides refusals, and a dangerous file an unsandboxed task writes
+  mid-run must still be denied (principle 9). The fix is upstream: a
+  per-run result, or a scan rooted at the task's cwd.
+- vx, ~4 ms: `Bun.spawn` of the wrapped command (1.4), `realpath`s of
+  the walls, baselines and trace paths (0.7; refusal inputs, so no
+  memo), the per-task temp dir's `rmSync` (0.4), the trace parse (0.4),
+  the guard write (0.3), the request (0.1–0.2).
+- Refuted: taking the temp dir's `rm` off the event loop. Interleaved,
+  7 runs per arm: min 3,241 → 3,336 ms, median 3,467 → 3,551; the loop
+  was not the bottleneck. Not shipped.
