@@ -439,7 +439,7 @@ export function createTelemetrySource(args: {
           ts,
         }
         if (node.config.exec.command !== undefined)
-          rec.command = maskedCommand(node.config.exec.command, node.config.exec.env?.define)
+          rec.command = maskedCommand(node.config.exec.command, node.config.exec.env)
         deliver(rec)
         return
       }

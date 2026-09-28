@@ -266,7 +266,10 @@ export async function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome> 
   if (hit.stdout) {
     // An entry saved before masking, or by another machine, can hold a
     // secret-named variable's value (L-11). Asked only of a hit that prints.
-    const secrets = secretMask(process.env, node.config.exec?.env?.define)
+    const secrets = secretMask(
+      [process.env, node.config.exec?.env?.define],
+      node.config.exec?.env?.secret,
+    )
     log.taskStdout(node, secrets === null ? hit.stdout : secrets.mask(hit.stdout))
   }
   const status =

@@ -18,7 +18,7 @@ const DEFINED = 'defined-l11-sekret'
 
 describe('secretMask', () => {
   it('holds back only a tail that could begin a value; other output passes at once', () => {
-    const s = secretMask({ API_TOKEN: SECRET })!.stream()
+    const s = secretMask([{ API_TOKEN: SECRET }])!.stream()
     // A persistent task's `readyWhen` and a test's start marker read the
     // chunk as it comes: nothing of it may wait for the next one.
     expect(s.push('server ready\n')).toBe('server ready\n')
@@ -29,7 +29,7 @@ describe('secretMask', () => {
 
   it('a held tail is emitted once no chunk follows it', async () => {
     const got: string[] = []
-    const e = maskedEmitter(secretMask({ API_TOKEN: SECRET })!, (t) => void got.push(t), 20)
+    const e = maskedEmitter(secretMask([{ API_TOKEN: SECRET }])!, (t) => void got.push(t), 20)
     e.push('progress hun')
     expect(got.join('')).toBe('progress ')
     // The shortest wait that shows it: well past the idle bound.
@@ -38,7 +38,7 @@ describe('secretMask', () => {
   })
 
   it('masks a value split across chunks without emitting its prefix', () => {
-    const m = secretMask({ API_TOKEN: SECRET })!
+    const m = secretMask([{ API_TOKEN: SECRET }])!
     const s = m.stream()
     const out = [s.push('before hunter2-'), s.push('l11-sekret after'), s.end()]
     expect(out.join('')).toBe(`before ${MASKED} after`)
@@ -46,22 +46,24 @@ describe('secretMask', () => {
   })
 
   it('names by the words they hold; a short or a plain one is left', () => {
-    const m = secretMask({
-      NPM_TOKEN: 'aaaaaaaa',
-      DB_PASSWORD: 'bbbbbbbb',
-      SIGNING_KEY: 'cccccccc',
-      MY_SECRET: 'dddddddd',
-      API_TOKEN: 'short',
-      HOME: 'eeeeeeee',
-    })!
+    const m = secretMask([
+      {
+        NPM_TOKEN: 'aaaaaaaa',
+        DB_PASSWORD: 'bbbbbbbb',
+        SIGNING_KEY: 'cccccccc',
+        MY_SECRET: 'dddddddd',
+        API_TOKEN: 'short',
+        HOME: 'eeeeeeee',
+      },
+    ])!
     expect(m.mask('aaaaaaaa bbbbbbbb cccccccc dddddddd short eeeeeeee')).toBe(
       `${MASKED} ${MASKED} ${MASKED} ${MASKED} short eeeeeeee`,
     )
     // CONTROL: nothing secret-named, no mask at all; nor a name that says
     // where a secret lives, nor git's config-key channel.
-    expect(secretMask({ HOME: '/home/x', PATH: '/bin' })).toBeNull()
+    expect(secretMask([{ HOME: '/home/x', PATH: '/bin' }])).toBeNull()
     expect(
-      secretMask({ NPM_TOKEN_FILE: '/run/secrets/npm', GIT_CONFIG_KEY_0: 'safe.directory' }),
+      secretMask([{ NPM_TOKEN_FILE: '/run/secrets/npm', GIT_CONFIG_KEY_0: 'safe.directory' }]),
     ).toBeNull()
   })
 })
@@ -191,5 +193,78 @@ describe('a secret-named value in what vx prints, stores and exports', () => {
       leaked: all.filter((t) => t.includes(SECRET) || t.includes(DEFINED)).length,
       masked: all.map((t) => t.includes(MASKED)),
     }).toEqual({ ok: [true, true], leaked: 0, masked: [true, true, true, true, true, true] })
+  })
+})
+
+describe('`exec.env.secret` masks a value whatever its name', () => {
+  // The name rule misses `GH_PAT`, `NPM_AUTH`: a token so named, echoed by
+  // a task, was stored in the entry's stdout and replayed by every hit,
+  // local and remote. A variable the task lists in `env.secret` is masked
+  // wherever the name rule masks one.
+  const PAT = 'ghp-l14-sekret-value'
+  let root: string
+  const saved = process.env['GH_PAT']
+  beforeEach(async () => {
+    process.env['GH_PAT'] = PAT
+    root = await makeWorkspace({ prefix: 'vx-l14-' })
+    await writeLocalWorkspace(root)
+  })
+  afterEach(async () => {
+    if (saved === undefined) delete process.env['GH_PAT']
+    else process.env['GH_PAT'] = saved
+    await rm(root, { recursive: true, force: true })
+  })
+
+  const seen = async (secret: boolean) => {
+    await addProject(root, 'p', {
+      files: { 'in.txt': 'x' },
+      config: `
+        export default {
+          tasks: {
+            t: {
+              exec: {
+                command: 'echo "pat=$GH_PAT"',
+                env: { passThrough: ['GH_PAT']${secret ? ", secret: ['GH_PAT']" : ''} },
+              },
+              cache: { inputs: { files: ['in.txt'] }, outputs: { files: [] } },
+            },
+          },
+        }
+      `,
+    })
+    const texts: string[] = []
+    for (let i = 0; i < 2; i++) {
+      const chunks: string[] = []
+      const r = await run({
+        cwd: root,
+        tasks: ['t'],
+        log: defaultLogger(
+          { enabled: false },
+          { mode: 'focused' },
+          { write: (c: string) => (chunks.push(c), true) },
+        ),
+        handleSignals: false,
+      })
+      expect(r.ok).toBe(true)
+      texts.push(chunks.join(''))
+    }
+    const db = new Database(path.join(root, '.vx', 'cache', 'cache.db'), { readonly: true })
+    const stored = db
+      .query<{ stdout: string }, []>('SELECT stdout FROM entries')
+      .all()
+      .map((r) => r.stdout)
+      .join('\n')
+    db.close()
+    return [texts[0]!, texts[1]!, stored].map((t) =>
+      t.includes(PAT) ? 'value' : t.includes(`pat=${MASKED}`) ? 'masked' : 'absent',
+    )
+  }
+
+  it('the miss, the stored stdout and the replaying hit print the mask', async () => {
+    expect(await seen(true)).toEqual(['masked', 'masked', 'masked'])
+  })
+
+  it('CONTROL: undeclared, the name rule does not reach it', async () => {
+    expect(await seen(false)).toEqual(['value', 'value', 'value'])
   })
 })

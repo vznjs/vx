@@ -269,7 +269,7 @@
       "": ["tasks"],
       "tasks.*": ["cache", "dependsOn", "description", "exec"],
       "tasks.*.exec": ["command", "env", "persistent", "remote", "retries", "sandbox", "timeout"],
-      "tasks.*.exec.env": ["define", "passThrough"],
+      "tasks.*.exec.env": ["define", "passThrough", "secret"],
       "tasks.*.exec.persistent": ["readyWhen"],
       "tasks.*.exec.sandbox": [
         "allow",
@@ -611,7 +611,7 @@
           "\"10G\"",
           "\"10\""
         ],
-        "$CONFIG: tasks.t.exec.env must be an object (fields: define, passThrough), not an array": [
+        "$CONFIG: tasks.t.exec.env must be an object (fields: define, passThrough, secret), not an array": [
           "[]",
           "[\"x\"]",
           "[\"\"]",
@@ -627,7 +627,7 @@
           "[\"A=B\"]",
           "[\"A*\"]"
         ],
-        "$CONFIG: tasks.t.exec.env has unknown field \"x\" (allowed: define, passThrough)": [
+        "$CONFIG: tasks.t.exec.env has unknown field \"x\" (allowed: define, passThrough, secret)": [
           "{\"x\":\"y\"}"
         ]
       },
@@ -731,6 +731,45 @@
           "[\"!x\"]",
           "[\"!!x\",\"y\"]",
           "[\".\"]",
+          "[\"**\"]",
+          "[\"A=B\"]",
+          "[\"A*\"]",
+          "{}",
+          "{\"x\":\"y\"}"
+        ]
+      },
+      "tasks.*.exec.env.secret": {
+        "ok": [
+          "<absent>",
+          "[]",
+          "[\"x\"]",
+          "[\"/x\"]",
+          "[\"!/x\"]",
+          "[\"../x\"]",
+          "[\"!x\"]",
+          "[\"!!x\",\"y\"]",
+          "[\".\"]",
+          "[\"CI\"]"
+        ],
+        "$CONFIG: tasks.t.exec.env.secret must be an array of env var names (non-empty, no '=', NUL or wildcard)": [
+          "null",
+          "true",
+          "false",
+          "0",
+          "1",
+          "1.5",
+          "-1",
+          "65536",
+          "2147483648",
+          "\"\"",
+          "\"x\"",
+          "\"(\"",
+          "\"30d\"",
+          "\"10G\"",
+          "\"10\"",
+          "[\"\"]",
+          "[1]",
+          "[3000]",
           "[\"**\"]",
           "[\"A=B\"]",
           "[\"A*\"]",

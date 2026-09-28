@@ -399,6 +399,13 @@ export interface ExecEnv {
    * via the task config hash).
    */
   define?: Record<string, string>
+  /**
+   * Names whose values are masked (`***`) wherever vx prints, stores or
+   * exports the task's output or command, whatever the name. Names that
+   * hold `TOKEN`, `SECRET`, `KEY`, `PASSWORD`, `PASSWD` or `CREDENTIAL`
+   * are masked without it; this reaches `GH_PAT`, `NPM_AUTH`.
+   */
+  secret?: string[]
 }
 
 export interface CacheConfig {

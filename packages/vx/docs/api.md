@@ -416,6 +416,7 @@ type · `src/config.ts`
 export interface ExecEnv {
   passThrough?: string[]
   define?: Record<string, string>
+  secret?: string[]
 }
 ```
 
