@@ -350,3 +350,14 @@ packages/core`) selects the dependent whose `file:../lib` spec named
   said `two`. `arguments` joins the deny-list. `module` does not:
   `module.require` spells `require` and was refused already (the row's
   control). Rows: the D-36 rows of `tests/config-cache.test.ts`.
+- **D-37** A Turbo task's `outputs: [...]`, `inputs`, `env` or
+  `persistent: true`, or an Nx `command` on the task, was refused as an
+  unknown field that named neither the field vx means nor where it lives;
+  `cache: false` and `persistent: true` were refused as "must be an
+  object" with no shape. Each now names vx's spelling
+  (`vx spells it cache.outputs.files`) or the shape to write. A typo
+  still gets the nearest spelling. Row: the D-37 row of
+  `tests/config-schema-refusals.test.ts`. Probes with no defect: a
+  relative text import of a file outside the workspace is in the key's
+  closure and seen changing, a backdated mtime included; the other
+  refusals of the probe set already named field and fix.

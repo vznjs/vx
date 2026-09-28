@@ -779,7 +779,7 @@
       },
       "tasks.*.exec.persistent": {
         "ok": ["<absent>", "{}", "<seed>"],
-        "$CONFIG: tasks.t.exec.persistent must be an object (or omitted)": [
+        "$CONFIG: tasks.t.exec.persistent must be an object (or omitted) — `persistent: {}`, or `{ readyWhen: '<regex>' }` to wait for a line": [
           "null",
           "true",
           "false",
@@ -1626,7 +1626,7 @@
       },
       "tasks.*.cache": {
         "ok": ["<absent>", "<seed>"],
-        "$CONFIG: tasks.c.cache must be an object when present": [
+        "$CONFIG: tasks.c.cache must be an object when present — `cache: { inputs: { files: [...] }, outputs: { files: [...] } }`, or no `cache` for a task that never caches": [
           "null",
           "true",
           "false",
