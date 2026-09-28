@@ -37,7 +37,7 @@ afterEach(() => rmSync(root, { recursive: true, force: true }))
  */
 function fill(cache: Cache, insert: (i: number, pad: string) => void): void {
   const db = cache.dbHandle()
-  const { page_count } = db.prepare('PRAGMA page_count').get() as { page_count: number }
+  const { page_count } = db.query('PRAGMA page_count').get() as { page_count: number }
   db.exec(`PRAGMA max_page_count = ${page_count}`)
   let i = 0
   for (const size of [2000, 200, 20, 1]) {
@@ -71,16 +71,14 @@ describe('a full index', () => {
       await Bun.sleep(FILE_HASH_RACY_MS + 20) // past the racy window: a row would be written
       const junk = cache
         .dbHandle()
-        .prepare(
+        .query(
           'INSERT INTO file_hashes(path, mtime_ms, size_bytes, ctime_ms, ino, content_hash, seen_at) VALUES (?, 0, 0, 0, 0, ?, 0)',
         )
       fill(cache, (i, pad) => junk.run(`/junk/${i}`, pad))
-      const before = cache.dbHandle().prepare('SELECT COUNT(*) AS n FROM file_hashes').get()
+      const before = cache.dbHandle().query('SELECT COUNT(*) AS n FROM file_hashes').get()
       expect(await cache.hashFile(a)).toMatch(/^[0-9a-f]{40}$/)
       expect((await cache.hashFiles([b])).get(b)).toMatch(/^[0-9a-f]{40}$/)
-      expect(cache.dbHandle().prepare('SELECT COUNT(*) AS n FROM file_hashes').get()).toEqual(
-        before,
-      )
+      expect(cache.dbHandle().query('SELECT COUNT(*) AS n FROM file_hashes').get()).toEqual(before)
     } finally {
       cache.close()
     }
@@ -92,7 +90,7 @@ describe('a full index', () => {
       await save(cache, 'h1')
       const junk = cache
         .dbHandle()
-        .prepare(
+        .query(
           "INSERT INTO output_files(entry_hash, path, size_bytes, mode, mtime_ms) VALUES ('h1', ?, 0, 0, 0)",
         )
       fill(cache, (i, pad) => junk.run(`junk/${i}/${pad}`))
@@ -153,7 +151,7 @@ describe('a full disk', () => {
         spy.mockRestore()
       }
       expect(readdirSync(cacheDir).filter((n) => n.endsWith('.tar.zst'))).toEqual([])
-      expect(db.prepare('SELECT COUNT(*) AS n FROM entries').get()).toEqual({ n: 0 })
+      expect(db.query('SELECT COUNT(*) AS n FROM entries').get()).toEqual({ n: 0 })
     } finally {
       cache.close()
     }
@@ -183,7 +181,7 @@ describe('a full disk', () => {
       } finally {
         spy.mockRestore()
       }
-      expect([failed, db.prepare('SELECT COUNT(*) AS n FROM entries').get()]).toEqual([1, { n: 0 }])
+      expect([failed, db.query('SELECT COUNT(*) AS n FROM entries').get()]).toEqual([1, { n: 0 }])
     } finally {
       cache.close()
     }

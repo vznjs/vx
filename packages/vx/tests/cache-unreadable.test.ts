@@ -50,7 +50,7 @@ const raw = (): string => {
   try {
     const d = new Database(db)
     d.exec('PRAGMA journal_mode = WAL')
-    d.prepare('SELECT name FROM sqlite_master').all()
+    d.query('SELECT name FROM sqlite_master').all()
     d.close()
     return 'readable'
   } catch (err) {
@@ -108,9 +108,9 @@ describe('an index corrupt past the pages the open reads', () => {
     const d = new Database(db)
     // Into the main file, so no WAL copy of the page shadows the garbling.
     d.exec('PRAGMA wal_checkpoint(TRUNCATE)')
-    const { page_size } = d.prepare('PRAGMA page_size').get() as { page_size: number }
+    const { page_size } = d.query('PRAGMA page_size').get() as { page_size: number }
     const { rootpage } = d
-      .prepare("SELECT rootpage FROM sqlite_master WHERE name = 'entries'")
+      .query("SELECT rootpage FROM sqlite_master WHERE name = 'entries'")
       .get() as {
       rootpage: number
     }

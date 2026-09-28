@@ -394,7 +394,7 @@ describe('Cache.recordOutputDirs / outputDirsCurrent', () => {
     // A snapshot whose entry another process pruned meanwhile lands as
     // nothing, and does not fail the flush for the rest.
     await cache.recordOutputDirs('h2', proj, ['dist/a'])
-    cache.dbHandle().prepare('DELETE FROM entries WHERE hash = ?').run('h2')
+    cache.dbHandle().query('DELETE FROM entries WHERE hash = ?').run('h2')
     expect(cache.loadOutputDirsBatch(['h1', 'h2']).get('h1')?.length).toBe(1)
     expect(count()).toBe(1)
   })
@@ -436,7 +436,7 @@ describe('Cache.recordOutputDirs / outputDirsCurrent', () => {
     await cache.recordOutputDirs('h1', proj, ['dist'])
     await cache.recordOutputDirs('h2', proj, ['dist/sub'])
     // Evict h2 by age: its `accessed_at` is set back past the cutoff.
-    cache.dbHandle().prepare('UPDATE entries SET accessed_at = 0 WHERE hash = ?').run('h2')
+    cache.dbHandle().query('UPDATE entries SET accessed_at = 0 WHERE hash = ?').run('h2')
     const result = await cache.prune({ olderThanMs: 1 })
     expect(result.evicted).toBe(1)
     const all = cache

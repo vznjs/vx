@@ -74,7 +74,7 @@ describe('opening the cache under another process’s lock', () => {
         db.exec('PRAGMA journal_mode = WAL')
         db.exec('CREATE TABLE schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)')
         db.exec('BEGIN IMMEDIATE')
-        db.prepare("INSERT INTO schema_meta(key, value) VALUES ('version', ?)").run(SCHEMA_VERSION)
+        db.query("INSERT INTO schema_meta(key, value) VALUES ('version', ?)").run(SCHEMA_VERSION)
         console.log('held')
         await Bun.sleep(1000)
         db.exec('COMMIT')

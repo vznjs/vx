@@ -387,8 +387,8 @@ describe('scoped config loading', () => {
       db.close()
       expect([...(await loadResolvedProjects(root)).keys()]).toEqual(['app'])
       const after = new Database(path.join(cacheDir, 'cache.db'), { readonly: true })
-      const version = after.prepare("SELECT value FROM schema_meta WHERE key = 'version'").get()
-      const runs = after.prepare("SELECT name FROM sqlite_master WHERE name = 'runs'").get()
+      const version = after.query("SELECT value FROM schema_meta WHERE key = 'version'").get()
+      const runs = after.query("SELECT name FROM sqlite_master WHERE name = 'runs'").get()
       after.close()
       expect([version, runs]).toEqual([{ value: 'v1' }, { name: 'runs' }])
     },

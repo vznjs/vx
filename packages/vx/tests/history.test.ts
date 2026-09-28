@@ -785,8 +785,9 @@ describe('a reading handle prunes no history', () => {
     })
     expect(counts(writer.dbHandle())).toEqual([1, 1])
     // Released without its own close, which would prune: the rows under
-    // test are the reader's to keep.
-    writer.dbHandle().close()
+    // test are the reader's to keep. `true` finalizes the writer's prepared
+    // statements, which a plain close waits on with the file held open.
+    writer.dbHandle().close(true)
 
     const reader = Cache.inspect(dir)
     expect(counts(reader.dbHandle())).toEqual([1, 1])

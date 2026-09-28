@@ -602,7 +602,7 @@ function openDb(cacheDir: string): Database {
 }
 
 function countRows(db: Database, table: string): number {
-  return (db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get() as { n: number }).n
+  return (db.query(`SELECT COUNT(*) AS n FROM ${table}`).get() as { n: number }).n
 }
 
 describe('planRun() — planning executes nothing', () => {
@@ -662,7 +662,7 @@ describe('planRun() — planning executes nothing', () => {
 
       const stored = (() => {
         const db = openDb(cacheDir)
-        const row = db.prepare('SELECT hash, accessed_at FROM entries').get() as {
+        const row = db.query('SELECT hash, accessed_at FROM entries').get() as {
           hash: string
           accessed_at: number
         }
@@ -681,7 +681,7 @@ describe('planRun() — planning executes nothing', () => {
       {
         const db = openDb(cacheDir)
         const after = db
-          .prepare('SELECT accessed_at FROM entries WHERE hash = ?')
+          .query('SELECT accessed_at FROM entries WHERE hash = ?')
           .get(stored.hash) as { accessed_at: number }
         expect(after.accessed_at).toBe(stored.accessed_at)
         // Planning records no invocation of its own.
@@ -776,7 +776,7 @@ describe('planRun() — the plan describes the run you will get', () => {
         })
 
         const db = openDb(cacheDir)
-        const inv = db.prepare('SELECT cache_policy FROM invocations').get() as {
+        const inv = db.query('SELECT cache_policy FROM invocations').get() as {
           cache_policy: string
         }
         const entries = countRows(db, 'entries')
@@ -857,7 +857,7 @@ describe('planRun() — the plan describes the run you will get', () => {
       await run({ cwd: root, tasks: ['build'], forwardArgs, cacheDir, log: quietLogger })
 
       const db = openDb(cacheDir)
-      const rows = db.prepare('SELECT project, task, hash FROM runs').all() as Array<{
+      const rows = db.query('SELECT project, task, hash FROM runs').all() as Array<{
         project: string
         task: string
         hash: string

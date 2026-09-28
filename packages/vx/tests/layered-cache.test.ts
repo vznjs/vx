@@ -741,8 +741,9 @@ describe('LayeredCache', () => {
     // Every artifact landed locally; only the uploads are backed up.
     for (const hash of queuedHashes) expect(await local.get(hash)).not.toBeNull()
 
-    // Remove the artifacts the still-queued uploads have not read yet.
-    await rm(cacheDir, { recursive: true, force: true })
+    // Remove the artifacts the still-queued uploads have not read yet. Only
+    // the artifacts: Windows cannot delete the index a live handle holds.
+    for (const hash of queuedHashes) await rm(path.join(cacheDir, `${hash}.tar.zst`))
 
     const drain = layered.drainUploads()
     releasePut()

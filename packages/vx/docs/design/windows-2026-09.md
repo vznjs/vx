@@ -96,6 +96,11 @@ PR that touches the Windows paths, with a 12-minute bound. Queue cost on the fir
     the shebang launch, and the
     process-group guard (win32 starts none). A row whose subject exists on Windows is
     fixed, never skipped.
+13. **Tests close what they open.** Windows refuses to delete a file a
+    handle holds (EBUSY), so a fixture closes its cache, reads SQLite
+    through `db.query()` (a `db.prepare()` statement defers its
+    database's close; `tests/sqlite-query-only.unsafe.test.ts`), and
+    deletes artifacts, not a live index.
 
 ## Order
 
