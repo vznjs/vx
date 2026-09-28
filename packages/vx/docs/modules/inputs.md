@@ -197,7 +197,8 @@ host's `process.env`):
 
 `resolveOutputs` is a simpler glob pass:
 
-- Globs run against the project dir (a literal is a tree here too).
+- Globs run against the project dir (a literal is a tree here too); a
+  `!` entry takes its matches back (A-44).
 - `.git` and `.vx` excluded whatever the glob (`OUTPUT_NEVER`: no task
   produces them and their loss is unrecoverable), and every
   `node_modules` unless a glob names one (A-13): `**/*.js` cleaned the

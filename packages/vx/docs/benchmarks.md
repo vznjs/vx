@@ -473,8 +473,8 @@ and astro's `build` inputs exclude its own outputs (below).
 Two tasks needed a bench-side output list, declared in the repo's
 `vx.workspace.mjs` as a ten-line project-stage plugin and named here so
 nobody reads them as the plugin's own mapping: medusa's `build` outputs
-are `*/**` minus `!src/**` in turbo.json, which vx (no output negation)
-runs uncached, so the bench names `dist/**` and `.medusa/**`; and
+are `*/**` minus `!src/**` in turbo.json, which `turbo()` runs
+uncached, so the bench names `dist/**` and `.medusa/**`; and
 cal.com's `@calcom/web#build` writes 110 symlinks to `node_modules`
 directories under `.next/node_modules`, which vx's artifact format does
 not store, so the bench names the rest of `.next` — everything

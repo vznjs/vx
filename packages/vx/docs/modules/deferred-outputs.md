@@ -28,7 +28,6 @@ export class DeferredOutputs {
   constructor(args: DeferredOutputsArgs)
   register(taskId: string, entry: DeferredEntry): void
   pending(): string[]
-  get size(): number
   materializeFor(node: TaskNode): Promise<void>
 }
 ```
@@ -43,7 +42,7 @@ export class DeferredOutputs {
   is as deep as the graph, and a recursion per edge threw `RangeError`
   at 50,000.
 - `pending()` — task ids whose outputs are still remote, for the run
-  summary (`size` is their count). An entry is cleared only on
+  summary. An entry is cleared only on
   SUCCESS, so this covers both "nothing needed them" and "fetching
   them FAILED" — the second is exactly when a user needs telling
   their tree is not current.

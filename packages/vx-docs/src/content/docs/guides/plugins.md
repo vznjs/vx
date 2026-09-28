@@ -300,8 +300,8 @@ One plugin can fill several: `@vzn/vx-schedule-history` fills three at once.
 `@vzn/vx-otel` exports every run as OTLP traces, metrics and logs, with no
 OpenTelemetry SDK: one trace per run, one span per task. Install it
 (`bun add -d @vzn/vx-otel`) and point it at your collector
-(`OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318`). Without an
-endpoint it declines.
+(`OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318`). Without any
+endpoint it declines; a signal's own endpoint alone exports that signal.
 
 ```ts
 // vx.workspace.ts
@@ -315,7 +315,7 @@ export default defineWorkspace({
 
 | Option            | Env var                                | Default                 |
 | ----------------- | -------------------------------------- | ----------------------- |
-| `endpoint`        | `OTEL_EXPORTER_OTLP_ENDPOINT`          | none: the plugin declines |
+| `endpoint`        | `OTEL_EXPORTER_OTLP_ENDPOINT`          | none                    |
 | `tracesEndpoint`  | `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`   | `<endpoint>/v1/traces`  |
 | `metricsEndpoint` | `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT`  | `<endpoint>/v1/metrics` |
 | `logsEndpoint`    | `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`     | `<endpoint>/v1/logs`    |

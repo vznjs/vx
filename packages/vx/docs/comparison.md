@@ -542,8 +542,8 @@ in [`design/turbo-nx-test-gaps.md`](./design/turbo-nx-test-gaps.md).
 
 - **stderr is not cached; stdout is stored twice on purpose.** Turbo
   embeds the run's full logs inside the cache archive. vx's artifact
-  is `stdout`, `outputs/`, `workspace-outputs/` and a `.vx-meta.json`
-  mode/mtime sidecar (only successful runs are cached
+  is `stdout`, `outputs/`, `workspace-outputs/`, a `.vx-meta.json`
+  mode/mtime sidecar and a `.vx-sum` checksum (only successful runs are cached
   and their stderr is near-always empty); stdout ALSO lives in the
   SQLite `entries` row so a local hit replays it with pure SQL —
   never decompressing the artifact.

@@ -328,7 +328,8 @@ Determinism notes:
     ├── outputs/             #   declared output files, project-relative
     ├── workspace-outputs/   #   declared outputs.workspaceFiles,
     │                        #   WORKSPACE-ROOT-relative (when any)
-    └── .vx-meta.json        #   { version, key, files: { <entry>: [mode, mtimeMs] }, exec? }
+    ├── .vx-meta.json        #   { version, key, files: { <entry>: [mode, mtimeMs] }, exec? }
+    └── .vx-sum              #   CRC-32 of every entry above (v36)
 ```
 
 `exec` is `{ cpuMs?, peakRssBytes? }` — what the producing execution
@@ -466,8 +467,9 @@ Surfaced by `vx info`.
   policy has nothing due but the last sweep (`schema_meta`
   `orphans_swept_at`, stamped by every sweep) is an hour old: the
   policy sums index rows, so orphans never make it due.
-- Doesn't verify entries are intact byte-for-byte. The file existence
-  check is the integrity gate for the artifact as a whole; `restore
+- Doesn't verify an artifact it does not open: its `.vx-sum` (L-19) is
+  checked on scan and restore only. The file existence check gates
+  every hit; `restore
 Outputs` additionally refuses when the archive cannot produce an output
   the `output_files` index recorded — and, for `<dir>/**` globs and bare
   literals that name a directory, the

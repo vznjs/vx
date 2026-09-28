@@ -51,7 +51,8 @@ does not apply.
    quoted `./`, `../`, escape or tsconfig alias skips the scan), keep specifiers starting with `./` or `../`
    and tsconfig aliases, resolve them, and record the REVERSE edge `target → importer`.
    Targets outside the workspace, or under `node_modules`, are dropped.
-3. **Descend only through files owned by NO project.** A config
+3. **Descend only through files owned by NO project** (or by a root
+   project, D-41). A config
    reaching into another project records the edge and stops.
 4. One reverse BFS from the changed set answers every root at once.
 
