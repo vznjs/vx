@@ -22,7 +22,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { addProject, gitInit, makeWorkspace as makeWorkspaceRoot } from './helpers/workspace.js'
-import { Cache, GitFilesCache, OUTPUT_DIRS_RACY_MS, type CacheEntry } from '../src/cache/index.js'
+import { Cache, GitFilesCache, type CacheEntry } from '../src/cache/index.js'
 import { localExecutor } from '../src/exec/local-executor.js'
 import { UserError } from '../src/util/index.js'
 import type { TaskNode, TaskOutcome } from '../src/graph/index.js'
@@ -1203,7 +1203,11 @@ describe('execute-task — what restoreHit reads and records', () => {
   it('trusts recorded directories without re-recording them; a restore leaves its snapshot to run end', async () => {
     const hash = 'cccc2222dddd3333'
     await seedDist(hash)
-    const old = new Date(Date.now() - 10 * OUTPUT_DIRS_RACY_MS - 1)
+    // Stamped on an even second, where the racy window is widest
+    // (racyWindowMs: 2 s more), and 4-6 s old. The row backdated 501 ms
+    // from now, so a stamp that fell on a whole second read racy and
+    // nothing was recorded, one run in a thousand (M-11).
+    const old = new Date(Math.floor(Date.now() / 2000) * 2000 - 4000)
     utimesSync(path.join(b.dir, 'dist'), old, old)
     await b.cache.recordOutputDirs(hash, b.dir, ['dist'])
     const hit = (await b.cache.get(hash))!
