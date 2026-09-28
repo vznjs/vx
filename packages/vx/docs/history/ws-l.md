@@ -143,6 +143,14 @@
     Ubuntu's signed apt sources only; `docs.yml` deploys from `main` and
     a dispatch, each action pinned. `ci.yml` and `windows.yml` named no
     token permissions (L-29).
+36. `npm.yml` and `release.yml` grant write scopes per job, only to the
+    job that publishes or uploads.
+37. Audit 9's redirect probe is now a test:
+    `vx-migrate/tests/token-redirect.test.ts` (a same-origin control
+    keeps the token).
+38. Config-eval Worker resource limits. A config is trusted code
+    (`security.md`), so memory or CPU in its Worker is no boundary;
+    a wedge is audit 30's lead. No bug.
 
 ## Items
 
