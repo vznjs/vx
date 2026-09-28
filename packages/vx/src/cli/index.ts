@@ -40,6 +40,23 @@ export async function run(argv: readonly string[]): Promise<number> {
       // reference, which lists the plugin verbs.
       const verb = rest[0]
       const core = verb !== undefined && (CORE_VERBS as readonly string[]).includes(verb)
+      if (verb !== undefined && !core) {
+        // A name that is no verb here is the typo `vx rnu` is, not a request
+        // for the whole reference: it printed 145 lines and no hint.
+        const resolved = await resolvePluginCommand(verb)
+        const unknown = resolved === null || 'declaredVerbs' in resolved
+        if (unknown && MOVED_VERBS[verb] !== undefined) {
+          process.stderr.write(`${MOVED_VERBS[verb]}\n`)
+          return 1
+        }
+        if (unknown) {
+          const declared = resolved === null ? [] : resolved.declaredVerbs
+          process.stderr.write(
+            `vx help: unknown command: ${verb}${didYouMeanVerb(verb, declared)} (see \`vx help\`)\n`,
+          )
+          return 1
+        }
+      }
       printHelp(await pluginCommandHelp(), core ? verb : undefined)
       return 0
     }

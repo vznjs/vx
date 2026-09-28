@@ -59,6 +59,10 @@ What did not:
   children die with vx that is descheduled after the spawn" failed once
   on PR 1254's CI (a diff that touched only a watch test); main was
   green.
+- B, C: the scheduler (`graph/scheduler.ts`) and the cache save
+  (`cache/cache.ts`) ask `isFsRefusal` only, so a task that dies of
+  `EMFILE` still reads as an internal error there; `isOutOfFds` and
+  `OUT_OF_FDS_HINT` (E-50) are the one-line form `bin.ts` prints.
 
 ## Merged
 
@@ -295,3 +299,18 @@ task picked`; neither prints a stack. Row in
   indexed neighbour lookups); E-42 resolves it back. Rows in
   `tests/run-id.test.ts`; dropping either neighbour or the floor
   reddens them.
+- E-46 — A value-less `--filter`, `--concurrency`, `--retry`,
+  `--timeout`, `--cache`, `--verbosity` or `--tag`, a bad prune duration
+  or size, and a stray argument to init/last/show/why name the form
+  they take. Rows pinned with `toBe`.
+- E-47 — `cli/watch-set.ts`: what `vx watch` watches (`watchedProjects`,
+  `sweepConfigs` → `ConfigSweep`, `memberEntries`, `sameMembers`); the
+  loop in `watch.ts` decides when to re-read it. No behaviour change.
+- E-50 — `EMFILE`/`ENFILE` reached the user as a stack naming a file
+  that was fine; `bin.ts` prints one line with `ulimit -n`
+  (`isOutOfFds`). Row preloads an EMFILE-throwing `process.cwd`.
+- E-52 — `vx help <name>` for no verb here printed the whole reference
+  and no hint; it is refused as `vx <name>` is (did-you-mean over core
+  and plugin verbs, a moved verb's pointer). A plugin verb, or a
+  workspace that fails to load, still gets the reference. Rows in
+  `tests/cli.test.ts`, `tests/plugin-commands.test.ts`.

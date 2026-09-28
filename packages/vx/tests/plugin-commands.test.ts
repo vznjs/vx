@@ -222,6 +222,16 @@ describe('plugin commands', () => {
     expect(text).toContain('Plugin commands:')
     expect(text).toContain('vx hello')
     expect(text).toContain('says hi (org/hello)')
+    // A plugin verb is a verb here: `vx help hello` is the reference that
+    // lists it, and `vx help helloo` guesses it.
+    out.length = 0
+    expect(await cli(['help', 'hello'])).toBe(0)
+    expect(out.join('')).toBe(text)
+    err.length = 0
+    expect(await cli(['help', 'helloo'])).toBe(1)
+    expect(err.join('')).toBe(
+      'vx help: unknown command: helloo. Did you mean hello? (see `vx help`)\n',
+    )
   })
 
   it('a verb only a later plugin declares is found past the ones before it', async () => {

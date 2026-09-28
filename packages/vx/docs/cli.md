@@ -77,7 +77,9 @@ task(s): test.`, and a name no project declares is still refused (item
 `vx <verb> --help` (and `-h`, and `vx help <verb>`) prints this reference
 cut to that core verb — its usage lines and sections, then
 `Full reference: vx help` —
-and every argument error points at it.
+and every argument error points at it. `vx help <name>` for a name that
+is no verb here (core, a plugin's, or a moved one) is refused as
+`vx <name>` is: one line, a guess when one is close, exit 1.
 Past a `--` the flag belongs to the command being run, so
 `vx run build -- --help` forwards it to the task instead. A plugin verb
 owns its own arguments, `--help` included.
