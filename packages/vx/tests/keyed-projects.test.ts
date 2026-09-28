@@ -139,6 +139,56 @@ describe('the walk (R3)', () => {
     expect(keyedOf(nodes, 'app#test')).toEqual([])
   })
 
+  // A `graph` plugin may leave a node's deps in any order; the group hash
+  // sorts its members, so the stand-in must too.
+  it('two groups over the same members in another order share one hash', () => {
+    const nodes = graph({
+      'app#test': [withTasks(CACHED, ['^*', '!ui#pack']), ['ui#pack', 'ui#pack2']],
+      'ui#pack': [GROUP, ['ui#a', 'ui#b']],
+      'ui#pack2': [GROUP, ['ui#b', 'ui#a']],
+      'ui#a': [CACHED, []],
+      'ui#b': [CACHED, []],
+    })
+    expect(keyedOf(nodes, 'app#test')).toEqual([])
+  })
+
+  // `computeGroupHash` folds every member whatever the node says; only a
+  // `graph` plugin could leave a `cache` on a group (the loader refuses it).
+  it('a group folds every dependency even with a `cache.inputs.tasks` on it', () => {
+    const nodes = graph({
+      'app#test': [CACHED, ['app#ci']],
+      'app#ci': [
+        { cache: { inputs: { files: [], tasks: [] }, outputs: { files: [] } } },
+        ['lib#source'],
+      ],
+      'lib#source': [CACHED, []],
+    })
+    expect(keyedOf(nodes, 'app#test')).toEqual(['/ws/lib'])
+  })
+
+  // Walked once: each edge is read once, and a second ask reads none. A
+  // diamond (`a#y` → `a#x`, both under the root) puts `a#x` on the stack
+  // twice before it is combined.
+  it('a shared subgraph is walked once, and a repeat ask walks nothing', () => {
+    const nodes = graph({
+      'app#test': [CACHED, ['a#x', 'a#y']],
+      'a#y': [CACHED, ['a#x']],
+      'a#x': [CACHED, ['a#z']],
+      'a#z': [CACHED, []],
+    })
+    let gets = 0
+    const counted = new Map(nodes)
+    counted.get = (id: string) => {
+      gets++
+      return nodes.get(id)
+    }
+    const keyed = keyedProjects(counted)
+    expect([...keyed(nodes.get('app#test')!)]).toEqual(['/ws/a'])
+    expect(gets).toBe(4)
+    keyed(nodes.get('app#test')!)
+    expect(gets).toBe(4)
+  })
+
   it('the task itself is not counted, and a shared subgraph answers the same for each asker', () => {
     const nodes = graph({
       'app#test': [CACHED, ['app#source', 'ui#source']],

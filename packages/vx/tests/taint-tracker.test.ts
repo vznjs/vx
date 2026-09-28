@@ -230,6 +230,26 @@ describe('excludedTaint — which scheduled tasks build on a skipped key', () =>
     expect([[...seeds], unsaved]).toEqual([['app#seed'], 2])
   })
 
+  // Each dependant is pushed once: a walk that re-pushed a reached one
+  // doubles per diamond, 2^64 steps on this ladder.
+  it('a ladder of 64 diamonds seeded at the bottom is walked once per task', () => {
+    const LAYERS = 64
+    const nodes = new Map<string, TaskNode>()
+    for (let i = 0; i < LAYERS; i++) {
+      const below = `app#t${i + 1}`
+      for (const n of [
+        task(`app#t${i}`, [`app#l${i}`, `app#r${i}`], true),
+        task(`app#l${i}`, [below], true),
+        task(`app#r${i}`, [below], true),
+      ]) {
+        nodes.set(n.id, n)
+      }
+    }
+    const bottom = skipped(task(`app#t${LAYERS}`, [], true))
+    nodes.set(bottom.id, bottom)
+    expect(excludedTaint(nodes).unsaved).toBe(3 * LAYERS + 1)
+  })
+
   it('a 50,000-deep chain seeded at the bottom is one walk, not one pass per hop', () => {
     const DEPTH = 50_000
     const nodes = new Map<string, TaskNode>()
