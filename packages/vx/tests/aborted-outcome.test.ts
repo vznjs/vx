@@ -195,13 +195,16 @@ describe('a task killed by a shutdown signal', () => {
       await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
       await writeLocalWorkspace(root)
       await write(path.join(root, '.gitignore'), '.vx/\n')
+      // `slow` holds `later` back until selfkill's third attempt, then
+      // 0.3 s: a flat `sleep 0.3` raced three spawns and lost under gate
+      // load, so `later` ran before fail-fast tripped (C-44).
       await write(
         path.join(root, 'vx.config.mjs'),
         `export default {
            tasks: {
              selfkill: { exec: { command: 'echo DIAGNOSTIC; echo x >> attempts; kill -TERM $$', retries: 2 } },
              later: { dependsOn: ['slow'], exec: { command: 'echo later > later.txt' } },
-             slow: { exec: { command: 'sleep 0.3' } },
+             slow: { exec: { command: 'i=0; while [ "$(grep -c x attempts 2>/dev/null)" != 3 ] && [ $i -lt 500 ]; do sleep 0.02; i=$((i+1)); done; sleep 0.3' } },
            },
          }`,
       )
