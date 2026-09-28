@@ -11,6 +11,7 @@ import path from 'node:path'
 import {
   applyMigration,
   findWorkspaceRoot,
+  isUserError,
   listProjectMetas,
   loadWorkspace,
   type MigrationFormat,
@@ -93,6 +94,25 @@ async function hasFanOut(root: string): Promise<boolean> {
   )
 }
 
+/**
+ * Core finds a root by a package manager's workspace file; a moon or Rush
+ * repo can have neither (OpenCut: `.moon/` and a Cargo workspace, no root
+ * `package.json`). Say which tool is there and what vx needs from it.
+ */
+async function noRootReason(cwd: string, err: Error): Promise<Error> {
+  if ((await moonWorkspaceFile(cwd)) !== null) {
+    return new UserError(
+      'a moon workspace with no root package.json or pnpm-workspace.yaml: vx finds projects through the package manager\'s workspaces — list the moon projects that have a package.json under "workspaces" and re-run',
+    )
+  }
+  if (await Bun.file(path.join(cwd, 'rush.json')).exists()) {
+    return new UserError(
+      'a Rush workspace: vx does not yet discover projects from rush.json (it finds them through package.json workspaces or pnpm-workspace.yaml)',
+    )
+  }
+  return err
+}
+
 /** The command: detect the source, map it, hand the plan to core. Returns the exit code. */
 export async function migrateCmd(args: readonly string[]): Promise<number> {
   const parsed = parseMigrateArgs(args)
@@ -104,7 +124,9 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
     process.stderr.write(`vx-migrate: ${parsed.error}\n`)
     return 1
   }
-  const root = await findWorkspaceRoot(process.cwd())
+  const root = await findWorkspaceRoot(process.cwd()).catch(async (err: unknown) => {
+    throw isUserError(err) ? await noRootReason(process.cwd(), err) : err
+  })
   const metas = await listProjectMetas(await loadWorkspace(root))
 
   const turboFile = await turboConfigFile(root)

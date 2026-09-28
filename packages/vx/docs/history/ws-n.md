@@ -146,6 +146,16 @@ itself).
 - Rows: `tests/scripts.test.ts` › parseFanOut (`pnpm lerna`, `yarn
   exec lerna`, `npm -C`, `npm --prefix=`; red without the change).
 
+N-12. `bunx @vzn/vx-migrate --dry` swept over 32 cloned repos: each
+detected its own tool, but OpenCut (e668010: `.moon/` over a Cargo
+workspace, no root `package.json`) and rushstack stopped at core's
+"Could not find a workspace root". vx-migrate now names the moon or
+Rush workspace it sees and what vx needs from it; any other refusal
+reads as core words it.
+
+- Row: `tests/migrate.test.ts` › a repo core finds no workspace root in
+  (moon, Rush, and an empty dir as the control; red without the change).
+
 ## Candidates not built (2026-09-28)
 
 - Lerna without Nx: `lerna run <s>` (lerna 10.0.1, `prepNxOptions`)
@@ -192,7 +202,8 @@ itself).
   child of a shell that died on the signal" failed once in a local gate
   (ESRCH at its `process.kill(proc.pid, 'SIGKILL')`: vx had exited
   within the 200 ms after SIGINT) and passed 3/3 alone. The row's kill
-  assumes vx outlives the grace; a timed wait, not a marker.
+  assumes vx outlives the grace; a timed wait, not a marker. Again in
+  the N-12 gate (2026-09-28, 06:55, same line 580), 5/5 green alone.
 
 - G: `DOTENV_PROBE` is now in `turbo/turbo-map.ts` and
   `moon/moon-map.ts`; move it to a shared module (N may not edit
