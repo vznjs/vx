@@ -8,8 +8,8 @@ replaces the 2026-09-10 "Windows is WSL" decision (coordinator,
 separator-neutral rewrite or a `win32` branch.
 
 CI: `.github/workflows/windows.yml`, not required until green, in its
-own concurrency group so it never holds CI's. It runs on main and on
-`ws-o/` PRs only, with a 15-minute bound. Queue cost on the first run
+own concurrency group so it never holds CI's. It runs on main and on a
+PR that touches the Windows paths, with a 12-minute bound. Queue cost on the first run
 (2026-09-28): 34 s to a runner (macOS 82 s, Linux 2 s), 25 s of
 `bun install`. Under fifteen streams' load the whole run queued 9 min.
 
