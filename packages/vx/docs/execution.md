@@ -364,7 +364,7 @@ The child process gets, in priority order (lowest first):
 1. **Essential allowlist** (`PATH`, `HOME`, `SHELL`, `USER`, `LOGNAME`,
    `TMPDIR`, `TEMP`, `TMP`, `LANG`, `LC_ALL`, `LC_CTYPE`, `TERM`,
    `COLORTERM`, `FORCE_COLOR`, `NO_COLOR`, `CI`, `NODE_OPTIONS`, plus
-   the Windows essentials from `SYSTEMROOT` to `PATHEXT` — the list is
+   the Windows essentials from `SYSTEMROOT` to `PROCESSOR_ARCHITECTURE` — the list is
    `ESSENTIAL_ENV` in `src/exec/env.ts`).
 2. **`exec.env.passThrough`** names → values from host `process.env`.
 3. **`exec.env.define`** literal name/value pairs.

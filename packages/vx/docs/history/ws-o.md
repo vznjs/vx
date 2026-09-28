@@ -40,6 +40,13 @@ shard), and stops when the dealer deals nothing. It runs only on main
 and on `ws-o/` PRs: at 03:12 UTC fifteen runs sat queued, and a Windows
 runner held for 30 minutes per PR was part of that.
 
+O-7. A Windows task got no `USERPROFILE`, `SYSTEMDRIVE` or `WINDIR`:
+the essential allowlist carried only the Windows paths vx had needed
+so far, and `os.homedir()`, npm and git read these. Seven names join
+`ESSENTIAL_ENV` (they are absent on Linux and macOS, so nothing
+changes there), with the three pages that list it. Row: `env.test.ts`
+› passes the Windows home and system variables, red without them.
+
 ## Leads for other streams
 
 - B: `@anthropic-ai/sandbox-runtime` 0.0.76 ships a Windows backend
