@@ -62,7 +62,28 @@ export function nx(options: NxPluginOptions = {}): VxPlugin {
     (ctx) => mapAll(options.root ?? ctx.workspaceRoot, ctx.cacheDir, ctx.projects, options),
     // At the workspace root only, as `turbo()` claims its file.
     options.root === undefined ? ['nx.json'] : [],
+    async (workspace, ctx) => {
+      if (workspace.concurrency !== undefined) return
+      const parallel = await nxParallel(options.root ?? ctx.workspaceRoot)
+      if (parallel !== undefined) workspace.concurrency = parallel
+    },
   )
+}
+
+/**
+ * nx.json's `parallel` (or the legacy runner's option): how many tasks Nx
+ * runs at once. Read by nothing, a repo that set 1 for a shared database
+ * ran on every core under vx (TanStack/router sets 5, nx-examples 1).
+ */
+async function nxParallel(root: string): Promise<number | undefined> {
+  const json = (await readNxJson(root).catch(() => null))?.json as
+    | {
+        parallel?: unknown
+        tasksRunnerOptions?: { default?: { options?: { parallel?: unknown } } }
+      }
+    | undefined
+  const p = json?.parallel ?? json?.tasksRunnerOptions?.default?.options?.parallel
+  return typeof p === 'number' && Number.isInteger(p) && p > 0 ? p : undefined
 }
 
 async function mapAll(

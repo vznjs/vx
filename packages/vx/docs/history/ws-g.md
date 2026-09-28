@@ -560,3 +560,12 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   its wiring. Also probed: the packed `@vzn/vx` + `@vzn/vx-migrate`
   tarballs install and run turbo() with all four bins linked; no
   offline row (core pulls sandbox-runtime from the registry).
+- **G-50.** G-49's silent workspace keys: turbo.json `concurrency`
+  (`"10"`, `"50%"`), `cacheMaxSize` (formbricks' `"10GB"`) and
+  `cacheMaxAge` (weeks become days; `"0"` is off), top level or under
+  `global`, and nx.json `parallel` (TanStack/router 5, nx-examples 1;
+  or the legacy runner option) were read by nothing, so a repo's cache
+  cap or serial run did not reach vx. turbo() and nx() now fill
+  `concurrency` and `cacheRetention` through the `config` stage when
+  `vx.workspace.ts` sets none. Rows (`workspace-keys.test`): red
+  without the stage or the `global` read.
