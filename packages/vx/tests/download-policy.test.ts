@@ -1098,3 +1098,130 @@ describe('materializeFor on a 50,000-deep closure', () => {
     expect([fetched, deferred.pending()]).toEqual([[bottom], []])
   })
 })
+
+// The registry alone, without a run: each row holds a rule of
+// `deferred-outputs.ts` the end-to-end fixture above cannot see (C-37).
+describe('DeferredOutputs', () => {
+  const registry = (
+    nodes: Map<string, TaskNode>,
+    extra: Partial<ConstructorParameters<typeof DeferredOutputs>[0]> = {},
+  ): DeferredOutputs =>
+    new DeferredOutputs({
+      nodes,
+      cache: {} as never,
+      workspaceRoot: '/ws',
+      nestedDirsByProject: new Map(),
+      localWrite: false,
+      ...extra,
+    })
+  const entry = (taskId: string, materialize: () => Promise<void>) => ({
+    materialize,
+    hash: `h-${taskId}`,
+    entry: { taskId, command: 'true', durationMs: 0, stdout: '' },
+  })
+
+  it('pending() names the left-remote tasks in sorted order, not registration order', () => {
+    const deferred = registry(graph(node('app#z'), node('app#a')))
+    deferred.register(
+      'app#z',
+      entry('app#z', async () => {}),
+    )
+    deferred.register(
+      'app#a',
+      entry('app#a', async () => {}),
+    )
+    expect(deferred.pending()).toEqual(['app#a', 'app#z'])
+  })
+
+  it('producers of one consumer are fetched concurrently: each starts before any ends', async () => {
+    const nodes = graph(
+      node('app#p', { outputs: { files: [] } }),
+      node('app#q', { outputs: { files: [] } }),
+      node('app#use', undefined, ['app#p', 'app#q']),
+    )
+    const deferred = registry(nodes)
+    const events: string[] = []
+    for (const id of ['app#p', 'app#q']) {
+      deferred.register(
+        id,
+        entry(id, async () => {
+          events.push(`start ${id}`)
+          await Promise.resolve()
+          events.push(`end ${id}`)
+        }),
+      )
+    }
+    await deferred.materializeFor(nodes.get('app#use')!)
+    expect(events).toEqual(['start app#p', 'start app#q', 'end app#p', 'end app#q'])
+  })
+
+  it('a diamond closure visits each task once: 2^n paths are not 2^n walks', async () => {
+    // Ladder of 20 diamonds: every rung reaches the next through two tasks.
+    const nodes = new Map<string, TaskNode>()
+    const RUNGS = 20
+    for (let i = 0; i < RUNGS; i++) {
+      const next = i + 1 < RUNGS ? [`app#l${i + 1}`, `app#r${i + 1}`] : []
+      for (const side of ['l', 'r']) {
+        const n = node(`app#${side}${i}`, { outputs: { files: [] } }, next)
+        nodes.set(n.id, n)
+      }
+    }
+    const root = node('app#use', undefined, ['app#l0', 'app#r0'])
+    nodes.set(root.id, root)
+    let lookups = 0
+    const counted = new Map(nodes)
+    const get = counted.get.bind(counted)
+    counted.get = (id: string) => {
+      if (id !== root.id) lookups++
+      return get(id)
+    }
+    const deferred = registry(counted)
+    await deferred.materializeFor(root)
+    expect(lookups).toBe(2 * RUNGS)
+  })
+
+  it('a fetch stays inside its project: a nested project is neither wiped nor saved', async () => {
+    const root = mkdtempSync(path.join(tmpdir(), 'vx-deferred-'))
+    try {
+      const appDir = path.join(root, 'app')
+      const nested = path.join(appDir, 'sub')
+      await mkdir(path.join(appDir, 'stale'), { recursive: true })
+      await mkdir(nested, { recursive: true })
+      await writeFile(path.join(appDir, 'stale', 'old.txt'), 'old')
+      await writeFile(path.join(nested, 'keep.txt'), 'nested')
+      const producer = { ...node('app#gen', { outputs: { files: ['**'] } }), projectDir: appDir }
+      const consumer = node('other#use', undefined, ['app#gen'])
+      const saved: unknown[] = []
+      const deferred = registry(graph(producer, consumer), {
+        workspaceRoot: root,
+        nestedDirsByProject: new Map([['app', [nested]]]),
+        localWrite: true,
+        cache: {
+          save: async (a: { hash: string; outputFiles: string[] }) =>
+            void saved.push({ hash: a.hash, outputFiles: a.outputFiles }),
+        } as never,
+      })
+      deferred.register(
+        'app#gen',
+        entry('app#gen', async () => {
+          await mkdir(path.join(appDir, 'out'), { recursive: true })
+          await writeFile(path.join(appDir, 'out', 'gen.txt'), 'GENERATED')
+        }),
+      )
+      await deferred.materializeFor(consumer)
+      expect({
+        straggler: existsSync(path.join(appDir, 'stale', 'old.txt')),
+        nested: await readFile(path.join(nested, 'keep.txt'), 'utf8'),
+        saved,
+        pending: deferred.pending(),
+      }).toEqual({
+        straggler: false,
+        nested: 'nested',
+        saved: [{ hash: 'h-app#gen', outputFiles: [path.join(appDir, 'out', 'gen.txt')] }],
+        pending: [],
+      })
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+})
