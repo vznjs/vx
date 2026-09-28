@@ -178,7 +178,7 @@ describe('vx migrate (turbo)', () => {
       expect(build.cache?.inputs.env).toEqual(['GLOBAL_MODE', 'NODE_ENV'])
       expect(build.exec?.env?.passThrough).toEqual(['GLOBAL_MODE', 'AWS_PROFILE', 'NODE_ENV'])
       // output negation dropped (TODO).
-      expect(build.cache?.outputs.files).toEqual(['dist/**'])
+      expect(build.cache?.outputs.files).toEqual(['dist/**', '!dist/**/*.map'])
 
       // No inputs declared → turbo default = all package files.
       // $TURBO_ROOT$/<path> output → outputs.workspaceFiles.
@@ -296,21 +296,17 @@ describe('vx migrate (turbo)', () => {
   )
 
   it('reports clean/TODO counts and lists each TODO under its project#task', () => {
-    // app: codegen + lint clean; build 3 TODOs ($TURBO_ROOT$ dep,
-    // output negation, env wildcard — the $TURBO_ROOT$ input now maps
+    // app: codegen + lint clean; build 2 TODOs ($TURBO_ROOT$ dep,
+    // env wildcard — the $TURBO_ROOT$ input now maps
     // to inputs.workspaceFiles instead of a TODO), test 1 (interactive).
     // lib#build 2 (inherited $TURBO_ROOT$ dep, env wildcard). app#dev is
     // persistent and nothing depends on it, so its readiness note is no
     // TODO: it counts as clean (item 602).
     expect(result.out).toContain('3 tasks migrated clean')
-    expect(result.out).toContain('6 TODO')
+    expect(result.out).toContain('5 TODO')
     const todos = todosOf(result.out)
     expect([...todos.keys()].sort()).toEqual(['app#build', 'app#test', 'lib#build'])
-    expect(todos.get('app#build')!.map((r) => r.split(' ')[0])).toEqual([
-      'dependsOn',
-      'env',
-      'output',
-    ])
+    expect(todos.get('app#build')!.map((r) => r.split(' ')[0])).toEqual(['dependsOn', 'env'])
     expect(todos.get('app#build')![0]).toContain('$TURBO_ROOT$')
     expect(todos.get('app#test')!.join()).toContain('interactive')
     expect(todos.get('lib#build')).toHaveLength(2)

@@ -15,7 +15,7 @@ import { isLiteralPattern, type ProjectMeta, UserError } from '@vzn/vx'
 import { minimatchToVx } from '../glob-grammar.js'
 import { shellQuote } from '../nx-command.js'
 import { scriptCommand, yarnPnp } from '../script-command.js'
-import { resolveSharedOutputs } from '../shared-outputs.js'
+import { resolveSharedOutputs, takingBack } from '../shared-outputs.js'
 import { packageScripts, relPosix } from '../paths.js'
 import { pruneOrphanPersistentNotes } from '../persistent-note.js'
 
@@ -892,7 +892,6 @@ function buildTask(
 
     const outFiles: string[] = []
     const wsOutFiles: string[] = []
-    const negated: string[] = []
     for (const raw of def.outputs ?? []) {
       // The first segment stays a literal (a route directory, item 667);
       // the rest is Turbo's grammar: `dist/**/*.[cm]js` matched nothing, so
@@ -906,13 +905,16 @@ function buildTask(
         )
         return { name, todos, task, uses }
       }
-      const o = cut < 0 ? raw : `${raw.slice(0, cut + 1)}${rest}`
-      if (o.startsWith('!')) {
-        negated.push(o)
-      } else if (o.startsWith('$TURBO_ROOT$/')) {
-        wsOutFiles.push(o.slice('$TURBO_ROOT$/'.length))
+      const mapped = cut < 0 ? raw : `${raw.slice(0, cut + 1)}${rest}`
+      // A `!` output takes a path back, as Turbo's does (A-44): Next's
+      // `.next/**` minus `!.next/cache/**` saved the cache and cleaned it
+      // before every run while vx outputs could not exclude.
+      const neg = mapped.startsWith('!') ? '!' : ''
+      const o = mapped.slice(neg.length)
+      if (o.startsWith('$TURBO_ROOT$/')) {
+        wsOutFiles.push(neg + o.slice('$TURBO_ROOT$/'.length))
       } else if (climbed(o) !== null) {
-        wsOutFiles.push(climbed(o)!)
+        wsOutFiles.push(neg + climbed(o)!)
       } else if (o.startsWith('../')) {
         todos.push(`output ${JSON.stringify(o)}: leaves the workspace — map manually`)
       } else if (o.includes('$TURBO_ROOT$')) {
@@ -920,28 +922,17 @@ function buildTask(
           `output ${JSON.stringify(o)}: $TURBO_ROOT$ only maps as a '$TURBO_ROOT$/<path>' ` +
             'prefix (→ cache.outputs.workspaceFiles) — map manually',
         )
-      } else outFiles.push(o)
+      } else outFiles.push(neg + o)
     }
 
-    // vx cleans and restores exactly the positive globs. A negation under
-    // a literal-rooted output (`dist/**` minus `!dist/**/*.map`) leaves a
-    // harmless superset of build products and is a todo; one that carves
-    // the package root out of a wildcard (medusa: `*/**` minus `!src/**`
-    // and `!node_modules/**`) does not — the superset is the sources, and
-    // the clean before exec would delete them. That task runs uncached.
-    const wild = outFiles.find((o) => !isLiteralPattern(o.split('/')[0] ?? ''))
-    if (negated.length > 0 && wild !== undefined) {
-      todos.push(
-        `outputs ${negated.map((n) => JSON.stringify(n)).join(', ')} narrow ${JSON.stringify(wild)}: ` +
-          'vx outputs have no negation and the positive glob reaches the sources — task runs ' +
-          'uncached; declare the exact outputs in a vx.config to cache it',
-      )
-      return { name, todos, task, uses }
-    }
-    // Without a negation too: Turbo never cleans an output, vx cleans it
-    // before a run and a restore, so `**/*.d.ts` deleted a hand-written
-    // `src/env.d.ts` and an uncommitted edit to it was lost for good (item
-    // 1031). A wildcard first segment can reach the sources.
+    // Turbo never cleans an output; vx cleans it before a run and a restore,
+    // so `**/*.d.ts` deleted a hand-written `src/env.d.ts` and an uncommitted
+    // edit to it was lost for good (item 1031). A wildcard first segment can
+    // reach the sources, and a `!` beside it (medusa: `*/**` minus `!src/**`)
+    // takes back only what it names.
+    const wild = outFiles.find(
+      (o) => !o.startsWith('!') && !isLiteralPattern(o.split('/')[0] ?? ''),
+    )
     if (wild !== undefined) {
       todos.push(
         `output ${JSON.stringify(wild)}: a wildcard first segment reaches the sources, which ` +
@@ -949,12 +940,6 @@ function buildTask(
           'vx.config to cache it',
       )
       return { name, todos, task, uses }
-    }
-    for (const n of negated) {
-      todos.push(
-        `output ${JSON.stringify(n)}: vx outputs have no negation — narrow the positive ` +
-          'globs instead',
-      )
     }
 
     const cacheEnv = uniq([...global('env'), ...envNames])
@@ -964,8 +949,9 @@ function buildTask(
     if (cacheEnv.length > 0) inputs.env = cacheEnv
     if (pkgDotenv) inputs.runtime = [DOTENV_PROBE]
     if (wsDotenv) inputs.workspaceRuntime = [DOTENV_PROBE]
-    const outputs: Record<string, unknown> = { files: outFiles }
-    if (wsOutFiles.length > 0) outputs.workspaceFiles = wsOutFiles
+    const outputs: Record<string, unknown> = { files: takingBack(outFiles) }
+    const ws = takingBack(wsOutFiles)
+    if (ws.length > 0) outputs.workspaceFiles = ws
     task.cache = { inputs, outputs }
   }
 

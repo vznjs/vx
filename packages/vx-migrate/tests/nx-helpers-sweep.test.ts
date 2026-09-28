@@ -103,13 +103,14 @@ describe('mapNxOutputs', () => {
 
   // Mapped as a `!` workspace glob, core refused the project's whole
   // config and none of its tasks ran (item 1051).
-  it('a negated output is dropped with a todo, the positive one kept', () => {
-    expect(out(['{projectRoot}/dist', '!{projectRoot}/dist/cache'])).toEqual({
-      outFiles: ['dist'],
-      wsOutFiles: [],
-      todos: [
-        'output "!{projectRoot}/dist/cache": vx outputs cannot exclude — the other outputs also save what it excludes',
-      ],
+  it('a negated output takes a path back beside its positives (A-44)', () => {
+    expect(
+      out(['{projectRoot}/dist', '!{projectRoot}/dist/cache', '!{workspaceRoot}/dist/a/tmp']),
+    ).toEqual({ outFiles: ['dist', '!dist/cache'], wsOutFiles: [], todos: [] })
+    expect(out(['dist/a', '!dist/a/tmp'])).toEqual({
+      outFiles: [],
+      wsOutFiles: ['dist/a', '!dist/a/tmp'],
+      todos: [],
     })
   })
 

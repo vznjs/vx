@@ -858,3 +858,30 @@ describe('turbo-map: a field of the wrong type is refused by name (L-15)', () =>
     ).toBe('mapped')
   })
 })
+
+describe('turbo-map: `!` outputs take paths back (A-44)', () => {
+  const outputsOf = async (outputs: string[]) =>
+    (
+      (await taskOf({ tasks: { build: { outputs } } }, { a: { scripts: { build: 'b' } } })).task!
+        .cache as { outputs: unknown }
+    ).outputs
+
+  it('a negation rides beside its positives, at the package or the root', async () => {
+    expect(
+      await outputsOf([
+        'dist/**',
+        '!dist/**/*.map',
+        '$TURBO_ROOT$/out/**',
+        '!$TURBO_ROOT$/out/tmp',
+      ]),
+    ).toEqual({
+      files: ['dist/**', '!dist/**/*.map'],
+      workspaceFiles: ['out/**', '!out/tmp'],
+    })
+  })
+
+  it('negations with no positive beside them take back nothing and are dropped', async () => {
+    expect(await outputsOf(['dist/**', '!$TURBO_ROOT$/out/tmp'])).toEqual({ files: ['dist/**'] })
+    expect(await outputsOf(['!dist/cache'])).toEqual({ files: [] })
+  })
+})

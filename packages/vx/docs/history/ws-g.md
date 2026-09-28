@@ -489,3 +489,15 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   `tasksOf` kept the last of two same-named tasks and no row asked
   for a named project's twin. `tasksOf` now refuses a task mapped
   twice; a diamond row and the `projects` row hold both.
+- **G-44.** turbo() and nx() map a `!` output now that core takes one
+  (A-44). Turbo's stock Next pair, `.next/**` minus `!.next/cache/**`,
+  was a todo: the positive alone saved Next's cache into the artifact
+  and cleaned it before every miss. A negation rides beside its
+  positives in `files` or `workspaceFiles`; one with no positive beside
+  it takes back nothing and is dropped (core refuses a list of them
+  alone). The shared-output rule reads positives only, as core does: a
+  `!` glob compiled as-is matched every other path, and a literal
+  `out` beside `!.next/cache/**` uncached a task. Rows (`turbo.test`,
+  `turbo-map-sweep`, `nx-helpers-sweep`, `helpers-sweep`): red without
+  the fix. wireit(), lage() and moon() still refuse `!`; theirs is
+  stream N's slice.

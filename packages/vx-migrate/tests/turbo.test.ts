@@ -304,22 +304,22 @@ describe('turbo()', () => {
       await writeFile(
         path.join(root, 'turbo.json'),
         JSON.stringify({
-          tasks: { build: { outputs: ['dist/**', '!dist/**/*.map'] }, '//#root': {} },
+          tasks: { build: { outputs: ['dist/**'], env: ['VERCEL_*'] }, '//#root': {} },
         }),
       )
       const log = silent()
       await planRun({ cwd: root, tasks: ['build'], log })
       const text = log.lines.join('\n')
       // Once for the workspace note, once for the gap — astro's `build`
-      // carries the same `!vendor/**` output in 57 tasks, and a line per
-      // task was 57 identical lines before the first frame (2026-09-11).
+      // carried one gap in 57 tasks, and a line per task was 57 identical
+      // lines before the first frame (2026-09-11).
       expect(text).toContain(
-        '[@vzn/vx-migrate] 2 task(s) (build across 2 package(s)): output "!dist/**/*.map": vx outputs have no negation',
+        '[@vzn/vx-migrate] 2 task(s) (build across 2 package(s)): env "VERCEL_*": wildcards are not supported',
       )
       expect(text).not.toContain('app#build: output')
       expect(text).toContain('[@vzn/vx-migrate] note: root task //#root not migrated')
       expect(text.split('root task //#root').length - 1).toBe(1)
-      expect(text.split('vx outputs have no negation').length - 1).toBe(1)
+      expect(text.split('wildcards are not supported').length - 1).toBe(1)
     },
     TIMEOUT,
   )
@@ -387,8 +387,8 @@ describe('output negation', () => {
     'a negation that carves the package root out of a wildcard output runs the task uncached',
     async () => {
       // medusa: `outputs: ["!node_modules/**", "!src/**", "*/**", ".medusa/**"]`.
-      // vx has no output negation; mapped to the positive `*/**` alone, the
-      // clean before exec would delete `src/`. Uncached, and the sources
+      // `*/**` reaches every source dir the negations do not name, and the
+      // clean before exec would delete them. Uncached, and the sources
       // survive a real run.
       await writeFile(
         path.join(root, 'turbo.json'),
@@ -407,7 +407,7 @@ describe('output negation', () => {
       const app = plan.tasks.find((t) => t.node.id === 'app#build')!.node
       expect(app.config.cache).toBeUndefined()
       expect(log.lines.join('\n')).toContain(
-        '[@vzn/vx-migrate] 2 task(s) (build across 2 package(s)): outputs "!node_modules/**", "!src/**" narrow "*/**": vx outputs have no negation and the positive glob reaches the sources — task runs uncached; declare the exact outputs in a vx.config to cache it',
+        '[@vzn/vx-migrate] 2 task(s) (build across 2 package(s)): output "*/**": a wildcard first segment reaches the sources, which vx cleans before every run — task runs uncached; declare the exact outputs in a vx.config to cache it',
       )
       const result = await run({ cwd: root, tasks: ['build'], log: silent(), handleSignals: false })
       expect(result.ok).toBe(true)
@@ -419,11 +419,39 @@ describe('output negation', () => {
   )
 
   it(
+    "Next's `!.next/cache/**` keeps the cache out of the clean and the artifact (A-44)",
+    async () => {
+      await writeFile(path.join(root, '.gitignore'), 'dist\n.next\n')
+      await pkg('app', {
+        build: 'mkdir -p .next/cache && echo out > .next/out.js && echo run >> .next/cache/runs',
+      })
+      await writeFile(
+        path.join(root, 'turbo.json'),
+        JSON.stringify({ tasks: { build: { outputs: ['.next/**', '!.next/cache/**'] } } }),
+      )
+      const app = path.join(root, 'packages', 'app')
+      const build = () =>
+        run({ cwd: root, tasks: ['app#build'], log: silent(), handleSignals: false })
+      const runs = () => Bun.file(path.join(app, '.next', 'cache', 'runs')).text()
+      expect((await build()).ok).toBe(true)
+      await rm(path.join(app, '.next', 'out.js'))
+      expect((await build()).ok).toBe(true)
+      // The hit restored the output and left the cache as it was.
+      expect(await Bun.file(path.join(app, '.next', 'out.js')).text()).toBe('out\n')
+      expect(await runs()).toBe('run\n')
+      await writeFile(path.join(app, 'src', 'index.js'), '// edited\n')
+      expect((await build()).ok).toBe(true)
+      // The miss ran on the cache the last run left: no clean took it.
+      expect(await runs()).toBe('run\nrun\n')
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a route directory first is a literal, not a wildcard reaching the sources (item 667)',
     async () => {
       // A bracket is literal in a vx task glob, so `[locale]/**` names one
-      // directory: the negation under it is the ordinary superset gap and
-      // the task stays cached.
+      // directory, and the task stays cached with its negation.
       await writeFile(
         path.join(root, 'turbo.json'),
         JSON.stringify({ tasks: { build: { outputs: ['[locale]/**', '!**/*.map'] } } }),
@@ -431,10 +459,8 @@ describe('output negation', () => {
       const log = silent()
       const plan = await planRun({ cwd: root, tasks: ['build'], log })
       const app = plan.tasks.find((t) => t.node.id === 'app#build')!.node
-      expect(app.config.cache?.outputs.files).toEqual(['[locale]/**'])
-      const text = log.lines.join('\n')
-      expect(text).toContain('output "!**/*.map": vx outputs have no negation')
-      expect(text).not.toContain('reaches the sources')
+      expect(app.config.cache?.outputs.files).toEqual(['[locale]/**', '!**/*.map'])
+      expect(log.lines.join('\n')).not.toContain('reaches the sources')
     },
     TIMEOUT,
   )
