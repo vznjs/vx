@@ -901,6 +901,35 @@ describe('admit stage', () => {
   )
 
   it(
+    'an async policy is reported once and admits from then on — its rejection never ends the run',
+    async () => {
+      // An `async admit` answered a Promise: every task admitted, the policy
+      // never ran, and a rejection ended the run with a stack, exit 1 (H-16).
+      await pkg('a', build)
+      await pkg('b', build)
+      await workspace([
+        pluginSource('org/later', `{ async admit() { return false } }`),
+        pluginSource('org/boom', `{ async admit() { throw new Error('boom') } }`),
+      ])
+      const status: string[] = []
+      const log = { ...silent(), status: (m: string) => status.push(m) } as Logger
+      const summary = await run({
+        cwd: root,
+        tasks: ['build'],
+        concurrency: 2,
+        log,
+        handleSignals: false,
+      })
+      expect(summary.ok).toBe(true)
+      expect(status.filter((m) => m.includes('failed in admit')).sort()).toEqual([
+        "plugin 'org/boom' failed in admit: returned a Promise; admit is synchronous; admitting every task from here on",
+        "plugin 'org/later' failed in admit: returned a Promise; admit is synchronous; admitting every task from here on",
+      ])
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a policy that refuses with nothing running is overridden once, by name — never a stalled run (item 1023)',
     async () => {
       // Only a completion asks the predicate again, so a refusal with

@@ -296,6 +296,31 @@ describe('Plugin API', () => {
     ])
   })
 
+  it('a hook name ctx.on does not know fails the load, naming the known ones', async () => {
+    // A misspelt name subscribed a handler that never ran, and no word of
+    // it: a config file has no type-checker (H-16).
+    const err = await installPlugins({
+      plugins: [
+        {
+          name: 'org/typo',
+          setup(ctx) {
+            ;(ctx as { on: (h: string, fn: () => void) => void }).on('taskComplete', () => {})
+          },
+        },
+      ],
+      bus: createEventBus(),
+      workspaceRoot: '/ws',
+      cacheDir: '/ws/.vx/cache',
+      warn: () => {},
+    }).then(
+      () => undefined,
+      (e: unknown) => (e as Error).message,
+    )
+    expect(err).toBe(
+      "plugin 'org/typo' failed to load: ctx.on: unknown hook 'taskComplete' (one of onRunStart, onTaskStart, onTaskStdout, onTaskStderr, onTaskComplete, onRunStatus, onRunEnd)",
+    )
+  })
+
   it('without a warn callback the disable still reaches the operator', async () => {
     // The default is console.error on purpose: `installPlugins` is called
     // outside a run too, and a plugin that silently stops observing is

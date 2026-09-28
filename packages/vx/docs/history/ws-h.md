@@ -175,6 +175,23 @@ stderr line naming the executor. The local executor is exempt by identity
 `plugin-executor-abort.test.ts` "an executor that ignores the signal",
 both at the 20 s test timeout without the bound.
 
+## H-16: hook contract sweep — `async admit`, `ctx.on` typos
+
+Each hook's documented guarantee, driven from a scratch workspace. Two
+broke: an `async admit` answered a Promise, so every task was admitted and
+the policy never ran, and its rejection ended the run with a stack, exit 1
+("a policy never breaks a run"); it is now reported once and admits, as a
+throw is. And `ctx.on('taskComplete', …)` (the name is `onTaskComplete`)
+subscribed a handler that never ran, silently; an unknown name now fails
+the load, listing the known ones. `modules/plugin.md` claimed every hook
+but `setup` was crash-isolated; stages and the executor/cache factories
+fail the run by design, and it now says which is which. Held elsewhere
+already: teardown after a sibling's setup throws, teardown's 3 s bound,
+a core verb's name refused, schedule weights checked, telemetry factory
+isolated. Rows: `plugin-pipeline.test.ts` "an async policy…",
+`plugin.test.ts` "a hook name ctx.on does not know…", each red without
+its fix.
+
 ## Leads for other streams
 
 - **D / B:** `sandbox.ignore` names that loaded and did nothing: done in D-4.
