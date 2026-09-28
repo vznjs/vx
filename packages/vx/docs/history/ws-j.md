@@ -398,6 +398,21 @@
   `defineWorkspace`'s `Known<T, WorkspaceConfig>` (D-70), and
   `SandboxedRunArgs.signal` (B-36).
 
+- **J-80** `schema.md`: the unknown `exec.env` field example listed
+  `define, passThrough`; `ENV_FIELDS` also accepts `secret`.
+
+- **J-81** `modules/cache.md`: a corrupt artifact is dropped and read
+  as a miss (A-52), not thrown. Site `guides/migrate.md`: `vx init`
+  adds `turboCache()` / `nxCache()` on a remote-cache signal.
+
+- **J-82** `caching.md`: `CACHE_VERSION` also bumps for a container
+  change or wrong stored bytes; the "hard invariants" are the remote
+  prefetch's; an older schema drops every table but `schema_meta`.
+
+- **J-83** `architecture.md`: the local cache policy also gates the
+  config-evaluation store and file-hash writes; `@vzn/vx` exports only
+  `latestRunId` and `whyDidThisRerunQuery` from `metrics.ts`.
+
 ## Leads for other streams
 
 - **C** `orchestrator/prepare.ts:242` says frozen configs load "after a
@@ -571,3 +586,38 @@ extra` ignores the extra argument and exits 0 where every other verb
 - **E** (perf, unrun) since a2bb22f9 any unknown verb, a typo like `vx buidl` included, loads every project config before printing `unknown command`. (J-77)
 - **B/L (security)** before 8685d239 a remote hit wrote the raw command, any inlined token included, into cache.db's entry row, where `vx why` and `vx mcp` read it; rows ingested before the fix still hold it and nothing scrubs them (unchecked whether a later write replaces them). **C** `orchestrator/options.ts:176`'s `holdPersistent` docstring still says only "the requested persistent tasks" are handed back (C-46 keeps their persistent deps too). (J-78)
 - **B** `tests/sandbox-bridge-socket.unsafe.test.ts` › "a port bridge's socket is removed when the task ends" failed once in a full local gate on docs-only J-69 ("Linux HTTP bridge socket does not exist … The bridge process may have died", 6.2 s) and passed 2/2 alone right after. **B (blocking CI)** root cause of `runner.test.ts` › "a timed-out command returns only once its group is gone": the grandchild's `trap "" TERM` can run after the 100 ms TERM, so it dies with the shell and `settle()` returns at once; fix by ignoring TERM before the fork (`trap "" TERM; sleep 30 & trap - TERM; wait`) — posted on #1664. (J-69)
+- (E, sandbox) `network: true` does not skip the proxy: a
+  `network: true` task in a run with no domain list got 403. Wrong
+  comments: `orchestrator/sandbox-request.ts:81`, `config.ts:262`
+  ("`true` allows all"), `exec/sandbox-runtime.ts:13` and `:509`.
+  `schema.md` is right. (J-80 walk)
+- (CLI) `--dry` shows a one-alternative brace input (`src/{b}.ts`) as
+  "no-cache (would exec)" and only notes the refusal; a real run fails
+  the task.
+- (workspace) The `cache.inputs.tasks` "names no task" refusal prints
+  the config path twice: `where` already holds it
+  (`config-schema.ts:997`).
+- (CLI) `init.ts` `remoteCacheSignal` matches a CI file with
+  `text.includes(variable)`: a comment naming `TURBO_TOKEN` counts, and
+  its line says "sets". A CI `TURBO_TOKEN` also declares `turboCache()`
+  when turbo.json says `remoteCache.enabled: false`.
+- (A, cache) `key-fold.ts` version-history comment above
+  `CACHE_VERSION` stops at v31; v32–v36 are unrecorded.
+  `cache.ts:92` `ORPHAN_GRACE_MS` comment describes the pre-A-3 order
+  (rename now happens inside the `BEGIN IMMEDIATE` transaction).
+- (owner) CLAUDE.md's Live invariants say `vx-cache-v35`; source is
+  `vx-cache-v36`.
+- (A, cache) `src/cache/policy.ts:12` says "Only the task-artifact
+  get/save path is gated"; the local axes also gate `ConfigEvalTable`
+  and `FileHashStore` writes (`cache.ts:673`). `api.md` is generated
+  from it, so the fix is the source comment.
+- (C, orchestrator) Stale comments: `plugin.ts:33` names a
+  `src/plugins/` and "no fallback" (the local floor exists);
+  `plugin.ts:50` "re-validates after the last plugin" (after each);
+  `plugin.ts` `cache?` "first non-undefined wins" (`resolveCache`
+  chains every layer); `run-context.ts:38`, `run.ts:561` "one `git`
+  spawn per run" (`.git` is read directly; git is the fallback).
+- (CLI) `src/cli/init.ts:1` header says Turbo and Nx are not read and
+  omits `--plugin`; `help.ts` shows `vx why [TASK | PKG#TASK]` but the
+  target is required. A `vx run` that fails planning ("No package
+  declares a vx.config") still creates `.vx/cache/`.
