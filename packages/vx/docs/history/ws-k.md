@@ -163,6 +163,8 @@
 - **K-28** README and landing "Try it": install, `npx vx init`, two runs,
   then the file init writes. `try-it.unsafe.test.ts` runs init and holds
   the shown file to the written one (fails when they differ).
+- **K-29** README Quick start says it is for a repo without `turbo.json`
+  or `nx.json`: there `vx init` writes configs from scripts.
 
 ## Leads for other streams
 

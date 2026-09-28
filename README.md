@@ -77,7 +77,8 @@ The package ships a prebuilt binary for Linux and macOS, x64 and arm64
 
 ## Quick start
 
-In any git repo with a `package.json` workspace:
+In a git repo with a `package.json` workspace and no `turbo.json` or
+`nx.json` (those get the one file above):
 
 ```sh
 npx vx init               # a vx.config.ts per package, from its scripts
