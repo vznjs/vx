@@ -78,6 +78,8 @@ const GUARD_SCRIPT = [
 function startGuard(): void {
   if (guardFd !== undefined) return
   guardFd = null
+  // The guard is an `sh` script over process groups; Windows has neither.
+  if (process.platform === 'win32') return
   try {
     const guard = Bun.spawn([executablePath('sh'), '-c', GUARD_SCRIPT], {
       argv0: 'vx-group-guard',

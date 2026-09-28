@@ -13,6 +13,7 @@ git — asks here and hands Bun the absolute path.
 
 ```ts
 export function executablePath(name: string): string
+export function shellArgv(script: string): string[]
 ```
 
 - Resolved on vx's OWN `process.env.PATH`, never a task's. A task's
@@ -37,10 +38,14 @@ export function executablePath(name: string): string
 - The answer is absolute even for a relative PATH entry (`Bun.which`
   resolves one against this process's cwd).
 
+- `shellArgv` is the task shell's argv: `[sh, '-c', script]`, and on
+  Windows `[bun, 'exec', script]`, Bun's shell, since Windows ships no
+  `sh` (`docs/design/windows-2026-09.md` § Decisions 1).
+
 ## Not here
 
 The `cache.inputs.runtime` probe (`cache/inputs.ts`) still spawns a
-bare `sh`, against vx's ambient PATH.
+bare `sh`, against vx's ambient PATH (on Windows, `shellArgv`).
 
 ## Tests
 
