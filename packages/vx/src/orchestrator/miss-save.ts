@@ -71,6 +71,8 @@ export interface SaveMissArgs {
    * would also take the upstream's files the task adds beside.
    */
   ownOutputFiles?: string[] | undefined
+  /** `ownOutputFiles` for `cache.outputs.workspaceFiles` (A-43). */
+  ownWsOutputFiles?: string[] | undefined
   /** The Tier-3 input fingerprint rows captured by the pre-exec describe. */
   captured: readonly TaskInputComponent[]
   command: string
@@ -101,10 +103,12 @@ export async function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<void>
       outputs: a.outputs,
       nestedProjectDirs: a.nestedProjectDirs,
     }))
-  const wsOutputFiles = await resolveWorkspaceOutputs({
-    workspaceRoot: a.workspaceRoot,
-    outputs: a.wsOutputs,
-  })
+  const wsOutputFiles =
+    a.ownWsOutputFiles ??
+    (await resolveWorkspaceOutputs({
+      workspaceRoot: a.workspaceRoot,
+      outputs: a.wsOutputs,
+    }))
   endResolve()
   // The mirror of the input warning: declared outputs that resolve to
   // nothing save an empty artifact, and the next hit "restores" it —

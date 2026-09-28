@@ -108,6 +108,15 @@ export async function ownOutputsSince(
   args: { projectDir: string; outputs: string[]; nestedProjectDirs: string[] },
   before: ReadonlyMap<string, OutputStamp>,
 ): Promise<string[]>
+// The same two for root-anchored `outputs.workspaceFiles` (A-43).
+export async function stampWorkspaceOutputs(args: {
+  workspaceRoot: string
+  outputs: string[]
+}): Promise<Map<string, OutputStamp>>
+export async function ownWorkspaceOutputsSince(
+  args: { workspaceRoot: string; outputs: string[] },
+  before: ReadonlyMap<string, OutputStamp>,
+): Promise<string[]>
 export async function cleanOutputPaths(args: {
   projectDir: string
   rels: readonly string[]

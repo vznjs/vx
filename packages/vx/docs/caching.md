@@ -734,7 +734,9 @@ Then the order is fixed, and the dependant is **additive**: twenty's
 - its **own output set** is what its run added or changed under its
   declared outputs — the outputs are stamped (size, mtime) before the
   run and diffed after, the same proof a hit's "already current" check
-  trusts — and only that set is saved;
+  trusts — and only that set is saved; `outputs.workspaceFiles` are
+  stamped the same way (until A-43 its miss cleaned them by glob, deleting
+  a same-tree upstream's root-anchored files before it read them);
 - it **cleans by recorded rows**, never by glob, before a run (nothing:
   stale files of its own are its command's to clean, as under Turbo) and
   before a restore (its rows only);
