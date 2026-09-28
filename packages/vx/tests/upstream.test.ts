@@ -184,6 +184,20 @@ describe('filterUpstreamHashes', () => {
       expect(filterUpstreamHashes(up, ['nope-*#build'], 'self', 'self#top')).toEqual([])
     })
 
+    // C-28: an exact name is equality, not a prefix, in either half.
+    it('an exact name does not select a name it prefixes', () => {
+      const near = [
+        outcome('self#build', 'h-b'),
+        outcome('self#build.js', 'h-bjs'),
+        outcome('lib#build', 'h-lib'),
+        outcome('lib-extra#build', 'h-extra'),
+      ]
+      expect([
+        filterUpstreamHashes(near, ['build'], 'self', 'self#top'),
+        filterUpstreamHashes(near, ['lib#build'], 'self', 'self#top'),
+      ]).toEqual([[['self#build', 'h-b']], [['lib#build', 'h-lib']]])
+    })
+
     it('an exact project name still matches only that project', () => {
       expect(filterUpstreamHashes(up, ['@acme/core#build'], 'self', 'self#top')).toEqual([
         ['@acme/core#build', 'h-core'],
@@ -206,6 +220,13 @@ describe('expandGroupUpstream', () => {
       outcome('p#c', 'h-c'),
     ]
     expect(ids(expandGroupUpstream(up))).toEqual(['p#a', 'p#b', 'p#c'])
+  })
+
+  // C-28: a group's members come out in its own order, and a group with
+  // no members stands for nothing, not for itself.
+  it("keeps a group's member order, and an empty group expands to nothing", () => {
+    const up = [group('p#g', [outcome('p#x', 'h-x'), outcome('p#y', 'h-y')]), group('p#e', [])]
+    expect(ids(expandGroupUpstream(up))).toEqual(['p#x', 'p#y'])
   })
 
   // A chain of groups nests one outcome per group, and a recursion per
