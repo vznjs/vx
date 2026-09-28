@@ -14,6 +14,7 @@
     ".mcp.json",
     ".vscode",
     ".idea",
-    ".claude"
+    ".claude",
+    "docs/api.md"
   ]
 }
