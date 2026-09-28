@@ -223,8 +223,9 @@ export async function movedInput(
     } catch {
       return f.path
     }
-    // A whole-second stamp may stand for any write in its second, one
-    // during the command included (`racyWindowMs`).
+    // A whole-second stamp may stand for any write in its second (two for
+    // an even one, FAT's tick), one during the command included
+    // (`racyWindowMs`).
     if (commandFrom !== undefined && ctimeMs >= commandFrom - racyWindowMs(ctimeMs, 0)) {
       return f.path
     }
