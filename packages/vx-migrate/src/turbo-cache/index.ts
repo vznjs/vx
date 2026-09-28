@@ -221,6 +221,14 @@ export function resolveTurboCacheConfig(
 }
 
 /**
+ * A signed body is written whole before its tag can be checked, so a
+ * server that never ended one filled the temp's disk (L-8). Core refuses
+ * an artifact past its 2 GiB ceiling (zstd's bound on it here) anyway, so
+ * nothing larger is ever worth keeping.
+ */
+const MAX_SIGNED_BODY = 2 * 1024 ** 3 + ((2 * 1024 ** 3) >> 8) + 64 * 1024
+
+/**
  * The seam implementation: `has` is HEAD, `hasMany` is the batch query,
  * `get`/`put` carry `x-artifact-duration` (and the tag when signing). An
  * auth failure (401/403) throws ONCE — LayeredCache reports it — and then
@@ -242,6 +250,8 @@ export class TurboRemoteCache implements RemoteCacheLayer {
     private readonly fetchImpl: typeof fetch = fetch,
     private readonly tempDir: string = tmpdir(),
     private readonly wait: (ms: number) => Promise<void> = Bun.sleep,
+    /** The most a signed body may hold before its tag is checked (a test lowers it). */
+    private readonly maxSignedBody: number = MAX_SIGNED_BODY,
   ) {
     this.key = config.signatureKey === undefined ? undefined : Buffer.from(config.signatureKey)
     this.endpoint = `${config.apiUrl}/v8/artifacts`
@@ -356,7 +366,20 @@ export class TurboRemoteCache implements RemoteCacheLayer {
     const temp = path.join(this.tempDir, `vx-turbo-${hash}-${randomUUID()}`)
     trackTemp(temp)
     try {
-      await Bun.write(temp, res)
+      const max = this.maxSignedBody
+      const past = () => new Error(`the signed artifact runs past ${max} bytes — treated as a miss`)
+      if (Number(res.headers.get('content-length') ?? 0) > max) throw past()
+      let n = 0
+      const counted = res.body?.pipeThrough(
+        new TransformStream<Uint8Array, Uint8Array>({
+          transform(chunk, controller) {
+            n += chunk.byteLength
+            if (n > max) controller.error(past())
+            else controller.enqueue(chunk)
+          },
+        }),
+      )
+      await Bun.write(temp, new Response(counted ?? null))
       const expected = await artifactTag(key, hash, this.config.teamId ?? '', Bun.file(temp))
       if (!tagsEqual(expected, tag)) throw refused()
     } catch (err) {

@@ -83,6 +83,12 @@
   never placed over one), both removed; its NUL refusal is kept, now held
   by a row (a NUL reached the file system as a raw
   `ERR_INVALID_ARG_VALUE`).
+- L-8. `fix(vx-migrate)`: `turboCache()` with a signature key wrote the
+  whole remote body to a temp before checking its tag, with no bound: a
+  server that never ended one filled the temp's disk before core's
+  ingest bound (L-5) saw a byte. The signed body is now held to core's
+  ceiling at zstd's bound, by its length header or a running count. Row
+  in `turbo-cache-sweep.test.ts`. The G lead it came from is closed.
 
 ## Leads for other streams
 
@@ -107,7 +113,6 @@
 - D (config): the purity gate lets `new Worker('./x.ts')` through; the
   worker's file is outside the hashed closure, so its reads (env, clock)
   can be cached stale.
-- G (adoption): `turboCache()` with a signature key writes the whole
-  remote body to its temp before verifying the tag, with no byte bound
-  (core's ingest bound, L-5, comes after); `hasMany` reads its JSON reply
-  unbounded.
+- G (adoption): `turboCache()`'s `hasMany` reads its JSON reply with no
+  byte bound (the request's timeout is the only one); the signed-body half
+  of this lead is L-8.
