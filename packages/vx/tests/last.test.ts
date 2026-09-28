@@ -299,6 +299,10 @@ describe('parseLastArgs', () => {
     expect(parseLastArgs(['--format', 'json']).format).toBe('json')
     expect(parseLastArgs(['--format=pretty']).format).toBe('pretty')
     expect(parseLastArgs(['--format', 'yaml']).error).toMatch(/pretty \| json/)
+    expect([parseLastArgs(['--format']).error, parseLastArgs(['--format=']).error]).toEqual([
+      '--format requires a value (pretty | json)',
+      '--format requires a value (pretty | json)',
+    ])
     expect(parseLastArgs(['--cache-dir', 'x']).cacheDir).toBe('x')
     expect(parseLastArgs(['--cache-dir=y/z', '--list']).list).toBe(10)
     expect(parseLastArgs(['--cache-dir']).error).toMatch(/requires a path/)
