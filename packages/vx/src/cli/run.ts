@@ -1,5 +1,6 @@
 import { appendFileSync, mkdirSync } from 'node:fs'
 import path from 'node:path'
+import { translateForeign } from './foreign-flags.js'
 import { flagHint, seeHelp } from './help.js'
 import { defaultAffectedBase, findWorkspaceRoot } from '../workspace/index.js'
 import {
@@ -109,7 +110,7 @@ export function parseConcurrency(v: string, cpus = machineParallelism()): number
   return n === null || n < 1 ? null : n
 }
 
-export function parseRunArgs(args: readonly string[]): RunArgs {
+export function parseRunArgs(rawArgs: readonly string[]): RunArgs {
   const out: RunArgs = {
     tasks: [],
     filters: [],
@@ -133,6 +134,10 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
     reportFile: undefined,
   }
 
+  // A Turbo or Nx spelling becomes vx's, or a refusal naming vx's.
+  const translated = translateForeign(rawArgs)
+  if ('error' in translated) return { ...out, error: translated.error }
+  const args = translated
   const sepIdx = args.indexOf('--')
   const before = sepIdx === -1 ? args : args.slice(0, sepIdx)
   out.forwardArgs = sepIdx === -1 ? [] : args.slice(sepIdx + 1)

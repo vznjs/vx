@@ -1735,6 +1735,58 @@ like what `vx init` writes: both hand a plan to core's migration seam
 against overwriting, writes and reports. The mapping rules live in the
 package's README.
 
+## Turbo and Nx flags
+
+What a Turbo or Nx user types into `vx run` (and `vx watch`): each flag
+vx takes as it is (`same`), rewrites to its own spelling before the
+parse (`alias`), or refuses with the vx way to say it (`refuse`) —
+none is dropped in silence. `vx run-many` and `vx affected` name the
+`vx run` that does the same. The table is `cli/foreign-flags.ts`,
+rendered; `tests/foreign-flags.test.ts` drives every row and holds this
+copy to the source.
+
+| runner | flag                                              | outcome | in vx                                                                                                                         |
+| ------ | ------------------------------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| turbo  | `--filter <v>`                                    | same    | `--filter`, the same grammar (`...[ref]`, `{dir}`, `^`, `!`)                                                                  |
+| turbo  | `--concurrency <v>`                               | same    | `--concurrency <n\|n%>`                                                                                                       |
+| turbo  | `--continue=dependencies-successful`              | alias   | `--continue=deps-ok`                                                                                                          |
+| turbo  | `--continue`                                      | same    | `--continue[=never\|deps-ok\|always]`                                                                                         |
+| turbo  | `--dry-run`                                       | alias   | `--dry[=text\|json]`                                                                                                          |
+| turbo  | `--graph=<file>.svg\|png\|json\|html\|…`          | refuse  | vx writes Graphviz DOT only: `--graph=<file>.dot`, then `dot -Tsvg`                                                           |
+| turbo  | `--graph`                                         | same    | `--graph[=<file>.dot]`                                                                                                        |
+| turbo  | `--force`                                         | same    | `--force`: skip cache reads, keep writes                                                                                      |
+| turbo  | `--affected`                                      | same    | `--affected[=<base>]`                                                                                                         |
+| turbo  | `--summarize`                                     | same    | `--summarize[=<path>]`                                                                                                        |
+| turbo  | `--output-logs=new-only`                          | refuse  | use `--output-logs=full` (a hit replays its log) or `errors-only`                                                             |
+| turbo  | `--output-logs <v>`                               | same    | `--output-logs full\|errors-only\|hash-only\|none`                                                                            |
+| turbo  | `--no-cache`                                      | same    | `--no-cache`                                                                                                                  |
+| turbo  | `--cache <v>`                                     | same    | `--cache local:rw,remote:r`                                                                                                   |
+| turbo  | `--cache-dir <v>`                                 | same    | `--cache-dir <path>`                                                                                                          |
+| turbo  | `--profile`                                       | same    | `--profile[=<path>]` (Chrome trace)                                                                                           |
+| turbo  | `--only`                                          | alias   | `--exclude-dependencies`                                                                                                      |
+| nx     | `--parallel <n>`                                  | alias   | `--concurrency <n>` (`--parallel=false` is 1)                                                                                 |
+| turbo  | `--parallel`                                      | refuse  | vx always honours `dependsOn`; `--concurrency <n>` sets how many run at once                                                  |
+| turbo  | `--scope <v>`                                     | refuse  | use `--filter <pkg>`                                                                                                          |
+| turbo  | `--since <v>`                                     | refuse  | use `--filter '[<ref>]'` or `--affected=<ref>`                                                                                |
+| turbo  | `--remote-only`                                   | refuse  | use `--cache local:,remote:rw`                                                                                                |
+| turbo  | `--remote-cache-read-only`                        | refuse  | use `--cache local:rw,remote:r`                                                                                               |
+| turbo  | `--token <v>`, `--team <v>`, `--api <v>`          | refuse  | a remote cache is a plugin: `turboCache()` from @vzn/vx-migrate in vx.workspace.ts reads TURBO_TOKEN / TURBO_TEAM / TURBO_API |
+| turbo  | `--no-daemon`, `--daemon`                         | refuse  | vx has no daemon: drop it                                                                                                     |
+| turbo  | `--ui <v>`, `--log-order <v>`, `--log-prefix <v>` | refuse  | vx frames each task’s output: `--output-logs <mode>` sets how much                                                            |
+| nx     | `-t <v>`, `--targets <v>`, `--target <v>`         | alias   | the task names, positional: `vx run build test`                                                                               |
+| nx     | `-p <v>`, `--projects <v>`                        | alias   | `--filter <pattern>`, one per project                                                                                         |
+| nx     | `--exclude <v>`                                   | alias   | `--filter '!<pattern>'`, one per project                                                                                      |
+| nx     | `--base <v>`                                      | alias   | `--affected=<ref>`                                                                                                            |
+| nx     | `--head HEAD`                                     | alias   | nothing: vx compares `--affected=<base>` with the working tree                                                                |
+| nx     | `--head <v>`                                      | refuse  | vx compares `--affected=<base>` with the working tree: check out the head first                                               |
+| nx     | `--skip-nx-cache`                                 | alias   | `--force`                                                                                                                     |
+| nx     | `--all`                                           | same    | `--all`                                                                                                                       |
+| nx     | `--nx-bail`                                       | alias   | `--continue=never`                                                                                                            |
+| nx     | `-c <v>`, `--configuration <v>`                   | refuse  | a configuration is its own task: `vx run <target>:<configuration>`                                                            |
+| nx     | `--output-style <v>`                              | refuse  | use `--output-logs <mode>`                                                                                                    |
+| nx     | `--uncommitted`, `--untracked`                    | refuse  | use `--affected=HEAD` (the working tree against the last commit)                                                              |
+| nx     | `--no-cloud`                                      | refuse  | vx has no cloud: drop it                                                                                                      |
+
 ## Machine-readable output
 
 `vx show`, `vx info`, `vx why`, `vx last` and `vx cache prune` take
