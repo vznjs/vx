@@ -665,6 +665,11 @@ describe('turbo(): the mapping cache', () => {
       'echo lint',
     ],
     [
+      'the .yarnrc.yml',
+      () => writeFile(path.join(root, '.yarnrc.yml'), 'nodeLinker: pnp\n'),
+      'yarn run lint',
+    ],
+    [
       'a package manifest',
       () =>
         writeFile(

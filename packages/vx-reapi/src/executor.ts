@@ -470,16 +470,21 @@ function decodeDigest(buf: Uint8Array): Digest {
 
 function readVarint(buf: Uint8Array, at: number): [number, number] {
   let result = 0
+  let low = 0
   let shift = 0
   let i = at
   for (;;) {
     const byte = buf[i++]
-    if (byte === undefined) return [result, i]
-    result |= (byte & 0x7f) << shift
+    if (byte === undefined) break
+    // Added, not OR-ed: a size of 4 GiB or more wrapped to 32 bits (F-43).
+    // Past 2^53 the value is a negative int32 sent as ten bytes (an exit
+    // code): its low 32 bits, which `| 0` reads back as the negative.
+    result += (byte & 0x7f) * 2 ** shift
+    if (shift < 32) low |= (byte & 0x7f) << shift
     if ((byte & 0x80) === 0) break
     shift += 7
   }
-  return [result >>> 0, i]
+  return [result <= Number.MAX_SAFE_INTEGER ? result : low >>> 0, i]
 }
 
 /**

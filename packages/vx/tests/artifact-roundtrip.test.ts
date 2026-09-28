@@ -15,6 +15,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { writeLocalWorkspace } from './helpers/local-workspace.js'
 import { ArtifactVanishedError, Cache, CorruptArtifactError } from '../src/cache/cache.js'
+import { withSum } from './helpers/artifact-sum.js'
 
 const TIMEOUT = 60_000
 const CLI = path.join(import.meta.dir, '..', 'src', 'bin.ts')
@@ -422,7 +423,7 @@ describe('restoreOutputs refuses to report a hit it cannot materialize', () => {
     // Built in-process: the previous version of this fixture spawned
     // `tar --format=gnu`, which bsdtar (macOS) REFUSES — so on darwin it
     // wrote an EMPTY archive and passed for the wrong reason.
-    const hollow = await new Bun.Archive({ stdout: '' }).bytes()
+    const hollow = await withSum(await new Bun.Archive({ stdout: '' }).bytes())
     await Bun.write(cache.outputsPath('hollow'), await Bun.zstdCompress(hollow))
 
     await expect(cache.restoreOutputs('hollow', projectDir)).rejects.toThrow(
@@ -621,7 +622,9 @@ describe('restoreOutputs decodes a large artifact as a stream', () => {
       stdout: 'hello',
       'outputs/dist/big.bin': big,
       '.vx-meta.json': JSON.stringify({ version: 1, key: 'bigin', files: {} }),
-    }).bytes()
+    })
+      .bytes()
+      .then(withSum)
     await cache.ingest('bigin', new Blob([Bun.zstdCompressSync(tar)]), {
       taskId: 'a#build',
       command: 'build',

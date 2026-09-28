@@ -1,6 +1,9 @@
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import os from 'node:os'
+import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { foldScriptHooks } from '@vzn/vx'
-import { scriptCommand } from '../src/script-command.js'
+import { scriptCommand, yarnPnp } from '../src/script-command.js'
 
 describe('scriptCommand — a script body becomes the task command', () => {
   it('inlines a body that stands on its own in sh', () => {
@@ -46,5 +49,29 @@ describe('scriptCommand — a script body becomes the task command', () => {
     )
     expect(scriptCommand('build', 'run clean && run build:code')).toBe('yarn run build')
     expect(scriptCommand('build', 'tsc -b; run copy')).toBe('yarn run build')
+  })
+})
+
+describe("Yarn Plug'n'Play: no node_modules, so every script runs through `yarn run`", () => {
+  it('a PnP workspace runs the script by name, hooks and all left to yarn', () => {
+    const scripts = { prebuild: 'gen', build: 'node -e "require(\'left-pad\')"' }
+    expect(scriptCommand('build', scripts.build, scripts, true)).toBe('yarn run build')
+  })
+
+  it.each([
+    ['no .yarnrc.yml (yarn 1, npm, pnpm)', null, false],
+    ['a .yarnrc.yml naming no linker (yarn >= 2 defaults to pnp)', 'yarnPath: y.js\n', true],
+    ['nodeLinker: pnp', 'nodeLinker: pnp\n', true],
+    ['nodeLinker: "pnp", quoted', 'nodeLinker: "pnp"\n', true],
+    ['nodeLinker: node-modules', 'yarnPath: y.js\nnodeLinker: node-modules\n', false],
+    ['nodeLinker: pnpm', "nodeLinker: 'pnpm'\n", false],
+  ])('%s', async (_what, rc, expected) => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'vx-migrate-pnp-'))
+    try {
+      if (rc !== null) await writeFile(path.join(root, '.yarnrc.yml'), rc)
+      expect(await yarnPnp(root)).toBe(expected)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
   })
 })

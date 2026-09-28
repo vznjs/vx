@@ -1338,3 +1338,40 @@ describe('the preset, exactly', () => {
     ])
   })
 })
+
+describe('vx migrate — a repo core finds no workspace root in', () => {
+  // OpenCut (e668010): `.moon/` over a Cargo workspace, no root package.json.
+  it(
+    'names a moon or Rush workspace, and leaves any other refusal as core words it',
+    async () => {
+      const seen: Record<string, VxResult> = {}
+      for (const [name, file, text] of [
+        ['moon', '.moon/workspace.yml', 'projects:\n  - apps/*\n'],
+        ['rush', 'rush.json', '{ "projects": [] }\n'],
+        ['none', 'README.md', 'nothing\n'],
+      ] as const) {
+        const dir = await mkdtemp(path.join(os.tmpdir(), `vx-migrate-noroot-${name}-`))
+        await mkdir(path.dirname(path.join(dir, file)), { recursive: true })
+        await writeFile(path.join(dir, file), text)
+        seen[name] = await vx(dir, ['--dry'])
+        seen[name]!.err = seen[name]!.err.replace(dir, '<dir>')
+        await rm(dir, { recursive: true, force: true })
+      }
+      expect(seen['moon']).toEqual({
+        code: 1,
+        out: '',
+        err: 'vx-migrate: a moon workspace with no root package.json or pnpm-workspace.yaml: vx finds projects through the package manager\'s workspaces — list the moon projects that have a package.json under "workspaces" and re-run\n',
+      })
+      expect(seen['rush']).toEqual({
+        code: 1,
+        out: '',
+        err: 'vx-migrate: a Rush workspace: vx does not yet discover projects from rush.json (it finds them through package.json workspaces or pnpm-workspace.yaml)\n',
+      })
+      expect(seen['none']!.code).toBe(1)
+      expect(seen['none']!.err).toStartWith(
+        'vx-migrate: Could not find a workspace root in any parent of <dir> ',
+      )
+    },
+    TIMEOUT,
+  )
+})

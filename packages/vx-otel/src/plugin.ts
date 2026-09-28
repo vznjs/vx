@@ -135,7 +135,12 @@ export function resolveOtelConfig(
     present(opts.logsEndpoint) ??
     present(env['OTEL_EXPORTER_OTLP_LOGS_ENDPOINT']) ??
     (base ? joinSignal(base, 'logs') : undefined)
-  if (tracesUrl === undefined) return undefined
+  // Each signal has its own endpoint, as the spec has them: a pipeline that
+  // set only a metrics (or logs) endpoint declined whole and exported
+  // nothing (F-45). The plugin declines only when no signal has one.
+  if (tracesUrl === undefined && metricsUrl === undefined && logsUrl === undefined) {
+    return undefined
+  }
   // The standard SDK opt-outs, honoured so a pipeline already configured
   // that way does not start receiving vx's telemetry because it upgraded
   // vx. Only the logs one was read; `OTEL_SDK_DISABLED=true` and the traces
@@ -260,9 +265,9 @@ export function resolveOtelConfig(
     if (Object.keys(one).length > 0) tls[signal] = one
   }
   return {
-    tracesUrl,
-    metricsUrl: metricsUrl ?? tracesUrl,
-    logsUrl: logsUrl ?? tracesUrl,
+    tracesUrl: tracesUrl ?? '',
+    metricsUrl: metricsUrl ?? '',
+    logsUrl: logsUrl ?? '',
     serviceName:
       present(opts.serviceName) ??
       present(env['OTEL_SERVICE_NAME']) ??
@@ -287,7 +292,7 @@ export function resolveOtelConfig(
       }),
       logs: clean({ ...parseOtlpHeaders(env['OTEL_EXPORTER_OTLP_LOGS_HEADERS']), ...opts.headers }),
     },
-    ...(tracesWanted ? {} : { tracesEnabled: false }),
+    ...(tracesWanted && tracesUrl !== undefined ? {} : { tracesEnabled: false }),
     metricsEnabled: metricsWanted && metricsUrl !== undefined,
     logsEnabled: logsWanted && logsUrl !== undefined,
     timeoutMs: opts.timeoutMs ?? envTimeout(env['OTEL_EXPORTER_OTLP_TIMEOUT']) ?? 15_000,

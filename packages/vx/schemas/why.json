@@ -1,0 +1,133 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "vx why --format json",
+  "description": "A task's run against its previous run. On history older than run ids, `why` and `diff` are null and `explanation` carries the latest cache entry.",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["taskId", "runId", "why", "diff"],
+      "properties": {
+        "taskId": { "type": "string" },
+        "runId": { "type": "string" },
+        "why": { "$ref": "#/$defs/why" },
+        "diff": { "$ref": "#/$defs/diff" }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["taskId", "why", "diff", "explanation"],
+      "properties": {
+        "taskId": { "type": "string" },
+        "why": { "type": "null" },
+        "diff": { "type": "null" },
+        "explanation": { "$ref": "#/$defs/explanation" }
+      }
+    }
+  ],
+  "$defs": {
+    "why": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["runId", "taskId", "found", "thisRun", "previousRun", "hashChanged", "note"],
+      "properties": {
+        "runId": { "type": "string" },
+        "taskId": { "type": "string" },
+        "found": { "const": true },
+        "thisRun": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["hash", "status", "cacheHit", "cached", "startedAt"],
+          "properties": {
+            "hash": {
+              "type": "string",
+              "description": "empty for a task that never ran (skipped)"
+            },
+            "status": { "type": "string" },
+            "cacheHit": { "type": ["boolean", "null"] },
+            "cached": { "type": ["boolean", "null"] },
+            "startedAt": { "type": "integer", "description": "epoch ms" }
+          }
+        },
+        "previousRun": {
+          "type": ["object", "null"],
+          "description": "null on the task's first recorded run",
+          "additionalProperties": false,
+          "required": ["hash", "status", "cacheHit", "startedAt"],
+          "properties": {
+            "hash": { "type": "string" },
+            "status": { "type": "string" },
+            "cacheHit": { "type": ["boolean", "null"] },
+            "startedAt": { "type": "integer" }
+          }
+        },
+        "hashChanged": {
+          "type": ["boolean", "null"],
+          "description": "null when either run has no key"
+        },
+        "note": { "type": "string" }
+      }
+    },
+    "diff": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runId",
+        "taskId",
+        "found",
+        "previousRunId",
+        "entries",
+        "unchangedCount",
+        "note"
+      ],
+      "properties": {
+        "runId": { "type": "string" },
+        "taskId": { "type": "string" },
+        "found": { "type": "boolean" },
+        "previousRunId": { "type": ["string", "null"] },
+        "entries": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kind", "name", "change", "before", "after"],
+            "properties": {
+              "kind": { "type": "string", "description": "files, env, runtime, upstream, …" },
+              "name": { "type": "string" },
+              "change": { "enum": ["added", "removed", "changed"] },
+              "before": { "type": ["string", "null"] },
+              "after": { "type": ["string", "null"] }
+            }
+          }
+        },
+        "unchangedCount": { "type": "integer" },
+        "note": { "type": "string" }
+      }
+    },
+    "explanation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["taskId", "project", "task", "latestEntry", "note"],
+      "properties": {
+        "taskId": { "type": "string" },
+        "project": { "type": "string" },
+        "task": { "type": "string" },
+        "latestEntry": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["hash", "command", "exitCode", "durationMs", "sizeBytes", "createdAt"],
+          "properties": {
+            "hash": { "type": "string" },
+            "command": { "type": "string" },
+            "exitCode": { "type": "integer" },
+            "durationMs": { "type": "number" },
+            "sizeBytes": { "type": "integer" },
+            "createdAt": { "type": "integer" }
+          }
+        },
+        "note": { "type": "string" }
+      }
+    }
+  }
+}

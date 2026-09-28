@@ -35,7 +35,7 @@ The cache key for one task is a **16-hex xxHash3 digest**, seed-chained
 over (in order):
 
 1. **`CACHE_VERSION`** — the key-derivation sentinel
-   (currently `'vx-cache-v35'`, in `src/cache/key-fold.ts`). Bumped only
+   (currently `'vx-cache-v36'`, in `src/cache/key-fold.ts`). Bumped only
    when the key derivation format changes. See
    [§ Bumping CACHE_VERSION](#bumping-cache_version).
 2. **`taskId`** — `${projectName}#${taskName}`. Two tasks with
@@ -734,7 +734,9 @@ Then the order is fixed, and the dependant is **additive**: twenty's
 - its **own output set** is what its run added or changed under its
   declared outputs — the outputs are stamped (size, mtime) before the
   run and diffed after, the same proof a hit's "already current" check
-  trusts — and only that set is saved;
+  trusts — and only that set is saved; `outputs.workspaceFiles` are
+  stamped the same way (until A-43 its miss cleaned them by glob, deleting
+  a same-tree upstream's root-anchored files before it read them);
 - it **cleans by recorded rows**, never by glob, before a run (nothing:
   stale files of its own are its command's to clean, as under Turbo) and
   before a restore (its rows only);
@@ -1020,7 +1022,8 @@ by this user, or point cacheDir / --cache-dir at one that is.` (A-40).
     ├── outputs/<rel>                       declared output files, project-relative (when any)
     ├── workspace-outputs/<rel>             declared outputs.workspaceFiles,
     │                                       WORKSPACE-ROOT-relative (when any)
-    └── .vx-meta.json                       per-output [mode, mtimeMs] sidecar
+    ├── .vx-meta.json                       per-output [mode, mtimeMs] sidecar
+    └── .vx-sum                             CRC-32 of every entry above (v36)
 ```
 
 `<hash>` is the 16-hex xxh3 key. The `workspace-outputs/` namespace is
@@ -1081,6 +1084,20 @@ past the 2.0 GB artifact ceiling a restore enforces`), and nothing is
 stored for a later run to hit and fail to restore. Left to the scan, a
 2.2 GB output paid the whole compress and a decode (6 to 14 s) to learn
 the same thing and called the task's outputs a corrupt artifact.
+
+The last entry, `.vx-sum`, is a CRC-32 over every entry before it (each
+its name, a NUL, then its body) as 8 hex digits. Tar sums its headers
+only and neither zstd writer asks for a frame checksum, so a byte flipped
+in a raw zstd block (incompressible output: an image, a wasm, a tarball)
+decoded clean and a hit replayed the wrong bytes: 1,141 of 1,141 flips in
+a random 8 KB body went unseen (L-19). Scan and restore hash every entry
+as they read it and refuse an artifact whose sum is absent, wrong, or
+followed by another entry, before anything it holds lands; the refusal
+is a corrupt artifact, so a restore degrades to a miss and an ingest
+stores nothing. It catches damage in transit or at rest, not a store that
+forges artifacts: nothing a key carries can tell those from honest ones.
+Its cost is the CRC's (~10 GB/s): a 32 MB restore 11.3 → 14.4 ms and
+1,000 small files 16.2 → 18.9 ms on tmpfs, min of 15.
 
 Tar headers carry mode and second mtimes. vx needs both permission bits (a lost executable bit builds cold
 and breaks warm) and millisecond mtimes (the skip-restore probe compares
@@ -1216,7 +1233,7 @@ CREATE TABLE runs (
   forward_args        TEXT,             -- salted xxh3 of the JSON-encoded `--` args; null when none
   started_at          INTEGER NOT NULL, -- ms-epoch
   ended_at            INTEGER NOT NULL,
-  run_id              TEXT,             -- ULID shared across all tasks in one invocation
+  run_id              TEXT,             -- UUIDv7 shared across all tasks in one invocation
   cpu_ms              INTEGER,
   peak_rss_bytes      INTEGER,
   wallclock_start_ns  INTEGER,          -- bigint; serialized as SQLite INTEGER (signed 64-bit)
@@ -1318,7 +1335,7 @@ CREATE TABLE output_dirs (
 -- command, git/CI/host context, tags, and run-level counts. Recorded
 -- atomically alongside `runs` via recordRunBundle (one transaction).
 CREATE TABLE invocations (
-  run_id            TEXT PRIMARY KEY,         -- ULID, == runs.run_id
+  run_id            TEXT PRIMARY KEY,         -- UUIDv7, == runs.run_id
   command           TEXT NOT NULL,            -- full argv, e.g. "vx run build --all"
   requested_tasks   TEXT NOT NULL,            -- JSON string[] of options.tasks
   cache_policy      TEXT NOT NULL,            -- compact flags, e.g. "lR,lW,rR,rW"
@@ -1524,6 +1541,11 @@ was not), and the cache tests.
 
 ### History
 
+- **v35 → v36**: the container changes (L-19). Every artifact ends in a
+  `.vx-sum` entry, a CRC-32 over the entries before it, and scan and
+  restore refuse one whose sum is absent or wrong: a byte flipped in a
+  raw zstd block restored as a hit, undetected. A v35 artifact carries no
+  sum, so the bump retires them rather than refusing each on read.
 - **v34 → v35**: the container changes (item 943). The sidecar records
   the cache key the artifact was packed under, and ingest refuses bytes
   whose key is not the one it asked for, or that record none. Nothing

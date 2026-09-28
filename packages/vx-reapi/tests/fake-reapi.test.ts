@@ -71,6 +71,30 @@ describe.if(CHUNKING_SUPPORTED)('the fake REAPI server, read by the real client'
     }
   })
 
+  it('a compressed write the server answers with -1 (the blob is held) is done, not short (F-44)', async () => {
+    fake.caps.compressors = ['ZSTD']
+    fake.heldCompressedMinusOne = true
+    const c = client()
+    try {
+      await c.negotiate()
+      const held = new Uint8Array(2 * 1024 * 1024).fill(9)
+      const d = c.digestOf(held)
+      fake.put(held)
+      const outcome = await c.writeBlob(d, held).then(
+        () => 'done',
+        (err: Error) => err.message,
+      )
+      expect([outcome, fake.writes.at(-1)!.resource.includes('/compressed-blobs/zstd/')]).toEqual([
+        'done',
+        true,
+      ])
+    } finally {
+      fake.caps.compressors = []
+      fake.heldCompressedMinusOne = false
+      c.close()
+    }
+  })
+
   it('ActionCache: an update is what the next get returns', async () => {
     const c = client()
     try {

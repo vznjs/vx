@@ -1087,8 +1087,11 @@ export class ReapiClient {
           // For a compressed upload the server reports the COMPRESSED byte
           // count it accepted, so the equality only holds on the identity
           // path; on the compressed path a non-zero commit is the signal.
+          // A server that already holds the blob ends a compressed write
+          // with `-1` (the spec's word for it); read as a short write, it
+          // failed the upload of an input two actions share (F-44).
           const expected = compressed ? total : digest.size_bytes
-          if (committed !== expected && !(compressed && committed > 0)) {
+          if (committed !== expected && !(compressed && (committed > 0 || committed === -1))) {
             return reject(
               new Error(`reapi: short write for ${digest.hash}: ${committed}/${expected}`),
             )

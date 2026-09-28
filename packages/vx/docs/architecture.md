@@ -595,7 +595,7 @@ as is any other — the recipe lives in the plugins guide.
 
 ## Run-history analytics
 
-Every `vx run` invocation stamps a ULID (`run_id`) and, unless a signal
+Every `vx run` invocation stamps a UUIDv7 (`run_id`) and, unless a signal
 stopped it, writes, in one
 transaction (`recordRunBundle`), one row per executed task to the
 `runs` table plus one header row to the `invocations` table in
@@ -610,7 +610,7 @@ transaction (`recordRunBundle`), one row per executed task to the
 | `duration_ms`                             | wallclock the user perceived (cache-hit = restore op time)                |
 | `forward_args`                            | salted xxh3 of the JSON `--` args, never the text (null when none)        |
 | `started_at, ended_at`                    | ms-epoch wallclock                                                        |
-| `run_id`                                  | ULID shared across every task in the same invocation                      |
+| `run_id`                                  | UUIDv7 shared across every task in the same invocation                    |
 | `cpu_ms`                                  | `Bun.spawn` resource-usage CPU (sum of user + system)                     |
 | `peak_rss_bytes`                          | resource-usage max RSS                                                    |
 | `wallclock_start_ns` / `wallclock_end_ns` | hrtime ns relative to run t=0                                             |

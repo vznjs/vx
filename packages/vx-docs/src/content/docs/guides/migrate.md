@@ -106,6 +106,7 @@ installed.
 | `{workspaceRoot}/file`               | `cache.inputs.workspaceFiles`                             |
 | `{ "env": "VAR" }`                   | `cache.inputs.env` **and** `exec.env.passThrough`         |
 | `{ "runtime": "<cmd>" }`             | `cache.inputs.workspaceRuntime`: it runs at the workspace root, as Nx's does |
+| `{ "json": "<file>", "fields": … }`  | the whole file in `files` / `workspaceFiles`: a superset of the fields |
 | `outputs`                            | `cache.outputs.files` (or `workspaceFiles` for `dist/<project>`) |
 | `nx build app`                       | `vx run app#build`                                        |
 | `nx run app:build:production`        | `vx run app#build:production`                             |
@@ -237,6 +238,7 @@ outputs. With no fan-out scripts at all, `vx init` writes the configs.
 
 ## Common problems
 
+- **No workspace root.** vx finds projects through `pnpm-workspace.yaml` or `package.json` `workspaces`. A moon repo without either needs a root `package.json` listing its projects; a Rush repo (`rush.json`) is not supported yet.
 - **A task always runs.** vx caches only a task with a `cache` block. `vx-migrate` fills it from `turbo.json`, the Nx graph, `.moon/`, wireit scripts or `lage.config.js`.
 - **An env var is missing in the command.** vx isolates the environment: list it in `exec.env.passThrough` ([Environment variables](../configure/#environment-variables)).
 - **`vx run build` ran one package.** Without `--all`, vx runs the package you are in.

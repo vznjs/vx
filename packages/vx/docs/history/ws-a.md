@@ -358,3 +358,9 @@ Lead from C. Under `ulimit -n 30`, 16 of 20 `echo hi` tasks failed to spawn (`EM
 A-38's row stamped a multiple of four seconds and hashed 1.2 s in, so a rule of `% 4000` and a widening down to 1.15 s both passed it. The row now stamps an even second that is not a multiple of four and hashes at 1.99 s; `% 4000`, `+ 1900` and a dropped rule are each red.
 
 - Sweep of A-39/A-40's refusal branches (`cache.ts`): four mutants, four caught — the artifact-read gate's `err.path === src` (the "cannot write" row, driven as `probe`) and its `isFsRefusal` (the fd row), the save wrapper's rethrow (`artifact-ceiling.test.ts`), the EMFILE branches (A-39's rows). A `probe` run needs a `TMPDIR` outside `/tmp/claude-0` (mode 0700).
+
+### A-43 — a root-anchored addition is stamped, not cleaned (2026-09-28)
+
+Lead from C. An additive task (item 588) stamped its project outputs before a run and saved what it added, but still cleaned its `workspaceFiles` by glob: with `build` and `individual` both on `gen`, `individual`'s miss deleted `build`'s `gen/a.txt` before reading it, and failed (reproduced with two projects). Its workspace outputs are now stamped (`stampWorkspaceOutputs`) and its entry holds what it added (`ownWorkspaceOutputsSince`, `ownWsOutputFiles`); the hit path already cleaned its workspace rows by row.
+
+- Row (`overlapping-outputs.test.ts` › "same tree at the workspace root"): the dependant succeeds and its entry holds only `gen/b.txt`; red without the stamp (it fails) and without the own set (the entry holds `gen/a.txt` too).

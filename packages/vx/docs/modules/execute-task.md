@@ -147,7 +147,9 @@ An ADDITIVE task (`node.addsToOutputsOf`, item 588) is not cleaned by
 glob before an attempt: its outputs are stamped once before the first
 attempt (`stampOutputs`) and, after a 0 exit, its own set is what the
 run added or changed against that stamp (`ownOutputsSince`), handed to
-`saveMiss` as `ownOutputFiles` in place of the glob walk.
+`saveMiss` as `ownOutputFiles` in place of the glob walk. Its
+`workspaceFiles` get the same treatment (`stampWorkspaceOutputs`,
+`ownWorkspaceOutputsSince`, `ownWsOutputFiles`; A-43).
 
 What a miss leaves behind — outputs resolved, artifact and rows saved,
 output prefixes recorded, git snapshot marked — is

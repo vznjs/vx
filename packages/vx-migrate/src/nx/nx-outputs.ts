@@ -85,6 +85,11 @@ export function mapNxOutputs(
     // Every `{options.x}`, not the first: `dist/{options.a}/{options.b}`.
     for (const optTok of o.matchAll(/\{options\.([^}]+)\}/g)) {
       const v = options[optTok[1]!]
+      // Nx leaves a falsy option's token in place and drops the output
+      // (`getOutputsForTargetAndConfiguration`): @nx/eslint's
+      // `{options.outputFile}` with no outputFile is no output, not a todo
+      // on every lint target (2026-09-28).
+      if (!v) continue outputs
       if (typeof v !== 'string') {
         todos.push(
           `output ${JSON.stringify(o)}: option ${JSON.stringify(optTok[1])} is not a literal ` +

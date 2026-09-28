@@ -339,9 +339,6 @@ cycle's task and the held dev server as SIGINT), and
 
 Plausible extensions, all contained:
 
-- **`vx watch <task1> <task2>`** — multiple tasks. The orchestrator
-  already supports multi-positional invocation; just relax the
-  validation here.
 - **Picker support** — borrow the `pickTask` flow from `cli/select.ts`
   for TTY-with-no-task.
 - **Per-project debouncing** — track which project's events arrived

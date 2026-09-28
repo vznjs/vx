@@ -1615,9 +1615,9 @@ never loads a second copy, and a workspace that runs the binary needs
 no `@vzn/vx` installed for it — the type-only form is still what the
 scaffold writes, because it types the same with no import to resolve
 in an editor without the package. A workspace that imports a PLUGIN
-package at runtime without having installed it is told so, with the
-install command. `--mjs` writes the same objects as `vx.config.mjs` and
-`vx.workspace.mjs`, with no import and no `satisfies`: a package whose
+package at runtime without having installed it is told so, and to
+install its dependencies. `--mjs` writes the same objects as `vx.config.mjs` and
+`vx.workspace.mjs`, with no type import and no `satisfies`: a package whose
 own `tsconfig` includes every `.ts` under it compiles a `vx.config.ts`
 into its dist (TanStack/query's `tsc --build`, 2026-09-11), and an
 `.mjs` is outside that include. `@vzn/vx-migrate` takes the same flag.
@@ -1723,6 +1723,18 @@ like what `vx init` writes: both hand a plan to core's migration seam
 against overwriting, writes and reports. The mapping rules live in the
 package's README.
 
+## Machine-readable output
+
+`vx show`, `vx info`, `vx why` and `vx last` take `--format json`. Each
+prints one JSON document whose shape is a checked-in JSON Schema
+(draft 2020-12) shipped with the package: `schemas/show.json`,
+`schemas/info.json`, `schemas/why.json`, `schemas/last.json`
+(`node_modules/@vzn/vx/schemas/` in an install). Every object closes its
+key set, so a field vx adds is a schema change, never a surprise.
+`tests/cli-json-schemas.test.ts` holds each verb's output to its schema,
+each declared field to some output, and each object's keys to the
+source type.
+
 ## `vx show`
 
 Introspect the workspace's **live resolved configs** — what a run
@@ -1826,7 +1838,7 @@ plugins:          2 — @vzn/vx-reapi (executor, cache); @vzn/vx-otel (telemetry
 workers:          2 — cgroup CPU quota 2 of 8 cores
 memory:           13 GB usable — cgroup limit; the machine has 16 GB
 cache dir:        /work/repo/.vx/cache
-cache versions:   keys vx-cache-v35 · index schema v28
+cache versions:   keys vx-cache-v36 · index schema v28
 cache entries:    42 (1.3 GB)
 orphans:          3 artifacts (12 MB) the index does not know — `vx cache prune` reaps them
 task runs (24h):  7 (5 cache hits)

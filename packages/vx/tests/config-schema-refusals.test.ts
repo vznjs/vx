@@ -261,8 +261,31 @@ describe('task refusals the sweep found unheld (item 653)', () => {
     // A non-null non-object is refused further down (`cache.inputs is
     // required`); null alone reaches `Object.keys` and throws a raw TypeError.
     expect(taskRefusal({ exec: { command: 'x' }, cache: null })).toBe(
-      `${CFG}: tasks.t.cache must be an object when present`,
+      `${CFG}: tasks.t.cache must be an object when present — \`cache: { inputs: { files: [...] }, outputs: { files: [...] } }\`, or no \`cache\` for a task that never caches`,
     )
+  })
+
+  it('a field another runner spells elsewhere is refused naming where vx keeps it (D-37)', () => {
+    // Turbo's task-level `outputs` / `inputs` / `env`, Nx's `command`: an
+    // unknown-field refusal that named neither the field nor its home.
+    const where = (task: Record<string, unknown>): string | undefined =>
+      taskRefusal({ exec: { command: 'x' }, ...task })?.split(' — ')[1]
+    expect(where({ outputs: ['dist/**'] })).toBe('vx spells it `cache.outputs.files`')
+    expect(where({ inputs: ['src/**'] })).toBe('vx spells it `cache.inputs.files`')
+    expect(where({ env: ['API_URL'] })).toBe(
+      'vx spells it `cache.inputs.env` (to key the task on a variable) or `exec.env` (to pass one)',
+    )
+    expect(where({ passThroughEnv: ['CI'] })).toBe('vx spells it `exec.env.passThrough`')
+    expect(where({ persistent: true })).toBe('vx spells it `exec.persistent: {}`')
+    expect(taskRefusal({ command: 'x' })?.split(' — ')[1]).toBe('vx spells it `exec.command`')
+    expect(taskRefusal({ exec: { cmd: 'x' } })?.split(' — ')[1]).toBe('vx spells it `command`')
+    // `cache: false` (Turbo's "never cache") and `persistent: true` name the fix.
+    expect(taskRefusal({ exec: { command: 'x' }, cache: false })).toContain(
+      'or no `cache` for a task that never caches',
+    )
+    expect(taskRefusal({ exec: { command: 'x', persistent: true } })).toContain('`persistent: {}`')
+    // CONTROL: a typo still gets the nearest spelling.
+    expect(where({ dependOn: [] })).toBe('did you mean dependsOn?')
   })
 })
 

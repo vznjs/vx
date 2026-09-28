@@ -211,8 +211,23 @@
   composite action, with the checker's own refusals pinned. There is no
   checksum file to attest: `vx upgrade` checks the digest the release API
   publishes, and each binary is attested (L-12). Supervisor backlog 2.
+- L-19. `fix(cache)`: nothing checked an artifact entry's BODY. Tar sums
+  headers only; neither zstd writer asks for a frame checksum; so a byte
+  flipped in a raw zstd block (incompressible output) decoded clean, and
+  a local or remote hit replayed wrong bytes: 1,141 of 1,141 flips in a
+  random 8 KB body went unseen (probed). Each artifact now ends in a
+  `.vx-sum` CRC-32 over the entries before it, checked on scan and
+  restore before anything lands; `CACHE_VERSION` v36. A CRC is for
+  damage, not forgery: an HTTP or Turbo/Nx wire store that writes what it
+  likes is trusted as a writer (turboCache's signature is the one
+  authenticated wire), and REAPI's CAS holds each blob to its digest
+  (L-3). Supervisor backlog 1. Rows in `artifact-checksum.test.ts`.
 
 ## Leads for other streams
+
+- Cache owners: `src/cache/archive.ts` and `tar-stream.ts` changed under
+  L-19 (a `.vx-sum` last entry, `CACHE_VERSION` v36). A test that builds
+  an artifact by hand wraps it in `tests/helpers/artifact-sum.ts`.
 
 - B (sandbox): `src/exec/sandbox-runtime.ts` changed under L-13
   (`ownTaskTmpRoot()` before a task directory is made).

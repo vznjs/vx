@@ -141,7 +141,7 @@ terminal and a task succeeding or failing. Read it alongside
  │         hot path is byte-identical).
  │
  ├─ Run-level state
- │    • runId   — ULID stamped once per `vx run` invocation; every
+ │    • runId   — UUIDv7 stamped once per `vx run` invocation; every
  │                task in the resulting graph carries it.
  │    • runStartHrTimeNs — hrtime.bigint() anchor; per-task wallclock
  │                spans are stored relative to it.
@@ -386,7 +386,9 @@ The child process gets, in priority order (lowest first):
 Anything not in these four layers is invisible to the child, except
 the two vx sets itself — `VX_RUN_WORKSPACE` and `VX_RUN_TASK` — so a
 task that shells out to `vx run` in its own workspace is refused
-before it forks without bound. This prevents incidental env leakage
+before it forks without bound. A sandboxed task also gets the sandbox's own
+proxy, CA and `TMPDIR` values
+([`modules/sandbox-runtime.md`](./modules/sandbox-runtime.md#the-environment-srt-sets)). This prevents incidental env leakage
 between machines and gives reproducible runs.
 
 The allowlist + isolation contract lives in
@@ -470,8 +472,8 @@ wire forwarders attach beside it). What renders:
   blocks collapse under `::group::` commands; failures stay open and
   emit `::error` annotations.
 
-There is no special handling for binary output, very large output, or
-interactive prompts. Stdin is never the terminal, and the rule splits
+There is no special handling for binary output or interactive
+prompts. Stdin is never the terminal, and the rule splits
 on `exec.persistent`:
 
 - **A one-shot task** gets `'ignore'`: it sees EOF at once, so a task
