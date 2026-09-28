@@ -524,3 +524,13 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   edit `turbo/`); a fix to one would have keyed the same files two
   ways. One module, `src/dotenv-probe.ts`, now holds it; the string is
   unchanged, so no key moves.
+- **G-48.** A stale hit in G-45's root tasks, found on
+  NotionX/react-notion-x@03c5e88 (`//#test:lint`, `oxlint` over the
+  repo): a member file broken after a green run replayed green. Turbo
+  hashes a root task over the whole repo; mapped as the root project's
+  own `**/*`, core stopped the globs at every member (D-39). A root
+  task's inputs and outputs are now `workspaceFiles`
+  (connectrpc/connect-es's hand-written `!packages/**` rides along).
+  The `//#x` todo with no root project and the `$TURBO_ROOT$` one no
+  longer say vx has no root tasks. Row (`turbo.test` › a member edit
+  re-keys it): red without the fix.

@@ -767,7 +767,7 @@ function buildTask(
       }
       if (d.includes('$TURBO_ROOT$')) {
         todos.push(
-          `dependsOn ${JSON.stringify(d)} uses $TURBO_ROOT$ — vx has no workspace-root tasks; ` +
+          `dependsOn ${JSON.stringify(d)} uses $TURBO_ROOT$, which names no task — ` +
             'restructure manually',
         )
         continue
@@ -786,7 +786,12 @@ function buildTask(
         if (emitted.get(pkg)?.has(task)) {
           const edge = `${pkg}#${task}`
           if (!deps.includes(edge)) deps.push(edge)
-        } else
+        } else if (pkg === ROOT)
+          todos.push(
+            `dependsOn ${JSON.stringify(d)}: the workspace root is no project — edge dropped; ` +
+              'a vx.config at the root makes it one',
+          )
+        else
           todos.push(
             `dependsOn ${JSON.stringify(d)}: ${pkg} declares no ${task} script — edge dropped`,
           )
@@ -957,6 +962,14 @@ function buildTask(
 
     const cacheEnv = uniq([...global('env'), ...envNames])
 
+    // Turbo hashes a root task over the whole repo; core stops a root
+    // project's own globs at every member (D-39), so as `files` a root
+    // `oxlint` over the repo replayed green after a member file broke.
+    // A root task's globs are the workspace's, outputs too.
+    if (pkgDir === '' || pkgDir === '.') {
+      wsFiles.unshift(...files.splice(0))
+      wsOutFiles.unshift(...outFiles.splice(0))
+    }
     const inputs: Record<string, unknown> = { files }
     if (wsFiles.length > 0) inputs.workspaceFiles = uniq(wsFiles)
     if (cacheEnv.length > 0) inputs.env = cacheEnv
