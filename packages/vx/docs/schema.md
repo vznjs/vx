@@ -1584,7 +1584,13 @@ run the task without the variables it was written to have. The error
 names the offending key, lists what that level accepts, and adds the
 nearest accepted spelling when one is within two edits:
 `tasks.build.exec.env has unknown field "passthrough" (allowed: define,
-passThrough) — did you mean passThrough?`.
+passThrough) — did you mean passThrough?`. A field another runner spells
+on the task names vx's home for it instead (D-37): Turbo's `outputs`,
+`inputs`, `env`, `passThroughEnv` and `persistent`, and a `command`
+(`cmd`, `script`) on the task or `cmd` on `exec`. So `outputs` on a task
+ends `— vx spells it cache.outputs.files` in code quotes. A `cache` that
+is no object (Turbo's `cache: false`) and a `persistent` that is none
+(`true`) name the shape to write.
 
 Workspace-discovery errors (`src/workspace/workspace.ts`):
 
