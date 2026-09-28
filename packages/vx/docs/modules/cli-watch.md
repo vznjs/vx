@@ -194,7 +194,9 @@ are refused too: they format one run's result.
      (`cache.outputs.files`, root-relative `workspaceFiles`) — a cycle
      that writes `dist/` is not an edit, and neither is `dist` itself;
      a path some task declares as an input is never dropped, whoever
-     declares it as an output (item 946) —
+     declares it as an output (item 946), and a task's own outputs (and
+     their directory) are no input of it, as its key reads them, so a
+     `turbo()` task reading `**/*` does not re-run on its own `dist/` —
      the directory holding an output tree, `outputContainer`, which the
      clean before a miss prunes and the task re-creates; a literal entry
      is its whole tree, as in the schema (`makeWatchIgnore`, pinned in

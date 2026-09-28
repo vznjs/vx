@@ -272,7 +272,7 @@ interface WatchLoopArgs {
   /** Declared output globs per directory they are relative to (project dir, or the root for `workspaceFiles`). */
   outputs: ReadonlyMap<string, readonly string[]>
   /** Declared input globs per directory: never ignored as another task's output. */
-  inputs: ReadonlyMap<string, readonly string[]>
+  inputs: ReadonlyMap<string, ReadonlyArray<readonly string[]>>
   /** Projects whose uncached task may read a git-ignored file: such a path there is still an edit. */
   uncached: ReadonlySet<string>
   /** Files the configs import: an edit to one outside the watched projects is a cycle that re-reads them. */
@@ -299,7 +299,7 @@ interface Rediscovered {
   workspaceWide: boolean
   workspaceInputs: readonly string[]
   outputs: ReadonlyMap<string, readonly string[]>
-  inputs: ReadonlyMap<string, readonly string[]>
+  inputs: ReadonlyMap<string, ReadonlyArray<readonly string[]>>
   uncached: ReadonlySet<string>
   configImports: readonly string[]
   workspaceConfigImports: readonly string[]

@@ -52,7 +52,7 @@ export function isIgnoredWatchPath(rel: string): boolean {
 export function makeWatchIgnore(
   cacheDir: string,
   outputs: ReadonlyMap<string, readonly string[]> = new Map(),
-  inputs: ReadonlyMap<string, readonly string[]> = new Map(),
+  inputs: ReadonlyMap<string, ReadonlyArray<readonly string[]>> = new Map(),
 ): (base: string, filename: string) => boolean {
   const cacheAbs = path.resolve(cacheDir)
   // A task's own outputs are not edits: without this every cycle that
@@ -82,23 +82,37 @@ export function makeWatchIgnore(
   // A path some task takes as an INPUT is never an output to ignore, even
   // when another task declares it one: an in-place formatter declaring
   // `src/**` hid every `src` edit from a `build` watched beside it, and no
-  // cycle ran (item 946). Negations are not consulted — they only narrow,
-  // and a path they would exclude costs one cache-hit cycle.
-  const read = [...inputs].map(
-    ([dir, globs]) =>
-      [
-        path.resolve(dir),
-        asTrees(globs.filter((g) => !g.startsWith('!'))).map((g) => taskGlob(g)),
-      ] as const,
+  // cycle ran (item 946). Each task's inputs are judged on their own, less
+  // their `!` entries (its own outputs among them): a turbo() task reading
+  // `**/*` took its own `dist/` write for an edit, and every save ran one
+  // more "up-to-date" cycle (2026-09-28).
+  const read = [...inputs].flatMap(([dir, tasks]) =>
+    tasks.map(
+      (globs) =>
+        [
+          path.resolve(dir),
+          asTrees(globs.filter((g) => !g.startsWith('!'))).map((g) => taskGlob(g)),
+          asTrees(globs.filter((g) => g.startsWith('!')).map((g) => g.slice(1))).map((g) =>
+            taskGlob(g),
+          ),
+          // The directory an own output lives in is the task's too (see below).
+          globs
+            .filter((g) => g.startsWith('!'))
+            .map((g) => outputContainer(g.slice(1)))
+            .filter((c) => c !== ''),
+        ] as const,
+    ),
   )
   const isInput = (abs: string): boolean =>
-    read.some(([dir, globs]) => {
+    read.some(([dir, globs, not, containers]) => {
       if (!abs.startsWith(dir + path.sep)) return false
       const rel = abs
         .slice(dir.length + 1)
         .split(path.sep)
         .join('/')
-      return globs.some((g) => g.match(rel))
+      if (!globs.some((g) => g.match(rel))) return false
+      if (not.some((g) => g.match(rel))) return false
+      return !containers.some((c) => c === rel || c.startsWith(`${rel}/`))
     })
   return (base, filename) => {
     if (isIgnoredWatchPath(filename)) return true

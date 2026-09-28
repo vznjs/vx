@@ -415,6 +415,13 @@ task picked`; neither prints a stack. Row in
 - E-75 — a task typed as a verb (`vx build`, `vx build app`,
   `vx app#build`) is refused with its `vx run`; a plugin verb of the
   name still wins.
+- E-76 — `vx run --help` names the Turbo and Nx spellings and links
+  the table; the no-service `vx dev` row runs outside the repo, whose
+  own `dev` task met E-75's line (red only outside the gate's sandbox).
+- E-77 — `vx watch` keeps each task's inputs apart, less its own
+  outputs and their directory, as the key reads them: a `turbo()` task
+  reading `**/*` took its own `dist/` for an edit, and every save ran
+  one more up-to-date cycle.
 
 ## First-five-minutes walk (2026-09-28)
 
