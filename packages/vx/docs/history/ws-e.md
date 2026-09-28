@@ -337,3 +337,7 @@ task picked`; neither prints a stack. Row in
   green one since, and narrows `--list` to failures.
 - E-57 — `vx watch`'s six "cannot watch" / "cannot re-read" catch
   blocks share one `sayCannot`. No behaviour change.
+- E-58 — Mutation sweep of older `src/cli` guards (`--filter` empty,
+  `--cache=` empty, `--timeout` zero, the empty-walk selection, the
+  show `#` target, `--list`'s space form and its range): seven mutants,
+  six caught. The `--list` ceiling (500) had no row; it has one.
