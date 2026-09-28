@@ -9,7 +9,8 @@
 // longer auto-exports; you must `defineWorkspace({ plugins: [otel()] })`.
 
 import { definePlugin, type TelemetryContext, type TelemetrySink, type VxPlugin } from '@vzn/vx'
-import { OtelSink, type PostFn } from './sink.js'
+import { readFileSync } from 'node:fs'
+import { OtelSink, type OtlpTls, type PostFn } from './sink.js'
 
 export interface OtelPluginOptions {
   /** OTLP base endpoint. Falls back to `OTEL_EXPORTER_OTLP_ENDPOINT`. */
@@ -223,6 +224,41 @@ export function resolveOtelConfig(
     }
     return false
   })
+  // The spec's TLS files were not read: a collector behind a private CA
+  // failed every export on its certificate, and one that asks for a client
+  // certificate refused the connection (F-39). Each is a PEM file path; a
+  // signal's own wins. Read once here; one that cannot be read warns once.
+  const pem = new Map<string, string | undefined>()
+  const read = (name: string, file: string): string | undefined => {
+    if (!pem.has(file)) {
+      try {
+        pem.set(file, readFileSync(file, 'utf8'))
+      } catch (err) {
+        warn?.(
+          `[vx-otel] ${name}: cannot read ${file} (${(err as NodeJS.ErrnoException).code ?? String(err)}) — not used`,
+        )
+        pem.set(file, undefined)
+      }
+    }
+    return pem.get(file)
+  }
+  const tls: Partial<Record<'traces' | 'metrics' | 'logs', OtlpTls>> = {}
+  for (const signal of ['traces', 'metrics', 'logs'] as const) {
+    const one: OtlpTls = {}
+    for (const [field, suffix] of [
+      ['ca', 'CERTIFICATE'],
+      ['cert', 'CLIENT_CERTIFICATE'],
+      ['key', 'CLIENT_KEY'],
+    ] as const) {
+      const own = `OTEL_EXPORTER_OTLP_${signal.toUpperCase()}_${suffix}`
+      const shared = `OTEL_EXPORTER_OTLP_${suffix}`
+      const name = present(env[own]) !== undefined ? own : shared
+      const file = present(env[name])
+      const text = file === undefined ? undefined : read(name, file)
+      if (text !== undefined) one[field] = text
+    }
+    if (Object.keys(one).length > 0) tls[signal] = one
+  }
   return {
     tracesUrl,
     metricsUrl: metricsUrl ?? tracesUrl,
@@ -235,6 +271,7 @@ export function resolveOtelConfig(
     resource,
     grpc,
     gzip,
+    ...(Object.keys(tls).length > 0 ? { tls } : {}),
     headers: clean({ ...parseOtlpHeaders(env['OTEL_EXPORTER_OTLP_HEADERS']), ...opts.headers }),
     // A signal's own `OTEL_EXPORTER_OTLP_<SIGNAL>_HEADERS` wins over the
     // shared ones, as the spec orders them; they were not read (item 923).
