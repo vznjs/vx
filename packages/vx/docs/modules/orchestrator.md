@@ -104,8 +104,10 @@ export interface RunSummary {
    under `continueMode: 'always'` the taint of an upstream failure is
    tracked so the task's save is withheld.
 10. **Persistent cleanup** (`persistent.ts`). `selectKeepAlive` picks
-    the persistent tasks the user REQUESTED (or that were surfaced) to
-    KEEP ALIVE in the real CLI foreground (`options.log === undefined
+    the persistent tasks the user REQUESTED (or that were surfaced), and
+    every persistent task a kept one depends on (directly or through
+    groups: `vx run dev --filter app` keeps the `api#dev` its `app#dev`
+    needs), to KEEP ALIVE in the real CLI foreground (`options.log === undefined
 && handleSignals !== false`); `shutdownPersistent` SIGTERMs every
     other persistent child's group and waits for the groups, SIGKILLing
     whatever is left after a 2 s grace (`VX_KILL_GRACE_MS` shortens it;

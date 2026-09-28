@@ -218,7 +218,8 @@ Owner: `exec/runner.ts:runPersistent` + the orchestrator's
 `persistentRegistry`. Persistent tasks (`exec.persistent`) gate
 downstream work on readiness, then live until the rest of the graph
 finishes. Then, in the CLI foreground (or held by `vx watch`), a
-requested or surfaced persistent task is kept alive past the summary
+requested or surfaced persistent task, with the persistent tasks it
+depends on, is kept alive past the summary
 (`orchestrator/persistent.ts`); the rest get SIGTERM, then SIGKILL of
 the process group after a 2 s grace. `cache + persistent` is rejected
 at load time.
@@ -232,7 +233,7 @@ stateDiagram-v2
     Watching --> Failed: child exits before match
     Watching --> Failed: readiness timeout → SIGTERM,<br/>SIGKILL after the grace
     Ready --> Running: outcome 'success',<br/>downstream unblocks,<br/>child owned by persistentRegistry
-    Running --> Kept: graph done, requested or surfaced,<br/>CLI foreground → alive past the summary
+    Running --> Kept: graph done, requested or surfaced<br/>or a kept one's dependency,<br/>CLI foreground → alive past the summary
     Running --> Terminated: graph done, otherwise → SIGTERM,<br/>SIGKILL of the group after 2 s
     Failed --> [*]: outcome 'failed' (the child's exit code, else 1)
     Kept --> [*]

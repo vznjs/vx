@@ -621,6 +621,29 @@ excludes a `noop` task. A unit row (prediction) and an e2e row (one
 executor) are red without the fix. The status word itself is E's
 formatter (lead below).
 
+## C-46: a kept server's persistent dependencies were stopped under it
+
+`vx run dev --filter app`, and `--affected` with only app changed, kept
+app#dev and SIGTERMed the api#dev it depends on (`^dev`) at the end of
+the graph: the kept server ran against a dead API. `selectKeepAlive`
+now also keeps every persistent task a kept one depends on, directly or
+through groups; a one-shot's servers still stop. Rows:
+`persistent-shutdown.test.ts` (the walk: groups, one-shots, order) and
+`keep-alive.test.ts` › "--filter keeps the persistent task a kept one
+depends on"; both red without the fix.
+
+Swept `orchestrator/persistent.ts` and its caller's keep-alive block
+(46 mutants, 25 files): 38 caught, 8 survived. 3 are equivalent:
+`signalCode ?? exitCode` (Bun sets one or the other), and both edits of
+the empty `dying` return (`crashed` is a subset of `dying`). Rows hold
+the other 5: `VX_KILL_GRACE_MS` shortens the default grace; the hold is
+let go once, after the SIGKILL sweep (a spy: only a reused pid shows it
+otherwise); a stopped `holdPersistent` run hands back no server
+(`abort.test.ts`); a requested server that exits 0 mid-run leaves the
+run green; a Ctrl-C does not fail the requested server it stopped (the
+Ctrl-C rows now pin the tally). On the fixed walk, dropping its
+`reached` check is equivalent in a DAG (cost only).
+
 ## Leads for other streams
 
 - **E:** a plugin command's plain `throw` (`commands.probe.run` throwing
