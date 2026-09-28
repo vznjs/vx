@@ -98,6 +98,19 @@ teardown. `other` now exits once the row, having seen `dev` alive,
 writes `go`. A 600 ms stall before the check reddened both rows without
 it and passes with it.
 
+M-10. `config-eval.test.ts` › a REJECTED evaluation does not poison a
+later one: red on macOS (run 36390341211, C-35's PR, a save-lane diff),
+"config worker did not answer within 250ms" on the first round, whose
+budget also covers the worker's spawn. Linux reads that round at 5 ms
+idle and ~40 ms under 8 CPU burners; the macOS figure is unproven. The
+250 had to be shorter than the second round's sleep and nothing else:
+now 1,000 against 1,200. Red with the clear moved out of the `finally`.
+
+Main went red twice from two green PRs landing close together, each
+tested against the main it branched from: B-15 × L-10 (a socket-dir
+row, fixed by L) and F-42 × H-25 (a plugin API record without F-42's
+new option, fixed in a81149e).
+
 ## Leads for other streams
 
 - A: A-20 let a same-project dependant restore ahead of a producer whose
