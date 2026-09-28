@@ -56,6 +56,10 @@ run leaves out; the rest are refusals.
   and 36380291678), the kill under strace's
   `ptrace(PTRACE_LISTEN,pid:61,sig:0): Input/output error`: the
   item-925 class reaching a task other than the output-memory floods.
+- E: `watch-loop-members.test.ts` › "a root package.json's workspaces
+  that add a glob watch the packages they name" failed once in a local
+  gate (17 s, an `until` past its wait; 2026-09-28), 3/3 green alone on
+  the same tree and 2/2 on main.
 - N: core holds a workspace-root task since D-39 (a root `vx.config.*`
   makes the root a project; design
   `docs/design/root-project-2026-09-28.md`), so the Turbo and Nx mappers
@@ -403,3 +407,11 @@ packages/core`) selects the dependent whose `file:../lib` spec named
   `--watch` flag, `tsc -w` / `rollup -w` or nodemon now makes it
   persistent. A bare `-w` is not read (npm's workspace flag), nor
   `--watchman`. Row: the D-40 row of `tests/init.test.ts`.
+- **D-42** Mutation sweep of D-39 to D-41 (13 mutants: the watcher
+  rules, the root-config gate, the root-owned descent): all caught.
+  Probes with no defect: Turbo 2.8.17 refuses two packages of one name
+  as vx does ("Failed to add workspace … it already exists"), so N's
+  duplicate-name lead needs no change for the runners vx adopts; a root
+  project locks (`configPath: vx.config.ts`), runs `--frozen` and passes
+  `vx lock --check`; `vx watch` on a root task ran it once in 11 s with
+  no cycle from its own `.vx` or output writes.
