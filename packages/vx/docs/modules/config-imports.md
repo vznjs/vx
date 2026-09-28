@@ -50,7 +50,8 @@ reach the config's import closure" (which is about runtime `import()`)
 does not apply.
 
 1. Roots are every project's `configPath`, minus `skip`.
-2. Scan each file, keep specifiers starting with `./` or `../`,
+2. Read each level of the walk together, scan each file (a file with no
+   quoted `./`, `../` or escape skips the scan), keep specifiers starting with `./` or `../`,
    resolve them, and record the REVERSE edge `target → importer`.
    Targets outside the workspace, or under `node_modules`, are dropped.
 3. **Descend only through files owned by NO project.** A config
@@ -109,7 +110,12 @@ importing a shared preset that imports a second file):
 | 100     | 9.1 ms | 100      |
 | 1000    | 87 ms  | 1000     |
 
-A workspace whose configs have NO relative imports costs 80 ms at 1000
+Since D-23 a level's files are read together and a config with no
+relative-specifier candidate skips the scan: `affectedProjects` for one
+changed file at 5,000 configs with no relative imports went 433 → 140 ms
+(min of 10, three interleaved rounds; A/A 433–445).
+
+Before that, a workspace whose configs have NO relative imports cost 80 ms at 1000
 configs — so the price is dominated by READING the config files, not by
 resolving imports, and the closure is close to free once the read is
 paid. For scale: full config EVALUATION, which selection deliberately

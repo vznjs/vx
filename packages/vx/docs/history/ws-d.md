@@ -37,6 +37,9 @@ run leaves out; the rest are refusals.
   in a Ctrl-C's grace takes the child of a shell that died on the
   signal": under load vx exits within the row's 200 ms sleep, so its
   `kill(pid, 'SIGKILL')` throws ESRCH (local gate, once; 3/3 alone).
+- L (resolved by PR 1421): `sandbox-runtime.unsafe.test.ts` "a SIGKILLed
+  task's port bridge leaves no socket behind" was red on main after L-10
+  (18bfb32) moved the socket into the task's own temp dir.
 - F: `vx-reapi` "RST_STREAM(INTERNAL_ERROR) reads as INTERNAL and is
   retried" failed once in a local gate, green on re-run.
 - A: `tests/git-subdir-workspace.test.ts` "a modified tracked file is
@@ -203,3 +206,11 @@ packages/core`) selects the dependent whose `file:../lib` spec named
   names the key). Each line, ` ` and ` ` included, stays
   inside the comment. Row: `tests/migration.test.ts` "a TODO holding a
   line break stays a comment in the written config (D-21)".
+- **D-23** `--affected`'s config-import walk awaited one config read at
+  a time and scanned every config: at 5,000 configs a one-file change
+  cost `affectedProjects` 433 ms, 200 of them serial reads. Each level
+  of the walk is now read together, and a config with no quoted `./`,
+  `../` or escape skips the scan: 140 ms (min of 10, three interleaved
+  rounds; A/A 433–445). Row: `tests/affected.test.ts` "a specifier
+  spelled with an escape still reaches its importer (D-23)", red with
+  the textual pass narrowed to a literal `./`.

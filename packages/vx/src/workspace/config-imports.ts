@@ -136,6 +136,14 @@ export function unprovidedBareImports(
 }
 
 /**
+ * A textual pass before the scan: a relative specifier opens with a quoted
+ * `./` or `../`, or spells one with an escape, and most configs hold
+ * neither, so the scan is skipped for them (D-23). A candidate in a comment
+ * or string still goes to the scan, which decides.
+ */
+const RELATIVE_CANDIDATE = /["'`](?:\.\.?\/|[^"'`\n]*\\)/
+
+/**
  * Absolute resolved targets of the RELATIVE specifiers in `source`; one that
  * does not resolve contributes the paths it names.
  *
@@ -145,6 +153,7 @@ export function unprovidedBareImports(
  * which is correct: an erased import cannot move a resolved value.
  */
 function scanLocalImports(source: string, fromDir: string, loader: 'ts' | 'js'): string[] {
+  if (!RELATIVE_CANDIDATE.test(source)) return []
   let specifiers: string[]
   try {
     specifiers = scanner(loader)
@@ -246,26 +255,35 @@ export async function configImportOwners(a: ConfigImportOwnersArgs): Promise<Set
   // changed set answers every root at once, instead of a walk per root.
   const importedBy = new Map<string, string[]>()
   const visited = new Set<string>()
-  const queue = [...roots.keys()]
-  while (queue.length > 0) {
-    const file = queue.pop()!
-    if (visited.has(file)) continue
-    visited.add(file)
-    let source: string
-    try {
-      source = await Bun.file(file).text()
-    } catch {
-      continue // unreadable: no edges, and not this pass's problem to report
-    }
-    const loader = TS_EXT.has(path.extname(file)) ? 'ts' : 'js'
-    for (const target of scanLocalImports(source, path.dirname(file), loader)) {
-      if (!target.startsWith(workspaceRoot + path.sep)) continue
-      if (target.split(path.sep).includes('node_modules')) continue
-      const list = importedBy.get(target)
-      if (list) list.push(file)
-      else importedBy.set(target, [file])
-      // Descend ONLY through unowned files — see the header.
-      if (ownerOf(target, dirToName) === undefined) queue.push(target)
+  // A level at a time, its files read together: one awaited read per
+  // config put 5,000 of them 200 ms behind (D-23).
+  let frontier = [...roots.keys()]
+  while (frontier.length > 0) {
+    const read = await Promise.all(
+      frontier.map(async (file) => {
+        if (visited.has(file)) return null
+        visited.add(file)
+        try {
+          return { file, source: await Bun.file(file).text() }
+        } catch {
+          return null // unreadable: no edges, and not this pass's problem to report
+        }
+      }),
+    )
+    frontier = []
+    for (const entry of read) {
+      if (entry === null) continue
+      const { file, source } = entry
+      const loader = TS_EXT.has(path.extname(file)) ? 'ts' : 'js'
+      for (const target of scanLocalImports(source, path.dirname(file), loader)) {
+        if (!target.startsWith(workspaceRoot + path.sep)) continue
+        if (target.split(path.sep).includes('node_modules')) continue
+        const list = importedBy.get(target)
+        if (list) list.push(file)
+        else importedBy.set(target, [file])
+        // Descend ONLY through unowned files — see the header.
+        if (ownerOf(target, dirToName) === undefined) frontier.push(target)
+      }
     }
   }
 
