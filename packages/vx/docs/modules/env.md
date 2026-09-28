@@ -35,7 +35,9 @@ Layers, lowest to highest priority:
    `FORCE_COLOR`, `NO_COLOR`, `CI`, `NODE_OPTIONS`.
 
    Windows: `SYSTEMROOT`, `APPDATA`, `LOCALAPPDATA`, `PROGRAMDATA`,
-   `PROGRAMFILES`, `PROGRAMFILES(X86)`, `COMSPEC`, `PATHEXT`.
+   `PROGRAMFILES`, `PROGRAMFILES(X86)`, `COMSPEC`, `PATHEXT`,
+   `SYSTEMDRIVE`, `WINDIR`, `USERPROFILE`, `HOMEDRIVE`, `HOMEPATH`,
+   `NUMBER_OF_PROCESSORS`, `PROCESSOR_ARCHITECTURE`.
 
 2. **`passThrough` names** — for each name, copy its value from
    `source` if present. Missing names are skipped (not assigned to

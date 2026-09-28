@@ -40,6 +40,14 @@ export const ESSENTIAL_ENV: readonly string[] = [
   'PROGRAMFILES(X86)',
   'COMSPEC',
   'PATHEXT',
+  // Read on Windows by os.homedir(), npm and git, which break without them.
+  'SYSTEMDRIVE',
+  'WINDIR',
+  'USERPROFILE',
+  'HOMEDRIVE',
+  'HOMEPATH',
+  'NUMBER_OF_PROCESSORS',
+  'PROCESSOR_ARCHITECTURE',
 ]
 
 /**

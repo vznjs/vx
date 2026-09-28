@@ -402,7 +402,7 @@ describe('no numbered list item was swallowed by a paragraph', () => {
 // and each defers the Windows set in words; hold them there (item 359,
 // 2026-09-19).
 describe('every page listing the env allowlist lists all of it', () => {
-  it('each names every POSIX essential, and the contract page all 25', () => {
+  it('each names every POSIX essential, and the contract page all 32', () => {
     const posix = ESSENTIAL_ENV.slice(0, ESSENTIAL_ENV.indexOf('SYSTEMROOT'))
     expect(posix.length).toBe(17)
     const pages = handAuthoredDocs().filter((p) => readFileSync(p, 'utf8').includes('`LOGNAME`'))
