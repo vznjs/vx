@@ -280,14 +280,14 @@ bunx @vzn/vx-migrate --help    # the usage, exit 0
 
 Reads the root pipeline (`tasks` in Turbo 2, `pipeline` in Turbo 1), per-package `turbo.json` `extends` overlays and each package's scripts, through the same mapper `turbo()` runs live — so a repo reads the same whether you migrate it or run it as it is. Turbo's global fields become a generated root `vx-preset.ts` each config imports and spreads: TypeScript composition replaces global config. Turbo's `//#` root tasks are written to a `vx.config.ts` at the workspace root, which makes the root a project (core's D-39), and a package task's `//#x` edge reaches it.
 
-| Turborepo                           | vx                                                                                     |
-| ----------------------------------- | -------------------------------------------------------------------------------------- |
-| `dependsOn`                         | `dependsOn`, same micro-syntax (`$TURBO_ROOT$` deps are a TODO)                        |
-| `inputs`                            | `cache.inputs.files` (`$TURBO_DEFAULT$` → `**/*`; `$TURBO_ROOT$/x` → `workspaceFiles`) |
-| `outputs`                           | `cache.outputs.files`, a negated one included                                          |
-| `env`                               | `cache.inputs.env` **and** `exec.env.passThrough` (child envs are isolated)            |
-| `passThroughEnv`                    | `exec.env.passThrough`                                                                 |
-| `cache: false` / `persistent: true` | no `cache` block; `exec.persistent: {}` with a TODO to set `readyWhen`                 |
+| Turborepo                           | vx                                                                                                |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `dependsOn`                         | `dependsOn`, same micro-syntax (`$TURBO_ROOT$` deps are a TODO)                                   |
+| `inputs`                            | `cache.inputs.files` (`$TURBO_DEFAULT$` → `**/*`; `$TURBO_ROOT$/x` → `workspaceFiles`)            |
+| `outputs`                           | `cache.outputs.files`, a negated one included                                                     |
+| `env`                               | `cache.inputs.env` **and** `exec.env.passThrough` (child envs are isolated)                       |
+| `passThroughEnv`                    | `exec.env.passThrough`                                                                            |
+| `cache: false` / `persistent: true` | no `cache` block; `exec.persistent: {}`, with a TODO to set `readyWhen` when a task depends on it |
 
 ### Nx
 

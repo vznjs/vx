@@ -26,7 +26,9 @@ per-task table with their exit code, the signal an exit above 128
 stands for (`exit 137 (128 + SIGKILL)`, as the run's own frame and
 `vx last` say it), a timeout as `timed out, exit 143`, a persistent task
 that never became ready as `never ready (timed out)`, a sandboxed task's
-violation count, and the tasks each failure blocked.
+violation count, and the tasks each failure blocked. A footer line
+names the vx version, the command (what follows `--` counted, not
+quoted), tasks passed and outputs restored.
 Anywhere else — laptops, other CI — the plugin **declines** and costs
 nothing, so declaring it unconditionally is safe.
 

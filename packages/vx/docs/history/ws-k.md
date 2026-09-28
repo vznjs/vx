@@ -169,6 +169,10 @@
   one `real-repos.json` row; vx leads cold, restore and no-op.
 - **K-31** `@vzn/vx-migrate`'s README says `npx vx init` writes the
   `turbo()` / `nx()` workspace file; the snippet adds the remote cache.
+- **K-32** Stream J's K leads: vx-otel README names `vx.command`,
+  vx-github's the summary footer, vx-mcp's `.mcp.json`, its 230 lines and
+  the imported-module restart; vx-migrate's Turbo table says the
+  `readyWhen` TODO needs a dependant. J-73's "no negation" was gone.
 
 ## Leads for other streams
 

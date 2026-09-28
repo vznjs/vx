@@ -76,7 +76,9 @@ otel({
 **A trace per run** (OTel CI/CD + VCS semantic conventions):
 
 - a root `vx.run` span — `cicd.pipeline.run.id`, `vcs.ref.head.revision`,
-  `vcs.ref.head.name`, CI provider, host/os/arch, vx version, `--tag k=v` →
+  `vcs.ref.head.name`, `vx.command` (the command line; what follows `--`
+  is counted, `-- <N arguments>`, never quoted), CI provider,
+  host/os/arch, vx version, `--tag k=v` →
   `vx.tag.<k>`, and `cicd.pipeline.result` (`success`, `failure`, or
   `cancellation` for a run stopped with nothing failed); a red run sets
   span status `ERROR`;
