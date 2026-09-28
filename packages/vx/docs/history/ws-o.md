@@ -62,6 +62,26 @@ workflow. The job is bounded at 12 minutes, the data step at 8, a shard
 at 45 s. A filter from `vx run --affected` is the better rule once a
 task names the Windows suite.
 
+O-2. No artifact saved on Windows restored, on any OS. Entry names came
+from `path.relative`, so a nested output was `outputs/dist\a.js`, and
+`assertSafeName` refuses a backslash. They go through `relPosix`. On
+win32 alone: pack records 0o644 (Windows reports 0o666, world-writable
+on a Linux restore), restore skips `chmod` (it sets the read-only
+attribute, which refuses the next rename over the file), and
+`resolveThrough` keeps the drive root.
+
+O-5. Windows renames no directory onto another, even an empty one:
+EPERM where POSIX says ENOTEMPTY, so every contender for the run lock
+ran unlocked, and an empty leftover lock dir unlocked every run after
+it. On win32 a name that exists is taken; an empty one is removed and
+the rename tried once more.
+
+O-9. The Windows data step printed 24,000 lines, past what an API tail
+reads, and ran out its time one shard after another. Shards now run
+four at a time, 100 s each, into their own logs, and only counts,
+failing rows and first error lines are printed. Actions runs bash with
+`-e`, which ended the first version at the first red shard; `set +e`.
+
 ## Windows data, first real run (2026-09-28, #1489's head)
 
 The data step still ran out its 10 minutes, so this is part of the
@@ -75,6 +95,28 @@ suite. Two classes so far:
   (`output-wipe-guard.test.ts`): `resolveOutputs` is right to return
   native paths, and the rows assume `/`.
 
+## Windows data, compact run (2026-09-28, run 36380553265)
+
+Past the harness fixes, by class:
+
+- `EBUSY` removing a temp dir, in every suite that opens a cache
+  (getMany, history, artifact ceiling, layered cache, failure mode,
+  unreadable index, capture cap, `./` globs). The cache index stayed
+  open after `Cache.close()`: O-10.
+- Rows that assume `/` in a path they build or compare:
+  `output-wipe-guard` (`path.relative` against `dist/a.js`),
+  `sandbox-runtime.unsafe` (`reportableViolations`,
+  `parseStraceViolations`: Linux line shapes built with `/`).
+- `EFTYPE ... uv_spawn` spawning a script directly (the `.env` row):
+  Windows runs no shebang.
+- Shutdown-signal rows and the kill-guard hold rows: signals and
+  process groups, O-4's ground; to read one by one.
+- On Windows `bin.ts`'s `beforeExit` fired while the verb was pending
+  (run 36379869161: the "can never settle" line printed before the
+  run's own summary). The loop drained mid-run; `settled` and exit 1
+  are set there, so a green Windows run may exit 1. To probe on a run
+  that passes.
+
 ## Leads for other streams
 
 - B: `@anthropic-ai/sandbox-runtime` 0.0.76 ships a Windows backend
@@ -87,3 +129,6 @@ suite. Two classes so far:
   without an exec bit (Windows cannot see one), the same class as a
   native binary shared across OSes, with the same answer: a declared
   `cache.inputs.runtime` such as `node -p process.platform`.
+- A: O-10 changes `cache.ts`'s four `Database` close sites to
+  `closeDb` (`close(true)`): a plain close left the index open. Any new
+  close site in the cache wants the same.
