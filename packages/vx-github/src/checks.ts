@@ -96,6 +96,9 @@ export function buildCheckRunPayload(args: {
   }
 }
 
+const CHECK_RETRY_DELAYS_MS = [200, 800] as const
+const CHECK_RETRY_STATUS = new Set([502, 503, 504])
+
 /**
  * POST the check run. Failures are REPORTED via `warn`, never thrown —
  * observability must never break a run. `signal` is core's flush deadline:
@@ -110,8 +113,8 @@ export async function postCheckRun(args: {
   signal?: AbortSignal
 }): Promise<void> {
   const url = `${args.env.apiUrl}/repos/${args.env.repository}/check-runs`
-  try {
-    const res = await args.fetchFn(url, {
+  const post = () =>
+    args.fetchFn(url, {
       method: 'POST',
       headers: {
         authorization: `Bearer ${args.env.token}`,
@@ -123,6 +126,24 @@ export async function postCheckRun(args: {
       body: JSON.stringify(args.payload),
       ...(args.signal === undefined ? {} : { signal: args.signal }),
     })
+  try {
+    // GitHub's own blips (502, 503, 504, a dropped connection) are retried
+    // twice, 200 then 800 ms apart, inside the flush deadline: one of them
+    // cost the run its check (F-29). A retry after a 502 that GitHub did
+    // process adds a second run of the same name, which GitHub shows as one.
+    let res: Awaited<ReturnType<FetchFn>> | undefined
+    for (let attempt = 0; ; attempt++) {
+      const delay = CHECK_RETRY_DELAYS_MS[attempt]
+      try {
+        res = await post()
+        if (!CHECK_RETRY_STATUS.has(res.status) || delay === undefined) break
+      } catch (err) {
+        if (delay === undefined || args.signal?.aborted === true) throw err
+      }
+      if (args.signal?.aborted === true) break
+      await Bun.sleep(delay)
+    }
+    if (res === undefined) throw new Error('the flush deadline passed before it could be retried')
     if (!res.ok) {
       const body = await res.text().catch(() => '')
       // GitHub answers a rate limit (primary or secondary) with 403 as often
