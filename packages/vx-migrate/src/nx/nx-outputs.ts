@@ -117,3 +117,44 @@ export function mapNxOutputs(
   }
   return { outFiles: takingBack(outFiles), wsOutFiles: takingBack(wsOutFiles) }
 }
+
+/**
+ * The literal paths a project's targets write, workspace-relative. An input
+ * inside one is generated: Nx hashes it from disk (TanStack/table's
+ * `public` input lists `{projectRoot}/dist` for every `^public`), and vx
+ * refuses a path git does not list.
+ */
+export function nxProjectOutputs(
+  targets:
+    | Readonly<Record<string, { outputs?: string[]; options?: Record<string, unknown> }>>
+    | undefined,
+  projectRel: string,
+  projectName: string,
+): string[] {
+  if (targets === undefined) return []
+  const known = projectOutputsMemo.get(targets)
+  if (known !== undefined) return known
+  const out = new Set<string>()
+  const scratch: string[] = []
+  const rel = projectRel === '.' ? '' : projectRel
+  for (const [name, t] of Object.entries(targets)) {
+    const options = t.options ?? {}
+    const { outFiles, wsOutFiles } = mapNxOutputs(
+      t.outputs ?? nxDefaultOutputs(name, options, projectRel, scratch),
+      options,
+      projectRel,
+      projectName,
+      scratch,
+    )
+    for (const f of [...outFiles.map((f) => path.posix.join(rel, f)), ...wsOutFiles]) {
+      const lit = f.replace(/\/\*\*(\/\*)?$/, '')
+      if (!lit.startsWith('!') && !/[*?[{]/.test(lit)) out.add(lit)
+    }
+  }
+  const r = [...out]
+  projectOutputsMemo.set(targets, r)
+  return r
+}
+
+// Keyed on the node's own targets object: every target of a project asks.
+const projectOutputsMemo = new WeakMap<object, string[]>()

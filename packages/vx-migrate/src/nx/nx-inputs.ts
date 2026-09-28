@@ -35,7 +35,7 @@ export function emptyNxInputs(): NxInputs {
 export function expandNxInputs(
   entries: readonly unknown[],
   named: Readonly<Record<string, unknown[]>>,
-  at: { readonly rel: string; readonly name: string },
+  at: { readonly rel: string; readonly name: string; readonly outputs?: readonly string[] },
   into: NxInputs,
   todos: string[],
 ): void {
@@ -60,6 +60,13 @@ export function expandNxInputs(
         const p = nxWorkspacePath(s, at.rel, at.name)
         if (p === null) {
           todos.push(`input ${JSON.stringify(entry)} uses a token vx does not support`)
+          return
+        }
+        if (neg === '' && at.outputs?.some((o) => p === o || p.startsWith(`${o}/`))) {
+          todos.push(
+            `input ${JSON.stringify(entry)} is an output of the project's own targets: git does not ` +
+              'list it, so vx cannot key on it — dropped; the task that writes it keys its dependants through dependsOn',
+          )
           return
         }
         const g = minimatchToVx(p, neg !== '')

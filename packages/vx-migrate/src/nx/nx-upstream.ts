@@ -18,10 +18,15 @@
 // and edges only out of the cycle.
 import type { GeneratedTask, ProjectMeta } from '@vzn/vx'
 import { emptyNxInputs, expandNxInputs, type NxInputs } from './nx-inputs.js'
+import { nxProjectOutputs } from './nx-outputs.js'
 
 interface GraphNode {
   name?: string
-  data?: { root?: string; namedInputs?: Record<string, unknown[]> }
+  data?: {
+    root?: string
+    namedInputs?: Record<string, unknown[]>
+    targets?: Record<string, { outputs?: string[]; options?: Record<string, unknown> }>
+  }
 }
 
 /**
@@ -197,7 +202,13 @@ export function planNxUpstream(
       )
       return
     }
-    const at = { rel: normRel(nodes[node]?.data?.root ?? ''), name: nodes[node]?.name ?? node }
+    const rel = normRel(nodes[node]?.data?.root ?? '')
+    const nm = nodes[node]?.name ?? node
+    const at = {
+      rel,
+      name: nm,
+      outputs: nxProjectOutputs(nodes[node]?.data?.targets, rel || '.', nm),
+    }
     expandNxInputs([name], namedOf(node), at, into, todos)
   }
 

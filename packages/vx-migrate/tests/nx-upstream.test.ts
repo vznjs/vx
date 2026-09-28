@@ -27,6 +27,8 @@ async function graph(opts: {
   libNamed?: Record<string, unknown[]>
   edges?: Record<string, string[]>
   discovered?: string[]
+  libTargets?: Record<string, unknown>
+  appTargets?: Record<string, unknown>
 }): Promise<Map<string, GeneratedTask>> {
   await writeFile(
     path.join(root, 'nx.json'),
@@ -48,13 +50,17 @@ async function graph(opts: {
         app: {
           data: {
             root: 'packages/app',
-            targets: { test: { command: 'true', cache: true, inputs: opts.inputs } },
+            targets: {
+              test: { command: 'true', cache: true, inputs: opts.inputs },
+              ...opts.appTargets,
+            },
           },
         },
         lib: {
           data: {
             root: 'packages/lib',
             ...(opts.libNamed === undefined ? {} : { namedInputs: opts.libNamed }),
+            ...(opts.libTargets === undefined ? {} : { targets: opts.libTargets }),
           },
         },
         base: { data: { root: 'packages/base' } },
@@ -143,5 +149,40 @@ describe('nx-upstream: what the sweep found unheld', () => {
     const id = `nx-input:fileset-${Bun.hash.xxHash3(fileset).toString(16).padStart(16, '0')}`
     expect(depsOf(t.get('app#test'))).toEqual([`lib#${id}`])
     expect(t.get('app#test')?.todos).toEqual([])
+  })
+})
+
+// TanStack/table's `public` input lists `{projectRoot}/dist`, the output
+// of each project's own `build`, for every `^public`: Nx hashes it from
+// disk, vx refused the path (git does not list it) and the run failed.
+describe('an input inside the project’s own outputs', () => {
+  const TODO = (glob: string) =>
+    `input "${glob}" is an output of the project's own targets: git does not list it, so vx cannot key on it — dropped; the task that writes it keys its dependants through dependsOn`
+  const libNamed = {
+    public: ['{projectRoot}/src/**', '{projectRoot}/dist', '{projectRoot}/out/x.js'],
+  }
+  const libTargets = {
+    build: { command: 'b', outputs: ['{projectRoot}/dist/**', '{projectRoot}/out'] },
+  }
+
+  it('is dropped from a dependency’s twin, with a todo', async () => {
+    const t = await graph({ inputs: ['^public'], libNamed, libTargets })
+    const twin = t.get('lib#nx-input:public')
+    expect(inputsOf(twin)).toEqual({ files: ['src/**'] })
+    expect(twin?.todos).toEqual([TODO('{projectRoot}/dist'), TODO('{projectRoot}/out/x.js')])
+  })
+
+  it('is dropped from the task’s own inputs; a sibling path stays', async () => {
+    const t = await graph({
+      inputs: [
+        '{projectRoot}/src/**',
+        '{projectRoot}/dist',
+        '{projectRoot}/distx',
+        '!{projectRoot}/dist/keep',
+      ],
+      appTargets: { build: { command: 'b', outputs: ['{projectRoot}/dist'] } },
+    })
+    expect(inputsOf(t.get('app#test'))).toEqual({ files: ['src/**', 'distx', '!dist/keep'] })
+    expect(t.get('app#test')?.todos).toEqual([TODO('{projectRoot}/dist')])
   })
 })
