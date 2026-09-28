@@ -203,3 +203,16 @@ itself).
 - D: `vx init` on docusaurus leaves `build:watch` (`tsc --build --watch`)
   and `copy:watch` (`… --watch`) non-persistent; a `--watch` script is
   a watcher.
+- D / coordinator: workspace-root tasks. Every adoption path drops
+  them: turbo `//#task`, Nx's root project, wireit root scripts (lit:
+  12, incl. `build`, `lint`), lage root targets, root-only commands in
+  workspace scripts. microsoft/fluentui-react-native (fc6133e) builds
+  with one root `tsc -b` (`root-build`) that all 85 packages' `test`
+  wait on, so under `lage()` they test with nothing built (162 edges
+  dropped). A root project with tasks (its own inputs, never globbing
+  into members) would let each mapper keep them.
+- A: `cache.outputs.files` takes no `!`. lit (01dbc66) excludes a
+  tracked file or a scratch dir from 12 wireit outputs
+  (`!development/test/router_test.html`, `!test/__temp`), so those 12
+  run uncached under `wireit()`: dropping the `!` would clean the
+  excluded file.
