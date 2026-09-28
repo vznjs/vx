@@ -1442,3 +1442,117 @@ describe('the workspace context decides which database is read', () => {
     }
   })
 })
+
+// F-54: a mutation sweep of tools.ts (156 mutants, 17 real survivors)
+// found these answers unheld.
+describe('the tools, as their second sweep found them unheld', () => {
+  it('getCacheStats counts hits apart from runs', async () => {
+    const alpha = (await call(MAIN.root, 'getCacheStats', {
+      scope: { project: '@t/alpha' },
+    })) as Stats
+    const all = (await call(MAIN.root, 'getCacheStats', {})) as Stats
+    expect([
+      alpha.runCountLast24h,
+      alpha.hitCountLast24h,
+      all.runCountLast24h,
+      all.hitCountLast24h,
+    ]).toEqual([4, 1, 6, 2])
+  })
+
+  it('a recent run row carries its own id, hit, times and duration', async () => {
+    const root = makeWorkspace('row')
+    try {
+      seed(root, (cache) => {
+        cache.recordRuns([
+          mkRun({
+            project: 'p',
+            task: 'build',
+            runId: 'run-77',
+            status: 'cache-hit',
+            cacheHit: true,
+            durationMs: 321,
+            startedAt: now - 5_000,
+            endedAt: now - 4_679,
+          }),
+        ])
+      })
+      const page = (await call(root, 'getRunHistory', {})) as { runs: Record<string, unknown>[] }
+      expect(page.runs[0]).toMatchObject({
+        runId: 'run-77',
+        project: 'p',
+        task: 'build',
+        status: 'cache-hit',
+        cacheHit: 1,
+        durationMs: 321,
+        startedAt: now - 5_000,
+        endedAt: now - 4_679,
+      })
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('history holds at most limit pairs, like runs', async () => {
+    // @t/alpha has two pairs (build, test); the page asks for one.
+    const page = (await call(MAIN.root, 'getRunHistory', {
+      project: '@t/alpha',
+      limit: 1,
+    })) as History
+    expect([page.runs.length, page.history.length]).toEqual([1, 1])
+  })
+
+  it('explainCacheKey reports the entry’s own exit code and creation time', async () => {
+    const root = makeWorkspace('explain')
+    try {
+      seed(root, (cache) => {
+        cache
+          .dbHandle()
+          .query(
+            `INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, stdout, created_at, accessed_at)
+             VALUES ('h9', 'p', 'build', 'make', 3, 12, 34, '', 1234567, 1234567)`,
+          )
+          .run()
+      })
+      const got = (await call(root, 'explainCacheKey', { taskId: 'p#build' })) as {
+        latestEntry: Record<string, unknown>
+      }
+      expect(got.latestEntry).toEqual({
+        hash: 'h9',
+        command: 'make',
+        exitCode: 3,
+        durationMs: 12,
+        sizeBytes: 34,
+        createdAt: 1234567,
+      })
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('getWorkspaceInfo reads the context’s cache dir, not the default', async () => {
+    const root = makeWorkspace('info-dir')
+    try {
+      const cacheDir = path.join(root, 'elsewhere')
+      const info = (await handleToolCall(
+        'getWorkspaceInfo',
+        {},
+        { cacheDir, workspaceRoot: root },
+      )) as {
+        cacheDir: string
+      }
+      expect(info.cacheDir).toBe(cacheDir)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('a filter refusal names the filter; a project#task hint splits at the first #', async () => {
+    expect([
+      await callError(MAIN.root, 'getRunHistory', { task: 42 }),
+      await callError(MAIN.root, 'getRunHistory', { task: 'a#b#c' }),
+    ]).toEqual([
+      'getRunHistory: task must be a non-empty string (got 42)',
+      'getRunHistory: task is a task name, not "project#task" — pass project "a" and task "b#c"',
+    ])
+  })
+})

@@ -563,3 +563,17 @@ Also: F-36's concurrency row slept 5 ms per read and read a peak of 4
 in one gate under load (the first read ended before the fifth began);
 each read now holds until all five have started, released after 200 ms
 for a serial reader, which fails on the peak (1).
+
+F-54. A mutation sweep of vx-mcp's `tools.ts` (156 mutants: 133 caught,
+5 of them by the type-check; 6 equivalent; 17 real survivors) found no
+bug and these unheld: a recent run row's `runId` (the id an agent hands
+`whyDidThisRerun`), `cacheHit`, `endedAt` and `durationMs`;
+`getCacheStats`' hit count apart from its run count; `history` held to
+`limit`; `explainCacheKey`'s exit code and creation time;
+`getWorkspaceInfo` reading the context's cache dir; the task filter's
+refusal naming `task`, and its `project#task` hint splitting at the first
+`#`. Rows now hold each (11 re-driven). Left: a handler's `cache.close()`
+and the warn callbacks (a descriptor count and a stderr capture each).
+Checked on the way: F-52's refusal of `#` in a task filter stands, since
+config loading refuses `#` in a task name (item 1000); core's
+`splitTaskId` comment calling such a name legal is stale.
