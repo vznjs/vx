@@ -1472,8 +1472,10 @@ Exit codes:
 
 Every green merge releases itself. When CI finishes green on a push to
 `main`, `auto-release.yml` tags that commit with the next patch version
-(`v0.0.21` → `v0.0.22`), creates the GitHub release with notes generated
-from the merged PR titles, and dispatches `release.yml` (with `tag`) and
+(`v0.0.21` → `v0.0.22`), creates the GitHub release with notes from the
+Conventional Commits since the last tag (`scripts/release-notes.ts`:
+breaking changes first, then `feat`, `fix` and `perf`, the rest counted),
+and dispatches `release.yml` (with `tag`) and
 `npm.yml` (with `version` and `ref`). A release made with the workflow
 token fires no `release` event in other workflows, which is why the two
 are dispatched rather than triggered. A green commit is released only

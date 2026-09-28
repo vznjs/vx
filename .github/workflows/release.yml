@@ -7,7 +7,8 @@ name: Release assets
 # four vx-<target> binaries (for the curl installer + `vx upgrade`)
 # to the release.
 # A manual release's body is the maintainer's; an auto-release's is
-# generated from the merged PR titles.
+# written by packages/vx/scripts/release-notes.ts from the Conventional
+# Commits since the last tag.
 
 on:
   release:
