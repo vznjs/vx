@@ -63,6 +63,9 @@ What did not:
   (`cache/cache.ts`) ask `isFsRefusal` only, so a task that dies of
   `EMFILE` still reads as an internal error there; `isOutOfFds` and
   `OUT_OF_FDS_HINT` (E-50) are the one-line form `bin.ts` prints.
+- C: a failed task's output is not kept: `vx last` can name the task
+  and the re-run (E-55) but not show the lines that failed it. A tail
+  stored with the run row would let the replay print them.
 
 ## Merged
 
@@ -324,3 +327,6 @@ task picked`; neither prints a stack. Row in
   caught. Rows now hold the three that survived: the EMFILE half of the
   watch fallback, that a refusal that is not a limit (EACCES) still
   names the directory rather than polling, and `vx help <moved verb>`.
+- E-55 — `vx last` replaying a failed run ends with the command that
+  re-runs the failures, carrying the run's forwarded arguments. Rows in
+  `tests/last.test.ts`, with an ok run as the control.

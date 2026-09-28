@@ -2011,7 +2011,9 @@ specific one, and the two do not combine. `--format json`
 emits `{ invocation, tasks }` for scripting, and `--list --format json`
 an array of the same `invocation` objects, newest first. An unknown run id fails
 loud and points at `--list`. A run id may be typed as a unique prefix; a
-prefix several runs share fails and lists them.
+prefix several runs share fails and lists them. A replayed run with
+failures ends with the command that re-runs them (`re-run what failed:
+vx run app#test -- …`, with the arguments the run forwarded).
 
 `vx why`, `vx last`, `vx info` and `vx cache prune` all read the cache
 a run wrote, so each takes `--cache-dir <path>` with `vx run`'s rules

@@ -127,6 +127,8 @@ describe('vx last (e2e)', () => {
       expect(r.out).toContain('$ ')
       expect(r.out).toContain('1 task · 1 hit (1 local, 0 remote)')
       expect(r.out).toMatch(/cache-hit\s+app#build/)
+      // CONTROL: an ok run has nothing to re-run.
+      expect(r.out).not.toContain('re-run what failed')
     },
     TIMEOUT,
   )
@@ -218,6 +220,14 @@ describe('vx last (e2e)', () => {
       // for a plain exit (item 260).
       expect(r.out).toMatch(/failed \(exit 3\)\s+app#boom/)
       expect(r.out).not.toContain('128 +')
+      // The last line is the command that re-runs what failed, with the
+      // arguments the run forwarded.
+      expect(r.out.trimEnd().split('\n').at(-1)).toBe('  re-run what failed: vx run app#boom')
+      await vx(root, ['run', 'boom', '--all', '--', 'x', 'y'])
+      const fwd = await vx(root, ['last'])
+      expect(fwd.out.trimEnd().split('\n').at(-1)).toBe(
+        '  re-run what failed: vx run app#boom -- x y',
+      )
     },
     TIMEOUT,
   )
@@ -250,6 +260,14 @@ describe('vx last (e2e)', () => {
       expect(r.out).toMatch(/failed \(exit 2\)\s+app#dev.*  never ready: exited$/m)
       // A skip names the failure that blocked it.
       expect(r.out).toMatch(/skipped\s+app#after.*  after app#boom failed$/m)
+      // Only the failures are re-run; the skip follows them.
+      const rerun = r.out.trimEnd().split('\n').at(-1)!
+      expect(rerun.startsWith('  re-run what failed: vx run ')).toBe(true)
+      expect(rerun.split(' vx run ')[1]!.split(' ').sort()).toEqual([
+        'app#boom',
+        'app#dev',
+        'app#slow',
+      ])
     },
     TIMEOUT,
   )
