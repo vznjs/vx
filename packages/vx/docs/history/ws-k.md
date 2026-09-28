@@ -144,6 +144,9 @@
   and N-16's `nx()` runs (Nx 23.2.1, nothing written). vueuse/vueuse stays out: it ran only after adding the
   `dependsOn` edge its `turbo.json` leaves implicit, and the table's rows
   are repos run with nothing rewritten.
+- **K-25** And unocss/unocss (N-17, `turbo()`, nothing written). Turbo wins
+  its restore and no-op (bold): one task rewrites its own input
+  (`README.md`), so vx reruns it; `benchmarks.md` says why.
 
 ## Leads for other streams
 
