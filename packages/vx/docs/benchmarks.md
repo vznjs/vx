@@ -836,6 +836,26 @@ Turbo's no-op alternates: its key for `metadata#update` flips between
 two values on consecutive runs (`84fcf722…`, `abaf2e87…`), so every
 other no-op rebuilds (7.3–7.7 s). vx's stays at 211–262 ms.
 
+### TanStack/query (Nx 23.2.1, `nx()`, `2e1ad64`)
+
+`nx run-many --target=build --exclude='examples/**'
+--exclude='integrations/**'` against `vx run build --filter
+'./packages/*'` through `nx()` with nothing written: the same 25 build
+tasks and the same edges (plus the 10 `nx-input:production` twins that
+carry `^production`). Nx daemon and cloud off, medians of three
+interleaved reps.
+
+| `build` | vx         | Nx 23.2.1      |
+| ------- | ---------- | -------------- |
+| cold    | **34.6 s** | 37.1 s (1.07×) |
+| restore | **910 ms** | 1.62 s (1.78×) |
+| no-op   | **291 ms** | 1.60 s (5.50×) |
+
+A cold Nx run deletes `.nx/workspace-data/*.db` as well as the cache
+directory: with the directory gone and the database kept, Nx reported
+25 of 25 tasks as local cache hits and restored no file (`build/` and
+`dist/` stayed absent).
+
 ## Real repos re-measured (2026-09-27)
 
 Roadmap 2.5: astro and refine again, same revisions, harnesses and

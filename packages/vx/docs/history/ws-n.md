@@ -173,6 +173,14 @@ runs each script through `pnpm` on PATH, and the box's `/opt/node22`
 pnpm stalled 28 min fetching the repo's pinned pnpm 11.25; the
 install's pnpm goes first on PATH.
 
+N-15. `nx()` on TanStack/query (Nx 23.2.1): the plan matches Nx's own
+task graph for `build`, 25 tasks and 0 edge mismatches. 34.6 s cold
+against 37.1 s, restore 910 ms against 1.62 s, no-op 291 ms against
+1.60 s (`benchmarks.md`). No mapping gap. The harness learned that Nx
+keeps a task-to-cache record in `.nx/workspace-data/*.db`: a wiped
+cache directory under a kept database replays 25 "hits" that restore
+nothing.
+
 ## Candidates not built (2026-09-28)
 
 - Lerna without Nx: `lerna run <s>` (lerna 10.0.1, `prepNxOptions`)
