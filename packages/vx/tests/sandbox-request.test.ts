@@ -362,6 +362,72 @@ describe('a root project stops at the walls: nested projects, .git, .vx', () => 
     },
   )
 
+  // The wall sweep (B-16): the glob-hit filter could lose its separator
+  // with the suite green. A hit that only shares a wall's name prefix is
+  // not inside it, and stays.
+  it.skipIf(process.platform !== 'linux')(
+    'a glob hit sharing a wall’s name prefix is still a grant',
+    async () => {
+      await walled()
+      await mkdir(path.join(root, 'packages/bb'), { recursive: true })
+      const r = await sandboxRequestFor(
+        rootNode(),
+        { allow: { read: ['packages/*'] } },
+        root,
+        undefined,
+        nested(),
+      )
+      expect([...r.sandbox.config.allowRead].sort()).toEqual(
+        ['packages/bb', 'packages/c'].map((n) => path.join(root, n)),
+      )
+    },
+  )
+
+  // The walls are canonical: reached through a link (macOS's `/var`), a
+  // root's `read: ['.']` was left whole, nested projects readable, with
+  // the walls unrealpath'd (wall sweep, B-16).
+  it.skipIf(process.platform !== 'linux')(
+    'a root reached through a link is punched around its walls',
+    async () => {
+      await walled()
+      const link = `${root}-link`
+      await symlink(root, link)
+      try {
+        const r = await sandboxRequestFor(
+          { ...rootNode(), projectDir: link },
+          { allow: { read: ['.'] } },
+          link,
+          undefined,
+          nested().map((d) => path.join(link, path.relative(root, d))),
+        )
+        expect([...r.sandbox.config.allowRead].sort()).toEqual(
+          ['package.json', 'packages/c', 'src'].map((n) => path.join(root, n)),
+        )
+      } finally {
+        await rm(link)
+      }
+    },
+  )
+
+  // A write grant whose bind IS a wall is refused like one that holds it,
+  // and one whose bind only shares a wall's name prefix stays (B-16).
+  it('a write grant binding a wall itself is refused; a name-prefix sibling is not', async () => {
+    await walled()
+    await mkdir(path.join(root, 'packages/c-docs'), { recursive: true })
+    const gitDir = path.join(root, '.git')
+    await expect(
+      sandboxRequestFor(rootNode(), { allow: { write: ['.git/x.txt'] } }, root, undefined, []),
+    ).rejects.toThrow(`the grant binding ${gitDir} would make ${gitDir} writable`)
+    const r = await sandboxRequestFor(
+      rootNode(),
+      { allow: { write: ['packages/c/'] } },
+      root,
+      undefined,
+      [path.join(root, 'packages/c-docs')],
+    )
+    expect(r.sandbox.config.allowWrite).toEqual([path.join(root, 'packages/c')])
+  })
+
   // The sweep of sandbox-binds.ts (B-7): `punchWalls` could lose the
   // separator in its "under" test with the suite green. A wall that only
   // shares a grant's name prefix is not under it, and the grant stays whole.

@@ -329,6 +329,47 @@ red under its mutant (`sandbox-runtime.unsafe.test.ts`):
   unlinks it only on a graceful exit, so the host's unlink shows only when
   the namespace dies by the grace's SIGKILL (`rb-unlinksock`).
 
+B-16. A sweep of the wall code B-1 and B-12 built: 40 mutants, 21 caught.
+Eleven survivors were real gaps. The code held every time. Each row below
+is red under its mutant:
+
+- `sandbox-request.test.ts`:
+  - a root reached through a link is punched around its walls (the walls
+    are canonical; unrealpath'd, `read: ['.']` stayed whole);
+  - a write grant binding a wall itself is refused, and a name-prefix
+    sibling is not;
+  - a glob hit sharing a wall's name prefix is still a grant.
+- `seatbelt-profile.test.ts` (darwin code driven on any platform):
+  - `wallsGlobsReach`, now exported: the walls at or under a glob's head,
+    a literal reaching none, `/*` reaching all;
+  - `darwinWallRules` carve-outs: a literal at the wall itself, never a
+    glob, and writes by the write grants;
+  - a darwin config's write-only glob reaches the walls.
+- Equivalent: a `require-not` over a glob string (it names a file
+  literally called `*`); `startsWith(x + sep)` already excluding
+  equality; an outside-workspace bind sharing the root's name prefix
+  (every wall is under the root).
+- Main went red on B-15's bridge-socket row after L-10 moved each task's
+  socket into its own directory: two green PRs made a semantic conflict.
+  L fixed the row (34a6c14). Since L-10 two guards hold "no socket
+  behind", the socket's unlink and its directory's removal, and each
+  survives alone (measured here); the pair is what the row pins.
+- Held on macOS CI only: `baseDenyRead`'s walls and the injected wall
+  rules (the B-4 and B-12 rows).
+- Leads:
+  - `punchWalls` keeps a grant whole, walls included, when its readdir
+    fails. That fails open, and a root sweep cannot drive it; a non-root
+    row with a mode-000 directory would pin the intent.
+  - `/tmp/claude` held 728 `vx-task-*` directories from SIGKILLed
+    processes. An in-process hook cannot clean them, and a sweep at init
+    cannot trust `kill(pid, 0)` across pid namespaces: a sandboxed vx
+    shares the directory and would delete a live task's TMPDIR. A
+    per-task lock would work, at a per-task cost.
+  - The rest of a sandboxed task's wrap, about 10 ms, is SRT's one `rg`
+    scan for mandatory denies (7 ms is `rg`'s own start). Caching it
+    would let one task plant a hook file the next could write, so it
+    stays.
+
 B-17. `keep-alive.test.ts` › a kill -9 in the persistent shutdown's grace
 takes the server a dead shell left: red once under the full gate (no
 `term.txt` within 10 s), 3 of 3 green alone. The server is a backgrounded

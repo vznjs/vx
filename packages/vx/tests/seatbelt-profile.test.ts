@@ -10,7 +10,13 @@ import { realpathSync } from 'node:fs'
 import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { darwinWallRules, macProfileRules, sbplResolvedPath } from '../src/exec/sandbox-runtime.js'
+import {
+  darwinWallRules,
+  macProfileRules,
+  resolveSandboxConfig,
+  sbplResolvedPath,
+  wallsGlobsReach,
+} from '../src/exec/sandbox-runtime.js'
 import { UserError } from '../src/util/index.js'
 
 const base = { allowRead: [], allowWrite: [] }
@@ -166,5 +172,72 @@ describe('darwinWallRules', () => {
 
   it('CONTROL: no wall reached is no rule', () => {
     expect(darwinWallRules({ allowRead: ['/w/*'], allowWrite: [] }, [])).toEqual([])
+  })
+})
+
+// Which walls a glob reaches: one at or under its head, the parent of the
+// wildcard's directory, as Linux's scan base is (`expandGrants`). A literal
+// grant reaches none here (SRT re-emits the wall's deny after it), and a
+// wall that only shares the head's name prefix is not under it (B-16).
+describe('wallsGlobsReach', () => {
+  it('reaches the walls at or under a glob’s head, and no other', () => {
+    const walls = ['/w/packages/b', '/w/packages2/c', '/w/.git']
+    expect([
+      wallsGlobsReach(['/w/packages/x/*.ts'], walls),
+      wallsGlobsReach(['/w/packages/b/*'], ['/w/packages']),
+      wallsGlobsReach(['/w/packages'], walls),
+      wallsGlobsReach(['/*'], walls),
+    ]).toEqual([['/w/packages/b'], ['/w/packages'], [], walls])
+  })
+})
+
+describe('darwinWallRules carve-outs', () => {
+  it('carve out a literal at the wall itself, never a glob, and writes by the write grants', () => {
+    expect(
+      darwinWallRules(
+        {
+          allowRead: ['/w/packages/b', '/w/packages/b/*.ts'],
+          allowWrite: ['/w/out/c/gen', '/w/out/c/*.log'],
+          wallsReached: { read: ['/w/packages/b'], write: ['/w/out/c'] },
+        },
+        [],
+      ),
+    ).toEqual([
+      '(deny file-read-data (require-all (subpath "/w/packages/b") (require-not (subpath "/w/packages/b"))))',
+      '(deny file-write* (require-all (subpath "/w/out/c") (require-not (subpath "/w/out/c/gen"))))',
+    ])
+  })
+})
+
+// `resolveSandboxConfig`'s darwin branch, driven on any platform: a
+// write-only glob reaches the walls too (a `.*` write could write `.git` on
+// macOS), and literal grants reach none (B-16).
+describe('the walls a darwin config reaches', () => {
+  let dir = ''
+  beforeEach(async () => {
+    dir = realpathSync(await mkdtemp(path.join(os.tmpdir(), 'vx-reach-')))
+    await mkdir(path.join(dir, 'src'))
+  })
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true })
+  })
+  const asDarwin = <T>(f: () => T): T => {
+    const d = Object.getOwnPropertyDescriptor(process, 'platform')!
+    Object.defineProperty(process, 'platform', { value: 'darwin' })
+    try {
+      return f()
+    } finally {
+      Object.defineProperty(process, 'platform', d)
+    }
+  }
+
+  it('a write-only glob reaches them; literal grants reach none', () => {
+    const walls = [path.join(dir, 'packages/b'), path.join(dir, '.git')]
+    expect([
+      asDarwin(() => resolveSandboxConfig({ allow: { write: ['.*'] } }, dir, walls).wallsReached),
+      asDarwin(
+        () => resolveSandboxConfig({ allow: { read: ['.', 'src'] } }, dir, walls).wallsReached,
+      ),
+    ]).toEqual([{ read: [], write: walls }, undefined])
   })
 })
