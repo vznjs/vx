@@ -94,6 +94,17 @@
       "why": "Turbo restores this repo faster, and its no-op alternates: its key for one task flips between two values on consecutive runs, so every other no-op rebuilds (7.3–7.7 s)."
     },
     {
+      "repo": "t3-oss/create-t3-turbo",
+      "tool": "Turbo",
+      "version": "2.5.8",
+      "setup": "`turbo()`, nothing written; `lint` measured (its `build` fetches Google Fonts)",
+      "date": "2026-09-28",
+      "heading": "t3-oss/create-t3-turbo (Turbo 2.5.8, `turbo()`, `8f945b7`)",
+      "cold": ["27.2 s", "29.6 s"],
+      "restore": ["199 ms", "340 ms"],
+      "noop": ["174 ms", "342 ms"]
+    },
+    {
       "repo": "TanStack/query",
       "tool": "Nx",
       "version": "23.2.1",

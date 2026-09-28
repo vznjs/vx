@@ -165,6 +165,8 @@
   the shown file to the written one (fails when they differ).
 - **K-29** README Quick start says it is for a repo without `turbo.json`
   or `nx.json`: there `vx init` writes configs from scripts.
+- **K-30** create-t3-turbo (N-24) joins the real-repos table and page:
+  one `real-repos.json` row; vx leads cold, restore and no-op.
 
 ## Leads for other streams
 
