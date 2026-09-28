@@ -1,9 +1,10 @@
 // What a finished run leaves behind: the `runs` rows, the `invocations`
 // header row, and — only when a telemetry sink is active — the per-task
 // telemetry mirror. One pass over the outcome list builds all three, so
-// `invocations.task_count`, the terminal's "N total" and the number of
-// telemetry tasks are the same count by construction (`tallyOutcomes`
-// applies the same group/aborted filter).
+// `invocations.task_count` and the number of telemetry tasks agree by
+// construction; the terminal's "N total" agrees because `tallyOutcomes`
+// applies the same group/aborted filter, a second copy of the rule that
+// tests/run-records.test.ts holds to this one.
 
 import type { InvocationRecord, RunRecord } from '../cache/index.js'
 import { isGroupTask, type TaskOutcome } from '../graph/index.js'

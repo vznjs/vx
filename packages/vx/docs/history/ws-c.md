@@ -644,6 +644,22 @@ run green; a Ctrl-C does not fail the requested server it stopped (the
 Ctrl-C rows now pin the tally). On the fixed walk, dropping its
 `reached` check is equivalent in a DAG (cost only).
 
+## C-47: hold `run-records.ts`'s surviving mutants
+
+Swept `orchestrator/run-records.ts` (65 mutants, 35 files): 35
+caught, 30 survived the suite (3 of those fail only the lint, as
+constant conditions). One is equivalent: `timedOut === true` loosened to `!== undefined`
+(the outcome's type is `true | undefined`). New
+`tests/run-records.test.ts` holds the rest by exact value: the
+timeline anchors (both arms, unit, rounding, the untimed fallback),
+the wall-clock, attempts and sandbox-violation fields, forwarded args,
+the whole header row (remote hit count, `hitCount`, duration, times,
+concurrency, git, CI and host columns), and the telemetry gate. The
+header's claim that `task_count`, "N total" and telemetry agree by
+construction held for groups, aborted tasks and restored hits, but
+the terminal's half is a second copy of the filter: the comment now
+says so and a row holds all three equal. No defect.
+
 ## Leads for other streams
 
 - **E:** a plugin command's plain `throw` (`commands.probe.run` throwing
