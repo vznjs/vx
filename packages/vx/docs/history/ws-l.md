@@ -37,6 +37,13 @@
    `fields` ignores a `__proto__` string. A top-level `__proto__` field is
    dropped from bun's and pnpm's global material, but no package manager
    writes or reads one, so no install can differ. No bug.
+9. Tokens and what leaves the machine. Bun's fetch drops `Authorization`
+   on a cross-origin redirect (probed, GET and PUT), so `turboCache()` /
+   `nxCache()` never hand their token to the host a server redirects to.
+   vx-github posts the run summary, never task output. The config-eval
+   cache stores only configs that read no `process`, so no env value is
+   at rest there. A hit's replayed stdout is as trusted as its outputs.
+   No bug.
 
 ## Items
 
