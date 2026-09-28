@@ -283,6 +283,7 @@ upstream repos.
 
 9. **Pre/post script lifecycle — shipped in `vx init` (2026-09-03).**
    `pre<x>` / `post<x>` scripts fold into `x`'s command in npm order
+   (tasks of their own where the manager runs no hooks)
    when the config is generated, so the ordering survives as a plain
    command rather than as runtime magic; a script that only delegates
    (`npm run other`) becomes a group over `other`. Not applied at run

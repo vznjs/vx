@@ -200,7 +200,7 @@ PATH is vx's: the line names the word (`execWord`, the predicate
 bin directories `taskBinDirs` prepends, and that a sibling project's bin
 is never on it; a bare word on 126 gets `chmod +x`. A word with a slash
 is a file, and the file says why, under either code: missing (the
-resolved path), a directory, no execute bit, a `#!` line ending in CRLF
+resolved path), a directory, not executable by this user, a `#!` line ending in CRLF
 (the interpreter's name ends in `\r`), a `#!` interpreter that does not
 exist, or no `#!` line at all (the loader refused a binary). Probed
 2026-09-16: dash and bash 5 exit 127 for a missing interpreter and
