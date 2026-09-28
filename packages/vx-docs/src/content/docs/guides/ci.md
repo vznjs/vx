@@ -202,5 +202,6 @@ A worker gets only what `cache.inputs` declares, so a task that fails
 there and passes here reads a file it never declared.
 
 - A down server is a cache miss, never a hung run.
-- Uploads chunk at 128 KB. A stalled multi-message write retries once
-  at 65535 bytes — `SAFE_CHUNK_BYTES` — before the task fails.
+- Uploads chunk at 65535 bytes (`SAFE_CHUNK_BYTES`), the size no Bun http2
+  stall has been seen at. A larger `chunkBytes` that stalls retries once at
+  that size before the task fails.

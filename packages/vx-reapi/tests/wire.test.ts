@@ -16,13 +16,14 @@ describe('CHUNK_BYTES', () => {
   // This is the constant a well-meaning "optimisation" raises. The failure it
   // guards is a HANG, not an error, so a reviewer gets no signal from a test
   // suite that merely still passes — hence an explicit pin with the reason.
-  it('is 128 KB — the Bun http2 ceiling, not a throughput knob', () => {
-    expect(CHUNK_BYTES).toBe(128 * 1024)
+  // 128 KB stalled a 1 MiB write to its deadline in 2 of 12 runs (F-20).
+  it('is 65535 — the one size with no peer-dependence, not a throughput knob', () => {
+    expect(CHUNK_BYTES).toBe(65535)
   })
 
   it('stays at or below the smallest threshold the supported Bun range allows', () => {
     // Bun 1.4.0 hangs above ~192-256 KB per message; 1.3.x hangs above ~64 KB.
-    // MIN_BUN is 1.4.0 precisely so 128 KB is inside the window. If someone
+    // MIN_BUN is 1.4.0 so a larger `chunkBytes` is inside the window. If someone
     // lowers MIN_BUN back to 1.3, this fails and points at the real conflict
     // rather than letting uploads wedge in the field.
     const [maj, min] = MIN_BUN
@@ -99,13 +100,13 @@ describe('digestOf', () => {
 describe('SAFE_CHUNK_BYTES', () => {
   it('is the RFC 7540 default initial window', () => {
     // The one size needing no WINDOW_UPDATE from any conformant peer, and so
-    // the only value with no peer-dependence. The escape hatch when a server's
-    // flow-control behaviour trips the Bun defect.
+    // the only value with no peer-dependence: the default, and the size a
+    // stalled larger chunk downgrades to.
     expect(SAFE_CHUNK_BYTES).toBe(65535)
   })
 
-  it('is below the default, so the escape hatch actually escapes', () => {
-    expect(SAFE_CHUNK_BYTES).toBeLessThan(CHUNK_BYTES)
+  it('is no larger than the default, so a downgrade never raises the size', () => {
+    expect(SAFE_CHUNK_BYTES).toBeLessThanOrEqual(CHUNK_BYTES)
   })
 })
 

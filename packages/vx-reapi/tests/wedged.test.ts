@@ -112,11 +112,13 @@ describe.if(CHUNKING_SUPPORTED)('adaptive chunk downgrade', () => {
     const warns: string[] = []
     const client = new (await import('../src/wire.js')).ReapiClient({
       endpoint: `127.0.0.1:${port}`,
+      // The downgrade nets a chunk ABOVE the safe size; the default is it (F-20).
+      chunkBytes: 128 * 1024,
       callTimeoutMs: 900,
       onWarn: (m) => warns.push(m),
     })
     try {
-      const body = new Uint8Array(512 * 1024) // 4 chunks at the 128 KB default
+      const body = new Uint8Array(512 * 1024) // 4 chunks at 128 KB
       const digest = (await import('../src/cache.js')).digestOf(body)
       const t0 = Date.now()
       let code: number | undefined
@@ -140,6 +142,8 @@ describe.if(CHUNKING_SUPPORTED)('adaptive chunk downgrade', () => {
     const warns: string[] = []
     const client = new (await import('../src/wire.js')).ReapiClient({
       endpoint: `127.0.0.1:${port}`,
+      // The downgrade nets a chunk ABOVE the safe size; the default is it (F-20).
+      chunkBytes: 128 * 1024,
       callTimeoutMs: 900,
       onWarn: (m) => warns.push(m),
     })
@@ -208,6 +212,7 @@ describe.if(CHUNKING_SUPPORTED)("the chunk stall's deadline spelled by the serve
     const warns: string[] = []
     const client = new ReapiClient({
       endpoint: `127.0.0.1:${port}`,
+      chunkBytes: 128 * 1024,
       callTimeoutMs: T,
       onWarn: (m) => {
         warns.push(m)

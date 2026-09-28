@@ -71,9 +71,16 @@ started_at DESC LIMIT n`, which orders each task by an arbitrary run:
 - C (resolved on main): leads 4 and 5 by item 1055 (the flush signal,
   wired into both sinks); the runtime-probe lead by C-2 (such a task is
   pinned local, and vx-reapi is never offered a pinned task).
-- M/C: on macOS CI, `runner.test.ts` › "the peak is the child's own"
-  read a heavy child's peak RSS under its floor (723 648 512 < 747 634 688)
-  on two unrelated F PRs (#1266, #1355); a platform unit/slack question.
+- M/C (resolved on main by M-6): on macOS CI, `runner.test.ts` › "the
+  peak is the child's own" read a heavy child's peak under its floor on two
+  F PRs cut before M-6 (#1266, #1355).
+- C: `TaskLogBuffer.evictToBudget()` sorts every retained entry on each
+  `finish` once the 4M-char budget is full, so a run's log path is
+  O(n² log n): vx-otel's sink took 0.75 s for 5 000 tasks with a 2 000-char
+  tail, 8.2 s for 20 000 and 46 s for 50 000 (0.18 s at 20 000 with logs
+  off), all on the run's own thread. Patch: seq is monotonic, so keep
+  successes in insertion order and failures newest-last, and stub from a
+  cursor instead of re-sorting (amortised O(1) per finish).
 - A: on macOS CI, `task-glob-brackets.test.ts` › "an upstream's hit sets
   aside the route a dependant adds" failed once on an F PR (#1294).
 - C (resolved on main by H-10): `ExecuteRequest` carries no abort signal,
@@ -252,3 +259,17 @@ fits (probe: 9 requests of at most 3 MiB). From a mutation sweep of
 started-less task's span id, a task span's start, status and run
 attributes as shipped, the exact `wants`, and the part-failed, throwing
 and unparsable-URL warnings. Rows red without each.
+
+F-20. vx-reapi's default ByteStream chunk was 128 KB, which the README said
+wedges "once in hundreds of runs". Measured on Bun 1.4.2 against
+bazel-remote, a 1 MiB write in a fresh process stalled to its 30 s deadline
+in 2 of 12 runs (the cache.ts sweep saw up to 10 of 15), before the
+downgrade retried it; at 65535 none of 12 stalled. The default is now
+65535: +45% on a 32 MiB upload (390 → 590 ms, loopback), far below one
+expected stall. 128 KB stays an opt-in with the downgrade as its net. The
+same sweep (50 mutants, 44 caught, 5 real survivors) found no bug in
+`cache.ts`; its rows landed in F-21. Also checked this round: vx-reapi's
+live suite against Buildbarn bb-storage passes 16 of 17 (the one miss is
+QueryWriteStatus, UNIMPLEMENTED there, which an upload's resume already
+treats as "start over"); reading 20 × 5 MiB outputs in parallel instead of
+in turn measured no gain on loopback (~1.1 s either way), no cut.

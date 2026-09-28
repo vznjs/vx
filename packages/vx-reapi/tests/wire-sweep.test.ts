@@ -469,7 +469,7 @@ describe.if(CHUNKING_SUPPORTED)('writes', () => {
 
   it('a stalled multi-message write retries at the safe size; a one-message stall does not', async () => {
     const warns: string[] = []
-    await using({ onWarn: (m: string) => warns.push(m) }, async (c) => {
+    await using({ chunkBytes: 128 * 1024, onWarn: (m: string) => warns.push(m) }, async (c) => {
       const large = fill(300 * 1024, 14)
       const d = c.digestOf(large)
       fake.fail('Write', grpc.status.DEADLINE_EXCEEDED)

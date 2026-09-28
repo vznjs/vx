@@ -53,7 +53,7 @@ Servers may normalise an inline `stdout_raw` into a CAS blob and hand back a
 
 ## Bun and chunk size
 
-`chunkBytes` defaults to **128 KB and is not a throughput knob.** Bun's
+`chunkBytes` defaults to **65535 and is not a throughput knob.** Bun's
 `node:http2` client _hangs_ — it does not error — when a request carries more
 than one message and any single message exceeds a ceiling that **the server's
 flow-control behaviour decides**. Go's gRPC servers grow their window
@@ -69,19 +69,19 @@ away. Hence **Bun >= 1.4** is required, and the plugin refuses to start on
 anything older with a named error: the alternative is a wedged upload with
 nothing for a user to act on.
 
-**If uploads wedge against your server**, drop to the one size with no
-peer-dependence — 65535, the RFC 7540 default initial window every peer must
-honour with no `WINDOW_UPDATE` at all:
+The default is the one size with no peer-dependence — 65535, the RFC 7540
+default initial window every peer must honour with no `WINDOW_UPDATE` at
+all (`SAFE_CHUNK_BYTES`). 128 KB was the default until it stalled a 1 MiB
+write against bazel-remote in 2 of 12 fresh runs (Bun 1.4.2), each costing
+the call's 30 s deadline; 65535 stalled in none, and costs ~45% on a 32 MiB
+upload (390 → 590 ms on loopback). A larger `chunkBytes` is still accepted:
 
 ```ts
-import { reapi, SAFE_CHUNK_BYTES } from '@vzn/vx-reapi'
-
-reapi({ endpoint: '…', chunkBytes: SAFE_CHUNK_BYTES })
+reapi({ endpoint: '…', chunkBytes: 128 * 1024 })
 ```
 
-The stall is a RACE, not a boundary: 128 KB chunks pass hundreds of runs and
-then wedge once (observed on CI, same Bun build). So the client **downgrades
-adaptively** — a deadline on a multi-message write retries once at
+The stall is a RACE, not a boundary. So above the safe size the client
+**downgrades adaptively** — a deadline on a multi-message write retries once at
 `SAFE_CHUNK_BYTES` with a warning, turning a lost coin-flip into a logged
 retry instead of a failed task. The deadline counts in either spelling: the
 client's own `DEADLINE_EXCEEDED`, or the `CANCELLED` a grpc-go server such as
