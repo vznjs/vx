@@ -546,4 +546,14 @@ describe("Turbo's and Nx's glob tokens (D-50)", () => {
     // CONTROL: a brace alternation and a `$` in a name are globs.
     expect(cacheRefusal({ files: ['{src,lib}/**', 'a$b.txt'] })).toBeNull()
   })
+
+  it("Nx's upstream named input is refused; a bare name stays a path (D-51)", () => {
+    expect(cacheRefusal({ files: ['default', '^production'] })).toBe(
+      `${CFG}: tasks.t.cache.inputs.files: "^production" starts with ^, Nx's named input of the dependencies — vx keys a task on its dependencies through \`dependsOn\` (\`^build\`); list this project's files here`,
+    )
+    expect(cacheRefusal({ files: ['**', '!^default'] })).toContain('"!^default" starts with ^')
+    // CONTROL: `default` may be a directory (themes/default), and `^` inside a
+    // path is a character.
+    expect(cacheRefusal({ files: ['default', 'a^b/**'] })).toBeNull()
+  })
 })

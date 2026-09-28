@@ -75,6 +75,11 @@ run leaves out; the rest are refusals.
   the same; `--filter //` works since D-46. With no root project,
   `--filter //` is hinted "Did you mean a?": say the root is no project.
 
+- C: `dependsOn: ['//#lint']`, Turbo's spelling of a root task, refuses
+  "no such project or task is declared" even when the root is a project
+  (D-39). `--filter //` reads `//` as the root project since D-46; the
+  graph could resolve `//#x` to it the same way.
+
 ## Entries
 
 - **D-1** `--affected` selects the project a new nested project took
@@ -487,3 +492,8 @@ packages/core`) selects the dependent whose `file:../lib` spec named
   first-run warning was the only sign. Each token is now refused in
   inputs, outputs and `workspaceFiles`, naming what to write. Row: the
   D-50 row of `tests/config-schema-refusals.test.ts`.
+- **D-51** Nx's upstream named input (`^production`) pasted into a glob
+  list matched no file and only warned, keying the task on nothing. A
+  glob starting with `^` is now refused, pointing at `dependsOn`. A bare
+  named input (`default`) stays a path: it can be a directory. Row: the
+  D-51 row of `tests/config-schema-refusals.test.ts`.
