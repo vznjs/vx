@@ -13,6 +13,7 @@ import {
   isDiskFull,
   isExecutableMissing,
   isFsRefusal,
+  isOutOfFds,
   isPermissionError,
   isTmpdirRefusal,
   isUserError,
@@ -84,6 +85,49 @@ describe('isDiskFull and the refusal hint', () => {
     expect(isPermissionError(errno('ENOSPC'))).toBe(false)
     expect(isFsRefusal(errno('EIO'))).toBe(false)
     expect(isDiskFull(new Error('ENOSPC in the text only'))).toBe(false)
+  })
+})
+
+describe('out of file descriptors', () => {
+  const errno = (code: string): NodeJS.ErrnoException =>
+    Object.assign(new Error(`${code}: nope`), { code })
+
+  it('is EMFILE or ENFILE, and nothing else', () => {
+    expect(['EMFILE', 'ENFILE', 'ENOSPC', 'EACCES'].map((c) => isOutOfFds(errno(c)))).toEqual([
+      true,
+      true,
+      false,
+      false,
+    ])
+    expect(isOutOfFds(new Error('EMFILE in the text only'))).toBe(false)
+  })
+
+  it('reaches the user as one line with the limit to raise, not a stack', async () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), 'vx-emfile-'))
+    try {
+      // The first thing a verb asks for, refused as a full fd table refuses it.
+      const shim = path.join(dir, 'emfile.ts')
+      await Bun.write(
+        shim,
+        "process.cwd = () => { throw Object.assign(new Error('EMFILE: too many open files, uv_cwd'), { code: 'EMFILE' }) }\n",
+      )
+      const proc = Bun.spawn(
+        [process.execPath, path.resolve(import.meta.dir, '..', 'src', 'bin.ts'), 'last'],
+        {
+          cwd: dir,
+          stdout: 'pipe',
+          stderr: 'pipe',
+          env: { ...process.env, BUN_OPTIONS: `--preload ${shim}` },
+        },
+      )
+      const [err, code] = await Promise.all([new Response(proc.stderr).text(), proc.exited])
+      expect({ code, err }).toEqual({
+        code: 1,
+        err: 'vx: EMFILE: too many open files, uv_cwd — the process is out of file descriptors; raise the limit (ulimit -n 4096) and re-run\n',
+      })
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })
 

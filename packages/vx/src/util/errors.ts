@@ -49,6 +49,21 @@ export function isDiskFull(err: unknown): err is NodeJS.ErrnoException {
   return code === 'ENOSPC' || code === 'EDQUOT'
 }
 
+/**
+ * `EMFILE` or `ENFILE`: the process or the system is out of file
+ * descriptors. macOS starts a shell at 256, which a large workspace's
+ * config load and input walk can reach; the stack it printed named a file
+ * that was fine.
+ */
+export function isOutOfFds(err: unknown): err is NodeJS.ErrnoException {
+  if (!(err instanceof Error)) return false
+  const code = (err as NodeJS.ErrnoException).code
+  return code === 'EMFILE' || code === 'ENFILE'
+}
+
+export const OUT_OF_FDS_HINT =
+  'the process is out of file descriptors; raise the limit (ulimit -n 4096) and re-run'
+
 /** A file system refusing a write for a reason no code path caused: permission or space. */
 export function isFsRefusal(err: unknown): err is NodeJS.ErrnoException {
   return isPermissionError(err) || isDiskFull(err)
