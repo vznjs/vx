@@ -89,7 +89,12 @@ task lists in `exec.env.secret`, is printed as `***` wherever vx shows, stores o
 exports it: task output, the stdout a hit replays, commands, telemetry,
 `vx show` and `vx mcp`'s `listTasks` (L-26). Values in the run history are digests under a per-store
 salt, and what follows `--` on the command line reaches telemetry as a
-count, not a quote.
+count, not a quote. A remote executor (`@vzn/vx-reapi`) receives a
+task's `exec.env.define` values and the `cache.inputs.env` values its
+local child gets, never `passThrough`; those values sit unmasked in the
+action's Command, which the remote stores in its CAS, as Bazel's
+`--action_env` does, so a secret a remote task needs is trusted to that
+remote.
 
 ## Releases
 
