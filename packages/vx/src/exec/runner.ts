@@ -6,7 +6,13 @@
 
 import { existsSync, readFileSync } from 'node:fs'
 import { constants as osConstants } from 'node:os'
-import { shellArgv, isExecutableMissing, killGraceMs } from '../util/index.js'
+import {
+  shellArgv,
+  isExecutableMissing,
+  isOutOfFds,
+  killGraceMs,
+  OUT_OF_FDS_HINT,
+} from '../util/index.js'
 import {
   closeSignalChannel,
   holdGroups,
@@ -40,6 +46,9 @@ export interface RunResult {
   cpuMs?: number
   /** Peak resident set size for the child, in bytes. */
   peakRssBytes?: number
+  /** `Bun.spawn` threw: no shell ran, so its 127 is vx's and says nothing
+   *  about the command (A-41). */
+  spawnFailed?: true
 }
 
 /**
@@ -664,7 +673,8 @@ export function spawnFailureText(err: unknown, cwd: string, what = 'task'): stri
     return `\n[vx] vx runs each task with sh -c: failed to spawn 'sh' (working dir: ${cwd}). Install a POSIX sh and re-run.\n`
   }
   const message = err instanceof Error ? err.message : String(err)
-  return `\n[vx] failed to spawn ${what}: ${message}\n`
+  const hint = isOutOfFds(err) ? ` — ${OUT_OF_FDS_HINT}` : ''
+  return `\n[vx] failed to spawn ${what}: ${message}${hint}\n`
 }
 
 export async function runCommand(opts: RunOptions): Promise<RunResult> {
@@ -689,7 +699,7 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
   } catch (err) {
     const stderr = spawnFailureText(err, opts.cwd)
     opts.onStderr?.(stderr)
-    return { exitCode: 127, durationMs: Date.now() - start, stdout: '', stderr }
+    return { exitCode: 127, durationMs: Date.now() - start, stdout: '', stderr, spawnFailed: true }
   }
 
   opts.liveChildren?.add(proc)

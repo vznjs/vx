@@ -20,6 +20,7 @@ export interface RunResult {
   timedOut?: boolean // vx's own `timeoutMs` timer fired: a real `failed`, not an `aborted` shutdown
   cpuMs?: number // user + system, from Bun.spawn().resourceUsage()
   peakRssBytes?: number // maxRSS (bytes), only when it rose above vx's own RSS high-water mark
+  spawnFailed?: true // Bun.spawn threw: the 127 is vx's, no shell ran
 }
 
 // Which streams are retained onto the result. Both default to true.

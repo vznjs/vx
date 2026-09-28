@@ -50,6 +50,10 @@
   three runs after with no change: the probe's count races the cut.
 
 - C: a corrupt cache index (A-8) now reaches each task as the same `UserError`, and a 40-task run prints the line 40 times; the scheduler could say a run-wide refusal once.
+- D: under a low `ulimit -n` (20 on a 20-project fixture) discovery reads
+  `EMFILE` as an empty workspace: `No projects declare task(s): build. No
+package matched the workspace's package globs`. Found while reproducing
+  A-41; not traced.
 - C: the run-end output-directory snapshot (lead 4) vouches for a stray an unsandboxed dependant writes into an upstream's output directory after its save or restore, so later hits skip the walk and the stray survives, green. The fix needs `run.ts` (the snapshot call) and `hit-restore.ts` (its direct call) to pass the task's additions predicate, so the snapshot can refuse a file outside the entry's rows and outside the additions; `OutputIndex.recordOutputDirs` can take the predicate.
 
 ## Record
@@ -342,3 +346,9 @@ Lead from E. Under a full fd table a restore threw `CorruptArtifactError` (the a
 A restore refused on the artifact itself (`EACCES` on `<hash>.tar.zst`) said "could not write its outputs" and told the reader to make the output paths writable. The refusal's path is the artifact, so it now names the cache directory and `cacheDir` / `--cache-dir`.
 
 - Row (`cache.test.ts`, skipAsRoot, driven as `probe`): exact message, red without the fix.
+
+### A-41 — a spawn that fails for want of descriptors names the limit (2026-09-28)
+
+Lead from C. Under `ulimit -n 30`, 16 of 20 `echo hi` tasks failed to spawn (`EMFILE`, `socketpair`), exited 127, and `execute-task` added the shell's "command not found … install it" line under each. `RunResult.spawnFailed` now marks a spawn that threw (runner and sandbox), the verdict skips it, and `spawnFailureText` names `OUT_OF_FDS_HINT` for `EMFILE`/`ENFILE`.
+
+- Row (`execute-task.test.ts` › "execute-task edges"): `Bun.spawn` throwing `EMFILE`; exact stderr, red without either half; control: a word the shell did not find keeps its line. `sandbox-runtime.unsafe.test.ts`'s spawn row asserts the flag, red without it. `spawnFailed?: true` is additive on the plugin API's `RunResult` (`tests/contract/package-api.txt` regenerated; 0.x).

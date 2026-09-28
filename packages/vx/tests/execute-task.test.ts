@@ -2236,6 +2236,34 @@ describe('execute-task edges', () => {
     expect([o.status, o.timedOut]).toEqual(['failed', true])
   })
 
+  // A-41: a spawn refused for want of descriptors ran no shell, so its 127
+  // is vx's; the shell's "command not found" line sent each of 17 tasks to
+  // install a command that existed.
+  it('a spawn that fails for want of descriptors names the limit, not a missing command', async () => {
+    const stderr: string[] = []
+    const heard: Logger = { ...log, taskStderr: (_n, c) => void stderr.push(c) }
+    const emfile = spyOn(Bun, 'spawn').mockImplementation(() => {
+      throw Object.assign(new Error('EMFILE: too many open files, socketpair'), { code: 'EMFILE' })
+    })
+    let o: TaskOutcome
+    try {
+      o = await executeTask(baseArgs(b, node(b, { exec: { command: 'echo hi' } }), heard))
+    } finally {
+      emfile.mockRestore()
+    }
+    expect([o.status, o.exitCode, stderr.join('')]).toEqual([
+      'failed',
+      127,
+      '\n[vx] failed to spawn task: EMFILE: too many open files, socketpair — the process is out of file descriptors; raise the limit (ulimit -n 4096) and re-run\n',
+    ])
+    // Control: a shell that ran and did not find the word keeps its line.
+    stderr.length = 0
+    await executeTask(baseArgs(b, node(b, { exec: { command: 'no-such-cmd-a41' } }), heard))
+    expect(stderr.join('')).toContain(
+      `[vx] exit 127 is the shell's "command not found": no-such-cmd-a41`,
+    )
+  })
+
   it('a restore that fails for any reason but a vanished artifact is not retried as a miss', async () => {
     const first = await executeTask(baseArgs(b, node(b, cached('echo x > out.txt')), log))
     expect(await b.cache.get(first.hash!)).not.toBeNull()

@@ -213,7 +213,9 @@ assertion or a JS runtime's heap limit, SIGPIPE a reader that left,
 SIGXCPU/SIGXFSZ a ulimit, SIGSYS a seccomp filter or the sandbox. A
 SIGINT/SIGTERM the runner saw gets no line: the task is aborted when
 the run is stopping, else failed. A timed-out step gets no line either: its
-own line names the timeout. Pinned in `tests/shell-verdict.test.ts` on real files and
+own line names the timeout, and so does a spawn that threw
+(`RunResult.spawnFailed`, A-41): no shell ran, so its 127 is vx's, and
+`EMFILE` there is named with the `ulimit -n` to raise. Pinned in `tests/shell-verdict.test.ts` on real files and
 end to end in `tests/tool-not-on-path.test.ts` and
 `tests/signal-death.test.ts`.
 

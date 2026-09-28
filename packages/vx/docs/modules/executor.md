@@ -72,6 +72,8 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
 - `ExecuteResult extends RunResult { violations; outputs?; where? }` —
   `outputs` is `{ kind: 'disk' }` or `{ kind: 'deferred'; materialize }`
   (outputs left remote, fetched only if a local consumer needs them).
+  `spawnFailed: true` says the command never started (its 127 is the
+  executor's, so no "command not found" line follows; A-41).
   Checked at the
   seam (`assertExecuteResult`): a plugin that resolves something else is
   refused with one line naming the executor, the task and the field
