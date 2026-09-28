@@ -23,7 +23,7 @@ import {
 } from '@vzn/vx'
 import { mapRunCommands, shellQuote } from '../nx-command.js'
 import { scriptCommand } from '../script-command.js'
-import { resolveSharedOutputs } from '../shared-outputs.js'
+import { ownFileOutput, ownFileTodo, resolveSharedOutputs } from '../shared-outputs.js'
 import { packageScripts, relPosix } from '../paths.js'
 import { pruneOrphanPersistentNotes } from '../persistent-note.js'
 import { mapNxDeps, matchNxProjects, type TaskNameFor } from './nx-deps.js'
@@ -561,7 +561,9 @@ function buildTask(
   const persistent = readyWhen !== undefined || persistentTarget(target)
   const cacheWanted =
     target.cache === true || (target.cache === undefined && opts.cacheable.has(targetName))
-  const cacheEnabled = !persistent && cacheWanted
+  const own = ownFileOutput(outFiles)
+  if (own !== undefined && cacheWanted && !persistent) todos.push(ownFileTodo(own))
+  const cacheEnabled = !persistent && cacheWanted && own === undefined
   if (persistent && cacheWanted) {
     todos.push('Nx caches this target, and vx never caches a persistent task — uncached here')
   }

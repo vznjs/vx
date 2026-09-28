@@ -206,6 +206,18 @@ short project names (`parser`) map to package names. 16.8 s cold
 against 17.8 s, restore 1.50 s against 2.95 s, no-op 1.11 s against
 2.96 s (`benchmarks.md`). No mapping gap.
 
+N-20. `turbo()` on trpc/trpc (ec0b0a4, Turbo 2.10.12): core refused the
+whole run. Five packages' `turbo.json` list `package.json` as a `build`
+output (the build rewrites `exports`); Turbo caches the manifest, vx
+cleans outputs before a run, and the loader refuses a glob that covers
+the project's own `package.json`. `turbo()` and `nx()` now run such a
+task uncached with a todo; trpc's plan then matches Turbo's (7 tasks, 0
+edge mismatches). The check is a copy of core's (the façade does not
+export it), held to the loader in both directions.
+
+- Rows: `tests/own-file-outputs.test.ts` (the loader agreement table;
+  the turbo and nx rows each fail with their call site undone).
+
 ## Candidates not built (2026-09-28)
 
 - Lerna without Nx: `lerna run <s>` (lerna 10.0.1, `prepNxOptions`)
@@ -277,7 +289,8 @@ against 17.8 s, restore 1.50 s against 2.95 s, no-op 1.11 s against
   tracked file or a scratch dir from 12 wireit outputs
   (`!development/test/router_test.html`, `!test/__temp`), so those 12
   run uncached under `wireit()`: dropping the `!` would clean the
-  excluded file.
+  excluded file. Wrong by the time it merged: A-44 had given outputs
+  `!` (a negated output takes its path back).
 - A: vx cleans a task's outputs before it runs; Turbo does not. On
   vueuse (efdd69a) ten builds read `packages/metadata/index.json`, the
   output of `metadata#update`, with no edge to it, so every vx cold run

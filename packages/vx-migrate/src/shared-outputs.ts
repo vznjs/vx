@@ -22,6 +22,35 @@
 
 import { outputsOverlap, type GeneratedTask } from '@vzn/vx'
 
+// Core refuses an output glob that covers the project's own package.json
+// or vx.config (config-schema's `ownFileCovered`): vx cleans outputs before
+// a run and restores them on a hit, so the manifest would go. Turbo caches
+// it: trpc's client build lists `package.json` (it rewrites `exports`), and
+// the one task made core refuse the whole run (2026-09-28). The façade does
+// not export the check; tests/own-file-outputs.test.ts holds this copy to
+// the loader in both directions.
+const OWN_FILES = ['package.json', 'vx.config.ts', 'vx.config.mts', 'vx.config.js', 'vx.config.mjs']
+
+/** The first positive output glob that covers a project's own file, and that file. */
+export function ownFileOutput(
+  files: readonly string[],
+): { glob: string; file: string } | undefined {
+  for (const glob of files) {
+    if (glob.startsWith('!')) continue
+    const g = new Bun.Glob(glob.replace(/^(\.\/)+/, ''))
+    const file = OWN_FILES.find((f) => g.match(f))
+    if (file !== undefined) return { glob, file }
+  }
+  return undefined
+}
+
+export function ownFileTodo(own: { glob: string; file: string }): string {
+  return (
+    `output ${JSON.stringify(own.glob)} covers the project's own ${own.file}, which vx cleans ` +
+    'before every run — task runs uncached; declare the outputs without it in a vx.config to cache it'
+  )
+}
+
 interface Cached {
   index: number
   name: string

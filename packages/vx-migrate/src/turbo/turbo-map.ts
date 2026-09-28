@@ -15,7 +15,7 @@ import { isLiteralPattern, type ProjectMeta, UserError } from '@vzn/vx'
 import { minimatchToVx } from '../glob-grammar.js'
 import { shellQuote } from '../nx-command.js'
 import { scriptCommand, yarnPnp } from '../script-command.js'
-import { resolveSharedOutputs, takingBack } from '../shared-outputs.js'
+import { ownFileOutput, ownFileTodo, resolveSharedOutputs, takingBack } from '../shared-outputs.js'
 import { packageScripts, relPosix } from '../paths.js'
 import { pruneOrphanPersistentNotes } from '../persistent-note.js'
 import { DOTENV_PROBE } from '../dotenv-probe.js'
@@ -957,6 +957,11 @@ function buildTask(
           'vx cleans before every run — task runs uncached; declare the exact outputs in a ' +
           'vx.config to cache it',
       )
+      return { name, todos, task, uses }
+    }
+    const own = ownFileOutput(outFiles)
+    if (own !== undefined) {
+      todos.push(ownFileTodo(own))
       return { name, todos, task, uses }
     }
 
