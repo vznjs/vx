@@ -765,6 +765,24 @@ vx cleans outputs before a run, so `wireit()` maps it uncached (260 ms
 of each warm row). The first run found it: mapped cached, the clean
 deleted the tracked `index.html` and the task failed.
 
+### microsoft/lage (lage 2.15.16, `lage()`, `e1cfae7`)
+
+`yarn build` (`lage transpile types build bundle api`), 71 targets over 25
+packages, against `vx run transpile types build bundle api --all`. Most
+targets are lage workers: vx runs each as a `lage-worker` process.
+
+| `build`                       | vx         | lage 2.15.16          |
+| ----------------------------- | ---------- | --------------------- |
+| cold (caches + outputs wiped) | 32.4 s     | **29.4 s** (vx 1.10×) |
+| warm, outputs wiped (restore) | **730 ms** | 1.70 s (2.33×)        |
+| warm, nothing wiped (no-op)   | **284 ms** | 1.56 s (5.49×)        |
+
+lage wins the cold row by its worker pool: a thread keeps swc and the
+TypeScript compiler loaded from one package to the next, where
+`lage-worker` starts a Node process per target (principle 3: one command
+per task). `isolatedTypes` and `types` both claim `lib/**/*.d.{ts,mts}`,
+so `lage()` runs `isolatedTypes` uncached.
+
 ## Real repos re-measured (2026-09-27)
 
 Roadmap 2.5: astro and refine again, same revisions, harnesses and
