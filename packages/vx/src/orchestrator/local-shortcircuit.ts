@@ -182,9 +182,9 @@ function restoreTierExclusions(nodes: Map<string, TaskNode>, workspaceRoot: stri
   let everything = false
   for (const node of nodes.values()) {
     for (const raw of node.config.cache?.outputs.workspaceFiles ?? []) {
-      // No negation to skip: the schema refuses '!' in output globs
-      // (`validateWorkspaceGlobs`), so the `continue` that stood here
-      // guarded a shape no config can carry (item 640).
+      // A `!` entry needs no skip: its prefix (`!gen`) names no directory,
+      // so it excludes nothing (A-44; the `continue` that stood here was
+      // dropped in item 640).
       const glob = normalizeGlob(raw)
       const prefix = staticPrefix(glob)
       if (prefix === '.' || prefix === '' || prefix === '/') everything = true

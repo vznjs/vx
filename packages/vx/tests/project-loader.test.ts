@@ -453,12 +453,7 @@ describe('loadProjectConfig', () => {
       await expect(loadProjectConfig(file)).resolves.toBeDefined()
     })
 
-    it('rejects a negation in cache.outputs.files (unsupported, silently matches nothing)', async () => {
-      // Asymmetric with inputs on purpose: `resolveOutputs` never splits on
-      // '!', so the entry is read as a literal path beginning with '!' and
-      // matches nothing at all. A user who writes it believes they excluded
-      // something from the artifact; they excluded nothing and declared a
-      // nonexistent output.
+    it('takes a negation in cache.outputs.files back from the outputs, and refuses a list of only negations (A-44)', async () => {
       const file = path.join(dir, 'vx.config.mjs')
       await writeFile(
         file,
@@ -467,10 +462,21 @@ describe('loadProjectConfig', () => {
           cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**', '!dist/*.map'] } },
         } } }`,
       )
-      await expect(loadProjectConfig(file)).rejects.toThrow(/negation is not supported/)
+      await expect(loadProjectConfig(file)).resolves.toBeDefined()
+      const only = path.join(dir, 'only.mjs')
+      await writeFile(
+        only,
+        `export default { tasks: { build: {
+          exec: { command: 'tsc' },
+          cache: { inputs: { files: ['src/**'] }, outputs: { files: ['!dist/*.map'] } },
+        } } }`,
+      )
+      await expect(loadProjectConfig(only)).rejects.toThrow(
+        /cache\.outputs\.files: every entry is a negation/,
+      )
     })
 
-    it('rejects a negation-only cache.inputs.workspaceFiles, and a negation in outputs.workspaceFiles', async () => {
+    it('rejects a negation-only cache.inputs.workspaceFiles, and a negation-only outputs.workspaceFiles', async () => {
       // The workspace-anchored namespace has the SAME split in both
       // directions — `resolveWorkspaceFiles` returns [] with no positive
       // glob, `resolveWorkspaceOutputs` never splits — so both rules apply
@@ -500,7 +506,9 @@ describe('loadProjectConfig', () => {
           },
         } } }`,
       )
-      await expect(loadProjectConfig(outNeg)).rejects.toThrow(/negation is not supported/)
+      await expect(loadProjectConfig(outNeg)).rejects.toThrow(
+        /cache\.outputs\.workspaceFiles: every entry is a negation/,
+      )
     })
 
     it('rejects non-string entries in cache.outputs.files', async () => {

@@ -1744,7 +1744,7 @@
         "$CONFIG: tasks.c.cache.inputs.files: every entry is a negation, which selects NOTHING (got [\"!x\"]) — negations only subtract from the files a positive glob already matched, so this task would fold zero file inputs and its cache key would stop tracking its source. Add the positive glob you meant, e.g. ['**/*', \"!x\"].": [
           "[\"!x\"]"
         ],
-        "$CONFIG: tasks.c.cache.inputs.files: '!!' is not a double negation (got \"!!x\") — it INVERTS the set. One '!' is stripped and the remainder is compiled as a glob, which applies its own leading-'!' negation, so this excludes everything EXCEPT \"x\" and the task folds only that. Use \"!x\" to subtract it, or \"x\" to include it.": [
+        "$CONFIG: tasks.c.cache.inputs.files: '!!' is not a double negation (got \"!!x\") — it INVERTS the set. One '!' is stripped and the remainder is compiled as a glob, which applies its own leading-'!' negation, so this excludes everything EXCEPT \"x\" and keeps only that. Use \"!x\" to subtract it, or \"x\" to include it.": [
           "[\"!!x\",\"y\"]"
         ],
         "$CONFIG: tasks.c.cache.inputs.files: \".\" names the project directory itself and selects nothing — use \"**\" for everything under it": [
@@ -1797,7 +1797,7 @@
         "$CONFIG: tasks.c.cache.inputs.workspaceFiles: every entry is a negation, which selects NOTHING (got [\"!x\"]) — negations only subtract from the files a positive glob already matched, so this task would fold zero file inputs and its cache key would stop tracking its source. Add the positive glob you meant, e.g. ['**/*', \"!x\"].": [
           "[\"!x\"]"
         ],
-        "$CONFIG: tasks.c.cache.inputs.workspaceFiles: '!!' is not a double negation (got \"!!x\") — it INVERTS the set. One '!' is stripped and the remainder is compiled as a glob, which applies its own leading-'!' negation, so this excludes everything EXCEPT \"x\" and the task folds only that. Use \"!x\" to subtract it, or \"x\" to include it.": [
+        "$CONFIG: tasks.c.cache.inputs.workspaceFiles: '!!' is not a double negation (got \"!!x\") — it INVERTS the set. One '!' is stripped and the remainder is compiled as a glob, which applies its own leading-'!' negation, so this excludes everything EXCEPT \"x\" and keeps only that. Use \"!x\" to subtract it, or \"x\" to include it.": [
           "[\"!!x\",\"y\"]"
         ],
         "$CONFIG: tasks.c.cache.inputs.workspaceFiles: \".\" names the workspace root itself and selects nothing — use \"**\" for everything under it": [
@@ -2039,16 +2039,16 @@
         "$CONFIG: tasks.c.cache.outputs.files: absolute paths are not allowed (got \"/x\") — outputs must be project-relative globs": [
           "[\"/x\"]"
         ],
-        "$CONFIG: tasks.c.cache.outputs.files: negation is not supported (got \"!/x\") — unlike inputs, output globs are never split on '!', so this is read as a literal path beginning with '!' and matches nothing. List the outputs you DO produce.": [
+        "$CONFIG: tasks.c.cache.outputs.files: absolute paths are not allowed (got \"!/x\") — outputs must be project-relative globs": [
           "[\"!/x\"]"
         ],
         "$CONFIG: tasks.c.cache.outputs.files: '..' path segments are not allowed (got \"../x\") — outputs must stay within the project (a glob that escapes the project dir would let cleanOutputs delete files outside it)": [
           "[\"../x\"]"
         ],
-        "$CONFIG: tasks.c.cache.outputs.files: negation is not supported (got \"!x\") — unlike inputs, output globs are never split on '!', so this is read as a literal path beginning with '!' and matches nothing. List the outputs you DO produce.": [
+        "$CONFIG: tasks.c.cache.outputs.files: every entry is a negation, which selects NOTHING (got [\"!x\"]) — a '!' entry only takes back what a positive glob selected. Add the outputs the task produces, e.g. ['dist/**', \"!x\"], or declare [] for none.": [
           "[\"!x\"]"
         ],
-        "$CONFIG: tasks.c.cache.outputs.files: negation is not supported (got \"!!x\") — unlike inputs, output globs are never split on '!', so this is read as a literal path beginning with '!' and matches nothing. List the outputs you DO produce.": [
+        "$CONFIG: tasks.c.cache.outputs.files: '!!' is not a double negation (got \"!!x\") — it INVERTS the set. One '!' is stripped and the remainder is compiled as a glob, which applies its own leading-'!' negation, so this excludes everything EXCEPT \"x\" and keeps only that. Use \"!x\" to subtract it, or \"x\" to include it.": [
           "[\"!!x\",\"y\"]"
         ],
         "$CONFIG: tasks.c.cache.outputs.files: \".\" names the project directory itself and selects nothing — name the directory the task writes, such as \"dist/**\"": [
@@ -2093,10 +2093,10 @@
         "$CONFIG: tasks.c.cache.outputs.workspaceFiles: '..' path segments are not allowed (got \"../x\") — entries are workspace-root-relative and must stay within the workspace root": [
           "[\"../x\"]"
         ],
-        "$CONFIG: tasks.c.cache.outputs.workspaceFiles: negation is not supported (got \"!x\") — unlike inputs, output globs are never split on '!', so this is read as a literal path beginning with '!' and matches nothing. List the outputs you DO produce.": [
+        "$CONFIG: tasks.c.cache.outputs.workspaceFiles: every entry is a negation, which selects NOTHING (got [\"!x\"]) — a '!' entry only takes back what a positive glob selected. Add the outputs the task produces, e.g. ['dist/**', \"!x\"], or declare [] for none.": [
           "[\"!x\"]"
         ],
-        "$CONFIG: tasks.c.cache.outputs.workspaceFiles: negation is not supported (got \"!!x\") — unlike inputs, output globs are never split on '!', so this is read as a literal path beginning with '!' and matches nothing. List the outputs you DO produce.": [
+        "$CONFIG: tasks.c.cache.outputs.workspaceFiles: '!!' is not a double negation (got \"!!x\") — it INVERTS the set. One '!' is stripped and the remainder is compiled as a glob, which applies its own leading-'!' negation, so this excludes everything EXCEPT \"x\" and keeps only that. Use \"!x\" to subtract it, or \"x\" to include it.": [
           "[\"!!x\",\"y\"]"
         ],
         "$CONFIG: tasks.c.cache.outputs.workspaceFiles: \".\" names the workspace root itself and selects nothing — use \"**\" for everything under it": [

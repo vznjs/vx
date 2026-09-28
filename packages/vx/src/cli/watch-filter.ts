@@ -7,6 +7,7 @@ import {
   executablePath,
   isLiteralPattern,
   normalizeGlob,
+  outputMatcher,
   staticPrefix,
   taskGlob,
 } from '../util/index.js'
@@ -67,11 +68,14 @@ export function makeWatchIgnore(
   // every ancestor of it under the dir are output containers.
   // A literal entry means the file or its whole tree — the resolver's own
   // rule (`asTrees`), so the tree's files never count as edits.
+  // A `!` entry takes its paths back, so an edit there is an edit (A-44);
+  // compiled as a glob it would be `Bun.Glob`'s own negation and hide every
+  // other path.
   const declared = [...outputs].map(
     ([dir, globs]) =>
       [
         path.resolve(dir),
-        asTrees(globs).map((g) => taskGlob(g)),
+        outputMatcher(globs),
         globs.map(outputContainer).filter((c) => c !== ''),
       ] as const,
   )
@@ -101,13 +105,13 @@ export function makeWatchIgnore(
     const abs = path.resolve(base, filename)
     if (abs === cacheAbs || abs.startsWith(cacheAbs + path.sep)) return true
     if (isInput(abs)) return false
-    for (const [dir, globs, containers] of declared) {
+    for (const [dir, isOutput, containers] of declared) {
       if (!abs.startsWith(dir + path.sep)) continue
       const rel = abs
         .slice(dir.length + 1)
         .split(path.sep)
         .join('/')
-      if (globs.some((g) => g.match(rel))) return true
+      if (isOutput(rel)) return true
       if (containers.some((c) => c === rel || c.startsWith(`${rel}/`))) return true
     }
     return false

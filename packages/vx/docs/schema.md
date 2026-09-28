@@ -644,7 +644,8 @@ Always applied to every glob pass (regardless of what you wrote):
 - **Always-ignored** — `node_modules/**`, `.git/**`, `.vx/**`,
   `*.tsbuildinfo`, `vx-lock.json`, `*.bun-build`.
 - **Declared `outputs.files`** are excluded — a task never invalidates
-  itself via its own output.
+  itself via its own output. A path an output `!` entry takes back is
+  no output, so it stays an input (A-44).
 - **Nested-project subtree** — files belonging to a project rooted
   inside this one's dir are excluded. No cross-project leakage via
   globs; the only cross-project relationship is `dependsOn` +
@@ -899,6 +900,24 @@ restores either way.
 Empty `[]` is valid for tasks that produce no files (e.g. `lint`,
 `typecheck`, `test`); you still cache the no-op success so the next
 run is a no-op too.
+
+A **`!` entry takes a path back** from what the positive globs select
+(A-44; lit's wireit outputs keep a tracked fixture and a scratch dir
+under `dist` this way):
+
+```ts
+outputs: {
+  files: ['dist/**', '!dist/fixture.html', '!**/*.tmp']
+}
+```
+
+A path taken back is not cleaned before a run or a restore, not saved,
+not accepted from a remote artifact, and not hidden from `vx watch`;
+it stays an input, so an edit to it moves the key. A list of only `!`
+entries selects nothing and is refused, and `!!x` is refused as it is
+for inputs. The directory short-circuit on a warm hit needs every glob
+to be a whole subtree, so a task with a `!` entry keeps the walk.
+`workspaceFiles` takes `!` the same way.
 
 **Cleaning semantics** (one of vx's strict-output-ownership rules):
 
@@ -1563,7 +1582,7 @@ lists the messages a user meets most:
 | `cache.outputs is required when cache is set`                                                                     | Forgot `outputs`.                                                                                                                                                                                                              |
 | `cache.outputs.files must be an array`                                                                            | Wrong shape.                                                                                                                                                                                                                   |
 | `cache.inputs.files: every entry is a negation, which selects NOTHING`                                            | Only `!` globs — nothing to subtract from.                                                                                                                                                                                     |
-| `cache.outputs.files: negation is not supported`                                                                  | Output globs are never split on `!`.                                                                                                                                                                                           |
+| `cache.outputs.files: every entry is a negation, which selects NOTHING`                                           | Only `!` globs: a `!` entry only takes back what a positive glob selected (A-44).                                                                                                                                              |
 | `cache.outputs.files: "<glob>" covers the project's own <file>`                                                   | An output glob that matches the project's `package.json` or its own `vx.config.*` (`**`, `*.json`): the clean before a run would delete them.                                                                                  |
 | `cache.inputs.files: '!!' is not a double negation`                                                               | `!!x` inverts the set — it folds only `x`.                                                                                                                                                                                     |
 | `exec.timeout: <n> ms exceeds the maximum timer delay`                                                            | Past 2^31-1 ms a timer fires at once, not never.                                                                                                                                                                               |

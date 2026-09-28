@@ -224,14 +224,14 @@ export async function planArtifact(args: PackArgs): Promise<ArtifactPlan> {
       const st = await stat(abs).catch((err: NodeJS.ErrnoException) => {
         if (err.code === 'ENOENT') {
           throw new UserError(
-            `output ${shown} is a dangling symlink: vx stores regular files only — emit a file there, or narrow cache.outputs.files to the files the task produces (output globs take no '!')`,
+            `output ${shown} is a dangling symlink: vx stores regular files only — emit a file there, or narrow cache.outputs.files to the files the task produces, or take it back with a '!' entry`,
           )
         }
         throw err
       })
       if (!st.isFile()) {
         throw new UserError(
-          `output ${shown} is not a regular file (a symlink to a directory?): vx stores regular files only — emit a file there, or narrow cache.outputs.files to the files the task produces (output globs take no '!')`,
+          `output ${shown} is not a regular file (a symlink to a directory?): vx stores regular files only — emit a file there, or narrow cache.outputs.files to the files the task produces, or take it back with a '!' entry`,
         )
       }
       // Windows reports 0o666 (0o444 read-only) and never an exec bit: a

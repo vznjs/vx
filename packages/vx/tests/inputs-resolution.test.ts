@@ -740,19 +740,9 @@ describe('output resolution contains itself — the loader guard is now the SECO
     expect(await readFile(path.join(victim, 'precious.txt'), 'utf8')).toBe('precious')
   })
 
-  it('FINDING: a negation in outputs.files is a silent no-op', async () => {
-    // FINDING — currently guarded at the loader, pinned here as the reason.
-    //
-    // `resolveOutputs` never splits on `!`; it passes each entry straight to
-    // `scanUnion` as a positive pattern. `'!dist/*.map'` is therefore read as a
-    // literal path beginning with `!`, matches nothing, and subtracts nothing —
-    // so `['dist/**', '!dist/*.map']` captures AND deletes the .map files the
-    // author believed they had excluded.
-    //
-    // Correct behaviour is what the loader now does: refuse it, because
-    // supporting subtraction here would change which files existing configs
-    // capture. Pinned so nobody "adds negation support" to the resolver without
-    // realising that is a cache-artifact change.
+  it('a negation in outputs.files takes its paths back from the resolved set (A-44)', async () => {
+    // Until A-44 the resolver never split on `!`: `'!dist/*.map'` was a
+    // literal path that matched nothing, so the loader refused it.
     await write(path.join(projectDir, 'dist', 'a.js'))
     await write(path.join(projectDir, 'dist', 'a.map'))
 
@@ -761,10 +751,7 @@ describe('output resolution contains itself — the loader guard is now the SECO
       outputs: ['dist/**', '!dist/*.map'],
       nestedProjectDirs: [],
     })
-    expect(out.map((f) => relPosix(projectDir, f))).toEqual([
-      path.join('dist', 'a.js'),
-      path.join('dist', 'a.map'),
-    ])
+    expect(out.map((f) => relPosix(projectDir, f))).toEqual([path.join('dist', 'a.js')])
   })
 
   it('cleanOutputs reports what it removed, so staleness bookkeeping can follow', async () => {

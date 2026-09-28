@@ -32,16 +32,15 @@ import path from 'node:path'
 import { createTables } from './schema.js'
 import {
   UserError,
-  asTrees,
   formatBytes,
   isDiskFull,
   isFsRefusal,
   isOutOfFds,
   OUT_OF_FDS_HINT,
+  outputMatcher,
   relPosix,
   span,
   splitTaskId,
-  taskGlob,
   xxh3hex,
 } from '../util/index.js'
 import {
@@ -1952,13 +1951,14 @@ function assertArtifactNames(
     }
   }
   if (declared === undefined) return
-  const files = asTrees(declared.files).map(taskGlob)
-  const wsFiles = asTrees(declared.workspaceFiles).map(taskGlob)
+  // A path a `!` entry takes back is no declared output either (A-44).
+  const isFile = outputMatcher(declared.files)
+  const isWsFile = outputMatcher(declared.workspaceFiles)
   for (const name of names) {
     const ok = name.startsWith('outputs/')
-      ? files.some((g) => g.match(name.slice('outputs/'.length)))
+      ? isFile(name.slice('outputs/'.length))
       : name.startsWith(WORKSPACE_OUTPUT_PREFIX)
-        ? wsFiles.some((g) => g.match(name.slice(WORKSPACE_OUTPUT_PREFIX.length)))
+        ? isWsFile(name.slice(WORKSPACE_OUTPUT_PREFIX.length))
         : true
     if (!ok) {
       throw new CorruptArtifactError(
