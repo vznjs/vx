@@ -65,6 +65,8 @@ export interface OtelSinkConfig {
   metricsEnabled: boolean
   logsEnabled: boolean
   timeoutMs: number
+  /** Per signal, over `timeoutMs` (`OTEL_EXPORTER_OTLP_<SIGNAL>_TIMEOUT`). */
+  signalTimeoutMs?: Partial<Record<OtelSignal, number>>
   post?: PostFn
   warn?: (message: string) => void
 }
@@ -262,8 +264,10 @@ export class OtelSink implements TelemetrySink {
   private readonly logs = new TaskLogBuffer()
   private runId = ''
   private runStartedAt = 0
+  private readonly injected: boolean
 
   constructor(config: OtelSinkConfig) {
+    this.injected = config.post !== undefined
     this.cfg = {
       tracesUrl: config.tracesUrl,
       metricsUrl: config.metricsUrl,
@@ -279,6 +283,7 @@ export class OtelSink implements TelemetrySink {
       metricsEnabled: config.metricsEnabled,
       logsEnabled: config.logsEnabled,
       timeoutMs: config.timeoutMs,
+      signalTimeoutMs: config.signalTimeoutMs ?? {},
       post: config.post ?? defaultPost(config.timeoutMs),
       ...(config.warn ? { warn: config.warn } : {}),
     }
@@ -414,12 +419,21 @@ export class OtelSink implements TelemetrySink {
           workspaceId,
           entries,
           timeUnixNano: nanos(this.summary?.endedAt ?? Date.now()),
-          ...(this.traceId ? { traceId: this.traceId } : {}),
-          spanIdFor: (taskId) => this.taskSpanId.get(taskId),
+          // Traces off: the trace and its spans are never exported, and a
+          // record naming them links nowhere (F-49).
+          ...(this.cfg.tracesEnabled && this.traceId
+            ? { traceId: this.traceId, spanIdFor: (taskId) => this.taskSpanId.get(taskId) }
+            : {}),
         }),
       ),
     )
     await this.send('logs', this.cfg.logsUrl, bodies)
+  }
+
+  /** The transport, under the signal's own timeout when it has one (F-49). */
+  private postFor(signal: OtelSignal): PostFn {
+    const own = this.cfg.signalTimeoutMs[signal]
+    return own === undefined || this.injected ? this.cfg.post : defaultPost(own)
   }
 
   /** POSTs every body at once; one warning per signal, however many fail. */
@@ -436,7 +450,9 @@ export class OtelSink implements TelemetrySink {
         bodies.map((body) =>
           // Through a promise, so a transport that throws before it awaits is caught too.
           Promise.resolve()
-            .then(() => this.cfg.post(url, body, headers, this.deadline, this.cfg.tls[signal]))
+            .then(() =>
+              this.postFor(signal)(url, body, headers, this.deadline, this.cfg.tls[signal]),
+            )
             .then(
               () => undefined,
               (err: unknown) => (err instanceof Error ? err.message : String(err)),
