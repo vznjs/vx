@@ -588,3 +588,11 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   core reads, D-39), and `//#x` edges reach it. The README's migrate
   list no longer names negated outputs (stale since G-44). Row
   (`migrate.test` › vx migrate (turbo): root tasks): red without it.
+- **G-53.** Mutation sweep of G-49..G-52's code: twelve mutants, eight
+  caught. Four guards had no row: turbo()'s `cacheRetention` the
+  workspace already sets, a `concurrency` that is no positive whole
+  number (`"abc"`, `"1.5"`), and the CLI's two root checks. Of those two,
+  the directory check was dead: a root meta always carries the root
+  `package.json` name, so the name check covers both a root already
+  listed and a package that took the name. It went; rows hold the
+  rest (`workspace-keys.test`, `migrate.test` › adds no second root).
