@@ -587,3 +587,16 @@ saw a TERM handler cut short.
   yet listening, then it sleeps `i * 100` ms. SRT starts the bridge on
   every Linux init. The fix is upstream (poll at a few ms); a bun patch
   reaches only this repo, and arming earlier taxes every all-hit run.
+
+B-29. Sweep of `runPersistent`, 21 mutants: 5 caught, 1 unobservable
+(the exit clearing a ready timer that could only kill a reaped group),
+4 in two masking pairs, 11 now held. Its readiness window, final decoder flush,
+stderr routing, empty-chunk guard, `liveChildren` entry, `readyMs`, the
+no-`readyWhen` ready, the exit message and both halves of the timeout's
+kill (TERM first, then KILL for what ignores it) had no row. Pairs, each
+member equivalent alone: the ready guard and the post-ready match skip;
+the timer clear on ready and the timer's own guard, which together kill
+a ready server at `timeoutMs` (held as a pair).
+
+- Rows: `runner.test.ts` › runPersistent — the rows its sweep asked for
+  (seven).
