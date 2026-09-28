@@ -154,3 +154,13 @@ packages/core`) selects the dependent whose `file:../lib` spec named
   (D-16)". Equivalent: the first-dependency pick (a `build` group has
   one), the `build` exclusion and both dedups (each masks the others),
   the empty project and empty script guards.
+- **D-17** Mutation sweep of `config-eval.ts` (28 mutants). Two
+  behaviour survivors, now rows in `tests/config-eval.test.ts`: the
+  worker's `error` handler (a config whose microtask throws was refused
+  at once, naming the throw; unheard, it waited out the budget), and
+  the timeout's worker retirement inside a held round (a busy-looping
+  config would have timed out every later config in the round).
+  Equivalent: a `null` default read as an object, the id and pending
+  guards, a round ended twice, `messageerror` (the worker posts only
+  plain data), and the budget's digit guard (Bun clamps a negative
+  delay to 1 ms, and the reply won that race).
