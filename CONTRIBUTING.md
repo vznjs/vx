@@ -38,7 +38,8 @@ run ci --all` runs lint (oxlint type-aware + oxfmt), every package's
   handoff — record what shipped and why there.
 - **Commits and PR titles:** Conventional Commits (`fix(cache): …`),
   first line under 72 characters, body says why. One coherent change per
-  commit.
+  commit. CI checks a PR's title and each of its commits
+  (`packages/vx/scripts/conventional.ts`).
 - **Plugins** are `definePlugin(import.meta, hooks)` on the documented
   seams (`packages/vx/docs/design/pipeline-2026-09.md`); core names no
   plugin and ships no technology plugin — those are the community's.

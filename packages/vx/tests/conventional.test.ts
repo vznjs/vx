@@ -17,6 +17,8 @@ it('accepts type, optional scope and !, and names why anything else fails', () =
       'fix(cli):no space',
       'fix: ',
       'Merge branch main',
+      `fix: ${'x'.repeat(66)}`,
+      `fix: ${'x'.repeat(67)}`,
     ]),
   ).toEqual([
     ['feat(cli): scaffold a plugin (H-21)', null],
@@ -32,5 +34,7 @@ it('accepts type, optional scope and !, and names why anything else fails', () =
     ['fix(cli):no space', 'not `type(scope): summary`'],
     ['fix: ', 'not `type(scope): summary`'],
     ['Merge branch main', 'not `type(scope): summary`'],
+    [`fix: ${'x'.repeat(66)}`, null],
+    [`fix: ${'x'.repeat(67)}`, '72 chars (under 72)'],
   ])
 })
