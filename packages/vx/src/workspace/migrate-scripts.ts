@@ -23,7 +23,11 @@
 // hook is usually `rimraf dist`); and a script that is nothing but
 // `<pm> run <other>` becomes a GROUP over `<other>`, so the graph sees the
 // dependency instead of a package-manager subprocess it cannot cache.
+// Yarn 2+ runs no such hooks (probed: `yarn run build` printed BUILD alone),
+// so under it `prebuild` is a script like any other (D-31).
 
+import { existsSync, readFileSync } from 'node:fs'
+import path from 'node:path'
 import { taskNameProblem } from './config-schema.js'
 import type { ProjectMeta } from './workspace.js'
 import {
@@ -82,6 +86,40 @@ const OWN_COMMANDS: Readonly<Record<string, ReadonlySet<string>>> = {
   ),
 }
 
+/**
+ * Whether the package manager that owns `dir` is Yarn 2+: the nearest
+ * `packageManager: yarn@<2+>`, or the nearest lockfile being a Berry
+ * `yarn.lock` (it opens with `__metadata:`). Another lockfile, or none,
+ * is a manager that runs `pre` / `post` hooks.
+ */
+function isYarnBerry(dir: string, memo: Map<string, boolean>): boolean {
+  const known = memo.get(dir)
+  if (known !== undefined) return known
+  let answer: boolean | undefined
+  const manifest = path.join(dir, 'package.json')
+  try {
+    const pm = (JSON.parse(readFileSync(manifest, 'utf8')) as { packageManager?: unknown })
+      .packageManager
+    if (typeof pm === 'string') answer = /^yarn@([2-9]|\d{2,})/.test(pm)
+  } catch {}
+  if (answer === undefined) {
+    const lock = path.join(dir, 'yarn.lock')
+    if (existsSync(lock)) answer = readFileSync(lock, 'utf8').includes('\n__metadata:')
+    else if (
+      ['package-lock.json', 'pnpm-lock.yaml', 'bun.lock', 'bun.lockb'].some((f) =>
+        existsSync(path.join(dir, f)),
+      )
+    )
+      answer = false
+  }
+  if (answer === undefined) {
+    const up = path.dirname(dir)
+    answer = up === dir ? false : isYarnBerry(up, memo)
+  }
+  memo.set(dir, answer)
+  return answer
+}
+
 function scriptsOf(meta: ProjectMeta): Record<string, unknown> {
   // package.json is a boundary: `scripts` is whatever the file holds. A
   // string or an array would enumerate its indices as script names.
@@ -132,8 +170,10 @@ function upstreamBuildOnWorker(tasks: GeneratedTask[]): void {
 
 export function migrateScripts(metas: readonly ProjectMeta[]): MigrationPlan {
   const projects: GeneratedProject[] = []
+  const berry = new Map<string, boolean>()
   for (const meta of metas) {
     const scripts = scriptsOf(meta)
+    const runsHooks = !isYarnBerry(meta.dir, berry)
     const runnable = Object.keys(scripts).filter(
       (n) => typeof scripts[n] === 'string' && scripts[n] !== '',
     )
@@ -153,7 +193,7 @@ export function migrateScripts(metas: readonly ProjectMeta[]): MigrationPlan {
     // of a script that exists rides inside that script's command.
     const isTask = (n: string): boolean => {
       if (!has(n) || LIFECYCLE.test(n)) return false
-      const hookOf = /^(pre|post)(.+)$/.exec(n)
+      const hookOf = runsHooks ? /^(pre|post)(.+)$/.exec(n) : null
       return hookOf === null || !has(hookOf[2]!) || LIFECYCLE.test(hookOf[2]!)
     }
     const tasks: GeneratedTask[] = []
@@ -165,7 +205,7 @@ export function migrateScripts(metas: readonly ProjectMeta[]): MigrationPlan {
       const delegate = delegatedScript(own)
       // npm lifecycle hooks (`prepack`, `prepublishOnly`, …) belong to the
       // package manager and never ride inside a task — `pack` stays alone.
-      const hook = (h: string): boolean => has(h) && !LIFECYCLE.test(h)
+      const hook = (h: string): boolean => runsHooks && has(h) && !LIFECYCLE.test(h)
       const hooks = [`pre${name}`, `post${name}`].filter(hook)
       // A group over a script that is no task (`setup: npm run prepare`)
       // named a task nothing defines, and the run `vx init` suggested
