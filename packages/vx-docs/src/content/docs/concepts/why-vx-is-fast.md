@@ -47,7 +47,8 @@ and faster:
 3. **Strict output ownership.** Declared outputs are wiped before exec
    *and* restore, so the tree ends as the cached snapshot, with no stale
    files. The one exception is a task that adds files to an upstream
-   task's outputs: it cleans only the files it recorded. Turborepo/Nx
+   task's outputs: it cleans nothing before exec and only the files it
+   recorded before a restore. Turborepo/Nx
    restore additively.
 4. **Daemonless.** No background process, no staleness window, no socket
    to corrupt — and the fastest warm/cached runs in the head-to-head
@@ -56,8 +57,9 @@ and faster:
 ## The mechanics under the hood
 
 - **Hashes come straight from git's index.** One `git ls-files -s` spawn
-  yields the file list *and* every clean file's blob OID; a concurrent
-  `git status` prunes anything that diverges. Clean-tree key derivation
+  yields the tracked file list *and* every clean file's blob OID; a
+  concurrent `git status` prunes anything that diverges and lists untracked
+  files. Clean-tree key derivation
   costs zero reads, zero stats, zero database lookups. Dirty files get the
   identical blob OID computed in-process, so a key never flips across a
   commit boundary — a class of spurious miss the others accept.
