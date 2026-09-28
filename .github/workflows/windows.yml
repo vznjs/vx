@@ -25,6 +25,11 @@ on:
 
 # Every newer push supersedes an older run, main's included: no release
 # or verdict waits on this workflow.
+# Checkout is all the token does here: a PR's code runs in these jobs, and
+# a default token may hold write access (L-29).
+permissions:
+  contents: read
+
 concurrency:
   group: windows-${{ github.ref }}
   cancel-in-progress: true

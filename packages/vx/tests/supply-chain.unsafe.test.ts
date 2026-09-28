@@ -119,6 +119,16 @@ describe('the supply chain', () => {
     ).toEqual(['echo "${{ github.event.pull_request.title }}"', 'V="${{ inputs.tag }}"'])
   })
 
+  // A workflow without a top-level `permissions:` runs on the repository's
+  // default token, which may write, and CI runs a PR's code (L-29).
+  it('declares the token permissions of every workflow', () => {
+    const workflows = files.filter((f) => f.includes(`${path.sep}workflows${path.sep}`))
+    expect(workflows.length).toBeGreaterThan(3)
+    expect(
+      workflows.filter((f) => !/^permissions:/m.test(readFileSync(f, 'utf8'))).map(rel),
+    ).toEqual([])
+  })
+
   it('publishes every npm package with provenance', () => {
     const publishes = files.flatMap((f) =>
       readFileSync(f, 'utf8')

@@ -13,6 +13,11 @@ on:
 # only the queued runs between it and the tip are dropped, or a busy main
 # never completes a run, never releases (auto-release.yml) and never says
 # it is red.
+# Checkout is all the token does here: a PR's code runs in these jobs, and
+# a default token may hold write access (L-29).
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
