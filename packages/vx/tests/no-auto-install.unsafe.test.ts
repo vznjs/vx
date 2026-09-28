@@ -6,6 +6,9 @@
 // `bin.ts`'s shebang runs Bun with --no-install, so no import vx evaluates
 // installs; the npm launcher's source fallback passes the same flag
 // (`npm-launcher.test.ts`), and a compiled binary never auto-installs.
+//
+// `.unsafe`: the row boots a registry on loopback, and core's shards grant
+// no local binding (seatbelt refused the listen on macOS).
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
