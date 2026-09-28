@@ -583,6 +583,11 @@ describe('migrateScripts', () => {
     // A sibling whose dir only starts with the root's name is no member.
     const w2 = meta('w2', '/w2', { build: 'tsc' })
     expect(migrateScripts([rootMeta, w2]).projects.map((p) => p.name)).toEqual(['root', 'w2'])
+    // A member holding a nested one, beside a member outside it, is no root.
+    const app = meta('app', '/w/apps/a', { build: 'tsc' })
+    const ex = meta('ex', '/w/apps/a/ex', { build: 'tsc' })
+    const lib = meta('lib', '/w/packages/lib', { build: 'tsc' })
+    expect(migrateScripts([app, ex, lib]).projects.map((p) => p.name)).toEqual(['app', 'ex', 'lib'])
   })
 
   it("npm's lifecycle scripts are never tasks, but a hook of one is a task of its own", () => {

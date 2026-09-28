@@ -466,3 +466,8 @@ packages/core`) selects the dependent whose `file:../lib` spec named
   a root config importing a member's file re-evaluates on its edit, and
   `--affected` gives that edit to both projects; an Nx root project named
   apart from its package attaches its targets through `nx()`.
+- **D-48** Mutation sweep of D-45's root detection in
+  `migrate-scripts.ts` (7 mutants). One survived: `every` read as
+  `some`, which took a member holding a nested member, beside a member
+  outside it, for the workspace root and left it unmapped. The D-45 row
+  now holds that case.
