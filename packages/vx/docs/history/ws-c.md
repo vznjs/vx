@@ -366,6 +366,17 @@ regex), and `DependencySpecError.raw` is read by nothing (dead). No
 defect in the file.
 `DependencySpecError.raw` is dropped: nothing read it.
 
+## C-34: take the foreign-procfs lock row in a child process
+
+C-27's "where procfs is not this namespace, an entry names no start
+time" failed on CI shard 10: `run-lock.ts` names its entries once per
+process, and a file that took a lock earlier in the same process had
+fixed the name with a real start time, which no mock reaches after.
+Red 1 of 1 after `run-lock.test.ts` in one process, green alone. The
+row now takes the lock in a child whose preload swaps `procfs.ts` for a
+foreign one; green in both orders, and red with `startTime`'s procfs
+guard removed.
+
 ## Leads for other streams
 
 - **E:** a plugin command's plain `throw` (`commands.probe.run` throwing
