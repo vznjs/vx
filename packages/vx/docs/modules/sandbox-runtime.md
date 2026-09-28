@@ -30,8 +30,8 @@ Three companions hold the rest, split 2026-09-09 as pure code motion:
 - `sandbox-binds.ts` — write grants as bwrap can honour them
   (`bindableWrites`), read grants punched around the write grants
   inside them (`punchWritePaths`), and the SRT custom config.
-- `sandbox-paths.ts` — `toRealPath`, `absolutize`, `isUnderAny`,
-  `unique`.
+- `sandbox-paths.ts` — `toRealPath`, `absolutize`, `atOrUnder`,
+  `isUnderAny`, `unique`.
 
 ## User-facing config
 
@@ -203,6 +203,9 @@ export function isMountableLiteral(grant: string): boolean
 // A path with its existing prefix realpath'd and the rest re-appended.
 export function toRealPath(p: string): string
 export function absolutize(p: string, cwd?: string): string
+// `p` is `dir` or below it, by path (a name-prefix sibling is not): the
+// one copy of the check the sandbox code makes.
+export function atOrUnder(p: string, dir: string): boolean
 export function isUnderAny(abs: string, allow: Set<string>): boolean
 export function unique(arr: readonly string[]): string[]
 export function localBindingOn(c: { localBinding?: boolean | readonly number[] }): boolean

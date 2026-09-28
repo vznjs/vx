@@ -18,6 +18,7 @@ import {
   toRealPath,
   type ExecuteRequest,
   isMountableLiteral,
+  atOrUnder,
   type SandboxViolation,
 } from '../exec/index.js'
 import type { TaskNode } from '../graph/index.js'
@@ -299,7 +300,11 @@ async function linkedDeps(
       const full = path.join(dir, e.name)
       if (e.isSymbolicLink()) {
         const target = await realpath(full).catch(() => undefined)
-        if (target !== undefined && !dirs.some((d) => within(target, d)) && !within(self, target)) {
+        if (
+          target !== undefined &&
+          !dirs.some((d) => atOrUnder(target, d)) &&
+          !atOrUnder(self, target)
+        ) {
           found.push([target, full, scope + e.name])
         }
       } else if (scope === '' && e.isDirectory() && e.name.startsWith('@')) {
@@ -321,7 +326,7 @@ async function linkedDeps(
   const granted: string[] = []
   const withheld: WithheldLink[] = []
   for (const [target, { link, name }] of targets) {
-    if (!within(target, root) || keyedDirs.has(target)) granted.push(target)
+    if (!atOrUnder(target, root) || keyedDirs.has(target)) granted.push(target)
     else
       withheld.push({
         dir: target,
@@ -355,22 +360,13 @@ export function reachedWithheld(
   violations: readonly SandboxViolation[],
 ): WithheldLink[] {
   return withheld.filter((w) =>
-    violations.some((v) => v.path !== undefined && within(v.path, w.dir)),
+    violations.some((v) => v.path !== undefined && atOrUnder(v.path, w.dir)),
   )
 }
 
 /** `p` relative to `from`, with `/` separators. */
 function posixRel(from: string, p: string): string {
   return path.relative(from, p).split(path.sep).join('/')
-}
-
-/**
- * `p` is `dir` or below it — by path, so a sibling sharing `dir`'s name
- * prefix is not. `/` already ends in the separator, and a link to it
- * holds every project.
- */
-function within(p: string, dir: string): boolean {
-  return p === dir || p.startsWith(dir.endsWith(path.sep) ? dir : dir + path.sep)
 }
 
 /**
@@ -451,8 +447,8 @@ function wallOff(
   for (const bind of bindableWrites(config.allowWrite)) {
     // A bind outside the workspace is the user's own path (`/tmp/x`,
     // `~/.cache/y`), spelled there on purpose; only one inside is judged.
-    if (bind !== home && !bind.startsWith(home + path.sep)) continue
-    const wall = walls.find((w) => w === bind || w.startsWith(bind + path.sep))
+    if (!atOrUnder(bind, home)) continue
+    const wall = walls.find((w) => atOrUnder(w, bind))
     if (wall === undefined) continue
     throw new UserError(
       `exec.sandbox.allow.write: the grant binding ${bind} would make ${wall} writable — another ` +
@@ -558,8 +554,8 @@ export function commandWriteReach(node: TaskNode, workspaceRoot: string): WriteR
   let reach: 'none' | 'project' = 'none'
   for (const grant of exec.sandbox.allow?.write ?? []) {
     const abs = path.resolve(node.projectDir, expandHome(grantPrefix(grant)))
-    if (within(abs, node.projectDir)) reach = 'project'
-    else if (within(abs, workspaceRoot) || within(workspaceRoot, abs)) return 'workspace'
+    if (atOrUnder(abs, node.projectDir)) reach = 'project'
+    else if (atOrUnder(abs, workspaceRoot) || atOrUnder(workspaceRoot, abs)) return 'workspace'
   }
   return reach
 }
@@ -579,7 +575,7 @@ export function mayWriteFingerprint(node: TaskNode, workspaceRoot: string): bool
   for (const grant of exec.sandbox.allow?.write ?? []) {
     const abs = path.resolve(node.projectDir, expandHome(grantPrefix(grant)))
     for (const f of WORKSPACE_FINGERPRINT_FILES) {
-      if (within(path.join(workspaceRoot, f), abs)) return true
+      if (atOrUnder(path.join(workspaceRoot, f), abs)) return true
     }
   }
   return false
