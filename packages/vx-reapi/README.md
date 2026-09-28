@@ -328,7 +328,8 @@ Protocol features in use, not just reachable:
   action id, correlated invocations id) — how a server groups an action's
   dozens of CAS/AC calls into one build in its UI.
 - **Inline stdout/stderr** on `ExecuteRequest`, sparing two CAS round trips
-  per finished action.
+  per finished action. A failed execution status that carries a partial
+  result (a worker past its timeout) still prints what the command wrote.
 - **Execution stages** — `QUEUED` / `EXECUTING` / `COMPLETED` decoded from
   `ExecuteOperationMetadata`, so a queued action is distinguishable from a
   hung one.
@@ -337,7 +338,9 @@ Protocol features in use, not just reachable:
   `Command.platform` for older servers.
 - **`NodeProperties`** — `unix_mode` and `mtime` on tree nodes.
 - **Output directories** via the `Tree` blob an `OutputDirectory.tree_digest`
-  addresses, plus **output symlinks**. A tree's small files are fetched
+  addresses, plus **output symlinks** (a v2.0 server's
+  `output_file_symlinks` / `output_directory_symlinks` when it sends only
+  those). A tree's small files are fetched
   together across its directories (`BatchReadBlobs`, 64 MiB at a time),
   not one call per directory.
 - **Upload minimality** — `FindMissingBlobs` first (split so no request

@@ -484,3 +484,23 @@ the OS follows it, and one that leaves is removed and refused. Bun's
 `realpath` collapses `..` as text before following a link (probed:
 ENOENT where coreutils answers the outside directory), so it could
 not judge this. Row red without the fix, both orders and the Tree.
+
+F-48. vx-reapi dropped two parts of an Execute answer. A v2.0 server
+names its output links only in the deprecated `output_file_symlinks`
+(10) and `output_directory_symlinks` (11), which the decoder skipped, so
+the link was never restored or recorded; they are now read when
+`output_symlinks` (12) is absent (a v2.1 server fills both). And a
+failed status that carries a partial result (DEADLINE_EXCEEDED from a
+worker's timeout) threw without the command's stdout and stderr; they
+are now delivered first. Rows red without each fix (the decoder's
+against protobufjs).
+
+F-49. vx-otel read four pieces of the OTLP env wrong. A base
+`OTEL_EXPORTER_OTLP_ENDPOINT` with a query (`https://c/otlp?tenant=a`)
+had `/v1/traces` glued onto the query's last value; it is now appended
+to the path. `OTEL_EXPORTER_OTLP_<SIGNAL>_TIMEOUT` was not read; it
+now wins for its signal, the option over both. A malformed
+`OTEL_RESOURCE_ATTRIBUTES` (a bad escape, a pair without `=`) was sent
+in part; the Resource SDK spec drops it whole, and it warns. And with
+traces off, each log record still named a trace and span never
+exported; they are left off. Rows red without each fix.

@@ -5,7 +5,7 @@
 // no grant can avoid, minus what the task chose to ignore.
 
 import path from 'node:path'
-import { absolutize, isUnderAny, localBindingOn, toRealPath } from './sandbox-paths.js'
+import { absolutize, atOrUnder, isUnderAny, localBindingOn, toRealPath } from './sandbox-paths.js'
 import type {
   ResolvedSandboxConfig,
   SandboxedRunArgs,
@@ -119,7 +119,7 @@ export async function parseStraceViolations(
     const abs = toRealPath(absolutize(rawPath, baselines.cwd))
     // Only report paths under the workspace-root deny anchor — system
     // libs / /proc / /sys / etc. probes are not interesting violations.
-    if (!denyAnchors.some((root) => abs === root || abs.startsWith(root + path.sep))) continue
+    if (!denyAnchors.some((root) => atOrUnder(abs, root))) continue
     // Skip paths the user explicitly allowed (and their descendants).
     if (isUnderAny(abs, allowAbs)) continue
     const key = `${syscall}|${abs}`

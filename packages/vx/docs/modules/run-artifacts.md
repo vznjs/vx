@@ -51,7 +51,8 @@ DTRT).
 Output shape — see [`cli.md` § `--summarize`](../cli.md#--summarizepath).
 hrtime fields are stringified bigints (preserves ns precision through
 JSON). `summary` block aggregates totals (successful / failed /
-skipped / cachedLocal / cachedRemote / total). A task the run proved
+skipped / cachedLocal / restoredLocal / restoredRemote / upToDate /
+cachedRemote / aborted / total). A task the run proved
 flaky carries `flaky: { passes, failures, attempts }` (present only
 then, like `noCache`).
 
@@ -77,11 +78,11 @@ the exit code.
 
 ## Tests
 
-`tests/orchestrator.test.ts` covers:
+`tests/run-artifacts.test.ts` covers:
 
 - Summary written to default path when `--summarize` has no value.
 - Summary written to explicit path when `--summarize=foo.json`.
-- Profile written, parseable as JSON, tasks have monotonic `ts`.
+- Profile written and parseable as JSON.
 - Hrtime bigints preserved as strings.
 - Profile writers skip tasks without hrtime spans.
 - Group tasks excluded from both outputs.

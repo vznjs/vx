@@ -282,6 +282,7 @@ function decodeLogEntry(
 
 function decodeActionResult(buf: Uint8Array): ActionResult {
   const res: ActionResult = {}
+  const legacyLinks: { path: string; target: string }[] = []
   let i = 0
   while (i < buf.length) {
     const [key, k] = readVarint(buf, i)
@@ -309,10 +310,14 @@ function decodeActionResult(buf: Uint8Array): ActionResult {
       else if (field === 8) res.stderr_digest = decodeDigest(slice)
       else if (field === 9) res.execution_metadata = decodeExecutedActionMetadata(slice)
       else if (field === 12) (res.output_symlinks ??= []).push(decodeOutputSymlink(slice))
+      // output_file_symlinks (10) and output_directory_symlinks (11): all a
+      // v2.0 server sends, and a v2.1 server repeats them beside field 12 (F-48).
+      else if (field === 10 || field === 11) legacyLinks.push(decodeOutputSymlink(slice))
     } else if (wire === 5) i += 4
     else if (wire === 1) i += 8
     else break
   }
+  if (res.output_symlinks === undefined && legacyLinks.length > 0) res.output_symlinks = legacyLinks
   return res
 }
 
@@ -961,6 +966,17 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
       // command): surface the server's message and its logs, which are the
       // only diagnostics that exist for a worker-side failure.
       if (decoded.status !== undefined && decoded.status.code !== 0) {
+        // A worker past its timeout answers DEADLINE_EXCEEDED with the
+        // partial result, as the spec suggests: what the command printed
+        // is delivered before the refusal, best effort (F-48).
+        if (result !== undefined) {
+          const [out, err] = await Promise.all([
+            this_readStream(client, result.stdout_raw, result.stdout_digest).catch(() => ''),
+            this_readStream(client, result.stderr_raw, result.stderr_digest).catch(() => ''),
+          ])
+          if (out.length > 0) req.onStdout(out)
+          if (err.length > 0) req.onStderr(err)
+        }
         const logs = await fetchServerLogs(client, decoded.serverLogs)
         throw new UserError(
           `vx/reapi: ${req.taskId} execution failed: ${decoded.status.message || `code ${decoded.status.code}`}` +

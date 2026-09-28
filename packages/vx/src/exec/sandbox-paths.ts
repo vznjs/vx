@@ -52,10 +52,18 @@ export function absolutize(p: string, cwd?: string): string {
   return path.resolve(cwd ?? process.cwd(), p)
 }
 
+/**
+ * `p` is `dir` or below it, by path: a sibling sharing `dir`'s name prefix
+ * is not, and `/` already ends in the separator.
+ */
+export function atOrUnder(p: string, dir: string): boolean {
+  return p === dir || p.startsWith(dir.endsWith(path.sep) ? dir : dir + path.sep)
+}
+
 export function isUnderAny(abs: string, allow: Set<string>): boolean {
   if (allow.has(abs)) return true
   for (const a of allow) {
-    if (abs === a || abs.startsWith(a + path.sep)) return true
+    if (atOrUnder(abs, a)) return true
   }
   return false
 }

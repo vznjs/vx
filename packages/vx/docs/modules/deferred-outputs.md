@@ -53,8 +53,8 @@ export class DeferredOutputs {
 - A deferred task writes NOTHING locally — no artifact, no `entries` row,
   no `output_files`. A row without an artifact is the corrupt-entry shape
   `restoreOutputs` refuses.
-- Materialisation CONVERGES: clean → closure writes → ordinary
-  `cache.save` → `markOutputsChanged`, mirroring `restoreHit`'s sequence
+- Materialisation CONVERGES: clean → closure writes →
+  `markOutputsChanged` → ordinary `cache.save`, mirroring `restoreHit`'s sequence
   so the two cannot drift. Afterwards the machine is indistinguishable
   from a `--download=all` run, so no third storage state persists.
 - A failed fetch is the CONSUMER's failure, named with the producer and

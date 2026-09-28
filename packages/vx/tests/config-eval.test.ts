@@ -627,15 +627,17 @@ describe('the evaluation deadline', () => {
     // left a timer armed for the DEFAULT 30s; a cycle up to 30 seconds later
     // could die with "config worker did not answer within 30000ms" — naming a
     // budget nobody set for it, for a config that was fine.
-    process.env[BUDGET_ENV] = '250'
+    // 1000, not 250: the round's worker spawn took over 250 ms on a loaded
+    // macOS runner (M-10). The slow round below must outlast it.
+    process.env[BUDGET_ENV] = '1000'
     const broken = await write(`throw new Error('typo in preset')\n`)
     expect(await settleOrHang(evaluateConfigFresh(broken), 5000)).toBe('REJECTED typo in preset')
 
     // A healthy config with a generous budget of its own, deliberately still in
-    // flight when the previous round's timer WOULD have fired (250ms). It must
-    // resolve on its own terms.
+    // flight when the previous round's timer WOULD have fired (1000ms). It
+    // must resolve on its own terms.
     process.env[BUDGET_ENV] = '4000'
-    const slow = await write('await Bun.sleep(600)\nexport default { tasks: { ok: {} } }\n')
+    const slow = await write('await Bun.sleep(1200)\nexport default { tasks: { ok: {} } }\n')
     expect(await settleOrHang(evaluateConfigFresh(slow), 5000)).toBe('RESOLVED {"tasks":{"ok":{}}}')
   }, 15_000)
 })

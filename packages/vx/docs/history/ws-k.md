@@ -112,6 +112,10 @@
   moon (N-6's `moon()` run), so it names all three adopted tools.
 - **K-17** And FormidableLabs/spectacle against wireit and microsoft/lage
   against lage (N's `wireit()` and `lage()` runs; lage wins cold, bold).
+- **K-18** The ten-pattern checklist (backlog 6) against vx, rolldown
+  added to the study. Each pattern already shipped but the animated demo
+  (K-19). vuejs/pinia stays out of the real-repo table: neither side
+  caches, so it has no restore or no-op cell.
 
 ## Leads for other streams
 

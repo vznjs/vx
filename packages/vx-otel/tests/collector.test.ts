@@ -288,6 +288,33 @@ describe('the transport, as the vx-otel sweep found it unheld', () => {
     }
   }, 20_000)
 
+  // F-49: `OTEL_EXPORTER_OTLP_<SIGNAL>_TIMEOUT` was not read; one timeout
+  // served all three signals.
+  it('a signal’s own timeout ends its POST', async () => {
+    const hang = Bun.serve({ port: 0, fetch: () => new Promise<Response>(() => {}) })
+    try {
+      const warnings: string[] = []
+      const sink = new OtelSink({
+        tracesUrl: `http://127.0.0.1:${hang.port}/v1/traces`,
+        metricsUrl: '',
+        logsUrl: '',
+        serviceName: 'vx',
+        headers: {},
+        metricsEnabled: false,
+        logsEnabled: false,
+        timeoutMs: 30_000,
+        signalTimeoutMs: { traces: 100 },
+        warn: (m) => warnings.push(m),
+      })
+      driveOneTask(sink)
+      const t0 = Date.now()
+      await sink.flush()
+      expect([Date.now() - t0 < 5_000, warnings.length]).toEqual([true, 1])
+    } finally {
+      await hang.stop(true)
+    }
+  }, 10_000)
+
   it('the request timer is cleared once the export answers: it never keeps the process alive', async () => {
     // A timer left armed keeps a CLI process alive until it fires, long
     // after the POST resolved. The child exports against this server with

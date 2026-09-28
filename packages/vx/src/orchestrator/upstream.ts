@@ -18,7 +18,13 @@ import { UserError } from '../util/index.js'
  */
 export function keyUpstream(node: TaskNode, upstream: TaskOutcome[]): TaskOutcome[] {
   const order = node.orderOnly
-  const keyed = order === undefined ? upstream : upstream.filter((o) => !order.includes(o.node.id))
+  // A restore-tier hit dispatches before its dependencies settle, and the
+  // scheduler hands it their outcomes so far: a hole stays a hole, as it
+  // does with no order-only edge (reading `.node` of one threw).
+  const keyed =
+    order === undefined
+      ? upstream
+      : upstream.filter((o) => o === undefined || !order.includes(o.node.id))
   return node.excludedUpstream === undefined ? keyed : [...keyed, ...node.excludedUpstream]
 }
 
