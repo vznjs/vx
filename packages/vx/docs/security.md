@@ -10,7 +10,10 @@ vulnerability), never in a public issue.
 
 - **Your configs.** `vx.config.ts` and `vx.workspace.ts` are programs vx
   runs in its own process. A config can do anything you can: vx
-  validates what it returns, not what it does.
+  validates what it returns, not what it does. What a config imports
+  must already be installed: vx runs Bun with `--no-install`, so an
+  import no `node_modules` provides is refused, never fetched from the
+  registry (L-22).
 - **Your plugins.** A plugin is code you imported. It runs in vx's
   process with a config's reach; vx checks the shape of what it hands
   back and isolates a telemetry plugin's failures, nothing more.

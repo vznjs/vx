@@ -1,4 +1,4 @@
-#!/usr/bin/env -S bun --no-env-file
+#!/usr/bin/env -S bun --no-env-file --no-install
 import { registerCoreAlias, run } from './cli/index.js'
 import {
   fsRefusalHint,
