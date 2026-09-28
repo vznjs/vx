@@ -406,3 +406,11 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   stayed silent. The mapper returns workspace-wide `notes` beside its
   projects. Rows (`nx-map-sweep.test`, `nx.test`): each red without its
   line.
+- **G-35.** turboCache() reads the root `turbo.json`'s `remoteCache`
+  (`apiUrl`, `teamId`, `teamSlug`, `enabled`, Turbo 2.11.5's schema)
+  below options and Turbo's env vars, Turbo's own order. A repo whose
+  self-hosted cache lives only there had no remote cache under vx, and
+  no word: with a token the plugin went to Vercel's; without one it
+  declined. `enabled: false` declines unless options name a cache. The
+  timeouts stay vx's (Turbo's `0` is "none", which a deadline cannot
+  take). Rows (`turbo-cache.test`): red without the fix.

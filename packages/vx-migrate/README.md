@@ -322,7 +322,7 @@ export default defineWorkspace({
 })
 ```
 
-Every option falls back to the tool's own environment variable, so a self-hosted setup carries over unchanged. A token with no `apiUrl` means Vercel's hosted Remote Cache (`https://vercel.com/api`), exactly as it does for `turbo` — so `npx turbo login && npx turbo link`, then `turboCache()` with `TURBO_TOKEN` / `TURBO_TEAM` set, is the whole hosted setup. With no token the plugin **declines** and the run stays local.
+Every option falls back to the tool's own environment variable, so a self-hosted setup carries over unchanged. A token with no `apiUrl` means Vercel's hosted Remote Cache (`https://vercel.com/api`), exactly as it does for `turbo` — so `npx turbo login && npx turbo link`, then `turboCache()` with `TURBO_TOKEN` / `TURBO_TEAM` set, is the whole hosted setup. Below the environment, as in Turbo, the root `turbo.json`'s `remoteCache` supplies `apiUrl`, `teamId` and `teamSlug`, and its `enabled: false` declines unless the options name a cache. With no token the plugin **declines** and the run stays local.
 
 | Option            | Environment variable               | Meaning                                                                                                       |
 | ----------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------- |

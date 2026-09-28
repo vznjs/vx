@@ -6,12 +6,13 @@
 //
 // Nothing is on by default: declare `turboCache()` in `vx.workspace.ts`
 // (the local store is the floor beneath it) and give it a URL and a token (options, or
-// Turbo's own environment variables so a self-hosted setup carries over).
+// Turbo's own environment variables and turbo.json's `remoteCache` so a
+// self-hosted setup carries over).
 // With neither the plugin DECLINES and the run stays local.
 //
 // Imports core only through the public `@vzn/vx` specifier.
 import { createHmac, randomUUID, timingSafeEqual, type Hmac } from 'node:crypto'
-import { unlinkSync } from 'node:fs'
+import { readFileSync, unlinkSync } from 'node:fs'
 import { unlink } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -48,6 +49,14 @@ export interface TurboCacheOptions {
   uploadTimeoutMs?: number
   /** Resends of a request answered 429 / 5xx or never connected (default 1, Turbo's); 0 turns them off. */
   retries?: number
+}
+
+/** turbo.json's `remoteCache` block: the source below Turbo's environment, as in Turbo. */
+export interface TurboJsonRemoteCache {
+  apiUrl?: unknown
+  teamId?: unknown
+  teamSlug?: unknown
+  enabled?: unknown
 }
 
 export interface TurboCacheConfig {
@@ -166,15 +175,23 @@ export const VERCEL_API = 'https://vercel.com/api'
 export function resolveTurboCacheConfig(
   options: TurboCacheOptions,
   env: Record<string, string | undefined> = Bun.env,
+  file: TurboJsonRemoteCache = {},
 ): TurboCacheConfig | undefined {
+  // `enabled: false` turns Turbo's remote cache off whatever the env says;
+  // options name a cache for vx alone, and win.
+  if (file.enabled === false && options.apiUrl === undefined && options.token === undefined)
+    return undefined
+  const fromFile = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined)
   const token = options.token ?? env['TURBO_TOKEN']
   // Turbo's own default when a token is set and no `apiUrl` is: Vercel's
   // hosted Remote Cache. A token alone is a configured cache, as it is for
   // `turbo`; no token at all is the declined, local run.
-  const apiUrl = (options.apiUrl ?? env['TURBO_API'] ?? (token ? VERCEL_API : undefined))?.replace(
-    /\/+$/,
-    '',
-  )
+  const apiUrl = (
+    options.apiUrl ??
+    env['TURBO_API'] ??
+    fromFile(file.apiUrl) ??
+    (token ? VERCEL_API : undefined)
+  )?.replace(/\/+$/, '')
   if (!apiUrl || !token) return undefined
   // The URL is printed in every refusal line, so a `user:pass@` in it would
   // leak to the log. Credentials go in the token.
@@ -190,8 +207,8 @@ export function resolveTurboCacheConfig(
     throw new Error(
       `vx/turbo-cache: the token holds ${fault}, which no HTTP header can carry — check the secret (it is not printed)`,
     )
-  const teamId = options.teamId ?? env['TURBO_TEAMID']
-  const teamSlug = options.teamSlug ?? env['TURBO_TEAM']
+  const teamId = options.teamId ?? env['TURBO_TEAMID'] ?? fromFile(file.teamId)
+  const teamSlug = options.teamSlug ?? env['TURBO_TEAM'] ?? fromFile(file.teamSlug)
   const signatureKey = options.signatureKey ?? env['TURBO_REMOTE_CACHE_SIGNATURE_KEY']
   if (signatureKey !== undefined) {
     if (Buffer.byteLength(signatureKey) < MIN_SIGNATURE_KEY_LENGTH) {
@@ -437,6 +454,25 @@ export class TurboRemoteCache implements RemoteCacheLayer {
   }
 }
 
+/** The root turbo.json's (or turbo.jsonc's) `remoteCache`; `{}` when there is none or it does not parse. */
+function remoteCacheOf(root: string): TurboJsonRemoteCache {
+  for (const name of ['turbo.json', 'turbo.jsonc']) {
+    let text: string
+    try {
+      text = readFileSync(path.join(root, name), 'utf8')
+    } catch {
+      continue
+    }
+    try {
+      const rc = (Bun.JSONC.parse(text) as { remoteCache?: unknown } | null)?.remoteCache
+      return typeof rc === 'object' && rc !== null ? (rc as TurboJsonRemoteCache) : {}
+    } catch {
+      return {}
+    }
+  }
+  return {}
+}
+
 /**
  * Declare in `vx.workspace.ts`; the local store stays the floor beneath it:
  *
@@ -449,7 +485,7 @@ export class TurboRemoteCache implements RemoteCacheLayer {
 export function turboCache(options: TurboCacheOptions = {}): VxPlugin {
   return definePlugin(import.meta, {
     cache(ctx): CacheLayer | undefined {
-      const config = resolveTurboCacheConfig(options)
+      const config = resolveTurboCacheConfig(options, Bun.env, remoteCacheOf(ctx.workspaceRoot))
       if (config === undefined) return undefined
       return new LayeredCache(ctx.localCache, new TurboRemoteCache(config), {
         policy: ctx.policy,

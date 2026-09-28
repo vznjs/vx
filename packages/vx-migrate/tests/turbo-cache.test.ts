@@ -119,6 +119,41 @@ describe('resolveTurboCacheConfig', () => {
       )?.apiUrl,
     ).toBe('https://o')
   })
+  // Turbo's own order: turbo.json under the environment under the flags.
+  it('turbo.json’s remoteCache is read below the environment; `enabled: false` declines', () => {
+    const file = { apiUrl: 'https://file.example/', teamId: 'team_file', teamSlug: 'file' }
+    const pick = (c: ReturnType<typeof resolveTurboCacheConfig>) =>
+      c && [c.apiUrl, c.teamId, c.teamSlug]
+    expect([
+      pick(resolveTurboCacheConfig({}, { TURBO_TOKEN: 't' }, file)),
+      pick(
+        resolveTurboCacheConfig(
+          {},
+          {
+            TURBO_TOKEN: 't',
+            TURBO_API: 'https://env.example',
+            TURBO_TEAMID: 'team_env',
+            TURBO_TEAM: 'env',
+          },
+          file,
+        ),
+      ),
+      pick(resolveTurboCacheConfig({ apiUrl: 'https://opt.example', token: 't' }, {}, file)),
+      pick(resolveTurboCacheConfig({}, {}, file)),
+      pick(resolveTurboCacheConfig({}, { TURBO_TOKEN: 't' }, { ...file, enabled: false })),
+      pick(resolveTurboCacheConfig({ token: 't' }, {}, { ...file, enabled: false })),
+      pick(resolveTurboCacheConfig({}, { TURBO_TOKEN: 't' }, { apiUrl: 7, teamId: null })),
+    ]).toEqual([
+      ['https://file.example', 'team_file', 'file'],
+      ['https://env.example', 'team_env', 'env'],
+      ['https://opt.example', 'team_file', 'file'],
+      undefined,
+      undefined,
+      ['https://file.example', 'team_file', 'file'],
+      ['https://vercel.com/api', undefined, undefined],
+    ])
+  })
+
   it('a signature key must be Turbo’s minimum length and come with a team id', () => {
     expect(() =>
       resolveTurboCacheConfig(
@@ -433,6 +468,33 @@ describe('vx run with turboCache() declared before the local cache', () => {
     expect(await Bun.file(path.join(root, 'pkg', 'dist', 'app.js')).text()).toBe(
       'console.log("app")\n',
     )
+  })
+
+  it('the plugin reads the workspace’s turbo.json remoteCache', async () => {
+    const ws = await mkdtemp(path.join(tmpdir(), 'vx-turbo-json-rc-'))
+    const before = process.env['TURBO_TOKEN']
+    try {
+      process.env['TURBO_TOKEN'] = 't'
+      const ctx = {
+        localCache: {} as never,
+        policy: { localRead: true, localWrite: true, remoteRead: true, remoteWrite: true },
+        warn: () => {},
+        workspaceRoot: ws,
+        cacheDir: ws,
+      }
+      const on = async (turbo: unknown) => {
+        await writeFile(path.join(ws, 'turbo.json'), JSON.stringify(turbo))
+        return turboCache({}).cache?.(ctx as never) !== undefined
+      }
+      expect([
+        await on({ remoteCache: { apiUrl: 'https://file.example' } }),
+        await on({ remoteCache: { apiUrl: 'https://file.example', enabled: false } }),
+      ]).toEqual([true, false])
+    } finally {
+      if (before === undefined) delete process.env['TURBO_TOKEN']
+      else process.env['TURBO_TOKEN'] = before
+      await rm(ws, { recursive: true, force: true })
+    }
   })
 
   it('the plugin declines without a url and a token', () => {
