@@ -71,7 +71,10 @@ jobs:
         # by side too), each into its own log. What is printed is only each
         # shard's counts, failing rows and their first error lines: the whole
         # output ran to 24,000 lines, past what an API tail reads.
+        # `set +e`: Actions runs bash with -e, and the first red shard ended
+        # the step before anything was printed.
         run: |
+          set +e
           out="$RUNNER_TEMP/shards"; mkdir -p "$out"
           shard() { local n=$1; shift; timeout 100 bun test --only-failures "$@" > "$out/$n.log" 2>&1; echo $? > "$out/$n.rc"; }
           for i in $(seq 1 12); do
