@@ -422,6 +422,9 @@ task picked`; neither prints a stack. Row in
   outputs and their directory, as the key reads them: a `turbo()` task
   reading `**/*` took its own `dist/` for an edit, and every save ran
   one more up-to-date cycle.
+- E-78 — the footer ends with a `result` row, the run in one line:
+  `42 tasks · 38 cached (90%) · 3.20s`, `all cached` when every task
+  hit, `N failed` after the count. About 5 µs per run.
 
 ## First-five-minutes walk (2026-09-28)
 
