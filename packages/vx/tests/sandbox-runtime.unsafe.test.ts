@@ -4026,9 +4026,15 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
     const l = Bun.listen({ hostname: '127.0.0.1', port: 0, socket: { data() {} } })
     const port = l.port
     l.stop(true)
+    // Each task's socket lives in its own directory under this root (L-10),
+    // named by a tag the test cannot know: look in every one, and read a
+    // root with none as no socket.
+    const root = path.dirname(path.dirname(portBridgeSocket('x', port)))
     const socks = (): string[] =>
-      readdirSync(path.dirname(portBridgeSocket('x', port))).filter((n) =>
-        n.endsWith(`-${port}.sock`),
+      (existsSync(root) ? readdirSync(root) : []).flatMap((d) =>
+        existsSync(path.join(root, d))
+          ? readdirSync(path.join(root, d)).filter((n) => n.endsWith(`-${port}.sock`))
+          : [],
       )
     // A port list's bridge needs a unix socket inside: the run lifts
     // SRT's AF_UNIX filter for it, as `prepareSandbox` does.
@@ -4041,7 +4047,7 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
       const r = await runSandboxed(
         // It says `up` once its side of the bridge is listening.
         args(
-          `trap '' TERM; until ls ${path.dirname(portBridgeSocket('x', port))}/vx-port-*-${port}.sock >/dev/null 2>&1; do sleep 0.02; done; echo up; sleep 10`,
+          `trap '' TERM; until ls "$TMPDIR"/vx-port-*-${port}.sock >/dev/null 2>&1; do sleep 0.02; done; echo up; sleep 10`,
           {
             config: resolveSandboxConfig({ allow: { localBinding: [port] } }, dir),
             timeoutMs: 1_000,
