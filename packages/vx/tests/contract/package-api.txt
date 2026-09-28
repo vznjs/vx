@@ -214,7 +214,15 @@ export function defineProject<const T extends ProjectConfig>(
     },
 ): T
 == function defineWorkspace (src/config.ts)
-export function defineWorkspace<T extends WorkspaceConfig>(config: T): T
+export function defineWorkspace<T extends WorkspaceConfig>(
+  config: T &
+    Known<T, WorkspaceConfig> & {
+      cacheRetention?: Known<
+        At<T, 'cacheRetention'>,
+        NonNullable<WorkspaceConfig['cacheRetention']>
+      >
+    },
+): T
 == function escapeMarkdownCell (src/orchestrator/run-report.ts)
 export function escapeMarkdownCell(value: string): string
 == function exitSignal (src/exec/runner.ts)

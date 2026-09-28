@@ -376,7 +376,15 @@ export function defineProject<const T extends ProjectConfig>(
 function · `src/config.ts`
 
 ```ts
-export function defineWorkspace<T extends WorkspaceConfig>(config: T): T
+export function defineWorkspace<T extends WorkspaceConfig>(
+  config: T &
+    Known<T, WorkspaceConfig> & {
+      cacheRetention?: Known<
+        At<T, 'cacheRetention'>,
+        NonNullable<WorkspaceConfig['cacheRetention']>
+      >
+    },
+): T
 ```
 
 ## `escapeMarkdownCell`
