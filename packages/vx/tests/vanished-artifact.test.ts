@@ -145,6 +145,63 @@ describe('a cache artifact that vanishes before its restore', () => {
     )
   }
 
+  // A hit kept out of the tier (another task's declared output can land in
+  // its directory) is admitted through an in-flight registry's path, and
+  // its dead probe must be dropped there too: kept, the second dispatch
+  // restores the same vanished artifact again.
+  it(
+    'kept out of the tier, under an in-flight registry: runs in its own slot',
+    async () => {
+      const soloDir = await addProject(root, 'solo', {
+        files: { 'src/a.txt': 'a' },
+        config: `
+          export default {
+            tasks: {
+              build: {
+                exec: { command: "echo solo > out.txt" },
+                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+              },
+            },
+          }
+        `,
+      })
+      await addProject(root, 'wsw', {
+        files: { 'src/b.txt': 'b' },
+        config: `
+          export default {
+            tasks: {
+              build: {
+                exec: { command: "mkdir -p ../solo/gen && echo y > ../solo/gen/g.txt" },
+                cache: { inputs: { files: ['src/**'] }, outputs: { files: [], workspaceFiles: ['packages/solo/gen/g.txt'] } },
+              },
+            },
+          }
+        `,
+      })
+      const cold = await run({
+        cwd: root,
+        tasks: ['build'],
+        log: logger({ status: [], complete: [], started: [] }),
+      })
+      expect(cold.ok).toBe(true)
+      await rm(path.join(soloDir, 'out.txt'))
+
+      const seen: Seen = { status: [], complete: [], started: [] }
+      const vanish = vanishOnRestore()
+      let warm
+      try {
+        warm = await run({ cwd: root, tasks: ['build'], inflight: new Map(), log: logger(seen) })
+      } finally {
+        vanish.restore()
+      }
+      expect(vanish.restored).toHaveLength(1)
+      expect(warm.ok).toBe(true)
+      expect([...seen.complete].sort()).toEqual(['solo#build success', 'wsw#build cache-hit'])
+      expect(await readFile(path.join(soloDir, 'out.txt'), 'utf8')).toBe('solo\n')
+    },
+    TIMEOUT,
+  )
+
   it(
     'probed in its own slot: runs there',
     async () => {
