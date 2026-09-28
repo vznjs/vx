@@ -960,6 +960,22 @@ and `test:types` pass and a second run is 75 hits in 67 ms.
 | restore | **335 ms** | 1.16 s (3.45×) |
 | no-op   | **247 ms** | 1.15 s (4.64×) |
 
+### t3-oss/create-t3-turbo (Turbo 2.5.8, `turbo()`, `8f945b7`)
+
+`turbo run lint` against `vx run lint --all` through `turbo()` with
+nothing written: the same 12 tasks and edges once Turbo's script-less
+`topo` and `build` nodes are passed through (`build`'s 5, `typecheck`'s
+14 and `format`'s 11 match too). `typecheck` writes the
+`.cache/tsbuildinfo.json` `build` declares, so its 3 tasks run
+uncached with a todo. `@acme/nextjs#build` fetches Google Fonts and
+fails under both tools on this box, so `lint` is measured.
+
+| `lint`  | vx         | Turbo 2.5.8    |
+| ------- | ---------- | -------------- |
+| cold    | **27.2 s** | 29.6 s (1.09×) |
+| restore | **199 ms** | 340 ms (1.71×) |
+| no-op   | **174 ms** | 342 ms (1.97×) |
+
 ## Real repos re-measured (2026-09-27)
 
 Roadmap 2.5: astro and refine again, same revisions, harnesses and
