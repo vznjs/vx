@@ -102,7 +102,8 @@ The block format is:
   and the live frame share one builder, so a focused run shows it too
 - **Bottom line:** `└─ <task-id> ── (<duration>) <status tag>`
 
-Section headers and corners render dim; ids keep identity coloring.
+Corners and rules render dim, section labels bold in their state
+colour; ids keep identity coloring.
 Content lines are **raw** — no `│` border, no indent — so terminal
 wrapping never collides with frame glyphs and copy/paste is clean
 (owner feedback, 2026-06). The logger blank-line-delimits blocks on

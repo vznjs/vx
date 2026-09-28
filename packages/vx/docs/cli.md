@@ -2283,8 +2283,8 @@ header carries the outcome (`restored-local • abc12345`, `failed (exit
 N)`, …) and the footer repeats it after the duration. A test renders
 this block and checks it against this page, byte for byte.
 
-Section headers (`├─ …`) and frame corners render dim; the id keeps
-its identity coloring. Content lines are **raw** — no left border, no
+Frame corners and rules render dim, section labels (`├─ …`) bold in
+their state colour; the id keeps its identity coloring. Content lines are **raw** — no left border, no
 indent — so long lines wrap without colliding with frame glyphs and
 copy/paste yields the verbatim output. Every block (and every live
 frame close in focused flow) is followed by a blank line so frames
