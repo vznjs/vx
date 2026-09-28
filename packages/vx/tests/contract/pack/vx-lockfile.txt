@@ -1,0 +1,9 @@
+LICENSE
+README.md
+index.ts
+package.json
+src/bun.ts
+src/index.ts
+src/npm.ts
+src/pnpm.ts
+src/yarn.ts
