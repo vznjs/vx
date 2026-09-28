@@ -57,7 +57,11 @@ does not apply.
 4. One reverse BFS from the changed set answers every root at once.
 
 Any read or parse failure skips that file silently: failing selection
-over a broken out-of-scope file would break a working build. A
+over a broken out-of-scope file would break a working build. Out of
+file descriptors (`EMFILE`, `ENFILE`) is the exception: a level's
+reads run together, so the refusal is the level's width, not the
+file, and it fails the pass with the `ulimit -n` hint where it had
+dropped every project the import selects (D-63). A
 specifier that does not RESOLVE still records its edge, to the path it
 names (and, bare of an extension, to each file Bun would have tried):
 most often the change itself deleted or renamed the target, and the
