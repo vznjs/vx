@@ -5,6 +5,7 @@
 
 import path from 'node:path'
 import { flagHint, seeHelp } from './help.js'
+import { isUserError, UserError } from '../util/index.js'
 import {
   applyMigration,
   findWorkspaceRoot,
@@ -42,7 +43,16 @@ export async function initCmd(args: readonly string[]): Promise<number> {
     return 1
   }
   const reads: LoadReads = new Map()
-  const root = await findWorkspaceRoot(process.cwd(), reads)
+  // "a workspace from nowhere" still needs a package.json to start from,
+  // and the lookup's own refusal named no next step.
+  const root = await findWorkspaceRoot(process.cwd(), reads).catch((err: unknown) => {
+    if (isUserError(err) && err.message.startsWith('Could not find a workspace root')) {
+      throw new UserError(
+        'vx init: no package.json here or in any parent directory; create one (`bun init` or `npm init -y`) and run vx init again',
+      )
+    }
+    throw err
+  })
   const metas = await listProjects(await loadWorkspace(root, reads))
   // `init` reads scripts only; a runner's own config beside them is the
   // richer source (dependsOn, inputs, outputs) and was ignored without a

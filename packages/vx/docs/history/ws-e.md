@@ -233,3 +233,15 @@ task picked`; neither prints a stack. Row in
   `vx lock --chek` and the other verbs said only "unknown". The hint is
   `flagHint(verb, arg)` in `help.ts`, over the verb's own usage line,
   and every verb's refusal uses it. Row in `tests/cli.test.ts`.
+- E-34 — `vx show app#bui` hinted `build`, a bare name that means a
+  project or every project's task to `vx show`. It hints `app#build`,
+  the spec to paste. Row in `tests/show-info.test.ts`.
+- E-35 — `vx show ''` and `vx why ''` read the empty string as a query;
+  it is part of every name, so the hint listed the workspace. `vx why`
+  reads it as no target; `vx show` refuses it. Row in `tests/why.test.ts`.
+- E-36 — `invalid concurrency: 0`, `invalid verbosity: high` and
+  `invalid --dry value: yaml` now say what each flag takes, as
+  `--retry` and `--continue` did. Row in `tests/cli-arg-hygiene.test.ts`.
+- E-37 — `vx init` with no `package.json` here or above printed the
+  lookup's "Could not find a workspace root"; it now says to create one
+  (`bun init` or `npm init -y`) first. Row in `tests/init.test.ts`.
