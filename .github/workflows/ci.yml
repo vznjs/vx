@@ -259,6 +259,12 @@ jobs:
     continue-on-error: true
 
     steps:
+      # The runner's git checks out CRLF (core.autocrlf=true), and every
+      # doc pin matches `\n`. A root .gitattributes would do the same for
+      # every Windows clone, but it gives every path an `eol`, and vx then
+      # trusts no index OID and re-hashes every input on every OS.
+      - run: git config --global core.autocrlf false
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
