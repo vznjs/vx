@@ -504,3 +504,14 @@ now wins for its signal, the option over both. A malformed
 in part; the Resource SDK spec drops it whole, and it warns. And with
 traces off, each log record still named a trace and span never
 exported; they are left off. Rows red without each fix.
+
+F-50. vx-reapi's cache save hashed a small artifact on one read of its
+file and sent it from a second. A second writer of the key (another
+workspace on one `--cache-dir`) renames its artifact over the file, so
+the upload could carry B under A's digest: refused by a verifying
+server (the save lost), stored by one that does not (a hit that then
+fails its digest and reads as a miss). A small artifact is now read
+once and those bytes hashed and sent. A large one keeps its two
+streamed passes. Row red without the fix. The cache path's review
+found no wrong-bytes hit (upload before the AC entry, streamed and
+inline hits held to size and digest, namespaced keys).

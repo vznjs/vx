@@ -257,6 +257,30 @@ describe.if(CHUNKING_SUPPORTED)('the REAPI cache layer streams against a fake se
     }
   })
 
+  // F-50: a small artifact was hashed on one read and sent from another; a
+  // second writer renaming a new artifact over the key between them sent B
+  // under A's digest. It is read once now, and those bytes are hashed and sent.
+  it('a small artifact is hashed and sent from one read', async () => {
+    const a = new TextEncoder().encode('artifact A')
+    const b = new TextEncoder().encode('artifact B, renamed over it')
+    let reads = 0
+    const swapped = Object.assign(new Blob([a]), {
+      stream: () => (reads++ === 0 ? new Blob([a]) : new Blob([b])).stream(),
+      bytes: async () => (reads++ === 0 ? a : b),
+    })
+    const cache = new ReapiRemoteCache({ endpoint })
+    try {
+      await cache.put('k-swapped', swapped, { durationMs: 1 })
+      const sent = [...blobs].filter(([, v]) => {
+        const s = new TextDecoder().decode(v)
+        return s === 'artifact A' || s.startsWith('artifact B')
+      })
+      expect([reads, sent.map(([k, v]) => k === digestOf(v).hash)]).toEqual([1, [true]])
+    } finally {
+      cache.close()
+    }
+  })
+
   it('a Blob that fails mid-upload rejects the put and cancels the half-sent write', async () => {
     const body = random(5 * 1024 * 1024)
     // The digest pass reads the stream first and must see it whole; the
