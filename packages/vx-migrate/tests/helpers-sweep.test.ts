@@ -119,6 +119,11 @@ describe('resolveSharedOutputs: the edge orders a pair in either direction', () 
     expect(cached(ts)).toEqual([true, false, false])
   })
 
+  it('a `!` output overlaps nothing: only positives say where outputs land', () => {
+    const next = task('build', ['.next/**', '!.next/cache/**'])
+    expect(cached(resolveSharedOutputs([next, task('export', ['out'])]))).toEqual([true, true])
+  })
+
   it('a dependsOn cycle terminates', () => {
     const ts = resolveSharedOutputs([
       task('x', ['dist/**'], ['y']),

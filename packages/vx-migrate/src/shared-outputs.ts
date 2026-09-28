@@ -37,7 +37,9 @@ function cachedOutputs(t: GeneratedTask, index: number): Cached | null {
   const cache = task['cache'] as { outputs?: { files?: unknown } } | undefined
   const files = cache?.outputs?.files
   if (!Array.isArray(files)) return null
-  const strings = files.filter((f): f is string => typeof f === 'string')
+  // Where a task's outputs might land is its positive globs, as core reads
+  // them: a `!` compiled as a glob is true of every other path.
+  const strings = files.filter((f): f is string => typeof f === 'string' && !f.startsWith('!'))
   if (strings.length === 0) return null
   const deps = task['dependsOn']
   const hasUpstreamEdge =
@@ -124,4 +126,9 @@ export function resolveSharedOutputs(tasks: GeneratedTask[]): GeneratedTask[] {
     }
   }
   return tasks
+}
+
+/** A `!` output with no positive beside it takes back nothing, and core refuses a list of them alone. */
+export function takingBack(globs: readonly string[]): string[] {
+  return globs.some((g) => !g.startsWith('!')) ? [...globs] : []
 }

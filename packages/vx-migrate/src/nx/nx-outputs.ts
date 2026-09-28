@@ -2,6 +2,7 @@
 // workspace-root globs. Extracted from `buildTask` in item 606.
 
 import path from 'node:path'
+import { takingBack } from '../shared-outputs.js'
 
 interface NxOutputs {
   readonly outFiles: string[]
@@ -72,16 +73,10 @@ export function mapNxOutputs(
   const outFiles: string[] = []
   const wsOutFiles: string[] = []
   outputs: for (const o of outputs) {
-    // Nx takes `!` outputs; vx's outputs cannot exclude, and a mapped `!`
-    // glob made core refuse the project's whole config, so no task of it
-    // ran (item 1051). Dropped: the positive outputs save a little more.
-    if (o.startsWith('!')) {
-      todos.push(
-        `output ${JSON.stringify(o)}: vx outputs cannot exclude — the other outputs also save what it excludes`,
-      )
-      continue
-    }
-    let s = o
+    // A `!` output takes a path back, as Nx's does (A-44); it maps as its
+    // path does and keeps the `!`.
+    const neg = o.startsWith('!') ? '!' : ''
+    let s = o.slice(neg.length)
     // Every `{options.x}`, not the first: `dist/{options.a}/{options.b}`.
     for (const optTok of o.matchAll(/\{options\.([^}]+)\}/g)) {
       const v = options[optTok[1]!]
@@ -116,9 +111,9 @@ export function mapNxOutputs(
     // (`asTrees`), and keeps a hit's directory short-circuit for either. The
     // `<rel>/**` this wrote for an extensionless name matched nothing under
     // a FILE, so a binary like `dist/bin/tool` was never saved (Next 27).
-    if (projectRel === '.') outFiles.push(s)
-    else if (s.startsWith(`${projectRel}/`)) outFiles.push(s.slice(projectRel.length + 1))
-    else wsOutFiles.push(path.posix.normalize(s).replace(/^\.\//, ''))
+    if (projectRel === '.') outFiles.push(neg + s)
+    else if (s.startsWith(`${projectRel}/`)) outFiles.push(neg + s.slice(projectRel.length + 1))
+    else wsOutFiles.push(neg + path.posix.normalize(s).replace(/^\.\//, ''))
   }
-  return { outFiles, wsOutFiles }
+  return { outFiles: takingBack(outFiles), wsOutFiles: takingBack(wsOutFiles) }
 }
