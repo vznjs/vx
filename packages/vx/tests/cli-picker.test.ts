@@ -48,7 +48,7 @@ describe('vx run interactive picker', () => {
       await Bun.sleep(50)
       input.write(`${answer}\n`)
       expect(await picking).toBeNull()
-      expect(stderr).toContain(`vx run: invalid selection: ${answer}`)
+      expect(stderr).toContain(`vx run: invalid selection: ${answer} (type a number from 1 to 2)\n`)
     }
   })
 

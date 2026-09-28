@@ -547,7 +547,9 @@ export async function runCmd(args: readonly string[]): Promise<number> {
   // explicit anchored positional.
   if (tasks.length === 0) {
     if (!process.stdin.isTTY) {
-      process.stderr.write(`vx run: missing task name (stdin is not a TTY)\n`)
+      process.stderr.write(
+        `vx run: missing task name (stdin is not a TTY, so no picker; vx run <task>, e.g. vx run build)${seeHelp('run')}\n`,
+      )
       return 1
     }
     const picked = await pickTask(

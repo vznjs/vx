@@ -110,7 +110,8 @@ two bases that would compare something.
 
 When `tasks.length === 0`:
 
-- Non-TTY → exits 1 with `missing task name (stdin is not a TTY)`.
+- Non-TTY → exits 1 with `missing task name (stdin is not a TTY, so no
+picker; vx run <task>, e.g. vx run build)`.
 - TTY → `pickTask(cwd)` loads every project's tasks, prints a numbered
   list with `description` next to each id, reads a 1-based index via
   `readline/promises`, emits one anchored `pkg#task` into `tasks`.
