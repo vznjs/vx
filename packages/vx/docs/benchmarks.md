@@ -798,6 +798,19 @@ run is a cold run: the table is the orchestration.
 The root script runs the three one after another; vx runs `nuxt` and
 `testing` side by side once `pinia`, which both depend on, is built.
 
+### withastro/starlight (pnpm 11.22, `workspaceScripts()`, `3ec633b`)
+
+`pnpm build` (`pnpm --filter '@astrojs/*' build`) against the command
+the mapper names for it, `vx run build --filter '@astrojs/*'`: the same
+two `tsdown` builds, one after the other in both (docsearch depends on
+starlight). Medians of three interleaved reps, network up: under
+`unshare -n` pnpm took 81 s where it takes 13.6 s online, and vx ran
+the same.
+
+| `build`   | vx         | pnpm 11.22     |
+| --------- | ---------- | -------------- |
+| every run | **10.3 s** | 12.7 s (1.23×) |
+
 ## Real repos re-measured (2026-09-27)
 
 Roadmap 2.5: astro and refine again, same revisions, harnesses and
