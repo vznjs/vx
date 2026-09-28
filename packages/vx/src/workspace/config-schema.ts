@@ -113,7 +113,14 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
     const fileClaimants = new Map<string, string>()
     for (const [i, p] of config.plugins.entries()) {
       if (p === null || typeof p !== 'object') {
-        throw new UserError(`${configPath}: \`plugins[${i}]\` must be an object`)
+        // Nx's nx.json lists plugins by module name (`'@nx/vite/plugin'`);
+        // a vx plugin is the value its package's function returns.
+        throw new UserError(
+          `${configPath}: \`plugins[${i}]\` must be an object` +
+            (typeof p === 'string'
+              ? ` — a plugin is what its package's function returns (\`nx()\` from \`@vzn/vx-migrate\`), not a module name`
+              : ''),
+        )
       }
       // The loose schema's shape (unknown-typed hooks) plus the one retired
       // key this loader still refuses by name.
@@ -716,6 +723,12 @@ const FOREIGN_FIELDS: ReadonlyMap<ReadonlySet<string>, Readonly<Record<string, s
       cmd: '`exec.command`',
       script: '`exec.command`',
       persistent: '`exec.persistent: {}`',
+      // Nx's target keys (project.json) and Turbo's `outputLogs`.
+      continuous: '`exec.persistent: {}`',
+      executor:
+        '`exec.command`: vx runs one shell command (`nx()` from `@vzn/vx-migrate` runs an Nx executor as one)',
+      options: '`exec.command` (a run-commands `options.command`) and `exec.env`',
+      outputLogs: 'the `--output-logs` flag of `vx run`',
     },
   ],
   [EXEC_FIELDS, { cmd: '`command`', script: '`command`' }],
@@ -737,6 +750,9 @@ const FOREIGN_FIELDS: ReadonlyMap<ReadonlySet<string>, Readonly<Record<string, s
         'a cache plugin in `plugins` (`turboCache()` or `nxCache()` from `@vzn/vx-migrate`)',
       parallel: '`concurrency`',
       cacheDirectory: '`cacheDir`',
+      defaultBase: 'the base in `--affected=<base>` (default `origin/HEAD`)',
+      tasksRunnerOptions: 'a cache plugin in `plugins` (`nxCache()` from `@vzn/vx-migrate`)',
+      globalPassThroughEnv: '`exec.env.passThrough` on the tasks it passes to',
     },
   ],
 ])
