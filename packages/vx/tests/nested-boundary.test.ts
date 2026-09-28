@@ -11,9 +11,13 @@ import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
 import { resolveInputs, resolveOutputs } from '../src/cache/index.js'
 
+// Windows forbids `*` in a name: the subject cannot exist there.
+const WIN32 = process.platform === 'win32'
+
 let root: string
 
 beforeEach(() => {
+  if (WIN32) return
   root = mkdtempSync(path.join(os.tmpdir(), 'vx-nested-boundary-'))
   for (const f of [
     'pkg*/a.ts',
@@ -30,24 +34,29 @@ beforeEach(() => {
   Bun.spawnSync(['git', 'init', '-q'], { cwd: root })
 })
 
-afterEach(() => rmSync(root, { recursive: true, force: true }))
+afterEach(() => {
+  if (!WIN32) rmSync(root, { recursive: true, force: true })
+})
 
 const nestedProjectDirs = () => [path.join(root, 'pkg*'), path.join(root, 'a/b')]
 const rel = (files: readonly string[]) => files.map((f) => path.relative(root, f)).sort()
 
-it('inputs: a nested project is out, a sibling its name would match as a glob is in', async () => {
-  const resolved = await resolveInputs({
-    projectDir: root,
-    workspaceRoot: root,
-    inputs: { files: ['**/*.ts'] },
-    ownOutputs: [],
-    nestedProjectDirs: nestedProjectDirs(),
-    envSource: {},
-  })
-  expect(rel(resolved.files)).toEqual(['a/bc/c.ts', 'pkg-b/b.ts', 'src/e.ts'])
-})
+it.skipIf(WIN32)(
+  'inputs: a nested project is out, a sibling its name would match as a glob is in',
+  async () => {
+    const resolved = await resolveInputs({
+      projectDir: root,
+      workspaceRoot: root,
+      inputs: { files: ['**/*.ts'] },
+      ownOutputs: [],
+      nestedProjectDirs: nestedProjectDirs(),
+      envSource: {},
+    })
+    expect(rel(resolved.files)).toEqual(['a/bc/c.ts', 'pkg-b/b.ts', 'src/e.ts'])
+  },
+)
 
-it('outputs: the same line', async () => {
+it.skipIf(WIN32)('outputs: the same line', async () => {
   const outputs = await resolveOutputs({
     projectDir: root,
     outputs: ['**/*.out'],
