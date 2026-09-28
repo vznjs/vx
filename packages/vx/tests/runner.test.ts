@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -1021,5 +1021,153 @@ describe('execWrap — grandchild-orphan mitigation', () => {
     expect(comm.trim()).toBe('sleep')
     child.kill('SIGTERM')
     await child.exited
+  })
+})
+
+describe('runPersistent — the rows its sweep asked for', () => {
+  let dir: string
+  beforeEach(async () => {
+    dir = await mkdtemp(path.join(os.tmpdir(), 'vx-persist-'))
+  })
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true })
+  })
+  const env = (): Record<string, string> => ({ PATH: process.env.PATH ?? '' })
+  const stop = async (spawn: ReturnType<typeof runPersistent>): Promise<void> => {
+    spawn.child.kill('SIGKILL')
+    await spawn.child.exited
+  }
+  const within = (p: Promise<unknown>, ms: number): Promise<string> =>
+    Promise.race([p.then(() => 'ready'), Bun.sleep(ms).then(() => 'timed out')])
+
+  it('routes each stream to its own callback, and never an empty chunk', async () => {
+    const out: string[] = []
+    const err: string[] = []
+    const spawn = runPersistent({
+      command: `printf 'o\\n'; printf 'e\\342' >&2`,
+      cwd: dir,
+      env: env(),
+      onStdout: (c) => out.push(c),
+      onStderr: (c) => err.push(c),
+    })
+    await spawn.child.exited
+    await Bun.sleep(50)
+    // The stderr stream ends on a truncated character: the flush reports it.
+    expect([out.join(''), err.join(''), [...out, ...err].includes('')]).toEqual([
+      'o\n',
+      'e�',
+      false,
+    ])
+  })
+
+  it('is ready at once without readyWhen, and readyMs stays where it landed', async () => {
+    const spawn = runPersistent({ command: 'exec sleep 30', cwd: dir, env: env() })
+    try {
+      expect(await within(spawn.ready, 1_000)).toBe('ready')
+      const first = spawn.readyMs()
+      await Bun.sleep(120)
+      expect(spawn.readyMs()).toBe(first)
+    } finally {
+      await stop(spawn)
+    }
+  })
+
+  it('lists the child as live until it exits', async () => {
+    const live = new Set<ReturnType<typeof Bun.spawn>>()
+    const spawn = runPersistent({
+      command: 'exec sleep 0.2',
+      cwd: dir,
+      env: env(),
+      liveChildren: live,
+    })
+    expect(live.has(spawn.child)).toBe(true)
+    await spawn.child.exited
+    await Bun.sleep(20)
+    expect(live.has(spawn.child)).toBe(false)
+  })
+
+  it('matches readyWhen across a chunk seam past a long unbroken line', async () => {
+    // One write (cat's buffer) of 70 KiB with no newline ending in `rea`,
+    // and later `dy`: the window keeps the recent tail, so a marker split
+    // by the seam still matches.
+    const long = path.join(dir, 'long')
+    await writeFile(long, 'x'.repeat(70 * 1024) + 'rea')
+    const spawn = runPersistent({
+      command: `cat ${long}; sleep 0.2; printf dy; exec sleep 30`,
+      cwd: dir,
+      env: env(),
+      readyWhen: 'ready',
+    })
+    try {
+      expect(await within(spawn.ready, 2_000)).toBe('ready')
+    } finally {
+      await stop(spawn)
+    }
+  }, 8_000)
+
+  it('says the pattern never matched when the child exits first', async () => {
+    const why = async (readyWhen?: string): Promise<string> => {
+      const spawn = runPersistent({
+        command: 'exit 3',
+        cwd: dir,
+        env: env(),
+        ...(readyWhen === undefined ? {} : { readyWhen }),
+      })
+      return spawn.ready.then(
+        () => 'ready',
+        (e: Error) => e.message,
+      )
+    }
+    expect(await why('up')).toBe(
+      'persistent task exited before becoming ready (exit 3) — readyWhen pattern never matched',
+    )
+  })
+
+  it('keeps a ready server alive past its readyWhen timeout', async () => {
+    const spawn = runPersistent({
+      command: `echo up; exec sleep 30`,
+      cwd: dir,
+      env: env(),
+      readyWhen: 'up',
+      timeoutMs: 150,
+    })
+    try {
+      expect(await within(spawn.ready, 1_000)).toBe('ready')
+      await Bun.sleep(400)
+      expect(isAlive(spawn.child.pid)).toBe(true)
+    } finally {
+      await stop(spawn)
+    }
+  })
+
+  it('a readyWhen timeout sends SIGTERM first, and SIGKILL to what ignores it', async () => {
+    const prev = process.env['VX_KILL_GRACE_MS']
+    process.env['VX_KILL_GRACE_MS'] = '300'
+    const heard = path.join(dir, 'heard')
+    const polite = runPersistent({
+      command: `trap 'echo t > ${heard}; exit 0' TERM; sleep 30 & wait`,
+      cwd: dir,
+      env: env(),
+      readyWhen: 'never',
+      timeoutMs: 100,
+    })
+    const deaf = runPersistent({
+      command: `trap '' TERM; exec sleep 30`,
+      cwd: dir,
+      env: env(),
+      readyWhen: 'never',
+      timeoutMs: 100,
+    })
+    try {
+      await Promise.allSettled([polite.ready, deaf.ready])
+      await polite.child.exited
+      expect(await Bun.file(heard).exists()).toBe(true)
+      expect(await waitForDead(deaf.child.pid, 3_000)).toBe(true)
+    } finally {
+      if (prev === undefined) delete process.env['VX_KILL_GRACE_MS']
+      else process.env['VX_KILL_GRACE_MS'] = prev
+      polite.child.kill('SIGKILL')
+      deaf.child.kill('SIGKILL')
+    }
   })
 })
