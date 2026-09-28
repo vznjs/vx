@@ -135,7 +135,14 @@
   disagree), three reasons under it, a "Try it on your repo" section, then
   the picture and pillars; the Freedom card drops moon. Title and
   description follow. Checked on a phone: cells stay on one line.
+- **K-22** `examples/turbo` and the migrate guide said `npm install`
+  would fetch `@vzn/vx-migrate`, which is not on npm (404, first publish
+  pending, STATUS item 1). Both now say so in one line.
 
 ## Leads for other streams
 
+- **N**: with the moon, wireit and lage adapters gone, the migrate guide's
+  sections and title, and core docs (`architecture.md`, `cli.md`,
+  `comparison.md`, `benchmarks.md`), still name them (owner, 2026-09-28:
+  Turbo and Nx only). K cut them from the README and landing (K-20, K-21).
 - **I**: `update-site.ts` gained the chart (K-1); it is stream I's file.
