@@ -202,6 +202,17 @@ first, then Features, Fixes, Performance, and one count for the rest.
 Rows: `release-notes.test.ts`; three mutants of the classifier each
 turn a row red.
 
+## H-17: runnable example plugins, one per seam
+
+`packages/vx-plugin-examples` (private): executor, cache, telemetry,
+schedule, admit, commands, project, graph and key, each a complete
+plugin in one file, each run by `tests/examples.test.ts` through `run()`
+or the CLI with an observable result (a remote hit after the local cache
+is wiped, a timeout stopping the executor's child, a key moving with an
+env var). The guide's snippets were type-checked only; these run, so a
+seam that moves under an example turns the gate red. Linked from the
+plugins guide's first section.
+
 ## Leads for other streams
 
 - **D / B:** `sandbox.ignore` names that loaded and did nothing: done in D-4.
