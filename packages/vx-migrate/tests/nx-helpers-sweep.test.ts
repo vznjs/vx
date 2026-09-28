@@ -29,6 +29,21 @@ describe('expandNxInputs', () => {
     expect([got.files, got.todos]).toEqual([['src/**'], []])
   })
 
+  // @nx/vitest infers `{ json: "{workspaceRoot}/tsconfig.json", fields:
+  // ["compilerOptions"] }`; dropped, a compilerOptions edit was a hit.
+  it('a {json} input keys its whole file', () => {
+    const got = inputs([
+      { json: '{workspaceRoot}/tsconfig.json', fields: ['compilerOptions'] },
+      { json: '{projectRoot}/package.json' },
+      { json: 'tsconfig.base.json' },
+    ])
+    expect([got.files, got.wsFiles, got.todos]).toEqual([
+      ['package.json'],
+      ['tsconfig.json', 'tsconfig.base.json'],
+      [],
+    ])
+  })
+
   it('fileset, input and each fold-through object form', () => {
     const got = inputs(
       [
