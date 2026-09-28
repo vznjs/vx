@@ -1659,6 +1659,18 @@ describe('affectedProjects: config import closures', () => {
     expect([...out].sort()).toEqual(['app'])
   })
 
+  it('PIN: a specifier spelled with an escape still reaches its importer (D-23)', async () => {
+    // The scan decodes `\x2e` to `.`; the textual pass before it must not
+    // drop a config whose relative import holds no literal `./`.
+    await writeFile(
+      path.join(root, 'packages/lib/vx.config.mjs'),
+      "import { B } from '\\x2e\\x2e/\\x2e\\x2e/shared/b.mjs'\nexport default { tasks: {} }\n",
+    )
+    await git(root, 'add', '-A')
+    await git(root, 'commit', '-q', '-m', 'lib imports b, escaped')
+    expect(await editThenSelect('shared/b.mjs', 'export const B = 2\n')).toEqual(['lib'])
+  })
+
   it('PIN: an extensionless import whose target is deleted reaches its importer too (item 958)', async () => {
     await writeFile(
       path.join(root, 'packages/lib/vx.config.mjs'),
