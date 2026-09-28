@@ -1442,6 +1442,17 @@ describe('parseRunArgs', () => {
     expect(flags).toContain('--affected')
     expect(flags).not.toContain('--older-than')
     expect(documentedFlags('no-such-verb')).toEqual([])
+    // Only the flag an option line OPENS with is the verb's: a line of prose
+    // naming another verb's flag put `--check` in run's list, and
+    // `vx run --chek` was told "did you mean --check?".
+    const fixture = [
+      'Execution (for run):',
+      '  --frozen          Refuse drift from vx-lock.json;',
+      '                    pair with vx lock --check in CI.',
+      'Cache (for prune):',
+      '  --older-than <d>  Prune entries older than d.',
+    ].join('\n')
+    expect(documentedFlags('run', fixture)).toEqual(['--frozen'])
   })
 
   it('vx <verb> --help is the reference cut to that verb, from the same text', () => {

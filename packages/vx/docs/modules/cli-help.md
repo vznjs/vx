@@ -12,7 +12,7 @@ the same text cut to that verb.
 export function printHelp(pluginCommands: readonly string[] = [], verb?: string): void
 export function helpText(pluginCommands: readonly string[] = []): string
 export function verbHelpText(verb: string): string
-export function documentedFlags(verb: string): string[]
+export function documentedFlags(verb: string, text?: string): string[] // text: the help text (default: helpText())
 export function seeHelp(verb: string): string
 export function flagHint(verb: string, arg: string): string // ` (did you mean --x?)` or '', every verb's unknown-flag refusal
 export function acceptedFlags(verb: string): string[] // Usage-line flags; `[OPTIONS]` adds run's, less watch's refusals
