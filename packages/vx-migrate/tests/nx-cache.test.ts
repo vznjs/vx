@@ -266,6 +266,30 @@ describe('vx run with nxCache() declared before the local cache', () => {
     )
   })
 
+  // L-19 through the wire: an artifact whose tar is intact but whose body
+  // changed (one byte of dist/app.js) is a miss that builds, never a hit.
+  it('an artifact the server altered is a miss that rebuilds, not a hit', async () => {
+    const [hash, stored] = [...srv.store][0]!
+    const tar = Bun.zstdDecompressSync(stored)
+    const at = Buffer.from(tar).indexOf(Buffer.from('console.log("app")'))
+    expect(at).toBeGreaterThan(0)
+    const altered = new Uint8Array(tar)
+    altered[at + 10] = 'f'.charCodeAt(0)
+    srv.store.set(hash, Bun.zstdCompressSync(altered))
+    try {
+      await rm(path.join(root, '.vx'), { recursive: true, force: true })
+      await rm(path.join(root, 'pkg', 'dist'), { recursive: true, force: true })
+      const r = await run({ cwd: root, tasks: ['build'], handleSignals: false })
+      expect({
+        ok: r.ok,
+        status: r.outcomes.map((o) => o.status),
+        out: await Bun.file(path.join(root, 'pkg', 'dist', 'app.js')).text(),
+      }).toEqual({ ok: true, status: ['success'], out: 'console.log("app")\n' })
+    } finally {
+      srv.store.set(hash, stored)
+    }
+  })
+
   it('the plugin declines without a server', () => {
     const ctx = {
       localCache: {} as never,

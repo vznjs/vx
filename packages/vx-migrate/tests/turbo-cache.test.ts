@@ -470,6 +470,31 @@ describe('vx run with turboCache() declared before the local cache', () => {
     )
   })
 
+  // L-19 through the wire: a server that hands back an artifact whose tar
+  // is intact but whose body changed (one byte of dist/app.js) is a miss
+  // that builds, never a hit that replays the changed bytes.
+  it('an artifact the server altered is a miss that rebuilds, not a hit', async () => {
+    const [hash, stored] = [...srv.store][0]!
+    const tar = Bun.zstdDecompressSync(stored.body)
+    const at = Buffer.from(tar).indexOf(Buffer.from('console.log("app")'))
+    expect(at).toBeGreaterThan(0)
+    const altered = new Uint8Array(tar)
+    altered[at + 10] = 'f'.charCodeAt(0)
+    srv.store.set(hash, { ...stored, body: Bun.zstdCompressSync(altered) })
+    try {
+      await rm(path.join(root, '.vx'), { recursive: true, force: true })
+      await rm(path.join(root, 'pkg', 'dist'), { recursive: true, force: true })
+      const r = await run({ cwd: root, tasks: ['build'], handleSignals: false })
+      expect({
+        ok: r.ok,
+        status: r.outcomes.map((o) => o.status),
+        out: await Bun.file(path.join(root, 'pkg', 'dist', 'app.js')).text(),
+      }).toEqual({ ok: true, status: ['success'], out: 'console.log("app")\n' })
+    } finally {
+      srv.store.set(hash, stored)
+    }
+  })
+
   it('the plugin reads the workspace’s turbo.json remoteCache', async () => {
     const ws = await mkdtemp(path.join(tmpdir(), 'vx-turbo-json-rc-'))
     const before = process.env['TURBO_TOKEN']
