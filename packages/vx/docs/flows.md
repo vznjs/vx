@@ -25,15 +25,15 @@ sequenceDiagram
     X->>I: resolveFiles(inputs.files)
     Note over I: git ls-files + git status (workspace-root snapshot,<br/>partitioned per project) + Bun.Glob match,<br/>nested projects + declared outputs excluded
     X->>X: hashTaskConfig + hashProjectPackageJson<br/>+ filterUpstreamHashes + env values
-    X->>C: key(...) → 16-hex xxh3, the per-component<br/>input fingerprint captured in the same pass
+    X->>C: key(...) → 16-hex xxh3 (the per-component<br/>input fingerprint is captured on a miss: describeTaskInputs)
     X->>C: get(hash)
     C-->>X: null (miss)
     X->>I: cleanOutputs(outputs.files)
     Note over I: declared outputs wiped so the tree ends<br/>bit-identical to what gets cached
-    X->>R: runCommand(command, env, projectDir)
-    R-->>X: exitCode, cpuMs, peakRss (streams live via logger)
+    X->>R: executor.execute(req) — the local executor calls runCommand
+    R-->>X: exitCode, cpuMs, peakRssBytes (streams live via logger)
     alt exitCode == 0 and writes enabled
-        X->>C: save({hash, outputs, stdout, inputComponents})<br/>(deferred to the save lane; dependents wait on it)
+        X->>C: save({hash, outputs, stdout, inputComponents})<br/>(deferred to the save lane, dependents wait on it)
         Note over C: pack tar.zst (stdout + outputs/*) →<br/>tmp file → one SQLite txn<br/>(rename into place + entries + output_files + entry_inputs)<br/>(+ background remote PUT when layered)
         X->>I: markOutputsChanged(written rel paths)
         Note over I: the project's git snapshot notes the changed<br/>paths — a downstream task re-spawns git only<br/>when its input globs can actually match them
@@ -200,14 +200,14 @@ stateDiagram-v2
     Debouncing --> Debouncing: more events<br/>(150 ms timer resets)
     Debouncing --> Running: timer fires, a path changed → run()
     Debouncing --> Idle: timer fires, nothing changed
-    Running --> Running: fs event → added to pendingPaths
-    Running --> Idle: done, pendingPaths empty
-    Running --> Running: done, pendingPaths non-empty<br/>(one debounce window, then one more cycle)
+    Running --> Running: fs event → added to changes.pending
+    Running --> Idle: done, changes.pending empty
+    Running --> Running: done, changes.pending non-empty<br/>(one debounce window, then one more cycle)
     Idle --> [*]: SIGINT / SIGTERM / SIGHUP (watchers closed)
 ```
 
 The `running` flag is the reentrancy guard: events landing mid-cycle
-wait in `pendingPaths`, are judged together one debounce window after
+wait in `changes.pending`, are judged together one debounce window after
 the cycle ends, and collapse into at most one follow-up run, never a
 queue.
 
@@ -233,7 +233,7 @@ stateDiagram-v2
     Ready --> Running: outcome 'success',<br/>downstream unblocks,<br/>child owned by persistentRegistry
     Running --> Kept: graph done, requested or surfaced,<br/>CLI foreground → alive past the summary
     Running --> Terminated: graph done, otherwise → SIGTERM,<br/>SIGKILL of the group after 2 s
-    Failed --> [*]: outcome 'failed' (exit 1)
+    Failed --> [*]: outcome 'failed' (the child's exit code, else 1)
     Kept --> [*]
     Terminated --> [*]
 ```
