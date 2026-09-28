@@ -1,0 +1,17 @@
+{
+  "name": "@vzn/vx-plugin-examples",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "description": "One small, runnable vx plugin per seam, held by tests that run each through vx's run().",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "engines": {
+    "bun": ">=1.4"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.0",
+    "@vzn/vx": "workspace:*"
+  }
+}

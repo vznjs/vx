@@ -12,7 +12,9 @@ A plugin is a function that returns `definePlugin(import.meta, hooks)`.
 Its name is its package's name. Fill only the hooks you need; an unfilled
 hook costs nothing. Declare it in `vx.workspace.ts`
 (`plugins: [typecheck()]`), and `vx info` lists it with its hooks. To test
-it, call `run()` from `@vzn/vx` on a throwaway workspace.
+it, call `run()` from `@vzn/vx` on a throwaway workspace. One runnable
+plugin per seam, each held by a test that runs it, is in
+[`packages/vx-plugin-examples`](https://github.com/vznjs/vx/tree/main/packages/vx-plugin-examples).
 
 This one gives every TypeScript package a `typecheck` task:
 

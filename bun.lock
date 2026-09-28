@@ -123,6 +123,14 @@
         "@vzn/vx": "*",
       },
     },
+    "packages/vx-plugin-examples": {
+      "name": "@vzn/vx-plugin-examples",
+      "version": "0.0.0",
+      "devDependencies": {
+        "@types/bun": "^1.4.0",
+        "@vzn/vx": "workspace:*",
+      },
+    },
     "packages/vx-reapi": {
       "name": "@vzn/vx-reapi",
       "version": "0.0.0",
@@ -713,6 +721,8 @@
     "@vzn/vx-migrate": ["@vzn/vx-migrate@workspace:packages/vx-migrate"],
 
     "@vzn/vx-otel": ["@vzn/vx-otel@workspace:packages/vx-otel"],
+
+    "@vzn/vx-plugin-examples": ["@vzn/vx-plugin-examples@workspace:packages/vx-plugin-examples"],
 
     "@vzn/vx-reapi": ["@vzn/vx-reapi@workspace:packages/vx-reapi"],
 

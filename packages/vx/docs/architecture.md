@@ -27,6 +27,7 @@ the browser, not a consumer of its API, and
 | `packages/vx-lockfile`         | `@vzn/vx-lockfile` — `pnpm()` `bun()` `npm()` `yarn()`: each claims its lockfile and keys each task on its project's own dependency closure; parsers over core's `lockfileClaim` |
 | `packages/vx-docs`             | Astro Starlight docs site; imports `packages/vx/docs/**` at build time; bundles core's planner for the browser playground (private)                                              |
 | `packages/vx-bench`            | synthetic workspace generator + runners for vx / Turbo / Nx (private)                                                                                                            |
+| `packages/vx-plugin-examples`  | one runnable plugin per seam, each run by its tests through `run()` (private)                                                                                                    |
 
 Core never imports a sibling package. The integrations reach core
 through two seams: the public API (42 runtime symbols, a deliberate
