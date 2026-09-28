@@ -80,6 +80,16 @@ run leaves out; the rest are refusals.
   (D-39). `--filter //` reads `//` as the root project since D-46; the
   graph could resolve `//#x` to it the same way.
 
+- H: `npm-pack.unsafe.test.ts`'s turbo row installs from the registry;
+  in a container whose TLS is signed by a local CA it hung to its 180 s
+  timeout (`SELF_SIGNED_CERT_IN_CHAIN`, npm's debug log) because the task
+  env dropped `NODE_EXTRA_CA_CERTS`. D-54 passes it through; CI never saw
+  it (no local CA there).
+- B: vx's isolated task env drops `NODE_EXTRA_CA_CERTS` (and
+  `SSL_CERT_FILE`) by default, so any task that fetches over TLS behind a
+  CA-signing proxy fails until each task passes it through. Worth a
+  decision on whether CA trust belongs in the default env.
+
 ## Entries
 
 - **D-1** `--affected` selects the project a new nested project took
@@ -502,3 +512,10 @@ packages/core`) selects the dependent whose `file:../lib` spec named
   inputs already refused it as a one-alternative brace). D-50's token
   list now holds `{options.…}` and `{projectName}`. Row: the D-52 row of
   `tests/config-schema-refusals.test.ts`.
+- **D-54** The local gate failed `npm-pack.unsafe`'s turbo row twice in
+  this container: `npm install` of the packed tarballs retried
+  `SELF_SIGNED_CERT_IN_CHAIN` to the 180 s timeout on a cold npm cache,
+  because the unsafe task's env dropped `NODE_EXTRA_CA_CERTS`
+  (differential under a temp HOME: without it the row hung, with it it
+  passed in 4.5 s; proxy variables refuted, `NO_PROXY` holds the
+  registry). `test.bun.unsafe` now passes it through.
