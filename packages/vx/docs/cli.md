@@ -1480,11 +1480,15 @@ Exit codes:
 ## Releasing (maintainers)
 
 Every green merge releases itself. When CI finishes green on a push to
-`main`, `auto-release.yml` tags that commit with the next patch version
-(`v0.0.21` → `v0.0.22`), creates the GitHub release with notes from the
-Conventional Commits since the last tag (`scripts/release-notes.ts`:
-breaking changes first, then `feat`, `fix` and `perf`, the rest counted),
-and dispatches `release.yml` (with `tag`) and
+`main`, `auto-release.yml` tags that commit with the next version and
+creates the GitHub release, both from the Conventional Commits since the
+last tag (`scripts/release-notes.ts`). The version: below 0.1.0 always a
+patch (cutting 0.1.0 is the owner's, by hand); then before 1.0 a `feat`
+or a breaking change (`type!:`, a `BREAKING CHANGE:` footer) is a minor
+(`v0.4.2` → `v0.5.0`) and anything else a patch (`v0.4.3`); from 1.0 a
+breaking change is a major. The notes: breaking changes first, then
+`feat`, `fix` and `perf`, the rest counted. It then
+dispatches `release.yml` (with `tag`) and
 `npm.yml` (with `version` and `ref`). A release made with the workflow
 token fires no `release` event in other workflows, which is why the two
 are dispatched rather than triggered. A green commit is released only
@@ -1493,8 +1497,8 @@ higher version; `main`'s CI runs one at a time and drops the queued
 runs between, so a burst of merges yields one release per finished
 run. A commit that already carries a `v*` tag is skipped.
 
-A minor or major is cut by hand: publish a GitHub release (say
-`v0.1.0`) and the next auto-release continues from it (`v0.1.1`).
+A version can still be cut by hand: publish a GitHub release (say
+`v1.0.0`) and the next auto-release continues from it.
 
 A GitHub release publishes everything: `release.yml` builds the four
 binaries, ad-hoc signs the darwin ones and attaches them; `npm.yml`

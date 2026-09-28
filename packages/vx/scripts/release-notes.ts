@@ -3,9 +3,10 @@
 // docs and tests included, so the user-facing change sat among dozens of
 // internal ones. Here only feat, fix and perf are listed, a breaking change
 // (`type!:` or a `BREAKING CHANGE:` footer) heads the notes, and the rest is
-// one count.
+// one count. The same commits choose the version (`nextVersion`).
 //
 //   bun packages/vx/scripts/release-notes.ts <from-ref> <to-ref>
+//   bun packages/vx/scripts/release-notes.ts --next <last-tag> <to-ref>
 
 export interface Commit {
   readonly subject: string
@@ -23,6 +24,25 @@ const HEADER = /^(\w+)(?:\(([^)]*)\))?(!)?: (.+)$/
 /** `type!:` / `type(scope)!:`, or a `BREAKING CHANGE:` footer line. */
 export function isBreaking({ subject, body }: Commit): boolean {
   return HEADER.exec(subject)?.[3] === '!' || /^BREAKING[ -]CHANGE: /m.test(body)
+}
+
+/**
+ * The version after `last` (`v0.4.2` or `0.4.2`; '' for none) that
+ * `commits` call for. From 1.0: a breaking change is a major, a `feat` a
+ * minor, anything else a patch. Before 1.0 the API promises nothing, so a
+ * breaking change or a `feat` is a minor and the rest a patch. Below 0.1.0
+ * every release is a patch: cutting 0.1.0 is the owner's (roadmap-1.0.md,
+ * item 1.4), by hand, and the rule applies from there.
+ */
+export function nextVersion(last: string, commits: readonly Commit[]): string {
+  if (last === '') return '0.0.1'
+  const [major = 0, minor = 0, patch = 0] = last.replace(/^v/, '').split('.').map(Number)
+  if (major === 0 && minor === 0) return `0.0.${patch + 1}`
+  const breaking = commits.some(isBreaking)
+  const feature = commits.some((c) => HEADER.exec(c.subject)?.[1] === 'feat')
+  if (major >= 1 && breaking) return `${major + 1}.0.0`
+  if (breaking || feature) return `${major}.${minor + 1}.0`
+  return `${major}.${minor}.${patch + 1}`
 }
 
 export function releaseNotes(commits: readonly Commit[]): string {
@@ -82,6 +102,12 @@ export function parseLog(out: string): Commit[] {
 }
 
 if (import.meta.main) {
-  const [from = '', to = 'HEAD'] = process.argv.slice(2)
-  process.stdout.write(releaseNotes(commitsBetween(from, to)))
+  const argv = process.argv.slice(2)
+  if (argv[0] === '--next') {
+    const [, last = '', to = 'HEAD'] = argv
+    process.stdout.write(`${nextVersion(last, commitsBetween(last, to))}\n`)
+  } else {
+    const [from = '', to = 'HEAD'] = argv
+    process.stdout.write(releaseNotes(commitsBetween(from, to)))
+  }
 }
