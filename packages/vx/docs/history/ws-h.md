@@ -291,7 +291,19 @@ a push and a local gate pass none. Rows: `conventional.test.ts` (which
 headers pass, and why others fail); the law, red on main's old
 `… (#764)` subjects and on the title `Add a thing`.
 
+## H-24: `--graph`'s DOT joins the CLI wire record
+
+`versioning-1.0.md` names `--graph` among the frozen machine-readable
+outputs, and nothing recorded it: an edge turned around (task → its
+dependency) passed every test. `contract-cli-wire.test.ts` now records
+the DOT for its fixture plan in `tests/contract/cli-wire.json`, line by
+line; that mutant turns it red. The contract table names the record for
+the three outputs. `vx mcp`'s tools, the fourth output that table names,
+are still held only by name (lead for F).
+
 ## Leads for other streams
+
+- **F:** `vx mcp`'s tools are a frozen 1.0 output (`versioning-1.0.md`), held only by name (`server.test.ts`): their input schemas and result shapes have no record.
 
 - **D / B:** `sandbox.ignore` names that loaded and did nothing: done in D-4.
 - **D:** `dependsOn` accepts `['']` and `['!x']` at load; whether the graph
