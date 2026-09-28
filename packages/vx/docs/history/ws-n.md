@@ -253,6 +253,13 @@ project's own targets declare, with one grouped todo
 28.7 s cold against 32.6 s, restore 1.57 s against 3.81 s, no-op 1.42 s
 against 3.74 s.
 
+N-26. `turbo()` on resend/react-email (Turbo 2.9.14): `build`,
+`typecheck` and `test` plan as Turbo does, 0 edge mismatches; the
+root's `//#format` has no script under either. `build` without `web`
+(needs a secret): 98.6 s cold against 103.8 s, restore 1.09 s against
+896 ms, no-op 285 ms against 289 ms. No mapping gap; the restore gap is
+core's (lead A).
+
 ## Candidates not built (2026-09-28)
 
 - Lerna without Nx: `lerna run <s>` (lerna 10.0.1, `prepNxOptions`)
@@ -268,6 +275,13 @@ against 3.74 s.
   stage fills discovered ones). Blocked on a discovery seam.
 
 ## Leads for other streams
+
+- A: restore of large outputs trails Turbo. react-email (15419ff)
+  restores 218 MB over 6 tasks (demo's Next export 959 files, 133 MB):
+  vx 1.09 s against Turbo 2.9.14's 896 ms, median of 3, where every
+  other repo here restores faster under vx. `VX_TIMING`: run graph
+  1.07 s, `restore: extract` 2.0 s summed. Worth a profile of the
+  extract path on one 133 MB entry against `tar --zstd -x`.
 
 - A: core's `ESSENTIAL_ENV` passes no proxy variables (`HTTPS_PROXY`,
   `NO_PROXY`, `NODE_EXTRA_CA_CERTS`); Nx passes the whole environment.
