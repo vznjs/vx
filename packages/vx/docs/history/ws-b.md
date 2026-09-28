@@ -31,6 +31,12 @@ In order of harm:
 
 ## Leads for other streams
 
+- **E:** a remote-only task no remote executor takes still reads `miss`
+  after the run: `run-report.ts` `cacheWord`, the logger's and
+  `summary.ts`'s miss counts, `run-artifacts.ts` and the event view all
+  derive it from `status: 'success'` and a `cache` block. The plan now
+  says `@noop` (C-48, B-34); the outcome carries no flag to tell them.
+
 - H: `isLocalExecutor`'s false arm (core's executor bounded like a plugin
   after an abort) has no row: `boundAfterAbort`'s grace and the local
   SIGKILL share `killGraceMs`, so a row would race the two (2026-09-28).
@@ -675,3 +681,18 @@ counted the task under "would run"; the line now reads `∅ … noop —
 would not run` and the summary counts `noop`. A row in
 `plugin-capabilities.test.ts` plans then runs one workspace: `@noop` in
 the plan, no tombstone after the run, the dependent built.
+
+B-35. Refuted: caching SRT's mandatory-deny scan once per run (supervisor
+lead). The scan is `rg --files --hidden --max-depth 3` over
+`process.cwd()` (the workspace root) on every wrap. In the 200-project
+fixture that is 11 ms wall and 19 ms of rg CPU per task (50 runs:
+0.56–0.79 s, against 0.09 s for 50 bare spawns). It stays for two
+reasons. First, its hits become write refusals, and a task can create
+`out/.git/hooks` or `.vscode/` under a write grant mid-run, so a memo
+would decide a refusal (principle 9). Second, SRT offers no parameter to
+scope the scan to the task's write allowlist, which is the only set
+whose hits matter. That scoping is the upstream fix. The profile's other
+per-task costs (the realpaths of `canonicalBaselines`, `toRealPath` and
+`throughLinks`) canonicalize paths a task could relink, and each decides
+a grant or a refusal, so B-33's list has nothing left that vx can cut
+alone.
