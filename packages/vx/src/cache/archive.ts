@@ -49,6 +49,10 @@ const META_ENTRY = '.vx-meta.json'
 /** Archive entry name of the always-present stdout record. */
 const STDOUT_ENTRY = 'stdout'
 
+const WIN32 = process.platform === 'win32'
+// A Windows link target may be spelled with either separator.
+const LINK_SEP = WIN32 ? /[\\/]/ : '/'
+
 /**
  * Sidecar shape. `files` maps an entry name to `[mode, mtimeMs]` — a
  * pair, not an object, because the sidecar is real entropy inside an
@@ -157,12 +161,15 @@ export async function planArtifact(args: PackArgs): Promise<ArtifactPlan> {
           `output ${shown} is not a regular file (a symlink to a directory?): vx stores regular files only — emit a file there, or narrow cache.outputs.files to the files the task produces (output globs take no '!')`,
         )
       }
-      meta.files[name] = [st.mode & 0o777, Math.floor(st.mtimeMs)]
+      // Windows reports 0o666 (0o444 read-only) and never an exec bit: a
+      // Linux restore of that would be world-writable.
+      const mode = WIN32 ? 0o644 : st.mode & 0o777
+      meta.files[name] = [mode, Math.floor(st.mtimeMs)]
       return {
         name,
         abs,
         size: st.size,
-        mode: st.mode & 0o777,
+        mode,
         // ustar's octal field holds no sign: an mtime before 1970 made the
         // header unreadable and every save of it a "corrupt artifact". The
         // sidecar above carries the real value.
@@ -640,7 +647,9 @@ class Extractor {
     let n = 0
     for (const s of this.staged) {
       const [mode, mtimeMs] = metaFor(s.name)
-      if ((mode & 0o777) !== createdMode) chmodSync(s.tmp, mode & 0o777)
+      // Windows has no mode bits: chmod there only sets the read-only
+      // attribute, and a read-only restore refuses the next rename over it.
+      if ((mode & 0o777) !== createdMode && !WIN32) chmodSync(s.tmp, mode & 0o777)
       if (mtimeMs !== undefined) {
         // A Date, not seconds: Bun reads a negative number of seconds as
         // "now", and a Date before 1970 as itself (Bun 1.4.2).
@@ -725,8 +734,10 @@ async function linkOutError(base: string, probe: string, realBase: string): Prom
  * A cycle is the user's tree, not the artifact, so it is refused by name.
  */
 async function resolveThrough(p: string): Promise<string> {
-  const pending = path.resolve(p).split(path.sep).filter(Boolean).reverse()
-  let at: string = path.sep
+  const abs = path.resolve(p)
+  // The root is `/` or a drive (`C:\`): joining a drive onto `\` loses it.
+  let at = path.parse(abs).root
+  const pending = abs.slice(at.length).split(path.sep).filter(Boolean).reverse()
   let hops = 0
   while (pending.length > 0) {
     const next = path.join(at, pending.pop()!)
@@ -747,8 +758,12 @@ async function resolveThrough(p: string): Promise<string> {
           'write through it. Remove the link and re-run.',
       )
     }
-    if (path.isAbsolute(link)) at = path.sep
-    pending.push(...link.split(path.sep).filter(Boolean).reverse())
+    let rest = link
+    if (path.isAbsolute(link)) {
+      at = path.parse(link).root
+      rest = link.slice(at.length)
+    }
+    pending.push(...rest.split(LINK_SEP).filter(Boolean).reverse())
   }
   return at
 }
