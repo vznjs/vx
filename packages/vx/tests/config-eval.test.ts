@@ -256,6 +256,40 @@ describe('evaluateConfigFresh: import-closure freshness', () => {
   })
 })
 
+describe('evaluateConfigFresh: the environment (D-61)', () => {
+  it("evaluates against the parent's process.env as it is now, not the startup one", async () => {
+    // A Worker starts with the process's startup environment. A config that
+    // reads a variable the process set since saw it on the in-process first
+    // load and not on any worker load, so an embedder's second run() derived
+    // another key (lead from L). The variable is one no startup env holds.
+    const key = 'VX_D61_ENV_PROBE'
+    // A new file per call: a round evaluates each module once (the shared
+    // preset rule above), so re-reading one path would answer from the first.
+    const command = async (): Promise<unknown> => {
+      const config = await write(
+        `export default { tasks: { t: { exec: { command: 'echo ' + (process.env.${key} ?? 'unset') } } } }\n`,
+      )
+      return ((await evaluateConfigFresh(config)) as ProjectConfig).tasks?.['t']?.exec?.command
+    }
+    // One round, as a run holds one across its config loads: the worker
+    // outlives each evaluation, so a variable the parent deletes must leave
+    // the worker's env too.
+    const end = beginEvalRound()
+    try {
+      process.env[key] = 'one'
+      expect(await command()).toBe('echo one')
+      process.env[key] = 'two'
+      expect(await command()).toBe('echo two')
+      delete process.env[key]
+      expect(await command()).toBe('echo unset')
+      expect(configEvalWorkerCount()).toBeGreaterThan(0)
+    } finally {
+      end()
+      delete process.env[key]
+    }
+  })
+})
+
 describe('evaluateConfigFresh: errors cross the boundary', () => {
   // Each case below rejects from inside the WORKER. A rejection clears its own
   // deadline in the `finally`, so nothing is left armed to drain — these used
