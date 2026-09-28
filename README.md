@@ -96,15 +96,15 @@ runs on every commit. More: [Quickstart](https://vznjs.github.io/vx/quickstart/)
 [CLI](packages/vx/docs/cli.md) · [every config field](packages/vx/docs/schema.md) ·
 [playground](https://vznjs.github.io/vx/playground/) (the planner, in your browser).
 
-## Already on Turborepo or Nx?
+## Already on Turborepo, Nx or moon?
 
-Keep your `turbo.json` or Nx project graph. Two lines run it under vx,
-with nothing rewritten:
+Keep your `turbo.json`, Nx project graph or `.moon/`. Two lines run it
+under vx, with nothing rewritten:
 
 ```ts
 // vx.workspace.ts
 import { defineWorkspace } from '@vzn/vx'
-import { turbo } from '@vzn/vx-migrate' // or: nx
+import { turbo } from '@vzn/vx-migrate' // or: nx, moon
 
 export default defineWorkspace({ plugins: [turbo()] })
 ```
@@ -112,7 +112,7 @@ export default defineWorkspace({ plugins: [turbo()] })
 When you want configs of your own, one command writes them:
 
 ```sh
-bunx @vzn/vx-migrate      # vx.config.ts per package, from turbo.json or an Nx graph
+bunx @vzn/vx-migrate      # vx.config.ts per package, from turbo.json, an Nx graph or .moon/
 ```
 
 The written configs derive the same cache keys, so what `turbo()` cached
@@ -170,15 +170,15 @@ when another tool is the better pick:
 Declared in `vx.workspace.ts`. Without one, vx runs and caches on this
 machine.
 
-| Package                                                    | What it adds                                                                  |
-| ---------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| [`@vzn/vx-migrate`](packages/vx-migrate)                   | Run a Turbo or Nx repo unchanged; write configs; keep a Turbo or Nx cache     |
-| [`@vzn/vx-reapi`](packages/vx-reapi)                       | Remote cache and remote execution over Bazel's REAPI (NativeLink, BuildBuddy) |
-| [`@vzn/vx-lockfile`](packages/vx-lockfile)                 | Key each project on its own lockfile slice: pnpm, bun, npm, yarn              |
-| [`@vzn/vx-otel`](packages/vx-otel)                         | OpenTelemetry traces, metrics and logs, no SDK                                |
-| [`@vzn/vx-github`](packages/vx-github)                     | GitHub Actions job summary and Checks API                                     |
-| [`@vzn/vx-mcp`](packages/vx-mcp)                           | `vx mcp`: a read-only MCP server for AI coding agents                         |
-| [`@vzn/vx-schedule-history`](packages/vx-schedule-history) | Schedule by the critical path learned from past runs                          |
+| Package                                                    | What it adds                                                                    |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| [`@vzn/vx-migrate`](packages/vx-migrate)                   | Run a Turbo, Nx or moon repo unchanged; write configs; keep a Turbo or Nx cache |
+| [`@vzn/vx-reapi`](packages/vx-reapi)                       | Remote cache and remote execution over Bazel's REAPI (NativeLink, BuildBuddy)   |
+| [`@vzn/vx-lockfile`](packages/vx-lockfile)                 | Key each project on its own lockfile slice: pnpm, bun, npm, yarn                |
+| [`@vzn/vx-otel`](packages/vx-otel)                         | OpenTelemetry traces, metrics and logs, no SDK                                  |
+| [`@vzn/vx-github`](packages/vx-github)                     | GitHub Actions job summary and Checks API                                       |
+| [`@vzn/vx-mcp`](packages/vx-mcp)                           | `vx mcp`: a read-only MCP server for AI coding agents                           |
+| [`@vzn/vx-schedule-history`](packages/vx-schedule-history) | Schedule by the critical path learned from past runs                            |
 
 Write your own: [plugin guide](https://vznjs.github.io/vx/guides/plugins/) ·
 [architecture](packages/vx/docs/architecture.md).
