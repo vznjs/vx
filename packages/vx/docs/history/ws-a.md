@@ -330,3 +330,9 @@ FAT32 keeps even seconds. A file stamped 12:00:00, hashed at 12:00:01.2, passed 
 
 - Row (`whole-second-stamps.test.ts`): single and batched hash, red without the fix; control on an odd second at the same age stays memoised. No FAT mount here (no `vfat` in the kernel), so the stamp is simulated as A-2's rows do.
 - Refuted lead: a warm-run CPU profile at 1,000 projects put 41 ms of native `get` under `getConfigEval`. A counter showed all 1,000 configs took the batched fast key and none the single-key path; the attribution was the profile's, not a cost.
+
+### A-39 — out of file descriptors is named, not a corrupt artifact (2026-09-28)
+
+Lead from E. Under a full fd table a restore threw `CorruptArtifactError` (the artifact was fine) and a save threw the bare `EMFILE` naming an output. Both now throw a `UserError` with `OUT_OF_FDS_HINT`. The scheduler side (`isFsRefusal` only) is C's.
+
+- Rows (`cache-out-of-fds.test.ts`): a child under `ulimit -n 128` holds every descriptor, then saves or restores; exact messages, each red without the fix.
