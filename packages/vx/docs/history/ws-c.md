@@ -339,6 +339,17 @@ It now prints the one line `bin.ts` prints (E-50): the message and
 without the change. A run under `ulimit -n 30` did not reach this path:
 the spawn failed first (the lead for A and B below).
 
+## C-28: hold `upstream.ts`'s surviving mutants
+
+A sweep of 37 mutants: 32 caught, 5 survived, of which 2 are equivalent
+(wrapping every parse error, since `parseDependencySpec` throws only
+`DependencySpecError`; globbing an exact name, since `compileTaskPattern`
+escapes every character but `*`). The other 3 are held now by two rows
+in `upstream.test.ts`: an exact name in `cache.inputs.tasks` does not
+select a name it prefixes (task or project half), and a group expands
+in its members' order while an empty group expands to nothing. None
+could give a stale hit. No defect in the file.
+
 ## Leads for other streams
 
 - **E:** a plugin command's plain `throw` (`commands.probe.run` throwing
@@ -406,3 +417,11 @@ the spawn failed first (the lead for A and B below).
   PATH" line: 17 of 21 tasks at `ulimit -n 30`, each told to install a
   command that exists. The spawn failure should carry a flag the verdict
   skips, and `spawnFailureText` could name `OUT_OF_FDS_HINT`.
+
+- **A, E (and C):** a failed task's output is not kept, so `vx last`
+  and `vx why` name the failure but cannot show its lines (E's lead).
+  The run history is where both read, so the tail belongs there: A adds
+  a `runs.output_tail` column (a stored shape, so `SCHEMA_VERSION`), C
+  hands `RunRecord` the failed task's `recapTail` (the ring the
+  end-of-run recap already keeps, `failure-recap.ts`), and E prints it
+  in the replay. One PR across the three slices, or A's column first.
