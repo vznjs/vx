@@ -273,3 +273,10 @@ live suite against Buildbarn bb-storage passes 16 of 17 (the one miss is
 QueryWriteStatus, UNIMPLEMENTED there, which an upload's resume already
 treats as "start over"); reading 20 × 5 MiB outputs in parallel instead of
 in turn measured no gain on loopback (~1.1 s either way), no cut.
+
+F-24. vx-reapi's remote hit read the duration (which bazel-remote moves
+into CAS) and only then opened the artifact: one round trip more per hit.
+Both now start together: 130 → 98 ms per hit through a proxy adding 15 ms
+each way (min of 15, interleaved A/B against main). Live suite against
+bazel-remote 17 of 17. F-21's order row now requires the overlap; red
+without the fix.

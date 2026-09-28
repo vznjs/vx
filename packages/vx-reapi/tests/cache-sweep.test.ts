@@ -4,6 +4,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import * as grpc from '@grpc/grpc-js'
 import { ReapiRemoteCache, actionDigestFor } from '../src/cache.js'
+import { ReapiClient } from '../src/wire.js'
 import { CHUNKING_SUPPORTED } from './helpers/bun-floor.js'
 import { startFakeReapi, type FakeReapi } from './helpers/fake-reapi.js'
 
@@ -64,17 +65,34 @@ describe.if(CHUNKING_SUPPORTED)('the cache layer, past the sweep', () => {
     ]).toEqual([false, null, true])
   })
 
-  it('put records a success, and get reads the duration before the artifact', async () => {
+  it('put records a success, and get opens the artifact while the duration reads (F-24)', async () => {
     await cache.put('k-put', new Blob([bytes('payload')]), { durationMs: 42 })
     const recorded = fake.actions.get(actionDigestFor('k-put').hash) as { exit_code: number }
     const meta = fake.put(bytes('{"durationMs":7}'))
     entry('k-order', 'art', { stdout_digest: meta })
-    const mark = fake.calls.length
-    const got = await restored('k-order')
-    const reads = fake.calls
-      .slice(mark)
-      .filter((c) => c.method === 'Read')
-      .map((c) => String(c.request['resource_name']).includes(meta.hash))
-    expect([recorded.exit_code, got, reads]).toEqual([0, ['art', 7], [true, false]])
+    // The duration's read waits until the artifact's stream is opened, for at
+    // most 1 s: read one after the other (the round trip F-24 removed), it
+    // sees no open stream when it proceeds.
+    const proto = ReapiClient.prototype
+    const [readBlob, readBlobStream] = [proto.readBlob, proto.readBlobStream]
+    let opened = false
+    let overlapped: boolean | undefined
+    proto.readBlobStream = function (this: ReapiClient, ...a: Parameters<typeof readBlobStream>) {
+      opened = true
+      return readBlobStream.apply(this, a)
+    }
+    proto.readBlob = async function (this: ReapiClient, ...a: Parameters<typeof readBlob>) {
+      const until = Date.now() + 1000
+      while (!opened && Date.now() < until) await Bun.sleep(5)
+      overlapped ??= opened
+      return readBlob.apply(this, a)
+    }
+    try {
+      const got = await restored('k-order')
+      expect([recorded.exit_code, got, overlapped]).toEqual([0, ['art', 7], true])
+    } finally {
+      proto.readBlob = readBlob
+      proto.readBlobStream = readBlobStream
+    }
   })
 })
