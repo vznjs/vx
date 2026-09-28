@@ -906,9 +906,8 @@ buckets: a run can be red without a single failed task (see `aborted`).
 `tasks.length === summary.total` always holds. Group tasks (no `exec`)
 are in neither — they do no work.
 
-**`aborted[]`** lists tasks whose child was killed by a shutdown signal
-(Ctrl-C, an external `kill`, a self-terminating script), with their
-signal exit code, and tasks the stop reached before they started, with
+**`aborted[]`** lists tasks whose attempt ended while the run was
+stopping (Ctrl-C, a signal to vx), with their exit code, and tasks the stop reached before they started, with
 exit 1, `durationMs: 0` and no `wallclockStartNs`. Neither joins an
 outcome bucket or `total`, but they make the run red, so they are
 listed separately and counted as `summary.aborted`.

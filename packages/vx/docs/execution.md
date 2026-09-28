@@ -269,9 +269,8 @@ terminal and a task succeeding or failing. Read it alongside
  │          (shell-quoted). Buffer chunks via onStdout/onStderr.
  │          exec.timeout SIGTERMs an overrun → real `failed`, never
  │          cached. An attempt that ends while the run is STOPPING
- │          (Ctrl-C teardown), or a child a shutdown signal killed,
- │          classifies as `aborted` instead, whatever its exit — not
- │          counted, not recorded, not retried.
+ │          (Ctrl-C teardown) classifies as `aborted` instead, whatever
+ │          its exit — not counted, not recorded, not retried.
  │       8. On exit 0 + willSave (willWrite, no tainted upstream):
  │            keyStillTrue() — if the workspace fingerprint or an
  │              input moved since the key was taken, the result stands
