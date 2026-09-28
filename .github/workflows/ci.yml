@@ -271,16 +271,21 @@ jobs:
       # DATA, not vx: the same shards as bare `bun test`, so the failures
       # past the sandbox refusal are on record. Goes when the step above
       # runs the suite.
+      # Each shard is bounded: a child vx cannot kill yet hangs its shard,
+      # and the first run spent the whole job on one.
       - name: bun test shards (core, windows, data)
         if: always()
+        timeout-minutes: 25
         shell: bash
         working-directory: packages/vx
         run: |
           rc=0
           for i in $(seq 1 12); do
-            bun test --only-failures $(bun scripts/test-shard.ts $i 12) || rc=1
+            echo "::group::shard $i"
+            timeout 100 bun test --only-failures $(bun scripts/test-shard.ts $i 12) || { echo "shard $i: exit $?"; rc=1; }
+            echo "::endgroup::"
           done
-          bun test --only-failures ./tests/*.unsafe.test.ts || rc=1
+          timeout 100 bun test --only-failures ./tests/*.unsafe.test.ts || { echo "unsafe: exit $?"; rc=1; }
           exit $rc
 
   #
