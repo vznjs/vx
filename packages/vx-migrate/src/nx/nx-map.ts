@@ -36,7 +36,7 @@ import {
 } from './nx-dotenv.js'
 import { emptyNxInputs, expandNxInputs } from './nx-inputs.js'
 import { planNxUpstream, type NxUpstream } from './nx-upstream.js'
-import { mapNxOutputs, nxDefaultOutputs } from './nx-outputs.js'
+import { mapNxOutputs, nxDefaultOutputs, nxProjectOutputs } from './nx-outputs.js'
 
 const PLACEHOLDER = "echo 'TODO(vx-migrate): fill in' && exit 1"
 
@@ -538,7 +538,11 @@ function buildTask(
   )
 
   const inputs = emptyNxInputs()
-  const at = { rel: projectRel, name: projectName }
+  const at = {
+    rel: projectRel,
+    name: projectName,
+    outputs: nxProjectOutputs(nodeMap[nodeName]?.data?.targets, projectRel, projectName),
+  }
   expandNxInputs(target.inputs ?? [], upstream.namedOf(nodeName), at, inputs, todos)
   const { outFiles, wsOutFiles } = mapNxOutputs(
     target.outputs ?? nxDefaultOutputs(targetName, options, projectRel, todos),
