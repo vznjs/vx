@@ -124,7 +124,7 @@ export interface SummaryStats {
  */
 export interface RunContext {
   version: string
-  /** Projects covered by the graph — the "affected" half of the bar. */
+  /** Projects covered by the graph — the "in run" half of the bar. */
   packageCount: number
   /** Worker-pool size for this run; shown on the `info` row. */
   concurrency?: number
@@ -177,7 +177,7 @@ export function formatSummarySection(
   ]
 
   // Run context (final footer only): the projects bar leads the meter
-  // stack — affected (yellow) vs the rest of the workspace (dim).
+  // stack — the projects in the run (yellow) vs the rest of the workspace (dim).
   if (context !== undefined) {
     const wsTotal = context.workspaceProjectCount
     if (wsTotal !== undefined && wsTotal > 0) {
@@ -190,7 +190,7 @@ export function formatSummarySection(
         paint('', '▱'.repeat(BAR_WIDTH - cells), colors, { dim: true })
       lines.push(
         row('projects', bar),
-        legend([paint(WARN, `${context.packageCount} affected`, colors), dim(`${wsTotal} total`)]),
+        legend([paint(WARN, `${context.packageCount} in run`, colors), dim(`${wsTotal} total`)]),
       )
     }
   }

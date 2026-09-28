@@ -921,7 +921,7 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
       await run({ cwd: fixture.root, tasks: ['ci'], log: silentLogger(fixture) })
       // Meter legends only — the footer's projects legend shares the
       // 12-space indent but carries projects, not task/cache counts.
-      const legends = fixture.log.filter((l) => /^ {12}\S/.test(l) && !l.includes('affected'))
+      const legends = fixture.log.filter((l) => /^ {12}\S/.test(l) && !l.includes(' in run · '))
       // Only the executable `build` task counts — the `ci` group is hidden.
       expect(legends[0]).toBe('            1 success · 1 total')
       expect(legends[1]).toBe('            1 miss')

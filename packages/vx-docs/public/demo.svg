@@ -7,32 +7,32 @@
   <rect width="760" height="609" rx="10" fill="#0d1117"/>
   <circle cx="20" cy="18" r="6" fill="#ff5f57"/><circle cx="40" cy="18" r="6" fill="#febc2e"/><circle cx="60" cy="18" r="6" fill="#28c840"/>
   <text x="18" y="44" style="animation-delay:0.00s"><tspan fill="rgb(125,133,144)">$ </tspan><tspan font-weight="700">vx run ci --all</tspan></text>
-  <text x="18" y="63" style="animation-delay:0.60s"> <tspan fill="rgb(34,197,94)">⏺︎</tspan>     <tspan opacity="0.55">7ms</tspan> <tspan fill="rgb(34,197,94)">success</tspan> <tspan opacity="0.55">miss</tspan>     <tspan fill="rgb(147,197,253)">lib</tspan><tspan opacity="0.55">#</tspan><tspan fill="rgb(244,114,182)">build</tspan></text>
+  <text x="18" y="63" style="animation-delay:0.60s"> <tspan fill="rgb(34,197,94)">⏺︎</tspan>     <tspan opacity="0.55">5ms</tspan> <tspan fill="rgb(34,197,94)">success</tspan> <tspan opacity="0.55">miss</tspan>     <tspan fill="rgb(147,197,253)">lib</tspan><tspan opacity="0.55">#</tspan><tspan fill="rgb(244,114,182)">build</tspan></text>
   <text x="18" y="82" style="animation-delay:0.72s"> <tspan fill="rgb(34,197,94)">⏺︎</tspan>     <tspan opacity="0.55">7ms</tspan> <tspan fill="rgb(34,197,94)">success</tspan> <tspan opacity="0.55">miss</tspan>     <tspan fill="rgb(129,140,248)">app</tspan><tspan opacity="0.55">#</tspan><tspan fill="rgb(244,114,182)">build</tspan></text>
-  <text x="18" y="101" style="animation-delay:0.84s"> <tspan fill="rgb(34,197,94)">⏺︎</tspan>     <tspan opacity="0.55">4ms</tspan> <tspan fill="rgb(34,197,94)">success</tspan> <tspan opacity="0.55">miss</tspan>     <tspan fill="rgb(129,140,248)">app</tspan><tspan opacity="0.55">#</tspan><tspan fill="rgb(244,114,182)">test</tspan></text>
+  <text x="18" y="101" style="animation-delay:0.84s"> <tspan fill="rgb(34,197,94)">⏺︎</tspan>     <tspan opacity="0.55">5ms</tspan> <tspan fill="rgb(34,197,94)">success</tspan> <tspan opacity="0.55">miss</tspan>     <tspan fill="rgb(129,140,248)">app</tspan><tspan opacity="0.55">#</tspan><tspan fill="rgb(244,114,182)">test</tspan></text>
   <text x="18" y="120" style="animation-delay:0.96s"></text>
   <text x="18" y="139" style="animation-delay:1.08s"><tspan fill="rgb(167,139,250)">─ </tspan><tspan font-weight="700">vx ─────</tspan> <tspan fill="rgb(167,139,250)">────────</tspan><tspan fill="rgb(178,135,240)">────────</tspan><tspan fill="rgb(189,132,231)">────────</tspan><tspan fill="rgb(200,128,221)">────────</tspan><tspan fill="rgb(211,125,211)">────────</tspan><tspan fill="rgb(222,121,201)">────────</tspan><tspan fill="rgb(233,118,192)">───</tspan></text>
   <text x="18" y="158" style="animation-delay:1.20s">  <tspan opacity="0.55">projects</tspan>  <tspan fill="rgb(234,179,8)">▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰</tspan></text>
-  <text x="18" y="177" style="animation-delay:1.32s">            <tspan fill="rgb(234,179,8)">2 affected</tspan> <tspan opacity="0.55">·</tspan> <tspan opacity="0.55">2 total</tspan></text>
+  <text x="18" y="177" style="animation-delay:1.32s">            <tspan fill="rgb(234,179,8)">2 in run</tspan> <tspan opacity="0.55">·</tspan> <tspan opacity="0.55">2 total</tspan></text>
   <text x="18" y="196" style="animation-delay:1.44s">  <tspan opacity="0.55">tasks   </tspan>  <tspan fill="rgb(34,197,94)">▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰</tspan></text>
   <text x="18" y="215" style="animation-delay:1.56s">            <tspan fill="rgb(34,197,94)">3 success</tspan> <tspan opacity="0.55">·</tspan> <tspan opacity="0.55">3 total</tspan></text>
   <text x="18" y="234" style="animation-delay:1.68s">  <tspan opacity="0.55">cache   </tspan>  <tspan fill="rgb(239,68,68)">▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰</tspan></text>
   <text x="18" y="253" style="animation-delay:1.80s">            <tspan fill="rgb(239,68,68)">3 miss</tspan></text>
   <text x="18" y="272" style="animation-delay:1.92s"></text>
   <text x="18" y="291" style="animation-delay:2.04s">  <tspan opacity="0.55">info    </tspan>  4 workers <tspan opacity="0.55">·</tspan> local cache</text>
-  <text x="18" y="310" style="animation-delay:2.16s">  <tspan opacity="0.55">time    </tspan>  61ms <tspan opacity="0.55">· max 7ms · avg 6ms · min 4ms</tspan></text>
-  <text x="18" y="329" style="animation-delay:2.28s">  <tspan opacity="0.55">result  </tspan>  3 tasks <tspan opacity="0.55">·</tspan> 0 cached (0%) <tspan opacity="0.55">·</tspan> 61ms</text>
+  <text x="18" y="310" style="animation-delay:2.16s">  <tspan opacity="0.55">time    </tspan>  50ms <tspan opacity="0.55">· max 7ms · avg 6ms · min 5ms</tspan></text>
+  <text x="18" y="329" style="animation-delay:2.28s">  <tspan opacity="0.55">result  </tspan>  3 tasks <tspan opacity="0.55">·</tspan> 0 cached (0%) <tspan opacity="0.55">·</tspan> 50ms</text>
   <text x="18" y="348" style="animation-delay:2.40s"></text>
   <text x="18" y="367" style="animation-delay:2.52s"><tspan fill="rgb(125,133,144)">$ </tspan><tspan font-weight="700">vx run ci --all</tspan></text>
   <text x="18" y="386" style="animation-delay:3.12s"><tspan fill="rgb(167,139,250)">─ </tspan><tspan font-weight="700">vx ─────</tspan> <tspan fill="rgb(167,139,250)">────────</tspan><tspan fill="rgb(178,135,240)">────────</tspan><tspan fill="rgb(189,132,231)">────────</tspan><tspan fill="rgb(200,128,221)">────────</tspan><tspan fill="rgb(211,125,211)">────────</tspan><tspan fill="rgb(222,121,201)">────────</tspan><tspan fill="rgb(233,118,192)">───</tspan></text>
   <text x="18" y="405" style="animation-delay:3.24s">  <tspan opacity="0.55">projects</tspan>  <tspan fill="rgb(234,179,8)">▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰</tspan></text>
-  <text x="18" y="424" style="animation-delay:3.36s">            <tspan fill="rgb(234,179,8)">2 affected</tspan> <tspan opacity="0.55">·</tspan> <tspan opacity="0.55">2 total</tspan></text>
+  <text x="18" y="424" style="animation-delay:3.36s">            <tspan fill="rgb(234,179,8)">2 in run</tspan> <tspan opacity="0.55">·</tspan> <tspan opacity="0.55">2 total</tspan></text>
   <text x="18" y="443" style="animation-delay:3.48s">  <tspan opacity="0.55">tasks   </tspan>  <tspan fill="rgb(34,197,94)">▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰</tspan></text>
   <text x="18" y="462" style="animation-delay:3.60s">            <tspan fill="rgb(34,197,94)">3 success</tspan> <tspan opacity="0.55">·</tspan> <tspan opacity="0.55">3 total</tspan></text>
   <text x="18" y="481" style="animation-delay:3.72s">  <tspan opacity="0.55">cache   </tspan>  <tspan fill="rgb(34,197,94)">▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰</tspan></text>
   <text x="18" y="500" style="animation-delay:3.84s">            <tspan fill="rgb(34,197,94)">3 up-to-date</tspan></text>
   <text x="18" y="519" style="animation-delay:3.96s"></text>
   <text x="18" y="538" style="animation-delay:4.08s">  <tspan opacity="0.55">info    </tspan>  4 workers <tspan opacity="0.55">·</tspan> local cache</text>
-  <text x="18" y="557" style="animation-delay:4.20s">  <tspan opacity="0.55">time    </tspan>  22ms</text>
-  <text x="18" y="576" style="animation-delay:4.32s">  <tspan opacity="0.55">result  </tspan>  3 tasks <tspan opacity="0.55">·</tspan> <tspan fill="rgb(34,197,94)" font-weight="700">all cached</tspan> <tspan opacity="0.55">·</tspan> 22ms</text>
+  <text x="18" y="557" style="animation-delay:4.20s">  <tspan opacity="0.55">time    </tspan>  18ms</text>
+  <text x="18" y="576" style="animation-delay:4.32s">  <tspan opacity="0.55">result  </tspan>  3 tasks <tspan opacity="0.55">·</tspan> <tspan fill="rgb(34,197,94)" font-weight="700">all cached</tspan> <tspan opacity="0.55">·</tspan> 18ms</text>
 </svg>

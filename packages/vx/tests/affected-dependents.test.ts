@@ -100,7 +100,7 @@ describe('--affected and the dependents of what changed', () => {
       expect(r.stdout).toContain('lib#build')
       expect(r.stdout).toContain('app#build')
       expect(r.stdout).not.toContain('tool#build')
-      expect(r.stdout).toContain('2 affected · 3 total')
+      expect(r.stdout).toContain('2 in run · 3 total')
     },
     TIMEOUT,
   )
@@ -112,7 +112,7 @@ describe('--affected and the dependents of what changed', () => {
       expect(r.exitCode).toBe(0)
       expect(r.stdout).toContain('lib#build')
       expect(r.stdout).not.toContain('app#build')
-      expect(r.stdout).toContain('1 affected · 3 total')
+      expect(r.stdout).toContain('1 in run · 3 total')
     },
     TIMEOUT,
   )
