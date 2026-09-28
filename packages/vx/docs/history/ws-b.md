@@ -505,3 +505,17 @@ working here, one does.
   domain the allow glob covers: `ads.a.test` gets the proxy's 403,
   `cdn.a.test` (allowed control) its 502 from the failed lookup. With
   `deniedDomains: []` in `initSandbox` the denied one gets 502 (red).
+
+B-24. Sweep of `runner.ts`'s command helpers, 35 mutants: 16 caught,
+4 equivalent on Linux (`shellQuote('')`'s early return, `exitSignal`'s
+bounds and alias filter), 15 survived; each now held. One was a bug:
+forwarded args went before the LAST trailing comment, so
+`echo one # c\n# two` became `echo one # c --fix # two` and ran
+without them. Also swept: `env.ts`, 16 mutants, all caught.
+
+- Fix (`withForwardArgs`): walk back to the earliest comment of the
+  trailing run. `cli.md`, `modules/runner.md`.
+- Rows: `runner.test.ts` › withForwardArgs (a comment line after a
+  commented line, red without the fix; quoted words before a comment;
+  `#` after a closing quote; `#` after `;`) and › execWord (blanks,
+  `~`, `!`, `\`, five builtins).

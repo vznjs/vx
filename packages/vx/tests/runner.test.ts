@@ -6,6 +6,7 @@ import { isAlive, waitForDead } from './helpers/alive.js'
 import {
   armTimeout,
   POST_EXIT_CUT_LINE,
+  execWord,
   execWrap,
   ownRssHighWater,
   peakRssBytes,
@@ -649,13 +650,40 @@ describe('withForwardArgs', () => {
     ['control: # inside a word', 'echo a#b', 'a#b --fix a b\n'],
     ['control: $# and an escaped #', 'echo $# \\#', '0 # --fix a b\n'],
     ['control: # after an escaped space', 'echo a\\ #b', 'a #b --fix a b\n'],
+    ['a comment line after a commented line', 'echo one # c\n# two', 'one --fix a b\n'],
+    ['a trailing comment after a single-quoted word', `echo 'a' # c`, 'a --fix a b\n'],
+    ['a trailing comment after a double-quoted word', 'echo "a" # c', 'a --fix a b\n'],
+    ['control: # right after a closing quote', `echo 'a'#b`, 'a#b --fix a b\n'],
   ])('%s', (_name, command, printed) => {
     expect(shOut(withForwardArgs(command, ['--fix', 'a b']))).toBe(printed)
+  })
+
+  it('a # after a separator opens a comment', () => {
+    expect(withForwardArgs('echo a;# c', ['x'])).toBe('echo a; x # c')
   })
 
   it('leaves the command alone with no args', () => {
     expect(withForwardArgs('echo hi # c', [])).toBe('echo hi # c')
     expect(withForwardArgs('echo hi # c', undefined)).toBe('echo hi # c')
+  })
+})
+
+describe('execWord', () => {
+  it.each([
+    ['a plain program', 'tool x', 'tool'],
+    ['leading blanks', '  tool x', 'tool'],
+    ['empty', '', undefined],
+    ['blank', '   ', undefined],
+    ['a tilde path', '~/bin/tool x', undefined],
+    ['a negation', '! tool', undefined],
+    ['an escaped blank', 'tool a\\ b', undefined],
+    ['cd', 'cd dist', undefined],
+    ['.', '. ./env.sh', undefined],
+    ['kill', 'kill 1', undefined],
+    ['ulimit', 'ulimit -n 64', undefined],
+    ['command', 'command -v tool', undefined],
+  ])('%s', (_name, command, word) => {
+    expect(execWord(command)).toBe(word)
   })
 })
 

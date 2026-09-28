@@ -115,7 +115,8 @@ export function peakRssBytes(maxRSS: number): number // bytes, whatever unit the
 - **forwardArgs** are appended to `command` after a single space, each
   quoted via `shellQuote(arg)` (i.e. `'...'`-quoted when not safe), by
   `withForwardArgs` — before a `#` comment still open at the command's
-  end, so the comment cannot swallow them. The sandbox wrapper and the
+  end (the earliest, when comment-only lines follow a commented
+  line), so no comment can swallow them. The sandbox wrapper and the
   persistent path build the line the same way.
 - **Encoding:** UTF-8 via `TextDecoder({ stream: true })`. Non-UTF8
   bytes are corrupted.

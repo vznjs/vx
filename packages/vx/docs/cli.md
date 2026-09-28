@@ -358,7 +358,8 @@ vx run build -- --sourcemap         # build command gets "--sourcemap"
 ```
 
 They are appended to the command's end, or before a `#` comment still
-open there (`echo args: # show` gets them), and a persistent task gets
+open there (`echo args: # show` gets them; with comment-only lines
+below a commented line, before the earliest), and a persistent task gets
 them too, with or without a `readyWhen`.
 
 Forwarded args are folded into the cache key — different args produce
