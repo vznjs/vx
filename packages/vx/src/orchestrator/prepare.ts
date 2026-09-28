@@ -90,6 +90,11 @@ export interface PreparedRun {
   priorities: ReadonlyMap<string, number>
   nodes: Map<string, TaskNode>
   /**
+   * The tasks `--exclude-dependencies` took out of the schedule: keyed as a
+   * full run keys them, never run. Empty without the flag.
+   */
+  keyOnly: ReadonlyMap<string, TaskNode>
+  /**
    * Requested task specs that matched NO project — a typo, or a stray
    * positional (the value of an `=`-only flag written with a space).
    * Nothing they asked for is in `nodes`, so callers must fail rather
@@ -391,6 +396,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
         hasRemoteLayer,
         priorities: new Map(),
         nodes: new Map(),
+        keyOnly: new Map(),
         unresolvedTasks,
         projects,
         anyProjectConfig: projectsWithConfigs.length > 0,
@@ -469,8 +475,11 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       await applyKeyHooks(plugins, nodes, { workspaceRoot, cacheDir, warn: (m) => log.status(m) })
     }
     const exclude = options.excludeDependencies
+    let keyOnly: ReadonlyMap<string, TaskNode> = new Map()
     if (exclude !== undefined && (exclude === 'all' || exclude.length > 0)) {
-      const { keyOnly, dropped } = excludeDependencies(nodes, exclude)
+      const split = excludeDependencies(nodes, exclude)
+      keyOnly = split.keyOnly
+      const dropped = split.dropped
       if (dropped.size > 0) {
         await keyExcludedDependencies({
           nodes,
@@ -506,6 +515,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       hasRemoteLayer,
       priorities,
       nodes,
+      keyOnly,
       unresolvedTasks,
       projects,
       anyProjectConfig: projectsWithConfigs.length > 0,

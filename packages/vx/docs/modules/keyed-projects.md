@@ -14,8 +14,14 @@ root is withheld, since an edit there would not re-run the task.
 ```ts
 export function keyedProjects(
   nodes: ReadonlyMap<string, TaskNode>,
+  keyOnly?: ReadonlyMap<string, TaskNode>,
 ): (node: TaskNode) => ReadonlySet<string>
 ```
+
+Under `--exclude-dependencies` the walk folds what the key folds
+(`keyUpstream`): a task's scheduled edges less its order-only ones, plus
+its `excludedUpstream`, whose own dependencies it reads from `keyOnly`
+(`PreparedRun.keyOnly`).
 
 `run.ts` builds one lookup per run and hands it to every task
 (`ExecuteArgs.keyedProjects`); execute-task asks it only on the miss path

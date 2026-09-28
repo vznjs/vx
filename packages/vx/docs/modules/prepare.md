@@ -20,6 +20,7 @@ export interface PreparedRun {
   hasRemoteLayer: boolean // `cache` is more than the local handle — the remote policy axes mean something
   priorities: ReadonlyMap<string, number> // the `schedule` stage's weights; empty without one
   nodes: Map<string, TaskNode> // empty if `empty !== null`
+  keyOnly: ReadonlyMap<string, TaskNode> // what --exclude-dependencies keyed but did not schedule
   /**
    * Requested specs that matched NO project — a typo, or a stray
    * positional from an `=`-only flag written with a space. Non-empty
