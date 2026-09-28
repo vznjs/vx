@@ -498,3 +498,41 @@ describe('a path filter over members found through a ./-prefixed glob (e2e)', ()
     }
   }, 30_000)
 })
+
+describe('a selector narrowed by a git range (D-44)', () => {
+  // Turbo 2.8.17 and pnpm read `@scope/*[HEAD]` and `{./apps/*}[main]` as
+  // the selected packages that changed since the ref; vx read the whole as
+  // one name glob and refused "no projects matched".
+  const projects = [
+    mkProject('@s/app', `${ROOT}/apps/app`, ['@s/lib']),
+    mkProject('@s/lib', `${ROOT}/libs/lib`, ['core']),
+    mkProject('core', `${ROOT}/libs/core`),
+  ]
+  const graph = buildPackageGraph(projects)
+  const sel = (raw: string, changed: string[]): string[] => {
+    const f = parseFilter(raw, ROOT)
+    const affectedByFilter = new Map([[f, new Set(changed)]])
+    return [...applyFilters({ filters: [f], projects, graph, affectedByFilter })].sort()
+  }
+
+  it('parses the selector and the ref apart', () => {
+    const f = parseFilter('@s/*[origin/main]', ROOT)
+    expect([f.matcher, f.gitSince, f.isPath]).toEqual(['@s/*', 'origin/main', false])
+    const d = parseFilter('...{./libs/*}[HEAD~1]', ROOT)
+    expect([d.gitSince, d.isPath, d.withDependents]).toEqual(['HEAD~1', true, true])
+  })
+
+  it('selects the changed ones among the selected, then expands', () => {
+    expect(sel('@s/*[HEAD]', ['core'])).toEqual([])
+    expect(sel('@s/*[HEAD]', ['core', '@s/lib'])).toEqual(['@s/lib'])
+    expect(sel('{./libs/*}[HEAD]', ['core'])).toEqual(['core'])
+    expect(sel('...{./libs/*}[HEAD]', ['core'])).toEqual(['@s/app', '@s/lib', 'core'])
+    // CONTROL: a bare range is every changed project, as before.
+    expect(sel('[HEAD]', ['core', '@s/app'])).toEqual(['@s/app', 'core'])
+  })
+
+  it('CONTROL: an unbraced path keeps its brackets as a glob class', () => {
+    const f = parseFilter('./libs/[c]ore', ROOT)
+    expect([f.gitSince, f.isPath]).toEqual([undefined, true])
+  })
+})

@@ -75,8 +75,11 @@ export function applyFilters(opts: ApplyFiltersOptions): Set<string>
 ## Separation of concerns
 
 `parseFilter` and `applyFilters` are **pure** — no FS, no spawn.
-The git-relative `[<since>]` form is parsed into a `gitSince` field
-but resolution happens upstream (`cli/select.ts` calls
+The git-relative `[<since>]` form is parsed into a `gitSince` field,
+alone or after a name or `{dir}` selector it narrows (`@scope/*[main]`,
+`{./apps/*}[HEAD~1]`: the selected packages that changed, D-44; an
+unbraced `./` path keeps its brackets as a glob class), but resolution
+happens upstream (`cli/select.ts` calls
 `workspace/affected.ts:affectedProjects` once per distinct ref and
 passes the result via `affectedByFilter`).
 
