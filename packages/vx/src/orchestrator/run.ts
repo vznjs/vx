@@ -755,6 +755,7 @@ async function runOnBus(
         ...(placements.remoteOnlyNoop.has(node.id) ? { remoteOnlyNoop: true } : {}),
         ...(placements.remoteOnly.has(node.id) ? { remoteOnly: true } : {}),
         nestedProjectDirs: nestedDirsByProject.get(node.projectName) ?? [],
+        cacheDir,
         runStartHrTimeNs,
         persistentRegistry,
         liveChildren,

@@ -897,3 +897,20 @@ describe('reachedWithheld', () => {
     ).toEqual([ui])
   })
 })
+
+// `.vx` was walled wherever it sat, but a `cacheDir` configured inside a
+// project was not: a sandboxed task granted `.vxcache/` wrote a file into
+// the store, where it could plant artifacts and index rows (L-24). The
+// control, with no cache dir named, shows the grant is refused for it.
+describe('a cache directory inside a project is a wall', () => {
+  it('a write grant over it is refused; without it named, the grant binds', async () => {
+    const cacheDir = path.join(dir, '.vxcache')
+    await mkdir(cacheDir, { recursive: true })
+    const grant = { allow: { write: ['.vxcache/'] } }
+    await expect(sandboxRequestFor(node(), grant, root, undefined, [], cacheDir)).rejects.toThrow(
+      `exec.sandbox.allow.write: the grant binding ${cacheDir} would make ${cacheDir} writable`,
+    )
+    const open = await sandboxRequestFor(node(), grant, root, undefined, [])
+    expect(open.sandbox.config.allowWrite).toEqual([cacheDir])
+  })
+})

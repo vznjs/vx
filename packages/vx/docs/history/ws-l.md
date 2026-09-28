@@ -83,6 +83,10 @@
     was fixed in L-22. No bug.
 18. What vx reads on a task's behalf. The save packs outputs outside the
     sandbox and followed a symlinked output to any target (L-23).
+19. What vx writes for a task. A link a task planted at another task's
+    file write grant is refused before the bind (item 1003's check, probed
+    with a target outside the workspace). The cache directory was walled
+    only as `.vx` (L-24).
 
 ## Items
 
@@ -269,6 +273,14 @@
   refuses one whose real target is outside the project; the body is read
   from the resolved path. Row: e2e, no artifact holds the target's bytes,
   red without the bound; the in-project `link` shape still caches.
+- L-24. `fix(sandbox)`: `.vx` is walled from every sandboxed task, but a
+  `cacheDir` configured inside a project was not: a task granted
+  `.vxcache/` wrote a file into the store (probed), where it could plant
+  artifacts and index rows. The run's cache directory now reaches the
+  sandbox request and is a wall like `.vx` when it lies in the workspace.
+  Rows: the request refuses the grant (control: without the cache dir it
+  binds) and an e2e run fails the task with nothing planted, red without
+  the plumbing from `run.ts`.
 
 ## Leads for other streams
 

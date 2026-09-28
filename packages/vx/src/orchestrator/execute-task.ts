@@ -106,6 +106,8 @@ export interface ExecuteArgs {
    *  where a locally-placed consumer fetches its producers from. */
   deferred?: DeferredOutputs
   nestedProjectDirs: string[]
+  /** The run's cache directory: walled off from a sandboxed task's grants. */
+  cacheDir?: string
   /** Anchor for hrtime spans across all tasks in this run. */
   runStartHrTimeNs: bigint
   /**
@@ -312,6 +314,7 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
       args.workspaceRoot,
       undefined,
       args.nestedProjectDirs,
+      args.cacheDir,
     )
     placeholders = sb.placeholders
     const wrapped = await wrapSandboxedCommand({
@@ -1015,6 +1018,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       args.workspaceRoot,
       cfgCacheable ? args.keyedProjects(node) : undefined,
       args.nestedProjectDirs,
+      args.cacheDir,
     )
     placeholders = sb.placeholders
     withheld = sb.withheld
