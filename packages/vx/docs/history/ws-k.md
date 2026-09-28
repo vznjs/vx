@@ -140,6 +140,10 @@
   pending, STATUS item 1). Both now say so in one line.
 - **K-23** The social card (`og.png`, `og.svg`) and its alt text carry
   the new hero, "A faster runner for your Turborepo or Nx repo."
+- **K-24** README's TanStack/query and TanStack/router rows take N-15's
+  and N-16's `nx()` runs (Nx 23.2.1, nothing written). vueuse/vueuse stays out: it ran only after adding the
+  `dependsOn` edge its `turbo.json` leaves implicit, and the table's rows
+  are repos run with nothing rewritten.
 
 ## Leads for other streams
 
