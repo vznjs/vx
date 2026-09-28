@@ -476,7 +476,7 @@ export class Cache implements CacheLayer {
           } | null
         )?.value
       } finally {
-        db.close()
+        closeDb(db)
       }
     } catch {
       return null
@@ -543,7 +543,11 @@ export class Cache implements CacheLayer {
         return read()
       } catch (err) {
         if (!unreadableIndex(err)) throw err
-        this.db.close()
+        try {
+          closeDb(this.db)
+        } catch {
+          // The refusal below is the error worth reporting.
+        }
         throw unreadableIndexError(dbFile, err)
       }
     }
@@ -620,7 +624,11 @@ export class Cache implements CacheLayer {
           })
           .immediate()
       } catch (err) {
-        this.db.close()
+        try {
+          closeDb(this.db)
+        } catch {
+          // The migration's own error is the one worth reporting.
+        }
         throw err
       }
     }
@@ -1857,12 +1865,24 @@ export class Cache implements CacheLayer {
       // `rm -rf .vx/cache`): macOS answers SQLITE_IOERR_VNODE on a
       // write to an unlinked file where Linux happily writes on.
     }
-    this.db.close()
+    closeDb(this.db)
   }
 
   private tarPath(hash: string): string {
     return path.join(this.cacheDir, `${hash}.tar.zst`)
   }
+}
+
+/**
+ * Close for real. A plain `close()` leaves the connection open while any
+ * statement from `db.prepare()` lives (bun:sqlite 1.4.2 defers it, as
+ * `sqlite3_close_v2` does), so `cache.db` and its `-wal` and `-shm` stayed
+ * open after `Cache.close()`: a leaked descriptor per run for an embedder,
+ * and on Windows a cache directory nothing could delete (O-10).
+ * `close(true)` finalizes them and closes.
+ */
+function closeDb(db: Database): void {
+  db.close(true)
 }
 
 /**
