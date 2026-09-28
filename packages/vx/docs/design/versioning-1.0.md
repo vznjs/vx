@@ -22,6 +22,7 @@ adds to them, and only a major removes or changes one.
 | Workspace discovery: which manifests make a root and list its projects, which root a run from inside a member finds, and which config file names load, in which order  | `src/workspace/workspace.ts`, `src/workspace/project-loader.ts`; recorded in `tests/contract/discovery.json`                                                                                                                                                                                               |
 | What `@vzn/vx-otel` sends: span and metric names, attribute keys and their OTLP value types                                                                            | `packages/vx-otel/src/otlp.ts`; recorded in `packages/vx-otel/tests/contract/otlp.txt`                                                                                                                                                                                                                     |
 | `vx-migrate`'s command lines, and those of `nx-exec`, `nx-env` and `lage-worker`, which the configs it writes call                                                     | each bin's usage in `packages/vx-migrate/src/`; recorded in `packages/vx-migrate/tests/contract/cli.txt`                                                                                                                                                                                                   |
+| The check run `@vzn/vx-github` posts: its default name, conclusion per outcome, endpoint and body keys                                                                 | `packages/vx-github/src/checks.ts`, `src/plugin.ts`; recorded in `packages/vx-github/tests/contract/checks.txt`                                                                                                                                                                                            |
 | What each npm package ships: the files `npm publish` uploads for `@vzn/vx` and every plugin                                                                            | `scripts/build-npm.ts`; recorded in `tests/contract/pack/`                                                                                                                                                                                                                                                 |
 | Task-glob semantics: which paths a pattern selects (item 667 made `[` literal; that reading is now part of the contract)                                               | `docs/schema.md`, `docs/caching.md`                                                                                                                                                                                                                                                                        |
 
@@ -97,21 +98,21 @@ change is a reviewed diff of that file and never a side effect.
 A break must also be declared. `tests/api-break.unsafe.test.ts` diffs
 every contract record — each file under `tests/contract/` but the
 vendored upstream schemas, the `--format json` schemas in `schemas/`,
-`vx-mcp`'s tools record, `vx-otel`'s OTLP wire and `vx-migrate`'s
-command lines — against the same file at the last `v*` tag, each read
-its own way (`contractBreaks` in `scripts/api-break.ts`): the API
-records by section, a pack list or a record of leaves by what it lost (a
-changed value is lost too), the config schema by the fields and accepted
-values it lost (a reworded refusal is not a break), its rules by the
-combinations it lost, an output schema by the properties, `required`
-entries, types and enum values it lost (reworded `title` or
-`description` prose is not), and the Turbo/Nx table by a key whose
-status got worse. A break fails unless a commit since the tag is marked
-`type!:` or carries a `BREAKING CHANGE:` footer, which also heads the
-release notes (`scripts/release-notes.ts`); on a PR, the same diff
-between its base and head needs the title marked `type!:`. CI's Linux
-job checks out full history and sets `VX_REQUIRE_TAGS=1`, so a missing
-tag fails there instead of passing.
+`vx-mcp`'s tools record, `vx-otel`'s OTLP wire, `vx-migrate`'s command
+lines and `vx-github`'s check run — against the same file at the last
+`v*` tag, each read its own way (`contractBreaks` in
+`scripts/api-break.ts`): the API records by section, a pack list or a
+record of leaves by what it lost (a changed value is lost too), the
+config schema by the fields and accepted values it lost (a reworded
+refusal is not a break), its rules by the combinations it lost, an
+output schema by the properties, `required` entries, types and enum
+values it lost (reworded `title` or `description` prose is not), and the
+Turbo/Nx table by a key whose status got worse. A break fails unless a
+commit since the tag is marked `type!:` or carries a `BREAKING CHANGE:`
+footer, which also heads the release notes (`scripts/release-notes.ts`);
+on a PR, the same diff between its base and head needs the title marked
+`type!:`. CI's Linux job checks out full history and sets
+`VX_REQUIRE_TAGS=1`, so a missing tag fails there instead of passing.
 
 - **The config schema.** `tests/contract-config-schema.test.ts`
   discovers every level and field the validator accepts (by injecting
@@ -202,6 +203,12 @@ tag fails there instead of passing.
   names, and the sources `--from` takes, in
   `packages/vx-migrate/tests/contract/cli.txt`. A config written by
   vx-migrate 1.0 calls the helper bins, so their argv holds for all 1.x.
+- **The GitHub check run.** `vx-github`'s `tests/contract-checks.test.ts`
+  drives the plugin with its defaults on an Actions environment through a
+  passing, a failing and a cancelled run, captures each POST, and records
+  its endpoint, method, header names, body keys and the values a branch
+  protection rule or script keys on (`name`, `status`, `conclusion`) in
+  `packages/vx-github/tests/contract/checks.txt`.
 - **Exit codes.** `tests/contract-exit-codes.test.ts` drives each
   documented outcome (a task failing, an unknown task, flag or verb,
   nothing affected, an unwritable `--graph`, `cache prune` without a
