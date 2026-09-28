@@ -59,6 +59,11 @@
     API names unchecked, but refuses the bytes unless they match the
     SHA-256 the same API publishes, before any rename. The npm launcher's
     source fallback runs `vxSourceEntry` from its own package.json. No bug.
+13. What reaches GitHub. vx-github never prints its token and refuses one
+    no header can carry; the check-run posts the summary only, and the
+    invocation line it and telemetry carry counts what follows `--`
+    instead of quoting it (item 1057; the CLI passes no line of its own).
+    No bug.
 
 ## Items
 
@@ -187,6 +192,11 @@
   plugin with the file named, and never hung (500 truncations and
   mutations each). Supervisor backlog 2. Rows in `turbo-map-sweep.test.ts`
   and `nx-map-sweep.test.ts`.
+- L-16. `fix(vx-lockfile)`: fuzzing the lockfile parsers found no hang
+  and no stack, but a malformed bun.lock refused on the key path as a bare
+  "JSONC Parse error": its patch files are read before the digest, outside
+  the wrapper that names the file and the install that fixes it. Both
+  reads go through one wrapper now. Row in `refusal-message.test.ts`.
 - L-17. `fix(workspace)`: a config-eval row cut short (a crash
   mid-write, a bad disk) failed every later run with a `SyntaxError`
   stack from the loader until the cache was wiped (probed). A row that is

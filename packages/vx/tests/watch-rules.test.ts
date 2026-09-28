@@ -358,7 +358,10 @@ describe('the root-file trigger set does not drift from the fingerprint', () => 
     // The filter reads the constant; the loop must not hand-roll a copy either.
     expect(await read('watch-filter.ts')).toContain('WORKSPACE_FINGERPRINT_FILES')
     const src =
-      (await read('watch.ts')) + (await read('watch-filter.ts')) + (await read('watch-set.ts'))
+      (await read('watch.ts')) +
+      (await read('watch-filter.ts')) +
+      (await read('watch-set.ts')) +
+      (await read('watch-judge.ts'))
     // No hand-rolled literals: re-adding the list fails HERE rather than
     // silently reintroducing the drift — and this guard is not redundant with
     // the lockfile e2e in cli.test.ts. Measured: with the hand-rolled list

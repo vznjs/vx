@@ -75,6 +75,18 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
       `@vzn/vx-lockfile: ${manager.name}() scope must be 'project' or 'workspace', not ${JSON.stringify(scope)}`,
     )
   }
+  // The parsers name their own file, so prefixing unconditionally said it
+  // twice — "bun.lock: bun.lock: Failed to parse JSONC" (2026-09-20).
+  // Prefix only what does not already name it, and say what fixes it: a
+  // lockfile vx cannot read is an install away from readable, and the
+  // alternative to reading it is a WRONG key, so the run refuses rather
+  // than guessing.
+  const refused = (err: unknown): Error => {
+    const message = err instanceof Error ? err.message : String(err)
+    const named = message.startsWith(`${manager.file}:`) ? message : `${manager.file}: ${message}`
+    return new Error(`${named} — regenerate it with \`${manager.name} install\``)
+  }
+  const extraFiles = manager.extraFiles
   return definePlugin(
     import.meta,
     lockfileClaim({
@@ -82,7 +94,19 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
       part: manager.name,
       version: DIGEST_VERSION,
       scope,
-      ...(manager.extraFiles !== undefined ? { extraFiles: manager.extraFiles } : {}),
+      // Read before `digest` on the key path: a malformed bun.lock refused
+      // there as a bare "JSONC Parse error", no file named (fuzzed, L-16).
+      ...(extraFiles !== undefined
+        ? {
+            extraFiles: (text: string) => {
+              try {
+                return extraFiles(text)
+              } catch (err) {
+                throw refused(err)
+              }
+            },
+          }
+        : {}),
       digest: (text, files) => {
         try {
           // A conflicted lockfile names two installs at once. Yarn
@@ -92,17 +116,7 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
             throw new Error(`${manager.file}: holds git merge conflict markers`)
           return manager.digest(text, files)
         } catch (err) {
-          // The parsers name their own file, so prefixing unconditionally
-          // said it twice — "bun.lock: bun.lock: Failed to parse JSONC"
-          // (2026-09-20). Prefix only what does not already name it, and
-          // say what fixes it: a lockfile vx cannot read is an install
-          // away from readable, and the alternative to reading it is a
-          // WRONG key, so the run refuses rather than guessing.
-          const message = err instanceof Error ? err.message : String(err)
-          const named = message.startsWith(`${manager.file}:`)
-            ? message
-            : `${manager.file}: ${message}`
-          throw new Error(`${named} — regenerate it with \`${manager.name} install\``)
+          throw refused(err)
         }
       },
     }),

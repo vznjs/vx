@@ -5,6 +5,9 @@
 // "pnpm-lock.yaml: pnpm-lock.yaml is not a YAML document" (item 904),
 // after bun's "bun.lock: bun.lock: Failed to parse JSONC" (2026-09-20).
 // One row per manager, each through the parser's own message.
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { bun, npm, pnpm, yarn } from '../src/index.js'
 
@@ -54,5 +57,29 @@ describe('a lockfile the plugin cannot read', () => {
       'yarn.lock: neither a classic (`# yarn lockfile v1`) nor a berry (`__metadata`) lockfile — regenerate it with `yarn install` (as of the base ref)',
       'bun.lock: not a Bun text lockfile (no lockfileVersion) — regenerate it with `bun install` (as of the base ref)',
     ])
+  })
+})
+
+describe('a malformed bun.lock on the key path (L-16)', () => {
+  // Its patch files are read before the digest, and that read refused
+  // outside the digest's wrapper: a bare "JSONC Parse error", no file or
+  // fix named (fuzzed).
+  it('is refused as the digest path refuses it', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'vx-l16-'))
+    try {
+      await writeFile(path.join(root, 'bun.lock'), '{ "lockfileVersion": 1, "workspaces": {')
+      const key = (bun() as unknown as { key: (t: unknown, c: unknown) => Promise<unknown> }).key
+      const got = await key(
+        { projectDir: root },
+        { workspaceRoot: root, cacheDir: path.join(root, '.c') },
+      ).then(
+        () => '(no refusal)',
+        (e: unknown) => (e instanceof Error ? e.message : String(e)),
+      )
+      expect(got.startsWith('bun.lock: ')).toBe(true)
+      expect(got.endsWith(' — regenerate it with `bun install`')).toBe(true)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
   })
 })

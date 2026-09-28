@@ -79,6 +79,11 @@ nothing past core's end-of-run flush deadline. On `pull_request` events
 `GITHUB_SHA` is the merge commit; GitHub still surfaces the check on the
 PR.
 
+On GitHub Enterprise Server the POST goes to `GITHUB_API_URL`. A host
+behind a private CA is trusted through `NODE_EXTRA_CA_CERTS` (a PEM
+file of the CA); an untrusted certificate is not retried and its warning
+names that variable.
+
 Both artifacts are bounded by GitHub's own limits, because exceeding
 either loses the whole thing rather than its tail: the check-run output
 at 65 535 characters, the job summary at 1 MiB counted in bytes (about 19 000 task rows; fewer when task names are not ASCII), cut on a character boundary.

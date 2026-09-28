@@ -352,3 +352,49 @@ describe('a collector that sheds load', () => {
     expect([refused.hits, refused.warnings.length]).toEqual([1, 1])
   })
 })
+
+// F-40: a certificate fetch refuses fails the same way every time, and its
+// two retries spent a second of the flush.
+describe('a refused certificate', () => {
+  it('is not retried; a dropped connection still is', async () => {
+    const warns: string[] = []
+    const tries = async (code: string): Promise<number> => {
+      let calls = 0
+      const own = globalThis.fetch
+      globalThis.fetch = (async () => {
+        calls++
+        throw Object.assign(new TypeError('refused'), { code })
+      }) as unknown as typeof fetch
+      try {
+        const sink = new OtelSink({
+          tracesUrl: 'https://collector.invalid/v1/traces',
+          metricsUrl: 'https://collector.invalid/v1/metrics',
+          logsUrl: 'https://collector.invalid/v1/logs',
+          serviceName: 'vx',
+          headers: {},
+          metricsEnabled: false,
+          logsEnabled: false,
+          timeoutMs: 5000,
+          warn: (m) => warns.push(m),
+        })
+        sink.onRecord({ v: 2, kind: 'run.start', run: RUN, total: 0, ts: 0, startedAt: 0 })
+        sink.onRecord({ v: 2, kind: 'run.end', runId: RUN.runId, ts: 10 })
+        await sink.flush()
+      } finally {
+        globalThis.fetch = own
+      }
+      return calls
+    }
+    expect([
+      await tries('UNABLE_TO_VERIFY_LEAF_SIGNATURE'),
+      await tries('CERT_HAS_EXPIRED'),
+      await tries('ECONNRESET'),
+    ]).toEqual([1, 1, 3])
+    // A refusal names the setting that fixes it; a reset does not.
+    expect(warns.map((w) => w.includes('set OTEL_EXPORTER_OTLP_CERTIFICATE'))).toEqual([
+      true,
+      true,
+      false,
+    ])
+  })
+})

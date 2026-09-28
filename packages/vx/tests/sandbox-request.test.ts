@@ -23,6 +23,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import type { TaskNode } from '../src/graph/index.js'
 import {
   placeholderSweeper,
+  reachedWithheld,
   sandboxRequestFor,
   sandboxRunUnion,
   sweepPlaceholders,
@@ -141,6 +142,23 @@ describe('the run-wide union SRT is armed with', () => {
     )
     expect(lift(sandboxRunUnion([sandboxed({ allow: { unixSockets: [] } })]))).toBe(false)
     expect(lift(sandboxRunUnion([sandboxed({})]))).toBe(false)
+    // A `localBinding` port rides a unix socket into the task on Linux
+    // alone; macOS binds loopback in place and needs none.
+    const bound = [sandboxed({ allow: { localBinding: [3000] } })]
+    const onDarwin = (): boolean | undefined => {
+      const real = process.platform
+      Object.defineProperty(process, 'platform', { value: 'darwin' })
+      try {
+        return lift(sandboxRunUnion(bound))
+      } finally {
+        Object.defineProperty(process, 'platform', { value: real })
+      }
+    }
+    expect([
+      lift(sandboxRunUnion(bound)),
+      onDarwin(),
+      lift(sandboxRunUnion([sandboxed({ allow: { localBinding: [] } })])),
+    ]).toEqual([process.platform === 'linux', false, false])
     // …and one task asking is enough for the run.
     expect(
       lift(
@@ -859,5 +877,23 @@ describe('sweepPlaceholders takes back what the task never wrote', () => {
     const line = untouchedPlaceholderLine(dir, path.join(dir, 'dist'))
     expect(line).toContain('write grant `dist` named nothing on disk')
     expect(line).toContain('spell the grant `dist/`')
+  })
+})
+
+describe('reachedWithheld', () => {
+  it('names each withheld dependency a denial lies under, by path', () => {
+    const w = (d: string) => ({ dir: d, name: d, target: d, link: d })
+    const at = (p?: string) =>
+      p === undefined
+        ? { line: 'x', timestamp: new Date() }
+        : { line: 'x', timestamp: new Date(), path: p }
+    const ui = w('/ws/packages/ui')
+    const lib = w('/ws/packages/lib')
+    expect(
+      reachedWithheld(
+        [ui, lib],
+        [at('/ws/packages/ui/src/a.ts'), at('/ws/packages/lib-x/b.ts'), at(undefined)],
+      ),
+    ).toEqual([ui])
   })
 })

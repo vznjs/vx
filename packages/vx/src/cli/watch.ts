@@ -14,7 +14,6 @@
 
 import fs from 'node:fs'
 import path from 'node:path'
-import { xxh3 } from '../util/index.js'
 import { parseRunArgs, resolveRunOptions, type RunArgs } from './run.js'
 import { seeHelp } from './help.js'
 import {
@@ -35,7 +34,6 @@ import {
 } from '../workspace/index.js'
 import { type CliLoadOptions, loadCliWorkspace } from './workspace-config.js'
 import {
-  gitIgnored,
   isIgnoredWatchPath,
   isWorkspaceConfigFile,
   isWorkspaceFingerprintFile,
@@ -46,12 +44,12 @@ import {
 import {
   armWatcher,
   fsClockNow,
-  modifiedBefore,
   pollWatcher,
   POLL_INTERVAL_MS,
   WATCH_PROBE_TIMEOUT_MS,
   type WatchHandle,
 } from './watch-fs.js'
+import { ChangeJudge } from './watch-judge.js'
 import { memberEntries, sameMembers, sweepConfigs, watchedProjects } from './watch-set.js'
 
 /** One line for a watcher or re-read the OS refused; the loop goes on without it. */
@@ -336,170 +334,21 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
   let held = args.held
 
   // Reentrancy guard — never two orchestrator runs in flight. Events that
-  // land while one is running wait in `pendingPaths` and are judged, on
+  // land while one is running wait in `changes.pending` and are judged, on
   // settled bytes, one debounce window after it ends.
   let running = false
   /** The cycle in flight, so the stop path can wait for its teardown before resolving. */
   let inFlight: Promise<void> = Promise.resolve()
   let debounceTimer: ReturnType<typeof setTimeout> | null = null
 
-  // Declared outputs are ignored by PATH above. A task with no `cache`
-  // block declares none and still writes into its project, and the
-  // watcher sees the write: run 1 writes dist/x, the event re-runs, run 2
-  // writes the same bytes, the event re-runs — forever (the init
-  // walkthrough, 2026-09-04: every fresh workspace, since `init` emits no
-  // cache block). An undeclared write is caught by STATE, judged on what
-  // has settled (see `trigger`): a path whose settled state equals what
-  // this loop last saw for it is not a change. A file's state is its
-  // bytes; a directory's is its entries' names and sizes (a nested edit
-  // arrives as that path's own event); a path that is gone is one more
-  // state. A real edit changes the state; a first sighting passes through.
-  // So `rm -rf dist && tsc` — the shape of most build scripts — settles
-  // to the same `dist` it left and is one redundant cycle, not a loop
-  // (2026-09-10: 780 executions in two minutes from one edit, when a
-  // deletion and a directory each passed the gate unconditionally).
-  const ABSENT = -1n
-  const lastState = new Map<string, bigint>()
-  const settledState = (abs: string): bigint => {
-    let st: fs.Stats
-    try {
-      st = fs.statSync(abs)
-    } catch {
-      return ABSENT
-    }
-    if (!st.isDirectory()) {
-      try {
-        return xxh3(fs.readFileSync(abs))
-      } catch {
-        return ABSENT
-      }
-    }
-    const entries: string[] = []
-    try {
-      for (const e of fs.readdirSync(abs, { withFileTypes: true })) {
-        let size = 0
-        if (e.isFile()) {
-          try {
-            size = fs.statSync(path.join(abs, e.name)).size
-          } catch {
-            size = -1
-          }
-        }
-        entries.push(`${e.name}\0${e.isDirectory() ? 'd' : size}`)
-      }
-    } catch {
-      return ABSENT
-    }
-    entries.sort()
-    return xxh3(Buffer.from(entries.join('\n')))
-  }
-  // A path this loop has never judged is a change only if it moved since
-  // the watchers went live (its mtime or ctime, `modifiedBefore`). macOS delivers the initial run's own writes
-  // AFTER the arm (CI, 2026-09-11: `app dist; re-running...` with no edit
-  // made — FSEvents hands a stream what landed just before it started),
-  // and a first sighting used to pass unconditionally; the path's mtime
-  // says which side of the arm it belongs to. A path already gone is a
-  // change: a deletion has no date to read.
-  const sameState = (abs: string): boolean => {
-    const state = settledState(abs)
-    const prev = lastState.get(abs)
-    lastState.set(abs, state)
-    if (prev !== undefined) return prev === state
-    return state !== ABSENT && modifiedBefore(abs, armedAt)
-  }
-
-  // Paths that fired since the last judgement, first label wins. The state
-  // check runs when the timer fires, on SETTLED state: per event it is
-  // wrong on Linux, where a shell redirect truncates the file (one event,
-  // empty) and then writes it (another, full), so consecutive events never
-  // agree and a self-write loops anyway (CI, 2026-09-04: 9 re-runs where
-  // macOS, which coalesces the two, saw 2). While a cycle runs, nothing is
-  // judged: the run's own writes are mid-flight (a `dist` deleted and not
-  // yet rebuilt is a state the tree will not keep), so the paths wait and
-  // are judged one window after the run ends, all together — an edit made
-  // meanwhile still differs from what the loop last saw and re-runs.
-  const pendingPaths = new Map<string, string>()
-  // A path that starts cycle after cycle from the run's own writes is a
-  // task rewriting a file with different bytes every run (a pid file, a
-  // timestamped log): the state gate cannot settle it, and nothing here
-  // can tell the third such write from a user's third save mid-run — so
-  // watch names it once, with the remedy, and keeps going. "The run's
-  // own write" is read off the path itself: its mtime falls inside the
-  // previous cycle's window. Not off which judgement started the cycle:
-  // macOS delivers a run's writes late, after the loop's own post-run
-  // judgement found nothing and broke out, so there every such cycle
-  // starts from the idle timer (CI, 2026-09-16: the storm ran, the
-  // notice never came).
-  const streak = { abs: '', n: 0 }
-  const noticed = new Set<string>()
-  let lastCycle: { start: number; end: number } | undefined
-  const writtenDuringLastCycle = (abs: string, openWhileHeld = false): boolean => {
-    // A server the last cycle left running is still that cycle's: its
-    // writes land after the cycle ended, and with a closed window a dev
-    // server that rewrites a log in its project restarted itself forever
-    // with no word of it, 12 restarts in 8 s (item 948). The initial run's
-    // server is one too, from the arm on.
-    const open = openWhileHeld && held !== undefined
-    if (lastCycle === undefined && !open) return false
-    try {
-      const m = fs.statSync(abs).mtimeMs
-      const start = lastCycle?.start ?? armedAt
-      return m >= start && (open || m <= lastCycle!.end)
-    } catch {
-      return false
-    }
-  }
-  const judge = (): string | undefined => {
-    const ignored = gitIgnored(workspaceRoot, [...pendingPaths.keys()])
-    let first: string | undefined
-    let firstAbs: string | undefined
-    // `sameState` before the `first` test, never after it: it is what
-    // RECORDS a path's settled state, and every path this judgement saw
-    // must be recorded even though only the first change names the cycle.
-    // Short-circuiting after the winner leaves the rest unjudged, and
-    // their next event is a first sighting stamped after the arm — so a
-    // batch edit (a `git checkout`) makes the same bytes written to any
-    // of the others a change.
-    // A git-ignored path keys nothing, but a task with no cache has no key:
-    // it reads what it likes, and its `.env.local` edit re-ran nothing
-    // (item 947). Under such a project an ignored path is judged when the
-    // user wrote it; one the last cycle wrote (the pid file an uncached
-    // task rewrites every run, the loop the filter exists for) stays out.
-    const editForUncached = (p: string): boolean =>
-      [...uncached].some((dir) => p.startsWith(dir + path.sep)) && !writtenDuringLastCycle(p)
-    for (const [p, l] of pendingPaths) {
-      if (ignored.has(p) && !editForUncached(p)) continue
-      if (!sameState(p) && first === undefined) {
-        first = l
-        firstAbs = p
-      }
-    }
-    pendingPaths.clear()
-    const byServer = firstAbs !== undefined && held !== undefined
-    if (firstAbs === undefined || !writtenDuringLastCycle(firstAbs, true)) {
-      streak.n = 0
-      return first
-    }
-    streak.n = streak.abs === firstAbs ? streak.n + 1 : 1
-    streak.abs = firstAbs
-    if (streak.n >= 3 && !noticed.has(firstAbs)) {
-      noticed.add(firstAbs)
-      process.stdout.write(
-        byServer
-          ? `vx watch: ${first} has started 3 cycles in a row, written while a server the cycle before started was running — a persistent task rewrites it. Add it to .gitignore (a git-ignored path never starts a cycle); until then every write restarts the server.\n`
-          : `vx watch: ${first} has started 3 cycles in a row, written by the cycle before each — a task rewrites it every run. Declare it in cache.outputs (an output never starts a cycle) or add it to .gitignore (a git-ignored path never does); until then every run re-runs.\n`,
-      )
-    }
-    return first
-  }
   const trigger = (label: string, abs: string): void => {
-    if (!pendingPaths.has(abs)) pendingPaths.set(abs, label)
+    if (!changes.pending.has(abs)) changes.pending.set(abs, label)
     if (running) return
     if (debounceTimer) clearTimeout(debounceTimer)
     debounceTimer = setTimeout(() => {
       debounceTimer = null
       if (running) return
-      const first = judge()
+      const first = changes.judge()
       if (first !== undefined) void cycle(first)
     }, DEBOUNCE_MS)
   }
@@ -520,7 +369,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
           held = undefined
           const start = Date.now()
           held = (await runOrchestrator(opts)).persistent
-          lastCycle = { start, end: Date.now() }
+          changes.lastCycle = { start, end: Date.now() }
           if (reread && !stop.aborted) {
             reread = false
             await rearm()
@@ -538,15 +387,15 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
         }
         // What landed mid-run is judged on settled state, one window
         // after the run, under the label of what actually arrived.
-        if (pendingPaths.size === 0 || stop.aborted) break
+        if (changes.pending.size === 0 || stop.aborted) break
         await Bun.sleep(DEBOUNCE_MS)
-        label = judge()
+        label = changes.judge()
       }
     } finally {
       running = false
       // Anything that landed after the last judgement waits for a timer
       // like any other event.
-      const next = pendingAfterCycle(pendingPaths, stop.aborted)
+      const next = pendingAfterCycle(changes.pending, stop.aborted)
       if (next !== undefined) trigger(next[1], next[0])
     }
   }
@@ -635,6 +484,13 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
 
   /** The instant the watchers go live, on the mtime clock (see `fsClockNow`): a path last modified before it is the initial run's, not an edit. */
   const armedAt = fsClockNow(cacheDir)
+  /** Which settled paths are changes (watch-judge.ts); `pending` holds what fired since. */
+  const changes = new ChangeJudge({
+    workspaceRoot,
+    armedAt,
+    held: () => held !== undefined,
+    uncached: () => uncached,
+  })
   /** Per-project arms by directory, so `rearm` can add and drop them. */
   const perProject = new Map<string, WatchHandle>()
   /** The root arm: recursive when workspace-wide, else the root's own files only. */
@@ -940,7 +796,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
  *
  * The inner loop re-runs while anything is pending, so this covers only the
  * narrow gap between its LAST judgement and the loop going idle: an event
- * landing there would otherwise sit in `pendingPaths` with no timer armed
+ * landing there would otherwise sit in `changes.pending` with no timer armed
  * and no cycle to notice it — watch quietly idle over an edit the user
  * made. Insertion order, because the map is "first label wins" and the
  * label is what the cycle announces.

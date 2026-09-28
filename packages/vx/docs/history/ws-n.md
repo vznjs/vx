@@ -104,6 +104,12 @@ wildcard first segment).
 - Row: `tests/wireit.test.ts` › clean: false with an output that is also
   an input (red on the old rule: the file is gone and the task fails).
 
+N-8. `lage()` dogfooded on microsoft/lage (lage 2.15.16, 71 targets, most
+of them workers through `lage-worker`): 284 ms no-op against lage's
+1.56 s; cold 32.4 s against 29.4 s, lage's worker pool keeping swc and
+TypeScript loaded where `lage-worker` starts a process per target
+(`benchmarks.md`). No mapping gap: both ran the same 71 targets.
+
 ## Candidates not built (2026-09-28)
 
 - Lerna without Nx: `lerna run <s>` (lerna 10.0.1, `prepNxOptions`)
@@ -119,6 +125,14 @@ wildcard first segment).
   stage fills discovered ones). Blocked on a discovery seam.
 
 ## Leads for other streams
+
+- A: `execute-task.test.ts` › "trusts recorded directories without
+  re-recording them; a restore leaves its snapshot to run end" failed
+  once in a local gate (`restored` false at line 1225) and passed 3/3
+  alone. It stamps `dist` with `utimesSync(…, now, now)` right after a
+  recording and expects the restore to see the change; within one
+  timestamp tick the two can be equal. Unproven cause; a stamp that
+  differs by construction (now + 1 s) would settle it.
 
 - D, for `rush()` (what it needs, exactly): (1) `findWorkspaceRoot`
   accepts a directory holding `vx.workspace.{ts,mjs}` as a root, since a

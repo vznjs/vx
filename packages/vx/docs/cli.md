@@ -111,7 +111,7 @@ Exit codes:
 | Code                  | When                                                                                                                                                                                                                      |
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `0`                   | Every task finished `success` or `cache-hit` (local or remote); or `--affected` left no project that declares the task.                                                                                                   |
-| `1`                   | At least one task ended `failed` or `skipped`; a persistent task exited after it was ready; a task name no project declares; or parse/setup error.                                                                        |
+| `1`                   | At least one task ended `failed` or `skipped`; a persistent task exited non-zero after it was ready; a task name no project declares; or parse/setup error.                                                               |
 | `130` / `143` / `129` | Interrupted (SIGINT / SIGTERM / SIGHUP): each task's process group (the task and what it forked) gets vx's signal (a SIGHUP as a SIGTERM), `VX_KILL_GRACE_MS` (2 s) to go, then SIGKILL; a second signal skips the grace. |
 
 A task runs in its own session, so a terminal's Ctrl-C reaches vx alone,
@@ -1663,9 +1663,12 @@ as npm hands them to the script and not its hooks (item 905). The
 command is a small shell function, `vx_script`, around the three parts;
 it carries a TODO saying so; a `pre<x>` with no `x` stays a task of its own, and
 npm's lifecycle hooks (`prepack`, `prepublishOnly`, …) are never tasks.
-Yarn 2+ runs no such hooks, so where it owns the package (the nearest
-`packageManager: yarn@2+`, or a Berry `yarn.lock`) every `pre<x>` and
-`post<x>` is a task of its own (D-31).
+Where the package's manager runs no such hooks every `pre<x>` and
+`post<x>` is a task of its own: Yarn 2+ (the nearest `packageManager:
+yarn@2+`, or a Berry `yarn.lock`, D-31), npm under `ignore-scripts=true`
+in the `.npmrc` beside its lockfile, pnpm under
+`enable-pre-post-scripts=false` there or `enablePrePostScripts: false` in
+`pnpm-workspace.yaml` (D-33). Bun and Yarn 1 run them whatever those say.
 A script that is nothing but `npm run <other>` (`pnpm <other>`, `yarn
 <other>`, `bun run <other>`, `npm test`, `npm start`) becomes a **group**
 over `<other>` — `dependsOn` and no command — so the graph runs and

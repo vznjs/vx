@@ -1219,6 +1219,10 @@ describe('execute-task — what restoreHit reads and records', () => {
     // `dist` inside the racy window — so its snapshot goes on the run's
     // list, never recorded here.
     await writeFile(out(), 'v2')
+    // Same size as `v1`, so only the mtime tells the stat it moved; written
+    // within the seed's timestamp tick it read as unchanged and nothing was
+    // restored (one run in three). Put it outside that tick.
+    utimesSync(out(), old, old)
     const now = new Date()
     utimesSync(path.join(b.dir, 'dist'), now, now)
     const snapshots: OutputDirSnapshot[] = []

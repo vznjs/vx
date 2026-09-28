@@ -1,4 +1,4 @@
-# `src/cli/watch.ts` — `vx watch` subcommand (and `watch-fs.ts`, `watch-filter.ts`, `watch-set.ts`)
+# `src/cli/watch.ts` — `vx watch` subcommand (and `watch-fs.ts`, `watch-filter.ts`, `watch-set.ts`, `watch-judge.ts`)
 
 ## Purpose
 
@@ -41,6 +41,21 @@ export interface ConfigSweep {
 export async function sweepConfigs(projects, workspaceRoot, load?): Promise<ConfigSweep>
 export function memberEntries(base: string): ReadonlySet<string>
 export function sameMembers(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean
+
+// watch-judge.ts — which settled paths are changes (state gate, self-write
+// window, the 3-cycle notice):
+export interface JudgeContext {
+  workspaceRoot: string
+  armedAt: number
+  held(): boolean
+  uncached(): ReadonlySet<string>
+}
+export class ChangeJudge {
+  readonly pending: Map<string, string> // path → label, what fired since the last judgement
+  lastCycle: { start: number; end: number } | undefined
+  constructor(ctx: JudgeContext)
+  judge(): string | undefined // the first changed path's label, or none
+}
 
 // watch-filter.ts — which events matter, decided over paths alone:
 export function isIgnoredWatchPath(rel: string): boolean // node_modules / .git / .vx segments, .tsbuildinfo / ~ suffixes

@@ -92,6 +92,15 @@ const defaultPost =
     }
   }
 
+/** fetch refused the server's certificate (untrusted, expired, wrong name). */
+function isCertificateRefusal(err: unknown): boolean {
+  const code = (err as { code?: unknown } | null)?.code
+  return (
+    typeof code === 'string' &&
+    (code.includes('CERT') || code === 'UNABLE_TO_VERIFY_LEAF_SIGNATURE')
+  )
+}
+
 const RETRY_DELAYS_MS = [200, 800] as const
 const MAX_RETRY_AFTER_MS = 2000
 const RETRYABLE_STATUS = new Set([429, 502, 503, 504])
@@ -149,8 +158,15 @@ async function postOnce(
         ...(tls === undefined ? {} : { tls }),
       })
     } catch (err) {
-      // A connection that failed is worth a retry; one this side aborted is not.
+      // A connection that failed is worth a retry; one this side aborted is
+      // not, nor a certificate this side refused: it fails the same way each
+      // time, and the retries spent a second of the flush on it (F-40).
       if (controller.signal.aborted) throw err
+      if (isCertificateRefusal(err)) {
+        throw new Error(
+          `${err instanceof Error ? err.message : String(err)} — for a collector behind a private CA, set OTEL_EXPORTER_OTLP_CERTIFICATE to its CA's PEM file`,
+        )
+      }
       throw new OtlpRetryable(err instanceof Error ? err : new Error(String(err)), 0)
     }
     // A collector that REFUSES the export still ANSWERS: only one that
