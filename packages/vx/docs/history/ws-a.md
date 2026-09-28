@@ -234,3 +234,11 @@ The short-circuit's reach test held only its below-the-dir term and first-hop de
 The run-end snapshot's rules for the addition shape (item 588) held no row: the additive task's presence check (S1), its branch (S2), and the upstream's filter of what the dependant added (S3).
 
 - Rows (`overlapping-outputs.test.ts` › "the run-end snapshot of each side"): both sides record the shared tree when it holds what each saved; the additive side does not vouch for a tree that lost its file. Each red under its mutant. Still unheld from A-24: the workspace-row filter (S5) and the workspace marks (S13, S14).
+
+### A-26 (2026-09-28, left by A-24)
+
+The last `miss-save.ts` survivors: the workspace-row filter in the snapshot's `expected` (S5), and the marks a save leaves in the run's git snapshot (S13, S14). The marks were a masking trio: the partition drop covered the workspace partition, and each mark covered a project's own snapshot, so no one mutant reddened anything.
+
+- Rows (`miss-save-marks.test.ts`): a same-run `workspaceFiles` reader keys a workspace output and a project output its upstream just wrote; a workspace output landing in another project's dir is keyed by that project's reader; an undeclared write in the saving task's project is keyed by a workspace reader; the run-end snapshot of a task with workspace outputs counts its project rows only. Each red under its mutant.
+- `key-fold.ts` swept (2026-09-27): 19 mutants (every fold part, the sorts, path vs content, a partial provided-hash list), all caught by `key-fold.test.ts`. No row needed.
+- `task-hash.ts` swept (2026-09-27): 9 mutants (the moved-input checks, the remote strip, the group hash, the requested-only forward args), 8 caught. The survivor drops the workspace-OID merge: those files then hash from disk to the same OID, so it is equivalent for correctness (a read the merge saves).
