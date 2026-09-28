@@ -457,6 +457,17 @@ the source reads (the walk env-doc-drift uses, now `tests/helpers/env-reads.ts`)
 so a removal is a reviewed diff and, with H-36, a break. Differential:
 a record without `--tag` fails; restored, passes.
 
+## H-38: each flag's accepted values are a record
+
+H-37 froze flag names; a parser that stopped taking `--output-logs
+hash-only` or `--dry=text` still passed. `cli-surface.json` now records,
+per verb and flag, the values its parser takes: `*` when it takes a
+sentinel no parser could, else the source's words (literals and object
+keys, where `init --plugin`'s seams live) and fixed grammar probes it
+accepts. The parser map moved to `tests/helpers/cli-parsers.ts`, shared
+with completions.test. Differential: a record without `hash-only` fails,
+and `contractBreaks` names it lost; adding it back is no break.
+
 ## Leads for other streams
 
 - **A:** a task that rewrites its own input with the same bytes is never

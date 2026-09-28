@@ -7,18 +7,9 @@ import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { completionScript, completionsCmd, verbFlags } from '../src/cli/completions.js'
 import { documentedFlags, CORE_VERBS, WATCH_REFUSED_FLAGS } from '../src/cli/help.js'
-import {
-  parseInitArgs,
-  parseLastArgs,
-  parseLockArgs,
-  parsePruneArgs,
-  parseRunArgs,
-  parseShowArgs,
-  parseWhyArgs,
-  run,
-} from '../src/cli/index.js'
-import { parseInfoArgs } from '../src/cli/info.js'
+import { parseRunArgs, run } from '../src/cli/index.js'
 import { watchRefusal } from '../src/cli/watch.js'
+import { PARSE } from './helpers/cli-parsers.js'
 
 const VERBS = [...CORE_VERBS, 'mcp']
 
@@ -72,22 +63,6 @@ const ARGV: Readonly<Record<string, readonly string[]>> = {
   '--run': ['id'],
   '--list': [],
   '--failed': [],
-}
-
-/** Each verb's own parser; the error it returns for `argv`, or null. */
-const PARSE: Readonly<Record<string, (argv: string[]) => string | null>> = {
-  run: (a) => parseRunArgs(['build', ...a]).error ?? null,
-  watch: (a) => {
-    const parsed = parseRunArgs(['build', ...a])
-    return parsed.error ?? watchRefusal(parsed)
-  },
-  cache: (a) => parsePruneArgs(a).error ?? null,
-  lock: (a) => parseLockArgs(a).error ?? null,
-  init: (a) => parseInitArgs(a).error ?? null,
-  show: (a) => parseShowArgs(a).error ?? null,
-  info: (a) => parseInfoArgs(a).error ?? null,
-  why: (a) => parseWhyArgs(a).error ?? null,
-  last: (a) => parseLastArgs(a).error ?? null,
 }
 
 describe('verbFlags is what each verb accepts', () => {
