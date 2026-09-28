@@ -387,6 +387,7 @@ export async function loadProjectConfigs(
     closure?: readonly [string, readonly string[]]
   }
   const builtins = builtinSnapshot()
+  const env = { ...process.env }
   const loadOne = async (entry: (typeof prepared)[number]): Promise<Loaded> => {
     const { configPath, cacheKey } = entry
     // A fast key that missed: the closure is stale or the file changed.
@@ -427,7 +428,7 @@ export async function loadProjectConfigs(
       : await loadDefaultExport(configPath, 'Project', bytes!)
     // Before anything reads through them: a replaced `Array.prototype.includes`
     // turned the JSON-data walk's own check into "a cyclic reference".
-    const changed = repeat ? [] : restoreBuiltins(builtins)
+    const changed = repeat ? [] : [...restoreBuiltins(builtins), ...restoreEnv(env)]
     if (changed.length > 0) throw builtinsChanged(changed, configPath)
     assertDefaultObject(mod, 'Project', configPath)
     // Validation runs HERE, on whichever object we ended up with, so a
@@ -485,7 +486,7 @@ export async function loadProjectConfigs(
         if (r.closure !== undefined) learnedClosures.push(r.closure)
       }
     }
-    const changed = restoreBuiltins(builtins)
+    const changed = [...restoreBuiltins(builtins), ...restoreEnv(env)]
     if (first !== undefined) throw first.failed
     if (changed.length > 0) throw builtinsChanged(changed)
     return results.map((r) => (r as Loaded).config)
@@ -539,8 +540,11 @@ function builtinSnapshot(): BuiltinSnapshot {
 /** Loads run together, so the config named is the one whose load saw the change. */
 function builtinsChanged(changed: readonly string[], configPath?: string): UserError {
   const who = configPath === undefined ? 'a project config' : configPath
+  const env = changed.some((c) => c.startsWith('process.env.'))
+    ? '; a task gets an env var through `exec.env.define` or `passThrough`'
+    : ''
   return new UserError(
-    `${who} changed ${changed.join(', ')} while it was evaluated — a config must not change the built-ins vx runs on: other configs are read through them and cache keys are made with them`,
+    `${who} changed ${changed.join(', ')} while it was evaluated — a config must not change the built-ins vx runs on: other configs are read through them and cache keys are made with them${env}`,
   )
 }
 
@@ -564,6 +568,31 @@ function restoreBuiltins(before: BuiltinSnapshot): string[] {
       }
     }
   })
+  return changed
+}
+
+/**
+ * A first load's `process.env.X = …` gave every other project's task that
+ * value through `passThrough` and reached vx's own `VX_*` reads, while a
+ * repeat load, in a worker, left both unchanged: one config, two
+ * environments, by load order (D-76). Assigned back, not defined:
+ * `process.env` refuses `defineProperty`.
+ */
+function restoreEnv(before: Readonly<Record<string, string | undefined>>): string[] {
+  const changed: string[] = []
+  const live = process.env
+  for (const key of Object.keys(live)) {
+    if (live[key] === before[key]) continue
+    changed.push(`process.env.${key}`)
+    if (key in before) live[key] = before[key]
+    else delete live[key]
+  }
+  for (const key of Object.keys(before)) {
+    if (!(key in live)) {
+      changed.push(`process.env.${key}`)
+      live[key] = before[key]
+    }
+  }
   return changed
 }
 

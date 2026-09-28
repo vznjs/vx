@@ -789,3 +789,12 @@ packages/core`) selects the dependent whose `file:../lib` spec named
   Bun calls (no lazy property changes shape). Row: the D-75 row of
   `tests/project-loader.test.ts`, the hash refused and put back; red
   with `Bun.hash` dropped from the set.
+- **D-76** A project config's first load wrote `process.env` for the
+  whole process: `process.env.LEAK = 'one'` in project a overrode the
+  host's `LEAK=three` in project b's `passThrough` (probed; the key saw
+  the same value the child got, so no stale hit), reached vx's own
+  `VX_*` reads, and a repeat load, in a worker, dropped it. The D-74
+  round now snapshots `process.env` too, puts back what a load added,
+  replaced or deleted, and refuses naming each variable. Assigned back:
+  `process.env` refuses `defineProperty` (probed). Rows: the two D-76
+  rows of `tests/project-loader.test.ts`, red with `restoreEnv` removed.
