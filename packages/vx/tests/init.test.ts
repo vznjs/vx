@@ -11,6 +11,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { parseInitArgs } from '../src/cli/index.js'
 import { PLUGIN_TEMPLATES } from '../src/cli/plugin-templates.js'
 import { delegatedScript, loadProjectConfig, migrateScripts } from '../src/workspace/index.js'
+import { vxInvocation } from '../src/workspace/migration.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 const TIMEOUT = 20_000
@@ -950,6 +951,50 @@ describe('vx init on a workspace with no scripts', () => {
     } finally {
       await rm(root, { recursive: true, force: true })
     }
+  })
+})
+
+describe('vx init names the runner that started it', () => {
+  it('in the next: line, with the package spec that runner resolves', async () => {
+    const root = await makeRoot('vx-init-runner-')
+    await addPackage(root, 'app', { build: 'tsc' })
+    const next = async (): Promise<string | undefined> => {
+      const proc = Bun.spawn([process.execPath, BIN, 'init', '--dry'], {
+        cwd: root,
+        env: { ...process.env, npm_config_user_agent: 'npm/10.9.7 node/v22.22.2 linux x64' },
+        stdout: 'pipe',
+      })
+      const out = await new Response(proc.stdout).text()
+      expect(await proc.exited).toBe(0)
+      return out.trimEnd().split('\n').at(-1)
+    }
+    try {
+      // makeRoot links @vzn/vx in; a dry init loads nothing that needs it.
+      expect(await next()).toBe('next: npx vx run build --all')
+      await rm(path.join(root, 'node_modules'), { recursive: true })
+      expect(await next()).toBe('next: npx @vzn/vx run build --all')
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('maps each runner, installed or not, and none to a bare vx', () => {
+    const rows = [
+      'npm/10.9.7 node/v22',
+      'pnpm/10.33.0 npm/? node/v22',
+      'yarn/4.5.0 npm/? node/v22',
+      'bun/1.4.2 npm/? node/v26',
+      'deno/2.0',
+      undefined,
+    ].map((ua) => [ua?.split('/')[0], vxInvocation(ua, false), vxInvocation(ua, true)])
+    expect(rows).toEqual([
+      ['npm', 'npx @vzn/vx', 'npx vx'],
+      ['pnpm', 'pnpm dlx @vzn/vx', 'pnpm vx'],
+      ['yarn', 'yarn dlx @vzn/vx', 'yarn vx'],
+      ['bun', 'bunx @vzn/vx', 'bunx vx'],
+      ['deno', 'vx', 'vx'],
+      [undefined, 'vx', 'vx'],
+    ])
   })
 })
 
