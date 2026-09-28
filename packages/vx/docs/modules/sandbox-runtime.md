@@ -322,7 +322,13 @@ reported as a violation even though the task exited 0. Trace parsing
 pairs `<unfinished ...>` with its `<... resumed>` line, so a denial in a
 forked child is reported too — a single-line match dropped those, which
 made the violation list incomplete under concurrency. Without `strace`
-on PATH the sandbox still ENFORCES; only the structured list is lost.
+on PATH the sandbox still ENFORCES; only the structured list is lost. The
+same holds where strace is present but may not attach (Yama's
+`ptrace_scope` 2 or 3, a container's seccomp profile): `--version`
+answers there, so detection also traces `true` once per run with a
+task's own flags (about 9 ms), and a refusal means no tracing, said once
+on stderr. Before, every sandboxed task failed twice on
+`attach: ptrace(PTRACE_SEIZE…): Operation not permitted` (B-18).
 
 A task that failed with nothing to show gets vx's own notes beside the
 failure, each a `SandboxViolation` marked `hint`: the cwd it cannot read

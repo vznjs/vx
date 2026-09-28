@@ -4535,6 +4535,23 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
       ])
     }, 20_000)
 
+    // A host that refuses ptrace still answers `--version`, and every
+    // sandboxed task failed twice (the retry) on strace's attach error. One
+    // real trace, asked once, says so: the run goes untraced (B-18).
+    it('a strace that may not attach is not used, and is asked once', async () => {
+      const bin = path.join(dir, 'bin')
+      await mkdir(bin)
+      await writeFile(
+        path.join(bin, 'strace'),
+        `#!/bin/sh\n[ "$1" = --version ] && exec ${Bun.which('strace')} "$@"\necho "strace: attach: ptrace(PTRACE_SEIZE, 2): Operation not permitted" >&2\nexit 1\n`,
+        { mode: 0o755 },
+      )
+      expect(detecting(`${bin}:${process.env['PATH']}`)).toEqual({
+        outs: ['ok\n', 'ok\n'],
+        calls: ['which strace', 'strace --version', 'trace'],
+      })
+    })
+
     it('no strace on PATH is no tracing, and is found out once', async () => {
       // Every binary the runtime needs, and no strace.
       const bin = path.join(dir, 'bin')
