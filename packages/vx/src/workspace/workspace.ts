@@ -359,8 +359,9 @@ export function resolveCacheDir(root: string, config: WorkspaceConfig | null): s
 export async function loadWorkspace(root: string, reads?: LoadReads): Promise<Workspace> {
   const packageGlobs = await readPackageGlobs(root, reads)
   if (packageGlobs === null) {
-    // Should be unreachable: findWorkspaceRoot only returns dirs that
-    // pass at least one of the two existence checks.
+    // The CLI never lands here (findWorkspaceRoot returns only a dir that
+    // passes one of the two checks); a direct call of this public function
+    // on a bare dir does (D-58).
     throw new UserError(`workspace root ${root} has neither pnpm-workspace.yaml nor package.json`)
   }
   return { root, packageGlobs }
