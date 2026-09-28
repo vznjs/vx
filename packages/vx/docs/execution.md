@@ -297,7 +297,7 @@ terminal and a task succeeding or failing. Read it alongside
        the user REQUESTED, and the persistent tasks they depend on,
        are kept alive (see below).
     2. Run summary footer (projects / tasks / cache meters + info +
-       time) — counts only real tasks (with `exec`); group tasks
+       time + result) — counts only real tasks (with `exec`); group tasks
        don't pollute the totals; failure frames replay just above it.
     3. Optional --summarize JSON (default <cacheDir>/runs/<run_id>.json)
        and --profile Chrome-trace JSON (default profile.json).
@@ -527,7 +527,7 @@ The colors / framing modules:
 - `orchestrator/logger.ts` — composes them; resolves the output view
   and applies the per-flow visibility policy.
 - `orchestrator/summary.ts` — the closing footer (wordmark rule,
-  projects/tasks/cache meters, info + time rows).
+  projects/tasks/cache meters, info, time and result rows).
 
 ## Concurrency
 

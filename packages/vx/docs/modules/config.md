@@ -51,7 +51,7 @@ export const PLUGIN_FUNCTION_HOOKS: readonly PluginHook[] // the hooks that are 
 
 // Helpers (identity functions)
 export function defineProject<const T extends ProjectConfig>(config: T & DependsOnTyped<T>): T
-export function defineWorkspace<T extends WorkspaceConfig>(config: T): T
+export function defineWorkspace<T extends WorkspaceConfig>(config: T & Known<T, WorkspaceConfig>): T
 ```
 
 `defineProject`'s parameter is `T` intersected with a mapped type over

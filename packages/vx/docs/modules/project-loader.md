@@ -195,7 +195,7 @@ Two properties make the swap safe:
   bump.
 - **Round sharing.** A round is one `loadProjectConfigs` call, the path
   `loadProjects` takes for a run and for every watch cycle. It evaluates
-  its repeat loads one after another inside `beginEvalRound()`, which
+  its repeat loads inside `beginEvalRound()`, which
   holds the Worker open until the round ends, so a round costs one
   Worker, not one per project, and the next round still starts from an
   empty registry. Loads in flight at the same moment from separate calls
