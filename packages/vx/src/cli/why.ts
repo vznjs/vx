@@ -17,6 +17,7 @@ import {
 import { nearMatches, UserError } from '../util/index.js'
 import { findWorkspaceRoot } from '../workspace/index.js'
 import { cliCacheDir, parseCacheDirFlag, warnToStderr } from './workspace-config.js'
+import { resolveRunId } from './run-id.js'
 
 interface WhyArgs {
   target?: string
@@ -166,7 +167,10 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
   try {
     const db = cache.dbHandle()
     const taskId = resolveTarget(cache, parsed.target)
-    const runId = parsed.runId ?? latestRunId(cache.dbHandle(), taskId)
+    const runId =
+      parsed.runId !== undefined
+        ? (resolveRunId(db, parsed.runId, 'vx why') ?? parsed.runId)
+        : latestRunId(db, taskId)
 
     if (runId === null) {
       // Runs exist (resolveTarget passed) but predate run ids — fall back to
