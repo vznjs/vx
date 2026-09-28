@@ -549,6 +549,38 @@ describe('vx why (e2e) — the exact lines', () => {
     TIMEOUT,
   )
 
+  it(
+    'a stored kind the map does not know is listed but gets no what-to-do line',
+    async () => {
+      // An older (or newer) vx may have stored a kind this one's fold no
+      // longer captures; its row prints, and "undefined" never does.
+      const db = new Database(path.join(root, '.vx', 'cache', 'cache.db'))
+      const latest = (
+        db
+          .query(
+            "SELECT hash FROM runs WHERE project = 'app' AND task = 'build' ORDER BY rowid DESC LIMIT 1",
+          )
+          .get() as { hash: string }
+      ).hash
+      db.run("INSERT INTO entry_inputs VALUES (?, 'legacy', 'x', 'ab')", [latest])
+      db.close()
+      try {
+        const r = await vx(root, ['why', 'app#build'])
+        const lines = r.out.split('\n')
+        expect(lines).toContain('    added   legacy   x  + ab')
+        expect(lines.slice(lines.indexOf('  what to do:') + 1, -1)).toEqual([
+          `    file     ${WHAT_TO_DO['file']}`,
+          `    package  ${WHAT_TO_DO['package']}`,
+        ])
+      } finally {
+        const back = new Database(path.join(root, '.vx', 'cache', 'cache.db'))
+        back.run("DELETE FROM entry_inputs WHERE kind = 'legacy'")
+        back.close()
+      }
+    },
+    TIMEOUT,
+  )
+
   // The rows below edit the database the way an older vx left it; each
   // runs after the one before, and the order is the fixture.
   const edit = (sql: string): void => {

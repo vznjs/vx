@@ -273,3 +273,10 @@ The last `miss-save.ts` survivors: the workspace-row filter in the snapshot's `e
 
 - Rows: `zstd-frames.test.ts` › RLE blocks, a content checksum and an empty body keep the one-call decode; a file past the stream threshold is refused by its declaration; the stream count refuses past the cap, not at it. `cache.test.ts` › a 4-byte dictionary ID; a header cut inside its size field. Each red under its mutant.
 - Equivalent: a reserved block (the decoder refuses it on either path), the result-length backstop (unreachable, as its comment says), and the 4 MiB threshold's `<=` (either path decodes the same bytes).
+
+### A-31 (2026-09-28, sweep: `inputs.ts`)
+
+46 mutants over the 21 files that reach it: 38 caught, 8 survived. No defect.
+
+- Rows (`inputs.test.ts` › "inputs.ts edges"): a tracked file replaced by a directory is not an input, what it holds is; an additive task owns a file it rewrote at the same size, or at the same mtime; a clean never removes the project directory it emptied; an additive clean prunes a parent whose recorded directory is already gone; a workspace-output clean prunes what it emptied. `stale-hit.test.ts` › a `workspaceFiles` input with a non-UTF-8 name is refused. Each red under its mutant.
+- Unheld: an output directory whose realpath fails is refused (I18). It needs a directory that the scan listed and that left before the realpath: a race with the task, not a fixture.

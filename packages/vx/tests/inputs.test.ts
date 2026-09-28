@@ -6,7 +6,17 @@
 // regression here can't quietly start eating user files.
 
 import { chmodSync, existsSync } from 'node:fs'
-import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  realpath,
+  rm,
+  stat,
+  symlink,
+  utimes,
+  writeFile,
+} from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, setDefaultTimeout } from 'bun:test'
@@ -15,12 +25,16 @@ import { afterEach, beforeEach, describe, expect, it, setDefaultTimeout } from '
 // warm day of runs) the default 5s hook timeout flakes. File-scoped.
 setDefaultTimeout(30_000)
 import {
+  cleanOutputPaths,
   cleanOutputs,
+  cleanWorkspaceOutputs,
   GitFilesCache,
+  ownOutputsSince,
   populateGitFilesCache,
   type ProjectFilesCache,
   resolveInputs,
   resolveOutputs,
+  stampOutputs,
 } from '../src/cache/inputs.js'
 import { UserError } from '../src/util/index.js'
 import { skipAsRoot } from './helpers/nonroot-gate.js'
@@ -1237,5 +1251,89 @@ describe('a named pipe under an input or output glob (e2e)', () => {
     } finally {
       await rm(root, { recursive: true, force: true })
     }
+  })
+})
+
+// The inputs.ts sweep's survivors (A-31): each row is red under its mutant.
+describe('inputs.ts edges', () => {
+  let root: string
+  beforeEach(async () => {
+    root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'vx-edges-')))
+  })
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+  const git = (...args: string[]): void => {
+    const p = Bun.spawnSync(['git', '-c', 'user.email=v@x', '-c', 'user.name=v', ...args], {
+      cwd: root,
+    })
+    if (p.exitCode !== 0) throw new Error(new TextDecoder().decode(p.stderr))
+  }
+
+  it('a tracked file replaced by a directory is not an input; what the directory holds is', async () => {
+    // git still lists `x` from the index; a directory has nothing to hash.
+    await write(path.join(root, 'a.txt'), 'a')
+    await write(path.join(root, 'x'), 'x')
+    git('init', '-q')
+    git('add', '.')
+    git('commit', '-qm', 'init')
+    await rm(path.join(root, 'x'))
+    await write(path.join(root, 'x', 'in'), 'i')
+    const r = await resolveInputs({
+      projectDir: root,
+      workspaceRoot: root,
+      inputs: { files: ['**/*'] },
+      ownOutputs: [],
+      nestedProjectDirs: [],
+      envSource: {},
+    })
+    expect(r.files.map((f) => path.relative(root, f))).toEqual(['a.txt', 'x/in'])
+  })
+
+  it('an additive task owns a file it rewrote at the same size, or at the same mtime', async () => {
+    const args = { projectDir: root, outputs: ['dist/**'], nestedProjectDirs: [] }
+    await write(path.join(root, 'dist', 'same-size'), 'aaaa')
+    await write(path.join(root, 'dist', 'same-mtime'), 'aaaa')
+    await write(path.join(root, 'dist', 'kept'), 'aaaa')
+    const old = new Date(Date.now() - 60_000)
+    for (const f of ['same-size', 'same-mtime', 'kept'])
+      await utimes(path.join(root, 'dist', f), old, old)
+    const before = await stampOutputs(args)
+    await writeFile(path.join(root, 'dist', 'same-size'), 'bbbb') // new mtime, same size
+    await writeFile(path.join(root, 'dist', 'same-mtime'), 'bbbbbbbb')
+    await utimes(path.join(root, 'dist', 'same-mtime'), old, old) // new size, same mtime
+    const own = await ownOutputsSince(args, before)
+    expect(own.map((f) => path.relative(root, f)).sort()).toEqual([
+      'dist/same-mtime',
+      'dist/same-size',
+    ])
+  })
+
+  it('a clean never removes the project directory itself, even when it empties it', async () => {
+    await write(path.join(root, 'pkg', 'out.txt'))
+    await cleanOutputs({
+      projectDir: path.join(root, 'pkg'),
+      outputs: ['out.txt'],
+      nestedProjectDirs: [],
+    })
+    expect(existsSync(path.join(root, 'pkg', 'out.txt'))).toBe(false)
+    expect((await stat(path.join(root, 'pkg'))).isDirectory()).toBe(true)
+  })
+
+  it('an additive clean prunes a parent whose recorded directory is already gone', async () => {
+    // The row's own directory left before the clean (ENOENT); its emptied
+    // parent is still pruned, as it would be had the clean removed both.
+    await mkdir(path.join(root, 'dist'))
+    await cleanOutputPaths({ projectDir: root, rels: ['dist/sub/x'] })
+    expect(existsSync(path.join(root, 'dist'))).toBe(false)
+    expect(existsSync(root)).toBe(true) // CONTROL: never the root
+  })
+
+  it('a workspace-output clean prunes the directories it emptied', async () => {
+    await write(path.join(root, 'gen', 'deep', 'x.txt'))
+    await write(path.join(root, 'keep', 'y.txt'))
+    await cleanWorkspaceOutputs({ workspaceRoot: root, outputs: ['gen/**'] })
+    expect(existsSync(path.join(root, 'gen'))).toBe(false)
+    expect(existsSync(path.join(root, 'keep', 'y.txt'))).toBe(true) // CONTROL
   })
 })
