@@ -351,6 +351,23 @@ describe('a collector that sheds load', () => {
     ]).toEqual([3, 1, true])
     expect([refused.hits, refused.warnings.length]).toEqual([1, 1])
   })
+
+  // F-46: the deadline ended the wait, and the loop posted again past it:
+  // core had given up on the flush, and the 503 was never told.
+  it('a deadline during the wait ends the retries and warns the 503', async () => {
+    queue = [{ status: 503, body: 'busy' }]
+    hits = 0
+    reply = { status: 200, body: '{}' }
+    const warnings: string[] = []
+    const sink = sinkAgainst(warnings)
+    driveOneTask(sink)
+    const deadline = new AbortController()
+    setTimeout(() => deadline.abort(), 50)
+    const t0 = Date.now()
+    await sink.flush(deadline.signal)
+    expect([hits, warnings.length, warnings[0]?.includes('HTTP 503: busy')]).toEqual([1, 1, true])
+    expect(Date.now() - t0).toBeLessThan(150)
+  })
 })
 
 // F-40: a certificate fetch refuses fails the same way every time, and its

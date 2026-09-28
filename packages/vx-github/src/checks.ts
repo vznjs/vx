@@ -105,6 +105,19 @@ export function buildCheckRunPayload(args: {
   }
 }
 
+/** Resolves true when `signal` ended the wait. */
+function sleepUnless(ms: number, signal: AbortSignal | undefined): Promise<boolean> {
+  return new Promise((resolve) => {
+    const done = (): void => {
+      clearTimeout(timer)
+      signal?.removeEventListener('abort', done)
+      resolve(signal?.aborted === true)
+    }
+    const timer = setTimeout(done, ms)
+    signal?.addEventListener('abort', done, { once: true })
+  })
+}
+
 const CHECK_RETRY_DELAYS_MS = [200, 800] as const
 const CHECK_RETRY_STATUS = new Set([502, 503, 504])
 
@@ -154,7 +167,9 @@ export async function postCheckRun(args: {
         }
       }
       if (args.signal?.aborted === true) break
-      await Bun.sleep(delay)
+      // The deadline ended the wait: GitHub's last answer is what to tell,
+      // not the AbortError a further POST would throw (F-46).
+      if (await sleepUnless(delay, args.signal)) break
     }
     if (res === undefined) throw new Error('the flush deadline passed before it could be retried')
     if (!res.ok) {
