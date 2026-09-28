@@ -206,6 +206,19 @@ admit policy asked, a silent or throwing policy), `chained-cache.test.ts`
 torn down). No defect in the file. Harness note: a per-mutant `TMPDIR`
 under the scratchpad pushed the sandbox socket past `sun_path`.
 
+## C-19: hold `signals.ts`'s surviving mutants
+
+A sweep of 48 mutants: 31 caught, 17 survived, 2 of them equivalent
+(`forwardedSignal`'s `undefined` arm, which `abort()` never reaches; the
+survivors' dedup). The other 15 are held now: `terminateChildren` reaps
+every survivor, SIGKILLs a group whose shell left the live list, keeps
+the grace at `VX_KILL_GRACE_MS` or 2 s and releases the groups it holds;
+`forwardSignals`, driven in a process of its own (the group guard hid
+it in the e2e rows), clears the live region, stops the run, SIGKILLs
+every child and closes the cache, exit 130; the listener row covers
+SIGHUP; a kept server's stop and an embedder's abort arrive as SIGTERM.
+No defect in the file.
+
 ## Leads for other streams
 
 - **E:** a plugin command's plain `throw` (`commands.probe.run` throwing

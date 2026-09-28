@@ -7,7 +7,7 @@
 // (watch loop, bun test).
 
 import { getEventListeners } from 'node:events'
-import { existsSync, readdirSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -26,6 +26,8 @@ import { terminateChildren } from '../src/orchestrator/signals.js'
 process.env['VX_KILL_GRACE_MS'] = '200'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+const SIGNALS = path.resolve(import.meta.dir, '..', 'src', 'orchestrator', 'signals.ts')
+const KILL_TREE = path.resolve(import.meta.dir, '..', 'src', 'exec', 'kill-tree.ts')
 const TIMEOUT = 20_000
 
 interface Fixture {
@@ -851,6 +853,249 @@ describe('terminateChildren — the second sweep re-reads what is live', () => {
   )
 })
 
+// C-19, the sweep of signals.ts: each row below failed under a mutant the
+// suite let through.
+describe('terminateChildren — what the sweep leaves behind', () => {
+  let dir: string
+  beforeEach(async () => {
+    dir = await mkdtemp(path.join(os.tmpdir(), 'vx-term-'))
+  })
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true })
+  })
+
+  const spawnIn = (command: string): ReturnType<typeof Bun.spawn> =>
+    Bun.spawn(['sh', '-c', command], {
+      cwd: dir,
+      detached: true,
+      stdout: 'ignore',
+      stderr: 'ignore',
+    })
+  // The trap is set before the signal: a TERM that beat it killed the child
+  // outright and the row measured nothing.
+  const stubborn = async (name: string): Promise<ReturnType<typeof Bun.spawn>> => {
+    const child = spawnIn(`trap '' TERM; echo up > ${name}.up; exec sleep 30`)
+    await marker(`${name}.up`)
+    return child
+  }
+  const marker = async (name: string): Promise<void> => {
+    const file = path.join(dir, name)
+    const until = Date.now() + 10_000
+    while (!(existsSync(file) && readFileSync(file, 'utf8') === 'up\n') && Date.now() < until)
+      await Bun.sleep(20)
+    expect(readFileSync(file, 'utf8')).toBe('up\n')
+  }
+  const killGroup = (pid: number): void => {
+    try {
+      process.kill(-pid, 'SIGKILL')
+    } catch {
+      // already gone
+    }
+  }
+
+  it(
+    'resolves only once every survivor is reaped',
+    async () => {
+      // `isAlive` counts a zombie as dead, so the rows above pass with the
+      // reap gone; the exit status is set only once the child is reaped.
+      // `first` dies of the SIGTERM, so the grace leaves nothing and the
+      // only survivor is the one the second read found.
+      const first = spawnIn('exec sleep 30')
+      const late = await stubborn('late')
+      let sweep = 0
+      try {
+        await terminateChildren(() => (++sweep === 1 ? [first] : [late]), 'SIGTERM', 100)
+        expect(late.signalCode).toBe('SIGKILL')
+      } finally {
+        for (const c of [first, late]) killGroup(c.pid)
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a group whose shell died on the signal and left the live list is still SIGKILLed',
+    async () => {
+      // The runner drops a shell from the live set when it exits, so the
+      // second read no longer names it; its group's member that ignores
+      // SIGTERM is reached only through what the grace left.
+      const shell = spawnIn(`sh -c 'trap "" TERM; echo $$ > gc.pid; exec sleep 30' & wait`)
+      const gc = await waitForPid(path.join(dir, 'gc.pid'), 10_000)
+      let sweep = 0
+      try {
+        expect(isAlive(gc)).toBe(true)
+        await terminateChildren(() => (++sweep === 1 ? [shell] : []), 'SIGTERM', 100)
+        expect(await waitForDead(gc, 1_000)).toBe(true)
+      } finally {
+        killGroup(shell.pid)
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'the grace is VX_KILL_GRACE_MS when it is set',
+    async () => {
+      // A cleanup of 2.2 s outlasts the 2 s default and fits a 5 s grace.
+      const child = spawnIn(
+        "trap 'sleep 2.2; echo done > done.txt; exit 0' TERM; echo up > child.up; while :; do sleep 0.05; done",
+      )
+      await marker('child.up')
+      process.env['VX_KILL_GRACE_MS'] = '5000'
+      try {
+        await terminateChildren(() => [child])
+        expect(readFileSync(path.join(dir, 'done.txt'), 'utf8')).toBe('done\n')
+      } finally {
+        process.env['VX_KILL_GRACE_MS'] = '200'
+        killGroup(child.pid)
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'without VX_KILL_GRACE_MS the grace is two seconds',
+    async () => {
+      const child = await stubborn('child')
+      delete process.env['VX_KILL_GRACE_MS']
+      try {
+        const started = Date.now()
+        await terminateChildren(() => [child])
+        const took = Date.now() - started
+        expect({ atLeast2s: took >= 2_000, under5s: took < 5_000 }).toEqual({
+          atLeast2s: true,
+          under5s: true,
+        })
+      } finally {
+        process.env['VX_KILL_GRACE_MS'] = '200'
+        killGroup(child.pid)
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'lets its groups go once the sweep is done',
+    async () => {
+      // A group it holds stays on the guard's list until then, and the
+      // guard SIGKILLs whatever holds a listed number when vx exits. The
+      // guard here only logs its list.
+      const script = `
+        const spawn = Bun.spawn
+        let guard
+        Bun.spawn = (cmd, opts) => {
+          if (opts?.argv0 !== 'vx-group-guard') return spawn(cmd, opts)
+          guard = spawn(['sh', '-c', 'cat <&3 > guard.log'], opts)
+          return guard
+        }
+        const { guardLine, releaseGroup, spawnGuarded } = await import(${JSON.stringify(KILL_TREE)})
+        const { terminateChildren } = await import(${JSON.stringify(SIGNALS)})
+        const child = spawnGuarded((fd) =>
+          Bun.spawn(['sh', '-c', guardLine(3) + "trap '' TERM; echo up > up.txt; exec sleep 30"], {
+            stdio: ['ignore', 'ignore', 'ignore', fd],
+            detached: true,
+          }),
+        )
+        // As the runner does when a task's leader exits.
+        void child.exited.then(() => releaseGroup(child))
+        while ((await Bun.file('up.txt').text().catch(() => '')) !== 'up\\n') await Bun.sleep(10)
+        await terminateChildren(() => [child], 'SIGTERM', 100)
+        console.log(child.pid + ' ' + guard.pid)
+      `
+      const proc = Bun.spawn([process.execPath, '-e', script], {
+        cwd: dir,
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      const [out, code] = await Promise.all([new Response(proc.stdout).text(), proc.exited])
+      expect(code).toBe(0)
+      const [pid, guard] = out.trim().split(' ').map(Number)
+      // The guard's read ends at vx's exit; its log is whole once it is gone.
+      expect(await waitForDead(guard!, 3_000)).toBe(true)
+      expect(readFileSync(path.join(dir, 'guard.log'), 'utf8')).toBe(`+${pid}\n-${pid}\n`)
+    },
+    TIMEOUT,
+  )
+})
+
+// The handler driven in a process of its own, with no run and no group
+// guard: in the e2e rows the guard's EOF kill also takes what vx left, and
+// run()'s finally also closes the cache, so neither says what the
+// handler's own exit does.
+describe('forwardSignals in a process of its own', () => {
+  let dir: string
+  beforeEach(async () => {
+    dir = await mkdtemp(path.join(os.tmpdir(), 'vx-fwd-'))
+  })
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true })
+  })
+
+  it(
+    'a signal clears the live region, stops the run, then SIGKILLs every child and closes the cache',
+    async () => {
+      const script = `
+        import { appendFileSync, writeFileSync } from 'node:fs'
+        import { forwardSignals } from ${JSON.stringify(SIGNALS)}
+        const note = (s) => appendFileSync('events.txt', s + '\\n')
+        const stubborn = () =>
+          Bun.spawn(['sh', '-c', "trap '' INT TERM; exec sleep 30"], {
+            detached: true,
+            stdout: 'ignore',
+            stderr: 'ignore',
+          })
+        const running = stubborn()
+        const server = stubborn()
+        let finish
+        const done = new Promise((r) => { finish = r })
+        forwardSignals({
+          enabled: true,
+          log: { status() {}, taskStdout() {}, taskStderr() {}, taskComplete() {}, runEnd: () => note('runEnd') },
+          cache: { close: () => note('close') },
+          stop: (signal) => { note('stop ' + signal); finish() },
+          done,
+          boundMs: 60_000,
+          liveChildren: new Set([running]),
+          persistentRegistry: new Map([['app#dev', server]]),
+        })
+        setInterval(() => {}, 1_000)
+        writeFileSync('pids.txt', running.pid + ' ' + server.pid + '\\n')
+      `
+      const proc = Bun.spawn([process.execPath, '-e', script], {
+        cwd: dir,
+        stdout: 'ignore',
+        stderr: 'pipe',
+      })
+      const pidsFile = path.join(dir, 'pids.txt')
+      const until = Date.now() + 10_000
+      while (
+        !(existsSync(pidsFile) && readFileSync(pidsFile, 'utf8').endsWith('\n')) &&
+        Date.now() < until
+      )
+        await Bun.sleep(20)
+      const pids = readFileSync(pidsFile, 'utf8').trim().split(' ').map(Number)
+      try {
+        expect(pids.map(isAlive)).toEqual([true, true])
+        proc.kill('SIGINT')
+        expect(await proc.exited).toBe(130)
+        expect(readFileSync(path.join(dir, 'events.txt'), 'utf8')).toBe(
+          'runEnd\nstop SIGINT\nclose\n',
+        )
+        expect(await Promise.all(pids.map((p) => waitForDead(p, 3_000)))).toEqual([true, true])
+      } finally {
+        for (const p of pids) {
+          try {
+            process.kill(-p, 'SIGKILL')
+          } catch {
+            // already gone
+          }
+        }
+      }
+    },
+    TIMEOUT,
+  )
+})
+
 describe("run()'s finally block (in-process)", () => {
   let fixture: Fixture
   beforeEach(async () => {
@@ -922,11 +1167,12 @@ describe('signal handler lifecycle (in-process)', () => {
   })
 
   it(
-    'run() removes its SIGINT/SIGTERM listeners — repeated runs never stack',
+    'run() removes its SIGINT/SIGTERM/SIGHUP listeners — repeated runs never stack',
     async () => {
       const before = {
         int: process.listenerCount('SIGINT'),
         term: process.listenerCount('SIGTERM'),
+        hup: process.listenerCount('SIGHUP'),
       }
       for (let i = 0; i < 2; i++) {
         const r = await run({
@@ -938,6 +1184,7 @@ describe('signal handler lifecycle (in-process)', () => {
         expect(r.ok).toBe(true)
         expect(process.listenerCount('SIGINT')).toBe(before.int)
         expect(process.listenerCount('SIGTERM')).toBe(before.term)
+        expect(process.listenerCount('SIGHUP')).toBe(before.hup)
       }
     },
     TIMEOUT,
