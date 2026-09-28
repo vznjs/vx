@@ -272,7 +272,7 @@ export class OtelSink implements TelemetrySink {
 
   private async shipTraces(vxVersion: string): Promise<void> {
     if (this.cfg.tracesEnabled === false || this.spans.length === 0) return
-    const bodies = batches(this.spans).map((spans) =>
+    const bodies = requestBodies(this.spans, (spans) =>
       JSON.stringify(buildTraceRequest(this.cfg.serviceName, vxVersion, spans, this.cfg.resource)),
     )
     await this.send('traces', this.cfg.tracesUrl, bodies)
@@ -297,7 +297,7 @@ export class OtelSink implements TelemetrySink {
     const workspaceId = this.run?.workspaceId ?? ''
     const bundle = this.logs.drain(this.runId, workspaceId)
     if (bundle.tasks.length === 0) return
-    const bodies = batches(bundle.tasks).map((entries) =>
+    const bodies = requestBodies(bundle.tasks, (entries) =>
       JSON.stringify(
         buildLogsRequest({
           serviceName: this.cfg.serviceName,
@@ -357,10 +357,27 @@ export class OtelSink implements TelemetrySink {
  */
 const ITEMS_PER_REQUEST = 1000
 
-function batches<T>(items: readonly T[]): T[][] {
-  const out: T[][] = []
+/**
+ * Bytes per OTLP request. A count bounds spans, not log tails: the run's log
+ * budget counts characters, and JSON writes a control character as six bytes
+ * (`\u0001`), so 64 tails of control bytes made one 23 MiB logs request
+ * (F-23). A body past this is split in half until it fits or is one item.
+ */
+const BYTES_PER_REQUEST = 4 * 1024 * 1024
+
+/** `items` as request bodies, each at most ITEMS_PER_REQUEST items and BYTES_PER_REQUEST bytes. */
+function requestBodies<T>(items: readonly T[], encode: (group: T[]) => string): string[] {
+  const out: string[] = []
+  const add = (group: T[]): void => {
+    const body = encode(group)
+    if (group.length > 1 && Buffer.byteLength(body) > BYTES_PER_REQUEST) {
+      const half = Math.ceil(group.length / 2)
+      add(group.slice(0, half))
+      add(group.slice(half))
+    } else out.push(body)
+  }
   for (let i = 0; i < items.length; i += ITEMS_PER_REQUEST) {
-    out.push(items.slice(i, i + ITEMS_PER_REQUEST))
+    add(items.slice(i, i + ITEMS_PER_REQUEST))
   }
   return out
 }
