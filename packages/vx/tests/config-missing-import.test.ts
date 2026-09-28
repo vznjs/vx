@@ -313,6 +313,23 @@ describe('a config importing what no node_modules provides', () => {
     expect(err?.message).toContain('install the workspace')
   })
 
+  it('a REPEAT load is refused too, before the worker evaluates it (D-18)', async () => {
+    // A path loaded before re-evaluates in the config worker (`vx watch`,
+    // `vx lock`), which is a second door to Bun's auto-install.
+    const file = path.join(dir, 'vx.config.mjs')
+    const refusal = async (): Promise<string | undefined> => {
+      try {
+        await loadProjectConfig(file)
+      } catch (e) {
+        return (e as Error).message
+      }
+      return undefined
+    }
+    const want = "cannot find 'nope-pkg' — no node_modules above the config provides it"
+    expect(await refusal()).toContain(want)
+    expect(await refusal()).toContain(want)
+  })
+
   it('CONTROL: a provided package evaluates', async () => {
     const pkg = path.join(dir, 'node_modules', 'nope-pkg')
     await mkdir(pkg, { recursive: true })

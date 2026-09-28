@@ -164,3 +164,11 @@ packages/core`) selects the dependent whose `file:../lib` spec named
   guards, a round ended twice, `messageerror` (the worker posts only
   plain data), and the budget's digit guard (Bun clamps a negative
   delay to 1 ms, and the reply won that race).
+- **D-18** Mutation sweep of `project-loader.ts` (32 mutants). One
+  behaviour survivor: nothing held the unprovided-import refusal on a
+  REPEAT load, which evaluates in the config worker, a second door to
+  Bun's registry auto-install (`vx watch`, `vx lock`). Row:
+  `tests/config-missing-import.test.ts` "a REPEAT load is refused too,
+  before the worker evaluates it (D-18)". Equivalent: the stale-import
+  check's `Math.floor` (sub-millisecond) and moving its baseline on
+  each load (a refused load never moves it).
