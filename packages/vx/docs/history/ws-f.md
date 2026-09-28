@@ -607,3 +607,23 @@ winning, a trailing comma, an empty key refused; an empty endpoint
 option falling back. Left: precedence rows (headers, compression,
 per-signal timeouts), gRPC/compression trims, header-name token edges,
 the non-URL `joinSignal` fallback.
+
+F-57. A mutation sweep of vx-reapi's code changed since its sweeps
+(F-32..F-50: cache.ts put and hit, the TLS options, wire.ts writes and
+the upload pool, executor.ts's link fence, legacy links and partial
+output, the varints; 151 mutants) found no bug and these unheld, now
+rows (29 re-driven): the fence against an absolute-target chain, a
+sibling sharing the root as a prefix (`ws-evil`), three- and four-link
+chains, and as controls a link to the root and a root reached through
+a link; the plugin's TLS options reaching the connection (CA and client
+pair against a mutual-TLS server, a CA alone meaning TLS), an option
+over its env var, a trimmed and an empty env path, a key alone refused,
+an unreadable client certificate named; every blob of several batches
+stored, and a refused write rejecting the upload and stopping the
+queue; a write committed short, `-1` uncompressed, or `0` compressed
+refused; a failed status whose partial log fails its read still
+refusing with the execution's failure. A suspected fence escape
+(a directory written through a chain link) was probed and refused
+(`fence.dir`). Left: exact batch-budget boundaries, the receive limit
+on the other stubs, `tls: false` beside a CA, and equivalents (varint
+paths past 2^53 the decoders never meet, `path.join`'s own `..`).

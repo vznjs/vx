@@ -4,10 +4,12 @@
 // checked in.
 
 import { afterAll, beforeAll, expect, it } from 'bun:test'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import * as grpc from '@grpc/grpc-js'
+import { Cache } from '@vzn/vx'
 import { reapi } from '../src/index.js'
 import { ReapiClient } from '../src/wire.js'
 import { startFakeReapi, type FakeReapi } from './helpers/fake-reapi.js'
@@ -138,5 +140,113 @@ it('the plugin reads the PEM files its options or VX_REAPI_TLS_* name; an unread
   } finally {
     if (prev === undefined) delete process.env['VX_REAPI_TLS_CLIENT_KEY']
     else process.env['VX_REAPI_TLS_CLIENT_KEY'] = prev
+  }
+})
+
+// F-57: the plugin's TLS options were never shown to reach the connection;
+// dropping any PEM from what it hands the client went unheard.
+it('reapi() options reach the connection: CA and client pair through the plugin', async () => {
+  const dir2 = mkdtempSync(path.join(tmpdir(), 'vx-tls-plugin-'))
+  const local = new Cache(path.join(dir2, 'cache'))
+  try {
+    const layerFor = async (opts: Parameters<typeof reapi>[0]) => {
+      const warns: string[] = []
+      const p = reapi({
+        endpoint: `localhost:${mutual.endpoint.split(':')[1]}`,
+        callTimeoutMs: 3000,
+        ...opts,
+      })
+      const layer = (await p.cache!({
+        localCache: local,
+        policy: { localRead: true, localWrite: true, remoteRead: true, remoteWrite: true },
+        warn: (m: string) => warns.push(m),
+        workspaceRoot: dir2,
+        cacheDir: path.join(dir2, 'cache'),
+      } as never))!
+      try {
+        const hit = await layer.get('e'.repeat(64), { taskId: 'a#b', command: 'true' })
+        return [hit, warns.length]
+      } finally {
+        await p.teardown?.()
+      }
+    }
+    expect(
+      await layerFor({
+        tlsCertificate: file('ca.pem'),
+        tlsClientCertificate: file('client.pem'),
+        tlsClientKey: file('client.key'),
+      }),
+    ).toEqual([null, 0])
+    // A CA alone means TLS, with no scheme on the endpoint.
+    const plainPort = plain.endpoint.split(':')[1]
+    const caOnly = reapi({
+      endpoint: `localhost:${plainPort}`,
+      callTimeoutMs: 3000,
+      tlsCertificate: file('ca.pem'),
+    })
+    const warns: string[] = []
+    const caLayer = (await caOnly.cache!({
+      localCache: local,
+      policy: { localRead: true, localWrite: true, remoteRead: true, remoteWrite: true },
+      warn: (m: string) => warns.push(m),
+      workspaceRoot: dir2,
+      cacheDir: path.join(dir2, 'cache'),
+    } as never))!
+    try {
+      expect([
+        await caLayer.get('f'.repeat(64), { taskId: 'a#b', command: 'true' }),
+        warns,
+      ]).toEqual([null, []])
+    } finally {
+      await caOnly.teardown?.()
+    }
+    // CONTROL: without the pair the mutual server refuses, and the miss warns.
+    const refused = await layerFor({ tlsCertificate: file('ca.pem') })
+    expect([refused[0], (refused[1] as number) > 0]).toEqual([null, true])
+  } finally {
+    local.close()
+    rmSync(dir2, { recursive: true, force: true })
+  }
+})
+
+it('a TLS option wins over its env var; an env path is trimmed and an empty one unset; a key alone is refused', async () => {
+  const keys = ['VX_REAPI_TLS_CERTIFICATE', 'VX_REAPI_TLS_CLIENT_KEY'] as const
+  const prev = keys.map((k) => process.env[k])
+  const cacheOf = async (opts: Parameters<typeof reapi>[0]): Promise<string> => {
+    const p = reapi({ endpoint: 'localhost:1', ...opts })
+    try {
+      await p.cache!({ warn: () => undefined, localCache: {}, policy: {} } as never)
+      return 'ok'
+    } catch (err) {
+      return (err as Error).message
+    } finally {
+      await p.teardown?.()
+    }
+  }
+  try {
+    process.env['VX_REAPI_TLS_CERTIFICATE'] = file('missing.pem')
+    const optionWins = await cacheOf({ tlsCertificate: file('ca.pem') })
+    process.env['VX_REAPI_TLS_CERTIFICATE'] = ` ${file('ca.pem')}\n`
+    const trimmed = await cacheOf({})
+    process.env['VX_REAPI_TLS_CERTIFICATE'] = ''
+    const empty = await cacheOf({})
+    delete process.env['VX_REAPI_TLS_CERTIFICATE']
+    const keyAlone = await cacheOf({ tlsClientKey: file('client.key') })
+    const unreadable = await cacheOf({
+      tlsClientCertificate: file('nope.pem'),
+      tlsClientKey: file('client.key'),
+    })
+    expect([optionWins, trimmed, empty, unreadable, keyAlone]).toEqual([
+      'ok',
+      'ok',
+      'ok',
+      `vx/reapi: \`reapi({ tlsClientCertificate })\` names ${file('nope.pem')}, which cannot be read (ENOENT)`,
+      'vx/reapi: a client certificate and its key go together — set both tlsClientCertificate and tlsClientKey (VX_REAPI_TLS_CLIENT_CERTIFICATE / VX_REAPI_TLS_CLIENT_KEY), or neither',
+    ])
+  } finally {
+    keys.forEach((k, i) => {
+      if (prev[i] === undefined) delete process.env[k]
+      else process.env[k] = prev[i]
+    })
   }
 })
