@@ -49,7 +49,7 @@ rules (a plugin may not shadow a core verb; a verb has one owner).
   or sat outside the key on both (a `Map` as `exec.sandbox`, a hole in
   `dependsOn`). `nonJsonPaths` names every such value — a function,
   symbol or bigint, `NaN` / `±Infinity`, `undefined` inside an array (a
-  hole too), a cycle, an object whose prototype is neither
+  hole too), a cycle, a getter or setter (never called), an object whose prototype is neither
   `Object.prototype` nor `null` and is not an array — and
   `validateProjectConfig` refuses the first one before the schema,
   after the file's path: "tasks.build.description is a function — a
