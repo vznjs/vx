@@ -297,3 +297,12 @@ An artifact up to 256 KiB is now sent in one BatchUpdateBlobs unprobed
 (a refused batch streams); larger ones keep the probe. A 64 KiB save:
 102 → 69 ms through a proxy adding 15 ms each way (min of 15,
 interleaved). Live suite 17 of 17. Row red without the fix.
+
+F-27. vx-reapi wrote a remote execution's record (a stdout blob probed and
+uploaded, output Trees read, then UpdateActionResult) before restoring a
+single output byte. The record is now written while the outputs come
+down, and stdout up to 64 KiB rides it inline (`stdout_raw`, which the
+replay already reads). Execute plus restore of a 20-directory tree with a
+record: 295 → 234 ms through a proxy adding 15 ms each way (min of 5,
+interleaved). A restore failure still waits for the record. Rows red
+without the fix.

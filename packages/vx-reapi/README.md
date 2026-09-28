@@ -95,7 +95,8 @@ bazel-remote sends when the call's `grpc-timeout` runs out first (a
 
 Every successful remote execution writes an execution record under the
 task's vx key (`vx-reapi-exec-v1`), listing its outputs by digest plus
-its stdout. A later run whose vx cache missed but whose key already has
+its stdout (inline up to 64 KiB, a CAS blob past it), written while the
+outputs come down. A later run whose vx cache missed but whose key already has
 a record skips the Merkle build, the upload pass and `Execute`
 entirely: the outputs are already in the CAS, and stdout replays from
 the record. `--force` bypasses it.

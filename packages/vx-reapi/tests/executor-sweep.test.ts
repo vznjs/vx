@@ -438,10 +438,57 @@ describe.if(CHUNKING_SUPPORTED)('what the response means', () => {
     await withExecutor((run) => run(request({ cacheKey: 'k-rec' })))
     const record = fake.actions.get(execDigestFor('k-rec').hash) as {
       output_files: { path: string }[]
-      stdout_digest: { hash: string }
+      stdout_raw?: Uint8Array
+      stdout_digest?: { hash: string }
     }
     expect(record.output_files.map((f) => f.path)).toEqual(['pkg/out.txt'])
-    expect(record.stdout_digest.hash).toBe(sha256(bytes('said')).hash)
+    // Small stdout rides the record inline; past 64 KiB it is a CAS blob (F-27).
+    expect([
+      new TextDecoder().decode(record.stdout_raw),
+      record.stdout_digest ?? undefined,
+    ]).toEqual(['said', undefined])
+    const big = 'x'.repeat(64 * 1024 + 1)
+    fake.onExecute = () => ({
+      response: { result: { exit_code: 0, stdout_raw: bytes(big), output_files: [] } },
+    })
+    await withExecutor((run) => run(request({ cacheKey: 'k-rec-big' })))
+    const bigRecord = fake.actions.get(execDigestFor('k-rec-big').hash) as {
+      stdout_raw?: Uint8Array
+      stdout_digest?: { hash: string }
+    }
+    expect([bigRecord.stdout_raw?.length ?? 0, bigRecord.stdout_digest?.hash]).toEqual([
+      0,
+      sha256(bytes(big)).hash,
+    ])
+  })
+
+  // F-27: the record's round trips all ran before the first output byte.
+  it('the record is written while the outputs come down', async () => {
+    const out = put('made')
+    fake.onExecute = () => ({
+      response: { result: { exit_code: 0, output_files: [{ path: 'out.txt', digest: D(out) }] } },
+    })
+    const proto = ReapiClient.prototype
+    const [update, batchRead] = [proto.updateActionResult, proto.batchReadBlobs]
+    let reading = false
+    let overlapped: boolean | undefined
+    proto.batchReadBlobs = function (this: ReapiClient, ...a: Parameters<typeof batchRead>) {
+      reading = true
+      return batchRead.apply(this, a)
+    }
+    proto.updateActionResult = async function (this: ReapiClient, ...a: Parameters<typeof update>) {
+      const until = Date.now() + 1000
+      while (!reading && Date.now() < until) await Bun.sleep(5)
+      overlapped ??= reading
+      return update.apply(this, a)
+    }
+    try {
+      await withExecutor((run) => run(request({ cacheKey: 'k-overlap' })))
+    } finally {
+      proto.updateActionResult = update
+      proto.batchReadBlobs = batchRead
+    }
+    expect([overlapped, fake.actions.has(execDigestFor('k-overlap').hash)]).toEqual([true, true])
   })
 
   // The tree is read after the key was taken. An input edited in between
