@@ -88,6 +88,7 @@ export async function sweepConfigs(
   projects: readonly ProjectMeta[],
   workspaceRoot: string,
   load: CliLoadOptions = {},
+  tasks?: readonly string[],
 ): Promise<ConfigSweep> {
   const outputs = new Map<string, string[]>()
   const inputs = new Map<string, string[][]>()
@@ -115,8 +116,22 @@ export async function sweepConfigs(
     addTo(outputs, dir, globs)
   const workspaceInputs = new Set<string>()
   const uncached = new Set<string>()
+  const folded: [string, ProjectConfig][] = []
   const fold = (dir: string, config: ProjectConfig): void => {
-    for (const task of Object.values(config.tasks ?? {})) {
+    folded.push([dir, config])
+  }
+  // Only the tasks the run can reach are judged: `vx watch build` over a
+  // turbo() package whose `lint` reads `**/*` took build's own `dist/`
+  // write for lint's input, and re-ran build.
+  const foldAll = (): void => {
+    const names = tasks === undefined ? null : reachableNames(folded, tasks)
+    for (const [dir, config] of folded) foldTasks(dir, config, names)
+  }
+  const foldTasks = (dir: string, config: ProjectConfig, names: Set<string> | null): void => {
+    for (const [name, task] of Object.entries(config.tasks ?? {})) {
+      add(dir, task.cache?.outputs?.files)
+      add(workspaceRoot, task.cache?.outputs?.workspaceFiles)
+      if (names !== null && !names.has(name)) continue
       if (task.cache === undefined && task.exec !== undefined && task.exec.persistent === undefined)
         uncached.add(dir)
       for (const g of task.cache?.inputs?.workspaceFiles ?? []) workspaceInputs.add(g)
@@ -126,8 +141,6 @@ export async function sweepConfigs(
         task.cache?.inputs?.workspaceFiles,
         task.cache?.outputs?.workspaceFiles,
       )
-      add(dir, task.cache?.outputs?.files)
-      add(workspaceRoot, task.cache?.outputs?.workspaceFiles)
     }
   }
   const result = (staged: Map<string, ProjectEntry> | null): ConfigSweep => ({
@@ -159,6 +172,7 @@ export async function sweepConfigs(
   }
   if (staged !== null) {
     for (const p of staged.values()) fold(p.dir, p.config)
+    foldAll()
     return result(staged)
   }
   await Promise.all(
@@ -171,7 +185,38 @@ export async function sweepConfigs(
       }
     }),
   )
+  foldAll()
   return result(null)
+}
+
+/**
+ * The task names a run of `requested` reaches through `dependsOn`, by name
+ * in any project: a superset of the graph's tasks, so a file is never
+ * dropped that one of them reads. Null when a name pattern (`build.*`)
+ * makes the set unknowable without the graph: every task then counts.
+ */
+function reachableNames(
+  configs: ReadonlyArray<readonly [string, ProjectConfig]>,
+  requested: readonly string[],
+): Set<string> | null {
+  const name = (spec: string): string => spec.slice(spec.indexOf('#') + 1).replace(/^\^/, '')
+  const names = new Set(requested.map(name))
+  for (let grew = true; grew;) {
+    grew = false
+    for (const [, config] of configs) {
+      for (const [task, def] of Object.entries(config.tasks ?? {})) {
+        if (!names.has(task)) continue
+        for (const dep of def.dependsOn ?? []) {
+          const n = name(dep)
+          if (!names.has(n)) {
+            names.add(n)
+            grew = true
+          }
+        }
+      }
+    }
+  }
+  return [...names].some((n) => n.includes('*')) ? null : names
 }
 
 /**

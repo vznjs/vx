@@ -28,6 +28,9 @@ import {
 import { listProjects, loadWorkspace, WORKSPACE_FINGERPRINT_FILES } from '../src/workspace/index.js'
 import { watchProbeDelivered } from './helpers/watch-events.js'
 import { PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
+import { addProject, makeWorkspace } from './helpers/workspace.js'
+
+const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 import { skipAsRoot } from './helpers/nonroot-gate.js'
 
 describe('the ignore filter', () => {
@@ -279,6 +282,108 @@ describe('sweepConfigs: which projects read what they like', () => {
       await rm(root, { recursive: true, force: true })
     }
   })
+})
+
+describe('sweepConfigs: only the tasks the run reaches are judged', () => {
+  // `vx watch build` over a turbo() package whose `lint` reads `**/*`:
+  // lint's inputs took build's own `dist/` write for an edit, and build
+  // re-ran on every save. The run's tasks are what it asked for and what
+  // their `dependsOn` reaches, by name; a pattern keeps every task.
+  it('an unreached task reads nothing; dependsOn and patterns widen the set', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'vx-watch-reach-'))
+    try {
+      await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
+      await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'r', private: true }))
+      const task = (files: string, out = '', deps = ''): string =>
+        `{ exec: { command: 'true' }${deps}, cache: { inputs: { files: ['${files}'] }, outputs: { files: [${out === '' ? '' : `'${out}'`}] } } }`
+      await mkdir(path.join(root, 'packages', 'ui'), { recursive: true })
+      await writeFile(path.join(root, 'packages', 'ui', 'package.json'), '{"name":"ui"}')
+      await writeFile(
+        path.join(root, 'packages', 'ui', 'vx.config.mjs'),
+        `export default { tasks: {
+          fetch: ${task('api/**')},
+          gen: ${task('schema/**', '', ", dependsOn: ['fetch']")},
+          build: ${task('src/**', 'dist/**', ", dependsOn: ['gen', '^build']")},
+          lint: ${task('**/*')},
+          all: { dependsOn: ['lint.*'] },
+          'lint.x': ${task('x/**')},
+        } }\n`,
+      )
+      const metas = await listProjects(await loadWorkspace(root))
+      const ui = path.join(root, 'packages', 'ui')
+      const inputs = async (tasks?: string[]): Promise<unknown> =>
+        (await sweepConfigs(metas, root, {}, tasks)).inputs.get(ui)
+      // `fetch` is declared before what reaches it: the closure takes more than one pass.
+      expect(await inputs(['build'])).toEqual([['api/**'], ['schema/**'], ['src/**', '!dist/**']])
+      expect(await inputs(['ui#gen'])).toEqual([['api/**'], ['schema/**']])
+      expect(await inputs(['all'])).toEqual([
+        ['api/**'],
+        ['schema/**'],
+        ['src/**', '!dist/**'],
+        ['**/*'],
+        ['x/**'],
+      ])
+      expect(await inputs()).toEqual(await inputs(['all']))
+      // Outputs stay every task's: a write to one is never an edit.
+      expect((await sweepConfigs(metas, root, {}, ['gen'])).outputs.get(ui)).toEqual(['dist/**'])
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('vx watch <task> judges only the tasks it runs (e2e)', () => {
+  // The sweep's task set reaches the loop: without it, `lint`'s `**/*`
+  // took build's `dist/` write for an edit and every save cost a cycle more.
+  it("a sibling task's inputs never turn the run's own write into a cycle", async () => {
+    const root = await makeWorkspace({ prefix: 'vx-watch-own-' })
+    try {
+      const dir = await addProject(
+        root,
+        'app',
+        `export default { tasks: {
+          build: { exec: { command: 'mkdir -p dist && cp src/a.txt dist/a.txt' },
+            cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } } },
+          lint: { exec: { command: 'true' }, cache: { inputs: { files: ['**/*'] }, outputs: { files: [] } } },
+        } }`,
+      )
+      await mkdir(path.join(dir, 'src'), { recursive: true })
+      await writeFile(path.join(dir, 'src', 'a.txt'), '0\n')
+      const proc = Bun.spawn([process.execPath, BIN, 'watch', 'build', '--all'], {
+        cwd: root,
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      let out = ''
+      const reader = (async () => {
+        for await (const chunk of proc.stdout) out += new TextDecoder().decode(chunk)
+      })()
+      const cycles = (): number => out.split('  result ').length - 1
+      const until = async (n: number): Promise<void> => {
+        const deadline = Date.now() + 15_000
+        while (cycles() < n && Date.now() < deadline) await Bun.sleep(25)
+        expect(cycles()).toBeGreaterThanOrEqual(n)
+      }
+      await until(1)
+      const armed = Date.now() + 15_000
+      while (!out.includes('vx watch: watching') && Date.now() < armed) await Bun.sleep(25)
+      await writeFile(path.join(dir, 'src', 'a.txt'), '1\n')
+      await until(2)
+      // A dist-triggered cycle was queued during the one above; this edit's
+      // cycle ends after it would have printed.
+      await writeFile(path.join(dir, 'src', 'a.txt'), '2\n')
+      await until(3)
+      proc.kill('SIGINT')
+      expect(await proc.exited).toBe(0)
+      await reader
+      expect(out.split('\n').filter((l) => l.includes('re-running'))).toEqual([
+        'vx watch: app src/a.txt; re-running...',
+        'vx watch: app src/a.txt; re-running...',
+      ])
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  }, 30_000)
 })
 
 describe('the recursive root watcher keeps only the events a key can see', () => {

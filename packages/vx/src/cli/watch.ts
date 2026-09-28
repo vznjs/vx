@@ -201,7 +201,7 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
     ...(opts.cacheDir !== undefined ? { cacheDir: opts.cacheDir } : {}),
     ...(opts.frozen === true ? { frozen: true } : {}),
   }
-  const swept = await sweepConfigs(allProjects, workspaceRoot, load)
+  const swept = await sweepConfigs(allProjects, workspaceRoot, load, opts.tasks)
   const watched = await watchedProjects(workspaceRoot, allProjects, scope, load, swept.staged)
   const ws = await loadCliWorkspace(workspaceRoot)
   return await runWatchLoop({
@@ -227,7 +227,7 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
     rediscover: async () => {
       const workspace = await loadWorkspace(workspaceRoot)
       const all = await listProjects(workspace)
-      const sweep = await sweepConfigs(all, workspaceRoot, load)
+      const sweep = await sweepConfigs(all, workspaceRoot, load, opts.tasks)
       const now = await watchedProjects(workspaceRoot, all, inScope(all), load, sweep.staged)
       return {
         projects: now,
