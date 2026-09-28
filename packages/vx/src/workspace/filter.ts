@@ -3,6 +3,7 @@
 //   <pattern>        name glob, `*` = any characters (e.g. foo, @scope/*)
 //   ./<dir>          the package at <dir>, else the packages under it (relative to workspace root)
 //   {<dir>}          same as ./<dir>
+//   //               the workspace-root project only (Turbo's name for the root)
 //   <pattern>...     pattern + its transitive workspace dependencies
 //   ...<pattern>     pattern + its transitive workspace dependents
 //   <pattern>^...    only the transitive deps of pattern (excluding the matched package)
@@ -44,6 +45,8 @@ export interface ParsedFilter {
   pathGlob?: Bun.Glob
   /** The workspace root `pathGlob` is relative to. */
   pathRoot?: string
+  /** `//`: the project at `matcher` itself, never the ones under it. */
+  exactDir?: true
 }
 
 export function parseFilter(raw: string, workspaceRoot: string): ParsedFilter {
@@ -101,6 +104,26 @@ export function parseFilter(raw: string, workspaceRoot: string): ParsedFilter {
   // an empty exclude (`!$UNSET`) excluded nothing, so every project ran
   // with one warning line (item 1030).
   if (s === '') throw new UserError(`filter "${raw}" names no project`)
+
+  // `//` is Turbo's name for the root package (`--filter=//`, `//...`,
+  // `!//`, probed on 2.8.17). vx names the root project by its
+  // package.json name, so `//` is its directory, and only a project
+  // there: read as `.`, it would select every project when the root is
+  // none.
+  if (s === '//') {
+    return {
+      raw,
+      negate,
+      withDeps,
+      withDependents,
+      onlyDeps,
+      onlyDependents,
+      isPath: true,
+      matcher: path.resolve(workspaceRoot),
+      exactDir: true,
+      ...(gitSince !== undefined ? { gitSince } : {}),
+    }
+  }
 
   let isPath = false
   let matcher = s
@@ -164,6 +187,7 @@ function matchSelector(filter: ParsedFilter, projects: ProjectMeta[]): string[] 
     // A directory that is no project keeps the "at or under" reading.
     const exact = projects.find((p) => p.dir === filter.matcher)
     if (exact !== undefined) return [exact.name]
+    if (filter.exactDir === true) return out
     const prefix = filter.matcher + path.sep
     for (const p of projects) {
       if (p.dir.startsWith(prefix)) out.push(p.name)

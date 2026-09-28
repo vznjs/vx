@@ -67,6 +67,14 @@ run leaves out; the rest are refusals.
   dropping them; the root is named by its `package.json` `name`, and a
   root task that reads members declares `cache.inputs.workspaceFiles`.
 
+- E: a bare `vx run <task>` whose cwd project lacks the task says
+  "No projects declare task(s): <task>" while other projects declare
+  it. At the root this replaced, once a root config exists (D-39), the
+  "not inside a project … Pass --all" hint. Name the cwd project and
+  hint `--all`. And `vx run '//#build'` (Turbo's task spelling) says
+  the same; `--filter //` works since D-46. With no root project,
+  `--filter //` is hinted "Did you mean a?": say the root is no project.
+
 ## Entries
 
 - **D-1** `--affected` selects the project a new nested project took
@@ -443,3 +451,9 @@ packages/core`) selects the dependent whose `file:../lib` spec named
   file no package owns (neither selects), and package-graph edges over
   dev, peer and optional dependencies. Row: the D-45 row of
   `tests/init.test.ts`.
+- **D-46** `--filter //`, Turbo's name for the root package (`//`,
+  `!//`, `//...`, `...//`, `//[HEAD]`, probed on 2.8.17), matched as a
+  name and refused "no projects matched … Did you mean a?". It now
+  selects the root project, and nothing when the root is no project
+  (read as `.` it would select every project there). Row: the D-46 row
+  of `tests/filter.test.ts`.
