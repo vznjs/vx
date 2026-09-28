@@ -76,6 +76,12 @@ readers that reach it here.
   startup environment, so a config reading a variable the process set
   since saw it on the first load and not on later ones, and an
   embedder's second `run()` derived a different key (D-61).
+- What a config prints in the Worker goes to stderr, by every route
+  (`console`, `process.stdout.write`, `Bun.write(Bun.stdout)`,
+  `Bun.stdout.writer()`): the parent's stdout may be `vx mcp`'s
+  JSON-RPC stream, whose own redirect covers only the parent thread, and
+  a second tool call's config output landed between two responses
+  (D-64). The first load prints where the process's stdout points.
 - A Promise default export is awaited on both paths, so an async
   config resolves to its object on the first load and in the Worker
   alike (D-5). The awaited value is checked again, a workspace
