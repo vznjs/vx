@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, statSync } from 'node:fs'
+import { accessSync, constants as fsConstants, existsSync, readFileSync, statSync } from 'node:fs'
 import { constants as osConstants } from 'node:os'
 import path from 'node:path'
 import { execWord, exitSignal } from '../exec/index.js'
@@ -46,8 +46,12 @@ function fileVerdict(file: string): string {
   try {
     const st = statSync(file)
     if (st.isDirectory()) return 'is a directory'
-    if ((st.mode & 0o111) === 0) return 'is not executable — chmod +x it'
-    head = readFileSync(file, 'latin1').slice(0, 256)
+    // Ask the kernel: an execute bit for the group or others does not
+    // make a file this user owns executable to this user (root aside).
+    if (!executable(file)) return 'is not executable — chmod +x it'
+    // The kernel reads the #! line as bytes, and a path's bytes are its
+    // UTF-8: a latin1 read named a present non-ASCII interpreter missing.
+    head = readFileSync(file).subarray(0, 256).toString('utf8')
   } catch (err) {
     return `could not be read (${(err as Error).message})`
   }
@@ -114,4 +118,13 @@ const SIGNAL_WHY: Record<string, string> = {
   SIGXFSZ: 'a file-size limit (ulimit -f) was hit',
   SIGSYS: 'a system call was refused — a seccomp filter, or the sandbox',
   SIGQUIT: 'the process was sent a quit (Ctrl-\\, or a kill -QUIT); a core dump may be beside it',
+}
+
+function executable(file: string): boolean {
+  try {
+    accessSync(file, fsConstants.X_OK)
+    return true
+  } catch {
+    return false
+  }
 }
