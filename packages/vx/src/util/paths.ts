@@ -229,6 +229,42 @@ export function asTrees(patterns: readonly string[]): string[] {
 }
 
 /**
+ * An output list's positive globs, and what its `!` entries take back
+ * (A-44). A reader that only needs where outputs MIGHT land (an overlap
+ * refusal, a preliminary key) takes `positive` alone; one that decides
+ * whether a path IS an output takes both, through `outputMatcher`.
+ */
+export function splitNegations(globs: readonly string[]): {
+  positive: string[]
+  negative: string[]
+} {
+  const positive: string[] = []
+  const negative: string[] = []
+  for (const g of globs) {
+    if (g.startsWith('!')) negative.push(g.slice(1))
+    else positive.push(g)
+  }
+  return { positive, negative }
+}
+
+/**
+ * Whether a relative path is one of the outputs `globs` declare: a positive
+ * glob selects it and no `!` entry takes it back. A `!` entry fed to a
+ * matcher as-is would be `Bun.Glob`'s own negation, true of every OTHER
+ * path (A-44).
+ */
+export function outputMatcher(
+  globs: readonly string[],
+  compile: (pattern: string) => Bun.Glob = taskGlob,
+): (rel: string) => boolean {
+  const { positive, negative } = splitNegations(globs)
+  if (positive.length === 0) return () => false
+  const pos = asTrees(positive).map(compile)
+  const neg = asTrees(negative).map(compile)
+  return (rel) => pos.some((g) => g.match(rel)) && !neg.some((g) => g.match(rel))
+}
+
+/**
  * `pattern` with its first brace group expanded, recursively, while that
  * group holds a `/`; any other pattern as itself, since `Bun.Glob`
  * expands a slash-free brace on its own. An unbalanced or escaped brace

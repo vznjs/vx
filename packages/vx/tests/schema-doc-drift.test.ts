@@ -280,7 +280,7 @@ const CASES: Array<[string, () => string | null | Promise<string | null>]> = [
       }),
   ],
   [
-    'cache.outputs.files: negation is not supported',
+    'cache.outputs.files: every entry is a negation, which selects NOTHING',
     () =>
       validated({
         tasks: {

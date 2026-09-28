@@ -17,6 +17,14 @@ export function staticPrefix(glob: string): string
 export function grantPrefix(glob: string): string
 export function wholeSubtreePrefixes(globs: readonly string[]): string[] | null
 export function asTrees(patterns: readonly string[]): string[]
+// An output list's positive globs and what its `!` entries take back, and
+// the matcher that honours both: a `!` glob compiled as-is is Bun.Glob's own
+// negation, true of every other path (A-44).
+export function splitNegations(globs: readonly string[]): { positive: string[]; negative: string[] }
+export function outputMatcher(
+  globs: readonly string[],
+  compile?: (pattern: string) => Bun.Glob,
+): (rel: string) => boolean
 export function isLiteralPattern(glob: string): boolean
 export function taskGlob(pattern: string): Bun.Glob
 // A brace whose alternatives hold `/` expanded (Bun.Glob's scan skips one):

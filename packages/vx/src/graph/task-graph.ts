@@ -3,6 +3,7 @@ import type { ProjectConfig, TaskConfig } from '../config.js'
 import {
   asTrees,
   isLiteralPattern,
+  splitNegations,
   staticPrefix,
   taskGlob,
   UserError,
@@ -773,9 +774,16 @@ function detectOutputCollisions(nodes: Map<string, TaskNode>, workspaceRoot?: st
     if ((outs?.workspaceFiles?.length ?? 0) > 0) wsDeclarers.push(n)
   }
 
-  const filesOf = (n: TaskNode): readonly string[] | undefined => n.config.cache?.outputs.files
+  // Where each task's outputs MIGHT land: its positive globs. A `!` entry
+  // only narrows, so leaving it out can refuse a pair it separates, never
+  // pass one it does not (A-44); read as a glob it is `Bun.Glob`'s own
+  // negation, which overlaps nearly everything.
+  const positiveOf = (globs: readonly string[] | undefined): readonly string[] | undefined =>
+    globs === undefined ? undefined : splitNegations(globs).positive
+  const filesOf = (n: TaskNode): readonly string[] | undefined =>
+    positiveOf(n.config.cache?.outputs.files)
   const wsFilesOf = (n: TaskNode): readonly string[] | undefined =>
-    n.config.cache?.outputs.workspaceFiles
+    positiveOf(n.config.cache?.outputs.workspaceFiles)
   for (const bucket of byProject.values()) {
     // Most projects hold one task with outputs, and a call per project
     // cost the cold build a measured 0.4 ms at 1,000 projects.
@@ -994,10 +1002,11 @@ function collide(
       // edge the two run in either order, and the refusal below stands.
       const [up, down] = reaches(b.id, a.id) ? [a, b] : reaches(a.id, b.id) ? [b, a] : []
       if (up !== undefined && down !== undefined) {
-        const downGlobs =
-          field === 'files'
+        const downGlobs = splitNegations(
+          (field === 'files'
             ? down.config.cache?.outputs.files
-            : down.config.cache?.outputs.workspaceFiles
+            : down.config.cache?.outputs.workspaceFiles) ?? [],
+        ).positive
         ;(down.addsToOutputsOf ??= []).push(up.id)
         ;(up.outputsAddedToBy ??= []).push(...(downGlobs ?? []))
         return

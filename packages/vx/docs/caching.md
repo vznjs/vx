@@ -695,7 +695,9 @@ whatever the glob: `.git` and `.vx` (`OUTPUT_NEVER`). `node_modules` is
 off it too unless a glob names it (`node_modules/**`, an install task's
 legitimate output); until 2026-09-27 (A-13) `**/*.js` cleaned every
 installed `.js`, and a `workspaceFiles` output glob reached even `.git`.
-Workspace outputs take the same rules. Skipped when:
+Workspace outputs take the same rules, and a path an output `!` entry
+takes back (A-44) is off the wipe, the artifact and the restore alike.
+Skipped when:
 
 - `cache.outputs.files` is empty (nothing declared as output).
 - The task's `willWrite` is false — no write axis is enabled (e.g.

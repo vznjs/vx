@@ -511,7 +511,7 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
         if (typeof g !== 'string' || g.length === 0) {
           throw new UserError(`${where}.cache.outputs.files must be an array of non-empty strings`)
         }
-        if (g.startsWith('/')) {
+        if (g.startsWith('/') || g.startsWith('!/')) {
           throw new UserError(
             `${where}.cache.outputs.files: absolute paths are not allowed (got "${g}") — ` +
               `outputs must be project-relative globs`,
@@ -530,14 +530,10 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
               `name the directory the task writes, such as "dist/**"`,
           )
         }
-        if (g.startsWith('!')) {
-          throw new UserError(
-            `${where}.cache.outputs.files: negation is not supported (got "${g}") — ` +
-              `unlike inputs, output globs are never split on '!', so this is read as a literal ` +
-              `path beginning with '!' and matches nothing. List the outputs you DO produce.`,
-          )
-        }
-        const own = ownFileCovered(g, configPath)
+        // A `!` entry takes a path back from the outputs (A-44): it is not
+        // cleaned, saved or restored, and it stays an input.
+        assertNotDoubleNegated(g, `${where}.cache.outputs.files`)
+        const own = g.startsWith('!') ? null : ownFileCovered(g, configPath)
         if (own !== null) {
           throw new UserError(
             `${where}.cache.outputs.files: "${g}" covers the project's own ${own} — vx deletes a ` +
@@ -546,6 +542,7 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
           )
         }
       }
+      assertOutputsNotNegationOnly(outFiles as string[], `${where}.cache.outputs.files`)
       // Same for inputs.files.
       for (const g of (inputs as { files: unknown[] }).files) {
         if (typeof g !== 'string' || g.length === 0) {
@@ -841,7 +838,7 @@ function assertNotDoubleNegated(glob: string, where: string): void {
     `${where}: '!!' is not a double negation (got "${glob}") — it INVERTS the set. ` +
       `One '!' is stripped and the remainder is compiled as a glob, which applies its own ` +
       `leading-'!' negation, so this excludes everything EXCEPT ${JSON.stringify(inner)} and ` +
-      `the task folds only that. Use ${JSON.stringify(`!${inner}`)} to subtract it, or ` +
+      `keeps only that. Use ${JSON.stringify(`!${inner}`)} to subtract it, or ` +
       `${JSON.stringify(inner)} to include it.`,
   )
 }
@@ -976,9 +973,8 @@ function assertNotNegationOnly(globs: readonly string[], where: string): void {
 }
 
 /**
- * `negation: false` for OUTPUT globs — `resolveOutputs` /
- * `resolveWorkspaceOutputs` never split on `!`, so such an entry is read as a
- * literal path starting with `!` and matches nothing.
+ * `negation: false` for OUTPUT globs: a `!` entry takes a path back (A-44),
+ * and a list of only negations selects nothing and is refused.
  */
 function validateWorkspaceGlobs(v: unknown, where: string, negation: boolean): void {
   if (!Array.isArray(v)) {
@@ -1005,16 +1001,23 @@ function validateWorkspaceGlobs(v: unknown, where: string, negation: boolean): v
         `${where}: "${g}" names the workspace root itself and selects nothing — use "**" for everything under it`,
       )
     }
-    if (!negation && g.startsWith('!')) {
-      throw new UserError(
-        `${where}: negation is not supported (got "${g}") — ` +
-          `unlike inputs, output globs are never split on '!', so this is read as a literal ` +
-          `path beginning with '!' and matches nothing. List the outputs you DO produce.`,
-      )
-    }
-    if (negation) assertNotDoubleNegated(g, where)
+    assertNotDoubleNegated(g, where)
   }
   if (negation) assertNotNegationOnly(v as string[], where)
+  else assertOutputsNotNegationOnly(v as string[], where)
+}
+
+/**
+ * An output list of only `!` entries selects nothing: the task saves and
+ * restores nothing while it reads as if it declared outputs (A-44).
+ */
+function assertOutputsNotNegationOnly(globs: readonly string[], where: string): void {
+  if (globs.length === 0 || globs.some((g) => !g.startsWith('!'))) return
+  throw new UserError(
+    `${where}: every entry is a negation, which selects NOTHING (got ${JSON.stringify(globs)}) — ` +
+      `a '!' entry only takes back what a positive glob selected. Add the outputs the task ` +
+      `produces, e.g. ['dist/**', ${JSON.stringify(globs[0])}], or declare [] for none.`,
+  )
 }
 
 const SANDBOX_FIELDS = new Set([

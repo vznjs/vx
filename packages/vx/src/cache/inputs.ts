@@ -25,7 +25,9 @@ import {
   isExecutableMissing,
   isLiteralPattern,
   normalizeGlob,
+  outputMatcher,
   shellArgv,
+  splitNegations,
   slashBraceExpansions,
   taskGlob,
   UserError,
@@ -242,11 +244,10 @@ async function resolveWorkspaceFiles(args: {
   }
   if (positive.length === 0) return []
 
-  const excludeGlobs = [
-    ...ALWAYS_IGNORE,
-    ...asTrees(args.ownWorkspaceOutputs),
-    ...asTrees(negative),
-  ].map(globFor)
+  const excludeGlobs = [...ALWAYS_IGNORE, ...asTrees(negative)].map(globFor)
+  // A path the task's own outputs take back with `!` is no output, so it
+  // stays an input (A-44).
+  const ownOutput = outputMatcher(args.ownWorkspaceOutputs, globFor)
   const positiveGlobs = asTrees(positive).map(globFor)
   // Workspace-wide partition, keyed by the workspace root. Populated
   // up-front by `populateGitFilesCache(..., workspaceWide: true)` when
@@ -276,7 +277,7 @@ async function resolveWorkspaceFiles(args: {
     gitFiles,
     positive,
     positiveGlobs,
-    excludeGlobs,
+    (rel) => excludeGlobs.some((g) => g.match(rel)) || ownOutput(rel),
     undecodable,
   )
   if (memoKey !== undefined) args.memo!.set(memoKey, { snapshot: gitFiles, result })
@@ -288,7 +289,7 @@ async function resolveWorkspaceFilesOver(
   gitFiles: readonly string[],
   positive: readonly string[],
   positiveGlobs: readonly Bun.Glob[],
-  excludeGlobs: readonly Bun.Glob[],
+  excluded: (rel: string) => boolean,
   undecodable: ReadonlySet<string> | undefined,
 ): Promise<string[]> {
   // Second call site of the literal-input guard. `resolveWorkspaceFiles`
@@ -302,7 +303,7 @@ async function resolveWorkspaceFilesOver(
   for (const rel of gitFiles) {
     if (unmatchedLiterals.size > 0) settleLiterals(unmatchedLiterals, rel)
     if (!positiveGlobs.some((g) => g.match(rel))) continue
-    if (excludeGlobs.some((g) => g.match(rel))) continue
+    if (excluded(rel)) continue
     candidates.push(path.resolve(args.workspaceRoot, rel))
   }
   if (unmatchedLiterals.size > 0) {
@@ -510,11 +511,12 @@ export async function resolveOutputs(args: {
   outputs: string[]
   nestedProjectDirs: string[]
 }): Promise<string[]> {
-  if (args.outputs.length === 0) return []
-  const excludeGlobs = outputExcludes(args.outputs)
+  const { positive, negative } = splitNegations(args.outputs)
+  if (positive.length === 0) return []
+  const excludeGlobs = [...outputExcludes(positive), ...asTrees(negative).map(globFor)]
   const scanned = [
     ...(await scanUnion(
-      asTrees(args.outputs),
+      asTrees(positive),
       excludeGlobs,
       args.projectDir,
       inNestedProject(args.projectDir, args.nestedProjectDirs),
@@ -781,10 +783,10 @@ export async function resolveWorkspaceOutputs(args: {
   workspaceRoot: string
   outputs: string[]
 }): Promise<string[]> {
-  if (args.outputs.length === 0) return []
-  const scanned = [
-    ...(await scanUnion(asTrees(args.outputs), outputExcludes(args.outputs), args.workspaceRoot)),
-  ]
+  const { positive, negative } = splitNegations(args.outputs)
+  if (positive.length === 0) return []
+  const excludeGlobs = [...outputExcludes(positive), ...asTrees(negative).map(globFor)]
+  const scanned = [...(await scanUnion(asTrees(positive), excludeGlobs, args.workspaceRoot))]
   // Same containment as the project twin, anchored one level out. These globs
   // deliberately ignore PROJECT boundaries — that is the escape hatch — but
   // escaping the WORKSPACE was never part of it, and `cleanWorkspaceOutputs`
@@ -964,9 +966,10 @@ async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
   if (positive.length === 0) return []
 
   const nested = inNestedProject(args.projectDir, args.nestedProjectDirs)
-  const excludeGlobs = [...ALWAYS_IGNORE, ...asTrees(args.ownOutputs), ...asTrees(negative)].map(
-    globFor,
-  )
+  const excludeGlobs = [...ALWAYS_IGNORE, ...asTrees(negative)].map(globFor)
+  // A path the task's own outputs take back with `!` is no output, so it
+  // stays an input: a tracked file under `dist` the build reads (A-44).
+  const ownOutput = outputMatcher(args.ownOutputs, globFor)
 
   // Defer to git for the file set (Turbo / Nx parity). Nested .gitignore
   // files, .git/info/exclude, and global excludes all participate
@@ -1031,7 +1034,7 @@ async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
       }
     }
     if (!matched) continue
-    if (nested(rel) || excludeGlobs.some((g) => g.match(rel))) continue
+    if (nested(rel) || excludeGlobs.some((g) => g.match(rel)) || ownOutput(rel)) continue
     candidates.push(path.resolve(args.projectDir, rel))
   }
   if (unmatchedLiterals.size > 0) {

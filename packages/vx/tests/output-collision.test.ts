@@ -697,8 +697,8 @@ describe('the path index finds every pair the rule refuses', () => {
     'a?',
     'di\\st',
     '*.js',
-    // A leading `!` negates in `Bun.Glob`; the schema refuses it in an
-    // output, but the rule answers for it, so the index must too.
+    // Leading, `!` makes the entry a negation the graph leaves out (A-44);
+    // deeper, it is a glob character the rule and the index must agree on.
     '!a',
   ]
   it('matches all pairs on 3,000 random configs, both namespaces', () => {
@@ -755,8 +755,12 @@ describe('the path index finds every pair the rule refuses', () => {
   }, 60_000)
 })
 
+// A leading `!` takes a path back (A-44): no place an output lands, so the
+// rule compares the positive entries only.
 const outputsOf = (n: TaskNode, ws: boolean): readonly string[] =>
-  (ws ? n.config.cache?.outputs.workspaceFiles : n.config.cache?.outputs.files) ?? []
+  ((ws ? n.config.cache?.outputs.workspaceFiles : n.config.cache?.outputs.files) ?? []).filter(
+    (g) => !g.startsWith('!'),
+  )
 
 /** Build unordered: the node order (for the reference) and the refusal's head, if any. */
 function graphNodesOrError(projects: Record<string, Record<string, TaskConfig>>): {
