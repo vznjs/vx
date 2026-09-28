@@ -58,7 +58,10 @@ push.
 
 ```yaml
 # .github/workflows/ci.yml
-on: [pull_request, push]
+on:
+  pull_request:
+  push:
+    branches: [main] # a new branch's first push has no `before`
 jobs:
   ci:
     runs-on: ubuntu-latest

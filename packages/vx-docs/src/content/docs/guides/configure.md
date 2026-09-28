@@ -157,7 +157,7 @@ A task sees only the variables you pass it:
 | List                   | The command sees it | The key sees it | Use it for                                          |
 | ---------------------- | ------------------- | --------------- | --------------------------------------------------- |
 | `exec.env.passThrough` | yes                 | no              | secrets and CI flags (`CI`, `GH_TOKEN`); stays on this machine |
-| `cache.inputs.env`     | no, except on a `@vzn/vx-reapi` worker | yes | with `passThrough`: a variable that changes the output |
+| `cache.inputs.env`     | no                  | yes             | with `passThrough`: a variable that changes the output |
 | `exec.env.define`      | yes                 | yes             | a literal value; a remote task gets it too          |
 
 The child always gets a small essential allowlist so normal CLI tools
@@ -228,7 +228,7 @@ export default defineWorkspace({
 | `cacheRetention` | evict at the end of every run: `olderThan` unused, then least recently used past `maxSize`; default none |
 
 For a timeout, the first one set wins: a task's `exec.timeout`, then
-`--timeout <ms>`, then `VX_TASK_TIMEOUT`, then this. It is never in a
+`--timeout <ms>`, then `VX_TASK_TIMEOUT`, then this. Only `exec.timeout` is in the
 cache key. There is no `globalInputs`: import a shared array instead.
 
 ## Lockfiles
