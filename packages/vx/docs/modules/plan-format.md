@@ -57,6 +57,7 @@ Status symbols:
 | `↓`    | `hit-remote` |
 | `▶`    | `miss`       |
 | `·`    | `no-cache`   |
+| `∅`    | `@noop`      |
 | `○`    | `group`      |
 
 The `predicted:` footer prints only when history gave the plan
