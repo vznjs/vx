@@ -45,7 +45,8 @@ to declare in every environment:
 | `OTEL_EXPORTER_OTLP_PROTOCOL`         | vx sends OTLP/HTTP JSON only; under `grpc` a failed export says so                                    |
 
 Each signal ships only to its own URL: the base endpoint's `/v1/<signal>`,
-or its override. Header names are case-insensitive (a signal's own
+or its override. Spans and log records go at most 1 000 to a request
+(~1.2 MiB), so a large run stays under a collector's body limit. Header names are case-insensitive (a signal's own
 `Authorization` replaces the shared `authorization`); a name no header can
 carry (`Authorization: Basic …` written curl-style, with a colon) is not
 sent, and the warning prints neither its name nor its value.
