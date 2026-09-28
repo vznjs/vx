@@ -214,3 +214,9 @@ through a proxy adding 15 ms each way. Files are now gathered across the
 tree and fetched in 64 MiB windows: 0.32 s (min of 5, interleaved A/B
 against main; 885 → 256 ms with no added latency). Row counts one call
 for 40 directories, red (40) without the fix.
+
+F-19. vx-reapi sent every input digest in one FindMissingBlobs: an input
+tree of 70 000 files (a `node_modules`) is a 4.9 MB request, past a
+server's 4 MiB default receive limit, and the task failed
+RESOURCE_EXHAUSTED on every attempt. The list is now split by encoded
+size, the requests sent together. Row red without the fix.

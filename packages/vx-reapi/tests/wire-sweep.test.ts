@@ -186,6 +186,27 @@ describe.if(CHUNKING_SUPPORTED)('capabilities and negotiation', () => {
 })
 
 describe.if(CHUNKING_SUPPORTED)('batches', () => {
+  // F-19: one FindMissingBlobs carried every digest, and 70 000 of them
+  // (4.9 MB) passed a server's 4 MiB receive limit: RESOURCE_EXHAUSTED.
+  it('FindMissingBlobs splits a digest list past one message', async () => {
+    const digests = Array.from({ length: 70_000 }, (_, i) => ({
+      hash: i.toString(16).padStart(64, '0'),
+      size_bytes: 10,
+    }))
+    const stored = fake.put(bytes('here'))
+    let missing: string[] = []
+    const calls = await callsOf(() =>
+      using({}, async (c) => {
+        missing = (await c.findMissingBlobs([...digests, stored])).map((d) => d.hash)
+      }),
+    )
+    expect([calls, missing.length, new Set(missing).has(stored.hash)]).toEqual([
+      ['FindMissingBlobs', 'FindMissingBlobs'],
+      70_000,
+      false,
+    ])
+  })
+
   it('a blob the batch refuses is an error naming it', async () => {
     const data = bytes('refused')
     await using({}, async (c) => {
