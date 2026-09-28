@@ -58,7 +58,10 @@ describe("a reading verb stores a pure config's evaluation", () => {
   it('`vx show` leaves the evaluation in the cache for the next reader', async () => {
     // A pure config has no side effect to count evaluations by, so the row
     // reads the store: the staged load that `show`, `watch` and the picker
-    // share must open it, or every verb re-evaluates every config.
+    // share must open it, or every verb re-evaluates every config. The
+    // cache is there, as any run leaves it: on a workspace that never ran,
+    // a reading verb creates none (item 900, E-38).
+    await mkdir(path.join(root, '.vx', 'cache'), { recursive: true })
     const proc = Bun.spawn([process.execPath, BIN, 'show'], {
       cwd: root,
       stdout: 'pipe',

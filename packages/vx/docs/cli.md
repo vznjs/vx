@@ -1985,9 +1985,8 @@ elsewhere is replayed, explained, reported on and pruned there. Without
 the flag they open the workspace's cache (`defineWorkspace({ cacheDir })`
 or `.vx/cache`). A `--cache-dir` that is not there is refused by name
 (`--cache-dir .vx/cahce: no such directory`). In a workspace that never
-ran, `vx why`, `vx last`, `vx info` and `vx cache prune --dry-run` read
-it as empty and create nothing (item 900); a real `vx cache prune`
-creates an empty `.vx/cache`.
+ran, `vx why`, `vx last`, `vx info`, `vx show` and `vx cache prune`
+(dry or not) read it as empty and create nothing (item 900, E-7, E-38).
 
 ## `vx completions`
 

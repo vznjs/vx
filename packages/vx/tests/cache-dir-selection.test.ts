@@ -146,11 +146,14 @@ describe.skipIf(skipAsRoot('a cache directory this user cannot write into'))(
         const { chmod } = await import('node:fs/promises')
         await chmod(root, 0o555)
         try {
+          const ran = await vx(['run', 'build', '--all'], null)
+          expect(ran.code).toBe(1)
+          expect(ran.err).toMatch(/^vx: cannot create cache directory .*\.vx\/cache \(EACCES: /)
+          expect(ran.err).toContain('--cache-dir <path>')
+          expect(ran.err).not.toContain('\n    at ')
+          // A reading verb needs no cache to exist (E-38): it reads here.
           const shown = await vx(['show'], null)
-          expect(shown.code).toBe(1)
-          expect(shown.err).toMatch(/^vx: cannot create cache directory .*\.vx\/cache \(EACCES: /)
-          expect(shown.err).toContain('--cache-dir <path>')
-          expect(shown.err).not.toContain('\n    at ')
+          expect(`${shown.code}\n${shown.err}`).toBe('0\n')
           const locked = await vx(['lock'], null)
           expect(locked.code).toBe(1)
           expect(locked.err).toMatch(
