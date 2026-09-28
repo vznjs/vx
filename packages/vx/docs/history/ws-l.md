@@ -145,10 +145,12 @@
     token permissions (L-29).
 36. `npm.yml` and `release.yml` grant write scopes per job, only to the
     job that publishes or uploads.
-37. A cache token across a redirect. `nxCache()` and `turboCache()`
-    leave redirects to Bun's fetch, which drops `Authorization` on a
-    cross-origin hop and keeps it on a same-origin one; pinned by
-    `vx-migrate/tests/token-redirect.test.ts`.
+37. Audit 9's redirect probe is now a test:
+    `vx-migrate/tests/token-redirect.test.ts` (a same-origin control
+    keeps the token).
+38. Config-eval Worker resource limits. A config is trusted code
+    (`security.md`), so memory or CPU in its Worker is no boundary;
+    a wedge is audit 30's lead. No bug.
 
 ## Items
 
