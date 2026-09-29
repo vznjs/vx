@@ -415,15 +415,16 @@ async function prepareOutputsForBind(
     const hasWildcard = !isMountableLiteral(g)
     // A grant OUTSIDE the project is the user's own path — never joined
     // onto the project dir, which would create a literal `~` there. Its
-    // directory is still created when the grant is a glob, because then
-    // the static prefix is unambiguously a directory and bwrap cannot
-    // bind one that does not exist: `~/.bun/install/cache/**` on a runner
-    // that has never populated it silently granted nothing, and the task
-    // failed with the tool's own confusing message (`bun build --compile`
-    // reported a network error for an unwritable cache; 2026-09-05).
+    // directory is still created when the grant names one — a glob's
+    // static prefix, or a literal spelled `dir/` — because bwrap cannot
+    // bind a directory that does not exist: `~/.bun/install/cache/**` on a
+    // runner that has never populated it silently granted nothing, and the
+    // task failed with the tool's own confusing message (`bun build
+    // --compile` reported a network error for an unwritable cache;
+    // 2026-09-05). The `dir/` spelling was skipped until 2026-09-29.
     if (path.isAbsolute(g) || g.startsWith('~')) {
-      if (!hasWildcard) continue
-      const abs = expandHome(grantPrefix(g))
+      if (!hasWildcard && !g.endsWith('/')) continue
+      const abs = expandHome(hasWildcard ? grantPrefix(g) : g)
       await mkdir(abs, { recursive: true }).catch(() => undefined)
       continue
     }

@@ -1580,6 +1580,7 @@ but every string in a path list is guaranteed absolute.
 export interface ResolvedSandboxConfig {
   allowRead: readonly string[]
   allowWrite: readonly string[]
+  pendingWrites?: readonly string[]
   network?: true | readonly string[]
   denyNetwork?: readonly string[]
   systemInfo?: readonly string[]
