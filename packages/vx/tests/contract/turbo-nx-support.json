@@ -161,8 +161,8 @@
   },
   {
     "key": "turbo.json tasks.*.with",
-    "status": "not-supported",
-    "reason": "Reported as a key with no vx equivalent, then ignored."
+    "status": "mapped",
+    "reason": "An edge to each persistent sidecar, which vx starts beside the task (ready on spawn); a sidecar that ends is a todo, and a pair naming each other keeps one edge."
   },
   {
     "key": "turbo.json tasks.*.inputs[].from",

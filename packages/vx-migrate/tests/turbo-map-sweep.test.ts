@@ -885,3 +885,51 @@ describe('turbo-map: `!` outputs take paths back (A-44)', () => {
     expect(await outputsOf(['!dist/cache'])).toEqual({ files: [] })
   })
 })
+
+// Turbo's `with` runs sidecars beside a task (`web#dev` with `api#dev`).
+// It was a "no vx equivalent" todo, and `vx run web#dev` started no api.
+describe('turbo-map: `with`', () => {
+  const task = (m: Awaited<ReturnType<typeof map>>, pkg: string, name: string) =>
+    m.projects.find((p) => p.name === pkg)!.tasks.find((t) => t.name === name)!
+  const PKGS = {
+    api: { scripts: { dev: 'serve', build: 'b' } },
+    web: { scripts: { dev: 'next dev' } },
+  }
+
+  it('a persistent sidecar is an edge; one that ends is a todo, not an edge', async () => {
+    const m = await map(
+      {
+        tasks: {
+          build: {},
+          dev: { persistent: true, cache: false },
+          'web#dev': { persistent: true, cache: false, with: ['api#dev', 'api#build', 'nope#dev'] },
+        },
+      },
+      PKGS,
+    )
+    const web = task(m, 'web', 'dev')
+    expect([web.task?.['dependsOn'], web.todos.filter((t) => t.startsWith('with'))]).toEqual([
+      ['api#dev'],
+      [
+        'with "api#build": not a persistent task — run it beside this one by hand',
+        'with "nope#dev": nope declares no dev script — run it beside this one by hand',
+      ],
+    ])
+  })
+
+  it('a pair that names each other is one edge, not a cycle', async () => {
+    const m = await map(
+      {
+        tasks: {
+          'api#dev': { persistent: true, cache: false, with: ['web#dev'] },
+          'web#dev': { persistent: true, cache: false, with: ['api#dev'] },
+        },
+      },
+      PKGS,
+    )
+    expect([
+      task(m, 'api', 'dev').task?.['dependsOn'],
+      task(m, 'web', 'dev').task?.['dependsOn'],
+    ]).toEqual([undefined, ['api#dev']])
+  })
+})

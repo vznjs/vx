@@ -627,3 +627,11 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   CLI would write two configs of one name). A synthesized project takes
   its manifest name only when no package holds it, else its Nx name.
   Row (`nx.test` › a root package named like a member…): red without it.
+- **G-57.** Turbo's task `with` (sidecars Turbo runs beside a task,
+  `web#dev` with `api#dev`) was a "no vx equivalent" todo, so running
+  `web#dev` started no api. Each persistent sidecar is now a `dependsOn`
+  edge: vx starts the task once the sidecar spawns and runs the sidecar
+  only with it. A sidecar that ends is a todo (an edge would wait for
+  it); a pair that names each other keeps one edge. Rows
+  (`turbo-map-sweep` › `with`): red without the mapping or the pair
+  guard. Contract row mapped.

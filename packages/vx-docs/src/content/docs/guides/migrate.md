@@ -72,6 +72,7 @@ npx vx run test --all      # 3 up-to-date
 | `passThroughEnv`                                            | `exec.env.passThrough`                                                   |
 | `cache: false`                                              | no `cache` block: the task always runs                                   |
 | `persistent: true`                                          | `exec.persistent: { … }`                                                 |
+| `with` | `dependsOn` a persistent sidecar, started beside the task |
 | `outputLogs`                                                | `"new-only"` is the default; other values are the run's `--output-logs` |
 | `dotEnv` (Turbo 1), a `.env` input                          | `cache.inputs.runtime`: a probe that prints every `.env` file's name and bytes, because a gitignored `.env` is invisible to a git glob; a root one (`$TURBO_ROOT$/.env`, `globalDotEnv`) is `cache.inputs.workspaceRuntime` |
 | `command` (Turbo 2.11) | `exec.command` (the argv, quoted); `null` or `[]` is no task |

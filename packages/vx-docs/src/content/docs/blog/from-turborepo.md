@@ -73,6 +73,7 @@ already doing.
 | `passThroughEnv`                               | `exec.env.passThrough`                                  |
 | `cache: false`                                 | omit the `cache` block                                  |
 | `persistent: true`                             | `exec.persistent: { readyWhen }`                        |
+| `with` | `dependsOn` a persistent sidecar, started beside the task |
 | `extends`                                      | a package task merges over the root's; `false` alone opts out, `false` + keys runs on those alone |
 | `outputLogs`                                   | no per-task knob: the per-run `--output-logs` flag      |
 | `$TURBO_ROOT$/file`                            | `cache.inputs.workspaceFiles`                           |
