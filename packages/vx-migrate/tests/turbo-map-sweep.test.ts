@@ -951,6 +951,61 @@ describe('turbo-map: `with`', () => {
     ])
   })
 
+  // with-tailwind's `ui` has no `build` script; its `build` depends on
+  // `build:styles` and `build:components`, which Turbo builds before
+  // `web#build` and vx dropped. A node with only `^` edges needs no group:
+  // core's `^task` already walks past a project without the task.
+  it("a no-script task keeps its own package's edges as a group; one with only ^ edges is none", async () => {
+    const m = await map(
+      {
+        tasks: {
+          build: { dependsOn: ['^build'] },
+          'build:css': {},
+          'ui#build': { dependsOn: ['^build', 'build:css'] },
+          'app#check': { dependsOn: ['ui#build'] },
+        },
+      },
+      {
+        ui: { scripts: { 'build:css': 'css' } },
+        cfg: { scripts: {} },
+        app: { scripts: { check: 'c' } },
+      },
+    )
+    expect([
+      task(m, 'ui', 'build').task,
+      m.projects.find((p) => p.name === 'cfg')!.tasks.map((t) => t.name),
+      task(m, 'app', 'check').task?.['dependsOn'],
+    ]).toEqual([{ dependsOn: ['^build', 'build:css'] }, [], ['ui#build']])
+  })
+
+  it('a no-script group whose own edges all drop still exists for the edges that name it', async () => {
+    const m = await map(
+      {
+        tasks: {
+          'build:x': {},
+          'ui#build': { dependsOn: ['build:x'] },
+          'app#check': { dependsOn: ['ui#build'] },
+        },
+      },
+      { ui: { scripts: {} }, app: { scripts: { check: 'c' } } },
+    )
+    expect([task(m, 'ui', 'build').task, task(m, 'app', 'check').task?.['dependsOn']]).toEqual([
+      { dependsOn: [] },
+      ['ui#build'],
+    ])
+  })
+
+  // vx's own examples/turbo: `test` depends on `build`, and `lib` has no
+  // tests. No package reaches `lib#test`, so it is no group (a migration
+  // wrote it as a fourth task).
+  it('a no-script node no other package reaches is no group', async () => {
+    const m = await map(
+      { tasks: { build: { dependsOn: ['^build'] }, test: { dependsOn: ['build'] } } },
+      { lib: { scripts: { build: 'b' } } },
+    )
+    expect(m.projects[0]!.tasks.map((t) => t.name)).toEqual(['build'])
+  })
+
   it('a pair that names each other is one edge, not a cycle', async () => {
     const m = await map(
       {

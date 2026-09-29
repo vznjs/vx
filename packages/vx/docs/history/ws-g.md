@@ -675,3 +675,20 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   through Turbo's no-op node (vx drops them), and `with-changesets`'
   `test` has no script anywhere, which Turbo plans as nothing and vx
   refuses as "no projects declare task(s): test" (core's choice, E).
+- **G-61.** Turbo's no-op node across packages: with-tailwind's `ui` has
+  no `build` script, and its `build` depends on `build:styles` and
+  `build:components`; Turbo builds both before `web#build`, vx built
+  neither (`web`'s `^build` found no `ui#build`, and core's walk past a
+  package without the task skips that package's own edges). A
+  script-less node whose edges name a task of its own package or
+  another, or a persistent `with` sidecar (G-59, now the same rule), is
+  a group task holding all its edges, `^` ones included, so core's walk
+  stops there without losing what lies beyond, when another package's
+  `^name` or `pkg#name` reaches it (a sidecar group, always). One with
+  only `^` edges, or one no other package reaches (vx's own
+  examples/turbo: `lib` has no tests, and a migration wrote `lib#test`
+  as a fourth task), stays none. Within its package a dependant still walks through it
+  (item 939), so a group never waits on itself; one whose edges all
+  drop is `dependsOn: []`, never a dangling edge. The examples sweep
+  (G-60) matches on with-tailwind now. Rows (`turbo-map-sweep` ›
+  `with`): five mutants, each caught.
