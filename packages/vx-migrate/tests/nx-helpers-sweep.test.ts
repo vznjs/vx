@@ -74,6 +74,33 @@ describe('expandNxInputs', () => {
   })
 })
 
+// analogjs's 32 `eslint:lint` tasks each carried the todo for `eslint`, a
+// root devDependency every task's key already holds.
+describe('externalDependencies the root declares', () => {
+  const run = (names: string[], rootDeps: string[]) => {
+    const todos: string[] = []
+    expandNxInputs(
+      [{ externalDependencies: names }],
+      {},
+      { rel: 'packages/a', name: 'a', rootDeps: new Set(rootDeps) },
+      emptyNxInputs(),
+      todos,
+    )
+    return todos
+  }
+  it('are nothing to map; one the root lacks is still a todo', () => {
+    expect([
+      run(['eslint', 'vitest'], ['eslint', 'vitest', 'nx']),
+      run(['eslint', 'react'], ['eslint']),
+    ]).toEqual([
+      [],
+      [
+        'input {externalDependencies: ["eslint","react"]}: vx keys every task on the lockfile (the whole file, or with a @vzn/vx-lockfile plugin the project\'s and the root\'s dependencies) — safe to drop unless only another project installs one',
+      ],
+    ])
+  })
+})
+
 describe('mapNxOutputs', () => {
   const out = (
     outputs: string[],

@@ -161,6 +161,6 @@ Every key `turbo.json`, `nx.json` and `project.json` accept, read from the upstr
 | `{projects, dependencies, input}` | mapped, with a note | Folded through the named projects' inputs (a superset); unknown project names get a TODO. |
 | `{runtime}` | supported | Becomes `cache.inputs.workspaceRuntime`, run at the workspace root as Nx does. |
 | `{env}` | supported | Goes to `cache.inputs.env` and `exec.env.passThrough`. |
-| `{externalDependencies}` | not supported | Dropped with a TODO; vx keys every task on the lockfile already. |
+| `{externalDependencies}` | not supported | Dropped: vx keys every task on the lockfile already. Silent for names the root package.json declares; a TODO names any other. |
 | `{dependentTasksOutputFiles, transitive}` | supported | Nothing to map: vx folds each dependency's cache key (its inputs, transitively) through `dependsOn`, and an output follows from its inputs. |
 | `{json, fields, excludeFields}` | mapped, with a note | The whole file is hashed, a superset of the selected fields. |
