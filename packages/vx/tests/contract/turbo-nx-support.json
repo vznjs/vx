@@ -162,7 +162,7 @@
   {
     "key": "turbo.json tasks.*.with",
     "status": "mapped",
-    "reason": "An edge to each persistent sidecar, which vx starts beside the task (ready on spawn); a sidecar that ends is a todo, and a pair naming each other keeps one edge."
+    "reason": "An edge to each persistent sidecar, which vx starts beside the task (ready on spawn); a sidecar that ends is a todo, and a pair naming each other keeps one edge. A task with no script is a group that starts its persistent sidecars."
   },
   {
     "key": "turbo.json tasks.*.inputs[].from",

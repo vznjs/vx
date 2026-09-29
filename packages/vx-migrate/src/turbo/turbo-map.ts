@@ -642,6 +642,23 @@ export async function mapTurboWorkspace(
     emitted.set(meta.name, set)
     persistentAt.set(meta.name, lasting)
   }
+  // A script-less task whose `with` names a persistent sidecar is a group
+  // that starts it (below), so it is a node other tasks' edges may reach.
+  for (const meta of metas) {
+    const scripts = packageScripts(meta)
+    const { defined, defFor } = definitions(meta)
+    for (const name of defined) {
+      const def = defFor(name)
+      if (scripts[name] !== undefined || commandOverride(def) !== undefined) continue
+      if (!sidecarsOnly(def)) continue
+      const starts = def!.with!.some((e) => {
+        const id = sidecarId(e, meta.name, rootMeta?.name)
+        const at = id.indexOf('#')
+        return persistentAt.get(id.slice(0, at))?.has(id.slice(at + 1)) === true
+      })
+      if (starts) emitted.get(meta.name)!.add(name)
+    }
+  }
   const emittedAnywhere = new Set<string>()
   for (const set of emitted.values()) for (const name of set) emittedAnywhere.add(name)
 
@@ -667,6 +684,36 @@ export async function mapTurboWorkspace(
       const override = commandOverride(defFor(name))
       if (override === null) continue
       const script = scripts[name]
+      if (override === undefined && script === undefined && own.has(name)) {
+        // No script, but `with` names sidecars: Turbo's no-op node starts
+        // them (its with-tailwind example's `ui#dev` runs `dev:styles` and
+        // `dev:components`). A group task depending on them does the same.
+        const t = buildTask(
+          name,
+          defFor(name)!,
+          '',
+          own,
+          defFor,
+          emitted,
+          emittedAnywhere,
+          globals,
+          opts,
+          relPosix(root, meta.dir),
+          rootDotenv,
+          rootMeta?.name,
+          { name: meta.name, persistentAt, withOf },
+        )
+        const deps = t.task?.['dependsOn']
+        if (Array.isArray(deps) && deps.length > 0) {
+          tasks.push({
+            name,
+            todos: t.todos.filter((x) => x !== opts.persistentTodo),
+            task: { dependsOn: deps },
+            uses: new Set(),
+          })
+        }
+        continue
+      }
       if (override === undefined && !usableScript(script)) {
         // The turbo task exists and so does the script KEY, but its value
         // can't become a command. Report it instead of emitting
@@ -731,6 +778,11 @@ function uniq(values: readonly unknown[]): unknown[] {
     out.push(v)
   }
   return out
+}
+
+/** A task Turbo defines only to start sidecars: a non-empty `with`. */
+function sidecarsOnly(def: TurboTask | undefined): boolean {
+  return Array.isArray(def?.with) && def.with.length > 0
 }
 
 /** A `with` entry as `pkg#task`: bare is the task's own package, `//#` the root. */
