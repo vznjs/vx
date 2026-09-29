@@ -25,6 +25,8 @@ describe('scopedMandatoryDenies', () => {
     file('a/b/c/.bashrc')
     file('deep/x/y/.bashrc')
     file('p[1]/.bashrc')
+    file('.git/hooks/pre-commit')
+    file('v/.vscode')
   })
   afterAll(() => rmSync(root, { recursive: true, force: true }))
 
@@ -37,6 +39,16 @@ describe('scopedMandatoryDenies', () => {
   it('stops at rg depth 3 from the root, and at a grant below it', () => {
     expect(scopedMandatoryDenies(root, [path.join(root, 'deep/x/y')])).toEqual([])
     expect(scopedMandatoryDenies(root, [path.join(root, 'a/b')])).toEqual([])
+    expect(scopedMandatoryDenies(root, [path.join(root, 'a/b/c/.bashrc')])).toEqual([])
+  })
+
+  // Reachable within depth 3 only at the root, where SRT's own list has
+  // it too, so the parity rows cannot see these; the scan still must.
+  it('denies the root .git/hooks, and takes a file named like a directory for none', () => {
+    expect([
+      scopedMandatoryDenies(root, [path.join(root, '.git')]),
+      scopedMandatoryDenies(root, [path.join(root, 'v')]),
+    ]).toEqual([[path.join(root, '.git/hooks')], []])
   })
 
   it('reads nothing outside the root', () => {
