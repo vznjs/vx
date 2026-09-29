@@ -327,6 +327,43 @@ describe('turbo()', () => {
   )
 })
 
+// Turbo's transit node (its with-vitest example): no script anywhere,
+// `transit: ^transit`, and `test` depends on it, so a dependency's edit
+// re-runs a dependant's `test`. Dropped, the key missed it: a stale hit.
+describe('a transit node', () => {
+  it(
+    "keys a dependant's task on its dependencies' sources",
+    async () => {
+      await writeFile(
+        path.join(root, 'turbo.json'),
+        JSON.stringify({
+          tasks: {
+            transit: { dependsOn: ['^transit'] },
+            test: { dependsOn: ['transit'], inputs: ['src/**'] },
+          },
+        }),
+      )
+      await writeFile(
+        path.join(root, 'packages', 'app', 'package.json'),
+        JSON.stringify({
+          name: 'app',
+          dependencies: { lib: 'workspace:*' },
+          scripts: { test: 'echo t' },
+        }),
+      )
+      Bun.spawnSync({ cmd: ['git', 'add', '-A'], cwd: root })
+      const key = async () => {
+        const plan = await planRun({ cwd: root, tasks: ['app#test'], log: silent() })
+        return plan.tasks.find((t) => t.node.id === 'app#test')!.hash
+      }
+      const before = await key()
+      await writeFile(path.join(root, 'packages', 'lib', 'src', 'index.js'), '// edited\n')
+      expect(await key()).not.toBe(before)
+    },
+    TIMEOUT,
+  )
+})
+
 describe('root tasks (D-39)', () => {
   const setUp = async (rootConfig: boolean, name: string | null = 'ws') => {
     await writeFile(

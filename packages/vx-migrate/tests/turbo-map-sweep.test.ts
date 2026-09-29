@@ -1059,3 +1059,34 @@ describe('turbo-map: a single-package repo', () => {
     ])
   })
 })
+
+describe('turbo-map: a transit node', () => {
+  it('is a key-only task in each package; a ^self task some package runs, or none depends on, is not one', async () => {
+    const m = await map(
+      {
+        tasks: {
+          transit: { dependsOn: ['^transit'] },
+          build: { dependsOn: ['^build'] },
+          lone: { dependsOn: ['^lone'] },
+          test: { dependsOn: ['transit', 'build'] },
+        },
+      },
+      { lib: { scripts: { build: 'b' } }, cfg: { scripts: { test: 't' } } },
+    )
+    const names = (pkg: string) =>
+      m.projects
+        .find((p) => p.name === pkg)!
+        .tasks.map((t) => t.name)
+        .sort()
+    const transit = m.projects
+      .find((p) => p.name === 'cfg')!
+      .tasks.find((t) => t.name === 'transit')!
+    expect([
+      names('lib'),
+      names('cfg'),
+      (transit.task!['exec'] as { command: string }).command,
+      transit.task?.['dependsOn'],
+      transit.task?.['cache'] !== undefined,
+    ]).toEqual([['build', 'transit'], ['test', 'transit'], 'true', ['^transit'], true])
+  })
+})
