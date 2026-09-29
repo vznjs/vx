@@ -737,3 +737,13 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   ngrx 58 and analog 88 tasks, no diff. Lead: vercel/ai's 68 builds
   output `**/dist/**` and run uncached; caching them needs a core clean
   that skips tracked files and `node_modules`.
+- **G-65.** typescript-eslint (2369384, Nx 23.2): `vx run typecheck`
+  was refused by core. The root project caches `{projectRoot}/dist`
+  (the workspace's `dist`) and each package's typecheck
+  `{workspaceRoot}/dist/packages/<name>`; G-63's pass compared
+  workspace outputs only, so the nesting reached core. A project's own
+  outputs now take part at their workspace path (own against own in one
+  project stays `resolveSharedOutputs`', which reads the edges), and vx
+  plans all 37 of Nx's typecheck tasks. `build` 18/18, `test` 47/47,
+  `lint` 36/36 matched before the fix. Row (`nx-map-sweep` › a project's
+  own output takes part at its workspace path): red without it.

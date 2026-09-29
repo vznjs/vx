@@ -858,7 +858,7 @@ export async function mapTurboWorkspace(
     projects.push({ name: meta.name, dir: meta.dir, tasks })
   }
 
-  resolveSharedWorkspaceOutputs(projects)
+  resolveSharedWorkspaceOutputs(root, projects)
   pruneOrphanPersistentNotes(projects, opts.persistentTodo)
   return { projects, notes, globals }
 }

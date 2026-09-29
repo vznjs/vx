@@ -21,6 +21,7 @@
 // file exists to prevent (item 445).
 
 import { outputsOverlap, type GeneratedTask } from '@vzn/vx'
+import { relPosix } from './paths.js'
 
 // Core refuses an output glob that covers the project's own package.json
 // or vx.config (config-schema's `ownFileCovered`): vx cleans outputs before
@@ -162,30 +163,57 @@ export function resolveSharedOutputs(tasks: GeneratedTask[]): GeneratedTask[] {
  * `post-install` writes `../../node_modules/@prisma/client/**` from every
  * package that has the script, one workspace path, and core refused the
  * whole run over the first pair (two projects' outputs on one path with
- * no edge between them). Keepers are the first in project and task order;
+ * no edge between them). A project's own outputs take part at their
+ * workspace path: typescript-eslint's root project caches `dist` and every
+ * package's typecheck `dist/packages/<name>`, and core refused the run
+ * over the nesting. Keepers are the first in project and task order;
  * every later task on a kept path runs uncached, with a todo. Edges are
  * not read: across projects they are the package graph's, which the
  * mapping does not hold, so an ordered pair loses its cache too.
  */
 export function resolveSharedWorkspaceOutputs(
-  projects: readonly { readonly name: string; readonly tasks: GeneratedTask[] }[],
+  root: string,
+  projects: readonly {
+    readonly name: string
+    readonly dir: string
+    readonly tasks: GeneratedTask[]
+  }[],
 ): void {
-  const kept: { id: string; files: string[] }[] = []
+  const positive = (v: unknown): string[] =>
+    Array.isArray(v)
+      ? v.filter((f): f is string => typeof f === 'string' && !f.startsWith('!'))
+      : []
+  const kept: { id: string; project: string; ws: string[]; own: string[] }[] = []
   for (const p of projects) {
+    const rel = relPosix(root, p.dir)
     for (const t of p.tasks) {
-      const cache = t.task?.['cache'] as { outputs?: { workspaceFiles?: unknown } } | undefined
-      const ws = cache?.outputs?.workspaceFiles
-      if (!Array.isArray(ws)) continue
-      const files = ws.filter((f): f is string => typeof f === 'string' && !f.startsWith('!'))
-      if (files.length === 0) continue
-      const clash = kept.find((k) =>
-        k.files.some((ga) => files.some((gb) => outputsOverlap(ga, gb))),
+      const cache = t.task?.['cache'] as
+        | { outputs?: { files?: unknown; workspaceFiles?: unknown } }
+        | undefined
+      const ws = positive(cache?.outputs?.workspaceFiles)
+      const own = positive(cache?.outputs?.files).map((g) =>
+        rel === '' ? g.replace(/^(\.\/)+/, '') : `${rel}/${g.replace(/^(\.\/)+/, '')}`,
       )
+      if (ws.length === 0 && own.length === 0) continue
+      // Two own outputs of one project are resolveSharedOutputs', which
+      // reads the edges that order them.
+      const overlap = (a: string[], b: string[]): string | undefined =>
+        a.find((g) => b.some((h) => outputsOverlap(h, g)))
+      let clash: (typeof kept)[number] | undefined
+      let shared: string | undefined
+      for (const k of kept) {
+        shared =
+          overlap(ws, [...k.ws, ...k.own]) ??
+          overlap(own, k.project === p.name ? k.ws : [...k.ws, ...k.own])
+        if (shared !== undefined) {
+          clash = k
+          break
+        }
+      }
       if (clash === undefined) {
-        kept.push({ id: `${p.name}#${t.name}`, files })
+        kept.push({ id: `${p.name}#${t.name}`, project: p.name, ws, own })
         continue
       }
-      const shared = files.find((gb) => clash.files.some((ga) => outputsOverlap(ga, gb)))!
       delete t.task!['cache']
       t.todos.push(
         `declares the workspace output ${JSON.stringify(shared)} that ${clash.id} also declares — ` +
