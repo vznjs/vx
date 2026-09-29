@@ -30,7 +30,7 @@ it), so a workspace that declares nothing runs and caches here.
 
 - `hasHook(plugins, hook)` — the zero-cost gate: does any plugin
   declare the stage.
-- `applyConfigHooks` / `applyProjectHooks` / `applyGraphHooks` /
+- `applyConfigHooks` / `applyDiscoverHooks` / `applyProjectHooks` / `applyGraphHooks` /
   `applyKeyHooks` / `applyScheduleHooks` — the pipeline stages, run in
   declaration order only when some plugin declares them.
 - `fingerprintClaims(plugins)` → claimed file → its one claimant (the

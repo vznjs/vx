@@ -19,7 +19,7 @@ local cache sit at the tail of every executor list and cache chain, so a
 workspace with no `vx.workspace.ts` runs and caches, and a plugin that
 declines a task hands it back to this machine.
 
-Pipeline stages a plugin can fill, in order: `config` → `project` →
+Pipeline stages a plugin can fill, in order: `config` → `discover` → `project` →
 `graph` → `key` → `fingerprint` → `schedule` → `admit` → `executor` /
 `cache` → `telemetry`, with `setup` / `teardown` around the run, plus
 `commands` (CLI verbs). Design: `docs/design/pipeline-2026-09.md`.

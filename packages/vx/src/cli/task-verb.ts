@@ -5,9 +5,9 @@
 // name would change meaning the day a plugin declares that verb.
 
 import { nxProjectTarget } from '../orchestrator/index.js'
-import { findWorkspaceRoot, listProjects, loadWorkspace } from '../workspace/index.js'
+import { findWorkspaceRoot, loadWorkspace } from '../workspace/index.js'
 import { findCwdProject } from './select.js'
-import { loadCliProjects } from './workspace-config.js'
+import { discoverCliProjects, loadCliProjects } from './workspace-config.js'
 
 /** The `vx run` a task typed as a verb means, or null when no project declares it. */
 export async function taskVerbHint(
@@ -64,9 +64,14 @@ async function workspaceProjects(
 ): Promise<Awaited<ReturnType<typeof loadCliProjects>> | null> {
   try {
     const root = await findWorkspaceRoot(cwd)
-    return await loadCliProjects(root, await listProjects(await loadWorkspace(root)), 'all', {
-      noCreate: true,
-    })
+    return await loadCliProjects(
+      root,
+      await discoverCliProjects(await loadWorkspace(root)),
+      'all',
+      {
+        noCreate: true,
+      },
+    )
   } catch {
     // No workspace, or a config that does not load: the caller's plain line stands.
     return null

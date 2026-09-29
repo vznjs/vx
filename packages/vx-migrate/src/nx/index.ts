@@ -62,10 +62,12 @@ export function nx(options: NxPluginOptions = {}): VxPlugin {
     (ctx) => mapAll(options.root ?? ctx.workspaceRoot, ctx.cacheDir, ctx.projects, options),
     // At the workspace root only, as `turbo()` claims its file.
     options.root === undefined ? ['nx.json'] : [],
-    async (workspace, ctx) => {
-      if (workspace.concurrency !== undefined) return
-      const parallel = await nxParallel(options.root ?? ctx.workspaceRoot)
-      if (parallel !== undefined) workspace.concurrency = parallel
+    {
+      async config(workspace, ctx) {
+        if (workspace.concurrency !== undefined) return
+        const parallel = await nxParallel(options.root ?? ctx.workspaceRoot)
+        if (parallel !== undefined) workspace.concurrency = parallel
+      },
     },
   )
 }

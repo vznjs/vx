@@ -33,6 +33,7 @@ in pipeline order:
 | Stage       | Hook                                 | Runs                                      | Can change                                                                                    |
 | ----------- | ------------------------------------ | ----------------------------------------- | --------------------------------------------------------------------------------------------- |
 | workspace   | `config(ws, ctx)`                    | once, before discovery                    | the workspace config (concurrency, cacheDir, …)                                               |
+| discover    | `discover(ctx)`                      | once, after core's discovery              | which directories are projects (added only)                                                   |
 | project     | `project(config, meta, ctx)`         | once per loaded project                   | the project's tasks (add, remove, edit)                                                       |
 | graph       | `graph(nodes, ctx)`                  | once, after the task graph                | edges, `requested`                                                                            |
 | key         | `key(task, ctx)`                     | once per task, at hash                    | extra key material (folded, never replaces)                                                   |

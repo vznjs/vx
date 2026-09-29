@@ -216,7 +216,7 @@ every commit. The schema may still change; what 1.0 will promise is in
 | Surface                                            | Maturity             |
 | -------------------------------------------------- | -------------------- |
 | Core task runner + caching                         | **production-ready** |
-| Plugin pipeline (13 hooks, `commands` included)    | **shippable**        |
+| Plugin pipeline (14 hooks, `commands` included)    | **shippable**        |
 | `vx init` / `@vzn/vx-migrate` (scripts; Turbo, Nx) | **shippable**        |
 | First-party plugins (table above)                  | **shippable**        |
 

@@ -56,6 +56,7 @@ export interface Plugin {
   /** The package name — set by `definePlugin`, never by the plugin. */
   readonly name: string
   config?(workspace: unknown, ctx: unknown): unknown
+  discover?(ctx: unknown): unknown
   project?(config: unknown, ctx: unknown): unknown
   graph?(nodes: unknown, ctx: unknown): unknown
   key?(task: unknown, ctx: unknown): unknown
@@ -80,6 +81,7 @@ export interface Plugin {
  */
 export const PLUGIN_HOOKS = [
   'config',
+  'discover',
   'project',
   'graph',
   'key',

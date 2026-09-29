@@ -19,11 +19,13 @@ import type {
   FingerprintContext,
   GraphHookContext,
   KeyHookContext,
+  NamedProject,
   ProjectHookContext,
   ScheduleHookContext,
   VxPlugin,
   WorkspaceHookContext,
 } from './plugin.js'
+import type { ProjectMeta } from '../workspace/index.js'
 
 /** `a string`, `an array`, `null`, `a number` — for a refusal that names what came back. */
 function describeValue(v: unknown): string {
@@ -97,7 +99,7 @@ async function safe<T>(plugin: VxPlugin, hook: string, fn: () => T | Promise<T>)
 
 export function hasHook(
   plugins: readonly VxPlugin[],
-  hook: 'config' | 'project' | 'graph' | 'key' | 'schedule' | 'admit',
+  hook: 'config' | 'discover' | 'project' | 'graph' | 'key' | 'schedule' | 'admit',
 ): boolean {
   for (const p of plugins) if (p[hook] !== undefined) return true
   return false
@@ -115,6 +117,32 @@ export async function applyConfigHooks(
     if (plugin.config === undefined) continue
     await safe(plugin, 'config', () => plugin.config!(workspace, ctx))
     afterEach?.(plugin)
+  }
+}
+
+/**
+ * `discover` stage: each plugin names directories to add to `projects`,
+ * seeing the ones earlier plugins added. `add` turns one name into a meta
+ * (null: already there) or refuses it.
+ */
+export async function applyDiscoverHooks(
+  plugins: readonly VxPlugin[],
+  projects: ProjectMeta[],
+  ctx: WorkspaceHookContext,
+  add: (named: NamedProject, plugin: VxPlugin) => Promise<ProjectMeta | null>,
+): Promise<void> {
+  for (const plugin of plugins) {
+    if (plugin.discover === undefined) continue
+    const named = await safe(plugin, 'discover', () => plugin.discover!({ ...ctx, projects }))
+    if (!Array.isArray(named)) {
+      throw new UserError(
+        `plugin '${plugin.name}' failed in discover: expected an array, got ${describeValue(named)}`,
+      )
+    }
+    for (const n of named as readonly NamedProject[]) {
+      const meta = await add(n, plugin)
+      if (meta !== null) projects.push(meta)
+    }
   }
 }
 

@@ -64,7 +64,8 @@ asks for that with `exec.sandbox`.
 ### 5. Doing all that without becoming the platform
 
 Core is a pipeline with a hook at every stage — `config` (the
-workspace config every verb sees), `project` (a project's tasks),
+workspace config every verb sees), `discover` (projects beyond the
+package manager's members), `project` (a project's tasks),
 `graph` (the edges), `key` (extra key material), `fingerprint` (a
 lockfile claimed and keyed per project), `schedule` (which ready task
 runs first), `admit` (whether it runs now), `executor` (where one

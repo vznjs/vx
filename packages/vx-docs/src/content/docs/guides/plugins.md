@@ -45,6 +45,7 @@ runs and is stored on this machine.
 | Stage       | Hook                   | Decides                                                   |
 | ----------- | ---------------------- | --------------------------------------------------------- |
 | config      | `config(ws, ctx)`      | the workspace config, before it is used                   |
+| discover | `discover(ctx)` | which directories are projects beyond the members |
 | project     | `project(config, ctx)` | a project's tasks: add, remove, rewrite                   |
 | graph       | `graph(nodes, ctx)`    | the run's edges                                           |
 | key         | `key(task, ctx)`       | extra cache-key material, named in `vx why`               |
@@ -64,6 +65,7 @@ import type { VxPlugin } from '@vzn/vx'
 interface VxPlugin {
   readonly name: string // your package's name: definePlugin reads it
   config?(workspace, ctx): void
+  discover?(ctx): { dir; name }[] // directories to make projects
   project?(config, ctx): void
   graph?(nodes, ctx): void
   key?(task, ctx): Record<string, string>

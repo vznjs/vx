@@ -387,6 +387,16 @@ export function defineWorkspace<T extends WorkspaceConfig>(
 ): T
 ```
 
+## `DiscoverContext`
+
+type · `src/orchestrator/plugin.ts`
+
+```ts
+export interface DiscoverContext extends WorkspaceHookContext {
+  readonly projects: readonly ProjectMeta[]
+}
+```
+
 ## `escapeMarkdownCell`
 
 function · `src/orchestrator/run-report.ts`
@@ -1091,6 +1101,17 @@ export interface MigrationPlan {
 }
 ```
 
+## `NamedProject`
+
+type · `src/orchestrator/plugin.ts`
+
+```ts
+export interface NamedProject {
+  readonly dir: string
+  readonly name: string
+}
+```
+
 ## `normalizeGlob`
 
 function · `src/util/paths.ts`
@@ -1294,6 +1315,7 @@ pin below refuses a list that drifts from `Plugin`'s keys either way.
 ```ts
 export const PLUGIN_HOOKS = [
   'config',
+  'discover',
   'project',
   'graph',
   'key',
@@ -2223,6 +2245,7 @@ outside the list.
 export interface VxPlugin {
   readonly name: string
   config?(workspace: WorkspaceConfig, ctx: WorkspaceHookContext): void | Promise<void>
+  discover?(ctx: DiscoverContext): readonly NamedProject[] | Promise<readonly NamedProject[]>
   project?(config: ProjectConfig, ctx: ProjectHookContext): void | Promise<void>
   graph?(nodes: Map<string, TaskNode>, ctx: GraphHookContext): void | Promise<void>
   key?(

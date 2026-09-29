@@ -4,6 +4,7 @@
 export { run, planRun, nxProjectTarget } from './run.js'
 export { prepareRun, type PreparedRun } from './prepare.js'
 export {
+  discoverProjects,
   loadProjects,
   loadResolvedProjects,
   loadWorkspacePlugins,
@@ -70,6 +71,8 @@ export {
   type ScheduleHookContext,
   type AdmitContext,
   type WorkspaceHookContext,
+  type DiscoverContext,
+  type NamedProject,
   type InstallPluginsArgs,
   type Plugin,
   type PluginContext,

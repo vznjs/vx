@@ -12,7 +12,7 @@ import {
   type ProjectMeta,
   quoteTsLiteral as quote,
 } from '@vzn/vx'
-import { mapTurboWorkspace, turboConfigFile, type TurboGlobal } from './turbo/turbo-map.js'
+import { mapTurboWorkspace, rootTaskProject, type TurboGlobal } from './turbo/turbo-map.js'
 import { relPosix } from './paths.js'
 
 /** The preset takes the configs' extension: plain arrays either way. */
@@ -60,34 +60,20 @@ export async function migrateTurbo(
 /**
  * The workspace root as a project when turbo.json declares `//#` tasks and
  * no glob lists the root: the `vx.config.ts` written there is what makes
- * core read it as one (D-39). The live plugin can only name the fix; the
- * files this writes are the fix. Five of eleven real Turbo repos had root
+ * core read it as one (D-39), as `turbo()`'s `discover` hook does live.
+ * Five of eleven real Turbo repos had root
  * tasks, and 36 edges to them were dropped (G-49).
  */
 async function withRootProject(
   root: string,
   metas: readonly ProjectMeta[],
 ): Promise<readonly ProjectMeta[]> {
-  const file = await turboConfigFile(root)
-  if (file === null) return metas
-  let turbo: { tasks?: unknown; pipeline?: unknown } | null
-  let pkg: { name?: unknown } | null
-  try {
-    turbo = Bun.JSONC.parse(await Bun.file(file).text()) as typeof turbo
-    pkg = (await Bun.file(path.join(root, 'package.json')).json()) as typeof pkg
-  } catch {
-    return metas // the mapping refuses a malformed turbo.json, naming it
-  }
-  const tasks = turbo?.tasks ?? turbo?.pipeline
-  const hasRootTask =
-    typeof tasks === 'object' &&
-    tasks !== null &&
-    Object.keys(tasks).some((k) => k.startsWith('//#'))
-  if (!hasRootTask || typeof pkg?.name !== 'string' || pkg.name === '') return metas
+  const named = await rootTaskProject(root)
   // A root the globs list already is a project of this name; a package
   // that took the name leaves the root none to take.
-  if (metas.some((m) => m.name === pkg.name)) return metas
-  return [...metas, { name: pkg.name, dir: root, packageJson: pkg as never, configPath: null }]
+  if (named === null || metas.some((m) => m.name === named.name)) return metas
+  const packageJson = (await Bun.file(path.join(root, 'package.json')).json()) as never
+  return [...metas, { ...named, packageJson, configPath: null }]
 }
 
 function presetImportLines(

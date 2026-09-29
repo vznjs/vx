@@ -24,7 +24,6 @@ import {
   computeWorkspaceFingerprint,
   findWorkspaceRoot,
   type LoadReads,
-  listProjects,
   loadProjectConfig,
   loadWorkspace,
   lockfilePath,
@@ -33,7 +32,7 @@ import {
 } from '../workspace/index.js'
 import { flakyTasks, type FlakyTask } from './failure-mode.js'
 import type { VxPlugin } from './plugin.js'
-import { loadProjects, loadWorkspacePlugins } from './projects.js'
+import { discoverProjects, loadProjects, loadWorkspacePlugins } from './projects.js'
 
 const warnToStderr = (message: string): void => {
   process.stderr.write(`${message}\n`)
@@ -114,8 +113,8 @@ export async function collectInfo(cwd: string, opts: CollectInfoOptions = {}): P
   const warn = opts.warn ?? warnToStderr
   const reads: LoadReads = new Map()
   const root = await findWorkspaceRoot(cwd, reads)
-  const metas = await listProjects(await loadWorkspace(root, reads))
   const { workspaceConfig, plugins } = await loadWorkspacePlugins(root, warn)
+  const metas = await discoverProjects(await loadWorkspace(root, reads), plugins, warn)
   const cacheDir =
     opts.cacheDir === undefined
       ? resolveCacheDir(root, workspaceConfig)

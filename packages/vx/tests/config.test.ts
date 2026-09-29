@@ -206,6 +206,7 @@ describe('the plugin vocabulary config.ts owns', () => {
     // whatever the constant happens to say.
     expect([...PLUGIN_HOOKS]).toEqual([
       'config',
+      'discover',
       'project',
       'graph',
       'key',
@@ -227,6 +228,7 @@ describe('the plugin vocabulary config.ts owns', () => {
     // object, and admitting either would reject a legal plugin.
     expect([...PLUGIN_FUNCTION_HOOKS]).toEqual([
       'config',
+      'discover',
       'project',
       'graph',
       'key',
