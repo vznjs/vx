@@ -3,6 +3,18 @@
 Empirical overhead numbers vs. Turborepo and Nx on synthetic workspaces.
 Updated as the runners evolve.
 
+Every harness (`compare.ts`, `run.ts`, `ab.ts`, `real/turbo-repo.sh`,
+`real/nx-repo.sh`) runs vx from a `vx lock` snapshot (`--frozen`), the
+lock taken once per workspace before the timed reps, as CI runs vx
+(2026-09-29). A section dated before that ran vx without a lock,
+evaluating every config per run, except rows marked `(frozen)`; the
+2026-09-03 stress run measured both, and its frozen row is now the
+headline `vx`. The harness never re-locks: a config edited after the
+lock is re-locked by running `vx lock` again, and `vx lock --check` is
+what fails loudly on a stale lock (a `--frozen` run trusts it, owner
+2026-06-13, `docs/design/config-lock-2026-06.md`); only a project the
+lock lacks fails the frozen run itself.
+
 ## Warm-run overhead (2026-09-02)
 
 The number that matters most to a developer is the warm no-op run: every
@@ -137,7 +149,9 @@ repairs it, which the release workflow now does on a macOS runner.
 workspace copy per arm, warmed by that arm, rounds that run every arm
 once in a rotated order, min and median per arm, and an A/A arm (the
 same vx twice) as the noise floor. An arm is a compiled binary or a
-checkout; the runs see git's defaults and no `BUN_OPTIONS`.
+checkout; the runs see git's defaults and no `BUN_OPTIONS`. A `run` is
+timed `--frozen`: each arm runs `vx lock` in its own copy with its own
+vx once, before the warm-up.
 
 ```bash
 bun packages/vx-bench/ab.ts 15 base=/tmp/vx-old@/tmp/w1 main=/tmp/vx-new@/tmp/w2 \
@@ -303,17 +317,20 @@ The shape that actually stresses a task runner: **100 dependency layers**,
 task nodes**, 1,090 packages. Same repo, same hardware, same task commands;
 every runner pinned to concurrency 10. `bun packages/vx-bench/compare.ts 100 11 1`,
 this machine (macOS arm64, 10 cores), Turbo 2.10.12, Nx 23.2.0.
+vx runs from a `vx lock` snapshot (`--frozen`), taken once before the reps,
+as a CI pipeline runs it; _vx, no lock_ is the same run evaluating every
+config per run.
 The committed `packages/vx-bench/RESULTS.md` / `packages/vx-bench/results.json` are this run.
 
-|                                 | vx                                                         | Turborepo     | Nx                |
-| ------------------------------- | ---------------------------------------------------------- | ------------- | ----------------- |
-| **Cold** (nothing cached)       | **3m 46s**                                                 | 5m 13s (1.4×) | 34m 44s (9.2×)    |
-| **Warm**, nothing to rebuild    | **510ms**                                                  | 760ms (1.5×)  | 3.59s (7.0×)      |
-| **Warm**, restore outputs       | **777ms**                                                  | 1.17s (1.5×)  | 4.15s (5.3×)      |
-| **CPU burned**, cold (user+sys) | **34.61s**                                                 | 1m 13s (2.1×) | 114m 06s (197.8×) |
-| **CPU burned**, warm (user+sys) | **1.34s**                                                  | 4.40s (3.3×)  | 5.54s (4.1×)      |
-| _Baseline_ (theoretical best)   | 3m 38s cold; 0 warm, restore, CPU                          | —             | —                 |
-| _Measured floors_ (context)     | git walk 67ms · walk + raw copy 352ms · task shells 33.15s | —             | —                 |
+|                                 | vx                                                         | vx, no lock | Turborepo     | Nx                |
+| ------------------------------- | ---------------------------------------------------------- | ----------- | ------------- | ----------------- |
+| **Cold** (nothing cached)       | **3m 47s**                                                 | 3m 46s      | 5m 13s (1.4×) | 34m 44s (9.2×)    |
+| **Warm**, nothing to rebuild    | **476ms**                                                  | 510ms       | 760ms (1.6×)  | 3.59s (7.6×)      |
+| **Warm**, restore outputs       | **743ms**                                                  | 777ms       | 1.17s (1.6×)  | 4.15s (5.6×)      |
+| **CPU burned**, cold (user+sys) | **34.33s**                                                 | 34.61s      | 1m 13s (2.1×) | 114m 06s (199.4×) |
+| **CPU burned**, warm (user+sys) | **1.33s**                                                  | 1.34s       | 4.40s (3.3×)  | 5.54s (4.2×)      |
+| _Baseline_ (theoretical best)   | 3m 38s cold; 0 warm, restore, CPU                          | —           | —             | —                 |
+| _Measured floors_ (context)     | git walk 67ms · walk + raw copy 352ms · task shells 33.15s | —           | —             | —                 |
 
 **Baseline** is the theoretical best case, so each row shows its overhead:
 cold is the tasks' own durations list-scheduled on 10 workers along the
@@ -321,7 +338,8 @@ exact dependency graph (critical path 1m 40s, total work ÷
 workers 3m 38s); a cached run, a restore and the CPU a
 runner burns are 0 in theory, so every measured number in those rows is
 the runner. vx's cold overhead over the ideal schedule is
-8.45s on 3,270 tasks (8 ms per package); Turborepo's is
+8.53s on 3,270 tasks (8 ms per package), 8.45s
+with no lock; Turborepo's is
 1m 35s (88 ms per package) and Nx's 31m 06s
 (1,712 ms per package) — the number to read first, in one unit for every
 runner: a runner that adds seconds to a three-minute build is a
@@ -354,7 +372,8 @@ above — `layers` × `perLayer` packages, ~30 deps each, three tasks
 (`build` + `installDeps` + `test`) with the **identical** shell command,
 `src/**` inputs, and `dist/**` outputs for every runner — then runs vx,
 Turbo, and Nx across three cache states. Fairness is deliberate: vx runs
-as the **compiled binary** real users install (not TS source); the
+as the **compiled binary** real users install (not TS source), from a
+`vx lock` taken once before the reps (`--frozen`, as CI runs it); the
 workspace is git-committed with `node_modules`/`.turbo`/`.nx` ignored;
 **every runner is pinned to the same concurrency**; and runners are
 measured **strictly one at a time**, daemons stopped between them, so they
@@ -381,9 +400,11 @@ the head-to-head table above (2026-09-03); an earlier run of that shape
 used to sit here with a different verdict on the warm row, and one page
 carrying both was a contradiction, so it is gone.
 
-**`vx lock` + `--frozen`** is measured as its own row: it executes the
-frozen `vx-lock.json` graph with **zero per-run config evaluation**. Read
-the row as a tie, not a win: since the config-evaluation cache
+**`vx lock` + `--frozen`** is the headline `vx` row (since 2026-09-29;
+before, it was its own `vx (frozen)` row): it executes the frozen
+`vx-lock.json` graph with **zero per-run config evaluation**, and
+`vx (no lock)` keeps the per-run evaluation's cost in view. Read the
+difference as a tie, not a win: since the config-evaluation cache
 (2026-09-02) the plain warm run evaluates nothing either for a config
 the purity gate can prove pure, and it serves the same validated object
 from `cache.db` without re-validating it, while `--frozen` parses the

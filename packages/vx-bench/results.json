@@ -11,22 +11,22 @@
     {
       "runner": "vx",
       "version": "vx 0.0.0",
-      "fresh": 226449.850167,
-      "warmNoRestore": 510.339375,
-      "warmRestore": 777.221041,
-      "freshCpu": 34610.353,
-      "warmNoRestoreCpu": 1344.296,
-      "warmRestoreCpu": 2295.619
-    },
-    {
-      "runner": "vx (frozen)",
-      "version": "vx 0.0.0",
       "fresh": 226531.17025,
       "warmNoRestore": 475.573041,
       "warmRestore": 743.375292,
       "freshCpu": 34328.297,
       "warmNoRestoreCpu": 1334.781,
       "warmRestoreCpu": 2413.367
+    },
+    {
+      "runner": "vx (no lock)",
+      "version": "vx 0.0.0",
+      "fresh": 226449.850167,
+      "warmNoRestore": 510.339375,
+      "warmRestore": 777.221041,
+      "freshCpu": 34610.353,
+      "warmNoRestoreCpu": 1344.296,
+      "warmRestoreCpu": 2295.619
     },
     {
       "runner": "turbo",

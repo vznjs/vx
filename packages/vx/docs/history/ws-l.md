@@ -382,6 +382,23 @@
   which may write. Both are now `contents: read` (checkout is all they
   need; vx-github writes the job summary, which takes no token). Law:
   every workflow declares a top-level `permissions:`, red on the two.
+- L-30. `perf(vx-bench)` (owner: "in all our benches are we using vx
+  lock? we should"): `compare.ts`, `run.ts`, `ab.ts`, `real/turbo-repo.sh`
+  and `real/nx-repo.sh` run vx `--frozen` from a `vx lock` taken once per
+  workspace before the timed reps; a failed lock ends the bench.
+  compare's frozen arm is the headline `vx`, `vx (no lock)` beside it.
+  No bench re-run: the committed 2026-09-03 run measured both, so its
+  rows were relabelled (numbers unchanged; the site's cached run reads
+  476 ms, was 510; benchmarks.md's stress table keeps a _vx, no lock_
+  column, and the honest-benchmarks post's pins read that row, as the
+  post predates the lock); real-repo rows are marked as run without a
+  lock.
+  `turbo()` and `nx()` lock and run frozen (their tasks, no vx.config,
+  map live). A `--frozen` run does not fail on an edited config (owner
+  2026-06-13: runs trust the lock, `vx lock --check` audits); it fails
+  on a project the lock lacks. Rows: `turbo.test.ts` / `nx.test.ts` ›
+  "… under vx lock and --frozen" (the turbo row red when the missing-
+  entry refusal returns `{}`), `ab.test.ts` › `frozenArgs`.
 
 ## Leads for other streams
 

@@ -78,13 +78,17 @@ ms() { date +%s%N; }
 # cold arm's log with it): a cold arm that failed under one log per tool
 # was overwritten by the restore arm before anyone read it (n8n,
 # 2026-09-11 — two OOM kills, found in dmesg instead).
-run_vx() { "$VX" run $TASKS "${vx_scope[@]}" $VX_ARGS > ".vx-bench-vx-$1.log" 2>&1; echo $?; }
+run_vx() { "$VX" run $TASKS "${vx_scope[@]}" --frozen $VX_ARGS > ".vx-bench-vx-$1.log" 2>&1; echo $?; }
 run_turbo() { node_modules/.bin/turbo run $TASKS "${turbo_scope[@]}" $TURBO_ARGS --no-daemon > ".vx-bench-turbo-$1.log" 2>&1; echo $?; }
 time_arm() {
   local t0 t1 code
   t0=$(ms); code=$(run_"$1" "$2"); t1=$(ms)
   echo "$1 $2 $(( (t1 - t0) / 1000000 )) ms exit=$code"
 }
+# vx runs from a `vx lock` snapshot (`--frozen`), as CI would, taken once
+# here before any arm; a config edited after it is re-locked by running
+# this script again, never inside a rep. A lock that fails ends the bench.
+"$VX" lock || exit 1
 # SKIP_ARMS=n resumes a rep at its n-th arm (of the eight: four per tool,
 # vx first): every arm's precondition is on disk (the caches persist
 # between arms), so a driver that lost a process mid-rep restarts at the

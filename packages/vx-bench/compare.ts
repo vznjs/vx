@@ -32,8 +32,10 @@
  *
  * Every runner runs as it would in CI (`CI=1`, so Nx's daemon is off;
  * Turbo uses none for `turbo run`), telemetry/cloud disabled;
- * vx runs as its compiled binary (the artifact users install), plus a
- * `vx (frozen)` variant from a `vx lock` snapshot (zero config eval).
+ * vx runs as its compiled binary (the artifact users install) from a
+ * `vx lock` snapshot (`--frozen`, no per-run config eval), taken once before
+ * the reps; `vx (no lock)` evaluates every config per run, so the cost of
+ * config eval stays visible.
  */
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
@@ -336,24 +338,25 @@ async function buildRunners(dir: string): Promise<Runner[]> {
     : [process.execPath, path.join(vxRoot, 'packages', 'vx', 'src', 'bin.ts')]
   const vxVer = (await sh([...vxRun, '--version'], dir)).out.trim()
   const conc = ['--concurrency', String(CONCURRENCY)]
+  const clearVx = () => rm(path.join(dir, '.vx'), { recursive: true, force: true })
+  const suffix = compiled.ok ? '' : ' (ts-source)'
+  // The headline vx row runs from a lock taken once here, before any rep:
+  // the CI fast path, no config evaluation per run. A failed lock is a bug
+  // to see, never a silent fall back to the unfrozen row.
+  const locked = await sh([...vxRun, 'lock'], dir)
+  if (!locked.ok) throw new Error(`vx lock failed:\n${locked.out}`)
   runners.push({
-    name: compiled.ok ? 'vx' : 'vx (ts-source)',
+    name: `vx${suffix}`,
+    version: vxVer || 'workspace',
+    run: [...vxRun, 'run', 'build', 'test', '--all', ...conc, '--frozen'],
+    clear: clearVx,
+  })
+  runners.push({
+    name: `vx (no lock)${suffix}`,
     version: vxVer || 'workspace',
     run: [...vxRun, 'run', 'build', 'test', '--all', ...conc],
-    clear: () => rm(path.join(dir, '.vx'), { recursive: true, force: true }),
+    clear: clearVx,
   })
-
-  // vx (frozen): freeze the resolved config graph into vx-lock.json once,
-  // then run from it (no per-run config evaluation — the CI fast path).
-  const locked = await sh([...vxRun, 'lock'], dir)
-  if (compiled.ok && locked.ok) {
-    runners.push({
-      name: 'vx (frozen)',
-      version: vxVer || 'workspace',
-      run: [...vxRun, 'run', 'build', 'test', '--all', ...conc, '--frozen'],
-      clear: () => rm(path.join(dir, '.vx'), { recursive: true, force: true }),
-    })
-  }
 
   // turbo + nx — installed into the generated workspace.
   const bin = (t: string) => path.join(dir, 'node_modules', '.bin', t)
@@ -468,6 +471,7 @@ function markdown(rows: Row[], baseline: Baseline): string {
 - **Tasks:** \`build\` = \`${BUILD_CMD}\`; \`test\` = \`${TEST_CMD}\`; \`installDeps\` = \`${INSTALL_CMD}\` — identical across all runners.
 - **Concurrency:** ${CONCURRENCY} (pinned identically for every runner).
 - **Measured:** whole-repo \`build\`+\`test\`, median of ${REPS}, one runner at a time, wall-clock of the CLI invocation.
+- **vx:** runs from a \`vx lock\` snapshot (\`--frozen\`), taken once before the reps; \`vx (no lock)\` evaluates every config on every run.
 - **Host:** ${os.type()} ${os.release()} · ${os.cpus().length} cores · ${process.platform}/${process.arch}
 - **Date:** ${new Date().toISOString().slice(0, 10)}
 
@@ -699,7 +703,7 @@ for (const r of runners) {
   }
 }
 
-const ORDER = ['vx', 'vx (frozen)', 'turbo', 'nx']
+const ORDER = ['vx', 'vx (no lock)', 'turbo', 'nx']
 rows.sort((a, b) => ORDER.indexOf(a.runner) - ORDER.indexOf(b.runner))
 console.error('measuring the baseline (ideal schedule, one git walk, a raw copy) …')
 const baseline = await measureBaseline(ws)

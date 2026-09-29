@@ -21,7 +21,8 @@ These are reproducible on your own machine, not marketing figures:
   package) is how each grows with the codebase.
 
 - **vx alone** — `bun packages/vx-bench/run.ts [projects]` measures vx across
-  fresh / warm-no-restore / warm-restore. A 100-project workspace
+  fresh / warm-no-restore / warm-restore, from a `vx lock` snapshot
+  (`--frozen`), as every vx bench runs it. A 100-project workspace
   replays fully-cached in **74 ms** whole-process (1,000 projects in
   172 ms), and a restore costs about the same as an untouched tree;
   the current floors are in [Benchmarks](../../benchmarks/).

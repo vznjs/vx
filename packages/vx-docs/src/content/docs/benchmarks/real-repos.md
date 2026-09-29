@@ -9,6 +9,11 @@ Each repo runs its own build under vx and under the tool it ships with,
 on the same machine and the same tasks; medians of interleaved reps. vx
 first, theirs second; **bold** marks the other tool winning.
 
+Every row below ran vx without a lock, evaluating every config per run.
+The harness (`packages/vx-bench/real/`) now takes a `vx lock` once per
+repo and runs vx `--frozen`, as CI does; a row re-measured that way
+will say so.
+
 | Repo                                                                | Against       | Cold build            | Restore outputs     | Nothing to do          | Setup                                                                                                     | Measured                                                                                   |
 | ------------------------------------------------------------------- | ------------- | --------------------- | ------------------- | ---------------------- | --------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
 | [solidjs/solid](https://github.com/solidjs/solid)                   | Turbo 2.10.10 | 40.6 s / 45.5 s       | 66 ms / 127 ms      | 51 ms / 95 ms          | `turbo()`, nothing written                                                                                | [2026-09-10](../#a-real-turbo-repo-solidjssolid-2026-09-10)                                |

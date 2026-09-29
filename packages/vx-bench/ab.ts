@@ -14,6 +14,9 @@
  * (`node_modules/@vzn/vx-migrate`) to the arm's checkout. The runs see git's
  * defaults: this container's global config (`core.checkStat=minimal`) makes
  * vx re-hash every input (A-6), which is the config, not the arm.
+ * A `run` is timed from a `vx lock` snapshot (`--frozen`): each arm locks
+ * its own workspace with its own vx once, before the warm-up, as CI would.
+ * Re-locking after a config edit is the caller's, never a rep's.
  * Prints each arm's min and median, then every sample as one JSON line.
  */
 import { statSync } from 'node:fs'
@@ -53,6 +56,11 @@ export function failure(label: string, code: number, stdout: string, stderr: str
   return [`${label} exited ${code}`, tail(stdout), tail(stderr)].filter((s) => s !== '').join('\n')
 }
 
+/** The timed args: a `run` runs frozen, from the lock each arm took before the reps. */
+export function frozenArgs(args: readonly string[]): string[] {
+  return args[0] === 'run' && !args.includes('--frozen') ? [...args, '--frozen'] : [...args]
+}
+
 function command(vx: string): string[] {
   return statSync(vx).isDirectory()
     ? [process.execPath, path.join(vx, 'packages/vx/src/bin.ts')]
@@ -87,7 +95,8 @@ if (import.meta.main) {
     throw new Error('usage: ab.ts <rounds> <label>=<vx>@<workspace>... -- <vx args>')
   }
   const arms = argv.slice(1, dash).map(parseArm)
-  const args = argv.slice(dash + 1)
+  const args = frozenArgs(argv.slice(dash + 1))
+  if (args[0] === 'run') for (const arm of arms) await time(arm, ['lock'])
   // Warmed by its own arm: a cold key (an arm's first run on a copy) is not
   // the warm path, and the second run proves the hits.
   for (const arm of arms) for (let i = 0; i < 2; i++) await time(arm, args)

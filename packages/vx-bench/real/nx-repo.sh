@@ -76,13 +76,17 @@ wipe_outputs() {
 wipe_nx_cache() { rm -rf .nx/cache .nx/workspace-data node_modules/.cache/nx; }
 wipe_vx_cache() { rm -rf .vx; }
 ms() { date +%s%N; }
-run_vx() { "$VX" run $TASKS "${vx_scope[@]}" $VX_ARGS > ".vx-bench-vx-$1.log" 2>&1; echo $?; }
+run_vx() { "$VX" run $TASKS "${vx_scope[@]}" --frozen $VX_ARGS > ".vx-bench-vx-$1.log" 2>&1; echo $?; }
 run_nx() { node_modules/.bin/nx run-many -t $TASKS "${nx_scope[@]}" $NX_ARGS > ".vx-bench-nx-$1.log" 2>&1; echo $?; }
 time_arm() {
   local t0 t1 code
   t0=$(ms); code=$(run_"$1" "$2"); t1=$(ms)
   echo "$1 $2 $(( (t1 - t0) / 1000000 )) ms exit=$code"
 }
+# vx runs from a `vx lock` snapshot (`--frozen`), as CI would, taken once
+# here before any arm; a config edited after it is re-locked by running
+# this script again, never inside a rep. A lock that fails ends the bench.
+"$VX" lock || exit 1
 SKIP_ARMS=${SKIP_ARMS:-0}
 arm_index=0
 arm() { # tool name pre-steps...

@@ -20,9 +20,9 @@
 
 | 1,090 packages, 3,270 tasks      | vx         | Turborepo  | Nx       |
 | -------------------------------- | ---------- | ---------- | -------- |
-| Cold build: time the runner adds | **8 s**    | 1 min 35 s | 31 min   |
-| Cold build: CPU burned           | **35 s**   | 1 min 13 s | 114 min  |
-| Fully cached run                 | **510 ms** | 760 ms     | 3.59 s   |
+| Cold build: time the runner adds | **9 s**    | 1 min 35 s | 31 min   |
+| Cold build: CPU burned           | **34 s**   | 1 min 13 s | 114 min  |
+| Fully cached run                 | **476 ms** | 760 ms     | 3.59 s   |
 | Overhead per package             | **8 ms**   | 88 ms      | 1,712 ms |
 
 Time added is the wall time over the tasks' own ideal schedule (3 min 38 s).
@@ -165,7 +165,9 @@ the tool it ships with, same machine and tasks per row, medians.
 | [TanStack/router](https://github.com/TanStack/router)               | Nx      | 123.0 s / 138.0 s     | 1.27 s / 3.82 s     | 626 ms / 3.91 s        |
 | [refinedev/refine](https://github.com/refinedev/refine)             | Nx      | 96.2 s / 105.9 s      | 1.06 s / 1.19 s     | 303 ms / 1.16 s        |
 
-vx first, theirs second; **bold** marks the other tool winning. How each
+vx first, theirs second; **bold** marks the other tool winning. These
+rows ran vx without a lock (every config evaluated per run); the harness
+now runs it from a `vx lock` snapshot (`--frozen`). How each
 repo was run, versions, dates and why a tool wins where it does:
 [vx on real Turbo and Nx repos](https://vznjs.github.io/vx/benchmarks/real-repos/).
 

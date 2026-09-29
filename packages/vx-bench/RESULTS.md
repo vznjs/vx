@@ -6,16 +6,17 @@
 - **Tasks:** `build` = `sleep 1 && mkdir -p dist && touch dist/index.js`; `test` = `sleep 1`; `installDeps` = `true` — identical across all runners.
 - **Concurrency:** 10 (pinned identically for every runner).
 - **Measured:** whole-repo `build`+`test`, median of 1, one runner at a time, wall-clock of the CLI invocation.
+- **vx:** runs from a `vx lock` snapshot (`--frozen`), taken once before the reps; `vx (no lock)` evaluates every config on every run. This run measured both; the rows were relabelled on 2026-09-29, when the frozen row became the headline, and their numbers are unchanged.
 - **Host:** Darwin 27.0.0 · 10 cores · darwin/arm64
 - **Date:** 2026-09-03
 
 | Runner           | Version  | Fresh (cold)      | Warm (no restore) | Warm (restore)   | CPU, cold           | CPU, warm        |
 | ---------------- | -------- | ----------------- | ----------------- | ---------------- | ------------------- | ---------------- |
 | baseline (ideal) | —        | 3m 38s            | 67 ms             | 352 ms           | 33.15 s             | 91 ms            |
-| vx               | vx 0.0.0 | 3m 46s            | 510 ms            | 777 ms           | 34.61 s             | 1.34 s           |
-| vx (frozen)      | vx 0.0.0 | 3m 47s (1.0× vx)  | 476 ms (0.9× vx)  | 743 ms (1.0× vx) | 34.33 s (1.0× vx)   | 1.33 s (1.0× vx) |
-| turbo            | 2.10.12  | 5m 13s (1.4× vx)  | 760 ms (1.5× vx)  | 1.17 s (1.5× vx) | 1m 13s (2.1× vx)    | 4.40 s (3.3× vx) |
-| nx               | 23.2.0   | 34m 44s (9.2× vx) | 3.59 s (7.0× vx)  | 4.15 s (5.3× vx) | 114m 6s (197.8× vx) | 5.54 s (4.1× vx) |
+| vx               | vx 0.0.0 | 3m 47s            | 476 ms            | 743 ms           | 34.33 s             | 1.33 s           |
+| vx (no lock)     | vx 0.0.0 | 3m 46s (1.0× vx)  | 510 ms (1.1× vx)  | 777 ms (1.0× vx) | 34.61 s (1.0× vx)   | 1.34 s (1.0× vx) |
+| turbo            | 2.10.12  | 5m 13s (1.4× vx)  | 760 ms (1.6× vx)  | 1.17 s (1.6× vx) | 1m 13s (2.1× vx)    | 4.40 s (3.3× vx) |
+| nx               | 23.2.0   | 34m 44s (9.2× vx) | 3.59 s (7.6× vx)  | 4.15 s (5.6× vx) | 114m 6s (199.4× vx) | 5.54 s (4.2× vx) |
 
 **Cache states.** _Fresh_ clears the runner's cache and runs cold (key
 derivation + execution + save). _Warm, no restore_ re-runs with the cache

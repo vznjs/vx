@@ -1345,3 +1345,40 @@ describe('nx(): the graph snapshot, keyed and not', () => {
     TIMEOUT,
   )
 })
+
+// Every bench arm runs vx from a lock, real Nx repos too: nx()'s tasks are
+// no vx.config, so the lock records none and a frozen run maps the graph live.
+describe('nx() under vx lock and --frozen', () => {
+  const vx = (...args: string[]) => {
+    const p = Bun.spawnSync({
+      cmd: [
+        process.execPath,
+        path.resolve(import.meta.dir, '..', '..', 'vx', 'src', 'bin.ts'),
+        ...args,
+      ],
+      cwd: root,
+      env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1' },
+    })
+    return { code: p.exitCode, out: p.stdout.toString(), err: p.stderr.toString() }
+  }
+
+  it(
+    'locks, runs frozen, and hits on the second frozen run',
+    async () => {
+      expect(vx('lock')).toEqual({
+        code: 0,
+        out: 'vx: locked 0 project configs → vx-lock.json (2 projects have no vx.config; their tasks are never frozen)\n',
+        err: '',
+      })
+      const first = vx('run', 'build', '--all', '--frozen')
+      expect({ code: first.code, err: first.err }).toEqual({ code: 0, err: '' })
+      expect(await Bun.file(path.join(root, 'packages', 'lib', 'dist', 'lib.js')).text()).toBe(
+        'lib v1',
+      )
+      const second = vx('run', 'build', '--all', '--frozen')
+      expect({ code: second.code, err: second.err }).toEqual({ code: 0, err: '' })
+      expect(second.out).toContain('2 tasks · all cached')
+    },
+    TIMEOUT,
+  )
+})
