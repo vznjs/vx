@@ -85,7 +85,9 @@ describe.skipIf(!available || process.platform !== 'linux')('a port bridge’s s
     expect(existsSync(sock)).toBe(true)
     expect((await running).exitCode).toBe(0)
     expect(sockets(port)).toEqual(before)
-  })
+    // The file's first sandboxed run: SRT's start and the probe ride on the
+    // task's own second, past bun's 5 s default on a loaded gate (B-43).
+  }, 20_000)
 
   it('is removed by an exit while the task runs', async () => {
     // In a child: `exit` runs every hook a process holds, SRT's `reset()`
