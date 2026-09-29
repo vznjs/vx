@@ -89,7 +89,7 @@ describe('a task that rewrites its own input', () => {
 
       await runTask('format')
       expect(status.filter((l) => MOVED.test(l))).toEqual([
-        '[vx] app#format: `packages/app/a.ts` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it',
+        '[vx] app#format: `packages/app/a.ts` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task writes it, declare it in cache.outputs',
       ])
       gitIn(root)('checkout', '--', 'packages/app/a.ts')
       const again = await runTask('format')
@@ -126,7 +126,7 @@ describe('a task that rewrites its own input', () => {
       commit()
       await runTask('format')
       expect(status.filter((l) => MOVED.test(l))).toEqual([
-        '[vx] app#format: `packages/app/a.ts` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it',
+        '[vx] app#format: `packages/app/a.ts` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task writes it, declare it in cache.outputs',
       ])
       expect(statusOf(await runTask('format'), 'app#format')).toBe('success')
     },
@@ -155,7 +155,7 @@ describe('the other moves', () => {
       commit()
       await runTask('build')
       expect(status.filter((l) => MOVED.test(l))).toEqual([
-        '[vx] app#build: `packages/app/in/b.txt` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it',
+        '[vx] app#build: `packages/app/in/b.txt` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task writes it, declare it in cache.outputs',
       ])
       gitIn(root)('checkout', '--', 'packages/app/in/b.txt')
       await rm(path.join(app, 'dist'), { recursive: true, force: true })
@@ -312,7 +312,7 @@ describe('an input the user edits during the run', () => {
       await writeFile(path.join(app, 'go'), '')
       await pending
       expect(status.filter((l) => MOVED.test(l))).toEqual([
-        '[vx] app#build: `packages/app/src/a.ts` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it',
+        '[vx] app#build: `packages/app/src/a.ts` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task writes it, declare it in cache.outputs',
       ])
 
       gitIn(root)('checkout', '--', 'packages/app/src/a.ts')
@@ -356,7 +356,7 @@ describe('an input the user edits during the run', () => {
       await writeFile(path.join(app, 'done'), '')
       await pending
       expect(status.filter((l) => MOVED.test(l))).toEqual([
-        '[vx] app#build: `packages/app/src/a.ts` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it',
+        '[vx] app#build: `packages/app/src/a.ts` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task writes it, declare it in cache.outputs',
       ])
       await rm(path.join(app, 'dist'), { recursive: true, force: true })
       for (const f of ['started', 'go', 'built', 'done']) await writeFile(path.join(app, f), '')
@@ -413,7 +413,7 @@ describe('an input the user edits during the run', () => {
       await writeFile(path.join(lib, 'go'), '')
       await pending
       expect(status.filter((l) => MOVED.test(l))).toEqual([
-        '[vx] app#build: `packages/app/src/a.ts` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it',
+        '[vx] app#build: `packages/app/src/a.ts` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task writes it, declare it in cache.outputs',
       ])
 
       gitIn(root)('checkout', '--', 'packages/app/src/a.ts')
