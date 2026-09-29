@@ -621,3 +621,9 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   an edit under a named project re-exports. Rows (`nx.test` › a project
   no glob lists…, red without the hook; `discover-stage.test` › a
   nameless package.json…).
+- **G-56.** A root `package.json` named like a member: the Nx mapper
+  synthesized the root project under the member's name, and the root's
+  tasks replaced the member's (planned nothing for `lint`; the migrate
+  CLI would write two configs of one name). A synthesized project takes
+  its manifest name only when no package holds it, else its Nx name.
+  Row (`nx.test` › a root package named like a member…): red without it.

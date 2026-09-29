@@ -405,6 +405,24 @@ describe('nx()', () => {
     TIMEOUT,
   )
 
+  // A root package.json named after a member: the synthesized root project
+  // took the member's name, and its tasks replaced the member's.
+  it(
+    "a root package named like a member leaves the member's tasks alone",
+    async () => {
+      await writeFile(
+        path.join(root, 'package.json'),
+        JSON.stringify({ name: 'lib', private: true }),
+      )
+      const log = silent()
+      const plan = await planRun({ cwd: root, tasks: ['lint'], log })
+      expect(plan.tasks.map((t) => t.node.id)).toEqual(['lib#lint'])
+      expect(plan.tasks[0]!.node.config.exec?.command).toBe('echo lint-ran > lint.log')
+      expect(log.lines.join('\n')).toContain('Nx project(s) ws have no workspace package')
+    },
+    TIMEOUT,
+  )
+
   it(
     'graph: <file> reads an exported graph and never runs nx',
     async () => {
