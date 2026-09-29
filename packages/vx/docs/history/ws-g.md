@@ -720,3 +720,20 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   workspace outputs), so both take the same pass. Rows
   (`turbo-map-sweep`, `nx-map-sweep`, `moon.test` › a workspace output
   two projects declare): each red without its line.
+- **G-64.** A same-project target glob matched every target name in the
+  workspace. TanStack/router (41ebd28) names `test:e2e--*` in
+  `targetDefaults`, and a project without, say, `test:e2e--vite-ssr` got
+  that name, which then split at the colon into project `test`: one
+  dropped-edge todo per aggregator and mode (128–139 per mode). Such a
+  glob now keeps only its own project's targets, as Nx does, and vx
+  plans all 279 of Nx's `test:e2e` tasks. Row (`nx-helpers-sweep` › a
+  target glob): red without the filter. More probes, recorded here:
+  plan parity unocss 91/91, react-notion-x 40/40, vercel/ai 425/425,
+  payload 235/235, all exact; n8n 893/894 (Turbo runs an opted-out
+  build as a no-op's dependency; not replicated). vx-lockfile's
+  per-project keys on real lockfiles: pnpm (dub: only `dub-cli#build`
+  moved), npm (connect-es: only web-bench's two tasks), yarn berry
+  (cal.com: 4 of 114 workspace digests). nx() cacheability against Nx's:
+  ngrx 58 and analog 88 tasks, no diff. Lead: vercel/ai's 68 builds
+  output `**/dist/**` and run uncached; caching them needs a core clean
+  that skips tracked files and `node_modules`.

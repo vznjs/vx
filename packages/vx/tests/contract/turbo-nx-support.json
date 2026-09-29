@@ -607,7 +607,7 @@
   {
     "key": "project.json targets.*.dependsOn",
     "status": "mapped",
-    "reason": "`project:target` becomes `pkg#target`; project patterns and tags resolved; a target glob (`test:e2e--*`) expands over the workspace's target names, as Nx 19.5+ does; `params: forward` gets a TODO."
+    "reason": "`project:target` becomes `pkg#target`; project patterns and tags resolved; a target glob (`test:e2e--*`) expands over the workspace's target names, as Nx 19.5+ does, a same-project one over its own; `params: forward` gets a TODO."
   },
   {
     "key": "project.json targets.*.command",

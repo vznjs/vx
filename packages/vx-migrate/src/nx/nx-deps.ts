@@ -64,6 +64,7 @@ function expandTargetGlobs(
   entries: readonly unknown[],
   targetNames: readonly string[],
   isProject: (name: string) => boolean,
+  ownTarget: (name: string) => boolean,
 ): unknown[] {
   const expand = (pattern: string): string[] => {
     const glob = new Bun.Glob(pattern)
@@ -81,7 +82,10 @@ function expandTargetGlobs(
       if (head !== '' && isProject(head)) {
         return fresh(expand(d.slice(colon + 1)).map((t) => `${head}:${t}`))
       }
-      return fresh(expand(d))
+      // A same-project glob keeps only this project's targets: a match
+      // another project declares (`test:e2e--webkit`) read as project
+      // `test` and drew a dropped-edge todo per aggregator (TanStack/router).
+      return fresh(expand(d).filter(ownTarget))
     }
     if (d && typeof d === 'object') {
       const t = (d as Record<string, unknown>).target
@@ -103,7 +107,7 @@ export function mapNxDeps(
   matchProjects: (patterns: readonly string[]) => string[] = (ps) => [...ps],
   targetNames: readonly string[] = [],
 ): string[] {
-  const entries = expandTargetGlobs(raw, targetNames, (p) => metaByNode.has(p))
+  const entries = expandTargetGlobs(raw, targetNames, (p) => metaByNode.has(p), ownTarget)
   const deps: string[] = []
   for (const d of entries) {
     if (typeof d === 'string') {
