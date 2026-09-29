@@ -623,6 +623,9 @@ export async function mapTurboWorkspace(
   const emitted = new Map<string, Set<string>>()
   // Which of those are persistent: a `with` sidecar maps only onto one.
   const persistentAt = new Map<string, Set<string>>()
+  // The tasks with a command: a same-package edge walks through the rest
+  // (item 939), groups included, so a group never waits on itself.
+  const runnable = new Map<string, Set<string>>()
   // Each task's `with` targets as `pkg#task`, to keep one edge of a pair.
   const withOf = new Map<string, readonly string[]>()
   for (const meta of metas) {
@@ -644,23 +647,57 @@ export async function mapTurboWorkspace(
       }
     }
     emitted.set(meta.name, set)
+    runnable.set(meta.name, new Set(set))
     persistentAt.set(meta.name, lasting)
   }
-  // A script-less task whose `with` names a persistent sidecar is a group
-  // that starts it (below), so it is a node other tasks' edges may reach.
+  // Which script-less nodes another package's edge can reach: `^name`
+  // anywhere, or `pkg#name` for that package's.
+  const caretNames = new Set<string>()
+  const crossIds = new Set<string>()
+  for (const meta of metas) {
+    const { defined, defFor } = definitions(meta)
+    for (const name of defined) {
+      for (const d of defFor(name)?.dependsOn ?? []) {
+        if (d.startsWith('^')) caretNames.add(d.slice(1))
+        else if (d.includes('#'))
+          crossIds.add(
+            d.startsWith(`${ROOT}#`) ? `${rootMeta?.name ?? ROOT}${d.slice(ROOT.length)}` : d,
+          )
+      }
+    }
+  }
+  // A script-less task is Turbo's no-op node, and it keeps its edges. Its
+  // `^` edges need nothing (core's `^task` walks past a project without the
+  // task to the nearest one with it); an edge to a task of its own package
+  // or another (with-tailwind's `ui#build` → `build:styles`) is lost when
+  // another package reaches the node, and a persistent `with` sidecar
+  // whenever the node is run: such a node is a group task (below). One no
+  // other package reaches stays none (a `test: [build]` in a package with
+  // no tests adds nothing Turbo's `^` would not).
   for (const meta of metas) {
     const scripts = packageScripts(meta)
+    const own = runnable.get(meta.name)!
     const { defined, defFor } = definitions(meta)
     for (const name of defined) {
       const def = defFor(name)
       if (scripts[name] !== undefined || commandOverride(def) !== undefined) continue
-      if (!sidecarsOnly(def)) continue
-      const starts = def!.with!.some((e) => {
-        const id = sidecarId(e, meta.name, rootMeta?.name)
+      const runs = (id: string, of: ReadonlyMap<string, ReadonlySet<string>>): boolean => {
         const at = id.indexOf('#')
-        return persistentAt.get(id.slice(0, at))?.has(id.slice(at + 1)) === true
+        return of.get(id.slice(0, at))?.has(id.slice(at + 1)) === true
+      }
+      const sidecar = (def?.with ?? []).some((e) =>
+        runs(sidecarId(e, meta.name, rootMeta?.name), persistentAt),
+      )
+      const local = (def?.dependsOn ?? []).some((d) => {
+        if (envDependency(d) !== null || d.includes('$TURBO_ROOT$')) return false
+        if (!d.includes('#')) return d !== name && (own.has(d) || defined.has(d))
+        return runs(
+          d.startsWith(`${ROOT}#`) ? `${rootMeta?.name ?? ROOT}${d.slice(ROOT.length)}` : d,
+          emitted,
+        )
       })
-      if (starts) emitted.get(meta.name)!.add(name)
+      const reached = caretNames.has(name) || crossIds.has(`${meta.name}#${name}`)
+      if (sidecar || (local && reached)) emitted.get(meta.name)!.add(name)
     }
   }
   const emittedAnywhere = new Set<string>()
@@ -681,17 +718,18 @@ export async function mapTurboWorkspace(
   const projects: TurboMappedProject[] = []
   for (const meta of metas) {
     const scripts = packageScripts(meta)
-    const own = emitted.get(meta.name)!
+    const own = runnable.get(meta.name)!
     const { defined, defFor } = definitions(meta)
     const tasks: TurboMappedTask[] = []
     for (const name of defined) {
       const override = commandOverride(defFor(name))
       if (override === null) continue
       const script = scripts[name]
-      if (override === undefined && script === undefined && own.has(name)) {
-        // No script, but `with` names sidecars: Turbo's no-op node starts
-        // them (its with-tailwind example's `ui#dev` runs `dev:styles` and
-        // `dev:components`). A group task depending on them does the same.
+      if (override === undefined && script === undefined && emitted.get(meta.name)!.has(name)) {
+        // No script, but edges Turbo's no-op node keeps (above): a group
+        // task depending on them does the same (with-tailwind's `ui#dev`
+        // starts `dev:styles` and `dev:components`; its `ui#build` builds
+        // `build:styles` and `build:components`).
         const t = buildTask(
           name,
           defFor(name)!,
@@ -707,15 +745,16 @@ export async function mapTurboWorkspace(
           rootMeta?.name,
           { name: meta.name, persistentAt, withOf },
         )
+        // Emitted even when its edges all drop: other packages' edges were
+        // validated against it, and `dependsOn: []` is a group that waits
+        // on nothing.
         const deps = t.task?.['dependsOn']
-        if (Array.isArray(deps) && deps.length > 0) {
-          tasks.push({
-            name,
-            todos: t.todos.filter((x) => x !== opts.persistentTodo),
-            task: { dependsOn: deps },
-            uses: new Set(),
-          })
-        }
+        tasks.push({
+          name,
+          todos: t.todos.filter((x) => x !== opts.persistentTodo),
+          task: { dependsOn: Array.isArray(deps) ? deps : [] },
+          uses: new Set(),
+        })
         continue
       }
       if (override === undefined && !usableScript(script)) {
@@ -782,11 +821,6 @@ function uniq(values: readonly unknown[]): unknown[] {
     out.push(v)
   }
   return out
-}
-
-/** A task Turbo defines only to start sidecars: a non-empty `with`. */
-function sidecarsOnly(def: TurboTask | undefined): boolean {
-  return Array.isArray(def?.with) && def.with.length > 0
 }
 
 /** A `with` entry as `pkg#task`: bare is the task's own package, `//#` the root. */
