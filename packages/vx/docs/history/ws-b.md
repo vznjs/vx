@@ -810,3 +810,26 @@ sandboxed run: SRT's start and the probe come before its task's
 Lead for K: `examples.unsafe.test.ts` › matches a real run of
 examples/basic timed out at 5,006 ms in the same gate, and passes alone
 3 of 3. It spawns a whole vx run under the 5 s default.
+
+B-42. What a sandboxed task costs after B-40 (1,090 packages, CPU
+profile of one run: 8.0 s of vx CPU, 15.6 s of main-thread samples).
+The largest remaining costs are SRT's own, per task:
+
+| Where                                                               | Main-thread time |
+| ------------------------------------------------------------------- | ---------------- |
+| `spawn`                                                             | 2.9 s            |
+| `findSymlinkInPath`'s `lstat` of every component of every deny path | 1.3 s            |
+| `resolveSymlinkedDenyPath`'s `realpath`                             | 1.25 s           |
+| `normalizePathForSandbox`'s `realpath`                              | 0.93 s           |
+| `hasFileAncestor`'s `stat`                                          | 0.54 s           |
+
+That is about 3.7 ms per task of filesystem work on SRT's fixed list of
+about 15 root-level mandatory denies. vx hands each task 2 read denies,
+3 read grants and 1 write grant, so the lists vx builds are not the
+cost. vx's own `toRealPath` calls are about 0.6 ms per task, and each
+decides a grant or a refusal (principle 9). The temp directory's
+`rmSync` is about 0.3 ms per task, and B-33 refuted moving it off the
+event loop.
+
+The next cut is upstream: SRT walks every component of every deny path
+on every wrap. vx found no lever that keeps parity.
