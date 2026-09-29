@@ -641,14 +641,14 @@ next?".
 
 ## Decisions (this arc)
 
-- **Rust rewrite: stay (2026-09-29).** Assessed and prototyped
-  (`docs/design/rust-feasibility-2026-09.md`): Rust starts in 3.5 ms
-  against the compiled vx's 46 ms and folds keys 1.6× faster, but a
-  warm 150-project run would drop only from ~160 to ~80–100 ms, and only
-  while no JS runs. Configs and plugins bring a JS engine back. The port
-  is ~100–160 person-weeks and reopens the stale-hit class. The leads
-  it found are TS-side: ~34 ms of module-graph startup, and 20 ms of
-  `workspace config` on a workspace that declares no plugin.
+- **Rust rewrite: stay (2026-09-29).** Assessed and prototyped on Bun
+  1.4.2 (`docs/design/rust-feasibility-2026-09.md`): Rust starts in
+  3.3 ms against the compiled vx's 19 ms, but it is only 1.2× faster on
+  key derivation, and a warm 150-project run would drop only from 101
+  to ~75–85 ms, and only while no JS runs. Configs and plugins bring a
+  JS engine back. The port is ~100–160 person-weeks and reopens the
+  stale-hit class. The lead it found is TS-side: ~13 ms of
+  module-graph startup on every invocation.
 - **Persisted stable keys: deferred (item 756).** Designed and
   prototyped (`docs/design/persisted-stable-keys-2026-09.md`): 13–21 ms
   of a 476-package warm run, exact-repeat runs only, and any input the
