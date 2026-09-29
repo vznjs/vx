@@ -917,6 +917,40 @@ describe('turbo-map: `with`', () => {
     ])
   })
 
+  // Turbo's with-tailwind example: `ui` has no `dev` script, and its `dev`
+  // exists to start `dev:styles` and `dev:components`. vx planned neither.
+  it('a task with no script but sidecars is a group that starts them', async () => {
+    const m = await map(
+      {
+        tasks: {
+          dev: { persistent: true, cache: false },
+          'dev:css': { persistent: true, cache: false },
+          'ui#dev': { persistent: true, cache: false, with: ['dev:css'] },
+          lint: { with: ['build'] },
+        },
+      },
+      { ui: { scripts: { 'dev:css': 'tailwind --watch', build: 'b' } } },
+    )
+    const ui = m.projects[0]!
+    expect([
+      ui.tasks.map((t) => t.name).sort(),
+      task(m, 'ui', 'dev').task,
+      task(m, 'ui', 'dev').todos,
+    ]).toEqual([['dev', 'dev:css'], { dependsOn: ['dev:css'] }, []])
+  })
+
+  it('an edge to a no-script task whose sidecars all end is dropped, not left dangling', async () => {
+    const m = await map(
+      { tasks: { build: {}, lint: { with: ['build'] }, 'app#check': { dependsOn: ['ui#lint'] } } },
+      { ui: { scripts: { build: 'b' } }, app: { scripts: { check: 'c' } } },
+    )
+    const check = task(m, 'app', 'check')
+    expect([check.task?.['dependsOn'], check.todos]).toEqual([
+      undefined,
+      ['dependsOn "ui#lint": ui declares no lint script — edge dropped'],
+    ])
+  })
+
   it('a pair that names each other is one edge, not a cycle', async () => {
     const m = await map(
       {

@@ -651,3 +651,14 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   and every `build` task's edges equal Nx's task graph
   (`nx run-many -t build --graph`) once vx's key-only fileset twins
   are set aside: 0 mismatches of 15.
+- **G-59.** `with` on a task with no script: Turbo's own with-tailwind
+  example gives `ui` no `dev` script, and its `dev` exists to start
+  `dev:styles` and `dev:components`; Turbo plans both, vx planned
+  neither (G-57 mapped `with` only on a task with a command). Such a
+  task is now a group task depending on its persistent sidecars, and a
+  node other edges reach only when one of them persists (else an edge to
+  it is dropped with a todo, not left dangling). Also probed: turbo()
+  on create-t3-turbo plans the 11 `clean` tasks Turbo's own dry run
+  does, `//#clean` as the root project's (G-54). Rows
+  (`turbo-map-sweep` › `with`): red without the group or the emission
+  check.
