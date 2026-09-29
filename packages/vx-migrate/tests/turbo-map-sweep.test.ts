@@ -967,3 +967,40 @@ describe('turbo-map: `with`', () => {
     ]).toEqual([undefined, ['api#dev']])
   })
 })
+
+// Turbo's non-monorepo example: no workspaces, so turbo.json's plain tasks
+// run on the root package. Mapped as a `//#` holder only, it planned none.
+describe('turbo-map: a single-package repo', () => {
+  it("runs turbo.json's plain tasks on the root package; a monorepo root still holds only //#", async () => {
+    await writeFile(
+      path.join(root, 'turbo.json'),
+      JSON.stringify({ tasks: { build: { outputs: ['dist/**'] }, '//#fmt': {} } }),
+    )
+    const rootMeta = (scripts: Record<string, string>): ProjectMeta => ({
+      name: 'solo',
+      dir: root,
+      packageJson: { name: 'solo', scripts } as never,
+      configPath: null,
+    })
+    const names = async (metas: ProjectMeta[]) =>
+      (await mapTurboWorkspace(root, metas, opts)).projects.map((p) => [
+        p.name,
+        p.tasks.map((t) => t.name).sort(),
+      ])
+    const scripts = { build: 'b', fmt: 'f' }
+    await mkdir(path.join(root, 'packages', 'a'), { recursive: true })
+    const member: ProjectMeta = {
+      name: 'a',
+      dir: path.join(root, 'packages', 'a'),
+      packageJson: { name: 'a', scripts: { build: 'b' } } as never,
+      configPath: null,
+    }
+    expect([await names([rootMeta(scripts)]), await names([rootMeta(scripts), member])]).toEqual([
+      [['solo', ['build']]],
+      [
+        ['solo', ['fmt']],
+        ['a', ['build']],
+      ],
+    ])
+  })
+})

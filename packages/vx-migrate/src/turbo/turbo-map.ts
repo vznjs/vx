@@ -600,8 +600,12 @@ export async function mapTurboWorkspace(
     }
   }
 
+  // Turbo's single-package mode: a repo with no workspaces runs turbo.json's
+  // plain tasks on its root package (its `non-monorepo` example). As a
+  // `//#task` holder only, the root planned nothing: "no projects declare".
+  const singlePackage = rootMeta !== undefined && metas.length === 1
   const definitions = (meta: ProjectMeta) => {
-    if (meta === rootMeta) {
+    if (meta === rootMeta && !singlePackage) {
       const defined = new Set(rootTaskNames)
       const defFor = (name: string): TurboTask | undefined =>
         defined.has(name) ? definitionOf(ROOT, name, [rootCfg]) : undefined

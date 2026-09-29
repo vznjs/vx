@@ -662,3 +662,16 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   does, `//#clean` as the root project's (G-54). Rows
   (`turbo-map-sweep` › `with`): red without the group or the emission
   check.
+- **G-60.** Swept every example in Turborepo's own repo (vercel/turborepo
+  `examples/*`): `turbo run <every root task> --dry=json` (2.5.8) against
+  `vx run … --all --dry=json` under turbo(), task sets and edges. 27
+  match exactly. Turbo's single-package mode (`non-monorepo`: no
+  workspaces, plain tasks run on the root package) planned nothing
+  under vx: the root held `//#` tasks only. A lone root project now
+  takes turbo.json's plain tasks, as Turbo runs them; a monorepo root
+  still holds `//#` only. Row (`turbo-map-sweep` › a single-package
+  repo): red without it. Also found, for later items: `with-tailwind`'s
+  script-less `ui#build` carries edges a dependant's `^build` reaches
+  through Turbo's no-op node (vx drops them), and `with-changesets`'
+  `test` has no script anywhere, which Turbo plans as nothing and vx
+  refuses as "no projects declare task(s): test" (core's choice, E).
