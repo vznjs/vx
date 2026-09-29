@@ -200,6 +200,7 @@ export async function mapNxWorkspace(
   // a meta for any unmatched node whose root resolves inside the
   // workspace, so its targets migrate too.
   const allMetas: ProjectMeta[] = [...metas]
+  const taken = new Set(metas.map((m) => m.name))
   for (const [nodeName, node] of Object.entries(nodeMap)) {
     if (metaByNode.has(nodeName)) continue
     const relRoot = normRel(node?.data?.root ?? '')
@@ -211,8 +212,14 @@ export async function mapNxWorkspace(
     } catch {
       // No manifest at the node root — keep the synthetic one.
     }
+    // A manifest name a package already holds (a root package.json named
+    // after its app) replaced that package's tasks with the node's; the
+    // Nx name is the node's own.
+    const name = [pkg.name, nodeName].find((n) => n && !taken.has(n))
+    if (name === undefined) continue
+    taken.add(name)
     const synthetic: ProjectMeta = {
-      name: pkg.name || nodeName,
+      name,
       dir,
       packageJson: pkg,
       configPath: null,
