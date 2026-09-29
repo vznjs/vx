@@ -800,3 +800,13 @@ task in the same run that does not grant it fails. Both rows were red
 before: the granted task exited 4. A `sandbox-request.test.ts` row
 checks the union. Dropping the scan skip, the per-wrap override or the
 arming condition each turns a row red.
+
+B-43. `sandbox-bridge-socket.unsafe.test.ts` › is removed when the task
+ends failed a local gate at 5,319 ms. The row is the file's first
+sandboxed run: SRT's start and the probe come before its task's
+`sleep 1`, and the row ran on bun's 5 s default while its sibling has
+20 s. It passes alone 3 of 3. The row now takes 20 s.
+
+Lead for K: `examples.unsafe.test.ts` › matches a real run of
+examples/basic timed out at 5,006 ms in the same gate, and passes alone
+3 of 3. It spawns a whole vx run under the 5 s default.
