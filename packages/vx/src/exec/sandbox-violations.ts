@@ -217,9 +217,10 @@ export function reportableViolations(
  * runtime into `~/.bun/install/cache` said only "Failed to extract
  * executable" and the report named nothing (2026-09-29). Never a
  * violation — a failed task's hint (`runSandboxed`). The kernel's
- * pseudo-files and the task's own temp root (`skip`) are left out: Linux's
- * observer records every write ATTEMPT, and a write to `/dev/null` or the
- * task's `TMPDIR` landed.
+ * pseudo-files, a descriptor's non-path, and what `skip` names (the task's
+ * own temp root, SRT's default write paths) are left out: Linux's observer
+ * records every write ATTEMPT, and a write to `/dev/null` or the task's
+ * `TMPDIR` landed.
  */
 export function refusedWritesOutside(
   violations: readonly SandboxViolation[],
@@ -237,7 +238,9 @@ export function refusedWritesOutside(
     // Write-only: a strace record is ignorable as a read OR a write, and
     // names a READ (a sibling's file at the wall is the sandbox working).
     const write = v.ignorable?.length === 1 && v.ignorable[0] === 'write'
-    if (v.path === undefined || !write || reported(v)) continue
+    // Absolute only: a descriptor the runtime writes through (`/proc/self/fd/N`)
+    // canonicalizes to `anon_inode:[eventfd]`, which names no place.
+    if (v.path === undefined || !path.isAbsolute(v.path) || !write || reported(v)) continue
     if (!skip.some((s) => atOrUnder(v.path!, s))) paths.add(v.path)
   }
   return [...paths]

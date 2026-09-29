@@ -54,6 +54,11 @@ import { run, type Logger, type RunOptions, type RunSummary } from '../src/orche
 import { sandboxAvailable } from './helpers/sandbox-gate.js'
 import { isAlive, waitForDead } from './helpers/alive.js'
 import { SandboxManager } from '@anthropic-ai/sandbox-runtime'
+// SRT's own strip and glob compiler: what a macOS grant covers is its answer.
+import {
+  globToRegex,
+  removeTrailingGlobSuffix,
+} from '@anthropic-ai/sandbox-runtime/dist/sandbox/sandbox-utils.js'
 import * as violations from '../src/exec/sandbox-violations.js'
 import { validateProjectConfig } from '../src/workspace/index.js'
 import { prepareSandbox, sandboxRequestFor } from '../src/orchestrator/sandbox-request.js'
@@ -884,7 +889,11 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
     TIMEOUT,
   )
 
-  it(
+  // Linux: macOS logs a denial asynchronously and vx reads the store once,
+  // with no settle window, so the record may not have arrived (the macOS
+  // job ran this red once, the write refused and no record). The seatbelt
+  // line shape is held by the pure row in `reportableViolations`.
+  it.skipIf(process.platform !== 'linux')(
     'a failed task is told which writes outside the project were refused',
     async () => {
       // A write past the wall is not a violation, and the report showed
@@ -2693,7 +2702,9 @@ describe('resolveSandboxConfig', () => {
   // kept only `<glob>` covered the directory and nothing in it: `bun build
   // --compile` created `.<hash>-00000000.tmp` and was refused the runtime
   // inside it (2026-09-29). Driven on any host with the platform stubbed:
-  // the collapse is pure path work.
+  // the collapse is pure path work, and what a grant covers is asked of
+  // SRT's own strip and compiler — the first fix emitted `<glob>/**`, which
+  // SRT strips back to `<glob>`, and a row that restated it passed.
   it.skipIf(WIN32)('on macOS a glob directory keeps its subtree when collapsed', () => {
     const root = realpathSync(os.tmpdir())
     const real = Object.getOwnPropertyDescriptor(process, 'platform')!
@@ -2704,10 +2715,17 @@ describe('resolveSandboxConfig', () => {
     } finally {
       Object.defineProperty(process, 'platform', real)
     }
-    expect(r.allowWrite).toEqual([
-      path.join(root, '.*.tmp'),
-      path.join(root, '.*.tmp/**'),
-      path.join(root, 'dist'),
+    const covers = (file: string): boolean =>
+      r.allowWrite.some((g) =>
+        new RegExp(globToRegex(removeTrailingGlobSuffix(g))).test(path.join(root, file)),
+      )
+    expect(
+      ['.a.tmp', '.a.tmp/bun', '.a.tmp/d/bun', 'b.tmp/bun'].map((f) => [f, covers(f)]),
+    ).toEqual([
+      ['.a.tmp', true],
+      ['.a.tmp/bun', true],
+      ['.a.tmp/d/bun', true],
+      ['b.tmp/bun', false],
     ])
   })
 
@@ -3094,7 +3112,10 @@ describe.skipIf(WIN32)('reportableViolations', () => {
         mac('file-write-data', '/dev/dtracehelper'),
         mac('file-write-create', `${PROJ}/.x.tmp`),
         mac('file-write-create', `${ROOT}/ignored/a`),
-        ...refusedWrites([`deny openat ${cache}/linux`, `deny openat ${tmp}/t`], []),
+        ...refusedWrites(
+          [`deny openat ${cache}/linux`, `deny openat ${tmp}/t`, 'deny write /proc/self/fd/0'],
+          [],
+        ),
       ],
       { within: PROJ, config: cfg, skip: [tmp] },
     )

@@ -886,10 +886,14 @@ without it:
   (`scratchWrites`, `pendingWriteGrants`).
 - macOS: a collapsed `<glob>/**` kept only `<glob>`, which seatbelt
   matches as an exact regex, so `.*.tmp/**` covered the directory and
-  nothing in it. It keeps `<glob>/**` beside it.
+  nothing in it. It keeps `<glob>/**/*` beside it (SRT strips a
+  trailing `/**`, so `<glob>/**` was the same regex; CI's first macOS run
+  showed it).
 - A failed task names the writes refused outside the project, with the
   directory to grant (`refusedWritesOutside`). The owner's Mac said only
-  "Failed to extract executable".
+  "Failed to extract executable". Write-only records, absolute paths, and
+  SRT's own write paths skipped: CI's first run named a strace READ and
+  an `anon_inode:[eventfd]` descriptor.
 
 `ALWAYS_IGNORE` gains the extraction directory, as `*.bun-build`
 before it. `build.bun.*` and `check.binary` grant the cache, the

@@ -569,9 +569,11 @@ grant is not reported; `refusedWrites` takes a write under it as
 granted. Before 2026-09-29 it was reported as a write no grant covers
 and failed the task. An output never belongs there: grant its directory.
 
-On macOS a collapsed `<glob>/**` keeps the pattern beside the directory:
-seatbelt reads a glob as an exact regex and a literal as a subpath, so
-`.*.tmp` alone covered the directory and nothing inside it.
+On macOS a collapsed `<glob>/**` keeps `<glob>/**/*` beside the
+directory: seatbelt reads a glob as an exact regex and a literal as a
+subpath, so `.*.tmp` alone covered the directory and nothing inside it,
+and SRT strips a trailing `/**` before compiling, so `<glob>/**` was the
+same regex again.
 
 A write refused OUTSIDE the project is no violation (nothing a key
 reads), but it may be why the task failed: a failed task gets one note

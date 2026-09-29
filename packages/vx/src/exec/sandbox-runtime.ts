@@ -1556,7 +1556,7 @@ async function runSandboxedOnce(
       within: args.reportWithin,
       linked: args.reportLinked,
       config: args.config,
-      skip: [taskTmpRoot()],
+      skip: [taskTmpRoot(), ...srtDefaultWritePaths()],
     })
     if (outside.length > 0) violations.push(outsideWritesHint(outside))
   }
@@ -1879,16 +1879,18 @@ function expandGrants(
   // shape `bun test` and `oxlint` need. Collapsing is not a widening: the
   // pattern already covered every file there; it adds the directory entry.
   //
-  // On macOS a `<d>` that is itself a glob keeps the pattern too: SRT
-  // matches a glob as an exact regex and a literal as a subpath, so the
+  // On macOS a `<d>` that is itself a glob keeps its subtree as `<d>/**/*`:
+  // SRT matches a glob as an exact regex and a literal as a subpath, so the
   // collapsed `.*.tmp` alone covered the directory and nothing in it, and
   // `bun build --compile` could create its extraction directory but not
-  // the runtime inside it (2026-09-29).
+  // the runtime inside it (2026-09-29). Not `<d>/**`: SRT strips a trailing
+  // `/**` before it compiles the regex (`removeTrailingGlobSuffix`), which
+  // CI's `cp: .a1.tmp/f: Operation not permitted` showed.
   const collapsed = paths.flatMap((p) => {
     const m = /^(.*?)\/\*\*(?:\/\*)?$/.exec(p)
     if (m === null) return [p]
     const dir = m[1]!
-    return process.platform !== 'linux' && !isMountableLiteral(dir) ? [dir, `${dir}/**`] : [dir]
+    return process.platform !== 'linux' && !isMountableLiteral(dir) ? [dir, `${dir}/**/*`] : [dir]
   })
   if (process.platform !== 'linux') return collapsed
   const out: string[] = []
