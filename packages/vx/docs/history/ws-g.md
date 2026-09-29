@@ -608,3 +608,16 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   `package.json` a name no package holds. Rows: `discover-stage.test`,
   `turbo.test` › root tasks (red without the hook). `nx()` naming Nx
   graph roots (N-18) is next on this seam.
+- **G-55.** `nx()` names unlisted Nx projects (N-18): an integrated Nx
+  repo keeps `project.json` libraries out of the package manager's list
+  (analogjs: 1 of 21 `build` tasks attached), and a root project needed
+  a hand-written root `vx.config`. `nx()`'s `discover` hook names each
+  graph node with targets at a directory core did not find, by its
+  `package.json` name or else its Nx name; a taken name or a gone
+  directory stays unattached with the note. The graph loads once per run
+  for both stages; `DiscoverContext` gains `cacheDir` (the snapshot's
+  home), and a nameless `package.json` takes the plugin's name. The
+  snapshot key counts the last graph's roots and any `project.json`, so
+  an edit under a named project re-exports. Rows (`nx.test` › a project
+  no glob lists…, red without the hook; `discover-stage.test` › a
+  nameless package.json…).

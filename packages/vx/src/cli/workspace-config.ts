@@ -15,7 +15,6 @@ import {
   buildPackageGraph,
   computeWorkspaceFingerprint,
   FROZEN_WITHOUT_LOCK,
-  loadWorkspaceConfig,
   type Workspace,
   type ProjectEntry,
   type ProjectMeta,
@@ -40,13 +39,11 @@ export async function loadCliWorkspace(workspaceRoot: string): Promise<CliWorksp
 
 /**
  * The workspace's projects as a run discovers them: core's, then the
- * plugin `discover` stage. Only the plugin list is read; the `config`
- * stage cannot change it.
+ * plugin `discover` stage, with the cache dir the run uses.
  */
 export async function discoverCliProjects(workspace: Workspace): Promise<ProjectMeta[]> {
-  const plugins = ((await loadWorkspaceConfig(workspace.root))?.plugins ??
-    []) as readonly VxPlugin[]
-  return await discoverProjects(workspace, plugins, warnToStderr)
+  const { plugins, cacheDir } = await loadCliWorkspace(workspace.root)
+  return await discoverProjects(workspace, plugins, cacheDir, warnToStderr)
 }
 
 /**

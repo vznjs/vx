@@ -114,11 +114,11 @@ export async function collectInfo(cwd: string, opts: CollectInfoOptions = {}): P
   const reads: LoadReads = new Map()
   const root = await findWorkspaceRoot(cwd, reads)
   const { workspaceConfig, plugins } = await loadWorkspacePlugins(root, warn)
-  const metas = await discoverProjects(await loadWorkspace(root, reads), plugins, warn)
   const cacheDir =
     opts.cacheDir === undefined
       ? resolveCacheDir(root, workspaceConfig)
       : path.resolve(cwd, opts.cacheDir)
+  const metas = await discoverProjects(await loadWorkspace(root, reads), plugins, cacheDir, warn)
   const cache = Cache.inspect(cacheDir)
   noteSchemaReset(cache, warn)
   let stats

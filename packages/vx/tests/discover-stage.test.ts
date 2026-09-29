@@ -25,7 +25,7 @@ const plugin = (name: string, discover: VxPlugin['discover']): VxPlugin =>
   ({ name, discover }) as VxPlugin
 
 const names = async (plugins: VxPlugin[]): Promise<string[]> =>
-  (await discoverProjects(workspace, plugins, warn)).map(
+  (await discoverProjects(workspace, plugins, root, warn)).map(
     (p) => `${p.name}@${path.relative(root, p.dir) || '.'}`,
   )
 
@@ -43,6 +43,20 @@ describe('discover stage', () => {
     })
     expect(await names([p1, p2])).toEqual(['a@packages/a', 'gen@tools/gen', 'ws@.'])
     expect(seen).toEqual([['a', 'ws']])
+  })
+
+  it("a nameless package.json takes the plugin's name; the stage sees the cache dir", async () => {
+    await writeFile(
+      path.join(root, 'tools', 'gen', 'package.json'),
+      JSON.stringify({ private: true }),
+    )
+    const dirs: string[] = []
+    const p = plugin('p', (ctx) => {
+      dirs.push(ctx.cacheDir)
+      return [{ dir: 'tools/gen', name: 'gen' }]
+    })
+    expect(await names([p])).toEqual(['a@packages/a', 'gen@tools/gen'])
+    expect(dirs).toEqual([root])
   })
 
   it('a directory already found under the same name is a no-op', async () => {
@@ -70,7 +84,7 @@ describe('discover stage', () => {
   ]
   for (const [what, discover, message] of refusals) {
     it(`refuses ${what}, naming the plugin`, async () => {
-      const err = await discoverProjects(workspace, [plugin('p', discover)], warn).then(
+      const err = await discoverProjects(workspace, [plugin('p', discover)], root, warn).then(
         () => null,
         (e: unknown) => e as Error,
       )

@@ -14,6 +14,7 @@ import type { ProjectConfig, WorkspaceConfig } from '../config.js'
 import { checkGraph, type TaskNode } from '../graph/index.js'
 import type {
   CacheContext,
+  DiscoverContext,
   ExecutorContext,
   FingerprintChange,
   FingerprintContext,
@@ -128,7 +129,7 @@ export async function applyConfigHooks(
 export async function applyDiscoverHooks(
   plugins: readonly VxPlugin[],
   projects: ProjectMeta[],
-  ctx: WorkspaceHookContext,
+  ctx: Omit<DiscoverContext, 'projects'>,
   add: (named: NamedProject, plugin: VxPlugin) => Promise<ProjectMeta | null>,
 ): Promise<void> {
   for (const plugin of plugins) {
