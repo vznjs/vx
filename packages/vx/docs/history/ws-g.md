@@ -705,3 +705,18 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   task some package runs, or none depends on, is not one. Rows
   (`turbo.test` › a transit node, red without it; `turbo-map-sweep` › a
   transit node): three mutants, each caught.
+- **G-63.** Plan parity on real Turbo repos, Turbo's own dry run at each
+  repo's Turbo against vx's under turbo(), task sets and edges: dub
+  (a99e7c3) 17 of 17, formbricks (abc8919) 120 of 120, trigger.dev (9d38ff5) 169 of 169,
+  shadcn-ui (08ab84f) 35 of 35, all exact; connect-es (b299633) 79 of 79
+  with vx's extra `peerDependencies` edges, which vx takes on purpose
+  (a spare edge costs order, a missing one a stale hit). cal.com
+  (54343aa) planned nothing: its shared `post-install` writes
+  `../../node_modules/@prisma/client/**` from every package with the
+  script, one workspace path, and core refused the run over the first
+  pair. The mapping now keeps the first task on a workspace output path
+  cached and runs the rest uncached with a todo; cal.com plans all of
+  Turbo's 106 tasks. The class holds in nx() and moon() too (both emit
+  workspace outputs), so both take the same pass. Rows
+  (`turbo-map-sweep`, `nx-map-sweep`, `moon.test` › a workspace output
+  two projects declare): each red without its line.

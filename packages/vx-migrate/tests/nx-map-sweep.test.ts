@@ -633,3 +633,27 @@ describe('nx-map: a node field of the wrong type is refused by name (L-15)', () 
     ).toBe('parsed')
   })
 })
+
+// The turbo() class (cal.com, G-63): two projects' targets on one
+// workspace output, no edge between them, refused the whole run.
+describe('nx-map: a workspace output two projects declare', () => {
+  it('stays cached on the first; the next runs uncached, with a todo', async () => {
+    const gen = {
+      executor: 'nx:run-commands',
+      options: { command: 'gen' },
+      cache: true,
+      inputs: ['{projectRoot}/**/*'],
+      outputs: ['{workspaceRoot}/node_modules/.prisma'],
+    }
+    const t = await tasksOf([await meta('a'), await meta('b')], {
+      a: node('packages/a', { gen }),
+      b: node('packages/b', { gen }),
+    })
+    expect([
+      (t.get('a#gen')!.task!['cache'] as { outputs: { workspaceFiles: string[] } }).outputs
+        .workspaceFiles,
+      t.get('b#gen')!.task!['cache'],
+      t.get('b#gen')!.todos.filter((x) => x.includes('workspace output')).length,
+    ]).toEqual([['node_modules/.prisma'], undefined, 1])
+  })
+})

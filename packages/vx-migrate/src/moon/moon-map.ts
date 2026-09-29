@@ -29,7 +29,7 @@ import { shellQuote } from '../nx-command.js'
 import { packageScripts, relPosix } from '../paths.js'
 import { pruneDanglingEdges } from '../dangling-edges.js'
 import { pruneOrphanPersistentNotes } from '../persistent-note.js'
-import { resolveSharedOutputs } from '../shared-outputs.js'
+import { resolveSharedOutputs, resolveSharedWorkspaceOutputs } from '../shared-outputs.js'
 import { DOTENV_PROBE } from '../dotenv-probe.js'
 
 type Raw = Record<string, unknown>
@@ -965,6 +965,7 @@ export async function mapMoonWorkspace(
   }
   pruneDanglingEdges(out)
   for (const p of out) resolveSharedOutputs(p.tasks)
+  resolveSharedWorkspaceOutputs(out)
   pruneOrphanPersistentNotes(out, opts.persistentTodo)
   return { projects: out, notes }
 }

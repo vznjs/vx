@@ -23,7 +23,12 @@ import {
 } from '@vzn/vx'
 import { mapRunCommands, shellQuote } from '../nx-command.js'
 import { scriptCommand } from '../script-command.js'
-import { ownFileOutput, ownFileTodo, resolveSharedOutputs } from '../shared-outputs.js'
+import {
+  ownFileOutput,
+  ownFileTodo,
+  resolveSharedOutputs,
+  resolveSharedWorkspaceOutputs,
+} from '../shared-outputs.js'
 import { packageScripts, relPosix } from '../paths.js'
 import { pruneOrphanPersistentNotes } from '../persistent-note.js'
 import { mapNxDeps, matchNxProjects, type TaskNameFor } from './nx-deps.js'
@@ -379,6 +384,7 @@ export async function mapNxWorkspace(
     })
   }
 
+  resolveSharedWorkspaceOutputs(projects)
   pruneOrphanPersistentNotes(projects, opts.persistentTodo)
   const notes =
     globalSync.length === 0
