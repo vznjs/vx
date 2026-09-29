@@ -16,6 +16,13 @@ export function loadWorkspacePlugins(
   warn: (m: string) => void,
 ): Promise<{ workspaceConfig: WorkspaceConfig | null; plugins: readonly VxPlugin[] }>
 
+// listProjects, then the plugin `discover` stage (skipped when no plugin has it)
+export function discoverProjects(
+  workspace: Workspace,
+  plugins: readonly VxPlugin[],
+  warn: (m: string) => void,
+): Promise<ProjectMeta[]>
+
 export interface LoadProjectsArgs {
   workspaceRoot: string
   cacheDir: string

@@ -15,6 +15,7 @@ import {
   type PackageGraph,
   type ProjectEntry,
   type ProjectMeta,
+  type Workspace,
 } from '../workspace/index.js'
 import type { WorkspaceConfig } from '../config.js'
 import { Cache } from '../cache/index.js'
@@ -25,11 +26,12 @@ import {
   listProjects,
   loadWorkspace,
   loadWorkspaceConfig,
+  namedProject,
   resolveCacheDir,
   validateWorkspace,
 } from '../workspace/index.js'
 import { parseDependencySpec } from '../graph/index.js'
-import { applyConfigHooks, applyProjectHooks, hasHook } from './plugin-host.js'
+import { applyConfigHooks, applyDiscoverHooks, applyProjectHooks, hasHook } from './plugin-host.js'
 import type { VxPlugin } from './plugin.js'
 
 /**
@@ -52,6 +54,26 @@ export async function loadWorkspacePlugins(
     )
   }
   return { workspaceConfig, plugins }
+}
+
+/**
+ * The workspace's projects: core's discovery, then the plugin `discover`
+ * stage. With no plugin declaring it, `listProjects` alone.
+ */
+export async function discoverProjects(
+  workspace: Workspace,
+  plugins: readonly VxPlugin[],
+  warn: (message: string) => void,
+): Promise<ProjectMeta[]> {
+  const projects = await listProjects(workspace)
+  if (!hasHook(plugins, 'discover')) return projects
+  await applyDiscoverHooks(
+    plugins,
+    projects,
+    { workspaceRoot: workspace.root, warn },
+    (named, plugin) => namedProject(workspace, projects, named, plugin.name),
+  )
+  return projects.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
 }
 
 export interface LoadProjectsArgs {
@@ -249,8 +271,8 @@ export async function loadResolvedProjects(
 ): Promise<Map<string, ProjectEntry>> {
   const warn = opts.warn ?? ((): void => {})
   const reads: LoadReads = new Map()
-  const metas = await listProjects(await loadWorkspace(workspaceRoot, reads))
   const { workspaceConfig, plugins } = await loadWorkspacePlugins(workspaceRoot, warn)
+  const metas = await discoverProjects(await loadWorkspace(workspaceRoot, reads), plugins, warn)
   const cacheDir = resolveCacheDir(workspaceRoot, workspaceConfig)
   // Opened as `vx last` opens it: a reader makes no index where there is
   // none and never resets an earlier schema's (C-5). One it cannot read

@@ -167,6 +167,7 @@ export const PERSISTENT_TODO =
 == const PLUGIN_HOOKS (src/config.ts)
 export const PLUGIN_HOOKS = [
   'config',
+  'discover',
   'project',
   'graph',
   'key',
@@ -502,6 +503,10 @@ type DependsOnEntry<K extends string> =
   | `^${string}`
   | `${string}#${string}`
   | `${string}*${string}`
+== type DiscoverContext (src/orchestrator/plugin.ts)
+export interface DiscoverContext extends WorkspaceHookContext {
+  readonly projects: readonly ProjectMeta[]
+}
 == type EventBus (src/orchestrator/events.ts)
 export interface EventBus {
   emit(event: RunEvent): void
@@ -772,6 +777,11 @@ export interface MigrationPlan {
   extraFiles: { relPath: string; contents: string }[]
   notes: string[]
 }
+== type NamedProject (src/orchestrator/plugin.ts)
+export interface NamedProject {
+  readonly dir: string
+  readonly name: string
+}
 == type OutcomeView (src/orchestrator/events.ts)
 export interface OutcomeView {
   taskId: string
@@ -856,6 +866,7 @@ export interface PlanPrediction {
 export interface Plugin {
   readonly name: string
   config?(workspace: unknown, ctx: unknown): unknown
+  discover?(ctx: unknown): unknown
   project?(config: unknown, ctx: unknown): unknown
   graph?(nodes: unknown, ctx: unknown): unknown
   key?(task: unknown, ctx: unknown): unknown
@@ -1406,6 +1417,7 @@ export interface TelemetrySink {
 export interface VxPlugin {
   readonly name: string
   config?(workspace: WorkspaceConfig, ctx: WorkspaceHookContext): void | Promise<void>
+  discover?(ctx: DiscoverContext): readonly NamedProject[] | Promise<readonly NamedProject[]>
   project?(config: ProjectConfig, ctx: ProjectHookContext): void | Promise<void>
   graph?(nodes: Map<string, TaskNode>, ctx: GraphHookContext): void | Promise<void>
   key?(
@@ -1486,5 +1498,5 @@ export interface WorkspaceIdentity {
 == runtime values
 LOG_WIRE_VERSION = 1
 PERSISTENT_TODO = "persistent task — set persistent.readyWhen (regex matched against output) so dependents unblock on readiness, and consider exec.timeout to bound the wait"
-PLUGIN_HOOKS = ["config","project","graph","key","fingerprint","schedule","admit","executor","cache","telemetry","setup","commands","teardown"]
+PLUGIN_HOOKS = ["config","discover","project","graph","key","fingerprint","schedule","admit","executor","cache","telemetry","setup","commands","teardown"]
 TELEMETRY_SCHEMA_VERSION = 3

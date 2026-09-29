@@ -29,7 +29,6 @@ import {
   computeWorkspaceFingerprints,
   findWorkspaceRoot,
   type LoadReads,
-  listProjects,
   loadWorkspace,
   FROZEN_WITHOUT_LOCK,
   readLockfile,
@@ -53,7 +52,12 @@ import {
   resolveCache,
   teardownPlugins,
 } from './plugin-host.js'
-import { loadProjects, loadWorkspacePlugins, type LoadedProjects } from './projects.js'
+import {
+  discoverProjects,
+  loadProjects,
+  loadWorkspacePlugins,
+  type LoadedProjects,
+} from './projects.js'
 import { keyExcludedDependencies } from './excluded-keys.js'
 import { FingerprintWatch } from './fingerprint-watch.js'
 import type { VxPlugin } from './plugin.js'
@@ -187,7 +191,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   const projectMetas =
     options.discovered?.root === workspaceRoot
       ? options.discovered.projects
-      : await listProjects(workspace)
+      : await discoverProjects(workspace, plugins, (m) => log.status(m))
   mark('discover projects')
 
   // SCOPED config loading: configs are programs, and evaluating 1090

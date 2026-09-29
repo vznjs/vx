@@ -596,3 +596,61 @@ export async function listProjects(workspace: Workspace): Promise<ProjectMeta[]>
   // all any consumer needs.
   return projects.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
 }
+
+/**
+ * A directory a plugin's `discover` hook names, as a project meta; null
+ * when `known` already holds it under that name. `by` names the plugin in
+ * a refusal. A directory without a `package.json` is a project by the
+ * plugin's name alone.
+ */
+export async function namedProject(
+  workspace: Workspace,
+  known: readonly ProjectMeta[],
+  named: { readonly dir: string; readonly name: string },
+  by: string,
+): Promise<ProjectMeta | null> {
+  const where = `plugin '${by}' named project`
+  if (typeof named?.name !== 'string' || named.name === '' || typeof named.dir !== 'string') {
+    throw new UserError(`${where} ${JSON.stringify(named)}: expected { dir: string, name: string }`)
+  }
+  const dir = path.resolve(workspace.root, named.dir)
+  const rel = relPosix(workspace.root, dir)
+  if (rel === '..' || rel.startsWith('../') || path.isAbsolute(rel)) {
+    throw new UserError(`${where} "${named.name}" at ${dir}: outside the workspace root`)
+  }
+  const shown = rel === '' ? '.' : rel
+  for (const p of known) {
+    if (p.dir === dir && p.name === named.name) return null
+    if (p.dir === dir) {
+      throw new UserError(`${where} "${named.name}" at ${shown}: already the project "${p.name}"`)
+    }
+    if (p.name === named.name) {
+      throw new UserError(
+        `${where} "${named.name}" at ${shown}: the name is taken by ${relPosix(workspace.root, p.dir) || '.'}`,
+      )
+    }
+  }
+  const pkgJsonPath = dir + path.sep + 'package.json'
+  const [configPath, text] = await Promise.all([
+    findConfigFile(dir),
+    Bun.file(pkgJsonPath)
+      .text()
+      .catch((err: unknown) => absent(err, null)),
+  ])
+  if (
+    text === null &&
+    !(await stat(dir).then(
+      (st) => st.isDirectory(),
+      () => false,
+    ))
+  ) {
+    throw new UserError(`${where} "${named.name}" at ${shown}: no such directory`)
+  }
+  const pkg = text === null ? { name: named.name } : parsePackageJson(text, pkgJsonPath)
+  if (pkg.name !== named.name) {
+    throw new UserError(
+      `${where} "${named.name}" at ${shown}: its package.json names it "${pkg.name ?? ''}"`,
+    )
+  }
+  return { name: named.name, dir, packageJson: pkg, configPath }
+}

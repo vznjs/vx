@@ -34,7 +34,7 @@ seam a plugin can fill:
 5. **Schedule** the graph: look each key up, restore hits, execute
    misses with bounded parallelism, save results.
 
-In plugin terms the stages are named `config` → `project` → `graph` →
+In plugin terms the stages are named `config` → `discover` → `project` → `graph` →
 `key` → `fingerprint` → `schedule` → `admit`, followed by the two
 behaviour capabilities `executor` (where a command runs) and `cache`
 (where artifacts live), the observe-only `telemetry` capability,

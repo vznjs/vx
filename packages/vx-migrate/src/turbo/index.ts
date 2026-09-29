@@ -14,7 +14,12 @@ import type { ProjectMeta, VxPlugin } from '@vzn/vx'
 import { type AdoptionRun, adoptionPlugin } from '../adoption-plugin.js'
 import type { AdoptionMapping } from '../mapping-cache.js'
 import { collectGaps } from '../plugin-gaps.js'
-import { mapTurboWorkspace, turboConfigFile, type TurboMappedProject } from './turbo-map.js'
+import {
+  mapTurboWorkspace,
+  rootTaskProject,
+  turboConfigFile,
+  type TurboMappedProject,
+} from './turbo-map.js'
 
 /** The note every persistent task carries; like every gap, reported once per run for all its tasks. */
 const PERSISTENT_NOTE =
@@ -40,12 +45,27 @@ export function turbo(options: TurboPluginOptions = {}): VxPlugin {
     // At the workspace root only: a claim is a root name (a `root` elsewhere
     // is not claimed; its edits select as any unowned file does).
     options.root === undefined ? ['turbo.json', 'turbo.jsonc'] : [],
-    async (workspace, ctx) => {
-      const keys = await workspaceKeys(options.root ?? ctx.workspaceRoot)
-      if (workspace.concurrency === undefined && keys.concurrency !== undefined)
-        workspace.concurrency = keys.concurrency
-      if (workspace.cacheRetention === undefined && keys.cacheRetention !== undefined)
-        workspace.cacheRetention = keys.cacheRetention
+    {
+      async config(workspace, ctx) {
+        const keys = await workspaceKeys(options.root ?? ctx.workspaceRoot)
+        if (workspace.concurrency === undefined && keys.concurrency !== undefined)
+          workspace.concurrency = keys.concurrency
+        if (workspace.cacheRetention === undefined && keys.cacheRetention !== undefined)
+          workspace.cacheRetention = keys.cacheRetention
+      },
+      // `//#task` keys run on the root, as Turbo runs them: named here, the
+      // root is a project with no vx.config written (a create-turbo repo's
+      // `//#format`). A package that holds the root's name keeps it, and
+      // the mapping's note says so.
+      async discover(ctx) {
+        if (options.root !== undefined) return []
+        const named = await rootTaskProject(ctx.workspaceRoot)
+        if (named === null) return []
+        const taken = ctx.projects.some(
+          (m) => m.name === named.name && path.resolve(m.dir) !== path.resolve(named.dir),
+        )
+        return taken ? [] : [named]
+      },
     },
   )
 }

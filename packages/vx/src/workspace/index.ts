@@ -46,6 +46,7 @@ export {
 export {
   findWorkspaceRoot,
   listProjects,
+  namedProject,
   loadWorkspace,
   unreachedHint,
   unreachedPackages,
@@ -54,6 +55,7 @@ export {
   resolveCacheDir,
   type ProjectEntry,
   type ProjectMeta,
+  type Workspace,
 } from './workspace.js'
 export type { LoadReads } from './load-reads.js'
 // The migration seam (see migration.ts) and core's own mapper, the scripts one.

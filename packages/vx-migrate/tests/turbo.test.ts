@@ -301,6 +301,8 @@ describe('turbo()', () => {
   it(
     'a gap shared by many tasks is one warning per run, not written',
     async () => {
+      // A nameless root stays no project, so its root task is a note.
+      await writeFile(path.join(root, 'package.json'), JSON.stringify({ private: true }))
       await writeFile(
         path.join(root, 'turbo.json'),
         JSON.stringify({
@@ -326,11 +328,11 @@ describe('turbo()', () => {
 })
 
 describe('root tasks (D-39)', () => {
-  const setUp = async (rootConfig: boolean) => {
+  const setUp = async (rootConfig: boolean, name: string | null = 'ws') => {
     await writeFile(
       path.join(root, 'package.json'),
       JSON.stringify({
-        name: 'ws',
+        ...(name !== null ? { name } : {}),
         private: true,
         scripts: { gen: 'mkdir -p out && echo g > out/g.txt' },
       }),
@@ -395,19 +397,37 @@ describe('root tasks (D-39)', () => {
     TIMEOUT,
   )
 
+  // A create-turbo repo's `//#format` over a root script: `vx run format
+  // --all` said "No projects declare task(s)" until turbo() named the root
+  // through `discover`.
   it(
-    'CONTROL: without one, the root task is a note and the edge a todo',
+    'with no root vx.config, turbo() makes the root a project: `//#gen` runs under --all',
     async () => {
       await setUp(false)
+      const log = silent()
+      const plan = await planRun({ cwd: root, tasks: ['app#build'], log })
+      expect(plan.tasks.map((t) => t.node.id).sort()).toEqual(['app#build', 'ws#gen'])
+      expect(log.lines.join('\n')).not.toContain('root task')
+      const result = await run({ cwd: root, tasks: ['gen'], log: silent(), handleSignals: false })
+      expect(result.ok).toBe(true)
+      expect(await Bun.file(path.join(root, 'out', 'g.txt')).text()).toBe('g\n')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'CONTROL: a nameless root is no project; the root task is a note and the edge a todo',
+    async () => {
+      await setUp(false, null)
       const log = silent()
       const plan = await planRun({ cwd: root, tasks: ['app#build'], log })
       expect(plan.tasks.map((t) => t.node.id)).toEqual(['app#build'])
       const text = log.lines.join('\n')
       expect(text).toContain(
-        'note: root task //#gen not migrated — the workspace root is no project; a vx.config at the root makes it one',
+        'note: root task //#gen not migrated — the workspace root is no project; a root package.json name no package holds makes it one',
       )
       expect(text).toContain(
-        'dependsOn "//#gen": the workspace root is no project — edge dropped; a vx.config at the root makes it one',
+        'dependsOn "//#gen": the workspace root is no project — edge dropped; a root package.json name no package holds makes it one',
       )
     },
     TIMEOUT,
@@ -813,6 +833,8 @@ describe('turbo(): the mapping cache', () => {
   // A hit is the whole mapping: its notes and todos warn as the miss did.
   // Restored as nothing, a cached run dropped every warning.
   it('a hit warns what the miss warned', async () => {
+    // A nameless root stays no project, so its root task is a note.
+    await writeFile(path.join(root, 'package.json'), JSON.stringify({ private: true }))
     await writeFile(
       path.join(root, 'turbo.json'),
       JSON.stringify({

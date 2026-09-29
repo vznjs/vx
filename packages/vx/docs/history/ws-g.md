@@ -596,3 +596,15 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   `package.json` name, so the name check covers both a root already
   listed and a package that took the name. It went; rows hold the
   rest (`workspace-keys.test`, `migrate.test` › adds no second root).
+- **G-54.** Turbo root tasks run with nothing written (E's lead, #1832):
+  `"//#format": {}` over a root script made `vx run format --all` say
+  "No projects declare task(s)", since core makes the root a project only
+  with a `vx.config` there (D-39). Core gains D-62's `discover` stage
+  (budget mode: the one active stream builds it): `discover(ctx)` returns
+  `{ dir, name }[]`, run after core's discovery by every run and reading
+  verb, refused at the boundary (outside the root, a taken name or
+  directory, a `package.json` of another name, no such directory).
+  `turbo()` names the root when turbo.json has a `//#` key and the root
+  `package.json` a name no package holds. Rows: `discover-stage.test`,
+  `turbo.test` › root tasks (red without the hook). `nx()` naming Nx
+  graph roots (N-18) is next on this seam.

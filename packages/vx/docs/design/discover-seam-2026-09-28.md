@@ -1,7 +1,11 @@
 # Plugin-named projects: a `discover` stage (2026-09-28, stream D)
 
-**Status: proposed. Leads from N (`docs/history/ws-n.md`, the discovery
-seam and the integrated Nx repo).**
+**Status: shipped 2026-09-29 (G-54) for core and `turbo()`: the stage
+(`discoverProjects`, `orchestrator/projects.ts`; `namedProject`,
+`workspace/workspace.ts`) runs wherever a run or reading verb discovers
+(run, `show`, `watch`, `info`, filters); `vx lock` and `vx init` read
+members only. `turbo()` names the root for `//#task`. `nx()` naming every
+graph node's root is still open. Leads from N (`docs/history/ws-n.md`).**
 
 ## Why
 

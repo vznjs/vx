@@ -10,11 +10,10 @@ import type { ProjectConfig, TaskConfig } from '../config.js'
 import { declaredTask } from '../graph/index.js'
 import { flagHint, seeHelp } from './help.js'
 import { nearMatches, relPosix, secretMask, UserError } from '../util/index.js'
-import { loadCliProjects } from './workspace-config.js'
+import { discoverCliProjects, loadCliProjects } from './workspace-config.js'
 import {
   findWorkspaceRoot,
   type LoadReads,
-  listProjects,
   loadWorkspace,
   type ProjectEntry,
   type ProjectMeta,
@@ -60,7 +59,7 @@ export async function showCmd(args: readonly string[]): Promise<number> {
   }
   const reads: LoadReads = new Map()
   const root = await findWorkspaceRoot(process.cwd(), reads)
-  const metas = await listProjects(await loadWorkspace(root, reads))
+  const metas = await discoverCliProjects(await loadWorkspace(root, reads))
   const byName = new Map(metas.map((m) => [m.name, m]))
 
   const hashAt = parsed.target?.indexOf('#') ?? -1

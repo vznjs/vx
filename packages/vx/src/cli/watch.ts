@@ -26,13 +26,12 @@ import {
 import {
   findWorkspaceRoot,
   type LoadReads,
-  listProjects,
   loadWorkspace,
   LOCKFILE_NAME,
   memberBaseDirs,
   type ProjectMeta,
 } from '../workspace/index.js'
-import { type CliLoadOptions, loadCliWorkspace } from './workspace-config.js'
+import { type CliLoadOptions, discoverCliProjects, loadCliWorkspace } from './workspace-config.js'
 import {
   isIgnoredWatchPath,
   isWorkspaceConfigFile,
@@ -148,7 +147,7 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   const reads: LoadReads = new Map()
   const workspaceRoot = await findWorkspaceRoot(cwd, reads)
   const workspace = await loadWorkspace(workspaceRoot, reads)
-  const allProjects = await listProjects(workspace)
+  const allProjects = await discoverCliProjects(workspace)
   const inScope = (all: readonly ProjectMeta[]): ProjectMeta[] =>
     opts.projects === undefined ? [...all] : all.filter((p) => opts.projects!.includes(p.name))
   const scope = inScope(allProjects)
@@ -226,7 +225,7 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
     // dependency of it.
     rediscover: async () => {
       const workspace = await loadWorkspace(workspaceRoot)
-      const all = await listProjects(workspace)
+      const all = await discoverCliProjects(workspace)
       const sweep = await sweepConfigs(all, workspaceRoot, load, opts.tasks)
       const now = await watchedProjects(workspaceRoot, all, inScope(all), load, sweep.staged)
       return {

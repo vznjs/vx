@@ -40,7 +40,7 @@ daemon, the plugin surface, Nx's language plugins) were corrected on
   x64 and arm64; Windows under WSL) — no Node or Bun to run it.
   Smallest CLI surface; deliberately no daemon, no cloud, no account
   and no JS-function tasks. The core is a Vite-style pipeline: plugins
-  hook each stage (`config` → `project` → `graph` → `key` →
+  hook each stage (`config` → `discover` → `project` → `graph` → `key` →
   `fingerprint` → `schedule` → `admit`), supply the executor (WHERE a command
   runs, never what it is), the cache layers and the telemetry sinks,
   and add verbs — core applies none of them by default and names none.
@@ -328,7 +328,7 @@ prune` policy at the end of every run,
   inputs (`runtime` / `workspaceRuntime`).
 - `vx lock` / `vx run --frozen`, `vx init` / `@vzn/vx-migrate`, `vx show`.
 - **The plugin pipeline (2026-09-02).** One `VxPlugin` hooks every
-  stage — `config`, `project`, `graph`, `key`, `fingerprint`,
+  stage — `config`, `discover`, `project`, `graph`, `key`, `fingerprint`,
   `schedule`, `admit` — beside the `executor` / `cache` / `telemetry`
   capabilities, `commands` (new verbs) and the `setup` / `teardown`
   pair. Core applies no plugin by default; a workspace declares all

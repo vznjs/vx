@@ -15,7 +15,6 @@ import {
   type LoadReads,
   type FingerprintClaims,
   FROZEN_WITHOUT_LOCK,
-  listProjects,
   loadProjectConfig,
   loadWorkspace,
   parseFilter,
@@ -28,7 +27,12 @@ import type { ProjectEntry } from '../workspace/index.js'
 import { parseDependencySpec } from '../graph/index.js'
 import { nearest, UserError } from '../util/index.js'
 import { claimedAffected, fingerprintClaims } from '../orchestrator/index.js'
-import { type CliLoadOptions, loadCliProjects, loadCliWorkspace } from './workspace-config.js'
+import {
+  type CliLoadOptions,
+  discoverCliProjects,
+  loadCliProjects,
+  loadCliWorkspace,
+} from './workspace-config.js'
 
 /**
  * The projects whose tasks declare a `cache.inputs.workspaceFiles` glob
@@ -110,7 +114,7 @@ async function workspaceFingerprintClaims(
 async function loadWorkspaceProjects(cwd: string): Promise<ProjectMeta[]> {
   const reads: LoadReads = new Map()
   const root = await findWorkspaceRoot(cwd, reads)
-  return await listProjects(await loadWorkspace(root, reads))
+  return await discoverCliProjects(await loadWorkspace(root, reads))
 }
 
 export async function findCwdProject(cwd: string): Promise<string | null> {

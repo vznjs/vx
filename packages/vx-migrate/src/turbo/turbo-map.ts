@@ -137,6 +137,31 @@ export async function turboConfigFile(dir: string): Promise<string | null> {
   return null
 }
 
+/**
+ * The workspace root as a project to name when turbo.json declares `//#`
+ * tasks: its package name and directory. Null with no such task, a
+ * nameless root, or a file the mapping refuses (it names the file).
+ */
+export async function rootTaskProject(root: string): Promise<{ name: string; dir: string } | null> {
+  const file = await turboConfigFile(root)
+  if (file === null) return null
+  let turbo: { tasks?: unknown; pipeline?: unknown } | null
+  let pkg: { name?: unknown } | null
+  try {
+    turbo = Bun.JSONC.parse(await Bun.file(file).text()) as typeof turbo
+    pkg = (await Bun.file(path.join(root, 'package.json')).json()) as typeof pkg
+  } catch {
+    return null
+  }
+  const tasks = turbo?.tasks ?? turbo?.pipeline
+  const hasRootTask =
+    typeof tasks === 'object' &&
+    tasks !== null &&
+    Object.keys(tasks).some((k) => k.startsWith(`${ROOT}#`))
+  if (!hasRootTask || typeof pkg?.name !== 'string' || pkg.name === '') return null
+  return { name: pkg.name, dir: root }
+}
+
 async function readTurboJson(file: string, root: string): Promise<TurboJson> {
   const text = await Bun.file(file).text()
   let parsed: unknown
@@ -568,7 +593,7 @@ export async function mapTurboWorkspace(
     for (const name of rootTaskNames) {
       notes.push(
         `note: root task ${ROOT}#${name} not migrated — the workspace root is no project; ` +
-          'a vx.config at the root makes it one',
+          'a root package.json name no package holds makes it one',
       )
     }
   }
@@ -789,7 +814,7 @@ function buildTask(
         } else if (pkg === ROOT)
           todos.push(
             `dependsOn ${JSON.stringify(d)}: the workspace root is no project — edge dropped; ` +
-              'a vx.config at the root makes it one',
+              'a root package.json name no package holds makes it one',
           )
         else
           todos.push(

@@ -27,6 +27,7 @@ setup and teardown wrap the run; commands adds a verb
 | Stage         | What a plugin can do there                                                                 |
 | ------------- | ------------------------------------------------------------------------------------------ |
 | `config`      | See and adjust the workspace config before anything uses it.                               |
+| `discover` | Name directories to make projects beyond the package manager's members. |
 | `project`     | Add, remove or edit one loaded project's tasks.                                            |
 | `graph`       | Add or drop edges, mark tasks requested.                                                   |
 | `key`         | Contribute extra cache-key material per task.                                              |

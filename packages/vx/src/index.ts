@@ -161,6 +161,8 @@ export type {
   ScheduleHookContext,
   AdmitContext,
   WorkspaceHookContext,
+  DiscoverContext,
+  NamedProject,
   PluginSetupContext,
 } from './orchestrator/index.js'
 // The per-task execution contract a plugin's `executor` capability returns.

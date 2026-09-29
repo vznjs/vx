@@ -67,6 +67,13 @@ export interface ProjectMeta {
 export function findWorkspaceRoot(start: string, reads?: LoadReads): Promise<string>
 export function loadWorkspace(root: string, reads?: LoadReads): Promise<Workspace>
 export function listProjects(workspace: Workspace): Promise<ProjectMeta[]>
+// A `discover` hook's `{ dir, name }` as a meta; null when already found
+export function namedProject(
+  workspace: Workspace,
+  known: readonly ProjectMeta[],
+  named: { readonly dir: string; readonly name: string },
+  by: string,
+): Promise<ProjectMeta | null>
 export function resolveCacheDir(root: string, config: WorkspaceConfig | null): string
 
 // A loaded project: its canonical name, directory and evaluated config.

@@ -61,6 +61,17 @@ export interface VxPlugin {
   config?(workspace: WorkspaceConfig, ctx: WorkspaceHookContext): void | Promise<void>
 
   /**
+   * Directories to make projects beyond the package manager's members, as
+   * `{ dir, name }` (`dir` absolute or relative to the workspace root): a
+   * runner's root tasks, a project no member glob lists. Runs once per
+   * discovery, before any project config loads; each plugin sees core's
+   * projects and the ones earlier plugins named. A named directory keeps
+   * a `package.json` of the same name, if it has one; a name or directory
+   * already taken otherwise, or one outside the root, is refused.
+   */
+  discover?(ctx: DiscoverContext): readonly NamedProject[] | Promise<readonly NamedProject[]>
+
+  /**
    * One project's validated config, right after it loaded and before the
    * graph is built. Add, remove or edit tasks. Runs for every loaded project
    * on every run — a config's cached evaluation is the user's file, and the
@@ -241,6 +252,16 @@ export interface CommandContext extends BaseContext {
 export interface WorkspaceHookContext {
   readonly workspaceRoot: string
   warn(message: string): void
+}
+
+export interface DiscoverContext extends WorkspaceHookContext {
+  /** The projects found so far: core's, then earlier plugins'. */
+  readonly projects: readonly ProjectMeta[]
+}
+
+export interface NamedProject {
+  readonly dir: string
+  readonly name: string
 }
 
 export interface ProjectHookContext extends BaseContext {

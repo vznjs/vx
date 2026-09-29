@@ -9,12 +9,14 @@ import path from 'node:path'
 import type { WorkspaceConfig } from '../config.js'
 import { UserError } from '../util/index.js'
 import { Cache, noteSchemaReset } from '../cache/index.js'
-import { loadProjects, loadWorkspacePlugins } from '../orchestrator/index.js'
+import { discoverProjects, loadProjects, loadWorkspacePlugins } from '../orchestrator/index.js'
 import type { VxPlugin } from '../orchestrator/index.js'
 import {
   buildPackageGraph,
   computeWorkspaceFingerprint,
   FROZEN_WITHOUT_LOCK,
+  loadWorkspaceConfig,
+  type Workspace,
   type ProjectEntry,
   type ProjectMeta,
   readLockfile,
@@ -34,6 +36,17 @@ export const warnToStderr = (message: string): void => {
 export async function loadCliWorkspace(workspaceRoot: string): Promise<CliWorkspace> {
   const { workspaceConfig, plugins } = await loadWorkspacePlugins(workspaceRoot, warnToStderr)
   return { workspaceConfig, plugins, cacheDir: resolveCacheDir(workspaceRoot, workspaceConfig) }
+}
+
+/**
+ * The workspace's projects as a run discovers them: core's, then the
+ * plugin `discover` stage. Only the plugin list is read; the `config`
+ * stage cannot change it.
+ */
+export async function discoverCliProjects(workspace: Workspace): Promise<ProjectMeta[]> {
+  const plugins = ((await loadWorkspaceConfig(workspace.root))?.plugins ??
+    []) as readonly VxPlugin[]
+  return await discoverProjects(workspace, plugins, warnToStderr)
 }
 
 /**

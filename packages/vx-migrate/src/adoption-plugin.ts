@@ -30,9 +30,10 @@ export function adoptionPlugin(
   meta: ImportMeta,
   mapRun: (ctx: ProjectHookContext) => Promise<AdoptionRun>,
   reads: readonly string[] = [],
-  // A workspace-wide key of the adopted tool's (nx.json `parallel`, Turbo's
-  // `cacheMaxSize`) that the workspace itself leaves unset.
-  config?: VxPlugin['config'],
+  // `config`: a workspace-wide key of the adopted tool's (nx.json `parallel`,
+  // Turbo's `cacheMaxSize`) that the workspace itself leaves unset.
+  // `discover`: a project the tool has that no member glob lists.
+  stages: Pick<VxPlugin, 'config' | 'discover'> = {},
 ): VxPlugin {
   // One mapping per RUN, not per process: the workspace module — and so
   // this plugin instance — outlives a run under `vx watch`, and a mapping
@@ -74,7 +75,7 @@ export function adoptionPlugin(
     // tasks an edit moved would take mapping both sides; every project is
     // the answer a claimant gives when it cannot tell.
     ...(reads.length > 0 ? { fingerprint: { files: reads, affected: () => undefined } } : {}),
-    ...(config !== undefined ? { config } : {}),
+    ...stages,
   })
   return plugin
 }
