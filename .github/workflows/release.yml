@@ -59,9 +59,8 @@ jobs:
           bun -e 'const f = "packages/vx/package.json"; const p = await Bun.file(f).json(); p.version = process.argv[1]; await Bun.write(f, JSON.stringify(p, null, 2) + "\n")' "$VERSION"
 
       # What a Linux runner needs before `vx run` executes a sandboxed task:
-      # the sandbox runtime's deps (every task here declares `exec.sandbox`),
-      # the AppArmor userns restriction Ubuntu 24 imposes lifted, and bun's
-      # cross-compile targets warmed outside the sandbox. Shared with ci.yml
+      # the sandbox runtime's deps (every task here declares `exec.sandbox`)
+      # and the AppArmor userns restriction Ubuntu 24 imposes lifted. Shared with ci.yml
       # and npm.yml so the deps are named in ONE place — npm.yml not having
       # them is what stopped v0.0.20's publish.
       - uses: ./.github/actions/vx-runner

@@ -143,6 +143,16 @@ jobs:
           grep -q 'vx run' "$GITHUB_STEP_SUMMARY" || { echo "::error::job summary is not the vx one"; exit 1; }
           exit $code
 
+      # A cross-compile on a cold Bun cache, in bwrap: nothing warms
+      # `~/.bun/install/cache`, so each target's runtime downloads from npm
+      # inside the sandbox, as it does on a fresh laptop — what the
+      # `build.bun.*` grants exist for (2026-09-29). Two targets the host
+      # is not; release.yml builds all four the same way.
+      - name: Cross-compile on a cold Bun cache (bwrap)
+        run: |
+          if ls ~/.bun/install/cache/bun-*-v* 2>/dev/null; then echo "::error::the Bun cache is not cold"; exit 1; fi
+          bun packages/vx/src/bin.ts run build.bun.linux-arm64 build.bun.darwin-arm64 --filter @vzn/vx --concurrency 2
+
   # The `ci` job above runs every package's suite through `vx run ci --all`;
   # this job exists for the one suite that needs live services — the REAPI
   # wire against a real cache server and a real execution worker.
@@ -297,6 +307,14 @@ jobs:
       # tolerated (lossy-by-OS, ~5%, asserted on nowhere here).
       - name: sandbox enforcement canary
         run: bun packages/vx/tests/helpers/sandbox-canary.ts 20
+
+      # The linux job's cold cross-compile, under seatbelt: Bun extracts a
+      # downloaded runtime into the package directory before moving it into
+      # its cache, and seatbelt matches that directory by the grant's glob.
+      - name: Cross-compile on a cold Bun cache (seatbelt)
+        run: |
+          if ls ~/.bun/install/cache/bun-*-v* 2>/dev/null; then echo "::error::the Bun cache is not cold"; exit 1; fi
+          bun packages/vx/src/bin.ts run build.bun.darwin-x64 build.bun.linux-x64 --filter @vzn/vx --concurrency 2
 
       # A compiled binary must LAUNCH on macOS. Bun 1.4.0's `--compile`
       # signature is rejected by macOS (SIGKILL, exit 137) until it is

@@ -868,3 +868,32 @@ Two survivors were real gaps. Two rows in
   `wrapTurn` chain they interleave.
 - A run armed through `prepareSandbox` with a granting task hands SRT
   the grant at the wrap. The pass-through to `initSandbox` had no row.
+
+B-46. `bun build --compile --target=<other>` on a cold Bun cache, in
+the sandbox, with no warm step. Traced (strace, Bun 1.4.2): Bun fetches
+`@oven/bun-<t>` from npm, extracts it into `<cwd>/.<16 hex>-<8
+hex>.tmp/`, and moves the runtime into
+`~/.bun/install/cache/bun-<t>-v<version>` (a copy across mounts on
+EXDEV). TMPDIR is not used. Four core fixes, each with a row that fails
+without it:
+
+- A `dir/` write grant outside the project (`~/.bun/install/cache/`) was
+  never created; only a glob's prefix was. bwrap bound nothing.
+- Linux: a write glob that matches nothing at the start now covers
+  writes that land in the sandbox's scratch (no bind holds its
+  directory), and nothing written there persists. The "mounts nothing"
+  warning fires only where a read grant mounts the directory read-only
+  (`scratchWrites`, `pendingWriteGrants`).
+- macOS: a collapsed `<glob>/**` kept only `<glob>`, which seatbelt
+  matches as an exact regex, so `.*.tmp/**` covered the directory and
+  nothing in it. It keeps `<glob>/**` beside it.
+- A failed task names the writes refused outside the project, with the
+  directory to grant (`refusedWritesOutside`). The owner's Mac said only
+  "Failed to extract executable".
+
+`ALWAYS_IGNORE` gains the extraction directory, as `*.bun-build`
+before it. `build.bun.*` and `check.binary` grant the cache, the
+`.tmp` glob and `registry.npmjs.org`, and fold `bun --version` (the
+embedded runtime is the compiling Bun's version; no key held it). The
+warm steps are gone from `vx-runner` and `npm.yml`; `ci.yml` cross-
+compiles two non-host targets on a cold cache on Linux and macOS.
