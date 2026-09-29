@@ -2,28 +2,24 @@
 
 > **Recommendation: stay on Bun/TypeScript.** Do not rewrite, and do
 > not add a native addon now. Rust wins clearly on process startup
-> (3.5 ms against 46 ms for the compiled vx binary) and 1.5–6× on the
-> compute inside the hot stages. But on a warm 150-project run those
-> stages are a minority of a 160 ms wall. The rest is git spawns, SQLite,
-> task processes and config evaluation, and a Rust core still needs a JS
-> engine for the last one. The rewrite costs about 2–3 person-years and
-> reopens the stale-hit failure class. Two cheaper TS-side leads come out
-> of the profile instead (§ What to do instead).
+> (3.3 ms against 19 ms for the compiled vx binary) and on the fixed
+> cost of packing a small artifact (6×). On key derivation it is only
+> 1.2× faster, and on a 150-file workspace Bun is slightly ahead. On a
+> warm 150-project run the stages Rust would speed up are a minority of
+> a 101 ms wall. The rest is git spawns, SQLite, task processes and
+> config evaluation, and a Rust core still needs a JS engine for the
+> last one. The rewrite costs about 2–3 person-years and reopens the
+> stale-hit failure class. One cheaper TS-side lead comes out of the
+> profile instead (§ What to do instead).
 
 > **Status:** research (2026-09-29). Nothing here changes the product.
 > Paths are relative to `packages/vx/`.
 
 ## Setup
 
-- Container: 4 vCPU, Linux 6.18. Rust 1.94.1 (release, `lto = true`,
-  `codegen-units = 1`).
-- Bun **1.3.11**, below `engines.bun`. This session could not put 1.4.2
-  on PATH. On 1.3.11, `db.close(true)` throws `database is locked` at the
-  end of every run, and the throw also stops the timing table from
-  printing. The profile therefore ran from a scratch worktree with that
-  one call changed to `db.close()`. Nothing in the patch touches the
-  stages measured. The absolute Bun numbers may shift on 1.4.2; the
-  ratios below are wide enough that the conclusion should not.
+- Container: 4 vCPU, Linux 6.18.
+- Bun 1.4.2, the latest release and CI's pin.
+- Rust 1.94.1 (release, `lto = true`, `codegen-units = 1`).
 - Workloads:
   - `ws`: `packages/vx-bench/generate.ts` with 150 projects, one input
     file each.
@@ -32,38 +28,46 @@
 - A/B method: arms interleaved in each round, min of 5 rounds, same
   machine, same inputs.
 
+A first pass ran on Bun 1.3.11, which is below `engines.bun`. That
+container's Bun was older than the floor. The 1.3.11 numbers were worse
+across the board: the warm run took 159 ms and `vx --version` took
+46 ms. They also invented a lead, 20 ms of `workspace config`, that is
+8 ms on 1.4.2. Every number below is 1.4.2.
+
 ## Where the Bun wall goes
 
 Warm no-op, `vx run build --all`, 150 projects, all hits:
 
 | form                           | wall min (7 reps) |
 | ------------------------------ | ----------------: |
-| `bun src/bin.ts` (source)      |          242.6 ms |
-| compiled binary (`--bytecode`) |          158.9 ms |
+| `bun src/bin.ts` (source)      |          190.3 ms |
+| compiled binary (`--bytecode`) |          101.1 ms |
 
-`VX_TIMING=1` stage table, compiled binary (own time per stage):
+`VX_TIMING=1` stage table, compiled binary (own time per stage, ms):
 
-| stage             |  own | what it is                                          |
-| ----------------- | ---: | --------------------------------------------------- |
-| before the table  |  ~35 | Bun runtime init + evaluating the 238-module bundle |
-| startup           | 15.0 | imports ahead of `prepareRun`                       |
-| workspace config  | 19.7 | `vx.workspace.mjs` (declares no plugin)             |
-| discover projects |  6.6 |                                                     |
-| package graph     |  2.3 |                                                     |
-| open cache        |  3.7 | SQLite open + workspace fingerprints                |
-| load configs      | 13.5 | 150 configs, served from the evaluation cache       |
-| git enumeration   |  3.0 | own share; the spawn overlaps earlier stages        |
-| build graph       |  0.8 |                                                     |
-| classify + probe  | 31.0 | stable keys (xxh3 fold) + one batched SQLite probe  |
-| run graph         | 14.3 | 150 restores (output stats)                         |
-| record history    |  9.5 | SQLite writes                                       |
-| close             |  5.9 |                                                     |
+| stage             |  own | what it is                                         |
+| ----------------- | ---: | -------------------------------------------------- |
+| startup           |  9.8 | imports ahead of `prepareRun`                      |
+| workspace config  |  8.1 | `vx.workspace.mjs` (declares no plugin)            |
+| discover projects |  3.3 |                                                    |
+| package graph     |  1.9 |                                                    |
+| open cache        |  2.7 | SQLite open + workspace fingerprints               |
+| load configs      | 13.9 | 150 configs, served from the evaluation cache      |
+| git enumeration   |  3.7 | own share; the spawn overlaps earlier stages       |
+| build graph       |  0.7 |                                                    |
+| classify + probe  | 32.1 | stable keys (xxh3 fold) + one batched SQLite probe |
+| run graph         | 14.0 | 150 restores (output stats)                        |
+| record history    |  4.1 | SQLite writes                                      |
+| close             |  5.3 |                                                    |
 
-Cold run on the same tree: 822–849 ms, after a first run of 1,075 ms.
-Most of that is 150 `sh -c 'mkdir … && cp …'` task processes on 4
-workers (`run graph` 556 ms). The save spans (`save: pack`, `save: scan`
-and `save: write temp`) overlap across workers, so their totals are not
-costs (CLAUDE.md). An isolated one-file save costs 0.82 ms.
+The table starts when vx's timing module loads. Bun's own start and the
+bundle's evaluation come before that point, and `vx --version` below
+measures them.
+
+Cold run on the same tree: 633–666 ms. Most of that is 150
+`sh -c 'mkdir … && cp …'` task processes on 4 workers (`run graph`
+417 ms). The save spans overlap across workers, so their totals are not
+costs (CLAUDE.md).
 
 ## Prototype: the same work in Rust
 
@@ -83,66 +87,65 @@ Both halves do the same two jobs:
   in Rust, because Bun reads only 32 bits of the seed (item 682).
 - **pack.** A ustar of `stdout`, every file under the directory, the
   `.vx-meta.json` sidecar and the crc32 `.vx-sum` entry, compressed with
-  zstd level 3. Output sizes match within 1% (224 vs 237 bytes;
-  649,210 vs 648,513 bytes).
+  zstd level 3. Output sizes match within 1%.
 
 In-process time per operation, min of 5 interleaved rounds:
 
 | job                              |     Bun |    Rust | Rust gain |
 | -------------------------------- | ------: | ------: | --------: |
-| keys, `ws` (150 files)           |  6.7 ms |  6.1 ms |      1.1× |
-| keys, `ws2` (6,000 files)        | 24.8 ms | 15.6 ms |      1.6× |
-| pack, one small file             | 0.34 ms | 0.05 ms |      6.5× |
-| pack, `src/` (149 files, 2.4 MB) | 20.4 ms | 15.7 ms |      1.3× |
+| keys, `ws` (150 files)           |  5.5 ms |  5.9 ms |     0.94× |
+| keys, `ws2` (6,000 files)        | 18.4 ms | 15.4 ms |      1.2× |
+| pack, one small file             | 0.33 ms | 0.05 ms |        6× |
+| pack, `src/` (149 files, 2.4 MB) | 20.9 ms | 15.8 ms |      1.3× |
 
 Whole-process wall, one operation, min of 5:
 
 | job          | `bun twin.ts` | Rust binary |
 | ------------ | ------------: | ----------: |
-| keys, `ws2`  |       70.3 ms |     18.3 ms |
-| pack, `src/` |       69.3 ms |     21.9 ms |
+| keys, `ws2`  |       42.9 ms |     18.9 ms |
+| pack, `src/` |       45.8 ms |     20.6 ms |
 
-Process startup, min of 10 (two interleaved passes agreed within 0.5 ms):
+Process startup, min of 10 (two interleaved passes agreed within 2 ms):
 
 | binary                           |    min |
 | -------------------------------- | -----: |
 | Rust hello world (436 KB)        | 3.3 ms |
-| compiled Bun hello world (99 MB) |  12 ms |
-| `bun -e 0`                       |  14 ms |
-| compiled vx `--version` (110 MB) |  46 ms |
-| `bun src/bin.ts --version`       |  86 ms |
+| `bun -e 0`                       | 6.4 ms |
+| compiled Bun hello world (81 MB) | 6.6 ms |
+| compiled vx `--version` (88 MB)  |  19 ms |
+| `bun src/bin.ts --version`       |  56 ms |
 
 What the numbers say:
 
-- **git dominates `keys`.** The two spawns alone take 5.4 + 8.2 ms on
-  `ws2` and 3.9 + 4.8 ms on `ws`. Rust runs them one after the other
-  and Bun overlaps them, so the 1.6× gain on `ws2` understates Rust's
-  fold. It is still only about 9 ms per 6,000 input files, about
-  1.5 µs per file.
+- **git dominates `keys`.** Rust runs the two spawns one after the
+  other and Bun overlaps them. That is why Bun wins on `ws` and why the
+  1.2× on `ws2` understates Rust's fold alone. The fold difference is
+  still only about 3 ms per 6,000 input files.
 - **pack's large case is zstd.** Both sides call the same C library.
-  Rust's 6.5× win is on the small artifact, which is JS fixed cost:
-  0.29 ms of CPU per artifact, or about 11 ms of wall over 150
+  Rust's 6× win is on the small artifact, which is JS fixed cost:
+  0.27 ms of CPU per artifact, or about 10 ms of wall over 150
   artifacts on 4 workers.
-- **Startup is the one large, unconditional win.** Bun's runtime floor
-  is 12 ms, which an embedded JS engine would pay again. vx's own module
-  graph adds another ~34 ms to every invocation, and that is TS-side
-  cost.
+- **Startup is the one clear, unconditional win: about 16 ms per
+  invocation.** Bun's runtime floor is 6.6 ms, and an embedded JS engine
+  would pay a similar cost again. vx's own module graph adds another
+  ~13 ms, and that is TS-side cost.
 
 ## What a warm run would save
 
 This is a projection from the stage table, not a measurement. It
 assumes a Rust core with no JS on the warm path:
 
-- Startup: −40 ms.
-- Stable keys and probe: −15 to −20 ms, from the fold ratio above.
+- Startup: −16 ms.
+- Stable keys and probe: −5 to −10 ms, generous given the fold ratio
+  above.
 - The rest stays the same: git spawns, SQLite I/O, the output stats,
   and history writes.
 
-The estimate is 159 ms → roughly 80–100 ms. It holds only while no JS
+The estimate is 101 ms → roughly 75–85 ms. It holds only while no JS
 runs. A workspace that declares any plugin, or whose config-evaluation
-cache misses, pays for a JS engine again: Bun's 12 ms floor plus
+cache misses, pays for a JS engine again: Bun's 6.6 ms floor plus
 evaluation, or an embedded engine's own start. On the cold run, task
-processes dominate. Rust saves the pack fixed cost (~11 ms on this run)
+processes dominate. Rust saves the pack fixed cost (~10 ms on this run)
 and nothing on the spawns.
 
 ## The full rewrite
@@ -235,8 +238,8 @@ laws re-proven. They are not greenfield rates.
   it.** About 1,000 numbered items of fixes live in the TS code and its
   tests, and every one is a place the port can regress silently. A
   stale hit replays wrong bytes under a green run.
-- The binary shrinks from 110 MB to a few MB without a JS engine, but
-  JS comes back with any plugin or config-cache miss.
+- The binary shrinks from 88 MB to a few MB without a JS engine, but JS
+  comes back with any plugin or config-cache miss.
 - The plugin story, the programmatic API and the playground each become
   a boundary (IPC, N-API, WASM) where today they are one language.
 - Contributors need Rust and TS. "No build step" ends: cargo builds per
@@ -249,7 +252,7 @@ laws re-proven. They are not greenfield rates.
 - **Rust addon (N-API or `bun:ffi`) for fold and pack.** The per-call
   work is microseconds, so the fold must cross the FFI boundary once per
   task (or once per run), never once per xxh3. The ceiling is the
-  prototype's gap: about 9 ms per 6,000 inputs and 0.29 ms CPU per small
+  prototype's gap: about 3 ms per 6,000 inputs and 0.27 ms CPU per small
   artifact. The costs:
   - a native build for 4 targets, which ends "no build step";
   - a `.so` or `.dylib` embedded in the compiled binary;
@@ -270,18 +273,13 @@ laws re-proven. They are not greenfield rates.
 - **Rust core, Bun for configs and plugins.** This is the full rewrite
   above minus V8. It keeps the whole effort and adds the IPC boundary.
 
-## What to do instead (TS-side leads, not measured here)
+## What to do instead (TS-side lead, not measured here)
 
-1. **Module-graph startup.** The compiled `vx --version` takes 46 ms,
-   against 12 ms for a compiled Bun hello world. Those ~34 ms are vx's
-   own bundle evaluation, and every invocation pays them. Lazy-loading verbs and
-   heavy modules behind the verb that needs them is the cheapest large
-   win in this report: about the same size as the whole Rust
-   compute gain.
-2. **`workspace config` is 19.7 ms for a workspace that declares no
-   plugin.** Evaluating an empty `vx.workspace.mjs` should cost about
-   1 ms, so something else is loading in that stage. Profile it with
-   `bun --cpu-prof` before assuming a cause.
+**Module-graph startup.** The compiled `vx --version` takes 19 ms,
+against 6.6 ms for a compiled Bun hello world. Those ~13 ms are vx's own
+bundle evaluation, and every invocation pays them. Lazy-loading verbs
+and heavy modules behind the verb that needs them could recover most of
+the startup gap a Rust rewrite would close, at a fraction of the cost.
 
 ## Reproduce
 
