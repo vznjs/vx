@@ -157,6 +157,46 @@ export function resolveSharedOutputs(tasks: GeneratedTask[]): GeneratedTask[] {
   return tasks
 }
 
+/**
+ * The same across projects, for workspace outputs: cal.com's shared
+ * `post-install` writes `../../node_modules/@prisma/client/**` from every
+ * package that has the script, one workspace path, and core refused the
+ * whole run over the first pair (two projects' outputs on one path with
+ * no edge between them). Keepers are the first in project and task order;
+ * every later task on a kept path runs uncached, with a todo. Edges are
+ * not read: across projects they are the package graph's, which the
+ * mapping does not hold, so an ordered pair loses its cache too.
+ */
+export function resolveSharedWorkspaceOutputs(
+  projects: readonly { readonly name: string; readonly tasks: GeneratedTask[] }[],
+): void {
+  const kept: { id: string; files: string[] }[] = []
+  for (const p of projects) {
+    for (const t of p.tasks) {
+      const cache = t.task?.['cache'] as { outputs?: { workspaceFiles?: unknown } } | undefined
+      const ws = cache?.outputs?.workspaceFiles
+      if (!Array.isArray(ws)) continue
+      const files = ws.filter((f): f is string => typeof f === 'string' && !f.startsWith('!'))
+      if (files.length === 0) continue
+      const clash = kept.find((k) =>
+        k.files.some((ga) => files.some((gb) => outputsOverlap(ga, gb))),
+      )
+      if (clash === undefined) {
+        kept.push({ id: `${p.name}#${t.name}`, files })
+        continue
+      }
+      const shared = files.find((gb) => clash.files.some((ga) => outputsOverlap(ga, gb)))!
+      delete t.task!['cache']
+      t.todos.push(
+        `declares the workspace output ${JSON.stringify(shared)} that ${clash.id} also declares — ` +
+          "vx cleans a task's outputs before it runs and before a restore, so two cached tasks " +
+          "on one path would delete each other's work; this one runs uncached. Give it its own " +
+          'output path to cache it.',
+      )
+    }
+  }
+}
+
 /** A `!` output with no positive beside it takes back nothing, and core refuses a list of them alone. */
 export function takingBack(globs: readonly string[]): string[] {
   return globs.some((g) => !g.startsWith('!')) ? [...globs] : []

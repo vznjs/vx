@@ -1090,3 +1090,27 @@ describe('turbo-map: a transit node', () => {
     ]).toEqual([['build', 'transit'], ['test', 'transit'], 'true', ['^transit'], true])
   })
 })
+
+// cal.com: a shared `post-install` writes `../../node_modules/@prisma/client/**`
+// from every package with the script. One workspace path, no edge between
+// them, and core refused the whole run over the first pair.
+describe('turbo-map: a workspace output two projects declare', () => {
+  it('stays cached on the first; the next runs uncached, with a todo', async () => {
+    const m = await map(
+      { tasks: { gen: { outputs: ['../../shared/**'] } } },
+      { a: { scripts: { gen: 'g' } }, b: { scripts: { gen: 'g' } } },
+    )
+    const [a, b] = m.projects.map((p) => p.tasks[0]!)
+    expect([
+      (a!.task!['cache'] as { outputs: { workspaceFiles: string[] } }).outputs.workspaceFiles,
+      b!.task?.['cache'],
+      b!.todos,
+    ]).toEqual([
+      ['shared/**'],
+      undefined,
+      [
+        'declares the workspace output "shared/**" that a#gen also declares — vx cleans a task\'s outputs before it runs and before a restore, so two cached tasks on one path would delete each other\'s work; this one runs uncached. Give it its own output path to cache it.',
+      ],
+    ])
+  })
+})

@@ -601,3 +601,26 @@ describe('vx-migrate --from moon', () => {
     })
   })
 })
+
+// The turbo() class (cal.com, G-63): two projects' tasks on one workspace
+// output, no edge between them, refused the whole run.
+describe('moon(): a workspace output two projects declare', () => {
+  it(
+    'stays cached on the first; the next runs uncached',
+    async () => {
+      await moon1()
+      const gen = `tasks:\n  gen:\n    command: 'gen'\n    inputs: ['src/**/*']\n    outputs: ['/shared']\n`
+      await write('packages/core/moon.yml', `type: 'library'\n${gen}`)
+      await write('apps/web/moon.yml', `type: 'application'\n${gen}`)
+      git()
+      // The inherited `^:build` edge plans `build` too; only `gen` is asked about.
+      const gens = [...(await tasksOf(['gen'])).entries()].filter(([id]) => id.endsWith('#gen'))
+      const cached = gens.filter(([, t]) => t.config.cache !== undefined)
+      expect([gens.length, cached.map(([, t]) => t.config.cache?.outputs.workspaceFiles)]).toEqual([
+        2,
+        [['shared']],
+      ])
+    },
+    TIMEOUT,
+  )
+})

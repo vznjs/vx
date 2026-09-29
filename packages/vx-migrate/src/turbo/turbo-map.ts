@@ -15,7 +15,13 @@ import { isLiteralPattern, type ProjectMeta, UserError } from '@vzn/vx'
 import { minimatchToVx } from '../glob-grammar.js'
 import { shellQuote } from '../nx-command.js'
 import { scriptCommand, yarnPnp } from '../script-command.js'
-import { ownFileOutput, ownFileTodo, resolveSharedOutputs, takingBack } from '../shared-outputs.js'
+import {
+  ownFileOutput,
+  ownFileTodo,
+  resolveSharedOutputs,
+  resolveSharedWorkspaceOutputs,
+  takingBack,
+} from '../shared-outputs.js'
 import { packageScripts, relPosix } from '../paths.js'
 import { pruneOrphanPersistentNotes } from '../persistent-note.js'
 import { DOTENV_PROBE } from '../dotenv-probe.js'
@@ -852,6 +858,7 @@ export async function mapTurboWorkspace(
     projects.push({ name: meta.name, dir: meta.dir, tasks })
   }
 
+  resolveSharedWorkspaceOutputs(projects)
   pruneOrphanPersistentNotes(projects, opts.persistentTodo)
   return { projects, notes, globals }
 }
