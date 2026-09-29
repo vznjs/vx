@@ -188,11 +188,9 @@ describe('nx()', () => {
       expect(lint.config.exec?.command).toBe('echo lint-ran > lint.log')
       expect(lint.config.cache).toBeUndefined()
       expect(plan.tasks.find((t) => t.node.id === 'app#all')!.node.deps).toEqual(['app#build'])
-      // The graph was exported once, and the root project is a note.
+      // The graph was exported once, and the root project attached (G-55).
       expect(await nxCalls(root)).toBe(1)
-      expect(log.lines.some((l) => l.includes('Nx project(s) ws have no workspace package'))).toBe(
-        true,
-      )
+      expect(log.lines.some((l) => l.includes('have no workspace package'))).toBe(false)
     },
     TIMEOUT,
   )
@@ -359,39 +357,50 @@ describe('nx()', () => {
     TIMEOUT,
   )
 
-  // Core makes a root with a vx.config a project (D-39); the root Nx
-  // project's targets attach to it by directory, and an edge to one holds.
-  it(
-    'a root vx.config attaches the root Nx project, and an edge to its target holds',
-    async () => {
-      const g = structuredClone(GRAPH) as unknown as {
-        graph: { nodes: Record<string, { data: { targets: Record<string, unknown> } }> }
+  // An integrated Nx repo keeps projects out of the package manager's list:
+  // analogjs's `project.json` libraries attached 1 of 21 `build` tasks until
+  // nx() named each graph node's root through `discover` (G-55).
+  const withRoot = () => {
+    const g = structuredClone(GRAPH) as unknown as {
+      graph: {
+        nodes: Record<string, { data: { targets: Record<string, unknown> } }>
+        dependencies: Record<string, unknown[]>
       }
-      g.graph.nodes['ws'] = {
-        data: { root: '.', targets: { prep: { command: 'echo p' } } },
-      } as never
-      ;(g.graph.nodes['lib']!.data.targets['lint'] as Record<string, unknown>)['dependsOn'] = [
-        { projects: ['ws'], target: 'prep' },
-      ]
-      await writeFile(path.join(root, 'graph.json'), JSON.stringify(g))
+    }
+    g.graph.nodes['ws'] = {
+      data: { root: '.', targets: { prep: { command: 'echo p' } } },
+    } as never
+    g.graph.nodes['tool'] = {
+      data: { root: 'libs/tool', targets: { gen: { command: 'echo g > gen.txt' } } },
+    } as never
+    g.graph.dependencies['tool'] = []
+    ;(g.graph.nodes['lib']!.data.targets['lint'] as Record<string, unknown>)['dependsOn'] = [
+      { projects: ['ws'], target: 'prep' },
+      { projects: ['tool'], target: 'gen' },
+    ]
+    return g
+  }
+
+  it(
+    'a project no glob lists attaches with no vx.config: the root and a project.json-only library',
+    async () => {
+      await mkdir(path.join(root, 'libs', 'tool'), { recursive: true })
+      await writeFile(path.join(root, 'libs', 'tool', 'project.json'), '{ "name": "tool" }')
+      await writeFile(path.join(root, 'graph.json'), JSON.stringify(withRoot()))
       await workspace("nx({ graph: 'graph.json' })")
       const log = silent()
-      const unattached = 'Nx project(s) ws have no workspace package to attach targets to'
-      // Unattached, the edge is dropped with a todo: it refused the run.
-      const lone = await planRun({ cwd: root, tasks: ['lint'], log })
-      expect(lone.tasks.map((t) => t.node.id)).toEqual(['lib#lint'])
-      const text = log.lines.join('\n')
-      expect(text).toContain(
-        `${unattached} (the workspace root: a vx.config there makes it a project) — run those targets with nx, or add one`,
-      )
-      expect(text).toContain(
-        'dependsOn "ws#prep": no vx project runs it — edge dropped, and the key misses it',
-      )
-      await writeFile(path.join(root, 'vx.config.mjs'), 'export default { tasks: {} }\n')
-      const attached = silent()
-      const plan = await planRun({ cwd: root, tasks: ['lint'], log: attached })
-      expect(plan.tasks.map((t) => t.node.id).sort()).toEqual(['lib#lint', 'ws#prep'])
-      expect(attached.lines.join('\n')).not.toContain(unattached)
+      const plan = await planRun({ cwd: root, tasks: ['lint'], log })
+      expect(plan.tasks.map((t) => t.node.id).sort()).toEqual(['lib#lint', 'tool#gen', 'ws#prep'])
+      expect(log.lines.join('\n')).not.toContain('have no workspace package')
+      const result = await run({
+        cwd: root,
+        tasks: ['tool#gen'],
+        log: silent(),
+        handleSignals: false,
+      })
+      expect(result.ok).toBe(true)
+      // A `command` target runs from the workspace root, as under Nx.
+      expect(await Bun.file(path.join(root, 'gen.txt')).text()).toBe('g\n')
     },
     TIMEOUT,
   )
@@ -910,6 +919,8 @@ describe('nx(): what the sweep found unheld', () => {
       await writeFile(
         path.join(root, 'graph.json'),
         graphWith((x) => {
+          // Unattached: a directory the tree no longer has is named by no one.
+          ;(x.graph.nodes.ws.data as Record<string, unknown>)['root'] = 'gone'
           ;(x.graph.nodes.ws.data.targets as Record<string, unknown>)['ci-all'] = {
             executor: 'nx:run-commands',
             options: { command: 'true', streamOutput: false },

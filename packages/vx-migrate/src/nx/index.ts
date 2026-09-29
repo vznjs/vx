@@ -18,7 +18,7 @@
 // Nx itself runs — and a fresh snapshot costs the stats alone. Design:
 // docs/design/nx-unchanged-2026-09.md.
 
-import { stat } from 'node:fs/promises'
+import { mkdir, stat } from 'node:fs/promises'
 import path from 'node:path'
 import { type GeneratedProject, type ProjectMeta, UserError, type VxPlugin } from '@vzn/vx'
 import { type AdoptionRun, adoptionPlugin } from '../adoption-plugin.js'
@@ -57,9 +57,24 @@ export interface NxPluginOptions {
 
 /** The plugin: the adoption skeleton over `mapNxWorkspace`, one mapping per run. */
 export function nx(options: NxPluginOptions = {}): VxPlugin {
+  // One graph load per RUN, shared by `discover` and `project`: the run
+  // hands both stages the same projects array (discover's, grown by what
+  // it named), so its identity is the run's, as the mapping's is.
+  let graphFor: readonly ProjectMeta[] | undefined
+  let graph: Promise<LoadedGraph> | undefined
+  const graphOf = (root: string, cacheDir: string, projects: readonly ProjectMeta[]) => {
+    if (graphFor !== projects) {
+      graphFor = projects
+      graph = loadGraph(root, cacheDir, projects, options.graph)
+    }
+    return graph!
+  }
   return adoptionPlugin(
     import.meta,
-    (ctx) => mapAll(options.root ?? ctx.workspaceRoot, ctx.cacheDir, ctx.projects, options),
+    async (ctx) => {
+      const root = options.root ?? ctx.workspaceRoot
+      return mapAll(root, ctx.projects, await graphOf(root, ctx.cacheDir, ctx.projects))
+    },
     // At the workspace root only, as `turbo()` claims its file.
     options.root === undefined ? ['nx.json'] : [],
     {
@@ -68,8 +83,48 @@ export function nx(options: NxPluginOptions = {}): VxPlugin {
         const parallel = await nxParallel(options.root ?? ctx.workspaceRoot)
         if (parallel !== undefined) workspace.concurrency = parallel
       },
+      // An integrated Nx repo keeps projects out of the package manager's
+      // list (analogjs: `project.json` libraries no glob names), and their
+      // targets had nowhere to attach: 1 of 21 `build` tasks ran. Each
+      // graph node with targets at a directory core did not find is named
+      // a project, by its package.json name or else its Nx name; a name a
+      // project already holds stays unattached, and the mapping says so.
+      async discover(ctx) {
+        const root = options.root ?? ctx.workspaceRoot
+        const { graph } = await graphOf(root, ctx.cacheDir, ctx.projects)
+        const dirs = new Set(ctx.projects.map((m) => path.resolve(m.dir)))
+        const names = new Set(ctx.projects.map((m) => m.name))
+        const named: Array<{ dir: string; name: string }> = []
+        for (const [nodeName, node] of Object.entries(graph.nodes)) {
+          if (node?.data?.targets === undefined) continue
+          const dir = path.resolve(root, node.data.root ?? '')
+          if (dirs.has(dir) || !isWithin(ctx.workspaceRoot, dir)) continue
+          // A graph older than the tree can name a directory since removed.
+          if (
+            !(await stat(dir).then(
+              (s) => s.isDirectory(),
+              () => false,
+            ))
+          )
+            continue
+          const pkg = (await Bun.file(path.join(dir, 'package.json'))
+            .json()
+            .catch(() => null)) as { name?: unknown } | null
+          const name = typeof pkg?.name === 'string' && pkg.name !== '' ? pkg.name : nodeName
+          if (names.has(name)) continue
+          names.add(name)
+          dirs.add(dir)
+          named.push({ dir, name })
+        }
+        return named
+      },
     },
   )
+}
+
+function isWithin(root: string, dir: string): boolean {
+  const rel = path.relative(root, dir)
+  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel))
 }
 
 /**
@@ -88,18 +143,21 @@ async function nxParallel(root: string): Promise<number | undefined> {
   return typeof p === 'number' && Number.isInteger(p) && p > 0 ? p : undefined
 }
 
+interface LoadedGraph {
+  readonly text: string
+  readonly graph: NxGraph
+  readonly notes: readonly string[]
+}
+
 async function mapAll(
   root: string,
-  cacheDir: string,
   metas: readonly ProjectMeta[],
-  options: NxPluginOptions,
+  loaded: LoadedGraph,
 ): Promise<AdoptionRun> {
-  const notes: string[] = []
-  const loaded = await loadGraph(root, cacheDir, metas, options.graph, notes)
-  const graph = parseNxGraph(loaded.text, loaded.label)
+  const { text, graph, notes } = loaded
   return {
     name: 'nx',
-    reads: await nxReads(root, metas, loaded.text, graph, notes),
+    reads: await nxReads(root, metas, text, graph, notes),
     map: () => index(root, metas, graph, notes),
   }
 }
@@ -175,15 +233,12 @@ async function index(
   const byName = new Map<string, GeneratedProject>()
   const visited = new Set(metas.map((m) => m.name))
   const unattached: string[] = []
-  let rootUnattached = false
   for (const project of mapped.projects) {
     // The mapper synthesizes a project for a graph node no package
-    // matches — the root project, usually. The stage visits packages,
-    // so those targets have nowhere to go; say so once. A root with a
-    // vx.config is a project (core's D-39), and its targets attach.
+    // matches; `discover` made each one a project, but for a name a
+    // package holds or a directory gone. Those have nowhere to go.
     if (!visited.has(project.name)) {
       unattached.push(project.name)
-      if (path.resolve(project.dir) === path.resolve(root)) rootUnattached = true
       continue
     }
     byName.set(project.name, project)
@@ -191,9 +246,7 @@ async function index(
   if (unattached.length > 0) {
     notes.push(
       `Nx project(s) ${unattached.join(', ')} have no workspace package to attach targets to ` +
-        (rootUnattached
-          ? '(the workspace root: a vx.config there makes it a project) — run those targets with nx, or add one'
-          : '— run those targets with nx, or declare them in a vx.config'),
+        '(a package holds the name, or the directory is gone) — run those targets with nx',
     )
   }
   // The bins executor lines and `.env`-loading lines start with: installed
@@ -240,16 +293,31 @@ async function index(
   }
 }
 
+/**
+ * The project roots of the graph last exported, absolute; none without
+ * one. Not the workspace root: its own files count as the root's do
+ * (`ROOT_GRAPH_FILE`), and a stray write there re-exported every run.
+ */
+async function snapshotRoots(root: string, snapshot: string): Promise<string[]> {
+  try {
+    const nodes = parseNxGraph(await Bun.file(snapshot).text(), snapshot).nodes
+    return Object.values(nodes)
+      .map((n) => path.resolve(root, n?.data?.root ?? ''))
+      .filter((d) => d !== path.resolve(root))
+  } catch {
+    return []
+  }
+}
+
 /** The newest mtime among the files whose edit changes the graph, or 0 when none is readable. */
-async function newestInput(root: string, metas: readonly ProjectMeta[]): Promise<number> {
+async function newestInput(root: string, dirs: readonly string[]): Promise<number> {
   // nx.json's `extends` chain too: a base's edit changes the graph as much.
   const nxJson = await readNxJson(root).catch(() => null)
   const files = [
     ...(nxJson?.files ?? [path.join(root, 'nx.json')]),
     path.join(root, 'package.json'),
   ]
-  for (const m of metas)
-    files.push(path.join(m.dir, 'project.json'), path.join(m.dir, 'package.json'))
+  for (const d of dirs) files.push(path.join(d, 'project.json'), path.join(d, 'package.json'))
   const mtimes = await Promise.all(
     files.map((f) =>
       stat(f).then(
@@ -275,7 +343,7 @@ async function newestInput(root: string, metas: readonly ProjectMeta[]): Promise
 async function graphInputKey(
   root: string,
   cacheDir: string,
-  metas: readonly ProjectMeta[],
+  dirs: readonly string[],
 ): Promise<string | null> {
   const git = (args: string[]) =>
     Bun.spawn(['git', ...args], { cwd: root, stdout: 'pipe', stderr: 'ignore' })
@@ -305,8 +373,11 @@ async function graphInputKey(
   // configs a plugin infers targets from), or a root file Nx reads. A task's
   // stray write at the root (a report, a log) is not, and counting it
   // re-exported the graph on every run after it.
-  const roots = metas.map((m) => path.relative(root, m.dir).split(path.sep).join('/'))
+  // A `project.json` anywhere: a new one is a project no root lists yet.
+  const roots = dirs.map((d) => path.relative(root, d).split(path.sep).join('/'))
   const graphFile = (p: string): boolean =>
+    p === 'project.json' ||
+    p.endsWith('/project.json') ||
     roots.some((r) => r === '' || p.startsWith(`${r}/`)) ||
     (!p.includes('/') && ROOT_GRAPH_FILE.test(p))
   const listed: string[] = []
@@ -350,6 +421,17 @@ async function loadGraph(
   cacheDir: string,
   metas: readonly ProjectMeta[],
   exported: string | undefined,
+): Promise<LoadedGraph> {
+  const notes: string[] = []
+  const { text, label } = await loadGraphText(root, cacheDir, metas, exported, notes)
+  return { text, graph: parseNxGraph(text, label), notes }
+}
+
+async function loadGraphText(
+  root: string,
+  cacheDir: string,
+  metas: readonly ProjectMeta[],
+  exported: string | undefined,
   notes: string[],
 ): Promise<{ text: string; label: string }> {
   if (exported !== undefined) {
@@ -364,26 +446,35 @@ async function loadGraph(
   }
   const snapshot = path.join(cacheDir, SNAPSHOT)
   const keyFile = path.join(cacheDir, SNAPSHOT_KEY)
+  // The last graph's project roots with the discovered ones: `discover`
+  // loads the graph before the projects it names are projects, and an
+  // edit under one of them must still move the key.
+  const dirs = [...new Set([...metas.map((m) => m.dir), ...(await snapshotRoots(root, snapshot))])]
   const [have, key, keyed] = await Promise.all([
     stat(snapshot).then(
       (s) => s.mtimeMs,
       () => -1,
     ),
-    graphInputKey(root, cacheDir, metas),
+    graphInputKey(root, cacheDir, dirs),
     Bun.file(keyFile)
       .text()
       .catch(() => null),
   ])
   // Keyed before the export, so an edit made while Nx computes costs one
   // more export instead of hiding under the new snapshot.
-  const stale = key === null ? have < (await newestInput(root, metas)) : have < 0 || keyed !== key
+  const stale = key === null ? have < (await newestInput(root, dirs)) : have < 0 || keyed !== key
   if (stale) {
     const failure = await exportGraph(root, snapshot)
     if (failure !== null) {
       if (have < 0) throw new UserError(`[@vzn/vx-migrate] nx(): ${failure}`)
       notes.push(`${failure} — running on the previous graph snapshot`)
     } else if (key !== null) {
-      await Bun.write(keyFile, key)
+      // Keyed as the next run will key it: over the roots this export
+      // found too, or a first export (no snapshot to read roots from)
+      // re-exported on the run after.
+      const found = (await snapshotRoots(root, snapshot)).filter((d) => !dirs.includes(d))
+      const next = found.length > 0 ? await graphInputKey(root, cacheDir, [...dirs, ...found]) : key
+      if (next !== null) await Bun.write(keyFile, next)
     }
   }
   return { text: await Bun.file(snapshot).text(), label: path.relative(root, snapshot) }
@@ -399,6 +490,8 @@ async function exportGraph(root: string, snapshot: string): Promise<string | nul
   if (!(await Bun.file(bin).exists())) {
     return `no ${path.relative(root, bin)} — install nx, or export a graph with \`nx graph --file=<path>\` and pass it as graph: '<path>'`
   }
+  // `discover` runs before the run opens (and makes) the cache dir.
+  await mkdir(path.dirname(snapshot), { recursive: true })
   const proc = Bun.spawn([bin, 'graph', `--file=${snapshot}`], {
     cwd: root,
     env: process.env,

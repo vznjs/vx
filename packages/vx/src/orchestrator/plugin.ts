@@ -255,6 +255,8 @@ export interface WorkspaceHookContext {
 }
 
 export interface DiscoverContext extends WorkspaceHookContext {
+  /** Where vx's cache lives: a plugin may keep what it read to answer here. */
+  readonly cacheDir: string
   /** The projects found so far: core's, then earlier plugins'. */
   readonly projects: readonly ProjectMeta[]
 }

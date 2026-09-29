@@ -188,10 +188,15 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     log.status(m),
   )
   mark('workspace config')
+  // `--cache-dir <path>` (RunOptions.cacheDir) overrides the workspace
+  // `cacheDir` field + the `.vx/cache` default; resolved relative to cwd.
+  const cacheDir = options.cacheDir
+    ? path.resolve(options.cwd, options.cacheDir)
+    : resolveCacheDir(workspaceRoot, workspaceConfig)
   const projectMetas =
     options.discovered?.root === workspaceRoot
       ? options.discovered.projects
-      : await discoverProjects(workspace, plugins, (m) => log.status(m))
+      : await discoverProjects(workspace, plugins, cacheDir, (m) => log.status(m))
   mark('discover projects')
 
   // SCOPED config loading: configs are programs, and evaluating 1090
@@ -224,13 +229,8 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   mark('package graph')
 
   // The local cache opens BEFORE the configs load: it is also where their
-  // cached evaluations live. `--cache-dir <path>` (RunOptions.cacheDir)
-  // overrides the workspace `cacheDir` field + the `.vx/cache` default;
-  // resolved relative to cwd.
+  // cached evaluations live.
   const policy: CachePolicy = options.cache ?? FULL_CACHE_POLICY
-  const cacheDir = options.cacheDir
-    ? path.resolve(options.cwd, options.cacheDir)
-    : resolveCacheDir(workspaceRoot, workspaceConfig)
   const localCache = new Cache(
     cacheDir,
     { read: policy.localRead, write: policy.localWrite },

@@ -4,8 +4,10 @@
 (`discoverProjects`, `orchestrator/projects.ts`; `namedProject`,
 `workspace/workspace.ts`) runs wherever a run or reading verb discovers
 (run, `show`, `watch`, `info`, filters); `vx lock` and `vx init` read
-members only. `turbo()` names the root for `//#task`. `nx()` naming every
-graph node's root is still open. Leads from N (`docs/history/ws-n.md`).**
+members only. `turbo()` names the root for `//#task` (G-54); `nx()` names
+every graph node with targets that core did not find (G-55), reading the
+graph with the `cacheDir` the context carries. Leads from N
+(`docs/history/ws-n.md`).**
 
 ## Why
 

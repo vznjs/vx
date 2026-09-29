@@ -393,6 +393,7 @@ type · `src/orchestrator/plugin.ts`
 
 ```ts
 export interface DiscoverContext extends WorkspaceHookContext {
+  readonly cacheDir: string
   readonly projects: readonly ProjectMeta[]
 }
 ```

@@ -20,6 +20,7 @@ export function loadWorkspacePlugins(
 export function discoverProjects(
   workspace: Workspace,
   plugins: readonly VxPlugin[],
+  cacheDir: string,
   warn: (m: string) => void,
 ): Promise<ProjectMeta[]>
 

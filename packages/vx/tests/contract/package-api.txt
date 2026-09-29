@@ -505,6 +505,7 @@ type DependsOnEntry<K extends string> =
   | `${string}*${string}`
 == type DiscoverContext (src/orchestrator/plugin.ts)
 export interface DiscoverContext extends WorkspaceHookContext {
+  readonly cacheDir: string
   readonly projects: readonly ProjectMeta[]
 }
 == type EventBus (src/orchestrator/events.ts)

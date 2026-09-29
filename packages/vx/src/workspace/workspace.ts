@@ -646,7 +646,9 @@ export async function namedProject(
   ) {
     throw new UserError(`${where} "${named.name}" at ${shown}: no such directory`)
   }
-  const pkg = text === null ? { name: named.name } : parsePackageJson(text, pkgJsonPath)
+  const parsed: Partial<PackageJson> = text === null ? {} : parsePackageJson(text, pkgJsonPath)
+  // A nameless manifest names nothing to disagree with (Nx's own projects).
+  const pkg: PackageJson = { ...parsed, name: parsed.name ?? named.name }
   if (pkg.name !== named.name) {
     throw new UserError(
       `${where} "${named.name}" at ${shown}: its package.json names it "${pkg.name ?? ''}"`,

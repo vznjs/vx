@@ -63,6 +63,7 @@ export async function loadWorkspacePlugins(
 export async function discoverProjects(
   workspace: Workspace,
   plugins: readonly VxPlugin[],
+  cacheDir: string,
   warn: (message: string) => void,
 ): Promise<ProjectMeta[]> {
   const projects = await listProjects(workspace)
@@ -70,7 +71,7 @@ export async function discoverProjects(
   await applyDiscoverHooks(
     plugins,
     projects,
-    { workspaceRoot: workspace.root, warn },
+    { workspaceRoot: workspace.root, cacheDir, warn },
     (named, plugin) => namedProject(workspace, projects, named, plugin.name),
   )
   return projects.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
@@ -272,8 +273,13 @@ export async function loadResolvedProjects(
   const warn = opts.warn ?? ((): void => {})
   const reads: LoadReads = new Map()
   const { workspaceConfig, plugins } = await loadWorkspacePlugins(workspaceRoot, warn)
-  const metas = await discoverProjects(await loadWorkspace(workspaceRoot, reads), plugins, warn)
   const cacheDir = resolveCacheDir(workspaceRoot, workspaceConfig)
+  const metas = await discoverProjects(
+    await loadWorkspace(workspaceRoot, reads),
+    plugins,
+    cacheDir,
+    warn,
+  )
   // Opened as `vx last` opens it: a reader makes no index where there is
   // none and never resets an earlier schema's (C-5). One it cannot read
   // serves nothing; the configs evaluate live.
