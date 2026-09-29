@@ -42,7 +42,7 @@ Every key `turbo.json`, `nx.json` and `project.json` accept, read from the upstr
 | `tasks.*.interactive` | not supported | Reported as a key with no vx equivalent, then ignored. |
 | `tasks.*.interruptible` | not supported | Reported as a key with no vx equivalent, then ignored. |
 | `tasks.*.outputLogs` | mapped, with a note | `new-only` is vx's default; other values get a TODO pointing at `--output-logs`. |
-| `tasks.*.outputs` | mapped, with a note | Become `cache.outputs`, negations kept; vx cleans outputs, so a wildcard first segment leaves the task uncached with a TODO. |
+| `tasks.*.outputs` | mapped, with a note | Become `cache.outputs`, negations kept; vx cleans outputs, so a wildcard first segment leaves the task uncached with a TODO and a committed file under an output is taken back with `!`. |
 | `tasks.*.passThroughEnv` | mapped, with a note | Goes to `exec.env.passThrough`, not hashed; wildcard names get a TODO. |
 | `tasks.*.persistent` | mapped, with a note | An uncached `exec.persistent` task, with a `readyWhen` TODO when something depends on it. |
 | `tasks.*.with` | mapped, with a note | An edge to each persistent sidecar, which vx starts beside the task (ready on spawn); a sidecar that ends is a todo, and a pair naming each other keeps one edge. A task with no script is a group that starts its persistent sidecars. |
@@ -140,7 +140,7 @@ Every key `turbo.json`, `nx.json` and `project.json` accept, read from the upstr
 | `release` | not applicable | Nx release settings. |
 | `targets.*.executor` | mapped, with a note | `run-commands` and `run-script` become shell lines, `noop` a group task; others run through `nx-exec`. |
 | `targets.*.options` | mapped, with a note | Passed as `nx-exec`'s `--options` or rendered into `run-commands`; `{args.*}` forwarding gets a TODO. |
-| `targets.*.outputs` | mapped, with a note | Tokens and `{options.x}` resolved; paths outside the project become workspace files; negations kept. |
+| `targets.*.outputs` | mapped, with a note | Tokens and `{options.x}` resolved; paths outside the project become workspace files; negations kept; vx cleans outputs, so a wildcard first segment leaves the task uncached with a TODO and a committed file under an output is taken back with `!`. |
 | `targets.*.defaultConfiguration` | supported | The base task carries the default configuration's options, as `nx run` does. |
 | `targets.*.configurations` | mapped, with a note | One task per configuration (`build:ci`); `^` edges run dependencies' default configuration, with a TODO. |
 | `targets.*.inputs` | mapped, with a note | Expanded into `cache.inputs`; none means `default` and `^default`; forms without an equivalent get TODOs. |

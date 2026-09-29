@@ -11,7 +11,7 @@
 // The consumer decides what a global becomes through `splice`.
 
 import path from 'node:path'
-import { isLiteralPattern, type ProjectMeta, UserError } from '@vzn/vx'
+import { type ProjectMeta, UserError } from '@vzn/vx'
 import { minimatchToVx } from '../glob-grammar.js'
 import { shellQuote } from '../nx-command.js'
 import { scriptCommand, yarnPnp } from '../script-command.js'
@@ -21,6 +21,8 @@ import {
   resolveSharedOutputs,
   resolveSharedWorkspaceOutputs,
   takingBack,
+  wildcardOutput,
+  wildcardTodo,
 } from '../shared-outputs.js'
 import { packageScripts, relPosix } from '../paths.js'
 import { pruneOrphanPersistentNotes } from '../persistent-note.js'
@@ -1172,20 +1174,9 @@ function buildTask(
       } else outFiles.push(neg + o)
     }
 
-    // Turbo never cleans an output; vx cleans it before a run and a restore,
-    // so `**/*.d.ts` deleted a hand-written `src/env.d.ts` and an uncommitted
-    // edit to it was lost for good (item 1031). A wildcard first segment can
-    // reach the sources, and a `!` beside it (medusa: `*/**` minus `!src/**`)
-    // takes back only what it names.
-    const wild = outFiles.find(
-      (o) => !o.startsWith('!') && !isLiteralPattern(o.split('/')[0] ?? ''),
-    )
+    const wild = wildcardOutput(outFiles)
     if (wild !== undefined) {
-      todos.push(
-        `output ${JSON.stringify(wild)}: a wildcard first segment reaches the sources, which ` +
-          'vx cleans before every run — task runs uncached; declare the exact outputs in a ' +
-          'vx.config to cache it',
-      )
+      todos.push(wildcardTodo(wild))
       return { name, todos, task, uses }
     }
     const own = ownFileOutput(outFiles)

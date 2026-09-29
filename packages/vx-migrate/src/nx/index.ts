@@ -157,6 +157,7 @@ async function mapAll(
   const { text, graph, notes } = loaded
   return {
     name: 'nx',
+    spareTracked: true,
     reads: await nxReads(root, metas, text, graph, notes),
     map: () => index(root, metas, graph, notes),
   }

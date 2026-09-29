@@ -699,3 +699,35 @@ describe('nx-map: a workspace output two projects declare', () => {
     ])
   })
 })
+
+// typescript-eslint's tests output `{projectRoot}/**/*.shot`: 3,656
+// committed snapshots in one package, which vx's clean deletes before a
+// run. turbo() ran such a task uncached since item 1031; nx() cached it.
+describe('nx-map: a wildcard-first output', () => {
+  it('runs the task uncached, with the todo turbo() gives', async () => {
+    const test = (outputs: string[]) => ({
+      executor: 'nx:run-commands',
+      options: { command: 'vitest' },
+      cache: true,
+      inputs: ['{projectRoot}/**/*'],
+      outputs,
+    })
+    const t = await tasksOf([await meta('a'), await meta('b')], {
+      a: node('packages/a', { test: test(['{projectRoot}/coverage', '{projectRoot}/**/*.shot']) }),
+      // CONTROL: a literal first segment keeps the cache.
+      b: node('packages/b', { test: test(['{projectRoot}/coverage']) }),
+    })
+    expect([
+      t.get('a#test')!.task!['cache'],
+      t.get('a#test')!.todos,
+      t.get('b#test')!.task!['cache'] !== undefined,
+    ]).toEqual([
+      undefined,
+      [
+        'output "**/*.shot": a wildcard first segment reaches the sources, which vx cleans ' +
+          'before every run — task runs uncached; declare the exact outputs in a vx.config to cache it',
+      ],
+      true,
+    ])
+  })
+})

@@ -528,6 +528,42 @@ describe('turbo.json is a claimed root file (item 961)', () => {
   )
 })
 
+describe('a committed file under an output', () => {
+  // typescript-eslint's website build caches `data`, which holds the
+  // committed `sponsors.json`: Turbo and Nx never clean an output, vx does,
+  // and the first run deleted it (2026-09-29). It is taken back with `!`.
+  it(
+    'survives the clean, and the task keeps its cache',
+    async () => {
+      await writeFile(
+        path.join(root, 'turbo.json'),
+        JSON.stringify({ tasks: { build: { outputs: ['data/**'] } } }),
+      )
+      const app = path.join(root, 'packages', 'app')
+      await pkg('app', { build: 'mkdir -p data && echo gen > data/gen.json' })
+      await mkdir(path.join(app, 'data'), { recursive: true })
+      await writeFile(path.join(app, 'data', 'sponsors.json'), '["committed"]\n')
+      Bun.spawnSync({ cmd: ['git', 'add', '-A'], cwd: root })
+      const log = silent()
+      const plan = await planRun({ cwd: root, tasks: ['app#build'], log })
+      const node = plan.tasks.find((t) => t.node.id === 'app#build')!.node
+      expect(node.config.cache!.outputs.files).toEqual(['data/**', '!data/sponsors.json'])
+      expect(log.lines.join('\n')).toContain(
+        '[@vzn/vx-migrate] app#build: outputs cover 1 committed file(s) (data/sponsors.json) — ' +
+          'vx cleans outputs before a run, so they are taken back with `!` and kept',
+      )
+      const opts = { cwd: root, tasks: ['app#build'], log: silent(), handleSignals: false }
+      const status = (r: Awaited<ReturnType<typeof run>>) =>
+        r.outcomes.find((o) => o.node.id === 'app#build')!.status
+      expect(status(await run(opts))).toBe('success')
+      expect(status(await run(opts))).toBe('cache-hit')
+      expect(await Bun.file(path.join(app, 'data', 'sponsors.json')).text()).toBe('["committed"]\n')
+      expect(await Bun.file(path.join(app, 'data', 'gen.json')).text()).toBe('gen\n')
+    },
+    TIMEOUT,
+  )
+})
+
 describe('output negation', () => {
   it(
     'a negation that carves the package root out of a wildcard output runs the task uncached',

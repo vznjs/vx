@@ -147,7 +147,7 @@
   {
     "key": "turbo.json tasks.*.outputs",
     "status": "mapped",
-    "reason": "Become `cache.outputs`, negations kept; vx cleans outputs, so a wildcard first segment leaves the task uncached with a TODO."
+    "reason": "Become `cache.outputs`, negations kept; vx cleans outputs, so a wildcard first segment leaves the task uncached with a TODO and a committed file under an output is taken back with `!`."
   },
   {
     "key": "turbo.json tasks.*.passThroughEnv",
@@ -587,7 +587,7 @@
   {
     "key": "project.json targets.*.outputs",
     "status": "mapped",
-    "reason": "Tokens and `{options.x}` resolved; paths outside the project become workspace files; negations kept."
+    "reason": "Tokens and `{options.x}` resolved; paths outside the project become workspace files; negations kept; vx cleans outputs, so a wildcard first segment leaves the task uncached with a TODO and a committed file under an output is taken back with `!`."
   },
   {
     "key": "project.json targets.*.defaultConfiguration",

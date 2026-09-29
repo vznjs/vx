@@ -747,3 +747,26 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   plans all 37 of Nx's typecheck tasks. `build` 18/18, `test` 47/47,
   `lint` 36/36 matched before the fix. Row (`nx-map-sweep` › a project's
   own output takes part at its workspace path): red without it.
+- **G-66.** Committed files under a mapped output. A real
+  `vx run build` on typescript-eslint (2369384) under nx() deleted the
+  committed `packages/website/data/sponsors.json`: the website build
+  caches `data`, Nx never cleans an output, vx cleans before a run. Its
+  tests output `{projectRoot}/**/*.shot`, 3,656 committed snapshots in
+  ast-spec alone, and nx() lacked turbo()'s wildcard-first rule (item
+  1031), so a test run would have deleted them. The rule is now one
+  helper both mappers call. turbo(), nx() and lage() take each
+  committed file under an output back with `!` (A-44): kept by the
+  clean, the save and the restore, and the task stays cached. The
+  tracked list is one `git ls-files` on a mapping miss; the kept
+  mapping is keyed on HEAD and its reflog's size (a stat). Past sixteen
+  files the task runs uncached: 4,200 take-backs cost the warm run
+  1.2 s; with the wildcard rule tse's warm `test --dry` is 1,222 ms
+  against 1,272 without the pass, within noise. wireit() is left out:
+  wireit cleans outputs itself. Rows (`turbo.test` › a committed file
+  under an output, red with the pass off or its `!` dropped;
+  `tracked-outputs.test`; `nx-map-sweep` › a wildcard-first output, red
+  without the rule). Also recorded: angular-eslint (c7402dc) build 14,
+  test 16, lint 11 and typecheck 23 tasks match Nx (nx:noop targets
+  are group tasks, which a dry run does not list); its root
+  `update-rule-configs` names `utils:build`, and no project is `utils`,
+  so that todo is the repo's own dead edge.
