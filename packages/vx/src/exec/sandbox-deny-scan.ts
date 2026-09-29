@@ -103,8 +103,7 @@ export function scopedMandatoryDenies(
   gitConfig = false,
 ): string[] {
   const roots = new Set<string>()
-  for (const raw of writePaths) {
-    const w = raw.replace(/\/+$/, '') || '/'
+  for (const w of writePaths) {
     if (atOrUnder(cwd, w)) roots.add(cwd)
     else if (atOrUnder(w, cwd)) roots.add(w)
   }
@@ -138,7 +137,7 @@ export function scopedMandatoryDenies(
     }
     if (dir) {
       if (depth < SEARCH_DEPTH) visit(root, rel, depth)
-    } else if (depth > 0 && isHit(rel, gitConfig)) {
+    } else if (isHit(rel, gitConfig)) {
       const d = denyOf(cwd, rel)
       if (d !== undefined) denies.add(d)
     }

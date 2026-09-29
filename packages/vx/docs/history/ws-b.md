@@ -833,3 +833,23 @@ event loop.
 
 The next cut is upstream: SRT walks every component of every deny path
 on every wrap. vx found no lever that keeps parity.
+
+B-44. Mutation sweep of `exec/sandbox-deny-scan.ts` (B-40), run against
+its three test files: 15 mutants, 11 caught.
+
+Two of the survivors were dead code, now removed:
+
+- The trailing-slash strip on a grant: `atOrUnder`, `path.relative` and
+  `lstat` read `a/` as `a`.
+- The `depth > 0` guard on a file grant: a depth-0 root is the workspace
+  root, which is a directory.
+
+Four survivors were real gaps. Two new unit rows in
+`sandbox-deny-scan.test.ts` now catch them:
+
+- Both `.git/hooks` mutations (the hit and its mapping). Within depth 3
+  a hooks file lies only at the root, where SRT's static list has it
+  too, so the parity rows cannot see it.
+- A file named `.vscode` must not count as a hit (`<` → `<=` in
+  `inside`).
+- A file grant four levels deep must add no deny (the root-depth bound).
