@@ -107,6 +107,19 @@ export function parseNxGraph(text: string, label: string): NxGraph {
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v)
 
+/** Every dependency name the root package.json declares; none without one. */
+async function rootDependencies(root: string): Promise<ReadonlySet<string>> {
+  const pkg = (await Bun.file(path.join(root, 'package.json'))
+    .json()
+    .catch(() => null)) as Record<string, unknown> | null
+  const names = new Set<string>()
+  for (const field of ['dependencies', 'devDependencies', 'optionalDependencies']) {
+    const deps = pkg?.[field]
+    if (deps && typeof deps === 'object') for (const n of Object.keys(deps)) names.add(n)
+  }
+  return names
+}
+
 /**
  * The shape of every node field the mapper reads, refused by name. A
  * number where the graph holds a list reached the mapper's loops as a
@@ -158,6 +171,9 @@ export interface MapNxOptions {
   readonly attached?: ReadonlySet<string>
 }
 
+/** The options with what the mapper reads itself: the root's dependency names. */
+type MapOpts = MapNxOptions & { readonly rootDeps: ReadonlySet<string> }
+
 export interface NxMapping {
   readonly projects: GeneratedProject[]
   /** Workspace-wide gaps, one line each. */
@@ -178,7 +194,11 @@ export async function mapNxWorkspace(
   const g = graph
 
   const { namedInputs, cacheable, globalSync } = await readNxJsonFacts(root)
-  const mapOpts: MapNxOptions = { ...opts, cacheable: new Set([...opts.cacheable, ...cacheable]) }
+  const mapOpts: MapOpts = {
+    ...opts,
+    cacheable: new Set([...opts.cacheable, ...cacheable]),
+    rootDeps: await rootDependencies(root),
+  }
 
   const metaByRel = new Map<string, ProjectMeta>()
   for (const meta of metas) metaByRel.set(normRel(relPosix(root, meta.dir)), meta)
@@ -526,7 +546,7 @@ function buildTask(
   metaByNode: ReadonlyMap<string, ProjectMeta>,
   nodeMap: Readonly<Record<string, NxNode>>,
   taskNameFor: TaskNameFor,
-  opts: MapNxOptions,
+  opts: MapOpts,
   dotenv: readonly string[] | null,
 ): GeneratedTask {
   const todos: string[] = []
@@ -549,6 +569,7 @@ function buildTask(
     rel: projectRel,
     name: projectName,
     outputs: nxProjectOutputs(nodeMap[nodeName]?.data?.targets, projectRel, projectName),
+    rootDeps: opts.rootDeps,
   }
   expandNxInputs(target.inputs ?? [], upstream.namedOf(nodeName), at, inputs, todos)
   const { outFiles, wsOutFiles } = mapNxOutputs(

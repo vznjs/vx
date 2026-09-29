@@ -667,7 +667,7 @@
   {
     "key": "inputs: {externalDependencies}",
     "status": "not-supported",
-    "reason": "Dropped with a TODO; vx keys every task on the lockfile already."
+    "reason": "Dropped: vx keys every task on the lockfile already. Silent for names the root package.json declares; a TODO names any other."
   },
   {
     "key": "inputs: {dependentTasksOutputFiles, transitive}",

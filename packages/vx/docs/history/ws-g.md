@@ -635,3 +635,19 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   it); a pair that names each other keeps one edge. Rows
   (`turbo-map-sweep` › `with`): red without the mapping or the pair
   guard. Contract row mapped.
+- **G-58.** Probed `nx()` on analogjs (40cc8b4) after G-55: 22 `build`
+  tasks plan, the 22 projects `nx show projects --with-target build`
+  names (1 before). The same run carried the `externalDependencies`
+  todo on 32 `eslint:lint` tasks for `eslint`, a root devDependency
+  every task's key already holds (the whole lockfile, or a lockfile
+  plugin's root dependencies). The mapper reads the root
+  `package.json`; names it declares are silent, and a todo names only
+  the rest. Rows (`nx-helpers-sweep` › externalDependencies the root
+  declares; `nx.test` › …the root package.json declares is no todo):
+  red without the check or the manifest read.
+  Also probed on ngrx/platform (32c4c74, Nx 23.1.0), whose
+  `pnpm-workspace.yaml` lists no packages at all: 15 `build` and 15
+  `test` tasks plan, the sets `nx show projects --with-target` names,
+  and every `build` task's edges equal Nx's task graph
+  (`nx run-many -t build --graph`) once vx's key-only fileset twins
+  are set aside: 0 mismatches of 15.

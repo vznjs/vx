@@ -35,7 +35,13 @@ export function emptyNxInputs(): NxInputs {
 export function expandNxInputs(
   entries: readonly unknown[],
   named: Readonly<Record<string, unknown[]>>,
-  at: { readonly rel: string; readonly name: string; readonly outputs?: readonly string[] },
+  at: {
+    readonly rel: string
+    readonly name: string
+    readonly outputs?: readonly string[]
+    /** The root package.json's dependency names: every task's key holds them. */
+    readonly rootDeps?: ReadonlySet<string>
+  },
   into: NxInputs,
   todos: string[],
 ): void {
@@ -121,6 +127,12 @@ export function expandNxInputs(
       if (o.externalDependencies !== undefined) {
         // Not the project's package.json: Nx's inferred targets name root
         // devDependencies (eslint, vitest), which only the lockfile keys.
+        // One the root declares is keyed already, with or without a
+        // lockfile plugin (it keys the root's dependencies): nothing to
+        // say. The todo sat on 32 tasks of analogjs for `eslint`.
+        const names = Array.isArray(o.externalDependencies) ? o.externalDependencies : []
+        if (names.length > 0 && names.every((n) => typeof n === 'string' && at.rootDeps?.has(n)))
+          return
         todos.push(
           `input {externalDependencies: ${JSON.stringify(o.externalDependencies)}}: vx keys ` +
             'every task on the lockfile (the whole file, or with a @vzn/vx-lockfile plugin the ' +

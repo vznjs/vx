@@ -423,6 +423,30 @@ describe('nx()', () => {
     TIMEOUT,
   )
 
+  // The mapper reads the root manifest: `eslint` there is keyed already.
+  it(
+    'an externalDependencies input the root package.json declares is no todo',
+    async () => {
+      await writeFile(
+        path.join(root, 'package.json'),
+        JSON.stringify({ name: 'ws', private: true, devDependencies: { eslint: '9' } }),
+      )
+      const g = structuredClone(GRAPH) as unknown as {
+        graph: { nodes: Record<string, { data: { targets: Record<string, unknown> } }> }
+      }
+      ;(g.graph.nodes['lib']!.data.targets['build'] as Record<string, unknown>)['inputs'] = [
+        '{projectRoot}/src/**/*',
+        { externalDependencies: ['eslint'] },
+      ]
+      await writeFile(path.join(root, 'graph.json'), JSON.stringify(g))
+      await workspace("nx({ graph: 'graph.json' })")
+      const log = silent()
+      await planRun({ cwd: root, tasks: ['lib#build'], log })
+      expect(log.lines.filter((l) => l.includes('externalDependencies'))).toEqual([])
+    },
+    TIMEOUT,
+  )
+
   it(
     'graph: <file> reads an exported graph and never runs nx',
     async () => {
