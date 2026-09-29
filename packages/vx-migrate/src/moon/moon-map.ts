@@ -965,7 +965,7 @@ export async function mapMoonWorkspace(
   }
   pruneDanglingEdges(out)
   for (const p of out) resolveSharedOutputs(p.tasks)
-  resolveSharedWorkspaceOutputs(out)
+  resolveSharedWorkspaceOutputs(root, out)
   pruneOrphanPersistentNotes(out, opts.persistentTodo)
   return { projects: out, notes }
 }

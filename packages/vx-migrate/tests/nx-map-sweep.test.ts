@@ -656,4 +656,46 @@ describe('nx-map: a workspace output two projects declare', () => {
       t.get('b#gen')!.todos.filter((x) => x.includes('workspace output')).length,
     ]).toEqual([['node_modules/.prisma'], undefined, 1])
   })
+
+  // typescript-eslint's root project caches `dist` and each package's
+  // typecheck `{workspaceRoot}/dist/packages/<name>`: one path at two
+  // spellings, and core refused the run over the nesting (2026-09-29).
+  it("a project's own output takes part at its workspace path", async () => {
+    const typecheck = (out: string) => ({
+      executor: 'nx:run-commands',
+      options: { command: 'tsc' },
+      cache: true,
+      inputs: ['{projectRoot}/**/*'],
+      outputs: [out],
+    })
+    await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'repo' }))
+    const repo: ProjectMeta = {
+      name: 'repo',
+      dir: root,
+      packageJson: { name: 'repo' } as never,
+      configPath: null,
+    }
+    const t = await tasksOf([repo, await meta('a'), await meta('b')], {
+      repo: node('.', { typecheck: typecheck('{projectRoot}/dist') }),
+      a: node('packages/a', { typecheck: typecheck('{workspaceRoot}/dist/packages/a') }),
+      b: node('packages/b', { typecheck: typecheck('{projectRoot}/dist') }),
+    })
+    expect([
+      t.get('repo#typecheck')!.task!['cache'] !== undefined,
+      t.get('a#typecheck')!.task!['cache'],
+      t.get('a#typecheck')!.todos.filter((x) => x.includes('workspace output')),
+      // CONTROL: another project's own `dist` is its own path.
+      t.get('b#typecheck')!.task!['cache'] !== undefined,
+    ]).toEqual([
+      true,
+      undefined,
+      [
+        'declares the workspace output "dist/packages/a" that repo#typecheck also declares — ' +
+          "vx cleans a task's outputs before it runs and before a restore, so two cached tasks " +
+          "on one path would delete each other's work; this one runs uncached. Give it its own " +
+          'output path to cache it.',
+      ],
+      true,
+    ])
+  })
 })

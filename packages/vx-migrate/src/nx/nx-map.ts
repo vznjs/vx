@@ -384,7 +384,7 @@ export async function mapNxWorkspace(
     })
   }
 
-  resolveSharedWorkspaceOutputs(projects)
+  resolveSharedWorkspaceOutputs(root, projects)
   pruneOrphanPersistentNotes(projects, opts.persistentTodo)
   const notes =
     globalSync.length === 0
