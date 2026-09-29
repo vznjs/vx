@@ -8,8 +8,17 @@ import { execFileSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test'
-import { initSandbox, resetSandbox, resolveSandboxConfig, runSandboxed } from '../src/exec/index.js'
+import { afterAll, afterEach, beforeAll, describe, expect, it, spyOn } from 'bun:test'
+import { SandboxManager } from '@anthropic-ai/sandbox-runtime'
+import {
+  initSandbox,
+  resetSandbox,
+  resolveSandboxConfig,
+  runSandboxed,
+  wrapSandboxedCommand,
+} from '../src/exec/index.js'
+import type { TaskNode } from '../src/graph/index.js'
+import { prepareSandbox } from '../src/orchestrator/sandbox-request.js'
 import { sandboxAvailable } from './helpers/sandbox-gate.js'
 
 const available = await sandboxAvailable('sandbox git-config test')
@@ -76,4 +85,58 @@ describe.skipIf(!available)('allow.gitConfig', () => {
       }).toEqual({ granted: 0, grantedValue: '1', withheldFailed: true, withheldValue: '' })
     })
   }
+
+  const wrap = (gitConfig: boolean) =>
+    wrapSandboxedCommand({
+      command: 'true',
+      cwd: root,
+      env: process.env,
+      baseAllowRead: [root],
+      baseDenyRead: [],
+      config: resolveSandboxConfig(
+        { allow: { write: ['.'], ...(gitConfig ? { gitConfig: true } : {}) } },
+        root,
+      ),
+    })
+
+  // Each wrap reads SRT's run-wide config after it starts; concurrent wraps
+  // hold the config for their own task only because they take turns.
+  it("concurrent wraps each see their own task's grant", async () => {
+    await initSandbox({ gitConfig: true })
+    const seen: Array<boolean | undefined> = []
+    const spy = spyOn(SandboxManager, 'wrapWithSandbox').mockImplementation(async () => {
+      await Bun.sleep(5)
+      seen.push(SandboxManager.getConfig()?.filesystem?.allowGitConfig)
+      return 'true'
+    })
+    try {
+      await Promise.all([wrap(true), wrap(false), wrap(true)])
+      expect(seen).toEqual([true, false, true])
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  it('a run whose task grants it arms the per-wrap grant', async () => {
+    const node = {
+      id: 'app#t',
+      projectName: 'app',
+      projectDir: root,
+      taskName: 't',
+      config: { exec: { command: 'true', sandbox: { allow: { write: ['.'], gitConfig: true } } } },
+      deps: [],
+      requested: true,
+    } as unknown as TaskNode
+    await prepareSandbox([node])!.arm()
+    const spy = spyOn(SandboxManager, 'wrapWithSandbox').mockImplementation(async () => {
+      return String(SandboxManager.getConfig()?.filesystem?.allowGitConfig)
+    })
+    try {
+      expect((await wrap(true)).wrapped.includes('true')).toBe(true)
+      expect(spy.mock.results.length).toBe(1)
+      expect(await spy.mock.results[0]!.value).toBe('true')
+    } finally {
+      spy.mockRestore()
+    }
+  })
 })

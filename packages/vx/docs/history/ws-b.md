@@ -853,3 +853,18 @@ Four survivors were real gaps. Two new unit rows in
 - A file named `.vscode` must not count as a hit (`<` → `<=` in
   `inside`).
 - A file grant four levels deep must add no deny (the root-depth bound).
+
+B-45. Mutation sweep of B-41's per-task override (`wrapForTask`,
+`perTaskRun`, and `prepareSandbox`'s pass-through): 6 mutants, 3 caught.
+
+One survivor is equivalent: clearing `perTaskRun` at a reset. Every
+init reassigns it, and no wrap runs between a reset and an init.
+
+Two survivors were real gaps. Two rows in
+`sandbox-git-config.unsafe.test.ts` now catch them:
+
+- Three concurrent wraps (granted, withheld, granted) each read their
+  own task's `allowGitConfig` from SRT's `getConfig()`. Without the
+  `wrapTurn` chain they interleave.
+- A run armed through `prepareSandbox` with a granting task hands SRT
+  the grant at the wrap. The pass-through to `initSandbox` had no row.
