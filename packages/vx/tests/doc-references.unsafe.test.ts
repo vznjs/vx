@@ -548,8 +548,8 @@ describe('benchmarks.md quotes the run results.json recorded', () => {
     }
     const by = (name: string): Record<string, number | string> =>
       results.rows.find((r) => r['runner'] === name) as Record<string, number | string>
-    // The table's three columns, left to right.
-    const runners = ['vx', 'turbo', 'nx'] as const
+    // The table's four columns, left to right.
+    const runners = ['vx', 'vx (no lock)', 'turbo', 'nx'] as const
 
     const start = doc.indexOf('## A real monorepo: 3,270 tasks')
     expect(start).toBeGreaterThan(0)
@@ -569,7 +569,7 @@ describe('benchmarks.md quotes the run results.json recorded', () => {
       const field = FIELD[label]!
       rowsChecked += 1
       const vxMs = by('vx')[field] as number
-      cells.slice(1, 4).forEach((cell, i) => {
+      cells.slice(1, 5).forEach((cell, i) => {
         const runner = runners[i]!
         const shown = parse(
           cell
@@ -628,6 +628,7 @@ describe('benchmarks.md quotes the run results.json recorded', () => {
       (rows.find((r) => r['runner'] === runner)!['fresh'] as number) - baseline['workBoundMs']!
     expect(doc).toContain(`is\n${(overhead('vx') / 1000).toFixed(2)}s on 3,270 tasks`)
     expect(doc).toContain(`(${Math.round(overhead('vx') / packages)} ms per package)`)
+    expect(doc).toContain(`${(overhead('vx (no lock)') / 1000).toFixed(2)}s\nwith no lock`)
     expect(doc).toContain(`(${Math.round(overhead('turbo') / packages)} ms per package)`)
     expect(doc).toContain(
       `(${Math.round(overhead('nx') / packages).toLocaleString('en-US')} ms per package)`,

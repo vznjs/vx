@@ -11,9 +11,11 @@
 //                    path; the steady-state dev loop)
 //   warm-restore   — outputs deleted, cache intact (full extract path)
 //
-// vx is invoked as a real subprocess (`bun src/bin.ts run build --all`,
-// or `$VX_BIN run build --all`) so process startup, discovery, and config
-// evaluation are included — the same costs a user pays. The source path
+// vx is invoked as a real subprocess (`bun src/bin.ts run build --all
+// --frozen`, or the same through `$VX_BIN`) so process startup and discovery
+// are included — the same costs a user pays. It runs from a `vx lock`
+// snapshot taken once before the reps, as CI would; a config edit after it
+// is re-locked explicitly (`vx lock`), never by the bench. The source path
 // pays ~40 ms of transpile per run that the `--bytecode` release binary
 // does not (measured 2026-09-09 on a two-package workspace: 114 vs
 // 71 ms), so a small-workspace number should be taken through VX_BIN.
@@ -37,10 +39,10 @@ function median(xs: number[]): number {
   return s[Math.floor(s.length / 2)]!
 }
 
-async function vxRun(cwd: string): Promise<number> {
+async function vx(cwd: string, args: readonly string[]): Promise<number> {
   const t0 = Bun.nanoseconds()
   const p = Bun.spawn({
-    cmd: [...vxCmd, 'run', 'build', '--all'],
+    cmd: [...vxCmd, ...args],
     cwd,
     stdout: 'pipe',
     stderr: 'pipe',
@@ -49,10 +51,12 @@ async function vxRun(cwd: string): Promise<number> {
   const code = await p.exited
   if (code !== 0) {
     console.error(await new Response(p.stderr).text())
-    throw new Error(`vx run failed (${code})`)
+    throw new Error(`vx ${args[0]} failed (${code})`)
   }
   return (Bun.nanoseconds() - t0) / 1e6
 }
+
+const vxRun = (cwd: string) => vx(cwd, ['run', 'build', '--all', '--frozen'])
 
 const ws = await mkdtemp(path.join(os.tmpdir(), 'vx-bench-'))
 const gen = Bun.spawnSync({
@@ -61,6 +65,7 @@ const gen = Bun.spawnSync({
   stderr: 'inherit',
 })
 if (gen.exitCode !== 0) throw new Error('generate failed')
+await vx(ws, ['lock'])
 
 const wipeCache = () => rm(path.join(ws, '.vx'), { recursive: true, force: true })
 const wipeOutputs = async () => {

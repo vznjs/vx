@@ -908,3 +908,52 @@ describe('turbo(): the mapping cache', () => {
     expect(await lint()).toBe('echo lint3')
   })
 })
+
+// Every bench arm runs vx from a lock (`vx lock` once, then `--frozen`), on
+// real Turbo repos too: the plugin's tasks are no vx.config, so the lock
+// records none of them and a frozen run maps turbo.json live. A config
+// written after the lock is a project the lock lacks, and a frozen run
+// refuses it rather than evaluating it.
+describe('turbo() under vx lock and --frozen', () => {
+  const vx = (...args: string[]) => {
+    const p = Bun.spawnSync({
+      cmd: [
+        process.execPath,
+        path.resolve(import.meta.dir, '..', '..', 'vx', 'src', 'bin.ts'),
+        ...args,
+      ],
+      cwd: root,
+      env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1' },
+    })
+    return { code: p.exitCode, out: p.stdout.toString(), err: p.stderr.toString() }
+  }
+
+  it(
+    'locks, runs frozen, hits on the second frozen run, and refuses a config the lock lacks',
+    async () => {
+      expect(vx('lock')).toEqual({
+        code: 0,
+        out: 'vx: locked 0 project configs → vx-lock.json (2 projects have no vx.config; their tasks are never frozen)\n',
+        err: '',
+      })
+      const first = vx('run', 'build', '--all', '--frozen')
+      expect({ code: first.code, err: first.err }).toEqual({ code: 0, err: '' })
+      expect(await Bun.file(path.join(root, 'packages', 'app', 'dist', 'app.js')).text()).toBe(
+        '// api\n',
+      )
+      const second = vx('run', 'build', '--all', '--frozen')
+      expect({ code: second.code, err: second.err }).toEqual({ code: 0, err: '' })
+      expect(second.out).toContain('3 tasks · all cached')
+      await writeFile(
+        path.join(root, 'packages', 'lib', 'vx.config.mjs'),
+        'export default { tasks: { build: { command: "true" } } }\n',
+      )
+      const stale = vx('run', 'build', '--all', '--frozen')
+      expect(stale.code).toBe(1)
+      expect(stale.err).toContain(
+        'vx-lock.json has no entry for "lib" (packages/lib/vx.config.mjs) — run `vx lock` to refresh',
+      )
+    },
+    TIMEOUT,
+  )
+})

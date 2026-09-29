@@ -1,5 +1,5 @@
 import { expect, it } from 'bun:test'
-import { failure, parseArm, roundOrder, summarize } from '../ab.js'
+import { failure, frozenArgs, parseArm, roundOrder, summarize } from '../ab.js'
 
 it('parses an arm, the workspace after the last @', () => {
   expect(parseArm('main=/tmp/vx@next/bin@/tmp/w')).toEqual({
@@ -36,4 +36,10 @@ it("a failed run's error carries vx's stdout, where the failed task is reported"
   expect(msg.split('\n').at(-1)).toBe('◼︎ astro#build — failed (exit 1)')
   expect(msg.split('\n').length).toBe(41)
   expect(failure('aa', 2, '', 'boom')).toBe('aa exited 2\nboom')
+})
+
+it('a run is timed frozen, once; another verb as given', () => {
+  expect(frozenArgs(['run', 'build', '--all'])).toEqual(['run', 'build', '--all', '--frozen'])
+  expect(frozenArgs(['run', 'build', '--frozen'])).toEqual(['run', 'build', '--frozen'])
+  expect(frozenArgs(['show', 'build'])).toEqual(['show', 'build'])
 })
