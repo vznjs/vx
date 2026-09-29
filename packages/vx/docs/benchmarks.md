@@ -1011,6 +1011,22 @@ inside the project's outputs (N-25). Both tools rerun the uncached
 | restore | **1.57 s** | 3.81 s (2.42×) |
 | no-op   | **1.42 s** | 3.74 s (2.64×) |
 
+### resend/react-email (Turbo 2.9.14, `turbo()`, `15419ff`)
+
+`turbo run build --filter='!web'` against `vx run build --all --filter
+'!web'` through `turbo()`: the same 6 tasks and edges (`typecheck`'s 7
+and `test`'s 10 match too; `^postbuild` names no script). `web#build`
+needs a `REDIS_URL` secret and is left out under both. Three builds
+are Next apps, and a restore writes 218 MB (demo's `.react-email`
+alone is 959 files, 133 MB), so restore is the one phase here where
+Turbo leads: `restore: extract` sums 2.0 s over the 6 tasks.
+
+| `build` | vx         | Turbo 2.9.14       |
+| ------- | ---------- | ------------------ |
+| cold    | **98.6 s** | 103.8 s (1.05×)    |
+| restore | 1.09 s     | **896 ms** (0.82×) |
+| no-op   | **285 ms** | 289 ms (1.01×)     |
+
 ## Real repos re-measured (2026-09-27)
 
 Roadmap 2.5: astro and refine again, same revisions, harnesses and

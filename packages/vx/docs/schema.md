@@ -429,7 +429,8 @@ highest priority:
    `exec.env.passThrough` decides what the child _gets_.
 
 2. **`passThrough`** names → value taken from host `process.env` at
-   spawn time. _NOT_ folded into the cache key — for secrets,
+   spawn time. A project config cannot set one for it: a first load
+   that writes `process.env` is refused (D-76). _NOT_ folded into the cache key — for secrets,
    regional values, CI flags that legitimately vary between machines.
 3. **`define`** → explicit literal values. _ARE_ folded into the
    cache key via the task config hash (the values are in your config
@@ -1020,7 +1021,7 @@ interface SandboxGrants {
   localBinding?: boolean | number[] // bind and reach localhost ports (macOS; Linux needs no grant); a list also exposes them to the host
   machLookup?: string[] // mach global-names (macOS)
   pty?: boolean // acquire a TTY
-  gitConfig?: boolean // inert: SRT drops the per-task flag
+  gitConfig?: boolean // write the repository's .git/config (this task only)
 }
 ```
 

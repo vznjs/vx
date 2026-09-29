@@ -26,7 +26,16 @@
 // layer speaks is `CacheLayer` in layer.ts; `plugin-host.ts` enforces it.
 
 import { Database, type SQLQueryBindings } from 'bun:sqlite'
-import { accessSync, constants, existsSync, mkdirSync, renameSync, writeFileSync } from 'node:fs'
+import {
+  accessSync,
+  closeSync,
+  constants,
+  existsSync,
+  mkdirSync,
+  openSync,
+  renameSync,
+  writeFileSync,
+} from 'node:fs'
 import { readdir, rm, stat, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { createTables } from './schema.js'
@@ -127,6 +136,26 @@ function unreadableIndexError(dbFile: string, err: unknown): UserError {
       `it holds nothing a run cannot rebuild: remove it with its -wal and -shm files and ` +
       `re-run, and \`vx cache prune\` reclaims the artifacts it indexed`,
   )
+}
+
+/**
+ * SQLite reports a descriptor it could not get as `SQLITE_CANTOPEN`, never
+ * `EMFILE`, so an open under a low `ulimit -n` reached the user as a bare
+ * `vx: SQLiteError: unable to open database file` (D's lead, A-56). One
+ * open of a file that exists says which it was.
+ */
+function outOfFdsAtOpen(dbFile: string, err: unknown): UserError | undefined {
+  const code = (err as { code?: unknown } | null)?.code
+  if (typeof code !== 'string' || !code.startsWith('SQLITE_CANTOPEN')) return undefined
+  try {
+    closeSync(openSync(process.execPath, 'r'))
+    return undefined
+  } catch (probe) {
+    if (!isOutOfFds(probe)) return undefined
+    return new UserError(
+      `the cache index ${dbFile} could not be opened (${(err as Error).message}) — ${OUT_OF_FDS_HINT}`,
+    )
+  }
 }
 
 /** Say once, on the channel the opener has, that an upgrade emptied the index. */
@@ -527,7 +556,11 @@ export class Cache implements CacheLayer {
     const absent = mode === 'inspect' && !existsSync(dbFile)
     this.writeBlocked = absent ? 'no index there yet' : openCacheDir(cacheDir)
     this.write = localPolicy.write && this.writeBlocked === null
-    this.db = new Database(absent ? ':memory:' : dbFile, { create: true })
+    try {
+      this.db = new Database(absent ? ':memory:' : dbFile, { create: true })
+    } catch (err) {
+      throw outOfFdsAtOpen(dbFile, err) ?? err
+    }
     // busy_timeout makes concurrent writers wait for the lock instead of
     // failing immediately with SQLITE_BUSY. Two parallel `vx run`
     // invocations in CI is a normal pattern; without this the second one
@@ -544,7 +577,16 @@ export class Cache implements CacheLayer {
       try {
         return read()
       } catch (err) {
-        if (!unreadableIndex(err)) throw err
+        if (!unreadableIndex(err)) {
+          const fds = outOfFdsAtOpen(dbFile, err)
+          if (fds === undefined) throw err
+          try {
+            closeDb(this.db)
+          } catch {
+            // The refusal is the error worth reporting.
+          }
+          throw fds
+        }
         try {
           closeDb(this.db)
         } catch {

@@ -46,6 +46,19 @@ describe('turbo(): turbo.json workspace keys', () => {
     )
     expect(await staged(turbo())).toEqual({ concurrency: 3 })
     expect(await staged(turbo(), { concurrency: 8 })).toEqual({ concurrency: 8 })
+    await writeFile(
+      path.join(root, 'turbo.json'),
+      JSON.stringify({ cacheMaxSize: '10GB', tasks: {} }),
+    )
+    const own = { cacheRetention: { olderThan: '30d' } }
+    expect(await staged(turbo(), own)).toEqual({ cacheRetention: { olderThan: '30d' } })
+  })
+
+  it('a concurrency that is no positive whole number is left to the default', async () => {
+    for (const concurrency of ['abc', '1.5', '-2']) {
+      await writeFile(path.join(root, 'turbo.json'), JSON.stringify({ concurrency, tasks: {} }))
+      expect(await staged(turbo())).toEqual({})
+    }
   })
 })
 

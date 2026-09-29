@@ -56,6 +56,12 @@ Linux, so the task is refused instead, and a root with one keeps SRT's
 own depth-3 scan. `sandbox-deny-scan.unsafe.test.ts` holds the binds
 equal to SRT's whole-root scan for three grant sets.
 
+`allow.gitConfig` is read by SRT from the run's config only, so a run
+with a task that grants it sets `allowGitConfig` per wrap, one wrap at a
+time, as it does the unix-socket lift, and the scoped scan leaves that
+task's `.git/config` hits out (B-41). Before, the flag vx passed per task
+was never read and `.git/config` stayed read-only to every task.
+
 ## User-facing config
 
 The task declares its sandbox policy under `exec.sandbox` in

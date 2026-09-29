@@ -29,15 +29,6 @@ In order of harm:
    projects, `.git` and `.vx` under seatbelt. Needs a darwin probe
    (seatbelt precedence of a deny inside an allow) before a fix.
 
-## Leads (B, open)
-
-- On Linux a task's `exec.sandbox` git-config grant never reaches SRT's
-  scan: `linuxGetMandatoryDenyPaths` reads `allowGitConfig` from the
-  run's `initialize` config, and vx passes it only per wrap
-  (`sandbox-binds.ts`). A `.git/config` in a write grant stays
-  read-only either way (B-40's scan keeps that behaviour). Probe it
-  before any fix.
-
 ## Leads for other streams
 
 - **A:** a local save decodes and re-parses the artifact it just packed
@@ -794,3 +785,18 @@ Rows:
   refusal.
 - Mutations of depth, case folding, the `.git/config` mapping, the
   whole-root grant and the wiring are each red.
+
+B-41. `allow.gitConfig` takes effect, for the task that grants it. SRT
+reads `allowGitConfig` only from the run's `initialize` config, so the
+per-task flag vx passed was inert: `schema.md` said so, and `config.ts`
+promised a writable `.git/config`. The run union now carries `gitConfig`;
+such a run sets it per wrap through the same serialized override as the
+unix-socket lift (`perTaskRun`, formerly `socketRun`), and the scoped
+deny scan (B-40) skips `.git/config` for that task.
+
+`sandbox-git-config.unsafe.test.ts` covers the root repository and a
+nested one. In each, a task that grants `gitConfig` sets a key, and a
+task in the same run that does not grant it fails. Both rows were red
+before: the granted task exited 4. A `sandbox-request.test.ts` row
+checks the union. Dropping the scan skip, the per-wrap override or the
+arming condition each turns a row red.

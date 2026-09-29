@@ -1022,7 +1022,10 @@ A process out of file descriptors (`EMFILE`, `ENFILE`) is named the
 same way: a save is `[vx] cache save failed: save of <hash> could not
 open a file (EMFILE: …) — … raise the limit (ulimit -n 4096) and
 re-run`, and a restore fails the task with that hint, never as a
-corrupt artifact (A-39).
+corrupt artifact (A-39). Opening the index is named the same way: SQLite reports a
+descriptor it could not get as `unable to open database file`, and vx
+says `the cache index <path> could not be opened (…) — …raise the limit`
+(A-56).
 A restore that cannot READ its artifact (a cache directory another
 user owns) names the cache, not the outputs: `restore of <hash> could
 not read its artifact (EACCES: …). Make the cache directory readable
@@ -1830,7 +1833,7 @@ was not), and the cache tests.
   `logs/<hash>.{stdout,stderr}`. Adds run history for `vx stats`.
   Removes the per-entry manifest.
 - **v10 → v11** (PR #19): analytics columns added to the `runs`
-  table: `run_id` (ULID), `cpu_ms`, `peak_rss_bytes`,
+  table: `run_id` (UUIDv7), `cpu_ms`, `peak_rss_bytes`,
   `wallclock_start_ns` / `wallclock_end_ns`, `cache_hit`. All
   nullable; directly queryable via `sqlite3 cache.db`. The on-disk
   `<hash>/` layout itself was unchanged.

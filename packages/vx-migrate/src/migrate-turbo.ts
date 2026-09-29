@@ -68,7 +68,6 @@ async function withRootProject(
   root: string,
   metas: readonly ProjectMeta[],
 ): Promise<readonly ProjectMeta[]> {
-  if (metas.some((m) => path.resolve(m.dir) === path.resolve(root))) return metas
   const file = await turboConfigFile(root)
   if (file === null) return metas
   let turbo: { tasks?: unknown; pipeline?: unknown } | null
@@ -85,6 +84,8 @@ async function withRootProject(
     tasks !== null &&
     Object.keys(tasks).some((k) => k.startsWith('//#'))
   if (!hasRootTask || typeof pkg?.name !== 'string' || pkg.name === '') return metas
+  // A root the globs list already is a project of this name; a package
+  // that took the name leaves the root none to take.
   if (metas.some((m) => m.name === pkg.name)) return metas
   return [...metas, { name: pkg.name, dir: root, packageJson: pkg as never, configPath: null }]
 }

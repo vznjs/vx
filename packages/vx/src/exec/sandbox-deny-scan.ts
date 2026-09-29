@@ -52,7 +52,7 @@ export function srtDefaultWritePaths(): string[] {
 const lower = (s: string): string => s.toLowerCase()
 
 /** Whether `rel` (from the scan root, `/`-separated) is one of rg's hits for SRT's patterns. */
-function isHit(rel: string): boolean {
+function isHit(rel: string, gitConfig: boolean): boolean {
   const segs = rel.split('/').map(lower)
   if (DANGEROUS_FILES.has(segs[segs.length - 1]!)) return true
   const inside = (dir: string): boolean => {
@@ -63,9 +63,13 @@ function isHit(rel: string): boolean {
     return false
   }
   if (DANGEROUS_DIRS.some(inside) || inside('.git/hooks')) return true
-  // `**/.git/config`, and only while `allowGitConfig` is off: vx never
-  // turns it on in the run's config, which is the one SRT's scan reads.
-  return segs.length >= 2 && segs[segs.length - 2] === '.git' && segs[segs.length - 1] === 'config'
+  // `**/.git/config`, unless the task grants `gitConfig` (B-41).
+  return (
+    !gitConfig &&
+    segs.length >= 2 &&
+    segs[segs.length - 2] === '.git' &&
+    segs[segs.length - 1] === 'config'
+  )
 }
 
 /** The deny path SRT derives from a hit (`linuxGetMandatoryDenyPaths`), or none. */
@@ -93,7 +97,11 @@ function denyOf(cwd: string, rel: string): string | undefined {
  * path with a glob character is dropped from `denyWrite` on Linux, and
  * the write it guards must not be left open.
  */
-export function scopedMandatoryDenies(cwd: string, writePaths: readonly string[]): string[] {
+export function scopedMandatoryDenies(
+  cwd: string,
+  writePaths: readonly string[],
+  gitConfig = false,
+): string[] {
   const roots = new Set<string>()
   for (const raw of writePaths) {
     const w = raw.replace(/\/+$/, '') || '/'
@@ -112,7 +120,7 @@ export function scopedMandatoryDenies(cwd: string, writePaths: readonly string[]
       const childRel = rel === '' ? e.name : `${rel}/${e.name}`
       if (e.isDirectory()) {
         if (depth + 1 < SEARCH_DEPTH) visit(path.join(abs, e.name), childRel, depth + 1)
-      } else if (isHit(childRel)) {
+      } else if (isHit(childRel, gitConfig)) {
         const d = denyOf(cwd, childRel)
         if (d !== undefined) denies.add(d)
       }
@@ -130,7 +138,7 @@ export function scopedMandatoryDenies(cwd: string, writePaths: readonly string[]
     }
     if (dir) {
       if (depth < SEARCH_DEPTH) visit(root, rel, depth)
-    } else if (depth > 0 && isHit(rel)) {
+    } else if (depth > 0 && isHit(rel, gitConfig)) {
       const d = denyOf(cwd, rel)
       if (d !== undefined) denies.add(d)
     }

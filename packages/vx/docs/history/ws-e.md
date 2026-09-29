@@ -448,6 +448,11 @@ task picked`; neither prints a stack. Row in
 - E-83 — `vx watch <task>` judges inputs of the tasks it reaches only:
   over a `turbo()` package, `vx watch build` re-ran once more on each
   save because `lint`'s `**/*` took build's own `dist/` for an edit.
+- E-84 — `vx run` with no task and no terminal names the tasks here
+  (`tasks here: build, serve, test`) instead of guessing `build`. The
+  Nx walk (synthetic graph, a stand-in `nx` bin) read clean otherwise:
+  init → run → all cached, `vx build app`, `app:build`, `-t`/`-p`,
+  `--parallel`, `--skip-nx-cache`, `--exclude`, `vx show`.
 
 ## First-five-minutes walk (2026-09-28)
 

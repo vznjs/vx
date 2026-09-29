@@ -151,6 +151,11 @@
 38. Config-eval Worker resource limits. A config is trusted code
     (`security.md`), so memory or CPU in its Worker is no boundary;
     a wedge is audit 30's lead. No bug.
+39. What a remote executor receives. vx-reapi's Command carries only
+    `exec.env.define` and the `cache.inputs.env` values the local child
+    gets (`commandEnvironment`), never `passThrough` or the host's env;
+    those values rest unmasked in the remote CAS. By design (Bazel's
+    `--action_env`); `security.md` now says so.
 
 ## Items
 

@@ -599,7 +599,7 @@ as is any other — the recipe lives in the plugins guide.
 
 Every `vx run` invocation stamps a UUIDv7 (`run_id`) and, unless a signal
 stopped it, writes, in one
-transaction (`recordRunBundle`), one row per executed task to the
+transaction (`recordRunBundle`), one row per real task (hits included) to the
 `runs` table plus one header row to the `invocations` table in
 `cache.db`. Per-task `runs` columns:
 

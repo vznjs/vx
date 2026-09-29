@@ -1352,6 +1352,7 @@ describe('a config that changes the built-ins (D-74)', () => {
       driver,
       `import { loadProjectConfigs } from ${JSON.stringify(path.resolve(import.meta.dir, '../src/workspace/project-loader.ts'))}\n` +
         `const includes = Array.prototype.includes\n` +
+        `const env = { HOME: process.env.HOME, PATH: process.env.PATH }\n` +
         `const got = await loadProjectConfigs(${JSON.stringify(files)}).then(() => 'loaded', (e) => e.message)\n` +
         `console.error(JSON.stringify({ got, after: ${after}, files: ${JSON.stringify(files)} }))\n`,
     )
@@ -1395,6 +1396,34 @@ describe('a config that changes the built-ins (D-74)', () => {
     expect(
       await drive(['Bun.hash.xxHash3 = () => 7n\n' + task], 'Bun.hash.xxHash3("x") !== 7n'),
     ).toEqual({ got: REFUSAL(firstFile(), 'Bun.hash.xxHash3'), after: true, first: firstFile() })
+  })
+
+  // `process.env.X = …` in a first load reached every project's
+  // `passThrough` and vx's own `VX_*` reads; a repeat load, in a worker,
+  // reached neither (D-76).
+  const ENV_HINT = '; a task gets an env var through `exec.env.define` or `passThrough`'
+
+  it('refuses an env var a config sets, and takes it back (D-76)', async () => {
+    expect(
+      await drive(["process.env.D76_SET = 'x'\n" + task, task], "'D76_SET' in process.env"),
+    ).toEqual({
+      got: REFUSAL(firstFile(), 'process.env.D76_SET') + ENV_HINT,
+      after: false,
+      first: firstFile(),
+    })
+  })
+
+  it('refuses a replaced and a deleted env var, and puts both back (D-76)', async () => {
+    expect(
+      await drive(
+        ["process.env.HOME = '/nope'\ndelete process.env.PATH\n" + task],
+        'process.env.HOME === env.HOME && process.env.PATH === env.PATH',
+      ),
+    ).toEqual({
+      got: REFUSAL(firstFile(), 'process.env.HOME, process.env.PATH') + ENV_HINT,
+      after: true,
+      first: firstFile(),
+    })
   })
 
   it('a config that fails after changing one: its own error, and the change taken back', async () => {
