@@ -45,7 +45,7 @@ Every key `turbo.json`, `nx.json` and `project.json` accept, read from the upstr
 | `tasks.*.outputs` | mapped, with a note | Become `cache.outputs`, negations kept; vx cleans outputs, so a wildcard first segment leaves the task uncached with a TODO. |
 | `tasks.*.passThroughEnv` | mapped, with a note | Goes to `exec.env.passThrough`, not hashed; wildcard names get a TODO. |
 | `tasks.*.persistent` | mapped, with a note | An uncached `exec.persistent` task, with a `readyWhen` TODO when something depends on it. |
-| `tasks.*.with` | not supported | Reported as a key with no vx equivalent, then ignored. |
+| `tasks.*.with` | mapped, with a note | An edge to each persistent sidecar, which vx starts beside the task (ready on spawn); a sidecar that ends is a todo, and a pair naming each other keeps one edge. |
 | `tasks.*.inputs[].from` | not supported | Ignored; vx folds each dependency's cache key instead of its outputs. |
 | `tasks.*.inputs[].globs` | mapped, with a note | For `startup` and `jit` entries, keyed like plain input strings. |
 | `tasks.*.inputs[].mode` | mapped, with a note | `startup` and `jit` are keyed alike (no separate pass); `dependencyOutputs` adds nothing. |

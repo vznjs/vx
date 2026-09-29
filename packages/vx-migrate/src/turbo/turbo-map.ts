@@ -29,6 +29,7 @@ interface TurboTask {
   passThroughEnv?: string[]
   cache?: boolean
   persistent?: boolean
+  with?: string[]
   [key: string]: unknown
 }
 
@@ -49,6 +50,7 @@ interface TurboJson {
 
 const KNOWN_TASK_KEYS = new Set([
   'dependsOn',
+  'with',
   'inputs',
   'outputs',
   'env',
@@ -615,15 +617,30 @@ export async function mapTurboWorkspace(
   // First pass: which tasks does each package emit? Needed so dependsOn
   // edges can be validated/dropped against the real emitted set.
   const emitted = new Map<string, Set<string>>()
+  // Which of those are persistent: a `with` sidecar maps only onto one.
+  const persistentAt = new Map<string, Set<string>>()
+  // Each task's `with` targets as `pkg#task`, to keep one edge of a pair.
+  const withOf = new Map<string, readonly string[]>()
   for (const meta of metas) {
     const scripts = packageScripts(meta)
     const { defined, defFor } = definitions(meta)
     const set = new Set<string>()
+    const lasting = new Set<string>()
     for (const name of defined) {
       const override = commandOverride(defFor(name))
-      if (override === undefined ? usableScript(scripts[name]) : override !== null) set.add(name)
+      if (override === undefined ? usableScript(scripts[name]) : override !== null) {
+        set.add(name)
+        if (defFor(name)?.persistent === true) lasting.add(name)
+        const w = defFor(name)?.with
+        if (Array.isArray(w))
+          withOf.set(
+            `${meta.name}#${name}`,
+            w.map((e) => sidecarId(e, meta.name, rootMeta?.name)),
+          )
+      }
     }
     emitted.set(meta.name, set)
+    persistentAt.set(meta.name, lasting)
   }
   const emittedAnywhere = new Set<string>()
   for (const set of emitted.values()) for (const name of set) emittedAnywhere.add(name)
@@ -684,6 +701,7 @@ export async function mapTurboWorkspace(
           relPosix(root, meta.dir),
           rootDotenv,
           rootMeta?.name,
+          { name: meta.name, persistentAt, withOf },
         ),
       )
     }
@@ -715,6 +733,13 @@ function uniq(values: readonly unknown[]): unknown[] {
   return out
 }
 
+/** A `with` entry as `pkg#task`: bare is the task's own package, `//#` the root. */
+function sidecarId(entry: string, own: string, rootName: string | undefined): string {
+  const hashAt = entry.indexOf('#')
+  if (hashAt === -1) return `${own}#${entry}`
+  return entry.startsWith(`${ROOT}#`) ? `${rootName ?? ROOT}${entry.slice(ROOT.length)}` : entry
+}
+
 function buildTask(
   name: string,
   def: TurboTask,
@@ -728,6 +753,11 @@ function buildTask(
   pkgDir: string,
   rootDotenv: boolean,
   rootName: string | undefined,
+  sidecars: {
+    readonly name: string
+    readonly persistentAt: ReadonlyMap<string, ReadonlySet<string>>
+    readonly withOf: ReadonlyMap<string, readonly string[]>
+  },
 ): TurboMappedTask {
   const todos: string[] = []
   // A glob that climbs out of the package (`../../packages/app-store/
@@ -834,6 +864,30 @@ function buildTask(
     }
   }
   walk(def.dependsOn ?? [])
+
+  // `with`: tasks Turbo runs alongside this one (`web#dev` with
+  // `api#dev`). An edge to a persistent task is that: vx starts the
+  // dependant once the sidecar has spawned, and runs it only when this
+  // one runs. An edge to a task that ends would wait for it instead.
+  const self = `${sidecars.name}#${name}`
+  for (const w of def.with ?? []) {
+    const id = sidecarId(w, sidecars.name, rootName)
+    const hashAt = id.indexOf('#')
+    const pkg = id.slice(0, hashAt)
+    const task = id.slice(hashAt + 1)
+    if (!sidecars.persistentAt.get(pkg)?.has(task)) {
+      todos.push(
+        `with ${JSON.stringify(w)}: ${emitted.get(pkg)?.has(task) ? 'not a persistent task' : `${pkg} declares no ${task} script`} — ` +
+          'run it beside this one by hand',
+      )
+      continue
+    }
+    // Turbo runs a pair that names each other side by side; as two edges
+    // they are a cycle core refuses. One edge, the same way round each time.
+    if (id === self || (sidecars.withOf.get(id)?.includes(self) && id > self)) continue
+    const edge = pkg === sidecars.name ? task : id
+    if (!deps.includes(edge)) deps.push(edge)
+  }
 
   const envNames: string[] = [...envDeps]
   for (const e of def.env ?? []) {
