@@ -136,6 +136,7 @@ async function run(root: string, metas: readonly ProjectMeta[]): Promise<Adoptio
   )
   return {
     name: 'turbo',
+    spareTracked: true,
     reads: [
       JSON.stringify(dirs),
       ...configs,

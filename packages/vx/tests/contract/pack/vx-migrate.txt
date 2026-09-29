@@ -42,6 +42,7 @@ src/script-command.ts
 src/scripts/index.ts
 src/scripts/scripts-map.ts
 src/shared-outputs.ts
+src/tracked-outputs.ts
 src/turbo-cache/index.ts
 src/turbo/index.ts
 src/turbo/turbo-map.ts

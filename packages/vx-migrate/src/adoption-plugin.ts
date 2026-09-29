@@ -8,6 +8,26 @@
 import { definePlugin, type ProjectHookContext, type TaskConfig, type VxPlugin } from '@vzn/vx'
 import { type AdoptionMapping, cachedMapping } from './mapping-cache.js'
 import { warnGaps } from './plugin-gaps.js'
+import { headStamp, spareTrackedOutputs, trackedFiles } from './tracked-outputs.js'
+
+async function spare(ctx: ProjectHookContext, mapping: AdoptionMapping): Promise<AdoptionMapping> {
+  const tracked = await trackedFiles(ctx.workspaceRoot)
+  if (tracked === null) return mapping
+  const dirs = new Map(ctx.projects.map((p) => [p.name, p.dir]))
+  const projects = [...mapping.byName].flatMap(([name, p]) => {
+    const dir = dirs.get(name)
+    return dir === undefined ? [] : [{ name, dir, tasks: p.tasks }]
+  })
+  const added = spareTrackedOutputs(ctx.workspaceRoot, projects, tracked)
+  if (added.length === 0) return mapping
+  const todos = new Map([...mapping.gaps.todos].map(([k, v]) => [k, [...v]]))
+  for (const [id, todo] of added) {
+    let ids = todos.get(todo)
+    if (ids === undefined) todos.set(todo, (ids = []))
+    ids.push(id)
+  }
+  return { byName: mapping.byName, gaps: { notes: mapping.gaps.notes, todos } }
+}
 
 /**
  * What a plugin hands the skeleton for one run: every input its mapping
@@ -19,6 +39,12 @@ export interface AdoptionRun {
   readonly name: string
   readonly reads: readonly string[]
   readonly map: () => Promise<AdoptionMapping>
+  /**
+   * The adopted tool never cleans an output (Turbo, Nx, lage), so a
+   * committed file under one is taken back (`tracked-outputs.ts`). Not
+   * wireit's: it cleans outputs itself.
+   */
+  readonly spareTracked?: boolean
 }
 
 /**
@@ -47,7 +73,16 @@ export function adoptionPlugin(
     async project(config, ctx) {
       if (mappedFor !== ctx.projects) {
         mappedFor = ctx.projects
-        mapping = mapRun(ctx).then((r) => cachedMapping(ctx.cacheDir, r.name, r.reads, r.map))
+        mapping = mapRun(ctx).then(async (r) =>
+          r.spareTracked === true
+            ? cachedMapping(
+                ctx.cacheDir,
+                r.name,
+                [...r.reads, await headStamp(ctx.workspaceRoot)],
+                async () => spare(ctx, await r.map()),
+              )
+            : cachedMapping(ctx.cacheDir, r.name, r.reads, r.map),
+        )
         warned = false
       }
       const mapped = await mapping!

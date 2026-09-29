@@ -20,7 +20,7 @@
 // clean on a config core would not load, which is the exact failure this
 // file exists to prevent (item 445).
 
-import { outputsOverlap, type GeneratedTask } from '@vzn/vx'
+import { isLiteralPattern, outputsOverlap, type GeneratedTask } from '@vzn/vx'
 import { relPosix } from './paths.js'
 
 // Core refuses an output glob that covers the project's own package.json
@@ -49,6 +49,27 @@ export function ownFileTodo(own: { glob: string; file: string }): string {
   return (
     `output ${JSON.stringify(own.glob)} covers the project's own ${own.file}, which vx cleans ` +
     'before every run — task runs uncached; declare the outputs without it in a vx.config to cache it'
+  )
+}
+
+// Turbo and Nx never clean an output; vx cleans it before a run and a
+// restore, so `**/*.d.ts` deleted a hand-written `src/env.d.ts` and an
+// uncommitted edit to it was lost for good (item 1031). A wildcard first
+// segment can reach the sources, and a `!` beside it (medusa: `*/**` minus
+// `!src/**`) takes back only what it names. typescript-eslint's Nx tests
+// output `{projectRoot}/**/*.shot`, 3,656 committed snapshots in one
+// package, and nx() lacked the rule (2026-09-29).
+
+/** The first positive output glob whose first segment is a wildcard. */
+export function wildcardOutput(files: readonly string[]): string | undefined {
+  return files.find((o) => !o.startsWith('!') && !isLiteralPattern(o.split('/')[0] ?? ''))
+}
+
+export function wildcardTodo(glob: string): string {
+  return (
+    `output ${JSON.stringify(glob)}: a wildcard first segment reaches the sources, which ` +
+    'vx cleans before every run — task runs uncached; declare the exact outputs in a ' +
+    'vx.config to cache it'
   )
 }
 

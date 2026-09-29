@@ -28,6 +28,8 @@ import {
   ownFileTodo,
   resolveSharedOutputs,
   resolveSharedWorkspaceOutputs,
+  wildcardOutput,
+  wildcardTodo,
 } from '../shared-outputs.js'
 import { packageScripts, relPosix } from '../paths.js'
 import { pruneOrphanPersistentNotes } from '../persistent-note.js'
@@ -614,9 +616,11 @@ function buildTask(
   const persistent = readyWhen !== undefined || persistentTarget(target)
   const cacheWanted =
     target.cache === true || (target.cache === undefined && opts.cacheable.has(targetName))
-  const own = ownFileOutput(outFiles)
+  const wild = wildcardOutput(outFiles) ?? wildcardOutput(wsOutFiles)
+  if (wild !== undefined && cacheWanted && !persistent) todos.push(wildcardTodo(wild))
+  const own = wild === undefined ? ownFileOutput(outFiles) : undefined
   if (own !== undefined && cacheWanted && !persistent) todos.push(ownFileTodo(own))
-  const cacheEnabled = !persistent && cacheWanted && own === undefined
+  const cacheEnabled = !persistent && cacheWanted && wild === undefined && own === undefined
   if (persistent && cacheWanted) {
     todos.push('Nx caches this target, and vx never caches a persistent task — uncached here')
   }

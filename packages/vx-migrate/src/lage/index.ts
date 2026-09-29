@@ -34,6 +34,7 @@ async function run(root: string, metas: readonly ProjectMeta[]): Promise<Adoptio
   const rootName = await rootPackageName(root)
   return {
     name: 'lage',
+    spareTracked: true,
     reads: [
       root,
       String(rootName),
