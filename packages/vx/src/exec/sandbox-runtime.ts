@@ -62,7 +62,7 @@ import {
   UserError,
   xxh3hex,
 } from '../util/index.js'
-import { bindableWrites, buildCustomConfig } from './sandbox-binds.js'
+import { bindableWrites, buildCustomConfig, scratchWrites } from './sandbox-binds.js'
 import {
   atOrUnder,
   isMountableLiteral,
@@ -76,7 +76,12 @@ import {
   scopedMandatoryDenies,
   srtDefaultWritePaths,
 } from './sandbox-deny-scan.js'
-import { parseStraceViolations, refusedWrites, reportableViolations } from './sandbox-violations.js'
+import {
+  parseStraceViolations,
+  refusedWrites,
+  refusedWritesOutside,
+  reportableViolations,
+} from './sandbox-violations.js'
 import {
   closeSignalChannel,
   killTree,
@@ -679,6 +684,11 @@ export interface ResolvedSandboxConfig {
   allowRead: readonly string[]
   /** Writable path prefixes, absolute. */
   allowWrite: readonly string[]
+  /**
+   * Linux: the write globs that matched nothing when the task started, so
+   * no mount holds them. `scratchWrites` decides which still cover a write.
+   */
+  pendingWrites?: readonly string[]
   network?: true | readonly string[]
   denyNetwork?: readonly string[]
   systemInfo?: readonly string[]
@@ -784,18 +794,20 @@ export function resolveSandboxConfig(
     return toRealPath(path.resolve(projectDir, p))
   }
   const a = cfg.allow ?? {}
+  const pending: string[] = []
   const r: ResolvedSandboxConfig = {
-    allowRead: expandGrants((a.read ?? []).map(resolve), 'read', walls),
+    allowRead: expandGrants((a.read ?? []).map(resolve), walls),
     allowWrite: expandGrants(
       (a.write ?? []).map((p) => {
         const real = resolve(p)
         assertWriteStaysHome(p, real, projectDir)
         return real
       }),
-      'write',
       walls,
+      pending,
     ),
   }
+  if (pending.length > 0) r.pendingWrites = pending
   if (process.platform === 'darwin') {
     const read = wallsGlobsReach(r.allowRead, walls)
     const write = wallsGlobsReach(r.allowWrite, walls)
@@ -920,6 +932,8 @@ export async function wrapSandboxedCommand(
   /** What SRT wrapped, and so what its store keys a record by (the group wrapper included on Linux). */
   srtCommand: string
   baselines: CanonicalBaselines
+  /** The pending write globs a write may still land under (`scratchWrites`). */
+  scratch: string[]
   /** The command reads its polite signals off fd 3: spawn it with one and `signalThrough` it. */
   forwardsSignals: boolean
   /** The command writes its trace to fd TRACE_FD: spawn it with the log there. */
@@ -942,6 +956,7 @@ export async function wrapSandboxedCommand(
 
   const baselines = canonicalBaselines(args)
   const customConfig = buildCustomConfig(args, baselines)
+  const scratch = pendingWriteGrants(args.config, customConfig!.filesystem!, baselines.denyRead)
   customConfig!.filesystem!.denyRead!.push(toRealPath(taskTmpRoot()))
   customConfig!.filesystem!.allowWrite!.push(toRealPath(tmp))
   if (scopedDenyScan) {
@@ -998,6 +1013,7 @@ export async function wrapSandboxedCommand(
     taggedCommand,
     srtCommand: inner,
     baselines,
+    scratch,
     forwardsSignals: grouped.forwards,
     traced: grouped.traced,
   }
@@ -1353,7 +1369,7 @@ async function runSandboxedOnce(
   // kernel filter stops only on `openat`. strace ≥ 5.3 (2019); an older
   // one gets the slow form rather than no detection.
   const useStrace = await wantsStraceDetection()
-  const { wrapped, tag, srtCommand, baselines, forwardsSignals, traced } =
+  const { wrapped, tag, srtCommand, baselines, scratch, forwardsSignals, traced } =
     await wrapSandboxedCommand({ ...args, ...(useStrace ? { trace: useStrace } : {}) })
   const takeRecords = collectRecords(SandboxManager.getSandboxViolationStore(), srtCommand)
   // Beside the task directories, which every sandbox replaces with its own:
@@ -1511,6 +1527,7 @@ async function runSandboxedOnce(
             // included, not by the tagged command macOS is keyed by.
             records.map((v) => v.line),
             bindableWrites(args.config.allowWrite),
+            scratch,
           ),
         ]
       : []
@@ -1525,11 +1542,24 @@ async function runSandboxedOnce(
   // ignoreViolations through to the log monitor — that filter is set
   // once globally at initSandbox time. So per-task user overrides have
   // to be applied here, after read-back.
-  const violations = reportableViolations([...macViolations, ...linuxViolations], {
+  const recorded = [...macViolations, ...linuxViolations]
+  const violations = reportableViolations(recorded, {
     within: args.reportWithin,
     linked: args.reportLinked,
     config: args.config,
   })
+  // A write refused past the wall is not a violation (nothing a key reads),
+  // but it may be why the task failed: name it, never counted, and only on
+  // a failure, so it can never redden a pass.
+  if (exitCode !== 0) {
+    const outside = refusedWritesOutside(recorded, {
+      within: args.reportWithin,
+      linked: args.reportLinked,
+      config: args.config,
+      skip: [taskTmpRoot()],
+    })
+    if (outside.length > 0) violations.push(outsideWritesHint(outside))
+  }
 
   // The one denial macOS never logs. MEASURED 2026-09-05, same machine, two
   // runs differing only in the grant: with the cwd granted a failing task
@@ -1582,6 +1612,23 @@ async function runSandboxedOnce(
       straceLog !== undefined &&
       !timeout.timedOut() &&
       (straceSpoke || STRACE_OWN_ERROR.test(partial)),
+  }
+}
+
+/** The hint for writes refused outside the project, a few paths named. */
+function outsideWritesHint(paths: readonly string[]): SandboxViolation {
+  const shown = paths.slice(0, 5).join(', ')
+  const more = paths.length > 5 ? ` and ${paths.length - 5} more` : ''
+  const home = toRealPath(os.homedir())
+  const dir = path.dirname(paths[0]!)
+  const spelled = atOrUnder(dir, home) ? `~${dir.slice(home.length)}` : dir
+  return {
+    timestamp: new Date(),
+    hint: true,
+    line:
+      `vx: the sandbox refused writes outside the project, which are not reported as ` +
+      `violations: ${shown}${more}. If the task needs one, grant its directory, e.g. ` +
+      `\`allow: { write: ['${spelled}/'] }\`.`,
   }
 }
 
@@ -1822,17 +1869,26 @@ export function darwinWallRules(
  */
 function expandGrants(
   paths: readonly string[],
-  kind: 'read' | 'write',
   walls: readonly string[],
+  /** Write globs only: where a pattern that matched nothing is put. */
+  unmatched?: string[],
 ): string[] {
   // A pattern covering a directory WHOLE is that directory. `<d>/**/*` and
   // `<d>/**` match everything UNDER `<d>` and never `<d>` itself, so a task
   // granted `read: ['**/*']` still could not list its own cwd — the exact
   // shape `bun test` and `oxlint` need. Collapsing is not a widening: the
   // pattern already covered every file there; it adds the directory entry.
-  const collapsed = paths.map((p) => {
+  //
+  // On macOS a `<d>` that is itself a glob keeps the pattern too: SRT
+  // matches a glob as an exact regex and a literal as a subpath, so the
+  // collapsed `.*.tmp` alone covered the directory and nothing in it, and
+  // `bun build --compile` could create its extraction directory but not
+  // the runtime inside it (2026-09-29).
+  const collapsed = paths.flatMap((p) => {
     const m = /^(.*?)\/\*\*(?:\/\*)?$/.exec(p)
-    return m === null ? p : m[1]!
+    if (m === null) return [p]
+    const dir = m[1]!
+    return process.platform !== 'linux' && !isMountableLiteral(dir) ? [dir, `${dir}/**`] : [dir]
   })
   if (process.platform !== 'linux') return collapsed
   const out: string[] = []
@@ -1866,7 +1922,7 @@ function expandGrants(
       out.push(abs)
       hits++
     }
-    if (hits === 0 && kind === 'write') writeGrantMatchedNothing(p)
+    if (hits === 0) unmatched?.push(p)
   }
   return out
 }
@@ -1889,6 +1945,26 @@ function scanOrNothing(pattern: string, base: string): Iterable<string> {
   }
 }
 
+/**
+ * The write globs that matched nothing at the start (Linux): the ones a
+ * write may still land under, in the sandbox's scratch, returned; the ones
+ * a read-only mount or the host's root holds, reported once each
+ * (`writeGrantMatchedNothing`). `anchors` are the deny anchors the scratch
+ * is made of.
+ */
+export function pendingWriteGrants(
+  config: Pick<ResolvedSandboxConfig, 'pendingWrites'>,
+  fs: {
+    readonly allowRead?: readonly string[] | undefined
+    readonly allowWrite?: readonly string[] | undefined
+  },
+  anchors: readonly string[],
+): string[] {
+  const { scratch, mountless } = scratchWrites(config.pendingWrites ?? [], fs, anchors)
+  for (const grant of mountless) writeGrantMatchedNothing(grant)
+  return scratch
+}
+
 /** Grants already reported — once per process, not per spawn. */
 const warnedEmptyWriteGrant = new Set<string>()
 
@@ -1905,8 +1981,9 @@ function writeGrantMatchedNothing(grant: string): void {
   if (warnedEmptyWriteGrant.has(grant)) return
   warnedEmptyWriteGrant.add(grant)
   process.stderr.write(
-    `[vx] sandbox: the write grant ${grant} matches nothing yet, so it mounts nothing and ` +
-      `a file the task creates under it will fail with "Read-only file system". A bind mount ` +
+    `[vx] sandbox: the write grant ${grant} matches nothing yet, and a read grant mounts its ` +
+      `directory read-only, so a file the task creates under it will fail with "Read-only file ` +
+      `system". A bind mount ` +
       `covers what exists when the task starts — grant the directory instead: ` +
       `${grantPrefix(grant)}/**\n`,
   )

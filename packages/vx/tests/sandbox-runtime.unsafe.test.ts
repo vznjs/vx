@@ -25,6 +25,7 @@ import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { pluginSource } from './helpers/plugin.js'
 import {
   initSandbox,
+  pendingWriteGrants,
   probeSandbox,
   releaseBridges,
   resetSandbox,
@@ -33,7 +34,7 @@ import {
   runSandboxed,
   wrapSandboxedCommand,
 } from '../src/exec/sandbox-runtime.js'
-import { buildCustomConfig, punchWritePaths } from '../src/exec/sandbox-binds.js'
+import { buildCustomConfig, punchWritePaths, scratchWrites } from '../src/exec/sandbox-binds.js'
 import {
   bridgedPorts,
   portBridgeHostArgv,
@@ -45,6 +46,8 @@ import { killTree } from '../src/exec/kill-tree.js'
 import {
   deniedCalls,
   parseStraceViolations,
+  refusedWrites,
+  refusedWritesOutside,
   reportableViolations,
 } from '../src/exec/sandbox-violations.js'
 import { run, type Logger, type RunOptions, type RunSummary } from '../src/orchestrator/index.js'
@@ -808,6 +811,116 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
       expectOk(r, fixture)
       expect(existsSync(path.join(projDir, '~'))).toBe(false)
       expect(existsSync(path.join(projDir, 'tmp'))).toBe(false)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a `dir/` write grant outside the project is created before the task starts',
+    async () => {
+      // bwrap cannot bind a directory that does not exist, and a `dir/`
+      // grant outside the project was skipped by the pre-create (only a glob
+      // was made): `~/.bun/install/cache/` on a fresh machine granted
+      // nothing, and `bun build --compile` failed to put its cross-compile
+      // runtime there (2026-09-29).
+      const outside = realpathSync(await mkdtemp(path.join(os.tmpdir(), 'vx-cold-')))
+      try {
+        const dir = path.join(outside, 'cold', 'cache')
+        await addProject(fixture.root, 'coldgrant', {
+          files: { 'src/x.txt': 'hi' },
+          config: `
+            export default {
+              tasks: {
+                build: {
+                  exec: {
+                    command: 'echo ok > ${dir}/x',
+                    sandbox: { allow: { read: ['.'], write: ['${dir}/'] } },
+                  },
+                },
+              },
+            }
+          `,
+        })
+        const r = await run({ cwd: fixture.root, tasks: ['build'], log: collectingLogger(fixture) })
+        expectOk(r, fixture)
+        expect(readFileSync(path.join(dir, 'x'), 'utf8')).toBe('ok\n')
+      } finally {
+        await rm(outside, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a write glob for a temp directory the task creates, fills and removes covers it',
+    async () => {
+      // `bun build --compile` extracts a cross-compile runtime into
+      // `<cwd>/.<hash>-00000000.tmp/`, moves it out and removes the
+      // directory (strace, Bun 1.4.2). No bind can name a directory before
+      // it exists: on Linux the write lands in the sandbox's scratch and the
+      // grant must still count it, and on macOS the glob must cover what is
+      // inside the directory, not only the directory (2026-09-29).
+      const projDir = await addProject(fixture.root, 'tempdir', {
+        files: { 'src/x.txt': 'hi' },
+        config: `
+          export default {
+            tasks: {
+              build: {
+                exec: {
+                  command: 'mkdir .a1.tmp && cp src/x.txt .a1.tmp/f && mv .a1.tmp/f dist/f && rmdir .a1.tmp',
+                  sandbox: { allow: { read: ['.'], write: ['dist/', '.*.tmp/**'] } },
+                },
+                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+              },
+            },
+          }
+        `,
+      })
+      const r = await run({ cwd: fixture.root, tasks: ['build'], log: collectingLogger(fixture) })
+      expectOk(r, fixture)
+      expect(readFileSync(path.join(projDir, 'dist', 'f'), 'utf8')).toBe('hi')
+      expect(readdirSync(projDir).filter((e) => e.endsWith('.tmp'))).toEqual([])
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a failed task is told which writes outside the project were refused',
+    async () => {
+      // A write past the wall is not a violation, and the report showed
+      // nothing: `bun build --compile` said "Failed to extract executable"
+      // with no word of the cache it could not write (2026-09-29).
+      const outside = realpathSync(await mkdtemp(path.join(os.tmpdir(), 'vx-refused-')))
+      try {
+        const target = path.join(outside, 'f')
+        await addProject(fixture.root, 'outsidewriter', {
+          files: { 'src/x.txt': 'hi' },
+          config: `
+            export default {
+              tasks: {
+                build: {
+                  exec: {
+                    command: 'echo x > ${target}',
+                    sandbox: { allow: { read: ['.'] } },
+                  },
+                },
+              },
+            }
+          `,
+        })
+        const r = await run({ cwd: fixture.root, tasks: ['build'], log: collectingLogger(fixture) })
+        expect(r.ok).toBe(false)
+        const outcome = r.outcomes.find((o) => o.node.id === 'outsidewriter#build')
+        const hints = (outcome?.sandboxViolationLines ?? []).filter((l) =>
+          l.includes('refused writes outside the project'),
+        )
+        expect(hints.map((l) => l.includes(target))).toEqual([true])
+        // A note beside the failure, never a counted denial.
+        expect(outcome?.sandboxViolations).toBe(0)
+        expect(existsSync(target)).toBe(false)
+      } finally {
+        await rm(outside, { recursive: true, force: true })
+      }
     },
     TIMEOUT,
   )
@@ -2433,6 +2546,18 @@ describe.skipIf(!available)("a task's temp directory is its own", () => {
 })
 
 describe('resolveSandboxConfig', () => {
+  // A config resolved and its pending write globs judged against the binds
+  // it makes, as `wrapSandboxedCommand` does: the workspace is `root`.
+  const judged = (cfg: Parameters<typeof resolveSandboxConfig>[0], root: string) => {
+    const r = resolveSandboxConfig(cfg, root)
+    pendingWriteGrants(
+      r,
+      buildCustomConfig({ config: r }, { allowRead: [], denyRead: [root] })!.filesystem!,
+      [root],
+    )
+    return r
+  }
+
   // B-6: a glob's scan starts one directory above its first wildcard, and
   // `Bun.Glob` throws ENOENT when that directory is missing — a cache not
   // yet populated on a fresh runner (`~/.cache/x/y/*`). The task failed
@@ -2449,7 +2574,7 @@ describe('resolveSandboxConfig', () => {
       })
       try {
         const read = resolveSandboxConfig({ allow: { read: [`${root}/none/deeper/*`] } }, root)
-        const write = resolveSandboxConfig({ allow: { write: ['gone/away/*.txt'] } }, root)
+        const write = judged({ allow: { read: ['.'], write: ['gone/away/*.txt'] } }, root)
         expect([read.allowRead, write.allowWrite]).toEqual([[], []])
         expect(said.join('')).toContain(
           `the write grant ${root}/gone/away/*.txt matches nothing yet`,
@@ -2489,11 +2614,11 @@ describe('resolveSandboxConfig', () => {
           return true
         })
         try {
-          resolveSandboxConfig({ allow: { write: ['g/*.txt'] } }, root)
+          judged({ allow: { read: ['.'], write: ['g/*.txt'] } }, root)
           // CONTROL, in the same spy window: a grant that CAN be mounted
           // says nothing, so the row above cannot pass on a warning that
           // fires for every write grant.
-          resolveSandboxConfig({ allow: { write: ['g/**'] } }, root)
+          judged({ allow: { read: ['.'], write: ['g/**'] } }, root)
           // CONTROL: a READ grant matching nothing is ordinary — an
           // optional file, a cache not yet populated — and must stay quiet.
           // A DIFFERENT pattern on purpose: the report is once per grant
@@ -2501,7 +2626,7 @@ describe('resolveSandboxConfig', () => {
           // call above and the control would pass whatever reads do. It
           // did, first time — the mutation that reports reads as well
           // survived it (item 496).
-          resolveSandboxConfig({ allow: { read: ['g/r*.txt'] } }, root)
+          judged({ allow: { read: ['g/r*.txt'] } }, root)
         } finally {
           spy.mockRestore()
         }
@@ -2550,9 +2675,9 @@ describe('resolveSandboxConfig', () => {
           return true
         })
         try {
-          resolveSandboxConfig({ allow: { write: ['g/*.txt'] } }, root)
-          resolveSandboxConfig({ allow: { write: ['g/*.bin'] } }, root)
-          resolveSandboxConfig({ allow: { write: ['g/*.bin'] } }, root)
+          judged({ allow: { read: ['.'], write: ['g/*.txt'] } }, root)
+          judged({ allow: { read: ['.'], write: ['g/*.bin'] } }, root)
+          judged({ allow: { read: ['.'], write: ['g/*.bin'] } }, root)
         } finally {
           spy.mockRestore()
         }
@@ -2562,6 +2687,29 @@ describe('resolveSandboxConfig', () => {
       }
     },
   )
+
+  // Seatbelt reads a glob grant as an exact regex and a literal one as a
+  // subpath (SRT `pathFilter`), so on macOS a collapsed `<glob>/**` that
+  // kept only `<glob>` covered the directory and nothing in it: `bun build
+  // --compile` created `.<hash>-00000000.tmp` and was refused the runtime
+  // inside it (2026-09-29). Driven on any host with the platform stubbed:
+  // the collapse is pure path work.
+  it.skipIf(WIN32)('on macOS a glob directory keeps its subtree when collapsed', () => {
+    const root = realpathSync(os.tmpdir())
+    const real = Object.getOwnPropertyDescriptor(process, 'platform')!
+    Object.defineProperty(process, 'platform', { value: 'darwin' })
+    let r: ReturnType<typeof resolveSandboxConfig>
+    try {
+      r = resolveSandboxConfig({ allow: { write: ['.*.tmp/**', 'dist/**'] } }, root)
+    } finally {
+      Object.defineProperty(process, 'platform', real)
+    }
+    expect(r.allowWrite).toEqual([
+      path.join(root, '.*.tmp'),
+      path.join(root, '.*.tmp/**'),
+      path.join(root, 'dist'),
+    ])
+  })
 
   // Windows refuses exec.sandbox: no config is resolved there.
   it.skipIf(WIN32)(
@@ -2932,6 +3080,54 @@ describe.skipIf(WIN32)('reportableViolations', () => {
   })
 
   const lines = (vs: SandboxViolation[]): string[] => vs.map((v) => v.line)
+
+  it('names the writes refused past the wall, and neither the reads nor the pseudo-files', () => {
+    const cache = path.join(ROOT, '..', 'home', '.bun', 'install', 'cache')
+    const tmp = path.join(ROOT, '..', 'task-tmp')
+    const cfg = resolveSandboxConfig({ ignore: { write: [`${ROOT}/ignored/*`] } }, PROJ)
+    const outside = refusedWritesOutside(
+      [
+        mac('file-write-create', `${cache}/bun-darwin-x64-v1`),
+        mac('file-write-create', `${cache}/bun-darwin-x64-v1`),
+        mac('file-read-data', '/etc/passwd'),
+        linux(path.join(ROOT, 'packages', 'secret', 'token.txt')),
+        mac('file-write-data', '/dev/dtracehelper'),
+        mac('file-write-create', `${PROJ}/.x.tmp`),
+        mac('file-write-create', `${ROOT}/ignored/a`),
+        ...refusedWrites([`deny openat ${cache}/linux`, `deny openat ${tmp}/t`], []),
+      ],
+      { within: PROJ, config: cfg, skip: [tmp] },
+    )
+    expect(outside).toEqual([`${cache}/bun-darwin-x64-v1`, `${cache}/linux`])
+  })
+
+  it('a write under a scratch glob, or in a directory it matches, is granted', () => {
+    const records = [
+      `deny mkdirat ${PROJ}/.a.tmp`,
+      `deny openat ${PROJ}/.a.tmp/bun`,
+      `deny openat ${PROJ}/other.tmp.txt`,
+    ]
+    expect(lines(refusedWrites(records, [], [`${PROJ}/.*.tmp`]))).toEqual([
+      `openat(${PROJ}/other.tmp.txt) = a write no grant covers  [${PROJ}/other.tmp.txt]`,
+    ])
+    // CONTROL: with no scratch glob all three are refused.
+    expect(refusedWrites(records, []).length).toBe(3)
+  })
+
+  it('a pending write glob is scratch only where no bind holds its directory', () => {
+    const glob = `${PROJ}/.*.tmp`
+    const split = (fs: { allowRead?: string[]; allowWrite?: string[] }, anchors: string[]) =>
+      scratchWrites([glob], fs, anchors)
+    // `read: ['.']` punched around `dist/`: the project dir is scratch.
+    expect(split({ allowRead: [`${PROJ}/src`], allowWrite: [`${PROJ}/dist`] }, [ROOT])).toEqual({
+      scratch: [glob],
+      mountless: [],
+    })
+    // `read: ['.']` whole: the directory is mounted read-only.
+    expect(split({ allowRead: [PROJ] }, [ROOT])).toEqual({ scratch: [], mountless: [glob] })
+    // Outside every deny anchor: the host's root, read-only.
+    expect(split({}, [path.join(ROOT, 'elsewhere')])).toEqual({ scratch: [], mountless: [glob] })
+  })
 
   it('keeps denials inside the project and drops the ones at the wall', () => {
     const cfg = resolveSandboxConfig({}, PROJ)

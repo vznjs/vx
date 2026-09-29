@@ -155,6 +155,8 @@ export interface ResolvedSandboxConfig {
   /* same shape as SandboxConfig, paths absolute */
 }
 export function resolveSandboxConfig(cfg: SandboxConfig, projectDir: string): ResolvedSandboxConfig
+// scratchWrites judged, the mountless reported once each; the scratch returned
+export function pendingWriteGrants(config, fs, anchors): string[]
 
 export interface SandboxedRunArgs {
   command: string
@@ -249,6 +251,9 @@ export function localBindingOn(c: { localBinding?: boolean | readonly number[] }
 export function bindableWrites(paths: readonly string[]): string[]
 export function punchWalls(readPath: string, walls: readonly string[]): string[]
 export function punchWritePaths(readPath: string, writePaths: readonly string[]): string[]
+// The write globs that matched nothing at the start, split by whether a
+// bind holds their directory (below, "A write grant that mounts nothing")
+export function scratchWrites(pending, fs, anchors): { scratch: string[]; mountless: string[] }
 // The SRT customConfig: the baselines merged with the resolved block
 export function buildCustomConfig(args, baselines): SrtCustomConfig
 
@@ -267,7 +272,10 @@ export function reportableViolations(
 export function refusedWrites(
   records: readonly string[],
   writable: readonly string[],
+  scratch?: readonly string[], // pending write globs a write may land under
 ): SandboxViolation[]
+// the writes refused past the wall, as paths: a failed task's hint
+export function refusedWritesOutside(violations, opts: { within; linked?; config; skip }): string[]
 ```
 
 ## How it works
@@ -543,12 +551,35 @@ task per spelling, each writing the files it declares:
 | `g/?.txt`     | same                                               |
 | `g/[ab].txt`  | same                                               |
 
-That is the documented contract rather than a defect, but the failure
-names neither vx nor the grant, so `expandGrants` reports the grant
-itself — once per grant, before the task runs — and names the directory
-to grant instead (`grantPrefix`, the directory the pattern was in, not
-the scan's anchor one component above it). Read grants are not reported:
-a read matching nothing is ordinary.
+(`g/*` and its siblings ran with `read: ['.']`, which mounts `g`
+read-only.) That is the documented contract rather than a defect, but
+the failure names neither vx nor the grant, so `expandGrants` hands the
+grant over as `pendingWrites`, and `pendingWriteGrants` reports it —
+once per grant, before the task runs — and names the directory to grant
+instead (`grantPrefix`, the directory the pattern was in, not the scan's
+anchor one component above it). Read grants are not reported: a read
+matching nothing is ordinary.
+
+Where no bind holds the glob's directory, it is the deny anchor's
+scratch: the task creates, writes and removes there, and nothing it
+leaves outlives the sandbox (`scratchWrites`). That is a tool's temp
+directory — `bun build --compile` extracts a cross-compile runtime into
+`<cwd>/.<hash>-00000000.tmp/` and moves it into its cache — and such a
+grant is not reported; `refusedWrites` takes a write under it as
+granted. Before 2026-09-29 it was reported as a write no grant covers
+and failed the task. An output never belongs there: grant its directory.
+
+On macOS a collapsed `<glob>/**` keeps the pattern beside the directory:
+seatbelt reads a glob as an exact regex and a literal as a subpath, so
+`.*.tmp` alone covered the directory and nothing inside it.
+
+A write refused OUTSIDE the project is no violation (nothing a key
+reads), but it may be why the task failed: a failed task gets one note
+naming those paths and the directory to grant (`refusedWritesOutside`;
+`/dev`, `/proc`, `/sys` and the task's own temp root left out, since
+Linux's observer records every write attempt). `bun build --compile`
+said only "Failed to extract executable" when its cache was not
+writable.
 
 `write: ['g/{a,b}.txt']` is ok, because the classifier here counts only
 `*?[]` and a brace-spelled grant is therefore treated as a file — placed,

@@ -345,6 +345,7 @@ describe('ALWAYS_IGNORE matches nested AND top-level forms', () => {
     'tsconfig.tsbuildinfo',
     'vx-lock.json',
     '.18bf7d9ff3ffeffe-00000001.bun-build',
+    '.cd5e87e3246b0795-00000000.tmp/bun',
   ]
   const IGNORED_NESTED = [
     'a/b/node_modules/dep/index.js',
@@ -353,6 +354,7 @@ describe('ALWAYS_IGNORE matches nested AND top-level forms', () => {
     'a/b/tsconfig.tsbuildinfo',
     'a/b/vx-lock.json',
     'a/b/.18bf7d9ff3ffeffe-00000001.bun-build',
+    'a/b/.cd5e87e3246b0795-00000000.tmp/bun',
   ]
   // Names one character away from an ignored one. If any of these is excluded
   // the pattern is over-broad, and a real source file has silently left the key.
@@ -364,6 +366,8 @@ describe('ALWAYS_IGNORE matches nested AND top-level forms', () => {
     'x.tsbuildinfo.bak',
     'vx-lock.json.bak',
     'x.bun-build.txt',
+    '.cd5e87e3246b0795-00000000.tmp.txt',
+    '.cd5e87e3246b079-00000000.tmp/bun',
   ]
 
   beforeEach(async () => {

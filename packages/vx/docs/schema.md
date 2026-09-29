@@ -654,7 +654,8 @@ Always applied to every glob pass (regardless of what you wrote):
 
 - **gitignore filter** — workspace-root + project `.gitignore`.
 - **Always-ignored** — `node_modules/**`, `.git/**`, `.vx/**`,
-  `*.tsbuildinfo`, `vx-lock.json`, `*.bun-build`.
+  `*.tsbuildinfo`, `vx-lock.json`, `*.bun-build`, and Bun's cross-compile
+  extraction directory `.<16 hex>-<8 hex>.tmp/**`.
 - **Declared `outputs.files`** are excluded — a task never invalidates
   itself via its own output. A path an output `!` entry takes back is
   no output, so it stays an input (A-44).
@@ -689,7 +690,7 @@ project-boundary rule continues to apply to project-relative `files`
 globs only.
 
 Still applied: the always-ignored set (`node_modules/**`, `.git/**`,
-`.vx/**`, `*.tsbuildinfo`, `vx-lock.json`, `*.bun-build`) and the task's own declared
+`.vx/**`, `*.tsbuildinfo`, `vx-lock.json`, `*.bun-build`, `.<16 hex>-<8 hex>.tmp/**`) and the task's own declared
 `outputs.workspaceFiles` (a task never invalidates itself).
 
 `vx watch`: when any config declares `inputs.workspaceFiles`, the loop
@@ -1036,11 +1037,14 @@ that declares it, never for the run's other sandboxed tasks:
 
 ```ts
 exec: {
-  command: 'bun build --compile src/bin.ts --outfile dist/vx',
+  command: 'bun build --compile --target=bun-linux-arm64 src/bin.ts --outfile dist/vx',
   sandbox: {
     allow: {
       read: ['.'],
-      write: ['dist/vx'],
+      // A cross-compile target the Bun cache lacks is fetched from npm,
+      // extracted into `<cwd>/.<hash>-00000000.tmp/` and moved into the cache.
+      write: ['dist/vx', '~/.bun/install/cache/', '.*.tmp/**'],
+      network: ['registry.npmjs.org'],
       systemInfo: ['vfs.disk-space'],
     },
     ignore: { write: ['*.bun-build'] },
@@ -1053,13 +1057,18 @@ reaches the policy and matches files created during the run; on Linux a
 grant is a mount, so the pattern is expanded when the task starts and a
 file created later is not covered — grant its directory instead. On both
 platforms `<dir>/**` and `<dir>/**/*` collapse to `<dir>`, so
-`read: ['**/*']` lets a task list its own cwd.
+`read: ['**/*']` lets a task list its own cwd; a `<dir>` that is itself a
+glob keeps its subtree (`.*.tmp/**` covers what is inside each match).
 
 A Linux WRITE grant that matches nothing when the task starts therefore
-mounts nothing, and the task's first write under it fails with
-`Read-only file system` — a message naming neither vx nor the grant. vx
-reports that grant itself before the task runs, once, and names the
-directory to grant instead. A read grant matching nothing is ordinary
+mounts nothing. Where a read grant mounts its directory, the task's first
+write under it fails with `Read-only file system` — a message naming
+neither vx nor the grant — so vx reports that grant itself before the
+task runs, once, and names the directory to grant instead. Where no mount
+holds the directory, it is the sandbox's own scratch: the task may
+create, write and remove what the glob matches, and nothing it leaves
+there outlives the task. That is right for a tool's temp directory and
+wrong for an output. A read grant matching nothing is ordinary
 (an optional file, a cache not yet populated) and is not reported. A
 pattern under a directory that does not exist yet matches nothing the
 same way, where the scan once failed the task with a bare `ENOENT` (B-6).
@@ -1068,7 +1077,9 @@ same way, where the scan once failed the task with a bare `ENOENT` (B-6).
 created before the task starts (a mount needs something to bind), and a
 literal names a FILE: `write: ['dist/vx']` is an empty `dist/vx` the
 build overwrites. A directory the task will create is spelled with a
-trailing slash — `write: ['coverage/']` — or as a glob (`'dist/**'`).
+trailing slash — `write: ['coverage/']` — or as a glob (`'dist/**'`);
+outside the project (`'~/.bun/install/cache/'`) only these two shapes are
+created, never a file.
 Spell a directory as a bare literal and the task's own `mkdir` meets
 "File exists"; the failure then says so, names the `dir/` spelling, and
 vx removes the empty file it made (it takes back any placeholder the
@@ -1155,7 +1166,10 @@ and fails the task, even when the command swallowed the error and exited
 project, so every sibling project and every root file is denied. Being
 stopped at that wall is the sandbox working, not a finding: only
 denials INSIDE the project are reported, because those are the reads
-that make a cache key wrong. To reach a path outside the project but
+that make a cache key wrong. A write refused past the wall is named
+beside a FAILED task, never counted, with the directory to grant: a
+tool that cannot fill its cache (`~/.bun/install/cache`) rarely says
+where it tried. To reach a path outside the project but
 inside the workspace — a workspace-level fixture — declare it; a path
 outside the workspace is not walled (above).
 

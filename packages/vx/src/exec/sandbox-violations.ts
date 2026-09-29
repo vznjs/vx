@@ -200,12 +200,53 @@ export function reportableViolations(
   // A record the producer did not describe is a seatbelt one, straight
   // from SRT's store — parse it here so the filters below never see a
   // platform's line format.
-  const described = violations.map((v) =>
-    v.target === undefined ? { ...v, ...describeMacViolation(v.line) } : v,
-  )
   return filterIgnored(
-    loopbackNoise(withinReported(described, opts.within, opts.linked ?? []), opts.config),
+    loopbackNoise(
+      withinReported(describe(violations), opts.within, opts.linked ?? []),
+      opts.config,
+    ),
     opts.config.ignore,
+  )
+}
+
+/**
+ * The writes refused OUTSIDE the project, as distinct paths: the denials
+ * `reportableViolations` drops at the wall. A read there is the walk every
+ * process makes from `/`, but a refused write is the task failing to put
+ * something it needed: `bun build --compile` extracting a cross-compile
+ * runtime into `~/.bun/install/cache` said only "Failed to extract
+ * executable" and the report named nothing (2026-09-29). Never a
+ * violation — a failed task's hint (`runSandboxed`). The kernel's
+ * pseudo-files and the task's own temp root (`skip`) are left out: Linux's
+ * observer records every write ATTEMPT, and a write to `/dev/null` or the
+ * task's `TMPDIR` landed.
+ */
+export function refusedWritesOutside(
+  violations: readonly SandboxViolation[],
+  opts: {
+    within: string
+    linked?: readonly string[]
+    config: ResolvedSandboxConfig
+    skip: readonly string[]
+  },
+): string[] {
+  const reported = reportedWithin(opts.within, opts.linked ?? [])
+  const skip = ['/dev', '/proc', '/sys', ...opts.skip.map(toRealPath)]
+  const paths = new Set<string>()
+  for (const v of filterIgnored(describe(violations), opts.config.ignore)) {
+    // Write-only: a strace record is ignorable as a read OR a write, and
+    // names a READ (a sibling's file at the wall is the sandbox working).
+    const write = v.ignorable?.length === 1 && v.ignorable[0] === 'write'
+    if (v.path === undefined || !write || reported(v)) continue
+    if (!skip.some((s) => atOrUnder(v.path!, s))) paths.add(v.path)
+  }
+  return [...paths]
+}
+
+/** Every record described: a seatbelt one parsed, a Linux one as produced. */
+function describe(violations: readonly SandboxViolation[]): SandboxViolation[] {
+  return violations.map((v) =>
+    v.target === undefined ? { ...v, ...describeMacViolation(v.line) } : v,
   )
 }
 
@@ -261,15 +302,20 @@ function withinReported(
   within: string,
   linked: readonly string[],
 ): SandboxViolation[] {
+  return violations.filter(reportedWithin(within, linked))
+}
+
+function reportedWithin(
+  within: string,
+  linked: readonly string[],
+): (v: SandboxViolation) => boolean {
   const roots = [toRealPath(within), ...linked]
   // `root === '/'` would otherwise compare against `'//'` and drop
   // everything — the one prefix that needs no separator appended.
   const prefixes = roots.map((root) => (root.endsWith(path.sep) ? root : root + path.sep))
-  return violations.filter(
-    (v) =>
-      v.path === undefined ||
-      roots.some((root, i) => v.path === root || v.path!.startsWith(prefixes[i]!)),
-  )
+  return (v) =>
+    v.path === undefined ||
+    roots.some((root, i) => v.path === root || v.path!.startsWith(prefixes[i]!))
 }
 
 /**
@@ -300,8 +346,11 @@ function filterIgnored(
 export function refusedWrites(
   records: readonly string[],
   writable: readonly string[],
+  /** Write globs whose writes land in the sandbox's scratch (`scratchWrites`): granted. */
+  scratch: readonly string[] = [],
 ): SandboxViolation[] {
   const binds = new Set(writable.map((w) => toRealPath(absolutize(w))))
+  const globs = scratch.map((g) => new Bun.Glob(g))
   const seen = new Set<string>()
   const out: SandboxViolation[] = []
   for (const record of records) {
@@ -309,7 +358,7 @@ export function refusedWrites(
     if (m === null) continue
     const [, syscall, raw] = m as unknown as [string, string, string]
     const abs = toRealPath(raw)
-    if (isUnderAny(abs, binds)) continue
+    if (isUnderAny(abs, binds) || underGlob(abs, globs)) continue
     const key = `${syscall}|${abs}`
     if (seen.has(key)) continue
     seen.add(key)
@@ -322,4 +371,13 @@ export function refusedWrites(
     })
   }
   return out
+}
+
+/** `p`, or a directory holding it, matches one of `globs`. */
+function underGlob(p: string, globs: readonly InstanceType<typeof Bun.Glob>[]): boolean {
+  if (globs.length === 0) return false
+  for (let at = p; ; at = path.dirname(at)) {
+    if (globs.some((g) => g.match(at))) return true
+    if (path.dirname(at) === at) return false
+  }
 }
