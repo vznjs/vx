@@ -189,7 +189,15 @@ describe('mapNxDeps', () => {
   // TanStack/router's `test:e2e--*` named project `test` and each of 140
   // aggregators lost the modes it fans out to (2026-09-28).
   it('a target glob expands over the workspace target names, in each form', () => {
-    const names = ['build', 'build-esm', 'test:e2e--chromium', 'test:e2e--firefox', 'lint']
+    // `test:e2e--webkit` is another project's: this one's glob skips it.
+    const names = [
+      'build',
+      'build-esm',
+      'test:e2e--chromium',
+      'test:e2e--firefox',
+      'test:e2e--webkit',
+      'lint',
+    ]
     const todos: string[] = []
     const got = mapNxDeps(
       [
@@ -200,7 +208,7 @@ describe('mapNxDeps', () => {
         { target: 'build-{esm,cjs}', projects: ['ui'] },
       ],
       byNode,
-      (t) => t.startsWith('test:e2e--'),
+      (t) => t === 'test:e2e--chromium' || t === 'test:e2e--firefox',
       () => null,
       (p, t) => p === 'ui' && (t === 'build' || t === 'build-esm'),
       todos,
