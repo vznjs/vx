@@ -1,0 +1,42 @@
+a passing run: POST https://api.github.com/repos/owner/repo/check-runs
+a passing run: header accept
+a passing run: header authorization
+a passing run: header content-type
+a passing run: header user-agent
+a passing run: header x-github-api-version
+a passing run: completed_at: string
+a passing run: conclusion = "success"
+a passing run: head_sha = "abc123"
+a passing run: name = "vx"
+a passing run: output.summary: string
+a passing run: output.title: string
+a passing run: started_at: string
+a passing run: status = "completed"
+a failing run: POST https://api.github.com/repos/owner/repo/check-runs
+a failing run: header accept
+a failing run: header authorization
+a failing run: header content-type
+a failing run: header user-agent
+a failing run: header x-github-api-version
+a failing run: completed_at: string
+a failing run: conclusion = "failure"
+a failing run: head_sha = "abc123"
+a failing run: name = "vx"
+a failing run: output.summary: string
+a failing run: output.title: string
+a failing run: started_at: string
+a failing run: status = "completed"
+a cancelled run: POST https://api.github.com/repos/owner/repo/check-runs
+a cancelled run: header accept
+a cancelled run: header authorization
+a cancelled run: header content-type
+a cancelled run: header user-agent
+a cancelled run: header x-github-api-version
+a cancelled run: completed_at: string
+a cancelled run: conclusion = "cancelled"
+a cancelled run: head_sha = "abc123"
+a cancelled run: name = "vx"
+a cancelled run: output.summary: string
+a cancelled run: output.title: string
+a cancelled run: started_at: string
+a cancelled run: status = "completed"

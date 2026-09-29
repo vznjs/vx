@@ -513,6 +513,17 @@ an added flag is no break), and the sources `--from` takes. The break
 law reads it. Differential: dropping `--envFile` from `nx-env`'s usage
 failed it; restored, passes.
 
+## H-43: the check run vx-github posts is a record
+
+Branch protection requires a check by name and automation reads its
+conclusion, but nothing recorded vx-github's check run: renaming the
+default `vx` or changing a conclusion passed every contract test.
+`packages/vx-github/tests/contract/checks.txt` records, from the plugin
+driven with its defaults through a passing, a failing and a cancelled
+run, each POST's endpoint, method, header names, body keys, and its
+`name`, `status` and `conclusion`. The break law reads it. Differential:
+a default name of `vx run` failed it; restored, passes.
+
 ## Leads for other streams
 
 - **A:** a task that rewrites its own input with the same bytes is never
