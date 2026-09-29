@@ -700,6 +700,39 @@ export async function mapTurboWorkspace(
       if (sidecar || (local && reached)) emitted.get(meta.name)!.add(name)
     }
   }
+  // Turbo's transit node (its with-vitest example; the docs' pattern for a
+  // task that runs in parallel yet re-runs on a dependency's edit):
+  // `transit: { dependsOn: ["^transit"] }`, no script anywhere, and
+  // `test: { dependsOn: ["transit"] }`. Turbo hashes the no-op per package,
+  // over its files, so `test` keys on its dependencies' sources. Dropped,
+  // vx keyed `test` on its own files alone: a dependency's edit was a hit.
+  // Each package runs it as a key-only task, `true` and cached, as nx()'s
+  // `nx-input:*` twins do.
+  const withScript = new Set<string>()
+  for (const set of runnable.values()) for (const name of set) withScript.add(name)
+  const sameRefs = new Set<string>()
+  const caretSelf = new Set<string>()
+  for (const meta of metas) {
+    const { defined, defFor } = definitions(meta)
+    for (const name of defined) {
+      for (const d of defFor(name)?.dependsOn ?? []) {
+        if (d === `^${name}`) caretSelf.add(name)
+        else if (!d.startsWith('^') && !d.includes('#') && envDependency(d) === null)
+          sameRefs.add(d)
+      }
+    }
+  }
+  const transit = new Set([...caretSelf].filter((n) => sameRefs.has(n) && !withScript.has(n)))
+  if (transit.size > 0) {
+    for (const meta of metas) {
+      const { defined, defFor } = definitions(meta)
+      for (const name of transit)
+        if (defined.has(name) && commandOverride(defFor(name)) === undefined) {
+          emitted.get(meta.name)!.add(name)
+          runnable.get(meta.name)!.add(name)
+        }
+    }
+  }
   const emittedAnywhere = new Set<string>()
   for (const set of emitted.values()) for (const name of set) emittedAnywhere.add(name)
 
@@ -725,6 +758,26 @@ export async function mapTurboWorkspace(
       const override = commandOverride(defFor(name))
       if (override === null) continue
       const script = scripts[name]
+      if (override === undefined && script === undefined && transit.has(name) && own.has(name)) {
+        tasks.push(
+          buildTask(
+            name,
+            defFor(name)!,
+            'true',
+            own,
+            defFor,
+            emitted,
+            emittedAnywhere,
+            globals,
+            opts,
+            relPosix(root, meta.dir),
+            rootDotenv,
+            rootMeta?.name,
+            { name: meta.name, persistentAt, withOf },
+          ),
+        )
+        continue
+      }
       if (override === undefined && script === undefined && emitted.get(meta.name)!.has(name)) {
         // No script, but edges Turbo's no-op node keeps (above): a group
         // task depending on them does the same (with-tailwind's `ui#dev`

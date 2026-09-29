@@ -692,3 +692,16 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   drop is `dependsOn: []`, never a dangling edge. The examples sweep
   (G-60) matches on with-tailwind now. Rows (`turbo-map-sweep` ›
   `with`): five mutants, each caught.
+- **G-62.** Turbo's transit node (its with-vitest example and documented
+  pattern): `transit: { dependsOn: ["^transit"] }`, no script anywhere,
+  and `test: { dependsOn: ["transit"] }`. Turbo hashes the no-op per
+  package over its files, so a dependency's edit re-runs a dependant's
+  `test`. vx dropped the edge, and `test` keyed on its own files alone:
+  editing `ui` left `web#test`'s key unchanged, a stale hit (probed on
+  the example: same key before and after). Such a node is now a
+  key-only task in each package that defines it (`true`, cached, keyed
+  on its inputs, with its `^` edge), as nx()'s `nx-input:*` twins are;
+  the edit moves `web#test`'s key and leaves `math#test`'s. A `^self`
+  task some package runs, or none depends on, is not one. Rows
+  (`turbo.test` › a transit node, red without it; `turbo-map-sweep` › a
+  transit node): three mutants, each caught.
