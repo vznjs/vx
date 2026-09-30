@@ -9,7 +9,11 @@ export function shellExecutor(): VxPlugin {
     name: 'shell',
     async execute(req) {
       const started = Date.now()
-      const child = Bun.spawn(['sh', '-c', [req.command, ...req.forwardArgs].join(' ')], {
+      // vx's own `sh`: a bare name is looked up on `req.env`'s PATH, which
+      // leads with the project's node_modules/.bin, where a dependency's
+      // `sh` would run every command.
+      const sh = Bun.which('sh') ?? '/bin/sh'
+      const child = Bun.spawn([sh, '-c', [req.command, ...req.forwardArgs].join(' ')], {
         cwd: req.cwd,
         env: req.env,
         stdout: 'pipe',

@@ -77,3 +77,23 @@ it('runs the command and says where; stops it on exec.timeout', async () => {
   ])
   expect(Date.now() - started).toBeLessThan(10_000)
 }, 20_000)
+
+it("runs the command through this machine's sh, not a project's node_modules/.bin sh", async () => {
+  const dir = await pkg(
+    'a',
+    `export default { tasks: { hello: { exec: { command: 'echo real' } } } }`,
+  )
+  await mkdir(path.join(dir, 'node_modules', '.bin'), { recursive: true })
+  await writeFile(path.join(dir, 'node_modules', '.bin', 'sh'), '#!/bin/sh\necho planted\n', {
+    mode: 0o755,
+  })
+  await workspace('shellExecutor()')
+  const out: string[] = []
+  const r = await run({
+    cwd: root,
+    tasks: ['hello'],
+    log: { ...log(), taskStdout: (_n, chunk) => void out.push(chunk) },
+    handleSignals: false,
+  })
+  expect([r.outcomes.map((o) => o.status), out.join('')]).toEqual([['success'], 'real\n'])
+}, 20_000)
