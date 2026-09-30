@@ -104,10 +104,12 @@ readers that reach it here.
   the key folds each config's own JSON, so `Object.prototype.exec` set in one config ran in another
   project's task and a cache hit replayed the old command after it
   changed (D-74). Each first load is compared with a snapshot taken
-  before the round, before anything reads through them (a replaced
-  `Array.prototype.includes` broke the JSON-data walk itself); what
-  changed is put back, a failed load's too, and the load is refused
-  naming the property.
+  before its round evaluates anything, before anything reads through
+  them (a replaced `Array.prototype.includes` broke the JSON-data walk
+  itself); what changed is put back, a failed load's too, and the load
+  is refused naming the property. A round where every config hits takes
+  no snapshot: reading every descriptor of `Bun` builds its lazy
+  members, 7 ms of a warm run (E-88).
 - A first load may not change `process.env` either: a config that set
   a variable gave it to every project's `passThrough` and to vx's own
   `VX_*` reads, and a repeat load, in a worker, gave it to neither

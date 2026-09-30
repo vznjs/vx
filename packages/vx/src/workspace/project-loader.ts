@@ -386,8 +386,11 @@ export async function loadProjectConfigs(
     evaluated?: readonly [string, string]
     closure?: readonly [string, readonly string[]]
   }
-  const builtins = builtinSnapshot()
-  const env = { ...process.env }
+  // Taken only when a config is evaluated in this process: reading every
+  // descriptor of `Bun` makes Bun build its lazy members (`bun:sql`,
+  // `node:stream`), ~7 ms of a two-config warm run where every load hit.
+  let builtins: BuiltinSnapshot = []
+  let env: Readonly<Record<string, string | undefined>> = {}
   const loadOne = async (entry: (typeof prepared)[number]): Promise<Loaded> => {
     const { configPath, cacheKey } = entry
     // A fast key that missed: the closure is stale or the file changed.
@@ -470,6 +473,10 @@ export async function loadProjectConfigs(
       if (cached !== undefined) results[i] = { config: cached }
       else misses.push(i)
     }
+    if (misses.length > 0) {
+      builtins = builtinSnapshot()
+      env = { ...process.env }
+    }
     let next = 0
     const lane = async (): Promise<void> => {
       while (next < misses.length) {
@@ -486,7 +493,7 @@ export async function loadProjectConfigs(
         if (r.closure !== undefined) learnedClosures.push(r.closure)
       }
     }
-    const changed = [...restoreBuiltins(builtins), ...restoreEnv(env)]
+    const changed = misses.length > 0 ? [...restoreBuiltins(builtins), ...restoreEnv(env)] : []
     if (first !== undefined) throw first.failed
     if (changed.length > 0) throw builtinsChanged(changed)
     return results.map((r) => (r as Loaded).config)

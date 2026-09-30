@@ -1186,3 +1186,36 @@ describe('which @vzn/vx imports a pure config may take (item 888)', () => {
     expect(missing).toEqual([])
   })
 })
+
+describe('a round where every config hits', () => {
+  it('reads no descriptor of `Bun`: the built-in guard runs only around an evaluation (E-88)', async () => {
+    // Reading every descriptor of `Bun` makes Bun build its lazy members
+    // (`bun:sql`, `node:stream`): ~7 ms of a warm run that evaluates nothing.
+    const cfg = await write(
+      'packages/a/vx.config.mjs',
+      "export default { tasks: { build: { exec: { command: 'true' } } } }\n",
+    )
+    const store = new BatchedStore()
+    const real = Object.getOwnPropertyDescriptor
+    let reads = 0
+    Object.getOwnPropertyDescriptor = (o: unknown, k: PropertyKey) => {
+      if (o === Bun) reads++
+      return real(o, k)
+    }
+    try {
+      const load = () =>
+        loadProjectConfigs([cfg], { evalCache: { store, workspaceFingerprint: 'fp' } })
+      await load()
+      // The control: the evaluating round takes the snapshot.
+      expect(store.puts).toBe(1)
+      expect(reads).toBeGreaterThan(0)
+      reads = 0
+      const [hit] = await load()
+      expect(hit?.tasks?.build?.exec?.command).toBe('true')
+      expect(store.puts).toBe(1)
+      expect(reads).toBe(0)
+    } finally {
+      Object.getOwnPropertyDescriptor = real
+    }
+  })
+})
