@@ -948,3 +948,25 @@ of 9, two rounds: `--concurrency 1` 504 → 481 and 487 → 442 ms;
 `inputs-resolution.test.ts` (red with the keep filter removed) and in
 `output-shape.test.ts` (red with the miss path not passing the flag;
 the inode number was no discriminator, ext4 reuses it).
+
+B-50. The unsandboxed miss path after B-49, re-ranked (100 one-file
+tasks, `--force`, `--concurrency 1`, release build, CPU profile of
+three runs). No cut ships: each site left is under 2% of a task, below
+what this box resolves (~6%, item 404), and several are smaller in
+isolation than the profile says.
+
+- `save: pack` (2.7 ms a task, wall) splits into the plan 1.8, the tar
+  0.4 and zstd 0.4. The plan is one `lstat` per output, and the save
+  runs beside the next task's spawn, so its wall is not its cost (item
+  616); what it costs alone is unmeasured.
+  `Bun.zstdCompressSync` for a 3 KiB tar saves 0.05 ms (0.089 → 0.033
+  median of 200).
+- `renameSync` in the save's transaction read 1.5 ms a task in the
+  profile; a rename over an existing file measures 0.05 ms alone.
+- `ownRssHighWater`'s `/proc/self/status` read: 0.018 ms a call alone
+  (`getrusage` 0.001, but its `maxRSS` is not `VmHWM` by definition, so
+  a swap is a claim to prove first).
+- `secretMask`'s name scan over `process.env`: ~0.06 ms a task.
+- `containedIn`'s realpath of the project root each task: a task may
+  write there, so it is not memoised (principle 9).
+- The built-in snapshot (7 ms a run) is E-88's.
