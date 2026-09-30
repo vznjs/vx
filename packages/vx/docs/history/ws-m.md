@@ -188,6 +188,20 @@ the keep-alive shard failing in the same ~17:50 gate (M-14) sent the
 unsafe suite's group nothing. Left as before: a reset racing
 a wrap, or a signal from outside the gate.
 
+M-17. The keep-alive grace rows, the class grepped after M-14: its two
+rows are fixed on main, and a third, `keep-alive.test.ts` › a terminal's
+Ctrl-C leaves the guard, so a kill -9 in the teardown still takes the
+task, still carried the same fuse (`(sleep 1; echo late > late.txt) &`,
+started before the row sees `pid.txt`). No failure of it is on record,
+and it did not fail here: through vx's sandbox (the gate's shard, bwrap
+under strace) the row's kill lands 208-224 ms after the fuse starts,
+idle or beside four busy loops per core, and bare it passed 6 of 6
+beside four per core. So its failure is not claimed; the timed claim
+is removed. The task lives until a SIGKILL and the row asserts the
+shell's and the child's deaths within 5 s. Red with the guard started
+in vx's group (`detached: false`); 20 of 20 green with the other grace
+rows beside two busy loops per core.
+
 ## Leads for other streams
 
 - A: A-20 let a same-project dependant restore ahead of a producer whose
