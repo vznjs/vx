@@ -334,4 +334,37 @@ describe('loadLageConfig', () => {
     },
     TIMEOUT,
   )
+
+  // In a compiled vx, `process.execPath` is vx, which read `-e` as an
+  // unknown verb and `lage()` failed. The stand-in is a compiled binary
+  // that is not Bun unless told to be.
+  it(
+    'loads under a compiled runtime that is not Bun by default',
+    async () => {
+      const dir = await mkdtemp(path.join(tmpdir(), 'vx-lage-compiled-'))
+      const saved = process.execPath
+      try {
+        await writeFile(
+          path.join(dir, 'cli.ts'),
+          `process.stderr.write('not bun\\n')\nprocess.exit(2)\n`,
+        )
+        const exe = path.join(dir, 'cli')
+        const built = Bun.spawnSync(
+          [saved, 'build', '--compile', path.join(dir, 'cli.ts'), '--outfile', exe],
+          { cwd: dir, stdout: 'ignore', stderr: 'pipe' },
+        )
+        expect(built.stderr.toString()).not.toContain('error')
+        // Control: the stand-in alone is no Bun.
+        expect(Bun.spawnSync([exe, '-e', '1']).exitCode).toBe(2)
+        const file = path.join(dir, 'lage.config.js')
+        await writeFile(file, `module.exports = { pipeline: { build: ['^build'] } }\n`)
+        process.execPath = exe
+        expect(await loadLageConfig(dir, file)).toEqual({ pipeline: { build: ['^build'] } })
+      } finally {
+        process.execPath = saved
+        await rm(dir, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
 })

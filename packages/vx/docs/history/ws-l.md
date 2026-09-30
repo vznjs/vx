@@ -409,6 +409,15 @@
   fix. A task's own stdout and stderr are its bytes, replayed as they
   were, and stay so.
 
+- L-32. `fix(vx-migrate)`: in a compiled vx, `loadLageConfig` spawned
+  `process.execPath -e`, which is vx, so `lage()` failed with "unknown
+  command: -e". The child now gets `BUN_BE_BUN=1` (a plain Bun ignores
+  it). Row: `lage.test.ts` › "loads under a compiled runtime…", a
+  compiled stand-in as `process.execPath`, red without the fix. The
+  class: `shellArgv`'s Windows `[execPath, 'exec', …]` is the same
+  shape, but there the variable would reach the task's own children (a
+  `vx` a task runs would act as Bun), so it stays a lead.
+
 ## Leads for other streams
 
 - Cache owners: `src/cache/archive.ts` and `tar-stream.ts` changed under
@@ -452,7 +461,6 @@
   `while (true) {}` in a config hangs `vx run` with no word; the worker
   path's `terminate` does not. Moving the first load off the main thread
   is a perf trade to measure.
-- migrate: in a compiled vx, `loadLageConfig` spawns `process.execPath`,
-  which is the vx binary, so `-e` prints `vx: unknown command: -e` and
-  `lage()` fails. Probed: `BUN_BE_BUN=1` in the child's env runs it as
-  Bun.
+- exec (Windows): a compiled vx runs a task as `[execPath, 'exec', script]`
+  (`shellArgv`), which is vx, not Bun; `BUN_BE_BUN=1` there would reach
+  the task's children (L-32).
