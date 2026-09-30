@@ -527,8 +527,10 @@ a default name of `vx run` failed it; restored, passes.
 ## H-44: the stale leads, checked
 
 The 1.0 roadmap's agent items are all done; what stands is the owner's
-(the 0.1.0 cut, the scope list, the soak). Two leads below were already
-closed: `dependsOn: ['']`, `['!x']`, `['^']`, `['#']` and `['a#']` are each
+(the 0.1.0 cut, the scope list, the soak). Every lead below but the
+first (a design item: only the sandbox can tell a task was its input's
+lone writer) was already closed, and each now names where. Two of them:
+`dependsOn: ['']`, `['!x']`, `['^']`, `['#']` and `['a#']` are each
 refused at graph build naming the task (`Task a#build: Invalid dependency
 spec …`), held by `dependency-spec.test.ts`, `task-graph.test.ts` and
 `config-schema-refusals.test.ts`; and `vx stats` was removed in H-19.
@@ -544,25 +546,12 @@ spec …`), held by `dependency-spec.test.ts`, `task-graph.test.ts` and
 - **D / B:** `sandbox.ignore` names that loaded and did nothing: done in D-4.
 - **D:** `dependsOn: ['']`, `['!x']`: answered in H-44, refused with the
   task named.
-- **F:** `@vzn/vx-reapi#test`'s "a call a proxy cuts in transit" rows
-  (added by F-1) fail under a full local gate: RST_STREAM(INTERNAL_ERROR)
-  "… is retried" twice (2164 and 2171 ms, "the collector hung up") and
-  RST_STREAM(CANCEL) "… is not retried" once, in 3 of 5 gates on
-  2026-09-27 (Bun 1.4.2, 4 workers), while the task passes run alone.
-  Load-dependent; CI has been green.
-
-- **A:** `cache.inputs.files: ['src/{b}.ts']` selects NOTHING when the
-  file is literally named `{b}.ts` (`Bun.Glob` reads a one-alternative
-  brace), and nothing refuses it: `assertNoInvisibleLiteralInputs`, which
-  refuses a literal git does not list, treats `{` as a wildcard. A stale
-  key for that file; refuse a brace with one alternative, or read it
-  literally (recorded in `task-globs.json`).
-- **A (low):** an output glob like `**/*.js` selects
-  `node_modules/**/*.js` (`OUTPUT_NEVER` is only `.git` and `.vx`, by
-  design: `node_modules/**` is an install task's output), so the clean
-  before a run deletes installed files a broad glob did not mean to name.
-  Consider refusing an output glob that reaches `node_modules` without
-  naming it.
+- **F:** `@vzn/vx-reapi#test`'s proxy-cut rows under a loaded gate:
+  F-9 (the peer counts each call's HEADERS on arrival; 24 of 24 loaded).
+- **A:** a literal `{b}.ts` input: fixed in A
+  (`one-alternative-brace.test.ts`).
+- **A (low):** an output glob reaching `node_modules`: fixed in A
+  (`outputExcludes`, `output-reach.test.ts`).
 
 - **E:** `vx stats` silent as a deprecated alias: gone since H-19; typing
   it points at `vx info` and exits 1 (H-44).
