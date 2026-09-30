@@ -136,8 +136,8 @@
   },
   {
     "key": "turbo.json tasks.*.interruptible",
-    "status": "not-supported",
-    "reason": "Reported as a key with no vx equivalent, then ignored."
+    "status": "not-applicable",
+    "reason": "Maps to nothing, silently: `vx watch` stops and re-spawns every persistent task each cycle."
   },
   {
     "key": "turbo.json tasks.*.outputLogs",
