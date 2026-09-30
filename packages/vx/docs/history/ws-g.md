@@ -843,3 +843,11 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   migrate CLI writes files for another environment and keeps the todo;
   `?`, `[…]` and `\` stay todos everywhere. Row (`turbo-map-sweep` › a
   `*` env name expands over the live environment): red without it.
+- **G-74.** Turbo 2's framework inference (a package on `next` hashes
+  and passes `NEXT_PUBLIC_*`; `vite`, `react-scripts`, `gatsby`, `astro`
+  likewise) was a note under `turbo()` too: a Next build inlined empty
+  public variables. With G-73's live env names the prefix now joins each
+  such package's task env list, where the task's own `!` entries take
+  names back, as Turbo applies them. The migrate CLI keeps the note.
+  Row (`turbo-map-sweep` › a live mapping infers a framework env
+  prefix): red without it; `lib` without the framework is the control.

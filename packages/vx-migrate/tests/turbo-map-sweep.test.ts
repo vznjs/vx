@@ -315,6 +315,35 @@ describe('turbo-map: what the sweep found unheld', () => {
     ])
   })
 
+  // A live mapping infers as Turbo does, and the task's own `!` entries
+  // take names back (openstatus' `!NEXT_PUBLIC_VERCEL_URL`). CONTROL: a
+  // package without the framework gets no prefix.
+  it('a live mapping infers a framework env prefix, with no note', async () => {
+    await writeFile(
+      path.join(root, 'turbo.json'),
+      JSON.stringify({ tasks: { build: { env: ['!NEXT_PUBLIC_VERCEL_URL', 'API'] } } }),
+    )
+    const metas: ProjectMeta[] = []
+    for (const [name, deps] of [
+      ['web', { dependencies: { next: '15' } }],
+      ['lib', {}],
+    ] as const) {
+      const dir = path.join(root, 'packages', name)
+      await mkdir(dir, { recursive: true })
+      const packageJson = { name, scripts: { build: 'b' }, ...deps }
+      metas.push({ name, dir, packageJson: packageJson as never, configPath: null })
+    }
+    const live = ['NEXT_PUBLIC_VERCEL_URL', 'NEXT_PUBLIC_A', 'VITE_X']
+    const m = await mapTurboWorkspace(root, metas, { ...opts, envNames: live })
+    const env = (p: number) =>
+      (m.projects[p]!.tasks[0]!.task!['cache'] as { inputs: { env?: unknown } }).inputs.env
+    expect({ web: env(0), lib: env(1), notes: m.notes }).toEqual({
+      web: ['NEXT_PUBLIC_A', 'API'],
+      lib: ['API'],
+      notes: [],
+    })
+  })
+
   it('two tasks on one output path: the second runs uncached', async () => {
     const m = await map(
       { tasks: { build: { outputs: ['dist/**'] }, bundle: { outputs: ['dist/**'] } } },
