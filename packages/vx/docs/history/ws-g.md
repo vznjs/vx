@@ -813,3 +813,13 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   it is not given, so it now removes the list's own matching names and
   says nothing. Rows (`turbo-map-sweep` › a `!` env entry removes the
   names it matches; › a global env wildcard is a note): red without it.
+- **G-70.** rallly (turbo 2.6.3): `build: [^build, ^db:generate]` and
+  only `database` has a `db:generate` script, so every other `build` is
+  Turbo's no-op node. `web#build:test` → `^build` reaches them, and
+  Turbo runs `database#db:generate` first; vx dropped it: G-61 made a
+  no-op a group only for an edge to a named task, and core's walk past a
+  package carries only the name it walks for. A `^` edge to another name
+  now makes the node a group too, and rallly's `build:test`, `build` and
+  `dev` plan as Turbo's. Re-checked unchanged: mastra, better-auth,
+  midday, documenso, openstatus. Row (`turbo-map-sweep` › a no-script
+  task whose ^ edge names another task is a group): red without it.

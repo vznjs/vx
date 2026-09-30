@@ -22,7 +22,7 @@ import {
   PLUGIN_IMPORT,
   writeLocalWorkspace,
 } from './helpers/local-workspace.js'
-import { parseRunArgs } from '../src/cli/index.js'
+import { parseRunArgs } from '../src/cli/run.js'
 import type { TaskNode, TaskOutcome } from '../src/graph/index.js'
 import { isAlive } from './helpers/alive.js'
 import {

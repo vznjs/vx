@@ -31,7 +31,7 @@ import { teardownTimeoutMs } from '../src/util/settle.js'
 import { validateProjectConfig } from '../src/workspace/project-loader.js'
 import { loadWorkspaceConfig } from '../src/workspace/project-loader.js'
 import { readTaskTimeoutEnv } from '../src/orchestrator/run.js'
-import { parseRunArgs } from '../src/cli/index.js'
+import { parseRunArgs } from '../src/cli/run.js'
 import { restoreEnv } from './helpers/env.js'
 
 function taskWithTimeout(timeout: number): ProjectConfig {

@@ -1,21 +1,18 @@
-// Module contract for `cli`: the top-level dispatcher plus re-exports
-// for the test suite, which asserts on the pure parsers and formatters
-// directly. Each subcommand handler lives in a sibling `<name>.ts`.
+// Module contract for `cli`: the top-level dispatcher. Each subcommand
+// handler lives in a sibling `<name>.ts`; tests import its parsers there.
 
 import { VERSION } from '../version.js'
-import { runCmd } from './run.js'
 import { CORE_VERBS, printHelp } from './help.js'
-import { pluginCommandHelp, resolvePluginCommand, pluginVerbs } from './plugin-commands.js'
 import { FOREIGN_VERBS } from './foreign-flags.js'
-import { taskVerbHint } from './task-verb.js'
 import { isUserError, MOVED_VERBS, nearest, UserError } from '../util/index.js'
 
-// Every verb but `run` is imported when invoked. `vx run` is the hot path
-// and nearly every invocation; the other verbs' modules are code that
-// process never calls. Measured 2026-09-03: `--version` is 25 ms either
-// way (module loading is not where start-up goes), so this is hygiene, not
-// a speed-up. The specifiers are string literals, so `bun build --compile`
-// still embeds them.
+// Every verb is imported when invoked, `run` included, and so is the
+// plugin-verb lookup: each pulls in the orchestrator and the workspace
+// loader, 49 ms of a 65 ms `vx --version` (2026-09-30). This file once
+// re-exported the verbs' parsers for tests, which loaded every verb on
+// every start. The specifiers are string literals, so `bun build
+// --compile` still embeds them.
+const plugins = () => import('./plugin-commands.js')
 
 export async function run(argv: readonly string[]): Promise<number> {
   const [command, ...rest] = argv
@@ -26,7 +23,7 @@ export async function run(argv: readonly string[]): Promise<number> {
   // which is the one place `--help` is not being asked of vx. Core verbs
   // only — a plugin verb owns its own arguments, `--help` included.
   if (command !== undefined && wantsHelp(command, rest)) {
-    printHelp(await pluginCommandHelp(), command)
+    printHelp(await (await plugins()).pluginCommandHelp(), command)
     return 0
   }
 
@@ -34,7 +31,7 @@ export async function run(argv: readonly string[]): Promise<number> {
     case undefined:
     case '--help':
     case '-h':
-      printHelp(await pluginCommandHelp())
+      printHelp(await (await plugins()).pluginCommandHelp())
       return 0
     case 'help': {
       // `vx help run` is the same question as `vx run --help`. A plugin verb
@@ -45,7 +42,7 @@ export async function run(argv: readonly string[]): Promise<number> {
       if (verb !== undefined && !core) {
         // A name that is no verb here is the typo `vx rnu` is, not a request
         // for the whole reference: it printed 145 lines and no hint.
-        const resolved = await resolvePluginCommand(verb)
+        const resolved = await (await plugins()).resolvePluginCommand(verb)
         const unknown = resolved === null || 'declaredVerbs' in resolved
         const pointer = MOVED_VERBS[verb] ?? FOREIGN_VERBS[verb]
         if (unknown && pointer !== undefined) {
@@ -60,7 +57,7 @@ export async function run(argv: readonly string[]): Promise<number> {
           return 1
         }
       }
-      printHelp(await pluginCommandHelp(), core ? verb : undefined)
+      printHelp(await (await plugins()).pluginCommandHelp(), core ? verb : undefined)
       return 0
     }
     case '--version':
@@ -68,7 +65,7 @@ export async function run(argv: readonly string[]): Promise<number> {
       process.stdout.write(`vx ${VERSION}\n`)
       return 0
     case 'run':
-      return await runCmd(rest)
+      return await (await import('./run.js')).runCmd(rest)
     case 'watch':
       return await (await import('./watch.js')).watchCmd(rest)
     case 'cache':
@@ -88,12 +85,14 @@ export async function run(argv: readonly string[]): Promise<number> {
     case 'last':
       return await (await import('./last.js')).lastCmd(rest)
     case 'completions':
-      return await (await import('./completions.js')).completionsCmd(rest, await pluginVerbs())
+      return await (
+        await import('./completions.js')
+      ).completionsCmd(rest, await (await plugins()).pluginVerbs())
     default: {
       // Not a core verb: a plugin declared in the workspace around the cwd
       // may own it (`VxPlugin.commands`). Core verbs were matched above, so
       // nothing here can shadow them.
-      const resolved = await resolvePluginCommand(command)
+      const resolved = await (await plugins()).resolvePluginCommand(command)
       if (resolved !== null && !('loadError' in resolved) && !('declaredVerbs' in resolved)) {
         let code: number
         try {
@@ -137,7 +136,10 @@ export async function run(argv: readonly string[]): Promise<number> {
       }
       // A task typed where the verb goes (`turbo build`, `nx build app`),
       // `turbo dev` included: a repo's own `dev` task beats the no-service note.
-      const task = loadNote === '' ? await taskVerbHint(command, rest, process.cwd()) : null
+      const task =
+        loadNote === ''
+          ? await (await import('./task-verb.js')).taskVerbHint(command, rest, process.cwd())
+          : null
       if (task !== null) {
         process.stderr.write(`vx: ${task}\n`)
         return 1
@@ -177,21 +179,6 @@ export async function run(argv: readonly string[]): Promise<number> {
   }
 }
 
-// Re-exports for tests + programmatic embedders.
-export {
-  detectFlow,
-  parseConcurrency,
-  parseRunArgs,
-  resolveRunOptions,
-  type RunArgs,
-} from './run.js'
-export { parsePruneArgs, parseDuration, parseSize } from './cache.js'
-export { parseLockArgs, type LockArgs } from './lock.js'
-export { parseInitArgs, type InitArgs } from './init.js'
-export { parseShowArgs, type ShowArgs } from './show.js'
-export { parseWhyArgs } from './why.js'
-export { parseLastArgs } from './last.js'
-export { formatBytes } from './format.js'
 export { registerCoreAlias } from './core-alias.js'
 
 /**

@@ -478,3 +478,12 @@ walked on fixtures.
   `turbo()` runs it unchanged (whether init should offer the plugin
   instead is the owner's call); the summary says `up-to-date` where
   `vx last` says `cache-hit` for the same run.
+- **E-85.** CLI startup. `vx --version` spent 49 of its 65 ms importing
+  the run path: `cli/index.ts` imported `run.js`, the plugin-verb lookup
+  and the task-verb hint statically, and re-exported every verb's
+  parser for tests, so each start loaded every verb. The dispatcher now
+  imports each verb, `run` included, and those lookups on use; tests
+  import a parser from its own file. Interleaved A/B against an
+  origin/main worktree, three rounds of min-of-5: `--version` 58–65 ms
+  → 24–26 ms; a warm two-task no-op `vx run` unchanged (126–134 ms both
+  arms, one pre-warmed copy each), as it needs the same modules.

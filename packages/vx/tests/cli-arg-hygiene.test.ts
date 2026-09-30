@@ -11,14 +11,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'bun:test'
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import {
-  parseConcurrency,
-  parseDuration,
-  parsePruneArgs,
-  parseRunArgs,
-  parseSize,
-  run,
-} from '../src/cli/index.js'
+import { parseConcurrency, parseRunArgs } from '../src/cli/run.js'
+import { parseDuration, parsePruneArgs, parseSize } from '../src/cli/cache.js'
+import { run } from '../src/cli/index.js'
 
 describe('--cache spec validation', () => {
   it('rejects an empty spec instead of silently leaving caching FULL', () => {

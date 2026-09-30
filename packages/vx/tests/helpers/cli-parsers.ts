@@ -1,15 +1,13 @@
 // Each core verb's own parser, called as the CLI calls it; the error it
 // returns for `argv`, or null. Shared by completions.test (flags complete
 // what the parser takes) and contract-cli-surface (the values it takes).
-import {
-  parseInitArgs,
-  parseLastArgs,
-  parseLockArgs,
-  parsePruneArgs,
-  parseRunArgs,
-  parseShowArgs,
-  parseWhyArgs,
-} from '../../src/cli/index.js'
+import { parsePruneArgs } from '../../src/cli/cache.js'
+import { parseInitArgs } from '../../src/cli/init.js'
+import { parseLastArgs } from '../../src/cli/last.js'
+import { parseLockArgs } from '../../src/cli/lock.js'
+import { parseRunArgs } from '../../src/cli/run.js'
+import { parseShowArgs } from '../../src/cli/show.js'
+import { parseWhyArgs } from '../../src/cli/why.js'
 import { parseInfoArgs } from '../../src/cli/info.js'
 import { watchRefusal } from '../../src/cli/watch.js'
 

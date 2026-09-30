@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { parsePruneArgs } from '../src/cli/index.js'
+import { parsePruneArgs } from '../src/cli/cache.js'
 import { parseSize } from '../src/util/size.js'
 // Every cross-module caller reaches parseSize through the util CONTRACT
 // (tests/module-boundaries.test.ts): workspace/project-loader.ts:3,

@@ -12,7 +12,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { addProject, makeWorkspace as makeWorkspaceRoot } from './helpers/workspace.js'
 import type { Logger } from '../src/orchestrator/index.js'
 import { run } from '../src/orchestrator/index.js'
-import { parseRunArgs } from '../src/cli/index.js'
+import { parseRunArgs } from '../src/cli/run.js'
 import { loadWorkspaceConfig } from '../src/workspace/project-loader.js'
 
 // The SIGTERM→SIGKILL grace is 2 s by default; every test here that proves

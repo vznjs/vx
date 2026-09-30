@@ -1000,6 +1000,28 @@ describe('turbo-map: `with`', () => {
     ]).toEqual([{ dependsOn: ['^build', 'build:css'] }, [], ['ui#build']])
   })
 
+  // rallly: `build: [^build, ^db:generate]`, and only `database` has a
+  // `db:generate` script. `web#build:test` → `^build` reaches `billing`'s
+  // script-less build, whose `^db:generate` Turbo runs first; core's walk
+  // past `billing` carries only the name it walks for, so the edge was lost.
+  it('a no-script task whose ^ edge names another task is a group', async () => {
+    const m = await map(
+      {
+        tasks: {
+          build: { dependsOn: ['^build', '^db:generate'] },
+          'build:test': { dependsOn: ['^build'] },
+          'db:generate': {},
+        },
+      },
+      {
+        db: { scripts: { 'db:generate': 'g' } },
+        billing: { scripts: {} },
+        web: { scripts: { 'build:test': 't' } },
+      },
+    )
+    expect(task(m, 'billing', 'build').task).toEqual({ dependsOn: ['^build', '^db:generate'] })
+  })
+
   it('a no-script group whose own edges all drop still exists for the edges that name it', async () => {
     const m = await map(
       {

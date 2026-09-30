@@ -9,7 +9,8 @@ import { Database } from 'bun:sqlite'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { gitIn, makeWorkspace as makeWorkspaceRoot } from './helpers/workspace.js'
-import { parseShowArgs, parseWhyArgs } from '../src/cli/index.js'
+import { parseShowArgs } from '../src/cli/show.js'
+import { parseWhyArgs } from '../src/cli/why.js'
 import { WHAT_TO_DO } from '../src/cli/why.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')

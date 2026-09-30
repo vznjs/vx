@@ -11,24 +11,14 @@ sibling `src/cli/<name>.ts`.
 
 ```ts
 export async function run(argv: readonly string[]): Promise<number>
-
-// Re-exports for tests + programmatic embedders:
-export {
-  detectFlow,
-  parseConcurrency,
-  parseRunArgs,
-  resolveRunOptions,
-  type RunArgs,
-} from './run.js'
-export { parsePruneArgs, parseDuration, parseSize } from './cache.js'
-export { parseLockArgs, type LockArgs } from './lock.js'
-export { parseInitArgs, type InitArgs } from './init.js'
-export { parseShowArgs, type ShowArgs } from './show.js'
-export { parseWhyArgs } from './why.js'
-export { parseLastArgs } from './last.js'
-export { formatBytes } from './format.js'
 export { registerCoreAlias } from './core-alias.js'
 ```
+
+Every verb's module, `run` included, and the plugin-verb lookup are
+imported when invoked: each pulls in the orchestrator and the workspace
+loader. `vx --version` loads the dispatcher alone, 24 ms against 58 ms
+when this file re-exported the verbs' parsers (min of 5, 2026-09-30).
+Tests import a parser from its own file (`cli/run.ts`'s `parseRunArgs`).
 
 `run(argv)` returns the exit code. `bin.ts` sets `process.exitCode` to
 it and lets the event loop drain — no `process.exit`, no `stdout.end`:
@@ -103,5 +93,5 @@ live alongside.
 ## Replacing this module
 
 To swap in a parser library, keep `run(argv): Promise<number>` and
-keep the per-subcommand re-exports stable (tests import them
+keep each verb's parser in its own file (tests import them
 directly). Everything else can change.
