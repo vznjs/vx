@@ -633,7 +633,10 @@ next?".
     kind saves the run and the row, about 19 ms. The rest is what every
     task costs to load and key, so the lever is per-task cost in those
     two stages, not a new kind. Item 932 took 23 ms of the load share
-    back: a guard that stopped holding after the first round.
+    back: a guard that stopped holding after the first round. CLOSED as
+    G-76 (2026-09-30): at 300 projects the 293 twins add ~39 ms warm
+    (stage mins, N=7), spread across keying, the run and the row; no
+    site takes more than ~2.5 ms, so no kind or memo buys it back.
 
 26. DONE as item 1075 — `nx()` keys its graph snapshot on the worktree's git state; an added import re-exports.
 

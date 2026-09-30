@@ -851,3 +851,15 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   names back, as Turbo applies them. The migrate CLI keeps the note.
   Row (`turbo-map-sweep` › a live mapping infers a framework env
   prefix): red without it; `lib` without the framework is the control.
+- **G-76.** Next 25 closed on a measurement. A generated 300-project Nx
+  workspace (`test` on `default` + `^production`; 293 `nx-input` twins)
+  against the same graph without `^production`, warm, stage mins of 7
+  under a hermetic git config: `classify + probe` 28.0 → 45.4 ms,
+  `run graph` 12.3 → 21.1, `record history` 6.3 → 11.8, `load configs`
+  30.1 → 35.4, `build graph` 1.4 → 4.2: ~39 ms, ~0.13 ms a twin. A CPU
+  profile (8 runs, 100 µs) spreads the keying over `resolveFiles` (~30
+  µs a task: glob matching, path joins, per-task output matchers), the
+  config and manifest digests, and the fold; no site above ~2.5 ms. Under
+  this container's global `core.checkStat=minimal` every input is hashed
+  from disk (1,486 `hashFile` calls a warm run, 0 with
+  `GIT_CONFIG_GLOBAL=/dev/null`), as `vx-bench/ab.ts` already guards.
