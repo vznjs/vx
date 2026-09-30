@@ -875,3 +875,12 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   this container's global `core.checkStat=minimal` every input is hashed
   from disk (1,486 `hashFile` calls a warm run, 0 with
   `GIT_CONFIG_GLOBAL=/dev/null`), as `vx-bench/ab.ts` already guards.
+- **G-79.** A run from inside a project discovered the workspace twice:
+  `findCwdProject` ran discovery (every `discover` hook, `nx()`'s graph
+  load and its worktree key among them) and `prepareRun` ran it again (the
+  shape `--filter` had until ws-i's lead was fixed). The cwd lookup now hands its
+  discovery over as `RunOptions.discovered`. A/B on the 300-project Nx
+  fixture in snapshot mode (a fake `nx` bin), warm `vx run test` from
+  `packages/p150`, interleaved N=11: min 199 → 191 ms, median 230 → 202.
+  Row (`load-reads.test` › a run from inside a project discovers the
+  workspace once): red without the hand-over (the manifest read twice).
