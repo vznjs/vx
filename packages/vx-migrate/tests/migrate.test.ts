@@ -1192,9 +1192,8 @@ describe('vx migrate (nx) — executors', () => {
       expect(tasks['build:ci']!.dependsOn).toEqual(['^build'])
       expect(r.out).not.toContain('no shell equivalent')
       expect(r.out).not.toContain('mapped from executor')
-      expect(r.out).toContain(
-        'app#build:ci: configuration "ci": Nx runs dependencies with the same',
-      )
+      // No other project declares `ci`: Nx runs the default there too.
+      expect(r.out).not.toContain('Nx runs dependencies with the same')
       expect(r.out).toContain('executor targets run through `nx-exec`')
     } finally {
       await rm(root, { recursive: true, force: true })

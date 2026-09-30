@@ -106,9 +106,16 @@ export function mapNxDeps(
   todos: string[],
   matchProjects: (patterns: readonly string[]) => string[] = (ps) => [...ps],
   targetNames: readonly string[] = [],
+  asked?: { readonly node: string; readonly configuration: string },
 ): string[] {
   const entries = expandTargetGlobs(raw, targetNames, (p) => metaByNode.has(p), ownTarget)
   const deps: string[] = []
+  // Nx hands every edge the configuration the run asked for, and each
+  // target runs it where it declares it, else its default
+  // (`resolveConfiguration`). `build:ci`'s `lint` ran lint's default.
+  const named = (project: string, t: string): string =>
+    (asked && taskNameFor(project, t, asked.configuration)) ?? t
+  const self = asked?.node ?? ''
   for (const d of entries) {
     if (typeof d === 'string') {
       // `^name` is every dependency's `name`, whatever the name holds: the
@@ -121,7 +128,7 @@ export function mapNxDeps(
       }
       const colon = d.indexOf(':')
       if (colon <= 0) {
-        if (ownTarget(d)) deps.push(d)
+        if (ownTarget(d)) deps.push(named(self, d))
         continue
       }
       const [project = '', targetPart, configuration] = d.split(':')
@@ -131,7 +138,7 @@ export function mapNxDeps(
       // script-inferred targets are named). It was read as project `test`
       // and the edge dropped (item 915).
       if (m === undefined && ownTarget(d)) {
-        deps.push(d)
+        deps.push(named(self, d))
         continue
       }
       if (m === undefined || targetPart === undefined || targetPart === '') {
@@ -158,7 +165,8 @@ export function mapNxDeps(
           continue
         }
       }
-      deps.push(`${m.name}#${targetPart}`)
+      const task = configuration === undefined ? named(project, targetPart) : targetPart
+      deps.push(`${m.name}#${task}`)
       continue
     }
     if (d && typeof d === 'object') {
@@ -181,14 +189,14 @@ export function mapNxDeps(
       const projects =
         typeof raw === 'string' && raw !== 'self' && raw !== 'dependencies' ? [raw] : raw
       if (projects === undefined || projects === 'self') {
-        if (ownTarget(t)) deps.push(t)
+        if (ownTarget(t)) deps.push(named(self, t))
       } else if (projects === 'dependencies') deps.push(`^${t}`)
       else if (Array.isArray(projects) && projects.every((p) => typeof p === 'string')) {
         // Patterns and tags (`lib-*`, `tag:lib`) name the graph's nodes;
         // only an exact name that is no package is worth a line.
         for (const node of matchProjects(projects)) {
           const m = metaByNode.get(node)
-          if (m && hasTarget(node, t)) deps.push(`${m.name}#${t}`)
+          if (m && hasTarget(node, t)) deps.push(`${m.name}#${named(node, t)}`)
         }
         for (const p of projects) {
           if (/^!|^tag:|\*/.test(p) || metaByNode.has(p)) continue

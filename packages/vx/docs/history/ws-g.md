@@ -823,3 +823,13 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   `dev` plan as Turbo's. Re-checked unchanged: mastra, better-auth,
   midday, documenso, openstatus. Row (`turbo-map-sweep` › a no-script
   task whose ^ edge names another task is a group): red without it.
+- **G-72.** Nx hands a task's configuration to every edge
+  (`resolveConfiguration`): `nx run a:build:ci` runs `a:gen:ci` and
+  `b:pack:ci` where those targets declare `ci`, else their default. The
+  mapper's `build:ci` ran its own and named edges' default and said
+  nothing; only `^` edges drew a todo, and that one fired even when no
+  other project declares the configuration (Nx runs the default there
+  too). Own, `project:target` and `{ target, projects }` edges now take
+  the configuration; the `^` todo fires only where another project
+  declares it. Rows (`nx-map-sweep` › a configuration reaches its
+  edges): red without it.

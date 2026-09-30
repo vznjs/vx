@@ -731,3 +731,46 @@ describe('nx-map: a wildcard-first output', () => {
     ])
   })
 })
+
+describe('nx-map: a configuration reaches its edges', () => {
+  // Nx hands every edge the configuration the run asked for, and a target
+  // runs it where it declares it (`resolveConfiguration`). `build:ci`'s
+  // own and named edges ran their default here, and said nothing (G-72).
+  it('own and named edges take the configuration where declared, else the default', async () => {
+    const [a, b] = [await meta('a'), await meta('b')]
+    const t = await tasksOf([a, b], {
+      a: node('packages/a', {
+        gen: { command: 'gen', configurations: { ci: {} } },
+        lint: { command: 'lint' },
+        build: {
+          command: 'build',
+          configurations: { ci: {} },
+          dependsOn: ['gen', 'lint', 'b:pack', { target: 'pack', projects: ['b'] }, '^build'],
+        },
+      }),
+      b: node('packages/b', {
+        pack: { command: 'pack', configurations: { ci: {} } },
+        build: { command: 'build' },
+      }),
+    })
+    expect(t.get('a#build:ci')).toMatchObject({
+      task: { dependsOn: ['gen:ci', 'lint', 'b#pack:ci', '^build'] },
+      todos: [],
+    })
+    // The base task asks for no configuration: each edge runs its default.
+    expect(t.get('a#build')?.task?.dependsOn).toEqual(['gen', 'lint', 'b#pack', '^build'])
+  })
+
+  it('a ^ edge is a todo only where another project declares the configuration', async () => {
+    const [a, b] = [await meta('a'), await meta('b')]
+    const t = await tasksOf([a, b], {
+      a: node('packages/a', {
+        build: { command: 'build', configurations: { ci: {} }, dependsOn: ['^build'] },
+      }),
+      b: node('packages/b', { build: { command: 'build', configurations: { ci: {} } } }),
+    })
+    expect(t.get('a#build:ci')?.todos).toEqual([
+      'configuration "ci": Nx runs dependencies with the same configuration where they declare it — here the ^ edges run their default',
+    ])
+  })
+})
