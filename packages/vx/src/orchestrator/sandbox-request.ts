@@ -81,9 +81,10 @@ export function sandboxRunUnion(nodes: Iterable<TaskNode>): SandboxRunUnion | nu
   for (const n of sandboxed) {
     const allow = n.config.exec?.sandbox?.allow
     const net = allow?.network
-    // `network: true` is deliberately absent from the union: it SKIPS the
-    // proxy rather than going through it, so folding it in as `*` would
+    // `network: true` adds nothing to the union: folded in as `*` it would
     // widen the allowlist every OTHER task in the run is filtered against.
+    // It does not skip the proxy either, so it reaches only the domains
+    // some task of the run lists (schema.md § network is per-RUN).
     if (Array.isArray(net)) for (const d of net) domains.add(d)
     for (const d of n.config.exec?.sandbox?.deny?.network ?? []) denied.add(d)
     const sockets = allow?.unixSockets

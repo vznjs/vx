@@ -9,8 +9,9 @@
 //   This module adds nothing implicit on top — no /tmp, no project dir —
 //   so what a task may touch is its vx.config.ts plus those baselines.
 //
-// Network is opt-in per task. By default the sandbox blocks all outbound
-// traffic; tasks that need it set `sandbox.network: true`.
+// Network is a domain list, and the run's: SRT's one proxy filters every
+// sandboxed task against the union of the lists the run's tasks declare.
+// With no list, no domain is reachable; `sandbox.network: true` adds none.
 //
 // Platform reality:
 //   macOS — `SandboxViolationStore` is populated from the system log
@@ -520,9 +521,8 @@ function hostHasIpv6(): boolean {
  * servers + (on macOS) the violation log monitor. Safe to call repeatedly
  * — SRT itself returns early on the second call.
  *
- * The base config sets network to "block everything" (empty allowedDomains).
- * Per-task wrapping passes a customConfig that re-enables network for
- * tasks with `sandbox.network: true`.
+ * The base config sets network to "block everything" (empty allowedDomains)
+ * unless `allowedDomains` names some; `sandbox.network: true` adds none.
  *
  * @param opts.allowedDomains every domain any sandboxed task in this run
  * declared. SRT's filtering proxy is per-RUN and reads its allowlist from
