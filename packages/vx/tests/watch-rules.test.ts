@@ -873,6 +873,20 @@ describe('armWatcher against a fake fs.watch', () => {
     }
   })
 
+  it('a probe event queued before the deadline counts, however slow the write (E-87)', async () => {
+    // The loop checked its deadline before its first await: a probe write
+    // that outlasted the budget (a loaded macOS runner, 261 ms against 100)
+    // gave up with the probe's event queued and unread. A spent budget
+    // reproduces it: the fake queues the event, the loop must let it in.
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-arm-late-'))
+    fakeWatch(true)
+    try {
+      expect(await armWatcher(dir, true, () => {}, 0).ready).toBe(true)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
   it('a watcher that reports the probe is ready, and the caller never sees the probe', async () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-arm-fake-'))
     fakeWatch(true)
