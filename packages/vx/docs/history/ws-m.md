@@ -140,6 +140,19 @@ to one loaded CPU, took 233-5289 ms and missed 250 ms 14 times in 15
 worker (the timer's terminate dropped) still fails the row, rejected
 at 4000 ms. No other row expects a success under a small budget.
 
+M-14. `keep-alive.test.ts` › a kill -9 in the persistent shutdown's
+grace takes the server a dead shell left, and its twin (a never-ready
+server … exits inside the grace). Cause, not flake: each server wrote
+`late.txt` on a 1 s timer after its SIGTERM mark, and the row read the
+file as "the server survived". The first row's kill comes after up to
+1 s for the shell's pid, up to 2 s for its reap and 100 ms, so on a
+loaded box the timer fired before the kill and a correct vx went red
+(the lead below: a 1 s gap turns it red). The servers now trap SIGTERM
+and live on, so only a SIGKILL ends them, and each row asserts the
+server's pid dead within 5 s, with no timer in the claim. Both red with
+`holdGroups` made a no-op (item 865's hold); 15 of 15 green with two
+busy loops per core.
+
 ## Leads for other streams
 
 - A: A-20 let a same-project dependant restore ahead of a producer whose
@@ -154,7 +167,7 @@ at 4000 ms. No other row expects a success under a small budget.
   binary's INT trap never wrote `heard` (ENOENT). Once in the survey; cause
   unproven. The forward is gated on `inForeground()`, which reads `ps` on
   macOS.
-- B: `keep-alive.test.ts` › a kill -9 in the persistent shutdown's grace
+- B (done, M-14): `keep-alive.test.ts` › a kill -9 in the persistent shutdown's grace
   takes the server a dead shell left. The server writes `late.txt` 1 s
   after its SIGTERM mark, a timed fuse, and the row's kill comes after
   the shell's reap plus 100 ms: a gap of 1 s before the kill turns it
