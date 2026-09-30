@@ -597,7 +597,7 @@
   {
     "key": "project.json targets.*.configurations",
     "status": "mapped",
-    "reason": "One task per configuration (`build:ci`); `^` edges run dependencies' default configuration, with a TODO."
+    "reason": "One task per configuration (`build:ci`); own and named edges take the configuration where declared; `^` edges run dependencies' default, with a TODO when another project declares it."
   },
   {
     "key": "project.json targets.*.inputs",
