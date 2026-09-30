@@ -675,9 +675,11 @@ export async function mapTurboWorkspace(
     }
   }
   // A script-less task is Turbo's no-op node, and it keeps its edges. Its
-  // `^` edges need nothing (core's `^task` walks past a project without the
-  // task to the nearest one with it); an edge to a task of its own package
-  // or another (with-tailwind's `ui#build` → `build:styles`) is lost when
+  // `^` edge to its own name needs nothing (core's `^task` walks past a
+  // project without the task to the nearest one with it); a `^` edge to
+  // another name (rallly's script-less `build` → `^db:generate`), or an
+  // edge to a task of its own package or another (with-tailwind's
+  // `ui#build` → `build:styles`), is lost when
   // another package reaches the node, and a persistent `with` sidecar
   // whenever the node is run: such a node is a group task (below). One no
   // other package reaches stays none (a `test: [build]` in a package with
@@ -698,6 +700,8 @@ export async function mapTurboWorkspace(
       )
       const local = (def?.dependsOn ?? []).some((d) => {
         if (envDependency(d) !== null || d.includes('$TURBO_ROOT$')) return false
+        if (d.startsWith('^'))
+          return d !== `^${name}` && [...runnable.values()].some((r) => r.has(d.slice(1)))
         if (!d.includes('#')) return d !== name && (own.has(d) || defined.has(d))
         return runs(
           d.startsWith(`${ROOT}#`) ? `${rootMeta?.name ?? ROOT}${d.slice(ROOT.length)}` : d,

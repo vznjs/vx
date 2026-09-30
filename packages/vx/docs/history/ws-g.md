@@ -786,3 +786,13 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   warm 41 cached in 1.3 s; `@unocss/vscode#build` rewrites its README
   input, the same class). `--all` there fails `playground` and a test
   fixture, which import unocss without declaring it, as Turbo would.
+- **G-70.** rallly (turbo 2.6.3): `build: [^build, ^db:generate]` and
+  only `database` has a `db:generate` script, so every other `build` is
+  Turbo's no-op node. `web#build:test` → `^build` reaches them, and
+  Turbo runs `database#db:generate` first; vx dropped it: G-61 made a
+  no-op a group only for an edge to a named task, and core's walk past a
+  package carries only the name it walks for. A `^` edge to another name
+  now makes the node a group too, and rallly's `build:test`, `build` and
+  `dev` plan as Turbo's. Re-checked unchanged: mastra, better-auth,
+  midday, documenso, openstatus. Row (`turbo-map-sweep` › a no-script
+  task whose ^ edge names another task is a group): red without it.
