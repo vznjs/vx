@@ -368,3 +368,22 @@ describe('loadLageConfig', () => {
     TIMEOUT,
   )
 })
+
+// Under Yarn Plug'n'Play a dependency resolves only through `.pnp.cjs`,
+// so an inlined script body failed where `yarn run` works; the mapping
+// cache must see the linker change too (J-62's lead).
+describe('Yarn PnP', () => {
+  it(
+    'a script runs through `yarn run`, and a linker change maps afresh',
+    async () => {
+      const command = async (): Promise<string | undefined> =>
+        (await planRun({ cwd: root, tasks: ['base#build'], log: silent() })).tasks.find(
+          (t) => t.node.id === 'base#build',
+        )?.node.config.exec?.command
+      expect(await command()).toBe('echo build base')
+      await write('.yarnrc.yml', 'nodeLinker: pnp\n')
+      expect(await command()).toBe('yarn run build')
+    },
+    TIMEOUT,
+  )
+})

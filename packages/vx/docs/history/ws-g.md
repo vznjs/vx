@@ -912,3 +912,12 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   files, with an unnamed patch, a claimed lockfile and an outside path as
   controls; `affected.test` › an edit to a patch bun.lock names): red
   without the fold, and the `--affected` row red without its widening.
+- **G-81.** J-62's lead: under Yarn Plug'n'Play only `turbo()` ran a
+  package script as `yarn run <name>`; `nx()`'s `nx:run-script`, lage's
+  `npmScript`, wireit's plain scripts and `workspaceScripts()` inlined the
+  body, where a dependency's `require` and bins do not resolve. Each now
+  asks `yarnPnp` (synchronous, once per mapping), and each mapping cache
+  reads `.yarnrc.yml`, so a linker change maps afresh. The README says
+  so. Rows: one per mapper (`nx-map-sweep`, `scripts`, `lage`, `wireit`),
+  each red without the fix; the scripts row is red with only the mapping
+  key reverted too.

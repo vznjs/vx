@@ -22,7 +22,7 @@ import {
   UserError,
 } from '@vzn/vx'
 import { mapRunCommands, shellQuote } from '../nx-command.js'
-import { scriptCommand } from '../script-command.js'
+import { scriptCommand, yarnPnp } from '../script-command.js'
 import {
   ownFileOutput,
   ownFileTodo,
@@ -179,7 +179,7 @@ export interface MapNxOptions {
 }
 
 /** The options with what the mapper reads itself: the root's dependency names. */
-type MapOpts = MapNxOptions & { readonly rootDeps: ReadonlySet<string> }
+type MapOpts = MapNxOptions & { readonly rootDeps: ReadonlySet<string>; readonly pnp: boolean }
 
 export interface NxMapping {
   readonly projects: GeneratedProject[]
@@ -205,6 +205,7 @@ export async function mapNxWorkspace(
     ...opts,
     cacheable: new Set([...opts.cacheable, ...cacheable]),
     rootDeps: await rootDependencies(root),
+    pnp: yarnPnp(root),
   }
 
   const metaByRel = new Map<string, ProjectMeta>()
@@ -570,6 +571,7 @@ function buildTask(
     scripts,
     todos,
     dotenv,
+    opts.pnp,
   )
 
   const inputs = emptyNxInputs()
@@ -739,6 +741,7 @@ function mapCommand(
   scripts: Record<string, unknown>,
   todos: string[],
   dotenv: readonly string[] | null,
+  pnp: boolean,
 ): MappedCommand | null {
   const executor = target.executor
   if (executor === 'nx:noop') {
@@ -799,7 +802,7 @@ function mapCommand(
     // (novu's `test:watch: ""`, 2026-09-11); as a command it is a config
     // that refuses to load, so it is the placeholder with its todo.
     if (body !== undefined && body.length > 0) {
-      return shell(scriptCommand(script, body, scripts), undefined)
+      return shell(scriptCommand(script, body, scripts, pnp), undefined)
     }
     todos.push(
       body === undefined
