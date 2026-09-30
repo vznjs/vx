@@ -593,11 +593,14 @@ Bun.spawn = (cmd, opts) => {
     // A terminal signals its foreground group: vx and, were it in vx's
     // group, the guard, which a SIGINT kills. vx's teardown then waits
     // out the grace on a task that ignores the signal, and a `kill -9`
-    // there left the task to nobody.
+    // there left the task to nobody. The task lives until a SIGKILL, so
+    // the row asserts its death: a `late.txt` written a second after the
+    // task started would be red whenever the pid poll, the grace below and the
+    // guard's kill took longer than that (M-14's class, M-17).
     const dir = await addProject(
       root,
       'app',
-      `export default { tasks: { dev: { exec: { command: 'trap "" INT TERM; (sleep 1; echo late > late.txt) & echo $! > pid.txt; wait' } } } }`,
+      `export default { tasks: { dev: { exec: { command: 'trap "" INT TERM; (while :; do sleep 0.05; done) & echo $! > pid.txt; echo $$ > shell.pid; wait' } } } }`,
     )
     const proc = track(
       Bun.spawn([process.execPath, BIN, 'run', 'dev', '--all'], {
@@ -608,13 +611,14 @@ Bun.spawn = (cmd, opts) => {
         detached: true,
       }),
     )
-    await waitForPid(path.join(dir, 'pid.txt'), 10_000)
+    const child = await waitForPid(path.join(dir, 'pid.txt'), 10_000)
+    const shell = await waitForPid(path.join(dir, 'shell.pid'), 10_000)
+    expect([isAlive(child), isAlive(shell)]).toEqual([true, true])
     process.kill(-proc.pid, 'SIGINT')
     await Bun.sleep(200)
     process.kill(proc.pid, 'SIGKILL')
     expect(await proc.exited).toBe(137)
-    await Bun.sleep(2_000)
-    expect(existsSync(path.join(dir, 'late.txt'))).toBe(false)
+    expect([await waitForDead(child, 5_000), await waitForDead(shell, 5_000)]).toEqual([true, true])
   }, 20_000)
 
   it('a kill -9 in a Ctrl-C’s grace takes the child of a shell that died on the signal', async () => {
