@@ -153,6 +153,7 @@ export function armWatcher(
   timeoutMs = WATCH_PROBE_TIMEOUT_MS,
 ): ArmedWatcher {
   let markReady: (ok: boolean) => void = () => {}
+  let arrived = false
   const seen = new Promise<boolean>((resolve) => {
     markReady = resolve
   })
@@ -163,6 +164,7 @@ export function armWatcher(
     // can see; the write's own event names the file.
     if (filename === '' || filename === '.') return
     if (filename === WATCH_PROBE) {
+      arrived = true
       markReady(true)
       return
     }
@@ -191,7 +193,14 @@ export function armWatcher(
         break // an unwritable dir gets no proof; the watcher is kept
       }
       const remaining = deadline - Date.now()
-      if (remaining <= 0) break
+      if (remaining <= 0) {
+        // The write itself can outlast the budget (a loaded macOS runner:
+        // 261 ms against 100, E-87), and the loop has not yielded yet: let
+        // an event already queued in before giving up on it.
+        await new Promise((resolve) => setTimeout(resolve, 0))
+        ok = arrived
+        break
+      }
       const pause = new Promise<boolean>((resolve) => {
         setTimeout(() => resolve(false), Math.min(step, remaining)).unref()
       })

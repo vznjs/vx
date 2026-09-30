@@ -492,3 +492,12 @@ walked on fixtures.
   folded `pre`/`post` hook's TODO said `npm ran` in a pnpm, bun or
   Yarn 1 repo. It names the manager that runs the hook now. Row: the
   E-86 row of `tests/init.test.ts`, red with the old text.
+- **E-87.** `watch-rules.test.ts` › an event naming the watched
+  directory itself never reaches the caller failed on macOS CI (#1910):
+  `ready` false. Cause: `armWatcher`'s probe loop checked its deadline
+  before its first `await`, so a probe write that outlasted the budget
+  (the row took 261 ms against 100) gave up with the probe's event
+  queued and unread. The same held for `vx watch`'s 2 s budget under
+  load. On a spent deadline the loop now yields once and counts a probe
+  that arrived. Row: E-87 in `watch-rules.test.ts`, a spent budget
+  with the event queued, red before the fix.
