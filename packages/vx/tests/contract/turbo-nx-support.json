@@ -72,12 +72,12 @@
   {
     "key": "turbo.json globalEnv",
     "status": "mapped",
-    "reason": "Added to every task's `cache.inputs.env` and passthrough; a wildcard name is dropped with a note."
+    "reason": "Added to every task's `cache.inputs.env` and passthrough; under `turbo()` a `*` name expands over the run's environment, as Turbo does; otherwise a wildcard is dropped with a note."
   },
   {
     "key": "turbo.json globalPassThroughEnv",
     "status": "mapped",
-    "reason": "Added to every task's `exec.env.passThrough`, not hashed; a wildcard name is dropped with a note."
+    "reason": "Added to every task's `exec.env.passThrough`, not hashed; under `turbo()` a `*` name expands over the run's environment; otherwise a wildcard is dropped with a note."
   },
   {
     "key": "turbo.json noUpdateNotifier",
@@ -122,7 +122,7 @@
   {
     "key": "turbo.json tasks.*.env",
     "status": "mapped",
-    "reason": "Goes to `cache.inputs.env` and `exec.env.passThrough`; wildcard names get a TODO."
+    "reason": "Goes to `cache.inputs.env` and `exec.env.passThrough`; under `turbo()` a `*` name expands over the run's environment, as Turbo does; otherwise wildcards get a TODO."
   },
   {
     "key": "turbo.json tasks.*.inputs",
@@ -152,7 +152,7 @@
   {
     "key": "turbo.json tasks.*.passThroughEnv",
     "status": "mapped",
-    "reason": "Goes to `exec.env.passThrough`, not hashed; wildcard names get a TODO."
+    "reason": "Goes to `exec.env.passThrough`, not hashed; under `turbo()` a `*` name expands over the run's environment; otherwise wildcards get a TODO."
   },
   {
     "key": "turbo.json tasks.*.persistent",

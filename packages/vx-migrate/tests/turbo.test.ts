@@ -325,7 +325,7 @@ describe('turbo()', () => {
       await writeFile(
         path.join(root, 'turbo.json'),
         JSON.stringify({
-          tasks: { build: { outputs: ['dist/**'], env: ['VERCEL_*'] }, '//#root': {} },
+          tasks: { build: { outputs: ['dist/**'], env: ['VERCEL_?'] }, '//#root': {} },
         }),
       )
       const log = silent()
@@ -335,7 +335,7 @@ describe('turbo()', () => {
       // carried one gap in 57 tasks, and a line per task was 57 identical
       // lines before the first frame (2026-09-11).
       expect(text).toContain(
-        '[@vzn/vx-migrate] 2 task(s) (build across 2 package(s)): env "VERCEL_*": wildcards are not supported',
+        '[@vzn/vx-migrate] 2 task(s) (build across 2 package(s)): env "VERCEL_?": wildcards are not supported',
       )
       expect(text).not.toContain('app#build: output')
       expect(text).toContain('[@vzn/vx-migrate] note: root task //#root not migrated')

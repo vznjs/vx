@@ -20,6 +20,7 @@ afterEach(async () => {
 async function map(
   turbo: unknown,
   pkgs: Record<string, { scripts: Record<string, unknown>; turbo?: unknown }>,
+  envNames?: readonly string[],
 ) {
   await writeFile(path.join(root, 'turbo.json'), JSON.stringify(turbo))
   const metas: ProjectMeta[] = []
@@ -30,7 +31,7 @@ async function map(
       await writeFile(path.join(dir, 'turbo.json'), JSON.stringify(p.turbo))
     metas.push({ name, dir, packageJson: { name, scripts: p.scripts } as never, configPath: null })
   }
-  return mapTurboWorkspace(root, metas, opts)
+  return mapTurboWorkspace(root, metas, envNames === undefined ? opts : { ...opts, envNames })
 }
 
 const taskOf = async (...args: Parameters<typeof map>): Promise<TurboMappedTask> =>
@@ -137,6 +138,47 @@ describe('turbo-map: what the sweep found unheld', () => {
       notes: [
         'globalEnv "NEXT_PUBLIC_*": wildcards are not supported in vx env names — list explicit names',
       ],
+    })
+  })
+
+  // A live mapping (turbo()) runs where the tasks will: Turbo matches a `*`
+  // name against that environment, and so does the mapper, so every
+  // Vercel template's `NEXT_PUBLIC_*` keys and passes what it names.
+  it('a `*` env name expands over the live environment; other wildcards stay todos', async () => {
+    const live = [
+      'OTHER',
+      'NEXT_PUBLIC_B',
+      'NEXT_PUBLIC_VERCEL_URL',
+      'NEXT_PUBLIC_A',
+      'VITE_X',
+      'TOKEN_1',
+    ]
+    const m = await map(
+      {
+        globalEnv: ['VITE_*'],
+        tasks: {
+          build: {
+            env: ['NEXT_PUBLIC_*', '!NEXT_PUBLIC_VERCEL_*', 'API', 'FOO_?'],
+            passThroughEnv: ['TOKEN_*'],
+          },
+        },
+      },
+      { a: { scripts: { build: 'b' } } },
+      live,
+    )
+    const t = m.projects[0]!.tasks[0]!
+    expect({
+      env: (t.task!['cache'] as { inputs: { env?: unknown } }).inputs.env,
+      pass: (t.task!['exec'] as { env?: { passThrough?: unknown } }).env?.passThrough,
+      todos: t.todos,
+      notes: m.notes,
+    }).toEqual({
+      env: ['VITE_X', 'NEXT_PUBLIC_A', 'NEXT_PUBLIC_B', 'API'],
+      pass: ['VITE_X', 'NEXT_PUBLIC_A', 'NEXT_PUBLIC_B', 'API', 'TOKEN_1'],
+      todos: [
+        'env "FOO_?": wildcards are not supported in vx env names — list explicit names in cache.inputs.env + exec.env.passThrough',
+      ],
+      notes: [],
     })
   })
 

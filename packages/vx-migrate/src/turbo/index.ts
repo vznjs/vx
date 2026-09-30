@@ -146,6 +146,8 @@ async function workspaceKeys(root: string): Promise<{
   return out
 }
 
+const envNamesNow = (): string[] => Object.keys(process.env).sort()
+
 const textOf = (file: string): Promise<string> =>
   Bun.file(file)
     .text()
@@ -165,6 +167,8 @@ async function run(root: string, metas: readonly ProjectMeta[]): Promise<Adoptio
     spareTracked: true,
     reads: [
       JSON.stringify(dirs),
+      // An env wildcard expands over these (`envNames`); a new name maps afresh.
+      JSON.stringify(envNamesNow()),
       ...configs,
       await textOf(path.join(root, '.yarnrc.yml')),
       JSON.stringify(metas.map((m) => [m.name, m.dir, m.packageJson])),
@@ -184,6 +188,7 @@ async function mapAll(root: string, metas: readonly ProjectMeta[]): Promise<Adop
     // Inline: the values themselves, where `vx migrate` splices a preset import.
     splice: (_kind, values) => values,
     persistentTodo: PERSISTENT_NOTE,
+    envNames: envNamesNow(),
   })
   const byName = new Map<string, TurboMappedProject>()
   for (const project of mapped.projects) byName.set(project.name, project)

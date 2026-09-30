@@ -833,3 +833,13 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   the configuration; the `^` todo fires only where another project
   declares it. Rows (`nx-map-sweep` › a configuration reaches its
   edges): red without it.
+- **G-73.** A `*` env name (`NEXT_PUBLIC_*`, in every Vercel template's
+  `build.env`) was a todo under `turbo()`: the task neither keyed nor
+  saw those variables. Turbo matches the name against the environment
+  it runs in; `turbo()` maps where the tasks run, so it now does the
+  same (`envNames`), for a task's `env` and `passThroughEnv` and the two
+  globals, and a `!` entry still takes names back. The environment's
+  names join the mapping cache's key, so a new variable maps afresh. The
+  migrate CLI writes files for another environment and keeps the todo;
+  `?`, `[…]` and `\` stay todos everywhere. Row (`turbo-map-sweep` › a
+  `*` env name expands over the live environment): red without it.
