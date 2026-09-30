@@ -808,3 +808,9 @@ packages/core`) selects the dependent whose `file:../lib` spec named
   the rejection, so it outlasts the orphan by construction. Red with
   the `clearTimeout` moved back after the await; 5 of 5 green with two
   busy loops per core.
+- **D-78.** J-59's lead: a config importing a plugin that is not
+  installed (`cannot find '@vzn/vx-otel'`) was told `bun add -d @vzn/vx`,
+  naming core. The hint now names the package the specifier does, a
+  subpath's too (`@vzn/vx-migrate/turbo` → `@vzn/vx-migrate`). Row:
+  `project-loader.test.ts` › the install hint names the missing package,
+  another scope as control; red without the fix.

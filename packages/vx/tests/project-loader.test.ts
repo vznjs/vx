@@ -1223,6 +1223,23 @@ describe('configLoadError classifies by shape, not by instanceof', () => {
     )
   })
 
+  it('the install hint names the missing package, a plugin or a subpath of one (J-59)', () => {
+    const hint = (spec: string) =>
+      configLoadError(
+        { name: 'ResolveMessage', message: `Cannot find package '${spec}' from '/w/p'` },
+        '/w/p/vx.config.ts',
+        'project',
+      )?.message
+    expect(hint('@vzn/vx-otel')).toBe(
+      "project config /w/p/vx.config.ts: cannot find '@vzn/vx-otel'; install it in the workspace: bun add -d @vzn/vx-otel",
+    )
+    expect(hint('@vzn/vx-migrate/turbo')).toBe(
+      "project config /w/p/vx.config.ts: cannot find '@vzn/vx-migrate/turbo'; install it in the workspace: bun add -d @vzn/vx-migrate",
+    )
+    // CONTROL: another scope gets no hint.
+    expect(hint('@other/pkg')).toBe("project config /w/p/vx.config.ts: cannot find '@other/pkg'")
+  })
+
   it('a ResolveMessage vx cannot parse still reaches the user WITHOUT the bust query', () => {
     // Every message above matches `Cannot find package '<x>'`, so the
     // fallback arm — the raw message, with the module-cache bust stripped
