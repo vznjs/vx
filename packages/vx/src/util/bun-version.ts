@@ -32,7 +32,7 @@ export function isUnsupportedBun(version: string): boolean {
   return patch < reqPatch
 }
 
-/** The warning a CLI entry prints once, before the verb runs. */
+/** The refusal the gate's `check.bun` prints (`scripts/bun-floor.ts`); `vx info` reports the floor in a row of its own. */
 export function unsupportedBunMessage(version: string): string {
   return (
     `vx needs Bun >= ${MIN_BUN.join('.')} (running ${version}). ` +

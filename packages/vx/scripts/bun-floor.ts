@@ -1,5 +1,5 @@
 // The gate's first task: refuse a Bun below `MIN_BUN` before a shard starts.
-// `bin.ts` only WARNS below the floor (most of vx works there, and a warning
+// `vx info` only REPORTS below the floor (most of vx works there, and a row
 // is what the measurement supports for a user), but a gate on an old Bun
 // spends an hour producing verdicts that are the runtime's: on 1.3.11 the
 // 2026-09-19 container saw a shard die with SIGILL one run in eight, three
