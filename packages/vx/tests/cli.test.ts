@@ -250,7 +250,7 @@ describe('cli run()', () => {
     }
   })
 
-  it("every verb's unknown flag hints the nearest flag it accepts, as vx run's does", async () => {
+  it("every verb's unknown flag is named a flag and hints the nearest flag it accepts, as vx run's does", async () => {
     // Each verb parses its own flags; only `vx run` hinted one. The hint set
     // is the verb's own usage line (`acceptedFlags`), so `--format` is
     // offered where it is accepted and nowhere else.
@@ -267,6 +267,8 @@ describe('cli run()', () => {
       // CONTROL: a positional is not a flag, and gets no hint, even one two
       // edits from a flag the verb takes.
       ['info', 'format'],
+      ['lock', 'foo'],
+      ['cache', 'prune', 'foo'],
     ]) {
       stderr = ''
       // `last` and `why` refuse by throwing, which bin.ts prints as-is.
@@ -278,15 +280,17 @@ describe('cli run()', () => {
       said.push(stderr.split('\n')[0]!)
     }
     expect(said).toEqual([
-      'vx info: unknown argument: --formt (did you mean --format?) (see `vx info --help`)',
-      'vx lock: unknown argument: --chek (did you mean --check?) (see `vx lock --help`)',
+      'vx info: unknown flag: --formt (did you mean --format?) (see `vx info --help`)',
+      'vx lock: unknown flag: --chek (did you mean --check?) (see `vx lock --help`)',
       'vx init: unknown flag: --forse (did you mean --force?) (see `vx init --help`)',
       'vx last: unknown flag: --lst (did you mean --list?) (see `vx last --help`)',
       'vx show: unknown flag: --formt (did you mean --format?) (see `vx show --help`)',
       'vx why: unknown flag: --rn (did you mean --run?) (see `vx why --help`)',
-      'vx cache prune: unknown argument: --dry-rn (did you mean --dry-run?) (see `vx cache --help`)',
+      'vx cache prune: unknown flag: --dry-rn (did you mean --dry-run?) (see `vx cache --help`)',
       'vx run: unknown flag: --concurency (did you mean --concurrency?) (see `vx run --help`)',
-      'vx info: unknown argument: format (see `vx info --help`)',
+      'vx info: unexpected argument: format (see `vx info --help`)',
+      'vx lock: unexpected argument: foo (see `vx lock --help`)',
+      'vx cache prune: unexpected argument: foo (see `vx cache --help`)',
     ])
   })
 
@@ -2065,7 +2069,7 @@ describe('parsePruneArgs', () => {
   })
 
   it('rejects unknown flags', () => {
-    expect(parsePruneArgs(['--bogus']).error).toMatch(/unknown argument/)
+    expect(parsePruneArgs(['--bogus']).error).toMatch(/unknown flag/)
   })
 
   it('accepts both flags together', () => {
