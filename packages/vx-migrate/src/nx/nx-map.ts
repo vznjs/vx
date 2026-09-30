@@ -603,6 +603,9 @@ function buildTask(
         })),
       ),
     allTargetNames(nodeMap),
+    variant.name === targetName
+      ? undefined
+      : { node: nodeName, configuration: variant.configuration! },
   )
 
   // Nx's rule, not a guess: a target is cached when it says `cache: true`
@@ -660,7 +663,21 @@ function buildTask(
     }
     return { name: variant.name, task: { dependsOn: deps }, todos }
   }
-  if (variant.name !== targetName && deps.some((d) => d.startsWith('^'))) {
+  // Only where a project declares the configuration on the ^ target: else
+  // Nx runs the default there too.
+  const c = variant.configuration
+  if (
+    variant.name !== targetName &&
+    deps.some(
+      (d) =>
+        d.startsWith('^') &&
+        Object.entries(nodeMap).some(
+          ([name, n]) =>
+            name !== nodeName &&
+            Object.hasOwn(n?.data?.targets?.[d.slice(1)]?.configurations ?? {}, c!),
+        ),
+    )
+  ) {
     todos.push(
       `configuration ${JSON.stringify(variant.configuration)}: Nx runs dependencies with the same ` +
         'configuration where they declare it — here the ^ edges run their default',

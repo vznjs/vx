@@ -142,7 +142,7 @@ Every key `turbo.json`, `nx.json` and `project.json` accept, read from the upstr
 | `targets.*.options` | mapped, with a note | Passed as `nx-exec`'s `--options` or rendered into `run-commands`; `{args.*}` forwarding gets a TODO. |
 | `targets.*.outputs` | mapped, with a note | Tokens and `{options.x}` resolved; paths outside the project become workspace files; negations kept; vx cleans outputs, so a wildcard first segment leaves the task uncached with a TODO and a committed file under an output is taken back with `!`. |
 | `targets.*.defaultConfiguration` | supported | The base task carries the default configuration's options, as `nx run` does. |
-| `targets.*.configurations` | mapped, with a note | One task per configuration (`build:ci`); `^` edges run dependencies' default configuration, with a TODO. |
+| `targets.*.configurations` | mapped, with a note | One task per configuration (`build:ci`); own and named edges take the configuration where declared; `^` edges run dependencies' default, with a TODO when another project declares it. |
 | `targets.*.inputs` | mapped, with a note | Expanded into `cache.inputs`; none means `default` and `^default`; forms without an equivalent get TODOs. |
 | `targets.*.dependsOn` | mapped, with a note | `project:target` becomes `pkg#target`; project patterns and tags resolved; a target glob (`test:e2e--*`) expands over the workspace's target names, as Nx 19.5+ does, a same-project one over its own; `params: forward` gets a TODO. |
 | `targets.*.command` | mapped, with a note | Run as the `run-commands` shorthand: one POSIX sh line. |
