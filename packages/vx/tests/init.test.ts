@@ -914,10 +914,19 @@ describe('vx init — the generated build is not a cached no-op', () => {
       for (const [lock, agent] of [
         ['package-lock.json', 'npm/10'],
         ['bun.lock', 'bun/1.4'],
+        ['yarn.lock', 'yarn/1'],
         ['yarn.lock', 'yarn/4'],
         ['pnpm-lock.yaml', 'pnpm/10'],
       ]) {
-        await writeFile(path.join(root, lock!), '')
+        // Yarn 1's lockfile, then Berry's: the first refuses `add` at a
+        // workspace root without `-W`, the second has no such flag.
+        const body =
+          agent === 'yarn/1'
+            ? '# yarn lockfile v1\n'
+            : agent === 'yarn/4'
+              ? '__metadata:\n  version: 8\n'
+              : ''
+        await writeFile(path.join(root, lock!), body)
         process.env['npm_config_user_agent'] = agent
         rows.push(adoptionNext(root, 'nx', 'nx.json'))
       }
@@ -930,6 +939,7 @@ describe('vx init — the generated build is not a cached no-op', () => {
         `npm install -D ${all} && npx vx run compile --all`,
         // The first lockfile in pnpm, yarn, bun, npm order names the manager.
         `bun add -d ${all} && bunx vx run compile --all`,
+        `yarn add -D -W ${all} && yarn vx run compile --all`,
         `yarn add -D ${all} && yarn vx run compile --all`,
         `pnpm add -D -w ${all} && pnpm vx run compile --all`,
         'pnpm add -D -w @vzn/vx && pnpm vx run compile --all',
