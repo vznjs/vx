@@ -50,7 +50,9 @@
   three runs after with no change: the probe's count races the cut.
 
 - C: a corrupt cache index (A-8) now reaches each task as the same `UserError`, and a 40-task run prints the line 40 times; the scheduler could say a run-wide refusal once.
-- D: under a low `ulimit -n` (20 on a 20-project fixture) discovery reads
+- CLOSED (not reproduced on main, 2026-09-30: `ulimit -n` 12 to 64 on a
+  20-project fixture either refuses naming the descriptor limit or plans
+  all 20 builds). D: under a low `ulimit -n` (20 on a 20-project fixture) discovery reads
   `EMFILE` as an empty workspace: `No projects declare task(s): build. No
 package matched the workspace's package globs`. Found while reproducing
   A-41; not traced.
