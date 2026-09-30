@@ -17,7 +17,7 @@
 // be a git work tree; non-git environments are not supported.
 
 import path from 'node:path'
-import { lstatSync, readdirSync, realpathSync } from 'node:fs'
+import { lstatSync, readdirSync, realpathSync, rmdirSync, rmSync } from 'node:fs'
 import { rm, rmdir } from 'node:fs/promises'
 import type { CacheInputs } from '../config.js'
 import {
@@ -728,21 +728,42 @@ function changedSince(
 }
 
 /**
+ * Up to this many paths, a clean removes synchronously: the threadpool round
+ * trip per `rm`/`rmdir` cost more than the unlink itself, 0.30 ms against
+ * 0.13 for one file and 1.7 against 1.5 for 128 (min of 7). Past a few
+ * hundred the parallel async removal wins (512: 4.5 against 5.4).
+ */
+const SYNC_CLEAN_MAX = 128
+
+/**
  * A declared output the process cannot remove (a `dist/` another user
  * wrote, a read-only checkout) is the environment's failure, not vx's:
  * the scheduler prints any other error as an "internal error", which
  * sends the reader to file a bug against a permission bit.
  */
 async function removeAll(files: readonly string[], root: string): Promise<void> {
+  const refused = (f: string, err: NodeJS.ErrnoException): UserError => {
+    const rel = path.relative(root, f).split(path.sep).join('/')
+    return new UserError(
+      `cannot remove declared output ${rel}: ${err.code ?? err.message} — vx clears a task's ` +
+        `declared outputs before it runs and before a restore; make the path removable ` +
+        `by this user, or stop declaring it as an output`,
+    )
+  }
+  if (files.length <= SYNC_CLEAN_MAX) {
+    for (const f of files) {
+      try {
+        rmSync(f, { force: true })
+      } catch (err) {
+        throw refused(f, err as NodeJS.ErrnoException)
+      }
+    }
+    return
+  }
   await Promise.all(
     files.map((f) =>
       rm(f, { force: true }).catch((err: NodeJS.ErrnoException) => {
-        const rel = path.relative(root, f).split(path.sep).join('/')
-        throw new UserError(
-          `cannot remove declared output ${rel}: ${err.code ?? err.message} — vx clears a task's ` +
-            `declared outputs before it runs and before a restore; make the path removable ` +
-            `by this user, or stop declaring it as an output`,
-        )
+        throw refused(f, err)
       }),
     ),
   )
@@ -772,16 +793,26 @@ async function pruneEmptiedDirs(root: string, removed: readonly string[]): Promi
   let level = new Set(removed.map((f) => path.dirname(f)))
   while (level.size > 0) {
     const parents = new Set<string>()
-    await Promise.all(
-      [...level].map(async (dir) => {
-        if (dir === rootResolved || !dir.startsWith(rootResolved + path.sep)) return
-        const gone = await rmdir(dir).then(
-          () => true,
-          (err: NodeJS.ErrnoException) => err.code === 'ENOENT',
-        )
-        if (gone) parents.add(path.dirname(dir))
-      }),
+    const dirs = [...level].filter(
+      (dir) => dir !== rootResolved && dir.startsWith(rootResolved + path.sep),
     )
+    const gone = (err: NodeJS.ErrnoException): boolean => err.code === 'ENOENT'
+    if (dirs.length <= SYNC_CLEAN_MAX) {
+      for (const dir of dirs) {
+        try {
+          rmdirSync(dir)
+          parents.add(path.dirname(dir))
+        } catch (err) {
+          if (gone(err as NodeJS.ErrnoException)) parents.add(path.dirname(dir))
+        }
+      }
+    } else {
+      await Promise.all(
+        dirs.map(async (dir) => {
+          if (await rmdir(dir).then(() => true, gone)) parents.add(path.dirname(dir))
+        }),
+      )
+    }
     level = parents
   }
 }
