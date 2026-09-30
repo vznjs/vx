@@ -970,3 +970,14 @@ isolation than the profile says.
 - `containedIn`'s realpath of the project root each task: a task may
   write there, so it is not memoised (principle 9).
 - The built-in snapshot (7 ms a run) is E-88's.
+
+B-51. J's lead: with no `strace` on PATH (or one whose `--version`
+fails) an undeclared read was denied but unreported, with no word of
+it, so a task that tolerated the miss passed and cached; only a strace
+that may not attach said so (B-18). All three now say once, on stderr,
+why sandboxed tasks run untraced and what that loses (`warnUntraced`).
+Rows: `sandbox-runtime.unsafe.test.ts` › the strace-detection rows now
+pin what vx said; the missing and failing-`--version` rows are red
+without the change, the refused attach is the control. `vx info` still
+says `available` there: the fact would be a new field in `vx mcp`'s
+tools record, left as a lead. schema.md and sandbox-runtime.md say so.

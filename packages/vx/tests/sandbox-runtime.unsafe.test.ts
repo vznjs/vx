@@ -4814,10 +4814,17 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
         stderr: 'pipe',
       })
       const out = p.stdout.toString().trim()
-      return out === ''
-        ? { exit: p.exitCode, stderr: p.stderr.toString().slice(0, 400) }
-        : JSON.parse(out)
+      if (out === '') return { exit: p.exitCode, stderr: p.stderr.toString().slice(0, 400) }
+      // What vx told the user, once for the two runs.
+      const said = p.stderr
+        .toString()
+        .split('\n')
+        .filter((l) => l.startsWith('[vx] sandbox:'))
+      return { ...JSON.parse(out), said }
     }
+    const untraced = (why: string): string[] => [
+      `[vx] sandbox: ${why}, so sandboxed tasks run without the report of the reads the sandbox denied; the sandbox still enforces`,
+    ]
 
     it('an strace before 5.3 traces without --seccomp-bpf, one after with it', async () => {
       // `--seccomp-bpf` came in strace 5.3; an older one refuses the flag.
@@ -4869,6 +4876,7 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
       expect(detecting(`${bin}:${process.env['PATH']}`)).toEqual({
         outs: ['ok\n', 'ok\n'],
         calls: ['which strace', 'strace --version'],
+        said: untraced('strace --version exited 1'),
       })
     })
 
@@ -4905,7 +4913,7 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
       })
       expect([p.stdout.toString().trim(), p.stderr.toString().slice(0, 400)]).toEqual([
         JSON.stringify({ fd: 'closed', got: 'child\n' }),
-        '',
+        `${untraced('strace --version exited 1')[0]}\n`,
       ])
     }, 20_000)
 
@@ -4923,6 +4931,9 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
       expect(detecting(`${bin}:${process.env['PATH']}`)).toEqual({
         outs: ['ok\n', 'ok\n'],
         calls: ['which strace', 'strace --version', 'trace'],
+        said: untraced(
+          'strace cannot trace here (strace: attach: ptrace(PTRACE_SEIZE, 2): Operation not permitted)',
+        ),
       })
     })
 
@@ -4935,7 +4946,13 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
         if (found !== null) await symlink(found, path.join(bin, name))
       }
       // The lookup's miss is the verdict: nothing is spawned to learn it.
-      expect(detecting(bin)).toEqual({ outs: ['ok\n', 'ok\n'], calls: ['which strace'] })
+      // And it is said: an undeclared read is denied but never reported,
+      // so a task that tolerates the miss passes and caches (B-51).
+      expect(detecting(bin)).toEqual({
+        outs: ['ok\n', 'ok\n'],
+        calls: ['which strace'],
+        said: untraced('strace is not on PATH'),
+      })
     })
   })
 
