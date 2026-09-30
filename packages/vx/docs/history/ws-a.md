@@ -459,3 +459,9 @@ At `ulimit -n 13` over a 20-project workspace with a cache on disk, a run printe
 - Rows (`cache-out-of-fds.test.ts`): the open with one descriptor free, red without the fix; control: a `cache.db` that is a directory keeps SQLite's own error (an "always blame the limit" mutant fails it).
 - Leads read, not taken: B's save re-scan (declined in A-50, as the check that vx's own packed bytes are an artifact); H's and N's same-bytes rewrite (a design item: only the sandbox can tell the task was the lone writer); N's proxy variables in `ESSENTIAL_ENV` (exec's allow-list, not the key).
 - Lead for B: `sandbox-runtime.unsafe.test.ts` › "the proxy refuses a denied domain the allow glob covers" failed once in this item's gate (line 4329); 3/3 alone.
+
+### A-57 — a NUL in a `key` part name is refused (2026-09-30)
+
+The fold joins each plugin key part as `name\0value`, so `{ 'a\0b': 'c' }` and `{ a: 'b\0c' }` folded the same bytes: two materials, one key. `applyKeyHooks` now refuses a name holding a NUL, naming the plugin and task, as the schema already does for env names and runtime commands. A NUL in a value still folds (the name ends at the first NUL).
+
+- Row (`plugin-pipeline.test.ts` › "a NUL in a key part name is refused; one in a value folds"), red without the fix.

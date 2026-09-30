@@ -576,6 +576,26 @@ describe('key stage', () => {
   )
 
   it(
+    'a NUL in a key part name is refused; one in a value folds',
+    async () => {
+      // The fold joins each part as `name\0value`, so `{ 'a\0b': 'c' }` and
+      // `{ a: 'b\0c' }` folded the same bytes: two materials, one key.
+      await pkg(
+        'a',
+        "export default { tasks: { build: { exec: { command: 'echo b' }, cache: { inputs: { files: [] }, outputs: { files: [] } } } } }\n",
+      )
+      await workspace([pluginSource('org/tool', `{ key() { return { 'a\\0b': 'c' } } }`)])
+      await expect(planRun({ cwd: root, tasks: ['build'], log: silent() })).rejects.toThrow(
+        "plugin 'org/tool' failed in key: a name on a#build holds a NUL, the fold's delimiter",
+      )
+
+      await workspace([pluginSource('org/tool', `{ key() { return { a: 'b\\0c' } } }`)])
+      await planRun({ cwd: root, tasks: ['build'], log: silent() })
+    },
+    TIMEOUT,
+  )
+
+  it(
     'the fold is order-independent: two plugins key the same whichever is declared first',
     async () => {
       // The parts are sorted "so the fold is order-independent", and every
