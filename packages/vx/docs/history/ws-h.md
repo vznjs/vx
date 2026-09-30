@@ -524,6 +524,15 @@ run, each POST's endpoint, method, header names, body keys, and its
 `name`, `status` and `conclusion`. The break law reads it. Differential:
 a default name of `vx run` failed it; restored, passes.
 
+## H-44: the stale leads, checked
+
+The 1.0 roadmap's agent items are all done; what stands is the owner's
+(the 0.1.0 cut, the scope list, the soak). Two leads below were already
+closed: `dependsOn: ['']`, `['!x']`, `['^']`, `['#']` and `['a#']` are each
+refused at graph build naming the task (`Task a#build: Invalid dependency
+spec …`), held by `dependency-spec.test.ts`, `task-graph.test.ts` and
+`config-schema-refusals.test.ts`; and `vx stats` was removed in H-19.
+
 ## Leads for other streams
 
 - **A:** a task that rewrites its own input with the same bytes is never
@@ -533,8 +542,8 @@ a default name of `vx run` failed it; restored, passes.
   when every moved input matches its digest and only this task wrote it.
 
 - **D / B:** `sandbox.ignore` names that loaded and did nothing: done in D-4.
-- **D:** `dependsOn` accepts `['']` and `['!x']` at load; whether the graph
-  refuses each with the task named is unchecked.
+- **D:** `dependsOn: ['']`, `['!x']`: answered in H-44, refused with the
+  task named.
 - **F:** `@vzn/vx-reapi#test`'s "a call a proxy cuts in transit" rows
   (added by F-1) fail under a full local gate: RST_STREAM(INTERNAL_ERROR)
   "… is retried" twice (2164 and 2171 ms, "the collector hung up") and
@@ -555,8 +564,5 @@ a default name of `vx run` failed it; restored, passes.
   Consider refusing an output glob that reaches `node_modules` without
   naming it.
 
-- **E:** `vx stats` is a deprecated alias of `vx info` (`cli/index.ts`,
-  `cli.md`) and says nothing when used; `versioning-1.0.md` § Deprecation
-  step 1 promises a deprecated surface "warns once per run, naming what
-  replaces it", from the CLI's parser. A stderr line keeps `cli.md`'s
-  "byte-identical output" true on stdout. Pre-1.0 it may also simply go.
+- **E:** `vx stats` silent as a deprecated alias: gone since H-19; typing
+  it points at `vx info` and exits 1 (H-44).
