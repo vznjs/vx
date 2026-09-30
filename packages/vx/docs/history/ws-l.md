@@ -451,7 +451,10 @@
     concurrent task that can write the parent may swap in a link between.
 - CLOSED (D). The purity gate lets `new Worker('./x.ts')` through: it
   no longer does, `Worker` is in `config-cache.ts`'s `IMPURE_RE`.
-- D (config), from L-27's probe: two in-process `run()` calls on one
+- CLOSED (not reproduced on main, 2026-09-30: three in-process `run()`
+  calls on a config reading `process.env`, with and without the var in
+  `cache.inputs.env` and a token-named var inlined in the command, hit on
+  the second; D-76's env restore is the likely fix). D (config), from L-27's probe: two in-process `run()` calls on one
   config that reads `process.env` derived different keys (no hit, even
   without wiping `.vx`); the same config through the CLI hits. A literal
   config hits in-process. Unexplained; an embedder of `run()` would miss.
