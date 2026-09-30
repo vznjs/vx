@@ -61,15 +61,26 @@ interface TurboJson {
  * what the list matched (openstatus drops `!NEXT_PUBLIC_VERCEL_URL` from
  * a `NEXT_PUBLIC_*` it would otherwise hash); vx matches no name it is
  * not given, so an exclusion only removes the list's own names and needs
- * no todo. Any other wildcard is `wildcard(entry)`'s to report.
+ * no todo. With `live`, a `*` name expands over those names; any other
+ * wildcard is `wildcard(entry)`'s to report.
  */
-function explicitEnv(entries: readonly string[], wildcard: (entry: string) => void): string[] {
+function explicitEnv(
+  entries: readonly string[],
+  wildcard: (entry: string) => void,
+  live?: readonly string[],
+): string[] {
   const out: string[] = []
   const excluded: RegExp[] = []
+  const glob = (p: string): RegExp => new RegExp(`^${p.split('*').map(RegExp.escape).join('.*')}$`)
   for (const e of entries) {
-    if (e.startsWith('!') && e.length > 1 && !/[?[\]!\\]/.test(e.slice(1)))
-      excluded.push(new RegExp(`^${e.slice(1).split('*').map(RegExp.escape).join('.*')}$`))
-    else if (/[*?[\]!\\]/.test(e)) wildcard(e)
+    if (e.startsWith('!') && e.length > 1 && !/[?[\]!\\]/.test(e.slice(1))) {
+      excluded.push(glob(e.slice(1)))
+    } else if (live !== undefined && e.includes('*') && !/[?[\]!\\]/.test(e)) {
+      // Turbo matches a `*` name against the environment it runs in; so
+      // does a live mapping, and the names it finds are keyed and passed.
+      const re = glob(e)
+      out.push(...live.filter((n) => re.test(n)).sort())
+    } else if (/[*?[\]!\\]/.test(e)) wildcard(e)
     else out.push(e)
   }
   return out.filter((n) => !excluded.some((re) => re.test(n)))
@@ -154,6 +165,12 @@ export interface MapTurboOptions {
   splice(kind: TurboGlobal, values: readonly string[]): readonly unknown[]
   /** The TODO attached to a persistent task, in the consumer's words. */
   persistentTodo: string
+  /**
+   * The environment's variable names, when the mapping runs where the tasks
+   * will (`turbo()`): an env wildcard (`NEXT_PUBLIC_*`) expands over them.
+   * Absent (`vx migrate` writes files), a wildcard is a todo.
+   */
+  envNames?: readonly string[]
 }
 
 /**
@@ -583,11 +600,14 @@ export async function mapTurboWorkspace(
   // list that refusal failed every task of the run (item 937). Reported
   // once, as a task's own `env` wildcard is per task.
   const envNames = (field: string, names: readonly string[]): string[] =>
-    explicitEnv(names, (e) =>
-      notes.push(
-        `${field} ${JSON.stringify(e)}: wildcards are not supported in vx env names — ` +
-          'list explicit names',
-      ),
+    explicitEnv(
+      names,
+      (e) =>
+        notes.push(
+          `${field} ${JSON.stringify(e)}: wildcards are not supported in vx env names — ` +
+            'list explicit names',
+        ),
+      opts.envNames,
     )
   // Turbo 1's `globalDotEnv` files are hashed as `globalDependencies` are
   // (item 937). A `.env`-shaped one is gitignored as a rule, and a glob
@@ -1066,16 +1086,22 @@ function buildTask(
     if (!deps.includes(edge)) deps.push(edge)
   }
 
-  const envNames: string[] = explicitEnv([...envDeps, ...(def.env ?? [])], (e) =>
-    todos.push(
-      `env ${JSON.stringify(e)}: wildcards are not supported in vx env names — ` +
-        'list explicit names in cache.inputs.env + exec.env.passThrough',
-    ),
+  const envNames: string[] = explicitEnv(
+    [...envDeps, ...(def.env ?? [])],
+    (e) =>
+      todos.push(
+        `env ${JSON.stringify(e)}: wildcards are not supported in vx env names — ` +
+          'list explicit names in cache.inputs.env + exec.env.passThrough',
+      ),
+    opts.envNames,
   )
-  const passNames: string[] = explicitEnv(def.passThroughEnv ?? [], (e) =>
-    todos.push(
-      `passThroughEnv ${JSON.stringify(e)}: wildcards are not supported — list explicit names`,
-    ),
+  const passNames: string[] = explicitEnv(
+    def.passThroughEnv ?? [],
+    (e) =>
+      todos.push(
+        `passThroughEnv ${JSON.stringify(e)}: wildcards are not supported — list explicit names`,
+      ),
+    opts.envNames,
   )
 
   const passThrough = uniq([...global('env'), ...global('pass'), ...envNames, ...passNames])

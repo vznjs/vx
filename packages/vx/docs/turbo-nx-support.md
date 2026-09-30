@@ -27,8 +27,8 @@ Every key `turbo.json`, `nx.json` and `project.json` accept, read from the upstr
 | `futureFlags` | mapped, with a note | The flags are not read; what they gate (`global`, structured inputs) is detected by shape. |
 | `global` | mapped, with a note | `inputs`, `env` and `passThroughEnv` are read as the `global*` fields they replace; `envMode: loose` gets a note. |
 | `globalDependencies` | mapped, with a note | Becomes `cache.inputs.workspaceFiles`; `$NAME` entries become env inputs. |
-| `globalEnv` | mapped, with a note | Added to every task's `cache.inputs.env` and passthrough; a wildcard name is dropped with a note. |
-| `globalPassThroughEnv` | mapped, with a note | Added to every task's `exec.env.passThrough`, not hashed; a wildcard name is dropped with a note. |
+| `globalEnv` | mapped, with a note | Added to every task's `cache.inputs.env` and passthrough; under `turbo()` a `*` name expands over the run's environment, as Turbo does; otherwise a wildcard is dropped with a note. |
+| `globalPassThroughEnv` | mapped, with a note | Added to every task's `exec.env.passThrough`, not hashed; under `turbo()` a `*` name expands over the run's environment; otherwise a wildcard is dropped with a note. |
 | `noUpdateNotifier` | not applicable | Turbo CLI update notice. |
 | `remoteCache` | mapped, with a note | `turboCache()` reads `apiUrl`, `teamId`, `teamSlug` and `enabled`, below env vars and options. |
 | `tags` | not applicable | Package tags feed only Turbo boundaries; never read. |
@@ -37,13 +37,13 @@ Every key `turbo.json`, `nx.json` and `project.json` accept, read from the upstr
 | `tasks.*.cache` | supported | `cache: false` means no cache block: the task always runs. |
 | `tasks.*.dependsOn` | mapped, with a note | Same syntax; edges to tasks nobody runs are dropped; `$TURBO_ROOT$` deps get a TODO; `$NAME` becomes env. |
 | `tasks.*.description` | supported | Copied to the task's `description`. |
-| `tasks.*.env` | mapped, with a note | Goes to `cache.inputs.env` and `exec.env.passThrough`; wildcard names get a TODO. |
+| `tasks.*.env` | mapped, with a note | Goes to `cache.inputs.env` and `exec.env.passThrough`; under `turbo()` a `*` name expands over the run's environment, as Turbo does; otherwise wildcards get a TODO. |
 | `tasks.*.inputs` | mapped, with a note | Globs translated; `$TURBO_DEFAULT$` becomes `**/*`, `$TURBO_ROOT$` workspace files; unsafe globs get a TODO. |
 | `tasks.*.interactive` | not supported | Reported as a key with no vx equivalent, then ignored. |
 | `tasks.*.interruptible` | not supported | Reported as a key with no vx equivalent, then ignored. |
 | `tasks.*.outputLogs` | mapped, with a note | `new-only` is vx's default; other values get a TODO pointing at `--output-logs`. |
 | `tasks.*.outputs` | mapped, with a note | Become `cache.outputs`, negations kept; vx cleans outputs, so a wildcard first segment leaves the task uncached with a TODO and a committed file under an output is taken back with `!`. |
-| `tasks.*.passThroughEnv` | mapped, with a note | Goes to `exec.env.passThrough`, not hashed; wildcard names get a TODO. |
+| `tasks.*.passThroughEnv` | mapped, with a note | Goes to `exec.env.passThrough`, not hashed; under `turbo()` a `*` name expands over the run's environment; otherwise wildcards get a TODO. |
 | `tasks.*.persistent` | mapped, with a note | An uncached `exec.persistent` task, with a `readyWhen` TODO when something depends on it. |
 | `tasks.*.with` | mapped, with a note | An edge to each persistent sidecar, which vx starts beside the task (ready on spawn); a sidecar that ends is a todo, and a pair naming each other keeps one edge. A task with no script is a group that starts its persistent sidecars. |
 | `tasks.*.inputs[].from` | not supported | Ignored; vx folds each dependency's cache key instead of its outputs. |
