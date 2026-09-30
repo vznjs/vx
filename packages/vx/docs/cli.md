@@ -35,12 +35,12 @@ vx init [--dry] [--force] [--mjs] [--plugin <seam>]
 vx show [PROJECT[#TASK] | TASK] [--format pretty|json]
 vx info [--format pretty|json] [--cache-dir <path>]
 vx why (TASK | PKG#TASK) [--run <runId>] [--format pretty|json] [--cache-dir <path>]
-vx last [runId] [--list[=N]] [--failed] [--format pretty|json] [--cache-dir <path>]
+vx last [RUNID] [--list[=N]] [--failed] [--format pretty|json] [--cache-dir <path>]
 vx upgrade [tag]      # self-update a compiled binary
 vx completions bash|zsh|fish
 
 # Meta
-vx help [verb]
+vx help [VERB]
 vx --help, -h
 vx version
 vx --version
@@ -2119,7 +2119,7 @@ surface. A run a Ctrl-C (or SIGTERM, SIGHUP) stopped records nothing,
 so `vx last` still shows the run before it.
 
 ```
-vx last [runId] [--list[=N]] [--failed] [--format pretty|json] [--cache-dir <path>]
+vx last [RUNID] [--list[=N]] [--failed] [--format pretty|json] [--cache-dir <path>]
 ```
 
 Bare `vx last` replays the most recent run: a header (verdict, command,

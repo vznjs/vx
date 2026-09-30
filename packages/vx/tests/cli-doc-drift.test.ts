@@ -316,3 +316,32 @@ describe('docs/cli.md documents every verb the dispatcher answers', () => {
     }
   })
 })
+
+describe("`vx help`'s usage lines are cli.md's", () => {
+  it('each verb line in the Usage block is the line in cli.md § Top-level shape, and back', async () => {
+    // Nothing held the two: help showed `vx why [TASK | PKG#TASK]` for a
+    // required target and `vx run [TASK | PKG#TASK]` for several, where
+    // cli.md had it right (J-54, E-91). The meta spellings (`vx --help`,
+    // `vx --version`) are cli.md's alone; a `# comment` is prose.
+    const { helpText } = await import('../src/cli/help.js')
+    const help = helpText().split('\n')
+    const from = help.indexOf('Usage:')
+    expect(from).toBeGreaterThan(-1)
+    const shown: string[] = []
+    for (const line of help.slice(from + 1)) {
+      if (line === '') break
+      shown.push(line.trim())
+    }
+    const doc = await Bun.file(new URL('../docs/cli.md', import.meta.url)).text()
+    const at = doc.indexOf('## Top-level shape')
+    expect(at).toBeGreaterThan(-1)
+    const open = doc.indexOf('```\n', at) + 4
+    const block = doc.slice(open, doc.indexOf('\n```', open))
+    const documented = block
+      .split('\n')
+      .map((l) => l.replace(/\s+#.*$/, '').trim())
+      .filter((l) => l.startsWith('vx ') && !l.startsWith('vx -'))
+    expect(shown.length).toBeGreaterThan(10)
+    expect([...shown].sort()).toEqual([...documented].sort())
+  })
+})

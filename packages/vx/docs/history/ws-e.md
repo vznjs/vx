@@ -526,3 +526,10 @@ walked on fixtures.
   now set it (`NAME:` or `NAME=`, not a `#` line), and a disabled
   turbo.json wins. cli.md says so. Rows: `init.test.ts` › a remote cache
   the repo shows, two cases added; red without the fix.
+- **E-91.** J-54's lead, and the class: `vx help`'s Usage block had
+  drifted from `cli.md` § Top-level shape with nothing holding the two.
+  `vx run [TASK | PKG#TASK]` now reads `[TASK | PKG#TASK ...]` (several
+  are accepted), `vx why` shows its target required, and `cli.md` takes
+  help's `[RUNID]` and `[VERB]`. Row: `cli-doc-drift.test.ts` ›
+  `vx help`'s usage lines are cli.md's, both directions (cli.md's meta
+  spellings and `# comments` aside), red with the old help.

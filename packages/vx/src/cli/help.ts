@@ -40,7 +40,7 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     'vx — open, extensible monorepo task runner',
     '',
     'Usage:',
-    '  vx run [OPTIONS] [TASK | PKG#TASK] [-- forwarded-args...]',
+    '  vx run [OPTIONS] [TASK | PKG#TASK ...] [-- forwarded-args...]',
     '  vx watch [OPTIONS] TASK [-- forwarded-args...]',
     '  vx cache prune [--older-than <duration>] [--max-size <size>] [--dry-run] [--format pretty|json] [--cache-dir <path>]',
     '  vx lock [--check]',
