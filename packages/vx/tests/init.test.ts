@@ -435,6 +435,39 @@ describe('migrateScripts', () => {
     }
   })
 
+  it('the fold TODO names the manager that ran the hook (E-86)', async () => {
+    // A pnpm workspace's TODO said "npm ran `prebuild`" (the init walk).
+    const root = await mkdtemp(path.join(os.tmpdir(), 'vx-hookname-'))
+    try {
+      const app = path.join(root, 'packages', 'app')
+      const todo = async (lock: string | null): Promise<string | undefined> => {
+        await rm(root, { recursive: true, force: true })
+        await mkdir(app, { recursive: true })
+        if (lock !== null) await writeFile(path.join(root, lock), '')
+        const [p] = migrateScripts([
+          {
+            name: 'app',
+            dir: app,
+            packageJson: {
+              name: 'app',
+              scripts: { prebuild: 'rm -rf dist', build: 'tsc' },
+            } as never,
+            configPath: null,
+          },
+        ]).projects
+        return p?.tasks.find((t) => t.name === 'build')?.todos.find((t) => t.includes(' ran '))
+      }
+      const said = (pm: string): string =>
+        `${pm} ran \`prebuild\` around this script without being asked; folded into the command in that order`
+      expect(await todo('pnpm-lock.yaml')).toBe(said('pnpm'))
+      expect(await todo('bun.lock')).toBe(said('bun'))
+      expect(await todo('yarn.lock')).toBe(said('yarn'))
+      expect(await todo('package-lock.json')).toBe(said('npm'))
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   it('a script reading $npm_package_* gets it defined, from the manifest (D-34)', () => {
     // npm, pnpm, bun and yarn set these for a script and vx sets none: the
     // migrated `echo $npm_package_version` printed an empty string.
