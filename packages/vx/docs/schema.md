@@ -1176,8 +1176,8 @@ outside the workspace is not walled (above).
 **Policy: fail on violation.** An undeclared read, or a write the
 sandbox refuses, fails the task, and a failed task is never cached.
 On Linux a denied read is reported only where `strace` is on PATH and
-may attach; elsewhere the sandbox still denies it, and the task fails
-only if the command does. Activation is lazy (only when
+may attach; elsewhere the sandbox still denies it, the task fails
+only if the command does, and the run says once that reads go unreported. Activation is lazy (only when
 some task declares `exec.sandbox`); on an unsupported platform a
 sandboxed task fails fast rather than running unsandboxed. Linux needs
 `bubblewrap`, `socat` and `ripgrep` installed (the runtime expands its

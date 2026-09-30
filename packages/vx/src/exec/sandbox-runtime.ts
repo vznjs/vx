@@ -2007,15 +2007,21 @@ async function wantsStraceDetection(): Promise<false | 'plain' | 'seccomp'> {
     })
     const out = await new Response(p.stdout).text()
     await p.exited
-    if (p.exitCode !== 0) straceAvailableCache = false
-    else {
+    if (p.exitCode !== 0) {
+      straceAvailableCache = false
+      warnUntraced(`strace --version exited ${p.exitCode}`)
+    } else {
       const m = /version (\d+)\.(\d+)/.exec(out)
       const [major, minor] = m ? [Number(m[1]), Number(m[2])] : [0, 0]
       const form = major > 5 || (major === 5 && minor >= 3) ? 'seccomp' : 'plain'
       straceAvailableCache = (await traceAttaches(form)) ? form : false
     }
   } catch {
+    // Not on PATH. Said as the refused attach is: without it an undeclared
+    // read is denied but never reported, so a task that tolerates the miss
+    // passes and caches with no word of it (J's lead).
     straceAvailableCache = false
+    warnUntraced('strace is not on PATH')
   }
   return straceAvailableCache
 }
@@ -2048,14 +2054,17 @@ async function traceAttaches(form: 'plain' | 'seccomp'): Promise<boolean> {
   )
   const err = await new Response(p.stderr).text()
   if ((await p.exited) === 0) return true
-  if (!warnedNoTrace) {
-    warnedNoTrace = true
-    process.stderr.write(
-      `[vx] sandbox: strace cannot trace here (${err.trim().split('\n')[0] ?? `exit ${p.exitCode}`}), ` +
-        `so sandboxed tasks run without the report of the reads the sandbox denied; ` +
-        `the sandbox still enforces\n`,
-    )
-  }
+  warnUntraced(`strace cannot trace here (${err.trim().split('\n')[0] ?? `exit ${p.exitCode}`})`)
   return false
 }
 let warnedNoTrace = false
+
+/** Said once per process: why sandboxed tasks run untraced, and what that loses. */
+function warnUntraced(why: string): void {
+  if (warnedNoTrace) return
+  warnedNoTrace = true
+  process.stderr.write(
+    `[vx] sandbox: ${why}, so sandboxed tasks run without the report of the reads the sandbox denied; ` +
+      `the sandbox still enforces\n`,
+  )
+}
