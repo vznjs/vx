@@ -51,6 +51,8 @@ export {
   gitPathspecs,
   repoRootOf,
   startGitEnumeration,
+  lazyGitEnumeration,
+  type LazyGitEnumeration,
   type GitEnumeration,
 } from './git-inputs.js'
 export { LayeredCache, type RemoteCacheLayer } from './layered-cache.js'

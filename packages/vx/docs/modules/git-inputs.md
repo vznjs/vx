@@ -51,9 +51,15 @@ export interface GitEnumeration {
   all: string[] // every path git listed, root-relative
   trusted: Map<string, string> // path → index OID, for the tracked-clean ones
   dirty: boolean | null
+  changed: readonly string[] | null // what `status` listed (dirty, both sides of a rename, untracked)
   undecodable: readonly string[] // listed paths whose names are not UTF-8, root-relative
   startedAtMs: number // Date.now() before the spawns
 }
+export interface LazyGitEnumeration {
+  start(): Promise<GitEnumeration> // the whole-tree enumeration, started once
+  readonly started: Promise<GitEnumeration> | undefined
+}
+export function lazyGitEnumeration(workspaceRoot: string): LazyGitEnumeration
 export function gitPathspecs(
   workspaceRoot: string,
   projectDirs: readonly string[],
@@ -121,6 +127,11 @@ so a cold run spawns ONE `rev-parse` whichever asks first — the
 enumeration on an unscoped run, the config load on a scoped one
 (`tests/git-spawns-once.test.ts` holds both as exact lists). The config
 read stays a spawn of its own: `rev-parse` prints no config value.
+`lazyGitEnumeration` holds a run's whole-tree enumeration: an unscoped
+run starts it at once; a `discover` hook's `worktreeChanges()` starts it
+on a scoped one (and in the CLI's `--filter` pass, which hands it to the
+run in `RunOptions.discovered`), and the run then reuses it rather than
+spawn a scoped walk too (G-75).
 `applyGitEnumeration` folds the result into the run's `GitFilesCache`, which `inputs.ts`'s `resolveFiles`
 reads: a tracked-clean path carries a trusted OID and skips both the
 existence probe and the hash; a dirty or untracked path falls back to a

@@ -27,6 +27,7 @@ import type { ProjectEntry } from '../workspace/index.js'
 import { parseDependencySpec } from '../graph/index.js'
 import { nearest, UserError } from '../util/index.js'
 import { claimedAffected, fingerprintClaims } from '../orchestrator/index.js'
+import { lazyGitEnumeration, type LazyGitEnumeration } from '../cache/index.js'
 import {
   type CliLoadOptions,
   discoverCliProjects,
@@ -111,10 +112,13 @@ async function workspaceFingerprintClaims(
   }
 }
 
-async function loadWorkspaceProjects(cwd: string): Promise<ProjectMeta[]> {
+async function loadWorkspaceProjects(
+  cwd: string,
+  git?: LazyGitEnumeration,
+): Promise<ProjectMeta[]> {
   const reads: LoadReads = new Map()
   const root = await findWorkspaceRoot(cwd, reads)
-  return await discoverCliProjects(await loadWorkspace(root, reads))
+  return await discoverCliProjects(await loadWorkspace(root, reads), git)
 }
 
 export async function findCwdProject(cwd: string): Promise<string | null> {
@@ -157,7 +161,7 @@ export type FilterResolution =
       /** The staged load the graph walk needed, for the run to reuse (`RunOptions.staged`). */
       staged?: ReadonlyMap<string, ProjectEntry>
       /** The discovery this pass made, for the run to reuse (`RunOptions.discovered`). */
-      discovered: { root: string; projects: ProjectMeta[] }
+      discovered: { root: string; projects: ProjectMeta[]; git: LazyGitEnumeration }
     }
   | { error: string }
   | { empty: string }
@@ -207,7 +211,8 @@ export async function resolveFilters(
   load: CliLoadOptions = {},
 ): Promise<FilterResolution> {
   const root = await findWorkspaceRoot(cwd)
-  const projects = await loadWorkspaceProjects(cwd)
+  const git = lazyGitEnumeration(root)
+  const projects = await loadWorkspaceProjects(cwd, git)
   let parsed: ReturnType<typeof parseFilter>[]
   try {
     parsed = raw.map((r) => parseFilter(r, root))
@@ -326,7 +331,7 @@ export async function resolveFilters(
     names: [...selected].sort(),
     byDiff: parsed.some((f) => !f.negate && f.gitSince !== undefined),
     ...(staged !== undefined ? { staged } : {}),
-    discovered: { root, projects },
+    discovered: { root, projects, git },
   }
 }
 

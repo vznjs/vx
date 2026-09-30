@@ -509,6 +509,7 @@ type DependsOnEntry<K extends string> =
 export interface DiscoverContext extends WorkspaceHookContext {
   readonly cacheDir: string
   readonly projects: readonly ProjectMeta[]
+  worktreeChanges(): Promise<readonly string[] | null>
 }
 == type EventBus (src/orchestrator/events.ts)
 export interface EventBus {
@@ -623,6 +624,15 @@ export interface GitContext {
   branch: string | null
   dirty: boolean | null
 }
+== type GitEnumeration (src/cache/git-inputs.ts)
+export interface GitEnumeration {
+  all: string[]
+  trusted: Map<string, string>
+  dirty: boolean | null
+  changed: readonly string[] | null
+  undecodable: readonly string[]
+  startedAtMs: number
+}
 == type GraphHookContext (src/orchestrator/plugin.ts)
 export interface GraphHookContext extends BaseContext {
   readonly requested: readonly string[]
@@ -733,6 +743,11 @@ type Known<T, Shape> = { [P in keyof T]: P extends keyof Shape ? unknown : never
 export interface LayeredCacheOptions {
   onRemoteError?: (err: Error) => void
   policy?: CachePolicy
+}
+== type LazyGitEnumeration (src/cache/git-inputs.ts)
+export interface LazyGitEnumeration {
+  start(): Promise<GitEnumeration>
+  readonly started: Promise<GitEnumeration> | undefined
 }
 == type LoadProjectConfigOptions (src/workspace/project-loader.ts)
 export interface LoadProjectConfigOptions {
@@ -1051,7 +1066,7 @@ export interface RunOptions {
   projects?: string[]
   selectedByDiff?: boolean
   staged?: ReadonlyMap<string, ProjectEntry>
-  discovered?: { root: string; projects: ProjectMeta[] }
+  discovered?: { root: string; projects: ProjectMeta[]; git?: LazyGitEnumeration }
   concurrency?: number
   cacheDir?: string
   cache?: CachePolicy

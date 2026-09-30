@@ -2,7 +2,7 @@
 // so internals like prepare.ts can import them without an upward
 // import of index.ts — the module entry must stay cycle-free.
 
-import type { CachePolicy, RemoteCacheLayer } from '../cache/index.js'
+import type { CachePolicy, LazyGitEnumeration, RemoteCacheLayer } from '../cache/index.js'
 import type { ContinueMode } from '../graph/index.js'
 import type { TaskOutcome } from '../graph/index.js'
 import type { EventBus } from './events.js'
@@ -43,9 +43,10 @@ export interface RunOptions {
    * The projects a selection pass in this same process discovered under
    * `root` (`--filter`, `--affected`). The run takes them instead of
    * walking the workspace again when its root is the same. One run only,
-   * as `staged` is.
+   * as `staged` is. `git` is the enumeration a `discover` hook started
+   * there (`DiscoverContext.worktreeChanges`), which the run reuses.
    */
-  discovered?: { root: string; projects: ProjectMeta[] }
+  discovered?: { root: string; projects: ProjectMeta[]; git?: LazyGitEnumeration }
   concurrency?: number
   /**
    * Cache directory override (`--cache-dir <path>`). Absolute, or relative

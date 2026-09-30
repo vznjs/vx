@@ -18,7 +18,7 @@ import {
   type Workspace,
 } from '../workspace/index.js'
 import type { WorkspaceConfig } from '../config.js'
-import { Cache } from '../cache/index.js'
+import { Cache, lazyGitEnumeration, type LazyGitEnumeration } from '../cache/index.js'
 import { UserError } from '../util/index.js'
 import {
   buildPackageGraph,
@@ -65,13 +65,20 @@ export async function discoverProjects(
   plugins: readonly VxPlugin[],
   cacheDir: string,
   warn: (message: string) => void,
+  /** The run's enumeration, which `DiscoverContext.worktreeChanges` reads (and starts). */
+  git: LazyGitEnumeration = lazyGitEnumeration(workspace.root),
 ): Promise<ProjectMeta[]> {
   const projects = await listProjects(workspace)
   if (!hasHook(plugins, 'discover')) return projects
+  const worktreeChanges = (): Promise<readonly string[] | null> =>
+    git.start().then(
+      (e) => e.changed,
+      () => null,
+    )
   await applyDiscoverHooks(
     plugins,
     projects,
-    { workspaceRoot: workspace.root, cacheDir, warn },
+    { workspaceRoot: workspace.root, cacheDir, warn, worktreeChanges },
     (named, plugin) => namedProject(workspace, projects, named, plugin.name),
   )
   return projects.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))

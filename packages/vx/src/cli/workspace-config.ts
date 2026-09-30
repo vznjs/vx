@@ -8,7 +8,7 @@ import { existsSync } from 'node:fs'
 import path from 'node:path'
 import type { WorkspaceConfig } from '../config.js'
 import { UserError } from '../util/index.js'
-import { Cache, noteSchemaReset } from '../cache/index.js'
+import { Cache, noteSchemaReset, type LazyGitEnumeration } from '../cache/index.js'
 import { discoverProjects, loadProjects, loadWorkspacePlugins } from '../orchestrator/index.js'
 import type { VxPlugin } from '../orchestrator/index.js'
 import {
@@ -41,9 +41,12 @@ export async function loadCliWorkspace(workspaceRoot: string): Promise<CliWorksp
  * The workspace's projects as a run discovers them: core's, then the
  * plugin `discover` stage, with the cache dir the run uses.
  */
-export async function discoverCliProjects(workspace: Workspace): Promise<ProjectMeta[]> {
+export async function discoverCliProjects(
+  workspace: Workspace,
+  git?: LazyGitEnumeration,
+): Promise<ProjectMeta[]> {
   const { plugins, cacheDir } = await loadCliWorkspace(workspace.root)
-  return await discoverProjects(workspace, plugins, cacheDir, warnToStderr)
+  return await discoverProjects(workspace, plugins, cacheDir, warnToStderr, git)
 }
 
 /**

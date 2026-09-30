@@ -1382,3 +1382,54 @@ describe('nx() under vx lock and --frozen', () => {
     TIMEOUT,
   )
 })
+
+// nx()'s graph key reads the worktree through core's own `git status`
+// (`DiscoverContext.worktreeChanges`): a second whole-tree walk cost refine
+// ~96 ms of a 417 ms warm run (G-75). Counted by a git on PATH that logs.
+describe('nx(): one git status per run', () => {
+  it(
+    'an unscoped and a scoped run each walk the worktree once',
+    async () => {
+      const bin = path.join(root, '.gitbin')
+      const log = path.join(root, '.gitbin.log')
+      const real = Bun.which('git')!
+      await mkdir(bin)
+      await writeFile(
+        path.join(bin, 'git'),
+        `#!/bin/sh\necho "$*" >> '${log}'\nexec '${real}' "$@"\n`,
+        { mode: 0o755 },
+      )
+      await appendFile(path.join(root, '.gitignore'), '.gitbin*\n')
+      const statuses = async (...args: string[]) => {
+        await rm(log, { force: true })
+        const p = Bun.spawnSync({
+          cmd: [
+            process.execPath,
+            path.resolve(import.meta.dir, '..', '..', 'vx', 'src', 'bin.ts'),
+            ...args,
+          ],
+          cwd: root,
+          env: {
+            ...process.env,
+            PATH: `${bin}:${process.env.PATH}`,
+            CI: '',
+            GITHUB_ACTIONS: '',
+            NO_COLOR: '1',
+          },
+        })
+        expect([p.exitCode, p.stderr.toString()]).toEqual([0, expect.any(String)])
+        const lines = (await Bun.file(log).text()).split('\n')
+        return lines.filter((l) => /(^| )status /.test(l)).length
+      }
+      expect(await statuses('run', 'lint', '--all', '--dry')).toBe(1)
+      expect(await nxCalls(root)).toBe(1)
+      expect(await statuses('run', 'lint', '--all', '--dry')).toBe(1)
+      expect(await statuses('run', 'lint', '--filter', 'lib', '--dry')).toBe(1)
+      // The shared status still moves the key: an edit re-exports.
+      await writeFile(path.join(root, 'packages', 'lib', 'src', 'index.js'), '// edited\n')
+      expect(await statuses('run', 'lint', '--all', '--dry')).toBe(1)
+      expect(await nxCalls(root)).toBe(2)
+    },
+    TIMEOUT,
+  )
+})

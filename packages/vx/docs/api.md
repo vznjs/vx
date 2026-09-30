@@ -395,6 +395,7 @@ type · `src/orchestrator/plugin.ts`
 export interface DiscoverContext extends WorkspaceHookContext {
   readonly cacheDir: string
   readonly projects: readonly ProjectMeta[]
+  worktreeChanges(): Promise<readonly string[] | null>
 }
 ```
 
@@ -1663,7 +1664,7 @@ export interface RunOptions {
   projects?: string[]
   selectedByDiff?: boolean
   staged?: ReadonlyMap<string, ProjectEntry>
-  discovered?: { root: string; projects: ProjectMeta[] }
+  discovered?: { root: string; projects: ProjectMeta[]; git?: LazyGitEnumeration }
   concurrency?: number
   cacheDir?: string
   cache?: CachePolicy

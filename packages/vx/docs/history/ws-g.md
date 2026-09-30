@@ -53,12 +53,6 @@ collapsed: create-t3-turbo 25 of 25 tasks and astro 122 of 122 agree.
   counts `sent: 3` where it expects 4 under load: 2 of 3 runs failed
   while a gate ran beside it, 0 of 4 idle, and it failed G-3's re-gate.
   The retry count depends on time, not on the retry rule.
-- **C:** nx()'s graph key runs its own `git status --porcelain -z
--uall` (item 1075); core's early enumeration runs the same command
-  beside it. refine: 60 ms median; scoping by pathspec does not help
-  (two top dirs 60 ms, all 206 project roots 124 ms). A project-hook
-  context field for the worktree status (HEAD + that output) would let
-  nx() drop its spawn (I-6 measured 417 → 321 ms with the key bounded).
 - **B:** `sandbox-runtime.unsafe.test.ts` rows are load-sensitive: on
   PR #1324's CI "control: `localBinding: true` binds inside the
   namespace and the host sees nothing" read `r.ok` true (expected
@@ -851,3 +845,13 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   names back, as Turbo applies them. The migrate CLI keeps the note.
   Row (`turbo-map-sweep` › a live mapping infers a framework env
   prefix): red without it; `lib` without the framework is the control.
+- **G-75.** nx()'s graph key ran its own whole-tree `git status -uall`
+  beside core's enumeration (I-6: refine 417 ms median, 321 with the key
+  bounded). `DiscoverContext.worktreeChanges()` hands a `discover` hook
+  the run's own status; asked from a scoped run (or the CLI's `--filter`
+  pass, carried in `RunOptions.discovered.git`) it starts the whole-tree
+  enumeration the run then reuses instead of scoping a second walk. A
+  `root` outside the workspace keeps its own spawn. Row (`nx.test` › one
+  git status per run: a logging git on PATH counts one `status` for an
+  unscoped, a scoped and an edited run): red without the hand-over (2),
+  and red for the scoped run without the CLI carrying it.
