@@ -121,7 +121,7 @@ describe('turbo-map: what the sweep found unheld', () => {
     const m = await map(
       {
         globalEnv: ['NEXT_PUBLIC_*', 'API'],
-        globalPassThroughEnv: ['!SECRET', 'HOME_DIR'],
+        globalPassThroughEnv: ['!SECRET', 'HOME_DIR', 'SECRET'],
         tasks: { build: {} },
       },
       { a: { scripts: { build: 'b' } } },
@@ -136,9 +136,31 @@ describe('turbo-map: what the sweep found unheld', () => {
       pass: ['API', 'HOME_DIR'],
       notes: [
         'globalEnv "NEXT_PUBLIC_*": wildcards are not supported in vx env names — list explicit names',
-        'globalPassThroughEnv "!SECRET": wildcards are not supported in vx env names — list explicit names',
       ],
     })
+  })
+
+  // openstatus: `env: ["RESEND_API_KEY", "!NEXT_PUBLIC_VERCEL_URL",
+  // "!NEXT_PUBLIC_VERCEL_GIT_*", …]`. An exclusion removes what the list
+  // matched; vx matches nothing implicitly, so it is no wildcard todo.
+  it('a `!` env entry removes the names it matches, with no todo', async () => {
+    const m = await map(
+      {
+        tasks: {
+          build: {
+            env: ['API', '!GIT_*', 'GIT_SHA', '!URL', 'URL', 'URLS'],
+            passThroughEnv: ['TOKEN', '!TOKEN', 'HOME_DIR'],
+          },
+        },
+      },
+      { a: { scripts: { build: 'b' } } },
+    )
+    const t = m.projects[0]!.tasks[0]!
+    expect({
+      env: (t.task!['cache'] as { inputs: { env?: unknown } }).inputs.env,
+      pass: (t.task!['exec'] as { env?: { passThrough?: unknown } }).env?.passThrough,
+      todos: t.todos,
+    }).toEqual({ env: ['API', 'URLS'], pass: ['API', 'URLS', 'HOME_DIR'], todos: [] })
   })
 
   // Item 937: Turbo 1 hashes `globalDotEnv` into every task and a task's
@@ -277,7 +299,7 @@ describe('turbo-map: what the sweep found unheld', () => {
     expect(a.todos).toEqual(['dependsOn "b#gen": b declares no gen script — edge dropped'])
   })
 
-  it.each(['FOO_?', 'FOO_[AB]', '!FOO'])(
+  it.each(['FOO_?', 'FOO_[AB]', '\\*'])(
     'env and passThroughEnv %s are refused as wildcards',
     async (name) => {
       const t = await taskOf(

@@ -786,3 +786,11 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   warm 41 cached in 1.3 s; `@unocss/vscode#build` rewrites its README
   input, the same class). `--all` there fails `playground` and a test
   fixture, which import unocss without declaring it, as Turbo would.
+- **G-71.** openstatus (turbo 2.11.2) lists `!NEXT_PUBLIC_VERCEL_URL`
+  and three more exclusions in `build.env`, to keep Vercel's per-deploy
+  vars out of the hash Turbo's framework inference would add. Each was
+  a "wildcards are not supported" todo, six tasks times four. An
+  exclusion removes names from what its list matched; vx matches no name
+  it is not given, so it now removes the list's own matching names and
+  says nothing. Rows (`turbo-map-sweep` › a `!` env entry removes the
+  names it matches; › a global env wildcard is a note): red without it.

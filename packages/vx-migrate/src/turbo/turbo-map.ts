@@ -56,6 +56,25 @@ interface TurboJson {
   envMode?: unknown
 }
 
+/**
+ * A Turbo env list's explicit names. A `!` entry takes names back out of
+ * what the list matched (openstatus drops `!NEXT_PUBLIC_VERCEL_URL` from
+ * a `NEXT_PUBLIC_*` it would otherwise hash); vx matches no name it is
+ * not given, so an exclusion only removes the list's own names and needs
+ * no todo. Any other wildcard is `wildcard(entry)`'s to report.
+ */
+function explicitEnv(entries: readonly string[], wildcard: (entry: string) => void): string[] {
+  const out: string[] = []
+  const excluded: RegExp[] = []
+  for (const e of entries) {
+    if (e.startsWith('!') && e.length > 1 && !/[?[\]!\\]/.test(e.slice(1)))
+      excluded.push(new RegExp(`^${e.slice(1).split('*').map(RegExp.escape).join('.*')}$`))
+    else if (/[*?[\]!\\]/.test(e)) wildcard(e)
+    else out.push(e)
+  }
+  return out.filter((n) => !excluded.some((re) => re.test(n)))
+}
+
 const KNOWN_TASK_KEYS = new Set([
   'dependsOn',
   'with',
@@ -556,18 +575,16 @@ export async function mapTurboWorkspace(
         'the declared ones — list what each task reads in exec.env.passThrough (or cache.inputs.env)',
     )
   }
-  // A wildcard or `!` entry names no one variable: core refuses it, and in
-  // a global list that refusal failed every task of the run (item 937).
-  // Reported once, as a task's own `env` wildcard is per task.
+  // A wildcard names no one variable: core refuses it, and in a global
+  // list that refusal failed every task of the run (item 937). Reported
+  // once, as a task's own `env` wildcard is per task.
   const envNames = (field: string, names: readonly string[]): string[] =>
-    names.filter((e) => {
-      if (!/[*?[\]!]/.test(e)) return true
+    explicitEnv(names, (e) =>
       notes.push(
         `${field} ${JSON.stringify(e)}: wildcards are not supported in vx env names — ` +
           'list explicit names',
-      )
-      return false
-    })
+      ),
+    )
   // Turbo 1's `globalDotEnv` files are hashed as `globalDependencies` are
   // (item 937). A `.env`-shaped one is gitignored as a rule, and a glob
   // over git's files keyed nothing: the workspace probe keys them (item
@@ -1041,23 +1058,17 @@ function buildTask(
     if (!deps.includes(edge)) deps.push(edge)
   }
 
-  const envNames: string[] = [...envDeps]
-  for (const e of def.env ?? []) {
-    if (/[*?[\]!]/.test(e)) {
-      todos.push(
-        `env ${JSON.stringify(e)}: wildcards are not supported in vx env names — ` +
-          'list explicit names in cache.inputs.env + exec.env.passThrough',
-      )
-    } else envNames.push(e)
-  }
-  const passNames: string[] = []
-  for (const e of def.passThroughEnv ?? []) {
-    if (/[*?[\]!]/.test(e)) {
-      todos.push(
-        `passThroughEnv ${JSON.stringify(e)}: wildcards are not supported — list explicit names`,
-      )
-    } else passNames.push(e)
-  }
+  const envNames: string[] = explicitEnv([...envDeps, ...(def.env ?? [])], (e) =>
+    todos.push(
+      `env ${JSON.stringify(e)}: wildcards are not supported in vx env names — ` +
+        'list explicit names in cache.inputs.env + exec.env.passThrough',
+    ),
+  )
+  const passNames: string[] = explicitEnv(def.passThroughEnv ?? [], (e) =>
+    todos.push(
+      `passThroughEnv ${JSON.stringify(e)}: wildcards are not supported — list explicit names`,
+    ),
+  )
 
   const passThrough = uniq([...global('env'), ...global('pass'), ...envNames, ...passNames])
 
