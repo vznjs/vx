@@ -14,10 +14,7 @@ module only reads it.
 ```ts
 listRuns(db, { limit?, project?, task?, runId? }): RunSummaryRow[]
 getRun(db, runId): RunDetail | null                 // one invocation's task rows
-<<<<<<< HEAD
 listInvocations(db, { limit? }): InvocationDetail[]
-=======
->>>>>>> 7a461de (docs(modules): correct module pages the source contradicts (J-18))
 getInvocation(db, runId): InvocationDetail | null   // the header row, tags parsed
 explainCacheKey(db, taskId): CacheKeyExplanation    // latest entry for a task
 latestRunId(db, taskId): string | null              // the run a caller without one means
