@@ -624,3 +624,29 @@ describe('moon(): a workspace output two projects declare', () => {
     TIMEOUT,
   )
 })
+
+// Core takes `!` in outputs since A-44; moon() ran such a task uncached
+// with "vx outputs have no negation" (J-73's lead).
+describe('moon(): a negated output', () => {
+  it(
+    'maps to a vx negation and stays cached; negations alone stay uncached',
+    async () => {
+      await moon1()
+      await write(
+        'packages/core/moon.yml',
+        `type: 'library'\ntasks:\n  gen:\n    command: 'gen'\n    inputs: ['src/**/*']\n    outputs: ['dist/**/*', '!dist/cache/**']\n  only:\n    command: 'only'\n    inputs: ['src/**/*']\n    outputs: ['!dist/cache/**']\n`,
+      )
+      git()
+      const tasks = [...(await tasksOf(['gen', 'only'])).entries()].filter(
+        ([id]) => id === '@x/lib#gen' || id === '@x/lib#only',
+      )
+      expect(
+        Object.fromEntries(tasks.map(([id, t]) => [id, t.config.cache?.outputs.files ?? null])),
+      ).toEqual({
+        '@x/lib#gen': ['dist/**/*', '!dist/cache/**'],
+        '@x/lib#only': null,
+      })
+    },
+    TIMEOUT,
+  )
+})

@@ -660,10 +660,14 @@ function mapOutputs(ctx: Ctx, def: Raw, todos: string[]): { files: string[]; ws:
     const expanded = groupRef(ctx, raw) ?? [raw]
     for (const e of expanded) {
       const uri = /^(file|glob):\/\/(.*)$/.exec(e)
-      const s = uri === null ? e : uri[2]!
-      if (s.startsWith('!') || s.startsWith('@') || s.startsWith('$')) {
+      const raw = uri === null ? e : uri[2]!
+      // A `!` output takes paths back, as core's own does since A-44: the
+      // clean, save and restore leave them alone (J-73's lead).
+      const neg = raw.startsWith('!')
+      const s = neg ? raw.slice(1) : raw
+      if (s.startsWith('@') || s.startsWith('$')) {
         todos.push(
-          `output ${JSON.stringify(e)}: vx outputs have no negation or token — task runs uncached; declare the exact outputs in a vx.config to cache it`,
+          `output ${JSON.stringify(e)}: vx outputs have no token — task runs uncached; declare the exact outputs in a vx.config to cache it`,
         )
         return null
       }
@@ -673,7 +677,12 @@ function mapOutputs(ctx: Ctx, def: Raw, todos: string[]): { files: string[]; ws:
         return null
       }
       const first = at.path.split('/')[0] ?? ''
-      const glob = minimatchToVx(at.path, false)
+      const glob = minimatchToVx(at.path, neg)
+      // A negation cleans nothing, so only its syntax matters.
+      if (neg && glob !== null) {
+        ;(at.ws ? ws : files).push(`!${glob}`)
+        continue
+      }
       if (glob === null || /[*?{[]/.test(first)) {
         todos.push(
           `output ${JSON.stringify(e)}: a wildcard first segment or glob syntax vx cannot take ` +
@@ -683,6 +692,13 @@ function mapOutputs(ctx: Ctx, def: Raw, todos: string[]): { files: string[]; ws:
         return null
       }
       ;(at.ws ? ws : files).push(glob)
+    }
+  }
+  // A list of negations alone selects nothing, and core refuses it.
+  for (const list of [files, ws]) {
+    if (list.length > 0 && list.every((g) => g.startsWith('!'))) {
+      todos.push(`outputs: only negations (${list.join(', ')}) select nothing — task runs uncached`)
+      return null
     }
   }
   return { files: uniq(files), ws: uniq(ws) }

@@ -912,3 +912,11 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   files, with an unnamed patch, a claimed lockfile and an outside path as
   controls; `affected.test` › an edit to a patch bun.lock names): red
   without the fold, and the `--affected` row red without its widening.
+- **G-80.** J-73's lead, the one mapper it still held: `moon()` ran a
+  task with a `!` output uncached ("vx outputs have no negation"), though
+  core takes `!` in outputs since A-44. The negation now maps to a vx
+  `!` output; a list of negations alone stays uncached with a todo (core
+  refuses it), and tokens stay uncached. The Turbo and wireit mappers had
+  already moved. The README's moon table says so. Row: `moon.test.ts` › a
+  negated output maps and stays cached, negations alone uncached; red
+  without the fix.
