@@ -6,7 +6,7 @@
 // silently when it goes wrong, so the assertion is the exact tree after
 // each hit, read fresh — never "the run was green".
 
-import { lstat, mkdir, readFile, realpath, rm, writeFile } from 'node:fs/promises'
+import { chmod, lstat, mkdir, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
@@ -288,6 +288,53 @@ describe('a symlinked workspace output (e2e)', () => {
       } finally {
         await rm(root, { recursive: true, force: true })
       }
+    },
+    TIMEOUT,
+  )
+})
+
+describe('a miss across an output-shape change (e2e, B-49)', () => {
+  let root: string
+  let dir: string
+  beforeAll(async () => {
+    root = await makeWorkspace({ prefix: 'vx-output-shape-miss-' })
+    // No `rm -rf dist`: the clean before the miss is all that clears it.
+    dir = await addProject(root, 'app', {
+      config: CONFIG.replace('sh build.sh', 'sh miss.sh'),
+      files: {
+        'build.sh': '',
+        'miss.sh': `set -e
+mkdir -p dist
+case "$(cat shape.txt)" in
+  dir) mkdir dist/out && echo inner > dist/out/inner.txt ;;
+  file) echo flat > dist/out ;;
+esac
+`,
+      },
+    })
+  }, TIMEOUT)
+  afterAll(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it(
+    'keeps the glob’s root and prunes the directory the new shape needs as a file',
+    async () => {
+      const miss = async (shape: 'dir' | 'file') => {
+        await writeFile(path.join(dir, 'shape.txt'), shape)
+        const r = await summarized(root, ['app#build'])
+        expect({ code: r.code, status: r.tasks.get('app#build')?.['status'] }).toEqual({
+          code: 0,
+          status: 'success',
+        })
+      }
+      await miss('dir')
+      // A mode `mkdir -p` never gives: the same directory survives the
+      // clean only if it keeps it (an inode number is reused on ext4).
+      await chmod(path.join(dir, 'dist'), 0o700)
+      await miss('file')
+      expect(await shapeOf(dir)).toEqual(EXPECTED.file)
+      expect((await lstat(path.join(dir, 'dist'))).mode & 0o777).toBe(0o700)
     },
     TIMEOUT,
   )

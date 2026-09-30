@@ -61,6 +61,8 @@ export async function resolveOutputs(args: {
   projectDir: string
   outputs: string[]
   nestedProjectDirs: string[]
+  /** Before a miss: keep each wildcard glob's root (`dist` for `dist/**`). */
+  keepGlobRoots?: boolean
 }): Promise<string[]>
 
 /**
@@ -222,7 +224,10 @@ deliberately without the project-dir exclusion.
 
 `cleanOutputs` removes every match, then the directories it emptied,
 bottom-up and never the root itself (a directory left standing where
-the cached entry holds a file of the same name blocks the restore). A
+the cached entry holds a file of the same name blocks the restore).
+Before a miss (`keepGlobRoots`) it keeps the directory each wildcard
+glob is rooted at: the task writes under it, and removing it cost an
+rmdir and the task's mkdir (B-49). A
 declared output the process cannot remove — another user's `dist/`, a
 read-only checkout — is a `UserError` naming the path, not an internal
 error.
