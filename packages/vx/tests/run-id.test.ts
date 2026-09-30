@@ -3,7 +3,7 @@
 
 import { Database } from 'bun:sqlite'
 import { describe, expect, it } from 'bun:test'
-import { resolveRunId, shortRunId } from '../src/cli/run-id.js'
+import { resolveRunId, shortRunId } from '../src/orchestrator/run-id.js'
 
 function db(ids: readonly string[]): Database {
   const d = new Database(':memory:')

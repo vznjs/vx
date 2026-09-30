@@ -283,6 +283,8 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
 export function quoteTsLiteral(s: string): string
 == function reachDigests (src/orchestrator/lockfile-claim.ts)
 export function reachDigests(g: ReachGraph): string[]
+== function resolveRunId (src/orchestrator/run-id.ts)
+export function resolveRunId(db: Database, raw: string, verb: string): string | null
 == function run (src/orchestrator/run.ts)
 export async function run(options: RunOptions): Promise<RunSummary>
 == function splitTaskId (src/util/task-id.ts)

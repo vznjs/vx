@@ -16,6 +16,7 @@ import {
   splitTaskId,
   UserError,
   latestRunId,
+  resolveRunId,
   whyDidThisRerunQuery,
 } from '@vzn/vx'
 
@@ -92,7 +93,8 @@ const TOOLS: readonly ToolDef[] = [
       properties: {
         runId: {
           type: 'string',
-          description: 'A run id from getRunHistory; omitted = the latest run of the task',
+          description:
+            'A run id from getRunHistory, or a unique prefix of one (as `vx last --list` prints it); omitted = the latest run of the task',
         },
         taskId: { type: 'string', description: 'project#task' },
       },
@@ -402,7 +404,12 @@ async function whyDidThisRerun(
     const db = cache.dbHandle()
     // `vx why`'s default, through the same query: an agent has no run id
     // until it asks for history, and the latest run is the usual question.
-    const runId = given ?? latestRunId(db, taskId)
+    // A given id is resolved as `vx why --run` resolves it: whole, or the
+    // unique prefix `vx last --list` prints.
+    const runId =
+      given === undefined
+        ? latestRunId(db, taskId)
+        : (resolveRunId(db, given, 'whyDidThisRerun') ?? given)
     if (runId === null) {
       // Runs recorded before run ids existed leave none to name: `vx why`
       // answers the latest cache entry then, and so does this; it said the

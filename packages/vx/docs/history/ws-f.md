@@ -640,3 +640,5 @@ one aborted task with nothing failed titled cancelled. Left: the
 abort-guard pair (equivalent: `sleepUnless` answers an aborted signal
 at once), the retry timer's clearTimeout, the suffix's text, a thrown
 non-Error's text.
+
+- **F-60** vx-mcp: `whyDidThisRerun` takes a run id by the unique prefix `vx last --list` prints; `resolveRunId` moved to `orchestrator/run-id.ts` and is on `@vzn/vx`. `docs/modules/metrics.md` held committed merge markers; `conflict-markers.test.ts` refuses them.

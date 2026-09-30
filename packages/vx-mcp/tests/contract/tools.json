@@ -135,7 +135,7 @@
       "properties": {
         "runId": {
           "type": "string",
-          "description": "A run id from getRunHistory; omitted = the latest run of the task"
+          "description": "A run id from getRunHistory, or a unique prefix of one (as `vx last --list` prints it); omitted = the latest run of the task"
         },
         "taskId": {
           "type": "string",

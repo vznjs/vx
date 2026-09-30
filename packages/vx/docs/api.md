@@ -1601,6 +1601,18 @@ export interface ResolvedSandboxConfig {
 }
 ```
 
+## `resolveRunId`
+
+function · `src/orchestrator/run-id.ts`
+
+The recorded run `raw` names: itself when recorded, else the one run
+whose id starts with it. Null when none does; a prefix several runs share
+is refused with those runs, since picking one would replay the wrong run.
+
+```ts
+export function resolveRunId(db: Database, raw: string, verb: string): string | null
+```
+
 ## `run`
 
 function · `src/orchestrator/run.ts`

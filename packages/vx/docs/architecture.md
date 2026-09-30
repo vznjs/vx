@@ -30,7 +30,7 @@ the browser, not a consumer of its API, and
 | `packages/vx-plugin-examples`  | one runnable plugin per seam, each run by its tests through `run()` (private)                                                                                                                                                                         |
 
 Core never imports a sibling package. The integrations reach core
-through two seams: the public API (43 runtime symbols, a deliberate
+through two seams: the public API (44 runtime symbols, a deliberate
 snapshot) and the plugin capabilities (below).
 
 ## Module map
@@ -70,7 +70,7 @@ layers:
 | Cache acceleration     | `remote-prefetch.ts`, `stable-keys.ts`, `local-shortcircuit.ts`, `download-policy.ts` + `deferred-outputs.ts` (`--download`: outputs left remote, fetched when a local task needs them)                                                                                                                                                                                                                                                                                                                                                                                                |
 | Plugin + telemetry     | `plugin.ts`, `plugin-host.ts`, `telemetry.ts`, `telemetry-host.ts`, `task-log-buffer.ts` (the one bounded-tail capture every sink reads)                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | Events                 | `events.ts` — the run event bus and the serializable `WireEvent` any surface reads                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| Presentation + queries | `logger.ts`, `framed-output.ts`, `failure-recap.ts` (the bounded tail the run's last block repeats for each failure), `status-line.ts`, `summary.ts`, `tally.ts`, `colors.ts`, `metrics.ts`, `history.ts`, `failure-mode.ts` (the flakiness verdict), `doctor.ts` (the facts `vx info` and `vx mcp` report)                                                                                                                                                                                                                                                                            |
+| Presentation + queries | `logger.ts`, `framed-output.ts`, `failure-recap.ts` (the bounded tail the run's last block repeats for each failure), `status-line.ts`, `summary.ts`, `tally.ts`, `colors.ts`, `metrics.ts`, `run-id.ts` (a run id whole or by unique prefix), `history.ts`, `failure-mode.ts` (the flakiness verdict), `doctor.ts` (the facts `vx info` and `vx mcp` report)                                                                                                                                                                                                                          |
 
 ```mermaid
 graph TD
@@ -653,7 +653,7 @@ https://ui.perfetto.dev). See
 
 CI scripts that want live numbers can `sqlite3 cache.db` directly, or
 use the query layer (`orchestrator/metrics.ts`; `@vzn/vx` exports
-`latestRunId` and `whyDidThisRerunQuery`). In **core** there is no HTTP layer and no UI — the cache
+`latestRunId`, `resolveRunId` and `whyDidThisRerunQuery`). In **core** there is no HTTP layer and no UI — the cache
 file is the API. Anything that wants a dashboard or an HTTP surface
 builds it on the `telemetry` capability, out of process; core never
 grows a server.

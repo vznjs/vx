@@ -23,6 +23,13 @@ cacheKeyDiff(db, runId, taskId): CacheKeyDiff       // which key components move
 diffKeyComponents(before, after): { entries, unchangedCount } // the join, no store
 ```
 
+`run-id.ts` beside it resolves the run id a caller types:
+`resolveRunId(db, raw, verb)` answers the whole id, or the one run it is
+a prefix of (null for none; a prefix several runs share is refused,
+naming them), and `shortRunId(db, id)` is the shortest unique prefix, at
+least 13 characters, `vx last --list` prints. `vx why`, `vx last` and
+`@vzn/vx-mcp`'s `whyDidThisRerun` all take ids through it.
+
 Every function but `diffKeyComponents` takes an open `bun:sqlite`
 `Database` (the caller owns the `Cache` lifecycle — `cache.dbHandle()`),
 returns JSON-safe shapes (bigint spans as decimal strings, like

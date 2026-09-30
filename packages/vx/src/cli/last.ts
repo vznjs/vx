@@ -15,11 +15,12 @@ import {
   type InvocationDetail,
   listInvocations,
   type RunSummaryRow,
+  resolveRunId,
+  shortRunId,
 } from '../orchestrator/index.js'
 import { formatElapsed, UserError } from '../util/index.js'
 import { findWorkspaceRoot } from '../workspace/index.js'
 import { cliCacheDir, parseCacheDirFlag, warnToStderr } from './workspace-config.js'
-import { resolveRunId, shortRunId } from './run-id.js'
 
 interface LastArgs {
   runId?: string

@@ -166,6 +166,7 @@ describe('package boundaries', () => {
       'prepareRun',
       'quoteTsLiteral',
       'reachDigests',
+      'resolveRunId',
       'run',
       'splitTaskId',
       'whyDidThisRerunQuery',
