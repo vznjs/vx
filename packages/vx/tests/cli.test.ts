@@ -1,14 +1,10 @@
 import { documentedFlags, helpText, verbHelpText } from '../src/cli/help.js'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'bun:test'
 import { writeLocalWorkspace } from './helpers/local-workspace.js'
-import {
-  formatBytes,
-  parseDuration,
-  parsePruneArgs,
-  parseRunArgs,
-  parseSize,
-  run,
-} from '../src/cli/index.js'
+import { formatBytes } from '../src/cli/format.js'
+import { parseDuration, parsePruneArgs, parseSize } from '../src/cli/cache.js'
+import { parseRunArgs } from '../src/cli/run.js'
+import { run } from '../src/cli/index.js'
 import { formatRunReportMarkdown } from '../src/orchestrator/index.js'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'

@@ -7,7 +7,7 @@
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
-import { parseRunArgs } from '../src/cli/index.js'
+import { parseRunArgs } from '../src/cli/run.js'
 import { FOREIGN_FLAGS, FOREIGN_VERBS, renderForeignFlags } from '../src/cli/foreign-flags.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')

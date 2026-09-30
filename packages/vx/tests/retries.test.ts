@@ -11,7 +11,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { addProject, makeWorkspace as makeWorkspaceRoot } from './helpers/workspace.js'
 import type { Logger, RunSummaryRecord, TelemetrySink } from '../src/orchestrator/index.js'
 import { run } from '../src/orchestrator/index.js'
-import { parseRunArgs } from '../src/cli/index.js'
+import { parseRunArgs } from '../src/cli/run.js'
 import { loadProjectConfig } from '../src/workspace/project-loader.js'
 
 const TIMEOUT = 20_000

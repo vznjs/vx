@@ -5,7 +5,7 @@ import { mkdir, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { gitIn, makeWorkspace as makeWorkspaceRoot } from './helpers/workspace.js'
-import { parseLastArgs } from '../src/cli/index.js'
+import { parseLastArgs } from '../src/cli/last.js'
 import { formatTaskRows } from '../src/cli/last.js'
 import type { RunSummaryRow } from '../src/orchestrator/index.js'
 

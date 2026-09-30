@@ -17,7 +17,7 @@ import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { waitForDead } from './helpers/alive.js'
 import { addProject, makeWorkspace as makeWorkspaceRoot } from './helpers/workspace.js'
 import { run, type Logger } from '../src/orchestrator/index.js'
-import { parseRunArgs, resolveRunOptions } from '../src/cli/index.js'
+import { parseRunArgs, resolveRunOptions } from '../src/cli/run.js'
 
 // The SIGTERM→SIGKILL grace is 2 s by default; every test here that proves
 // the escalation would wait it out. 200 ms proves the same claim
