@@ -71,10 +71,11 @@ process.stdout.write(JSON.stringify(c ?? {}, (_k, v) => (typeof v === 'function'
 /** The evaluated config, functions marked; a config that throws is refused with its message. */
 export async function loadLageConfig(root: string, file: string): Promise<Raw> {
   // --no-install: a require no node_modules provides is refused, never
-  // fetched from the registry and run (L-22).
+  // fetched from the registry and run (L-22). In a compiled vx the runtime
+  // is vx itself, which read `-e` as a verb; BUN_BE_BUN makes it Bun.
   const proc = Bun.spawn([process.execPath, '--no-install', '-e', LOAD, file], {
     cwd: root,
-    env: { ...process.env },
+    env: { ...process.env, BUN_BE_BUN: '1' },
     stdout: 'pipe',
     stderr: 'pipe',
   })
