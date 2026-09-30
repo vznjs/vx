@@ -932,6 +932,13 @@ describe('loadProjectConfig', () => {
       )
       await writeFile(file, withTasks(`['codegen']`))
       await expect(loadProjectConfig(file)).rejects.toThrow(/names no task in .*\(none declared\)/)
+      // The path once: `where` already opens with it (J's lead).
+      const said = await loadProjectConfig(file).then(
+        () => '',
+        (e: Error) => e.message,
+      )
+      expect(said.split(file).length - 1).toBe(1)
+      expect(said).toContain('names no task in tasks.build.dependsOn (none declared)')
     })
 
     // `build` selects this project's build, `^build` only the dependencies':
