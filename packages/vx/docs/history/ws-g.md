@@ -805,6 +805,14 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   188, lint 167, validate:package, clean) exact; mastra's typecheck and
   dev miss the builds Turbo runs only as a no-op's `^build` (G-64's n8n
   class, not replicated).
+- **G-71.** openstatus (turbo 2.11.2) lists `!NEXT_PUBLIC_VERCEL_URL`
+  and three more exclusions in `build.env`, to keep Vercel's per-deploy
+  vars out of the hash Turbo's framework inference would add. Each was
+  a "wildcards are not supported" todo, six tasks times four. An
+  exclusion removes names from what its list matched; vx matches no name
+  it is not given, so it now removes the list's own matching names and
+  says nothing. Rows (`turbo-map-sweep` › a `!` env entry removes the
+  names it matches; › a global env wildcard is a note): red without it.
 - **G-70.** rallly (turbo 2.6.3): `build: [^build, ^db:generate]` and
   only `database` has a `db:generate` script, so every other `build` is
   Turbo's no-op node. `web#build:test` → `^build` reaches them, and
