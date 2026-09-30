@@ -742,34 +742,35 @@ describe('nx-map: a configuration reaches its edges', () => {
       a: node('packages/a', {
         gen: { command: 'gen', configurations: { ci: {} } },
         lint: { command: 'lint' },
-        build: {
-          command: 'build',
+        make: {
+          command: 'make',
           configurations: { ci: {} },
-          dependsOn: ['gen', 'lint', 'b:pack', { target: 'pack', projects: ['b'] }, '^build'],
+          dependsOn: ['gen', 'lint', 'b:pack', { target: 'zip', projects: ['b'] }, '^make'],
         },
       }),
       b: node('packages/b', {
         pack: { command: 'pack', configurations: { ci: {} } },
-        build: { command: 'build' },
+        zip: { command: 'zip', configurations: { ci: {} } },
+        make: { command: 'make' },
       }),
     })
-    expect(t.get('a#build:ci')).toMatchObject({
-      task: { dependsOn: ['gen:ci', 'lint', 'b#pack:ci', '^build'] },
+    expect(t.get('a#make:ci')).toMatchObject({
+      task: { dependsOn: ['gen:ci', 'lint', 'b#pack:ci', 'b#zip:ci', '^make'] },
       todos: [],
     })
     // The base task asks for no configuration: each edge runs its default.
-    expect(t.get('a#build')?.task?.dependsOn).toEqual(['gen', 'lint', 'b#pack', '^build'])
+    expect(t.get('a#make')?.task?.dependsOn).toEqual(['gen', 'lint', 'b#pack', 'b#zip', '^make'])
   })
 
   it('a ^ edge is a todo only where another project declares the configuration', async () => {
     const [a, b] = [await meta('a'), await meta('b')]
     const t = await tasksOf([a, b], {
       a: node('packages/a', {
-        build: { command: 'build', configurations: { ci: {} }, dependsOn: ['^build'] },
+        make: { command: 'make', configurations: { ci: {} }, dependsOn: ['^make'] },
       }),
-      b: node('packages/b', { build: { command: 'build', configurations: { ci: {} } } }),
+      b: node('packages/b', { make: { command: 'make', configurations: { ci: {} } } }),
     })
-    expect(t.get('a#build:ci')?.todos).toEqual([
+    expect(t.get('a#make:ci')?.todos).toEqual([
       'configuration "ci": Nx runs dependencies with the same configuration where they declare it — here the ^ edges run their default',
     ])
   })
