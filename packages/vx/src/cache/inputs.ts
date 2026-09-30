@@ -22,6 +22,7 @@ import { rm, rmdir } from 'node:fs/promises'
 import type { CacheInputs } from '../config.js'
 import {
   asTrees,
+  executablePath,
   isExecutableMissing,
   isLiteralPattern,
   normalizeGlob,
@@ -389,7 +390,11 @@ async function runRuntimeCommand(
   const prefix = binDirs.join(path.delimiter)
   let proc
   try {
-    const argv = process.platform === 'win32' ? shellArgv(command) : ['sh', '-c', command]
+    // vx's own `sh`, resolved on its PATH before the probe's: Bun.spawn looks
+    // a bare name up on the child's PATH, which leads with the project's
+    // `node_modules/.bin`, so a dependency's `sh` bin ran every probe (J-69).
+    const argv =
+      process.platform === 'win32' ? shellArgv(command) : [executablePath('sh'), '-c', command]
     proc = Bun.spawn(argv, {
       cwd,
       env: { ...process.env, PATH: ambient ? `${prefix}${path.delimiter}${ambient}` : prefix },

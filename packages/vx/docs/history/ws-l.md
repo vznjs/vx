@@ -417,6 +417,17 @@
   class: `shellArgv`'s Windows `[execPath, 'exec', …]` is the same
   shape, but there the variable would reach the task's own children (a
   `vx` a task runs would act as Bun), so it stays a lead.
+- L-33. `fix(cache)`, J-69's lead: the `cache.inputs.runtime` probe ran
+  `['sh', '-c', command]` on a PATH led by the project's
+  `node_modules/.bin`, and `Bun.spawn` looks a bare name up on the
+  child's PATH, so a dependency shipping an `sh` bin interpreted every
+  probe and its output entered the key. The probe now takes
+  `executablePath('sh')` (vx's own PATH), as task commands do. Row:
+  `inputs.test.ts` › "runs its command through vx's own sh", a planted
+  `sh` printing `planted`; red without the fix. The class, grepped: the
+  `executor` plugin example (`vx init --plugin executor`) spawns a bare
+  `sh` with the task's env; a lead for its owner, since it is regenerated
+  from `vx-plugin-examples`.
 
 ## Leads for other streams
 
