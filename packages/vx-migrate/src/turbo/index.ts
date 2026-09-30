@@ -78,6 +78,28 @@ export function turbo(options: TurboPluginOptions = {}): VxPlugin {
  * it without bound under vx. A value core cannot parse is left to core's
  * refusal, which names the field.
  */
+const SIZE_UNITS = ['B', 'KB', 'MB', 'GB', 'TB']
+
+/**
+ * Turbo's size (turborepo-cache `parse_human_size`): 1024-based, a bare
+ * number is bytes, a fraction is truncated to bytes. Core takes a whole
+ * number with a unit, so `7.5GB` (langfuse) is restated as `7680MB` and
+ * `1000000` as `1000000B`; core refused both. Undefined when Turbo reads
+ * it as off (under one byte).
+ */
+function turboSize(v: string): string | undefined {
+  const m = /^(\d+\.?\d*|\.\d+)([KMGT]?B)?$/i.exec(v)
+  if (!m) return v
+  let n = Math.floor(Number(m[1]) * 1024 ** SIZE_UNITS.indexOf((m[2] ?? 'B').toUpperCase()))
+  if (n === 0) return undefined
+  let u = 0
+  while (u < SIZE_UNITS.length - 1 && n % 1024 === 0) {
+    n /= 1024
+    u++
+  }
+  return `${n}${SIZE_UNITS[u]}`
+}
+
 async function workspaceKeys(root: string): Promise<{
   concurrency?: number
   cacheRetention?: { maxSize?: string; olderThan?: string }
@@ -108,9 +130,13 @@ async function workspaceKeys(root: string): Promise<{
       : Number(c)
     if (Number.isInteger(n) && n > 0) out.concurrency = n
   }
-  const maxSize = read('cacheMaxSize')
+  const size = read('cacheMaxSize')
+  const maxSize = size === undefined ? undefined : turboSize(size)
   const age = read('cacheMaxAge')
-  const olderThan = age?.replace(/^(\d+)w$/i, (_, w: string) => `${Number(w) * 7}d`)
+  // Turbo reads a bare number as days (`parse_human_duration`).
+  const olderThan = age
+    ?.replace(/^(\d+)w$/i, (_, w: string) => `${Number(w) * 7}d`)
+    .replace(/^\d+$/, (d) => `${d}d`)
   if (maxSize !== undefined || olderThan !== undefined) {
     out.cacheRetention = {
       ...(maxSize !== undefined ? { maxSize } : {}),

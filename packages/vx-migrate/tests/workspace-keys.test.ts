@@ -54,6 +54,23 @@ describe('turbo(): turbo.json workspace keys', () => {
     expect(await staged(turbo(), own)).toEqual({ cacheRetention: { olderThan: '30d' } })
   })
 
+  it("the cache bounds take Turbo's grammar: a fraction, a bare number", async () => {
+    // langfuse's `"cacheMaxSize": "7.5GB"`: Turbo truncates a fraction to
+    // bytes, core takes whole numbers only and refused the workspace.
+    const cases: [Record<string, string>, WorkspaceConfig][] = [
+      [{ cacheMaxSize: '7.5GB' }, { cacheRetention: { maxSize: '7680MB' } }],
+      [{ cacheMaxSize: '1.5kb' }, { cacheRetention: { maxSize: '1536B' } }],
+      [{ cacheMaxSize: '1000000' }, { cacheRetention: { maxSize: '1000000B' } }],
+      [{ cacheMaxSize: '2048MB' }, { cacheRetention: { maxSize: '2GB' } }],
+      [{ cacheMaxSize: '0.1B' }, {}],
+      [{ cacheMaxAge: '30' }, { cacheRetention: { olderThan: '30d' } }],
+    ]
+    for (const [keys, expected] of cases) {
+      await writeFile(path.join(root, 'turbo.json'), JSON.stringify({ ...keys, tasks: {} }))
+      expect({ keys, ws: await staged(turbo()) }).toEqual({ keys, ws: expected })
+    }
+  })
+
   it('a concurrency that is no positive whole number is left to the default', async () => {
     for (const concurrency of ['abc', '1.5', '-2']) {
       await writeFile(path.join(root, 'turbo.json'), JSON.stringify({ concurrency, tasks: {} }))

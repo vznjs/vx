@@ -786,3 +786,12 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   warm 41 cached in 1.3 s; `@unocss/vscode#build` rewrites its README
   input, the same class). `--all` there fails `playground` and a test
   fixture, which import unocss without declaring it, as Turbo would.
+- **G-69.** langfuse (turbo.json `"cacheMaxSize": "7.5GB"`) did not load
+  under turbo(): core takes a whole-number size and refused the
+  workspace. Turbo's grammar (turborepo-cache `parse_human_size`,
+  `parse_human_duration`) is 1024-based, truncates a fraction to bytes,
+  and reads a bare size as bytes and a bare age as days; the mapper now
+  restates each in core's (`7680MB`, `1000000B`, `30d`). langfuse then
+  plans build 9, typecheck 10, test 9 and lint 9 as Turbo does. Row
+  (`workspace-keys.test` › the cache bounds take Turbo's grammar): red
+  without it.
