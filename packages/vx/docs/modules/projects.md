@@ -22,7 +22,10 @@ export function discoverProjects(
   plugins: readonly VxPlugin[],
   cacheDir: string,
   warn: (m: string) => void,
+  git?: LazyGitEnumeration, // what `DiscoverContext.worktreeChanges` reads and starts
 ): Promise<ProjectMeta[]>
+// The enumeration a discovery's hooks shared, by the array it returned (G-75).
+export function gitOfDiscovery(projects: readonly ProjectMeta[]): LazyGitEnumeration | undefined
 
 export interface LoadProjectsArgs {
   workspaceRoot: string

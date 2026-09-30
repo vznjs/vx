@@ -62,10 +62,15 @@ export function nx(options: NxPluginOptions = {}): VxPlugin {
   // it named), so its identity is the run's, as the mapping's is.
   let graphFor: readonly ProjectMeta[] | undefined
   let graph: Promise<LoadedGraph> | undefined
-  const graphOf = (root: string, cacheDir: string, projects: readonly ProjectMeta[]) => {
+  const graphOf = (
+    root: string,
+    cacheDir: string,
+    projects: readonly ProjectMeta[],
+    changes?: WorktreeChanges,
+  ) => {
     if (graphFor !== projects) {
       graphFor = projects
-      graph = loadGraph(root, cacheDir, projects, options.graph)
+      graph = loadGraph(root, cacheDir, projects, options.graph, changes)
     }
     return graph!
   }
@@ -91,7 +96,9 @@ export function nx(options: NxPluginOptions = {}): VxPlugin {
       // project already holds stays unattached, and the mapping says so.
       async discover(ctx) {
         const root = options.root ?? ctx.workspaceRoot
-        const { graph } = await graphOf(root, ctx.cacheDir, ctx.projects)
+        // Core's status is the workspace's: a root elsewhere asks git itself.
+        const changes = options.root === undefined ? () => ctx.worktreeChanges() : undefined
+        const { graph } = await graphOf(root, ctx.cacheDir, ctx.projects, changes)
         const dirs = new Set(ctx.projects.map((m) => path.resolve(m.dir)))
         const names = new Set(ctx.projects.map((m) => m.name))
         const named: Array<{ dir: string; name: string }> = []
@@ -330,6 +337,30 @@ async function newestInput(root: string, dirs: readonly string[]): Promise<numbe
   return Math.max(...mtimes)
 }
 
+/** `DiscoverContext.worktreeChanges`: git's changed paths, root-relative, or null outside a worktree. */
+type WorktreeChanges = () => Promise<readonly string[] | null>
+
+/** `git status` at `root` itself, for a graph loaded without the run's (another root, a skipped discover). */
+async function ownChanges(root: string): Promise<string[] | null> {
+  const status = Bun.spawn(['git', '--no-optional-locks', 'status', '--porcelain', '-z', '-uall'], {
+    cwd: root,
+    stdout: 'pipe',
+    stderr: 'ignore',
+  })
+  const [out, code] = await Promise.all([new Response(status.stdout).text(), status.exited])
+  if (code !== 0) return null
+  const paths: string[] = []
+  const records = out.split('\0')
+  for (let i = 0; i < records.length; i++) {
+    const r = records[i]!
+    if (r.length < 4) continue
+    paths.push(r.slice(3))
+    // A rename or copy carries its source as the next record.
+    if (r[0] === 'R' || r[0] === 'C') i++
+  }
+  return paths
+}
+
 /**
  * What the graph is computed from, as one digest: nx.json's chain by content,
  * and — since Nx derives edges from SOURCE imports
@@ -339,24 +370,27 @@ async function newestInput(root: string, dirs: readonly string[]): Promise<numbe
  * imported project replayed its dependant from cache (Next 26). The status
  * text alone is not enough: it names a modified file by path, not by what it
  * holds, so a second edit to a dirty file kept the key (measured, item 1075).
+ * The status is the run's own when core hands it over (`changes`): a second
+ * whole-tree walk cost refine ~96 ms of a 417 ms warm run (I-6).
  * Null outside a git worktree: the caller falls back to the mtimes.
  */
 async function graphInputKey(
   root: string,
   cacheDir: string,
   dirs: readonly string[],
+  changes: WorktreeChanges | undefined,
 ): Promise<string | null> {
-  const git = (args: string[]) =>
-    Bun.spawn(['git', ...args], { cwd: root, stdout: 'pipe', stderr: 'ignore' })
-  const head = git(['rev-parse', '--verify', '-q', 'HEAD'])
-  const status = git(['status', '--porcelain', '-z', '-uall'])
-  const [headOut, statusOut, statusCode] = await Promise.all([
+  const head = Bun.spawn(['git', 'rev-parse', '--verify', '-q', 'HEAD'], {
+    cwd: root,
+    stdout: 'pipe',
+    stderr: 'ignore',
+  })
+  const [headOut, changed] = await Promise.all([
     new Response(head.stdout).text(),
-    new Response(status.stdout).text(),
-    status.exited,
+    changes === undefined ? ownChanges(root) : changes(),
   ])
   await head.exited
-  if (statusCode !== 0) return null
+  if (changed === null) return null
   // The cache dir holds the snapshot itself: a workspace that does not
   // ignore it would see the export move the key it was keyed on.
   const cacheRel = path.relative(root, cacheDir).split(path.sep).join('/')
@@ -381,16 +415,7 @@ async function graphInputKey(
     p.endsWith('/project.json') ||
     roots.some((r) => r === '' || p.startsWith(`${r}/`)) ||
     (!p.includes('/') && ROOT_GRAPH_FILE.test(p))
-  const listed: string[] = []
-  const records = statusOut.split('\0')
-  for (let i = 0; i < records.length; i++) {
-    const r = records[i]!
-    if (r.length < 4) continue
-    const p = r.slice(3)
-    // A rename or copy carries its source as the next record.
-    if (r[0] === 'R' || r[0] === 'C') i++
-    if (!inCache(p) && !nxCache(p) && graphFile(p)) listed.push(p)
-  }
+  const listed = [...new Set(changed.filter((p) => !inCache(p) && !nxCache(p) && graphFile(p)))]
   // A manifest needs no read of its own: git lists it when it is edited, and
   // HEAD moves when an edit is committed (reading all 2,000 cost 50 ms at
   // 1,000 projects). nx.json's chain does: a base may sit in node_modules,
@@ -422,9 +447,10 @@ async function loadGraph(
   cacheDir: string,
   metas: readonly ProjectMeta[],
   exported: string | undefined,
+  changes: WorktreeChanges | undefined,
 ): Promise<LoadedGraph> {
   const notes: string[] = []
-  const { text, label } = await loadGraphText(root, cacheDir, metas, exported, notes)
+  const { text, label } = await loadGraphText(root, cacheDir, metas, exported, notes, changes)
   return { text, graph: parseNxGraph(text, label), notes }
 }
 
@@ -434,6 +460,7 @@ async function loadGraphText(
   metas: readonly ProjectMeta[],
   exported: string | undefined,
   notes: string[],
+  changes: WorktreeChanges | undefined,
 ): Promise<{ text: string; label: string }> {
   if (exported !== undefined) {
     const file = path.resolve(root, exported)
@@ -456,7 +483,7 @@ async function loadGraphText(
       (s) => s.mtimeMs,
       () => -1,
     ),
-    graphInputKey(root, cacheDir, dirs),
+    graphInputKey(root, cacheDir, dirs, changes),
     Bun.file(keyFile)
       .text()
       .catch(() => null),
@@ -474,7 +501,8 @@ async function loadGraphText(
       // found too, or a first export (no snapshot to read roots from)
       // re-exported on the run after.
       const found = (await snapshotRoots(root, snapshot)).filter((d) => !dirs.includes(d))
-      const next = found.length > 0 ? await graphInputKey(root, cacheDir, [...dirs, ...found]) : key
+      const next =
+        found.length > 0 ? await graphInputKey(root, cacheDir, [...dirs, ...found], changes) : key
       if (next !== null) await Bun.write(keyFile, next)
     }
   }

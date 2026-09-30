@@ -509,6 +509,7 @@ type DependsOnEntry<K extends string> =
 export interface DiscoverContext extends WorkspaceHookContext {
   readonly cacheDir: string
   readonly projects: readonly ProjectMeta[]
+  worktreeChanges(): Promise<readonly string[] | null>
 }
 == type EventBus (src/orchestrator/events.ts)
 export interface EventBus {

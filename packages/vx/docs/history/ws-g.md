@@ -881,3 +881,13 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   now gets `-W`; Berry, which has no such flag, keeps the plain form.
   Row (`init.test` › the next step installs with the repo's own package
   manager, a Yarn 1 and a Berry lockfile): red without the fix.
+- **G-75.** nx()'s graph key ran its own whole-tree `git status -uall`
+  beside core's enumeration (I-6: refine 417 ms median, 321 with the key
+  bounded). `DiscoverContext.worktreeChanges()` hands a `discover` hook
+  the run's own status; asked from a scoped run (or the CLI's `--filter`
+  pass, remembered per discovery) it starts the whole-tree
+  enumeration the run then reuses instead of scoping a second walk. A
+  `root` outside the workspace keeps its own spawn. Row (`nx.test` › one
+  git status per run: a logging git on PATH counts one `status` for an
+  unscoped, a scoped and an edited run): red without the hand-over (2),
+  and red for the scoped run without the CLI carrying it.
