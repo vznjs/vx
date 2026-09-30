@@ -88,7 +88,7 @@ export function isExecutableMissing(err: unknown): boolean {
 
 /**
  * The one refusal for a git that is not on PATH, wherever vx needed it — a
- * `--affected` base, the input enumeration, a watch judgement. A minimal
+ * `--affected` base, the input enumeration. A minimal
  * image without git met a stack from `defaultAffectedBase` before
  * (2026-09-16); the enumeration had this line and the others did not.
  */

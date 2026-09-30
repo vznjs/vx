@@ -427,7 +427,7 @@ describe('formatTaskBlock', () => {
     expect(out).toContain('abcdef01')
   })
 
-  it('section headers render dim; content lines stay raw (no border, no indent)', () => {
+  it('section labels render bold and state-colored; content lines stay raw (no border, no indent)', () => {
     const out = formatTaskBlock(
       node('@vzn/vx#build', 'tsc'),
       outcome('@vzn/vx#build', 'failed', { durationMs: 1, exitCode: 1 }),

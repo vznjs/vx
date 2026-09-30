@@ -621,3 +621,4 @@ extra` ignores the extra argument and exits 0 where every other verb
   omits `--plugin`; `help.ts` shows `vx why [TASK | PKG#TASK]` but the
   target is required. A `vx run` that fails planning ("No package
   declares a vx.config") still creates `.vx/cache/`.
+- **J-84** J-72's lead: `unsupportedBunMessage` is the gate's `check.bun` refusal, not a `bin.ts` warning (its doc, the test header and `bun-floor.ts` said bin.ts warns); `gitSpawnRefusal` names no watch judgement; stale test titles in `framed-output` and vx-migrate's cache suites.

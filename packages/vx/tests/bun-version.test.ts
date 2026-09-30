@@ -1,7 +1,8 @@
 // The runtime floor is stated in `engines` and read by nobody at run time, so
 // a `bun src/bin.ts` below it starts fine and answers wrongly (STATUS item
 // 366 measured which answers: a truncated JSON write, no usage numbers, a
-// config syntax error arriving as an internal error). `bin.ts` warns now.
+// config syntax error arriving as an internal error). `vx info` says so,
+// and the gate's `check.bun` refuses to run below it.
 //
 // The entry case asserts the behaviour AGAINST THE RUNNING BUN rather than a
 // fixed expectation, so it is the same claim on a conforming runtime and on

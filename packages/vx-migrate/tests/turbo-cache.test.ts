@@ -415,7 +415,7 @@ describe('TurboRemoteCache against the spec server', () => {
   })
 })
 
-describe('vx run with turboCache() declared before the local cache', () => {
+describe('vx run with turboCache() layered over the local cache', () => {
   let srv: ReturnType<typeof turboServer>
   let root: string
   beforeAll(async () => {

@@ -214,7 +214,7 @@ describe('NxRemoteCache against the spec server', () => {
   })
 })
 
-describe('vx run with nxCache() declared before the local cache', () => {
+describe('vx run with nxCache() layered over the local cache', () => {
   let srv: ReturnType<typeof nxServer>
   let root: string
   beforeAll(async () => {
