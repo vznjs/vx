@@ -39,6 +39,16 @@ collapsed: create-t3-turbo 25 of 25 tasks and astro 122 of 122 agree.
    their apps) is reported "not representable", and `^typecheck` follows
    package.json only; each could be an explicit `pkg#target` edge.
 
+7. turbo() on Turbo's own 34 examples (2026-09-30, `examples/` at
+   main): every one plans without a refusal. The one recurring gap is
+   item 1031's wildcard-first output rule: `*.tsbuildinfo` (both
+   module-federation examples, 3 builds each) and `**/*.tsbuildinfo`
+   (with-nextjs-elysia's `type-check`) run uncached. A-44 already takes
+   committed files back, so the rule now guards only untracked,
+   unignored files the glob matches; admitting a glob whose last
+   segment is a fixed build-artifact suffix is an owner call (a magic
+   list), not taken here.
+
 ## Leads for other streams
 
 - **C/E:** in a `turbo()` workspace, `vx run build --all --dry=json`
