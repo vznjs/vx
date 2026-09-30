@@ -901,3 +901,22 @@ before it. `build.bun.*` and `check.binary` grant the cache, the
 embedded runtime is the compiling Bun's version; no key held it). The
 warm steps are gone from `vx-runner` and `npm.yml`; `ci.yml` cross-
 compiles two non-host targets on a cold cache on Linux and macOS.
+
+B-47. The per-task costs on the unsandboxed miss path, ranked from a CPU
+profile of 100 one-file tasks at `--concurrency 1`, the stat memo warm
+(a run that deletes `.vx` also empties it, and its inserts then read as
+`hashFile` cost): `resolveOutputs` 1.5 ms per task (the glob scan 0.8,
+`containedIn`'s async `realpath`s 0.5), `describeTaskInputs` 1.2 ms,
+`writeArtifactAndIndex` 0.9 ms. `VX_TIMING`'s spans were no guide here:
+the save overlaps the next task's spawn, and `save: pack` summed 2.3 ms
+per task of which one async `lstat` is 70 µs. Cut: `containedIn`
+resolves with `realpathSync` (4-6 µs a call, 65-84 µs async). Interleaved
+A/B against an origin/main worktree, one workspace copy per arm, every
+rep a full miss, min of 9, two rounds: `--concurrency 1` 1161-1192 ms →
+1067-1141 ms; default concurrency 594-604 → 541-548 ms. A warm run is
+unchanged. The symlinked-output rows fail with the containment check
+admitting everything. Lead, not taken: of `describeTaskInputs`' 1.2 ms,
+0.5 is `resolveKeyInput` run again and 0.44 the key folded again, both
+done for the probe already; the second fold captures the miss's input
+rows. Reusing the probe's resolved input is a change to what a miss
+keys and records (stale-hit-critical), so it needs its own item.

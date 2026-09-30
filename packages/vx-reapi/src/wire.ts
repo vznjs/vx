@@ -319,37 +319,6 @@ function abortableSleep(ms: number, signal: AbortSignal | undefined): Promise<vo
   })
 }
 
-/**
- * Promisified unary call with bounded retry on transient failure. Every
- * unary REAPI call is idempotent by construction (CAS writes are
- * content-addressed, AC updates are last-writer-wins on an immutable key),
- * so retrying cannot double-apply anything.
- */
-async function unary<T>(
-  client: grpc.Client,
-  method: string,
-  req: unknown,
-  meta: grpc.Metadata,
-  options: grpc.CallOptions = {},
-): Promise<T> {
-  for (let attempt = 0; ; attempt++) {
-    try {
-      return await new Promise<T>((resolve, reject) => {
-        ;(client as unknown as Record<string, Function>)[method]!(
-          req,
-          meta,
-          options,
-          (err: grpc.ServiceError | null, res: T) => (err ? reject(err) : resolve(res)),
-        )
-      })
-    } catch (err) {
-      const delay = RETRY_DELAYS_MS[attempt]
-      if (delay === undefined || !isRetryable((err as grpc.ServiceError).code)) throw err
-      await Bun.sleep(delay)
-    }
-  }
-}
-
 const NOT_FOUND = grpc.status.NOT_FOUND
 
 export interface ReapiOptions {
@@ -467,6 +436,8 @@ export class ReapiClient {
   private readonly toolName: string
   private readonly toolVersion: string
   private readonly correlatedInvocationsId: string
+  /** Set when a call spent its retries on UNAVAILABLE; cleared by any answer. */
+  private unreachable = false
   /** Set per action so the server can group its RPCs under one action. */
   actionId = ''
   toolInvocationId = ''
@@ -516,6 +487,60 @@ export class ReapiClient {
       throw new Error(
         `@vzn/vx-reapi: chunkBytes must be a positive integer (got ${this.chunkBytes})`,
       )
+    }
+  }
+
+  /**
+   * The wait before retry `attempt` of a cache-path call that failed with
+   * `code`, or undefined to give up. A call that spends its retries on
+   * UNAVAILABLE marks the server unreachable, and until a call succeeds the
+   * next ones give up at their first UNAVAILABLE, until a call succeeds or
+   * the server answers with a status of its own: a refused port cost every
+   * request 2.1 s of backoff, and a five-task run 24 s (J-74).
+   */
+  private retryDelay(attempt: number, code: number | undefined): number | undefined {
+    const unavailable = code === grpc.status.UNAVAILABLE
+    // A status the server sent (NOT_FOUND is a miss) proves it answers.
+    if (!unavailable && code !== grpc.status.DEADLINE_EXCEEDED && code !== grpc.status.CANCELLED) {
+      this.unreachable = false
+    }
+    if (!isRetryable(code)) return undefined
+    if (unavailable && this.unreachable) return undefined
+    const delay = RETRY_DELAYS_MS[attempt]
+    if (delay === undefined && unavailable) this.unreachable = true
+    return delay
+  }
+
+  /**
+   * Promisified unary call with bounded retry on transient failure. Every
+   * unary REAPI call is idempotent by construction (CAS writes are
+   * content-addressed, AC updates are last-writer-wins on an immutable key),
+   * so retrying cannot double-apply anything.
+   */
+  private async unary<T>(
+    client: grpc.Client,
+    method: string,
+    req: unknown,
+    meta: grpc.Metadata,
+    options: grpc.CallOptions = {},
+  ): Promise<T> {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const res = await new Promise<T>((resolve, reject) => {
+          ;(client as unknown as Record<string, Function>)[method]!(
+            req,
+            meta,
+            options,
+            (err: grpc.ServiceError | null, res: T) => (err ? reject(err) : resolve(res)),
+          )
+        })
+        this.unreachable = false
+        return res
+      } catch (err) {
+        const delay = this.retryDelay(attempt, (err as grpc.ServiceError).code)
+        if (delay === undefined) throw err
+        await Bun.sleep(delay)
+      }
     }
   }
 
@@ -577,7 +602,7 @@ export class ReapiClient {
    * on a server that will never answer.
    */
   async capabilities(): Promise<ServerCapabilities> {
-    const res = await unary<{
+    const res = await this.unary<{
       cache_capabilities?: {
         digest_functions?: string[]
         max_batch_total_size_bytes?: string
@@ -680,7 +705,7 @@ export class ReapiClient {
     resourceName: string,
   ): Promise<{ committedSize: number; complete: boolean } | null> {
     try {
-      const res = await unary<{ committed_size?: string; complete?: boolean }>(
+      const res = await this.unary<{ committed_size?: string; complete?: boolean }>(
         this.svc.bs,
         'queryWriteStatus',
         { resource_name: resourceName },
@@ -704,7 +729,7 @@ export class ReapiClient {
     blobs: ReadonlyArray<{ digest: Digest; data: Uint8Array }>,
   ): Promise<void> {
     if (blobs.length === 0) return
-    const res = await unary<{
+    const res = await this.unary<{
       responses?: Array<{ digest: Digest; status?: { code?: number; message?: string } }>
     }>(
       this.svc.cas,
@@ -755,7 +780,7 @@ export class ReapiClient {
     let grouped = 0
     const flush = async (): Promise<void> => {
       if (group.length === 0) return
-      const res = await unary<{
+      const res = await this.unary<{
         responses?: Array<{
           digest: Digest
           data?: Uint8Array
@@ -902,7 +927,7 @@ export class ReapiClient {
     }
     const answers = await Promise.all(
       groups.map((group) =>
-        unary<{ missing_blob_digests?: Digest[] }>(
+        this.unary<{ missing_blob_digests?: Digest[] }>(
           this.svc.cas,
           'findMissingBlobs',
           { instance_name: this.instance, blob_digests: group },
@@ -926,7 +951,7 @@ export class ReapiClient {
     inline?: { stdout: boolean; files: readonly string[] },
   ): Promise<ActionResult | null> {
     try {
-      return await unary<ActionResult>(
+      return await this.unary<ActionResult>(
         this.svc.ac,
         'getActionResult',
         {
@@ -946,7 +971,7 @@ export class ReapiClient {
   }
 
   async updateActionResult(action: Digest, result: ActionResult): Promise<void> {
-    await unary(
+    await this.unary(
       this.svc.ac,
       'updateActionResult',
       { instance_name: this.instance, action_digest: action, action_result: result },
@@ -1027,8 +1052,8 @@ export class ReapiClient {
           chunk = SAFE_CHUNK_BYTES
           continue
         }
-        const delay = RETRY_DELAYS_MS[attempt]
-        if (delay === undefined || !isRetryable(code)) throw err
+        const delay = this.retryDelay(attempt, code)
+        if (delay === undefined) throw err
         if (!compressed) {
           // Identity path: ask how far the server got and resume there.
           const status = await this.queryWriteStatus(resource).catch(() => null)
@@ -1147,10 +1172,12 @@ export class ReapiClient {
   async readBlob(digest: Digest): Promise<Uint8Array | null> {
     for (let attempt = 0; ; attempt++) {
       try {
-        return await this.readBlobOnce(digest)
+        const blob = await this.readBlobOnce(digest)
+        this.unreachable = false
+        return blob
       } catch (err) {
-        const delay = RETRY_DELAYS_MS[attempt]
-        if (delay === undefined || !isRetryable((err as grpc.ServiceError).code)) throw err
+        const delay = this.retryDelay(attempt, (err as grpc.ServiceError).code)
+        if (delay === undefined) throw err
         await Bun.sleep(delay)
       }
     }
@@ -1246,8 +1273,8 @@ export class ReapiClient {
           return await messages.next()
         } catch (err) {
           const code = (err as grpc.ServiceError).code
-          const delay = RETRY_DELAYS_MS[attempt++]
-          if (delay === undefined || !isRetryable(code)) throw err
+          const delay = this.retryDelay(attempt++, code)
+          if (delay === undefined) throw err
           await Bun.sleep(delay)
           open(size)
         }
@@ -1425,7 +1452,7 @@ export class ReapiClient {
    * by `split_blob_support`; experimental, so callers must check first.
    */
   async splitBlob(blobDigest: Digest): Promise<{ chunks: Digest[]; chunkingFunction: string }> {
-    const res = await unary<{ chunk_digests?: Digest[]; chunking_function?: string }>(
+    const res = await this.unary<{ chunk_digests?: Digest[]; chunking_function?: string }>(
       this.svc.cas,
       'splitBlob',
       {
@@ -1445,7 +1472,7 @@ export class ReapiClient {
    * already knows are there. Gated by `splice_blob_support`.
    */
   async spliceBlob(chunkDigests: readonly Digest[], expected?: Digest): Promise<Digest> {
-    const res = await unary<{ blob_digest?: Digest }>(
+    const res = await this.unary<{ blob_digest?: Digest }>(
       this.svc.cas,
       'spliceBlob',
       {

@@ -383,3 +383,38 @@ describe.if(CHUNKING_SUPPORTED)('a call a proxy cuts in transit', () => {
     })
   }, 15_000)
 })
+
+// A server that stays down: each call spent 2.1 s of backoff on UNAVAILABLE,
+// so a five-task run against a refused port took 24 s (J-74). Once a call
+// spends its retries on it, the next gives up at its first UNAVAILABLE,
+// until the server answers.
+describe.if(CHUNKING_SUPPORTED)('a server that stays unreachable', () => {
+  it('backs off once, then fails fast until the server answers', async () => {
+    const { startFakeReapi } = await import('./helpers/fake-reapi.js')
+    const fake = await startFakeReapi()
+    const client = new ReapiClient({ endpoint: fake.endpoint })
+    const action = { hash: 'a'.repeat(64), size_bytes: 1 }
+    const attempts = async (): Promise<[number, string]> => {
+      const before = fake.calls.filter((c) => c.method === 'GetActionResult').length
+      const outcome = await client.getActionResult(action).then(
+        (r) => (r === null ? 'miss' : 'hit'),
+        (err: grpc.ServiceError) => grpc.status[err.code]!,
+      )
+      return [fake.calls.filter((c) => c.method === 'GetActionResult').length - before, outcome]
+    }
+    try {
+      fake.fail('GetActionResult', grpc.status.UNAVAILABLE, 100)
+      expect(await attempts()).toEqual([4, 'UNAVAILABLE'])
+      expect(await attempts()).toEqual([1, 'UNAVAILABLE'])
+      // An answer (NOT_FOUND is a miss) clears it: the next UNAVAILABLE is
+      // retried again.
+      fake.fail('GetActionResult', grpc.status.UNAVAILABLE, 0)
+      expect(await attempts()).toEqual([1, 'miss'])
+      fake.fail('GetActionResult', grpc.status.UNAVAILABLE, 1)
+      expect(await attempts()).toEqual([2, 'miss'])
+    } finally {
+      client.close()
+      fake.stop()
+    }
+  }, 20_000)
+})

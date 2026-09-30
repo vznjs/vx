@@ -272,3 +272,64 @@ describe('the README and landing "Try it on your repo" steps run as written', ()
     }, 60_000)
   }
 })
+
+const GUIDE = path.join(PACKAGES, 'vx-docs', 'src', 'content', 'docs', 'guides', 'migrate.md')
+
+/** The guide's `## <name>` section: its fences of `lang`, in order. */
+function guideFences(name: string, lang: string): string[] {
+  const text = readFileSync(GUIDE, 'utf8')
+  const start = text.indexOf(`\n## ${name}\n`)
+  const section = text.slice(start, text.indexOf('\n## ', start + 1))
+  return [...section.matchAll(new RegExp('```' + lang + '\\n([\\s\\S]*?)```', 'g'))].map(
+    (m) => m[1]!,
+  )
+}
+
+/** A `$ <command>` sample's command and the output below it. */
+function transcript(fence: string): [string, string] {
+  const [first, ...rest] = fence.split('\n')
+  return [first!.replace(/^\$ /, ''), rest.join('\n')]
+}
+
+// The migrate guide shows what `vx init` and `bunx @vzn/vx-migrate` write
+// and print in a Turbo and an Nx repo; each sample is held to a run.
+describe('the migrate guide shows what vx init and vx-migrate write', () => {
+  it('Turborepo: the workspace file, init’s output and vx-migrate’s report', () => {
+    const root = turboRepo()
+    commit(root)
+    const [file] = guideFences('Turborepo', 'ts')
+    const [initFence, cacheLine, migrateFence] = guideFences('Turborepo', 'text')
+    expect(step(root, 'npm install -D @vzn/vx').code).toBe(0)
+    const [initCmd, initOut] = transcript(initFence!)
+    expect(initCmd).toBe('npx vx init')
+    const init = step(root, initCmd)
+    expect([init.code, init.out]).toEqual([0, initOut])
+    expect(readFileSync(path.join(root, 'vx.workspace.ts'), 'utf8')).toBe(file!)
+
+    mkdirSync(path.join(root, '.github', 'workflows'), { recursive: true })
+    writeFileSync(path.join(root, '.github', 'workflows', 'ci.yml'), 'env:\n  TURBO_TOKEN: x\n')
+    const cached = step(root, 'npx vx init --dry --force')
+    expect(cached.out.split('\n')).toContain(cacheLine!.trimEnd())
+    rmSync(path.join(root, '.github'), { recursive: true })
+
+    const [migrateCmd, migrateOut] = transcript(migrateFence!)
+    expect(migrateCmd).toBe('bunx @vzn/vx-migrate')
+    const migrate = Bun.spawnSync({
+      cmd: [process.execPath, path.join(PACKAGES, 'vx-migrate', 'src', 'bin.ts')],
+      cwd: root,
+      env: { ...process.env, NO_COLOR: '1' },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    expect([migrate.exitCode, migrate.stdout.toString()]).toEqual([0, migrateOut])
+  }, 60_000)
+
+  it('Nx: the workspace file', () => {
+    const root = nxRepo()
+    commit(root)
+    const [file] = guideFences('Nx', 'ts')
+    expect(step(root, 'npm install -D @vzn/vx').code).toBe(0)
+    expect(step(root, 'npx vx init').code).toBe(0)
+    expect(readFileSync(path.join(root, 'vx.workspace.ts'), 'utf8')).toBe(file!)
+  }, 60_000)
+})

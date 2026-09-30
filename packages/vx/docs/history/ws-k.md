@@ -184,3 +184,4 @@
   `comparison.md`, `benchmarks.md`), still name them (owner, 2026-09-28:
   Turbo and Nx only). K cut them from the README and landing (K-20, K-21).
 - **I**: `update-site.ts` gained the chart (K-1); it is stream I's file.
+- **K-34** The migrate guide is Turbo and Nx only, its `vx init` file, output, cache line and `vx-migrate` report held byte-exact by `try-it.unsafe.test.ts`; the README leads with both benchmark tables.

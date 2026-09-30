@@ -642,3 +642,4 @@ at once), the retry timer's clearTimeout, the suffix's text, a thrown
 non-Error's text.
 
 - **F-60** vx-mcp: `whyDidThisRerun` takes a run id by the unique prefix `vx last --list` prints; `resolveRunId` moved to `orchestrator/run-id.ts` and is on `@vzn/vx`. `docs/modules/metrics.md` held committed merge markers; `conflict-markers.test.ts` refuses them.
+- **F-59** vx-reapi: a server that stays down pays the 2.1 s retry backoff once; the cache path fails fast on UNAVAILABLE until the server answers (J-74: a refused port, five tasks, 24 s → 2.6 s wall). Row: `wedged.test.ts` › "a server that stays unreachable".

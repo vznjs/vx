@@ -17,8 +17,8 @@
 // be a git work tree; non-git environments are not supported.
 
 import path from 'node:path'
-import { lstatSync, readdirSync } from 'node:fs'
-import { realpath, rm, rmdir } from 'node:fs/promises'
+import { lstatSync, readdirSync, realpathSync } from 'node:fs'
+import { rm, rmdir } from 'node:fs/promises'
 import type { CacheInputs } from '../config.js'
 import {
   asTrees,
@@ -533,7 +533,7 @@ export async function resolveOutputs(args: {
   // outside the project, so any future caller reaching it by another route (a
   // programmatic embedder, a config source that skips the loader) is contained
   // by construction.
-  return (await containedIn(args.projectDir, scanned)).sort()
+  return containedIn(args.projectDir, scanned).sort()
 }
 
 /**
@@ -558,7 +558,7 @@ export async function resolveOutputs(args: {
  * task that produced it) is REFUSED. When the caller deletes, unresolvable
  * means leave it alone.
  */
-async function containedIn(root: string, paths: readonly string[]): Promise<string[]> {
+function containedIn(root: string, paths: readonly string[]): string[] {
   // One `path.dirname` per path, kept alongside — computing it again in the
   // final filter measured as the DOMINANT added cost on a wide output tree
   // (string work, not syscalls: 10k files in 20 dirs cost more than 5k files
@@ -571,9 +571,19 @@ async function containedIn(root: string, paths: readonly string[]): Promise<stri
     lexDirs.push(path.dirname(p))
   }
   if (lexical.length === 0) return []
-  const realRoot = await realpath(root).catch(() => root)
+  // Sync, as `hashFile`'s lstat: a realpath is microseconds, and the
+  // promise round trip per call was most of this function's cost on every
+  // miss (B, 2026-09-30).
+  const real = (p: string): string | null => {
+    try {
+      return realpathSync(p)
+    } catch {
+      return null
+    }
+  }
+  const realRoot = real(root) ?? root
   const uniqueDirs = [...new Set(lexDirs)]
-  const resolved = await Promise.all(uniqueDirs.map((d) => realpath(d).catch(() => null)))
+  const resolved = uniqueDirs.map(real)
   const contained = new Set<string>()
   for (const [i, dir] of uniqueDirs.entries()) {
     const real = resolved[i]
@@ -795,7 +805,7 @@ export async function resolveWorkspaceOutputs(args: {
   // deliberately ignore PROJECT boundaries — that is the escape hatch — but
   // escaping the WORKSPACE was never part of it, and `cleanWorkspaceOutputs`
   // deletes what this returns.
-  return (await containedIn(args.workspaceRoot, scanned)).sort()
+  return containedIn(args.workspaceRoot, scanned).sort()
 }
 
 /**
