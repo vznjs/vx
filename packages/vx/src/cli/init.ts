@@ -216,11 +216,17 @@ function remoteCacheSignal(root: string, runner: 'turbo' | 'nx'): string | undef
       } catch {
         continue
       }
-      if (typeof rc === 'object' && rc !== null && (rc as { enabled?: unknown }).enabled !== false)
+      if (typeof rc === 'object' && rc !== null) {
+        // Turned off in turbo.json is off, whatever CI sets.
+        if ((rc as { enabled?: unknown }).enabled === false) return undefined
         return `${f} names a remoteCache`
+      }
     }
   }
   const variable = REMOTE_CACHE_ENV[runner]
+  // A line that sets it (`TURBO_TOKEN: …`, `TURBO_TOKEN=…`), not one that
+  // names it: a comment or a doc line counted as "sets" (J's lead).
+  const sets = new RegExp(`^(?!\\s*#).*\\b${variable}\\s*[:=]`, 'm')
   const workflows = new Bun.Glob('.github/workflows/*.{yml,yaml}')
   const files = [...workflows.scanSync({ cwd: root, dot: true })].sort().concat(CI_FILES)
   for (const f of files) {
@@ -230,7 +236,7 @@ function remoteCacheSignal(root: string, runner: 'turbo' | 'nx'): string | undef
     } catch {
       continue
     }
-    if (text.includes(variable)) return `${f} sets ${variable}`
+    if (sets.test(text)) return `${f} sets ${variable}`
   }
   return undefined
 }

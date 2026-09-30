@@ -852,6 +852,22 @@ describe('vx init — the generated build is not a cached no-op', () => {
       ],
       ['disabled', { 'turbo.json': '{ "remoteCache": { "enabled": false } }\n' }],
       ['nx with a Turbo token', { 'nx.json': '{}\n', '.gitlab-ci.yml': 'TURBO_TOKEN: x\n' }],
+      // A line that names the variable does not set it (J's lead).
+      [
+        'a comment naming TURBO_TOKEN',
+        {
+          'turbo.json': '{}\n',
+          '.github/workflows/ci.yml': 'jobs:\n  # TURBO_TOKEN comes later\n  b: { runs-on: x }\n',
+        },
+      ],
+      // Turned off in turbo.json is off, whatever CI sets.
+      [
+        'disabled, with a CI token',
+        {
+          'turbo.json': '{ "remoteCache": { "enabled": false } }\n',
+          '.github/workflows/ci.yml': 'env:\n  TURBO_TOKEN: ${{ secrets.T }}\n',
+        },
+      ],
     ] as [string, Record<string, string>][]) {
       const root = await makeScriptsWorkspace()
       try {
@@ -889,6 +905,8 @@ describe('vx init — the generated build is not a cached no-op', () => {
       ],
       disabled: [0, ["import { turbo } from '@vzn/vx-migrate'"]],
       'nx with a Turbo token': [0, ["import { nx } from '@vzn/vx-migrate'"]],
+      'a comment naming TURBO_TOKEN': [0, ["import { turbo } from '@vzn/vx-migrate'"]],
+      'disabled, with a CI token': [0, ["import { turbo } from '@vzn/vx-migrate'"]],
     })
   }, 60_000)
 
