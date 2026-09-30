@@ -34,7 +34,6 @@ and one decimal of precision below 10 of any unit but PB. Powers of 1024.
   cache-size line (`cache entries:    N (1.3 GB)`).
 - `vx last`: each executed task's peak RSS.
 - The run's `cacheRetention` line (`vx: cache retention evicted N entries (1.3 GB)`).
-- Re-exported from `cli/index.ts` for the verbs a plugin adds.
 
 ## Tests
 

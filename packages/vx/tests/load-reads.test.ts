@@ -13,7 +13,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import type { Logger, RunOptions } from '../src/orchestrator/index.js'
 import { prepareRun } from '../src/orchestrator/index.js'
-import { parseRunArgs, resolveRunOptions } from '../src/cli/index.js'
+import { parseRunArgs, resolveRunOptions } from '../src/cli/run.js'
 import { gitInit } from './helpers/workspace.js'
 
 const TIMEOUT = 30_000

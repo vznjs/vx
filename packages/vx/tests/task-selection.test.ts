@@ -14,7 +14,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { writeLocalWorkspace } from './helpers/local-workspace.js'
 import type { Logger } from '../src/orchestrator/index.js'
 import { planRun, run } from '../src/orchestrator/index.js'
-import { resolveRunOptions, parseRunArgs } from '../src/cli/index.js'
+import { resolveRunOptions, parseRunArgs } from '../src/cli/run.js'
 
 const TIMEOUT = 30_000
 let root: string
