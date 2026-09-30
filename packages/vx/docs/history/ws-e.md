@@ -519,3 +519,13 @@ walked on fixtures.
   `unexpected argument`. `refusedWord` (`help.ts`) names both, from the word's `-`.
   Row: `cli.test.ts` › every verb's unknown flag is named a flag, now
   with `lock foo` and `cache prune foo`; red without the change.
+- **E-93.** J-74's lead: `vx why` on a task run past a failed
+  dependency under `--continue=always` said "re-executed on the same key
+  (--no-cache / --force, or unrelated)". The continue-taint runs such a
+  task and never saves it. The verdict now names it when the index shows
+  it: both runs executed and succeeded with the cache writable, no entry
+  holds the key, and each invocation recorded a failure. cli.md says so.
+  Row: `metrics.test.ts` › names why an unchanged key re-executed, the
+  taint case and two controls (one run without a failure, an entry
+  present); red without the change. `previousRun`'s answer keeps its
+  keys (`vx mcp`'s record is unchanged).

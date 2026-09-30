@@ -359,8 +359,8 @@ export interface WhyDidThisRerun {
 function unchangedKeyNote(
   db: Database,
   runId: string,
-  this_: { hash: string; cacheHit: number | null; startedAt: number },
-  prev: { status: string },
+  this_: { hash: string; status: string; cacheHit: number | null; startedAt: number },
+  prev: { status: string; cacheHit: number | null; runId: string | null },
 ): string {
   if (this_.cacheHit === null) {
     return 'cache key unchanged — this run recorded no cache outcome, so whether it re-ran is unknown'
@@ -383,6 +383,24 @@ function unchangedKeyNote(
       at: number
     } | null
   )?.at
+  // Both runs executed the task and succeeded with the cache writable, no
+  // entry holds the key, and each ran beside a failure: the continue-taint
+  // (admission.ts), which runs a task downstream of a failure and never
+  // saves it. Blaming `--no-cache` / `--force` named a flag nobody passed.
+  if (createdAt === undefined && this_.status === 'success' && prev.status === 'success') {
+    const failedWithWrites = (id: string | null): number => {
+      if (id === null) return 0
+      const row = db
+        .query('SELECT cache_policy AS p, failed_count AS f FROM invocations WHERE run_id = ?')
+        .get(id) as { p: string; f: number } | null
+      const writes = row?.p.split(',').some((axis) => axis === 'lW' || axis === 'rW') === true
+      return writes ? (row?.f ?? 0) : 0
+    }
+    const now = failedWithWrites(runId)
+    if (prev.cacheHit === 0 && now > 0 && failedWithWrites(prev.runId) > 0) {
+      return `cache key unchanged — neither run saved it: each ran beside a failed task (${now} failed in this one), and a task run past a failed dependency (--continue) is never cached`
+    }
+  }
   if (createdAt !== undefined && createdAt >= this_.startedAt) {
     return 'cache key unchanged — no entry for this key was in the cache when it ran (pruned or evicted), so it executed and saved one'
   }
@@ -436,12 +454,18 @@ export function whyDidThisRerun(db: Database, runId: string, taskId: string): Wh
   // a key — a statement about inputs, made from no evidence.
   const prev = db
     .query(
-      `SELECT hash, status, cache_hit AS cacheHit, started_at AS startedAt
+      `SELECT hash, status, cache_hit AS cacheHit, started_at AS startedAt, run_id AS runId
        FROM runs WHERE project = ? AND task = ? AND id < ? AND ${KEYED_RUNS_SQL}
        ORDER BY id DESC LIMIT 1`,
     )
     .get(project, task, this_.id) as
-    | { hash: string; status: string; cacheHit: number | null; startedAt: number }
+    | {
+        hash: string
+        status: string
+        cacheHit: number | null
+        startedAt: number
+        runId: string | null
+      }
     | undefined
   // …and this run must have one too, or there is nothing to compare.
   const noKey = this_.hash === ''
@@ -457,7 +481,12 @@ export function whyDidThisRerun(db: Database, runId: string, taskId: string): Wh
       startedAt: this_.startedAt,
     },
     previousRun: prev
-      ? { ...prev, cacheHit: prev.cacheHit === null ? null : Boolean(prev.cacheHit) }
+      ? {
+          hash: prev.hash,
+          status: prev.status,
+          cacheHit: prev.cacheHit === null ? null : Boolean(prev.cacheHit),
+          startedAt: prev.startedAt,
+        }
       : null,
     hashChanged: prev && !noKey ? prev.hash !== this_.hash : null,
     note: noKey
