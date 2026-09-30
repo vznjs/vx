@@ -915,4 +915,8 @@ A/B against an origin/main worktree, one workspace copy per arm, every
 rep a full miss, min of 9, two rounds: `--concurrency 1` 1161-1192 ms →
 1067-1141 ms; default concurrency 594-604 → 541-548 ms. A warm run is
 unchanged. The symlinked-output rows fail with the containment check
-admitting everything.
+admitting everything. Lead, not taken: of `describeTaskInputs`' 1.2 ms,
+0.5 is `resolveKeyInput` run again and 0.44 the key folded again, both
+done for the probe already; the second fold captures the miss's input
+rows. Reusing the probe's resolved input is a change to what a miss
+keys and records (stale-hit-critical), so it needs its own item.
