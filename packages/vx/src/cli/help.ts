@@ -48,7 +48,7 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     '  vx upgrade [tag]',
     '  vx show [PROJECT[#TASK] | TASK] [--format pretty|json]',
     '  vx info [--format pretty|json] [--cache-dir <path>]',
-    '  vx why [TASK | PKG#TASK] [--run <runId>] [--format pretty|json] [--cache-dir <path>]',
+    '  vx why (TASK | PKG#TASK) [--run <runId>] [--format pretty|json] [--cache-dir <path>]',
     '  vx last [RUNID] [--list[=N]] [--failed] [--format pretty|json] [--cache-dir <path>]',
     '  vx completions bash|zsh|fish',
     '  vx help [VERB]',

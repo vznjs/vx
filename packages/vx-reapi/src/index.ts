@@ -106,8 +106,8 @@ export interface ReapiPluginOptions extends Partial<ReapiOptions> {
 }
 
 /**
- * Declare in `vx.workspace.ts`; the local store is the floor beneath it, so a
- * remote hit is consulted first:
+ * Declare in `vx.workspace.ts`; the local store is the floor beneath it and is
+ * read first, so the remote is asked only on a local miss:
  *
  * ```ts
  * plugins: [reapi({ endpoint: 'grpc.example.com:443' })]

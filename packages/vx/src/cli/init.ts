@@ -1,7 +1,8 @@
 // `vx init [--dry] [--force] [--mjs]` — a workspace from nowhere: one vx.config.ts
 // per package from its package.json scripts, and the workspace file every
-// run needs. Turbo and Nx are not read here; a runner's own config beside
-// the scripts is the richer source, and `@vzn/vx-migrate` maps it.
+// run needs. In a Turbo or Nx repo it writes only the workspace file,
+// declaring `turbo()` or `nx()` from `@vzn/vx-migrate`, which read the
+// runner's own config live (`adopt`).
 // `vx init --plugin <seam>` writes a runnable plugin for one seam and its
 // test instead (plugin-templates.ts, the examples the gate runs).
 
