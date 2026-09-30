@@ -501,3 +501,14 @@ walked on fixtures.
   load. On a spent deadline the loop now yields once and counts a probe
   that arrived. Row: E-87 in `watch-rules.test.ts`, a spent budget
   with the event queued, red before the fix.
+- **E-88.** Warm-run startup, measured on the release build
+  (`--compile --minify --bytecode`), a two-config no-op `vx run`:
+  `--version` 18 ms, the run 60 ms. A CPU profile put 7 ms in
+  `builtinSnapshot`: the config round's built-in guard (D-74) read every
+  descriptor of `Bun` on every round, which makes Bun build its lazy
+  members (`bun:sql`, `node:stream`), though a round where every config
+  hits evaluates nothing. The snapshot and its check now run only when a
+  config is evaluated here. Interleaved A/B, three rounds of min-of-5,
+  one pre-warmed copy per arm: 65–69 ms → 55–61 ms. Row: `config-cache.test`
+  › "reads no descriptor of `Bun`", 232 reads without the change; the
+  evaluating round is its control.
