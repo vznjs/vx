@@ -129,8 +129,8 @@ enumeration on an unscoped run, the config load on a scoped one
 read stays a spawn of its own: `rev-parse` prints no config value.
 `lazyGitEnumeration` holds a run's whole-tree enumeration: an unscoped
 run starts it at once; a `discover` hook's `worktreeChanges()` starts it
-on a scoped one (and in the CLI's `--filter` pass, which hands it to the
-run in `RunOptions.discovered`), and the run then reuses it rather than
+on a scoped one (and in the CLI's `--filter` pass, whose discovery the
+run takes over: `gitOfDiscovery` finds its enumeration), and the run then reuses it rather than
 spawn a scoped walk too (G-75).
 `applyGitEnumeration` folds the result into the run's `GitFilesCache`, which `inputs.ts`'s `resolveFiles`
 reads: a tracked-clean path carries a trusted OID and skips both the

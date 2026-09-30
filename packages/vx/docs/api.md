@@ -1664,7 +1664,7 @@ export interface RunOptions {
   projects?: string[]
   selectedByDiff?: boolean
   staged?: ReadonlyMap<string, ProjectEntry>
-  discovered?: { root: string; projects: ProjectMeta[]; git?: LazyGitEnumeration }
+  discovered?: { root: string; projects: ProjectMeta[] }
   concurrency?: number
   cacheDir?: string
   cache?: CachePolicy

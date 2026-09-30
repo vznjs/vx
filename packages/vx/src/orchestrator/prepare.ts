@@ -54,6 +54,7 @@ import {
 } from './plugin-host.js'
 import {
   discoverProjects,
+  gitOfDiscovery,
   loadProjects,
   loadWorkspacePlugins,
   type LoadedProjects,
@@ -181,7 +182,9 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   // in the CLI's selection pass; the run reuses it instead of walking the
   // tree twice (G-75).
   const reused = options.discovered?.root === workspaceRoot ? options.discovered : undefined
-  const git = reused?.git ?? lazyGitEnumeration(workspaceRoot)
+  const git =
+    (reused !== undefined ? gitOfDiscovery(reused.projects) : undefined) ??
+    lazyGitEnumeration(workspaceRoot)
   if (unscoped) void git.start()
   const workspace = await loadWorkspace(workspaceRoot, reads)
   const { workspaceConfig, plugins } = await loadWorkspacePlugins(workspaceRoot, (m) =>

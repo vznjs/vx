@@ -57,6 +57,17 @@ export async function loadWorkspacePlugins(
 }
 
 /**
+ * The enumeration a discovery's `discover` hooks shared, by the array it
+ * returned: a run handed that array (`RunOptions.discovered`, the CLI's
+ * `--filter` pass) reuses the walk a hook started instead of a second one.
+ */
+const discoveredGit = new WeakMap<readonly ProjectMeta[], LazyGitEnumeration>()
+
+export function gitOfDiscovery(projects: readonly ProjectMeta[]): LazyGitEnumeration | undefined {
+  return discoveredGit.get(projects)
+}
+
+/**
  * The workspace's projects: core's discovery, then the plugin `discover`
  * stage. With no plugin declaring it, `listProjects` alone.
  */
@@ -70,6 +81,7 @@ export async function discoverProjects(
 ): Promise<ProjectMeta[]> {
   const projects = await listProjects(workspace)
   if (!hasHook(plugins, 'discover')) return projects
+  discoveredGit.set(projects, git)
   const worktreeChanges = (): Promise<readonly string[] | null> =>
     git.start().then(
       (e) => e.changed,
