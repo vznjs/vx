@@ -1620,9 +1620,10 @@ lockfile names (at the workspace root: pnpm's `-w`, Yarn 1's `-W`,
 which Yarn Berry lacks), then run the config's `build` (else its first task).
 An existing workspace file is kept and named unless it already
 declares the plugin; `--force` replaces it. When the repo shows a remote
-cache — turbo.json's `remoteCache` (unless `enabled: false`), or
-`TURBO_TOKEN` / `NX_SELF_HOSTED_REMOTE_CACHE_SERVER` set in
-`.github/workflows/*`, `.gitlab-ci.yml` or `.circleci/config.yml` — it
+cache — turbo.json's `remoteCache`, or a line setting `TURBO_TOKEN` /
+`NX_SELF_HOSTED_REMOTE_CACHE_SERVER` (`NAME:` or `NAME=`, not a comment)
+in `.github/workflows/*`, `.gitlab-ci.yml` or `.circleci/config.yml`,
+and turbo.json does not say `remoteCache.enabled: false` — it
 declares `turboCache()` / `nxCache()` beside the runner and names the
 file that showed it (a kept file lacking it is told to add it); the
 plugin is inert where its variable is unset.

@@ -396,8 +396,8 @@ export class LayeredCache implements CacheLayer {
     const remoteBody = remoteResult as { body: Blob | Response; durationMs?: number }
 
     // Ingest the remote body into local using the caller-supplied
-    // taskId/command plus the remote-reported durationMs. The remote
-    // layer carries durationMs as an HTTP header (x-artifact-duration);
+    // taskId/command plus the remote-reported durationMs, which `get`
+    // returns beside the body (the layer decides where it reads it from);
     // taskId + command come from the orchestrator's TaskNode in scope.
     // Without `ctx`, we can't populate a meaningful entries row, so
     // ingest with placeholders — caller-side typing nudges everyone

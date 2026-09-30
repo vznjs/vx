@@ -519,6 +519,13 @@ walked on fixtures.
   `unexpected argument`. `refusedWord` (`help.ts`) names both, from the word's `-`.
   Row: `cli.test.ts` › every verb's unknown flag is named a flag, now
   with `lock foo` and `cache prune foo`; red without the change.
+- **E-92.** J's lead: `vx init`'s remote-cache signal matched a CI file
+  with `text.includes(variable)`, so a comment naming `TURBO_TOKEN` read
+  as "sets TURBO_TOKEN" and declared `turboCache()`, and a CI token did
+  so even where turbo.json says `remoteCache.enabled: false`. A line must
+  now set it (`NAME:` or `NAME=`, not a `#` line), and a disabled
+  turbo.json wins. cli.md says so. Rows: `init.test.ts` › a remote cache
+  the repo shows, two cases added; red without the fix.
 - **E-93.** J-74's lead: `vx why` on a task run past a failed
   dependency under `--continue=always` said "re-executed on the same key
   (--no-cache / --force, or unrelated)". The continue-taint runs such a
