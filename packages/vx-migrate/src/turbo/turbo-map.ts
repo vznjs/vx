@@ -835,7 +835,7 @@ export async function mapTurboWorkspace(
             rootDotenv,
             rootMeta?.name,
             { name: meta.name, persistentAt, withOf },
-          inferredOf.get(meta.name) ?? [],
+            inferredOf.get(meta.name) ?? [],
           ),
         )
         continue
