@@ -153,6 +153,23 @@ server's pid dead within 5 s, with no timer in the claim. Both red with
 `holdGroups` made a no-op (item 865's hold); 15 of 15 green with two
 busy loops per core.
 
+M-15. `sandbox-bridge-socket.unsafe.test.ts` › is removed when the task
+ends: not root-caused; what was refuted, so the next probe starts past
+it. The one recorded text (J-69, and D's gate) is SRT's, not the row's:
+"Linux HTTP bridge socket does not exist: /tmp/claude-http-*.sock …
+the bridge process may have died", thrown by SRT's wrap before the task
+ran. SRT's host socat removes that socket when it exits, and it is a
+plain child of the test process. Refuted here: the row's positive
+racing its task (a task of `true` still sees the socket; bind is
+47-55 ms idle, 150-254 ms with four busy loops per core, 4 of 4 green
+pinned to one loaded CPU), SRT's start eating the poll (`initSandbox`
+in `beforeEach` starts it), and a deferred `resetSandbox()` (a server
+alive at reset) fired by the server's release after the next
+`initSandbox`: 20 bridged tasks started 0-100 ms after that release,
+twice, all ran, and a task after the reset was still sandboxed. No
+test signals the test process's group or kills socat by name. Left:
+what killed SRT's socat, or unlinked its socket, in a loaded gate.
+
 ## Leads for other streams
 
 - A: A-20 let a same-project dependant restore ahead of a producer whose
