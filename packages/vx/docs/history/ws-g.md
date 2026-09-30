@@ -39,6 +39,16 @@ collapsed: create-t3-turbo 25 of 25 tasks and astro 122 of 122 agree.
    their apps) is reported "not representable", and `^typecheck` follows
    package.json only; each could be an explicit `pkg#target` edge.
 
+7. turbo() on Turbo's own 34 examples (2026-09-30, `examples/` at
+   main): every one plans without a refusal. The one recurring gap is
+   item 1031's wildcard-first output rule: `*.tsbuildinfo` (both
+   module-federation examples, 3 builds each) and `**/*.tsbuildinfo`
+   (with-nextjs-elysia's `type-check`) run uncached. A-44 already takes
+   committed files back, so the rule now guards only untracked,
+   unignored files the glob matches; admitting a glob whose last
+   segment is a fixed build-artifact suffix is an owner call (a magic
+   list), not taken here.
+
 ## Leads for other streams
 
 - **C/E:** in a `turbo()` workspace, `vx run build --all --dry=json`
@@ -53,6 +63,12 @@ collapsed: create-t3-turbo 25 of 25 tasks and astro 122 of 122 agree.
   counts `sent: 3` where it expects 4 under load: 2 of 3 runs failed
   while a gate ran beside it, 0 of 4 idle, and it failed G-3's re-gate.
   The retry count depends on time, not on the retry rule.
+- **C:** nx()'s graph key runs its own `git status --porcelain -z
+-uall` (item 1075); core's early enumeration runs the same command
+  beside it. refine: 60 ms median; scoping by pathspec does not help
+  (two top dirs 60 ms, all 206 project roots 124 ms). A project-hook
+  context field for the worktree status (HEAD + that output) would let
+  nx() drop its spawn (I-6 measured 417 → 321 ms with the key bounded).
 - **B:** `sandbox-runtime.unsafe.test.ts` rows are load-sensitive: on
   PR #1324's CI "control: `localBinding: true` binds inside the
   namespace and the host sees nothing" read `r.ok` true (expected
@@ -730,7 +746,9 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   (cal.com: 4 of 114 workspace digests). nx() cacheability against Nx's:
   ngrx 58 and analog 88 tasks, no diff. Lead: vercel/ai's 68 builds
   output `**/dist/**` and run uncached; caching them needs a core clean
-  that skips tracked files and `node_modules`.
+  that skips tracked files and `node_modules`. (Stale by 2026-09-30:
+  vercel/ai's turbo.json now names `dist/**`, `.next/**` minus
+  `!.next/cache/**`, all literal-rooted and cached.)
 - **G-65.** typescript-eslint (2369384, Nx 23.2): `vx run typecheck`
   was refused by core. The root project caches `{projectRoot}/dist`
   (the workspace's `dist`) and each package's typecheck
@@ -845,6 +863,18 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   names back, as Turbo applies them. The migrate CLI keeps the note.
   Row (`turbo-map-sweep` › a live mapping infers a framework env
   prefix): red without it; `lib` without the framework is the control.
+- **G-76.** Next 25 closed on a measurement. A generated 300-project Nx
+  workspace (`test` on `default` + `^production`; 293 `nx-input` twins)
+  against the same graph without `^production`, warm, stage mins of 7
+  under a hermetic git config: `classify + probe` 28.0 → 45.4 ms,
+  `run graph` 12.3 → 21.1, `record history` 6.3 → 11.8, `load configs`
+  30.1 → 35.4, `build graph` 1.4 → 4.2: ~39 ms, ~0.13 ms a twin. A CPU
+  profile (8 runs, 100 µs) spreads the keying over `resolveFiles` (~30
+  µs a task: glob matching, path joins, per-task output matchers), the
+  config and manifest digests, and the fold; no site above ~2.5 ms. Under
+  this container's global `core.checkStat=minimal` every input is hashed
+  from disk (1,486 `hashFile` calls a warm run, 0 with
+  `GIT_CONFIG_GLOBAL=/dev/null`), as `vx-bench/ab.ts` already guards.
 - **G-75.** nx()'s graph key ran its own whole-tree `git status -uall`
   beside core's enumeration (I-6: refine 417 ms median, 321 with the key
   bounded). `DiscoverContext.worktreeChanges()` hands a `discover` hook
