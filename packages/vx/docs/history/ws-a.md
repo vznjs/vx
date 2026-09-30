@@ -467,3 +467,7 @@ At `ulimit -n 13` over a 20-project workspace with a cache on disk, a run printe
 The fold joins each plugin key part as `name\0value`, so `{ 'a\0b': 'c' }` and `{ a: 'b\0c' }` folded the same bytes: two materials, one key. `applyKeyHooks` now refuses a name holding a NUL, naming the plugin and task, as the schema already does for env names and runtime commands. A NUL in a value still folds (the name ends at the first NUL).
 
 - Row (`plugin-pipeline.test.ts` › "a NUL in a key part name is refused; one in a value folds"), red without the fix.
+
+### A-58 — stale cache comments (2026-09-30, J's leads)
+
+`key-fold.ts`'s version history stopped at v31; v32–v36 each name their item now. `ORPHAN_GRACE_MS` described the save order before A-3 (the rename now sits inside the row transaction). `LayeredCache` said a remote carries the duration as an `x-artifact-duration` header; `get` returns it beside the body. `holdPersistent` said only the requested tasks are handed back (C-46 keeps their persistent dependencies too); `api.md` regenerated. Comments only.

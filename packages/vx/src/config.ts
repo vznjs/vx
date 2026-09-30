@@ -261,8 +261,10 @@ export interface SandboxGrants {
    */
   write?: string[]
   /**
-   * Reachable domains. `true` allows all, `['*.example.com']` a pattern.
-   * Omitted means no network at all.
+   * Reachable domains, `['*.example.com']` a pattern. The proxy is the
+   * run's: it filters every sandboxed task against the union of the lists
+   * the run's tasks declare, so `true` adds no domain and reaches only
+   * those (none in a run with no list). Omitted adds none either.
    */
   network?: true | string[]
   /**

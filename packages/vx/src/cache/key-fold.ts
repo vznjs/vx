@@ -87,6 +87,15 @@ import type { CacheKeyInput } from './layer.js'
 // never folded and saved what it built. The fix withholds that link unless
 // the key answers for the package, but an entry saved before it still hits
 // after the sibling changes (probed: the old output replayed).
+// v32: an artifact saved before non-UTF-8 names were refused lacks that
+// output under an unchanged key (item 739).
+// v33: an entry saved after an input changed under a running task sits
+// under the key the fixed code derives once the tree is back (item 743).
+// v34: the same for an in-run lockfile rewrite (item 750).
+// v35: the sidecar records the key and ingest refuses a mismatch; a v34
+// artifact records none (item 943).
+// v36: each artifact ends in a `.vx-sum` CRC-32 of its entries, checked on
+// scan and restore; a v35 artifact has none (L-19).
 export const CACHE_VERSION = 'vx-cache-v36'
 
 /**
