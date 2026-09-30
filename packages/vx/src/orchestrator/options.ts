@@ -41,7 +41,8 @@ export interface RunOptions {
   staged?: ReadonlyMap<string, ProjectEntry>
   /**
    * The projects a selection pass in this same process discovered under
-   * `root` (`--filter`, `--affected`). The run takes them instead of
+   * `root` (`--filter`, `--affected`, the project a run from inside one
+   * is in). The run takes them instead of
    * walking the workspace again when its root is the same. One run only,
    * as `staged` is.
    */
