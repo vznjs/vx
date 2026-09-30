@@ -23,14 +23,15 @@ Nothing has to be written to find out what vx does for the repo. `nx()`
 from `@vzn/vx-migrate` fills vx's `project` stage from the resolved
 project graph, so every project's targets are vx tasks with their
 inputs, outputs and `dependsOn`, and `vx run build --all` runs what
-`nx run-many -t build` ran, under vx's cache:
+`nx run-many -t build` ran, under vx's cache. `npx vx init` writes the
+one file beside `nx.json`, and its `next:` line installs
+`@vzn/vx-migrate` and runs the build:
 
 ```ts
-// vx.workspace.ts — the only file
-import { defineWorkspace } from '@vzn/vx'
+import type { WorkspaceConfig } from '@vzn/vx'
 import { nx } from '@vzn/vx-migrate'
 
-export default defineWorkspace({ plugins: [nx()] })
+export default { plugins: [nx()] } satisfies WorkspaceConfig
 ```
 
 Executor targets keep running as executors. Each becomes an `nx-exec`
