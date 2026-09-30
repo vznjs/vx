@@ -875,3 +875,9 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   this container's global `core.checkStat=minimal` every input is hashed
   from disk (1,486 `hashFile` calls a warm run, 0 with
   `GIT_CONFIG_GLOBAL=/dev/null`), as `vx-bench/ab.ts` already guards.
+- **G-78.** `vx init`'s `next:` line in a Yarn 1 repo said
+  `yarn add -D @vzn/vx …`, which Yarn 1 refuses at a workspace root
+  without `-W` (J-76's lead). A lockfile without Berry's `__metadata`
+  now gets `-W`; Berry, which has no such flag, keeps the plain form.
+  Row (`init.test` › the next step installs with the repo's own package
+  manager, a Yarn 1 and a Berry lockfile): red without the fix.

@@ -43,7 +43,7 @@ next: npm install -D @vzn/vx-migrate && npx vx run build --all
 ```
 
 The `next:` line uses your lockfile's manager (`pnpm add -D -w …` beside
-`pnpm-lock.yaml`) and names only what is not installed yet.
+`pnpm-lock.yaml`, `yarn add -D -W …` beside a Yarn 1 lockfile) and names only what is not installed yet.
 `vx init --dry` prints the file instead of writing it; `--mjs` writes
 `vx.workspace.mjs` without the type import. An existing
 `vx.workspace.ts` that does not declare `turbo()` is left alone: add it

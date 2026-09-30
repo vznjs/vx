@@ -263,7 +263,22 @@ export function adoptionNext(root: string, runner: 'turbo' | 'nx', source: strin
   const vx = process.env['npm_config_user_agent'] === undefined ? 'vx' : `${EXEC[pm]} vx`
   const task = firstTask(path.join(root, source), runner)
   const run = `${vx} run ${task} --all`
-  return missing.length === 0 ? run : `${INSTALL[pm]} ${missing.join(' ')} && ${run}`
+  if (missing.length === 0) return run
+  // Yarn 1 refuses `add` at a workspace root without `-W`; Berry has no such
+  // flag and refuses it. A Berry lockfile carries `__metadata`.
+  const install =
+    pm === 'yarn' && !readText(path.join(root, 'yarn.lock')).includes('__metadata:')
+      ? `${INSTALL.yarn} -W`
+      : INSTALL[pm]
+  return `${install} ${missing.join(' ')} && ${run}`
+}
+
+function readText(file: string): string {
+  try {
+    return readFileSync(file, 'utf8')
+  } catch {
+    return ''
+  }
 }
 
 /** `build` when the runner's config names it, else the first task it names. */
