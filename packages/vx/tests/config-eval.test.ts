@@ -794,19 +794,34 @@ describe('the evaluation deadline', () => {
     // left a timer armed for the DEFAULT 30s; a cycle up to 30 seconds later
     // could die with "config worker did not answer within 30000ms" — naming a
     // budget nobody set for it, for a config that was fine.
-    // 1000, not 250: the round's worker spawn took over 250 ms on a loaded
-    // macOS runner (M-10). The slow round below must outlast it.
-    process.env[BUDGET_ENV] = '1000'
-    const broken = await write(`throw new Error('typo in preset')\n`)
-    expect(await settleOrHang(evaluateConfigFresh(broken), 5000)).toBe('REJECTED typo in preset')
+    // The rejected load's budget must not pay for a worker spawn: on a
+    // loaded macOS runner a spawn outlasted 1000 ms (M-10, D), and the
+    // load timed out instead of rejecting. A held round spawns its worker
+    // first, under a generous budget; the budget below then covers only an
+    // import in a live worker. The round shares that worker, which is the
+    // one an orphan timer terminates.
+    const end = beginEvalRound()
+    try {
+      process.env[BUDGET_ENV] = '10000'
+      const warm = await write('export default {}\n')
+      expect(await settleOrHang(evaluateConfigFresh(warm), 12_000)).toBe('RESOLVED {}')
 
-    // A healthy config with a generous budget of its own, deliberately still in
-    // flight when the previous round's timer WOULD have fired (1000ms). It
-    // must resolve on its own terms.
-    process.env[BUDGET_ENV] = '4000'
-    const slow = await write('await Bun.sleep(1200)\nexport default { tasks: { ok: {} } }\n')
-    expect(await settleOrHang(evaluateConfigFresh(slow), 5000)).toBe('RESOLVED {"tasks":{"ok":{}}}')
-  }, 15_000)
+      process.env[BUDGET_ENV] = '1000'
+      const broken = await write(`throw new Error('typo in preset')\n`)
+      expect(await settleOrHang(evaluateConfigFresh(broken), 5000)).toBe('REJECTED typo in preset')
+
+      // Started after the rejection, it sleeps past the whole 1000 ms from
+      // the rejected load's start, so an orphaned timer fires while it is
+      // in flight. It must resolve on its own budget.
+      process.env[BUDGET_ENV] = '4000'
+      const slow = await write('await Bun.sleep(1200)\nexport default { tasks: { ok: {} } }\n')
+      expect(await settleOrHang(evaluateConfigFresh(slow), 5000)).toBe(
+        'RESOLVED {"tasks":{"ok":{}}}',
+      )
+    } finally {
+      end()
+    }
+  }, 25_000)
 })
 
 describe('a config is JSON data, on every path (item 701)', () => {

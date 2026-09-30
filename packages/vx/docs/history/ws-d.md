@@ -798,3 +798,13 @@ packages/core`) selects the dependent whose `file:../lib` spec named
   replaced or deleted, and refuses naming each variable. Assigned back:
   `process.env` refuses `defineProperty` (probed). Rows: the two D-76
   rows of `tests/project-loader.test.ts`, red with `restoreEnv` removed.
+- **D-77.** `config-eval.test` › a REJECTED evaluation does not poison a
+  later one timed out on loaded macOS runners ("config worker did not
+  answer within 1000ms"): the rejected load's 1000 ms budget paid for
+  the worker's spawn, and it had to stay below the slow load's 1200 ms
+  sleep for the orphan timer to land inside it. The row now holds a
+  round whose worker a first load spawns under a 10 s budget, so the
+  1000 ms covers an import in a live worker; the slow load starts after
+  the rejection, so it outlasts the orphan by construction. Red with
+  the `clearTimeout` moved back after the await; 5 of 5 green with two
+  busy loops per core.

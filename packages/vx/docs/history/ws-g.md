@@ -786,6 +786,25 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   warm 41 cached in 1.3 s; `@unocss/vscode#build` rewrites its README
   input, the same class). `--all` there fails `playground` and a test
   fixture, which import unocss without declaring it, as Turbo would.
+- **G-69.** langfuse (turbo.json `"cacheMaxSize": "7.5GB"`) did not load
+  under turbo(): core takes a whole-number size and refused the
+  workspace. Turbo's grammar (turborepo-cache `parse_human_size`,
+  `parse_human_duration`) is 1024-based, truncates a fraction to bytes,
+  and reads a bare size as bytes and a bare age as days; the mapper now
+  restates each in core's (`7680MB`, `1000000B`, `30d`). langfuse then
+  plans build 9, typecheck 10, test 9 and lint 9 as Turbo does. Row
+  (`workspace-keys.test` › the cache bounds take Turbo's grammar): red
+  without it.
+- **G-68.** Turbo's `interruptible` (a persistent task `turbo watch` may
+  restart) was an unknown key: "has no vx equivalent — map it manually".
+  `vx watch` stops and re-spawns every persistent task each cycle, so
+  either value maps to nothing; a non-boolean is refused as Turbo does.
+  Row (`turbo.test` › interruptible maps to nothing): red without it.
+  Also probed, plan parity against `turbo --dry=json` 2.10.13:
+  documenso (build 5, start 5, test:e2e 3, clean 12) and mastra (build
+  188, lint 167, validate:package, clean) exact; mastra's typecheck and
+  dev miss the builds Turbo runs only as a no-op's `^build` (G-64's n8n
+  class, not replicated).
 - **G-70.** rallly (turbo 2.6.3): `build: [^build, ^db:generate]` and
   only `database` has a `db:generate` script, so every other `build` is
   Turbo's no-op node. `web#build:test` → `^build` reaches them, and
