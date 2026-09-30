@@ -1416,6 +1416,28 @@ describe('the clean empties a tree without reaching past it', () => {
     expect(await tree(projectDir)).toEqual(['dist/', 'dist/keep/', 'dist/keep/stray.txt'])
   })
 
+  it('before a miss, the clean keeps each glob’s root and prunes below it (B-49)', async () => {
+    const w = async (rel: string) => {
+      await mkdir(path.dirname(path.join(projectDir, rel)), { recursive: true })
+      await writeFile(path.join(projectDir, rel), 'x')
+    }
+    const seed = async () => {
+      await rm(projectDir, { recursive: true, force: true })
+      await w('dist/a/x.js')
+      await w('build/out/y.js')
+      await w('gen/z.txt')
+    }
+    // A literal (`gen/z.txt`) and a glob rooted at the project (`*.map`) keep nothing.
+    const outputs = ['dist/**', 'build/out/*.js', 'gen/z.txt', '*.map']
+    await seed()
+    await cleanOutputs({ projectDir, outputs, nestedProjectDirs: [], keepGlobRoots: true })
+    expect(await tree(projectDir)).toEqual(['build/', 'build/out/', 'dist/'])
+    // CONTROL: without the flag (a restore) every emptied directory goes.
+    await seed()
+    await cleanOutputs({ projectDir, outputs, nestedProjectDirs: [] })
+    expect(await tree(projectDir)).toEqual([])
+  })
+
   it('a sibling whose name EXTENDS the project’s is outside it', async () => {
     // `isInside` appends the separator before comparing, and that is the
     // whole guard: `<root>/pkg-extra/x` starts with `<root>/pkg`. Drop it

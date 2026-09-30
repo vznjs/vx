@@ -933,3 +933,18 @@ workspace copy per arm, min of 9, two rounds: `--concurrency 1`
 → 506 (noise). Rows at 128 and 129 outputs hold removal, pruning to
 the top and the named refusal on both paths; each path's prune and
 refusal mutants fail them.
+
+B-49. The unsandboxed miss path re-ranked on main (100 one-file tasks,
+`--force`, `--concurrency 1`, CPU profile): the output clean 1.9 ms per
+task (its `pruneEmptiedDirs` 0.84, nearly all `rmdirSync` of `dist`),
+the save 0.6, the task hash 0.34. Cut: before a miss the clean keeps
+the directory each wildcard output glob is rooted at (`dist` for
+`dist/**`); the task writes there, so the remove bought an rmdir and
+the task's mkdir. Deeper emptied directories still go, so a shape
+change on a miss works, and a restore prunes as before. Interleaved
+A/B against an origin/main worktree, one workspace copy per arm, min
+of 9, two rounds: `--concurrency 1` 504 → 481 and 487 → 442 ms;
+`--concurrency 4` 254 → 239 and 244 → 228 ms. Rows: B-49 in
+`inputs-resolution.test.ts` (red with the keep filter removed) and in
+`output-shape.test.ts` (red with the miss path not passing the flag;
+the inode number was no discriminator, ext4 reuses it).

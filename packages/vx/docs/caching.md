@@ -1164,7 +1164,9 @@ restores to nothing. So does a link whose target is outside the
 project: vx reads outputs outside the task's sandbox, and a planted
 link packed a file the task could not read (L-23). The clean before exec and restore removes every
 file AND symlink the output globs cover (a link is unlinked, never
-followed) and prunes the directories it emptied, so a task whose
+followed) and prunes the directories it emptied (before a miss it keeps
+the directory a wildcard glob is rooted at, `dist` for `dist/**`, as the
+task writes there), so a task whose
 output changed shape — `dist/out` a directory one run and a file the
 next — restores either entry over the other's tree; a stray the globs
 do not cover, or an empty directory where the entry holds a file, that
