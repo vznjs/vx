@@ -276,6 +276,11 @@ when the server behind it goes away, or a stream that ends with no gRPC
 status. The same three statuses are what re-attach a dropped execution
 stream.
 
+A server that stays down pays that backoff once: after a call spends its
+retries on UNAVAILABLE, the cache path's calls (unary, Read, Write) give up
+at their first UNAVAILABLE until the server answers again, so a refused port
+costs a five-task run 2.6 s, not 24.
+
 A status the server answers with and no retry heals (PERMISSION_DENIED on
 Execute, a refused upload) fails the task with a line naming the task and
 the status, never as a vx "internal error".
