@@ -100,8 +100,9 @@ import { CACHE_VERSION, foldKey } from './key-fold.js'
 /**
  * An artifact or temp file without an `entries` row is reaped by
  * `prune()` only once it is this old. A save renames the artifact into
- * place and commits its row in the same tick; a crashed save's temp is
- * stale long before this. Generous on purpose — a false orphan costs a
+ * place inside its `BEGIN IMMEDIATE` row transaction (A-3), so a live
+ * artifact without a row is one whose commit failed and was taken back
+ * out; a crashed save's temp is stale long before this. Generous on purpose — a false orphan costs a
  * re-run, a leaked temp costs disk.
  */
 const ORPHAN_GRACE_MS = 60 * 60 * 1000
