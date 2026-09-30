@@ -68,6 +68,7 @@ Rules:
 - `cache: false` or `persistent: true` → no `cache` block; a persistent task gets `exec.persistent: {}` and, when some task depends on it, the consumer's `persistentTodo`.
 - A task's `description` (Turbo 2.11.5's schema) is the vx task's `description`.
 - `outputLogs: "new-only"` maps to nothing: frames for the tasks that ran and a one-liner per cache hit is vx's default flow already. The other values are per-run in vx, so they are a todo naming the flag (`vx run … --output-logs hash-only`).
+- `interruptible` maps to nothing: `vx watch` stops and re-spawns every persistent task each cycle.
 - `envMode: "loose"` (top-level or in `global`) is a note: Turbo hands every task the whole environment, vx only the declared names.
 - The workspace keys vx has a home for, top level or in `global`, fill what `vx.workspace.ts` leaves unset: `concurrency` (`"10"`, `"50%"` of the cores) → `concurrency`; `cacheMaxSize` / `cacheMaxAge` (`"0"` is off; weeks become days, a bare number days; a size in Turbo's grammar, `7.5GB` or bare bytes, restated whole: `7680MB`) → `cacheRetention.maxSize` / `.olderThan`.
 - Turbo 2.11's `global` block (`futureFlags.globalConfiguration`) is read as the `globalDependencies`, `globalEnv` and `globalPassThroughEnv` it replaces.
