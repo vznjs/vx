@@ -619,7 +619,9 @@ derivation, step 12). This covers a formatter rewriting its own input
 that rewrites its own input to the SAME bytes (`sed -i` always writes)
 is not saved either: its write cannot be told from an edit reverted
 mid-run, so it pays a re-run each time rather than risk a stale entry;
-declare what it writes as an output. Not seen: a file ADDED under an input glob
+declare what it writes as an output, which the status line says when it
+names a file other than `package.json` (TanStack Router's committed
+`routeTree.gen.ts`, rewritten by every build). Not seen: a file ADDED under an input glob
 mid-run (the listing is not taken again; the next run's key holds the
 file, so a stale hit needs it to vanish again). Cost: one `lstat` per
 input on a miss that saves; a hit runs no command and checks nothing.

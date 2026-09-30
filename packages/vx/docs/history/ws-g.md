@@ -770,3 +770,19 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   are group tasks, which a dry run does not list); its root
   `update-rule-configs` names `utils:build`, and no project is `utils`,
   so that todo is the repo's own dead edge.
+- **G-67.** A real `vx run build --all` on TanStack/router under nx():
+  every file-based router app regenerates its committed
+  `src/routeTree.gen.ts` (same bytes) during its build, so core withholds
+  the save each run (item 1015: a write during the command cannot be
+  told from an edit reverted mid-run) and the task never caches. The
+  status line named the file and not the way out; it now ends "if the
+  task writes it, declare it in cache.outputs" (not for `package.json`,
+  which an output may not cover). `caching.md` says so. Rows
+  (`inputs-moved.test` › six named-file rows, red without it; the
+  `package.json` row is the control). Also probed: typescript-eslint's
+  real build (58 tasks, warm all cached in 2.0 s, tree clean) and lint
+  (76 tasks; `cache: false` in Nx too); unocss's real build under
+  turbo() with the repo's own `--filter='./packages-*/*'` (42 tasks,
+  warm 41 cached in 1.3 s; `@unocss/vscode#build` rewrites its README
+  input, the same class). `--all` there fails `playground` and a test
+  fixture, which import unocss without declaring it, as Turbo would.

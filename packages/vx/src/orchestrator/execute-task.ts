@@ -1146,9 +1146,17 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     endCheck()
     if (moved === undefined) return true
     const what = moved === null ? 'its inputs' : `\`${relPosix(args.workspaceRoot, moved)}\``
+    // A task that regenerates its own input (TanStack Router's committed
+    // `routeTree.gen.ts`, rewritten to the same bytes by every build) is
+    // never saved (item 1015), and the line said so without the way out.
+    // Not for `package.json`, which an output may not cover.
+    const hint =
+      moved === null || path.basename(moved) === 'package.json'
+        ? ''
+        : '; if the task writes it, declare it in cache.outputs'
     log.status(
       `[vx] ${node.id}: ${what} changed after its key was taken — the result stands, ` +
-        `but is not saved under a key that no longer describes it`,
+        `but is not saved under a key that no longer describes it${hint}`,
     )
     forgetUndeclaredWrites(args, wsOutputs.length > 0 ? 'workspace' : 'project')
     unkeyed = true
