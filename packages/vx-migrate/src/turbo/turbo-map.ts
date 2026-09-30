@@ -89,6 +89,10 @@ const KNOWN_TASK_KEYS = new Set([
   'dotEnv',
   'command',
   'description',
+  // `turbo watch` restarts a persistent task only when it says so; `vx
+  // watch` stops and re-spawns every persistent task each cycle, so either
+  // value maps to nothing.
+  'interruptible',
 ])
 
 // Turbo's per-task `outputLogs` against vx's per-run `--output-logs`.
@@ -217,7 +221,7 @@ const TOP_LISTS = [
 ]
 const GLOBAL_LISTS = ['inputs', 'env', 'passThroughEnv']
 const TASK_LISTS = ['dependsOn', 'outputs', 'env', 'passThroughEnv', 'with', 'dotEnv']
-const TASK_FLAGS = ['cache', 'persistent', 'interactive']
+const TASK_FLAGS = ['cache', 'persistent', 'interactive', 'interruptible']
 
 /**
  * The shape of every field the mapper reads, refused by name. A number
