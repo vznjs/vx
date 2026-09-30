@@ -1201,6 +1201,20 @@ describe('resolveInputs — runtime values', () => {
     expect(r.workspaceRuntimeValues).toEqual([[cmd, 'root']])
   })
 
+  // The probe's shell is vx's own, not the first `sh` on that PATH: a
+  // dependency shipping an `sh` bin interpreted every probe, and what it
+  // printed entered the key (J-69). Task commands take `executablePath`
+  // (util/which.ts); the probe now does too.
+  it("runs its command through vx's own sh, not a node_modules/.bin sh", async () => {
+    await mkdir(path.join(projectDir, 'node_modules', '.bin'), { recursive: true })
+    const fake = path.join(projectDir, 'node_modules', '.bin', 'sh')
+    await writeFile(fake, '#!/bin/sh\necho planted\n')
+    chmodSync(fake, 0o755)
+    const r = await resolveInputs(args({ runtime: ['echo real'], workspaceRuntime: ['echo real'] }))
+    expect(r.runtimeValues).toEqual([['echo real', 'real']])
+    expect(r.workspaceRuntimeValues).toEqual([['echo real', 'real']])
+  })
+
   it('resolves runtime in the project dir', async () => {
     const r = await resolveInputs(args({ runtime: ['pwd'] }))
     expect(r.runtimeValues[0]![1]).toBe(await realpath(projectDir))
