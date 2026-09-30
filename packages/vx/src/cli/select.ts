@@ -118,7 +118,20 @@ async function loadWorkspaceProjects(cwd: string): Promise<ProjectMeta[]> {
 }
 
 export async function findCwdProject(cwd: string): Promise<string | null> {
-  const projects = await loadWorkspaceProjects(cwd)
+  return (await findCwdSelection(cwd))?.name ?? null
+}
+
+/**
+ * The project `cwd` is in, and the discovery that found it, for the run to
+ * reuse (`RunOptions.discovered`): discovering again ran every `discover`
+ * hook twice (`nx()`'s graph load and worktree key among them).
+ */
+export async function findCwdSelection(
+  cwd: string,
+): Promise<{ name: string; discovered: { root: string; projects: ProjectMeta[] } } | null> {
+  const reads: LoadReads = new Map()
+  const root = await findWorkspaceRoot(cwd, reads)
+  const projects = await discoverCliProjects(await loadWorkspace(root, reads))
   const abs = path.resolve(cwd)
   const within = (dirOf: (p: ProjectMeta) => string): string | null => {
     let best: string | null = null
@@ -137,7 +150,7 @@ export async function findCwdProject(cwd: string): Promise<string | null> {
   // so inside such a member nothing matched and a run from there was "not
   // inside a project" (item 1025). Only then are the members realpathed:
   // one syscall each, paid only by a run no plain match could place.
-  return (
+  const name =
     within((p) => p.dir) ??
     within((p) => {
       try {
@@ -146,7 +159,7 @@ export async function findCwdProject(cwd: string): Promise<string | null> {
         return p.dir
       }
     })
-  )
+  return name === null ? null : { name, discovered: { root, projects } }
 }
 
 export type FilterResolution =

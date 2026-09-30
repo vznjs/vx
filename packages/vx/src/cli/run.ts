@@ -15,7 +15,7 @@ import {
 } from '../orchestrator/index.js'
 import type { ContinueMode } from '../graph/index.js'
 import { type CachePolicy, FULL_CACHE_POLICY, parseCachePolicy } from '../cache/index.js'
-import { findCwdProject, pickTask, resolveFilters } from './select.js'
+import { findCwdSelection, pickTask, resolveFilters } from './select.js'
 import { nxTargetHint, taskNamesHere } from './task-verb.js'
 import { MAX_TIMEOUT_MS, isUserError, parseDecimalInt, machineParallelism } from '../util/index.js'
 import { formatGraphDot, formatPlanJson, formatPlanText } from './plan-format.js'
@@ -511,7 +511,7 @@ export async function resolveRunOptions(
   } else if (parsed.all) {
     projects = undefined
   } else {
-    const cwdProject = await findCwdProject(cwd)
+    const cwdProject = await findCwdSelection(cwd)
     if (!cwdProject) {
       const nx = await nxTargetHint(tasks, cwd)
       if (nx !== null) return { error: nx }
@@ -520,7 +520,8 @@ export async function resolveRunOptions(
           'not inside a project. Pass --all for every project, --filter <pattern> to filter, or run from within a project directory.',
       }
     }
-    projects = [cwdProject]
+    projects = [cwdProject.name]
+    discovered = cwdProject.discovered
   }
 
   const opts: RunOptions = {

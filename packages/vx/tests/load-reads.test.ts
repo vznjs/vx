@@ -137,6 +137,29 @@ describe('a run reads each root file once', () => {
   )
 
   it(
+    "a run from inside a project discovers the workspace once: the run takes the cwd lookup's projects",
+    async () => {
+      // Differential: with the cwd lookup's discovery not handed to the
+      // run, discovery (every `discover` hook with it) runs twice.
+      const ops = await fileOps(async () => {
+        const parsed = parseRunArgs(['build'])
+        const opts = (await resolveRunOptions(
+          parsed,
+          path.join(root, 'packages', 'a'),
+          parsed.tasks,
+        )) as RunOptions
+        const p = await prepareRun({ ...opts, concurrency: 1 }, log)
+        p.cache.close()
+        expect([...p.nodes.keys()]).toEqual(['a#build'])
+      })
+      // Discovery's read is the `text`; the `exists` + `bytes` pairs are the
+      // root search from `packages/a`, one per lookup of the root.
+      expect(ops['packages/a/package.json']?.filter((op) => op === 'text')).toEqual(['text'])
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a watch cycle is a new run: the next run in the process reads the edited manifest',
     async () => {
       // `vx watch` runs every cycle in one process. What a run learns is
