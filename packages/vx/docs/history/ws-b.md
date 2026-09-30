@@ -920,3 +920,16 @@ admitting everything. Lead, not taken: of `describeTaskInputs`' 1.2 ms,
 done for the probe already; the second fold captures the miss's input
 rows. Reusing the probe's resolved input is a change to what a miss
 keys and records (stale-hit-critical), so it needs its own item.
+
+B-48. A miss's output clean removes up to 128 paths synchronously
+(`SYNC_CLEAN_MAX`, `cache/inputs.ts`), and the parallel async `rm` /
+`rmdir` only past it: the threadpool round trip cost more than the
+unlink (1 file 0.30 → 0.13 ms, 128 files 1.7 → 1.5, min of 7; 512
+files async wins, 4.5 against 5.4). The awaits also let the previous
+task's save run ahead of this task's spawn. 100 one-file tasks,
+`--force`, interleaved A/B against an origin/main worktree, one
+workspace copy per arm, min of 9, two rounds: `--concurrency 1`
+1034 → 907 and 979 → 898 ms; default concurrency 527 → 542 and 515
+→ 506 (noise). Rows at 128 and 129 outputs hold removal, pruning to
+the top and the named refusal on both paths; each path's prune and
+refusal mutants fail them.

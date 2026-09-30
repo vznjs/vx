@@ -9,6 +9,7 @@ import { chmodSync, existsSync } from 'node:fs'
 import {
   mkdir,
   mkdtemp,
+  readdir,
   readFile,
   realpath,
   rm,
@@ -93,6 +94,42 @@ describe('cleanOutputs — strict output-ownership contract', () => {
       }
     },
   )
+
+  // Up to 128 paths a clean removes synchronously, past it in parallel
+  // (`SYNC_CLEAN_MAX`); both sides of the boundary hold the same contract.
+  for (const n of [128, 129]) {
+    it(`${n} outputs, one directory each: every one removed, emptied directories pruned to the top`, async () => {
+      for (let i = 0; i < n; i++) await write(path.join(projectDir, 'dist', `d${i}`, 'f.js'))
+      await write(path.join(projectDir, 'src', 'x.js'), 'source')
+
+      const cleaned = await cleanOutputs({
+        projectDir,
+        outputs: ['dist/**/*.js'],
+        nestedProjectDirs: [],
+      })
+
+      expect(cleaned.length).toBe(n)
+      expect(await readdir(projectDir)).toEqual(['src'])
+      expect(await readFile(path.join(projectDir, 'src', 'x.js'), 'utf8')).toBe('source')
+    })
+
+    it.skipIf(skipAsRoot(`${n} outputs: one it cannot remove is named`))(
+      `${n} outputs: one it cannot remove is named`,
+      async () => {
+        for (let i = 0; i < n - 1; i++) await write(path.join(projectDir, 'dist', `a${i}.js`))
+        await write(path.join(projectDir, 'locked', 'z.js'))
+        const locked = path.join(projectDir, 'locked')
+        chmodSync(locked, 0o500)
+        try {
+          await expect(
+            cleanOutputs({ projectDir, outputs: ['dist/**', 'locked/**'], nestedProjectDirs: [] }),
+          ).rejects.toThrow(/^cannot remove declared output locked\/z\.js: EACCES — /)
+        } finally {
+          chmodSync(locked, 0o700)
+        }
+      },
+    )
+  }
 
   it('does NOT touch files outside declared output globs (the contract)', async () => {
     // Sources are not declared as output; cleanOutputs must leave them.
