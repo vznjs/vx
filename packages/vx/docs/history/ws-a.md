@@ -56,7 +56,7 @@ package matched the workspace's package globs`. Found while reproducing
   A-41; not traced.
 - G: since A-44 core takes `!` in `cache.outputs`, so the mappers can pass it through. `turbo-map.ts` still runs a task uncached when a `!` narrows a wildcard (medusa's `*/**` minus `!src/**`, `!node_modules/**`) and todo-drops one under a literal root; `nx-outputs.ts` drops every `!` output with a todo. Mapped as-is, the clean, save and restore leave the taken-back paths alone and they stay inputs.
 - J: `benchmarks.md` (the medusa note) says vx has "no output negation" and runs that task uncached; true until A-44.
-- C: the run-end output-directory snapshot (lead 4) vouches for a stray an unsandboxed dependant writes into an upstream's output directory after its save or restore, so later hits skip the walk and the stray survives, green. The fix needs `run.ts` (the snapshot call) and `hit-restore.ts` (its direct call) to pass the task's additions predicate, so the snapshot can refuse a file outside the entry's rows and outside the additions; `OutputIndex.recordOutputDirs` can take the predicate.
+- DONE (item 1087). C: the run-end output-directory snapshot (lead 4) vouches for a stray an unsandboxed dependant writes into an upstream's output directory after its save or restore, so later hits skip the walk and the stray survives, green. The fix needs `run.ts` (the snapshot call) and `hit-restore.ts` (its direct call) to pass the task's additions predicate, so the snapshot can refuse a file outside the entry's rows and outside the additions; `OutputIndex.recordOutputDirs` can take the predicate.
 
 ## Record
 
