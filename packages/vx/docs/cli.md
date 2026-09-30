@@ -1616,7 +1616,8 @@ the root) it writes `vx.workspace.ts` declaring `turbo()` or `nx()`
 from `@vzn/vx-migrate` and nothing else: those read the repo's own
 config live, so no task is copied. The `next:` line is one command:
 install what the file imports and is missing, with the manager the
-lockfile names, then run the config's `build` (else its first task).
+lockfile names (at the workspace root: pnpm's `-w`, Yarn 1's `-W`,
+which Yarn Berry lacks), then run the config's `build` (else its first task).
 An existing workspace file is kept and named unless it already
 declares the plugin; `--force` replaces it. When the repo shows a remote
 cache — turbo.json's `remoteCache` (unless `enabled: false`), or
