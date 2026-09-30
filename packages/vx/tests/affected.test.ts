@@ -818,6 +818,29 @@ describe('affectedProjects', () => {
       }
     })
 
+    // bun.lock names a patch by path, so a patch edit leaves it byte-identical
+    // while the fingerprint folds the patch's content: the same condition.
+    it('an edit to a patch bun.lock names selects every project', async () => {
+      const lock = '{"lockfileVersion":1,"patchedDependencies":{"x@1.0.0":"patches/x@1.0.0.patch"}}'
+      await writeFile(path.join(root, 'bun.lock'), lock)
+      await mkdir(path.join(root, 'patches'), { recursive: true })
+      await writeFile(path.join(root, 'patches/x@1.0.0.patch'), 'v1\n')
+      await writeFile(path.join(root, 'patches/other.patch'), 'v1\n')
+      await git(root, 'add', '.')
+      await git(root, 'commit', '-q', '-m', 'patch')
+
+      // Control: a patch file the lockfile does not name moves nothing.
+      await writeFile(path.join(root, 'patches/other.patch'), 'v2\n')
+      expect([
+        ...(await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects })),
+      ]).toEqual([])
+      const before = await computeWorkspaceFingerprint(root)
+      await writeFile(path.join(root, 'patches/x@1.0.0.patch'), 'v2\n')
+      expect(await computeWorkspaceFingerprint(root)).not.toBe(before)
+      const out = await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects })
+      expect([...out].sort()).toEqual(['a', 'b'])
+    })
+
     it('a DELETED lockfile widens too', async () => {
       // Removing a lockfile changes the fingerprint exactly as editing one
       // does — the hash skips files that are absent. `git diff` reports the

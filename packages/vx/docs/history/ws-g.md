@@ -891,3 +891,15 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   git status per run: a logging git on PATH counts one `status` for an
   unscoped, a scoped and an edited run): red without the hand-over (2),
   and red for the scoped run without the CLI carrying it.
+- **G-77.** A stale hit on core's floor. `bun.lock` records a patch by
+  path, so `bun patch --commit` with a new edit leaves it byte-identical
+  while the install applies the new patch; item 1014 taught `bun()`'s
+  claim, and core's own fingerprint (every workspace without the plugin)
+  still replayed the old outputs. Core now folds each patch
+  `patchedDependencies` names (inside the workspace; a lockfile without
+  the key is not parsed), into the key digest while `bun.lock` is
+  unclaimed, and `--affected` widens on its edit, which item 1014 left
+  open for the plugin too. Rows (`fingerprint.test` › bun.lock's patch
+  files, with an unnamed patch, a claimed lockfile and an outside path as
+  controls; `affected.test` › an edit to a patch bun.lock names): red
+  without the fold, and the `--affected` row red without its widening.

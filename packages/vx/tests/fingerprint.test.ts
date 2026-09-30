@@ -361,3 +361,51 @@ describe('a claimed file — `VxPlugin.fingerprint` takes it out of the key dige
     expect(yarnBumped.unclaimed).not.toBe(both.unclaimed)
   })
 })
+
+// bun.lock records a patch by PATH (`patchedDependencies`), so an edited
+// patch leaves it byte-identical while `bun install` applies the new one.
+// Core folds each named patch's content; without it every key stayed put
+// and the old artifacts replayed (item 1014 fixed `bun()`'s claim alone).
+describe("bun.lock's patch files", () => {
+  const LOCK =
+    '{\n  "lockfileVersion": 1,\n  "patchedDependencies": {\n    "is-number@7.0.0": "patches/is-number@7.0.0.patch",\n  },\n}\n'
+
+  it('an edit to a named patch moves the digest; an unnamed one does not', async () => {
+    const dir = workspace({
+      'bun.lock': LOCK,
+      'patches/is-number@7.0.0.patch': 'v1\n',
+      'patches/stray.patch': 'v1\n',
+    })
+    const before = await computeWorkspaceFingerprints(dir, new Set())
+    writeFileSync(path.join(dir, 'patches/stray.patch'), 'v2\n')
+    expect(await computeWorkspaceFingerprints(dir, new Set())).toEqual(before)
+    writeFileSync(path.join(dir, 'patches/is-number@7.0.0.patch'), 'v2\n')
+    const after = await computeWorkspaceFingerprints(dir, new Set())
+    expect(after.unclaimed).not.toBe(before.unclaimed)
+    expect(after.all).not.toBe(before.all)
+    rmSync(path.join(dir, 'patches/is-number@7.0.0.patch'))
+    expect((await computeWorkspaceFingerprints(dir, new Set())).unclaimed).not.toBe(after.unclaimed)
+  })
+
+  it("a claimed bun.lock leaves its patches to the claim's plugin", async () => {
+    const dir = workspace({ 'bun.lock': LOCK, 'patches/is-number@7.0.0.patch': 'v1\n' })
+    const claimed = new Set(['bun.lock'])
+    const before = await computeWorkspaceFingerprints(dir, claimed)
+    writeFileSync(path.join(dir, 'patches/is-number@7.0.0.patch'), 'v2\n')
+    const after = await computeWorkspaceFingerprints(dir, claimed)
+    expect(after.unclaimed).toBe(before.unclaimed)
+    expect(after.all).not.toBe(before.all)
+  })
+
+  it('a lockfile with no patches, or one outside the workspace, keys as before', async () => {
+    const plain = workspace({ 'bun.lock': '{"lockfileVersion":1}' })
+    const outer = workspace({
+      'ws/bun.lock': '{"lockfileVersion":1,"patchedDependencies":{"a@1":"../a.patch"}}',
+    })
+    const outside = path.join(outer, 'ws')
+    const first = await computeWorkspaceFingerprints(outside, new Set())
+    writeFileSync(path.join(outer, 'a.patch'), 'x')
+    expect(await computeWorkspaceFingerprints(outside, new Set())).toEqual(first)
+    expect((await computeWorkspaceFingerprints(plain, new Set())).files.size).toBe(1)
+  })
+})

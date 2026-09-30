@@ -277,7 +277,7 @@ the key sees the change whatever git is told to show.
 re-write never marks every project affected.
 
 **A lockfile change selects everything.** The root lockfiles,
-`pnpm-workspace.yaml`, `.yarnrc.yml`, `.npmrc` and `bunfig.toml` are folded into the [workspace
+`pnpm-workspace.yaml`, `.yarnrc.yml`, `.npmrc`, `bunfig.toml` and the patches `bun.lock` names are folded into the [workspace
 fingerprint](./caching.md), which is part of _every_ task's cache key —
 so a `bun install` / `pnpm update` invalidates the whole cache. Those
 files sit at the workspace root and belong to no project, so mapping

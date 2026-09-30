@@ -26,7 +26,16 @@ export function computeWorkspaceFingerprints(
   claimed: ReadonlySet<string>,
   reads?: LoadReads,
 ): Promise<WorkspaceFingerprints>
+export function bunPatchFiles(bytes: Uint8Array): string[] // the patches a bun.lock names
 ```
+
+`bun.lock` names a patch by path (`patchedDependencies`), never by its
+content, so an edited patch leaves it byte-identical while `bun install`
+applies the new one. Each named patch inside the workspace folds after
+the files above (its path, then its bytes or `gone`), into `unclaimed`
+only while no plugin claims `bun.lock` (`bun()` folds them itself, item
+1014). A lockfile without the key is not parsed. `--affected` widens on
+a named patch's edit as on a lockfile's (`affected.ts`).
 
 Every file goes through the load's `reads` (workspace.md), so the
 `pnpm-workspace.yaml` discovery already read is folded from those bytes
