@@ -310,8 +310,40 @@ describe('turbo-map: what the sweep found unheld', () => {
     }
     const m = await mapTurboWorkspace(root, metas, opts)
     expect(m.notes).toEqual([
-      'Turbo infers next in web and hashes and passes NEXT_PUBLIC_* to its tasks; vx env names are explicit — list the ones they read in cache.inputs.env and exec.env.passThrough',
+      'Turbo infers nextjs in web and hashes and passes NEXT_PUBLIC_*, NEXT_DEPLOYMENT_ID to its tasks; vx env names are explicit — list the ones they read in cache.inputs.env and exec.env.passThrough',
       'Turbo infers vite in site and hashes and passes VITE_* to its tasks; vx env names are explicit — list the ones they read in cache.inputs.env and exec.env.passThrough',
+    ])
+  })
+
+  // Turbo's whole table, first match per package: a Next app on vite is
+  // Next's alone, SvelteKit adds PUBLIC_*, `some` takes one dependency
+  // (react-dev-utils), `all` needs each (solid-js without solid-start is
+  // nothing), and a literal name (NEXT_DEPLOYMENT_ID) is keyed as named.
+  it("a live mapping takes the first framework of Turbo's table", async () => {
+    await writeFile(path.join(root, 'turbo.json'), JSON.stringify({ tasks: { build: {} } }))
+    const metas: ProjectMeta[] = []
+    for (const [name, deps] of [
+      ['next', { dependencies: { next: '15', vite: '6' } }],
+      ['kit', { devDependencies: { '@sveltejs/kit': '2', vite: '6' } }],
+      ['cra', { devDependencies: { 'react-dev-utils': '12' } }],
+      ['expo', { optionalDependencies: { expo: '52' } }],
+      ['solid', { dependencies: { 'solid-js': '1' } }],
+    ] as const) {
+      const dir = path.join(root, 'packages', name)
+      await mkdir(dir, { recursive: true })
+      const packageJson = { name, scripts: { build: 'b' }, ...deps }
+      metas.push({ name, dir, packageJson: packageJson as never, configPath: null })
+    }
+    const live = ['NEXT_PUBLIC_A', 'VITE_X', 'PUBLIC_Y', 'REACT_APP_Z', 'EXPO_PUBLIC_W']
+    const m = await mapTurboWorkspace(root, metas, { ...opts, envNames: live })
+    const env = (p: number) =>
+      (m.projects[p]!.tasks[0]!.task!['cache'] as { inputs: { env?: unknown } }).inputs.env
+    expect([0, 1, 2, 3, 4].map(env)).toEqual([
+      ['NEXT_PUBLIC_A', 'NEXT_DEPLOYMENT_ID'],
+      ['VITE_X', 'PUBLIC_Y'],
+      ['REACT_APP_Z'],
+      ['EXPO_PUBLIC_W'],
+      undefined,
     ])
   })
 
@@ -338,7 +370,7 @@ describe('turbo-map: what the sweep found unheld', () => {
     const env = (p: number) =>
       (m.projects[p]!.tasks[0]!.task!['cache'] as { inputs: { env?: unknown } }).inputs.env
     expect({ web: env(0), lib: env(1), notes: m.notes }).toEqual({
-      web: ['NEXT_PUBLIC_A', 'API'],
+      web: ['NEXT_PUBLIC_A', 'NEXT_DEPLOYMENT_ID', 'API'],
       lib: ['API'],
       notes: [],
     })

@@ -115,19 +115,80 @@ const KNOWN_TASK_KEYS = new Set([
 const OUTPUT_LOGS_DEFAULT = 'new-only'
 const OUTPUT_LOGS_RUN_FLAG = new Set(['full', 'hash-only', 'errors-only', 'none'])
 
-// Turbo 2's framework inference: a package that depends on one of these
-// has every variable with the prefix hashed into its tasks and passed to
-// them, with nothing in turbo.json saying so. vx env names are explicit,
-// so the variables were stripped in silence and a build that inlines them
+// Turbo 2's framework inference: a package that depends on a framework
+// has its variables hashed into its tasks and passed to them, with
+// nothing in turbo.json saying so. vx env names are explicit, so the
+// variables were stripped in silence and a build that inlines them
 // (Next's `NEXT_PUBLIC_*`) read empty values (item 940). A live mapping
 // (`envNames`) infers them as Turbo does; the migrate CLI names them in a
-// note. Only the frameworks whose prefix is certain are listed.
-const FRAMEWORK_ENV: ReadonlyArray<readonly [dependency: string, prefixes: string]> = [
-  ['next', 'NEXT_PUBLIC_*'],
-  ['vite', 'VITE_*'],
-  ['react-scripts', 'REACT_APP_*'],
-  ['gatsby', 'GATSBY_*'],
-  ['astro', 'PUBLIC_*'],
+// note. Turbo's own table (`packages/turbo-types/src/json/frameworks.json`),
+// in its order: a package takes the FIRST framework it matches, `all`
+// needing every dependency and `some` any one.
+const NITRO_ENV = [
+  'NITRO_*',
+  'SERVER_*',
+  'AWS_APP_ID',
+  'INPUT_AZURE_STATIC_WEB_APPS_API_TOKEN',
+  'CLEAVR',
+  'CF_PAGES',
+  'FIREBASE_APP_HOSTING',
+  'NETLIFY',
+  'STORMKIT',
+  'NOW_BUILDER',
+  'ZEABUR',
+  'RENDER',
+]
+const FRAMEWORK_ENV: ReadonlyArray<{
+  slug: string
+  env: readonly string[]
+  all: boolean
+  dependencies: readonly string[]
+}> = [
+  { slug: 'astro', env: ['PUBLIC_*'], all: true, dependencies: ['astro'] },
+  { slug: 'blitzjs', env: ['NEXT_PUBLIC_*'], all: true, dependencies: ['blitz'] },
+  {
+    slug: 'create-react-app',
+    env: ['REACT_APP_*'],
+    all: false,
+    dependencies: ['react-scripts', 'react-dev-utils'],
+  },
+  { slug: 'expo', env: ['EXPO_PUBLIC_*'], all: true, dependencies: ['expo'] },
+  { slug: 'gatsby', env: ['GATSBY_*'], all: true, dependencies: ['gatsby'] },
+  {
+    slug: 'nextjs',
+    env: ['NEXT_PUBLIC_*', 'NEXT_DEPLOYMENT_ID'],
+    all: true,
+    dependencies: ['next'],
+  },
+  {
+    slug: 'nitro',
+    env: NITRO_ENV,
+    all: false,
+    dependencies: ['nitropack', 'nitropack-nightly', 'nitro', 'nitro-nightly'],
+  },
+  {
+    slug: 'nuxtjs',
+    env: ['NUXT_*', 'NUXT_ENV_*', ...NITRO_ENV, 'LAUNCH_EDITOR'],
+    all: false,
+    dependencies: ['nuxt', 'nuxt-edge', 'nuxt3', 'nuxt3-edge'],
+  },
+  { slug: 'redwoodjs', env: ['REDWOOD_ENV_*'], all: true, dependencies: ['@redwoodjs/core'] },
+  {
+    slug: 'remix',
+    env: ['REMIX_*'],
+    all: false,
+    dependencies: ['@remix-run/dev', '@remix-run/react', '@remix-run/serve', '@react-router/dev'],
+  },
+  { slug: 'sanity', env: ['SANITY_STUDIO_*'], all: true, dependencies: ['@sanity/cli'] },
+  { slug: 'solidstart', env: ['VITE_*'], all: true, dependencies: ['solid-js', 'solid-start'] },
+  { slug: 'sveltekit', env: ['VITE_*', 'PUBLIC_*'], all: true, dependencies: ['@sveltejs/kit'] },
+  { slug: 'vite', env: ['VITE_*'], all: true, dependencies: ['vite'] },
+  {
+    slug: 'vue',
+    env: ['VUE_APP_*', 'LAUNCH_EDITOR'],
+    all: true,
+    dependencies: ['@vue/cli-service'],
+  },
 ]
 
 /** The three global fields of turbo.json a task may draw on. */
@@ -292,7 +353,8 @@ function tasksOf(cfg: TurboJson): Record<string, TurboTask> {
 
 function declares(meta: ProjectMeta, dependency: string): boolean {
   const pj = meta.packageJson as unknown as Record<string, unknown>
-  return ['dependencies', 'devDependencies'].some((field) => {
+  // Turbo counts every kind but a peer in a monorepo.
+  return ['dependencies', 'devDependencies', 'optionalDependencies'].some((field) => {
     const deps = pj[field]
     return typeof deps === 'object' && deps !== null && Object.hasOwn(deps, dependency)
   })
@@ -792,22 +854,25 @@ export async function mapTurboWorkspace(
 
   // A live mapping infers as Turbo does: the prefix joins each task's env
   // list, where the task's own `!` entries can take names back.
-  const inferredOf = new Map<string, string[]>()
-  for (const [dependency, prefixes] of FRAMEWORK_ENV) {
-    const users = metas
-      .filter((m) => emitted.get(m.name)!.size > 0 && declares(m, dependency))
-      .map((m) => m.name)
-    if (users.length === 0) continue
-    if (opts.envNames !== undefined) {
-      for (const u of users) inferredOf.set(u, [...(inferredOf.get(u) ?? []), prefixes])
-      continue
-    }
+  const inferredOf = new Map<string, readonly string[]>()
+  const usersOf = new Map<(typeof FRAMEWORK_ENV)[number], string[]>()
+  for (const m of metas) {
+    if (emitted.get(m.name)!.size === 0) continue
+    const fw = FRAMEWORK_ENV.find((f) =>
+      f.all
+        ? f.dependencies.every((d) => declares(m, d))
+        : f.dependencies.some((d) => declares(m, d)),
+    )
+    if (fw === undefined) continue
+    if (opts.envNames !== undefined) inferredOf.set(m.name, fw.env)
+    else usersOf.set(fw, [...(usersOf.get(fw) ?? []), m.name])
+  }
+  for (const [fw, users] of usersOf)
     notes.push(
-      `Turbo infers ${dependency} in ${users.join(', ')} and hashes and passes ${prefixes} to ` +
+      `Turbo infers ${fw.slug} in ${users.join(', ')} and hashes and passes ${fw.env.join(', ')} to ` +
         'its tasks; vx env names are explicit — list the ones they read in cache.inputs.env ' +
         'and exec.env.passThrough',
     )
-  }
 
   const projects: TurboMappedProject[] = []
   for (const meta of metas) {
