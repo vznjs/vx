@@ -12,10 +12,8 @@ const ROOT = path.resolve(import.meta.dir, '..', '..', '..')
 const readme = readFileSync(path.join(ROOT, 'README.md'), 'utf8')
 const bench = readFileSync(path.join(ROOT, 'packages/vx/docs/benchmarks.md'), 'utf8').split('\n')
 
-const section = readme.slice(
-  readme.indexOf('## Tried on real repos'),
-  readme.indexOf('## How it compares'),
-)
+const start = readme.indexOf('## Tried on real repos')
+const section = readme.slice(start, readme.indexOf('\n## ', start + 1))
 const rows = section.split('\n').filter((l) => l.startsWith('| ['))
 
 describe("the README's real-repo table", () => {
