@@ -201,6 +201,11 @@ export function seeHelp(verb: string): string {
   return ` (see \`vx ${verb} --help\`)`
 }
 
+/** How a verb names a word it refuses: a flag, or a positional it takes no more of. */
+export function refusedWord(arg: string): string {
+  return arg.startsWith('-') ? 'unknown flag' : 'unexpected argument'
+}
+
 /**
  * `(did you mean --concurrency?)` for a flag within two edits of one `verb`
  * accepts; empty for anything else (a positional included). A third edit

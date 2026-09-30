@@ -216,7 +216,7 @@ describe('vx lock (e2e)', () => {
       await addProject(root, 'app', ENV_CONFIG)
       const typo = await vx(root, ['lock', '--chek'], {})
       expect(typo.code).toBe(1)
-      expect(typo.err).toContain('vx lock: unknown argument: --chek')
+      expect(typo.err).toContain('vx lock: unknown flag: --chek')
       expect(typo.out).toBe('')
       // The audit a CI step asked for must not become a write that passes.
       expect(await Bun.file(path.join(root, 'vx-lock.json')).exists()).toBe(false)

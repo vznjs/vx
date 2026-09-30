@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs'
 import { Cache, noteSchemaReset } from '../cache/index.js'
-import { flagHint, seeHelp } from './help.js'
+import { flagHint, refusedWord, seeHelp } from './help.js'
 import { nearest, parseDuration, parseSize } from '../util/index.js'
 import { acquireRunLock } from '../orchestrator/index.js'
 import { findWorkspaceRoot } from '../workspace/index.js'
@@ -121,7 +121,7 @@ export function parsePruneArgs(args: readonly string[]): PruneArgs {
       const cd = parseCacheDirFlag(args, i)
       if (cd === null)
         return {
-          error: `unknown argument: ${a}${flagHint('cache prune', a ?? '')}${seeHelp('cache')}`,
+          error: `${refusedWord(a ?? '')}: ${a}${flagHint('cache prune', a ?? '')}${seeHelp('cache')}`,
         }
       if ('error' in cd) return { error: cd.error }
       out.cacheDir = cd.cacheDir

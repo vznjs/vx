@@ -512,3 +512,10 @@ walked on fixtures.
   one pre-warmed copy per arm: 65–69 ms → 55–61 ms. Row: `config-cache.test`
   › "reads no descriptor of `Bun`", 232 reads without the change; the
   evaluating round is its control.
+- **E-89.** J-54's lead: `vx info --formt`, `vx lock --chek` and
+  `vx cache prune --dry-rn` said `unknown argument` where every other
+  verb says `unknown flag`, and a stray positional to those three read
+  the same, where `init`, `last`, `why` and `show` say
+  `unexpected argument`. `refusedWord` (`help.ts`) names both, from the word's `-`.
+  Row: `cli.test.ts` › every verb's unknown flag is named a flag, now
+  with `lock foo` and `cache prune foo`; red without the change.
