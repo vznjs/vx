@@ -68,7 +68,7 @@ files written:
   packages/app/vx.config.ts
   packages/lib/vx.config.ts
 
-next: vx run build --all
+next: bunx vx run build --all
 ```
 
 ### Try it in five minutes

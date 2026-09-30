@@ -185,3 +185,4 @@
   Turbo and Nx only). K cut them from the README and landing (K-20, K-21).
 - **I**: `update-site.ts` gained the chart (K-1); it is stream I's file.
 - **K-34** The migrate guide is Turbo and Nx only, its `vx init` file, output, cache line and `vx-migrate` report held byte-exact by `try-it.unsafe.test.ts`; the README leads with both benchmark tables.
+- **K-35** The migrate guide's `bunx @vzn/vx-migrate` report ended `next: vx run build --all`; bunx runs it as `bun/…` in `npm_config_user_agent`, so it prints `next: bunx vx run build --all`. `try-it.unsafe.test.ts` spawned the bin with no runner named and held the wrong line; it now spawns it as bunx does (probed: `bun/1.4.2 npm/? …`). The quickstart's `pnpm add -D @vzn/vx` at a workspace root was checked and stands: pnpm 10 accepts it without `-w`.

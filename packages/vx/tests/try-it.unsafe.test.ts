@@ -314,10 +314,12 @@ describe('the migrate guide shows what vx init and vx-migrate write', () => {
 
     const [migrateCmd, migrateOut] = transcript(migrateFence!)
     expect(migrateCmd).toBe('bunx @vzn/vx-migrate')
+    // As `bunx` runs it: bunx names itself in `npm_config_user_agent`, and
+    // the report's `next:` line names the runner that started it.
     const migrate = Bun.spawnSync({
       cmd: [process.execPath, path.join(PACKAGES, 'vx-migrate', 'src', 'bin.ts')],
       cwd: root,
-      env: { ...process.env, NO_COLOR: '1' },
+      env: { ...process.env, NO_COLOR: '1', npm_config_user_agent: `bun/${Bun.version}` },
       stdout: 'pipe',
       stderr: 'pipe',
     })
