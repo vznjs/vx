@@ -19,19 +19,19 @@ changes is where the config lives and what it can say.
 
 `turbo()` from `@vzn/vx-migrate` fills vx's `project` stage from your existing
 `turbo.json` and each package's scripts. One file, and the repository
-runs under vx:
-
-```ts
-// vx.workspace.ts
-import { defineWorkspace } from '@vzn/vx'
-import { turbo } from '@vzn/vx-migrate'
-
-export default defineWorkspace({ plugins: [turbo()] })
-```
+runs under vx. `vx init` writes it beside `turbo.json`:
 
 ```bash
-bun add -d @vzn/vx @vzn/vx-migrate   # or npm / pnpm / yarn
-vx run build --all
+npm install -D @vzn/vx       # or pnpm / yarn / bun
+npx vx init                  # writes vx.workspace.ts, below, and prints next:
+npm install -D @vzn/vx-migrate && npx vx run build --all   # the next: line
+```
+
+```ts
+import type { WorkspaceConfig } from '@vzn/vx'
+import { turbo } from '@vzn/vx-migrate'
+
+export default { plugins: [turbo()] } satisfies WorkspaceConfig
 ```
 
 That is how solidjs/solid was [benchmarked](../honest-benchmarks/):

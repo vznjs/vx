@@ -333,3 +333,22 @@ describe('the migrate guide shows what vx init and vx-migrate write', () => {
     expect(readFileSync(path.join(root, 'vx.workspace.ts'), 'utf8')).toBe(file!)
   }, 60_000)
 })
+
+// The from-Turborepo and from-Nx posts show the file `vx init` writes: the
+// README's, which the rows above hold to a run.
+describe('the migration posts show the file vx init writes', () => {
+  const blog = path.join(PACKAGES, 'vx-docs', 'src', 'content', 'docs', 'blog')
+  const firstTs = (name: string): string =>
+    /```ts\n([\s\S]*?)```/.exec(readFileSync(path.join(blog, name), 'utf8'))?.[1] ?? ''
+  const file = readmeSteps().workspaceFile
+
+  it('from-turborepo', () => {
+    expect(firstTs('from-turborepo.md')).toBe(file)
+  })
+
+  it('from-nx', () => {
+    expect(firstTs('from-nx.md')).toBe(
+      file.replace('import { turbo }', 'import { nx }').replace('[turbo()]', '[nx()]'),
+    )
+  })
+})
