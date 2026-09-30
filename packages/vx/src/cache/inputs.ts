@@ -79,6 +79,10 @@ const ALWAYS_IGNORE = [
   // file that a CONCURRENT compile is mid-write, racing to EACCES/ENOENT. Always
   // exclude it (vx is Bun-native; compiling standalone binaries is a common task).
   '**/*.bun-build',
+  // …and, cross-compiling for a target its cache lacks, the directory it
+  // extracts the downloaded runtime into, `<cwd>/.<16 hex>-<8 hex>.tmp/`,
+  // 60 MB mid-write under the same race (2026-09-29).
+  '**/.????????????????-????????.tmp/**',
 ]
 
 const DEFAULT_FILE_GLOBS: readonly string[] = ['**/*']

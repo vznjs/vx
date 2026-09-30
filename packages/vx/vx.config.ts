@@ -13,6 +13,18 @@ export const SHARD_COUNT = 12
 // `core.checkStat=minimal`, which vx then declines to trust, A-6) or sign
 // every commit a fixture makes; neither is the code under test.
 const GIT_HERMETIC = { GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' }
+// `bun build --compile --target=bun-<t>` for a target other than the
+// running Bun fetches `@oven/bun-<t>` from the npm registry once, extracts
+// it into `<cwd>/.<hash>-00000000.tmp/` and moves the runtime into
+// `~/.bun/install/cache/bun-<t>-v<version>` (strace, Bun 1.4.2). The task's
+// environment carries no BUN_INSTALL, so its Bun resolves the cache under
+// HOME. The runtime embedded is `bun-<t>-v<the compiling Bun's version>`,
+// and the bundler is that Bun too, so the compile tasks fold its version.
+// The host target reuses the running binary; `check.binary` holds the same
+// grants for a host Bun that is not that target (a baseline build).
+const BUN_RUNTIME_WRITES = ['~/.bun/install/cache/', '.*.tmp/**']
+const BUN_RUNTIME_NETWORK = ['registry.npmjs.org']
+const BUN_VERSION = ['bun --version']
 const SHARDS = Array.from({ length: SHARD_COUNT }, (_, i) => i + 1)
 const shardTask = (i: number) => ({
   description: `bun test, shard ${i} of ${SHARD_COUNT} (dealt by scripts/test-shard.ts)`,
@@ -114,7 +126,8 @@ export default defineProject({
         sandbox: {
           allow: {
             read: ['**/*'],
-            write: ['dist/**'],
+            write: ['dist/**', ...BUN_RUNTIME_WRITES],
+            network: BUN_RUNTIME_NETWORK,
             systemInfo: ['vfs.disk-space'],
           },
           ignore: {
@@ -125,6 +138,7 @@ export default defineProject({
       cache: {
         inputs: {
           files: ['src/**', 'package.json', 'scripts/check-binary.ts'],
+          runtime: BUN_VERSION,
         },
         outputs: { files: [] },
       },
@@ -266,7 +280,8 @@ export default defineProject({
           allow: {
             systemInfo: ['vfs.disk-space'],
             read: ['.'],
-            write: ['dist/vx-linux-x64'],
+            write: ['dist/vx-linux-x64', ...BUN_RUNTIME_WRITES],
+            network: BUN_RUNTIME_NETWORK,
           },
           ignore: {
             write: ['*.bun-build'],
@@ -274,7 +289,7 @@ export default defineProject({
         },
       },
       cache: {
-        inputs: { files: ['**/*'] },
+        inputs: { files: ['**/*'], runtime: BUN_VERSION },
         outputs: { files: ['dist/vx-linux-x64'] },
       },
     },
@@ -289,7 +304,8 @@ export default defineProject({
           allow: {
             systemInfo: ['vfs.disk-space'],
             read: ['.'],
-            write: ['dist/vx-linux-arm64'],
+            write: ['dist/vx-linux-arm64', ...BUN_RUNTIME_WRITES],
+            network: BUN_RUNTIME_NETWORK,
           },
           ignore: {
             write: ['*.bun-build'],
@@ -297,7 +313,7 @@ export default defineProject({
         },
       },
       cache: {
-        inputs: { files: ['**/*'] },
+        inputs: { files: ['**/*'], runtime: BUN_VERSION },
         outputs: { files: ['dist/vx-linux-arm64'] },
       },
     },
@@ -312,7 +328,8 @@ export default defineProject({
           allow: {
             systemInfo: ['vfs.disk-space'],
             read: ['.'],
-            write: ['dist/vx-darwin-x64'],
+            write: ['dist/vx-darwin-x64', ...BUN_RUNTIME_WRITES],
+            network: BUN_RUNTIME_NETWORK,
           },
           ignore: {
             write: ['*.bun-build'],
@@ -320,7 +337,7 @@ export default defineProject({
         },
       },
       cache: {
-        inputs: { files: ['**/*'] },
+        inputs: { files: ['**/*'], runtime: BUN_VERSION },
         outputs: { files: ['dist/vx-darwin-x64'] },
       },
     },
@@ -335,7 +352,8 @@ export default defineProject({
           allow: {
             systemInfo: ['vfs.disk-space'],
             read: ['.'],
-            write: ['dist/vx-darwin-arm64'],
+            write: ['dist/vx-darwin-arm64', ...BUN_RUNTIME_WRITES],
+            network: BUN_RUNTIME_NETWORK,
           },
           ignore: {
             write: ['*.bun-build'],
@@ -343,7 +361,7 @@ export default defineProject({
         },
       },
       cache: {
-        inputs: { files: ['**/*'] },
+        inputs: { files: ['**/*'], runtime: BUN_VERSION },
         outputs: { files: ['dist/vx-darwin-arm64'] },
       },
     },

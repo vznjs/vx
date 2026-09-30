@@ -5,7 +5,13 @@
 
 import { lstatSync, readdirSync, statSync } from 'node:fs'
 import path from 'node:path'
-import { isMountableLiteral, localBindingOn, unique } from './sandbox-paths.js'
+import {
+  atOrUnder,
+  isMountableLiteral,
+  localBindingOn,
+  MOUNT_WILDCARDS,
+  unique,
+} from './sandbox-paths.js'
 import type { SandboxedRunArgs } from './sandbox-runtime.js'
 
 type SrtModule = typeof import('@anthropic-ai/sandbox-runtime')
@@ -40,6 +46,37 @@ export function bindableWrites(paths: readonly string[]): string[] {
       return path.dirname(p)
     }),
   )
+}
+
+/**
+ * The write globs that matched nothing when the task started, split by
+ * where the task's writes under them go. A glob no mount holds is not
+ * lost: a path in the workspace that no read or write bind covers is the
+ * deny anchor's scratch, and a task may create, write and remove there —
+ * nothing it leaves outlives the sandbox. That is a tool's temp directory:
+ * `bun build --compile` extracts a cross-compile runtime into
+ * `<cwd>/.<hash>-00000000.tmp/` and renames it into its cache, and no
+ * bind could name that directory before it existed (2026-09-29). Where a
+ * read grant mounts the glob's directory read-only, or it lies outside the
+ * workspace, a write under it fails (`mountless`, warned before the task).
+ */
+export function scratchWrites(
+  pending: readonly string[],
+  fs: {
+    readonly allowRead?: readonly string[] | undefined
+    readonly allowWrite?: readonly string[] | undefined
+  },
+  anchors: readonly string[],
+): { scratch: string[]; mountless: string[] } {
+  const binds = [...(fs.allowRead ?? []), ...(fs.allowWrite ?? [])]
+  const scratch: string[] = []
+  const mountless: string[] = []
+  for (const glob of pending) {
+    const dir = path.dirname(glob.slice(0, glob.search(MOUNT_WILDCARDS) + 1))
+    const free = anchors.some((a) => atOrUnder(dir, a)) && !binds.some((b) => atOrUnder(dir, b))
+    ;(free ? scratch : mountless).push(glob)
+  }
+  return { scratch, mountless }
 }
 
 /**
