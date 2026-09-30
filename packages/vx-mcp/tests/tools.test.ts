@@ -999,6 +999,41 @@ describe('whyDidThisRerun', () => {
     expect(got.note).toMatch(/recorded no cache key/)
   })
 
+  it('takes a run id by the unique prefix `vx last --list` prints, as `vx why --run` does', async () => {
+    const root = makeWorkspace('prefix')
+    const ids = ['0199aaaa-1111', '0199aaaa-2222', '0199bbbb-3333']
+    try {
+      seed(root, (cache) => {
+        cache.recordRuns(
+          ids.map((runId, i) =>
+            mkRun({ hash: `h${i}`, project: 'p', task: 'build', runId, startedAt: now - 3000 + i }),
+          ),
+        )
+        for (const id of ids) {
+          cache
+            .dbHandle()
+            .query(
+              `INSERT INTO invocations(run_id, command, requested_tasks, cache_policy, concurrency,
+                 started_at, ended_at, total_duration_ms, task_count, failed_count, hit_count,
+                 hit_local_count, hit_remote_count, exit_ok, ci, vx_version)
+               VALUES (?, 'vx run build', '[]', '', 1, ?, ?, 0, 1, 0, 0, 0, 0, 1, 0, '0')`,
+            )
+            .run(id, now, now)
+        }
+      })
+      const whole = await call(root, 'whyDidThisRerun', { runId: ids[2], taskId: 'p#build' })
+      const prefix = await call(root, 'whyDidThisRerun', { runId: '0199bb', taskId: 'p#build' })
+      expect((whole as Why).thisRun!.hash).toBe('h2')
+      expect(prefix).toEqual(whole)
+      expect(await callError(root, 'whyDidThisRerun', { runId: '0199aa', taskId: 'p#build' }))
+        .toBe(`whyDidThisRerun: run id 0199aa is the start of 2 runs — type more of it:
+  0199aaaa-2222
+  0199aaaa-1111`)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   it('a keyless run with a KEYED predecessor still refuses to claim the inputs changed', async () => {
     // The sharp arm of the same rule, and the one the case above cannot reach:
     // here there IS a previous run with a real key, so a comparison is

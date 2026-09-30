@@ -13,11 +13,11 @@ import {
   explainCacheKeyQuery as explainCacheKey,
   latestRunId,
   whyDidThisRerunQuery as whyDidThisRerun,
+  resolveRunId,
 } from '../orchestrator/index.js'
 import { nearMatches, UserError } from '../util/index.js'
 import { findWorkspaceRoot } from '../workspace/index.js'
 import { cliCacheDir, parseCacheDirFlag, warnToStderr } from './workspace-config.js'
-import { resolveRunId } from './run-id.js'
 
 interface WhyArgs {
   target?: string

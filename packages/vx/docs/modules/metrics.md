@@ -14,10 +14,7 @@ module only reads it.
 ```ts
 listRuns(db, { limit?, project?, task?, runId? }): RunSummaryRow[]
 getRun(db, runId): RunDetail | null                 // one invocation's task rows
-<<<<<<< HEAD
 listInvocations(db, { limit? }): InvocationDetail[]
-=======
->>>>>>> 7a461de (docs(modules): correct module pages the source contradicts (J-18))
 getInvocation(db, runId): InvocationDetail | null   // the header row, tags parsed
 explainCacheKey(db, taskId): CacheKeyExplanation    // latest entry for a task
 latestRunId(db, taskId): string | null              // the run a caller without one means
@@ -25,6 +22,13 @@ whyDidThisRerun(db, runId, taskId): WhyDidThisRerun // this run vs the previous 
 cacheKeyDiff(db, runId, taskId): CacheKeyDiff       // which key components moved
 diffKeyComponents(before, after): { entries, unchangedCount } // the join, no store
 ```
+
+`run-id.ts` beside it resolves the run id a caller types:
+`resolveRunId(db, raw, verb)` answers the whole id, or the one run it is
+a prefix of (null for none; a prefix several runs share is refused,
+naming them), and `shortRunId(db, id)` is the shortest unique prefix, at
+least 13 characters, `vx last --list` prints. `vx why`, `vx last` and
+`@vzn/vx-mcp`'s `whyDidThisRerun` all take ids through it.
 
 Every function but `diffKeyComponents` takes an open `bun:sqlite`
 `Database` (the caller owns the `Cache` lifecycle — `cache.dbHandle()`),

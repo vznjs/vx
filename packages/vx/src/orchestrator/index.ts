@@ -151,6 +151,7 @@ export {
   listRuns,
   whyDidThisRerun as whyDidThisRerunQuery,
 } from './metrics.js'
+export { resolveRunId, shortRunId } from './run-id.js'
 export type {
   CacheEntryRow,
   CacheKeyDiff,

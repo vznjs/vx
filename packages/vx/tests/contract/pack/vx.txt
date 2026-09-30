@@ -35,7 +35,6 @@ src/cli/lock.ts
 src/cli/plan-format.ts
 src/cli/plugin-commands.ts
 src/cli/plugin-templates.ts
-src/cli/run-id.ts
 src/cli/run.ts
 src/cli/select.ts
 src/cli/show.ts
@@ -98,6 +97,7 @@ src/orchestrator/projects.ts
 src/orchestrator/remote-prefetch.ts
 src/orchestrator/run-artifacts.ts
 src/orchestrator/run-context.ts
+src/orchestrator/run-id.ts
 src/orchestrator/run-lock.ts
 src/orchestrator/run-records.ts
 src/orchestrator/run-report.ts
