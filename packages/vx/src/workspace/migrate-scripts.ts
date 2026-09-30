@@ -96,8 +96,8 @@ const OWN_COMMANDS: Readonly<Record<string, ReadonlySet<string>>> = {
 }
 
 /**
- * Whether the package manager that owns `dir` runs `pre` / `post` hooks
- * around a script. The manager is the nearest `packageManager` field or
+ * The package manager that owns `dir`, when it runs `pre` / `post` hooks
+ * around a script; null when it runs none. The manager is the nearest `packageManager` field or
  * lockfile, and its settings are read beside it, as each reads them for a
  * member too. Probed with a `prebuild` / `build` / `postbuild` trio: Yarn
  * 2+ runs none (D-31); npm runs none under `ignore-scripts=true` in
@@ -105,7 +105,7 @@ const OWN_COMMANDS: Readonly<Record<string, ReadonlySet<string>>> = {
  * `enablePrePostScripts: false` in `pnpm-workspace.yaml` (D-33); Bun and
  * Yarn 1 run them whatever those say. No manager found is npm's default.
  */
-function runsScriptHooks(dir: string, memo: Map<string, boolean>): boolean {
+function runsScriptHooks(dir: string, memo: Map<string, string | null>): string | null {
   const known = memo.get(dir)
   if (known !== undefined) return known
   const read = (f: string): string | undefined => {
@@ -129,15 +129,15 @@ function runsScriptHooks(dir: string, memo: Map<string, boolean>): boolean {
     else if (existsSync(path.join(dir, 'package-lock.json'))) manager = 'npm'
     else if (['bun.lock', 'bun.lockb'].some((f) => existsSync(path.join(dir, f)))) manager = 'bun'
   }
-  let answer: boolean
+  let answer: string | null
   if (manager === undefined) {
     const up = path.dirname(dir)
-    answer = up === dir ? true : runsScriptHooks(up, memo)
+    answer = up === dir ? 'npm' : runsScriptHooks(up, memo)
   } else {
     const npmrc = read('.npmrc') ?? ''
     const set = (key: string, value: string): boolean =>
       new RegExp(`^\\s*${key}\\s*=\\s*${value}\\s*$`, 'm').test(npmrc)
-    answer =
+    const runs =
       manager === 'berry'
         ? false
         : manager === 'npm'
@@ -146,6 +146,7 @@ function runsScriptHooks(dir: string, memo: Map<string, boolean>): boolean {
             ? !set('enable-pre-post-scripts', 'false') &&
               !/^enablePrePostScripts:\s*false\s*$/m.test(read('pnpm-workspace.yaml') ?? '')
             : true
+    answer = runs ? manager : null
   }
   memo.set(dir, answer)
   return answer
@@ -242,7 +243,7 @@ function upstreamBuildOnWorker(tasks: GeneratedTask[]): void {
 
 export function migrateScripts(metas: readonly ProjectMeta[]): MigrationPlan {
   const projects: GeneratedProject[] = []
-  const hookMemo = new Map<string, boolean>()
+  const hookMemo = new Map<string, string | null>()
   // The workspace root among members: its scripts run the workspace
   // (`npm run build --workspaces`, `pnpm -r build`), and a root task made
   // of one ran every member's build again under `--all`. Since D-39 a
@@ -258,7 +259,8 @@ export function migrateScripts(metas: readonly ProjectMeta[]): MigrationPlan {
   for (const meta of metas) {
     if (meta === root) continue
     const scripts = scriptsOf(meta)
-    const runsHooks = runsScriptHooks(meta.dir, hookMemo)
+    const hooksBy = runsScriptHooks(meta.dir, hookMemo)
+    const runsHooks = hooksBy !== null
     const runnable = Object.keys(scripts).filter(
       (n) => typeof scripts[n] === 'string' && scripts[n] !== '',
     )
@@ -314,7 +316,7 @@ export function migrateScripts(metas: readonly ProjectMeta[]): MigrationPlan {
       )
       if (hooks.length > 0) {
         todos.push(
-          `npm ran ${hooks.map((h) => `\`${h}\``).join(' and ')} around this script without being asked; folded into the command in that order`,
+          `${hooksBy} ran ${hooks.map((h) => `\`${h}\``).join(' and ')} around this script without being asked; folded into the command in that order`,
         )
       }
       const exec: Record<string, unknown> = { command }

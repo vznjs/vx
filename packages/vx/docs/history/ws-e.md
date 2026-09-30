@@ -487,3 +487,8 @@ walked on fixtures.
   origin/main worktree, three rounds of min-of-5: `--version` 58–65 ms
   → 24–26 ms; a warm two-task no-op `vx run` unchanged (126–134 ms both
   arms, one pre-warmed copy each), as it needs the same modules.
+- **E-86.** `vx init` walk on plain pnpm and bun workspaces: init →
+  miss → hit → restore after `rm -rf dist` read clean. One defect: a
+  folded `pre`/`post` hook's TODO said `npm ran` in a pnpm, bun or
+  Yarn 1 repo. It names the manager that runs the hook now. Row: the
+  E-86 row of `tests/init.test.ts`, red with the old text.
