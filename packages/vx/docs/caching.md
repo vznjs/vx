@@ -49,7 +49,9 @@ over (in order):
    `pnpm-lock.yaml`, `package-lock.json`, `npm-shrinkwrap.json`,
    `yarn.lock`, `bun.lock`, `bun.lockb`, `pnpm-workspace.yaml`,
    `.yarnrc.yml` (Yarn 4 catalogs, which `yarn.lock` does not record),
-   `.npmrc` and `bunfig.toml` (install settings no lockfile records). Any
+   `.npmrc` and `bunfig.toml` (install settings no lockfile records),
+   and the content of each patch the Bun lockfile names under
+   patchedDependencies (it records a patch by path alone). Any
    install-resolved change (a `bun install` that bumps `bun.lock`) or
    any workspace-shape change invalidates _every_ cache entry. This is
    the single global "the world changed" lever — and a plugin can take

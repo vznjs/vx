@@ -21,7 +21,7 @@ import { LOCKFILE_NAME } from './lockfile.js'
 import { configImportOwners } from './config-imports.js'
 import { configImports } from './config-cache.js'
 import { WORKSPACE_CONFIG_FILENAMES } from './project-loader.js'
-import { WORKSPACE_FINGERPRINT_FILES } from './fingerprint.js'
+import { bunPatchFiles, WORKSPACE_FINGERPRINT_FILES } from './fingerprint.js'
 import { buildPackageGraph } from './package-graph.js'
 import type { PackageJson, ProjectMeta } from './workspace.js'
 
@@ -212,6 +212,16 @@ export async function affectedProjects(args: AffectedArgs): Promise<Set<string>>
     return new Set(args.projects.map((p) => p.name))
   }
   const fingerprintChanged = changed.filter((p) => FINGERPRINT_SET.has(p))
+  // A patch bun.lock names folds into every key, core's fingerprint and
+  // `bun()`'s claim alike, so its edit widens as a lockfile edit does. A
+  // patch the lockfile no longer names moved bun.lock itself.
+  if (changed.length > 0) {
+    const lock = await bytesOrNull(path.join(args.workspaceRoot, 'bun.lock'))
+    if (lock !== null) {
+      const patches = new Set(bunPatchFiles(lock))
+      if (changed.some((p) => patches.has(p))) return new Set(args.projects.map((p) => p.name))
+    }
+  }
   const claimedOwned = new Set<string>()
   // A claim may also name a root file core does not fold (`turbo.json`,
   // read by `turbo()`'s stages): it re-keys tasks through their resolved

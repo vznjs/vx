@@ -106,7 +106,52 @@ export async function computeWorkspaceFingerprints(
     unclaimed = xxh3(`${f}\0`, unclaimed)
     unclaimed = xxh3(bytes, unclaimed)
   }
+  // bun.lock names a patch by PATH, never by its content: an edited patch
+  // left the lockfile byte-identical and every key unmoved while the
+  // install applied the new one (item 1014, where only `bun()`'s claim
+  // learned it). Each file it names folds here; a claimed bun.lock's
+  // plugin folds them itself.
+  const bunLock = files.get('bun.lock')
+  if (bunLock !== undefined) {
+    for (const rel of bunPatchFiles(bunLock)) {
+      const bytes = await readOnce(reads, path.join(workspaceRoot, rel))
+      const mark = `patch\0${rel}\0${bytes === null ? 'gone' : 'present'}`
+      all = xxh3(mark, all)
+      if (bytes !== null) all = xxh3(bytes, all)
+      if (claimed.has('bun.lock')) continue
+      unclaimed = xxh3(mark, unclaimed)
+      if (bytes !== null) unclaimed = xxh3(bytes, unclaimed)
+    }
+  }
   return { all: hex(all), unclaimed: hex(unclaimed), files }
+}
+
+const PATCHED = new TextEncoder().encode('"patchedDependencies"')
+
+/**
+ * The workspace-relative patch files a `bun.lock` names, sorted; none
+ * outside the workspace. A lockfile without the key is not parsed (the
+ * common case costs one byte search), and one that will not parse names
+ * none: its bytes still fold whole.
+ */
+export function bunPatchFiles(bytes: Uint8Array): string[] {
+  if (Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).indexOf(PATCHED) < 0) return []
+  let doc: unknown
+  try {
+    doc = Bun.JSONC.parse(new TextDecoder().decode(bytes))
+  } catch {
+    return []
+  }
+  const patched = (doc as { patchedDependencies?: unknown } | null)?.patchedDependencies
+  if (patched === null || typeof patched !== 'object') return []
+  const out = new Set<string>()
+  for (const v of Object.values(patched)) {
+    if (typeof v !== 'string') continue
+    const rel = path.posix.normalize(v.split(path.sep).join('/'))
+    if (rel.startsWith('../') || rel === '..' || path.posix.isAbsolute(rel)) continue
+    out.add(rel)
+  }
+  return [...out].sort()
 }
 
 function hex(h: bigint): string {
