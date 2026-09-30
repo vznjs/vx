@@ -736,7 +736,9 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   (cal.com: 4 of 114 workspace digests). nx() cacheability against Nx's:
   ngrx 58 and analog 88 tasks, no diff. Lead: vercel/ai's 68 builds
   output `**/dist/**` and run uncached; caching them needs a core clean
-  that skips tracked files and `node_modules`.
+  that skips tracked files and `node_modules`. (Stale by 2026-09-30:
+  vercel/ai's turbo.json now names `dist/**`, `.next/**` minus
+  `!.next/cache/**`, all literal-rooted and cached.)
 - **G-65.** typescript-eslint (2369384, Nx 23.2): `vx run typecheck`
   was refused by core. The root project caches `{projectRoot}/dist`
   (the workspace's `dist`) and each package's typecheck
