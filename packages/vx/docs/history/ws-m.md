@@ -177,6 +177,17 @@ unawaited. Refuted as the cause: that emit, or a bare unawaited
 bridged run, failed 0 of 100 (five processes, 2026-09-30). Left:
 what killed SRT's socat, or unlinked its socket, in a loaded gate.
 
+M-16. M-15's open question, one probe further: does anything but SRT's
+own `reset()` end SRT's host bridge in the suite's process? The whole
+unsafe suite under `SRT_DEBUG=1` (Bun 1.4.2, sandbox required): 149
+bridge exits, every one `code 143` right after SRT's own "Sent SIGTERM
+to HTTP bridge process", none unasked. Also refuted: a failed shard
+signalling the suite. No `--continue` mode signals an in-flight task
+(`graph/scheduler.ts`: even `never` lets in-flight tasks finish), so
+the keep-alive shard failing in the same ~17:50 gate (M-14) sent the
+unsafe suite's group nothing. Left as before: a reset racing
+a wrap, or a signal from outside the gate.
+
 ## Leads for other streams
 
 - A: A-20 let a same-project dependant restore ahead of a producer whose
