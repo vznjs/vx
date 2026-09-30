@@ -156,6 +156,7 @@ export interface MapScriptsOptions {
 export interface MapTurboOptions {
   splice(kind: TurboGlobal, values: readonly string[]): readonly unknown[]
   persistentTodo: string
+  envNames?: readonly string[]
 }
 == type MapWireitOptions (src/wireit/wireit-map.ts)
 export interface MapWireitOptions {
