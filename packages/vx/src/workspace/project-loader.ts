@@ -256,9 +256,11 @@ export function configLoadError(err: unknown, configPath: string, kind: string):
   if (name === 'ResolveMessage') {
     const spec = /Cannot find (?:package|module) ['"]([^'"]+)['"]/.exec(message)?.[1]
     const what = spec === undefined ? message.replace(BUST_QUERY, '') : `cannot find '${spec}'`
+    // The package the specifier names (`@vzn/vx-otel/x` → `@vzn/vx-otel`):
+    // a missing plugin was told to install core (J-59).
     const hint =
       spec?.startsWith('@vzn/vx') === true
-        ? `; install it in the workspace: bun add -d @vzn/vx`
+        ? `; install it in the workspace: bun add -d ${spec.split('/').slice(0, 2).join('/')}`
         : ''
     return new UserError(`${kind} config ${configPath}: ${what}${hint}`)
   }
