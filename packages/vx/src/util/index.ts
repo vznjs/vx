@@ -29,6 +29,7 @@ export {
   normalizeBunGlob,
   normalizeGlob,
   outputMatcher,
+  printable,
   relPosix,
   splitNegations,
   staticPrefix,

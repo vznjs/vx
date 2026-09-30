@@ -297,3 +297,15 @@ export function slashBraceExpansions(pattern: string): string[] {
   }
   return [pattern]
 }
+
+// oxlint-disable-next-line no-control-regex
+const CONTROL = /[\x00-\x1f\x7f-\x9f]/g
+
+/**
+ * `s` with every C0/C1 control and DEL written as `\xNN`: a file name is
+ * anyone's bytes, and one holding `ESC ]` or `\r` printed raw retitled
+ * the terminal or overwrote the line vx printed before it (L-31).
+ */
+export function printable(s: string): string {
+  return s.replace(CONTROL, (c) => `\\x${c.charCodeAt(0).toString(16).padStart(2, '0')}`)
+}

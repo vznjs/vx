@@ -2040,6 +2040,10 @@ listing the candidates; unknown → include-match suggestions, or, with
 none near, a pointer to `vx last --list`, or word that nothing has run
 yet).
 
+A control character in a component's name (a file named with an
+escape or a carriage return) prints as `\xNN`, so no file name drives
+the terminal; `--format json` carries the name as it is.
+
 An **unchanged** key has three endings, and the verdict distinguishes
 them rather than calling all three a re-run: the run was served from
 cache (nothing re-ran), it re-executed on the same key, or it recorded

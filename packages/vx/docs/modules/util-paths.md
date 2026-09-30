@@ -32,6 +32,8 @@ export function taskGlob(pattern: string): Bun.Glob
 export function slashBraceExpansions(pattern: string): string[]
 export const GLOB_WILDCARDS: RegExp // /[*?{}]/ — a task glob's wildcards
 export const BUN_GLOB_WILDCARDS: RegExp // /[*?[\]{}]/ — Bun.Glob's own
+// C0/C1 controls and DEL as `\xNN`, for a file name vx prints (L-31).
+export function printable(s: string): string
 ```
 
 **Two alphabets (item 667).** In a TASK glob (`cache.inputs.files`,
