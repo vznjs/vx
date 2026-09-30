@@ -786,3 +786,13 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   warm 41 cached in 1.3 s; `@unocss/vscode#build` rewrites its README
   input, the same class). `--all` there fails `playground` and a test
   fixture, which import unocss without declaring it, as Turbo would.
+- **G-68.** Turbo's `interruptible` (a persistent task `turbo watch` may
+  restart) was an unknown key: "has no vx equivalent — map it manually".
+  `vx watch` stops and re-spawns every persistent task each cycle, so
+  either value maps to nothing; a non-boolean is refused as Turbo does.
+  Row (`turbo.test` › interruptible maps to nothing): red without it.
+  Also probed, plan parity against `turbo --dry=json` 2.10.13:
+  documenso (build 5, start 5, test:e2e 3, clean 12) and mastra (build
+  188, lint 167, validate:package, clean) exact; mastra's typecheck and
+  dev miss the builds Turbo runs only as a no-op's `^build` (G-64's n8n
+  class, not replicated).

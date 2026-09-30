@@ -230,6 +230,25 @@ describe('turbo()', () => {
   )
 
   it(
+    'interruptible maps to nothing: vx watch restarts every persistent task',
+    async () => {
+      await writeFile(
+        path.join(root, 'turbo.json'),
+        JSON.stringify({
+          tasks: {
+            build: { interruptible: false },
+            test: { persistent: true, interruptible: true },
+          },
+        }),
+      )
+      const log = silent()
+      await planRun({ cwd: root, tasks: ['build', 'test'], log })
+      expect(log.lines.filter((l) => l.includes('interruptible'))).toEqual([])
+    },
+    TIMEOUT,
+  )
+
+  it(
     'every persistent task is one warning per run, not one per task',
     async () => {
       // n8n marks `dev` and `watch` persistent in most of its 84 packages;
