@@ -15,7 +15,7 @@ import type { ProjectMeta } from '@vzn/vx'
 import { shellQuote } from '../nx-command.js'
 import { packageScripts, relPosix } from '../paths.js'
 import { pruneOrphanPersistentNotes } from '../persistent-note.js'
-import { scriptCommand } from '../script-command.js'
+import { scriptCommand, yarnPnp } from '../script-command.js'
 
 type Raw = Record<string, unknown>
 
@@ -438,6 +438,7 @@ export function mapScriptsWorkspace(
   if (renamed.length > 0) notes.push(`note: ${renamed.join(', ')}`)
 
   const emitted = (pkg: string, s: string) => planned.get(pkg)?.has(s) === true
+  const pnp = yarnPnp(root)
   const projects: ScriptsMappedProject[] = []
   for (const m of members) {
     const tasks = planned.get(m.name)
@@ -447,7 +448,7 @@ export function mapScriptsWorkspace(
     for (const [name, entry] of tasks) {
       const todos: string[] = []
       const exec: Record<string, unknown> = {
-        command: scriptCommand(name, scripts[name] as string, scripts),
+        command: scriptCommand(name, scripts[name] as string, scripts, pnp),
       }
       if (LONG_RUNNING.test(name)) {
         exec['persistent'] = {}

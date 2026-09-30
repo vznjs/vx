@@ -24,7 +24,7 @@ import { minimatchToVx } from '../glob-grammar.js'
 import { packageScripts, relPosix } from '../paths.js'
 import { pruneDanglingEdges } from '../dangling-edges.js'
 import { pruneOrphanPersistentNotes } from '../persistent-note.js'
-import { scriptCommand } from '../script-command.js'
+import { scriptCommand, yarnPnp } from '../script-command.js'
 import { resolveSharedOutputs } from '../shared-outputs.js'
 
 type Raw = Record<string, unknown>
@@ -255,6 +255,7 @@ export async function mapWireitWorkspace(
   opts: MapWireitOptions,
 ): Promise<WireitMapping> {
   const notes: string[] = []
+  const pnp = yarnPnp(root)
   // The root is no vx project in a workspace, so its manifest is read here.
   const rootManifest = (await Bun.file(path.join(root, 'package.json'))
     .json()
@@ -301,7 +302,7 @@ export async function mapWireitWorkspace(
       tasks.push({
         name,
         todos: [],
-        task: { exec: { command: scriptCommand(name, scripts[name] as string, scripts) } },
+        task: { exec: { command: scriptCommand(name, scripts[name] as string, scripts, pnp) } },
       })
     }
     if (tasks.length > 0) projects.push({ name: meta.name, dir: meta.dir, tasks })

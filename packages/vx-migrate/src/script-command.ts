@@ -20,6 +20,7 @@
 //   the shims `yarn run` writes, so inlined, `node -e "require('left-pad')"`
 //   was MODULE_NOT_FOUND (2026-09-28). Every script runs as `yarn run <name>`.
 
+import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { foldScriptHooks } from '@vzn/vx'
 
@@ -44,12 +45,25 @@ export function scriptCommand(
   return foldScriptHooks(parts[0], body, parts[2])
 }
 
-/** Yarn ≥ 2 links Plug'n'Play unless `.yarnrc.yml` names another `nodeLinker`. */
-export async function yarnPnp(root: string): Promise<boolean> {
-  const rc = await Bun.file(path.join(root, '.yarnrc.yml'))
-    .text()
-    .catch(() => null)
-  if (rc === null) return false
+/**
+ * Yarn ≥ 2 links Plug'n'Play unless `.yarnrc.yml` names another `nodeLinker`.
+ * Read once per mapping; synchronous so every mapper, the synchronous ones
+ * included, can ask it.
+ */
+export function yarnPnp(root: string): boolean {
+  let rc: string
+  try {
+    rc = readFileSync(path.join(root, '.yarnrc.yml'), 'utf8')
+  } catch {
+    return false
+  }
   const linker = /^nodeLinker:[ \t]*["']?([\w-]+)/m.exec(rc)?.[1]
   return linker === undefined || linker === 'pnp'
+}
+
+/** `.yarnrc.yml` as a mapping cache reads it: `yarnPnp` decides every script command from it. */
+export async function yarnrcText(root: string): Promise<string> {
+  return Bun.file(path.join(root, '.yarnrc.yml'))
+    .text()
+    .catch(() => '\0absent')
 }

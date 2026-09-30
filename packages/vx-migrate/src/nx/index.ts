@@ -26,6 +26,7 @@ import { collectGaps } from '../plugin-gaps.js'
 import { mapNxWorkspace, type NxGraph, parseNxGraph, readNxJson } from './nx-map.js'
 import { listDotenv } from './nx-dotenv.js'
 import type { AdoptionMapping } from '../mapping-cache.js'
+import { yarnrcText } from '../script-command.js'
 
 /** The note every persistent task carries; like every gap, reported once per run for all its tasks. */
 const PERSISTENT_NOTE =
@@ -221,6 +222,7 @@ async function nxReads(
     ),
     String(process.env['NX_LOAD_DOT_ENV_FILES']),
     JSON.stringify(installed),
+    await yarnrcText(root),
     ...notes,
   ]
 }

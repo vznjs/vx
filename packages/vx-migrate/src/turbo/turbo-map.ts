@@ -580,7 +580,7 @@ export async function mapTurboWorkspace(
     )
   }
   const rootCfg = withGlobal(await readTurboJson(rootFile, root))
-  const pnp = await yarnPnp(root)
+  const pnp = yarnPnp(root)
   const rootTasks = tasksOf(rootCfg)
 
   // Turbo 1 lists an env var as `$NAME` among `globalDependencies` (and a

@@ -14,6 +14,7 @@ import {
   mapLageWorkspace,
   rootPackageName,
 } from './lage-map.js'
+import { yarnrcText } from '../script-command.js'
 
 /** The plugin: the adoption skeleton over `mapLageWorkspace`, one mapping per run. */
 export function lage(): VxPlugin {
@@ -40,6 +41,7 @@ async function run(root: string, metas: readonly ProjectMeta[]): Promise<Adoptio
       String(rootName),
       JSON.stringify(config),
       JSON.stringify(metas.map((m) => [m.name, m.dir, m.packageJson])),
+      await yarnrcText(root),
     ],
     map: async () => mapAll(root, metas, config, rootName),
   }
