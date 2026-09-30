@@ -119,8 +119,9 @@ const OUTPUT_LOGS_RUN_FLAG = new Set(['full', 'hash-only', 'errors-only', 'none'
 // has every variable with the prefix hashed into its tasks and passed to
 // them, with nothing in turbo.json saying so. vx env names are explicit,
 // so the variables were stripped in silence and a build that inlines them
-// (Next's `NEXT_PUBLIC_*`) read empty values (item 940). Named in a note;
-// only the frameworks whose prefix is certain are listed.
+// (Next's `NEXT_PUBLIC_*`) read empty values (item 940). A live mapping
+// (`envNames`) infers them as Turbo does; the migrate CLI names them in a
+// note. Only the frameworks whose prefix is certain are listed.
 const FRAMEWORK_ENV: ReadonlyArray<readonly [dependency: string, prefixes: string]> = [
   ['next', 'NEXT_PUBLIC_*'],
   ['vite', 'VITE_*'],
@@ -789,11 +790,18 @@ export async function mapTurboWorkspace(
   const emittedAnywhere = new Set<string>()
   for (const set of emitted.values()) for (const name of set) emittedAnywhere.add(name)
 
+  // A live mapping infers as Turbo does: the prefix joins each task's env
+  // list, where the task's own `!` entries can take names back.
+  const inferredOf = new Map<string, string[]>()
   for (const [dependency, prefixes] of FRAMEWORK_ENV) {
     const users = metas
       .filter((m) => emitted.get(m.name)!.size > 0 && declares(m, dependency))
       .map((m) => m.name)
     if (users.length === 0) continue
+    if (opts.envNames !== undefined) {
+      for (const u of users) inferredOf.set(u, [...(inferredOf.get(u) ?? []), prefixes])
+      continue
+    }
     notes.push(
       `Turbo infers ${dependency} in ${users.join(', ')} and hashes and passes ${prefixes} to ` +
         'its tasks; vx env names are explicit — list the ones they read in cache.inputs.env ' +
@@ -827,6 +835,7 @@ export async function mapTurboWorkspace(
             rootDotenv,
             rootMeta?.name,
             { name: meta.name, persistentAt, withOf },
+          inferredOf.get(meta.name) ?? [],
           ),
         )
         continue
@@ -850,6 +859,7 @@ export async function mapTurboWorkspace(
           rootDotenv,
           rootMeta?.name,
           { name: meta.name, persistentAt, withOf },
+          inferredOf.get(meta.name) ?? [],
         )
         // Emitted even when its edges all drop: other packages' edges were
         // validated against it, and `dependsOn: []` is a group that waits
@@ -898,6 +908,7 @@ export async function mapTurboWorkspace(
           rootDotenv,
           rootMeta?.name,
           { name: meta.name, persistentAt, withOf },
+          inferredOf.get(meta.name) ?? [],
         ),
       )
     }
@@ -955,6 +966,7 @@ function buildTask(
     readonly persistentAt: ReadonlyMap<string, ReadonlySet<string>>
     readonly withOf: ReadonlyMap<string, readonly string[]>
   },
+  inferred: readonly string[],
 ): TurboMappedTask {
   const todos: string[] = []
   // A glob that climbs out of the package (`../../packages/app-store/
@@ -1087,7 +1099,7 @@ function buildTask(
   }
 
   const envNames: string[] = explicitEnv(
-    [...envDeps, ...(def.env ?? [])],
+    [...inferred, ...envDeps, ...(def.env ?? [])],
     (e) =>
       todos.push(
         `env ${JSON.stringify(e)}: wildcards are not supported in vx env names — ` +
