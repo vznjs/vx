@@ -216,6 +216,13 @@ export async function applyKeyHooks(
             `plugin '${plugin.name}' failed in key: value for '${name}' on ${node.id} is not a string`,
           )
         }
+        // The fold joins a part as `name\0value`: a NUL in the name let
+        // `{ 'a\0b': 'c' }` and `{ a: 'b\0c' }` fold the same bytes.
+        if (name.includes('\0')) {
+          throw new UserError(
+            `plugin '${plugin.name}' failed in key: a name on ${node.id} holds a NUL, the fold's delimiter`,
+          )
+        }
         parts.push([`${plugin.name}/${name}`, value])
       }
     }

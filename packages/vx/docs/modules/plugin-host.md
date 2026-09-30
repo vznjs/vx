@@ -76,7 +76,8 @@ holds the list to the file.
 
 - What a hook hands back is checked once, at the seam, and refused by
   plugin and hook: a `cache` / `executor` return missing the
-  contract's methods, a `key` return that is not a record of strings,
+  contract's methods, a `key` return that is not a record of strings
+  or names a part with a NUL (the fold's delimiter, A-57),
   a `schedule` return that is not a `Map`. A stage's edit is
   re-validated after EACH plugin (the `afterEach` of `applyConfigHooks`
   and `applyProjectHooks`), so the refusal names the plugin whose edit
