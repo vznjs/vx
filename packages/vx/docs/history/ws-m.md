@@ -167,7 +167,14 @@ in `beforeEach` starts it), and a deferred `resetSandbox()` (a server
 alive at reset) fired by the server's release after the next
 `initSandbox`: 20 bridged tasks started 0-100 ms after that release,
 twice, all ran, and a task after the reset was still sandboxed. No
-test signals the test process's group or kills socat by name. Left:
+test signals the test process's group or kills socat by name. SRT
+throws this text only while a context holds a bridge whose socket is
+gone: inside a `reset()` between its `rmSync` and clearing the context.
+One such reset runs outside vx's `resetting`: `sandbox-trace-exit`
+emits `exit` in the suite's process, and SRT's once-`exit` hook resets
+unawaited. Refuted as the cause: that emit, or a bare unawaited
+`SandboxManager.reset()`, followed by the next row's reset, init and a
+bridged run, failed 0 of 100 (five processes, 2026-09-30). Left:
 what killed SRT's socat, or unlinked its socket, in a loaded gate.
 
 ## Leads for other streams
