@@ -15,7 +15,7 @@ import {
   whyDidThisRerunQuery as whyDidThisRerun,
   resolveRunId,
 } from '../orchestrator/index.js'
-import { nearMatches, UserError } from '../util/index.js'
+import { nearMatches, printable, UserError } from '../util/index.js'
 import { findWorkspaceRoot } from '../workspace/index.js'
 import { cliCacheDir, parseCacheDirFlag, warnToStderr } from './workspace-config.js'
 
@@ -239,7 +239,9 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
             : e.change === 'removed'
               ? `- ${e.before}`
               : `${e.before} → ${e.after}`
-        lines.push(`    ${e.change.padEnd(7)} ${e.kind.padEnd(kindW)}  ${e.name}  ${beforeAfter}`)
+        lines.push(
+          `    ${e.change.padEnd(7)} ${e.kind.padEnd(kindW)}  ${printable(e.name)}  ${beforeAfter}`,
+        )
       }
       const kinds = [...new Set(diff.entries.map((e) => e.kind))].filter((k) => k in WHAT_TO_DO)
       if (kinds.length > 0) {

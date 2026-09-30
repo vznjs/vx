@@ -704,3 +704,25 @@ describe('vx why — what to do', () => {
     expect(Object.keys(WHAT_TO_DO).sort()).toEqual([...new Set(kinds)].sort())
   })
 })
+
+describe('vx why prints a file name (L-31)', () => {
+  it(
+    'writes a control character in it as \\xNN, never raw',
+    async () => {
+      const root = await makeWorkspace()
+      try {
+        await vx(root, ['run', 'build', '--all'])
+        await writeFile(path.join(root, 'packages', 'app', 'src', 'x\x1b]0;owned\x07\ry.txt'), 'z')
+        await vx(root, ['run', 'build', '--all'])
+        const r = await vx(root, ['why', 'app#build'])
+        expect(r.code).toBe(0)
+        expect(r.out).toContain('packages/app/src/x\\x1b]0;owned\\x07\\x0dy.txt')
+        // oxlint-disable-next-line no-control-regex
+        expect(r.out.match(/[\x00-\x09\x0b-\x1f\x7f-\x9f]/g)).toBeNull()
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+})

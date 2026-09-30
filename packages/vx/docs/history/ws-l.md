@@ -400,6 +400,15 @@
   "… under vx lock and --frozen" (the turbo row red when the missing-
   entry refusal returns `{}`), `ab.test.ts` › `frozenArgs`.
 
+- L-31. `fix(cli)`: `vx why` printed an input file's name raw, and a
+  name is anyone's bytes: `x\x1b]0;owned\x07\ry.txt` retitled the
+  terminal and its `\r` overwrote the row. The moved-input status line
+  printed one too. Both now write C0/C1 controls and DEL as `\xNN`
+  (`printable`, `util/paths.ts`); `--format json` keeps the name. Row:
+  `why.test.ts` › "vx why prints a file name (L-31)", red without the
+  fix. A task's own stdout and stderr are its bytes, replayed as they
+  were, and stay so.
+
 ## Leads for other streams
 
 - Cache owners: `src/cache/archive.ts` and `tar-stream.ts` changed under

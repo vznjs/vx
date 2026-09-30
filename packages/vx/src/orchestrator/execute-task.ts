@@ -35,7 +35,7 @@ import {
   PersistentReadyError,
 } from '../exec/index.js'
 import { isGroupTask, RestoreDemoted, type TaskNode, type TaskOutcome } from '../graph/index.js'
-import { killGraceMs, maskedEmitter, relPosix, secretMask, span } from '../util/index.js'
+import { killGraceMs, maskedEmitter, printable, relPosix, secretMask, span } from '../util/index.js'
 import { SIGNAL_SHUTDOWN_GRACE_MS } from './signals.js'
 import { executorLabel } from './plugin-host.js'
 import {
@@ -1145,7 +1145,8 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     const moved = await movedSinceKey()
     endCheck()
     if (moved === undefined) return true
-    const what = moved === null ? 'its inputs' : `\`${relPosix(args.workspaceRoot, moved)}\``
+    const what =
+      moved === null ? 'its inputs' : `\`${printable(relPosix(args.workspaceRoot, moved))}\``
     // A task that regenerates its own input (TanStack Router's committed
     // `routeTree.gen.ts`, rewritten to the same bytes by every build) is
     // never saved (item 1015), and the line said so without the way out.
