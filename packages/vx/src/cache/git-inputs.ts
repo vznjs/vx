@@ -847,6 +847,11 @@ export interface GitEnumeration {
   trusted: Map<string, string>
   /** Whether the worktree had uncommitted changes; null when `git status` failed. */
   dirty: boolean | null
+  /**
+   * What `git status` listed, workspace-relative: modified, staged or deleted
+   * paths (both sides of a rename) and untracked files. Null when it failed.
+   */
+  changed: readonly string[] | null
   /** Workspace-relative paths whose names are not UTF-8 (`decodeGitZ`). */
   undecodable: readonly string[]
   /** `Date.now()` before the spawns: what `trusted` says is true as of no earlier. */
@@ -1038,7 +1043,39 @@ export async function startGitEnumeration(
   if (parsedStatus !== null && parsedStatus.undecodable.size > 0) {
     undecodable.push(...stripPrefixFromSet(parsedStatus.undecodable, gitPrefix))
   }
-  return { all, trusted, dirty: worktreeDirty, undecodable, startedAtMs }
+  return {
+    all,
+    trusted,
+    dirty: worktreeDirty,
+    changed: dirty === null ? null : [...dirty, ...untracked],
+    undecodable,
+    startedAtMs,
+  }
+}
+
+/** A run's whole-tree enumeration, started on its first ask and shared after. */
+export interface LazyGitEnumeration {
+  start(): Promise<GitEnumeration>
+  /** The enumeration, once something started it. */
+  readonly started: Promise<GitEnumeration> | undefined
+}
+
+export function lazyGitEnumeration(workspaceRoot: string): LazyGitEnumeration {
+  let started: Promise<GitEnumeration> | undefined
+  return {
+    start() {
+      if (started === undefined) {
+        started = startGitEnumeration(workspaceRoot, ['.'])
+        // Its first reader may never await it (a config throws first); the
+        // one that does still sees the error.
+        started.catch(() => {})
+      }
+      return started
+    },
+    get started() {
+      return started
+    },
+  }
 }
 
 /** The partition half of `populateGitFilesCache`: store per-project slices of one enumeration. */

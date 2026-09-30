@@ -259,6 +259,14 @@ export interface DiscoverContext extends WorkspaceHookContext {
   readonly cacheDir: string
   /** The projects found so far: core's, then earlier plugins'. */
   readonly projects: readonly ProjectMeta[]
+  /**
+   * What `git status` lists in the workspace, workspace-relative: modified,
+   * staged or deleted paths (both sides of a rename) and untracked files;
+   * null outside a git worktree. It is the run's own enumeration, so a
+   * plugin whose answer depends on the worktree (nx()'s graph key) reads it
+   * here instead of walking the tree a second time.
+   */
+  worktreeChanges(): Promise<readonly string[] | null>
 }
 
 export interface NamedProject {

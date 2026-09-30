@@ -21,7 +21,7 @@ import {
   applyGitEnumeration,
   gitPathspecs,
   startGitEnumeration,
-  type GitEnumeration,
+  lazyGitEnumeration,
 } from '../cache/index.js'
 import {
   buildPackageGraph,
@@ -54,6 +54,7 @@ import {
 } from './plugin-host.js'
 import {
   discoverProjects,
+  gitOfDiscovery,
   loadProjects,
   loadWorkspacePlugins,
   type LoadedProjects,
@@ -176,13 +177,15 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   // waits: its pathspecs depend on which projects the configs pull in.
   const unscoped =
     options.projects === undefined && options.tasks.some((spec) => spec.indexOf('#') <= 0)
-  const earlyGit: Promise<GitEnumeration> | undefined = unscoped
-    ? startGitEnumeration(workspaceRoot, ['.'])
-    : undefined
-  // A broken config below throws before this is awaited; the detached
-  // handler keeps that from surfacing as an unhandled rejection (the real
-  // await further down still sees the error).
-  earlyGit?.catch(() => {})
+  // A `discover` hook that reads the worktree (nx()'s graph key) starts the
+  // whole-tree enumeration a scoped run would otherwise scope later, here or
+  // in the CLI's selection pass; the run reuses it instead of walking the
+  // tree twice (G-75).
+  const reused = options.discovered?.root === workspaceRoot ? options.discovered : undefined
+  const git =
+    (reused !== undefined ? gitOfDiscovery(reused.projects) : undefined) ??
+    lazyGitEnumeration(workspaceRoot)
+  if (unscoped) void git.start()
   const workspace = await loadWorkspace(workspaceRoot, reads)
   const { workspaceConfig, plugins } = await loadWorkspacePlugins(workspaceRoot, (m) =>
     log.status(m),
@@ -194,9 +197,9 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     ? path.resolve(options.cwd, options.cacheDir)
     : resolveCacheDir(workspaceRoot, workspaceConfig)
   const projectMetas =
-    options.discovered?.root === workspaceRoot
-      ? options.discovered.projects
-      : await discoverProjects(workspace, plugins, cacheDir, (m) => log.status(m))
+    reused !== undefined
+      ? reused.projects
+      : await discoverProjects(workspace, plugins, cacheDir, (m) => log.status(m), git)
   mark('discover projects')
 
   // SCOPED config loading: configs are programs, and evaluating 1090
@@ -377,7 +380,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       ),
     )
     const projectDirs = [...projects.values()].map((p) => p.dir)
-    const enumeration = await (earlyGit ??
+    const enumeration = await (git.started ??
       startGitEnumeration(
         workspaceRoot,
         gitPathspecs(workspaceRoot, projectDirs, usesWorkspaceInputs),
