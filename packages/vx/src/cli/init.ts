@@ -99,7 +99,10 @@ export async function initCmd(args: readonly string[]): Promise<number> {
   return applyMigration({
     root,
     metas,
-    plan: migrateScripts(metas),
+    plan: migrateScripts(
+      metas,
+      metas.some((m) => m.dir === root) ? undefined : await readRootManifest(root),
+    ),
     source: 'package.json scripts',
     verb: 'vx init',
     dry: parsed.dry,
@@ -342,4 +345,14 @@ function firstTask(file: string, runner: 'turbo' | 'nx'): string {
   const field = runner === 'turbo' ? '(?:tasks|pipeline)' : 'targetDefaults'
   const first = new RegExp(`"${field}"\\s*:\\s*\\{\\s*"([^"]+)"`).exec(text)?.[1]
   return first ?? 'build'
+}
+
+/** The root package.json as an object, `{}` when unreadable or not one. */
+async function readRootManifest(root: string): Promise<Record<string, unknown>> {
+  const pj: unknown = await Bun.file(path.join(root, 'package.json'))
+    .json()
+    .catch(() => ({}))
+  return typeof pj === 'object' && pj !== null && !Array.isArray(pj)
+    ? (pj as Record<string, unknown>)
+    : {}
 }
