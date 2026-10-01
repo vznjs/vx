@@ -38,7 +38,8 @@ export interface TurboCacheOptions {
   teamSlug?: string
   /**
    * Sign uploads and verify downloads with Turbo's artifact signature
-   * (HMAC-SHA256, `x-artifact-tag`), or `TURBO_REMOTE_CACHE_SIGNATURE_KEY`.
+   * (HMAC-SHA256, `x-artifact-tag`), or `TURBO_REMOTE_CACHE_SIGNATURE_KEY`
+   * where turbo.json sets `remoteCache.signature: true`, as Turbo reads it.
    * At least 32 bytes, used raw. A download whose tag does not verify is a
    * miss, never a restore.
    */
@@ -58,6 +59,7 @@ export interface TurboCacheOptions {
 /** turbo.json's `remoteCache` block: the source below Turbo's environment, as in Turbo. */
 export interface TurboJsonRemoteCache {
   apiUrl?: unknown
+  signature?: unknown
   teamId?: unknown
   teamSlug?: unknown
   enabled?: unknown
@@ -215,7 +217,11 @@ export function resolveTurboCacheConfig(
     )
   const teamId = options.teamId ?? env['TURBO_TEAMID'] ?? fromFile(file.teamId)
   const teamSlug = options.teamSlug ?? env['TURBO_TEAM'] ?? fromFile(file.teamSlug)
-  const signatureKey = options.signatureKey ?? env['TURBO_REMOTE_CACHE_SIGNATURE_KEY']
+  // Turbo signs only under `remoteCache.signature: true`; the env key alone
+  // signs nothing there, and a short one here refused the whole cache.
+  const signatureKey =
+    options.signatureKey ??
+    (file.signature === true ? env['TURBO_REMOTE_CACHE_SIGNATURE_KEY'] : undefined)
   if (signatureKey !== undefined) {
     if (Buffer.byteLength(signatureKey) < MIN_SIGNATURE_KEY_LENGTH) {
       throw new Error(

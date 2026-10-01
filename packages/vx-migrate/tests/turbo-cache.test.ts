@@ -201,6 +201,24 @@ describe('resolveTurboCacheConfig', () => {
     expect(signals.map((s) => s instanceof AbortSignal)).toEqual([false, true])
   })
 
+  // Turbo signs only under `remoteCache.signature: true`: a short env key
+  // with the flag off refused the cache here and signed nothing there.
+  it('the env signature key applies only where turbo.json turns signing on', () => {
+    const env = { TURBO_TOKEN: 't', TURBO_REMOTE_CACHE_SIGNATURE_KEY: 'k'.repeat(32) }
+    const key = (
+      file: Parameters<typeof resolveTurboCacheConfig>[2],
+      e: Record<string, string> = env,
+    ) => resolveTurboCacheConfig({ teamId: 'team_1' }, e, file)?.signatureKey
+    expect([
+      key({}),
+      key({ signature: false }),
+      key({ signature: true }),
+      key({}, { ...env, TURBO_REMOTE_CACHE_SIGNATURE_KEY: 'short' }),
+      resolveTurboCacheConfig({ teamId: 'team_1', signatureKey: 'o'.repeat(32) }, env, {})
+        ?.signatureKey,
+    ]).toEqual([undefined, undefined, 'k'.repeat(32), undefined, 'o'.repeat(32)])
+  })
+
   it('a signature key must be Turbo’s minimum length and come with a team id', () => {
     expect(() =>
       resolveTurboCacheConfig(
