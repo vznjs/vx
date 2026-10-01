@@ -30,7 +30,7 @@ Every key `turbo.json`, `nx.json` and `project.json` accept, read from the upstr
 | `globalEnv` | mapped, with a note | Added to every task's `cache.inputs.env` and passthrough; under `turbo()` a `*` name expands over the run's environment, as Turbo does; otherwise a wildcard is dropped with a note. |
 | `globalPassThroughEnv` | mapped, with a note | Added to every task's `exec.env.passThrough`, not hashed; under `turbo()` a `*` name expands over the run's environment; otherwise a wildcard is dropped with a note. |
 | `noUpdateNotifier` | not applicable | Turbo CLI update notice. |
-| `remoteCache` | mapped, with a note | `turboCache()` reads `apiUrl`, `teamId`, `teamSlug` and `enabled`, below env vars and options. |
+| `remoteCache` | mapped, with a note | `turboCache()` reads `apiUrl`, `teamId`, `teamSlug`, `enabled`, `signature`, `timeout` and `uploadTimeout`, below env vars and options. |
 | `tags` | not applicable | Package tags feed only Turbo boundaries; never read. |
 | `tasks` | supported | Each task (or Turbo 1 `pipeline`) becomes a vx task for the packages that declare the script. |
 | `ui` | not applicable | Terminal UI choice. |

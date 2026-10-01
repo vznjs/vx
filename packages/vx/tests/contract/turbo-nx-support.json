@@ -87,7 +87,7 @@
   {
     "key": "turbo.json remoteCache",
     "status": "mapped",
-    "reason": "`turboCache()` reads `apiUrl`, `teamId`, `teamSlug` and `enabled`, below env vars and options."
+    "reason": "`turboCache()` reads `apiUrl`, `teamId`, `teamSlug`, `enabled`, `signature`, `timeout` and `uploadTimeout`, below env vars and options."
   },
   {
     "key": "turbo.json tags",
