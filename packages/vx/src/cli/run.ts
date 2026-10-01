@@ -17,6 +17,7 @@ import type { ContinueMode } from '../graph/index.js'
 import { type CachePolicy, FULL_CACHE_POLICY, parseCachePolicy } from '../cache/index.js'
 import { findCwdSelection, pickTask, resolveFilters } from './select.js'
 import { nxTargetHint, taskNamesHere } from './task-verb.js'
+import { loadCliWorkspace } from './workspace-config.js'
 import { MAX_TIMEOUT_MS, isUserError, parseDecimalInt, machineParallelism } from '../util/index.js'
 import { formatGraphDot, formatPlanJson, formatPlanText } from './plan-format.js'
 
@@ -464,6 +465,9 @@ export async function resolveRunOptions(
   if (parsed.affected !== undefined) {
     const root = await findWorkspaceRoot(cwd)
     let base = parsed.affected
+    // The workspace's `affectedBase` — or a plugin's `config` stage, from
+    // nx.json's `defaultBase` or `TURBO_SCM_BASE` — comes before the guess.
+    if (base === '') base = (await loadCliWorkspace(root)).workspaceConfig?.affectedBase ?? ''
     if (base === '') {
       try {
         base = await defaultAffectedBase(root)

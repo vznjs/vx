@@ -35,6 +35,7 @@ const WORKSPACE_FIELDS = new Set([
   'cacheDir',
   'timeout',
   'cacheRetention',
+  'affectedBase',
   'plugins',
 ])
 
@@ -105,6 +106,12 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
     assertTimeoutInRange(config.timeout, `${configPath}: \`timeout\``)
   }
   if (config.cacheRetention !== undefined) validateRetention(config.cacheRetention, configPath)
+  if (config.affectedBase !== undefined) {
+    // A leading '-' would reach git as an option, not a ref.
+    if (typeof config.affectedBase !== 'string' || !/^[^-\s]\S*$/.test(config.affectedBase)) {
+      throw new UserError(`${configPath}: \`affectedBase\` must be a git ref like 'origin/main'`)
+    }
+  }
   if (config.plugins !== undefined) {
     if (!Array.isArray(config.plugins)) {
       throw new UserError(`${configPath}: \`plugins\` must be an array of plugin objects`)
@@ -768,7 +775,7 @@ const FOREIGN_FIELDS: ReadonlyMap<ReadonlySet<string>, Readonly<Record<string, s
         'a cache plugin in `plugins` (`turboCache()` or `nxCache()` from `@vzn/vx-migrate`)',
       parallel: '`concurrency`',
       cacheDirectory: '`cacheDir`',
-      defaultBase: 'the base in `--affected=<base>` (default `origin/HEAD`)',
+      defaultBase: '`affectedBase`',
       tasksRunnerOptions: 'a cache plugin in `plugins` (`nxCache()` from `@vzn/vx-migrate`)',
       globalPassThroughEnv: '`exec.env.passThrough` on the tasks it passes to',
     },

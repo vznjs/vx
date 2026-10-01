@@ -1266,6 +1266,8 @@ interface WorkspaceConfig {
   timeout?: number
   /** Evict from the local cache at the end of each run (the `vx cache prune` policy). */
   cacheRetention?: { olderThan?: string; maxSize?: string }
+  /** The git ref a bare `--affected` compares with. */
+  affectedBase?: string
   /** Run-level plugins (cache / executor / telemetry capabilities). */
   plugins?: readonly Plugin[]
 }
@@ -1308,6 +1310,11 @@ interface WorkspaceConfig {
   not the run's work: a failure is a warning, never a failed run. Not
   folded into any cache key. Omitted → the cache grows until
   `vx cache prune`.
+- **`affectedBase`** — the git ref a bare `--affected` compares with
+  (`origin/develop`); `--affected=<base>` still wins. Omitted →
+  `origin/HEAD`, else `HEAD~1`. A plugin's `config` stage may set it:
+  `nx()` from `NX_BASE` or nx.json's `defaultBase`, `turbo()` from
+  `TURBO_SCM_BASE`. Not folded into any cache key.
 - **`plugins`** — the run-level extension points. Optional: core
   applies no plugin by default, and the local executor and the local
   cache are its floor — the tail of every executor list and cache chain
@@ -1679,6 +1686,7 @@ Workspace-config errors:
 | `cacheRetention.olderThan of 0 evicts every entry after every run`                                                                                           | Every run would evict what it just saved; `vx cache prune --older-than 0` is refused too.                                                                                                                                                                                                                                                                    |
 | `cacheRetention.maxSize of 0 evicts every entry after every run`                                                                                             | The same, for the size bound.                                                                                                                                                                                                                                                                                                                                |
 | `cacheRetention.maxSize '<n>' reads as <n> bytes — give a unit (e.g. '<n>M', '<n>G')`                                                                        | A bare number is bytes; a cache capped at `10` bytes is a typo for `10G`. `10B` still loads.                                                                                                                                                                                                                                                                 |
+| `affectedBase must be a git ref like 'origin/main'`                                                                                                          | Not a string, empty, or opens with `-` (git would read an option).                                                                                                                                                                                                                                                                                           |
 | `plugins must be an array of plugin objects`                                                                                                                 | Wrong shape.                                                                                                                                                                                                                                                                                                                                                 |
 | `plugins[<i>] must be an object`                                                                                                                             | A non-object entry in `plugins`; a string (Nx's `'@nx/vite/plugin'`) adds that a plugin is what its package's function returns, not a module name (D-49).                                                                                                                                                                                                    |
 | `plugins[<i>] must come from definePlugin(import.meta, { … })`                                                                                               | A plain object where a plugin was expected: a plugin's name is its package name, and only `definePlugin` sets it.                                                                                                                                                                                                                                            |

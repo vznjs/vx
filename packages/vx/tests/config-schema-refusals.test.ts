@@ -499,9 +499,7 @@ describe('workspace fields another runner spells elsewhere (D-38)', () => {
       }
       return undefined
     }
-    expect(where('defaultBase')).toBe(
-      'vx spells it the base in `--affected=<base>` (default `origin/HEAD`)',
-    )
+    expect(where('defaultBase')).toBe('vx spells it `affectedBase`')
     expect(where('tasksRunnerOptions')).toBe(
       'vx spells it a cache plugin in `plugins` (`nxCache()` from `@vzn/vx-migrate`)',
     )

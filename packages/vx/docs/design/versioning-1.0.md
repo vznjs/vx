@@ -42,10 +42,10 @@ the values it takes and each refusal's exact words are recorded in
 
 `vx.workspace.ts`:
 
-| Level            | Fields                                                            |
-| ---------------- | ----------------------------------------------------------------- |
-| (top)            | `cacheDir`, `cacheRetention`, `concurrency`, `plugins`, `timeout` |
-| `cacheRetention` | `maxSize`, `olderThan`                                            |
+| Level            | Fields                                                                            |
+| ---------------- | --------------------------------------------------------------------------------- |
+| (top)            | `affectedBase`, `cacheDir`, `cacheRetention`, `concurrency`, `plugins`, `timeout` |
+| `cacheRetention` | `maxSize`, `olderThan`                                                            |
 
 `vx.config.ts`:
 

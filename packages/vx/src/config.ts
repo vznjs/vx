@@ -23,6 +23,12 @@ export interface WorkspaceConfig {
    */
   cacheRetention?: { olderThan?: string; maxSize?: string }
   /**
+   * The git ref a bare `--affected` compares with (`origin/develop`).
+   * `--affected=<base>` overrides it. Omitted → `origin/HEAD`, else
+   * `HEAD~1`. Never folded into a cache key.
+   */
+  affectedBase?: string
+  /**
    * Plugins registered for this workspace, consulted in this order once
    * per `vx run`: each fills any of the pipeline stages and capabilities
    * below, and core's own executor and cache store sit at the tail of

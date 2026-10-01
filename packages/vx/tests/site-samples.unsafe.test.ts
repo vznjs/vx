@@ -1060,7 +1060,7 @@ describe('the workspace-config guide documents every WorkspaceConfig field', () 
     const decl = /export interface WorkspaceConfig \{([\s\S]*?)\n\}/.exec(src)
     expect(decl).not.toBeNull()
     const fields = [...decl![1]!.matchAll(/^  (\w+)\?:/gm)].map((m) => m[1]!)
-    expect(fields.length).toBe(5)
+    expect(fields.length).toBe(6)
     const page = section(
       readFileSync(path.join(GUIDES, 'configure.md'), 'utf8'),
       'Workspace config',

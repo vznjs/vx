@@ -31,6 +31,7 @@ type Exhaustive<T, L extends readonly string[]> = [Exclude<Keys<T>, L[number]>] 
   : ['missing from the list:', Exclude<Keys<T>, L[number]>]
 
 const WORKSPACE = [
+  'affectedBase',
   'cacheDir',
   'cacheRetention',
   'concurrency',

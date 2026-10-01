@@ -394,6 +394,10 @@ const WORKSPACE_CASES: Array<[string, () => Promise<string | null>]> = [
   ['timeout must be a positive integer (milliseconds)', workspaceConfig('{ timeout: -1 }')],
   ['cacheDir must be a string', workspaceConfig('{ cacheDir: 42 }')],
   [
+    "affectedBase must be a git ref like 'origin/main'",
+    workspaceConfig('{ affectedBase: "--output=x" }'),
+  ],
+  [
     "cacheRetention must be { olderThan?: '30d', maxSize?: '10G' }",
     workspaceConfig('{ cacheRetention: "30d" }'),
   ],
@@ -521,7 +525,9 @@ describe('docs/schema.md unknown-field rejection', () => {
     const message = await workspaceConfig('{ plugin: [{ name: "p", setup() {} }] }')()
     expect(message).toContain('has unknown field "plugin"')
     expect(message).toContain('did you mean plugins?')
-    expect(message).toContain('(allowed: cacheDir, cacheRetention, concurrency, plugins, timeout)')
+    expect(message).toContain(
+      '(allowed: affectedBase, cacheDir, cacheRetention, concurrency, plugins, timeout)',
+    )
   })
 })
 

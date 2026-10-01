@@ -61,7 +61,7 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     '                             foo, @scope/*, ./packages/foo, foo..., ...foo,',
     '                             foo^..., !foo, [<since>]',
     '      --affected[=<base>]  Sugar for --filter "...[<base>]". Default base =',
-    '                             origin/HEAD (falls back to HEAD~1).',
+    '                             affectedBase, else origin/HEAD, else HEAD~1.',
     "  pkg#task                 Run a specific project's task directly.",
     '',
     'Execution (for run):',
