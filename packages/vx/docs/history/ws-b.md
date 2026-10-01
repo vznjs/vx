@@ -981,3 +981,15 @@ pin what vx said; the missing and failing-`--version` rows are red
 without the change, the refused attach is the control. `vx info` still
 says `available` there: the fact would be a new field in `vx mcp`'s
 tools record, left as a lead. schema.md and sandbox-runtime.md say so.
+
+B-52. B-51's lead: `vx info` said `available` on a Linux host whose
+sandboxed tasks run untraced (no `strace` on PATH, one whose
+`--version` fails, or one that may not attach), so the doctor hid what
+the run warns about. The strace verdict is memoized with its reason
+(`straceState`), the run still warns once, and `untracedReason()` hands
+the reason to the doctor without a word on stderr: `sandbox.untraced`
+in `vx info --json` and `vx mcp`'s getWorkspaceInfo, and the row reads
+`available (N tasks declare exec.sandbox), untraced — <why>, so the
+reads it denies go unreported`. Rows: `sandbox-runtime.unsafe.test.ts`
+› untracedReason names what the warning would (the real strace is the
+null control); `show-info.test.ts` › the rendered sandbox rows.

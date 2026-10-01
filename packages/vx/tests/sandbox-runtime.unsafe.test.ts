@@ -4954,6 +4954,33 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
         said: untraced('strace is not on PATH'),
       })
     })
+
+    // `vx info` reports the same verdict as a fact (B-51's lead): the reason
+    // the runtime would warn with, and not a word on stderr, since the doctor
+    // runs nothing. With the real strace it is null.
+    it('untracedReason names what the warning would, and says nothing', async () => {
+      const bin = path.join(dir, 'bin')
+      await mkdir(bin)
+      await writeFile(path.join(bin, 'strace'), '#!/bin/sh\nexit 1\n', { mode: 0o755 })
+      const src = path.resolve(import.meta.dir, '..', 'src', 'exec', 'sandbox-runtime.ts')
+      const ask = (pathDirs: string): [string, string] => {
+        const p = Bun.spawnSync({
+          cmd: [
+            process.execPath,
+            '-e',
+            `import { untracedReason } from ${JSON.stringify(src)}\nconsole.log(JSON.stringify(await untracedReason()))`,
+          ],
+          env: { ...process.env, PATH: pathDirs },
+          stdout: 'pipe',
+          stderr: 'pipe',
+        })
+        return [p.stdout.toString().trim(), p.stderr.toString()]
+      }
+      expect([ask(`${bin}:${process.env['PATH']}`), ask(process.env['PATH']!)]).toEqual([
+        [JSON.stringify('strace --version exited 1'), ''],
+        ['null', ''],
+      ])
+    })
   })
 
   it('a trace that cannot be parsed costs the report, never the task', async () => {
