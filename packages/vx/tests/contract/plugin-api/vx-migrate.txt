@@ -159,6 +159,7 @@ export interface MapTurboOptions {
   splice(kind: TurboGlobal, values: readonly string[]): readonly unknown[]
   persistentTodo: string
   envNames?: readonly string[]
+  vendorEnvPrefix?: string
 }
 == type MapWireitOptions (src/wireit/wireit-map.ts)
 export interface MapWireitOptions {
@@ -297,6 +298,7 @@ export type TurboGlobal = 'inputs' | 'env' | 'pass'
 == type TurboJsonRemoteCache (src/turbo-cache/index.ts)
 export interface TurboJsonRemoteCache {
   apiUrl?: unknown
+  signature?: unknown
   teamId?: unknown
   teamSlug?: unknown
   enabled?: unknown
