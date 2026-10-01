@@ -11,7 +11,6 @@
 // With neither the plugin DECLINES and the run stays local.
 //
 // Imports core only through the public `@vzn/vx` specifier.
-import { createHmac, randomUUID, timingSafeEqual, type Hmac } from 'node:crypto'
 import { readFileSync, unlinkSync } from 'node:fs'
 import { unlink } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -90,7 +89,10 @@ export interface TurboCacheConfig {
 const SIGNATURE_MESSAGE_PREFIX = 'artifact-signature:v2'
 export const MIN_SIGNATURE_KEY_LENGTH = 32
 
-function updateLength(mac: Hmac, byteLength: number): void {
+// Bun's own hasher and the global `crypto`, not `node:crypto`: importing that
+// module cost every `@vzn/vx-migrate` user 6.6 ms at startup, remote cache
+// or not (G-121).
+function updateLength(mac: Bun.CryptoHasher, byteLength: number): void {
   const len = Buffer.alloc(8)
   len.writeBigUInt64LE(BigInt(byteLength))
   mac.update(len)
@@ -108,7 +110,7 @@ export async function artifactTag(
   teamId: string,
   body: Blob,
 ): Promise<string> {
-  const mac = createHmac('sha256', key)
+  const mac = new Bun.CryptoHasher('sha256', key)
   for (const field of [
     Buffer.from(SIGNATURE_MESSAGE_PREFIX),
     Buffer.from(hash),
@@ -181,7 +183,11 @@ function unlinkingStream(file: string): ReadableStream<Uint8Array> {
 function tagsEqual(expected: string, actual: string): boolean {
   const a = Buffer.from(expected, 'base64')
   const b = Buffer.from(actual, 'base64')
-  return a.byteLength === b.byteLength && timingSafeEqual(a, b)
+  if (a.byteLength !== b.byteLength) return false
+  // Constant time over the bytes, as timingSafeEqual is.
+  let diff = 0
+  for (let i = 0; i < a.byteLength; i++) diff |= a[i]! ^ b[i]!
+  return diff === 0
 }
 
 /** Where `turbo` itself sends a token with no `apiUrl`: Vercel's hosted Remote Cache. */
@@ -478,7 +484,7 @@ export class TurboRemoteCache implements RemoteCacheLayer {
       await res.body?.cancel()
       throw refused()
     }
-    const temp = path.join(this.tempDir, `vx-turbo-${hash}-${randomUUID()}`)
+    const temp = path.join(this.tempDir, `vx-turbo-${hash}-${crypto.randomUUID()}`)
     trackTemp(temp)
     try {
       const max = this.maxSignedBody
