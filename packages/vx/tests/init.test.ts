@@ -772,6 +772,7 @@ describe('migrateScripts', () => {
       dev: 'pnpm --filter app dev',
       play: 'pnpm -C play dev',
       e2e: 'turbo run e2e',
+      ci: 'vx run ci --all',
     })
     const a = meta('a', '/w/packages/a', { build: 'tsc' })
     const plan = migrateScripts([rootMeta, a])
