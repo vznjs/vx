@@ -413,7 +413,8 @@ Unknown flags are a parse error (`unknown flag: --foo`), naming the
 nearest flag the verb accepts when one is within two edits
 (`unknown flag: --concurency (did you mean --concurrency?)`). Every verb
 does this against its own usage line: `vx info --formt` hints
-`--format`, `vx lock --chek` hints `--check`.
+`--format`, `vx lock --chek` hints `--check`, and `--json` on a verb
+that takes `--format` hints `--format json`.
 
 A task typed where the verb goes (`turbo build`, `nx build app`) is
 refused with the `vx run` that runs it: `vx build` names

@@ -265,6 +265,11 @@ describe('cli run()', () => {
       ['cache', 'prune', '--dry-rn'],
       ['cache', 'prune', '--dry'],
       ['run', 'build', '--concurency', '2'],
+      ['info', '--json'],
+      ['last', '--json'],
+      ['show', '--json'],
+      // CONTROL: a verb with no --format gets no such hint.
+      ['lock', '--json'],
       // CONTROL: a positional is not a flag, and gets no hint, even one two
       // edits from a flag the verb takes.
       ['info', 'format'],
@@ -290,6 +295,10 @@ describe('cli run()', () => {
       'vx cache prune: unknown flag: --dry-rn (did you mean --dry-run?) (see `vx cache --help`)',
       'vx cache prune: unknown flag: --dry (did you mean --dry-run?) (see `vx cache --help`)',
       'vx run: unknown flag: --concurency (did you mean --concurrency?) (see `vx run --help`)',
+      'vx info: unknown flag: --json (did you mean --format json?) (see `vx info --help`)',
+      'vx last: unknown flag: --json (did you mean --format json?) (see `vx last --help`)',
+      'vx show: unknown flag: --json (did you mean --format json?) (see `vx show --help`)',
+      'vx lock: unknown flag: --json (see `vx lock --help`)',
       'vx info: unexpected argument: format (see `vx info --help`)',
       'vx lock: unexpected argument: foo (see `vx lock --help`)',
       'vx cache prune: unexpected argument: foo (see `vx cache --help`)',

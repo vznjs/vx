@@ -216,6 +216,9 @@ export function flagHint(verb: string, arg: string): string {
   if (!arg.startsWith('-')) return ''
   const name = arg.replace(/=.*$/, '')
   const flags = acceptedFlags(verb)
+  // `--json` is gh's and Nx's spelling; a verb with `--format` reads it
+  // there, and no edit budget reaches `--format json` from `--json`.
+  if (name === '--json' && flags.includes('--format')) return ' (did you mean --format json?)'
   // A flag cut short at a word (`--dry` for prune's `--dry-run`, which
   // `vx run` spells `--dry`) is too many edits away for either budget.
   const cut = flags.filter((f) => f.startsWith(`${name}-`))
