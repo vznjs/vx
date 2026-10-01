@@ -942,13 +942,6 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   out of the inferred set, so a deploy's commit SHA does not re-key every
   Next build (row: the CI vendor prefix is left out of framework
   inference only; red without the filter).
-- **G-82.** Turbo's task `tags` (on Turbo's main, past 2.11.5) are labels
-  its hash and run never read, yet each drew a "no vx equivalent — map
-  it manually" todo from `turbo()` and `bunx @vzn/vx-migrate`. They map
-  to nothing now. The support table's `interruptible` row said it was
-  reported; it maps to nothing in silence since the key was learned.
-  Row (`turbo-map-sweep` › task tags map to nothing, an unknown key's
-  todo the control): red without the fix.
 - **G-84.** `turboCache()` signed with `TURBO_REMOTE_CACHE_SIGNATURE_KEY`
   whenever the env set it, where Turbo signs only under turbo.json's
   `remoteCache.signature: true`. A repo with a short key in its CI env
