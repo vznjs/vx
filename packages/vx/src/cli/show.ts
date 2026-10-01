@@ -6,6 +6,7 @@
 // <task>`: one task. `<task>`: that task in every project declaring it.
 // Deliberately NOT the lock — vx-lock.json is already the frozen JSON.
 
+import path from 'node:path'
 import type { ProjectConfig, TaskConfig } from '../config.js'
 import { declaredTask } from '../graph/index.js'
 import { flagHint, seeHelp } from './help.js'
@@ -62,6 +63,10 @@ export async function showCmd(args: readonly string[]): Promise<number> {
   const metas = await discoverCliProjects(await loadWorkspace(root, reads))
   const byName = new Map(metas.map((m) => [m.name, m]))
 
+  // `//#task` is Turbo's root package's task: the root project here (D-39).
+  const rootMeta = metas.find((m) => path.resolve(m.dir) === path.resolve(root))
+  if (parsed.target?.startsWith('//#') && rootMeta !== undefined)
+    parsed.target = `${rootMeta.name}#${parsed.target.slice(3)}`
   const hashAt = parsed.target?.indexOf('#') ?? -1
   const projectName =
     parsed.target === undefined
