@@ -216,13 +216,17 @@ export function flagHint(verb: string, arg: string): string {
   if (!arg.startsWith('-')) return ''
   const name = arg.replace(/=.*$/, '')
   const flags = acceptedFlags(verb)
+  // A flag cut short at a word (`--dry` for prune's `--dry-run`, which
+  // `vx run` spells `--dry`) is too many edits away for either budget.
+  const cut = flags.filter((f) => f.startsWith(`${name}-`))
   const best =
     nearest(name, flags) ??
     nearest(
       name,
       flags.filter((f) => f.slice(0, 5) === name.slice(0, 5)),
       3,
-    )
+    ) ??
+    (cut.length === 1 ? cut[0] : undefined)
   return best === undefined ? '' : ` (did you mean ${best}?)`
 }
 

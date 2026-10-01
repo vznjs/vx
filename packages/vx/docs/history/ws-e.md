@@ -535,3 +535,9 @@ walked on fixtures.
   deleted branch is no base (the no-base hint, then `HEAD~1`, then the
   branch back as control), red without the change. The row that returned
   a dangling `origin/main` now creates it first.
+- **E-94.** J's lead: `vx cache prune --dry` was refused with no hint,
+  though `vx run` and `vx init` spell it `--dry` and prune's `--dry-run`
+  was four edits away, past both of `flagHint`'s budgets. A flag cut
+  short at a word that leads exactly one accepted flag now names it.
+  Row: `cli.test.ts` › every verb's unknown flag, now with
+  `cache prune --dry`; red without the change.
