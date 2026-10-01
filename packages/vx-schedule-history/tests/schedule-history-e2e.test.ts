@@ -247,6 +247,17 @@ describe('schedule-history plugin end to end', () => {
       })
       expect(bad.exitCode).not.toBe(0)
       expect(bad.stderr.toString()).toContain('unknown flag: --nope')
+      // `vx completions` offers `--help` for every plugin verb; it was refused.
+      for (const flag of ['--help', '-h']) {
+        const help = Bun.spawnSync({
+          cmd: [process.execPath, CORE_BIN, 'history', flag],
+          cwd: root,
+        })
+        expect([help.exitCode, help.stdout.toString().split('\n')[0]]).toEqual([
+          0,
+          'Usage: vx history [--format pretty|json]',
+        ])
+      }
     },
     TIMEOUT,
   )

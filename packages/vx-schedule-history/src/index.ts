@@ -349,6 +349,13 @@ async function historyCmd(
   let format: 'pretty' | 'json' = 'pretty'
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!
+    // A plugin verb owns its help; completions offer `--help` for every verb.
+    if (a === '--help' || a === '-h') {
+      process.stdout.write(
+        'Usage: vx history [--format pretty|json]\n\nWhat schedule-history learned per task (p50, peak RSS, CPU parallelism) and the reservation it packs.\n',
+      )
+      return 0
+    }
     if (a === '--format' || a.startsWith('--format=')) {
       const v = a === '--format' ? argv[++i] : a.slice(9)
       if (v !== 'pretty' && v !== 'json') {
