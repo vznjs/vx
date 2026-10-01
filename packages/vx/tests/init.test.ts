@@ -773,6 +773,8 @@ describe('migrateScripts', () => {
       play: 'pnpm -C play dev',
       e2e: 'turbo run e2e',
       ci: 'vx run ci --all',
+      'build:common': 'yarn --cwd ./packages/common build:esm',
+      'build:b': 'npm --prefix packages/b run build',
     })
     const a = meta('a', '/w/packages/a', { build: 'tsc' })
     const plan = migrateScripts([rootMeta, a])
