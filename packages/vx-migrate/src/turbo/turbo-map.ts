@@ -57,35 +57,60 @@ interface TurboJson {
   envMode?: unknown
 }
 
+/** A name core takes in `cache.inputs.env` and `exec.env.passThrough`. */
+const keyable = (name: string): boolean =>
+  name.length > 0 && !name.startsWith('!') && !/[*?[\]{}=\0]/.test(name)
+
 /**
- * A Turbo env list's explicit names. A `!` entry takes names back out of
- * what the list matched (openstatus drops `!NEXT_PUBLIC_VERCEL_URL` from
- * a `NEXT_PUBLIC_*` it would otherwise hash); vx matches no name it is
- * not given, so an exclusion only removes the list's own names and needs
- * no todo. With `live`, a `*` name expands over those names; any other
- * wildcard is `wildcard(entry)`'s to report.
+ * A Turbo env list's explicit names, read as Turbo reads them
+ * (`wildcard_to_regex_pattern`): `*` is the one wildcard, `\*` a
+ * literal `*`, a leading `\!` a literal `!`, and every other character
+ * (`?`, `[`) itself. A `!` entry takes names back out of what the list
+ * matched (openstatus drops `!NEXT_PUBLIC_VERCEL_URL` from a
+ * `NEXT_PUBLIC_*` it would otherwise hash); vx matches no name it is not
+ * given, so an exclusion only removes the list's own names and needs no
+ * todo. With `live`, a `*` name expands over those names, and a literal
+ * core cannot key (unkey's `NEXT_PUBLIC_\*`) is dropped when no variable
+ * has it, as Turbo hashes nothing for it then. Any other wildcard, or such
+ * a literal, is `gap(entry, literal)`'s to report.
  */
 function explicitEnv(
   entries: readonly string[],
-  wildcard: (entry: string) => void,
+  gap: (entry: string, literal: string | null) => void,
   live?: readonly string[],
 ): string[] {
   const out: string[] = []
   const excluded: RegExp[] = []
-  const glob = (p: string): RegExp => new RegExp(`^${p.split('*').map(RegExp.escape).join('.*')}$`)
+  // Literal runs split at each unescaped `*`; one run is a literal name.
+  const runs = (p: string): string[] => p.split(/(?<!\\)\*/).map((r) => r.replaceAll('\\*', '*'))
+  const regex = (parts: readonly string[]): RegExp =>
+    new RegExp(`^${parts.map(RegExp.escape).join('.*')}$`)
   for (const e of entries) {
-    if (e.startsWith('!') && e.length > 1 && !/[?[\]!\\]/.test(e.slice(1))) {
-      excluded.push(glob(e.slice(1)))
-    } else if (live !== undefined && e.includes('*') && !/[?[\]!\\]/.test(e)) {
+    if (e.startsWith('!') && e.length > 1) {
+      excluded.push(regex(runs(e.slice(1))))
+      continue
+    }
+    const parts = runs(e.startsWith('\\!') ? e.slice(1) : e)
+    if (parts.length === 1) {
+      const name = parts[0]!
+      if (keyable(name)) out.push(name)
+      else if (live === undefined || live.includes(name)) gap(e, name)
+    } else if (live !== undefined) {
       // Turbo matches a `*` name against the environment it runs in; so
       // does a live mapping, and the names it finds are keyed and passed.
-      const re = glob(e)
-      out.push(...live.filter((n) => re.test(n)).sort())
-    } else if (/[*?[\]!\\]/.test(e)) wildcard(e)
-    else out.push(e)
+      const re = regex(parts)
+      out.push(...live.filter((n) => re.test(n) && keyable(n)).sort())
+    } else gap(e, null)
   }
   return out.filter((n) => !excluded.some((re) => re.test(n)))
 }
+
+/** A gap's message: a wildcard, or a literal name core cannot key. */
+const envGap = (field: string, entry: string, literal: string | null, list: string): string =>
+  literal === null
+    ? `${field} ${JSON.stringify(entry)}: wildcards are not supported${list}`
+    : `${field} ${JSON.stringify(entry)}: Turbo reads this as the one variable ` +
+      `${JSON.stringify(literal)} (only \`*\` is a wildcard), a name vx cannot key — dropped`
 
 const KNOWN_TASK_KEYS = new Set([
   'dependsOn',
@@ -687,11 +712,8 @@ export async function mapTurboWorkspace(
   const envNames = (field: string, names: readonly string[]): string[] =>
     explicitEnv(
       names,
-      (e) =>
-        notes.push(
-          `${field} ${JSON.stringify(e)}: wildcards are not supported in vx env names — ` +
-            'list explicit names',
-        ),
+      (e, literal) =>
+        notes.push(envGap(field, e, literal, ' in vx env names — list explicit names')),
       opts.envNames,
     )
   // Turbo 1's `globalDotEnv` files are hashed as `globalDependencies` are
@@ -1195,19 +1217,20 @@ function buildTask(
 
   const envNames: string[] = explicitEnv(
     [...inferred, ...envDeps, ...(def.env ?? [])],
-    (e) =>
+    (e, literal) =>
       todos.push(
-        `env ${JSON.stringify(e)}: wildcards are not supported in vx env names — ` +
-          'list explicit names in cache.inputs.env + exec.env.passThrough',
+        envGap(
+          'env',
+          e,
+          literal,
+          ' in vx env names — list explicit names in cache.inputs.env + exec.env.passThrough',
+        ),
       ),
     opts.envNames,
   )
   const passNames: string[] = explicitEnv(
     def.passThroughEnv ?? [],
-    (e) =>
-      todos.push(
-        `passThroughEnv ${JSON.stringify(e)}: wildcards are not supported — list explicit names`,
-      ),
+    (e, literal) => todos.push(envGap('passThroughEnv', e, literal, ' — list explicit names')),
     opts.envNames,
   )
 
