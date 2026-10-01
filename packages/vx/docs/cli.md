@@ -1810,6 +1810,18 @@ copy to the source.
 | turbo  | `--since <v>`                                     | refuse  | use `--filter '[<ref>]'` or `--affected=<ref>`                                                                                |
 | turbo  | `--remote-only`                                   | refuse  | use `--cache local:,remote:rw`                                                                                                |
 | turbo  | `--remote-cache-read-only`                        | refuse  | use `--cache local:rw,remote:r`                                                                                               |
+| turbo  | `--anon-profile`                                  | refuse  | use `--profile[=<path>]`; vx has no redacting variant, so read it before sharing it                                           |
+| turbo  | `--cache-workers <v>`                             | refuse  | vx sizes its own cache I/O: drop it                                                                                           |
+| turbo  | `--cwd <v>`                                       | refuse  | run vx from that directory: `cd <dir> && vx run …`                                                                            |
+| turbo  | `--dangerously-disable-package-manager-check`     | refuse  | vx reads no `packageManager` field: drop it                                                                                   |
+| turbo  | `--env-mode <v>`                                  | refuse  | vx passes only the variables a task declares (strict): list the rest in `exec.env.passThrough`                                |
+| turbo  | `--framework-inference <v>`                       | refuse  | under `turbo()` inference is Turbo's; take a name back with a `!` entry in the task's `env`                                   |
+| turbo  | `--global-deps <v>`                               | refuse  | declare them in `cache.inputs.workspaceFiles` (under `turbo()`, turbo.json's `globalDependencies`)                            |
+| turbo  | `--json`                                          | refuse  | use `--dry=json` for the plan, `--summarize[=<path>]` for the run's JSON record                                               |
+| turbo  | `--log-file`                                      | refuse  | use `--summarize[=<path>]` for the run's JSON record                                                                          |
+| turbo  | `--preflight`                                     | refuse  | `turboCache()` sends no CORS preflight: drop it                                                                               |
+| turbo  | `--remote-cache-timeout <v>`                      | refuse  | set `turboCache({ timeoutMs })` or `TURBO_REMOTE_CACHE_TIMEOUT`                                                               |
+| turbo  | `--single-package`                                | refuse  | a repo with no workspaces is one project already: drop it                                                                     |
 | turbo  | `--token <v>`, `--team <v>`, `--api <v>`          | refuse  | a remote cache is a plugin: `turboCache()` from @vzn/vx-migrate in vx.workspace.ts reads TURBO_TOKEN / TURBO_TEAM / TURBO_API |
 | turbo  | `--no-daemon`, `--daemon`                         | refuse  | vx has no daemon: drop it                                                                                                     |
 | turbo  | `--ui <v>`, `--log-order <v>`, `--log-prefix <v>` | refuse  | vx frames each task’s output: `--output-logs <mode>` sets how much                                                            |

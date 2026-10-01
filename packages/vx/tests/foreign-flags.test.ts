@@ -86,6 +86,42 @@ const REFUSE: ReadonlyArray<readonly [readonly string[], string]> = [
     ['--token', 't'],
     '--token (turbo): a remote cache is a plugin: `turboCache()` from @vzn/vx-migrate in vx.workspace.ts reads TURBO_TOKEN / TURBO_TEAM / TURBO_API',
   ],
+  [
+    ['--anon-profile'],
+    '--anon-profile (turbo): use `--profile[=<path>]`; vx has no redacting variant, so read it before sharing it',
+  ],
+  [['--cache-workers', 'x'], '--cache-workers (turbo): vx sizes its own cache I/O: drop it'],
+  [['--cwd', 'x'], '--cwd (turbo): run vx from that directory: `cd <dir> && vx run …`'],
+  [
+    ['--dangerously-disable-package-manager-check'],
+    '--dangerously-disable-package-manager-check (turbo): vx reads no `packageManager` field: drop it',
+  ],
+  [
+    ['--env-mode', 'x'],
+    '--env-mode (turbo): vx passes only the variables a task declares (strict): list the rest in `exec.env.passThrough`',
+  ],
+  [
+    ['--framework-inference', 'x'],
+    "--framework-inference (turbo): under `turbo()` inference is Turbo's; take a name back with a `!` entry in the task's `env`",
+  ],
+  [
+    ['--global-deps', 'x'],
+    "--global-deps (turbo): declare them in `cache.inputs.workspaceFiles` (under `turbo()`, turbo.json's `globalDependencies`)",
+  ],
+  [
+    ['--json'],
+    "--json (turbo): use `--dry=json` for the plan, `--summarize[=<path>]` for the run's JSON record",
+  ],
+  [['--log-file'], "--log-file (turbo): use `--summarize[=<path>]` for the run's JSON record"],
+  [['--preflight'], '--preflight (turbo): `turboCache()` sends no CORS preflight: drop it'],
+  [
+    ['--remote-cache-timeout', 'x'],
+    '--remote-cache-timeout (turbo): set `turboCache({ timeoutMs })` or `TURBO_REMOTE_CACHE_TIMEOUT`',
+  ],
+  [
+    ['--single-package'],
+    '--single-package (turbo): a repo with no workspaces is one project already: drop it',
+  ],
   [['--no-daemon'], '--no-daemon (turbo): vx has no daemon: drop it'],
   [
     ['--ui=tui'],
