@@ -142,6 +142,43 @@ afterEach(async () => {
 const status = (r: Awaited<ReturnType<typeof run>>, id: string) =>
   r.outcomes.find((o) => o.node.id === id)!.status
 
+describe('nx(): a wildcard-first output', () => {
+  it(
+    'stays cached where the project tracks none of its kind and no config of its spelling, as in turbo()',
+    async () => {
+      const graph = structuredClone(GRAPH) as {
+        graph: { nodes: Record<string, { data: { targets: Record<string, unknown> } }> }
+      }
+      const target = (outputs: string[]) => ({
+        executor: 'nx:run-commands',
+        options: { command: 'echo t' },
+        outputs,
+        cache: true,
+      })
+      graph.graph.nodes['lib']!.data.targets['test'] = target(['{projectRoot}/*.xml'])
+      graph.graph.nodes['lib']!.data.targets['gen'] = target(['{projectRoot}/*.mjs'])
+      graph.graph.nodes['app']!.data.targets['test'] = target(['{projectRoot}/*.xml'])
+      await writeFile(path.join(root, 'graph.json'), JSON.stringify(graph))
+      await writeFile(path.join(root, 'packages', 'app', 'pom.xml'), '<project/>\n')
+      Bun.spawnSync({ cmd: ['git', 'add', '-A'], cwd: root })
+      const cacheOf = async (id: string) =>
+        (await planRun({ cwd: root, tasks: ['test', 'gen'], log: silent() })).tasks.find(
+          (t) => t.node.id === id,
+        )!.node.config.cache
+      expect((await cacheOf('lib#test'))?.outputs.files).toEqual(['*.xml'])
+      expect((await cacheOf('lib#gen'))?.outputs.files).toEqual(['*.mjs'])
+      // CONTROLS: app tracks an `.xml`; lib gains the config `*.mjs` covers.
+      expect(await cacheOf('app#test')).toBeUndefined()
+      await writeFile(
+        path.join(root, 'packages', 'lib', 'vx.config.mjs'),
+        'export default { tasks: {} }\n',
+      )
+      expect(await cacheOf('lib#gen')).toBeUndefined()
+    },
+    TIMEOUT,
+  )
+})
+
 describe('nx()', () => {
   it(
     'a ^target no project has is no edge, as under Nx',

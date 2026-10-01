@@ -2,8 +2,14 @@
 // through the mapper the `nx()` plugin runs live, as a migration plan.
 
 import path from 'node:path'
-import { type MigrationPlan, PERSISTENT_TODO, type ProjectMeta } from '@vzn/vx'
+import {
+  type MigrationFormat,
+  type MigrationPlan,
+  PERSISTENT_TODO,
+  type ProjectMeta,
+} from '@vzn/vx'
 import { mapNxWorkspace, parseNxGraph } from './nx/nx-map.js'
+import { trackedFiles, trackedKinds } from './tracked-outputs.js'
 
 export const NX_GRAPH_REL = '.nx/workspace-data/project-graph.json'
 
@@ -11,12 +17,17 @@ export const NX_GRAPH_REL = '.nx/workspace-data/project-graph.json'
 export async function migrateNx(
   root: string,
   metas: readonly ProjectMeta[],
+  format: MigrationFormat = 'ts',
   snapshot = path.join(root, NX_GRAPH_REL),
 ): Promise<MigrationPlan> {
   const graph = parseNxGraph(await Bun.file(snapshot).text(), path.relative(root, snapshot))
+  const tracked = await trackedFiles(root)
   const mapped = await mapNxWorkspace(root, metas, graph, {
     persistentTodo: PERSISTENT_TODO,
     cacheable: new Set(),
+    ...(tracked === null ? {} : { tracked: trackedKinds(tracked) }),
+    // The file this writes is each task's config.
+    ownConfig: () => `vx.config.${format}`,
   })
   return {
     headerNotes: [

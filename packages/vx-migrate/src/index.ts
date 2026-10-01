@@ -236,7 +236,7 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
   if (parsed.from === 'nx' || (parsed.from === undefined && !hasTurbo)) {
     if (hasGraph) {
       source = NX_GRAPH_REL
-      plan = await migrateNx(root, metas)
+      plan = await migrateNx(root, metas, format)
     } else if (hasNxJson || parsed.from === 'nx') {
       // Modern Nx stores the graph in SQLite, so the JSON snapshot exists only
       // when exported. The workspace's own nx exports it, as `nx()` does, into
@@ -252,7 +252,7 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
           )
         }
         source = 'nx graph'
-        plan = await migrateNx(root, metas, snapshot)
+        plan = await migrateNx(root, metas, format, snapshot)
       } finally {
         await rm(tmp, { recursive: true, force: true })
       }

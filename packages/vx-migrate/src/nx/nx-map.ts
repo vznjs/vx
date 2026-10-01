@@ -31,6 +31,7 @@ import {
   wildcardOutput,
   wildcardTodo,
 } from '../shared-outputs.js'
+import type { TrackedKinds } from '../tracked-outputs.js'
 import { packageScripts, relPosix } from '../paths.js'
 import { pruneOrphanPersistentNotes } from '../persistent-note.js'
 import { mapNxDeps, matchNxProjects, type TaskNameFor } from './nx-deps.js'
@@ -176,6 +177,17 @@ export interface MapNxOptions {
    * Absent, every mapped project's do: the CLI writes a config for each.
    */
   readonly attached?: ReadonlySet<string>
+  /**
+   * What git tracks under a root-relative project directory: a
+   * wildcard-first output of a kind it has none of stays cached, as in
+   * `turbo()`. Absent, every wildcard-first output runs uncached.
+   */
+  readonly tracked?: (rel: string) => TrackedKinds
+  /**
+   * The config file name a root-relative project's mapped tasks live beside
+   * (null: none), which core holds an output to. Absent, every spelling.
+   */
+  readonly ownConfig?: (rel: string) => string | null
 }
 
 /** The options with what the mapper reads itself: the root's dependency names. */
@@ -621,9 +633,9 @@ function buildTask(
   const persistent = readyWhen !== undefined || persistentTarget(target)
   const cacheWanted =
     target.cache === true || (target.cache === undefined && opts.cacheable.has(targetName))
-  const wild = wildcardOutput(outFiles) ?? wildcardOutput(wsOutFiles)
+  const wild = wildcardOutput(outFiles, opts.tracked?.(projectRel)) ?? wildcardOutput(wsOutFiles)
   if (wild !== undefined && cacheWanted && !persistent) todos.push(wildcardTodo(wild))
-  const own = wild === undefined ? ownFileOutput(outFiles) : undefined
+  const own = wild === undefined ? ownFileOutput(outFiles, opts.ownConfig?.(projectRel)) : undefined
   if (own !== undefined && cacheWanted && !persistent) todos.push(ownFileTodo(own))
   const cacheEnabled = !persistent && cacheWanted && wild === undefined && own === undefined
   if (persistent && cacheWanted) {
