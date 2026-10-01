@@ -942,3 +942,12 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   out of the inferred set, so a deploy's commit SHA does not re-key every
   Next build (row: the CI vendor prefix is left out of framework
   inference only; red without the filter).
+- **G-86.** `turbo()` read `concurrency`, `cacheMaxSize`, `cacheMaxAge`
+  and `envMode` from turbo.json only, where Turbo 2.11.5 lets
+  `TURBO_CONCURRENCY`, `TURBO_CACHE_MAX_SIZE`, `TURBO_CACHE_MAX_AGE` and
+  `TURBO_ENV_MODE` win over the file (probed in its binary): a CI that
+  pins one worker on a small runner got the file's eight, and a loose
+  env mode set there said nothing. Each env variable now wins, its `0`
+  included. Rows (`workspace-keys.test` › TURBO_CONCURRENCY and
+  TURBO_CACHE_MAX_* win over turbo.json, `turbo-map-sweep` ›
+  TURBO_ENV_MODE wins): red without the change.

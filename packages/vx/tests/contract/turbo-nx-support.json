@@ -22,17 +22,17 @@
   {
     "key": "turbo.json cacheMaxAge",
     "status": "mapped",
-    "reason": "turbo() fills `cacheRetention.olderThan` when `vx.workspace.ts` sets no retention; weeks become days, `\"0\"` is off."
+    "reason": "turbo() fills `cacheRetention.olderThan` when `vx.workspace.ts` sets no retention; weeks become days, `\"0\"` is off; `TURBO_CACHE_MAX_AGE` wins over it."
   },
   {
     "key": "turbo.json cacheMaxSize",
     "status": "mapped",
-    "reason": "turbo() fills `cacheRetention.maxSize` when `vx.workspace.ts` sets no retention; `\"0\"` is off."
+    "reason": "turbo() fills `cacheRetention.maxSize` when `vx.workspace.ts` sets no retention; `\"0\"` is off; `TURBO_CACHE_MAX_SIZE` wins over it."
   },
   {
     "key": "turbo.json concurrency",
     "status": "mapped",
-    "reason": "turbo() fills the workspace's `concurrency` when `vx.workspace.ts` sets none (`\"50%\"` of the cores too)."
+    "reason": "turbo() fills the workspace's `concurrency` when `vx.workspace.ts` sets none (`\"50%\"` of the cores too); `TURBO_CONCURRENCY` wins over it, as in Turbo."
   },
   {
     "key": "turbo.json daemon",
@@ -47,7 +47,7 @@
   {
     "key": "turbo.json envMode",
     "status": "mapped",
-    "reason": "Strict is vx's behaviour; `loose` gets a note, since vx passes only declared variables."
+    "reason": "Strict is vx's behaviour; `loose` gets a note, since vx passes only declared variables; under `turbo()` `TURBO_ENV_MODE` wins over it."
   },
   {
     "key": "turbo.json extends",

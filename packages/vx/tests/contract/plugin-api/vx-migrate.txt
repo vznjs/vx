@@ -160,6 +160,7 @@ export interface MapTurboOptions {
   persistentTodo: string
   envNames?: readonly string[]
   vendorEnvPrefix?: string
+  envMode?: string
 }
 == type MapWireitOptions (src/wireit/wireit-map.ts)
 export interface MapWireitOptions {

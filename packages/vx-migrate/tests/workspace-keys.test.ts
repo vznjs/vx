@@ -71,6 +71,38 @@ describe('turbo(): turbo.json workspace keys', () => {
     }
   })
 
+  // Turbo's environment sits above turbo.json; a CI that sets
+  // TURBO_CONCURRENCY=1 for a small runner got turbo.json's 8 under vx.
+  it('TURBO_CONCURRENCY and TURBO_CACHE_MAX_* win over turbo.json, their 0 included', async () => {
+    await writeFile(
+      path.join(root, 'turbo.json'),
+      JSON.stringify({ concurrency: '8', cacheMaxSize: '10GB', cacheMaxAge: '2w', tasks: {} }),
+    )
+    const names = ['TURBO_CONCURRENCY', 'TURBO_CACHE_MAX_SIZE', 'TURBO_CACHE_MAX_AGE'] as const
+    const saved = names.map((n) => process.env[n])
+    const under = async (env: Partial<Record<(typeof names)[number], string>>) => {
+      for (const n of names) delete process.env[n]
+      Object.assign(process.env, env)
+      return staged(turbo())
+    }
+    try {
+      expect([
+        await under({ TURBO_CONCURRENCY: '1', TURBO_CACHE_MAX_SIZE: '1GB' }),
+        await under({ TURBO_CACHE_MAX_SIZE: '0', TURBO_CACHE_MAX_AGE: '3' }),
+        await under({ TURBO_CONCURRENCY: '' }),
+      ]).toEqual([
+        { concurrency: 1, cacheRetention: { maxSize: '1GB', olderThan: '14d' } },
+        { concurrency: 8, cacheRetention: { olderThan: '3d' } },
+        { concurrency: 8, cacheRetention: { maxSize: '10GB', olderThan: '14d' } },
+      ])
+    } finally {
+      names.forEach((n, i) => {
+        if (saved[i] === undefined) delete process.env[n]
+        else process.env[n] = saved[i]
+      })
+    }
+  })
+
   it('a concurrency that is no positive whole number is left to the default', async () => {
     for (const concurrency of ['abc', '1.5', '-2']) {
       await writeFile(path.join(root, 'turbo.json'), JSON.stringify({ concurrency, tasks: {} }))
