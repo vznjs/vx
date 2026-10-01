@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { UserError, type ProjectMeta } from '@vzn/vx'
+import { DOTENV_PROBE, DOTENV_PROBE_TOP } from '../src/dotenv-probe.js'
 import { mapTurboWorkspace, type TurboMappedTask } from '../src/turbo/turbo-map.js'
 
 let root: string
@@ -256,7 +257,13 @@ describe('turbo-map: what the sweep found unheld', () => {
     )
     const inputs = (t.task!['cache'] as { inputs: Record<string, unknown> }).inputs
     const probe = (v: unknown) =>
-      Array.isArray(v) && v.length === 1 && String(v[0]).startsWith('find . ') ? 'probe' : v
+      Array.isArray(v) && v.length === 1
+        ? v[0] === DOTENV_PROBE
+          ? 'walk'
+          : v[0] === DOTENV_PROBE_TOP
+            ? 'top'
+            : v
+        : v
     expect({
       files: inputs['files'],
       ws: inputs['workspaceFiles'],
@@ -266,8 +273,8 @@ describe('turbo-map: what the sweep found unheld', () => {
     }).toEqual({
       files: ['src/**'],
       ws: undefined,
-      runtime: 'probe',
-      wsRuntime: 'probe',
+      runtime: 'top',
+      wsRuntime: 'walk',
       todos: [],
     })
   })
@@ -785,10 +792,13 @@ describe('turbo-map: `.env` inputs', () => {
     (t.task!['cache'] as { inputs: Record<string, unknown> }).inputs
 
   it.each([
-    [{ inputs: ['$TURBO_DEFAULT$', '.env*'] }, { files: ['**/*'], runtime: 'probe' }],
-    [{ inputs: ['src/**', '.env.local'] }, { files: ['src/**'], runtime: 'probe' }],
-    [{ dotEnv: ['.env.local'] }, { files: ['**/*'], runtime: 'probe' }],
-    [{ inputs: ['$TURBO_ROOT$/.env'] }, { files: [], workspaceRuntime: 'probe' }],
+    // A package's root-level globs take the one-shell probe; one below the
+    // root, or the workspace's, takes the walk.
+    [{ inputs: ['$TURBO_DEFAULT$', '.env*'] }, { files: ['**/*'], runtime: 'top' }],
+    [{ inputs: ['src/**', '.env.local'] }, { files: ['src/**'], runtime: 'top' }],
+    [{ dotEnv: ['.env.local'] }, { files: ['**/*'], runtime: 'top' }],
+    [{ inputs: ['.env*', 'config/.env.local'] }, { files: [], runtime: 'walk' }],
+    [{ inputs: ['$TURBO_ROOT$/.env'] }, { files: [], workspaceRuntime: 'walk' }],
   ])('%j keys %j', async (def, expected) => {
     const t = await taskOf({ tasks: { build: def } }, { a: { scripts: { build: 'b' } } })
     const got = inputsOf(t)
@@ -797,9 +807,13 @@ describe('turbo-map: `.env` inputs', () => {
         k === 'runtime' || k === 'workspaceRuntime'
           ? [
               k,
-              (v as string[]).length === 1 && (v as string[])[0]!.startsWith('find . ')
-                ? 'probe'
-                : v,
+              (v as string[]).length !== 1
+                ? v
+                : (v as string[])[0] === DOTENV_PROBE
+                  ? 'walk'
+                  : (v as string[])[0] === DOTENV_PROBE_TOP
+                    ? 'top'
+                    : v,
             ]
           : [k, v],
       ),
