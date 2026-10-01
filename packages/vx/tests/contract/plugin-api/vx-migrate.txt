@@ -117,6 +117,8 @@ export async function rootScripts(root: string): Promise<Record<string, unknown>
 export function turbo(options: TurboPluginOptions = {}): VxPlugin
 == function turboCache (src/turbo-cache/index.ts)
 export function turboCache(options: TurboCacheOptions = {}): VxPlugin
+== function turboRemoteAccess (src/turbo-cache/index.ts)
+export function turboRemoteAccess(env: Record<string, string | undefined>):
 == function wireit (src/wireit/index.ts)
 export function wireit(): VxPlugin
 == function workspaceScripts (src/scripts/index.ts)

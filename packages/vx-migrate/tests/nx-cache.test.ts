@@ -64,6 +64,16 @@ function nxServer() {
 describe('resolveNxCacheConfig', () => {
   it('reads options over Nx’s environment, strips a trailing slash, declines without a server', () => {
     expect(resolveNxCacheConfig({}, {})).toBeUndefined()
+    // Nx's off switches: a CI keeping an untrusted pull request off the
+    // shared cache kept Nx off it and not vx. CONTROL: 'false' leaves it on.
+    const server = { NX_SELF_HOSTED_REMOTE_CACHE_SERVER: 'https://c.example' }
+    expect(
+      [
+        { NX_SKIP_REMOTE_CACHE: 'true' },
+        { NX_DISABLE_REMOTE_CACHE: 'true' },
+        { NX_SKIP_REMOTE_CACHE: 'false' },
+      ].map((e) => resolveNxCacheConfig({ server: 'https://o' }, { ...server, ...e })?.server),
+    ).toEqual([undefined, undefined, 'https://o'])
     expect(
       resolveNxCacheConfig(
         {},

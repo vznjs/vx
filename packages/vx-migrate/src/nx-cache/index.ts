@@ -45,6 +45,10 @@ export function resolveNxCacheConfig(
   options: NxCacheOptions,
   env: Record<string, string | undefined> = Bun.env,
 ): NxCacheConfig | undefined {
+  // Nx's own off switches (`skipRemoteCache`): a CI that sets one for an
+  // untrusted pull request kept Nx off the shared cache and not vx.
+  if (env['NX_SKIP_REMOTE_CACHE'] === 'true' || env['NX_DISABLE_REMOTE_CACHE'] === 'true')
+    return undefined
   const server = (options.server ?? env['NX_SELF_HOSTED_REMOTE_CACHE_SERVER'])?.replace(/\/+$/, '')
   if (!server) return undefined
   // The URL is printed in every refusal line, so a `user:pass@` in it would
