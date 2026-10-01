@@ -775,17 +775,3 @@ answer within 250ms` where the config's own error was due. The row
   the retries and warns the 502" asserts the call returns within 150 ms
   of a 50 ms deadline; C-48's gate measured 170 ms under load (3/3 green
   alone). The bound is a claim about the box, not the code.
-
-## C-50: Turbo's `//#task` names the root project
-
-D's lead: `dependsOn: ['//#lint']`, Turbo's spelling of a root task,
-refused "no such project or task is declared" though the root was a
-project (D-39); `--filter //` has read `//` as the root since D-46. The
-staged load now spells `//#` as the root project's name in `dependsOn`
-and `cache.inputs.tasks`, once, so the scoped closure, the graph and the
-upstream fold all see it; with no root project the graph says the root
-is no project. `schema.md` says so. Row (`root-project.test.ts` › takes
-Turbo's //#task as the root project's task: the refusal, a scoped run
-that pulls the root in, and the `cache.inputs.tasks` spelling): red with
-either site reverted, and with the `cache.inputs.tasks` rewrite alone
-mutated.
