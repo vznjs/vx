@@ -1686,6 +1686,10 @@ shows names `dist/**`, or the default output of the framework the command
 runs: `.next/**` minus `!.next/cache/**` for `next build`, `.output/**`
 for Nuxt, `build/**` for Remix, React Router, Create React App and
 Docusaurus, `public/**` for Gatsby, `storybook-static/**` for Storybook.
+A package in a cycle of builds (nuxt's `@nuxt/nitro-server` devDepends
+on `nuxt`, which depends on it; pnpm sorts it away) gets, instead of
+`^build`, an edge to each build outside its cycle that `^build` would
+reach, and a TODO to order the cycle: `^build` there refuses the run.
 `test` / `typecheck` wait for
 `build` when the package has one (`lint` reads sources and gets no
 edge); `dev` / `start` / `serve` / `watch` /
