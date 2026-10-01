@@ -246,12 +246,13 @@ function upstreamBuildOnWorker(tasks: GeneratedTask[]): void {
 
 /**
  * A root script that runs the members rather than checking the repo:
- * pnpm's `-r` / `--filter` / `-C`, npm's and Yarn's workspace flags, Bun's
- * `--filter`, and the other runners, vx itself included. Mapped, it ran
- * every member's task again beside the member's own (D-45).
+ * pnpm's `-r` / `--filter` / `-C`, Yarn's `--cwd` (excalidraw's
+ * `build:common`), npm's `--prefix`, the workspace flags, Bun's `--filter`,
+ * Vite+'s `vp run` (tiptap), and the other runners, vx itself included. Mapped, it ran every member's
+ * task again beside the member's own (D-45).
  */
 const RUNS_MEMBERS =
-  /(^|[\s;&|(])(turbo|nx|lerna|ultra|wireit|nps|moon|rush|vx)(\s|$)|\s(-r|--recursive|--filter|-F|--workspaces|-ws|--workspace|-w|-C|--dir|--if-present|--parallel|--stream)(\s|=|$)|\bworkspaces?\s+(foreach|run)\b|\bcd\s/
+  /(^|[\s;&|(])(turbo|nx|lerna|ultra|wireit|nps|moon|rush|vx)(\s|$)|\s(-r|--recursive|--filter|-F|--workspaces|-ws|--workspace|-w|-C|--dir|--cwd|--prefix|--if-present|--parallel|--stream)(\s|=|$)|\bworkspaces?\s+(foreach|run)\b|\bvp\s+run\s|\bcd\s/
 
 /**
  * `outside`: the root manifest when the root is no member (pnpm's and
