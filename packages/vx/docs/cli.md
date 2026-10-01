@@ -119,10 +119,12 @@ Exit codes:
 A task runs in its own session, so a terminal's Ctrl-C reaches vx alone,
 and each task hears it once: from vx, as SIGINT.
 
-Installed from npm, `vx` is a Node launcher that runs the binary and
-waits for it. A signal sent to the launcher alone (`kill`, a process
-manager) is passed to the binary; a terminal's Ctrl-C already reaches
-both, so the launcher does not send it twice.
+Installed from npm, `vx` is a Node launcher. On Node 22.15 or later it
+replaces itself with the binary (`process.execve`), so every signal
+reaches vx directly. On older Node it runs the binary and waits for it:
+a signal sent to the launcher alone (`kill`, a process manager) is
+passed to the binary, and a terminal's Ctrl-C already reaches both, so
+the launcher does not send it twice.
 
 A reader that leaves does not change the code. `vx run build | head -1`
 closes the pipe after one line; the run still finishes, saves what it

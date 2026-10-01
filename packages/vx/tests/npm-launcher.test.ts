@@ -64,6 +64,32 @@ describe.skipIf(NODE === null)('npm launcher', () => {
     expect(r.code).toBe(7)
   })
 
+  it('the binary replaces the launcher where Node can execve, and is its child where not', async () => {
+    await launcherReady()
+    const plat = path.join(root, 'node_modules', '@vzn', `vx-${KEY}`)
+    mkdirSync(plat, { recursive: true })
+    writeFileSync(path.join(plat, 'package.json'), JSON.stringify({ name: `@vzn/vx-${KEY}` }))
+    const bin = path.join(plat, 'vx')
+    writeFileSync(bin, '#!/bin/sh\necho $$\n')
+    chmodSync(bin, 0o755)
+    const p = Bun.spawn({
+      cmd: [NODE!, path.join(pkgDir, 'launcher.cjs')],
+      cwd: root,
+      env: { PATH: '/usr/bin:/bin', HOME: root },
+      stdout: 'pipe',
+      stderr: 'ignore',
+    })
+    const out = (await new Response(p.stdout).text()).trim()
+    expect(await p.exited).toBe(0)
+    const canExec =
+      Bun.spawnSync({
+        cmd: [NODE!, '-p', 'typeof process.execve'],
+      })
+        .stdout.toString()
+        .trim() === 'function'
+    expect(Number(out) === p.pid).toBe(canExec)
+  })
+
   it('a signal sent to the launcher alone reaches the binary, and the launcher exits with it', async () => {
     // Differential: under spawnSync, SIGINT killed the Node launcher and
     // left the binary running under init.
