@@ -951,3 +951,27 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   the `signatureKey` option still signs either way. Row
   (`turbo-cache.test` › the env signature key applies only where
   turbo.json turns signing on): red without the change.
+- **G-89.** `turboCache()` put any `teamId` on the query, where Turbo's
+  API client sends one only in Vercel's `team_` form (`add_team_params`)
+  and keeps the raw id for the signature alone. A personal account's
+  owner id, or a slug written as `TURBO_TEAMID`, went out as a team id
+  Turbo never sends. Row (`turbo-cache.test` › sends teamId only in
+  Vercel's team_ form): red without the change; the signature rows hold
+  the raw id.
+- **G-85.** `turboCache()` read the options, `TURBO_*` and turbo.json,
+  but not the two sources Turbo merges between them: a Vercel build's
+  `VERCEL_ARTIFACTS_TOKEN` / `_OWNER` (Turbo's `override_env.rs`) and the
+  repo's `.turbo/config.json` from `turbo link`. On Vercel, and in a
+  linked repo with the token there, the plugin declined and every task
+  ran cold. Both are read now, in Turbo's order, with its field aliases.
+  Rows (`turbo-cache.test` › reads VERCEL_ARTIFACTS_* and
+  .turbo/config.json in Turbo's order, the plugin reads the repo's
+  .turbo/config.json): red without the change.
+- **G-82.** Turbo's task `tags` (on Turbo's main, past 2.11.5) are labels
+  its hash and run never read, yet each drew a "no vx equivalent — map
+  it manually" todo from `turbo()` and `bunx @vzn/vx-migrate`. They map
+  to nothing now. The support table's `interruptible` row said it was
+  reported; it maps to nothing in silence since the key was learned.
+  Row (`turbo-map-sweep` › task tags map to nothing, an unknown key's
+  todo the control): red without the fix.
+- **G-91.** runner.test.ts timeout-group row: TERM ignored before the fork; the inner sh's own trap raced the 100 ms timeout on macOS (142 ms < 400, #1946's run). Repro: the old trap delayed 0.2 s fails at 109 ms.
