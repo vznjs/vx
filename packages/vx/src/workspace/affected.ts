@@ -594,10 +594,15 @@ export async function defaultAffectedBase(workspaceRoot: string): Promise<string
     'ignore',
   )
   const out = new TextDecoder().decode(probe.stdout).trim()
-  if (probe.exitCode === 0 && out.length > 0) return out
+  // An origin/HEAD naming a branch the remote deleted (a pruned fetch keeps
+  // the symref) is no base either: it failed as `git ref "origin/master" did
+  // not resolve`, a ref nobody typed, where an unset one falls back.
+  if (probe.exitCode === 0 && out.length > 0 && revParse(workspaceRoot, out) !== undefined) {
+    return out
+  }
   if (revParse(workspaceRoot, 'HEAD~1') === undefined) {
     throw new UserError(
-      '--affected has no base here: origin/HEAD is not set and HEAD has no parent to compare ' +
+      '--affected has no base here: origin/HEAD is not set (or names a branch that is gone) and HEAD has no parent to compare ' +
         'with — a shallow clone? Fetch history (actions/checkout: fetch-depth: 0) or name the ' +
         'base: --affected=origin/main',
     )
