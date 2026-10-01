@@ -98,7 +98,7 @@ Every key `turbo.json`, `nx.json` and `project.json` accept, read from the upstr
 | `nxCloudUrl` | not applicable | Nx Cloud endpoint; `nxCache()` talks to self-hosted `/v1/cache` servers. |
 | `nxCloudEncryptionKey` | not applicable | Nx Cloud artifact encryption. |
 | `neverConnectToCloud` | not applicable | Nx Cloud opt-out; vx never connects to Nx Cloud. |
-| `parallel` | mapped, with a note | nx() fills the workspace's `concurrency` when `vx.workspace.ts` sets none. |
+| `parallel` | mapped, with a note | nx() fills the workspace's `concurrency` when `vx.workspace.ts` sets none; `NX_PARALLEL` wins over it, as in Nx. |
 | `cacheDirectory` | not supported | Ignored; vx uses its own `cacheDir`. |
 | `useDaemonProcess` | not applicable | vx has no daemon; Nx's setting still applies when vx asks Nx for the graph. |
 | `useInferencePlugins` | mapped, with a note | Applied by Nx when it builds the graph; vx sees the targets that result. |

@@ -19,6 +19,7 @@
 // docs/design/nx-unchanged-2026-09.md.
 
 import { mkdir, stat } from 'node:fs/promises'
+import { availableParallelism } from 'node:os'
 import path from 'node:path'
 import { type GeneratedProject, type ProjectMeta, UserError, type VxPlugin } from '@vzn/vx'
 import { type AdoptionRun, adoptionPlugin } from '../adoption-plugin.js'
@@ -141,6 +142,15 @@ function isWithin(root: string, dir: string): boolean {
  * ran on every core under vx (TanStack/router sets 5, nx-examples 1).
  */
 async function nxParallel(root: string): Promise<number | undefined> {
+  // `NX_PARALLEL` (a count, or `50%` of the cores) wins over nx.json, as
+  // Nx 23's `readParallelFromArgsAndEnv` reads it; a CI that set 2 for a
+  // small runner got nx.json's number under vx.
+  const env = process.env['NX_PARALLEL']?.trim()
+  if (env) {
+    const n = Number.parseInt(env, 10)
+    const p = env.endsWith('%') ? Math.floor((availableParallelism() * n) / 100) : n
+    if (Number.isInteger(p)) return Math.max(1, p)
+  }
   const json = (await readNxJson(root).catch(() => null))?.json as
     | {
         parallel?: unknown
