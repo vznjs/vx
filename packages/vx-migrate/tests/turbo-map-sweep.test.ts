@@ -405,6 +405,35 @@ describe('turbo-map: what the sweep found unheld', () => {
     ])
   })
 
+  // `interactive` has nothing to map: Turbo hands stdin only in its TUI and
+  // vx hands no task the terminal. The todo says what a prompt meets (35
+  // "map it manually" todos on uploadthing). `false` is Turbo's default.
+  it('an interactive task says a prompt reads end of input', async () => {
+    await writeFile(
+      path.join(root, 'turbo.json'),
+      JSON.stringify({
+        tasks: { push: { interactive: true, cache: false }, test: { interactive: false } },
+      }),
+    )
+    const dir = path.join(root, 'packages', 'a')
+    await mkdir(dir, { recursive: true })
+    const packageJson = { name: 'a', scripts: { push: 'drizzle-kit push', test: 't' } }
+    const m = await mapTurboWorkspace(
+      root,
+      [{ name: 'a', dir, packageJson: packageJson as never, configPath: null }],
+      opts,
+    )
+    expect(m.projects[0]!.tasks.map((t) => [t.name, t.todos])).toEqual([
+      [
+        'push',
+        [
+          'turbo key "interactive": vx gives no task the terminal, so a prompt reads end of input — run a task that asks for input outside vx',
+        ],
+      ],
+      ['test', []],
+    ])
+  })
+
   // A live mapping infers as Turbo does, and the task's own `!` entries
   // take names back (openstatus' `!NEXT_PUBLIC_VERCEL_URL`). CONTROL: a
   // package without the framework gets no prefix.

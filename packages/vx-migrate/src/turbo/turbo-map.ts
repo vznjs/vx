@@ -1108,6 +1108,18 @@ function buildTask(
 
   for (const [key, value] of Object.entries(def)) {
     if (KNOWN_TASK_KEYS.has(key)) continue
+    // Turbo hands an interactive task the terminal's stdin in its TUI; vx
+    // hands no task the terminal (runner.ts), so a prompt there reads end
+    // of input (create-t3-turbo's \`drizzle-kit push\`). Nothing to map.
+    if (key === 'interactive') {
+      if (value === true) {
+        todos.push(
+          'turbo key "interactive": vx gives no task the terminal, so a prompt reads end of ' +
+            'input — run a task that asks for input outside vx',
+        )
+      }
+      continue
+    }
     todos.push(
       `turbo key ${JSON.stringify(key)} (${JSON.stringify(value)}) has no vx equivalent — ` +
         'map it manually',
