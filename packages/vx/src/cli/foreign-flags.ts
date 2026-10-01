@@ -41,6 +41,15 @@ export const FOREIGN_FLAGS: readonly ForeignFlag[] = [
   },
   {
     runner: 'turbo',
+    names: ['-F'],
+    value: true,
+    outcome: 'alias',
+    vx: '`--filter <v>`',
+    // Bare, it is `--filter` bare, whose refusal asks for the value.
+    to: (v) => (v === undefined ? ['--filter'] : ['--filter', v]),
+  },
+  {
+    runner: 'turbo',
     names: ['--concurrency'],
     value: true,
     outcome: 'same',
@@ -203,6 +212,90 @@ export const FOREIGN_FLAGS: readonly ForeignFlag[] = [
   },
   {
     runner: 'turbo',
+    names: ['--anon-profile'],
+    value: false,
+    outcome: 'refuse',
+    vx: 'use `--profile[=<path>]`; vx has no redacting variant, so read it before sharing it',
+  },
+  {
+    runner: 'turbo',
+    names: ['--cache-workers'],
+    value: true,
+    outcome: 'refuse',
+    vx: 'vx sizes its own cache I/O: drop it',
+  },
+  {
+    runner: 'turbo',
+    names: ['--cwd'],
+    value: true,
+    outcome: 'refuse',
+    vx: 'run vx from that directory: `cd <dir> && vx run …`',
+  },
+  {
+    runner: 'turbo',
+    names: ['--dangerously-disable-package-manager-check'],
+    value: false,
+    outcome: 'refuse',
+    vx: 'vx reads no `packageManager` field: drop it',
+  },
+  {
+    runner: 'turbo',
+    names: ['--env-mode'],
+    value: true,
+    outcome: 'refuse',
+    vx: 'vx passes only the variables a task declares (strict): list the rest in `exec.env.passThrough`',
+  },
+  {
+    runner: 'turbo',
+    names: ['--framework-inference'],
+    value: true,
+    outcome: 'refuse',
+    vx: "under `turbo()` inference is Turbo's; take a name back with a `!` entry in the task's `env`",
+  },
+  {
+    runner: 'turbo',
+    names: ['--global-deps'],
+    value: true,
+    outcome: 'refuse',
+    vx: "declare them in `cache.inputs.workspaceFiles` (under `turbo()`, turbo.json's `globalDependencies`)",
+  },
+  {
+    runner: 'turbo',
+    names: ['--json'],
+    value: false,
+    outcome: 'refuse',
+    vx: "use `--dry=json` for the plan, `--summarize[=<path>]` for the run's JSON record",
+  },
+  {
+    runner: 'turbo',
+    names: ['--log-file'],
+    value: false,
+    outcome: 'refuse',
+    vx: "use `--summarize[=<path>]` for the run's JSON record",
+  },
+  {
+    runner: 'turbo',
+    names: ['--preflight'],
+    value: false,
+    outcome: 'refuse',
+    vx: '`turboCache()` sends no CORS preflight: drop it',
+  },
+  {
+    runner: 'turbo',
+    names: ['--remote-cache-timeout'],
+    value: true,
+    outcome: 'refuse',
+    vx: 'set `turboCache({ timeoutMs })` or `TURBO_REMOTE_CACHE_TIMEOUT`',
+  },
+  {
+    runner: 'turbo',
+    names: ['--single-package'],
+    value: false,
+    outcome: 'refuse',
+    vx: 'a repo with no workspaces is one project already: drop it',
+  },
+  {
+    runner: 'turbo',
     names: ['--token', '--team', '--api'],
     value: true,
     outcome: 'refuse',
@@ -311,6 +404,86 @@ export const FOREIGN_FLAGS: readonly ForeignFlag[] = [
   },
   {
     runner: 'nx',
+    names: ['--max-parallel'],
+    value: true,
+    outcome: 'alias',
+    vx: '`--concurrency <n>`',
+    to: (v) => (v === undefined ? ['--concurrency'] : ['--concurrency', v]),
+  },
+  {
+    runner: 'nx',
+    names: ['--exclude-task-dependencies'],
+    value: false,
+    outcome: 'alias',
+    vx: '`--exclude-dependencies`',
+    to: () => ['--exclude-dependencies'],
+  },
+  {
+    runner: 'nx',
+    names: ['--skip-remote-cache'],
+    value: false,
+    outcome: 'alias',
+    vx: '`--cache local:rw,remote:`',
+    to: () => ['--cache', 'local:rw,remote:'],
+  },
+  {
+    runner: 'nx',
+    names: ['--verbose'],
+    value: false,
+    outcome: 'refuse',
+    vx: 'use `--verbosity <n>` (1 adds the summary table)',
+  },
+  {
+    runner: 'nx',
+    names: ['--files'],
+    value: true,
+    outcome: 'refuse',
+    vx: 'vx asks git what changed: `--affected=<base>`',
+  },
+  {
+    runner: 'nx',
+    names: ['--batch'],
+    value: false,
+    outcome: 'refuse',
+    vx: 'vx runs one command per task: drop it',
+  },
+  {
+    runner: 'nx',
+    names: ['--dte', '--use-agents'],
+    value: false,
+    outcome: 'refuse',
+    vx: 'vx distributes nothing: drop it',
+  },
+  {
+    runner: 'nx',
+    names: ['--nx-ignore-cycles'],
+    value: false,
+    outcome: 'refuse',
+    vx: 'vx refuses a task cycle by name: break it',
+  },
+  {
+    runner: 'nx',
+    names: ['--runner'],
+    value: true,
+    outcome: 'refuse',
+    vx: 'a remote cache is a plugin: `nxCache()` from @vzn/vx-migrate in vx.workspace.ts',
+  },
+  {
+    runner: 'nx',
+    names: ['--skip-sync'],
+    value: false,
+    outcome: 'refuse',
+    vx: 'vx never runs sync generators: drop it',
+  },
+  {
+    runner: 'nx',
+    names: ['--tui', '--no-tui', '--tui-auto-exit'],
+    value: false,
+    outcome: 'refuse',
+    vx: 'vx frames each task’s output: `--output-logs <mode>` sets how much',
+  },
+  {
+    runner: 'nx',
     names: ['--no-cloud'],
     value: false,
     outcome: 'refuse',
@@ -319,11 +492,24 @@ export const FOREIGN_FLAGS: readonly ForeignFlag[] = [
 ]
 
 /** Nx's verbs, as its users type them: `vx run` takes their flags. */
+const TURBO_LOGIN =
+  'vx has no login: a remote cache is a plugin, `turboCache()` from @vzn/vx-migrate in vx.workspace.ts, which reads TURBO_TOKEN / TURBO_TEAM / TURBO_API'
+
 export const FOREIGN_VERBS: Readonly<Record<string, string>> = {
   'run-many':
     '`nx run-many` is `vx run <task> --all` here; -t, -p, --exclude and --parallel work as they are',
   affected:
     '`nx affected` is `vx run <task> --affected` here; -t, --base and --exclude work as they are',
+  graph: '`nx graph` is `vx run <task> --graph[=<file>.dot]` here: the task graph as Graphviz DOT',
+  ls: '`turbo ls` is `vx show` here: every project, its directory and its task count',
+  query:
+    '`turbo query` has no vx form: `vx run <task> --dry=json` prints the planned graph as JSON',
+  reset: '`nx reset` is `vx cache prune` here (or remove the cache directory `vx info` names)',
+  daemon: 'vx has no daemon: there is nothing to start or stop',
+  login: TURBO_LOGIN,
+  logout: TURBO_LOGIN,
+  link: TURBO_LOGIN,
+  unlink: TURBO_LOGIN,
 }
 
 /**

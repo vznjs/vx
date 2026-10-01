@@ -1199,12 +1199,14 @@ describe('runCommand — the rows its sweep asked for', () => {
     'a timed-out command returns only once its group is gone',
     async () => {
       // The shell dies on the timeout's TERM; its child ignores it. runCommand
-      // waits out the grace for the group, then SIGKILLs what is left.
+      // waits out the grace for the group, then SIGKILLs what is left. The
+      // child inherits the ignore at fork: a trap set inside a new sh raced
+      // the 100 ms timeout on a slow macOS runner and the group died at 142.
       const prev = process.env['VX_KILL_GRACE_MS']
       process.env['VX_KILL_GRACE_MS'] = '400'
       try {
         const r = await runCommand({
-          command: `sh -c 'trap "" TERM; exec sleep 30' & wait`,
+          command: `trap "" TERM; sleep 30 & trap - TERM; wait`,
           cwd: dir,
           env: { PATH: process.env.PATH ?? '' },
           timeoutMs: 100,

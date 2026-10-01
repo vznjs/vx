@@ -104,6 +104,8 @@ const KNOWN_TASK_KEYS = new Set([
   // watch` stops and re-spawns every persistent task each cycle, so either
   // value maps to nothing.
   'interruptible',
+  // Labels: Turbo keeps them out of the hash and the behaviour.
+  'tags',
 ])
 
 // Turbo's per-task `outputLogs` against vx's per-run `--output-logs`.

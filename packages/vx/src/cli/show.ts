@@ -35,6 +35,9 @@ export function parseShowArgs(args: readonly string[]): ShowArgs {
     else if (a.startsWith('--format=')) format = a.slice('--format='.length)
     else if (a.startsWith('-'))
       return { ...out, error: `unknown flag: ${a}${flagHint('show', a)}${seeHelp('show')}` }
+    else if (out.target === 'project')
+      // Nx's spelling: `nx show project <name>`.
+      return { ...out, error: `\`nx show project ${a}\` is \`vx show ${a}\` here` }
     else if (out.target !== undefined)
       return { ...out, error: `unexpected argument: ${a}${seeHelp('show')}` }
     // An empty name is a part of every name: its "did you mean" listed the
@@ -108,8 +111,10 @@ export async function showCmd(args: readonly string[]): Promise<number> {
       const names = new Set<string>()
       for (const p of projects.values())
         for (const t of Object.keys(p.config.tasks ?? {})) names.add(t)
+      // `nx show projects` lists them; here a bare `vx show` does.
+      const nx = projectName === 'projects' ? ' (`nx show projects` is `vx show` here)' : ''
       throw new UserError(
-        `unknown project or task: "${projectName}"${suggest(projectName!, [...byName.keys(), ...names])}`,
+        `unknown project or task: "${projectName}"${nx}${suggest(projectName!, [...byName.keys(), ...names])}`,
       )
     }
     process.stdout.write(renderTaskAcross(root, declaring, projectName!, parsed.format))
