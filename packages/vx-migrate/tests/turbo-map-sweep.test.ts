@@ -1422,7 +1422,9 @@ describe('turbo-map: a single-package repo', () => {
 })
 
 describe('turbo-map: a transit node', () => {
-  it('is a key-only task in each package; a ^self task some package runs, or none depends on, is not one', async () => {
+  // A `^self` task some package runs is one too where a package lacks the
+  // script (with-vite's `ui#build`); one no package runs or depends on is not.
+  it('is a key-only task in each package; so is a ^self task some package runs, where the script is missing', async () => {
     const m = await map(
       {
         tasks: {
@@ -1448,7 +1450,7 @@ describe('turbo-map: a transit node', () => {
       (transit.task!['exec'] as { command: string }).command,
       transit.task?.['dependsOn'],
       transit.task?.['cache'] !== undefined,
-    ]).toEqual([['build', 'transit'], ['test', 'transit'], 'true', ['^transit'], true])
+    ]).toEqual([['build', 'transit'], ['build', 'test', 'transit'], 'true', ['^transit'], true])
   })
 })
 

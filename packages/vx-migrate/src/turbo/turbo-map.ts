@@ -892,6 +892,28 @@ export async function mapTurboWorkspace(
         }
     }
   }
+  // The same no-op node in a package that lacks a script others run:
+  // with-vite's `ui` has no `build`, its apps bundle it, and Turbo's
+  // `ui#build` hashes ui's files into theirs. Walked past, vx's `^build`
+  // folded nothing of ui, and an edit to it replayed both apps (a stale
+  // hit). Key-only too, with no outputs: Turbo's no-op cleans nothing.
+  const keyOnly = new Map<string, Set<string>>()
+  for (const meta of metas) {
+    const scripts = packageScripts(meta)
+    const { defined, defFor } = definitions(meta)
+    for (const name of defined) {
+      const def = defFor(name)
+      if (!caretSelf.has(name) || !withScript.has(name) || transit.has(name)) continue
+      if (scripts[name] !== undefined || commandOverride(def) !== undefined) continue
+      if (emitted.get(meta.name)!.has(name)) continue
+      if (def?.cache === false || def?.persistent === true) continue
+      emitted.get(meta.name)!.add(name)
+      runnable.get(meta.name)!.add(name)
+      let set = keyOnly.get(meta.name)
+      if (set === undefined) keyOnly.set(meta.name, (set = new Set()))
+      set.add(name)
+    }
+  }
   const emittedAnywhere = new Set<string>()
   for (const set of emitted.values()) for (const name of set) emittedAnywhere.add(name)
 
@@ -935,11 +957,16 @@ export async function mapTurboWorkspace(
       const override = commandOverride(defFor(name))
       if (override === null) continue
       const script = scripts[name]
-      if (override === undefined && script === undefined && transit.has(name) && own.has(name)) {
+      const noop = keyOnly.get(meta.name)?.has(name) === true
+      if (
+        override === undefined &&
+        script === undefined &&
+        ((transit.has(name) && own.has(name)) || noop)
+      ) {
         tasks.push(
           buildTask(
             name,
-            defFor(name)!,
+            noop ? { ...defFor(name)!, outputs: [] } : defFor(name)!,
             'true',
             own,
             defFor,
