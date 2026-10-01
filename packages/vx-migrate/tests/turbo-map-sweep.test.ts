@@ -347,6 +347,28 @@ describe('turbo-map: what the sweep found unheld', () => {
     ])
   })
 
+  // Turbo's task `tags` are labels kept out of its hash; a todo telling
+  // the user to map them had nothing to map. CONTROL: an unknown key keeps
+  // its todo.
+  it('task tags map to nothing', async () => {
+    await writeFile(
+      path.join(root, 'turbo.json'),
+      JSON.stringify({ tasks: { build: { tags: ['ci'] }, test: { tagz: ['ci'] } } }),
+    )
+    const dir = path.join(root, 'packages', 'a')
+    await mkdir(dir, { recursive: true })
+    const packageJson = { name: 'a', scripts: { build: 'b', test: 't' } }
+    const m = await mapTurboWorkspace(
+      root,
+      [{ name: 'a', dir, packageJson: packageJson as never, configPath: null }],
+      opts,
+    )
+    expect(m.projects[0]!.tasks.map((t) => [t.name, t.todos])).toEqual([
+      ['build', []],
+      ['test', ['turbo key "tagz" (["ci"]) has no vx equivalent — map it manually']],
+    ])
+  })
+
   // A live mapping infers as Turbo does, and the task's own `!` entries
   // take names back (openstatus' `!NEXT_PUBLIC_VERCEL_URL`). CONTROL: a
   // package without the framework gets no prefix.
