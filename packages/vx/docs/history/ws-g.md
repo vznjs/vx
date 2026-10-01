@@ -942,3 +942,12 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   out of the inferred set, so a deploy's commit SHA does not re-key every
   Next build (row: the CI vendor prefix is left out of framework
   inference only; red without the filter).
+- **G-85.** `turboCache()` read the options, `TURBO_*` and turbo.json,
+  but not the two sources Turbo merges between them: a Vercel build's
+  `VERCEL_ARTIFACTS_TOKEN` / `_OWNER` (Turbo's `override_env.rs`) and the
+  repo's `.turbo/config.json` from `turbo link`. On Vercel, and in a
+  linked repo with the token there, the plugin declined and every task
+  ran cold. Both are read now, in Turbo's order, with its field aliases.
+  Rows (`turbo-cache.test` › reads VERCEL_ARTIFACTS_* and
+  .turbo/config.json in Turbo's order, the plugin reads the repo's
+  .turbo/config.json): red without the change.
