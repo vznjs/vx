@@ -928,3 +928,26 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   env, file), in whole seconds, 0 being no deadline; anything else is
   refused by name. Rows (`turbo-cache.test` › the timeouts come from …,
   a timeout of 0 sends no deadline): red without the change.
+- **G-80.** Turbo's framework inference covered five of its sixteen
+  frameworks: a package on `expo`, `nuxt`, `remix`, `@sveltejs/kit`
+  (`PUBLIC_*`), `react-dev-utils` and the rest had its public variables
+  stripped and unkeyed, a stale hit on their edit, and every Next app
+  missed `NEXT_DEPLOYMENT_ID`. A package on two frameworks took both
+  prefixes where Turbo takes the first. The table is now Turbo's
+  (`frameworks.json`), in its order, with its `all`/`some` match, and
+  `optionalDependencies` count as Turbo counts them. Row
+  (`turbo-map-sweep` › a live mapping takes the first framework of
+  Turbo's table): red without the fix. As Turbo does, a name under
+  `TURBO_CI_VENDOR_ENV_KEY` (Vercel sets `NEXT_PUBLIC_VERCEL_`) is left
+  out of the inferred set, so a deploy's commit SHA does not re-key every
+  Next build (row: the CI vendor prefix is left out of framework
+  inference only; red without the filter).
+- **G-84.** `turboCache()` signed with `TURBO_REMOTE_CACHE_SIGNATURE_KEY`
+  whenever the env set it, where Turbo signs only under turbo.json's
+  `remoteCache.signature: true`. A repo with a short key in its CI env
+  and signing off ran Turbo fine and had vx refuse its whole cache
+  ("at least 32 bytes"). The env key is now read only under the flag,
+  or `TURBO_SIGNATURE` (1/true, 0/false), which sits above it;
+  the `signatureKey` option still signs either way. Row
+  (`turbo-cache.test` › the env signature key applies only where
+  turbo.json turns signing on): red without the change.
