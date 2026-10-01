@@ -43,9 +43,13 @@ export interface TurboCacheOptions {
    * miss, never a restore.
    */
   signatureKey?: string
-  /** Per-request deadline for HEAD/GET/POST (default 30 s) … */
+  /**
+   * Per-request deadline for HEAD/GET/POST, or `TURBO_REMOTE_CACHE_TIMEOUT`
+   * / turbo.json's `remoteCache.timeout` (whole seconds); default 30 s.
+   * 0 is no deadline, as in Turbo.
+   */
   timeoutMs?: number
-  /** … and for PUT (default 60 s), Turbo's own defaults. */
+  /** … and for PUT, or `TURBO_REMOTE_CACHE_UPLOAD_TIMEOUT` / `remoteCache.uploadTimeout`; default 60 s. */
   uploadTimeoutMs?: number
   /** Resends of a request answered 429 / 5xx or never connected (default 1, Turbo's); 0 turns them off. */
   retries?: number
@@ -57,6 +61,8 @@ export interface TurboJsonRemoteCache {
   teamId?: unknown
   teamSlug?: unknown
   enabled?: unknown
+  timeout?: unknown
+  uploadTimeout?: unknown
 }
 
 export interface TurboCacheConfig {
@@ -231,10 +237,30 @@ export function resolveTurboCacheConfig(
     ...(teamId ? { teamId } : {}),
     ...(teamSlug ? { teamSlug } : {}),
     ...(signatureKey !== undefined ? { signatureKey } : {}),
-    timeoutMs: options.timeoutMs ?? 30_000,
-    uploadTimeoutMs: options.uploadTimeoutMs ?? 60_000,
+    timeoutMs:
+      options.timeoutMs ??
+      seconds(env['TURBO_REMOTE_CACHE_TIMEOUT'], 'TURBO_REMOTE_CACHE_TIMEOUT') ??
+      seconds(file.timeout, 'remoteCache.timeout') ??
+      30_000,
+    uploadTimeoutMs:
+      options.uploadTimeoutMs ??
+      seconds(env['TURBO_REMOTE_CACHE_UPLOAD_TIMEOUT'], 'TURBO_REMOTE_CACHE_UPLOAD_TIMEOUT') ??
+      seconds(file.uploadTimeout, 'remoteCache.uploadTimeout') ??
+      60_000,
     retries,
   }
+}
+
+/**
+ * Turbo's timeout, whole seconds, as ms; `undefined` when unset. A value
+ * Turbo would refuse is refused here rather than read as some other wait.
+ */
+function seconds(v: unknown, name: string): number | undefined {
+  if (v === undefined || v === null || v === '') return undefined
+  const n = typeof v === 'string' ? Number(v) : v
+  if (typeof n !== 'number' || !Number.isInteger(n) || n < 0)
+    throw new Error(`vx/turbo-cache: ${name} must be whole seconds ≥ 0, got ${JSON.stringify(v)}`)
+  return n * 1000
 }
 
 /** A response's text, or null (the rest cancelled) once it passes `max` bytes. */
@@ -330,7 +356,8 @@ export class TurboRemoteCache implements RemoteCacheLayer {
           method,
           headers: this.headers(init.headers),
           ...(init.body === undefined ? {} : { body: init.body }),
-          signal: AbortSignal.timeout(timeoutMs),
+          // 0 is Turbo's "no deadline".
+          ...(timeoutMs === 0 ? {} : { signal: AbortSignal.timeout(timeoutMs) }),
         }),
       this.config.retries,
       this.wait,

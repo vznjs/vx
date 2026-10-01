@@ -57,8 +57,8 @@ Every key `turbo.json`, `nx.json` and `project.json` accept, read from the upstr
 | `remoteCache.signature` | not supported | The flag is ignored; signing is on whenever a signature key is set. |
 | `remoteCache.teamId` | supported | Used when neither the option nor `TURBO_TEAMID` is set. |
 | `remoteCache.teamSlug` | supported | Used when neither the option nor `TURBO_TEAM` is set. |
-| `remoteCache.timeout` | not supported | Not read; set `turboCache({ timeoutMs })` (default 30 s). |
-| `remoteCache.uploadTimeout` | not supported | Not read; set `turboCache({ uploadTimeoutMs })` (default 60 s). |
+| `remoteCache.timeout` | supported | Whole seconds, below `TURBO_REMOTE_CACHE_TIMEOUT` and `turboCache({ timeoutMs })`; 0 is no deadline, as in Turbo. |
+| `remoteCache.uploadTimeout` | supported | Whole seconds, below `TURBO_REMOTE_CACHE_UPLOAD_TIMEOUT` and `turboCache({ uploadTimeoutMs })`; 0 is no deadline. |
 | `futureFlags.affectedUsingTaskInputs` | not supported | Ignored; `--affected` selects projects from vx's own git diff. |
 | `futureFlags.errorsOnlyShowHash` | not supported | Ignored. |
 | `futureFlags.experimentalCargoWorkspaces` | not supported | Ignored; vx discovers projects from `package.json` workspaces only. |

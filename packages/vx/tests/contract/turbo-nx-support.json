@@ -221,13 +221,13 @@
   },
   {
     "key": "turbo.json remoteCache.timeout",
-    "status": "not-supported",
-    "reason": "Not read; set `turboCache({ timeoutMs })` (default 30 s)."
+    "status": "supported",
+    "reason": "Whole seconds, below `TURBO_REMOTE_CACHE_TIMEOUT` and `turboCache({ timeoutMs })`; 0 is no deadline, as in Turbo."
   },
   {
     "key": "turbo.json remoteCache.uploadTimeout",
-    "status": "not-supported",
-    "reason": "Not read; set `turboCache({ uploadTimeoutMs })` (default 60 s)."
+    "status": "supported",
+    "reason": "Whole seconds, below `TURBO_REMOTE_CACHE_UPLOAD_TIMEOUT` and `turboCache({ uploadTimeoutMs })`; 0 is no deadline."
   },
   {
     "key": "turbo.json futureFlags.affectedUsingTaskInputs",
