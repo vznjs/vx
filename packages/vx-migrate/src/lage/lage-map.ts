@@ -24,7 +24,7 @@ import { pruneDanglingEdges } from '../dangling-edges.js'
 import { minimatchToVx } from '../glob-grammar.js'
 import { shellQuote } from '../nx-command.js'
 import { packageScripts, relPosix } from '../paths.js'
-import { scriptCommand } from '../script-command.js'
+import { scriptCommand, yarnPnp } from '../script-command.js'
 import { resolveSharedOutputs } from '../shared-outputs.js'
 
 type Raw = Record<string, unknown>
@@ -138,6 +138,8 @@ interface Ctx {
   closure: ReadonlyMap<string, ReadonlySet<string>>
   /** The root package's name: its `name#task` is a root target. */
   rootName: string | undefined
+  /** Yarn Plug'n'Play: every script runs as `yarn run <name>`. */
+  pnp: boolean
 }
 
 /** The target config `task` resolves to in `pkg`, or undefined when the pipeline has none. */
@@ -196,7 +198,9 @@ function mapTask(ctx: Ctx, name: string, t: Raw): LageMappedTask {
     const script = typeof options['script'] === 'string' ? options['script'] : name
     const scripts = packageScripts(ctx.meta)
     const args = strings(options['taskArgs']).map(shellQuote)
-    command = [scriptCommand(script, scripts[script] as string, scripts), ...args].join(' ')
+    command = [scriptCommand(script, scripts[script] as string, scripts, ctx.pnp), ...args].join(
+      ' ',
+    )
   } else if (type === 'worker') {
     command = workerCommand(ctx, name, t, todos)
     if (command === undefined) return { name, todos, task: null }
@@ -433,6 +437,7 @@ export function mapLageWorkspace(
     for (const n of set) emittedAnywhere.add(n)
   }
   const closure = closures(packages)
+  const pnp = yarnPnp(root)
   const projects: LageMappedProject[] = []
   for (const m of packages) {
     const ctx: Ctx = {
@@ -444,6 +449,7 @@ export function mapLageWorkspace(
       emittedAnywhere,
       closure,
       rootName,
+      pnp,
     }
     const tasks = [...emitted.get(m.name)!].map((name) =>
       mapTask(ctx, name, resolveTarget(pipeline, merging, m.name, name)!),

@@ -185,8 +185,8 @@ export interface CacheInputs {
 
 type · `src/cache/layer.ts`
 
-The shape every cache implementation honors. `Cache` (the local v10
-implementation) and `LayeredCache` both `implements` this so the
+The shape every cache implementation honors. `Cache` (the local store)
+and `LayeredCache` both `implements` this so the
 orchestrator's `executeTask` can take either without a discriminated
 union and we get a compile-time guarantee the surfaces stay congruent.
 
@@ -254,9 +254,11 @@ remote). Replaces the old single `noCache` boolean: each axis can be
 toggled on its own so `--force` (re-execute but still refresh the
 cache) is distinct from `--no-cache` (disable everything).
 
-Only the task-artifact get/save path is gated. `recordRun`, `stats`,
-`prune`, key derivation, and prefetch-ingest are never affected — they
-are bookkeeping/analytics that a run policy has no business disabling.
+The task-artifact get/save path is gated, and the local axes also gate
+the local store's config-evaluation reads and writes and its file-hash
+writes (`cache.ts`). `recordRun`, `stats`, `prune`, key derivation, and
+prefetch-ingest are never affected — they are bookkeeping/analytics
+that a run policy has no business disabling.
 
 ```ts
 export interface CachePolicy {
@@ -1897,9 +1899,10 @@ always split on the first `#`, so the query layer and the graph disagreed
 about the identity of the same task: a lookup either found nothing or, worse,
 answered with a different task's history.
 
-A `#`-containing task name is legal and pinned elsewhere in the suite, so
-this is reachable rather than theoretical. The cache's run history read
-the same rule from a private copy until item 646; one rule, one place.
+A config's task name may not hold `#` (`taskNameProblem`), but an id also
+arrives from run history and plugins, so the first-`#` rule is the one
+the graph uses. The cache's run history read the same rule from a
+private copy until item 646; one rule, one place.
 
 ```ts
 export function splitTaskId(id: string): [project: string, task: string]
@@ -2249,12 +2252,10 @@ command string — principle #3), only where and how that command is
 executed. Registered explicitly in vx.workspace.ts via
 defineWorkspace({ plugins: [...] }). No auto-discovery.
 
-The old observe-only `Plugin` (`{ name, setup(ctx) }`) is a subset of
-this shape: a plugin with only `setup` installs and runs exactly as
-before via `installPlugins`. The capabilities are consulted by
-`plugin-host.ts`; core's own executor and cache are plugins too
-(src/plugins/), declared by the workspace — there is no fallback
-outside the list.
+Made by `definePlugin(import.meta, hooks)` only: the loader refuses a
+plain object. The capabilities are consulted by `plugin-host.ts`. Core
+names no plugin; the local executor and the local cache are the floor
+under the list, taking what every plugin declines.
 
 ```ts
 export interface VxPlugin {

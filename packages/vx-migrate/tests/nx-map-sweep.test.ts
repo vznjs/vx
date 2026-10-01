@@ -204,6 +204,19 @@ describe('nx-map: what the sweep found unheld', () => {
     expect((t.get('a#build')!.task!['exec'] as { command: string }).command).toBe('tsc -p lib')
   })
 
+  // Under Yarn Plug'n'Play a dependency resolves only through `.pnp.cjs`,
+  // so an inlined script body failed where `yarn run` works; only turbo()
+  // knew (J-62's lead).
+  it('nx:run-script under Yarn PnP runs through `yarn run`', async () => {
+    const a = await meta('a', { build: 'tsc -p lib' })
+    const graph = { a: node('packages/a', { build: { executor: 'nx:run-script' } }) }
+    const command = async (): Promise<string> =>
+      ((await tasksOf([a], graph)).get('a#build')!.task!['exec'] as { command: string }).command
+    expect(await command()).toBe('tsc -p lib')
+    await writeFile(path.join(root, '.yarnrc.yml'), 'nodeLinker: pnp\n')
+    expect(await command()).toBe('yarn run build')
+  })
+
   it('`{args.*}` in an executor’s options is reported', async () => {
     const a = await meta('a')
     const t = await tasksOf([a], {

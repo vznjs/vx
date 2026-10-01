@@ -28,12 +28,10 @@ import type { TelemetryContext, TelemetrySink } from './telemetry.js'
  * executed. Registered explicitly in vx.workspace.ts via
  * defineWorkspace({ plugins: [...] }). No auto-discovery.
  *
- * The old observe-only `Plugin` (`{ name, setup(ctx) }`) is a subset of
- * this shape: a plugin with only `setup` installs and runs exactly as
- * before via `installPlugins`. The capabilities are consulted by
- * `plugin-host.ts`; core's own executor and cache are plugins too
- * (src/plugins/), declared by the workspace — there is no fallback
- * outside the list.
+ * Made by `definePlugin(import.meta, hooks)` only: the loader refuses a
+ * plain object. The capabilities are consulted by `plugin-host.ts`. Core
+ * names no plugin; the local executor and the local cache are the floor
+ * under the list, taking what every plugin declines.
  */
 export interface VxPlugin {
   /**
@@ -47,7 +45,7 @@ export interface VxPlugin {
   // --- PIPELINE stages (shape the run before it executes — opt-in) ----------
   //
   // Each receives the object core is about to use and edits it IN PLACE;
-  // core re-validates after the last plugin, so a plugin cannot produce what
+  // core re-validates after each plugin, so a plugin cannot produce what
   // the loader would refuse from a user. Declaration order is the order.
   // Whatever a stage changes reaches the cache key by construction: the key
   // hashes the task config AFTER `project` ran. See

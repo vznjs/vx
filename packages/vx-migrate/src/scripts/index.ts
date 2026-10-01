@@ -10,6 +10,7 @@ import { type AdoptionRun, adoptionPlugin } from '../adoption-plugin.js'
 import type { AdoptionMapping } from '../mapping-cache.js'
 import { collectGaps } from '../plugin-gaps.js'
 import { mapScriptsWorkspace, type ScriptsMappedProject } from './scripts-map.js'
+import { yarnrcText } from '../script-command.js'
 
 const PERSISTENT_NOTE =
   'a long-running script — vx runs it as a persistent task that is ready on spawn; ' +
@@ -41,6 +42,7 @@ async function run(root: string, metas: readonly ProjectMeta[]): Promise<Adoptio
       root,
       JSON.stringify(scripts),
       JSON.stringify(metas.map((m) => [m.name, m.dir, m.packageJson])),
+      await yarnrcText(root),
     ],
     map: async () => mapAll(root, scripts, metas),
   }

@@ -814,3 +814,9 @@ packages/core`) selects the dependent whose `file:../lib` spec named
   subpath's too (`@vzn/vx-migrate/turbo` → `@vzn/vx-migrate`). Row:
   `project-loader.test.ts` › the install hint names the missing package,
   another scope as control; red without the fix.
+- **D-79.** J's lead: the `cache.inputs.tasks` "names no task" refusal
+  printed the config's path twice (`<path>: tasks.build…` and again
+  before `tasks.build.dependsOn`). The second mention
+  is the task alone. Row: `project-loader.test.ts` › the typo that
+  decouples, now the path counted once; red without the fix. The
+  config-schema record's three messages regenerated.

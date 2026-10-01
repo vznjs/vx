@@ -1864,22 +1864,22 @@
           "{}",
           "{\"x\":\"y\"}"
         ],
-        "$CONFIG: tasks.c.cache.inputs.tasks: \"x\" names no task in $CONFIG: tasks.c.dependsOn (none declared) — it would match nothing and fold no upstream hash, decoupling the task from its dependencies. `name` is this project's task, `^name` its dependencies', `pkg#name` one project's. Fix the name, or use [] to decouple on purpose.": [
+        "$CONFIG: tasks.c.cache.inputs.tasks: \"x\" names no task in tasks.c.dependsOn (none declared) — it would match nothing and fold no upstream hash, decoupling the task from its dependencies. `name` is this project's task, `^name` its dependencies', `pkg#name` one project's. Fix the name, or use [] to decouple on purpose.": [
           "[\"x\"]"
         ],
-        "$CONFIG: tasks.c.cache.inputs.tasks: \"/x\" names no task in $CONFIG: tasks.c.dependsOn (none declared) — it would match nothing and fold no upstream hash, decoupling the task from its dependencies. `name` is this project's task, `^name` its dependencies', `pkg#name` one project's. Fix the name, or use [] to decouple on purpose.": [
+        "$CONFIG: tasks.c.cache.inputs.tasks: \"/x\" names no task in tasks.c.dependsOn (none declared) — it would match nothing and fold no upstream hash, decoupling the task from its dependencies. `name` is this project's task, `^name` its dependencies', `pkg#name` one project's. Fix the name, or use [] to decouple on purpose.": [
           "[\"/x\"]"
         ],
-        "$CONFIG: tasks.c.cache.inputs.tasks: \"../x\" names no task in $CONFIG: tasks.c.dependsOn (none declared) — it would match nothing and fold no upstream hash, decoupling the task from its dependencies. `name` is this project's task, `^name` its dependencies', `pkg#name` one project's. Fix the name, or use [] to decouple on purpose.": [
+        "$CONFIG: tasks.c.cache.inputs.tasks: \"../x\" names no task in tasks.c.dependsOn (none declared) — it would match nothing and fold no upstream hash, decoupling the task from its dependencies. `name` is this project's task, `^name` its dependencies', `pkg#name` one project's. Fix the name, or use [] to decouple on purpose.": [
           "[\"../x\"]"
         ],
-        "$CONFIG: tasks.c.cache.inputs.tasks: \"y\" names no task in $CONFIG: tasks.c.dependsOn (none declared) — it would match nothing and fold no upstream hash, decoupling the task from its dependencies. `name` is this project's task, `^name` its dependencies', `pkg#name` one project's. Fix the name, or use [] to decouple on purpose.": [
+        "$CONFIG: tasks.c.cache.inputs.tasks: \"y\" names no task in tasks.c.dependsOn (none declared) — it would match nothing and fold no upstream hash, decoupling the task from its dependencies. `name` is this project's task, `^name` its dependencies', `pkg#name` one project's. Fix the name, or use [] to decouple on purpose.": [
           "[\"!!x\",\"y\"]"
         ],
-        "$CONFIG: tasks.c.cache.inputs.tasks: \".\" names no task in $CONFIG: tasks.c.dependsOn (none declared) — it would match nothing and fold no upstream hash, decoupling the task from its dependencies. `name` is this project's task, `^name` its dependencies', `pkg#name` one project's. Fix the name, or use [] to decouple on purpose.": [
+        "$CONFIG: tasks.c.cache.inputs.tasks: \".\" names no task in tasks.c.dependsOn (none declared) — it would match nothing and fold no upstream hash, decoupling the task from its dependencies. `name` is this project's task, `^name` its dependencies', `pkg#name` one project's. Fix the name, or use [] to decouple on purpose.": [
           "[\".\"]"
         ],
-        "$CONFIG: tasks.c.cache.inputs.tasks: \"A=B\" names no task in $CONFIG: tasks.c.dependsOn (none declared) — it would match nothing and fold no upstream hash, decoupling the task from its dependencies. `name` is this project's task, `^name` its dependencies', `pkg#name` one project's. Fix the name, or use [] to decouple on purpose.": [
+        "$CONFIG: tasks.c.cache.inputs.tasks: \"A=B\" names no task in tasks.c.dependsOn (none declared) — it would match nothing and fold no upstream hash, decoupling the task from its dependencies. `name` is this project's task, `^name` its dependencies', `pkg#name` one project's. Fix the name, or use [] to decouple on purpose.": [
           "[\"A=B\"]"
         ]
       },

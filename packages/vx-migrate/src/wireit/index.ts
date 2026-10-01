@@ -9,6 +9,7 @@ import { type AdoptionRun, adoptionPlugin } from '../adoption-plugin.js'
 import type { AdoptionMapping } from '../mapping-cache.js'
 import { collectGaps } from '../plugin-gaps.js'
 import { mapWireitWorkspace, type WireitMappedProject } from './wireit-map.js'
+import { yarnrcText } from '../script-command.js'
 
 const PERSISTENT_NOTE =
   'a wireit service with no readyWhen — vx runs it as a persistent task that is ready on spawn; ' +
@@ -26,7 +27,12 @@ async function run(root: string, metas: readonly ProjectMeta[]): Promise<Adoptio
     .catch(() => '\0absent')
   return {
     name: 'wireit',
-    reads: [root, rootManifest, JSON.stringify(metas.map((m) => [m.name, m.dir, m.packageJson]))],
+    reads: [
+      root,
+      rootManifest,
+      JSON.stringify(metas.map((m) => [m.name, m.dir, m.packageJson])),
+      await yarnrcText(root),
+    ],
     map: () => mapAll(root, metas),
   }
 }

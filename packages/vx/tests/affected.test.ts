@@ -1330,7 +1330,7 @@ describe('defaultAffectedBase', () => {
       await git(root, 'add', '.')
       await git(root, 'commit', '-q', '-m', 'one')
       await expect(defaultAffectedBase(root)).rejects.toThrow(
-        /--affected has no base here: origin\/HEAD is not set and HEAD has no parent .* a shallow clone\? .*fetch-depth: 0.*--affected=origin\/main/,
+        /--affected has no base here: origin\/HEAD is not set \(or names a branch that is gone\) and HEAD has no parent .* a shallow clone\? .*fetch-depth: 0.*--affected=origin\/main/,
       )
       await writeFile(path.join(root, 'a'), 'y')
       await git(root, 'commit', '-q', '-am', 'two')
@@ -1374,10 +1374,34 @@ describe('defaultAffectedBase', () => {
       await writeFile(path.join(root, 'a'), 'x')
       await git(root, 'add', '.')
       await git(root, 'commit', '-q', '-m', 'one')
-      // Point origin/HEAD at origin/main (the target need not exist for
-      // symbolic-ref); the resolver should short-return it over HEAD~1.
+      // origin/HEAD at an existing origin/main: returned over HEAD~1.
+      await git(root, 'update-ref', 'refs/remotes/origin/main', 'HEAD')
       await git(root, 'symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/main')
       expect(await defaultAffectedBase(root)).toBe('origin/main')
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('an origin/HEAD naming a deleted branch is no base: HEAD~1, or the no-base hint (E-90)', async () => {
+    // A pruned fetch keeps the symref after the remote deletes the branch;
+    // bare --affected failed `git ref "origin/master" did not resolve`.
+    const root = await mkdtemp(path.join(os.tmpdir(), 'vx-affected-gone-'))
+    try {
+      await git(root, 'init', '-q')
+      await git(root, 'config', 'user.email', 'test@vx.local')
+      await git(root, 'config', 'user.name', 'vx test')
+      await writeFile(path.join(root, 'a'), 'x')
+      await git(root, 'add', '.')
+      await git(root, 'commit', '-q', '-m', 'one')
+      await git(root, 'symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/master')
+      await expect(defaultAffectedBase(root)).rejects.toThrow(/--affected has no base here/)
+      await writeFile(path.join(root, 'a'), 'y')
+      await git(root, 'commit', '-q', '-am', 'two')
+      expect(await defaultAffectedBase(root)).toBe('HEAD~1')
+      // CONTROL: the branch back, the symref is the base again.
+      await git(root, 'update-ref', 'refs/remotes/origin/master', 'HEAD~1')
+      expect(await defaultAffectedBase(root)).toBe('origin/master')
     } finally {
       await rm(root, { recursive: true, force: true })
     }

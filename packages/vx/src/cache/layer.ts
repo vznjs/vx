@@ -498,8 +498,8 @@ export class ArtifactVanishedError extends Error {
 }
 
 /**
- * The shape every cache implementation honors. `Cache` (the local v10
- * implementation) and `LayeredCache` both `implements` this so the
+ * The shape every cache implementation honors. `Cache` (the local store)
+ * and `LayeredCache` both `implements` this so the
  * orchestrator's `executeTask` can take either without a discriminated
  * union and we get a compile-time guarantee the surfaces stay congruent.
  */
@@ -561,7 +561,8 @@ export interface CacheLayer {
    * Lightweight existence probe. `'local'` / `'remote'` names the layer
    * that holds the artifact; `null` is a miss. NEVER moves bytes: no
    * artifact read, no remote download, no local ingest, no accessed_at
-   * bump (the LayeredCache's remote side is an HTTP HEAD). Planning
+   * bump (on the remote side the layer decides the call: an HTTP HEAD, or
+   * REAPI's `getActionResult` + `findMissingBlobs`). Planning
    * (`--dry` / `--graph`) predicts hits with this instead of `get` so a
    * dry run can't pull N artifacts over the network. Remote errors
    * degrade to `null` — an existence probe never fails anything.

@@ -69,7 +69,7 @@ describe("Yarn Plug'n'Play: no node_modules, so every script runs through `yarn 
     const root = await mkdtemp(path.join(os.tmpdir(), 'vx-migrate-pnp-'))
     try {
       if (rc !== null) await writeFile(path.join(root, '.yarnrc.yml'), rc)
-      expect(await yarnPnp(root)).toBe(expected)
+      expect(yarnPnp(root)).toBe(expected)
     } finally {
       await rm(root, { recursive: true, force: true })
     }

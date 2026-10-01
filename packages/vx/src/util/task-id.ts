@@ -10,9 +10,10 @@
  * about the identity of the same task: a lookup either found nothing or, worse,
  * answered with a different task's history.
  *
- * A `#`-containing task name is legal and pinned elsewhere in the suite, so
- * this is reachable rather than theoretical. The cache's run history read
- * the same rule from a private copy until item 646; one rule, one place.
+ * A config's task name may not hold `#` (`taskNameProblem`), but an id also
+ * arrives from run history and plugins, so the first-`#` rule is the one
+ * the graph uses. The cache's run history read the same rule from a
+ * private copy until item 646; one rule, one place.
  */
 export function splitTaskId(id: string): [project: string, task: string] {
   const i = id.indexOf('#')
