@@ -374,6 +374,20 @@ describe('vx mcp over stdio (the real entry point)', () => {
     expect(outside.exitCode).toBe(1)
     expect(new TextDecoder().decode(outside.stderr)).toContain('unknown command: mcp')
   })
+
+  // `vx completions` offers `--help` for every plugin verb; it exited 1
+  // here. CONTROL: an unknown flag still refuses.
+  it('answers --help and -h with its usage, and still refuses an unknown flag', () => {
+    const said = ['--help', '-h', '--nope'].map((flag) => {
+      const r = Bun.spawnSync({ cmd: [process.execPath, CORE_BIN, 'mcp', flag], cwd: root })
+      return [r.exitCode, r.stdout.toString().split('\n')[0]]
+    })
+    expect(said).toEqual([
+      [0, 'Usage: vx mcp [--stdio]'],
+      [0, 'Usage: vx mcp [--stdio]'],
+      [1, ''],
+    ])
+  })
 })
 
 describe('the command context carries the workspace’s declared cacheDir', () => {

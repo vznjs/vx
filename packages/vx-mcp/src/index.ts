@@ -26,6 +26,13 @@ export function mcp(): VxPlugin {
       mcp: {
         description: 'serve cache stats + run history to AI agents (MCP over stdio)',
         async run(argv, ctx) {
+          // A plugin verb owns its help; completions offer `--help` for every verb.
+          if (argv.includes('--help') || argv.includes('-h')) {
+            process.stdout.write(
+              "Usage: vx mcp [--stdio]\n\nServe this workspace's cache stats and run history to an AI agent: MCP over stdio, read-only.\n",
+            )
+            return 0
+          }
           for (const a of argv) {
             if (a !== '--stdio') {
               ctx.warn(`vx mcp: unknown flag ${a} (only --stdio, the default, is supported)`)

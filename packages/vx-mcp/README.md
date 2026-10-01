@@ -29,6 +29,7 @@ Then point your agent at it:
 
 Run the agent from inside the workspace — `vx mcp` finds the workspace
 (and its cache) from the current directory, like every other verb.
+`vx mcp --help` prints its usage; `--stdio`, the default, is its one flag.
 
 ## Tools
 
