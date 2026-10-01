@@ -558,13 +558,3 @@ walked on fixtures.
   short at a word that leads exactly one accepted flag now names it.
   Row: `cli.test.ts` › every verb's unknown flag, now with
   `cache prune --dry`; red without the change.
-- **E-96.** Twelve flags of Turbo's run reference (`--env-mode`,
-  `--global-deps`, `--cwd`, `--json`, `--log-file`, `--single-package`,
-  `--framework-inference`, `--remote-cache-timeout`, `--preflight`,
-  `--cache-workers`, `--anon-profile`,
-  `--dangerously-disable-package-manager-check`) reached `vx run` as a
-  bare `unknown flag`, the dead end the foreign-flag table exists to
-  close. Each is now a refusal naming the vx way (or "drop it" where vx
-  needs none), and cli.md's parity table carries them. Rows:
-  `foreign-flags.test.ts` › a refused flag names the vx way; red
-  without the change.
