@@ -1825,6 +1825,17 @@ copy to the source.
 | nx     | `-c <v>`, `--configuration <v>`                   | refuse  | a configuration is its own task: `vx run <target>:<configuration>`                                                            |
 | nx     | `--output-style <v>`                              | refuse  | use `--output-logs <mode>`                                                                                                    |
 | nx     | `--uncommitted`, `--untracked`                    | refuse  | use `--affected=HEAD` (the working tree against the last commit)                                                              |
+| nx     | `--max-parallel <v>`                              | alias   | `--concurrency <n>`                                                                                                           |
+| nx     | `--exclude-task-dependencies`                     | alias   | `--exclude-dependencies`                                                                                                      |
+| nx     | `--skip-remote-cache`                             | alias   | `--cache local:rw,remote:`                                                                                                    |
+| nx     | `--verbose`                                       | refuse  | use `--verbosity <n>` (1 adds the summary table)                                                                              |
+| nx     | `--files <v>`                                     | refuse  | vx asks git what changed: `--affected=<base>`                                                                                 |
+| nx     | `--batch`                                         | refuse  | vx runs one command per task: drop it                                                                                         |
+| nx     | `--dte`, `--use-agents`                           | refuse  | vx distributes nothing: drop it                                                                                               |
+| nx     | `--nx-ignore-cycles`                              | refuse  | vx refuses a task cycle by name: break it                                                                                     |
+| nx     | `--runner <v>`                                    | refuse  | a remote cache is a plugin: `nxCache()` from @vzn/vx-migrate in vx.workspace.ts                                               |
+| nx     | `--skip-sync`                                     | refuse  | vx never runs sync generators: drop it                                                                                        |
+| nx     | `--tui`, `--no-tui`, `--tui-auto-exit`            | refuse  | vx frames each task’s output: `--output-logs <mode>` sets how much                                                            |
 | nx     | `--no-cloud`                                      | refuse  | vx has no cloud: drop it                                                                                                      |
 
 ## Machine-readable output

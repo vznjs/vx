@@ -60,6 +60,12 @@ const ALIAS: ReadonlyArray<readonly [readonly string[], readonly string[]]> = [
   [['--base=main', '--head=HEAD'], ['--affected=main']],
   [['--skip-nx-cache'], ['--force']],
   [['--nx-bail'], ['--continue=never']],
+  [
+    ['--max-parallel', '3'],
+    ['--concurrency', '3'],
+  ],
+  [['--exclude-task-dependencies'], ['--exclude-dependencies']],
+  [['--skip-remote-cache'], ['--cache', 'local:rw,remote:']],
 ]
 
 const REFUSE: ReadonlyArray<readonly [readonly string[], string]> = [
@@ -102,6 +108,17 @@ const REFUSE: ReadonlyArray<readonly [readonly string[], string]> = [
     '--uncommitted (nx): use `--affected=HEAD` (the working tree against the last commit)',
   ],
   [['--no-cloud'], '--no-cloud (nx): vx has no cloud: drop it'],
+  [['--files', 'a.ts'], '--files (nx): vx asks git what changed: `--affected=<base>`'],
+  [['--verbose'], '--verbose (nx): use `--verbosity <n>` (1 adds the summary table)'],
+  [['--batch'], '--batch (nx): vx runs one command per task: drop it'],
+  [['--dte'], '--dte (nx): vx distributes nothing: drop it'],
+  [['--nx-ignore-cycles'], '--nx-ignore-cycles (nx): vx refuses a task cycle by name: break it'],
+  [
+    ['--runner', 'cloud'],
+    '--runner (nx): a remote cache is a plugin: `nxCache()` from @vzn/vx-migrate in vx.workspace.ts',
+  ],
+  [['--skip-sync'], '--skip-sync (nx): vx never runs sync generators: drop it'],
+  [['--tui'], '--tui (nx): vx frames each task’s output: `--output-logs <mode>` sets how much'],
 ]
 
 describe('Turbo and Nx flags on vx run', () => {
