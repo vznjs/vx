@@ -2,15 +2,13 @@
   "name": "@vzn/vx-migrate",
   "version": "0.0.0",
   "license": "MIT",
-  "description": "Adopt @vzn/vx from Turborepo, Nx, wireit, lage or plain workspace scripts: run the repo unchanged, migrate it to vx.config.ts, and keep your Turbo or Nx remote cache",
+  "description": "Adopt @vzn/vx from Turborepo or Nx: run the repo unchanged, migrate it to vx.config.ts, and keep your Turbo or Nx remote cache",
   "keywords": [
     "vx",
     "vx-plugin",
     "monorepo",
     "turborepo",
     "nx",
-    "wireit",
-    "lage",
     "migration",
     "remote-cache"
   ],
@@ -20,8 +18,7 @@
   "bin": {
     "vx-migrate": "./src/bin.ts",
     "nx-exec": "./src/nx-exec.cjs",
-    "nx-env": "./src/nx-env.cjs",
-    "lage-worker": "./src/lage-worker.cjs"
+    "nx-env": "./src/nx-env.cjs"
   },
   "exports": {
     ".": {

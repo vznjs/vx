@@ -18,14 +18,5 @@ nx-env argv starts: (a flag)
 nx-env --dotenv
 nx-env --envFile
 nx-env (no arguments): exit 2
-lage-worker --help: exit 0
-lage-worker argv starts: <module>
-lage-worker --package
-lage-worker --task
-lage-worker --options
-lage-worker (no arguments): exit 2
 vx-migrate --from turbo
 vx-migrate --from nx
-vx-migrate --from wireit
-vx-migrate --from lage
-vx-migrate --from scripts

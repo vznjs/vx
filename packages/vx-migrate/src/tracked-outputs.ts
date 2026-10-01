@@ -1,5 +1,5 @@
 // vx cleans a task's declared outputs before it runs (core's rule, kept on
-// purpose: a stale file in an output is a stale artifact). Turbo, Nx and lage
+// purpose: a stale file in an output is a stale artifact). Turbo and Nx
 // never clean, so an output a repo declares over committed files is safe
 // there and destructive here: typescript-eslint's website build caches
 // `data`, which holds the committed `sponsors.json`, and the first vx run
