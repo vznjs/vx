@@ -171,10 +171,11 @@ Globs every `package.json` matching the patterns (`Bun.Glob`,
 `onlyFiles: true`, `dot: false`). For each:
 
 - Skip if no `name` field.
-- Detect duplicate package names → throws `UserError` with both
-  root-relative paths and the way on (rename one, or a `!` glob). pnpm
-  accepts a repeated name (sveltejs/kit's test apps); vx cannot, since
-  a project is addressed by its name.
+- A name several manifests share: pnpm accepts it (vite's playground,
+  sveltejs/kit's test apps); vx cannot, since a project is addressed by
+  its name. With no vx config among them they are left out, named on one
+  stderr line, and the rest runs; with one, a `UserError` names every
+  root-relative path and the way on (rename one, or a `!` glob).
 - Find the first existing `vx.config.{ts,mts,js,mjs}` sibling; that
   becomes `configPath`. Projects without a config keep
   `configPath: null` — they're still in the workspace graph (so
