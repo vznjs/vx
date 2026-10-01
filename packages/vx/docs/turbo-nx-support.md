@@ -121,7 +121,7 @@ Every key `turbo.json`, `nx.json` and `project.json` accept, read from the upstr
 | `targetDefaults.*.inputs` | mapped, with a note | Merged into targets by Nx, then expanded as `targets.*.inputs`. |
 | `targetDefaults.*.dependsOn` | mapped, with a note | Merged into targets by Nx, then mapped as `targets.*.dependsOn`. |
 | `targetDefaults.*.cache` | mapped, with a note | Merged into targets by Nx, then read as `targets.*.cache`. |
-| `targetDefaults.*.syncGenerators` | not supported | Gets a TODO to run `nx sync`; vx never runs sync generators. |
+| `targetDefaults.*.syncGenerators` | not supported | One workspace note per generator list, counting its tasks, says to run `nx sync`; vx never runs sync generators. |
 
 ## `project.json`
 
@@ -150,7 +150,7 @@ Every key `turbo.json`, `nx.json` and `project.json` accept, read from the upstr
 | `targets.*.continuous` | mapped, with a note | An uncached `exec.persistent` task, with a `readyWhen` note when something depends on it. |
 | `targets.*.parallelism` | not supported | `parallelism: false` gets a TODO to run with `--concurrency 1`; vx has no per-task exclusivity. |
 | `targets.*.metadata` | mapped, with a note | Only `nonAtomizedTarget` is read, to find `.env` files. |
-| `targets.*.syncGenerators` | not supported | Gets a TODO to run `nx sync`; vx never runs sync generators. |
+| `targets.*.syncGenerators` | not supported | One workspace note per generator list, counting its tasks, says to run `nx sync`; vx never runs sync generators. |
 
 ## Nx `inputs` forms
 

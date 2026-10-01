@@ -191,7 +191,12 @@ export interface MapNxOptions {
 }
 
 /** The options with what the mapper reads itself: the root's dependency names. */
-type MapOpts = MapNxOptions & { readonly rootDeps: ReadonlySet<string>; readonly pnp: boolean }
+type MapOpts = MapNxOptions & {
+  readonly rootDeps: ReadonlySet<string>
+  readonly pnp: boolean
+  /** Tasks per `syncGenerators` list, said once in the notes. */
+  readonly syncTasks: Map<string, number>
+}
 
 export interface NxMapping {
   readonly projects: GeneratedProject[]
@@ -218,6 +223,7 @@ export async function mapNxWorkspace(
     cacheable: new Set([...opts.cacheable, ...cacheable]),
     rootDeps: await rootDependencies(root),
     pnp: yarnPnp(root),
+    syncTasks: new Map(),
   }
 
   const metaByRel = new Map<string, ProjectMeta>()
@@ -406,13 +412,18 @@ export async function mapNxWorkspace(
 
   resolveSharedWorkspaceOutputs(root, projects)
   pruneOrphanPersistentNotes(projects, opts.persistentTodo)
-  const notes =
+  const notes: string[] =
     globalSync.length === 0
       ? []
       : [
           `nx.json \`sync.globalGenerators\` (${globalSync.map((g) => JSON.stringify(g)).join(', ')}): ` +
             'Nx runs them before a run, and vx does not — run `nx sync` when they are out of date',
         ]
+  for (const [gens, n] of mapOpts.syncTasks)
+    notes.push(
+      `\`syncGenerators\` (${gens}) on ${n} task${n === 1 ? '' : 's'}: ` +
+        'Nx runs them before those targets, and vx does not — run `nx sync` when they are out of date',
+    )
   return { projects, notes }
 }
 
@@ -653,11 +664,11 @@ function buildTask(
         'run it with `--concurrency 1` where it must not share the machine',
     )
   }
+  // One note, not a todo per task: Nx's TypeScript plugin gives every
+  // typecheck target `@nx/js:typescript-sync` (83 on typebot).
   if (Array.isArray(target.syncGenerators) && target.syncGenerators.length > 0) {
-    todos.push(
-      `\`syncGenerators\` (${target.syncGenerators.map((g) => JSON.stringify(g)).join(', ')}): ` +
-        'Nx runs them before the target, and vx does not — run `nx sync` when they are out of date',
-    )
+    const gens = target.syncGenerators.map((g) => JSON.stringify(g)).join(', ')
+    opts.syncTasks.set(gens, (opts.syncTasks.get(gens) ?? 0) + 1)
   }
   if (cacheEnabled && mapped !== null) {
     // No `inputs` is Nx's `default` and `^default`: the project's
