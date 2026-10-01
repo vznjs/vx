@@ -924,8 +924,8 @@ Empty `[]` is valid for tasks that produce no files (e.g. `lint`,
 run is a no-op too.
 
 A **`!` entry takes a path back** from what the positive globs select
-(A-44; lit's wireit outputs keep a tracked fixture and a scratch dir
-under `dist` this way):
+(A-44; a tracked fixture and a scratch dir under `dist` stay out of
+the clean this way):
 
 ```ts
 outputs: {

@@ -765,68 +765,6 @@ repo's own tool, same box (4 cores, Bun 1.4.2), both under
 `unshare -n`, medians of three interleaved reps. vx runs the tasks the
 plugin maps with no `vx.config` written.
 
-### FormidableLabs/spectacle (wireit 0.14.13, `wireit()`, `e9dde74`)
-
-`pnpm build`, the root wireit group over two packages and five examples
-(tsup, tsc, five webpack builds), against `vx run build --all`.
-
-| `build`                       | vx         | wireit 0.14.13 |
-| ----------------------------- | ---------- | -------------- |
-| cold (caches + outputs wiped) | **21.5 s** | 22.2 s (1.03×) |
-| warm, outputs wiped (restore) | **394 ms** | 574 ms (1.46×) |
-| warm, nothing wiped (no-op)   | **387 ms** | 593 ms (1.53×) |
-
-vx's warm rows carry one task it runs every time: `examples/one-page`
-declares `index.html` as both input and output with `clean: false`, and
-vx cleans outputs before a run, so `wireit()` maps it uncached (260 ms
-of each warm row). The first run found it: mapped cached, the clean
-deleted the tracked `index.html` and the task failed.
-
-### microsoft/lage (lage 2.15.16, `lage()`, `e1cfae7`)
-
-`yarn build` (`lage transpile types build bundle api`), 71 targets over 25
-packages, against `vx run transpile types build bundle api --all`. Most
-targets are lage workers: vx runs each as a `lage-worker` process.
-
-| `build`                       | vx         | lage 2.15.16          |
-| ----------------------------- | ---------- | --------------------- |
-| cold (caches + outputs wiped) | 32.4 s     | **29.4 s** (vx 1.10×) |
-| warm, outputs wiped (restore) | **730 ms** | 1.70 s (2.33×)        |
-| warm, nothing wiped (no-op)   | **284 ms** | 1.56 s (5.49×)        |
-
-lage wins the cold row by its worker pool: a thread keeps swc and the
-TypeScript compiler loaded from one package to the next, where
-`lage-worker` starts a Node process per target (principle 3: one command
-per task). `isolatedTypes` and `types` both claim `lib/**/*.d.{ts,mts}`,
-so `lage()` runs `isolatedTypes` uncached.
-
-### vuejs/pinia (pnpm 11.21, `workspaceScripts()`, `98587ca`)
-
-`pnpm build` (`pnpm run -C packages/pinia build && pnpm run -C
-packages/nuxt build && pnpm run -C packages/testing build`) against
-`vx run build --all`. Neither tool caches a package script, so every
-run is a cold run: the table is the orchestration.
-
-| `build`   | vx         | pnpm 11.21     |
-| --------- | ---------- | -------------- |
-| every run | **10.0 s** | 13.6 s (1.36×) |
-
-The root script runs the three one after another; vx runs `nuxt` and
-`testing` side by side once `pinia`, which both depend on, is built.
-
-### withastro/starlight (pnpm 11.22, `workspaceScripts()`, `3ec633b`)
-
-`pnpm build` (`pnpm --filter '@astrojs/*' build`) against the command
-the mapper names for it, `vx run build --filter '@astrojs/*'`: the same
-two `tsdown` builds, one after the other in both (docsearch depends on
-starlight). Medians of three interleaved reps, network up: under
-`unshare -n` pnpm took 81 s where it takes 13.6 s online, and vx ran
-the same.
-
-| `build`   | vx         | pnpm 11.22     |
-| --------- | ---------- | -------------- |
-| every run | **10.3 s** | 12.7 s (1.23×) |
-
 ### vueuse/vueuse (Turbo 2.10.12, `turbo()`, `efdd69a`)
 
 `build` (12 tasks, `tsdown`) through `turbo()` with nothing written,

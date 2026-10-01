@@ -328,9 +328,7 @@ selection cannot tell which. It is not in the fingerprint (a key moves
 only when a stage's output does). A root file a plugin's stages read
 without importing it is seen when the plugin CLAIMS it
 (`VxPlugin.fingerprint`): `turbo()` claims `turbo.json` and
-`turbo.jsonc`, `nx()` claims `nx.json`, `lage()` claims
-`lage.config.{js,cjs,mjs}`, `workspaceScripts()` the root
-`package.json`, and an edit asks the claimant,
+`turbo.jsonc`, `nx()` claims `nx.json`, and an edit asks the claimant,
 which answers every project (item 961).
 
 **A file your config IMPORTS selects that project.** vx hashes the
@@ -1645,9 +1643,8 @@ Anywhere else it scaffolds a workspace that comes from nowhere: one `vx.config.t
 package from its `package.json` scripts, plus a `vx.workspace.ts` of
 `{ plugins: [] }` whose comment says running and caching here are the
 floor, so it declares no executor or cache. `@vzn/vx-migrate` takes the
-same `--dry` / `--force` flags but reads a runner's config (turbo, nx,
-wireit, lage) or root scripts that fan out (`--from scripts`);
-per-package scripts alone are `init`'s. A workspace with no scripts at
+same `--dry` / `--force` flags but reads a runner's config (turbo, nx);
+package.json scripts are `init`'s. A workspace with no scripts at
 all still gets the workspace file, a printed example config, and the
 next command to run. A root
 `package.json` with no `workspaces` field is single-project mode, and
@@ -1786,14 +1783,13 @@ core (`src/cli/plugin-templates.ts`) and held equal by
 ## `vx migrate`
 
 Moved out of core on 2026-09-10: the Turbo and Nx mappers are
-`@vzn/vx-migrate`, their own package, run without a workspace file. It
-maps wireit, lage and root fan-out scripts (`pnpm -r build`) too —
+`@vzn/vx-migrate`, their own package, run without a workspace file —
 
 ```
-bunx @vzn/vx-migrate           # turbo.json, an Nx graph, wireit, lage.config.js or fan-out scripts → vx.config.ts
+bunx @vzn/vx-migrate           # turbo.json or an Nx graph → vx.config.ts
 bunx @vzn/vx-migrate --dry     # print the generated files instead of writing
 bunx @vzn/vx-migrate --force   # overwrite existing vx.config.* / vx-preset.ts
-bunx @vzn/vx-migrate --from nx # disambiguate when several runners are checked in
+bunx @vzn/vx-migrate --from nx # disambiguate when both runners are checked in
 ```
 
 — and `package.json` scripts are `vx init` (above). Typing `vx migrate`
