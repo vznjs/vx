@@ -88,7 +88,11 @@ function presetImportLines(
   format: MigrationFormat,
 ): string[] {
   if (used.size === 0) return []
-  const rel = relPosix(dir, path.join(root, presetFile(format)))
+  // `.js` for the `.ts` file: Bun takes it to the `.ts`, and a user's
+  // `tsc` accepts it under every resolution mode, where `.ts` fails
+  // without `allowImportingTsExtensions` (TS5097; create-t3-turbo).
+  const file = format === 'ts' ? 'vx-preset.js' : presetFile(format)
+  const rel = relPosix(dir, path.join(root, file))
   const spec = rel.startsWith('.') ? rel : `./${rel}`
   return [`import { ${[...used].sort().join(', ')} } from '${spec}'`]
 }

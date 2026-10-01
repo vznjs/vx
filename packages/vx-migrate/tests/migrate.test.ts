@@ -1438,7 +1438,7 @@ describe('the preset, exactly', () => {
       tasks: { build: {} },
     })
     expect(plan.projects.map((p) => p.importLines)).toEqual([
-      ["import { globalEnvInputs, globalInputs, globalPassThroughEnv } from '../../vx-preset.ts'"],
+      ["import { globalEnvInputs, globalInputs, globalPassThroughEnv } from '../../vx-preset.js'"],
     ])
   })
 })
