@@ -775,6 +775,7 @@ describe('migrateScripts', () => {
       ci: 'vx run ci --all',
       'build:common': 'yarn --cwd ./packages/common build:esm',
       'build:b': 'npm --prefix packages/b run build',
+      release: 'vp run build && vp exec changeset publish',
     })
     const a = meta('a', '/w/packages/a', { build: 'tsc' })
     const plan = migrateScripts([rootMeta, a])
