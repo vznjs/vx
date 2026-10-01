@@ -1,26 +1,25 @@
 #!/usr/bin/env -S bun --no-env-file --no-install
-import { registerCoreAlias, run } from './cli/index.js'
-import {
-  fsRefusalHint,
-  isFsRefusal,
-  isOutOfFds,
-  isUserError,
-  OUT_OF_FDS_HINT,
-} from './util/index.js'
-
-// Every `import … from '@vzn/vx'` this process evaluates — a plugin
-// package, a workspace or project config — resolves to THIS core, not to
-// a second copy from node_modules (core-alias.ts says why and what it
-// costs). Registered before any verb runs; the façade loads on first use.
-registerCoreAlias(() => import('./index.js') as Promise<Record<string, unknown>>)
-
 // Wrapped in an explicit async main so `bun build --compile` accepts
 // the file. The compile target doesn't allow top-level await.
 let settled = false
 
 async function main(): Promise<void> {
+  const argv = process.argv.slice(2)
   try {
-    const code = await run(process.argv.slice(2))
+    // `vx --version` needs one leaf module; the dispatcher and the util
+    // barrel it pulled in were 20 ms of its 28 (2026-10-01).
+    if (argv.length === 1 && (argv[0] === '--version' || argv[0] === 'version')) {
+      process.stdout.write(`vx ${(await import('./version.js')).VERSION}\n`)
+      settled = true
+      return
+    }
+    const { registerCoreAlias, run } = await import('./cli/index.js')
+    // Every `import … from '@vzn/vx'` this process evaluates — a plugin
+    // package, a workspace or project config — resolves to THIS core, not to
+    // a second copy from node_modules (core-alias.ts says why and what it
+    // costs). Registered before any verb runs; the façade loads on first use.
+    registerCoreAlias(() => import('./index.js') as Promise<Record<string, unknown>>)
+    const code = await run(argv)
     // NOTHING calls `process.exit` here, and that is the fix rather than a
     // simplification. Bun drops what a pipe has not yet taken when
     // `process.exit` follows a large write: 300 KB written then exit
@@ -34,6 +33,8 @@ async function main(): Promise<void> {
     // several hundred spawns of this binary would show at once.
     process.exitCode = code
   } catch (err) {
+    const { fsRefusalHint, isFsRefusal, isOutOfFds, isUserError, OUT_OF_FDS_HINT } =
+      await import('./util/index.js')
     // UserError (workspace not found, cycle, config invalid, ...) —
     // print the message only; the stack is noise the user can't act
     // on. Everything else gets the full stack so internal bugs are

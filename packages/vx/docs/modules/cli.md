@@ -17,7 +17,10 @@ export { registerCoreAlias } from './core-alias.js'
 Every verb's module, `run` included, and the plugin-verb lookup are
 imported when invoked: each pulls in the orchestrator and the workspace
 loader. `vx --version` loads the dispatcher alone, 24 ms against 58 ms
-when this file re-exported the verbs' parsers (min of 5, 2026-09-30).
+when this file re-exported the verbs' parsers (min of 5, 2026-09-30);
+`bin.ts` now answers a lone `--version` / `version` from `version.ts`
+without the dispatcher or the util barrel: 16.4 ms against 20.1, where
+Bun runs a one-line file in 13.7 (min of 15, interleaved, 2026-10-01).
 Tests import a parser from its own file (`cli/run.ts`'s `parseRunArgs`).
 
 `run(argv)` returns the exit code. `bin.ts` sets `process.exitCode` to
