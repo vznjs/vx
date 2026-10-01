@@ -975,3 +975,32 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   Row (`turbo-map-sweep` › task tags map to nothing, an unknown key's
   todo the control): red without the fix.
 - **G-91.** runner.test.ts timeout-group row: TERM ignored before the fork; the inner sh's own trap raced the 100 ms timeout on macOS (142 ms < 400, #1946's run). Repro: the old trap delayed 0.2 s fails at 109 ms.
+- **G-90.** `nxCache()` read a `403` on an upload, which Nx's
+  self-hosted cache spec names the read-only token, as a refused token,
+  and turned the whole layer off: under a CI's pull-request token every
+  lookup after the first upload missed, and its dependants rebuilt. A
+  write's `403` now turns off writes alone, said once; a `401`, or a
+  `403` on a read, still turns the layer off. Row (`nx-cache.test` › a
+  read-only token turns off writes alone): red without the change.
+- **G-88.** Nx caps its local cache at nx.json's `maxCacheSize`, with
+  `NX_MAX_CACHE_SIZE` above it (`resolveMaxCacheSize`); `nx()` read
+  neither, so a capped cache grew without bound under vx, as
+  turbo.json's `cacheMaxSize` did before G-49. It is now the run's
+  `cacheRetention.maxSize` when `vx.workspace.ts` sets no retention, in
+  Nx's grammar, `0` being no cap. Row (`workspace-keys.test` › nx.json
+  maxCacheSize): red without the change.
+- **G-87.** `nx()` took nx.json's `parallel` as the concurrency, but Nx 23
+  reads `NX_PARALLEL` (a count or a share of the cores, `50%`) above it
+  (`readParallelFromArgsAndEnv`): a CI that set 2 for a small runner got
+  nx.json's number under vx. The env variable now wins. Row
+  (`workspace-keys.test` › NX_PARALLEL wins over nx.json): red without
+  the change.
+- **G-86.** `turbo()` read `concurrency`, `cacheMaxSize`, `cacheMaxAge`
+  and `envMode` from turbo.json only, where Turbo 2.11.5 lets
+  `TURBO_CONCURRENCY`, `TURBO_CACHE_MAX_SIZE`, `TURBO_CACHE_MAX_AGE` and
+  `TURBO_ENV_MODE` win over the file (probed in its binary): a CI that
+  pins one worker on a small runner got the file's eight, and a loose
+  env mode set there said nothing. Each env variable now wins, its `0`
+  included. Rows (`workspace-keys.test` › TURBO_CONCURRENCY and
+  TURBO_CACHE_MAX_* win over turbo.json, `turbo-map-sweep` ›
+  TURBO_ENV_MODE wins): red without the change.
