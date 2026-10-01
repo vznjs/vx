@@ -611,3 +611,9 @@ walked on fixtures.
   needs none), and cli.md's parity table carries them. Rows:
   `foreign-flags.test.ts` › a refused flag names the vx way; red
   without the change.
+- **E-101.** `vx show //#build` and `vx why //#build` read `//` as a
+  project name ("unknown project", "no recorded runs"), as `vx run` did
+  before E-100. Both now take `//#task` as the root project's task: show
+  by the discovered root, why by the root package.json's name. Row
+  (`root-project.test.ts` › show and why take //#task as the root
+  project's task): red with either verb's change reverted.
