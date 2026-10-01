@@ -517,7 +517,7 @@
   {
     "key": "nx.json targetDefaults.*.syncGenerators",
     "status": "not-supported",
-    "reason": "Gets a TODO to run `nx sync`; vx never runs sync generators."
+    "reason": "One workspace note per generator list, counting its tasks, says to run `nx sync`; vx never runs sync generators."
   },
   {
     "key": "project.json name",
@@ -637,7 +637,7 @@
   {
     "key": "project.json targets.*.syncGenerators",
     "status": "not-supported",
-    "reason": "Gets a TODO to run `nx sync`; vx never runs sync generators."
+    "reason": "One workspace note per generator list, counting its tasks, says to run `nx sync`; vx never runs sync generators."
   },
   {
     "key": "inputs: a string",

@@ -113,23 +113,45 @@ describe('nx-map: what the sweep found unheld', () => {
   })
 
   // Nx 23.2.1's project schema has both; each was dropped in silence.
-  it('`parallelism: false` and `syncGenerators` are todos; their defaults say nothing', async () => {
+  it('`parallelism: false` is a todo; its default says nothing', async () => {
     const a = await meta('a')
     const t = await tasksOf([a], {
       a: node('packages/a', {
         e2e: { command: 'playwright test', parallelism: false },
-        typecheck: { command: 'tsc', syncGenerators: ['@nx/js:typescript-sync'] },
-        lint: { command: 'eslint .', parallelism: true, syncGenerators: [] },
+        lint: { command: 'eslint .', parallelism: true },
       }),
     })
-    expect([t.get('a#e2e')!.todos, t.get('a#typecheck')!.todos, t.get('a#lint')!.todos]).toEqual([
+    expect([t.get('a#e2e')!.todos, t.get('a#lint')!.todos]).toEqual([
       [
         '`parallelism: false`: Nx runs this target alone, and vx has no per-task exclusivity — run it with `--concurrency 1` where it must not share the machine',
       ],
-      [
-        '`syncGenerators` ("@nx/js:typescript-sync"): Nx runs them before the target, and vx does not — run `nx sync` when they are out of date',
-      ],
       [],
+    ])
+  })
+
+  // A todo per task said one thing 83 times on typebot: Nx's TypeScript
+  // plugin gives every typecheck target `@nx/js:typescript-sync`.
+  it('`syncGenerators` is one workspace note per list, counting its tasks', async () => {
+    const a = await meta('a')
+    const b = await meta('b')
+    const graph = {
+      nodes: {
+        a: node('packages/a', {
+          typecheck: { command: 'tsc', syncGenerators: ['@nx/js:typescript-sync'] },
+          lint: { command: 'eslint .', syncGenerators: [] },
+        }),
+        b: node('packages/b', {
+          typecheck: { command: 'tsc', syncGenerators: ['@nx/js:typescript-sync'] },
+          gen: { command: 'gen', syncGenerators: ['@acme/tools:sync'] },
+        }),
+      },
+      dependencies: {},
+    } as NxGraph
+    const m = await mapNxWorkspace(root, [a, b], graph, OPTS)
+    expect(m.projects.flatMap((p) => p.tasks.flatMap((t) => t.todos))).toEqual([])
+    expect(m.notes).toEqual([
+      '`syncGenerators` ("@nx/js:typescript-sync") on 2 tasks: Nx runs them before those targets, and vx does not — run `nx sync` when they are out of date',
+      '`syncGenerators` ("@acme/tools:sync") on 1 task: Nx runs them before those targets, and vx does not — run `nx sync` when they are out of date',
     ])
   })
 
