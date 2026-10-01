@@ -30,7 +30,7 @@
     "vx": "./src/bin.ts"
   },
   "files": [
-    "npm-launcher.mjs",
+    "npm-launcher.cjs",
     "index.ts",
     "src",
     "schemas",
