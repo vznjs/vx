@@ -544,6 +544,22 @@ describe('a selector narrowed by a git range (D-44)', () => {
     expect(sel('[HEAD]', ['core', '@s/app'])).toEqual(['@s/app', 'core'])
   })
 
+  // Turbo 2.5.8 on create-t3-turbo, db edited: `@acme/*...[HEAD]` ran db
+  // and its five dependants, `@acme/api...[HEAD]` ran api alone. vx kept
+  // the `...` in the name glob and selected nothing.
+  it('`<name>...[ref]` is the named ones that changed or depend on one that did', () => {
+    expect(sel('@s/*...[HEAD]', ['core'])).toEqual(['@s/app', '@s/lib'])
+    expect(sel('@s/app...[HEAD]', ['core'])).toEqual(['@s/app'])
+    expect(sel('core...[HEAD]', ['@s/lib'])).toEqual([])
+    const f = parseFilter('@s/*...[HEAD]', ROOT)
+    expect([f.matcher, f.gitSince, f.withDeps, f.sinceViaDeps]).toEqual([
+      '@s/*',
+      'HEAD',
+      false,
+      true,
+    ])
+  })
+
   it('CONTROL: an unbraced path keeps its brackets as a glob class', () => {
     const f = parseFilter('./libs/[c]ore', ROOT)
     expect([f.gitSince, f.isPath]).toEqual([undefined, true])
