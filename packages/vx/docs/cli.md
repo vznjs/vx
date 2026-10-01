@@ -137,6 +137,7 @@ a stack and exit 1 after its task had succeeded.
 | ----------------------------- | ------------------------------------------------------------------------------- |
 | (default)                     | The project that contains cwd. Errors if cwd is not inside a project.           |
 | `pkg#task`                    | Just that project.                                                              |
+| `//#task`                     | The root project's task (Turbo's spelling; the root is a project, D-39).        |
 | `--all`                       | Every project that declares the task.                                           |
 | `--filter <pat>` (repeatable) | pnpm-style filter DSL (see below).                                              |
 | `--affected[=<base>]`         | Sugar for `--filter '...[<base>]'` — git-changed projects and their dependents. |

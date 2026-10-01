@@ -558,3 +558,10 @@ walked on fixtures.
   short at a word that leads exactly one accepted flag now names it.
   Row: `cli.test.ts` › every verb's unknown flag, now with
   `cache prune --dry`; red without the change.
+- **E-100.** `turbo run //#lint` runs the root's task from any package
+  (Turbo's configuring-tasks guide); `vx run //#lint` read `//` as a
+  project name and said no project declares it, though the root is a
+  project (D-39). A requested `//#task` is now the root project's, from
+  the root or a member. cli.md's selection table says so. Row
+  (`root-project.test.ts` › runs //#task as the root project's task,
+  from the root or a member): red without the change.

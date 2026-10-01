@@ -216,9 +216,17 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   // across the whole workspace — but when EVERY spec is anchored, the
   // anchors alone are the scope and nothing else needs its config
   // evaluated.
+  // `vx run //#lint` is Turbo's `turbo run //#lint`: the root project's
+  // task, the root named by its package.json name here (D-39).
+  const root = path.resolve(workspaceRoot)
+  const rootName = projectMetas.find((m) => path.resolve(m.dir) === root)?.name
+  const tasks =
+    rootName === undefined
+      ? options.tasks
+      : options.tasks.map((t) => (t.startsWith('//#') ? `${rootName}#${t.slice(3)}` : t))
   const anchored: string[] = []
   let hasBare = false
-  for (const spec of options.tasks) {
+  for (const spec of tasks) {
     const hashIdx = spec.indexOf('#')
     if (hashIdx > 0) anchored.push(spec.slice(0, hashIdx))
     else hasBare = true
@@ -305,8 +313,8 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     ? options.projects.filter((p) => projects.has(p))
     : [...projects.keys()]
 
-  const requested = expandRequested(options.tasks, candidateProjects, projects)
-  let unresolvedTasks = unresolvedRequests(options.tasks, candidateProjects, projects)
+  const requested = expandRequested(tasks, candidateProjects, projects)
+  let unresolvedTasks = unresolvedRequests(tasks, candidateProjects, projects)
   if (options.selectedByDiff === true && unresolvedTasks.some((t) => !t.includes('#'))) {
     // A name a loaded project declares is no typo, whether or not the load
     // was whole: an unaffected dependency loaded for the closure declared
