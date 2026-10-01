@@ -166,5 +166,7 @@ describe('the terminal demo', () => {
     })
     expect(r.stderr.toString()).toBe('')
     expect(r.exitCode).toBe(0)
-  })
+    // A whole vx run of the starter: a loaded gate took it past bun's
+    // 5 s default (5,006 ms) though it passes alone.
+  }, 20_000)
 })
