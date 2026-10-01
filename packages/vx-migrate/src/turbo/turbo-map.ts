@@ -26,7 +26,7 @@ import {
 } from '../shared-outputs.js'
 import { packageScripts, relPosix } from '../paths.js'
 import type { TrackedKinds } from '../tracked-outputs.js'
-import { DOTENV_PROBE } from '../dotenv-probe.js'
+import { DOTENV_PROBE, DOTENV_PROBE_TOP } from '../dotenv-probe.js'
 
 /** `path.relative` with forward slashes — the shape an ESM specifier or a report line needs. */
 interface TurboTask {
@@ -1297,6 +1297,8 @@ function buildTask(
     // files keyed none of them (item 1032). Probed instead, per package and
     // at the root.
     let pkgDotenv = false
+    // Any of them below the package root needs the walk.
+    let pkgDotenvDeep = false
     let wsDotenv = rootDotenv
     // globalDependencies are workspace-root-relative by definition —
     // they map to inputs.workspaceFiles, not project-relative files.
@@ -1329,7 +1331,10 @@ function buildTask(
         const up = climbed(translated)
         if (!neg && isDotenvGlob(body)) {
           if (body.startsWith('$TURBO_ROOT$/') || up !== null) wsDotenv = true
-          else pkgDotenv = true
+          else {
+            pkgDotenv = true
+            if (body.includes('/')) pkgDotenvDeep = true
+          }
           continue
         }
         if (body.startsWith('$TURBO_ROOT$/')) {
@@ -1417,7 +1422,7 @@ function buildTask(
     const inputs: Record<string, unknown> = { files }
     if (wsFiles.length > 0) inputs.workspaceFiles = uniq(wsFiles)
     if (cacheEnv.length > 0) inputs.env = cacheEnv
-    if (pkgDotenv) inputs.runtime = [DOTENV_PROBE]
+    if (pkgDotenv) inputs.runtime = [pkgDotenvDeep ? DOTENV_PROBE : DOTENV_PROBE_TOP]
     if (wsDotenv) inputs.workspaceRuntime = [DOTENV_PROBE]
     const outputs: Record<string, unknown> = { files: takingBack(outFiles) }
     const ws = takingBack(wsOutFiles)
