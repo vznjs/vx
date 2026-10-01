@@ -1646,7 +1646,7 @@ package from its `package.json` scripts, plus a `vx.workspace.ts` of
 `{ plugins: [] }` whose comment says running and caching here are the
 floor, so it declares no executor or cache. `@vzn/vx-migrate` takes the
 same `--dry` / `--force` flags but reads a runner's config (turbo, nx,
-moon, wireit, lage) or root scripts that fan out (`--from scripts`);
+wireit, lage) or root scripts that fan out (`--from scripts`);
 per-package scripts alone are `init`'s. A workspace with no scripts at
 all still gets the workspace file, a printed example config, and the
 next command to run. A root
@@ -1787,10 +1787,10 @@ core (`src/cli/plugin-templates.ts`) and held equal by
 
 Moved out of core on 2026-09-10: the Turbo and Nx mappers are
 `@vzn/vx-migrate`, their own package, run without a workspace file. It
-maps moon, wireit, lage and root fan-out scripts (`pnpm -r build`) too —
+maps wireit, lage and root fan-out scripts (`pnpm -r build`) too —
 
 ```
-bunx @vzn/vx-migrate           # turbo.json, an Nx graph, .moon/, wireit, lage.config.js or fan-out scripts → vx.config.ts
+bunx @vzn/vx-migrate           # turbo.json, an Nx graph, wireit, lage.config.js or fan-out scripts → vx.config.ts
 bunx @vzn/vx-migrate --dry     # print the generated files instead of writing
 bunx @vzn/vx-migrate --force   # overwrite existing vx.config.* / vx-preset.ts
 bunx @vzn/vx-migrate --from nx # disambiguate when several runners are checked in

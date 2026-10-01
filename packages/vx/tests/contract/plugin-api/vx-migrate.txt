@@ -45,12 +45,6 @@ export function mapLageWorkspace(
   config: Raw,
   rootName?: string,
 ): LageMapping
-== function mapMoonWorkspace (src/moon/moon-map.ts)
-export async function mapMoonWorkspace(
-  root: string,
-  metas: readonly ProjectMeta[],
-  opts: MapMoonOptions,
-): Promise<MoonMapping>
 == function mapNxWorkspace (src/nx/nx-map.ts)
 export async function mapNxWorkspace(
   root: string,
@@ -79,8 +73,6 @@ export async function mapWireitWorkspace(
 ): Promise<WireitMapping>
 == function migrateCmd (src/index.ts)
 export async function migrateCmd(args: readonly string[]): Promise<number>
-== function moon (src/moon/index.ts)
-export function moon(): VxPlugin
 == function nx (src/nx/index.ts)
 export function nx(options: NxPluginOptions = {}): VxPlugin
 == function nxCache (src/nx-cache/index.ts)
@@ -141,10 +133,6 @@ export interface LageMapping {
   projects: LageMappedProject[]
   notes: string[]
 }
-== type MapMoonOptions (src/moon/moon-map.ts)
-export interface MapMoonOptions {
-  persistentTodo: string
-}
 == type MapNxOptions (src/nx/nx-map.ts)
 export interface MapNxOptions {
   readonly persistentTodo: string
@@ -176,26 +164,9 @@ export interface MigrateArgs {
   dry: boolean
   force: boolean
   mjs: boolean
-  from?: 'turbo' | 'nx' | 'moon' | 'wireit' | 'lage' | 'scripts'
+  from?: 'turbo' | 'nx' | 'wireit' | 'lage' | 'scripts'
   help?: boolean
   error?: string
-}
-== type MoonMappedProject (src/moon/moon-map.ts)
-export interface MoonMappedProject {
-  name: string
-  dir: string
-  tasks: MoonMappedTask[]
-}
-== type MoonMappedTask (src/moon/moon-map.ts)
-export interface MoonMappedTask {
-  name: string
-  todos: string[]
-  task: Record<string, unknown> | null
-}
-== type MoonMapping (src/moon/moon-map.ts)
-export interface MoonMapping {
-  projects: MoonMappedProject[]
-  notes: string[]
 }
 == type NxCacheConfig (src/nx-cache/index.ts)
 export interface NxCacheConfig {

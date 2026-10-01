@@ -1,4 +1,4 @@
-// An edge to a task that mapped to nothing (a moon token with no vx form, a
+// An edge to a task that mapped to nothing (a lage target with no script, a
 // wireit script with neither command nor dependencies) is refused by core:
 // no project declares the name, and the refusal failed the whole run. The
 // mappers drop such edges with a todo, to a fixed point, since a group

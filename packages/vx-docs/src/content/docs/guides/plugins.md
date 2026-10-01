@@ -289,7 +289,7 @@ A verb that throws anything but a `UserError` fails in one line, no stack:
 | Package                     | Hooks it fills                             |
 | --------------------------- | ------------------------------------------ |
 | `@vzn/vx-reapi`             | `cache`, `executor` ([CI and remote](../ci/#remote-cache)) |
-| `@vzn/vx-migrate`           | `project` (`turbo()`, `nx()`, `moon()`, `wireit()`, `lage()`, `workspaceScripts()`), `fingerprint` (`turbo()`, `nx()`, `lage()`, `workspaceScripts()`), `cache` (`turboCache()`, `nxCache()`) ([Migrate](../migrate/)) |
+| `@vzn/vx-migrate`           | `project` (`turbo()`, `nx()`, `wireit()`, `lage()`, `workspaceScripts()`), `fingerprint` (`turbo()`, `nx()`, `lage()`, `workspaceScripts()`), `cache` (`turboCache()`, `nxCache()`) ([Migrate](../migrate/)) |
 | `@vzn/vx-lockfile`          | `fingerprint`, `key` ([Lockfiles](../configure/#lockfiles)) |
 | `@vzn/vx-schedule-history`  | `schedule`, `admit`, `commands`            |
 | `@vzn/vx-otel`              | `telemetry` ([below](#opentelemetry))      |

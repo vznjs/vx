@@ -26,7 +26,6 @@ lage-worker --options
 lage-worker (no arguments): exit 2
 vx-migrate --from turbo
 vx-migrate --from nx
-vx-migrate --from moon
 vx-migrate --from wireit
 vx-migrate --from lage
 vx-migrate --from scripts

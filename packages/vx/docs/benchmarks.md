@@ -765,28 +765,6 @@ repo's own tool, same box (4 cores, Bun 1.4.2), both under
 `unshare -n`, medians of three interleaved reps. vx runs the tasks the
 plugin maps with no `vx.config` written.
 
-### kindspells/astro-shield (moon 1.41.7, `moon()`, `6cb8dff`)
-
-`astro-shield:build` and `:lint` (`lint.biome`, `lint.tsc`,
-`lint.publint` after `build`): the same four commands under both tools.
-moon runs with `MOON_TOOLCHAIN_FORCE_GLOBALS=1` (no toolchain download);
-with the network up, its warm run here was a flat 4.2 s, its version
-check timing out behind this box's proxy, so the table leaves the
-network out for both.
-
-| `build` + `lint`              | vx         | moon 1.41.7    |
-| ----------------------------- | ---------- | -------------- |
-| cold (caches + outputs wiped) | **2.64 s** | 3.78 s (1.43×) |
-| warm, outputs wiped (restore) | **125 ms** | 2.46 s (19.7×) |
-| warm, nothing wiped (no-op)   | **111 ms** | 2.37 s (21.4×) |
-
-moon's warm floor is its toolchain and dependency-install check
-(~2.1 s between its last cache write and the next task runner, in its
-own `--log debug`). The repo's `test.unit` fetches over HTTPS and fails
-under vx on this box: the proxy's CA reaches moon's tasks with the whole
-environment and not vx's isolated one, the gap `moon()` names in its
-note.
-
 ### FormidableLabs/spectacle (wireit 0.14.13, `wireit()`, `e9dde74`)
 
 `pnpm build`, the root wireit group over two packages and five examples
