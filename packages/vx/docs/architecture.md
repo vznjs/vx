@@ -114,14 +114,15 @@ graph TD
 | **orchestrator** | ✓    | ✓      | ✓       | ✓         | ✓     | ✓     | ✓    | —            |     |       |
 | **cli**          | ✓    | ✓      | ✓       | ✓         | ✓     | ✓     |      | ✓            | —   |       |
 | **index**        | ✓    | ✓      | ✓       | ✓         | ✓     | ✓     | ✓    | ✓            |     | —     |
-| **bin**          | ✓    |        |         |           |       |       |      |              | ✓   | ✓     |
+| **bin**          | ✓    |        | ✓       |           |       |       |      |              | ✓   | ✓     |
 
 Composition happens only at `orchestrator` (wires workspace → graph →
 cache → exec into a run) and `cli` (wires argv → orchestrator).
 `cli → cache` is deliberate — `vx cache prune` / `vx last` / `vx why`
 open the cache without a run. `cli → exec` is deliberately absent.
 `bin → index` is a lazy `import()`: a plugin's `@vzn/vx` resolves to
-this copy (`registerCoreAlias`).
+this copy (`registerCoreAlias`). `bin → version` answers a lone `--version`
+before the dispatcher loads.
 
 ### Enforcement
 

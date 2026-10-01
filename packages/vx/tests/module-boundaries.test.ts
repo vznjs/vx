@@ -38,8 +38,9 @@ const ALLOWED: Record<string, readonly string[]> = {
   cli: ['util', 'config', 'version', 'workspace', 'graph', 'cache', 'orchestrator'],
   index: ['util', 'config', 'version', 'workspace', 'graph', 'cache', 'exec', 'orchestrator'],
   // `index`: bin lazy-loads the façade so a plugin's `@vzn/vx` resolves
-  // to this copy (registerCoreAlias).
-  bin: ['util', 'cli', 'index'],
+  // to this copy (registerCoreAlias). `version`: a lone `--version` is
+  // answered before the dispatcher loads.
+  bin: ['util', 'version', 'cli', 'index'],
 }
 
 // Modules whose contract (index.ts) is the only legal cross-module
