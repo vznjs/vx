@@ -384,6 +384,7 @@ The Nx spec has no existence probe, so `has` (the `--dry` prediction; the prefet
 - A request answered `429` or `5xx` (not `501`), or one that never connected (a refused port, an unresolved host), is sent again after 2 s — a `429` after its `Retry-After`, capped at 10 s — as Turbo's client does. A spent deadline is not: it has already cost its wait.
 - A refused token (`401`/`403`) warns **once** and turns the layer off for the rest of the process — including the requests already in flight when the refusal lands, which degrade in silence rather than repeating it (a six-project run printed five identical lines before 2026-09-20).
 - Policy (`--cache=remote:r`, …) is enforced by core's `LayeredCache`, which the plugins wrap — a read-only token pairs naturally with `remote:r`.
+- Each tool's own switches narrow that policy, never widen it, as they do for the tool: `TURBO_CACHE` (`--cache`'s syntax, an omitted source off) and `TURBO_REMOTE_CACHE_READ_ONLY` for `turboCache()`, `NX_SKIP_REMOTE_CACHE` / `NX_DISABLE_REMOTE_CACHE` (`true`) for `nxCache()`. A CI that keeps untrusted pull requests off the shared cache that way keeps vx off it too.
 
 ## Testing
 

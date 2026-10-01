@@ -428,6 +428,15 @@
   `executor` plugin example (`vx init --plugin executor`) spawns a bare
   `sh` with the task's env; a lead for its owner, since it is regenerated
   from `vx-plugin-examples`.
+- L-34. `fix(vx-migrate)`: `turboCache()` ignored `TURBO_CACHE` and
+  `TURBO_REMOTE_CACHE_READ_ONLY`, and `nxCache()` ignored
+  `NX_SKIP_REMOTE_CACHE` / `NX_DISABLE_REMOTE_CACHE`: the switches a CI
+  sets so an untrusted pull request reads the shared cache at most, and
+  never writes what `main` would restore. Under vx such a job wrote it.
+  Each now narrows the run's `--cache` policy as the tool reads it (an
+  omitted `TURBO_CACHE` source is off). Rows: `turbo-cache.test.ts` ›
+  Turbo's TURBO_CACHE and TURBO_REMOTE_CACHE_READ_ONLY narrow the remote,
+  `nx-cache.test.ts`'s resolve row; each red on its mutant.
 
 ## Leads for other streams
 

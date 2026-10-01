@@ -454,6 +454,37 @@ export class TurboRemoteCache implements RemoteCacheLayer {
   }
 }
 
+/**
+ * What Turbo's own switches leave of the remote cache: `TURBO_CACHE`
+ * (`--cache`'s syntax, where an omitted source is off) and
+ * `TURBO_REMOTE_CACHE_READ_ONLY`. A CI that sets either for an untrusted
+ * pull request kept Turbo from writing the shared cache and not vx. They
+ * only narrow what `--cache` allows, never widen it.
+ */
+export function turboRemoteAccess(env: Record<string, string | undefined>): {
+  read: boolean
+  write: boolean
+} {
+  let read = true
+  let write = true
+  const spec = env['TURBO_CACHE']
+  if (spec !== undefined && spec !== '') {
+    read = write = false
+    for (const part of spec.split(',')) {
+      const m = /^(local|remote):([rw]*)$/.exec(part.trim())
+      if (m === null)
+        throw new Error(
+          `vx/turbo-cache: TURBO_CACHE ${JSON.stringify(spec)} is not --cache's syntax (e.g. local:rw,remote:r)`,
+        )
+      if (m[1] !== 'remote') continue
+      read = m[2]!.includes('r')
+      write = m[2]!.includes('w')
+    }
+  }
+  if (/^(1|true)$/i.test(env['TURBO_REMOTE_CACHE_READ_ONLY'] ?? '')) write = false
+  return { read, write }
+}
+
 /** The root turbo.json's (or turbo.jsonc's) `remoteCache`; `{}` when there is none or it does not parse. */
 function remoteCacheOf(root: string): TurboJsonRemoteCache {
   for (const name of ['turbo.json', 'turbo.jsonc']) {
@@ -487,8 +518,15 @@ export function turboCache(options: TurboCacheOptions = {}): VxPlugin {
     cache(ctx): CacheLayer | undefined {
       const config = resolveTurboCacheConfig(options, Bun.env, remoteCacheOf(ctx.workspaceRoot))
       if (config === undefined) return undefined
+      const remote = turboRemoteAccess(Bun.env)
+      const policy = {
+        ...ctx.policy,
+        remoteRead: ctx.policy.remoteRead && remote.read,
+        remoteWrite: ctx.policy.remoteWrite && remote.write,
+      }
+      if (!policy.remoteRead && !policy.remoteWrite) return undefined
       return new LayeredCache(ctx.localCache, new TurboRemoteCache(config), {
-        policy: ctx.policy,
+        policy,
         onRemoteError: (err) => ctx.warn(`vx/turbo-cache: ${err.message}`),
       })
     },

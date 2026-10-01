@@ -17,6 +17,7 @@ import {
   resolveTurboCacheConfig,
   TurboRemoteCache,
   turboCache,
+  turboRemoteAccess,
 } from '../src/index.js'
 
 const TOKEN = 'secret-token'
@@ -519,6 +520,61 @@ describe('vx run with turboCache() layered over the local cache', () => {
       if (before === undefined) delete process.env['TURBO_TOKEN']
       else process.env['TURBO_TOKEN'] = before
       await rm(ws, { recursive: true, force: true })
+    }
+  })
+
+  // A CI keeps an untrusted pull request off the shared cache with Turbo's
+  // own switches; vx read and wrote it regardless. They narrow `--cache`.
+  it('Turbo’s TURBO_CACHE and TURBO_REMOTE_CACHE_READ_ONLY narrow the remote', () => {
+    const access = (env: Record<string, string>) => {
+      const a = turboRemoteAccess(env)
+      return `${a.read ? 'r' : ''}${a.write ? 'w' : ''}`
+    }
+    expect([
+      access({}),
+      access({ TURBO_CACHE: 'local:rw,remote:r' }),
+      access({ TURBO_CACHE: 'local:rw' }),
+      access({ TURBO_CACHE: 'remote:w' }),
+      access({ TURBO_REMOTE_CACHE_READ_ONLY: 'true' }),
+      access({ TURBO_REMOTE_CACHE_READ_ONLY: '1', TURBO_CACHE: 'remote:rw' }),
+      access({ TURBO_REMOTE_CACHE_READ_ONLY: 'false' }),
+    ]).toEqual(['rw', 'r', '', 'w', 'r', 'r', 'rw'])
+    expect(() => access({ TURBO_CACHE: 'remote:x' })).toThrow(
+      'vx/turbo-cache: TURBO_CACHE "remote:x" is not --cache\'s syntax (e.g. local:rw,remote:r)',
+    )
+    const saved = { ...process.env }
+    try {
+      process.env['TURBO_TOKEN'] = 't'
+      process.env['TURBO_API'] = 'https://c.example'
+      const layer = (env: Record<string, string>, remoteWrite = true) => {
+        delete process.env['TURBO_CACHE']
+        delete process.env['TURBO_REMOTE_CACHE_READ_ONLY']
+        Object.assign(process.env, env)
+        const ctx = {
+          localCache: {} as never,
+          policy: { localRead: true, localWrite: true, remoteRead: true, remoteWrite },
+          warn: () => {},
+          workspaceRoot: root,
+          cacheDir: root,
+        }
+        const l = turboCache({}).cache?.(ctx as never) as { policy?: unknown } | undefined
+        return l === undefined ? 'declined' : l.policy
+      }
+      const p = (remoteRead: boolean, remoteWrite: boolean) => ({
+        localRead: true,
+        localWrite: true,
+        remoteRead,
+        remoteWrite,
+      })
+      expect([
+        layer({}),
+        layer({ TURBO_REMOTE_CACHE_READ_ONLY: 'true' }),
+        layer({ TURBO_CACHE: 'local:rw' }),
+        layer({ TURBO_CACHE: 'remote:rw' }, false),
+      ]).toEqual([p(true, true), p(true, false), 'declined', p(true, false)])
+    } finally {
+      for (const k of Object.keys(process.env)) if (!(k in saved)) delete process.env[k]
+      Object.assign(process.env, saved)
     }
   })
 
