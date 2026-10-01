@@ -142,7 +142,13 @@ describe('every internal link in the built site', () => {
       .filter((f) => f.endsWith('.xml'))
       .map((f) => f.split(path.sep).join('/'))
       .sort()
-    expect(feeds).toEqual(['blog/rss.xml', 'sitemap-0.xml', 'sitemap-index.xml'])
+    // starlight-blog writes a dated feed per month: blog/rss/2026-09.xml
+    // first appeared on 2026-10-01, so the set grows with the calendar.
+    expect(feeds.filter((f) => !/^blog\/rss\/\d{4}-\d{2}\.xml$/.test(f))).toEqual([
+      'blog/rss.xml',
+      'sitemap-0.xml',
+      'sitemap-index.xml',
+    ])
     const dead = feeds.flatMap((f) =>
       xmlUrls(readFileSync(path.join(DIST, f), 'utf8'))
         .filter((u) => u.startsWith(SITE))
