@@ -9,6 +9,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { loadProjectConfig, type TaskConfig } from '@vzn/vx'
 import { parseMigrateArgs } from '../src/index.js'
 import { migrateTurbo } from '../src/migrate-turbo.js'
+import { fakeNxCli, nxCalls } from './helpers/fake-nx.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 const TIMEOUT = 20_000
@@ -537,6 +538,30 @@ async function makeNxWorkspace(aDeps?: Record<string, string>): Promise<string> 
   await addPackage(root, 'pkg-b', {})
   return root
 }
+
+describe('vx migrate (nx) with no exported graph', () => {
+  it(
+    'exports one with the workspace’s own nx, as nx() does, and maps it',
+    async () => {
+      const root = await makeRoot('vx-migrate-nx-export-')
+      try {
+        await writeFile(path.join(root, 'nx.json'), JSON.stringify(NX_JSON))
+        await writeFile(path.join(root, 'graph.json'), JSON.stringify(NX_GRAPH))
+        await addPackage(root, 'pkg-a', { test: 'jest' })
+        await addPackage(root, 'pkg-b', {})
+        await fakeNxCli(root)
+        const r = await vx(root, ['--dry'])
+        expect([r.code, r.err]).toEqual([0, ''])
+        expect(r.out).toContain('vx-migrate: nx graph → vx.config.ts')
+        expect(r.out).toContain('packages/pkg-a/vx.config.ts')
+        expect(await nxCalls(root)).toBe(1)
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+})
 
 describe('vx migrate (nx)', () => {
   let root: string
@@ -1340,7 +1365,9 @@ describe('the writer: what the sweep found unheld', () => {
       ])
       const nx = await detect({}, ['--from', 'nx'])
       expect(nx.code).toBe(1)
-      expect(nx.err).toStartWith('vx-migrate: no resolved Nx graph found — export one with')
+      expect(nx.err).toBe(
+        "vx-migrate: no resolved Nx graph found, and exporting one failed (no node_modules/.bin/nx — install nx, or export a graph with `nx graph --file=<path>` and pass it as graph: '<path>') — export it with `nx graph --file=.nx/workspace-data/project-graph.json`, then re-run vx-migrate\n",
+      )
     },
     TIMEOUT,
   )

@@ -18,13 +18,14 @@
 // Nx itself runs — and a fresh snapshot costs the stats alone. Design:
 // docs/design/nx-unchanged-2026-09.md.
 
-import { mkdir, stat } from 'node:fs/promises'
+import { stat } from 'node:fs/promises'
 import { availableParallelism } from 'node:os'
 import path from 'node:path'
 import { type GeneratedProject, type ProjectMeta, UserError, type VxPlugin } from '@vzn/vx'
 import { type AdoptionRun, adoptionPlugin } from '../adoption-plugin.js'
 import { collectGaps } from '../plugin-gaps.js'
 import { mapNxWorkspace, type NxGraph, parseNxGraph, readNxJson } from './nx-map.js'
+import { exportGraph } from './export-graph.js'
 import { listDotenv } from './nx-dotenv.js'
 import type { AdoptionMapping } from '../mapping-cache.js'
 import { yarnrcText } from '../script-command.js'
@@ -575,30 +576,6 @@ async function loadGraphText(
     }
   }
   return { text: await Bun.file(snapshot).text(), label: path.relative(root, snapshot) }
-}
-
-/**
- * `nx graph --file=<snapshot>` from the workspace's own `nx`. Returns the
- * reason it could not, or null. Nx's daemon setting is the user's: with the
- * daemon up the export is served from memory, without it Nx computes.
- */
-async function exportGraph(root: string, snapshot: string): Promise<string | null> {
-  const bin = path.join(root, 'node_modules', '.bin', 'nx')
-  if (!(await Bun.file(bin).exists())) {
-    return `no ${path.relative(root, bin)} — install nx, or export a graph with \`nx graph --file=<path>\` and pass it as graph: '<path>'`
-  }
-  // `discover` runs before the run opens (and makes) the cache dir.
-  await mkdir(path.dirname(snapshot), { recursive: true })
-  const proc = Bun.spawn([bin, 'graph', `--file=${snapshot}`], {
-    cwd: root,
-    env: process.env,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  const [code, err] = await Promise.all([proc.exited, new Response(proc.stderr).text()])
-  if (code === 0 && (await Bun.file(snapshot).exists())) return null
-  const tail = err.trim().split('\n').slice(-3).join(' ')
-  return `nx graph --file exited ${code}${tail ? `: ${tail}` : ''}`
 }
 
 export {
