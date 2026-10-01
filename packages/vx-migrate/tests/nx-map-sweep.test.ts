@@ -775,16 +775,39 @@ describe('nx-map: a configuration reaches its edges', () => {
     expect(t.get('a#make')?.task?.dependsOn).toEqual(['gen', 'lint', 'b#pack', 'b#zip', '^make'])
   })
 
-  it('a ^ edge is a todo only where another project declares the configuration', async () => {
-    const [a, b] = [await meta('a'), await meta('b')]
-    const t = await tasksOf([a, b], {
-      a: node('packages/a', {
-        make: { command: 'make', configurations: { ci: {} }, dependsOn: ['^make'] },
-      }),
-      b: node('packages/b', { make: { command: 'make', configurations: { ci: {} } } }),
+  // analog: 17 `development` / `production` builds ran their dependencies'
+  // default builds. A `^` edge becomes one edge per dependency Nx links:
+  // its configured task where it declares one, else its base task.
+  // CONTROL: no dependency declaring it keeps `^make` (c's own `ci` is
+  // no dependency's).
+  it('a ^ edge takes the configuration where a dependency declares it', async () => {
+    const [a, b, d, c] = [await meta('a'), await meta('b'), await meta('d'), await meta('c')]
+    const edges = (from: string, to: string[]) =>
+      to.map((t) => ({ source: from, target: t, type: 'static' }))
+    const t = await tasksOf(
+      [a, b, d, c],
+      {
+        a: node('packages/a', {
+          make: { command: 'make', configurations: { ci: {} }, dependsOn: ['^make'] },
+        }),
+        b: node('packages/b', { make: { command: 'make', configurations: { ci: {} } } }),
+        d: node('packages/d', { make: { command: 'make' } }),
+        c: node('packages/c', {
+          make: { command: 'make', configurations: { ci: {} }, dependsOn: ['^make'] },
+        }),
+      },
+      { a: edges('a', ['b', 'd']), c: edges('c', ['d']) },
+    )
+    expect(t.get('a#make:ci')).toMatchObject({
+      task: { dependsOn: ['b#make:ci', 'd#make'] },
+      todos: [],
     })
-    expect(t.get('a#make:ci')?.todos).toEqual([
-      'configuration "ci": Nx runs dependencies with the same configuration where they declare it — here the ^ edges run their default',
-    ])
+    // The base task asks for no configuration. (No manifest links these
+    // fixtures, so Nx's edges ride beside `^make` explicitly.)
+    expect(t.get('a#make')?.task?.dependsOn).toEqual(['^make', 'b#make', 'd#make'])
+    expect(t.get('c#make:ci')).toMatchObject({
+      task: { dependsOn: ['^make', 'd#make'] },
+      todos: [],
+    })
   })
 })

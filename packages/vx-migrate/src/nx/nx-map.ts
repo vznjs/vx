@@ -293,6 +293,8 @@ export async function mapNxWorkspace(
       : await listDotenv(root, [...relOf.values()])
 
   const mapped: Array<{ meta: ProjectMeta; tasks: GeneratedTask[] }> = []
+  // A configuration variant's task (`build:production`) and what it runs.
+  const configured = new WeakMap<GeneratedTask, string>()
   for (const meta of allMetas) {
     const node = nodeByMeta.get(meta)
     const targets = node?.data?.targets
@@ -318,24 +320,24 @@ export async function mapNxWorkspace(
       ).map((f) => relPosix(projectRel, f))
     for (const [targetName, target] of Object.entries(targets)) {
       for (const v of variants(targetName, target)) {
-        tasks.push(
-          buildTask(
-            meta,
-            projectRel,
-            scripts,
-            projectName,
-            targetName,
-            target,
-            v,
-            nodeNameOf.get(meta)!,
-            upstream,
-            metaByNode,
-            nodeMap,
-            taskNameFor,
-            mapOpts,
-            listing === null ? null : dotenvFor(listing, targetName, v.configuration),
-          ),
+        const t = buildTask(
+          meta,
+          projectRel,
+          scripts,
+          projectName,
+          targetName,
+          target,
+          v,
+          nodeNameOf.get(meta)!,
+          upstream,
+          metaByNode,
+          nodeMap,
+          taskNameFor,
+          mapOpts,
+          listing === null ? null : dotenvFor(listing, targetName, v.configuration),
         )
+        if (v.name !== targetName) configured.set(t, v.configuration!)
+        tasks.push(t)
       }
     }
     mapped.push({ meta, tasks })
@@ -387,6 +389,9 @@ export async function mapNxWorkspace(
   for (const { meta, tasks } of mapped) {
     const nodeName = nodeNameOf.get(meta)
     for (const t of tasks) {
+      const c = configured.get(t)
+      if (nodeName !== undefined && c !== undefined)
+        passConfiguration(t.task, nodeName, c, nxEdges, metaByNode, emittedIds, taskNameFor)
       if (nodeName !== undefined)
         followNxGraph(t.task, nodeName, meta.name, nxEdges, metaByNode, emittedIds, reached)
       dropUnheldDeps(t, emitted, emittedIds)
@@ -677,27 +682,6 @@ function buildTask(
     }
     return { name: variant.name, task: { dependsOn: deps }, todos }
   }
-  // Only where a project declares the configuration on the ^ target: else
-  // Nx runs the default there too.
-  const c = variant.configuration
-  if (
-    variant.name !== targetName &&
-    deps.some(
-      (d) =>
-        d.startsWith('^') &&
-        Object.entries(nodeMap).some(
-          ([name, n]) =>
-            name !== nodeName &&
-            Object.hasOwn(n?.data?.targets?.[d.slice(1)]?.configurations ?? {}, c!),
-        ),
-    )
-  ) {
-    todos.push(
-      `configuration ${JSON.stringify(variant.configuration)}: Nx runs dependencies with the same ` +
-        'configuration where they declare it — here the ^ edges run their default',
-    )
-  }
-
   const exec: Record<string, unknown> = { command: mapped.command }
   const env: Record<string, unknown> = {}
   if (inputs.envNames.length > 0) env.passThrough = inputs.envNames
@@ -954,6 +938,48 @@ function nxDependencyTargets(
     memo.set(key, out)
     return out
   }
+}
+
+/**
+ * Nx hands a `^name` edge the configuration the run asked for, and each
+ * dependency runs it where it declares it, else its default
+ * (`resolveConfiguration`). A `^name` beside a configuration task ran
+ * every dependency's default (analog: 17 `development` / `production`
+ * builds), and both beside each other would race on one `dist`. Where any
+ * dependency Nx links declares the configuration, the `^name` becomes an
+ * explicit edge per dependency: its configured task, else its base one.
+ */
+function passConfiguration(
+  task: Record<string, unknown> | null,
+  nodeName: string,
+  configuration: string,
+  nxEdges: (from: string, target: string) => readonly string[],
+  metaByNode: ReadonlyMap<string, ProjectMeta>,
+  emittedIds: ReadonlySet<string>,
+  taskNameFor: TaskNameFor,
+): void {
+  const deps = task?.['dependsOn']
+  if (task === null || !Array.isArray(deps)) return
+  const out: unknown[] = []
+  for (const d of deps) {
+    if (typeof d !== 'string' || !d.startsWith('^') || d.includes('*')) {
+      out.push(d)
+      continue
+    }
+    const name = d.slice(1)
+    const nodes = nxEdges(nodeName, name)
+    if (!nodes.some((n) => taskNameFor(n, name, configuration) !== null)) {
+      out.push(d)
+      continue
+    }
+    for (const n of nodes) {
+      const m = metaByNode.get(n)
+      if (m === undefined) continue
+      const id = `${m.name}#${taskNameFor(n, name, configuration) ?? name}`
+      if (emittedIds.has(id) && !out.includes(id)) out.push(id)
+    }
+  }
+  task['dependsOn'] = out
 }
 
 /** Each `^name` of `task` gains the explicit edges Nx's graph draws for it and vx's `^` does not. */
