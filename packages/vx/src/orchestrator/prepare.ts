@@ -111,8 +111,10 @@ export interface PreparedRun {
    * selection (the cwd's project, a `--filter`) declares: no typo, a scope.
    */
   declaredElsewhere: readonly string[]
-  /** Every discovered project — the declared task names a typo is measured against. */
+  /** The loaded projects: the whole workspace, or a scoped run's closure. */
   projects: ReadonlyMap<string, ProjectEntry>
+  /** What a typo is measured against: `projects`, or every project when a `pkg#task` named none loaded. */
+  hintProjects: ReadonlyMap<string, ProjectEntry>
   /**
    * True iff at least one package in the workspace has a `vx.config.*` at
    * all — regardless of scope, so a `--filter` that matched nothing is not
@@ -353,6 +355,24 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     }
     declaredElsewhere = bare.filter((t) => !nowhere.includes(t))
   }
+  // A `pkg#task` run loads pkg's closure alone, so a typo'd pkg (or Nx's
+  // short name for `@scope/pkg`) was measured against nothing and got no
+  // "did you mean". Only a failing run pays for the rest of the workspace.
+  let hintProjects: ReadonlyMap<string, ProjectEntry> = projects
+  if (
+    unresolvedTasks.some((t) => {
+      const at = t.indexOf('#')
+      return at > 0 && !projects.has(t.slice(0, at))
+    })
+  ) {
+    try {
+      hintProjects = (
+        await loadProjects({ ...loadArgs, seeds: 'all', closure: false, staged: projects })
+      ).projects
+    } catch {
+      // A config the scope skipped fails to load: no hint, the run's refusal stands.
+    }
+  }
 
   // Cache seam precedence: an EXPLICITLY injected remote layer
   // (RunOptions.remoteCache — a distribution agent or daemon that already
@@ -438,6 +458,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
         unresolvedTasks,
         declaredElsewhere,
         projects,
+        hintProjects,
         anyProjectConfig: projectsWithConfigs.length > 0,
         workspaceFingerprint,
         fingerprintWatch,
@@ -558,6 +579,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       unresolvedTasks,
       declaredElsewhere,
       projects,
+      hintProjects,
       anyProjectConfig: projectsWithConfigs.length > 0,
       workspaceFingerprint,
       fingerprintWatch,

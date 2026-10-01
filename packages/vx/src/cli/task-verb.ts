@@ -4,7 +4,7 @@
 // does it. It stays a refusal: a verb that runs whatever task shares its
 // name would change meaning the day a plugin declares that verb.
 
-import { nxProjectTarget } from '../orchestrator/index.js'
+import { nxProjectTarget, projectNamed } from '../orchestrator/index.js'
 import { findWorkspaceRoot, loadWorkspace } from '../workspace/index.js'
 import { findCwdProject } from './select.js'
 import { discoverCliProjects, loadCliProjects } from './workspace-config.js'
@@ -20,7 +20,7 @@ export async function taskVerbHint(
   if (projects === null) return null
   if (![...projects.values()].some((p) => p.config.tasks?.[command] !== undefined)) return null
   // Nx's `nx build app`: the word after the target is its project.
-  const project = rest[0] !== undefined && projects.has(rest[0]) ? rest[0] : undefined
+  const project = rest[0] === undefined ? undefined : projectNamed(rest[0], projects)
   const run =
     project !== undefined
       ? `vx run ${command} --filter ${project}`

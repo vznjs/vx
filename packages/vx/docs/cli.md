@@ -1814,7 +1814,9 @@ either tool name what does it here: `graph` (`--graph`), `ls`
 for. Nx's `project:target` (`vx run web:build`,
 when `web` declares `build`) is answered with `vx run web#build`: from
 outside a project in place of "not inside a project", in scope as the
-unresolved name's `Did you mean`. The table is `cli/foreign-flags.ts`,
+unresolved name's `Did you mean`. A name that is no project but ends
+the one scoped package (`cart` for `@nx-example/cart`, as Nx names it)
+means that package there and in `vx build cart`. The table is `cli/foreign-flags.ts`,
 rendered; `tests/foreign-flags.test.ts` drives every row and holds this
 copy to the source.
 

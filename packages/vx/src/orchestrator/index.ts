@@ -1,7 +1,7 @@
 // Module contract for `orchestrator`. Cross-module imports must come
 // through here (enforced by tests/module-boundaries.test.ts).
 
-export { run, planRun, nxProjectTarget } from './run.js'
+export { run, planRun, nxProjectTarget, projectNamed } from './run.js'
 export { prepareRun, type PreparedRun } from './prepare.js'
 export {
   discoverProjects,

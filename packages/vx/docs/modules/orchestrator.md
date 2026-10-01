@@ -35,6 +35,7 @@ for the extension seams.
 export function run(options: RunOptions): Promise<RunSummary>
 export function planRun(options: RunOptions): Promise<RunPlan>
 export function nxProjectTarget(spec: string, projects): string | undefined // Nx's `web:build` as `web#build`, when web declares build
+export function projectNamed(typed: string, projects): string | undefined // `cart` as `@scope/cart`, when that is the one such project
 export function shouldShortCircuit(nodes, policy, cache): boolean
 export function invocationCommand(argv: readonly string[]): string // the args after `--` as `<n arguments>`
 export function runLockPath(workspaceRoot: string, dir?: string): string // the lock directory

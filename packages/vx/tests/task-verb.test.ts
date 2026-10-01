@@ -76,6 +76,43 @@ describe('a task typed as a verb', () => {
     expect(run(root, 'app:nope', '--all')[1]).toBe('No projects declare task(s): app:nope.\n')
   })
 
+  // nx-examples names `@nx-example/cart` `cart`, and its users type
+  // `nx run cart:build` and `nx build cart`. And a `pkg#task` run loads
+  // pkg alone, so a typo'd pkg was measured against nothing: no hint.
+  it("Nx's short name for a scoped package, and a typo'd package, are hinted", async () => {
+    const web = await addProject(root, '@s/web', TASKS)
+    const run = (...args: string[]): string[] => {
+      const p = Bun.spawnSync({ cmd: [process.execPath, BIN, 'run', ...args], cwd: root })
+      return [p.stdout.toString(), p.stderr.toString()]
+    }
+    try {
+      expect(run('web:build')[1]).toBe(
+        "vx run: `web:build` is Nx's project:target: vx run @s/web#build\n",
+      )
+      expect(run('web#build')[0]).toBe(
+        'No projects declare task(s): web#build. Did you mean @s/web#build?\n',
+      )
+      expect(run('ap#build')[0]).toBe(
+        'No projects declare task(s): ap#build. Did you mean app#build?\n',
+      )
+      expect(vx(root, 'build', 'web')).toEqual([
+        1,
+        'vx: `build` is a task here, not a command: vx run build --filter @s/web\n',
+      ])
+      // Two scopes share the name: none of them is meant.
+      const other = await addProject(root, '@t/web', TASKS)
+      try {
+        expect(run('web:build')[1]).toBe(
+          'vx run: not inside a project. Pass --all for every project, --filter <pattern> to filter, or run from within a project directory.\n',
+        )
+      } finally {
+        await rm(other, { recursive: true, force: true })
+      }
+    } finally {
+      await rm(web, { recursive: true, force: true })
+    }
+  })
+
   it('`vx run` with no task and no terminal names the tasks here', async () => {
     const bare = (cwd: string): string =>
       Bun.spawnSync({ cmd: [process.execPath, BIN, 'run'], cwd, stdin: 'ignore' }).stderr.toString()
