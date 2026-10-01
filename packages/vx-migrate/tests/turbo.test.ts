@@ -653,6 +653,36 @@ describe('output negation', () => {
   )
 
   it(
+    'a top-level output beside no config of its spelling stays cached, until one is added (sanity `*.js`)',
+    async () => {
+      await pkg('app', { build: 'echo shim > cli.mjs' })
+      await writeFile(
+        path.join(root, 'turbo.json'),
+        JSON.stringify({ tasks: { build: { outputs: ['lib/**', '*.mjs'] } } }),
+      )
+      Bun.spawnSync({ cmd: ['git', 'add', '-A'], cwd: root })
+      const cacheOf = async () =>
+        (await planRun({ cwd: root, tasks: ['app#build'], log: silent() })).tasks.find(
+          (t) => t.node.id === 'app#build',
+        )!.node.config.cache
+      expect((await cacheOf())?.outputs.files).toEqual(['lib/**', '*.mjs'])
+      // A config the mapped task now lives beside: the kept mapping is
+      // re-made, and the output that would clean it runs uncached.
+      await writeFile(
+        path.join(root, 'packages', 'app', 'vx.config.mjs'),
+        'export default { tasks: {} }\n',
+      )
+      const log = silent()
+      await planRun({ cwd: root, tasks: ['app#build'], log })
+      expect(await cacheOf()).toBeUndefined()
+      expect(log.lines.join('\n')).toContain(
+        `output "*.mjs" covers the project's own vx.config.mjs`,
+      )
+    },
+    TIMEOUT,
+  )
+
+  it(
     "Next's `!.next/cache/**` keeps the cache out of the clean and the artifact (A-44)",
     async () => {
       await writeFile(path.join(root, '.gitignore'), 'dist\n.next\n')

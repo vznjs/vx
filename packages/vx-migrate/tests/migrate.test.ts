@@ -1449,3 +1449,27 @@ describe('vx migrate — a repo core finds no workspace root in', () => {
     TIMEOUT,
   )
 })
+
+describe('an output beside the config vx-migrate writes', () => {
+  it('is held to that file: `*.mjs` caches beside vx.config.ts, not beside vx.config.mjs', async () => {
+    const root = await makeRoot('vx-migrate-own-config-')
+    try {
+      await writeFile(
+        path.join(root, 'turbo.json'),
+        JSON.stringify({ tasks: { build: { outputs: ['*.mjs'] } } }),
+      )
+      const dir = await addPackage(root, 'a', { build: 'b' })
+      const packageJson = { name: 'a', scripts: { build: 'b' } }
+      const meta = { name: 'a', dir, packageJson: packageJson as never, configPath: null }
+      // The tracked set says the package has no `.mjs` source.
+      Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
+      Bun.spawnSync({ cmd: ['git', 'add', '-A'], cwd: root })
+      const cached = async (format: 'ts' | 'mjs') =>
+        (await migrateTurbo(root, [meta], format)).projects[0]!.tasks[0]!.task!['cache'] !==
+        undefined
+      expect([await cached('ts'), await cached('mjs')]).toEqual([true, false])
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+})

@@ -87,6 +87,13 @@ describe('an output that covers the project’s own package.json', () => {
     expect(ownFileOutput(['!package.json', 'dist/**'])).toBeUndefined()
   })
 
+  it('with the config file named, only it and package.json are the project’s own', () => {
+    expect(ownFileOutput(['*.js'], null)).toBeUndefined()
+    expect(ownFileOutput(['*.js'], 'vx.config.ts')).toBeUndefined()
+    expect(ownFileOutput(['*.js'], 'vx.config.js')).toEqual({ glob: '*.js', file: 'vx.config.js' })
+    expect(ownFileOutput(['*.json'], null)).toEqual({ glob: '*.json', file: 'package.json' })
+  })
+
   it('turbo(): the task runs uncached with a todo, and the workspace loads', async () => {
     await writeFile(path.join(root, 'turbo.json'), JSON.stringify({ tasks: { build: {} } }))
     const a = await pkg('a', { build: 'tsdown' })

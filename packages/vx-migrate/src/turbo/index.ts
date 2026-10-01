@@ -15,6 +15,7 @@ import { type AdoptionRun, adoptionPlugin } from '../adoption-plugin.js'
 import type { AdoptionMapping } from '../mapping-cache.js'
 import { collectGaps } from '../plugin-gaps.js'
 import { trackedExtensions } from '../tracked-outputs.js'
+import { relPosix } from '../paths.js'
 import {
   mapTurboWorkspace,
   rootTaskProject,
@@ -180,7 +181,8 @@ async function run(root: string, metas: readonly ProjectMeta[]): Promise<Adoptio
       process.env['TURBO_ENV_MODE'] ?? '',
       ...configs,
       await textOf(path.join(root, '.yarnrc.yml')),
-      JSON.stringify(metas.map((m) => [m.name, m.dir, m.packageJson])),
+      // A config file added beside mapped tasks changes what an output may cover.
+      JSON.stringify(metas.map((m) => [m.name, m.dir, m.packageJson, m.configPath])),
     ],
     map: (tracked) => mapAll(root, metas, tracked),
   }
@@ -198,6 +200,11 @@ async function mapAll(
   trackedFiles: () => Promise<readonly string[] | null>,
 ): Promise<AdoptionMapping> {
   const tracked = await trackedFiles()
+  const configs = new Map(
+    metas.flatMap((m) =>
+      m.configPath === null ? [] : [[relPosix(root, m.dir), path.basename(m.configPath)] as const],
+    ),
+  )
   const mapped = await mapTurboWorkspace(root, metas, {
     // Inline: the values themselves, where `vx migrate` splices a preset import.
     splice: (_kind, values) => values,
@@ -206,6 +213,7 @@ async function mapAll(
     vendorEnvPrefix: process.env['TURBO_CI_VENDOR_ENV_KEY'] ?? '',
     envMode: process.env['TURBO_ENV_MODE'] ?? '',
     ...(tracked === null ? {} : { trackedExts: trackedExtensions(tracked) }),
+    ownConfig: (rel) => configs.get(rel === '.' ? '' : rel) ?? null,
   })
   const byName = new Map<string, TurboMappedProject>()
   for (const project of mapped.projects) byName.set(project.name, project)
