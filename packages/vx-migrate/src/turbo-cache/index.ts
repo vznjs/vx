@@ -365,7 +365,10 @@ export class TurboRemoteCache implements RemoteCacheLayer {
 
   private url(pathname: string): string {
     const u = new URL(`${this.config.apiUrl}/v8/artifacts${pathname}`)
-    if (this.config.teamId) u.searchParams.set('teamId', this.config.teamId)
+    // Turbo sends a team id only in Vercel's `team_` form (its API client's
+    // `add_team_params`); a personal account's owner id is not one, and the
+    // signature, which folds the id as given, is unaffected.
+    if (this.config.teamId?.startsWith('team_')) u.searchParams.set('teamId', this.config.teamId)
     if (this.config.teamSlug) u.searchParams.set('slug', this.config.teamSlug)
     return u.toString()
   }

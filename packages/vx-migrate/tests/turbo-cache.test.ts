@@ -356,6 +356,20 @@ describe('TurboRemoteCache against the spec server', () => {
     expect(await c.get('bb22')).toBeNull()
   })
 
+  // Turbo's API client sends a team id only in Vercel's `team_` form; a
+  // personal account's owner id (VERCEL_ARTIFACTS_OWNER) went out as one.
+  it('sends teamId only in Vercel’s team_ form; the slug either way', async () => {
+    const query = async (teamId: string) => {
+      await cache({ teamId }).has('ab12')
+      const u = new URL(srv.seen.at(-1)!.url)
+      return [u.searchParams.get('teamId'), u.searchParams.get('slug')]
+    }
+    expect([await query('team_1'), await query('user_abc')]).toEqual([
+      ['team_1', 'acme'],
+      [null, 'acme'],
+    ])
+  })
+
   it('signs uploads and refuses a download whose tag does not verify', async () => {
     const c = cache({ signatureKey: KEY })
     const body = new TextEncoder().encode('signed-bytes')
