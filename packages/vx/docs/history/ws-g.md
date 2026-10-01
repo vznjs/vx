@@ -942,3 +942,10 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   out of the inferred set, so a deploy's commit SHA does not re-key every
   Next build (row: the CI vendor prefix is left out of framework
   inference only; red without the filter).
+- **G-89.** `turboCache()` put any `teamId` on the query, where Turbo's
+  API client sends one only in Vercel's `team_` form (`add_team_params`)
+  and keeps the raw id for the signature alone. A personal account's
+  owner id, or a slug written as `TURBO_TEAMID`, went out as a team id
+  Turbo never sends. Row (`turbo-cache.test` › sends teamId only in
+  Vercel's team_ form): red without the change; the signature rows hold
+  the raw id.
