@@ -19,6 +19,7 @@ export interface ParsedFilter {
   isPath: boolean // ./<dir> or {<dir>}
   matcher: string // glob (name) or absolute path
   gitSince?: string // [<git-ref>]
+  sinceViaDeps?: true // <name>...[<git-ref>]: changed, or depends on a changed package
   pathGlob?: Bun.Glob // a path form carrying a glob (`./packages/*`), matched over the root-relative project dir
   pathRoot?: string // the workspace root `pathGlob` is relative to
   exactDir?: true // `//`: the project at `matcher` itself, never the ones under it
@@ -80,7 +81,8 @@ export function applyFilters(opts: ApplyFiltersOptions): Set<string>
 The git-relative `[<since>]` form is parsed into a `gitSince` field,
 alone or after a name or `{dir}` selector it narrows (`@scope/*[main]`,
 `{./apps/*}[HEAD~1]`: the selected packages that changed, D-44; an
-unbraced `./` path keeps its brackets as a glob class), but resolution
+unbraced `./` path keeps its brackets as a glob class; `<name>...[ref]`
+also takes the dependants of what changed, as Turbo reads it), but resolution
 happens upstream (`cli/select.ts` calls
 `workspace/affected.ts:affectedProjects` once per distinct ref and
 passes the result via `affectedByFilter`).
