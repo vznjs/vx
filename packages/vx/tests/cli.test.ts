@@ -1731,7 +1731,9 @@ describe('parseRunArgs', () => {
     expect(parseRunArgs(['build', '--verbosity', '1']).verbosity).toBe(1)
     expect(parseRunArgs(['build', '--verbosity', '2']).verbosity).toBe(2)
     expect(parseRunArgs(['build', '-v']).error).toMatch(/unknown flag: -v/)
-    expect(parseRunArgs(['build', '--verbose']).error).toMatch(/unknown flag: --verbose/)
+    expect(parseRunArgs(['build', '--verbose']).error).toMatch(
+      /--verbose \(nx\): use `--verbosity <n>`/,
+    )
   })
 
   it('--verbosity rejects non-integer and negative values', () => {
