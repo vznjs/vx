@@ -166,7 +166,7 @@ two edits, or when exactly one scoped project's name after its `/` is
 
 | Form              | Meaning                                                                                                                                                                                                         |
 | ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `<pattern>`       | Match by package name. `*` matches any characters, including `/`.                                                                                                                                               |
+| `<pattern>`       | Match by package name. `*` matches any characters, including `/`. A pattern matching no package may leave out the scope, as pnpm reads it (`cart` is `@nx-example/cart` when one package carries it).           |
 | `./<dir>`         | The package at `<dir>` alone, as Turbo and pnpm read it (`.` is the root project); a `<dir>` that is no package matches the packages under it (relative to workspace root; D-43).                               |
 | `{<dir>}`         | Same as `./<dir>`.                                                                                                                                                                                              |
 | `./<glob>`        | A glob over root-relative project dirs: `./packages/*` (direct children), `{apps/**}` (nested too). A path that names a project dir literally is read literally first, so `./packages/[abc]` is that directory. |
