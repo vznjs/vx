@@ -150,6 +150,8 @@ export interface MapNxOptions {
   readonly persistentTodo: string
   readonly cacheable: ReadonlySet<string>
   readonly attached?: ReadonlySet<string>
+  readonly tracked?: (rel: string) => TrackedKinds
+  readonly ownConfig?: (rel: string) => string | null
 }
 == type MapScriptsOptions (src/scripts/scripts-map.ts)
 export interface MapScriptsOptions {

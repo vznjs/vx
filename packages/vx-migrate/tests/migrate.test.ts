@@ -8,6 +8,7 @@ import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { loadProjectConfig, type TaskConfig } from '@vzn/vx'
 import { parseMigrateArgs } from '../src/index.js'
+import { migrateNx } from '../src/migrate-nx.js'
 import { migrateTurbo } from '../src/migrate-turbo.js'
 import { fakeNxCli, nxCalls } from './helpers/fake-nx.js'
 
@@ -1494,6 +1495,50 @@ describe('an output beside the config vx-migrate writes', () => {
       const cached = async (format: 'ts' | 'mjs') =>
         (await migrateTurbo(root, [meta], format)).projects[0]!.tasks[0]!.task!['cache'] !==
         undefined
+      expect([await cached('ts'), await cached('mjs')]).toEqual([true, false])
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('migrateNx: an output beside the config it writes', () => {
+  it('`*.mjs` caches beside vx.config.ts, not beside vx.config.mjs', async () => {
+    const root = await makeRoot('vx-migrate-nx-own-config-')
+    try {
+      const dir = await addPackage(root, 'a', {})
+      const graph = {
+        graph: {
+          nodes: {
+            a: {
+              name: 'a',
+              type: 'lib',
+              data: {
+                root: 'packages/a',
+                targets: {
+                  gen: {
+                    executor: 'nx:run-commands',
+                    options: { command: 'echo g' },
+                    outputs: ['{projectRoot}/*.mjs'],
+                    cache: true,
+                  },
+                },
+              },
+            },
+          },
+          dependencies: {},
+        },
+      }
+      const snapshot = path.join(root, 'graph.json')
+      await writeFile(snapshot, JSON.stringify(graph))
+      // The tracked set says the project has no `.mjs` source.
+      Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
+      Bun.spawnSync({ cmd: ['git', 'add', '-A'], cwd: root })
+      const meta = { name: 'a', dir, packageJson: { name: 'a' } as never, configPath: null }
+      const cached = async (format: 'ts' | 'mjs') =>
+        (await migrateNx(root, [meta], format, snapshot)).projects[0]!.tasks.find(
+          (t) => t.name === 'gen',
+        )!.task!['cache'] !== undefined
       expect([await cached('ts'), await cached('mjs')]).toEqual([true, false])
     } finally {
       await rm(root, { recursive: true, force: true })

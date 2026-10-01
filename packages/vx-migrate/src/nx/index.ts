@@ -27,6 +27,8 @@ import { collectGaps } from '../plugin-gaps.js'
 import { mapNxWorkspace, type NxGraph, parseNxGraph, readNxJson } from './nx-map.js'
 import { exportGraph } from './export-graph.js'
 import { listDotenv } from './nx-dotenv.js'
+import { trackedKinds } from '../tracked-outputs.js'
+import { relPosix } from '../paths.js'
 import type { AdoptionMapping } from '../mapping-cache.js'
 import { yarnrcText } from '../script-command.js'
 
@@ -234,7 +236,7 @@ async function mapAll(
     name: 'nx',
     spareTracked: true,
     reads: await nxReads(root, metas, text, graph, notes),
-    map: () => index(root, metas, graph, notes),
+    map: (tracked) => index(root, metas, graph, notes, tracked),
   }
 }
 
@@ -280,7 +282,8 @@ async function nxReads(
   return [
     graphText,
     ...(await Promise.all(chain.map(textOf))),
-    JSON.stringify(metas.map((m) => [m.name, m.dir, m.packageJson])),
+    // A config file added beside mapped tasks changes what an output may cover.
+    JSON.stringify(metas.map((m) => [m.name, m.dir, m.packageJson, m.configPath])),
     ...(await Promise.all(unmatched.map((r) => textOf(path.join(root, r, 'package.json'))))),
     JSON.stringify(
       [...dotenv]
@@ -299,12 +302,23 @@ async function index(
   metas: readonly ProjectMeta[],
   graph: NxGraph,
   loadNotes: readonly string[],
+  trackedFiles: () => Promise<readonly string[] | null>,
 ): Promise<AdoptionMapping> {
   const notes = [...loadNotes]
+  const tracked = await trackedFiles()
+  const configs = new Map(
+    metas.flatMap((m) =>
+      m.configPath === null
+        ? []
+        : [[relRoot(relPosix(root, m.dir)), path.basename(m.configPath)] as const],
+    ),
+  )
   const mapped = await mapNxWorkspace(root, metas, graph, {
     persistentTodo: PERSISTENT_NOTE,
     cacheable: new Set(),
     attached: new Set(metas.map((m) => m.name)),
+    ...(tracked === null ? {} : { tracked: trackedKinds(tracked) }),
+    ownConfig: (rel) => configs.get(relRoot(rel)) ?? null,
   })
   notes.push(...mapped.notes)
   const byName = new Map<string, GeneratedProject>()
