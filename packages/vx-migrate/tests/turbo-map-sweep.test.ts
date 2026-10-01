@@ -144,7 +144,7 @@ describe('turbo-map: what the sweep found unheld', () => {
   // A live mapping (turbo()) runs where the tasks will: Turbo matches a `*`
   // name against that environment, and so does the mapper, so every
   // Vercel template's `NEXT_PUBLIC_*` keys and passes what it names.
-  it('a `*` env name expands over the live environment; other wildcards stay todos', async () => {
+  it('a `*` env name expands over the live environment; a literal no variable has is dropped', async () => {
     const live = [
       'OTHER',
       'NEXT_PUBLIC_B',
@@ -152,13 +152,14 @@ describe('turbo-map: what the sweep found unheld', () => {
       'NEXT_PUBLIC_A',
       'VITE_X',
       'TOKEN_1',
+      'FOO_?',
     ]
     const m = await map(
       {
         globalEnv: ['VITE_*'],
         tasks: {
           build: {
-            env: ['NEXT_PUBLIC_*', '!NEXT_PUBLIC_VERCEL_*', 'API', 'FOO_?'],
+            env: ['NEXT_PUBLIC_*', '!NEXT_PUBLIC_VERCEL_*', 'API', 'FOO_?', 'BAR_\\*'],
             passThroughEnv: ['TOKEN_*'],
           },
         },
@@ -176,9 +177,44 @@ describe('turbo-map: what the sweep found unheld', () => {
       env: ['VITE_X', 'NEXT_PUBLIC_A', 'NEXT_PUBLIC_B', 'API'],
       pass: ['VITE_X', 'NEXT_PUBLIC_A', 'NEXT_PUBLIC_B', 'API', 'TOKEN_1'],
       todos: [
-        'env "FOO_?": wildcards are not supported in vx env names — list explicit names in cache.inputs.env + exec.env.passThrough',
+        'env "FOO_?": Turbo reads this as the one variable "FOO_?" (only `*` is a wildcard), a name vx cannot key — dropped',
       ],
       notes: [],
+    })
+  })
+
+  // Turbo's `wildcard_to_regex_pattern`: `*` is the one wildcard, `\*` a
+  // literal `*`, a leading `\!` a literal `!`. unkey's `NEXT_PUBLIC_\*`
+  // and `\!NEXT_PUBLIC_VERCEL_\*` name one variable each, which no
+  // environment sets, and were 50 "wildcards are not supported" todos.
+  it('an escaped `*` or `!` is a literal, as Turbo reads it', async () => {
+    const turbo = {
+      tasks: {
+        build: { env: ['NEXT_PUBLIC_\\*', '\\!NEXT_PUBLIC_VERCEL_\\*', 'API', 'B_*', '!B_\\*'] },
+      },
+    }
+    const pkgs = { a: { scripts: { build: 'b' } } }
+    const read = async (live?: string[]) => {
+      const t = (await map(turbo, pkgs, live)).projects[0]!.tasks[0]!
+      return { env: (t.task!['cache'] as { inputs: { env?: unknown } }).inputs.env, todos: t.todos }
+    }
+    const literal = (entry: string, name: string): string =>
+      `env ${JSON.stringify(entry)}: Turbo reads this as the one variable ${JSON.stringify(name)} (only \`*\` is a wildcard), a name vx cannot key — dropped`
+    // Live: the escaped names are set nowhere, so Turbo hashes nothing for
+    // them; the exclusion's \* is no wildcard, so B_1 stays.
+    expect(await read(['B_1', 'NEXT_PUBLIC_A'])).toEqual({ env: ['API', 'B_1'], todos: [] })
+    // One that is set is reported.
+    expect(await read(['NEXT_PUBLIC_*'])).toEqual({
+      env: ['API'],
+      todos: [literal('NEXT_PUBLIC_\\*', 'NEXT_PUBLIC_*')],
+    })
+    expect(await read()).toEqual({
+      env: ['API'],
+      todos: [
+        literal('NEXT_PUBLIC_\\*', 'NEXT_PUBLIC_*'),
+        literal('\\!NEXT_PUBLIC_VERCEL_\\*', '!NEXT_PUBLIC_VERCEL_*'),
+        'env "B_*": wildcards are not supported in vx env names — list explicit names in cache.inputs.env + exec.env.passThrough',
+      ],
     })
   })
 
