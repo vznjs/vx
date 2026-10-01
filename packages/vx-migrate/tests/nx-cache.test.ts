@@ -208,7 +208,7 @@ describe('NxRemoteCache against the spec server', () => {
     }
   })
 
-  it('a bad token throws once and turns the layer off; a read-only token fails the write the same way', async () => {
+  it('a bad token throws once and turns the layer off; a read-only token turns off writes alone', async () => {
     const bad = cache('nope')
     await expect(bad.get('aa11')).rejects.toThrow(/401.*invalid token/)
     const n = srv.seen.length
@@ -221,6 +221,12 @@ describe('NxRemoteCache against the spec server', () => {
     await expect(ro.put('dd44', new Blob(['x']), { durationMs: 1 })).rejects.toThrow(
       /403.*read-only/,
     )
+    // The read-only token's refused write turns off writes alone: a later
+    // lookup still hits, and a later upload is not sent (nor said again).
+    expect(await ro.has('aa11')).toBe(true)
+    const m = srv.seen.length
+    await ro.put('ee55', new Blob(['x']), { durationMs: 1 })
+    expect(srv.seen.length).toBe(m)
   })
 })
 
