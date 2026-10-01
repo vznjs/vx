@@ -1,13 +1,10 @@
 # @vzn/vx-migrate
 
-Everything for adopting [`@vzn/vx`](https://github.com/vznjs/vx) from Turborepo, Nx, wireit or lage, in one package with zero dependencies:
+Everything for adopting [`@vzn/vx`](https://github.com/vznjs/vx) from Turborepo or Nx, in one package with zero dependencies:
 
 - **`turbo()`** — run a Turbo repository under vx with nothing written. The plugin fills vx's `project` stage from `turbo.json` and each package's `package.json` scripts. A trial that commits nothing.
 - **`nx()`** — run an Nx repository under vx with nothing written: the same stage, filled from Nx's resolved project graph. Executor targets (`@nx/js:tsc`, `@nx/vite:build`, your own) run as themselves through **`nx-exec`**, one executor per process.
-- **`wireit()`** — run a [wireit](https://github.com/google/wireit) workspace under vx with nothing written, from each `package.json`'s `wireit` block.
-- **`lage()`** — run a [lage](https://microsoft.github.io/lage/) workspace under vx with nothing written, from `lage.config.js`.
-- **`workspaceScripts()`** — run a workspace with no orchestrator, whose root scripts fan out (`pnpm -r run build`, `npm run test --workspaces`, `yarn workspaces foreach`, `lerna run`).
-- **`bunx @vzn/vx-migrate`** — write one `vx.config.ts` per workspace package from your `turbo.json`, an exported Nx project graph, `wireit` blocks or `lage.config.js`, plus the workspace file every run needs. Runs without a workspace file, so it is the first command, not the second.
+- **`bunx @vzn/vx-migrate`** — write one `vx.config.ts` per workspace package from your `turbo.json`, or an exported Nx project graph, plus the workspace file every run needs. Runs without a workspace file, so it is the first command, not the second.
 - **`turboCache()`** and **`nxCache()`** — keep the remote cache you have: any server speaking Turbo's `/v8/artifacts` API (Vercel's hosted cache included) or Nx's self-hosted `/v1/cache` spec.
 
 ```sh
@@ -54,13 +51,13 @@ Rules:
 
 - **A task exists for a package only when the package declares the script** — Turbo's own rule. An absent script is silent; a script key whose value cannot be a command (a number, `null`, an empty string, an array) produces a `task: null` entry whose todo says why, rather than a config that fails to load.
 - **Definition order**: root `pkg#name` if there is one, else root `name` (the first replaces the second whole, as Turbo looks it up), then each package config its own `turbo.json` extends (`"extends": ["//", "shared"]`, read by Turbo 2.11, refused by 2.5; nearest last, a parent missing or a cycle refused as Turbo refuses it) and its own, each winning field by field, except an overlay array holding `$TURBO_EXTENDS$` (Turbo 2.5+), which is the inherited list plus the overlay's other entries (`inputs: ["$TURBO_EXTENDS$", "config.json"]`).
-- **The command is the script body** with its `pre<name>` / `post<name>` hooks folded in, in that order, through core's `foldScriptHooks`: each part in its own subshell, the chain stopping at the first that fails, forwarded `--` args reaching the body alone (npm and pnpm run them around `<name>` without being asked; novu's `prebuild` copies the CSS its `build` inlines), one process less per task than `pnpm run <name>` — except a body that calls yarn's `run` builtin (`run -T rollup -c`, `run clean && run build`; yarn ≥ 2 runs scripts in its own shell), which is `run: command not found` in sh: it runs as `yarn run <name>`, as Turbo and Nx run it, and yarn ≥ 2 runs no hooks, so none are folded there. A Yarn Plug'n'Play workspace (`.yarnrc.yml` with no `nodeLinker`, or `pnp`) has no `node_modules`: a dependency resolves only through `.pnp.cjs` and a bin only through yarn's shims, so there every script runs as `yarn run <name>`, and a `nodeLinker` change maps afresh. Same rules for `nx:run-script` below (strapi and novu, 2026-09-11), lage's `npmScript` targets, wireit's plain scripts and `workspaceScripts()`.
+- **The command is the script body** with its `pre<name>` / `post<name>` hooks folded in, in that order, through core's `foldScriptHooks`: each part in its own subshell, the chain stopping at the first that fails, forwarded `--` args reaching the body alone (npm and pnpm run them around `<name>` without being asked; novu's `prebuild` copies the CSS its `build` inlines), one process less per task than `pnpm run <name>` — except a body that calls yarn's `run` builtin (`run -T rollup -c`, `run clean && run build`; yarn ≥ 2 runs scripts in its own shell), which is `run: command not found` in sh: it runs as `yarn run <name>`, as Turbo and Nx run it, and yarn ≥ 2 runs no hooks, so none are folded there. A Yarn Plug'n'Play workspace (`.yarnrc.yml` with no `nodeLinker`, or `pnp`) has no `node_modules`: a dependency resolves only through `.pnp.cjs` and a bin only through yarn's shims, so there every script runs as `yarn run <name>`, and a `nodeLinker` change maps afresh. Same rules for `nx:run-script` below (strapi and novu, 2026-09-11).
 - **Turbo 2.11's task `command`** (`futureFlags.experimentalTaskCommand`) wins over the script, as Turbo holds it: an argv is the command — each word quoted, run from the package dir, no `pre`/`post` hooks — and gives the package the task even with no script (turborepo's `@turbo/types#build`, `docs#schema`); `null` or `[]` is Turbo's no-op node, no task even where the script exists, its edges passed through; a per-toolchain map applies its `javascript` entry (or `typescript`, Turbo's alias), and without one the script runs. A shape Turbo would refuse keeps the script, with a todo.
 - `dependsOn`: `^x` passes through when some package runs `x`, and is dropped when none does (Turbo gives it no edges; core refuses a `^x` no project declares as a typo); `pkg#task` is kept only when `pkg` emits `task` (else a todo: edge dropped); a same-package task Turbo defines but the package has no script for is Turbo's no-op node, so its own edges pass through in its place (`test → codegen → ^build` with no `codegen` script is `test → ^build`); another package's `^x` or `pkg#x` reaches such a node through a group task when its edges name a task of its own package or another (with-tailwind's `ui` has no `build` script; its `build` builds `build:styles` and `build:components`, and `web#build` waits on them), and so does one whose `^` edge names another task (rallly's script-less `build` holds `^db:generate`), while one whose only edge is `^` to its own name needs none, since core's `^x` walks past a package without `x`; a no-op node nothing else reaches runs nothing, its own edges included, where Turbo still runs them (kitchen-sink's `turbo run test` builds `@repo/ui` for `admin`, which has no `test` script; `vx run test --all` does not, and `vx run build test --all` does both); a name Turbo does not define has no edge; `$TURBO_ROOT$` deps are a todo. Root `//#task`s run in the workspace root, as under Turbo: `turbo()` names the root a project through core's `discover` stage when turbo.json declares one (no `vx.config` needed; a root no member glob lists), and `//#x` in `dependsOn` is an edge to it, named by the root `package.json` `name`; a root task's globs are the workspace's (`workspaceFiles`), since Turbo hashes a root task over the whole repo; with no root project (a root `package.json` with no `name`, or one a package holds) they are a note and such an edge a todo. Turbo runs no plain task in the root package of a monorepo, and neither does `turbo()`; in a single-package repo (no workspaces, Turbo's `non-monorepo` example) turbo.json's plain tasks run on the root package, as under Turbo.
 - A transit node (Turbo's documented pattern, its with-vitest example: `transit: { dependsOn: ["^transit"] }` with no script anywhere, and `test: { dependsOn: ["transit"] }`) is a key-only task in each package that defines it: it runs `true`, cached and keyed on its inputs, with its `^transit` edge, so a dependant's `test` re-keys on its dependencies' sources as Turbo re-hashes it. A `^` task that some package has a script for, or that nothing depends on, is no transit node.
 - `with` (tasks Turbo runs alongside, `web#dev` with `api#dev`): an edge to each sidecar that is persistent, so vx starts the task once the sidecar has spawned and runs the sidecar only when the task runs; a sidecar that ends would be waited for, so it is a todo instead, and a pair that names each other keeps one edge (two would be a cycle). A task with no script whose `with` names persistent sidecars (Turbo's with-tailwind example: `ui` has no `dev` script, its `dev` starts `dev:styles` and `dev:components`) is a group task that depends on them.
 - `inputs`: a structured entry (Turbo 2.11) is its `globs`, plus `**/*` with `withDefaults`, for `startup` and `jit` alike; `dependencyOutputs` adds none (vx folds each dependency's key). Then: absent or `[]` → `**/*` (Turbo's default); `$TURBO_DEFAULT$` → `**/*`; exclusions alone narrow `**/*`; `$TURBO_ROOT$/<path>` → `cache.inputs.workspaceFiles` (negation kept); any other `$TURBO_ROOT$` use is a todo. `globalDependencies` and Turbo 1's `globalDotEnv` land in `workspaceFiles` too, and a task's Turbo 1 `dotEnv` in its `files`. Turbo 1's `$NAME` entries, in `globalDependencies` or a task's `dependsOn`, are env vars: they join `cache.inputs.env` and `exec.env.passThrough`. Turbo's glob grammar is translated as Nx's is (`*.[jt]s` is `*.{[jt],j,t}s`); an input with no safe form widens to `**/*` with a todo. A `.env`-shaped input (`.env*`, `.env.local`, a task's Turbo 1 `dotEnv`, create-turbo's `globalDependencies: ["**/.env.*local"]`) is gitignored as a rule, so it is keyed by a probe that hashes the `.env` files it can name (`cache.inputs.runtime`) or, for a root entry, every one in the workspace (`workspaceRuntime`), rather than as a file glob git never reports. A package whose `.env` globs all sit at its root gets a one-shell probe of that directory; one below the root walks the package.
-- `outputs`: `$TURBO_ROOT$/<path>` → `cache.outputs.workspaceFiles`; a negated output rides beside its positives and takes its paths back from the clean, the save and the restore (Next's `.next/**` minus `!.next/cache/**` keeps the cache), and one with no positive beside it takes back nothing and is dropped. Past its first segment an output takes Turbo's grammar (`dist/**/*.[cm]js`); the first stays a literal (a route directory). An output whose first segment is a wildcard (`**/*.d.ts`, `*/**`) runs the task uncached with a todo: Turbo never cleans an output, vx cleans it before every run, and such a glob reaches the sources. One segment with a literal extension the package tracks no file of (`*.xml`, `*.tsbuildinfo`) reaches only top-level artifacts and stays cached, and so does `**/<dir>/**` when the package tracks nothing under a directory of that name (vercel/ai's `**/dist/**`; `node_modules` is never an output), and so does a first segment no tracked top-level entry matches (tldraw's `dist-*/**`). An output that covers the package's own `package.json` (trpc's client build lists it: the build rewrites `exports`) runs the task uncached with a todo, in `nx()` too: vx would delete the manifest before every run, and core refuses that config. So does one that covers the package's vx.config; `turbo()` and `nx()` check the config the package has, and `vx-migrate` the one it writes, so sanity's `*.js` shims stay cached beside none. `nx()` takes the wildcard-first rule above as `turbo()` does. A committed file under an output (typescript-eslint's `data/sponsors.json` in a cached `data`) is taken back with `!` — Turbo, Nx and lage never clean an output, vx does — so it survives the clean and the task keeps its cache; past sixteen such files the task runs uncached with a todo. `turbo()`, `nx()` and `lage()` do this; `wireit()` does not, since wireit cleans outputs itself.
+- `outputs`: `$TURBO_ROOT$/<path>` → `cache.outputs.workspaceFiles`; a negated output rides beside its positives and takes its paths back from the clean, the save and the restore (Next's `.next/**` minus `!.next/cache/**` keeps the cache), and one with no positive beside it takes back nothing and is dropped. Past its first segment an output takes Turbo's grammar (`dist/**/*.[cm]js`); the first stays a literal (a route directory). An output whose first segment is a wildcard (`**/*.d.ts`, `*/**`) runs the task uncached with a todo: Turbo never cleans an output, vx cleans it before every run, and such a glob reaches the sources. One segment with a literal extension the package tracks no file of (`*.xml`, `*.tsbuildinfo`) reaches only top-level artifacts and stays cached, and so does `**/<dir>/**` when the package tracks nothing under a directory of that name (vercel/ai's `**/dist/**`; `node_modules` is never an output), and so does a first segment no tracked top-level entry matches (tldraw's `dist-*/**`). An output that covers the package's own `package.json` (trpc's client build lists it: the build rewrites `exports`) runs the task uncached with a todo, in `nx()` too: vx would delete the manifest before every run, and core refuses that config. So does one that covers the package's vx.config; `turbo()` and `nx()` check the config the package has, and `vx-migrate` the one it writes, so sanity's `*.js` shims stay cached beside none. `nx()` takes the wildcard-first rule above as `turbo()` does. A committed file under an output (typescript-eslint's `data/sponsors.json` in a cached `data`) is taken back with `!` — Turbo and Nx never clean an output, vx does — so it survives the clean and the task keeps its cache; past sixteen such files the task runs uncached with a todo. `turbo()` and `nx()` both do this.
 - `env` / `passThroughEnv`: explicit names go to `cache.inputs.env` (env only) and `exec.env.passThrough` (both, plus both globals); a wildcard is a todo (`turbo()`, which maps where the tasks run, expands a `*` name over the run's environment instead, and a new variable name maps afresh); `*` is the only wildcard, as in Turbo, so `\*`, a leading `\!`, `?` and `[` are literal: unkey's `NEXT_PUBLIC_\*` names one variable, which vx cannot key, so it is dropped with a todo (`turbo()`: only when the run's environment sets it, as Turbo hashes nothing otherwise); and a `!` entry (openstatus' `!NEXT_PUBLIC_VERCEL_URL`) removes the names it matches from its list, with no todo, since vx matches no name it is not given. A name both a global list and the task's own list carry is listed once.
 - **Two tasks of one package on one output path** (strapi's `build`, `build:code` and `build:types`, all on `dist/**`): vx cleans a task's outputs before it runs and before a restore, so the loader refuses two cached tasks whose outputs provably overlap. The mapping resolves it before the file is written — the task with a `^` edge keeps its cache (the first declared when none has one); a task a same-project edge orders after it stays cached too (vx caches what an ordered dependant ADDS to the tree — twenty's `build:individual` into `build`'s `dist`); the rest run uncached with a todo naming the keeper and the fix, their own output path or that edge. Same rule for Nx targets.
 - **Two packages' tasks on one workspace output** (cal.com's shared `post-install` writes `../../node_modules/@prisma/client/**` from every package with the script): core refuses two cached tasks on one path with no edge between them, so `turbo()` (and `nx()`) keeps the first (in package and task order) cached and runs the rest uncached, each with a todo naming the keeper. A package's own outputs count at their workspace path: typescript-eslint's root project caches `dist` and each package's typecheck `dist/packages/<name>`, one path twice. Edges across packages are not read, so an ordered pair loses its cache too.
@@ -135,96 +132,6 @@ Once per run the plugin keys its snapshot (`<cache dir>/nx-project-graph.json`) 
 - Batch executors run one task per process; an executor that reads `context.taskGraph` under `NX_BUILDABLE_LIBRARIES_TASK_GRAPH` sees none and takes Nx's project-graph path.
 - The mapping's gaps are the migration's gaps, reported as warnings once per run for all the tasks that carry each one. `bunx @vzn/vx-migrate --dry --from nx` lists the same set once.
 
-## `wireit()` — run a wireit workspace unchanged
-
-```ts
-// vx.workspace.ts
-import { defineWorkspace } from '@vzn/vx'
-import { wireit } from '@vzn/vx-migrate'
-
-export default defineWorkspace({ plugins: [wireit()] })
-```
-
-Then `vx run build --all` runs each package's `wireit.build`, read from its `package.json`.
-
-| wireit (`package.json` `wireit.<script>`)  | vx                                                                                     |
-| ------------------------------------------ | -------------------------------------------------------------------------------------- |
-| `command`                                  | `exec.command`; none is a group task (`dependsOn` only)                                |
-| `dependencies`: `build`, `../pkg:build`    | `dependsOn`: `build`, `pkg-name#build`                                                 |
-| a dependency that is a plain npm script    | a task running that script (its `pre`/`post` hooks folded in), uncached                |
-| `files` **and** `output` both set          | `cache.inputs.files` / `cache.outputs.files`; either missing, no cache (wireit's rule) |
-| a `../` file                               | `cache.inputs.workspaceFiles`                                                          |
-| `env`: `"value"` / `{ external: true }`    | `exec.env.define` / `cache.inputs.env` **and** `exec.env.passThrough`                  |
-| `service`, `service.readyWhen.lineMatches` | `exec.persistent`, `exec.persistent.readyWhen`                                         |
-| `clean`                                    | nothing: vx cleans outputs before every run, as wireit's default does                  |
-
-Not mapped, each a TODO or a note: a dependency on a directory that is not a workspace package, a task with `clean: false` (vx cleans outputs before every run, and such an output may be a source; the task runs uncached), `cascade: false` (vx folds every dependency's key), an external env `default`, and `allowUsuallyExcludedPaths`. On lit/lit (53 packages) all 299 mapped tasks load.
-
-## `lage()` — run a lage workspace unchanged
-
-```ts
-// vx.workspace.ts
-import { defineWorkspace } from '@vzn/vx'
-import { lage } from '@vzn/vx-migrate'
-
-export default defineWorkspace({ plugins: [lage()] })
-```
-
-Then `vx run build --all` runs what `lage build` ran. The config (`lage.config.js`, `.cjs` or `.mjs`) is code: it is evaluated in a child `bun` once per run, and the mapping is keyed on the result, so an edit to a file it requires remaps.
-
-| lage (`pipeline`)                                | vx                                                                                                   |
-| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
-| `task` (npmScript), `options.script`, `taskArgs` | `exec.command`: the package's script (hooks folded); no script, a pass-through                       |
-| `task: [...]`                                    | `dependsOn`                                                                                          |
-| `pkg#task`                                       | replaces `task` for `pkg` (`enableTargetConfigMerging` deep-merges instead)                          |
-| `dependsOn`: `build`, `^build`, `pkg#build`      | the same                                                                                             |
-| `^^build`                                        | a `pkg#build` edge to every transitive dependency that has it                                        |
-| `type: 'noop'`                                   | a group task                                                                                         |
-| `type: 'worker'`, `options.worker`               | a **`lage-worker`** line: the module and its options, one process                                    |
-| `inputs` (none: every package file)              | `cache.inputs.files`                                                                                 |
-| `outputs`, else `cacheOptions.outputGlob`        | `cache.outputs.files`; neither: no cache (lage would cache every package file, which vx would clean) |
-| `environmentGlob` (target or `cacheOptions`)     | `cache.inputs.workspaceFiles` (a leading `/` is the root)                                            |
-| `cache: false`                                   | no `cache` block                                                                                     |
-
-Not mapped, each a TODO or a note: custom runner types (the task is skipped and an edge to it dropped), a worker whose options hold a function, root targets (`#task`, `//#task`, `<root package>#task`), a `shouldRun` function, and `weight` / `priority` / `stagedTarget`. On fluentui-react-native (85 packages) all 498 targets plan, and on lage's own repo all 196.
-
-### `lage-worker` — one worker, one process
-
-lage runs a `type: 'worker'` target by importing its module into a worker thread and calling the exported function (`run`, the default export, or the module) with `{ target, weight, taskArgs, abortSignal }`. `lage-worker` does the same in a process of its own, with the module path relative to the package and the options on the command line, so vx's key sees them:
-
-```bash
-lage-worker ../../scripts/worker/transpile.js --package @lage-run/cli --task transpile --options '{"flavor":"strict"}'
-```
-
-It is a Node bin (workers are Node programs: swc's binding, jest's pool). A module `shouldRun` export that returns false skips the target; a first SIGINT or SIGTERM aborts the worker's `abortSignal`, a second ends the process. Keep `@vzn/vx-migrate` installed while a config runs one.
-
-## `workspaceScripts()` — a workspace with no orchestrator
-
-```ts
-// vx.workspace.ts
-import { defineWorkspace } from '@vzn/vx'
-import { workspaceScripts } from '@vzn/vx-migrate'
-
-export default defineWorkspace({ plugins: [workspaceScripts()] })
-```
-
-For a repo whose root `package.json` scripts fan one script out through the package manager. Each fan-out becomes a task in every package it selects (the package's script, its `pre`/`post` hooks folded), uncached:
-
-| Root script                                                                    | vx                                                                                             |
-| ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------- |
-| `pnpm -r [run] build`, `pnpm --filter <sel> build`                             | `build` in each selected package, `dependsOn: ['^build']` (pnpm sorts by the graph)            |
-| `--filter ./packages/*`, `@scope/*`, `!name`, `name...`, `...name`             | the same selection: a path glob, a name glob, an exclusion, with dependencies, with dependents |
-| `--parallel`, `--no-sort`                                                      | no `^` edge                                                                                    |
-| `pnpm -C <dir> build`, `npm -C <dir> run build`, `yarn workspace <name> build` | `build` in that one package                                                                    |
-| `npm run build --workspaces`, `--workspace <name or path>`                     | `^build` (npm runs in declaration order; the graph's order holds for any declaration)          |
-| `yarn workspaces run build`, `yarn workspaces foreach [-t] [-p] run build`     | `^build`, none under `-p` without `-t`                                                         |
-| `bun --filter <sel> build`                                                     | `^build`                                                                                       |
-| `[pnpm \| yarn \| npx] lerna run build [--scope] [--ignore] [--parallel]`      | as pnpm                                                                                        |
-| `a && b` in one root script                                                    | `b`'s task depends on `a`'s in the same package (every `a` runs before any `b`)                |
-| `dev`, `start`, `serve`, `watch`, `preview`                                    | `exec.persistent`                                                                              |
-
-A package takes a task when any root script fans it out to it: `build` and `build:examples` over different packages are one `build`. Each root script that is not simply `vx run <name> --all` is reported once as the command that runs the same packages, its selectors as `--filter` (`` `build:examples` is `vx run build --filter '@example/*'` ``, `` `ci` is `vx run build test --all` ``); a filtered run also runs the builds its packages wait on; a root command that is not a fan-out (`tsc -p scripts && pnpm -r typecheck`) runs at the root, which vx has no task for, and is reported. A `[ref]` selector (changed since a git ref) selects every package. Checked against `pnpm -r` 10.34 at concurrency 1 on pinia, starlight and react-day-picker: the same packages, and pnpm's order breaks no vx edge.
-
 ## `nx-exec` — one Nx executor, one process
 
 ```
@@ -268,18 +175,6 @@ Reads the root pipeline (`tasks` in Turbo 2, `pipeline` in Turbo 1), per-package
 ### Nx
 
 Reads the **resolved** project graph only (`.nx/workspace-data/project-graph.json` when exported, else the one the workspace's own `nx graph` exports into a temp file, as `nx()` does), through the same mapper `nx()` runs live — so a repo reads the same whether you migrate it or run it as it is. Targets Nx plugins infer at runtime are frozen as the snapshot saw them. `nx:run-commands` is the one shell line `nx()` runs (see [`nx:run-commands`](#nxrun-commands) above: where, parallel or in order, forwarded arguments, `env`, `readyWhen`) — storybook's `compile` is `cd ../../.. && node ./scripts/build/build-package.ts --cwd code/lib/cli`; a plain `command` is that shorthand; `nx:run-script` is the package's script body with its `pre<name>` / `post<name>` hooks folded in (or `yarn run <name>` when the body calls yarn's `run` builtin; an empty script is the placeholder with a todo), `nx:noop` is a group task; **every other executor is an `nx-exec` line** carrying the executor and its resolved options, no TODO — keep `nx` and `@vzn/vx-migrate` installed for as long as a config runs one, and replace the line with the bare command (`vite build`, `tsc -p …`) when the target leaves Nx. A target with `configurations` writes one task per configuration (`build`, `build:ci`). Named inputs expand from `nx.json` when readable. An output path is kept as written, a `!` one too (`{projectRoot}/dist` → `dist`, `{projectRoot}/bin/tool` → `bin/tool`; one naming an unset `{options.x}` is dropped, as Nx drops it): vx reads a bare path as the file or the whole tree under it, so a directory and an extensionless binary both save and restore. vx derives package edges from `package.json`; an Nx graph edge with no manifest path (`implicitDependencies`, a tsconfig path) becomes, for each `^target` of the dependant, an explicit `pkg#target` edge to what Nx's own walk reaches — each dependency that has the target, and through one that lacks it, its dependencies — so the order and the key are Nx's.
-
-### scripts
-
-The last source: a root `package.json` whose scripts fan out, through the mapper `workspaceScripts()` runs live. A workspace with none is `vx init`'s.
-
-### lage
-
-Evaluates `lage.config.js` and maps it through the mapper `lage()` runs live; the table is [`lage()`](#lage--run-a-lage-workspace-unchanged)'s.
-
-### wireit
-
-Reads each `package.json`'s `wireit` block through the mapper `wireit()` runs live; the table is [`wireit()`](#wireit--run-a-wireit-workspace-unchanged)'s.
 
 ## `turboCache()` — a Turbo remote cache
 
@@ -356,7 +251,7 @@ The Nx spec has no existence probe, so `has` (the `--dry` prediction; the prefet
 
 ## Testing
 
-`bun test` runs the Turbo, Nx, wireit, lage and workspace-scripts plugins over fixture workspaces (the Nx one against a fake `nx` whose graph export and `runExecutor` are stubs, so the vx → `nx-exec` → executor → cache round trip is real), the migrate CLI over both sources, and each remote-cache wire against a strict in-memory implementation of its spec plus a full `vx run` round trip (miss → upload → local wipe → restore from the server). A separate suite points both plugins at a HOSTILE server — 500 on every request, 401, a server that never answers, and a body that is not an artifact — and pins that each one degrades to a miss with the run still green. `tests/nx-exec-live.test.ts` runs `nx-exec` against REAL Nx when `VX_NX_MODULES` names a directory whose `node_modules` holds `nx`, `@nx/js` and `typescript` (CI installs one under `packages/vx-migrate/.nx-live` and sets `VX_REQUIRE_NX=1`, so an absent install fails there instead of skipping).
+`bun test` runs the Turbo and Nx plugins over fixture workspaces (the Nx one against a fake `nx` whose graph export and `runExecutor` are stubs, so the vx → `nx-exec` → executor → cache round trip is real), the migrate CLI over both sources, and each remote-cache wire against a strict in-memory implementation of its spec plus a full `vx run` round trip (miss → upload → local wipe → restore from the server). A separate suite points both plugins at a HOSTILE server — 500 on every request, 401, a server that never answers, and a body that is not an artifact — and pins that each one degrades to a miss with the run still green. `tests/nx-exec-live.test.ts` runs `nx-exec` against REAL Nx when `VX_NX_MODULES` names a directory whose `node_modules` holds `nx`, `@nx/js` and `typescript` (CI installs one under `packages/vx-migrate/.nx-live` and sets `VX_REQUIRE_NX=1`, so an absent install fails there instead of skipping).
 
 ## History
 

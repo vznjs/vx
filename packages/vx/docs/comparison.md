@@ -111,7 +111,7 @@ vite-task `/crates/vite_task/src/cli/mod.rs`; vx `src/cli/run.ts`.
 | Root-anchored inputs/outputs                                                | `$TURBO_ROOT$/…`                                     | `{workspaceRoot}/…`                                      | (none)                             | `cache.inputs/outputs.workspaceFiles`                                                                   |
 | Runtime-command inputs (tool versions, probes)                              | — (vercel/turborepo#4124)                            | `runtime` input                                          | (none)                             | `cache.inputs.runtime` / `workspaceRuntime`                                                             |
 | Frozen / locked resolved configs                                            | —                                                    | —                                                        | —                                  | `vx lock` + `vx run --frozen`                                                                           |
-| Migration generator from other runners                                      | —                                                    | —                                                        | —                                  | `bunx @vzn/vx-migrate` (Turbo, Nx, wireit, lage, scripts → vx.config.ts)                                |
+| Migration generator from other runners                                      | —                                                    | —                                                        | —                                  | `bunx @vzn/vx-migrate` (Turbo, Nx → vx.config.ts)                                                       |
 | Named / reusable input sets                                                 | (none)                                               | `namedInputs` at workspace + project level               | (none)                             | rejected by design — TS arrays/imports compose                                                          |
 | Per-task env inputs                                                         | `env: ["NODE_ENV"]`                                  | `inputs: [{env: "NODE_ENV"}]`                            | `env: [...]` + `untrackedEnv`      | `cache.inputs.env: string[]`                                                                            |
 | Pass-through env                                                            | `passThroughEnv`                                     | (always pass through)                                    | `untrackedEnv` (passed, no hash)   | `exec.env.passThrough`                                                                                  |
@@ -444,7 +444,7 @@ Things `@vzn/vx` does that the others don't:
   the resolved objects for CI reproducibility, with a full
   re-evaluation audit (`vx lock --check`). No analog in Turbo/Nx.
 - **`bunx @vzn/vx-migrate`.** One command generates per-package `vx.config.ts`
-  from Turbo, Nx, wireit or lage, or root scripts, with TODO comments for
+  from Turbo or Nx, with TODO comments for
   everything unmappable.
 - **A versioned telemetry contract + plugin seam.** `TelemetryRecord`
   / `RunSummaryRecord` (TELEMETRY_SCHEMA_VERSION) is one neutral

@@ -44,9 +44,8 @@ export interface AdoptionRun {
   /** `tracked` is the workspace's `git ls-files`, read once a mapping (null without git). */
   readonly map: (tracked: () => Promise<readonly string[] | null>) => Promise<AdoptionMapping>
   /**
-   * The adopted tool never cleans an output (Turbo, Nx, lage), so a
-   * committed file under one is taken back (`tracked-outputs.ts`). Not
-   * wireit's: it cleans outputs itself.
+   * The adopted tool never cleans an output (Turbo, Nx), so a committed
+   * file under one is taken back (`tracked-outputs.ts`).
    */
   readonly spareTracked?: boolean
 }
