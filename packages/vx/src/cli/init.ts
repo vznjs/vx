@@ -202,7 +202,7 @@ const CI_FILES = ['.gitlab-ci.yml', '.circleci/config.yml']
 
 /**
  * Where the repo shows a remote cache its runner uses, or undefined: turbo.json's
- * enabled `remoteCache`, or a CI file that sets the runner's cache variable (a
+ * enabled `remoteCache`, a `turbo link`ed `.turbo/config.json`, or a CI file that sets the runner's cache variable (a
  * local repo holds no token; CI does).
  */
 function remoteCacheSignal(root: string, runner: 'turbo' | 'nx'): string | undefined {
@@ -221,6 +221,21 @@ function remoteCacheSignal(root: string, runner: 'turbo' | 'nx'): string | undef
         if ((rc as { enabled?: unknown }).enabled === false) return undefined
         return `${f} names a remoteCache`
       }
+    }
+    // `turbo link` writes the team here (gitignored, on the machine that
+    // linked); turboCache() reads it, so a linked repo has a remote cache.
+    let linked: unknown
+    try {
+      linked = JSON.parse(readFileSync(path.join(root, '.turbo', 'config.json'), 'utf8'))
+    } catch {}
+    if (
+      typeof linked === 'object' &&
+      linked !== null &&
+      Object.entries(linked).some(
+        ([k, v]) => /^(teamid|teamslug|token)$/i.test(k) && typeof v === 'string' && v !== '',
+      )
+    ) {
+      return '.turbo/config.json links a team (turbo link)'
     }
   }
   const variable = REMOTE_CACHE_ENV[runner]
