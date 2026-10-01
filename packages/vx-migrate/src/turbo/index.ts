@@ -14,6 +14,7 @@ import type { ProjectMeta, VxPlugin } from '@vzn/vx'
 import { type AdoptionRun, adoptionPlugin } from '../adoption-plugin.js'
 import type { AdoptionMapping } from '../mapping-cache.js'
 import { collectGaps } from '../plugin-gaps.js'
+import { trackedExtensions } from '../tracked-outputs.js'
 import {
   mapTurboWorkspace,
   rootTaskProject,
@@ -181,7 +182,7 @@ async function run(root: string, metas: readonly ProjectMeta[]): Promise<Adoptio
       await textOf(path.join(root, '.yarnrc.yml')),
       JSON.stringify(metas.map((m) => [m.name, m.dir, m.packageJson])),
     ],
-    map: () => mapAll(root, metas),
+    map: (tracked) => mapAll(root, metas, tracked),
   }
 }
 
@@ -191,7 +192,12 @@ async function run(root: string, metas: readonly ProjectMeta[]): Promise<Adoptio
  * a million comparisons on a 1,000-package workspace, a third of the
  * stage's cost there (2026-09-10).
  */
-async function mapAll(root: string, metas: readonly ProjectMeta[]): Promise<AdoptionMapping> {
+async function mapAll(
+  root: string,
+  metas: readonly ProjectMeta[],
+  trackedFiles: () => Promise<readonly string[] | null>,
+): Promise<AdoptionMapping> {
+  const tracked = await trackedFiles()
   const mapped = await mapTurboWorkspace(root, metas, {
     // Inline: the values themselves, where `vx migrate` splices a preset import.
     splice: (_kind, values) => values,
@@ -199,6 +205,7 @@ async function mapAll(root: string, metas: readonly ProjectMeta[]): Promise<Adop
     envNames: envNamesNow(),
     vendorEnvPrefix: process.env['TURBO_CI_VENDOR_ENV_KEY'] ?? '',
     envMode: process.env['TURBO_ENV_MODE'] ?? '',
+    ...(tracked === null ? {} : { trackedExts: trackedExtensions(tracked) }),
   })
   const byName = new Map<string, TurboMappedProject>()
   for (const project of mapped.projects) byName.set(project.name, project)

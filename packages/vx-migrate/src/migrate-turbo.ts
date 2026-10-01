@@ -14,6 +14,7 @@ import {
 } from '@vzn/vx'
 import { mapTurboWorkspace, rootTaskProject, type TurboGlobal } from './turbo/turbo-map.js'
 import { relPosix } from './paths.js'
+import { trackedExtensions, trackedFiles } from './tracked-outputs.js'
 
 /** The preset takes the configs' extension: plain arrays either way. */
 function presetFile(format: MigrationFormat): string {
@@ -32,9 +33,11 @@ export async function migrateTurbo(
   metas: readonly ProjectMeta[],
   format: MigrationFormat = 'ts',
 ): Promise<MigrationPlan> {
+  const tracked = await trackedFiles(root)
   const mapping = await mapTurboWorkspace(root, await withRootProject(root, metas), {
     splice: (kind) => [{ raw: `...${PRESET_NAMES[kind]}` }],
     persistentTodo: PERSISTENT_TODO,
+    ...(tracked === null ? {} : { trackedExts: trackedExtensions(tracked) }),
   })
 
   const projects: GeneratedProject[] = mapping.projects.map((p) => {

@@ -24,6 +24,30 @@ export async function trackedFiles(root: string): Promise<string[] | null> {
 }
 
 /**
+ * Per project directory (root-relative, `.` or empty for the root), the
+ * extensions (lower case, no dot) of the files git tracks under it at any
+ * depth: what a top-level output glob may not claim (`wildcardOutput`).
+ */
+export function trackedExtensions(
+  tracked: readonly string[],
+): (rel: string) => ReadonlySet<string> {
+  const memo = new Map<string, ReadonlySet<string>>()
+  return (rel) => {
+    let exts = memo.get(rel)
+    if (exts === undefined) {
+      const set = new Set<string>()
+      for (const f of tracked) {
+        if (rel !== '' && rel !== '.' && !f.startsWith(`${rel}/`)) continue
+        const ext = path.posix.extname(f)
+        if (ext !== '') set.add(ext.slice(1).toLowerCase())
+      }
+      memo.set(rel, (exts = set))
+    }
+    return exts
+  }
+}
+
+/**
  * What moves when the tracked set can: the HEAD reflog's size (a commit, a
  * checkout, a pull appends to it) and HEAD itself. A stat and a small read,
  * so a kept mapping stays a hit between commits. A file `git add`ed and not

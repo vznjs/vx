@@ -10,8 +10,11 @@ import { type AdoptionMapping, cachedMapping } from './mapping-cache.js'
 import { warnGaps } from './plugin-gaps.js'
 import { headStamp, spareTrackedOutputs, trackedFiles } from './tracked-outputs.js'
 
-async function spare(ctx: ProjectHookContext, mapping: AdoptionMapping): Promise<AdoptionMapping> {
-  const tracked = await trackedFiles(ctx.workspaceRoot)
+async function spare(
+  ctx: ProjectHookContext,
+  mapping: AdoptionMapping,
+  tracked: readonly string[] | null,
+): Promise<AdoptionMapping> {
   if (tracked === null) return mapping
   const dirs = new Map(ctx.projects.map((p) => [p.name, p.dir]))
   const projects = [...mapping.byName].flatMap(([name, p]) => {
@@ -38,7 +41,8 @@ export interface AdoptionRun {
   /** The kept mapping's file name: `nx`, `turbo`. */
   readonly name: string
   readonly reads: readonly string[]
-  readonly map: () => Promise<AdoptionMapping>
+  /** `tracked` is the workspace's `git ls-files`, read once a mapping (null without git). */
+  readonly map: (tracked: () => Promise<readonly string[] | null>) => Promise<AdoptionMapping>
   /**
    * The adopted tool never cleans an output (Turbo, Nx, lage), so a
    * committed file under one is taken back (`tracked-outputs.ts`). Not
@@ -79,9 +83,15 @@ export function adoptionPlugin(
                 ctx.cacheDir,
                 r.name,
                 [...r.reads, await headStamp(ctx.workspaceRoot)],
-                async () => spare(ctx, await r.map()),
+                async () => {
+                  let read: Promise<readonly string[] | null> | undefined
+                  const tracked = () => (read ??= trackedFiles(ctx.workspaceRoot))
+                  return spare(ctx, await r.map(tracked), await tracked())
+                },
               )
-            : cachedMapping(ctx.cacheDir, r.name, r.reads, r.map),
+            : cachedMapping(ctx.cacheDir, r.name, r.reads, () =>
+                r.map(() => trackedFiles(ctx.workspaceRoot)),
+              ),
         )
         warned = false
       }

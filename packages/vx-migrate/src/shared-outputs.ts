@@ -60,9 +60,30 @@ export function ownFileTodo(own: { glob: string; file: string }): string {
 // output `{projectRoot}/**/*.shot`, 3,656 committed snapshots in one
 // package, and nx() lacked the rule (2026-09-29).
 
-/** The first positive output glob whose first segment is a wildcard. */
-export function wildcardOutput(files: readonly string[]): string | undefined {
-  return files.find((o) => !o.startsWith('!') && !isLiteralPattern(o.split('/')[0] ?? ''))
+/**
+ * The first positive output glob whose first segment is a wildcard. One
+ * segment ending in a literal extension no file of the project's tracked
+ * set carries (n8n's `*.xml` junit reports, 143 test tasks) reaches only
+ * top-level files of a kind the project has no source in, and is let
+ * through when `trackedExts` is known; `*.ts` or `*.d.ts` beside tracked
+ * TypeScript is not.
+ */
+export function wildcardOutput(
+  files: readonly string[],
+  trackedExts?: ReadonlySet<string>,
+): string | undefined {
+  return files.find(
+    (o) =>
+      !o.startsWith('!') &&
+      !isLiteralPattern(o.split('/')[0] ?? '') &&
+      !untrackedKind(o, trackedExts),
+  )
+}
+
+function untrackedKind(glob: string, trackedExts: ReadonlySet<string> | undefined): boolean {
+  if (trackedExts === undefined) return false
+  const ext = /^(?:\.\/)*[^/]*\.([A-Za-z0-9]+)$/.exec(glob)?.[1]
+  return ext !== undefined && !trackedExts.has(ext.toLowerCase())
 }
 
 export function wildcardTodo(glob: string): string {

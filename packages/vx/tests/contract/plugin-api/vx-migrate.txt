@@ -162,6 +162,7 @@ export interface MapTurboOptions {
   envNames?: readonly string[]
   vendorEnvPrefix?: string
   envMode?: string
+  trackedExts?: (rel: string) => ReadonlySet<string>
 }
 == type MapWireitOptions (src/wireit/wireit-map.ts)
 export interface MapWireitOptions {

@@ -631,6 +631,54 @@ describe('turbo-map: Turbo’s glob grammar', () => {
   )
 })
 
+describe('turbo-map: a top-level artifact output', () => {
+  // n8n's tests output `*.xml` (junit), 143 tasks uncached by the
+  // wildcard-first rule; one segment and a literal extension the package
+  // tracks none of reaches no source.
+  it.each([
+    ['*.xml', true],
+    ['./junit-*.xml', true],
+    ['*.XML', true],
+    ['*.d.ts', false],
+    ['*.ts', false],
+    ['*.{xml,json}', false],
+    ['**/*.xml', false],
+    ['*/report.xml', false],
+    ['report*', false],
+  ])('%s cached: %p', async (glob, cached) => {
+    await writeFile(
+      path.join(root, 'turbo.json'),
+      JSON.stringify({ tasks: { test: { outputs: [glob] } } }),
+    )
+    const dir = path.join(root, 'packages', 'a')
+    await mkdir(dir, { recursive: true })
+    const mapped = await mapTurboWorkspace(
+      root,
+      [
+        {
+          name: 'a',
+          dir,
+          packageJson: { name: 'a', scripts: { test: 't' } } as never,
+          configPath: null,
+        },
+      ],
+      {
+        ...opts,
+        trackedExts: (rel) => (rel === 'packages/a' ? new Set(['ts', 'json']) : new Set()),
+      },
+    )
+    expect(mapped.projects[0]!.tasks[0]!.task!['cache'] !== undefined).toBe(cached)
+  })
+
+  it('without the tracked set every wildcard-first output runs uncached', async () => {
+    const t = await taskOf(
+      { tasks: { test: { outputs: ['*.xml'] } } },
+      { a: { scripts: { test: 't' } } },
+    )
+    expect(t.task!['cache']).toBeUndefined()
+  })
+})
+
 // Item 1032: `.env` inputs are gitignored as a rule; as file globs they
 // keyed nothing (and a literal one failed the task), so they are probed.
 describe('turbo-map: `.env` inputs', () => {

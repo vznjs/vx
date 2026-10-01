@@ -243,6 +243,12 @@ export interface MapTurboOptions {
   vendorEnvPrefix?: string
   /** `TURBO_ENV_MODE`, when the mapping runs where the tasks will: above turbo.json's, as in Turbo. */
   envMode?: string
+  /**
+   * The extensions git tracks under a root-relative package directory: a
+   * top-level output glob of a kind it has none of (`*.xml`) stays cached.
+   * Absent, every wildcard-first output runs uncached.
+   */
+  trackedExts?: (rel: string) => ReadonlySet<string>
 }
 
 /**
@@ -1314,7 +1320,7 @@ function buildTask(
       } else outFiles.push(neg + o)
     }
 
-    const wild = wildcardOutput(outFiles)
+    const wild = wildcardOutput(outFiles, opts.trackedExts?.(pkgDir))
     if (wild !== undefined) {
       todos.push(wildcardTodo(wild))
       return { name, todos, task, uses }

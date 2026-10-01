@@ -620,6 +620,39 @@ describe('output negation', () => {
   )
 
   it(
+    'a top-level output of a kind the package tracks none of stays cached (n8n `*.xml`)',
+    async () => {
+      await pkg('app', { test: 'echo report > junit.xml' })
+      await pkg('lib', { test: 'echo report > junit.xml' })
+      const lib = path.join(root, 'packages', 'lib')
+      await writeFile(path.join(lib, 'pom.xml'), '<project/>\n')
+      await writeFile(
+        path.join(root, 'turbo.json'),
+        JSON.stringify({ tasks: { test: { outputs: ['coverage/**', '*.xml'] } } }),
+      )
+      Bun.spawnSync({ cmd: ['git', 'add', '-A'], cwd: root })
+      const log = silent()
+      const plan = await planRun({ cwd: root, tasks: ['test'], log })
+      const cacheOf = (id: string) => plan.tasks.find((t) => t.node.id === id)!.node.config.cache
+      expect(cacheOf('app#test')?.outputs.files).toEqual(['coverage/**', '*.xml'])
+      // CONTROL: lib tracks an `.xml`, which the clean would reach.
+      expect(cacheOf('lib#test')).toBeUndefined()
+      expect(log.lines.join('\n')).toContain(
+        '[@vzn/vx-migrate] lib#test: output "*.xml": a wildcard first segment reaches the sources',
+      )
+      const test = () => run({ cwd: root, tasks: ['test'], log: silent(), handleSignals: false })
+      const report = path.join(root, 'packages', 'app', 'junit.xml')
+      expect((await test()).ok).toBe(true)
+      await rm(report)
+      const second = await test()
+      expect(second.outcomes.find((o) => o.node.id === 'app#test')?.status).toBe('cache-hit')
+      expect(await Bun.file(report).text()).toBe('report\n')
+      expect(await Bun.file(path.join(lib, 'pom.xml')).text()).toBe('<project/>\n')
+    },
+    TIMEOUT,
+  )
+
+  it(
     "Next's `!.next/cache/**` keeps the cache out of the clean and the artifact (A-44)",
     async () => {
       await writeFile(path.join(root, '.gitignore'), 'dist\n.next\n')
