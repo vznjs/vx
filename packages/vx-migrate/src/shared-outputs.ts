@@ -32,14 +32,22 @@ import { relPosix } from './paths.js'
 // the loader in both directions.
 const OWN_FILES = ['package.json', 'vx.config.ts', 'vx.config.mts', 'vx.config.js', 'vx.config.mjs']
 
-/** The first positive output glob that covers a project's own file, and that file. */
+/**
+ * The first positive output glob that covers a project's own file, and that
+ * file. `config` is the config file the mapped task will live beside, as
+ * core checks it (null: none); absent, every spelling a user may add later.
+ * sanity's builds output `*.js` (top-level shims) beside no vx.config.js.
+ */
 export function ownFileOutput(
   files: readonly string[],
+  config?: string | null,
 ): { glob: string; file: string } | undefined {
+  const own =
+    config === undefined ? OWN_FILES : config === null ? ['package.json'] : ['package.json', config]
   for (const glob of files) {
     if (glob.startsWith('!')) continue
     const g = new Bun.Glob(glob.replace(/^(\.\/)+/, ''))
-    const file = OWN_FILES.find((f) => g.match(f))
+    const file = own.find((f) => g.match(f))
     if (file !== undefined) return { glob, file }
   }
   return undefined

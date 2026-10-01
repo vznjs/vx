@@ -38,6 +38,8 @@ export async function migrateTurbo(
     splice: (kind) => [{ raw: `...${PRESET_NAMES[kind]}` }],
     persistentTodo: PERSISTENT_TODO,
     ...(tracked === null ? {} : { trackedExts: trackedExtensions(tracked) }),
+    // The file this writes is each task's config.
+    ownConfig: () => `vx.config.${format}`,
   })
 
   const projects: GeneratedProject[] = mapping.projects.map((p) => {

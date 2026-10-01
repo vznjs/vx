@@ -249,6 +249,11 @@ export interface MapTurboOptions {
    * Absent, every wildcard-first output runs uncached.
    */
   trackedExts?: (rel: string) => ReadonlySet<string>
+  /**
+   * The config file name a root-relative package's mapped tasks live beside
+   * (null: none), which core holds an output to. Absent, every spelling.
+   */
+  ownConfig?: (rel: string) => string | null
 }
 
 /**
@@ -1325,7 +1330,7 @@ function buildTask(
       todos.push(wildcardTodo(wild))
       return { name, todos, task, uses }
     }
-    const own = ownFileOutput(outFiles)
+    const own = ownFileOutput(outFiles, opts.ownConfig?.(pkgDir))
     if (own !== undefined) {
       todos.push(ownFileTodo(own))
       return { name, todos, task, uses }
