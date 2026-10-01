@@ -28,7 +28,7 @@ npm install -D @vzn/vx-migrate && npx vx run build --all   # the next: line
 ```
 
 ```ts
-import type { WorkspaceConfig } from '@vzn/vx'
+import type { WorkspaceConfig } from '@vzn/vx/config'
 import { turbo } from '@vzn/vx-migrate'
 
 export default { plugins: [turbo()] } satisfies WorkspaceConfig

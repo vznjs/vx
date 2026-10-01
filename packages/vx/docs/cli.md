@@ -1655,7 +1655,7 @@ package.json and re-run") rather than "no scripts" or "run vx init". With
 no `package.json` here or above, `init` says to create one (`bun init` or
 `npm init -y`) first. Every
 generated config is typed for the editor through
-`import type { ProjectConfig } from '@vzn/vx'` and `satisfies
+`import type { ProjectConfig } from '@vzn/vx/config'` and `satisfies
 ProjectConfig` — a type-only import Bun erases, so the file loads in a
 workspace that runs the `vx` binary without the package installed. The
 workspace file takes the same form (`satisfies WorkspaceConfig`). A

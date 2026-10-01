@@ -64,7 +64,7 @@ export const lib = (entry: string) => ({
 
 ```ts
 // packages/ui/vx.config.ts
-import type { ProjectConfig } from '@vzn/vx'
+import type { ProjectConfig } from '@vzn/vx/config'
 import { lib } from '../../vx-preset.ts'
 export default { tasks: { ...lib('src/index.ts') } } satisfies ProjectConfig
 ```

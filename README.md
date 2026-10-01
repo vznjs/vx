@@ -85,7 +85,7 @@ npx vx run build --all      # again: up-to-date in milliseconds
 The one file `vx init` writes (in an Nx repo, `nx` for `turbo`):
 
 ```ts
-import type { WorkspaceConfig } from '@vzn/vx'
+import type { WorkspaceConfig } from '@vzn/vx/config'
 import { turbo } from '@vzn/vx-migrate'
 
 export default { plugins: [turbo()] } satisfies WorkspaceConfig

@@ -984,7 +984,7 @@ describe('vx init — the generated build is not a cached no-op', () => {
             'next: npm install -D @vzn/vx-migrate && vx run compile --all\n',
         )
         expect(await Bun.file(path.join(root, 'vx.workspace.ts')).text()).toBe(
-          "import type { WorkspaceConfig } from '@vzn/vx'\n" +
+          "import type { WorkspaceConfig } from '@vzn/vx/config'\n" +
             "import { turbo } from '@vzn/vx-migrate'\n\n" +
             'export default { plugins: [turbo()] } satisfies WorkspaceConfig\n',
         )
@@ -1514,7 +1514,7 @@ describe('vx init (package.json scripts)', () => {
       const text = await Bun.file(path.join(root, 'packages', 'app', 'vx.config.ts')).text()
       // Typed for the editor through a type-only import Bun erases, so the
       // file loaded above without `@vzn/vx` installed.
-      expect(text).toContain("import type { ProjectConfig } from '@vzn/vx'")
+      expect(text).toContain("import type { ProjectConfig } from '@vzn/vx/config'")
       expect(text).toContain('} satisfies ProjectConfig')
       expect(r.out).toContain('next: vx run build --all')
       expect(r.out).toContain(
