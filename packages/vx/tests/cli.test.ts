@@ -1731,7 +1731,9 @@ describe('parseRunArgs', () => {
     expect(parseRunArgs(['build', '--verbosity', '1']).verbosity).toBe(1)
     expect(parseRunArgs(['build', '--verbosity', '2']).verbosity).toBe(2)
     expect(parseRunArgs(['build', '-v']).error).toMatch(/unknown flag: -v/)
-    expect(parseRunArgs(['build', '--verbose']).error).toMatch(/unknown flag: --verbose/)
+    expect(parseRunArgs(['build', '--verbose']).error).toMatch(
+      /--verbose \(nx\): use `--verbosity <n>`/,
+    )
   })
 
   it('--verbosity rejects non-integer and negative values', () => {
@@ -1877,8 +1879,10 @@ describe('parseRunArgs', () => {
     ])
   })
 
-  it('-F short alias is no longer recognized', () => {
-    expect(parseRunArgs(['build', '-F', 'foo']).error).toMatch(/unknown flag: -F/)
+  // 2026-05 dropped `-F` as "Turbo has no -F"; Turbo's reference names it
+  // `--filter`'s alias, so it is a foreign alias since E-95.
+  it("-F is Turbo's alias for --filter", () => {
+    expect(parseRunArgs(['build', '-F', 'foo'])).toEqual(parseRunArgs(['build', '--filter', 'foo']))
   })
 
   it('rejects bad concurrency', () => {

@@ -262,6 +262,12 @@ describe('vx show (e2e)', () => {
       expect(r.code).toBe(1)
       expect(r.err).toContain('unknown project or task: "buidl"')
       expect(r.err).toContain('build')
+      // Nx's `nx show projects` is a bare `vx show`. CONTROL: `buidl` says nothing of it.
+      expect(r.err).not.toContain('nx show')
+      const nx = await vx(root, ['show', 'projects'])
+      expect(nx.err).toContain(
+        'unknown project or task: "projects" (`nx show projects` is `vx show` here)',
+      )
     },
     TIMEOUT,
   )
@@ -692,6 +698,13 @@ describe('parseShowArgs', () => {
   it('rejects unknown flags and extra positionals', () => {
     expect(parseShowArgs(['--bogus']).error).toBe('unknown flag: --bogus (see `vx show --help`)')
     expect(parseShowArgs(['a', 'b']).error).toBe('unexpected argument: b (see `vx show --help`)')
+  })
+
+  // Nx's `nx show project app` was "unexpected argument: app".
+  it("names vx show <name> for Nx's show project <name>", () => {
+    expect(parseShowArgs(['project', 'app']).error).toBe(
+      '`nx show project app` is `vx show app` here',
+    )
   })
 })
 

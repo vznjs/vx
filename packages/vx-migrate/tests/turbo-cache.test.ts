@@ -201,6 +201,37 @@ describe('resolveTurboCacheConfig', () => {
     expect(signals.map((s) => s instanceof AbortSignal)).toEqual([false, true])
   })
 
+  // Turbo's sources, highest first: TURBO_* env, then a Vercel build's
+  // VERCEL_ARTIFACTS_TOKEN / _OWNER, then the repo's .turbo/config.json,
+  // then turbo.json. vx read neither middle source, so it declined on Vercel
+  // and after `turbo link`.
+  it('reads VERCEL_ARTIFACTS_* and .turbo/config.json in Turbo’s order', () => {
+    const pick = (
+      env: Record<string, string>,
+      local: Parameters<typeof resolveTurboCacheConfig>[3] = {},
+    ) => {
+      const c = resolveTurboCacheConfig({}, env, { teamId: 'team_json' }, local)
+      return c && [c.apiUrl, c.token, c.teamId ?? null]
+    }
+    const vercel = { VERCEL_ARTIFACTS_TOKEN: 'vt', VERCEL_ARTIFACTS_OWNER: 'team_v' }
+    const local = { apiUrl: 'https://link.example', teamId: 'team_link', token: 'lt' }
+    expect([
+      pick(vercel),
+      pick({ ...vercel, TURBO_TOKEN: 'tt', TURBO_TEAMID: 'team_t' }),
+      pick({ ...vercel, TURBO_TOKEN: 'tt' }),
+      pick({ VERCEL_ARTIFACTS_TOKEN: 'vt' }),
+      pick({}, local),
+      pick({ TURBO_TOKEN: 'tt' }, local),
+    ]).toEqual([
+      ['https://vercel.com/api', 'vt', 'team_v'],
+      ['https://vercel.com/api', 'tt', 'team_t'],
+      ['https://vercel.com/api', 'tt', 'team_v'],
+      undefined,
+      ['https://link.example', 'lt', 'team_link'],
+      ['https://link.example', 'tt', 'team_link'],
+    ])
+  })
+
   // Turbo signs only under `remoteCache.signature: true`: a short env key
   // with the flag off refused the cache here and signed nothing there.
   it('the env signature key applies only where turbo.json turns signing on', () => {
@@ -323,6 +354,20 @@ describe('TurboRemoteCache against the spec server', () => {
     expect(got?.durationMs).toBe(1234)
     expect(await got!.body.bytes()).toEqual(body)
     expect(await c.get('bb22')).toBeNull()
+  })
+
+  // Turbo's API client sends a team id only in Vercel's `team_` form; a
+  // personal account's owner id (VERCEL_ARTIFACTS_OWNER) went out as one.
+  it('sends teamId only in Vercel’s team_ form; the slug either way', async () => {
+    const query = async (teamId: string) => {
+      await cache({ teamId }).has('ab12')
+      const u = new URL(srv.seen.at(-1)!.url)
+      return [u.searchParams.get('teamId'), u.searchParams.get('slug')]
+    }
+    expect([await query('team_1'), await query('user_abc')]).toEqual([
+      ['team_1', 'acme'],
+      [null, 'acme'],
+    ])
   })
 
   it('signs uploads and refuses a download whose tag does not verify', async () => {
@@ -648,6 +693,32 @@ describe('vx run with turboCache() layered over the local cache', () => {
     } finally {
       for (const k of Object.keys(process.env)) if (!(k in saved)) delete process.env[k]
       Object.assign(process.env, saved)
+    }
+  })
+
+  it('the plugin reads the repo’s .turbo/config.json, under Turbo’s aliases', async () => {
+    const ws = await mkdtemp(path.join(tmpdir(), 'vx-turbo-link-'))
+    const saved = process.env['TURBO_TOKEN']
+    try {
+      delete process.env['TURBO_TOKEN']
+      const ctx = {
+        localCache: {} as never,
+        policy: { localRead: true, localWrite: true, remoteRead: true, remoteWrite: true },
+        warn: () => {},
+        workspaceRoot: ws,
+        cacheDir: ws,
+      }
+      const on = () => turboCache({}).cache?.(ctx as never) !== undefined
+      const before = on()
+      await mkdir(path.join(ws, '.turbo'), { recursive: true })
+      await writeFile(
+        path.join(ws, '.turbo', 'config.json'),
+        JSON.stringify({ apiurl: 'https://link.example', token: 'lt' }),
+      )
+      expect([before, on()]).toEqual([false, true])
+    } finally {
+      if (saved !== undefined) process.env['TURBO_TOKEN'] = saved
+      await rm(ws, { recursive: true, force: true })
     }
   })
 

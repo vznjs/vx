@@ -110,6 +110,7 @@ export function resolveTurboCacheConfig(
   options: TurboCacheOptions,
   env: Record<string, string | undefined> = Bun.env,
   file: TurboJsonRemoteCache = {},
+  local: TurboLocalConfig = {},
 ): TurboCacheConfig | undefined
 == function rootScripts (src/scripts/index.ts)
 export async function rootScripts(root: string): Promise<Record<string, unknown>>
@@ -304,6 +305,13 @@ export interface TurboJsonRemoteCache {
   enabled?: unknown
   timeout?: unknown
   uploadTimeout?: unknown
+}
+== type TurboLocalConfig (src/turbo-cache/index.ts)
+export interface TurboLocalConfig {
+  apiUrl?: unknown
+  teamId?: unknown
+  teamSlug?: unknown
+  token?: unknown
 }
 == type TurboMappedProject (src/turbo/turbo-map.ts)
 export interface TurboMappedProject {

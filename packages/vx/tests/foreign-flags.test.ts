@@ -32,6 +32,11 @@ const SAME: ReadonlyArray<readonly string[]> = [
 ]
 
 const ALIAS: ReadonlyArray<readonly [readonly string[], readonly string[]]> = [
+  [
+    ['-F', 'web'],
+    ['--filter', 'web'],
+  ],
+  [['-F=web...'], ['--filter=web...']],
   [['--continue=dependencies-successful'], ['--continue=deps-ok']],
   [['--dry-run'], ['--dry']],
   [['--dry-run=json'], ['--dry=json']],
@@ -60,6 +65,12 @@ const ALIAS: ReadonlyArray<readonly [readonly string[], readonly string[]]> = [
   [['--base=main', '--head=HEAD'], ['--affected=main']],
   [['--skip-nx-cache'], ['--force']],
   [['--nx-bail'], ['--continue=never']],
+  [
+    ['--max-parallel', '3'],
+    ['--concurrency', '3'],
+  ],
+  [['--exclude-task-dependencies'], ['--exclude-dependencies']],
+  [['--skip-remote-cache'], ['--cache', 'local:rw,remote:']],
 ]
 
 const REFUSE: ReadonlyArray<readonly [readonly string[], string]> = [
@@ -86,6 +97,42 @@ const REFUSE: ReadonlyArray<readonly [readonly string[], string]> = [
     ['--token', 't'],
     '--token (turbo): a remote cache is a plugin: `turboCache()` from @vzn/vx-migrate in vx.workspace.ts reads TURBO_TOKEN / TURBO_TEAM / TURBO_API',
   ],
+  [
+    ['--anon-profile'],
+    '--anon-profile (turbo): use `--profile[=<path>]`; vx has no redacting variant, so read it before sharing it',
+  ],
+  [['--cache-workers', 'x'], '--cache-workers (turbo): vx sizes its own cache I/O: drop it'],
+  [['--cwd', 'x'], '--cwd (turbo): run vx from that directory: `cd <dir> && vx run …`'],
+  [
+    ['--dangerously-disable-package-manager-check'],
+    '--dangerously-disable-package-manager-check (turbo): vx reads no `packageManager` field: drop it',
+  ],
+  [
+    ['--env-mode', 'x'],
+    '--env-mode (turbo): vx passes only the variables a task declares (strict): list the rest in `exec.env.passThrough`',
+  ],
+  [
+    ['--framework-inference', 'x'],
+    "--framework-inference (turbo): under `turbo()` inference is Turbo's; take a name back with a `!` entry in the task's `env`",
+  ],
+  [
+    ['--global-deps', 'x'],
+    "--global-deps (turbo): declare them in `cache.inputs.workspaceFiles` (under `turbo()`, turbo.json's `globalDependencies`)",
+  ],
+  [
+    ['--json'],
+    "--json (turbo): use `--dry=json` for the plan, `--summarize[=<path>]` for the run's JSON record",
+  ],
+  [['--log-file'], "--log-file (turbo): use `--summarize[=<path>]` for the run's JSON record"],
+  [['--preflight'], '--preflight (turbo): `turboCache()` sends no CORS preflight: drop it'],
+  [
+    ['--remote-cache-timeout', 'x'],
+    '--remote-cache-timeout (turbo): set `turboCache({ timeoutMs })` or `TURBO_REMOTE_CACHE_TIMEOUT`',
+  ],
+  [
+    ['--single-package'],
+    '--single-package (turbo): a repo with no workspaces is one project already: drop it',
+  ],
   [['--no-daemon'], '--no-daemon (turbo): vx has no daemon: drop it'],
   [
     ['--ui=tui'],
@@ -102,6 +149,17 @@ const REFUSE: ReadonlyArray<readonly [readonly string[], string]> = [
     '--uncommitted (nx): use `--affected=HEAD` (the working tree against the last commit)',
   ],
   [['--no-cloud'], '--no-cloud (nx): vx has no cloud: drop it'],
+  [['--files', 'a.ts'], '--files (nx): vx asks git what changed: `--affected=<base>`'],
+  [['--verbose'], '--verbose (nx): use `--verbosity <n>` (1 adds the summary table)'],
+  [['--batch'], '--batch (nx): vx runs one command per task: drop it'],
+  [['--dte'], '--dte (nx): vx distributes nothing: drop it'],
+  [['--nx-ignore-cycles'], '--nx-ignore-cycles (nx): vx refuses a task cycle by name: break it'],
+  [
+    ['--runner', 'cloud'],
+    '--runner (nx): a remote cache is a plugin: `nxCache()` from @vzn/vx-migrate in vx.workspace.ts',
+  ],
+  [['--skip-sync'], '--skip-sync (nx): vx never runs sync generators: drop it'],
+  [['--tui'], '--tui (nx): vx frames each task’s output: `--output-logs <mode>` sets how much'],
 ]
 
 describe('Turbo and Nx flags on vx run', () => {
@@ -122,6 +180,12 @@ describe('Turbo and Nx flags on vx run', () => {
     for (const [argv, error] of REFUSE) {
       expect([argv, parseRunArgs(['build', ...argv, '--dry']).error]).toEqual([argv, error])
     }
+  })
+
+  // Turbo's `-F` is `--filter`; it read as an unknown flag, and bare it
+  // still did, where `--filter` bare asks for the value.
+  it('a bare -F asks for the value, as a bare --filter does', () => {
+    expect(parseRunArgs(['build', '-F']).error).toBe(parseRunArgs(['build', '--filter']).error)
   })
 
   it("arguments after -- are the task's, never translated", () => {
@@ -151,8 +215,24 @@ describe('Turbo and Nx flags on vx run', () => {
     expect(cells(cli)).toContain(`${cells(renderForeignFlags())}\n`)
   })
 
-  it('`vx run-many` and `vx affected` name the vx run that does it', () => {
-    for (const verb of ['run-many', 'affected']) {
+  // Every Turbo or Nx verb in the table, `nx graph` and `turbo ls` among
+  // them, said `unknown command` with no way on before E-98.
+  it('a Turbo or Nx verb names what does it in vx', () => {
+    const verbs = [
+      'run-many',
+      'affected',
+      'graph',
+      'ls',
+      'query',
+      'reset',
+      'daemon',
+      'login',
+      'logout',
+      'link',
+      'unlink',
+    ]
+    expect(Object.keys(FOREIGN_VERBS).sort()).toEqual([...verbs].sort())
+    for (const verb of verbs) {
       for (const argv of [
         [verb, '-t', 'build'],
         ['help', verb],

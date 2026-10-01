@@ -137,6 +137,7 @@ a stack and exit 1 after its task had succeeded.
 | ----------------------------- | ------------------------------------------------------------------------------- |
 | (default)                     | The project that contains cwd. Errors if cwd is not inside a project.           |
 | `pkg#task`                    | Just that project.                                                              |
+| `//#task`                     | The root project's task (Turbo's spelling; the root is a project, D-39).        |
 | `--all`                       | Every project that declares the task.                                           |
 | `--filter <pat>` (repeatable) | pnpm-style filter DSL (see below).                                              |
 | `--affected[=<base>]`         | Sugar for `--filter '...[<base>]'` — git-changed projects and their dependents. |
@@ -1778,7 +1779,11 @@ What a Turbo or Nx user types into `vx run` (and `vx watch`): each flag
 vx takes as it is (`same`), rewrites to its own spelling before the
 parse (`alias`), or refuses with the vx way to say it (`refuse`) —
 none is dropped in silence. `vx run-many` and `vx affected` name the
-`vx run` that does the same. Nx's `project:target` (`vx run web:build`,
+`vx run` that does the same, and the other verbs a hand types from
+either tool name what does it here: `graph` (`--graph`), `ls`
+(`vx show`), `query` (`--dry=json`), `reset` (`vx cache prune`), and
+`daemon`, `login`, `logout`, `link` and `unlink`, which vx has no use
+for. Nx's `project:target` (`vx run web:build`,
 when `web` declares `build`) is answered with `vx run web#build`: from
 outside a project in place of "not inside a project", in scope as the
 unresolved name's `Did you mean`. The table is `cli/foreign-flags.ts`,
@@ -1788,6 +1793,7 @@ copy to the source.
 | runner | flag                                              | outcome | in vx                                                                                                                         |
 | ------ | ------------------------------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------- |
 | turbo  | `--filter <v>`                                    | same    | `--filter`, the same grammar (`...[ref]`, `{dir}`, `^`, `!`)                                                                  |
+| turbo  | `-F <v>`                                          | alias   | `--filter <v>`                                                                                                                |
 | turbo  | `--concurrency <v>`                               | same    | `--concurrency <n\|n%>`                                                                                                       |
 | turbo  | `--continue=dependencies-successful`              | alias   | `--continue=deps-ok`                                                                                                          |
 | turbo  | `--continue`                                      | same    | `--continue[=never\|deps-ok\|always]`                                                                                         |
@@ -1810,6 +1816,18 @@ copy to the source.
 | turbo  | `--since <v>`                                     | refuse  | use `--filter '[<ref>]'` or `--affected=<ref>`                                                                                |
 | turbo  | `--remote-only`                                   | refuse  | use `--cache local:,remote:rw`                                                                                                |
 | turbo  | `--remote-cache-read-only`                        | refuse  | use `--cache local:rw,remote:r`                                                                                               |
+| turbo  | `--anon-profile`                                  | refuse  | use `--profile[=<path>]`; vx has no redacting variant, so read it before sharing it                                           |
+| turbo  | `--cache-workers <v>`                             | refuse  | vx sizes its own cache I/O: drop it                                                                                           |
+| turbo  | `--cwd <v>`                                       | refuse  | run vx from that directory: `cd <dir> && vx run …`                                                                            |
+| turbo  | `--dangerously-disable-package-manager-check`     | refuse  | vx reads no `packageManager` field: drop it                                                                                   |
+| turbo  | `--env-mode <v>`                                  | refuse  | vx passes only the variables a task declares (strict): list the rest in `exec.env.passThrough`                                |
+| turbo  | `--framework-inference <v>`                       | refuse  | under `turbo()` inference is Turbo's; take a name back with a `!` entry in the task's `env`                                   |
+| turbo  | `--global-deps <v>`                               | refuse  | declare them in `cache.inputs.workspaceFiles` (under `turbo()`, turbo.json's `globalDependencies`)                            |
+| turbo  | `--json`                                          | refuse  | use `--dry=json` for the plan, `--summarize[=<path>]` for the run's JSON record                                               |
+| turbo  | `--log-file`                                      | refuse  | use `--summarize[=<path>]` for the run's JSON record                                                                          |
+| turbo  | `--preflight`                                     | refuse  | `turboCache()` sends no CORS preflight: drop it                                                                               |
+| turbo  | `--remote-cache-timeout <v>`                      | refuse  | set `turboCache({ timeoutMs })` or `TURBO_REMOTE_CACHE_TIMEOUT`                                                               |
+| turbo  | `--single-package`                                | refuse  | a repo with no workspaces is one project already: drop it                                                                     |
 | turbo  | `--token <v>`, `--team <v>`, `--api <v>`          | refuse  | a remote cache is a plugin: `turboCache()` from @vzn/vx-migrate in vx.workspace.ts reads TURBO_TOKEN / TURBO_TEAM / TURBO_API |
 | turbo  | `--no-daemon`, `--daemon`                         | refuse  | vx has no daemon: drop it                                                                                                     |
 | turbo  | `--ui <v>`, `--log-order <v>`, `--log-prefix <v>` | refuse  | vx frames each task’s output: `--output-logs <mode>` sets how much                                                            |
@@ -1825,6 +1843,17 @@ copy to the source.
 | nx     | `-c <v>`, `--configuration <v>`                   | refuse  | a configuration is its own task: `vx run <target>:<configuration>`                                                            |
 | nx     | `--output-style <v>`                              | refuse  | use `--output-logs <mode>`                                                                                                    |
 | nx     | `--uncommitted`, `--untracked`                    | refuse  | use `--affected=HEAD` (the working tree against the last commit)                                                              |
+| nx     | `--max-parallel <v>`                              | alias   | `--concurrency <n>`                                                                                                           |
+| nx     | `--exclude-task-dependencies`                     | alias   | `--exclude-dependencies`                                                                                                      |
+| nx     | `--skip-remote-cache`                             | alias   | `--cache local:rw,remote:`                                                                                                    |
+| nx     | `--verbose`                                       | refuse  | use `--verbosity <n>` (1 adds the summary table)                                                                              |
+| nx     | `--files <v>`                                     | refuse  | vx asks git what changed: `--affected=<base>`                                                                                 |
+| nx     | `--batch`                                         | refuse  | vx runs one command per task: drop it                                                                                         |
+| nx     | `--dte`, `--use-agents`                           | refuse  | vx distributes nothing: drop it                                                                                               |
+| nx     | `--nx-ignore-cycles`                              | refuse  | vx refuses a task cycle by name: break it                                                                                     |
+| nx     | `--runner <v>`                                    | refuse  | a remote cache is a plugin: `nxCache()` from @vzn/vx-migrate in vx.workspace.ts                                               |
+| nx     | `--skip-sync`                                     | refuse  | vx never runs sync generators: drop it                                                                                        |
+| nx     | `--tui`, `--no-tui`, `--tui-auto-exit`            | refuse  | vx frames each task’s output: `--output-logs <mode>` sets how much                                                            |
 | nx     | `--no-cloud`                                      | refuse  | vx has no cloud: drop it                                                                                                      |
 
 ## Machine-readable output
@@ -1857,6 +1886,10 @@ vx show <pkg>#<task>             # a single task
 vx show <task>                   # that task in every project declaring it
 vx show ... --format json        # machine-readable (default: pretty)
 ```
+
+Nx's spellings name these: `vx show projects` (when no project or task
+has that name) and `vx show project <name>` say `vx show` and
+`vx show <name>`.
 
 No target: one line per project — name, root-relative dir, task count,
 and a `(no vx config)` marker for config-less packages; one whose

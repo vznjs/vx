@@ -170,7 +170,11 @@ export TURBO_TOKEN=… TURBO_TEAM=…
 
 Then declare `plugins: [turboCache()]`. `nxCache()` does the same for a
 self-hosted Nx cache; your own backend is [a plugin](../plugins/#your-own-cache).
-A laptop that only reads runs with `--cache=local:rw,remote:r`.
+A laptop that only reads runs with `--cache=local:rw,remote:r`; so does a
+pull request from a fork, which must never write what `main` restores.
+The plugins honour the tools' own switches for it too: Turbo's
+`TURBO_REMOTE_CACHE_READ_ONLY` and `TURBO_CACHE`, Nx's
+`NX_SKIP_REMOTE_CACHE`.
 
 ## Remote execution
 

@@ -25,7 +25,10 @@ vulnerability), never in a public issue.
   inputs, not the bytes, so a store that answers a key with bytes of its
   choosing is trusted as a writer, as it is in every action cache. Use a
   store only your builds write to, or `turboCache()`'s signature key,
-  which refuses an artifact a keyholder did not sign.
+  which refuses an artifact a keyholder did not sign. A job you do not
+  trust (a fork's pull request) reads at most: `--cache=local:rw,remote:r`,
+  or the tools' own `TURBO_REMOTE_CACHE_READ_ONLY`, `TURBO_CACHE` and
+  `NX_SKIP_REMOTE_CACHE`, which the cache plugins honour (L-34).
 
 ## What vx checks on bytes it did not write
 

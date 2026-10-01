@@ -67,6 +67,14 @@ export interface TurboJsonRemoteCache {
   uploadTimeout?: unknown
 }
 
+/** `.turbo/config.json`'s fields, under any of the spellings Turbo accepts. */
+export interface TurboLocalConfig {
+  apiUrl?: unknown
+  teamId?: unknown
+  teamSlug?: unknown
+  token?: unknown
+}
+
 export interface TurboCacheConfig {
   apiUrl: string
   token: string
@@ -184,19 +192,30 @@ export function resolveTurboCacheConfig(
   options: TurboCacheOptions,
   env: Record<string, string | undefined> = Bun.env,
   file: TurboJsonRemoteCache = {},
+  /** The repo's `.turbo/config.json` (`turbo link` writes it): below the environment, above turbo.json. */
+  local: TurboLocalConfig = {},
 ): TurboCacheConfig | undefined {
   // `enabled: false` turns Turbo's remote cache off whatever the env says;
   // options name a cache for vx alone, and win.
   if (file.enabled === false && options.apiUrl === undefined && options.token === undefined)
     return undefined
   const fromFile = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined)
-  const token = options.token ?? env['TURBO_TOKEN']
+  // A Vercel build hands Turbo its cache as VERCEL_ARTIFACTS_TOKEN and
+  // _OWNER (the team id), taken where TURBO_TOKEN with a team is not set
+  // (Turbo's `override_env.rs`); unread, turboCache() declined on Vercel.
+  const turboPair = env['TURBO_TOKEN'] && (env['TURBO_TEAMID'] || env['TURBO_TEAM'])
+  const vercel =
+    !turboPair && env['VERCEL_ARTIFACTS_TOKEN'] && env['VERCEL_ARTIFACTS_OWNER']
+      ? { token: env['VERCEL_ARTIFACTS_TOKEN'], teamId: env['VERCEL_ARTIFACTS_OWNER'] }
+      : { token: undefined, teamId: turboPair ? undefined : env['VERCEL_ARTIFACTS_OWNER'] }
+  const token = options.token ?? env['TURBO_TOKEN'] ?? vercel.token ?? fromFile(local.token)
   // Turbo's own default when a token is set and no `apiUrl` is: Vercel's
   // hosted Remote Cache. A token alone is a configured cache, as it is for
   // `turbo`; no token at all is the declined, local run.
   const apiUrl = (
     options.apiUrl ??
     env['TURBO_API'] ??
+    fromFile(local.apiUrl) ??
     fromFile(file.apiUrl) ??
     (token ? VERCEL_API : undefined)
   )?.replace(/\/+$/, '')
@@ -215,8 +234,14 @@ export function resolveTurboCacheConfig(
     throw new Error(
       `vx/turbo-cache: the token holds ${fault}, which no HTTP header can carry — check the secret (it is not printed)`,
     )
-  const teamId = options.teamId ?? env['TURBO_TEAMID'] ?? fromFile(file.teamId)
-  const teamSlug = options.teamSlug ?? env['TURBO_TEAM'] ?? fromFile(file.teamSlug)
+  const teamId =
+    options.teamId ??
+    env['TURBO_TEAMID'] ??
+    vercel.teamId ??
+    fromFile(local.teamId) ??
+    fromFile(file.teamId)
+  const teamSlug =
+    options.teamSlug ?? env['TURBO_TEAM'] ?? fromFile(local.teamSlug) ?? fromFile(file.teamSlug)
   // Turbo signs only under `remoteCache.signature: true`; the env key alone
   // signs nothing there, and a short one here refused the whole cache.
   // `TURBO_SIGNATURE` (1/true, 0/false) sits above turbo.json, as in Turbo.
@@ -340,7 +365,10 @@ export class TurboRemoteCache implements RemoteCacheLayer {
 
   private url(pathname: string): string {
     const u = new URL(`${this.config.apiUrl}/v8/artifacts${pathname}`)
-    if (this.config.teamId) u.searchParams.set('teamId', this.config.teamId)
+    // Turbo sends a team id only in Vercel's `team_` form (its API client's
+    // `add_team_params`); a personal account's owner id is not one, and the
+    // signature, which folds the id as given, is unaffected.
+    if (this.config.teamId?.startsWith('team_')) u.searchParams.set('teamId', this.config.teamId)
     if (this.config.teamSlug) u.searchParams.set('slug', this.config.teamSlug)
     return u.toString()
   }
@@ -527,6 +555,27 @@ export function turboRemoteAccess(env: Record<string, string | undefined>): {
   return { read, write }
 }
 
+/**
+ * The repo's `.turbo/config.json`, by Turbo's field names and their
+ * aliases (`apiurl`, `ApiUrl`, `APIURL`, …); `{}` when absent or unreadable.
+ */
+function localConfigOf(root: string): TurboLocalConfig {
+  let raw: unknown
+  try {
+    raw = JSON.parse(readFileSync(path.join(root, '.turbo', 'config.json'), 'utf8'))
+  } catch {
+    return {}
+  }
+  if (typeof raw !== 'object' || raw === null) return {}
+  const byLower = new Map(Object.entries(raw).map(([k, v]) => [k.toLowerCase(), v]))
+  return {
+    apiUrl: byLower.get('apiurl'),
+    teamId: byLower.get('teamid'),
+    teamSlug: byLower.get('teamslug'),
+    token: byLower.get('token'),
+  }
+}
+
 /** The root turbo.json's (or turbo.jsonc's) `remoteCache`; `{}` when there is none or it does not parse. */
 function remoteCacheOf(root: string): TurboJsonRemoteCache {
   for (const name of ['turbo.json', 'turbo.jsonc']) {
@@ -558,7 +607,12 @@ function remoteCacheOf(root: string): TurboJsonRemoteCache {
 export function turboCache(options: TurboCacheOptions = {}): VxPlugin {
   return definePlugin(import.meta, {
     cache(ctx): CacheLayer | undefined {
-      const config = resolveTurboCacheConfig(options, Bun.env, remoteCacheOf(ctx.workspaceRoot))
+      const config = resolveTurboCacheConfig(
+        options,
+        Bun.env,
+        remoteCacheOf(ctx.workspaceRoot),
+        localConfigOf(ctx.workspaceRoot),
+      )
       if (config === undefined) return undefined
       const remote = turboRemoteAccess(Bun.env)
       const policy = {

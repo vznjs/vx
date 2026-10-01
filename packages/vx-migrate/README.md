@@ -69,6 +69,7 @@ Rules:
 - A task's `description` (Turbo 2.11.5's schema) is the vx task's `description`.
 - `outputLogs: "new-only"` maps to nothing: frames for the tasks that ran and a one-liner per cache hit is vx's default flow already. The other values are per-run in vx, so they are a todo naming the flag (`vx run … --output-logs hash-only`).
 - `interruptible` maps to nothing: `vx watch` stops and re-spawns every persistent task each cycle.
+- A task's `tags` (Turbo main, after 2.11.5) map to nothing: Turbo keeps them out of the hash and the run.
 - `envMode: "loose"` (top-level or in `global`) is a note: Turbo hands every task the whole environment, vx only the declared names.
 - The workspace keys vx has a home for, top level or in `global`, fill what `vx.workspace.ts` leaves unset: `concurrency` (`"10"`, `"50%"` of the cores) → `concurrency`; `cacheMaxSize` / `cacheMaxAge` (`"0"` is off; weeks become days, a bare number days; a size in Turbo's grammar, `7.5GB` or bare bytes, restated whole: `7680MB`) → `cacheRetention.maxSize` / `.olderThan`.
 - Turbo 2.11's `global` block (`futureFlags.globalConfiguration`) is read as the `globalDependencies`, `globalEnv` and `globalPassThroughEnv` it replaces.
@@ -336,7 +337,7 @@ export default defineWorkspace({
 })
 ```
 
-Every option falls back to the tool's own environment variable, so a self-hosted setup carries over unchanged. A token with no `apiUrl` means Vercel's hosted Remote Cache (`https://vercel.com/api`), exactly as it does for `turbo` — so `npx turbo login && npx turbo link`, then `turboCache()` with `TURBO_TOKEN` / `TURBO_TEAM` set, is the whole hosted setup. Below the environment, as in Turbo, the root `turbo.json`'s `remoteCache` supplies `apiUrl`, `teamId` and `teamSlug`, and its `enabled: false` declines unless the options name a cache. With no token the plugin **declines** and the run stays local.
+Every option falls back to the tool's own environment variable, so a self-hosted setup carries over unchanged. A token with no `apiUrl` means Vercel's hosted Remote Cache (`https://vercel.com/api`), exactly as it does for `turbo` — so `npx turbo login && npx turbo link`, then `turboCache()` with `TURBO_TOKEN` / `TURBO_TEAM` set, is the whole hosted setup. Below the environment, in Turbo's order: a Vercel build's `VERCEL_ARTIFACTS_TOKEN` and `VERCEL_ARTIFACTS_OWNER` (the team id, where `TURBO_TOKEN` with a team is not set), then the repo's `.turbo/config.json` (what `turbo link` writes: `apiUrl`, `teamId`, `teamSlug`, `token`), then the root `turbo.json`'s `remoteCache` (`apiUrl`, `teamId`, `teamSlug`), whose `enabled: false` declines unless the options name a cache. With no token the plugin **declines** and the run stays local.
 
 | Option            | Environment variable                                                                                                                     | Meaning                                                                                                       |
 | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |

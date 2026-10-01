@@ -90,6 +90,20 @@ describe('a root vx.config makes the root a project (D-39)', () => {
     ])
   })
 
+  // `turbo run //#build` runs the root's task from any package; vx read
+  // `//` as a project name and said no project declares it.
+  it("runs //#task as the root project's task, from the root or a member", async () => {
+    await writeFile(path.join(fixture.root, 'vx.config.mjs'), ROOT_CONFIG)
+    for (const cwd of [fixture.root, path.join(fixture.root, 'packages', 'a')]) {
+      const r = await run({ cwd, tasks: ['//#build'], log: silentLogger(fixture) })
+      expect([cwd, r.ok, r.outcomes.map((o) => o.node.id)]).toEqual([
+        cwd,
+        true,
+        ['fixture-root#build'],
+      ])
+    }
+  })
+
   it("keys on the files no member owns: a member's edit leaves it, a root file's moves it", async () => {
     await writeFile(path.join(fixture.root, 'vx.config.mjs'), ROOT_CONFIG)
     const key = async (): Promise<string> => {
