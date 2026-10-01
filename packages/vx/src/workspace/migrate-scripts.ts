@@ -39,6 +39,7 @@ import {
   PERSISTENT_TASK_NAMES,
   PERSISTENT_TODO,
   cacheTodo,
+  pruneOrphanPersistentNotes,
 } from './migration.js'
 
 // `lint` is not here: a linter reads sources, and an edge to `build`
@@ -379,6 +380,7 @@ export function migrateScripts(
     }
   }
   breakBuildCycles(projects, metas)
+  pruneOrphanPersistentNotes(projects, PERSISTENT_TODO)
   return {
     headerNotes: [
       // Where to add one is the TODO's to say, when there is one: an Nx repo

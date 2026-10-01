@@ -118,6 +118,7 @@ export {
   applyMigration,
   foldScriptHooks,
   PERSISTENT_TODO,
+  pruneOrphanPersistentNotes,
   quoteTsLiteral,
 } from './workspace/index.js'
 export type {

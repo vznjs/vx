@@ -11,7 +11,12 @@ import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { parseInitArgs } from '../src/cli/init.js'
 import { adoptionNext } from '../src/cli/init.js'
 import { PLUGIN_TEMPLATES } from '../src/cli/plugin-templates.js'
-import { delegatedScript, loadProjectConfig, migrateScripts } from '../src/workspace/index.js'
+import {
+  delegatedScript,
+  loadProjectConfig,
+  migrateScripts,
+  PERSISTENT_TODO,
+} from '../src/workspace/index.js'
 import { vxInvocation } from '../src/workspace/migration.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
@@ -719,6 +724,18 @@ describe('migrateScripts', () => {
         watcher: 'node watcher-report.js',
       }),
     ).toEqual([])
+  })
+
+  it('the readiness note rides only a persistent task something depends on', () => {
+    // hoppscotch: 24 `dev`-shaped scripts nothing depends on, each with a
+    // note to gate dependents it does not have (item 602 in vx-migrate).
+    const noted = (scripts: Record<string, string>): string[] =>
+      (project(scripts)?.tasks ?? [])
+        .filter((t) => t.todos.includes(PERSISTENT_TODO))
+        .map((t) => t.name)
+    expect(noted({ dev: 'vite', preview: 'vite preview' })).toEqual([])
+    // CONTROL: a group over `dev` waits on it.
+    expect(noted({ dev: 'vite', start: 'npm run dev' })).toEqual(['dev'])
   })
 
   it('the workspace root among members is not mapped; a lone package is (D-45)', () => {
@@ -1458,7 +1475,8 @@ describe('vx init (package.json scripts)', () => {
         'no task caches yet: add the cache block a TODO shows, and a second run hits',
       )
       expect(text).toContain('TODO(vx-migrate): cache: add `cache: {')
-      expect(text).toContain('TODO(vx-migrate): persistent')
+      // Nothing depends on `dev`, so no readiness note.
+      expect(text).not.toContain('TODO(vx-migrate): persistent')
       Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
       const run = await vx(root, ['run', 'build', '--all', '--dry'])
       expect(run.code).toBe(0)

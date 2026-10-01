@@ -19,11 +19,10 @@
 // - `service` is long-running, ready on spawn or on `readyWhen.lineMatches`.
 
 import path from 'node:path'
-import type { ProjectMeta } from '@vzn/vx'
+import { pruneOrphanPersistentNotes, type ProjectMeta } from '@vzn/vx'
 import { minimatchToVx } from '../glob-grammar.js'
 import { packageScripts, relPosix } from '../paths.js'
 import { pruneDanglingEdges } from '../dangling-edges.js'
-import { pruneOrphanPersistentNotes } from '../persistent-note.js'
 import { scriptCommand, yarnPnp } from '../script-command.js'
 import { resolveSharedOutputs } from '../shared-outputs.js'
 

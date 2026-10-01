@@ -11,7 +11,7 @@
 // The consumer decides what a global becomes through `splice`.
 
 import path from 'node:path'
-import { type ProjectMeta, UserError } from '@vzn/vx'
+import { pruneOrphanPersistentNotes, type ProjectMeta, UserError } from '@vzn/vx'
 import { minimatchToVx } from '../glob-grammar.js'
 import { shellQuote } from '../nx-command.js'
 import { scriptCommand, yarnPnp } from '../script-command.js'
@@ -25,7 +25,6 @@ import {
   wildcardTodo,
 } from '../shared-outputs.js'
 import { packageScripts, relPosix } from '../paths.js'
-import { pruneOrphanPersistentNotes } from '../persistent-note.js'
 import type { TrackedKinds } from '../tracked-outputs.js'
 import { DOTENV_PROBE } from '../dotenv-probe.js'
 

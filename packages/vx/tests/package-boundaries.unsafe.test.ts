@@ -164,6 +164,7 @@ describe('package boundaries', () => {
       'outputsOverlap',
       'planRun',
       'prepareRun',
+      'pruneOrphanPersistentNotes',
       'quoteTsLiteral',
       'reachDigests',
       'resolveRunId',

@@ -34,7 +34,6 @@ src/nx/nx-map.ts
 src/nx/nx-outputs.ts
 src/nx/nx-upstream.ts
 src/paths.ts
-src/persistent-note.ts
 src/plugin-gaps.ts
 src/remote-deadline.ts
 src/remote-retry.ts

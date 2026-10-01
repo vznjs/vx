@@ -19,6 +19,7 @@ import {
   type GeneratedProject,
   type GeneratedTask,
   type ProjectMeta,
+  pruneOrphanPersistentNotes,
   UserError,
 } from '@vzn/vx'
 import { mapRunCommands, shellQuote } from '../nx-command.js'
@@ -33,7 +34,6 @@ import {
 } from '../shared-outputs.js'
 import type { TrackedKinds } from '../tracked-outputs.js'
 import { packageScripts, relPosix } from '../paths.js'
-import { pruneOrphanPersistentNotes } from '../persistent-note.js'
 import { mapNxDeps, matchNxProjects, type TaskNameFor } from './nx-deps.js'
 import {
   dotenvCandidates,

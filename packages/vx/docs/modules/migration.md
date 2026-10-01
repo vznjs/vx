@@ -52,6 +52,19 @@ export function applyMigration(args: ApplyMigrationArgs): Promise<number>
 export function quoteTsLiteral(s: string): string
 export const PERSISTENT_TASK_NAMES: ReadonlySet<string>
 export const PERSISTENT_TODO: string
+// Drops `note` from each persistent task no `dependsOn` in the mapping
+// names: nothing waits on it, so there is nothing to gate. Every mapper
+// runs it last.
+export function pruneOrphanPersistentNotes(
+  projects: readonly {
+    readonly tasks: readonly {
+      readonly name: string
+      readonly todos: string[]
+      readonly task: Record<string, unknown> | null
+    }[]
+  }[],
+  note: string,
+): void
 // A script with the pre/post hooks npm runs around it, as one sh command:
 // each part a subshell, the chain stopping at the first that fails, and the
 // forwarded `--` args reaching the body alone (item 905). No hooks: the
