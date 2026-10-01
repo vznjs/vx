@@ -408,11 +408,24 @@ export const FOREIGN_FLAGS: readonly ForeignFlag[] = [
 ]
 
 /** Nx's verbs, as its users type them: `vx run` takes their flags. */
+const TURBO_LOGIN =
+  'vx has no login: a remote cache is a plugin, `turboCache()` from @vzn/vx-migrate in vx.workspace.ts, which reads TURBO_TOKEN / TURBO_TEAM / TURBO_API'
+
 export const FOREIGN_VERBS: Readonly<Record<string, string>> = {
   'run-many':
     '`nx run-many` is `vx run <task> --all` here; -t, -p, --exclude and --parallel work as they are',
   affected:
     '`nx affected` is `vx run <task> --affected` here; -t, --base and --exclude work as they are',
+  graph: '`nx graph` is `vx run <task> --graph[=<file>.dot]` here: the task graph as Graphviz DOT',
+  ls: '`turbo ls` is `vx show` here: every project, its directory and its task count',
+  query:
+    '`turbo query` has no vx form: `vx run <task> --dry=json` prints the planned graph as JSON',
+  reset: '`nx reset` is `vx cache prune` here (or remove the cache directory `vx info` names)',
+  daemon: 'vx has no daemon: there is nothing to start or stop',
+  login: TURBO_LOGIN,
+  logout: TURBO_LOGIN,
+  link: TURBO_LOGIN,
+  unlink: TURBO_LOGIN,
 }
 
 /**
