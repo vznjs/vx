@@ -946,7 +946,8 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   whenever the env set it, where Turbo signs only under turbo.json's
   `remoteCache.signature: true`. A repo with a short key in its CI env
   and signing off ran Turbo fine and had vx refuse its whole cache
-  ("at least 32 bytes"). The env key is now read only under the flag;
+  ("at least 32 bytes"). The env key is now read only under the flag,
+  or `TURBO_SIGNATURE` (1/true, 0/false), which sits above it;
   the `signatureKey` option still signs either way. Row
   (`turbo-cache.test` › the env signature key applies only where
   turbo.json turns signing on): red without the change.

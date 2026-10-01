@@ -219,9 +219,18 @@ export function resolveTurboCacheConfig(
   const teamSlug = options.teamSlug ?? env['TURBO_TEAM'] ?? fromFile(file.teamSlug)
   // Turbo signs only under `remoteCache.signature: true`; the env key alone
   // signs nothing there, and a short one here refused the whole cache.
+  // `TURBO_SIGNATURE` (1/true, 0/false) sits above turbo.json, as in Turbo.
+  const signEnv = env['TURBO_SIGNATURE']
+  let signing = file.signature === true
+  if (signEnv !== undefined && signEnv !== '') {
+    if (!/^(1|0|true|false)$/.test(signEnv))
+      throw new Error(
+        `vx/turbo-cache: TURBO_SIGNATURE should be 1 or 0, got ${JSON.stringify(signEnv)}`,
+      )
+    signing = signEnv === '1' || signEnv === 'true'
+  }
   const signatureKey =
-    options.signatureKey ??
-    (file.signature === true ? env['TURBO_REMOTE_CACHE_SIGNATURE_KEY'] : undefined)
+    options.signatureKey ?? (signing ? env['TURBO_REMOTE_CACHE_SIGNATURE_KEY'] : undefined)
   if (signatureKey !== undefined) {
     if (Buffer.byteLength(signatureKey) < MIN_SIGNATURE_KEY_LENGTH) {
       throw new Error(

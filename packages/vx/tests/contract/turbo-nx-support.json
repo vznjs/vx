@@ -207,7 +207,7 @@
   {
     "key": "turbo.json remoteCache.signature",
     "status": "supported",
-    "reason": "`true` signs and verifies with `TURBO_REMOTE_CACHE_SIGNATURE_KEY`, as in Turbo; without it the env key is not read. `turboCache({ signatureKey })` signs either way."
+    "reason": "`true` signs and verifies with `TURBO_REMOTE_CACHE_SIGNATURE_KEY`, as in Turbo, and `TURBO_SIGNATURE` (1 or 0) overrides it; with signing off the env key is not read. `turboCache({ signatureKey })` signs either way."
   },
   {
     "key": "turbo.json remoteCache.teamId",

@@ -217,6 +217,15 @@ describe('resolveTurboCacheConfig', () => {
       resolveTurboCacheConfig({ teamId: 'team_1', signatureKey: 'o'.repeat(32) }, env, {})
         ?.signatureKey,
     ]).toEqual([undefined, undefined, 'k'.repeat(32), undefined, 'o'.repeat(32)])
+    // TURBO_SIGNATURE sits above turbo.json either way.
+    expect([
+      key({}, { ...env, TURBO_SIGNATURE: '1' }),
+      key({ signature: true }, { ...env, TURBO_SIGNATURE: 'false' }),
+      key({ signature: true }, { ...env, TURBO_SIGNATURE: '' }),
+    ]).toEqual(['k'.repeat(32), undefined, 'k'.repeat(32)])
+    expect(() => key({}, { ...env, TURBO_SIGNATURE: 'yes' })).toThrow(
+      'vx/turbo-cache: TURBO_SIGNATURE should be 1 or 0, got "yes"',
+    )
   })
 
   it('a signature key must be Turbo’s minimum length and come with a team id', () => {
