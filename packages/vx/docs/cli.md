@@ -1681,7 +1681,12 @@ with EMPTY outputs is not "uncached" but a no-output task that hits on
 unchanged inputs and skips the build with nothing to restore (a deleted
 `dist` stays deleted under a green `up-to-date` run — what `init`
 generated until 2026-09-04), and a guessed `dist/**` would restore the
-wrong tree for every package that writes elsewhere. `test` / `typecheck` wait for
+wrong tree for every package that writes elsewhere. The block the TODO
+shows names `dist/**`, or the default output of the framework the command
+runs: `.next/**` minus `!.next/cache/**` for `next build`, `.output/**`
+for Nuxt, `build/**` for Remix, React Router, Create React App and
+Docusaurus, `public/**` for Gatsby, `storybook-static/**` for Storybook.
+`test` / `typecheck` wait for
 `build` when the package has one (`lint` reads sources and gets no
 edge); `dev` / `start` / `serve` / `watch` /
 `preview` become persistent tasks with a TODO to add `readyWhen`, and so

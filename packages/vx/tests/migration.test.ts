@@ -15,7 +15,7 @@ import {
   type GeneratedTask,
   type MigrationPlan,
 } from '../src/workspace/index.js'
-import { CACHE_TODO } from '../src/workspace/migration.js'
+import { cacheTodo } from '../src/workspace/migration.js'
 import { UserError } from '../src/util/index.js'
 import { withForwardArgs } from '../src/exec/index.js'
 
@@ -187,14 +187,17 @@ describe('applyMigration', () => {
   it('says a cache block makes the second run hit when no task caches', async () => {
     const hint = 'no task caches yet: add the cache block a TODO shows, and a second run hits'
     mkdirSync(path.join(root, 'app'))
-    await apply(plan([['app', [task('build', exec('tsc'), [CACHE_TODO])]]]))
+    await apply(plan([['app', [task('build', exec('next build'), [cacheTodo('next build')])]]]))
     expect(stdout.split('\n')).toContain(hint)
     // A task that already caches: the run can hit, and the line would mislead.
     stdout = ''
     const built = { ...exec('tsc'), cache: { inputs: { files: [] }, outputs: { files: [] } } }
-    await apply(plan([['app', [task('build', built), task('pack', exec('x'), [CACHE_TODO])]]]), {
-      force: true,
-    })
+    await apply(
+      plan([['app', [task('build', built), task('pack', exec('x'), [cacheTodo('x')])]]]),
+      {
+        force: true,
+      },
+    )
     expect(stdout).toContain('1 task migrated clean, 1 TODO:')
     expect(stdout.split('\n')).not.toContain(hint)
   })

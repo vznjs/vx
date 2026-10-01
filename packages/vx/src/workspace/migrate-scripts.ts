@@ -37,7 +37,7 @@ import {
   type MigrationPlan,
   PERSISTENT_TASK_NAMES,
   PERSISTENT_TODO,
-  CACHE_TODO,
+  cacheTodo,
 } from './migration.js'
 
 // `lint` is not here: a linter reads sources, and an edge to `build`
@@ -238,7 +238,8 @@ function upstreamBuildOnWorker(tasks: GeneratedTask[]): void {
   }
   const deps = Array.isArray(at.task['dependsOn']) ? (at.task['dependsOn'] as string[]) : []
   if (!deps.includes('^build')) at.task['dependsOn'] = ['^build', ...deps]
-  if (!at.todos.includes(CACHE_TODO)) at.todos.push(CACHE_TODO)
+  const todo = cacheTodo(String((at.task['exec'] as { command?: unknown }).command))
+  if (!at.todos.includes(todo)) at.todos.push(todo)
 }
 
 export function migrateScripts(metas: readonly ProjectMeta[]): MigrationPlan {
@@ -335,7 +336,7 @@ export function migrateScripts(metas: readonly ProjectMeta[]): MigrationPlan {
       }
       if (name === 'build') {
         task['dependsOn'] = ['^build']
-        todos.push(CACHE_TODO)
+        todos.push(cacheTodo(own))
       } else if (AFTER_BUILD.has(name) && hasBuild) {
         task['dependsOn'] = ['build']
       }
