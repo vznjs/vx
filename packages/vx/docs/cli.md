@@ -1788,6 +1788,7 @@ copy to the source.
 | runner | flag                                              | outcome | in vx                                                                                                                         |
 | ------ | ------------------------------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------- |
 | turbo  | `--filter <v>`                                    | same    | `--filter`, the same grammar (`...[ref]`, `{dir}`, `^`, `!`)                                                                  |
+| turbo  | `-F <v>`                                          | alias   | `--filter <v>`                                                                                                                |
 | turbo  | `--concurrency <v>`                               | same    | `--concurrency <n\|n%>`                                                                                                       |
 | turbo  | `--continue=dependencies-successful`              | alias   | `--continue=deps-ok`                                                                                                          |
 | turbo  | `--continue`                                      | same    | `--continue[=never\|deps-ok\|always]`                                                                                         |

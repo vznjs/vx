@@ -1877,8 +1877,10 @@ describe('parseRunArgs', () => {
     ])
   })
 
-  it('-F short alias is no longer recognized', () => {
-    expect(parseRunArgs(['build', '-F', 'foo']).error).toMatch(/unknown flag: -F/)
+  // 2026-05 dropped `-F` as "Turbo has no -F"; Turbo's reference names it
+  // `--filter`'s alias, so it is a foreign alias since E-95.
+  it("-F is Turbo's alias for --filter", () => {
+    expect(parseRunArgs(['build', '-F', 'foo'])).toEqual(parseRunArgs(['build', '--filter', 'foo']))
   })
 
   it('rejects bad concurrency', () => {

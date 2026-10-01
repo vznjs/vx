@@ -41,6 +41,15 @@ export const FOREIGN_FLAGS: readonly ForeignFlag[] = [
   },
   {
     runner: 'turbo',
+    names: ['-F'],
+    value: true,
+    outcome: 'alias',
+    vx: '`--filter <v>`',
+    // Bare, it is `--filter` bare, whose refusal asks for the value.
+    to: (v) => (v === undefined ? ['--filter'] : ['--filter', v]),
+  },
+  {
+    runner: 'turbo',
     names: ['--concurrency'],
     value: true,
     outcome: 'same',

@@ -558,3 +558,12 @@ walked on fixtures.
   short at a word that leads exactly one accepted flag now names it.
   Row: `cli.test.ts` › every verb's unknown flag, now with
   `cache prune --dry`; red without the change.
+- **E-95.** `turbo run build -F web` is Turbo's short `--filter` (its
+  reference: "`-F` is an alias for `--filter`"), and
+  `vx run build -F web` said `unknown flag: -F` with no way on. The foreign-flag table
+  takes it as an alias; a bare `-F` asks for the value as a bare
+  `--filter` does. cli.md's parity table carries the row. Rows:
+  `foreign-flags.test.ts` (the alias, `-F=` inline, the bare refusal);
+  red without the change. The 2026-05 row that pinned the refusal
+  (`8fba75d7`, "Turbo has no `-F`") rested on a premise Turbo's own
+  reference refutes; it now pins the alias.
