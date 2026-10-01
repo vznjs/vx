@@ -401,6 +401,11 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
         path.join(fixture.root, 'packages/b/package.json'),
         JSON.stringify({ name: 'dup', version: '0.0.0' }),
       )
+      // One meant to run: a pair with no vx config is left out instead.
+      await writeFile(
+        path.join(fixture.root, 'packages/b/vx.config.mjs'),
+        'export default { tasks: {} }\n',
+      )
 
       await expect(
         run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) }),

@@ -558,8 +558,7 @@ export async function listProjects(workspace: Workspace): Promise<ProjectMeta[]>
     }),
   )
 
-  const projects: ProjectMeta[] = []
-  const seenName = new Map<string, string>()
+  const byName = new Map<string, NonNullable<(typeof loaded)[number]>[]>()
   for (const entry of loaded) {
     if (entry === null) continue
     const { dir, pkg, configPath } = entry
@@ -575,22 +574,41 @@ export async function listProjects(workspace: Workspace): Promise<ProjectMeta[]>
       }
       continue
     }
-    const previous = seenName.get(pkg.name)
-    if (previous) {
-      // pnpm accepts two manifests of one name (sveltejs/kit's test apps,
-      // the first-five-minutes walk, 2026-09-28); vx cannot, since a
-      // project is addressed by it. Say which two, short, and the way on.
+    const group = byName.get(pkg.name)
+    if (group === undefined) byName.set(pkg.name, [entry])
+    else group.push(entry)
+  }
+  const projects: ProjectMeta[] = []
+  const shared: string[] = []
+  for (const [name, group] of byName) {
+    if (group.length === 1) {
+      const { dir, pkg, configPath } = group[0]!
+      projects.push({ name, dir, packageJson: pkg, configPath })
+      continue
+    }
+    const dirs = group.map((e) => relPosix(workspace.root, e.dir)).sort()
+    // pnpm accepts two manifests of one name (vite's playground, sveltejs/kit's
+    // test apps); vx cannot, since a project is addressed by it. Like a
+    // nameless one, a pair that declares no vx tasks is left out, so the
+    // rest of the workspace runs (vite was refused whole, 2026-10-01); one
+    // with a vx config was meant to run, and is refused with the way on.
+    if (group.some((e) => e.configPath !== null)) {
       throw new UserError(
-        `Duplicate package name "${pkg.name}" in workspace: ${[previous, dir]
-          .map((d) => relPosix(workspace.root, d))
-          .sort()
-          .join(' and ')}; ` +
+        `Duplicate package name "${name}" in workspace: ${dirs.join(' and ')}; ` +
           'vx names a project by its package name — rename one, or leave one out with a `!` pattern in the workspace globs',
       )
     }
-    seenName.set(pkg.name, dir)
-    projects.push({ name: pkg.name, dir, packageJson: pkg, configPath })
+    shared.push(`${name} (${dirs.join(', ')})`)
   }
+  if (shared.length > 0) {
+    shared.sort()
+    const shown =
+      shared.slice(0, 2).join('; ') + (shared.length > 2 ? `; and ${shared.length - 2} more` : '')
+    process.stderr.write(
+      `vx: left out, as no project can be addressed by a name several manifests share (none has a vx config): ${shown}\n`,
+    )
+  }
+
   // Code-unit order, not `localeCompare`: ICU collation cost 28 ms of a
   // 300 ms warm run at 1000 projects, and a stable deterministic order is
   // all any consumer needs.

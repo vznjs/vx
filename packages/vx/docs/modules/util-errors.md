@@ -51,7 +51,7 @@ state the user can fix without code changes:
 - Missing workspace root (`findWorkspaceRoot`).
 - Bad git ref for `--affected` (`workspace/affected.ts`).
 - Cycle in the task graph (`graph/task-graph.ts`).
-- Duplicate package names (`workspace.ts`).
+- Duplicate package names, one of them with a vx config (`workspace.ts`).
 - Bad CLI flags (in `cli/run.ts`).
 
 Throw plain `Error` (or let TypeError / RangeError propagate) for

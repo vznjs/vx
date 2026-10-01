@@ -309,6 +309,54 @@ describe('listProjects', () => {
     ])
   })
 
+  // vite's playground (eight names, two manifests each) refused the whole
+  // workspace; pnpm runs it.
+  it('a name several manifests share is left out with one line, unless one has a vx config', async () => {
+    await writeFile(path.join(dir, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
+    for (const [d, name] of [
+      ['a', 'dup'],
+      ['b', 'dup'],
+      ['c', 'twin'],
+      ['d', 'twin'],
+      ['e', 'twin'],
+      ['f', 'pair'],
+      ['g', 'pair'],
+      ['h', 'kept'],
+    ]) {
+      await mkdir(path.join(dir, 'packages', d!), { recursive: true })
+      await writeFile(path.join(dir, 'packages', d!, 'package.json'), JSON.stringify({ name }))
+    }
+    const list = async () => {
+      const written: string[] = []
+      const real = process.stderr.write.bind(process.stderr)
+      process.stderr.write = ((chunk: unknown): boolean => {
+        written.push(String(chunk))
+        return true
+      }) as typeof process.stderr.write
+      try {
+        const names = (await listProjects(await loadWorkspace(dir))).map((p) => p.name)
+        return { names, written }
+      } finally {
+        process.stderr.write = real
+      }
+    }
+    expect(await list()).toEqual({
+      names: ['kept'],
+      written: [
+        'vx: left out, as no project can be addressed by a name several manifests share (none has a vx config): dup (packages/a, packages/b); pair (packages/f, packages/g); and 1 more\n',
+      ],
+    })
+    await writeFile(path.join(dir, 'packages/e/vx.config.mjs'), 'export default { tasks: {} }\n')
+    const err = await list().then(
+      () => null,
+      (e: unknown) => e,
+    )
+    expect(err).toBeInstanceOf(UserError)
+    expect((err as Error).message).toBe(
+      'Duplicate package name "twin" in workspace: packages/c and packages/d and packages/e; vx names a project by its package name — rename one, or leave one out with a `!` pattern in the workspace globs',
+    )
+  })
+
   // pnpm, npm, yarn and Bun all take `!packages/fixtures` in the list. Handed
   // to Bun.Glob raw, the `!` negated the WHOLE pattern — every manifest in
   // the tree matched, so the excluded package ran under --all and any
