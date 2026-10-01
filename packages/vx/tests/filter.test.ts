@@ -188,6 +188,29 @@ describe('applyFilters', () => {
     ])
   })
 
+  // pnpm: `--filter core` selects `@babel/core`. Nx names nx-examples'
+  // `@nx-example/cart` `cart`, and `-p cart` matched nothing.
+  it('a name that matches no package may leave out the scope, as pnpm reads it', () => {
+    const scoped = [
+      mkProject('@a/cart', `${ROOT}/packages/cart`),
+      mkProject('@a/shared-ui', `${ROOT}/packages/shared-ui`),
+      mkProject('@a/shared-io', `${ROOT}/packages/shared-io`),
+      mkProject('@b/io', `${ROOT}/packages/b-io`),
+      mkProject('@c/io', `${ROOT}/packages/c-io`),
+      mkProject('cart-page', `${ROOT}/packages/cart-page`),
+    ]
+    const g = buildPackageGraph(scoped)
+    const sel = (raw: string) =>
+      [...applyFilters({ filters: [parseFilter(raw, ROOT)], projects: scoped, graph: g })].sort()
+    expect(sel('cart')).toEqual(['@a/cart'])
+    expect(sel('shared-*')).toEqual(['@a/shared-io', '@a/shared-ui'])
+    // Two scopes carry the exact name: neither is meant.
+    expect(sel('io')).toEqual([])
+    // A name a package carries wins; a scoped pattern never falls back.
+    expect(sel('cart-*')).toEqual(['cart-page'])
+    expect(sel('@x/cart')).toEqual([])
+  })
+
   it('...^pkg includes only the dependents, not the package itself (item 890)', () => {
     // cli.md listed the form; the `^` stayed in the name glob, so it matched
     // nothing and the run refused with "no projects matched".
@@ -272,12 +295,13 @@ describe('applyFilters', () => {
       ])
     })
 
-    // Nx resolves a bare `core` to `@acme/core`; vx's name form is an exact
-    // anchored match (docs/comparison.md, Filter DSL), so the scope or a
-    // leading `*` is how to reach it.
-    it("a bare 'core' is an exact match and selects nothing against '@acme/core'", () => {
+    // Nx and pnpm resolve a bare `core` to `@acme/core` when one package
+    // carries it (G-129; it selected nothing before).
+    it("a bare 'core' selects '@acme/core', the one package it names after the scope", () => {
       const filters = [parseFilter('core', ROOT)]
-      expect([...applyFilters({ filters, projects: scoped, graph: scopedGraph })]).toEqual([])
+      expect([...applyFilters({ filters, projects: scoped, graph: scopedGraph })]).toEqual([
+        '@acme/core',
+      ])
     })
 
     it("'*core' reaches '@acme/core' across the scope", () => {
