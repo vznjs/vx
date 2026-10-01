@@ -992,4 +992,6 @@ in `vx info --json` and `vx mcp`'s getWorkspaceInfo, and the row reads
 `available (N tasks declare exec.sandbox), untraced — <why>, so the
 reads it denies go unreported`. Rows: `sandbox-runtime.unsafe.test.ts`
 › untracedReason names what the warning would (the real strace is the
-null control); `show-info.test.ts` › the rendered sandbox rows.
+null control); `show-info.test.ts` › the rendered sandbox rows. A new
+fact is a contract change: `schemas/info.json`, `docs/api.md` and
+`vx-mcp`'s `tools.json` record it, so the title carries `!`.
