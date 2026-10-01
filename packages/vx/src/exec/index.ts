@@ -17,6 +17,7 @@ export {
   probeSandbox,
   unavailableReason,
   resetSandbox,
+  untracedReason,
   resolveSandboxConfig,
   runSandboxed,
   releaseBridges,

@@ -2031,6 +2031,12 @@ exec.sandbox and will fail` says it first: root inside a container
   (the runtime's seccomp helper cannot create its nested user namespace;
   run as a non-root user or set `sandbox.weakerWhenNested: true`), a
   missing bubblewrap, socat or ripgrep, a nested seatbelt on macOS.
+  On Linux an available sandbox that cannot report the reads it denies
+  (no `strace` on PATH, one whose `--version` fails, or one that may not
+  attach) adds `, untraced — <why>, so the reads it denies go
+unreported`: the sandbox still enforces, but a task that tolerates a
+  denied read passes and caches with no word of it. The `--json` fact is
+  `sandbox.untraced`, the reason or `null`.
 - `plugins` names every plugin `vx.workspace.*` declares and the seams
   each fills, in pipeline order (`config`, `project`, `graph`, `key`,
   `fingerprint`, `schedule`, `admit`, `executor`, `cache`, `telemetry`,

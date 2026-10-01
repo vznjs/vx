@@ -117,11 +117,12 @@
     "sandbox": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["available", "reason", "declared"],
+      "required": ["available", "reason", "declared", "untraced"],
       "properties": {
         "available": { "type": "boolean" },
         "reason": { "type": "string" },
-        "declared": { "type": "integer" }
+        "declared": { "type": "integer" },
+        "untraced": { "type": ["string", "null"] }
       }
     }
   }

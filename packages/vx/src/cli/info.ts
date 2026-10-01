@@ -114,13 +114,17 @@ export function renderInfo(f: InfoFacts): string {
 }
 
 /**
- * `available (3 tasks declare exec.sandbox)`, or `unavailable — <why>; 3
+ * `available (3 tasks declare exec.sandbox)`, with `, untraced — <why>, so
+ * the reads it denies go unreported` where no strace can trace, or
+ * `unavailable — <why>; 3
  * tasks declare exec.sandbox and will fail`: a declared sandbox whose
  * runtime cannot start fails the task, so the doctor names it before a run
  * does.
  */
 function describeSandbox(s: InfoFacts['sandbox']): string {
   const declared = `${s.declared} task${s.declared === 1 ? '' : 's'} declare${s.declared === 1 ? 's' : ''} exec.sandbox`
+  if (s.available && s.untraced !== null)
+    return `available (${declared}), untraced — ${s.untraced}, so the reads it denies go unreported`
   if (s.available) return `available (${declared})`
   return `unavailable — ${s.reason}; ${declared}${s.declared > 0 ? ' and will fail' : ''}`
 }

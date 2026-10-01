@@ -18,7 +18,7 @@ import {
   machineParallelism,
 } from '../util/index.js'
 import { VERSION } from '../version.js'
-import { probeSandbox, resetSandbox } from '../exec/index.js'
+import { probeSandbox, resetSandbox, untracedReason } from '../exec/index.js'
 import {
   buildPackageGraph,
   computeWorkspaceFingerprint,
@@ -97,9 +97,12 @@ export interface InfoFacts {
    * tasks declare one. A declared sandbox whose runtime cannot start is a
    * hard failure at run time, not a downgrade — so the doctor says so
    * first (root inside a container, a missing bubblewrap, a nested
-   * seatbelt), with the probe's own reason.
+   * seatbelt), with the probe's own reason. `untraced` is why an available
+   * Linux sandbox cannot report the reads it denied (no `strace`, or one
+   * that may not attach), else null: the sandbox still enforces, and a task
+   * that tolerates a denied read passes with no word of it.
    */
-  sandbox: { available: boolean; reason: string; declared: number }
+  sandbox: { available: boolean; reason: string; declared: number; untraced: string | null }
 }
 
 export interface CollectInfoOptions {
@@ -231,10 +234,16 @@ export async function collectInfo(cwd: string, opts: CollectInfoOptions = {}): P
 async function sandboxFact(declared: number): Promise<InfoFacts['sandbox']> {
   try {
     const verdict = await probeSandbox()
-    return { available: verdict.available, reason: stableSandboxReason(verdict.reason), declared }
+    const untraced = verdict.available ? await untracedReason() : null
+    return {
+      available: verdict.available,
+      reason: stableSandboxReason(verdict.reason),
+      declared,
+      untraced,
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    return { available: false, reason: stableSandboxReason(message), declared }
+    return { available: false, reason: stableSandboxReason(message), declared, untraced: null }
   } finally {
     await resetSandbox()
   }
