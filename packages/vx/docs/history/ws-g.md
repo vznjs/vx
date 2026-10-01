@@ -942,12 +942,6 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   out of the inferred set, so a deploy's commit SHA does not re-key every
   Next build (row: the CI vendor prefix is left out of framework
   inference only; red without the filter).
-- **G-87.** `nx()` took nx.json's `parallel` as the concurrency, but Nx 23
-  reads `NX_PARALLEL` (a count or a share of the cores, `50%`) above it
-  (`readParallelFromArgsAndEnv`): a CI that set 2 for a small runner got
-  nx.json's number under vx. The env variable now wins. Row
-  (`workspace-keys.test` › NX_PARALLEL wins over nx.json): red without
-  the change.
 - **G-84.** `turboCache()` signed with `TURBO_REMOTE_CACHE_SIGNATURE_KEY`
   whenever the env set it, where Turbo signs only under turbo.json's
   `remoteCache.signature: true`. A repo with a short key in its CI env
