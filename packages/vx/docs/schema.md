@@ -548,7 +548,9 @@ Semantics:
   rather than failing the scoped run. A `'^name.*'` pattern matching
   nothing anywhere stays legal, as `'name.*'` does.
 - **`'pkg#name'`** — missing pkg or task is a hard error (you named
-  them explicitly).
+  them explicitly). `'//#name'`, Turbo's spelling of the root package,
+  names the root project (D-39) here and in `cache.inputs.tasks`; with no
+  root project it is refused as such.
 - **Patterns (`'name.*'` / `'^name.*'`)** — `*` matches any run of
   characters in a task NAME; everything else is literal (the dotted
   namespace convention needs no escaping). A same-project pattern
