@@ -942,3 +942,10 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   out of the inferred set, so a deploy's commit SHA does not re-key every
   Next build (row: the CI vendor prefix is left out of framework
   inference only; red without the filter).
+- **G-88.** Nx caps its local cache at nx.json's `maxCacheSize`, with
+  `NX_MAX_CACHE_SIZE` above it (`resolveMaxCacheSize`); `nx()` read
+  neither, so a capped cache grew without bound under vx, as
+  turbo.json's `cacheMaxSize` did before G-49. It is now the run's
+  `cacheRetention.maxSize` when `vx.workspace.ts` sets no retention, in
+  Nx's grammar, `0` being no cap. Row (`workspace-keys.test` › nx.json
+  maxCacheSize): red without the change.
