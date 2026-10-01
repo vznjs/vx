@@ -862,7 +862,7 @@ export async function mapTurboWorkspace(
   // Turbo's transit node (its with-vitest example; the docs' pattern for a
   // task that runs in parallel yet re-runs on a dependency's edit):
   // `transit: { dependsOn: ["^transit"] }`, no script anywhere, and
-  // `test: { dependsOn: ["transit"] }`. Turbo hashes the no-op per package,
+  // `test: { dependsOn: ["transit"] }` (or `["^transit"]`). Turbo hashes the no-op per package,
   // over its files, so `test` keys on its dependencies' sources. Dropped,
   // vx keyed `test` on its own files alone: a dependency's edit was a hit.
   // Each package runs it as a key-only task, `true` and cached, as nx()'s
@@ -876,8 +876,9 @@ export async function mapTurboWorkspace(
     for (const name of defined) {
       for (const d of defFor(name)?.dependsOn ?? []) {
         if (d === `^${name}`) caretSelf.add(name)
-        else if (!d.startsWith('^') && !d.includes('#') && envDependency(d) === null)
-          sameRefs.add(d)
+        // create-t3-turbo reaches its `topo` node only as `^topo`.
+        else if (d.startsWith('^')) sameRefs.add(d.slice(1))
+        else if (!d.includes('#') && envDependency(d) === null) sameRefs.add(d)
       }
     }
   }
