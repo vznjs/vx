@@ -166,4 +166,11 @@ export function expandNxInputs(
     todos.push(`input ${JSON.stringify(entry)} not representable in vx`)
   }
   for (const entry of entries) expand(entry, new Set())
+  // Nx matches a project fileset with no positive glob against every project
+  // file, the negations taken out: nx-recipes' `noMarkdown` is
+  // `["!{projectRoot}/**/*.md"]`, and a `.tsx` edit re-runs its build while a
+  // `.md` edit hits (nx 17.1.3, 2026-10-01). Mapped as written, core refused
+  // the negation-only list and no task of the workspace ran.
+  if (into.files.length > 0 && into.files.every((f) => f.startsWith('!')))
+    into.files.unshift('**/*')
 }
