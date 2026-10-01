@@ -164,21 +164,23 @@ filter(s): …`) with `Did you mean <name>?` when a project name is within
 two edits, or when exactly one scoped project's name after its `/` is
 (`--filter vx-mcp` hints `@vzn/vx-mcp`).
 
-| Form            | Meaning                                                                                                                                                                                                         |
-| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `<pattern>`     | Match by package name. `*` matches any characters, including `/`.                                                                                                                                               |
-| `./<dir>`       | The package at `<dir>` alone, as Turbo and pnpm read it (`.` is the root project); a `<dir>` that is no package matches the packages under it (relative to workspace root; D-43).                               |
-| `{<dir>}`       | Same as `./<dir>`.                                                                                                                                                                                              |
-| `./<glob>`      | A glob over root-relative project dirs: `./packages/*` (direct children), `{apps/**}` (nested too). A path that names a project dir literally is read literally first, so `./packages/[abc]` is that directory. |
-| `.`             | The root project alone, when the root is a project (D-39); otherwise the packages under the root, i.e. every package, not the one you are standing in.                                                          |
-| `//`            | The root project alone, Turbo's name for it; matches nothing when the root is no project (D-46).                                                                                                                |
-| `<pattern>...`  | Match + all transitive dependencies (see below what an edge is).                                                                                                                                                |
-| `...<pattern>`  | Match + all transitive dependents.                                                                                                                                                                              |
-| `<pattern>^...` | Only the transitive dependencies, excluding the matched package itself.                                                                                                                                         |
-| `...^<pattern>` | Only the transitive dependents, excluding the matched package itself.                                                                                                                                           |
-| `<sel>[<ref>]`  | The packages `<sel>` (a name pattern or `{<dir>}`) selects that changed since `<ref>`, as Turbo and pnpm read `@scope/*[main]` (D-44).                                                                          |
-| `!<pattern>`    | Exclude packages matching `<pattern>`, from everything the includes select, in any order.                                                                                                                       |
-| `[<git-ref>]`   | Projects whose files changed since `<git-ref>` (`main`, `HEAD~5`, …).                                                                                                                                           |
+| Form              | Meaning                                                                                                                                                                                                         |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `<pattern>`       | Match by package name. `*` matches any characters, including `/`.                                                                                                                                               |
+| `./<dir>`         | The package at `<dir>` alone, as Turbo and pnpm read it (`.` is the root project); a `<dir>` that is no package matches the packages under it (relative to workspace root; D-43).                               |
+| `{<dir>}`         | Same as `./<dir>`.                                                                                                                                                                                              |
+| `./<glob>`        | A glob over root-relative project dirs: `./packages/*` (direct children), `{apps/**}` (nested too). A path that names a project dir literally is read literally first, so `./packages/[abc]` is that directory. |
+| `.`               | The root project alone, when the root is a project (D-39); otherwise the packages under the root, i.e. every package, not the one you are standing in.                                                          |
+| `//`              | The root project alone, Turbo's name for it; matches nothing when the root is no project (D-46).                                                                                                                |
+| `<pattern>...`    | Match + all transitive dependencies (see below what an edge is).                                                                                                                                                |
+| `...<pattern>`    | Match + all transitive dependents.                                                                                                                                                                              |
+| `<pattern>^...`   | Only the transitive dependencies, excluding the matched package itself.                                                                                                                                         |
+| `...^<pattern>`   | Only the transitive dependents, excluding the matched package itself.                                                                                                                                           |
+| `...<pattern>...` | Match + its dependents + the dependencies of all of them, as Turbo selects (`...db...` takes the packages the apps that use db build on).                                                                       |
+| `<sel>[<ref>]`    | The packages `<sel>` (a name pattern or `{<dir>}`) selects that changed since `<ref>`, as Turbo and pnpm read `@scope/*[main]` (D-44).                                                                          |
+| `<sel>...[<ref>]` | The packages `<sel>` selects that changed since `<ref>` or depend on one that did; no dependency is added (Turbo: `@acme/api...[HEAD]` is api when only its dependency changed).                                |
+| `!<pattern>`      | Exclude packages matching `<pattern>`, from everything the includes select, in any order.                                                                                                                       |
+| `[<git-ref>]`     | Projects whose files changed since `<git-ref>` (`main`, `HEAD~5`, …).                                                                                                                                           |
 
 An edge is a `package.json` workspace dependency (`dependencies`,
 `devDependencies`, `peerDependencies`, `optionalDependencies`; a peer

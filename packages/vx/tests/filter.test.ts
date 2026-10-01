@@ -166,6 +166,28 @@ describe('applyFilters', () => {
     ).toEqual(['app'])
   })
 
+  // Turbo 2.5.8 on create-t3-turbo: `...db...` ran the ui and validators
+  // db's dependent apps build on; vx ran db's own dependencies alone.
+  it('...pkg... also takes the dependencies of every dependent', () => {
+    const withKit = [
+      mkProject('app', `${ROOT}/packages/app`, ['ui', 'kit']),
+      ...projects.slice(1),
+      mkProject('kit', `${ROOT}/packages/kit`),
+    ]
+    const g = buildPackageGraph(withKit)
+    const sel = (raw: string) =>
+      [...applyFilters({ filters: [parseFilter(raw, ROOT)], projects: withKit, graph: g })].sort()
+    expect(sel('...ui...')).toEqual(['app', 'kit', 'ui', 'utils'])
+    // Turbo re-adds the package itself through its dependents' dependencies.
+    expect(sel('...^ui...')).toEqual(['app', 'kit', 'ui', 'utils'])
+    expect(sel('...ui^...')).toEqual(['app', 'kit', 'ui', 'utils'])
+    // CONTROL: one walk at a time is unchanged.
+    expect([sel('...ui'), sel('ui...')]).toEqual([
+      ['app', 'ui'],
+      ['ui', 'utils'],
+    ])
+  })
+
   it('...^pkg includes only the dependents, not the package itself (item 890)', () => {
     // cli.md listed the form; the `^` stayed in the name glob, so it matched
     // nothing and the run refused with "no projects matched".
@@ -542,6 +564,22 @@ describe('a selector narrowed by a git range (D-44)', () => {
     expect(sel('...{./libs/*}[HEAD]', ['core'])).toEqual(['@s/app', '@s/lib', 'core'])
     // CONTROL: a bare range is every changed project, as before.
     expect(sel('[HEAD]', ['core', '@s/app'])).toEqual(['@s/app', 'core'])
+  })
+
+  // Turbo 2.5.8 on create-t3-turbo, db edited: `@acme/*...[HEAD]` ran db
+  // and its five dependants, `@acme/api...[HEAD]` ran api alone. vx kept
+  // the `...` in the name glob and selected nothing.
+  it('`<name>...[ref]` is the named ones that changed or depend on one that did', () => {
+    expect(sel('@s/*...[HEAD]', ['core'])).toEqual(['@s/app', '@s/lib'])
+    expect(sel('@s/app...[HEAD]', ['core'])).toEqual(['@s/app'])
+    expect(sel('core...[HEAD]', ['@s/lib'])).toEqual([])
+    const f = parseFilter('@s/*...[HEAD]', ROOT)
+    expect([f.matcher, f.gitSince, f.withDeps, f.sinceViaDeps]).toEqual([
+      '@s/*',
+      'HEAD',
+      false,
+      true,
+    ])
   })
 
   it('CONTROL: an unbraced path keeps its brackets as a glob class', () => {

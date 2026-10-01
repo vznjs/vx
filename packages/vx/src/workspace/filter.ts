@@ -41,6 +41,12 @@ export interface ParsedFilter {
    * concrete set of project names before calling applyFilters.
    */
   gitSince?: string
+  /**
+   * `<name>...[<since>]`: the named packages that changed OR depend on one
+   * that did, as Turbo reads it (2.5.8: `@acme/api...[HEAD]` is api when
+   * only its dependency db changed). Not a walk: no dependency is added.
+   */
+  sinceViaDeps?: true
   /** A path form carrying a glob (`./packages/*`): matched over the root-relative project dir. */
   pathGlob?: Bun.Glob
   /** The workspace root `pathGlob` is relative to. */
@@ -94,9 +100,16 @@ export function parseFilter(raw: string, workspaceRoot: string): ParsedFilter {
   // An unbraced path keeps its brackets: `./packages/[abc]` is a glob
   // class, and Turbo takes a directory with a ref only as `{dir}[ref]`.
   const scoped = /^(.+)\[([^\]]+)\]$/.exec(s)
+  let sinceViaDeps = false
   if (scoped !== null && !scoped[1]!.startsWith('./') && scoped[1] !== '.') {
     s = scoped[1]!
     gitSince = scoped[2]!
+    // The name glob kept the `...` and matched nothing (create-t3-turbo,
+    // `@acme/*...[HEAD]`).
+    if (s.endsWith('...') && !s.endsWith('^...')) {
+      s = s.slice(0, -3)
+      sinceViaDeps = true
+    }
   }
 
   // `...`, `!`, `^...`: the operators with no project between them. An
@@ -122,6 +135,7 @@ export function parseFilter(raw: string, workspaceRoot: string): ParsedFilter {
       matcher: path.resolve(workspaceRoot),
       exactDir: true,
       ...(gitSince !== undefined ? { gitSince } : {}),
+      ...(sinceViaDeps ? { sinceViaDeps: true as const } : {}),
     }
   }
 
@@ -158,6 +172,7 @@ export function parseFilter(raw: string, workspaceRoot: string): ParsedFilter {
     matcher,
     ...(pathGlob !== undefined ? { pathGlob, pathRoot: workspaceRoot } : {}),
     ...(gitSince !== undefined ? { gitSince } : {}),
+    ...(sinceViaDeps ? { sinceViaDeps: true as const } : {}),
   }
 }
 
@@ -165,12 +180,18 @@ function matchProjects(
   filter: ParsedFilter,
   projects: ProjectMeta[],
   affectedByFilter: Map<ParsedFilter, Set<string>> | undefined,
+  graph: PackageGraph,
 ): string[] {
   // `[<since>]` selectors are pre-resolved by the caller (the parser
   // is pure; git access happens upstream). Use the provided set as
   // the match set for this filter.
   if (filter.gitSince !== undefined) {
-    const changed = affectedByFilter?.get(filter) ?? new Set<string>()
+    let changed = affectedByFilter?.get(filter) ?? new Set<string>()
+    if (filter.sinceViaDeps === true) {
+      changed = new Set(changed)
+      for (const name of [...changed])
+        for (const d of graph.transitiveDependents(name)) changed.add(d)
+    }
     if (filter.matcher === '') return [...changed]
     return matchSelector(filter, projects).filter((name) => changed.has(name))
   }
@@ -268,7 +289,7 @@ export function applyFilters(opts: ApplyFiltersOptions): Set<string> {
   // taken in argv order, so `onNoMatch` names the filters as typed.
   const excludes: Set<string>[] = []
   for (const f of opts.filters) {
-    const matched = matchProjects(f, opts.projects, opts.affectedByFilter)
+    const matched = matchProjects(f, opts.projects, opts.affectedByFilter, opts.graph)
     if (matched.length === 0) opts.onNoMatch?.(f)
     const expanded = new Set<string>()
     for (const name of matched) {
@@ -277,7 +298,14 @@ export function applyFilters(opts: ApplyFiltersOptions): Set<string> {
         for (const d of opts.graph.transitiveDeps(name)) expanded.add(d)
       }
       if (f.withDependents) {
-        for (const d of opts.graph.transitiveDependents(name)) expanded.add(d)
+        // Both walks: the dependents' own dependencies too, as Turbo 2.5.8
+        // selects (`...db...` on create-t3-turbo ran the ui and validators
+        // its apps build on; vx ran db's dependencies alone).
+        const both = f.withDeps || f.onlyDeps
+        for (const d of opts.graph.transitiveDependents(name)) {
+          expanded.add(d)
+          if (both) for (const dd of opts.graph.transitiveDeps(d)) expanded.add(dd)
+        }
       }
     }
     if (matched.length > 0 && expanded.size === 0) opts.onEmptyWalk?.(f, matched)
