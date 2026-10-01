@@ -254,6 +254,33 @@ function upstreamBuildOnWorker(tasks: GeneratedTask[]): void {
 const RUNS_MEMBERS =
   /(^|[\s;&|(])(turbo|nx|lerna|ultra|wireit|nps|moon|rush|vx)(\s|$)|\s(-r|--recursive|--filter|-F|--workspaces|-ws|--workspace|-w|-C|--dir|--cwd|--prefix|--if-present|--parallel|--stream)(\s|=|$)|\bworkspaces?\s+(foreach|run)\b|\bvp\s+run\s|\bcd\s/
 
+/** A package manager running a script by name: `pnpm build`, `npm run x`, `bun run x`. */
+const RUNS_SCRIPT =
+  /(?:^|[\s;&|(])(?:pnpm|npm|yarn|bun)\s+(?:run(?:-script)?\s+)?([^\s;&|()'"-][^\s;&|()'"]*)/g
+
+/**
+ * The scripts that run the members, directly or through another of these
+ * scripts: vite's `ci-docs` (`pnpm build && pnpm docs-build`) runs each
+ * member's build through the root's own `build` (`pnpm -r … run build`).
+ */
+function runningMembers(scripts: Readonly<Record<string, unknown>>): Set<string> {
+  const text = Object.entries(scripts).filter(
+    (e): e is [string, string] => typeof e[1] === 'string',
+  )
+  const out = new Set(text.filter(([, v]) => RUNS_MEMBERS.test(` ${v}`)).map(([n]) => n))
+  for (let grew = true; grew;) {
+    grew = false
+    for (const [n, v] of text) {
+      if (out.has(n)) continue
+      if ([...v.matchAll(RUNS_SCRIPT)].some((m) => out.has(m[1]!))) {
+        out.add(n)
+        grew = true
+      }
+    }
+  }
+  return out
+}
+
 /**
  * `outside`: the root manifest when the root is no member (pnpm's and
  * Yarn's default), whose own scripts (`lint: eslint .`) went unmapped
@@ -296,12 +323,15 @@ export function migrateScripts(
       .filter(([, v]) => typeof v === 'string' && v !== '')
       .map(([n]) => n),
   )
-  const rootScripts = (meta: ProjectMeta): Record<string, unknown> =>
-    Object.fromEntries(
-      Object.entries(scriptsOf(meta)).filter(
-        ([n, v]) => typeof v === 'string' && !memberTasks.has(n) && !RUNS_MEMBERS.test(` ${v}`),
+  const rootScripts = (meta: ProjectMeta): Record<string, unknown> => {
+    const scripts = scriptsOf(meta)
+    const runs = runningMembers(scripts)
+    return Object.fromEntries(
+      Object.entries(scripts).filter(
+        ([n, v]) => typeof v === 'string' && !memberTasks.has(n) && !runs.has(n),
       ),
     )
+  }
   const rootMapped =
     rootMeta === undefined
       ? 0
