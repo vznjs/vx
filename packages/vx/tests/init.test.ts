@@ -118,6 +118,24 @@ describe('vx init source detection', () => {
   )
 
   it(
+    'the run init points at loads over a dependency cycle',
+    async () => {
+      const root = await makeRoot('vx-init-cycle-')
+      try {
+        await addPackage(root, 'a', { build: 'true' }, { b: 'workspace:*' })
+        await addPackage(root, 'b', { build: 'true' }, { a: 'workspace:*' })
+        expect((await vx(root, ['init'])).code).toBe(0)
+        Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
+        const plan = await vx(root, ['run', 'build', '--all', '--dry=json'])
+        expect([plan.code, plan.err]).toEqual([0, ''])
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
     '`vx migrate` points at @vzn/vx-migrate and exits 1',
     async () => {
       // The verb left core with the Turbo and Nx mappers; a remembered
@@ -351,6 +369,51 @@ describe('migrateScripts', () => {
     expect(notes({ name: 'r', scripts: [] })).toEqual([])
     expect(notes({ name: 'r' })).toEqual([])
     expect(notes()).toEqual([])
+  })
+
+  it('a cycle of builds waits on the builds outside it, never on `^build` (nuxt)', () => {
+    const meta = (
+      name: string,
+      scripts: Record<string, string>,
+      deps: string[] = [],
+      dev: string[] = [],
+    ) => ({
+      name,
+      dir: `/w/${name}`,
+      packageJson: {
+        name,
+        scripts,
+        dependencies: Object.fromEntries(deps.map((d) => [d, 'workspace:*'])),
+        devDependencies: Object.fromEntries(dev.map((d) => [d, 'workspace:*'])),
+      } as never,
+      configPath: null,
+    })
+    const plan = migrateScripts([
+      meta('core', { build: 'b' }, ['types', 'server']),
+      meta('server', { build: 'b' }, ['kit'], ['core']),
+      meta('kit', { build: 'b' }),
+      meta('types', {}, ['kit']),
+      meta('app', { build: 'b' }, ['core']),
+    ])
+    const at = (name: string) =>
+      plan.projects.find((p) => p.name === name)!.tasks.find((t) => t.name === 'build')!
+    const todo =
+      'its package is in a dependency cycle (core, server), where `^build` would refuse the run — it waits on the builds outside the cycle; order the ones inside it by hand'
+    // core reaches kit through types, which has no build, as `^build` walks.
+    expect([at('core').task!['dependsOn'], at('core').todos.includes(todo)]).toEqual([
+      ['kit#build'],
+      true,
+    ])
+    expect([at('server').task!['dependsOn'], at('server').todos.includes(todo)]).toEqual([
+      ['kit#build'],
+      true,
+    ])
+    // CONTROLS: outside the cycle, `^build` and no TODO.
+    expect([at('app').task!['dependsOn'], at('app').todos.includes(todo)]).toEqual([
+      ['^build'],
+      false,
+    ])
+    expect(at('kit').task!['dependsOn']).toEqual(['^build'])
   })
 
   it('a `build` that only delegates puts the cache TODO on the task that works (item 1045)', () => {
