@@ -242,7 +242,15 @@ function upstreamBuildOnWorker(tasks: GeneratedTask[]): void {
   if (!at.todos.includes(todo)) at.todos.push(todo)
 }
 
-export function migrateScripts(metas: readonly ProjectMeta[]): MigrationPlan {
+/**
+ * `outside`: the root manifest when the root is no member (pnpm's and
+ * Yarn's default), whose own scripts (`lint: eslint .`) went unmapped
+ * without a word.
+ */
+export function migrateScripts(
+  metas: readonly ProjectMeta[],
+  outside?: Readonly<Record<string, unknown>>,
+): MigrationPlan {
   const projects: GeneratedProject[] = []
   const hookMemo = new Map<string, string | null>()
   // The workspace root among members: its scripts run the workspace
@@ -252,9 +260,21 @@ export function migrateScripts(metas: readonly ProjectMeta[]): MigrationPlan {
   // replaced it so (D-45). A lone package is its repo's project and maps.
   const root = metas.length > 1 ? workspaceRootOf(metas) : undefined
   const notes: string[] = []
-  if (root !== undefined) {
+  const outsideScripts = outside?.['scripts']
+  const outsideRuns =
+    typeof outsideScripts === 'object' &&
+    outsideScripts !== null &&
+    Object.values(outsideScripts).some((v) => typeof v === 'string' && v !== '')
+  const rootName =
+    root?.name ??
+    (outsideRuns
+      ? typeof outside?.['name'] === 'string'
+        ? outside['name']
+        : 'package.json'
+      : undefined)
+  if (rootName !== undefined) {
     notes.push(
-      `${root.name} (the workspace root) not mapped: its scripts run the workspace; declare its own tasks in its vx.config by hand`,
+      `${rootName} (the workspace root) not mapped: its scripts run the workspace; declare its own tasks in its vx.config by hand`,
     )
   }
   for (const meta of metas) {

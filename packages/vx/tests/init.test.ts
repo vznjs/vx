@@ -96,6 +96,28 @@ describe('vx init source detection', () => {
   )
 
   it(
+    'a root outside the members with scripts of its own is named as not mapped',
+    async () => {
+      const root = await makeRoot('vx-init-root-')
+      const note =
+        'fixture-root (the workspace root) not mapped: its scripts run the workspace; declare its own tasks in its vx.config by hand'
+      try {
+        await addPackage(root, 'a', { build: 'tsc' })
+        // CONTROL: a root with no scripts says nothing.
+        expect((await vx(root, ['init', '--dry'])).out.split('\n')).not.toContain(note)
+        await writeFile(
+          path.join(root, 'package.json'),
+          JSON.stringify({ name: 'fixture-root', private: true, scripts: { lint: 'eslint .' } }),
+        )
+        expect((await vx(root, ['init', '--dry'])).out.split('\n')).toContain(note)
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
     '`vx migrate` points at @vzn/vx-migrate and exits 1',
     async () => {
       // The verb left core with the Turbo and Nx mappers; a remembered
@@ -315,6 +337,22 @@ describe('migrateScripts', () => {
   // The cache TODO went only on a `build` with a command, so a delegating
   // `build` wrote none anywhere, while the header said `build` carries one
   // (item 1045). It rides with `^build`, on the task that works.
+  it('an outside root is named by its manifest, and only when it has a script', () => {
+    const meta = { name: 'a', dir: '/w/a', packageJson: { name: 'a' } as never, configPath: null }
+    const notes = (outside?: Record<string, unknown>) =>
+      migrateScripts([meta], outside).notes.filter((n) => n.includes('the workspace root'))
+    expect(notes({ name: 'r', scripts: { lint: 'eslint .' } })).toEqual([
+      'r (the workspace root) not mapped: its scripts run the workspace; declare its own tasks in its vx.config by hand',
+    ])
+    expect(notes({ scripts: { lint: 'eslint .' } })[0]).toStartWith(
+      'package.json (the workspace root)',
+    )
+    expect(notes({ name: 'r', scripts: { lint: '' } })).toEqual([])
+    expect(notes({ name: 'r', scripts: [] })).toEqual([])
+    expect(notes({ name: 'r' })).toEqual([])
+    expect(notes()).toEqual([])
+  })
+
   it('a `build` that only delegates puts the cache TODO on the task that works (item 1045)', () => {
     const cacheTodos = (scripts: unknown) =>
       Object.fromEntries(
