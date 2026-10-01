@@ -63,12 +63,13 @@ describe('trackedKinds', () => {
     ])
     const of = (rel: string) => {
       const k = kinds(rel)
-      return { exts: [...k.exts].sort(), dirs: [...k.dirs].sort() }
+      return { exts: [...k.exts].sort(), dirs: [...k.dirs].sort(), tops: [...k.tops].sort() }
     }
-    expect(of('packages/a')).toEqual({ exts: ['ts'], dirs: ['src'] })
+    expect(of('packages/a')).toEqual({ exts: ['ts'], dirs: ['src'], tops: ['README', 'src'] })
     expect(of('.')).toEqual({
       exts: ['json', 'ts', 'xml'],
       dirs: ['a', 'ab', 'lib', 'packages', 'src'],
+      tops: ['package.json', 'packages'],
     })
     expect(of('')).toEqual(of('.'))
   })

@@ -691,6 +691,41 @@ describe('output negation', () => {
   )
 
   it(
+    'a first segment no tracked top-level entry matches stays cached (tldraw `dist-*/**`)',
+    async () => {
+      await pkg('app', { build: 'mkdir -p dist-esm && echo a > dist-esm/a.js' })
+      await pkg('lib', { build: 'mkdir -p dist-esm && echo l > dist-esm/l.js' })
+      const lib = path.join(root, 'packages', 'lib')
+      await mkdir(path.join(lib, 'dist-types'), { recursive: true })
+      await writeFile(path.join(lib, 'dist-types', 'keep.d.ts'), 'kept\n')
+      await writeFile(
+        path.join(root, 'turbo.json'),
+        JSON.stringify({ tasks: { build: { outputs: ['dist-*/**'] } } }),
+      )
+      Bun.spawnSync({ cmd: ['git', 'add', '-A'], cwd: root })
+      Bun.spawnSync({ cmd: ['git', 'add', '-f', 'packages/lib/dist-types/keep.d.ts'], cwd: root })
+      const log = silent()
+      const plan = await planRun({ cwd: root, tasks: ['build'], log })
+      const cacheOf = (id: string) => plan.tasks.find((t) => t.node.id === id)!.node.config.cache
+      expect(cacheOf('app#build')?.outputs.files).toEqual(['dist-*/**'])
+      // CONTROL: lib tracks a file under a `dist-*` directory, which the clean would reach.
+      expect(cacheOf('lib#build')).toBeUndefined()
+      expect(log.lines.join('\n')).toContain(
+        '[@vzn/vx-migrate] lib#build: output "dist-*/**": a wildcard first segment reaches the sources',
+      )
+      const build = () => run({ cwd: root, tasks: ['build'], log: silent(), handleSignals: false })
+      const out = path.join(root, 'packages', 'app', 'dist-esm', 'a.js')
+      expect((await build()).ok).toBe(true)
+      await rm(out)
+      const second = await build()
+      expect(second.outcomes.find((o) => o.node.id === 'app#build')?.status).toBe('cache-hit')
+      expect(await Bun.file(out).text()).toBe('a\n')
+      expect(await Bun.file(path.join(lib, 'dist-types', 'keep.d.ts')).text()).toBe('kept\n')
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a top-level output beside no config of its spelling stays cached, until one is added (sanity `*.js`)',
     async () => {
       await pkg('app', { build: 'echo shim > cli.mjs' })

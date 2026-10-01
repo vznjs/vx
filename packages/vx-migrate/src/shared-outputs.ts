@@ -76,8 +76,10 @@ export function ownFileTodo(own: { glob: string; file: string }): string {
  * extension no tracked file carries (n8n's `*.xml` junit reports, 143 test
  * tasks), and `**` followed by `/<dir>/**` where no tracked file sits
  * under a directory of that name (vercel/ai's builds, `dist` at any depth,
- * 69 of them). `*.ts` beside tracked TypeScript, or that form over `src`,
- * is not.
+ * 69 of them). A third: a first segment with no `**` that names no tracked
+ * top-level entry, and so reaches nothing tracked (tldraw's `dist-*`
+ * directories, 35 builds). `*.ts` beside tracked TypeScript, that form over
+ * `src`, or a bare `*` directory beside any tracked file is not.
  */
 export function wildcardOutput(
   files: readonly string[],
@@ -95,7 +97,12 @@ function untrackedKind(glob: string, tracked: TrackedKinds | undefined): boolean
   const ext = /^[^/]*\.([A-Za-z0-9]+)$/.exec(g)?.[1]
   if (ext !== undefined) return !tracked.exts.has(ext.toLowerCase())
   const dir = /^\*\*\/([^*?[\]{}()!/]+)\/\*\*$/.exec(g)?.[1]
-  return dir !== undefined && !tracked.dirs.has(dir)
+  if (dir !== undefined) return !tracked.dirs.has(dir)
+  // Brackets, parens and `!` are left out: vx and Bun.Glob read them apart.
+  const first = /^([^/[\]()!\\]+)\//.exec(g)?.[1]
+  if (first === undefined || first.includes('**')) return false
+  const matcher = new Bun.Glob(first)
+  return ![...tracked.tops].some((top) => matcher.match(top))
 }
 
 export function wildcardTodo(glob: string): string {
