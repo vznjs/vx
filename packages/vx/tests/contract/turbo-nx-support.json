@@ -87,7 +87,7 @@
   {
     "key": "turbo.json remoteCache",
     "status": "mapped",
-    "reason": "`turboCache()` reads `apiUrl`, `teamId`, `teamSlug` and `enabled`, below env vars and options."
+    "reason": "`turboCache()` reads `apiUrl`, `teamId`, `teamSlug`, `enabled`, `signature`, `timeout` and `uploadTimeout`, below env vars and options."
   },
   {
     "key": "turbo.json tags",
@@ -206,8 +206,8 @@
   },
   {
     "key": "turbo.json remoteCache.signature",
-    "status": "not-supported",
-    "reason": "The flag is ignored; signing is on whenever a signature key is set."
+    "status": "supported",
+    "reason": "`true` signs and verifies with `TURBO_REMOTE_CACHE_SIGNATURE_KEY`, as in Turbo, and `TURBO_SIGNATURE` (1 or 0) overrides it; with signing off the env key is not read. `turboCache({ signatureKey })` signs either way."
   },
   {
     "key": "turbo.json remoteCache.teamId",
