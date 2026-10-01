@@ -102,6 +102,17 @@ const bin = platformBinary()
 // is available (a source checkout, or an unsupported platform + Bun installed).
 const source = join(here, sourceEntry)
 if (bin !== undefined) {
+  // Node >= 22.15 replaces this process with vx: no child to spawn, wait
+  // for and forward signals to, ~9 ms of a ~54 ms launch (min of 21,
+  // interleaved, Node 22.22, 2026-10-01). Older Node spawns.
+  if (typeof process.execve === 'function') {
+    try {
+      process.execve(bin, [bin, ...args], process.env)
+    } catch {
+      // A refusal (a binary execve cannot start) falls back to the spawn,
+      // which reports it.
+    }
+  }
   run(bin, args)
 } else if (existsSync(source) && hasBun()) {
   run('bun', ['--no-env-file', '--no-install', source, ...args])
