@@ -1734,7 +1734,8 @@ A script reading `$npm_package_version`, `$npm_package_name` or
 them under `exec.env.define`, the first two read from an imported
 `package.json` so a version bump reaches them; any other `$npm_*` it
 reads gets a TODO (D-34). Among several packages, a workspace root
-script that runs the members (`pnpm -r build`, `--filter`, `-C`, npm's
+script that runs the members (`pnpm -r build`, `--filter`, `-C`, Yarn's
+`--cwd`, npm's `--prefix`, npm's
 and Yarn's workspace flags, `cd`, turbo, nx, lerna, vx itself) is not mapped, and
 neither is one whose name a member's task carries, so `--all` never runs
 a check twice (D-45). The rest check the whole repo (`lint: oxlint .`,
