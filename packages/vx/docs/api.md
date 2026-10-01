@@ -1407,6 +1407,7 @@ export interface PreparedRun {
   unresolvedTasks: readonly string[]
   declaredElsewhere: readonly string[]
   projects: ReadonlyMap<string, ProjectEntry>
+  hintProjects: ReadonlyMap<string, ProjectEntry>
   anyProjectConfig: boolean
   workspaceFingerprint: string
   fingerprintWatch: FingerprintWatch

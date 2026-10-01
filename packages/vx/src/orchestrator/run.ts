@@ -273,7 +273,7 @@ async function runOnBus(
   // case too; the message is identical, so that branch stays below.
   if (prepared.unresolvedTasks.length > 0) {
     log.status(
-      `No projects declare task(s): ${prepared.unresolvedTasks.join(', ')}.${elsewhereHint(prepared.declaredElsewhere)}${didYouMean(prepared.unresolvedTasks, prepared.projects)}${await initHint(prepared)}`,
+      `No projects declare task(s): ${prepared.unresolvedTasks.join(', ')}.${elsewhereHint(prepared.declaredElsewhere)}${didYouMean(prepared.unresolvedTasks, prepared.hintProjects)}${await initHint(prepared)}`,
     )
     await teardown()
     prepared.cache.close()
@@ -1210,7 +1210,7 @@ export async function planRun(options: RunOptions): Promise<RunPlan> {
       return {
         tasks: [],
         unresolvedTasks: prepared.unresolvedTasks,
-        unresolvedHint: `${elsewhereHint(prepared.declaredElsewhere)}${didYouMean(prepared.unresolvedTasks, prepared.projects)}${await initHint(prepared)}`,
+        unresolvedHint: `${elsewhereHint(prepared.declaredElsewhere)}${didYouMean(prepared.unresolvedTasks, prepared.hintProjects)}${await initHint(prepared)}`,
       }
     }
     if (prepared.empty === 'no-tasks-declared' && prepared.declaredElsewhere.length > 0) {
@@ -1323,7 +1323,7 @@ function didYouMean(
     }
     const [proj, task] = [spec.slice(0, at), spec.slice(at + 1)]
     if (!projects.has(proj)) {
-      const p = nearest(proj, projects.keys())
+      const p = projectNamed(proj, projects) ?? nearest(proj, projects.keys())
       if (p !== undefined && tasksOf(projects.get(p)).includes(task)) hints.add(`${p}#${task}`)
       continue
     }
@@ -1344,10 +1344,26 @@ export function nxProjectTarget(
 ): string | undefined {
   const colon = spec.indexOf(':')
   if (colon <= 0 || spec.includes('#')) return undefined
-  const [project, task] = [spec.slice(0, colon), spec.slice(colon + 1)]
-  return projects.get(project)?.config.tasks?.[task] === undefined
+  const [typed, task] = [spec.slice(0, colon), spec.slice(colon + 1)]
+  const project = projectNamed(typed, projects)
+  return project === undefined || projects.get(project)?.config.tasks?.[task] === undefined
     ? undefined
     : `${project}#${task}`
+}
+
+/**
+ * The project a typed name means: itself, else the one project whose
+ * scoped name ends in it. Nx names nx-examples' `@nx-example/cart` `cart`,
+ * and `nx run cart:build` is what its users type.
+ */
+export function projectNamed(
+  typed: string,
+  projects: ReadonlyMap<string, ProjectEntry>,
+): string | undefined {
+  if (projects.has(typed)) return typed
+  if (typed.includes('/')) return undefined
+  const scoped = [...projects.keys()].filter((n) => n.startsWith('@') && n.endsWith(`/${typed}`))
+  return scoped.length === 1 ? scoped[0] : undefined
 }
 
 /** The executed, keyed outcomes of a run — what flakiness is judged on. */
