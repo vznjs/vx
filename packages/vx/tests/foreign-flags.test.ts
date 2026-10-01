@@ -32,6 +32,11 @@ const SAME: ReadonlyArray<readonly string[]> = [
 ]
 
 const ALIAS: ReadonlyArray<readonly [readonly string[], readonly string[]]> = [
+  [
+    ['-F', 'web'],
+    ['--filter', 'web'],
+  ],
+  [['-F=web...'], ['--filter=web...']],
   [['--continue=dependencies-successful'], ['--continue=deps-ok']],
   [['--dry-run'], ['--dry']],
   [['--dry-run=json'], ['--dry=json']],
@@ -122,6 +127,12 @@ describe('Turbo and Nx flags on vx run', () => {
     for (const [argv, error] of REFUSE) {
       expect([argv, parseRunArgs(['build', ...argv, '--dry']).error]).toEqual([argv, error])
     }
+  })
+
+  // Turbo's `-F` is `--filter`; it read as an unknown flag, and bare it
+  // still did, where `--filter` bare asks for the value.
+  it('a bare -F asks for the value, as a bare --filter does', () => {
+    expect(parseRunArgs(['build', '-F']).error).toBe(parseRunArgs(['build', '--filter']).error)
   })
 
   it("arguments after -- are the task's, never translated", () => {
