@@ -1350,7 +1350,13 @@ describe('turbo-map: `with`', () => {
         web: { scripts: { 'build:test': 't' } },
       },
     )
-    expect(task(m, 'billing', 'build').task).toEqual({ dependsOn: ['^build', '^db:generate'] })
+    // No package has a `build` script and `build:test` reaches it as
+    // `^build`: Turbo's transit node, key-only over billing's files.
+    expect(task(m, 'billing', 'build').task).toEqual({
+      cache: { inputs: { files: ['**/*'] }, outputs: { files: [] } },
+      dependsOn: ['^build', '^db:generate'],
+      exec: { command: 'true' },
+    })
   })
 
   it('a no-script group whose own edges all drop still exists for the edges that name it', async () => {

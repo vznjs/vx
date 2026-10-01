@@ -386,6 +386,44 @@ describe('a transit node', () => {
 // with-vite: `ui` has no `build`, its apps bundle it, and Turbo hashes
 // its no-op `ui#build` into theirs. Walked past, an edit to ui replayed
 // both apps' builds from the cache.
+// create-t3-turbo: `topo: { dependsOn: ["^topo"] }` with no script anywhere, and
+// `typecheck: { dependsOn: ["^topo"] }`. Reached only through `^topo`, the
+// node was dropped with its edges, and a dependency's edit replayed the
+// dependant's typecheck.
+describe('a transit node reached through `^name`', () => {
+  it(
+    "keys a dependant's task on its dependencies' sources",
+    async () => {
+      await writeFile(
+        path.join(root, 'turbo.json'),
+        JSON.stringify({
+          tasks: {
+            topo: { dependsOn: ['^topo'] },
+            typecheck: { dependsOn: ['^topo'], inputs: ['src/**'] },
+          },
+        }),
+      )
+      await writeFile(
+        path.join(root, 'packages', 'app', 'package.json'),
+        JSON.stringify({
+          name: 'app',
+          dependencies: { lib: 'workspace:*' },
+          scripts: { typecheck: 'echo t' },
+        }),
+      )
+      Bun.spawnSync({ cmd: ['git', 'add', '-A'], cwd: root })
+      const key = async () => {
+        const plan = await planRun({ cwd: root, tasks: ['app#typecheck'], log: silent() })
+        return plan.tasks.find((t) => t.node.id === 'app#typecheck')!.hash
+      }
+      const before = await key()
+      await writeFile(path.join(root, 'packages', 'lib', 'src', 'index.js'), '// edited\n')
+      expect(await key()).not.toBe(before)
+    },
+    TIMEOUT,
+  )
+})
+
 describe("a package without a task's script that others run", () => {
   it(
     'keys its dependants on its sources, and cleans nothing of its own',
