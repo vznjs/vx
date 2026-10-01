@@ -151,8 +151,24 @@ describe('Turbo and Nx flags on vx run', () => {
     expect(cells(cli)).toContain(`${cells(renderForeignFlags())}\n`)
   })
 
-  it('`vx run-many` and `vx affected` name the vx run that does it', () => {
-    for (const verb of ['run-many', 'affected']) {
+  // Every Turbo or Nx verb in the table, `nx graph` and `turbo ls` among
+  // them, said `unknown command` with no way on before E-98.
+  it('a Turbo or Nx verb names what does it in vx', () => {
+    const verbs = [
+      'run-many',
+      'affected',
+      'graph',
+      'ls',
+      'query',
+      'reset',
+      'daemon',
+      'login',
+      'logout',
+      'link',
+      'unlink',
+    ]
+    expect(Object.keys(FOREIGN_VERBS).sort()).toEqual([...verbs].sort())
+    for (const verb of verbs) {
       for (const argv of [
         [verb, '-t', 'build'],
         ['help', verb],
