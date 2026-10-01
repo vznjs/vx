@@ -558,9 +558,3 @@ walked on fixtures.
   short at a word that leads exactly one accepted flag now names it.
   Row: `cli.test.ts` › every verb's unknown flag, now with
   `cache prune --dry`; red without the change.
-- **E-101.** `vx show //#build` and `vx why //#build` read `//` as a
-  project name ("unknown project", "no recorded runs"), as `vx run` did
-  before E-100. Both now take `//#task` as the root project's task: show
-  by the discovered root, why by the root package.json's name. Row
-  (`root-project.test.ts` › show and why take //#task as the root
-  project's task): red with either verb's change reverted.
