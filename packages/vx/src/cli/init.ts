@@ -180,7 +180,9 @@ async function adopt(
       : `wrote ${name}.`
   const cacheLine =
     remote === undefined
-      ? ''
+      ? runner === 'nx' && usesNxCloud(root)
+        ? 'nx.json connects Nx Cloud, whose cache vx cannot share: runs cache on this machine (nxCache() serves a self-hosted Nx cache).\n'
+        : ''
       : kept && !readFileSync(path.join(root, existing), 'utf8').includes(`${cache}(`)
         ? `${remote}: add ${cache}() from @vzn/vx-migrate to its plugins and vx shares that remote cache.\n`
         : kept
@@ -195,6 +197,31 @@ async function adopt(
 
 const REMOTE_CACHE = { turbo: 'turboCache', nx: 'nxCache' } as const
 
+/**
+ * nx.json names an Nx Cloud workspace (`nxCloudId`, `nxCloudAccessToken`,
+ * or the legacy `nx-cloud` runner). Its wire is Nx's own, so a user who
+ * expected their remote cache under vx heard nothing and ran cold.
+ */
+function usesNxCloud(root: string): boolean {
+  let json: {
+    nxCloudId?: unknown
+    nxCloudAccessToken?: unknown
+    tasksRunnerOptions?: { default?: { runner?: unknown } }
+  } | null
+  try {
+    json = Bun.JSONC.parse(readFileSync(path.join(root, 'nx.json'), 'utf8')) as typeof json
+  } catch {
+    return false
+  }
+  const set = (v: unknown) => typeof v === 'string' && v !== ''
+  const runner = json?.tasksRunnerOptions?.default?.runner
+  return (
+    set(json?.nxCloudId) ||
+    set(json?.nxCloudAccessToken) ||
+    (typeof runner === 'string' && /(^|\/)nx-cloud$/.test(runner))
+  )
+}
+
 /** The variable each runner's self-hosted remote cache is set by, as its plugin reads it. */
 const REMOTE_CACHE_ENV = { turbo: 'TURBO_TOKEN', nx: 'NX_SELF_HOSTED_REMOTE_CACHE_SERVER' } as const
 
@@ -202,7 +229,7 @@ const CI_FILES = ['.gitlab-ci.yml', '.circleci/config.yml']
 
 /**
  * Where the repo shows a remote cache its runner uses, or undefined: turbo.json's
- * enabled `remoteCache`, or a CI file that sets the runner's cache variable (a
+ * enabled `remoteCache`, a `turbo link`ed `.turbo/config.json`, or a CI file that sets the runner's cache variable (a
  * local repo holds no token; CI does).
  */
 function remoteCacheSignal(root: string, runner: 'turbo' | 'nx'): string | undefined {
@@ -221,6 +248,21 @@ function remoteCacheSignal(root: string, runner: 'turbo' | 'nx'): string | undef
         if ((rc as { enabled?: unknown }).enabled === false) return undefined
         return `${f} names a remoteCache`
       }
+    }
+    // `turbo link` writes the team here (gitignored, on the machine that
+    // linked); turboCache() reads it, so a linked repo has a remote cache.
+    let linked: unknown
+    try {
+      linked = JSON.parse(readFileSync(path.join(root, '.turbo', 'config.json'), 'utf8'))
+    } catch {}
+    if (
+      typeof linked === 'object' &&
+      linked !== null &&
+      Object.entries(linked).some(
+        ([k, v]) => /^(teamid|teamslug|token)$/i.test(k) && typeof v === 'string' && v !== '',
+      )
+    ) {
+      return '.turbo/config.json links a team (turbo link)'
     }
   }
   const variable = REMOTE_CACHE_ENV[runner]

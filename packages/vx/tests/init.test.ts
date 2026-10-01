@@ -851,7 +851,24 @@ describe('vx init — the generated build is not a cached no-op', () => {
         },
       ],
       ['disabled', { 'turbo.json': '{ "remoteCache": { "enabled": false } }\n' }],
+      // `turbo link` writes the team, its keys in either case.
+      ['turbo link', { 'turbo.json': '{}\n', '.turbo/config.json': '{ "teamid": "team_1" }\n' }],
+      ['an empty link', { 'turbo.json': '{}\n', '.turbo/config.json': '{ "teamId": "" }\n' }],
+      [
+        'linked, disabled',
+        {
+          'turbo.json': '{ "remoteCache": { "enabled": false } }\n',
+          '.turbo/config.json': '{ "teamId": "team_1" }\n',
+        },
+      ],
       ['nx with a Turbo token', { 'nx.json': '{}\n', '.gitlab-ci.yml': 'TURBO_TOKEN: x\n' }],
+      // Nx Cloud is a wire vx does not speak: said, not declared.
+      ['nx cloud', { 'nx.json': '{ "nxCloudId": "abc" }\n' }],
+      [
+        'nx cloud, legacy runner',
+        { 'nx.json': '{ "tasksRunnerOptions": { "default": { "runner": "@nrwl/nx-cloud" } } }\n' },
+      ],
+      ['nx, an empty cloud id', { 'nx.json': '{ "nxCloudId": "" }\n' }],
       // A line that names the variable does not set it (J's lead).
       [
         'a comment naming TURBO_TOKEN',
@@ -904,7 +921,32 @@ describe('vx init — the generated build is not a cached no-op', () => {
         ],
       ],
       disabled: [0, ["import { turbo } from '@vzn/vx-migrate'"]],
+      'turbo link': [
+        0,
+        [
+          "import { turbo, turboCache } from '@vzn/vx-migrate'",
+          'export default { plugins: [turbo(), turboCache()] }',
+          'turboCache(): .turbo/config.json links a team (turbo link), so vx shares that remote cache (inert where the variable is unset).',
+        ],
+      ],
+      'an empty link': [0, ["import { turbo } from '@vzn/vx-migrate'"]],
+      'linked, disabled': [0, ["import { turbo } from '@vzn/vx-migrate'"]],
       'nx with a Turbo token': [0, ["import { nx } from '@vzn/vx-migrate'"]],
+      'nx cloud': [
+        0,
+        [
+          "import { nx } from '@vzn/vx-migrate'",
+          'nx.json connects Nx Cloud, whose cache vx cannot share: runs cache on this machine (nxCache() serves a self-hosted Nx cache).',
+        ],
+      ],
+      'nx cloud, legacy runner': [
+        0,
+        [
+          "import { nx } from '@vzn/vx-migrate'",
+          'nx.json connects Nx Cloud, whose cache vx cannot share: runs cache on this machine (nxCache() serves a self-hosted Nx cache).',
+        ],
+      ],
+      'nx, an empty cloud id': [0, ["import { nx } from '@vzn/vx-migrate'"]],
       'a comment naming TURBO_TOKEN': [0, ["import { turbo } from '@vzn/vx-migrate'"]],
       'disabled, with a CI token': [0, ["import { turbo } from '@vzn/vx-migrate'"]],
     })

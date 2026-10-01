@@ -50,8 +50,9 @@ The `next:` line uses your lockfile's manager (`pnpm add -D -w …` beside
 to the plugins, or `--force` replaces the file.
 
 Where the repo shows a remote cache (an enabled `remoteCache` in
-turbo.json, or `TURBO_TOKEN` in a GitHub Actions, GitLab or CircleCI
-file), the file declares `turboCache()` too, and init says why:
+turbo.json, a `.turbo/config.json` that `turbo link` wrote, or
+`TURBO_TOKEN` set in a GitHub Actions, GitLab or CircleCI file), the file
+declares `turboCache()` too, and init says why:
 
 ```text
 turboCache(): .github/workflows/ci.yml sets TURBO_TOKEN, so vx shares that remote cache (inert where the variable is unset).
@@ -126,7 +127,8 @@ The command itself comes from your `package.json` script, with its
 1. Install vx: `npm install -D @vzn/vx` (pnpm: `pnpm add -D -w @vzn/vx`).
 2. Run `npx vx init`. Beside `nx.json` it writes this `vx.workspace.ts`
    and nothing else. With `turbo.json` there too, it declares `turbo()`.
-   A CI file that names `NX_SELF_HOSTED_REMOTE_CACHE_SERVER` adds `nxCache()`.
+   A CI file that sets `NX_SELF_HOSTED_REMOTE_CACHE_SERVER` adds `nxCache()`;
+   an Nx Cloud workspace is named instead, since vx cannot share its cache.
 3. Run the `next:` line it prints. It installs `@vzn/vx-migrate`, then
    runs what `nx run-many -t build` ran, under vx's cache.
 4. Write the resolved graph: `nx graph --file=.nx/workspace-data/project-graph.json`.
