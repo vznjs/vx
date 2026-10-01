@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { spareTrackedOutputs } from '../src/tracked-outputs.js'
+import { spareTrackedOutputs, trackedExtensions } from '../src/tracked-outputs.js'
 
 const task = (outputs: Record<string, string[]>) => ({
   name: 'build',
@@ -50,5 +50,19 @@ describe('spareTrackedOutputs', () => {
       [17, 'vx cleans outputs before a run, so they are taken back with `!` and kept'],
       ['uncached', 'task runs uncached; declare the exact outputs in a vx.config to cache it'],
     ])
+  })
+})
+
+describe('trackedExtensions', () => {
+  it('reads each directory’s own files, the root’s all of them, lower-cased', () => {
+    const exts = trackedExtensions([
+      'package.json',
+      'packages/a/src/index.TS',
+      'packages/a/README',
+      'packages/ab/pom.xml',
+    ])
+    expect([...exts('packages/a')].sort()).toEqual(['ts'])
+    expect([...exts('.')].sort()).toEqual(['json', 'ts', 'xml'])
+    expect([...exts('')].sort()).toEqual(['json', 'ts', 'xml'])
   })
 })
