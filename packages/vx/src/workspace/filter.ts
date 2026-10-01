@@ -239,7 +239,15 @@ function matchSelector(filter: ParsedFilter, projects: ProjectMeta[]): string[] 
   for (const p of projects) {
     if (re.test(p.name)) out.push(p.name)
   }
-  return out
+  if (out.length > 0 || filter.matcher.includes('/')) return out
+  // pnpm's rule: the scope may be left out (`--filter core` is
+  // `@babel/core`), an exact name only when one package carries it. Nx
+  // names `@nx-example/cart` `cart`, and `-p cart` matched nothing.
+  for (const p of projects) {
+    const slash = p.name.indexOf('/')
+    if (p.name.startsWith('@') && re.test(p.name.slice(slash + 1))) out.push(p.name)
+  }
+  return filter.matcher.includes('*') || out.length === 1 ? out : []
 }
 
 /**

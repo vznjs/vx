@@ -162,13 +162,16 @@ describe('resolveFilters — a scoped name typed without its scope (E-32)', () =
     await rm(scoped, { recursive: true, force: true })
   })
 
-  it('hints the one project whose name after the scope it is, or is a typo of', async () => {
+  // The name after the scope selects its one project, as pnpm reads it
+  // (G-129, which replaced E-32's hint for the exact name).
+  it('selects the one project whose name after the scope it is, and hints a typo of one', async () => {
+    const web = (await quiet(() => resolveFilters(scoped, ['web']))).value
+    expect('names' in web ? web.names : web).toEqual(['@acme/web'])
     const errors = []
-    for (const f of ['web', 'wbe', 'dup']) {
+    for (const f of ['wbe', 'dup']) {
       errors.push((await quiet(() => resolveFilters(scoped, [f]))).value)
     }
     expect(errors).toEqual([
-      { error: 'no projects matched filter(s): web. Did you mean @acme/web?' },
       { error: 'no projects matched filter(s): wbe. Did you mean @acme/web?' },
       // Two scopes share the name: no single answer, so no hint.
       { error: 'no projects matched filter(s): dup' },
