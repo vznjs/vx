@@ -150,6 +150,8 @@ export function initSandbox(opts?: {
   allowAllUnixSockets?: boolean // some task asks; the lift is set per task's wrap
 }): Promise<void>
 export function resetSandbox(): Promise<void>
+// why sandboxed tasks run untraced (no working strace), or null; `vx info` says it
+export function untracedReason(): Promise<string | null>
 
 export interface ResolvedSandboxConfig {
   /* same shape as SandboxConfig, paths absolute */

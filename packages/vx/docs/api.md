@@ -740,7 +740,7 @@ export interface InfoFacts {
   hits24h: number
   flakyTasks: FlakyTask[]
   lockfile: boolean
-  sandbox: { available: boolean; reason: string; declared: number }
+  sandbox: { available: boolean; reason: string; declared: number; untraced: string | null }
 }
 ```
 
