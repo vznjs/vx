@@ -279,6 +279,17 @@ export function outputsOverlap(rawA: string, rawB: string): boolean
 export async function planRun(options: RunOptions): Promise<RunPlan>
 == function prepareRun (src/orchestrator/prepare.ts)
 export async function prepareRun(options: RunOptions, log: Logger): Promise<PreparedRun>
+== function pruneOrphanPersistentNotes (src/workspace/migration.ts)
+export function pruneOrphanPersistentNotes(
+  projects: readonly {
+    readonly tasks: readonly {
+      readonly name: string
+      readonly todos: string[]
+      readonly task: Record<string, unknown> | null
+    }[]
+  }[],
+  note: string,
+): void
 == function quoteTsLiteral (src/workspace/migration.ts)
 export function quoteTsLiteral(s: string): string
 == function reachDigests (src/orchestrator/lockfile-claim.ts)

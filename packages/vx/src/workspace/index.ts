@@ -64,6 +64,7 @@ export {
   foldScriptHooks,
   PERSISTENT_TASK_NAMES,
   PERSISTENT_TODO,
+  pruneOrphanPersistentNotes,
   quoteTsLiteral,
   type ApplyMigrationArgs,
   type MigrationFormat,

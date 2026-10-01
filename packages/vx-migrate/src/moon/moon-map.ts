@@ -23,12 +23,11 @@
 //   environment; vx's is isolated, so `$VAR` inputs are passed through.
 
 import path from 'node:path'
-import { UserError, type ProjectMeta } from '@vzn/vx'
+import { pruneOrphanPersistentNotes, UserError, type ProjectMeta } from '@vzn/vx'
 import { minimatchToVx } from '../glob-grammar.js'
 import { shellQuote } from '../nx-command.js'
 import { packageScripts, relPosix } from '../paths.js'
 import { pruneDanglingEdges } from '../dangling-edges.js'
-import { pruneOrphanPersistentNotes } from '../persistent-note.js'
 import { resolveSharedOutputs, resolveSharedWorkspaceOutputs } from '../shared-outputs.js'
 import { DOTENV_PROBE } from '../dotenv-probe.js'
 

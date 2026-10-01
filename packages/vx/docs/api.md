@@ -1484,6 +1484,25 @@ export interface ProjectMeta {
 }
 ```
 
+## `pruneOrphanPersistentNotes`
+
+function · `src/workspace/migration.ts`
+
+Strips the note from every persistent task no `dependsOn` in the mapping names.
+
+```ts
+export function pruneOrphanPersistentNotes(
+  projects: readonly {
+    readonly tasks: readonly {
+      readonly name: string
+      readonly todos: string[]
+      readonly task: Record<string, unknown> | null
+    }[]
+  }[],
+  note: string,
+): void
+```
+
 ## `quoteTsLiteral`
 
 function · `src/workspace/migration.ts`

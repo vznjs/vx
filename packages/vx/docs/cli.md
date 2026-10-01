@@ -1695,8 +1695,8 @@ reach, and a TODO to order the cycle: `^build` there refuses the run.
 `test` / `typecheck` wait for
 `build` when the package has one (`lint` reads sources and gets no
 edge); `dev` / `start` / `serve` / `watch` /
-`preview` become persistent tasks with a TODO to add `readyWhen`, and so
-does a watcher: a `watch` segment in the script's name (`build:watch`),
+`preview` become persistent tasks, with a TODO to add `readyWhen` when
+another task depends on one, and so does a watcher: a `watch` segment in the script's name (`build:watch`),
 a `--watch` flag, `tsc -w` / `rollup -w`, or nodemon (D-40). A
 script whose name no task may carry (`lint#fix`, `^up`; the schema's
 rule, item 1000) is left out with a TODO rather than written into a

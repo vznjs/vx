@@ -11,10 +11,9 @@
 // stage live, and `bunx @vzn/vx-migrate --from scripts` writes the same.
 
 import path from 'node:path'
-import type { ProjectMeta } from '@vzn/vx'
+import { pruneOrphanPersistentNotes, type ProjectMeta } from '@vzn/vx'
 import { shellQuote } from '../nx-command.js'
 import { packageScripts, relPosix } from '../paths.js'
-import { pruneOrphanPersistentNotes } from '../persistent-note.js'
 import { scriptCommand, yarnPnp } from '../script-command.js'
 
 type Raw = Record<string, unknown>
