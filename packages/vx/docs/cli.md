@@ -1733,8 +1733,10 @@ them under `exec.env.define`, the first two read from an imported
 reads gets a TODO (D-34). Among several packages, the workspace root is
 not mapped: its scripts run the workspace (`npm run build --workspaces`),
 and a hand-written root config stays as written (D-45). The report names
-it whenever it has a script, a member or not (pnpm's root is not); a single-package
-repo's root is its project and maps.
+it whenever it has a script, a member or not (pnpm's root is not), and
+tells a root with no `"name"` to add one first, since vx skips a nameless
+root's vx.config (vuejs/core); a single-package repo's root is its
+project and maps.
 A script that is nothing but `npm run <other>` (`pnpm <other>`, `yarn
 <other>`, `bun run <other>`, `npm test`, `npm start`) becomes a **group**
 over `<other>` — `dependsOn` and no command — so the graph runs and
