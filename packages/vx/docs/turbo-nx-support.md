@@ -82,9 +82,9 @@ Every key `turbo.json`, `nx.json` and `project.json` accept, read from the upstr
 | Key | vx | Note |
 | --- | --- | --- |
 | `implicitDependencies` | not supported | The top-level map is not read. |
-| `affected` | not supported | Ignored; `--affected` defaults to `origin/HEAD` or takes a base. |
+| `affected` | mapped, with a note | Its `defaultBase` (before Nx 20) is `affectedBase` when the top-level key is absent; nothing else in it is read. |
 | `extends` | supported | The chain is followed and merged as Nx does, before named inputs are read. |
-| `defaultBase` | not supported | Ignored; `--affected` defaults to `origin/HEAD` or takes a base. |
+| `defaultBase` | mapped, with a note | `nx()` sets `affectedBase`, the base a bare `--affected` compares with; `NX_BASE` wins over it, as in Nx. |
 | `tasksRunnerOptions` | mapped, with a note | Only `default.options.cacheableOperations` is read, as the legacy cached-targets list. |
 | `namedInputs` | mapped, with a note | Expanded per project (project entries win) into each task's `cache.inputs`; vx has no named inputs. |
 | `targetDefaults` | mapped, with a note | Applied by Nx while it builds the graph vx reads; vx sees the merged targets. |

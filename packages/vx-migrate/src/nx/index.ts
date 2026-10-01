@@ -85,8 +85,13 @@ export function nx(options: NxPluginOptions = {}): VxPlugin {
     options.root === undefined ? ['nx.json'] : [],
     {
       async config(workspace, ctx) {
+        const root = options.root ?? ctx.workspaceRoot
+        if (workspace.affectedBase === undefined) {
+          const base = await nxBase(root)
+          if (base !== undefined) workspace.affectedBase = base
+        }
         if (workspace.concurrency !== undefined) return
-        const parallel = await nxParallel(options.root ?? ctx.workspaceRoot)
+        const parallel = await nxParallel(root)
         if (parallel !== undefined) workspace.concurrency = parallel
       },
       // An integrated Nx repo keeps projects out of the package manager's
@@ -149,6 +154,22 @@ async function nxParallel(root: string): Promise<number | undefined> {
     | undefined
   const p = json?.parallel ?? json?.tasksRunnerOptions?.default?.options?.parallel
   return typeof p === 'number' && Number.isInteger(p) && p > 0 ? p : undefined
+}
+
+/**
+ * What `nx affected` compares with when no `--base` is given: `NX_BASE`,
+ * then nx.json's `defaultBase` (Nx 19's `affected.defaultBase` before it).
+ * Read by nothing, a git-flow repo's `develop` was lost and a bare
+ * `vx run … --affected` diffed against origin/HEAD.
+ */
+async function nxBase(root: string): Promise<string | undefined> {
+  const env = Bun.env['NX_BASE']?.trim()
+  if (env) return env
+  const json = (await readNxJson(root).catch(() => null))?.json as
+    | { defaultBase?: unknown; affected?: { defaultBase?: unknown } }
+    | undefined
+  const b = json?.defaultBase ?? json?.affected?.defaultBase
+  return typeof b === 'string' && b.trim() !== '' ? b.trim() : undefined
 }
 
 interface LoadedGraph {

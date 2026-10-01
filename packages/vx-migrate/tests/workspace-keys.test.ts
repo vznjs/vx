@@ -91,3 +91,56 @@ describe('nx(): nx.json parallel', () => {
     expect(await staged(nx(), { concurrency: 2 })).toEqual({ concurrency: 2 })
   })
 })
+
+// What a bare `--affected` compares with: Nx's NX_BASE over nx.json's
+// defaultBase (Nx 19's affected.defaultBase before it), Turbo's
+// TURBO_SCM_BASE. A key the workspace sets is its own.
+describe('the affected base', () => {
+  const withEnv = async <T>(name: string, value: string | undefined, fn: () => Promise<T>) => {
+    const prev = process.env[name]
+    if (value === undefined) delete process.env[name]
+    else process.env[name] = value
+    try {
+      return await fn()
+    } finally {
+      if (prev === undefined) delete process.env[name]
+      else process.env[name] = prev
+    }
+  }
+
+  it('nx(): NX_BASE, then defaultBase, then affected.defaultBase', async () => {
+    const base = () => withEnv('NX_BASE', undefined, async () => (await staged(nx())).affectedBase)
+    await writeFile(path.join(root, 'nx.json'), JSON.stringify({}))
+    expect(await base()).toBeUndefined()
+    await writeFile(
+      path.join(root, 'nx.json'),
+      JSON.stringify({ affected: { defaultBase: 'dev' } }),
+    )
+    expect(await base()).toBe('dev')
+    await writeFile(
+      path.join(root, 'nx.json'),
+      JSON.stringify({ defaultBase: 'develop', affected: { defaultBase: 'dev' } }),
+    )
+    expect(await base()).toBe('develop')
+    expect(
+      await withEnv('NX_BASE', 'origin/next', async () => (await staged(nx())).affectedBase),
+    ).toBe('origin/next')
+    expect(
+      await withEnv('NX_BASE', undefined, () => staged(nx(), { affectedBase: 'main' })),
+    ).toEqual({ affectedBase: 'main' })
+  })
+
+  it('turbo(): TURBO_SCM_BASE', async () => {
+    await writeFile(path.join(root, 'turbo.json'), JSON.stringify({ tasks: {} }))
+    expect(await withEnv('TURBO_SCM_BASE', undefined, () => staged(turbo()))).toEqual({})
+    expect(await withEnv('TURBO_SCM_BASE', '', () => staged(turbo()))).toEqual({})
+    expect(await withEnv('TURBO_SCM_BASE', 'origin/develop', () => staged(turbo()))).toEqual({
+      affectedBase: 'origin/develop',
+    })
+    expect(
+      await withEnv('TURBO_SCM_BASE', 'origin/develop', () =>
+        staged(turbo(), { affectedBase: 'main' }),
+      ),
+    ).toEqual({ affectedBase: 'main' })
+  })
+})

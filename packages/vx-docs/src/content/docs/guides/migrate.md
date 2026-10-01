@@ -117,7 +117,7 @@ The command itself comes from your `package.json` script, with its
 | --------------------------------- | ------------------------------------------------------ |
 | `turbo run build`                 | `vx run build --all`                                   |
 | `turbo run build --filter=@app/*` | `vx run build --filter "@app/*"`                       |
-| `turbo run build --affected`      | `vx run build --affected`                              |
+| `turbo run build --affected`      | `vx run build --affected` (`turbo()` takes `TURBO_SCM_BASE` as its base) |
 | `turbo run build --continue`      | `vx run build --continue` (the default is `deps-ok`)   |
 | `TURBO_TOKEN` remote cache        | [`turboCache()`](../ci/#remote-cache) reads the same variables |
 
@@ -169,7 +169,7 @@ installed.
 | `outputs`                            | `cache.outputs.files` (or `workspaceFiles` for `dist/<project>`) |
 | `nx build app`                       | `vx run app#build`                                        |
 | `nx run app:build:production`        | `vx run app#build:production`                             |
-| `nx affected -t test`                | `vx run test --affected`                                  |
+| `nx affected -t test`                | `vx run test --affected` (`nx()` takes `NX_BASE` or `defaultBase` as its base) |
 | `nx graph`                           | `vx run build --all --graph`                              |
 | `nx reset`                           | nothing: there is no daemon                               |
 | Nx Cloud cache                       | [`nxCache()`](../ci/#remote-cache) for a self-hosted Nx cache |
