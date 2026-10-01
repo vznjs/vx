@@ -533,3 +533,12 @@ walked on fixtures.
   help's `[RUNID]` and `[VERB]`. Row: `cli-doc-drift.test.ts` ›
   `vx help`'s usage lines are cli.md's, both directions (cli.md's meta
   spellings and `# comments` aside), red with the old help.
+- **E-90.** J-54's lead: bare `--affected` with `origin/HEAD` naming a
+  branch the remote deleted (a pruned fetch keeps the symref) failed
+  `git ref "origin/master" did not resolve`, a ref nobody typed, though
+  `cli.md` says it falls back to `HEAD~1` when `origin/HEAD` is not
+  resolvable. `defaultAffectedBase` now takes the symref only when its
+  target resolves. Row: `affected.test.ts` › an origin/HEAD naming a
+  deleted branch is no base (the no-base hint, then `HEAD~1`, then the
+  branch back as control), red without the change. The row that returned
+  a dangling `origin/main` now creates it first.

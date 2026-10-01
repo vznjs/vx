@@ -277,6 +277,23 @@ describe('workspaceScripts()', () => {
     TIMEOUT,
   )
 
+  // Under Yarn Plug'n'Play a dependency resolves only through `.pnp.cjs`,
+  // so an inlined script body failed where `yarn run` works; and the
+  // mapping cache must see the linker change (J-62's lead).
+  it(
+    'under Yarn PnP a script runs through `yarn run`, and a linker change maps afresh',
+    async () => {
+      const command = async (): Promise<string | undefined> =>
+        (await planRun({ cwd: root, tasks: ['@x/lib#build'], log: silent() })).tasks.find(
+          (t) => t.node.id === '@x/lib#build',
+        )?.node.config.exec?.command
+      expect(await command()).toBe('echo lib >> ../../order.txt')
+      await write('.yarnrc.yml', 'nodeLinker: pnp\n')
+      expect(await command()).toBe('yarn run build')
+    },
+    TIMEOUT,
+  )
+
   it(
     'runs the builds in dependency order, as pnpm -r does',
     async () => {

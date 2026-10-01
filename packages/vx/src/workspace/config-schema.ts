@@ -993,8 +993,10 @@ function assertFilterNamesDeclaredDeps(
     if (raw.startsWith('!')) continue
     const f = specForm(raw)
     if (f.task.length === 0 || f.task.includes('*') || named(f)) continue
+    // `where` opens with the config's path; the message names it once.
+    const task = where.slice(where.lastIndexOf(': tasks.') + 2)
     throw new UserError(
-      `${where}.cache.inputs.tasks: "${raw}" names no task in ${where}.dependsOn ` +
+      `${where}.cache.inputs.tasks: "${raw}" names no task in ${task}.dependsOn ` +
         `(${declared.length === 0 ? 'none declared' : dependsOn!.map((d) => `'${d}'`).join(', ')}) — ` +
         `it would match nothing and fold no upstream hash, decoupling the task from its ` +
         `dependencies. \`name\` is this project's task, \`^name\` its dependencies', ` +

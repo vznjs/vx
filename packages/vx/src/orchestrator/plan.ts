@@ -4,7 +4,7 @@
 //
 // No TASK execution happens: no task spawn, no cleanOutputs, no
 // restoreOutputs. Cache probing uses the byte-free `cache.has()`
-// existence probe (a remote layer answers with an HTTP HEAD — no
+// existence probe (a remote layer answers it its own way — no
 // artifact download, no local ingest), so the plan is read-only — with
 // one deliberate exception: `cache.inputs.runtime` / `workspaceRuntime`
 // probe commands DO run, because predicting a task's key requires

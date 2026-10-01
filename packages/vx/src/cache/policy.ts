@@ -9,9 +9,11 @@ import { UserError } from '../util/index.js'
  * toggled on its own so `--force` (re-execute but still refresh the
  * cache) is distinct from `--no-cache` (disable everything).
  *
- * Only the task-artifact get/save path is gated. `recordRun`, `stats`,
- * `prune`, key derivation, and prefetch-ingest are never affected — they
- * are bookkeeping/analytics that a run policy has no business disabling.
+ * The task-artifact get/save path is gated, and the local axes also gate
+ * the local store's config-evaluation reads and writes and its file-hash
+ * writes (`cache.ts`). `recordRun`, `stats`, `prune`, key derivation, and
+ * prefetch-ingest are never affected — they are bookkeeping/analytics
+ * that a run policy has no business disabling.
  */
 export interface CachePolicy {
   localRead: boolean
