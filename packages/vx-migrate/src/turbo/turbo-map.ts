@@ -104,7 +104,7 @@ const KNOWN_TASK_KEYS = new Set([
   // watch` stops and re-spawns every persistent task each cycle, so either
   // value maps to nothing.
   'interruptible',
-  // Labels Turbo keeps out of the task's hash and behaviour.
+  // Labels: Turbo keeps them out of the hash and the behaviour.
   'tags',
 ])
 

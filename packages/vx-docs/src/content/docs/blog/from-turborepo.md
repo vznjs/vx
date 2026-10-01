@@ -76,6 +76,7 @@ already doing.
 | `with` | `dependsOn` a persistent sidecar, started beside the task |
 | `extends`                                      | a package task merges over the root's; `false` alone opts out, `false` + keys runs on those alone |
 | `interruptible` | nothing: `vx watch` re-spawns every persistent task each cycle |
+| `tags` | nothing: labels Turbo keeps out of the hash and the behaviour |
 | `outputLogs`                                   | no per-task knob: the per-run `--output-logs` flag      |
 | `$TURBO_ROOT$/file`                            | `cache.inputs.workspaceFiles`                           |
 | `dotEnv` (Turbo 1)                              | `cache.inputs.runtime`: a probe that hashes the `.env` files |
