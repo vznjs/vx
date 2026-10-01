@@ -23,27 +23,36 @@ export async function trackedFiles(root: string): Promise<string[] | null> {
   }
 }
 
+/** What a project's tracked files are: their extensions (lower case, no dot) and directory names. */
+export interface TrackedKinds {
+  readonly exts: ReadonlySet<string>
+  readonly dirs: ReadonlySet<string>
+}
+
 /**
  * Per project directory (root-relative, `.` or empty for the root), the
- * extensions (lower case, no dot) of the files git tracks under it at any
- * depth: what a top-level output glob may not claim (`wildcardOutput`).
+ * kinds of the files git tracks under it at any depth: what a
+ * wildcard-first output glob may not claim (`wildcardOutput`).
  */
-export function trackedExtensions(
-  tracked: readonly string[],
-): (rel: string) => ReadonlySet<string> {
-  const memo = new Map<string, ReadonlySet<string>>()
+export function trackedKinds(tracked: readonly string[]): (rel: string) => TrackedKinds {
+  const memo = new Map<string, TrackedKinds>()
   return (rel) => {
-    let exts = memo.get(rel)
-    if (exts === undefined) {
-      const set = new Set<string>()
+    let kinds = memo.get(rel)
+    if (kinds === undefined) {
+      const exts = new Set<string>()
+      const dirs = new Set<string>()
+      const all = rel === '' || rel === '.'
       for (const f of tracked) {
-        if (rel !== '' && rel !== '.' && !f.startsWith(`${rel}/`)) continue
-        const ext = path.posix.extname(f)
-        if (ext !== '') set.add(ext.slice(1).toLowerCase())
+        if (!all && !f.startsWith(`${rel}/`)) continue
+        const own = all ? f : f.slice(rel.length + 1)
+        const ext = path.posix.extname(own)
+        if (ext !== '') exts.add(ext.slice(1).toLowerCase())
+        const segs = own.split('/')
+        for (let i = 0; i < segs.length - 1; i++) dirs.add(segs[i]!)
       }
-      memo.set(rel, (exts = set))
+      memo.set(rel, (kinds = { exts, dirs }))
     }
-    return exts
+    return kinds
   }
 }
 

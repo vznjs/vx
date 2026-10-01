@@ -14,7 +14,7 @@ import {
 } from '@vzn/vx'
 import { mapTurboWorkspace, rootTaskProject, type TurboGlobal } from './turbo/turbo-map.js'
 import { relPosix } from './paths.js'
-import { trackedExtensions, trackedFiles } from './tracked-outputs.js'
+import { trackedFiles, trackedKinds } from './tracked-outputs.js'
 
 /** The preset takes the configs' extension: plain arrays either way. */
 function presetFile(format: MigrationFormat): string {
@@ -37,7 +37,7 @@ export async function migrateTurbo(
   const mapping = await mapTurboWorkspace(root, await withRootProject(root, metas), {
     splice: (kind) => [{ raw: `...${PRESET_NAMES[kind]}` }],
     persistentTodo: PERSISTENT_TODO,
-    ...(tracked === null ? {} : { trackedExts: trackedExtensions(tracked) }),
+    ...(tracked === null ? {} : { tracked: trackedKinds(tracked) }),
     // The file this writes is each task's config.
     ownConfig: () => `vx.config.${format}`,
   })
