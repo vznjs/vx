@@ -1806,7 +1806,9 @@ package's README.
 What a Turbo or Nx user types into `vx run` (and `vx watch`): each flag
 vx takes as it is (`same`), rewrites to its own spelling before the
 parse (`alias`), or refuses with the vx way to say it (`refuse`) —
-none is dropped in silence. `vx run-many` and `vx affected` name the
+none is dropped in silence. An Nx flag's camelCase spelling (`--nxBail`,
+`--skipNxCache`), which Nx's parser takes and its docs print, is its
+kebab-case row. `vx run-many` and `vx affected` name the
 `vx run` that does the same, and the other verbs a hand types from
 either tool name what does it here: `graph` (`--graph`), `ls`
 (`vx show`), `query` (`--dry=json`), `reset` (`vx cache prune`), and
