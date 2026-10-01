@@ -558,12 +558,3 @@ walked on fixtures.
   short at a word that leads exactly one accepted flag now names it.
   Row: `cli.test.ts` › every verb's unknown flag, now with
   `cache prune --dry`; red without the change.
-- **E-98.** `vx graph`, `vx ls`, `vx query`, `vx reset`, `vx daemon` and
-  `vx login` / `logout` / `link` / `unlink`, the verbs a Turbo or Nx
-  hand types, said `unknown command` with no way on; only `run-many`
-  and `affected` named theirs. Each now names what does it in vx, after
-  a plugin's verb of the name had its chance. `sync` and `exec` are left
-  out: a repo's own task of that name is the better answer. cli.md says
-  so. Row (`foreign-flags.test.ts` › a Turbo or Nx verb names what does
-  it in vx, the verb list written out and held to the table both ways):
-  red without the change.
