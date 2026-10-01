@@ -256,13 +256,16 @@ plugins, G adoption, H the 1.0 contract, I performance, J docs accuracy),
 one session each, one coordinator. While it runs, a stream's merged items
 are recorded in `docs/history/ws-<id>.md` as `<ID>-<n>`, not in the
 numbered list below, so parallel PRs never collide on a number; the
-coordinator folds them into this file. By 21:40 UTC: 119 items merged
-(A-13, B-9, C-13, D-9, E-21, F-11, G-14, H-9, I-6, J-14), each
-auto-released (v0.0.22 to v0.0.70). Every green commit on `main` now
-releases: `ci.yml` finishes `main`'s run and drops only queued ones, and
-`auto-release.yml` releases any commit the last tag is behind. H and J
-are done. B and D ran out of review leads and moved to mutation sweeps.
-A, C, E and G are still working.
+coordinator folds them into this file. Streams K to O were added
+later (K README and site, L security findings, M CI reliability, N adoption
+paths, O Windows); each stream's record and leads are
+its own `docs/history/ws-<id>.md`, fifteen files by 2026-10-01. Every
+green commit on `main` releases (`ci.yml` finishes `main`'s run and drops
+only queued ones; `auto-release.yml` releases any commit the last tag is
+behind): v0.0.299 by 2026-10-01. Since 2026-09-30 one worker session
+at a time (W12, W13, …) takes a queue from the coordinator and records
+its items in the stream file of their area (adoption in `ws-g.md`) or
+its own `ws-W<n>.md`.
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
 under Bun 1.4.2 is the only gate: the 2026-09-19 container shipped
