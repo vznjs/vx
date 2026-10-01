@@ -109,7 +109,7 @@ npx vx run test --all      # 3 up-to-date
 | `description` | `description` |
 | `extends`                                                   | nothing: a package task merges over the root's, field by field           |
 | `$TURBO_ROOT$/file`                                         | `cache.inputs.workspaceFiles` / `outputs.workspaceFiles`                 |
-| `globalDependencies` / `globalEnv` / `globalPassThroughEnv` (and Turbo 1's `globalDotEnv`) | a generated `vx-preset.ts` you import; a wildcard env name is reported, not mapped |
+| `globalDependencies` / `globalEnv` / `globalPassThroughEnv` (and Turbo 1's `globalDotEnv`) | a generated `vx-preset.ts` each config imports as `vx-preset.js` (your `tsc` accepts it without `allowImportingTsExtensions`; Bun loads the `.ts`); a wildcard env name is reported, not mapped |
 
 The command itself comes from your `package.json` script, with its
 `pre<name>` / `post<name>` hooks folded in.
