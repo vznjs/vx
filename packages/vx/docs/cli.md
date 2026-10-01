@@ -59,7 +59,10 @@ included.
 project in scope, the run refuses to start — `No projects declare
 task(s): <name>.` on stdout (`vx run: no projects declare task(s):
 <name>.` on stderr under `--dry` / `--graph`), exit 1, with `Did you mean <task>?` when a
-declared task (or, for `pkg#task`, a runnable spec) is within two edits
+declared task (or, for `pkg#task`, a runnable spec) is within two edits,
+and with `Only projects outside the selection declare <name> — pass
+--all, or --filter to pick them.` when the run was scoped (the cwd's
+project, a `--filter`) and a project outside the scope declares it
 — even when the other names resolved fine. A bare name declared by only SOME projects is normal and stays
 green; the guard fires only when a name matched nowhere. So a CI job
 running `vx run lint test typecheck` goes red the day `typecheck` is
@@ -1730,13 +1733,17 @@ A script reading `$npm_package_version`, `$npm_package_name` or
 `$npm_lifecycle_event`, which every manager sets and vx does not, gets
 them under `exec.env.define`, the first two read from an imported
 `package.json` so a version bump reaches them; any other `$npm_*` it
-reads gets a TODO (D-34). Among several packages, the workspace root is
-not mapped: its scripts run the workspace (`npm run build --workspaces`),
-and a hand-written root config stays as written (D-45). The report names
-it whenever it has a script, a member or not (pnpm's root is not), and
-tells a root with no `"name"` to add one first, since vx skips a nameless
-root's vx.config (vuejs/core); a single-package repo's root is its
-project and maps.
+reads gets a TODO (D-34). Among several packages, a workspace root
+script that runs the members (`pnpm -r build`, `--filter`, `-C`, npm's
+and Yarn's workspace flags, `cd`, turbo, nx, lerna) is not mapped, and
+neither is one whose name a member's task carries, so `--all` never runs
+a check twice (D-45). The rest check the whole repo (`lint: oxlint .`,
+`test: vitest`) and become the root's own tasks in a root vx.config, when
+the root has a `"name"` (vx skips a nameless root's config) and no config
+of its own; a hand-written one stays as written. The report says which;
+with nothing mapped it names the root whenever it has a script, a member
+or not (pnpm's root is not), and tells a root with no `"name"` to add one
+first (vuejs/core). A single-package repo's root is its project and maps.
 A script that is nothing but `npm run <other>` (`pnpm <other>`, `yarn
 <other>`, `bun run <other>`, `npm test`, `npm start`) becomes a **group**
 over `<other>` — `dependsOn` and no command — so the graph runs and

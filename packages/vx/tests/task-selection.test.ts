@@ -118,6 +118,41 @@ describe('task selection', () => {
     TIMEOUT,
   )
 
+  // `vx run typecheck` at a root whose members declare it said no project
+  // did. A scoped run names the projects outside it and `--all`; a name
+  // declared nowhere keeps the plain message (CONTROL).
+  it(
+    'a task only projects outside the selection declare says so, and names --all',
+    async () => {
+      await addProject('a', ['build'])
+      await addProject('b', ['typecheck'])
+      const hint =
+        'No projects declare task(s): typecheck. Only projects outside the selection declare typecheck — pass --all, or --filter to pick them.'
+      const log = silent()
+      const r = await run({ cwd: root, projects: ['a'], tasks: ['typecheck'], log })
+      expect(r.ok).toBe(false)
+      expect(log.lines).toContain(hint)
+      const plan = await planRun({
+        cwd: root,
+        projects: ['a'],
+        tasks: ['typecheck'],
+        log: silent(),
+      })
+      expect(plan.unresolvedHint).toBe(hint.slice(hint.indexOf(' Only')))
+      // A member with no vx config is a scope with nothing to ask.
+      await mkdir(path.join(root, 'packages', 'bare'), { recursive: true })
+      await writeFile(path.join(root, 'packages', 'bare', 'package.json'), '{"name":"bare"}')
+      const bare = silent()
+      await run({ cwd: root, projects: ['bare'], tasks: ['typecheck'], log: bare })
+      expect(bare.lines).toContain(hint)
+      const none = silent()
+      await run({ cwd: root, projects: ['a'], tasks: ['nosuch'], log: none })
+      expect(none.lines.join('\n')).toContain('No projects declare task(s): nosuch.')
+      expect(none.lines.join('\n')).not.toContain('outside the selection')
+    },
+    TIMEOUT,
+  )
+
   it(
     'a bogus ANCHORED task fails the run even when another task resolves',
     async () => {

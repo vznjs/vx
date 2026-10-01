@@ -28,6 +28,7 @@ export interface PreparedRun {
    * returns an abandoned plan carrying the same list.
    */
   unresolvedTasks: readonly string[]
+  declaredElsewhere: readonly string[] // bare names only projects outside a scoped run declare
   projects: ReadonlyMap<string, ProjectEntry> // every discovered project, a typo's measure
   anyProjectConfig: boolean // some package has a vx.config.* at all, whatever the scope
   workspaceFingerprint: string

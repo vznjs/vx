@@ -102,6 +102,7 @@ export async function initCmd(args: readonly string[]): Promise<number> {
     plan: migrateScripts(
       metas,
       metas.some((m) => m.dir === root) ? undefined : await readRootManifest(root),
+      root,
     ),
     source: 'package.json scripts',
     verb: 'vx init',
