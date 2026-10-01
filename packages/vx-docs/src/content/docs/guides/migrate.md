@@ -28,7 +28,7 @@ your `package.json` scripts.
    `vx.config.ts` declares wins; `turbo()` fills only the rest.
 
 ```ts
-import type { WorkspaceConfig } from '@vzn/vx'
+import type { WorkspaceConfig } from '@vzn/vx/config'
 import { turbo } from '@vzn/vx-migrate'
 
 export default { plugins: [turbo()] } satisfies WorkspaceConfig
@@ -140,7 +140,7 @@ The command itself comes from your `package.json` script, with its
    `--from nx` (or `--from turbo`).
 
 ```ts
-import type { WorkspaceConfig } from '@vzn/vx'
+import type { WorkspaceConfig } from '@vzn/vx/config'
 import { nx } from '@vzn/vx-migrate'
 
 export default { plugins: [nx()] } satisfies WorkspaceConfig

@@ -161,7 +161,7 @@ async function adopt(
   const body = `import { ${imports} } from '@vzn/vx-migrate'\n\nexport default { plugins: [${plugins}] }`
   const text = args.mjs
     ? `${body}\n`
-    : `import type { WorkspaceConfig } from '@vzn/vx'\n${body} satisfies WorkspaceConfig\n`
+    : `import type { WorkspaceConfig } from '@vzn/vx/config'\n${body} satisfies WorkspaceConfig\n`
   const existing = WORKSPACE_CONFIG_FILENAMES.find((f) => existsSync(path.join(root, f)))
   if (existing !== undefined && !args.force) {
     const declared = readFileSync(path.join(root, existing), 'utf8').includes(`${runner}(`)

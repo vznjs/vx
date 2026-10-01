@@ -6,7 +6,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { availableParallelism, tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import type { WorkspaceConfig } from '@vzn/vx'
+import type { WorkspaceConfig } from '@vzn/vx/config'
 import { nx, turbo } from '../src/index.js'
 
 let root: string

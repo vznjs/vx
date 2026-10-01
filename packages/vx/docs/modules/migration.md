@@ -83,7 +83,7 @@ export function delegatedScript(command: string): string | null
 
 ## Rules
 
-- A generated config is `import type { ProjectConfig } from '@vzn/vx'` plus
+- A generated config is `import type { ProjectConfig } from '@vzn/vx/config'` plus
   `satisfies ProjectConfig`: the type-only form loads in a workspace that
   runs the binary without the package installed. `format: 'mjs'`
   (`--mjs`) writes the same object untyped as `vx.config.mjs`, for a

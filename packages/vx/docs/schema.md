@@ -39,11 +39,14 @@ export default defineProject({
 TypeScript narrows literal types in your config (clean autocomplete,
 strict validation against the schema). It has zero runtime effect.
 The same typing without a runtime import is
-`import type { ProjectConfig } from '@vzn/vx'` plus
+`import type { ProjectConfig } from '@vzn/vx/config'` plus
 `export default { … } satisfies ProjectConfig` — the form `vx init`
 and `@vzn/vx-migrate` generate, because Bun erases the type import and the
 file then loads in a workspace that runs the `vx` binary without the
 package installed. Either form is fine; the object is what vx reads.
+`@vzn/vx/config` is the schema alone (`src/config.ts`, which imports
+nothing): your own `tsc` checks that one file, where `@vzn/vx` would
+walk core's Bun-only sources and fail without `@types/bun`.
 
 The object is JSON data. The cache key folds `JSON.stringify` of each
 task's config, `vx lock` stores the same JSON, and `vx watch` re-reads a
