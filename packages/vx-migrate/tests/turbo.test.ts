@@ -620,6 +620,44 @@ describe('output negation', () => {
   )
 
   it(
+    'a dir at any depth the package tracks nothing under stays cached (vercel/ai `**/dist/**`)',
+    async () => {
+      await pkg('app', {
+        build: 'mkdir -p dist rsc/dist && echo a > dist/a.js && echo r > rsc/dist/r.js',
+      })
+      await pkg('lib', { build: 'mkdir -p dist && echo l > dist/l.js' })
+      const lib = path.join(root, 'packages', 'lib')
+      await mkdir(path.join(lib, 'src', 'dist'), { recursive: true })
+      await writeFile(path.join(lib, 'src', 'dist', 'keep.js'), 'kept\n')
+      await writeFile(
+        path.join(root, 'turbo.json'),
+        JSON.stringify({ tasks: { build: { outputs: ['**/dist/**'] } } }),
+      )
+      Bun.spawnSync({ cmd: ['git', 'add', '-A'], cwd: root })
+      // Committed despite the ignore rule, as a vendored file would be.
+      Bun.spawnSync({ cmd: ['git', 'add', '-f', 'packages/lib/src/dist/keep.js'], cwd: root })
+      const log = silent()
+      const plan = await planRun({ cwd: root, tasks: ['build'], log })
+      const cacheOf = (id: string) => plan.tasks.find((t) => t.node.id === id)!.node.config.cache
+      expect(cacheOf('app#build')?.outputs.files).toEqual(['**/dist/**'])
+      // CONTROL: lib tracks a file under a `dist`, which the clean would reach.
+      expect(cacheOf('lib#build')).toBeUndefined()
+      expect(log.lines.join('\n')).toContain(
+        '[@vzn/vx-migrate] lib#build: output "**/dist/**": a wildcard first segment reaches the sources',
+      )
+      const build = () => run({ cwd: root, tasks: ['build'], log: silent(), handleSignals: false })
+      const nested = path.join(root, 'packages', 'app', 'rsc', 'dist', 'r.js')
+      expect((await build()).ok).toBe(true)
+      await rm(nested)
+      const second = await build()
+      expect(second.outcomes.find((o) => o.node.id === 'app#build')?.status).toBe('cache-hit')
+      expect(await Bun.file(nested).text()).toBe('r\n')
+      expect(await Bun.file(path.join(lib, 'src', 'dist', 'keep.js')).text()).toBe('kept\n')
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a top-level output of a kind the package tracks none of stays cached (n8n `*.xml`)',
     async () => {
       await pkg('app', { test: 'echo report > junit.xml' })

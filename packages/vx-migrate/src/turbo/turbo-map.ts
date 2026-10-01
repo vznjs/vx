@@ -26,6 +26,7 @@ import {
 } from '../shared-outputs.js'
 import { packageScripts, relPosix } from '../paths.js'
 import { pruneOrphanPersistentNotes } from '../persistent-note.js'
+import type { TrackedKinds } from '../tracked-outputs.js'
 import { DOTENV_PROBE } from '../dotenv-probe.js'
 
 /** `path.relative` with forward slashes — the shape an ESM specifier or a report line needs. */
@@ -244,11 +245,11 @@ export interface MapTurboOptions {
   /** `TURBO_ENV_MODE`, when the mapping runs where the tasks will: above turbo.json's, as in Turbo. */
   envMode?: string
   /**
-   * The extensions git tracks under a root-relative package directory: a
-   * top-level output glob of a kind it has none of (`*.xml`) stays cached.
-   * Absent, every wildcard-first output runs uncached.
+   * What git tracks under a root-relative package directory: a
+   * wildcard-first output of a kind it has none of (`*.xml`, `dist` at any depth)
+   * stays cached. Absent, every wildcard-first output runs uncached.
    */
-  trackedExts?: (rel: string) => ReadonlySet<string>
+  tracked?: (rel: string) => TrackedKinds
   /**
    * The config file name a root-relative package's mapped tasks live beside
    * (null: none), which core holds an output to. Absent, every spelling.
@@ -1325,7 +1326,7 @@ function buildTask(
       } else outFiles.push(neg + o)
     }
 
-    const wild = wildcardOutput(outFiles, opts.trackedExts?.(pkgDir))
+    const wild = wildcardOutput(outFiles, opts.tracked?.(pkgDir))
     if (wild !== undefined) {
       todos.push(wildcardTodo(wild))
       return { name, todos, task, uses }

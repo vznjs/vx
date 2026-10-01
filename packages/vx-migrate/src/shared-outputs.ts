@@ -22,6 +22,7 @@
 
 import { isLiteralPattern, outputsOverlap, type GeneratedTask } from '@vzn/vx'
 import { relPosix } from './paths.js'
+import type { TrackedKinds } from './tracked-outputs.js'
 
 // Core refuses an output glob that covers the project's own package.json
 // or vx.config (config-schema's `ownFileCovered`): vx cleans outputs before
@@ -69,29 +70,32 @@ export function ownFileTodo(own: { glob: string; file: string }): string {
 // package, and nx() lacked the rule (2026-09-29).
 
 /**
- * The first positive output glob whose first segment is a wildcard. One
- * segment ending in a literal extension no file of the project's tracked
- * set carries (n8n's `*.xml` junit reports, 143 test tasks) reaches only
- * top-level files of a kind the project has no source in, and is let
- * through when `trackedExts` is known; `*.ts` or `*.d.ts` beside tracked
- * TypeScript is not.
+ * The first positive output glob whose first segment is a wildcard. Two
+ * shapes reach no source when `tracked` is known and says the project has
+ * none of their kind, and are let through: one segment ending in a literal
+ * extension no tracked file carries (n8n's `*.xml` junit reports, 143 test
+ * tasks), and `**` followed by `/<dir>/**` where no tracked file sits
+ * under a directory of that name (vercel/ai's builds, `dist` at any depth,
+ * 69 of them). `*.ts` beside tracked TypeScript, or that form over `src`,
+ * is not.
  */
 export function wildcardOutput(
   files: readonly string[],
-  trackedExts?: ReadonlySet<string>,
+  tracked?: TrackedKinds,
 ): string | undefined {
   return files.find(
     (o) =>
-      !o.startsWith('!') &&
-      !isLiteralPattern(o.split('/')[0] ?? '') &&
-      !untrackedKind(o, trackedExts),
+      !o.startsWith('!') && !isLiteralPattern(o.split('/')[0] ?? '') && !untrackedKind(o, tracked),
   )
 }
 
-function untrackedKind(glob: string, trackedExts: ReadonlySet<string> | undefined): boolean {
-  if (trackedExts === undefined) return false
-  const ext = /^(?:\.\/)*[^/]*\.([A-Za-z0-9]+)$/.exec(glob)?.[1]
-  return ext !== undefined && !trackedExts.has(ext.toLowerCase())
+function untrackedKind(glob: string, tracked: TrackedKinds | undefined): boolean {
+  if (tracked === undefined) return false
+  const g = glob.replace(/^(\.\/)+/, '')
+  const ext = /^[^/]*\.([A-Za-z0-9]+)$/.exec(g)?.[1]
+  if (ext !== undefined) return !tracked.exts.has(ext.toLowerCase())
+  const dir = /^\*\*\/([^*?[\]{}()!/]+)\/\*\*$/.exec(g)?.[1]
+  return dir !== undefined && !tracked.dirs.has(dir)
 }
 
 export function wildcardTodo(glob: string): string {
