@@ -199,6 +199,7 @@
       "sandbox.available",
       "sandbox.declared",
       "sandbox.reason",
+      "sandbox.untraced",
       "schemaVersion",
       "tasks",
       "vx",

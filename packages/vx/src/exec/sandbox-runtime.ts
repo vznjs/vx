@@ -1994,11 +1994,13 @@ function writeGrantMatchedNothing(grant: string): void {
 /**
  * Memoized check: is `strace` on PATH on a Linux host, and does it know
  * `--seccomp-bpf` (5.3+)? `'seccomp'` is the fast form; `'plain'` traces
- * every syscall through ptrace and is kept only for an old strace.
+ * every syscall through ptrace and is kept only for an old strace. `why`
+ * names what is missing when there is no form, for the warning and for
+ * `vx info`.
  */
-let straceAvailableCache: false | 'plain' | 'seccomp' | undefined
-async function wantsStraceDetection(): Promise<false | 'plain' | 'seccomp'> {
-  if (process.platform !== 'linux') return false
+let straceAvailableCache: { form: false | 'plain' | 'seccomp'; why: string } | undefined
+async function straceState(): Promise<{ form: false | 'plain' | 'seccomp'; why: string }> {
+  if (process.platform !== 'linux') return { form: false, why: '' }
   if (straceAvailableCache !== undefined) return straceAvailableCache
   try {
     const p = Bun.spawn([executablePath('strace'), '--version'], {
@@ -2008,26 +2010,45 @@ async function wantsStraceDetection(): Promise<false | 'plain' | 'seccomp'> {
     const out = await new Response(p.stdout).text()
     await p.exited
     if (p.exitCode !== 0) {
-      straceAvailableCache = false
-      warnUntraced(`strace --version exited ${p.exitCode}`)
+      straceAvailableCache = { form: false, why: `strace --version exited ${p.exitCode}` }
     } else {
       const m = /version (\d+)\.(\d+)/.exec(out)
       const [major, minor] = m ? [Number(m[1]), Number(m[2])] : [0, 0]
       const form = major > 5 || (major === 5 && minor >= 3) ? 'seccomp' : 'plain'
-      straceAvailableCache = (await traceAttaches(form)) ? form : false
+      const refused = await traceRefusal(form)
+      straceAvailableCache =
+        refused === null
+          ? { form, why: '' }
+          : { form: false, why: `strace cannot trace here (${refused})` }
     }
   } catch {
     // Not on PATH. Said as the refused attach is: without it an undeclared
     // read is denied but never reported, so a task that tolerates the miss
     // passes and caches with no word of it (J's lead).
-    straceAvailableCache = false
-    warnUntraced('strace is not on PATH')
+    straceAvailableCache = { form: false, why: 'strace is not on PATH' }
   }
   return straceAvailableCache
 }
 
+async function wantsStraceDetection(): Promise<false | 'plain' | 'seccomp'> {
+  const { form, why } = await straceState()
+  if (form === false && why !== '') warnUntraced(why)
+  return form
+}
+
 /**
- * Whether strace may attach here, asked once with the flags a task's trace
+ * Why a sandboxed task on this host runs without the report of the reads
+ * the sandbox denied, or null when it is traced (or the host is not
+ * Linux, where the report does not come from strace). Says nothing on
+ * stderr: `vx info` reports it as a fact (B-51's lead).
+ */
+export async function untracedReason(): Promise<string | null> {
+  const { why } = await straceState()
+  return why === '' ? null : why
+}
+
+/**
+ * Why strace may not attach here (null when it may), asked once with the flags a task's trace
  * uses (`ownGroupCommand`). `--version` answers on a host that refuses
  * ptrace (Yama's `ptrace_scope` 2 or 3, a container's seccomp profile),
  * and there every sandboxed task failed twice, the retry included, on
@@ -2035,7 +2056,7 @@ async function wantsStraceDetection(): Promise<false | 'plain' | 'seccomp'> {
  * run goes untraced, as without strace: bwrap still enforces, and only the
  * read-violation report is lost, which is said once.
  */
-async function traceAttaches(form: 'plain' | 'seccomp'): Promise<boolean> {
+async function traceRefusal(form: 'plain' | 'seccomp'): Promise<string | null> {
   const p = Bun.spawn(
     [
       executablePath('strace'),
@@ -2053,9 +2074,8 @@ async function traceAttaches(form: 'plain' | 'seccomp'): Promise<boolean> {
     { stdin: 'ignore', stdout: 'ignore', stderr: 'pipe' },
   )
   const err = await new Response(p.stderr).text()
-  if ((await p.exited) === 0) return true
-  warnUntraced(`strace cannot trace here (${err.trim().split('\n')[0] ?? `exit ${p.exitCode}`})`)
-  return false
+  if ((await p.exited) === 0) return null
+  return err.trim().split('\n')[0] || `exit ${p.exitCode}`
 }
 let warnedNoTrace = false
 

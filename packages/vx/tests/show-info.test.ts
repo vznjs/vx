@@ -549,7 +549,11 @@ describe('vx info (e2e)', () => {
         available: expect.any(Boolean),
         reason: expect.any(String),
         declared: 0,
+        untraced: facts.sandbox.available ? facts.sandbox.untraced : null,
       })
+      expect([null, 'string']).toContain(
+        facts.sandbox.untraced === null ? null : typeof facts.sandbox.untraced,
+      )
       // Same facts either way: the pretty rows render this object.
       const pretty = await vx(root, ['info'])
       expect(pretty.out).toContain(`cache entries:`)
@@ -762,7 +766,7 @@ describe('vx info — the rendered rows', () => {
     hits24h: 2,
     flakyTasks: [],
     lockfile: true,
-    sandbox: { available: true, reason: '', declared: 1 },
+    sandbox: { available: true, reason: '', declared: 1, untraced: null },
   }
 
   it('a healthy workspace: one aligned column, no optional rows', () => {
@@ -814,7 +818,7 @@ describe('vx info — the rendered rows', () => {
         { taskId: 'b#e2e', project: 'b', task: 'e2e', keys: 1, passes: 3, failures: 1 },
       ],
       lockfile: false,
-      sandbox: { available: false, reason: 'bwrap missing', declared: 2 },
+      sandbox: { available: false, reason: 'bwrap missing', declared: 2, untraced: null },
     }
     expect(renderInfo(degraded)).toBe(
       [
@@ -864,8 +868,24 @@ describe('vx info — the rendered rows', () => {
       ),
     ).toBe('git status cache: core.fsmonitor, core.untrackedCache off')
     expect(
-      row({ ...healthy, sandbox: { available: false, reason: 'root', declared: 0 } }, 'sandbox'),
+      row(
+        { ...healthy, sandbox: { available: false, reason: 'root', declared: 0, untraced: null } },
+        'sandbox',
+      ),
     ).toBe('sandbox:          unavailable — root; 0 tasks declare exec.sandbox')
+    // B-51's lead: an available sandbox that cannot report its denied reads
+    // says why, beside the count.
+    expect(
+      row(
+        {
+          ...healthy,
+          sandbox: { available: true, reason: '', declared: 1, untraced: 'strace is not on PATH' },
+        },
+        'sandbox',
+      ),
+    ).toBe(
+      'sandbox:          available (1 task declares exec.sandbox), untraced — strace is not on PATH, so the reads it denies go unreported',
+    )
   })
 })
 
