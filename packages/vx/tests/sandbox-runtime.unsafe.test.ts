@@ -9,11 +9,14 @@
 
 import {
   existsSync,
+  mkdirSync,
   readdirSync,
   readFileSync,
   readlinkSync,
   realpathSync,
+  rmSync,
   statSync,
+  writeFileSync,
 } from 'node:fs'
 import { chmod, chown, mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { createConnection } from 'node:net'
@@ -4434,16 +4437,25 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
     const port = l.port
     l.stop(true)
     // Each task's socket sits in its own directory under the walled root
-    // (L-10), so the host looks in every task's.
+    // (L-10), so the host looks in every task's — this process's alone: a
+    // `kill -9`'d run leaves its directory (no sweep, item 965), and one
+    // whose socket shared this run's ephemeral port read as a second
+    // socket here, then as the one left behind (the gate, 2026-10-01).
     const root = path.dirname(path.dirname(portBridgeSocket('x', port)))
+    const own = `vx-task-${process.pid}-`
     const socks = (): string[] =>
       (existsSync(root) ? readdirSync(root) : []).flatMap((t) => {
+        if (!t.startsWith(own)) return []
         try {
           return readdirSync(path.join(root, t)).filter((n) => n.endsWith(`-${port}.sock`))
         } catch {
           return []
         }
       })
+    // That dead run's socket, made for this port so the case is every run's.
+    const dead = path.join(root, 'vx-task-0-dead')
+    mkdirSync(dead, { recursive: true, mode: 0o700 })
+    writeFileSync(path.join(dead, `vx-port-dead-${port}.sock`), '')
     // A port list's bridge needs a unix socket inside: the run lifts
     // SRT's AF_UNIX filter for it, as `prepareSandbox` does.
     await resetSandbox()
@@ -4467,6 +4479,7 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
       // kill was the grace's.
       expect([during.length, r.timedOut, socks()]).toEqual([1, true, []])
     } finally {
+      rmSync(dead, { recursive: true, force: true })
       if (grace === undefined) delete process.env['VX_KILL_GRACE_MS']
       else process.env['VX_KILL_GRACE_MS'] = grace
     }
