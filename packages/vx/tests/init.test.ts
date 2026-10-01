@@ -776,12 +776,19 @@ describe('migrateScripts', () => {
       'build:common': 'yarn --cwd ./packages/common build:esm',
       'build:b': 'npm --prefix packages/b run build',
       release: 'vp run build && vp exec changeset publish',
+      // vite: each runs the members through a root script that does.
+      'build:all': 'pnpm -r run build',
+      'ci-docs': 'pnpm build:all && pnpm docs',
+      'test-docs': 'npm run ci-docs',
+      // CONTROL: one calling a root script that runs no member maps.
+      check: 'pnpm lint && bun run typos',
+      typos: 'typos',
     })
     const a = meta('a', '/w/packages/a', { build: 'tsc' })
     const plan = migrateScripts([rootMeta, a])
     expect(plan.projects.map((p) => [p.name, p.tasks.map((t) => t.name)])).toEqual([
       ['a', ['build']],
-      ['root', ['lint']],
+      ['root', ['lint', 'check', 'typos']],
     ])
     expect(plan.notes).toEqual([
       "root (the workspace root): its scripts that check the whole repo are its tasks; those that run the members (`pnpm -r`, `--filter`, a runner) or share a member's task name are left out",

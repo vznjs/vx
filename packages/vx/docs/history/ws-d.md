@@ -820,3 +820,4 @@ packages/core`) selects the dependent whose `file:../lib` spec named
   is the task alone. Row: `project-loader.test.ts` › the typo that
   decouples, now the path counted once; red without the fix. The
   config-schema record's three messages regenerated.
+- **D-80.** `vx init` left out a root script that runs the members (D-45), but not one that runs such a script by name: vite's `ci-docs` (`pnpm build && pnpm docs-build`) and `test-docs` (`pnpm run docs-build`) mapped as root tasks, each running members' builds again beside their own. A root script calling a member-running root script (`pnpm x`, `npm run x`, `yarn x`, `bun run x`, to a fixed point) is left out too. Row (`init.test` › the workspace root among members is not mapped …, with a control calling a root script that runs no member). Probes, nothing else to fix: vite's other root scripts; openpanel (plain pnpm, as designed).
