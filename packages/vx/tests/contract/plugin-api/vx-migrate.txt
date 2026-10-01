@@ -281,6 +281,7 @@ export interface ScriptsMapping {
 export interface TrackedKinds {
   readonly exts: ReadonlySet<string>
   readonly dirs: ReadonlySet<string>
+  readonly tops: ReadonlySet<string>
 }
 == type TurboCacheConfig (src/turbo-cache/index.ts)
 export interface TurboCacheConfig {

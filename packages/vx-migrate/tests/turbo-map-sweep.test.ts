@@ -687,6 +687,13 @@ describe('turbo-map: a wildcard-first output of an untracked kind', () => {
     ['**/dist/*.js', false],
     ['**/d*/**', false],
     ['**/**', false],
+    // tldraw's `dist-*/**`: a first segment no tracked top-level entry matches.
+    ['dist-*/**', true],
+    ['{esm,cjs}/**', true],
+    ['s*/**', false],
+    ['*/**', false],
+    ['package*/**', false],
+    ['[x]*/**', false],
   ])('%s cached: %p', async (glob, cached) => {
     await writeFile(
       path.join(root, 'turbo.json'),
@@ -708,8 +715,12 @@ describe('turbo-map: a wildcard-first output of an untracked kind', () => {
         ...opts,
         tracked: (rel) =>
           rel === 'packages/a'
-            ? { exts: new Set(['ts', 'json']), dirs: new Set(['src']) }
-            : { exts: new Set(), dirs: new Set() },
+            ? {
+                exts: new Set(['ts', 'json']),
+                dirs: new Set(['src']),
+                tops: new Set(['src', 'package.json']),
+              }
+            : { exts: new Set(), dirs: new Set(), tops: new Set() },
       },
     )
     expect(mapped.projects[0]!.tasks[0]!.task!['cache'] !== undefined).toBe(cached)

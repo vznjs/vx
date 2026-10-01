@@ -23,10 +23,14 @@ export async function trackedFiles(root: string): Promise<string[] | null> {
   }
 }
 
-/** What a project's tracked files are: their extensions (lower case, no dot) and directory names. */
+/**
+ * What a project's tracked files are: their extensions (lower case, no
+ * dot), directory names at any depth, and top-level entry names.
+ */
 export interface TrackedKinds {
   readonly exts: ReadonlySet<string>
   readonly dirs: ReadonlySet<string>
+  readonly tops: ReadonlySet<string>
 }
 
 /**
@@ -41,6 +45,7 @@ export function trackedKinds(tracked: readonly string[]): (rel: string) => Track
     if (kinds === undefined) {
       const exts = new Set<string>()
       const dirs = new Set<string>()
+      const tops = new Set<string>()
       const all = rel === '' || rel === '.'
       for (const f of tracked) {
         if (!all && !f.startsWith(`${rel}/`)) continue
@@ -48,9 +53,10 @@ export function trackedKinds(tracked: readonly string[]): (rel: string) => Track
         const ext = path.posix.extname(own)
         if (ext !== '') exts.add(ext.slice(1).toLowerCase())
         const segs = own.split('/')
+        tops.add(segs[0]!)
         for (let i = 0; i < segs.length - 1; i++) dirs.add(segs[i]!)
       }
-      memo.set(rel, (kinds = { exts, dirs }))
+      memo.set(rel, (kinds = { exts, dirs, tops }))
     }
     return kinds
   }
