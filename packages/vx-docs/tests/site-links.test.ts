@@ -36,6 +36,29 @@ function unescape(s: string): string {
     .replace(/&amp;/g, '&')
 }
 
+/**
+ * The monthly feeds starlight-blog writes beside `blog/rss.xml`: one per
+ * UTC month before the build's that holds a post (its `getRSSArchives`).
+ * From the posts' own dates, so the set grows with the calendar: a fixed
+ * list went red on main when September ended.
+ */
+function rssArchives(): string[] {
+  const BLOG = path.resolve(import.meta.dir, '../src/content/docs/blog')
+  const month = (d: Date): string => d.toISOString().slice(0, 7)
+  const now = month(new Date())
+  const months = new Set<string>()
+  for (const f of readdirSync(BLOG)) {
+    if (!/\.mdx?$/.test(f)) continue
+    const front = /^---\n([\s\S]*?)\n---/.exec(readFileSync(path.join(BLOG, f), 'utf8'))?.[1] ?? ''
+    if (/^draft:\s*true\s*$/m.test(front)) continue
+    const date = /^date:\s*['"]?([^'"\s]+)/m.exec(front)?.[1]
+    if (date === undefined) continue
+    const m = month(new Date(date))
+    if (m < now) months.add(`blog/rss/${m}.xml`)
+  }
+  return [...months]
+}
+
 /** Every built page, as a path under `dist/`. */
 function pages(): string[] {
   if (!existsSync(path.join(DIST, 'index.html'))) {
@@ -142,7 +165,9 @@ describe('every internal link in the built site', () => {
       .filter((f) => f.endsWith('.xml'))
       .map((f) => f.split(path.sep).join('/'))
       .sort()
-    expect(feeds).toEqual(['blog/rss.xml', 'sitemap-0.xml', 'sitemap-index.xml'])
+    expect(feeds).toEqual(
+      ['blog/rss.xml', ...rssArchives(), 'sitemap-0.xml', 'sitemap-index.xml'].sort(),
+    )
     const dead = feeds.flatMap((f) =>
       xmlUrls(readFileSync(path.join(DIST, f), 'utf8'))
         .filter((u) => u.startsWith(SITE))
