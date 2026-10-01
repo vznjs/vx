@@ -169,7 +169,7 @@ export async function emitMainPackage(args: { version: string; outDir: string })
     }
     await cp(src, join(mainDir, entry), { recursive: true })
   }
-  await cp(join(CORE, 'npm-launcher.mjs'), join(mainDir, 'launcher.mjs'))
+  await cp(join(CORE, 'npm-launcher.cjs'), join(mainDir, 'launcher.cjs'))
   await cp(join(ROOT, 'README.md'), join(mainDir, 'README.md'))
   await cp(join(ROOT, 'LICENSE'), join(mainDir, 'LICENSE'))
 
@@ -184,13 +184,13 @@ export async function emitMainPackage(args: { version: string; outDir: string })
     exports: corePkg.exports,
     types: './src/index.ts',
     // The CLI — a Node launcher that execs the matching platform binary.
-    bin: { vx: './launcher.mjs' },
+    bin: { vx: './launcher.cjs' },
     engines: { node: '>=18' },
     optionalDependencies: allOptional('@vzn/vx', version),
     // Runtime deps the library source needs when imported (the binary embeds
     // its own copy). Mirrors the workspace root so versions never drift.
     dependencies: corePkg.dependencies ?? {},
-    files: [...entries, 'launcher.mjs', 'README.md', 'LICENSE'],
+    files: [...entries, 'launcher.cjs', 'README.md', 'LICENSE'],
     repository: REPOSITORY,
     homepage: corePkg.homepage,
     bugs: `${REPO_URL}/issues`,
