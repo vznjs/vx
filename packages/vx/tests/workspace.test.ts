@@ -309,6 +309,27 @@ describe('listProjects', () => {
     ])
   })
 
+  // vuejs/core's root has no name; its warning named an empty path.
+  it('a nameless root with a vx config is named as the workspace root', async () => {
+    await writeFile(path.join(dir, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
+    await writeFile(path.join(dir, 'package.json'), '{"private": true}')
+    await writeFile(path.join(dir, 'vx.config.mjs'), 'export default { tasks: {} }\n')
+    const written: string[] = []
+    const real = process.stderr.write.bind(process.stderr)
+    process.stderr.write = ((chunk: unknown): boolean => {
+      written.push(String(chunk))
+      return true
+    }) as typeof process.stderr.write
+    try {
+      await listProjects(await loadWorkspace(dir))
+    } finally {
+      process.stderr.write = real
+    }
+    expect(written).toEqual([
+      'vx: the workspace root has a vx config but its package.json has no "name" — skipped\n',
+    ])
+  })
+
   // vite's playground (eight names, two manifests each) refused the whole
   // workspace; pnpm runs it.
   it('a name several manifests share is left out with one line, unless one has a vx config', async () => {

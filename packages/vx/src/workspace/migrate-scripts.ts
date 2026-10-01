@@ -270,13 +270,16 @@ export function migrateScripts(
   const rootName =
     root?.name ??
     (outsideRuns
-      ? typeof outside?.['name'] === 'string'
+      ? typeof outside?.['name'] === 'string' && outside['name'] !== ''
         ? outside['name']
         : 'package.json'
       : undefined)
   if (rootName !== undefined) {
+    // A nameless root's vx.config is skipped (vx names projects by their
+    // manifest's name), so the hand-written one needs a name first (vuejs/core).
     notes.push(
-      `${rootName} (the workspace root) not mapped: its scripts run the workspace; declare its own tasks in its vx.config by hand`,
+      `${rootName} (the workspace root) not mapped: its scripts run the workspace; declare its own tasks in its vx.config by hand` +
+        (rootName === 'package.json' ? ', after giving its package.json a "name"' : ''),
     )
   }
   for (const meta of metas) {

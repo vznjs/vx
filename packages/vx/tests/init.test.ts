@@ -367,9 +367,12 @@ describe('migrateScripts', () => {
     expect(notes({ name: 'r', scripts: { lint: 'eslint .' } })).toEqual([
       'r (the workspace root) not mapped: its scripts run the workspace; declare its own tasks in its vx.config by hand',
     ])
-    expect(notes({ scripts: { lint: 'eslint .' } })[0]).toStartWith(
-      'package.json (the workspace root)',
-    )
+    // vuejs/core: a nameless root's vx.config is skipped, so the note says
+    // to name it first; an empty name is no name.
+    const nameless =
+      'package.json (the workspace root) not mapped: its scripts run the workspace; declare its own tasks in its vx.config by hand, after giving its package.json a "name"'
+    expect(notes({ scripts: { lint: 'eslint .' } })).toEqual([nameless])
+    expect(notes({ name: '', scripts: { lint: 'eslint .' } })).toEqual([nameless])
     expect(notes({ name: 'r', scripts: { lint: '' } })).toEqual([])
     expect(notes({ name: 'r', scripts: [] })).toEqual([])
     expect(notes({ name: 'r' })).toEqual([])

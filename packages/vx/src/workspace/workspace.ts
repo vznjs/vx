@@ -568,8 +568,9 @@ export async function listProjects(workspace: Workspace): Promise<ProjectMeta[]>
       // fine for a dir that declares no tasks; a dir with a vx config was
       // meant to run.
       if (configPath !== null) {
+        const rel = relPosix(workspace.root, dir)
         process.stderr.write(
-          `vx: ${relPosix(workspace.root, dir)} has a vx config but its package.json has no "name" — skipped\n`,
+          `vx: ${rel === '' ? 'the workspace root' : rel} has a vx config but its package.json has no "name" — skipped\n`,
         )
       }
       continue
