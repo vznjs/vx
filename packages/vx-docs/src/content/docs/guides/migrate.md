@@ -131,10 +131,10 @@ The command itself comes from your `package.json` script, with its
    an Nx Cloud workspace is named instead, since vx cannot share its cache.
 3. Run the `next:` line it prints. It installs `@vzn/vx-migrate`, then
    runs what `nx run-many -t build` ran, under vx's cache.
-4. Write the resolved graph: `nx graph --file=.nx/workspace-data/project-graph.json`.
-   `vx-migrate` reads it and never guesses from `nx.json`; without it, it
-   stops and prints that command. `nx()` needs no such step: it runs
-   `nx graph` into vx's cache dir itself.
+4. `vx-migrate` reads the resolved graph, never `nx.json` alone: an
+   exported `.nx/workspace-data/project-graph.json`, else the one your
+   installed `nx` exports for it (`nx graph`, as `nx()` runs). Without
+   `nx` installed it stops and prints the export command.
 5. Preview the configs with `bunx @vzn/vx-migrate --dry`, then write them
    with `bunx @vzn/vx-migrate`. With `turbo.json` there too, pass
    `--from nx` (or `--from turbo`).

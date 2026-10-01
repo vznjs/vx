@@ -25,6 +25,7 @@ src/nx-command.ts
 src/nx-dotenv.cjs
 src/nx-env.cjs
 src/nx-exec.cjs
+src/nx/export-graph.ts
 src/nx/index.ts
 src/nx/nx-deps.ts
 src/nx/nx-dotenv.ts

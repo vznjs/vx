@@ -1,12 +1,14 @@
 // `vx-migrate [--from turbo|nx|moon|wireit|lage|scripts] [--dry] [--force] [--mjs]` — one
 // vx.config.ts per workspace package from an existing Turbo, Nx, moon, wireit or lage
 // setup. Source auto-detect: turbo.json → Turbo;
-// .nx/workspace-data/project-graph.json → Nx (the resolved snapshot);
+// .nx/workspace-data/project-graph.json or nx.json → Nx (the resolved graph, exported by nx if absent);
 // .moon/workspace.yml → moon; a package.json `wireit` block → wireit;
 // lage.config.js → lage. The mappers return a plan; core's migration seam
 // (`applyMigration`) renders, guards, writes and reports, so what this
 // package writes reads exactly like what `vx init` writes.
 
+import { mkdtemp, rm } from 'node:fs/promises'
+import os from 'node:os'
 import path from 'node:path'
 import {
   applyMigration,
@@ -21,6 +23,7 @@ import {
 import { migrateLage } from './migrate-lage.js'
 import { migrateMoon } from './migrate-moon.js'
 import { migrateNx, NX_GRAPH_REL } from './migrate-nx.js'
+import { exportGraph } from './nx/export-graph.js'
 import { migrateScripts } from './migrate-scripts.js'
 import { rootScripts } from './scripts/index.js'
 import { parseFanOut } from './scripts/scripts-map.js'
@@ -235,12 +238,24 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
       source = NX_GRAPH_REL
       plan = await migrateNx(root, metas)
     } else if (hasNxJson || parsed.from === 'nx') {
-      // Modern Nx stores the graph in SQLite — the JSON snapshot only
-      // exists when exported explicitly.
-      throw new UserError(
-        'no resolved Nx graph found — export one with ' +
-          '`nx graph --file=.nx/workspace-data/project-graph.json`, then re-run vx-migrate',
-      )
+      // Modern Nx stores the graph in SQLite, so the JSON snapshot exists only
+      // when exported. The workspace's own nx exports it, as `nx()` does, into
+      // a temp file; the user ran that step by hand until 2026-10-01.
+      const tmp = await mkdtemp(path.join(os.tmpdir(), 'vx-migrate-nx-'))
+      try {
+        const snapshot = path.join(tmp, 'project-graph.json')
+        const why = await exportGraph(root, snapshot)
+        if (why !== null) {
+          throw new UserError(
+            `no resolved Nx graph found, and exporting one failed (${why}) — export it with ` +
+              '`nx graph --file=.nx/workspace-data/project-graph.json`, then re-run vx-migrate',
+          )
+        }
+        source = 'nx graph'
+        plan = await migrateNx(root, metas, snapshot)
+      } finally {
+        await rm(tmp, { recursive: true, force: true })
+      }
     } else {
       throw new UserError(
         'nothing to migrate: no turbo.json, Nx, moon or lage workspace, no wireit script and no root script that fans out — ' +

@@ -7,11 +7,13 @@ import { mapNxWorkspace, parseNxGraph } from './nx/nx-map.js'
 
 export const NX_GRAPH_REL = '.nx/workspace-data/project-graph.json'
 
+/** `snapshot`: the graph file to read, absolute; the checked-in one by default. */
 export async function migrateNx(
   root: string,
   metas: readonly ProjectMeta[],
+  snapshot = path.join(root, NX_GRAPH_REL),
 ): Promise<MigrationPlan> {
-  const graph = parseNxGraph(await Bun.file(path.join(root, NX_GRAPH_REL)).text(), NX_GRAPH_REL)
+  const graph = parseNxGraph(await Bun.file(snapshot).text(), path.relative(root, snapshot))
   const mapped = await mapNxWorkspace(root, metas, graph, {
     persistentTodo: PERSISTENT_TODO,
     cacheable: new Set(),

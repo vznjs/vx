@@ -78,14 +78,13 @@ graph, after every plugin has inferred its targets. The migration reads
 that:
 
 ```bash
-nx graph --file=.nx/workspace-data/project-graph.json
 bun add -d @vzn/vx
 bunx @vzn/vx-migrate --dry   # preview the generated vx.config.ts files and a report
 bunx @vzn/vx-migrate         # write them; never overwrites without --force
 ```
 
-If only `nx.json` is present, the tool tells you to run the `nx graph`
-command rather than guessing at plugin-inferred targets. The generated
+It asks your installed `nx` for the graph (`nx graph`) rather than
+guessing at plugin-inferred targets from `nx.json`. The generated
 files freeze that snapshot as static config: review them, replace the
 `nx-exec` lines when you are ready, fill the TODOs.
 
