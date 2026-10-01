@@ -15,15 +15,14 @@
 //      with no prebuilt binary if the user happens to have Bun).
 // Anything else is a clear, actionable error.
 
-import { execFileSync, spawn, spawnSync } from 'node:child_process'
-import { existsSync, readFileSync } from 'node:fs'
-import { createRequire } from 'node:module'
-import { constants as osConstants } from 'node:os'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+// CommonJS, not ESM: Node's ESM loader cost every `vx` call ~8 ms of a
+// ~65 ms launch (min of 21, interleaved, Node 22, 2026-10-01).
+const { execFileSync, spawn, spawnSync } = require('node:child_process')
+const { existsSync, readFileSync } = require('node:fs')
+const { constants: osConstants } = require('node:os')
+const { dirname, join } = require('node:path')
 
-const require = createRequire(import.meta.url)
-const here = dirname(fileURLToPath(import.meta.url))
+const here = __dirname
 const pkg = require('./package.json')
 
 // Derive the platform-package prefix + binary basename from this package's

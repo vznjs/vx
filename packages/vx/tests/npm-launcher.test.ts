@@ -1,4 +1,4 @@
-// npm-launcher.mjs is the `bin` of the published @vzn/vx package: a
+// npm-launcher.cjs is the `bin` of the published @vzn/vx package: a
 // Node script that execs the platform package's binary, falls back to
 // `bun <sourceEntry>`, and otherwise fails with an actionable message. It
 // had no pin; the distribution path is exercised only on a release. Driven
@@ -9,7 +9,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 
-const LAUNCHER = path.resolve(import.meta.dir, '..', 'npm-launcher.mjs')
+const LAUNCHER = path.resolve(import.meta.dir, '..', 'npm-launcher.cjs')
 const KEY = `${process.platform}-${process.arch}`
 const NODE = Bun.which('node')
 
@@ -20,7 +20,7 @@ describe.skipIf(NODE === null)('npm launcher', () => {
 
   beforeEach(() => {
     root = mkdtempSync(path.join(os.tmpdir(), 'vx-launcher-'))
-    // The published package: launcher.mjs beside its package.json.
+    // The published package: launcher.cjs beside its package.json.
     pkgDir = path.join(root, 'node_modules', '@vzn', 'vx')
     mkdirSync(pkgDir, { recursive: true })
     writeFileSync(
@@ -34,7 +34,7 @@ describe.skipIf(NODE === null)('npm launcher', () => {
   afterEach(() => rmSync(root, { recursive: true, force: true }))
 
   async function launcherReady(): Promise<void> {
-    writeFileSync(path.join(pkgDir, 'launcher.mjs'), await Bun.file(LAUNCHER).text())
+    writeFileSync(path.join(pkgDir, 'launcher.cjs'), await Bun.file(LAUNCHER).text())
   }
 
   function run(
@@ -42,7 +42,7 @@ describe.skipIf(NODE === null)('npm launcher', () => {
     pathDirs: string[],
   ): { code: number | null; out: string; err: string } {
     const p = Bun.spawnSync({
-      cmd: [NODE!, path.join(pkgDir, 'launcher.mjs'), ...args],
+      cmd: [NODE!, path.join(pkgDir, 'launcher.cjs'), ...args],
       cwd: root,
       env: { PATH: pathDirs.join(':'), HOME: root },
       stdout: 'pipe',
@@ -80,7 +80,7 @@ describe.skipIf(NODE === null)('npm launcher', () => {
     )
     chmodSync(bin, 0o755)
     const p = Bun.spawn({
-      cmd: [NODE!, path.join(pkgDir, 'launcher.mjs')],
+      cmd: [NODE!, path.join(pkgDir, 'launcher.cjs')],
       cwd: root,
       env: { PATH: '/usr/bin:/bin', HOME: root },
       stdout: 'ignore',
