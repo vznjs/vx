@@ -39,7 +39,7 @@ describe('the published @vzn/vx tree', () => {
   it('ships the entry the exports map and the launcher name', async () => {
     expect(await Bun.file(path.join(mainDir, 'src', 'index.ts')).exists()).toBe(true)
     expect(await Bun.file(path.join(mainDir, 'index.ts')).exists()).toBe(true)
-    expect(manifest.bin).toEqual({ vx: './launcher.mjs' })
+    expect(manifest.bin).toEqual({ vx: './launcher.cjs' })
     expect(await Bun.file(path.join(mainDir, manifest.bin.vx!)).exists()).toBe(true)
   })
 
@@ -60,7 +60,7 @@ describe('the published @vzn/vx tree', () => {
     expect(manifest.exports).toEqual(core.exports)
     expect(manifest.files).toEqual([
       ...coreEntries(core.exports),
-      'launcher.mjs',
+      'launcher.cjs',
       'README.md',
       'LICENSE',
     ])
