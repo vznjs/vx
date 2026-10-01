@@ -558,13 +558,3 @@ walked on fixtures.
   short at a word that leads exactly one accepted flag now names it.
   Row: `cli.test.ts` › every verb's unknown flag, now with
   `cache prune --dry`; red without the change.
-- **E-97.** Nx 23's run options (`shared-options.js`) that `vx run`
-  answered with a bare `unknown flag`: `--max-parallel`,
-  `--exclude-task-dependencies` and `--skip-remote-cache` are aliases now
-  (`--concurrency <n>`, `--exclude-dependencies`,
-  `--cache local:rw,remote:`); `--verbose` names `--verbosity <n>` (vx
-  keeps one spelling); `--files`, `--batch`, `--dte`/`--use-agents`,
-  `--nx-ignore-cycles`, `--runner`, `--skip-sync` and `--tui` are
-  refusals naming the vx way. cli.md's table carries them. Rows:
-  `foreign-flags.test.ts` (alias and refusal rows); red without the
-  change.
