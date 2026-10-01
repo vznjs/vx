@@ -383,6 +383,37 @@ describe('a transit node', () => {
   )
 })
 
+// with-vite: `ui` has no `build`, its apps bundle it, and Turbo hashes
+// its no-op `ui#build` into theirs. Walked past, an edit to ui replayed
+// both apps' builds from the cache.
+describe("a package without a task's script that others run", () => {
+  it(
+    'keys its dependants on its sources, and cleans nothing of its own',
+    async () => {
+      await writeFile(
+        path.join(root, 'turbo.json'),
+        JSON.stringify({ tasks: { build: { dependsOn: ['^build'], outputs: ['dist/**'] } } }),
+      )
+      await pkg('lib', { lint: 'echo l' })
+      const lib = path.join(root, 'packages', 'lib')
+      await mkdir(path.join(lib, 'dist'), { recursive: true })
+      await writeFile(path.join(lib, 'dist', 'kept.js'), 'kept\n')
+      Bun.spawnSync({ cmd: ['git', 'add', '-A'], cwd: root })
+      const key = async () => {
+        const plan = await planRun({ cwd: root, tasks: ['app#build'], log: silent() })
+        return plan.tasks.find((t) => t.node.id === 'app#build')!.hash
+      }
+      const before = await key()
+      await writeFile(path.join(lib, 'src', 'index.js'), '// edited\n')
+      expect(await key()).not.toBe(before)
+      const result = await run({ cwd: root, tasks: ['build'], log: silent(), handleSignals: false })
+      expect(result.outcomes.find((o) => o.node.id === 'lib#build')?.status).toBe('success')
+      expect(await Bun.file(path.join(lib, 'dist', 'kept.js')).text()).toBe('kept\n')
+    },
+    TIMEOUT,
+  )
+})
+
 describe('root tasks (D-39)', () => {
   const setUp = async (rootConfig: boolean, name: string | null = 'ws') => {
     await writeFile(
