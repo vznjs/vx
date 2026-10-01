@@ -567,3 +567,56 @@ walked on fixtures.
   red without the change. The 2026-05 row that pinned the refusal
   (`8fba75d7`, "Turbo has no `-F`") rested on a premise Turbo's own
   reference refutes; it now pins the alias.
+- **E-100.** `turbo run //#lint` runs the root's task from any package
+  (Turbo's configuring-tasks guide); `vx run //#lint` read `//` as a
+  project name and said no project declares it, though the root is a
+  project (D-39). A requested `//#task` is now the root project's, from
+  the root or a member. cli.md's selection table says so. Row
+  (`root-project.test.ts` › runs //#task as the root project's task,
+  from the root or a member): red without the change.
+- **E-99.** Nx's `nx show projects` and `nx show project app`, typed as
+  `vx show projects` and `vx show project app`, said
+  `unknown project or task: "projects"` and
+  `unexpected argument: app`. The first now adds that a bare `vx show`
+  lists them (a real project or task named `projects` still wins); the
+  second names `vx show app`. cli.md says so. Rows (`show-info.test.ts`:
+  the `projects` pointer beside `buidl`'s control, and `parseShowArgs`'s
+  `project <name>`): red without the change.
+- **E-98.** `vx graph`, `vx ls`, `vx query`, `vx reset`, `vx daemon` and
+  `vx login` / `logout` / `link` / `unlink`, the verbs a Turbo or Nx
+  hand types, said `unknown command` with no way on; only `run-many`
+  and `affected` named theirs. Each now names what does it in vx, after
+  a plugin's verb of the name had its chance. `sync` and `exec` are left
+  out: a repo's own task of that name is the better answer. cli.md says
+  so. Row (`foreign-flags.test.ts` › a Turbo or Nx verb names what does
+  it in vx, the verb list written out and held to the table both ways):
+  red without the change.
+- **E-97.** Nx 23's run options (`shared-options.js`) that `vx run`
+  answered with a bare `unknown flag`: `--max-parallel`,
+  `--exclude-task-dependencies` and `--skip-remote-cache` are aliases now
+  (`--concurrency <n>`, `--exclude-dependencies`,
+  `--cache local:rw,remote:`); `--verbose` names `--verbosity <n>` (vx
+  keeps one spelling); `--files`, `--batch`, `--dte`/`--use-agents`,
+  `--nx-ignore-cycles`, `--runner`, `--skip-sync` and `--tui` are
+  refusals naming the vx way. cli.md's table carries them. Rows:
+  `foreign-flags.test.ts` (alias and refusal rows); red without the
+  change.
+- **E-96.** Twelve flags of Turbo's run reference (`--env-mode`,
+  `--global-deps`, `--cwd`, `--json`, `--log-file`, `--single-package`,
+  `--framework-inference`, `--remote-cache-timeout`, `--preflight`,
+  `--cache-workers`, `--anon-profile`,
+  `--dangerously-disable-package-manager-check`) reached `vx run` as a
+  bare `unknown flag`, the dead end the foreign-flag table exists to
+  close. Each is now a refusal naming the vx way (or "drop it" where vx
+  needs none), and cli.md's parity table carries them. Rows:
+  `foreign-flags.test.ts` › a refused flag names the vx way; red
+  without the change.
+- **E-95.** `turbo run build -F web` is Turbo's short `--filter` (its
+  reference: "`-F` is an alias for `--filter`"), and
+  `vx run build -F web` said `unknown flag: -F` with no way on. The foreign-flag table
+  takes it as an alias; a bare `-F` asks for the value as a bare
+  `--filter` does. cli.md's parity table carries the row. Rows:
+  `foreign-flags.test.ts` (the alias, `-F=` inline, the bare refusal);
+  red without the change. The 2026-05 row that pinned the refusal
+  (`8fba75d7`, "Turbo has no `-F`") rested on a premise Turbo's own
+  reference refutes; it now pins the alias.

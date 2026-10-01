@@ -87,12 +87,20 @@ export function resolveNxCacheConfig(
  * sends the Blob core hands it. `put` treats `409` as success:
  * the record is immutable and content-addressed, so "already there" is the
  * outcome wanted. An auth failure (401/403) throws ONCE — LayeredCache
- * reports it — and then turns the layer off for the rest of the process;
+ * reports it — and then turns the layer off for the rest of the process
+ * (a write's 403 turns off writes alone: the read-only token);
  * the requests already in flight when it lands degrade in silence rather
  * than repeating it.
  */
 export class NxRemoteCache implements RemoteCacheLayer {
   private disabled = false
+  /**
+   * A `403` on a write is the spec's read-only token (a CI's pull-request
+   * token): uploads stop, reads go on. Read as a refused token, it turned
+   * the reads off too, and every dependant looked up after the first
+   * upload missed and rebuilt.
+   */
+  private writesRefused = false
   readonly endpoint: string
   constructor(
     private readonly config: NxCacheConfig,
@@ -137,6 +145,14 @@ export class NxRemoteCache implements RemoteCacheLayer {
     ).catch((err: unknown) => {
       throw deadlineNamed(err, this.config.timeoutMs)
     })
+    if (method === 'PUT' && res.status === 403) {
+      const first = !this.writesRefused
+      this.writesRefused = true
+      if (!first) return undefined
+      throw new Error(
+        'HTTP 403: access forbidden (a read-only token cannot write); uploads off for this run, reads go on',
+      )
+    }
     if (res.status === 401 || res.status === 403) {
       const first = !this.disabled
       this.disabled = true
@@ -172,7 +188,7 @@ export class NxRemoteCache implements RemoteCacheLayer {
 
   // Nx's record carries no duration; the seam's `meta` is accepted and unused.
   async put(hash: string, body: Blob, _meta: { durationMs: number }): Promise<void> {
-    if (this.disabled) return
+    if (this.disabled || this.writesRefused) return
     const res = await this.request('PUT', hash, body)
     if (res === undefined) return
     if (res.status === 200 || res.status === 202 || res.status === 409) return

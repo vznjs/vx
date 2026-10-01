@@ -71,10 +71,78 @@ describe('turbo(): turbo.json workspace keys', () => {
     }
   })
 
+  // Turbo's environment sits above turbo.json; a CI that sets
+  // TURBO_CONCURRENCY=1 for a small runner got turbo.json's 8 under vx.
+  it('TURBO_CONCURRENCY and TURBO_CACHE_MAX_* win over turbo.json, their 0 included', async () => {
+    await writeFile(
+      path.join(root, 'turbo.json'),
+      JSON.stringify({ concurrency: '8', cacheMaxSize: '10GB', cacheMaxAge: '2w', tasks: {} }),
+    )
+    const names = ['TURBO_CONCURRENCY', 'TURBO_CACHE_MAX_SIZE', 'TURBO_CACHE_MAX_AGE'] as const
+    const saved = names.map((n) => process.env[n])
+    const under = async (env: Partial<Record<(typeof names)[number], string>>) => {
+      for (const n of names) delete process.env[n]
+      Object.assign(process.env, env)
+      return staged(turbo())
+    }
+    try {
+      expect([
+        await under({ TURBO_CONCURRENCY: '1', TURBO_CACHE_MAX_SIZE: '1GB' }),
+        await under({ TURBO_CACHE_MAX_SIZE: '0', TURBO_CACHE_MAX_AGE: '3' }),
+        await under({ TURBO_CONCURRENCY: '' }),
+      ]).toEqual([
+        { concurrency: 1, cacheRetention: { maxSize: '1GB', olderThan: '14d' } },
+        { concurrency: 8, cacheRetention: { olderThan: '3d' } },
+        { concurrency: 8, cacheRetention: { maxSize: '10GB', olderThan: '14d' } },
+      ])
+    } finally {
+      names.forEach((n, i) => {
+        if (saved[i] === undefined) delete process.env[n]
+        else process.env[n] = saved[i]
+      })
+    }
+  })
+
   it('a concurrency that is no positive whole number is left to the default', async () => {
     for (const concurrency of ['abc', '1.5', '-2']) {
       await writeFile(path.join(root, 'turbo.json'), JSON.stringify({ concurrency, tasks: {} }))
       expect(await staged(turbo())).toEqual({})
+    }
+  })
+})
+
+describe('nx(): nx.json maxCacheSize', () => {
+  // Nx caps its local cache at nx.json's maxCacheSize (NX_MAX_CACHE_SIZE
+  // above it); vx's cache grew without bound under nx().
+  it("is the retention size, in Nx's grammar, the env above it and 0 off", async () => {
+    const saved = process.env['NX_MAX_CACHE_SIZE']
+    const at = async (maxCacheSize: unknown, env?: string, ws: WorkspaceConfig = {}) => {
+      if (env === undefined) delete process.env['NX_MAX_CACHE_SIZE']
+      else process.env['NX_MAX_CACHE_SIZE'] = env
+      await writeFile(path.join(root, 'nx.json'), JSON.stringify({ maxCacheSize }))
+      return (await staged(nx(), ws)).cacheRetention
+    }
+    try {
+      expect([
+        await at('10GB'),
+        await at('1.5 GB'),
+        await at('2048MB'),
+        await at(1000000),
+        await at('0'),
+        await at('10GB', '1GB'),
+        await at('10GB', undefined, { cacheRetention: { olderThan: '7d' } }),
+      ]).toEqual([
+        { maxSize: '10GB' },
+        { maxSize: '1536MB' },
+        { maxSize: '2GB' },
+        { maxSize: '1000000B' },
+        undefined,
+        { maxSize: '1GB' },
+        { olderThan: '7d' },
+      ])
+    } finally {
+      if (saved === undefined) delete process.env['NX_MAX_CACHE_SIZE']
+      else process.env['NX_MAX_CACHE_SIZE'] = saved
     }
   })
 })
@@ -89,5 +157,26 @@ describe('nx(): nx.json parallel', () => {
     )
     expect(await staged(nx())).toEqual({ concurrency: 5 })
     expect(await staged(nx(), { concurrency: 2 })).toEqual({ concurrency: 2 })
+  })
+
+  // Nx reads NX_PARALLEL above nx.json (`readParallelFromArgsAndEnv`).
+  it('NX_PARALLEL wins over nx.json, a percentage of the cores included', async () => {
+    await writeFile(path.join(root, 'nx.json'), JSON.stringify({ parallel: 8 }))
+    const saved = process.env['NX_PARALLEL']
+    const under = async (v: string) => {
+      process.env['NX_PARALLEL'] = v
+      return (await staged(nx())).concurrency
+    }
+    try {
+      expect([await under('2'), await under('50%'), await under(''), await under('x')]).toEqual([
+        2,
+        Math.max(1, Math.floor(availableParallelism() / 2)),
+        8,
+        8,
+      ])
+    } finally {
+      if (saved === undefined) delete process.env['NX_PARALLEL']
+      else process.env['NX_PARALLEL'] = saved
+    }
   })
 })
