@@ -28,7 +28,7 @@ one file beside `nx.json`, and its `next:` line installs
 `@vzn/vx-migrate` and runs the build:
 
 ```ts
-import type { WorkspaceConfig } from '@vzn/vx'
+import type { WorkspaceConfig } from '@vzn/vx/config'
 import { nx } from '@vzn/vx-migrate'
 
 export default { plugins: [nx()] } satisfies WorkspaceConfig

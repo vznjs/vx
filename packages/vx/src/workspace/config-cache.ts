@@ -189,6 +189,8 @@ function staticImports(
 
 /** The one bare specifier a pure config may import: core's identity helpers and types. */
 const PURE_PACKAGE = '@vzn/vx'
+/** The schema alone (`src/config.ts`): every value it exports is pure. */
+const PURE_CONFIG_ENTRY = '@vzn/vx/config'
 
 /**
  * The `@vzn/vx` values a pure config may import. Core exports far more, and
@@ -465,6 +467,7 @@ export async function configEvalKey(a: ConfigEvalKeyArgs): Promise<ConfigEvalKey
     h = xxh3(`${file}\0${identity}`, h)
     closure.push(file)
     for (const { spec, statement } of scanned.imports) {
+      if (spec === PURE_CONFIG_ENTRY) continue
       if (spec === PURE_PACKAGE) {
         if (/\bfrom\s*\0\d+\0\s*$/.test(statement) && !importsOnlyPure(statement)) return null
         continue

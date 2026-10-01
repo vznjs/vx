@@ -1,5 +1,6 @@
 LICENSE
 README.md
+config/index.ts
 index.ts
 launcher.cjs
 package.json

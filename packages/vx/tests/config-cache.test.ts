@@ -1180,6 +1180,19 @@ describe('which @vzn/vx imports a pure config may take (item 888)', () => {
     }
   })
 
+  // `vx init` writes `import type { ProjectConfig } from '@vzn/vx/config'`:
+  // the schema alone, so a user's `tsc` never walks core's Bun-only sources.
+  it('keys any import of the schema entry, which imports nothing itself', async () => {
+    for (const imp of [
+      "import type { ProjectConfig } from '@vzn/vx/config'\nimport { defineProject } from '@vzn/vx/config'",
+      "import * as vx from '@vzn/vx/config'\nconst defineProject = vx.defineProject",
+    ]) {
+      expect({ imp, keyed: (await keyOf(await cfg(imp))) !== null }).toEqual({ imp, keyed: true })
+    }
+    const schema = await Bun.file(path.join(import.meta.dir, '../src/config.ts')).text()
+    expect(schema.match(/^\s*(?:import|export\b[^\n]*\bfrom)\b.*$/gm)).toBeNull()
+  })
+
   it('names only values core really exports, each of them a value', async () => {
     const core = (await import('../src/index.js')) as Record<string, unknown>
     const missing = [...PURE_CORE_EXPORTS].filter((n) => !(n in core) || core[n] === undefined)

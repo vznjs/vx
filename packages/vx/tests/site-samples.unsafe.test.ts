@@ -910,11 +910,11 @@ describe('the config-in-typescript post shows what vx init writes', () => {
       path.resolve(import.meta.dir, '..', 'src', 'workspace', 'migration.ts'),
       'utf8',
     )
-    expect(src).toContain("import type { ProjectConfig } from '@vzn/vx'")
+    expect(src).toContain("import type { ProjectConfig } from '@vzn/vx/config'")
     expect(src).toContain('} satisfies ProjectConfig')
     // The page's own snippet must carry the import it tells people to write.
     const block = fencedBlock(page, 'ts', '// packages/ui/vx.config.ts')
-    expect(block).toContain("import type { ProjectConfig } from '@vzn/vx'")
+    expect(block).toContain("import type { ProjectConfig } from '@vzn/vx/config'")
     expect(block).toContain('satisfies ProjectConfig')
   })
   it('its runtime-import cost is the figure schema.md measured', () => {

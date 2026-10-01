@@ -175,6 +175,23 @@ describe('package boundaries', () => {
     expect(actual).toEqual(expected)
   })
 
+  // The schema entry a generated `vx.config.ts` type-imports: through the
+  // exports map (a user's `tsc`) and the directory shim (the compiled
+  // binary, which ignores the map), it is `src/config.ts` and no more.
+  it('@vzn/vx/config is the schema module through the map and the shim', async () => {
+    const schema = await import('../src/config.js')
+    const viaMap = await import('@vzn/vx/config')
+    const viaShim = await import('../config/index.js')
+    expect([Object.keys(viaMap).sort(), Object.keys(viaShim).sort()]).toEqual([
+      Object.keys(schema).sort(),
+      Object.keys(schema).sort(),
+    ])
+    expect([viaMap.defineProject, viaShim.defineProject]).toEqual([
+      schema.defineProject,
+      schema.defineProject,
+    ])
+  })
+
   it('every package oxfmt config ignores the names the sandbox masks', async () => {
     const masked = ['.mcp.json', '.vscode', '.idea', '.claude']
     const configs = [path.join(PACKAGES_DIR, '..', '.oxfmtrc.json')]
