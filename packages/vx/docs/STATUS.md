@@ -34,8 +34,9 @@ Concretely:
 5. **Adoption ready.** Docs, site, and design describe the product that
    exists — verified against the code, not remembered.
 
-Process: push directly to `main`, no PRs. Gate before every push:
-`bun packages/vx/src/bin.ts run ci --all`. Small, focused commits.
+Process: gate (`bun packages/vx/src/bin.ts run ci --all`), push a
+branch, open a PR, merge it on green (owner, 2026-09-10). Small, focused
+commits.
 
 ## Shipped — the record
 
