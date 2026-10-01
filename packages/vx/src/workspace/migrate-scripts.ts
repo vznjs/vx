@@ -29,6 +29,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { taskNameProblem } from './config-schema.js'
+import { buildPackageGraph } from './package-graph.js'
 import type { ProjectMeta } from './workspace.js'
 import {
   foldScriptHooks,
@@ -377,6 +378,7 @@ export function migrateScripts(
       projects.push({ name: meta.name, dir: meta.dir, importLines, tasks })
     }
   }
+  breakBuildCycles(projects, metas)
   return {
     headerNotes: [
       // Where to add one is the TODO's to say, when there is one: an Nx repo
@@ -388,6 +390,95 @@ export function migrateScripts(
     extraFiles: [],
     notes,
   }
+}
+
+/**
+ * pnpm sorts a dependency cycle away and builds anyway; vx's `^build`
+ * refuses it, so the config init wrote failed its first run (nuxt:
+ * `@nuxt/nitro-server` devDepends on `nuxt`, which depends on it; vitest's
+ * browser packages). A package in a cycle of builds waits, instead of on
+ * `^build`, on each build outside its cycle that `^build` reaches (through
+ * packages with none, as core walks it), with a TODO to order the cycle.
+ */
+function breakBuildCycles(projects: GeneratedProject[], metas: readonly ProjectMeta[]): void {
+  const builds = new Set(
+    projects
+      .filter((p) => p.tasks.some((t) => t.name === 'build' && t.task !== null))
+      .map((p) => p.name),
+  )
+  if (builds.size < 2) return
+  const graph = buildPackageGraph([...metas])
+  const holders = new Map<string, string[]>()
+  for (const name of builds) {
+    const found = new Set<string>()
+    const visited = new Set([name])
+    const frontier = [...graph.directDeps(name)]
+    while (frontier.length > 0) {
+      const at = frontier.pop()!
+      if (visited.has(at)) continue
+      visited.add(at)
+      if (builds.has(at)) found.add(at)
+      else frontier.push(...graph.directDeps(at))
+    }
+    holders.set(name, [...found].sort())
+  }
+  for (const cycle of cyclesOf(holders)) {
+    const members = new Set(cycle)
+    for (const p of projects) {
+      if (!members.has(p.name)) continue
+      const at = p.tasks.find(
+        (t) =>
+          Array.isArray(t.task?.['dependsOn']) &&
+          (t.task['dependsOn'] as string[]).includes('^build'),
+      )
+      if (at === undefined) continue
+      const outside = holders
+        .get(p.name)!
+        .filter((h) => !members.has(h))
+        .map((h) => `${h}#build`)
+      at.task!['dependsOn'] = (at.task!['dependsOn'] as string[]).flatMap((d) =>
+        d === '^build' ? outside : [d],
+      )
+      at.todos.push(
+        `its package is in a dependency cycle (${cycle.join(', ')}), where \`^build\` would refuse the run — it waits on the builds outside the cycle; order the ones inside it by hand`,
+      )
+    }
+  }
+}
+
+/** The strongly connected components of more than one node (Tarjan), each sorted. */
+function cyclesOf(edges: ReadonlyMap<string, readonly string[]>): string[][] {
+  const index = new Map<string, number>()
+  const low = new Map<string, number>()
+  const stack: string[] = []
+  const onStack = new Set<string>()
+  const out: string[][] = []
+  const visit = (v: string): void => {
+    index.set(v, index.size)
+    low.set(v, index.get(v)!)
+    stack.push(v)
+    onStack.add(v)
+    for (const w of edges.get(v) ?? []) {
+      if (!index.has(w)) {
+        visit(w)
+        low.set(v, Math.min(low.get(v)!, low.get(w)!))
+      } else if (onStack.has(w)) {
+        low.set(v, Math.min(low.get(v)!, index.get(w)!))
+      }
+    }
+    if (low.get(v) === index.get(v)) {
+      const comp: string[] = []
+      let w: string
+      do {
+        w = stack.pop()!
+        onStack.delete(w)
+        comp.push(w)
+      } while (w !== v)
+      if (comp.length > 1) out.push(comp.sort())
+    }
+  }
+  for (const v of [...edges.keys()].sort()) if (!index.has(v)) visit(v)
+  return out
 }
 
 /** The member whose directory holds every other member's, if one does. */
