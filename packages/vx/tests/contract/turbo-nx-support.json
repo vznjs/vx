@@ -402,7 +402,7 @@
   {
     "key": "nx.json parallel",
     "status": "mapped",
-    "reason": "nx() fills the workspace's `concurrency` when `vx.workspace.ts` sets none."
+    "reason": "nx() fills the workspace's `concurrency` when `vx.workspace.ts` sets none; `NX_PARALLEL` wins over it, as in Nx."
   },
   {
     "key": "nx.json cacheDirectory",

@@ -90,4 +90,25 @@ describe('nx(): nx.json parallel', () => {
     expect(await staged(nx())).toEqual({ concurrency: 5 })
     expect(await staged(nx(), { concurrency: 2 })).toEqual({ concurrency: 2 })
   })
+
+  // Nx reads NX_PARALLEL above nx.json (`readParallelFromArgsAndEnv`).
+  it('NX_PARALLEL wins over nx.json, a percentage of the cores included', async () => {
+    await writeFile(path.join(root, 'nx.json'), JSON.stringify({ parallel: 8 }))
+    const saved = process.env['NX_PARALLEL']
+    const under = async (v: string) => {
+      process.env['NX_PARALLEL'] = v
+      return (await staged(nx())).concurrency
+    }
+    try {
+      expect([await under('2'), await under('50%'), await under(''), await under('x')]).toEqual([
+        2,
+        Math.max(1, Math.floor(availableParallelism() / 2)),
+        8,
+        8,
+      ])
+    } finally {
+      if (saved === undefined) delete process.env['NX_PARALLEL']
+      else process.env['NX_PARALLEL'] = saved
+    }
+  })
 })
