@@ -522,10 +522,20 @@ export function translateForeign(args: readonly string[]): string[] | { error: s
   const sep = args.indexOf('--')
   const before = sep === -1 ? args : args.slice(0, sep)
   for (let i = 0; i < before.length; i++) {
-    const a = before[i]!
+    let a = before[i]!
     const eq = a.indexOf('=')
-    const name = eq === -1 ? a : a.slice(0, eq)
+    let name = eq === -1 ? a : a.slice(0, eq)
     const inline = eq === -1 ? undefined : a.slice(eq + 1)
+    // Nx's parser takes every long flag camelCased too (`--nxBail`,
+    // `--skipNxCache`), and its docs print that spelling; vx refused it
+    // as an unknown flag.
+    const kebab = name.startsWith('--')
+      ? name.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)
+      : name
+    if (kebab !== name && FOREIGN_FLAGS.some((f) => f.runner === 'nx' && f.names.includes(kebab))) {
+      name = kebab
+      a = inline === undefined ? kebab : `${kebab}=${inline}`
+    }
     const entries = FOREIGN_FLAGS.filter((f) => f.names.includes(name) || f.names.includes(a))
     const next = before[i + 1]
     const spaced = inline === undefined && next !== undefined && !next.startsWith('-')

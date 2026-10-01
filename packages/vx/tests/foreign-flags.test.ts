@@ -188,6 +188,28 @@ describe('Turbo and Nx flags on vx run', () => {
     expect(parseRunArgs(['build', '-F']).error).toBe(parseRunArgs(['build', '--filter']).error)
   })
 
+  // Nx's parser takes every long flag camelCased (`--nxBail`), as its
+  // docs print them; vx answered "unknown flag".
+  it("Nx's camelCase spelling is the kebab-case flag", () => {
+    for (const [camel, kebab] of [
+      [['--nxBail'], ['--nx-bail']],
+      [['--skipNxCache'], ['--skip-nx-cache']],
+      [['--maxParallel=2'], ['--max-parallel=2']],
+      [
+        ['--maxParallel', '2'],
+        ['--max-parallel', '2'],
+      ],
+      [['--outputStyle=static'], ['--output-style=static']],
+    ]) {
+      const [got, want] = [parseRunArgs(['build', ...camel!]), parseRunArgs(['build', ...kebab!])]
+      expect([camel, got]).toEqual([camel, want])
+    }
+    // CONTROL: a camelCase name with no Nx flag behind it stays unknown.
+    expect(parseRunArgs(['build', '--dryRun']).error).toBe(
+      'unknown flag: --dryRun (did you mean --dry?) (see `vx run --help`)',
+    )
+  })
+
   it("arguments after -- are the task's, never translated", () => {
     expect(parseRunArgs(['build', '--', '-t', 'x', '--parallel']).forwardArgs).toEqual([
       '-t',
