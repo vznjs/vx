@@ -1,14 +1,13 @@
 # @vzn/vx-migrate
 
-Everything for adopting [`@vzn/vx`](https://github.com/vznjs/vx) from Turborepo, Nx, moon, wireit or lage, in one package with zero dependencies:
+Everything for adopting [`@vzn/vx`](https://github.com/vznjs/vx) from Turborepo, Nx, wireit or lage, in one package with zero dependencies:
 
 - **`turbo()`** — run a Turbo repository under vx with nothing written. The plugin fills vx's `project` stage from `turbo.json` and each package's `package.json` scripts. A trial that commits nothing.
 - **`nx()`** — run an Nx repository under vx with nothing written: the same stage, filled from Nx's resolved project graph. Executor targets (`@nx/js:tsc`, `@nx/vite:build`, your own) run as themselves through **`nx-exec`**, one executor per process.
-- **`moon()`** — run a [moon](https://moonrepo.dev) workspace under vx with nothing written, from `.moon/` and each `moon.yml`.
 - **`wireit()`** — run a [wireit](https://github.com/google/wireit) workspace under vx with nothing written, from each `package.json`'s `wireit` block.
 - **`lage()`** — run a [lage](https://microsoft.github.io/lage/) workspace under vx with nothing written, from `lage.config.js`.
 - **`workspaceScripts()`** — run a workspace with no orchestrator, whose root scripts fan out (`pnpm -r run build`, `npm run test --workspaces`, `yarn workspaces foreach`, `lerna run`).
-- **`bunx @vzn/vx-migrate`** — write one `vx.config.ts` per workspace package from your `turbo.json`, an exported Nx project graph, `.moon/`, `wireit` blocks or `lage.config.js`, plus the workspace file every run needs. Runs without a workspace file, so it is the first command, not the second.
+- **`bunx @vzn/vx-migrate`** — write one `vx.config.ts` per workspace package from your `turbo.json`, an exported Nx project graph, `wireit` blocks or `lage.config.js`, plus the workspace file every run needs. Runs without a workspace file, so it is the first command, not the second.
 - **`turboCache()`** and **`nxCache()`** — keep the remote cache you have: any server speaking Turbo's `/v8/artifacts` API (Vercel's hosted cache included) or Nx's self-hosted `/v1/cache` spec.
 
 ```sh
@@ -64,7 +63,7 @@ Rules:
 - `outputs`: `$TURBO_ROOT$/<path>` → `cache.outputs.workspaceFiles`; a negated output rides beside its positives and takes its paths back from the clean, the save and the restore (Next's `.next/**` minus `!.next/cache/**` keeps the cache), and one with no positive beside it takes back nothing and is dropped. Past its first segment an output takes Turbo's grammar (`dist/**/*.[cm]js`); the first stays a literal (a route directory). An output whose first segment is a wildcard (`**/*.d.ts`, `*/**`) runs the task uncached with a todo: Turbo never cleans an output, vx cleans it before every run, and such a glob reaches the sources. One segment with a literal extension the package tracks no file of (`*.xml`, `*.tsbuildinfo`) reaches only top-level artifacts and stays cached, and so does `**/<dir>/**` when the package tracks nothing under a directory of that name (vercel/ai's `**/dist/**`; `node_modules` is never an output), and so does a first segment no tracked top-level entry matches (tldraw's `dist-*/**`). An output that covers the package's own `package.json` (trpc's client build lists it: the build rewrites `exports`) runs the task uncached with a todo, in `nx()` too: vx would delete the manifest before every run, and core refuses that config. So does one that covers the package's vx.config; `turbo()` and `nx()` check the config the package has, and `vx-migrate` the one it writes, so sanity's `*.js` shims stay cached beside none. `nx()` takes the wildcard-first rule above as `turbo()` does. A committed file under an output (typescript-eslint's `data/sponsors.json` in a cached `data`) is taken back with `!` — Turbo, Nx and lage never clean an output, vx does — so it survives the clean and the task keeps its cache; past sixteen such files the task runs uncached with a todo. `turbo()`, `nx()` and `lage()` do this; `wireit()` does not, since wireit cleans outputs itself.
 - `env` / `passThroughEnv`: explicit names go to `cache.inputs.env` (env only) and `exec.env.passThrough` (both, plus both globals); a wildcard is a todo (`turbo()`, which maps where the tasks run, expands a `*` name over the run's environment instead, and a new variable name maps afresh); `*` is the only wildcard, as in Turbo, so `\*`, a leading `\!`, `?` and `[` are literal: unkey's `NEXT_PUBLIC_\*` names one variable, which vx cannot key, so it is dropped with a todo (`turbo()`: only when the run's environment sets it, as Turbo hashes nothing otherwise); and a `!` entry (openstatus' `!NEXT_PUBLIC_VERCEL_URL`) removes the names it matches from its list, with no todo, since vx matches no name it is not given. A name both a global list and the task's own list carry is listed once.
 - **Two tasks of one package on one output path** (strapi's `build`, `build:code` and `build:types`, all on `dist/**`): vx cleans a task's outputs before it runs and before a restore, so the loader refuses two cached tasks whose outputs provably overlap. The mapping resolves it before the file is written — the task with a `^` edge keeps its cache (the first declared when none has one); a task a same-project edge orders after it stays cached too (vx caches what an ordered dependant ADDS to the tree — twenty's `build:individual` into `build`'s `dist`); the rest run uncached with a todo naming the keeper and the fix, their own output path or that edge. Same rule for Nx targets.
-- **Two packages' tasks on one workspace output** (cal.com's shared `post-install` writes `../../node_modules/@prisma/client/**` from every package with the script): core refuses two cached tasks on one path with no edge between them, so `turbo()` (and `nx()` and `moon()`) keeps the first (in package and task order) cached and runs the rest uncached, each with a todo naming the keeper. A package's own outputs count at their workspace path: typescript-eslint's root project caches `dist` and each package's typecheck `dist/packages/<name>`, one path twice. Edges across packages are not read, so an ordered pair loses its cache too.
+- **Two packages' tasks on one workspace output** (cal.com's shared `post-install` writes `../../node_modules/@prisma/client/**` from every package with the script): core refuses two cached tasks on one path with no edge between them, so `turbo()` (and `nx()`) keeps the first (in package and task order) cached and runs the rest uncached, each with a todo naming the keeper. A package's own outputs count at their workspace path: typescript-eslint's root project caches `dist` and each package's typecheck `dist/packages/<name>`, one path twice. Edges across packages are not read, so an ordered pair loses its cache too.
 - `cache: false` or `persistent: true` → no `cache` block; a persistent task gets `exec.persistent: {}` and, when some task depends on it, the consumer's `persistentTodo`.
 - A task's `description` (Turbo 2.11.5's schema) is the vx task's `description`.
 - `outputLogs: "new-only"` maps to nothing: frames for the tasks that ran and a one-liner per cache hit is vx's default flow already. The other values are per-run in vx, so they are a todo naming the flag (`vx run … --output-logs hash-only`).
@@ -135,43 +134,6 @@ Once per run the plugin keys its snapshot (`<cache dir>/nx-project-graph.json`) 
 - Nx's configuration propagation over `^` edges (`nx run app:build:production` builds dependencies with `production` where they declare it): a `build:production` task's `^build` edges run the dependencies' default configuration, with a warning when some other project declares it. Its own edges (`lint`) and named ones (`ui:pack`, `{ target, projects }`) take `production` where that target declares it, as Nx does.
 - Batch executors run one task per process; an executor that reads `context.taskGraph` under `NX_BUILDABLE_LIBRARIES_TASK_GRAPH` sees none and takes Nx's project-graph path.
 - The mapping's gaps are the migration's gaps, reported as warnings once per run for all the tasks that carry each one. `bunx @vzn/vx-migrate --dry --from nx` lists the same set once.
-
-## `moon()` — run a moon workspace unchanged
-
-```ts
-// vx.workspace.ts
-import { defineWorkspace } from '@vzn/vx'
-import { moon } from '@vzn/vx-migrate'
-
-export default defineWorkspace({ plugins: [moon()] })
-```
-
-Then `vx run build --all` runs each project's moon `build`. Read: `.moon/workspace.yml` (`projects` as a map, globs, or `{ globs, sources }`), the inherited task files (`.moon/tasks.yml`, `.moon/tasks/**`) and each project's `moon.yml`. A task file is inherited as moon 1 inherits it, by name (`node.yml`, `typescript-library.yml`, `tag-<t>.yml`), or, in a moon 2 workspace (one with `.moon/toolchains.yml` or an `inheritedBy` block), by `inheritedBy` (`toolchains`, `languages`, `layers`, `stacks`, `tags`; a list is any, `{ and, or, not }` as moon reads it; `order`); a condition it does not know keeps the file out, with a note. The language is `moon.yml`'s, else `typescript` where a `tsconfig.json` sits, else `javascript`.
-
-| moon                                                                                                                                  | vx                                                                                                                                          |
-| ------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `command` + `args`, `script`                                                                                                          | `exec.command`: a list's words are quoted, a string is kept as written                                                                      |
-| layers of one task                                                                                                                    | merged field by field; `args`, `deps`, `env`, `inputs`, `outputs` by the task's final `options.merge*`                                      |
-| `workspace.inheritedTasks` `include` / `exclude` / `rename`                                                                           | applied to the inherited tasks                                                                                                              |
-| `extends`                                                                                                                             | the named task with this one's fields merged on                                                                                             |
-| `deps`: `build`, `~:build`, `^:build`, `app:build`                                                                                    | `dependsOn`: `build`, `^build`, `app-package#build`                                                                                         |
-| `moon.yml` `dependsOn` a package.json does not name                                                                                   | `^:task` becomes an explicit `pkg#task` edge to it                                                                                          |
-| `implicitDeps` / `implicitInputs`                                                                                                     | joined to every task                                                                                                                        |
-| no `inputs`                                                                                                                           | `cache.inputs.files: ['**/*']`, moon's default                                                                                              |
-| `@group` / `@globs` / `@files` / `@dirs`                                                                                              | the file group's entries                                                                                                                    |
-| `/path`, `$workspaceRoot/path`                                                                                                        | `cache.inputs.workspaceFiles` / `outputs.workspaceFiles`                                                                                    |
-| `$VAR` input                                                                                                                          | `cache.inputs.env` **and** `exec.env.passThrough`                                                                                           |
-| a `.env` input, `options.envFile`                                                                                                     | `cache.inputs.runtime`: a probe of every `.env` file's name and bytes (git ignores them)                                                    |
-| `env`                                                                                                                                 | `exec.env.define`                                                                                                                           |
-| `@in(n)`, `@out(n)`, `$project`, `$task`, `$target`, `$workspaceRoot`, `$projectRoot`, `$projectSource`                               | expanded in the command                                                                                                                     |
-| `options.cache: false`                                                                                                                | no `cache` block                                                                                                                            |
-| `options.persistent`, `local: true` (moon 1, and by default for a task named `dev`, `start` or `serve`), `preset: server` / `watcher` | `exec.persistent: {}`, uncached                                                                                                             |
-| `node.inferTasksFromScripts` (moon 1)                                                                                                 | each script a task running `<packageManager> run <script>` (`:` becomes `-` in its name), under the `moon.yml` declaration of the same name |
-| `options.runFromWorkspaceRoot`                                                                                                        | `cd <root> && …`                                                                                                                            |
-| `options.retryCount` / `timeout` (seconds)                                                                                            | `exec.retries` / `exec.timeout` (ms)                                                                                                        |
-| `command: noop`                                                                                                                       | a group task: `dependsOn` only                                                                                                              |
-
-Not mapped, each a TODO or a note: a project that is not a package-manager workspace package (vx discovers projects from `package.json` workspaces), a tag target (`#tag:task`) or an all-projects dep (`:task`), a token with no vx form (`@meta`, `@envs`; the task is skipped and an edge to it dropped), and `options.affectedFiles`, `interactive`, `mutex`, `os`. moon passes a task the whole environment and vx an isolated one: list what a task reads as a `$VAR` input. A `remote.host` in `.moon/workspace.yml` is a Bazel REAPI server; [`@vzn/vx-reapi`](../vx-reapi)'s `reapi()` stores vx's artifacts there, and a note says so. Every value here was checked against `moon query tasks` (1.41.7 on moonrepo/examples, adobe/leonardo, jsx-email and astro-shield; 2.5.5 on a moon 2 fixture).
 
 ## `wireit()` — run a wireit workspace unchanged
 
@@ -279,7 +241,7 @@ Why the command carries the options: vx's key sees them (resolved-config hashing
 ## `bunx @vzn/vx-migrate` — write the configs
 
 ```bash
-bunx @vzn/vx-migrate           # auto-detect: turbo.json, .nx/workspace-data/project-graph.json or .moon/workspace.yml
+bunx @vzn/vx-migrate           # auto-detect: turbo.json, .nx/workspace-data/project-graph.json or nx.json
 bunx @vzn/vx-migrate --dry     # print the generated files + the report instead of writing
 bunx @vzn/vx-migrate --force   # overwrite existing vx.config.* / vx-preset.ts
 bunx @vzn/vx-migrate --from nx # disambiguate when both runners are checked in
@@ -318,10 +280,6 @@ Evaluates `lage.config.js` and maps it through the mapper `lage()` runs live; th
 ### wireit
 
 Reads each `package.json`'s `wireit` block through the mapper `wireit()` runs live; the table is [`wireit()`](#wireit--run-a-wireit-workspace-unchanged)'s.
-
-### moon
-
-Reads `.moon/` and each `moon.yml` through the mapper `moon()` runs live; the table is [`moon()`](#moon--run-a-moon-workspace-unchanged)'s.
 
 ## `turboCache()` — a Turbo remote cache
 
@@ -398,7 +356,7 @@ The Nx spec has no existence probe, so `has` (the `--dry` prediction; the prefet
 
 ## Testing
 
-`bun test` runs the Turbo, Nx, moon, wireit, lage and workspace-scripts plugins over fixture workspaces (the Nx one against a fake `nx` whose graph export and `runExecutor` are stubs, so the vx → `nx-exec` → executor → cache round trip is real), the migrate CLI over both sources, and each remote-cache wire against a strict in-memory implementation of its spec plus a full `vx run` round trip (miss → upload → local wipe → restore from the server). A separate suite points both plugins at a HOSTILE server — 500 on every request, 401, a server that never answers, and a body that is not an artifact — and pins that each one degrades to a miss with the run still green. `tests/nx-exec-live.test.ts` runs `nx-exec` against REAL Nx when `VX_NX_MODULES` names a directory whose `node_modules` holds `nx`, `@nx/js` and `typescript` (CI installs one under `packages/vx-migrate/.nx-live` and sets `VX_REQUIRE_NX=1`, so an absent install fails there instead of skipping).
+`bun test` runs the Turbo, Nx, wireit, lage and workspace-scripts plugins over fixture workspaces (the Nx one against a fake `nx` whose graph export and `runExecutor` are stubs, so the vx → `nx-exec` → executor → cache round trip is real), the migrate CLI over both sources, and each remote-cache wire against a strict in-memory implementation of its spec plus a full `vx run` round trip (miss → upload → local wipe → restore from the server). A separate suite points both plugins at a HOSTILE server — 500 on every request, 401, a server that never answers, and a body that is not an artifact — and pins that each one degrades to a miss with the run still green. `tests/nx-exec-live.test.ts` runs `nx-exec` against REAL Nx when `VX_NX_MODULES` names a directory whose `node_modules` holds `nx`, `@nx/js` and `typescript` (CI installs one under `packages/vx-migrate/.nx-live` and sets `VX_REQUIRE_NX=1`, so an absent install fails there instead of skipping).
 
 ## History
 

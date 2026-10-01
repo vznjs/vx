@@ -216,7 +216,7 @@ traces, metrics and logs), `@vzn/vx-github` (job summary and Checks API),
 `@vzn/vx-lockfile` (per-project keys from the package manager's
 lockfile), `@vzn/vx-schedule-history` (order by the critical path
 learned from run history), `@vzn/vx-mcp` (`vx mcp`, a server for AI
-agents) and `@vzn/vx-migrate` (a Turbo, Nx, moon, wireit, lage or
+agents) and `@vzn/vx-migrate` (a Turbo, Nx, wireit, lage or
 scripts-only repo run unchanged, a Turbo or Nx remote cache kept,
 `vx.config.ts` written from any of them), each
 importing core only through the public `@vzn/vx` specifier — a

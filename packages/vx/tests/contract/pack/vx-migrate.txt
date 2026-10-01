@@ -13,13 +13,10 @@ src/lage/index.ts
 src/lage/lage-map.ts
 src/mapping-cache.ts
 src/migrate-lage.ts
-src/migrate-moon.ts
 src/migrate-nx.ts
 src/migrate-scripts.ts
 src/migrate-turbo.ts
 src/migrate-wireit.ts
-src/moon/index.ts
-src/moon/moon-map.ts
 src/nx-cache/index.ts
 src/nx-command.ts
 src/nx-dotenv.cjs

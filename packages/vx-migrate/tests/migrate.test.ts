@@ -1297,8 +1297,7 @@ describe('vx migrate (nx) — a server target is persistent', () => {
 // ─── Item 817's sweep: each row fails with one line of the writer undone ──
 
 describe('the writer: what the sweep found unheld', () => {
-  const USAGE =
-    'usage: vx-migrate [--from turbo|nx|moon|wireit|lage|scripts] [--dry] [--force] [--mjs]'
+  const USAGE = 'usage: vx-migrate [--from turbo|nx|wireit|lage|scripts] [--dry] [--force] [--mjs]'
 
   it('parseMigrateArgs: --from=<source>, --help, and an unknown flag by name', () => {
     expect(parseMigrateArgs(['--from=nx'])).toEqual({
@@ -1442,13 +1441,11 @@ describe('the preset, exactly', () => {
 })
 
 describe('vx migrate — a repo core finds no workspace root in', () => {
-  // OpenCut (e668010): `.moon/` over a Cargo workspace, no root package.json.
   it(
-    'names a moon or Rush workspace, and leaves any other refusal as core words it',
+    'names a Rush workspace, and leaves any other refusal as core words it',
     async () => {
       const seen: Record<string, VxResult> = {}
       for (const [name, file, text] of [
-        ['moon', '.moon/workspace.yml', 'projects:\n  - apps/*\n'],
         ['rush', 'rush.json', '{ "projects": [] }\n'],
         ['none', 'README.md', 'nothing\n'],
       ] as const) {
@@ -1459,11 +1456,6 @@ describe('vx migrate — a repo core finds no workspace root in', () => {
         seen[name]!.err = seen[name]!.err.replace(dir, '<dir>')
         await rm(dir, { recursive: true, force: true })
       }
-      expect(seen['moon']).toEqual({
-        code: 1,
-        out: '',
-        err: 'vx-migrate: a moon workspace with no root package.json or pnpm-workspace.yaml: vx finds projects through the package manager\'s workspaces — list the moon projects that have a package.json under "workspaces" and re-run\n',
-      })
       expect(seen['rush']).toEqual({
         code: 1,
         out: '',
