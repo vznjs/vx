@@ -79,6 +79,42 @@ describe('turbo(): turbo.json workspace keys', () => {
   })
 })
 
+describe('nx(): nx.json maxCacheSize', () => {
+  // Nx caps its local cache at nx.json's maxCacheSize (NX_MAX_CACHE_SIZE
+  // above it); vx's cache grew without bound under nx().
+  it("is the retention size, in Nx's grammar, the env above it and 0 off", async () => {
+    const saved = process.env['NX_MAX_CACHE_SIZE']
+    const at = async (maxCacheSize: unknown, env?: string, ws: WorkspaceConfig = {}) => {
+      if (env === undefined) delete process.env['NX_MAX_CACHE_SIZE']
+      else process.env['NX_MAX_CACHE_SIZE'] = env
+      await writeFile(path.join(root, 'nx.json'), JSON.stringify({ maxCacheSize }))
+      return (await staged(nx(), ws)).cacheRetention
+    }
+    try {
+      expect([
+        await at('10GB'),
+        await at('1.5 GB'),
+        await at('2048MB'),
+        await at(1000000),
+        await at('0'),
+        await at('10GB', '1GB'),
+        await at('10GB', undefined, { cacheRetention: { olderThan: '7d' } }),
+      ]).toEqual([
+        { maxSize: '10GB' },
+        { maxSize: '1536MB' },
+        { maxSize: '2GB' },
+        { maxSize: '1000000B' },
+        undefined,
+        { maxSize: '1GB' },
+        { olderThan: '7d' },
+      ])
+    } finally {
+      if (saved === undefined) delete process.env['NX_MAX_CACHE_SIZE']
+      else process.env['NX_MAX_CACHE_SIZE'] = saved
+    }
+  })
+})
+
 describe('nx(): nx.json parallel', () => {
   it('parallel, or the legacy runner option, is the concurrency', async () => {
     await writeFile(path.join(root, 'nx.json'), JSON.stringify({ parallel: 1 }))
