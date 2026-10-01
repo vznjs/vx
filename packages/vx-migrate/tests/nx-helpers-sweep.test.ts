@@ -24,6 +24,17 @@ describe('expandNxInputs', () => {
     ])
   })
 
+  // Nx reads a project fileset of negations alone as every project file but
+  // those; the control keeps a positive glob's list as written.
+  it('a project fileset of negations alone starts from every project file', () => {
+    const named = { noMarkdown: ['!{projectRoot}/**/*.md'] }
+    expect([
+      inputs(['noMarkdown', '^noMarkdown'], named).files,
+      inputs(['{projectRoot}/src/**', 'noMarkdown'], named).files,
+      inputs(['!{workspaceRoot}/secret.json']).files,
+    ]).toEqual([['**/*', '!**/*.md'], ['src/**', '!**/*.md'], []])
+  })
+
   it('a named input that names itself terminates', () => {
     const got = inputs(['prod'], { prod: ['prod', '{projectRoot}/src/**'] })
     expect([got.files, got.todos]).toEqual([['src/**'], []])
@@ -372,7 +383,7 @@ describe('Nx glob grammar in inputs', () => {
 
   it('Nx’s default production negation excludes the spec files', () => {
     const got = inputs(['!{projectRoot}/**/?(*.)+(spec|test).[jt]s?(x)'])
-    expect([got.files, got.todos]).toEqual([['!**/{*.,}{spec,test}.{j,t}s{x,}'], []])
+    expect([got.files, got.todos]).toEqual([['**/*', '!**/{*.,}{spec,test}.{j,t}s{x,}'], []])
   })
 
   it('what has no safe form is a todo', () => {
