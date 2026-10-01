@@ -169,6 +169,7 @@ async function run(root: string, metas: readonly ProjectMeta[]): Promise<Adoptio
       JSON.stringify(dirs),
       // An env wildcard expands over these (`envNames`); a new name maps afresh.
       JSON.stringify(envNamesNow()),
+      process.env['TURBO_CI_VENDOR_ENV_KEY'] ?? '',
       ...configs,
       await textOf(path.join(root, '.yarnrc.yml')),
       JSON.stringify(metas.map((m) => [m.name, m.dir, m.packageJson])),
@@ -189,6 +190,7 @@ async function mapAll(root: string, metas: readonly ProjectMeta[]): Promise<Adop
     splice: (_kind, values) => values,
     persistentTodo: PERSISTENT_NOTE,
     envNames: envNamesNow(),
+    vendorEnvPrefix: process.env['TURBO_CI_VENDOR_ENV_KEY'] ?? '',
   })
   const byName = new Map<string, TurboMappedProject>()
   for (const project of mapped.projects) byName.set(project.name, project)

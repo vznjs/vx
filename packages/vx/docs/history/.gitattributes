@@ -1,0 +1,3 @@
+# Each workstream PR appends its item here; union keeps both sides so
+# parallel PRs do not conflict on the shared log.
+ws-*.md merge=union
