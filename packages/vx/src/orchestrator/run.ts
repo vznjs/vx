@@ -273,7 +273,7 @@ async function runOnBus(
   // case too; the message is identical, so that branch stays below.
   if (prepared.unresolvedTasks.length > 0) {
     log.status(
-      `No projects declare task(s): ${prepared.unresolvedTasks.join(', ')}.${didYouMean(prepared.unresolvedTasks, prepared.projects)}${await initHint(prepared)}`,
+      `No projects declare task(s): ${prepared.unresolvedTasks.join(', ')}.${elsewhereHint(prepared.declaredElsewhere)}${didYouMean(prepared.unresolvedTasks, prepared.projects)}${await initHint(prepared)}`,
     )
     await teardown()
     prepared.cache.close()
@@ -292,7 +292,7 @@ async function runOnBus(
     // buildTaskGraph semantics but logged just in case.
     const msg =
       prepared.empty === 'no-tasks-declared'
-        ? `No projects declare task(s): ${options.tasks.join(', ')}.${await initHint(prepared)}`
+        ? `No projects declare task(s): ${options.tasks.join(', ')}.${elsewhereHint(prepared.declaredElsewhere)}${await initHint(prepared)}`
         : 'No tasks to run.'
     log.status(msg)
     await teardown()
@@ -1210,7 +1210,14 @@ export async function planRun(options: RunOptions): Promise<RunPlan> {
       return {
         tasks: [],
         unresolvedTasks: prepared.unresolvedTasks,
-        unresolvedHint: `${didYouMean(prepared.unresolvedTasks, prepared.projects)}${await initHint(prepared)}`,
+        unresolvedHint: `${elsewhereHint(prepared.declaredElsewhere)}${didYouMean(prepared.unresolvedTasks, prepared.projects)}${await initHint(prepared)}`,
+      }
+    }
+    if (prepared.empty === 'no-tasks-declared' && prepared.declaredElsewhere.length > 0) {
+      return {
+        tasks: [],
+        unresolvedTasks: prepared.declaredElsewhere,
+        unresolvedHint: elsewhereHint(prepared.declaredElsewhere),
       }
     }
     if (prepared.empty !== null) return { tasks: [] }
@@ -1256,6 +1263,12 @@ export async function planRun(options: RunOptions): Promise<RunPlan> {
     mark('close')
     printTimings()
   }
+}
+
+/** The names a project outside the run's selection declares, and how to reach them. */
+function elsewhereHint(names: readonly string[]): string {
+  if (names.length === 0) return ''
+  return ` Only projects outside the selection declare ${names.join(', ')} — pass --all, or --filter to pick them.`
 }
 
 /**

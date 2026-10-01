@@ -15,7 +15,9 @@ that binary.
 1. Install it at the workspace root: `npm install -D @vzn/vx` (in a pnpm
    workspace, `pnpm add -D @vzn/vx`: npm refuses `workspace:*`).
 2. Run `npx vx init`. It writes a `vx.config.ts` per package from its
-   scripts, and a `vx.workspace.ts`. No task gets a `cache` block, so
+   scripts, and a `vx.workspace.ts`. A root script that checks the whole
+   repo (`lint: eslint .`) becomes a task in a root `vx.config.ts`; one
+   that runs the members (`pnpm -r build`) does not. No task gets a `cache` block, so
    nothing is cached yet: add the one each `build`'s TODO shows. Beside
    `turbo.json` or `nx.json` it writes only a `vx.workspace.ts` that
    declares `turbo()` or `nx()`.

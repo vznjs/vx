@@ -245,23 +245,66 @@ function upstreamBuildOnWorker(tasks: GeneratedTask[]): void {
 }
 
 /**
+ * A root script that runs the members rather than checking the repo:
+ * pnpm's `-r` / `--filter` / `-C`, npm's and Yarn's workspace flags, Bun's
+ * `--filter`, and the other runners, vx itself included. Mapped, it ran
+ * every member's task again beside the member's own (D-45).
+ */
+const RUNS_MEMBERS =
+  /(^|[\s;&|(])(turbo|nx|lerna|ultra|wireit|nps|moon|rush|vx)(\s|$)|\s(-r|--recursive|--filter|-F|--workspaces|-ws|--workspace|-w|-C|--dir|--if-present|--parallel|--stream)(\s|=|$)|\bworkspaces?\s+(foreach|run)\b|\bcd\s/
+
+/**
  * `outside`: the root manifest when the root is no member (pnpm's and
  * Yarn's default), whose own scripts (`lint: eslint .`) went unmapped
- * without a word.
+ * without a word; `outsideDir` is where it sits.
  */
 export function migrateScripts(
   metas: readonly ProjectMeta[],
   outside?: Readonly<Record<string, unknown>>,
+  outsideDir?: string,
 ): MigrationPlan {
   const projects: GeneratedProject[] = []
   const hookMemo = new Map<string, string | null>()
-  // The workspace root among members: its scripts run the workspace
-  // (`npm run build --workspaces`, `pnpm -r build`), and a root task made
-  // of one ran every member's build again under `--all`. Since D-39 a
-  // hand-written root config makes the root a project, and `--force`
-  // replaced it so (D-45). A lone package is its repo's project and maps.
+  // The workspace root among members: many of its scripts run the
+  // workspace (`npm run build --workspaces`, `pnpm -r build`), and a root
+  // task made of one ran every member's build again under `--all`. Since
+  // D-39 a hand-written root config makes the root a project, and
+  // `--force` replaced it so (D-45). A lone package is its repo's project
+  // and maps.
   const root = metas.length > 1 ? workspaceRootOf(metas) : undefined
   const notes: string[] = []
+  // The rest check the whole repo (`lint: oxlint .`, `test: vitest`):
+  // `vx run lint` found no project in remix, wagmi or element-plus. Such a
+  // script maps onto the root, when the root has a name (vx skips a
+  // nameless one's config), no config of its own, and no member declares
+  // the task, so `--all` never runs one check twice.
+  const outsideName =
+    typeof outside?.['name'] === 'string' && outside['name'] !== '' ? outside['name'] : undefined
+  const rootMeta: ProjectMeta | undefined =
+    root !== undefined
+      ? root.configPath === null
+        ? root
+        : undefined
+      : outsideName !== undefined && outsideDir !== undefined
+        ? { name: outsideName, dir: outsideDir, packageJson: outside as never, configPath: null }
+        : undefined
+  const memberTasks = new Set(
+    metas
+      .filter((m) => m !== root)
+      .flatMap((m) => Object.entries(scriptsOf(m)))
+      .filter(([, v]) => typeof v === 'string' && v !== '')
+      .map(([n]) => n),
+  )
+  const rootScripts = (meta: ProjectMeta): Record<string, unknown> =>
+    Object.fromEntries(
+      Object.entries(scriptsOf(meta)).filter(
+        ([n, v]) => typeof v === 'string' && !memberTasks.has(n) && !RUNS_MEMBERS.test(` ${v}`),
+      ),
+    )
+  const rootMapped =
+    rootMeta === undefined
+      ? 0
+      : Object.keys(rootScripts(rootMeta)).filter((n) => !LIFECYCLE.test(n)).length
   const outsideScripts = outside?.['scripts']
   const outsideRuns =
     typeof outsideScripts === 'object' &&
@@ -274,7 +317,11 @@ export function migrateScripts(
         ? outside['name']
         : 'package.json'
       : undefined)
-  if (rootName !== undefined) {
+  if (rootName !== undefined && rootMapped > 0) {
+    notes.push(
+      `${rootName} (the workspace root): its scripts that check the whole repo are its tasks; those that run the members (\`pnpm -r\`, \`--filter\`, a runner) or share a member's task name are left out`,
+    )
+  } else if (rootName !== undefined) {
     // A nameless root's vx.config is skipped (vx names projects by their
     // manifest's name), so the hand-written one needs a name first (vuejs/core).
     notes.push(
@@ -282,9 +329,10 @@ export function migrateScripts(
         (rootName === 'package.json' ? ', after giving its package.json a "name"' : ''),
     )
   }
-  for (const meta of metas) {
-    if (meta === root) continue
-    const scripts = scriptsOf(meta)
+  const mapped = metas.filter((m) => m !== root)
+  if (rootMeta !== undefined && rootMapped > 0) mapped.push(rootMeta)
+  for (const meta of mapped) {
+    const scripts = meta === rootMeta ? rootScripts(meta) : scriptsOf(meta)
     const hooksBy = runsScriptHooks(meta.dir, hookMemo)
     const runsHooks = hooksBy !== null
     const runnable = Object.keys(scripts).filter(

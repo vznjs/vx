@@ -101,20 +101,31 @@ describe('vx init source detection', () => {
   )
 
   it(
-    'a root outside the members with scripts of its own is named as not mapped',
+    'a root outside the members maps its repo-wide scripts, and runs them',
     async () => {
       const root = await makeRoot('vx-init-root-')
       const note =
-        'fixture-root (the workspace root) not mapped: its scripts run the workspace; declare its own tasks in its vx.config by hand'
+        "fixture-root (the workspace root): its scripts that check the whole repo are its tasks; those that run the members (`pnpm -r`, `--filter`, a runner) or share a member's task name are left out"
       try {
         await addPackage(root, 'a', { build: 'tsc' })
         // CONTROL: a root with no scripts says nothing.
         expect((await vx(root, ['init', '--dry'])).out.split('\n')).not.toContain(note)
         await writeFile(
           path.join(root, 'package.json'),
-          JSON.stringify({ name: 'fixture-root', private: true, scripts: { lint: 'eslint .' } }),
+          JSON.stringify({
+            name: 'fixture-root',
+            private: true,
+            scripts: { lint: 'echo linted > lint.out', build: 'pnpm -r build' },
+          }),
         )
-        expect((await vx(root, ['init', '--dry'])).out.split('\n')).toContain(note)
+        const r = await vx(root, ['init'])
+        expect(r.out.split('\n')).toContain(note)
+        Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
+        const lint = await vx(root, ['run', 'lint', '--all'])
+        expect(lint.code).toBe(0)
+        expect(await Bun.file(path.join(root, 'lint.out')).text()).toBe('linted\n')
+        const build = await vx(root, ['run', 'build', '--all', '--dry=json'])
+        expect(JSON.parse(build.out).tasks.map((t: { id: string }) => t.id)).toEqual(['a#build'])
       } finally {
         await rm(root, { recursive: true, force: true })
       }
@@ -751,11 +762,33 @@ describe('migrateScripts', () => {
       packageJson: { name, scripts } as never,
       configPath: null,
     })
-    const rootMeta = meta('root', '/w', { build: 'npm run build --workspaces', lint: 'eslint .' })
+    // A root script that checks the whole repo (`eslint .`) is the root's
+    // task; one that runs the members, or shares a member's task name, is
+    // not (remix: `vx run lint` found no project).
+    const rootMeta = meta('root', '/w', {
+      build: 'tsc -b',
+      lint: 'eslint .',
+      test: 'npm run test --workspaces',
+      dev: 'pnpm --filter app dev',
+      play: 'pnpm -C play dev',
+      e2e: 'turbo run e2e',
+      ci: 'vx run ci --all',
+    })
     const a = meta('a', '/w/packages/a', { build: 'tsc' })
     const plan = migrateScripts([rootMeta, a])
-    expect(plan.projects.map((p) => p.name)).toEqual(['a'])
+    expect(plan.projects.map((p) => [p.name, p.tasks.map((t) => t.name)])).toEqual([
+      ['a', ['build']],
+      ['root', ['lint']],
+    ])
     expect(plan.notes).toEqual([
+      "root (the workspace root): its scripts that check the whole repo are its tasks; those that run the members (`pnpm -r`, `--filter`, a runner) or share a member's task name are left out",
+    ])
+    // CONTROL: a hand-written root config stays as written.
+    const configured = { ...rootMeta, configPath: '/w/vx.config.ts' }
+    expect(migrateScripts([configured, a]).projects.map((p) => p.name)).toEqual(['a'])
+    // CONTROL: nothing left to map keeps the old note.
+    const runs = meta('root', '/w', { build: 'npm run build --workspaces' })
+    expect(migrateScripts([runs, a]).notes).toEqual([
       'root (the workspace root) not mapped: its scripts run the workspace; declare its own tasks in its vx.config by hand',
     ])
     // CONTROL: a single-package repo's root is its project; siblings with

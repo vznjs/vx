@@ -1405,6 +1405,7 @@ export interface PreparedRun {
   nodes: Map<string, TaskNode>
   keyOnly: ReadonlyMap<string, TaskNode>
   unresolvedTasks: readonly string[]
+  declaredElsewhere: readonly string[]
   projects: ReadonlyMap<string, ProjectEntry>
   anyProjectConfig: boolean
   workspaceFingerprint: string

@@ -106,6 +106,11 @@ export interface PreparedRun {
    * than run the remainder silently.
    */
   unresolvedTasks: readonly string[]
+  /**
+   * The bare names in `unresolvedTasks` a project outside a scoped run's
+   * selection (the cwd's project, a `--filter`) declares: no typo, a scope.
+   */
+  declaredElsewhere: readonly string[]
   /** Every discovered project — the declared task names a typo is measured against. */
   projects: ReadonlyMap<string, ProjectEntry>
   /**
@@ -330,6 +335,24 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       )
     }
   }
+  // Run inside a project that lacks the task (`vx run typecheck` at a
+  // root whose members declare it), the run said no project declares it.
+  // Only a failing run pays for the rest of the workspace.
+  let declaredElsewhere: string[] = []
+  // A scope with no project to ask (a member with no vx config) leaves
+  // every requested name unjudged.
+  const bare = (candidateProjects.length === 0 ? tasks : unresolvedTasks).filter(
+    (t) => !t.includes('#'),
+  )
+  if (options.projects !== undefined && options.selectedByDiff !== true && bare.length > 0) {
+    let nowhere = undeclaredIn(bare, projects)
+    if (nowhere.length > 0 && projectsWithConfigs.some((m) => !projects.has(m.name))) {
+      nowhere = await declaredNowhere(nowhere, () =>
+        loadProjects({ ...loadArgs, seeds: 'all', closure: false, staged: projects }),
+      )
+    }
+    declaredElsewhere = bare.filter((t) => !nowhere.includes(t))
+  }
 
   // Cache seam precedence: an EXPLICITLY injected remote layer
   // (RunOptions.remoteCache — a distribution agent or daemon that already
@@ -413,6 +436,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
         nodes: new Map(),
         keyOnly: new Map(),
         unresolvedTasks,
+        declaredElsewhere,
         projects,
         anyProjectConfig: projectsWithConfigs.length > 0,
         workspaceFingerprint,
@@ -532,6 +556,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       nodes,
       keyOnly,
       unresolvedTasks,
+      declaredElsewhere,
       projects,
       anyProjectConfig: projectsWithConfigs.length > 0,
       workspaceFingerprint,
