@@ -72,6 +72,7 @@ Rules:
 - A task's `tags` (Turbo main, after 2.11.5) map to nothing: Turbo keeps them out of the hash and the run.
 - `envMode: "loose"` (top-level or in `global`) is a note: Turbo hands every task the whole environment, vx only the declared names.
 - The workspace keys vx has a home for, top level or in `global`, fill what `vx.workspace.ts` leaves unset: `concurrency` (`"10"`, `"50%"` of the cores) → `concurrency`; `cacheMaxSize` / `cacheMaxAge` (`"0"` is off; weeks become days, a bare number days; a size in Turbo's grammar, `7.5GB` or bare bytes, restated whole: `7680MB`) → `cacheRetention.maxSize` / `.olderThan`.
+- `TURBO_SCM_BASE`, the base `turbo run --affected` compares with, is `affectedBase` when `vx.workspace.ts` sets none: a bare `vx run build --affected` compares with the same ref.
 - Turbo 2.11's `global` block (`futureFlags.globalConfiguration`) is read as the `globalDependencies`, `globalEnv` and `globalPassThroughEnv` it replaces.
 - An unknown Turbo key is a todo naming it; `extends` is accepted and ignored (the overlay order above is what it means).
 
@@ -112,6 +113,10 @@ Nx loads a task's `.env` files into its environment — the project's before the
 ### nx.json `parallel`
 
 `parallel` (or the legacy `tasksRunnerOptions.default.options.parallel`) is the run's `concurrency` when `vx.workspace.ts` sets none: a repo that set `1` for a shared resource ran on every core under vx before.
+
+### nx.json `defaultBase`
+
+`NX_BASE`, else `defaultBase` (Nx 19's `affected.defaultBase` before it), is `affectedBase` when `vx.workspace.ts` sets none: a bare `vx run test --affected` compares with the ref `nx affected` does.
 
 ### nx.json `maxCacheSize`
 

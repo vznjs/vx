@@ -226,6 +226,7 @@ export default defineWorkspace({
 | `cacheDir`       | where the local cache lives; add it to `.gitignore`                   |
 | `timeout`        | a default task timeout in ms; default none                            |
 | `cacheRetention` | evict at the end of every run: `olderThan` unused, then least recently used past `maxSize`; default none |
+| `affectedBase` | the git ref a bare `--affected` compares with; default `origin/HEAD` |
 
 For a timeout, the first one set wins: a task's `exec.timeout`, then
 `--timeout <ms>`, then `VX_TASK_TIMEOUT`, then this. Only `exec.timeout` is in the

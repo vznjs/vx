@@ -9,6 +9,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { writeLocalWorkspace } from './helpers/local-workspace.js'
+import { PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
 
 const CLI = path.join(import.meta.dir, '..', 'src', 'bin.ts')
 
@@ -77,6 +78,39 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
     expect(r.out).toContain(
       'origin/feat is HEAD itself: compare with the branch you merge into (--affected=origin/main) or the previous commit (--affected=HEAD~1)',
     )
+  })
+
+  // Nx's `defaultBase` (`develop` in a git-flow repo) had nowhere to go: a
+  // bare --affected compared with origin/HEAD and ran the wrong set.
+  it('a bare --affected takes affectedBase, from the file or a config stage; a value still wins', async () => {
+    git(root, 'branch', 'develop')
+    // Untracked, the file the row rewrites would itself be the change.
+    await writeFile(path.join(root, '.gitignore'), 'out.txt\n.vx/\nvx.workspace.mjs\n')
+    git(root, 'rm', '-q', '--cached', 'vx.workspace.mjs')
+    git(root, 'symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/feat')
+    await writeFile(path.join(root, 'pkgs/app/src/a.txt'), 'a2\n')
+    git(root, 'add', '-A')
+    git(root, 'commit', '-q', '-m', 'two')
+    git(root, 'update-ref', 'refs/remotes/origin/feat', 'HEAD')
+    const plan = (...args: string[]) => {
+      const r = vx(root, 'run', 'build', ...args, '--dry=json')
+      if (r.exitCode !== 0) return `exit ${r.exitCode}: ${r.out}`
+      const json = r.out.slice(r.out.indexOf('{'))
+      return (JSON.parse(json) as { tasks: { id: string }[] }).tasks.map((t) => t.id)
+    }
+    const workspace = (body: string) =>
+      writeFile(path.join(root, 'vx.workspace.mjs'), `${PLUGIN_IMPORT}export default ${body}\n`)
+    await workspace(`{ plugins: [] }`)
+    expect(vx(root, 'run', 'build', '--affected').out).toContain(
+      'nothing affected since origin/feat',
+    )
+    await workspace(`{ affectedBase: 'develop', plugins: [] }`)
+    expect(plan('--affected')).toEqual(['app#build'])
+    expect(vx(root, 'run', 'build', '--affected=HEAD').out).toContain('nothing affected since HEAD')
+    await workspace(
+      `{ plugins: [${pluginSource('base', `{ config(ws) { ws.affectedBase = 'develop' } }`)}] }`,
+    )
+    expect(plan('--affected')).toEqual(['app#build'])
   })
 
   it('CONTROL: a real base that happens to select nothing keeps the plain note', async () => {

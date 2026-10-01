@@ -52,6 +52,9 @@ export function turbo(options: TurboPluginOptions = {}): VxPlugin {
           workspace.concurrency = keys.concurrency
         if (workspace.cacheRetention === undefined && keys.cacheRetention !== undefined)
           workspace.cacheRetention = keys.cacheRetention
+        // `turbo run --affected` compares with TURBO_SCM_BASE when set.
+        const base = Bun.env['TURBO_SCM_BASE']?.trim()
+        if (workspace.affectedBase === undefined && base) workspace.affectedBase = base
       },
       // `//#task` keys run on the root, as Turbo runs them: named here, the
       // root is a project with no vx.config written (a create-turbo repo's

@@ -1,7 +1,7 @@
 {
   "workspace": {
     "levels": {
-      "": ["cacheDir", "cacheRetention", "concurrency", "plugins", "timeout"],
+      "": ["affectedBase", "cacheDir", "cacheRetention", "concurrency", "plugins", "timeout"],
       "cacheRetention": ["maxSize", "olderThan"]
     },
     "records": [],
@@ -222,6 +222,37 @@
         ],
         "$CONFIG: `cacheRetention`.maxSize '10' reads as 10 bytes — give a unit (e.g. '10M', '10G')": [
           "\"10\""
+        ]
+      },
+      "affectedBase": {
+        "ok": ["<absent>", "\"x\"", "\"(\"", "\"30d\"", "\"10G\"", "\"10\"", "\"origin/main\""],
+        "$CONFIG: `affectedBase` must be a git ref like 'origin/main'": [
+          "null",
+          "true",
+          "false",
+          "0",
+          "1",
+          "1.5",
+          "-1",
+          "65536",
+          "2147483648",
+          "\"\"",
+          "[]",
+          "[\"x\"]",
+          "[\"\"]",
+          "[1]",
+          "[3000]",
+          "[\"/x\"]",
+          "[\"!/x\"]",
+          "[\"../x\"]",
+          "[\"!x\"]",
+          "[\"!!x\",\"y\"]",
+          "[\".\"]",
+          "[\"**\"]",
+          "[\"A=B\"]",
+          "[\"A*\"]",
+          "{}",
+          "{\"x\":\"y\"}"
         ]
       },
       "plugins": {

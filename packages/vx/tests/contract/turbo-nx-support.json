@@ -321,8 +321,8 @@
   },
   {
     "key": "nx.json affected",
-    "status": "not-supported",
-    "reason": "Ignored; `--affected` defaults to `origin/HEAD` or takes a base."
+    "status": "mapped",
+    "reason": "Its `defaultBase` (before Nx 20) is `affectedBase` when the top-level key is absent; nothing else in it is read."
   },
   {
     "key": "nx.json extends",
@@ -331,8 +331,8 @@
   },
   {
     "key": "nx.json defaultBase",
-    "status": "not-supported",
-    "reason": "Ignored; `--affected` defaults to `origin/HEAD` or takes a base."
+    "status": "mapped",
+    "reason": "`nx()` sets `affectedBase`, the base a bare `--affected` compares with; `NX_BASE` wins over it, as in Nx."
   },
   {
     "key": "nx.json tasksRunnerOptions",

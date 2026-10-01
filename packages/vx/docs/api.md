@@ -2310,6 +2310,7 @@ export interface WorkspaceConfig {
   cacheDir?: string
   timeout?: number
   cacheRetention?: { olderThan?: string; maxSize?: string }
+  affectedBase?: string
   plugins?: readonly Plugin[]
 }
 ```

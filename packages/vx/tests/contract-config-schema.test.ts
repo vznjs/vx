@@ -57,6 +57,7 @@ const LEVEL_TYPES: Record<'workspace' | 'project', Record<string, string[]>> = {
       cacheDir: true,
       timeout: true,
       cacheRetention: true,
+      affectedBase: true,
       plugins: true,
     }),
     cacheRetention: keys<NonNullable<WorkspaceConfig['cacheRetention']>>({
@@ -123,6 +124,7 @@ function workspaceSeed(): Record<string, unknown> {
     cacheDir: '.vx/cache',
     timeout: 1000,
     cacheRetention: { olderThan: '30d', maxSize: '10G' },
+    affectedBase: 'origin/main',
     plugins: [],
   }
 }
