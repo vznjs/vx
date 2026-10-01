@@ -5,6 +5,7 @@
 // names the exact cache-key components that differ. Read-only over cache.db —
 // no config evaluation, no re-hash.
 
+import path from 'node:path'
 import { Cache, noteSchemaReset } from '../cache/index.js'
 import { flagHint, seeHelp } from './help.js'
 import { splitTaskId } from '../graph/index.js'
@@ -159,6 +160,16 @@ function resolveTarget(cache: Cache, target: string): string {
 
 const fmtWhen = (ms: number): string => new Date(ms).toISOString()
 
+/** `//#task`, Turbo's root package, as the root project's id: its package.json name (D-39). */
+async function rootSpelled(root: string, target: string): Promise<string> {
+  if (!target.startsWith('//#')) return target
+  const name = await Bun.file(path.join(root, 'package.json'))
+    .json()
+    .then((j: { name?: unknown }) => j.name)
+    .catch(() => undefined)
+  return typeof name === 'string' && name !== '' ? `${name}#${target.slice(3)}` : target
+}
+
 export async function whyCmd(args: readonly string[]): Promise<number> {
   const parsed = parseWhyArgs(args)
   if (parsed.error !== undefined) throw new UserError(`vx why: ${parsed.error}`)
@@ -171,7 +182,7 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
   noteSchemaReset(cache, warnToStderr)
   try {
     const db = cache.dbHandle()
-    const taskId = resolveTarget(cache, parsed.target)
+    const taskId = resolveTarget(cache, await rootSpelled(root, parsed.target))
     const runId =
       parsed.runId !== undefined
         ? (resolveRunId(db, parsed.runId, 'vx why') ?? parsed.runId)

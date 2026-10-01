@@ -59,6 +59,31 @@ describe('a root vx.config makes the root a project (D-39)', () => {
     expect(r.outcomes.map((o) => o.node.id).sort()).toEqual(['a#test', 'fixture-root#build'])
   })
 
+  // `vx show //#build` and `vx why //#build` read `//` as a project name, as
+  // `vx run` did before E-100.
+  it("show and why take //#task as the root project's task", async () => {
+    await writeFile(path.join(fixture.root, 'vx.config.mjs'), ROOT_CONFIG)
+    const r = await run({
+      cwd: fixture.root,
+      tasks: ['fixture-root#build'],
+      log: silentLogger(fixture),
+    })
+    expect(r.ok).toBe(true)
+    const bin = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+    const said = (verb: string) => {
+      const p = Bun.spawnSync({
+        cmd: [process.execPath, bin, verb, '//#build', '--format', 'json'],
+        cwd: path.join(fixture.root, 'packages', 'a'),
+        env: { ...process.env, NO_COLOR: '1' },
+      })
+      return [verb, p.exitCode, p.stdout.toString().includes('fixture-root')]
+    }
+    expect([said('show'), said('why')]).toEqual([
+      ['show', 0, true],
+      ['why', 0, true],
+    ])
+  })
+
   // Turbo spells the root package `//`: `dependsOn: ['//#build']` refused
   // "no such project or task" though the root is one. A scoped run (`a#test`)
   // must pull the root in too. CONTROL: with no root project, the refusal
