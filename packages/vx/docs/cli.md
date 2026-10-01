@@ -1860,6 +1860,10 @@ vx show <task>                   # that task in every project declaring it
 vx show ... --format json        # machine-readable (default: pretty)
 ```
 
+Nx's spellings name these: `vx show projects` (when no project or task
+has that name) and `vx show project <name>` say `vx show` and
+`vx show <name>`.
+
 No target: one line per project — name, root-relative dir, task count,
 and a `(no vx config)` marker for config-less packages; one whose
 tasks all come from plugins reads `N tasks (no vx config; from
