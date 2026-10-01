@@ -1183,6 +1183,12 @@ function buildTask(
             `dependsOn ${JSON.stringify(d)}: the workspace root is no project — edge dropped; ` +
               'a root package.json name no package holds makes it one',
           )
+        // A package outside the workspace (highlight's `rrweb`, a submodule
+        // not checked out) is no script gap.
+        else if (!emitted.has(pkg))
+          todos.push(
+            `dependsOn ${JSON.stringify(d)}: no workspace package is named ${pkg} — edge dropped`,
+          )
         else
           todos.push(
             `dependsOn ${JSON.stringify(d)}: ${pkg} declares no ${task} script — edge dropped`,
