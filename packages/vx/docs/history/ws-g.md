@@ -921,3 +921,10 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   so. Rows: one per mapper (`nx-map-sweep`, `scripts`, `lage`, `wireit`),
   each red without the fix; the scripts row is red with only the mapping
   key reverted too.
+- **G-83.** `turboCache()` read turbo.json's `apiUrl`, `teamId` and
+  `teamSlug`, but not `remoteCache.timeout` / `uploadTimeout` or Turbo's
+  `TURBO_REMOTE_CACHE_TIMEOUT` / `_UPLOAD_TIMEOUT`, so a repo that gives
+  its cache 120 s got vx's 30. Each is read in Turbo's order (options,
+  env, file), in whole seconds, 0 being no deadline; anything else is
+  refused by name. Rows (`turbo-cache.test` › the timeouts come from …,
+  a timeout of 0 sends no deadline): red without the change.

@@ -154,6 +154,52 @@ describe('resolveTurboCacheConfig', () => {
     ])
   })
 
+  // Turbo reads its deadlines, in whole seconds, from flags, then
+  // TURBO_REMOTE_CACHE_[UPLOAD_]TIMEOUT, then turbo.json; they were not read,
+  // so a repo that waits 120 s for its cache got vx's 30. 0 is no deadline.
+  it('the timeouts come from the options, then Turbo’s env, then turbo.json, in seconds', () => {
+    const at = (
+      o: Parameters<typeof resolveTurboCacheConfig>[0],
+      env: Record<string, string>,
+      file: Parameters<typeof resolveTurboCacheConfig>[2],
+    ) => {
+      const c = resolveTurboCacheConfig({ token: 't', ...o }, env, file)!
+      return [c.timeoutMs, c.uploadTimeoutMs]
+    }
+    const file = { timeout: 120, uploadTimeout: 300 }
+    const env = { TURBO_REMOTE_CACHE_TIMEOUT: '5', TURBO_REMOTE_CACHE_UPLOAD_TIMEOUT: '0' }
+    expect([
+      at({}, {}, {}),
+      at({}, {}, file),
+      at({}, env, file),
+      at({ timeoutMs: 7, uploadTimeoutMs: 8 }, env, file),
+    ]).toEqual([
+      [30_000, 60_000],
+      [120_000, 300_000],
+      [5_000, 0],
+      [7, 8],
+    ])
+    expect(() => at({}, { TURBO_REMOTE_CACHE_TIMEOUT: '1.5' }, {})).toThrow(
+      'vx/turbo-cache: TURBO_REMOTE_CACHE_TIMEOUT must be whole seconds ≥ 0, got "1.5"',
+    )
+    expect(() => at({}, {}, { uploadTimeout: -1 })).toThrow(
+      'vx/turbo-cache: remoteCache.uploadTimeout must be whole seconds ≥ 0, got -1',
+    )
+  })
+
+  it('a timeout of 0 sends no deadline', async () => {
+    const signals: Array<AbortSignal | null | undefined> = []
+    const seen = (async (_u: string, init?: RequestInit) => {
+      signals.push(init?.signal)
+      return new Response(null, { status: 404 })
+    }) as unknown as typeof fetch
+    for (const timeoutMs of [0, 1000]) {
+      const c = resolveTurboCacheConfig({ apiUrl: 'https://c', token: 't', timeoutMs }, {})!
+      await new TurboRemoteCache(c, seen).has('ab')
+    }
+    expect(signals.map((s) => s instanceof AbortSignal)).toEqual([false, true])
+  })
+
   it('a signature key must be Turbo’s minimum length and come with a team id', () => {
     expect(() =>
       resolveTurboCacheConfig(
