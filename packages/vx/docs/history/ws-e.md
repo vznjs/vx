@@ -611,12 +611,3 @@ walked on fixtures.
   needs none), and cli.md's parity table carries them. Rows:
   `foreign-flags.test.ts` › a refused flag names the vx way; red
   without the change.
-- **E-95.** `turbo run build -F web` is Turbo's short `--filter` (its
-  reference: "`-F` is an alias for `--filter`"), and
-  `vx run build -F web` said `unknown flag: -F` with no way on. The foreign-flag table
-  takes it as an alias; a bare `-F` asks for the value as a bare
-  `--filter` does. cli.md's parity table carries the row. Rows:
-  `foreign-flags.test.ts` (the alias, `-F=` inline, the bare refusal);
-  red without the change. The 2026-05 row that pinned the refusal
-  (`8fba75d7`, "Turbo has no `-F`") rested on a premise Turbo's own
-  reference refutes; it now pins the alias.
