@@ -132,7 +132,7 @@
   {
     "key": "turbo.json tasks.*.interactive",
     "status": "not-supported",
-    "reason": "Reported as a key with no vx equivalent, then ignored."
+    "reason": "vx gives no task the terminal, so a prompt reads end of input; `true` gets a TODO saying so."
   },
   {
     "key": "turbo.json tasks.*.interruptible",
