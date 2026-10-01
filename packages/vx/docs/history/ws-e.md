@@ -558,3 +558,11 @@ walked on fixtures.
   short at a word that leads exactly one accepted flag now names it.
   Row: `cli.test.ts` › every verb's unknown flag, now with
   `cache prune --dry`; red without the change.
+- **E-99.** Nx's `nx show projects` and `nx show project app`, typed as
+  `vx show projects` and `vx show project app`, said
+  `unknown project or task: "projects"` and
+  `unexpected argument: app`. The first now adds that a bare `vx show`
+  lists them (a real project or task named `projects` still wins); the
+  second names `vx show app`. cli.md says so. Rows (`show-info.test.ts`:
+  the `projects` pointer beside `buidl`'s control, and `parseShowArgs`'s
+  `project <name>`): red without the change.
