@@ -520,6 +520,20 @@ describe('turbo-map: what the sweep found unheld', () => {
     expect(a.todos).toEqual(['dependsOn "b#gen": b declares no gen script — edge dropped'])
   })
 
+  // highlight's `rrweb#build` names a submodule not checked out: "rrweb
+  // declares no build script" sent the reader to a package.json that is not there.
+  it('a `pkg#task` edge to no workspace package says the package is missing', async () => {
+    const m = await map(
+      { tasks: { build: { dependsOn: ['ghost#build'] } } },
+      { a: { scripts: { build: 'b' } } },
+    )
+    const a = m.projects[0]!.tasks[0]!
+    expect(a.task!['dependsOn']).toBeUndefined()
+    expect(a.todos).toEqual([
+      'dependsOn "ghost#build": no workspace package is named ghost — edge dropped',
+    ])
+  })
+
   it.each(['FOO_?', 'FOO_[AB]', '\\*'])(
     'env and passThroughEnv %s are refused as wildcards',
     async (name) => {
