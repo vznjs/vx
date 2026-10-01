@@ -4,6 +4,7 @@
 // plugin `project` stage, which can give tasks to a package that never
 // wrote a `vx.config.ts`.
 
+import path from 'node:path'
 import type { ProjectConfig } from '../config.js'
 import {
   frozenProjectConfig,
@@ -198,6 +199,12 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
   // deps by design), so its config has to be pulled in — and that config
   // may declare cross edges of its own. The common case (no cross deps)
   // is a single round, identical to loading the closure in one batch.
+  // Turbo spells the root package `//` (`dependsOn: ['//#lint']`); vx names
+  // the root project by its package.json name, so the spelling is rewritten
+  // to it once, here, for the closure, the graph and `cache.inputs.tasks`
+  // alike. With no root project it stays, and the graph's refusal says so.
+  const root = path.resolve(workspaceRoot)
+  const rootName = args.projectMetas.find((m) => path.resolve(m.dir) === root)?.name
   const projects = new Map<string, ProjectEntry>()
   while (pending.length > 0) {
     const round = pending.splice(0, pending.length)
@@ -248,14 +255,42 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
           (plugin) => validateProjectConfig(config, `${where} (after plugin '${plugin.name}')`),
         )
       }
-      projects.set(meta.name, { name: meta.name, dir: meta.dir, config })
-      for (const name of crossDepProjects(config)) {
+      const named = rootName === undefined ? config : rootSpelled(config, rootName)
+      projects.set(meta.name, { name: meta.name, dir: meta.dir, config: named })
+      for (const name of crossDepProjects(named)) {
         if (args.closure) considerWithDeps(name)
         else consider(name)
       }
     }
   }
   return { projects, configured }
+}
+
+/**
+ * `config` with Turbo's `//#task` (in `dependsOn` and `cache.inputs.tasks`)
+ * spelled `<root>#task`; the same object when it holds none. A copy, not
+ * an edit: a loaded config may be a cached or a frozen one.
+ */
+function rootSpelled(config: ProjectConfig, rootName: string): ProjectConfig {
+  const fix = (list: readonly string[] | undefined): readonly string[] | undefined =>
+    list?.some((e) => e.startsWith('//#') || e.startsWith('!//#'))
+      ? list.map((e) => e.replace(/^(!?)\/\/#/, `$1${rootName}#`))
+      : list
+  let tasks: NonNullable<ProjectConfig['tasks']> | undefined
+  for (const [name, task] of Object.entries(config.tasks ?? {})) {
+    const dependsOn = fix(task.dependsOn)
+    const inputTasks = fix(task.cache?.inputs?.tasks)
+    if (dependsOn === task.dependsOn && inputTasks === task.cache?.inputs?.tasks) continue
+    tasks ??= { ...config.tasks }
+    tasks[name] = {
+      ...task,
+      ...(dependsOn !== undefined ? { dependsOn: [...dependsOn] } : {}),
+      ...(task.cache?.inputs !== undefined && inputTasks !== undefined
+        ? { cache: { ...task.cache, inputs: { ...task.cache.inputs, tasks: [...inputTasks] } } }
+        : {}),
+    }
+  }
+  return tasks === undefined ? config : { ...config, tasks }
 }
 
 /** Project names named by a `pkg#task` dependsOn entry anywhere in `config`. */

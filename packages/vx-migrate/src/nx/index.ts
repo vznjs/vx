@@ -19,6 +19,7 @@
 // docs/design/nx-unchanged-2026-09.md.
 
 import { mkdir, stat } from 'node:fs/promises'
+import { availableParallelism } from 'node:os'
 import path from 'node:path'
 import { type GeneratedProject, type ProjectMeta, UserError, type VxPlugin } from '@vzn/vx'
 import { type AdoptionRun, adoptionPlugin } from '../adoption-plugin.js'
@@ -90,9 +91,14 @@ export function nx(options: NxPluginOptions = {}): VxPlugin {
           const base = await nxBase(root)
           if (base !== undefined) workspace.affectedBase = base
         }
-        if (workspace.concurrency !== undefined) return
-        const parallel = await nxParallel(root)
-        if (parallel !== undefined) workspace.concurrency = parallel
+        if (workspace.concurrency === undefined) {
+          const parallel = await nxParallel(root)
+          if (parallel !== undefined) workspace.concurrency = parallel
+        }
+        if (workspace.cacheRetention === undefined) {
+          const maxSize = await nxMaxCacheSize(root)
+          if (maxSize !== undefined) workspace.cacheRetention = { maxSize }
+        }
       },
       // An integrated Nx repo keeps projects out of the package manager's
       // list (analogjs: `project.json` libraries no glob names), and their
@@ -146,6 +152,15 @@ function isWithin(root: string, dir: string): boolean {
  * ran on every core under vx (TanStack/router sets 5, nx-examples 1).
  */
 async function nxParallel(root: string): Promise<number | undefined> {
+  // `NX_PARALLEL` (a count, or `50%` of the cores) wins over nx.json, as
+  // Nx 23's `readParallelFromArgsAndEnv` reads it; a CI that set 2 for a
+  // small runner got nx.json's number under vx.
+  const env = process.env['NX_PARALLEL']?.trim()
+  if (env) {
+    const n = Number.parseInt(env, 10)
+    const p = env.endsWith('%') ? Math.floor((availableParallelism() * n) / 100) : n
+    if (Number.isInteger(p)) return Math.max(1, p)
+  }
   const json = (await readNxJson(root).catch(() => null))?.json as
     | {
         parallel?: unknown
@@ -170,6 +185,36 @@ async function nxBase(root: string): Promise<string | undefined> {
     | undefined
   const b = json?.defaultBase ?? json?.affected?.defaultBase
   return typeof b === 'string' && b.trim() !== '' ? b.trim() : undefined
+}
+
+/**
+ * nx.json's `maxCacheSize`, or `NX_MAX_CACHE_SIZE` above it, as core's
+ * size: Nx caps its local cache there (`resolveMaxCacheSize`), and read by
+ * nothing a capped cache grew without bound under vx, as turbo.json's
+ * `cacheMaxSize` once did (G-49). 1024-based, a fraction truncated to
+ * bytes; `0` is no cap. A value Nx would refuse is left to core's
+ * refusal, which names the field.
+ */
+async function nxMaxCacheSize(root: string): Promise<string | undefined> {
+  const env = process.env['NX_MAX_CACHE_SIZE']
+  const raw =
+    env !== undefined
+      ? env
+      : ((await readNxJson(root).catch(() => null))?.json as { maxCacheSize?: unknown } | undefined)
+          ?.maxCacheSize
+  if (typeof raw !== 'string' && typeof raw !== 'number') return undefined
+  const text = String(raw).trim()
+  const m = /^(\d+\.?\d*|\.\d+)\s?([KMG]?B)?$/.exec(text)
+  if (m === null) return text
+  const units = ['B', 'KB', 'MB', 'GB']
+  let n = Math.floor(Number(m[1]) * 1024 ** units.indexOf(m[2] ?? 'B'))
+  if (n === 0) return undefined
+  let u = 0
+  while (u < units.length - 1 && n % 1024 === 0) {
+    n /= 1024
+    u++
+  }
+  return `${n}${units[u]}`
 }
 
 interface LoadedGraph {

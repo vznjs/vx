@@ -987,6 +987,20 @@ describe('turbo-map: envMode "loose"', () => {
       await loose({}),
     ]).toEqual([1, 1, 0, 0])
   })
+
+  // TURBO_ENV_MODE sits above turbo.json in Turbo; a CI's loose mode said nothing.
+  it('TURBO_ENV_MODE, passed as envMode, wins over turbo.json', async () => {
+    const loose = async (cfg: Record<string, unknown>, envMode: string) => {
+      await writeFile(path.join(root, 'turbo.json'), JSON.stringify({ ...cfg, tasks: {} }))
+      const m = await mapTurboWorkspace(root, [], { ...opts, envMode })
+      return m.notes.filter((n) => n.startsWith('envMode')).length
+    }
+    expect([
+      await loose({}, 'loose'),
+      await loose({ envMode: 'loose' }, 'strict'),
+      await loose({ envMode: 'loose' }, ''),
+    ]).toEqual([1, 0, 1])
+  })
 })
 
 describe('turbo-map: a field of the wrong type is refused by name (L-15)', () => {

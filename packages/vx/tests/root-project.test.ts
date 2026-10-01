@@ -6,7 +6,7 @@
 import { appendFile, mkdir, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { run } from '../src/orchestrator/index.js'
+import { loadResolvedProjects, run } from '../src/orchestrator/index.js'
 import { affectedProjects, listProjects, loadWorkspace } from '../src/workspace/index.js'
 import { silentLogger, type Fixture } from './helpers/orchestrator-fixture.js'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
@@ -57,6 +57,37 @@ describe('a root vx.config makes the root a project (D-39)', () => {
     const r = await run({ cwd: fixture.root, tasks: ['a#test'], log: silentLogger(fixture) })
     expect(r.ok).toBe(true)
     expect(r.outcomes.map((o) => o.node.id).sort()).toEqual(['a#test', 'fixture-root#build'])
+  })
+
+  // Turbo spells the root package `//`: `dependsOn: ['//#build']` refused
+  // "no such project or task" though the root is one. A scoped run (`a#test`)
+  // must pull the root in too. CONTROL: with no root project, the refusal
+  // says the root is no project rather than "no such project".
+  it("takes Turbo's //#task as the root project's task", async () => {
+    await writeFile(
+      path.join(fixture.root, 'packages', 'a', 'vx.config.mjs'),
+      `export default { tasks: { test: { dependsOn: ['//#build'], exec: { command: 'cat ../../out/gen.txt' } } } }\n`,
+    )
+    const refused = await run({ cwd: fixture.root, tasks: ['a#test'], log: silentLogger(fixture) })
+      .then(() => '')
+      .catch((e: Error) => e.message)
+    expect(refused).toContain(
+      "depends on //#build, Turbo's root package, but the workspace root is no project here",
+    )
+    await writeFile(path.join(fixture.root, 'vx.config.mjs'), ROOT_CONFIG)
+    const r = await run({ cwd: fixture.root, tasks: ['a#test'], log: silentLogger(fixture) })
+    expect(r.ok).toBe(true)
+    expect(r.outcomes.map((o) => o.node.id).sort()).toEqual(['a#test', 'fixture-root#build'])
+    // The same spelling in `cache.inputs.tasks`, a negated one included.
+    await writeFile(
+      path.join(fixture.root, 'packages', 'a', 'vx.config.mjs'),
+      `export default { tasks: { test: { dependsOn: ['//#build'], exec: { command: 'true' }, cache: { inputs: { files: [], tasks: ['//#build', '!//#lint'] }, outputs: { files: [] } } } } }\n`,
+    )
+    const a = (await loadResolvedProjects(fixture.root)).get('a')!
+    expect(a.config.tasks!['test']!.cache!.inputs!.tasks).toEqual([
+      'fixture-root#build',
+      '!fixture-root#lint',
+    ])
   })
 
   // `turbo run //#build` runs the root's task from any package; vx read

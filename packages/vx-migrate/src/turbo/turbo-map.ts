@@ -241,6 +241,8 @@ export interface MapTurboOptions {
    * inference, as Turbo leaves them, since they change on every deploy.
    */
   vendorEnvPrefix?: string
+  /** `TURBO_ENV_MODE`, when the mapping runs where the tasks will: above turbo.json's, as in Turbo. */
+  envMode?: string
 }
 
 /**
@@ -661,7 +663,7 @@ export async function mapTurboWorkspace(
   // Loose mode hands every task the whole environment; vx's is isolated,
   // so a task that reads an undeclared variable ran without it, and said
   // nothing (a build baking a URL from the env built without one).
-  if ((rootCfg.global?.envMode ?? rootCfg.envMode) === 'loose') {
+  if ((opts.envMode || (rootCfg.global?.envMode ?? rootCfg.envMode)) === 'loose') {
     notes.push(
       'envMode "loose": Turbo passes every environment variable to every task; vx passes only ' +
         'the declared ones — list what each task reads in exec.env.passThrough (or cache.inputs.env)',

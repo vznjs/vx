@@ -479,6 +479,11 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
       // Cross-project edge: pkg#task. Missing target is a hard error
       // because the user named the package + task explicitly.
       if (!visit(frame, spec.project, spec.task, false)) {
+        // The loader spells `//` as the root project's name when there is one.
+        if (spec.project === '//')
+          throw new UserError(
+            `Task ${id} depends on //#${spec.task}, Turbo's root package, but the workspace root is no project here: give it a package.json name and a vx.config with that task`,
+          )
         throw new UserError(
           `Task ${id} depends on ${taskId(spec.project, spec.task)} but no such project or task is declared`,
         )

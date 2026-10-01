@@ -119,13 +119,16 @@ async function workspaceKeys(root: string): Promise<{
     string,
     unknown
   > | null
-  const read = (key: string): string | undefined => {
-    const v = global?.[key] ?? raw[key]
+  // Turbo's environment sits above turbo.json (`TURBO_CONCURRENCY`, …);
+  // a set variable decides, its `0` included.
+  const read = (key: string, envName: string): string | undefined => {
+    const e = process.env[envName]?.trim()
+    const v = e !== undefined && e !== '' ? e : (global?.[key] ?? raw[key])
     return typeof v === 'string' && v.trim() !== '' && v.trim() !== '0' ? v.trim() : undefined
   }
   const out: { concurrency?: number; cacheRetention?: { maxSize?: string; olderThan?: string } } =
     {}
-  const c = read('concurrency')
+  const c = read('concurrency', 'TURBO_CONCURRENCY')
   if (c !== undefined) {
     const pct = /^(\d+)%$/.exec(c)
     const n = pct
@@ -133,9 +136,9 @@ async function workspaceKeys(root: string): Promise<{
       : Number(c)
     if (Number.isInteger(n) && n > 0) out.concurrency = n
   }
-  const size = read('cacheMaxSize')
+  const size = read('cacheMaxSize', 'TURBO_CACHE_MAX_SIZE')
   const maxSize = size === undefined ? undefined : turboSize(size)
-  const age = read('cacheMaxAge')
+  const age = read('cacheMaxAge', 'TURBO_CACHE_MAX_AGE')
   // Turbo reads a bare number as days (`parse_human_duration`).
   const olderThan = age
     ?.replace(/^(\d+)w$/i, (_, w: string) => `${Number(w) * 7}d`)
@@ -173,6 +176,7 @@ async function run(root: string, metas: readonly ProjectMeta[]): Promise<Adoptio
       // An env wildcard expands over these (`envNames`); a new name maps afresh.
       JSON.stringify(envNamesNow()),
       process.env['TURBO_CI_VENDOR_ENV_KEY'] ?? '',
+      process.env['TURBO_ENV_MODE'] ?? '',
       ...configs,
       await textOf(path.join(root, '.yarnrc.yml')),
       JSON.stringify(metas.map((m) => [m.name, m.dir, m.packageJson])),
@@ -194,6 +198,7 @@ async function mapAll(root: string, metas: readonly ProjectMeta[]): Promise<Adop
     persistentTodo: PERSISTENT_NOTE,
     envNames: envNamesNow(),
     vendorEnvPrefix: process.env['TURBO_CI_VENDOR_ENV_KEY'] ?? '',
+    envMode: process.env['TURBO_ENV_MODE'] ?? '',
   })
   const byName = new Map<string, TurboMappedProject>()
   for (const project of mapped.projects) byName.set(project.name, project)
