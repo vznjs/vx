@@ -526,6 +526,16 @@ walked on fixtures.
   now set it (`NAME:` or `NAME=`, not a `#` line), and a disabled
   turbo.json wins. cli.md says so. Rows: `init.test.ts` › a remote cache
   the repo shows, two cases added; red without the fix.
+- **E-93.** J-74's lead: `vx why` on a task run past a failed
+  dependency under `--continue=always` said "re-executed on the same key
+  (--no-cache / --force, or unrelated)". The continue-taint runs such a
+  task and never saves it. The verdict now names it when the index shows
+  it: both runs executed and succeeded with the cache writable, no entry
+  holds the key, and each invocation recorded a failure. cli.md says so.
+  Row: `metrics.test.ts` › names why an unchanged key re-executed, the
+  taint case and two controls (one run without a failure, an entry
+  present); red without the change. `previousRun`'s answer keeps its
+  keys (`vx mcp`'s record is unchanged).
 - **E-90.** J-54's lead: bare `--affected` with `origin/HEAD` naming a
   branch the remote deleted (a pruned fetch keeps the symref) failed
   `git ref "origin/master" did not resolve`, a ref nobody typed, though

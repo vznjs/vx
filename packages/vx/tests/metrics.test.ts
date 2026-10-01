@@ -812,6 +812,8 @@ describe('whyDidThisRerunQuery', () => {
       prevStatus?: RunRecord['status']
       policy?: string
       entryAt?: number
+      /** Failed tasks in the previous run and in this one. */
+      failed?: [number, number]
     }): string =>
       (() => {
         let note = ''
@@ -827,7 +829,11 @@ describe('whyDidThisRerunQuery', () => {
                 status: setup.prevStatus ?? 'success',
               }),
             ],
-            invocation: mkInvocation({ runId: 'r-1', startedAt: 1000 }),
+            invocation: mkInvocation({
+              runId: 'r-1',
+              startedAt: 1000,
+              failedCount: setup.failed?.[0] ?? 0,
+            }),
           })
           cache.recordRunBundle({
             runs: [
@@ -837,6 +843,7 @@ describe('whyDidThisRerunQuery', () => {
               runId: 'r-2',
               startedAt: 2000,
               cachePolicy: setup.policy ?? 'lR,lW',
+              failedCount: setup.failed?.[1] ?? 0,
             }),
           })
           if (setup.entryAt !== undefined) {
@@ -871,6 +878,16 @@ describe('whyDidThisRerunQuery', () => {
     expect(verdict({})).toBe(
       'cache key unchanged — re-executed on the same key (--no-cache / --force, or unrelated)',
     )
+    // Both runs executed beside a failure and neither saved: the
+    // continue-taint, which blamed a flag nobody passed (J-74's lead).
+    expect(verdict({ failed: [1, 2] })).toBe(
+      'cache key unchanged — neither run saved it: each ran beside a failed task (2 failed in this one), and a task run past a failed dependency (--continue) is never cached',
+    )
+    // CONTROLS: one run without a failure, or an entry for the key, is not it.
+    expect([verdict({ failed: [0, 2] }), verdict({ failed: [1, 2], entryAt: 500 })]).toEqual([
+      'cache key unchanged — re-executed on the same key (--no-cache / --force, or unrelated)',
+      'cache key unchanged — re-executed on the same key (--no-cache / --force, or unrelated)',
+    ])
   })
 
   it('returns found=false for an unknown runId', () => {
