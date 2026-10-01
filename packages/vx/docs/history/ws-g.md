@@ -937,4 +937,8 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   (`frameworks.json`), in its order, with its `all`/`some` match, and
   `optionalDependencies` count as Turbo counts them. Row
   (`turbo-map-sweep` › a live mapping takes the first framework of
-  Turbo's table): red without the fix.
+  Turbo's table): red without the fix. As Turbo does, a name under
+  `TURBO_CI_VENDOR_ENV_KEY` (Vercel sets `NEXT_PUBLIC_VERCEL_`) is left
+  out of the inferred set, so a deploy's commit SHA does not re-key every
+  Next build (row: the CI vendor prefix is left out of framework
+  inference only; red without the filter).

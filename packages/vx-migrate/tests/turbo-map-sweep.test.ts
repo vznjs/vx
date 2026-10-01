@@ -350,6 +350,37 @@ describe('turbo-map: what the sweep found unheld', () => {
   // A live mapping infers as Turbo does, and the task's own `!` entries
   // take names back (openstatus' `!NEXT_PUBLIC_VERCEL_URL`). CONTROL: a
   // package without the framework gets no prefix.
+  // Vercel sets TURBO_CI_VENDOR_ENV_KEY=NEXT_PUBLIC_VERCEL_ so a deploy's
+  // own variables (its commit SHA) stay out of the inferred set; kept in,
+  // every deploy re-keyed every Next build. A task's own `env` still keys one.
+  it('the CI vendor prefix is left out of framework inference only', async () => {
+    await writeFile(
+      path.join(root, 'turbo.json'),
+      JSON.stringify({ tasks: { build: { env: ['NEXT_PUBLIC_VERCEL_ENV'] } } }),
+    )
+    const dir = path.join(root, 'packages', 'web')
+    await mkdir(dir, { recursive: true })
+    const packageJson = { name: 'web', scripts: { build: 'b' }, dependencies: { next: '15' } }
+    const live = ['NEXT_PUBLIC_A', 'NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA', 'NEXT_PUBLIC_VERCEL_ENV']
+    const env = async (vendorEnvPrefix?: string) => {
+      const m = await mapTurboWorkspace(
+        root,
+        [{ name: 'web', dir, packageJson: packageJson as never, configPath: null }],
+        { ...opts, envNames: live, ...(vendorEnvPrefix ? { vendorEnvPrefix } : {}) },
+      )
+      return (m.projects[0]!.tasks[0]!.task!['cache'] as { inputs: { env?: unknown } }).inputs.env
+    }
+    expect([await env('NEXT_PUBLIC_VERCEL_'), await env()]).toEqual([
+      ['NEXT_PUBLIC_A', 'NEXT_DEPLOYMENT_ID', 'NEXT_PUBLIC_VERCEL_ENV'],
+      [
+        'NEXT_PUBLIC_A',
+        'NEXT_PUBLIC_VERCEL_ENV',
+        'NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA',
+        'NEXT_DEPLOYMENT_ID',
+      ],
+    ])
+  })
+
   it('a live mapping infers a framework env prefix, with no note', async () => {
     await writeFile(
       path.join(root, 'turbo.json'),

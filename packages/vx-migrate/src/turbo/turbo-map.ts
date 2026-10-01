@@ -233,6 +233,12 @@ export interface MapTurboOptions {
    * Absent (`vx migrate` writes files), a wildcard is a todo.
    */
   envNames?: readonly string[]
+  /**
+   * `TURBO_CI_VENDOR_ENV_KEY`, which a platform sets (Vercel:
+   * `NEXT_PUBLIC_VERCEL_`): names with it are left out of framework
+   * inference, as Turbo leaves them, since they change on every deploy.
+   */
+  vendorEnvPrefix?: string
 }
 
 /**
@@ -864,8 +870,16 @@ export async function mapTurboWorkspace(
         : f.dependencies.some((d) => declares(m, d)),
     )
     if (fw === undefined) continue
-    if (opts.envNames !== undefined) inferredOf.set(m.name, fw.env)
-    else usersOf.set(fw, [...(usersOf.get(fw) ?? []), m.name])
+    if (opts.envNames !== undefined) {
+      const live = opts.envNames
+      const vendor = opts.vendorEnvPrefix
+      const names = fw.env.flatMap((e) => {
+        if (!e.endsWith('*')) return [e]
+        const head = e.slice(0, -1)
+        return live.filter((n) => n.startsWith(head)).sort()
+      })
+      inferredOf.set(m.name, vendor ? names.filter((n) => !n.startsWith(vendor)) : names)
+    } else usersOf.set(fw, [...(usersOf.get(fw) ?? []), m.name])
   }
   for (const [fw, users] of usersOf)
     notes.push(
