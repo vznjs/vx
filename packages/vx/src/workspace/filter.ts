@@ -298,7 +298,14 @@ export function applyFilters(opts: ApplyFiltersOptions): Set<string> {
         for (const d of opts.graph.transitiveDeps(name)) expanded.add(d)
       }
       if (f.withDependents) {
-        for (const d of opts.graph.transitiveDependents(name)) expanded.add(d)
+        // Both walks: the dependents' own dependencies too, as Turbo 2.5.8
+        // selects (`...db...` on create-t3-turbo ran the ui and validators
+        // its apps build on; vx ran db's dependencies alone).
+        const both = f.withDeps || f.onlyDeps
+        for (const d of opts.graph.transitiveDependents(name)) {
+          expanded.add(d)
+          if (both) for (const dd of opts.graph.transitiveDeps(d)) expanded.add(dd)
+        }
       }
     }
     if (matched.length > 0 && expanded.size === 0) opts.onEmptyWalk?.(f, matched)

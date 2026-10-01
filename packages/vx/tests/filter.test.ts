@@ -166,6 +166,28 @@ describe('applyFilters', () => {
     ).toEqual(['app'])
   })
 
+  // Turbo 2.5.8 on create-t3-turbo: `...db...` ran the ui and validators
+  // db's dependent apps build on; vx ran db's own dependencies alone.
+  it('...pkg... also takes the dependencies of every dependent', () => {
+    const withKit = [
+      mkProject('app', `${ROOT}/packages/app`, ['ui', 'kit']),
+      ...projects.slice(1),
+      mkProject('kit', `${ROOT}/packages/kit`),
+    ]
+    const g = buildPackageGraph(withKit)
+    const sel = (raw: string) =>
+      [...applyFilters({ filters: [parseFilter(raw, ROOT)], projects: withKit, graph: g })].sort()
+    expect(sel('...ui...')).toEqual(['app', 'kit', 'ui', 'utils'])
+    // Turbo re-adds the package itself through its dependents' dependencies.
+    expect(sel('...^ui...')).toEqual(['app', 'kit', 'ui', 'utils'])
+    expect(sel('...ui^...')).toEqual(['app', 'kit', 'ui', 'utils'])
+    // CONTROL: one walk at a time is unchanged.
+    expect([sel('...ui'), sel('ui...')]).toEqual([
+      ['app', 'ui'],
+      ['ui', 'utils'],
+    ])
+  })
+
   it('...^pkg includes only the dependents, not the package itself (item 890)', () => {
     // cli.md listed the form; the `^` stayed in the name glob, so it matched
     // nothing and the run refused with "no projects matched".
