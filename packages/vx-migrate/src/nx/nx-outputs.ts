@@ -41,25 +41,33 @@ export function underProject(p: string, projectRel: string): string | null {
  * (`getOutputsForTargetAndConfiguration`): its `options.outputPath`, else,
  * for `build` and `prepare`, `dist/{root}`, `{root}/dist`, `{root}/build`
  * and `{root}/public`. Read as no outputs, a cached target's hit restored
- * nothing (item 1052). The last two are left out with a todo: vx cleans an
- * output before the task runs, and a project's `build/` or `public/` is as
- * often its committed sources, which Nx, never cleaning, leaves alone.
+ * nothing (item 1052). vx cleans an output before the task runs, and a
+ * project's `build/` or `public/` is as often its committed sources, which
+ * Nx, never cleaning, leaves alone: with `tops` (the project's tracked
+ * top-level names) one git tracks nothing under is an output, and one it
+ * does is left out with a todo; without `tops`, both are.
  */
 export function nxDefaultOutputs(
   targetName: string,
   options: Record<string, unknown>,
   projectRel: string,
   todos: string[],
+  tops?: ReadonlySet<string>,
 ): string[] {
   if (typeof options['outputPath'] === 'string') return [options['outputPath']]
   if (targetName !== 'build' && targetName !== 'prepare') return []
   const root = projectRel === '.' ? '' : projectRel
   const at = (p: string): string => path.posix.join(root, p)
-  todos.push(
-    `no outputs declared: Nx also caches ${at('build')} and ${at('public')} for this target — vx cleans an output before the run, so add them to the outputs by hand only if they hold nothing committed`,
-  )
+  const held = ['build', 'public'].filter((d) => tops === undefined || tops.has(d))
+  if (held.length > 0)
+    todos.push(
+      `no outputs declared: Nx also caches ${held.map(at).join(' and ')} for this target — vx cleans an output before the run, so add ${held.length === 1 ? 'it' : 'them'} to the outputs by hand only if ${held.length === 1 ? 'it holds' : 'they hold'} nothing committed`,
+    )
   // The root project's two are one path.
-  return [...new Set([path.posix.join('dist', root), at('dist')])]
+  return [
+    ...new Set([path.posix.join('dist', root), at('dist')]),
+    ...['build', 'public'].filter((d) => !held.includes(d)).map(at),
+  ]
 }
 
 /** `outputs` with `{options.x}` resolved against `options`; `projectRel` is the project dir, `.` for the root. */

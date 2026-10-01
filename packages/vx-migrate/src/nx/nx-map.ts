@@ -611,7 +611,8 @@ function buildTask(
   }
   expandNxInputs(target.inputs ?? [], upstream.namedOf(nodeName), at, inputs, todos)
   const { outFiles, wsOutFiles } = mapNxOutputs(
-    target.outputs ?? nxDefaultOutputs(targetName, options, projectRel, todos),
+    target.outputs ??
+      nxDefaultOutputs(targetName, options, projectRel, todos, opts.tracked?.(projectRel).tops),
     options,
     projectRel,
     projectName,

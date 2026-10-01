@@ -6,6 +6,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { UserError, type GeneratedTask, type ProjectMeta } from '@vzn/vx'
 import { mapNxWorkspace, parseNxGraph, readNxJsonFacts, type NxGraph } from '../src/nx/nx-map.js'
+import { trackedKinds } from '../src/tracked-outputs.js'
 
 let root: string
 const OPTS = { persistentTodo: 'PERSIST', cacheable: new Set<string>() }
@@ -356,6 +357,31 @@ describe('a cached target that declares no outputs', () => {
     expect(got['b#test']?.outputs).toEqual({ files: [] })
     // CONTROL: an explicit empty list is no outputs, as under Nx.
     expect(got['b#prepare']?.outputs).toEqual({ files: [] })
+  })
+
+  // redwood: 71 of its 71 TODOs asked this of builds whose packages track
+  // nothing under build/ or public/.
+  it('takes build and public when git tracks nothing under them, and names only the one it does', async () => {
+    const b = await meta('b')
+    const graph = {
+      nodes: { b: node('packages/b', { build: { command: 'b', cache: true } }) },
+      dependencies: {},
+    } as NxGraph
+    const mapped = async (files: string[]) => {
+      const m = await mapNxWorkspace(root, [b], graph, { ...OPTS, tracked: trackedKinds(files) })
+      const t = m.projects[0]!.tasks.find((x) => x.name === 'build')!
+      return { outputs: (t.task!['cache'] as { outputs?: unknown }).outputs, todos: t.todos }
+    }
+    expect(await mapped(['packages/b/src/a.ts', 'packages/b/package.json'])).toEqual({
+      outputs: { files: ['dist', 'build', 'public'], workspaceFiles: ['dist/packages/b'] },
+      todos: [],
+    })
+    expect(await mapped(['packages/b/src/a.ts', 'packages/b/public/logo.svg'])).toEqual({
+      outputs: { files: ['dist', 'build'], workspaceFiles: ['dist/packages/b'] },
+      todos: [
+        'no outputs declared: Nx also caches packages/b/public for this target — vx cleans an output before the run, so add it to the outputs by hand only if it holds nothing committed',
+      ],
+    })
   })
 })
 
