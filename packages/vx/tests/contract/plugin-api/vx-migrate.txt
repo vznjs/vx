@@ -299,6 +299,7 @@ export type TurboGlobal = 'inputs' | 'env' | 'pass'
 == type TurboJsonRemoteCache (src/turbo-cache/index.ts)
 export interface TurboJsonRemoteCache {
   apiUrl?: unknown
+  signature?: unknown
   teamId?: unknown
   teamSlug?: unknown
   enabled?: unknown
