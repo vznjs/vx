@@ -180,7 +180,9 @@ async function adopt(
       : `wrote ${name}.`
   const cacheLine =
     remote === undefined
-      ? ''
+      ? runner === 'nx' && usesNxCloud(root)
+        ? 'nx.json connects Nx Cloud, whose cache vx cannot share: runs cache on this machine (nxCache() serves a self-hosted Nx cache).\n'
+        : ''
       : kept && !readFileSync(path.join(root, existing), 'utf8').includes(`${cache}(`)
         ? `${remote}: add ${cache}() from @vzn/vx-migrate to its plugins and vx shares that remote cache.\n`
         : kept
@@ -194,6 +196,31 @@ async function adopt(
 }
 
 const REMOTE_CACHE = { turbo: 'turboCache', nx: 'nxCache' } as const
+
+/**
+ * nx.json names an Nx Cloud workspace (`nxCloudId`, `nxCloudAccessToken`,
+ * or the legacy `nx-cloud` runner). Its wire is Nx's own, so a user who
+ * expected their remote cache under vx heard nothing and ran cold.
+ */
+function usesNxCloud(root: string): boolean {
+  let json: {
+    nxCloudId?: unknown
+    nxCloudAccessToken?: unknown
+    tasksRunnerOptions?: { default?: { runner?: unknown } }
+  } | null
+  try {
+    json = Bun.JSONC.parse(readFileSync(path.join(root, 'nx.json'), 'utf8')) as typeof json
+  } catch {
+    return false
+  }
+  const set = (v: unknown) => typeof v === 'string' && v !== ''
+  const runner = json?.tasksRunnerOptions?.default?.runner
+  return (
+    set(json?.nxCloudId) ||
+    set(json?.nxCloudAccessToken) ||
+    (typeof runner === 'string' && /(^|\/)nx-cloud$/.test(runner))
+  )
+}
 
 /** The variable each runner's self-hosted remote cache is set by, as its plugin reads it. */
 const REMOTE_CACHE_ENV = { turbo: 'TURBO_TOKEN', nx: 'NX_SELF_HOSTED_REMOTE_CACHE_SERVER' } as const

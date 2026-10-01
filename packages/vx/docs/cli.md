@@ -1628,7 +1628,9 @@ in `.github/workflows/*`, `.gitlab-ci.yml` or `.circleci/config.yml`,
 and turbo.json does not say `remoteCache.enabled: false` — it
 declares `turboCache()` / `nxCache()` beside the runner and names the
 file that showed it (a kept file lacking it is told to add it); the
-plugin is inert where its variable is unset.
+plugin is inert where its variable is unset. An nx.json that connects
+Nx Cloud (`nxCloudId`, `nxCloudAccessToken`, the `nx-cloud` runner) is
+named instead: vx does not speak its wire, so runs cache locally.
 
 Anywhere else it scaffolds a workspace that comes from nowhere: one `vx.config.ts` per
 package from its `package.json` scripts, plus a `vx.workspace.ts` of

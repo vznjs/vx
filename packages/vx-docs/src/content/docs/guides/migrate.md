@@ -127,7 +127,8 @@ The command itself comes from your `package.json` script, with its
 1. Install vx: `npm install -D @vzn/vx` (pnpm: `pnpm add -D -w @vzn/vx`).
 2. Run `npx vx init`. Beside `nx.json` it writes this `vx.workspace.ts`
    and nothing else. With `turbo.json` there too, it declares `turbo()`.
-   A CI file that sets `NX_SELF_HOSTED_REMOTE_CACHE_SERVER` adds `nxCache()`.
+   A CI file that sets `NX_SELF_HOSTED_REMOTE_CACHE_SERVER` adds `nxCache()`;
+   an Nx Cloud workspace is named instead, since vx cannot share its cache.
 3. Run the `next:` line it prints. It installs `@vzn/vx-migrate`, then
    runs what `nx run-many -t build` ran, under vx's cache.
 4. Write the resolved graph: `nx graph --file=.nx/workspace-data/project-graph.json`.
