@@ -942,3 +942,10 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   out of the inferred set, so a deploy's commit SHA does not re-key every
   Next build (row: the CI vendor prefix is left out of framework
   inference only; red without the filter).
+- **G-90.** `nxCache()` read a `403` on an upload, which Nx's
+  self-hosted cache spec names the read-only token, as a refused token,
+  and turned the whole layer off: under a CI's pull-request token every
+  lookup after the first upload missed, and its dependants rebuilt. A
+  write's `403` now turns off writes alone, said once; a `401`, or a
+  `403` on a read, still turns the layer off. Row (`nx-cache.test` › a
+  read-only token turns off writes alone): red without the change.
