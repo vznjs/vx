@@ -68,9 +68,29 @@ export function foldScriptHooks(
   return `vx_script() {\n${parts.join(' && ')}\n}\nvx_script`
 }
 
-/** The cache block the task that builds should declare, as a TODO on it. */
-export const CACHE_TODO =
-  "cache: add `cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } }` with this package's real inputs and outputs — without it the task always runs and every file here, what it writes included, folds into the key its dependents fold; a block with EMPTY outputs would be a cached no-op, not an uncached task"
+/**
+ * Where a framework's build writes by default, for the cache TODO: the
+ * hint said `dist/**` to every build, `next build` included, which writes
+ * `.next`. Each tool's documented default; anything else keeps `dist/**`.
+ */
+const BUILD_OUTPUTS: readonly [RegExp, readonly string[]][] = [
+  [/\snext build\s/, ['.next/**', '!.next/cache/**']],
+  [/\snux[ti] build\s/, ['.output/**']],
+  [/\s(?:remix|react-router|react-scripts|docusaurus) build\s/, ['build/**']],
+  [/\sgatsby build\s/, ['public/**']],
+  [/\s(?:storybook build|build-storybook)\s/, ['storybook-static/**']],
+]
+
+/** The cache block the task that builds `command` should declare, as a TODO on it. */
+export function cacheTodo(command: string): string {
+  // Padded, separators as spaces: `next build && …` and `(next build)` match.
+  const words = ` ${command.replace(/[;&|()]/g, ' ')} `
+  const hit = BUILD_OUTPUTS.find(([re]) => re.test(words))
+  const outputs = (hit?.[1] ?? ['dist/**']).map((o) => `'${o}'`).join(', ')
+  return `cache: add \`cache: { inputs: { files: ['src/**'] }, outputs: { files: [${outputs}] } }\` with this package's real inputs and outputs — without it the task always runs and every file here, what it writes included, folds into the key its dependents fold; a block with EMPTY outputs would be a cached no-op, not an uncached task`
+}
+
+const isCacheTodo = (todo: string): boolean => todo.startsWith('cache: add `cache: {')
 
 /** The one wording every mapper emits for a task it made persistent. */
 export const PERSISTENT_TODO =
@@ -302,7 +322,7 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
     'build'
   // A run of tasks none of which caches is never a hit, and a first try
   // that runs twice to see the cache work saw it run twice.
-  if (!cached && todos.has(CACHE_TODO)) {
+  if (!cached && [...todos.keys()].some(isCacheTodo)) {
     report.push('', 'no task caches yet: add the cache block a TODO shows, and a second run hits')
   }
   const installed = existsSync(path.join(root, 'node_modules', '@vzn', 'vx', 'package.json'))

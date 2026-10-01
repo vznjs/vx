@@ -337,6 +337,35 @@ describe('migrateScripts', () => {
     expect(cacheTodos({ build: 'tsc -b', test: 'v' })).toEqual({ build: 1, test: 0 })
   })
 
+  it("the cache TODO names the framework's own build output", () => {
+    const outputs = (scripts: Record<string, string>, task = 'build'): string | undefined => {
+      const todo = project(scripts)
+        ?.tasks.find((t) => t.name === task)
+        ?.todos.find((d) => d.startsWith('cache: add'))
+      return /outputs: \{ files: \[(.*?)\] \}/.exec(todo ?? '')?.[1]
+    }
+    expect(outputs({ build: 'next build' })).toBe("'.next/**', '!.next/cache/**'")
+    expect(outputs({ build: 'prisma generate && next build --turbo' })).toBe(
+      "'.next/**', '!.next/cache/**'",
+    )
+    expect(outputs({ build: 'nuxt build' })).toBe("'.output/**'")
+    expect(outputs({ build: 'nuxi build' })).toBe("'.output/**'")
+    expect(outputs({ build: 'remix build' })).toBe("'build/**'")
+    expect(outputs({ build: 'react-router build' })).toBe("'build/**'")
+    expect(outputs({ build: 'react-scripts build' })).toBe("'build/**'")
+    expect(outputs({ build: 'docusaurus build' })).toBe("'build/**'")
+    expect(outputs({ build: 'gatsby build' })).toBe("'public/**'")
+    expect(outputs({ build: 'storybook build' })).toBe("'storybook-static/**'")
+    // The worker a delegating `build` reaches reads its own command.
+    expect(outputs({ build: 'npm run b', b: 'next build' }, 'b')).toBe(
+      "'.next/**', '!.next/cache/**'",
+    )
+    // CONTROLS: anything else, and a near name, keep `dist/**`.
+    expect(outputs({ build: 'tsc -b' })).toBe("'dist/**'")
+    expect(outputs({ build: 'vite build' })).toBe("'dist/**'")
+    expect(outputs({ build: 'nextjs-build' })).toBe("'dist/**'")
+  })
+
   it('under Yarn 2+ a pre/post script is a task of its own, never folded (D-31)', async () => {
     // Yarn Berry runs no `pre` / `post` hooks (probed with 4.5.0: `yarn run
     // build` printed BUILD alone), and folding them made the migrated task
