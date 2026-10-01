@@ -162,7 +162,7 @@ export interface MapTurboOptions {
   envNames?: readonly string[]
   vendorEnvPrefix?: string
   envMode?: string
-  trackedExts?: (rel: string) => ReadonlySet<string>
+  tracked?: (rel: string) => TrackedKinds
   ownConfig?: (rel: string) => string | null
 }
 == type MapWireitOptions (src/wireit/wireit-map.ts)
@@ -274,6 +274,11 @@ export interface ScriptsMappedTask {
 export interface ScriptsMapping {
   projects: ScriptsMappedProject[]
   notes: string[]
+}
+== type TrackedKinds (src/tracked-outputs.ts)
+export interface TrackedKinds {
+  readonly exts: ReadonlySet<string>
+  readonly dirs: ReadonlySet<string>
 }
 == type TurboCacheConfig (src/turbo-cache/index.ts)
 export interface TurboCacheConfig {

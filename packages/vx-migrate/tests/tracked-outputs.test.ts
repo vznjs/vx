@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { spareTrackedOutputs, trackedExtensions } from '../src/tracked-outputs.js'
+import { spareTrackedOutputs, trackedKinds } from '../src/tracked-outputs.js'
 
 const task = (outputs: Record<string, string[]>) => ({
   name: 'build',
@@ -53,16 +53,23 @@ describe('spareTrackedOutputs', () => {
   })
 })
 
-describe('trackedExtensions', () => {
-  it('reads each directory’s own files, the root’s all of them, lower-cased', () => {
-    const exts = trackedExtensions([
+describe('trackedKinds', () => {
+  it('reads each directory’s own files, the root’s all of them, extensions lower-cased', () => {
+    const kinds = trackedKinds([
       'package.json',
       'packages/a/src/index.TS',
       'packages/a/README',
-      'packages/ab/pom.xml',
+      'packages/ab/lib/pom.xml',
     ])
-    expect([...exts('packages/a')].sort()).toEqual(['ts'])
-    expect([...exts('.')].sort()).toEqual(['json', 'ts', 'xml'])
-    expect([...exts('')].sort()).toEqual(['json', 'ts', 'xml'])
+    const of = (rel: string) => {
+      const k = kinds(rel)
+      return { exts: [...k.exts].sort(), dirs: [...k.dirs].sort() }
+    }
+    expect(of('packages/a')).toEqual({ exts: ['ts'], dirs: ['src'] })
+    expect(of('.')).toEqual({
+      exts: ['json', 'ts', 'xml'],
+      dirs: ['a', 'ab', 'lib', 'packages', 'src'],
+    })
+    expect(of('')).toEqual(of('.'))
   })
 })

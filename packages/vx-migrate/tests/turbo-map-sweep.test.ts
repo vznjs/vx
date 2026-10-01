@@ -631,7 +631,7 @@ describe('turbo-map: Turbo’s glob grammar', () => {
   )
 })
 
-describe('turbo-map: a top-level artifact output', () => {
+describe('turbo-map: a wildcard-first output of an untracked kind', () => {
   // n8n's tests output `*.xml` (junit), 143 tasks uncached by the
   // wildcard-first rule; one segment and a literal extension the package
   // tracks none of reaches no source.
@@ -645,6 +645,12 @@ describe('turbo-map: a top-level artifact output', () => {
     ['**/*.xml', false],
     ['*/report.xml', false],
     ['report*', false],
+    ['**/dist/**', true],
+    ['./**/build/**', true],
+    ['**/src/**', false],
+    ['**/dist/*.js', false],
+    ['**/d*/**', false],
+    ['**/**', false],
   ])('%s cached: %p', async (glob, cached) => {
     await writeFile(
       path.join(root, 'turbo.json'),
@@ -664,7 +670,10 @@ describe('turbo-map: a top-level artifact output', () => {
       ],
       {
         ...opts,
-        trackedExts: (rel) => (rel === 'packages/a' ? new Set(['ts', 'json']) : new Set()),
+        tracked: (rel) =>
+          rel === 'packages/a'
+            ? { exts: new Set(['ts', 'json']), dirs: new Set(['src']) }
+            : { exts: new Set(), dirs: new Set() },
       },
     )
     expect(mapped.projects[0]!.tasks[0]!.task!['cache'] !== undefined).toBe(cached)
