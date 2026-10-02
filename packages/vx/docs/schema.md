@@ -1066,8 +1066,9 @@ platforms `<dir>/**` and `<dir>/**/*` collapse to `<dir>`, so
 glob keeps its subtree (`.*.tmp/**` covers what is inside each match).
 Unlike a task glob, a grant keeps `Bun.Glob`'s brackets: `[id]` is a
 class, so a Next.js route is granted escaped, `read: ['pages/\\[id\\].tsx']`.
-On Linux a WRITE path holding a bracket is not mounted (the runtime drops
-it); grant its parent directory.
+On Linux a WRITE path holding a bracket cannot be mounted (the runtime
+drops it): vx says so once, names the directory above it to grant
+instead, and a write under it is refused and reported.
 
 A Linux WRITE grant that matches nothing when the task starts therefore
 mounts nothing. Where a read grant mounts its directory, the task's first
@@ -1198,6 +1199,11 @@ Inside a write grant, a file named like a shell or tool config
 to the task, down to three levels below the workspace root, ignored by
 git or not.
 
+**Linux: no bracket in the project's path.** The runtime reads a path
+holding `[` or `]` as a glob and mounts no write path that does, so a
+sandboxed task in a project under such a directory (`~/[old]/repo`) is
+refused, naming it: rename the directory or drop `exec.sandbox`.
+
 **macOS cannot nest.** `sandbox_apply` is refused inside a sandboxed
 process, so a task that itself sandboxes something (vx's own test suite)
 cannot be sandboxed on macOS. `weakerWhenNested` covers the Linux case;
@@ -1324,7 +1330,8 @@ interface WorkspaceConfig {
   (`origin/develop`); `--affected=<base>` still wins. Omitted →
   `origin/HEAD`, else `HEAD~1`. A plugin's `config` stage may set it:
   `nx()` from `NX_BASE` or nx.json's `defaultBase`, `turbo()` from
-  `TURBO_SCM_BASE`. Not folded into any cache key.
+  `TURBO_SCM_BASE`, else on GitHub Actions from `GITHUB_BASE_REF` or the
+  push event's `before`, as Turbo does. Not folded into any cache key.
 - **`plugins`** — the run-level extension points. Optional: core
   applies no plugin by default, and the local executor and the local
   cache are its floor — the tail of every executor list and cache chain
