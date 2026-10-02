@@ -825,6 +825,7 @@ header claimed a blocker the cause line beneath it denied. It says
 `blocked upstream` only when every skip has a blocker. Rows
 (`summary.test.ts`): a fail-fast skip alone, and the mixed row; both
 red on the old header. `cli.md` says so.
+
 ## C-54: a plugin whose `setup` throws is named with the hook
 
 Every stage's throw reads `plugin '<name>' failed in <stage>: …`, and
