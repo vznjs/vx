@@ -1732,7 +1732,8 @@ it carries a TODO saying so; a `pre<x>` with no `x` stays a task of its own, and
 npm's lifecycle hooks (`prepack`, `prepublishOnly`, …) are never tasks.
 Where the package's manager runs no such hooks every `pre<x>` and
 `post<x>` is a task of its own: Yarn 2+ (the nearest `packageManager:
-yarn@2+`, or a Berry `yarn.lock`, D-31), npm under `ignore-scripts=true`
+yarn@2+`, or a Berry `yarn.lock`, D-31; a `packageManager` naming none of npm,
+pnpm, yarn or bun defers to the lockfile, D-96), npm under `ignore-scripts=true`
 in the `.npmrc` beside its lockfile, pnpm under
 `enable-pre-post-scripts=false` there or `enablePrePostScripts: false` in
 `pnpm-workspace.yaml` (D-33). Bun and Yarn 1 run them whatever those say.
