@@ -303,7 +303,7 @@ describe('mapNxDeps', () => {
       todos: [],
     })
     expect(deps([{ target: 'build', params: 'forward' }]).todos).toEqual([
-      'dependsOn "build": params forwarding is not supported — forward args via `vx run … -- args` instead',
+      'dependsOn `params: "forward"` is not supported — forward args via `vx run … -- args` instead',
     ])
     // CONTROL: a name that is no package still says so.
     expect(deps([{ target: 'build', projects: ['nope'] }]).todos).toEqual([
