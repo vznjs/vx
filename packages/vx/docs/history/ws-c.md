@@ -877,6 +877,7 @@ each exit 1 with the healthy server dead (both hang without the fix,
 the crash row with its clause removed), and the `--continue=always`
 control holds (red with that exception removed). `cli.md` and
 `execution.md` say so.
+
 ## C-59: the fingerprint watch reads a whole-second lockfile stamp
 
 A's lead (A-2). The watch over the fingerprinted files skipped a file
