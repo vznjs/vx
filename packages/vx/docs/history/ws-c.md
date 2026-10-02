@@ -790,6 +790,19 @@ that pulls the root in, and the `cache.inputs.tasks` spelling): red with
 either site reverted, and with the `cache.inputs.tasks` rewrite alone
 mutated.
 
+## C-52: a requested group keeps the servers it stands for
+
+`vx run app#dev` over `dev: { dependsOn: ['^dev'] }` (a group, the
+Turbo-style fan-out) started every server, stopped them all at the end
+of the graph and exited 0. `selectKeepAlive` seeded its walk from
+requested (or surfaced) persistent tasks only, and a cross-project
+group's deps are not surfaced (that marking stays inside the project).
+The walk now also starts from each requested group, through nested
+groups to the persistent tasks below; a one-shot under it keeps none.
+Row (`persistent-shutdown.test.ts` › keeps the persistent tasks a
+requested group stands for): red without the seed; probed end to end
+(held until Ctrl-C, exit 130). `execution.md` says so.
+
 ## C-51: a restore under another restore ranks by what that one blocks
 
 `tieredReverseDepCount` ranked a restore by its direct exec-tier

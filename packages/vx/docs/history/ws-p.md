@@ -12,6 +12,10 @@
   named project's whole `target:with:colons` (`ui:build:esm` is ui's
   `build:esm`, not `build` in configuration `esm`, which reached the
   wrong task or dropped the edge).
+- **P-3** `nx()`: an output's dotted `{options.outputPath.base}` walks the
+  options, as Nx's `interpolate` does; read as one key it was no output,
+  so nx-examples' cached `@nx/angular:application` builds restored
+  nothing on a hit.
 
 ## Notes
 
