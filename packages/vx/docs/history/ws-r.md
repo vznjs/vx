@@ -36,6 +36,10 @@
   quoted medusa and payload numbers measured through `turbo()`; the
   docs README and `cli.md`'s `vx init` said the same. Each now calls
   `turbo()` / `nx()` a temporary start toward native config.
+- **R-11** Five posts (why-vx-is-fast, no-daemon, no-choice,
+  explicit-over-magical, one-binary) quoted solidjs/solid numbers
+  measured through `turbo()`; each keeps only the native-config
+  benchmark, and site-samples stops pinning the solid figures.
 
 ## Leads
 
