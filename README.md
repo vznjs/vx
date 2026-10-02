@@ -34,12 +34,9 @@ Same graph, commands and concurrency: [how it is measured](https://vznjs.github.
 
 ## Why it is faster
 
-- **Nothing boots per task.** No daemon, no Node process per task: vx
-  spawns your command directly.
-- **Hashing without reading.** On a clean tree, cache keys come from
-  git's index; no file is read.
-- **One pass over the repo.** One git walk per run; each stat and
-  lookup happens once.
+- **Nothing boots per task:** no daemon, no Node process; vx spawns your command.
+- **No file reads to hash:** on a clean tree, keys come from git's index.
+- **One pass:** one git walk per run; each stat and lookup happens once.
 
 ## Install
 
@@ -47,9 +44,8 @@ Same graph, commands and concurrency: [how it is measured](https://vznjs.github.
 npm install -D @vzn/vx     # or: pnpm add -D -w · yarn add -D (-W on Yarn 1) · bun add -d
 ```
 
-The package ships a prebuilt binary for Linux and macOS, x64 and arm64;
-no Bun needed. The binary alone, from a
-[release](https://github.com/vznjs/vx/releases), needs no Node either.
+A prebuilt binary for Linux and macOS (x64, arm64); no Bun needed. The
+[release](https://github.com/vznjs/vx/releases) binary needs no Node either.
 Windows: use WSL.
 
 ## Quick start
@@ -60,7 +56,7 @@ In a git repo with a `package.json` workspace:
 npx vx init               # a vx.config.ts per package, from its scripts
 ```
 
-Give a task a cache block (what it reads, what it writes):
+Give a task a cache block, what it reads and writes:
 
 ```ts
 // packages/app/vx.config.ts
@@ -89,8 +85,8 @@ npx vx run build --all    # restored from the cache, not rebuilt
 
 <img src="https://vznjs.github.io/vx/demo.svg" width="760" alt="vx run ci --all on examples/basic: cold, three tasks run; again, three up-to-date.">
 
-Or copy [`examples/basic`](examples/basic), a two-package starter CI
-runs on every commit. More: [Quickstart](https://vznjs.github.io/vx/quickstart/) ·
+Starter: [`examples/basic`](examples/basic), run by CI on every commit.
+More: [Quickstart](https://vznjs.github.io/vx/quickstart/) ·
 [Configure](https://vznjs.github.io/vx/guides/configure/) ·
 [CLI](packages/vx/docs/cli.md) · [every config field](packages/vx/docs/schema.md) ·
 [playground](https://vznjs.github.io/vx/playground/) (the planner, in your browser).
@@ -98,24 +94,21 @@ runs on every commit. More: [Quickstart](https://vznjs.github.io/vx/quickstart/)
 ## Coming from Turbo or Nx
 
 `bunx @vzn/vx-migrate` writes a `vx.config.ts` per package from
-`turbo.json` or the Nx graph; `vx init` in such a repo writes a
-`vx.workspace.ts` that reads them in place. Either is a temporary start:
-move to native vx config, which is what the numbers above measure.
-[Migration guide](https://vznjs.github.io/vx/guides/migrate/).
+`turbo.json` or the Nx graph. `vx init` there writes a `vx.workspace.ts`
+that reads them in place: a temporary start. The numbers above are native
+vx config. [Migration guide](https://vznjs.github.io/vx/guides/migrate/).
 
 ## More than speed
 
-- **A cache you can trust.** Configs are TypeScript, evaluated before
-  hashing, so imports and computed values are part of the key. Declared
-  outputs are wiped before every run and every restore: no stale file
-  survives.
-- **Sandboxed tasks.** Opt in per task: a read the task did not
-  declare fails the build instead of poisoning the cache.
-- **Clean exits.** Ctrl-C reaps every child. No orphaned dev servers.
-- **Plugins at every stage.** Remote cache, remote execution,
-  telemetry and new CLI verbs are plugins on documented seams, the way
-  Vite does it. Core ships none and needs none.
-- **Free.** MIT. No paywall, no cloud, no account.
+- **A cache you can trust:** TypeScript configs are evaluated before
+  hashing, so imports and computed values are in the key. Outputs are
+  wiped before every run and restore: no stale file survives.
+- **Sandboxed tasks:** opt in per task; an undeclared read fails the
+  build instead of poisoning the cache.
+- **Clean exits:** Ctrl-C reaps every child.
+- **Plugins at every stage:** remote cache, remote execution, telemetry,
+  CLI verbs. Core ships none and needs none.
+- **Free:** MIT. No paywall, no cloud, no account.
 
 ## How it compares
 
@@ -136,8 +129,7 @@ Every gap, and when another tool is the better pick:
 
 ## Plugins
 
-Declared in `vx.workspace.ts`. Without one, vx runs and caches on this
-machine.
+Declared in `vx.workspace.ts`; without any, vx runs and caches locally.
 
 | Package                                                    | What it adds                                                                  |
 | ---------------------------------------------------------- | ----------------------------------------------------------------------------- |
@@ -156,9 +148,8 @@ Write your own: [plugin guide](https://vznjs.github.io/vx/guides/plugins/) ·
 
 ## Status
 
-**Pre-alpha**, dogfooded: this repo lints, tests and builds itself
-with vx. Over 4,000 core tests plus the package suites, CI green on
-every commit. The schema may still change; what 1.0 will promise is in
+**Pre-alpha**, dogfooded: this repo lints, tests and builds itself with
+vx. The schema may still change; 1.0's promise:
 [versioning-1.0.md](packages/vx/docs/design/versioning-1.0.md).
 
 | Surface                                            | Maturity             |
@@ -176,9 +167,9 @@ bun install
 bun packages/vx/src/bin.ts run ci --all     # lint, test, docs build: every package
 ```
 
-Needs Bun ≥ 1.4. Every dev task is a vx task; there are no
-`package.json` scripts. Start with [CONTRIBUTING.md](CONTRIBUTING.md)
-and [STATUS.md](packages/vx/docs/STATUS.md), the living handoff.
+Needs Bun ≥ 1.4. Every dev task is a vx task; no `package.json`
+scripts. Start with [CONTRIBUTING.md](CONTRIBUTING.md) and
+[STATUS.md](packages/vx/docs/STATUS.md).
 
 ## License
 

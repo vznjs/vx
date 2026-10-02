@@ -59,6 +59,10 @@
 - **R-13** patterns.md's performance table and the docs README's
   headline line gave Turbo and Nx as multiples; they now give vx's %
   by the same formula, with the formula line.
+- **R-9** README prose tightened, data first: the benchmark table
+  leads; the reasons, install, migration and status lines say the same
+  in fewer words (1,096 → about 1,020 words), and the unpinned "over
+  4,000 core tests" count went.
 - **R-12** The benchmarks page's generated stress table and the
   benchmarks post's runner table show each competitor cell as
   `(vx N% faster)` with the formula line, not a multiple.
