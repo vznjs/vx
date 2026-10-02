@@ -22,6 +22,10 @@
   `e2e-ci--<spec>` loads `.env.e2e-ci` and `.env.e2e`. vx named them by
   the task's own name, so it loaded `.env.e2e-ci--<spec>`, which Nx never
   does, and missed `.env.e2e-ci`.
+- **P-10** `nx()`: a `{ input, projects }` list is matched as Nx's
+  `findMatchingProjects` matches it (`*` patterns, `tag:`, `!`
+  exclusions). Looked up as literal names, a `tag:` or pattern entry was
+  a todo and its input left the key.
 
 ## Notes
 
