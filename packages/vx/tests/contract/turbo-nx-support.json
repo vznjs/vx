@@ -127,7 +127,7 @@
   {
     "key": "turbo.json tasks.*.inputs",
     "status": "mapped",
-    "reason": "Globs translated; `$TURBO_DEFAULT$` becomes `**/*`, `$TURBO_ROOT$` workspace files; unsafe globs get a TODO; a path git ignores is keyed by a `cache.inputs.workspaceRuntime` probe, as for `globalDependencies`."
+    "reason": "Globs translated; `$TURBO_DEFAULT$` becomes `**/*`, `$TURBO_ROOT$` workspace files; unsafe globs get a TODO; a path git ignores is keyed by a `cache.inputs.workspaceRuntime` probe, as for `globalDependencies`; a glob that reaches a workspace package nested in the task's package is also listed in `cache.inputs.workspaceFiles`, since Turbo hashes the nested package's files with its parent's."
   },
   {
     "key": "turbo.json tasks.*.interactive",
