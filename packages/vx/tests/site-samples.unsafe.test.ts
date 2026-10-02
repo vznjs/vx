@@ -1980,3 +1980,27 @@ describe('the keys-from-git post names every way an index id is distrusted', () 
     expect(post).toContain('(`core.trustctime=false`, `core.checkStat=minimal`) trusts no index id')
   })
 })
+
+describe('the output-ownership post reads the benchmark rows as they are measured', () => {
+  // It said the restore and no-op rows sit within a few milliseconds and
+  // credited the short-circuit for it; the restore row deletes the outputs
+  // first, so the short-circuit is the no-op row alone (J2-17).
+  it('the no-op row is the short-circuit, and the restore row extracts', () => {
+    const bench = path.resolve(import.meta.dir, '..', '..', 'vx-bench')
+    const harness = readFileSync(path.join(bench, 'run.ts'), 'utf8')
+    expect(harness).toContain('warm-restore   — outputs deleted, cache intact (full extract path)')
+    const results = JSON.parse(readFileSync(path.join(bench, 'results.json'), 'utf8')) as {
+      rows: { runner: string; warmNoRestore: number; warmRestore: number }[]
+    }
+    const vx = results.rows.find((r) => r.runner === 'vx')!
+    expect(vx.warmRestore).toBeGreaterThan(vx.warmNoRestore)
+    const post = readFileSync(
+      path.join(DOCS, 'blog', 'strict-output-ownership.md'),
+      'utf8',
+    ).replace(/\s+/g, ' ')
+    expect(post).toContain('it is the no-op row in the [benchmarks](../../benchmarks/)')
+    expect(post).toContain(
+      'Their restore row deletes the outputs first, so every artifact is extracted',
+    )
+  })
+})

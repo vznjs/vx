@@ -141,3 +141,11 @@ persistent task` and vx exits 1). Row (`site-samples` › a post's link
   `core.checkStat=minimal`) trusts no id at all. `caching.md` had both.
   Row (`site-samples` › the keys-from-git post names every way an index
   id is distrusted), gated on `git-inputs.ts`; red without the fix.
+- **J2-17** The strict-output-ownership post said the benchmarks'
+  restore and no-op rows sit within a few milliseconds because of the
+  "current tree" short-circuit. The restore row deletes the outputs
+  first (`vx-bench/run.ts`), so it extracts every artifact; the
+  short-circuit is the no-op row alone (475 against 743 ms in
+  `results.json`). Row (`site-samples` › the output-ownership post reads
+  the benchmark rows as they are measured), read from the harness and
+  `results.json`; red without the fix.
