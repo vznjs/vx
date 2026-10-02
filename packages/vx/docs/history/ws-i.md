@@ -356,11 +356,14 @@ and never removed it; each add scans the list for a duplicate, so the
 cost was quadratic. `addEventListener` self time: 93 ms of a 1,000-task
 cold run on main, below the top 40 frames patched. Row:
 `stop-listener.test.ts`.
-I-40. vx's own RSS peak comes from getrusage (#2256), not
-`/proc/self/status`: the same mark, never below `VmHWM`, one syscall.
-`ownRssHighWater` inclusive: 75.6 ms of a 1,000-task cold run on main,
-13.9 patched. Row: `own-rss-high-water.test.ts` (the current RSS and a
-kilobyte unit each fail it).
+I-40. Reverted (#2320). #2256 read vx's own RSS peak through getrusage
+on the claim that it is `VmHWM` raised only by a small pre-exec image.
+Under vfork the pre-exec image is the PARENT's memory: vx spawned from a
+300 MB test runner read a 300 MB floor, and a task holding 150 MB
+reported no peak (`last.test.ts`'s e2e row, red in a local gate). The
+floor reads `VmHWM` again; `own-rss-high-water.test.ts` spawns from a
+300 MB parent to hold it. The claim's own row compared the two marks in
+a process whose parent was small, so it could not see it.
 I-41. A warm config's key is synchronous (#2266): the batch identities
 were awaited through a promise per file and per config. 1,000 projects,
 warm, 14 rounds, `load configs`: main 37.3 ms median (min 30.7), patch
