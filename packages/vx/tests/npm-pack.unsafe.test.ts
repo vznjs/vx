@@ -48,15 +48,25 @@ interface Packed {
   files: Array<{ path: string; size: number }>
 }
 
-function npm(cwd: string, ...args: string[]): { code: number | null; out: string } {
-  const r = Bun.spawnSync({ cmd: ['npm', ...args], cwd, stdout: 'pipe', stderr: 'pipe' })
-  return { code: r.exitCode, out: r.stdout.toString() + r.stderr.toString() }
+function npm(
+  cwd: string,
+  args: string[],
+  env: NodeJS.ProcessEnv = process.env,
+): { code: number | null; stdout: string; out: string } {
+  const r = Bun.spawnSync({ cmd: ['npm', ...args], cwd, env, stdout: 'pipe', stderr: 'pipe' })
+  const stdout = r.stdout.toString()
+  return { code: r.exitCode, stdout, out: stdout + r.stderr.toString() }
 }
 
-function packed(dir: string): Packed['files'] {
-  const r = npm(dir, 'pack', '--dry-run', '--json')
+/**
+ * The JSON is stdout's alone: npm prints its update notice to stderr when
+ * its registry check beats the command, and parsed after the JSON it
+ * failed one gate's row (`JSON Parse error`, M-27).
+ */
+function packed(dir: string, env?: NodeJS.ProcessEnv): Packed['files'] {
+  const r = npm(dir, ['pack', '--dry-run', '--json'], env)
   expect(r.code).toBe(0)
-  return (JSON.parse(r.out.slice(r.out.indexOf('['))) as Packed[])[0]!.files
+  return (JSON.parse(r.stdout) as Packed[])[0]!.files
 }
 
 // `npm pack` is a Node start plus a tree walk: a cold npm on a loaded
@@ -64,6 +74,18 @@ function packed(dir: string): Packed['files'] {
 const PACK_TIMEOUT_MS = 30_000
 
 const update = process.env['VX_UPDATE_CONTRACT'] === '1' && process.env['CI'] !== 'true'
+
+it('an npm notice on stderr does not reach the parse', () => {
+  const bin = path.join(root, 'notice-bin')
+  mkdirSync(bin, { recursive: true })
+  writeFileSync(
+    path.join(bin, 'npm'),
+    `#!/bin/sh\necho '[{"files":[{"path":"a.js","size":1}]}]'\necho 'npm notice New major version of npm available!' >&2\n`,
+    { mode: 0o755 },
+  )
+  const files = packed(root, { ...process.env, PATH: `${bin}:${process.env['PATH'] ?? ''}` })
+  expect(files).toEqual([{ path: 'a.js', size: 1 }])
+})
 
 describe('the npm tarballs', () => {
   for (const { name, dir } of packages) {
@@ -122,7 +144,7 @@ describe('the npm tarballs', () => {
     mkdirSync(tgz)
     for (const name of ['@vzn/vx', '@vzn/vx-migrate']) {
       const { dir } = packages.find((p) => p.name === name)!
-      expect(npm(dir, 'pack', '--pack-destination', tgz).code).toBe(0)
+      expect(npm(dir, ['pack', '--pack-destination', tgz]).code).toBe(0)
     }
     const repo = path.join(root, 'repo')
     const write = (rel: string, text: string): void => {
@@ -163,7 +185,7 @@ describe('the npm tarballs', () => {
     gitIn(repo)('add', '-A')
     gitIn(repo)('commit', '-q', '-m', 'init')
     const tarballs = ['vzn-vx-9.9.9.tgz', 'vzn-vx-migrate-9.9.9.tgz'].map((f) => path.join(tgz, f))
-    const install = npm(repo, 'install', '-D', '--no-audit', '--no-fund', ...tarballs)
+    const install = npm(repo, ['install', '-D', '--no-audit', '--no-fund', ...tarballs])
     expect([install.code, install.code === 0 ? '' : install.out]).toEqual([0, ''])
     const statuses = (): Record<string, string> => {
       const r = Bun.spawnSync({

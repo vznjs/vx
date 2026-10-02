@@ -299,6 +299,16 @@ ran the trap 100 of 100 with the SIGINT landing anywhere in the loop.
 macOS's `/bin/sh` is bash 3.2, not testable here; that it differs is the
 open suspicion, not a cause.
 
+M-27. `npm-pack.unsafe.test.ts` (ws-p's lead: `JSON Parse error` once in
+a gate, npm 10.9.4). The helper parsed stdout and stderr joined, from
+the first `[`. npm prints its update notice to stderr at exit when its
+background registry check finishes before the command, a race a loaded
+gate's slower pack loses: a `prepack` of `sleep 4` and no
+`_update-notifier-last-checked` printed "New major version of npm
+available! 10.9.4 -> 12.2.0" after the JSON, and the joined parse threw.
+The JSON is now stdout's alone. Row: a fake npm whose stderr holds the
+notice (red without the fix, the gate's error).
+
 ## Leads for other streams
 
 - A: A-20 let a same-project dependant restore ahead of a producer whose
