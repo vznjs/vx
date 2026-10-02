@@ -619,9 +619,14 @@ describe('GitHub Actions renderer (full mode + gha)', () => {
     log.taskComplete(n, mkOutcome(n, 'success'))
     log.taskStdout(n, '::error::from-server\n')
     log.runEnd?.()
+    // And what it writes after the summary (C-56), whole lines and the last partial one.
+    log.taskStdout(n, '::error::after-summary\n::error::partial')
+    log.runEnd?.()
     const text = out.text()
-    expect(text).toContain('::error::from-server')
-    expect(unfenced(text)).not.toContain('::error::from-server')
+    for (const line of ['from-server', 'after-summary', 'partial']) {
+      expect(text).toContain(`::error::${line}`)
+      expect(unfenced(text)).not.toContain(`::error::${line}`)
+    }
   })
 
   it('wraps a successful task block in ::group:: with outcome word + duration', () => {
@@ -1175,6 +1180,69 @@ describe('persistent post-ready output', () => {
     // Streamed live exactly once, with no trailing replay block.
     expect(text.match(/POST-READY/g)?.length).toBe(1)
     expect(text).not.toContain('since ready')
+  })
+
+  // C-56: after the summary nothing flushed a tail again, so `vx run dev
+  // --all` showed none of what its servers wrote while vx held them.
+  it('after the summary a kept server streams, a line at a time under its id', () => {
+    for (const mode of ['broad', 'full'] as const) {
+      const out = sink()
+      const log = defaultLogger(NO_COLORS, { mode }, out)
+      const n = mkPersistent('app#server')
+      log.taskComplete(n, mkOutcome(n, 'success'))
+      log.runEnd?.()
+      const before = out.text().length
+      log.taskStdout(n, 'Local: http://localhost:5173\nhalf')
+      log.taskStderr(n, ' a line\nwarn: slow\n')
+      log.taskStdout(n, 'tail without newline')
+      expect(out.text().slice(before)).toBe(
+        'app#server │ Local: http://localhost:5173\n' +
+          'app#server │ half a line\n' +
+          'app#server │ warn: slow\n',
+      )
+      log.runEnd?.()
+      expect(out.text().slice(before)).toEndWith('app#server │ tail without newline\n')
+    }
+  })
+
+  // A server that writes only `\r` updates never ends a line: what it
+  // held grew without bound and never printed.
+  it("a kept server's line that never ends prints at the cap", () => {
+    const out = sink()
+    const log = defaultLogger(NO_COLORS, { mode: 'broad' }, out)
+    const n = mkPersistent('app#server')
+    log.taskComplete(n, mkOutcome(n, 'success'))
+    log.runEnd?.()
+    const before = out.text().length
+    for (let i = 0; i < 2000; i++) log.taskStdout(n, `\rbuilding ${String(i).padStart(30, '.')}`)
+    const printed = out.text().slice(before)
+    expect(printed.startsWith('app#server │ \rbuilding')).toBe(true)
+    expect(printed.length).toBeGreaterThanOrEqual(64 * 1024)
+    expect(printed.length).toBeLessThan(80 * 1024)
+  })
+
+  // The CLI's bus delivers one `run:end`; its last word is `settle`.
+  it("settle prints a kept server's last partial line", () => {
+    const out = sink()
+    const log = defaultLogger(NO_COLORS, { mode: 'broad' }, out)
+    const n = mkPersistent('app#server')
+    log.taskComplete(n, mkOutcome(n, 'success'))
+    log.runEnd?.()
+    log.taskStdout(n, 'no newline')
+    expect(out.text()).not.toContain('no newline')
+    log.settle?.()
+    expect(out.text()).toEndWith('app#server │ no newline\n')
+  })
+
+  it('errors-only stays silent after the summary too', () => {
+    const out = sink()
+    const log = defaultLogger(NO_COLORS, { mode: 'errors-only' }, out)
+    const n = mkPersistent('app#server')
+    log.taskComplete(n, mkOutcome(n, 'success'))
+    log.runEnd?.()
+    log.taskStdout(n, 'POST-SUMMARY\n')
+    log.runEnd?.()
+    expect(out.text()).toBe('')
   })
 
   it('runEnd is idempotent — run() calls it twice on the success path', () => {

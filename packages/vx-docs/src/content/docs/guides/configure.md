@@ -142,6 +142,7 @@ app#build — run 019f5a02-…
 | `cache key unchanged — this run was served from cache, nothing re-ran` | a hit |
 | `cache key unchanged — the previous run on this key failed and saved nothing, so there was nothing to hit` | a failure saves no entry |
 | `cache key unchanged — re-executed because this run did not read the cache (--force, or a --cache without read)` | the run's policy read no cache |
+| `cache key unchanged — neither run saved it: each ran beside a failed task (…), and a task run past a failed dependency (--continue) is never cached` | both runs went past a failure under `--continue` |
 | `cache key unchanged — no entry for this key was in the cache when it ran (pruned or evicted), so it executed and saved one` | the entry was gone |
 | `cache key unchanged — re-executed on the same key (--no-cache / --force, or unrelated)` | none of the above; vx cannot name the cause |
 | `cache key unchanged — this run recorded no cache outcome, so whether it re-ran is unknown` | vx does not guess |
@@ -163,7 +164,7 @@ A task sees only the variables you pass it:
 The child always gets a small essential allowlist so normal CLI tools
 work: `PATH`, `HOME`, `SHELL`, `USER`, `LOGNAME`, `TMPDIR`, `TEMP`,
 `TMP`, `LANG`, `LC_ALL`, `LC_CTYPE`, `TERM`, `COLORTERM`, `FORCE_COLOR`,
-`NO_COLOR`, `CI`, `NODE_OPTIONS`, plus the Windows essentials. vx sets
+`NO_COLOR`, `CI`, `NODE_OPTIONS`. vx sets
 `VX_RUN_WORKSPACE` (the workspace root) and `VX_RUN_TASK` (the
 `project#task` running) on every task. The package's `node_modules/.bin`
 is first on `PATH`. What vx itself reads:
@@ -211,7 +212,7 @@ import { defineWorkspace } from '@vzn/vx/config'
 import { reapi } from '@vzn/vx-reapi'
 
 export default defineWorkspace({
-  plugins: [reapi({ endpoint: 'cache.internal:443' })],
+  plugins: [reapi({ endpoint: 'grpcs://cache.internal:443' })],
   concurrency: 8,            // default: the cores this process may use
   cacheDir: '.vx/cache',     // default: .vx/cache (relative to root)
   timeout: 600_000,
@@ -226,7 +227,7 @@ export default defineWorkspace({
 | `cacheDir`       | where the local cache lives; add it to `.gitignore`                   |
 | `timeout`        | a default task timeout in ms; default none                            |
 | `cacheRetention` | evict at the end of every run: `olderThan` unused, then least recently used past `maxSize`; default none |
-| `affectedBase` | the git ref a bare `--affected` compares with; default `origin/HEAD` |
+| `affectedBase` | the git ref a bare `--affected` compares with; default `origin/HEAD`, then the first trunk (`origin/main`, `origin/master`, `main`, `master`) that is not HEAD, else `HEAD~1` |
 
 For a timeout, the first one set wins: a task's `exec.timeout`, then
 `--timeout <ms>`, then `VX_TASK_TIMEOUT`, then this. Only `exec.timeout` is in the

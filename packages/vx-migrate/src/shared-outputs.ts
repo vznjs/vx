@@ -245,6 +245,41 @@ export function resolveSharedWorkspaceOutputs(
       ? v.filter((f): f is string => typeof f === 'string' && !f.startsWith('!'))
       : []
   const kept: { id: string; project: string; ws: string[]; own: string[] }[] = []
+  // Two globs can match one path only when one's literal prefix is a
+  // directory of the other's (`packages/*/dist/**` and `packages/a/dist/**`),
+  // so a kept glob is a candidate only along its prefix's chain. Every pair
+  // was compared: 1,000 packages' builds and tests took 9 s to map.
+  const at = new Map<string, number[]>()
+  const under = new Map<string, number[]>()
+  const chain = (g: string): string[] => {
+    const segs: string[] = []
+    for (const seg of g.split('/')) {
+      if (/[*?{}[\]()!]/.test(seg)) break
+      segs.push(seg)
+    }
+    return segs.map((_, i) => segs.slice(0, i + 1).join('/'))
+  }
+  const index = (i: number, globs: readonly string[]): void => {
+    for (const g of globs) {
+      const c = chain(g)
+      const push = (m: Map<string, number[]>, k: string) => {
+        const list = m.get(k)
+        if (list === undefined) m.set(k, [i])
+        else if (list.at(-1) !== i) list.push(i)
+      }
+      push(at, c.at(-1) ?? '')
+      for (const k of ['', ...c]) push(under, k)
+    }
+  }
+  const candidates = (globs: readonly string[]): number[] => {
+    const found = new Set<number>()
+    for (const g of globs) {
+      const c = chain(g)
+      for (const k of ['', ...c]) for (const i of at.get(k) ?? []) found.add(i)
+      for (const i of under.get(c.at(-1) ?? '') ?? []) found.add(i)
+    }
+    return [...found].sort((a, b) => a - b)
+  }
   for (const p of projects) {
     const rel = relPosix(root, p.dir)
     for (const t of p.tasks) {
@@ -262,7 +297,8 @@ export function resolveSharedWorkspaceOutputs(
         a.find((g) => b.some((h) => outputsOverlap(h, g)))
       let clash: (typeof kept)[number] | undefined
       let shared: string | undefined
-      for (const k of kept) {
+      for (const i of candidates([...ws, ...own])) {
+        const k = kept[i]!
         shared =
           overlap(ws, [...k.ws, ...k.own]) ??
           overlap(own, k.project === p.name ? k.ws : [...k.ws, ...k.own])
@@ -272,6 +308,7 @@ export function resolveSharedWorkspaceOutputs(
         }
       }
       if (clash === undefined) {
+        index(kept.length, [...ws, ...own])
         kept.push({ id: `${p.name}#${t.name}`, project: p.name, ws, own })
         continue
       }

@@ -44,6 +44,11 @@ it), so a workspace that declares nothing runs and caches here.
 - `executorLabel(executor)` — how a message names a resolved executor:
   `plugin '<name>' (executor '<name>')`, or `executor '<name>'` for the
   local floor. A throwing `accepts` or `demand` is named by it.
+- `nameExecutorFailure(executor, err)` — a plugin executor's throw from
+  `execute` as a `UserError` reading `<label> failed in execute: <reason>`
+  (C-63), the plugin's error as its `cause`: printed plainly, as every
+  stage's throw is, never as vx's internal error, and the plugin's own
+  error is never renamed (C-85). The floor's is untouched.
 - `resolveCache(plugins, ctx)` → `CacheLayer` (one layer as is; two or
   more chained in order — `ChainedCache`; a layer wrapping the local
   handle subsumes the bare local layer; none declared leaves the local

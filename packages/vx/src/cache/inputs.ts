@@ -22,7 +22,6 @@ import { rm, rmdir } from 'node:fs/promises'
 import type { CacheInputs } from '../config.js'
 import {
   asTrees,
-  executablePath,
   isExecutableMissing,
   isLiteralPattern,
   normalizeGlob,
@@ -385,6 +384,7 @@ async function runRuntimeCommand(
   command: string,
   cwd: string,
   binDirs: readonly string[],
+  owner: RuntimeMemo | undefined,
 ): Promise<string> {
   const ambient = process.env['PATH']
   const prefix = binDirs.join(path.delimiter)
@@ -393,17 +393,15 @@ async function runRuntimeCommand(
     // vx's own `sh`, resolved on its PATH before the probe's: Bun.spawn looks
     // a bare name up on the child's PATH, which leads with the project's
     // `node_modules/.bin`, so a dependency's `sh` bin ran every probe (J-69).
-    const argv =
-      process.platform === 'win32' ? shellArgv(command) : [executablePath('sh'), '-c', command]
-    proc = Bun.spawn(argv, {
+    proc = Bun.spawn(shellArgv(command), {
       cwd,
       env: { ...process.env, PATH: ambient ? `${prefix}${path.delimiter}${ambient}` : prefix },
       stdin: 'ignore',
       stdout: 'pipe',
       stderr: 'pipe',
       // Its own group, so the probe's whole tree can be taken down with vx
-      // (`killProbesOnExit`). Windows has no groups.
-      detached: process.platform !== 'win32',
+      // (`killProbesOnExit`).
+      detached: true,
     })
   } catch (err) {
     // The probe runs through `sh -c` like a task: a box without sh names
@@ -416,6 +414,12 @@ async function runRuntimeCommand(
     throw new UserError(`cache.inputs runtime command failed to spawn: ${command} (cwd: ${cwd})`)
   }
   liveProbes.add(proc)
+  let mine: Set<ReturnType<typeof Bun.spawn>> | undefined
+  if (owner !== undefined) {
+    mine = probesOf.get(owner) ?? new Set()
+    probesOf.set(owner, mine)
+    mine.add(proc)
+  }
   killProbesOnExit()
   let stdout, stderr, exitCode
   try {
@@ -426,6 +430,7 @@ async function runRuntimeCommand(
     ])
   } finally {
     liveProbes.delete(proc)
+    mine?.delete(proc)
   }
   const output = `${stdout}${stderr}`.trim()
   if (exitCode !== 0) {
@@ -448,6 +453,30 @@ async function runRuntimeCommand(
  */
 const liveProbes = new Set<ReturnType<typeof Bun.spawn>>()
 let probeExitHooked = false
+
+type RuntimeMemo = Map<string, Promise<string>>
+/** The probes each run started, by the run's memo: one run's stop is not another's. */
+const probesOf = new WeakMap<RuntimeMemo, Set<ReturnType<typeof Bun.spawn>>>()
+
+/**
+ * Kill every runtime probe still running that these memos (one run's
+ * `runtimeCache` and `workspaceRuntimeCache`) started, with its tree. A
+ * run's stop asks this: a Ctrl-C while a probe ran waited for the probe,
+ * or for the signal handler's bound, about 7 s, before vx exited (C-65).
+ * Its answer is no longer needed; its caller sees it fail and the run
+ * reads it aborted. Another run in the process keeps its own.
+ */
+export function stopRuntimeProbes(...memos: readonly RuntimeMemo[]): void {
+  for (const memo of memos) {
+    for (const p of probesOf.get(memo) ?? []) {
+      try {
+        process.kill(-p.pid, 'SIGKILL')
+      } catch {
+        // the group is gone
+      }
+    }
+  }
+}
 function killProbesOnExit(): void {
   if (probeExitHooked) return
   probeExitHooked = true
@@ -485,7 +514,7 @@ async function resolveRuntimeValues(
       const key = `${memoKeyPrefix}${cmd}`
       let p = memo?.get(key)
       if (p === undefined) {
-        p = runRuntimeCommand(cmd, cwd, binDirs)
+        p = runRuntimeCommand(cmd, cwd, binDirs, memo)
         memo?.set(key, p)
       }
       return [cmd, await p] as [string, string]
@@ -1032,27 +1061,75 @@ function refuseOneAlternativeBrace(
   }
 }
 
-async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
+/** What a `files` declaration and its task's outputs compile to, whatever the project. */
+interface FilesPlan {
+  positive: string[]
+  negative: string[]
+  excludeGlobs: Bun.Glob[]
+  ownOutput: (rel: string) => boolean
+  positiveGlobs: Bun.Glob[]
+  /** The literal entries, each naming one path (see `unmatchedLiterals`). */
+  literals: string[]
+  /**
+   * Whether a project-relative path is an input by the declaration alone:
+   * a positive glob selects it, and no exclude and no own output takes it
+   * back. Projects repeat their relative paths (`src/index.ts`,
+   * `package.json`), so each is matched once per plan.
+   */
+  verdicts: Map<string, boolean>
+}
+
+/**
+ * Compiled once per declaration for the life of the process: a workspace
+ * declares a handful of `files` lists over thousands of tasks, and
+ * splitting, normalizing and compiling them per task was ~6 ms of a
+ * 1,000-task warm run (I-29). A refused declaration is never stored, so it
+ * throws for every task that carries it.
+ */
+const filesPlans = new Map<string, FilesPlan | null>()
+
+function filesPlan(
+  files: readonly string[] | undefined,
+  ownOutputs: readonly string[],
+): FilesPlan | null {
+  const key = JSON.stringify([files ?? null, ownOutputs])
+  const memo = filesPlans.get(key)
+  if (memo !== undefined) return memo
   const positive: string[] = []
   const negative: string[] = []
-
-  if (args.files === undefined) {
+  if (files === undefined) {
     positive.push(...DEFAULT_FILE_GLOBS)
   } else {
-    refuseOneAlternativeBrace(args.files, 'files')
-    for (const entry of args.files) {
+    refuseOneAlternativeBrace(files, 'files')
+    for (const entry of files) {
       if (entry.startsWith('!')) negative.push(entry.slice(1))
       else positive.push(entry)
     }
   }
+  const plan =
+    positive.length === 0
+      ? null
+      : {
+          positive,
+          negative,
+          excludeGlobs: [...ALWAYS_IGNORE, ...asTrees(negative)].map(globFor),
+          // A path the task's own outputs take back with `!` is no output, so it
+          // stays an input: a tracked file under `dist` the build reads (A-44).
+          ownOutput: outputMatcher(ownOutputs, globFor),
+          positiveGlobs: asTrees(positive).map(globFor),
+          literals: positive.map(normalizeGlob).filter(isLiteralPattern).map(stripTrailingSlash),
+          verdicts: new Map<string, boolean>(),
+        }
+  filesPlans.set(key, plan)
+  return plan
+}
 
-  if (positive.length === 0) return []
+async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
+  const plan = filesPlan(args.files, args.ownOutputs)
+  if (plan === null) return []
+  const { positive, negative, excludeGlobs, ownOutput, positiveGlobs } = plan
 
   const nested = inNestedProject(args.projectDir, args.nestedProjectDirs)
-  const excludeGlobs = [...ALWAYS_IGNORE, ...asTrees(negative)].map(globFor)
-  // A path the task's own outputs take back with `!` is no output, so it
-  // stays an input: a tracked file under `dist` the build reads (A-44).
-  const ownOutput = outputMatcher(args.ownOutputs, globFor)
 
   // Defer to git for the file set (Turbo / Nx parity). Nested .gitignore
   // files, .git/info/exclude, and global excludes all participate
@@ -1062,7 +1139,6 @@ async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
   // per task (build + test + lint + …). Spawning git N times for the
   // same project per run is wasteful; we cache the result for the
   // duration of one orchestrator run.
-  const positiveGlobs = asTrees(positive).map(globFor)
   // Everything below the snapshot that decides the result: the project, what
   // it declares, what it excludes as its own outputs, and the boundaries.
   const memoKey = `${args.projectDir}\0${positive.join('\u0001')}\0${negative.join('\u0001')}\0${args.ownOutputs.join('\u0001')}\0${args.nestedProjectDirs.join('\u0001')}`
@@ -1102,23 +1178,33 @@ async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
   // an artifact built from an older version of a file the config explicitly
   // claims as an input. See the refusal below for why this is not simply
   // honoured instead.
-  const unmatchedLiterals = new Set(
-    positive.map(normalizeGlob).filter(isLiteralPattern).map(stripTrailingSlash),
-  )
-  // First pass: glob-filter to candidate absolute paths (no I/O).
+  const unmatchedLiterals = new Set(plan.literals)
+  // First pass: glob-filter to candidate absolute paths (no I/O). Git
+  // prints normalized relative paths, so under an absolute, normalized
+  // project dir a join is a concatenation: `path.resolve` per file was
+  // ~27 ms of a 900-task, 12,000-file warm run (I-30).
+  const base =
+    path.sep === '/' &&
+    path.isAbsolute(args.projectDir) &&
+    path.normalize(args.projectDir) === args.projectDir
+      ? args.projectDir.endsWith('/')
+        ? args.projectDir
+        : `${args.projectDir}/`
+      : undefined
   const candidates: string[] = []
+  const verdicts = plan.verdicts
   for (const rel of gitFiles) {
     if (unmatchedLiterals.size > 0) settleLiterals(unmatchedLiterals, rel)
-    let matched = false
-    for (const g of positiveGlobs) {
-      if (g.match(rel)) {
-        matched = true
-        break
-      }
+    let input = verdicts.get(rel)
+    if (input === undefined) {
+      input =
+        positiveGlobs.some((g) => g.match(rel)) &&
+        !excludeGlobs.some((g) => g.match(rel)) &&
+        !ownOutput(rel)
+      verdicts.set(rel, input)
     }
-    if (!matched) continue
-    if (nested(rel) || excludeGlobs.some((g) => g.match(rel)) || ownOutput(rel)) continue
-    candidates.push(path.resolve(args.projectDir, rel))
+    if (!input || nested(rel)) continue
+    candidates.push(base === undefined ? path.resolve(args.projectDir, rel) : base + rel)
   }
   if (unmatchedLiterals.size > 0) {
     await assertNoInvisibleLiteralInputs(unmatchedLiterals, args.projectDir, 'files')
@@ -1131,7 +1217,15 @@ async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
   // `git ls-files -s` can surface staged entries whose working-tree
   // file is gone; the hasher would otherwise throw ENOENT.
   const oids = args.gitFilesCache?.oidsFor(args.projectDir)
-  const resolved = candidates.filter((abs) => oids?.has(abs) === true || isInputOnDisk(abs)).sort()
+  const resolved = candidates.filter((abs) => oids?.has(abs) === true || isInputOnDisk(abs))
+  // Git's slice comes sorted and a common prefix keeps it so: one pass
+  // proves it instead of a sort per task.
+  for (let i = 1; i < resolved.length; i++) {
+    if (resolved[i - 1]! > resolved[i]!) {
+      resolved.sort()
+      break
+    }
+  }
   // Stored only on the way out: a declaration whose literal named an
   // invisible file threw above, and every task sharing it must throw too.
   args.projectFilesCache?.set(memoKey, { snapshot: gitFiles, result: resolved })

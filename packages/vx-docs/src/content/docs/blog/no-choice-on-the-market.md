@@ -25,9 +25,8 @@ remote execution and no seam to add one. There is no way to change
 where a task runs. The config is JSON, so a shared input list is a
 `globalDependencies` array you keep in sync by hand, and nothing
 computed can participate in a key. Inputs default to every file in the
-package, which turns a README edit into a rebuild and makes the
-per-task overhead visible in the [solidjs/solid
-benchmark](../honest-benchmarks/). Outputs are restored additively, so
+package, which turns a README edit into a rebuild and adds hashing to
+every task. Outputs are restored additively, so
 a deleted file survives a cache hit. And the parts that would have
 grown into a platform are being deprecated rather than finished: the
 daemon, `--parallel`, `--no-cache`, `--remote-only` are all deprecated

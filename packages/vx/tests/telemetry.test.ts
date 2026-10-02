@@ -930,11 +930,29 @@ describe('telemetry — end-to-end through run()', () => {
         ],
       })
       process.argv = argv
+      // C-67: an embedder's own `command` line is redacted the same way.
+      await run({
+        cwd: workspaceRoot,
+        projects: ['pkg-a'],
+        tasks: ['hello'],
+        command: 'vx run hello -- --token=SECRET456 x',
+        log: makeSilentLogger(),
+        handleSignals: false,
+        telemetrySinks: [
+          {
+            onRecord: (r) => void seen.push(JSON.stringify(r)),
+            onRunSummary: (s) => void seen.push(JSON.stringify(s)),
+          },
+        ],
+      })
       expect(seen.length).toBeGreaterThan(1)
-      expect(seen.filter((r) => r.includes('SECRET123'))).toEqual([])
+      expect(seen.filter((r) => r.includes('SECRET123') || r.includes('SECRET456'))).toEqual([])
       expect(seen.filter((r) => r.includes('vx run hello -- <1 argument>')).length).toBeGreaterThan(
         1,
       )
+      expect(
+        seen.filter((r) => r.includes('vx run hello -- <2 arguments>')).length,
+      ).toBeGreaterThan(1)
     } finally {
       process.argv = argv
       rmSync(workspaceRoot, { recursive: true, force: true })

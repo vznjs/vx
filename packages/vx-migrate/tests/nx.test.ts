@@ -7,6 +7,7 @@
 // real, and only Nx's own graph computation is stubbed.
 import { appendFile, mkdir, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
+import { realpathSync } from 'node:fs'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { planRun, run, type Logger } from '@vzn/vx'
@@ -255,7 +256,8 @@ describe('nx()', () => {
         context: { cwd: string }
       }
       expect(rec.target.executor).toBe('@acme/compile:run')
-      expect(rec.context.cwd).toMatch(/packages\/(app|lib)$/)
+      // Nx forks an executor in the workspace root, and so does nx-exec.
+      expect(realpathSync(rec.context.cwd)).toBe(realpathSync(root))
       const second = await run(opts)
       expect(status(second, 'lib#build')).toBe('cache-hit')
       expect(status(second, 'app#build')).toBe('cache-hit')

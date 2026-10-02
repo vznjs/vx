@@ -43,12 +43,14 @@ export {
   ownWorkspaceOutputsSince,
   stampOutputs,
   stampWorkspaceOutputs,
+  stopRuntimeProbes,
   type OutputStamp,
 } from './inputs.js'
 export {
   GitFilesCache,
   applyGitEnumeration,
   gitPathspecs,
+  MAX_SCOPED_PATHSPECS,
   repoRootOf,
   startGitEnumeration,
   lazyGitEnumeration,
