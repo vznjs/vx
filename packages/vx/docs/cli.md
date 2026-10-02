@@ -1790,6 +1790,9 @@ under npm, `yarn workspaces foreach` under Yarn 2+);
 with nothing mapped it names the root whenever it has a script, a member
 or not (pnpm's root is not), and tells a root with no `"name"` to add one
 first (vuejs/core), naming the scripts that would then map (react, D-87). A single-package repo's root is its project and maps.
+A lone root beside a `lerna.json` (Lerna-classic: packages listed there, not
+in `workspaces`) gets a note naming the `workspaces` globs to add, Lerna's
+`packages/*` default when it lists none (D-111).
 A member whose package.json has no `name` is no project; one with a
 script is named in the report, to be given a name (remix's
 `packages/component/bench`, D-106).
