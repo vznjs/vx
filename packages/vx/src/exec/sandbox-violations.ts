@@ -612,6 +612,11 @@ export function refusedWrites(
     const m = /^deny (\S+) (\/.*)$/.exec(record)
     if (m === null) continue
     const [, syscall, raw] = m as unknown as [string, string, string]
+    // A descriptor or pseudo-file is the task's, and resolving it here
+    // reads vx's own: strace's log is `/dev/fd/5`, and a vx started with
+    // `5>out.log` in the project reported a write to `out.log` and failed
+    // a clean task (2026-10-02).
+    if (/^\/(?:dev|proc)\//.test(raw)) continue
     const abs = toRealPath(raw)
     if (isUnderAny(abs, binds) || underGlob(abs, globs)) continue
     const key = `${syscall}|${abs}`
