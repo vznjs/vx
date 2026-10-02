@@ -1006,6 +1006,7 @@ tracker's definition. Each of three scheduler mutations reddens it:
 the item-963 hold, the skipped-upstream skip, the stop's skip. It
 draws from the full-period PRNG of C-79: the float LCG it first used
 cycled within 15,000 draws, so most graphs repeated.
+
 ## C-72: `--continue` rides no wire
 
 `cli.md` § Failure propagation ended "The mode rides the wire, so
