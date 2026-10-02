@@ -41,6 +41,11 @@ start` (in the build output) with Nx's port and `PORT`, and
   default inspector; and `@nx/js:node` is a server executor, so a graph
   with no `continuous` (an Nx older than that field) no longer makes it
   an ordinary task that never ends, in `nx()` or a migration.
+- **P2-7** The migrator writes `@nx/js:swc` as swc's own CLI from the
+  project dir, as Nx's `getSwcCmd` builds it: the `sourceRoot` (else
+  `src`, else the project) into the output, the project's `.swcrc`, the
+  output emptied first; the type-check, `package.json` and assets are
+  TODOs. It was a failing placeholder.
 
 ## Leads for other streams
 

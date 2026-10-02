@@ -53,7 +53,7 @@ behind a JSON options object:
 vx has no executors. A task is a shell command. When you migrate, an
 executor target is written as the command the executor was wrapping
 (jest, vitest, vite build and serve, eslint, tsc, playwright,
-cypress, storybook, next, esbuild, node), and any other
+cypress, storybook, next, esbuild, node, swc), and any other
 executor is a placeholder the report lists, for you to write:
 
 ```ts

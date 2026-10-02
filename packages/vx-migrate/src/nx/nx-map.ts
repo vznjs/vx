@@ -13,6 +13,7 @@
 // configuration is a task of its own, `<target>:<configuration>`; the
 // default configuration is folded into the base task.
 
+import { existsSync } from 'node:fs'
 import path from 'node:path'
 import {
   buildPackageGraph,
@@ -652,6 +653,15 @@ function buildTask(
     opts.nativeExecutors === true
       ? {
           options: (spec) => targetOptionsOf(nodeMap, spec),
+          // Nx's swc reads the project's `sourceRoot`, else `src` where it exists.
+          sourceRoot: () => {
+            const declared = (nodeMap[nodeName]?.data as { sourceRoot?: unknown } | undefined)
+              ?.sourceRoot
+            if (typeof declared === 'string') return declared
+            return existsSync(path.join(meta.dir, 'src'))
+              ? path.posix.join(projectRel, 'src')
+              : undefined
+          },
           executor: (spec) => {
             const [project, target] = spec.split(':')
             const t =
@@ -874,6 +884,7 @@ function mapCommand(
   native: {
     readonly options: (spec: string) => Record<string, unknown> | undefined
     readonly executor: (spec: string) => string | undefined
+    readonly sourceRoot: () => string | undefined
   } | null,
 ): MappedCommand | null {
   const executor = target.executor
@@ -960,6 +971,7 @@ function mapCommand(
       projectName,
       targetOptions: native.options,
       targetExecutor: native.executor,
+      sourceRoot: native.sourceRoot,
     })
     if (n === null) {
       todos.push(untranslatedTodo(executor))

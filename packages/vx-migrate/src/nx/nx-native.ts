@@ -30,6 +30,8 @@ export interface NativeContext {
   readonly targetOptions?: (spec: string) => Options | undefined
   /** The executor a spec's target runs (`nx:run-commands` for a plain `command`). */
   readonly targetExecutor?: (spec: string) => string | undefined
+  /** The project's `sourceRoot`, else its `src` dir where one exists (workspace-relative). */
+  readonly sourceRoot?: () => string | undefined
 }
 
 export interface NativeCommand {
@@ -854,7 +856,41 @@ const node: Translate = (o, ctx, todos) => {
   return fromRoot(ctx, args.join(' '))
 }
 
+/**
+ * `@nx/js:swc`: swc's CLI from the project dir, as Nx's `getSwcCmd` builds
+ * it: the source dir (`sourceRoot`, or the project itself when `main` sits
+ * outside it), `-d` the output, the project's `.swcrc` unless `swcrc`
+ * names another; the output emptied first under `clean` (its default).
+ */
+const swc: Translate = (o, ctx, todos) => {
+  if (typeof o['outputPath'] !== 'string') return null
+  const out = shellQuote(projPath(o['outputPath'], ctx))
+  const main = typeof o['main'] === 'string' ? wsPath(o['main'], ctx) : undefined
+  let input = '.'
+  const root = ctx.sourceRoot?.()
+  if (root !== undefined) {
+    const src = wsPath(root, ctx)
+    input = main !== undefined && !main.startsWith(`${src}/`) ? '.' : projPath(src, ctx)
+  }
+  const swcrc = typeof o['swcrc'] === 'string' ? projPath(o['swcrc'], ctx) : '.swcrc'
+  const args = ['swc', shellQuote(input), '-d', out, `--config-file=${shellQuote(swcrc)}`]
+  if (o['stripLeadingPaths'] === true) args.push('--strip-leading-paths')
+  if (o['watch'] === true) args.push('--watch')
+  if (o['skipTypeCheck'] !== true)
+    todos.push(
+      '@nx/js:swc type-checked the project (tsc) besides compiling — add a typecheck task to dependsOn, or drop this line',
+    )
+  todos.push(
+    '@nx/js:swc wrote a package.json (main, types, exports) into the output dir — swc does not',
+  )
+  if (Array.isArray(o['assets']) && o['assets'].length > 0)
+    todos.push('@nx/js:swc copied `assets` into the output dir — swc does not; add a copy step')
+  const line = args.join(' ')
+  return o['clean'] === false ? line : `rm -rf ${out} && ${line}`
+}
+
 const TRANSLATORS: Readonly<Record<string, Translate>> = {
+  '@nx/js:swc': swc,
   '@nx/js:node': node,
   '@nx/esbuild:esbuild': esbuild,
   '@nx/next:build': nextBuild,
