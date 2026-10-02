@@ -17,8 +17,8 @@ daemon, the plugin surface, Nx's language plugins) were corrected on
 - **Turborepo** — production-grade. Per-package `turbo.json`, remote
   cache, OTLP observability, watch, prune, query, boundaries, a TUI.
   Maximally featureful; many features are flagged "experimental", and
-  2.10 deprecates its own daemon, `--parallel`, `--no-cache` and
-  `--remote-only`; the flag surface is the largest of the four.
+  it has deprecated its own daemon for `turbo run` (2.8.11) and
+  `--parallel` (by 2.9.18); the flag surface is the largest of the four.
   _Reference repo:_ `vercel/turborepo`.
 - **Nx** — production-grade and pluggable. Per-package `project.json`,
   plugins that infer tasks and add generators and executors (first-party
@@ -74,7 +74,7 @@ is the wider matrix and the reasoning.
 | per-run JSON summary       | `--summarize`, `--json`                                      | `--outputStyle`                                 | `--last-details` replay             | `--summarize[=<path>]`                                                                                  |
 | output log mode            | `--output-logs=full\|hash-only\|new-only\|errors-only\|none` | `--outputStyle=tui\|dynamic\|static\|stream\|…` | `--log=interleaved/labeled/grouped` | `--output-logs full\|hash-only\|errors-only\|none` (+ flow-derived default)                             |
 | profile / Chrome trace     | `--profile`                                                  | (via Nx Cloud)                                  | —                                   | `--profile[=<path>]`                                                                                    |
-| daemon on/off              | (deprecated in 2.10; ignored)                                | (Nx daemon, always on)                          | —                                   | (no daemon)                                                                                             |
+| daemon on/off              | (deprecated in 2.8.11; ignored)                              | (Nx daemon, always on)                          | —                                   | (no daemon)                                                                                             |
 | retries / timeouts         | —                                                            | —                                               | —                                   | `--retry <n>`, `--timeout <ms>` (also per task in config)                                               |
 | remote placement / outputs | — (remote cache only)                                        | Nx Cloud agents                                 | —                                   | `--download=all\|toplevel\|none`, `exec.remote` (executor plugin, e.g. `@vzn/vx-reapi`)                 |
 | run report                 | `--summarize`                                                | —                                               | —                                   | `--report=markdown`, `--report-file`; `vx last` replays any recorded run                                |
@@ -156,7 +156,7 @@ vite-task `/crates/vite_task/src/cli/mod.rs`; vx `src/cli/run.ts`.
 | Non-JS projects (Rust, .NET, Gradle, ...) | experimental (native Go, Cargo, uv)     | yes (plugins)                           | no         | no                                                                  |
 | Filter DSL                                | pnpm-style + `[<since>]` (git-relative) | yes via `--projects/--exclude` (no DSL) | pnpm-style | pnpm-style + `[<since>]`                                            |
 | Affected / git-relative                   | `--filter '[since...]'`, `--affected`   | full `affected` subcommand              | —          | `--affected[=<base>]` + `[<since>]`                                 |
-| Daemon / persistent project-graph process | not for `turbo run` since 2.9           | yes (on by default locally)             | —          | — **out of scope**                                                  |
+| Daemon / persistent project-graph process | not for `turbo run` since 2.8.11        | yes (on by default locally)             | —          | — **out of scope**                                                  |
 | Watch mode                                | `turbo watch`                           | `nx watch`                              | —          | `vx watch <task>`                                                   |
 | Prune workspace (Docker subset)           | `turbo prune`                           | —                                       | —          | — **gap**                                                           |
 
