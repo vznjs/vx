@@ -231,6 +231,12 @@ the row failed on its premise, not its claim. Both now use a 1 s window
 and wait from the spawn to 250 ms past it. With the first line delayed
 300 ms (the loaded box) the old rows fail 2 of 2 and the new pass; with
 both of the timer's guards removed the new rows still fail 2 of 2.
+Same class, same file: › a readyWhen timeout sends SIGTERM first set
+each shell's TERM trap against a 100 ms window. A 200 ms start failed
+the polite half; the deaf half passed by dying of the TERM it was meant
+to ignore (nothing asserted the SIGKILL). Now the 1 s window, and the
+deaf child's `signalCode` must be `SIGKILL`: with its trap removed the
+row fails (`SIGTERM`), where it passed before.
 
 ## Leads for other streams
 

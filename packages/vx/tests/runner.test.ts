@@ -1192,25 +1192,29 @@ describe('runPersistent — the rows its sweep asked for', () => {
     const prev = process.env['VX_KILL_GRACE_MS']
     process.env['VX_KILL_GRACE_MS'] = '300'
     const heard = path.join(dir, 'heard')
+    // Each shell sets its trap before the deadline only if the window
+    // outlasts its start: a SIGTERM that came first killed the polite one
+    // untrapped, and passed the deaf one by TERM (M-23).
     const polite = runPersistent({
       command: `trap 'echo t > ${heard}; exit 0' TERM; sleep 30 & wait`,
       cwd: dir,
       env: env(),
       readyWhen: 'never',
-      timeoutMs: 100,
+      timeoutMs: READY_WINDOW_MS,
     })
     const deaf = runPersistent({
       command: `trap '' TERM; exec sleep 30`,
       cwd: dir,
       env: env(),
       readyWhen: 'never',
-      timeoutMs: 100,
+      timeoutMs: READY_WINDOW_MS,
     })
     try {
       await Promise.allSettled([polite.ready, deaf.ready])
       await polite.child.exited
       expect(await Bun.file(heard).exists()).toBe(true)
       expect(await waitForDead(deaf.child.pid, 3_000)).toBe(true)
+      expect(deaf.child.signalCode).toBe('SIGKILL')
     } finally {
       if (prev === undefined) delete process.env['VX_KILL_GRACE_MS']
       else process.env['VX_KILL_GRACE_MS'] = prev
