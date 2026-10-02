@@ -43,7 +43,7 @@ terminal and a task succeeding or failing. Read it alongside
  │       for pnpm; the package.json forms read as bytes (readOnce,
  │       shared with step 1) and JSON.parse.
  │    3. loadWorkspacePlugins — loadWorkspaceConfig reads the optional
- │       vx.workspace.{ts,mts,js,mjs} at the root (concurrency /
+ │       vx.workspace.{ts,mts,js,mjs,cts,cjs} at the root (concurrency /
  │       cacheDir / timeout / cacheRetention / plugins), then the plugin
  │       `config` stage runs on it.
  │    4. listProjects — globs every workspace member's package.json,

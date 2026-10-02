@@ -1,7 +1,7 @@
 # Config schema
 
-Complete reference for every field accepted by `vx.config.{ts,mts,js,mjs}`
-and the optional workspace-level `vx.workspace.{ts,mts,js,mjs}`. The
+Complete reference for every field accepted by `vx.config.{ts,mts,js,mjs,cts,cjs}`
+and the optional workspace-level `vx.workspace.{ts,mts,js,mjs,cts,cjs}`. The
 authoritative TypeScript definitions live in `src/config.ts` and are
 re-exported from `@vzn/vx`.
 
@@ -1245,7 +1245,7 @@ The loader rejects:
 
 ## Workspace config (`vx.workspace.ts`)
 
-Loaded from `vx.workspace.{ts,mts,js,mjs}` at the workspace root.
+Loaded from `vx.workspace.{ts,mts,js,mjs,cts,cjs}` at the workspace root.
 **Optional** — when missing, every field falls back to its built-in
 default.
 
