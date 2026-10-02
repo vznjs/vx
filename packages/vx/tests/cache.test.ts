@@ -1477,8 +1477,8 @@ describe('Cache storage (v10)', () => {
     // @ts-expect-error: private member access for testing
     const db = cache.db as import('bun:sqlite').Database
     const insert = db.query(
-      `INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, stdout, created_at, accessed_at)
-       VALUES (?, 'pkg', 'build', 'noop', 0, 0, 10, '', 1, ?)`,
+      `INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, created_at, accessed_at)
+       VALUES (?, 'pkg', 'build', 'noop', 0, 0, 10, 1, ?)`,
     )
     seedRow(cache, insert, 'h-below', 999)
     seedRow(cache, insert, 'h-at', 1000)
@@ -1512,8 +1512,8 @@ describe('Cache storage (v10)', () => {
     // @ts-expect-error: private member access for testing
     const db = cache.db as import('bun:sqlite').Database
     const insert = db.query(
-      `INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, stdout, created_at, accessed_at)
-       VALUES (?, 'pkg', 'build', 'noop', 0, 0, ?, '', 1, ?)`,
+      `INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, created_at, accessed_at)
+       VALUES (?, 'pkg', 'build', 'noop', 0, 0, ?, 1, ?)`,
     )
     seedRow(cache, insert, 'h-stale', 100, 1)
     seedRow(cache, insert, 'h-warm-a', 50, 10)
@@ -1540,8 +1540,8 @@ describe('Cache storage (v10)', () => {
     // @ts-expect-error: private member access for testing
     const db = cache.db as import('bun:sqlite').Database
     const insert = db.query(
-      `INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, stdout, created_at, accessed_at)
-       VALUES (?, 'pkg', 'build', 'noop', 0, 0, 100, '', 1, ?)`,
+      `INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, created_at, accessed_at)
+       VALUES (?, 'pkg', 'build', 'noop', 0, 0, 100, 1, ?)`,
     )
     seedRow(cache, insert, 'h-newest', 30)
     seedRow(cache, insert, 'h-oldest', 10)
@@ -1573,8 +1573,8 @@ describe('Cache storage (v10)', () => {
     // @ts-expect-error: private member access for testing
     const db = cache.db as import('bun:sqlite').Database
     const insert = db.query(
-      `INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, stdout, created_at, accessed_at)
-       VALUES (?, 'pkg', 'build', 'noop', 0, 0, 100, '', 1, ?)`,
+      `INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, created_at, accessed_at)
+       VALUES (?, 'pkg', 'build', 'noop', 0, 0, 100, 1, ?)`,
     )
     seedRow(cache, insert, 'h-stale', 1)
     seedRow(cache, insert, 'h-warm-a', 10)
@@ -1745,8 +1745,8 @@ describe('Cache storage (v10)', () => {
     // @ts-expect-error: private member access for testing
     const db = cache.db as import('bun:sqlite').Database
     const insert = db.query(
-      `INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, stdout, created_at, accessed_at)
-       VALUES (?, 'pkg', 'build', 'noop', 0, 0, 10, '', 1, 1)`,
+      `INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, created_at, accessed_at)
+       VALUES (?, 'pkg', 'build', 'noop', 0, 0, 10, 1, 1)`,
     )
     db.transaction(() => {
       for (let i = 0; i < 1000; i++) seedRow(cache, insert, `h-bulk-${i}`)
@@ -1764,8 +1764,8 @@ describe('Cache storage (v10)', () => {
     // @ts-expect-error: private member access for testing
     const db = cache.db as import('bun:sqlite').Database
     const insert = db.query(
-      `INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, stdout, created_at, accessed_at)
-       VALUES (?, 'pkg', 'build', 'noop', 0, 0, ?, '', 1, ?)`,
+      `INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, created_at, accessed_at)
+       VALUES (?, 'pkg', 'build', 'noop', 0, 0, ?, 1, ?)`,
     )
     const now = Date.now()
     insert.run('h-phantom', 1_000_000, now - 2000)
@@ -1788,8 +1788,8 @@ describe('Cache storage (v10)', () => {
     // @ts-expect-error: private member access for testing
     const db = cache.db as import('bun:sqlite').Database
     const insert = db.query(
-      `INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, stdout, created_at, accessed_at)
-       VALUES (?, 'pkg', 'build', 'noop', 0, 0, ?, '', 1, ?)`,
+      `INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, created_at, accessed_at)
+       VALUES (?, 'pkg', 'build', 'noop', 0, 0, ?, 1, ?)`,
     )
     const hourAgo = Date.now() - 2 * 60 * 60 * 1000
     seedRow(cache, insert, 'h-real', 100, hourAgo - 1000)
