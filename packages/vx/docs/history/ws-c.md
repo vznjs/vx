@@ -825,3 +825,12 @@ Every stage's throw reads `plugin '<name>' failed in <stage>: …`, and
 its `setup` threw (an unknown `ctx.on` hook name included). It now says
 `failed in setup`. Rows (`plugin.test.ts`, `plugin-teardown.test.ts`)
 pin the text; red on the old message.
+
+## C-58: two comments that claimed what the code does not
+
+J's leads (J-65, J-78). `resolveCache` said one plugin layer "is used as
+is", but a layer that does not wrap the local store is chained with it
+at the tail; it now says only a single layer left is used as is.
+`RunOptions.holdPersistent` said only the requested servers are handed
+back; it names the ones a requested group stands for (C-52) and their
+persistent dependencies (C-46). Comments only.
