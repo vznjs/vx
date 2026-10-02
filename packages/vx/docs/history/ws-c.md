@@ -1045,13 +1045,6 @@ those a requested group stands for (C-52), that a run which failed
 elsewhere keeps none unless `--continue=always` (C-60), and that what
 they write streams through the wait (C-56). Docs only.
 
-## C-81: scheduler.md's restore-rank sentence reads
-
-`modules/scheduler.md` said "A rank that can count a diamond twice which
-only reorders restores among themselves", a clause with no verb (C-51's
-note). It now says the rank can count a diamond twice and that this
-only reorders restores among themselves. Docs only.
-
 ## C-77: a subscriber that leaves mid-emit no longer hides the event
 
 `createEventBus` walked its subscriber array while a disposer spliced
