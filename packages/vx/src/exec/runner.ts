@@ -4,7 +4,7 @@
 // process exits. cpuMs / peakRssBytes are then surfaced on RunResult and
 // folded into the v11 `runs` table by the orchestrator.
 
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync } from 'node:fs'
 import { constants as osConstants } from 'node:os'
 import {
   shellArgv,
@@ -235,9 +235,23 @@ export function execWrap(command: string): string {
  */
 export function execWord(command: string): string | undefined {
   if (SHELL_CONTROL.test(command)) return undefined
-  const first = command.trimStart().split(/\s+/)[0] ?? ''
-  if (first === '' || first.includes('=') || SHELL_BUILTINS.has(first)) return undefined
-  return first
+  // The word as the shell reads it: quotes group and are removed, so
+  // `"./my tool.sh"` names one file (the verdict looked for `"./my`).
+  const raw = command.trimStart()
+  let first = ''
+  let quote = ''
+  let i = 0
+  for (; i < raw.length; i++) {
+    const c = raw[i]!
+    if (quote !== '') {
+      if (c === quote) quote = ''
+      else first += c
+    } else if (c === "'" || c === '"') quote = c
+    else if (/\s/.test(c)) break
+    else first += c
+  }
+  if (quote !== '' || first === '' || raw.slice(0, i).includes('=')) return undefined
+  return SHELL_BUILTINS.has(first) ? undefined : first
 }
 
 /**
@@ -252,11 +266,13 @@ export function signalExitCode(signal: string): number {
 }
 
 /**
- * The signal a run's stop stands for, from its abort reason: a task
- * stopped before its spawn exits as if that signal had killed it.
+ * The signal a run's stop sends a task, from its abort reason: a task
+ * stopped before its spawn exits as if that signal had killed it. As
+ * `forwardedSignal` (orchestrator/signals.ts): a hang-up forwards SIGTERM
+ * (to many servers SIGHUP means "reload"), so it reads as SIGTERM here.
  */
-export function stopSignal(reason: unknown): 'SIGINT' | 'SIGHUP' | 'SIGTERM' {
-  return reason === 'SIGINT' || reason === 'SIGHUP' ? reason : 'SIGTERM'
+export function stopSignal(reason: unknown): 'SIGINT' | 'SIGTERM' {
+  return reason === 'SIGINT' ? 'SIGINT' : 'SIGTERM'
 }
 
 /**
@@ -753,18 +769,15 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
  * `true` read 44 MB through vx while its shell's `VmHWM` was 1.9 MB, and
  * 300 MB allocated in the parent made `true` read 328 MB (2026-09-12).
  * Read after the child exits so it covers the whole task's span (the mark
- * is monotonic). Linux reads `VmHWM`; elsewhere the current RSS is the
- * bound in hand.
+ * is monotonic). Linux reads its own peak (`getrusage`); elsewhere the
+ * current RSS is the bound in hand.
  */
 export function ownRssHighWater(): number {
-  if (process.platform === 'linux') {
-    try {
-      const m = /VmHWM:\s+(\d+) kB/.exec(readFileSync('/proc/self/status', 'utf8'))
-      if (m !== null) return Number(m[1]) * 1024
-    } catch {
-      // /proc unreadable: fall through to the current RSS.
-    }
-  }
+  // getrusage's own peak, not `/proc/self/status`'s `VmHWM`: one syscall
+  // where generating and parsing the status file was ~20 µs a task alone
+  // and ~70 ms of a 1,000-task cold run. It is the same mark, raised only
+  // by the image this one exec'd from (a shell), within the floor's slack.
+  if (process.platform === 'linux') return peakRssBytes(process.resourceUsage().maxRSS)
   return process.memoryUsage.rss()
 }
 
