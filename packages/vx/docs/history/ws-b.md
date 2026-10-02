@@ -1022,3 +1022,11 @@ pattern could match it. The quoted argument is now matched escape-aware
 and decoded (`cStringPath`). Row: `sandbox-runtime.unsafe.test.ts` ›
 deniedCalls › decodes the C-string escapes strace writes a path with
 (red without the fix).
+
+B-58. The output capture's head and tail bounds count UTF-16 units, and
+a cut between a surrogate pair's halves left a lone half on each side
+of the dropped-output line: a task printing past 8 MiB whose bound fell
+inside an emoji replayed U+FFFD there. Each bound now steps past a
+pair. Row: `runner.test.ts` › streamToString › never cuts a character
+in two at either bound, one text per bound (each fix removed alone
+reddens it).
