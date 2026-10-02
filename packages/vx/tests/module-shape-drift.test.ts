@@ -136,7 +136,7 @@ const SHAPES: ReadonlyArray<[page: string, source: string, name: string]> = [
   ['failure-recap', 'orchestrator/failure-recap.ts', 'RecapTail'],
   ['framed-output', 'orchestrator/framed-output.ts', 'RecapEntry'],
   ['package-graph', 'workspace/package-graph.ts', 'PackageGraph'],
-  ['projects', 'orchestrator/projects.ts', 'LoadProjectsArgs'],
+  ['projects', 'orchestrator/projects.ts', 'LoadProjectsBase'],
   ['projects', 'orchestrator/projects.ts', 'LoadedProjects'],
 ]
 
