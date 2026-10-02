@@ -1639,3 +1639,17 @@ describe('the plugin examples say which seams they cover', () => {
     expect(arch).toContain(`one runnable plugin for each of ${words[covered.length]} seams`)
   })
 })
+
+describe("the site's reapi samples on port 443 name a TLS scheme", () => {
+  // A bare `host:443` is plaintext to vx-reapi; the CI and configure guides
+  // showed one (J-96). vx-reapi's tls.test.ts holds the client to it.
+  it('every `endpoint: …:443` on a page starts grpcs:// or https://', () => {
+    const samples = handAuthoredSitePages().flatMap((p) =>
+      [...readFileSync(p, 'utf8').matchAll(/endpoint: '([^']+:443)'/g)].map(
+        (m) => `${path.basename(p)}: ${m[1]!}`,
+      ),
+    )
+    expect(samples.length).toBeGreaterThan(3)
+    expect(samples.filter((s) => !/: (grpcs|https):\/\//.test(s))).toEqual([])
+  })
+})
