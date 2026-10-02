@@ -816,3 +816,12 @@ restore feeds an exec task. Cost (1,000 projects, 3,000 nodes, min of
 0.21–0.28 ms (noise). Rows (`scheduler.test.ts` › the rank table and the
 dispatch order `r1, r2, e` ahead of three idle restores): red without
 the pass. `modules/scheduler.md` says so.
+
+## C-54: a plugin whose `setup` throws is named with the hook
+
+Every stage's throw reads `plugin '<name>' failed in <stage>: …`, and
+`modules/plugin.md` promises one line naming the plugin and the hook;
+`setup` alone said `failed to load`, though the plugin had loaded and
+its `setup` threw (an unknown `ctx.on` hook name included). It now says
+`failed in setup`. Rows (`plugin.test.ts`, `plugin-teardown.test.ts`)
+pin the text; red on the old message.
