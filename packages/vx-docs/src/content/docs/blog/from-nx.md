@@ -6,7 +6,7 @@ authors:
 tags:
   - migration
   - nx
-excerpt: "Run an Nx repo under vx unchanged with `nx()`, executors included, then trade executors for shell commands at your pace. `bunx @vzn/vx-migrate` reads the resolved project graph Nx itself uses, so plugin-inferred targets come along, and an executor target migrates as the `nx-exec` line that runs it."
+excerpt: "Moving an Nx repo to vx: `nx()` is a temporary start, executors included, then executors become shell commands in native config. `bunx @vzn/vx-migrate` reads the resolved project graph Nx itself uses, so plugin-inferred targets come along, and an executor target migrates as the `nx-exec` line that runs it."
 ---
 
 Leaving Nx is a bigger step than leaving Turborepo, and the honest
@@ -17,10 +17,10 @@ the generators as a scaffolding system, that is a real loss and vx
 does not replace it. If you were using Nx as a task runner, everything
 below is a simplification.
 
-## Try it unchanged first
+## A temporary start
 
-Nothing has to be written to find out what vx does for the repo. `nx()`
-from `@vzn/vx-migrate` fills vx's `project` stage from the resolved
+`nx()` from `@vzn/vx-migrate` is a bridge while you migrate, not a way
+to keep Nx's config: vx is fast on native config. It fills vx's `project` stage from the resolved
 project graph, so every project's targets are vx tasks with their
 inputs, outputs and `dependsOn`, and `vx run build --all` runs what
 `nx run-many -t build` ran, under vx's cache. `npx vx init` writes the
@@ -52,7 +52,7 @@ behind a JSON options object:
 
 vx has no executors. A task is a shell command. When you migrate, an
 executor target is written as the `nx-exec` line that runs it — no
-placeholder, the repo runs on day one — and, target by target, that
+placeholder — and, target by target, that
 line becomes the command the executor was wrapping:
 
 ```ts
