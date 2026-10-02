@@ -133,6 +133,11 @@ export function maskedCommand(command: string, env?: TaskEnvSecrets): string {
   return secretMask([process.env, env?.define], env?.secret)?.mask(command) ?? command
 }
 
+/** A line vx prints for no one task (a plugin's warning): this process's secrets masked. */
+export function maskedLine(line: string): string {
+  return secretMask([process.env])?.mask(line) ?? line
+}
+
 /** What of a task's `exec.env` names its secrets. */
 export interface TaskEnvSecrets {
   readonly define?: Readonly<Record<string, string>>

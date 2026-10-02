@@ -123,28 +123,32 @@ export interface FingerprintClaims {
  * or `<since>` doesn't resolve to a commit.
  */
 export async function affectedProjects(args: AffectedArgs): Promise<Set<string>> {
+  // Turbo's CI spelling, `[origin/main...HEAD]`, is the base alone here:
+  // vx already diffs from the merge base (three dots' meaning), and the
+  // working tree it diffs to holds HEAD (D-117). Any other range is refused.
+  const since = /^(.+)\.\.\.HEAD$/.exec(args.since)?.[1] ?? args.since
   // The base reaches git as an argument, never through a shell, so `$(…)`
   // is opaque — but an option-like value is not: `--output=<path>` is a
   // real `git diff` option and an arbitrary file write. This is a security
   // boundary, so it is a check that knows it is one, before any spawn, and
   // every git call below also ends its options (`--end-of-options`) so a
   // second caller cannot lose the guard by accident.
-  if (args.since.length === 0 || args.since.startsWith('-')) {
+  if (since.length === 0 || since.startsWith('-')) {
     throw new UserError(
-      `git ref "${args.since}" is not a ref: a base cannot be empty or start with "-".`,
+      `git ref "${since}" is not a ref: a base cannot be empty or start with "-".`,
     )
   }
   // `A..B` / `A...B` reached `rev-parse --verify`, which refuses a range, and
   // the user read "did not resolve" about refs that both exist. `..` is
   // illegal in a ref name (git-check-ref-format), so this refuses no ref.
-  const range = args.since.indexOf('..')
+  const range = since.indexOf('..')
   if (range >= 0) {
     throw new UserError(
-      `git ref "${args.since}" is a range: ranges are not supported — pass the base alone ` +
-        `("${args.since.slice(0, range) || 'HEAD'}"); vx diffs it against the working tree.`,
+      `git ref "${since}" is a range: ranges are not supported — pass the base alone ` +
+        `("${since.slice(0, range) || 'HEAD'}"); vx diffs it against the working tree.`,
     )
   }
-  await verifyRef(args.workspaceRoot, args.since)
+  await verifyRef(args.workspaceRoot, since)
   // Diff from the MERGE BASE of `since` and HEAD, not from `since` itself:
   // on a branch whose base has moved on, `git diff <base>` reports every
   // file OTHER people changed on the base (over-selection that defeats a
@@ -152,7 +156,7 @@ export async function affectedProjects(args: AffectedArgs): Promise<Set<string>>
   // byte-identical content. Turbo and Nx both diff from the merge base;
   // when there is none (unrelated histories, a detached probe) the ref
   // itself is the base, as before.
-  const base = await mergeBase(args.workspaceRoot, args.since)
+  const base = await mergeBase(args.workspaceRoot, since)
 
   const [diffed, untracked] = await Promise.all([
     // `--no-renames` is crucial for project-affected detection: with

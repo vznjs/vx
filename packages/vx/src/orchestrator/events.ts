@@ -9,7 +9,7 @@
 import { exitSignal } from '../exec/index.js'
 import type { TaskNode, TaskOutcome } from '../graph/index.js'
 import { isGroupTask } from '../graph/index.js'
-import { maskedCommand } from '../util/index.js'
+import { maskedCommand, secretMask } from '../util/index.js'
 import type { Logger } from './logger.js'
 import type { RunContext } from './summary.js'
 
@@ -103,8 +103,11 @@ export function busLogger(bus: EventBus): Logger {
   // run() reaches runEnd on its success path, in its finally and from a
   // signal; a plugin's onRunEnd hears the first only.
   let ended = false
+  // A status line carries plugin warnings, and a remote layer's warning
+  // quotes the server's reply, which may echo what it was sent (L-40).
+  const secrets = secretMask([process.env])
   return {
-    status: (line) => bus.emit({ kind: 'run:status', line }),
+    status: (line) => bus.emit({ kind: 'run:status', line: secrets?.mask(line) ?? line }),
     taskStdout: (node, chunk) => bus.emit({ kind: 'task:stdout', node, chunk }),
     taskStderr: (node, chunk) => bus.emit({ kind: 'task:stderr', node, chunk }),
     taskComplete: (node, outcome) => bus.emit({ kind: 'task:complete', node, outcome }),

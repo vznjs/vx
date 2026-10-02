@@ -7,7 +7,7 @@ Prove a task reads only what it declares.
 
 ## Steps
 
-1. Add `sandbox` to the task's `exec`. `sandbox: {}` allows nothing in the workspace, not even the package. Outside the workspace root (`~/.cache`, `/etc`) reads are open and fold into no key: declare what the output depends on as a key input.
+1. Add `sandbox` to the task's `exec`. `sandbox: {}` allows nothing in the workspace, not even the package. Outside the workspace root (`~/.cache`, `/etc`) reads are open and fold into no key: declare what the output depends on as a key input. The credential stores under home (`~/.ssh`, `~/.aws`, `~/.npmrc` and the like) are the exception: denied unless `allow.read` names one.
 2. Grant the package: `allow: { read: ['.'] }`. Its `node_modules` is readable already. Another package of yours, linked there, is readable when the task depends on one of that package's command tasks; an uncached task reads every linked package.
 3. Grant each output directory in `write`, and each host in `network`. The sandbox does not read `cache`: declare both.
 4. Run the task. An undeclared read or write fails it and names the path.

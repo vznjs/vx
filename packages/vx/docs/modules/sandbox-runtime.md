@@ -180,7 +180,7 @@ export interface SandboxedRunArgs {
   timeoutMs?: number
   capture?: CaptureConfig
   baseAllowRead: readonly string[] // node_modules + resolved workspace links
-  baseDenyRead: readonly string[] // [workspaceRoot] — the task may not leave its project
+  baseDenyRead: readonly string[] // [workspaceRoot, ...credential stores] — not its project's neighbours, nor ~/.ssh (L-41)
   reportWithin: string // projectDir — only denials in here are worth reporting
   reportLinked: readonly string[] // withheld linked packages (canonical) — reported too
   config: ResolvedSandboxConfig // its allowWrite is the whole write set: none is derived
@@ -269,6 +269,9 @@ export function punchWritePaths(readPath: string, writePaths: readonly string[])
 export function scratchWrites(pending, fs, anchors): { scratch: string[]; mountless: string[] }
 // The SRT customConfig: the baselines merged with the resolved block
 export function buildCustomConfig(args, baselines): SrtCustomConfig
+// Linux: SRT's bwrap line with its --tmpfs masks remounted read-only, the
+// deepest one a scratch glob's directory lies in left writable
+export function readOnlyMasks(wrapped: string, scratch?: readonly string[]): string
 
 // sandbox-violations.ts: what a trace or a seatbelt log reports
 export interface DeniedCall {
@@ -289,6 +292,8 @@ export function refusedWrites(
 ): SandboxViolation[]
 // the writes refused past the wall, as paths: a failed task's hint
 export function refusedWritesOutside(violations, opts: { within; linked?; config; skip }): string[]
+// Linux: the proxy's `deny network-outbound <host>:<port> (<reason>)` records
+export function refusedConnections(records: readonly string[]): SandboxViolation[]
 ```
 
 ## How it works
@@ -445,7 +450,17 @@ bwrap enters the task's cwd only if a mount holds it, and otherwise
 no grant holds the cwd (`cwdMounted`: one at or above it, or an existing
 one below it), vx denies the cwd too: the task
 enters an empty directory, its reads there are refused and reported, and
-its writes are the scratch the write observer reports (B-53).
+its writes are refused (`readOnlyMasks`) and reported (B-53).
+
+SRT hides a read-denied directory under a bwrap `--tmpfs`, which is
+writable: a write into one (the workspace root, a sibling's tree, the
+cwd above) succeeded and vanished with the sandbox, so a task writing
+`../../out.txt` went green with its output gone, where seatbelt refuses
+it. `readOnlyMasks` adds a `--remount-ro` for each before bwrap's `--`,
+after the mounts beneath it, and a write there is `EROFS` on both
+platforms; a failed task's hint names one outside the project. The
+deepest mask a pending write glob's directory lies in stays writable:
+that is its scratch (`scratchWrites`).
 
 SRT reads any Linux read path holding `[` as a glob, where a bracket
 opens a class. By the time vx hands the policy over, every grant is a
@@ -666,8 +681,9 @@ anchor one component above it). Read grants are not reported: a read
 matching nothing is ordinary.
 
 Where no bind holds the glob's directory, it is the deny anchor's
-scratch: the task creates, writes and removes there, and nothing it
-leaves outlives the sandbox (`scratchWrites`). That is a tool's temp
+scratch, the mask `readOnlyMasks` leaves writable: the task creates,
+writes and removes there, and nothing it leaves outlives the sandbox
+(`scratchWrites`). That is a tool's temp
 directory — `bun build --compile` extracts a cross-compile runtime into
 `<cwd>/.<hash>-00000000.tmp/` and moves it into its cache — and such a
 grant is not reported; `refusedWrites` takes a write under it as
@@ -709,6 +725,16 @@ is why `@vzn/vx#test.bun.shard-*` is the one task in this repo with no
 `sandbox` block. `weakerWhenNested` covers the Linux case; SRT offers no
 macOS equivalent because there is none to offer.
 
+## Descriptor records
+
+The write observer records strace's own log as `deny openat /dev/fd/5`.
+`refusedWrites` resolved each record's path in vx's process, so that one
+named vx's fd 5: `/dev/urandom` as a rule, but a vx started with
+`5>out.log` in a single-package workspace reported a write to `out.log`
+and failed a clean task. A record under `/dev/` or `/proc/` names the
+task's descriptor or pseudo-file, never a place vx can resolve, and is
+skipped (2026-10-02).
+
 ## Loopback
 
 A runtime that opens a dual-stack socket reaches 127.0.0.1 as
@@ -721,6 +747,14 @@ whenever the task declared any network at all, so under either grant the
 record is dropped: no config can silence it and it carries no
 information. It is not a hole — a connection that actually left the
 machine goes through that proxy, which reports it WITH host and port.
+
+That proxy record, `deny network-outbound <host>:<port> (<reason>)`,
+lands in SRT's store on both platforms. On Linux vx read only the write
+observer's records there, so a refused host failed a task through its
+own `403` and nothing else, and passed one that survived it;
+`refusedConnections` reads it now. It carries no `deny(<n>)`, so the
+seatbelt classifier left it without a target and `ignore.network` could
+not silence it on macOS; `describe` reads its shape first (2026-10-02).
 
 ## What a sandboxed task costs (Linux, 2026-10-02)
 
