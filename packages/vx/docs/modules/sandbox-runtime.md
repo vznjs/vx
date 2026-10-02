@@ -692,7 +692,8 @@ machine goes through that proxy, which reports it WITH host and port.
   (`sandbox-request.ts`): null when no node declares `exec.sandbox`,
   else an armer whose `arm()` runs `probeSandbox` + `initSandbox` once,
   on the first sandboxed execution (`execute-task.ts` awaits it before
-  the request). `resetSandbox` runs at the end if it was armed.
+  the request), or earlier when one is sure to execute (C-76).
+  `resetSandbox` runs at the end if it was armed.
 - Execution goes through the placed `TaskExecutor`; the local floor
   (`exec/local-executor.ts`) calls `runSandboxed` instead of
   `runCommand` when the request carries `sandbox`. On violations

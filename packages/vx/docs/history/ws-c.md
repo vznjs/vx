@@ -996,3 +996,19 @@ REQUESTED, and the persistent tasks they depend on": it now also names
 those a requested group stands for (C-52), that a run which failed
 elsewhere keeps none unless `--continue=always` (C-60), and that what
 they write streams through the wait (C-56). Docs only.
+
+## C-76: the sandbox probe starts when a sandboxed task is sure to run
+
+The probe (~220 ms of spawns on Linux) started on the first sandboxed
+task to execute, so it sat on the critical path after the classify and
+any upstream work. `run()` now starts it as soon as a sandboxed task is
+sure to execute: one no cache can answer (no `cache`, reads off,
+persistent) before the classify, a confirmed miss right after it. A run
+whose sandboxed tasks all hit still never probes. The end of the run
+waits for a probe still in flight before its reset: one that landed
+after it left the runtime's proxies up, and an embedder hung (the CLI's
+failure exit hid it). This repo's warm `vx run lint --all` (one
+uncached sandboxed task): min 453 → 377 ms, median ~495 → ~440 over 12
+interleaved runs per arm. Rows: `sandbox-prewarm.unsafe.test.ts`; each
+half and the wait fail their row without themselves, and the control
+fails an unconditional prewarm.
