@@ -14,9 +14,9 @@ import { PLUGIN_TEMPLATES } from './plugin-templates.js'
 import { isUserError, UserError } from '../util/index.js'
 import {
   applyMigration,
+  discoverProjects,
   findWorkspaceRoot,
   type LoadReads,
-  listProjects,
   loadWorkspace,
   migrateScripts,
 } from '../workspace/index.js'
@@ -73,7 +73,8 @@ export async function initCmd(args: readonly string[]): Promise<number> {
     }
     throw err
   })
-  const metas = await listProjects(await loadWorkspace(root, reads))
+  const nameless: string[] = []
+  const metas = await discoverProjects(await loadWorkspace(root, reads), nameless)
   // `init` reads scripts only; a runner's own config beside them is the
   // richer source (dependsOn, inputs, outputs) and was ignored without a
   // word — the walkthrough on a Turbo repo (2026-09-09) got the scripts'
@@ -105,6 +106,7 @@ export async function initCmd(args: readonly string[]): Promise<number> {
     ),
     source: 'package.json scripts',
     verb: 'vx init',
+    notes: namelessNotes(root, nameless),
     dry: parsed.dry,
     force: parsed.force,
     init: true,
@@ -195,7 +197,7 @@ async function migrateRunner(
   } else {
     // `nx-exec` / `nx-env` run an executor target through Nx's own API,
     // which reads nx.json and the project.json files.
-    const viaNx = (await listProjects(await loadWorkspace(root, new Map()))).some(
+    const viaNx = (await discoverProjects(await loadWorkspace(root, new Map()))).some(
       (m) => typeof m.configPath === 'string' && /\bnx-(exec|env)\b/.test(readText(m.configPath)),
     )
     lines.push(
@@ -331,6 +333,35 @@ function readText(file: string): string {
   } catch {
     return ''
   }
+}
+
+/**
+ * A member whose package.json has no `name` is no project, so its scripts
+ * map to nothing, and init said nothing of them (D-106).
+ */
+function namelessNotes(root: string, dirs: readonly string[]): string[] {
+  const withScripts = dirs
+    .filter((dir) => {
+      const scripts = (
+        JSON.parse(readText(path.join(dir, 'package.json')) || '{}') as {
+          scripts?: unknown
+        }
+      ).scripts
+      return (
+        typeof scripts === 'object' &&
+        scripts !== null &&
+        Object.values(scripts).some((v) => typeof v === 'string' && v !== '')
+      )
+    })
+    .map((dir) => path.relative(root, dir).split(path.sep).join('/'))
+    .sort()
+  if (withScripts.length === 0) return []
+  const shown =
+    withScripts.slice(0, 3).join(', ') +
+    (withScripts.length > 3 ? `, and ${withScripts.length - 3} more` : '')
+  return [
+    `not mapped: ${shown} — ${withScripts.length === 1 ? 'its package.json has' : 'their package.json files have'} no "name", and vx names a project by it; give ${withScripts.length === 1 ? 'it one' : 'each one'} and run \`vx init\` again`,
+  ]
 }
 
 /** The root package.json as an object, `{}` when unreadable or not one. */

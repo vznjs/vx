@@ -83,7 +83,8 @@ export function resourceUsageToCpuRss(
 export function exitSignal(code: number): string | undefined
 
 // The bare word a shell would have run, when the command is a plain
-// `word args…` — what shell-verdict.ts names in a 127 frame line.
+// `word args…` — what shell-verdict.ts names in a 127 frame line. Read
+// as the shell reads it: quotes group and are removed (`"./my tool.sh"`).
 export function execWord(command: string): string | undefined
 export function execWrap(command: string): string // `exec <command>` when execWord finds a word
 

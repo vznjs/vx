@@ -99,7 +99,7 @@ npx vx run test --all      # 3 up-to-date
 | ----------------------------------------------------------- | ------------------------------------------------------------------------ |
 | `tasks` / `pipeline`                                        | `tasks`                                                                  |
 | `dependsOn`                                                 | `dependsOn`, the same `'build'`, `'^build'`, `'pkg#build'` syntax        |
-| `inputs`                                                    | `cache.inputs.files`                                                     |
+| `inputs`                                                    | `cache.inputs.files`; a glob that reaches a nested workspace package also in `cache.inputs.workspaceFiles` |
 | `outputs`                                                   | `cache.outputs.files`                                                    |
 | `env`                                                       | `cache.inputs.env` **and** `exec.env.passThrough`                        |
 | `passThroughEnv`                                            | `exec.env.passThrough`                                                   |

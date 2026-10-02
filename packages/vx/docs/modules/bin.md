@@ -8,8 +8,10 @@ detail, and sets the right exit code.
 
 ## Behavior
 
-`main()` forwards `process.argv.slice(2)` to the dispatcher (`cli/index.ts`'s
-`run`) and sets `process.exitCode` to the code it returns, then lets
+A lone `--version` (or `version`) is answered from `version.ts` before
+anything else loads: the dispatcher and the util barrel were 20 ms of
+its 28 (#1961). Otherwise `main()` imports the dispatcher, forwards
+`process.argv.slice(2)` to it (`cli/index.ts`'s `run`) and sets `process.exitCode` to the code it returns, then lets
 the event loop drain — nothing calls `process.exit` or `stdout.end`.
 Bun drops what a pipe has not yet taken when `process.exit` follows a
 large write (300 KB written then exit delivered 64 KiB; `vx history
@@ -69,8 +71,9 @@ not the shebang here either.
 
 ## What this does NOT do
 
-- **Doesn't parse argv.** That's `cli/index.ts` (dispatcher) and
-  `cli/<sub>.ts` (per-subcommand parsers).
+- **Doesn't parse argv** past the lone `--version` it answers. That's
+  `cli/index.ts` (dispatcher) and `cli/<sub>.ts` (per-subcommand
+  parsers).
 - **Doesn't import the orchestrator directly.** The CLI does. This
   keeps `bin.ts` tiny and lets tests import `cli/index.ts` without going
   through a process boundary.

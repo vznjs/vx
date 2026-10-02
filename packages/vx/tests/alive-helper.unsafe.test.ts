@@ -23,7 +23,7 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { describe, expect, it } from 'bun:test'
+import { describe, expect, it, spyOn } from 'bun:test'
 import { isAlive, waitForDead } from './helpers/alive.js'
 
 describe('isAlive', () => {
@@ -40,6 +40,22 @@ describe('isAlive', () => {
     // this needs no spawn and cannot race a recycled pid.
     expect(isAlive(0x7fff_fffe)).toBe(false)
   })
+
+  // A child reaped between signal 0 and the state read left no procfs
+  // entry, and the read's ENOENT answered "alive": a traced task's child
+  // passed `isAlive` after its wait and was gone by the row's next read
+  // (I-9, M-28). Signal 0 is held to "lands" so the window is every run's.
+  it.skipIf(process.platform !== 'linux')(
+    'is false for a pid reaped between signal 0 and the state read',
+    () => {
+      const kill = spyOn(process, 'kill').mockImplementation(() => true)
+      try {
+        expect(isAlive(0x7fff_fffe)).toBe(false)
+      } finally {
+        kill.mockRestore()
+      }
+    },
+  )
 
   it.skipIf(process.platform !== 'linux')(
     'is false for a ZOMBIE, which signal 0 still lands on',
