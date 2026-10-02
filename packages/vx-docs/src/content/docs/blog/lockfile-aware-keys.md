@@ -6,11 +6,12 @@ authors:
 tags:
   - caching
   - plugins
-excerpt: "Every monorepo tool folds the lockfile into every key, so `pnpm update` invalidates the world. @vzn/vx-lockfile parses the lockfile and keys each task on its own project's dependency closure. In vx's own repo that turned 59 re-keyed tasks into 2."
+excerpt: "Out of the box vx folds the lockfile into every key, so `pnpm update` invalidates the world. @vzn/vx-lockfile parses the lockfile and keys each task on its own project's dependency closure. In vx's own repo that turned 59 re-keyed tasks into 2."
 ---
 
-Out of the box, vx does what everyone does with the lockfile: it goes
-into the workspace fingerprint, and the workspace fingerprint is in
+Out of the box, vx folds the whole lockfile into the workspace
+fingerprint (Turborepo keys each package on the lockfile changes that
+reach it), and the workspace fingerprint is in
 every task's key. That is coarse but correct. Any `pnpm install` that
 changes `pnpm-lock.yaml` invalidates every cached task, and `--affected`
 selects every project.

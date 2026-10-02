@@ -137,6 +137,23 @@ describe('the plugins guide states the CacheLayer method count', () => {
 })
 
 // The environment-variables guide is the configure page's section now.
+describe('the lockfile pages say what Turborepo keys', () => {
+  // The post said "every monorepo tool folds the lockfile into every key" and
+  // parity.md "the global hash covers the lockfile"; Turbo 2.5.8's dry run,
+  // after an is-odd bump in package a, moved a#build alone and left b#build
+  // and the global external-dependency hash as they were (J-108).
+  it('the post names vx alone, and the parity row the per-package re-key', () => {
+    const post = readFileSync(path.join(DOCS, 'blog', 'lockfile-aware-keys.md'), 'utf8').replace(
+      /\s+/g,
+      ' ',
+    )
+    expect(post).toContain('excerpt: "Out of the box vx folds the lockfile into every key')
+    expect(post).toContain('(Turborepo keys each package on the lockfile changes that reach it)')
+    const parity = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'parity.md'), 'utf8')
+    expect(parity).toContain('| a lockfile change re-keys the packages whose dependencies moved')
+  })
+})
+
 describe('the configure guide names the essential allowlist', () => {
   it('its "always gets a small essential allowlist" sentence names every POSIX name in ESSENTIAL_ENV', () => {
     const page = section(
