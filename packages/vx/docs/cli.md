@@ -244,7 +244,9 @@ failed to spawn 'git' … Install git and re-run` — the same the input
   would be a real `git diff` option. A range (`HEAD~1..HEAD`,
   `main...feature`) is refused there too, naming the base to pass
   alone — `ranges are not supported — pass the base alone ("HEAD~1")`
-  — because the other end is always the working tree. A ref that does
+  — because the other end is always the working tree; `<base>...HEAD`,
+  Turbo's CI spelling, is read as `<base>`, since vx diffs from the merge
+  base to a working tree that holds HEAD (D-117). A ref that does
   not exist is `git ref "<ref>" did not resolve`; in a shallow clone (CI's
   one-commit checkout) it adds that the clone is shallow and how to fetch
   the history (`git fetch --unshallow`, `fetch-depth: 0`).
