@@ -1445,6 +1445,23 @@ describe('the preset, exactly', () => {
     ])
   })
 
+  // G-131/G-133 put the root's workspace dependencies and microfrontends
+  // configs in the same list; the section said they came from
+  // globalDependencies, which named neither.
+  it('a preset of global inputs says where they come from', async () => {
+    const plan = await preset({ globalDependencies: ['x.json'], tasks: { build: {} } })
+    expect(plan.extraFiles.map((f) => f.contents.split('\n').slice(3))).toEqual([
+      [
+        '',
+        '// From globalDependencies and what Turbo adds to them (the packages the',
+        '// root depends on, microfrontends configs) — workspace-root-relative,',
+        '// spread into each task’s cache.inputs.workspaceFiles.',
+        "export const globalInputs = ['x.json']",
+        '',
+      ],
+    ])
+  })
+
   it('a config imports the preset names it uses, sorted', async () => {
     const plan = await preset({
       globalDependencies: ['x.json'],
