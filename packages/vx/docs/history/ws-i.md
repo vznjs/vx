@@ -246,6 +246,19 @@ cycles on a copy of that cache: main 3.30 ms median (min 3.13), patch
 run two (the selection's load and the run). Whole-run wall does not
 resolve ~2 ms per cycle at this box's spread. Row: `cache.test.ts` ›
 the WAL a closed cache leaves (red on main: 243,112 bytes).
+I-26. An `--affected` run walks the worktree once. The selection
+spawned `git ls-files --others` for its untracked files, and the run then
+walked the tree again with `git status -uall`. The discovery's lazy
+enumeration is now registered for every discovery (not only with a
+`discover` hook); a `[since]` filter starts it, the diff reads its
+`untracked` (`GitEnumeration.untracked`, status's `??` set, which equals
+`ls-files --others --exclude-standard`'s: a row compares them with an
+ignored dir, a deep dir and a nested repo), and the run reuses it with
+the discovery. Rows: the equivalence, and a logging git counting one
+`status` and no `ls-files --others` for an `--affected` run (red on
+main). 1,000 packages, one edited, `run build --affected=HEAD~1`,
+compiled, 41 interleaved rounds: main 356.8 ms median (min 293.5),
+patch 311.9 (248.5), A/A 313.6 (255.5).
 
 ## Leads for other streams
 
