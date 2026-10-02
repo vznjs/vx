@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Evaluate a `vx.config.{ts,mts,js,mjs}` file and return the resolved
+Evaluate a `vx.config.{ts,mts,js,mjs,cts,cjs}` file and return the resolved
 `ProjectConfig` object. Bun runs TypeScript natively, so the loader is
 a thin wrapper around `await import()`.
 
@@ -41,6 +41,8 @@ export const WORKSPACE_CONFIG_FILENAMES = [
   'vx.workspace.mts',
   'vx.workspace.js',
   'vx.workspace.mjs',
+  'vx.workspace.cts',
+  'vx.workspace.cjs',
 ]
 
 // A Bun `ResolveMessage` / `BuildMessage` as a one-line UserError naming the

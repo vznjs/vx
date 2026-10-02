@@ -107,6 +107,11 @@ export function peakRssBytes(maxRSS: number): number // bytes, whatever unit the
   stat per entry on every spawn. The task's PATH still decides what
   the command resolves, inside the shell; `argv0` keeps `$0` the `sh`
   it always was.
+- **`exec`:** a plain `word args…` command runs as `exec word args…`, so
+  the program replaces the shell. A shell builtin keeps the shell, and so
+  does a bash reserved word that may open one line (`[[`, `time`):
+  macOS's `sh` is bash, and `exec [[ -f x ]]` there was
+  `exec: [[: not found`, exit 127 (B-56).
 - **stdio:** `stdin: 'ignore'` (no interactive prompts; a task reading
   stdin sees EOF, never a hang); `stdout: 'pipe'`, `stderr: 'pipe'`.
   `runPersistent` alone spawns with `stdin: 'pipe'` and never writes
@@ -184,7 +189,9 @@ full byte size in heap for the task's whole life:
   replays. Unbounded, a task printing 200 MB cost vx 620 MB of RSS on
   the miss and on every hit, and its stdout sat whole in `cache.db`
   (2026-09-16). `tests/capture-cap.test.ts` pins the head, the tail,
-  the line, the live stream, and the replay.
+  the line, the live stream, and the replay. A bound never falls
+  between a surrogate pair's halves (the bounds count UTF-16 units, and
+  a halved emoji read U+FFFD in the replay, B-58).
 
 Measured through the real CLI on a task writing 150 MB with
 `--output-logs none`: peak RSS 294 → 81 MiB, and flat in task volume

@@ -164,23 +164,23 @@ filter(s): …`) with `Did you mean <name>?` when a project name is within
 two edits, or when exactly one scoped project's name after its `/` is
 (`--filter vx-mcp` hints `@vzn/vx-mcp`).
 
-| Form              | Meaning                                                                                                                                                                                                         |
-| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `<pattern>`       | Match by package name. `*` matches any characters, including `/`. A pattern matching no package may leave out the scope, as pnpm reads it (`cart` is `@nx-example/cart` when one package carries it).           |
-| `./<dir>`         | The package at `<dir>` alone, as Turbo and pnpm read it (`.` is the root project); a `<dir>` that is no package matches the packages under it (relative to workspace root; D-43).                               |
-| `{<dir>}`         | Same as `./<dir>`.                                                                                                                                                                                              |
-| `./<glob>`        | A glob over root-relative project dirs: `./packages/*` (direct children), `{apps/**}` (nested too). A path that names a project dir literally is read literally first, so `./packages/[abc]` is that directory. |
-| `.`               | The root project alone, when the root is a project (D-39); otherwise the packages under the root, i.e. every package, not the one you are standing in.                                                          |
-| `//`              | The root project alone, Turbo's name for it; matches nothing when the root is no project (D-46).                                                                                                                |
-| `<pattern>...`    | Match + all transitive dependencies (see below what an edge is).                                                                                                                                                |
-| `...<pattern>`    | Match + all transitive dependents.                                                                                                                                                                              |
-| `<pattern>^...`   | Only the transitive dependencies, excluding the matched package itself.                                                                                                                                         |
-| `...^<pattern>`   | Only the transitive dependents, excluding the matched package itself.                                                                                                                                           |
-| `...<pattern>...` | Match + its dependents + the dependencies of all of them, as Turbo selects (`...db...` takes the packages the apps that use db build on).                                                                       |
-| `<sel>[<ref>]`    | The packages `<sel>` (a name pattern or `{<dir>}`) selects that changed since `<ref>`, as Turbo and pnpm read `@scope/*[main]` (D-44).                                                                          |
-| `<sel>...[<ref>]` | The packages `<sel>` selects that changed since `<ref>` or depend on one that did; no dependency is added (Turbo: `@acme/api...[HEAD]` is api when only its dependency changed).                                |
-| `!<pattern>`      | Exclude packages matching `<pattern>`, from everything the includes select, in any order.                                                                                                                       |
-| `[<git-ref>]`     | Projects whose files changed since `<git-ref>` (`main`, `HEAD~5`, …).                                                                                                                                           |
+| Form              | Meaning                                                                                                                                                                                                                                                                                                                |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `<pattern>`       | Match by package name. `*` matches any characters, including `/`. A pattern matching no package may leave out the scope, as pnpm reads it (`cart` is `@nx-example/cart` when one package carries it).                                                                                                                  |
+| `./<dir>`         | The package at `<dir>` alone, as Turbo and pnpm read it (`.` is the root project); a `<dir>` that is no package matches the packages under it (relative to workspace root; D-43).                                                                                                                                      |
+| `{<dir>}`         | Same as `./<dir>`.                                                                                                                                                                                                                                                                                                     |
+| `./<glob>`        | A glob over root-relative project dirs: `./packages/*` (direct children), `{apps/**}` (nested too; a trailing `**` matches zero dirs, so `./packages/kit/**` holds kit itself, as pnpm and Turbo read it). A path that names a project dir literally is read literally first, so `./packages/[abc]` is that directory. |
+| `.`               | The root project alone, when the root is a project (D-39); otherwise the packages under the root, i.e. every package, not the one you are standing in.                                                                                                                                                                 |
+| `//`              | The root project alone, Turbo's name for it; matches nothing when the root is no project (D-46).                                                                                                                                                                                                                       |
+| `<pattern>...`    | Match + all transitive dependencies (see below what an edge is).                                                                                                                                                                                                                                                       |
+| `...<pattern>`    | Match + all transitive dependents.                                                                                                                                                                                                                                                                                     |
+| `<pattern>^...`   | Only the transitive dependencies, excluding the matched package itself.                                                                                                                                                                                                                                                |
+| `...^<pattern>`   | Only the transitive dependents, excluding the matched package itself.                                                                                                                                                                                                                                                  |
+| `...<pattern>...` | Match + its dependents + the dependencies of all of them, as Turbo selects (`...db...` takes the packages the apps that use db build on).                                                                                                                                                                              |
+| `<sel>[<ref>]`    | The packages `<sel>` (a name pattern or `{<dir>}`) selects that changed since `<ref>`, as Turbo and pnpm read `@scope/*[main]` (D-44).                                                                                                                                                                                 |
+| `<sel>...[<ref>]` | The packages `<sel>` selects that changed since `<ref>` or depend on one that did; no dependency is added (Turbo: `@acme/api...[HEAD]` is api when only its dependency changed).                                                                                                                                       |
+| `!<pattern>`      | Exclude packages matching `<pattern>`, from everything the includes select, in any order.                                                                                                                                                                                                                              |
+| `[<git-ref>]`     | Projects whose files changed since `<git-ref>` (`main`, `HEAD~5`, …).                                                                                                                                                                                                                                                  |
 
 An edge is a `package.json` workspace dependency (`dependencies`,
 `devDependencies`, `peerDependencies`, `optionalDependencies`; a peer
@@ -1325,7 +1325,7 @@ run):
   is accepted: it asks for what watch already prints.)
 
 Persistent tasks (`exec.persistent`) re-spawn each cycle. A requested
-dev server stays up while watch idles; when the next cycle starts, the
+dev server stays up while watch idles, and what it writes keeps printing; when the next cycle starts, the
 old server is stopped first (the kill grace, then SIGKILL) and the cycle
 launches a fresh one, so the two never hold one port. Stopping watch
 stops the server too. For dev-server workflows where you want the server
@@ -1737,9 +1737,10 @@ them under `exec.env.define`, the first two read from an imported
 reads gets a TODO (D-34). Among several packages, a workspace root
 script that runs the members (`pnpm -r build`, `--filter`, `-C`, Yarn's
 `--cwd` and `yarn workspace <name>`, npm's `--prefix`, npm's
-and Yarn's workspace flags, `cd`, turbo, nx, lerna, `vp run`, vx itself) is not mapped
-(a flag counts on the package manager, or after a `run`, and not on the program it
-runs: berry's `yarn node -r ./setup.ts` is node's `--require`, D-81),
+and Yarn's workspace flags, a `cd` into or above a member, turbo, nx, lerna, `vp run`, vx itself) is not mapped
+(a flag counts on the package manager, or after `node <bin> run`, and not on the program it
+runs: berry's `yarn node -r ./setup.ts` is node's `--require`, D-81; bun's
+`cd test && …` enters no member, D-83),
 nor is one that runs such a script by name (vite's `ci-docs`: `pnpm build &&
 pnpm docs-build`), and neither is one whose name a member's task carries, so `--all` never runs
 a check twice (D-45). The rest check the whole repo (`lint: oxlint .`,
@@ -1748,7 +1749,7 @@ the root has a `"name"` (vx skips a nameless root's config) and no config
 of its own; a hand-written one stays as written. The report says which;
 with nothing mapped it names the root whenever it has a script, a member
 or not (pnpm's root is not), and tells a root with no `"name"` to add one
-first (vuejs/core). A single-package repo's root is its project and maps.
+first (vuejs/core), naming the scripts that would then map (react, D-87). A single-package repo's root is its project and maps.
 A script that is nothing but `npm run <other>` (`pnpm <other>`, `yarn
 <other>`, `bun run <other>`, `npm test`, `npm start`) becomes a **group**
 over `<other>` — `dependsOn` and no command — so the graph runs and
@@ -2440,7 +2441,8 @@ that never started, under the failure that blocked it — the footer's
 A skip's cause is followed through a chain of skips to the failure at
 its root; a skip with no failed upstream is fail-fast's ("after the run
 stopped (fail-fast)"), and one behind a task killed by a signal names
-it as aborted. Eight names per cause, then `… +N more`. A blocked
+it as aborted. The header says `blocked upstream` only when every skip
+was. Eight names per cause, then `… +N more`. A blocked
 group (a task with no command) is not listed — it never starts by
 definition and no counter counts it, so the section and the tasks
 legend agree. Absent when nothing was skipped (`--continue=always`
