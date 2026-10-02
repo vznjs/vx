@@ -1743,7 +1743,8 @@ pnpm docs-build`), and neither is one whose name a member's task carries, so `--
 a check twice (D-45). The rest check the whole repo (`lint: oxlint .`,
 `test: vitest`) and become the root's own tasks in a root vx.config, when
 the root has a `"name"` (vx skips a nameless root's config) and no config
-of its own; a hand-written one stays as written. The report says which;
+of its own; a hand-written one stays as written. The report names each script left out and why
+(a `pre` / `post` hook goes with its script, D-85), and says which;
 with nothing mapped it names the root whenever it has a script, a member
 or not (pnpm's root is not), and tells a root with no `"name"` to add one
 first (vuejs/core). A single-package repo's root is its project and maps.
