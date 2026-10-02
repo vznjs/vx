@@ -48,13 +48,17 @@ describe('the shell verdict line', () => {
         out
           .split('\n')
           .map((l) => l.replace(/^.*?\[vx\] /, '[vx] '))
-          .filter((l) => l.startsWith('[vx] exit 127'))
-          .map((l) => l.replace(/ — .*/, '')),
+          // The shell's verdict on a missing path is 127 (dash, bash 5) or
+          // 126 (macOS's bash 3.2 under `exec`); the word is the claim here.
+          .filter((l) => /^\[vx\] exit 12[67] /.test(l))
+          .map((l) =>
+            l.replace(/^\[vx\] exit 12[67] is the shell's "[^"]+": /, '').replace(/ — .*/, ''),
+          ),
       ),
     ].sort()
     expect(verdicts).toEqual([
-      `[vx] exit 127 is the shell's "command not found": tool-*** is not on this task's PATH`,
-      `[vx] exit 127 is the shell's "not found": ./bin-***/run does not exist`,
+      './bin-***/run does not exist',
+      "tool-*** is not on this task's PATH",
     ])
     expect(out.includes(SECRET)).toBe(false)
   })
