@@ -22,6 +22,11 @@
   `e2e-ci--<spec>` loads `.env.e2e-ci` and `.env.e2e`. vx named them by
   the task's own name, so it loaded `.env.e2e-ci--<spec>`, which Nx never
   does, and missed `.env.e2e-ci`.
+- **P-11** `vx-migrate --from nx`: nx.json's `parallel`, `defaultBase`
+  and `maxCacheSize`, which `nx()` applies live, are each a note naming
+  the `vx.workspace.ts` field to add. The written workspace file holds
+  none of them, so nx-examples' `parallel: 1` ran on every core once
+  migrated, without a word.
 
 ## Notes
 
@@ -34,3 +39,8 @@
 - `tests/npm-pack.unsafe.test.ts` failed once in a full gate
   (`JSON Parse error` on `npm pack --dry-run --json` output) and passed
   on the re-run and alone (2026-10-02, npm 10.9.4).
+- Core's `MigrationPlan` (`workspace/migration.ts`) has no field for the
+  workspace file's settings, so a migrator can only name them in a note
+  (P-11); `turbo`'s `concurrency` / `cacheMaxSize` / `TURBO_SCM_BASE` are
+  in the same place. A `workspace` field on the plan would let both write
+  them.
