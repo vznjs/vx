@@ -94,22 +94,22 @@ it('hands the runner and the flags to the writer, then says the runner file can 
   }
   const gone = (f: string) => `writer ran\nvx no longer reads ${f}: delete it once a run passes.\n`
   expect(rows).toEqual({
-    'turbo.json': [0, '', gone('turbo.json'), ['--from', 'turbo'], false],
-    'turbo.jsonc': [0, '', gone('turbo.jsonc'), ['--from', 'turbo', '--force', '--mjs'], false],
-    'nx.json': [0, '', gone('nx.json'), ['--from', 'nx'], false],
-    both: [0, '', gone('turbo.json'), ['--from', 'turbo'], false],
+    'turbo.json': [0, '', gone('turbo.json'), ['--from=turbo'], false],
+    'turbo.jsonc': [0, '', gone('turbo.jsonc'), ['--from=turbo', '--force', '--mjs'], false],
+    'nx.json': [0, '', gone('nx.json'), ['--from=nx'], false],
+    both: [0, '', gone('turbo.json'), ['--from=turbo'], false],
     dry: [
       0,
       '',
       'writer ran\nturbo.json stays the source until the files are written.\n',
-      ['--from', 'turbo', '--dry'],
+      ['--from=turbo', '--dry'],
       false,
     ],
     'nx-exec': [
       0,
       '',
       'writer ran\nnx.json stays while a task runs `nx-exec` or `nx-env` (Nx executors read it); delete it once none does.\n',
-      ['--from', 'nx'],
+      ['--from=nx'],
       false,
     ],
   })

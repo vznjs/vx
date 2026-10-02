@@ -11,9 +11,9 @@ Everything for adopting [`@vzn/vx`](https://github.com/vznjs/vx) from Turborepo 
 npm install -D @vzn/vx @vzn/vx-migrate   # or: pnpm add -D -w · yarn add -D (-W on Yarn 1) · bun add -d
 ```
 
-In a Turbo or Nx repo, `npx vx init` writes the `vx.workspace.ts` that
-declares `turbo()` or `nx()` and prints the install-and-run line. Add
-`turboCache()` or `nxCache()` to keep your remote cache:
+In a Turbo or Nx repo, `npx vx init` runs this package's writer: one
+native `vx.config.ts` per package, after which turbo.json or nx.json can
+be deleted. Add `turboCache()` or `nxCache()` to keep your remote cache:
 
 ```ts
 // vx.workspace.ts — a Turbo repo, unchanged, with its remote cache

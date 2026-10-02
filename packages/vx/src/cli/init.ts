@@ -169,8 +169,7 @@ async function migrateRunner(
     )
   }
   const flags = [
-    '--from',
-    runner,
+    `--from=${runner}`,
     ...(args.dry ? ['--dry'] : []),
     ...(args.force ? ['--force'] : []),
     ...(args.mjs ? ['--mjs'] : []),
