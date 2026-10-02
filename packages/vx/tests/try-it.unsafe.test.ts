@@ -259,7 +259,7 @@ describe('the migrate guide shows what vx init and vx-migrate write, and the nat
   it('Turborepo: the workspace file, init’s output and vx-migrate’s report', () => {
     const root = turboRepo()
     commit(root)
-    const [file] = guideFences('Turborepo', 'ts')
+    const [file, libConfig] = guideFences('Turborepo', 'ts')
     const [initFence, cacheLine, migrateFence] = guideFences('Turborepo', 'text')
     expect(step(root, 'npm install -D @vzn/vx').code).toBe(0)
     const [initCmd, initOut] = transcript(initFence!)
@@ -277,6 +277,9 @@ describe('the migrate guide shows what vx init and vx-migrate write, and the nat
     const [migrateCmd, migrateOut] = transcript(migrateFence!)
     expect(migrateCmd).toBe('bunx @vzn/vx-migrate')
     expect(migrate(root)).toEqual([0, migrateOut])
+    expect(readFileSync(path.join(root, 'packages', 'lib', 'vx.config.ts'), 'utf8')).toBe(
+      libConfig!,
+    )
     expect(endState(root, 'turbo', 'turbo.json')).toEqual(BUILT)
   }, 60_000)
 
@@ -284,7 +287,7 @@ describe('the migrate guide shows what vx init and vx-migrate write, and the nat
     const root = nxRepo()
     standInNx(root)
     commit(root)
-    const [file] = guideFences('Nx', 'ts')
+    const [file, libConfig] = guideFences('Nx', 'ts')
     const [initFence, migrateFence] = guideFences('Nx', 'text')
     expect(step(root, 'npm install -D @vzn/vx').code).toBe(0)
     const [initCmd, initOut] = transcript(initFence!)
@@ -295,6 +298,9 @@ describe('the migrate guide shows what vx init and vx-migrate write, and the nat
     const [migrateCmd, migrateOut] = transcript(migrateFence!)
     expect(migrateCmd).toBe('bunx @vzn/vx-migrate')
     expect(migrate(root)).toEqual([0, migrateOut])
+    expect(readFileSync(path.join(root, 'packages', 'lib', 'vx.config.ts'), 'utf8')).toBe(
+      libConfig!,
+    )
     expect(endState(root, 'nx', 'nx.json')).toEqual(BUILT)
   }, 60_000)
 })

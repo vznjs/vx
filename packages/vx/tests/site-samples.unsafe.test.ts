@@ -824,7 +824,7 @@ describe('the from-nx post says how executors run, and names the servers', () =>
   })
   it('the benchmark figures it states are the benchmarks page’s', () => {
     const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
-    for (const figure of ['510ms', '3.59s', '34.61s', '114m 06s']) {
+    for (const figure of ['476ms', '3.59s (vx 86% faster)', '34.33s', '114m 06s (vx 99% faster)']) {
       expect(page).toContain(figure)
       expect(bench).toContain(figure)
     }
