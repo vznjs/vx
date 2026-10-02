@@ -802,6 +802,7 @@ groups to the persistent tasks below; a one-shot under it keeps none.
 Row (`persistent-shutdown.test.ts` › keeps the persistent tasks a
 requested group stands for): red without the seed; probed end to end
 (held until Ctrl-C, exit 130). `execution.md` says so.
+
 ## C-51: a restore under another restore ranks by what that one blocks
 
 `tieredReverseDepCount` ranked a restore by its direct exec-tier
