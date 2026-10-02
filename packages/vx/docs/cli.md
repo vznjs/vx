@@ -1734,7 +1734,7 @@ them under `exec.env.define`, the first two read from an imported
 `package.json` so a version bump reaches them; any other `$npm_*` it
 reads gets a TODO (D-34). Among several packages, a workspace root
 script that runs the members (`pnpm -r build`, `--filter`, `-C`, Yarn's
-`--cwd`, npm's `--prefix`, npm's
+`--cwd` and `yarn workspace <name>`, npm's `--prefix`, npm's
 and Yarn's workspace flags, `cd`, turbo, nx, lerna, `vp run`, vx itself) is not mapped,
 nor is one that runs such a script by name (vite's `ci-docs`: `pnpm build &&
 pnpm docs-build`), and neither is one whose name a member's task carries, so `--all` never runs
