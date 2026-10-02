@@ -1198,6 +1198,11 @@ Inside a write grant, a file named like a shell or tool config
 to the task, down to three levels below the workspace root, ignored by
 git or not.
 
+**Linux: no bracket in the project's path.** The runtime reads a path
+holding `[` or `]` as a glob and mounts no write path that does, so a
+sandboxed task in a project under such a directory (`~/[old]/repo`) is
+refused, naming it: rename the directory or drop `exec.sandbox`.
+
 **macOS cannot nest.** `sandbox_apply` is refused inside a sandboxed
 process, so a task that itself sandboxes something (vx's own test suite)
 cannot be sandboxed on macOS. `weakerWhenNested` covers the Linux case;
