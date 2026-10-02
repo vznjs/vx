@@ -1640,6 +1640,20 @@ describe('the plugin examples say which seams they cover', () => {
   })
 })
 
+describe("the site's reapi samples on port 443 name a TLS scheme", () => {
+  // A bare `host:443` is plaintext to vx-reapi; the CI and configure guides
+  // showed one (J-96). vx-reapi's tls.test.ts holds the client to it.
+  it('every `endpoint: …:443` on a page starts grpcs:// or https://', () => {
+    const samples = handAuthoredSitePages().flatMap((p) =>
+      [...readFileSync(p, 'utf8').matchAll(/endpoint: '([^']+:443)'/g)].map(
+        (m) => `${path.basename(p)}: ${m[1]!}`,
+      ),
+    )
+    expect(samples.length).toBeGreaterThan(3)
+    expect(samples.filter((s) => !/: (grpcs|https):\/\//.test(s))).toEqual([])
+  })
+})
+
 describe('the git-index claim names what a clean key still reads', () => {
   // The README said "no file is read" and the no-daemon post "no file reads
   // at all", but a warm key reads each project's package.json and the
