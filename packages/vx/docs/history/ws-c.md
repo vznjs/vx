@@ -1021,6 +1021,7 @@ without the fix. The option's doc comment says so.
 `modules/signals.md` described the stop's teardown as `terminateChildren`
 alone; since C-65 it also kills the run's running `cache.inputs.runtime`
 probes. Docs only.
+
 ## C-74: an executor's shared error is named once
 
 C-63 names a plugin executor's throw by prefixing the error's own
