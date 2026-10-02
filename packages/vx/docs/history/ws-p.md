@@ -22,11 +22,6 @@
   `e2e-ci--<spec>` loads `.env.e2e-ci` and `.env.e2e`. vx named them by
   the task's own name, so it loaded `.env.e2e-ci--<spec>`, which Nx never
   does, and missed `.env.e2e-ci`.
-- **P-11** `vx-migrate --from nx`: nx.json's `parallel`, `defaultBase`
-  and `maxCacheSize`, which `nx()` applies live, are each a note naming
-  the `vx.workspace.ts` field to add. The written workspace file holds
-  none of them, so nx-examples' `parallel: 1` ran on every core once
-  migrated, without a word.
 - **P-5** `nx()`: every task gets `NX_TASK_TARGET_PROJECT`,
   `NX_TASK_TARGET_TARGET` and `NX_TASK_TARGET_CONFIGURATION`, as Nx's
   `getNxEnvVariablesForTask` sets them. A package script's
@@ -49,10 +44,22 @@
   `ui:build:ci` names target `build:ci` and is no edge where ui lacks it.
   vx read the last segment as a configuration and drew an edge to that
   configuration's task (or to `build`, with a todo) that Nx never draws.
+- **P-11** `vx-migrate --from nx`: nx.json's `parallel`, `defaultBase`
+  and `maxCacheSize`, which `nx()` applies live, are each a note naming
+  the `vx.workspace.ts` field to add. The written workspace file holds
+  none of them, so nx-examples' `parallel: 1` ran on every core once
+  migrated, without a word.
 - **P-13** `nx()`: every task also gets `LERNA_PACKAGE_NAME`, the project
   name Nx's `getNxEnvVariablesForTask` sets beside `NX_TASK_TARGET_*`;
   Lerna runs on Nx's runner and documents it to scripts, and it was
   unset.
+- **P-18** `nx()`: outputs checked case by case against Nx 23.2's own
+  `getOutputsForTargetAndConfiguration`: an `outputPath` list is each of
+  its paths (read as none, the build cached Nx's default directories and
+  a hit restored nothing), and a number in `{options.x}` is its text, as
+  Nx writes it (it was dropped with a todo). The remaining differences
+  are by design (`build` / `public` defaults, a todo) or Nx refusals vx
+  tolerates (`./dist`, `dist/{projectName}`).
 
 ## Notes
 
