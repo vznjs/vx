@@ -245,7 +245,9 @@ failed to spawn 'git' … Install git and re-run` — the same the input
   `main...feature`) is refused there too, naming the base to pass
   alone — `ranges are not supported — pass the base alone ("HEAD~1")`
   — because the other end is always the working tree. A ref that does
-  not exist is `git ref "<ref>" did not resolve`.
+  not exist is `git ref "<ref>" did not resolve`; in a shallow clone (CI's
+  one-commit checkout) it adds that the clone is shallow and how to fetch
+  the history (`git fetch --unshallow`, `fetch-depth: 0`).
 - A member whose directory is a symlink to a place elsewhere under the
   workspace root (`packages/b -> ../ext/b`) is selected by a change at
   that real place too: git names the files where they live, not by the
