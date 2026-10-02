@@ -193,7 +193,34 @@ export function invocationCommand(argv: readonly string[]): string {
   return [...argv.slice(0, sep), '--', `<${rest} argument${rest === 1 ? '' : 's'}>`].join(' ')
 }
 
+/**
+ * The bounds the CLI and the workspace config already hold, at the façade
+ * (C-61): a `concurrency` of 0, a negative or NaN left no worker slot and
+ * the run waited for good; a `retries` of NaN retried a failing task
+ * without end; a `timeout` of 0, a negative, NaN or past the timer's range
+ * killed every task at once.
+ */
+function refuseRunNumbers(options: RunOptions): void {
+  const refuse = (name: string, value: number, rule: string): never => {
+    throw new UserError(`RunOptions.${name} is ${String(value)}: it must be ${rule}`)
+  }
+  // No task named read "No projects declare task(s): ." (C-61).
+  if (options.tasks.length === 0 || options.tasks.includes(''))
+    throw new UserError(`RunOptions.tasks names no task: give at least one task name`)
+  const { concurrency, retries, timeout } = options
+  if (concurrency !== undefined && !(Number.isInteger(concurrency) && concurrency > 0))
+    refuse('concurrency', concurrency, 'a positive integer')
+  if (retries !== undefined && !(Number.isInteger(retries) && retries >= 0))
+    refuse('retries', retries, 'a non-negative integer')
+  if (
+    timeout !== undefined &&
+    !(Number.isInteger(timeout) && timeout > 0 && timeout <= MAX_TIMEOUT_MS)
+  )
+    refuse('timeout', timeout, `a positive integer of ms, at most ${MAX_TIMEOUT_MS}`)
+}
+
 export async function run(options: RunOptions): Promise<RunSummary> {
+  refuseRunNumbers(options)
   // Color decision: a custom logger (tests, embedders) handles its
   // own formatting and asserts on plain strings, so we suppress
   // ANSI escapes for them. Only the defaultLogger (real terminal
