@@ -1130,6 +1130,14 @@ mounting, so a file grant stays exact there. Pinned in
 `tests/sandbox-runtime.unsafe.test.ts` (2026-09-20) and
 `tests/sandbox-widened-reads.unsafe.test.ts`.
 
+**A `network` entry is a host pattern**: `example.com`, `*.example.com`,
+either with a port (`example.com:443`), or `localhost`. A scheme or path
+(`https://example.com`), a dotless host, a bad port, and `*` or `*.com`
+(too broad) refuse the run with the entry named; `deny.network` also
+takes a bare `*` (deny all, `*:22` for one port). Until 2026-10-02 such an
+entry matched nothing with no word, and an allowed `*` opened every host
+to every sandboxed task of the run.
+
 **`network` is per-RUN, not per-task.** SRT runs one filtering proxy
 per `vx run` and checks every request against the allowlist that proxy
 was started with: the union of every domain list any sandboxed task in

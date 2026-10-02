@@ -11,6 +11,7 @@ import type { ExecConfig } from '../config.js'
 import {
   bindableWrites,
   initSandbox,
+  resetSandbox,
   probeSandbox,
   punchWalls,
   resolveSandboxConfig,
@@ -141,6 +142,10 @@ export function prepareSandbox(nodes: Iterable<TaskNode>): SandboxArmer | null {
             ...(gitConfig ? { gitConfig: true } : {}),
           })
         } catch (err) {
+          // The Linux probe brings the runtime up, and only an armed run
+          // resets it: a refusal past the probe left its proxy holding the
+          // process open, and the run hung after its summary (2026-10-02).
+          await resetSandbox().catch(() => {})
           // A throw from the runtime itself (its bridge needs socat, which
           // the dependency check does not cover) gets the same one-line
           // verdict as a refused probe, not an internal error with a stack.
