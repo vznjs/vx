@@ -48,7 +48,9 @@ Layers, lowest to highest priority:
    `<workspaceRoot>/node_modules/.bin` (one entry when the root is the
    project), so local tools resolve without `npx`, and a monorepo's shared
    tooling, installed at the root, too. Never a sibling project's bin, so
-   project isolation holds; the root is not a sibling.
+   project isolation holds; the root is not a sibling. An entry whose path
+   holds `path.delimiter` (`:`) is left out: PATH cannot name it, and split
+   it became two entries, the second relative to the task's cwd.
 
 Result: a `NodeJS.ProcessEnv` ready to pass to `Bun.spawn`.
 
@@ -84,7 +86,7 @@ a shared `passThrough` list through a TypeScript preset instead.
 
 ## Tests
 
-`env.test.ts` covers:
+`env.test.ts` covers (and `env-path-delimiter.test.ts` the left-out entry):
 
 - Essentials passed from source; undeclared vars stripped.
 - Essentials omitted when not present in source.
