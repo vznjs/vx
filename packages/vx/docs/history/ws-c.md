@@ -681,6 +681,15 @@ with no prediction; a history read error fails open in both callers.
 
 ## Leads for other streams
 
+- **B:** `runner.test.ts` › "keeps a ready server alive past its
+  readyWhen timeout" failed on #2054's Linux CI: `echo up` missed its
+  150 ms readiness bound under load (`PersistentReadyError … within
+150ms`). The bound is a claim about the box; a wider timeout with the
+  sleep past it keeps the row's point.
+- **F:** a kept server's crash after the summary exits 1, but the
+  telemetry summary (`exitOk`) is emitted and flushed before the
+  keep-alive wait, so a sink (the GitHub check run) reports success.
+
 - **A:** a kept server that crashes after the summary (`vx run dev`,
   the server exits 4, vx exits 1) is recorded `ok` with the server
   `success` in the run history: `recordRunBundle` runs before the
@@ -869,6 +878,22 @@ its `setup` threw (an unknown `ctx.on` hook name included). It now says
 `failed in setup`. Rows (`plugin.test.ts`, `plugin-teardown.test.ts`)
 pin the text; red on the old message.
 
+## C-60: a run that failed holds no server
+
+`vx run dev --all` with one server that never became ready (or a
+dependency-only server that crashed, or any task failed) still held its
+healthy servers: a script's `vx run dev` hung for good, and the Ctrl-C
+that ended it read 130 over the failure. A run with a failure elsewhere
+now stops its servers and exits 1; a kept server's own crash ends the
+wait as before; `--continue=always` holds as before, and so does the
+watch loop (`holdPersistent`), whose next change restarts the server
+anyway (`held-persistent.test.ts`, red without that exception). Rows
+(`keep-alive.test.ts`): a server never ready and a dependency-only crash
+each exit 1 with the healthy server dead (both hang without the fix,
+the crash row with its clause removed), and the `--continue=always`
+control holds (red with that exception removed). `cli.md` and
+`execution.md` say so.
+
 ## C-59: the fingerprint watch reads a whole-second lockfile stamp
 
 A's lead (A-2). The watch over the fingerprinted files skipped a file
@@ -892,3 +917,16 @@ a held server's line after the return reaches the logger (red without
 the fix), and after `stop` the bus reaches it no more (red with the
 detach removed); probed end to end (9 lines in 2.5 s, 2 before).
 `cli.md` says so.
+
+## C-61: run() refuses the numbers the CLI refuses
+
+The CLI and the workspace config refuse a `concurrency` that is not a
+positive integer, a `retries` that is not a non-negative integer and a
+`timeout` outside 1..2^31-1 ms; the façade took any. `run({
+concurrency: 0 })`, a negative or `NaN` left no worker slot open and the
+run waited for good; `retries: NaN` retried a failing task without end
+(3,745 attempts in 6 s); a bad `timeout` killed every task at once,
+failed 143; and `tasks: []` read `No projects declare task(s): .`.
+run() now refuses each up front, naming the value. Rows
+(`run-concurrency.test.ts`): each refused with the exact message, the
+edges run; red without the checks. The options' doc comments say so.
