@@ -301,9 +301,9 @@ describe('the landing page', () => {
   it('shows how to try it on a Turbo or Nx repo', () => {
     const tryIt = text(section(html, 'try'))
     for (const s of [
-      "import { turbo } from '@vzn/vx-migrate'",
-      'in an Nx repo, nx for turbo',
-      'export default { plugins: [turbo()] } satisfies WorkspaceConfig',
+      "What vx init writes for examples/turbo's lib",
+      '} satisfies ProjectConfig',
+      'Then delete turbo.json: vx no longer reads it',
       'npm install -D @vzn/vx @vzn/vx-migrate',
       'npx vx init',
       'npx vx run build --all',
