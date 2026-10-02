@@ -131,51 +131,32 @@ export function mapNxDeps(
         if (ownTarget(d)) deps.push(named(self, d))
         continue
       }
-      const [project = '', targetPart, configuration] = d.split(':')
+      const project = d.slice(0, colon)
+      const rest = d.slice(colon + 1)
       const m = metaByNode.get(project)
       // Nx splits at the colon only when the head names a project; else
       // the whole string is a target of this project (`test:unit`, as
       // script-inferred targets are named). It was read as project `test`
-      // and the edge dropped (item 915).
-      // Nx ranks this project's own target first (`splitTargetFromNodes`),
-      // then the longest target of the named project: `ui:build:esm` is
-      // ui's `build:esm` where it has one, not `build` in configuration
-      // `esm`, which sent the edge to ui's `build` or dropped it.
+      // and the edge dropped (item 915). This project's own target ranks
+      // first (`splitTargetFromNodes`).
       if (ownTarget(d)) {
         deps.push(named(self, d))
         continue
       }
-      const rest = d.slice(colon + 1)
-      if (m !== undefined && rest.includes(':') && hasTarget(project, rest)) {
-        deps.push(`${m.name}#${named(project, rest)}`)
-        continue
-      }
-      if (m === undefined || targetPart === undefined || targetPart === '') {
+      if (m === undefined || rest === '') {
         todos.push(
           `dependsOn ${JSON.stringify(d)} names ${JSON.stringify(project)}, which is not a ` +
             'workspace package in this graph — edge dropped',
         )
         continue
       }
-      if (!hasTarget(project, targetPart)) continue
-      // A configuration is a task of its own (`build:ci`) unless it is the
-      // target's default, which the base task carries; an edge naming one
-      // follows it there. A configuration the target does not declare has
-      // no task to reach, so the edge falls back to the base with a todo.
-      if (configuration !== undefined) {
-        const named = taskNameFor(project, targetPart, configuration)
-        if (named === null) {
-          todos.push(
-            `dependsOn ${JSON.stringify(d)}: ${project} declares no ${JSON.stringify(configuration)} ` +
-              `configuration on ${targetPart} — depending on ${m.name}#${targetPart}`,
-          )
-        } else {
-          deps.push(`${m.name}#${named}`)
-          continue
-        }
-      }
-      const task = configuration === undefined ? named(project, targetPart) : targetPart
-      deps.push(`${m.name}#${task}`)
+      // The rest is ONE target name, colons and all, as Nx's
+      // `readProjectAndTargetFromTargetString` joins it: `ui:build:esm` is
+      // ui's `build:esm`, and `ui:build:ci` names target `build:ci`, never
+      // build's `ci` configuration (the run's configuration is what an edge
+      // passes on). Nx draws no edge where ui has no such target; vx sent
+      // one to the configuration's task, or to `build` with a todo.
+      if (hasTarget(project, rest)) deps.push(`${m.name}#${named(project, rest)}`)
       continue
     }
     if (d && typeof d === 'object') {
