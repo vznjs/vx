@@ -825,3 +825,15 @@ Every stage's throw reads `plugin '<name>' failed in <stage>: …`, and
 its `setup` threw (an unknown `ctx.on` hook name included). It now says
 `failed in setup`. Rows (`plugin.test.ts`, `plugin-teardown.test.ts`)
 pin the text; red on the old message.
+
+## C-57: a server watch holds keeps printing while watch idles
+
+`vx watch dev` showed its server's log only until the cycle's run
+returned: run() unsubscribed its renderer from the bus on the way out,
+while the `holdPersistent` servers it handed back kept writing into it.
+A run that hands servers back now keeps its renderer until the caller's
+`stop` lands, and leaves the bus then. Row (`held-persistent.test.ts`):
+a held server's line after the return reaches the logger (red without
+the fix), and after `stop` the bus reaches it no more (red with the
+detach removed); probed end to end (9 lines in 2.5 s, 2 before).
+`cli.md` says so.
