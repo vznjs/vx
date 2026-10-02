@@ -992,6 +992,7 @@ say it), not under a stop, not for an exit 0. Rows
 (`keep-alive.test.ts` › a persistent server that dies before the run
 stops it): the crash rows read the new line first; each of the three
 guards removed reddens a row. `schema.md` says so.
+
 ## C-67: an embedder's `command` reaches telemetry redacted
 
 Item 1057 kept what follows `--` (often a token) out of the command line
