@@ -323,6 +323,13 @@ entry (red without the fix). macOS is unchanged: there
 fix: both `wedged.test.ts` leads (`sent` 3 for 4, 0 for 1) counted RSTs
 sent, which F-9 replaced with the peer's count of HEADERS.
 
+M-29. `runner.test.ts` › an exec-wrapped process is the direct child
+(E's lead: it read `JITWorker` at load 6.6). The row slept a fixed 50 ms
+and read `/proc/<pid>/comm` once: until `sh` execs, comm is the forking
+Bun thread's name or `sh` (an immediate read, 20 of 20: `sh`). It now
+polls for `sleep` up to 3 s; a command with no exec still reads `sh` at
+the deadline, so the claim holds without a time in it.
+
 ## Leads for other streams
 
 - A: A-20 let a same-project dependant restore ahead of a producer whose
