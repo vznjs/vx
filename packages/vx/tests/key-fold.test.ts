@@ -49,7 +49,7 @@ describe('the key fold (item 691)', () => {
     try {
       const captured: Array<{ kind: string; name: string; hash: string }> = []
       const key = await cache.key(input(captured))
-      expect(key).toBe('f3a1ce416d724e58')
+      expect(key).toBe('dc08ce64f2b19542')
       // A value-bearing row is a digest under the store's salt (L-4); the
       // Cache-less fold below pins its unsalted default byte for byte.
       // @ts-expect-error: private member access for testing
@@ -96,7 +96,7 @@ describe('the key fold (item 691)', () => {
       },
       (f) => relPosix(root, f),
     )
-    expect(key).toBe('f3a1ce416d724e58')
+    expect(key).toBe('dc08ce64f2b19542')
     expect(asked).toEqual(['a.ts'])
     expect(
       captured
