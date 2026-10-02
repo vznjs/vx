@@ -8,7 +8,7 @@ Everything for adopting [`@vzn/vx`](https://github.com/vznjs/vx) from Turborepo 
 - **`turboCache()`** and **`nxCache()`** — keep the remote cache you have: any server speaking Turbo's `/v8/artifacts` API (Vercel's hosted cache included) or Nx's self-hosted `/v1/cache` spec.
 
 ```sh
-npm install -D @vzn/vx @vzn/vx-migrate   # or: pnpm add -D · yarn add -D · bun add -d
+npm install -D @vzn/vx @vzn/vx-migrate   # or: pnpm add -D -w · yarn add -D (-W on Yarn 1) · bun add -d
 ```
 
 In a Turbo or Nx repo, `npx vx init` writes the `vx.workspace.ts` that
