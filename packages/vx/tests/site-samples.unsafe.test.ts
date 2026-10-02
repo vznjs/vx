@@ -1738,3 +1738,50 @@ describe("comparison.md's Turborepo cells say what Turbo hashes and runs", () =>
     expect(turbo('Pre/post script lifecycle')).toBe('yes — the package manager runs them')
   })
 })
+
+// Blog links into a guide section kept the titles of the guide pages the
+// short site merged away ("Running tasks", "Dev & long-running tasks"),
+// and one promised readiness patterns for common servers the section
+// never held. A link into a guide section names that section.
+describe("a post's link into a guide section names the section", () => {
+  it('its text holds the heading its anchor lands on', () => {
+    const plain = (s: string): string => s.replace(/[`*_]/g, '').replace(/\s+/g, ' ').toLowerCase()
+    const slug = (h: string): string =>
+      h
+        .toLowerCase()
+        .replace(/[^\p{L}\p{N} _-]/gu, '')
+        .replace(/ /g, '-')
+    const headings = new Map<string, Map<string, string>>()
+    const headingOf = (guide: string, anchor: string): string | undefined => {
+      if (!headings.has(guide)) {
+        const map = new Map<string, string>()
+        for (const m of readFileSync(path.join(GUIDES, `${guide}.md`), 'utf8').matchAll(
+          /^#{2,6}\s+(.*?)\s*$/gm,
+        ))
+          map.set(slug(m[1]!), m[1]!)
+        headings.set(guide, map)
+      }
+      return headings.get(guide)!.get(anchor)
+    }
+    const wrong: string[] = []
+    let checked = 0
+    // A post's pointer to its guide; the glossary's and compare page's
+    // inline links are prose ("remote caching"), not section names.
+    const posts = handAuthoredSitePages().filter((p) => p.includes(`${path.sep}blog${path.sep}`))
+    for (const page of posts) {
+      const text = readFileSync(page, 'utf8')
+      for (const m of text.matchAll(
+        /\[([^\]]+)\]\((?:\.\.\/)+guides\/([a-z-]+)\/#([a-z0-9-]+)\)/g,
+      )) {
+        const heading = headingOf(m[2]!, m[3]!)
+        checked++
+        if (heading === undefined || !plain(m[1]!).includes(plain(heading)))
+          wrong.push(`${path.relative(DOCS, page)}: [${m[1]}] → ${m[2]}#${m[3]}`)
+      }
+    }
+    expect(checked).toBeGreaterThan(5)
+    expect(wrong).toEqual([])
+    const post = readFileSync(path.join(DOCS, 'blog', 'dev-servers-in-the-graph.md'), 'utf8')
+    expect(post).not.toContain('readiness patterns for the common servers')
+  })
+})
