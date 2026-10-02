@@ -1007,8 +1007,13 @@ export async function wrapSandboxedCommand(
     process.platform === 'linux'
       ? ownGroupCommand(tag, inTmp, args.trace)
       : { command: taggedCommand, forwards: false, traced: false }
-  const inner =
-    ports.length > 0 ? `${portBridgeInner(ports, tag)} ${grouped.command}` : grouped.command
+  const inner = [
+    ports.length > 0 ? portBridgeInner(ports, tag) : '',
+    process.platform === 'linux' && args.config.network !== undefined ? PROXY_BRIDGE_WAIT : '',
+    grouped.command,
+  ]
+    .filter((part) => part !== '')
+    .join(' ')
   let wrapped = await wrapForTask(
     SandboxManager,
     inner,
@@ -1203,6 +1208,18 @@ function wrapForTask(
 export function bridgedPorts(c: Pick<ResolvedSandboxConfig, 'localBinding'>): number[] {
   return Array.isArray(c.localBinding) ? [...new Set(c.localBinding)] : []
 }
+
+/**
+ * Linux: SRT starts its in-sandbox proxy bridges (`socat TCP-LISTEN:3128`
+ * and `:1080`) in the background and runs the command at once, so a
+ * networked task that dialled the proxy first met "connection refused"
+ * (curl's `000`) on a loaded box (M-20). This waits, in front of the
+ * command, until both listen in the task's network namespace, read off
+ * /proc/net (IPv4 or IPv6, state 0A). Bounded at ~5 s: a bridge that never
+ * listens leaves the command to meet the refusal it met before.
+ */
+const PROXY_BRIDGE_WAIT =
+  "( i=0; until grep -qsE ':0C38 [0-9A-F]+:0000 0A' /proc/net/tcp /proc/net/tcp6 && grep -qsE ':0438 [0-9A-F]+:0000 0A' /proc/net/tcp /proc/net/tcp6; do [ $i -ge 500 ] && break; i=$((i+1)); sleep 0.01; done );"
 
 /** Where a bridge's unix socket lives: the sandbox tmpdir, bound read-write on both sides. */
 export function portBridgeSocket(tag: string, port: number): string {
