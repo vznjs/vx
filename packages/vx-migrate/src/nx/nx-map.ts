@@ -1025,3 +1025,20 @@ function followNxGraph(
     }
   }
 }
+
+/** Nx's cache-size grammar (`10GB`, `1.5 GB`, bare bytes) as core's size; `0` is no cap. */
+export function nxSizeText(raw: unknown): string | undefined {
+  if (typeof raw !== 'string' && typeof raw !== 'number') return undefined
+  const text = String(raw).trim()
+  const m = /^(\d+\.?\d*|\.\d+)\s?([KMG]?B)?$/.exec(text)
+  if (m === null) return text
+  const units = ['B', 'KB', 'MB', 'GB']
+  let n = Math.floor(Number(m[1]) * 1024 ** units.indexOf(m[2] ?? 'B'))
+  if (n === 0) return undefined
+  let u = 0
+  while (u < units.length - 1 && n % 1024 === 0) {
+    n /= 1024
+    u++
+  }
+  return `${n}${units[u]}`
+}
