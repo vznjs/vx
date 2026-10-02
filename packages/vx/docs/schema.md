@@ -1086,9 +1086,10 @@ mounts nothing. Where a read grant mounts its directory, the task's first
 write under it fails with `Read-only file system` — a message naming
 neither vx nor the grant — so vx reports that grant itself before the
 task runs, once, and names the directory to grant instead. Where no mount
-holds the directory, it is the sandbox's own scratch: the task may
-create, write and remove what the glob matches, and nothing it leaves
-there outlives the task. That is right for a tool's temp directory and
+holds the directory, it is the sandbox's own scratch, the one mask left
+writable: the task may create, write and remove what the glob matches
+(anything else it writes there too), and nothing it leaves there
+outlives the task. That is right for a tool's temp directory and
 wrong for an output. A read grant matching nothing is ordinary
 (an optional file, a cache not yet populated) and is not reported. A
 pattern under a directory that does not exist yet matches nothing the
@@ -1174,17 +1175,19 @@ file: an edge to `ui#source` (inputs `src/**`) covers a read of
 `ui/README.md` too.
 
 **A missing write grant fails the task.** On macOS seatbelt refuses the
-write and reports it. On Linux the write meets a read-only bind, or, where
-the project directory is the boundary anchor's scratch, it succeeds inside
-the sandbox and leaves nothing on disk: in a single-package workspace
-(the project directory IS the workspace root, the anchor below), and at
-the project root around a write grant punched out of a read grant
-(`read: ['.']` with `write: ['dist/']`; the children are bound one by one
-and the directory holding them is the scratch). Either way the runtime's
-write observer saw the attempt, and a write no grant binds is reported
-and fails the task, even when the command swallowed the error and exited
-0 (B-5; before it, both Linux shapes passed with nothing reported, items
-444 and 1011). The remedy is to declare it: `allow: { write: [...] }`.
+write and reports it. On Linux the write meets a read-only bind or a
+read-only mask: the empty directory the sandbox lays over what it hides
+(the workspace root around a project, a single-package workspace's root,
+the project root around a write grant punched out of a read grant —
+`read: ['.']` with `write: ['dist/']` binds the children one by one). It
+is `Read-only file system` on both; until 2026-10-02 the Linux mask was
+writable, and a write there succeeded and left nothing on disk. The
+runtime's write observer saw the attempt, and a write no grant binds is
+reported and fails the task, even when the command swallowed the error
+and exited 0 (B-5; before it, both Linux shapes passed with nothing
+reported, items 444 and 1011). A write outside the project is refused
+the same way and named on a failed task, never counted. The remedy is to
+declare it: `allow: { write: [...] }`.
 
 **The boundary is the workspace root.** A task may not leave its own
 project, so every sibling project and every root file is denied. Being

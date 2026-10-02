@@ -99,10 +99,9 @@ the upstream's output rows, which the save writes.
 2. The empty-set warning (`cache.outputs matched no files`) — a status
    line, once, on this miss; `outputs: []` is a deliberate cached no-op
    and says nothing. When the task declares `exec.sandbox` and no
-   `allow.write`, the line names that as the cause: its writes went to
-   the sandbox's scratch, and in a single-package workspace they do so
-   without the shell noticing, so this line is the only signal (item
-   444).
+   `allow.write`, the line names that as the cause: its writes were
+   refused (item 444; until 2026-10-02 a single-package workspace's
+   mask took them unnoticed, and this line was the only signal).
 3. `markOutputsChanged` / `markWorkspaceOutputsChanged` /
    `invalidateWorkspacePartition` — the git snapshot learns the exact
    paths, not "everything changed"; on a 1,000-package cold run that
