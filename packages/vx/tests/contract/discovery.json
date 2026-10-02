@@ -47,5 +47,26 @@
   "workspace config: vx.workspace.ts + vx.workspace.mts + vx.workspace.js + vx.workspace.mjs": "vx.workspace.ts",
   "workspace config: vx.workspace.mts + vx.workspace.js + vx.workspace.mjs": "vx.workspace.mts",
   "workspace config: vx.workspace.js + vx.workspace.mjs": "vx.workspace.js",
-  "workspace config: vx.workspace.mjs": "vx.workspace.mjs"
+  "workspace config: vx.workspace.mjs": "vx.workspace.mjs",
+  "project config: vx.config.cts + vx.config.cjs": [
+    "vx.config.cts",
+    [
+      "t0"
+    ]
+  ],
+  "project config: vx.config.cjs": [
+    "vx.config.cjs",
+    [
+      "t0"
+    ]
+  ],
+  "project config: vx.config.mjs + vx.config.cts": [
+    "vx.config.mjs",
+    [
+      "t0"
+    ]
+  ],
+  "workspace config: vx.workspace.cts + vx.workspace.cjs": "vx.workspace.cts",
+  "workspace config: vx.workspace.cjs": "vx.workspace.cjs",
+  "workspace config: vx.workspace.mjs + vx.workspace.cts": "vx.workspace.mjs"
 }

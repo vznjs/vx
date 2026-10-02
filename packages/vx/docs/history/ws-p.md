@@ -22,6 +22,20 @@
   `e2e-ci--<spec>` loads `.env.e2e-ci` and `.env.e2e`. vx named them by
   the task's own name, so it loaded `.env.e2e-ci--<spec>`, which Nx never
   does, and missed `.env.e2e-ci`.
+- **P-5** `nx()`: every task gets `NX_TASK_TARGET_PROJECT`,
+  `NX_TASK_TARGET_TARGET` and `NX_TASK_TARGET_CONFIGURATION`, as Nx's
+  `getNxEnvVariablesForTask` sets them. A package script's
+  `nx exec -- <cmd>` found them unset and booted Nx's task runner, which
+  ran the target and its dependencies a second time.
+- **P-7** `nx()`: a `dependsOn` entry's `options: "forward"`, which Nx's
+  `createTaskOverrides` turns into the dependency's overrides, is a todo
+  when the target has options to forward. It was dropped without a word,
+  and the dependency ran with its own options.
+- **P-9** `nx()`: a `dependsOn` string's part after `project:` is one
+  target name, as Nx's `readProjectAndTargetFromTargetString` joins it:
+  `ui:build:ci` names target `build:ci` and is no edge where ui lacks it.
+  vx read the last segment as a configuration and drew an edge to that
+  configuration's task (or to `build`, with a todo) that Nx never draws.
 - **P-10** `nx()`: a `{ input, projects }` list is matched as Nx's
   `findMatchingProjects` matches it (`*` patterns, `tag:`, `!`
   exclusions). Looked up as literal names, a `tag:` or pattern entry was
