@@ -22,7 +22,8 @@ your `package.json` scripts.
    manager, then runs what `turbo run build` ran, under vx's cache.
 4. Preview the configs with `bunx @vzn/vx-migrate --dry`, then write them
    with `bunx @vzn/vx-migrate`: one `vx.config.ts` per package, plus a
-   `vx-preset.ts` when turbo.json has global fields. It never overwrites a
+   `vx-preset.ts` when turbo.json has global fields or a task `env` several
+   packages share. It never overwrites a
    file without `--force`.
 5. Review each `TODO(vx-migrate)` comment. A task a package's own
    `vx.config.ts` declares wins; `turbo()` fills only the rest.

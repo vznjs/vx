@@ -375,6 +375,48 @@ function membersExample(manager: string | undefined): string {
   }
 }
 
+/** The workspace flags that move a package manager off the package it runs in. */
+const ELSEWHERE_FLAG = /^(-r|--recursive|--filter|-F|--workspaces|-ws|--workspace)(=|$)/
+const DIR_FLAG = /^(-C|--dir|--cwd|--prefix)(?:=(.*))?$/
+
+/**
+ * The part of a member's script that runs another member's work: pinia's
+ * online-playground `build` is `pnpm -C ../pinia run build && vite build`,
+ * and mapped verbatim it built pinia again beside pinia's own task, writing
+ * the dist its siblings read. `yarn workspace <name>`, a runner, `pnpm -r`
+ * / `--filter`, and a `cd` / `-C` / `--cwd` / `--prefix` whose innermost
+ * member is another one count; a fixture inside the member, or the root,
+ * does not.
+ */
+function siblingRun(script: string, dir: string, others: readonly string[]): string | undefined {
+  const inside = (a: string, b: string): boolean => a === b || a.startsWith(b + path.sep)
+  const intoOther = (target: string): boolean => {
+    const t = path.resolve(dir, target.replace(/^(["'])(.*)\1$/, '$2'))
+    if (/[$`~*?]/.test(target)) return false
+    const owner = [dir, ...others]
+      .filter((d) => inside(t, d))
+      .sort((x, y) => y.length - x.length)[0]
+    return owner !== undefined && owner !== dir
+  }
+  for (const segment of script.split(/&&|\|\||[;|()]/)) {
+    const s = segment.trim()
+    if (RUNS_MEMBERS.test(` ${s}`)) return s
+    for (const m of s.matchAll(CD)) if (intoOther(m[1]!)) return s
+    const words = s.split(/\s+/)
+    const at = words.findIndex((w) => /^(pnpm|pn|npm|yarn|bun)$/.test(w))
+    if (at < 0) continue
+    for (let i = at + 1; i < words.length; i++) {
+      const w = words[i]!
+      if (ELSEWHERE_FLAG.test(w)) return s
+      const flag = DIR_FLAG.exec(w)
+      if (flag === null) continue
+      const target = flag[2] ?? words[++i]
+      if (target !== undefined && intoOther(target)) return s
+    }
+  }
+  return undefined
+}
+
 /** A package manager running a script by name: `pnpm build`, `npm run x`, `bun run x`. */
 const RUNS_SCRIPT =
   /(?:^|[\s;&|(])(?:pnpm|pn|npm|yarn|bun)\s+(?:run(?:-script)?\s+)?([^\s;&|()'"-][^\s;&|()'"]*)/g
@@ -619,6 +661,19 @@ export function migrateScripts(
       if (hooks.length > 0) {
         todos.push(
           `${hooksBy} ran ${hooks.map((h) => `\`${h}\``).join(' and ')} around this script without being asked; folded into the command in that order`,
+        )
+      }
+      const sibling =
+        meta === rootMeta
+          ? undefined
+          : siblingRun(
+              own,
+              meta.dir,
+              metas.filter((m) => m !== root && m !== meta).map((m) => m.dir),
+            )
+      if (sibling !== undefined) {
+        todos.push(
+          `\`${sibling}\` runs another member's work outside the graph, again beside that member's own task: name that task under dependsOn (\`<member>#<task>\`) and drop it from the command`,
         )
       }
       const exec: Record<string, unknown> = { command }

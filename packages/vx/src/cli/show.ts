@@ -66,10 +66,17 @@ export async function showCmd(args: readonly string[]): Promise<number> {
   const metas = await discoverCliProjects(await loadWorkspace(root, reads))
   const byName = new Map(metas.map((m) => [m.name, m]))
 
-  // `//#task` is Turbo's root package's task: the root project here (D-39).
+  // `//#task` is Turbo's root package's task: the root project here (D-39),
+  // and `//` alone is that project, as `--filter //` reads it (D-46).
   const rootMeta = metas.find((m) => path.resolve(m.dir) === path.resolve(root))
-  if (parsed.target?.startsWith('//#') && rootMeta !== undefined)
-    parsed.target = `${rootMeta.name}#${parsed.target.slice(3)}`
+  if (parsed.target === '//' || parsed.target?.startsWith('//#')) {
+    if (rootMeta === undefined) {
+      throw new UserError(
+        `vx show: "${parsed.target}" names the workspace root's project, and the root is no project here`,
+      )
+    }
+    parsed.target = `${rootMeta.name}${parsed.target.slice(2)}`
+  }
   const hashAt = parsed.target?.indexOf('#') ?? -1
   const projectName =
     parsed.target === undefined
