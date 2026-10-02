@@ -1047,6 +1047,7 @@ what outlives the grace, and both rows hang when the stop's teardown
 does not. A dropped SIGTERM or a leader-only one survives: the SIGKILL
 sweep still ends the groups, and graceful stops are not what these rows
 hold. Unsafe for the liveness check. Test only.
+
 ## C-76: the sandbox probe starts when a sandboxed task is sure to run
 
 The probe (~220 ms of spawns on Linux) started on the first sandboxed
