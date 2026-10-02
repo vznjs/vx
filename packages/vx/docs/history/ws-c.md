@@ -913,6 +913,7 @@ ready" line, where every other task the stop kills is `aborted` (item
 Row (`abort.test.ts` › a server still starting when the run stops is
 aborted, not failed): red without the fix; probed through the CLI
 (3/3 aborted). `cli.md` says so.
+
 ## C-61: run() refuses the numbers the CLI refuses
 
 The CLI and the workspace config refuse a `concurrency` that is not a
