@@ -109,6 +109,7 @@ self.onmessage = async (e) => {
   const own = (o) => new Map(Reflect.ownKeys(o).map((k) => [k, Object.getOwnPropertyDescriptor(o, k)]))
   const before = watched?.map(([, o]) => own(o))
   const envBefore = watched ? { ...live } : null
+  const cwdBefore = watched ? globalThis.process.cwd() : null
   const same = (a, b) =>
     a !== undefined && b !== undefined && a.value === b.value && a.get === b.get && a.set === b.set &&
     a.writable === b.writable && a.enumerable === b.enumerable && a.configurable === b.configurable
@@ -122,6 +123,7 @@ self.onmessage = async (e) => {
     })
     for (const k of new Set([...Object.keys(envBefore), ...Object.keys(live)]))
       if (envBefore[k] !== live[k]) out.push('process.env.' + k)
+    if (globalThis.process.cwd() !== cwdBefore) out.push('process.cwd (a chdir)')
     return out
   }
   try {
