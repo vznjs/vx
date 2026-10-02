@@ -180,8 +180,17 @@ describe("the README's comparison agrees with comparison.md on Turbo's daemon", 
     const row = /^\| Daemon required for speed \|[^|]*\| ([^|]*?) +\|/m.exec(readme)![1]
     expect(row).toBe('No (`turbo run` has none)')
     const doc = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'comparison.md'), 'utf8')
+    // Bisected over npm: 2.8.10's help still offers --daemon, 2.8.11's marks
+    // it deprecated and unused by `turbo run`; 2.10 deprecates neither
+    // --no-cache nor --remote-only.
     expect(doc).toContain(
-      '| Daemon / persistent project-graph process | not for `turbo run` since 2.9',
+      '| Daemon / persistent project-graph process | not for `turbo run` since 2.8.11',
+    )
+    expect(/^\| daemon on\/off +\| ([^|]*?) +\|/m.exec(doc)![1]).toBe(
+      '(deprecated in 2.8.11; ignored)',
+    )
+    expect(doc.replace(/\s+/g, ' ')).toContain(
+      'it has deprecated its own daemon for `turbo run` (2.8.11) and `--parallel` (by 2.9.18)',
     )
   })
 })
