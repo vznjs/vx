@@ -1390,8 +1390,9 @@ describe('turbo-map: `with`', () => {
   // `turbo run ci` over `ci: { dependsOn: ["lint", "build"] }` with no `ci`
   // script anywhere runs every package's lint and build, and cal.com's
   // `deploy: { dependsOn: ["@calcom/web#build"] }` builds web; vx said no
-  // project declares either.
-  it('a no-script name no package has a script for is a group wherever it has an edge', async () => {
+  // project declares either. A `pkg#task` edge stays in pkg: in all 116
+  // of cal.com's packages it made every one a dependent of web.
+  it('a no-script name no package has a script for is a group wherever it has an edge of its own', async () => {
     const m = await map(
       {
         tasks: {
@@ -1409,9 +1410,11 @@ describe('turbo-map: `with`', () => {
         m.projects.find((x) => x.name === p)!.tasks.map((t) => [t.name, t.task?.['dependsOn']]),
       )
     expect([tasks('web'), tasks('lib')]).toEqual([
-      { build: ['^build'], ci: ['build'], deploy: ['web#build'] },
+      // `web#build` is web's own: the group stays there, so no package
+      // gains a task edge to web that core's reach would follow.
+      { build: ['^build'], ci: ['build'], deploy: ['build'] },
       // lib's `build` is Turbo's no-op node over lib's files (G-117).
-      { build: ['^build'], lint: undefined, ci: ['lint', 'build'], deploy: ['web#build'] },
+      { build: ['^build'], lint: undefined, ci: ['lint', 'build'] },
     ])
   })
 
