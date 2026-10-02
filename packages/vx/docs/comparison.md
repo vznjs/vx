@@ -337,8 +337,8 @@ prune` policy at the end of every run,
   (`src/workspace/config-cache.ts`): a lexer-backed purity GATE, not a
   heuristic — with string literals and comments stripped, any BACKSLASH
   in code position (an identifier escape: `\u0070rocess` IS `process`,
-  the one spelling a deny-list cannot see), any non-`@vzn/vx` bare
-  import, or a closure past 32 files opts a config out. Warm 1000-project run
+  the one spelling a deny-list cannot see), any bare import but
+  `@vzn/vx` (its pure values) and `@vzn/vx/config`, or a closure past 32 files opts a config out. Warm 1000-project run
   ~400 → 237 ms with the rest of the perf waves.
 - `vx init` (scripts → configs), `vx why`, `vx last`,
   `--download`, remote execution through `@vzn/vx-reapi`,
