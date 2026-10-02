@@ -962,6 +962,7 @@ session a plugin's `onTaskStdout` heard the server after its own
 released just before the teardown. Row (`keep-alive.test.ts` › a plugin
 hears nothing after its teardown while vx holds a server): red without
 the fix (`torn:AFTER`). `modules/plugin.md` says so.
+
 ## C-65: the stop kills a running `cache.inputs.runtime` probe
 
 A Ctrl-C while a task's `cache.inputs.runtime` probe ran (a slow
