@@ -681,6 +681,14 @@ with no prediction; a history read error fails open in both callers.
 
 ## Leads for other streams
 
+- **A:** a kept server that crashes after the summary (`vx run dev`,
+  the server exits 4, vx exits 1) is recorded `ok` with the server
+  `success` in the run history: `recordRunBundle` runs before the
+  keep-alive wait and the cache is closed by the time the wait ends, so
+  `vx last` says `ok`. C-53 fixed the summary and the report; the
+  history needs an update path (reopen, mark the invocation and that
+  row failed).
+
 - **E:** a plugin command's plain `throw` (`commands.probe.run` throwing
   `new Error('boom')`) prints `vx: Error: boom` and a stack, and names
   no plugin (`src/cli/index.ts`), where every other stage says
@@ -789,3 +797,72 @@ Turbo's //#task as the root project's task: the refusal, a scoped run
 that pulls the root in, and the `cache.inputs.tasks` spelling): red with
 either site reverted, and with the `cache.inputs.tasks` rewrite alone
 mutated.
+
+## C-52: a requested group keeps the servers it stands for
+
+`vx run app#dev` over `dev: { dependsOn: ['^dev'] }` (a group, the
+Turbo-style fan-out) started every server, stopped them all at the end
+of the graph and exited 0. `selectKeepAlive` seeded its walk from
+requested (or surfaced) persistent tasks only, and a cross-project
+group's deps are not surfaced (that marking stays inside the project).
+The walk now also starts from each requested group, through nested
+groups to the persistent tasks below; a one-shot under it keeps none.
+Row (`persistent-shutdown.test.ts` › keeps the persistent tasks a
+requested group stands for): red without the seed; probed end to end
+(held until Ctrl-C, exit 130). `execution.md` says so.
+
+## C-51: a restore under another restore ranks by what that one blocks
+
+`tieredReverseDepCount` ranked a restore by its direct exec-tier
+dependents only. A restore's dependents are released once its own deps
+have settled (item 963), so in `r1 → r2 → e` (two hits, one miss) `r1`
+blocks `e` too, yet ranked 0 and restored after every idle hit before
+`e` could start. Each restore now hands its rank to its restore deps, in
+one Kahn pass over the restore tier's reversed edges, skipped when no
+restore feeds an exec task. Cost (1,000 projects, 3,000 nodes, min of
+50): a run whose `test` tasks miss, 0.50 → 1.4 ms; all hits, 0.17 →
+0.21–0.28 ms (noise). Rows (`scheduler.test.ts` › the rank table and the
+dispatch order `r1, r2, e` ahead of three idle restores): red without
+the pass. `modules/scheduler.md` says so.
+
+## C-55: a fail-fast skip is not "blocked upstream"
+
+`--continue=never`'s footer read `Skipped: 2 tasks never started —
+blocked upstream` over `⊘ after the run stopped (fail-fast): …`: the
+header claimed a blocker the cause line beneath it denied. It says
+`blocked upstream` only when every skip has a blocker. Rows
+(`summary.test.ts`): a fail-fast skip alone, and the mixed row; both
+red on the old header. `cli.md` says so.
+
+## C-53: a kept server's crash reads `failed` in the summary and report
+
+`vx run dev` whose server exited 4 after the summary exited 1, and the
+rewritten `--summarize` said `ok: false` with every task `success` and
+`failed: 0`; the outcomes `--report` renders said the same. The server
+that ended the session on its own, not cleanly, is now failed with its
+own exit, as item 1071 does for one that crashed before the stop; one a
+Ctrl-C stopped is not. Rows (`keep-alive.test.ts`): the exit-1 row reads
+`app#other` failed with exit 1 and `failed: 1` (red without the fix);
+the Ctrl-C row reads `success` (red with the abort guard removed). The
+run history still says `ok` (lead for A). `execution.md` says so.
+
+## C-54: a plugin whose `setup` throws is named with the hook
+
+Every stage's throw reads `plugin '<name>' failed in <stage>: …`, and
+`modules/plugin.md` promises one line naming the plugin and the hook;
+`setup` alone said `failed to load`, though the plugin had loaded and
+its `setup` threw (an unknown `ctx.on` hook name included). It now says
+`failed in setup`. Rows (`plugin.test.ts`, `plugin-teardown.test.ts`)
+pin the text; red on the old message.
+
+## C-57: a server watch holds keeps printing while watch idles
+
+`vx watch dev` showed its server's log only until the cycle's run
+returned: run() unsubscribed its renderer from the bus on the way out,
+while the `holdPersistent` servers it handed back kept writing into it.
+A run that hands servers back now keeps its renderer until the caller's
+`stop` lands, and leaves the bus then. Row (`held-persistent.test.ts`):
+a held server's line after the return reaches the logger (red without
+the fix), and after `stop` the bus reaches it no more (red with the
+detach removed); probed end to end (9 lines in 2.5 s, 2 before).
+`cli.md` says so.

@@ -336,6 +336,11 @@ export function refusedWritesOutside(violations, opts: { within; linked?; config
      store's Linux feed is ignored) AND (on Linux) from the strace log
      the spawn wrote,
      then calls `SandboxManager.cleanupAfterCommand()`.
+   - On Linux, an attempt whose stderr holds a line of strace's own
+     (strace names itself by its argv[0], `/usr/bin/strace: …`) is run
+     once more unless it timed out or the run is stopping: the trace
+     stopped short, and under `--seccomp-bpf` (which implies
+     `--kill-on-exit`) a dying strace SIGKILLs the task (exit 137; M-18).
    - On Linux, a task that declares `allow.network` waits, in front of its
      command, until SRT's in-sandbox proxy bridges (`socat TCP-LISTEN`
      on 3128 and 1080, started in the background) listen, read off
@@ -378,7 +383,10 @@ an undeclared path, catch the `ENOENT`, and keep running): the denial is
 reported as a violation even though the task exited 0. Trace parsing
 pairs `<unfinished ...>` with its `<... resumed>` line, so a denial in a
 forked child is reported too — a single-line match dropped those, which
-made the violation list incomplete under concurrency. Without `strace`
+made the violation list incomplete under concurrency. A path is
+strace's C string, decoded: read raw, `q"t.txt` was cut at `q\` and
+`é.txt` named `\303\251.txt`, so the report and every `ignore` pattern
+missed the file (B-54). Without `strace`
 on PATH, or one whose `--version` fails, the sandbox still ENFORCES; only
 the structured list is lost, and that is said once on stderr (B-51):
 before, a task that tolerated the miss passed and cached with no word.
@@ -400,6 +408,15 @@ asks whether a read grant covers the cwd, and on Linux also whether one
 lies inside it: bwrap builds the path to a bind, so the cwd lists, and a
 root's `read: ['.']`, bound as its children around the walls, drew the
 note on every failure (B-20).
+
+bwrap enters the task's cwd only if a mount holds it, and otherwise
+`$HOME`, with no word: a project granted no read (`sandbox: {}`, its own
+`node_modules` absent) ran in the home directory, where `cat x.txt` read
+`~/x.txt` and a `mkdir dist` met `Read-only file system`. On Linux, when
+no grant holds the cwd (`cwdMounted`: one at or above it, an existing one
+below it, or a deny that is the cwd), vx denies the cwd too: the task
+enters an empty directory, its reads there are refused and reported, and
+its writes are the scratch the write observer reports (B-53).
 
 SRT's in-sandbox network bridge is `socat TCP-LISTEN:3128` (and 1080),
 which socat 1.8 opens as an IPv6 socket. On a host without IPv6 it

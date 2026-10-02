@@ -130,6 +130,15 @@ describe('admits — the packing rule the admit hook applies', () => {
     expect(admits('c#build', ['a#build'], r, budgets)).toBe(true)
   })
 
+  // What the Nx guide's `parallelism: false` row promises: only a reservation
+  // ABOVE the worker count waits for an idle machine (J-91).
+  it('a cpus reservation at the worker count shares the machine; one above it runs alone', () => {
+    const r = res({ 'at#build': { cpus: 4 }, 'over#build': { cpus: 5 } })
+    expect(admits('at#build', ['unknown#build'], r, budgets)).toBe(true)
+    expect(admits('over#build', ['unknown#build'], r, budgets)).toBe(false)
+    expect(admits('over#build', [], r, budgets)).toBe(true)
+  })
+
   it('a running task with no reservation holds nothing', () => {
     const r = res({ 'b#build': { memory: 1024 } })
     expect(admits('b#build', ['unknown#build'], r, budgets)).toBe(true)

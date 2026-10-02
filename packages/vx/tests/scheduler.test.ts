@@ -676,6 +676,51 @@ describe('tieredReverseDepCount', () => {
     })
   })
 
+  it('a restore under another restore carries the weight of what that one blocks (C-51)', () => {
+    // r2 is released to e1 only once r1 has restored (item 963), so r1
+    // blocks e1 and e2 too. r5 feeds a restore that feeds nothing.
+    const m = nodes(
+      node('r1#b'),
+      node('r2#b', ['r1#b']),
+      node('e1#b', ['r2#b']),
+      node('e2#b', ['e1#b']),
+      node('r5#b'),
+      node('r6#b', ['r5#b']),
+    )
+    const tier = new Set(['r1#b', 'r2#b', 'r5#b', 'r6#b'])
+    expect(Object.fromEntries(tieredReverseDepCount(m, tier))).toEqual({
+      'e1#b': 1,
+      'e2#b': 0,
+      'r1#b': 2,
+      'r2#b': 2,
+      'r5#b': 0,
+      'r6#b': 0,
+    })
+  })
+
+  it('the exec task behind a chain of restores starts before the idle restores (C-51)', async () => {
+    const order: string[] = []
+    await runGraph({
+      nodes: nodes(
+        node('x1#b'),
+        node('x2#b'),
+        node('x3#b'),
+        node('r1#b'),
+        node('r2#b', ['r1#b']),
+        node('e#b', ['r2#b']),
+      ),
+      concurrency: 1,
+      restoreTier: new Set(['x1#b', 'x2#b', 'x3#b', 'r1#b', 'r2#b']),
+      execute: async (n) => {
+        order.push(n.id)
+        return n.id === 'e#b'
+          ? success(n)
+          : { node: n, status: 'cache-hit', exitCode: 0, durationMs: 0, hash: `h-${n.id}` }
+      },
+    })
+    expect(order).toEqual(['r1#b', 'r2#b', 'e#b', 'x1#b', 'x2#b', 'x3#b'])
+  })
+
   it('an exec task whose only dependent is a restore blocks nothing, and yields to one that does', async () => {
     // Whole-graph counts tie e1 and e2 at one dependent each and the
     // insertion order started e1 first; e1's dependent is a restore that

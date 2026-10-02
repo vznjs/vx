@@ -1664,9 +1664,8 @@ describe.skipIf(!available || process.platform !== 'linux')(
     // write of its own, so a declared `cache.outputs` buys the task no
     // write at all.
     //
-    // Linux-only for the same reason as the row further down: `Read-only
-    // file system` is the bwrap denial, verified in a Linux container, and
-    // macOS seatbelt refuses differently. What is NOT platform-specific is
+    // Linux-only: the lines are Linux's write observer's, and macOS
+    // seatbelt refuses differently. What is NOT platform-specific is
     // the claim itself — that a declared `cache.outputs` contributes
     // nothing to the request — and `sandbox-request.test.ts` pins that
     // directly, on every platform.
@@ -1705,14 +1704,20 @@ describe.skipIf(!available || process.platform !== 'linux')(
       async () => {
         // The neighbouring row proves this for a task that declares
         // `allow.read` and no write. This is the case the TYPE describes:
-        // no allow block at all. The project tree is read-only, so the
-        // task's own `mkdir` is refused by the OS and the run fails —
-        // which is the honest outcome, not a silent empty artifact.
-        const dir = await project(undefined)
+        // no allow block at all. Nothing binds the project, so its `dist`
+        // is the sandbox's scratch: the writes are reported and fail the
+        // run — the honest outcome, not a silent empty artifact. (This row
+        // read `Read-only file system` while the task ran in `$HOME`.)
+        const dir = realpathSync(await project(undefined))
         const r = await run({ cwd: fixture.root, tasks: ['build'], log: collectingLogger(fixture) })
         expect(r.ok).toBe(false)
-        expect(r.outcomes[0]?.status).toBe('failed')
-        expect(fixture.log.join('\n')).toContain('Read-only file system')
+        expect([r.outcomes[0]?.status, r.outcomes[0]?.sandboxViolationLines]).toEqual([
+          'failed',
+          [
+            `mkdir(${dir}/dist) = a write no grant covers  [${dir}/dist]`,
+            `openat(${dir}/dist/app.js) = a write no grant covers  [${dir}/dist/app.js]`,
+          ],
+        ])
         expect(existsSync(path.join(dir, 'dist', 'app.js'))).toBe(false)
       },
       TIMEOUT,
@@ -2861,6 +2866,27 @@ describe('deniedCalls (strace trace parsing)', () => {
       '',
     ].join('\n')
     expect(deniedCalls(trace)).toEqual([])
+  })
+
+  // strace writes a path as a C string: a quote, a backslash and a
+  // control byte escaped, a non-ASCII byte as octal. Read raw, `q"t.txt`
+  // stopped at `q\` and `é.txt` was named `\303\251.txt`, so neither the
+  // report nor an `ignore` pattern saw the file.
+  it('decodes the C-string escapes strace writes a path with', () => {
+    const trace = [
+      String.raw`1001 openat(AT_FDCWD, "/ws/\303\251.txt", O_RDONLY) = -1 ENOENT (No such file or directory)`,
+      String.raw`1001 openat(AT_FDCWD, "/ws/q\"t.txt", O_RDONLY) = -1 ENOENT (No such file or directory)`,
+      String.raw`1002 openat(AT_FDCWD, "/ws/b\\s\tt\n", O_RDONLY <unfinished ...>`,
+      '1002 <... openat resumed>)              = -1 EACCES (Permission denied)',
+      String.raw`1001 openat(AT_FDCWD, "/ws/\x41\0011", O_RDONLY) = -1 ENOENT (No such file or directory)`,
+      '',
+    ].join('\n')
+    expect(deniedCalls(trace).map((c) => c.rawPath)).toEqual([
+      '/ws/é.txt',
+      '/ws/q"t.txt',
+      '/ws/b\\s\tt\n',
+      '/ws/A\u00011',
+    ])
   })
 
   it('never double-counts: a resume retires its pending entry', () => {
@@ -4598,6 +4624,33 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
       if (previous === undefined) delete process.env['JAVA_TOOL_OPTIONS']
       else process.env['JAVA_TOOL_OPTIONS'] = previous
     }
+  })
+
+  // bwrap enters the old cwd only if a mount holds it, else `$HOME`, with
+  // no word: a project granted no read ran there, and `cat x.txt` read
+  // `~/x.txt` under a green run.
+  it('runs in its own cwd when no grant holds it, and its read there is reported', async () => {
+    const proj = path.join(dir, 'proj')
+    await mkdir(proj)
+    await writeFile(path.join(proj, 'x.txt'), 'x')
+    const run = (command: string) =>
+      runSandboxed(
+        args(command, {
+          cwd: proj,
+          // The project's own `node_modules`, absent here, as a project
+          // without one has it: a grant that mounts nothing.
+          baseAllowRead: [path.join(proj, 'node_modules')],
+          baseDenyRead: [dir],
+          reportWithin: proj,
+        }),
+      )
+    const pwd = await run('pwd')
+    expect([pwd.exitCode, pwd.stdout.trim()]).toEqual([0, proj])
+    const cat = await run('cat x.txt')
+    expect([cat.exitCode === 0, cat.violations.map((v) => v.line.includes('x.txt'))]).toEqual([
+      false,
+      [true],
+    ])
   })
 
   it('a spawn that throws is exit 127 with the reason, not a rejection', async () => {
