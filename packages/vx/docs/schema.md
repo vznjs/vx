@@ -25,7 +25,7 @@ tasks.
 ## Project config
 
 ```ts
-import { defineProject } from '@vzn/vx'
+import { defineProject } from '@vzn/vx/config'
 
 export default defineProject({
   tasks: {
@@ -1254,7 +1254,7 @@ Loaded from `vx.workspace.{ts,mts,js,mjs}` at the workspace root.
 default.
 
 ```ts
-import { defineWorkspace } from '@vzn/vx'
+import { defineWorkspace } from '@vzn/vx/config'
 import { otel } from '@vzn/vx-otel'
 
 export default defineWorkspace({
@@ -1373,7 +1373,7 @@ machinery by design.
 ## Helpers
 
 ```ts
-import { defineProject, defineWorkspace } from '@vzn/vx'
+import { defineProject, defineWorkspace } from '@vzn/vx/config'
 
 // Identity functions; their purpose is type inference.
 defineProject<T extends ProjectConfig>(config: T): T
@@ -1392,7 +1392,7 @@ type-only form gives the same editor checking for free, and is what
 `vx init` / `@vzn/vx-migrate` write:
 
 ```ts
-import type { ProjectConfig, WorkspaceConfig } from '@vzn/vx'
+import type { ProjectConfig, WorkspaceConfig } from '@vzn/vx/config'
 export default { tasks: { … } } satisfies ProjectConfig
 export default { plugins: [] } satisfies WorkspaceConfig
 ```
@@ -1404,7 +1404,7 @@ strictly worse.
 ## Full example
 
 ```ts
-import { defineProject } from '@vzn/vx'
+import { defineProject } from '@vzn/vx/config'
 
 export default defineProject({
   tasks: {
@@ -1505,7 +1505,7 @@ was deliberately rejected — the language already does this). Plain TS
 arrays:
 
 ```ts
-import { defineProject } from '@vzn/vx'
+import { defineProject } from '@vzn/vx/config'
 
 const srcInputs = ['src/**', 'tsconfig.json']
 
@@ -1529,7 +1529,7 @@ A preset is a TypeScript function that returns a `TaskConfig`:
 
 ```ts
 // presets/ts-build.ts
-import type { TaskConfig } from '@vzn/vx'
+import type { TaskConfig } from '@vzn/vx/config'
 
 export function tsBuild(opts?: { tsconfig?: string }): TaskConfig {
   return {
@@ -1545,7 +1545,7 @@ export function tsBuild(opts?: { tsconfig?: string }): TaskConfig {
 
 ```ts
 // packages/app/vx.config.ts
-import { defineProject } from '@vzn/vx'
+import { defineProject } from '@vzn/vx/config'
 import { tsBuild } from '../../presets/ts-build.ts'
 
 export default defineProject({
