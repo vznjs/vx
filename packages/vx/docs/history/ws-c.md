@@ -1046,6 +1046,7 @@ cache, so a hit above one restores ahead of its failure (C-1's shape).
 Red when the taint is disabled (`out/t2.txt` replays PARTIAL) and when a
 restore-tier hit releases its dependants before its deps settle (item
 963's hold). Test only.
+
 ## C-76: the sandbox probe starts when a sandboxed task is sure to run
 
 The probe (~220 ms of spawns on Linux) started on the first sandboxed
