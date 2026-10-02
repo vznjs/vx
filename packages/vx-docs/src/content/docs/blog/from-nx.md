@@ -99,7 +99,7 @@ files freeze that snapshot as static config: review them, replace the
 | `outputs`                             | `cache.outputs.files`                         |
 | `nx affected`                         | `vx run … --affected[=<base>]`                |
 | `nx run-many --projects`              | `vx run … --filter`                           |
-| `parallelism: false`                  | `--concurrency 1`, or a schedule-plugin reservation at or above the worker count |
+| `parallelism: false`                  | `--concurrency 1`, or a schedule-plugin `cpus` reservation above the worker count |
 | `nx watch`                            | `vx watch`                                    |
 | `targetDefaults`                      | already applied in the graph; share them as a preset you import |
 
