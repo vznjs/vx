@@ -54,7 +54,13 @@ export function nxDefaultOutputs(
   todos: string[],
   tops?: ReadonlySet<string>,
 ): string[] {
-  if (typeof options['outputPath'] === 'string') return [options['outputPath']]
+  const outputPath = options['outputPath']
+  if (typeof outputPath === 'string') return [outputPath]
+  // A list is each of its paths, as Nx takes it; read as no `outputPath`,
+  // the build cached the default directories and a hit restored none.
+  if (Array.isArray(outputPath) && outputPath.length > 0) {
+    if (outputPath.every((o) => typeof o === 'string')) return outputPath
+  }
   if (targetName !== 'build' && targetName !== 'prepare') return []
   const root = projectRel === '.' ? '' : projectRel
   const at = (p: string): string => path.posix.join(root, p)
@@ -100,6 +106,11 @@ export function mapNxOutputs(
       // `{options.outputFile}` with no outputFile is no output, not a todo
       // on every lint target (2026-09-28).
       if (!v) continue outputs
+      // Nx's template replacement writes a number or a boolean as its text.
+      if (typeof v === 'number' || typeof v === 'boolean') {
+        s = s.replace(optTok[0], String(v))
+        continue
+      }
       if (typeof v !== 'string') {
         todos.push(
           `output ${JSON.stringify(o)}: option ${JSON.stringify(optTok[1])} is not a literal ` +

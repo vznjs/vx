@@ -36,9 +36,9 @@ terminal and a task succeeding or failing. Read it alongside
  │       or not its globs claim cwd (pnpm's rule); when nothing claims
  │       cwd the nearest candidate wins. An UNSCOPED run (no explicit
  │       project scope, at least one bare task name) then starts
- │       step 11's git enumeration over the whole tree, overlapping
- │       steps 2–10; a scoped run waits, since its pathspecs depend on
- │       which configs load.
+ │       step 12's git enumeration over the whole tree, overlapping
+ │       steps 2–11; a scoped run waits, since its pathspecs depend on
+ │       which projects the task graph holds.
  │    2. loadWorkspace — parses the appropriate manifest. Bun.YAML
  │       for pnpm; the package.json forms read as bytes (readOnce,
  │       shared with step 1) and JSON.parse.
@@ -80,11 +80,15 @@ terminal and a task succeeding or failing. Read it alongside
  │       with the local cache into a LayeredCache (it wins); else
  │       resolveCache lets a plugin's `cache` capability wrap or
  │       replace it; else bare local.
- │   11. Bulk git populate — the enumeration step 1 started is
- │       awaited, or a scoped run starts it here. FOUR spawns at the
+ │   11. buildTaskGraph (see below).
+ │   12. Bulk git populate — the enumeration step 1 started is
+ │       awaited, or a scoped run starts it here over the projects
+ │       that own a task (not the dependency closure step 7 loaded,
+ │       which a `lint` of one package does not key). FOUR spawns at the
  │       root, three concurrent and the rev-parse asked while they run
- │       (`ls-files -s -v -z` for the index: every tracked path's OID
- │       and its cache-state flag; `status --porcelain -z -uall` for
+ │       (`ls-files -s -v -z --debug` for the index: every tracked
+ │       path's OID, its cache-state flag and its recorded size;
+ │       `status --porcelain -z -uall` for
  │       the dirty AND untracked sets, the one worktree walk;
  │       `rev-parse --show-prefix --git-common-dir --show-object-format`,
  │       memoized per process and shared with the file hasher, which
@@ -95,9 +99,11 @@ terminal and a task succeeding or failing. Read it alongside
  │       OIDs. `ls-files --others` is NOT among them — status's
  │       `-uall` already answers untracked, and asking git twice
  │       walked the same tree again. A fifth, `check-attr`, runs only
- │       when an attributes file could rewrite bytes. The run's
- │       HashCache is created after it.
- │   12. buildTaskGraph (see below).
+ │       when an attributes file could rewrite bytes, and a sixth,
+ │       `cat-file --batch-check`, only for blob sizes the cache's
+ │       `blob_sizes` memo lacks (A-60): an OID whose blob is not the
+ │       recorded size is not trusted. The run's HashCache is created
+ │       after it.
  ├─ Task selection (graph/task-graph.ts:expandRequested)
  │    Bare task names fan out across the resolved candidate projects
  │    (every project that declares the task). Anchored entries
@@ -151,7 +157,8 @@ terminal and a task succeeding or failing. Read it alongside
  │                runner adds/removes each around its spawn.
  │    • SIGINT/SIGTERM/SIGHUP handlers (removed in a finally): on
  │                signal, forward it (SIGHUP as SIGTERM) to everything
- │                in liveChildren + persistentRegistry, wait
+ │                in liveChildren + persistentRegistry (and kill any
+ │                running cache.inputs.runtime probe, C-65), wait
  │                VX_KILL_GRACE_MS (2 s) for their groups, SIGKILL
  │                what is still there, let the run finish its own
  │                end (flush, teardown, cache close), then
@@ -368,19 +375,22 @@ The child process gets, in priority order (lowest first):
 
 1. **Essential allowlist** (`PATH`, `HOME`, `SHELL`, `USER`, `LOGNAME`,
    `TMPDIR`, `TEMP`, `TMP`, `LANG`, `LC_ALL`, `LC_CTYPE`, `TERM`,
-   `COLORTERM`, `FORCE_COLOR`, `NO_COLOR`, `CI`, `NODE_OPTIONS`, plus
-   the Windows essentials from `SYSTEMROOT` to `PROCESSOR_ARCHITECTURE` — the list is
+   `COLORTERM`, `FORCE_COLOR`, `NO_COLOR`, `CI`, `NODE_OPTIONS` — the list is
    `ESSENTIAL_ENV` in `src/exec/env.ts`).
 2. **`exec.env.passThrough`** names → values from host `process.env`.
 3. **`exec.env.define`** literal name/value pairs.
 4. **PATH augmentation** — `<projectDir>/node_modules/.bin`, then
    `<workspaceRoot>/node_modules/.bin`, are prepended so installed
    tools (`oxlint`, `vite`, etc.) work without `npx`. Never a sibling
-   project's bin; those stay invisible. A task whose shell exits 127 or 126 gets one more frame line
+   project's bin; those stay invisible. A bin directory whose path holds
+   PATH's delimiter (`:`) is left out: PATH cannot name it, and split it
+   became two entries, one relative to the task's cwd. A task whose shell exits 127 or 126 gets one more frame line
    (`orchestrator/shell-verdict.ts`): for a bare word, that 127 is the
    shell's "command not found", the word (when the command is a plain
    `word args…`), the two bin directories vx puts first, and that a
-   sibling project's bin is never visible, and on 126 `chmod +x`; for
+   sibling project's bin is never visible (or, when a bin directory was
+   left out for its `:`, that directory and the fix: move the
+   workspace), and on 126 `chmod +x`; for
    a word with a slash, what the file says — missing (the resolved
    path), a directory, not executable by this user, a `#!` interpreter that does
    not exist (a CRLF line ending is named as such), or no `#!` line.
@@ -411,7 +421,7 @@ broader access has cache-stability implications).
 | Exec exits non-zero                                                                                                                                              | Task is `failed`; cache NOT written; output streamed live + the failure frame replays at run end                                                                                                                                                                                                                                                                                                                                                          |
 | `exec.timeout` overrun                                                                                                                                           | SIGTERM to the task's group, SIGKILL for whoever is left after the grace; task is `failed` (timed out), exit 143 (137 when the SIGKILL took it, and the line says so), never cached                                                                                                                                                                                                                                                                       |
 | Child killed by Ctrl-C teardown (SIGINT/SIGTERM/SIGHUP), or by an embedder's `RunOptions.signal` abort — which also completes every never-started task `aborted` | Task is `aborted` — not counted, not recorded. An attempt that ends while the run is stopping is `aborted` whatever its exit: a trap that exits 0 is not cached, and a failure is not retried (item 962). What it printed still shows in its frame. A child killed by a signal while the run is NOT stopping (a supervisor's SIGTERM, a `kill` from another shell) is `failed (exit 143, 128 + SIGTERM)`: retried, shown, and fail-fast trips (item 1100) |
-| `execute()` throws (internal error)                                                                                                                              | Task marked `failed`; stderr written `[vx] internal error in <id>` (a `UserError` reports plainly); a plugin executor's throw is prefixed `plugin '<p>' (executor '<e>') failed in execute:` (C-63)                                                                                                                                                                                                                                                       |
+| `execute()` throws (internal error)                                                                                                                              | Task marked `failed`; stderr written `[vx] internal error in <id>` (a `UserError` reports plainly); a plugin executor's throw reports plainly as `plugin '<p>' (executor '<e>') failed in execute: <reason>` (C-63, C-85)                                                                                                                                                                                                                                 |
 | Persistent task exits before ready                                                                                                                               | Task marked `failed` with `exited before becoming ready (exit N)`; its output already streamed live                                                                                                                                                                                                                                                                                                                                                       |
 | Upstream task fails                                                                                                                                              | Dependents marked `skipped` (exit 1, durationMs 0); no command runs — EXCEPT a restore-tier task, whose confirmed cache hit still restores (its key is dep-independent)                                                                                                                                                                                                                                                                                   |
 | Sandbox violation (macOS monitor / Linux structural)                                                                                                             | Task is `failed`; violations render in the frame; nothing cached                                                                                                                                                                                                                                                                                                                                                                                          |

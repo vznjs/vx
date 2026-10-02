@@ -1,12 +1,12 @@
 ---
-title: 'From Turborepo: run it as it is, then migrate at your pace'
+title: 'From Turborepo: a temporary start, then native config'
 date: 2026-09-10T23:32:00Z
 authors:
   - vzn
 tags:
   - migration
   - turborepo
-excerpt: "A Turborepo workspace runs under vx with a two-line workspace file and no config rewritten. When you want the TypeScript configs, one command writes them, and a package that has one keeps it while the rest stay on turbo.json."
+excerpt: "Moving a Turborepo workspace to vx: a two-line workspace file is a temporary start, and one command writes the native TypeScript configs that are the goal."
 ---
 
 vx is shaped like Turborepo on purpose. Same per-package model, same
@@ -15,11 +15,13 @@ vx is shaped like Turborepo on purpose. Same per-package model, same
 almost nothing has to change in how you think about the graph; what
 changes is where the config lives and what it can say.
 
-## Step zero: do not migrate
+## Step zero: a temporary start
 
 `turbo()` from `@vzn/vx-migrate` fills vx's `project` stage from your existing
-`turbo.json` and each package's scripts. One file, and the repository
-runs under vx. `vx init` writes it beside `turbo.json`:
+`turbo.json` and each package's scripts. It is a bridge while you
+migrate, not a way to keep turbo.json: vx is fast on native config, and
+only native config is what its benchmarks measure. `vx init` writes it
+beside `turbo.json`:
 
 ```bash
 npm install -D @vzn/vx       # or pnpm / yarn / bun
@@ -34,17 +36,11 @@ import { turbo } from '@vzn/vx-migrate'
 export default { plugins: [turbo()] } satisfies WorkspaceConfig
 ```
 
-That is how solidjs/solid was [benchmarked](../honest-benchmarks/):
-five packages, pnpm 9, Turbo 2.10.10 as the repo's own dependency, and
-vx on top of the untouched `turbo.json`. Both tools see the same graph
-and restore the same 64 output files; vx's warm restore is 66 ms to
-Turbo's 127.
-
 Whatever the mapping cannot express becomes a warning on every run,
 which is the same list `bunx @vzn/vx-migrate --dry` prints once. A
 package that writes its own `vx.config.ts` keeps it; the plugin fills
-and never overwrites. So you can migrate one package at a time, or
-never.
+and never overwrites. So you can migrate one package at a time, until
+every package has its own config and `vx.workspace.ts` drops `turbo()`.
 
 ## Step one: let the tool write the files
 
@@ -79,7 +75,7 @@ already doing.
 | `extends`                                      | a package task merges over the root's; `false` alone opts out, `false` + keys runs on those alone |
 | `interruptible` | nothing: `vx watch` re-spawns every persistent task each cycle |
 | `tags` | nothing: labels Turbo keeps out of the hash and the behaviour |
-| `outputLogs`                                   | no per-task knob: the per-run `--output-logs` flag      |
+| `outputLogs` (Turbo 1: `outputMode`)           | no per-task knob: the per-run `--output-logs` flag      |
 | `$TURBO_ROOT$/file`                            | `cache.inputs.workspaceFiles`                           |
 | `dotEnv` (Turbo 1)                              | `cache.inputs.runtime`: a probe that hashes the `.env` files |
 | `command` (Turbo 2.11) | the task's `exec.command`; `null` is no task |

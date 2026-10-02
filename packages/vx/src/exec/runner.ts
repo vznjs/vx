@@ -25,9 +25,8 @@ import {
   untilGroupsGone,
 } from './kill-tree.js'
 
-const WIN32 = process.platform === 'win32'
-/** `sh` names itself in its errors; `bun exec` on Windows keeps its own. */
-const SH_ARGV0 = WIN32 ? {} : { argv0: 'sh' }
+/** `sh` names itself in its errors. */
+const SH_ARGV0 = { argv0: 'sh' }
 
 export interface RunResult {
   exitCode: number
@@ -224,8 +223,6 @@ const SHELL_BUILTINS = new Set([
  * the shell.
  */
 export function execWrap(command: string): string {
-  // Bun's shell, the task shell on Windows, has no `exec`.
-  if (WIN32) return command
   const first = execWord(command)
   return first === undefined ? command : `exec ${command}`
 }
@@ -238,9 +235,23 @@ export function execWrap(command: string): string {
  */
 export function execWord(command: string): string | undefined {
   if (SHELL_CONTROL.test(command)) return undefined
-  const first = command.trimStart().split(/\s+/)[0] ?? ''
-  if (first === '' || first.includes('=') || SHELL_BUILTINS.has(first)) return undefined
-  return first
+  // The word as the shell reads it: quotes group and are removed, so
+  // `"./my tool.sh"` names one file (the verdict looked for `"./my`).
+  const raw = command.trimStart()
+  let first = ''
+  let quote = ''
+  let i = 0
+  for (; i < raw.length; i++) {
+    const c = raw[i]!
+    if (quote !== '') {
+      if (c === quote) quote = ''
+      else first += c
+    } else if (c === "'" || c === '"') quote = c
+    else if (/\s/.test(c)) break
+    else first += c
+  }
+  if (quote !== '' || first === '' || raw.slice(0, i).includes('=')) return undefined
+  return SHELL_BUILTINS.has(first) ? undefined : first
 }
 
 /**
@@ -252,6 +263,16 @@ export function execWord(command: string): string | undefined {
 export function signalExitCode(signal: string): number {
   const num = (osConstants.signals as Partial<Record<string, number>>)[signal]
   return num === undefined ? 130 : 128 + num
+}
+
+/**
+ * The signal a run's stop sends a task, from its abort reason: a task
+ * stopped before its spawn exits as if that signal had killed it. As
+ * `forwardedSignal` (orchestrator/signals.ts): a hang-up forwards SIGTERM
+ * (to many servers SIGHUP means "reload"), so it reads as SIGTERM here.
+ */
+export function stopSignal(reason: unknown): 'SIGINT' | 'SIGTERM' {
+  return reason === 'SIGINT' ? 'SIGINT' : 'SIGTERM'
 }
 
 /**
@@ -484,9 +505,8 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
           ],
           // Its own session and process group, so a kill reaches what it
           // forked (kill-tree.ts). stdin is a pipe, so a background group
-          // never stops on a terminal read. Windows has no groups, and a
-          // detached child there has no console.
-          detached: !WIN32,
+          // never stops on a terminal read.
+          detached: true,
         },
       ),
     )
@@ -695,9 +715,8 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
         stdio: ['ignore', 'pipe', 'pipe', ...(guard === undefined ? [] : [guard])],
         // Its own session and process group, so a kill reaches what it
         // forked (kill-tree.ts). stdin is ignored, so a background group
-        // never stops on a terminal read. Windows has no groups, and a
-        // detached child there has no console.
-        detached: !WIN32,
+        // never stops on a terminal read.
+        detached: true,
       }),
     )
   } catch (err) {
@@ -754,6 +773,11 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
  * bound in hand.
  */
 export function ownRssHighWater(): number {
+  // `VmHWM`, not getrusage's own peak: that one also holds the peak of the
+  // image this process exec'd from, which under vfork is the PARENT's
+  // memory — vx spawned from a 300 MB test runner (or node) read a floor
+  // of 300 MB, and a task holding 150 MB reported no peak (I-40's
+  // regression, tests/own-rss-high-water.test.ts).
   if (process.platform === 'linux') {
     try {
       const m = /VmHWM:\s+(\d+) kB/.exec(readFileSync('/proc/self/status', 'utf8'))

@@ -1,10 +1,8 @@
-// The README and the site's landing lead with "Try it on your repo": four
-// commands and the one `vx.workspace.ts` that `vx init` writes. This runs
-// them as written on a Turbo repo and an Nx repo, and holds the shown file
-// to the written one, so a step that drifts from what works fails here,
-// naming the line. The page reads outside packages/vx (README.md,
-// the site), and the run spawns npx, which a sandboxed shard cannot host —
-// hence the unsafe suite.
+// `vx init` in a Turbo or Nx repo, the temporary start the migrate guide
+// shows (owner, 2026-10-02: Turbo and Nx only via migration): four
+// commands, and the guide's `vx.workspace.ts` held to the one init writes.
+// The run spawns npx, which a sandboxed shard cannot host — hence the
+// unsafe suite.
 //
 // Two steps cannot run as a user runs them, and each is replaced by what it
 // does: `npm install -D @vzn/vx @vzn/vx-migrate` links exactly the packages
@@ -32,36 +30,24 @@ import { gitIn, gitInit } from './helpers/workspace.js'
 const CORE = path.resolve(import.meta.dir, '..')
 const PACKAGES = path.dirname(CORE)
 const REPO = path.dirname(PACKAGES)
-const README = path.join(REPO, 'README.md')
-const LANDING = path.join(PACKAGES, 'vx-docs', 'src', 'pages', 'index.astro')
+const GUIDE = path.join(PACKAGES, 'vx-docs', 'src', 'content', 'docs', 'guides', 'migrate.md')
 
-interface Steps {
-  workspaceFile: string
-  commands: string[]
-}
-
-/** The README's "Try it on your repo": its `ts` fence and its `sh` fence's lines. */
-function readmeSteps(): Steps {
-  const text = readFileSync(README, 'utf8')
-  const start = text.indexOf('## Try it on your repo')
+/** The guide's `## <name>` section: its fences of `lang`, in order. */
+function guideFences(name: string, lang: string): string[] {
+  const text = readFileSync(GUIDE, 'utf8')
+  const start = text.indexOf(`\n## ${name}\n`)
   const section = text.slice(start, text.indexOf('\n## ', start + 1))
-  const ts = /```ts\n([\s\S]*?)```/.exec(section)?.[1] ?? ''
-  const sh = /```sh\n([\s\S]*?)```/.exec(section)?.[1] ?? ''
-  return { workspaceFile: ts, commands: sh.split('\n').filter((l) => l.trim() !== '') }
+  return [...section.matchAll(new RegExp('```' + lang + '\\n([\\s\\S]*?)```', 'g'))].map(
+    (m) => m[1]!,
+  )
 }
 
-/** The landing's `workspaceFile` and `tryCommands` template literals. */
-function landingSteps(): Steps {
-  const text = readFileSync(LANDING, 'utf8')
-  const literal = (name: string): string =>
-    new RegExp(`const ${name} = \`([\\s\\S]*?)\``).exec(text)?.[1] ?? ''
-  return {
-    workspaceFile: literal('workspaceFile').trimEnd() + '\n',
-    commands: literal('tryCommands')
-      .split('\n')
-      .filter((l) => l.trim() !== ''),
-  }
-}
+const COMMANDS = [
+  'npm install -D @vzn/vx @vzn/vx-migrate',
+  'npx vx init',
+  'npx vx run build --all',
+  'npx vx run build --all',
+]
 
 const roots: string[] = []
 afterAll(() => {
@@ -200,22 +186,14 @@ case "$2" in --file=*) f="\${2#--file=}"; mkdir -p "$(dirname "$f")"; cp "$(dirn
   chmodSync(bin, 0o755)
 }
 
-describe('the README and landing "Try it on your repo" steps run as written', () => {
-  const readme = readmeSteps()
-
-  it('the landing shows the README steps', () => {
-    expect(landingSteps()).toEqual(readme)
-  })
-
-  it('the README gives an install, vx init, two runs, and the file init writes', () => {
-    expect(readme.workspaceFile).toContain('plugins: [turbo()]')
-    const bare = readme.commands.map((l) => l.replace(/\s+#.*$/, '').trim())
-    expect(bare.map((l) => INSTALL.test(l))).toEqual([true, false, false, false])
-    expect(bare[1]).toBe('npx vx init')
-  })
-
-  const cases: Array<[string, () => string, (file: string) => string, Record<string, string>]> = [
-    ['a Turbo repo', turboRepo, (f) => f, { 'app#build': '', 'lib#build': '' }],
+describe('vx init in a Turbo or Nx repo: the first run builds, the second hits', () => {
+  const cases: Array<[string, () => string, () => string, Record<string, string>]> = [
+    [
+      'a Turbo repo',
+      turboRepo,
+      () => guideFences('Turborepo', 'ts')[0]!,
+      { 'app#build': '', 'lib#build': '' },
+    ],
     [
       'an Nx repo',
       () => {
@@ -223,11 +201,7 @@ describe('the README and landing "Try it on your repo" steps run as written', ()
         standInNx(root)
         return root
       },
-      // The README's own words: `in an Nx repo, nx for turbo`.
-      (f) =>
-        f
-          .replace('import { turbo }', 'import { nx }')
-          .replace('plugins: [turbo()]', 'plugins: [nx()]'),
+      () => guideFences('Nx', 'ts')[0]!,
       { 'app#build': '', 'lib#build': '' },
     ],
   ]
@@ -235,10 +209,10 @@ describe('the README and landing "Try it on your repo" steps run as written', ()
   for (const [name, make, adapt, tasks] of cases) {
     it(`${name}: the first run builds, the second hits`, () => {
       const root = make()
-      const file = adapt(readme.workspaceFile)
+      const file = adapt()
       expect(file).not.toContain(name === 'a Turbo repo' ? 'plugins: [nx()]' : 'plugins: [turbo()]')
       commit(root)
-      const [install, init, first, second] = readme.commands as [string, string, string, string]
+      const [install, init, first, second] = COMMANDS as [string, string, string, string]
       const want = (status: string) =>
         Object.fromEntries(Object.keys(tasks).map((t) => [t, status]))
       const results: Array<[string, number | null, Record<string, string> | string]> = []
@@ -273,18 +247,6 @@ describe('the README and landing "Try it on your repo" steps run as written', ()
   }
 })
 
-const GUIDE = path.join(PACKAGES, 'vx-docs', 'src', 'content', 'docs', 'guides', 'migrate.md')
-
-/** The guide's `## <name>` section: its fences of `lang`, in order. */
-function guideFences(name: string, lang: string): string[] {
-  const text = readFileSync(GUIDE, 'utf8')
-  const start = text.indexOf(`\n## ${name}\n`)
-  const section = text.slice(start, text.indexOf('\n## ', start + 1))
-  return [...section.matchAll(new RegExp('```' + lang + '\\n([\\s\\S]*?)```', 'g'))].map(
-    (m) => m[1]!,
-  )
-}
-
 /** A `$ <command>` sample's command and the output below it. */
 function transcript(fence: string): [string, string] {
   const [first, ...rest] = fence.split('\n')
@@ -293,7 +255,7 @@ function transcript(fence: string): [string, string] {
 
 // The migrate guide shows what `vx init` and `bunx @vzn/vx-migrate` write
 // and print in a Turbo and an Nx repo; each sample is held to a run.
-describe('the migrate guide shows what vx init and vx-migrate write', () => {
+describe('the migrate guide shows what vx init and vx-migrate write, and the native end state builds', () => {
   it('Turborepo: the workspace file, init’s output and vx-migrate’s report', () => {
     const root = turboRepo()
     commit(root)
@@ -314,43 +276,81 @@ describe('the migrate guide shows what vx init and vx-migrate write', () => {
 
     const [migrateCmd, migrateOut] = transcript(migrateFence!)
     expect(migrateCmd).toBe('bunx @vzn/vx-migrate')
-    // As `bunx` runs it: bunx names itself in `npm_config_user_agent`, and
-    // the report's `next:` line names the runner that started it.
-    const migrate = Bun.spawnSync({
-      cmd: [process.execPath, path.join(PACKAGES, 'vx-migrate', 'src', 'bin.ts')],
-      cwd: root,
-      env: { ...process.env, NO_COLOR: '1', npm_config_user_agent: `bun/${Bun.version}` },
-      stdout: 'pipe',
-      stderr: 'pipe',
-    })
-    expect([migrate.exitCode, migrate.stdout.toString()]).toEqual([0, migrateOut])
+    expect(migrate(root)).toEqual([0, migrateOut])
+    expect(endState(root, 'turbo', 'turbo.json')).toEqual(BUILT)
   }, 60_000)
 
-  it('Nx: the workspace file', () => {
+  it('Nx: the workspace file, init’s output and vx-migrate’s report', () => {
     const root = nxRepo()
+    standInNx(root)
     commit(root)
     const [file] = guideFences('Nx', 'ts')
+    const [initFence, migrateFence] = guideFences('Nx', 'text')
     expect(step(root, 'npm install -D @vzn/vx').code).toBe(0)
-    expect(step(root, 'npx vx init').code).toBe(0)
+    const [initCmd, initOut] = transcript(initFence!)
+    expect(initCmd).toBe('npx vx init')
+    const init = step(root, initCmd)
+    expect([init.code, init.out]).toEqual([0, initOut])
     expect(readFileSync(path.join(root, 'vx.workspace.ts'), 'utf8')).toBe(file!)
+    const [migrateCmd, migrateOut] = transcript(migrateFence!)
+    expect(migrateCmd).toBe('bunx @vzn/vx-migrate')
+    expect(migrate(root)).toEqual([0, migrateOut])
+    expect(endState(root, 'nx', 'nx.json')).toEqual(BUILT)
   }, 60_000)
 })
 
+const BUILT = [
+  ['success', 'success'],
+  ['cache-hit', 'cache-hit'],
+]
+
+/** `bunx @vzn/vx-migrate` as bunx runs it: bunx names itself in
+ *  `npm_config_user_agent`, and the report's `next:` line names the runner. */
+function migrate(root: string): [number | null, string] {
+  const r = Bun.spawnSync({
+    cmd: [process.execPath, path.join(PACKAGES, 'vx-migrate', 'src', 'bin.ts')],
+    cwd: root,
+    env: { ...process.env, NO_COLOR: '1', npm_config_user_agent: `bun/${Bun.version}` },
+    stdout: 'pipe',
+    stderr: 'pipe',
+  })
+  return [r.exitCode, r.stdout.toString()]
+}
+
+/** The guide's last step: the plugin and its import out of
+ *  `vx.workspace.ts`, the tool's config deleted; then two builds on the
+ *  written configs alone, each run's statuses for app and lib. */
+function endState(root: string, plugin: 'turbo' | 'nx', config: string): string[][] {
+  const ws = path.join(root, 'vx.workspace.ts')
+  const text = readFileSync(ws, 'utf8')
+    .split('\n')
+    .filter((l) => !l.includes(`import { ${plugin} }`))
+    .join('\n')
+    .replace(`${plugin}()`, '')
+  expect(text).not.toContain(plugin)
+  writeFileSync(ws, text)
+  rmSync(path.join(root, config))
+  const git = gitIn(root)
+  git('add', '-A')
+  git('commit', '-q', '-m', 'native')
+  return [0, 1].map(() => {
+    expect(step(root, 'npx vx run build --all').code).toBe(0)
+    const s = lastStatuses(root)
+    return [s['app#build']!, s['lib#build']!]
+  })
+}
+
 // The from-Turborepo and from-Nx posts show the file `vx init` writes: the
-// README's, which the rows above hold to a run.
+// guide's, which the rows above hold to a run.
 describe('the migration posts show the file vx init writes', () => {
   const blog = path.join(PACKAGES, 'vx-docs', 'src', 'content', 'docs', 'blog')
   const firstTs = (name: string): string =>
     /```ts\n([\s\S]*?)```/.exec(readFileSync(path.join(blog, name), 'utf8'))?.[1] ?? ''
-  const file = readmeSteps().workspaceFile
-
   it('from-turborepo', () => {
-    expect(firstTs('from-turborepo.md')).toBe(file)
+    expect(firstTs('from-turborepo.md')).toBe(guideFences('Turborepo', 'ts')[0]!)
   })
 
   it('from-nx', () => {
-    expect(firstTs('from-nx.md')).toBe(
-      file.replace('import { turbo }', 'import { nx }').replace('[turbo()]', '[nx()]'),
-    )
+    expect(firstTs('from-nx.md')).toBe(guideFences('Nx', 'ts')[0]!)
   })
 })

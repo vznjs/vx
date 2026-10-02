@@ -23,16 +23,29 @@ export function shellVerdict(args: {
   bins: string[]
   /** The signal that killed the child when the runner saw one (`RunResult.signal`). */
   signal?: string | undefined
+  /** A sandboxed task's view: whether a file is hidden from it (no grant reads it). */
+  hidden?: ((file: string) => boolean) | undefined
 }): string | undefined {
   if (args.code !== 127 && args.code !== 126) return signalVerdict(args.code, args.signal)
   const word = execWord(args.command)
   const what = word ?? 'a command in this task'
   if (word !== undefined && word.includes('/')) {
     const file = path.resolve(args.cwd, word)
-    return `[vx] exit ${args.code} is the shell's "${args.code === 127 ? 'not found' : 'cannot execute'}": ${word} ${fileVerdict(file)}`
+    // The file the host has may be one the sandbox does not: then the
+    // shell's "not found" is the sandbox's, and the file's own state (its
+    // `#!` line) is not the reason.
+    const verdict =
+      existsSync(file) && args.hidden?.(file) === true
+        ? `exists, but no sandbox grant reads it, so inside the sandbox it is not there — add it (or its directory) to exec.sandbox.allow.read`
+        : fileVerdict(file)
+    return `[vx] exit ${args.code} is the shell's "${args.code === 127 ? 'not found' : 'cannot execute'}": ${word} ${verdict}`
   }
   if (args.code === 126) {
     return `[vx] exit 126 is the shell's "found but cannot execute": ${what} is not executable or is a directory — chmod +x it`
+  }
+  const unnamed = args.bins.find((dir) => dir.includes(path.delimiter))
+  if (unnamed !== undefined) {
+    return `[vx] exit 127 is the shell's "command not found": ${what} is not on this task's PATH — ${unnamed} holds "${path.delimiter}", which PATH reads as a separator, so vx cannot put it there; move the workspace to a path without "${path.delimiter}"`
   }
   return `[vx] exit 127 is the shell's "command not found": ${what} is not on this task's PATH — vx puts ${args.bins.join(' and ')} first and never a sibling project's bin; install it in this package or at the workspace root`
 }

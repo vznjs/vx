@@ -68,10 +68,40 @@ export class FileHashStore {
     if (last !== null && now - Number(last.value) < DAY_MS) return
     this.db.transaction(() => {
       this.db.prepare('DELETE FROM file_hashes WHERE seen_at < ?').run(cutoff)
+      this.db.prepare('DELETE FROM blob_sizes WHERE seen_at < ?').run(cutoff)
       this.db
         .prepare('INSERT OR REPLACE INTO schema_meta(key, value) VALUES (?, ?)')
         .run(FILE_HASHES_SWEPT_AT, String(now))
     })()
+  }
+
+  /** Each of `oids` whose size a `rememberBlobSizes` stored: one `IN` query per 900. */
+  knownBlobSizes(oids: readonly string[]): Map<string, number> {
+    const out = new Map<string, number>()
+    for (let i = 0; i < oids.length; i += 900) {
+      const chunk = oids.slice(i, i + 900)
+      const rows = this.db
+        .query(`SELECT oid, size FROM blob_sizes WHERE oid IN (${chunk.map(() => '?').join(',')})`)
+        .all(...chunk) as Array<{ oid: string; size: number }>
+      for (const r of rows) out.set(r.oid, r.size)
+    }
+    return out
+  }
+
+  /** Store blob sizes in one transaction; a memo, so a full disk skips it. */
+  rememberBlobSizes(sizes: ReadonlyMap<string, number>): void {
+    if (!this.write || sizes.size === 0) return
+    const now = Date.now()
+    const insert = this.db.prepare(
+      'INSERT OR REPLACE INTO blob_sizes(oid, size, seen_at) VALUES (?, ?, ?)',
+    )
+    try {
+      this.db.transaction(() => {
+        for (const [oid, size] of sizes) insert.run(oid, size, now)
+      })()
+    } catch (err) {
+      if (!isIndexFull(err)) throw err
+    }
   }
 
   /**
