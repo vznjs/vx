@@ -47,7 +47,7 @@
   {
     "key": "turbo.json envMode",
     "status": "mapped",
-    "reason": "Strict is vx's behaviour; `loose` gets a note, since vx passes only declared variables; under `turbo()` `TURBO_ENV_MODE` wins over it."
+    "reason": "Strict is vx's behaviour; `loose` gets a note, since vx passes only declared variables, and so do the tasks a Turbo 1 `pipeline` config's inferred mode ran loose (no pass-through list); under `turbo()` `TURBO_ENV_MODE` wins over it."
   },
   {
     "key": "turbo.json extends",
