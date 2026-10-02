@@ -356,6 +356,17 @@ SIGKILL to what ignores it: red on a docs-only PR's CI (run 37052235753,
 `exited`. The row now reads it after `exited`, bounded at 3 s; the only
 site of the pattern.
 
+M-33. `vx-reapi` `executor-sweep.test.ts` › the run stopping cancels the
+Execute stream: found by a scan for fixed sleeps before an assertion,
+not by a failure on record. The row stopped the run on a 200 ms timer
+and read the server's cancel count 50 ms after; beside twelve busy
+loops it failed 6 of 20 with `executes` 0 (the stop came before the
+Execute was sent, so nothing was there to cancel). The fake's
+`onExecute` now stops the run once it holds the call, the cancel count
+is polled as its sibling rows do, and the unheard-stop bound is 5 s:
+0 of 20 under the same load. The same scan's other timer-aborted rows
+(`vx-github` 502 wait, `vx-otel` 503 wait) were 0 of 20 there.
+
 ## Leads for other streams
 
 - A: A-20 let a same-project dependant restore ahead of a producer whose
