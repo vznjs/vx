@@ -17,6 +17,8 @@ and an ignored one, which the status walk names with `--ignored=matching`
 (A-19). `ls-files --debug` adds the worktree size the index recorded
 for each entry, and a trusted OID whose blob is another size is dropped:
 a filter since removed left a stat-clean entry git never re-reads (A-60).
+A filter that kept the size passes the check; `caching.md` names it and
+the remedy, `git add --renormalize .`.
 The blob sizes come from the cache's `blob_sizes` memo, the unknown ones
 from one `git cat-file --batch-check`; `applyGitEnumeration` runs the
 check, so every caller of it gets it. Split from `inputs.ts` on 2026-09-10:
