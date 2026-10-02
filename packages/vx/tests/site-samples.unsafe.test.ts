@@ -2318,5 +2318,8 @@ describe('the sandbox pitch claims what the sandbox does', () => {
     expect(flat(path.join(GUIDES, 'sandboxing.md'))).toContain(
       'so an undeclared input cannot hide in the cache.',
     )
+    expect(flat(path.join(DOCS, 'blog', 'the-sandbox.md'))).toContain(
+      'the only workspace files it can touch, and fails the run on an undeclared one of its own.',
+    )
   })
 })
