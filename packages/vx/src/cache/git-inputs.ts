@@ -1106,7 +1106,28 @@ export function applyGitEnumeration(
   // ~9k files; ~5 ms this way). '/' sorts below most filename chars,
   // so the range [prefix, prefix+'\xff…') is contiguous in the sorted
   // array; lowerBound on `prefix` and on `prefix + '￿'` bracket it.
-  const sorted = [...all].sort()
+  // Git lists in order; a list that already is skips the sort.
+  let inOrder = true
+  for (let i = 1; i < all.length; i++) {
+    if (all[i - 1]! > all[i]!) {
+      inOrder = false
+      break
+    }
+  }
+  const sorted = inOrder ? all : [...all].sort()
+  // Git prints normalized relative paths, so under an absolute, normalized
+  // root a join is a concatenation: `path.join` per tracked file and
+  // `path.relative` per project were most of this pass (I-30's rule).
+  const base =
+    path.sep === '/' &&
+    path.isAbsolute(workspaceRoot) &&
+    path.normalize(workspaceRoot) === workspaceRoot
+      ? workspaceRoot.endsWith('/')
+        ? workspaceRoot
+        : `${workspaceRoot}/`
+      : undefined
+  const abs = (rel: string): string =>
+    base === undefined ? path.join(workspaceRoot, rel) : base + rel
   const lowerBound = (key: string): number => {
     let lo = 0
     let hi = sorted.length
@@ -1118,11 +1139,14 @@ export function applyGitEnumeration(
     return lo
   }
   for (const projectDir of projectDirs) {
-    const relPrefix = path.relative(workspaceRoot, projectDir).split(path.sep).join('/')
+    const relPrefix =
+      base !== undefined && projectDir.startsWith(base) && path.normalize(projectDir) === projectDir
+        ? projectDir.slice(base.length).replace(/\/$/, '')
+        : path.relative(workspaceRoot, projectDir).split(path.sep).join('/')
     if (relPrefix === '' || relPrefix === '.') {
       cache.set(projectDir, all)
       const rootOids = new Map<string, string>()
-      for (const [rel, oid] of trusted) rootOids.set(path.join(workspaceRoot, rel), oid)
+      for (const [rel, oid] of trusted) rootOids.set(abs(rel), oid)
       cache.setOids(projectDir, rootOids)
       continue
     }
@@ -1135,7 +1159,7 @@ export function applyGitEnumeration(
       const rel = sorted[i]!
       matches.push(rel.slice(prefix.length))
       const oid = trusted.get(rel)
-      if (oid !== undefined) projOids.set(path.join(workspaceRoot, rel), oid)
+      if (oid !== undefined) projOids.set(abs(rel), oid)
     }
     // An empty slice is a directory git did not see, not an empty project:
     // a project has at least its package.json, tracked or untracked. A
@@ -1157,7 +1181,7 @@ export function applyGitEnumeration(
   }
   if (workspaceWide) {
     const rootOids = new Map<string, string>()
-    for (const [rel, oid] of trusted) rootOids.set(path.join(workspaceRoot, rel), oid)
+    for (const [rel, oid] of trusted) rootOids.set(abs(rel), oid)
     cache.set(workspaceRoot, all)
     cache.setOids(workspaceRoot, rootOids)
     cache.setWorkspaceRoot(workspaceRoot)
