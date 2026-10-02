@@ -40,6 +40,10 @@
   and 830 ms less per task), a speed claim for an Nx-mapped run; it now
   names the ~220 ms each `nx-exec` line pays and that native config
   pays none of it.
+- **R-11** Five posts (why-vx-is-fast, no-daemon, no-choice,
+  explicit-over-magical, one-binary) quoted solidjs/solid numbers
+  measured through `turbo()`; each keeps only the native-config
+  benchmark, and site-samples stops pinning the solid figures.
 
 ## Leads
 
