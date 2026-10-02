@@ -58,3 +58,30 @@ it("a held server's output reaches the run's logger until it is stopped", async 
   bus.emit({ kind: 'task:stdout', node, chunk: 'AFTER-STOP' })
   expect(heard).not.toContain('AFTER-STOP')
 }, 20_000)
+
+// C-60: a foreground run that failed holds no server; the watch loop's
+// cycle still does, so a failing test does not stop its dev server.
+it('a held run hands its server back though another task failed', async () => {
+  await addProject(
+    root,
+    'app',
+    `export default { tasks: {
+      srv: { exec: { command: 'echo READY; exec sleep 30', persistent: { readyWhen: 'READY' } } },
+      test: { exec: { command: 'exit 1' } },
+    } }`,
+  )
+  const quiet: Logger = { status() {}, taskStdout() {}, taskStderr() {}, taskComplete() {} }
+  const r = await run({
+    cwd: root,
+    tasks: ['srv', 'test'],
+    projects: ['app'],
+    log: quiet,
+    handleSignals: false,
+    holdPersistent: true,
+  })
+  try {
+    expect([r.ok, r.persistent?.ids]).toEqual([false, ['app#srv']])
+  } finally {
+    await r.persistent?.stop()
+  }
+}, 20_000)
