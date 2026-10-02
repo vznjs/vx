@@ -1124,7 +1124,8 @@ task's own exit; no violation is reported.
 **Baseline** (`sandbox: {}`): the task reads nothing in the workspace,
 writes nothing but its own `TMPDIR` and reaches no domain no task of the run lists — not even its own project
 directory, which is why `allow: { read: ['.'] }` is the first line of
-almost every real block. The read wall is the WORKSPACE ROOT: a path
+almost every real block. The task still starts in its own directory, an empty one
+then: a relative read is refused and reported, never resolved elsewhere. The read wall is the WORKSPACE ROOT: a path
 outside it (`~/.cache`, `/etc`, the toolchain) is readable and folds into
 no key, so a task whose output depends on one declares it as a key input
 (`inputs.runtime`, `inputs.env`) — the sandbox does not catch it (item

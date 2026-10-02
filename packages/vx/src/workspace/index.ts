@@ -18,7 +18,7 @@ export {
 export { computeNestedProjectDirs } from './nested-dirs.js'
 export { buildPackageGraph, type PackageGraph } from './package-graph.js'
 export {
-  frozenProjectConfig,
+  frozenProjectConfigs,
   LOCKFILE_NAME,
   LOCKFILE_VERSION,
   lockfilePath,

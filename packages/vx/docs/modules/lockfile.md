@@ -29,17 +29,23 @@ export function lockfilePath(root: string): string
 export const FROZEN_WITHOUT_LOCK: string // the `--frozen` refusal when no lock exists
 export async function readLockfile(root: string): Promise<Lockfile | null>
 export async function writeLockfile(root: string, lock: Lockfile): Promise<void>
-export async function frozenProjectConfig(
+export async function frozenProjectConfigs(
   lock: Lockfile,
-  meta: { name: string; configPath: string },
+  metas: ReadonlyArray<{ name: string; configPath: string }>,
   root: string,
-): Promise<ProjectConfig>
+  store?: ConfigEvalStore, // remembers validated entries across runs
+): Promise<ProjectConfig[]>
 ```
 
-`frozenProjectConfig` is what a `--frozen` load serves instead of an
+`frozenProjectConfigs` is what a `--frozen` load serves instead of an
 evaluation: an entry missing for the project, or one whose stored path
 is not the project's, is a `UserError` naming the project and the
-remedy. The CLI's own selection load (`loadCliProjects`, what a filter
+remedy. Each entry is validated as a loaded config is; with a `store`
+the verdict is kept beside the config evaluations, keyed by the lock's
+bytes, the project, and vx's and Bun's versions, so a warm run on an
+unchanged lock does not validate again (1,000 projects: ~30 ms). A
+refusal is never kept, and a lock not read by `readLockfile` has no
+bytes to key by. The CLI's own selection load (`loadCliProjects`, what a filter
 that walks the graph stages) reads the lock the same way under
 `--frozen`, so the selection and the run see one graph.
 

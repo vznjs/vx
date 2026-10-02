@@ -11,8 +11,9 @@ import type { TaskNode } from './task-graph.js'
  * restore-tier task is a confirmed hit that never waits on its deps, so it
  * blocks only the exec-tier tasks that depend on it: an exec-tier task's
  * count is taken over the exec tier alone, which is exact, and a restore's
- * is the sum over its direct exec-tier dependents of one plus theirs, so a
- * restore that feeds pending work still goes first. A warm run's exec tier
+ * is the sum over its direct exec-tier dependents of one plus theirs, plus
+ * the weight of each restore that depends on it, so a restore that feeds
+ * pending work, directly or through other restores, still goes first. A warm run's exec tier
  * is its group tasks with no edges among them, and the closure over the
  * whole graph (476 packages: 1,428 nodes, 12.8k edges of 45-word bitsets)
  * was 6 ms of the run-graph stage for a ranking the restores never needed.
@@ -24,13 +25,44 @@ export function tieredReverseDepCount(
   const exec = new Map<string, TaskNode>()
   for (const [id, node] of nodes) if (!restoreTier.has(id)) exec.set(id, node)
   const counts = computeReverseDepCount(exec)
+  let feeds = false
   for (const node of exec.values()) {
     const weight = 1 + counts.get(node.id)!
     for (const dep of node.deps) {
-      if (restoreTier.has(dep) && nodes.has(dep)) counts.set(dep, (counts.get(dep) ?? 0) + weight)
+      if (!restoreTier.has(dep) || !nodes.has(dep)) continue
+      counts.set(dep, (counts.get(dep) ?? 0) + weight)
+      feeds = true
     }
   }
   for (const id of restoreTier) if (nodes.has(id) && !counts.has(id)) counts.set(id, 0)
+  if (!feeds) return counts
+  // A restore's dependents are released only once its own deps have
+  // settled (scheduler.ts, item 963), so a restore under another restore
+  // blocks whatever that one blocks: r1 → r2 → e held e until r1 restored,
+  // and r1 ranked 0 behind every idle restore (C-51). Each restore hands
+  // its weight to its restore deps, dependents first (Kahn over the
+  // restore tier's reversed edges). A diamond counts twice; the order
+  // among restores is a heuristic, and this pass stays linear. A run with
+  // no restore feeding an exec task (every task a hit) skips it.
+  const above = new Map<string, number>()
+  for (const id of restoreTier) {
+    for (const dep of nodes.get(id)?.deps ?? []) {
+      if (restoreTier.has(dep) && nodes.has(dep)) above.set(dep, (above.get(dep) ?? 0) + 1)
+    }
+  }
+  const ready: string[] = []
+  for (const id of restoreTier) if (nodes.has(id) && !above.has(id)) ready.push(id)
+  while (ready.length > 0) {
+    const id = ready.pop()!
+    const weight = counts.get(id)!
+    for (const dep of nodes.get(id)!.deps) {
+      if (!restoreTier.has(dep) || !nodes.has(dep)) continue
+      counts.set(dep, counts.get(dep)! + weight)
+      const left = above.get(dep)! - 1
+      above.set(dep, left)
+      if (left === 0) ready.push(dep)
+    }
+  }
   return counts
 }
 

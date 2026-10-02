@@ -16,7 +16,9 @@
 import { rename, rm } from 'node:fs/promises'
 import path from 'node:path'
 import type { ProjectConfig } from '../config.js'
-import { relPosix, UserError } from '../util/index.js'
+import { relPosix, UserError, xxh3 } from '../util/index.js'
+import { VERSION } from '../version.js'
+import { CONFIG_EVAL_VERSION, type ConfigEvalStore } from './config-cache.js'
 import { validateProjectConfig } from './config-schema.js'
 
 export const LOCKFILE_NAME = 'vx-lock.json'
@@ -54,8 +56,10 @@ export async function readLockfile(root: string): Promise<Lockfile | null> {
   const file = Bun.file(lockfilePath(root))
   if (!(await file.exists())) return null
   let parsed: unknown
+  let text: string
   try {
-    parsed = JSON.parse(await file.text())
+    text = await file.text()
+    parsed = JSON.parse(text)
   } catch {
     throw new UserError(`${LOCKFILE_NAME} is not valid JSON — re-run \`vx lock\` or delete it`)
   }
@@ -95,8 +99,12 @@ export async function readLockfile(root: string): Promise<Lockfile | null> {
       throw new UserError(`${LOCKFILE_NAME}: entry for "${name}" is malformed — re-run \`vx lock\``)
     }
   }
+  lockDigests.set(parsed, xxh3(text).toString(16))
   return parsed as Lockfile
 }
+
+/** The digest of the bytes each lock `readLockfile` returned was parsed from. */
+const lockDigests = new WeakMap<object, string>()
 
 export async function writeLockfile(root: string, lock: Lockfile): Promise<void> {
   // Written beside its name and renamed over it: `Bun.write` truncates in
@@ -123,26 +131,36 @@ export async function writeLockfile(root: string, lock: Lockfile): Promise<void>
 
 /**
  * Run-time config load from the lock: return the FROZEN resolved config
- * for a project the lock has an entry for. No evaluation happens — this
- * is the fast, eval-free trust path — and no staleness check either (see
- * below): the lock's contract is "what runs is what was locked", so a
- * config file edited since `vx lock` still runs as locked until
- * `vx lock --check` says otherwise. An unlocked project is a hard error;
- * silently falling back to evaluation would break frozen-env semantics.
+ * for each project, in order. No evaluation happens — this is the fast,
+ * eval-free trust path — and no staleness check either (see below): the
+ * lock's contract is "what runs is what was locked", so a config file
+ * edited since `vx lock` still runs as locked until `vx lock --check`
+ * says otherwise. An unlocked project is a hard error; silently falling
+ * back to evaluation would break frozen-env semantics.
+ *
+ * `store` remembers which entries of which lock bytes this validator
+ * accepted, beside the config evaluations and keyed like them (vx's and
+ * Bun's versions): validating 1,000 entries was ~30 ms of every warm
+ * `--frozen` run, for a verdict that cannot change until the bytes or vx
+ * do.
  */
-export async function frozenProjectConfig(
+export async function frozenProjectConfigs(
   lock: Lockfile,
-  meta: { name: string; configPath: string },
+  metas: ReadonlyArray<{ name: string; configPath: string }>,
   root: string,
-): Promise<ProjectConfig> {
-  const rel = relPosix(root, meta.configPath)
-  const entry = lock.projects[meta.name]
-  if (!entry || entry.configPath !== rel) {
-    throw new UserError(
-      `${LOCKFILE_NAME} has no entry for "${meta.name}" (${rel}) — ` +
-        `run \`vx lock\` to refresh, or delete ${LOCKFILE_NAME}`,
-    )
-  }
+  store?: ConfigEvalStore,
+): Promise<ProjectConfig[]> {
+  const entries = metas.map((meta) => {
+    const rel = relPosix(root, meta.configPath)
+    const entry = lock.projects[meta.name]
+    if (!entry || entry.configPath !== rel) {
+      throw new UserError(
+        `${LOCKFILE_NAME} has no entry for "${meta.name}" (${rel}) — ` +
+          `run \`vx lock\` to refresh, or delete ${LOCKFILE_NAME}`,
+      )
+    }
+    return entry
+  })
   // No staleness checks here, deliberately: --frozen runs after
   // `vx lock --check` in any sane pipeline, and that audit re-
   // evaluates everything — a per-file byte-hash re-check would be
@@ -151,6 +169,30 @@ export async function frozenProjectConfig(
   // in the file solely for --check's fast file-changed reporting.
   // The lock is hand-editable; the stored config crosses the same
   // boundary a freshly evaluated one does.
-  validateProjectConfig(entry.config, `${LOCKFILE_NAME} (${meta.name})`)
-  return entry.config
+  const digest = store === undefined ? undefined : lockDigests.get(lock)
+  const keys =
+    digest === undefined
+      ? undefined
+      : metas.map(
+          (m) =>
+            `vx-lock-valid-v${CONFIG_EVAL_VERSION}\0${VERSION}\0${Bun.version}\0${digest}\0${m.name}`,
+        )
+  const known =
+    keys === undefined || store === undefined
+      ? new Map<string, string>()
+      : store.getConfigEvals !== undefined
+        ? store.getConfigEvals(keys)
+        : new Map(keys.flatMap((k) => (store.getConfigEval(k) === null ? [] : [[k, '1'] as const])))
+  const accepted: Array<readonly [string, string]> = []
+  for (let i = 0; i < entries.length; i++) {
+    const key = keys?.[i]
+    if (key !== undefined && known.has(key)) continue
+    validateProjectConfig(entries[i]!.config, `${LOCKFILE_NAME} (${metas[i]!.name})`)
+    if (key !== undefined) accepted.push([key, '1'])
+  }
+  if (store !== undefined && accepted.length > 0) {
+    if (store.putConfigEvals !== undefined) store.putConfigEvals(accepted)
+    else for (const [k, v] of accepted) store.putConfigEval(k, v)
+  }
+  return entries.map((e) => e.config)
 }
