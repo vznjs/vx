@@ -1066,8 +1066,9 @@ platforms `<dir>/**` and `<dir>/**/*` collapse to `<dir>`, so
 glob keeps its subtree (`.*.tmp/**` covers what is inside each match).
 Unlike a task glob, a grant keeps `Bun.Glob`'s brackets: `[id]` is a
 class, so a Next.js route is granted escaped, `read: ['pages/\\[id\\].tsx']`.
-On Linux a WRITE path holding a bracket is not mounted (the runtime drops
-it); grant its parent directory.
+On Linux a WRITE path holding a bracket cannot be mounted (the runtime
+drops it): vx says so once, names the directory above it to grant
+instead, and a write under it is refused and reported.
 
 A Linux WRITE grant that matches nothing when the task starts therefore
 mounts nothing. Where a read grant mounts its directory, the task's first
@@ -1668,8 +1669,9 @@ nearest accepted spelling when one is within two edits:
 `tasks.build.exec.env has unknown field "passthrough" (allowed: define,
 passThrough, secret) — did you mean passThrough?`. A field another runner spells
 on the task names vx's home for it instead (D-37): Turbo's `outputs`,
-`inputs`, `env`, `passThroughEnv`, `persistent` and `outputLogs`, Nx's
-target `executor`, `options` and `continuous` (D-49), and a `command`
+`inputs`, `env`, `passThroughEnv`, `persistent`, `outputLogs`, `interactive`
+and `with`, Nx's target `executor`, `options`, `continuous` (D-49), `cwd`,
+`parallelism` and `configurations` (D-89), and a `command`
 (`cmd`, `script`) on the task or `cmd` on `exec`. So `outputs` on a task
 ends `— vx spells it cache.outputs.files` in code quotes. A `cache` that
 is no object (Turbo's `cache: false`) and a `persistent` that is none
