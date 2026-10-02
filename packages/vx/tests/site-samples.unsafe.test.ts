@@ -1468,3 +1468,25 @@ describe('the values post states the principles CLAUDE.md numbers', () => {
     expect([...section![1]!.matchAll(/^\*\*[^*]+\*\*/gm)].length).toBe(numbered)
   })
 })
+
+describe('the README and the CI guide say which packages npm has', () => {
+  // Both told readers to install plugins npm answers 404 for (J-93).
+  const NOTE = "Only `@vzn/vx` is on npm today; the plugins' first publish is pending."
+  it("the README's plugin table is every public package but @vzn/vx, under the note", () => {
+    const packagesDir = path.resolve(import.meta.dir, '..', '..')
+    const shipped = readdirSync(packagesDir)
+      .map((d) => path.join(packagesDir, d, 'package.json'))
+      .filter((f) => existsSync(f))
+      .map((f) => JSON.parse(readFileSync(f, 'utf8')) as { name: string; private?: boolean })
+      .filter((m) => m.private !== true && m.name !== '@vzn/vx')
+      .map((m) => m.name)
+      .sort()
+    const readme = readFileSync(path.resolve(packagesDir, '..', 'README.md'), 'utf8')
+    const rows = [...readme.matchAll(/^\| \[`(@vzn\/[\w-]+)`\]/gm)].map((m) => m[1]!)
+    expect([...rows].sort()).toEqual(shipped)
+    expect(readme).toContain(NOTE)
+  })
+  it('the CI guide, which imports @vzn/vx-github, carries it', () => {
+    expect(readFileSync(path.join(GUIDES, 'ci.md'), 'utf8')).toContain(NOTE)
+  })
+})
