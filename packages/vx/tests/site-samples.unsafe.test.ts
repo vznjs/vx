@@ -2169,3 +2169,24 @@ describe('every page naming what vx-otel exports names each signal', () => {
     expect(wrong).toEqual([])
   })
 })
+
+describe('no migration page times a mapped run', () => {
+  // Owner rule: no speed claims for Turbo/Nx-mapped runs. vx-migrate's
+  // README gave a mapped run's warm wall ("~200 ms warm", "median 284 →
+  // 243 ms") beside the stage costs it may state (J2-24).
+  it('the README, the guide and the from-* posts name no mapped run wall', () => {
+    const repo = path.resolve(import.meta.dir, '..', '..', '..')
+    const pages = [
+      path.join(repo, 'packages', 'vx-migrate', 'README.md'),
+      path.join(GUIDES, 'migrate.md'),
+      path.join(DOCS, 'blog', 'from-turborepo.md'),
+      path.join(DOCS, 'blog', 'from-nx.md'),
+    ]
+    const wall = /~?\d[\d,.]* ?m?s warm\b|median \d[\d,.]* → \d[\d,.]* ?m?s\b/
+    const hits = pages.flatMap((p) => {
+      const m = wall.exec(readFileSync(p, 'utf8').replace(/\s+/g, ' '))
+      return m === null ? [] : [`${path.basename(p)}: ${m[0]}`]
+    })
+    expect(hits).toEqual([])
+  })
+})

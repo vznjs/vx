@@ -206,3 +206,13 @@ persistent task` and vx exits 1). Row (`site-samples` › a post's link
   had it. Row (`site-samples` › every page naming what vx-otel exports
   names each signal), the signals read from `plugin.ts`; red on both
   without the fix.
+
+- **J2-24** Owner rule, no speed claims for Turbo/Nx-mapped runs:
+  `vx-migrate`'s README gave three mapped runs' warm wall times ("a run
+  that is otherwise the same ~200 ms warm", "~96 ms of a 417 ms warm
+  run on refine", "median 284 → 243 ms"). The stage costs it states
+  (the mapping's 42 ms, the key's 43 ms) stay: they are what the bridge
+  adds, not a run's speed. Row (`site-samples` › no migration page
+  times a mapped run), over the README, the migrate guide and the
+  from-\* posts; red without the fix, and it found the third after
+  the first two were gone.
