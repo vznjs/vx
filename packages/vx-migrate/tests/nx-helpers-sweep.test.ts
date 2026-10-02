@@ -187,6 +187,16 @@ describe('mapNxOutputs', () => {
       'output "{foo}/x" uses a token vx does not support',
     ])
   })
+
+  // nx-examples' @nx/angular:application build: `{options.outputPath.base}`
+  // was read as one key, no output, and a hit restored nothing. A missing
+  // leaf is no output, as Nx drops it.
+  it('a dotted option path walks the options', () => {
+    const got = out(['{options.outputPath.base}', '{options.outputPath.server}'], 'apps/products', {
+      outputPath: { base: 'dist/apps/products', browser: '' },
+    })
+    expect([got.outFiles, got.wsOutFiles, got.todos]).toEqual([[], ['dist/apps/products'], []])
+  })
 })
 
 describe('mapNxDeps', () => {
