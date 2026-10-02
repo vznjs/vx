@@ -916,3 +916,14 @@ failed 143; and `tasks: []` read `No projects declare task(s): .`.
 run() now refuses each up front, naming the value. Rows
 (`run-concurrency.test.ts`): each refused with the exact message, the
 edges run; red without the checks. The options' doc comments say so.
+
+## C-66: a plugin hears nothing after its teardown
+
+The normal path tore the plugins down before the keep-alive wait but
+released their bus subscriptions (`ctx.on` handlers, telemetry sinks)
+only in run()'s finally, after it: through a whole `vx run dev`
+session a plugin's `onTaskStdout` heard the server after its own
+`teardown()` had closed what it writes to. The subscriptions are now
+released just before the teardown. Row (`keep-alive.test.ts` › a plugin
+hears nothing after its teardown while vx holds a server): red without
+the fix (`torn:AFTER`). `modules/plugin.md` says so.

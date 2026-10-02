@@ -12,6 +12,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { runLockPath } from '../src/orchestrator/run-lock.js'
 import { isAlive, waitForDead } from './helpers/alive.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
+import { localWorkspaceSource } from './helpers/local-workspace.js'
+import { pluginSource } from './helpers/plugin.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 
@@ -174,6 +176,61 @@ describe('foreground keep-alive ends when one requested server exits', () => {
     // The user stopped it: no failure (C-53's guard).
     expect(summary.tasks.map((t: { status: string }) => t.status)).toEqual(['success'])
   }, 20_000)
+  // C-66: a plugin's subscriptions were released only after the keep-alive
+  // wait, so through a dev session it heard the server after its teardown.
+  it('a plugin hears nothing after its teardown while vx holds a server', async () => {
+    const heard = path.join(root, 'heard.txt')
+    writeFileSync(
+      path.join(root, 'vx.workspace.mjs'),
+      localWorkspaceSource(
+        [
+          pluginSource(
+            'org/ear',
+            `{
+              setup(ctx) {
+                ctx.on('onTaskStdout', (_n, c) => appendFileSync(${JSON.stringify(heard)}, (globalThis.__torn ? 'torn:' : 'live:') + c))
+              },
+              teardown() { globalThis.__torn = true },
+            }`,
+          ),
+        ],
+        "import { appendFileSync } from 'node:fs'\n",
+      ),
+    )
+    const dir = await addProject(
+      root,
+      'app',
+      `export default { tasks: { dev: { exec: {
+        command: 'echo $$ > pid.txt; echo READY; while [ ! -f go ]; do sleep 0.02; done; echo AF""TER; exec sleep 30',
+        persistent: { readyWhen: 'READY' },
+      } } } }`,
+    )
+    const proc = track(
+      Bun.spawn([process.execPath, BIN, 'run', 'app#dev'], {
+        cwd: root,
+        stdout: 'pipe',
+        stderr: 'pipe',
+        env: { ...process.env, CI: '', GITHUB_ACTIONS: '', VX_KILL_GRACE_MS: '200' },
+      }),
+    )
+    let out = ''
+    const reading = (async () => {
+      for await (const chunk of proc.stdout) out += new TextDecoder().decode(chunk)
+    })()
+    const pid = await waitForPid(path.join(dir, 'pid.txt'), 10_000)
+    const deadline = Date.now() + 10_000
+    while (!out.includes('─ vx ') && Date.now() < deadline) await Bun.sleep(20)
+    writeFileSync(path.join(dir, 'go'), '')
+    while (!out.includes('AFTER') && Date.now() < deadline) await Bun.sleep(20)
+    expect(out).toContain('AFTER')
+    proc.kill('SIGINT')
+    expect(await proc.exited).toBe(130)
+    await reading
+    expect(await waitForDead(pid, 1_000)).toBe(true)
+    // It heard the server while the run was its; nothing after its teardown.
+    expect(readFileSync(heard, 'utf8')).toBe('live:READY\n')
+  }, 20_000)
+
   // C-46: a kept server keeps the persistent tasks it depends on. Under
   // `--filter app` only app#dev was kept, and the api#dev it was started
   // against was stopped at the end of the graph.
