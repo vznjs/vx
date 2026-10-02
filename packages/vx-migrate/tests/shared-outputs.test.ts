@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test'
 import type { GeneratedTask } from '@vzn/vx'
-import { resolveSharedOutputs } from '../src/shared-outputs.js'
+import { resolveSharedOutputs, resolveSharedWorkspaceOutputs } from '../src/shared-outputs.js'
 
 function task(name: string, outputs: string[], dependsOn: string[] = []): GeneratedTask {
   return {
@@ -125,5 +125,49 @@ describe('resolveSharedOutputs — two targets on one output path', () => {
     const tasks = resolveSharedOutputs([bare, skipped, task('z', ['dist/**'])])
     expect(tasks[2]!.task!['cache']).toBeDefined()
     expect(bare.todos).toEqual([])
+  })
+})
+
+// Each task's outputs are looked up only along its literal prefix's chain
+// (every pair was compared: 1,000 packages took 9 s to map). Each row is a
+// path a clash can take through that index; a missed candidate is a pair
+// left cached on one path.
+describe('resolveSharedWorkspaceOutputs — the clashes the prefix index finds', () => {
+  const ws = (name: string, outputs: string[]): GeneratedTask => ({
+    name,
+    todos: [],
+    task: {
+      exec: { command: name },
+      cache: { inputs: { files: ['**/*'] }, outputs: { files: [], workspaceFiles: outputs } },
+    },
+  })
+  const clashes = (projects: { name: string; tasks: GeneratedTask[] }[]): string[] => {
+    const all = projects.map((p) => ({ ...p, dir: `/r/packages/${p.name}` }))
+    resolveSharedWorkspaceOutputs('/r', all)
+    return all.flatMap((p) =>
+      p.tasks.filter((t) => t.task!['cache'] === undefined).map((t) => `${p.name}#${t.name}`),
+    )
+  }
+  it.each([
+    // A later glob under a kept one's subtree, and the reverse.
+    [[ws('w', ['packages/b/**'])], [task('build', ['dist/**'])], ['b#build']],
+    [[task('build', ['dist/**'])], [ws('w', ['packages/a/**'])], ['b#w']],
+    [[ws('w', ['packages/b/dist/**'])], [task('build', ['**'])], ['b#build']],
+    // No literal prefix: every kept glob is a candidate, and a kept one is
+    // one for every later glob (it matches the literal output).
+    [[ws('w', ['**/dist/**'])], [ws('w', ['**/dist/**'])], ['b#w']],
+    [[ws('w', ['**/out.txt'])], [task('gen', ['out.txt'])], ['b#gen']],
+    // A brace ends the prefix where it starts.
+    [[ws('w', ['packages/{a,b}/out/**'])], [ws('w', ['packages/{a,b}/out/**'])], ['b#w']],
+    // Controls: siblings never clash, however many.
+    [[task('build', ['dist/**'])], [task('build', ['dist/**'])], []],
+    [[ws('w', ['packages/a/dist/**'])], [ws('w', ['packages/b/dist/**'])], []],
+  ])('%#', (a, b, expected) => {
+    expect(
+      clashes([
+        { name: 'a', tasks: a },
+        { name: 'b', tasks: b },
+      ]),
+    ).toEqual(expected)
   })
 })

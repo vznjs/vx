@@ -53,8 +53,8 @@ The proof that the seams are the right width is what has been built on
 them without a special case in core:
 
 - **`turbo()` from `@vzn/vx-migrate`** fills the `project` stage from a `turbo.json` and
-  each package's scripts. A Turborepo workspace runs under vx with a
-  two-line workspace file and no config rewritten.
+  each package's scripts: a two-line workspace file, the temporary
+  start of a migration to native config.
 - **`@vzn/vx-lockfile`** uses `fingerprint` to claim `pnpm-lock.yaml`
   (or `bun.lock`, `package-lock.json`, `yarn.lock`) and key each task on
   its own project's dependency closure. `--affected` follows the same

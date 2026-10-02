@@ -48,6 +48,7 @@ import {
   shellQuote,
   withForwardArgs,
   signalExitCode,
+  stopSignal,
   spawnFailureText,
   streamToString,
   resourceUsageToCpuRss,
@@ -63,7 +64,13 @@ import {
   UserError,
   xxh3hex,
 } from '../util/index.js'
-import { bindableWrites, buildCustomConfig, scratchWrites } from './sandbox-binds.js'
+import {
+  bindableReads,
+  bindableWrites,
+  buildCustomConfig,
+  scratchWrites,
+  widenedEntries,
+} from './sandbox-binds.js'
 import {
   atOrUnder,
   isMountableLiteral,
@@ -550,6 +557,9 @@ export async function initSandbox(opts?: {
   /** Whether any task of the run grants `gitConfig`: SRT reads it run-wide, so it is set per wrap (B-41). */
   gitConfig?: boolean
 }): Promise<void> {
+  // This run owns the session now; a reset an earlier run deferred to its
+  // last server would tear it down under this run's tasks (M-25).
+  resetDeferred = false
   // A reset a server's exit started unawaited: a watch cycle stops its
   // server and starts its run at once, and an init under that reset
   // found SRT up, hot-reloaded it, and had it torn down after (item 884).
@@ -947,6 +957,8 @@ export async function wrapSandboxedCommand(
       server?: boolean
       /** Trace the command's `openat` calls to descriptor TRACE_FD (Linux; `wantsStraceDetection`). */
       trace?: 'plain' | 'seccomp'
+      /** Trace with `-y`, each descriptor's path printed: a read under a widened grant is judged. */
+      tracePaths?: boolean
     },
 ): Promise<{
   wrapped: string
@@ -1004,7 +1016,7 @@ export async function wrapSandboxedCommand(
   const ports = process.platform === 'linux' ? bridgedPorts(args.config) : []
   const grouped =
     process.platform === 'linux'
-      ? ownGroupCommand(tag, inTmp, args.trace)
+      ? ownGroupCommand(tag, inTmp, args.trace, args.tracePaths === true)
       : { command: taggedCommand, forwards: false, traced: false }
   const inner = [
     ports.length > 0 ? portBridgeInner(ports, tag) : '',
@@ -1016,7 +1028,11 @@ export async function wrapSandboxedCommand(
   let wrapped = await wrapForTask(
     SandboxManager,
     inner,
-    process.platform === 'linux' ? literalReadPaths(customConfig) : customConfig,
+    process.platform === 'linux'
+      ? literalReadPaths(customConfig)
+      : process.platform === 'darwin'
+        ? seatbeltBrackets(customConfig)
+        : customConfig,
     ports.length > 0 || asksUnixSockets(args.config),
     args.config.gitConfig === true,
   )
@@ -1078,6 +1094,7 @@ function ownGroupCommand(
   tag: string,
   userCommand: string,
   trace?: 'plain' | 'seccomp',
+  tracePaths = false,
 ): { command: string; forwards: boolean; traced: boolean } {
   // `sh`, as an unsandboxed task runs (`runner.ts`): the command ran under
   // bash here, so `[[ … ]]`, brace expansion and `echo 'a\tb'` read one
@@ -1127,6 +1144,10 @@ function ownGroupCommand(
     '-DD',
     '-f',
     ...(trace === 'seccomp' ? ['--seccomp-bpf'] : []),
+    // A read through a directory's descriptor (`find`, `grep -r`) names
+    // only the entry; `-y` prints the path it opened. 40% slower on 2,000
+    // opens, so only where a widened grant's reads are judged.
+    ...(tracePaths ? ['-y'] : []),
     '-qq',
     '-e',
     // A process's cwd moves on `chdir` and starts as its parent's at the
@@ -1163,7 +1184,8 @@ function asksUnixSockets(c: Pick<ResolvedSandboxConfig, 'unixSockets'>): boolean
  * but SRT reads any holding `[` as a glob, where a bracket opens a class:
  * a route granted as `pages/\[id\].tsx` was never mounted (its denial
  * unreported, a listed grant), and a workspace under `[ws]/` was never
- * walled. `[[]` is a class of one `[`; a lone `]` is plain text to it.
+ * walled. `[[]` is a class of one `[`; a lone `]` is plain text to it. A
+ * `*` or `?` has no such spelling: `bindableReads` leaves its grant out.
  */
 function literalReadPaths(
   config: Parameters<SrtModule['SandboxManager']['wrapWithSandbox']>[2],
@@ -1175,8 +1197,33 @@ function literalReadPaths(
     ...config,
     filesystem: {
       ...fs,
+      // A `*` or `?` in a deny path matches its siblings too: a wider wall.
       denyRead: escape(fs.denyRead),
-      ...(fs.allowRead !== undefined ? { allowRead: escape(fs.allowRead) } : {}),
+      ...(fs.allowRead !== undefined ? { allowRead: escape(bindableReads(fs.allowRead)) } : {}),
+    },
+  }
+}
+
+/**
+ * macOS: a grant's escaped bracket as seatbelt's SRT can read it. vx hands
+ * it the pattern, and SRT compiles any spelling holding `[` as a regex in
+ * which a backslash is a literal one, so `pages/\[id\].tsx` matched no
+ * file and the route could not be granted. `[[]` is a class of one `[`; a
+ * lone `]` is plain text (B-65).
+ */
+function seatbeltBrackets(
+  config: Parameters<SrtModule['SandboxManager']['wrapWithSandbox']>[2],
+): Parameters<SrtModule['SandboxManager']['wrapWithSandbox']>[2] {
+  const fs = config?.filesystem
+  if (fs === undefined) return config
+  const literal = (paths: readonly string[]): string[] =>
+    paths.map((p) => p.replaceAll('\\[', '[[]').replaceAll('\\]', ']'))
+  return {
+    ...config,
+    filesystem: {
+      ...fs,
+      allowWrite: literal(fs.allowWrite),
+      ...(fs.allowRead !== undefined ? { allowRead: literal(fs.allowRead) } : {}),
     },
   }
 }
@@ -1447,9 +1494,31 @@ async function runSandboxedOnce(
   // kernel filter stops only on `openat`. strace ≥ 5.3 (2019); an older
   // one gets the slow form rather than no detection.
   const useStrace = await wantsStraceDetection()
+  // Before the spawn: what the task creates under a widened grant is its own.
+  const widened = useStrace ? widenedEntries(args.config.allowWrite) : undefined
   const { wrapped, tag, srtCommand, baselines, scratch, forwardsSignals, traced } =
-    await wrapSandboxedCommand({ ...args, ...(useStrace ? { trace: useStrace } : {}) })
+    await wrapSandboxedCommand({
+      ...args,
+      ...(useStrace ? { trace: useStrace } : {}),
+      ...(widened !== undefined && widened.size > 0 ? { tracePaths: true } : {}),
+    })
   const takeRecords = collectRecords(SandboxManager.getSandboxViolationStore(), srtCommand)
+  // A stop that landed during the awaits above leaves nothing to kill yet:
+  // spawned now, the task ran after the teardown swept the run's children.
+  if (args.signal?.aborted === true) {
+    releaseBridges(tag)
+    takeRecords()
+    const signal = stopSignal(args.signal.reason)
+    return {
+      exitCode: signalExitCode(signal),
+      durationMs: Date.now() - start,
+      stdout: '',
+      stderr: '',
+      signal,
+      violations: [],
+      tracerFailed: false,
+    }
+  }
   // Beside the task directories, which every sandbox replaces with its own:
   // in the shared temp dir a concurrent task read this log, every path
   // this task opened (L-25).
@@ -1598,7 +1667,7 @@ async function runSandboxedOnce(
     process.platform === 'linux'
       ? [
           ...(straceLog
-            ? await parseStraceViolations(straceLog, args, baselines).catch(() => [])
+            ? await parseStraceViolations(straceLog, args, baselines, widened).catch(() => [])
             : []),
           ...refusedWrites(
             // Keyed by what SRT wrapped, the in-sandbox group wrapper
