@@ -736,10 +736,12 @@ end-of-run summary always prints.
 down with it:
 
 - **`deps-ok`** (default): the failure's transitive dependents are
-  skipped; independent siblings keep running.
+  skipped; independent siblings keep running. A server that dies after
+  it became ready is a failure to its dependents not yet started.
 - **`never`**: fail fast — the first failure stops dispatch. In-flight
   tasks finish naturally; everything not yet started (cache restores
-  included) completes as skipped.
+  included) completes as skipped. A server that dies after it became
+  ready stops dispatch the same way.
 - **`always`** (bare `--continue`): dependents run even when an
   upstream failed — to surface every failure in one pass. A task
   downstream of a failure (directly, or through successes built on it)
@@ -1040,7 +1042,7 @@ totals plus a table, one row per task:
 ```markdown
 ## vx run — passed
 
-**3 tasks** · 3 success · 0 failed · 2 cached · 1.23s total · 8ms saved
+**3 tasks** · 3 success · 0 failed · 2 cached · 1.23s total · 2.65s saved
 
 | Task      | Status  | Cache      | Duration |
 | --------- | ------- | ---------- | -------- |
@@ -1052,8 +1054,8 @@ totals plus a table, one row per task:
 `Status` is the task outcome (`success` / `failed (exit N)`, with the
 signal an exit above 128 stands for, `failed (exit 137, 128 + SIGKILL)`,
 or a timeout's reason, `failed (timed out, exit 143)`, a persistent
-task's `never ready: …`, or a sandboxed task's violation count /
-`skipped`);
+task's `never ready: …`, or a sandboxed task's violation count, or
+`skipped`, naming what blocked it: `skipped (blocked by lib#build)`);
 `Cache` is its provenance (`miss` / `no-cache` for a task with no `cache`
 block, which never consulted it / `local` / `remote` / `up-to-date` /
 `—`). Aborted tasks (a Ctrl-C teardown) are excluded from the totals but
@@ -1068,9 +1070,10 @@ distinction is the point:
 - **`N total`** sums `Duration` over the tasks that actually EXECUTED —
   the time this run spent.
 - **`N saved`** sums the exec times the cache hits SKIPPED, read from
-  each entry as it was stored. It is deliberately not the hits'
-  `Duration` column, which is the restore they cost this run: summing
-  that reported a task taking 2.01s cold as "6ms saved".
+  each entry as it was stored (above, 2.01s and 640ms). It is
+  deliberately not the hits' `Duration` column, which is the restore
+  they cost this run: summing that reported a task taking 2.01s cold
+  as "6ms saved".
 
 Only `markdown` is supported today (`json` is reserved; a bad value is a
 parse error). Built purely from the run's outcomes after it returns — it
@@ -1524,12 +1527,21 @@ vx-lock.json (2 projects have no vx.config; their tasks are never
 frozen)`), so an empty lock on a plugin-only workspace never reads like
 an audit.
 
+The lock is committed, so `vx lock` refuses to write one that holds a
+secret: a config that evaluated to the value of a secret-named variable
+(or one a task lists in `exec.env.secret`), say
+`` `--token ${process.env.API_TOKEN}` ``. It names each place
+(`a: tasks.deploy.exec.command holds $API_TOKEN`) and writes nothing.
+Masking it instead would freeze a `***` that `--frozen` runs. Let the
+shell expand it: `$API_TOKEN` in the command, the name in
+`exec.env.passThrough` (L-42).
+
 Exit codes:
 
 - `0` — lock written / lock is up to date.
 - `1` — parse error, workspace-discovery error, missing lock
-  (`--check` without one), or any drift (every mismatched project is
-  listed on stderr).
+  (`--check` without one), any drift (every mismatched project is
+  listed on stderr), or a secret value the lock would hold.
 
 ## Releasing (maintainers)
 
@@ -1722,7 +1734,8 @@ another task depends on one, and so does a watcher: a `watch` segment in the scr
 a `--watch` flag, `tsc -w` / `rollup -w`, or nodemon (D-40), and a server:
 `serve <dir>`, `http-server`, bare `vite`, a tool's `dev` / `serve` /
 `start` / `preview` verb (`next start`, `netlify dev`), or a script that
-runs such a script of its package by name (`cross-env X=1 pnpm start`),
+runs such a script of its package by name (`cross-env X=1 pnpm start`) or
+through a runner (`run-p web api`, `concurrently "npm:web" "npm:api"`, D-113),
 outside quotes and not sent to the background with `&` (D-91), read past
 a launcher's `--package <name>` / `-p <name>` (`pnpm dlx --package
 netlify-cli netlify dev`, D-112). A

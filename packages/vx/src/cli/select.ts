@@ -25,7 +25,7 @@ import {
 import type { ProjectConfig } from '../config.js'
 import type { ProjectEntry } from '../workspace/index.js'
 import { parseDependencySpec } from '../graph/index.js'
-import { nearest, UserError } from '../util/index.js'
+import { maskedLine, nearest, UserError } from '../util/index.js'
 import { claimedAffected, fingerprintClaims, gitOfDiscovery } from '../orchestrator/index.js'
 import {
   type CliLoadOptions,
@@ -104,7 +104,7 @@ async function workspaceFingerprintClaims(
   const ctx = {
     workspaceRoot: root,
     cacheDir: load.cacheDir ?? ws.cacheDir,
-    warn: (m: string) => process.stderr.write(`${m}\n`),
+    warn: (m: string) => process.stderr.write(`${maskedLine(m)}\n`),
     projects: projects.map((p) => ({ name: p.name, dir: p.dir })),
   }
   return {

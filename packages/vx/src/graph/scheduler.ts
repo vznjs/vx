@@ -181,6 +181,14 @@ export interface ScheduleOptions {
    *     be the next clean run's stale hit (`ExecuteArgs.taintedUpstream`).
    */
   continueMode?: ContinueMode
+  /**
+   * A failure the graph's outcomes do not hold yet: a persistent task
+   * that died after it became ready. Its outcome said `success` when it
+   * was ready, so this is how a dependant not yet started learns of it:
+   * under 'deps-ok' it is skipped as below a failed task, and under
+   * 'never' it stops dispatch.
+   */
+  serverDied?: (id: string) => boolean
   execute: (node: TaskNode, upstream: TaskOutcome[]) => Promise<TaskOutcome>
   onStart?: (node: TaskNode) => void
   onFinish?: (outcome: TaskOutcome) => void
@@ -563,8 +571,19 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
     // they're dep-independent, so they typically restore before a dep
     // could fail anyway.
     const aborted = (): boolean => options.signal?.aborted === true
+    const serverDied = options.serverDied ?? ((): boolean => false)
+    const servers =
+      options.serverDied === undefined
+        ? []
+        : [...nodes.values()]
+            .filter((n) => n.config.exec?.persistent !== undefined)
+            .map((n) => n.id)
     const willSkip = (id: string): boolean => {
       if (failFastTripped || aborted()) return true
+      if (continueMode === 'never' && servers.some(serverDied)) {
+        failFastTripped = true
+        return true
+      }
       if (inRestoreTier(id)) return false
       if (continueMode === 'always') return false
       const node = nodes.get(id) as TaskNode
@@ -580,7 +599,8 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
           u?.status === 'failed' ||
           u?.status === 'skipped' ||
           u?.status === 'aborted' ||
-          blockedRestores.has(d)
+          blockedRestores.has(d) ||
+          serverDied(d)
         )
       })
     }
@@ -651,6 +671,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
           const viaRestore = node.deps.find((d) => blockedRestores.has(d))
           const blockedBy =
             blocker?.node.id ??
+            node.deps.find(serverDied) ??
             viaSkip?.blockedBy ??
             (viaRestore === undefined ? undefined : blockedRestores.get(viaRestore))
           finishOne(id, {

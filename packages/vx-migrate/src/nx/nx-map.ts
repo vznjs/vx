@@ -13,6 +13,7 @@
 // configuration is a task of its own, `<target>:<configuration>`; the
 // default configuration is folded into the base task.
 
+import { existsSync } from 'node:fs'
 import path from 'node:path'
 import {
   buildPackageGraph,
@@ -314,6 +315,7 @@ export async function mapNxWorkspace(
       : await listDotenv(root, [...relOf.values()])
 
   const mapped: Array<{ meta: ProjectMeta; tasks: GeneratedTask[] }> = []
+  let releasePublish = 0
   // A configuration variant's task (`build:production`) and what it runs.
   const configured = new WeakMap<GeneratedTask, string>()
   // The target an atomizer split (cypress's `e2e`, named by each
@@ -340,6 +342,14 @@ export async function mapNxWorkspace(
     }
     const atomized = new Set(Object.values(targets).map((t) => t.metadata?.nonAtomizedTarget))
     for (const [targetName, target] of Object.entries(targets)) {
+      // Nx adds `nx-release-publish` to every package for `nx release
+      // publish`, which skips a private package and a published version
+      // and rewrites `workspace:` ranges first: no one line is that, and a
+      // failing placeholder per package was the migration's loudest gap.
+      if (opts.nativeExecutors === true && isReleasePublish(target.executor)) {
+        releasePublish++
+        continue
+      }
       for (const v of variants(targetName, target)) {
         const t = buildTask(
           meta,
@@ -435,6 +445,12 @@ export async function mapNxWorkspace(
           `nx.json \`sync.globalGenerators\` (${globalSync.map((g) => JSON.stringify(g)).join(', ')}): ` +
             'Nx runs them before a run, and vx does not — run `nx sync` when they are out of date',
         ]
+  if (releasePublish > 0)
+    notes.push(
+      `\`@nx/js:release-publish\` on ${releasePublish} project${releasePublish === 1 ? '' : 's'} ` +
+        '(`nx-release-publish`, Nx release’s publish step) is not written: publish with your ' +
+        'package manager (`npm publish`, `pnpm publish -r`, `bun publish`)',
+    )
   for (const [gens, n] of mapOpts.syncTasks)
     notes.push(
       `\`syncGenerators\` (${gens}) on ${n} task${n === 1 ? '' : 's'}: ` +
@@ -649,7 +665,28 @@ function buildTask(
     opts.pnp,
     meta.packageJson,
     opts.manifestField,
-    opts.nativeExecutors === true ? (spec) => targetOptionsOf(nodeMap, spec) : null,
+    opts.nativeExecutors === true
+      ? {
+          options: (spec) => targetOptionsOf(nodeMap, spec),
+          // Nx's swc reads the project's `sourceRoot`, else `src` where it exists.
+          sourceRoot: () => {
+            const declared = (nodeMap[nodeName]?.data as { sourceRoot?: unknown } | undefined)
+              ?.sourceRoot
+            if (typeof declared === 'string') return declared
+            return existsSync(path.join(meta.dir, 'src'))
+              ? path.posix.join(projectRel, 'src')
+              : undefined
+          },
+          executor: (spec) => {
+            const [project, target] = spec.split(':')
+            const t =
+              project === undefined || target === undefined
+                ? undefined
+                : nodeMap[project]?.data?.targets?.[target]
+            return t?.executor ?? (t?.command === undefined ? undefined : 'nx:run-commands')
+          },
+        }
+      : null,
   )
 
   const inputs = emptyNxInputs()
@@ -748,6 +785,10 @@ function buildTask(
       return { name: variant.name, task: null, todos }
     }
     return { name: variant.name, task: { dependsOn: deps }, todos }
+  }
+  if (opts.nativeExecutors === true) {
+    const call = nxSelfCall(mapped.command)
+    if (call !== undefined) todos.push(call)
   }
   const exec: Record<string, unknown> = { command: mapped.command }
   const env: Record<string, unknown> = {}
@@ -859,7 +900,11 @@ function mapCommand(
   manifest: { readonly name?: unknown; readonly version?: unknown },
   manifestField: MapNxOptions['manifestField'],
   /** Non-null in a migration: what a `project:target:configuration` spec resolves to. */
-  native: ((spec: string) => Record<string, unknown> | undefined) | null,
+  native: {
+    readonly options: (spec: string) => Record<string, unknown> | undefined
+    readonly executor: (spec: string) => string | undefined
+    readonly sourceRoot: () => string | undefined
+  } | null,
 ): MappedCommand | null {
   const executor = target.executor
   if (executor === 'nx:noop') {
@@ -943,7 +988,9 @@ function mapCommand(
     const n = nativeExecutorCommand(executor, options, {
       projectRel,
       projectName,
-      targetOptions: native,
+      targetOptions: native.options,
+      targetExecutor: native.executor,
+      sourceRoot: native.sourceRoot,
     })
     if (n === null) {
       todos.push(untranslatedTodo(executor))
@@ -962,6 +1009,24 @@ function mapCommand(
     envInputs: files,
   }
 }
+
+/**
+ * A written command that still runs Nx (`nx run app:build`, `npx nx test`,
+ * a package script's `nx exec -- tsc`) works only while Nx is installed:
+ * the migration's TODO for it. Undefined for a line that does not.
+ */
+function nxSelfCall(command: string): string | undefined {
+  const m = /(?:^|[\s;&|('"])(?:(?:npx|bunx|pnpm(?: exec)?|yarn)\s+)?nx\s+([a-z][\w:-]*)/.exec(
+    command,
+  )
+  if (m === null) return undefined
+  return m[1] === 'exec'
+    ? 'the command runs under `nx exec --`, which needs Nx installed — drop `nx exec --` and keep the command after it'
+    : `the command runs \`nx ${m[1]}\`, which needs Nx installed — name that task in dependsOn, or run its command here`
+}
+
+const isReleasePublish = (executor: string | undefined): boolean =>
+  executor === '@nx/js:release-publish' || executor === '@nrwl/js:release-publish'
 
 /**
  * A `project:target[:configuration]` spec's options as Nx's
@@ -1032,6 +1097,7 @@ const KNOWN_EXECUTORS: Record<string, { persistent: boolean }> = {
   '@nx/jest:jest': { persistent: false },
   '@nx/eslint:lint': { persistent: false },
   '@nx/js:tsc': { persistent: false },
+  '@nx/js:node': { persistent: true },
   '@nx/webpack:webpack': { persistent: false },
   '@nx/webpack:dev-server': { persistent: true },
   '@nx/esbuild:esbuild': { persistent: false },
