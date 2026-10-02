@@ -91,3 +91,12 @@ persistent task` and vx exits 1). Row (`site-samples` › a post's link
   (`site-samples` › the lockfile post measures what the root reaches),
   read from the manifests; red without the fix and with the narrow
   example swapped for `@types/bun`.
+
+- **J2-16** The cascade-through-inputs post named one way a key is
+  preliminary (a same-project upstream's outputs). `stable-keys.ts` also
+  classes an upstream's root-anchored outputs, an uncached upstream
+  that may write in the project (item 743), and a cached in-place
+  rewriter the key does not fold (item 750), and every dependant
+  inherits the class. Row (`site-samples` › the cascade post names
+  every way a key is preliminary), gated on the source; red without
+  the fix.

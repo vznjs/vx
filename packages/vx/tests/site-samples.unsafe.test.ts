@@ -1858,3 +1858,32 @@ describe('the lockfile post measures what the root reaches', () => {
     expect(wrong).toEqual([])
   })
 })
+
+describe('the cascade post names every way a key is preliminary', () => {
+  // It named the same-project output case alone; stable-keys.ts also
+  // classes root-anchored outputs, undeclared writers and unfolded
+  // in-place rewriters, and a dependant inherits the class (J2-16).
+  it('each case stable-keys.ts classes, and the inheritance', () => {
+    const src = readFileSync(
+      path.resolve(import.meta.dir, '..', 'src', 'orchestrator', 'stable-keys.ts'),
+      'utf8',
+    )
+    const post = readFileSync(path.join(DOCS, 'blog', 'cascade-through-inputs.md'), 'utf8').replace(
+      /\s+/g,
+      ' ',
+    )
+    const cases: [string, string][] = [
+      ['outputs.workspaceFiles', "an upstream's root-anchored `outputs.workspaceFiles`"],
+      ['undeclaredWriteReach', 'an upstream with no `cache` block that may write in the project'],
+      [
+        'commandWriteReach',
+        'rewrites its own inputs in place (a formatter) whose key this one does not fold',
+      ],
+      ['node.deps.some((d) => unstableById.has(d))', 'and every task depending on it'],
+    ]
+    for (const [code, phrase] of cases) {
+      expect(src).toContain(code)
+      expect(post).toContain(phrase)
+    }
+  })
+})
