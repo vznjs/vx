@@ -43,6 +43,7 @@ export {
   ownWorkspaceOutputsSince,
   stampOutputs,
   stampWorkspaceOutputs,
+  stopRuntimeProbes,
   type OutputStamp,
 } from './inputs.js'
 export {
