@@ -986,6 +986,7 @@ task's own stderr): red without the fix. `modules/executor.md` says so.
 distributed runs honor it": the whole-run backend seam that carried it
 went with vx cloud. The mode is the local scheduler's; a task a plugin
 executor runs elsewhere is one dispatch like any other. Docs only.
+
 ## C-71: `--exclude-dependencies`' orders over random graphs, as a test
 
 A probe over 60,000 random graphs found `excludeDependencies` sound;
