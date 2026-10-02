@@ -22,6 +22,11 @@
   `e2e-ci--<spec>` loads `.env.e2e-ci` and `.env.e2e`. vx named them by
   the task's own name, so it loaded `.env.e2e-ci--<spec>`, which Nx never
   does, and missed `.env.e2e-ci`.
+- **P-9** `nx()`: a `dependsOn` string's part after `project:` is one
+  target name, as Nx's `readProjectAndTargetFromTargetString` joins it:
+  `ui:build:ci` names target `build:ci` and is no edge where ui lacks it.
+  vx read the last segment as a configuration and drew an edge to that
+  configuration's task (or to `build`, with a todo) that Nx never draws.
 
 ## Notes
 
