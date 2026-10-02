@@ -6,7 +6,7 @@ authors:
 tags:
   - migration
   - nx
-excerpt: "Moving an Nx repo to vx: `nx()` is a temporary start, executors included, then executors become shell commands in native config. `bunx @vzn/vx-migrate` reads the resolved project graph Nx itself uses, so plugin-inferred targets come along, and an executor target migrates as the `nx-exec` line that runs it."
+excerpt: "Moving an Nx repo to vx: `nx()` is a temporary start, executors included, then executors become shell commands in native config. `bunx @vzn/vx-migrate` reads the resolved project graph Nx itself uses, so plugin-inferred targets come along, and an executor target migrates as the command its executor runs."
 ---
 
 Leaving Nx is a bigger step than leaving Turborepo, and the honest
@@ -51,9 +51,10 @@ behind a JSON options object:
 ```
 
 vx has no executors. A task is a shell command. When you migrate, an
-executor target is written as the `nx-exec` line that runs it — no
-placeholder — and, target by target, that
-line becomes the command the executor was wrapping:
+executor target is written as the command the executor was wrapping
+(jest, vitest, vite build and serve, eslint, tsc, playwright,
+cypress, storybook, next, esbuild), and any other
+executor is a placeholder the report lists, for you to write:
 
 ```ts
 build: {
@@ -63,8 +64,7 @@ build: {
 ```
 
 More explicit, more portable, and one less layer between you and the
-tool's own documentation. Every executor runs through `nx-exec` until
-you replace it, `nx:run-commands` targets are the shell they already
+tool's own documentation. `nx:run-commands` targets are the shell they already
 were, and the server executors — `@nx/vite:dev-server`,
 `@nx/vite:preview-server`, `@nx/webpack:dev-server`, `@nx/next:server`,
 `@nx/storybook:storybook` and `@angular-devkit/build-angular:dev-server`
@@ -85,8 +85,8 @@ bunx @vzn/vx-migrate         # write them; never overwrites without --force
 
 It asks your installed `nx` for the graph (`nx graph`) rather than
 guessing at plugin-inferred targets from `nx.json`. The generated
-files freeze that snapshot as static config: review them, replace the
-`nx-exec` lines when you are ready, fill the TODOs.
+files freeze that snapshot as static config: review them and fill the
+TODOs.
 
 ## What maps
 

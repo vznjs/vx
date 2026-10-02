@@ -803,15 +803,18 @@ describe('the from-nx post says how executors run, and names the servers', () =>
     })
     expect(page.replace(/\s+/g, ' ')).toContain('come through as persistent tasks')
   })
-  it('the post and the guide both say every executor runs through nx-exec', () => {
-    expect(page).toContain('Every executor runs through `nx-exec`')
-    expect(guide).toContain('Executor targets keep running as executors')
-    // The mapper agrees: no executor maps to a bare command any more.
-    expect(src).not.toMatch(/'@nx\/[^']+': \{ command:/)
-    // Every executor line is `nxExecCommand`'s (its `.env` files appended).
+  it('the post and the guide say nx() runs executors through nx-exec and the migrator writes commands', () => {
+    expect(page).toContain('Each becomes an `nx-exec`')
+    expect(page.replace(/\s+/g, ' ')).toContain(
+      'an executor target is written as the command the executor was wrapping',
+    )
+    expect(guide).toContain('An executor target is written as the command its executor runs')
+    // The mapper agrees: the plugin's executor line is `nxExecCommand`'s
+    // (its `.env` files appended), the migrator's is nx-native.ts's.
     expect(src).toContain(
       'line(nxExecCommand(executor, projectName, targetName, configuration, options, files))',
     )
+    expect(src).toContain('nativeExecutorCommand(executor, options, {')
   })
   it('the benchmark figures it states are the benchmarks page’s', () => {
     const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
@@ -1404,20 +1407,20 @@ describe('the plugins guide rosters every hook a shipped plugin fills', () => {
 })
 
 // The migrate-from-nx guide is the migrate page's Nx section (the short site).
-describe('the migrate-from-nx guide shows the nx-exec line the mapper writes', () => {
-  it('its sample is the shape `nxExecCommand` produces, as vx-migrate’s own suite pins it', () => {
-    // The guide's sample and `tests/migrate.test.ts` ("executors") in
-    // vx-migrate spell the same line; a change to the bin's argv shape has
-    // to land in both.
+describe('the migrate-from-nx guide names the executors the migrator writes as commands', () => {
+  it('its table is nx-native.ts’s translators, the legacy linter name aside', () => {
     const page = section(readFileSync(path.join(GUIDES, 'migrate.md'), 'utf8'), 'Nx')
-    expect(page).toContain(
-      `nx-exec @nx/js:tsc --project lib --target build --options '{"main":"src/index.ts","tsConfig":"tsconfig.lib.json"}'`,
-    )
-    const suite = readFileSync(
-      path.resolve(import.meta.dir, '..', '..', 'vx-migrate', 'tests', 'migrate.test.ts'),
+    const src = readFileSync(
+      path.resolve(import.meta.dir, '..', '..', 'vx-migrate', 'src', 'nx', 'nx-native.ts'),
       'utf8',
     )
-    expect(suite).toContain('nx-exec @nx/vitest:test --project app --target test')
+    const table = /const TRANSLATORS: [^=]*= \{([\s\S]*?)\n\}/.exec(src)![1]!
+    const translated = [...table.matchAll(/'(@[^']+)':/g)].map((x) => x[1]!)
+    const named = [...page.matchAll(/^\| (`@[^|]+)\|/gm)].flatMap((row) =>
+      [...row[1]!.matchAll(/`(@[^`]+)`/g)].map((x) => x[1]!),
+    )
+    expect(translated.length).toBeGreaterThan(5)
+    expect(named.sort()).toEqual(translated.filter((e) => e !== '@nx/linter:eslint').sort())
   })
 })
 

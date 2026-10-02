@@ -651,11 +651,11 @@ describe('vx migrate (nx)', () => {
       expect(test.exec?.command).toBe('jest')
       expect(test.cache?.inputs.files).toEqual(['**/*'])
 
-      // A foreign executor runs as itself through nx-exec, its options on
-      // the line; dependsOn/cache parts kept.
+      // An executor with no plain command is a placeholder that fails
+      // naming it and its options; dependsOn/cache parts kept.
       const serve = tasks.serve!
       expect(serve.exec?.command).toBe(
-        `nx-exec @nx/webpack:dev-server --project pkg-a --target serve --options '{"port":4200}'`,
+        `echo 'TODO(vx-migrate): the command @nx/webpack:dev-server ran with {"port":4200}' >&2 && exit 1`,
       )
 
       // run-script on an empty script (novu's `test:watch: ""`) is the
@@ -718,10 +718,11 @@ describe('vx migrate (nx)', () => {
     expect(aBuild).not.toMatch(/workspaceRoot/)
     expect(aBuild).toMatch(/externalDependencies/)
     expect(aBuild).toMatch(/params/)
-    // An executor is no gap any more: nx-exec runs it. Its lifetime still is.
-    expect(result.out).not.toMatch(/no shell equivalent/)
+    // An executor with no plain command is a gap the report lists by executor.
     // Nothing depends on serve: no readiness note to report (item 602).
-    expect(todos.has('pkg-a#serve')).toBe(false)
+    expect(todos.get('pkg-a#serve')).toEqual([
+      'executor "@nx/webpack:dev-server" has no plain command here — `nx g @nx/webpack:convert-to-inferred` rewrites it as the command Nx infers; run it and migrate again, or replace the placeholder with the line it runs',
+    ])
     // No `inputs` is Nx's own default set, not a gap (item 591).
     expect(result.out).not.toMatch(/cache enabled with no declared inputs/)
     expect(todos.get('pkg-b#build')?.join() ?? '').not.toMatch(/cwd/)
@@ -1116,7 +1117,7 @@ describe('parseMigrateArgs', () => {
 })
 
 describe('vx migrate (nx) — executors', () => {
-  it('every executor becomes an nx-exec line carrying its options, with no TODO', async () => {
+  it('a known executor becomes its command, any other a placeholder naming it', async () => {
     const root = await makeRoot('vx-migrate-nx-exec-')
     try {
       await addPackage(root, 'app', {})
@@ -1198,24 +1199,21 @@ describe('vx migrate (nx) — executors', () => {
         outputs: { files: ['dist'] },
       })
       expect(tasks['dev']!.exec?.persistent).toBeUndefined()
-      expect(tasks['test']!.exec?.command).toBe(
-        'nx-exec @nx/vitest:test --project app --target test',
-      )
+      // A known executor is the command it runs; any other a placeholder
+      // naming it and its options. A configuration's options fold in.
+      expect(tasks['test']!.exec?.command).toBe('vitest run')
       expect(tasks['odd']!.exec?.command).toBe(
-        `nx-exec @acme/thing:do --project app --target odd --options '{"x":1,"s":"it'\\''s","list":[{"a":"b"}]}'`,
+        `echo 'TODO(vx-migrate): the command @acme/thing:do ran with {"x":1,"s":"it'\\''s","list":[{"a":"b"}]}' >&2 && exit 1`,
       )
-      expect(tasks['build']!.exec?.command).toBe(
-        `nx-exec @nx/js:tsc --project app --target build --configuration production --options '{"main":"src/index.ts","mode":"prod"}'`,
-      )
-      expect(tasks['build:ci']!.exec?.command).toBe(
-        `nx-exec @nx/js:tsc --project app --target build --configuration ci --options '{"main":"src/index.ts","mode":"ci","extra":true}'`,
-      )
+      expect(tasks['build']!.exec?.command).toBe('tsc --rootDir .')
+      expect(tasks['build:ci']!.exec?.command).toBe('tsc --rootDir .')
       expect(tasks['build:ci']!.dependsOn).toEqual(['^build'])
       expect(r.out).not.toContain('no shell equivalent')
       expect(r.out).not.toContain('mapped from executor')
       // No other project declares `ci`: Nx runs the default there too.
       expect(r.out).not.toContain('Nx runs dependencies with the same')
-      expect(r.out).toContain('executor targets run through `nx-exec`')
+      expect(r.out).toContain('an executor target becomes the command its executor runs')
+      expect(r.out).not.toContain('nx-exec')
     } finally {
       await rm(root, { recursive: true, force: true })
     }
