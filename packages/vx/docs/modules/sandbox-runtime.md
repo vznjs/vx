@@ -387,7 +387,10 @@ the whole pass, since a `vfork` child's lines precede its parent's
 a file that does not exist and no `ignore` for the real one matched.
 strace's `-y` names the directory on every line, but cost 40% on 2,000
 opens (min 240 → 337 ms); the extra stops here cost nothing measurable
-(B-61). A path is
+(B-61). A
+refused `chdir` is a denial of its own, a read of the directory: `cd src`
+into a directory no grant holds failed with no violation, and
+`cd src || …` passed and cached (B-67). A path is
 strace's C string, decoded: read raw, `q"t.txt` was cut at `q\` and
 `é.txt` named `\303\251.txt`, so the report and every `ignore` pattern
 missed the file (B-54). Without `strace`
