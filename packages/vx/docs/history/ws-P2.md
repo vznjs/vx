@@ -50,6 +50,10 @@ start` (in the build output) with Nx's port and `PORT`, and
   (`@nx/js:release-publish`, which Nx adds to every package) as a
   failing placeholder per package: the report has one note naming the
   package manager's own `publish`. `nx()` still runs it.
+- **P2-9** A migrated command that still runs Nx (`nx run b:build`,
+  `npx nx test`, `nx exec -- tsc`) carries a TODO naming what to write
+  instead: it works only while Nx is installed, and it passed the
+  report clean.
 
 ## Leads for other streams
 
