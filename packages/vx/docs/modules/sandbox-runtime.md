@@ -613,9 +613,11 @@ when a grant was widened, vx lists the directory as the task starts
 succeeded and were not for writing alone, and reports one of those
 entries that no grant covers — and the directory's listing while it
 holds one, since it names every sibling. The declared files, other
-grants and what the task made there itself stay readable. A path opened relative to a descriptor other than
-the cwd cannot be placed without `-y` (40% slower), so it is not judged.
-No widened grant, no extra parse.
+grants and what the task made there itself stay readable. `grep -r` and
+`find` open each entry relative to a directory's descriptor, which the
+trace names only by number, so such a task's strace runs with `-y`,
+which prints the path each descriptor opened (40% slower on 2,000
+opens). No widened grant, no `-y` and no extra parse.
 
 ## A write grant that mounts nothing
 

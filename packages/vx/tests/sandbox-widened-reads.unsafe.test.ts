@@ -35,6 +35,23 @@ describe('deniedCalls › reads', () => {
     ])
   })
 
+  it('with -y, are placed by the path the returned descriptor names', () => {
+    const y = [
+      '10 openat(4</ws/p/sub>, "f", O_RDONLY|O_NOFOLLOW) = 3</ws/p/sub/f>',
+      '10 openat(AT_FDCWD</ws/p>, "g", O_RDONLY <unfinished ...>',
+      '10 <... openat resumed>) = 5</ws/p/g>',
+      '10 openat(4</ws/p/sub>, "h", O_RDONLY <unfinished ...>',
+      '10 <... openat resumed>) = 6</ws/p/sub/h>',
+      '10 openat(AT_FDCWD</ws/p>, "out", O_WRONLY|O_CREAT, 0666) = 7</ws/p/out>',
+      '',
+    ].join('\n')
+    expect(deniedCalls(y, '/ws', true).map((c) => c.rawPath)).toEqual([
+      '/ws/p/sub/f',
+      '/ws/p/g',
+      '/ws/p/sub/h',
+    ])
+  })
+
   it('CONTROL: are not asked for, and only the denial comes back', () => {
     expect(deniedCalls(trace, '/ws').map((c) => c.rawPath)).toEqual(['gone.txt'])
   })
@@ -86,6 +103,14 @@ describe.skipIf(!available || process.platform !== 'linux')(
     it("reports the directory's own listing, which names every sibling", async () => {
       const r = await run('ls > out.txt', ['out.txt'])
       expect([r.exitCode, r.violations.map((v) => v.target)]).toEqual([0, [path.join(dir, 'proj')]])
+    })
+
+    it('is reported when read through a directory descriptor (grep -r, find)', async () => {
+      const r = await run('grep -r -l . . > out.txt; true', ['out.txt'])
+      expect(r.violations.map((v) => String(v.target)).sort((a, b) => a.localeCompare(b))).toEqual([
+        path.join(dir, 'proj'),
+        ...['dist', 'dist/old.txt', 'secret.txt'].map((f) => path.join(dir, 'proj', f)),
+      ])
     })
 
     it('a file the task made there is its own: not reported', async () => {

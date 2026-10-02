@@ -50,17 +50,24 @@ const STRACE_RESUMED_RE = new RegExp(
 /** A resumed call that SUCCEEDED — clears the pending entry, emits nothing. */
 const STRACE_RESUMED_OK_RE = new RegExp(`^(\\d+)\\s+<\\.\\.\\. (${SYSCALLS}) resumed>`)
 /**
- * An `openat` that succeeded, and not for writing alone: a read. Only
- * from the cwd (`AT_FDCWD`) or by an absolute path; a path relative to
- * another descriptor cannot be placed without `-y`, which costs 40%.
+ * An `openat` that succeeded, and not for writing alone: a read. Placed by
+ * the path `-y` prints for the descriptor it returned; without one, only
+ * from the cwd (`AT_FDCWD`) or by an absolute path.
  */
+const READ_FLAGS = '(?![A-Z_|]*O_WRONLY)[A-Z_|]+'
 const OPEN_READ_RE = new RegExp(
-  `^(\\d+)\\s+openat\\((?:AT_FDCWD|\\d+(?=, "/)), ${QUOTED}, (?![A-Z_|]*O_WRONLY)[A-Z_|]+[^)]*\\)\\s*=\\s*\\d+`,
+  `^(\\d+)\\s+openat\\((AT_FDCWD|\\d+)(?:<[^"]*>)?, ${QUOTED}, ${READ_FLAGS}[^)]*\\)\\s*=\\s*\\d+(?:<(.*)>)?$`,
 )
 const OPEN_READ_UNFINISHED_RE = new RegExp(
-  `^(\\d+)\\s+openat\\((?:AT_FDCWD|\\d+(?=, "/)), ${QUOTED}, (?![A-Z_|]*O_WRONLY)[A-Z_|]+.*<unfinished`,
+  `^(\\d+)\\s+openat\\((AT_FDCWD|\\d+)(?:<[^"]*>)?, ${QUOTED}, ${READ_FLAGS}.*<unfinished`,
 )
-const RESUMED_FD_RE = /resumed>.*\)\s*=\s*\d+/
+const RESUMED_FD_RE = /resumed>.*\)\s*=\s*\d+(?:<(.*)>)?$/
+
+/** Where a successful read opened: `-y`'s path, else the call's own when placeable. */
+function readPath(dirfd: string, rawPath: string, opened: string | undefined): string | undefined {
+  if (opened !== undefined) return cStringPath(opened)
+  return dirfd === 'AT_FDCWD' || rawPath.startsWith('/') ? rawPath : undefined
+}
 
 const C_ESCAPES: Record<string, number> = { n: 10, t: 9, r: 13, v: 11, f: 12, a: 7, b: 8 }
 
@@ -146,7 +153,10 @@ type Op = { chdir: string } | { lost: true } | { call: number }
  * where an end-to-end run only produces them when strace happens to interleave.
  */
 export function deniedCalls(text: string, cwd?: string, reads = false): DeniedCall[] {
-  const pending = new Map<string, { syscall: string; rawPath: string; read?: true }>()
+  const pending = new Map<
+    string,
+    { syscall: string; rawPath: string; read?: true; dirfd?: string }
+  >()
   const out: DeniedCall[] = []
   const ops = new Map<string, Op[]>()
   // A clone with CLONE_FS (every thread) shares its creator's cwd, so a
@@ -178,7 +188,9 @@ export function deniedCalls(text: string, cwd?: string, reads = false): DeniedCa
       if (reads && line.includes('openat(')) {
         const m = OPEN_READ_RE.exec(line)
         if (m !== null) {
-          denied(m[1]!, { syscall: 'openat', rawPath: cStringPath(m[2]!), errno: '', read: true })
+          const at = readPath(m[2]!, cStringPath(m[3]!), m[4])
+          if (at !== undefined)
+            denied(m[1]!, { syscall: 'openat', rawPath: at, errno: '', read: true })
           continue
         }
       }
@@ -204,6 +216,7 @@ export function deniedCalls(text: string, cwd?: string, reads = false): DeniedCa
         syscall: unfinished[2],
         rawPath: cStringPath(unfinished[3]),
         ...(reads && OPEN_READ_UNFINISHED_RE.test(line) ? { read: true as const } : {}),
+        ...(reads ? { dirfd: OPEN_READ_UNFINISHED_RE.exec(line)?.[2] ?? 'AT_FDCWD' } : {}),
       })
       continue
     }
@@ -214,11 +227,14 @@ export function deniedCalls(text: string, cwd?: string, reads = false): DeniedCa
       const resumed = STRACE_RESUMED_RE.exec(line)
       // Only a resume that carries a DENIAL is a violation; a successful
       // resume just retires the pending entry.
+      const fd = held?.read === true ? RESUMED_FD_RE.exec(line) : null
       if (held !== undefined && resumed?.[3] !== undefined) {
-        const { read: _, ...call } = held
-        denied(resumedOk[1], { ...call, errno: resumed[3] })
-      } else if (held?.read === true && RESUMED_FD_RE.test(line)) {
-        denied(resumedOk[1], { ...held, errno: '' })
+        denied(resumedOk[1], { syscall: held.syscall, rawPath: held.rawPath, errno: resumed[3] })
+      } else if (held !== undefined && fd !== null) {
+        const at = readPath(held.dirfd ?? 'AT_FDCWD', held.rawPath, fd[1])
+        if (at !== undefined) {
+          denied(resumedOk[1], { syscall: held.syscall, rawPath: at, errno: '', read: true })
+        }
       }
       continue
     }
