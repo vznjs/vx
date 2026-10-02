@@ -1084,3 +1084,7 @@ without the fix). A clone with `CLONE_FS` (every thread) shares its
 creator's cwd rather than copying it, so a `chdir` by either moves both
 (libuv's pool after `process.chdir`): deniedCalls › moves a thread with
 the process whose cwd it shares (red with the flag ignored).
+The parse now skips the lines that cannot matter (a successful open,
+most of a trace) on two substring tests before any regex: a 20,000-line
+trace parsed in 11.0 ms on main and 3.6 ms here, cwd tracking included
+(min of 30, three alternations).
