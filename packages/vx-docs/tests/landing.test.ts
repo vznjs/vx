@@ -454,6 +454,19 @@ describe('a shared link shows the card', () => {
     )
   })
 
+  // The PNG is rendered from public/og.svg; the card said "a faster runner
+  // for your Turborepo or Nx repo" after the page stopped (2026-10-02).
+  it('the card says what the page says', () => {
+    const svg = readFileSync(path.resolve(import.meta.dir, '../public/og.svg'), 'utf8')
+    const lines = [
+      ...svg.matchAll(/<tspan x="96"[^>]*>([\s\S]*?)<\/tspan>\s*(?=<tspan x=|<\/text>)/g),
+    ]
+      .map((m) => text(m[1]!))
+      .join(' ')
+    const h1 = text(/<h1\b[^>]*>([\s\S]*?)<\/h1>/.exec(page())![1]!)
+    expect(lines).toBe(h1)
+  })
+
   it('the card is a 1200×630 PNG', () => {
     const png = readFileSync(path.join(DIST, 'og.png'))
     expect(png.subarray(1, 4).toString()).toBe('PNG')
