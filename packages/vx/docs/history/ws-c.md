@@ -681,6 +681,14 @@ with no prediction; a history read error fails open in both callers.
 
 ## Leads for other streams
 
+- **A:** a kept server that crashes after the summary (`vx run dev`,
+  the server exits 4, vx exits 1) is recorded `ok` with the server
+  `success` in the run history: `recordRunBundle` runs before the
+  keep-alive wait and the cache is closed by the time the wait ends, so
+  `vx last` says `ok`. C-53 fixed the summary and the report; the
+  history needs an update path (reopen, mark the invocation and that
+  row failed).
+
 - **E:** a plugin command's plain `throw` (`commands.probe.run` throwing
   `new Error('boom')`) prints `vx: Error: boom` and a stack, and names
   no plugin (`src/cli/index.ts`), where every other stage says
@@ -816,6 +824,18 @@ restore feeds an exec task. Cost (1,000 projects, 3,000 nodes, min of
 0.21–0.28 ms (noise). Rows (`scheduler.test.ts` › the rank table and the
 dispatch order `r1, r2, e` ahead of three idle restores): red without
 the pass. `modules/scheduler.md` says so.
+
+## C-53: a kept server's crash reads `failed` in the summary and report
+
+`vx run dev` whose server exited 4 after the summary exited 1, and the
+rewritten `--summarize` said `ok: false` with every task `success` and
+`failed: 0`; the outcomes `--report` renders said the same. The server
+that ended the session on its own, not cleanly, is now failed with its
+own exit, as item 1071 does for one that crashed before the stop; one a
+Ctrl-C stopped is not. Rows (`keep-alive.test.ts`): the exit-1 row reads
+`app#other` failed with exit 1 and `failed: 1` (red without the fix);
+the Ctrl-C row reads `success` (red with the abort guard removed). The
+run history still says `ok` (lead for A). `execution.md` says so.
 
 ## C-54: a plugin whose `setup` throws is named with the hook
 

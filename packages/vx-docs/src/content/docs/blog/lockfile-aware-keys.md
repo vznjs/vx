@@ -29,7 +29,7 @@ closure**:
 
 ```ts
 // vx.workspace.ts
-import { defineWorkspace } from '@vzn/vx'
+import { defineWorkspace } from '@vzn/vx/config'
 import { pnpm } from '@vzn/vx-lockfile'
 
 export default defineWorkspace({ plugins: [pnpm()] })
