@@ -610,9 +610,13 @@ above the end (and GitHub's API returns only a job log's last 5,000).
 So after the summary, a `Failed:` block repeats, for each failed task,
 its id, its failure label (`failed (exit 3)`, or its kind:
 `failed (timed out, exit 143)`) and the last 30 lines of its output,
-stdout then stderr as the frame orders them, capped at 8 KiB. A note
+capped at 8 KiB, in its frame's order: stdout then stderr for a
+buffered task, as they arrived for the one task streamed live. A note
 says what was cut: `… 1,204 earlier lines`, or
-`… 12,288 bytes cut from the start of the line below`. The first five
+`… 12,288 bytes cut from the start of the line below`, and for a
+persistent task that failed before it was ready,
+`the capture dropped 1,024 characters of the task's output`; several
+join with `, and`. The first five
 failures get a tail; the rest are named:
 `… and 2 more failed: app#f6, app#f7`. Colour codes pass through as
 the task printed them. It prints on a terminal, in CI and on GitHub
@@ -625,7 +629,7 @@ exit code and no `--summarize` or `--dry=json` output.
 ```
   Failed:   1 task — the last lines it printed
 
-  ◼ app#fail — failed (exit 3)
+  ◼︎ app#fail — failed (exit 3)
   … 70 earlier lines
 line 71
 …

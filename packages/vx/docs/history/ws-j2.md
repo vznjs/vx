@@ -30,6 +30,15 @@
   `discover` stage it lists through `discoverCliProjects`.
   `modules/logger.md` gained #2054's post-summary server stream. Rows
   (`module-page-claims`), red on each page without the fix.
+- **J2-2** The failure recap's samples. `modules/framed-output.md`
+  headed two tails and `… and 2 more failed` with `2 tasks`; the
+  renderer counts all four. Both samples drew `◼` without the `︎`
+  selector the renderer prints. cli.md said a tail reads stdout then
+  stderr; a live-streamed task's reads as its chunks arrived (probed:
+  `out1 err1 out2` live, `out1 out2 err1` buffered), and it omitted the
+  dropped-capture note and the `, and` join. Rows (`cli-doc-drift` ›
+  the failure recap samples are what the renderer prints), red on both
+  pages without the fix.
 - **J2-3** cli.md's `--report` sample read `8ms saved`, its two hits'
   restore times (5 + 3): the sum the paragraph under it says the header
   does not take (`savedMs` sums the entries' stored exec times). The
