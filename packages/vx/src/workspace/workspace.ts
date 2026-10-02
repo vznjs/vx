@@ -35,7 +35,7 @@ export interface ProjectMeta {
   /** Absolute path to the project directory. */
   dir: string
   packageJson: PackageJson
-  /** Absolute path to vx.config.{ts,mts,js,mjs} or null. */
+  /** Absolute path to vx.config.{ts,mts,js,mjs,cts,cjs} or null. */
   configPath: string | null
 }
 
@@ -51,6 +51,10 @@ export const PROJECT_CONFIG_FILENAMES = [
   'vx.config.mts',
   'vx.config.js',
   'vx.config.mjs',
+  // A CommonJS config (`module.exports = …`), as Vite and TS name theirs: it
+  // was ignored without a word (D-86).
+  'vx.config.cts',
+  'vx.config.cjs',
 ]
 
 const decoder = new TextDecoder()

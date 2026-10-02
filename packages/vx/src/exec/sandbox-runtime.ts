@@ -1012,7 +1012,7 @@ export async function wrapSandboxedCommand(
   let wrapped = await wrapForTask(
     SandboxManager,
     inner,
-    customConfig,
+    process.platform === 'linux' ? literalReadPaths(customConfig) : customConfig,
     ports.length > 0 || asksUnixSockets(args.config),
     args.config.gitConfig === true,
   )
@@ -1151,6 +1151,30 @@ const TRACE_FD = 5
 
 function asksUnixSockets(c: Pick<ResolvedSandboxConfig, 'unixSockets'>): boolean {
   return c.unixSockets === true || (c.unixSockets !== undefined && c.unixSockets.length > 0)
+}
+
+/**
+ * Linux: the read paths as SRT must be handed them to take each as the
+ * name it is. vx has expanded every grant by then, so each is a path,
+ * but SRT reads any holding `[` as a glob, where a bracket opens a class:
+ * a route granted as `pages/\[id\].tsx` was never mounted (its denial
+ * unreported, a listed grant), and a workspace under `[ws]/` was never
+ * walled. `[[]` is a class of one `[`; a lone `]` is plain text to it.
+ */
+function literalReadPaths(
+  config: Parameters<SrtModule['SandboxManager']['wrapWithSandbox']>[2],
+): Parameters<SrtModule['SandboxManager']['wrapWithSandbox']>[2] {
+  const fs = config?.filesystem
+  if (fs === undefined) return config
+  const escape = (paths: readonly string[]): string[] => paths.map((p) => p.replaceAll('[', '[[]'))
+  return {
+    ...config,
+    filesystem: {
+      ...fs,
+      denyRead: escape(fs.denyRead),
+      ...(fs.allowRead !== undefined ? { allowRead: escape(fs.allowRead) } : {}),
+    },
+  }
 }
 
 /** SRT's wrap, with the socket lift and the git-config grant this task asked for, or none (L-6, B-41). */
