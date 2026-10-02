@@ -373,7 +373,10 @@ an undeclared path, catch the `ENOENT`, and keep running): the denial is
 reported as a violation even though the task exited 0. Trace parsing
 pairs `<unfinished ...>` with its `<... resumed>` line, so a denial in a
 forked child is reported too — a single-line match dropped those, which
-made the violation list incomplete under concurrency. Without `strace`
+made the violation list incomplete under concurrency. A path is
+strace's C string, decoded: read raw, `q"t.txt` was cut at `q\` and
+`é.txt` named `\303\251.txt`, so the report and every `ignore` pattern
+missed the file (B-54). Without `strace`
 on PATH, or one whose `--version` fails, the sandbox still ENFORCES; only
 the structured list is lost, and that is said once on stderr (B-51):
 before, a task that tolerated the miss passed and cached with no word.

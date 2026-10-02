@@ -995,3 +995,12 @@ reads it denies go unreported`. Rows: `sandbox-runtime.unsafe.test.ts`
 null control); `show-info.test.ts` › the rendered sandbox rows. A new
 fact is a contract change: `schemas/info.json`, `docs/api.md` and
 `vx-mcp`'s `tools.json` record it, so the title and a commit carry `!`.
+
+B-54. strace writes a path as a C string (a quote, a backslash and a
+control byte escaped, a non-ASCII byte as octal), and `deniedCalls`
+read it raw: `q"t.txt` was cut at `q\`, `é.txt` was reported as
+`\303\251.txt`, so the report named the wrong path and no `ignore`
+pattern could match it. The quoted argument is now matched escape-aware
+and decoded (`cStringPath`). Row: `sandbox-runtime.unsafe.test.ts` ›
+deniedCalls › decodes the C-string escapes strace writes a path with
+(red without the fix).
