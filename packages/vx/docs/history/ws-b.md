@@ -39,17 +39,17 @@ In order of harm:
    such a grant to its nearest bracket-free ancestor (as a file grant
    is widened to its directory), said once. `read: ['.']` is unaffected.
 
-6. Closed by B-60: a project under a directory whose name holds a
+7. Closed by B-60: a project under a directory whose name holds a
    bracket is refused on Linux up front (SRT mounts no write path
    holding one, so an escape-aware expansion could not save it).
-7. macOS: a bracket in a grant is not literal there either. vx hands
+8. macOS: a bracket in a grant is not literal there either. vx hands
    seatbelt's SRT the pattern unexpanded, and its `globToRegex` reads
    `[id]` as a class and escapes a backslash, so neither `pages/[id].tsx`
    nor `pages/\[id\].tsx` names the route; `[[]id]` would. A project
    under a bracketed directory meets the same in every rule, and B-60's
    refusal is Linux-only. Static reading of SRT 0.0.78; needs a darwin
    probe before a fix.
-7. Linux: a grant under a workspace whose directory name holds a
+9. Linux: a grant under a workspace whose directory name holds a
    bracket does not resolve: `resolveSandboxConfig` resolves it to an
    absolute path and `expandGrants` reads that path's brackets as a
    `Bun.Glob` class, so `read: ['.']` there mounts nothing. Since B-57
