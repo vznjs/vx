@@ -1039,6 +1039,7 @@ they write streams through the wait (C-56). Docs only.
 only reorders restores among themselves", a clause with no verb (C-51's
 note). It now says the rank can count a diamond twice and that this
 only reorders restores among themselves. Docs only.
+
 ## C-76: the sandbox probe starts when a sandboxed task is sure to run
 
 The probe (~220 ms of spawns on Linux) started on the first sandboxed
