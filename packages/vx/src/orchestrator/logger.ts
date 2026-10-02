@@ -323,7 +323,7 @@ export function defaultLogger(
   // for as long as vx holds it: `vx run dev --all` showed none of its
   // servers' logs while it ran (C-56). So a ready server's output streams
   // from then on, a line at a time under its id; the partial line each
-  // holds waits for its newline, or for the last runEnd.
+  // holds waits for its newline, a second runEnd, or `settle`.
   const keptLines = new Map<string, { node: TaskNode; rest: string }>()
   const streamKept = (node: TaskNode, chunk: string): void => {
     const held = keptLines.get(node.id) ?? { node, rest: '' }
@@ -336,6 +336,12 @@ export function defaultLogger(
     }
     held.rest = text.slice(cut + 1)
     writer.write(fenced(formatKeptLines(node, text.slice(0, cut), colors)))
+  }
+  const flushKept = (): void => {
+    for (const held of keptLines.values()) {
+      if (held.rest.length > 0) writer.write(fenced(formatKeptLines(held.node, held.rest, colors)))
+      held.rest = ''
+    }
   }
   const printsKept = (tail: { outcome?: TaskOutcome }): boolean =>
     flushedPersistent && tail.outcome !== undefined && view.mode !== 'errors-only'
@@ -432,6 +438,8 @@ export function defaultLogger(
 
   return {
     settle() {
+      // The bus delivers one `run:end`, so the CLI's last word reaches here.
+      flushKept()
       writer.settle()
     },
     failureRecap() {
@@ -504,13 +512,7 @@ export function defaultLogger(
       // like the failures below: run() calls runEnd twice on the success
       // path (once before the summary, once in its finally), and a
       // kept-alive child keeps writing between the two.
-      if (flushedPersistent) {
-        for (const held of keptLines.values()) {
-          if (held.rest.length > 0)
-            writer.write(fenced(formatKeptLines(held.node, held.rest, colors)))
-          held.rest = ''
-        }
-      }
+      if (flushedPersistent) flushKept()
       if (!flushedPersistent) {
         flushedPersistent = true
         if (view.mode !== 'none' && view.mode !== 'errors-only') {

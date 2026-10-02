@@ -1205,6 +1205,19 @@ describe('persistent post-ready output', () => {
     }
   })
 
+  // The CLI's bus delivers one `run:end`; its last word is `settle`.
+  it("settle prints a kept server's last partial line", () => {
+    const out = sink()
+    const log = defaultLogger(NO_COLORS, { mode: 'broad' }, out)
+    const n = mkPersistent('app#server')
+    log.taskComplete(n, mkOutcome(n, 'success'))
+    log.runEnd?.()
+    log.taskStdout(n, 'no newline')
+    expect(out.text()).not.toContain('no newline')
+    log.settle?.()
+    expect(out.text()).toEndWith('app#server │ no newline\n')
+  })
+
   it('errors-only stays silent after the summary too', () => {
     const out = sink()
     const log = defaultLogger(NO_COLORS, { mode: 'errors-only' }, out)
