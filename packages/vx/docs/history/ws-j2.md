@@ -126,3 +126,11 @@ persistent task` and vx exits 1). Row (`site-samples` › a post's link
   the count read from `EARLY_SEARCHES`; `site-samples` › the bitsets
   post says when the package graph searches instead), red without the
   fix.
+- **J2-14** The watch-mode post's "always ignored" list left out
+  git-ignored paths, which the loop drops through one `git check-ignore`
+  per debounce window (a pid file or log a task writes there re-ran the
+  loop forever before it), and called `--verbosity` refused where
+  `--verbosity 0` is accepted. Row (`site-samples` › the watch post
+  names what the loop ignores and refuses), read from
+  `IGNORED_SEGMENTS`, `IGNORED_SUFFIXES` and `WATCH_REFUSED_FLAGS`;
+  red without the fix.
