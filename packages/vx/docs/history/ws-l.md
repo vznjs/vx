@@ -452,6 +452,13 @@
   with the same rule. `tag-secret-mask.test.ts`, both rows red without
   the fix.
 
+- L-44. `fix(orchestrator)`: telemetry's command line (`vx.command` on
+  the OTLP run span, the GitHub job summary) counts what follows `--`,
+  but a secret before it (`--tag key=$DEPLOY_KEY`) was sent whole while
+  the stored line and the tags were masked (L-35, L-38). It is masked
+  by the same rule. `telemetry-command-secret-mask.test.ts`, red
+  without the fix.
+
 ## Leads for other streams
 
 - Cache owners: `src/cache/archive.ts` and `tar-stream.ts` changed under
