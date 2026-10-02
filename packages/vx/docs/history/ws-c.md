@@ -830,6 +830,7 @@ bus delivers one `run:end`), fenced on GitHub Actions, silent under `errors-only
 the partial line at `settle`,
 errors-only silent (red with its guard removed), and the fence (red with
 either fence removed). `cli.md` says so.
+
 ## C-54: a plugin whose `setup` throws is named with the hook
 
 Every stage's throw reads `plugin '<name>' failed in <stage>: …`, and
