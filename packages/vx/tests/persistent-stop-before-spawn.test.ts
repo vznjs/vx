@@ -15,7 +15,11 @@ const config = `export default {
 `
 
 describe('a persistent task stopped before its spawn', () => {
-  it('never spawns, and is aborted with the signal it stands for', async () => {
+  // A hang-up forwards SIGTERM to a server (`forwardedSignal`): 143.
+  it.each([
+    ['SIGINT', 130],
+    ['SIGHUP', 143],
+  ])('on %s never spawns, and is aborted with exit %d', async (reason, code) => {
     const root = await makeWorkspace({ prefix: 'vx-persist-stop-' })
     try {
       const dir = await addProject(root, 'app', config)
@@ -30,13 +34,13 @@ describe('a persistent task stopped before its spawn', () => {
           taskStdout() {},
           taskStderr() {},
           taskComplete() {},
-          taskStart: () => stop.abort('SIGINT'),
+          taskStart: () => stop.abort(reason),
         },
       })
       expect([
         r.outcomes.map((o) => [o.status, o.exitCode]),
         existsSync(path.join(dir, 'started.txt')),
-      ]).toEqual([[['aborted', 130]], false])
+      ]).toEqual([[['aborted', code]], false])
       expect(Date.now() - start).toBeLessThan(5000)
     } finally {
       await rm(root, { recursive: true, force: true })

@@ -37,7 +37,7 @@ import {
 } from '../exec/index.js'
 import { isGroupTask, RestoreDemoted, type TaskNode, type TaskOutcome } from '../graph/index.js'
 import { killGraceMs, maskedEmitter, printable, relPosix, secretMask, span } from '../util/index.js'
-import { SIGNAL_SHUTDOWN_GRACE_MS } from './signals.js'
+import { forwardedSignal, SIGNAL_SHUTDOWN_GRACE_MS } from './signals.js'
 import { executorLabel, nameExecutorFailure } from './plugin-host.js'
 import {
   mayWriteFingerprint,
@@ -360,11 +360,11 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
   if (args.stopSignal?.aborted === true) {
     if (bridgeTag !== undefined) releaseBridges(bridgeTag)
     await placeholderSweeper(placeholders)()
-    const reason: unknown = args.stopSignal.reason
     return {
       node,
       status: 'aborted',
-      exitCode: signalExitCode(reason === 'SIGINT' || reason === 'SIGHUP' ? reason : 'SIGTERM'),
+      // The signal a spawned server would have been sent (a hang-up forwards SIGTERM).
+      exitCode: signalExitCode(forwardedSignal(args.stopSignal.reason)),
       durationMs: 0,
       wallclockStartNs,
       wallclockEndNs: process.hrtime.bigint() - args.runStartHrTimeNs,
