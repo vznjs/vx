@@ -4548,6 +4548,33 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
     }
   })
 
+  // A later run's `initSandbox` takes over the session a server's run
+  // left up: the last server's release then ran the reset that run had
+  // deferred, under the later run's tasks, and its next wrap threw "Linux
+  // HTTP bridge socket does not exist" (the bridge-socket row's gate
+  // failure, M-15). The second init waits out any reset the release began.
+  it("a server released after a later run's init leaves that run's sandbox up", async () => {
+    const localPort = (): number => {
+      const l = Bun.listen({ hostname: '127.0.0.1', port: 0, socket: { data() {} } })
+      const p = l.port
+      l.stop(true)
+      return p
+    }
+    const server = await wrapSandboxedCommand(
+      args('true', {
+        config: resolveSandboxConfig({ allow: { localBinding: [localPort()] } }, dir),
+        server: true,
+      }),
+    )
+    const sock = /\S*claude-http-[0-9a-f]+\.sock/.exec(server.wrapped)![0]
+    await resetSandbox()
+    await initSandbox()
+    const up = existsSync(sock)
+    releaseBridges(server.tag)
+    await initSandbox()
+    expect([up, existsSync(sock)]).toEqual([true, true])
+  })
+
   // A literal `ignore` entry is realpath'd WHOLE: a denial through a link
   // lands on the link's target, which is what the record names, so the
   // entry naming the link silences it (sweep of B-11, `ign-nowild-dirname`).
