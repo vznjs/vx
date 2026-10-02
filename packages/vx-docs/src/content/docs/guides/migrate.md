@@ -22,10 +22,15 @@ your `package.json` scripts.
    manager, then runs what `turbo run build` ran, under vx's cache.
 4. Preview the configs with `bunx @vzn/vx-migrate --dry`, then write them
    with `bunx @vzn/vx-migrate`: one `vx.config.ts` per package, plus a
-   `vx-preset.ts` when turbo.json has global fields. It never overwrites a
+   `vx-preset.ts` when turbo.json has global fields or a task `env` several
+   packages share. It never overwrites a
    file without `--force`.
 5. Review each `TODO(vx-migrate)` comment. A task a package's own
    `vx.config.ts` declares wins; `turbo()` fills only the rest.
+6. Once `vx run build --all` does what `turbo run build` did, remove
+   `turbo()` and its import from `vx.workspace.ts`, then delete
+   `turbo.json`: the configs declare every task it mapped, and the
+   migrator's `note:` says so while `turbo()` is still there.
 
 ```ts
 import type { WorkspaceConfig } from '@vzn/vx/config'
@@ -63,6 +68,7 @@ turboCache(): .github/workflows/ci.yml sets TURBO_TOKEN, so vx shares that remot
 ```text
 $ bunx @vzn/vx-migrate
 vx-migrate: turbo.json → vx.config.ts
+note: vx.workspace.ts still declares turbo(), which reads turbo.json every run and fills any task a vx.config does not declare; the configs written here declare them all. Once `vx run` does what turbo did, remove turbo() (and its import), then turbo.json
 
 3 tasks migrated clean, 0 TODOs
 files written:
