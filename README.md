@@ -67,7 +67,7 @@ repo was run, versions, dates and why a tool wins where it does:
 - **Nothing boots per task.** No daemon, no Node process per task: vx
   spawns your command directly.
 - **Hashing without reading.** On a clean tree, cache keys come from
-  git's index; no file is read.
+  git's index; no source file is read.
 - **One pass over the repo.** One git walk per run; each stat and
   lookup happens once.
 
