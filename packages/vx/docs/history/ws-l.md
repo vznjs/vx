@@ -452,12 +452,6 @@
   with the same rule. `tag-secret-mask.test.ts`, both rows red without
   the fix.
 
-- L-36. `fix(util)`: a multi-line secret (a PEM key in a secret-named
-  variable) was masked only as a whole value, so a tool that indented or
-  reflowed it (`… | sed 's/^/  /'`) printed every line of the key in the
-  clear. Each line of six characters or more is now masked too, as GitHub
-  Actions does. Rows: `secret-mask-multiline.test.ts`, red without the
-  fix.
 - L-39. `fix(orchestrator)`: an executor that throws has its message
   printed in the task's stream and by the scheduler. vx-reapi's carries
   the remote server's status text, which vx does not control: a server
