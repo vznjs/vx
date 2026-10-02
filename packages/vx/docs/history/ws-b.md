@@ -96,6 +96,13 @@ In order of harm:
   / ~6000 tasks timed out its 5 s hook once in a full local gate,
   2026-10-02, on the B-54 merge; its shard alone passed.
 
+- workspace: a workspace under a directory whose name holds a backslash
+  (`~/b\s/ws`) cannot run at all on Linux: Bun's `import()` reads the
+  `\` as a separator, plain path and `file://` URL alike, so config eval
+  says "cannot find '…/b/s/ws/vx.config.mjs'" (Bun 1.4.2, 2026-10-02).
+  Bun's `realpathSync` refuses such a path too (B-70). A refusal at
+  discovery naming the directory would say why.
+
 ## Entries
 
 B-1. A glob grant's hit on a wall is not a grant of it (lead 1). On
