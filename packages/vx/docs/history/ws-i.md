@@ -179,6 +179,13 @@ key, the copy rebuilds, and its `pnpm install` (and the pinned pnpm's
 self-install) cannot reach the registry from a task, whose environment
 carries no proxy.
 
+I-20. A warm hit's tree check does less JS. The whole-subtree output
+prefixes are memoised by the declared list, and a hit whose directory
+snapshot proved the set skips mapping each row to a path and back.
+1,000 packages warm, compiled, 25 interleaved rounds, `run graph`
+stage: main 85.4 ms median (min 68.2), patch 69.0 (49.3), A/A 65.8
+(55.0). Wall, 61 rounds: main 411.6 ms median (min 327.1), patch
+384.5 (321.3), A/A 398.7 (330.1).
 I-19. A `--frozen` run keeps the lock's validation verdict. Every
 warm `--frozen` run re-validated every locked config (1,000 projects:
 ~30 ms of `load configs`, half of it the JSON-data walk). The verdict
@@ -194,6 +201,38 @@ CLI's selection pass, `vx info` and the reader's view each built one for
 packages, one edited, `run build --affected=HEAD~1`, compiled, 41
 interleaved rounds: main 359.0 ms median (min 309.1), patch 350.3
 (307.5), A/A 349.5 (296.4).
+I-22. An output glob whose static directory is absent is not scanned.
+A restore into a tree without its outputs scans each output glob twice
+(the check, then the clean), and `Bun.Glob.scanSync` of a missing
+`dist` cost ~58 µs a call; one lstat now answers. 1,000 packages, every
+`dist` removed before each rep, compiled, 21 interleaved rounds: `run
+graph` main 924.7 ms median (min 684.1), patch 864.0 (659.7), A/A 850.6
+(677.7); in-process total 1,243.3 (937.7), 1,190.3 (961.8), 1,195.8
+(958.3).
+
+I-23. An `--affected --frozen` selection reads the lock once. Its
+workspace-glob owners parsed the whole lock only to learn it exists,
+which the staged load that follows had already proved (it refuses a
+frozen load without one); the check now runs only where that load
+failed. Row: `read-once.unsafe.test.ts` counts two opens of
+`vx-lock.json` (three before). 1,000 packages, one edited, `run build
+--affected=HEAD~1`, compiled, 41 interleaved rounds: main 387.1 ms
+median (min 320.5), patch 368.6 (314.4), A/A 368.0 (310.6). The same
+run reads the lock in the selection and again in the run, builds the
+package graph three times and loads `config-eval.ts` (~30 ms of module
+load); those are the next candidates.
+I-21. A restore's row reads stop committing. `loadOutputFilesBatch`
+flushed the pending output stamps and directory snapshots before every
+read, and a restore reads its rows twice, so a 1,000-restore run
+committed ~1,000 small transactions the close would have batched (the
+profile: ~250 ms of main thread in the flush and the reads). The read now
+overlays the pending stamps; a re-save drops the stamps of the rows it
+replaces. 1,000 packages, every `dist` removed before each rep,
+compiled, 21 interleaved rounds: `run graph` main 962.6 ms median (min
+777.4), patch 935.5 (654.0), A/A 949.2 (716.9); in-process total 1,289.0
+(1,074.6), 1,247.3 (936.6), 1,235.8 (1,003.9). The second read (inside
+`restoreOutputs`) stays: the rows in hand would cross the `CacheLayer`
+seam.
 
 ## Leads for other streams
 

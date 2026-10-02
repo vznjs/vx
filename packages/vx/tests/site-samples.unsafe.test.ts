@@ -1533,3 +1533,70 @@ describe('the README and the CI guide say which packages npm has', () => {
     expect(readFileSync(path.join(GUIDES, 'ci.md'), 'utf8')).toContain(NOTE)
   })
 })
+
+describe('a config sample imports the schema from @vzn/vx/config', () => {
+  // `@vzn/vx` is core's own src/index.ts: a user's tsc over a package that
+  // includes its vx.config.ts walked core's Bun-only sources and printed
+  // 527 errors, where `@vzn/vx/config` checked clean (J-94).
+  it('no page, README or example imports only config.ts exports from @vzn/vx', async () => {
+    const schema = new Set(Object.keys(await import('../src/config.js')))
+    for (const t of ['ProjectConfig', 'WorkspaceConfig', 'TaskConfig']) schema.add(t)
+    const repo = path.resolve(import.meta.dir, '..', '..', '..')
+    const files = [
+      ...handAuthoredSitePages(),
+      path.join(repo, 'README.md'),
+      ...readdirSync(path.join(repo, 'packages')).map((d) =>
+        path.join(repo, 'packages', d, 'README.md'),
+      ),
+      ...readdirSync(path.join(repo, 'packages', 'vx', 'docs'))
+        .filter((f) => f.endsWith('.md'))
+        .map((f) => path.join(repo, 'packages', 'vx', 'docs', f)),
+      path.join(repo, 'examples', 'basic', 'packages', 'app', 'vx.config.ts'),
+      path.join(repo, 'examples', 'basic', 'packages', 'lib', 'vx.config.ts'),
+    ].filter((f) => existsSync(f))
+    const offenders: string[] = []
+    let schemaImports = 0
+    for (const f of files) {
+      for (const m of readFileSync(f, 'utf8').matchAll(
+        /^import (?:type )?\{([^}]+)\} from '(@vzn\/vx(?:\/config)?)'/gm,
+      )) {
+        const names = m[1]!.split(',').map((n) => n.trim().replace(/^type /, ''))
+        if (!names.every((n) => schema.has(n))) continue
+        schemaImports++
+        if (m[2] === '@vzn/vx') offenders.push(`${path.relative(repo, f)}: ${m[0]}`)
+      }
+    }
+    expect(offenders).toEqual([])
+    expect(schemaImports).toBeGreaterThan(20)
+  })
+})
+
+describe('an install at the workspace root names the flag pnpm and Yarn 1 require', () => {
+  // pnpm 9 refuses `pnpm add -D` at a workspace root (ERR_PNPM_ADDING_TO_ROOT)
+  // and Yarn 1 refuses `yarn add -D` there without -W; the README lines
+  // and the quickstart said neither (J-95). vx init's own line is the source.
+  it('every `pnpm add -D` / `yarn add -D` in a page or README is the root form init prints', () => {
+    const init = readFileSync(path.resolve(import.meta.dir, '..', 'src', 'cli', 'init.ts'), 'utf8')
+    expect(init).toContain("pnpm: 'pnpm add -D -w'")
+    expect(init).toContain('`${INSTALL.yarn} -W`')
+    const repo = path.resolve(import.meta.dir, '..', '..', '..')
+    const files = [
+      ...handAuthoredSitePages(),
+      path.join(repo, 'README.md'),
+      ...readdirSync(path.join(repo, 'packages')).map((d) =>
+        path.join(repo, 'packages', d, 'README.md'),
+      ),
+    ].filter((f) => existsSync(f))
+    const bad: string[] = []
+    let seen = 0
+    for (const f of files) {
+      for (const m of readFileSync(f, 'utf8').matchAll(/(pnpm|yarn) add -[Dd]\b[^\n`·]*/g)) {
+        seen++
+        const ok = m[1] === 'pnpm' ? / -w\b/.test(m[0]) : /-W\b/.test(m[0])
+        if (!ok) bad.push(`${path.relative(repo, f)}: ${m[0]}`)
+      }
+    }
+    expect(bad).toEqual([])
+    expect(seen).toBeGreaterThan(15)
+  })
+})

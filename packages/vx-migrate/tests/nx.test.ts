@@ -808,6 +808,61 @@ describe('nx()', () => {
       TIMEOUT,
     )
 
+    // Nx's `getNxEnvVariablesForTask`: `nx exec -- <cmd>` in a package
+    // script reads NX_TASK_TARGET_PROJECT, and unset, it booted Nx's task
+    // runner and ran the target and its dependencies again.
+    it(
+      'a task sees the target Nx would hand it, a run-commands env winning',
+      async () => {
+        await libTargets({
+          tgt: {
+            executor: 'nx:run-commands',
+            options: {
+              command:
+                'printf "%s|%s|%s" "$NX_TASK_TARGET_PROJECT" "$NX_TASK_TARGET_TARGET" "$NX_TASK_TARGET_CONFIGURATION" > tgt.txt',
+              cwd: 'packages/lib',
+            },
+            configurations: { ci: { env: { NX_TASK_TARGET_TARGET: 'mine' } } },
+          },
+        })
+        const opts = { cwd: root, log: silent(), handleSignals: false }
+        expect(status(await run({ ...opts, tasks: ['tgt'] }), 'lib#tgt')).toBe('success')
+        expect(await Bun.file(lib('tgt.txt')).text()).toBe('lib|tgt|')
+        expect(status(await run({ ...opts, tasks: ['tgt:ci'] }), 'lib#tgt:ci')).toBe('success')
+        expect(await Bun.file(lib('tgt.txt')).text()).toBe('lib|mine|ci')
+      },
+      TIMEOUT,
+    )
+    // nx-examples' cypress shape: the metadata sits on `e2e-ci`, and Nx's
+    // `getOwnerTargetForTask` loads `.env.e2e-ci` and `.env.e2e` for every
+    // member of its group. The atomized task loaded only `.env.e2e`.
+    it('an atomized target loads its group owner’s files', async () => {
+      await writeFile(lib('.env.e2e-ci'), 'A=ci\n')
+      await writeFile(lib('.env.e2e'), 'A=e2e\n')
+      await writeFile(lib('.env.e2e-ci--a'), 'A=own\n')
+      const g = structuredClone(GRAPH) as unknown as {
+        graph: {
+          nodes: Record<string, { data: { targets: Record<string, unknown>; metadata?: unknown } }>
+        }
+      }
+      const data = g.graph.nodes['lib']!.data
+      Object.assign(data.targets, {
+        e2e: { executor: 'nx:run-commands', options: { command: 'echo e2e' } },
+        'e2e-ci--a': { executor: 'nx:run-commands', options: { command: 'echo a' } },
+        'e2e-ci': {
+          executor: 'nx:noop',
+          dependsOn: ['e2e-ci--a'],
+          metadata: { nonAtomizedTarget: 'e2e' },
+        },
+      })
+      data.metadata = { targetGroups: { 'E2E (CI)': ['e2e-ci--a', 'e2e-ci'] } }
+      await writeFile(path.join(root, 'graph.json'), JSON.stringify(g))
+      const plan = await planRun({ cwd: root, tasks: ['e2e-ci--a'], log: silent() })
+      expect(plan.tasks.find((t) => t.node.id === 'lib#e2e-ci--a')!.node.config.exec?.command).toBe(
+        "nx-env --dotenv .env.e2e-ci --dotenv .env.e2e -- 'cd ../.. && echo a'",
+      )
+    })
+
     it(
       'a run-commands `envFile` is loaded under them (nx#23581)',
       async () => {

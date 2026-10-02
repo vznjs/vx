@@ -247,12 +247,13 @@ function upstreamBuildOnWorker(tasks: GeneratedTask[]): void {
 /**
  * A root script that runs the members rather than checking the repo:
  * pnpm's `-r` / `--filter` / `-C`, Yarn's `--cwd` (excalidraw's
- * `build:common`), npm's `--prefix`, the workspace flags, Bun's `--filter`,
+ * `build:common`) and `yarn workspace <name>` (cal.com's `prisma`), npm's
+ * `--prefix`, the workspace flags, Bun's `--filter`,
  * Vite+'s `vp run` (tiptap), and the other runners, vx itself included. Mapped, it ran every member's
  * task again beside the member's own (D-45).
  */
 const RUNS_MEMBERS =
-  /(^|[\s;&|(])(turbo|nx|lerna|ultra|wireit|nps|moon|rush|vx)(\s|$)|\bworkspaces?\s+(foreach|run)\b|\bvp\s+run\s|\bcd\s/
+  /(^|[\s;&|(])(turbo|nx|lerna|ultra|wireit|nps|moon|rush|vx)(\s|$)|\bworkspaces?\s+(foreach|run)\b|\byarn\s+workspace\s|\bvp\s+run\s/
 
 /** A workspace flag, read only where a package manager takes it (`pmRunsMembers`). */
 const MEMBER_FLAG =
@@ -262,14 +263,15 @@ const MEMBER_FLAG =
  * The workspace flags are a package manager's: on the program it runs they
  * mean something else, and berry's `bench` (`yarn node -r ./setup.ts …`,
  * node's `--require`) was left out as running the members (D-81). With no
- * manager named, a `run` verb is one.
+ * manager named, `node <bin> run` is one (npm/cli's own npm), and not
+ * `docker run -w` (D-83).
  */
 function pmRunsMembers(script: string): boolean {
   for (const segment of script.split(/&&|\|\||[;|()]/)) {
     const words = segment.trim().split(/\s+/)
     let i = words.findIndex((w) => /^(pnpm|npm|yarn|bun)$/.test(w))
     // npm/cli runs itself: `node . run test --workspaces`.
-    if (i < 0) i = words.indexOf('run')
+    if (i < 0) i = words.findIndex((w, j) => w === 'run' && words[j - 2] === 'node')
     if (i < 0) continue
     // `exec`, `dlx` and `x` take the manager's flags up to the program name.
     let program = false
@@ -284,6 +286,25 @@ function pmRunsMembers(script: string): boolean {
   return false
 }
 
+const CD = /(?:^|[\s;&|(])cd\s+("[^"]*"|'[^']*'|[^\s;&|()]+)/g
+
+/**
+ * A `cd` into a member's directory, or one holding members, runs that
+ * member's work (kit's `cd packages/kit && vitest run`); bun's
+ * `typecheck` (`cd test && bun run typecheck`) enters no member and was
+ * left out (D-83). A target vx cannot read (`$DIR`, `~`) still counts.
+ */
+function cdsToMembers(script: string, rootDir: string, memberDirs: readonly string[]): boolean {
+  for (const m of script.matchAll(CD)) {
+    const target = m[1]!.replace(/^(["'])(.*)\1$/, '$2')
+    if (/[$`~*?]/.test(target) || target === '-') return true
+    const dir = path.resolve(rootDir, target)
+    const inside = (a: string, b: string): boolean => a === b || a.startsWith(b + path.sep)
+    if (memberDirs.some((d) => inside(d, dir) || inside(dir, d))) return true
+  }
+  return false
+}
+
 /** A package manager running a script by name: `pnpm build`, `npm run x`, `bun run x`. */
 const RUNS_SCRIPT =
   /(?:^|[\s;&|(])(?:pnpm|npm|yarn|bun)\s+(?:run(?:-script)?\s+)?([^\s;&|()'"-][^\s;&|()'"]*)/g
@@ -293,12 +314,21 @@ const RUNS_SCRIPT =
  * scripts: vite's `ci-docs` (`pnpm build && pnpm docs-build`) runs each
  * member's build through the root's own `build` (`pnpm -r … run build`).
  */
-function runningMembers(scripts: Readonly<Record<string, unknown>>): Set<string> {
+function runningMembers(
+  scripts: Readonly<Record<string, unknown>>,
+  rootDir: string,
+  memberDirs: readonly string[],
+): Set<string> {
   const text = Object.entries(scripts).filter(
     (e): e is [string, string] => typeof e[1] === 'string',
   )
   const out = new Set(
-    text.filter(([, v]) => RUNS_MEMBERS.test(` ${v}`) || pmRunsMembers(v)).map(([n]) => n),
+    text
+      .filter(
+        ([, v]) =>
+          RUNS_MEMBERS.test(` ${v}`) || pmRunsMembers(v) || cdsToMembers(v, rootDir, memberDirs),
+      )
+      .map(([n]) => n),
   )
   for (let grew = true; grew;) {
     grew = false
@@ -357,7 +387,11 @@ export function migrateScripts(
   )
   const rootScripts = (meta: ProjectMeta): Record<string, unknown> => {
     const scripts = scriptsOf(meta)
-    const runs = runningMembers(scripts)
+    const runs = runningMembers(
+      scripts,
+      meta.dir,
+      metas.filter((m) => m !== root).map((m) => m.dir),
+    )
     return Object.fromEntries(
       Object.entries(scripts).filter(
         ([n, v]) => typeof v === 'string' && !memberTasks.has(n) && !runs.has(n),
