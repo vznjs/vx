@@ -176,9 +176,10 @@ export interface RunOptions {
    */
   signal?: AbortSignal
   /**
-   * Hand the requested persistent tasks still running, and the persistent
-   * tasks they depend on (C-46), back on `RunSummary.persistent` instead
-   * of stopping them when the graph ends.
+   * Hand the requested persistent tasks still running, those a requested
+   * group stands for (C-52), and the persistent tasks they depend on
+   * (C-46), back on `RunSummary.persistent` instead of stopping them when
+   * the graph ends.
    * The caller owns them from then on and stops them with its `stop()`.
    * The watch loop sets this: a dev server stays up while watch idles and
    * is replaced only when the next cycle starts.

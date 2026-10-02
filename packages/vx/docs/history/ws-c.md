@@ -878,3 +878,12 @@ a held server's line after the return reaches the logger (red without
 the fix), and after `stop` the bus reaches it no more (red with the
 detach removed); probed end to end (9 lines in 2.5 s, 2 before).
 `cli.md` says so.
+
+## C-58: two comments that claimed what the code does not
+
+J's leads (J-65, J-78). `resolveCache` said one plugin layer "is used as
+is", but a layer that does not wrap the local store is chained with it
+at the tail; it now says only a single layer left is used as is.
+`RunOptions.holdPersistent` said only the requested servers are handed
+back; it names the ones a requested group stands for (C-52) and their
+persistent dependencies (C-46). Comments only.
