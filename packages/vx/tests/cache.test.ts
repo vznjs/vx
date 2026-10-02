@@ -1,4 +1,4 @@
-import { existsSync, writeFileSync } from 'node:fs'
+import { existsSync, statSync, writeFileSync } from 'node:fs'
 import { mkdir, mkdtemp, readdir, readFile, rm, utimes, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -3180,6 +3180,29 @@ describe('an artifact on disk with no index row, through a run', () => {
       } finally {
         db.close()
       }
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('the WAL a closed cache leaves', () => {
+  it('is there and empty, so the next open recovers and copies no frame', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'vx-cache-wal-'))
+    try {
+      const dir = path.join(root, 'cache')
+      const wal = path.join(dir, 'cache.db-wal')
+      // The first open creates the index; the WAL persists from the second.
+      new Cache(dir).close()
+      const cache = new Cache(dir)
+      cache.putConfigEval('k', '{}')
+      // CONTROL: the write sits in the WAL until the close checkpoints it.
+      expect(statSync(wal).size).toBeGreaterThan(0)
+      cache.close()
+      expect(statSync(wal).size).toBe(0)
+      const again = new Cache(dir)
+      expect(again.getConfigEval('k')).toBe('{}')
+      again.close()
     } finally {
       await rm(root, { recursive: true, force: true })
     }

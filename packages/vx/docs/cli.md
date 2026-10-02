@@ -675,7 +675,11 @@ other persistent task`), and a non-zero exit makes the run exit 1.
    stopped, and vx exits 130. A run with a failure elsewhere (a task
    failed or skipped, a server never ready or crashed) holds nothing: it
    stops its servers and exits 1, unless `--continue=always`; `vx watch`
-   keeps its server through a failed cycle.
+   keeps its server through a failed cycle. While vx holds them, what
+   the servers write streams below the summary a line at a time under
+   each one's id (`app#dev │ Local: http://localhost:5173`), except
+   under `--output-logs errors-only`, `hash-only` or `none`; a single
+   requested server in the focused flow streams raw from its frame.
 3. **Worker rows** — one per worker slot (sized
    `min(concurrency, 10)`), no glyph and no spinner: the live ticking
    elapsed time leads (`     568ms running  <id>`). A task stays in
@@ -1738,6 +1742,8 @@ yarn@2+`, or a Berry `yarn.lock`, D-31), npm under `ignore-scripts=true`
 in the `.npmrc` beside its lockfile, pnpm under
 `enable-pre-post-scripts=false` there or `enablePrePostScripts: false` in
 `pnpm-workspace.yaml` (D-33). Bun and Yarn 1 run them whatever those say.
+Under Yarn 2+ a segment's `run <script>`, Yarn's shell builtin, is written
+`yarn run <script>`: vx's shell has no `run` (D-92).
 A script reading `$npm_package_version`, `$npm_package_name` or
 `$npm_lifecycle_event`, which every manager sets and vx does not, gets
 them under `exec.env.define`, the first two read from an imported

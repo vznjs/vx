@@ -605,6 +605,14 @@ export class Cache implements CacheLayer {
       // every open there failed `attempt to write a readonly database`
       // before the not-writable refusal could name the directory (O-10).
       if (!absent) this.db.fileControl(SQLITE_FCNTL_PERSIST_WAL, 1)
+      // Any non-negative limit makes the last clean close truncate a
+      // persistent `-wal` to zero bytes once it is checkpointed (SQLite's
+      // walClose). At the default (-1) it kept every frame, so each later
+      // connection recovered them at open and copied them into the
+      // database again at its close: 738 frames, 4.5 MB, on a 1,000-project
+      // cache. The file stays (O-10 above); 64 MiB is far above what a run
+      // writes, so the limit never trims a WAL mid-run.
+      this.db.exec('PRAGMA journal_size_limit = 67108864')
       this.db.exec('PRAGMA synchronous = NORMAL')
       this.db.exec('PRAGMA foreign_keys = ON')
       this.db.exec(`
