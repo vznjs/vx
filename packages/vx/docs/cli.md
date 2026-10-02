@@ -668,7 +668,10 @@ tracks the run live. Top to bottom:
    the task and its code (`vx: app#dev exited with code 1; stopping 1
 other persistent task`), and a non-zero exit makes the run exit 1.
    A Ctrl-C prints no such line: the server ended because it was
-   stopped, and vx exits 130.
+   stopped, and vx exits 130. A run with a failure elsewhere (a task
+   failed or skipped, a server never ready or crashed) holds nothing: it
+   stops its servers and exits 1, unless `--continue=always`; `vx watch`
+   keeps its server through a failed cycle.
 3. **Worker rows** — one per worker slot (sized
    `min(concurrency, 10)`), no glyph and no spinner: the live ticking
    elapsed time leads (`     568ms running  <id>`). A task stays in
@@ -1751,7 +1754,7 @@ the root has a `"name"` (vx skips a nameless root's config) and no config
 of its own; a hand-written one stays as written. The report says which;
 with nothing mapped it names the root whenever it has a script, a member
 or not (pnpm's root is not), and tells a root with no `"name"` to add one
-first (vuejs/core). A single-package repo's root is its project and maps.
+first (vuejs/core), naming the scripts that would then map (react, D-87). A single-package repo's root is its project and maps.
 A script that is nothing but `npm run <other>` (`pnpm <other>`, `yarn
 <other>`, `bun run <other>`, `npm test`, `npm start`) becomes a **group**
 over `<other>` — `dependsOn` and no command — so the graph runs and

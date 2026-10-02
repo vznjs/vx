@@ -27,14 +27,15 @@ export function discoverProjects(
 // The enumeration a discovery's hooks shared, by the array it returned (G-75).
 export function gitOfDiscovery(projects: readonly ProjectMeta[]): LazyGitEnumeration | undefined
 
-export interface LoadProjectsArgs {
+// The graph is read only for the closure, so only a closure load needs one.
+export type LoadProjectsArgs = LoadProjectsBase &
+  ({ closure: true; packageGraph: PackageGraph } | { closure: false; packageGraph?: PackageGraph })
+interface LoadProjectsBase {
   workspaceRoot: string
   cacheDir: string
   plugins: readonly VxPlugin[]
   projectMetas: readonly ProjectMeta[]
-  packageGraph: PackageGraph
   seeds: 'all' | Iterable<string> // unknown / config-less names ignored
-  closure: boolean // also load each seed's transitive package deps
   lock: Lockfile | null // read from the lock instead of evaluating
   evalCache: LoadProjectConfigOptions['evalCache']
   warn: (m: string) => void

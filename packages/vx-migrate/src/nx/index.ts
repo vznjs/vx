@@ -24,7 +24,7 @@ import path from 'node:path'
 import { type GeneratedProject, type ProjectMeta, UserError, type VxPlugin } from '@vzn/vx'
 import { type AdoptionRun, adoptionPlugin } from '../adoption-plugin.js'
 import { collectGaps } from '../plugin-gaps.js'
-import { mapNxWorkspace, type NxGraph, parseNxGraph, readNxJson } from './nx-map.js'
+import { mapNxWorkspace, type NxGraph, nxSizeText, parseNxGraph, readNxJson } from './nx-map.js'
 import { exportGraph } from './export-graph.js'
 import { listDotenv } from './nx-dotenv.js'
 import { trackedKinds } from '../tracked-outputs.js'
@@ -205,19 +205,7 @@ async function nxMaxCacheSize(root: string): Promise<string | undefined> {
       ? env
       : ((await readNxJson(root).catch(() => null))?.json as { maxCacheSize?: unknown } | undefined)
           ?.maxCacheSize
-  if (typeof raw !== 'string' && typeof raw !== 'number') return undefined
-  const text = String(raw).trim()
-  const m = /^(\d+\.?\d*|\.\d+)\s?([KMG]?B)?$/.exec(text)
-  if (m === null) return text
-  const units = ['B', 'KB', 'MB', 'GB']
-  let n = Math.floor(Number(m[1]) * 1024 ** units.indexOf(m[2] ?? 'B'))
-  if (n === 0) return undefined
-  let u = 0
-  while (u < units.length - 1 && n % 1024 === 0) {
-    n /= 1024
-    u++
-  }
-  return `${n}${units[u]}`
+  return nxSizeText(raw)
 }
 
 interface LoadedGraph {
