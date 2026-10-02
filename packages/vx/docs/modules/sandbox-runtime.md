@@ -413,6 +413,15 @@ below it, or a deny that is the cwd), vx denies the cwd too: the task
 enters an empty directory, its reads there are refused and reported, and
 its writes are the scratch the write observer reports (B-53).
 
+SRT reads any Linux read path holding `[` as a glob, where a bracket
+opens a class. By the time vx hands the policy over, every grant is a
+path, so it spells each `[` in a read or deny path as `[[]`, a class of
+one bracket (`literalReadPaths`): a route granted as
+`pages/\[id\].tsx` matched and was never mounted (its denial unreported,
+a listed grant), and a workspace under a bracketed directory was never
+walled (B-57). A write path holding a bracket SRT drops, with no spelling
+that keeps it.
+
 SRT's in-sandbox network bridge is `socat TCP-LISTEN:3128` (and 1080),
 which socat 1.8 opens as an IPv6 socket. On a host without IPv6 it
 failed ("Address family not supported by protocol") into /dev/null, and
