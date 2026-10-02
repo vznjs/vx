@@ -1044,6 +1044,7 @@ unsubscribe, never mutated, so an emit walks the list it began with at
 no per-emit cost; a subscriber added during an emit hears the next
 event. Rows (`events.test.ts` › createEventBus): both red without the
 fix. `modules/events.md` says so.
+
 ## C-76: the sandbox probe starts when a sandboxed task is sure to run
 
 The probe (~220 ms of spawns on Linux) started on the first sandboxed
