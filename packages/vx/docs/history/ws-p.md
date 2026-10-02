@@ -66,6 +66,11 @@
   name Nx's `getNxEnvVariablesForTask` sets beside `NX_TASK_TARGET_*`;
   Lerna runs on Nx's runner and documents it to scripts, and it was
   unset.
+- **P-17** `nx()`: an output todo (Nx's default `build` / `public` note,
+  an unresolvable `{options.x}`) is said only for a target vx caches; it
+  sat on every uncached `build` that declares no outputs (found diffing a
+  synthetic workspace's mapping against Nx 23's own task graph, whose
+  edges all agreed).
 - **P-18** `nx()`: outputs checked case by case against Nx 23.2's own
   `getOutputsForTargetAndConfiguration`: an `outputPath` list is each of
   its paths (read as none, the build cached Nx's default directories and

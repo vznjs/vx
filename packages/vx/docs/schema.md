@@ -370,8 +370,13 @@ Semantics:
   fine (a daemon that forks and returns).
 - **End-of-graph SIGTERM.** Once the rest of the graph finishes
   (success OR failure of downstream), the orchestrator sends `SIGTERM`
-  to every persistent subprocess and waits for them to exit before
-  returning.
+  to every persistent subprocess it does not keep, and waits for them to
+  exit (`SIGKILL` past the kill grace). In the foreground it KEEPS the
+  persistent tasks you requested, those a requested group stands for,
+  and the persistent tasks they depend on: vx stays up after the summary
+  until one of them exits or you press Ctrl-C, streaming what they write.
+  A run where anything else failed keeps none and exits 1, unless
+  `--continue=always` (`cli.md` § Output, "Pinned persistent tasks").
 - **`cache` is rejected.** The config loader throws on
   `cache + persistent` — persistent tasks don't terminate, so there's
   no exit code to cache and no outputs to capture at a well-defined
@@ -473,7 +478,7 @@ shows it: the task's output and the line vx adds under a shell's 127 or
 replays, the command a cache entry stores (what `vx why` prints and a
 remote cache receives), the `$ command` line, telemetry records,
 `vx show`, and the run's own invocation line that `vx last` prints (a
-secret passed after `--`). A value
+secret passed after `--`) and its `--tag`s. A value
 split across two output chunks is still caught; the output holds back
 that many characters until the next chunk. A plugin that reads a task's
 config directly sees it as written. A secret whose name holds none of
