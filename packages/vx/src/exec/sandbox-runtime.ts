@@ -48,6 +48,7 @@ import {
   shellQuote,
   withForwardArgs,
   signalExitCode,
+  stopSignal,
   spawnFailureText,
   streamToString,
   resourceUsageToCpuRss,
@@ -1478,6 +1479,22 @@ async function runSandboxedOnce(
   const { wrapped, tag, srtCommand, baselines, scratch, forwardsSignals, traced } =
     await wrapSandboxedCommand({ ...args, ...(useStrace ? { trace: useStrace } : {}) })
   const takeRecords = collectRecords(SandboxManager.getSandboxViolationStore(), srtCommand)
+  // A stop that landed during the awaits above leaves nothing to kill yet:
+  // spawned now, the task ran after the teardown swept the run's children.
+  if (args.signal?.aborted === true) {
+    releaseBridges(tag)
+    takeRecords()
+    const signal = stopSignal(args.signal.reason)
+    return {
+      exitCode: signalExitCode(signal),
+      durationMs: Date.now() - start,
+      stdout: '',
+      stderr: '',
+      signal,
+      violations: [],
+      tracerFailed: false,
+    }
+  }
   // Beside the task directories, which every sandbox replaces with its own:
   // in the shared temp dir a concurrent task read this log, every path
   // this task opened (L-25).
