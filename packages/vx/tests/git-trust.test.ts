@@ -85,6 +85,55 @@ describe('a rename git reports in the second status column', () => {
   )
 })
 
+describe('a deletion git pairs with an unmerged path', () => {
+  it(
+    'is not an input (A-59)',
+    async () => {
+      // `git status` detects renames in the worktree, and a deleted file
+      // whose bytes match (≥50 % similar) an unmerged path's worktree file
+      // is taken as that path's rename source. Porcelain v1 prints only
+      // `UU c.txt` for it, so ` D old.txt` was never printed, `old.txt`
+      // stayed trusted, and the run keyed the deleted file from the index:
+      // a hit on the output built with it.
+      const dir = await addProject(root, 'a', {
+        config: `export default {
+          tasks: {
+            build: {
+              exec: { command: 'mkdir -p dist && ls *.txt > dist/out' },
+              cache: { inputs: { files: ['*.txt'] }, outputs: { files: ['dist/**'] } },
+            },
+          },
+        }`,
+      })
+      await writeFile(path.join(dir, 'old.txt'), 'x\n')
+      const git = gitIn(root)
+      git('add', '-A')
+      git('commit', '-q', '-m', 'fixture')
+      // A conflict (stages 1, 2 and 3) on `c.txt`, its worktree file
+      // holding the bytes of `old.txt`, as a merge leaves one mid-resolve.
+      const oid = git('hash-object', path.join(dir, 'old.txt')).trim()
+      await writeFile(path.join(dir, 'c.txt'), 'x\n')
+      const rel = path.relative(root, path.join(dir, 'c.txt'))
+      const info = [1, 2, 3].map((s) => `100644 ${oid} ${s}\t${rel}\n`).join('')
+      const proc = Bun.spawnSync(['git', 'update-index', '--index-info'], {
+        cwd: root,
+        stdin: new TextEncoder().encode(info),
+      })
+      expect(proc.exitCode).toBe(0)
+
+      expect(await build()).toBe('success')
+      expect(await readFile(path.join(dir, 'dist', 'out'), 'utf8')).toBe('c.txt\nold.txt\n')
+
+      await rm(path.join(dir, 'old.txt'))
+      // The shape: git's own status says nothing of the deletion.
+      expect(git('status', '--porcelain', '-uno', '--', '.')).toBe(`UU ${rel}\n`)
+      expect(await build()).toBe('success')
+      expect(await readFile(path.join(dir, 'dist', 'out'), 'utf8')).toBe('c.txt\n')
+    },
+    TIMEOUT,
+  )
+})
+
 describe('a .gitattributes the index does not hold as clean', () => {
   const CONFIG = `export default {
     tasks: {

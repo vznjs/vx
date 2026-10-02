@@ -34,19 +34,54 @@ import type {
  * clean. We pair them by pid instead (a process has at most
  * one syscall in flight, so the pid is a sufficient key).
  *
- * We capture the first quoted-string argument as the path. paths that
- * are relative resolve against the task's cwd (set by Bun.spawn).
+ * We capture the first quoted-string argument as the path, a C string
+ * (`cStringPath` decodes it). Paths that are relative resolve against the
+ * task's cwd (set by Bun.spawn).
  */
 const SYSCALLS = 'openat|access|statx|newfstatat'
+const QUOTED = '"((?:[^"\\\\]|\\\\.)+)"'
 const STRACE_DONE_RE = new RegExp(
-  `^(\\d+)\\s+(${SYSCALLS})\\([^"]*"([^"]+)"[^)]*\\)\\s*=\\s*-1\\s+(ENOENT|EACCES|EPERM)`,
+  `^(\\d+)\\s+(${SYSCALLS})\\([^"]*${QUOTED}[^)]*\\)\\s*=\\s*-1\\s+(ENOENT|EACCES|EPERM)`,
 )
-const STRACE_UNFINISHED_RE = new RegExp(`^(\\d+)\\s+(${SYSCALLS})\\([^"]*"([^"]+)"[^)]*<unfinished`)
+const STRACE_UNFINISHED_RE = new RegExp(`^(\\d+)\\s+(${SYSCALLS})\\([^"]*${QUOTED}[^)]*<unfinished`)
 const STRACE_RESUMED_RE = new RegExp(
   `^(\\d+)\\s+<\\.\\.\\. (${SYSCALLS}) resumed>.*?=\\s*-1\\s+(ENOENT|EACCES|EPERM)`,
 )
 /** A resumed call that SUCCEEDED — clears the pending entry, emits nothing. */
 const STRACE_RESUMED_OK_RE = new RegExp(`^(\\d+)\\s+<\\.\\.\\. (${SYSCALLS}) resumed>`)
+
+const C_ESCAPES: Record<string, number> = { n: 10, t: 9, r: 13, v: 11, f: 12, a: 7, b: 8 }
+
+/**
+ * The path a strace C string spells. strace escapes a quote, a backslash
+ * and a control byte, and writes a non-ASCII byte as octal (`é` is
+ * `\303\251`): read raw, `q"t.txt` was cut at `q\` and `é.txt` named
+ * `\303\251.txt`, so the report and every `ignore` pattern missed the file.
+ */
+function cStringPath(raw: string): string {
+  if (!raw.includes('\\')) return raw
+  const bytes: number[] = []
+  for (let i = 0; i < raw.length; i++) {
+    const c = raw[i]!
+    if (c !== '\\') {
+      bytes.push(...Buffer.from(c, 'utf8'))
+      continue
+    }
+    const next = raw[++i] ?? ''
+    const octal = /^[0-7]{1,3}/.exec(raw.slice(i, i + 3))?.[0]
+    const hex = next === 'x' ? /^[0-9a-fA-F]{1,2}/.exec(raw.slice(i + 1, i + 3))?.[0] : undefined
+    if (octal !== undefined) {
+      bytes.push(parseInt(octal, 8))
+      i += octal.length - 1
+    } else if (hex !== undefined) {
+      bytes.push(parseInt(hex, 16))
+      i += hex.length
+    } else {
+      bytes.push(C_ESCAPES[next] ?? next.charCodeAt(0))
+    }
+  }
+  return Buffer.from(bytes).toString('utf8')
+}
 
 /** One denied syscall, however strace chose to lay it out. */
 export interface DeniedCall {
@@ -68,7 +103,7 @@ export function deniedCalls(text: string): DeniedCall[] {
   for (const line of text.split('\n')) {
     const done = STRACE_DONE_RE.exec(line)
     if (done?.[2] !== undefined && done[3] !== undefined && done[4] !== undefined) {
-      out.push({ syscall: done[2], rawPath: done[3], errno: done[4] })
+      out.push({ syscall: done[2], rawPath: cStringPath(done[3]), errno: done[4] })
       continue
     }
     const unfinished = STRACE_UNFINISHED_RE.exec(line)
@@ -77,7 +112,7 @@ export function deniedCalls(text: string): DeniedCall[] {
       unfinished[2] !== undefined &&
       unfinished[3] !== undefined
     ) {
-      pending.set(unfinished[1], { syscall: unfinished[2], rawPath: unfinished[3] })
+      pending.set(unfinished[1], { syscall: unfinished[2], rawPath: cStringPath(unfinished[3]) })
       continue
     }
     const resumedOk = STRACE_RESUMED_OK_RE.exec(line)

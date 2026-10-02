@@ -179,6 +179,27 @@ key, the copy rebuilds, and its `pnpm install` (and the pinned pnpm's
 self-install) cannot reach the registry from a task, whose environment
 carries no proxy.
 
+I-19. A `--frozen` run keeps the lock's validation verdict. Every
+warm `--frozen` run re-validated every locked config (1,000 projects:
+~30 ms of `load configs`, half of it the JSON-data walk). The verdict
+now sits beside the config evaluations, keyed by the lock's bytes, the
+project, vx's and Bun's versions. 1,000 packages warm, compiled, 41
+interleaved rounds: main 401.2 ms median (min 337.2), patch 377.9
+(309.2), A/A 373.2 (321.0); `load configs` 41.1 → 14.4 ms (min of 7).
+
+I-21. A restore's row reads stop committing. `loadOutputFilesBatch`
+flushed the pending output stamps and directory snapshots before every
+read, and a restore reads its rows twice, so a 1,000-restore run
+committed ~1,000 small transactions the close would have batched (the
+profile: ~250 ms of main thread in the flush and the reads). The read now
+overlays the pending stamps; a re-save drops the stamps of the rows it
+replaces. 1,000 packages, every `dist` removed before each rep,
+compiled, 21 interleaved rounds: `run graph` main 962.6 ms median (min
+777.4), patch 935.5 (654.0), A/A 949.2 (716.9); in-process total 1,289.0
+(1,074.6), 1,247.3 (936.6), 1,235.8 (1,003.9). The second read (inside
+`restoreOutputs`) stays: the rows in hand would cross the `CacheLayer`
+seam.
+
 ## Leads for other streams
 
 - **Owner / coordinator: skip macOS where it cannot differ from
@@ -276,3 +297,8 @@ carries no proxy.
   is expected, 2,199 ms, on c2f0fa79; green on the next gate at
   233e6e59. The retry count reads as time-bounded under load. Not
   root-caused.
+- **B: `output-dirs.test.ts` › "does not descend a symlinked
+  directory, … nothing over the cap" times out in its `afterEach`
+  under a full local gate (I-19)**: twice, 9.9 and 14.8 s, the removal
+  of `OUTPUT_DIRS_CAP + 1` directories inside the sandbox; green in
+  shard-9 run alone on main and on the patch.

@@ -112,7 +112,7 @@ export function oneDatabase(): VxPlugin {
 `schedule` ranks ready tasks. This one learns from your run history:
 
 ```ts
-import { defineWorkspace } from '@vzn/vx'
+import { defineWorkspace } from '@vzn/vx/config'
 import { scheduleHistoryPlugin } from '@vzn/vx-schedule-history'
 
 export default defineWorkspace({ plugins: [scheduleHistoryPlugin()] })
@@ -296,6 +296,9 @@ A verb that throws anything but a `UserError` fails in one line, no stack:
 | `@vzn/vx-github`            | `telemetry` ([GitHub Actions](../ci/#github-actions)) |
 | `@vzn/vx-mcp`               | `commands` ([below](#vx-mcp))              |
 
+Only `@vzn/vx` is on npm today. The seven plugins' first publish is
+pending, so installing one fails until then.
+
 One plugin can fill several: `@vzn/vx-schedule-history` fills three at once.
 
 ## OpenTelemetry
@@ -308,7 +311,7 @@ endpoint it declines; a signal's own endpoint alone exports that signal.
 
 ```ts
 // vx.workspace.ts
-import { defineWorkspace } from '@vzn/vx'
+import { defineWorkspace } from '@vzn/vx/config'
 import { otel } from '@vzn/vx-otel'
 
 export default defineWorkspace({
@@ -350,7 +353,7 @@ the agent inside the workspace; restart it if it lists no vx tools.
 
 ```ts
 // vx.workspace.ts
-import { defineWorkspace } from '@vzn/vx'
+import { defineWorkspace } from '@vzn/vx/config'
 import { mcp } from '@vzn/vx-mcp'
 
 export default defineWorkspace({ plugins: [mcp()] })
