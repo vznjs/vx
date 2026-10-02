@@ -137,6 +137,25 @@ describe('the plugins guide states the CacheLayer method count', () => {
 })
 
 // The environment-variables guide is the configure page's section now.
+describe('CONTRIBUTING names what the gate runs on', () => {
+  // It said "Needs Bun ≥ 1.4 and git" and "No Node in the toolchain"; with no
+  // `node` on PATH every nx-exec row of @vzn/vx-migrate#test fails (J-107).
+  it('nx-exec.test.ts spawns node, and CONTRIBUTING names Node', () => {
+    const repo = path.resolve(import.meta.dir, '..', '..', '..')
+    const nxExec = readFileSync(
+      path.join(repo, 'packages', 'vx-migrate', 'tests', 'nx-exec.test.ts'),
+      'utf8',
+    )
+    expect(nxExec).toContain("Bun.spawn(['node', BIN, ...args]")
+    const contributing = readFileSync(path.join(repo, 'CONTRIBUTING.md'), 'utf8').replace(
+      /\s+/g,
+      ' ',
+    )
+    expect(contributing).toContain('Needs Bun ≥ 1.4, git and Node')
+    expect(contributing).not.toContain('No Node in the toolchain')
+  })
+})
+
 describe('the configure guide names the essential allowlist', () => {
   it('its "always gets a small essential allowlist" sentence names every POSIX name in ESSENTIAL_ENV', () => {
     const page = section(
@@ -167,6 +186,35 @@ describe('the CI guide states the wire chunk sizes', () => {
     const m = /- Uploads chunk at (\d+) bytes \(`SAFE_CHUNK_BYTES`\)/.exec(page)
     expect(m).not.toBeNull()
     expect([m![1], chunk![1]]).toEqual([safe![1], safe![1]])
+  })
+})
+
+describe("the README's comparison agrees with comparison.md on Turbo's daemon", () => {
+  // The README called Turbo's daemon "Optional" for speed; Turbo 2.10's
+  // `run --help` marks --daemon and --no-daemon deprecated ("The daemon is
+  // no longer used for `turbo run`"), as comparison.md says (J-111).
+  it('both say turbo run uses none', () => {
+    const repo = path.resolve(import.meta.dir, '..', '..', '..')
+    const readme = readFileSync(path.join(repo, 'README.md'), 'utf8')
+    const row = /^\| Daemon required for speed \|[^|]*\| ([^|]*?) +\|/m.exec(readme)![1]
+    expect(row).toBe('No (`turbo run` has none)')
+    const doc = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'comparison.md'), 'utf8')
+    // Bisected over npm: 2.8.10's help still offers --daemon, 2.8.11's marks
+    // it deprecated and unused by `turbo run`; 2.10 deprecates neither
+    // --no-cache nor --remote-only.
+    expect(doc).toContain(
+      '| Daemon / persistent project-graph process | not for `turbo run` since 2.8.11',
+    )
+    expect(/^\| daemon on\/off +\| ([^|]*?) +\|/m.exec(doc)![1]).toBe(
+      '(deprecated in 2.8.11; ignored)',
+    )
+    expect(doc.replace(/\s+/g, ' ')).toContain(
+      'it has deprecated its own daemon for `turbo run` (2.8.11) and `--parallel` (by 2.9.18)',
+    )
+    const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
+    expect(bench.replace(/\s+/g, ' ')).toContain('(it uses none for `turbo run` since 2.8.11)')
+    const post = readFileSync(path.join(DOCS, 'blog', 'honest-benchmarks.md'), 'utf8')
+    expect(post.replace(/\s+/g, ' ')).toContain('(deprecated there since 2.8.11)')
   })
 })
 
@@ -1651,5 +1699,19 @@ describe("the site's reapi samples on port 443 name a TLS scheme", () => {
     )
     expect(samples.length).toBeGreaterThan(3)
     expect(samples.filter((s) => !/: (grpcs|https):\/\//.test(s))).toEqual([])
+  })
+})
+describe("comparison.md's Turborepo cells say what Turbo hashes and runs", () => {
+  // Turbo 2.10.13's dry run lists `package.json` among a task's inputs (a
+  // description edit re-keyed it), and `turbo run build` printed npm's
+  // `> b@1.0.0 prebuild` and its output; the cells said "(via lockfile)"
+  // and "(no)" (J-109).
+  it('the package.json and pre/post rows name it', () => {
+    const doc = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'comparison.md'), 'utf8')
+    const turbo = (row: string) => new RegExp(`^\\| ${row} +\\| ([^|]*?) +\\|`, 'm').exec(doc)![1]
+    expect(turbo('Implicit-dependency hash \\(project `package.json`\\)')).toBe(
+      'yes — `package.json` is a default input',
+    )
+    expect(turbo('Pre/post script lifecycle')).toBe('yes — the package manager runs them')
   })
 })

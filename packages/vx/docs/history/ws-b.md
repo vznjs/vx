@@ -96,6 +96,13 @@ In order of harm:
   / ~6000 tasks timed out its 5 s hook once in a full local gate,
   2026-10-02, on the B-54 merge; its shard alone passed.
 
+- workspace: a workspace under a directory whose name holds a backslash
+  (`~/b\s/ws`) cannot run at all on Linux: Bun's `import()` reads the
+  `\` as a separator, plain path and `file://` URL alike, so config eval
+  says "cannot find '…/b/s/ws/vx.config.mjs'" (Bun 1.4.2, 2026-10-02).
+  Bun's `realpathSync` refuses such a path too (B-70). A refusal at
+  discovery naming the directory would say why.
+
 ## Entries
 
 B-1. A glob grant's hit on a wall is not a grant of it (lead 1). On
@@ -1124,3 +1131,72 @@ without the fix). A clone with `CLONE_FS` (every thread) shares its
 creator's cwd rather than copying it, so a `chdir` by either moves both
 (libuv's pool after `process.chdir`): deniedCalls › moves a thread with
 the process whose cwd it shares (red with the flag ignored).
+
+B-62. The strace parse ran every regex on every trace line, and B-61
+added seven more for the lines no denial regex took, which is nearly
+every line (a successful open). Two substring tests now skip such a
+line before any regex. A synthetic 20,000-line trace (50 denials):
+11.0 ms on main before B-61, 3.6 ms now with cwd tracking, 2.0 without
+(min of 30, three alternations). The existing deniedCalls rows hold the
+parse: dropping any one of the gates' `resumed>`, `clone` or `fork(`
+tests reddens a row (the thread row gained a completed `vfork` line for
+the last).
+
+B-63. `cwdMounted`'s guard for a cwd the deny list already held (a
+single-package workspace, whose cwd is its anchor) held nothing: with it
+removed, such a task runs in its cwd and its read is reported exactly as
+with it (probed), since the runtime takes the second deny entry as the
+same mount. Removed. The module page no longer says strace stops only
+on `openat` (B-61 added the cwd calls).
+
+Also measured, nothing to cut: 200 no-cache `true` tasks, unsandboxed,
+`--concurrency 1`, take 422–550 ms in vx (2.1–2.7 ms a task, five runs),
+and a bare `Bun.spawn` loop of the same `sh -c 'exec true'` with both
+pipes read takes 2.4–2.8 ms a spawn. The unsandboxed path is at the
+spawn floor; B-50's ranking of the miss path stands.
+
+B-64. A strace that cannot check the seccomp filter's order says
+`strace: check_seccomp_order_tracer: #0: unexpected exit status 1` and
+traces on without the filter, exit 0. The detection's probe read only the
+exit and chose the fast form; inside the sandbox the same line matched
+the tracer-retry key, so every sandboxed task ran twice (found running vx
+under an outer `strace`: a task appending to a file appended twice). The
+probe now refuses a strace that speaks with exit 0; for the seccomp form
+it then probes the plain form and uses it when quiet, else tasks run
+untraced with the once-said warning. Rows:
+`sandbox-tracer-retry.unsafe.test.ts` › a strace that warns at start and
+traces on › is used in the plain form, and the task runs once (red
+without the fix: two runs and the retry line), and › is not used when
+the plain form speaks too (the fallback disabled reddens the first, the
+warning ignored reddens both).
+
+B-65. Lead 7 (macOS brackets), from SRT's seatbelt source: a spelling
+holding `[` compiles as a regex (`globToRegex`), where `[id]` is a class
+and a backslash is escaped to a literal one, so neither spelling granted
+`pages/[id].tsx`; and vx's own workspace wall, an absolute path under a
+bracketed directory, compiled to a class that matched nothing, the
+workspace unwalled. On darwin vx now hands SRT `\[` as `[[]` and `\]` as
+`]` (`seatbeltBrackets`), and B-60's refusal of a project under a
+bracketed directory covers every platform but Windows. Rows:
+`sandbox-runtime.unsafe.test.ts` › a bracketed route under seatbelt › is
+granted by its escaped name, and not by the class spelling (darwin only:
+the verdict is CI's macOS job), and `sandbox-request.test.ts`' refusal
+row now runs off Linux too.
+
+B-66. A sandboxed `./build.sh` that the host has but no grant reads is
+not there inside the sandbox: the shell says "not found", and no trace
+sees the `execve`. `shellVerdict` read the host's file and blamed its
+`#!` line. It now asks the request's grants (`sandboxReads`) and names
+the file as hidden by the sandbox, with the grant to add. Rows:
+`shell-verdict-sandbox.test.ts` (red without the fix; the unsandboxed
+verdict is the control). Also ranked, nothing cut: the unsandboxed
+spawn is ~2.4 ms, of which `sh` is ~1 ms (direct exec 0.9 ms min); the
+shell runs B-9's guard line and is the command's API, so it stays.
+
+B-67. strace traces `chdir` since B-61, but the parse used only the
+successful ones. A refused `chdir` is a denied read of the directory:
+`cd src` into a directory no grant holds failed with no violation, and
+`cd src || …` passed and cached. It is now reported as a denial, in
+both line shapes, resolved where its process stood. Rows:
+`sandbox-chdir-denied.unsafe.test.ts` (both red without the fix); the
+B-61 row's fixture `chdir("nope")` is now a denial too.

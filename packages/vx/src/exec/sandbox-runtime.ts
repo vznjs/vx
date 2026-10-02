@@ -63,7 +63,7 @@ import {
   UserError,
   xxh3hex,
 } from '../util/index.js'
-import { bindableWrites, buildCustomConfig, scratchWrites } from './sandbox-binds.js'
+import { bindableReads, bindableWrites, buildCustomConfig, scratchWrites } from './sandbox-binds.js'
 import {
   atOrUnder,
   isMountableLiteral,
@@ -1006,12 +1006,21 @@ export async function wrapSandboxedCommand(
     process.platform === 'linux'
       ? ownGroupCommand(tag, inTmp, args.trace)
       : { command: taggedCommand, forwards: false, traced: false }
-  const inner =
-    ports.length > 0 ? `${portBridgeInner(ports, tag)} ${grouped.command}` : grouped.command
+  const inner = [
+    ports.length > 0 ? portBridgeInner(ports, tag) : '',
+    process.platform === 'linux' && args.config.network !== undefined ? PROXY_BRIDGE_WAIT : '',
+    grouped.command,
+  ]
+    .filter((part) => part !== '')
+    .join(' ')
   let wrapped = await wrapForTask(
     SandboxManager,
     inner,
-    process.platform === 'linux' ? literalReadPaths(customConfig) : customConfig,
+    process.platform === 'linux'
+      ? literalReadPaths(customConfig)
+      : process.platform === 'darwin'
+        ? seatbeltBrackets(customConfig)
+        : customConfig,
     ports.length > 0 || asksUnixSockets(args.config),
     args.config.gitConfig === true,
   )
@@ -1158,7 +1167,8 @@ function asksUnixSockets(c: Pick<ResolvedSandboxConfig, 'unixSockets'>): boolean
  * but SRT reads any holding `[` as a glob, where a bracket opens a class:
  * a route granted as `pages/\[id\].tsx` was never mounted (its denial
  * unreported, a listed grant), and a workspace under `[ws]/` was never
- * walled. `[[]` is a class of one `[`; a lone `]` is plain text to it.
+ * walled. `[[]` is a class of one `[`; a lone `]` is plain text to it. A
+ * `*` or `?` has no such spelling: `bindableReads` leaves its grant out.
  */
 function literalReadPaths(
   config: Parameters<SrtModule['SandboxManager']['wrapWithSandbox']>[2],
@@ -1170,8 +1180,33 @@ function literalReadPaths(
     ...config,
     filesystem: {
       ...fs,
+      // A `*` or `?` in a deny path matches its siblings too: a wider wall.
       denyRead: escape(fs.denyRead),
-      ...(fs.allowRead !== undefined ? { allowRead: escape(fs.allowRead) } : {}),
+      ...(fs.allowRead !== undefined ? { allowRead: escape(bindableReads(fs.allowRead)) } : {}),
+    },
+  }
+}
+
+/**
+ * macOS: a grant's escaped bracket as seatbelt's SRT can read it. vx hands
+ * it the pattern, and SRT compiles any spelling holding `[` as a regex in
+ * which a backslash is a literal one, so `pages/\[id\].tsx` matched no
+ * file and the route could not be granted. `[[]` is a class of one `[`; a
+ * lone `]` is plain text (B-65).
+ */
+function seatbeltBrackets(
+  config: Parameters<SrtModule['SandboxManager']['wrapWithSandbox']>[2],
+): Parameters<SrtModule['SandboxManager']['wrapWithSandbox']>[2] {
+  const fs = config?.filesystem
+  if (fs === undefined) return config
+  const literal = (paths: readonly string[]): string[] =>
+    paths.map((p) => p.replaceAll('\\[', '[[]').replaceAll('\\]', ']'))
+  return {
+    ...config,
+    filesystem: {
+      ...fs,
+      allowWrite: literal(fs.allowWrite),
+      ...(fs.allowRead !== undefined ? { allowRead: literal(fs.allowRead) } : {}),
     },
   }
 }
@@ -1202,6 +1237,18 @@ function wrapForTask(
 export function bridgedPorts(c: Pick<ResolvedSandboxConfig, 'localBinding'>): number[] {
   return Array.isArray(c.localBinding) ? [...new Set(c.localBinding)] : []
 }
+
+/**
+ * Linux: SRT starts its in-sandbox proxy bridges (`socat TCP-LISTEN:3128`
+ * and `:1080`) in the background and runs the command at once, so a
+ * networked task that dialled the proxy first met "connection refused"
+ * (curl's `000`) on a loaded box (M-20). This waits, in front of the
+ * command, until both listen in the task's network namespace, read off
+ * /proc/net (IPv4 or IPv6, state 0A). Bounded at ~5 s: a bridge that never
+ * listens leaves the command to meet the refusal it met before.
+ */
+const PROXY_BRIDGE_WAIT =
+  "( i=0; until grep -qsE ':0C38 [0-9A-F]+:0000 0A' /proc/net/tcp /proc/net/tcp6 && grep -qsE ':0438 [0-9A-F]+:0000 0A' /proc/net/tcp /proc/net/tcp6; do [ $i -ge 500 ] && break; i=$((i+1)); sleep 0.01; done );"
 
 /** Where a bridge's unix socket lives: the sandbox tmpdir, bound read-write on both sides. */
 export function portBridgeSocket(tag: string, port: number): string {
@@ -2075,12 +2122,20 @@ async function straceState(): Promise<{ form: false | 'plain' | 'seccomp'; why: 
     } else {
       const m = /version (\d+)\.(\d+)/.exec(out)
       const [major, minor] = m ? [Number(m[1]), Number(m[2])] : [0, 0]
-      const form = major > 5 || (major === 5 && minor >= 3) ? 'seccomp' : 'plain'
-      const refused = await traceRefusal(form)
+      let form: 'plain' | 'seccomp' = major > 5 || (major === 5 && minor >= 3) ? 'seccomp' : 'plain'
+      let refused = await traceRefusal(form)
+      // A strace that cannot check the seccomp filter says so and traces on
+      // without it, exit 0. Inside the sandbox that line read as the trace
+      // cut short, and every sandboxed task ran twice: the plain form, if
+      // it is quiet, is the one that works here.
+      if (refused?.warned === true && form === 'seccomp') {
+        refused = await traceRefusal('plain')
+        if (refused === null) form = 'plain'
+      }
       straceAvailableCache =
         refused === null
           ? { form, why: '' }
-          : { form: false, why: `strace cannot trace here (${refused})` }
+          : { form: false, why: `strace cannot trace here (${refused.line})` }
     }
   } catch {
     // Not on PATH. Said as the refused attach is: without it an undeclared
@@ -2110,14 +2165,17 @@ export async function untracedReason(): Promise<string | null> {
 
 /**
  * Why strace may not attach here (null when it may), asked once with the flags a task's trace
- * uses (`ownGroupCommand`). `--version` answers on a host that refuses
+ * uses (`ownGroupCommand`). A strace that exits 0 having said something of
+ * its own is refused too (`warned`): in a task, its line is the retry key. `--version` answers on a host that refuses
  * ptrace (Yama's `ptrace_scope` 2 or 3, a container's seccomp profile),
  * and there every sandboxed task failed twice, the retry included, on
  * `attach: ptrace(PTRACE_SEIZE…): Operation not permitted`. Refused, the
  * run goes untraced, as without strace: bwrap still enforces, and only the
  * read-violation report is lost, which is said once.
  */
-async function traceRefusal(form: 'plain' | 'seccomp'): Promise<string | null> {
+async function traceRefusal(
+  form: 'plain' | 'seccomp',
+): Promise<{ line: string; warned: boolean } | null> {
   const p = Bun.spawn(
     [
       executablePath('strace'),
@@ -2135,8 +2193,9 @@ async function traceRefusal(form: 'plain' | 'seccomp'): Promise<string | null> {
     { stdin: 'ignore', stdout: 'ignore', stderr: 'pipe' },
   )
   const err = await new Response(p.stderr).text()
-  if ((await p.exited) === 0) return null
-  return err.trim().split('\n')[0] || `exit ${p.exitCode}`
+  const line = err.split('\n').find((l) => STRACE_OWN_ERROR.test(l))
+  if ((await p.exited) === 0) return line === undefined ? null : { line, warned: true }
+  return { line: err.trim().split('\n')[0] || `exit ${p.exitCode}`, warned: false }
 }
 let warnedNoTrace = false
 
