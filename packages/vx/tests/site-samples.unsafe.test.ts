@@ -1640,7 +1640,7 @@ describe('the plugin examples say which seams they cover', () => {
   })
 })
 
-describe("the plugins guide rosters turbo() and nx()'s hooks", () => {
+describe("the plugins guide rosters turbo(), nx() and reapi()'s hooks", () => {
   // The row named `project` and `fingerprint`; `vx info` on a turbo()
   // workspace lists `config, discover, project, fingerprint` (J-104).
   it('the @vzn/vx-migrate row names every hook the adoption plugins define', () => {
@@ -1656,5 +1656,14 @@ describe("the plugins guide rosters turbo() and nx()'s hooks", () => {
     const row = /^\| `@vzn\/vx-migrate` +\|([^|]*)\|/m.exec(page)![1]!
     const adoption = row.split(';')[0]!
     expect([...adoption.matchAll(/`(\w+)`/g)].map((m) => m[1]!)).toEqual(defined)
+    const reapiSrc = readFileSync(
+      path.resolve(src, '..', '..', 'vx-reapi', 'src', 'index.ts'),
+      'utf8',
+    )
+    const reapiHooks = PLUGIN_HOOKS.filter((h) =>
+      new RegExp(`^\\s+(async )?${h}\\(`, 'm').test(reapiSrc),
+    )
+    const reapiRow = /^\| `@vzn\/vx-reapi` +\|([^|(]*)/m.exec(page)![1]!
+    expect([...reapiRow.matchAll(/`(\w+)`/g)].map((m) => m[1]!)).toEqual(reapiHooks)
   })
 })
