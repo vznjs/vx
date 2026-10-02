@@ -152,7 +152,7 @@ import { defineWorkspace } from '@vzn/vx'
 import { reapi } from '@vzn/vx-reapi'
 
 export default defineWorkspace({
-  plugins: [reapi({ endpoint: 'cache.example.com:443' })], // or VX_REAPI_ENDPOINT
+  plugins: [reapi({ endpoint: 'grpcs://cache.example.com:443' })], // or VX_REAPI_ENDPOINT
 })
 ```
 

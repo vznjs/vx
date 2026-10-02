@@ -211,7 +211,7 @@ import { defineWorkspace } from '@vzn/vx'
 import { reapi } from '@vzn/vx-reapi'
 
 export default defineWorkspace({
-  plugins: [reapi({ endpoint: 'cache.internal:443' })],
+  plugins: [reapi({ endpoint: 'grpcs://cache.internal:443' })],
   concurrency: 8,            // default: the cores this process may use
   cacheDir: '.vx/cache',     // default: .vx/cache (relative to root)
   timeout: 600_000,
