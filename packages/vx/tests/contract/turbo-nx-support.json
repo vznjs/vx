@@ -112,7 +112,7 @@
   {
     "key": "turbo.json tasks.*.dependsOn",
     "status": "mapped",
-    "reason": "Same syntax; edges to tasks nobody runs are dropped; `$TURBO_ROOT$` deps get a TODO; `$NAME` becomes env. A package without the script of a `^` task others run keys it as Turbo's no-op node does: a cached `true` task with no outputs, its own edges kept."
+    "reason": "Same syntax; edges to tasks nobody runs are dropped; `$TURBO_ROOT$` deps get a TODO; `$NAME` becomes env. A package without the script of a `^` task others run keys it as Turbo's no-op node does: a cached `true` task with no outputs, its own edges kept. A task name no package has a script for (`ci: { dependsOn: [\"lint\", \"build\"] }`) is a group wherever it has an edge, so `vx run ci` runs them as `turbo run ci` does."
   },
   {
     "key": "turbo.json tasks.*.description",
