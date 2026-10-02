@@ -222,6 +222,18 @@ the afterAll's rm of the 2000-project tree took 4.2 s under load; it now
 has a bound matched to that work, as its beforeAll does. No other
 fixture of that size in the suites.
 
+M-20. `sandbox-runtime.unsafe.test.ts` › the proxy refuses a denied
+domain the allow glob covers read curl's `000` for the first host, not
+the proxy's 403, in a local run of every test task beside four busy
+loops per core. SRT starts its in-sandbox bridges (`socat
+TCP-LISTEN:3128` / `:1080`) in the background and evals the command at
+once, so a networked task's first dial raced the listen: a product bug
+any loaded run could meet. Fixed: a networked task's command waits until
+both listen (`/proc/net/tcp{,6}`, ~5 s bound).
+`sandbox-proxy-ready.unsafe.test.ts`: a fake `socat` starts the 3128
+listener 500 ms late; red without the wait; a task with no network is not
+held (control). Cost within noise: a networked `true`, min of 15
+interleaved, 86 ms with the wait against 90 without, under load.
 M-21. M-19's class under I/O load (two `dd … conv=fsync` loops beside
 four busy loops): `affected.test.ts` › six thousand changed files timed
 out its afterEach (bun's 5 s default), which removed the row's 6,000
@@ -229,6 +241,13 @@ files and their git objects; 11.1 s for the row and its hooks. The row
 (30 s bound) now removes its root itself: the hook took 2.4 s before,
 11 ms after, under the same load. No other row of the suites makes a
 fixture past 1,500 files.
+
+M-24. M-23's class, the rest of it (a first write in a fresh shell
+against a 300 ms deadline): `persistent-ready-timeout.test.ts` › a task
+that overruns is SIGTERMed and › never-matching readyWhen + timeout
+(`echo $$ > pid.txt`), and `execute-task.test.ts` › a TIMEOUT kill is a
+real failure and IS retried (`echo x >> tries.txt`, once per attempt).
+Each red with a 600 ms shell start, green on a 1 s deadline.
 
 ## Leads for other streams
 

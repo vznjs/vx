@@ -157,6 +157,17 @@ export function deniedCalls(text: string, cwd?: string): DeniedCall[] {
     out.push(call)
   }
   for (const line of text.split('\n')) {
+    // Most lines are opens that succeeded: two substring tests skip them.
+    const opener =
+      line.includes('= -1') || line.includes('<unfinished') || line.includes('resumed>')
+    if (!opener) {
+      if (
+        cwd !== undefined &&
+        (line.includes('chdir(') || line.includes('fork(') || line.includes('clone'))
+      )
+        follow(line)
+      continue
+    }
     const done = STRACE_DONE_RE.exec(line)
     if (done?.[2] !== undefined && done[3] !== undefined && done[4] !== undefined) {
       denied(done[1]!, { syscall: done[2], rawPath: cStringPath(done[3]), errno: done[4] })
@@ -183,14 +194,19 @@ export function deniedCalls(text: string, cwd?: string): DeniedCall[] {
       }
       continue
     }
+    // A refused or split `chdir` arrives here: its denial counts with or
+    // without the cwd tracking.
+    follow(line)
+  }
+  function follow(line: string): void {
     let m: RegExpExecArray | null
     if ((m = CHDIR_DENIED_RE.exec(line)) !== null) {
       denied(m[1]!, { syscall: 'chdir', rawPath: cStringPath(m[2]!), errno: m[3]! })
-      continue
+      return
     }
     if ((m = CHDIR_UNFINISHED_RE.exec(line)) !== null) {
       chdirring.set(m[1]!, cStringPath(m[2]!))
-      continue
+      return
     }
     if ((m = CHDIR_RESUMED_RE.exec(line)) !== null) {
       const to = chdirring.get(m[1]!)
@@ -199,9 +215,9 @@ export function deniedCalls(text: string, cwd?: string): DeniedCall[] {
       else if (to !== undefined && m[3] !== undefined) {
         denied(m[1]!, { syscall: 'chdir', rawPath: to, errno: m[3] })
       }
-      continue
+      return
     }
-    if (cwd === undefined) continue
+    if (cwd === undefined) return
     if ((m = CHDIR_DONE_RE.exec(line)) !== null) opsOf(m[1]!).push({ chdir: cStringPath(m[2]!) })
     else if ((m = FCHDIR_RE.exec(line)) !== null) opsOf(m[1]!).push({ lost: true })
     else if ((m = FORK_DONE_RE.exec(line)) !== null) {
