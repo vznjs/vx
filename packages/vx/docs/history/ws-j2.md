@@ -158,3 +158,9 @@ persistent task` and vx exits 1). Row (`site-samples` › a post's link
   reads granted no wider than `cache.inputs` make the denial the
   under-declaration. Row (`site-samples` › the sandbox post judges a
   violation against the grants); red without the fix.
+
+- **J2-19** The pipeline-with-seams post's stage diagram ran
+  `config → project`, skipping `discover`, which its own table (pinned
+  by item 343) lists second. Row (`site-samples` › every arrow chain of
+  the pipeline stages is PLUGIN_HOOKS in order), over every site page
+  and core doc; red on the post without the fix.

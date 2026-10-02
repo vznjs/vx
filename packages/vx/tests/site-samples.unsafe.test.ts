@@ -2025,3 +2025,30 @@ describe('the sandbox post judges a violation against the grants', () => {
     expect(post).not.toContain('reads a file its inputs never named fails')
   })
 })
+
+describe('every arrow chain of the pipeline stages is PLUGIN_HOOKS in order', () => {
+  // The seams post's diagram skipped `discover` while its table, pinned
+  // above, listed it (J2-19). A chain may stop early; it may not skip.
+  it('each `config → …` chain on a page is a prefix of PLUGIN_HOOKS', () => {
+    const coreDocs = path.resolve(import.meta.dir, '..', 'docs')
+    const pages = [
+      ...handAuthoredSitePages(),
+      ...readdirSync(coreDocs)
+        .filter((f) => f.endsWith('.md'))
+        .map((f) => path.join(coreDocs, f)),
+    ]
+    const chains: { page: string; stages: string[] }[] = []
+    for (const page of pages) {
+      const text = readFileSync(page, 'utf8').replace(/\s+/g, ' ')
+      for (const m of text.matchAll(/`?config`?(?: → `?\w+`?)+/g)) {
+        chains.push({
+          page: path.basename(page),
+          stages: [...m[0].matchAll(/\w+/g)].map((w) => w[0]),
+        })
+      }
+    }
+    expect(chains.length).toBeGreaterThan(2)
+    const wrong = chains.filter((c) => c.stages.some((s, i) => PLUGIN_HOOKS[i] !== s))
+    expect(wrong).toEqual([])
+  })
+})
