@@ -190,11 +190,21 @@ export async function sandboxRequestFor(
   // The runtime reads a path holding a bracket as a pattern: on Linux it
   // mounts no such write path (B-60); seatbelt's rules compile it as a
   // character class, so vx's own workspace wall matched nothing (B-65).
+  // A `*` or `?` is one too, and its grants matched the project's siblings.
   const home = toRealPath(node.projectDir)
-  if (process.platform !== 'win32' && /[[\]]/.test(home)) {
+  if (process.platform !== 'win32' && /[[\]*?]/.test(home)) {
     throw new UserError(
-      `exec.sandbox: ${home} holds a bracket ([ or ]), which the sandbox runtime reads as a ` +
+      `exec.sandbox: ${home} holds [, ], * or ?, which the sandbox runtime reads as a ` +
         `pattern, not a name — rename the directory, or run the task without exec.sandbox`,
+    )
+  }
+  // Bun's realpath throws ENOENT on a path holding a backslash, and SRT
+  // mounts no path it cannot resolve: the task saw no project and ran in
+  // $HOME.
+  if (process.platform === 'linux' && home.includes('\\')) {
+    throw new UserError(
+      `exec.sandbox: ${home} holds a backslash, which the Linux sandbox cannot resolve, so ` +
+        `it mounts none of the project — rename the directory, or run the task without exec.sandbox`,
     )
   }
   const depDirs = [
