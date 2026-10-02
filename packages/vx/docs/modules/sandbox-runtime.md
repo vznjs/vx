@@ -448,7 +448,12 @@ A `*` or `?` in a Linux read path has no such spelling: SRT's rewrite of
 each runs inside a class too, so a grant of `a*b.txt` granted `aXb.txt`.
 `bindableReads` leaves such a grant out, says so once, and the strace
 pass judges against what is left, so a read of it is refused and
-reported. In a deny path the match is only a wider wall.
+reported. In a deny path the match is only a wider wall. A backslash
+SRT skips outright: Bun's `realpathSync` throws ENOENT on a path holding
+one (Node's does not; `stat` finds it), and SRT mounts no path it cannot
+resolve, so such a read or write grant is left out the same way, and a
+project under such a directory is refused on Linux: its task saw no
+project and ran in `$HOME`.
 
 SRT drops every Linux write path holding `[`, `]`, `*` or `?` (it reads
 one as a glob), with no spelling that keeps it, so `bindableWrites` drops it

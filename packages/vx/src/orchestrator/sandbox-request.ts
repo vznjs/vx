@@ -198,6 +198,15 @@ export async function sandboxRequestFor(
         `pattern, not a name — rename the directory, or run the task without exec.sandbox`,
     )
   }
+  // Bun's realpath throws ENOENT on a path holding a backslash, and SRT
+  // mounts no path it cannot resolve: the task saw no project and ran in
+  // $HOME.
+  if (process.platform === 'linux' && home.includes('\\')) {
+    throw new UserError(
+      `exec.sandbox: ${home} holds a backslash, which the Linux sandbox cannot resolve, so ` +
+        `it mounts none of the project — rename the directory, or run the task without exec.sandbox`,
+    )
+  }
   const depDirs = [
     path.join(node.projectDir, 'node_modules'),
     path.join(workspaceRoot, 'node_modules'),

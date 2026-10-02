@@ -195,7 +195,8 @@ const warnedGlob = new Set<string>()
 
 /**
  * SRT drops every Linux write path holding `[`, `]`, `*` or `?` (it reads
- * one as a glob, and a write path must be a path), and no spelling keeps
+ * one as a glob, and a write path must be a path) or a backslash (Bun's
+ * realpath refuses it; `bindableReads`), and no spelling keeps
  * it. Left in, the read grants were punched around a bind that never came,
  * the directory vanished from the task's view, its write read "Directory
  * nonexistent" with no word of the grant, and the refused write went
@@ -203,7 +204,7 @@ const warnedGlob = new Set<string>()
  * once: the remedy is the deepest directory above it whose name holds none.
  */
 function holdsGlobChar(grant: string): boolean {
-  const at = srtStripped(grant).search(/[[\]*?]/)
+  const at = srtStripped(grant).search(/[[\]*?\\]/)
   if (at === -1) return false
   if (!warnedGlob.has(grant)) {
     warnedGlob.add(grant)
@@ -219,26 +220,29 @@ function holdsGlobChar(grant: string): boolean {
 /** A trailing `/**` SRT strips before it asks whether a path is a glob. */
 const srtStripped = (grant: string): string => grant.replace(/\/\*\*$/, '')
 
-const globChar = (c: string): string => (c === '[' || c === ']' ? 'a bracket' : `a ${c}`)
+const globChar = (c: string): string =>
+  c === '[' || c === ']' ? 'a bracket' : c === '\\' ? 'a backslash' : `a ${c}`
 
 /**
  * Linux: the read grants SRT can mount as the paths they are. It reads
  * one holding `*` or `?` as a glob and mounts every match, and no spelling
  * makes either literal (its rewrite of each runs inside a class too), so a
- * grant of `a*b.txt` granted `aXb.txt`. Left out, so a read of it is
+ * grant of `a*b.txt` granted `aXb.txt`. One holding a backslash it skips:
+ * Bun's `realpathSync` throws ENOENT on such a path (Node's does not), and
+ * SRT mounts no path it cannot resolve. Left out, so a read of it is
  * refused and reported, and said once; a bracket has a spelling
  * (`literalReadPaths`).
  */
 export function bindableReads(paths: readonly string[]): string[] {
   if (process.platform !== 'linux') return [...paths]
   return paths.filter((grant) => {
-    const at = srtStripped(grant).search(/[*?]/)
+    const at = srtStripped(grant).search(/[*?\\]/)
     if (at === -1) return true
     if (!warnedGlob.has(grant)) {
       warnedGlob.add(grant)
       process.stderr.write(
         `[vx] sandbox: the read grant ${grant} holds ${globChar(grant[at]!)}, which the Linux ` +
-          `sandbox reads as a pattern that also matches its siblings, so it is not granted. ` +
+          `sandbox ${grant[at] === '\\' ? 'cannot resolve' : 'reads as a pattern that also matches its siblings'}, so it is not granted. ` +
           `Rename it, or grant the directory above it: ` +
           `${grant.slice(0, grant.lastIndexOf(path.sep, at) + 1)}\n`,
       )

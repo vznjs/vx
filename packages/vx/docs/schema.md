@@ -1072,6 +1072,9 @@ grant instead, and a write under it is refused and reported. A READ path
 whose name holds `*` or `?` (granted escaped, `a\\*b.txt`) cannot be
 granted alone either — the runtime would grant its siblings too — so vx
 leaves it out, says so once, and a read of it is refused and reported.
+A Linux grant of either kind holding a backslash is left out the same
+way: Bun's `realpath` refuses such a path, and the runtime mounts none
+it cannot resolve.
 
 A Linux WRITE grant that matches nothing when the task starts therefore
 mounts nothing. Where a read grant mounts its directory, the task's first
@@ -1207,7 +1210,9 @@ path holding one as a pattern: on Linux it mounts no write path that
 does and a read grant matches its siblings, and macOS's rules compile it
 as a pattern too. So a sandboxed task in a project under such a directory
 (`~/[old]/repo`, `~/w*s/repo`) is refused, naming it: rename the
-directory or drop `exec.sandbox`.
+directory or drop `exec.sandbox`. On Linux so is a project under a
+directory holding a backslash, which the runtime cannot mount at all (its
+task saw no project and ran in `$HOME`).
 
 **macOS cannot nest.** `sandbox_apply` is refused inside a sandboxed
 process, so a task that itself sandboxes something (vx's own test suite)
