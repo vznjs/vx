@@ -674,7 +674,7 @@ export class Cache implements CacheLayer {
             }
             if (found === SCHEMA_VERSION) return null
             this.db.exec(
-              'DROP TABLE IF EXISTS entries; DROP TABLE IF EXISTS runs; DROP TABLE IF EXISTS file_hashes; DROP TABLE IF EXISTS output_files; DROP TABLE IF EXISTS invocations; DROP TABLE IF EXISTS run_task_inputs; DROP TABLE IF EXISTS entry_inputs; DROP TABLE IF EXISTS config_evals; DROP TABLE IF EXISTS config_closures; DROP TABLE IF EXISTS output_dirs;',
+              'DROP TABLE IF EXISTS entries; DROP TABLE IF EXISTS runs; DROP TABLE IF EXISTS file_hashes; DROP TABLE IF EXISTS blob_sizes; DROP TABLE IF EXISTS output_files; DROP TABLE IF EXISTS invocations; DROP TABLE IF EXISTS run_task_inputs; DROP TABLE IF EXISTS entry_inputs; DROP TABLE IF EXISTS config_evals; DROP TABLE IF EXISTS config_closures; DROP TABLE IF EXISTS output_dirs;',
             )
             this.db
               .prepare("UPDATE schema_meta SET value = ? WHERE key = 'version'")
@@ -798,6 +798,14 @@ export class Cache implements CacheLayer {
   hashFiles(paths: readonly string[]): Promise<Map<string, string>> {
     return this.guard(() => this.files.hashFiles(paths))
   }
+  /** `BlobSizeMemo`: the sizes of these blobs this cache has learned. */
+  knownBlobSizes(oids: readonly string[]): Map<string, number> {
+    return this.guard(() => this.files.knownBlobSizes(oids))
+  }
+  /** `BlobSizeMemo`: remember blob sizes, honouring the local WRITE axis. */
+  rememberBlobSizes(sizes: ReadonlyMap<string, number>): void {
+    this.guard(() => this.files.rememberBlobSizes(sizes))
+  }
   /**
    * `relPosix` against the run's workspace root, memoized: the same three
    * thousand files are re-relativized for every task of the project, which
@@ -807,11 +815,25 @@ export class Cache implements CacheLayer {
    */
   private relMemo = new Map<string, string>()
   private relMemoRoot: string | undefined
+  /** `root` and a slash, when a file under it is relative by slicing; else undefined. */
+  private relPrefix: string | undefined
   private relFor(root: string, file: string): string {
     if (root !== this.relMemoRoot) {
       this.relMemoRoot = root
       this.relMemo.clear()
+      this.relPrefix =
+        path.sep === '/' && path.isAbsolute(root) && path.normalize(root) === root
+          ? root.endsWith('/')
+            ? root
+            : `${root}/`
+          : undefined
     }
+    // An input file is a normalized absolute path (`resolveInputs` makes
+    // every one), and under a normalized root that is the root, a slash and
+    // its relative path: a slice, where the memo hashed the whole path per
+    // file per task (~15 ms over 36,000 files, I-31).
+    const prefix = this.relPrefix
+    if (prefix !== undefined && file.startsWith(prefix)) return file.slice(prefix.length)
     let rel = this.relMemo.get(file)
     if (rel === undefined) this.relMemo.set(file, (rel = relPosix(root, file)))
     return rel

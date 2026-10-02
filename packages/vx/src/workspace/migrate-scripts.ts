@@ -55,12 +55,14 @@ const LIFECYCLE = /^(pre|post)(install|publish|pack|version)$|^(prepare|prepubli
  */
 export function delegatedScript(command: string): string | null {
   const m =
-    /^(?:(?:npm run|(pnpm|yarn|bun)(?: (run))?) ([^\s&|;<>()$`'"\\]+)|npm (test|start))$/.exec(
+    /^(?:(?:npm run|(pnpm|pn|yarn|bun)(?: (run))?) ([^\s&|;<>()$`'"\\]+)|npm (test|start))$/.exec(
       command.trim(),
     )
   if (m === null) return null
   if (m[4] !== undefined) return m[4]
-  const [, manager, run, name] = m
+  const [, alias, run, name] = m
+  // `pn` is pnpm's own short name (pnpm 11; pnpm/pnpm's scripts run it).
+  const manager = alias === 'pn' ? 'pnpm' : alias
   // Bare, the manager's own command wins over a script of that name:
   // `bun test` is Bun's test runner and `bun build` its bundler, never the
   // `test` / `build` script, and a group over the script ran the wrong
@@ -155,7 +157,10 @@ function ownerOf(dir: string, memo: Map<string, Owner>): Owner {
   try {
     const pm = (JSON.parse(read('package.json') ?? '') as { packageManager?: unknown })
       .packageManager
-    if (typeof pm === 'string')
+    // A manager vx knows nothing of (zod's `nub@0.8.3`) says nothing about
+    // hooks: the lockfile beside it does, and "nub ran `postbuild`" was a
+    // claim nothing had checked (D-96).
+    if (typeof pm === 'string' && /^(npm|pnpm|yarn|bun)@/.test(pm))
       manager = /^yarn@([2-9]|\d{2,})/.test(pm) ? 'berry' : pm.split('@')[0]
   } catch {}
   if (manager === undefined) {
@@ -302,7 +307,7 @@ const MEMBER_FLAG =
 function pmRunsMembers(script: string): boolean {
   for (const segment of script.split(/&&|\|\||[;|()]/)) {
     const words = segment.trim().split(/\s+/)
-    let i = words.findIndex((w) => /^(pnpm|npm|yarn|bun)$/.test(w))
+    let i = words.findIndex((w) => /^(pnpm|pn|npm|yarn|bun)$/.test(w))
     // npm/cli runs itself: `node . run test --workspaces`.
     if (i < 0) i = words.findIndex((w, j) => w === 'run' && words[j - 2] === 'node')
     if (i < 0) continue
@@ -340,7 +345,45 @@ function cdsToMembers(script: string, rootDir: string, memberDirs: readonly stri
 
 /** A package manager running a script by name: `pnpm build`, `npm run x`, `bun run x`. */
 const RUNS_SCRIPT =
-  /(?:^|[\s;&|(])(?:pnpm|npm|yarn|bun)\s+(?:run(?:-script)?\s+)?([^\s;&|()'"-][^\s;&|()'"]*)/g
+  /(?:^|[\s;&|(])(?:pnpm|pn|npm|yarn|bun)\s+(?:run(?:-script)?\s+)?([^\s;&|()'"-][^\s;&|()'"]*)/g
+
+/**
+ * The scripts a command runs by name: a package manager's (`pnpm x`, `npm
+ * run x`), `run-s` / `run-p` / `npm-run-all` (`build:*` is one segment,
+ * `build:**` any), and `concurrently "npm:x"`. A root `ci: run-s build:all
+ * lint` over `build:all: pnpm -r build` mapped as a root task (D-95).
+ */
+function scriptRefs(command: string, scripts: readonly (readonly [string, string])[]): string[] {
+  const refs = [...command.matchAll(RUNS_SCRIPT)].map((m) => m[1]!)
+  for (const m of command.matchAll(/["']?\b(?:npm|pnpm|yarn|bun):([^\s"']+)/g)) refs.push(m[1]!)
+  for (const segment of command.split(/&&|\|\||[;|()]/)) {
+    const words = segment.trim().split(/\s+/)
+    const at = words.findIndex((w) => /^(run-s|run-p|npm-run-all)$/.test(w))
+    if (at < 0) continue
+    for (const w of words.slice(at + 1)) {
+      if (w.startsWith('-')) continue
+      const name = w.replace(/^(["'])(.*)\1$/, '$2')
+      if (!name.includes('*')) {
+        refs.push(name)
+        continue
+      }
+      const re = new RegExp(
+        `^${name
+          .split(/(\*\*|\*)/)
+          .map((part) =>
+            part === '**'
+              ? '.*'
+              : part === '*'
+                ? '[^:]*'
+                : part.replace(/[.+?^${}()|[\]\\]/g, '\\$&'),
+          )
+          .join('')}$`,
+      )
+      for (const [n] of scripts) if (re.test(n)) refs.push(n)
+    }
+  }
+  return refs
+}
 
 /**
  * The scripts that run the members, directly or through another of these
@@ -367,7 +410,7 @@ function runningMembers(
     grew = false
     for (const [n, v] of text) {
       if (out.has(n)) continue
-      if ([...v.matchAll(RUNS_SCRIPT)].some((m) => out.has(m[1]!))) {
+      if (scriptRefs(v, text).some((r) => out.has(r))) {
         out.add(n)
         grew = true
       }

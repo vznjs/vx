@@ -726,14 +726,22 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
               return
             }
             const message = err instanceof Error ? err.message : String(err)
+            // After the run's stop a rejection is the stop's doing (a probe
+            // it killed, C-65): aborted, as any task it kills, and unsaid.
+            const stopped = aborted()
             const outcome: TaskOutcome = withHold({
               node,
-              status: 'failed',
+              status: stopped ? 'aborted' : 'failed',
               exitCode: 1,
               durationMs: 0,
             })
             leave()
             untrack()
+            if (stopped) {
+              finishOne(id, outcome)
+              tick()
+              return
+            }
             // A UserError is a config/input failure (e.g. a failed
             // `cache.inputs.runtime` command), not a vx bug — report it
             // plainly, never as an "internal error".

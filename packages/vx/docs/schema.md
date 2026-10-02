@@ -1329,7 +1329,7 @@ interface WorkspaceConfig {
   `vx cache prune`.
 - **`affectedBase`** — the git ref a bare `--affected` compares with
   (`origin/develop`); `--affected=<base>` still wins. Omitted →
-  `origin/HEAD`, else `HEAD~1`. A plugin's `config` stage may set it:
+  `origin/HEAD`, then the first of `origin/main`, `origin/master`, `main`, `master` that is not HEAD (D-93), else `HEAD~1`. A plugin's `config` stage may set it:
   `nx()` from `NX_BASE` or nx.json's `defaultBase`, `turbo()` from
   `TURBO_SCM_BASE`, else on GitHub Actions from `GITHUB_BASE_REF` or the
   push event's `before`, as Turbo does. Not folded into any cache key.
@@ -1670,8 +1670,9 @@ nearest accepted spelling when one is within two edits:
 `tasks.build.exec.env has unknown field "passthrough" (allowed: define,
 passThrough, secret) — did you mean passThrough?`. A field another runner spells
 on the task names vx's home for it instead (D-37): Turbo's `outputs`,
-`inputs`, `env`, `passThroughEnv`, `persistent` and `outputLogs`, Nx's
-target `executor`, `options` and `continuous` (D-49), and a `command`
+`inputs`, `env`, `passThroughEnv`, `persistent`, `outputLogs`, `interactive`
+and `with`, Nx's target `executor`, `options`, `continuous` (D-49), `cwd`,
+`parallelism` and `configurations` (D-89), and a `command`
 (`cmd`, `script`) on the task or `cmd` on `exec`. So `outputs` on a task
 ends `— vx spells it cache.outputs.files` in code quotes. A `cache` that
 is no object (Turbo's `cache: false`) and a `persistent` that is none
