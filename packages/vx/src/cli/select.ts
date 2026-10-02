@@ -26,7 +26,7 @@ import type { ProjectConfig } from '../config.js'
 import type { ProjectEntry } from '../workspace/index.js'
 import { parseDependencySpec } from '../graph/index.js'
 import { nearest, UserError } from '../util/index.js'
-import { claimedAffected, fingerprintClaims } from '../orchestrator/index.js'
+import { claimedAffected, fingerprintClaims, gitOfDiscovery } from '../orchestrator/index.js'
 import {
   type CliLoadOptions,
   discoverCliProjects,
@@ -230,6 +230,11 @@ export async function resolveFilters(
     return { error: err instanceof Error ? err.message : String(err) }
   }
   const walksGraph = parsed.some((f) => f.withDeps || f.withDependents || f.onlyDeps)
+  // A filter that diffs against git starts the run's whole-tree walk now:
+  // the diff reads its untracked files from it (one walk where it spawned
+  // its own), and the run reuses it with the discovery (I-26).
+  const git = parsed.some((f) => f.gitSince !== undefined) ? gitOfDiscovery(projects) : undefined
+  void git?.start()
   // Every reader of the staged configs in this pass — the `pkg#task`
   // edge walk, the `workspaceFiles` owners of a changed path — shares
   // ONE load, and the run reuses it (`RunOptions.staged`): the `project`
@@ -262,6 +267,7 @@ export async function resolveFilters(
           workspaceGlobOwners(root, projects, changed, load, stagedOnce),
         fingerprintClaims: () => workspaceFingerprintClaims(root, projects, load),
         taskEdges: async () => edges ?? taskEdgesFrom(await stagedOnce()),
+        ...(git !== undefined ? { untracked: async () => (await git.start()).untracked } : {}),
       })
       affectedByFilter.set(f, names)
     } catch (err) {

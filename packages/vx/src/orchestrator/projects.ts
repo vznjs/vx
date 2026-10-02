@@ -81,8 +81,10 @@ export async function discoverProjects(
   git: LazyGitEnumeration = lazyGitEnumeration(workspace.root),
 ): Promise<ProjectMeta[]> {
   const projects = await listProjects(workspace)
-  if (!hasHook(plugins, 'discover')) return projects
+  // Registered whatever the hooks: an `--affected` selection reads its
+  // untracked files from this walk, and the run reuses it (I-26).
   discoveredGit.set(projects, git)
+  if (!hasHook(plugins, 'discover')) return projects
   const worktreeChanges = (): Promise<readonly string[] | null> =>
     git.start().then(
       (e) => e.changed,
