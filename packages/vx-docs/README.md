@@ -40,13 +40,12 @@ hero's actions, the picture's data and lines against the design, the
 pillars, the one-sentence rule and every internal link the page had.
 
 - **The numbers** are generated: `packages/vx-bench/update-site.ts`
-  rewrites the `benchRows` block and the graph's size (the `#bench`
-  kicker and sub) from `results.json`; `check.site` fails when either
-  drifted. Edit the generator or its source, not those regions. The
-  overhead row reads the same constants, so a re-benchmark reshapes it
-  too. The numbers keep the owner's rule (2026-09-11): no
-  percentage-and-multiple mix; every competitor bar reads as a multiple
-  of vx, every overhead as clock time.
+  rewrites the `benchTable` and `benchFormula` blocks and the graph's
+  size (the `#bench` kicker) from `results.json`; `check.site` fails
+  when either drifted. Edit the generator or its source, not those
+  regions. Every competitor cell reads `(vx N% faster)` or
+  `(vx N% slower)` (owner, 2026-10-02), and the formula line under the
+  table defines N.
 
 To check it visually, drive the pre-installed Chromium from a scratch
 directory (never from this package — `playwright-core` is not a

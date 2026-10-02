@@ -2026,8 +2026,8 @@ const SQLITE_FCNTL_PERSIST_WAL = 10
  * Close for real. A plain `close()` leaves the connection open while any
  * statement from `db.prepare()` lives (bun:sqlite 1.4.2 defers it, as
  * `sqlite3_close_v2` does), so `cache.db` and its `-wal` and `-shm` stayed
- * open after `Cache.close()`: a leaked descriptor per run for an embedder,
- * and on Windows a cache directory nothing could delete (O-10).
+ * open after `Cache.close()`: a leaked descriptor per run for an embedder
+ * (O-10).
  * `close(true)` finalizes them and closes.
  */
 function closeDb(db: Database): void {

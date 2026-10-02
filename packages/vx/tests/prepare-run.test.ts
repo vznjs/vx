@@ -45,8 +45,7 @@ beforeEach(async () => {
   Bun.spawnSync(['git', 'init', '-q'], { cwd: root })
 })
 
-// A row that reads `nodes` alone leaves its cache open, and Windows cannot
-// delete a directory holding an open file (EBUSY). Closing twice is safe.
+// A row that reads `nodes` alone leaves its cache open. Closing twice is safe.
 const opened: Array<Awaited<ReturnType<typeof prepareRun>>> = []
 
 afterEach(async () => {
