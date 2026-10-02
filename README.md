@@ -120,7 +120,7 @@ Give a task a cache block (what it reads, what it writes):
 
 ```ts
 // packages/app/vx.config.ts
-import { defineProject } from '@vzn/vx'
+import { defineProject } from '@vzn/vx/config'
 
 export default defineProject({
   tasks: {

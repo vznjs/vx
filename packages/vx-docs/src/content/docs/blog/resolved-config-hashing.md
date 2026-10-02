@@ -17,7 +17,7 @@ as long as the file is the whole story.
 A `vx.config.ts` is a program:
 
 ```ts
-import { defineProject } from '@vzn/vx'
+import { defineProject } from '@vzn/vx/config'
 import { lib } from '../../vx-preset.ts'
 
 export default defineProject({
