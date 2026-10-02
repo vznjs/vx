@@ -1,6 +1,7 @@
 # @vzn/vx-plugin-examples
 
-One small, runnable plugin per seam, each beside its own test:
+One small, runnable plugin for each of nine seams (`config`, `discover`,
+`fingerprint`, `setup` and `teardown` have none), each beside its own test:
 `plugins/<seam>.ts` and `plugins/<seam>.test.ts`, which drives the plugin
 through vx's `run()`. The gate runs every test, so an example that stops
 working turns it red. `vx init --plugin <seam>` writes the same two files
