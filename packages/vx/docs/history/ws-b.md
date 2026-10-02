@@ -1282,3 +1282,27 @@ to many servers SIGHUP means "reload"), so a spawned task stopped by one
 exits 143, while one stopped before its spawn (B-55, B-72) read 129.
 `stopSignal` now follows `forwardedSignal`. Rows:
 `stop-signal-before-spawn.test.ts` (the SIGHUP row red without the fix).
+
+B-75. Per-task cost, ranked: an unsandboxed no-cache task sits at the
+spawn floor; a cached miss adds the save and the output clean (stream
+A's); a sandboxed `true` cost 27.6 ms (bwrap ~14 with SRT's chain, wrap
+~6, trace ~5). In the wrap, SRT spawned its `rg` on every task (3.8 ms
+against 1.0 for `true`), and with the deny scan scoped (B-40) it finds
+nothing the scoped walk misses, so vx hands SRT `true` as its ripgrep.
+100 sandboxed tasks at concurrency 1: 3.95 s → 3.50 s (−4.4 ms a task,
+interleaved A/B against a worktree of main). Rows: the deny-scan parity
+rows arm SRT as vx does, with a root `.ZshRC` only a scan finds; a row
+pins the no-op config.
+
+B-76. Under `-y` (B-71) strace names a directory descriptor by its
+path (`4</ws/q"d>`), and the parse read that path only up to its first
+quote: a read through a directory named with one, under a widened
+grant, went unjudged (`grep -r` reported `q"d` and not `q"d/f`), and a
+denial through one named the wrong path. The descriptor's path is now
+taken up to the `, "` that opens the file argument. Rows:
+`sandbox-dirfd-quote.unsafe.test.ts` (both red without the fix). Also
+measured (#2324, #2355): a sandboxed `true` costs ~28 ms, of which vx's
+wrapper is ~1.3 ms and its JS ~3; an unsandboxed one ~1.7 ms a task in
+a run, the `sh` layer (+0.8 ms) being the kill guard's (B-9). A CPU
+profile's top items there (`rmSync`, `realpathSync`) timed in place at
+0.4 and 0.23 ms a task.
