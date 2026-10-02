@@ -360,7 +360,7 @@ export function runGitLsFiles(cwd: string): GitLsResult {
     )
   }
   const { text, undecodable } = decodeGitZ(proc.stdout)
-  const parsed = parseLsFilesOutput(text, undecodable)
+  const parsed = parseLsFilesOutput(text.length === 0 ? [] : text.split('\0'), undecodable)
   const nested = expandNestedRepos(cwd, parsed.files, parsed.gitlinks)
   parsed.files = nested.files
   parsed.undecodable.push(...nested.undecodable)
@@ -445,15 +445,22 @@ export function fileIdentity(mode: string, oid: string): string {
 // `h`, …) in front. `--others` paths print bare; with `-z`, core.quotePath
 // quoting is off, so a bare path containing a literal tab still cannot
 // match the fixed-form prefix. Both answers come from ONE spawn.
-function parseLsFilesOutput(out: string, undecodableRecords: ReadonlySet<string>): GitLsResult {
+//
+// `debug`, for a `--debug` listing: each record's recorded size (aligned
+// with `records`) in, and each regular stage-0 entry's raw OID and size out.
+function parseLsFilesOutput(
+  records: readonly string[],
+  undecodableRecords: ReadonlySet<string>,
+  debug?: { sizes: readonly number[]; indexed: Map<string, { oid: string; size: number }> },
+): GitLsResult {
   const files: string[] = []
   const oids = new Map<string, string>()
   const flagged = new Set<string>()
   const gitlinks = new Set<string>()
   const undecodable: string[] = []
-  if (out.length === 0) return { files, oids, flagged, gitlinks, undecodable }
   // NUL-separated; trailing NUL produces an empty segment we skip.
-  for (const record of out.split('\0')) {
+  for (let i = 0; i < records.length; i++) {
+    const record = records[i]!
     if (record.length === 0) continue
     const m = LS_FILES_STAGE_RE.exec(record)
     const filePath = m === null ? record : record.slice(m[0].length) // --others: bare path
@@ -464,6 +471,9 @@ function parseLsFilesOutput(out: string, undecodableRecords: ReadonlySet<string>
     const stage = m[4]!
     if ((mode === '100644' || mode === '100755' || mode === '120000') && stage === '0') {
       oids.set(filePath, fileIdentity(mode, m[3]!))
+      if (debug !== undefined && mode !== '120000') {
+        debug.indexed.set(filePath, { oid: m[3]!, size: debug.sizes[i]! })
+      }
     } else if (mode === '160000') {
       gitlinks.add(filePath)
     }
@@ -477,21 +487,23 @@ function parseLsFilesOutput(out: string, undecodableRecords: ReadonlySet<string>
 }
 
 /**
- * `ls-files -s -v -z --debug` as the plain `-s -v -z` stream, plus the size
- * the index records for each regular stage-0 entry's worktree file and its
- * raw OID. With `-z`, each record's NUL is followed by its five
- * newline-ended debug lines (ctime, mtime, dev/ino, uid/gid, size/flags),
- * then the next record.
+ * `ls-files -s -v -z --debug` as the plain `-s -v -z` records, plus the size
+ * the index records for each, aligned. With `-z`, each record's NUL is
+ * followed by its five newline-ended debug lines (ctime, mtime, dev/ino,
+ * uid/gid, size/flags), then the next record. The records go to
+ * `parseLsFilesOutput` as they are: joining them for it to split again,
+ * a regex per size line and a second regex per record were ~14 ms of a
+ * 12,905-file listing.
  */
-function stripLsDebug(run: GitRun): {
-  plain: string
+function splitLsDebug(run: GitRun): {
+  records: string[]
+  sizes: number[]
   undecodable: Set<string>
-  indexed: Map<string, { oid: string; size: number }>
 } {
   const segs = run.stdout.split('\0')
   const records: string[] = []
+  const sizes: number[] = []
   const undecodable = new Set<string>()
-  const indexed = new Map<string, { oid: string; size: number }>()
   let record = segs[0]!
   let recordRaw = record
   for (let i = 1; i <= segs.length; i++) {
@@ -504,7 +516,13 @@ function stripLsDebug(run: GitRun): {
         const nl = seg.indexOf('\n', at)
         if (nl < 0) at = -1
         else {
-          if (k === 4) size = Number(/size: (\d+)/.exec(seg.slice(at, nl))?.[1] ?? -1)
+          if (k === 4) {
+            const field = seg.indexOf('size: ', at)
+            if (field >= 0 && field < nl) {
+              const n = parseInt(seg.slice(field + 6, nl), 10)
+              if (!Number.isNaN(n)) size = n
+            }
+          }
           at = nl + 1
         }
       }
@@ -512,16 +530,13 @@ function stripLsDebug(run: GitRun): {
     }
     if (record.length > 0) {
       records.push(record)
+      sizes.push(size)
       if (run.undecodable.has(recordRaw)) undecodable.add(record)
-      const m = LS_FILES_STAGE_RE.exec(record)
-      if (m !== null && m[4] === '0' && (m[2] === '100644' || m[2] === '100755')) {
-        indexed.set(record.slice(m[0].length), { oid: m[3]!, size })
-      }
     }
     record = rest
     recordRaw = seg ?? ''
   }
-  return { plain: records.join('\0'), undecodable, indexed }
+  return { records, sizes, undecodable }
 }
 
 /** Blob sizes learned once and kept: a blob's size is fixed for its OID. `Cache` is one. */
@@ -1064,7 +1079,7 @@ export async function startGitEnumeration(
   // (`dropResizedOids`, A-60).
   const listing = spawnGit(['ls-files', '-s', '-v', '-z', '--debug', '--', ...pathspecs]).then(
     (run) =>
-      run === null || run.exitCode !== 0 ? { run, debug: null } : { run, debug: stripLsDebug(run) },
+      run === null || run.exitCode !== 0 ? { run, debug: null } : { run, debug: splitLsDebug(run) },
   )
   const running = Promise.all([
     listing,
@@ -1118,13 +1133,14 @@ export async function startGitEnumeration(
         `Run 'git init' in your workspace root.${stderr ? ` (git: ${stderr})` : ''}`,
     )
   }
+  const indexed = new Map<string, { oid: string; size: number }>()
   const {
     files: tracked,
     oids,
     flagged,
     gitlinks,
     undecodable,
-  } = parseLsFilesOutput(debug!.plain, debug!.undecodable)
+  } = parseLsFilesOutput(debug!.records, debug!.undecodable, { sizes: debug!.sizes, indexed })
   // Normalize `status`'s repo-root-relative paths to workspace-relative (strip
   // the `--show-prefix`) so the dirty set is keyed identically to the trusted
   // OID map. Without this, when the workspace root is a git subdir, a modified
@@ -1202,7 +1218,7 @@ export async function startGitEnumeration(
     untracked: dirty === null ? null : untracked,
     undecodable,
     startedAtMs,
-    indexed: debug!.indexed,
+    indexed,
     // A missing blob is an answer ("missing"), never a fetch from a partial
     // clone's promisor remote.
     catFile: (stdin) =>
