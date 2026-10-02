@@ -1736,6 +1736,11 @@ as npm hands them to the script and not its hooks (item 905). The
 command is a small shell function, `vx_script`, around the three parts;
 it carries a TODO saying so; a `pre<x>` with no `x` stays a task of its own, and
 npm's lifecycle hooks (`prepack`, `prepublishOnly`, …) are never tasks.
+A package with no `build` script whose `prepack`, `prepublishOnly`,
+`prepublish` or `prepare` runs a builder (`bob build`, `tsc`, `tsup`, …)
+is named in the report, which says to add a `build` script running it
+(react-navigation's twelve packages, whose root `build` is `lerna run
+prepack`, mapped with no build at all).
 Where the package's manager runs no such hooks every `pre<x>` and
 `post<x>` is a task of its own: Yarn 2+ (the nearest `packageManager:
 yarn@2+`, or a Berry `yarn.lock`, D-31; a `packageManager` naming none of npm,
