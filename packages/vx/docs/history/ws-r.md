@@ -18,6 +18,12 @@
   "Coming from Turbo or Nx": `bunx @vzn/vx-migrate` / `vx init` is a
   temporary start, no speed claim. `try-it.unsafe.test.ts` now holds the
   migrate guide's `vx.workspace.ts` to a run.
+- **R-2** The pages past README and landing: the migrate guide, the
+  from-Turborepo / from-Nx / hello / honest-benchmarks posts, the
+  vx-migrate README and the Turbo/Nx support page call `turbo()` / `nx()`
+  a temporary start, not a way to run a repo unchanged; the benchmarks
+  post's solidjs rows went (they measured `turbo()`), and benchmarks.md
+  says its real-repo sections are a record, not a claim.
 
 ## Leads
 
@@ -25,6 +31,6 @@
   real-repo sections) measured `turbo()` / `nx()`, not native config.
   Rerun each repo after `bunx @vzn/vx-migrate` writes native configs
   before any of them is quoted again.
-- Docs pages beyond README and landing still claim vx runs Turbo/Nx
-  repos unchanged or faster (blog from-turborepo / from-nx, migrate
-  guide, compare, benchmarks.md): bring them to this positioning.
+- `vx init`'s own output in a Turbo repo still says `turbo()` "runs
+  this repo as it is" (core CLI text, pinned by tests): reword in a
+  `fix(cli)` change.

@@ -1,10 +1,12 @@
 ---
 title: Migrate
-description: Run a Turborepo or Nx repo under vx with one new file, written by `vx init`, then let `bunx @vzn/vx-migrate` write vx.config.ts files when you are ready.
+description: Move a Turborepo or Nx repo to native vx config. `vx init` gives a temporary start; `bunx @vzn/vx-migrate` writes the vx.config.ts files that are the goal.
 ---
 
-Run your Turborepo or Nx repo under vx today, and move its config to
-TypeScript at your own pace. Any other repo starts at the
+Move a Turborepo or Nx repo to native vx config. The `vx.workspace.ts`
+that `vx init` writes is a temporary start, not a way to run the repo;
+`bunx @vzn/vx-migrate` writes the `vx.config.ts` files you keep, and
+vx's benchmarks measure only that native config. Any other repo starts at the
 [quickstart](../../quickstart/): there `vx init` writes the configs from
 your `package.json` scripts.
 
