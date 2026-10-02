@@ -988,3 +988,9 @@ telemetry sinks receive, but only for the argv fallback: an embedder's
 verbatim. It is now counted, not quoted, the same way. Row
 (`telemetry.test.ts` › a sink never receives what follows `--`): red
 without the fix. The option's doc comment says so.
+
+## C-75: signals.md says the stop kills the run's probes
+
+`modules/signals.md` described the stop's teardown as `terminateChildren`
+alone; since C-65 it also kills the run's running `cache.inputs.runtime`
+probes. Docs only.
