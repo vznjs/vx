@@ -61,6 +61,13 @@
   name Nx's `getNxEnvVariablesForTask` sets beside `NX_TASK_TARGET_*`;
   Lerna runs on Nx's runner and documents it to scripts, and it was
   unset.
+- **P-18** `nx()`: outputs checked case by case against Nx 23.2's own
+  `getOutputsForTargetAndConfiguration`: an `outputPath` list is each of
+  its paths (read as none, the build cached Nx's default directories and
+  a hit restored nothing), and a number in `{options.x}` is its text, as
+  Nx writes it (it was dropped with a todo). The remaining differences
+  are by design (`build` / `public` defaults, a todo) or Nx refusals vx
+  tolerates (`./dist`, `dist/{projectName}`).
 - **P-16** `nx()`: a `projects` list (on `dependsOn` and on an input) is
   matched by a port of Nx's `findMatchingProjects`,
   checked case by case against Nx 23.2's own: project directories
