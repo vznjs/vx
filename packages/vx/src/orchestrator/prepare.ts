@@ -20,6 +20,7 @@ import {
   LayeredCache,
   applyGitEnumeration,
   gitPathspecs,
+  MAX_SCOPED_PATHSPECS,
   startGitEnumeration,
   lazyGitEnumeration,
 } from '../cache/index.js'
@@ -181,9 +182,13 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   // config, discovery, the cache open and the config evaluation. Its
   // ~60 ms is the warm run's wall floor on a 1000-project tree; it used to
   // start after discovery and the cache open, ~25 ms later. A scoped run
-  // waits: its pathspecs depend on which projects the configs pull in.
-  const unscoped =
-    options.projects === undefined && options.tasks.some((spec) => spec.indexOf('#') <= 0)
+  // waits: its pathspecs depend on which projects the configs pull in —
+  // unless it already names more projects than pathspecs scope, where the
+  // walk is the whole tree either way (an `--affected` run on 1,000
+  // projects waited ~60 ms for it after the configs loaded).
+  const wholeTree =
+    (options.projects === undefined || options.projects.length > MAX_SCOPED_PATHSPECS) &&
+    options.tasks.some((spec) => spec.indexOf('#') <= 0)
   // A `discover` hook that reads the worktree (nx()'s graph key) starts the
   // whole-tree enumeration a scoped run would otherwise scope later, here or
   // in the CLI's selection pass; the run reuses it instead of walking the
@@ -192,7 +197,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   const git =
     (reused !== undefined ? gitOfDiscovery(reused.projects) : undefined) ??
     lazyGitEnumeration(workspaceRoot)
-  if (unscoped) void git.start()
+  if (wholeTree) void git.start()
   const workspace = await loadWorkspace(workspaceRoot, reads)
   const { workspaceConfig, plugins } = await loadWorkspacePlugins(workspaceRoot, (m) =>
     log.status(m),
