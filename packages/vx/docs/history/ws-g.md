@@ -799,7 +799,7 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   warm 41 cached in 1.3 s; `@unocss/vscode#build` rewrites its README
   input, the same class). `--all` there fails `playground` and a test
   fixture, which import unocss without declaring it, as Turbo would.
-- **G-69.** langfuse (turbo.json `"cacheMaxSize": "7.5GB"`) did not load
+- **G-68.** Turbo's `interruptible` (a persistent task `turbo watch` may
   under turbo(): core takes a whole-number size and refused the
   workspace. Turbo's grammar (turborepo-cache `parse_human_size`,
   `parse_human_duration`) is 1024-based, truncates a fraction to bytes,
@@ -808,7 +808,7 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   plans build 9, typecheck 10, test 9 and lint 9 as Turbo does. Row
   (`workspace-keys.test` › the cache bounds take Turbo's grammar): red
   without it.
-- **G-68.** Turbo's `interruptible` (a persistent task `turbo watch` may
+- **G-69.** langfuse (turbo.json `"cacheMaxSize": "7.5GB"`) did not load
   restart) was an unknown key: "has no vx equivalent — map it manually".
   `vx watch` stops and re-spawns every persistent task each cycle, so
   either value maps to nothing; a non-boolean is refused as Turbo does.
@@ -818,7 +818,7 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   188, lint 167, validate:package, clean) exact; mastra's typecheck and
   dev miss the builds Turbo runs only as a no-op's `^build` (G-64's n8n
   class, not replicated).
-- **G-71.** openstatus (turbo 2.11.2) lists `!NEXT_PUBLIC_VERCEL_URL`
+- **G-70.** rallly (turbo 2.6.3): `build: [^build, ^db:generate]` and
   and three more exclusions in `build.env`, to keep Vercel's per-deploy
   vars out of the hash Turbo's framework inference would add. Each was
   a "wildcards are not supported" todo, six tasks times four. An
@@ -826,7 +826,7 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   it is not given, so it now removes the list's own matching names and
   says nothing. Rows (`turbo-map-sweep` › a `!` env entry removes the
   names it matches; › a global env wildcard is a note): red without it.
-- **G-70.** rallly (turbo 2.6.3): `build: [^build, ^db:generate]` and
+- **G-71.** openstatus (turbo 2.11.2) lists `!NEXT_PUBLIC_VERCEL_URL`
   only `database` has a `db:generate` script, so every other `build` is
   Turbo's no-op node. `web#build:test` → `^build` reaches them, and
   Turbo runs `database#db:generate` first; vx dropped it: G-61 made a
@@ -864,7 +864,7 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   names back, as Turbo applies them. The migrate CLI keeps the note.
   Row (`turbo-map-sweep` › a live mapping infers a framework env
   prefix): red without it; `lib` without the framework is the control.
-- **G-76.** Next 25 closed on a measurement. A generated 300-project Nx
+- **G-75.** nx()'s graph key ran its own whole-tree `git status -uall`
   workspace (`test` on `default` + `^production`; 293 `nx-input` twins)
   against the same graph without `^production`, warm, stage mins of 7
   under a hermetic git config: `classify + probe` 28.0 → 45.4 ms,
@@ -876,13 +876,13 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   this container's global `core.checkStat=minimal` every input is hashed
   from disk (1,486 `hashFile` calls a warm run, 0 with
   `GIT_CONFIG_GLOBAL=/dev/null`), as `vx-bench/ab.ts` already guards.
-- **G-78.** `vx init`'s `next:` line in a Yarn 1 repo said
+- **G-76.** Next 25 closed on a measurement. A generated 300-project Nx
   `yarn add -D @vzn/vx …`, which Yarn 1 refuses at a workspace root
   without `-W` (J-76's lead). A lockfile without Berry's `__metadata`
   now gets `-W`; Berry, which has no such flag, keeps the plain form.
   Row (`init.test` › the next step installs with the repo's own package
   manager, a Yarn 1 and a Berry lockfile): red without the fix.
-- **G-75.** nx()'s graph key ran its own whole-tree `git status -uall`
+- **G-77.** A stale hit on core's floor. `bun.lock` records a patch by
   beside core's enumeration (I-6: refine 417 ms median, 321 with the key
   bounded). `DiscoverContext.worktreeChanges()` hands a `discover` hook
   the run's own status; asked from a scoped run (or the CLI's `--filter`
@@ -892,7 +892,7 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   git status per run: a logging git on PATH counts one `status` for an
   unscoped, a scoped and an edited run): red without the hand-over (2),
   and red for the scoped run without the CLI carrying it.
-- **G-79.** A run from inside a project discovered the workspace twice:
+- **G-78.** `vx init`'s `next:` line in a Yarn 1 repo said
   `findCwdProject` ran discovery (every `discover` hook, `nx()`'s graph
   load and its worktree key among them) and `prepareRun` ran it again (the
   shape `--filter` had until ws-i's lead was fixed). The cwd lookup now hands its
@@ -901,7 +901,7 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   `packages/p150`, interleaved N=11: min 199 → 191 ms, median 230 → 202.
   Row (`load-reads.test` › a run from inside a project discovers the
   workspace once): red without the hand-over (the manifest read twice).
-- **G-77.** A stale hit on core's floor. `bun.lock` records a patch by
+- **G-79.** A run from inside a project discovered the workspace twice:
   path, so `bun patch --commit` with a new edit leaves it byte-identical
   while the install applies the new patch; item 1014 taught `bun()`'s
   claim, and core's own fingerprint (every workspace without the plugin)
@@ -913,7 +913,7 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   files, with an unnamed patch, a claimed lockfile and an outside path as
   controls; `affected.test` › an edit to a patch bun.lock names): red
   without the fold, and the `--affected` row red without its widening.
-- **G-81.** J-62's lead: under Yarn Plug'n'Play only `turbo()` ran a
+- **G-80.** Turbo's framework inference covered five of its sixteen
   package script as `yarn run <name>`; `nx()`'s `nx:run-script`, lage's
   `npmScript`, wireit's plain scripts and `workspaceScripts()` inlined the
   body, where a dependency's `require` and bins do not resolve. Each now
@@ -922,14 +922,14 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   so. Rows: one per mapper (`nx-map-sweep`, `scripts`, `lage`, `wireit`),
   each red without the fix; the scripts row is red with only the mapping
   key reverted too.
-- **G-83.** `turboCache()` read turbo.json's `apiUrl`, `teamId` and
+- **G-81.** J-62's lead: under Yarn Plug'n'Play only `turbo()` ran a
   `teamSlug`, but not `remoteCache.timeout` / `uploadTimeout` or Turbo's
   `TURBO_REMOTE_CACHE_TIMEOUT` / `_UPLOAD_TIMEOUT`, so a repo that gives
   its cache 120 s got vx's 30. Each is read in Turbo's order (options,
   env, file), in whole seconds, 0 being no deadline; anything else is
   refused by name. Rows (`turbo-cache.test` › the timeouts come from …,
   a timeout of 0 sends no deadline): red without the change.
-- **G-80.** Turbo's framework inference covered five of its sixteen
+- **G-82.** Turbo's task `tags` (on Turbo's main, past 2.11.5) are labels
   frameworks: a package on `expo`, `nuxt`, `remix`, `@sveltejs/kit`
   (`PUBLIC_*`), `react-dev-utils` and the rest had its public variables
   stripped and unkeyed, a stale hit on their edit, and every Next app
@@ -943,7 +943,7 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   out of the inferred set, so a deploy's commit SHA does not re-key every
   Next build (row: the CI vendor prefix is left out of framework
   inference only; red without the filter).
-- **G-84.** `turboCache()` signed with `TURBO_REMOTE_CACHE_SIGNATURE_KEY`
+- **G-83.** `turboCache()` read turbo.json's `apiUrl`, `teamId` and
   whenever the env set it, where Turbo signs only under turbo.json's
   `remoteCache.signature: true`. A repo with a short key in its CI env
   and signing off ran Turbo fine and had vx refuse its whole cache
@@ -952,7 +952,7 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   the `signatureKey` option still signs either way. Row
   (`turbo-cache.test` › the env signature key applies only where
   turbo.json turns signing on): red without the change.
-- **G-89.** `turboCache()` put any `teamId` on the query, where Turbo's
+- **G-84.** `turboCache()` signed with `TURBO_REMOTE_CACHE_SIGNATURE_KEY`
   API client sends one only in Vercel's `team_` form (`add_team_params`)
   and keeps the raw id for the signature alone. A personal account's
   owner id, or a slug written as `TURBO_TEAMID`, went out as a team id
@@ -968,35 +968,35 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   Rows (`turbo-cache.test` › reads VERCEL_ARTIFACTS_* and
   .turbo/config.json in Turbo's order, the plugin reads the repo's
   .turbo/config.json): red without the change.
-- **G-82.** Turbo's task `tags` (on Turbo's main, past 2.11.5) are labels
+- **G-86.** `turbo()` read `concurrency`, `cacheMaxSize`, `cacheMaxAge`
   its hash and run never read, yet each drew a "no vx equivalent — map
   it manually" todo from `turbo()` and `bunx @vzn/vx-migrate`. They map
   to nothing now. The support table's `interruptible` row said it was
   reported; it maps to nothing in silence since the key was learned.
   Row (`turbo-map-sweep` › task tags map to nothing, an unknown key's
   todo the control): red without the fix.
-- **G-91.** runner.test.ts timeout-group row: TERM ignored before the fork; the inner sh's own trap raced the 100 ms timeout on macOS (142 ms < 400, #1946's run). Repro: the old trap delayed 0.2 s fails at 109 ms.
-- **G-90.** `nxCache()` read a `403` on an upload, which Nx's
+- **G-87.** `nx()` took nx.json's `parallel` as the concurrency, but Nx 23
+- **G-88.** Nx caps its local cache at nx.json's `maxCacheSize`, with
   self-hosted cache spec names the read-only token, as a refused token,
   and turned the whole layer off: under a CI's pull-request token every
   lookup after the first upload missed, and its dependants rebuilt. A
   write's `403` now turns off writes alone, said once; a `401`, or a
   `403` on a read, still turns the layer off. Row (`nx-cache.test` › a
   read-only token turns off writes alone): red without the change.
-- **G-88.** Nx caps its local cache at nx.json's `maxCacheSize`, with
+- **G-89.** `turboCache()` put any `teamId` on the query, where Turbo's
   `NX_MAX_CACHE_SIZE` above it (`resolveMaxCacheSize`); `nx()` read
   neither, so a capped cache grew without bound under vx, as
   turbo.json's `cacheMaxSize` did before G-49. It is now the run's
   `cacheRetention.maxSize` when `vx.workspace.ts` sets no retention, in
   Nx's grammar, `0` being no cap. Row (`workspace-keys.test` › nx.json
   maxCacheSize): red without the change.
-- **G-87.** `nx()` took nx.json's `parallel` as the concurrency, but Nx 23
+- **G-90.** `nxCache()` read a `403` on an upload, which Nx's
   reads `NX_PARALLEL` (a count or a share of the cores, `50%`) above it
   (`readParallelFromArgsAndEnv`): a CI that set 2 for a small runner got
   nx.json's number under vx. The env variable now wins. Row
   (`workspace-keys.test` › NX_PARALLEL wins over nx.json): red without
   the change.
-- **G-86.** `turbo()` read `concurrency`, `cacheMaxSize`, `cacheMaxAge`
+- **G-91.** runner.test.ts timeout-group row: TERM ignored before the fork; the inner sh's own trap raced the 100 ms timeout on macOS (142 ms < 400, #1946's run). Repro: the old trap delayed 0.2 s fails at 109 ms.
   and `envMode` from turbo.json only, where Turbo 2.11.5 lets
   `TURBO_CONCURRENCY`, `TURBO_CACHE_MAX_SIZE`, `TURBO_CACHE_MAX_AGE` and
   `TURBO_ENV_MODE` win over the file (probed in its binary): a CI that
@@ -1044,6 +1044,7 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
 - **G-128.** fix: Nx's parser takes every long flag camelCased, and its docs print `--nxBail`, `--skipNxCache`, `--maxParallel`, `--outputStyle`; `vx run` answered each with "unknown flag". `translateForeign` now reads a camelCase long flag as its kebab-case form when the table has an Nx row by that name, and the row decides as for the kebab spelling. Row (`foreign-flags` › Nx's camelCase spelling is the kebab-case flag, with an unknown camelCase name as the control).
 - **G-129.** fix: Nx names nx-examples' `@nx-example/cart` `cart`, and `vx run -t build -p cart` (Nx's `-p`, vx's `--filter`) matched nothing; `-p 'shared-*'` and `--exclude=cart` likewise. A name pattern that matches no package now matches the part after the scope, as pnpm reads `--filter core` for `@babel/core`: an exact name when one package carries it, a `*` pattern every one it reaches. A name a package carries still wins, and a scoped pattern never falls back. This replaces E-32's hint for the exact name (its typo hint stays) and the filter row that pinned "a bare `core` selects nothing"; the docs' "pnpm-style" filter now holds for this form. Rows (`filter` › a name that matches no package may leave out the scope; `select` › selects the one project whose name after the scope it is).
 - **G-130.** test: "a SIGKILLed task's port bridge leaves no socket behind" (`sandbox-runtime.unsafe`) failed once in the gate with 2 sockets during the run and 1 after. Cause: it counted its port's sockets across every task directory under the walled root, and a `kill -9`'d run leaves its directory there by design (no sweep by pid, item 965); this box held 10 such sockets from earlier runs, and one shared the row's ephemeral port. The row now counts this process's directories alone, and plants a dead run's socket for its port, so the case is every run's: without the scope it fails every time with the gate's numbers.
-- **G-134.** fix: of the flags `turbo run --help` (2.11.6) lists, `--color`, `--no-color`, `--heap`, `--trace`, `--login`, `--no-update-notifier`, `--skip-infer`, `--root-turbo-json` and the ten `--experimental-otel-*` reached `vx run` as "unknown flag", no way on. Each is a refusal naming the vx way now (`FORCE_COLOR=1`, `NO_COLOR=1`, `--profile`, `otel()` …). Rows (`foreign-flags` › every flag Turbo's `run` lists is vx's own or in the table, a hand-written list: red without the change; the refusals' exact lines).
 - **G-131.** fix: Turbo appends every package's `microfrontends.json` (else `.jsonc`, or `VC_MICROFRONTENDS_CONFIG_FILE_NAME`'s name) to the root's global deps, so an edit to `web`'s routes re-keys every task (with-microfrontends: Turbo 2.11's dry run moves all 18). `turbo()` read none, and the sibling apps' builds replayed from the cache. They join the global inputs now, a child's `{ "partOf" }` excepted as in Turbo; the mapping's key reads them. Row (`turbo.test` › a microfrontends config re-keys every package's tasks …: red without the change).
 - **G-133.** fix: Turbo hashes the files of every workspace package the root depends on, transitively, into its global hash (`root_internal_package_dependencies_paths`). with-nestjs's root dev-depends on `@repo/eslint-config` and `api#lint` (`lint: {}`, no edge) lints with it: Turbo's dry run re-keys every task on an edit to the rules, `turbo()` keyed none, and the lints replayed from the cache. Each such package's `<dir>/**` joins the global inputs; the mapping key reads the root manifest. Row (`turbo.test` › the root's workspace dependencies key every task …, with a no-edge control: red without the change, and without the key's read).
+- **G-134.** fix: of the flags `turbo run --help` (2.11.6) lists, `--color`, `--no-color`, `--heap`, `--trace`, `--login`, `--no-update-notifier`, `--skip-infer`, `--root-turbo-json` and the ten `--experimental-otel-*` reached `vx run` as "unknown flag", no way on. Each is a refusal naming the vx way now (`FORCE_COLOR=1`, `NO_COLOR=1`, `--profile`, `otel()` …). Rows (`foreign-flags` › every flag Turbo's `run` lists is vx's own or in the table, a hand-written list: red without the change; the refusals' exact lines).
+- **G-137.** fix: `turbo run ci` over `ci: { dependsOn: ["lint", "build"] }` with no `ci` script anywhere runs every package's lint and build, and cal.com's `deploy: { dependsOn: ["@calcom/web#build"] }` (a root script runs it) builds web's closure: Turbo's no-op nodes are entry points. G-62 emitted such a node only when another package reached it, so `vx run ci --all` said no project declares it. A name no package has a script for is now a group wherever it has an edge of its own. cal `deploy`: 13 tasks under both. Rows (`turbo-map-sweep` › a no-script name no package has a script for is a group …: red without the change; the unreached-node row now has a package that does have tests, as examples/turbo does).

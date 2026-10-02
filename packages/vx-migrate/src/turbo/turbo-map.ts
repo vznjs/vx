@@ -898,6 +898,8 @@ export async function mapTurboWorkspace(
       }
     }
   }
+  const scripted = new Set<string>()
+  for (const set of runnable.values()) for (const name of set) scripted.add(name)
   // A script-less task is Turbo's no-op node, and it keeps its edges. Its
   // `^` edge to its own name needs nothing (core's `^task` walks past a
   // project without the task to the nearest one with it); a `^` edge to
@@ -933,7 +935,11 @@ export async function mapTurboWorkspace(
         )
       })
       const reached = caretNames.has(name) || crossIds.has(`${meta.name}#${name}`)
-      if (sidecar || (local && reached)) emitted.get(meta.name)!.add(name)
+      // A name no package has a script for is an entry point of its own:
+      // `turbo run ci` over `ci: { dependsOn: ["lint", "build"] }`, or
+      // cal.com's `deploy` → `@calcom/web#build`, runs its edges, and vx
+      // said no project declares it.
+      if (sidecar || (local && (reached || !scripted.has(name)))) emitted.get(meta.name)!.add(name)
     }
   }
   // Turbo's transit node (its with-vitest example; the docs' pattern for a

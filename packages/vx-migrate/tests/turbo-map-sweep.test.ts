@@ -1382,9 +1382,37 @@ describe('turbo-map: `with`', () => {
   it('a no-script node no other package reaches is no group', async () => {
     const m = await map(
       { tasks: { build: { dependsOn: ['^build'] }, test: { dependsOn: ['build'] } } },
-      { lib: { scripts: { build: 'b' } } },
+      { lib: { scripts: { build: 'b' } }, app: { scripts: { build: 'b', test: 't' } } },
     )
-    expect(m.projects[0]!.tasks.map((t) => t.name)).toEqual(['build'])
+    expect(m.projects.find((p) => p.name === 'lib')!.tasks.map((t) => t.name)).toEqual(['build'])
+  })
+
+  // `turbo run ci` over `ci: { dependsOn: ["lint", "build"] }` with no `ci`
+  // script anywhere runs every package's lint and build, and cal.com's
+  // `deploy: { dependsOn: ["@calcom/web#build"] }` builds web; vx said no
+  // project declares either.
+  it('a no-script name no package has a script for is a group wherever it has an edge', async () => {
+    const m = await map(
+      {
+        tasks: {
+          build: { dependsOn: ['^build'] },
+          lint: {},
+          ci: { dependsOn: ['lint', 'build'] },
+          deploy: { dependsOn: ['web#build'] },
+          noop: {},
+        },
+      },
+      { web: { scripts: { build: 'b' } }, lib: { scripts: { lint: 'l' } } },
+    )
+    const tasks = (p: string) =>
+      Object.fromEntries(
+        m.projects.find((x) => x.name === p)!.tasks.map((t) => [t.name, t.task?.['dependsOn']]),
+      )
+    expect([tasks('web'), tasks('lib')]).toEqual([
+      { build: ['^build'], ci: ['build'], deploy: ['web#build'] },
+      // lib's `build` is Turbo's no-op node over lib's files (G-117).
+      { build: ['^build'], lint: undefined, ci: ['lint', 'build'], deploy: ['web#build'] },
+    ])
   })
 
   it('a pair that names each other is one edge, not a cycle', async () => {
