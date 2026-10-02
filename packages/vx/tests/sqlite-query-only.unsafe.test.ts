@@ -1,6 +1,6 @@
 // bun:sqlite defers a plain `close()` while a `db.prepare()` statement
 // lives, so a row that prepared one and closed its database left the file
-// open; Windows then refused to delete the fixture (EBUSY, O-13). A
+// open (O-13). A
 // `db.query()` statement is finalized with its database. Unsafe: it reads
 // this process's /proc/self/fd, which a sandboxed shard's /proc is not.
 import { mkdtempSync, readFileSync, readdirSync, readlinkSync, rmSync } from 'node:fs'
