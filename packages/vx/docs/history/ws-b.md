@@ -80,6 +80,10 @@ In order of harm:
   under the full gate's load on 2026-09-28, 2 of 2 green alone. Its
   `until` deadline is a claim about time under load.
 
+- core: `scale-graph.test.ts` › core pipeline at ~2000 projects
+  / ~6000 tasks timed out its 5 s hook once in a full local gate,
+  2026-10-02, on the B-54 merge; its shard alone passed.
+
 ## Entries
 
 B-1. A glob grant's hit on a wall is not a grant of it (lead 1). On
@@ -996,6 +1000,20 @@ null control); `show-info.test.ts` › the rendered sandbox rows. A new
 fact is a contract change: `schemas/info.json`, `docs/api.md` and
 `vx-mcp`'s `tools.json` record it, so the title and a commit carry `!`.
 
+B-55. A stop that landed after a task was dispatched but before its
+spawn (during its output clean, or the request's build) still ran the
+command: the request's signal was already aborted and the local
+executor spawned regardless, after the teardown had swept the run's
+children. Probe: 20,000 stale outputs to clean, SIGINT 0.3–0.7 s in;
+the command's marker was written every time and the run took 7.6 s
+(the signal's bound) where 0.5 s was due. The local executor now spawns
+nothing for an aborted request and returns the signal's exit; the task
+reads aborted, nothing cached. Row: `executor.test.ts` › spawns nothing
+for a request whose signal is already aborted (red without the fix; the
+same request not aborted is the control). Lead for the orchestrator
+stream: `runAttempt` still cleans outputs and builds the request after
+the stop; a check there would skip that work too, and a plugin executor
+handed the aborted request decides for itself.
 B-53. A Linux sandboxed task whose cwd no mount held ran in `$HOME`.
 bwrap enters the old cwd only if it exists in the new root, else
 `$HOME`, silently; a project with no read grant and no `node_modules` of
@@ -1009,3 +1027,12 @@ nothing); with the fix the read itself is reported. Rows:
 `sandbox-runtime.unsafe.test.ts` › runs in its own cwd when no grant
 holds it (red without the fix: `pwd` read `/root`), and the bare
 baseline's row now pins the two write violations (red without it).
+
+B-54. strace writes a path as a C string (a quote, a backslash and a
+control byte escaped, a non-ASCII byte as octal), and `deniedCalls`
+read it raw: `q"t.txt` was cut at `q\`, `é.txt` was reported as
+`\303\251.txt`, so the report named the wrong path and no `ignore`
+pattern could match it. The quoted argument is now matched escape-aware
+and decoded (`cStringPath`). Row: `sandbox-runtime.unsafe.test.ts` ›
+deniedCalls › decodes the C-string escapes strace writes a path with
+(red without the fix).

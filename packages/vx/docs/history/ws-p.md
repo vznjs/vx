@@ -20,6 +20,12 @@
   `createTaskOverrides` turns into the dependency's overrides, is a todo
   when the target has options to forward. It was dropped without a word,
   and the dependency ran with its own options.
+- **P-4** `nx()`: a grouped target's `.env` files are named by the group
+  member that carries `nonAtomizedTarget` and that parent, as Nx's
+  `getOwnerTargetForTask` names them: cypress's atomized
+  `e2e-ci--<spec>` loads `.env.e2e-ci` and `.env.e2e`. vx named them by
+  the task's own name, so it loaded `.env.e2e-ci--<spec>`, which Nx never
+  does, and missed `.env.e2e-ci`.
 
 ## Notes
 
