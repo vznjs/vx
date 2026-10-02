@@ -478,7 +478,9 @@ shows it: the task's output and the line vx adds under a shell's 127 or
 replays, the command a cache entry stores (what `vx why` prints and a
 remote cache receives), the `$ command` line, telemetry records,
 `vx show`, an executor's error or a plugin's warning (a remote's reply), and the run's own invocation line that `vx last` prints (a
-secret passed after `--`) and its `--tag`s. A value
+secret passed after `--`) and its `--tag`s. A multi-line value (a PEM
+key) is also masked line by line, each line of six characters or more.
+A value
 split across two output chunks is still caught; the output holds back
 that many characters until the next chunk. A plugin that reads a task's
 config directly sees it as written. A secret whose name holds none of
