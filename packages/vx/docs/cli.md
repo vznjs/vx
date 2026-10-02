@@ -1804,7 +1804,8 @@ and when no task caches it says a cache block from a TODO makes the
 second run a hit. Its `next:` line is a command the user can type: the
 runner that started vx (`npx`, `pnpm`, `yarn`, `bunx`, read from
 `npm_config_user_agent`) with the installed `vx` bin, else the
-`@vzn/vx` package; with no runner, a bare `vx`. Outside a git work tree it starts with
+`@vzn/vx` package (`npx` under Yarn 1, which has no `dlx`); with no
+runner, a bare `vx`. Outside a git work tree it starts with
 `git init`, and with no script mapped with declaring a task, since the
 run would refuse without either. It runs `build`, else the first task that
 neither serves (`persistent`) nor changes the repo (`clean`, `release`,

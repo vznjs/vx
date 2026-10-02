@@ -477,7 +477,9 @@ export function vxInvocation(userAgent: string | undefined, installed: boolean):
     case 'pnpm':
       return installed ? 'pnpm vx' : 'pnpm dlx @vzn/vx'
     case 'yarn':
-      return installed ? 'yarn vx' : 'yarn dlx @vzn/vx'
+      // `dlx` is Yarn 2+; Yarn 1 answers `Command "dlx" not found`.
+      if (installed) return 'yarn vx'
+      return userAgent!.startsWith('yarn/1.') ? 'npx @vzn/vx' : 'yarn dlx @vzn/vx'
     default:
       return 'vx'
   }
