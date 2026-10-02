@@ -64,7 +64,6 @@ function disp(ms: number): string {
   if (ms >= 1000) return `${(ms / 1000).toFixed(2)}s`
   return `${Math.round(ms)}ms`
 }
-const x = (a: Row, key: keyof Row): string => `${(Number(a[key]) / Number(vx[key])).toFixed(1)}×`
 // The number the site leads with (owner, 2026-09-10): what the runner ADDS
 // to a cold build over the ideal schedule of the tasks themselves, as time,
 // never a percentage for one and a multiple for another (a percentage of a
@@ -172,7 +171,8 @@ if (!readmeOut.includes('<!-- bench:start')) throw new Error('README.md: bench m
 
 // ---- benchmarks.md stress section ----
 let doc = docIn
-const cell = (r: Row, key: keyof Row) => `${disp(Number(r[key]))} (${x(r, key)})`
+const cell = (r: Row, key: keyof Row) =>
+  `${disp(Number(r[key]))} (${versus(Number(vx[key]), Number(r[key]))})`
 const section = `## A real monorepo: ${nodes.toLocaleString('en-US')} tasks, 100 layers (${d.date.slice(0, 10)})
 
 The shape that actually stresses a task runner: **100 dependency layers**,
@@ -195,6 +195,8 @@ The committed \`packages/vx-bench/RESULTS.md\` / \`packages/vx-bench/results.jso
 | **CPU burned**, warm (user+sys) | **${disp(vx.warmNoRestoreCpu)}** | ${disp(noLock.warmNoRestoreCpu)} | ${cell(turbo, 'warmNoRestoreCpu')} | ${cell(nx, 'warmNoRestoreCpu')} |
 | _Baseline_ (theoretical best) | ${disp(B.fresh)} cold; 0 warm, restore, CPU | — | — | — |
 | _Measured floors_ (context)  | git walk ${disp(B.warmNoRestore)} · walk + raw copy ${disp(B.warmRestore)} · task shells ${disp(B.freshCpu)} | — | — | — |
+
+${FORMULA}
 
 **Baseline** is the theoretical best case, so each row shows its overhead:
 cold is the tasks' own durations list-scheduled on 10 workers along the

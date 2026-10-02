@@ -693,7 +693,11 @@ async function runOnBus(
         vxVersion: VERSION,
         // An embedder's `command` is redacted as the argv is: it passed a
         // token after `--` to every sink verbatim (C-67).
-        command: invocationCommand(options.command?.split(' ') ?? process.argv.slice(1)),
+        // Masked as the stored line is: `--tag key=$DEPLOY_KEY` sits before
+        // the `--` the count covers (L-44).
+        command: maskInvocation(
+          invocationCommand(options.command?.split(' ') ?? process.argv.slice(1)),
+        ),
         requestedTasks: [...options.tasks],
         cachePolicy: compactCachePolicy(policy),
         concurrency,
@@ -922,6 +926,12 @@ async function runOnBus(
       ...(hasPooledExecutor(executors) ? { poolOf: poolOfPlacement(placements) } : {}),
       ...(admit !== undefined ? { admit } : {}),
       ...(options.continueMode !== undefined ? { continueMode: options.continueMode } : {}),
+      // A server that ended on its own is failed (the end of the run says
+      // so); what has not yet started hears it before it dispatches (C-88).
+      serverDied: (id) => {
+        const child = persistentRegistry.get(id)
+        return child !== undefined && hasEnded(child) && child.exitCode !== 0
+      },
       signal: stopRun.signal,
       onStart: (node) => {
         log.taskStart?.(node)

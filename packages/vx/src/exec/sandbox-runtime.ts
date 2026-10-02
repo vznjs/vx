@@ -70,6 +70,7 @@ import {
   bindableReads,
   bindableWrites,
   buildCustomConfig,
+  readOnlyMasks,
   scratchWrites,
   widenedEntries,
 } from './sandbox-binds.js'
@@ -88,6 +89,7 @@ import {
 } from './sandbox-deny-scan.js'
 import {
   parseStraceViolations,
+  refusedConnections,
   refusedWrites,
   refusedWritesOutside,
   reportableViolations,
@@ -1095,7 +1097,8 @@ export async function wrapSandboxedCommand(
   // sandboxed server and all it forked outlived vx (turborepo#9666). Now
   // the namespace goes with vx, a `setsid` daemon inside included, a
   // traced one-shot task too: its strace runs inside (B-11).
-  if (process.platform === 'linux' && /^\S*bwrap /.test(wrapped)) wrapped = `exec ${wrapped}`
+  if (process.platform === 'linux' && /^\S*bwrap /.test(wrapped))
+    wrapped = `exec ${readOnlyMasks(wrapped, scratch)}`
   if (process.platform === 'linux' && !hostHasIpv6())
     wrapped = `SOCAT_DEFAULT_LISTEN_IP=4 ${wrapped}`
   if (args.server === true) liveServers.add(tag)
@@ -1760,6 +1763,7 @@ async function runSandboxedOnce(
             bindableWrites(args.config.allowWrite),
             scratch,
           ),
+          ...refusedConnections(records.map((v) => v.line)),
         ]
       : []
   if (straceLog) {

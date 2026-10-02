@@ -62,6 +62,9 @@ A task with `exec.sandbox` runs where only what it declares exists:
   run: a task granted any domain reaches every domain the run grants;
 - its temp directory, port-bridge socket and trace log are its own
   (mode 0700), unreachable from another task and another local user;
+- the host's credential stores (`~/.ssh`, `~/.gnupg`, `~/.aws`,
+  `~/.npmrc`, `~/.netrc` and the like; the list is in the schema's
+  sandbox section) are unreadable unless `allow.read` names one (L-41);
 - vx's own cache directory, wherever `cacheDir` puts it in the
   workspace, is a wall like `.vx`: a broad grant stops at it, and a write
   grant that would bind it is refused (L-24);
@@ -76,7 +79,9 @@ task is never cached. See [Sandboxing tasks](https://vznjs.github.io/vx/guides/s
 
 - **A task with no `exec.sandbox`.** It runs with your permissions.
 - **Reads outside the workspace root.** `~/.cache`, `/etc` and the like
-  stay readable (tools need them) and fold into no key.
+  stay readable (tools need them) and fold into no key. The credential
+  stores under home (`~/.ssh`, `~/.aws`, `~/.npmrc` and the like) are
+  not: a task reads one only when its `allow.read` names it (L-41).
 - **Resource use.** CPU, memory and disk are bounded by timeouts and the
   artifact ceiling, not by the sandbox.
 - **A weaker sandbox where the host cannot nest one**:
@@ -93,12 +98,13 @@ exports it: task output, the stdout a hit replays, commands, an
 executor's error, telemetry,
 `vx show` and `vx mcp`'s `listTasks` (L-26). Values in the run history are digests under a per-store
 salt, and what follows `--` on the command line reaches telemetry as a
-count, not a quote. A remote executor (`@vzn/vx-reapi`) receives a
+count, not a quote, a secret before it masked (L-44). A remote executor (`@vzn/vx-reapi`) receives a
 task's `exec.env.define` values and the `cache.inputs.env` values its
 local child gets, never `passThrough`; those values sit unmasked in the
 action's Command, which the remote stores in its CAS, as Bazel's
 `--action_env` does, so a secret a remote task needs is trusted to that
-remote.
+remote. `vx lock` refuses to write a lock holding a secret value: the lock is
+committed (L-42).
 
 ## Releases
 

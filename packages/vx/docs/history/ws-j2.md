@@ -80,3 +80,31 @@
 persistent task` and vx exits 1). Row (`site-samples` › a post's link
   into a guide section names the section), red on four posts without
   the fix.
+
+- **J2-13** The why-did-this-rerun post's verdict table had six
+  unchanged-key endings; `metrics.ts` has seven since #1928's
+  continue-taint verdict ("neither run saved it: each ran beside a
+  failed task …"). The configure guide had the row; the pin matched
+  single-quoted notes only, and that verdict is a template literal, so
+  it held neither page to it. The post now lists it, and the pin reads
+  template literals too (an interpolated group reads `(…)`), expecting
+  10; red on the post without the fix.
+- **J2-11** The lockfile-aware-keys post said a `bun.lock` bump in
+  vx's repo re-keys "that package's own tasks and its dependants'", and
+  its excerpt "59 re-keyed tasks into 2". Measured 2026-10-02 (`run ci
+--all --dry=json` keys before and after): an `astro` bump re-keys 6 of
+  56 tasks with `bun()`, 56 without; a `protobufjs` bump re-keys all 56
+  with it, since every digest folds the root's closure and the root
+  links seven workspace packages. The post now gives both. Row
+  (`site-samples` › the lockfile post measures what the root reaches),
+  read from the manifests; red without the fix and with the narrow
+  example swapped for `@types/bun`.
+
+- **J2-16** The cascade-through-inputs post named one way a key is
+  preliminary (a same-project upstream's outputs). `stable-keys.ts` also
+  classes an upstream's root-anchored outputs, an uncached upstream
+  that may write in the project (item 743), and a cached in-place
+  rewriter the key does not fold (item 750), and every dependant
+  inherits the class. Row (`site-samples` › the cascade post names
+  every way a key is preliminary), gated on the source; red without
+  the fix.

@@ -55,6 +55,8 @@ export interface ScheduleOptions {
   signal?: AbortSignal
   /** Failure propagation; default 'deps-ok'. */
   continueMode?: ContinueMode
+  /** A ready server that died: its dependants not yet started skip (through groups too); under 'never' dispatch stops. */
+  serverDied?: (id: string) => boolean
   execute: (node: TaskNode, upstream: TaskOutcome[]) => Promise<TaskOutcome>
   onStart?: (node: TaskNode) => void
   onFinish?: (outcome: TaskOutcome) => void
