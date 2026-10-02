@@ -28,24 +28,6 @@ In order of harm:
    grant as is), so a root project's `read: ['.']` still reads nested
    projects, `.git` and `.vx` under seatbelt. Needs a darwin probe
    (seatbelt precedence of a deny inside an allow) before a fix.
-6. Linux: a grant naming a path with `[` or `]` (a Next.js route,
-   `pages/[id].tsx`) cannot be granted. vx scans it as a `Bun.Glob`
-   class (no match, the read is denied and reported); the escaped
-   `\[id\]` matches, but SRT globs any Linux allow path holding a
-   bracket (`containsGlobChars`: a read is expanded as a class, a write
-   is dropped), so the hit is never mounted and, being a listed grant,
-   its denial goes unreported. A workspace whose own path holds a
-   bracket meets the same. Probed 2026-10-02. Fix needs a choice: widen
-   such a grant to its nearest bracket-free ancestor (as a file grant
-   is widened to its directory), said once. `read: ['.']` is unaffected.
-
-7. Linux: a grant under a workspace whose directory name holds a
-   bracket does not resolve: `resolveSandboxConfig` resolves it to an
-   absolute path and `expandGrants` reads that path's brackets as a
-   `Bun.Glob` class, so `read: ['.']` there mounts nothing. Since B-57
-   such a workspace is walled, so its tasks fail closed. A fix makes
-   the expansion escape-aware on both platforms (darwin hands SRT the
-   pattern). A bracketed write path cannot reach SRT at all.
 
 ## Leads for other streams
 
