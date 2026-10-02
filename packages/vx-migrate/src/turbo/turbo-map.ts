@@ -1317,9 +1317,70 @@ export async function mapTurboWorkspace(
     }
   }
 
+  nestedInputs(root, projects)
   resolveSharedWorkspaceOutputs(root, projects)
   pruneOrphanPersistentNotes(projects, opts.persistentTodo)
   return { projects, notes, globals }
+}
+
+/**
+ * Turbo hashes a package's files as git lists them, nested workspace
+ * packages included (probed on 2.11.6: `a#build` keys `n/x.ts` of a
+ * package `n` inside `a`). cal.com's `@calcom/app-store` holds ~100 app
+ * packages its source imports by relative path; core's file globs stop at
+ * a nested project, so an edit to an app replayed `@calcom/web#build`
+ * from the cache. Each file glob that reaches a nested package is listed
+ * again in `workspaceFiles`, anchored there, or at the package when it
+ * opens on `**` (its own files are keyed twice, the same way).
+ */
+function nestedInputs(root: string, projects: readonly TurboMappedProject[]): void {
+  const rels = projects.map((p) => relPosix(root, p.dir))
+  projects.forEach((p, i) => {
+    const own = rels[i]!
+    if (own === '' || own === '.') return
+    const inside = rels.filter((r) => r.startsWith(`${own}/`)).map((r) => r.slice(own.length + 1))
+    // A package inside a nested one is reached through it.
+    const nested = inside.filter((n) => !inside.some((m) => n.startsWith(`${m}/`)))
+    if (nested.length === 0) return
+    for (const t of p.tasks) {
+      const inputs = (t.task?.['cache'] as { inputs?: Record<string, unknown> } | undefined)?.inputs
+      const files = inputs?.['files']
+      if (inputs === undefined || !Array.isArray(files)) continue
+      const extra: string[] = []
+      for (const g of files) {
+        if (typeof g !== 'string') continue
+        const neg = g.startsWith('!')
+        const body = neg ? g.slice(1) : g
+        // One that opens on `**` reaches them all: listed once, at the package.
+        if (body.startsWith('**')) extra.push(`${neg ? '!' : ''}${own}/${body}`)
+        else
+          for (const n of nested) {
+            const under = reanchor(body, n)
+            if (under !== null) extra.push(`${neg ? '!' : ''}${own}/${n}/${under}`)
+          }
+      }
+      if (!extra.some((g) => !g.startsWith('!'))) continue
+      const ws = inputs['workspaceFiles']
+      inputs['workspaceFiles'] = uniq([...(Array.isArray(ws) ? ws : []), ...extra])
+    }
+  })
+}
+
+/**
+ * The part of a package-relative glob below `dir`, its nested package's
+ * directory: `**\/*.ts` under `n` is `**\/*.ts`, `src/**` under `src/n`
+ * is `**`; null when the glob cannot reach a file there.
+ */
+function reanchor(glob: string, dir: string): string | null {
+  const gs = glob.split('/')
+  const ds = dir.split('/')
+  for (let i = 0; i < ds.length; i++) {
+    const seg = gs[i]
+    if (seg === undefined) return null
+    if (seg === '**') return gs.slice(i).join('/')
+    if (!new Bun.Glob(seg).match(ds[i]!)) return null
+  }
+  return gs.length > ds.length ? gs.slice(ds.length).join('/') : null
 }
 
 /**
