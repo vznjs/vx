@@ -177,9 +177,15 @@ async function main(argv) {
   const { readNxJson } = nx('nx/src/config/nx-json')
   const { runExecutor } = nx('nx/src/command-line/run/run')
   const { workspaceRoot } = nx('nx/src/utils/workspace-root')
+  // Nx forks an executor in the directory Nx was started from, the
+  // workspace root in CI (`forked-process-task-runner`); vx starts a task in
+  // its project dir. An executor that resolves against `process.cwd()`
+  // (@nx/js's ts transformers, prettier's config) read the project dir.
+  // The `.env` files above are already loaded from it.
+  process.chdir(workspaceRoot)
   const context = {
     root: workspaceRoot,
-    cwd: process.cwd(),
+    cwd: workspaceRoot,
     isVerbose: process.env.NX_VERBOSE_LOGGING === 'true',
     projectName: args.project,
     targetName: args.target,
