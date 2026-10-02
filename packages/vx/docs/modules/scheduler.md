@@ -220,6 +220,13 @@ propagation, independent siblings, throw handling, priority contract,
 a perf guard on `computeReverseDepCount` (dense 100×30 graph must
 stay under 1.5 s; old code took 7.2 s), and the two-tier contract
 (restore-tier ready immediately / low priority / failed-dep bypass).
+`tests/scheduler-properties.test.ts` holds the promises over seeded
+random graphs (restores, demotions, groups, pools, an admission policy,
+failures, a stop, each `--continue` mode): one outcome per task, an
+exec task starts after everything above it finished, `deps-ok` never
+runs over a failure, a skip names a failed ancestor, nothing starts
+after the stop, every lane stays under its cap; and the taint tracker
+against its definition (C-70).
 
 ## Replacing this module
 

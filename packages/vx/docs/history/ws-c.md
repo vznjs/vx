@@ -943,3 +943,14 @@ scheduler's line. The error object is kept (its class, cause and code),
 so a refusal still prints plainly and a bug as an internal error.
 Row (`plugin-capabilities.test.ts` › an executor's throw reaches the
 task's own stderr): red without the fix. `modules/executor.md` says so.
+
+## C-70: the scheduler's promises over random graphs, as a test
+
+Three probes this stream ran (C-51 to C-69) checked the scheduler and
+the taint tracker over thousands of random graphs and found nothing;
+a probe that confirms a thesis becomes a test. `scheduler-properties.
+test.ts` runs 450 seeded graphs (restores, demotions, groups, pools, an
+admission policy, failures, a stop, each `--continue` mode) against
+what `modules/scheduler.md` promises, and 300 against the taint
+tracker's definition. Each of three scheduler mutations reddens it:
+the item-963 hold, the skipped-upstream skip, the stop's skip.
