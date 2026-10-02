@@ -22,6 +22,12 @@ import {
   RSS_FLOOR_SLACK_BYTES,
 } from '../src/exec/runner.js'
 
+/**
+ * A deadline a fresh shell's first command (an `echo`, a `trap`) meets on
+ * a loaded runner: 100-150 ms ones passed before it ran (M-23).
+ */
+const START_WINDOW_MS = 1_000
+
 describe('runCommand', () => {
   let cwd: string
 
@@ -597,16 +603,20 @@ describe('runPersistent — what its exit bookkeeping keeps', () => {
     // readiness timer, and the timer's body re-checks readyAt. Deleting
     // either alone stays green; deleting both kills a ready server at the
     // deadline.
+    // The window must outlast the child's first line under load: a 150 ms
+    // one passed on CI before `echo` printed, and the row failed on its
+    // premise (M-23). The wait runs from the spawn to past the deadline.
+    const start = Date.now()
     const spawn = runPersistent({
       command: `printf 'Listening\n'; exec sleep 30`,
       cwd,
       env: { PATH: process.env.PATH ?? '' },
       readyWhen: 'Listening',
-      timeoutMs: 150,
+      timeoutMs: START_WINDOW_MS,
     })
     try {
       await spawn.ready
-      await Bun.sleep(400)
+      await Bun.sleep(start + START_WINDOW_MS + 250 - Date.now())
       expect(isAlive(spawn.child.pid)).toBe(true)
     } finally {
       spawn.child.kill('SIGKILL')
@@ -1162,16 +1172,19 @@ describe('runPersistent — the rows its sweep asked for', () => {
   })
 
   it('keeps a ready server alive past its readyWhen timeout', async () => {
+    // A window the first line meets under load, waited out from the spawn
+    // (M-23; the row above).
+    const start = Date.now()
     const spawn = runPersistent({
       command: `echo up; exec sleep 30`,
       cwd: dir,
       env: env(),
       readyWhen: 'up',
-      timeoutMs: 150,
+      timeoutMs: START_WINDOW_MS,
     })
     try {
-      expect(await within(spawn.ready, 1_000)).toBe('ready')
-      await Bun.sleep(400)
+      expect(await within(spawn.ready, START_WINDOW_MS)).toBe('ready')
+      await Bun.sleep(start + START_WINDOW_MS + 250 - Date.now())
       expect(isAlive(spawn.child.pid)).toBe(true)
     } finally {
       await stop(spawn)
@@ -1182,25 +1195,29 @@ describe('runPersistent — the rows its sweep asked for', () => {
     const prev = process.env['VX_KILL_GRACE_MS']
     process.env['VX_KILL_GRACE_MS'] = '300'
     const heard = path.join(dir, 'heard')
+    // Each shell sets its trap before the deadline only if the window
+    // outlasts its start: a SIGTERM that came first killed the polite one
+    // untrapped, and passed the deaf one by TERM (M-23).
     const polite = runPersistent({
       command: `trap 'echo t > ${heard}; exit 0' TERM; sleep 30 & wait`,
       cwd: dir,
       env: env(),
       readyWhen: 'never',
-      timeoutMs: 100,
+      timeoutMs: START_WINDOW_MS,
     })
     const deaf = runPersistent({
       command: `trap '' TERM; exec sleep 30`,
       cwd: dir,
       env: env(),
       readyWhen: 'never',
-      timeoutMs: 100,
+      timeoutMs: START_WINDOW_MS,
     })
     try {
       await Promise.allSettled([polite.ready, deaf.ready])
       await polite.child.exited
       expect(await Bun.file(heard).exists()).toBe(true)
       expect(await waitForDead(deaf.child.pid, 3_000)).toBe(true)
+      expect(deaf.child.signalCode).toBe('SIGKILL')
     } finally {
       if (prev === undefined) delete process.env['VX_KILL_GRACE_MS']
       else process.env['VX_KILL_GRACE_MS'] = prev
@@ -1240,6 +1257,8 @@ describe('runCommand — the rows its sweep asked for', () => {
       // waits out the grace for the group, then SIGKILLs what is left. The
       // child inherits the ignore at fork: a trap set inside a new sh raced
       // the 100 ms timeout on a slow macOS runner and the group died at 142.
+      // The outer shell's own trap raced it too (a 300 ms start: 106 ms,
+      // M-23), so the deadline is one a shell's start meets.
       const prev = process.env['VX_KILL_GRACE_MS']
       process.env['VX_KILL_GRACE_MS'] = '400'
       try {
@@ -1247,10 +1266,10 @@ describe('runCommand — the rows its sweep asked for', () => {
           command: `trap "" TERM; sleep 30 & trap - TERM; wait`,
           cwd: dir,
           env: { PATH: process.env.PATH ?? '' },
-          timeoutMs: 100,
+          timeoutMs: START_WINDOW_MS,
         })
         expect(r.timedOut).toBe(true)
-        expect(r.durationMs).toBeGreaterThanOrEqual(400)
+        expect(r.durationMs).toBeGreaterThanOrEqual(START_WINDOW_MS + 400)
       } finally {
         if (prev === undefined) delete process.env['VX_KILL_GRACE_MS']
         else process.env['VX_KILL_GRACE_MS'] = prev
