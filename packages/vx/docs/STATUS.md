@@ -583,7 +583,9 @@ next?".
     group before it exits, so its guard kills nothing there to blur the
     two. (b) CLOSED as item 1078 on that evidence: the one failure since
     read `child: … (procfs is another pid namespace's), gone within
-21 ms` — a zombie, not a leak.
+21 ms` — a zombie, not a leak. (a) stays open for a macOS failure:
+    on Linux both files ran 25 of 25 clean beside six CPU burners
+    (Bun 1.4.2, 2026-10-02).
 24. DONE 2026-09-27 (fifth hit, CI on #1083, the same docs build after it
     had finished): an attempt whose last stderr line is strace's own and
     whose exit is non-zero is run once more, with a line saying why
