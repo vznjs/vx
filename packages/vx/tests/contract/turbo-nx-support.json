@@ -67,7 +67,7 @@
   {
     "key": "turbo.json globalDependencies",
     "status": "mapped",
-    "reason": "Becomes `cache.inputs.workspaceFiles`; `$NAME` entries become env inputs."
+    "reason": "Becomes `cache.inputs.workspaceFiles`; `$NAME` entries become env inputs. Under `turbo()` the files of every package the root depends on, transitively, join them, as in Turbo's global hash."
   },
   {
     "key": "turbo.json globalEnv",
