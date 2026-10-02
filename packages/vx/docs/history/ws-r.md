@@ -53,6 +53,9 @@
   explicit-over-magical, one-binary) quoted solidjs/solid numbers
   measured through `turbo()`; each keeps only the native-config
   benchmark, and site-samples stops pinning the solid figures.
+- **R-13** patterns.md's performance table and the docs README's
+  headline line gave Turbo and Nx as multiples; they now give vx's %
+  by the same formula, with the formula line.
 
 ## Leads
 

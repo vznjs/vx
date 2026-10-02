@@ -32,12 +32,14 @@ export async function migrateNx(
     // The file this writes is each task's config.
     ownConfig: () => `vx.config.${format}`,
     manifestField: (key) => ({ raw: `pkg.${key}` }),
+    nativeExecutors: true,
   })
   return {
     headerNotes: [
       'migrating from the resolved project-graph snapshot — plugin-inferred targets ' +
-        'are frozen as static config; executor targets run through `nx-exec` and ' +
-        'targets with `.env` files through `nx-env` (keep @vzn/vx-migrate and nx installed)',
+        'are frozen as static config; an executor target becomes the command its executor ' +
+        'runs, or a placeholder the TODOs below list; targets with `.env` files run through ' +
+        '`nx-env` (keep @vzn/vx-migrate installed)',
     ],
     projects: mapped.projects.map((p) =>
       p.tasks.some((t) => JSON.stringify(t.task ?? {}).includes('"pkg.'))

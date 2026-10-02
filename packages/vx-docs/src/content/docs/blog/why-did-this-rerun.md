@@ -89,4 +89,4 @@ question an agent can answer without reading the source of the runner.
 
 A cache is a claim that the work has been done before. `vx why` is how
 the claim is audited. The guide is
-[Caching](../../guides/configure/#why-did-it-re-run).
+[Configure › Why did it re-run?](../../guides/configure/#why-did-it-re-run).

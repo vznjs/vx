@@ -356,15 +356,32 @@ and never removed it; each add scans the list for a duplicate, so the
 cost was quadratic. `addEventListener` self time: 93 ms of a 1,000-task
 cold run on main, below the top 40 frames patched. Row:
 `stop-listener.test.ts`.
-I-40. vx's own RSS peak comes from getrusage (#2256), not
-`/proc/self/status`: the same mark, never below `VmHWM`, one syscall.
-`ownRssHighWater` inclusive: 75.6 ms of a 1,000-task cold run on main,
-13.9 patched. Row: `own-rss-high-water.test.ts` (the current RSS and a
-kilobyte unit each fail it).
+I-40. Reverted (#2320). #2256 read vx's own RSS peak through getrusage
+on the claim that it is `VmHWM` raised only by a small pre-exec image.
+Under vfork the pre-exec image is the PARENT's memory: vx spawned from a
+300 MB test runner read a 300 MB floor, and a task holding 150 MB
+reported no peak (`last.test.ts`'s e2e row, red in a local gate). The
+floor reads `VmHWM` again; `own-rss-high-water.test.ts` spawns from a
+300 MB parent to hold it. The claim's own row compared the two marks in
+a process whose parent was small, so it could not see it.
 I-41. A warm config's key is synchronous (#2266): the batch identities
 were awaited through a promise per file and per config. 1,000 projects,
 warm, 14 rounds, `load configs`: main 37.3 ms median (min 30.7), patch
 32.3 (27.9), A/A 35.5 (29.5).
+
+I-42. An env name's secret verdict is decided once (#2283).
+`secretMask` runs per executed task and per hit that replays stdout,
+over the whole process env, two regex tests a variable; the verdict
+depends on the name alone, the values are still read fresh. 1,000-task
+cold run, 150 variables: `secretMask` inclusive 107.0 ms on main, 41.9
+patched.
+I-43. A scoped run enumerates git over the projects it keys (#2306).
+It loads its dependency closure for the `^` walk, and the enumeration
+covered every loaded project: a one-task `--filter` on 1,000 projects
+walked the whole tree. The graph is built first; the enumeration covers
+the projects that own a task. `run build --filter pkg-500`, 15 rounds:
+main 181.2 ms median (min 160.2), patch 113.3 (104.5), A/A 181.2
+(159.5). The `build graph` and `git enumeration` rows swapped.
 
 ## Leads for other streams
 
