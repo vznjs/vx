@@ -1162,9 +1162,13 @@ export async function mapTurboWorkspace(
       const spelled = await opts.sourceNames([...closure].map((p) => p.dir))
       inferredOf.set(
         m.name,
-        fw.env.flatMap((e) =>
-          e.endsWith('*') ? spelled.filter((n) => n.startsWith(e.slice(0, -1))) : [e],
-        ),
+        // The bare prefix is no name: formbricks' web spells `NEXT_PUBLIC_`
+        // in a `startsWith` test, and the configs keyed a variable of it.
+        fw.env.flatMap((e) => {
+          if (!e.endsWith('*')) return [e]
+          const head = e.slice(0, -1)
+          return spelled.filter((n) => n.startsWith(head) && n.length > head.length)
+        }),
       )
       sourcedOf.set(fw, [...(sourcedOf.get(fw) ?? []), m.name])
     } else usersOf.set(fw, [...(usersOf.get(fw) ?? []), m.name])
