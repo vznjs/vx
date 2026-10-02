@@ -737,7 +737,10 @@ they are 0.4 ms and 0.23 ms a task: the profiler charges the main
 thread's wait on child processes to the last native call. Time a
 suspect in place before cutting it.
 
-What is left is SRT's to cut: one shell in place of three, and the
+The wrap itself (~3 ms with B-75's `true`, 1 ms of which is that spawn)
+is SRT's `generateFilesystemArgs` resolving each deny path (realpath,
+lstat, a symlink walk) and a `mkdtemp` per wrap; vx's own share of it
+is a sliver of a 400-wrap profile. What is left is SRT's to cut: one shell in place of three, and the
 bridges only for a task granted network. Neither is an option today,
 and dash cannot stand in for bash there (SRT's `trap "kill %1 %2"` kills
 no job under dash).
