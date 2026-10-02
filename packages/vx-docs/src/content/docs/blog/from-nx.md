@@ -6,7 +6,7 @@ authors:
 tags:
   - migration
   - nx
-excerpt: "Run an Nx repo under vx unchanged with `nx()`, executors included, then trade executors for shell commands at your pace. `bunx @vzn/vx-migrate` reads the resolved project graph Nx itself uses, so plugin-inferred targets come along, and an executor target migrates as the `nx-exec` line that runs it."
+excerpt: "Moving an Nx repo to vx: `vx init` writes native config from the resolved project graph Nx itself uses, so plugin-inferred targets come along, and an executor target migrates as the `nx-exec` line that runs it until it becomes a shell command."
 ---
 
 Leaving Nx is a bigger step than leaving Turborepo, and the honest

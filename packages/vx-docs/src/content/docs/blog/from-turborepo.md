@@ -1,12 +1,12 @@
 ---
-title: 'From Turborepo: run it as it is, then migrate at your pace'
+title: 'From Turborepo: one command to native config'
 date: 2026-09-10T23:32:00Z
 authors:
   - vzn
 tags:
   - migration
   - turborepo
-excerpt: "A Turborepo workspace runs under vx with a two-line workspace file and no config rewritten. When you want the TypeScript configs, one command writes them, and a package that has one keeps it while the rest stay on turbo.json."
+excerpt: "Moving a Turborepo workspace to vx: `vx init` writes the native TypeScript configs from turbo.json, and turbo.json can go."
 ---
 
 vx is shaped like Turborepo on purpose. Same per-package model, same

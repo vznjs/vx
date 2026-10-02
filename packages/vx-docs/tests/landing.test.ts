@@ -1,6 +1,6 @@
-// The landing page is the whole story, for a Turborepo or Nx user first
-// (owner, 2026-09-28; design/site-short-2026-09.md § Laws): the hero, the
-// benchmark table and why, how to try it, the one picture with its six
+// The landing page is the whole story (owner, 2026-09-28; design/site-short-2026-09.md
+// § Laws; 2026-10-02: vx is its own tool, Turbo and Nx only via migration):
+// the hero, the benchmark table and why, how to start, the one picture with its six
 // callouts, and the four pillars. These rows read the page as it shipped,
 // `dist/index.html`, which the `build` task writes, and the picture as data
 // (src/components/landing/one-run.ts). What the design says is written out
@@ -215,12 +215,12 @@ describe('the landing page', () => {
   const h1At = html.indexOf('<h1')
   const hero = html.slice(h1At, html.indexOf('<section', h1At))
 
-  it('says what vx is for a Turbo or Nx repo in one line, then the sections in order', () => {
+  it('says what vx is in one line, then the sections in order', () => {
     const h1 = [...html.matchAll(/<h1\b[^>]*>([\s\S]*?)<\/h1>/g)]
     expect(h1).toHaveLength(1)
-    expect(text(h1[0]![1]!)).toBe('A faster runner for your Turborepo or Nx repo.')
+    expect(text(h1[0]![1]!)).toBe('The fastest task runner for JS monorepos.')
     expect(text(/<p class="lede">([\s\S]*?)<\/p>/.exec(hero)![1]!)).toBe(
-      'Keep turbo.json or nx.json and run it unchanged.',
+      'Measured against Turborepo and Nx, each in its own native config.',
     )
     const ids = [...html.matchAll(/<section\b[^>]*\bid="([\w-]+)"/g)]
     expect(ids.map((m) => m[1])).toEqual(SECTIONS)
@@ -274,7 +274,8 @@ describe('the landing page', () => {
   })
 
   // The numbers are check.site's; the shape is here: vx first, one row per
-  // number a Turbo or Nx user weighs, and three reasons under it.
+  // number, every other tool's cell saying how vx compares, the formula
+  // under the table, and three reasons under it.
   it('holds one benchmark table, vx, Turborepo and Nx, and why it is faster', () => {
     const bench = section(html, 'bench')
     expect(text(bench)).toContain('Seconds of overhead where others add minutes.')
@@ -292,24 +293,37 @@ describe('the landing page', () => {
       'Fully cached run',
       'Overhead per package',
     ])
+    const cells = [...bench.matchAll(/<td\b[^>]*>([\s\S]*?)<\/td>/g)].map((m) => text(m[1]!))
+    expect(cells.filter((_, i) => i % 3 !== 0)).toHaveLength(8)
+    expect(
+      cells.filter((c, i) => i % 3 !== 0 && !/\S ?\(vx \d+% (?:faster|slower)\)$/.test(c)),
+    ).toEqual([])
+    expect(text(/<p class="bench-formula">([\s\S]*?)<\/p>/.exec(bench)![1]!)).toBe(
+      'vx N% faster: vx takes N% less time than that tool (1 − vx ÷ theirs); N% slower: N% more (vx ÷ theirs − 1).',
+    )
     const reasons = [...bench.matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/g)].map((m) => text(m[1]!))
     expect(reasons).toHaveLength(3)
   })
 
-  // Four commands and the one file `vx init` writes, for either tool, and
-  // no promise npm keeps yet: the plugin's first publish is the owner's.
-  it('shows how to try it on a Turbo or Nx repo', () => {
-    const tryIt = text(section(html, 'try'))
-    for (const s of [
-      "What vx init writes for examples/turbo's lib",
-      '} satisfies ProjectConfig',
-      'Then delete turbo.json: vx no longer reads it',
-      'npm install -D @vzn/vx @vzn/vx-migrate',
+  // Four commands on native config, and Turbo or Nx only through
+  // `vx init`'s migration to native config, with no speed claim for it.
+  it('shows how to start, and Turbo or Nx only through migration', () => {
+    const start = section(html, 'try')
+    const lines = /<pre class="code"><code>([\s\S]*?)<\/code>/
+      .exec(start)![1]!
+      .split('\n')
+      .map((l) => l.replace(/\s+#.*$/, '').trim())
+    expect(lines).toEqual([
+      'npm install -D @vzn/vx',
       'npx vx init',
       'npx vx run build --all',
-      'reaches npm with its first publish',
+      'npx vx run build --all',
     ])
-      expect(tryIt).toContain(s)
+    const subs = [...start.matchAll(/<p class="sub">([\s\S]*?)<\/p>/g)].map((m) => text(m[1]!))
+    expect(subs).toEqual([
+      'Coming from Turbo or Nx: vx init writes native vx config from your Turbo or Nx setup.',
+    ])
+    expect(text(start)).not.toMatch(/turbo\.json|nx\.json|unchanged|faster/i)
   })
 
   it('carries the four pillars in order, each an icon, a title, one short sentence and its page', () => {
@@ -432,11 +446,11 @@ describe('a shared link shows the card', () => {
       expect(meta(html, 'og:image')).toEqual([`${SITE}${BASE}og.png`])
       expect(meta(html, 'twitter:card')).toEqual(['summary_large_image'])
     }
-    expect(meta(page(), 'og:title')).toEqual(['vx — a faster runner for your Turborepo or Nx repo'])
+    expect(meta(page(), 'og:title')).toEqual(['vx — the fastest task runner for JS monorepos'])
     // The search result's and the card's headline says what vx is: the
     // cinematic landing's slogan outlived the page it headed.
     expect(/<title>([^<]*)<\/title>/.exec(page())?.[1]).toBe(
-      'vx — a faster runner for your Turborepo or Nx repo',
+      'vx — the fastest task runner for JS monorepos',
     )
   })
 
