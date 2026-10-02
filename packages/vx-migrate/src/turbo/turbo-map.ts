@@ -27,7 +27,7 @@ import {
 } from '../shared-outputs.js'
 import { packageScripts, relPosix } from '../paths.js'
 import type { TrackedKinds } from '../tracked-outputs.js'
-import { DOTENV_PROBE, DOTENV_PROBE_TOP } from '../dotenv-probe.js'
+import { DOTENV_PROBE, DOTENV_PROBE_TOP, ignoredFilesProbe } from '../dotenv-probe.js'
 
 /** `path.relative` with forward slashes — the shape an ESM specifier or a report line needs. */
 interface TurboTask {
@@ -60,6 +60,30 @@ interface TurboJson {
 /** A name core takes in `cache.inputs.env` and `exec.env.passThrough`. */
 const keyable = (name: string): boolean =>
   name.length > 0 && !name.startsWith('!') && !/[*?[\]{}=\0]/.test(name)
+
+/**
+ * The names of `names` a live mapping can read differently: each a `*` in
+ * one of `configs` (turbo.json texts, any string, a superset) or in Turbo's
+ * framework table matches, and each core cannot key (a literal one is
+ * dropped only when no variable has it). The kept mapping keyed on every
+ * name, so any variable that came or went (a CI step's, `VX_TIMING`)
+ * remapped the workspace: ~330 ms a run on vercel/ai.
+ */
+export function envNamesThatMap(configs: readonly string[], names: readonly string[]): string[] {
+  const patterns = new Set(FRAMEWORK_ENV.flatMap((f) => f.env).filter((e) => e.includes('*')))
+  for (const text of configs)
+    for (const m of text.matchAll(/"((?:[^"\\]|\\.)*)"/g))
+      if (m[1]!.includes('*')) patterns.add(m[1]!)
+  // Backslashes and a leading `!` dropped, every `*` a wildcard: wider
+  // than Turbo's reading, never narrower.
+  const res = [...patterns].map(
+    (p) =>
+      new RegExp(
+        `^${p.replaceAll('\\', '').replace(/^!/, '').split('*').map(RegExp.escape).join('.*')}$`,
+      ),
+  )
+  return names.filter((n) => !keyable(n) || res.some((re) => re.test(n)))
+}
 
 /**
  * A Turbo env list's explicit names, read as Turbo reads them
@@ -292,6 +316,48 @@ export interface MapTurboOptions {
    * (null: none), which core holds an output to. Absent, every spelling.
    */
   ownConfig?: (rel: string) => string | null
+  /**
+   * Which root-relative paths git ignores (`gitIgnored`): an input named by
+   * path among them is keyed by a probe. Absent, none is.
+   */
+  ignored?: (rels: readonly string[]) => Promise<ReadonlySet<string>>
+}
+
+/**
+ * A cacheable task's inputs and what its turbo.json names literally: each
+ * path root-relative, and the list and entry that name it (none: a global
+ * already left out).
+ */
+interface Literals {
+  readonly inputs: Record<string, unknown>
+  readonly rels: ReadonlyMap<string, Named>
+}
+type Named = readonly ['files' | 'workspaceFiles' | null, string]
+
+/** No glob syntax: one path, which git may ignore. */
+const isLiteral = (glob: string): boolean => !/[*?[\]{}()!]/.test(glob)
+
+/**
+ * Keys gitignored paths (root-relative, with what names them) by a probe and takes
+ * their entries out of the file lists. A global one was never put there.
+ */
+function keyIgnored(
+  inputs: Record<string, unknown>,
+  hits: readonly (readonly [string, Named])[],
+): void {
+  for (const kind of ['files', 'workspaceFiles'] as const) {
+    const list = inputs[kind] as unknown[] | undefined
+    const entries = new Set(hits.flatMap(([, [k, e]]) => (k === kind ? [e] : [])))
+    if (list === undefined || entries.size === 0) continue
+    const kept = list.filter((e) => typeof e !== 'string' || !entries.has(e))
+    // Exclusions left alone narrow nothing core will take.
+    const left = kept.some((e) => typeof e !== 'string' || !e.startsWith('!')) ? kept : []
+    if (kind === 'files') inputs.files = left
+    else if (left.length > 0) inputs.workspaceFiles = left
+    else delete inputs.workspaceFiles
+  }
+  const probes = (inputs.workspaceRuntime as unknown[] | undefined) ?? []
+  inputs.workspaceRuntime = [...probes, ignoredFilesProbe(hits.map(([rel]) => rel))]
 }
 
 /**
@@ -834,8 +900,15 @@ export async function mapTurboWorkspace(
     ...microfrontendsConfigs(root, [root, ...metas.map((m) => m.dir)]).map((c) => c.rel),
   ]
   const rootDotenv = globalFiles.some((f) => isDotenvGlob(f))
+  // Turbo globs an explicit input on the disk, gitignored or not. Core
+  // refuses a literal input git ignores (it would key nothing), so a
+  // `config.local.json` in globalDependencies ran every task uncached: a
+  // probe keys each such path instead. One `git check-ignore` per kind.
+  const globalIgnored = [
+    ...(await (opts.ignored?.(globalFiles.filter(isLiteral)) ?? new Set<string>())),
+  ].filter((f) => !isDotenvGlob(f))
   const globals = {
-    inputs: globalFiles.filter((f) => !isDotenvGlob(f)),
+    inputs: globalFiles.filter((f) => !isDotenvGlob(f) && !globalIgnored.includes(f)),
     env: [
       ...envNames('globalEnv', rootCfg.globalEnv ?? []),
       ...globalDeps.flatMap((d) => envDependency(d) ?? []),
@@ -1106,6 +1179,7 @@ export async function mapTurboWorkspace(
     )
 
   const projects: TurboMappedProject[] = []
+  const literals = { tasks: [] as Literals[], globalIgnored }
   for (const meta of metas) {
     const scripts = packageScripts(meta)
     const own = runnable.get(meta.name)!
@@ -1123,6 +1197,7 @@ export async function mapTurboWorkspace(
       ) {
         tasks.push(
           buildTask(
+            literals,
             name,
             noop ? { ...defFor(name)!, outputs: [] } : defFor(name)!,
             'true',
@@ -1153,6 +1228,7 @@ export async function mapTurboWorkspace(
             }
           : defFor(name)!
         const t = buildTask(
+          literals,
           name,
           groupDef,
           '',
@@ -1202,6 +1278,7 @@ export async function mapTurboWorkspace(
       }
       const command = override ?? scriptCommand(name, script as string, scripts, pnp)
       const mapped = buildTask(
+        literals,
         name,
         defFor(name)!,
         command,
@@ -1223,6 +1300,16 @@ export async function mapTurboWorkspace(
     }
     resolveSharedOutputs(tasks)
     projects.push({ name: meta.name, dir: meta.dir, tasks })
+  }
+
+  if (opts.ignored !== undefined) {
+    const ignored = await opts.ignored([
+      ...new Set(literals.tasks.flatMap((l) => [...l.rels.keys()])),
+    ])
+    for (const { inputs, rels } of literals.tasks) {
+      const hits = [...rels].filter(([rel]) => ignored.has(rel))
+      if (hits.length > 0) keyIgnored(inputs, hits)
+    }
   }
 
   resolveSharedWorkspaceOutputs(root, projects)
@@ -1303,6 +1390,7 @@ function entryEdges(deps: readonly string[], pkg: string, rootName: string | und
 }
 
 function buildTask(
+  literals: { readonly tasks: Literals[]; readonly globalIgnored: readonly string[] },
   name: string,
   def: TurboTask,
   command: string,
@@ -1514,6 +1602,9 @@ function buildTask(
     // globalDependencies are workspace-root-relative by definition —
     // they map to inputs.workspaceFiles, not project-relative files.
     const wsFiles: unknown[] = [...global('inputs')]
+    // Root-relative path → the entry naming it.
+    const rels = new Map<string, Named>(literals.globalIgnored.map((f) => [f, [null, f]]))
+    const atRoot = pkgDir === '' || pkgDir === '.'
     if (def.inputs === undefined || def.inputs.length === 0) {
       // Turbo's default input set is every package file, and an empty
       // `inputs` is that default: mapped as no files, it keyed on nothing
@@ -1550,8 +1641,11 @@ function buildTask(
         }
         if (body.startsWith('$TURBO_ROOT$/')) {
           wsFiles.push((neg ? '!' : '') + body.slice('$TURBO_ROOT$/'.length))
+          const rel = body.slice('$TURBO_ROOT$/'.length)
+          if (!neg) rels.set(rel, ['workspaceFiles', rel])
         } else if (up !== null) {
           wsFiles.push(up)
+          if (!neg) rels.set(up, ['workspaceFiles', up])
         } else if (body.startsWith('../')) {
           todos.push(`input ${JSON.stringify(i)}: leaves the workspace — map manually`)
         } else if (i.includes('$TURBO_ROOT$')) {
@@ -1559,7 +1653,11 @@ function buildTask(
             `input ${JSON.stringify(i)}: $TURBO_ROOT$ only maps as a '$TURBO_ROOT$/<path>' ` +
               'prefix (→ cache.inputs.workspaceFiles) — map manually',
           )
-        } else files.push(translated)
+        } else {
+          files.push(translated)
+          const rel = path.posix.join(atRoot ? '.' : pkgDir, body)
+          if (!neg) rels.set(rel, [atRoot ? 'workspaceFiles' : 'files', translated])
+        }
       }
       // Exclusions alone narrow every package file: core refuses a list
       // with nothing to narrow, and that refusal failed the whole run
@@ -1635,6 +1733,8 @@ function buildTask(
     if (cacheEnv.length > 0) inputs.env = cacheEnv
     if (pkgDotenv) inputs.runtime = [pkgDotenvDeep ? DOTENV_PROBE : DOTENV_PROBE_TOP]
     if (wsDotenv) inputs.workspaceRuntime = [DOTENV_PROBE]
+    for (const rel of rels.keys()) if (!isLiteral(rel)) rels.delete(rel)
+    literals.tasks.push({ inputs, rels })
     const outputs: Record<string, unknown> = { files: takingBack(outFiles) }
     const ws = takingBack(wsOutFiles)
     if (ws.length > 0) outputs.workspaceFiles = ws

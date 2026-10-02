@@ -87,7 +87,7 @@ describe.skipIf(process.platform === 'win32')('a project under a bracketed direc
       (e: unknown) => (e as Error).message,
     )
     expect([err, await kind(path.join(dir, 'dist'))]).toEqual([
-      `exec.sandbox: ${dir} holds a bracket ([ or ]), which the sandbox runtime reads as a ` +
+      `exec.sandbox: ${dir} holds [, ], * or ?, which the sandbox runtime reads as a ` +
         `pattern, not a name — rename the directory, or run the task without exec.sandbox`,
       'none',
     ])

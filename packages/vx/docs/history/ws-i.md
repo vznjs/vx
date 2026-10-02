@@ -297,6 +297,16 @@ packages warm, compiled, 25 interleaved rounds: `classify + probe` main
 86.3 ms median (min 73.1), patch 77.3 (73.2), A/A 78.3 (67.3);
 in-process total 280.0 (251.6), 272.4 (245.0), 274.4 (235.6).
 
+I-32. A declaration matches each input path once. `resolveFiles` ran
+every glob of a declaration over every task's files, though projects
+repeat their relative paths (`src/index.ts`, `package.json`); the plan
+(keyed on the files and own outputs) memoizes each path's verdict, and
+the per-project nested check stays outside. Bench as I-30, fresh git
+index in every copy, 21 interleaved rounds: `classify + probe` main
+196.3 ms median (min 178.5), patch 147.1 (130.4), A/A 202.3 (183.3);
+total 407.8 (369.9), 353.3 (310.4), 410.3 (371.2). 1,000 small
+projects: neutral (287.1 / 291.1 / 293.4).
+
 ## Leads for other streams
 
 - **Owner / coordinator: skip macOS where it cannot differ from
