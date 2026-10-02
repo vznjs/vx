@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { planRun, type ProjectMeta } from '@vzn/vx'
-import { ignoredFilesProbe } from '../src/dotenv-probe.js'
+import { DOTENV_PROBE, DOTENV_PROBE_TOP, ignoredFilesProbe } from '../src/dotenv-probe.js'
 import { mapTurboWorkspace } from '../src/turbo/turbo-map.js'
 import { silent, useTurboWorkspace } from './helpers/turbo-workspace.js'
 
@@ -114,14 +114,18 @@ describe('turbo-map: gitignored inputs named by path', () => {
     })
   })
 
-  it('a probe keys each file by name and bytes, a trailing newline too', async () => {
+  // Core keys a probe on its output trimmed (cache/inputs.ts), so each
+  // file ends on a `.`: a newline added to the last file is an edit.
+  it.each([
+    ['ignoredFilesProbe', ignoredFilesProbe(['it s', 'gone', '.env'])],
+    ['DOTENV_PROBE', DOTENV_PROBE],
+    ['DOTENV_PROBE_TOP', DOTENV_PROBE_TOP],
+  ])('%s keys each file by name and bytes, a trailing newline too', async (_, probe) => {
     await writeFile(path.join(dir, 'it s'), 'x\n')
-    const run = () =>
-      Bun.spawnSync(['sh', '-c', ignoredFilesProbe(['it s', 'gone'])], {
-        cwd: dir,
-      }).stdout.toString()
+    await writeFile(path.join(dir, '.env'), 'A=1\n')
+    const run = () => Bun.spawnSync(['sh', '-c', probe], { cwd: dir }).stdout.toString().trim()
     const before = run()
-    await writeFile(path.join(dir, 'it s'), 'x\n\n')
-    expect([before, run()]).toEqual(['it s\nx\n.\n', 'it s\nx\n\n.\n'])
+    await writeFile(path.join(dir, '.env'), 'A=1\n\n')
+    expect(run()).not.toBe(before)
   })
 })

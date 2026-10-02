@@ -5,10 +5,11 @@ import { shellQuote } from './nx-command.js'
  * a stable order. Git ignores them, so a glob over git's files keys none of
  * them; this is a superset of what a `.env` glob names, so an edit to one
  * misses and nothing else is lost (item 1032). node_modules and .git are
- * pruned.
+ * pruned. Each file ends on a `.`: core trims a probe's output, so a
+ * newline added to the last file keyed nothing.
  */
 export const DOTENV_PROBE =
-  'find . \\( -name node_modules -o -name .git \\) -prune -o -type f \\( -name \'.env*\' -o -name \'*.env\' \\) -print | LC_ALL=C sort | while IFS= read -r f; do echo "$f"; cat -- "$f"; echo; done'
+  'find . \\( -name node_modules -o -name .git \\) -prune -o -type f \\( -name \'.env*\' -o -name \'*.env\' \\) -print | LC_ALL=C sort | while IFS= read -r f; do echo "$f"; cat -- "$f"; echo .; done'
 
 /**
  * The same for a package whose `.env` globs all sit at its root (`.env*`,
@@ -19,7 +20,7 @@ export const DOTENV_PROBE =
  * the key, the same on every machine.
  */
 export const DOTENV_PROBE_TOP =
-  'LC_ALL=C; export LC_ALL; for f in .env* .*.env *.env; do [ -f "$f" ] && { printf \'%s\\n\' "$f"; cat -- "$f"; echo; }; done; :'
+  'LC_ALL=C; export LC_ALL; for f in .env* .*.env *.env; do [ -f "$f" ] && { printf \'%s\\n\' "$f"; cat -- "$f"; echo .; }; done; :'
 
 /**
  * The named root-relative files, name and bytes, run at the workspace root:
