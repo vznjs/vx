@@ -1298,6 +1298,26 @@ describe('the plugins guide rosters every hook a shipped plugin fills', () => {
     expect(page).toContain('`@vzn/vx-schedule-history` fills three at once')
     for (const hook of ['`schedule`', '`admit`', '`commands`']) expect(page).toContain(hook)
   })
+  // An install of any plugin answered 404 while the guide told readers to
+  // run one (J-92); the note's count is every public package but core.
+  it('its table is every public package but @vzn/vx, and the npm note counts them', () => {
+    const packagesDir = path.resolve(import.meta.dir, '..', '..')
+    const shipped = readdirSync(packagesDir)
+      .map((d) => path.join(packagesDir, d, 'package.json'))
+      .filter((f) => existsSync(f))
+      .map((f) => JSON.parse(readFileSync(f, 'utf8')) as { name: string; private?: boolean })
+      .filter((m) => m.private !== true && m.name !== '@vzn/vx')
+      .map((m) => m.name)
+      .sort()
+    const page = readFileSync(path.join(GUIDES, 'plugins.md'), 'utf8')
+    const section = /## Plugins that ship\n([\s\S]*?)\n## /.exec(page)![1]!
+    const rows = [...section.matchAll(/^\| `(@vzn\/[\w-]+)` /gm)].map((m) => m[1]!)
+    expect([...rows].sort()).toEqual(shipped)
+    const words = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine']
+    expect(section.replace(/\s+/g, ' ')).toContain(
+      `Only \`@vzn/vx\` is on npm today. The ${words[shipped.length]} plugins' first publish is pending`,
+    )
+  })
   it('its hook interface block is PLUGIN_HOOKS, in order', () => {
     const page = readFileSync(path.join(GUIDES, 'plugins.md'), 'utf8')
     const block = fencedBlock(page, 'ts', "import type { VxPlugin } from '@vzn/vx'")
