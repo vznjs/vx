@@ -384,6 +384,7 @@ async function runRuntimeCommand(
   command: string,
   cwd: string,
   binDirs: readonly string[],
+  owner: RuntimeMemo | undefined,
 ): Promise<string> {
   const ambient = process.env['PATH']
   const prefix = binDirs.join(path.delimiter)
@@ -413,6 +414,12 @@ async function runRuntimeCommand(
     throw new UserError(`cache.inputs runtime command failed to spawn: ${command} (cwd: ${cwd})`)
   }
   liveProbes.add(proc)
+  let mine: Set<ReturnType<typeof Bun.spawn>> | undefined
+  if (owner !== undefined) {
+    mine = probesOf.get(owner) ?? new Set()
+    probesOf.set(owner, mine)
+    mine.add(proc)
+  }
   killProbesOnExit()
   let stdout, stderr, exitCode
   try {
@@ -423,6 +430,7 @@ async function runRuntimeCommand(
     ])
   } finally {
     liveProbes.delete(proc)
+    mine?.delete(proc)
   }
   const output = `${stdout}${stderr}`.trim()
   if (exitCode !== 0) {
@@ -446,18 +454,26 @@ async function runRuntimeCommand(
 const liveProbes = new Set<ReturnType<typeof Bun.spawn>>()
 let probeExitHooked = false
 
+type RuntimeMemo = Map<string, Promise<string>>
+/** The probes each run started, by the run's memo: one run's stop is not another's. */
+const probesOf = new WeakMap<RuntimeMemo, Set<ReturnType<typeof Bun.spawn>>>()
+
 /**
- * Kill every runtime probe still running, with its tree. A run's stop asks
- * this: a Ctrl-C while a probe ran waited for the probe, or for the signal
- * handler's bound, about 7 s, before vx exited (C-65). Its answer is no
- * longer needed; its caller sees it fail and the run reads it aborted.
+ * Kill every runtime probe still running that these memos (one run's
+ * `runtimeCache` and `workspaceRuntimeCache`) started, with its tree. A
+ * run's stop asks this: a Ctrl-C while a probe ran waited for the probe,
+ * or for the signal handler's bound, about 7 s, before vx exited (C-65).
+ * Its answer is no longer needed; its caller sees it fail and the run
+ * reads it aborted. Another run in the process keeps its own.
  */
-export function stopRuntimeProbes(): void {
-  for (const p of liveProbes) {
-    try {
-      process.kill(-p.pid, 'SIGKILL')
-    } catch {
-      // the group is gone
+export function stopRuntimeProbes(...memos: readonly RuntimeMemo[]): void {
+  for (const memo of memos) {
+    for (const p of probesOf.get(memo) ?? []) {
+      try {
+        process.kill(-p.pid, 'SIGKILL')
+      } catch {
+        // the group is gone
+      }
     }
   }
 }
@@ -498,7 +514,7 @@ async function resolveRuntimeValues(
       const key = `${memoKeyPrefix}${cmd}`
       let p = memo?.get(key)
       if (p === undefined) {
-        p = runRuntimeCommand(cmd, cwd, binDirs)
+        p = runRuntimeCommand(cmd, cwd, binDirs, memo)
         memo?.set(key, p)
       }
       return [cmd, await p] as [string, string]

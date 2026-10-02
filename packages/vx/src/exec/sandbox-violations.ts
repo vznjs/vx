@@ -6,6 +6,7 @@
 
 import path from 'node:path'
 import { absolutize, atOrUnder, isUnderAny, localBindingOn, toRealPath } from './sandbox-paths.js'
+import { bindableReads } from './sandbox-binds.js'
 import type {
   ResolvedSandboxConfig,
   SandboxedRunArgs,
@@ -274,7 +275,10 @@ export async function parseStraceViolations(
   // real paths (see `canonicalBaselines`), so comparing a link-path here
   // would report an explicitly-allowed read as a violation.
   const allowAbs = new Set<string>(
-    [...baselines.allowRead, ...args.config.allowRead].map((p) => toRealPath(absolutize(p))),
+    // A grant SRT could not mount (`bindableReads`) permits nothing.
+    [...baselines.allowRead, ...bindableReads(args.config.allowRead)].map((p) =>
+      toRealPath(absolutize(p)),
+    ),
   )
   const denyAnchors = baselines.denyRead.map((p) => toRealPath(absolutize(p)))
 
