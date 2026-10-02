@@ -444,8 +444,14 @@ one bracket (`literalReadPaths`): a route granted as
 a listed grant), and a workspace under a bracketed directory was never
 walled (B-57).
 
-SRT drops every Linux write path holding a bracket (it reads one as a
-glob), with no spelling that keeps it, so `bindableWrites` drops it
+A `*` or `?` in a Linux read path has no such spelling: SRT's rewrite of
+each runs inside a class too, so a grant of `a*b.txt` granted `aXb.txt`.
+`bindableReads` leaves such a grant out, says so once, and the strace
+pass judges against what is left, so a read of it is refused and
+reported. In a deny path the match is only a wider wall.
+
+SRT drops every Linux write path holding `[`, `]`, `*` or `?` (it reads
+one as a glob), with no spelling that keeps it, so `bindableWrites` drops it
 first and says so once, naming the directory above it: left in, the read
 grants were punched around a bind that never came, the directory
 vanished from the task's view ("Directory nonexistent"), and the refused
@@ -456,7 +462,8 @@ a spelling holding `[` as a regex in which a backslash is a literal one,
 so the escaped `pages/\[id\].tsx` named no file. vx spells `\[` as `[[]`
 and `\]` as `]` there (`seatbeltBrackets`). A project under a bracketed
 directory is refused on both platforms (B-60, B-65): seatbelt compiled
-vx's own workspace wall as a class too, so it matched nothing.
+vx's own workspace wall as a class too, so it matched nothing. So is one
+under a directory holding `*` or `?`, whose grants matched its siblings.
 
 SRT's in-sandbox network bridge is `socat TCP-LISTEN:3128` (and 1080),
 which socat 1.8 opens as an IPv6 socket. On a host without IPv6 it
