@@ -1045,20 +1045,6 @@ those a requested group stands for (C-52), that a run which failed
 elsewhere keeps none unless `--continue=always` (C-60), and that what
 they write streams through the wait (C-56). Docs only.
 
-## C-80: no partial tree survives a failing run, over random graphs
-
-`tests/continue-cache-properties.test.ts` runs 24 seeded random graphs
-end to end, three runs each: a healthy run warms every entry; some
-inputs change and some tasks fail (a flag outside every key) under one
-`--continue` mode; a healthy run with the same keys. That run must
-execute exactly the changed tasks the failing run did not save, and
-every output must hold its healthy bytes: an output is its input plus
-its deps' outputs, and a failure writes PARTIAL. `g`'s tasks have no
-cache, so a hit above one restores ahead of its failure (C-1's shape).
-Red when the taint is disabled (`out/t2.txt` replays PARTIAL) and when a
-restore-tier hit releases its dependants before its deps settle (item
-963's hold). Test only.
-
 ## C-77: a subscriber that leaves mid-emit no longer hides the event
 
 `createEventBus` walked its subscriber array while a disposer spliced
