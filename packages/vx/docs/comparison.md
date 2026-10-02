@@ -581,7 +581,9 @@ in [`design/turbo-nx-test-gaps.md`](./design/turbo-nx-test-gaps.md).
   deletes the class's namesakes. vx reads `[` and `]` literally in every
   task glob; the escaped `\[id\]` Turbo users write means the same path.
   Member globs and `--filter` path globs keep the package manager's
-  grammar.
+  grammar. Under `turbo()` and `nx()` a class in turbo.json or an Nx
+  input is translated: `[jt]` and a range (`[a-c]`, `[0-9]`) become
+  their members plus the literal route directory, a negated class `?`.
 
 ### Engine / scheduling
 
