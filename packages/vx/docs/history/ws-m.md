@@ -222,6 +222,14 @@ the afterAll's rm of the 2000-project tree took 4.2 s under load; it now
 has a bound matched to that work, as its beforeAll does. No other
 fixture of that size in the suites.
 
+M-21. M-19's class under I/O load (two `dd … conv=fsync` loops beside
+four busy loops): `affected.test.ts` › six thousand changed files timed
+out its afterEach (bun's 5 s default), which removed the row's 6,000
+files and their git objects; 11.1 s for the row and its hooks. The row
+(30 s bound) now removes its root itself: the hook took 2.4 s before,
+11 ms after, under the same load. No other row of the suites makes a
+fixture past 1,500 files.
+
 ## Leads for other streams
 
 - A: A-20 let a same-project dependant restore ahead of a producer whose
