@@ -1010,3 +1010,17 @@ REQUESTED, and the persistent tasks they depend on": it now also names
 those a requested group stands for (C-52), that a run which failed
 elsewhere keeps none unless `--continue=always` (C-60), and that what
 they write streams through the wait (C-56). Docs only.
+
+## C-78: the taint rule holds over random graphs
+
+`tests/taint-properties.test.ts` drives `taintTracker` over 3,000 seeded
+random graphs, settling outcomes in any order (a restore-tier hit
+settles before its deps) with partial asks between, and holds every ask
+made once a task's ancestors have settled to a brute-force reference,
+in both modes: `--continue=always` and seeds alone
+(`--exclude-dependencies`). Mutants caught: a clean answer memoized
+before its deps' answers were final (C-23's rule; the seeds row), the
+memo kept unconditionally, `skipped` dropped from the poison set, the
+seed check dropped from `judge`, and the tracker disabled when only
+seeds are set. Survivors are equivalent (a seed's deps; the memo's
+timing for a taint). Test only.
