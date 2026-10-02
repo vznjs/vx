@@ -1804,7 +1804,8 @@ of its own; a hand-written one stays as written. The report says which, its
 examples of running the members spelled by the repo's manager (`--workspaces`
 under npm, `yarn workspaces foreach` under Yarn 2+);
 with nothing mapped it names the root whenever it has a script, a member
-or not (pnpm's root is not), and tells a root with no `"name"` to add one
+or not (pnpm's root is not), and why: its scripts run the workspace, or
+share a member's task name (listed), or both; it tells a root with no `"name"` to add one
 first (vuejs/core), naming the scripts that would then map (react, D-87). A single-package repo's root is its project and maps.
 A lone root beside a `lerna.json` (Lerna-classic: packages listed there, not
 in `workspaces`) gets a note naming the `workspaces` globs to add, Lerna's

@@ -712,6 +712,24 @@ export function migrateScripts(
       return !LIFECYCLE.test(n) && (base === undefined || !(base in scripts))
     })
   }
+  // Why a root mapped nothing: `eslint .` beside a member's `lint` runs
+  // nothing of the workspace, and the note said it did.
+  const rootLeftOut = (): string => {
+    if (rootMeta === undefined) return 'run the workspace'
+    const scripts = scriptsOf(rootMeta)
+    const named = Object.keys(scripts).filter(
+      (n) => typeof scripts[n] === 'string' && scripts[n] !== '' && !LIFECYCLE.test(n),
+    )
+    const runs = runningMembers(
+      scripts,
+      rootMeta.dir,
+      metas.filter((m) => m !== root).map((m) => m.dir),
+    )
+    const shared = named.filter((n) => memberTasks.has(n) && !runs.has(n))
+    if (shared.length === 0) return 'run the workspace'
+    const list = `${shared.slice(0, 8).join(', ')}${shared.length > 8 ? ', …' : ''}`
+    return `${shared.length < named.length ? 'run the workspace or ' : ''}share a member's task name (${list})`
+  }
   const rootName =
     root?.name ??
     (outsideRuns
@@ -735,7 +753,7 @@ export function migrateScripts(
     // A nameless root's vx.config is skipped (vx names projects by their
     // manifest's name), so the hand-written one needs a name first (vuejs/core).
     notes.push(
-      `${rootName} (the workspace root) not mapped: its scripts run the workspace; declare its own tasks in its vx.config by hand` +
+      `${rootName} (the workspace root) not mapped: its scripts ${rootLeftOut()}; declare its own tasks in its vx.config by hand` +
         (rootName === 'package.json' ? ', after giving its package.json a "name"' : ''),
     )
   }
