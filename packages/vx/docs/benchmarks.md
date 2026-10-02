@@ -106,8 +106,8 @@ Two tools, and they answer different questions:
 
 - **`VX_TIMING=1 vx run …`** prints a stage table to stderr at the end of
   the run — `startup`, `workspace config`, `discover projects`,
-  `package graph`, `open cache`, `load configs`, `git enumeration`,
-  `build graph`, `plugin stages`, `classify + probe`, `run graph`,
+  `package graph`, `open cache`, `load configs`, `build graph`,
+  `git enumeration`, `plugin stages`, `classify + probe`, `run graph`,
   `record history`, `output dir snapshots`, `close`, and
   in a dry run `plan` — with
   each stage's own and cumulative time, plus accumulated per-task spans (`cache.get`,

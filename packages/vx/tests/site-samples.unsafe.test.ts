@@ -332,6 +332,21 @@ describe('the why-vx-is-fast concept quotes the benchmarks page', () => {
   })
 })
 
+describe("the quickstart's known limits are still limits", () => {
+  // It listed "A workspaceFiles glob stops at a git submodule's edge"; since
+  // 2026-09-27 the nested repository's files are listed and keyed
+  // (caching.md), and an edit inside a submodule under `workspaceFiles:
+  // ['sub/**']` missed, its revert hit (J-114).
+  it('caching.md keys a submodule under workspaceFiles, and the quickstart names no edge', () => {
+    const caching = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'caching.md'), 'utf8')
+    expect(caching.replace(/\s+/g, ' ')).toContain('and for a `workspaceFiles` glob')
+    const limits = /## Known limits\n([\s\S]*)$/.exec(
+      readFileSync(path.join(DOCS, 'quickstart.md'), 'utf8'),
+    )![1]!
+    expect(limits).not.toContain('submodule')
+  })
+})
+
 describe('the flaky-tasks post shows the section the footer prints', () => {
   it('its sample is formatFlakySection on the two findings it describes', () => {
     const page = readFileSync(path.join(DOCS, 'blog', 'flaky-tasks.md'), 'utf8')
@@ -642,6 +657,15 @@ describe('the resolved-config-hashing post names every global the gate denies', 
     'utf8',
   )
   const page = readFileSync(path.join(DOCS, 'blog', 'resolved-config-hashing.md'), 'utf8')
+  it('the bare imports it lets through are the two the gate passes', () => {
+    // It said "anything but `@vzn/vx`"; every config vx init writes imports
+    // `@vzn/vx/config`, which the gate passes whole.
+    const entry = /const PURE_CONFIG_ENTRY = '([^']+)'/.exec(src)
+    expect(entry).not.toBeNull()
+    expect(src).toContain('if (spec === PURE_CONFIG_ENTRY) continue')
+    const flat = page.split(/\s+/).join(' ')
+    expect(flat).toContain(`a bare import of anything but \`${entry![1]}\``)
+  })
   it('each identifier in IMPURE_RE is a name in its list', () => {
     const re = /const IMPURE_RE =\n\s+\/\\b\(\?:([^)]*)\)\\b/.exec(src)
     expect(re).not.toBeNull()
@@ -779,15 +803,18 @@ describe('the from-nx post says how executors run, and names the servers', () =>
     })
     expect(page.replace(/\s+/g, ' ')).toContain('come through as persistent tasks')
   })
-  it('the post and the guide both say every executor runs through nx-exec', () => {
-    expect(page).toContain('Every executor runs through `nx-exec`')
-    expect(guide).toContain('Executor targets keep running as executors')
-    // The mapper agrees: no executor maps to a bare command any more.
-    expect(src).not.toMatch(/'@nx\/[^']+': \{ command:/)
-    // Every executor line is `nxExecCommand`'s (its `.env` files appended).
+  it('the post and the guide say nx() runs executors through nx-exec and the migrator writes commands', () => {
+    expect(page).toContain('Each becomes an `nx-exec`')
+    expect(page.replace(/\s+/g, ' ')).toContain(
+      'an executor target is written as the command the executor was wrapping',
+    )
+    expect(guide).toContain('An executor target is written as the command its executor runs')
+    // The mapper agrees: the plugin's executor line is `nxExecCommand`'s
+    // (its `.env` files appended), the migrator's is nx-native.ts's.
     expect(src).toContain(
       'line(nxExecCommand(executor, projectName, targetName, configuration, options, files))',
     )
+    expect(src).toContain('nativeExecutorCommand(executor, options, {')
   })
   it('the benchmark figures it states are the benchmarks page’s', () => {
     const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
@@ -867,6 +894,29 @@ describe.each([
     expect(src).toContain('deny?: SandboxDenials')
     expect(src).toContain('ignore?: SandboxIgnore')
     for (const field of ['`allow`', '`deny`', '`ignore`']) expect(page).toContain(field)
+  })
+})
+
+// The sandboxing guide called `gitConfig` inert ("SRT drops the per-task
+// flag") after B-41 made it take effect for the task that grants it.
+describe('the sandboxing guide says what gitConfig grants', () => {
+  it('the flag reaches the wrap per task, and the guide does not call it inert', () => {
+    const runtime = readFileSync(
+      path.resolve(import.meta.dir, '..', 'src', 'exec', 'sandbox-runtime.ts'),
+      'utf8',
+    )
+    const binds = readFileSync(
+      path.resolve(import.meta.dir, '..', 'src', 'exec', 'sandbox-binds.ts'),
+      'utf8',
+    )
+    expect(binds).toContain('allowGitConfig: c.gitConfig')
+    expect(runtime).toContain('perTaskRun')
+    const row = readFileSync(path.join(GUIDES, 'sandboxing.md'), 'utf8')
+      .split('\n')
+      .find((l) => l.startsWith('| `gitConfig`'))
+    expect(row).toBeDefined()
+    expect(row).not.toMatch(/inert|drops/)
+    expect(row).toContain('this task only')
   })
 })
 
@@ -1380,20 +1430,20 @@ describe('the plugins guide rosters every hook a shipped plugin fills', () => {
 })
 
 // The migrate-from-nx guide is the migrate page's Nx section (the short site).
-describe('the migrate-from-nx guide shows the nx-exec line the mapper writes', () => {
-  it('its sample is the shape `nxExecCommand` produces, as vx-migrate’s own suite pins it', () => {
-    // The guide's sample and `tests/migrate.test.ts` ("executors") in
-    // vx-migrate spell the same line; a change to the bin's argv shape has
-    // to land in both.
+describe('the migrate-from-nx guide names the executors the migrator writes as commands', () => {
+  it('its table is nx-native.ts’s translators, the legacy linter name aside', () => {
     const page = section(readFileSync(path.join(GUIDES, 'migrate.md'), 'utf8'), 'Nx')
-    expect(page).toContain(
-      `nx-exec @nx/js:tsc --project lib --target build --options '{"main":"src/index.ts","tsConfig":"tsconfig.lib.json"}'`,
-    )
-    const suite = readFileSync(
-      path.resolve(import.meta.dir, '..', '..', 'vx-migrate', 'tests', 'migrate.test.ts'),
+    const src = readFileSync(
+      path.resolve(import.meta.dir, '..', '..', 'vx-migrate', 'src', 'nx', 'nx-native.ts'),
       'utf8',
     )
-    expect(suite).toContain('nx-exec @nx/vitest:test --project app --target test')
+    const table = /const TRANSLATORS: [^=]*= \{([\s\S]*?)\n\}/.exec(src)![1]!
+    const translated = [...table.matchAll(/'(@[^']+)':/g)].map((x) => x[1]!)
+    const named = [...page.matchAll(/^\| (`@[^|]+)\|/gm)].flatMap((row) =>
+      [...row[1]!.matchAll(/`(@[^`]+)`/g)].map((x) => x[1]!),
+    )
+    expect(translated.length).toBeGreaterThan(5)
+    expect(named.sort()).toEqual(translated.filter((e) => e !== '@nx/linter:eslint').sort())
   })
 })
 
@@ -1712,5 +1762,52 @@ describe("comparison.md's Turborepo cells say what Turbo hashes and runs", () =>
       'yes — `package.json` is a default input',
     )
     expect(turbo('Pre/post script lifecycle')).toBe('yes — the package manager runs them')
+  })
+})
+
+// Blog links into a guide section kept the titles of the guide pages the
+// short site merged away ("Running tasks", "Dev & long-running tasks"),
+// and one promised readiness patterns for common servers the section
+// never held. A link into a guide section names that section.
+describe("a post's link into a guide section names the section", () => {
+  it('its text holds the heading its anchor lands on', () => {
+    const plain = (s: string): string => s.replace(/[`*_]/g, '').replace(/\s+/g, ' ').toLowerCase()
+    const slug = (h: string): string =>
+      h
+        .toLowerCase()
+        .replace(/[^\p{L}\p{N} _-]/gu, '')
+        .replace(/ /g, '-')
+    const headings = new Map<string, Map<string, string>>()
+    const headingOf = (guide: string, anchor: string): string | undefined => {
+      if (!headings.has(guide)) {
+        const map = new Map<string, string>()
+        for (const m of readFileSync(path.join(GUIDES, `${guide}.md`), 'utf8').matchAll(
+          /^#{2,6}\s+(.*?)\s*$/gm,
+        ))
+          map.set(slug(m[1]!), m[1]!)
+        headings.set(guide, map)
+      }
+      return headings.get(guide)!.get(anchor)
+    }
+    const wrong: string[] = []
+    let checked = 0
+    // A post's pointer to its guide; the glossary's and compare page's
+    // inline links are prose ("remote caching"), not section names.
+    const posts = handAuthoredSitePages().filter((p) => p.includes(`${path.sep}blog${path.sep}`))
+    for (const page of posts) {
+      const text = readFileSync(page, 'utf8')
+      for (const m of text.matchAll(
+        /\[([^\]]+)\]\((?:\.\.\/)+guides\/([a-z-]+)\/#([a-z0-9-]+)\)/g,
+      )) {
+        const heading = headingOf(m[2]!, m[3]!)
+        checked++
+        if (heading === undefined || !plain(m[1]!).includes(plain(heading)))
+          wrong.push(`${path.relative(DOCS, page)}: [${m[1]}] → ${m[2]}#${m[3]}`)
+      }
+    }
+    expect(checked).toBeGreaterThan(5)
+    expect(wrong).toEqual([])
+    const post = readFileSync(path.join(DOCS, 'blog', 'dev-servers-in-the-graph.md'), 'utf8')
+    expect(post).not.toContain('readiness patterns for the common servers')
   })
 })

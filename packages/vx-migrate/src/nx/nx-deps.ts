@@ -155,6 +155,10 @@ export function mapNxDeps(
 ): string[] {
   const entries = expandTargetGlobs(raw, targetNames, (p) => metaByNode.has(p), ownTarget)
   const deps: string[] = []
+  // Said once per task and without the dependency's name: cypress's
+  // atomized `e2e-ci` forwards params to each spec's task, and a line
+  // per spec name was a warning line per spec on every run.
+  const forwards = { options: false, params: false }
   // Nx hands every edge the configuration the run asked for, and each
   // target runs it where it declares it, else its default
   // (`resolveConfiguration`). `build:ci`'s `lint` ran lint's default.
@@ -215,19 +219,10 @@ export function mapNxDeps(
       // overrides (`createTaskOverrides`): a different command, which vx's
       // one task per target cannot be. Nothing to hand on, nothing to say
       // (cypress's atomized `e2e-ci` forwards its empty options).
-      if (o.options === 'forward' && forwarded !== undefined && Object.keys(forwarded).length > 0) {
-        todos.push(
-          `dependsOn ${JSON.stringify(t)}: options forwarding is not supported — the dependency ` +
-            "runs with its own options, not this target's",
-        )
-      }
+      if (o.options === 'forward' && forwarded !== undefined && Object.keys(forwarded).length > 0)
+        forwards.options = true
       // `ignore` is Nx's default; only `forward` asks for something vx lacks.
-      if (o.params === 'forward') {
-        todos.push(
-          `dependsOn ${JSON.stringify(t)}: params forwarding is not supported — forward args ` +
-            'via `vx run … -- args` instead',
-        )
-      }
+      if (o.params === 'forward') forwards.params = true
       const raw = o.projects ?? (o.dependencies === true ? 'dependencies' : undefined)
       // Nx reads a lone string as a one-entry list (`projects: "b"`); it
       // was not representable here, and the edge dropped (item 1053).
@@ -259,6 +254,17 @@ export function mapNxDeps(
       continue
     }
     todos.push(`dependsOn ${JSON.stringify(d)} not representable in vx`)
+  }
+  if (forwards.options) {
+    todos.push(
+      'dependsOn `options: "forward"` is not supported — the dependency runs with its own ' +
+        "options, not this target's",
+    )
+  }
+  if (forwards.params) {
+    todos.push(
+      'dependsOn `params: "forward"` is not supported — forward args via `vx run … -- args` instead',
+    )
   }
   return deps
 }

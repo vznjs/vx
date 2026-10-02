@@ -56,6 +56,14 @@ Linux, so the task is refused instead, and a root with one keeps SRT's
 own depth-3 scan. `sandbox-deny-scan.unsafe.test.ts` holds the binds
 equal to SRT's whole-root scan for three grant sets.
 
+SRT still spawned its `rg` on every wrap for those root entries, and
+cannot skip it. At depth 1 a hit lies in the root, which SRT keeps only
+inside a write grant, where the scoped walk already reaches, so vx hands
+SRT `true` as its ripgrep command (B-75): the spawn's 3.8 ms is 1.0, and
+100 sandboxed `true` tasks at concurrency 1 run in 3.50 s against 3.95
+(−4.4 ms a task, interleaved, three rounds). The parity rows arm SRT as
+vx does, with a root entry (`.ZshRC`) only a scan finds.
+
 `allow.gitConfig` is read by SRT from the run's config only, so a run
 with a task that grants it sets `allowGitConfig` per wrap, one wrap at a
 time, as it does the unix-socket lift, and the scoped scan leaves that
@@ -629,7 +637,9 @@ grants and what the task made there itself stay readable. `grep -r` and
 `find` open each entry relative to a directory's descriptor, which the
 trace names only by number, so such a task's strace runs with `-y`,
 which prints the path each descriptor opened (40% slower on 2,000
-opens). No widened grant, no `-y` and no extra parse.
+opens). The parse takes a descriptor's printed path up to the `, "` that
+opens the file argument, since a directory's name may hold a quote
+(`4</ws/q"d>`). No widened grant, no `-y` and no extra parse.
 
 ## A write grant that mounts nothing
 
@@ -712,6 +722,39 @@ record is dropped: no config can silence it and it carries no
 information. It is not a hole — a connection that actually left the
 machine goes through that proxy, which reports it WITH host and port.
 
+## What a sandboxed task costs (Linux, 2026-10-02)
+
+A sandboxed `true` costs ~28 ms in `runSandboxed` and ~35 ms per task in
+`vx run --concurrency 1` (100 tasks; an unsandboxed one costs ~2 ms, a
+bare spawn's floor). Measured by stripping one layer at a time from the
+wrapped command, min of 20–25:
+
+| part                                                                   | cost           | whose                            |
+| ---------------------------------------------------------------------- | -------------- | -------------------------------- |
+| bwrap with SRT's binds                                                 | ~6 ms (4 bare) | SRT, bwrap                       |
+| SRT's chain inside: bash three times, two socat bridges, apply-seccomp | ~6.5 ms        | SRT                              |
+| strace's own start (a bare `strace true` is 5.7 ms)                    | ~5 ms          | the denial report                |
+| SRT's per-wrap `rg`                                                    | 2.8 ms         | gone (B-75: `true` in its place) |
+| vx's wrapper: the signal watcher, `setsid`, `sh`                       | ~1.3 ms        | vx                               |
+| vx's JS: request, wrap, parse, scheduling                              | ~3 ms          | vx                               |
+
+Inside `vx run` the request and the walls add binds, so `runSandboxed`
+reads 28–30 ms there. What is vx's is at its floor: removing the watcher
+or `setsid` saves under 0.5 ms (noise), and both are correctness
+(signal forwarding, `kill 0`). A CPU profile names `rmSync` (947 ms per
+100 tasks) and `realpathSync` (250 ms) as the top cost; timed in place
+they are 0.4 ms and 0.23 ms a task: the profiler charges the main
+thread's wait on child processes to the last native call. Time a
+suspect in place before cutting it.
+
+The wrap itself (~3 ms with B-75's `true`, 1 ms of which is that spawn)
+is SRT's `generateFilesystemArgs` resolving each deny path (realpath,
+lstat, a symlink walk) and a `mkdtemp` per wrap; vx's own share of it
+is a sliver of a 400-wrap profile. What is left is SRT's to cut: one shell in place of three, and the
+bridges only for a task granted network. Neither is an option today,
+and dash cannot stand in for bash there (SRT's `trap "kill %1 %2"` kills
+no job under dash).
+
 ## Integration points
 
 - `src/orchestrator/run.ts` calls `prepareSandbox(nodes)`
@@ -747,7 +790,10 @@ prefixes the sandboxed command with `portBridgeInner`: one
 per port, backgrounded and reaped with the shell (as SRT starts its own
 proxy bridges), and spawns the host side, `portBridgeHostArgv`: one
 `socat TCP-LISTEN:<port>,bind=127.0.0.1,fork UNIX-CONNECT:<sock>,retry=…`
-per port. The unix socket lives in the sandbox tmpdir, bound read-write on
+per port, socat resolved on vx's PATH. The task starts once each host
+socat listens (`/proc/net/tcp`, 5 s bound, skipped where /proc is not
+vx's, ended by a bridge that exited): a server that said it was ready
+inside could meet a refusal on the host first (M-22). The unix socket lives in the sandbox tmpdir, bound read-write on
 both sides. The task's side has to CREATE a unix socket under SRT's seccomp
 filter, so `prepareSandbox` passes `allowAllUnixSockets` when any task
 declares a port list (or `unixSockets`), and `wrapSandboxedCommand` then
