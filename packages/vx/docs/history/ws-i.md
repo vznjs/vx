@@ -248,6 +248,15 @@ main). 1,000 packages, one edited, `run build --affected=HEAD~1`,
 compiled, 41 interleaved rounds: main 356.8 ms median (min 293.5),
 patch 311.9 (248.5), A/A 313.6 (255.5).
 
+I-29. A `files` declaration compiles once per process. `resolveFiles`
+split, normalized and compiled each task's `cache.inputs.files` (and its
+outputs' matcher) per task, though a workspace declares a handful of
+lists over thousands of tasks; `filesPlan` keys them by the declaration
+and its outputs, and a refused declaration is never stored. 1,000
+packages warm, compiled, 25 interleaved rounds: `classify + probe` main
+86.3 ms median (min 73.1), patch 77.3 (73.2), A/A 78.3 (67.3);
+in-process total 280.0 (251.6), 272.4 (245.0), 274.4 (235.6).
+
 ## Leads for other streams
 
 - **Owner / coordinator: skip macOS where it cannot differ from
