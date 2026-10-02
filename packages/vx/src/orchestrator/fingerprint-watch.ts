@@ -11,7 +11,7 @@
 
 import { readFileSync, statSync } from 'node:fs'
 import path from 'node:path'
-import { FILE_HASH_RACY_MS } from '../cache/index.js'
+import { FILE_HASH_RACY_MS, racyWindowMs } from '../cache/index.js'
 import { WORKSPACE_FINGERPRINT_FILES, type WorkspaceFingerprints } from '../workspace/index.js'
 import type { Logger } from './logger.js'
 
@@ -56,7 +56,10 @@ export class FingerprintWatch {
         if (before !== undefined) moved.push(f)
         continue
       }
-      if (before !== undefined && ctimeMs < this.at - FILE_HASH_RACY_MS) continue
+      // A whole-second stamp widens the window by that second (A-2): a
+      // rewrite 400 ms after the read was stamped before it (C-59).
+      if (before !== undefined && ctimeMs < this.at - racyWindowMs(ctimeMs, FILE_HASH_RACY_MS))
+        continue
       let now: Uint8Array | undefined
       try {
         now = readFileSync(abs)

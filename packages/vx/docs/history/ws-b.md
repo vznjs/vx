@@ -29,6 +29,14 @@ In order of harm:
    projects, `.git` and `.vx` under seatbelt. Needs a darwin probe
    (seatbelt precedence of a deny inside an allow) before a fix.
 
+6. Linux: a grant under a workspace whose directory name holds a
+   bracket does not resolve: `resolveSandboxConfig` resolves it to an
+   absolute path and `expandGrants` reads that path's brackets as a
+   `Bun.Glob` class, so `read: ['.']` there mounts nothing. Since B-57
+   such a workspace is walled, so its tasks fail closed. A fix makes
+   the expansion escape-aware on both platforms (darwin hands SRT the
+   pattern). A bracketed write path cannot reach SRT at all.
+
 ## Leads for other streams
 
 - **A:** a local save decodes and re-parses the artifact it just packed
@@ -1000,6 +1008,20 @@ null control); `show-info.test.ts` › the rendered sandbox rows. A new
 fact is a contract change: `schemas/info.json`, `docs/api.md` and
 `vx-mcp`'s `tools.json` record it, so the title and a commit carry `!`.
 
+B-55. A stop that landed after a task was dispatched but before its
+spawn (during its output clean, or the request's build) still ran the
+command: the request's signal was already aborted and the local
+executor spawned regardless, after the teardown had swept the run's
+children. Probe: 20,000 stale outputs to clean, SIGINT 0.3–0.7 s in;
+the command's marker was written every time and the run took 7.6 s
+(the signal's bound) where 0.5 s was due. The local executor now spawns
+nothing for an aborted request and returns the signal's exit; the task
+reads aborted, nothing cached. Row: `executor.test.ts` › spawns nothing
+for a request whose signal is already aborted (red without the fix; the
+same request not aborted is the control). Lead for the orchestrator
+stream: `runAttempt` still cleans outputs and builds the request after
+the stop; a check there would skip that work too, and a plugin executor
+handed the aborted request decides for itself.
 B-53. A Linux sandboxed task whose cwd no mount held ran in `$HOME`.
 bwrap enters the old cwd only if it exists in the new root, else
 `$HOME`, silently; a project with no read grant and no `node_modules` of
@@ -1014,6 +1036,18 @@ nothing); with the fix the read itself is reported. Rows:
 holds it (red without the fix: `pwd` read `/root`), and the bare
 baseline's row now pins the two write violations (red without it).
 
+B-57. SRT globs any Linux read path holding `[` (`containsGlobChars`),
+where a bracket opens a class. A Next.js route granted escaped,
+`read: ['pages/\\[id\\].tsx']`, matched in vx's scan and was handed over
+as `pages/[id].tsx`, which SRT expanded to nothing: never mounted, and
+its denial unreported (a listed grant). A workspace under a `[ws]`
+directory was never walled: its deny anchor matched nothing, and a task
+read sibling projects. vx now spells `[` as `[[]` (a class of one
+bracket) in every Linux read and deny path it hands SRT
+(`literalReadPaths`). Rows: `sandbox-runtime.unsafe.test.ts` › mounts a
+granted path whose name holds a bracket, and walls a workspace whose
+directory name holds a bracket (each red without the fix). schema.md
+says how to grant a bracketed path. Lead 7 is what is left.
 B-54. strace writes a path as a C string (a quote, a backslash and a
 control byte escaped, a non-ASCII byte as octal), and `deniedCalls`
 read it raw: `q"t.txt` was cut at `q\`, `é.txt` was reported as
@@ -1032,3 +1066,10 @@ on Linux and says once which directory to grant instead; the write is
 then refused (`Read-only file system`) and reported. Row:
 `sandbox-runtime.unsafe.test.ts` › says so when a write path holds a
 bracket, and names the directory above it (red without the fix).
+B-58. The output capture's head and tail bounds count UTF-16 units, and
+a cut between a surrogate pair's halves left a lone half on each side
+of the dropped-output line: a task printing past 8 MiB whose bound fell
+inside an emoji replayed U+FFFD there. Each bound now steps past a
+pair. Row: `runner.test.ts` › streamToString › never cuts a character
+in two at either bound, one text per bound (each fix removed alone
+reddens it).

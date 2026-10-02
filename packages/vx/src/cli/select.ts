@@ -60,17 +60,19 @@ export async function workspaceGlobOwners(
     }
     return false
   }
-  // A frozen run with no lock is refused here, before the tolerant sweep
-  // below could answer "nothing affected" and exit 0 without ever reaching
-  // the run's own refusal.
-  if (load.frozen === true && (await readLockfile(root)) === null) {
-    throw new UserError(FROZEN_WITHOUT_LOCK)
-  }
   try {
     const staged = await stagedLoad()
     return [...staged.values()].filter((p) => declaresMatch(p.config)).map((p) => p.name)
   } catch {
     // Fall through to the per-file sweep.
+  }
+  // A frozen run with no lock is refused here, before the tolerant sweep
+  // below could answer "nothing affected" and exit 0 without ever reaching
+  // the run's own refusal. Asked only once the staged load failed: a
+  // frozen load that succeeded read the lock, and a second read parsed it
+  // again (1,000 projects: a 1.1 MB lock, ~10 ms).
+  if (load.frozen === true && (await readLockfile(root)) === null) {
+    throw new UserError(FROZEN_WITHOUT_LOCK)
   }
   const owners: string[] = []
   await Promise.all(

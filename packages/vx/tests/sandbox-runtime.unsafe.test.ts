@@ -4689,6 +4689,42 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
     ])
   })
 
+  // SRT reads any Linux read path holding `[` as a glob, where a bracket
+  // opens a class: a Next.js route granted by its escaped name matched,
+  // was never mounted, and its denial went unreported (a listed grant),
+  // and a workspace under a bracketed directory was never walled.
+  const bracketed = async (ws: string) => {
+    const proj = path.join(ws, 'app')
+    await mkdir(path.join(proj, 'pages'), { recursive: true })
+    await mkdir(path.join(ws, 'other'))
+    await writeFile(path.join(proj, 'pages', '[id].tsx'), 'route')
+    await writeFile(path.join(ws, 'other', 'x.txt'), 'sibling')
+    return (command: string, read: string[]) =>
+      runSandboxed(
+        args(command, {
+          cwd: proj,
+          baseAllowRead: [],
+          baseDenyRead: [ws],
+          reportWithin: proj,
+          config: resolveSandboxConfig({ allow: { read } }, proj),
+        }),
+      )
+  }
+
+  it('mounts a granted path whose name holds a bracket', async () => {
+    const run = await bracketed(path.join(dir, 'ws'))
+    const route = await run("cat 'pages/[id].tsx'", ['pages/\\[id\\].tsx'])
+    expect([route.exitCode, route.stdout]).toEqual([0, 'route'])
+  })
+
+  // A grant under such a workspace does not resolve yet (vx's own scan
+  // reads the bracket too; ws-b.md lead 7), so the row pins the wall alone.
+  it('walls a workspace whose directory name holds a bracket', async () => {
+    const run = await bracketed(path.join(dir, '[ws]'))
+    const sibling = await run('cat ../other/x.txt', ['.'])
+    expect([sibling.exitCode === 0, sibling.stdout]).toEqual([false, ''])
+  })
+
   it('a spawn that throws is exit 127 with the reason, not a rejection', async () => {
     const r = await runSandboxed(args('true', { cwd: path.join(dir, 'gone') }))
     // spawnFailed: no shell ran, so execute-task says nothing of a missing command (A-41).
