@@ -279,7 +279,10 @@ function servesCommand(command: string): boolean {
         words[i]!.startsWith('-') ||
         (/^(pnpm|npm|yarn)$/.test(words[i]!) && LAUNCHERS.has(words[i + 1] ?? '')))
     ) {
-      i++
+      // A launcher's `--package <name>` / `-p <name>` names what to install,
+      // not the program: docusaurus's `pnpm dlx --package netlify-cli netlify
+      // dev` read `netlify-cli` as the program (D-112).
+      i += words[i] === '--package' || words[i] === '-p' ? 2 : 1
     }
     const [program, verb] = [words[i], words[i + 1]]
     if (program === undefined) continue
