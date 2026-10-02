@@ -419,6 +419,8 @@ function matchesIgnore(
  * crossing, and the task can grant it.
  */
 function describeMacViolation(line: string): Partial<SandboxViolation> {
+  const proxy = PROXY_DENY_RE.exec(line)
+  if (proxy !== null) return { target: proxy[1]!, ignorable: ['network'] }
   const m = /deny\(\d+\)\s+(\S+)\s+(.+?)\s*$/.exec(line)
   if (m === null) return {}
   const [op, target] = [m[1]!, m[2]!]
@@ -587,6 +589,28 @@ function filterIgnored(
 ): SandboxViolation[] {
   if (ignore === undefined) return violations
   return violations.filter((v) => !matchesIgnore(v, ignore))
+}
+
+/**
+ * SRT's filtering proxy records a connection it refused as `deny
+ * network-outbound <host>:<port> (<reason>)`, on both platforms: the one
+ * component that knows the host. Read as its own shape, so `ignore.network`
+ * silences it by host; the seatbelt pattern above wants `deny(<n>)`.
+ */
+const PROXY_DENY_RE = /^deny network-outbound (\S+) \([^)]*\)$/
+
+/**
+ * Linux: the connections the proxy refused, from the store records. Only
+ * the write observer's records were read there, so a task denied a host
+ * failed with its own `403` and no report, and one that survived the
+ * refusal passed, where macOS reports the same record (2026-10-02).
+ */
+export function refusedConnections(records: readonly string[]): SandboxViolation[] {
+  return [...new Set(records.filter((r) => PROXY_DENY_RE.test(r)))].map((line) => ({
+    line,
+    timestamp: new Date(),
+    ...describeMacViolation(line),
+  }))
 }
 
 /**

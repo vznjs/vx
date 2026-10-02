@@ -88,6 +88,7 @@ import {
 } from './sandbox-deny-scan.js'
 import {
   parseStraceViolations,
+  refusedConnections,
   refusedWrites,
   refusedWritesOutside,
   reportableViolations,
@@ -1730,6 +1731,7 @@ async function runSandboxedOnce(
             bindableWrites(args.config.allowWrite),
             scratch,
           ),
+          ...refusedConnections(records.map((v) => v.line)),
         ]
       : []
   if (straceLog) {

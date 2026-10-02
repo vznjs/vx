@@ -1136,8 +1136,11 @@ that declares no network reaches the domains another task of the run
 listed, and `network: true` reaches only those (nothing in a run with no
 list). `deny.network` is the run's too: the proxy starts with the union
 of every task's denies and refuses those domains to every task, checked
-before the allowlist (B-21). On Linux a refused request fails only through the
-task's own exit; no violation is reported.
+before the allowlist (B-21). A refused request is a violation on both
+platforms, `deny network-outbound <host>:<port> (<reason>)` from the
+proxy, and fails the task even when it survived the refusal;
+`ignore: { network: ['<host>:<port>'] }` silences one. Until 2026-10-02
+Linux reported none, and the line could not be ignored on macOS.
 
 **Baseline** (`sandbox: {}`): the task reads nothing in the workspace,
 writes nothing but its own `TMPDIR` and reaches no domain no task of the run lists — not even its own project

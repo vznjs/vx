@@ -289,6 +289,8 @@ export function refusedWrites(
 ): SandboxViolation[]
 // the writes refused past the wall, as paths: a failed task's hint
 export function refusedWritesOutside(violations, opts: { within; linked?; config; skip }): string[]
+// Linux: the proxy's `deny network-outbound <host>:<port> (<reason>)` records
+export function refusedConnections(records: readonly string[]): SandboxViolation[]
 ```
 
 ## How it works
@@ -721,6 +723,14 @@ whenever the task declared any network at all, so under either grant the
 record is dropped: no config can silence it and it carries no
 information. It is not a hole — a connection that actually left the
 machine goes through that proxy, which reports it WITH host and port.
+
+That proxy record, `deny network-outbound <host>:<port> (<reason>)`,
+lands in SRT's store on both platforms. On Linux vx read only the write
+observer's records there, so a refused host failed a task through its
+own `403` and nothing else, and passed one that survived it;
+`refusedConnections` reads it now. It carries no `deny(<n>)`, so the
+seatbelt classifier left it without a target and `ignore.network` could
+not silence it on macOS; `describe` reads its shape first (2026-10-02).
 
 ## What a sandboxed task costs (Linux, 2026-10-02)
 
