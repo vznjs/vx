@@ -41,6 +41,14 @@
   quoted medusa and payload numbers measured through `turbo()`; the
   docs README and `cli.md`'s `vx init` said the same. Each now calls
   `turbo()` / `nx()` a temporary start toward native config.
+- **R-6** The vx-migrate README timed `nx-exec` against `nx run` (400
+  and 830 ms less per task), a speed claim for an Nx-mapped run; it now
+  names the ~220 ms each `nx-exec` line pays and that native config
+  pays none of it.
+- **R-7** The quickstart is native config first: the Turbo/Nx case
+  left `vx init`'s step for a short "Coming from Turbo or Nx" section,
+  `bunx @vzn/vx-migrate` first and the `turbo()` / `nx()` file a
+  temporary start.
 - **R-11** Five posts (why-vx-is-fast, no-daemon, no-choice,
   explicit-over-magical, one-binary) quoted solidjs/solid numbers
   measured through `turbo()`; each keeps only the native-config

@@ -200,7 +200,12 @@ on the returned summary is `true` iff every outcome passes
 (`isPassStatus`: `failed`, `skipped` and `aborted` do not) and no
 persistent task crashed. CLI maps this to exit code 1. Setup throws (`UserError`
 from discovery/loader/graph/plugin-setup) are caught at
-`cli/run.ts:runCmd`.
+`cli/run.ts:runCmd`. Before anything starts, `run()` and `planRun()`
+refuse, as a `UserError` naming the option and what it must be, an
+option the CLI would never pass: a number out of its bound (C-61), a
+word outside its set (`continueMode`, `outputLogs`, `download`, `flow`),
+a list that is not one of strings, an `excludeDependencies` that is
+neither `'all'` nor names, a `signal` that is no `AbortSignal` (C-86).
 
 ## Tests
 

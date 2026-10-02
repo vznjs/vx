@@ -4343,34 +4343,39 @@ describe.skipIf(!available || process.platform !== 'linux')(
           config: `export default { tasks: { t: { exec: { command: 'true', sandbox: { allow: { read: ['.'] } } } } } }`,
         })
         const reset = spyOn(SandboxManager, 'reset')
-        const held = await run({
-          cwd: fixture.root,
-          tasks: ['srv#serve'],
-          holdPersistent: true,
-          log: collectingLogger(fixture),
-        })
+        // Restored whatever fails: a red here left the spy on SRT's reset
+        // for every later row of the file (M-22).
         try {
-          expect(held.persistent?.ids).toEqual(['srv#serve'])
-          expect(await accepts(port)).toBe(true)
-          const later = await run({
+          const held = await run({
             cwd: fixture.root,
-            tasks: ['other#t'],
+            tasks: ['srv#serve'],
+            holdPersistent: true,
             log: collectingLogger(fixture),
           })
-          expectOk(later, fixture)
-          expect(await accepts(port)).toBe(true)
-          // Both runs' resets waited on the server.
-          expect(reset).toHaveBeenCalledTimes(0)
+          try {
+            expect(held.persistent?.ids).toEqual(['srv#serve'])
+            expect(await accepts(port)).toBe(true)
+            const later = await run({
+              cwd: fixture.root,
+              tasks: ['other#t'],
+              log: collectingLogger(fixture),
+            })
+            expectOk(later, fixture)
+            expect(await accepts(port)).toBe(true)
+            // Both runs' resets waited on the server.
+            expect(reset).toHaveBeenCalledTimes(0)
+          } finally {
+            await held.persistent?.stop('SIGTERM')
+          }
+          const until = Date.now() + 3_000
+          while ((await accepts(port)) && Date.now() < until) await Bun.sleep(50)
+          expect(await accepts(port)).toBe(false)
+          // The server's exit ran the reset they deferred.
+          while (reset.mock.calls.length === 0 && Date.now() < until) await Bun.sleep(20)
+          expect(reset).toHaveBeenCalledTimes(1)
         } finally {
-          await held.persistent?.stop('SIGTERM')
+          reset.mockRestore()
         }
-        const until = Date.now() + 3_000
-        while ((await accepts(port)) && Date.now() < until) await Bun.sleep(50)
-        expect(await accepts(port)).toBe(false)
-        // The server's exit ran the reset they deferred.
-        while (reset.mock.calls.length === 0 && Date.now() < until) await Bun.sleep(20)
-        expect(reset).toHaveBeenCalledTimes(1)
-        reset.mockRestore()
       },
       TIMEOUT,
     )
