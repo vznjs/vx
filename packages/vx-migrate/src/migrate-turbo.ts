@@ -12,9 +12,15 @@ import {
   type ProjectMeta,
   quoteTsLiteral as quote,
 } from '@vzn/vx'
-import { mapTurboWorkspace, rootTaskProject, type TurboGlobal } from './turbo/turbo-map.js'
+import {
+  mapTurboWorkspace,
+  rootTaskProject,
+  type TurboGlobal,
+  type TurboMappedProject,
+} from './turbo/turbo-map.js'
 import { relPosix } from './paths.js'
 import { trackedFiles, trackedKinds } from './tracked-outputs.js'
+import { DOTENV_PROBE, DOTENV_PROBE_TOP } from './dotenv-probe.js'
 
 /** What a task's `npm_package_*` read: the manifest, so a bump reaches them. */
 const MANIFEST_IMPORT = "import pkg from './package.json' with { type: 'json' }"
@@ -46,8 +52,9 @@ export async function migrateTurbo(
     ownConfig: () => `vx.config.${format}`,
   })
 
+  const probes = nameProbes(mapping.projects)
   const projects: GeneratedProject[] = mapping.projects.map((p) => {
-    const used = new Set<string>()
+    const used = new Set<string>(probes.usedBy.get(p.name))
     for (const t of p.tasks) for (const kind of t.uses) used.add(PRESET_NAMES[kind])
     const readsManifest = p.tasks.some((t) => JSON.stringify(t.task ?? {}).includes('"pkg.'))
     return {
@@ -63,8 +70,11 @@ export async function migrateTurbo(
 
   const { inputs, env, pass } = mapping.globals
   const extraFiles: MigrationPlan['extraFiles'] = []
-  if (inputs.length > 0 || env.length > 0 || pass.length > 0) {
-    extraFiles.push({ relPath: presetFile(format), contents: renderPreset(inputs, env, pass) })
+  if (inputs.length > 0 || env.length > 0 || pass.length > 0 || probes.names.size > 0) {
+    extraFiles.push({
+      relPath: presetFile(format),
+      contents: renderPreset(inputs, env, pass, probes.names),
+    })
   }
 
   return { headerNotes: [], projects, extraFiles, notes: mapping.notes }
@@ -105,7 +115,57 @@ function presetImportLines(
   return [`import { ${[...used].sort().join(', ')} } from '${spec}'`]
 }
 
-function renderPreset(inputs: string[], env: string[], pass: string[]): string {
+/**
+ * The `.env` probes, by name: Turbo hashes a task's `.env` files although
+ * git ignores them, and a glob over git's files sees none, so the mapper
+ * keys them through a shell line that prints each file. Inline in every
+ * package's config, that line read as noise nobody could review.
+ */
+const PROBES: ReadonlyArray<{ name: string; command: string; doc: string }> = [
+  {
+    name: 'dotenvFiles',
+    command: DOTENV_PROBE_TOP,
+    doc: "Each `.env` file in the task's directory, name and bytes",
+  },
+  {
+    name: 'dotenvFilesDeep',
+    command: DOTENV_PROBE,
+    doc: "Each `.env` file under the task's directory, name and bytes",
+  },
+]
+
+function nameProbes(projects: readonly TurboMappedProject[]): {
+  names: Set<string>
+  usedBy: Map<string, Set<string>>
+} {
+  const names = new Set<string>()
+  const usedBy = new Map<string, Set<string>>()
+  for (const p of projects)
+    for (const t of p.tasks) {
+      const inputs = (t.task?.['cache'] as { inputs?: Record<string, unknown> } | undefined)?.inputs
+      for (const field of ['runtime', 'workspaceRuntime']) {
+        const list = inputs?.[field]
+        if (!Array.isArray(list)) continue
+        list.forEach((v, i) => {
+          const probe = PROBES.find((x) => x.command === v)
+          if (probe === undefined) return
+          list[i] = { raw: probe.name }
+          names.add(probe.name)
+          let used = usedBy.get(p.name)
+          if (used === undefined) usedBy.set(p.name, (used = new Set()))
+          used.add(probe.name)
+        })
+      }
+    }
+  return { names, usedBy }
+}
+
+function renderPreset(
+  inputs: string[],
+  env: string[],
+  pass: string[],
+  probes: ReadonlySet<string>,
+): string {
   // Escape each entry via the shared `quote()` — a turbo.json global (a file
   // glob, or an env name a user hand-wrote) may contain a `'`/`\`/newline that
   // would otherwise splice into a malformed, unloadable `vx-preset.ts`.
@@ -139,6 +199,16 @@ function renderPreset(inputs: string[], env: string[], pass: string[]): string {
       '',
       '// From globalPassThroughEnv: forwarded to every task, never hashed.',
       `export const globalPassThroughEnv = ${arr(pass)}`,
+    )
+  }
+  for (const probe of PROBES) {
+    if (!probes.has(probe.name)) continue
+    lines.push(
+      '',
+      `// ${probe.doc}. Turbo hashes`,
+      "// `.env` files although git ignores them, and a glob over git's files",
+      '// sees none: cache.inputs.runtime keys them.',
+      `export const ${probe.name} = ${quote(probe.command)}`,
     )
   }
   lines.push('')
