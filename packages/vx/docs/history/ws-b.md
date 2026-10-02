@@ -1075,6 +1075,15 @@ and decoded (`cStringPath`). Row: `sandbox-runtime.unsafe.test.ts` ›
 deniedCalls › decodes the C-string escapes strace writes a path with
 (red without the fix).
 
+B-59. SRT drops every Linux write path holding a bracket, so a grant
+like `write: ['out/\\[id\\]/']` bound nothing, yet the read grants were
+punched around it: `out/[id]` vanished from the task's view, its write
+read "Directory nonexistent", and the refusal went unreported, judged
+against the grant that named it. `bindableWrites` now drops such a path
+on Linux and says once which directory to grant instead; the write is
+then refused (`Read-only file system`) and reported. Row:
+`sandbox-runtime.unsafe.test.ts` › says so when a write path holds a
+bracket, and names the directory above it (red without the fix).
 B-60. A sandboxed task in a project under a directory whose name holds
 a bracket (`~/[old]/repo`) could not be sandboxed on Linux: SRT reads
 such a path as a glob, mounts no write path holding one, and vx's own
