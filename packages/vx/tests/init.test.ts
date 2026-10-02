@@ -777,6 +777,7 @@ describe('migrateScripts', () => {
       ci: 'vx run ci --all',
       'build:common': 'yarn --cwd ./packages/common build:esm',
       'build:b': 'npm --prefix packages/b run build',
+      prisma: 'yarn workspace @calcom/prisma prisma',
       release: 'vp run build && vp exec changeset publish',
       // vite: each runs the members through a root script that does.
       'build:all': 'pnpm -r run build',
@@ -793,7 +794,7 @@ describe('migrateScripts', () => {
       ['root', ['lint', 'check', 'typos']],
     ])
     expect(plan.notes).toEqual([
-      "root (the workspace root): its scripts that check the whole repo are its tasks; left out as running the members (`pnpm -r`, `--filter`, a runner): test, dev, play, e2e, ci, build:common, build:b, release and 3 more; left out as a member's task name, so `--all` never runs one twice: build — one that does other work maps by hand under a name of its own",
+      "root (the workspace root): its scripts that check the whole repo are its tasks; left out as running the members (`pnpm -r`, `--filter`, a runner): test, dev, play, e2e, ci, build:common, build:b, prisma and 4 more; left out as a member's task name, so `--all` never runs one twice: build — one that does other work maps by hand under a name of its own",
     ])
     // CONTROL: a hand-written root config stays as written.
     const configured = { ...rootMeta, configPath: '/w/vx.config.ts' }
@@ -873,6 +874,32 @@ describe('migrateScripts', () => {
     ])
     expect(plan.notes).toEqual([
       'root (the workspace root): its scripts that check the whole repo are its tasks',
+    ])
+  })
+
+  it('a cd runs the members only into a member, and a run verb only on node (D-83)', () => {
+    // bun's root: `test/` is no member, and docker's `-w` is its workdir.
+    const meta = (name: string, dir: string, scripts: Record<string, string>) => ({
+      name,
+      dir,
+      packageJson: { name, scripts } as never,
+      configPath: null,
+    })
+    const root = meta('root', '/w', {
+      typecheck: 'tsc --noEmit && cd test && bun run typecheck',
+      linux: 'docker run --rm -w /root/bun img',
+      // CONTROLS: into a member, above one, or where vx cannot tell.
+      unit: 'cd packages/a && vitest run',
+      quoted: "cd './packages/a/src' && tsc",
+      above: 'cd packages && ls',
+      dyn: 'cd "$DIR" && make',
+    })
+    const a = meta('a', '/w/packages/a', { build: 'tsc' })
+    expect(
+      migrateScripts([root, a]).projects.map((p) => [p.name, p.tasks.map((t) => t.name)]),
+    ).toEqual([
+      ['a', ['build']],
+      ['root', ['typecheck', 'linux']],
     ])
   })
 

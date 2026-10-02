@@ -16,6 +16,17 @@
   options, as Nx's `interpolate` does; read as one key it was no output,
   so nx-examples' cached `@nx/angular:application` builds restored
   nothing on a hit.
+- **P-4** `nx()`: a grouped target's `.env` files are named by the group
+  member that carries `nonAtomizedTarget` and that parent, as Nx's
+  `getOwnerTargetForTask` names them: cypress's atomized
+  `e2e-ci--<spec>` loads `.env.e2e-ci` and `.env.e2e`. vx named them by
+  the task's own name, so it loaded `.env.e2e-ci--<spec>`, which Nx never
+  does, and missed `.env.e2e-ci`.
+- **P-9** `nx()`: a `dependsOn` string's part after `project:` is one
+  target name, as Nx's `readProjectAndTargetFromTargetString` joins it:
+  `ui:build:ci` names target `build:ci` and is no edge where ui lacks it.
+  vx read the last segment as a configuration and drew an edge to that
+  configuration's task (or to `build`, with a todo) that Nx never draws.
 
 ## Notes
 
