@@ -2430,7 +2430,8 @@ that never started, under the failure that blocked it — the footer's
 A skip's cause is followed through a chain of skips to the failure at
 its root; a skip with no failed upstream is fail-fast's ("after the run
 stopped (fail-fast)"), and one behind a task killed by a signal names
-it as aborted. Eight names per cause, then `… +N more`. A blocked
+it as aborted. The header says `blocked upstream` only when every skip
+was. Eight names per cause, then `… +N more`. A blocked
 group (a task with no command) is not listed — it never starts by
 definition and no counter counts it, so the section and the tasks
 legend agree. Absent when nothing was skipped (`--continue=always`
