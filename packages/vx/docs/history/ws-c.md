@@ -990,6 +990,7 @@ admission policy, failures, a stop, each `--continue` mode) against
 what `modules/scheduler.md` promises, and 300 against the taint
 tracker's definition. Each of three scheduler mutations reddens it:
 the item-963 hold, the skipped-upstream skip, the stop's skip.
+
 ## C-67: an embedder's `command` reaches telemetry redacted
 
 Item 1057 kept what follows `--` (often a token) out of the command line
