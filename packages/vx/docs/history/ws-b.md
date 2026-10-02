@@ -1075,6 +1075,15 @@ and decoded (`cStringPath`). Row: `sandbox-runtime.unsafe.test.ts` ›
 deniedCalls › decodes the C-string escapes strace writes a path with
 (red without the fix).
 
+B-59. SRT drops every Linux write path holding a bracket, so a grant
+like `write: ['out/\\[id\\]/']` bound nothing, yet the read grants were
+punched around it: `out/[id]` vanished from the task's view, its write
+read "Directory nonexistent", and the refusal went unreported, judged
+against the grant that named it. `bindableWrites` now drops such a path
+on Linux and says once which directory to grant instead; the write is
+then refused (`Read-only file system`) and reported. Row:
+`sandbox-runtime.unsafe.test.ts` › says so when a write path holds a
+bracket, and names the directory above it (red without the fix).
 B-60. A sandboxed task in a project under a directory whose name holds
 a bracket (`~/[old]/repo`) could not be sandboxed on Linux: SRT reads
 such a path as a glob, mounts no write path holding one, and vx's own
@@ -1101,3 +1110,23 @@ inside an emoji replayed U+FFFD there. Each bound now steps past a
 pair. Row: `runner.test.ts` › streamToString › never cuts a character
 in two at either bound, one text per bound (each fix removed alone
 reddens it).
+
+B-61. The strace pass resolved every relative path against the task's
+starting cwd, so a denial after `cd src` (`cd src && cat secret.txt`)
+was reported as `<project>/secret.txt`, a file that does not exist, and
+`ignore: { read: ['src/secret.txt'] }` did not silence it. strace now
+also stops on `chdir`, `fchdir` and the fork calls, and `deniedCalls`
+follows each process's cwd (a child starts in its parent's at the fork;
+resolved after the whole pass, since a `vfork` child's lines precede its
+parent's `resumed` line; `fchdir` loses track, falling back to the
+starting cwd). Refuted first: `-y`, which names the directory on every
+line, cost 40% on a task opening 2,000 files (min of 9, interleaved
+against an origin/main worktree, 240 → 337 ms). The shipped form: 212 →
+210 ms on the same task, 451 → 419 on 200 forks. Rows:
+`sandbox-runtime.unsafe.test.ts` › deniedCalls › resolves a relative
+path against the cwd its process had moved to, and runSandboxed ›
+reports a denial under the directory the task changed into (each red
+without the fix). A clone with `CLONE_FS` (every thread) shares its
+creator's cwd rather than copying it, so a `chdir` by either moves both
+(libuv's pool after `process.chdir`): deniedCalls › moves a thread with
+the process whose cwd it shares (red with the flag ignored).
