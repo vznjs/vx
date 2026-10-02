@@ -1072,17 +1072,3 @@ uncached sandboxed task): min 453 → 377 ms, median ~495 → ~440 over 12
 interleaved runs per arm. Rows: `sandbox-prewarm.unsafe.test.ts`; each
 half and the wait fail their row without themselves, and the control
 fails an unconditional prewarm.
-
-## C-86: run() refuses a word or a shape the CLI would not pass
-
-C-61 refused the façade's bad numbers; its words and shapes went
-through. A probe of `run()` with what a JS embedder can pass: a
-`continueMode` of `'sometimes'` ran as `deps-ok`, so a typo lost
-fail-fast without a word; `outputLogs`, `download` and `flow` took any
-string; a string `excludeDependencies` dropped nothing; a `projects`
-string and a `signal` that is no `AbortSignal` died a `TypeError` inside
-the run. `run()` and `planRun()` (which checked nothing) now refuse
-each as a `UserError` naming the option, what it is and what it must be.
-Row (`run-concurrency.test.ts` › refuses a word or a shape the CLI would
-not pass, at run() and planRun()): red without the change; its control
-runs each word the CLI passes. `modules/orchestrator.md` says so.
