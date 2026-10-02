@@ -8,6 +8,7 @@ import { hasEsmExport, unprovidedBareImports } from './config-imports.js'
 import {
   configEvalKey,
   configEvalKeyFromClosure,
+  configEvalKeyFromIdentities,
   configImports,
   type ConfigEvalStore,
 } from './config-cache.js'
@@ -323,49 +324,69 @@ export async function loadProjectConfigs(
   // the map; a file the batch could not stat has no identity, which makes
   // that config's fast key miss and sends it down the slow path exactly as
   // a throwing per-file `hashFile` did.
-  let fastHashFile = hashFile
+  let identities: Map<string, string> | undefined
   if (closures.size > 0 && store?.hashFiles !== undefined) {
     const files = new Set<string>()
     for (const closure of closures.values()) for (const f of closure) files.add(f)
-    const identities = await store.hashFiles([...files])
-    fastHashFile = (file: string): Promise<string> => {
-      const id = identities.get(file)
-      return id === undefined
-        ? Promise.reject(new Error(`no identity for ${file}`))
-        : Promise.resolve(id)
-    }
+    identities = await store.hashFiles([...files])
+  }
+  // With the batch in hand a fast key is synchronous: an async key per
+  // config, awaiting identities already in the map, was ~5 ms of a
+  // 1,000-config warm load. Only a config off the fast path is awaited.
+  const fastKeyOf = (configPath: string): string | null => {
+    const closure = closures.get(configPath)
+    if (closure === undefined || evalCache === undefined || identities === undefined) return null
+    return configEvalKeyFromIdentities({
+      closure,
+      identities,
+      workspaceFingerprint: evalCache.workspaceFingerprint,
+    })
+  }
+  const fastHashFile = identities === undefined ? hashFile : undefined
+  interface Prepared {
+    configPath: string
+    bytes: Uint8Array | null
+    cacheKey: string | null
+    indexed: boolean
+    closure?: string[] | undefined
   }
   const prepared = await Promise.all(
-    configPaths.map(async (configPath) => {
-      const closure = closures.get(configPath)
-      if (closure !== undefined && evalCache !== undefined && fastHashFile !== undefined) {
-        const fastKey = await configEvalKeyFromClosure({
-          closure,
-          hashFile: fastHashFile,
-          workspaceFingerprint: evalCache.workspaceFingerprint,
-        })
-        if (fastKey !== null) return { configPath, bytes: null, cacheKey: fastKey, indexed: true }
-      }
-      const bytes = await Bun.file(configPath).bytes()
-      const keyed =
-        evalCache === undefined
-          ? null
-          : await configEvalKey({
-              configPath,
-              bytes,
-              workspaceRoot: evalCache.workspaceRoot,
-              workspaceFingerprint: evalCache.workspaceFingerprint,
-              ...slowKeyHash,
-            })
-      return {
-        configPath,
-        bytes,
-        cacheKey: keyed?.key ?? null,
-        indexed: false,
-        closure: keyed !== null && keyed.indexable ? keyed.closure : undefined,
-      }
+    configPaths.map((configPath): Prepared | Promise<Prepared> => {
+      const fastKey = fastKeyOf(configPath)
+      return fastKey !== null
+        ? { configPath, bytes: null, cacheKey: fastKey, indexed: true }
+        : slowPrepared(configPath)
     }),
   )
+  async function slowPrepared(configPath: string): Promise<Prepared> {
+    const closure = closures.get(configPath)
+    if (closure !== undefined && evalCache !== undefined && fastHashFile !== undefined) {
+      const fastKey = await configEvalKeyFromClosure({
+        closure,
+        hashFile: fastHashFile,
+        workspaceFingerprint: evalCache.workspaceFingerprint,
+      })
+      if (fastKey !== null) return { configPath, bytes: null, cacheKey: fastKey, indexed: true }
+    }
+    const bytes = await Bun.file(configPath).bytes()
+    const keyed =
+      evalCache === undefined
+        ? null
+        : await configEvalKey({
+            configPath,
+            bytes,
+            workspaceRoot: evalCache.workspaceRoot,
+            workspaceFingerprint: evalCache.workspaceFingerprint,
+            ...slowKeyHash,
+          })
+    return {
+      configPath,
+      bytes,
+      cacheKey: keyed?.key ?? null,
+      indexed: false,
+      closure: keyed !== null && keyed.indexable ? keyed.closure : undefined,
+    }
+  }
   let hits = new Map<string, string>()
   if (evalCache !== undefined) {
     const keys = prepared.map((p) => p.cacheKey).filter((k): k is string => k !== null)
