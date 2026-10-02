@@ -536,6 +536,41 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
     TIMEOUT,
   )
 
+  // The landing and README said a sandboxed task "fails on any read it did
+  // not declare" (J-102): a sibling's file is out of reach but the wall is
+  // silent, and a read outside the workspace is open.
+  it(
+    'a tolerated sibling read passes having read nothing, and a read outside the workspace passes',
+    async () => {
+      await addProject(fixture.root, 'secret', {
+        files: { 'token.txt': 'shh' },
+        config: `export default { tasks: {} }`,
+      })
+      const dir = await addProject(fixture.root, 'reader', {
+        files: { 'src/x.txt': 'hi' },
+        config: `
+          export default {
+            tasks: {
+              peek: {
+                exec: {
+                  command: '{ cat ../secret/token.txt || echo none; head -c 1 /etc/passwd >/dev/null && echo host; } > out.txt',
+                  sandbox: { allow: { write: ['out.txt'] } },
+                },
+              },
+            },
+          }
+        `,
+      })
+      const r = await run({ cwd: fixture.root, tasks: ['peek'], log: collectingLogger(fixture) })
+      expect([r.outcomes[0]?.status, r.outcomes[0]?.sandboxViolationLines ?? []]).toEqual([
+        'success',
+        [],
+      ])
+      expect(await readFile(path.join(dir, 'out.txt'), 'utf8')).toBe('none\nhost\n')
+    },
+    TIMEOUT,
+  )
+
   it(
     'denies reads of workspace-root files not in inputs → task fails',
     async () => {

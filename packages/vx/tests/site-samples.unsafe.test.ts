@@ -1600,3 +1600,22 @@ describe('an install at the workspace root names the flag pnpm and Yarn 1 requir
     expect(seen).toBeGreaterThan(15)
   })
 })
+
+describe('the sandbox pitch claims what the sandbox does', () => {
+  // The landing and README said a sandboxed task fails on any undeclared
+  // read; a tolerated sibling read and a read outside the workspace pass
+  // (sandbox-runtime › a tolerated sibling read passes …, J-102).
+  it('the landing, README and sandboxing guide say "out of reach", not "fails"', () => {
+    const repo = path.resolve(import.meta.dir, '..', '..', '..')
+    const flat = (p: string) => readFileSync(p, 'utf8').replace(/\s+/g, ' ')
+    expect(flat(path.join(repo, 'packages', 'vx-docs', 'src', 'pages', 'index.astro'))).toContain(
+      "body: 'A sandboxed task cannot read a workspace file it did not declare.'",
+    )
+    expect(flat(path.join(repo, 'README.md'))).toContain(
+      'a workspace file the task did not declare is out of its reach, so it cannot poison the cache.',
+    )
+    expect(flat(path.join(GUIDES, 'sandboxing.md'))).toContain(
+      'so an undeclared input cannot hide in the cache.',
+    )
+  })
+})

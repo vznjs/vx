@@ -1,6 +1,6 @@
 ---
 title: Sandboxing tasks
-description: Run a task where only the workspace files you declared exist, so an undeclared read fails the task instead of hiding in the cache.
+description: Run a task where only the workspace files you declared exist, so an undeclared input cannot hide in the cache.
 ---
 
 Prove a task reads only what it declares.

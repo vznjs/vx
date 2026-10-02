@@ -165,8 +165,8 @@ keep your Turbo or Nx remote cache. [Parity map](packages/vx/docs/parity.md) ·
   hashing, so imports and computed values are part of the key. Declared
   outputs are wiped before every run and every restore: no stale file
   survives.
-- **Sandboxed tasks.** Opt in per task: a read the task did not
-  declare fails the build instead of poisoning the cache.
+- **Sandboxed tasks.** Opt in per task: a workspace file the task did
+  not declare is out of its reach, so it cannot poison the cache.
 - **Clean exits.** Ctrl-C reaps every child. No orphaned dev servers.
 - **Plugins at every stage.** Remote cache, remote execution,
   telemetry and new CLI verbs are plugins on documented seams, the way
