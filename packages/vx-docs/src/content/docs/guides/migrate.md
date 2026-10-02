@@ -1,10 +1,11 @@
 ---
 title: Migrate
-description: Run a Turborepo or Nx repo under vx with one new file, written by `vx init`, then let `bunx @vzn/vx-migrate` write vx.config.ts files when you are ready.
+description: Move a Turborepo or Nx repo to vx. `vx init` writes one file that runs it from its old config as a temporary start; `bunx @vzn/vx-migrate` then writes the vx.config.ts files.
 ---
 
-Run your Turborepo or Nx repo under vx today, and move its config to
-TypeScript at your own pace. Any other repo starts at the
+Move a Turborepo or Nx repo to vx. `turbo()` or `nx()` runs it from its
+old config as a temporary start; `bunx @vzn/vx-migrate` then writes the
+`vx.config.ts` files, and you drop the plugin. Any other repo starts at the
 [quickstart](../../quickstart/): there `vx init` writes the configs from
 your `package.json` scripts.
 
@@ -173,7 +174,7 @@ installed.
 | `nx run app:build:production`        | `vx run app#build:production`                             |
 | `nx affected -t test`                | `vx run test --affected` (`nx()` takes `NX_BASE` or `defaultBase` as its base) |
 | `nx graph`                           | `vx run build --all --graph`                              |
-| `nx reset`                           | `vx cache prune`, or remove the cache directory `vx info` names; there is no daemon |
+| `nx reset`                           | `vx cache prune --older-than <age>` trims it; remove the cache directory `vx info` names to drop it all; there is no daemon |
 | Nx Cloud cache                       | [`nxCache()`](../ci/#remote-cache) for a self-hosted Nx cache |
 
 Generators, Nx Console and module-boundary rules have no vx equivalent;
