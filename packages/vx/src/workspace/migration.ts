@@ -365,6 +365,7 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
   } else if (empty) {
     report.push(
       `${verb}: no package.json scripts to turn into tasks.`,
+      ...(args.notes ?? []).map((n) => `note: ${n}`),
       hasWorkspaceFile
         ? `${workspaceName} already exists.`
         : dry
