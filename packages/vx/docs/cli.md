@@ -245,7 +245,9 @@ failed to spawn 'git' … Install git and re-run` — the same the input
   `main...feature`) is refused there too, naming the base to pass
   alone — `ranges are not supported — pass the base alone ("HEAD~1")`
   — because the other end is always the working tree. A ref that does
-  not exist is `git ref "<ref>" did not resolve`.
+  not exist is `git ref "<ref>" did not resolve`; in a shallow clone (CI's
+  one-commit checkout) it adds that the clone is shallow and how to fetch
+  the history (`git fetch --unshallow`, `fetch-depth: 0`).
 - A member whose directory is a symlink to a place elsewhere under the
   workspace root (`packages/b -> ../ext/b`) is selected by a change at
   that real place too: git names the files where they live, not by the
@@ -1774,6 +1776,9 @@ of its own; a hand-written one stays as written. The report says which;
 with nothing mapped it names the root whenever it has a script, a member
 or not (pnpm's root is not), and tells a root with no `"name"` to add one
 first (vuejs/core), naming the scripts that would then map (react, D-87). A single-package repo's root is its project and maps.
+A member whose package.json has no `name` is no project; one with a
+script is named in the report, to be given a name (remix's
+`packages/component/bench`, D-106).
 A member's script that runs another member's work (`pnpm -C ../pinia
 run build`, `yarn workspace <name>`, `-r` / `--filter`, a `cd` or `-C`
 / `--cwd` / `--prefix` into another member) keeps its command and gets a
