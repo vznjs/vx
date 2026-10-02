@@ -1164,25 +1164,29 @@ describe('turbo-map: envMode "loose"', () => {
   })
 })
 
-// Turbo 1 spells `outputLogs` `outputMode` (1.13.4 resolves it as the task's
-// log mode); read as an unknown key, `new-only` said "no vx equivalent —
-// map it manually" where `outputLogs: "new-only"` says nothing.
-describe("turbo-map: Turbo 1's outputMode", () => {
-  it('is outputLogs: new-only says nothing, another value names the run flag', async () => {
-    const todos = async (outputMode: unknown) =>
-      (await taskOf({ pipeline: { build: { outputMode } } }, { a: { scripts: { build: 'b' } } }))
-        .todos
-    expect([await todos('new-only'), await todos('errors-only')]).toEqual([
-      [],
-      [
-        'turbo key "outputMode" ("errors-only") is a per-run setting in vx — run with --output-logs errors-only',
-      ],
+// Turbo 1's default env mode, "infer", runs a task loose unless a
+// pass-through list applies (1.13.4 on dub and trigger.dev: every task
+// loose), so a `pipeline` repo's tasks read variables nobody declared and
+// vx passed none of them, saying nothing.
+describe("turbo-map: Turbo 1's inferred loose mode", () => {
+  it('names the tasks no pass-through list covers; a global list or Turbo 2 are strict', async () => {
+    const notes = async (cfg: Record<string, unknown>, envMode = '') => {
+      await writeFile(path.join(root, 'turbo.json'), JSON.stringify(cfg))
+      const m = await mapTurboWorkspace(root, [], { ...opts, envMode })
+      return m.notes.filter((n) => n.includes('loose'))
+    }
+    const pipeline = { build: {}, test: { passThroughEnv: [] }, lint: {} }
+    expect(await notes({ pipeline })).toEqual([
+      'Turbo 1 runs build, lint in loose env mode (no passThroughEnv, so its "infer" mode ' +
+        'passes every environment variable); vx passes only the declared ones — list what each ' +
+        'reads in exec.env.passThrough (or cache.inputs.env)',
     ])
-    const refused = await map({ pipeline: { build: { outputMode: 1 } } }, {}).then(
-      () => 'mapped',
-      (e: unknown) => String(e),
-    )
-    expect(refused).toBe('UserError: turbo.json: pipeline."build".outputMode must be a string')
+    expect([
+      await notes({ pipeline, globalPassThroughEnv: [] }),
+      await notes({ pipeline: { test: { passThroughEnv: ['X'] } } }),
+      await notes({ tasks: pipeline }),
+      await notes({ pipeline }, 'strict'),
+    ]).toEqual([[], [], [], []])
   })
 })
 
