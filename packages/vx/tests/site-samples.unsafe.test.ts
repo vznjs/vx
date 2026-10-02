@@ -137,20 +137,22 @@ describe('the plugins guide states the CacheLayer method count', () => {
 })
 
 // The environment-variables guide is the configure page's section now.
-describe('the lockfile pages say what Turborepo keys', () => {
-  // The post said "every monorepo tool folds the lockfile into every key" and
-  // parity.md "the global hash covers the lockfile"; Turbo 2.5.8's and 2.10.13's dry run,
-  // after an is-odd bump in package a, moved a#build alone and left b#build
-  // and the global external-dependency hash as they were (J-108).
-  it('the post names vx alone, and the parity row the per-package re-key', () => {
-    const post = readFileSync(path.join(DOCS, 'blog', 'lockfile-aware-keys.md'), 'utf8').replace(
+describe('CONTRIBUTING names what the gate runs on', () => {
+  // It said "Needs Bun ≥ 1.4 and git" and "No Node in the toolchain"; with no
+  // `node` on PATH every nx-exec row of @vzn/vx-migrate#test fails (J-107).
+  it('nx-exec.test.ts spawns node, and CONTRIBUTING names Node', () => {
+    const repo = path.resolve(import.meta.dir, '..', '..', '..')
+    const nxExec = readFileSync(
+      path.join(repo, 'packages', 'vx-migrate', 'tests', 'nx-exec.test.ts'),
+      'utf8',
+    )
+    expect(nxExec).toContain("Bun.spawn(['node', BIN, ...args]")
+    const contributing = readFileSync(path.join(repo, 'CONTRIBUTING.md'), 'utf8').replace(
       /\s+/g,
       ' ',
     )
-    expect(post).toContain('excerpt: "Out of the box vx folds the lockfile into every key')
-    expect(post).toContain('(Turborepo keys each package on the lockfile changes that reach it)')
-    const parity = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'parity.md'), 'utf8')
-    expect(parity).toContain('| a lockfile change re-keys the packages whose dependencies moved')
+    expect(contributing).toContain('Needs Bun ≥ 1.4, git and Node')
+    expect(contributing).not.toContain('No Node in the toolchain')
   })
 })
 
@@ -1668,5 +1670,21 @@ describe("the site's reapi samples on port 443 name a TLS scheme", () => {
     )
     expect(samples.length).toBeGreaterThan(3)
     expect(samples.filter((s) => !/: (grpcs|https):\/\//.test(s))).toEqual([])
+  })
+})
+describe('the lockfile pages say what Turborepo keys', () => {
+  // The post said "every monorepo tool folds the lockfile into every key" and
+  // parity.md "the global hash covers the lockfile"; Turbo 2.5.8's and 2.10.13's dry run,
+  // after an is-odd bump in package a, moved a#build alone and left b#build
+  // and the global external-dependency hash as they were (J-108).
+  it('the post names vx alone, and the parity row the per-package re-key', () => {
+    const post = readFileSync(path.join(DOCS, 'blog', 'lockfile-aware-keys.md'), 'utf8').replace(
+      /\s+/g,
+      ' ',
+    )
+    expect(post).toContain('excerpt: "Out of the box vx folds the lockfile into every key')
+    expect(post).toContain('(Turborepo keys each package on the lockfile changes that reach it)')
+    const parity = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'parity.md'), 'utf8')
+    expect(parity).toContain('| a lockfile change re-keys the packages whose dependencies moved')
   })
 })

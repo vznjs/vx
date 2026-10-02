@@ -96,6 +96,8 @@ export class Cache implements CacheLayer {
   hashFile(filePath: string): Promise<string>
   hashBytes(bytes: Uint8Array, nearPath: string): string
   hashFiles(paths: readonly string[]): Promise<Map<string, string>>
+  knownBlobSizes(oids: readonly string[]): Map<string, number>
+  rememberBlobSizes(sizes: ReadonlyMap<string, number>): void
   key(input: CacheKeyInput): Promise<string>
   async get(hash: string, _ctx?: CacheGetContext): Promise<CacheEntry | null>
   getIngested(hash: string): Promise<CacheEntry | null>
