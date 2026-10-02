@@ -80,7 +80,6 @@ with the directory to grant.
 
 - **`write /proc/self/uid_map: Operation not permitted`.** You are root in a container. Run as a normal user, or set `weakerWhenNested: true` on every sandboxed task.
 - **`File exists` from the task's own `mkdir`.** A write grant with no trailing slash is a file. Write `'coverage/'`.
-- **A file the task creates later is refused on Linux.** A glob is matched when the task starts. Grant its directory (`'dist/'`). A temp directory the tool makes and removes in the package (`.*.tmp/**`) needs only the glob: nothing written there is kept.
+- **A file the task creates later is refused on Linux** ("Read-only file system"). A glob with a file part (`*.log`, `gen/**/*.ts`) is matched when the task starts. Grant its directory (`'gen/'`; `'dist/**'` grants the directory too). A temp directory the tool makes and removes in the package (`.*.tmp/**`) needs only the glob: nothing written there is kept.
 - **`bun build --compile --target=…` fails on a fresh machine** ("Network error downloading executable", then "Failed to extract executable"). Bun fetches the target's runtime from npm into its cache. Grant `network: ['registry.npmjs.org']` and `write: ['~/.bun/install/cache/', '.*.tmp/**']`.
-- **On Linux a file made during the run is denied.** A glob expands when the task starts: grant its directory.
 - **`read packages/ui through packages/app/node_modules/@x/ui, and its key folds no task of @x/ui`.** The task imports a sibling its key never sees. Depend on a command task of it (`dependsOn: ['^source']`, or `^build`), or grant and key the files yourself.

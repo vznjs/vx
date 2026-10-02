@@ -375,6 +375,16 @@ function membersExample(manager: string | undefined): string {
   }
 }
 
+/**
+ * The hooks a package's build hides in when it has no `build` script:
+ * react-navigation's twelve packages build in `prepack: bob build`, their
+ * root's `build` (`lerna run prepack`) runs the members and is left out,
+ * and the repo mapped with no build at all.
+ */
+const LIFECYCLE_BUILD_HOOKS = ['prepack', 'prepublishOnly', 'prepublish', 'prepare']
+const BUILDER =
+  /(?:^|[\s;&|(])(?:bob build|tsc|tsup|tsdown|rollup|vite build|babel|unbuild|esbuild|webpack|microbundle|pkgroll|bunchee|preconstruct build)(?:\s|$)/
+
 /** The workspace flags that move a package manager off the package it runs in. */
 const ELSEWHERE_FLAG = /^(-r|--recursive|--filter|-F|--workspaces|-ws|--workspace)(=|$)/
 const DIR_FLAG = /^(-C|--dir|--cwd|--prefix)(?:=(.*))?$/
@@ -513,6 +523,7 @@ export function migrateScripts(
   // and maps.
   const root = metas.length > 1 ? workspaceRootOf(metas) : undefined
   const notes: string[] = []
+  const lifecycleBuilds: [string, string, string][] = []
   // The rest check the whole repo (`lint: oxlint .`, `test: vitest`):
   // `vx run lint` found no project in remix, wagmi or element-plus. Such a
   // script maps onto the root, when the root has a name (vx skips a
@@ -617,6 +628,12 @@ export function migrateScripts(
       return why === null ? [] : [[n, why] as const]
     })
     const names = runnable.filter((n) => taskNameProblem(n) === null)
+    if (meta !== rootMeta && !('build' in scripts)) {
+      const hook = LIFECYCLE_BUILD_HOOKS.find(
+        (h) => typeof scripts[h] === 'string' && BUILDER.test(scripts[h] as string),
+      )
+      if (hook !== undefined) lifecycleBuilds.push([meta.name, hook, scripts[hook] as string])
+    }
     if (runnable.length === 0) continue
     const hasBuild = names.includes('build')
     const has = (n: string): boolean => names.includes(n)
@@ -712,6 +729,13 @@ export function migrateScripts(
       const importLines = readsManifest ? [MANIFEST_IMPORT] : []
       projects.push({ name: meta.name, dir: meta.dir, importLines, tasks })
     }
+  }
+  if (lifecycleBuilds.length > 0) {
+    const [name, hook, command] = lifecycleBuilds[0]!
+    const more = lifecycleBuilds.length - 1
+    notes.push(
+      `${lifecycleBuilds.length === 1 ? 'a package builds' : `${lifecycleBuilds.length} packages build`} only in a lifecycle script (\`${hook}: ${command}\` in ${name}${more > 0 ? ` and ${more} more` : ''}), which the package manager runs on pack or install and vx never runs: add a \`build\` script running it and run \`vx init\` again`,
+    )
   }
   breakBuildCycles(projects, metas)
   pruneOrphanPersistentNotes(projects, PERSISTENT_TODO)
