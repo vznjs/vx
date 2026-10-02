@@ -1721,7 +1721,9 @@ a `--watch` flag, `tsc -w` / `rollup -w`, or nodemon (D-40), and a server:
 `serve <dir>`, `http-server`, bare `vite`, a tool's `dev` / `serve` /
 `start` / `preview` verb (`next start`, `netlify dev`), or a script that
 runs such a script of its package by name (`cross-env X=1 pnpm start`),
-outside quotes and not sent to the background with `&` (D-91). A
+outside quotes and not sent to the background with `&` (D-91), read past
+a launcher's `--package <name>` / `-p <name>` (`pnpm dlx --package
+netlify-cli netlify dev`, D-112). A
 script whose name no task may carry (`lint#fix`, `^up`; the schema's
 rule, item 1000) is left out with a TODO rather than written into a
 config every later command refuses, and a `__proto__` script is written
