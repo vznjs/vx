@@ -452,12 +452,6 @@
   with the same rule. `tag-secret-mask.test.ts`, both rows red without
   the fix.
 
-- L-46. `test(sandbox)`: a sandboxed task with no network grant reached
-  neither a listener on the host's loopback nor a unix socket outside
-  the workspace (probed: `socket(AF_UNIX)` is refused, loopback is the
-  task's own), and nothing pinned either. Row:
-  `sandbox-host-services.unsafe.test.ts`, with the host reaching both
-  as its control; red with the sandbox block removed.
 - L-39. `fix(orchestrator)`: an executor that throws has its message
   printed in the task's stream and by the scheduler. vx-reapi's carries
   the remote server's status text, which vx does not control: a server
