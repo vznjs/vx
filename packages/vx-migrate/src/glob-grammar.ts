@@ -11,11 +11,14 @@ const EXTGLOB = /([?@+*!])\(([^()]*)\)/g
  * `?(*.)+(spec|test).[jt]s?(x)`, excluded nothing (item 914):
  * - `[jt]` is the brace set `{j,t}`, plus the literal `[jt]` itself in a
  *   positive glob (a superset of inputs is safe; the route dir may be
- *   meant);
+ *   meant); a range within digits or one case of letters (`[a-c]`,
+ *   `[0-9]`) is its members;
+ * - a negated class (`[!a]`) is `?` in a positive glob, a superset;
  * - `?(a|b)` is `{a,b,}` and `@(a|b)` is `{a,b}`;
  * - `+(a|b)` and `*(a|b)` narrow to one repetition, which only a
  *   NEGATION may do — it then excludes fewer files, never more;
- * - a range or negated class, `!(…)`, or nesting is null.
+ * - any other range, a negated class in a negation, `!(…)`, or nesting is
+ *   null.
  */
 export function minimatchToVx(glob: string, negated: boolean): string | null {
   if (!/[[(]/.test(glob)) return glob
@@ -29,9 +32,32 @@ export function minimatchToVx(glob: string, negated: boolean): string | null {
   })
   if (out.includes('\0') || /[?@+*!]\(/.test(out)) return null
   out = out.replace(/\[([^\]]*)\]/g, (whole, body: string) => {
-    if (body === '' || /^[!^]/.test(body) || body.includes('-') || /[{},/]/.test(body)) return '\0'
-    const chars = [...new Set(body)]
+    if (body === '' || /[{},/]/.test(body)) return '\0'
+    if (/^[!^]/.test(body)) return negated || body.length === 1 ? '\0' : '?'
+    const chars = classMembers(body)
+    if (chars === null) return '\0'
     return negated ? `{${chars.join(',')}}` : `{${whole},${chars.join(',')}}`
   })
   return out.includes('\0') ? null : out
+}
+
+const RANGES = ['0123456789', 'abcdefghijklmnopqrstuvwxyz', 'ABCDEFGHIJKLMNOPQRSTUVWXYZ']
+
+/** A class body's characters, ranges spelled out; null for a range across kinds or backwards. */
+function classMembers(body: string): string[] | null {
+  const out = new Set<string>()
+  for (let i = 0; i < body.length; i++) {
+    const c = body[i]!
+    // A `-` first or last is itself, as in minimatch.
+    if (body[i + 1] === '-' && i + 2 < body.length) {
+      const end = body[i + 2]!
+      const kind = RANGES.find((r) => r.includes(c))
+      const from = kind?.indexOf(c) ?? -1
+      const to = kind?.indexOf(end) ?? -1
+      if (kind === undefined || to < from) return null
+      for (const m of kind.slice(from, to + 1)) out.add(m)
+      i += 2
+    } else out.add(c)
+  }
+  return [...out]
 }

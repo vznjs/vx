@@ -2868,6 +2868,27 @@ describe('deniedCalls (strace trace parsing)', () => {
     expect(deniedCalls(trace)).toEqual([])
   })
 
+  // strace writes a path as a C string: a quote, a backslash and a
+  // control byte escaped, a non-ASCII byte as octal. Read raw, `q"t.txt`
+  // stopped at `q\` and `é.txt` was named `\303\251.txt`, so neither the
+  // report nor an `ignore` pattern saw the file.
+  it('decodes the C-string escapes strace writes a path with', () => {
+    const trace = [
+      String.raw`1001 openat(AT_FDCWD, "/ws/\303\251.txt", O_RDONLY) = -1 ENOENT (No such file or directory)`,
+      String.raw`1001 openat(AT_FDCWD, "/ws/q\"t.txt", O_RDONLY) = -1 ENOENT (No such file or directory)`,
+      String.raw`1002 openat(AT_FDCWD, "/ws/b\\s\tt\n", O_RDONLY <unfinished ...>`,
+      '1002 <... openat resumed>)              = -1 EACCES (Permission denied)',
+      String.raw`1001 openat(AT_FDCWD, "/ws/\x41\0011", O_RDONLY) = -1 ENOENT (No such file or directory)`,
+      '',
+    ].join('\n')
+    expect(deniedCalls(trace).map((c) => c.rawPath)).toEqual([
+      '/ws/é.txt',
+      '/ws/q"t.txt',
+      '/ws/b\\s\tt\n',
+      '/ws/A\u00011',
+    ])
+  })
+
   it('never double-counts: a resume retires its pending entry', () => {
     // A second resume for the same pid has nothing pending, so a stray
     // resumed line cannot re-emit the previous path.
@@ -4630,6 +4651,42 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
       false,
       [true],
     ])
+  })
+
+  // SRT reads any Linux read path holding `[` as a glob, where a bracket
+  // opens a class: a Next.js route granted by its escaped name matched,
+  // was never mounted, and its denial went unreported (a listed grant),
+  // and a workspace under a bracketed directory was never walled.
+  const bracketed = async (ws: string) => {
+    const proj = path.join(ws, 'app')
+    await mkdir(path.join(proj, 'pages'), { recursive: true })
+    await mkdir(path.join(ws, 'other'))
+    await writeFile(path.join(proj, 'pages', '[id].tsx'), 'route')
+    await writeFile(path.join(ws, 'other', 'x.txt'), 'sibling')
+    return (command: string, read: string[]) =>
+      runSandboxed(
+        args(command, {
+          cwd: proj,
+          baseAllowRead: [],
+          baseDenyRead: [ws],
+          reportWithin: proj,
+          config: resolveSandboxConfig({ allow: { read } }, proj),
+        }),
+      )
+  }
+
+  it('mounts a granted path whose name holds a bracket', async () => {
+    const run = await bracketed(path.join(dir, 'ws'))
+    const route = await run("cat 'pages/[id].tsx'", ['pages/\\[id\\].tsx'])
+    expect([route.exitCode, route.stdout]).toEqual([0, 'route'])
+  })
+
+  // A grant under such a workspace does not resolve yet (vx's own scan
+  // reads the bracket too; ws-b.md lead 7), so the row pins the wall alone.
+  it('walls a workspace whose directory name holds a bracket', async () => {
+    const run = await bracketed(path.join(dir, '[ws]'))
+    const sibling = await run('cat ../other/x.txt', ['.'])
+    expect([sibling.exitCode === 0, sibling.stdout]).toEqual([false, ''])
   })
 
   it('a spawn that throws is exit 127 with the reason, not a rejection', async () => {

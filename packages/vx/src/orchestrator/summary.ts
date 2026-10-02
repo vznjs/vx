@@ -419,9 +419,12 @@ export function formatSkippedSection(outcomes: readonly TaskOutcome[]): string[]
     list.push(o.node.id)
     groups.set(cause, list)
   }
+  // "Blocked upstream" only when every skip was: a fail-fast skip had no
+  // blocker, and the header claimed one over its own cause line (C-55).
+  const blocked = skipped.every((o) => o.blockedBy !== undefined) ? ' \u2014 blocked upstream' : ''
   const lines = [
     '',
-    `  Skipped:  ${skipped.length} task${skipped.length === 1 ? '' : 's'} never started \u2014 blocked upstream`,
+    `  Skipped:  ${skipped.length} task${skipped.length === 1 ? '' : 's'} never started${blocked}`,
   ]
   const NAMES = 8
   for (const [cause, ids] of [...groups].sort((a, b) => b[1].length - a[1].length)) {

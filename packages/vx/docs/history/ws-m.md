@@ -213,6 +213,15 @@ bare `strace: `. Also proven: under `--seccomp-bpf` strace 6.8 implies
 false. Fixed: the key takes a path prefix; the fake prints `$0: `. Four
 retry rows red on the old key.
 
+M-19. Two teardown hooks on bun's 5 s default timed out in a local
+run of every test task beside four busy loops per core.
+`output-dirs.test.ts` › nothing over the cap: the row (30 s bound) makes
+8,193 directories and its afterEach removed them: 7.4 s and red under
+that load, 51 ms once the row removes them itself. `scale-graph.test.ts`:
+the afterAll's rm of the 2000-project tree took 4.2 s under load; it now
+has a bound matched to that work, as its beforeAll does. No other
+fixture of that size in the suites.
+
 ## Leads for other streams
 
 - A: A-20 let a same-project dependant restore ahead of a producer whose
