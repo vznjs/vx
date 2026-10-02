@@ -17,6 +17,7 @@ import {
   signalExitCode,
   streamToString,
   CAPTURE_HEAD_CHARS,
+  CAPTURE_TAIL_CHARS,
   withForwardArgs,
   RSS_FLOOR_SLACK_BYTES,
 } from '../src/exec/runner.js'
@@ -770,6 +771,33 @@ describe('streamToString', () => {
     })
     const got = await streamToString(stream)
     expect([got.length, got.slice(-4)]).toEqual([text.length, 'abcd'])
+  })
+
+  // The bounds count UTF-16 units, and a cut between the two halves of a
+  // character above U+FFFF left a lone surrogate on each side of the
+  // dropped-output line: the replay read U+FFFD where the emoji was.
+  it('never cuts a character in two at either bound', async () => {
+    const lone = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/
+    const read = (text: string) =>
+      streamToString(
+        new ReadableStream<Uint8Array>({
+          start(c) {
+            c.enqueue(new TextEncoder().encode(text))
+            c.close()
+          },
+        }),
+      )
+    // The head's bound falls inside the emoji; the tail's falls inside it.
+    const atHead = await read(
+      'a'.repeat(CAPTURE_HEAD_CHARS - 1) + '😀' + 'b'.repeat(CAPTURE_TAIL_CHARS + 10),
+    )
+    const atTail = await read(
+      'a'.repeat(CAPTURE_HEAD_CHARS) + '😀' + 'b'.repeat(CAPTURE_TAIL_CHARS - 1),
+    )
+    expect([atHead, atTail].map((t) => [lone.test(t), t.includes('of output not kept')])).toEqual([
+      [false, true],
+      [false, true],
+    ])
   })
 
   it('reads nothing from an inherited fd or no stream', async () => {

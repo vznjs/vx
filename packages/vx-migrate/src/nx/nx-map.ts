@@ -40,7 +40,7 @@ import {
   type DotenvListing,
   existingDotenv,
   listDotenv,
-  nonAtomizedTargetOf,
+  ownerTargetOf,
 } from './nx-dotenv.js'
 import { emptyNxInputs, expandNxInputs } from './nx-inputs.js'
 import { planNxUpstream, type NxUpstream } from './nx-upstream.js'
@@ -314,16 +314,12 @@ export async function mapNxWorkspace(
       l: DotenvListing,
       targetName: string,
       configuration: string | undefined,
-    ): string[] =>
-      existingDotenv(
-        dotenvCandidates(
-          projectRel,
-          targetName,
-          configuration,
-          nonAtomizedTargetOf(targetName, targets, node?.data?.metadata?.targetGroups),
-        ),
-        l,
-      ).map((f) => relPosix(projectRel, f))
+    ): string[] => {
+      const [owner, parent] = ownerTargetOf(targetName, targets, node?.data?.metadata?.targetGroups)
+      return existingDotenv(dotenvCandidates(projectRel, owner, configuration, parent), l).map(
+        (f) => relPosix(projectRel, f),
+      )
+    }
     for (const [targetName, target] of Object.entries(targets)) {
       for (const v of variants(targetName, target)) {
         const t = buildTask(
@@ -637,6 +633,7 @@ function buildTask(
     variant.name === targetName
       ? undefined
       : { node: nodeName, configuration: variant.configuration! },
+    options,
   )
 
   // Nx's rule, not a guess: a target is cached when it says `cache: true`

@@ -13,7 +13,7 @@ steps with `&&`). `dependsOn` says what finishes first.
 
 ```ts
 // packages/app/vx.config.ts
-import { defineProject } from '@vzn/vx'
+import { defineProject } from '@vzn/vx/config'
 
 export default defineProject({
   tasks: {
@@ -80,7 +80,7 @@ input only while the two lists match.
 
 ```ts
 // packages/app/vx.config.ts
-import { defineProject } from '@vzn/vx'
+import { defineProject } from '@vzn/vx/config'
 
 export default defineProject({
   tasks: {
@@ -176,7 +176,7 @@ prints a line matching `readyWhen`; if none comes, `exec.timeout` fails it.
 
 ```ts
 // packages/web/vx.config.ts
-import { defineProject } from '@vzn/vx'
+import { defineProject } from '@vzn/vx/config'
 
 export default defineProject({
   tasks: {
@@ -207,7 +207,7 @@ it, vx runs and caches on this machine.
 
 ```ts
 // vx.workspace.ts
-import { defineWorkspace } from '@vzn/vx'
+import { defineWorkspace } from '@vzn/vx/config'
 import { reapi } from '@vzn/vx-reapi'
 
 export default defineWorkspace({
@@ -240,7 +240,7 @@ each package is keyed on its own dependencies, and `--affected` follows.
 
 ```ts
 // vx.workspace.ts
-import { defineWorkspace } from '@vzn/vx'
+import { defineWorkspace } from '@vzn/vx/config'
 import { pnpm } from '@vzn/vx-lockfile' // or bun, npm, yarn
 
 export default defineWorkspace({

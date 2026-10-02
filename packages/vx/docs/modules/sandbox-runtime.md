@@ -378,7 +378,10 @@ an undeclared path, catch the `ENOENT`, and keep running): the denial is
 reported as a violation even though the task exited 0. Trace parsing
 pairs `<unfinished ...>` with its `<... resumed>` line, so a denial in a
 forked child is reported too — a single-line match dropped those, which
-made the violation list incomplete under concurrency. Without `strace`
+made the violation list incomplete under concurrency. A path is
+strace's C string, decoded: read raw, `q"t.txt` was cut at `q\` and
+`é.txt` named `\303\251.txt`, so the report and every `ignore` pattern
+missed the file (B-54). Without `strace`
 on PATH, or one whose `--version` fails, the sandbox still ENFORCES; only
 the structured list is lost, and that is said once on stderr (B-51):
 before, a task that tolerated the miss passed and cached with no word.
@@ -409,6 +412,15 @@ no grant holds the cwd (`cwdMounted`: one at or above it, an existing one
 below it, or a deny that is the cwd), vx denies the cwd too: the task
 enters an empty directory, its reads there are refused and reported, and
 its writes are the scratch the write observer reports (B-53).
+
+SRT reads any Linux read path holding `[` as a glob, where a bracket
+opens a class. By the time vx hands the policy over, every grant is a
+path, so it spells each `[` in a read or deny path as `[[]`, a class of
+one bracket (`literalReadPaths`): a route granted as
+`pages/\[id\].tsx` matched and was never mounted (its denial unreported,
+a listed grant), and a workspace under a bracketed directory was never
+walled (B-57). A write path holding a bracket SRT drops, with no spelling
+that keeps it.
 
 SRT's in-sandbox network bridge is `socat TCP-LISTEN:3128` (and 1080),
 which socat 1.8 opens as an IPv6 socket. On a host without IPv6 it

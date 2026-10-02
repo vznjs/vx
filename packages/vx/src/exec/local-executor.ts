@@ -4,7 +4,7 @@
 // plugin claims the task, so it sits at the TAIL of every executor list
 // (owner, 2026-09-05). An executor plugin places work ELSEWHERE; its
 // absence is "here".
-import { runCommand } from './runner.js'
+import { runCommand, signalExitCode } from './runner.js'
 import { runSandboxed } from './sandbox-runtime.js'
 import type { TaskExecutor } from './executor.js'
 
@@ -24,6 +24,16 @@ export function localExecutor(): TaskExecutor {
   const executor: TaskExecutor = {
     name: 'local',
     async execute(req) {
+      // A stop that landed before the spawn (during the output clean, the
+      // request's build) leaves nothing to kill yet: a command spawned now
+      // runs after the teardown swept the run's children, and held the run
+      // to the signal's bound.
+      if (req.signal?.aborted === true) {
+        const reason: unknown = req.signal.reason
+        const signal = reason === 'SIGINT' || reason === 'SIGHUP' ? reason : 'SIGTERM'
+        const exitCode = signalExitCode(signal)
+        return { exitCode, durationMs: 0, stdout: '', stderr: '', signal, violations: [] }
+      }
       const common = {
         command: req.command,
         cwd: req.cwd,

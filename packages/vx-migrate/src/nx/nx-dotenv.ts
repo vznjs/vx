@@ -54,23 +54,27 @@ export function dotenvCandidates(
 }
 
 /**
- * An atomized target (`e2e-ci--src/a.cy.ts`) loads its parent's files too:
- * Nx finds the parent through the project's `targetGroups`.
+ * The target and parent whose names a task's `.env` files carry, as Nx's
+ * `getOwnerTargetForTask` finds them: the first member of the task's
+ * `targetGroups` group that has a `nonAtomizedTarget`, with that parent.
+ * An atomized `e2e-ci--src/a.cy.ts` loads `.env.e2e-ci` and `.env.e2e`
+ * (cypress puts the metadata on `e2e-ci`); read as its own name and the
+ * metadata of the task itself, it loaded neither.
  */
-export function nonAtomizedTargetOf(
+export function ownerTargetOf(
   target: string,
   targets: Readonly<Record<string, TargetMeta>>,
   targetGroups: unknown,
-): string | undefined {
-  if (typeof targetGroups !== 'object' || targetGroups === null) return undefined
+): readonly [string, string | undefined] {
+  if (typeof targetGroups !== 'object' || targetGroups === null) return [target, undefined]
   for (const group of Object.values(targetGroups as Record<string, unknown>)) {
     if (!Array.isArray(group) || !group.includes(target)) continue
     for (const t of group) {
       const parent = typeof t === 'string' ? targets[t]?.metadata?.nonAtomizedTarget : undefined
-      if (typeof parent === 'string' && parent.length > 0) return parent
+      if (typeof parent === 'string' && parent.length > 0) return [t as string, parent]
     }
   }
-  return undefined
+  return [target, undefined]
 }
 
 /** Could `name` be one of Nx's `.env` variants? */
