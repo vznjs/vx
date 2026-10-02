@@ -1032,27 +1032,67 @@ function refuseOneAlternativeBrace(
   }
 }
 
-async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
+/** What a `files` declaration and its task's outputs compile to, whatever the project. */
+interface FilesPlan {
+  positive: string[]
+  negative: string[]
+  excludeGlobs: Bun.Glob[]
+  ownOutput: (rel: string) => boolean
+  positiveGlobs: Bun.Glob[]
+  /** The literal entries, each naming one path (see `unmatchedLiterals`). */
+  literals: string[]
+}
+
+/**
+ * Compiled once per declaration for the life of the process: a workspace
+ * declares a handful of `files` lists over thousands of tasks, and
+ * splitting, normalizing and compiling them per task was ~6 ms of a
+ * 1,000-task warm run (I-29). A refused declaration is never stored, so it
+ * throws for every task that carries it.
+ */
+const filesPlans = new Map<string, FilesPlan | null>()
+
+function filesPlan(
+  files: readonly string[] | undefined,
+  ownOutputs: readonly string[],
+): FilesPlan | null {
+  const key = JSON.stringify([files ?? null, ownOutputs])
+  const memo = filesPlans.get(key)
+  if (memo !== undefined) return memo
   const positive: string[] = []
   const negative: string[] = []
-
-  if (args.files === undefined) {
+  if (files === undefined) {
     positive.push(...DEFAULT_FILE_GLOBS)
   } else {
-    refuseOneAlternativeBrace(args.files, 'files')
-    for (const entry of args.files) {
+    refuseOneAlternativeBrace(files, 'files')
+    for (const entry of files) {
       if (entry.startsWith('!')) negative.push(entry.slice(1))
       else positive.push(entry)
     }
   }
+  const plan =
+    positive.length === 0
+      ? null
+      : {
+          positive,
+          negative,
+          excludeGlobs: [...ALWAYS_IGNORE, ...asTrees(negative)].map(globFor),
+          // A path the task's own outputs take back with `!` is no output, so it
+          // stays an input: a tracked file under `dist` the build reads (A-44).
+          ownOutput: outputMatcher(ownOutputs, globFor),
+          positiveGlobs: asTrees(positive).map(globFor),
+          literals: positive.map(normalizeGlob).filter(isLiteralPattern).map(stripTrailingSlash),
+        }
+  filesPlans.set(key, plan)
+  return plan
+}
 
-  if (positive.length === 0) return []
+async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
+  const plan = filesPlan(args.files, args.ownOutputs)
+  if (plan === null) return []
+  const { positive, negative, excludeGlobs, ownOutput, positiveGlobs } = plan
 
   const nested = inNestedProject(args.projectDir, args.nestedProjectDirs)
-  const excludeGlobs = [...ALWAYS_IGNORE, ...asTrees(negative)].map(globFor)
-  // A path the task's own outputs take back with `!` is no output, so it
-  // stays an input: a tracked file under `dist` the build reads (A-44).
-  const ownOutput = outputMatcher(args.ownOutputs, globFor)
 
   // Defer to git for the file set (Turbo / Nx parity). Nested .gitignore
   // files, .git/info/exclude, and global excludes all participate
@@ -1062,7 +1102,6 @@ async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
   // per task (build + test + lint + …). Spawning git N times for the
   // same project per run is wasteful; we cache the result for the
   // duration of one orchestrator run.
-  const positiveGlobs = asTrees(positive).map(globFor)
   // Everything below the snapshot that decides the result: the project, what
   // it declares, what it excludes as its own outputs, and the boundaries.
   const memoKey = `${args.projectDir}\0${positive.join('\u0001')}\0${negative.join('\u0001')}\0${args.ownOutputs.join('\u0001')}\0${args.nestedProjectDirs.join('\u0001')}`
@@ -1102,9 +1141,7 @@ async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
   // an artifact built from an older version of a file the config explicitly
   // claims as an input. See the refusal below for why this is not simply
   // honoured instead.
-  const unmatchedLiterals = new Set(
-    positive.map(normalizeGlob).filter(isLiteralPattern).map(stripTrailingSlash),
-  )
+  const unmatchedLiterals = new Set(plan.literals)
   // First pass: glob-filter to candidate absolute paths (no I/O). Git
   // prints normalized relative paths, so under an absolute, normalized
   // project dir a join is a concatenation: `path.resolve` per file was

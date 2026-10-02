@@ -774,11 +774,31 @@ export async function mapTurboWorkspace(
   // Loose mode hands every task the whole environment; vx's is isolated,
   // so a task that reads an undeclared variable ran without it, and said
   // nothing (a build baking a URL from the env built without one).
-  if ((opts.envMode || (rootCfg.global?.envMode ?? rootCfg.envMode)) === 'loose') {
+  const envMode = opts.envMode || (rootCfg.global?.envMode ?? rootCfg.envMode)
+  if (envMode === 'loose') {
     notes.push(
       'envMode "loose": Turbo passes every environment variable to every task; vx passes only ' +
         'the declared ones — list what each task reads in exec.env.passThrough (or cache.inputs.env)',
     )
+  } else if (
+    !envMode &&
+    rootCfg.tasks === undefined &&
+    rootCfg.pipeline !== undefined &&
+    !('globalPassThroughEnv' in rootCfg)
+  ) {
+    // Turbo 1's default mode, "infer", runs a task loose unless a
+    // pass-through list applies to it (probed on 1.13.4: dub's and
+    // trigger.dev's every task), so it read variables nobody declared.
+    const loose = Object.entries(rootTasks)
+      .filter(([, def]) => def?.passThroughEnv === undefined)
+      .map(([name]) => name)
+    if (loose.length > 0) {
+      notes.push(
+        `Turbo 1 runs ${loose.join(', ')} in loose env mode (no passThroughEnv, so its "infer" ` +
+          'mode passes every environment variable); vx passes only the declared ones — list what ' +
+          'each reads in exec.env.passThrough (or cache.inputs.env)',
+      )
+    }
   }
   // A wildcard names no one variable: core refuses it, and in a global
   // list that refusal failed every task of the run (item 937). Reported

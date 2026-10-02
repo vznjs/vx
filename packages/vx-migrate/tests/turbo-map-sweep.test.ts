@@ -1164,6 +1164,32 @@ describe('turbo-map: envMode "loose"', () => {
   })
 })
 
+// Turbo 1's default env mode, "infer", runs a task loose unless a
+// pass-through list applies (1.13.4 on dub and trigger.dev: every task
+// loose), so a `pipeline` repo's tasks read variables nobody declared and
+// vx passed none of them, saying nothing.
+describe("turbo-map: Turbo 1's inferred loose mode", () => {
+  it('names the tasks no pass-through list covers; a global list or Turbo 2 are strict', async () => {
+    const notes = async (cfg: Record<string, unknown>, envMode = '') => {
+      await writeFile(path.join(root, 'turbo.json'), JSON.stringify(cfg))
+      const m = await mapTurboWorkspace(root, [], { ...opts, envMode })
+      return m.notes.filter((n) => n.includes('loose'))
+    }
+    const pipeline = { build: {}, test: { passThroughEnv: [] }, lint: {} }
+    expect(await notes({ pipeline })).toEqual([
+      'Turbo 1 runs build, lint in loose env mode (no passThroughEnv, so its "infer" mode ' +
+        'passes every environment variable); vx passes only the declared ones — list what each ' +
+        'reads in exec.env.passThrough (or cache.inputs.env)',
+    ])
+    expect([
+      await notes({ pipeline, globalPassThroughEnv: [] }),
+      await notes({ pipeline: { test: { passThroughEnv: ['X'] } } }),
+      await notes({ tasks: pipeline }),
+      await notes({ pipeline }, 'strict'),
+    ]).toEqual([[], [], [], []])
+  })
+})
+
 describe('turbo-map: a field of the wrong type is refused by name (L-15)', () => {
   // Fuzzed: `"dependsOn": true` printed `TypeError: true is not iterable`
   // with its stack from `bunx @vzn/vx-migrate`; fifteen such shapes each
