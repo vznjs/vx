@@ -848,14 +848,16 @@ async function runOnBus(
     // server that never became ready sat on the others for good, so a
     // script hung, and the Ctrl-C that ended it read 130 over the failure
     // (C-60). A kept server's own crash ends the wait below as before, and
-    // `--continue=always` asked to keep going, and does.
+    // `--continue=always` asked to keep going, and does. The watch loop
+    // (`holdPersistent`) still holds: a failing test in a cycle stopped
+    // the dev server the next change would restart anyway.
     let keepAlive = selectKeepAlive(persistentRegistry, nodes, foreground || hold)
     const failedElsewhere =
       ![...outcomes.values()].every((o) => isPassStatus(o.status)) ||
       [...persistentRegistry.values()].some(
         (c) => hasEnded(c) && c.exitCode !== 0 && !keepAlive.children.includes(c),
       )
-    if (failedElsewhere && options.continueMode !== 'always')
+    if (failedElsewhere && !hold && options.continueMode !== 'always')
       keepAlive = { nodes: [], children: [] }
     const crashedPersistent = (
       await shutdownPersistent(persistentRegistry, keepAlive.children)

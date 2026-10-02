@@ -871,12 +871,15 @@ dependency-only server that crashed, or any task failed) still held its
 healthy servers: a script's `vx run dev` hung for good, and the Ctrl-C
 that ended it read 130 over the failure. A run with a failure elsewhere
 now stops its servers and exits 1; a kept server's own crash ends the
-wait as before; `--continue=always` holds as before. Rows
+wait as before; `--continue=always` holds as before, and so does the
+watch loop (`holdPersistent`), whose next change restarts the server
+anyway (`held-persistent.test.ts`, red without that exception). Rows
 (`keep-alive.test.ts`): a server never ready and a dependency-only crash
 each exit 1 with the healthy server dead (both hang without the fix,
 the crash row with its clause removed), and the `--continue=always`
 control holds (red with that exception removed). `cli.md` and
 `execution.md` say so.
+
 ## C-57: a server watch holds keeps printing while watch idles
 
 `vx watch dev` showed its server's log only until the cycle's run
