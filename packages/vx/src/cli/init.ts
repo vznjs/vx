@@ -193,7 +193,7 @@ async function adopt(
           ? ''
           : `${cache}(): ${remote}, so vx shares that remote cache (inert where the variable is unset).\n`
   process.stdout.write(
-    `vx init: ${source} found — ${runner}() from @vzn/vx-migrate runs this repo as it is; nothing else written.\n` +
+    `vx init: ${source} found — ${runner}() from @vzn/vx-migrate, a temporary start until bunx @vzn/vx-migrate writes native config; nothing else written.\n` +
       `${wrote}\n${cacheLine}\nnext: ${adoptionNext(root, runner, source)}\n`,
   )
   return 0

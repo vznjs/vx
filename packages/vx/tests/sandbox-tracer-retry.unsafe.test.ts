@@ -70,7 +70,9 @@ describe.skipIf(!available || process.platform !== 'linux' || realStrace === nul
       await rm(dir, { recursive: true, force: true })
     })
 
-    const run = (command: string, timeoutMs?: number, signal?: AbortSignal) => {
+    // `stop`, when given, is aborted as the first attempt's stderr streams:
+    // a request aborted before its spawn runs nothing at all (B-72).
+    const run = (command: string, timeoutMs?: number, stop?: AbortController) => {
       let streamed = ''
       return runSandboxed({
         command,
@@ -82,9 +84,12 @@ describe.skipIf(!available || process.platform !== 'linux' || realStrace === nul
         reportLinked: [],
         // The fake runs inside the sandbox, where strace now runs (B-11).
         config: resolveSandboxConfig({ allow: { write: ['count'] } }, dir),
-        onStderr: (s) => void (streamed += s),
+        onStderr: (s) => {
+          streamed += s
+          stop?.abort()
+        },
         ...(timeoutMs === undefined ? {} : { timeoutMs }),
-        ...(signal === undefined ? {} : { signal }),
+        ...(stop === undefined ? {} : { signal: stop.signal }),
       }).then(async (r) => ({
         exitCode: r.exitCode,
         stdout: r.stdout,
@@ -135,9 +140,7 @@ describe.skipIf(!available || process.platform !== 'linux' || realStrace === nul
     // A stopping run has killed the children it holds; a retry would spawn
     // one after that kill, which nothing stops.
     it('a task whose run is stopping is not run again, whatever strace said', async () => {
-      const stop = new AbortController()
-      stop.abort()
-      const r = await run('echo ran', undefined, stop.signal)
+      const r = await run('echo ran', undefined, new AbortController())
       expect([r.stdout, r.streamed, r.calls]).toEqual([
         'ran\n',
         `${dir}/bin/strace: ptrace(PTRACE_LISTEN,pid:1,sig:0): Input/output error\n`,

@@ -124,6 +124,36 @@ describe('createEventBus', () => {
     bus.emit({ kind: 'run:end' })
     expect(kept).toEqual(['run:end'])
   })
+
+  it('a subscriber that leaves during an emit does not take the event from the next', () => {
+    // An embedder's `off()` on `run:end`, subscribed before the terminal
+    // renderer: the in-place splice shifted the renderer into the slot the
+    // walk had passed, and it never heard `run:end` (C-77).
+    const bus = createEventBus()
+    const heard: string[] = []
+    const off = bus.subscribe((e) => {
+      heard.push(`a:${e.kind}`)
+      if (e.kind === 'run:end') off()
+    })
+    bus.subscribe((e) => heard.push(`b:${e.kind}`))
+    bus.emit({ kind: 'run:end' })
+    bus.emit({ kind: 'run:end' })
+    expect(heard).toEqual(['a:run:end', 'b:run:end', 'b:run:end'])
+  })
+
+  it('a subscriber added during an emit hears the next event, not this one', () => {
+    const bus = createEventBus()
+    const heard: string[] = []
+    let added = false
+    bus.subscribe(() => {
+      if (added) return
+      added = true
+      bus.subscribe((e) => heard.push(e.kind))
+    })
+    bus.emit({ kind: 'run:start', info: { total: 1 } })
+    bus.emit({ kind: 'run:end' })
+    expect(heard).toEqual(['run:end'])
+  })
 })
 
 describe('busLogger + terminalSubscriber', () => {

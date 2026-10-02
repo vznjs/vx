@@ -493,11 +493,22 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // The local executor keeps its own timer (it signals the process group).
   let timeoutTimer: ReturnType<typeof setTimeout> | undefined
   let timeoutFired = false
+  // The attempt's listener on the run's stop signal, taken off once the
+  // attempt settles. Left on, every task of the run added one: the list
+  // grew to the task count, and each add scans it for a duplicate, ~100 ms
+  // of a 1,000-task cold run.
+  let unlistenStop: (() => void) | undefined
   function requestSignal(): AbortSignal {
     const stop = new AbortController()
     const abort = (): void => stop.abort(args.stopSignal?.reason)
+    unlistenStop?.()
+    unlistenStop = undefined
     if (args.stopSignal?.aborted === true) abort()
-    else args.stopSignal?.addEventListener('abort', abort, { once: true })
+    else if (args.stopSignal !== undefined) {
+      const run = args.stopSignal
+      run.addEventListener('abort', abort, { once: true })
+      unlistenStop = () => run.removeEventListener('abort', abort)
+    }
     if (effectiveTimeout !== undefined) {
       clearTimeout(timeoutTimer)
       timeoutFired = false
@@ -801,6 +812,8 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       })
       .finally(() => {
         clearTimeout(timeoutTimer)
+        unlistenStop?.()
+        unlistenStop = undefined
         flushMasked()
       })
     endExec()
