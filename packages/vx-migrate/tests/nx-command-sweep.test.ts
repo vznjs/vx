@@ -11,6 +11,10 @@ function line(options: Record<string, unknown>, ctx = CTX) {
   return { out, todos }
 }
 
+/** A line at the workspace root, run with no arguments: what it prints. */
+const ROOT = { projectRel: '', projectName: 'a' }
+const printed = (command: string) => Bun.spawnSync(['sh', '-c', command]).stdout.toString()
+
 /** The line's body for one command that takes no arguments. */
 const one = (text: string) => `nx_run_commands() { (${text}); }; cd ../.. && nx_run_commands`
 
@@ -65,34 +69,34 @@ describe('the --name=value Nx appends, quoted as Nx quotes it', () => {
 
 describe('the `args` option as yargs-parser reads it, through {args.name}', () => {
   const filled = (template: string, args: string, extra: Record<string, unknown> = {}) =>
-    line({ command: `echo ${template}`, args, ...extra }).out?.command
+    printed(line({ command: `echo ${template}`, args, ...extra }, ROOT).out!.command)
 
   it('a number with a leading zero stays a string; an exponent is a number', () => {
-    expect(filled('{args.n}-{args.e}', '--n=007 --e=1e3')).toBe(one('echo 007-1000'))
+    expect(filled('{args.n}-{args.e}', '--n=007 --e=1e3')).toBe('007-1000\n')
   })
 
   it('a kebab-case name is also its camel-case name', () => {
-    expect(filled('{args.outDir}', '--out-dir=dist')).toBe(one('echo dist'))
+    expect(filled('{args.outDir}', '--out-dir=dist')).toBe('dist\n')
   })
 
   it('a repeated name collects its values, joined with a comma', () => {
-    expect(filled('{args.t}', '--t=a --t=b --t=c')).toBe(one('echo a,b,c'))
+    expect(filled('{args.t}', '--t=a --t=b --t=c')).toBe('a,b,c\n')
   })
 
   it('a dotted name is not set', () => {
-    expect(filled('{args.a.b}', '--a.b=1')).toBe(one('echo '))
+    expect(filled('{args.a.b}', '--a.b=1')).toBe('\n')
   })
 
   it('--no-name is the name set false', () => {
-    expect(filled('{args.watch}', '--no-watch')).toBe(one('echo false'))
+    expect(filled('{args.watch}', '--no-watch')).toBe('false\n')
   })
 
   it('a flag followed by another flag is true, not the next token', () => {
-    expect(filled('{args.dry}', '--dry --tag=x')).toBe(one('echo true'))
+    expect(filled('{args.dry}', '--dry --tag=x')).toBe('true\n')
   })
 
   it('an object option fills as [object Object], whatever keys it holds', () => {
-    expect(filled('{args.o}', '', { o: { toString: 'x' } })).toBe(one('echo [object Object]'))
+    expect(filled('{args.o}', '', { o: { toString: 'x' } })).toBe('[object Object]\n')
   })
 })
 
@@ -137,13 +141,17 @@ describe('what the line does not reproduce, and what it does', () => {
   })
 
   it('an `args` array is its words joined with spaces, parsed as one string', () => {
-    expect(line({ command: 'echo {args.a}{args.b}', args: ['--a=1', '--b=2'] }).out?.command).toBe(
-      one('echo 12'),
-    )
+    expect(
+      printed(
+        line({ command: 'echo {args.a}{args.b}', args: ['--a=1', '--b=2'] }, ROOT).out!.command,
+      ),
+    ).toBe('12\n')
   })
 
   it('an `args` string wrapped in double quotes is read without them', () => {
-    expect(line({ command: 'echo {args.tag}', args: '"--tag=x"' }).out?.command).toBe(one('echo x'))
+    expect(
+      printed(line({ command: 'echo {args.tag}', args: '"--tag=x"' }, ROOT).out!.command),
+    ).toBe('x\n')
   })
 })
 

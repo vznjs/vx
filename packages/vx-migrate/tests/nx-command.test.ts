@@ -255,16 +255,17 @@ describe('arguments as Nx builds them (nx#12165)', () => {
         `nx_run_commands() { (nx_u=; nx_opt region "$@" || nx_u="$nx_u"'--region=eu '; ` +
         `eval 'deploy '"$nx_u"'"$@" --tag=x'' --yes'); }; cd ../.. && nx_run_commands`,
     )
-    const dotted = line({
-      command: 'echo {args.region}-{args.tag}-{args.missing}',
-      region: 'eu',
-      args: '--tag x',
-    })
-    expect(dotted.out?.command).toBe(
-      'nx_run_commands() { (echo eu-x-); }; cd ../.. && nx_run_commands',
+    // A value passed after `vx run … --` wins, as `nx run`'s does.
+    const dotted = line(
+      { command: 'echo {args.region}-{args.tag}-{args.missing}', region: 'eu', args: '--tag x' },
+      { projectRel: '', projectName: 'r' },
     )
-    expect(dotted.todos).toEqual([
-      '`{args.*}` is filled from the target’s options — a value passed after `vx run … --` does not reach it',
+    const run = (args: string) =>
+      Bun.spawnSync(['sh', '-c', `${dotted.out!.command} ${args}`]).stdout.toString()
+    expect([run(''), run('--region=us --tag a --tag b'), dotted.todos]).toEqual([
+      'eu-x-\n',
+      'us-a,b-\n',
+      [],
     ])
   })
 

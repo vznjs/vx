@@ -1971,7 +1971,8 @@ reads: description, command (`(group)` for group tasks), `dependsOn`,
 `sandbox`, `persistent`, and the cache block
 (`inputs.files` / `.workspaceFiles` / `.env` / `.tasks` / `.runtime` /
 `.workspaceRuntime`, `outputs.files` / `.workspaceFiles`). Fields the
-task does not set are not printed. `--format json` emits `{ name, dir,
+task does not set are not printed; a value that spans lines (a
+multi-line command) continues under its first line. `--format json` emits `{ name, dir,
 config }` with the config exactly as resolved. `vx show <pkg>#<task>`
 narrows to one task (`{ name, dir, task, config }` in JSON). A bare
 name that is no project is a task: `vx show build` prints the block
@@ -2038,7 +2039,7 @@ plugins:          2 — @vzn/vx-reapi (executor, cache); @vzn/vx-otel (telemetry
 workers:          2 — cgroup CPU quota 2 of 8 cores
 memory:           13 GB usable — cgroup limit; the machine has 16 GB
 cache dir:        /work/repo/.vx/cache
-cache versions:   keys vx-cache-v38 · index schema v28
+cache versions:   keys vx-cache-v39 · index schema v28
 cache entries:    42 (1.3 GB)
 orphans:          3 artifacts (12 MB) the index does not know — `vx cache prune` reaps them
 task runs (24h):  7 (5 cache hits)

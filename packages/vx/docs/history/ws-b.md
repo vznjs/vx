@@ -1124,3 +1124,31 @@ without the fix). A clone with `CLONE_FS` (every thread) shares its
 creator's cwd rather than copying it, so a `chdir` by either moves both
 (libuv's pool after `process.chdir`): deniedCalls › moves a thread with
 the process whose cwd it shares (red with the flag ignored).
+
+B-63. `cwdMounted`'s guard for a cwd the deny list already held (a
+single-package workspace, whose cwd is its anchor) held nothing: with it
+removed, such a task runs in its cwd and its read is reported exactly as
+with it (probed), since the runtime takes the second deny entry as the
+same mount. Removed. The module page no longer says strace stops only
+on `openat` (B-61 added the cwd calls).
+
+Also measured, nothing to cut: 200 no-cache `true` tasks, unsandboxed,
+`--concurrency 1`, take 422–550 ms in vx (2.1–2.7 ms a task, five runs),
+and a bare `Bun.spawn` loop of the same `sh -c 'exec true'` with both
+pipes read takes 2.4–2.8 ms a spawn. The unsandboxed path is at the
+spawn floor; B-50's ranking of the miss path stands.
+
+B-64. A strace that cannot check the seccomp filter's order says
+`strace: check_seccomp_order_tracer: #0: unexpected exit status 1` and
+traces on without the filter, exit 0. The detection's probe read only the
+exit and chose the fast form; inside the sandbox the same line matched
+the tracer-retry key, so every sandboxed task ran twice (found running vx
+under an outer `strace`: a task appending to a file appended twice). The
+probe now refuses a strace that speaks with exit 0; for the seccomp form
+it then probes the plain form and uses it when quiet, else tasks run
+untraced with the once-said warning. Rows:
+`sandbox-tracer-retry.unsafe.test.ts` › a strace that warns at start and
+traces on › is used in the plain form, and the task runs once (red
+without the fix: two runs and the retry line), and › is not used when
+the plain form speaks too (the fallback disabled reddens the first, the
+warning ignored reddens both).
