@@ -1130,3 +1130,10 @@ without the fix). A clone with `CLONE_FS` (every thread) shares its
 creator's cwd rather than copying it, so a `chdir` by either moves both
 (libuv's pool after `process.chdir`): deniedCalls › moves a thread with
 the process whose cwd it shares (red with the flag ignored).
+
+B-63. `cwdMounted`'s guard for a cwd the deny list already held (a
+single-package workspace, whose cwd is its anchor) held nothing: with it
+removed, such a task runs in its cwd and its read is reported exactly as
+with it (probed), since the runtime takes the second deny entry as the
+same mount. Removed. The module page no longer says strace stops only
+on `openat` (B-61 added the cwd calls).
