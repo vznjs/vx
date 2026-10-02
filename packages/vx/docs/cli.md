@@ -246,7 +246,8 @@ failed to spawn 'git' … Install git and re-run` — the same the input
   alone — `ranges are not supported — pass the base alone ("HEAD~1")`
   — because the other end is always the working tree; `<base>...HEAD`,
   Turbo's CI spelling, is read as `<base>`, since vx diffs from the merge
-  base to a working tree that holds HEAD (D-117). A ref that does
+  base to a working tree that holds HEAD (D-117). Its two-dot `<base>..HEAD` diffs from
+  `<base>` itself, not the merge base. A ref that does
   not exist is `git ref "<ref>" did not resolve`; in a shallow clone (CI's
   one-commit checkout) it adds that the clone is shallow and how to fetch
   the history (`git fetch --unshallow`, `fetch-depth: 0`).
