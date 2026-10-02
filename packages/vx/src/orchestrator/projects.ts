@@ -22,7 +22,6 @@ import type { WorkspaceConfig } from '../config.js'
 import { Cache, lazyGitEnumeration, type LazyGitEnumeration } from '../cache/index.js'
 import { UserError } from '../util/index.js'
 import {
-  buildPackageGraph,
   computeWorkspaceFingerprint,
   listProjects,
   loadWorkspace,
@@ -99,12 +98,16 @@ export async function discoverProjects(
   return projects.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
 }
 
-export interface LoadProjectsArgs {
+export type LoadProjectsArgs = LoadProjectsBase &
+  // The graph is read only for the closure: a load without one built it
+  // for nothing (1,000 projects: ~10 ms, once per CLI selection pass).
+  ({ closure: true; packageGraph: PackageGraph } | { closure: false; packageGraph?: PackageGraph })
+
+interface LoadProjectsBase {
   workspaceRoot: string
   cacheDir: string
   plugins: readonly VxPlugin[]
   projectMetas: readonly ProjectMeta[]
-  packageGraph: PackageGraph
   /**
    * Projects whose configs must load — `'all'`, or names (unknown and
    * config-less ones are ignored). With `closure`, each seed's transitive
@@ -113,7 +116,6 @@ export interface LoadProjectsArgs {
    * way, since the package graph cannot see the cross form.
    */
   seeds: 'all' | Iterable<string>
-  closure: boolean
   /** Read configs from the lock instead of evaluating them (`--frozen`). */
   lock: Lockfile | null
   evalCache: LoadProjectConfigOptions['evalCache']
@@ -150,7 +152,8 @@ export interface LoadedProjects {
  * enters scope.
  */
 export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjects> {
-  const { plugins, packageGraph, lock, workspaceRoot } = args
+  const { plugins, lock, workspaceRoot } = args
+  const graph = args.closure ? args.packageGraph : null
   // A package with no config file declares no tasks — unless a plugin
   // fills the `project` stage, in which case it is a project the stage may
   // give tasks to (the zero-migration shape: `turbo.json` or `package.json`
@@ -180,7 +183,7 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
     }
   }
   const walked = new Set<string>()
-  const considerWithDeps = (name: string): void => {
+  const considerWithDeps = (packageGraph: PackageGraph, name: string): void => {
     consider(name)
     // Every config-bearing project already considered: the closure can
     // add nothing, and asking for it would build the package graph's
@@ -192,8 +195,10 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
   }
   const seeds = args.seeds === 'all' ? metaByName.keys() : [...args.seeds]
   for (const seed of seeds) consider(seed)
-  if (args.closure && pending.length < metaByName.size) {
-    for (const seed of args.seeds === 'all' ? metaByName.keys() : seeds) considerWithDeps(seed)
+  if (graph !== null && pending.length < metaByName.size) {
+    for (const seed of args.seeds === 'all' ? metaByName.keys() : seeds) {
+      considerWithDeps(graph, seed)
+    }
   }
 
   // Load in rounds to a fixpoint. A `pkg#task` dependsOn entry names a
@@ -229,7 +234,7 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
       if (pre !== undefined) {
         projects.set(meta.name, pre)
         for (const name of crossDepProjects(pre.config)) {
-          if (args.closure) considerWithDeps(name)
+          if (graph !== null) considerWithDeps(graph, name)
           else consider(name)
         }
         continue
@@ -260,7 +265,7 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
       const named = rootName === undefined ? config : rootSpelled(config, rootName)
       projects.set(meta.name, { name: meta.name, dir: meta.dir, config: named })
       for (const name of crossDepProjects(named)) {
-        if (args.closure) considerWithDeps(name)
+        if (graph !== null) considerWithDeps(graph, name)
         else consider(name)
       }
     }
@@ -351,7 +356,6 @@ export async function loadResolvedProjects(
       cacheDir,
       plugins,
       projectMetas: metas,
-      packageGraph: buildPackageGraph([...metas]),
       seeds: opts.scope ?? 'all',
       closure: false,
       lock: null,
