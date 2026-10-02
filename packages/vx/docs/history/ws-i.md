@@ -307,8 +307,37 @@ index in every copy, 21 interleaved rounds: `classify + probe` main
 total 407.8 (369.9), 353.3 (310.4), 410.3 (371.2). 1,000 small
 projects: neutral (287.1 / 291.1 / 293.4).
 
+I-33. A config load checks the built-ins by position. After each
+evaluated config, the check that it left the built-ins alone did a
+by-key lookup per property and a second pass for deleted keys, ~0.1 ms
+a config. The same keys in the same order with the same descriptors
+now prove "unchanged"; any difference falls to the full check.
+1,000 projects, cold `run build`, 12 interleaved rounds: `load configs`
+main 401.2 ms median (min 381.3), patch 387.8 (343.5), A/A 410.1
+(366.9). Rows: `builtins-restore.test.ts` (a deleted property, a
+deleted last one, a delete plus an add that keep the count).
+I-34. The git listing partitions by concatenation. `applyGitEnumeration`
+joined each tracked file with `path.join`, took a `path.relative` per
+project and sorted a listing git prints in order (I-30's rule). Bench as
+I-30, 15 interleaved rounds, the pass alone: main 18.5 ms median (min
+16.6), patch 15.0 (11.4), A/A 16.4 (14.2).
+I-35. The `ls-files --debug` listing parses in one pass. The records
+were rejoined for the parser to split again, with a regex per size line
+and the stage regex twice per record. Bench as I-30, timed in place:
+split + parse ~24 + ~13 ms on main, ~8.5 + ~12.3 patched.
+
 ## Leads for other streams
 
+- **Any: a task's spawn holds the main thread ~1.2 ms under load
+  (I-35's cold profile).** Bun spawns with `vfork`, so the parent waits
+  for the child's `execve`: 1,225 ms of a 1,000-task cold run's main
+  thread. Every `Bun.spawn` option vx passes (env, `detached`, the extra
+  fd) costs the same as a bare spawn (0.6–0.7 ms alone). Only spawning
+  off the main thread would move it.
+- **Any: the group guard's release line is a pipe write per task**
+  (`guardWrite`, ~80 ms of the same run). Batching the lines would
+  widen the window in which a reused pgid could be killed, which
+  kill-tree.ts says never happens; not taken.
 - **Owner / coordinator: skip macOS where it cannot differ from
   Linux (I-14).** 135 of 436 commits since 2026-09-27 touch nothing the
   macOS job can see differently: not core's `src/`, `tests/`,
