@@ -736,10 +736,12 @@ end-of-run summary always prints.
 down with it:
 
 - **`deps-ok`** (default): the failure's transitive dependents are
-  skipped; independent siblings keep running.
+  skipped; independent siblings keep running. A server that dies after
+  it became ready is a failure to its dependents not yet started.
 - **`never`**: fail fast — the first failure stops dispatch. In-flight
   tasks finish naturally; everything not yet started (cache restores
-  included) completes as skipped.
+  included) completes as skipped. A server that dies after it became
+  ready stops dispatch the same way.
 - **`always`** (bare `--continue`): dependents run even when an
   upstream failed — to surface every failure in one pass. A task
   downstream of a failure (directly, or through successes built on it)

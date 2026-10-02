@@ -871,6 +871,12 @@ async function runOnBus(
       ...(hasPooledExecutor(executors) ? { poolOf: poolOfPlacement(placements) } : {}),
       ...(admit !== undefined ? { admit } : {}),
       ...(options.continueMode !== undefined ? { continueMode: options.continueMode } : {}),
+      // A server that ended on its own is failed (the end of the run says
+      // so); what has not yet started hears it before it dispatches (C-88).
+      serverDied: (id) => {
+        const child = persistentRegistry.get(id)
+        return child !== undefined && hasEnded(child) && child.exitCode !== 0
+      },
       signal: stopRun.signal,
       onStart: (node) => {
         log.taskStart?.(node)
