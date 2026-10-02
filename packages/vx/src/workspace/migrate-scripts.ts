@@ -374,6 +374,20 @@ export function migrateScripts(
     typeof outsideScripts === 'object' &&
     outsideScripts !== null &&
     Object.values(outsideScripts).some((v) => typeof v === 'string' && v !== '')
+  const unnamedMaps = (): string[] => {
+    const meta: ProjectMeta = {
+      name: 'package.json',
+      dir: outsideDir!,
+      packageJson: outside as never,
+      configPath: null,
+    }
+    const scripts = scriptsOf(meta)
+    return Object.keys(rootScripts(meta)).filter((n) => {
+      // A hook rides in its script's command and is no script to name.
+      const base = /^(?:pre|post)(.+)$/.exec(n)?.[1]
+      return !LIFECYCLE.test(n) && (base === undefined || !(base in scripts))
+    })
+  }
   const rootName =
     root?.name ??
     (outsideRuns
@@ -384,6 +398,14 @@ export function migrateScripts(
   if (rootName !== undefined && rootMapped > 0) {
     notes.push(
       `${rootName} (the workspace root): its scripts that check the whole repo are its tasks; those that run the members (\`pnpm -r\`, \`--filter\`, a runner) or share a member's task name are left out`,
+    )
+  } else if (rootName === 'package.json' && outsideDir !== undefined && unnamedMaps().length > 0) {
+    // react's nameless root: "its scripts run the workspace" was not why,
+    // and 30 of its scripts (`build`, `lint`, `test`) map once it has a
+    // name (D-87).
+    const would = unnamedMaps()
+    notes.push(
+      `package.json (the workspace root) not mapped: it has no "name", and vx names a project by it; give it one and run \`vx init\` again to map ${would.length} of its scripts (${would.slice(0, 8).join(', ')}${would.length > 8 ? ', …' : ''})`,
     )
   } else if (rootName !== undefined) {
     // A nameless root's vx.config is skipped (vx names projects by their
