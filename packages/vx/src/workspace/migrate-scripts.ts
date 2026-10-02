@@ -395,6 +395,30 @@ function siblingRun(script: string, dir: string, others: readonly string[]): str
   return undefined
 }
 
+/**
+ * The package globs a `lerna.json` beside a lone root lists (Lerna's
+ * default when it names none), or undefined: Lerna-classic repos list
+ * their packages there, not in `workspaces`, and vx saw the root alone
+ * (D-111).
+ */
+function lernaPackages(dir: string): string[] | undefined {
+  let json: unknown
+  try {
+    json = JSON.parse(readFileSync(path.join(dir, 'lerna.json'), 'utf8'))
+  } catch {
+    return undefined
+  }
+  const listed = (json as { packages?: unknown } | null)?.packages
+  return Array.isArray(listed) && listed.every((g) => typeof g === 'string') && listed.length > 0
+    ? listed
+    : ['packages/*']
+}
+
+function lernaNote(globs: readonly string[]): string {
+  const list = globs.map((g) => JSON.stringify(g)).join(', ')
+  return `lerna.json lists the packages (${list}), but package.json declares no \`workspaces\`, so vx sees the root alone: add \`"workspaces": [${list}]\` to package.json and run \`vx init\` again`
+}
+
 /** A package manager running a script by name: `pnpm build`, `npm run x`, `bun run x`. */
 const RUNS_SCRIPT =
   /(?:^|[\s;&|(])(?:pnpm|pn|npm|yarn|bun)\s+(?:run(?:-script)?\s+)?([^\s;&|()'"-][^\s;&|()'"]*)/g
@@ -705,6 +729,8 @@ export function migrateScripts(
       `${lifecycleBuilds.length === 1 ? 'a package builds' : `${lifecycleBuilds.length} packages build`} only in a lifecycle script (\`${hook}: ${command}\` in ${name}${more > 0 ? ` and ${more} more` : ''}), which the package manager runs on pack or install and vx never runs: add a \`build\` script running it and run \`vx init\` again`,
     )
   }
+  const lerna = metas.length === 1 ? lernaPackages(metas[0]!.dir) : undefined
+  if (lerna !== undefined) notes.push(lernaNote(lerna))
   breakBuildCycles(projects, metas)
   pruneOrphanPersistentNotes(projects, PERSISTENT_TODO)
   return {
