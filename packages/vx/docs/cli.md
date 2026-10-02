@@ -1768,6 +1768,12 @@ of its own; a hand-written one stays as written. The report says which;
 with nothing mapped it names the root whenever it has a script, a member
 or not (pnpm's root is not), and tells a root with no `"name"` to add one
 first (vuejs/core), naming the scripts that would then map (react, D-87). A single-package repo's root is its project and maps.
+A member's script that runs another member's work (`pnpm -C ../pinia
+run build`, `yarn workspace <name>`, `-r` / `--filter`, a `cd` or `-C`
+/ `--cwd` / `--prefix` into another member) keeps its command and gets a
+TODO naming that part: the graph runs that member's task once, so name it
+under `dependsOn` and drop it from the command (pinia). A directory inside
+the member or the root is no other member.
 A script that is nothing but `npm run <other>` (`pnpm <other>`, `yarn
 <other>`, `bun run <other>`, `npm test`, `npm start`) becomes a **group**
 over `<other>` — `dependsOn` and no command — so the graph runs and
