@@ -943,3 +943,16 @@ scheduler's line. The error object is kept (its class, cause and code),
 so a refusal still prints plainly and a bug as an internal error.
 Row (`plugin-capabilities.test.ts` › an executor's throw reaches the
 task's own stderr): red without the fix. `modules/executor.md` says so.
+
+## C-69: a server that dies mid-run is said when it dies
+
+A dependency server that crashed while its dependants ran (an `e2e`
+against an `api#dev` that fell over) was named only at the end of the
+run, `vx: api#dev exited with code 1 before the run stopped it`, while
+the dependant's failures scrolled past with no word of why. vx now says
+`vx: <id> exited with code <n> while the run went on` when it happens;
+not once the graph is done (the end of the run and the keep-alive wait
+say it), not under a stop, not for an exit 0. Rows
+(`keep-alive.test.ts` › a persistent server that dies before the run
+stops it): the crash rows read the new line first; each of the three
+guards removed reddens a row. `schema.md` says so.

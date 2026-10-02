@@ -334,7 +334,11 @@ describe('a persistent server that dies before the run stops it', () => {
     await addProject(root, 'app', crashing('echo READY; sleep 0.1; touch gone; exit 3'))
     expect(await run(root, ['e2e'])).toEqual({
       code: 1,
-      said: ['vx: app#srv exited with code 3 before the run stopped it'],
+      // C-69: said when it happens, while the dependant still runs.
+      said: [
+        'vx: app#srv exited with code 3 while the run went on',
+        'vx: app#srv exited with code 3 before the run stopped it',
+      ],
       pinned: [],
       tally: '1 failed · 1 success · 2 total',
     })
@@ -344,6 +348,7 @@ describe('a persistent server that dies before the run stops it', () => {
   it('a dependency-only server killed by a signal is named by its exit code', async () => {
     await addProject(root, 'app', crashing('echo READY; sleep 0.1; touch gone; kill -TERM $$'))
     expect((await run(root, ['e2e'])).said).toEqual([
+      'vx: app#srv exited with code 143 while the run went on',
       'vx: app#srv exited with code 143 before the run stopped it',
     ])
   }, 20_000)
@@ -418,7 +423,10 @@ describe('a persistent server that dies before the run stops it', () => {
       await interrupted('echo $$ > srv.pid; echo READY; sleep 0.1; touch gone; sleep 0.3; exit 3'),
     ).toEqual({
       code: 130,
-      said: ['vx: app#srv exited with code 3 before the run stopped it'],
+      said: [
+        'vx: app#srv exited with code 3 while the run went on',
+        'vx: app#srv exited with code 3 before the run stopped it',
+      ],
       tally: '1 failed · 1 total',
     })
   }, 20_000)
@@ -427,7 +435,10 @@ describe('a persistent server that dies before the run stops it', () => {
     await addProject(root, 'app', crashing('echo READY; sleep 0.1; touch gone; exit 3'))
     expect(await run(root, ['srv', 'e2e'])).toEqual({
       code: 1,
-      said: ['vx: app#srv exited with code 3'],
+      said: [
+        'vx: app#srv exited with code 3 while the run went on',
+        'vx: app#srv exited with code 3',
+      ],
       pinned: [],
       tally: '1 failed · 1 success · 2 total',
     })
