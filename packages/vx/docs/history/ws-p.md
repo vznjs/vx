@@ -36,6 +36,11 @@
   `ui:build:ci` names target `build:ci` and is no edge where ui lacks it.
   vx read the last segment as a configuration and drew an edge to that
   configuration's task (or to `build`, with a todo) that Nx never draws.
+- **P-12** `nx()`: an `nx:run-script` body that reads `$npm_package_name`,
+  `$npm_package_version` or `$npm_lifecycle_event` gets them defined, as
+  Nx's `<pm> run <name>` sets them and core's `vx init` maps them (D-34);
+  inlined, `echo $npm_package_version` printed nothing. Any other
+  `$npm_*` is a todo.
 
 ## Notes
 
@@ -48,3 +53,5 @@
 - `tests/npm-pack.unsafe.test.ts` failed once in a full gate
   (`JSON Parse error` on `npm pack --dry-run --json` output) and passed
   on the re-run and alone (2026-10-02, npm 10.9.4).
+- **G:** `turbo()` inlines a script body the same way (`script-command.ts`)
+  and sets no `$npm_*` either; P-12 fixed only `nx:run-script`.

@@ -596,6 +596,7 @@ function buildTask(
     todos,
     dotenv,
     opts.pnp,
+    meta.packageJson,
   )
 
   const inputs = emptyNxInputs()
@@ -732,6 +733,40 @@ function buildTask(
   return { name: variant.name, todos, task }
 }
 
+/**
+ * The `$npm_*` variables a script body reads, which Nx's `<pm> run <name>`
+ * sets and an inlined body does not: `echo $npm_package_version` printed
+ * nothing under `nx()`. The name and version are the manifest's (a bump
+ * re-maps: the mapping keys on every manifest), the event the script's
+ * own name unless hooks are folded beside it (each has its own); any
+ * other is a todo, as core's `vx init` does it (D-34).
+ */
+function npmScriptEnv(
+  command: string,
+  script: string,
+  folded: boolean,
+  manifest: { readonly name?: unknown; readonly version?: unknown },
+  todos: string[],
+): Record<string, string> {
+  const env: Record<string, string> = {}
+  const unset = new Set<string>()
+  for (const [, v] of command.matchAll(/\$\{?(npm_[A-Za-z0-9_]+)/g)) {
+    const value =
+      v === 'npm_package_name'
+        ? manifest.name
+        : v === 'npm_package_version'
+          ? manifest.version
+          : v === 'npm_lifecycle_event' && !folded
+            ? script
+            : undefined
+    if (typeof value === 'string') env[v!] = value
+    else unset.add(v!)
+  }
+  for (const v of unset)
+    todos.push(`nx:run-script: \`$${v}\` is set by the package manager's \`run\`, not here — unset`)
+  return env
+}
+
 /** What a target runs as; null for `nx:noop`, which is a group task. */
 interface MappedCommand {
   readonly command: string
@@ -758,6 +793,7 @@ function mapCommand(
   todos: string[],
   dotenv: readonly string[] | null,
   pnp: boolean,
+  manifest: { readonly name?: unknown; readonly version?: unknown },
 ): MappedCommand | null {
   const executor = target.executor
   if (executor === 'nx:noop') {
@@ -818,7 +854,13 @@ function mapCommand(
     // (novu's `test:watch: ""`, 2026-09-11); as a command it is a config
     // that refuses to load, so it is the placeholder with its todo.
     if (body !== undefined && body.length > 0) {
-      return shell(scriptCommand(script, body, scripts, pnp), undefined)
+      const command = scriptCommand(script, body, scripts, pnp)
+      // `yarn run <name>` sets its own.
+      const env =
+        command === `yarn run ${script}`
+          ? {}
+          : npmScriptEnv(command, script, command !== body, manifest, todos)
+      return shell(command, undefined, { env, readyWhen: undefined })
     }
     todos.push(
       body === undefined
