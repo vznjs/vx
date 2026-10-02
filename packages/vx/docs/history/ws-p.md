@@ -66,6 +66,10 @@
   name Nx's `getNxEnvVariablesForTask` sets beside `NX_TASK_TARGET_*`;
   Lerna runs on Nx's runner and documents it to scripts, and it was
   unset.
+- **P-19** `nx()`: a `{ workingDirectory }` input (Nx 23: the directory
+  Nx was started from, `cwd:relative` in its task plan) keys nothing: a
+  vx task runs in its project dir wherever vx starts. It was a todo,
+  "not representable".
 - **P-17** `nx()`: an output todo (Nx's default `build` / `public` note,
   an unresolvable `{options.x}`) is said only for a target vx caches; it
   sat on every uncached `build` that declares no outputs (found diffing a
