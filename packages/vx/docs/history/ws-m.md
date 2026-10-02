@@ -272,6 +272,20 @@ that overruns is SIGTERMed and › never-matching readyWhen + timeout
 real failure and IS retried (`echo x >> tries.txt`, once per attempt).
 Each red with a 600 ms shell start, green on a 1 s deadline.
 
+M-25. `sandbox-bridge-socket.unsafe.test.ts` › is removed when the task
+ends, root-caused (M-15, M-16 left it open). A run whose server outlives
+it defers SRT's reset to that server's release. A later run's
+`initSandbox` found SRT up and kept it, so the release, landing during
+the later run, reset SRT under it: its next wrap threw the gate's text,
+"Linux HTTP bridge socket does not exist", or bwrap could not find the
+socket (a release 20 ms into a bridged run, 3 of 3). An init now cancels
+the deferred reset; the later run's own end resets. Row: a server
+released after a later run's init leaves that run's sandbox up (red 3 of
+3 without the fix). Not reproduced in the gate itself: a forced gate
+beside 161 runs of the file was clean, and which earlier row's release
+landed in it is not proven. The keep-alive grace rows (M-14, M-17) did
+not fail again: 12 of 12 runs of the file beside a forced gate.
+
 ## Leads for other streams
 
 - A: A-20 let a same-project dependant restore ahead of a producer whose
@@ -293,7 +307,7 @@ Each red with a 600 ms shell start, green on a 1 s deadline.
   red (`late.txt` exists), 100 ms passes. B-38 gated row 620's child on
   a `go` file written after its death; this row needs the same. E's
   sandboxed gate saw a keep-alive grace row fail once at ~17:50.
-- B: `sandbox-bridge-socket.unsafe.test.ts` failed once in E's gate
+- B (root-caused, M-25): `sandbox-bridge-socket.unsafe.test.ts` failed once in E's gate
   (~17:50), error not recorded. Not reproduced: 2 full sandboxed gates
   and 5 runs under 16 CPU hogs. The bridge socket binds 30-60 ms after
   the run starts (120-350 ms under load) against the row's 1 s task

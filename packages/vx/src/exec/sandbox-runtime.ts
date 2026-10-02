@@ -550,6 +550,9 @@ export async function initSandbox(opts?: {
   /** Whether any task of the run grants `gitConfig`: SRT reads it run-wide, so it is set per wrap (B-41). */
   gitConfig?: boolean
 }): Promise<void> {
+  // This run owns the session now; a reset an earlier run deferred to its
+  // last server would tear it down under this run's tasks (M-25).
+  resetDeferred = false
   // A reset a server's exit started unawaited: a watch cycle stops its
   // server and starts its run at once, and an init under that reset
   // found SRT up, hot-reloaded it, and had it torn down after (item 884).

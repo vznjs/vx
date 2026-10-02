@@ -756,6 +756,9 @@ That deferred reset runs unawaited from the server's exit, and a watch
 cycle stops its server and starts its next run at once. `initSandbox`
 therefore waits for a reset in flight: an init under it found SRT up,
 hot-reloaded it, and had it torn down after (item 884).
+An init also takes the session over: it cancels a reset an earlier run
+deferred, so that run's last server, released later, no longer tears SRT
+down under this run's tasks; this run's own end resets it (M-25).
 Pinned in the unsafe suite on Linux: a sandboxed server on a listed port
 answers a downstream task's fetch and the host's, and after the run the
 port is closed; the control with `localBinding: true` is refused.
