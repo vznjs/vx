@@ -16,8 +16,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 
-// Windows has no shebang launch: `vx` there is a shim over `bun`.
-describe.skipIf(process.platform === 'win32')('a config never installs a package', () => {
+describe('a config never installs a package', () => {
   let root: string
   beforeEach(async () => {
     root = await mkdtemp(path.join(os.tmpdir(), 'vx-noinstall-'))
