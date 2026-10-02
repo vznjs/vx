@@ -1223,6 +1223,7 @@ async function scanUnion(
   // `/`: `{dist,lib/esm}/**` saved an empty artifact, and a hit restored
   // nothing over a cleaned tree (A-10). Expanded here, as discovery does.
   for (const pattern of positive.flatMap(slashBraceExpansions)) {
+    if (absentPrefix(cwd, pattern)) continue
     const glob = globFor(pattern)
     for (const rel of glob.scanSync({ cwd, onlyFiles: false, followSymlinks: false, dot: true })) {
       if (nested(rel) || excludeGlobs.some((g) => g.match(rel))) continue
@@ -1233,6 +1234,23 @@ async function scanUnion(
     }
   }
   return matches
+}
+
+/**
+ * True when `pattern`'s static directory is not on disk, so nothing can
+ * match under it. A restore into a tree without its outputs scans each
+ * glob twice (the check, then the clean), and a scan of a missing `dist`
+ * cost ~58 µs where the lstat costs a few. Anything this cannot read
+ * plainly (no prefix, an escape, an absolute path, a refused stat) scans.
+ */
+function absentPrefix(cwd: string, pattern: string): boolean {
+  const prefix = staticPrefix(pattern)
+  if (prefix === '.' || prefix.includes('\\') || path.isAbsolute(prefix)) return false
+  try {
+    return lstatSync(path.join(cwd, prefix), { throwIfNoEntry: false }) === undefined
+  } catch {
+    return false
+  }
 }
 
 // Compiled once per pattern string for the life of the process: a `Bun.Glob`
