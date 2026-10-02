@@ -54,11 +54,16 @@ anything beneath it changes.
    `forwardArgs` are appended in-line (`withForwardArgs`, as a one-shot
    task's are), with or without a `readyWhen`: a readyWhen server once
    got none, and `vx run dev -- --port 4000` dropped the port.
-3. Call `runPersistent(opts)`. Stash the returned `child` in
+3. If the run's stop landed during the awaits before this (the key,
+   the sandbox's arming, request and wrap), spawn nothing: release the
+   bridges and placeholders and return `aborted` with the signal's exit.
+   Spawned anyway, the server came up after the teardown, and a Ctrl-C
+   took 7 s to end the run.
+4. Call `runPersistent(opts)`. Stash the returned `child` in
    `persistentRegistry[node.id]`.
-4. `await spawn.ready`. On reject (child exited before ready) →
+5. `await spawn.ready`. On reject (child exited before ready) →
    return `failed` with the captured streams.
-5. On resolve → return `success` with `durationMs = spawn.readyMs()`.
+6. On resolve → return `success` with `durationMs = spawn.readyMs()`.
 
 The orchestrator SIGTERMs every registry entry at end-of-run. Never
 caches.
