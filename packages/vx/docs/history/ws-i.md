@@ -280,17 +280,6 @@ main). 1,000 packages, one edited, `run build --affected=HEAD~1`,
 compiled, 41 interleaved rounds: main 356.8 ms median (min 293.5),
 patch 311.9 (248.5), A/A 313.6 (255.5).
 
-I-30. `resolveFiles` joins by concatenation and checks its order. Git
-prints normalized relative paths, so under an absolute, normalized project
-dir the candidate path is the dir, a slash and the path (`path.resolve`
-otherwise), and the slice git hands over stays sorted under that prefix,
-so one pass proves it instead of a sort per task. Bench: 300 projects of
-40 source files each (12,905 tracked), `build test lint` with `^build`,
-900 warm hits, compiled, 21 interleaved rounds: `classify + probe` main
-249.1 ms median (min 216.8), patch 226.3 (194.2), A/A 219.2 (196.2);
-in-process total 568.8 (506.8), 524.6 (470.5), 514.8 (460.6). On that
-shape `Bun.Glob.match` in `resolveFiles` is the next ~50 ms (a verdict
-per relative path per declaration, after I-29).
 I-31. A key names its input files by slicing the root off. `relFor`
 memoised `relPosix` per absolute path, and a Map lookup hashes the whole
 path per file per task; every input file is a normalized absolute path
