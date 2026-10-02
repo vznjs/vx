@@ -220,7 +220,9 @@ Run the task only in projects whose files changed since `<base>`.
 
 - `--affected` (no value) uses the workspace's `affectedBase` when it
   names one (`nx()` and `turbo()` set it from `NX_BASE` / nx.json's
-  `defaultBase` and `TURBO_SCM_BASE`; [schema](schema.md)), else
+  `defaultBase` and `TURBO_SCM_BASE`, `turbo()` on GitHub Actions from
+  the pull request's base or the push's `before`, as Turbo does;
+  [schema](schema.md)), else
   `origin/HEAD`, falling back to
   `HEAD~1` if `origin/HEAD` isn't resolvable. A clone with neither — a
   CI checkout at `fetch-depth: 1` — has no base at all, and vx says so
@@ -1692,7 +1694,10 @@ wrong tree for every package that writes elsewhere. The block the TODO
 shows names `dist/**`, or the default output of the framework the command
 runs: `.next/**` minus `!.next/cache/**` for `next build`, `.output/**`
 for Nuxt, `build/**` for Remix, React Router, Create React App and
-Docusaurus, `public/**` for Gatsby, `storybook-static/**` for Storybook.
+Docusaurus, `public/**` for Gatsby, `storybook-static/**` for Storybook;
+for any other command, the directory it names with `--outDir` / `--out-dir`
+/ `-d`, else the ones it cleans first (`del-cli distribution`, `rimraf lib
+types`), unless it makes one again with `mkdir` (D-90).
 A package in a cycle of builds (nuxt's `@nuxt/nitro-server` devDepends
 on `nuxt`, which depends on it; pnpm sorts it away) gets, instead of
 `^build`, an edge to each build outside its cycle that `^build` would
