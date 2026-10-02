@@ -1672,7 +1672,9 @@ on the task names vx's home for it instead (D-37): Turbo's `outputs`,
 `inputs`, `env`, `passThroughEnv`, `persistent`, `outputLogs`, `interactive`
 and `with`, Nx's target `executor`, `options`, `continuous` (D-49), `cwd`,
 `parallelism` and `configurations` (D-89), and a `command`
-(`cmd`, `script`) on the task or `cmd` on `exec`. So `outputs` on a task
+(`cmd`, `script`) on the task or `cmd` on `exec`, and on `exec` Nx
+run-commands' `cwd`, `args`, `commands`, `parallel`, `shell` and
+`interactive` (D-100). So `outputs` on a task
 ends `— vx spells it cache.outputs.files` in code quotes. A `cache` that
 is no object (Turbo's `cache: false`) and a `persistent` that is none
 (`true`) name the shape to write.
