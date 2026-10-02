@@ -137,8 +137,17 @@ export function mapNxDeps(
       // the whole string is a target of this project (`test:unit`, as
       // script-inferred targets are named). It was read as project `test`
       // and the edge dropped (item 915).
-      if (m === undefined && ownTarget(d)) {
+      // Nx ranks this project's own target first (`splitTargetFromNodes`),
+      // then the longest target of the named project: `ui:build:esm` is
+      // ui's `build:esm` where it has one, not `build` in configuration
+      // `esm`, which sent the edge to ui's `build` or dropped it.
+      if (ownTarget(d)) {
         deps.push(named(self, d))
+        continue
+      }
+      const rest = d.slice(colon + 1)
+      if (m !== undefined && rest.includes(':') && hasTarget(project, rest)) {
+        deps.push(`${m.name}#${named(project, rest)}`)
         continue
       }
       if (m === undefined || targetPart === undefined || targetPart === '') {
