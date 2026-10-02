@@ -1382,6 +1382,38 @@ describe('defaultAffectedBase', () => {
     }
   })
 
+  it('with no origin/HEAD, a trunk branch that is not HEAD is the base (D-93)', async () => {
+    // actions/checkout fetches with no origin/HEAD, and a local repo has no
+    // remote: `HEAD~1` saw a feature branch's last commit only, where Turbo
+    // and Nx compare with `main`.
+    const root = await mkdtemp(path.join(os.tmpdir(), 'vx-affected-trunk-'))
+    try {
+      await git(root, 'init', '-q', '-b', 'main')
+      await git(root, 'config', 'user.email', 'test@vx.local')
+      await git(root, 'config', 'user.name', 'vx test')
+      const commit = async (v: string): Promise<void> => {
+        await writeFile(path.join(root, 'a'), v)
+        await git(root, 'add', '.')
+        await git(root, 'commit', '-q', '-m', v)
+      }
+      await commit('1')
+      await commit('2')
+      // CONTROL: on main itself, main is HEAD, so the previous commit.
+      expect(await defaultAffectedBase(root)).toBe('HEAD~1')
+      await git(root, 'checkout', '-q', '-b', 'feat')
+      await commit('3')
+      await commit('4')
+      expect(await defaultAffectedBase(root)).toBe('main')
+      // The remote's trunk before a local one, `main` before `master`.
+      await git(root, 'update-ref', 'refs/remotes/origin/master', 'main')
+      expect(await defaultAffectedBase(root)).toBe('origin/master')
+      await git(root, 'update-ref', 'refs/remotes/origin/main', 'main')
+      expect(await defaultAffectedBase(root)).toBe('origin/main')
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   it('refIsHead: the base is HEAD itself in a single-branch clone whose origin/HEAD is this branch', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'vx-affected-self-'))
     try {

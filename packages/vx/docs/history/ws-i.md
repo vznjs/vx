@@ -243,6 +243,17 @@ compiled, 21 interleaved rounds: `run graph` main 962.6 ms median (min
 `restoreOutputs`) stays: the rows in hand would cross the `CacheLayer`
 seam.
 
+I-27. A frozen run reads the lock only for a config it reads. The run
+parsed the whole lock again even when the CLI's selection pass had staged
+every config (its load refused a frozen run without a lock);
+`LoadProjectsBase.lock` is now a reader asked only when a config is
+read from it, and `prepareRun` reads up front only when some configured
+project is not staged. Row: `read-once.unsafe.test.ts` counts one open
+of `vx-lock.json` for an `--affected --frozen` run (two before). 1,000
+packages, one edited, `run build --affected=HEAD~1`, compiled, 25
+interleaved rounds, `load configs` stage: main 23.3 ms median (min
+14.3), patch 15.2 (10.1), A/A 13.4 (10.1). Wall, 81 rounds: main 324.4
+(276.3), patch 322.3 (258.5), A/A 318.9 (269.1), within its noise.
 I-28. A closed cache leaves its WAL empty. With `PERSIST_WAL` (O-10)
 and the default `journal_size_limit` (-1), SQLite's last close
 checkpoints the WAL but keeps every frame, so each later connection
@@ -269,6 +280,14 @@ main). 1,000 packages, one edited, `run build --affected=HEAD~1`,
 compiled, 41 interleaved rounds: main 356.8 ms median (min 293.5),
 patch 311.9 (248.5), A/A 313.6 (255.5).
 
+I-31. A key names its input files by slicing the root off. `relFor`
+memoised `relPosix` per absolute path, and a Map lookup hashes the whole
+path per file per task; every input file is a normalized absolute path
+(`resolveInputs`), so under a normalized root its relative name is a
+slice, and the memo stays for anything else. Bench as I-30 (900 warm
+hits, 12,905 files), compiled, 21 interleaved rounds: `classify + probe`
+main 256.9 ms median (min 217.2), patch 241.8 (194.0), A/A 238.9
+(193.8); in-process total 600.1 (515.1), 551.6 (490.8), 550.6 (455.2).
 I-29. A `files` declaration compiles once per process. `resolveFiles`
 split, normalized and compiled each task's `cache.inputs.files` (and its
 outputs' matcher) per task, though a workspace declares a handful of

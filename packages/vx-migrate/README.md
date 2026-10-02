@@ -114,6 +114,10 @@ Every task gets `NX_TASK_TARGET_PROJECT`, `NX_TASK_TARGET_TARGET`, `LERNA_PACKAG
 
 `{ dependentTasksOutputFiles }` hashes the outputs of the tasks a target depends on; vx folds those tasks' keys through `dependsOn`, and an output follows from its inputs. `{ workingDirectory }` hashes the directory Nx was started from; a vx task runs in its project dir from wherever vx is started. Neither is a todo.
 
+### The environment a task sees
+
+Nx hands every task its whole environment; vx hands a task only its essentials (`PATH`, `HOME`, `CI`, `NODE_OPTIONS`, …), the names its Nx `{ env }` inputs declare (which also key it), and what `nx()` defines (the target, `.env` files, a run-commands `env`). A variable set in the shell and read by no declared input, `NODE_ENV` or `DATABASE_URL`, does not reach the task: declare it as an `{ env }` input of the target in the Nx config.
+
 ### nx.json `parallel`
 
 `parallel` (or the legacy `tasksRunnerOptions.default.options.parallel`) is the run's `concurrency` when `vx.workspace.ts` sets none: a repo that set `1` for a shared resource ran on every core under vx before.
