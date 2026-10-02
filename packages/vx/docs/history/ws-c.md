@@ -866,6 +866,7 @@ a stale hit. The window now widens by A-2's `racyWindowMs`. Row
 (`whole-second-stamps.test.ts` › the fingerprint watch's whole-second
 stamp, simulated ctime): red without the fix; a sub-second stamp 499 ms
 before the read stays trusted. `modules/fingerprint-watch.md` says so.
+
 ## C-57: a server watch holds keeps printing while watch idles
 
 `vx watch dev` showed its server's log only until the cycle's run
