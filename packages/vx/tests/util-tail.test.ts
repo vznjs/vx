@@ -608,7 +608,7 @@ describe('tailText — a snapshot, never a live view', () => {
     expect(tail.chunks).toHaveLength(2)
   })
 
-  // A kept-alive child keeps writing between run()'s two runEnd calls, so a
+  // A kept-alive child keeps writing between two runEnd calls a renderer may hear, so a
   // previously-returned string must not mutate under the caller.
   it('returns a snapshot unaffected by later appends', () => {
     const t = createTail()
@@ -773,7 +773,7 @@ describe('call-site contracts', () => {
     // runEnd #1: read, then reset in a separate pass.
     const firstFlush = tailText(postOut)
     resetTail(postOut)
-    // The child keeps writing between run()'s two runEnd calls.
+    // The child keeps writing between two runEnd calls.
     appendTail(postOut, 'GET /favicon 404\n')
     expect(firstFlush).toBe('GET /  200\n') // the emitted text is detached
     expect(tailText(postOut)).toBe('GET /favicon 404\n')

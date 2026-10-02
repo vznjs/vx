@@ -517,8 +517,9 @@ export function defaultLogger(
       // output / only failed tasks print), so they stay silent — the tail
       // is still captured and still bounded, just never printed. Guarded
       // like the failures below: run() calls runEnd twice on the success
-      // path (once before the summary, once in its finally), and a
-      // kept-alive child keeps writing between the two.
+      // path (once before the summary, once in its finally), and though the
+      // bus delivers `run:end` once (`busLogger`), a renderer an embedder
+      // drives directly may hear both.
       if (flushedPersistent) flushKept()
       if (!flushedPersistent) {
         flushedPersistent = true
