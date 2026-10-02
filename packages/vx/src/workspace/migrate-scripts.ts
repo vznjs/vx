@@ -528,6 +528,193 @@ function usesPnp(dir: string): boolean {
 const PNP_NOTE =
   "Yarn Plug'n'Play installs this repo: a package's bins live in `.pnp.cjs`, not `node_modules/.bin`, so a task's `tsc` is not found under vx — set `nodeLinker: node-modules` in `.yarnrc.yml` and run `yarn install`, or write each command as `yarn exec '<command>'`"
 
+/**
+ * The wireit config a script that is nothing but `wireit` runs: lit's
+ * members declare every task there (command, dependencies, files, output),
+ * and init mapped each as the command `wireit`, a second runner with its
+ * own cache under vx's (D-115).
+ */
+function wireitEntry(
+  meta: ProjectMeta,
+  name: string,
+  command: string,
+): Record<string, unknown> | undefined {
+  if (command.trim() !== 'wireit') return undefined
+  const config = (meta.packageJson as unknown as { wireit?: unknown }).wireit
+  const entry =
+    typeof config === 'object' && config !== null
+      ? (config as Record<string, unknown>)[name]
+      : undefined
+  return typeof entry === 'object' && entry !== null && !Array.isArray(entry)
+    ? (entry as Record<string, unknown>)
+    : undefined
+}
+
+const WIREIT_KNOWN = new Set([
+  'command',
+  'dependencies',
+  'files',
+  'output',
+  'env',
+  'service',
+  'clean',
+  'packageLocks',
+  'allowUsuallyExcludedPaths',
+])
+
+/**
+ * A wireit script as a vx task: `command`, `dependencies` (`../lit-html:build`
+ * names a member by its directory), `files` + `output` as the cache block
+ * wireit keeps for the same pair, `env`, and `service` as persistent. What
+ * has no home here is a TODO.
+ */
+function wireitTask(
+  config: Record<string, unknown>,
+  dir: string,
+  hasScript: (name: string) => boolean,
+  memberByDir: ReadonlyMap<string, string>,
+  workspaceDir: string | undefined,
+): { task: Record<string, unknown>; todos: string[] } {
+  const todos: string[] = []
+  const task: Record<string, unknown> = {}
+  const dependsOn: string[] = []
+  const deps = Array.isArray(config['dependencies']) ? config['dependencies'] : []
+  for (const raw of deps) {
+    const dep =
+      typeof raw === 'string'
+        ? raw
+        : typeof raw === 'object' &&
+            raw !== null &&
+            typeof (raw as { script?: unknown }).script === 'string'
+          ? (raw as { script: string }).script
+          : undefined
+    if (dep === undefined) continue
+    if (typeof raw === 'object' && (raw as { cascade?: unknown }).cascade === false) {
+      todos.push(
+        `wireit's \`cascade: false\` on ${JSON.stringify(dep)} only ordered the two; vx folds the dependency's key, so this task re-runs when it changes`,
+      )
+    }
+    const colon = dep.indexOf(':')
+    if (dep.startsWith('.') && colon > 0) {
+      const member = memberByDir.get(path.resolve(dir, dep.slice(0, colon)))
+      if (member === undefined) {
+        todos.push(
+          `wireit dependency ${JSON.stringify(dep)} names no workspace member; add its edge by hand`,
+        )
+      } else dependsOn.push(`${member}#${dep.slice(colon + 1)}`)
+    } else if (hasScript(dep)) dependsOn.push(dep)
+    else
+      todos.push(
+        `wireit dependency ${JSON.stringify(dep)} names no script here; add its edge by hand`,
+      )
+  }
+  const command = config['command']
+  const service = config['service']
+  if (typeof command === 'string' && command !== '') {
+    const exec: Record<string, unknown> = { command }
+    const env = config['env']
+    if (typeof env === 'object' && env !== null) {
+      const define: Record<string, string> = {}
+      const external: string[] = []
+      for (const [k, v] of Object.entries(env)) {
+        if (typeof v === 'string') define[k] = v
+        else if (
+          typeof v === 'object' &&
+          v !== null &&
+          (v as { external?: unknown }).external === true
+        )
+          external.push(k)
+        else
+          todos.push(
+            `wireit env ${JSON.stringify(k)} has no vx spelling here; set it under exec.env by hand`,
+          )
+      }
+      if (Object.keys(define).length > 0 || external.length > 0) {
+        exec['env'] = {
+          ...(Object.keys(define).length > 0 ? { define } : {}),
+          ...(external.length > 0 ? { passThrough: external } : {}),
+        }
+      }
+      if (external.length > 0) task['__externalEnv'] = external
+    }
+    if (service !== undefined && service !== false) {
+      const ready = (service as { readyWhen?: { lineMatches?: unknown } } | null)?.readyWhen
+        ?.lineMatches
+      exec['persistent'] = typeof ready === 'string' ? { readyWhen: ready } : {}
+    }
+    task['exec'] = exec
+  } else if (dependsOn.length === 0) {
+    todos.push('wireit script with no command and no dependencies; nothing to run')
+  }
+  if (dependsOn.length > 0) task['dependsOn'] = dependsOn
+  const files = config['files']
+  const output = config['output']
+  const external = task['__externalEnv'] as string[] | undefined
+  delete task['__externalEnv']
+  if (
+    task['exec'] !== undefined &&
+    (task['exec'] as { persistent?: unknown }).persistent === undefined &&
+    Array.isArray(files) &&
+    Array.isArray(output)
+  ) {
+    const split = (globs: unknown[], what: string) => {
+      const own: string[] = []
+      const workspace: string[] = []
+      for (const g of globs) {
+        if (typeof g !== 'string') continue
+        const neg = g.startsWith('!')
+        const body = neg ? g.slice(1) : g
+        if (!body.startsWith('../')) {
+          own.push(g)
+          continue
+        }
+        const abs = path.resolve(dir, body)
+        const inMember = [...memberByDir.keys()].some(
+          (d) => d !== path.resolve(dir) && abs.startsWith(d + path.sep),
+        )
+        if (inMember || workspaceDir === undefined || !abs.startsWith(workspaceDir + path.sep)) {
+          todos.push(
+            `wireit ${what} ${JSON.stringify(g)} reaches outside this package${inMember ? ' into another member' : ''}, which a vx task may not read or write; declare that task under dependsOn instead`,
+          )
+          continue
+        }
+        workspace.push(
+          (neg ? '!' : '') + path.relative(workspaceDir, abs).split(path.sep).join('/'),
+        )
+      }
+      return { own, workspace }
+    }
+    const inputs = split(files, 'file')
+    const outputs = split(output, 'output')
+    task['cache'] = {
+      inputs: {
+        files: inputs.own,
+        ...(inputs.workspace.length > 0 ? { workspaceFiles: inputs.workspace } : {}),
+        ...(external !== undefined ? { env: external } : {}),
+      },
+      outputs: {
+        files: outputs.own,
+        ...(outputs.workspace.length > 0 ? { workspaceFiles: outputs.workspace } : {}),
+      },
+    }
+  } else if (Array.isArray(files) && !Array.isArray(output) && task['exec'] !== undefined) {
+    todos.push(
+      'wireit skipped this script when its `files` were unchanged; vx caches only with `output` declared — add a cache block with its outputs',
+    )
+  }
+  if (config['clean'] === false) {
+    todos.push(
+      "wireit kept this script's outputs between runs (`clean: false`); vx deletes declared outputs before running",
+    )
+  }
+  for (const k of Object.keys(config)) {
+    if (!WIREIT_KNOWN.has(k) && !k.startsWith('#')) {
+      todos.push(`wireit field ${JSON.stringify(k)} has no vx spelling here`)
+    }
+  }
+  return { task, todos }
+}
+
 /** A package manager running a script by name: `pnpm build`, `npm run x`, `bun run x`. */
 const RUNS_SCRIPT =
   /(?:^|[\s;&|(])(?:pnpm|pn|npm|yarn|bun)\s+(?:run(?:-script)?\s+)?([^\s;&|()'"-][^\s;&|()'"]*)/g
@@ -710,6 +897,13 @@ export function migrateScripts(
         (rootName === 'package.json' ? ', after giving its package.json a "name"' : ''),
     )
   }
+  const memberByDir = new Map(metas.map((m) => [path.resolve(m.dir), m.name]))
+  const workspaceDir =
+    root !== undefined
+      ? path.resolve(root.dir)
+      : outsideDir !== undefined
+        ? path.resolve(outsideDir)
+        : undefined
   const mapped = metas.filter((m) => m !== root)
   if (rootMeta !== undefined && rootMapped > 0) mapped.push(rootMeta)
   for (const meta of mapped) {
@@ -747,11 +941,19 @@ export function migrateScripts(
     }
     const tasks: GeneratedTask[] = []
     let readsManifest = false
+    let buildFromWireit = false
     for (const name of names) {
       if (!isTask(name)) continue
 
       const todos: string[] = []
       const own = berry ? berryRun(scripts[name] as string) : (scripts[name] as string)
+      const wireit = wireitEntry(meta, name, own)
+      if (wireit !== undefined) {
+        const mapped = wireitTask(wireit, meta.dir, has, memberByDir, workspaceDir)
+        tasks.push({ name, todos: mapped.todos, task: mapped.task })
+        if (name === 'build') buildFromWireit = true
+        continue
+      }
       const delegate = delegatedScript(own)
       // npm lifecycle hooks (`prepack`, `prepublishOnly`, …) belong to the
       // package manager and never ride inside a task — `pack` stays alone.
@@ -825,7 +1027,9 @@ export function migrateScripts(
         task: null,
       })
     }
-    upstreamBuildOnWorker(tasks)
+    // wireit's dependencies are the edges: no `^build` and no cache TODO
+    // on a script it already declares (lit's `build:rollup`).
+    if (!buildFromWireit) upstreamBuildOnWorker(tasks)
     if (tasks.length > 0) {
       const importLines = readsManifest ? [MANIFEST_IMPORT] : []
       projects.push({ name: meta.name, dir: meta.dir, importLines, tasks })

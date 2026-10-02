@@ -1746,6 +1746,16 @@ as npm hands them to the script and not its hooks (item 905). The
 command is a small shell function, `vx_script`, around the three parts;
 it carries a TODO saying so; a `pre<x>` with no `x` stays a task of its own, and
 npm's lifecycle hooks (`prepack`, `prepublishOnly`, …) are never tasks.
+A script that is nothing but `wireit` maps from the package's `wireit`
+config instead of running wireit (lit, D-115): `command` is the task's
+command (none: a group), `dependencies` its `dependsOn` (`../lit-html:build`
+names the member in that directory, `lit-html#build`), `files` plus
+`output` its cache block (a path outside the package that no other member
+holds is a `workspaceFiles` entry), `env` its `exec.env` (an `external`
+name is passed through and keyed), and `service` makes it persistent, with
+`readyWhen` from `readyWhen.lineMatches`. `cascade: false`, `clean: false`,
+`files` without `output`, a path into another member and any other field
+get a TODO.
 A package with no `build` script whose `prepack`, `prepublishOnly`,
 `prepublish` or `prepare` runs a builder (`bob build`, `tsc`, `tsup`, …)
 is named in the report, which says to add a `build` script running it
