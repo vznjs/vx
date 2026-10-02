@@ -282,7 +282,14 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
     const where = `${configPath}: tasks.${name}`
     assertTaskName(name, configPath)
     if (!task || typeof task !== 'object') {
-      throw new UserError(`${where} must be an object`)
+      // package.json's shape, `name: 'command'`, was refused without the
+      // object that holds the command.
+      const raw: unknown = task
+      throw new UserError(
+        typeof raw === 'string' && raw.trim() !== ''
+          ? `${where} must be an object — a command is { exec: { command: ${JSON.stringify(raw)} } }`
+          : `${where} must be an object`,
+      )
     }
     assertKnownFields(task, TASK_FIELDS, where)
     const exec = (task as { exec?: unknown }).exec

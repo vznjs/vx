@@ -142,6 +142,7 @@ app#build — run 019f5a02-…
 | `cache key unchanged — this run was served from cache, nothing re-ran` | a hit |
 | `cache key unchanged — the previous run on this key failed and saved nothing, so there was nothing to hit` | a failure saves no entry |
 | `cache key unchanged — re-executed because this run did not read the cache (--force, or a --cache without read)` | the run's policy read no cache |
+| `cache key unchanged — neither run saved it: each ran beside a failed task (…), and a task run past a failed dependency (--continue) is never cached` | both runs went past a failure under `--continue` |
 | `cache key unchanged — no entry for this key was in the cache when it ran (pruned or evicted), so it executed and saved one` | the entry was gone |
 | `cache key unchanged — re-executed on the same key (--no-cache / --force, or unrelated)` | none of the above; vx cannot name the cause |
 | `cache key unchanged — this run recorded no cache outcome, so whether it re-ran is unknown` | vx does not guess |
@@ -226,7 +227,7 @@ export default defineWorkspace({
 | `cacheDir`       | where the local cache lives; add it to `.gitignore`                   |
 | `timeout`        | a default task timeout in ms; default none                            |
 | `cacheRetention` | evict at the end of every run: `olderThan` unused, then least recently used past `maxSize`; default none |
-| `affectedBase` | the git ref a bare `--affected` compares with; default `origin/HEAD` |
+| `affectedBase` | the git ref a bare `--affected` compares with; default `origin/HEAD`, then the first trunk (`origin/main`, `origin/master`, `main`, `master`) that is not HEAD, else `HEAD~1` |
 
 For a timeout, the first one set wins: a task's `exec.timeout`, then
 `--timeout <ms>`, then `VX_TASK_TIMEOUT`, then this. Only `exec.timeout` is in the

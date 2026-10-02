@@ -3,6 +3,7 @@
 // fields into a root vx-preset.ts that each generated config imports and
 // spreads — TypeScript composition replaces turbo's global config.
 
+import { readdirSync } from 'node:fs'
 import path from 'node:path'
 import {
   type GeneratedProject,
@@ -77,7 +78,27 @@ export async function migrateTurbo(
     })
   }
 
-  return { headerNotes: [], projects, extraFiles, notes: mapping.notes }
+  return { headerNotes: await turboStillDeclared(root), projects, extraFiles, notes: mapping.notes }
+}
+
+/**
+ * `vx init` declares `turbo()` beside turbo.json, and after the migration
+ * it still read turbo.json every run, filling any task the configs leave
+ * out, with nothing saying it is now redundant: the configs ARE the
+ * mapping. The repo is native once it goes.
+ */
+async function turboStillDeclared(root: string): Promise<string[]> {
+  for (const name of readdirSync(root)) {
+    if (!/^vx\.workspace\.(ts|mts|js|mjs|cts|cjs)$/.test(name)) continue
+    const text = await Bun.file(path.join(root, name)).text()
+    if (/\bturbo\s*\(/.test(text))
+      return [
+        `${name} still declares turbo(), which reads turbo.json every run and fills any task ` +
+          'a vx.config does not declare; the configs written here declare them all. Once ' +
+          '`vx run` does what turbo did, remove turbo() (and its import), then turbo.json',
+      ]
+  }
+  return []
 }
 
 /**

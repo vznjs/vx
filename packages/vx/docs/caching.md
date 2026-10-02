@@ -175,7 +175,14 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     `git ls-files -s -v -z --debug` for the recorded sizes, takes each
     blob's size from `blob_sizes` (fixed for its OID), and asks one
     `git cat-file --batch-check` for the ones not yet known (65 ms
-    over 3,000 loose objects, 10 ms packed). A
+    over 3,000 loose objects, 10 ms packed). The check is by size,
+    so a filter that keeps the size (a `filter` driver such as
+    `tr a-z A-Z`), removed after an add, still leaves a blob that
+    stands for other bytes: probed, the run hit the build of the
+    filtered bytes. Only a read of every trusted file would catch it,
+    the cost the index OIDs exist to avoid. After changing a filter,
+    `git add --renormalize .` makes the index describe the worktree
+    again. A
     re-listing mid-run, or a nested repository's project, spawns
     `git ls-files -s --others --exclude-standard -z .` in the project
     dir instead, and its OIDs are not trusted: those files hash by
