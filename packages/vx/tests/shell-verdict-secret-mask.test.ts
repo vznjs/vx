@@ -48,8 +48,8 @@ describe('the shell verdict line', () => {
         out
           .split('\n')
           .map((l) => l.replace(/^.*?\[vx\] /, '[vx] '))
-          // The shell's verdict on a missing path is 127 (dash, bash 5) or
-          // 126 (macOS's bash 3.2 under `exec`); the word is the claim here.
+          // 127 on Linux; macOS CI printed no 127 line for the path, and a
+          // shell may call a missing path 126. The masked word is the claim.
           .filter((l) => /^\[vx\] exit 12[67] /.test(l))
           .map((l) =>
             l.replace(/^\[vx\] exit 12[67] is the shell's "[^"]+": /, '').replace(/ — .*/, ''),
