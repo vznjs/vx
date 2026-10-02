@@ -201,6 +201,7 @@ where Nx ran it, with the executor's option defaults applied:
 | `@nx/next:build`                    | `next build`, `NX_NEXT_OUTPUT_PATH` set to `outputPath`     |
 | `@nx/next:server`                   | `next dev --port=4200` (or `next start` in the build output) |
 | `@nx/cypress:cypress`               | `cd ../.. && cypress run --project=apps/web-e2e --config-file=cypress.config.ts --e2e` |
+| `@nx/esbuild:esbuild`               | `cd ../.. && rm -rf dist/apps/api && esbuild apps/api/src/main.ts --bundle --packages=external --format=esm …` |
 
 What an executor did besides its tool (a type-check before a Vite
 build, a `package.json` or `assets` copied into the output) is a TODO

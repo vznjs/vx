@@ -30,5 +30,11 @@ start` (in the build output) with Nx's port and `PORT`, and
   names that generator in its TODO: those executors feed their options
   to the project's config function, so no flag line reproduces them, and
   Nx's generator moves them into the config.
+- **P2-5** The migrator writes `@nx/esbuild:esbuild` (bundled, its
+  default) as esbuild's own CLI from the workspace root: one build per
+  format, `--packages=external` for the npm dependencies Nx externalizes
+  without `thirdParty`, the output emptied first; the type-check, the
+  `package.json` and assets Nx added are TODOs. It was a failing
+  placeholder.
 
 ## Leads for other streams

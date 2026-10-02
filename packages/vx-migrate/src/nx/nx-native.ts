@@ -706,7 +706,92 @@ const cypress: Translate = (o, ctx, todos) => {
   return fromRoot(ctx, args.join(' '))
 }
 
+/**
+ * `@nx/esbuild:esbuild` with `bundle` (its default): esbuild's own CLI from
+ * the workspace root, where Nx sets `absWorkingDir`, one build per
+ * format. Without `thirdParty`, Nx marks every npm dependency the graph
+ * gives the project external, and `--packages=external` is esbuild's
+ * spelling of it. Unbundled, Nx collects entry points from the graph: no line.
+ */
+const esbuild: Translate = (o, ctx, todos) => {
+  if (o['bundle'] === false) return null
+  if (typeof o['main'] !== 'string' || typeof o['outputPath'] !== 'string') return null
+  const out = wsPath(o['outputPath'], ctx)
+  const extra = Array.isArray(o['additionalEntryPoints'])
+    ? o['additionalEntryPoints'].filter((e): e is string => typeof e === 'string')
+    : []
+  const entries = [o['main'], ...extra].map((e) => shellQuote(wsPath(e, ctx)))
+  const formats = Array.isArray(o['format'])
+    ? o['format'].filter((f): f is string => typeof f === 'string')
+    : typeof o['format'] === 'string'
+      ? [o['format']]
+      : ['esm']
+  const name = (
+    typeof o['outputFileName'] === 'string'
+      ? o['outputFileName']
+      : wsPath(o['main'], ctx).split('/').at(-1)!
+  ).replace(/\.[^./]*$/, '')
+  const common: string[] = ['--bundle']
+  common.push(
+    `--platform=${shellQuote(typeof o['platform'] === 'string' ? o['platform'] : 'node')}`,
+  )
+  common.push(`--target=${shellQuote(typeof o['target'] === 'string' ? o['target'] : 'esnext')}`)
+  if (typeof o['tsConfig'] === 'string')
+    common.push(`--tsconfig=${shellQuote(wsPath(o['tsConfig'], ctx))}`)
+  if (o['thirdParty'] !== true) common.push('--packages=external')
+  const excluded = new Set(Array.isArray(o['excludeFromExternal']) ? o['excludeFromExternal'] : [])
+  if (Array.isArray(o['external']))
+    for (const e of o['external'])
+      if (typeof e === 'string' && !excluded.has(e)) common.push(`--external:${shellQuote(e)}`)
+  if (o['minify'] === true) common.push('--minify')
+  if (o['sourcemap'] === true) common.push('--sourcemap')
+  else if (typeof o['sourcemap'] === 'string')
+    common.push(`--sourcemap=${shellQuote(o['sourcemap'])}`)
+  if (o['outputHashing'] === 'all') common.push("'--entry-names=[dir]/[name].[hash]'")
+  if (o['watch'] === true) common.push('--watch')
+  const builds = formats.map((format) => {
+    const ext = format === 'esm' ? '.js' : '.cjs'
+    const dest =
+      extra.length === 0
+        ? `--outfile=${shellQuote(`${out}/${name}${ext}`)}`
+        : `--outdir=${shellQuote(out)} --out-extension:.js=${ext}`
+    const meta =
+      o['metafile'] === true ? [`--metafile=${shellQuote(`${out}/meta.${format}.json`)}`] : []
+    return ['esbuild', ...entries, ...common, `--format=${shellQuote(format)}`, dest, ...meta].join(
+      ' ',
+    )
+  })
+  if (o['skipTypeCheck'] !== true)
+    todos.push(
+      '@nx/esbuild:esbuild type-checked the project (tsc) besides bundling — add a typecheck task to dependsOn, or drop this line',
+    )
+  if (o['generatePackageJson'] === true)
+    todos.push('@nx/esbuild:esbuild generated a package.json in the output dir — esbuild does not')
+  else
+    todos.push(
+      "@nx/esbuild:esbuild copied the project's package.json (unless the workspace uses TS project references) into the output dir — esbuild does not",
+    )
+  if (Array.isArray(o['assets']) && o['assets'].length > 0)
+    todos.push(
+      '@nx/esbuild:esbuild copied `assets` into the output dir — esbuild does not; add a copy step',
+    )
+  if (o['esbuildOptions'] !== undefined || o['esbuildConfig'] !== undefined)
+    todos.push(
+      '@nx/esbuild:esbuild merged `esbuildOptions` / `esbuildConfig` — carry them as flags or a build script',
+    )
+  if (o['platform'] === 'browser')
+    todos.push(
+      '@nx/esbuild:esbuild defined the `NX_PUBLIC_*` environment for the browser — add `--define` flags',
+    )
+  const line = builds.join(' && ')
+  return fromRoot(
+    ctx,
+    o['deleteOutputPath'] === false ? line : `rm -rf ${shellQuote(out)} && ${line}`,
+  )
+}
+
 const TRANSLATORS: Readonly<Record<string, Translate>> = {
+  '@nx/esbuild:esbuild': esbuild,
   '@nx/next:build': nextBuild,
   '@nx/next:server': nextServer,
   '@nx/cypress:cypress': cypress,
