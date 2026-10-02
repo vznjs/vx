@@ -1522,12 +1522,21 @@ vx-lock.json (2 projects have no vx.config; their tasks are never
 frozen)`), so an empty lock on a plugin-only workspace never reads like
 an audit.
 
+The lock is committed, so `vx lock` refuses to write one that holds a
+secret: a config that evaluated to the value of a secret-named variable
+(or one a task lists in `exec.env.secret`), say
+`` `--token ${process.env.API_TOKEN}` ``. It names each place
+(`a: tasks.deploy.exec.command holds $API_TOKEN`) and writes nothing.
+Masking it instead would freeze a `***` that `--frozen` runs. Let the
+shell expand it: `$API_TOKEN` in the command, the name in
+`exec.env.passThrough` (L-42).
+
 Exit codes:
 
 - `0` — lock written / lock is up to date.
 - `1` — parse error, workspace-discovery error, missing lock
-  (`--check` without one), or any drift (every mismatched project is
-  listed on stderr).
+  (`--check` without one), any drift (every mismatched project is
+  listed on stderr), or a secret value the lock would hold.
 
 ## Releasing (maintainers)
 

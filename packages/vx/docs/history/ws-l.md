@@ -445,6 +445,15 @@
   there. It is now masked with the same rule before it is recorded.
   Row: `invocation-secret-mask.test.ts`, red without the fix.
 
+- L-42. `fix(cli)`: `vx lock` writes each config as evaluated into
+  `vx-lock.json`, which is committed. A config that interpolated a
+  secret (`--token ${process.env.API_TOKEN}`, a `define` from
+  `process.env`) wrote the value there (probed). Masking would freeze a
+  `***` that `--frozen` runs, so the lock is refused, naming each
+  place, and nothing is written. `lock-secret.test.ts`, red without the
+  fix, with two controls (no secret in the env; a shell-expanded
+  `$API_TOKEN`).
+
 ## Leads for other streams
 
 - Cache owners: `src/cache/archive.ts` and `tar-stream.ts` changed under

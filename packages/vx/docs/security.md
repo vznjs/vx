@@ -97,7 +97,8 @@ task's `exec.env.define` values and the `cache.inputs.env` values its
 local child gets, never `passThrough`; those values sit unmasked in the
 action's Command, which the remote stores in its CAS, as Bazel's
 `--action_env` does, so a secret a remote task needs is trusted to that
-remote.
+remote. `vx lock` refuses to write a lock holding a secret value: the lock is
+committed (L-42).
 
 ## Releases
 
