@@ -1796,7 +1796,8 @@ run build`, `yarn workspace <name>`, `-r` / `--filter`, a `cd` or `-C`
 / `--cwd` / `--prefix` into another member) keeps its command and gets a
 TODO naming that part: the graph runs that member's task once, so name it
 under `dependsOn` and drop it from the command (pinia). A directory inside
-the member or the root is no other member.
+the member or the root is no other member, and neither is a bare `wireit`
+or `nps`, which run the package's own config (lit, D-114).
 A script that is nothing but `npm run <other>` (`pnpm <other>`, `yarn
 <other>`, `bun run <other>`, `npm test`, `npm start`) becomes a **group**
 over `<other>` — `dependsOn` and no command — so the graph runs and

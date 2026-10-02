@@ -493,7 +493,9 @@ function siblingRun(script: string, dir: string, others: readonly string[]): str
   }
   for (const segment of script.split(/&&|\|\||[;|()]/)) {
     const s = segment.trim()
-    if (RUNS_MEMBERS.test(` ${s}`)) return s
+    // `wireit` and `nps` run the package's own config, not another
+    // member's: every one of lit's member scripts read as a sibling run.
+    if (RUNS_MEMBERS.test(` ${s}`) && !/^([A-Za-z_]\w*=\S*\s+)*(wireit|nps)(\s|$)/.test(s)) return s
     for (const m of s.matchAll(CD)) if (intoOther(m[1]!)) return s
     const words = s.split(/\s+/)
     const at = words.findIndex((w) => /^(pnpm|pn|npm|yarn|bun)$/.test(w))
