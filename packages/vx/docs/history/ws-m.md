@@ -234,6 +234,13 @@ both listen (`/proc/net/tcp{,6}`, ~5 s bound).
 listener 500 ms late; red without the wait; a task with no network is not
 held (control). Cost within noise: a networked `true`, min of 15
 interleaved, 86 ms with the wait against 90 without, under load.
+M-21. M-19's class under I/O load (two `dd … conv=fsync` loops beside
+four busy loops): `affected.test.ts` › six thousand changed files timed
+out its afterEach (bun's 5 s default), which removed the row's 6,000
+files and their git objects; 11.1 s for the row and its hooks. The row
+(30 s bound) now removes its root itself: the hook took 2.4 s before,
+11 ms after, under the same load. No other row of the suites makes a
+fixture past 1,500 files.
 
 ## Leads for other streams
 
