@@ -308,6 +308,9 @@ export async function mapNxWorkspace(
   const mapped: Array<{ meta: ProjectMeta; tasks: GeneratedTask[] }> = []
   // A configuration variant's task (`build:production`) and what it runs.
   const configured = new WeakMap<GeneratedTask, string>()
+  // The target an atomizer split (cypress's `e2e`, named by each
+  // `e2e-ci--<spec>`'s `nonAtomizedTarget`), each configuration of it too.
+  const split = new Set<GeneratedTask>()
   for (const meta of allMetas) {
     const node = nodeByMeta.get(meta)
     const targets = node?.data?.targets
@@ -327,6 +330,7 @@ export async function mapNxWorkspace(
         (f) => relPosix(projectRel, f),
       )
     }
+    const atomized = new Set(Object.values(targets).map((t) => t.metadata?.nonAtomizedTarget))
     for (const [targetName, target] of Object.entries(targets)) {
       for (const v of variants(targetName, target)) {
         const t = buildTask(
@@ -346,6 +350,7 @@ export async function mapNxWorkspace(
           listing === null ? null : dotenvFor(listing, targetName, v.configuration),
         )
         if (v.name !== targetName) configured.set(t, v.configuration!)
+        if (atomized.has(targetName)) split.add(t)
         tasks.push(t)
       }
     }
@@ -413,7 +418,7 @@ export async function mapNxWorkspace(
     })
   }
 
-  resolveSharedWorkspaceOutputs(root, projects)
+  resolveAtomizedWorkspaceOutputs(root, projects, split)
   pruneOrphanPersistentNotes(projects, opts.persistentTodo)
   const notes: string[] =
     globalSync.length === 0
@@ -428,6 +433,37 @@ export async function mapNxWorkspace(
         'Nx runs them before those targets, and vx does not — run `nx sync` when they are out of date',
     )
   return { projects, notes }
+}
+
+/**
+ * The shared-workspace-output rule keeps the first task on a path cached.
+ * Cypress's atomizer gives `e2e` the whole `videos` dir and each
+ * `e2e-ci--<spec>` a subdir of it, so `e2e` first ran every spec's CI task
+ * uncached — the tasks atomizing exists to cache and distribute
+ * (nx-examples). The split target is tried last too, and the order that
+ * leaves more tasks cached wins; on a tie (jest's children share one path)
+ * the declared order stands.
+ */
+function resolveAtomizedWorkspaceOutputs(
+  root: string,
+  projects: GeneratedProject[],
+  split: ReadonlySet<GeneratedTask>,
+): void {
+  const last = projects.map((p) => ({
+    name: p.name,
+    dir: p.dir,
+    tasks: [...p.tasks.filter((t) => !split.has(t)), ...p.tasks.filter((t) => split.has(t))],
+  }))
+  const cached = (ps: readonly { name: string; dir: string; tasks: GeneratedTask[] }[]): number => {
+    const copy = structuredClone(ps.map((p) => ({ name: p.name, dir: p.dir, tasks: p.tasks })))
+    resolveSharedWorkspaceOutputs(root, copy)
+    return copy.reduce(
+      (n, p) => n + p.tasks.filter((t) => t.task?.['cache'] !== undefined).length,
+      0,
+    )
+  }
+  const better = split.size > 0 && cached(last) > cached(projects)
+  resolveSharedWorkspaceOutputs(root, better ? last : projects)
 }
 
 /**
