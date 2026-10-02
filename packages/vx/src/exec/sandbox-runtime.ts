@@ -63,7 +63,12 @@ import {
   UserError,
   xxh3hex,
 } from '../util/index.js'
-import { bindableWrites, buildCustomConfig, scratchWrites } from './sandbox-binds.js'
+import {
+  bindableWrites,
+  buildCustomConfig,
+  scratchWrites,
+  widenedEntries,
+} from './sandbox-binds.js'
 import {
   atOrUnder,
   isMountableLiteral,
@@ -1478,6 +1483,8 @@ async function runSandboxedOnce(
   const { wrapped, tag, srtCommand, baselines, scratch, forwardsSignals, traced } =
     await wrapSandboxedCommand({ ...args, ...(useStrace ? { trace: useStrace } : {}) })
   const takeRecords = collectRecords(SandboxManager.getSandboxViolationStore(), srtCommand)
+  // Before the spawn: what the task creates under a widened grant is its own.
+  const widened = traced ? widenedEntries(args.config.allowWrite) : undefined
   // Beside the task directories, which every sandbox replaces with its own:
   // in the shared temp dir a concurrent task read this log, every path
   // this task opened (L-25).
@@ -1626,7 +1633,7 @@ async function runSandboxedOnce(
     process.platform === 'linux'
       ? [
           ...(straceLog
-            ? await parseStraceViolations(straceLog, args, baselines).catch(() => [])
+            ? await parseStraceViolations(straceLog, args, baselines, widened).catch(() => [])
             : []),
           ...refusedWrites(
             // Keyed by what SRT wrapped, the in-sandbox group wrapper

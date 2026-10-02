@@ -10,6 +10,7 @@ import {
   isMountableLiteral,
   localBindingOn,
   MOUNT_WILDCARDS,
+  toRealPath,
   unique,
 } from './sandbox-paths.js'
 import type { SandboxedRunArgs } from './sandbox-runtime.js'
@@ -27,27 +28,50 @@ type SrtModule = typeof import('@anthropic-ai/sandbox-runtime')
  * is "Device or resource busy"; binding `/w/dist` instead succeeds.
  *
  * So on Linux a file-shaped grant is widened to its directory. That IS a
- * widening — the task may write its siblings — and it is the narrowest
+ * widening — the task may write its siblings, and read them unrefused
+ * (`widenedEntries` has those reads reported) — and it is the narrowest
  * grant the mechanism can express: the alternative is a declared output
  * the task cannot produce. macOS needs none of this (seatbelt matches
  * paths, it does not mount), so the grant stays exact there.
  */
 export function bindableWrites(paths: readonly string[]): string[] {
   if (process.platform !== 'linux') return [...paths]
-  return unique(
-    paths
-      .filter((p) => !holdsBracket(p))
-      .map((p) => {
-        if (!isMountableLiteral(p)) return p
-        try {
-          if (statSync(p).isDirectory()) return p
-        } catch {
-          // Does not exist yet: `prepareOutputsForBind` creates a file for a
-          // file-shaped grant, so treat it as one.
-        }
-        return path.dirname(p)
-      }),
-  )
+  return unique(paths.filter((p) => !holdsBracket(p)).map(bindOf))
+}
+
+function bindOf(p: string): string {
+  if (!isMountableLiteral(p)) return p
+  try {
+    if (statSync(p).isDirectory()) return p
+  } catch {
+    // Does not exist yet: `prepareOutputsForBind` creates a file for a
+    // file-shaped grant, so treat it as one.
+  }
+  return path.dirname(p)
+}
+
+/**
+ * What each directory `bindableWrites` widened a file grant to held when
+ * the task started, by real path. A read there is never refused, so the
+ * strace pass reports one of these no grant covers: a task granted
+ * `write: ['out.txt']` read the whole project unreported, and a cached run
+ * replayed an undeclared file's old bytes. What the task creates there is
+ * its own, not an input, so only these entries count. Empty off Linux.
+ */
+export function widenedEntries(paths: readonly string[]): Map<string, Set<string>> {
+  const out = new Map<string, Set<string>>()
+  if (process.platform !== 'linux') return out
+  for (const p of paths) {
+    if (holdsBracket(p) || bindOf(p) === p) continue
+    const dir = toRealPath(path.dirname(p))
+    if (out.has(dir)) continue
+    try {
+      out.set(dir, new Set(readdirSync(dir).map((e) => path.join(dir, e))))
+    } catch {
+      // Gone or unreadable: nothing there to read.
+    }
+  }
+  return out
 }
 
 /**

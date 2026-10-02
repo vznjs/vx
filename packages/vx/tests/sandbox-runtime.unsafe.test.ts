@@ -1748,15 +1748,15 @@ describe.skipIf(!available || process.platform !== 'linux')(
 )
 
 describe.skipIf(!available || process.platform !== 'linux')(
-  'a write grant widens what a task can READ, and that is the cache-relevant half',
+  'a write grant widens what a task can READ, and the trace reports it',
   () => {
     // `bindableWrites` widens a FILE-shaped write grant to its DIRECTORY on
-    // Linux, because bwrap cannot rename onto an active file mount. The code
-    // says so, and says what it costs on the WRITE side ("the task may write
-    // its siblings"). The READ side was neither written down nor pinned: a
-    // read-write bind is readable, so the whole directory becomes readable
-    // too — and an undeclared read is exactly the thing the sandbox exists to
-    // catch, because the key folds this project's inputs (2026-09-20).
+    // Linux, because bwrap cannot rename onto an active file mount. A
+    // read-write bind is readable, so the whole directory became readable
+    // unreported — and an undeclared read is exactly the thing the sandbox
+    // exists to catch, because the key folds this project's inputs
+    // (2026-09-20). The read still succeeds; the strace pass now reports
+    // it (B-71, `tests/sandbox-widened-reads.unsafe.test.ts`).
     //
     // Linux-only by construction: macOS seatbelt matches paths rather than
     // mounting, so a file grant stays exact there.
@@ -1792,15 +1792,15 @@ describe.skipIf(!available || process.platform !== 'linux')(
       })
 
     it(
-      'a write grant at the project ROOT makes the whole root readable — no violation',
+      'a write grant at the project ROOT makes the whole root readable — and reported',
       async () => {
         const dir = await project('out.txt')
         const r = await run({ cwd: fixture.root, tasks: ['build'], log: collectingLogger(fixture) })
-        // The read SUCCEEDED and nothing reported it. This is the documented
-        // boundary being wider than the docs said, not a denial being missed:
-        // no syscall failed, so there is nothing for the strace pass to see.
-        expect(r.outcomes[0]?.status).toBe('success')
-        expect(r.outcomes[0]?.sandboxViolations).toBeUndefined()
+        // The read SUCCEEDED (no syscall failed), and the trace's successful
+        // opens under the widened directory report it, and the read of
+        // `dist/sibling.txt`, which lies under it too.
+        expect(r.outcomes[0]?.status).toBe('failed')
+        expect(r.outcomes[0]?.sandboxViolations).toBe(2)
         expect(await readFile(path.join(dir, 'probe', 'root.txt'), 'utf8')).toBe('AT THE ROOT')
       },
       TIMEOUT,
@@ -1815,12 +1815,12 @@ describe.skipIf(!available || process.platform !== 'linux')(
         const dir = await project('dist/out.txt')
         const r = await run({ cwd: fixture.root, tasks: ['build'], log: collectingLogger(fixture) })
         expect(r.outcomes[0]?.status).toBe('failed')
-        expect(r.outcomes[0]?.sandboxViolations).toBe(1)
+        // The root read is denied; the read of `dist/`'s sibling succeeds
+        // (the widening is real and scoped) and is reported.
+        expect(r.outcomes[0]?.sandboxViolations).toBe(2)
         // The redirection still creates the file; what the denial costs is
         // its CONTENT, which is the difference that matters.
         expect(await readFile(path.join(dir, 'probe', 'root.txt'), 'utf8')).toBe('')
-        // …while the widening itself is real and scoped: `dist/` IS readable,
-        // which is how `tsc --incremental` re-reads its own .tsbuildinfo.
         expect(await readFile(path.join(dir, 'probe', 'dist.txt'), 'utf8')).toBe('IN DIST')
       },
       TIMEOUT,

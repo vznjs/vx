@@ -1108,13 +1108,15 @@ an active file mount — every atomic writer stages beside its target and
 renames — so a FILE-shaped grant is bound as its DIRECTORY. That
 directory is then readable AND writable in full: with
 `write: ['out.txt']` in the project root, every file in the project root
-can be read, undeclared, with no violation (there is no denial for the
-detector to report — the read simply succeeds). Put declared outputs in
-a subdirectory and the rest stays denied: under `write: ['dist/out.txt']`
-the task reads `dist/` freely and an undeclared read at the project root
-still fails. macOS matches paths rather than mounting, so a file grant
-stays exact there. Pinned both ways in
-`tests/sandbox-runtime.unsafe.test.ts` (2026-09-20).
+can be read. Such a read succeeds, so there is no denial; vx reports it
+from the trace instead, as a violation: a read of anything that was in
+that directory when the task started and that no grant covers, the
+directory's listing included. The declared file and what the task made
+there itself stay readable. Put declared outputs in a subdirectory and
+the rest stays denied outright. macOS matches paths rather than
+mounting, so a file grant stays exact there. Pinned in
+`tests/sandbox-runtime.unsafe.test.ts` (2026-09-20) and
+`tests/sandbox-widened-reads.unsafe.test.ts`.
 
 **`network` is per-RUN, not per-task.** SRT runs one filtering proxy
 per `vx run` and checks every request against the allowlist that proxy
