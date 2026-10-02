@@ -6,6 +6,7 @@ export { prepareRun, type PreparedRun } from './prepare.js'
 export {
   discoverProjects,
   gitOfDiscovery,
+  keepDiscoveryGraph,
   loadProjects,
   loadResolvedProjects,
   loadWorkspacePlugins,

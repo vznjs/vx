@@ -7,6 +7,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { resolveFilters } from '../src/cli/select.js'
+import { graphOfDiscovery } from '../src/orchestrator/projects.js'
 import { gitInit } from './helpers/workspace.js'
 
 const TIMEOUT = 30_000
@@ -38,7 +39,7 @@ afterEach(async () => {
 const handed = async (filter: string): Promise<{ names: string[]; graph: boolean }> => {
   const r = await resolveFilters(root, [filter])
   if (!('names' in r)) throw new Error(JSON.stringify(r))
-  return { names: r.names, graph: r.discovered.graph !== undefined }
+  return { names: r.names, graph: graphOfDiscovery(r.discovered.projects) !== undefined }
 }
 
 describe("a selection's package graph", () => {

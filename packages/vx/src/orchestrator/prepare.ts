@@ -57,6 +57,7 @@ import {
 import {
   discoverProjects,
   gitOfDiscovery,
+  graphOfDiscovery,
   loadProjects,
   loadWorkspacePlugins,
   type LoadedProjects,
@@ -223,7 +224,9 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   // those configs are evaluated. Side effect, deliberate and
   // Turbo-like: a broken config in an unrelated package no longer
   // fails a scoped run — it surfaces when that package enters scope.
-  const packageGraph = reused?.graph ?? buildPackageGraph(projectMetas)
+  const packageGraph =
+    (reused !== undefined ? graphOfDiscovery(reused.projects) : undefined) ??
+    buildPackageGraph(projectMetas)
   // Seeds: explicit scope, plus anchored pkg#task targets (which bypass
   // scope by design). With no explicit scope, bare task names fan out
   // across the whole workspace — but when EVERY spec is anchored, the
