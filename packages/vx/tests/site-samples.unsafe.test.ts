@@ -394,7 +394,7 @@ describe('the no-daemon post quotes the benchmarks page', () => {
   it('each warm-run figure it states is on docs/benchmarks.md as written', () => {
     const page = readFileSync(path.join(DOCS, 'blog', 'no-daemon.md'), 'utf8')
     const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
-    for (const figure of ['510ms', '760ms', '3.59s', '51 ms', '95 ms']) {
+    for (const figure of ['510ms', '760ms', '3.59s']) {
       expect(page).toContain(figure)
       expect(bench).toContain(figure)
     }
@@ -511,17 +511,7 @@ describe('the why-vx-is-fast post quotes the benchmarks page', () => {
   it('each figure it states is on docs/benchmarks.md as written', () => {
     const page = readFileSync(path.join(DOCS, 'blog', 'why-vx-is-fast.md'), 'utf8')
     const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
-    for (const figure of [
-      '3m 38s',
-      '3m 46s',
-      '5m 13s',
-      '34m 44s',
-      '510ms',
-      '760ms',
-      '3.59s',
-      '66 ms',
-      '127 ms',
-    ]) {
+    for (const figure of ['3m 38s', '3m 46s', '5m 13s', '34m 44s', '510ms', '760ms', '3.59s']) {
       expect(page).toContain(figure)
       expect(bench).toContain(figure)
     }

@@ -147,12 +147,40 @@ The command itself comes from your `package.json` script, with its
 5. Preview the configs with `bunx @vzn/vx-migrate --dry`, then write them
    with `bunx @vzn/vx-migrate`. With `turbo.json` there too, pass
    `--from nx` (or `--from turbo`).
+6. Once `vx run build --all` does what `nx run-many -t build` did,
+   remove `nx()` and its import from `vx.workspace.ts`, then delete
+   `nx.json`: the configs declare every task the graph had. Keep `nx`
+   and `@vzn/vx-migrate` installed only while a config still runs an
+   `nx-exec` or `nx-env` line.
 
 ```ts
 import type { WorkspaceConfig } from '@vzn/vx/config'
 import { nx } from '@vzn/vx-migrate'
 
 export default { plugins: [nx()] } satisfies WorkspaceConfig
+```
+
+```text
+$ npx vx init
+vx init: nx.json found — nx() from @vzn/vx-migrate, a temporary start until bunx @vzn/vx-migrate writes native config; nothing else written.
+wrote vx.workspace.ts.
+
+next: npm install -D @vzn/vx-migrate && npx vx run build --all
+```
+
+`bunx @vzn/vx-migrate` reports what it wrote:
+
+```text
+$ bunx @vzn/vx-migrate
+vx-migrate: nx graph → vx.config.ts
+note: migrating from the resolved project-graph snapshot — plugin-inferred targets are frozen as static config; executor targets run through `nx-exec` and targets with `.env` files through `nx-env` (keep @vzn/vx-migrate and nx installed)
+
+2 tasks migrated clean, 0 TODOs
+files written:
+  packages/app/vx.config.ts
+  packages/lib/vx.config.ts
+
+next: bunx vx run build --all
 ```
 
 Executor targets keep running as executors. Each becomes one `nx-exec`
@@ -182,7 +210,7 @@ installed.
 | `nx run app:build:production`        | `vx run app#build:production`                             |
 | `nx affected -t test`                | `vx run test --affected` (`nx()` takes `NX_BASE` or `defaultBase` as its base) |
 | `nx graph`                           | `vx run build --all --graph`                              |
-| `nx reset`                           | `vx cache prune`, or remove the cache directory `vx info` names; there is no daemon |
+| `nx reset`                           | `vx cache prune --older-than <age>` trims it; remove the cache directory `vx info` names to drop it all; there is no daemon |
 | Nx Cloud cache                       | [`nxCache()`](../ci/#remote-cache) for a self-hosted Nx cache |
 
 Generators, Nx Console and module-boundary rules have no vx equivalent;
