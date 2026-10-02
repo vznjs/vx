@@ -993,6 +993,7 @@ admission policy, failures, a stop, each `--continue` mode) against
 what `modules/scheduler.md` promises, and 300 against the taint
 tracker's definition. Each of three scheduler mutations reddens it:
 the item-963 hold, the skipped-upstream skip, the stop's skip.
+
 ## C-71: `--exclude-dependencies`' orders over random graphs, as a test
 
 A probe over 60,000 random graphs found `excludeDependencies` sound;
