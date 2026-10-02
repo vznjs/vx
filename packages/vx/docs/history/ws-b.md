@@ -103,6 +103,15 @@ In order of harm:
   Bun's `realpathSync` refuses such a path too (B-70). A refusal at
   discovery naming the directory would say why.
 
+- upstream (SRT, 0.0.76): a sandboxed `true` costs ~28 ms on Linux:
+  bwrap with SRT's binds ~6 ms, SRT's chain inside (bash three times,
+  two socat bridges, apply-seccomp) ~6.5 ms, strace's own start ~5 ms,
+  vx's wrapper ~1.3 ms (B-75 removed SRT's per-wrap `rg`, 2.8 ms). One
+  shell in place of three, and the bridges only for a task granted
+  network, would cut the chain; neither is an SRT option today
+  (2026-10-02). dash cannot stand in: SRT's `trap "kill %1 %2"` kills
+  no job there.
+
 ## Entries
 
 B-1. A glob grant's hit on a wall is not a grant of it (lead 1). On
@@ -1248,3 +1257,28 @@ asks just before the spawn and returns the stop's signal exit
 tracer-retry row that aborted before the call leaned on the bug and now
 aborts mid-run. Rows: `sandbox-abort-before-spawn.unsafe.test.ts` (both
 stop rows red without the fix).
+
+B-69. `execWord` split a command on blanks and kept its quotes, so
+`"./my build.sh" x` named `"./my`, and the 127 verdict said the file did
+not exist when its `#!` interpreter was the cause. It now reads the
+first word as the shell does: quotes group and are removed, a quoted
+builtin stays a builtin, an unterminated quote names nothing. Rows:
+`exec-word-quotes.test.ts` (seven red without the fix). The real-shell
+control claims only what dash, bash 5 and macOS's bash 3.2 all say (a
+failure naming the file without its quotes): it claimed exit 127, and
+macOS's sh exits 1.
+
+B-73. A persistent task awaits its key, and a sandboxed one the
+sandbox's arming, request and wrap, before it spawns. A stop landing in
+between was never looked at again: the server came up after the
+teardown, and a Ctrl-C 0.1 s into `vx run dev` took 7 s to end the run
+(~200 ms now). It now asks just before `runPersistent`, releases the
+bridges and placeholders, and is aborted with the exit of the signal a
+server would have been sent (`forwardedSignal`). Rows:
+`persistent-stop-before-spawn.test.ts` (red without the fix).
+
+B-74. A hang-up forwards SIGTERM to running tasks (`forwardedSignal`;
+to many servers SIGHUP means "reload"), so a spawned task stopped by one
+exits 143, while one stopped before its spawn (B-55, B-72) read 129.
+`stopSignal` now follows `forwardedSignal`. Rows:
+`stop-signal-before-spawn.test.ts` (the SIGHUP row red without the fix).
