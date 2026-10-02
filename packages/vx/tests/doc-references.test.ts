@@ -206,7 +206,14 @@ describe("comparison.md states the purity gate's three conditions", () => {
     expect(sentence).not.toBeNull()
     const text = sentence![0]!
     expect(text).toContain('BACKSLASH')
-    expect(text).toContain(`non-\`${pure![1]}\` bare`)
+    // The gate passes two bare specifiers; `vx init` writes the second.
+    const entry = /const PURE_CONFIG_ENTRY = '([^']+)'/.exec(src)
+    expect(entry).not.toBeNull()
+    expect(text.split(/\s+/).join(' ')).toContain(
+      `any bare import but \`${pure![1]}\` (its pure values) and \`${entry![1]}\``,
+    )
+    const gate = readFileSync(path.join(pkg, 'docs', 'modules', 'config-cache.md'), 'utf8')
+    expect(gate.split(/\s+/).join(' ')).toContain(`or \`${entry![1]}\` (the schema entry`)
     expect(text).toContain(`closure past ${cap![1]} files`)
     // The error this pin exists for: a forward slash as the escape claim.
     expect(/any `\/`/.test(text)).toBe(false)
