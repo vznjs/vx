@@ -36,7 +36,7 @@ export function bindableWrites(paths: readonly string[]): string[] {
   if (process.platform !== 'linux') return [...paths]
   return unique(
     paths
-      .filter((p) => !holdsBracket(p))
+      .filter((p) => !holdsGlobChar(p))
       .map((p) => {
         if (!isMountableLiteral(p)) return p
         try {
@@ -191,29 +191,64 @@ export function punchWritePaths(readPath: string, writePaths: readonly string[])
 }
 
 /** Grants already reported — once per process, not per spawn. */
-const warnedBracket = new Set<string>()
+const warnedGlob = new Set<string>()
 
 /**
- * SRT drops every Linux write path holding a bracket (it reads one as a
- * glob, and a write path must be a path), and no spelling keeps it. Left
- * in, the read grants were punched around a bind that never came, the
- * directory vanished from the task's view, its write read "Directory
+ * SRT drops every Linux write path holding `[`, `]`, `*` or `?` (it reads
+ * one as a glob, and a write path must be a path) or a backslash (Bun's
+ * realpath refuses it; `bindableReads`), and no spelling keeps
+ * it. Left in, the read grants were punched around a bind that never came,
+ * the directory vanished from the task's view, its write read "Directory
  * nonexistent" with no word of the grant, and the refused write went
  * unreported, judged against it. Dropped from the binds instead, and said
  * once: the remedy is the deepest directory above it whose name holds none.
  */
-function holdsBracket(grant: string): boolean {
-  const at = grant.search(/[[\]]/)
+function holdsGlobChar(grant: string): boolean {
+  const at = srtStripped(grant).search(/[[\]*?\\]/)
   if (at === -1) return false
-  if (!warnedBracket.has(grant)) {
-    warnedBracket.add(grant)
+  if (!warnedGlob.has(grant)) {
+    warnedGlob.add(grant)
     process.stderr.write(
-      `[vx] sandbox: the write grant ${grant} holds a bracket, and the Linux sandbox mounts no ` +
-        `write path that does, so a write under it is refused. Grant the directory above it ` +
-        `instead: ${grant.slice(0, grant.lastIndexOf(path.sep, at) + 1)}\n`,
+      `[vx] sandbox: the write grant ${grant} holds ${globChar(grant[at]!)}, and the Linux ` +
+        `sandbox mounts no write path that does, so a write under it is refused. Grant the ` +
+        `directory above it instead: ${grant.slice(0, grant.lastIndexOf(path.sep, at) + 1)}\n`,
     )
   }
   return true
+}
+
+/** A trailing `/**` SRT strips before it asks whether a path is a glob. */
+const srtStripped = (grant: string): string => grant.replace(/\/\*\*$/, '')
+
+const globChar = (c: string): string =>
+  c === '[' || c === ']' ? 'a bracket' : c === '\\' ? 'a backslash' : `a ${c}`
+
+/**
+ * Linux: the read grants SRT can mount as the paths they are. It reads
+ * one holding `*` or `?` as a glob and mounts every match, and no spelling
+ * makes either literal (its rewrite of each runs inside a class too), so a
+ * grant of `a*b.txt` granted `aXb.txt`. One holding a backslash it skips:
+ * Bun's `realpathSync` throws ENOENT on such a path (Node's does not), and
+ * SRT mounts no path it cannot resolve. Left out, so a read of it is
+ * refused and reported, and said once; a bracket has a spelling
+ * (`literalReadPaths`).
+ */
+export function bindableReads(paths: readonly string[]): string[] {
+  if (process.platform !== 'linux') return [...paths]
+  return paths.filter((grant) => {
+    const at = srtStripped(grant).search(/[*?\\]/)
+    if (at === -1) return true
+    if (!warnedGlob.has(grant)) {
+      warnedGlob.add(grant)
+      process.stderr.write(
+        `[vx] sandbox: the read grant ${grant} holds ${globChar(grant[at]!)}, which the Linux ` +
+          `sandbox ${grant[at] === '\\' ? 'cannot resolve' : 'reads as a pattern that also matches its siblings'}, so it is not granted. ` +
+          `Rename it, or grant the directory above it: ` +
+          `${grant.slice(0, grant.lastIndexOf(path.sep, at) + 1)}\n`,
+      )
+    }
+    return false
+  })
 }
 
 /**
