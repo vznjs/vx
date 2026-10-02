@@ -12,8 +12,8 @@
 // holds it.
 //
 // Keyed by the workspace, not the cache directory (`--cache-dir` must not
-// make two runs strangers), and kept under the temp directory so a
-// read-only checkout can take it.
+// make two runs strangers), and kept in this user's own directory under
+// the temp directory (L-47), so a read-only checkout can take it.
 //
 // The lock is a directory, HELD exactly while it is not empty. It holds
 // one entry, `h-<pid>-<start>-<n>`, naming the holder and unique to this
@@ -60,7 +60,7 @@
 // serialize what it chose to overlap. The lock is taken by the first of
 // them and left by the last to release.
 
-import { readFileSync, realpathSync } from 'node:fs'
+import { chmodSync, lstatSync, mkdirSync, readFileSync, realpathSync } from 'node:fs'
 import { rmdirSync, unlinkSync } from 'node:fs'
 import { mkdir, readdir, readFile, rename, rm, rmdir, unlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
@@ -110,7 +110,7 @@ const SAY_AFTER_MS = 1_000
 const LEGACY_PID = 'pid'
 
 export interface RunLockOptions {
-  /** Where the lock directories live; `os.tmpdir()` unless a test says otherwise. */
+  /** Where the lock directories live; this user's own directory in `os.tmpdir()` unless a test says otherwise. */
   dir?: string
   /** A status line for the waiting notice and the unlocked warning. */
   log: (line: string) => void
@@ -119,12 +119,12 @@ export interface RunLockOptions {
 }
 
 /**
- * The lock directory for a workspace root: stable across runs and users,
+ * The lock directory for a workspace root: stable across this user's runs,
  * private to this machine. Keyed by the REAL path: a CLI's cwd comes back
  * canonical while a caller may hold a symlinked spelling (macOS's /var ->
  * /private/var), and two spellings of one workspace must meet.
  */
-export function runLockPath(workspaceRoot: string, dir = os.tmpdir()): string {
+export function runLockPath(workspaceRoot: string, dir = userLockRoot(os.tmpdir())): string {
   const resolved = path.resolve(workspaceRoot)
   let real = resolved
   try {
@@ -133,6 +133,46 @@ export function runLockPath(workspaceRoot: string, dir = os.tmpdir()): string {
     // A root that is not there yet (a test's placeholder) keys by its spelling.
   }
   return path.join(dir, `vx-run-${xxh3hex(real)}`)
+}
+
+/**
+ * This user's own directory for locks under `dir`. A lock named in the
+ * shared temp dir itself was anyone's to plant: another local user put a
+ * held lock naming a live pid there and every run on the workspace waited
+ * on it (L-47). Two users on one checkout no longer exclude each other;
+ * the files of one are rarely the other's to write.
+ */
+function userLockRoot(dir: string): string {
+  const uid = process.getuid?.()
+  return uid === undefined ? dir : path.join(dir, `vx-runs-${uid}`)
+}
+
+/** The roots this process has made or checked. */
+const ownedRoots = new Set<string>()
+
+/**
+ * Make the lock's root, or refuse it when it is not this user's own
+ * directory (a link, another owner): a lock read there is anyone's.
+ */
+function ownLockRoot(lockDir: string): void {
+  const root = path.dirname(lockDir)
+  const uid = process.getuid?.()
+  if (uid === undefined || ownedRoots.has(root)) return
+  // Not recursive: a temp directory that is not there is the warning
+  // that names TMPDIR, never one vx makes.
+  try {
+    mkdirSync(root, { mode: 0o700 })
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err
+  }
+  const st = lstatSync(root)
+  if (!st.isDirectory() || st.uid !== uid) {
+    throw new Error(
+      `${root} is not this user's own directory (a link or another owner's); remove it`,
+    )
+  }
+  if ((st.mode & 0o077) !== 0) chmodSync(root, 0o700)
+  ownedRoots.add(root)
 }
 
 interface Holder {
@@ -309,6 +349,8 @@ export async function acquireRunLock(
     }
     let h: Holder | 'free' | null
     try {
+      // A caller's own `dir` (a test's) is theirs to vouch for.
+      if (opts.dir === undefined) ownLockRoot(lockDir)
       const entry = await place(lockDir)
       if (entry !== null) {
         heldHere.set(lockDir, 1)
