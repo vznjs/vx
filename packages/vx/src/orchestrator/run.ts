@@ -827,7 +827,19 @@ async function runOnBus(
     const foreground = options.log === undefined && (options.handleSignals ?? true)
     // An aborted run's children are already being torn down: nothing to hold.
     const hold = options.holdPersistent === true && !stopRun.signal.aborted
-    const keepAlive = selectKeepAlive(persistentRegistry, nodes, foreground || hold)
+    // A run that failed elsewhere holds nothing: `vx run dev --all` with one
+    // server that never became ready sat on the others for good, so a
+    // script hung, and the Ctrl-C that ended it read 130 over the failure
+    // (C-60). A kept server's own crash ends the wait below as before, and
+    // `--continue=always` asked to keep going, and does.
+    let keepAlive = selectKeepAlive(persistentRegistry, nodes, foreground || hold)
+    const failedElsewhere =
+      ![...outcomes.values()].every((o) => isPassStatus(o.status)) ||
+      [...persistentRegistry.values()].some(
+        (c) => hasEnded(c) && c.exitCode !== 0 && !keepAlive.children.includes(c),
+      )
+    if (failedElsewhere && options.continueMode !== 'always')
+      keepAlive = { nodes: [], children: [] }
     const crashedPersistent = (
       await shutdownPersistent(persistentRegistry, keepAlive.children)
     ).filter((c) => endedBeforeStop?.has(persistentRegistry.get(c.id)!) ?? true)
