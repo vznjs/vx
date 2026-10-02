@@ -449,8 +449,12 @@ const executorPlugin = new WeakMap<TaskExecutor, string>()
  */
 export function nameExecutorFailure(executor: TaskExecutor, err: unknown): unknown {
   if (!(err instanceof Error) || !executorPlugin.has(executor)) return err
+  // Once: one error an executor rejects several tasks with (a failed
+  // connection it memoized) reaches here once per task (C-74).
+  const prefix = `${executorLabel(executor)} failed in execute: `
+  if (err.message.startsWith(prefix)) return err
   try {
-    err.message = `${executorLabel(executor)} failed in execute: ${err.message}`
+    err.message = `${prefix}${err.message}`
   } catch {
     // A frozen error keeps its own words.
   }

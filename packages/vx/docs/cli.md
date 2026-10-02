@@ -748,7 +748,8 @@ down with it:
   from a healthy run), and the next run without the failure rebuilds the
   rest.
 
-The mode rides the wire, so distributed runs honor it.
+The mode is the local scheduler's: a task a plugin executor runs
+elsewhere is one dispatch, failed or not, like any other.
 
 ### `--download <mode>`
 
@@ -1792,7 +1793,9 @@ and when no task caches it says a cache block from a TODO makes the
 second run a hit. Its `next:` line is a command the user can type: the
 runner that started vx (`npx`, `pnpm`, `yarn`, `bunx`, read from
 `npm_config_user_agent`) with the installed `vx` bin, else the
-`@vzn/vx` package; with no runner, a bare `vx`.
+`@vzn/vx` package; with no runner, a bare `vx`. Outside a git work tree it starts with
+`git init`, and with no script mapped with declaring a task, since the
+run would refuse without either.
 
 `vx init --plugin <seam>` writes a plugin instead: `plugins/<seam>.ts`,
 a small runnable plugin for that seam (`executor`, `cache`,
@@ -1944,7 +1947,7 @@ it directly if you want the frozen view).
 
 ```
 vx show                          # list every project
-vx show <project>                # one project's resolved config
+vx show <project>                # one project's resolved config (`//`: the root project's)
 vx show <pkg>#<task>             # a single task (`//#<task>`: the root project's)
 vx show <task>                   # that task in every project declaring it
 vx show ... --format json        # machine-readable (default: pretty)
@@ -2040,7 +2043,7 @@ plugins:          2 — @vzn/vx-reapi (executor, cache); @vzn/vx-otel (telemetry
 workers:          2 — cgroup CPU quota 2 of 8 cores
 memory:           13 GB usable — cgroup limit; the machine has 16 GB
 cache dir:        /work/repo/.vx/cache
-cache versions:   keys vx-cache-v38 · index schema v28
+cache versions:   keys vx-cache-v39 · index schema v28
 cache entries:    42 (1.3 GB)
 orphans:          3 artifacts (12 MB) the index does not know — `vx cache prune` reaps them
 task runs (24h):  7 (5 cache hits)
@@ -2177,7 +2180,8 @@ app#build — run 019f5a02-…
 
 Under the rows, `what to do` gives one line per changed kind: what
 moves it and how to stop a move the task does not need. An `upstream`
-line names the `vx why` to run next for each dependency that moved.
+line names the `vx why` to run next for each dependency that moved; a
+`config` line names the `vx show` that prints the task's config now.
 
 A hit's line is `cache-hit · key …` (or `cache-hit-remote`): the status
 names the hit and its tier, so only an executed run carries the word.

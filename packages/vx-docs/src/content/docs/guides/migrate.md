@@ -20,7 +20,8 @@ your `package.json` scripts.
    install with your lockfile's manager and writes nothing.
 2. Preview with `npx vx init --dry`, then run `npx vx init`. Beside
    `turbo.json` or `turbo.jsonc` it writes one `vx.config.ts` per package,
-   plus a `vx-preset.ts` when turbo.json has global fields. It never
+   plus a `vx-preset.ts` when turbo.json has global fields or a task `env`
+   several packages share. It never
    overwrites a file without `--force`; `--mjs` writes `.mjs` files.
 3. Run `npx vx run build --all`: what `turbo run build` ran, under vx's
    cache.
@@ -109,6 +110,7 @@ npx vx run test --all      # 3 up-to-date
 | `tags` | nothing: labels Turbo keeps out of the hash and the behaviour |
 | `outputLogs`                                                | `"new-only"` is the default; other values are the run's `--output-logs` |
 | `dotEnv` (Turbo 1), a `.env` input                          | `cache.inputs.runtime`: a probe that prints every `.env` file's name and bytes, because a gitignored `.env` is invisible to a git glob; a root one (`$TURBO_ROOT$/.env`, `globalDotEnv`) is `cache.inputs.workspaceRuntime` |
+| an input or `globalDependencies` path git ignores (`config.local.json`) | `cache.inputs.workspaceRuntime`: a probe that prints the file's name and bytes, since core refuses a file input git ignores; a gitignored file a glob matches is not keyed |
 | `command` (Turbo 2.11) | `exec.command` (the argv, quoted); `null` or `[]` is no task |
 | `description` | `description` |
 | `extends`                                                   | nothing: a package task merges over the root's, field by field           |
