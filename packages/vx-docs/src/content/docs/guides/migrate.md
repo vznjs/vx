@@ -80,6 +80,11 @@ files written:
 next: bunx vx run build --all
 ```
 
+Where the repo has a lockfile and `vx.workspace.ts` declares no
+`@vzn/vx-lockfile` plugin, the report names the one for it (`pnpm()` for
+`pnpm-lock.yaml`): Turbo keys each package on its own lockfile entries,
+and vx keys every task on the whole file until a plugin claims it.
+
 ### Try it in five minutes
 
 [`examples/turbo`](https://github.com/vznjs/vx/tree/main/examples/turbo)
