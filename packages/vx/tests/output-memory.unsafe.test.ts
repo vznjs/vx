@@ -39,15 +39,15 @@ function probeRssMib(script: string): number {
   return Number(m[1])
 }
 
-/** The same probe, awaited: for floods that should run side by side. */
-async function probeRssMibAsync(script: string): Promise<number> {
+/** Run a probe script, awaited, and read back the `heap_mib=<n>` it prints. */
+async function probeHeapMibAsync(script: string): Promise<number> {
   const p = Bun.spawn({ cmd: ['bun', '-e', script], stdout: 'pipe', stderr: 'pipe' })
   const [out, err, code] = await Promise.all([
     new Response(p.stdout).text(),
     new Response(p.stderr).text(),
     p.exited,
   ])
-  const m = /rss_mib=(\d+)/.exec(out)
+  const m = /heap_mib=(\d+)/.exec(out)
   if (m === null) throw new Error(`probe produced no measurement (exit ${code}): ${out}${err}`)
   return Number(m[1])
 }
@@ -238,7 +238,13 @@ function persistentProbe(seconds: number, terminator: '\\n' | '\\r' | ''): strin
     spawned.ready.catch(() => {})
     await Bun.sleep(${seconds * 1000})
     spawned.child.kill('SIGKILL')
-    console.log('rss_mib=' + Math.round(process.memoryUsage().rss / 1024 / 1024))
+    // What the runner retains, not what the allocator holds: a 1 s probe's
+    // RSS read 81 MiB beside eight busy loops and 41 idle, and a 3 s one
+    // grew 82 MiB once, past the bound, with nothing retained (M-30).
+    Bun.gc(true)
+    const { heapStats } = await import('bun:jsc')
+    const { heapSize, extraMemorySize } = heapStats()
+    console.log('heap_mib=' + Math.round((heapSize + extraMemorySize) / 1024 / 1024))
     process.exit(0)
   `
 }
@@ -246,7 +252,7 @@ function persistentProbe(seconds: number, terminator: '\\n' | '\\r' | ''): strin
 describe('persistent task pre-ready buffering', () => {
   // The six floods run CONCURRENTLY: each is a fixed-duration child (1 s and
   // 3 s per line shape), so in sequence the file spent 8 s waiting, and the
-  // claim — RSS does not grow with the duration — is about each child's own
+  // claim — the retained heap does not grow with the duration — is about each child's own
   // bounded capture, not about throughput, so sharing the cores changes
   // nothing it asserts.
   const shapes = [
@@ -258,8 +264,8 @@ describe('persistent task pre-ready buffering', () => {
   beforeAll(async () => {
     const all = await Promise.all(
       shapes.flatMap(([, terminator]) => [
-        probeRssMibAsync(persistentProbe(1, terminator)),
-        probeRssMibAsync(persistentProbe(3, terminator)),
+        probeHeapMibAsync(persistentProbe(1, terminator)),
+        probeHeapMibAsync(persistentProbe(3, terminator)),
       ]),
     )
     shapes.forEach(([name], i) => readings.set(name, { short: all[i * 2]!, long: all[i * 2 + 1]! }))
@@ -274,6 +280,8 @@ describe('persistent task pre-ready buffering', () => {
         // measured 651 MiB (`\n`) and 488 MiB (`\r`) against ~280/370 MiB at
         // 2 s. A bounded capture makes the two durations indistinguishable,
         // so assert on the DIFFERENCE: it does not encode a machine's speed.
+        // The heap after a full GC reads 1-2 MiB here at either duration, and
+        // 180-1,290 MiB with every chunk kept (M-30).
         expect(long - short).toBeLessThan(64)
         expect(long).toBeLessThan(256)
       },

@@ -92,7 +92,11 @@ the mode; `ci: true` whenever `CI` is truthy.
 - **`none`** — no per-task output.
 
 `status()` lines (header, summary) always print. Group tasks never
-print in any mode.
+print in any mode. A ready persistent task the run keeps (`vx run dev`)
+is held to a bounded tail until `runEnd`, which flushes it before the
+summary; from there its output streams below the summary a line at a
+time under its id (`app#dev │ …`), fenced on Actions, and not at all
+under `errors-only`, `hash-only` or `none` (#2054).
 
 ## Failure recap
 

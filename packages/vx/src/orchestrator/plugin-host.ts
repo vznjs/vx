@@ -443,18 +443,20 @@ const executorPlugin = new WeakMap<TaskExecutor, string>()
 /**
  * A plugin executor's throw from `execute`, named as every other hook's
  * is: `plugin 'p' (executor 'e') failed in execute: …`. It read `internal
- * error in <task>: pool down`, naming neither (C-63). The error itself is
- * kept, its class, cause and code with it, so the scheduler still tells a
- * refusal from a bug; the floor's own throw is vx's and stays as it is.
+ * error in <task>: pool down`, naming neither (C-63). A refusal, as
+ * `safe()` makes every stage's throw: the plugin is named, so it is not
+ * vx's bug, and an `internal error` line said it was (C-85). A fresh error
+ * with the plugin's as its cause, never the plugin's own renamed: one
+ * error an executor rejects every task with was named once per task
+ * (C-74). The floor's own throw is vx's and stays as it is.
  */
 export function nameExecutorFailure(executor: TaskExecutor, err: unknown): unknown {
-  if (!(err instanceof Error) || !executorPlugin.has(executor)) return err
-  try {
-    err.message = `${executorLabel(executor)} failed in execute: ${err.message}`
-  } catch {
-    // A frozen error keeps its own words.
-  }
-  return err
+  if (!executorPlugin.has(executor)) return err
+  const named = new UserError(
+    `${executorLabel(executor)} failed in execute: ${err instanceof Error ? err.message : String(err)}`,
+  )
+  named.cause = err
+  return named
 }
 
 /** How a message names `executor`: its plugin and its own name, or its name alone (the floor). */

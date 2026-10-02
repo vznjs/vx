@@ -67,7 +67,7 @@
   {
     "key": "turbo.json globalDependencies",
     "status": "mapped",
-    "reason": "Becomes `cache.inputs.workspaceFiles`; `$NAME` entries become env inputs. Under `turbo()` every package's `microfrontends.json` (or `.jsonc`, or the name `VC_MICROFRONTENDS_CONFIG_FILE_NAME` gives) joins them, as in Turbo, unless it is a child's `partOf`, and so do the files of every package the root depends on, transitively, as in Turbo's global hash."
+    "reason": "Becomes `cache.inputs.workspaceFiles`; `$NAME` entries become env inputs. Under `turbo()` every package's `microfrontends.json` (or `.jsonc`, or the name `VC_MICROFRONTENDS_CONFIG_FILE_NAME` gives) joins them, as in Turbo, unless it is a child's `partOf`, and so do the files of every package the root depends on, transitively, as in Turbo 2's global hash (Turbo 1, a `pipeline` turbo.json, leaves them out, and so does the mapping). A path git ignores (`config.local.json`) is keyed by a `cache.inputs.workspaceRuntime` probe of its name and bytes, as Turbo hashes it; a glob reaches only files git reports."
   },
   {
     "key": "turbo.json globalEnv",
@@ -112,7 +112,7 @@
   {
     "key": "turbo.json tasks.*.dependsOn",
     "status": "mapped",
-    "reason": "Same syntax; edges to tasks nobody runs are dropped; `$TURBO_ROOT$` deps get a TODO; `$NAME` becomes env. A package without the script of a `^` task others run keys it as Turbo's no-op node does: a cached `true` task with no outputs. A task name no package has a script for (`ci: { dependsOn: [\"lint\", \"build\"] }`) is a group wherever it has an edge, so `vx run ci` runs them as `turbo run ci` does."
+    "reason": "Same syntax; edges to tasks nobody runs are dropped; `$TURBO_ROOT$` deps get a TODO; `$NAME` becomes env. A package without the script of a `^` task others run keys it as Turbo's no-op node does: a cached `true` task with no outputs, its own edges kept. A task name no package has a script for (`ci: { dependsOn: [\"lint\", \"build\"] }`) is a group wherever it has an edge, so `vx run ci` runs them as `turbo run ci` does."
   },
   {
     "key": "turbo.json tasks.*.description",
@@ -127,7 +127,7 @@
   {
     "key": "turbo.json tasks.*.inputs",
     "status": "mapped",
-    "reason": "Globs translated; `$TURBO_DEFAULT$` becomes `**/*`, `$TURBO_ROOT$` workspace files; unsafe globs get a TODO."
+    "reason": "Globs translated; `$TURBO_DEFAULT$` becomes `**/*`, `$TURBO_ROOT$` workspace files; unsafe globs get a TODO; a path git ignores is keyed by a `cache.inputs.workspaceRuntime` probe, as for `globalDependencies`; a glob that reaches a workspace package nested in the task's package is also listed in `cache.inputs.workspaceFiles`, since Turbo hashes the nested package's files with its parent's."
   },
   {
     "key": "turbo.json tasks.*.interactive",
@@ -142,12 +142,12 @@
   {
     "key": "turbo.json tasks.*.outputLogs",
     "status": "mapped",
-    "reason": "`new-only` is vx's default; other values get a TODO pointing at `--output-logs`."
+    "reason": "`new-only` is vx's default; other values get a TODO pointing at `--output-logs`. Turbo 1's `outputMode` is read as it."
   },
   {
     "key": "turbo.json tasks.*.outputs",
     "status": "mapped",
-    "reason": "Become `cache.outputs`, negations kept; vx cleans outputs, so a wildcard first segment leaves the task uncached with a TODO (save one of a kind the package tracks none of: `*.xml`, `**/dist/**`, `dist-*/**`) and a committed file under an output is taken back with `!`."
+    "reason": "Become `cache.outputs`, negations kept; vx cleans outputs, so a wildcard first segment leaves the task uncached with a TODO (save one of a kind the package tracks none of: `*.xml`, `**/dist/**`, `dist-*/**`) and a file git tracks under an output, committed or only `git add`ed, is taken back with `!`."
   },
   {
     "key": "turbo.json tasks.*.passThroughEnv",
@@ -587,7 +587,7 @@
   {
     "key": "project.json targets.*.outputs",
     "status": "mapped",
-    "reason": "Tokens and `{options.x}` resolved; paths outside the project become workspace files; negations kept; vx cleans outputs, so a wildcard first segment leaves the task uncached with a TODO (save one of a kind the project tracks none of: `*.xml`, `**/dist/**`, `dist-*/**`) and a committed file under an output is taken back with `!`."
+    "reason": "Tokens and `{options.x}` resolved; paths outside the project become workspace files; negations kept; vx cleans outputs, so a wildcard first segment leaves the task uncached with a TODO (save one of a kind the project tracks none of: `*.xml`, `**/dist/**`, `dist-*/**`) and a file git tracks under an output, committed or only `git add`ed, is taken back with `!`."
   },
   {
     "key": "project.json targets.*.defaultConfiguration",
