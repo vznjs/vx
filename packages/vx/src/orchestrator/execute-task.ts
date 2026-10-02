@@ -907,7 +907,9 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         signal: res.signal,
         hidden: req.sandbox && ((f: string) => !sandboxReads(req.sandbox!, f)),
       })
-      if (verdict !== undefined) log.taskStderr(node, `\n${verdict}\n`)
+      // The line quotes the command's first word, which a config may have
+      // built from a secret: masked as the task's own output is (L-37).
+      if (verdict !== undefined) log.taskStderr(node, `\n${secrets?.mask(verdict) ?? verdict}\n`)
       // A committed file another task's clean removed, still gone: vx
       // cleans outputs before a run where Turbo does not, so a reader with
       // no edge to the producer fails naming only the file (A-48).

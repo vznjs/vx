@@ -445,6 +445,13 @@
   there. It is now masked with the same rule before it is recorded.
   Row: `invocation-secret-mask.test.ts`, red without the fix.
 
+- L-37. `fix(orchestrator)`: under a 127 or 126 vx adds a line naming
+  the command's first word, and a config that built that word from a
+  secret (`tool-${process.env.API_TOKEN}`) had the shell's own "not
+  found" masked and vx's line beside it whole. The line is masked as the
+  task's output is. `shell-verdict-secret-mask.test.ts`, red without the
+  fix (a bare word and a path).
+
 ## Leads for other streams
 
 - Cache owners: `src/cache/archive.ts` and `tar-stream.ts` changed under

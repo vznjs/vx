@@ -468,7 +468,8 @@ matches Turbo's `passThroughEnv` semantics and exists for two reasons:
 `KEY`, `PASSWORD`, `PASSWD` or `CREDENTIAL` (vx's own environment or a
 task's `define`, six characters or more; not a name ending `_FILE`,
 `_PATH` or `_DIR`, nor git's `GIT_CONFIG_KEY_<n>`) is printed as `***` wherever vx
-shows it: the task's output, the stdout the cache keeps and a hit
+shows it: the task's output and the line vx adds under a shell's 127 or
+126 (the command's first word), the stdout the cache keeps and a hit
 replays, the command a cache entry stores (what `vx why` prints and a
 remote cache receives), the `$ command` line, telemetry records,
 `vx show`, and the run's own invocation line that `vx last` prints (a
