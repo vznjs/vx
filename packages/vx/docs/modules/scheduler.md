@@ -172,8 +172,8 @@ direct exec-tier dependents of one plus theirs, plus the rank of each
 restore that depends on it, since that one releases its dependents only
 after it (C-51: `r1 → r2 → e` ranked `r1` 0, behind every idle restore,
 and `e` waited for it; skipped when no restore feeds an exec task, so an
-all-hit run pays nothing). A rank that can count a diamond twice which only reorders restores among themselves, on a lane
-twice the exec cap. A warm run's exec tier is its group tasks with no
+all-hit run pays nothing). The rank can count a diamond twice; that only
+reorders restores among themselves, on a lane twice the exec cap. A warm run's exec tier is its group tasks with no
 edges among them, and the whole-graph closure (476 packages: 1,428
 nodes, 12.8k edges of 45-word bitsets) was 10 ms of the run-graph
 stage (48.1 → 37.7 ms, min of 6).
@@ -203,7 +203,9 @@ file-system refusal or running out of descriptors reports plainly, once per run 
 <id> above`), anything else as `[vx] internal error in <id>`. The line
 goes to `onError` before the outcome lands (stderr when absent); a run
 gives it the task's own stderr, so the task's frame and the failure
-recap carry it.
+recap carry it. One that rejects after the run's stop is the stop's
+doing (a runtime probe it killed) and becomes `aborted`, with no line
+(C-65).
 
 ## What this does NOT do
 

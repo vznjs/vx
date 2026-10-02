@@ -22,6 +22,12 @@ import {
   RSS_FLOOR_SLACK_BYTES,
 } from '../src/exec/runner.js'
 
+/**
+ * A deadline a fresh shell's first command (an `echo`, a `trap`) meets on
+ * a loaded runner: 100-150 ms ones passed before it ran (M-23).
+ */
+const START_WINDOW_MS = 1_000
+
 describe('runCommand', () => {
   let cwd: string
 
@@ -597,16 +603,20 @@ describe('runPersistent — what its exit bookkeeping keeps', () => {
     // readiness timer, and the timer's body re-checks readyAt. Deleting
     // either alone stays green; deleting both kills a ready server at the
     // deadline.
+    // The window must outlast the child's first line under load: a 150 ms
+    // one passed on CI before `echo` printed, and the row failed on its
+    // premise (M-23). The wait runs from the spawn to past the deadline.
+    const start = Date.now()
     const spawn = runPersistent({
       command: `printf 'Listening\n'; exec sleep 30`,
       cwd,
       env: { PATH: process.env.PATH ?? '' },
       readyWhen: 'Listening',
-      timeoutMs: 150,
+      timeoutMs: START_WINDOW_MS,
     })
     try {
       await spawn.ready
-      await Bun.sleep(400)
+      await Bun.sleep(start + START_WINDOW_MS + 250 - Date.now())
       expect(isAlive(spawn.child.pid)).toBe(true)
     } finally {
       spawn.child.kill('SIGKILL')
@@ -1051,12 +1061,20 @@ describe('execWrap — grandchild-orphan mitigation', () => {
     // `exec sleep` replaces sh, so the tracked child IS sleep. Killing
     // it reaps the real process; there is no surviving grandchild.
     const child = Bun.spawn(['sh', '-c', execWrap('sleep 30')], { stdout: 'pipe' })
-    await Bun.sleep(50) // let sh complete the exec into sleep
-    // The pid vx tracks runs sleep directly (verified via /proc comm on Linux).
-    const comm = await Bun.file(`/proc/${child.pid}/comm`)
-      .text()
-      .catch(() => 'sleep\n')
-    expect(comm.trim()).toBe('sleep')
+    // The pid vx tracks runs sleep directly (verified via /proc comm on
+    // Linux). sh's exec into sleep lands when the scheduler lets it: a fixed
+    // 50 ms read "sh" on a loaded CI runner, so poll until it changes. A
+    // wrapper that never execs stays "sh" through the deadline and fails.
+    let comm = 'sh'
+    for (const end = Date.now() + 5000; comm === 'sh' && Date.now() < end;) {
+      await Bun.sleep(10)
+      comm = (
+        await Bun.file(`/proc/${child.pid}/comm`)
+          .text()
+          .catch(() => 'sleep\n')
+      ).trim()
+    }
+    expect(comm).toBe('sleep')
     child.kill('SIGTERM')
     await child.exited
   })
@@ -1162,16 +1180,19 @@ describe('runPersistent — the rows its sweep asked for', () => {
   })
 
   it('keeps a ready server alive past its readyWhen timeout', async () => {
+    // A window the first line meets under load, waited out from the spawn
+    // (M-23; the row above).
+    const start = Date.now()
     const spawn = runPersistent({
       command: `echo up; exec sleep 30`,
       cwd: dir,
       env: env(),
       readyWhen: 'up',
-      timeoutMs: 150,
+      timeoutMs: START_WINDOW_MS,
     })
     try {
-      expect(await within(spawn.ready, 1_000)).toBe('ready')
-      await Bun.sleep(400)
+      expect(await within(spawn.ready, START_WINDOW_MS)).toBe('ready')
+      await Bun.sleep(start + START_WINDOW_MS + 250 - Date.now())
       expect(isAlive(spawn.child.pid)).toBe(true)
     } finally {
       await stop(spawn)
@@ -1182,25 +1203,29 @@ describe('runPersistent — the rows its sweep asked for', () => {
     const prev = process.env['VX_KILL_GRACE_MS']
     process.env['VX_KILL_GRACE_MS'] = '300'
     const heard = path.join(dir, 'heard')
+    // Each shell sets its trap before the deadline only if the window
+    // outlasts its start: a SIGTERM that came first killed the polite one
+    // untrapped, and passed the deaf one by TERM (M-23).
     const polite = runPersistent({
       command: `trap 'echo t > ${heard}; exit 0' TERM; sleep 30 & wait`,
       cwd: dir,
       env: env(),
       readyWhen: 'never',
-      timeoutMs: 100,
+      timeoutMs: START_WINDOW_MS,
     })
     const deaf = runPersistent({
       command: `trap '' TERM; exec sleep 30`,
       cwd: dir,
       env: env(),
       readyWhen: 'never',
-      timeoutMs: 100,
+      timeoutMs: START_WINDOW_MS,
     })
     try {
       await Promise.allSettled([polite.ready, deaf.ready])
       await polite.child.exited
       expect(await Bun.file(heard).exists()).toBe(true)
       expect(await waitForDead(deaf.child.pid, 3_000)).toBe(true)
+      expect(deaf.child.signalCode).toBe('SIGKILL')
     } finally {
       if (prev === undefined) delete process.env['VX_KILL_GRACE_MS']
       else process.env['VX_KILL_GRACE_MS'] = prev
@@ -1233,37 +1258,33 @@ describe('runCommand — the rows its sweep asked for', () => {
     expect(r.stderr).not.toContain('Install a POSIX sh')
   })
 
-  it.skipIf(process.platform === 'win32')(
-    'a timed-out command returns only once its group is gone',
-    async () => {
-      // The shell dies on the timeout's TERM; its child ignores it. runCommand
-      // waits out the grace for the group, then SIGKILLs what is left. The
-      // child inherits the ignore at fork: a trap set inside a new sh raced
-      // the 100 ms timeout on a slow macOS runner and the group died at 142.
-      const prev = process.env['VX_KILL_GRACE_MS']
-      process.env['VX_KILL_GRACE_MS'] = '400'
-      try {
-        const r = await runCommand({
-          command: `trap "" TERM; sleep 30 & trap - TERM; wait`,
-          cwd: dir,
-          env: { PATH: process.env.PATH ?? '' },
-          timeoutMs: 100,
-        })
-        expect(r.timedOut).toBe(true)
-        expect(r.durationMs).toBeGreaterThanOrEqual(400)
-      } finally {
-        if (prev === undefined) delete process.env['VX_KILL_GRACE_MS']
-        else process.env['VX_KILL_GRACE_MS'] = prev
-      }
-    },
-    10_000,
-  )
+  it('a timed-out command returns only once its group is gone', async () => {
+    // The shell dies on the timeout's TERM; its child ignores it. runCommand
+    // waits out the grace for the group, then SIGKILLs what is left. The
+    // child inherits the ignore at fork: a trap set inside a new sh raced
+    // the 100 ms timeout on a slow macOS runner and the group died at 142.
+    // The outer shell's own trap raced it too (a 300 ms start: 106 ms,
+    // M-23), so the deadline is one a shell's start meets.
+    const prev = process.env['VX_KILL_GRACE_MS']
+    process.env['VX_KILL_GRACE_MS'] = '400'
+    try {
+      const r = await runCommand({
+        command: `trap "" TERM; sleep 30 & trap - TERM; wait`,
+        cwd: dir,
+        env: { PATH: process.env.PATH ?? '' },
+        timeoutMs: START_WINDOW_MS,
+      })
+      expect(r.timedOut).toBe(true)
+      expect(r.durationMs).toBeGreaterThanOrEqual(START_WINDOW_MS + 400)
+    } finally {
+      if (prev === undefined) delete process.env['VX_KILL_GRACE_MS']
+      else process.env['VX_KILL_GRACE_MS'] = prev
+    }
+  }, 10_000)
 
-  it.skipIf(process.platform === 'win32')(
-    'a finished command is struck from the guard: what it left runs past a vx kill -9',
-    async () => {
-      const runner = path.resolve(import.meta.dir, '..', 'src', 'exec', 'runner.ts')
-      const script = `
+  it('a finished command is struck from the guard: what it left runs past a vx kill -9', async () => {
+    const runner = path.resolve(import.meta.dir, '..', 'src', 'exec', 'runner.ts')
+    const script = `
         const { runCommand } = await import(${JSON.stringify(runner)})
         await runCommand({
           command: '(sleep 1; echo late > late.txt) >/dev/null 2>&1 & echo up > up.txt',
@@ -1272,15 +1293,13 @@ describe('runCommand — the rows its sweep asked for', () => {
         })
         process.kill(process.pid, 'SIGKILL')
       `
-      const proc = Bun.spawn([process.execPath, '-e', script], {
-        stdout: 'ignore',
-        stderr: 'ignore',
-      })
-      expect(await proc.exited).toBe(137)
-      expect(await Bun.file(path.join(dir, 'up.txt')).exists()).toBe(true)
-      await Bun.sleep(2_000)
-      expect(await Bun.file(path.join(dir, 'late.txt')).exists()).toBe(true)
-    },
-    20_000,
-  )
+    const proc = Bun.spawn([process.execPath, '-e', script], {
+      stdout: 'ignore',
+      stderr: 'ignore',
+    })
+    expect(await proc.exited).toBe(137)
+    expect(await Bun.file(path.join(dir, 'up.txt')).exists()).toBe(true)
+    await Bun.sleep(2_000)
+    expect(await Bun.file(path.join(dir, 'late.txt')).exists()).toBe(true)
+  }, 20_000)
 })

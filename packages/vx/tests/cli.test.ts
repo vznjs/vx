@@ -2137,7 +2137,9 @@ describe('vx cache prune command', () => {
       return true
     })
     expect(await run(['cache'])).toBe(1)
-    expect(stderr).toContain('vx cache: missing subcommand. Try `vx cache prune`.')
+    expect(stderr).toBe(
+      'vx cache: missing subcommand. Try `vx cache prune --older-than 30d` or `vx cache prune --max-size 1G` (see `vx cache --help`)\n',
+    )
   })
 
   it('reports 0 entries pruned from an empty cache', async () => {

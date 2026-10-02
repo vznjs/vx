@@ -102,7 +102,8 @@ describe('nx-exec', () => {
     })
     expect(rec['context']).toEqual({
       root,
-      cwd,
+      // Nx forks an executor in the workspace root, not the project dir.
+      cwd: root,
       projectName: 'app',
       targetName: 'build',
       configurationName: undefined,

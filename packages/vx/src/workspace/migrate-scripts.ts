@@ -55,12 +55,14 @@ const LIFECYCLE = /^(pre|post)(install|publish|pack|version)$|^(prepare|prepubli
  */
 export function delegatedScript(command: string): string | null {
   const m =
-    /^(?:(?:npm run|(pnpm|yarn|bun)(?: (run))?) ([^\s&|;<>()$`'"\\]+)|npm (test|start))$/.exec(
+    /^(?:(?:npm run|(pnpm|pn|yarn|bun)(?: (run))?) ([^\s&|;<>()$`'"\\]+)|npm (test|start))$/.exec(
       command.trim(),
     )
   if (m === null) return null
   if (m[4] !== undefined) return m[4]
-  const [, manager, run, name] = m
+  const [, alias, run, name] = m
+  // `pn` is pnpm's own short name (pnpm 11; pnpm/pnpm's scripts run it).
+  const manager = alias === 'pn' ? 'pnpm' : alias
   // Bare, the manager's own command wins over a script of that name:
   // `bun test` is Bun's test runner and `bun build` its bundler, never the
   // `test` / `build` script, and a group over the script ran the wrong
@@ -235,6 +237,86 @@ function isWatcher(name: string, command: string): boolean {
   )
 }
 
+/** A server run alone (`serve website`, `http-server`), or a tool's own server verb. */
+const SERVERS = new Set(['serve', 'http-server', 'live-server', 'sirv', 'webpack-dev-server'])
+const SERVER_TOOLS = new Set([
+  'vite',
+  'next',
+  'astro',
+  'nuxt',
+  'nuxi',
+  'remix',
+  'react-router',
+  'docusaurus',
+  'storybook',
+  'netlify',
+  'wrangler',
+  'webpack',
+  'expo',
+  'react-native',
+])
+const SERVER_VERBS = new Set(['dev', 'serve', 'start', 'preview'])
+const LAUNCHERS = new Set(['cross-env', 'npx', 'bunx', 'exec', 'dlx'])
+
+/**
+ * A command that runs a server (D-91): docusaurus's `serve website` and
+ * `netlify dev` mapped as one-shot tasks, so a dependent waited forever and
+ * a server that exits on stdin EOF ended at once. Read per `&&` segment,
+ * past env assignments and launchers; a quoted string is another tool's
+ * argument (`start-server-and-test 'vite preview' …` exits).
+ */
+function servesCommand(command: string): boolean {
+  for (const segment of foreground(command.replace(/"[^"]*"|'[^']*'/g, ' '))) {
+    const words = segment
+      .trim()
+      .split(/\s+/)
+      .filter((w) => w !== '')
+    let i = 0
+    while (
+      i < words.length &&
+      (/^[A-Za-z_][A-Za-z0-9_]*=/.test(words[i]!) ||
+        LAUNCHERS.has(words[i]!) ||
+        words[i]!.startsWith('-') ||
+        (/^(pnpm|npm|yarn)$/.test(words[i]!) && LAUNCHERS.has(words[i + 1] ?? '')))
+    ) {
+      i++
+    }
+    const [program, verb] = [words[i], words[i + 1]]
+    if (program === undefined) continue
+    if (SERVERS.has(program)) return true
+    if (SERVER_TOOLS.has(program) && verb !== undefined && SERVER_VERBS.has(verb)) return true
+    if (program === 'vite' && (verb === undefined || verb.startsWith('-'))) return true
+  }
+  return false
+}
+
+/**
+ * Whether script `name` never exits: by name, as a watcher, as a server, or
+ * running such a script of its own package by name (docusaurus's
+ * `start:baseUrl`: `cross-env BASE_URL=… pnpm start`).
+ */
+function isPersistent(
+  name: string,
+  scripts: Readonly<Record<string, unknown>>,
+  seen: Set<string> = new Set(),
+): boolean {
+  const own = scripts[name]
+  if (typeof own !== 'string' || seen.has(name)) return false
+  seen.add(name)
+  if (PERSISTENT_TASK_NAMES.has(name) || isWatcher(name, own) || servesCommand(own)) return true
+  return foreground(own).some((segment) =>
+    [...segment.matchAll(RUNS_SCRIPT)].some((m) => isPersistent(m[1]!, scripts, seen)),
+  )
+}
+
+/** The `&&` / `;` / `|` segments of a command, less those it backgrounds with a single `&`. */
+function foreground(command: string): string[] {
+  return command
+    .split(/&&|\|\||[;|()]/)
+    .flatMap((part) => part.split('&').slice(-1))
+    .filter((segment) => segment.trim() !== '')
+}
+
 function scriptsOf(meta: ProjectMeta): Record<string, unknown> {
   // package.json is a boundary: `scripts` is whatever the file holds. A
   // string or an array would enumerate its indices as script names.
@@ -305,7 +387,7 @@ const MEMBER_FLAG =
 function pmRunsMembers(script: string): boolean {
   for (const segment of script.split(/&&|\|\||[;|()]/)) {
     const words = segment.trim().split(/\s+/)
-    let i = words.findIndex((w) => /^(pnpm|npm|yarn|bun)$/.test(w))
+    let i = words.findIndex((w) => /^(pnpm|pn|npm|yarn|bun)$/.test(w))
     // npm/cli runs itself: `node . run test --workspaces`.
     if (i < 0) i = words.findIndex((w, j) => w === 'run' && words[j - 2] === 'node')
     if (i < 0) continue
@@ -341,9 +423,111 @@ function cdsToMembers(script: string, rootDir: string, memberDirs: readonly stri
   return false
 }
 
+/**
+ * The manager a root's files name, or undefined: `pnpm-workspace.yaml` is
+ * pnpm's whatever the lockfile, and the npm `ownerOf` falls back to at the
+ * file-system root with no lockfile anywhere is no claim.
+ */
+function rootManager(dir: string, memo: Map<string, Owner>): string | undefined {
+  if (existsSync(path.join(dir, 'pnpm-workspace.yaml'))) return 'pnpm'
+  const owner = ownerOf(dir, memo)
+  const guessed =
+    owner.at === path.parse(owner.at).root && !existsSync(path.join(owner.at, 'package-lock.json'))
+  return guessed ? undefined : owner.manager
+}
+
+/**
+ * How the repo's own manager runs the members, for the root note: an npm
+ * repo read "(`pnpm -r`, `--filter`, a runner)" (insomnia).
+ */
+function membersExample(manager: string | undefined): string {
+  switch (manager) {
+    case 'npm':
+      return '`--workspaces`, `-w`'
+    case 'yarn':
+      return '`yarn workspaces run`, `yarn workspace`'
+    case 'berry':
+      return '`yarn workspaces foreach`, `yarn workspace`'
+    case 'bun':
+      return '`bun --filter`'
+    default:
+      return '`pnpm -r`, `--filter`'
+  }
+}
+
+/**
+ * The hooks a package's build hides in when it has no `build` script:
+ * react-navigation's twelve packages build in `prepack: bob build`, their
+ * root's `build` (`lerna run prepack`) runs the members and is left out,
+ * and the repo mapped with no build at all.
+ */
+const LIFECYCLE_BUILD_HOOKS = ['prepack', 'prepublishOnly', 'prepublish', 'prepare']
+const BUILDER =
+  /(?:^|[\s;&|(])(?:bob build|tsc|tsup|tsdown|rollup|vite build|babel|unbuild|esbuild|webpack|microbundle|pkgroll|bunchee|preconstruct build)(?:\s|$)/
+
+/** The workspace flags that move a package manager off the package it runs in. */
+const ELSEWHERE_FLAG = /^(-r|--recursive|--filter|-F|--workspaces|-ws|--workspace)(=|$)/
+const DIR_FLAG = /^(-C|--dir|--cwd|--prefix)(?:=(.*))?$/
+
+/**
+ * The part of a member's script that runs another member's work: pinia's
+ * online-playground `build` is `pnpm -C ../pinia run build && vite build`,
+ * and mapped verbatim it built pinia again beside pinia's own task, writing
+ * the dist its siblings read. `yarn workspace <name>`, a runner, `pnpm -r`
+ * / `--filter`, and a `cd` / `-C` / `--cwd` / `--prefix` whose innermost
+ * member is another one count; a fixture inside the member, or the root,
+ * does not.
+ */
+function siblingRun(script: string, dir: string, others: readonly string[]): string | undefined {
+  const inside = (a: string, b: string): boolean => a === b || a.startsWith(b + path.sep)
+  const intoOther = (target: string): boolean => {
+    const t = path.resolve(dir, target.replace(/^(["'])(.*)\1$/, '$2'))
+    if (/[$`~*?]/.test(target)) return false
+    const owner = [dir, ...others]
+      .filter((d) => inside(t, d))
+      .sort((x, y) => y.length - x.length)[0]
+    return owner !== undefined && owner !== dir
+  }
+  for (const segment of script.split(/&&|\|\||[;|()]/)) {
+    const s = segment.trim()
+    if (RUNS_MEMBERS.test(` ${s}`)) return s
+    for (const m of s.matchAll(CD)) if (intoOther(m[1]!)) return s
+    const words = s.split(/\s+/)
+    const at = words.findIndex((w) => /^(pnpm|pn|npm|yarn|bun)$/.test(w))
+    if (at < 0) continue
+    for (let i = at + 1; i < words.length; i++) {
+      const w = words[i]!
+      if (ELSEWHERE_FLAG.test(w)) return s
+      const flag = DIR_FLAG.exec(w)
+      if (flag === null) continue
+      const target = flag[2] ?? words[++i]
+      if (target !== undefined && intoOther(target)) return s
+    }
+  }
+  return undefined
+}
+
+/**
+ * Yarn 2+ installs with Plug'n'Play unless `.yarnrc.yml` names another
+ * linker: a package's bins live in `.pnp.cjs`, and a task's `json5` exited
+ * 127 under vx, which runs no `yarn` in front of a command (probed on Yarn
+ * 4.5).
+ */
+function usesPnp(dir: string): boolean {
+  let rc = ''
+  try {
+    rc = readFileSync(path.join(dir, '.yarnrc.yml'), 'utf8')
+  } catch {}
+  const linker = /^nodeLinker:\s*["']?([\w-]+)/m.exec(rc)?.[1]
+  return linker === undefined || linker === 'pnp'
+}
+
+const PNP_NOTE =
+  "Yarn Plug'n'Play installs this repo: a package's bins live in `.pnp.cjs`, not `node_modules/.bin`, so a task's `tsc` is not found under vx — set `nodeLinker: node-modules` in `.yarnrc.yml` and run `yarn install`, or write each command as `yarn exec '<command>'`"
+
 /** A package manager running a script by name: `pnpm build`, `npm run x`, `bun run x`. */
 const RUNS_SCRIPT =
-  /(?:^|[\s;&|(])(?:pnpm|npm|yarn|bun)\s+(?:run(?:-script)?\s+)?([^\s;&|()'"-][^\s;&|()'"]*)/g
+  /(?:^|[\s;&|(])(?:pnpm|pn|npm|yarn|bun)\s+(?:run(?:-script)?\s+)?([^\s;&|()'"-][^\s;&|()'"]*)/g
 
 /**
  * The scripts a command runs by name: a package manager's (`pnpm x`, `npm
@@ -437,6 +621,7 @@ export function migrateScripts(
   // and maps.
   const root = metas.length > 1 ? workspaceRootOf(metas) : undefined
   const notes: string[] = []
+  const lifecycleBuilds: [string, string, string][] = []
   // The rest check the whole repo (`lint: oxlint .`, `test: vitest`):
   // `vx run lint` found no project in remix, wagmi or element-plus. Such a
   // script maps onto the root, when the root has a name (vx skips a
@@ -533,7 +718,7 @@ export function migrateScripts(
     notes.push(
       `${rootName} (the workspace root): its scripts that check the whole repo are its tasks` +
         (runs.length > 0
-          ? `; left out as running the members (\`pnpm -r\`, \`--filter\`, a runner): ${listed(runs)}`
+          ? `; left out as running the members (${membersExample(rootMeta && rootManager(rootMeta.dir, hookMemo))}, a runner): ${listed(runs)}`
           : '') +
         (shared.length > 0
           ? `; left out as a member's task name, so \`--all\` never runs one twice: ${listed(shared)} — one that does other work maps by hand under a name of its own`
@@ -574,6 +759,12 @@ export function migrateScripts(
       return why === null ? [] : [[n, why] as const]
     })
     const names = runnable.filter((n) => taskNameProblem(n) === null)
+    if (meta !== rootMeta && !('build' in scripts)) {
+      const hook = LIFECYCLE_BUILD_HOOKS.find(
+        (h) => typeof scripts[h] === 'string' && BUILDER.test(scripts[h] as string),
+      )
+      if (hook !== undefined) lifecycleBuilds.push([meta.name, hook, scripts[hook] as string])
+    }
     if (runnable.length === 0) continue
     const hasBuild = names.includes('build')
     const has = (n: string): boolean => names.includes(n)
@@ -620,6 +811,19 @@ export function migrateScripts(
           `${hooksBy} ran ${hooks.map((h) => `\`${h}\``).join(' and ')} around this script without being asked; folded into the command in that order`,
         )
       }
+      const sibling =
+        meta === rootMeta
+          ? undefined
+          : siblingRun(
+              own,
+              meta.dir,
+              metas.filter((m) => m !== root && m !== meta).map((m) => m.dir),
+            )
+      if (sibling !== undefined) {
+        todos.push(
+          `\`${sibling}\` runs another member's work outside the graph, again beside that member's own task: name that task under dependsOn (\`<member>#<task>\`) and drop it from the command`,
+        )
+      }
       const exec: Record<string, unknown> = { command }
       const npm = npmEnv(command, name, hooks.length > 0)
       if (Object.keys(npm.define).length > 0) exec['env'] = { define: npm.define }
@@ -630,7 +834,7 @@ export function migrateScripts(
         )
       }
       const task: Record<string, unknown> = { exec }
-      if (PERSISTENT_TASK_NAMES.has(name) || isWatcher(name, own)) {
+      if (isPersistent(name, scripts)) {
         exec['persistent'] = {}
         todos.push(PERSISTENT_TODO)
       }
@@ -656,6 +860,16 @@ export function migrateScripts(
       const importLines = readsManifest ? [MANIFEST_IMPORT] : []
       projects.push({ name: meta.name, dir: meta.dir, importLines, tasks })
     }
+  }
+  const owner = metas[0] === undefined ? undefined : ownerOf(metas[0].dir, hookMemo)
+  if (owner?.manager === 'berry' && usesPnp(owner.at)) notes.push(PNP_NOTE)
+
+  if (lifecycleBuilds.length > 0) {
+    const [name, hook, command] = lifecycleBuilds[0]!
+    const more = lifecycleBuilds.length - 1
+    notes.push(
+      `${lifecycleBuilds.length === 1 ? 'a package builds' : `${lifecycleBuilds.length} packages build`} only in a lifecycle script (\`${hook}: ${command}\` in ${name}${more > 0 ? ` and ${more} more` : ''}), which the package manager runs on pack or install and vx never runs: add a \`build\` script running it and run \`vx init\` again`,
+    )
   }
   breakBuildCycles(projects, metas)
   pruneOrphanPersistentNotes(projects, PERSISTENT_TODO)

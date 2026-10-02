@@ -813,6 +813,35 @@ describe('migrateScripts', () => {
         watcher: 'node watcher-report.js',
       }),
     ).toEqual([])
+    // D-91: a server, by its command or a persistent script it runs by name
+    // (docusaurus's `serve website`, `cross-env … pnpm start`, vitest's `vite`).
+    expect(
+      persistent({
+        'serve:site': 'serve website',
+        'serve:ssl': 'pnpm build && serve website/build --ssl-cert c',
+        start: 'docusaurus start',
+        'start:base': "cross-env BASE_URL='/b/' pnpm start",
+        client: 'vite',
+        pv: 'vite preview --port 3',
+        ns: 'next start',
+        nd: 'pnpm build && netlify dev',
+        ws: 'webpack serve',
+        build: 'tsc',
+      }),
+    ).toEqual(['client', 'nd', 'ns', 'pv', 'serve:site', 'serve:ssl', 'start', 'start:base', 'ws'])
+    // CONTROLS: a build, a server another tool runs and stops, or one sent
+    // to the background before the real command.
+    expect(
+      persistent({
+        vb: 'vite build',
+        nb: 'next build',
+        sb: 'storybook build',
+        e2e: 'start-server-and-test "vite preview" 4173 "playwright test"',
+        bg: 'pnpm preview & playwright test',
+        preview: 'vite preview',
+        dock: 'docker run -w /x img',
+      }).filter((n) => n !== 'preview'),
+    ).toEqual([])
   })
 
   it('the readiness note rides only a persistent task something depends on', () => {
@@ -1173,7 +1202,7 @@ describe('vx init — the generated build is not a cached no-op', () => {
         const r = await vx(root, ['init'])
         expect({ code: r.code, err: r.err }).toEqual({ code: 0, err: '' })
         expect(r.out).toBe(
-          `vx init: ${file} found — turbo() from @vzn/vx-migrate runs this repo as it is; nothing else written.\n` +
+          `vx init: ${file} found — turbo() from @vzn/vx-migrate, a temporary start until bunx @vzn/vx-migrate writes native config; nothing else written.\n` +
             'wrote vx.workspace.ts.\n\n' +
             'next: npm install -D @vzn/vx-migrate && vx run compile --all\n',
         )
@@ -1585,6 +1614,7 @@ describe('vx init on a workspace with no scripts', () => {
   it('writes the workspace file, prints an example config and the next command', async () => {
     const root = await makeRoot('vx-init-empty-')
     await addPackage(root, 'app', {})
+    Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
     try {
       const r = await vx(root, ['init'])
       expect({ code: r.code, err: r.err }).toEqual({ code: 0, err: '' })
@@ -1594,7 +1624,7 @@ describe('vx init on a workspace with no scripts', () => {
       )
       expect(r.out).toContain('no package.json scripts to turn into tasks')
       expect(r.out).toContain('satisfies ProjectConfig')
-      expect(r.out).toContain('next: vx run build --all')
+      expect(r.out).toContain('next: declare a task as the example shows, then vx run build --all')
       // Idempotent: a second init neither rewrites nor refuses.
       const again = await vx(root, ['init'])
       expect(again.code).toBe(0)
@@ -1615,6 +1645,7 @@ describe('vx init names the runner that started it', () => {
   it('in the next: line, with the package spec that runner resolves', async () => {
     const root = await makeRoot('vx-init-runner-')
     await addPackage(root, 'app', { build: 'tsc' })
+    Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
     const next = async (): Promise<string | undefined> => {
       const proc = Bun.spawn([process.execPath, BIN, 'init', '--dry'], {
         cwd: root,
@@ -1675,6 +1706,7 @@ describe('vx init (package.json scripts)', () => {
   let root: string
   beforeAll(async () => {
     root = await makeScriptsWorkspace()
+    Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
   })
   afterAll(async () => {
     await rm(root, { recursive: true, force: true })
