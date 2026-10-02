@@ -179,9 +179,8 @@
 prune` deletes only artifact names. No bug.
 47. The other `.vx` files after a run of a config that interpolates a
     secret: none holds the value (probed with a token in the command).
-48. The run lock in the shared temp dir is shared across users on
-    purpose; another local user can hold it and stall a run, no more.
-    Not fixed: a local denial of service on a shared box.
+48. The run lock in the shared temp dir let another local user hold it
+    and stall a run (fixed, L-47).
 
 ## Items
 
@@ -471,6 +470,22 @@ prune` deletes only artifact names. No bug.
   there. It is now masked with the same rule before it is recorded.
   Row: `invocation-secret-mask.test.ts`, red without the fix.
 
+- L-36. `fix(util)`: a multi-line secret (a PEM key in a secret-named
+  variable) was masked only as a whole value, so a tool that indented or
+  reflowed it (`… | sed 's/^/  /'`) printed every line of the key in the
+  clear. Each line of six characters or more is now masked too, as GitHub
+  Actions does. Rows: `secret-mask-multiline.test.ts`, red without the
+  fix.
+  (L-11, L-14). An executor's thrown message is printed unmasked, but a
+  plugin executor is trusted code with a config's reach. No bug.
+
+- L-37. `fix(orchestrator)`: under a 127 or 126 vx adds a line naming
+  the command's first word, and a config that built that word from a
+  secret (`tool-${process.env.API_TOKEN}`) had the shell's own "not
+  found" masked and vx's line beside it whole. The line is masked as the
+  task's output is. `shell-verdict-secret-mask.test.ts`, red without the
+  fix (a bare word and a path).
+
 - L-38. `fix(orchestrator)`: a `--tag` value is stored on the run's
   history row and reaches telemetry as `vx.tag.<key>`. A tag carrying a
   secret (`--tag key=$DEPLOY_KEY`) was masked in the stored invocation
@@ -485,6 +500,77 @@ prune` deletes only artifact names. No bug.
   task output. Audit 22 had called the message trusted plugin code. The
   message and its cause are masked. `executor-error-secret-mask.test.ts`,
   red without the fix.
+
+- L-40. `fix(orchestrator)`: a plugin's `ctx.warn` line reaches the
+  run's status channel, and a remote layer warns with the server's own
+  reply (vx-reapi's "could not record execution: …"), which may echo
+  what it was sent: a secret there printed whole. Every status line is
+  masked, and the two CLI paths that print a plugin's warning straight
+  to stderr (a plugin verb, a fingerprint claim) mask it too.
+  `plugin-warn-secret-mask.test.ts`, red without the fix.
+
+- L-41. `fix(sandbox)`: a sandboxed task read the host's credential
+  stores (probed: `~/.ssh/id_ed25519`, `~/.npmrc`, `~/.aws/credentials`
+  printed under `allow: { read: ['.'] }`). Reads outside the workspace
+  stay open by design, but a dependency the task runs could copy a key
+  into a declared output, and the cache hands that to every reader of a
+  shared remote. The stores present on the host are now in the read
+  deny set, and a task that needs one (`npm publish`'s `~/.npmrc`)
+  names it in `allow.read`. `sandbox-credential-stores.unsafe.test.ts`,
+  red without the fix; `~/.cache` stays readable in the same row.
+
+- L-42. `fix(cli)`: `vx lock` writes each config as evaluated into
+  `vx-lock.json`, which is committed. A config that interpolated a
+  secret (`--token ${process.env.API_TOKEN}`, a `define` from
+  `process.env`) wrote the value there (probed). Masking would freeze a
+  `***` that `--frozen` runs, so the lock is refused, naming each
+  place, and nothing is written. `lock-secret.test.ts`, red without the
+  fix, with two controls (no secret in the env; a shell-expanded
+  `$API_TOKEN`).
+  (L-11, L-14). An executor's thrown message is printed unmasked, but a
+  plugin executor is trusted code with a config's reach. No bug.
+
+- L-43. `fix(vx-otel)`: an OTLP header is often the vendor's API key
+  (`x-honeycomb-team`, `dd-api-key`), and Bun's fetch follows a
+  redirect dropping only `Authorization` across origins (probed, Bun
+  1.4.2): a collector that answered 307 to another origin got the key
+  sent there. The export now follows no redirect, as the OTel SDK
+  exporters do, and warns where the collector pointed.
+  `vx-otel/tests/redirect-headers.test.ts`, red without the fix.
+  turboCache() and nxCache() send `Authorization` only (audit 37);
+  vx-reapi's gRPC follows no redirect.
+  (L-11, L-14). An executor's thrown message is printed unmasked, but a
+  plugin executor is trusted code with a config's reach. No bug.
+
+- L-44. `fix(orchestrator)`: telemetry's command line (`vx.command` on
+  the OTLP run span, the GitHub job summary) counts what follows `--`,
+  but a secret before it (`--tag key=$DEPLOY_KEY`) was sent whole while
+  the stored line and the tags were masked (L-35, L-38). It is masked
+  by the same rule. `telemetry-command-secret-mask.test.ts`, red
+  without the fix.
+  (L-11, L-14). An executor's thrown message is printed unmasked, but a
+  plugin executor is trusted code with a config's reach. No bug.
+
+- L-45. `fix(vx-migrate)`: `turboCache()` with a signature key writes a
+  download to a temp and checks its tag before core sees a byte. The
+  temp sat in the OS temp dir, which a sandboxed task may read, so a
+  task in one project could read another's outputs there for the check's
+  length (the class of L-10). It lands in vx's cache directory, which
+  the sandbox walls. `vx-migrate/tests/turbo-cache-temp-dir.test.ts`,
+
+- L-46. `test(sandbox)`: a sandboxed task with no network grant reached
+  neither a listener on the host's loopback nor a unix socket outside
+  the workspace (probed: `socket(AF_UNIX)` is refused, loopback is the
+  task's own), and nothing pinned either. Row:
+  `sandbox-host-services.unsafe.test.ts`, with the host reaching both
+  as its control; red with the sandbox block removed.
+
+- L-47. `fix(orchestrator)`: the run lock was named directly in the
+  shared temp dir, so another local user could plant a held lock naming
+  a live pid and stall every run on the workspace (audit 48). Each
+  user's locks sit in `<tmpdir>/vx-runs-<uid>` (0700); a root that is a
+  link or another owner's is refused and the run goes on unlocked.
+  `run-lock-owner.test.ts` stalls without the fix.
 
 ## Leads for other streams
 
