@@ -22,7 +22,7 @@ Every key `turbo.json`, `nx.json` and `project.json` accept, read from the upstr
 | `concurrency` | mapped, with a note | turbo() fills the workspace's `concurrency` when `vx.workspace.ts` sets none (`"50%"` of the cores too); `TURBO_CONCURRENCY` wins over it, as in Turbo. |
 | `daemon` | not applicable | vx has no daemon by design. |
 | `dangerouslyDisablePackageManagerCheck` | not applicable | Turbo's package-manager check; vx has none. |
-| `envMode` | mapped, with a note | Strict is vx's behaviour; `loose` gets a note, since vx passes only declared variables; under `turbo()` `TURBO_ENV_MODE` wins over it. |
+| `envMode` | mapped, with a note | Strict is vx's behaviour; `loose` gets a note, since vx passes only declared variables, and so do the tasks a Turbo 1 `pipeline` config's inferred mode ran loose (no pass-through list); under `turbo()` `TURBO_ENV_MODE` wins over it. |
 | `extends` | supported | Package configs' `extends` chains are followed as Turbo does; cycles and missing parents are refused. |
 | `futureFlags` | mapped, with a note | The flags are not read; what they gate (`global`, structured inputs) is detected by shape. |
 | `global` | mapped, with a note | `inputs`, `env` and `passThroughEnv` are read as the `global*` fields they replace; `envMode: loose` gets a note. |
