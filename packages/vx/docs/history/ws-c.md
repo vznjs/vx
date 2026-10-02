@@ -681,6 +681,17 @@ with no prediction; a history read error fails open in both callers.
 
 ## Leads for other streams
 
+- **D:** a persistent task with `exec.remote: 'only'` is refused for
+  lacking `cache` ("needs `cache`: its inputs are what a worker
+  reproduces"), and adding `cache` is refused next ("`cache` is not
+  allowed on a persistent task"): a circular hint. A persistent task
+  runs on this machine; refuse `remote: 'only'` on it by that reason.
+- **E:** a dependency server that crashed mid-run still closes its
+  "since ready" block `(3ms) running`: the block is drawn at `runEnd`
+  from the outcome stored at ready, before run.ts marks the crash
+  failed. The footer, the `vx: … exited` lines and `--summarize` say
+  failed.
+
 - **B:** `runner.test.ts` › "keeps a ready server alive past its
   readyWhen timeout" failed on #2054's Linux CI: `echo up` missed its
   150 ms readiness bound under load (`PersistentReadyError … within
@@ -951,6 +962,21 @@ session a plugin's `onTaskStdout` heard the server after its own
 released just before the teardown. Row (`keep-alive.test.ts` › a plugin
 hears nothing after its teardown while vx holds a server): red without
 the fix (`torn:AFTER`). `modules/plugin.md` says so.
+## C-65: the stop kills a running `cache.inputs.runtime` probe
+
+A Ctrl-C while a task's `cache.inputs.runtime` probe ran (a slow
+`docker version`, a hung `git`) waited for the probe: vx exited only at
+the signal handler's bound, ~7 s (8,017 ms with a 30 s probe), and an
+embedder's `RunOptions.signal` waited the probe out in full. The probes
+are their own groups, killed at process exit (A-9) but not by the stop.
+The run's stop now kills them (`stopRuntimeProbes`, cache/inputs.ts),
+and a task whose `execute` rejects after the stop is `aborted`, with no
+error line, where it read failed for the probe the stop cut short.
+Measured: 1,021 ms. Rows: `abort.test.ts` › the stop kills a running
+probe (the run waits out the 30 s probe without the kill) and
+`scheduler.test.ts` › a rejected execute after the stop (red without the
+rejection arm's check; its control stays failed). `modules/scheduler.md`
+says so.
 
 ## C-63: a plugin executor's throw from `execute` names the plugin
 
@@ -963,3 +989,12 @@ scheduler's line. The error object is kept (its class, cause and code),
 so a refusal still prints plainly and a bug as an internal error.
 Row (`plugin-capabilities.test.ts` › an executor's throw reaches the
 task's own stderr): red without the fix. `modules/executor.md` says so.
+
+## C-67: an embedder's `command` reaches telemetry redacted
+
+Item 1057 kept what follows `--` (often a token) out of the command line
+telemetry sinks receive, but only for the argv fallback: an embedder's
+`RunOptions.command` (`vx run deploy -- --token=…`) went to every sink
+verbatim. It is now counted, not quoted, the same way. Row
+(`telemetry.test.ts` › a sink never receives what follows `--`): red
+without the fix. The option's doc comment says so.

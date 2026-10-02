@@ -55,12 +55,14 @@ const LIFECYCLE = /^(pre|post)(install|publish|pack|version)$|^(prepare|prepubli
  */
 export function delegatedScript(command: string): string | null {
   const m =
-    /^(?:(?:npm run|(pnpm|yarn|bun)(?: (run))?) ([^\s&|;<>()$`'"\\]+)|npm (test|start))$/.exec(
+    /^(?:(?:npm run|(pnpm|pn|yarn|bun)(?: (run))?) ([^\s&|;<>()$`'"\\]+)|npm (test|start))$/.exec(
       command.trim(),
     )
   if (m === null) return null
   if (m[4] !== undefined) return m[4]
-  const [, manager, run, name] = m
+  const [, alias, run, name] = m
+  // `pn` is pnpm's own short name (pnpm 11; pnpm/pnpm's scripts run it).
+  const manager = alias === 'pn' ? 'pnpm' : alias
   // Bare, the manager's own command wins over a script of that name:
   // `bun test` is Bun's test runner and `bun build` its bundler, never the
   // `test` / `build` script, and a group over the script ran the wrong
@@ -305,7 +307,7 @@ const MEMBER_FLAG =
 function pmRunsMembers(script: string): boolean {
   for (const segment of script.split(/&&|\|\||[;|()]/)) {
     const words = segment.trim().split(/\s+/)
-    let i = words.findIndex((w) => /^(pnpm|npm|yarn|bun)$/.test(w))
+    let i = words.findIndex((w) => /^(pnpm|pn|npm|yarn|bun)$/.test(w))
     // npm/cli runs itself: `node . run test --workspaces`.
     if (i < 0) i = words.findIndex((w, j) => w === 'run' && words[j - 2] === 'node')
     if (i < 0) continue
@@ -343,7 +345,7 @@ function cdsToMembers(script: string, rootDir: string, memberDirs: readonly stri
 
 /** A package manager running a script by name: `pnpm build`, `npm run x`, `bun run x`. */
 const RUNS_SCRIPT =
-  /(?:^|[\s;&|(])(?:pnpm|npm|yarn|bun)\s+(?:run(?:-script)?\s+)?([^\s;&|()'"-][^\s;&|()'"]*)/g
+  /(?:^|[\s;&|(])(?:pnpm|pn|npm|yarn|bun)\s+(?:run(?:-script)?\s+)?([^\s;&|()'"-][^\s;&|()'"]*)/g
 
 /**
  * The scripts a command runs by name: a package manager's (`pnpm x`, `npm

@@ -843,11 +843,13 @@ Bun.spawn = (cmd, opts) => {
     // exited and left the server under init. The timeout holds the group
     // until its SIGKILL, and vx's exit hands it to the guard (item 865).
     // The server lives through its SIGTERM, so its death is the SIGKILL's.
+    // A 1 s deadline: at 300 ms a slow shell start lost `started.txt` to
+    // the TERM (M-23).
     const dir = await addProject(
       root,
       'app',
       `export default { tasks: {
-        dev: { exec: { command: 'sh -c "echo s > started.txt; trap \\\\"echo t > term.txt\\\\" TERM; while :; do sleep 0.05; done" >/dev/null 2>&1 & echo $! > server.pid; wait', timeout: 300, persistent: { readyWhen: 'NEVER' } } },
+        dev: { exec: { command: 'sh -c "echo s > started.txt; trap \\\\"echo t > term.txt\\\\" TERM; while :; do sleep 0.05; done" >/dev/null 2>&1 & echo $! > server.pid; wait', timeout: 1000, persistent: { readyWhen: 'NEVER' } } },
       } }`,
     )
     const proc = track(

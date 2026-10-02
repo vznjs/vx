@@ -5,7 +5,12 @@
 import type { ProjectEntry } from '../workspace/index.js'
 import { loadWorkspace, unreachedHint, unreachedPackages } from '../workspace/index.js'
 import path from 'node:path'
-import { type CacheLayer, type CachePolicy, FULL_CACHE_POLICY } from '../cache/index.js'
+import {
+  type CacheLayer,
+  type CachePolicy,
+  FULL_CACHE_POLICY,
+  stopRuntimeProbes,
+} from '../cache/index.js'
 import { VERSION } from '../version.js'
 import {
   resetSandbox,
@@ -533,6 +538,7 @@ async function runOnBus(
   // ends after it is the stop's own kill, and was named a crash (item 1061).
   let endedBeforeStop: ReadonlySet<ReturnType<typeof Bun.spawn>> | undefined
   const onAbort = (): void => {
+    stopRuntimeProbes()
     endedBeforeStop = new Set([...persistentRegistry.values()].filter(hasEnded))
     aborting = terminateChildren(
       () => [...liveChildren, ...persistentRegistry.values()],
@@ -634,7 +640,9 @@ async function runOnBus(
       runContextRecord = {
         runId,
         vxVersion: VERSION,
-        command: options.command ?? invocationCommand(process.argv.slice(1)),
+        // An embedder's `command` is redacted as the argv is: it passed a
+        // token after `--` to every sink verbatim (C-67).
+        command: invocationCommand(options.command?.split(' ') ?? process.argv.slice(1)),
         requestedTasks: [...options.tasks],
         cachePolicy: compactCachePolicy(policy),
         concurrency,

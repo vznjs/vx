@@ -790,11 +790,13 @@ describe('execute-task — retry loop control flow: abort vs timeout', () => {
       // deadline" from "the run is shutting down". Drop that guard and every
       // timeout silently becomes `aborted`: unretried, uncounted, and absent
       // from the summary, so a hung build reports as if it never ran.
+      // 1 s: each attempt's `echo` must land before its deadline, and a
+      // slow shell start lost it at 300 ms (M-24).
       const dir = await addProject(
         fixture.root,
         'to',
         `export default { tasks: { t: {
-          exec: { command: 'echo x >> tries.txt; exec sleep 5', timeout: 300, retries: 1 },
+          exec: { command: 'echo x >> tries.txt; exec sleep 5', timeout: 1000, retries: 1 },
         } } }`,
       )
       const r = await run({
@@ -813,7 +815,7 @@ describe('execute-task — retry loop control flow: abort vs timeout', () => {
       // The timeout says so on stderr — a bare 143 is otherwise unreadable —
       // and the outcome carries it, so every label reads "timed out" where
       // it would otherwise read the signal (item 268).
-      expect(fixture.err.join('')).toContain('timed out after 300ms')
+      expect(fixture.err.join('')).toContain('timed out after 1000ms')
       expect(o.timedOut).toBe(true)
       expect(fixture.err.join('')).toContain('retrying to#t (attempt 2/2) after a timeout')
     },
