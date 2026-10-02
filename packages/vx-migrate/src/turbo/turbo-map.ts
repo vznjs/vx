@@ -1023,6 +1023,7 @@ export async function mapTurboWorkspace(
   // whenever the node is run: such a node is a group task (below). One no
   // other package reaches stays none (a `test: [build]` in a package with
   // no tests adds nothing Turbo's `^` would not).
+  const sidecarGroups = new Set<string>()
   for (const meta of metas) {
     const scripts = packageScripts(meta)
     const own = runnable.get(meta.name)!
@@ -1048,6 +1049,7 @@ export async function mapTurboWorkspace(
         )
       })
       const reached = caretNames.has(name) || crossIds.has(`${meta.name}#${name}`)
+      if (sidecar) sidecarGroups.add(`${meta.name}#${name}`)
       if (sidecar || (local && reached)) emitted.get(meta.name)!.add(name)
       // A name no package has a script for is an entry point of its own:
       // `turbo run ci` over `ci: { dependsOn: ["lint", "build"] }`, or
@@ -1110,6 +1112,10 @@ export async function mapTurboWorkspace(
   // `ui#build` hashes ui's files into theirs. Walked past, vx's `^build`
   // folded nothing of ui, and an edit to it replayed both apps (a stale
   // hit). Key-only too, with no outputs: Turbo's no-op cleans nothing.
+  // One with edges of its own (with-shell-commands' `tooling-config#build`
+  // → `prebuild`) was a group, which keys nothing: Turbo's node still
+  // hashes the package's files, so it is key-only with its edges. A node
+  // that starts persistent sidecars stays a group.
   const keyOnly = new Map<string, Set<string>>()
   for (const meta of metas) {
     const scripts = packageScripts(meta)
@@ -1118,7 +1124,7 @@ export async function mapTurboWorkspace(
       const def = defFor(name)
       if (!caretSelf.has(name) || !withScript.has(name) || transit.has(name)) continue
       if (scripts[name] !== undefined || commandOverride(def) !== undefined) continue
-      if (emitted.get(meta.name)!.has(name)) continue
+      if (sidecarGroups.has(`${meta.name}#${name}`)) continue
       if (def?.cache === false || def?.persistent === true) continue
       emitted.get(meta.name)!.add(name)
       runnable.get(meta.name)!.add(name)
