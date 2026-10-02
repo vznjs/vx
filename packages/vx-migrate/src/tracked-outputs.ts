@@ -24,6 +24,29 @@ export async function trackedFiles(root: string): Promise<string[] | null> {
 }
 
 /**
+ * Which of `rels` (root-relative) git ignores: a path no glob over git's
+ * files can key. Untracked only (a tracked file is never ignored); empty
+ * outside a repo or without git.
+ */
+export async function gitIgnored(root: string, rels: readonly string[]): Promise<Set<string>> {
+  if (rels.length === 0) return new Set()
+  try {
+    const p = Bun.spawn(['git', 'check-ignore', '--stdin', '-z'], {
+      cwd: root,
+      stdin: new TextEncoder().encode(rels.map((r) => `${r}\0`).join('')),
+      stdout: 'pipe',
+      stderr: 'ignore',
+    })
+    const out = await new Response(p.stdout).text()
+    // 1: none ignored; anything else past 0 is no answer.
+    if ((await p.exited) !== 0) return new Set()
+    return new Set(out.split('\0').filter((f) => f !== ''))
+  } catch {
+    return new Set()
+  }
+}
+
+/**
  * What a project's tracked files are: their extensions (lower case, no
  * dot), directory names at any depth, and top-level entry names.
  */

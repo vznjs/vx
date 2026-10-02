@@ -15,7 +15,7 @@ import type { ProjectMeta, VxPlugin } from '@vzn/vx'
 import { type AdoptionRun, adoptionPlugin } from '../adoption-plugin.js'
 import type { AdoptionMapping } from '../mapping-cache.js'
 import { collectGaps } from '../plugin-gaps.js'
-import { trackedKinds } from '../tracked-outputs.js'
+import { gitIgnored, trackedKinds } from '../tracked-outputs.js'
 import { relPosix } from '../paths.js'
 import {
   mapTurboWorkspace,
@@ -273,6 +273,7 @@ async function mapAll(
     envMode: process.env['TURBO_ENV_MODE'] ?? '',
     ...(tracked === null ? {} : { tracked: trackedKinds(tracked) }),
     ownConfig: (rel) => configs.get(rel === '.' ? '' : rel) ?? null,
+    ignored: (rels) => gitIgnored(root, rels),
   })
   const byName = new Map<string, TurboMappedProject>()
   for (const project of mapped.projects) byName.set(project.name, project)
