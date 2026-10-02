@@ -170,6 +170,8 @@ export default defineProject({
             'VX_REQUIRE_WATCH_EVENTS',
             'VX_REQUIRE_NONROOT',
             'VX_REQUIRE_TAGS',
+            // git-reftable.unsafe.test.ts: a git too old for reftable fails.
+            'VX_REQUIRE_REFTABLE',
             'VX_PR_TITLE',
             'VX_PR_BASE',
             'VX_PR_HEAD',

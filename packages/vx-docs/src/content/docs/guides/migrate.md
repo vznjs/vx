@@ -77,6 +77,11 @@ names the plugin that shares it:
 .github/workflows/ci.yml sets TURBO_TOKEN: add turboCache() from @vzn/vx-migrate to the workspace file's plugins and vx shares that remote cache.
 ```
 
+Where the repo has a lockfile and `vx.workspace.ts` declares no
+`@vzn/vx-lockfile` plugin, the report names the one for it (`pnpm()` for
+`pnpm-lock.yaml`): Turbo keys each package on its own lockfile entries,
+and vx keys every task on the whole file until a plugin claims it.
+
 ### Try it in five minutes
 
 [`examples/turbo`](https://github.com/vznjs/vx/tree/main/examples/turbo)
@@ -140,8 +145,9 @@ The command itself comes from your `package.json` script, with its
 3. A CI file that sets `NX_SELF_HOSTED_REMOTE_CACHE_SERVER` is named, with
    `nxCache()` to add; an Nx Cloud workspace is named instead, since vx
    cannot share its cache.
-4. Delete `nx.json` once no task runs `nx-exec` or `nx-env` (below):
-   init says which.
+4. Write the command for any executor the report lists as a placeholder
+   (below), then delete `nx.json`; while a task runs `nx-env` (a target
+   with `.env` files), keep it: init says which.
 
 What it writes for a project whose `build` is `nx:run-commands`:
 
@@ -175,17 +181,34 @@ export default {
 } satisfies ProjectConfig
 ```
 
-Executor targets keep running as executors. Each becomes one `nx-exec`
-line, which runs the executor through Nx's public `runExecutor`, with its
-options on the command line so the cache key sees them:
+An executor target is written as the command its executor runs, from
+where Nx ran it, with the executor's option defaults applied:
 
-```bash
-nx-exec @nx/js:tsc --project lib --target build --options '{"main":"src/index.ts","tsConfig":"tsconfig.lib.json"}'
-```
+| Executor                            | Written as                                                  |
+| ----------------------------------- | ----------------------------------------------------------- |
+| `@nx/jest:jest`                     | `cd ../.. && jest --config=libs/a/jest.config.ts …`         |
+| `@nx/vitest:test`, `@nx/vite:test`  | `vitest run --config=vite.config.ts …`                      |
+| `@nx/vite:build`                    | `vite build --outDir=../../dist/libs/a --emptyOutDir …`     |
+| `@nx/eslint:lint`                   | `eslint .`                                                  |
+| `@nx/js:tsc`                        | `rm -rf ../../dist/libs/a && tsc -p tsconfig.lib.json --outDir ../../dist/libs/a --rootDir .` |
+| `@nx/playwright:playwright`         | `cd ../.. && playwright install && playwright test --pass-with-no-tests …` |
+| `@nx/vite:dev-server`               | `vite --config=vite.config.ts --mode=…` (the build target's config and mode) |
+| `@nx/vite:preview-server`           | `vite preview --outDir=../../dist/apps/web …`               |
+| `@nx/storybook:storybook`           | `cd ../.. && storybook dev --port=9009 --config-dir=libs/a/.storybook` |
+| `@nx/storybook:build`               | `cd ../.. && storybook build --config-dir=… --output-dir=…` |
+| `@nx/next:build`                    | `next build`, `NX_NEXT_OUTPUT_PATH` set to `outputPath`     |
+| `@nx/next:server`                   | `next dev --port=4200` (or `next start` in the build output) |
+| `@nx/cypress:cypress`               | `cd ../.. && cypress run --project=apps/web-e2e --config-file=cypress.config.ts --e2e` |
+| `@nx/esbuild:esbuild`               | `cd ../.. && rm -rf dist/apps/api && esbuild apps/api/src/main.ts --bundle --packages=external --format=esm …` |
 
-Replace each with the command the executor wraps when you want to drop
-Nx; until the last one is gone, keep `nx` and `@vzn/vx-migrate`
-installed.
+What an executor did besides its tool (a type-check before a Vite
+build, a `package.json` or `assets` copied into the output) is a TODO
+on the task. Any other executor is a placeholder that fails naming the
+executor and its options, and the report lists its tasks under one TODO
+per executor: write the command it runs. Where the executor's Nx plugin
+ships `convert-to-inferred` (Webpack and Rollup, whose options feed the
+project's config function), the TODO names it: run
+`nx g @nx/webpack:convert-to-inferred`, then migrate again.
 
 | Nx                                   | vx                                                        |
 | ------------------------------------ | --------------------------------------------------------- |
