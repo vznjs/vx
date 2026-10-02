@@ -723,6 +723,16 @@ is why `@vzn/vx#test.bun.shard-*` is the one task in this repo with no
 `sandbox` block. `weakerWhenNested` covers the Linux case; SRT offers no
 macOS equivalent because there is none to offer.
 
+## Descriptor records
+
+The write observer records strace's own log as `deny openat /dev/fd/5`.
+`refusedWrites` resolved each record's path in vx's process, so that one
+named vx's fd 5: `/dev/urandom` as a rule, but a vx started with
+`5>out.log` in a single-package workspace reported a write to `out.log`
+and failed a clean task. A record under `/dev/` or `/proc/` names the
+task's descriptor or pseudo-file, never a place vx can resolve, and is
+skipped (2026-10-02).
+
 ## Loopback
 
 A runtime that opens a dual-stack socket reaches 127.0.0.1 as
