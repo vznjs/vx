@@ -670,8 +670,17 @@ function revParse(workspaceRoot: string, ref: string): string | undefined {
     'ignore',
   )
   const sha = new TextDecoder().decode(proc.stdout).trim()
-  return proc.exitCode === 0 && sha.length > 0 ? sha : undefined
+  if (proc.exitCode !== 0 || sha.length === 0) return undefined
+  resolvedRefs.add(`${workspaceRoot}\0${ref}`)
+  return sha
 }
+
+/**
+ * Refs `revParse` resolved to a commit, by workspace: the default base is
+ * found that way, and `verifyRef` asked git about it again, a synchronous
+ * spawn (~3.5 ms) of every bare `--affected`. A ref is fixed for a run.
+ */
+const resolvedRefs = new Set<string>()
 
 /** `git merge-base <ref> HEAD`, or `ref` itself when the two share no ancestor. */
 async function mergeBase(workspaceRoot: string, ref: string): Promise<string> {
@@ -682,6 +691,7 @@ async function mergeBase(workspaceRoot: string, ref: string): Promise<string> {
 }
 
 async function verifyRef(workspaceRoot: string, ref: string): Promise<void> {
+  if (resolvedRefs.has(`${workspaceRoot}\0${ref}`)) return
   const proc = spawnGitSync(
     ['rev-parse', '--verify', '--quiet', '--end-of-options', ref],
     workspaceRoot,
