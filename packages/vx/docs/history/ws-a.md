@@ -471,3 +471,10 @@ The fold joins each plugin key part as `name\0value`, so `{ 'a\0b': 'c' }` and `
 ### A-58 — stale cache comments (2026-09-30, J's leads)
 
 `key-fold.ts`'s version history stopped at v31; v32–v36 each name their item now. `ORPHAN_GRACE_MS` described the save order before A-3 (the rename now sits inside the row transaction). `LayeredCache` said a remote carries the duration as an `x-artifact-duration` header; `get` returns it beside the body. `holdPersistent` said only the requested tasks are handed back (C-46 keeps their persistent dependencies too); `api.md` regenerated. Comments only.
+
+### A-60 — a filter since removed no longer lets its blob key the file (2026-10-02)
+
+Found by the A-59 fuzzer once it toggled `core.autocrlf` and `.gitattributes`. `git add` under `core.autocrlf=true` (or a `text` rule) stores the LF blob of a CRLF file and records the file's stat. With the filter gone, git holds the stat-clean entry clean without re-reading it, and the filter gate reads today's config, so the LF blob's OID keyed the CRLF bytes: a hit on the LF build, green. The enumeration's `ls-files` now passes `--debug` (the worktree size the index recorded, free: 428 against 433 ms), and `applyGitEnumeration` drops each trusted OID whose blob is another size. Blob sizes are fixed per OID, so they live in a new `blob_sizes` table (swept with `file_hashes`); a cold cache asks one `git cat-file --batch-check` (`GIT_NO_LAZY_FETCH=1`), which alone cost +65 ms warm over 3,000 loose objects before the memo. With it, 1,000 projects warm, 15 interleaved rounds: base 433, new 453, A/A 452 (noise). `CACHE_VERSION` v37. `caching.md` (step 12, the table) and `modules/git-inputs.md` say so.
+
+- Rows: `git-trust.test.ts` › "an index blob a filter wrote that no longer applies" (red without the check: `cache-hit`); `git-spawns-once.test.ts` pins the cold `cat-file` and none warm.
+- Lead for M: `output-dirs.test.ts` › "does not descend a symlinked directory, records a missing prefix as absent, and nothing over the cap" hit its 10 s timeout in two of five local gates (A-59, A-60); green alone, and in the other gates.

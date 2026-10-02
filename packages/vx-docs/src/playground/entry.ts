@@ -220,7 +220,8 @@ async function planWorkspace(input: PlaygroundInput): Promise<PlaygroundResult> 
       (t) => (t.cache?.inputs.workspaceFiles?.length ?? 0) > 0,
     ),
   )
-  applyGitEnumeration(
+  // Every VFS blob IS its file's bytes: no index sizes to check.
+  await applyGitEnumeration(
     {
       all: [...trusted.keys()],
       trusted,
@@ -228,6 +229,8 @@ async function planWorkspace(input: PlaygroundInput): Promise<PlaygroundResult> 
       changed: [],
       undecodable: [],
       startedAtMs: Date.now(),
+      indexed: new Map(),
+      catFile: async () => null,
     },
     root,
     [...projects.values()].map((p) => p.dir),

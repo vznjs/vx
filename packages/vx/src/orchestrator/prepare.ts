@@ -436,7 +436,14 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
         workspaceRoot,
         gitPathspecs(workspaceRoot, projectDirs, usesWorkspaceInputs),
       ))
-    applyGitEnumeration(enumeration, workspaceRoot, projectDirs, gitFilesCache, usesWorkspaceInputs)
+    await applyGitEnumeration(
+      enumeration,
+      workspaceRoot,
+      projectDirs,
+      gitFilesCache,
+      usesWorkspaceInputs,
+      localCache,
+    )
     mark('git enumeration')
     const hashCache = createHashCache()
     const fingerprintWatch = new FingerprintWatch(workspaceRoot, fingerprints, fingerprintsAt)

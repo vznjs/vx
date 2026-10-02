@@ -28,6 +28,8 @@ const CONFIG = `
 
 const ENUMERATION = [
   '--no-optional-locks var -l',
+  // The blob sizes a cold cache has not learned (A-60).
+  '--no-optional-locks cat-file --batch-check=%(objectname) %(objectsize)',
   'rev-parse --show-prefix --git-common-dir --show-object-format',
 ]
 
@@ -81,10 +83,13 @@ describe('git spawns on a cold run', () => {
       expect(await coldRun(['build', '--all'])).toEqual(
         [
           ...ENUMERATION,
-          '--no-optional-locks ls-files -s -v -z -- .',
+          '--no-optional-locks ls-files -s -v -z --debug -- .',
           '--no-optional-locks status --porcelain -z -uall --ignored=matching -- .',
         ].sort(),
       )
+      // Warm, the sizes come from the cache: no cat-file.
+      await writeFile(log, '')
+      expect((await coldRun(['build', '--all'])).filter((c) => c.includes('cat-file'))).toEqual([])
     },
     TIMEOUT,
   )
@@ -95,7 +100,7 @@ describe('git spawns on a cold run', () => {
       expect(await coldRun(['a#build'])).toEqual(
         [
           ...ENUMERATION,
-          '--no-optional-locks ls-files -s -v -z -- packages/a',
+          '--no-optional-locks ls-files -s -v -z --debug -- packages/a',
           '--no-optional-locks status --porcelain -z -uall --ignored=matching -- packages/a',
         ].sort(),
       )

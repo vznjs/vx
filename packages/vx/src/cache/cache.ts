@@ -666,7 +666,7 @@ export class Cache implements CacheLayer {
             }
             if (found === SCHEMA_VERSION) return null
             this.db.exec(
-              'DROP TABLE IF EXISTS entries; DROP TABLE IF EXISTS runs; DROP TABLE IF EXISTS file_hashes; DROP TABLE IF EXISTS output_files; DROP TABLE IF EXISTS invocations; DROP TABLE IF EXISTS run_task_inputs; DROP TABLE IF EXISTS entry_inputs; DROP TABLE IF EXISTS config_evals; DROP TABLE IF EXISTS config_closures; DROP TABLE IF EXISTS output_dirs;',
+              'DROP TABLE IF EXISTS entries; DROP TABLE IF EXISTS runs; DROP TABLE IF EXISTS file_hashes; DROP TABLE IF EXISTS blob_sizes; DROP TABLE IF EXISTS output_files; DROP TABLE IF EXISTS invocations; DROP TABLE IF EXISTS run_task_inputs; DROP TABLE IF EXISTS entry_inputs; DROP TABLE IF EXISTS config_evals; DROP TABLE IF EXISTS config_closures; DROP TABLE IF EXISTS output_dirs;',
             )
             this.db
               .prepare("UPDATE schema_meta SET value = ? WHERE key = 'version'")
@@ -789,6 +789,14 @@ export class Cache implements CacheLayer {
   }
   hashFiles(paths: readonly string[]): Promise<Map<string, string>> {
     return this.guard(() => this.files.hashFiles(paths))
+  }
+  /** `BlobSizeMemo`: the sizes of these blobs this cache has learned. */
+  knownBlobSizes(oids: readonly string[]): Map<string, number> {
+    return this.guard(() => this.files.knownBlobSizes(oids))
+  }
+  /** `BlobSizeMemo`: remember blob sizes, honouring the local WRITE axis. */
+  rememberBlobSizes(sizes: ReadonlyMap<string, number>): void {
+    this.guard(() => this.files.rememberBlobSizes(sizes))
   }
   /**
    * `relPosix` against the run's workspace root, memoized: the same three

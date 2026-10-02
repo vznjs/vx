@@ -13,7 +13,12 @@ differ from the bytes on disk. The gate looks for a `.gitattributes`
 among every listed path, untracked and modified ones too: git applies
 those, and a scan of the trusted paths alone never saw them (item 977),
 and an ignored one, which the status walk names with `--ignored=matching`
-(A-19). Split from `inputs.ts` on 2026-09-10:
+(A-19). `ls-files --debug` adds the worktree size the index recorded
+for each entry, and a trusted OID whose blob is another size is dropped:
+a filter since removed left a stat-clean entry git never re-reads (A-60).
+The blob sizes come from the cache's `blob_sizes` memo, the unknown ones
+from one `git cat-file --batch-check`; `applyGitEnumeration` runs the
+check, so every caller of it gets it. Split from `inputs.ts` on 2026-09-10:
 this file talks to git; `inputs.ts` decides which files a task declared
 and where the project boundary is.
 
@@ -54,6 +59,12 @@ export interface GitEnumeration {
   changed: readonly string[] | null // what `status` listed (dirty, both sides of a rename, untracked)
   undecodable: readonly string[] // listed paths whose names are not UTF-8, root-relative
   startedAtMs: number // Date.now() before the spawns
+  indexed: ReadonlyMap<string, { oid: string; size: number }> // regular stage-0 entry → OID, recorded size
+  catFile(stdin: string): Promise<{ exitCode: number; stdout: string } | null> // blob sizes (A-60)
+}
+export interface BlobSizeMemo {
+  knownBlobSizes(oids: readonly string[]): Map<string, number>
+  rememberBlobSizes(sizes: ReadonlyMap<string, number>): void
 }
 export interface LazyGitEnumeration {
   start(): Promise<GitEnumeration> // the whole-tree enumeration, started once
@@ -69,13 +80,14 @@ export async function startGitEnumeration(
   workspaceRoot: string,
   pathspecs: readonly string[],
 ): Promise<GitEnumeration>
-export function applyGitEnumeration(
+export async function applyGitEnumeration(
   enumeration: GitEnumeration,
   workspaceRoot: string,
   projectDirs: readonly string[],
   cache: GitFilesCache,
   workspaceWide?: boolean,
-): void
+  memo?: BlobSizeMemo, // the blob-size check's memo (`Cache`); absent, every size is asked
+): Promise<void>
 export async function populateGitFilesCache(
   workspaceRoot: string,
   projectDirs: readonly string[],
