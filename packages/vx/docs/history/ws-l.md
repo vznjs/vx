@@ -452,6 +452,16 @@
   with the same rule. `tag-secret-mask.test.ts`, both rows red without
   the fix.
 
+- L-43. `fix(vx-otel)`: an OTLP header is often the vendor's API key
+  (`x-honeycomb-team`, `dd-api-key`), and Bun's fetch follows a
+  redirect dropping only `Authorization` across origins (probed, Bun
+  1.4.2): a collector that answered 307 to another origin got the key
+  sent there. The export now follows no redirect, as the OTel SDK
+  exporters do, and warns where the collector pointed.
+  `vx-otel/tests/redirect-headers.test.ts`, red without the fix.
+  turboCache() and nxCache() send `Authorization` only (audit 37);
+  vx-reapi's gRPC follows no redirect.
+
 ## Leads for other streams
 
 - Cache owners: `src/cache/archive.ts` and `tar-stream.ts` changed under
