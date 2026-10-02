@@ -438,6 +438,13 @@
   Turbo's TURBO_CACHE and TURBO_REMOTE_CACHE_READ_ONLY narrow the remote,
   `nx-cache.test.ts`'s resolve row; each red on its mutant.
 
+- L-35. `fix(orchestrator)`: the run's invocation line, stored in
+  cache.db and printed by `vx last` (and in its "re-run what failed"
+  line), kept a secret passed after `--` whole: `vx run deploy --
+--token=$NPM_TOKEN` masked the value in the task's output but not
+  there. It is now masked with the same rule before it is recorded.
+  Row: `invocation-secret-mask.test.ts`, red without the fix.
+
 - L-36. `fix(util)`: a multi-line secret (a PEM key in a secret-named
   variable) was masked only as a whole value, so a tool that indented or
   reflowed it (`… | sed 's/^/  /'`) printed every line of the key in the

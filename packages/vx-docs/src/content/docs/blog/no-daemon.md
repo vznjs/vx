@@ -54,10 +54,8 @@ stopped mattering:
   what the tree should contain.
 
 The result is a fully cached run of 3,270 tasks in 510ms with no
-process left behind, against Turborepo's 760ms and Nx's 3.59s. On
-solidjs/solid, Turbo measured with `--no-daemon` so both tools pay
-discovery, vx's no-op run is 51 ms to Turbo's 95 ms. Turbo's daemon
-would close part of that gap. vx has nothing to turn on.
+process left behind, against Turborepo's 760ms and Nx's 3.59s. vx has
+no daemon to turn on.
 
 ## The invariant, stated plainly
 
