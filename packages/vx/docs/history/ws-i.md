@@ -511,3 +511,27 @@ status` re-hashes every tracked file, and vx runs it with
   39–52 ms once any plain `git status` refreshed it. A fix takes the index
   lock (a refresh when the walk was slow, or `update-index --refresh`),
   which is the contention item 880 removed: the owner's call.
+- **Owner: `--force` re-evaluates every config.** The config-eval cache
+  honours the local read axis (`config-evals.ts`, pinned by
+  `config-cache.test.ts`), so `--force` and `--cache=local:w` load
+  1,000 configs in 340–390 ms against 28 warm. Serving evaluations
+  under `--force` is a meaning change for the escape hatch, not a perf
+  fix: the owner's call.
+
+## Probes refuted (2026-10-02)
+
+- Group commit, sized: the save's statements on the real schema, 1,000
+  saves, cost 182–191 ms one per transaction, 108–114 in fours, 86–111
+  in eights. ≤ 75 µs a save, ~2.5 % of the cold main thread; not taken.
+- The per-config built-in check is at its floor: positional
+  `getOwnPropertyDescriptor` 62 µs for the ten objects, one
+  `getOwnPropertyDescriptors` each 82–92; the env check's
+  `Object.keys` walk 14–16 µs, a spread 51–69.
+- A restore reads its rows twice (`restoreOutputsOnce`,
+  `recordOutputStamps`), ~23 µs a SELECT in the run against 2–5 alone.
+  Reusing the first: restore wall min 932 → 872 one order, 1,009 → 974
+  the other, 878 → 961 over 31 rounds; an A/A spread 150 ms. Main-thread
+  CPU ±50 ms either way. Below this box's resolution; not taken.
+- A lazy `node:readline/promises` (re-run of item 755): `startup` stage
+  median 7.8 → 5.0 ms, wall 60.8 vs 62.4 and 60.2 vs 61.4 min of 61 in
+  both orders. Still refuted: the load moves, it does not go.
