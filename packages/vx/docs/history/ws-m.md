@@ -330,6 +330,15 @@ Bun thread's name or `sh` (an immediate read, 20 of 20: `sh`). It now
 polls for `sleep` up to 3 s; a command with no exec still reads `sh` at
 the deadline, so the claim holds without a time in it.
 
+M-30. `output-memory.unsafe.test.ts` › stays flat while a never-ready
+task floods stdout (D's lead: `long - short` read 140 MiB against 64,
+`\r`). The rows read RSS, which holds what the allocator kept, not what
+the runner retains: beside eight busy loops a 1 s probe read 81 MiB (41
+idle), and a 3 s one grew 82 MiB in 1 of 3 runs with nothing retained.
+The probe now reads the JS heap after a full GC: 1-2 MiB at either
+duration, 8 of 8 runs clean beside eight busy loops, and 180-1,290 MiB
+with a mutant that keeps every chunk (all three rows red).
+
 ## Leads for other streams
 
 - A: A-20 let a same-project dependant restore ahead of a producer whose
