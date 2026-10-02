@@ -74,6 +74,8 @@ it('a verdict is read by a digest of the paths too: a renamed resized entry stay
   await utimes(path.join(root, 'f.txt'), past, past)
   git('-c', 'core.autocrlf=true', 'add', 'f.txt')
 
+  // Past the racy window, so the index is old enough to key a verdict.
+  await Bun.sleep(150)
   const m = memo()
   expect(await trusted(m)).toEqual(['keep.txt'])
   // Warm: the same index reads its verdict.
@@ -83,5 +85,29 @@ it('a verdict is read by a digest of the paths too: a renamed resized entry stay
   // Committed, so status holds `g.txt` clean: same OID, same size, new path.
   git('mv', 'f.txt', 'g.txt')
   git('commit', '-qm', 'rename')
+  await Bun.sleep(150)
   expect(await trusted(m)).toEqual(['keep.txt'])
+})
+
+it('an index written as the enumeration starts asks no verdict; an older one does', async () => {
+  // The key is read beside the listing, not with it: an index written in
+  // between paired one index's verdict with the other's entries. A memo
+  // whose verdict says nothing is resized shows which runs ask it.
+  git('init', '-q')
+  await writeFile(path.join(root, 'keep.txt'), 'k\n')
+  await writeFile(path.join(root, 'f.txt'), 'aa\n')
+  git('add', '-A')
+  git('commit', '-qm', 'init')
+  await writeFile(path.join(root, 'f.txt'), 'aa\r\n')
+  const past = new Date(Date.now() - 10_000)
+  await utimes(path.join(root, 'f.txt'), past, past)
+  git('-c', 'core.autocrlf=true', 'add', 'f.txt')
+  const lying: BlobSizeMemo = { ...memo(), blobVerdict: () => [] }
+
+  // The index was written just now: the lie is not asked.
+  expect(await trusted(lying)).toEqual(['keep.txt'])
+  // Past the racy window (FILE_HASH_RACY_MS), the index is old enough for
+  // its key, and the memo's word is taken: the control that it is asked.
+  await Bun.sleep(150)
+  expect(await trusted(lying)).toEqual(['f.txt', 'keep.txt'])
 })

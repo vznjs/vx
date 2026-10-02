@@ -8,6 +8,7 @@
 import path from 'node:path'
 import { existsSync, lstatSync, readdirSync, realpathSync } from 'node:fs'
 import { UserError, executablePath, gitSpawnRefusal, xxh3hex } from '../util/index.js'
+import { FILE_HASH_RACY_MS, racyWindowMs } from './layer.js'
 
 /** Three facts of the repository a directory is in, from one `git rev-parse`. */
 export interface RepoFacts {
@@ -1161,18 +1162,46 @@ export async function startGitEnumeration(
   // the index file's bytes key it: one read, where `ls-files --debug` and a
   // lookup per entry cost 550 ms at 100,000 files (A-60).
   const pathspecKey = xxh3hex(pathspecs.join('\0'))
-  const readIndexKey = async (): Promise<string | undefined> => {
-    if (facts === null || facts.indexFile === '') return undefined
+  const indexFile =
+    facts === null || facts.indexFile === ''
+      ? undefined
+      : path.resolve(workspaceRoot, facts.indexFile)
+  const readIndexKey = async (): Promise<
+    { key: string; stamp: string; ctimeMs: number } | undefined
+  > => {
+    if (indexFile === undefined) return undefined
     try {
-      const bytes = await Bun.file(path.resolve(workspaceRoot, facts.indexFile)).bytes()
-      return `${xxh3hex(bytes)}:${pathspecKey}`
+      const st = lstatSync(indexFile)
+      const bytes = await Bun.file(indexFile).bytes()
+      return {
+        key: `${xxh3hex(bytes)}:${pathspecKey}`,
+        stamp: `${st.ino}:${st.ctimeMs}:${st.size}`,
+        ctimeMs: st.ctimeMs,
+      }
     } catch {
       return undefined
     }
   }
   const indexKeyRead = readIndexKey()
   const [ls, status, vars] = await running
-  const indexKey = await indexKeyRead
+  // The key stands for the index `ls-files` listed only when that index
+  // was written before the enumeration began (git writes it by rename, so
+  // the stamp moves with any write) and is still in place after it: a
+  // `git add` between the listing and the read paired one index's verdict
+  // with the other's entries. Otherwise this run asks for no verdict.
+  const read = await indexKeyRead
+  let indexKey: string | undefined
+  if (
+    read !== undefined &&
+    read.ctimeMs < startedAtMs - racyWindowMs(read.ctimeMs, FILE_HASH_RACY_MS)
+  ) {
+    try {
+      const st = lstatSync(indexFile!)
+      if (`${st.ino}:${st.ctimeMs}:${st.size}` === read.stamp) indexKey = read.key
+    } catch {
+      // gone: no key
+    }
+  }
   if (ls === null) {
     throw gitSpawnRefusal(workspaceRoot)
   }
@@ -1283,7 +1312,7 @@ export async function startGitEnumeration(
         }
         return blobs
       },
-      rekey: () => readIndexKey(),
+      rekey: async () => (await readIndexKey())?.key,
     },
     // A missing blob is an answer ("missing"), never a fetch from a partial
     // clone's promisor remote.
