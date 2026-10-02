@@ -33,9 +33,17 @@ describe.skipIf(process.platform === 'win32')('the verdict on a quoted script', 
   })
   afterAll(() => rm(cwd, { recursive: true, force: true }))
 
-  it('the shell runs the quoted file and says not found (the real exit)', () => {
+  // The exit differs (dash 127; macOS's sh, bash 3.2, names the bad
+  // interpreter itself and exits 1; bash 5 says 127 with the absolute
+  // path); each names the file without its quotes.
+  it('the shell runs the quoted file by its unquoted name (the real shell)', () => {
     const r = Bun.spawnSync(['sh', '-c', 'exec "./my build.sh" x'], { cwd, stderr: 'pipe' })
-    expect(r.exitCode).toBe(127)
+    const said = r.stderr.toString()
+    expect([r.exitCode !== 0, said.includes('my build.sh:'), said.includes('"')]).toEqual([
+      true,
+      true,
+      false,
+    ])
   })
 
   it('names the #! interpreter, not a missing file', () => {
