@@ -1736,7 +1736,8 @@ it carries a TODO saying so; a `pre<x>` with no `x` stays a task of its own, and
 npm's lifecycle hooks (`prepack`, `prepublishOnly`, …) are never tasks.
 Where the package's manager runs no such hooks every `pre<x>` and
 `post<x>` is a task of its own: Yarn 2+ (the nearest `packageManager:
-yarn@2+`, or a Berry `yarn.lock`, D-31), npm under `ignore-scripts=true`
+yarn@2+`, or a Berry `yarn.lock`, D-31; a `packageManager` naming none of npm,
+pnpm, yarn or bun defers to the lockfile, D-96), npm under `ignore-scripts=true`
 in the `.npmrc` beside its lockfile, pnpm under
 `enable-pre-post-scripts=false` there or `enablePrePostScripts: false` in
 `pnpm-workspace.yaml` (D-33). Bun and Yarn 1 run them whatever those say.
@@ -1754,7 +1755,8 @@ and Yarn's workspace flags, a `cd` into or above a member, turbo, nx, lerna, `vp
 runs: berry's `yarn node -r ./setup.ts` is node's `--require`, D-81; bun's
 `cd test && …` enters no member, D-83),
 nor is one that runs such a script by name (vite's `ci-docs`: `pnpm build &&
-pnpm docs-build`), and neither is one whose name a member's task carries, so `--all` never runs
+pnpm docs-build`; through `run-s` / `run-p` / `npm-run-all` or `concurrently
+"npm:x"` too, lexical's `ci-check`, D-95), and neither is one whose name a member's task carries, so `--all` never runs
 a check twice (D-45). The rest check the whole repo (`lint: oxlint .`,
 `test: vitest`) and become the root's own tasks in a root vx.config, when
 the root has a `"name"` (vx skips a nameless root's config) and no config

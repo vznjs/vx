@@ -1301,35 +1301,38 @@ describe("the root's workspace dependencies", () => {
   )
 })
 
-// with-shell-commands: `build: { dependsOn: ["prebuild", "^build"] }`, and
-// `tooling-config` has neither script. Its edge to `prebuild` made the
-// node a group, which keys nothing, so an edit to tooling-config replayed
-// every dependant's build; Turbo's no-op node hashes its files.
-describe('a no-op node with an edge of its own', () => {
+// Turbo runs a script through the package manager (`pnpm run build`), which
+// sets `npm_package_name`, `npm_package_version` and `npm_lifecycle_event`;
+// vx runs the body itself, so `echo $npm_package_version` printed nothing
+// and a config reading `process.env.npm_package_version` built `undefined`.
+describe('the npm_* variables a package manager sets', () => {
   it(
-    "keys a dependant's task on the script-less package's files",
+    'reach a script that names them, the event only where no hook is folded in',
     async () => {
+      await writeFile(path.join(root, 'turbo.json'), JSON.stringify({ tasks: { v: {}, w: {} } }))
       await writeFile(
-        path.join(root, 'turbo.json'),
+        path.join(root, 'packages', 'lib', 'package.json'),
         JSON.stringify({
-          tasks: {
-            build: { dependsOn: ['prebuild', '^build'], outputs: ['dist/**'] },
-            prebuild: {},
+          name: 'lib',
+          version: '1.2.3',
+          scripts: {
+            v: 'echo "$npm_package_name ${npm_package_version} $npm_lifecycle_event" > v.txt',
+            w: 'echo "$npm_package_version $npm_lifecycle_event" > w.txt',
+            prew: 'true',
           },
         }),
       )
-      await writeFile(
-        path.join(root, 'packages', 'lib', 'package.json'),
-        JSON.stringify({ name: 'lib', version: '1.0.0' }),
-      )
       Bun.spawnSync({ cmd: ['git', 'add', '-A'], cwd: root })
-      const key = async () => {
-        const plan = await planRun({ cwd: root, tasks: ['app#build'], log: silent() })
-        return plan.tasks.find((t) => t.node.id === 'app#build')!.hash
-      }
-      const before = await key()
-      await writeFile(path.join(root, 'packages', 'lib', 'src', 'index.js'), '// edited\n')
-      expect(await key()).not.toBe(before)
+      const result = await run({
+        cwd: root,
+        tasks: ['lib#v', 'lib#w'],
+        log: silent(),
+        handleSignals: false,
+      })
+      expect(result.ok).toBe(true)
+      const lib = path.join(root, 'packages', 'lib')
+      expect(await Bun.file(path.join(lib, 'v.txt')).text()).toBe('lib 1.2.3 v\n')
+      expect(await Bun.file(path.join(lib, 'w.txt')).text()).toBe('1.2.3 \n')
     },
     TIMEOUT,
   )
