@@ -671,7 +671,7 @@ function revParse(workspaceRoot: string, ref: string): string | undefined {
   )
   const sha = new TextDecoder().decode(proc.stdout).trim()
   if (proc.exitCode !== 0 || sha.length === 0) return undefined
-  resolvedRefs.add(`${workspaceRoot}\0${ref}`)
+  resolvedRefs.set(`${workspaceRoot}\0${ref}`, sha)
   return sha
 }
 
@@ -680,10 +680,17 @@ function revParse(workspaceRoot: string, ref: string): string | undefined {
  * found that way, and `verifyRef` asked git about it again, a synchronous
  * spawn (~3.5 ms) of every bare `--affected`. A ref is fixed for a run.
  */
-const resolvedRefs = new Set<string>()
+const resolvedRefs = new Map<string, string>()
+
+/** A ref that names an ancestor of HEAD by its own spelling (`HEAD~1`, `HEAD^`). */
+const HEAD_ANCESTOR = /^HEAD(?:~\d*|\^\d*)+$/
 
 /** `git merge-base <ref> HEAD`, or `ref` itself when the two share no ancestor. */
 async function mergeBase(workspaceRoot: string, ref: string): Promise<string> {
+  // HEAD's own ancestor is its merge base with HEAD: the commit it names,
+  // which the default base's search already resolved (`HEAD~1`).
+  const known = HEAD_ANCESTOR.test(ref) ? resolvedRefs.get(`${workspaceRoot}\0${ref}`) : undefined
+  if (known !== undefined) return known
   const proc = spawnGit(['merge-base', '--end-of-options', ref, 'HEAD'], workspaceRoot)
   const [out, exit] = await Promise.all([new Response(proc.stdout).text(), proc.exited])
   const sha = out.trim()
