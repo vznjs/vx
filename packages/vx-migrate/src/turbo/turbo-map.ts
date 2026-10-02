@@ -148,6 +148,8 @@ const KNOWN_TASK_KEYS = new Set([
   'persistent',
   'extends',
   'outputLogs',
+  // `outputLogs` as Turbo 1 spells it (renamed in 2.0; 1.13 still reads it).
+  'outputMode',
   'dotEnv',
   'command',
   'description',
@@ -467,8 +469,8 @@ function checkTurboShape(cfg: unknown, label: string): void {
         refuse(`${at}.inputs`, 'an array of globs')
       for (const k of TASK_FLAGS)
         if (d[k] !== undefined && typeof d[k] !== 'boolean') refuse(`${at}.${k}`, 'true or false')
-      if (d['outputLogs'] !== undefined && typeof d['outputLogs'] !== 'string')
-        refuse(`${at}.outputLogs`, 'a string')
+      for (const k of ['outputLogs', 'outputMode'])
+        if (d[k] !== undefined && typeof d[k] !== 'string') refuse(`${at}.${k}`, 'a string')
     }
   }
 }
@@ -1022,6 +1024,7 @@ export async function mapTurboWorkspace(
   // whenever the node is run: such a node is a group task (below). One no
   // other package reaches stays none (a `test: [build]` in a package with
   // no tests adds nothing Turbo's `^` would not).
+  const sidecarGroups = new Set<string>()
   for (const meta of metas) {
     const scripts = packageScripts(meta)
     const own = runnable.get(meta.name)!
@@ -1047,6 +1050,7 @@ export async function mapTurboWorkspace(
         )
       })
       const reached = caretNames.has(name) || crossIds.has(`${meta.name}#${name}`)
+      if (sidecar) sidecarGroups.add(`${meta.name}#${name}`)
       if (sidecar || (local && reached)) emitted.get(meta.name)!.add(name)
       // A name no package has a script for is an entry point of its own:
       // `turbo run ci` over `ci: { dependsOn: ["lint", "build"] }`, or
@@ -1109,6 +1113,10 @@ export async function mapTurboWorkspace(
   // `ui#build` hashes ui's files into theirs. Walked past, vx's `^build`
   // folded nothing of ui, and an edit to it replayed both apps (a stale
   // hit). Key-only too, with no outputs: Turbo's no-op cleans nothing.
+  // One with edges of its own (with-shell-commands' `tooling-config#build`
+  // → `prebuild`) was a group, which keys nothing: Turbo's node still
+  // hashes the package's files, so it is key-only with its edges. A node
+  // that starts persistent sidecars stays a group.
   const keyOnly = new Map<string, Set<string>>()
   for (const meta of metas) {
     const scripts = packageScripts(meta)
@@ -1117,7 +1125,7 @@ export async function mapTurboWorkspace(
       const def = defFor(name)
       if (!caretSelf.has(name) || !withScript.has(name) || transit.has(name)) continue
       if (scripts[name] !== undefined || commandOverride(def) !== undefined) continue
-      if (emitted.get(meta.name)!.has(name)) continue
+      if (sidecarGroups.has(`${meta.name}#${name}`)) continue
       if (def?.cache === false || def?.persistent === true) continue
       emitted.get(meta.name)!.add(name)
       runnable.get(meta.name)!.add(name)
@@ -1523,13 +1531,15 @@ function buildTask(
       `turbo key "command" (${JSON.stringify(def['command'])}) is not an argv, null or a toolchain map of them — the script runs; write the command by hand`,
     )
   }
-  const outputLogs = (def as { outputLogs?: unknown }).outputLogs
+  const logsKey =
+    (def as { outputLogs?: unknown }).outputLogs !== undefined ? 'outputLogs' : 'outputMode'
+  const outputLogs = (def as Record<string, unknown>)[logsKey]
   if (outputLogs !== undefined && outputLogs !== OUTPUT_LOGS_DEFAULT) {
     todos.push(
       typeof outputLogs === 'string' && OUTPUT_LOGS_RUN_FLAG.has(outputLogs)
-        ? `turbo key "outputLogs" (${JSON.stringify(outputLogs)}) is a per-run setting in vx — ` +
+        ? `turbo key "${logsKey}" (${JSON.stringify(outputLogs)}) is a per-run setting in vx — ` +
             `run with --output-logs ${outputLogs}`
-        : `turbo key "outputLogs" (${JSON.stringify(outputLogs)}) is not a value vx knows — ` +
+        : `turbo key "${logsKey}" (${JSON.stringify(outputLogs)}) is not a value vx knows — ` +
             'run with --output-logs full|hash-only|errors-only|none',
     )
   }

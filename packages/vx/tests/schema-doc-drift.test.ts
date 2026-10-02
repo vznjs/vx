@@ -100,6 +100,25 @@ const CASES: Array<[string, () => string | null | Promise<string | null>]> = [
   ],
   ['tasks must be an object keyed by task name', () => validated({ tasks: [ok] })],
   [
+    "cannot find '<name>' — Yarn Plug'n'Play installed the workspace's dependencies into .pnp.cjs, which Bun does not read; set <remedy>",
+    // The same import with a `.pnp.cjs` above the config (D-109).
+    async () => {
+      const dir = scratchDir()
+      await Bun.write(path.join(dir, '.pnp.cjs'), '')
+      const file = path.join(dir, 'vx.config.ts')
+      await Bun.write(
+        file,
+        "import { preset } from 'nope-pkg'\nexport default { tasks: {}, ...preset }\n",
+      )
+      try {
+        await loadProjectConfig(file)
+        return null
+      } catch (err) {
+        return (err as Error).message
+      }
+    },
+  ],
+  [
     '<path> is <what> — a config must be JSON data, because the cache key folds its JSON',
     () => validated({ tasks: { b: { ...ok, description: () => 'b' } } }),
   ],
