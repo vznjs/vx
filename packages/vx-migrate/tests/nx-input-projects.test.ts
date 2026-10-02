@@ -43,7 +43,7 @@ it('a pattern, a tag and an exclusion name the graph’s projects; an unknown na
                       '{projectRoot}/**/*',
                       {
                         input: 'production',
-                        projects: ['lib-*', '!lib-b', 'tag:scope:*', 'ghost'],
+                        projects: ['lib-*', '!lib-b', 'tag:scope:*', 'ghost', 'packages/app'],
                       },
                     ],
                   },
@@ -59,7 +59,7 @@ it('a pattern, a tag and an exclusion name the graph’s projects; an unknown na
   })
   const test = m.projects.find((p) => p.name === 'app')!.tasks.find((t) => t.name === 'test')!
   expect([test.task!['dependsOn'], test.todos]).toEqual([
-    ['lib-a#nx-input:production', 'shared#nx-input:production'],
+    ['lib-a#nx-input:production', 'shared#nx-input:production', 'app#nx-input:production'],
     ['input project "ghost" is not a graph node — map manually'],
   ])
 })

@@ -18,34 +18,28 @@ In order of harm:
    unexpanded and matches no absolute target.
 3. Stale doc: `filterIgnored`'s docblock describes SRT's per-command
    substring semantics (`'*'` keys, commands), not the per-operation
-   glob match the code does.
+   glob match the code does. Closed: B-2 (2 and 3).
 4. The tracer retry (`runSandboxed`) does not ask whether the run is
    stopping; an attempt that ended on a signal is never retried only
    because strace prints no `strace:` line then (probed: SIGINT, SIGTERM,
    SIGHUP, SIGKILL of the group, stderr empty). Low harm; a guard on
-   `signalCode` would make it structural.
+   `signalCode` would make it structural. Closed: B-36.
 5. macOS: item 1010's walls are Linux-only (`punchWalls` returns the
    grant as is), so a root project's `read: ['.']` still reads nested
    projects, `.git` and `.vx` under seatbelt. Needs a darwin probe
    (seatbelt precedence of a deny inside an allow) before a fix.
-6. Linux: a grant naming a path with `[` or `]` (a Next.js route,
-   `pages/[id].tsx`) cannot be granted. vx scans it as a `Bun.Glob`
-   class (no match, the read is denied and reported); the escaped
-   `\[id\]` matches, but SRT globs any Linux allow path holding a
-   bracket (`containsGlobChars`: a read is expanded as a class, a write
-   is dropped), so the hit is never mounted and, being a listed grant,
-   its denial goes unreported. A workspace whose own path holds a
-   bracket meets the same. Probed 2026-10-02. Fix needs a choice: widen
-   such a grant to its nearest bracket-free ancestor (as a file grant
-   is widened to its directory), said once. `read: ['.']` is unaffected.
-
-7. Linux: a grant under a workspace whose directory name holds a
-   bracket does not resolve: `resolveSandboxConfig` resolves it to an
-   absolute path and `expandGrants` reads that path's brackets as a
-   `Bun.Glob` class, so `read: ['.']` there mounts nothing. Since B-57
-   such a workspace is walled, so its tasks fail closed. A fix makes
-   the expansion escape-aware on both platforms (darwin hands SRT the
-   pattern). A bracketed write path cannot reach SRT at all.
+   Closed: B-4.
+6. Closed: a bracket in a grant. Linux reads (B-57), Linux writes
+   (B-59), a project under a bracketed directory (B-60, refused), and
+   macOS's spelling (B-65, whose darwin row is CI's macOS job's).
+7. Upstream (SRT): every sandboxed Linux task starts two in-sandbox
+   `socat` bridges (HTTP 3128, SOCKS 1080, each behind a `bash -c`) even
+   in a run whose network allowlist is empty, where the proxy refuses
+   everything. SRT ties the network namespace to the proxy
+   (`needsNetworkRestriction` and `needsNetworkProxy` are both
+   `allowedDomains !== undefined`), so vx cannot ask for an isolated
+   network without them. Seen in an execve trace of one sandboxed
+   `true` (2026-10-02); their cost per task is unmeasured.
 
 ## Leads for other streams
 
@@ -1130,3 +1124,31 @@ without the fix). A clone with `CLONE_FS` (every thread) shares its
 creator's cwd rather than copying it, so a `chdir` by either moves both
 (libuv's pool after `process.chdir`): deniedCalls › moves a thread with
 the process whose cwd it shares (red with the flag ignored).
+
+B-63. `cwdMounted`'s guard for a cwd the deny list already held (a
+single-package workspace, whose cwd is its anchor) held nothing: with it
+removed, such a task runs in its cwd and its read is reported exactly as
+with it (probed), since the runtime takes the second deny entry as the
+same mount. Removed. The module page no longer says strace stops only
+on `openat` (B-61 added the cwd calls).
+
+Also measured, nothing to cut: 200 no-cache `true` tasks, unsandboxed,
+`--concurrency 1`, take 422–550 ms in vx (2.1–2.7 ms a task, five runs),
+and a bare `Bun.spawn` loop of the same `sh -c 'exec true'` with both
+pipes read takes 2.4–2.8 ms a spawn. The unsandboxed path is at the
+spawn floor; B-50's ranking of the miss path stands.
+
+B-64. A strace that cannot check the seccomp filter's order says
+`strace: check_seccomp_order_tracer: #0: unexpected exit status 1` and
+traces on without the filter, exit 0. The detection's probe read only the
+exit and chose the fast form; inside the sandbox the same line matched
+the tracer-retry key, so every sandboxed task ran twice (found running vx
+under an outer `strace`: a task appending to a file appended twice). The
+probe now refuses a strace that speaks with exit 0; for the seccomp form
+it then probes the plain form and uses it when quiet, else tasks run
+untraced with the once-said warning. Rows:
+`sandbox-tracer-retry.unsafe.test.ts` › a strace that warns at start and
+traces on › is used in the plain form, and the task runs once (red
+without the fix: two runs and the retry line), and › is not used when
+the plain form speaks too (the fallback disabled reddens the first, the
+warning ignored reddens both).

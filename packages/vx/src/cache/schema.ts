@@ -115,6 +115,15 @@ export function createTables(db: Database): void {
       content_hash TEXT NOT NULL,
       seen_at      INTEGER NOT NULL
     );
+    -- The size of each index blob the enumeration checked against the
+    -- worktree size git recorded (A-60). Fixed for its OID, so a warm
+    -- run asks git for none; swept with file_hashes by seen_at, the
+    -- time the row was written.
+    CREATE TABLE IF NOT EXISTS blob_sizes (
+      oid     TEXT PRIMARY KEY,
+      size    INTEGER NOT NULL,
+      seen_at INTEGER NOT NULL
+    );
     -- v16: per-output-file fingerprints, scoped by the cache entry
     -- that produced them. Lets loadOutputFilesBatch(hashes) answer
     -- "for entry X, what are its outputs supposed to look like?"

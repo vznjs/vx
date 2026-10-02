@@ -137,6 +137,25 @@ describe('the plugins guide states the CacheLayer method count', () => {
 })
 
 // The environment-variables guide is the configure page's section now.
+describe('CONTRIBUTING names what the gate runs on', () => {
+  // It said "Needs Bun ≥ 1.4 and git" and "No Node in the toolchain"; with no
+  // `node` on PATH every nx-exec row of @vzn/vx-migrate#test fails (J-107).
+  it('nx-exec.test.ts spawns node, and CONTRIBUTING names Node', () => {
+    const repo = path.resolve(import.meta.dir, '..', '..', '..')
+    const nxExec = readFileSync(
+      path.join(repo, 'packages', 'vx-migrate', 'tests', 'nx-exec.test.ts'),
+      'utf8',
+    )
+    expect(nxExec).toContain("Bun.spawn(['node', BIN, ...args]")
+    const contributing = readFileSync(path.join(repo, 'CONTRIBUTING.md'), 'utf8').replace(
+      /\s+/g,
+      ' ',
+    )
+    expect(contributing).toContain('Needs Bun ≥ 1.4, git and Node')
+    expect(contributing).not.toContain('No Node in the toolchain')
+  })
+})
+
 describe('the configure guide names the essential allowlist', () => {
   it('its "always gets a small essential allowlist" sentence names every POSIX name in ESSENTIAL_ENV', () => {
     const page = section(
