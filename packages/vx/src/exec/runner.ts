@@ -255,6 +255,14 @@ export function signalExitCode(signal: string): number {
 }
 
 /**
+ * The signal a run's stop stands for, from its abort reason: a task
+ * stopped before its spawn exits as if that signal had killed it.
+ */
+export function stopSignal(reason: unknown): 'SIGINT' | 'SIGHUP' | 'SIGTERM' {
+  return reason === 'SIGINT' || reason === 'SIGHUP' ? reason : 'SIGTERM'
+}
+
+/**
  * The reverse: the signal an exit above 128 stands for (137 → SIGKILL),
  * by the platform's numbering; undefined for a plain exit. The shell
  * reports 128 + n for a death by signal n, so the read is the shell's
