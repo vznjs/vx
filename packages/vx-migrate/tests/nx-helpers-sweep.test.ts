@@ -14,6 +14,23 @@ function inputs(entries: unknown[], named: Record<string, unknown[]> = {}) {
 }
 
 describe('expandNxInputs', () => {
+  // Nx 23's `{ workingDirectory }` keys where Nx was started; a vx task
+  // runs in its project dir wherever vx starts. It was a todo, "not
+  // representable". CONTROL: another value is still one.
+  it('a workingDirectory input is nothing to key', () => {
+    const got = inputs([
+      { workingDirectory: 'relative' },
+      { workingDirectory: 'absolute' },
+      { workingDirectory: 'elsewhere' },
+    ])
+    expect([got.files, got.wsFiles, got.runtimeCmds, got.todos]).toEqual([
+      [],
+      [],
+      [],
+      ['input {"workingDirectory":"elsewhere"} not representable in vx'],
+    ])
+  })
+
   // Nx 23's `includeIgnored` hashes the path from disk, which a vx glob
   // never sees. A literal is a workspace-root probe; a glob or a
   // dependency's fileset is a todo; a negated literal filters nothing.

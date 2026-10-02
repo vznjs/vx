@@ -110,6 +110,10 @@ Nx loads a task's `.env` files into its environment — the project's before the
 
 Every task gets `NX_TASK_TARGET_PROJECT`, `NX_TASK_TARGET_TARGET`, `LERNA_PACKAGE_NAME` (the project, which Lerna on Nx's runner documents to scripts) and, where it runs a configuration, `NX_TASK_TARGET_CONFIGURATION` in `exec.env.define`, as Nx hands them to every task; a run-commands `env` wins. A package script's `nx exec -- <cmd>` reads them: without them it starts Nx's own task runner, which runs the target and its dependencies again.
 
+### Inputs that key nothing here
+
+`{ dependentTasksOutputFiles }` hashes the outputs of the tasks a target depends on; vx folds those tasks' keys through `dependsOn`, and an output follows from its inputs. `{ workingDirectory }` hashes the directory Nx was started from; a vx task runs in its project dir from wherever vx is started. Neither is a todo.
+
 ### nx.json `parallel`
 
 `parallel` (or the legacy `tasksRunnerOptions.default.options.parallel`) is the run's `concurrency` when `vx.workspace.ts` sets none: a repo that set `1` for a shared resource ran on every core under vx before.
