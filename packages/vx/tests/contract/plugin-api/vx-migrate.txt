@@ -100,6 +100,7 @@ export interface MapNxOptions {
 export interface MapTurboOptions {
   splice(kind: TurboGlobal, values: readonly string[]): readonly unknown[]
   persistentTodo: string
+  manifestField?(key: 'name' | 'version'): unknown
   envNames?: readonly string[]
   vendorEnvPrefix?: string
   envMode?: string

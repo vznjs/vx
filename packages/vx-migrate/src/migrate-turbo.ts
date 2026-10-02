@@ -16,6 +16,9 @@ import { mapTurboWorkspace, rootTaskProject, type TurboGlobal } from './turbo/tu
 import { relPosix } from './paths.js'
 import { trackedFiles, trackedKinds } from './tracked-outputs.js'
 
+/** What a task's `npm_package_*` read: the manifest, so a bump reaches them. */
+const MANIFEST_IMPORT = "import pkg from './package.json' with { type: 'json' }"
+
 /** The preset takes the configs' extension: plain arrays either way. */
 function presetFile(format: MigrationFormat): string {
   return `vx-preset.${format}`
@@ -37,6 +40,7 @@ export async function migrateTurbo(
   const mapping = await mapTurboWorkspace(root, await withRootProject(root, metas), {
     splice: (kind) => [{ raw: `...${PRESET_NAMES[kind]}` }],
     persistentTodo: PERSISTENT_TODO,
+    manifestField: (key) => ({ raw: `pkg.${key}` }),
     ...(tracked === null ? {} : { tracked: trackedKinds(tracked) }),
     // The file this writes is each task's config.
     ownConfig: () => `vx.config.${format}`,
@@ -45,10 +49,14 @@ export async function migrateTurbo(
   const projects: GeneratedProject[] = mapping.projects.map((p) => {
     const used = new Set<string>()
     for (const t of p.tasks) for (const kind of t.uses) used.add(PRESET_NAMES[kind])
+    const readsManifest = p.tasks.some((t) => JSON.stringify(t.task ?? {}).includes('"pkg.'))
     return {
       name: p.name,
       dir: p.dir,
-      importLines: presetImportLines(used, root, p.dir, format),
+      importLines: [
+        ...(readsManifest ? [MANIFEST_IMPORT] : []),
+        ...presetImportLines(used, root, p.dir, format),
+      ],
       tasks: p.tasks.map(({ name, todos, task }) => ({ name, todos, task })),
     }
   })
@@ -112,8 +120,9 @@ function renderPreset(inputs: string[], env: string[], pass: string[]): string {
   if (inputs.length > 0) {
     lines.push(
       '',
-      '// From globalDependencies — workspace-root-relative, spread into each',
-      '// task’s cache.inputs.workspaceFiles (the $TURBO_ROOT$ equivalent).',
+      '// From globalDependencies and what Turbo adds to them (the packages the',
+      '// root depends on, microfrontends configs) — workspace-root-relative,',
+      '// spread into each task’s cache.inputs.workspaceFiles.',
       `export const globalInputs = ${arr(inputs)}`,
     )
   }

@@ -919,6 +919,15 @@ the fix), and after `stop` the bus reaches it no more (red with the
 detach removed); probed end to end (9 lines in 2.5 s, 2 before).
 `cli.md` says so.
 
+## C-58: two comments that claimed what the code does not
+
+J's leads (J-65, J-78). `resolveCache` said one plugin layer "is used as
+is", but a layer that does not wrap the local store is chained with it
+at the tail; it now says only a single layer left is used as is.
+`RunOptions.holdPersistent` said only the requested servers are handed
+back; it names the ones a requested group stands for (C-52) and their
+persistent dependencies (C-46). Comments only.
+
 ## C-61: run() refuses the numbers the CLI refuses
 
 The CLI and the workspace config refuse a `concurrency` that is not a
@@ -932,6 +941,22 @@ run() now refuses each up front, naming the value. Rows
 (`run-concurrency.test.ts`): each refused with the exact message, the
 edges run; red without the checks. The options' doc comments say so.
 
+## C-65: the stop kills a running `cache.inputs.runtime` probe
+
+A Ctrl-C while a task's `cache.inputs.runtime` probe ran (a slow
+`docker version`, a hung `git`) waited for the probe: vx exited only at
+the signal handler's bound, ~7 s (8,017 ms with a 30 s probe), and an
+embedder's `RunOptions.signal` waited the probe out in full. The probes
+are their own groups, killed at process exit (A-9) but not by the stop.
+The run's stop now kills them (`stopRuntimeProbes`, cache/inputs.ts),
+and a task whose `execute` rejects after the stop is `aborted`, with no
+error line, where it read failed for the probe the stop cut short.
+Measured: 1,021 ms. Rows: `abort.test.ts` › the stop kills a running
+probe (the run waits out the 30 s probe without the kill) and
+`scheduler.test.ts` › a rejected execute after the stop (red without the
+rejection arm's check; its control stays failed). `modules/scheduler.md`
+says so.
+
 ## C-63: a plugin executor's throw from `execute` names the plugin
 
 Every plugin hook's throw names the plugin and the hook (`accepts`,
@@ -943,3 +968,12 @@ scheduler's line. The error object is kept (its class, cause and code),
 so a refusal still prints plainly and a bug as an internal error.
 Row (`plugin-capabilities.test.ts` › an executor's throw reaches the
 task's own stderr): red without the fix. `modules/executor.md` says so.
+
+## C-67: an embedder's `command` reaches telemetry redacted
+
+Item 1057 kept what follows `--` (often a token) out of the command line
+telemetry sinks receive, but only for the argv fallback: an embedder's
+`RunOptions.command` (`vx run deploy -- --token=…`) went to every sink
+verbatim. It is now counted, not quoted, the same way. Row
+(`telemetry.test.ts` › a sink never receives what follows `--`): red
+without the fix. The option's doc comment says so.

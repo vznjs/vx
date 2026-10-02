@@ -75,6 +75,7 @@ export function planNxUpstream(
   const projectTags = Object.entries(nodes).map(([name, n]) => ({
     name,
     tags: Array.isArray(n?.data?.tags) ? n.data.tags.filter((t) => typeof t === 'string') : [],
+    ...(typeof n?.data?.root === 'string' ? { root: n.data.root } : {}),
   }))
   const direct = new Map<string, string[]>()
   if (typeof dependencies === 'object' && dependencies !== null) {
@@ -286,7 +287,12 @@ export function planNxUpstream(
     // Nx reads the list as `dependsOn`'s `projects` (`findMatchingProjects`):
     // `*` patterns, `tag:` and `!` exclusions. Looked up as names, a
     // `tag:shared` reader was a todo and its input dropped from the key.
-    const literal = of.filter((p) => !/^!|^tag:|\*/.test(p) && nodes[p] === undefined)
+    const literal = of.filter(
+      (p) =>
+        !/^!|^tag:|\*/.test(p) &&
+        nodes[p] === undefined &&
+        matchNxProjects([p], projectTags).length === 0,
+    )
     for (const p of literal)
       todos.push(`input project ${JSON.stringify(p)} is not a graph node — map manually`)
     for (const p of matchNxProjects(of, projectTags)) {

@@ -2014,3 +2014,31 @@ describe('runGraph — lanes, settles and refusals the sweep found unheld', () =
     }
   })
 })
+
+// C-65: once the run has stopped, an `execute` that rejects (a runtime
+// probe the stop killed) is the stop's doing: aborted, as any task it
+// kills, with no error line. Before the stop it is a failure, said.
+describe('a rejected execute after the stop', () => {
+  for (const stopFirst of [true, false]) {
+    it(
+      stopFirst ? 'is aborted and unsaid' : 'CONTROL: before the stop, is failed and said',
+      async () => {
+        const ac = new AbortController()
+        const said: string[] = []
+        const out = await runGraph({
+          nodes: nodes(node('p#t')),
+          concurrency: 1,
+          signal: ac.signal,
+          onError: (_n, line) => void said.push(line),
+          execute: async () => {
+            if (stopFirst) ac.abort()
+            throw new Error('probe killed')
+          },
+        })
+        expect([out.get('p#t')!.status, said]).toEqual(
+          stopFirst ? ['aborted', []] : ['failed', ['[vx] internal error in p#t: probe killed\n']],
+        )
+      },
+    )
+  }
+})
