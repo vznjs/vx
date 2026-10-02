@@ -14,7 +14,7 @@ import {
 } from '@vzn/vx'
 import { mapTurboWorkspace, rootTaskProject, type TurboGlobal } from './turbo/turbo-map.js'
 import { relPosix } from './paths.js'
-import { trackedFiles, trackedKinds } from './tracked-outputs.js'
+import { gitIgnored, trackedFiles, trackedKinds } from './tracked-outputs.js'
 
 /** What a task's `npm_package_*` read: the manifest, so a bump reaches them. */
 const MANIFEST_IMPORT = "import pkg from './package.json' with { type: 'json' }"
@@ -44,6 +44,7 @@ export async function migrateTurbo(
     ...(tracked === null ? {} : { tracked: trackedKinds(tracked) }),
     // The file this writes is each task's config.
     ownConfig: () => `vx.config.${format}`,
+    ignored: (rels) => gitIgnored(root, rels),
   })
 
   const projects: GeneratedProject[] = mapping.projects.map((p) => {

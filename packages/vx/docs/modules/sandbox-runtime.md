@@ -31,7 +31,7 @@ Three companions hold the rest, split 2026-09-09 as pure code motion:
   (`bindableWrites`), read grants punched around the write grants
   inside them (`punchWritePaths`), and the SRT custom config.
 - `sandbox-paths.ts` — `toRealPath`, `absolutize`, `atOrUnder`,
-  `isUnderAny`, `unique`.
+  `isUnderAny`, `sandboxReads`, `unique`.
 - `sandbox-deny-scan.ts` — `scopedMandatoryDenies`: SRT's mandatory
   write denies (`.bashrc`, `.mcp.json`, `.vscode/`, `.git/hooks`, …),
   found within each task's write grants instead of the whole root.
@@ -243,6 +243,9 @@ export function absolutize(p: string, cwd?: string): string
 // one copy of the check the sandbox code makes.
 export function atOrUnder(p: string, dir: string): boolean
 export function isUnderAny(abs: string, allow: Set<string>): boolean
+// Whether a sandboxed task may read a file: a read, write or baseline
+// grant at or above its canonical path (the shell verdict asks it).
+export function sandboxReads(sandbox: ExecuteSandbox, file: string): boolean
 export function unique(arr: readonly string[]): string[]
 export function localBindingOn(c: { localBinding?: boolean | readonly number[] }): boolean
 
@@ -392,7 +395,10 @@ the whole pass, since a `vfork` child's lines precede its parent's
 a file that does not exist and no `ignore` for the real one matched.
 strace's `-y` names the directory on every line, but cost 40% on 2,000
 opens (min 240 → 337 ms); the extra stops here cost nothing measurable
-(B-61). A path is
+(B-61). A
+refused `chdir` is a denial of its own, a read of the directory: `cd src`
+into a directory no grant holds failed with no violation, and
+`cd src || …` passed and cached (B-67). A path is
 strace's C string, decoded: read raw, `q"t.txt` was cut at `q\` and
 `é.txt` named `\303\251.txt`, so the report and every `ignore` pattern
 missed the file (B-54). Without `strace`

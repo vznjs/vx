@@ -290,7 +290,7 @@ describe('vx show (e2e)', () => {
       const r = await vx(root, ['show', 'app#bui'])
       expect(r.code).toBe(1)
       // The hint is a spec to paste, as `vx run`'s is (E-34).
-      expect(r.err).toBe('vx: unknown task: "app#bui" — did you mean app#build, app#ci?\n')
+      expect(r.err).toBe('vx show: unknown task: "app#bui" — did you mean app#build, app#ci?\n')
     },
     TIMEOUT,
   )
@@ -757,7 +757,7 @@ describe('vx info — the rendered rows', () => {
     workers: { count: 4, source: 'cores', cores: 4, cpuQuota: null },
     memory: { usableBytes: 16 * GB, totalBytes: 16 * GB, cgroupLimitBytes: null },
     cacheDir: '/w/.vx',
-    cacheVersion: 'vx-cache-v38',
+    cacheVersion: 'vx-cache-v39',
     schemaVersion: 'v28',
     cacheEntries: 0,
     cacheBytes: 0,
@@ -782,7 +782,7 @@ describe('vx info — the rendered rows', () => {
         'workers:          4 — the CPU count',
         'memory:           16 GB',
         'cache dir:        /w/.vx',
-        'cache versions:   keys vx-cache-v38 · index schema v28',
+        'cache versions:   keys vx-cache-v39 · index schema v28',
         'cache entries:    0 (0 B)',
         'task runs (24h):  5 (2 cache hits)',
         'flaky tasks:      none',
@@ -833,7 +833,7 @@ describe('vx info — the rendered rows', () => {
         'workers:          8 — vx.workspace.ts (4 cores, cgroup CPU quota 2)',
         'memory:           2.0 GB usable — cgroup limit; the machine has 8.0 GB',
         'cache dir:        /w/.vx',
-        'cache versions:   keys vx-cache-v38 · index schema v28',
+        'cache versions:   keys vx-cache-v39 · index schema v28',
         'cache entries:    3 (2.0 KB)',
         'orphans:          1 artifact (512 B) the index does not know — `vx cache prune` reaps them',
         'task runs (24h):  0 (0 cache hits)',
