@@ -6,7 +6,7 @@
 // task declared. Nothing here reads a config or applies a boundary.
 
 import path from 'node:path'
-import { existsSync, lstatSync, realpathSync } from 'node:fs'
+import { existsSync, lstatSync, readdirSync, realpathSync } from 'node:fs'
 import { UserError, executablePath, gitSpawnRefusal } from '../util/index.js'
 
 /** Three facts of the repository a directory is in, from one `git rev-parse`. */
@@ -394,12 +394,37 @@ function expandNestedRepos(
     }
     out ??= files.slice(0, i)
     const abs = path.join(cwd, nested)
-    if (!existsSync(path.join(abs, '.git'))) continue
+    if (!existsSync(path.join(abs, '.git'))) {
+      // No repository answers for it: a submodule never initialised (empty)
+      // or one whose `.git` was removed to vendor its files, the gitlink
+      // left in the index and `git status` silent. Its files are what the
+      // task reads, so a walk lists them; they hash by content (A-61).
+      for (const f of walkFiles(abs)) out.push(`${nested}/${f}`)
+      continue
+    }
     const inner = runGitLsFiles(abs)
     for (const f of inner.files) out.push(`${nested}/${f}`)
     for (const f of inner.undecodable) undecodable.push(`${nested}/${f}`)
   }
   return { files: out ?? files, undecodable }
+}
+
+/** Every file and symlink under `dir`, relative and `/`-separated; a `.git` is skipped, a link not followed. */
+function walkFiles(dir: string, rel = ''): string[] {
+  let entries
+  try {
+    entries = readdirSync(path.join(dir, rel), { withFileTypes: true })
+  } catch {
+    return []
+  }
+  const out: string[] = []
+  for (const e of entries) {
+    if (e.name === '.git') continue
+    const r = rel === '' ? e.name : `${rel}/${e.name}`
+    if (e.isDirectory()) out.push(...walkFiles(dir, r))
+    else out.push(r)
+  }
+  return out
 }
 
 /**

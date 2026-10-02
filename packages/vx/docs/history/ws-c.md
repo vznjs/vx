@@ -986,6 +986,16 @@ task's own stderr): red without the fix. `modules/executor.md` says so.
 distributed runs honor it": the whole-run backend seam that carried it
 went with vx cloud. The mode is the local scheduler's; a task a plugin
 executor runs elsewhere is one dispatch like any other. Docs only.
+## C-71: `--exclude-dependencies`' orders over random graphs, as a test
+
+A probe over 60,000 random graphs found `excludeDependencies` sound;
+it is now `exclude-dependencies-properties.test.ts` (2,000 seeded
+graphs): every order between two scheduled tasks survives (item 1019),
+a direct edge to a task still scheduled stays a real edge (item 980),
+no edge names a task that left. The two rules mask each other on order
+alone (item 980's mutant survived the first draft: the order-only walk
+re-adds the edge), so the row checks the edge's kind too; each mutant
+reddens it. `modules/task-graph.md` says so.
 
 ## C-67: an embedder's `command` reaches telemetry redacted
 
@@ -995,3 +1005,11 @@ telemetry sinks receive, but only for the argv fallback: an embedder's
 verbatim. It is now counted, not quoted, the same way. Row
 (`telemetry.test.ts` › a sink never receives what follows `--`): red
 without the fix. The option's doc comment says so.
+
+## C-73: architecture.md's end of run names the servers it keeps
+
+`architecture.md`'s run walk-through kept "persistent tasks the user
+REQUESTED, and the persistent tasks they depend on": it now also names
+those a requested group stands for (C-52), that a run which failed
+elsewhere keeps none unless `--continue=always` (C-60), and that what
+they write streams through the wait (C-56). Docs only.
