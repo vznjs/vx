@@ -234,6 +234,18 @@ compiled, 21 interleaved rounds: `run graph` main 962.6 ms median (min
 `restoreOutputs`) stays: the rows in hand would cross the `CacheLayer`
 seam.
 
+I-27. A frozen run reads the lock only for a config it reads. The run
+parsed the whole lock again even when the CLI's selection pass had staged
+every config (its load refused a frozen run without a lock);
+`LoadProjectsBase.lock` is now a reader asked only when a config is
+read from it, and `prepareRun` reads up front only when some configured
+project is not staged. Row: `read-once.unsafe.test.ts` counts one open
+of `vx-lock.json` for an `--affected --frozen` run (two before). 1,000
+packages, one edited, `run build --affected=HEAD~1`, compiled, 25
+interleaved rounds, `load configs` stage: main 23.3 ms median (min
+14.3), patch 15.2 (10.1), A/A 13.4 (10.1). Wall, 81 rounds: main 324.4
+(276.3), patch 322.3 (258.5), A/A 318.9 (269.1), within its noise.
+
 ## Leads for other streams
 
 - **Owner / coordinator: skip macOS where it cannot differ from

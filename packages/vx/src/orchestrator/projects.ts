@@ -114,8 +114,12 @@ interface LoadProjectsBase {
    * way, since the package graph cannot see the cross form.
    */
   seeds: 'all' | Iterable<string>
-  /** Read configs from the lock instead of evaluating them (`--frozen`). */
-  lock: Lockfile | null
+  /**
+   * Read configs from the lock instead of evaluating them (`--frozen`),
+   * asked only when a config is to be read: a run whose every config the
+   * CLI's selection pass staged never parses it again.
+   */
+  lock: (() => Promise<Lockfile>) | null
   evalCache: LoadProjectConfigOptions['evalCache']
   warn: (message: string) => void
   /**
@@ -221,7 +225,9 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
         typeof m.configPath === 'string' && args.staged?.get(m.name) === undefined,
     )
     const loaded = lock
-      ? await frozenProjectConfigs(lock, withFile, workspaceRoot, args.evalCache?.store)
+      ? withFile.length === 0
+        ? []
+        : await frozenProjectConfigs(await lock(), withFile, workspaceRoot, args.evalCache?.store)
       : await loadProjectConfigs(
           withFile.map((m) => m.configPath),
           args.evalCache !== undefined ? { evalCache: args.evalCache } : {},
