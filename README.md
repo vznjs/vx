@@ -167,7 +167,7 @@ keep your Turbo or Nx remote cache. [Parity map](packages/vx/docs/parity.md) ·
   survives.
 - **Sandboxed tasks.** Opt in per task: a read the task did not
   declare fails the build instead of poisoning the cache.
-- **Clean exits.** Ctrl-C reaps every child. No orphaned dev servers.
+- **Clean exits.** Ctrl-C reaps each task's process group. No orphaned dev servers.
 - **Plugins at every stage.** Remote cache, remote execution,
   telemetry and new CLI verbs are plugins on documented seams, the way
   Vite does it. Core ships none and needs none.

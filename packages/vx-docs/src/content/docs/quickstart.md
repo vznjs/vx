@@ -98,3 +98,5 @@ or Nx repo as it is: [Migrate](../guides/migrate/).
 - A `workspaceFiles` glob stops at a git submodule's edge.
 - A `kill -9` of vx leaves its persistent tasks running, except a server
   that exits when its stdin closes (esbuild `--watch`).
+- A process a task detaches into its own session (`setsid … &`) outlives
+  Ctrl-C: vx signals the task's process group.

@@ -1653,3 +1653,19 @@ describe("the site's reapi samples on port 443 name a TLS scheme", () => {
     expect(samples.filter((s) => !/: (grpcs|https):\/\//.test(s))).toEqual([])
   })
 })
+
+describe('the README says what Ctrl-C reaches', () => {
+  // "Ctrl-C reaps every child": a task's `setsid sleep … &` outlived a
+  // SIGINT'd `vx run` (exit 130, the sleep still running), since vx signals
+  // the task's process group (J-106).
+  it('the README names the process group, and the quickstart the setsid limit', () => {
+    const repo = path.resolve(import.meta.dir, '..', '..', '..')
+    const flat = (p: string) => readFileSync(p, 'utf8').replace(/\s+/g, ' ')
+    expect(flat(path.join(repo, 'README.md'))).toContain(
+      "**Clean exits.** Ctrl-C reaps each task's process group.",
+    )
+    expect(flat(path.join(DOCS, 'quickstart.md'))).toContain(
+      "A process a task detaches into its own session (`setsid … &`) outlives Ctrl-C: vx signals the task's process group.",
+    )
+  })
+})
