@@ -951,6 +951,7 @@ session a plugin's `onTaskStdout` heard the server after its own
 released just before the teardown. Row (`keep-alive.test.ts` › a plugin
 hears nothing after its teardown while vx holds a server): red without
 the fix (`torn:AFTER`). `modules/plugin.md` says so.
+
 ## C-63: a plugin executor's throw from `execute` names the plugin
 
 Every plugin hook's throw names the plugin and the hook (`accepts`,
