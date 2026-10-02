@@ -2127,3 +2127,45 @@ describe("the concepts page reads run.ts's restore row as it is measured", () =>
     expect(page).not.toContain('a restore costs about the same as an untouched tree')
   })
 })
+
+describe('every page naming what vx-otel exports names each signal', () => {
+  // The telemetry post and the workspace file's comment said traces and
+  // metrics; the plugin exports logs too, on by default (J2-23).
+  it("each sentence on vx-otel's traces names every signal plugin.ts sends", () => {
+    const repo = path.resolve(import.meta.dir, '..', '..', '..')
+    const plugin = readFileSync(path.join(repo, 'packages', 'vx-otel', 'src', 'plugin.ts'), 'utf8')
+    const list = /\(\[('traces'[^\]]*)\] as const\)/.exec(plugin)?.[1]
+    expect(list).toBeDefined()
+    const signals = [...list!.matchAll(/'(\w+)'/g)].map((m) => m[1]!)
+    expect(signals).toEqual(['traces', 'metrics', 'logs'])
+    const coreDocs = path.join(repo, 'packages', 'vx', 'docs')
+    const files = [
+      ...handAuthoredSitePages(),
+      ...readdirSync(coreDocs)
+        .filter((f) => f.endsWith('.md'))
+        .map((f) => path.join(coreDocs, f)),
+      ...readdirSync(path.join(repo, 'packages')).map((d) =>
+        path.join(repo, 'packages', d, 'README.md'),
+      ),
+      path.join(repo, 'README.md'),
+      path.join(repo, 'vx.workspace.ts'),
+    ].filter((f) => existsSync(f))
+    const wrong: string[] = []
+    let seen = 0
+    for (const file of files) {
+      const text = readFileSync(file, 'utf8')
+        .replace(/\s*\/\/\s*/g, ' ')
+        .replace(/\s+/g, ' ')
+      for (const sentence of text.split(/(?<=[.;]) /)) {
+        if (!/vx-otel|otel\(\)/.test(sentence) || !/\btraces\b/.test(sentence)) continue
+        if (/OTEL_LOGS_EXPORTER=none/.test(sentence)) continue
+        seen++
+        if (signals.some((s) => !sentence.includes(s))) {
+          wrong.push(`${path.basename(file)}: ${sentence.slice(0, 100)}`)
+        }
+      }
+    }
+    expect(seen).toBeGreaterThan(2)
+    expect(wrong).toEqual([])
+  })
+})

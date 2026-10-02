@@ -198,3 +198,11 @@ persistent task` and vx exits 1). Row (`site-samples` › a post's link
   and extracts every artifact (239 against 906 ms at 1,000 projects in
   `benchmarks.md`). Row (`site-samples` › the concepts page reads
   run.ts's restore row as it is measured); red without the fix.
+
+- **J2-23** The telemetry post and `vx.workspace.ts`'s comment said
+  `@vzn/vx-otel` exports traces and metrics; it exports logs too, on by
+  default when an endpoint is set (`OTEL_LOGS_EXPORTER=none` turns them
+  off). The plugins guide, the architecture page and the plugin's README
+  had it. Row (`site-samples` › every page naming what vx-otel exports
+  names each signal), the signals read from `plugin.ts`; red on both
+  without the fix.
