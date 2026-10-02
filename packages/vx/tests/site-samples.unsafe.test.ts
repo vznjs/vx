@@ -137,22 +137,50 @@ describe('the plugins guide states the CacheLayer method count', () => {
 })
 
 // The environment-variables guide is the configure page's section now.
+describe('CONTRIBUTING names what the gate runs on', () => {
+  // It said "Needs Bun ≥ 1.4 and git" and "No Node in the toolchain"; with no
+  // `node` on PATH every nx-exec row of @vzn/vx-migrate#test fails (J-107).
+  it('nx-exec.test.ts spawns node, and CONTRIBUTING names Node', () => {
+    const repo = path.resolve(import.meta.dir, '..', '..', '..')
+    const nxExec = readFileSync(
+      path.join(repo, 'packages', 'vx-migrate', 'tests', 'nx-exec.test.ts'),
+      'utf8',
+    )
+    expect(nxExec).toContain("Bun.spawn(['node', BIN, ...args]")
+    const contributing = readFileSync(path.join(repo, 'CONTRIBUTING.md'), 'utf8').replace(
+      /\s+/g,
+      ' ',
+    )
+    expect(contributing).toContain('Needs Bun ≥ 1.4, git and Node')
+    expect(contributing).not.toContain('No Node in the toolchain')
+  })
+})
+
 describe('the configure guide names the essential allowlist', () => {
-  it('its "always gets a small essential allowlist" sentence names every POSIX name in ESSENTIAL_ENV', () => {
+  it('its "always gets a small essential allowlist" sentence names every name in ESSENTIAL_ENV', () => {
     const page = section(
       readFileSync(path.join(GUIDES, 'configure.md'), 'utf8'),
       'Environment variables',
     )
-    const m = /essential allowlist so normal CLI tools\s+work:([\s\S]*?)plus the Windows/.exec(page)
+    const m = /essential allowlist so normal CLI tools\s+work:([\s\S]*?)\. vx sets/.exec(page)
     expect(m).not.toBeNull()
     const named = new Set([...m![1]!.matchAll(/`([A-Z_]+)`/g)].map((x) => x[1]!))
-    const posix = ESSENTIAL_ENV.slice(0, ESSENTIAL_ENV.indexOf('SYSTEMROOT'))
-    expect(posix.length).toBeGreaterThan(10)
-    for (const name of posix) expect(named).toContain(name)
+    expect([...named]).toEqual([...ESSENTIAL_ENV])
   })
 })
 
 // The remote-execution guide is the CI page's section now.
+describe("comparison.md's Turborepo cache-skip cell", () => {
+  // It called Turbo's --no-cache deprecated; Turbo 2.10.13 and 2.11.7 document
+  // it as `--cache=local:r,remote:r`, and a --no-cache run after a cached one
+  // replayed the hit (J-110).
+  it('names the spec that skips both, and what --force and --no-cache each skip', () => {
+    const doc = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'comparison.md'), 'utf8')
+    const cell = /^\| skip cache reads\+writes +\| ([^|]*?) +\|/m.exec(doc)![1]
+    expect(cell).toBe('`--cache=local:,remote:` (`--force` skips reads, `--no-cache` writes)')
+  })
+})
+
 describe('the CI guide states the wire chunk sizes', () => {
   it('its uploads bullet names the default chunk, which is SAFE_CHUNK_BYTES', () => {
     const wire = readFileSync(
@@ -167,6 +195,33 @@ describe('the CI guide states the wire chunk sizes', () => {
     const m = /- Uploads chunk at (\d+) bytes \(`SAFE_CHUNK_BYTES`\)/.exec(page)
     expect(m).not.toBeNull()
     expect([m![1], chunk![1]]).toEqual([safe![1], safe![1]])
+  })
+})
+
+describe("the README's comparison agrees with comparison.md on Turbo's daemon", () => {
+  // The README called Turbo's daemon "Optional" for speed; Turbo 2.10's
+  // `run --help` marks --daemon and --no-daemon deprecated ("The daemon is
+  // no longer used for `turbo run`"), as comparison.md says (J-111).
+  it('both say turbo run uses none', () => {
+    const repo = path.resolve(import.meta.dir, '..', '..', '..')
+    const readme = readFileSync(path.join(repo, 'README.md'), 'utf8')
+    const row = /^\| Daemon required for speed \|[^|]*\| ([^|]*?) +\|/m.exec(readme)![1]
+    expect(row).toBe('No (`turbo run` has none)')
+    const doc = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'comparison.md'), 'utf8')
+    // Bisected over npm: 2.8.10's help still offers --daemon, 2.8.11's marks
+    // it deprecated and unused by `turbo run`; 2.10 deprecates neither
+    // --no-cache nor --remote-only.
+    expect(doc).toContain(
+      '| Daemon / persistent project-graph process | not for `turbo run` since 2.8.11',
+    )
+    expect(/^\| daemon on\/off +\| ([^|]*?) +\|/m.exec(doc)![1]).toBe(
+      '(deprecated in 2.8.11; ignored)',
+    )
+    expect(doc.replace(/\s+/g, ' ')).toContain(
+      'it has deprecated its own daemon for `turbo run` (2.8.11) and `--parallel` (by 2.9.18)',
+    )
+    const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
+    expect(bench.replace(/\s+/g, ' ')).toContain('(it uses none for `turbo run` since 2.8.11)')
   })
 })
 
@@ -277,6 +332,21 @@ describe('the why-vx-is-fast concept quotes the benchmarks page', () => {
   })
 })
 
+describe("the quickstart's known limits are still limits", () => {
+  // It listed "A workspaceFiles glob stops at a git submodule's edge"; since
+  // 2026-09-27 the nested repository's files are listed and keyed
+  // (caching.md), and an edit inside a submodule under `workspaceFiles:
+  // ['sub/**']` missed, its revert hit (J-114).
+  it('caching.md keys a submodule under workspaceFiles, and the quickstart names no edge', () => {
+    const caching = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'caching.md'), 'utf8')
+    expect(caching.replace(/\s+/g, ' ')).toContain('and for a `workspaceFiles` glob')
+    const limits = /## Known limits\n([\s\S]*)$/.exec(
+      readFileSync(path.join(DOCS, 'quickstart.md'), 'utf8'),
+    )![1]!
+    expect(limits).not.toContain('submodule')
+  })
+})
+
 describe('the flaky-tasks post shows the section the footer prints', () => {
   it('its sample is formatFlakySection on the two findings it describes', () => {
     const page = readFileSync(path.join(DOCS, 'blog', 'flaky-tasks.md'), 'utf8')
@@ -339,7 +409,7 @@ describe('the no-daemon post quotes the benchmarks page', () => {
   it('each warm-run figure it states is on docs/benchmarks.md as written', () => {
     const page = readFileSync(path.join(DOCS, 'blog', 'no-daemon.md'), 'utf8')
     const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
-    for (const figure of ['510ms', '760ms', '3.59s', '51 ms', '95 ms']) {
+    for (const figure of ['510ms', '760ms', '3.59s']) {
       expect(page).toContain(figure)
       expect(bench).toContain(figure)
     }
@@ -361,6 +431,20 @@ describe('the strict-output-ownership post names what the wipe never touches', (
     expect(names.length).toBe(2)
     for (const name of names) expect(section![1]!).toContain('`' + name + '`')
     expect(section![1]!).toContain('`node_modules/**` is a legitimate output')
+  })
+})
+
+describe('the Nx tables mark projects: "dependencies" deprecated', () => {
+  // Nx 23.2.1 runs a dependsOn of `{ projects: "dependencies" }` and warns
+  // "This is deprecated and will be removed in Nx v24" (J-113).
+  it('comparison.md and parity.md say so', () => {
+    const docs = path.resolve(import.meta.dir, '..', 'docs')
+    expect(readFileSync(path.join(docs, 'comparison.md'), 'utf8')).toContain(
+      '`^lint` (`{projects:"dependencies"}` deprecated)',
+    )
+    expect(readFileSync(path.join(docs, 'parity.md'), 'utf8')).toContain(
+      '`"dependsOn": ["^build"]` (`{ projects: "dependencies" }` deprecated)',
+    )
   })
 })
 
@@ -442,17 +526,7 @@ describe('the why-vx-is-fast post quotes the benchmarks page', () => {
   it('each figure it states is on docs/benchmarks.md as written', () => {
     const page = readFileSync(path.join(DOCS, 'blog', 'why-vx-is-fast.md'), 'utf8')
     const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
-    for (const figure of [
-      '3m 38s',
-      '3m 46s',
-      '5m 13s',
-      '34m 44s',
-      '510ms',
-      '760ms',
-      '3.59s',
-      '66 ms',
-      '127 ms',
-    ]) {
+    for (const figure of ['3m 38s', '3m 46s', '5m 13s', '34m 44s', '510ms', '760ms', '3.59s']) {
       expect(page).toContain(figure)
       expect(bench).toContain(figure)
     }
@@ -583,6 +657,15 @@ describe('the resolved-config-hashing post names every global the gate denies', 
     'utf8',
   )
   const page = readFileSync(path.join(DOCS, 'blog', 'resolved-config-hashing.md'), 'utf8')
+  it('the bare imports it lets through are the two the gate passes', () => {
+    // It said "anything but `@vzn/vx`"; every config vx init writes imports
+    // `@vzn/vx/config`, which the gate passes whole.
+    const entry = /const PURE_CONFIG_ENTRY = '([^']+)'/.exec(src)
+    expect(entry).not.toBeNull()
+    expect(src).toContain('if (spec === PURE_CONFIG_ENTRY) continue')
+    const flat = page.split(/\s+/).join(' ')
+    expect(flat).toContain(`a bare import of anything but \`${entry![1]}\``)
+  })
   it('each identifier in IMPURE_RE is a name in its list', () => {
     const re = /const IMPURE_RE =\n\s+\/\\b\(\?:([^)]*)\)\\b/.exec(src)
     expect(re).not.toBeNull()
@@ -635,25 +718,13 @@ describe('the honest-benchmarks post quotes the benchmarks page', () => {
       '1m 13s',
       '114m 06s',
       '67ms',
-      '40.6 s',
-      '45.5 s',
-      '66 ms',
-      '127 ms',
-      '51 ms',
-      '95 ms',
-      '53.6 s',
-      '58.2 s',
-      '80 ms',
-      '166 ms',
-      '59 ms',
-      '93 ms',
     ]) {
       expect(page).toContain(figure)
       expect(bench).toContain(figure)
     }
   })
   it('the runners it names are the versions the benchmarks page ran', () => {
-    for (const version of ['Turbo 2.10.12', 'Nx 23.2.0', 'Turbo 2.10.10']) {
+    for (const version of ['Turbo 2.10.12', 'Nx 23.2.0']) {
       expect(page).toContain(version)
       expect(bench).toContain(version)
     }
@@ -1651,6 +1722,20 @@ describe("the site's reapi samples on port 443 name a TLS scheme", () => {
     )
     expect(samples.length).toBeGreaterThan(3)
     expect(samples.filter((s) => !/: (grpcs|https):\/\//.test(s))).toEqual([])
+  })
+})
+describe("comparison.md's Turborepo cells say what Turbo hashes and runs", () => {
+  // Turbo 2.10.13's dry run lists `package.json` among a task's inputs (a
+  // description edit re-keyed it), and `turbo run build` printed npm's
+  // `> b@1.0.0 prebuild` and its output; the cells said "(via lockfile)"
+  // and "(no)" (J-109).
+  it('the package.json and pre/post rows name it', () => {
+    const doc = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'comparison.md'), 'utf8')
+    const turbo = (row: string) => new RegExp(`^\\| ${row} +\\| ([^|]*?) +\\|`, 'm').exec(doc)![1]
+    expect(turbo('Implicit-dependency hash \\(project `package.json`\\)')).toBe(
+      'yes — `package.json` is a default input',
+    )
+    expect(turbo('Pre/post script lifecycle')).toBe('yes — the package manager runs them')
   })
 })
 

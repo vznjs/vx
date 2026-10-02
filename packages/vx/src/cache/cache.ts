@@ -605,6 +605,14 @@ export class Cache implements CacheLayer {
       // every open there failed `attempt to write a readonly database`
       // before the not-writable refusal could name the directory (O-10).
       if (!absent) this.db.fileControl(SQLITE_FCNTL_PERSIST_WAL, 1)
+      // Any non-negative limit makes the last clean close truncate a
+      // persistent `-wal` to zero bytes once it is checkpointed (SQLite's
+      // walClose). At the default (-1) it kept every frame, so each later
+      // connection recovered them at open and copied them into the
+      // database again at its close: 738 frames, 4.5 MB, on a 1,000-project
+      // cache. The file stays (O-10 above); 64 MiB is far above what a run
+      // writes, so the limit never trims a WAL mid-run.
+      this.db.exec('PRAGMA journal_size_limit = 67108864')
       this.db.exec('PRAGMA synchronous = NORMAL')
       this.db.exec('PRAGMA foreign_keys = ON')
       this.db.exec(`
@@ -666,7 +674,7 @@ export class Cache implements CacheLayer {
             }
             if (found === SCHEMA_VERSION) return null
             this.db.exec(
-              'DROP TABLE IF EXISTS entries; DROP TABLE IF EXISTS runs; DROP TABLE IF EXISTS file_hashes; DROP TABLE IF EXISTS output_files; DROP TABLE IF EXISTS invocations; DROP TABLE IF EXISTS run_task_inputs; DROP TABLE IF EXISTS entry_inputs; DROP TABLE IF EXISTS config_evals; DROP TABLE IF EXISTS config_closures; DROP TABLE IF EXISTS output_dirs;',
+              'DROP TABLE IF EXISTS entries; DROP TABLE IF EXISTS runs; DROP TABLE IF EXISTS file_hashes; DROP TABLE IF EXISTS blob_sizes; DROP TABLE IF EXISTS output_files; DROP TABLE IF EXISTS invocations; DROP TABLE IF EXISTS run_task_inputs; DROP TABLE IF EXISTS entry_inputs; DROP TABLE IF EXISTS config_evals; DROP TABLE IF EXISTS config_closures; DROP TABLE IF EXISTS output_dirs;',
             )
             this.db
               .prepare("UPDATE schema_meta SET value = ? WHERE key = 'version'")
@@ -790,6 +798,14 @@ export class Cache implements CacheLayer {
   hashFiles(paths: readonly string[]): Promise<Map<string, string>> {
     return this.guard(() => this.files.hashFiles(paths))
   }
+  /** `BlobSizeMemo`: the sizes of these blobs this cache has learned. */
+  knownBlobSizes(oids: readonly string[]): Map<string, number> {
+    return this.guard(() => this.files.knownBlobSizes(oids))
+  }
+  /** `BlobSizeMemo`: remember blob sizes, honouring the local WRITE axis. */
+  rememberBlobSizes(sizes: ReadonlyMap<string, number>): void {
+    this.guard(() => this.files.rememberBlobSizes(sizes))
+  }
   /**
    * `relPosix` against the run's workspace root, memoized: the same three
    * thousand files are re-relativized for every task of the project, which
@@ -799,11 +815,25 @@ export class Cache implements CacheLayer {
    */
   private relMemo = new Map<string, string>()
   private relMemoRoot: string | undefined
+  /** `root` and a slash, when a file under it is relative by slicing; else undefined. */
+  private relPrefix: string | undefined
   private relFor(root: string, file: string): string {
     if (root !== this.relMemoRoot) {
       this.relMemoRoot = root
       this.relMemo.clear()
+      this.relPrefix =
+        path.sep === '/' && path.isAbsolute(root) && path.normalize(root) === root
+          ? root.endsWith('/')
+            ? root
+            : `${root}/`
+          : undefined
     }
+    // An input file is a normalized absolute path (`resolveInputs` makes
+    // every one), and under a normalized root that is the root, a slash and
+    // its relative path: a slice, where the memo hashed the whole path per
+    // file per task (~15 ms over 36,000 files, I-31).
+    const prefix = this.relPrefix
+    if (prefix !== undefined && file.startsWith(prefix)) return file.slice(prefix.length)
     let rel = this.relMemo.get(file)
     if (rel === undefined) this.relMemo.set(file, (rel = relPosix(root, file)))
     return rel
@@ -1996,8 +2026,8 @@ const SQLITE_FCNTL_PERSIST_WAL = 10
  * Close for real. A plain `close()` leaves the connection open while any
  * statement from `db.prepare()` lives (bun:sqlite 1.4.2 defers it, as
  * `sqlite3_close_v2` does), so `cache.db` and its `-wal` and `-shm` stayed
- * open after `Cache.close()`: a leaked descriptor per run for an embedder,
- * and on Windows a cache directory nothing could delete (O-10).
+ * open after `Cache.close()`: a leaked descriptor per run for an embedder
+ * (O-10).
  * `close(true)` finalizes them and closes.
  */
 function closeDb(db: Database): void {

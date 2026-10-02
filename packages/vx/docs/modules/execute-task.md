@@ -54,11 +54,16 @@ anything beneath it changes.
    `forwardArgs` are appended in-line (`withForwardArgs`, as a one-shot
    task's are), with or without a `readyWhen`: a readyWhen server once
    got none, and `vx run dev -- --port 4000` dropped the port.
-3. Call `runPersistent(opts)`. Stash the returned `child` in
+3. If the run's stop landed during the awaits before this (the key,
+   the sandbox's arming, request and wrap), spawn nothing: release the
+   bridges and placeholders and return `aborted` with the signal's exit.
+   Spawned anyway, the server came up after the teardown, and a Ctrl-C
+   took 7 s to end the run.
+4. Call `runPersistent(opts)`. Stash the returned `child` in
    `persistentRegistry[node.id]`.
-4. `await spawn.ready`. On reject (child exited before ready) →
+5. `await spawn.ready`. On reject (child exited before ready) →
    return `failed` with the captured streams.
-5. On resolve → return `success` with `durationMs = spawn.readyMs()`.
+6. On resolve → return `success` with `durationMs = spawn.readyMs()`.
 
 The orchestrator SIGTERMs every registry entry at end-of-run. Never
 caches.
@@ -89,8 +94,8 @@ caches.
    - If caching enabled, `cleanOutputs(cleanArgs)` first so a stale
      `dist/` doesn't survive into a fresh exec; the directory each
      wildcard output glob is rooted at stays (`keepGlobRoots`, B-49).
-   - Build isolated env (`<projectDir>/node_modules/.bin` PATH
-     prepend).
+   - Build isolated env (`<projectDir>/node_modules/.bin`, then
+     `<workspaceRoot>/node_modules/.bin`, prepended to PATH).
    - `wallclockStartNs = process.hrtime.bigint() - runStartHrTimeNs`.
    - The attempt builds an `ExecuteRequest` (command, env, capture,
      declared outputs, timeout, sandbox grants) and hands it to
@@ -203,7 +208,10 @@ is never on it; a bare word on 126 gets `chmod +x`. A word with a slash
 is a file, and the file says why, under either code: missing (the
 resolved path), a directory, not executable by this user, a `#!` line ending in CRLF
 (the interpreter's name ends in `\r`), a `#!` interpreter that does not
-exist, or no `#!` line at all (the loader refused a binary). Probed
+exist, or no `#!` line at all (the loader refused a binary). For a
+sandboxed task a file the host has but no grant reads (`sandboxReads`)
+is named as hidden by the sandbox: it is not there inside, and the
+`#!` line was blamed (B-66). Probed
 2026-09-16: dash and bash 5 exit 127 for a missing interpreter and
 blame the file; macOS's bash 3.2 names the interpreter itself ("bad
 interpreter") and exits 1, so vx adds nothing there. An exit above 128

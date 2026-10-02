@@ -1,9 +1,9 @@
 ---
-// vx landing page, for a Turborepo or Nx user first (owner, 2026-09-28):
-// the hero, the benchmark table and why it is faster, how to try it on your
-// repo, then the one diagram with its six callouts and the four pillars.
+// vx landing page (owner, 2026-10-02: vx is its own tool; Turbo and Nx
+// only through migration): the hero, the benchmark table and why it is
+// faster, how to start, then the one diagram with its six callouts and the four pillars.
 // Standalone (its own nav, footer and theme), static, one script for the
-// copy button. The benchTable block and the graph's size in the #bench
+// copy button. The benchTable and benchFormula blocks and the graph's size in the #bench
 // kicker are written by packages/vx-bench/update-site.ts from results.json
 // (check.site guards them). tests/landing.test.ts holds the rest.
 import Diagram from '../components/guide/diagram/Diagram.astro'
@@ -13,9 +13,9 @@ import '../styles/landing.css'
 const base = import.meta.env.BASE_URL // '/vx/' on Pages, '/' on a custom domain
 const href = (p: string) => `${base}${p}`
 const GH = 'https://github.com/vznjs/vx'
-const TITLE = 'vx — a faster runner for your Turborepo or Nx repo'
+const TITLE = 'vx — the fastest task runner for JS monorepos'
 const DESCRIPTION =
-  'Keep turbo.json or nx.json and run it unchanged, with seconds of overhead where others add minutes. MIT, no account.'
+  'Seconds of overhead where Turborepo and Nx add minutes, each measured in its own native config. MIT, no account.'
 // Absolute, as a link preview fetches it from wherever the link was pasted.
 const siteUrl = new URL(base, Astro.site).href
 
@@ -57,18 +57,25 @@ const pillars = [
     icon: '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 019.9-1"/>',
     tone: 'var(--vx-warn)',
     title: 'Freedom',
-    body: 'MIT, no paywall, no cloud, no account; bring a Turborepo or Nx repo unchanged.',
+    body: 'MIT, no paywall, no cloud, no account.',
     more: 'Migrate',
     doc: href('guides/migrate/'),
   },
 ]
 
 const benchTable = [
-  { label: 'Cold build: time the runner adds', vx: '9 s', turbo: '1 min 35 s', nx: '31 min' },
-  { label: 'Cold build: CPU burned', vx: '34 s', turbo: '1 min 13 s', nx: '114 min' },
-  { label: 'Fully cached run', vx: '476 ms', turbo: '760 ms', nx: '3.59 s' },
-  { label: 'Overhead per package', vx: '8 ms', turbo: '88 ms', nx: '1,712 ms' },
+  { label: 'Cold build: time the runner adds', vx: '9 s', turbo: '1 min 35 s (vx 91% faster)', nx: '31 min (vx 99% faster)' },
+  { label: 'Cold build: CPU burned', vx: '34 s', turbo: '1 min 13 s (vx 53% faster)', nx: '114 min (vx 99% faster)' },
+  { label: 'Fully cached run', vx: '476 ms', turbo: '760 ms (vx 37% faster)', nx: '3.59 s (vx 86% faster)' },
+  { label: 'Overhead per package', vx: '8 ms', turbo: '88 ms (vx 91% faster)', nx: '1,712 ms (vx 99% faster)' },
 ]
+const benchFormula = 'vx N% faster: vx takes N% less time than that tool (1 − vx ÷ theirs); N% slower: N% more (vx ÷ theirs − 1).'
+
+/** A competitor cell's value and its "(vx N% faster)", shown on two lines. */
+const vsOf = (c: string): [string, string] => {
+  const at = c.indexOf(' (')
+  return [c.slice(0, at), c.slice(at + 1)]
+}
 
 // Why it is faster: three reasons, one short sentence each.
 const reasons = [
@@ -77,15 +84,11 @@ const reasons = [
   { term: 'One pass over the repo.', line: 'One git walk per run; each stat and lookup happens once.' },
 ]
 
-// Try it: four commands, and the one file `vx init` writes.
-const tryCommands = `npm install -D @vzn/vx @vzn/vx-migrate
-npx vx init                 # writes vx.workspace.ts, below; nothing else
-npx vx run build --all      # your turbo.json or Nx targets, run by vx
+// Start: four commands, native config from the first one.
+const startCommands = `npm install -D @vzn/vx
+npx vx init                 # a vx.config.ts per package, from its scripts
+npx vx run build --all      # builds in dependency order; stores the results
 npx vx run build --all      # again: up-to-date in milliseconds`
-const workspaceFile = `import type { WorkspaceConfig } from '@vzn/vx/config'
-import { turbo } from '@vzn/vx-migrate'
-
-export default { plugins: [turbo()] } satisfies WorkspaceConfig`
 
 const footCols = {
   docs: [
@@ -126,7 +129,7 @@ const footCols = {
     <meta property="og:title" content={TITLE} />
     <meta property="og:description" content={DESCRIPTION} />
     <meta property="og:image" content={`${siteUrl}og.png`} />
-    <meta property="og:image:alt" content="vx: a faster runner for your Turborepo or Nx repo" />
+    <meta property="og:image:alt" content="vx: the fastest task runner for JS monorepos" />
     <meta name="twitter:card" content="summary_large_image" />
     <link rel="icon" href={href('logo-mark.svg')} />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -172,8 +175,8 @@ const footCols = {
 
       <section class="hero">
         <div class="container">
-          <h1>A faster runner for your <span class="phosphor">Turborepo or Nx</span> repo.</h1>
-          <p class="lede">Keep <code>turbo.json</code> or <code>nx.json</code> and run it unchanged.</p>
+          <h1>The <span class="phosphor">fastest</span> task runner for JS monorepos.</h1>
+          <p class="lede">Measured against Turborepo and Nx, each in its own native config.</p>
           <div class="actions">
             <button class="install-pill" data-copy="npm install -g @vzn/vx" type="button">
               <span class="dollar">$</span>
@@ -223,13 +226,18 @@ const footCols = {
                     <tr>
                       <th scope="row">{r.label}</th>
                       <td class="vx">{r.vx}</td>
-                      <td>{r.turbo}</td>
-                      <td>{r.nx}</td>
+                      {[r.turbo, r.nx].map((c) => (
+                        <td>
+                          {vsOf(c)[0]}
+                          <span class="vs">{vsOf(c)[1]}</span>
+                        </td>
+                      ))}
                     </tr>
                   ))
                 }
               </tbody>
             </table>
+            <p class="bench-formula">{benchFormula}</p>
           </div>
           <ul class="reasons">
             {
@@ -250,15 +258,14 @@ const footCols = {
       <section class="section" id="try">
         <div class="container">
           <div class="section-head">
-            <p class="vx-kicker">// four commands, one file</p>
-            <h2>Try it on your repo.</h2>
+            <p class="vx-kicker">// four commands</p>
+            <h2>Start in a minute.</h2>
           </div>
-          <pre class="code"><code>{tryCommands}</code></pre>
-          <p class="sub">The one file <code>vx init</code> writes (in an Nx repo, <code>nx</code> for <code>turbo</code>):</p>
-          <pre class="code"><code>{workspaceFile}</code></pre>
-          <p class="sub">Nothing is rewritten; <code>@vzn/vx-migrate</code> reaches npm with its first publish.</p>
+          <pre class="code"><code>{startCommands}</code></pre>
+          <p class="sub">Coming from Turbo or Nx: <code>bunx @vzn/vx-migrate</code> or <code>vx init</code> gives a temporary start; move to native vx config.</p>
           <div class="section-links">
-            <a class="section-link" href={href('guides/migrate/')}>Migrate: parity, own configs, your remote cache <span class="arr">→</span></a>
+            <a class="section-link" href={href('quickstart/')}>Quickstart: a cache block, the first hit <span class="arr">→</span></a>
+            <a class="section-link" href={href('guides/migrate/')}>Migrate from Turbo or Nx <span class="arr">→</span></a>
           </div>
         </div>
       </section>

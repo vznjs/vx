@@ -14,9 +14,9 @@ import { PLUGIN_TEMPLATES } from './plugin-templates.js'
 import { isUserError, UserError } from '../util/index.js'
 import {
   applyMigration,
+  discoverProjects,
   findWorkspaceRoot,
   type LoadReads,
-  listProjects,
   loadWorkspace,
   migrateScripts,
   WORKSPACE_CONFIG_FILENAMES,
@@ -74,7 +74,8 @@ export async function initCmd(args: readonly string[]): Promise<number> {
     }
     throw err
   })
-  const metas = await listProjects(await loadWorkspace(root, reads))
+  const nameless: string[] = []
+  const metas = await discoverProjects(await loadWorkspace(root, reads), nameless)
   // `init` reads scripts only; a runner's own config beside them is the
   // richer source (dependsOn, inputs, outputs) and was ignored without a
   // word — the walkthrough on a Turbo repo (2026-09-09) got the scripts'
@@ -106,6 +107,7 @@ export async function initCmd(args: readonly string[]): Promise<number> {
     ),
     source: 'package.json scripts',
     verb: 'vx init',
+    notes: namelessNotes(root, nameless),
     dry: parsed.dry,
     force: parsed.force,
     init: true,
@@ -193,7 +195,7 @@ async function adopt(
           ? ''
           : `${cache}(): ${remote}, so vx shares that remote cache (inert where the variable is unset).\n`
   process.stdout.write(
-    `vx init: ${source} found — ${runner}() from @vzn/vx-migrate runs this repo as it is; nothing else written.\n` +
+    `vx init: ${source} found — ${runner}() from @vzn/vx-migrate, a temporary start until bunx @vzn/vx-migrate writes native config; nothing else written.\n` +
       `${wrote}\n${cacheLine}\nnext: ${adoptionNext(root, runner, source)}\n`,
   )
   return 0
@@ -346,6 +348,35 @@ function firstTask(file: string, runner: 'turbo' | 'nx'): string {
   const field = runner === 'turbo' ? '(?:tasks|pipeline)' : 'targetDefaults'
   const first = new RegExp(`"${field}"\\s*:\\s*\\{\\s*"([^"]+)"`).exec(text)?.[1]
   return first ?? 'build'
+}
+
+/**
+ * A member whose package.json has no `name` is no project, so its scripts
+ * map to nothing, and init said nothing of them (D-106).
+ */
+function namelessNotes(root: string, dirs: readonly string[]): string[] {
+  const withScripts = dirs
+    .filter((dir) => {
+      const scripts = (
+        JSON.parse(readText(path.join(dir, 'package.json')) || '{}') as {
+          scripts?: unknown
+        }
+      ).scripts
+      return (
+        typeof scripts === 'object' &&
+        scripts !== null &&
+        Object.values(scripts).some((v) => typeof v === 'string' && v !== '')
+      )
+    })
+    .map((dir) => path.relative(root, dir).split(path.sep).join('/'))
+    .sort()
+  if (withScripts.length === 0) return []
+  const shown =
+    withScripts.slice(0, 3).join(', ') +
+    (withScripts.length > 3 ? `, and ${withScripts.length - 3} more` : '')
+  return [
+    `not mapped: ${shown} — ${withScripts.length === 1 ? 'its package.json has' : 'their package.json files have'} no "name", and vx names a project by it; give ${withScripts.length === 1 ? 'it one' : 'each one'} and run \`vx init\` again`,
+  ]
 }
 
 /** The root package.json as an object, `{}` when unreadable or not one. */

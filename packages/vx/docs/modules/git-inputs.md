@@ -14,7 +14,14 @@ differ from the bytes on disk. The gate looks for a `.gitattributes`
 among every listed path, untracked and modified ones too: git applies
 those, and a scan of the trusted paths alone never saw them (item 977),
 and an ignored one, which the status walk names with `--ignored=matching`
-(A-19). Split from `inputs.ts` on 2026-09-10:
+(A-19). `ls-files --debug` adds the worktree size the index recorded
+for each entry, and a trusted OID whose blob is another size is dropped:
+a filter since removed left a stat-clean entry git never re-reads (A-60).
+A filter that kept the size passes the check; `caching.md` names it and
+the remedy, `git add --renormalize .`.
+The blob sizes come from the cache's `blob_sizes` memo, the unknown ones
+from one `git cat-file --batch-check`; `applyGitEnumeration` runs the
+check, so every caller of it gets it. Split from `inputs.ts` on 2026-09-10:
 this file talks to git; `inputs.ts` decides which files a task declared
 and where the project boundary is.
 
@@ -56,12 +63,19 @@ export interface GitEnumeration {
   untracked: readonly string[] | null // status's untracked set, before nested repos expand (ls-files --others)
   undecodable: readonly string[] // listed paths whose names are not UTF-8, root-relative
   startedAtMs: number // Date.now() before the spawns
+  indexed: ReadonlyMap<string, { oid: string; size: number }> // regular stage-0 entry → OID, recorded size
+  catFile(stdin: string): Promise<{ exitCode: number; stdout: string } | null> // blob sizes (A-60)
+}
+export interface BlobSizeMemo {
+  knownBlobSizes(oids: readonly string[]): Map<string, number>
+  rememberBlobSizes(sizes: ReadonlyMap<string, number>): void
 }
 export interface LazyGitEnumeration {
   start(): Promise<GitEnumeration> // the whole-tree enumeration, started once
   readonly started: Promise<GitEnumeration> | undefined
 }
 export function lazyGitEnumeration(workspaceRoot: string): LazyGitEnumeration
+export const MAX_SCOPED_PATHSPECS: number // 64: above it the walk is the whole tree
 export function gitPathspecs(
   workspaceRoot: string,
   projectDirs: readonly string[],
@@ -71,13 +85,14 @@ export async function startGitEnumeration(
   workspaceRoot: string,
   pathspecs: readonly string[],
 ): Promise<GitEnumeration>
-export function applyGitEnumeration(
+export async function applyGitEnumeration(
   enumeration: GitEnumeration,
   workspaceRoot: string,
   projectDirs: readonly string[],
   cache: GitFilesCache,
   workspaceWide?: boolean,
-): void
+  memo?: BlobSizeMemo, // the blob-size check's memo (`Cache`); absent, every size is asked
+): Promise<void>
 export async function populateGitFilesCache(
   workspaceRoot: string,
   projectDirs: readonly string[],
@@ -112,8 +127,10 @@ export function attributeFilesOutsideTree(
 ```
 
 `gitPathspecs` scopes the spawn to the projects in the run when there
-are at most 64 of them and none is the root itself; otherwise (or
-`workspaceWide`) it is `.`. A `git` that cannot be spawned at all — not
+are at most `MAX_SCOPED_PATHSPECS` (64) of them and none is the root
+itself; otherwise (or `workspaceWide`) it is `.`. A run that names more
+projects than that starts the whole-tree walk early, as an unscoped run
+does, since its configs cannot narrow it. A `git` that cannot be spawned at all — not
 on `PATH` — is one `UserError` line (`gitSpawnRefusal`: "vx requires
 git"), never a stack; a directory outside a work tree is the same
 refusal with `git init` as the remedy.
@@ -185,7 +202,9 @@ with the files `git ls-files` lists inside it, prefixed by its path,
 recursively (`expandNestedRepos`). They carry no index OID, so they hash
 by content. One spawn per nested repository per listing; a listing with
 none pays nothing. A gitlink with no `.git` behind it (a submodule never
-initialised) has no files and stays out. Until 2026-09-27 (A-1) the
+initialised, or one whose `.git` was removed to vendor its files) has no
+repository to ask, so a walk lists what is there (`walkFiles`, A-61);
+an empty one folds nothing. Until 2026-09-27 (A-1) the
 entry was dropped as a directory, the files never reached the key, and
 an edit inside the nested repository was a hit on the old output while
 `git status` named the path.
