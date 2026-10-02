@@ -806,6 +806,24 @@ const FOREIGN_FIELDS: ReadonlyMap<ReadonlySet<string>, Readonly<Record<string, s
       defaultBase: '`affectedBase`',
       tasksRunnerOptions: 'a cache plugin in `plugins` (`nxCache()` from `@vzn/vx-migrate`)',
       globalPassThroughEnv: '`exec.env.passThrough` on the tasks it passes to',
+      // pnpm-workspace.yaml's, Lerna's and the package.json's own keys
+      // pasted into vx.workspace: refused with no word on where vx reads
+      // them (D-98).
+      packages:
+        "`workspaces` in package.json or pnpm-workspace.yaml's `packages`, where vx reads the members",
+      workspaces:
+        "`workspaces` in package.json or pnpm-workspace.yaml's `packages`, where vx reads the members",
+      projects:
+        "`workspaces` in package.json or pnpm-workspace.yaml's `packages`, where vx reads the members",
+      ignore:
+        'a `!` pattern in the workspace globs (package.json `workspaces` or pnpm-workspace.yaml)',
+      catalog:
+        "pnpm-workspace.yaml's or package.json's `catalog`, where the package manager reads it",
+      npmClient: "no field: a task's command runs as written, with no package manager in between",
+      cache:
+        "each task's `cache` in its project's vx.config (a task caches only when it declares one)",
+      remote: 'a cache plugin in `plugins`',
+      env: '`cache.inputs.env` on the tasks it keys, or `exec.env` on the tasks it passes to',
     },
   ],
 ])
