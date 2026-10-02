@@ -1300,3 +1300,40 @@ describe("the root's workspace dependencies", () => {
     TIMEOUT,
   )
 })
+
+// Turbo runs a script through the package manager (`pnpm run build`), which
+// sets `npm_package_name`, `npm_package_version` and `npm_lifecycle_event`;
+// vx runs the body itself, so `echo $npm_package_version` printed nothing
+// and a config reading `process.env.npm_package_version` built `undefined`.
+describe('the npm_* variables a package manager sets', () => {
+  it(
+    'reach a script that names them, the event only where no hook is folded in',
+    async () => {
+      await writeFile(path.join(root, 'turbo.json'), JSON.stringify({ tasks: { v: {}, w: {} } }))
+      await writeFile(
+        path.join(root, 'packages', 'lib', 'package.json'),
+        JSON.stringify({
+          name: 'lib',
+          version: '1.2.3',
+          scripts: {
+            v: 'echo "$npm_package_name ${npm_package_version} $npm_lifecycle_event" > v.txt',
+            w: 'echo "$npm_package_version $npm_lifecycle_event" > w.txt',
+            prew: 'true',
+          },
+        }),
+      )
+      Bun.spawnSync({ cmd: ['git', 'add', '-A'], cwd: root })
+      const result = await run({
+        cwd: root,
+        tasks: ['lib#v', 'lib#w'],
+        log: silent(),
+        handleSignals: false,
+      })
+      expect(result.ok).toBe(true)
+      const lib = path.join(root, 'packages', 'lib')
+      expect(await Bun.file(path.join(lib, 'v.txt')).text()).toBe('lib 1.2.3 v\n')
+      expect(await Bun.file(path.join(lib, 'w.txt')).text()).toBe('1.2.3 \n')
+    },
+    TIMEOUT,
+  )
+})

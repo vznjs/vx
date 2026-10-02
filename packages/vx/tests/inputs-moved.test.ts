@@ -565,7 +565,7 @@ describe('describeTaskInputs dates each fact from where it was learned', () => {
       await writeFile(path.join(dir, 'untracked.txt'), 'u')
       const before = Date.now()
       const git = new GitFilesCache()
-      applyGitEnumeration(await startGitEnumeration(root, ['.']), root, [dir], git)
+      await applyGitEnumeration(await startGitEnumeration(root, ['.']), root, [dir], git)
       const after = Date.now()
       expect(git.enumeratedAtMs).toBeGreaterThanOrEqual(before)
       expect(git.enumeratedAtMs).toBeLessThanOrEqual(after)

@@ -123,6 +123,10 @@ export async function cleanOutputPaths(args: {
   projectDir: string
   rels: readonly string[]
 }): Promise<void>
+
+// Kill every runtime probe still running, with its tree: a run's stop
+// calls it, so a Ctrl-C does not wait a probe out (C-65).
+export function stopRuntimeProbes(): void
 ```
 
 ## File resolution rules

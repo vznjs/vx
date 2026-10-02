@@ -83,8 +83,9 @@ terminal and a task succeeding or failing. Read it alongside
  │   11. Bulk git populate — the enumeration step 1 started is
  │       awaited, or a scoped run starts it here. FOUR spawns at the
  │       root, three concurrent and the rev-parse asked while they run
- │       (`ls-files -s -v -z` for the index: every tracked path's OID
- │       and its cache-state flag; `status --porcelain -z -uall` for
+ │       (`ls-files -s -v -z --debug` for the index: every tracked
+ │       path's OID, its cache-state flag and its recorded size;
+ │       `status --porcelain -z -uall` for
  │       the dirty AND untracked sets, the one worktree walk;
  │       `rev-parse --show-prefix --git-common-dir --show-object-format`,
  │       memoized per process and shared with the file hasher, which
@@ -95,8 +96,11 @@ terminal and a task succeeding or failing. Read it alongside
  │       OIDs. `ls-files --others` is NOT among them — status's
  │       `-uall` already answers untracked, and asking git twice
  │       walked the same tree again. A fifth, `check-attr`, runs only
- │       when an attributes file could rewrite bytes. The run's
- │       HashCache is created after it.
+ │       when an attributes file could rewrite bytes, and a sixth,
+ │       `cat-file --batch-check`, only for blob sizes the cache's
+ │       `blob_sizes` memo lacks (A-60): an OID whose blob is not the
+ │       recorded size is not trusted. The run's HashCache is created
+ │       after it.
  │   12. buildTaskGraph (see below).
  ├─ Task selection (graph/task-graph.ts:expandRequested)
  │    Bare task names fan out across the resolved candidate projects
