@@ -187,13 +187,14 @@ export async function sandboxRequestFor(
    */
   cacheDir?: string,
 ): Promise<SandboxRequest> {
-  // SRT reads a Linux path holding a bracket as a glob and drops it from
-  // the writes, so no grant here could be mounted (B-60).
+  // The runtime reads a path holding a bracket as a pattern: on Linux it
+  // mounts no such write path (B-60); seatbelt's rules compile it as a
+  // character class, so vx's own workspace wall matched nothing (B-65).
   const home = toRealPath(node.projectDir)
-  if (process.platform === 'linux' && /[[\]]/.test(home)) {
+  if (process.platform !== 'win32' && /[[\]]/.test(home)) {
     throw new UserError(
-      `exec.sandbox: ${home} holds a bracket ([ or ]), and the Linux sandbox mounts no path ` +
-        `that does — rename the directory, or run the task without exec.sandbox`,
+      `exec.sandbox: ${home} holds a bracket ([ or ]), which the sandbox runtime reads as a ` +
+        `pattern, not a name — rename the directory, or run the task without exec.sandbox`,
     )
   }
   const depDirs = [

@@ -95,6 +95,7 @@ export interface MapNxOptions {
   readonly attached?: ReadonlySet<string>
   readonly tracked?: (rel: string) => TrackedKinds
   readonly ownConfig?: (rel: string) => string | null
+  readonly manifestField?: (key: 'name' | 'version') => unknown
 }
 == type MapTurboOptions (src/turbo/turbo-map.ts)
 export interface MapTurboOptions {
@@ -106,6 +107,7 @@ export interface MapTurboOptions {
   envMode?: string
   tracked?: (rel: string) => TrackedKinds
   ownConfig?: (rel: string) => string | null
+  ignored?: (rels: readonly string[]) => Promise<ReadonlySet<string>>
 }
 == type MigrateArgs (src/index.ts)
 export interface MigrateArgs {

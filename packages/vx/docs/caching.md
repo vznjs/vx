@@ -35,7 +35,7 @@ The cache key for one task is a **16-hex xxHash3 digest**, seed-chained
 over (in order):
 
 1. **`CACHE_VERSION`** — the key-derivation sentinel
-   (currently `'vx-cache-v37'`, in `src/cache/key-fold.ts`). Bumped when
+   (currently `'vx-cache-v39'`, in `src/cache/key-fold.ts`). Bumped when
    the key derivation or the artifact container changes, or stored bytes
    are wrong under an unchanged key. See
    [§ Bumping CACHE_VERSION](#bumping-cache_version).
@@ -156,12 +156,22 @@ over (in order):
     declared-outputs-excluded, nested-projects-excluded), each file
     contributing its **git blob OID** (v20). On a clean tree the OID
     comes straight from the index — the run's up-front enumeration is
-    three concurrent spawns, `git ls-files -s -v -z` (every tracked
-    path, its OID and its cache-state flag),
+    three concurrent spawns, `git ls-files -s -v -z --debug` (every
+    tracked path, its OID, its cache-state flag and the worktree size
+    the index recorded),
     `git status --porcelain -z -uall --ignored=matching --no-renames`
     (dirty tracked paths, the untracked files and the ignored ones) and
     `git var -l` (the clean-filter gate's config) — so deriving these hashes
-    costs zero file reads, zero per-file stats, zero SQLite lookups. A
+    costs zero file reads and zero per-file stats. Each trusted OID's
+    blob must be the size the index recorded for the file (A-60): `git
+add` under a clean filter (`core.autocrlf=true`, a `text` rule)
+    stores the LF blob of a CRLF file, and once the filter is gone git
+    holds that stat-clean entry clean without re-reading it, so status
+    and the filter gate (today's config) both let the LF blob key the
+    CRLF bytes. A blob's size is fixed for its OID, so the sizes are
+    kept in `blob_sizes` and a warm run asks git for none; a cold one
+    asks one `git cat-file --batch-check` (65 ms over 3,000 loose
+    objects, 10 ms packed). A
     re-listing mid-run, or a nested repository's project, spawns
     `git ls-files -s --others --exclude-standard -z .` in the project
     dir instead, and its OIDs are not trusted: those files hash by
@@ -179,8 +189,12 @@ over (in order):
     for a nested repository inside a project (`vendor/lib` under a
     `**` glob — until 2026-09-27 its files never reached the key, and an
     edit there was a hit on the old output), for a project inside one,
-    and for a `workspaceFiles` glob. A submodule never initialised has
-    no `.git` and no files, and folds nothing. `--affected` follows the
+    and for a `workspaceFiles` glob. A gitlink whose directory has no
+    `.git` (a submodule never initialised, or one whose `.git` was
+    removed to vendor its files, the gitlink left in the index) has no
+    repository to ask and `git status` says nothing of it: its files
+    are listed by a walk and hash by content (A-61), so an empty one
+    folds nothing. `--affected` follows the
     same shape — git reports the nested repository as one changed path,
     and every project under it is selected.
 
@@ -1330,6 +1344,16 @@ CREATE TABLE file_hashes (
   seen_at      INTEGER NOT NULL
 );
 
+-- The size of each index blob the enumeration checked against the
+-- worktree size git recorded (§ Cache key derivation, A-60): fixed for
+-- its OID, so a warm run asks git for none. Swept with file_hashes by
+-- seen_at, the time the row was written.
+CREATE TABLE blob_sizes (
+  oid     TEXT PRIMARY KEY,
+  size    INTEGER NOT NULL,
+  seen_at INTEGER NOT NULL
+);
+
 -- v16: per-output-file fingerprints, scoped by the entry that produced
 -- them — what a hit stats to skip the restore when the tree is already
 -- current (§ A current tree). ON DELETE CASCADE follows a prune.
@@ -1578,6 +1602,15 @@ was not), and the cache tests.
 
 ### History
 
+- **v38 → v39**: stored bytes wrong under an unchanged key (A-61). A
+  gitlink whose directory had lost its `.git` but held files listed
+  none of them, so an entry built from them sits under the key the
+  same directory empty derives.
+- **v37 → v38**: stored bytes wrong under an unchanged key (A-60). A
+  file added under a clean filter that was later removed kept its LF
+  index blob, git held it clean by its stat, and the key folded that
+  blob while the task read the CRLF bytes. The blob-size check cannot
+  reach an entry already saved that way.
 - **v36 → v37**: stored bytes wrong under an unchanged key (A-59).
   `git status` paired a deleted file with a similar unmerged path as its
   rename source and printed only `UU <path>`, so the file kept its index
