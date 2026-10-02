@@ -135,8 +135,8 @@ export const CHOICES: readonly Choice[] = [
     cells: {
       vx: {
         chose:
-          'A local sandbox, opt-in per task (exec.sandbox), on Linux and macOS. A read or write outside the grants is denied, and the task fails.',
-        buys: 'An undeclared read turns into a failed task on your own machine and in CI, before it becomes a stale hit.',
+          "A local sandbox, opt-in per task (exec.sandbox), on Linux and macOS. A workspace read or a write outside the grants is denied; one of the task's own files fails it.",
+        buys: "An undeclared read of the task's own files turns into a failed task on your own machine and in CI, before it becomes a stale hit.",
         costs:
           'It is off until a task opts in. Its grants are a second list next to the inputs, and it proves the key only as far as the two agree. No Windows.',
         sources: [
