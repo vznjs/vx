@@ -681,6 +681,12 @@ with no prediction; a history read error fails open in both callers.
 
 ## Leads for other streams
 
+- **F:** `vx-reapi` `materialise-concurrency.test.ts` › "output files are
+  fetched and written at once" read a peak of 3 reads in flight for an
+  expected 5 in a full local gate (3/3 alone): each read holds 2 ms, so
+  under load the first ones finish before the last start. Hold the reads
+  until all have started (a latch), not for a fixed 2 ms.
+
 - **D:** a persistent task with `exec.remote: 'only'` is refused for
   lacking `cache` ("needs `cache`: its inputs are what a worker
   reproduces"), and adding `cache` is refused next ("`cache` is not
