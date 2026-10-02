@@ -100,7 +100,7 @@ key by key: [Turbo and Nx config support](https://vznjs.github.io/vx/compare/tur
 ## Install
 
 ```sh
-npm install -D @vzn/vx     # or: pnpm add -D · yarn add -D · bun add -d
+npm install -D @vzn/vx     # or: pnpm add -D -w · yarn add -D (-W on Yarn 1) · bun add -d
 ```
 
 The package ships a prebuilt binary for Linux and macOS, x64 and arm64
@@ -120,7 +120,7 @@ Give a task a cache block (what it reads, what it writes):
 
 ```ts
 // packages/app/vx.config.ts
-import { defineProject } from '@vzn/vx'
+import { defineProject } from '@vzn/vx/config'
 
 export default defineProject({
   tasks: {
@@ -204,6 +204,8 @@ machine.
 | [`@vzn/vx-github`](packages/vx-github)                     | GitHub Actions job summary and Checks API                                     |
 | [`@vzn/vx-mcp`](packages/vx-mcp)                           | `vx mcp`: a read-only MCP server for AI coding agents                         |
 | [`@vzn/vx-schedule-history`](packages/vx-schedule-history) | Schedule by the critical path learned from past runs                          |
+
+Only `@vzn/vx` is on npm today; the plugins' first publish is pending.
 
 Write your own: [plugin guide](https://vznjs.github.io/vx/guides/plugins/) ·
 [architecture](packages/vx/docs/architecture.md).

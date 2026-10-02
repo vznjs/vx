@@ -40,7 +40,8 @@ export class FingerprintWatch {
   (an `lstat` saw the link's, which never moved: a stale hit on every
   run after the link aged, item 760, `tests/in-run-writes.test.ts` › "a
   lockfile that is a symlink…") — and a file written since the read (by ctime,
-  within `FILE_HASH_RACY_MS` as git judges its index) is read and
+  within `FILE_HASH_RACY_MS` as git judges its index, a second wider for
+  a whole-second stamp, C-59) is read and
   compared with the bytes the fold kept (`WorkspaceFingerprints.files`).
   A file that appeared or went has moved. Once moved, the run stays
   moved: every key already taken folded the old bytes, even if a later

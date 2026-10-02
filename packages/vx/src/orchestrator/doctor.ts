@@ -20,7 +20,6 @@ import {
 import { VERSION } from '../version.js'
 import { probeSandbox, resetSandbox, untracedReason } from '../exec/index.js'
 import {
-  buildPackageGraph,
   computeWorkspaceFingerprint,
   findWorkspaceRoot,
   type LoadReads,
@@ -144,7 +143,6 @@ export async function collectInfo(cwd: string, opts: CollectInfoOptions = {}): P
         cacheDir,
         plugins,
         projectMetas: metas,
-        packageGraph: buildPackageGraph([...metas]),
         seeds: 'all',
         closure: false,
         lock: null,

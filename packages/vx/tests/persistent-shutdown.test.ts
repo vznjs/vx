@@ -91,6 +91,40 @@ describe('selectKeepAlive', () => {
     expect(kept.nodes.map((n) => n.id)).toEqual(['db#dev', 'api#dev', 'app#dev'])
     expect(kept.children).toEqual(children.slice(2))
   })
+
+  // C-52: `vx run app#dev` over `dev: { dependsOn: ['^dev'] }` (a group)
+  // started api#dev and db#dev, then stopped both at the end of the graph
+  // and exited 0. A requested group stands for its servers, through
+  // nested groups; a one-shot under it still keeps none of its own.
+  it('keeps the persistent tasks a requested group stands for', () => {
+    const task = (
+      id: string,
+      deps: string[],
+      opts: { requested?: boolean; group?: boolean } = {},
+    ) =>
+      ({
+        id,
+        deps,
+        requested: opts.requested === true,
+        config: opts.group === true ? {} : { exec: { command: 'x' } },
+      }) as unknown as TaskNode
+    const graph = [
+      task('app#dev', ['api#dev', 'app#more', 'app#build'], { requested: true, group: true }),
+      task('app#more', ['db#dev'], { group: true }),
+      task('api#dev', []),
+      task('db#dev', []),
+      task('app#build', ['gen#srv']),
+      task('gen#srv', []),
+      task('lone#dev', []),
+    ]
+    const nodes = new Map(graph.map((n) => [n.id, n]))
+    const ids = ['gen#srv', 'db#dev', 'api#dev', 'lone#dev']
+    const children = ids.map((_, i) => ({ pid: i + 1 }) as ReturnType<typeof Bun.spawn>)
+    const registry = new Map(ids.map((id, i) => [id, children[i]!]))
+    const kept = selectKeepAlive(registry, nodes, true)
+    expect(kept.nodes.map((n) => n.id)).toEqual(['db#dev', 'api#dev'])
+    expect(kept.children).toEqual(children.slice(1, 3))
+  })
 })
 
 describe('shutdownPersistent', () => {

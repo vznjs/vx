@@ -86,11 +86,13 @@ jobs:
 
 ```ts
 // vx.workspace.ts
-import { defineWorkspace } from '@vzn/vx'
+import { defineWorkspace } from '@vzn/vx/config'
 import { github } from '@vzn/vx-github'
 
 export default defineWorkspace({ plugins: [github()] })
 ```
+
+Only `@vzn/vx` is on npm today; the plugins' first publish is pending.
 
 `github()` writes a job summary, failures first, and a PR check. The
 check needs `GITHUB_TOKEN` in the vx step's `env`, as above (the runner
@@ -146,7 +148,7 @@ uploads new results in the background.
 
 ```ts
 // vx.workspace.ts
-import { defineWorkspace } from '@vzn/vx'
+import { defineWorkspace } from '@vzn/vx/config'
 import { reapi } from '@vzn/vx-reapi'
 
 export default defineWorkspace({
@@ -184,7 +186,7 @@ default:
 
 ```ts
 // vx.workspace.ts
-import { defineWorkspace } from '@vzn/vx'
+import { defineWorkspace } from '@vzn/vx/config'
 import { reapi } from '@vzn/vx-reapi'
 
 export default defineWorkspace({

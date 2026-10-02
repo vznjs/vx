@@ -1264,6 +1264,43 @@ describe('a microfrontends config', () => {
   )
 })
 
+// with-nestjs: the root dev-depends on `@repo/eslint-config`, and Turbo
+// hashes the files of every package the root depends on into its global
+// hash. `api#lint` (`lint: {}`, no edge) lints with those rules; unread,
+// an edit to them replayed every lint from the cache.
+describe("the root's workspace dependencies", () => {
+  it(
+    'key every task, as Turbo’s global hash does, transitively',
+    async () => {
+      await pkg('rules', { build: 'echo rules' })
+      await writeFile(
+        path.join(root, 'packages', 'lib', 'package.json'),
+        JSON.stringify({ name: 'lib', version: '1.0.0', dependencies: { rules: 'workspace:*' } }),
+      )
+      Bun.spawnSync({ cmd: ['git', 'add', '-A'], cwd: root })
+      const key = async () => {
+        const plan = await planRun({ cwd: root, tasks: ['app#test'], log: silent() })
+        return plan.tasks.find((t) => t.node.id === 'app#test')!.hash
+      }
+      const edit = (n: number) =>
+        writeFile(path.join(root, 'packages', 'rules', 'src', 'index.js'), `// ${n}\n`)
+      // Control: no root edge, so `app#test` (no dependsOn) keys nothing of rules.
+      const before = await key()
+      await edit(1)
+      expect(await key()).toBe(before)
+      // The root reaches rules through lib; its manifest is the only edit.
+      await writeFile(
+        path.join(root, 'package.json'),
+        JSON.stringify({ name: 'ws', private: true, devDependencies: { lib: 'workspace:*' } }),
+      )
+      const reached = await key()
+      await edit(2)
+      expect(await key()).not.toBe(reached)
+    },
+    TIMEOUT,
+  )
+})
+
 // Turbo runs a script through the package manager (`pnpm run build`), which
 // sets `npm_package_name`, `npm_package_version` and `npm_lifecycle_event`;
 // vx runs the body itself, so `echo $npm_package_version` printed nothing

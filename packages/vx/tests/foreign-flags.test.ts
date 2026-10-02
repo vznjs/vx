@@ -138,6 +138,28 @@ const REFUSE: ReadonlyArray<readonly [readonly string[], string]> = [
     ['--ui=tui'],
     '--ui (turbo): vx frames each task’s output: `--output-logs <mode>` sets how much',
   ],
+  [['--color'], '--color (turbo): set `FORCE_COLOR=1`'],
+  [['--no-color'], '--no-color (turbo): set `NO_COLOR=1`'],
+  [['--heap', 'h.pprof'], "--heap (turbo): use `--profile[=<path>]` for vx's own trace"],
+  [['--trace=t.pprof'], "--trace (turbo): use `--profile[=<path>]` for vx's own trace"],
+  [
+    ['--login', 'x'],
+    '--login (turbo): vx has no login: a remote cache is a plugin (`turboCache()` from @vzn/vx-migrate)',
+  ],
+  [['--no-update-notifier'], '--no-update-notifier (turbo): vx prints no update notice: drop it'],
+  [['--skip-infer'], '--skip-infer (turbo): vx runs the binary it is: drop it'],
+  [
+    ['--root-turbo-json', 'x.json'],
+    '--root-turbo-json (turbo): `turbo()` reads the `turbo.json` at the workspace root: move it there',
+  ],
+  [
+    ['--experimental-otel-enabled'],
+    '--experimental-otel-enabled (turbo): telemetry is a plugin: `otel()` from @vzn/vx-otel in vx.workspace.ts',
+  ],
+  [
+    ['--experimental-otel-endpoint=http://c'],
+    '--experimental-otel-endpoint (turbo): telemetry is a plugin: `otel()` from @vzn/vx-otel in vx.workspace.ts',
+  ],
   [
     ['--head', 'feature'],
     '--head (nx): vx compares `--affected=<base>` with the working tree: check out the head first',
@@ -161,6 +183,22 @@ const REFUSE: ReadonlyArray<readonly [readonly string[], string]> = [
   [['--skip-sync'], '--skip-sync (nx): vx never runs sync generators: drop it'],
   [['--tui'], '--tui (nx): vx frames each task’s output: `--output-logs <mode>` sets how much'],
 ]
+
+// `turbo run --help` of Turbo 2.11.6, every long flag it lists, by hand,
+// but the global `--help` and `--version` (`vx --help`, `vx --version`).
+// A flag here that is neither vx's own nor in the table reached a Turbo
+// user as "unknown flag" with no way on.
+const TURBO_RUN_FLAGS = `--affected --anon-profile --api --cache --cache-dir --cache-workers
+--color --concurrency --continue --cwd --daemon --dangerously-disable-package-manager-check
+--dry-run --env-mode --experimental-otel-enabled --experimental-otel-endpoint
+--experimental-otel-header --experimental-otel-interval-ms
+--experimental-otel-metrics-run-summary --experimental-otel-metrics-task-details
+--experimental-otel-protocol --experimental-otel-resource --experimental-otel-timeout-ms
+--experimental-otel-use-remote-cache-token --filter --force --framework-inference
+--global-deps --graph --heap --json --log-file --log-order --log-prefix --login --no-cache --no-color
+--no-daemon --no-update-notifier --only --output-logs --parallel --preflight --profile --remote-cache-read-only --remote-cache-timeout --remote-only
+--root-turbo-json --single-package --skip-infer --summarize --team --token --trace --ui
+--verbosity`.split(/\s+/)
 
 describe('Turbo and Nx flags on vx run', () => {
   it('a flag vx shares parses as it is', () => {
@@ -216,6 +254,13 @@ describe('Turbo and Nx flags on vx run', () => {
       'x',
       '--parallel',
     ])
+  })
+
+  it("every flag Turbo's `run` lists is vx's own or in the table", () => {
+    const spellings = new Set(FOREIGN_FLAGS.flatMap((f) => f.names))
+    const help = Bun.spawnSync(['bun', BIN, 'run', '--help']).stdout.toString()
+    const own = (f: string) => new RegExp(`${f}(?![\\w-])`).test(help)
+    expect(TURBO_RUN_FLAGS.filter((f) => !spellings.has(f) && !own(f)).sort()).toEqual([])
   })
 
   it('every table entry is driven above, and every driven flag is in the table', () => {
