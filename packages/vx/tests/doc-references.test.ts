@@ -212,3 +212,22 @@ describe("comparison.md states the purity gate's three conditions", () => {
     expect(/any `\/`/.test(text)).toBe(false)
   })
 })
+
+// #2227 dropped every native Windows branch (vx runs under WSL), and two
+// pages still described one: sandbox-runtime.md's Windows row a probe that
+// reported the sandbox unavailable, execution.md an allowlist for Windows.
+describe('no page describes a Windows branch the source dropped', () => {
+  it('src holds no win32 branch, and the pages say WSL', () => {
+    const src = walk(path.join(pkg, 'src'), '.ts').map((f) => readFileSync(f, 'utf8'))
+    expect(src.filter((s) => s.includes("=== 'win32'") || s.includes("!== 'win32'"))).toEqual([])
+    const row = readFileSync(path.join(pkg, 'docs', 'modules', 'sandbox-runtime.md'), 'utf8')
+      .split('\n')
+      .find((l) => l.startsWith('| Windows '))
+    expect(row).toContain('WSL')
+    expect(row).not.toContain('probeSandbox')
+    const exec = readFileSync(path.join(pkg, 'docs', 'execution.md'), 'utf8')
+      .split(/\s+/)
+      .join(' ')
+    expect(exec).not.toContain('/ Windows')
+  })
+})
