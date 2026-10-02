@@ -21,11 +21,10 @@ const REPO = 'vznjs/vx'
 
 /**
  * A Bun standalone-binary path lives under the bunfs virtual root.
- * Marker differs by platform / Bun version: `/$bunfs/...` (posix) and
- * `B:\~BUN\...` or `B:/~BUN/...` (windows).
+ * Marker: `/$bunfs/...`.
  */
 export function isBunfsPath(p: string): boolean {
-  return p.startsWith('/$bunfs') || p.startsWith('B:\\~BUN') || p.startsWith('B:/~BUN')
+  return p.startsWith('/$bunfs')
 }
 
 /**

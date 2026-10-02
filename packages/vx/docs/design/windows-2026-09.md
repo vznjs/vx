@@ -1,8 +1,8 @@
 # vx on Windows (2026-09-28, stream O)
 
-**Status: stopped (owner, 2026-09-28): Windows users run WSL.** The code
-that landed is listed in `docs/history/ws-o.md` § Windows-only code paths;
-removing it waits on the owner's word.
+**Status: stopped (owner, 2026-09-28): Windows users run WSL.** Its
+native code paths were removed on 2026-10-02 (owner); vx spawns `sh -c`
+only. What follows is the record of the attempt.
 
 Goal: vx runs and caches on Windows under Bun, with no WSL. This
 replaces the 2026-09-10 "Windows is WSL" decision (coordinator,

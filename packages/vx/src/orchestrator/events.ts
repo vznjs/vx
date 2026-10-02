@@ -52,7 +52,12 @@ export interface EventBus {
 }
 
 export function createEventBus(): EventBus {
-  const subscribers: RunEventSubscriber[] = []
+  // Replaced, never mutated: an emit walks the list it started with, so a
+  // subscriber that unsubscribes itself (an embedder's `off()` on
+  // `run:end`) no longer shifts the next one past the event — the terminal
+  // renderer after it missed `run:end` (C-77). A subscriber added during
+  // an emit hears the next event, not this one.
+  let subscribers: readonly RunEventSubscriber[] = []
   return {
     emit(event) {
       // Synchronous, in-subscription-order fan-out. Ordering is part of
@@ -79,10 +84,10 @@ export function createEventBus(): EventBus {
       }
     },
     subscribe(subscriber) {
-      subscribers.push(subscriber)
+      subscribers = [...subscribers, subscriber]
       return () => {
         const i = subscribers.indexOf(subscriber)
-        if (i >= 0) subscribers.splice(i, 1)
+        if (i >= 0) subscribers = subscribers.toSpliced(i, 1)
       }
     },
   }

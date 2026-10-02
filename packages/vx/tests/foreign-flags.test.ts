@@ -284,7 +284,7 @@ describe('Turbo and Nx flags on vx run', () => {
 
   // Every Turbo or Nx verb in the table, `nx graph` and `turbo ls` among
   // them, said `unknown command` with no way on before E-98.
-  it('a Turbo or Nx verb names what does it in vx', () => {
+  it('a Turbo or Nx verb names what does it in vx', async () => {
     const verbs = [
       'run-many',
       'affected',
@@ -299,18 +299,25 @@ describe('Turbo and Nx flags on vx run', () => {
       'unlink',
     ]
     expect(Object.keys(FOREIGN_VERBS).sort()).toEqual([...verbs].sort())
-    for (const verb of verbs) {
-      for (const argv of [
-        [verb, '-t', 'build'],
-        ['help', verb],
-      ]) {
-        const p = Bun.spawnSync({ cmd: [process.execPath, BIN, ...argv] })
-        expect([argv, p.exitCode, p.stderr.toString()]).toEqual([
-          argv,
-          1,
-          `${FOREIGN_VERBS[verb]}\n`,
-        ])
-      }
-    }
+    const argvs = verbs.flatMap((verb) => [
+      [verb, '-t', 'build'],
+      ['help', verb],
+    ])
+    // At once, not one after another: 22 vx starts in series cost 1.6 s
+    // here and passed bun's 5 s under strace with load beside it (M-26).
+    const runs = await Promise.all(
+      argvs.map(async (argv) => {
+        const p = Bun.spawn({ cmd: [process.execPath, BIN, ...argv], stderr: 'pipe' })
+        const [code, stderr] = await Promise.all([p.exited, new Response(p.stderr).text()])
+        return [argv, code, stderr]
+      }),
+    )
+    expect(runs).toEqual(
+      argvs.map((argv) => [
+        argv,
+        1,
+        `${FOREIGN_VERBS[argv[0] === 'help' ? argv[1]! : argv[0]!]}\n`,
+      ]),
+    )
   })
 })

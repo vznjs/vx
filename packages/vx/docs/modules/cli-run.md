@@ -101,8 +101,11 @@ After parsing, `resolveRunOptions` builds the orchestrator's `projects` field:
 
 `--affected[=<base>]` is sugar for an extra `...[<base>]` filter —
 the changed projects and their dependents (#446) — put first in
-`filterStrings` before `resolveFilters` runs. `defaultAffectedBase(root)`
-resolves the no-value form (`origin/HEAD` → fall back `HEAD~1`); a
+`filterStrings` before `resolveFilters` runs. The no-value form takes
+the workspace's `affectedBase` (a plugin's `config` stage may set it),
+else `defaultAffectedBase(root)`: `origin/HEAD`, else the first of
+`origin/main`, `origin/master`, `main`, `master` that is not HEAD, else
+`HEAD~1` (`affected.md`); a
 base that is HEAD itself (a single-branch clone) is named, with the
 two bases that would compare something.
 
