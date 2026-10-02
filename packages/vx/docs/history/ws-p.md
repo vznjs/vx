@@ -57,6 +57,11 @@
   task sees. Nx hands every task the whole environment, vx only the
   essentials, the declared `{ env }` names and what `nx()` defines; a
   shell's `NODE_ENV` reached no task and nothing said so.
+- **P-12** `nx()`: an `nx:run-script` body that reads `$npm_package_name`,
+  `$npm_package_version` or `$npm_lifecycle_event` gets them defined, as
+  Nx's `<pm> run <name>` sets them and core's `vx init` maps them (D-34);
+  inlined, `echo $npm_package_version` printed nothing. Any other
+  `$npm_*` is a todo.
 - **P-13** `nx()`: every task also gets `LERNA_PACKAGE_NAME`, the project
   name Nx's `getNxEnvVariablesForTask` sets beside `NX_TASK_TARGET_*`;
   Lerna runs on Nx's runner and documents it to scripts, and it was
@@ -86,6 +91,8 @@
 - `tests/npm-pack.unsafe.test.ts` failed once in a full gate
   (`JSON Parse error` on `npm pack --dry-run --json` output) and passed
   on the re-run and alone (2026-10-02, npm 10.9.4).
+- **G:** `turbo()` inlines a script body the same way (`script-command.ts`)
+  and sets no `$npm_*` either; P-12 fixed only `nx:run-script`.
 - Core's `MigrationPlan` (`workspace/migration.ts`) has no field for the
   workspace file's settings, so a migrator can only name them in a note
   (P-11); `turbo`'s `concurrency` / `cacheMaxSize` / `TURBO_SCM_BASE` are
