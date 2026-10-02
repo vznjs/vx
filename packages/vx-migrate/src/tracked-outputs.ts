@@ -118,7 +118,10 @@ export function trackedKinds(tracked: readonly string[]): (rel: string) => Track
  * mtime (`git add`, `git rm`). Stats and a small read, so a kept mapping
  * stays a hit between them; a run does not write the index. Without the
  * index, a file `git add`ed under an output and not yet committed was not
- * taken back by the kept mapping, and the run's clean deleted it.
+ * taken back by the kept mapping, and the run's clean deleted it. Under
+ * reftable storage HEAD reads `ref: refs/heads/.invalid` and no reflog file
+ * exists, so the ref stack's table list stands for both: every ref update
+ * names a new table in it.
  */
 export async function headStamp(root: string): Promise<string> {
   for (let dir = root; ;) {
@@ -133,7 +136,14 @@ export async function headStamp(root: string): Promise<string> {
       const head = await readFile(path.join(gitDir, 'HEAD'), 'utf8').catch(() => '')
       const log = await lstat(path.join(gitDir, 'logs', 'HEAD')).catch(() => null)
       const index = await lstat(path.join(gitDir, 'index')).catch(() => null)
-      return `${head.trim()}\0${log?.size ?? ''}\0${index?.size ?? ''}\0${index?.mtimeMs ?? ''}`
+      // A worktree's own stack holds its HEAD; the common one, its branches.
+      const common = await readFile(path.join(gitDir, 'commondir'), 'utf8').catch(() => null)
+      const tables = await Promise.all(
+        [gitDir, ...(common === null ? [] : [path.resolve(gitDir, common.trim())])].map((d) =>
+          readFile(path.join(d, 'reftable', 'tables.list'), 'utf8').catch(() => ''),
+        ),
+      )
+      return `${head.trim()}\0${log?.size ?? ''}\0${index?.size ?? ''}\0${index?.mtimeMs ?? ''}\0${tables.join('\0')}`
     }
     const up = path.dirname(dir)
     if (up === dir) return 'no-git'
