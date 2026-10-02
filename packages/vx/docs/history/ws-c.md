@@ -681,6 +681,12 @@ with no prediction; a history read error fails open in both callers.
 
 ## Leads for other streams
 
+- **F:** `vx-reapi` `materialise-concurrency.test.ts` › "output files are
+  fetched and written at once" read a peak of 3 reads in flight for an
+  expected 5 in a full local gate (3/3 alone): each read holds 2 ms, so
+  under load the first ones finish before the last start. Hold the reads
+  until all have started (a latch), not for a fixed 2 ms.
+
 - **D:** a persistent task with `exec.remote: 'only'` is refused for
   lacking `cache` ("needs `cache`: its inputs are what a worker
   reproduces"), and adding `cache` is refused next ("`cache` is not
@@ -1015,6 +1021,12 @@ verbatim. It is now counted, not quoted, the same way. Row
 (`telemetry.test.ts` › a sink never receives what follows `--`): red
 without the fix. The option's doc comment says so.
 
+## C-75: signals.md says the stop kills the run's probes
+
+`modules/signals.md` described the stop's teardown as `terminateChildren`
+alone; since C-65 it also kills the run's running `cache.inputs.runtime`
+probes. Docs only.
+
 ## C-74: an executor's shared error is named once
 
 C-63 names a plugin executor's throw by prefixing the error's own
@@ -1033,20 +1045,17 @@ those a requested group stands for (C-52), that a run which failed
 elsewhere keeps none unless `--continue=always` (C-60), and that what
 they write streams through the wait (C-56). Docs only.
 
-## C-82: a run with servers in it always ends and leaves no child
+## C-77: a subscriber that leaves mid-emit no longer hides the event
 
-Probes of 190 and 120 seeded random graphs mixed one-shots that pass,
-fail or take a while with servers that get ready, crash before or after
-it, never get ready inside their timeout, or trap SIGTERM, under each
-`--continue` mode, with and without `holdPersistent`, run to the end or
-stopped by `RunOptions.signal` (SIGINT or SIGTERM) at a random moment:
-every run ended and no child outlived it (or its held servers'
-`stop()`). They are now `tests/persistent-lifecycle-properties.unsafe.test.ts`
-(12 graphs each, ~9 s): red when the end of the graph does not SIGKILL
-what outlives the grace, and both rows hang when the stop's teardown
-does not. A dropped SIGTERM or a leader-only one survives: the SIGKILL
-sweep still ends the groups, and graceful stops are not what these rows
-hold. Unsafe for the liveness check. Test only.
+`createEventBus` walked its subscriber array while a disposer spliced
+it, so a subscriber that unsubscribed during an emit shifted the next
+one into the slot the walk had passed. An embedder that subscribes
+before the run and calls `off()` on `run:end` took `run:end` from the
+terminal renderer behind it. The list is now replaced on subscribe and
+unsubscribe, never mutated, so an emit walks the list it began with at
+no per-emit cost; a subscriber added during an emit hears the next
+event. Rows (`events.test.ts` › createEventBus): both red without the
+fix. `modules/events.md` says so.
 
 ## C-76: the sandbox probe starts when a sandboxed task is sure to run
 
