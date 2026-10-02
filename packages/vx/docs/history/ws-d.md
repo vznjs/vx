@@ -26,6 +26,20 @@ run leaves out; the rest are refusals.
 
 ## Leads for other streams
 
+- E: `vx lock --check` words a renamed or moved config as `"a"
+(packages/a/vx.config.ts) is not in the lock` (`src/cli/lock.ts`,
+  the `entry.configPath !== rel` branch) while the lock holds "a" under
+  its old path; `--frozen`'s refusal names both paths since D-88.
+- E: `--filter ./kit` run from `packages/` is read from the workspace
+  root (as pnpm 12 does; Turbo 2.11 reads it from the cwd) and refused
+  "Did you mean @sveltejs/kit?". When the cwd-relative reading would
+  match, the hint could name the root-relative path (`./packages/kit`)
+  for a Turbo user (`didYouMeanProject`, `src/cli/select.ts`).
+- A: an unscoped run's early `lazyGitEnumeration(root).start()` holds
+  the main thread ~6.5 ms synchronously (300-project bench workspace;
+  the `workspace config` stage reads 15 ms unscoped against 2 ms
+  scoped), so the overlap it was started for is partly serial;
+  `repoFacts`' `spawnSync` is one candidate.
 - F: `vx-reapi` `materialise-concurrency.test` "output files are fetched and
   written at once" read `peak` 4 against 5 once in a local gate
   (2026-10-02); 5 of 5 green alone. The peak depends on fetches
@@ -829,3 +843,4 @@ packages/core`) selects the dependent whose `file:../lib` spec named
 - **D-84.** `--filter './packages/kit/**'` left out the package at `packages/kit` itself: `Bun.Glob`'s `a/**` does not match `a`, while pnpm 12 and Turbo read a trailing `**` as zero dirs too (sveltejs/kit's root `check` filters `./packages/**`). A path glob ending in `/**` now also matches its base. Row: `filter.test` › a path form with a glob selects by root-relative dir, with `./packages/core/*` as control; red without the fix. Differential against pnpm 12.5 on a kit copy (a task per package): 40 selectors (names, scopes, globs, `...`/`^` forms, braces, `..`/`.` segments, `!`) agree but for two, both by design: `./packages` (no package there) selects the packages under it (D-43; pnpm 12 selects none), and `[HEAD]` counts untracked files.
 - **D-82.** `vx init` mapped a root script over `yarn workspace <name> …` (cal.com's `prisma: yarn workspace @calcom/prisma prisma`) as a root task, running a member's script from the root beside the member's own. It is left out as running the members. Row: the D-45 row of `init.test`, now with that script; red without the fix.
 - **D-83.** Probing oven-sh/bun's root (a plain Bun workspace): `typecheck` (`tsc --noEmit && cd test && bun run typecheck`) was left out as running the members on any `cd`, and `run:linux` (`docker run … -w /root/bun`) on D-81's `run` fallback. A `cd` now counts into or above a member's directory, or to a target vx cannot read (`$DIR`, `~`); the `run` fallback only as `node <bin> run` (npm/cli). Row: `init.test` › a cd runs the members only into a member …, with controls (`cd packages/a`, a quoted subdir, `cd packages`, `cd "$DIR"`); red without the fix. Re-probed jest, npm/cli, kit, vitest, berry: unchanged.
+- **D-88.** A config renamed or moved after `vx lock` (`vx.config.mjs` → `.ts`) was refused under `--frozen` as `vx-lock.json has no entry for "a"`, while the lock holds "a" under its old path. It now says the lock holds it at the old path and names the new one. Row: `lockfile-boundary.test` › refuses when the entry points at a DIFFERENT config path, the message compared whole; red without the fix.
