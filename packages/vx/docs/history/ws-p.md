@@ -35,6 +35,10 @@
   `createTaskOverrides` turns into the dependency's overrides, is a todo
   when the target has options to forward. It was dropped without a word,
   and the dependency ran with its own options.
+- **P-8** docs: the `vx-migrate` README and the Nx design doc still said
+  a configuration task's `^` edges run the dependencies' default
+  configuration with a warning; #1991 made them pass the configuration
+  and no such warning exists. Both corrected in place.
 - **P-9** `nx()`: a `dependsOn` string's part after `project:` is one
   target name, as Nx's `readProjectAndTargetFromTargetString` joins it:
   `ui:build:ci` names target `build:ci` and is no edge where ui lacks it.
@@ -49,6 +53,10 @@
   the `vx.workspace.ts` field to add. The written workspace file holds
   none of them, so nx-examples' `parallel: 1` ran on every core once
   migrated, without a word.
+- **P-13** `nx()`: every task also gets `LERNA_PACKAGE_NAME`, the project
+  name Nx's `getNxEnvVariablesForTask` sets beside `NX_TASK_TARGET_*`;
+  Lerna runs on Nx's runner and documents it to scripts, and it was
+  unset.
 
 ## Notes
 

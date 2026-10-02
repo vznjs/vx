@@ -489,6 +489,22 @@ describe('migrateScripts', () => {
     expect(outputs({ build: 'npm run b', b: 'next build' }, 'b')).toBe(
       "'.next/**', '!.next/cache/**'",
     )
+    // D-90: no tool above, so the dir the command writes or cleans (ky's
+    // `distribution`); a hidden dir, a file, a glob, or a scratch dir the
+    // command makes again is no guess.
+    expect(outputs({ build: 'del-cli distribution && tsc --project tsconfig.dist.json' })).toBe(
+      "'distribution/**'",
+    )
+    expect(outputs({ build: 'rimraf lib && babel src -d lib' })).toBe("'lib/**'")
+    expect(outputs({ build: 'tsc --outDir build' })).toBe("'build/**'")
+    expect(outputs({ build: 'esbuild src/x.ts --outdir=out' })).toBe("'out/**'")
+    expect(outputs({ build: 'rimraf dist types tsconfig.tsbuildinfo && tsc' })).toBe(
+      "'dist/**', 'types/**'",
+    )
+    expect(outputs({ build: 'shx rm -rf ./es && tsc' })).toBe("'es/**'")
+    expect(outputs({ build: 'rimraf .turbo && tsc' })).toBe("'dist/**'")
+    expect(outputs({ build: 'rimraf "lib/**" && tsc' })).toBe("'dist/**'")
+    expect(outputs({ build: 'rm -rf ./ids && mkdir ./ids && vite build' })).toBe("'dist/**'")
     // CONTROLS: anything else, and a near name, keep `dist/**`.
     expect(outputs({ build: 'tsc -b' })).toBe("'dist/**'")
     expect(outputs({ build: 'vite build' })).toBe("'dist/**'")
