@@ -16,7 +16,7 @@ export interface RunOptions {
   projects?: string[] // the selection's project names; undefined = no scope needed
   selectedByDiff?: boolean // `projects` came from a git diff: bare names judged workspace-wide (item 1024)
   staged?: ReadonlyMap<string, ProjectEntry> // the CLI's own selection load, reused once (below)
-  discovered?: { root: string; projects: ProjectMeta[] } // the selection pass's discovery, reused once when the root matches
+  discovered?: { root: string; projects: ProjectMeta[]; graph?: PackageGraph } // the selection pass's discovery (and its edge-free package graph), reused once when the root matches
   concurrency?: number
   cacheDir?: string // --cache-dir, resolved against cwd
   cache?: CachePolicy // default FULL_CACHE_POLICY

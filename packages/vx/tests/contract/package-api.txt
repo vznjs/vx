@@ -1067,7 +1067,7 @@ export interface RunOptions {
   projects?: string[]
   selectedByDiff?: boolean
   staged?: ReadonlyMap<string, ProjectEntry>
-  discovered?: { root: string; projects: ProjectMeta[] }
+  discovered?: { root: string; projects: ProjectMeta[]; graph?: PackageGraph }
   concurrency?: number
   cacheDir?: string
   cache?: CachePolicy

@@ -8,7 +8,7 @@ import type { TaskOutcome } from '../graph/index.js'
 import type { EventBus } from './events.js'
 import type { TelemetrySink } from './telemetry.js'
 import type { Logger } from './logger.js'
-import type { ProjectEntry, ProjectMeta } from '../workspace/index.js'
+import type { PackageGraph, ProjectEntry, ProjectMeta } from '../workspace/index.js'
 
 export interface RunOptions {
   cwd: string
@@ -44,9 +44,10 @@ export interface RunOptions {
    * `root` (`--filter`, `--affected`, the project a run from inside one
    * is in). The run takes them instead of
    * walking the workspace again when its root is the same. One run only,
-   * as `staged` is.
+   * as `staged` is. `graph` is their package graph when the pass built it
+   * without task edges, the one the run would build again.
    */
-  discovered?: { root: string; projects: ProjectMeta[] }
+  discovered?: { root: string; projects: ProjectMeta[]; graph?: PackageGraph }
   /** Worker slots: a positive integer; run() refuses anything else (C-61). */
   concurrency?: number
   /**

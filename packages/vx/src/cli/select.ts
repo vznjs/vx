@@ -23,7 +23,7 @@ import {
   workspaceGlobsMatch,
 } from '../workspace/index.js'
 import type { ProjectConfig } from '../config.js'
-import type { ProjectEntry } from '../workspace/index.js'
+import type { PackageGraph, ProjectEntry } from '../workspace/index.js'
 import { parseDependencySpec } from '../graph/index.js'
 import { nearest, UserError } from '../util/index.js'
 import { claimedAffected, fingerprintClaims, gitOfDiscovery } from '../orchestrator/index.js'
@@ -172,7 +172,7 @@ export type FilterResolution =
       /** The staged load the graph walk needed, for the run to reuse (`RunOptions.staged`). */
       staged?: ReadonlyMap<string, ProjectEntry>
       /** The discovery this pass made, for the run to reuse (`RunOptions.discovered`). */
-      discovered: { root: string; projects: ProjectMeta[] }
+      discovered: { root: string; projects: ProjectMeta[]; graph?: PackageGraph }
     }
   | { error: string }
   | { empty: string }
@@ -347,7 +347,8 @@ export async function resolveFilters(
     names: [...selected].sort(),
     byDiff: parsed.some((f) => !f.negate && f.gitSince !== undefined),
     ...(staged !== undefined ? { staged } : {}),
-    discovered: { root, projects },
+    // The graph a run builds is this one when no task edge went into it.
+    discovered: { root, projects, ...(edges === undefined ? { graph } : {}) },
   }
 }
 
