@@ -22,11 +22,12 @@ import {
   resolveSharedOutputs,
   resolveSharedWorkspaceOutputs,
   takingBack,
+  literalTailMatches,
   wildcardOutput,
   wildcardTodo,
 } from '../shared-outputs.js'
 import { packageScripts, relPosix } from '../paths.js'
-import type { TrackedKinds } from '../tracked-outputs.js'
+import { MAX_SPARED, type TrackedKinds } from '../tracked-outputs.js'
 import { DOTENV_PROBE, DOTENV_PROBE_TOP, ignoredFilesProbe } from '../dotenv-probe.js'
 
 /** `path.relative` with forward slashes — the shape an ESM specifier or a report line needs. */
@@ -1676,7 +1677,15 @@ function buildTask(
       } else outFiles.push(neg + o)
     }
 
-    const wild = wildcardOutput(outFiles, opts.tracked?.(pkgDir))
+    // A committed file a literal-tail wildcard reaches is taken back, as
+    // the runtime spares a tracked output; past the runtime's limit the
+    // task stays uncached.
+    for (const o of [...outFiles]) {
+      const hits = literalTailMatches(o, opts.tracked?.(pkgDir))
+      if (hits !== null && hits.length <= MAX_SPARED)
+        for (const h of hits) if (!outFiles.includes(`!${h}`)) outFiles.push(`!${h}`)
+    }
+    const wild = wildcardOutput(outFiles, opts.tracked?.(pkgDir), true)
     if (wild !== undefined) {
       todos.push(wildcardTodo(wild))
       return { name, todos, task, uses }

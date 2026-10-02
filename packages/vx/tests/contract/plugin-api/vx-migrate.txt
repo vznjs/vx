@@ -184,6 +184,7 @@ export interface TrackedKinds {
   readonly exts: ReadonlySet<string>
   readonly dirs: ReadonlySet<string>
   readonly tops: ReadonlySet<string>
+  readonly files: readonly string[]
 }
 == type TurboCacheConfig (src/turbo-cache/index.ts)
 export interface TurboCacheConfig {

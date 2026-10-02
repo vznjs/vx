@@ -84,10 +84,38 @@ export function ownFileTodo(own: { glob: string; file: string }): string {
 export function wildcardOutput(
   files: readonly string[],
   tracked?: TrackedKinds,
+  /** Let a literal-tail glob through once its tracked matches are taken back (`literalTailMatches`). */
+  literalTail = false,
 ): string | undefined {
   return files.find(
     (o) =>
-      !o.startsWith('!') && !isLiteralPattern(o.split('/')[0] ?? '') && !untrackedKind(o, tracked),
+      !o.startsWith('!') &&
+      !isLiteralPattern(o.split('/')[0] ?? '') &&
+      !untrackedKind(o, tracked) &&
+      !(
+        literalTail &&
+        (literalTailMatches(o, tracked)?.every((m) => files.includes(`!${m}`)) ?? false)
+      ),
+  )
+}
+
+/**
+ * The tracked files a wildcard-first glob with a literal rest can reach
+ * (clerk's builds output `*\/package.json`, the subpath stubs it commits):
+ * it reaches no other file, so with each of these taken back by a `!` it
+ * reaches no source. Null for any other shape, or with `tracked` unknown.
+ */
+export function literalTailMatches(glob: string, tracked?: TrackedKinds): string[] | null {
+  if (tracked === undefined || glob.startsWith('!')) return null
+  const segs = glob.replace(/^(\.\/)+/, '').split('/')
+  const [first, ...rest] = segs
+  if (first === undefined || rest.length === 0 || first.includes('**')) return null
+  if (/[^A-Za-z0-9*?._@+-]/.test(first) || !rest.every((s) => isLiteralPattern(s) && s !== ''))
+    return null
+  const tail = `/${rest.join('/')}`
+  const head = new Bun.Glob(first)
+  return tracked.files.filter(
+    (f) => f.endsWith(tail) && f.split('/').length === segs.length && head.match(f.split('/')[0]!),
   )
 }
 

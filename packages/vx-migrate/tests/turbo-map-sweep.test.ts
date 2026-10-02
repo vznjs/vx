@@ -729,7 +729,8 @@ describe('turbo-map: a wildcard-first output of an untracked kind', () => {
     ['*.ts', false],
     ['*.{xml,json}', false],
     ['**/*.xml', false],
-    ['*/report.xml', false],
+    // It reaches only `<dir>/report.xml`, and the package tracks none.
+    ['*/report.xml', true],
     ['report*', false],
     ['**/dist/**', true],
     ['./**/build/**', true],
@@ -769,8 +770,9 @@ describe('turbo-map: a wildcard-first output of an untracked kind', () => {
                 exts: new Set(['ts', 'json']),
                 dirs: new Set(['src']),
                 tops: new Set(['src', 'package.json']),
+                files: ['src/index.ts', 'package.json'],
               }
-            : { exts: new Set(), dirs: new Set(), tops: new Set() },
+            : { exts: new Set(), dirs: new Set(), tops: new Set(), files: [] },
       },
     )
     expect(mapped.projects[0]!.tasks[0]!.task!['cache'] !== undefined).toBe(cached)

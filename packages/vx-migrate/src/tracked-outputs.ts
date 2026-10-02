@@ -78,6 +78,8 @@ export interface TrackedKinds {
   readonly exts: ReadonlySet<string>
   readonly dirs: ReadonlySet<string>
   readonly tops: ReadonlySet<string>
+  /** The files themselves, project-relative. */
+  readonly files: readonly string[]
 }
 
 /**
@@ -93,16 +95,18 @@ export function trackedKinds(tracked: readonly string[]): (rel: string) => Track
       const exts = new Set<string>()
       const dirs = new Set<string>()
       const tops = new Set<string>()
+      const files: string[] = []
       const all = rel === '' || rel === '.'
       for (const f of filesUnder(tracked, rel)) {
         const own = all ? f : f.slice(rel.length + 1)
+        files.push(own)
         const ext = path.posix.extname(own)
         if (ext !== '') exts.add(ext.slice(1).toLowerCase())
         const segs = own.split('/')
         tops.add(segs[0]!)
         for (let i = 0; i < segs.length - 1; i++) dirs.add(segs[i]!)
       }
-      memo.set(rel, (kinds = { exts, dirs, tops }))
+      memo.set(rel, (kinds = { exts, dirs, tops, files }))
     }
     return kinds
   }
@@ -165,7 +169,7 @@ function coveredTracked(globs: readonly string[], files: readonly string[]): str
 }
 
 /** Past this many, a task's take-backs cost its runs more than its cache saves. */
-const MAX_SPARED = 16
+export const MAX_SPARED = 16
 
 interface Outputs {
   files?: unknown
