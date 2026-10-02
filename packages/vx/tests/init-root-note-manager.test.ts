@@ -31,12 +31,12 @@ it("names the members the way the repo's manager runs them", async () => {
     try {
       if (file !== null) await writeFile(path.join(dir, file), body)
       const plan = migrateScripts([
-        meta('root', dir, { lint: 'eslint .' }),
+        meta('root', dir, { lint: 'eslint .', all: 'lerna run build' }),
         meta('a', path.join(dir, 'packages', 'a'), { build: 'tsc' }),
       ])
       rows[label] = plan.notes
         .find((n) => n.startsWith('root (the workspace root)'))
-        ?.match(/run the members \((.*), a runner\)/)?.[1]
+        ?.match(/running the members \((.*), a runner\)/)?.[1]
     } finally {
       await rm(dir, { recursive: true, force: true })
     }

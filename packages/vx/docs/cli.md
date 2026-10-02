@@ -1801,9 +1801,10 @@ pnpm docs-build`; through `run-s` / `run-p` / `npm-run-all` or `concurrently
 a check twice (D-45). The rest check the whole repo (`lint: oxlint .`,
 `test: vitest`) and become the root's own tasks in a root vx.config, when
 the root has a `"name"` (vx skips a nameless root's config) and no config
-of its own; a hand-written one stays as written. The report says which, its
-examples of running the members spelled by the repo's manager (`--workspaces`
-under npm, `yarn workspaces foreach` under Yarn 2+);
+of its own; a hand-written one stays as written. The report names each script left out and why
+(a `pre` / `post` hook goes with its script, D-85), its examples of running
+the members spelled by the repo's manager (`--workspaces` under npm, `yarn
+workspaces foreach` under Yarn 2+), and says which;
 with nothing mapped it names the root whenever it has a script, a member
 or not (pnpm's root is not), and tells a root with no `"name"` to add one
 first (vuejs/core), naming the scripts that would then map (react, D-87). A single-package repo's root is its project and maps.
