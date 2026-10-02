@@ -238,9 +238,10 @@ test: { exec: { command: 'bun test', retries: 1 } }
   retry (config error, like `cache` + `persistent`).
 
 The run-level default is `vx run --retry <n>` — it applies to tasks
-that don't declare their own `retries`; explicit config always wins,
-including an explicit `retries: 0`. The CLI flag never affects cache
-keys.
+that don't declare their own `retries`, never to a persistent one (a
+server that exits before it is ready fails at once); explicit config
+always wins, including an explicit `retries: 0`. The CLI flag never
+affects cache keys.
 
 #### `remote` (optional)
 
