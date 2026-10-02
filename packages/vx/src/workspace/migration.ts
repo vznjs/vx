@@ -8,7 +8,7 @@
 import { existsSync } from 'node:fs'
 import { unlink } from 'node:fs/promises'
 import path from 'node:path'
-import { relPosix, UserError } from '../util/index.js'
+import { executablePath, relPosix, UserError } from '../util/index.js'
 import type { ProjectMeta } from './workspace.js'
 import { loadWorkspace, unreachedHint, unreachedPackages } from './workspace.js'
 import { WORKSPACE_CONFIG_FILENAMES } from './project-loader.js'
@@ -365,6 +365,7 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
   } else if (empty) {
     report.push(
       `${verb}: no package.json scripts to turn into tasks.`,
+      ...(args.notes ?? []).map((n) => `note: ${n}`),
       hasWorkspaceFile
         ? `${workspaceName} already exists.`
         : dry
@@ -402,22 +403,60 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
       for (const f of replaced) report.push(`  ${relPosix(root, f)}`)
     }
   }
-  const firstTask =
-    plan.projects.flatMap((p) => p.tasks.map((t) => t.name)).find((n) => n === 'build') ??
-    plan.projects[0]?.tasks[0]?.name ??
-    'build'
+  const firstTask = nextTask(plan.projects.flatMap((p) => p.tasks))
   // A run of tasks none of which caches is never a hit, and a first try
   // that runs twice to see the cache work saw it run twice.
   if (!cached && [...todos.keys()].some(isCacheTodo)) {
     report.push('', 'no task caches yet: add the cache block a TODO shows, and a second run hits')
   }
   const installed = existsSync(path.join(root, 'node_modules', '@vzn', 'vx', 'package.json'))
-  report.push(
-    '',
-    `next: ${vxInvocation(process.env['npm_config_user_agent'], installed)} run ${firstTask} --all`,
-  )
+  // The line is the next thing to type, so it names what that run would
+  // refuse without: a git work tree (vx keys inputs on git's view) and,
+  // with no scripts mapped, a task to run.
+  const run = `${vxInvocation(process.env['npm_config_user_agent'], installed)} run ${firstTask} --all`
+  const steps = [
+    ...(inGitWorkTree(root) ? [] : ['git init']),
+    ...(empty ? [`declare a task as the example shows`] : []),
+  ]
+  report.push('', `next: ${steps.length === 0 ? run : `${steps.join(', ')}, then ${run}`}`)
   process.stdout.write(`${report.join('\n')}\n`)
   return 0
+}
+
+function inGitWorkTree(root: string): boolean {
+  try {
+    return (
+      Bun.spawnSync({
+        cmd: [executablePath('git'), 'rev-parse', '--is-inside-work-tree'],
+        cwd: root,
+        stdout: 'pipe',
+        stderr: 'ignore',
+      })
+        .stdout.toString()
+        .trim() === 'true'
+    )
+  } catch {
+    return false
+  }
+}
+
+/** Names that change the repo or the world rather than check it. */
+const NOT_A_TRY = /^(clean|reset|nuke|release|publish|deploy|version|format|fix)(?:$|[:\-_.])/
+
+/**
+ * The task the `next:` line runs: `build`, else the first task that
+ * neither serves nor changes anything, else the first. react-navigation, whose
+ * packages build in `prepack`, was told `vx run clean --all` (D-105).
+ */
+function nextTask(tasks: readonly GeneratedTask[]): string {
+  const names = tasks.filter((t) => t.task !== null).map((t) => t.name)
+  const fit = tasks.find(
+    (t) =>
+      t.task !== null &&
+      !NOT_A_TRY.test(t.name) &&
+      (t.task['exec'] as { persistent?: unknown } | undefined)?.persistent === undefined,
+  )
+  return names.includes('build') ? 'build' : (fit?.name ?? names[0] ?? 'build')
 }
 
 /**
@@ -439,7 +478,9 @@ export function vxInvocation(userAgent: string | undefined, installed: boolean):
     case 'pnpm':
       return installed ? 'pnpm vx' : 'pnpm dlx @vzn/vx'
     case 'yarn':
-      return installed ? 'yarn vx' : 'yarn dlx @vzn/vx'
+      // `dlx` is Yarn 2+; Yarn 1 answers `Command "dlx" not found`.
+      if (installed) return 'yarn vx'
+      return userAgent!.startsWith('yarn/1.') ? 'npx @vzn/vx' : 'yarn dlx @vzn/vx'
     default:
       return 'vx'
   }

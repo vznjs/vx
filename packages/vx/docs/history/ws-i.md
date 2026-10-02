@@ -243,6 +243,17 @@ compiled, 21 interleaved rounds: `run graph` main 962.6 ms median (min
 `restoreOutputs`) stays: the rows in hand would cross the `CacheLayer`
 seam.
 
+I-27. A frozen run reads the lock only for a config it reads. The run
+parsed the whole lock again even when the CLI's selection pass had staged
+every config (its load refused a frozen run without a lock);
+`LoadProjectsBase.lock` is now a reader asked only when a config is
+read from it, and `prepareRun` reads up front only when some configured
+project is not staged. Row: `read-once.unsafe.test.ts` counts one open
+of `vx-lock.json` for an `--affected --frozen` run (two before). 1,000
+packages, one edited, `run build --affected=HEAD~1`, compiled, 25
+interleaved rounds, `load configs` stage: main 23.3 ms median (min
+14.3), patch 15.2 (10.1), A/A 13.4 (10.1). Wall, 81 rounds: main 324.4
+(276.3), patch 322.3 (258.5), A/A 318.9 (269.1), within its noise.
 I-28. A closed cache leaves its WAL empty. With `PERSIST_WAL` (O-10)
 and the default `journal_size_limit` (-1), SQLite's last close
 checkpoints the WAL but keeps every frame, so each later connection
@@ -269,6 +280,14 @@ main). 1,000 packages, one edited, `run build --affected=HEAD~1`,
 compiled, 41 interleaved rounds: main 356.8 ms median (min 293.5),
 patch 311.9 (248.5), A/A 313.6 (255.5).
 
+I-31. A key names its input files by slicing the root off. `relFor`
+memoised `relPosix` per absolute path, and a Map lookup hashes the whole
+path per file per task; every input file is a normalized absolute path
+(`resolveInputs`), so under a normalized root its relative name is a
+slice, and the memo stays for anything else. Bench as I-30 (900 warm
+hits, 12,905 files), compiled, 21 interleaved rounds: `classify + probe`
+main 256.9 ms median (min 217.2), patch 241.8 (194.0), A/A 238.9
+(193.8); in-process total 600.1 (515.1), 551.6 (490.8), 550.6 (455.2).
 I-29. A `files` declaration compiles once per process. `resolveFiles`
 split, normalized and compiled each task's `cache.inputs.files` (and its
 outputs' matcher) per task, though a workspace declares a handful of
@@ -278,8 +297,93 @@ packages warm, compiled, 25 interleaved rounds: `classify + probe` main
 86.3 ms median (min 73.1), patch 77.3 (73.2), A/A 78.3 (67.3);
 in-process total 280.0 (251.6), 272.4 (245.0), 274.4 (235.6).
 
+I-32. A declaration matches each input path once. `resolveFiles` ran
+every glob of a declaration over every task's files, though projects
+repeat their relative paths (`src/index.ts`, `package.json`); the plan
+(keyed on the files and own outputs) memoizes each path's verdict, and
+the per-project nested check stays outside. Bench as I-30, fresh git
+index in every copy, 21 interleaved rounds: `classify + probe` main
+196.3 ms median (min 178.5), patch 147.1 (130.4), A/A 202.3 (183.3);
+total 407.8 (369.9), 353.3 (310.4), 410.3 (371.2). 1,000 small
+projects: neutral (287.1 / 291.1 / 293.4).
+
+I-33. A config load checks the built-ins by position. After each
+evaluated config, the check that it left the built-ins alone did a
+by-key lookup per property and a second pass for deleted keys, ~0.1 ms
+a config. The same keys in the same order with the same descriptors
+now prove "unchanged"; any difference falls to the full check.
+1,000 projects, cold `run build`, 12 interleaved rounds: `load configs`
+main 401.2 ms median (min 381.3), patch 387.8 (343.5), A/A 410.1
+(366.9). Rows: `builtins-restore.test.ts` (a deleted property, a
+deleted last one, a delete plus an add that keep the count).
+I-34. The git listing partitions by concatenation. `applyGitEnumeration`
+joined each tracked file with `path.join`, took a `path.relative` per
+project and sorted a listing git prints in order (I-30's rule). Bench as
+I-30, 15 interleaved rounds, the pass alone: main 18.5 ms median (min
+16.6), patch 15.0 (11.4), A/A 16.4 (14.2).
+I-35. The `ls-files --debug` listing parses in one pass. The records
+were rejoined for the parser to split again, with a regex per size line
+and the stage regex twice per record. Bench as I-30, timed in place:
+split + parse ~24 + ~13 ms on main, ~8.5 + ~12.3 patched.
+
+I-30. A key's input paths join by concatenation (#2128). Git prints
+normalized relative paths, so under an absolute, normalized project dir
+a candidate is the dir, a slash and the path; `path.resolve` per file
+was ~27 ms of the run, and re-sorting an already sorted slice ~9 ms
+more. 300 projects of 40 source files (12,905 tracked), `build test
+lint`, 900 warm hits, compiled, 21 interleaved rounds: `classify +
+probe` main 249.1 ms median (min 216.8), patch 226.3 (194.2), A/A 219.2
+(196.2).
+I-36. `dropResizedOids` looks each trusted path up once (#2220). Its
+two passes each found a path's index entry by path; the first now keeps
+them side by side. Bench as I-30, timed in place: the pass ~17.2 ms on
+main, ~13.6 patched (the check 8.2 → 2.4).
+I-37. The package graph builds its reach on first use (#2228). REACH
+and its reverse adjacency were built eagerly; only the transitive
+accessors read them, and an unscoped run asks none. 1,000 projects,
+warm, 14 rounds, `package graph`: main 13.6 ms median (min 8.5), patch
+11.4 (7.1), A/A 14.9 (9.9).
+
+I-38. Cold configs load 128 at a time (#2241). The main thread is
+mostly idle in the lanes' imports (~52 ms of CPU in a ~420 ms stage),
+so a wider window overlaps more; 128 stays under macOS's default
+256-descriptor limit. 1,000 projects, cold, 12 rounds, `load configs`:
+main (64) 432.3 ms median (min 391.1), patch 411.2 (369.2), A/A 435.8
+(412.3).
+I-39. An attempt takes its stop listener off when it settles (#2248).
+Each executed task added an `abort` listener to the run's stop signal
+and never removed it; each add scans the list for a duplicate, so the
+cost was quadratic. `addEventListener` self time: 93 ms of a 1,000-task
+cold run on main, below the top 40 frames patched. Row:
+`stop-listener.test.ts`.
+I-40. vx's own RSS peak comes from getrusage (#2256), not
+`/proc/self/status`: the same mark, never below `VmHWM`, one syscall.
+`ownRssHighWater` inclusive: 75.6 ms of a 1,000-task cold run on main,
+13.9 patched. Row: `own-rss-high-water.test.ts` (the current RSS and a
+kilobyte unit each fail it).
+I-41. A warm config's key is synchronous (#2266): the batch identities
+were awaited through a promise per file and per config. 1,000 projects,
+warm, 14 rounds, `load configs`: main 37.3 ms median (min 30.7), patch
+32.3 (27.9), A/A 35.5 (29.5).
+
 ## Leads for other streams
 
+- **A: a cold save commits one SQLite transaction per entry.** The
+  commits are 292 ms of a 1,000-task cold run's main thread (~0.3 ms
+  each, the ~16 pages of I-6) and the artifact rename inside them 87 ms.
+  A group commit over the save lane's queue would cut both, but it
+  changes when a saved entry becomes visible and how long the write
+  lock is held, in save-path code; not a small PR.
+- **Any: a task's spawn holds the main thread ~1.2 ms under load
+  (I-35's cold profile).** Bun spawns with `vfork`, so the parent waits
+  for the child's `execve`: 1,225 ms of a 1,000-task cold run's main
+  thread. Every `Bun.spawn` option vx passes (env, `detached`, the extra
+  fd) costs the same as a bare spawn (0.6–0.7 ms alone). Only spawning
+  off the main thread would move it.
+- **Any: the group guard's release line is a pipe write per task**
+  (`guardWrite`, ~80 ms of the same run). Batching the lines would
+  widen the window in which a reused pgid could be killed, which
+  kill-tree.ts says never happens; not taken.
 - **Owner / coordinator: skip macOS where it cannot differ from
   Linux (I-14).** 135 of 436 commits since 2026-09-27 touch nothing the
   macOS job can see differently: not core's `src/`, `tests/`,
@@ -380,3 +484,13 @@ in-process total 280.0 (251.6), 272.4 (245.0), 274.4 (235.6).
   under a full local gate (I-19)**: twice, 9.9 and 14.8 s, the removal
   of `OUTPUT_DIRS_CAP + 1` directories inside the sandbox; green in
   shard-9 run alone on main and on the patch.
+
+- **Owner: a stale git index costs every run a re-hash (I stream).** On a
+  worktree whose index stat data no longer matches the files (a copied or
+  cache-restored checkout, a tool that rewrites files in place), `git
+status` re-hashes every tracked file, and vx runs it with
+  `--no-optional-locks` (item 880), so the index is never refreshed and
+  every run pays again. 300 projects, 12,905 files: 155–218 ms against
+  39–52 ms once any plain `git status` refreshed it. A fix takes the index
+  lock (a refresh when the walk was slow, or `update-index --refresh`),
+  which is the contention item 880 removed: the owner's call.

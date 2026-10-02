@@ -155,7 +155,7 @@ describe.skipIf(strace === null)('one run touches each project file once, Bun in
   )
 
   it(
-    'an --affected --frozen run reads the lock twice: the selection and the run',
+    'an --affected --frozen run reads the lock once, in the selection',
     async () => {
       const vx = (...args: string[]) => {
         const p = Bun.spawnSync({ cmd: [process.execPath, BIN, ...args], cwd: root })
@@ -165,9 +165,10 @@ describe.skipIf(strace === null)('one run touches each project file once, Bun in
       await writeFile(path.join(root, 'packages', 'a', 'src', 'index.js'), 'export const x = 1\n')
       gitInitCommit(root)
       const run = await tracedRun('affected', ['run', 'build', '--affected=HEAD~1', '--frozen'])
-      // The selection's workspace-glob owners parsed it a third time only
-      // to learn it exists, which the staged load had already proved.
-      expect(run('vx-lock.json').filter((c) => c === 'openat')).toEqual(['openat', 'openat'])
+      // The selection's workspace-glob owners parsed it again only to learn
+      // it exists, which the staged load had already proved (I-23); the run
+      // parsed it again for configs the selection had staged (I-27).
+      expect(run('vx-lock.json').filter((c) => c === 'openat')).toEqual(['openat'])
     },
     TIMEOUT,
   )
