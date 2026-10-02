@@ -5846,9 +5846,14 @@ Bun.spawn = (cmd, opts) => {
       await Promise.all(pids.map((p) => waitForDead(p, 2_000)))
       const alive = pids.filter(isAlive)
       // A session leader's session id is its own pid: the `setsid` child.
-      const leaders = alive.filter(
-        (p) => Number(readFileSync(`/proc/${p}/stat`, 'utf8').split(') ')[1]!.split(' ')[3]) === p,
-      )
+      // One that exits after the filter has no entry, and is no leader.
+      const leaders = alive.filter((p) => {
+        try {
+          return Number(readFileSync(`/proc/${p}/stat`, 'utf8').split(') ')[1]!.split(' ')[3]) === p
+        } catch {
+          return false
+        }
+      })
       for (const p of alive) process.kill(p, 'SIGKILL')
       return { started: pids.length, alive, leaders }
     }

@@ -265,6 +265,16 @@ files and their git objects; 11.1 s for the row and its hooks. The row
 11 ms after, under the same load. No other row of the suites makes a
 fixture past 1,500 files.
 
+M-26. M-25's sweep (all twelve shards under `strace -f` beside four busy
+loops) also timed out `foreign-flags.test.ts` › a Turbo or Nx verb names
+what does it in vx: 22 `vx` starts in series, 1.6 s idle and past bun's
+5 s there. They are independent, so they now run at once and the row
+asserts the whole result set: 0.5 s idle; under the same strace and load
+the old row fails (5.0 s) and the new passes (3.6 s). The sweep's other
+5 s timeout, `ci-output.test.ts` › no escape sequence …, runs its verbs
+in an order the state needs (miss, hit, failure, readers), so it is left;
+`show-info.test.ts`'s sandbox line failed only because strace cannot
+nest under strace.
 M-24. M-23's class, the rest of it (a first write in a fresh shell
 against a 300 ms deadline): `persistent-ready-timeout.test.ts` › a task
 that overruns is SIGTERMed and › never-matching readyWhen + timeout
@@ -298,6 +308,30 @@ of the SIGINT without running its INT trap while waiting on a foreground
 ran the trap 100 of 100 with the SIGINT landing anywhere in the loop.
 macOS's `/bin/sh` is bash 3.2, not testable here; that it differs is the
 open suspicion, not a cause.
+
+M-27. `npm-pack.unsafe.test.ts` (ws-p's lead: `JSON Parse error` once in
+a gate, npm 10.9.4). The helper parsed stdout and stderr joined, from
+the first `[`. npm prints its update notice to stderr at exit when its
+background registry check finishes before the command, a race a loaded
+gate's slower pack loses: a `prepack` of `sleep 4` and no
+`_update-notifier-last-checked` printed "New major version of npm
+available! 10.9.4 -> 12.2.0" after the JSON, and the joined parse threw.
+The JSON is now stdout's alone. Row: a fake npm whose stderr holds the
+notice (red without the fix, the gate's error).
+
+M-28. `sandbox-runtime.unsafe.test.ts` › a traced sandboxed one-shot
+task's children die with vx that is descheduled after the spawn (I-9's
+lead: ENOENT reading `/proc/<pid>/stat` after `isAlive`). `isAlive` sent
+signal 0, then read the state, and took the read's ENOENT for "no
+procfs, so alive"; but it reads only where procfs is this process's own,
+so ENOENT there is a pid reaped between the two calls, and a dying child
+read alive and then threw at the row's next read. Gone now reads dead,
+and the row's session-leader read counts a vanished pid as no leader.
+Row (`alive-helper.unsafe`): signal 0 held to "lands" for a pid with no
+entry (red without the fix). macOS is unchanged: there
+`procfsIsOwn()` is false and nothing is read. Also probed, nothing to
+fix: both `wedged.test.ts` leads (`sent` 3 for 4, 0 for 1) counted RSTs
+sent, which F-9 replaced with the peer's count of HEADERS.
 
 ## Leads for other streams
 

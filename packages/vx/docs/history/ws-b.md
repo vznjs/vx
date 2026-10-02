@@ -1200,3 +1200,51 @@ successful ones. A refused `chdir` is a denied read of the directory:
 both line shapes, resolved where its process stood. Rows:
 `sandbox-chdir-denied.unsafe.test.ts` (both red without the fix); the
 B-61 row's fixture `chdir("nope")` is now a denial too.
+
+B-68. A workspace under a directory whose name holds PATH's delimiter
+(`…/x:y/ws`) split each `node_modules/.bin` into two PATH entries: one
+naming nothing, and one RELATIVE, so resolved against the task's cwd,
+where a planted file ran. The 127 verdict then said the bin was first on
+PATH. `buildIsolatedEnv` now leaves such a directory out, and
+`shellVerdict` names it and says to move the workspace. Rows:
+`env-path-delimiter.test.ts` (all three red without the fix).
+
+B-70. The sandbox runtime reads a Linux path holding `*` or `?` as a
+glob, as it does `[` (B-57, B-59, B-60), and no spelling makes either
+literal (its rewrite of each runs inside a class too): a read grant of
+`a*b.txt` also granted `aXb.txt`. `bindableReads` leaves such a read
+grant out (said once; the refused read is reported), `bindableWrites`
+drops such a write grant with the bracket ones (a trailing `/**`, which
+the runtime strips, kept), and a project under `w*s/` is refused. A
+backslash the runtime skips outright: Bun's `realpathSync` throws ENOENT
+on a path holding one (Node's does not; `stat` finds it), and the
+runtime mounts no path it cannot resolve, so a sandboxed project under
+`back\slash/` saw nothing and ran in `$HOME`. Such grants are left out
+the same way and such a project is refused on Linux; a row pins the Bun
+fact. Rows: `sandbox-glob-chars.unsafe.test.ts` (each changed site
+mutated back reddens one).
+
+B-71. On Linux a file write grant binds its directory (bwrap cannot
+rename onto a file mount), and a read there was never refused or
+reported: a task granted `write: ['out.txt']` read an undeclared
+`secret.txt`, and after it changed a cached run replayed its old bytes
+(reproduced). vx now lists each widened directory as the task starts
+(`widenedEntries`); the strace pass reads the successful `openat` calls
+not for writing alone and reports a read of one of those entries that no
+grant covers, and the directory's listing while it holds one. The
+declared file, other grants and what the task made itself stay readable.
+`grep -r` and `find` open entries relative to a directory's descriptor,
+so such a task traces with `-y`, whose printed paths place the read.
++3 ms per 20,000 traced opens, and `-y`, only when a grant was widened.
+Rows: `sandbox-widened-reads.unsafe.test.ts` (each guard mutated back
+reddens one); the 2026-09-20 "no violation" row now expects the reports.
+
+B-72. `runSandboxed` awaits the runtime, the tracer probe and the wrap
+before it spawns, and a stop that landed there was never looked at
+again: the task spawned after the teardown had swept the run's
+children, and ran (an aborted call wrote its marker, exit 0). It now
+asks just before the spawn and returns the stop's signal exit
+(`stopSignal`, shared with the local executor's B-55 path). The
+tracer-retry row that aborted before the call leaned on the bug and now
+aborts mid-run. Rows: `sandbox-abort-before-spawn.unsafe.test.ts` (both
+stop rows red without the fix).
