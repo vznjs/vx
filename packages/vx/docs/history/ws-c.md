@@ -952,3 +952,10 @@ scheduler's line. The error object is kept (its class, cause and code),
 so a refusal still prints plainly and a bug as an internal error.
 Row (`plugin-capabilities.test.ts` › an executor's throw reaches the
 task's own stderr): red without the fix. `modules/executor.md` says so.
+
+## C-72: `--continue` rides no wire
+
+`cli.md` § Failure propagation ended "The mode rides the wire, so
+distributed runs honor it": the whole-run backend seam that carried it
+went with vx cloud. The mode is the local scheduler's; a task a plugin
+executor runs elsewhere is one dispatch like any other. Docs only.

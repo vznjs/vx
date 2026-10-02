@@ -748,7 +748,8 @@ down with it:
   from a healthy run), and the next run without the failure rebuilds the
   rest.
 
-The mode rides the wire, so distributed runs honor it.
+The mode is the local scheduler's: a task a plugin executor runs
+elsewhere is one dispatch, failed or not, like any other.
 
 ### `--download <mode>`
 
