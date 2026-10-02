@@ -33,32 +33,29 @@ describe('a bin directory holding the PATH delimiter', () => {
     )
   })
 
-  it.skipIf(process.platform === 'win32')(
-    'a task does not run a file the split entry names relative to its cwd',
-    async () => {
-      const parent = await realpath(await mkdtemp(path.join(os.tmpdir(), 'vx-delim-')))
-      const outer = path.join(parent, `x${D}y`)
-      await mkdir(outer)
-      try {
-        const root = await makeWorkspace({ dir: outer, prefix: 'ws-' })
-        const dir = await addProject(root, 'app', {
-          config: `export default { tasks: { t: { exec: { command: 'mytool' } } } }\n`,
-        })
-        // The split's relative half: `y/<ws>/packages/app/node_modules/.bin`.
-        const rel = path.relative(outer, path.join(dir, 'node_modules', '.bin'))
-        const planted = path.join(dir, 'y', rel)
-        await mkdir(planted, { recursive: true })
-        const marker = path.join(parent, 'ran')
-        await writeFile(path.join(planted, 'mytool'), `#!/bin/sh\necho > '${marker}'\n`)
-        await chmod(path.join(planted, 'mytool'), 0o755)
-        expect(existsSync(path.join(planted, 'mytool'))).toBe(true)
+  it('a task does not run a file the split entry names relative to its cwd', async () => {
+    const parent = await realpath(await mkdtemp(path.join(os.tmpdir(), 'vx-delim-')))
+    const outer = path.join(parent, `x${D}y`)
+    await mkdir(outer)
+    try {
+      const root = await makeWorkspace({ dir: outer, prefix: 'ws-' })
+      const dir = await addProject(root, 'app', {
+        config: `export default { tasks: { t: { exec: { command: 'mytool' } } } }\n`,
+      })
+      // The split's relative half: `y/<ws>/packages/app/node_modules/.bin`.
+      const rel = path.relative(outer, path.join(dir, 'node_modules', '.bin'))
+      const planted = path.join(dir, 'y', rel)
+      await mkdir(planted, { recursive: true })
+      const marker = path.join(parent, 'ran')
+      await writeFile(path.join(planted, 'mytool'), `#!/bin/sh\necho > '${marker}'\n`)
+      await chmod(path.join(planted, 'mytool'), 0o755)
+      expect(existsSync(path.join(planted, 'mytool'))).toBe(true)
 
-        const r = await run({ cwd: root, tasks: ['t'], log: quiet })
-        expect(r.ok).toBe(false)
-        expect(existsSync(marker)).toBe(false)
-      } finally {
-        await rm(parent, { recursive: true, force: true })
-      }
-    },
-  )
+      const r = await run({ cwd: root, tasks: ['t'], log: quiet })
+      expect(r.ok).toBe(false)
+      expect(existsSync(marker)).toBe(false)
+    } finally {
+      await rm(parent, { recursive: true, force: true })
+    }
+  })
 })
