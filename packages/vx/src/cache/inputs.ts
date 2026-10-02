@@ -385,6 +385,7 @@ async function runRuntimeCommand(
   command: string,
   cwd: string,
   binDirs: readonly string[],
+  owner: RuntimeMemo | undefined,
 ): Promise<string> {
   const ambient = process.env['PATH']
   const prefix = binDirs.join(path.delimiter)
@@ -416,6 +417,12 @@ async function runRuntimeCommand(
     throw new UserError(`cache.inputs runtime command failed to spawn: ${command} (cwd: ${cwd})`)
   }
   liveProbes.add(proc)
+  let mine: Set<ReturnType<typeof Bun.spawn>> | undefined
+  if (owner !== undefined) {
+    mine = probesOf.get(owner) ?? new Set()
+    probesOf.set(owner, mine)
+    mine.add(proc)
+  }
   killProbesOnExit()
   let stdout, stderr, exitCode
   try {
@@ -426,6 +433,7 @@ async function runRuntimeCommand(
     ])
   } finally {
     liveProbes.delete(proc)
+    mine?.delete(proc)
   }
   const output = `${stdout}${stderr}`.trim()
   if (exitCode !== 0) {
@@ -449,18 +457,26 @@ async function runRuntimeCommand(
 const liveProbes = new Set<ReturnType<typeof Bun.spawn>>()
 let probeExitHooked = false
 
+type RuntimeMemo = Map<string, Promise<string>>
+/** The probes each run started, by the run's memo: one run's stop is not another's. */
+const probesOf = new WeakMap<RuntimeMemo, Set<ReturnType<typeof Bun.spawn>>>()
+
 /**
- * Kill every runtime probe still running, with its tree. A run's stop asks
- * this: a Ctrl-C while a probe ran waited for the probe, or for the signal
- * handler's bound, about 7 s, before vx exited (C-65). Its answer is no
- * longer needed; its caller sees it fail and the run reads it aborted.
+ * Kill every runtime probe still running that these memos (one run's
+ * `runtimeCache` and `workspaceRuntimeCache`) started, with its tree. A
+ * run's stop asks this: a Ctrl-C while a probe ran waited for the probe,
+ * or for the signal handler's bound, about 7 s, before vx exited (C-65).
+ * Its answer is no longer needed; its caller sees it fail and the run
+ * reads it aborted. Another run in the process keeps its own.
  */
-export function stopRuntimeProbes(): void {
-  for (const p of liveProbes) {
-    try {
-      process.kill(-p.pid, 'SIGKILL')
-    } catch {
-      // the group is gone
+export function stopRuntimeProbes(...memos: readonly RuntimeMemo[]): void {
+  for (const memo of memos) {
+    for (const p of probesOf.get(memo) ?? []) {
+      try {
+        process.kill(-p.pid, 'SIGKILL')
+      } catch {
+        // the group is gone
+      }
     }
   }
 }
@@ -501,7 +517,7 @@ async function resolveRuntimeValues(
       const key = `${memoKeyPrefix}${cmd}`
       let p = memo?.get(key)
       if (p === undefined) {
-        p = runRuntimeCommand(cmd, cwd, binDirs)
+        p = runRuntimeCommand(cmd, cwd, binDirs, memo)
         memo?.set(key, p)
       }
       return [cmd, await p] as [string, string]
@@ -1057,6 +1073,13 @@ interface FilesPlan {
   positiveGlobs: Bun.Glob[]
   /** The literal entries, each naming one path (see `unmatchedLiterals`). */
   literals: string[]
+  /**
+   * Whether a project-relative path is an input by the declaration alone:
+   * a positive glob selects it, and no exclude and no own output takes it
+   * back. Projects repeat their relative paths (`src/index.ts`,
+   * `package.json`), so each is matched once per plan.
+   */
+  verdicts: Map<string, boolean>
 }
 
 /**
@@ -1098,6 +1121,7 @@ function filesPlan(
           ownOutput: outputMatcher(ownOutputs, globFor),
           positiveGlobs: asTrees(positive).map(globFor),
           literals: positive.map(normalizeGlob).filter(isLiteralPattern).map(stripTrailingSlash),
+          verdicts: new Map<string, boolean>(),
         }
   filesPlans.set(key, plan)
   return plan
@@ -1160,17 +1184,18 @@ async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
   const unmatchedLiterals = new Set(plan.literals)
   // First pass: glob-filter to candidate absolute paths (no I/O).
   const candidates: string[] = []
+  const verdicts = plan.verdicts
   for (const rel of gitFiles) {
     if (unmatchedLiterals.size > 0) settleLiterals(unmatchedLiterals, rel)
-    let matched = false
-    for (const g of positiveGlobs) {
-      if (g.match(rel)) {
-        matched = true
-        break
-      }
+    let input = verdicts.get(rel)
+    if (input === undefined) {
+      input =
+        positiveGlobs.some((g) => g.match(rel)) &&
+        !excludeGlobs.some((g) => g.match(rel)) &&
+        !ownOutput(rel)
+      verdicts.set(rel, input)
     }
-    if (!matched) continue
-    if (nested(rel) || excludeGlobs.some((g) => g.match(rel)) || ownOutput(rel)) continue
+    if (!input || nested(rel)) continue
     candidates.push(path.resolve(args.projectDir, rel))
   }
   if (unmatchedLiterals.size > 0) {

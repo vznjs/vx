@@ -748,7 +748,8 @@ down with it:
   from a healthy run), and the next run without the failure rebuilds the
   rest.
 
-The mode rides the wire, so distributed runs honor it.
+The mode is the local scheduler's: a task a plugin executor runs
+elsewhere is one dispatch, failed or not, like any other.
 
 ### `--download <mode>`
 
@@ -1767,6 +1768,12 @@ of its own; a hand-written one stays as written. The report says which;
 with nothing mapped it names the root whenever it has a script, a member
 or not (pnpm's root is not), and tells a root with no `"name"` to add one
 first (vuejs/core), naming the scripts that would then map (react, D-87). A single-package repo's root is its project and maps.
+A member's script that runs another member's work (`pnpm -C ../pinia
+run build`, `yarn workspace <name>`, `-r` / `--filter`, a `cd` or `-C`
+/ `--cwd` / `--prefix` into another member) keeps its command and gets a
+TODO naming that part: the graph runs that member's task once, so name it
+under `dependsOn` and drop it from the command (pinia). A directory inside
+the member or the root is no other member.
 A script that is nothing but `npm run <other>` (`pnpm <other>`, `yarn
 <other>`, `bun run <other>`, `npm test`, `npm start`) becomes a **group**
 over `<other>` — `dependsOn` and no command — so the graph runs and
@@ -1791,7 +1798,9 @@ and when no task caches it says a cache block from a TODO makes the
 second run a hit. Its `next:` line is a command the user can type: the
 runner that started vx (`npx`, `pnpm`, `yarn`, `bunx`, read from
 `npm_config_user_agent`) with the installed `vx` bin, else the
-`@vzn/vx` package; with no runner, a bare `vx`.
+`@vzn/vx` package; with no runner, a bare `vx`. Outside a git work tree it starts with
+`git init`, and with no script mapped with declaring a task, since the
+run would refuse without either.
 
 `vx init --plugin <seam>` writes a plugin instead: `plugins/<seam>.ts`,
 a small runnable plugin for that seam (`executor`, `cache`,
@@ -1943,7 +1952,7 @@ it directly if you want the frozen view).
 
 ```
 vx show                          # list every project
-vx show <project>                # one project's resolved config
+vx show <project>                # one project's resolved config (`//`: the root project's)
 vx show <pkg>#<task>             # a single task (`//#<task>`: the root project's)
 vx show <task>                   # that task in every project declaring it
 vx show ... --format json        # machine-readable (default: pretty)
@@ -1971,7 +1980,8 @@ reads: description, command (`(group)` for group tasks), `dependsOn`,
 `sandbox`, `persistent`, and the cache block
 (`inputs.files` / `.workspaceFiles` / `.env` / `.tasks` / `.runtime` /
 `.workspaceRuntime`, `outputs.files` / `.workspaceFiles`). Fields the
-task does not set are not printed. `--format json` emits `{ name, dir,
+task does not set are not printed; a value that spans lines (a
+multi-line command) continues under its first line. `--format json` emits `{ name, dir,
 config }` with the config exactly as resolved. `vx show <pkg>#<task>`
 narrows to one task (`{ name, dir, task, config }` in JSON). A bare
 name that is no project is a task: `vx show build` prints the block
@@ -2038,7 +2048,7 @@ plugins:          2 — @vzn/vx-reapi (executor, cache); @vzn/vx-otel (telemetry
 workers:          2 — cgroup CPU quota 2 of 8 cores
 memory:           13 GB usable — cgroup limit; the machine has 16 GB
 cache dir:        /work/repo/.vx/cache
-cache versions:   keys vx-cache-v38 · index schema v28
+cache versions:   keys vx-cache-v39 · index schema v28
 cache entries:    42 (1.3 GB)
 orphans:          3 artifacts (12 MB) the index does not know — `vx cache prune` reaps them
 task runs (24h):  7 (5 cache hits)
@@ -2175,7 +2185,8 @@ app#build — run 019f5a02-…
 
 Under the rows, `what to do` gives one line per changed kind: what
 moves it and how to stop a move the task does not need. An `upstream`
-line names the `vx why` to run next for each dependency that moved.
+line names the `vx why` to run next for each dependency that moved; a
+`config` line names the `vx show` that prints the task's config now.
 
 A hit's line is `cache-hit · key …` (or `cache-hit-remote`): the status
 names the hit and its tier, so only an executed run carries the word.
@@ -2437,7 +2448,7 @@ the two legends sum alike). The `time` spread counts executed tasks
 only — a hit's restore time never enters it — which is why one executed
 task reads as its own max, avg and min. The `result` row is the run in
 one line, last: tasks, cached (every hit, local or remote, over every
-task with a cache) and the wall time — `3 tasks · all cached · 40ms`
+task with a cache that ran or hit; a skipped task asked no cache) and the wall time — `3 tasks · all cached · 40ms`
 when nothing that could hit ran, with `N failed` after the count on a
 red run. A task with no `cache` block could never hit, so it is
 counted apart (`1 task · 1 no-cache · 37ms` for `vx run dev`). A test renders this run and

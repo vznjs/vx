@@ -6,6 +6,7 @@
 
 import path from 'node:path'
 import { absolutize, atOrUnder, isUnderAny, localBindingOn, toRealPath } from './sandbox-paths.js'
+import { bindableReads } from './sandbox-binds.js'
 import type {
   ResolvedSandboxConfig,
   SandboxedRunArgs,
@@ -100,7 +101,14 @@ export interface DeniedCall {
 // a child starts in its parent's cwd as it was at the fork.
 const CHDIR_DONE_RE = new RegExp(`^(\\d+)\\s+chdir\\(${QUOTED}\\)\\s*=\\s*0`)
 const CHDIR_UNFINISHED_RE = new RegExp(`^(\\d+)\\s+chdir\\(${QUOTED} <unfinished`)
-const CHDIR_RESUMED_RE = /^(\d+)\s+<\.\.\. chdir resumed>.*?=\s*(-?\d+)/
+const CHDIR_RESUMED_RE =
+  /^(\d+)\s+<\.\.\. chdir resumed>.*?=\s*(-?\d+)(?:\s+(ENOENT|EACCES|EPERM))?/
+// A denied `chdir` is a denied read of the directory: `cd src` into a
+// directory no grant holds failed with no line of the trace's own, and
+// `cd src || …` passed and cached.
+const CHDIR_DENIED_RE = new RegExp(
+  `^(\\d+)\\s+chdir\\(${QUOTED}\\)\\s*=\\s*-1\\s+(ENOENT|EACCES|EPERM)`,
+)
 const FCHDIR_RE = /^(\d+)\s+(?:fchdir\(\d+\)|<\.\.\. fchdir resumed>.*?)\s*=\s*0/
 const FORK = '(?:clone3?|v?fork)'
 const FORK_DONE_RE = new RegExp(`^(\\d+)\\s+${FORK}\\(.*\\)\\s*=\\s*(\\d+)$`)
@@ -187,17 +195,32 @@ export function deniedCalls(text: string, cwd?: string): DeniedCall[] {
       }
       continue
     }
-    if (cwd !== undefined) follow(line)
+    // A refused or split `chdir` arrives here: its denial counts with or
+    // without the cwd tracking.
+    follow(line)
   }
   function follow(line: string): void {
     let m: RegExpExecArray | null
-    if ((m = CHDIR_DONE_RE.exec(line)) !== null) opsOf(m[1]!).push({ chdir: cStringPath(m[2]!) })
-    else if ((m = CHDIR_UNFINISHED_RE.exec(line)) !== null) chdirring.set(m[1]!, cStringPath(m[2]!))
-    else if ((m = CHDIR_RESUMED_RE.exec(line)) !== null) {
+    if ((m = CHDIR_DENIED_RE.exec(line)) !== null) {
+      denied(m[1]!, { syscall: 'chdir', rawPath: cStringPath(m[2]!), errno: m[3]! })
+      return
+    }
+    if ((m = CHDIR_UNFINISHED_RE.exec(line)) !== null) {
+      chdirring.set(m[1]!, cStringPath(m[2]!))
+      return
+    }
+    if ((m = CHDIR_RESUMED_RE.exec(line)) !== null) {
       const to = chdirring.get(m[1]!)
       chdirring.delete(m[1]!)
       if (to !== undefined && m[2] === '0') opsOf(m[1]!).push({ chdir: to })
-    } else if ((m = FCHDIR_RE.exec(line)) !== null) opsOf(m[1]!).push({ lost: true })
+      else if (to !== undefined && m[3] !== undefined) {
+        denied(m[1]!, { syscall: 'chdir', rawPath: to, errno: m[3] })
+      }
+      return
+    }
+    if (cwd === undefined) return
+    if ((m = CHDIR_DONE_RE.exec(line)) !== null) opsOf(m[1]!).push({ chdir: cStringPath(m[2]!) })
+    else if ((m = FCHDIR_RE.exec(line)) !== null) opsOf(m[1]!).push({ lost: true })
     else if ((m = FORK_DONE_RE.exec(line)) !== null) {
       forked(m[1]!, m[2]!, opsOf(m[1]!).length, line.includes('CLONE_FS'))
     } else if ((m = FORK_UNFINISHED_RE.exec(line)) !== null) {
@@ -252,7 +275,10 @@ export async function parseStraceViolations(
   // real paths (see `canonicalBaselines`), so comparing a link-path here
   // would report an explicitly-allowed read as a violation.
   const allowAbs = new Set<string>(
-    [...baselines.allowRead, ...args.config.allowRead].map((p) => toRealPath(absolutize(p))),
+    // A grant SRT could not mount (`bindableReads`) permits nothing.
+    [...baselines.allowRead, ...bindableReads(args.config.allowRead)].map((p) =>
+      toRealPath(absolutize(p)),
+    ),
   )
   const denyAnchors = baselines.denyRead.map((p) => toRealPath(absolutize(p)))
 
