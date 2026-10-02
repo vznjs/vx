@@ -2295,5 +2295,9 @@ describe('the install pages name the libc the Linux binary needs', () => {
     expect(flat(path.join(DOCS, 'blog', 'one-binary.md'))).toContain(
       "Linux (glibc, not Alpine's musl) and macOS",
     )
+    const choosing = path.resolve(DOCS, '..', '..', 'components', 'demos', 'model', 'choosing.ts')
+    expect(readFileSync(choosing, 'utf8')).toContain(
+      "for Linux (glibc, not Alpine's musl) and macOS",
+    )
   })
 })
