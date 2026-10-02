@@ -43,6 +43,10 @@ export function shellVerdict(args: {
   if (args.code === 126) {
     return `[vx] exit 126 is the shell's "found but cannot execute": ${what} is not executable or is a directory — chmod +x it`
   }
+  const unnamed = args.bins.find((dir) => dir.includes(path.delimiter))
+  if (unnamed !== undefined) {
+    return `[vx] exit 127 is the shell's "command not found": ${what} is not on this task's PATH — ${unnamed} holds "${path.delimiter}", which PATH reads as a separator, so vx cannot put it there; move the workspace to a path without "${path.delimiter}"`
+  }
   return `[vx] exit 127 is the shell's "command not found": ${what} is not on this task's PATH — vx puts ${args.bins.join(' and ')} first and never a sibling project's bin; install it in this package or at the workspace root`
 }
 

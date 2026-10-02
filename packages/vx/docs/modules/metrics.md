@@ -45,7 +45,9 @@ case it is.
   recorded no cache outcome at all, or re-executed on the same key — and
   why, from what the index holds: the previous run on the key failed
   (saving nothing), the invocation's `cache_policy` read no cache, or
-  the key's entry was created by this run (none was there when it ran).
+  the key's entry was created by this run (none was there when it ran),
+  or neither run saved it because each ran beside a failed task (a task
+  run past a failed dependency under `--continue` is never cached).
   Only when none applies does it name `--no-cache` / `--force` (item 1009).
 - `cacheKeyDiff` is the moat: it resolves both runs to their task
   hashes and full-outer-joins the two `entry_inputs` fingerprint sets

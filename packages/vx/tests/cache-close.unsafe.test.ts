@@ -1,8 +1,7 @@
 // `Cache.close()` closed nothing: bun:sqlite defers a plain `close()` while a
 // prepared statement lives, and the cache keeps several, so `cache.db`
-// and its `-wal` and `-shm` stayed open. On Windows the cache directory then
-// could not be deleted (EBUSY in every suite that opens a cache, O-10); on
-// every OS an embedder leaked three descriptors per run. Unsafe: it reads
+// and its `-wal` and `-shm` stayed open: an embedder leaked three
+// descriptors per run (O-10). Unsafe: it reads
 // this process's /proc/self/fd, which a sandboxed shard's /proc is not.
 import { readdirSync, readlinkSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'

@@ -163,19 +163,15 @@ describe('a module page quotes a constant or a regex the module has', () => {
     expect([...rule![1]!.matchAll(/`([^`]+)`/g)].map((m) => m[1]!)).toEqual(constant)
   })
 
-  it("env.md's two allowlist paragraphs are ESSENTIAL_ENV, split where Windows begins", () => {
+  it("env.md's allowlist paragraph is ESSENTIAL_ENV", () => {
     const src = read('src/exec/env.ts')
     const arr = /export const ESSENTIAL_ENV: readonly string\[\] = \[([\s\S]*?)\n\]/.exec(src)
     expect(arr).not.toBeNull()
     const constant = [...arr![1]!.matchAll(/'([^']+)'/g)].map((m) => m[1]!)
     const doc = read('docs/modules/env.md')
-    const posix = /POSIX: ([\s\S]*?)\n\n/.exec(doc)
-    const windows = /Windows: ([\s\S]*?)\n\n/.exec(doc)
-    expect(posix).not.toBeNull()
-    expect(windows).not.toBeNull()
-    const names = (s: string) => [...s.matchAll(/`([^`]+)`/g)].map((m) => m[1]!)
-    expect([...names(posix![1]!), ...names(windows![1]!)]).toEqual(constant)
-    expect(names(windows![1]!)[0]).toBe('SYSTEMROOT')
+    const list = /The list:\n\n([\s\S]*?)\n\n/.exec(doc)
+    expect(list).not.toBeNull()
+    expect([...list![1]!.matchAll(/`([^`]+)`/g)].map((m) => m[1]!)).toEqual(constant)
   })
 
   it("history.md's default window is DEFAULT_RECENT", () => {
