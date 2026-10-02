@@ -2214,3 +2214,24 @@ describe('no migration page times a mapped run', () => {
     expect(hits).toEqual([])
   })
 })
+
+describe("the Turbo pages say where a script-less package's task comes from", () => {
+  // The from-turborepo post said the migrator "emits a task only where the
+  // script exists"; a package a `^` edge reaches without it gets a key-only
+  // `true` (G-117, J-97). vx-migrate's migrate.test.ts drives the mapper.
+  it('the post and the support table name the key-only task', () => {
+    const post = readFileSync(path.join(DOCS, 'blog', 'from-turborepo.md'), 'utf8').replace(
+      /\s+/g,
+      ' ',
+    )
+    expect(post).toContain(
+      "and to a package without it that another package's `^` task reaches: a cached `true` with no outputs",
+    )
+    const support = readFileSync(
+      path.resolve(import.meta.dir, '..', 'docs', 'turbo-nx-support.md'),
+      'utf8',
+    )
+    const row = /^\| `tasks` \|.*$/m.exec(support)![0]
+    expect(row).toContain('a key-only one where a `^` edge reaches a package without it')
+  })
+})
