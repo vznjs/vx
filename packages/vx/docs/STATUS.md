@@ -756,7 +756,7 @@ next?".
   whose mapping is a `project`-stage plugin and whose core half is one
   seam widening (§ Next 3). `.env` loading, configurations, cache caps,
   graph UI, release, test splitting, boundaries: plugin or the
-  language. Windows is the only must no plugin can supply; parked.
+  language. Windows is WSL (owner, 2026-10-02), not a gap.
   Full table in `docs/comparison.md` § Gap audit 2026-09-04.
 - **Agents removed.** `@vzn/vx-agents` (synchronizer + persistent
   workers, Nomad/K8s backends) was an in-repo distributed-execution

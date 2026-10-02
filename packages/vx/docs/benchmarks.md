@@ -329,15 +329,17 @@ as a CI pipeline runs it; _vx, no lock_ is the same run evaluating every
 config per run.
 The committed `packages/vx-bench/RESULTS.md` / `packages/vx-bench/results.json` are this run.
 
-|                                 | vx                                                         | vx, no lock | Turborepo     | Nx                |
-| ------------------------------- | ---------------------------------------------------------- | ----------- | ------------- | ----------------- |
-| **Cold** (nothing cached)       | **3m 47s**                                                 | 3m 46s      | 5m 13s (1.4×) | 34m 44s (9.2×)    |
-| **Warm**, nothing to rebuild    | **476ms**                                                  | 510ms       | 760ms (1.6×)  | 3.59s (7.6×)      |
-| **Warm**, restore outputs       | **743ms**                                                  | 777ms       | 1.17s (1.6×)  | 4.15s (5.6×)      |
-| **CPU burned**, cold (user+sys) | **34.33s**                                                 | 34.61s      | 1m 13s (2.1×) | 114m 06s (199.4×) |
-| **CPU burned**, warm (user+sys) | **1.33s**                                                  | 1.34s       | 4.40s (3.3×)  | 5.54s (4.2×)      |
-| _Baseline_ (theoretical best)   | 3m 38s cold; 0 warm, restore, CPU                          | —           | —             | —                 |
-| _Measured floors_ (context)     | git walk 67ms · walk + raw copy 352ms · task shells 33.15s | —           | —             | —                 |
+|                                 | vx                                                         | vx, no lock | Turborepo              | Nx                       |
+| ------------------------------- | ---------------------------------------------------------- | ----------- | ---------------------- | ------------------------ |
+| **Cold** (nothing cached)       | **3m 47s**                                                 | 3m 46s      | 5m 13s (vx 27% faster) | 34m 44s (vx 89% faster)  |
+| **Warm**, nothing to rebuild    | **476ms**                                                  | 510ms       | 760ms (vx 37% faster)  | 3.59s (vx 86% faster)    |
+| **Warm**, restore outputs       | **743ms**                                                  | 777ms       | 1.17s (vx 36% faster)  | 4.15s (vx 82% faster)    |
+| **CPU burned**, cold (user+sys) | **34.33s**                                                 | 34.61s      | 1m 13s (vx 53% faster) | 114m 06s (vx 99% faster) |
+| **CPU burned**, warm (user+sys) | **1.33s**                                                  | 1.34s       | 4.40s (vx 69% faster)  | 5.54s (vx 75% faster)    |
+| _Baseline_ (theoretical best)   | 3m 38s cold; 0 warm, restore, CPU                          | —           | —                      | —                        |
+| _Measured floors_ (context)     | git walk 67ms · walk + raw copy 352ms · task shells 33.15s | —           | —                      | —                        |
+
+vx N% faster: vx takes N% less time than that tool (1 − vx ÷ theirs); N% slower: N% more (vx ÷ theirs − 1).
 
 **Baseline** is the theoretical best case, so each row shows its overhead:
 cold is the tasks' own durations list-scheduled on 10 workers along the

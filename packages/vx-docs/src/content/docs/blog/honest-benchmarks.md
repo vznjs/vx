@@ -42,8 +42,10 @@ isolate the runner's own overhead from compilation.
 | Runner    | Cold build         | Fully cached | Cold build CPU |
 | --------- | ------------------ | ------------ | -------------- |
 | vx        | **3m 46s** (+0:08) | **510ms**    | **34.61s**     |
-| Turborepo | 5m 13s (+1:35)     | 760ms        | 1m 13s         |
-| Nx        | 34m 44s (+31:06)   | 3.59s        | 114m 06s       |
+| Turborepo | 5m 13s (+1:35, vx 27% faster) | 760ms (vx 32% faster) | 1m 13s (vx 52% faster) |
+| Nx        | 34m 44s (+31:06, vx 89% faster) | 3.59s (vx 85% faster) | 114m 06s (vx 99% faster) |
+
+vx N% faster: vx takes N% less time than that tool (1 − vx ÷ theirs).
 
 The first two columns are wall clock; the third is CPU time (user plus
 system, of the invocation and every child it waited for), because on a

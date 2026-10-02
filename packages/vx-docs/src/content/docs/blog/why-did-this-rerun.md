@@ -54,11 +54,11 @@ Because it only reads the database, it works after the fact and on
 another machine: a CI job that copied `.vx/cache` out can be asked why
 it rebuilt, tomorrow, from a laptop.
 
-## Six endings for an unchanged key
+## Seven endings for an unchanged key
 
 The interesting cases are the ones where the key did *not* change, and
-`vx why` distinguishes them rather than calling all six a re-run. The
-verdict line is one of these nine sentences, quoted from the code:
+`vx why` distinguishes them rather than calling all seven a re-run. The
+verdict line is one of these ten sentences, quoted from the code:
 
 | vx says                                                                                                    | What happened                                                    |
 | ---------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
@@ -66,13 +66,14 @@ verdict line is one of these nine sentences, quoted from the code:
 | cache key unchanged — this run was served from cache, nothing re-ran                                       | it was a cache hit                                               |
 | cache key unchanged — the previous run on this key failed and saved nothing, so there was nothing to hit | a failure saves no entry |
 | cache key unchanged — re-executed because this run did not read the cache (--force, or a --cache without read) | the run's policy read no cache |
+| cache key unchanged — neither run saved it: each ran beside a failed task (…), and a task run past a failed dependency (--continue) is never cached | both runs went past a failure under `--continue` |
 | cache key unchanged — no entry for this key was in the cache when it ran (pruned or evicted), so it executed and saved one | the entry was gone |
 | cache key unchanged — re-executed on the same key (--no-cache / --force, or unrelated)                     | none of the above; vx cannot name the cause |
 | cache key unchanged — this run recorded no cache outcome, so whether it re-ran is unknown                  | the run recorded no outcome for this task; vx says so, not guesses |
 | this task declares no `cache` block — it runs on every invocation; its key is folded by dependents only    | not a cache decision at all                                      |
 | this task recorded no cache key (skipped, or a persistent task) — nothing to compare | there is no key to compare |
 
-The sixth row ("re-executed on the same key") is the one to read
+The "re-executed on the same key" row is the one to read
 twice: vx could not name the cause. An undeclared input does not end
 up there. A file, env var or tool version the key cannot see changes
 the output but not the key, so the task hits and replays stale bytes.

@@ -53,9 +53,15 @@
   explicit-over-magical, one-binary) quoted solidjs/solid numbers
   measured through `turbo()`; each keeps only the native-config
   benchmark, and site-samples stops pinning the solid figures.
+- **R-14** The share card (`og.svg` / `og.png`) still said "a faster
+  runner for your Turborepo or Nx repo"; it now carries the page's
+  headline, and the landing test holds the card's text to the `<h1>`.
 - **R-13** patterns.md's performance table and the docs README's
   headline line gave Turbo and Nx as multiples; they now give vx's %
   by the same formula, with the formula line.
+- **R-12** The benchmarks page's generated stress table and the
+  benchmarks post's runner table show each competitor cell as
+  `(vx N% faster)` with the formula line, not a multiple.
 
 ## Leads
 
@@ -63,3 +69,5 @@
   real-repo sections) measured `turbo()` / `nx()`, not native config.
   Rerun each repo after `bunx @vzn/vx-migrate` writes native configs
   before any of them is quoted again.
+- benchmarks.md's dated head-to-head sections still read as multiples
+  (`(1.6×)`); they are hand-typed records, converted only with a rerun.

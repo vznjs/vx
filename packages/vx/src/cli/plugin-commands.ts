@@ -10,7 +10,7 @@
 import type { VxPlugin, PluginCommand, CommandContext } from '../orchestrator/index.js'
 import { findWorkspaceRoot } from '../workspace/index.js'
 import { loadCliWorkspace } from './workspace-config.js'
-import { machineParallelism } from '../util/index.js'
+import { machineParallelism, maskedLine } from '../util/index.js'
 
 export interface ResolvedPluginCommand {
   plugin: VxPlugin
@@ -92,7 +92,7 @@ export async function resolvePluginCommand(
         workspaceRoot: ws.workspaceRoot,
         cacheDir: ws.cacheDir,
         concurrency: ws.concurrency,
-        warn: (m) => process.stderr.write(`${m}\n`),
+        warn: (m) => process.stderr.write(`${maskedLine(m)}\n`),
       },
     }
   }

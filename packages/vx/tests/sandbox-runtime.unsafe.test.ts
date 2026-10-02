@@ -1716,19 +1716,17 @@ describe.skipIf(!available || process.platform !== 'linux')(
       async () => {
         // The neighbouring row proves this for a task that declares
         // `allow.read` and no write. This is the case the TYPE describes:
-        // no allow block at all. Nothing binds the project, so its `dist`
-        // is the sandbox's scratch: the writes are reported and fail the
-        // run — the honest outcome, not a silent empty artifact. (This row
-        // read `Read-only file system` while the task ran in `$HOME`.)
+        // no allow block at all. Nothing binds the project, so it is a
+        // read-only mask (`readOnlyMasks`): the `mkdir` is refused, reported
+        // and fails the run — the honest outcome, not a silent empty
+        // artifact. (The mask was writable before 2026-10-02, and the
+        // `openat` under it was reported too.)
         const dir = realpathSync(await project(undefined))
         const r = await run({ cwd: fixture.root, tasks: ['build'], log: collectingLogger(fixture) })
         expect(r.ok).toBe(false)
         expect([r.outcomes[0]?.status, r.outcomes[0]?.sandboxViolationLines]).toEqual([
           'failed',
-          [
-            `mkdir(${dir}/dist) = a write no grant covers  [${dir}/dist]`,
-            `openat(${dir}/dist/app.js) = a write no grant covers  [${dir}/dist/app.js]`,
-          ],
+          [`mkdir(${dir}/dist) = a write no grant covers  [${dir}/dist]`],
         ])
         expect(existsSync(path.join(dir, 'dist', 'app.js'))).toBe(false)
       },

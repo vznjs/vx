@@ -156,6 +156,32 @@
     gets (`commandEnvironment`), never `passThrough` or the host's env;
     those values rest unmasked in the remote CAS. By design (Bazel's
     `--action_env`); `security.md` now says so.
+40. A link a sandboxed task plants under its own output tree
+    (`dist/sub -> <outside>`): the pre-run clean and the restore keep to
+    directories whose realpath is inside the project; a file behind the
+    link survived two runs (probed). No bug.
+41. An artifact's mode bits. The restore applies `mode & 0o777`, so no
+    setuid or setgid bit lands from a remote. No bug.
+42. Code emitted by `vx init` and `vx-migrate`. Every value is a quoted
+    literal (`quoteTsLiteral`), a TODO line break stays inside its
+    comment (D-21), and an Nx root outside the workspace is refused
+    (`isWithin`). No bug.
+43. Where `vx-reapi` places a server's `output_symlinks`: through the
+    same fence as files (`fence.symlink`, `verifyLinks`), L-2's. No bug.
+44. Telemetry's workspace identity reads `remote.origin.url`, drops its
+    userinfo (a CI token in `https://user:token@…`) and sends only a hash
+    and the last path segment. No bug.
+45. `turboCache()`'s signature compare is constant-time over the bytes;
+    `vx upgrade` reads its asset from GitHub's API over HTTPS and checks
+    the SHA-256 before any rename. No bug.
+46. A `cacheDir` pointed at the workspace or a project is refused before
+    its `*` ignore file can hide sources (item 997), and `vx cache
+prune` deletes only artifact names. No bug.
+47. The other `.vx` files after a run of a config that interpolates a
+    secret: none holds the value (probed with a token in the command).
+48. The run lock in the shared temp dir is shared across users on
+    purpose; another local user can hold it and stall a run, no more.
+    Not fixed: a local denial of service on a shared box.
 
 ## Items
 

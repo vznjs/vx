@@ -296,7 +296,7 @@ function servesCommand(command: string): boolean {
 /**
  * Whether script `name` never exits: by name, as a watcher, as a server, or
  * running such a script of its own package by name (docusaurus's
- * `start:baseUrl`: `cross-env BASE_URL=… pnpm start`).
+ * `start:baseUrl`: `cross-env BASE_URL=… pnpm start`) or through a runner.
  */
 function isPersistent(
   name: string,
@@ -307,8 +307,13 @@ function isPersistent(
   if (typeof own !== 'string' || seen.has(name)) return false
   seen.add(name)
   if (PERSISTENT_TASK_NAMES.has(name) || isWatcher(name, own) || servesCommand(own)) return true
+  // Through a runner too: `concurrently "npm:web" "npm:api"` and `run-p web
+  // api` over two servers mapped as one-shot tasks (D-113).
+  const text = Object.entries(scripts).filter(
+    (e): e is [string, string] => typeof e[1] === 'string',
+  )
   return foreground(own).some((segment) =>
-    [...segment.matchAll(RUNS_SCRIPT)].some((m) => isPersistent(m[1]!, scripts, seen)),
+    scriptRefs(segment, text).some((ref) => isPersistent(ref, scripts, seen)),
   )
 }
 
