@@ -1943,7 +1943,7 @@ it directly if you want the frozen view).
 
 ```
 vx show                          # list every project
-vx show <project>                # one project's resolved config
+vx show <project>                # one project's resolved config (`//`: the root project's)
 vx show <pkg>#<task>             # a single task (`//#<task>`: the root project's)
 vx show <task>                   # that task in every project declaring it
 vx show ... --format json        # machine-readable (default: pretty)
