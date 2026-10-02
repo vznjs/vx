@@ -269,4 +269,40 @@ describe('a nested repository inside a project', () => {
     },
     TIMEOUT,
   )
+  it(
+    'a gitlink whose directory lost its .git is listed by a walk (A-61)',
+    async () => {
+      // `rm -rf vendor/lib/.git` to vendor a submodule's files, without
+      // `git rm --cached`: the index keeps the gitlink, `git status` says
+      // nothing, and the directory's files were never listed, so an edit
+      // there was a green hit on the old output.
+      const a = await vendoredFixture(root)
+      await rm(path.join(a, 'vendor/lib/.git'), { recursive: true, force: true })
+      const memo = new GitFilesCache()
+      await populateGitFilesCache(root, [a], memo)
+      expect(memo.get(a)).toEqual([
+        'package.json',
+        'vendor/lib/x.txt',
+        'vendor/loose/y.txt',
+        'vx.config.mjs',
+      ])
+      expect(memo.oidsFor(a)?.has(path.join(a, 'vendor/lib/x.txt'))).toBe(false)
+      await writeLocalWorkspace(root)
+      const run = (): string => {
+        const p = Bun.spawnSync({
+          cmd: ['bun', CLI, 'run', 'build', '--all'],
+          cwd: root,
+          stdout: 'pipe',
+          stderr: 'pipe',
+          env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1' },
+        })
+        return new TextDecoder().decode(p.stdout) + new TextDecoder().decode(p.stderr)
+      }
+      expect(run()).toMatch(/1 miss/)
+      await write(path.join(a, 'vendor/lib/x.txt'), 'two')
+      expect(run()).toMatch(/1 miss/)
+      expect(await readFile(path.join(a, 'dist/out.txt'), 'utf8')).toBe('twoone')
+    },
+    TIMEOUT,
+  )
 })

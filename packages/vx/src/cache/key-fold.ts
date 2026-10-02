@@ -99,7 +99,9 @@ import type { CacheKeyInput } from './layer.js'
 // v37: an entry saved while `git status` hid a deletion (paired as an
 // unmerged path's rename source) holds output built without a file its key
 // folds (A-59).
-export const CACHE_VERSION = 'vx-cache-v37'
+// v38: an entry saved while a gitlink without `.git` held files the key
+// never listed sits under the key of that directory empty (A-61).
+export const CACHE_VERSION = 'vx-cache-v38'
 
 /**
  * The digest a key folds for an input gone between its enumeration and its

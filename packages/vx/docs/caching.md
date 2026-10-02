@@ -35,7 +35,7 @@ The cache key for one task is a **16-hex xxHash3 digest**, seed-chained
 over (in order):
 
 1. **`CACHE_VERSION`** — the key-derivation sentinel
-   (currently `'vx-cache-v37'`, in `src/cache/key-fold.ts`). Bumped when
+   (currently `'vx-cache-v38'`, in `src/cache/key-fold.ts`). Bumped when
    the key derivation or the artifact container changes, or stored bytes
    are wrong under an unchanged key. See
    [§ Bumping CACHE_VERSION](#bumping-cache_version).
@@ -179,8 +179,12 @@ over (in order):
     for a nested repository inside a project (`vendor/lib` under a
     `**` glob — until 2026-09-27 its files never reached the key, and an
     edit there was a hit on the old output), for a project inside one,
-    and for a `workspaceFiles` glob. A submodule never initialised has
-    no `.git` and no files, and folds nothing. `--affected` follows the
+    and for a `workspaceFiles` glob. A gitlink whose directory has no
+    `.git` (a submodule never initialised, or one whose `.git` was
+    removed to vendor its files, the gitlink left in the index) has no
+    repository to ask and `git status` says nothing of it: its files
+    are listed by a walk and hash by content (A-61), so an empty one
+    folds nothing. `--affected` follows the
     same shape — git reports the nested repository as one changed path,
     and every project under it is selected.
 
@@ -1578,6 +1582,10 @@ was not), and the cache tests.
 
 ### History
 
+- **v37 → v38**: stored bytes wrong under an unchanged key (A-61). A
+  gitlink whose directory had lost its `.git` but held files listed
+  none of them, so an entry built from them sits under the key the
+  same directory empty derives.
 - **v36 → v37**: stored bytes wrong under an unchanged key (A-59).
   `git status` paired a deleted file with a similar unmerged path as its
   rename source and printed only `UU <path>`, so the file kept its index
