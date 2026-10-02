@@ -951,7 +951,10 @@ are their own groups, killed at process exit (A-9) but not by the stop.
 The run's stop now kills them (`stopRuntimeProbes`, cache/inputs.ts),
 and a task whose `execute` rejects after the stop is `aborted`, with no
 error line, where it read failed for the probe the stop cut short.
-Measured: 1,021 ms. Rows: `abort.test.ts` › the stop kills a running
+Measured: 1,021 ms. The kill is the stopping run's: probes are kept
+per run (by its memo), so a second run in the process (an embedder's
+`inflight` case) keeps its own (`abort.test.ts` › one run's stop leaves
+another run's probe alone, red with the kill process-wide). Rows: `abort.test.ts` › the stop kills a running
 probe (the run waits out the 30 s probe without the kill) and
 `scheduler.test.ts` › a rejected execute after the stop (red without the
 rejection arm's check; its control stays failed). `modules/scheduler.md`
