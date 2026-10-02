@@ -146,11 +146,14 @@ export function expandNxInputs(
       // it was sat on 881 tasks of three real Nx repos (G-49).
       if (o.dependentTasksOutputFiles !== undefined) return
       if (typeof o.input === 'string') {
-        if (o.dependencies === true) {
+        // Nx 23 still reads the pre-17 spellings `projects: "dependencies"`
+        // (`^input`) and `projects: "self"` (the project's own); taken as
+        // project names, each was a todo and the input was dropped.
+        if (o.dependencies === true || o.projects === 'dependencies') {
           into.upstream.push({ name: o.input, of: 'deps' })
           return
         }
-        if (o.projects !== undefined) {
+        if (o.projects !== undefined && o.projects !== 'self') {
           const of = typeof o.projects === 'string' ? [o.projects] : o.projects
           if (!Array.isArray(of) || !of.every((p) => typeof p === 'string')) {
             todos.push(`input ${JSON.stringify(entry)} not representable in vx`)
