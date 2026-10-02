@@ -1027,3 +1027,16 @@ REQUESTED, and the persistent tasks they depend on": it now also names
 those a requested group stands for (C-52), that a run which failed
 elsewhere keeps none unless `--continue=always` (C-60), and that what
 they write streams through the wait (C-56). Docs only.
+
+## C-82: a run with servers in it always ends and leaves no child
+
+A probe of 190 seeded random graphs mixed one-shots that pass, fail or
+take a while with servers that get ready, crash before or after it,
+never get ready inside their timeout, or trap SIGTERM, under each
+`--continue` mode, with and without `holdPersistent`: every run ended
+and no child outlived it (or its held servers' `stop()`). It is now
+`tests/persistent-lifecycle-properties.unsafe.test.ts` (12 graphs,
+~5 s), red when the end of the graph does not SIGKILL what outlives the
+grace. A dropped SIGTERM or a leader-only one survives: the SIGKILL sweep
+still ends the groups, and graceful stops are not what this row holds.
+Unsafe for the liveness check. Test only.
