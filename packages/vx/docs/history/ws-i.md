@@ -234,6 +234,19 @@ compiled, 21 interleaved rounds: `run graph` main 962.6 ms median (min
 `restoreOutputs`) stays: the rows in hand would cross the `CacheLayer`
 seam.
 
+I-28. A closed cache leaves its WAL empty. With `PERSIST_WAL` (O-10)
+and the default `journal_size_limit` (-1), SQLite's last close
+checkpoints the WAL but keeps every frame, so each later connection
+recovered them at open and copied them into the database again at its
+close: 738 frames, 4.4 MB, on the 1,000-project bench cache. Any
+non-negative limit makes that close truncate the file to zero bytes (it
+stays, as O-10 needs). Open plus close of a cache that read one row, 15
+cycles on a copy of that cache: main 3.30 ms median (min 3.13), patch
+1.29 (1.02). A run pays one such cycle, a `--filter` or `--affected`
+run two (the selection's load and the run). Whole-run wall does not
+resolve ~2 ms per cycle at this box's spread. Row: `cache.test.ts` ›
+the WAL a closed cache leaves (red on main: 243,112 bytes).
+
 ## Leads for other streams
 
 - **Owner / coordinator: skip macOS where it cannot differ from
