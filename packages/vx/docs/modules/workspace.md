@@ -67,6 +67,8 @@ export interface ProjectMeta {
 export function findWorkspaceRoot(start: string, reads?: LoadReads): Promise<string>
 export function loadWorkspace(root: string, reads?: LoadReads): Promise<Workspace>
 export function listProjects(workspace: Workspace): Promise<ProjectMeta[]>
+// listProjects, collecting each nameless member's dir into `nameless` (vx init)
+export function discoverProjects(workspace: Workspace, nameless?: string[]): Promise<ProjectMeta[]>
 // A `discover` hook's `{ dir, name }` as a meta; null when already found
 export function namedProject(
   workspace: Workspace,
@@ -170,7 +172,8 @@ Reads the package-glob list (through `reads`, so the manifest
 Globs every `package.json` matching the patterns (`Bun.Glob`,
 `onlyFiles: true`, `dot: false`). For each:
 
-- Skip if no `name` field.
+- Skip if no `name` field (`discoverProjects` collects the directory for
+  `vx init`, which names one that has scripts, D-106).
 - A name several manifests share: pnpm accepts it (vite's playground,
   sveltejs/kit's test apps); vx cannot, since a project is addressed by
   its name. With no vx config among them they are left out, named on one
