@@ -70,6 +70,10 @@ export function mayWriteFingerprint(node: TaskNode, workspaceRoot: string): bool
   in; null when none did. Starting it is `arm()`, called by
   execute-task on the FIRST task that executes inside a sandbox and
   memoized — a run of cache hits never probes or starts anything.
+  `run()` calls it early when a sandboxed task is sure to execute (no
+  `cache`, reads off, persistent, or a confirmed miss), so the ~220 ms
+  probe runs under the classify and the upstream work, and waits for it
+  before the end's reset (C-76).
   `arm()` refuses (`UserError`) when a task needs a sandbox the
   platform lacks, and a throw from the runtime itself (its bridge
   needs `socat`, which the dependency check does not cover; a temp

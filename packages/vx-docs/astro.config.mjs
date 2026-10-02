@@ -82,6 +82,7 @@ export default defineConfig({
     '/guide/inside-vx/': `${root}#plugins`,
     '/guide/try-it/': `${root}playground/`,
     '/guide/labs/': `${root}playground/`,
+    '/benchmarks/real-repos/': `${root}benchmarks/`,
   },
   // `remarkPlugins` runs on the `unified()` processor from
   // `@astrojs/markdown-remark`, an optional peer since Astro 7 that the

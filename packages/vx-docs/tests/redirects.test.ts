@@ -138,6 +138,9 @@ const MERGED: Record<string, string> = {
   'guide/inside-vx/': '#plugins',
   'guide/try-it/': 'playground/',
   'guide/labs/': 'playground/',
+  // It measured vx running turbo.json and Nx configs; the native-config
+  // rerun has no page yet (owner, 2026-10-02).
+  'benchmarks/real-repos/': 'benchmarks/',
 }
 
 /** Where Astro's static redirect page sends the reader, if `html` is one. */
