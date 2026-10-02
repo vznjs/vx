@@ -22,6 +22,9 @@ import {
   RSS_FLOOR_SLACK_BYTES,
 } from '../src/exec/runner.js'
 
+/** A readyWhen window a child's first line meets on a loaded runner (M-23). */
+const READY_WINDOW_MS = 1_000
+
 describe('runCommand', () => {
   let cwd: string
 
@@ -597,16 +600,20 @@ describe('runPersistent — what its exit bookkeeping keeps', () => {
     // readiness timer, and the timer's body re-checks readyAt. Deleting
     // either alone stays green; deleting both kills a ready server at the
     // deadline.
+    // The window must outlast the child's first line under load: a 150 ms
+    // one passed on CI before `echo` printed, and the row failed on its
+    // premise (M-23). The wait runs from the spawn to past the deadline.
+    const start = Date.now()
     const spawn = runPersistent({
       command: `printf 'Listening\n'; exec sleep 30`,
       cwd,
       env: { PATH: process.env.PATH ?? '' },
       readyWhen: 'Listening',
-      timeoutMs: 150,
+      timeoutMs: READY_WINDOW_MS,
     })
     try {
       await spawn.ready
-      await Bun.sleep(400)
+      await Bun.sleep(start + READY_WINDOW_MS + 250 - Date.now())
       expect(isAlive(spawn.child.pid)).toBe(true)
     } finally {
       spawn.child.kill('SIGKILL')
@@ -1162,16 +1169,19 @@ describe('runPersistent — the rows its sweep asked for', () => {
   })
 
   it('keeps a ready server alive past its readyWhen timeout', async () => {
+    // A window the first line meets under load, waited out from the spawn
+    // (M-23; the row above).
+    const start = Date.now()
     const spawn = runPersistent({
       command: `echo up; exec sleep 30`,
       cwd: dir,
       env: env(),
       readyWhen: 'up',
-      timeoutMs: 150,
+      timeoutMs: READY_WINDOW_MS,
     })
     try {
-      expect(await within(spawn.ready, 1_000)).toBe('ready')
-      await Bun.sleep(400)
+      expect(await within(spawn.ready, READY_WINDOW_MS)).toBe('ready')
+      await Bun.sleep(start + READY_WINDOW_MS + 250 - Date.now())
       expect(isAlive(spawn.child.pid)).toBe(true)
     } finally {
       await stop(spawn)

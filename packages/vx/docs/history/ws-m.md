@@ -222,6 +222,16 @@ the afterAll's rm of the 2000-project tree took 4.2 s under load; it now
 has a bound matched to that work, as its beforeAll does. No other
 fixture of that size in the suites.
 
+M-23. `runner.test.ts` › keeps a ready server alive past its readyWhen
+timeout failed on CI (run 37011271243, a PR touching no runner code):
+`persistent task not ready within 150ms`. The row, and its twin › a
+server ready before the deadline outlives it, need the child's first
+line inside a 150 ms window, and a loaded sandboxed shard missed it, so
+the row failed on its premise, not its claim. Both now use a 1 s window
+and wait from the spawn to 250 ms past it. With the first line delayed
+300 ms (the loaded box) the old rows fail 2 of 2 and the new pass; with
+both of the timer's guards removed the new rows still fail 2 of 2.
+
 ## Leads for other streams
 
 - A: A-20 let a same-project dependant restore ahead of a producer whose
