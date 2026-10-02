@@ -1183,6 +1183,11 @@ async function runOnBus(
     // Not on a stopped run: one stopped while it waited on another run's
     // lock never held it, and its prune evicted under that run (item 858).
     if (!stopRun.signal.aborted) await applyCacheRetention(prepared, log)
+    // A plugin hears the run until its teardown and nothing after: released
+    // only in the finally, its handlers heard a kept server through the
+    // whole keep-alive wait below (C-66). Idempotent; the finally's stay.
+    disposePlugins?.()
+    telemetry?.dispose()
     await teardown()
     await closeCache()
     mark('close')
