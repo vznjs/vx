@@ -164,3 +164,12 @@ persistent task` and vx exits 1). Row (`site-samples` › a post's link
   by item 343) lists second. Row (`site-samples` › every arrow chain of
   the pipeline stages is PLUGIN_HOOKS in order), over every site page
   and core doc; red on the post without the fix.
+
+- **J2-20** The one-binary post installs from npm and then says no
+  runtime boots before vx's own code runs; the npm package's `bin` is
+  `launcher.cjs`, a Node script that spawns the platform binary (one
+  Node start first, ~65 ms by its own comment). It also said the
+  package ships the binary, which a per-platform optional dependency
+  carries. Both now say so. Row (`site-samples` › the one-binary post
+  says the npm command is a Node launcher), read from `build-npm.ts`
+  and the launcher; red without the fix.
