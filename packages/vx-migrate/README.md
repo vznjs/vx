@@ -17,7 +17,7 @@ declares `turbo()` or `nx()` and prints the install-and-run line. Add
 
 ```ts
 // vx.workspace.ts — a Turbo repo, unchanged, with its remote cache
-import { defineWorkspace } from '@vzn/vx'
+import { defineWorkspace } from '@vzn/vx/config'
 import { turbo, turboCache } from '@vzn/vx-migrate'
 
 export default defineWorkspace({ plugins: [turboCache(), turbo()] })
@@ -76,7 +76,7 @@ Rules:
 
 ```ts
 // vx.workspace.ts — an Nx repo, unchanged
-import { defineWorkspace } from '@vzn/vx'
+import { defineWorkspace } from '@vzn/vx/config'
 import { nx } from '@vzn/vx-migrate'
 
 export default defineWorkspace({ plugins: [nx()] })
@@ -104,7 +104,7 @@ Nx's own option handling, rendered as one POSIX `sh` line (`vx show` prints it):
 
 ### `.env` files
 
-Nx loads a task's `.env` files into its environment — the project's before the workspace root's, the most specific name first (`.env.build.production.local`, `.env.build.production`, …, `.env.local`, `.local.env`, `.env`), the first to define a name winning and the environment winning over every file — unless `NX_LOAD_DOT_ENV_FILES=false`. `nx()` finds the ones that exist from one listing of each project dir per run (about 4 ms at 1,000 projects) and the task loads them when it runs, with Nx's own parser: a shell line runs under `nx-env --dotenv <file>… --`, an executor line passes `--dotenv <file>` to `nx-exec`. Their values never enter a config, so a `.env.local` secret is not in `vx show`, `vx-lock.json` or a migrated `vx.config.ts`. A cached task keys on their bytes through a `cache.inputs.runtime` probe (`for f in …; do echo "$f"; cat -- "$f"; …`), which sees a gitignored file a glob would not; a file added or removed changes the command, and so the key, on the next run. `tests/nx-exec-live.test.ts` compares what the line sees with what `nx run` gives the same target.
+Nx loads a task's `.env` files into its environment — the project's before the workspace root's, the most specific name first (`.env.build.production.local`, `.env.build.production`, …, `.env.local`, `.local.env`, `.env`), a grouped target's named by its group's owner and parent (cypress's atomized `e2e-ci--a.cy.ts` loads `.env.e2e-ci` and `.env.e2e`), the first to define a name winning and the environment winning over every file — unless `NX_LOAD_DOT_ENV_FILES=false`. `nx()` finds the ones that exist from one listing of each project dir per run (about 4 ms at 1,000 projects) and the task loads them when it runs, with Nx's own parser: a shell line runs under `nx-env --dotenv <file>… --`, an executor line passes `--dotenv <file>` to `nx-exec`. Their values never enter a config, so a `.env.local` secret is not in `vx show`, `vx-lock.json` or a migrated `vx.config.ts`. A cached task keys on their bytes through a `cache.inputs.runtime` probe (`for f in …; do echo "$f"; cat -- "$f"; …`), which sees a gitignored file a glob would not; a file added or removed changes the command, and so the key, on the next run. `tests/nx-exec-live.test.ts` compares what the line sees with what `nx run` gives the same target.
 
 ### nx.json `parallel`
 
@@ -183,7 +183,7 @@ Store vx artifacts in any server speaking Turbo's `/v8/artifacts` API — Vercel
 Nothing is on by default. Declare the plugin in `vx.workspace.ts` and configure it explicitly. Reads try the local cache first and the remote only on a local miss:
 
 ```ts
-import { defineWorkspace } from '@vzn/vx'
+import { defineWorkspace } from '@vzn/vx/config'
 import { turboCache } from '@vzn/vx-migrate'
 
 export default defineWorkspace({
@@ -221,7 +221,7 @@ Artifacts stream both ways on both wires: an upload sends the local artifact fro
 Store vx artifacts in any server implementing Nx's remote cache OpenAPI spec (`GET`/`PUT /v1/cache/{hash}`, Bearer auth, immutable records — a second write of a hash is `409`, which the plugin treats as done). Same rule: the wire is theirs, the bytes are vx's. A download asks for `Accept: application/octet-stream`, as Nx's own client does: an API gateway that keys binary media on `Accept` base64-encodes anything else (nx#33092); `turboCache()` asks the same way.
 
 ```ts
-import { defineWorkspace } from '@vzn/vx'
+import { defineWorkspace } from '@vzn/vx/config'
 import { nxCache } from '@vzn/vx-migrate'
 
 export default defineWorkspace({

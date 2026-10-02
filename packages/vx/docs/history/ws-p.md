@@ -16,6 +16,12 @@
   options, as Nx's `interpolate` does; read as one key it was no output,
   so nx-examples' cached `@nx/angular:application` builds restored
   nothing on a hit.
+- **P-4** `nx()`: a grouped target's `.env` files are named by the group
+  member that carries `nonAtomizedTarget` and that parent, as Nx's
+  `getOwnerTargetForTask` names them: cypress's atomized
+  `e2e-ci--<spec>` loads `.env.e2e-ci` and `.env.e2e`. vx named them by
+  the task's own name, so it loaded `.env.e2e-ci--<spec>`, which Nx never
+  does, and missed `.env.e2e-ci`.
 - **P-6** `nx()`: a `{ fileset, includeIgnored: true }` input (Nx 23:
   hashed from disk, gitignored or missing) is read by a workspace-root
   probe when it names one path, and is a todo when it is a glob. Mapped

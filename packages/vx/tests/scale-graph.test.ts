@@ -124,9 +124,12 @@ describe('core pipeline at ~2000 projects / ~6000 tasks', () => {
     warm = await planRun({ cwd: root, tasks: TASKS, log })
   }, 300_000)
 
+  // Removing the 2000-project tree is the fixture's work too: 4.2 s on a
+  // box with four busy loops beside the suite, against bun's 5 s default,
+  // which a loaded gate passed (M-19). The bound matches the work.
   afterAll(async () => {
     if (root) await rm(root, { recursive: true, force: true })
-  })
+  }, 300_000)
 
   it('builds the full graph — 6000 nodes with correct shape', () => {
     // Functional pin: bare task names fanned out across every project.

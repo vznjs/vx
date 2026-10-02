@@ -112,7 +112,7 @@ export function oneDatabase(): VxPlugin {
 `schedule` ranks ready tasks. This one learns from your run history:
 
 ```ts
-import { defineWorkspace } from '@vzn/vx'
+import { defineWorkspace } from '@vzn/vx/config'
 import { scheduleHistoryPlugin } from '@vzn/vx-schedule-history'
 
 export default defineWorkspace({ plugins: [scheduleHistoryPlugin()] })
@@ -311,7 +311,7 @@ endpoint it declines; a signal's own endpoint alone exports that signal.
 
 ```ts
 // vx.workspace.ts
-import { defineWorkspace } from '@vzn/vx'
+import { defineWorkspace } from '@vzn/vx/config'
 import { otel } from '@vzn/vx-otel'
 
 export default defineWorkspace({
@@ -353,7 +353,7 @@ the agent inside the workspace; restart it if it lists no vx tools.
 
 ```ts
 // vx.workspace.ts
-import { defineWorkspace } from '@vzn/vx'
+import { defineWorkspace } from '@vzn/vx/config'
 import { mcp } from '@vzn/vx-mcp'
 
 export default defineWorkspace({ plugins: [mcp()] })
