@@ -20,7 +20,7 @@ import {
   type TurboMappedProject,
 } from './turbo/turbo-map.js'
 import { relPosix } from './paths.js'
-import { gitIgnored, trackedFiles, trackedKinds } from './tracked-outputs.js'
+import { gitIgnored, spareTrackedOutputs, trackedFiles, trackedKinds } from './tracked-outputs.js'
 import { DOTENV_PROBE, DOTENV_PROBE_TOP } from './dotenv-probe.js'
 
 /** What a task's `npm_package_*` read: the manifest, so a bump reaches them. */
@@ -54,6 +54,15 @@ export async function migrateTurbo(
     sourceNames: (dirs) => spelledNames(root, dirs, tracked),
     ignored: (rels) => gitIgnored(root, rels),
   })
+  // Turbo never cleans an output and vx cleans one before every run: a
+  // written `dist/**` beside a committed `dist/keep.js` deleted it on the
+  // first run. turbo() takes such files back each run; the configs must.
+  if (tracked !== null)
+    for (const [id, todo] of spareTrackedOutputs(root, mapping.projects, tracked)) {
+      const at = id.lastIndexOf('#')
+      const p = mapping.projects.find((x) => x.name === id.slice(0, at))
+      p?.tasks.find((t) => t.name === id.slice(at + 1))?.todos.push(todo)
+    }
 
   const shared = hoistTaskEnv(mapping.projects)
   const probes = nameProbes(mapping.projects)

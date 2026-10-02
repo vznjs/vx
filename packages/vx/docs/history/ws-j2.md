@@ -31,6 +31,12 @@
   `modules/logger.md` gained #2054's post-summary server stream. Rows
   (`module-page-claims`), red on each page without the fix.
 
+- **J2-7** The sandboxing guide's grant table called `gitConfig`
+  "inert: SRT drops the per-task flag"; since B-41 the run union carries
+  it and each wrap sets it for its own task (`perTaskRun`), and the
+  deny scan skips `.git/config` for that task, as schema.md and
+  `modules/sandbox-runtime.md` already said. Row (`site-samples` › the
+  sandboxing guide says what gitConfig grants), red without the fix.
 - **J2-5** The config-eval cache's purity gate passes any import of
   `@vzn/vx/config` (`PURE_CONFIG_ENTRY`, since #2013), the entry every
   config `vx init` and vx-migrate write. `modules/config-cache.md`,
@@ -41,3 +47,16 @@
   three conditions, now with config-cache.md; `site-samples` › the
   bare imports it lets through are the two the gate passes), red
   without the fix.
+
+- **J2-9** Blog posts pointed at guide sections under the titles of
+  the guide pages the short site merged away: "Running tasks",
+  "Dev & long-running tasks", "Lockfile-aware caching", "Caching" for
+  the configure guide's "Why did it re-run?", and "`vx mcp` — AI
+  agents". The dev-servers post also promised "the readiness patterns
+  for the common servers"; the Dev tasks section has one Vite example.
+  Each link now names `Guide › Section`. Probe, nothing to fix: the
+  dev-servers post's foreground claims (a server exiting 3 under
+  `vx run dev api` prints `exited with code 3; stopping 1 other
+persistent task` and vx exits 1). Row (`site-samples` › a post's link
+  into a guide section names the section), red on four posts without
+  the fix.
