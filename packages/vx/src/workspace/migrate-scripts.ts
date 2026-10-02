@@ -279,7 +279,10 @@ function servesCommand(command: string): boolean {
         words[i]!.startsWith('-') ||
         (/^(pnpm|npm|yarn)$/.test(words[i]!) && LAUNCHERS.has(words[i + 1] ?? '')))
     ) {
-      i++
+      // A launcher's `--package <name>` / `-p <name>` names what to install,
+      // not the program: docusaurus's `pnpm dlx --package netlify-cli netlify
+      // dev` read `netlify-cli` as the program (D-112).
+      i += words[i] === '--package' || words[i] === '-p' ? 2 : 1
     }
     const [program, verb] = [words[i], words[i + 1]]
     if (program === undefined) continue
@@ -293,7 +296,7 @@ function servesCommand(command: string): boolean {
 /**
  * Whether script `name` never exits: by name, as a watcher, as a server, or
  * running such a script of its own package by name (docusaurus's
- * `start:baseUrl`: `cross-env BASE_URL=… pnpm start`).
+ * `start:baseUrl`: `cross-env BASE_URL=… pnpm start`) or through a runner.
  */
 function isPersistent(
   name: string,
@@ -304,8 +307,13 @@ function isPersistent(
   if (typeof own !== 'string' || seen.has(name)) return false
   seen.add(name)
   if (PERSISTENT_TASK_NAMES.has(name) || isWatcher(name, own) || servesCommand(own)) return true
+  // Through a runner too: `concurrently "npm:web" "npm:api"` and `run-p web
+  // api` over two servers mapped as one-shot tasks (D-113).
+  const text = Object.entries(scripts).filter(
+    (e): e is [string, string] => typeof e[1] === 'string',
+  )
   return foreground(own).some((segment) =>
-    [...segment.matchAll(RUNS_SCRIPT)].some((m) => isPersistent(m[1]!, scripts, seen)),
+    scriptRefs(segment, text).some((ref) => isPersistent(ref, scripts, seen)),
   )
 }
 
@@ -507,6 +515,48 @@ function siblingRun(script: string, dir: string, others: readonly string[]): str
   return undefined
 }
 
+/**
+ * The package globs a `lerna.json` beside a lone root lists (Lerna's
+ * default when it names none), or undefined: Lerna-classic repos list
+ * their packages there, not in `workspaces`, and vx saw the root alone
+ * (D-111).
+ */
+function lernaPackages(dir: string): string[] | undefined {
+  let json: unknown
+  try {
+    json = JSON.parse(readFileSync(path.join(dir, 'lerna.json'), 'utf8'))
+  } catch {
+    return undefined
+  }
+  const listed = (json as { packages?: unknown } | null)?.packages
+  return Array.isArray(listed) && listed.every((g) => typeof g === 'string') && listed.length > 0
+    ? listed
+    : ['packages/*']
+}
+
+function lernaNote(globs: readonly string[]): string {
+  const list = globs.map((g) => JSON.stringify(g)).join(', ')
+  return `lerna.json lists the packages (${list}), but package.json declares no \`workspaces\`, so vx sees the root alone: add \`"workspaces": [${list}]\` to package.json and run \`vx init\` again`
+}
+
+/**
+ * Yarn 2+ installs with Plug'n'Play unless `.yarnrc.yml` names another
+ * linker: a package's bins live in `.pnp.cjs`, and a task's `json5` exited
+ * 127 under vx, which runs no `yarn` in front of a command (probed on Yarn
+ * 4.5).
+ */
+function usesPnp(dir: string): boolean {
+  let rc = ''
+  try {
+    rc = readFileSync(path.join(dir, '.yarnrc.yml'), 'utf8')
+  } catch {}
+  const linker = /^nodeLinker:\s*["']?([\w-]+)/m.exec(rc)?.[1]
+  return linker === undefined || linker === 'pnp'
+}
+
+const PNP_NOTE =
+  "Yarn Plug'n'Play installs this repo: a package's bins live in `.pnp.cjs`, not `node_modules/.bin`, so a task's `tsc` is not found under vx — set `nodeLinker: node-modules` in `.yarnrc.yml` and run `yarn install`, or write each command as `yarn exec '<command>'`"
+
 /** A package manager running a script by name: `pnpm build`, `npm run x`, `bun run x`. */
 const RUNS_SCRIPT =
   /(?:^|[\s;&|(])(?:pnpm|pn|npm|yarn|bun)\s+(?:run(?:-script)?\s+)?([^\s;&|()'"-][^\s;&|()'"]*)/g
@@ -626,23 +676,49 @@ export function migrateScripts(
       .filter(([, v]) => typeof v === 'string' && v !== '')
       .map(([n]) => n),
   )
-  const rootScripts = (meta: ProjectMeta): Record<string, unknown> => {
+  // The root scripts left out, by why: jest's root `build` (every package's)
+  // went unnamed beside the website's, and `vx run build --all` built the
+  // website alone (D-85). A left-out script's `pre` / `post` hook goes with
+  // it where the manager runs hooks: kept, it became a task of its own.
+  const leftOut = (meta: ProjectMeta): { runs: string[]; shared: string[]; out: Set<string> } => {
     const scripts = scriptsOf(meta)
     const runs = runningMembers(
       scripts,
       meta.dir,
       metas.filter((m) => m !== root).map((m) => m.dir),
     )
+    const hooks = runsScriptHooks(meta.dir, hookMemo) !== null
+    const hookOf = (n: string): string | undefined => {
+      const base = hooks ? /^(?:pre|post)(.+)$/.exec(n)?.[1] : undefined
+      return base !== undefined && typeof scripts[base] === 'string' ? base : undefined
+    }
+    // A hook rides in its script's command, so it is judged with it.
+    const named = Object.keys(scripts).filter(
+      (n) => typeof scripts[n] === 'string' && !LIFECYCLE.test(n) && hookOf(n) === undefined,
+    )
+    const left = {
+      runs: named.filter((n) => runs.has(n)),
+      shared: named.filter((n) => memberTasks.has(n) && !runs.has(n)),
+    }
+    const outNames = new Set([...left.runs, ...left.shared])
+    const out = new Set(
+      Object.keys(scripts).filter((n) => outNames.has(n) || outNames.has(hookOf(n) ?? '')),
+    )
+    return { ...left, out }
+  }
+  const rootScripts = (meta: ProjectMeta): Record<string, unknown> => {
+    const scripts = scriptsOf(meta)
+    const { out } = leftOut(meta)
     return Object.fromEntries(
-      Object.entries(scripts).filter(
-        ([n, v]) => typeof v === 'string' && !memberTasks.has(n) && !runs.has(n),
-      ),
+      Object.entries(scripts).filter(([n, v]) => typeof v === 'string' && !out.has(n)),
     )
   }
   const rootMapped =
     rootMeta === undefined
       ? 0
       : Object.keys(rootScripts(rootMeta)).filter((n) => !LIFECYCLE.test(n)).length
+  const listed = (names: readonly string[]): string =>
+    names.slice(0, 8).join(', ') + (names.length > 8 ? ` and ${names.length - 8} more` : '')
   const outsideScripts = outside?.['scripts']
   const outsideRuns =
     typeof outsideScripts === 'object' &&
@@ -670,8 +746,15 @@ export function migrateScripts(
         : 'package.json'
       : undefined)
   if (rootName !== undefined && rootMapped > 0) {
+    const { runs, shared } = leftOut(rootMeta!)
     notes.push(
-      `${rootName} (the workspace root): its scripts that check the whole repo are its tasks; those that run the members (${membersExample(rootMeta && rootManager(rootMeta.dir, hookMemo))}, a runner) or share a member's task name are left out`,
+      `${rootName} (the workspace root): its scripts that check the whole repo are its tasks` +
+        (runs.length > 0
+          ? `; left out as running the members (${membersExample(rootMeta && rootManager(rootMeta.dir, hookMemo))}, a runner): ${listed(runs)}`
+          : '') +
+        (shared.length > 0
+          ? `; left out as a member's task name, so \`--all\` never runs one twice: ${listed(shared)} — one that does other work maps by hand under a name of its own`
+          : ''),
     )
   } else if (rootName === 'package.json' && outsideDir !== undefined && unnamedMaps().length > 0) {
     // react's nameless root: "its scripts run the workspace" was not why,
@@ -810,6 +893,9 @@ export function migrateScripts(
       projects.push({ name: meta.name, dir: meta.dir, importLines, tasks })
     }
   }
+  const owner = metas[0] === undefined ? undefined : ownerOf(metas[0].dir, hookMemo)
+  if (owner?.manager === 'berry' && usesPnp(owner.at)) notes.push(PNP_NOTE)
+
   if (lifecycleBuilds.length > 0) {
     const [name, hook, command] = lifecycleBuilds[0]!
     const more = lifecycleBuilds.length - 1
@@ -817,6 +903,8 @@ export function migrateScripts(
       `${lifecycleBuilds.length === 1 ? 'a package builds' : `${lifecycleBuilds.length} packages build`} only in a lifecycle script (\`${hook}: ${command}\` in ${name}${more > 0 ? ` and ${more} more` : ''}), which the package manager runs on pack or install and vx never runs: add a \`build\` script running it and run \`vx init\` again`,
     )
   }
+  const lerna = metas.length === 1 ? lernaPackages(metas[0]!.dir) : undefined
+  if (lerna !== undefined) notes.push(lernaNote(lerna))
   breakBuildCycles(projects, metas)
   pruneOrphanPersistentNotes(projects, PERSISTENT_TODO)
   return {

@@ -41,10 +41,16 @@ import type {
  */
 const SYSCALLS = 'openat|access|statx|newfstatat'
 const QUOTED = '"((?:[^"\\\\]|\\\\.)+)"'
+// The directory descriptor a call names, `-y`'s path included: taken up to
+// the `, "` that opens the path argument, since a directory's name may hold
+// a quote (`4</ws/q"d>`).
+const DIRFD = '(?:AT_FDCWD|\\d+)(?:<.*?>)?, '
 const STRACE_DONE_RE = new RegExp(
-  `^(\\d+)\\s+(${SYSCALLS})\\([^"]*${QUOTED}[^)]*\\)\\s*=\\s*-1\\s+(ENOENT|EACCES|EPERM)`,
+  `^(\\d+)\\s+(${SYSCALLS})\\((?:${DIRFD})?${QUOTED}[^)]*\\)\\s*=\\s*-1\\s+(ENOENT|EACCES|EPERM)`,
 )
-const STRACE_UNFINISHED_RE = new RegExp(`^(\\d+)\\s+(${SYSCALLS})\\([^"]*${QUOTED}[^)]*<unfinished`)
+const STRACE_UNFINISHED_RE = new RegExp(
+  `^(\\d+)\\s+(${SYSCALLS})\\((?:${DIRFD})?${QUOTED}[^)]*<unfinished`,
+)
 const STRACE_RESUMED_RE = new RegExp(
   `^(\\d+)\\s+<\\.\\.\\. (${SYSCALLS}) resumed>.*?=\\s*-1\\s+(ENOENT|EACCES|EPERM)`,
 )
@@ -57,10 +63,10 @@ const STRACE_RESUMED_OK_RE = new RegExp(`^(\\d+)\\s+<\\.\\.\\. (${SYSCALLS}) res
  */
 const READ_FLAGS = '(?![A-Z_|]*O_WRONLY)[A-Z_|]+'
 const OPEN_READ_RE = new RegExp(
-  `^(\\d+)\\s+openat\\((AT_FDCWD|\\d+)(?:<[^"]*>)?, ${QUOTED}, ${READ_FLAGS}[^)]*\\)\\s*=\\s*\\d+(?:<(.*)>)?$`,
+  `^(\\d+)\\s+openat\\((AT_FDCWD|\\d+)(?:<.*?>)?, ${QUOTED}, ${READ_FLAGS}[^)]*\\)\\s*=\\s*\\d+(?:<(.*)>)?$`,
 )
 const OPEN_READ_UNFINISHED_RE = new RegExp(
-  `^(\\d+)\\s+openat\\((AT_FDCWD|\\d+)(?:<[^"]*>)?, ${QUOTED}, ${READ_FLAGS}.*<unfinished`,
+  `^(\\d+)\\s+openat\\((AT_FDCWD|\\d+)(?:<.*?>)?, ${QUOTED}, ${READ_FLAGS}.*<unfinished`,
 )
 const RESUMED_FD_RE = /resumed>.*\)\s*=\s*\d+(?:<(.*)>)?$/
 
@@ -413,6 +419,8 @@ function matchesIgnore(
  * crossing, and the task can grant it.
  */
 function describeMacViolation(line: string): Partial<SandboxViolation> {
+  const proxy = PROXY_DENY_RE.exec(line)
+  if (proxy !== null) return { target: proxy[1]!, ignorable: ['network'] }
   const m = /deny\(\d+\)\s+(\S+)\s+(.+?)\s*$/.exec(line)
   if (m === null) return {}
   const [op, target] = [m[1]!, m[2]!]
@@ -584,6 +592,28 @@ function filterIgnored(
 }
 
 /**
+ * SRT's filtering proxy records a connection it refused as `deny
+ * network-outbound <host>:<port> (<reason>)`, on both platforms: the one
+ * component that knows the host. Read as its own shape, so `ignore.network`
+ * silences it by host; the seatbelt pattern above wants `deny(<n>)`.
+ */
+const PROXY_DENY_RE = /^deny network-outbound (\S+) \([^)]*\)$/
+
+/**
+ * Linux: the connections the proxy refused, from the store records. Only
+ * the write observer's records were read there, so a task denied a host
+ * failed with its own `403` and no report, and one that survived the
+ * refusal passed, where macOS reports the same record (2026-10-02).
+ */
+export function refusedConnections(records: readonly string[]): SandboxViolation[] {
+  return [...new Set(records.filter((r) => PROXY_DENY_RE.test(r)))].map((line) => ({
+    line,
+    timestamp: new Date(),
+    ...describeMacViolation(line),
+  }))
+}
+
+/**
  * The writes SRT's Linux observer saw that this task's binds do not cover.
  * The observer reports every write-intent syscall as `deny <syscall>
  * <path>` (it cannot see the mount table), so a record under a path bwrap
@@ -606,6 +636,11 @@ export function refusedWrites(
     const m = /^deny (\S+) (\/.*)$/.exec(record)
     if (m === null) continue
     const [, syscall, raw] = m as unknown as [string, string, string]
+    // A descriptor or pseudo-file is the task's, and resolving it here
+    // reads vx's own: strace's log is `/dev/fd/5`, and a vx started with
+    // `5>out.log` in the project reported a write to `out.log` and failed
+    // a clean task (2026-10-02).
+    if (/^\/(?:dev|proc)\//.test(raw)) continue
     const abs = toRealPath(raw)
     if (isUnderAny(abs, binds) || underGlob(abs, globs)) continue
     const key = `${syscall}|${abs}`

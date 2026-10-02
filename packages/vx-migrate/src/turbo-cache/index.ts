@@ -627,7 +627,10 @@ export function turboCache(options: TurboCacheOptions = {}): VxPlugin {
         remoteWrite: ctx.policy.remoteWrite && remote.write,
       }
       if (!policy.remoteRead && !policy.remoteWrite) return undefined
-      return new LayeredCache(ctx.localCache, new TurboRemoteCache(config), {
+      // A signed download waits in a temp until its tag checks: in vx's
+      // cache directory, which the sandbox walls, not the shared temp dir a
+      // sandboxed task may read (L-45).
+      return new LayeredCache(ctx.localCache, new TurboRemoteCache(config, fetch, ctx.cacheDir), {
         policy,
         onRemoteError: (err) => ctx.warn(`vx/turbo-cache: ${err.message}`),
       })

@@ -123,42 +123,33 @@ export interface FingerprintClaims {
  * or `<since>` doesn't resolve to a commit.
  */
 export async function affectedProjects(args: AffectedArgs): Promise<Set<string>> {
+  // Turbo's CI spelling, `[origin/main...HEAD]`, is the base alone here:
+  // vx already diffs from the merge base (three dots' meaning), and the
+  // working tree it diffs to holds HEAD (D-117). Its two-dot `[A..HEAD]`
+  // diffs from A itself (G-145). Any other range is refused.
+  const headRange = /^(.+?)(\.{2,3})HEAD$/s.exec(args.since)
+  const since = headRange?.[1] ?? args.since
+  const fromMergeBase = headRange?.[2] !== '..'
   // The base reaches git as an argument, never through a shell, so `$(…)`
   // is opaque — but an option-like value is not: `--output=<path>` is a
   // real `git diff` option and an arbitrary file write. This is a security
   // boundary, so it is a check that knows it is one, before any spawn, and
   // every git call below also ends its options (`--end-of-options`) so a
   // second caller cannot lose the guard by accident.
-  if (args.since.length === 0 || args.since.startsWith('-')) {
+  if (since.length === 0 || since.startsWith('-')) {
     throw new UserError(
-      `git ref "${args.since}" is not a ref: a base cannot be empty or start with "-".`,
+      `git ref "${since}" is not a ref: a base cannot be empty or start with "-".`,
     )
   }
-  // A range: Turbo's `[main...HEAD]` (changes on HEAD since the merge
-  // base) and `[A..HEAD]` (since A itself). vx diffs against the working
-  // tree, so an end at HEAD is the same set, plus any uncommitted edit; an
-  // end elsewhere is a tree vx does not have, and is refused. `..` is
-  // illegal in a ref name (git-check-ref-format), so this splits no ref.
-  let since = args.since
-  let fromMergeBase = true
-  const range = /^(.*?)(\.{2,3})(.*)$/s.exec(args.since)
-  if (range !== null) {
-    const [, from = '', dots, to = ''] = range
-    if (from === '' || to === '' || from.startsWith('-') || to.startsWith('-')) {
-      throw new UserError(
-        `git ref "${args.since}" is not a range vx takes: both ends name a commit ` +
-          `("${from || 'HEAD'}${dots}HEAD"), and neither starts with "-".`,
-      )
-    }
-    await verifyRef(args.workspaceRoot, to)
-    if (!refIsHead(args.workspaceRoot, to)) {
-      throw new UserError(
-        `git ref "${args.since}" ends at "${to}", not HEAD: vx diffs against the working ` +
-          `tree — check out "${to}" and pass "${from}${dots}HEAD" (or "${from}").`,
-      )
-    }
-    since = from
-    fromMergeBase = dots === '...'
+  // `A..B` / `A...B` reached `rev-parse --verify`, which refuses a range, and
+  // the user read "did not resolve" about refs that both exist. `..` is
+  // illegal in a ref name (git-check-ref-format), so this refuses no ref.
+  const range = since.indexOf('..')
+  if (range >= 0) {
+    throw new UserError(
+      `git ref "${since}" is a range: ranges are not supported — pass the base alone ` +
+        `("${since.slice(0, range) || 'HEAD'}"); vx diffs it against the working tree.`,
+    )
   }
   await verifyRef(args.workspaceRoot, since)
   // Diff from the MERGE BASE of `since` and HEAD, not from `since` itself:
@@ -687,11 +678,27 @@ function revParse(workspaceRoot: string, ref: string): string | undefined {
     'ignore',
   )
   const sha = new TextDecoder().decode(proc.stdout).trim()
-  return proc.exitCode === 0 && sha.length > 0 ? sha : undefined
+  if (proc.exitCode !== 0 || sha.length === 0) return undefined
+  resolvedRefs.set(`${workspaceRoot}\0${ref}`, sha)
+  return sha
 }
+
+/**
+ * Refs `revParse` resolved to a commit, by workspace: the default base is
+ * found that way, and `verifyRef` asked git about it again, a synchronous
+ * spawn (~3.5 ms) of every bare `--affected`. A ref is fixed for a run.
+ */
+const resolvedRefs = new Map<string, string>()
+
+/** A ref that names an ancestor of HEAD by its own spelling (`HEAD~1`, `HEAD^`). */
+const HEAD_ANCESTOR = /^HEAD(?:~\d*|\^\d*)+$/
 
 /** `git merge-base <ref> HEAD`, or `ref` itself when the two share no ancestor. */
 async function mergeBase(workspaceRoot: string, ref: string): Promise<string> {
+  // HEAD's own ancestor is its merge base with HEAD: the commit it names,
+  // which the default base's search already resolved (`HEAD~1`).
+  const known = HEAD_ANCESTOR.test(ref) ? resolvedRefs.get(`${workspaceRoot}\0${ref}`) : undefined
+  if (known !== undefined) return known
   const proc = spawnGit(['merge-base', '--end-of-options', ref, 'HEAD'], workspaceRoot)
   const [out, exit] = await Promise.all([new Response(proc.stdout).text(), proc.exited])
   const sha = out.trim()
@@ -699,6 +706,7 @@ async function mergeBase(workspaceRoot: string, ref: string): Promise<string> {
 }
 
 async function verifyRef(workspaceRoot: string, ref: string): Promise<void> {
+  if (resolvedRefs.has(`${workspaceRoot}\0${ref}`)) return
   const proc = spawnGitSync(
     ['rev-parse', '--verify', '--quiet', '--end-of-options', ref],
     workspaceRoot,

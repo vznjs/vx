@@ -165,6 +165,10 @@ async function postOnce(
         body,
         headers,
         signal: controller.signal,
+        // An OTLP header is often the vendor's API key, and fetch drops only
+        // `Authorization` on a redirect to another origin: a collector's 307
+        // sent the key there (L-43). The OTel SDK exporters follow none.
+        redirect: 'manual',
         ...(tls === undefined ? {} : { tls }),
       })
     } catch (err) {
@@ -186,6 +190,13 @@ async function postOnce(
     // (walked the adopter's path, 2026-09-20). The body is the
     // collector's own explanation, so a line of it rides the message.
     const text = await res.text().catch(() => '')
+    if (res.status >= 300 && res.status < 400) {
+      const location = res.headers.get('location')
+      const to = location === null ? null : URL.parse(location, url)
+      throw new Error(
+        `HTTP ${res.status}: the collector redirected${to === null ? '' : ` to ${shownUrl(to.href)}`}; OTLP exporters follow no redirect — set the endpoint to where it points`,
+      )
+    }
     if (!res.ok) {
       const refused = new Error(`HTTP ${res.status}${detail(text)}`)
       if (!RETRYABLE_STATUS.has(res.status)) throw refused

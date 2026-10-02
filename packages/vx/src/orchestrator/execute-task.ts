@@ -399,6 +399,22 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
   try {
     await spawn.ready
   } catch (err) {
+    // A server the run's stop killed while it started is aborted, as any
+    // task the stop kills (item 962): it read `failed (never ready:
+    // exited, exit 130)` with a recap after every Ctrl-C (C-62). The stop
+    // aborts before it kills, so it is set by the time the child is gone.
+    // Read through a call: the early return above narrows `aborted` to
+    // false, but the stop can land during `spawn.ready`.
+    if (isAborted(args.stopSignal)) {
+      return {
+        node,
+        status: 'aborted',
+        exitCode: err instanceof PersistentReadyError ? (err.exitCode ?? 1) : 1,
+        durationMs: spawn.readyMs(),
+        wallclockStartNs,
+        wallclockEndNs: process.hrtime.bigint() - args.runStartHrTimeNs,
+      }
+    }
     const message = err instanceof Error ? err.message : String(err)
     // The task's OWN stream, not the process's: the frame is where a
     // reader looks for why a task failed, and a run with a custom logger
@@ -821,7 +837,15 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       })
       .catch(async (raw: unknown) => {
         const err = nameExecutorFailure(args.executor, raw)
-        const message = err instanceof Error ? err.message : String(err)
+        // A remote executor's message carries the server's own text, which
+        // may echo the env it was sent: masked here, where it is printed,
+        // and on the error the scheduler prints with its cause (L-39).
+        if (secrets !== null) {
+          for (const e of [err, err instanceof Error ? err.cause : undefined])
+            if (e instanceof Error) e.message = secrets.mask(e.message)
+        }
+        const message =
+          err instanceof Error ? err.message : (secrets?.mask(String(err)) ?? String(err))
         log.taskStderr(node, `${message}\n`)
         await sweepPlaceholders(placeholders)
         throw err
@@ -907,7 +931,9 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         signal: res.signal,
         hidden: req.sandbox && ((f: string) => !sandboxReads(req.sandbox!, f)),
       })
-      if (verdict !== undefined) log.taskStderr(node, `\n${verdict}\n`)
+      // The line quotes the command's first word, which a config may have
+      // built from a secret: masked as the task's own output is (L-37).
+      if (verdict !== undefined) log.taskStderr(node, `\n${secrets?.mask(verdict) ?? verdict}\n`)
       // A committed file another task's clean removed, still gone: vx
       // cleans outputs before a run where Turbo does not, so a reader with
       // no edge to the producer fails naming only the file (A-48).
@@ -1289,4 +1315,8 @@ function taskEnv(node: TaskNode, step: ExecConfig, workspaceRoot: string): NodeJ
   env[VX_RUN_WORKSPACE_ENV] = workspaceRoot
   env[VX_RUN_TASK_ENV] = node.id
   return env
+}
+
+function isAborted(signal: AbortSignal | undefined): boolean {
+  return signal?.aborted === true
 }

@@ -180,7 +180,7 @@ export interface SandboxedRunArgs {
   timeoutMs?: number
   capture?: CaptureConfig
   baseAllowRead: readonly string[] // node_modules + resolved workspace links
-  baseDenyRead: readonly string[] // [workspaceRoot] — the task may not leave its project
+  baseDenyRead: readonly string[] // [workspaceRoot, ...credential stores] — not its project's neighbours, nor ~/.ssh (L-41)
   reportWithin: string // projectDir — only denials in here are worth reporting
   reportLinked: readonly string[] // withheld linked packages (canonical) — reported too
   config: ResolvedSandboxConfig // its allowWrite is the whole write set: none is derived
@@ -269,6 +269,9 @@ export function punchWritePaths(readPath: string, writePaths: readonly string[])
 export function scratchWrites(pending, fs, anchors): { scratch: string[]; mountless: string[] }
 // The SRT customConfig: the baselines merged with the resolved block
 export function buildCustomConfig(args, baselines): SrtCustomConfig
+// Linux: SRT's bwrap line with its --tmpfs masks remounted read-only, the
+// deepest one a scratch glob's directory lies in left writable
+export function readOnlyMasks(wrapped: string, scratch?: readonly string[]): string
 
 // sandbox-violations.ts: what a trace or a seatbelt log reports
 export interface DeniedCall {
@@ -289,6 +292,8 @@ export function refusedWrites(
 ): SandboxViolation[]
 // the writes refused past the wall, as paths: a failed task's hint
 export function refusedWritesOutside(violations, opts: { within; linked?; config; skip }): string[]
+// Linux: the proxy's `deny network-outbound <host>:<port> (<reason>)` records
+export function refusedConnections(records: readonly string[]): SandboxViolation[]
 ```
 
 ## How it works
@@ -379,7 +384,7 @@ export function refusedWritesOutside(violations, opts: { within; linked?; config
 | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | macOS    | sandbox-exec + Seatbelt. Structured violations land in `SandboxViolationStore` via the system log monitor; we force exit 1 when any are recorded.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | Linux    | bwrap mount namespaces. Denied paths are structurally invisible → child sees `ENOENT`. The command runs under `strace -DD -f --seccomp-bpf -e trace=openat,chdir,fchdir,clone,…` INSIDE the sandbox and the trace is parsed for denials against the task's own baselines, each relative path resolved against the cwd its process had (`chdir` followed per process, a child starting in its parent's; B-61) (`--seccomp-bpf` keeps the ptrace stops to the traced calls; without it every syscall stopped and a stat-heavy task ran many times slower — the cache perf baselines failed on the Linux job for that reason until 2026-09-09; strace < 5.3 gets the slow form). Inside, strace follows the command alone: wrapped around bwrap it followed the namespace's setup too, and a sandboxed `true` cost 41 ms against 30 (min of 40, A/B interleaved, A/A within 2 ms; B-11). It writes to the host's log through fd 5, which the command's shell closes first. It is started from a fresh fork of the shell, with SIGINT and SIGQUIT put back (an async list starts with them ignored, and a task's `trap … INT` would never fire), because `-DD`'s process waits for ANY child to hear the tracer attached: an inherited one that exited first (the watcher, SRT's network bridges) sent the command on untraced, and its `execve` failed `ENOSYS` under the seccomp filter. `-DD` puts strace off the command's line, so a `sleep 10 &` the command leaves is not a tracee strace waits for; the namespace ends with the command and takes strace along, and a tracee stops at each `openat` until its line is written, so none is lost. SRT ≥ 0.0.75 also feeds its store on Linux from the seccomp helper's write observer, but judges those reports against the GLOBAL `allowWrite` from `initialize` (empty; the per-task list is in `customConfig`, which the monitor never sees), so every declared-output write arrives as `deny openat <output>`; vx judges those records against the task's own binds (`refusedWrites`, the write grants as bwrap binds them), and what no bind covers is a violation. strace never sees a write: the observer's USER_NOTIF takes precedence over strace's TRACE, so a refused write (`EROFS` under a read-only bind) or one into the anchor's scratch went unreported and a task that swallowed it exited 0 (B-5). The store is a 100-record ring shared by the run, so vx subscribes once and keeps each record for a command still running (`collectRecords`): read at exit, a refused write followed by 150 declared ones was already gone (B-7). |
-| Windows  | Not supported by SRT. `probeSandbox` reports unavailable; declaring `exec.sandbox` triggers a UserError before the run starts.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| Windows  | Unsupported: vx has no native Windows build or branch (#2227); under WSL the Linux row applies.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 
 `wrapSandboxedCommand` is the enforcement half on its own — the tagged command under SRT's wrapper, vx's seatbelt rules appended on macOS — and the persistent path spawns through it (`executePersistentTask`): a dev server declaring `exec.sandbox` gets the same walls and no violation report, since the report reads the trace after exit.
 
@@ -445,7 +450,17 @@ bwrap enters the task's cwd only if a mount holds it, and otherwise
 no grant holds the cwd (`cwdMounted`: one at or above it, or an existing
 one below it), vx denies the cwd too: the task
 enters an empty directory, its reads there are refused and reported, and
-its writes are the scratch the write observer reports (B-53).
+its writes are refused (`readOnlyMasks`) and reported (B-53).
+
+SRT hides a read-denied directory under a bwrap `--tmpfs`, which is
+writable: a write into one (the workspace root, a sibling's tree, the
+cwd above) succeeded and vanished with the sandbox, so a task writing
+`../../out.txt` went green with its output gone, where seatbelt refuses
+it. `readOnlyMasks` adds a `--remount-ro` for each before bwrap's `--`,
+after the mounts beneath it, and a write there is `EROFS` on both
+platforms; a failed task's hint names one outside the project. The
+deepest mask a pending write glob's directory lies in stays writable:
+that is its scratch (`scratchWrites`).
 
 SRT reads any Linux read path holding `[` as a glob, where a bracket
 opens a class. By the time vx hands the policy over, every grant is a
@@ -637,7 +652,9 @@ grants and what the task made there itself stay readable. `grep -r` and
 `find` open each entry relative to a directory's descriptor, which the
 trace names only by number, so such a task's strace runs with `-y`,
 which prints the path each descriptor opened (40% slower on 2,000
-opens). No widened grant, no `-y` and no extra parse.
+opens). The parse takes a descriptor's printed path up to the `, "` that
+opens the file argument, since a directory's name may hold a quote
+(`4</ws/q"d>`). No widened grant, no `-y` and no extra parse.
 
 ## A write grant that mounts nothing
 
@@ -664,8 +681,9 @@ anchor one component above it). Read grants are not reported: a read
 matching nothing is ordinary.
 
 Where no bind holds the glob's directory, it is the deny anchor's
-scratch: the task creates, writes and removes there, and nothing it
-leaves outlives the sandbox (`scratchWrites`). That is a tool's temp
+scratch, the mask `readOnlyMasks` leaves writable: the task creates,
+writes and removes there, and nothing it leaves outlives the sandbox
+(`scratchWrites`). That is a tool's temp
 directory — `bun build --compile` extracts a cross-compile runtime into
 `<cwd>/.<hash>-00000000.tmp/` and moves it into its cache — and such a
 grant is not reported; `refusedWrites` takes a write under it as
@@ -707,6 +725,26 @@ is why `@vzn/vx#test.bun.shard-*` is the one task in this repo with no
 `sandbox` block. `weakerWhenNested` covers the Linux case; SRT offers no
 macOS equivalent because there is none to offer.
 
+## Network entries
+
+`initSandbox` checks the run's domain union against SRT's own
+`NetworkConfigSchema` before `initialize`, which does not: a URL or a
+dotless host matched nothing, and an allowed `*` opened every host for
+the run. The refusal names each entry. It is thrown past the Linux probe,
+which brings the runtime up, and only an armed run resets it, so
+`prepareSandbox`'s `arm()` resets the runtime on any failure; before
+that the process hung after the summary (2026-10-02).
+
+## Descriptor records
+
+The write observer records strace's own log as `deny openat /dev/fd/5`.
+`refusedWrites` resolved each record's path in vx's process, so that one
+named vx's fd 5: `/dev/urandom` as a rule, but a vx started with
+`5>out.log` in a single-package workspace reported a write to `out.log`
+and failed a clean task. A record under `/dev/` or `/proc/` names the
+task's descriptor or pseudo-file, never a place vx can resolve, and is
+skipped (2026-10-02).
+
 ## Loopback
 
 A runtime that opens a dual-stack socket reaches 127.0.0.1 as
@@ -719,6 +757,47 @@ whenever the task declared any network at all, so under either grant the
 record is dropped: no config can silence it and it carries no
 information. It is not a hole — a connection that actually left the
 machine goes through that proxy, which reports it WITH host and port.
+
+That proxy record, `deny network-outbound <host>:<port> (<reason>)`,
+lands in SRT's store on both platforms. On Linux vx read only the write
+observer's records there, so a refused host failed a task through its
+own `403` and nothing else, and passed one that survived it;
+`refusedConnections` reads it now. It carries no `deny(<n>)`, so the
+seatbelt classifier left it without a target and `ignore.network` could
+not silence it on macOS; `describe` reads its shape first (2026-10-02).
+
+## What a sandboxed task costs (Linux, 2026-10-02)
+
+A sandboxed `true` costs ~28 ms in `runSandboxed` and ~35 ms per task in
+`vx run --concurrency 1` (100 tasks; an unsandboxed one costs ~2 ms, a
+bare spawn's floor). Measured by stripping one layer at a time from the
+wrapped command, min of 20–25:
+
+| part                                                                   | cost           | whose                            |
+| ---------------------------------------------------------------------- | -------------- | -------------------------------- |
+| bwrap with SRT's binds                                                 | ~6 ms (4 bare) | SRT, bwrap                       |
+| SRT's chain inside: bash three times, two socat bridges, apply-seccomp | ~6.5 ms        | SRT                              |
+| strace's own start (a bare `strace true` is 5.7 ms)                    | ~5 ms          | the denial report                |
+| SRT's per-wrap `rg`                                                    | 2.8 ms         | gone (B-75: `true` in its place) |
+| vx's wrapper: the signal watcher, `setsid`, `sh`                       | ~1.3 ms        | vx                               |
+| vx's JS: request, wrap, parse, scheduling                              | ~3 ms          | vx                               |
+
+Inside `vx run` the request and the walls add binds, so `runSandboxed`
+reads 28–30 ms there. What is vx's is at its floor: removing the watcher
+or `setsid` saves under 0.5 ms (noise), and both are correctness
+(signal forwarding, `kill 0`). A CPU profile names `rmSync` (947 ms per
+100 tasks) and `realpathSync` (250 ms) as the top cost; timed in place
+they are 0.4 ms and 0.23 ms a task: the profiler charges the main
+thread's wait on child processes to the last native call. Time a
+suspect in place before cutting it.
+
+The wrap itself (~3 ms with B-75's `true`, 1 ms of which is that spawn)
+is SRT's `generateFilesystemArgs` resolving each deny path (realpath,
+lstat, a symlink walk) and a `mkdtemp` per wrap; vx's own share of it
+is a sliver of a 400-wrap profile. What is left is SRT's to cut: one shell in place of three, and the
+bridges only for a task granted network. Neither is an option today,
+and dash cannot stand in for bash there (SRT's `trap "kill %1 %2"` kills
+no job under dash).
 
 ## Integration points
 
@@ -755,7 +834,10 @@ prefixes the sandboxed command with `portBridgeInner`: one
 per port, backgrounded and reaped with the shell (as SRT starts its own
 proxy bridges), and spawns the host side, `portBridgeHostArgv`: one
 `socat TCP-LISTEN:<port>,bind=127.0.0.1,fork UNIX-CONNECT:<sock>,retry=…`
-per port. The unix socket lives in the sandbox tmpdir, bound read-write on
+per port, socat resolved on vx's PATH. The task starts once each host
+socat listens (`/proc/net/tcp`, 5 s bound, skipped where /proc is not
+vx's, ended by a bridge that exited): a server that said it was ready
+inside could meet a refusal on the host first (M-22). The unix socket lives in the sandbox tmpdir, bound read-write on
 both sides. The task's side has to CREATE a unix socket under SRT's seccomp
 filter, so `prepareSandbox` passes `allowAllUnixSockets` when any task
 declares a port list (or `unixSockets`), and `wrapSandboxedCommand` then

@@ -41,10 +41,31 @@
   quoted medusa and payload numbers measured through `turbo()`; the
   docs README and `cli.md`'s `vx init` said the same. Each now calls
   `turbo()` / `nx()` a temporary start toward native config.
+- **R-6** The vx-migrate README timed `nx-exec` against `nx run` (400
+  and 830 ms less per task), a speed claim for an Nx-mapped run; it now
+  names the ~220 ms each `nx-exec` line pays and that native config
+  pays none of it.
+- **R-7** The quickstart is native config first: the Turbo/Nx case
+  left `vx init`'s step for a short "Coming from Turbo or Nx" section,
+  `bunx @vzn/vx-migrate` first and the `turbo()` / `nx()` file a
+  temporary start.
 - **R-11** Five posts (why-vx-is-fast, no-daemon, no-choice,
   explicit-over-magical, one-binary) quoted solidjs/solid numbers
   measured through `turbo()`; each keeps only the native-config
   benchmark, and site-samples stops pinning the solid figures.
+- **R-14** The share card (`og.svg` / `og.png`) still said "a faster
+  runner for your Turborepo or Nx repo"; it now carries the page's
+  headline, and the landing test holds the card's text to the `<h1>`.
+- **R-13** patterns.md's performance table and the docs README's
+  headline line gave Turbo and Nx as multiples; they now give vx's %
+  by the same formula, with the formula line.
+- **R-9** README prose tightened, data first: the benchmark table
+  leads; the reasons, install, migration and status lines say the same
+  in fewer words (1,096 → about 1,020 words), and the unpinned "over
+  4,000 core tests" count went.
+- **R-12** The benchmarks page's generated stress table and the
+  benchmarks post's runner table show each competitor cell as
+  `(vx N% faster)` with the formula line, not a multiple.
 
 ## Leads
 
@@ -52,3 +73,5 @@
   real-repo sections) measured `turbo()` / `nx()`, not native config.
   Rerun each repo after `bunx @vzn/vx-migrate` writes native configs
   before any of them is quoted again.
+- benchmarks.md's dated head-to-head sections still read as multiples
+  (`(1.6×)`); they are hand-typed records, converted only with a rerun.

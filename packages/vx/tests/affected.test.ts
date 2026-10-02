@@ -185,9 +185,9 @@ describe('affectedProjects', () => {
   // before git sees it: the non-repository root proves no spawn ran (git's
   // answer there would be "not a git repository").
   it.each([
-    ['..HEAD', 'HEAD..HEAD'],
-    ['HEAD~1..', 'HEAD~1..HEAD'],
-    ['HEAD~1...--output=x', 'HEAD~1...HEAD'],
+    ['..HEAD', 'HEAD'],
+    ['HEAD~1..', 'HEAD~1'],
+    ['HEAD~1...--output=x', 'HEAD~1'],
   ])('refuses the range %j before git sees it', async (since, shown) => {
     const bare = await mkdtemp(path.join(os.tmpdir(), 'vx-affected-range-'))
     try {
@@ -198,8 +198,8 @@ describe('affectedProjects', () => {
         )
         expect(err).toBeInstanceOf(UserError)
         expect(err?.message).toBe(
-          `git ref "${since}" is not a range vx takes: both ends name a commit ("${shown}"), ` +
-            'and neither starts with "-".',
+          `git ref "${since}" is a range: ranges are not supported — pass the base alone ` +
+            `("${shown}"); vx diffs it against the working tree.`,
         )
       }
     } finally {
@@ -224,7 +224,6 @@ describe('affectedProjects', () => {
     const sel = async (since: string) =>
       [...(await affectedProjects({ workspaceRoot: root, since, projects }))].sort()
     expect(await sel('main...HEAD')).toEqual(['a'])
-    expect(await sel('main...feature')).toEqual(['a'])
     expect(await sel('main..HEAD')).toEqual(['a', 'b'])
     // An end elsewhere is a tree vx does not have.
     const err = await affectedProjects({
@@ -236,8 +235,8 @@ describe('affectedProjects', () => {
       (e: unknown) => e as Error,
     )
     expect(err?.message).toBe(
-      'git ref "feature...main" ends at "main", not HEAD: vx diffs against the working tree — ' +
-        'check out "main" and pass "feature...HEAD" (or "feature").',
+      'git ref "feature...main" is a range: ranges are not supported — pass the base alone ' +
+        '("feature"); vx diffs it against the working tree.',
     )
   })
 
