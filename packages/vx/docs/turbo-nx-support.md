@@ -32,7 +32,7 @@ Every key `turbo.json`, `nx.json` and `project.json` accept, read from the upstr
 | `noUpdateNotifier` | not applicable | Turbo CLI update notice. |
 | `remoteCache` | mapped, with a note | `turboCache()` reads `apiUrl`, `teamId`, `teamSlug`, `enabled`, `signature`, `timeout` and `uploadTimeout`, below env vars and options. |
 | `tags` | not applicable | Package tags feed only Turbo boundaries; never read. |
-| `tasks` | supported | Each task (or Turbo 1 `pipeline`) becomes a vx task for the packages that declare the script. |
+| `tasks` | supported | Each task (or Turbo 1 `pipeline`) becomes a vx task for the packages that declare the script. A script that names `$npm_package_name`, `$npm_package_version` or `$npm_lifecycle_event` gets it defined, as the package manager Turbo runs it through sets it. |
 | `ui` | not applicable | Terminal UI choice. |
 | `tasks.*.cache` | supported | `cache: false` means no cache block: the task always runs. |
 | `tasks.*.dependsOn` | mapped, with a note | Same syntax; edges to tasks nobody runs are dropped; `$TURBO_ROOT$` deps get a TODO; `$NAME` becomes env. A package without the script of a `^` task others run keys it as Turbo's no-op node does: a cached `true` task with no outputs. A task name no package has a script for (`ci: { dependsOn: ["lint", "build"] }`) is a group wherever it has an edge, so `vx run ci` runs them as `turbo run ci` does. |
@@ -66,7 +66,7 @@ Every key `turbo.json`, `nx.json` and `project.json` accept, read from the upstr
 | `futureFlags.experimentalObservability` | not applicable | Turbo telemetry export; vx's is a telemetry plugin. |
 | `futureFlags.experimentalPythonWorkspaces` | not supported | Ignored; vx discovers projects from `package.json` workspaces only. |
 | `futureFlags.filterUsingTasks` | not supported | Ignored; `--filter` keeps vx's semantics. |
-| `futureFlags.githubActionsRemoteBaseRefFallback` | not supported | Ignored; `--affected` defaults to `origin/HEAD`, else `HEAD~1`. |
+| `futureFlags.githubActionsRemoteBaseRefFallback` | not supported | Ignored; `--affected` defaults to `origin/HEAD`, then a trunk branch (`origin/main`, `main`, …), else `HEAD~1`. |
 | `futureFlags.globalConfiguration` | supported | The `global` block is read whenever present, flag or not. |
 | `futureFlags.longerSignatureKey` | mapped, with a note | Not read; `turboCache()` always requires a signature key of at least 32 bytes. |
 | `futureFlags.pruneIncludesGlobalFiles` | not applicable | Affects only `turbo prune`; vx has none. |
