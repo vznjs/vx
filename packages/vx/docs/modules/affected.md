@@ -125,7 +125,8 @@ is complete — the config-import channel stops at project boundaries and
 
 - Try `git symbolic-ref --short -q refs/remotes/origin/HEAD` (e.g.
   `origin/main`).
-- Without the symbolic-ref, the first of `origin/main`, `origin/master`,
+- Without the symbolic-ref (or with one naming a branch the remote
+  deleted), the first of `origin/main`, `origin/master`,
   `main`, `master` that exists and is not HEAD's commit (one
   `for-each-ref`; D-93), else `HEAD~1`.
 - If `HEAD~1` does not resolve either (a CI checkout at
@@ -162,7 +163,8 @@ spawns) — easy to test against in-memory fixtures.
 - file in nested project → nested project wins over parent.
 - file outside any project → no project selected.
 - bad git ref → UserError with the ref name.
-- `defaultAffectedBase` returns `origin/HEAD` symref then `HEAD~1`.
+- `defaultAffectedBase` returns the `origin/HEAD` symref, else a trunk
+  branch that is not HEAD, else `HEAD~1`.
 
 Every git spawn goes through `spawnGitSync` / `spawnGit`: a git that is
 not on PATH is util's `gitSpawnRefusal` (one line, the install named),

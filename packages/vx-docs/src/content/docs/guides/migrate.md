@@ -1,10 +1,12 @@
 ---
 title: Migrate
-description: Run a Turborepo or Nx repo under vx with one new file, written by `vx init`, then let `bunx @vzn/vx-migrate` write vx.config.ts files when you are ready.
+description: Move a Turborepo or Nx repo to native vx config. `vx init` gives a temporary start; `bunx @vzn/vx-migrate` writes the vx.config.ts files that are the goal.
 ---
 
-Run your Turborepo or Nx repo under vx today, and move its config to
-TypeScript at your own pace. Any other repo starts at the
+Move a Turborepo or Nx repo to native vx config. The `vx.workspace.ts`
+that `vx init` writes is a temporary start, not a way to run the repo;
+`bunx @vzn/vx-migrate` writes the `vx.config.ts` files you keep, and
+vx's benchmarks measure only that native config. Any other repo starts at the
 [quickstart](../../quickstart/): there `vx init` writes the configs from
 your `package.json` scripts.
 
@@ -27,6 +29,10 @@ your `package.json` scripts.
    file without `--force`.
 5. Review each `TODO(vx-migrate)` comment. A task a package's own
    `vx.config.ts` declares wins; `turbo()` fills only the rest.
+6. Once `vx run build --all` does what `turbo run build` did, remove
+   `turbo()` and its import from `vx.workspace.ts`, then delete
+   `turbo.json`: the configs declare every task it mapped, and the
+   migrator's `note:` says so while `turbo()` is still there.
 
 ```ts
 import type { WorkspaceConfig } from '@vzn/vx/config'
@@ -37,7 +43,7 @@ export default { plugins: [turbo()] } satisfies WorkspaceConfig
 
 ```text
 $ npx vx init
-vx init: turbo.json found — turbo() from @vzn/vx-migrate runs this repo as it is; nothing else written.
+vx init: turbo.json found — turbo() from @vzn/vx-migrate, a temporary start until bunx @vzn/vx-migrate writes native config; nothing else written.
 wrote vx.workspace.ts.
 
 next: npm install -D @vzn/vx-migrate && npx vx run build --all
@@ -64,6 +70,7 @@ turboCache(): .github/workflows/ci.yml sets TURBO_TOKEN, so vx shares that remot
 ```text
 $ bunx @vzn/vx-migrate
 vx-migrate: turbo.json → vx.config.ts
+note: vx.workspace.ts still declares turbo(), which reads turbo.json every run and fills any task a vx.config does not declare; the configs written here declare them all. Once `vx run` does what turbo did, remove turbo() (and its import), then turbo.json
 
 3 tasks migrated clean, 0 TODOs
 files written:
@@ -105,7 +112,7 @@ npx vx run test --all      # 3 up-to-date
 | `interruptible` | nothing: `vx watch` re-spawns every persistent task each cycle |
 | `tags` | nothing: labels Turbo keeps out of the hash and the behaviour |
 | `outputLogs` (Turbo 1: `outputMode`)                        | `"new-only"` is the default; other values are the run's `--output-logs` |
-| `dotEnv` (Turbo 1), a `.env` input                          | `cache.inputs.runtime`: a probe that prints every `.env` file's name and bytes, because a gitignored `.env` is invisible to a git glob; a root one (`$TURBO_ROOT$/.env`, `globalDotEnv`) is `cache.inputs.workspaceRuntime` |
+| `dotEnv` (Turbo 1), a `.env` input                          | `cache.inputs.runtime`: a probe that prints every `.env` file's name and bytes, because a gitignored `.env` is invisible to a git glob (written configs name it from the preset: `dotenvFiles`, `dotenvFilesDeep`); a root one (`$TURBO_ROOT$/.env`, `globalDotEnv`) is `cache.inputs.workspaceRuntime` |
 | an input or `globalDependencies` path git ignores (`config.local.json`) | `cache.inputs.workspaceRuntime`: a probe that prints the file's name and bytes, since core refuses a file input git ignores; a gitignored file a glob matches is not keyed |
 | `command` (Turbo 2.11) | `exec.command` (the argv, quoted); `null` or `[]` is no task |
 | `description` | `description` |

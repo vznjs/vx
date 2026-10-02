@@ -892,7 +892,12 @@ export async function mapTurboWorkspace(
   const globalFiles = [
     ...globalDeps.filter((d) => envDependency(d) === null),
     ...(rootCfg.globalDotEnv ?? []),
-    ...rootDependencyGlobs(root, rootMeta?.packageJson ?? (await rootPackageJson(root)), metas),
+    // Turbo 2 added the root's dependencies to its global hash; 1.13.4's
+    // leaves them out (trigger.dev: a Prisma migration re-keyed only the
+    // packages that depend on the database package).
+    ...(rootCfg.tasks === undefined && rootCfg.pipeline !== undefined
+      ? []
+      : rootDependencyGlobs(root, rootMeta?.packageJson ?? (await rootPackageJson(root)), metas)),
     ...microfrontendsConfigs(root, [root, ...metas.map((m) => m.dir)]).map((c) => c.rel),
   ]
   const rootDotenv = globalFiles.some((f) => isDotenvGlob(f))

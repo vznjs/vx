@@ -20,7 +20,8 @@ that binary.
    that runs the members (`pnpm -r build`) does not. No task gets a `cache` block, so
    nothing is cached yet: add the one each `build`'s TODO shows. Beside
    `turbo.json` or `nx.json` it writes only a `vx.workspace.ts` that
-   declares `turbo()` or `nx()`.
+   declares `turbo()` or `nx()`: a temporary start, until
+   `bunx @vzn/vx-migrate` writes native configs.
 3. Or write one by hand, beside a package's `package.json`.
 
 ## Config
@@ -52,9 +53,10 @@ export default defineProject({
 
 ```bash
 vx run build --all        # every package, in dependency order
-vx run build              # ⇢ success local — a hit; restores dist/ if deleted
 vx run test --affected    # what changed, and its dependents
 vx run build --all --dry  # the plan; runs nothing
+cd packages/app           # without --all, a run takes the package you are in
+vx run build              # ⇢ success local — a hit; restores dist/ if deleted
 vx run build --graph      # the task graph as Graphviz DOT
 ```
 
@@ -73,8 +75,8 @@ Start with one package and leave the rest of your tooling as it is.
 3. Edit a file the build reads. `vx run build --dry` now predicts a miss.
 4. Add configs to more packages. `^build` orders them by your `package.json` dependencies.
 
-Want the whole repo under vx first? `turbo()` or `nx()` runs a Turborepo
-or Nx repo as it is: [Migrate](../guides/migrate/).
+Coming from Turbo or Nx? `bunx @vzn/vx-migrate` writes native configs
+from `turbo.json` or the Nx graph: [Migrate](../guides/migrate/).
 
 ## Common problems
 
@@ -89,12 +91,11 @@ or Nx repo as it is: [Migrate](../guides/migrate/).
 
 - Running from source needs Bun ≥ 1.4. The binary needs nothing.
 - The Linux sandbox needs `bubblewrap`, `socat` and `ripgrep`, and no root
-  in a container, or set `sandbox.weakerWhenNested: true`
-  ([Sandboxing](../guides/sandboxing/#requirements--platform-support)).
+  in a container, or set `exec.sandbox.weakerWhenNested: true` on each
+  sandboxed task ([Sandboxing](../guides/sandboxing/#requirements--platform-support)).
 - No native Windows build: use WSL.
 - On macOS the sandbox's report can miss records under load. Enforcement
   holds.
 - A cache hit replays the first and last 8 MiB of a task's output.
-- A `workspaceFiles` glob stops at a git submodule's edge.
 - A `kill -9` of vx leaves its persistent tasks running, except a server
   that exits when its stdin closes (esbuild `--watch`).

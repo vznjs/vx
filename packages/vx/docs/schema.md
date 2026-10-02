@@ -392,11 +392,8 @@ highest priority:
 1. **Essential allowlist** (hard-coded in `src/exec/env.ts`, and pinned
    against this list by a test): `PATH`, `HOME`, `SHELL`, `USER`,
    `LOGNAME`, `TMPDIR`, `TEMP`, `TMP`, `LANG`, `LC_ALL`, `LC_CTYPE`,
-   `TERM`, `COLORTERM`, `FORCE_COLOR`, `NO_COLOR`, `CI`, `NODE_OPTIONS`,
-   and the Windows set `SYSTEMROOT`, `APPDATA`, `LOCALAPPDATA`,
-   `PROGRAMDATA`, `PROGRAMFILES`, `PROGRAMFILES(X86)`, `COMSPEC`,
-   `PATHEXT`, `SYSTEMDRIVE`, `WINDIR`, `USERPROFILE`, `HOMEDRIVE`,
-   `HOMEPATH`, `NUMBER_OF_PROCESSORS`, `PROCESSOR_ARCHITECTURE`. Nothing else from the parent environment reaches a task —
+   `TERM`, `COLORTERM`, `FORCE_COLOR`, `NO_COLOR`, `CI`, `NODE_OPTIONS`.
+   Nothing else from the parent environment reaches a task —
    that is the whole list. Without these, typical CLI tools break. vx
    adds two markers of its own on top, `VX_RUN_WORKSPACE` (the root of
    the workspace running the task) and `VX_RUN_TASK` (`project#task`):
@@ -1114,13 +1111,15 @@ an active file mount — every atomic writer stages beside its target and
 renames — so a FILE-shaped grant is bound as its DIRECTORY. That
 directory is then readable AND writable in full: with
 `write: ['out.txt']` in the project root, every file in the project root
-can be read, undeclared, with no violation (there is no denial for the
-detector to report — the read simply succeeds). Put declared outputs in
-a subdirectory and the rest stays denied: under `write: ['dist/out.txt']`
-the task reads `dist/` freely and an undeclared read at the project root
-still fails. macOS matches paths rather than mounting, so a file grant
-stays exact there. Pinned both ways in
-`tests/sandbox-runtime.unsafe.test.ts` (2026-09-20).
+can be read. Such a read succeeds, so there is no denial; vx reports it
+from the trace instead, as a violation: a read of anything that was in
+that directory when the task started and that no grant covers, the
+directory's listing included. The declared file and what the task made
+there itself stay readable. Put declared outputs in a subdirectory and
+the rest stays denied outright. macOS matches paths rather than
+mounting, so a file grant stays exact there. Pinned in
+`tests/sandbox-runtime.unsafe.test.ts` (2026-09-20) and
+`tests/sandbox-widened-reads.unsafe.test.ts`.
 
 **`network` is per-RUN, not per-task.** SRT runs one filtering proxy
 per `vx run` and checks every request against the allowlist that proxy
@@ -1637,7 +1636,7 @@ lists the messages a user meets most:
 | `<level> has field "<key>", which vx <version> removed — use <replacement>`                                       | A field an earlier release accepted (`exec.resources`, removed in 0.0.19). The message names what replaced it (`design/versioning-1.0.md` § Deprecation).                                                                      |
 | `<level> must be an object (fields: <fields>), not an array`                                                      | An array where an object goes — `outputs: ['dist/**']` (Turbo's spelling) is `outputs: { files: ['dist/**'] }`, and the message says so.                                                                                       |
 | `cannot find '<name>' — no node_modules above the config provides it; install the workspace's dependencies first` | A bare import nothing installed serves — a fresh clone before its install, or a typo. Refused before the config is evaluated, so Bun never auto-installs it from the registry (it would, when no `node_modules` exists above). |
-| `tasks.<name> must be an object`                                                                                  | The task value is null / a string / etc.                                                                                                                                                                                       |
+| `tasks.<name> must be an object`                                                                                  | The task value is null / a string / etc.; a string (package.json's `name: 'command'`) adds the `{ exec: { command } }` it goes in.                                                                                             |
 | `exec must be an object with a command string`                                                                    | `exec` is malformed.                                                                                                                                                                                                           |
 | `exec.command must be a non-empty string`                                                                         | Forgot `command`, or an empty or whitespace-only string.                                                                                                                                                                       |
 | `exec.command holds a NUL, which no command line can carry`                                                       | A `\0` in the command (a template slip); the spawn refused it as exit 127, "not on this task's PATH", with the NUL printed as a space.                                                                                         |

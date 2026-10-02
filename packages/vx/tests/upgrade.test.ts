@@ -27,10 +27,8 @@ afterAll(async () => {
 })
 
 describe('isBunfsPath', () => {
-  it('matches the bunfs virtual-root markers (posix + windows)', () => {
+  it('matches the bunfs virtual-root marker', () => {
     expect(isBunfsPath('/$bunfs/root/vx')).toBe(true)
-    expect(isBunfsPath('B:\\~BUN\\root\\vx')).toBe(true)
-    expect(isBunfsPath('B:/~BUN/root/vx')).toBe(true)
   })
 
   it('rejects real source paths — the source-mode signal', () => {

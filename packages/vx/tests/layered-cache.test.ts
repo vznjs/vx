@@ -799,7 +799,7 @@ describe('LayeredCache', () => {
     for (const hash of queuedHashes) expect(await local.get(hash)).not.toBeNull()
 
     // Remove the artifacts the still-queued uploads have not read yet. Only
-    // the artifacts: Windows cannot delete the index a live handle holds.
+    // the artifacts.
     for (const hash of queuedHashes) await rm(path.join(cacheDir, `${hash}.tar.zst`))
 
     const drain = layered.drainUploads()
