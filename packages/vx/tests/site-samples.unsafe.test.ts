@@ -2256,5 +2256,18 @@ describe('the git-index claim names what a clean key still reads', () => {
     )
     const post = readFileSync(path.join(DOCS, 'blog', 'no-daemon.md'), 'utf8').replace(/\s+/g, ' ')
     expect(post).toContain('is keyed with no read of a source file')
+    const flat = (p: string) => readFileSync(p, 'utf8').replace(/\s+/g, ' ')
+    expect(readme).toContain('| **No source reads** (git index OIDs)')
+    expect(flat(path.resolve(import.meta.dir, '..', 'docs', 'README.md'))).toContain(
+      'deriving every cache key costs **zero source-file reads**',
+    )
+    for (const page of [
+      ['blog', 'why-vx-is-fast.md'],
+      ['concepts', 'why-vx-is-fast.md'],
+    ]) {
+      expect(flat(path.join(DOCS, ...page))).toContain(
+        'Clean-tree key derivation costs zero source-file reads',
+      )
+    }
   })
 })
