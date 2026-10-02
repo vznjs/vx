@@ -112,8 +112,9 @@ function renderPreset(inputs: string[], env: string[], pass: string[]): string {
   if (inputs.length > 0) {
     lines.push(
       '',
-      '// From globalDependencies — workspace-root-relative, spread into each',
-      '// task’s cache.inputs.workspaceFiles (the $TURBO_ROOT$ equivalent).',
+      '// From globalDependencies and what Turbo adds to them (the packages the',
+      '// root depends on, microfrontends configs) — workspace-root-relative,',
+      '// spread into each task’s cache.inputs.workspaceFiles.',
       `export const globalInputs = ${arr(inputs)}`,
     )
   }
