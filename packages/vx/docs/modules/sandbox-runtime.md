@@ -292,6 +292,8 @@ export function refusedWrites(
 ): SandboxViolation[]
 // the writes refused past the wall, as paths: a failed task's hint
 export function refusedWritesOutside(violations, opts: { within; linked?; config; skip }): string[]
+// the reads the wall hid of paths that exist on the host, files first: a failed task's hint
+export function hiddenReadsOutside(violations, opts: { within; linked?; config; skip }): string[]
 // Linux: the proxy's `deny network-outbound <host>:<port> (<reason>)` records
 export function refusedConnections(records: readonly string[]): SandboxViolation[]
 ```

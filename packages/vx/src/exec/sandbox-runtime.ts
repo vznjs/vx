@@ -88,6 +88,7 @@ import {
   srtDefaultWritePaths,
 } from './sandbox-deny-scan.js'
 import {
+  hiddenReadsOutside,
   parseStraceViolations,
   refusedConnections,
   refusedWrites,
@@ -1820,6 +1821,16 @@ async function runSandboxedOnce(
     })
   }
 
+  if (exitCode !== 0) {
+    const hidden = hiddenReadsOutside(recorded, {
+      within: args.reportWithin,
+      linked: args.reportLinked,
+      config: args.config,
+      skip: [taskTmpRoot()],
+    })
+    if (hidden.length > 0) violations.push(hiddenReadsHint(hidden, args.reportWithin))
+  }
+
   try {
     SandboxManager.cleanupAfterCommand()
   } catch {
@@ -1864,6 +1875,19 @@ function outsideWritesHint(paths: readonly string[]): SandboxViolation {
       `vx: the sandbox refused writes outside the project, which are not reported as ` +
       `violations: ${shown}${more}. If the task needs one, grant its directory, e.g. ` +
       `\`allow: { write: ['${spelled}/'] }\`.`,
+  }
+}
+
+function hiddenReadsHint(paths: readonly string[], within: string): SandboxViolation {
+  const shown = paths.slice(0, 5).join(', ')
+  const more = paths.length > 5 ? ` and ${paths.length - 5} more` : ''
+  return {
+    timestamp: new Date(),
+    hint: true,
+    line:
+      `vx: the sandbox hid paths outside the project that exist on this machine, which are ` +
+      `not reported as violations: ${shown}${more}. If the task reads one, grant it, e.g. ` +
+      `\`allow: { read: ['${path.relative(toRealPath(within), paths[0]!)}'] }\`.`,
   }
 }
 
