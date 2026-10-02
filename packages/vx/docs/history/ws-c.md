@@ -877,6 +877,17 @@ each exit 1 with the healthy server dead (both hang without the fix,
 the crash row with its clause removed), and the `--continue=always`
 control holds (red with that exception removed). `cli.md` and
 `execution.md` say so.
+## C-59: the fingerprint watch reads a whole-second lockfile stamp
+
+A's lead (A-2). The watch over the fingerprinted files skipped a file
+whose ctime was more than `FILE_HASH_RACY_MS` (50 ms) older than the
+run's read. On a file system that keeps whole seconds, a lockfile a
+task rewrote 400 ms after the read is stamped to the second before it,
+read as untouched, and every key after it kept the old lockfile's bytes:
+a stale hit. The window now widens by A-2's `racyWindowMs`. Row
+(`whole-second-stamps.test.ts` › the fingerprint watch's whole-second
+stamp, simulated ctime): red without the fix; a sub-second stamp 499 ms
+before the read stays trusted. `modules/fingerprint-watch.md` says so.
 
 ## C-57: a server watch holds keeps printing while watch idles
 

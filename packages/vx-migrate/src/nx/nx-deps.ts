@@ -107,6 +107,8 @@ export function mapNxDeps(
   matchProjects: (patterns: readonly string[]) => string[] = (ps) => [...ps],
   targetNames: readonly string[] = [],
   asked?: { readonly node: string; readonly configuration: string },
+  /** This target's options, its configuration's merged in: what `options: "forward"` hands on. */
+  forwarded?: Readonly<Record<string, unknown>>,
 ): string[] {
   const entries = expandTargetGlobs(raw, targetNames, (p) => metaByNode.has(p), ownTarget)
   const deps: string[] = []
@@ -165,6 +167,16 @@ export function mapNxDeps(
       if (t === undefined) {
         todos.push(`dependsOn ${JSON.stringify(d)} has no target — dropped`)
         continue
+      }
+      // `options: "forward"` hands the dependency this target's options as
+      // overrides (`createTaskOverrides`): a different command, which vx's
+      // one task per target cannot be. Nothing to hand on, nothing to say
+      // (cypress's atomized `e2e-ci` forwards its empty options).
+      if (o.options === 'forward' && forwarded !== undefined && Object.keys(forwarded).length > 0) {
+        todos.push(
+          `dependsOn ${JSON.stringify(t)}: options forwarding is not supported — the dependency ` +
+            "runs with its own options, not this target's",
+        )
       }
       // `ignore` is Nx's default; only `forward` asks for something vx lacks.
       if (o.params === 'forward') {
