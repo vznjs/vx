@@ -339,8 +339,10 @@ describe('frozenProjectConfig — the trust model', () => {
         pkg: { configPath: 'somewhere/else/vx.config.ts', configHash: 'h', config: CONFIG },
       },
     })
-    await expect(frozenProjectConfig(moved, metaFor('pkg/vx.config.ts'), root)).rejects.toThrow(
-      /has no entry for "pkg"/,
+    // D-88: named as the move it is, not as an entry the lock lacks.
+    const err = await rejection(frozenProjectConfig(moved, metaFor('pkg/vx.config.ts'), root))
+    expect(err.message).toBe(
+      'vx-lock.json locks "pkg" at somewhere/else/vx.config.ts, but its config is pkg/vx.config.ts now — run `vx lock` to refresh, or delete vx-lock.json',
     )
   })
 

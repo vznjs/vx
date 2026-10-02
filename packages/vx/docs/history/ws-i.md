@@ -194,6 +194,13 @@ project, vx's and Bun's versions. 1,000 packages warm, compiled, 41
 interleaved rounds: main 401.2 ms median (min 337.2), patch 377.9
 (309.2), A/A 373.2 (321.0); `load configs` 41.1 → 14.4 ms (min of 7).
 
+I-24. A config load without the closure builds no package graph. The
+CLI's selection pass, `vx info` and the reader's view each built one for
+`loadProjects`, which reads it only for the closure they never ask for;
+`packageGraph` is now required only with `closure: true`. 1,000
+packages, one edited, `run build --affected=HEAD~1`, compiled, 41
+interleaved rounds: main 359.0 ms median (min 309.1), patch 350.3
+(307.5), A/A 349.5 (296.4).
 I-22. An output glob whose static directory is absent is not scanned.
 A restore into a tree without its outputs scans each output glob twice
 (the check, then the clean), and `Bun.Glob.scanSync` of a missing
@@ -226,6 +233,20 @@ compiled, 21 interleaved rounds: `run graph` main 962.6 ms median (min
 (1,074.6), 1,247.3 (936.6), 1,235.8 (1,003.9). The second read (inside
 `restoreOutputs`) stays: the rows in hand would cross the `CacheLayer`
 seam.
+
+I-26. An `--affected` run walks the worktree once. The selection
+spawned `git ls-files --others` for its untracked files, and the run then
+walked the tree again with `git status -uall`. The discovery's lazy
+enumeration is now registered for every discovery (not only with a
+`discover` hook); a `[since]` filter starts it, the diff reads its
+`untracked` (`GitEnumeration.untracked`, status's `??` set, which equals
+`ls-files --others --exclude-standard`'s: a row compares them with an
+ignored dir, a deep dir and a nested repo), and the run reuses it with
+the discovery. Rows: the equivalence, and a logging git counting one
+`status` and no `ls-files --others` for an `--affected` run (red on
+main). 1,000 packages, one edited, `run build --affected=HEAD~1`,
+compiled, 41 interleaved rounds: main 356.8 ms median (min 293.5),
+patch 311.9 (248.5), A/A 313.6 (255.5).
 
 ## Leads for other streams
 
