@@ -339,6 +339,14 @@ The probe now reads the JS heap after a full GC: 1-2 MiB at either
 duration, 8 of 8 runs clean beside eight busy loops, and 180-1,290 MiB
 with a mutant that keeps every chunk (all three rows red).
 
+M-31. Probes, nothing shipped. `watch-loop-members.test.ts` › a root
+package.json's workspaces that add a glob watch the packages they name
+(D's lead: an `until` past its 15 s once, 17 s): refuted that a new
+member's `package.json` landing after its directory goes unseen (2 s
+between them, green); both glob rows 6 of 6 beside eight busy loops.
+Which `until` timed out was not recorded. `task-glob-brackets.test.ts` ›
+an upstream's hit sets aside the route (F's macOS lead) is M-4 and M-5.
+
 ## Leads for other streams
 
 - A: A-20 let a same-project dependant restore ahead of a producer whose
