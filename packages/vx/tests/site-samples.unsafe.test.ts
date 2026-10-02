@@ -157,17 +157,15 @@ describe('CONTRIBUTING names what the gate runs on', () => {
 })
 
 describe('the configure guide names the essential allowlist', () => {
-  it('its "always gets a small essential allowlist" sentence names every POSIX name in ESSENTIAL_ENV', () => {
+  it('its "always gets a small essential allowlist" sentence names every name in ESSENTIAL_ENV', () => {
     const page = section(
       readFileSync(path.join(GUIDES, 'configure.md'), 'utf8'),
       'Environment variables',
     )
-    const m = /essential allowlist so normal CLI tools\s+work:([\s\S]*?)plus the Windows/.exec(page)
+    const m = /essential allowlist so normal CLI tools\s+work:([\s\S]*?)\. vx sets/.exec(page)
     expect(m).not.toBeNull()
     const named = new Set([...m![1]!.matchAll(/`([A-Z_]+)`/g)].map((x) => x[1]!))
-    const posix = ESSENTIAL_ENV.slice(0, ESSENTIAL_ENV.indexOf('SYSTEMROOT'))
-    expect(posix.length).toBeGreaterThan(10)
-    for (const name of posix) expect(named).toContain(name)
+    expect([...named]).toEqual([...ESSENTIAL_ENV])
   })
 })
 

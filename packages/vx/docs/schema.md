@@ -392,11 +392,8 @@ highest priority:
 1. **Essential allowlist** (hard-coded in `src/exec/env.ts`, and pinned
    against this list by a test): `PATH`, `HOME`, `SHELL`, `USER`,
    `LOGNAME`, `TMPDIR`, `TEMP`, `TMP`, `LANG`, `LC_ALL`, `LC_CTYPE`,
-   `TERM`, `COLORTERM`, `FORCE_COLOR`, `NO_COLOR`, `CI`, `NODE_OPTIONS`,
-   and the Windows set `SYSTEMROOT`, `APPDATA`, `LOCALAPPDATA`,
-   `PROGRAMDATA`, `PROGRAMFILES`, `PROGRAMFILES(X86)`, `COMSPEC`,
-   `PATHEXT`, `SYSTEMDRIVE`, `WINDIR`, `USERPROFILE`, `HOMEDRIVE`,
-   `HOMEPATH`, `NUMBER_OF_PROCESSORS`, `PROCESSOR_ARCHITECTURE`. Nothing else from the parent environment reaches a task —
+   `TERM`, `COLORTERM`, `FORCE_COLOR`, `NO_COLOR`, `CI`, `NODE_OPTIONS`.
+   Nothing else from the parent environment reaches a task —
    that is the whole list. Without these, typical CLI tools break. vx
    adds two markers of its own on top, `VX_RUN_WORKSPACE` (the root of
    the workspace running the task) and `VX_RUN_TASK` (`project#task`):

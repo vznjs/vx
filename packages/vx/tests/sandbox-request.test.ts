@@ -78,7 +78,7 @@ const kind = async (p: string): Promise<'file' | 'dir' | 'none'> => {
 // could be mounted, and its tasks failed on denials that named no cause
 // (or, before B-57, ran with the workspace unwalled). Seatbelt compiles it
 // as a character class, so the workspace wall there matched nothing.
-describe.skipIf(process.platform === 'win32')('a project under a bracketed directory', () => {
+describe('a project under a bracketed directory', () => {
   it('is refused with the directory named, before anything is created', async () => {
     dir = path.join(root, 'packages', '[old]', 'proj')
     await mkdir(dir, { recursive: true })

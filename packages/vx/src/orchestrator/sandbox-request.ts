@@ -191,7 +191,7 @@ export async function sandboxRequestFor(
   // mounts no such write path (B-60); seatbelt's rules compile it as a
   // character class, so vx's own workspace wall matched nothing (B-65).
   const home = toRealPath(node.projectDir)
-  if (process.platform !== 'win32' && /[[\]]/.test(home)) {
+  if (/[[\]]/.test(home)) {
     throw new UserError(
       `exec.sandbox: ${home} holds a bracket ([ or ]), which the sandbox runtime reads as a ` +
         `pattern, not a name — rename the directory, or run the task without exec.sandbox`,

@@ -30,14 +30,9 @@ Layers, lowest to highest priority:
 1. **Essential allowlist** — hard-coded set of env vars copied from
    `source` when present. The list:
 
-   POSIX: `PATH`, `HOME`, `SHELL`, `USER`, `LOGNAME`, `TMPDIR`, `TEMP`,
+   `PATH`, `HOME`, `SHELL`, `USER`, `LOGNAME`, `TMPDIR`, `TEMP`,
    `TMP`, `LANG`, `LC_ALL`, `LC_CTYPE`, `TERM`, `COLORTERM`,
    `FORCE_COLOR`, `NO_COLOR`, `CI`, `NODE_OPTIONS`.
-
-   Windows: `SYSTEMROOT`, `APPDATA`, `LOCALAPPDATA`, `PROGRAMDATA`,
-   `PROGRAMFILES`, `PROGRAMFILES(X86)`, `COMSPEC`, `PATHEXT`,
-   `SYSTEMDRIVE`, `WINDIR`, `USERPROFILE`, `HOMEDRIVE`, `HOMEPATH`,
-   `NUMBER_OF_PROCESSORS`, `PROCESSOR_ARCHITECTURE`.
 
 2. **`passThrough` names** — for each name, copy its value from
    `source` if present. Missing names are skipped (not assigned to

@@ -163,7 +163,7 @@ A task sees only the variables you pass it:
 The child always gets a small essential allowlist so normal CLI tools
 work: `PATH`, `HOME`, `SHELL`, `USER`, `LOGNAME`, `TMPDIR`, `TEMP`,
 `TMP`, `LANG`, `LC_ALL`, `LC_CTYPE`, `TERM`, `COLORTERM`, `FORCE_COLOR`,
-`NO_COLOR`, `CI`, `NODE_OPTIONS`, plus the Windows essentials. vx sets
+`NO_COLOR`, `CI`, `NODE_OPTIONS`. vx sets
 `VX_RUN_WORKSPACE` (the workspace root) and `VX_RUN_TASK` (the
 `project#task` running) on every task. The package's `node_modules/.bin`
 is first on `PATH`. What vx itself reads:

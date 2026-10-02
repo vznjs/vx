@@ -398,13 +398,11 @@ describe('no numbered list item was swallowed by a paragraph', () => {
 // "What does my build script actually see?" is answered by four pages, and
 // only schema.md's copy was pinned — the copy that had already drifted once
 // (USER, LOGNAME, TEMP and TMP were passed to every task and named nowhere,
-// the note on that pin). The other three name every POSIX essential today
-// and each defers the Windows set in words; hold them there (item 359,
+// the note on that pin). Hold every copy to the whole list (item 359,
 // 2026-09-19).
 describe('every page listing the env allowlist lists all of it', () => {
-  it('each names every POSIX essential, and the contract page all 32', () => {
-    const posix = ESSENTIAL_ENV.slice(0, ESSENTIAL_ENV.indexOf('SYSTEMROOT'))
-    expect(posix.length).toBe(17)
+  it('each names every essential', () => {
+    expect(ESSENTIAL_ENV.length).toBe(17)
     const pages = handAuthoredDocs().filter((p) => readFileSync(p, 'utf8').includes('`LOGNAME`'))
     // schema.md (pinned separately), execution.md, modules/env.md, and the
     // configure guide (the environment-variables guide until the short
@@ -417,10 +415,9 @@ describe('every page listing the env allowlist lists all of it', () => {
     ])
     for (const page of pages) {
       const text = readFileSync(page, 'utf8')
-      const names = page.endsWith('modules/env.md') ? ESSENTIAL_ENV : posix
       expect({
         page: path.basename(page),
-        missing: names.filter((n) => !text.includes(`\`${n}\``)),
+        missing: ESSENTIAL_ENV.filter((n) => !text.includes(`\`${n}\``)),
       }).toEqual({ page: path.basename(page), missing: [] })
     }
   })
