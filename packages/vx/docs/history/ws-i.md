@@ -554,3 +554,10 @@ status` re-hashes every tracked file, and vx runs it with
 - A lazy `node:readline/promises` (re-run of item 755): `startup` stage
   median 7.8 → 5.0 ms, wall 60.8 vs 62.4 and 60.2 vs 61.4 min of 61 in
   both orders. Still refuted: the load moves, it does not go.
+- The restore's second row read again, on 40-file artifacts, measured
+  as main-thread on-CPU time (`/proc/self/task/<pid>/schedstat` at
+  exit, a preload; A/A within 7 ms at min): 300 restores, 11 rounds,
+  min 926.5 → 889.6 ms, median 979.3 → 981.7. Still not taken.
+- The RSS floor read only when a peak passes the last `VmHWM` reading:
+  1,000-task cold run, same measure, 7 rounds, min 2,424 → 2,399 one
+  order and 2,404 → 2,467 the other; A/A 15 ms. Not taken.
