@@ -681,6 +681,14 @@ with no prediction; a history read error fails open in both callers.
 
 ## Leads for other streams
 
+- **H:** `wireForwarder`, `toWireEvent`, `WireEvent` and `projectNode`
+  (`orchestrator/events.ts`) have no caller but `tests/dev.test.ts`: the
+  façade exports none of them, so the "serializable `WireEvent`" that
+  `RunOptions.bus`'s comment says core ships reaches no embedder, and
+  their comment cites a `createWireRenderer` removed with vx cloud.
+  `TaskView` stays on the façade with nothing producing it. Export the
+  wire form or remove it with `TaskView`: a contract call.
+
 - **B:** `runner.test.ts` › "keeps a ready server alive past its
   readyWhen timeout" failed on #2054's Linux CI: `echo up` missed its
   150 ms readiness bound under load (`PersistentReadyError … within
@@ -916,3 +924,12 @@ failed 143; and `tasks: []` read `No projects declare task(s): .`.
 run() now refuses each up front, naming the value. Rows
 (`run-concurrency.test.ts`): each refused with the exact message, the
 edges run; red without the checks. The options' doc comments say so.
+
+## C-64: say who hears `runEnd` twice
+
+The logger's tail flush and three test comments said run() calls
+`runEnd` twice so the renderer hears both; `busLogger` delivers
+`run:end` once, so in the CLI the renderer hears one (C-56 met this: a
+kept server's last partial line waited on a second call that never
+came). The comments now say a renderer an embedder drives directly may
+hear both. Comments and a row title only.

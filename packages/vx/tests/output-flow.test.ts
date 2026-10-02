@@ -1177,7 +1177,7 @@ describe('persistent post-ready output', () => {
     expect(text).not.toContain('since ready')
   })
 
-  it('runEnd is idempotent — run() calls it twice on the success path', () => {
+  it('runEnd is idempotent for a renderer that hears it twice', () => {
     const out = sink()
     const log = defaultLogger(NO_COLORS, { mode: 'full' }, out)
     const n = mkPersistent('app#server')
