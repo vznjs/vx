@@ -80,6 +80,10 @@ In order of harm:
   under the full gate's load on 2026-09-28, 2 of 2 green alone. Its
   `until` deadline is a claim about time under load.
 
+- core: `scale-graph.test.ts` › core pipeline at ~2000 projects
+  / ~6000 tasks timed out its 5 s hook once in a full local gate,
+  2026-10-02, on the B-54 merge; its shard alone passed.
+
 ## Entries
 
 B-1. A glob grant's hit on a wall is not a grant of it (lead 1). On
@@ -1009,3 +1013,12 @@ nothing); with the fix the read itself is reported. Rows:
 `sandbox-runtime.unsafe.test.ts` › runs in its own cwd when no grant
 holds it (red without the fix: `pwd` read `/root`), and the bare
 baseline's row now pins the two write violations (red without it).
+
+B-54. strace writes a path as a C string (a quote, a backslash and a
+control byte escaped, a non-ASCII byte as octal), and `deniedCalls`
+read it raw: `q"t.txt` was cut at `q\`, `é.txt` was reported as
+`\303\251.txt`, so the report named the wrong path and no `ignore`
+pattern could match it. The quoted argument is now matched escape-aware
+and decoded (`cStringPath`). Row: `sandbox-runtime.unsafe.test.ts` ›
+deniedCalls › decodes the C-string escapes strace writes a path with
+(red without the fix).

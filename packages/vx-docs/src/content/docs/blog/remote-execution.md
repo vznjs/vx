@@ -17,7 +17,7 @@ NativeLink, BuildBuddy, Buildfarm and bazel-remote.
 
 ```ts
 // vx.workspace.ts
-import { defineWorkspace } from '@vzn/vx'
+import { defineWorkspace } from '@vzn/vx/config'
 import { reapi } from '@vzn/vx-reapi'
 
 export default defineWorkspace({

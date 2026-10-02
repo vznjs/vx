@@ -136,7 +136,7 @@ describe('Plugin API', () => {
     ).rejects.toThrow(/name/)
     // The MESSAGE, not just /setup/: without the authoring check the call
     // goes ahead and the TypeError it raises comes back wrapped as
-    // "failed to load: plugin.setup is not a function", which satisfies
+    // "failed in setup: plugin.setup is not a function", which satisfies
     // /setup/ just as well. The two paths differ only in the sentence.
     await expect(
       installPlugins({
@@ -317,7 +317,7 @@ describe('Plugin API', () => {
       (e: unknown) => (e as Error).message,
     )
     expect(err).toBe(
-      "plugin 'org/typo' failed to load: ctx.on: unknown hook 'taskComplete' (one of onRunStart, onTaskStart, onTaskStdout, onTaskStderr, onTaskComplete, onRunStatus, onRunEnd)",
+      "plugin 'org/typo' failed in setup: ctx.on: unknown hook 'taskComplete' (one of onRunStart, onTaskStart, onTaskStdout, onTaskStderr, onTaskComplete, onRunStatus, onRunEnd)",
     )
   })
 

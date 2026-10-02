@@ -86,7 +86,7 @@ jobs:
 
 ```ts
 // vx.workspace.ts
-import { defineWorkspace } from '@vzn/vx'
+import { defineWorkspace } from '@vzn/vx/config'
 import { github } from '@vzn/vx-github'
 
 export default defineWorkspace({ plugins: [github()] })
@@ -148,7 +148,7 @@ uploads new results in the background.
 
 ```ts
 // vx.workspace.ts
-import { defineWorkspace } from '@vzn/vx'
+import { defineWorkspace } from '@vzn/vx/config'
 import { reapi } from '@vzn/vx-reapi'
 
 export default defineWorkspace({
@@ -186,7 +186,7 @@ default:
 
 ```ts
 // vx.workspace.ts
-import { defineWorkspace } from '@vzn/vx'
+import { defineWorkspace } from '@vzn/vx/config'
 import { reapi } from '@vzn/vx-reapi'
 
 export default defineWorkspace({

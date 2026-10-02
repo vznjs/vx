@@ -108,7 +108,7 @@ npm install -g @vzn/vx
 Drop a `vx.config.ts` next to any workspace package:
 
 ```ts
-import { defineProject } from '@vzn/vx'
+import { defineProject } from '@vzn/vx/config'
 
 export default defineProject({
   tasks: {
@@ -141,7 +141,7 @@ are its floor, so the file can be absent:
 
 ```ts
 // vx.workspace.ts
-import { defineWorkspace } from '@vzn/vx'
+import { defineWorkspace } from '@vzn/vx/config'
 
 export default defineWorkspace({ plugins: [] })
 ```
