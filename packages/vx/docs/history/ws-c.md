@@ -877,6 +877,7 @@ each exit 1 with the healthy server dead (both hang without the fix,
 the crash row with its clause removed), and the `--continue=always`
 control holds (red with that exception removed). `cli.md` and
 `execution.md` say so.
+
 ## C-57: a server watch holds keeps printing while watch idles
 
 `vx watch dev` showed its server's log only until the cycle's run
