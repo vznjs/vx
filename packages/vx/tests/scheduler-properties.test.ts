@@ -9,11 +9,7 @@ import { describe, expect, it } from 'bun:test'
 import type { TaskNode } from '../src/graph/index.js'
 import { RestoreDemoted, runGraph, type TaskOutcome } from '../src/graph/scheduler.js'
 import { taintTracker } from '../src/orchestrator/admission.js'
-
-function rng(seed: number): () => number {
-  let s = seed
-  return () => (s = (s * 1103515245 + 12345) % 2147483648) / 2147483648
-}
+import { rng } from './helpers/rng.js'
 
 interface Scenario {
   nodes: Map<string, TaskNode>

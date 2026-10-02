@@ -992,7 +992,9 @@ test.ts` runs 450 seeded graphs (restores, demotions, groups, pools, an
 admission policy, failures, a stop, each `--continue` mode) against
 what `modules/scheduler.md` promises, and 300 against the taint
 tracker's definition. Each of three scheduler mutations reddens it:
-the item-963 hold, the skipped-upstream skip, the stop's skip.
+the item-963 hold, the skipped-upstream skip, the stop's skip. It
+draws from the full-period PRNG of C-79: the float LCG it first used
+cycled within 15,000 draws, so most graphs repeated.
 
 ## C-71: `--exclude-dependencies`' orders over random graphs, as a test
 
