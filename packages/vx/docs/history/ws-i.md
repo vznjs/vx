@@ -248,6 +248,15 @@ main). 1,000 packages, one edited, `run build --affected=HEAD~1`,
 compiled, 41 interleaved rounds: main 356.8 ms median (min 293.5),
 patch 311.9 (248.5), A/A 313.6 (255.5).
 
+I-31. A key names its input files by slicing the root off. `relFor`
+memoised `relPosix` per absolute path, and a Map lookup hashes the whole
+path per file per task; every input file is a normalized absolute path
+(`resolveInputs`), so under a normalized root its relative name is a
+slice, and the memo stays for anything else. Bench as I-30 (900 warm
+hits, 12,905 files), compiled, 21 interleaved rounds: `classify + probe`
+main 256.9 ms median (min 217.2), patch 241.8 (194.0), A/A 238.9
+(193.8); in-process total 600.1 (515.1), 551.6 (490.8), 550.6 (455.2).
+
 ## Leads for other streams
 
 - **Owner / coordinator: skip macOS where it cannot differ from
