@@ -89,8 +89,8 @@ caches.
    - If caching enabled, `cleanOutputs(cleanArgs)` first so a stale
      `dist/` doesn't survive into a fresh exec; the directory each
      wildcard output glob is rooted at stays (`keepGlobRoots`, B-49).
-   - Build isolated env (`<projectDir>/node_modules/.bin` PATH
-     prepend).
+   - Build isolated env (`<projectDir>/node_modules/.bin`, then
+     `<workspaceRoot>/node_modules/.bin`, prepended to PATH).
    - `wallclockStartNs = process.hrtime.bigint() - runStartHrTimeNs`.
    - The attempt builds an `ExecuteRequest` (command, env, capture,
      declared outputs, timeout, sandbox grants) and hands it to

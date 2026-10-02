@@ -6,6 +6,7 @@
 
 import path from 'node:path'
 import { absolutize, atOrUnder, isUnderAny, localBindingOn, toRealPath } from './sandbox-paths.js'
+import { bindableReads } from './sandbox-binds.js'
 import type {
   ResolvedSandboxConfig,
   SandboxedRunArgs,
@@ -49,6 +50,25 @@ const STRACE_RESUMED_RE = new RegExp(
 )
 /** A resumed call that SUCCEEDED — clears the pending entry, emits nothing. */
 const STRACE_RESUMED_OK_RE = new RegExp(`^(\\d+)\\s+<\\.\\.\\. (${SYSCALLS}) resumed>`)
+/**
+ * An `openat` that succeeded, and not for writing alone: a read. Placed by
+ * the path `-y` prints for the descriptor it returned; without one, only
+ * from the cwd (`AT_FDCWD`) or by an absolute path.
+ */
+const READ_FLAGS = '(?![A-Z_|]*O_WRONLY)[A-Z_|]+'
+const OPEN_READ_RE = new RegExp(
+  `^(\\d+)\\s+openat\\((AT_FDCWD|\\d+)(?:<[^"]*>)?, ${QUOTED}, ${READ_FLAGS}[^)]*\\)\\s*=\\s*\\d+(?:<(.*)>)?$`,
+)
+const OPEN_READ_UNFINISHED_RE = new RegExp(
+  `^(\\d+)\\s+openat\\((AT_FDCWD|\\d+)(?:<[^"]*>)?, ${QUOTED}, ${READ_FLAGS}.*<unfinished`,
+)
+const RESUMED_FD_RE = /resumed>.*\)\s*=\s*\d+(?:<(.*)>)?$/
+
+/** Where a successful read opened: `-y`'s path, else the call's own when placeable. */
+function readPath(dirfd: string, rawPath: string, opened: string | undefined): string | undefined {
+  if (opened !== undefined) return cStringPath(opened)
+  return dirfd === 'AT_FDCWD' || rawPath.startsWith('/') ? rawPath : undefined
+}
 
 const C_ESCAPES: Record<string, number> = { n: 10, t: 9, r: 13, v: 11, f: 12, a: 7, b: 8 }
 
@@ -88,6 +108,8 @@ export interface DeniedCall {
   syscall: string
   rawPath: string
   errno: string
+  /** A read that SUCCEEDED (`errno` empty): asked for by `deniedCalls`' `reads`. */
+  read?: true
   /**
    * The directory a relative `rawPath` was opened from, when the trace
    * shows the process (or one it was forked from) changed into one; absent
@@ -131,8 +153,11 @@ type Op = { chdir: string } | { lost: true } | { call: number }
  * detector, and a synthetic trace pins the split-line shapes deterministically
  * where an end-to-end run only produces them when strace happens to interleave.
  */
-export function deniedCalls(text: string, cwd?: string): DeniedCall[] {
-  const pending = new Map<string, { syscall: string; rawPath: string }>()
+export function deniedCalls(text: string, cwd?: string, reads = false): DeniedCall[] {
+  const pending = new Map<
+    string,
+    { syscall: string; rawPath: string; read?: true; dirfd?: string }
+  >()
   const out: DeniedCall[] = []
   const ops = new Map<string, Op[]>()
   // A clone with CLONE_FS (every thread) shares its creator's cwd, so a
@@ -161,6 +186,15 @@ export function deniedCalls(text: string, cwd?: string): DeniedCall[] {
     const opener =
       line.includes('= -1') || line.includes('<unfinished') || line.includes('resumed>')
     if (!opener) {
+      if (reads && line.includes('openat(')) {
+        const m = OPEN_READ_RE.exec(line)
+        if (m !== null) {
+          const at = readPath(m[2]!, cStringPath(m[3]!), m[4])
+          if (at !== undefined)
+            denied(m[1]!, { syscall: 'openat', rawPath: at, errno: '', read: true })
+          continue
+        }
+      }
       if (
         cwd !== undefined &&
         (line.includes('chdir(') || line.includes('fork(') || line.includes('clone'))
@@ -179,7 +213,12 @@ export function deniedCalls(text: string, cwd?: string): DeniedCall[] {
       unfinished[2] !== undefined &&
       unfinished[3] !== undefined
     ) {
-      pending.set(unfinished[1], { syscall: unfinished[2], rawPath: cStringPath(unfinished[3]) })
+      pending.set(unfinished[1], {
+        syscall: unfinished[2],
+        rawPath: cStringPath(unfinished[3]),
+        ...(reads && OPEN_READ_UNFINISHED_RE.test(line) ? { read: true as const } : {}),
+        ...(reads ? { dirfd: OPEN_READ_UNFINISHED_RE.exec(line)?.[2] ?? 'AT_FDCWD' } : {}),
+      })
       continue
     }
     const resumedOk = STRACE_RESUMED_OK_RE.exec(line)
@@ -189,8 +228,14 @@ export function deniedCalls(text: string, cwd?: string): DeniedCall[] {
       const resumed = STRACE_RESUMED_RE.exec(line)
       // Only a resume that carries a DENIAL is a violation; a successful
       // resume just retires the pending entry.
+      const fd = held?.read === true ? RESUMED_FD_RE.exec(line) : null
       if (held !== undefined && resumed?.[3] !== undefined) {
-        denied(resumedOk[1], { ...held, errno: resumed[3] })
+        denied(resumedOk[1], { syscall: held.syscall, rawPath: held.rawPath, errno: resumed[3] })
+      } else if (held !== undefined && fd !== null) {
+        const at = readPath(held.dirfd ?? 'AT_FDCWD', held.rawPath, fd[1])
+        if (at !== undefined) {
+          denied(resumedOk[1], { syscall: held.syscall, rawPath: at, errno: '', read: true })
+        }
       }
       continue
     }
@@ -263,6 +308,8 @@ export async function parseStraceViolations(
   logPath: string,
   args: SandboxedRunArgs,
   baselines: { allowRead: readonly string[]; denyRead: readonly string[]; cwd: string },
+  /** `widenedEntries` taken as the task started: no entry, no read parse. */
+  widened: ReadonlyMap<string, ReadonlySet<string>> = new Map(),
 ): Promise<SandboxViolation[]> {
   const text = await Bun.file(logPath).text()
   if (text.length === 0) return []
@@ -274,32 +321,66 @@ export async function parseStraceViolations(
   // real paths (see `canonicalBaselines`), so comparing a link-path here
   // would report an explicitly-allowed read as a violation.
   const allowAbs = new Set<string>(
-    [...baselines.allowRead, ...args.config.allowRead].map((p) => toRealPath(absolutize(p))),
+    // A grant SRT could not mount (`bindableReads`) permits nothing.
+    [...baselines.allowRead, ...bindableReads(args.config.allowRead)].map((p) =>
+      toRealPath(absolutize(p)),
+    ),
   )
   const denyAnchors = baselines.denyRead.map((p) => toRealPath(absolutize(p)))
+  // A read under a widened write grant's directory is never refused, so it
+  // is reported when it succeeds: an entry that was there at the start and
+  // no grant covers is an input the key never saw, and so is the
+  // directory's listing while it holds one. The granted files and what the
+  // task made itself stay readable.
+  const written = new Set(args.config.allowWrite.map((p) => toRealPath(absolutize(p))))
+  const undeclared = (abs: string): boolean => {
+    for (const [dir, entries] of widened) {
+      if (abs === dir)
+        return [...entries].some((e) => !isUnderAny(e, written) && !isUnderAny(e, allowAbs))
+      if (!atOrUnder(abs, dir)) continue
+      const top = path.join(dir, path.relative(dir, abs).split(path.sep)[0]!)
+      return entries.has(top) && !isUnderAny(abs, written)
+    }
+    return false
+  }
 
   const seen = new Set<string>()
   const out: SandboxViolation[] = []
-  for (const { syscall, rawPath, errno, dir } of deniedCalls(text, baselines.cwd)) {
+  for (const { syscall, rawPath, errno, dir, read } of deniedCalls(
+    text,
+    baselines.cwd,
+    widened.size > 0,
+  )) {
     const abs = toRealPath(absolutize(rawPath, dir ?? baselines.cwd))
     // Only report paths under the workspace-root deny anchor — system
     // libs / /proc / /sys / etc. probes are not interesting violations.
     if (!denyAnchors.some((root) => atOrUnder(abs, root))) continue
     // Skip paths the user explicitly allowed (and their descendants).
     if (isUnderAny(abs, allowAbs)) continue
+    if (read === true && !undeclared(abs)) continue
     const key = `${syscall}|${abs}`
     if (seen.has(key)) continue
     seen.add(key)
-    out.push({
-      line: `${syscall}(${rawPath}) = -1 ${errno}  [${abs}]`,
-      timestamp: new Date(),
-      target: abs,
-      path: abs,
-      // The trace is `-e trace=openat`, and an openat is a read or a
-      // write depending on flags the trace does not carry — so either
-      // list can silence it.
-      ignorable: ['read', 'write'],
-    })
+    out.push(
+      read === true
+        ? {
+            line: `${syscall}(${rawPath}) read under a write grant's directory, granted no read  [${abs}]`,
+            timestamp: new Date(),
+            target: abs,
+            path: abs,
+            ignorable: ['read'],
+          }
+        : {
+            line: `${syscall}(${rawPath}) = -1 ${errno}  [${abs}]`,
+            timestamp: new Date(),
+            target: abs,
+            path: abs,
+            // The trace is `-e trace=openat`, and an openat is a read or a
+            // write depending on flags the trace does not carry — so either
+            // list can silence it.
+            ignorable: ['read', 'write'],
+          },
+    )
   }
   return out
 }
