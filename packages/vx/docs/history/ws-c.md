@@ -941,6 +941,22 @@ run() now refuses each up front, naming the value. Rows
 (`run-concurrency.test.ts`): each refused with the exact message, the
 edges run; red without the checks. The options' doc comments say so.
 
+## C-65: the stop kills a running `cache.inputs.runtime` probe
+
+A Ctrl-C while a task's `cache.inputs.runtime` probe ran (a slow
+`docker version`, a hung `git`) waited for the probe: vx exited only at
+the signal handler's bound, ~7 s (8,017 ms with a 30 s probe), and an
+embedder's `RunOptions.signal` waited the probe out in full. The probes
+are their own groups, killed at process exit (A-9) but not by the stop.
+The run's stop now kills them (`stopRuntimeProbes`, cache/inputs.ts),
+and a task whose `execute` rejects after the stop is `aborted`, with no
+error line, where it read failed for the probe the stop cut short.
+Measured: 1,021 ms. Rows: `abort.test.ts` › the stop kills a running
+probe (the run waits out the 30 s probe without the kill) and
+`scheduler.test.ts` › a rejected execute after the stop (red without the
+rejection arm's check; its control stays failed). `modules/scheduler.md`
+says so.
+
 ## C-63: a plugin executor's throw from `execute` names the plugin
 
 Every plugin hook's throw names the plugin and the hook (`accepts`,
