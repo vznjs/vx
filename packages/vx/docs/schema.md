@@ -1327,7 +1327,7 @@ interface WorkspaceConfig {
   `vx cache prune`.
 - **`affectedBase`** — the git ref a bare `--affected` compares with
   (`origin/develop`); `--affected=<base>` still wins. Omitted →
-  `origin/HEAD`, else `HEAD~1`. A plugin's `config` stage may set it:
+  `origin/HEAD`, then the first of `origin/main`, `origin/master`, `main`, `master` that is not HEAD (D-93), else `HEAD~1`. A plugin's `config` stage may set it:
   `nx()` from `NX_BASE` or nx.json's `defaultBase`, `turbo()` from
   `TURBO_SCM_BASE`, else on GitHub Actions from `GITHUB_BASE_REF` or the
   push event's `before`, as Turbo does. Not folded into any cache key.
