@@ -247,9 +247,14 @@ describe('Cache.recordOutputDirs / outputDirsCurrent', () => {
     await cache.recordOutputDirs('h1', proj, ['dist'])
     expect(rows()).toEqual([])
     expect(await cache.outputDirsCurrent(proj, [])).toBe(false) // no rows ⇒ never a skip
-    // 8,193 mkdirs and the walk over them are real work: 7.7 s on a loaded
-    // CI runner under four parallel shards (2026-09-16), over bun's 5 s
-    // default. The bound matches the work and still catches a hang.
+    // Removed here, under this row's bound: left to the afterEach (bun's
+    // 5 s default), the rm of 8,193 directories timed it out on a loaded
+    // box (11.3 s for the row and its hooks, M-19).
+    rmSync(path.join(proj, 'dist'), { recursive: true })
+    // 8,193 mkdirs, the walk over them and their removal are real work:
+    // 7.7 s on a loaded CI runner under four parallel shards (2026-09-16),
+    // over bun's 5 s default. The bound matches the work and still catches
+    // a hang.
   }, 30_000)
 
   it('a directory modified within the racy window is not snapshotted at all (coarse timestamps)', async () => {

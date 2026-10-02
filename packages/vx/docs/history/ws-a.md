@@ -471,3 +471,9 @@ The fold joins each plugin key part as `name\0value`, so `{ 'a\0b': 'c' }` and `
 ### A-58 — stale cache comments (2026-09-30, J's leads)
 
 `key-fold.ts`'s version history stopped at v31; v32–v36 each name their item now. `ORPHAN_GRACE_MS` described the save order before A-3 (the rename now sits inside the row transaction). `LayeredCache` said a remote carries the duration as an `x-artifact-duration` header; `get` returns it beside the body. `holdPersistent` said only the requested tasks are handed back (C-46 keeps their persistent dependencies too); `api.md` regenerated. Comments only.
+
+### A-59 — a deletion `git status` pairs with an unmerged path is keyed absent (2026-10-02)
+
+Found by a differential fuzzer (random edits, git add/commit/stash/pop, one `vx run` after each, outputs checked against the inputs). `git status` detects renames in the worktree, and a deleted tracked file at least 50 % similar to an unmerged path's worktree file (any conflict shape: `UU`, `UD`, `DU`, `AA`, `AU`) is taken as that path's rename source. Porcelain v1 prints only `UU <path>`, so ` D <file>` never appeared, the file kept its trusted index OID, and the key folded a file that was gone: a hit on the output built with it, green. The enumeration's status spawn now passes `--no-renames`, so every rename source is a record of its own; the parser's rename branch (item 976) is unreachable and gone. `CACHE_VERSION` v37: a run in that state saved output built without the file under the key that folds it. `caching.md` and `modules/git-inputs.md` say so.
+
+- Row: `git-trust.test.ts` › "a deletion git pairs with an unmerged path is not an input (A-59)" (stages written with `update-index --index-info`), red without the flag; item 976's row also reddens without it now.
