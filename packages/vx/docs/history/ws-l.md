@@ -257,6 +257,7 @@
   downloads nothing (the binaries ride npm platform packages published
   with `--provenance`). Rows in `release-provenance.unsafe.test.ts`.
   Coordinator backlog 3.
+
 - L-13. `fix(exec)`: `vx-tasks` and every task directory were made at the
   umask's mode (0755) in a temp dir any local user shares, and whoever
   made `vx-tasks` first owned it. Probed as a second uid: it renamed root's
@@ -398,6 +399,7 @@
   on a project the lock lacks. Rows: `turbo.test.ts` / `nx.test.ts` ›
   "… under vx lock and --frozen" (the turbo row red when the missing-
   entry refusal returns `{}`), `ab.test.ts` › `frozenArgs`.
+
 - L-31. `fix(cli)`: `vx why` printed an input file's name raw, and a
   name is anyone's bytes: `x\x1b]0;owned\x07\ry.txt` retitled the
   terminal and its `\r` overwrote the row. The moved-input status line
@@ -406,6 +408,7 @@
   `why.test.ts` › "vx why prints a file name (L-31)", red without the
   fix. A task's own stdout and stderr are its bytes, replayed as they
   were, and stay so.
+
 - L-32. `fix(vx-migrate)`: in a compiled vx, `loadLageConfig` spawned
   `process.execPath -e`, which is vx, so `lage()` failed with "unknown
   command: -e". The child now gets `BUN_BE_BUN=1` (a plain Bun ignores
@@ -434,18 +437,21 @@
   omitted `TURBO_CACHE` source is off). Rows: `turbo-cache.test.ts` ›
   Turbo's TURBO_CACHE and TURBO_REMOTE_CACHE_READ_ONLY narrow the remote,
   `nx-cache.test.ts`'s resolve row; each red on its mutant.
+
 - L-35. `fix(orchestrator)`: the run's invocation line, stored in
   cache.db and printed by `vx last` (and in its "re-run what failed"
   line), kept a secret passed after `--` whole: `vx run deploy --
 --token=$NPM_TOKEN` masked the value in the task's output but not
   there. It is now masked with the same rule before it is recorded.
   Row: `invocation-secret-mask.test.ts`, red without the fix.
+
 - L-38. `fix(orchestrator)`: a `--tag` value is stored on the run's
   history row and reaches telemetry as `vx.tag.<key>`. A tag carrying a
   secret (`--tag key=$DEPLOY_KEY`) was masked in the stored invocation
   line (L-35) and kept whole in the tags beside it. Tags are masked
   with the same rule. `tag-secret-mask.test.ts`, both rows red without
   the fix.
+
 - L-39. `fix(orchestrator)`: an executor that throws has its message
   printed in the task's stream and by the scheduler. vx-reapi's carries
   the remote server's status text, which vx does not control: a server
