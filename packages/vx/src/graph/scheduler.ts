@@ -6,7 +6,7 @@ import {
   OUT_OF_FDS_HINT,
 } from '../util/index.js'
 import { computeReverseDepCount, mergePriorities, tieredReverseDepCount } from './priorities.js'
-import type { TaskNode } from './task-graph.js'
+import { isGroupTask, type TaskNode } from './task-graph.js'
 
 /**
  * Thrown by `execute` for a restore-tier task that turned out to have
@@ -572,6 +572,19 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
     // could fail anyway.
     const aborted = (): boolean => options.signal?.aborted === true
     const serverDied = options.serverDied ?? ((): boolean => false)
+    // The dead server a dependency stands for: itself, or one a group
+    // reaches. A group is a name for its deps, and it finished the moment
+    // the server was ready, so a task behind it ran against the dead one.
+    const deadServerVia = (id: string): string | undefined => {
+      if (serverDied(id)) return id
+      const n = nodes.get(id)
+      if (n === undefined || !isGroupTask(n)) return undefined
+      for (const d of n.deps) {
+        const dead = deadServerVia(d)
+        if (dead !== undefined) return dead
+      }
+      return undefined
+    }
     const servers =
       options.serverDied === undefined
         ? []
@@ -600,7 +613,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
           u?.status === 'skipped' ||
           u?.status === 'aborted' ||
           blockedRestores.has(d) ||
-          serverDied(d)
+          deadServerVia(d) !== undefined
         )
       })
     }
@@ -671,7 +684,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
           const viaRestore = node.deps.find((d) => blockedRestores.has(d))
           const blockedBy =
             blocker?.node.id ??
-            node.deps.find(serverDied) ??
+            node.deps.map(deadServerVia).find((d) => d !== undefined) ??
             viaSkip?.blockedBy ??
             (viaRestore === undefined ? undefined : blockedRestores.get(viaRestore))
           finishOne(id, {
