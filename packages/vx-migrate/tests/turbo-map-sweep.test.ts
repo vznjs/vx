@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { UserError, type ProjectMeta } from '@vzn/vx'
-import { DOTENV_PROBE, DOTENV_PROBE_TOP } from '../src/dotenv-probe.js'
+import { DOTENV_PROBE, DOTENV_PROBE_TOP, dotenvGlobsProbe } from '../src/dotenv-probe.js'
 import { mapTurboWorkspace, type TurboMappedTask } from '../src/turbo/turbo-map.js'
 
 let root: string
@@ -274,7 +274,7 @@ describe('turbo-map: what the sweep found unheld', () => {
       files: ['src/**'],
       ws: undefined,
       runtime: 'top',
-      wsRuntime: 'walk',
+      wsRuntime: [dotenvGlobsProbe(['.env'])],
       todos: [],
     })
   })
@@ -798,7 +798,10 @@ describe('turbo-map: `.env` inputs', () => {
     [{ inputs: ['src/**', '.env.local'] }, { files: ['src/**'], runtime: 'top' }],
     [{ dotEnv: ['.env.local'] }, { files: ['**/*'], runtime: 'top' }],
     [{ inputs: ['.env*', 'config/.env.local'] }, { files: [], runtime: 'walk' }],
-    [{ inputs: ['$TURBO_ROOT$/.env'] }, { files: [], workspaceRuntime: 'walk' }],
+    [
+      { inputs: ['$TURBO_ROOT$/.env'] },
+      { files: [], workspaceRuntime: [dotenvGlobsProbe(['.env'])] },
+    ],
   ])('%j keys %j', async (def, expected) => {
     const t = await taskOf({ tasks: { build: def } }, { a: { scripts: { build: 'b' } } })
     const got = inputsOf(t)

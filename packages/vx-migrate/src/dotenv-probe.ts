@@ -32,3 +32,29 @@ export const DOTENV_PROBE_TOP =
 export function ignoredFilesProbe(rels: readonly string[]): string {
   return `for f in ${rels.map(shellQuote).join(' ')}; do [ -f "$f" ] && { printf '%s\\n' "$f"; cat -- "$f"; echo .; }; done; :`
 }
+
+/**
+ * The files the root-relative `.env` globs name, name and bytes, run at the
+ * workspace root: Turbo hashes exactly these, and `DOTENV_PROBE` over the
+ * whole tree also keyed `hosting/docker/.env.example`, which trigger.dev's
+ * `apps/*\/.env`-shaped globs never reach. Turbo's `*` matches a leading
+ * dot and the shell's does not, so a segment that opens on `*` is spelled
+ * again for hidden names. Null for a glob the shell would read otherwise
+ * (`**`, a class, a brace, a quote): the caller keeps the walk.
+ */
+export function dotenvGlobsProbe(globs: readonly string[]): string | null {
+  const words = new Set<string>()
+  for (const glob of globs) {
+    let alts = ['']
+    for (const seg of glob.split('/')) {
+      if (!/^[A-Za-z0-9._@+*-]+$/.test(seg) || seg.includes('**') || seg === '.' || seg === '..')
+        return null
+      const forms =
+        seg === '*' ? ['*', '.[!.]*', '..?*'] : seg.startsWith('*') ? [seg, `.${seg}`] : [seg]
+      alts = alts.flatMap((a) => forms.map((f) => (a === '' ? f : `${a}/${f}`)))
+      if (alts.length > 64) return null
+    }
+    for (const a of alts) words.add(a)
+  }
+  return `LC_ALL=C; export LC_ALL; for f in ${[...words].join(' ')}; do [ -f "$f" ] && printf '%s\\n' "$f"; done | sort -u | while IFS= read -r f; do printf '%s\\n' "$f"; cat -- "$f"; echo .; done`
+}
