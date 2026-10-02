@@ -46,6 +46,10 @@ start` (in the build output) with Nx's port and `PORT`, and
   `src`, else the project) into the output, the project's `.swcrc`, the
   output emptied first; the type-check, `package.json` and assets are
   TODOs. It was a failing placeholder.
+- **P2-8** A migration no longer writes `nx-release-publish`
+  (`@nx/js:release-publish`, which Nx adds to every package) as a
+  failing placeholder per package: the report has one note naming the
+  package manager's own `publish`. `nx()` still runs it.
 
 ## Leads for other streams
 

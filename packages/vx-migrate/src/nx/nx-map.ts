@@ -315,6 +315,7 @@ export async function mapNxWorkspace(
       : await listDotenv(root, [...relOf.values()])
 
   const mapped: Array<{ meta: ProjectMeta; tasks: GeneratedTask[] }> = []
+  let releasePublish = 0
   // A configuration variant's task (`build:production`) and what it runs.
   const configured = new WeakMap<GeneratedTask, string>()
   // The target an atomizer split (cypress's `e2e`, named by each
@@ -341,6 +342,14 @@ export async function mapNxWorkspace(
     }
     const atomized = new Set(Object.values(targets).map((t) => t.metadata?.nonAtomizedTarget))
     for (const [targetName, target] of Object.entries(targets)) {
+      // Nx adds `nx-release-publish` to every package for `nx release
+      // publish`, which skips a private package and a published version
+      // and rewrites `workspace:` ranges first: no one line is that, and a
+      // failing placeholder per package was the migration's loudest gap.
+      if (opts.nativeExecutors === true && isReleasePublish(target.executor)) {
+        releasePublish++
+        continue
+      }
       for (const v of variants(targetName, target)) {
         const t = buildTask(
           meta,
@@ -436,6 +445,12 @@ export async function mapNxWorkspace(
           `nx.json \`sync.globalGenerators\` (${globalSync.map((g) => JSON.stringify(g)).join(', ')}): ` +
             'Nx runs them before a run, and vx does not — run `nx sync` when they are out of date',
         ]
+  if (releasePublish > 0)
+    notes.push(
+      `\`@nx/js:release-publish\` on ${releasePublish} project${releasePublish === 1 ? '' : 's'} ` +
+        '(`nx-release-publish`, Nx release’s publish step) is not written: publish with your ' +
+        'package manager (`npm publish`, `pnpm publish -r`, `bun publish`)',
+    )
   for (const [gens, n] of mapOpts.syncTasks)
     notes.push(
       `\`syncGenerators\` (${gens}) on ${n} task${n === 1 ? '' : 's'}: ` +
@@ -990,6 +1005,9 @@ function mapCommand(
     envInputs: files,
   }
 }
+
+const isReleasePublish = (executor: string | undefined): boolean =>
+  executor === '@nx/js:release-publish' || executor === '@nrwl/js:release-publish'
 
 /**
  * A `project:target[:configuration]` spec's options as Nx's
