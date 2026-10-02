@@ -35,7 +35,7 @@ Same graph, commands and concurrency: [how it is measured](https://vznjs.github.
 ## Why it is faster
 
 - **Nothing boots per task:** no daemon, no Node process; vx spawns your command.
-- **No file reads to hash:** on a clean tree, keys come from git's index.
+- **No source-file reads to hash:** on a clean tree, keys come from git's index; each project's `package.json` and the lockfile are still read.
 - **One pass:** one git walk per run; each stat and lookup happens once.
 
 ## Install

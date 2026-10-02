@@ -43,7 +43,7 @@ stopped mattering:
 - **The hashes are in git's index.** One `git ls-files -s` returns the
   file list and every clean file's blob id. A concurrent `git status`
   names the dirty ones. A clean tree of thousands of files is keyed with
-  no file reads at all ([the details](../keys-from-git/)).
+  no read of a source file ([the details](../keys-from-git/)).
 - **Config evaluation is cached where it is provably safe**, keyed by
   the git blob ids of the import closure, and evaluated live where it
   is not.

@@ -2235,3 +2235,26 @@ describe("the Turbo pages say where a script-less package's task comes from", ()
     expect(row).toContain('a key-only one where a `^` edge reaches a package without it')
   })
 })
+
+describe('the git-index claim names what a clean key still reads', () => {
+  // The README said "no file is read" and the no-daemon post "no file reads
+  // at all", but a warm key reads each project's package.json and the
+  // lockfile (strace of a warm `vx run`, J-99). What the index spares is the
+  // sources.
+  it('the key folds package.json bytes, and both pages say "source"', () => {
+    const hash = readFileSync(
+      path.resolve(import.meta.dir, '..', 'src', 'orchestrator', 'task-hash.ts'),
+      'utf8',
+    )
+    expect(hash).toContain("path: path.join(args.node.projectDir, 'package.json')")
+    const readme = readFileSync(
+      path.resolve(import.meta.dir, '..', '..', '..', 'README.md'),
+      'utf8',
+    )
+    expect(readme.replace(/\s+/g, ' ')).toContain(
+      "**No source-file reads to hash:** on a clean tree, keys come from git's index;",
+    )
+    const post = readFileSync(path.join(DOCS, 'blog', 'no-daemon.md'), 'utf8').replace(/\s+/g, ' ')
+    expect(post).toContain('is keyed with no read of a source file')
+  })
+})
