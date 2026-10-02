@@ -866,6 +866,7 @@ positive integer, a `retries` that is not a non-negative integer and a
 concurrency: 0 })`, a negative or `NaN` left no worker slot open and the
 run waited for good; `retries: NaN` retried a failing task without end
 (3,745 attempts in 6 s); a bad `timeout` killed every task at once,
-failed 143. run() now refuses each up front, naming the value. Rows
+failed 143; and `tasks: []` read `No projects declare task(s): .`.
+run() now refuses each up front, naming the value. Rows
 (`run-concurrency.test.ts`): each refused with the exact message, the
 edges run; red without the checks. The options' doc comments say so.

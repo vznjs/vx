@@ -49,3 +49,13 @@ it('refuses retries and a timeout the CLI refuses, and runs at their edges', asy
   }
   expect(await runWith({ retries: 0, timeout: 2 ** 31 - 1 })).toBe('ok true')
 }, 20_000)
+
+it('refuses a run that names no task', async () => {
+  for (const tasks of [[], ['']]) {
+    const said = await run({ cwd: root, tasks, log: silent, handleSignals: false }).then(
+      () => 'ran',
+      (e: Error) => e.message,
+    )
+    expect(said).toBe('RunOptions.tasks names no task: give at least one task name')
+  }
+})

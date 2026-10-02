@@ -204,6 +204,9 @@ function refuseRunNumbers(options: RunOptions): void {
   const refuse = (name: string, value: number, rule: string): never => {
     throw new UserError(`RunOptions.${name} is ${String(value)}: it must be ${rule}`)
   }
+  // No task named read "No projects declare task(s): ." (C-61).
+  if (options.tasks.length === 0 || options.tasks.includes(''))
+    throw new UserError(`RunOptions.tasks names no task: give at least one task name`)
   const { concurrency, retries, timeout } = options
   if (concurrency !== undefined && !(Number.isInteger(concurrency) && concurrency > 0))
     refuse('concurrency', concurrency, 'a positive integer')
