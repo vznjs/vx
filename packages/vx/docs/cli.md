@@ -1756,6 +1756,10 @@ name is passed through and keyed), and `service` makes it persistent, with
 `readyWhen` from `readyWhen.lineMatches`. `cascade: false`, `clean: false`,
 `files` without `output`, a path into another member and any other field
 get a TODO.
+At the root, whether such a script runs the members is read from its
+wireit `command`: lit's `lint:check` (`eslint …`) maps, a `cd packages/x
+&& npm run build` is left out, and one with no command (an aggregate over
+the members) is left out as before (D-116).
 A package with no `build` script whose `prepack`, `prepublishOnly`,
 `prepublish` or `prepare` runs a builder (`bob build`, `tsc`, `tsup`, …)
 is named in the report, which says to add a `build` script running it

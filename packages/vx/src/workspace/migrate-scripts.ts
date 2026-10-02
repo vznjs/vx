@@ -766,10 +766,19 @@ function runningMembers(
   scripts: Readonly<Record<string, unknown>>,
   rootDir: string,
   memberDirs: readonly string[],
+  wireit?: unknown,
 ): Set<string> {
-  const text = Object.entries(scripts).filter(
-    (e): e is [string, string] => typeof e[1] === 'string',
-  )
+  // A `wireit` script is judged by the command its config runs, not by the
+  // word: lit's root `lint:check` (eslint) was left out as a runner (D-116).
+  const config =
+    typeof wireit === 'object' && wireit !== null ? (wireit as Record<string, unknown>) : {}
+  const text = Object.entries(scripts)
+    .filter((e): e is [string, string] => typeof e[1] === 'string')
+    .map(([n, v]): [string, string] => {
+      if (v.trim() !== 'wireit') return [n, v]
+      const command = (config[n] as { command?: unknown } | undefined)?.command
+      return [n, typeof command === 'string' ? command : v]
+    })
   const out = new Set(
     text
       .filter(
@@ -840,6 +849,7 @@ export function migrateScripts(
       scripts,
       meta.dir,
       metas.filter((m) => m !== root).map((m) => m.dir),
+      (meta.packageJson as unknown as { wireit?: unknown }).wireit,
     )
     return Object.fromEntries(
       Object.entries(scripts).filter(
