@@ -57,6 +57,11 @@
   task sees. Nx hands every task the whole environment, vx only the
   essentials, the declared `{ env }` names and what `nx()` defines; a
   shell's `NODE_ENV` reached no task and nothing said so.
+- **P-12** `nx()`: an `nx:run-script` body that reads `$npm_package_name`,
+  `$npm_package_version` or `$npm_lifecycle_event` gets them defined, as
+  Nx's `<pm> run <name>` sets them and core's `vx init` maps them (D-34);
+  inlined, `echo $npm_package_version` printed nothing. Any other
+  `$npm_*` is a todo.
 - **P-13** `nx()`: every task also gets `LERNA_PACKAGE_NAME`, the project
   name Nx's `getNxEnvVariablesForTask` sets beside `NX_TASK_TARGET_*`;
   Lerna runs on Nx's runner and documents it to scripts, and it was
@@ -65,12 +70,26 @@
   Nx was started from, `cwd:relative` in its task plan) keys nothing: a
   vx task runs in its project dir wherever vx starts. It was a todo,
   "not representable".
+- **P-18** `nx()`: outputs checked case by case against Nx 23.2's own
+  `getOutputsForTargetAndConfiguration`: an `outputPath` list is each of
+  its paths (read as none, the build cached Nx's default directories and
+  a hit restored nothing), and a number in `{options.x}` is its text, as
+  Nx writes it (it was dropped with a todo). The remaining differences
+  are by design (`build` / `public` defaults, a todo) or Nx refusals vx
+  tolerates (`./dist`, `dist/{projectName}`).
 - **P-16** `nx()`: a `projects` list (on `dependsOn` and on an input) is
   matched by a port of Nx's `findMatchingProjects`,
   checked case by case against Nx 23.2's own: project directories
   (`libs/shared/*`), `name:` / `directory:` labels, minimatch globs, and
   a bare word as a word in a name. Matched by name and `*` alone, a
   directory pattern named nothing and its edge was dropped.
+- **P-20** `nx()`: a live parity suite (`tests/nx-parity-live.test.ts`)
+  holds the `.env` names a task loads, in order, to Nx's own
+  `getEnvPathsForTask`, on Nx 22 and 23 in CI's live job.
+- **P-21** `nx-exec`: an executor runs from the workspace root, as Nx
+  forks it; it ran in the project dir, so one that resolves against
+  `process.cwd()` (`@nx/js`'s ts transformers, prettier's config) read
+  the wrong directory.
 
 ## Notes
 
@@ -83,6 +102,8 @@
 - `tests/npm-pack.unsafe.test.ts` failed once in a full gate
   (`JSON Parse error` on `npm pack --dry-run --json` output) and passed
   on the re-run and alone (2026-10-02, npm 10.9.4).
+- **G:** `turbo()` inlines a script body the same way (`script-command.ts`)
+  and sets no `$npm_*` either; P-12 fixed only `nx:run-script`.
 - Core's `MigrationPlan` (`workspace/migration.ts`) has no field for the
   workspace file's settings, so a migrator can only name them in a note
   (P-11); `turbo`'s `concurrency` / `cacheMaxSize` / `TURBO_SCM_BASE` are

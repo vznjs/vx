@@ -245,7 +245,9 @@ failed to spawn 'git' … Install git and re-run` — the same the input
   `main...feature`) is refused there too, naming the base to pass
   alone — `ranges are not supported — pass the base alone ("HEAD~1")`
   — because the other end is always the working tree. A ref that does
-  not exist is `git ref "<ref>" did not resolve`.
+  not exist is `git ref "<ref>" did not resolve`; in a shallow clone (CI's
+  one-commit checkout) it adds that the clone is shallow and how to fetch
+  the history (`git fetch --unshallow`, `fetch-depth: 0`).
 - A member whose directory is a symlink to a place elsewhere under the
   workspace root (`packages/b -> ../ext/b`) is selected by a change at
   that real place too: git names the files where they live, not by the
@@ -392,14 +394,14 @@ stays clean).
 | ---------------------------------- | -------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `--filter <pattern>`               | repeatable     | (none)                             | pnpm-style filter DSL (see above). `--filter=<pattern>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `--all`                            | boolean        | off                                | Select every project that declares the task.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| `--affected[=<base>]`              | optional value | off                                | Select the projects changed since `<base>` and their dependents (default `affectedBase`, else `origin/HEAD`); sugar for `--filter "...[<base>]"`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `--affected[=<base>]`              | optional value | off                                | Select the projects changed since `<base>` and their dependents (default `affectedBase`, else `origin/HEAD`, else `main` or `master`, else `HEAD~1`); sugar for `--filter "...[<base>]"`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `--exclude-dependencies[=<names>]` | optional value | off                                | Drop `dependsOn` edges. No value = all (just the requested task runs; a group's members run as the group); comma-list = drop only those names, each of which some project must declare (a typo is refused with the nearest name, item 1026). An edge to a task the run schedules anyway (`--all` requests it) stays, so the two still run in order, and so does the order through a dropped task: with `gen` dropped from `test → gen → build` and `build` requested, `test` still waits for `build`. An empty `=` value is a parse error (ambiguous — see below). A dropped dependency does not run but is still keyed, so every key is the one a full run derives; a task keyed on one may hit but does not save (`caching.md` step 10). |
 | `--concurrency <n>`                | int or `<n>%`  | cores, capped by the cgroup quota  | Maximum parallel tasks that EXECUTE; confirmed cache-hit restores are disk work and run on their own lane, up to twice this. `1` serializes both; `50%` is half the CPUs (rounded, never below 1; over 100% is allowed for I/O-bound work). `--concurrency=<n>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `--no-cache`                       | boolean        | off                                | Disable caching entirely (no reads, no writes); output globs are NOT cleaned.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `--force`                          | boolean        | off                                | Re-execute everything (skip cache reads) but still REFRESH the cache (writes stay on). Output globs are cleaned (so the saved snapshot is clean).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `--cache <spec>`                   | value          | all axes on                        | Per-layer read/write control. See below. An EMPTY spec (`--cache=`) is a parse error — it applied nothing and left every axis on; pass `--no-cache` to disable them all.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `--cache-dir <path>`               | value          | workspace `cacheDir` / `.vx/cache` | Cache directory override, resolved relative to cwd (absolute paths used as-is). Beats the `defineWorkspace({ cacheDir })` field and the `.vx/cache` default, for every cache the run opens — the config-evaluation cache that `--affected` owners, the picker and the watch sweep read included, so the workspace's default dir is not created beside it. A per-run knob — never folded into a cache key. `--cache-dir=<path>` form too; the space form rejects a value starting with `-`. A directory this user cannot write into fails the run before any task with `cache directory <path> is not writable (EACCES: …)` — every run records its history there.                                                                          |
-| `--retry <n>`                      | value          | `0`                                | Re-run a failed task up to `n` more times. Run-level default only: a task's own `exec.retries` wins (even an explicit `0`). Never affects cache keys. `--retry=<n>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `--retry <n>`                      | value          | `0`                                | Re-run a failed task up to `n` more times; never a persistent one. Run-level default only: a task's own `exec.retries` wins (even an explicit `0`). Never affects cache keys. `--retry=<n>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | `--continue[=<mode>]`              | value          | `deps-ok`                          | What a failed task takes down with it. `never` stops dispatch on the first failure; `deps-ok` (default) skips only its dependents; `always` (bare `--continue`) runs dependents anyway. See § Failure propagation.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `--timeout <ms>`                   | positive int   | none                               | Default per-task timeout for tasks without their own `exec.timeout`. Sits above `VX_TASK_TIMEOUT` + workspace `timeout`; per-task `exec.timeout` always wins. A runaway task is killed + `failed`. Never affects cache keys. `--timeout=<ms>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `--frozen`                         | boolean        | off                                | Load configs from `vx-lock.json` instead of evaluating (CI) — the run's, and the ones `--affected` owners and the picker select from. See § `--frozen`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
@@ -748,7 +750,8 @@ down with it:
   from a healthy run), and the next run without the failure rebuilds the
   rest.
 
-The mode rides the wire, so distributed runs honor it.
+The mode is the local scheduler's: a task a plugin executor runs
+elsewhere is one dispatch, failed or not, like any other.
 
 ### `--download <mode>`
 
@@ -1635,7 +1638,8 @@ bare `(403)` (item 1098).
 In a Turbo or Nx repo (a `turbo.json`, `turbo.jsonc` or `nx.json` at
 the root) it writes `vx.workspace.ts` declaring `turbo()` or `nx()`
 from `@vzn/vx-migrate` and nothing else: those read the repo's own
-config live, so no task is copied. The `next:` line is one command:
+config live, so no task is copied — a temporary start until
+`bunx @vzn/vx-migrate` writes native config. The `next:` line is one command:
 install what the file imports and is missing, with the manager the
 lockfile names (at the workspace root: pnpm's `-w`, Yarn 1's `-W`,
 which Yarn Berry lacks), then run the config's `build` (else its first task).
@@ -1713,7 +1717,11 @@ reach, and a TODO to order the cycle: `^build` there refuses the run.
 edge); `dev` / `start` / `serve` / `watch` /
 `preview` become persistent tasks, with a TODO to add `readyWhen` when
 another task depends on one, and so does a watcher: a `watch` segment in the script's name (`build:watch`),
-a `--watch` flag, `tsc -w` / `rollup -w`, or nodemon (D-40). A
+a `--watch` flag, `tsc -w` / `rollup -w`, or nodemon (D-40), and a server:
+`serve <dir>`, `http-server`, bare `vite`, a tool's `dev` / `serve` /
+`start` / `preview` verb (`next start`, `netlify dev`), or a script that
+runs such a script of its package by name (`cross-env X=1 pnpm start`),
+outside quotes and not sent to the background with `&` (D-91). A
 script whose name no task may carry (`lint#fix`, `^up`; the schema's
 rule, item 1000) is left out with a TODO rather than written into a
 config every later command refuses, and a `__proto__` script is written
@@ -1736,6 +1744,11 @@ as npm hands them to the script and not its hooks (item 905). The
 command is a small shell function, `vx_script`, around the three parts;
 it carries a TODO saying so; a `pre<x>` with no `x` stays a task of its own, and
 npm's lifecycle hooks (`prepack`, `prepublishOnly`, …) are never tasks.
+A package with no `build` script whose `prepack`, `prepublishOnly`,
+`prepublish` or `prepare` runs a builder (`bob build`, `tsc`, `tsup`, …)
+is named in the report, which says to add a `build` script running it
+(react-navigation's twelve packages, whose root `build` is `lerna run
+prepack`, mapped with no build at all).
 Where the package's manager runs no such hooks every `pre<x>` and
 `post<x>` is a task of its own: Yarn 2+ (the nearest `packageManager:
 yarn@2+`, or a Berry `yarn.lock`, D-31; a `packageManager` naming none of npm,
@@ -1750,7 +1763,8 @@ A script reading `$npm_package_version`, `$npm_package_name` or
 them under `exec.env.define`, the first two read from an imported
 `package.json` so a version bump reaches them; any other `$npm_*` it
 reads gets a TODO (D-34). Among several packages, a workspace root
-script that runs the members (`pnpm -r build`, `--filter`, `-C`, Yarn's
+script that runs the members (`pnpm -r build`, `--filter`, `-C`, pnpm's `pn` alias
+included (D-97), Yarn's
 `--cwd` and `yarn workspace <name>`, npm's `--prefix`, npm's
 and Yarn's workspace flags, a `cd` into or above a member, turbo, nx, lerna, `vp run`, vx itself) is not mapped
 (a flag counts on the package manager, or after `node <bin> run`, and not on the program it
@@ -1762,10 +1776,21 @@ pnpm docs-build`; through `run-s` / `run-p` / `npm-run-all` or `concurrently
 a check twice (D-45). The rest check the whole repo (`lint: oxlint .`,
 `test: vitest`) and become the root's own tasks in a root vx.config, when
 the root has a `"name"` (vx skips a nameless root's config) and no config
-of its own; a hand-written one stays as written. The report says which;
+of its own; a hand-written one stays as written. The report says which, its
+examples of running the members spelled by the repo's manager (`--workspaces`
+under npm, `yarn workspaces foreach` under Yarn 2+);
 with nothing mapped it names the root whenever it has a script, a member
 or not (pnpm's root is not), and tells a root with no `"name"` to add one
 first (vuejs/core), naming the scripts that would then map (react, D-87). A single-package repo's root is its project and maps.
+A member whose package.json has no `name` is no project; one with a
+script is named in the report, to be given a name (remix's
+`packages/component/bench`, D-106).
+A member's script that runs another member's work (`pnpm -C ../pinia
+run build`, `yarn workspace <name>`, `-r` / `--filter`, a `cd` or `-C`
+/ `--cwd` / `--prefix` into another member) keeps its command and gets a
+TODO naming that part: the graph runs that member's task once, so name it
+under `dependsOn` and drop it from the command (pinia). A directory inside
+the member or the root is no other member.
 A script that is nothing but `npm run <other>` (`pnpm <other>`, `yarn
 <other>`, `bun run <other>`, `npm test`, `npm start`) becomes a **group**
 over `<other>` — `dependsOn` and no command — so the graph runs and
@@ -1790,7 +1815,13 @@ and when no task caches it says a cache block from a TODO makes the
 second run a hit. Its `next:` line is a command the user can type: the
 runner that started vx (`npx`, `pnpm`, `yarn`, `bunx`, read from
 `npm_config_user_agent`) with the installed `vx` bin, else the
-`@vzn/vx` package; with no runner, a bare `vx`.
+`@vzn/vx` package (`npx` under Yarn 1, which has no `dlx`); with no
+runner, a bare `vx`. Outside a git work tree it starts with
+`git init`, and with no script mapped with declaring a task, since the
+run would refuse without either. It runs `build`, else the first task that
+neither serves (`persistent`) nor changes the repo (`clean`, `release`,
+`publish`, `deploy`, `version`, `format`, `fix`, …), else the first task
+(react-navigation was told `vx run clean --all`).
 
 `vx init --plugin <seam>` writes a plugin instead: `plugins/<seam>.ts`,
 a small runnable plugin for that seam (`executor`, `cache`,
@@ -1942,7 +1973,7 @@ it directly if you want the frozen view).
 
 ```
 vx show                          # list every project
-vx show <project>                # one project's resolved config
+vx show <project>                # one project's resolved config (`//`: the root project's)
 vx show <pkg>#<task>             # a single task (`//#<task>`: the root project's)
 vx show <task>                   # that task in every project declaring it
 vx show ... --format json        # machine-readable (default: pretty)
@@ -1970,7 +2001,8 @@ reads: description, command (`(group)` for group tasks), `dependsOn`,
 `sandbox`, `persistent`, and the cache block
 (`inputs.files` / `.workspaceFiles` / `.env` / `.tasks` / `.runtime` /
 `.workspaceRuntime`, `outputs.files` / `.workspaceFiles`). Fields the
-task does not set are not printed. `--format json` emits `{ name, dir,
+task does not set are not printed; a value that spans lines (a
+multi-line command) continues under its first line. `--format json` emits `{ name, dir,
 config }` with the config exactly as resolved. `vx show <pkg>#<task>`
 narrows to one task (`{ name, dir, task, config }` in JSON). A bare
 name that is no project is a task: `vx show build` prints the block
@@ -2037,7 +2069,7 @@ plugins:          2 — @vzn/vx-reapi (executor, cache); @vzn/vx-otel (telemetry
 workers:          2 — cgroup CPU quota 2 of 8 cores
 memory:           13 GB usable — cgroup limit; the machine has 16 GB
 cache dir:        /work/repo/.vx/cache
-cache versions:   keys vx-cache-v37 · index schema v28
+cache versions:   keys vx-cache-v39 · index schema v28
 cache entries:    42 (1.3 GB)
 orphans:          3 artifacts (12 MB) the index does not know — `vx cache prune` reaps them
 task runs (24h):  7 (5 cache hits)
@@ -2174,7 +2206,8 @@ app#build — run 019f5a02-…
 
 Under the rows, `what to do` gives one line per changed kind: what
 moves it and how to stop a move the task does not need. An `upstream`
-line names the `vx why` to run next for each dependency that moved.
+line names the `vx why` to run next for each dependency that moved; a
+`config` line names the `vx show` that prints the task's config now.
 
 A hit's line is `cache-hit · key …` (or `cache-hit-remote`): the status
 names the hit and its tier, so only an executed run carries the word.
@@ -2436,7 +2469,7 @@ the two legends sum alike). The `time` spread counts executed tasks
 only — a hit's restore time never enters it — which is why one executed
 task reads as its own max, avg and min. The `result` row is the run in
 one line, last: tasks, cached (every hit, local or remote, over every
-task with a cache) and the wall time — `3 tasks · all cached · 40ms`
+task with a cache that ran or hit; a skipped task asked no cache) and the wall time — `3 tasks · all cached · 40ms`
 when nothing that could hit ran, with `N failed` after the count on a
 red run. A task with no `cache` block could never hit, so it is
 counted apart (`1 task · 1 no-cache · 37ms` for `vx run dev`). A test renders this run and

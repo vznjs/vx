@@ -6,12 +6,11 @@ authors:
 tags:
   - performance
   - benchmarks
-excerpt: "Two benchmarks: a synthetic 1,090-package workspace where all three runners see the same graph, and solidjs/solid, a real Turbo repository with vx on top of its own turbo.json. Every number is a command away, and the cold rows are read honestly."
+excerpt: "A synthetic 1,090-package workspace where vx, Turborepo and Nx each run the same graph from their own native config. Every number is a command away."
 ---
 
 Benchmark numbers are only worth what the method behind them is worth.
-Here is the method, then the numbers, then how to read the ones that
-flatter vx less than the headline.
+Here is the method, then the numbers.
 
 One number first, because it is the one that decides whether a runner
 is worth having. Imagine your tasks take three minutes on their own.
@@ -55,43 +54,13 @@ the tool cost me," and Nx's is not a typo. The wall-clock rows, the
 theoretical baseline and the measured floors (one git walk is 67ms on
 that machine) are in [Benchmarks](../../benchmarks/).
 
-## Real: solidjs/solid under its own `turbo.json`
+## Real repositories: rerun pending
 
-A synthetic workspace cannot tell you what happens with rollup, tsc and
-vitest in the loop. So the second benchmark is solidjs/solid at a
-pinned commit: five packages, pnpm 9, Turbo 2.10.10 as the repository's
-own dependency, Node 22. vx is put on top through `turbo()` from `@vzn/vx-migrate`, a
-two-line `vx.workspace.mjs`, no config rewritten, so both tools see the
-same graph and restore the identical 64 output files. vx runs as its
-compiled binary; Turbo 2.10 uses no daemon for `turbo run` (deprecated
-there since 2.9), so both pay their own discovery. Four cores, Linux, arms interleaved, medians.
-
-| `build` (4 tasks)              | vx         | Turbo 2.10.10  |
-| ------------------------------ | ---------- | -------------- |
-| cold (caches and outputs wiped) | **40.6 s** | 45.5 s (1.12×) |
-| warm, outputs wiped (restore)  | **66 ms**  | 127 ms (1.9×)  |
-| warm, nothing wiped (no-op)    | **51 ms**  | 95 ms (1.9×)   |
-
-| `test test-types` (7 tasks) | vx         | Turbo 2.10.10  |
-| --------------------------- | ---------- | -------------- |
-| cold                        | **53.6 s** | 58.2 s (1.09×) |
-| warm, restore               | **80 ms**  | 166 ms (2.1×)  |
-| warm, no-op                 | **59 ms**  | 93 ms (1.6×)   |
-
-## Read the cold rows honestly
-
-The cold rows are rollup, tsc and vitest. The runner is a few percent
-of them. The 4–5 s gap is Turbo's per-task work around the same
-commands, its `**` default inputs hashed per package, its log capture,
-its cache write, and it was not profiled to the frame here. A cold
-build is dominated by your tools, in both runners, and any tool that
-tells you otherwise is measuring something else.
-
-The warm rows are the product. With everything cached, vx answers in
-50–80 ms where Turbo takes 95–170 ms, and the restore case, which is
-what a CI job or a fresh checkout does, is where the ratio is widest.
-Neither has a daemon to turn on here: Turbo's no longer serves
-`turbo run`, and vx has none.
+An earlier version of this post measured solidjs/solid with vx on top of
+its own `turbo.json` through `turbo()`. That measured a migration
+bridge, not vx, so its numbers are gone. Real-repo rows return once each
+repo is rerun on the native config `bunx @vzn/vx-migrate` writes.
+(Updated 2026-10-02.)
 
 ## The method is the point
 
@@ -100,7 +69,5 @@ this way: A/B arms interleaved, min-of-N, the "before" arm checked out
 into an immutable git worktree, one workspace copy per arm pre-warmed
 by that arm. Where the headroom went, release by release, is a table in
 [Benchmarks](../../benchmarks/). The scripts are in the repository:
-`packages/vx-bench/compare.ts` for the synthetic workspace and
-`packages/vx-bench/real/turbo-repo.sh` for any Turbo repository you
-want to point it at. If a number here does not reproduce on your
+`packages/vx-bench/compare.ts` for the synthetic workspace. If a number here does not reproduce on your
 machine, that is a bug report.

@@ -1,6 +1,7 @@
 // B-40: SRT's mandatory-deny scan, scoped to each task's write grants.
 // The parity row builds the same wrap twice from one fixture: SRT's own
-// whole-root scan at depth 3, and SRT at depth 1 plus the scoped denies.
+// whole-root scan at depth 3, and SRT as vx arms it (its scan a no-op in
+// rg's place, B-75) plus the scoped denies.
 // bwrap must receive the same deny binds under the fixture. The fixture
 // holds only what rg and the scoped walk agree on (no .gitignore, no
 // node_modules, no symlinks: there the scoped walk is stricter, which
@@ -33,6 +34,8 @@ describe.skipIf(!available || process.platform !== 'linux')('the scoped deny sca
     root = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'vx-denyscan-')))
     for (const rel of [
       '.bashrc',
+      // A root entry SRT's own list does not name: only a scan finds it.
+      '.ZshRC',
       '.gitmodules',
       '.claude/commands/k',
       'a/.mcp.json',
@@ -67,14 +70,28 @@ describe.skipIf(!available || process.platform !== 'linux')('the scoped deny sca
       .filter((d) => d.startsWith(`${root}/`))
       .sort()
 
-  const wrapWith = async (depth: number, writes: string[], denyWrite: string[]) => {
+  /** The scan settings `initSandbox` hands SRT here. */
+  const vxScan = async (): Promise<Record<string, unknown>> => {
+    await resetSandbox()
+    const spy = spyOn(SandboxManager, 'initialize')
+    try {
+      await initSandbox()
+      const { mandatoryDenySearchDepth, ripgrep } = spy.mock.calls[0]![0] as Record<string, unknown>
+      return { mandatoryDenySearchDepth, ripgrep }
+    } finally {
+      spy.mockRestore()
+      await resetSandbox()
+    }
+  }
+
+  const wrapWith = async (scan: Record<string, unknown>, writes: string[], denyWrite: string[]) => {
     // `initialize` keeps a runtime that is already up, as the gate's probe left it.
     await resetSandbox()
     await SandboxManager.initialize(
       {
         network: { allowedDomains: [], deniedDomains: [] },
         filesystem: { denyRead: [], allowWrite: [], denyWrite: [] },
-        mandatoryDenySearchDepth: depth,
+        ...scan,
       },
       undefined,
       true,
@@ -90,9 +107,9 @@ describe.skipIf(!available || process.platform !== 'linux')('the scoped deny sca
   for (const grants of [['a', 'g'], ['.'], ['..']]) {
     it(`binds what SRT's whole-root scan binds, for write grants ${grants.join(', ')}`, async () => {
       const writes = grants.map((g) => path.join(root, g))
-      const whole = await wrapWith(3, writes, [])
+      const whole = await wrapWith({ mandatoryDenySearchDepth: 3 }, writes, [])
       const scoped = await wrapWith(
-        1,
+        await vxScan(),
         writes,
         scopedMandatoryDenies(root, [...srtDefaultWritePaths(), ...writes]),
       )
@@ -100,6 +117,13 @@ describe.skipIf(!available || process.platform !== 'linux')('the scoped deny sca
       expect(scoped).toEqual(whole)
     })
   }
+
+  it("SRT's own scan is a no-op in rg's place, so a wrap spawns no rg", async () => {
+    expect(await vxScan()).toEqual({
+      mandatoryDenySearchDepth: 1,
+      ripgrep: { command: Bun.which('true') },
+    })
+  })
 
   it('a task wrap hands SRT the scoped denies of its write grants', async () => {
     await initSandbox()
