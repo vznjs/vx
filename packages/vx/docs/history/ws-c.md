@@ -878,3 +878,13 @@ a held server's line after the return reaches the logger (red without
 the fix), and after `stop` the bus reaches it no more (red with the
 detach removed); probed end to end (9 lines in 2.5 s, 2 before).
 `cli.md` says so.
+
+## C-62: a server a Ctrl-C killed while it started is aborted
+
+A Ctrl-C while a dev server was still starting read `failed (never
+ready: exited, exit 130)`, with a failure recap and a "failed to become
+ready" line, where every other task the stop kills is `aborted` (item
+962). A readiness failure after the run's stop now returns `aborted`.
+Row (`abort.test.ts` › a server still starting when the run stops is
+aborted, not failed): red without the fix; probed through the CLI
+(3/3 aborted). `cli.md` says so.

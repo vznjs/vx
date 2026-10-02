@@ -206,6 +206,34 @@ describe('RunOptions.signal aborts a run in flight', () => {
     expect(await Bun.file(path.join(root, 'packages', 'app', 'ran.txt')).exists()).toBe(false)
   }, 20_000)
 
+  // C-62: a server the stop killed while it started read `failed (never
+  // ready: exited)` with a recap, where every other task the stop kills
+  // is aborted.
+  it('a server still starting when the run stops is aborted, not failed', async () => {
+    const dir = await addProject(
+      root,
+      'app',
+      `export default { tasks: { srv: { exec: {
+        command: 'echo $$ > pid.txt; sleep 3; echo READY; exec sleep 30',
+        persistent: { readyWhen: 'READY' },
+      } } } }`,
+    )
+    const ac = new AbortController()
+    const running = run({
+      cwd: root,
+      tasks: ['srv'],
+      projects: ['app'],
+      log: silent,
+      handleSignals: false,
+      signal: ac.signal,
+    })
+    const pid = await waitForPid(path.join(dir, 'pid.txt'), 10_000)
+    ac.abort()
+    const r = await running
+    expect(r.outcomes.map((o) => [o.status, o.notReady])).toEqual([['aborted', undefined]])
+    expect(await waitForDead(pid, 1_000)).toBe(true)
+  }, 20_000)
+
   // C-46: a stopped run's servers are already being torn down, so a
   // `holdPersistent` caller (the watch loop) is handed none: it would own
   // a stop() for a server that is going anyway.
