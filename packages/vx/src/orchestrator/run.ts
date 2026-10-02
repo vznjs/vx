@@ -5,7 +5,12 @@
 import type { ProjectEntry } from '../workspace/index.js'
 import { loadWorkspace, unreachedHint, unreachedPackages } from '../workspace/index.js'
 import path from 'node:path'
-import { type CacheLayer, type CachePolicy, FULL_CACHE_POLICY } from '../cache/index.js'
+import {
+  type CacheLayer,
+  type CachePolicy,
+  FULL_CACHE_POLICY,
+  stopRuntimeProbes,
+} from '../cache/index.js'
 import { VERSION } from '../version.js'
 import {
   resetSandbox,
@@ -533,6 +538,7 @@ async function runOnBus(
   // ends after it is the stop's own kill, and was named a crash (item 1061).
   let endedBeforeStop: ReadonlySet<ReturnType<typeof Bun.spawn>> | undefined
   const onAbort = (): void => {
+    stopRuntimeProbes(hashCache.runtime, hashCache.workspaceRuntime)
     endedBeforeStop = new Set([...persistentRegistry.values()].filter(hasEnded))
     aborting = terminateChildren(
       () => [...liveChildren, ...persistentRegistry.values()],
@@ -634,7 +640,9 @@ async function runOnBus(
       runContextRecord = {
         runId,
         vxVersion: VERSION,
-        command: options.command ?? invocationCommand(process.argv.slice(1)),
+        // An embedder's `command` is redacted as the argv is: it passed a
+        // token after `--` to every sink verbatim (C-67).
+        command: invocationCommand(options.command?.split(' ') ?? process.argv.slice(1)),
         requestedTasks: [...options.tasks],
         cachePolicy: compactCachePolicy(policy),
         concurrency,
@@ -662,6 +670,25 @@ async function runOnBus(
     }
 
     const sandboxArmer = prepareSandbox(nodes.values())
+    // The probe is ~220 ms of spawns, paid by the first sandboxed task to
+    // execute. A task no cache can answer (no `cache`, reads off, or
+    // persistent) is sure to: start it now, under the classify and the
+    // upstream work. The task's own `arm()` rethrows a refusal, and the
+    // end of the run waits for it: one that landed after the reset left
+    // SRT's proxies holding the process open.
+    const surelyRuns = (n: TaskNode): boolean =>
+      n.config.exec?.persistent !== undefined ||
+      n.config.cache === undefined ||
+      !(policy.localRead || policy.remoteRead)
+    const sandboxed =
+      sandboxArmer === null
+        ? []
+        : [...nodes.values()].filter((n) => n.config.exec?.sandbox !== undefined)
+    let prewarming: Promise<void> | undefined
+    const prewarm = (): void => {
+      prewarming ??= sandboxArmer?.arm().catch(() => {})
+    }
+    if (sandboxed.some(surelyRuns)) prewarm()
     const keyed = keyedProjects(nodes, prepared.keyOnly)
     const outputDirSnapshots: OutputDirSnapshot[] = []
     // Saves run off the execution slot, twice the cap at once (memory:
@@ -763,6 +790,8 @@ async function runOnBus(
         hashCache,
         concurrency,
       })
+      // A confirmed miss runs too.
+      if (sandboxed.some((n) => shortCircuit.preProbed.get(n.id)?.hit === null)) prewarm()
     }
 
     // Whether this task runs behind a failure (`continueMode: 'always'`
@@ -1119,6 +1148,7 @@ async function runOnBus(
     // Tear down SRT's network bridge + (on macOS) log monitor. No-op if
     // no task was sandboxed; otherwise SRT keeps proxy servers alive and
     // the next vx run would init on top of stale state.
+    await prewarming
     if (sandboxArmer?.armed) {
       try {
         await resetSandbox()

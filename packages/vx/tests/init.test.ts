@@ -948,6 +948,38 @@ describe('migrateScripts', () => {
     ])
   })
 
+  it('a root script reaching a member-running one through a script runner is left out (D-95)', () => {
+    // lexical's `ci-check` (`npm-run-all --parallel … tsc-website …`) ran
+    // `pnpm --filter @lexical/website run tsc` again as a root task.
+    const meta = (name: string, dir: string, scripts: Record<string, string>) => ({
+      name,
+      dir,
+      packageJson: { name, scripts } as never,
+      configPath: null,
+    })
+    const root = meta('root', '/w', {
+      'build:all': 'pnpm -r build',
+      ci: 'run-s build:all lint',
+      ci2: 'npm-run-all --parallel build:all lint',
+      ci3: 'concurrently "npm:build:all" "npm:lint"',
+      ci4: 'run-p build:*',
+      // CONTROLS: a runner over scripts that run no member (`*` stops at
+      // `:`), and one naming a script the root does not have.
+      ci5: 'run-s lint check:*',
+      ci6: 'run-p build',
+      'check:types': 'tsc',
+      'build:x:y': 'pnpm -r x',
+      lint: 'eslint .',
+    })
+    const a = meta('a', '/w/packages/a', { build: 'tsc' })
+    expect(
+      migrateScripts([root, a]).projects.map((p) => [p.name, p.tasks.map((t) => t.name)]),
+    ).toEqual([
+      ['a', ['build']],
+      ['root', ['ci5', 'ci6', 'check:types', 'lint']],
+    ])
+  })
+
   it("npm's lifecycle scripts are never tasks, but a hook of one is a task of its own", () => {
     // `postprepare` is npm's hook of `prepare`, and `prepare` is npm's own —
     // so it wraps nothing here and has to stand alone or it disappears.
@@ -1111,7 +1143,7 @@ describe('vx init — the generated build is not a cached no-op', () => {
         const r = await vx(root, ['init'])
         expect({ code: r.code, err: r.err }).toEqual({ code: 0, err: '' })
         expect(r.out).toBe(
-          `vx init: ${file} found — turbo() from @vzn/vx-migrate runs this repo as it is; nothing else written.\n` +
+          `vx init: ${file} found — turbo() from @vzn/vx-migrate, a temporary start until bunx @vzn/vx-migrate writes native config; nothing else written.\n` +
             'wrote vx.workspace.ts.\n\n' +
             'next: npm install -D @vzn/vx-migrate && vx run compile --all\n',
         )
@@ -1523,6 +1555,7 @@ describe('vx init on a workspace with no scripts', () => {
   it('writes the workspace file, prints an example config and the next command', async () => {
     const root = await makeRoot('vx-init-empty-')
     await addPackage(root, 'app', {})
+    Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
     try {
       const r = await vx(root, ['init'])
       expect({ code: r.code, err: r.err }).toEqual({ code: 0, err: '' })
@@ -1532,7 +1565,7 @@ describe('vx init on a workspace with no scripts', () => {
       )
       expect(r.out).toContain('no package.json scripts to turn into tasks')
       expect(r.out).toContain('satisfies ProjectConfig')
-      expect(r.out).toContain('next: vx run build --all')
+      expect(r.out).toContain('next: declare a task as the example shows, then vx run build --all')
       // Idempotent: a second init neither rewrites nor refuses.
       const again = await vx(root, ['init'])
       expect(again.code).toBe(0)
@@ -1553,6 +1586,7 @@ describe('vx init names the runner that started it', () => {
   it('in the next: line, with the package spec that runner resolves', async () => {
     const root = await makeRoot('vx-init-runner-')
     await addPackage(root, 'app', { build: 'tsc' })
+    Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
     const next = async (): Promise<string | undefined> => {
       const proc = Bun.spawn([process.execPath, BIN, 'init', '--dry'], {
         cwd: root,
@@ -1613,6 +1647,7 @@ describe('vx init (package.json scripts)', () => {
   let root: string
   beforeAll(async () => {
     root = await makeScriptsWorkspace()
+    Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
   })
   afterAll(async () => {
     await rm(root, { recursive: true, force: true })

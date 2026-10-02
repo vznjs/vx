@@ -386,12 +386,13 @@ export function buildAdmission(
 }
 
 /**
- * Collect every plugin's `cache` layer in declaration order. One layer is
- * used as is; two or more are chained (lookup walks them, save reaches all;
- * see ChainedCache). A bare local layer that another declared layer already
- * wraps (`layer.local === ctx.localCache`) is dropped, so a remote plugin
- * that layers over the local handle does not also write the local store
- * directly. A plugin declaring nothing leaves that store, unwrapped.
+ * Collect every plugin's `cache` layer in declaration order, with the local
+ * store at the tail, and chain them (lookup walks them, save reaches all;
+ * see ChainedCache). The local store is dropped when a declared layer wraps
+ * it (`layer.local === ctx.localCache`), so a remote plugin that layers over
+ * the local handle does not also write it directly. Only a single layer
+ * left is used as is: the local store when no plugin declares one, or the
+ * one layer that wraps it.
  */
 export async function resolveCache(
   plugins: readonly VxPlugin[],
@@ -448,8 +449,12 @@ const executorPlugin = new WeakMap<TaskExecutor, string>()
  */
 export function nameExecutorFailure(executor: TaskExecutor, err: unknown): unknown {
   if (!(err instanceof Error) || !executorPlugin.has(executor)) return err
+  // Once: one error an executor rejects several tasks with (a failed
+  // connection it memoized) reaches here once per task (C-74).
+  const prefix = `${executorLabel(executor)} failed in execute: `
+  if (err.message.startsWith(prefix)) return err
   try {
-    err.message = `${executorLabel(executor)} failed in execute: ${err.message}`
+    err.message = `${prefix}${err.message}`
   } catch {
     // A frozen error keeps its own words.
   }

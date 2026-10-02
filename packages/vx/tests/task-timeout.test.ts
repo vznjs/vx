@@ -5,6 +5,7 @@
 // killed (SIGTERM) and reported `failed` — never cached. The run-level
 // defaults are threaded as options only, so they never touch a cache key.
 
+import { readFileSync } from 'node:fs'
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -313,7 +314,7 @@ describe('task timeout — classification + escalation', () => {
       // The graceful-shutdown pattern `trap 'exit 0' TERM`: the child exits 0
       // when SIGTERMed for the timeout, so its exit code is 0 even though it was
       // killed mid-work. Before the fix this classified `success` and cached the
-      // PARTIAL output (`out.txt` = "PARTIAL", COMPLETE never written), replayed
+      // PARTIAL output (`out.txt` = "PARTIAL" and the trap's line, COMPLETE never written), replayed
       // as a green cache-hit forever. It must be `failed` and never cached.
       //
       // DELIBERATELY not `exec`-wrapped, unlike the other sleepers in this
@@ -328,7 +329,7 @@ describe('task timeout — classification + escalation', () => {
         fixture.root,
         'a',
         `export default { tasks: { run: {
-          exec: { command: "trap 'exit 0' TERM; echo PARTIAL > out.txt; sleep 30 & wait; echo COMPLETE >> out.txt", timeout: 300 },
+          exec: { command: "trap 'echo TRAPPED >> out.txt; exit 0' TERM; echo PARTIAL > out.txt; sleep 30 & wait; echo COMPLETE >> out.txt", timeout: 1000 },
           cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
         } } }`,
       )
@@ -343,6 +344,10 @@ describe('task timeout — classification + escalation', () => {
       })
       expect(run1.ok).toBe(false)
       expect(run1.outcomes[0]!.status).toBe('failed')
+      // The trap ran and the shell exited 0: a TERM that beat the trap (a
+      // 300 ms deadline on a loaded box) failed the task by 143 and passed
+      // this row without the case it is for (M-23).
+      expect(readFileSync(path.join(dir, 'out.txt'), 'utf8')).toBe('PARTIAL\nTRAPPED\n')
 
       // Same inputs → it must RE-EXECUTE (never a cache-hit on the partial).
       const run2 = await run({
@@ -363,15 +368,16 @@ describe('task timeout — classification + escalation', () => {
       // `trap '' TERM` ignores SIGTERM, so the one-shot timeout SIGTERM does
       // nothing; without SIGKILL escalation `await proc.exited` waits out the
       // full `sleep 10` (or forever for a truly-wedged child). The escalation
-      // bounds the run to timeout + grace (~0.25s + 2s), well under 10s.
+      // bounds the run to timeout + grace (~1s + 2s), well under 10s.
       // The sleeper is `exec`'d so the process that ignores SIGTERM IS the one
       // the escalation must SIGKILL (SIG_IGN survives exec) — as a plain
       // compound only the shell ignored it, and the SIGKILL that reaped the
-      // shell orphaned the sleeper.
+      // shell orphaned the sleeper. A 1 s deadline, so the trap is set
+      // before it on a loaded box (M-23).
       await addProject(
         fixture.root,
         'a',
-        `export default { tasks: { run: { exec: { command: "trap '' TERM; exec sleep 10", timeout: 250 } } } }`,
+        `export default { tasks: { run: { exec: { command: "trap '' TERM; exec sleep 10", timeout: 1000 } } } }`,
       )
       const started = Date.now()
       const r = await run({
@@ -388,7 +394,7 @@ describe('task timeout — classification + escalation', () => {
       // And the line names the signal that did it: it said SIGTERM over an
       // exit 137 (item 1063). signal-death.test.ts holds the SIGTERM case.
       expect(fixture.err.join('')).toContain(
-        '[vx] timed out after 250ms — killed (SIGKILL after the SIGTERM grace)',
+        '[vx] timed out after 1000ms — killed (SIGKILL after the SIGTERM grace)',
       )
     },
     TIMEOUT,

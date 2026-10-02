@@ -3,7 +3,7 @@
 // misread, and the run that followed replayed stale bytes under a green
 // run. The rule itself is in `src/cache/git-inputs.ts`.
 
-import { readFile, rm, writeFile } from 'node:fs/promises'
+import { readFile, rm, utimes, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import type { Logger, RunSummary } from '../src/orchestrator/index.js'
@@ -129,6 +129,50 @@ describe('a deletion git pairs with an unmerged path', () => {
       expect(git('status', '--porcelain', '-uno', '--', '.')).toBe(`UU ${rel}\n`)
       expect(await build()).toBe('success')
       expect(await readFile(path.join(dir, 'dist', 'out'), 'utf8')).toBe('c.txt\n')
+    },
+    TIMEOUT,
+  )
+})
+
+describe('an index blob a filter wrote that no longer applies', () => {
+  it(
+    'is not trusted for the bytes on disk (A-60)',
+    async () => {
+      // `git add` under `core.autocrlf=true` stores the LF blob for a CRLF
+      // file and records the CRLF file's stat. With the setting gone, git
+      // never re-reads the stat-clean file: status calls it clean, the
+      // filter gate (today's config and attributes) sees no filter, and the
+      // LF blob's OID keyed the CRLF bytes: a hit on the LF build.
+      const dir = await addProject(root, 'a', {
+        config: `export default {
+          tasks: {
+            build: {
+              exec: { command: 'mkdir -p dist && od -c f.txt > dist/out' },
+              cache: { inputs: { files: ['*.txt'] }, outputs: { files: ['dist/**'] } },
+            },
+          },
+        }`,
+      })
+      const file = path.join(dir, 'f.txt')
+      await writeFile(file, 'aa\n')
+      const git = gitIn(root)
+      git('add', '-A')
+      git('commit', '-q', '-m', 'fixture')
+      expect(await build()).toBe('success')
+      expect(await readFile(path.join(dir, 'dist', 'out'), 'utf8')).toContain('a   a  \\n')
+
+      await writeFile(file, 'aa\r\n')
+      // Older than the index the add writes, so git holds the entry clean
+      // by its stat rather than re-reading it as racy.
+      const past = new Date(Date.now() - 10_000)
+      await utimes(file, past, past)
+      git('-c', 'core.autocrlf=true', 'add', file)
+      expect(git('status', '--porcelain', '-uno', '--', '.')).toBe('')
+      // The shape: the index still holds the committed LF blob.
+      const rel = path.relative(root, file)
+      expect(git('ls-files', '-s', file).split(' ')[1]).toBe(git('rev-parse', `HEAD:${rel}`).trim())
+      expect(await build()).toBe('success')
+      expect(await readFile(path.join(dir, 'dist', 'out'), 'utf8')).toContain('a   a  \\r  \\n')
     },
     TIMEOUT,
   )

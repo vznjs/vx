@@ -83,8 +83,9 @@ terminal and a task succeeding or failing. Read it alongside
  │   11. Bulk git populate — the enumeration step 1 started is
  │       awaited, or a scoped run starts it here. FOUR spawns at the
  │       root, three concurrent and the rev-parse asked while they run
- │       (`ls-files -s -v -z` for the index: every tracked path's OID
- │       and its cache-state flag; `status --porcelain -z -uall` for
+ │       (`ls-files -s -v -z --debug` for the index: every tracked
+ │       path's OID, its cache-state flag and its recorded size;
+ │       `status --porcelain -z -uall` for
  │       the dirty AND untracked sets, the one worktree walk;
  │       `rev-parse --show-prefix --git-common-dir --show-object-format`,
  │       memoized per process and shared with the file hasher, which
@@ -95,8 +96,11 @@ terminal and a task succeeding or failing. Read it alongside
  │       OIDs. `ls-files --others` is NOT among them — status's
  │       `-uall` already answers untracked, and asking git twice
  │       walked the same tree again. A fifth, `check-attr`, runs only
- │       when an attributes file could rewrite bytes. The run's
- │       HashCache is created after it.
+ │       when an attributes file could rewrite bytes, and a sixth,
+ │       `cat-file --batch-check`, only for blob sizes the cache's
+ │       `blob_sizes` memo lacks (A-60): an OID whose blob is not the
+ │       recorded size is not trusted. The run's HashCache is created
+ │       after it.
  │   12. buildTaskGraph (see below).
  ├─ Task selection (graph/task-graph.ts:expandRequested)
  │    Bare task names fan out across the resolved candidate projects
@@ -151,7 +155,8 @@ terminal and a task succeeding or failing. Read it alongside
  │                runner adds/removes each around its spawn.
  │    • SIGINT/SIGTERM/SIGHUP handlers (removed in a finally): on
  │                signal, forward it (SIGHUP as SIGTERM) to everything
- │                in liveChildren + persistentRegistry, wait
+ │                in liveChildren + persistentRegistry (and kill any
+ │                running cache.inputs.runtime probe, C-65), wait
  │                VX_KILL_GRACE_MS (2 s) for their groups, SIGKILL
  │                what is still there, let the run finish its own
  │                end (flush, teardown, cache close), then
@@ -368,19 +373,22 @@ The child process gets, in priority order (lowest first):
 
 1. **Essential allowlist** (`PATH`, `HOME`, `SHELL`, `USER`, `LOGNAME`,
    `TMPDIR`, `TEMP`, `TMP`, `LANG`, `LC_ALL`, `LC_CTYPE`, `TERM`,
-   `COLORTERM`, `FORCE_COLOR`, `NO_COLOR`, `CI`, `NODE_OPTIONS`, plus
-   the Windows essentials from `SYSTEMROOT` to `PROCESSOR_ARCHITECTURE` — the list is
+   `COLORTERM`, `FORCE_COLOR`, `NO_COLOR`, `CI`, `NODE_OPTIONS` — the list is
    `ESSENTIAL_ENV` in `src/exec/env.ts`).
 2. **`exec.env.passThrough`** names → values from host `process.env`.
 3. **`exec.env.define`** literal name/value pairs.
 4. **PATH augmentation** — `<projectDir>/node_modules/.bin`, then
    `<workspaceRoot>/node_modules/.bin`, are prepended so installed
    tools (`oxlint`, `vite`, etc.) work without `npx`. Never a sibling
-   project's bin; those stay invisible. A task whose shell exits 127 or 126 gets one more frame line
+   project's bin; those stay invisible. A bin directory whose path holds
+   PATH's delimiter (`:`) is left out: PATH cannot name it, and split it
+   became two entries, one relative to the task's cwd. A task whose shell exits 127 or 126 gets one more frame line
    (`orchestrator/shell-verdict.ts`): for a bare word, that 127 is the
    shell's "command not found", the word (when the command is a plain
    `word args…`), the two bin directories vx puts first, and that a
-   sibling project's bin is never visible, and on 126 `chmod +x`; for
+   sibling project's bin is never visible (or, when a bin directory was
+   left out for its `:`, that directory and the fix: move the
+   workspace), and on 126 `chmod +x`; for
    a word with a slash, what the file says — missing (the resolved
    path), a directory, not executable by this user, a `#!` interpreter that does
    not exist (a CRLF line ending is named as such), or no `#!` line.
