@@ -592,7 +592,8 @@ async function gitPaths(workspaceRoot: string, cmd: string[]): Promise<string[]>
 /**
  * Resolve the default base for `--affected` with no explicit value.
  * Tries the remote's HEAD branch first (`origin/main`, `origin/master`,
- * etc.), then falls back to `HEAD~1`. A clone with no `origin/HEAD` and
+ * etc.), then `origin/main`, `origin/master`, `main`, `master`, then
+ * falls back to `HEAD~1`. A clone with no `origin/HEAD` and
  * no parent commit — a CI checkout at `fetch-depth: 1` — has no base at
  * all, and says so here rather than failing on a ref nobody typed.
  */
@@ -609,6 +610,12 @@ export async function defaultAffectedBase(workspaceRoot: string): Promise<string
   if (probe.exitCode === 0 && out.length > 0 && revParse(workspaceRoot, out) !== undefined) {
     return out
   }
+  // No origin/HEAD: `git remote add` + fetch, as actions/checkout does, sets
+  // none, and `HEAD~1` saw only a feature branch's last commit where Turbo
+  // and Nx compare with `main` (D-93). The usual trunk names, remote first;
+  // one that IS HEAD (a push to main) falls through to `HEAD~1` as before.
+  const trunk = trunkBase(workspaceRoot)
+  if (trunk !== undefined) return trunk
   if (revParse(workspaceRoot, 'HEAD~1') === undefined) {
     throw new UserError(
       '--affected has no base here: origin/HEAD is not set (or names a branch that is gone) and HEAD has no parent to compare ' +
@@ -617,6 +624,32 @@ export async function defaultAffectedBase(workspaceRoot: string): Promise<string
     )
   }
   return 'HEAD~1'
+}
+
+const TRUNKS = ['origin/main', 'origin/master', 'main', 'master']
+
+/** The first of `TRUNKS` that exists and is not HEAD's commit, in one spawn. */
+function trunkBase(workspaceRoot: string): string | undefined {
+  const proc = spawnGitSync(
+    [
+      'for-each-ref',
+      '--format=%(refname:short) %(objectname)',
+      '--end-of-options',
+      ...TRUNKS.map((t) => (t.startsWith('origin/') ? `refs/remotes/${t}` : `refs/heads/${t}`)),
+    ],
+    workspaceRoot,
+    'ignore',
+  )
+  if (proc.exitCode !== 0) return undefined
+  const at = new Map(
+    new TextDecoder()
+      .decode(proc.stdout)
+      .split('\n')
+      .filter((l) => l !== '')
+      .map((l) => l.split(' ') as [string, string]),
+  )
+  const head = revParse(workspaceRoot, 'HEAD')
+  return TRUNKS.find((t) => at.has(t) && at.get(t) !== head)
 }
 
 /**
@@ -667,7 +700,16 @@ async function verifyRef(workspaceRoot: string, ref: string): Promise<void> {
         (stderr.length > 0 ? `: ${stderr}` : ''),
     )
   }
-  throw new UserError(`git ref "${ref}" did not resolve. Pass a branch or commit you have locally.`)
+  // A shallow clone (CI's checkout fetches one commit by default) has no
+  // HEAD~1 and no base branch: the ref exists, the history does not.
+  const shallow = spawnGitSync(['rev-parse', '--is-shallow-repository'], workspaceRoot, 'pipe')
+  const isShallow = new TextDecoder().decode(shallow.stdout).trim() === 'true'
+  throw new UserError(
+    `git ref "${ref}" did not resolve. Pass a branch or commit you have locally.` +
+      (isShallow
+        ? ' This clone is shallow: fetch the history the base needs (`git fetch --unshallow`, or `fetch-depth: 0` on actions/checkout).'
+        : ''),
+  )
 }
 
 function isDirectory(abs: string): boolean {

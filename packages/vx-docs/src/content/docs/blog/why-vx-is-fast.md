@@ -17,9 +17,8 @@ Turborepo finishes in 5m 13s (a minute and a half over) and Nx in
 34m 44s (half an hour over).
 Warm, a fully cached `vx run build test --all` finishes in 510ms,
 Turborepo in 760ms and Nx in 3.59s; the cold build burns
-35 s of CPU in vx, 73 s in Turborepo and 114 minutes in Nx. On a real
-Turbo repository (solidjs/solid) the warm restore is 66 ms against
-Turbo's 127 ms.
+35 s of CPU in vx, 73 s in Turborepo and 114 minutes in Nx, each runner
+in its own native config.
 
 None of that comes from a microbenchmark trick. It comes from five
 decisions, and every one of them is also a reason to trust the cache

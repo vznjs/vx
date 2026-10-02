@@ -272,7 +272,8 @@ export function formatSummarySection(
 /**
  * `42 tasks · 38 cached (90%) · 3.2s`, `2 tasks · all cached · 23ms`,
  * with the failures first when there are any. Cached is every hit (up to
- * date, restored locally or remotely) over every task that has a cache.
+ * date, restored locally or remotely) over every task that consulted a
+ * cache: a skipped or not-yet-run task never did.
  */
 function resultLine(
   stats: SummaryStats,
@@ -283,9 +284,11 @@ function resultLine(
   const parts = [`${stats.total} task${stats.total === 1 ? '' : 's'}`]
   if (stats.failed > 0) parts.push(paint(ERROR, `${stats.failed} failed`, colors, { bold: true }))
   // A task with no `cache` block could never hit: it is counted apart, not
-  // as a miss, or `vx run dev` would read "0 cached (0%)".
+  // as a miss, or `vx run dev` would read "0 cached (0%)". A skipped task
+  // never asked either, and counted as a miss it put "0 cached (0%)" on a
+  // run in which no task has a cache.
   const noCache = stats.noCache ?? 0
-  const cacheable = stats.total - noCache
+  const cacheable = stats.total - noCache - stats.skipped - (stats.left ?? 0)
   if (cacheable > 0)
     parts.push(
       hits === cacheable

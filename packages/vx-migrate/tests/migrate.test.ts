@@ -594,11 +594,14 @@ describe('vx migrate (nx)', () => {
       // `commands` run in parallel (Nx's default), each with the option
       // run-commands does not consume appended, as Nx appends it. Nx runs
       // run-commands from the workspace root: the cd is part of the command.
+      // A forwarded `--outFile` replaces the option's, as in Nx.
+      const OUT = `nx_opt outFile "$@" || nx_u="$nx_u "--outFile=packages/pkg-a/build/main.js; `
       expect(build.exec?.command).toBe(
         `nx_run() { nx_c=$1; shift; if [ $# -eq 0 ]; then eval "$nx_c"; else eval "$nx_c \\"\\$@\\""; fi; }; ` +
+          `nx_opt() { nx_k=$1; shift; for nx_a; do case $nx_a in "--$nx_k"|"--$nx_k="*|"--no-$nx_k") return 0;; esac; if [ \${#nx_k} -eq 1 ]; then case $nx_a in "-$nx_k"|"-$nx_k="*) return 0;; esac; fi; done; return 1; }; ` +
           `nx_run_commands() { trap 'trap "" TERM USR1; kill -TERM 0; wait; exit 1' USR1; ` +
-          `{ trap 'nx_term=1' TERM; (nx_run 'tsc -b --outFile=packages/pkg-a/build/main.js' "$@") || [ -n "$nx_term" ] || kill -USR1 $$; } & ` +
-          `{ trap 'nx_term=1' TERM; (nx_run 'echo done --outFile=packages/pkg-a/build/main.js' "$@") || [ -n "$nx_term" ] || kill -USR1 $$; } & wait; }; ` +
+          `{ trap 'nx_term=1' TERM; (nx_u=; ${OUT}nx_run 'tsc -b'"$nx_u" "$@") || [ -n "$nx_term" ] || kill -USR1 $$; } & ` +
+          `{ trap 'nx_term=1' TERM; (nx_u=; ${OUT}nx_run 'echo done'"$nx_u" "$@") || [ -n "$nx_term" ] || kill -USR1 $$; } & wait; }; ` +
           'cd ../.. && nx_run_commands',
       )
       // namedInputs expansion: production → default + spec exclusion.
@@ -1374,6 +1377,32 @@ describe('the writer: what the sweep found unheld', () => {
   )
 })
 
+// A written config reads `npm_package_*` from the manifest it imports, so
+// a bump reaches them, and only where the command names one: the JSON
+// import is one a user's `tsc` over the package may refuse.
+describe('migrateTurbo: the npm_* variables', () => {
+  it('a command that names one reads it from the manifest; another gets none', async () => {
+    const root = await makeRoot('vx-migrate-npm-env-')
+    try {
+      await writeFile(path.join(root, 'turbo.json'), JSON.stringify({ tasks: { v: {}, b: {} } }))
+      const scripts = { v: 'echo $npm_package_version', b: 'tsc' }
+      const dir = await addPackage(root, 'a', scripts)
+      const packageJson = { name: 'a', version: '1.0.0', scripts }
+      const meta = { name: 'a', dir, packageJson: packageJson as never, configPath: null }
+      const [p] = (await migrateTurbo(root, [meta], 'ts')).projects
+      expect(p!.importLines).toEqual(["import pkg from './package.json' with { type: 'json' }"])
+      const exec = (n: string) => p!.tasks.find((t) => t.name === n)!.task!['exec']
+      expect(exec('v')).toEqual({
+        command: 'echo $npm_package_version',
+        env: { define: { npm_package_version: { raw: 'pkg.version' } } },
+      })
+      expect(exec('b')).toEqual({ command: 'tsc' })
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+})
+
 describe('the preset, exactly', () => {
   async function preset(turboJson: Record<string, unknown>) {
     const root = await makeRoot('vx-migrate-preset-sweep-')
@@ -1414,6 +1443,23 @@ describe('the preset, exactly', () => {
         '',
         '// From globalPassThroughEnv: forwarded to every task, never hashed.',
         "export const globalPassThroughEnv = ['AWS']",
+        '',
+      ],
+    ])
+  })
+
+  // G-131/G-133 put the root's workspace dependencies and microfrontends
+  // configs in the same list; the section said they came from
+  // globalDependencies, which named neither.
+  it('a preset of global inputs says where they come from', async () => {
+    const plan = await preset({ globalDependencies: ['x.json'], tasks: { build: {} } })
+    expect(plan.extraFiles.map((f) => f.contents.split('\n').slice(3))).toEqual([
+      [
+        '',
+        '// From globalDependencies and what Turbo adds to them (the packages the',
+        '// root depends on, microfrontends configs) — workspace-root-relative,',
+        '// spread into each task’s cache.inputs.workspaceFiles.',
+        "export const globalInputs = ['x.json']",
         '',
       ],
     ])
