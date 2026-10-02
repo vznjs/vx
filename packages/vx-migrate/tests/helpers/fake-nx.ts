@@ -125,7 +125,10 @@ exports.runExecutor = async (description, overrides, context) => {
     env: { NX_DAEMON: process.env.NX_DAEMON, FROM_DOTENV: process.env.FROM_DOTENV },
   }))
   if (typeof target.options.writeFile === 'string') {
-    const file = path.resolve(context.cwd, target.options.writeFile)
+    // From the project root, as an executor does: never process.cwd(),
+    // which Nx (and nx-exec) leave at the workspace root.
+    const projectRoot = context.projectsConfigurations.projects[context.projectName].root
+    const file = path.resolve(context.root, projectRoot, target.options.writeFile)
     fs.mkdirSync(path.dirname(file), { recursive: true })
     fs.writeFileSync(file, target.options.content ?? 'executor wrote this')
   }

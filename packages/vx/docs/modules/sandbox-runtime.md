@@ -341,6 +341,11 @@ export function refusedWritesOutside(violations, opts: { within; linked?; config
      once more unless it timed out or the run is stopping: the trace
      stopped short, and under `--seccomp-bpf` (which implies
      `--kill-on-exit`) a dying strace SIGKILLs the task (exit 137; M-18).
+   - On Linux, a task that declares `allow.network` waits, in front of its
+     command, until SRT's in-sandbox proxy bridges (`socat TCP-LISTEN`
+     on 3128 and 1080, started in the background) listen, read off
+     `/proc/net/tcp{,6}`, at most ~5 s: its first dial met "connection
+     refused" on a loaded box (M-20).
 4. **Filtering.** Enforcement anchors at the workspace root, but only
    denials on a path inside `reportWithin` (the project) or one of
    `reportLinked` (the linked packages a cached task was denied because
@@ -442,6 +447,13 @@ first and says so once, naming the directory above it: left in, the read
 grants were punched around a bind that never came, the directory
 vanished from the task's view ("Directory nonexistent"), and the refused
 write went unreported, judged against the grant (B-59).
+
+On macOS vx hands seatbelt's SRT the grant as written, and SRT compiles
+a spelling holding `[` as a regex in which a backslash is a literal one,
+so the escaped `pages/\[id\].tsx` named no file. vx spells `\[` as `[[]`
+and `\]` as `]` there (`seatbeltBrackets`). A project under a bracketed
+directory is refused on both platforms (B-60, B-65): seatbelt compiled
+vx's own workspace wall as a class too, so it matched nothing.
 
 SRT's in-sandbox network bridge is `socat TCP-LISTEN:3128` (and 1080),
 which socat 1.8 opens as an IPv6 socket. On a host without IPv6 it
