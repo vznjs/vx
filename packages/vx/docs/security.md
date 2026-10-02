@@ -106,6 +106,13 @@ action's Command, which the remote stores in its CAS, as Bazel's
 remote. `vx lock` refuses to write a lock holding a secret value: the lock is
 committed (L-42).
 
+Masking covers the text vx shows and stores, not a task's outputs: they
+are cached and uploaded as the task wrote them, so a build that bakes a
+secret into a file (a server bundle reading `process.env.API_KEY`) hands
+it to every reader of the remote cache. Keep secrets out of cached
+outputs, or give that task no `cache`. vx does not scan outputs for
+secret values: a name-based match would refuse public `*_KEY` values too.
+
 ## Releases
 
 Release binaries carry a build-provenance attestation

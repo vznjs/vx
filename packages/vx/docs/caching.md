@@ -557,6 +557,10 @@ short run still ships every artifact before the process exits. Upload
 failures log via `onRemoteError` and are otherwise ignored (the task
 already succeeded; the only loss is the remote entry).
 
+An upload is the outputs as the task wrote them; secret masking does
+not reach file contents, so a task whose outputs embed a secret is one
+to leave uncached ([security](./security.md)).
+
 ### Planning probes (`--dry` / `--graph`)
 
 The planning paths (`vx run --dry`, `--graph`) predict hits without
