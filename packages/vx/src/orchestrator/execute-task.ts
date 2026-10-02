@@ -403,7 +403,9 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // task the stop kills (item 962): it read `failed (never ready:
     // exited, exit 130)` with a recap after every Ctrl-C (C-62). The stop
     // aborts before it kills, so it is set by the time the child is gone.
-    if (args.stopSignal?.aborted === true) {
+    // Read through a call: the early return above narrows `aborted` to
+    // false, but the stop can land during `spawn.ready`.
+    if (isAborted(args.stopSignal)) {
       return {
         node,
         status: 'aborted',
@@ -1303,4 +1305,8 @@ function taskEnv(node: TaskNode, step: ExecConfig, workspaceRoot: string): NodeJ
   env[VX_RUN_WORKSPACE_ENV] = workspaceRoot
   env[VX_RUN_TASK_ENV] = node.id
   return env
+}
+
+function isAborted(signal: AbortSignal | undefined): boolean {
+  return signal?.aborted === true
 }
