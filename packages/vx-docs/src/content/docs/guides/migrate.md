@@ -154,9 +154,10 @@ The command itself comes from your `package.json` script, with its
    `--from nx` (or `--from turbo`).
 6. Once `vx run build --all` does what `nx run-many -t build` did,
    remove `nx()` and its import from `vx.workspace.ts`, then delete
-   `nx.json`: the configs declare every task the graph had. Keep `nx`
-   and `@vzn/vx-migrate` installed only while a config still runs an
-   `nx-exec` or `nx-env` line.
+   `nx.json`: the configs declare every task the graph had, and the
+   migrator's `note:` says so while `nx()` is still there. Keep
+   `@vzn/vx-migrate` installed only while a config still runs an
+   `nx-env` line.
 
 ```ts
 import type { WorkspaceConfig } from '@vzn/vx/config'
