@@ -995,3 +995,17 @@ reads it denies go unreported`. Rows: `sandbox-runtime.unsafe.test.ts`
 null control); `show-info.test.ts` › the rendered sandbox rows. A new
 fact is a contract change: `schemas/info.json`, `docs/api.md` and
 `vx-mcp`'s `tools.json` record it, so the title and a commit carry `!`.
+
+B-53. A Linux sandboxed task whose cwd no mount held ran in `$HOME`.
+bwrap enters the old cwd only if it exists in the new root, else
+`$HOME`, silently; a project with no read grant and no `node_modules` of
+its own (`sandbox: {}`) ran there, so `cat x.txt` read `~/x.txt`, and
+the bare-baseline row passed on `Read-only file system` from `$HOME`.
+Fix (`cwdMounted`): when no grant holds the cwd, the cwd is denied too,
+an empty directory the task enters; its reads are refused and reported,
+its writes are scratch the observer reports. The ungranted-cwd note
+missed it as well (a grant under the cwd that does not exist mounts
+nothing); with the fix the read itself is reported. Rows:
+`sandbox-runtime.unsafe.test.ts` › runs in its own cwd when no grant
+holds it (red without the fix: `pwd` read `/root`), and the bare
+baseline's row now pins the two write violations (red without it).
