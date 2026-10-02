@@ -602,11 +602,10 @@ export const CHOICES: readonly Choice[] = [
     cells: {
       vx: {
         chose: 'No daemon. Every run discovers the workspace and asks git what changed.',
-        buys: 'Nothing to keep in sync or reset. On medusa, run through turbo() unchanged, a warm run with nothing to do took 947 ms against Turborepo’s 3.29 s.',
-        costs:
-          'Every run pays for discovery and the git walk: on payload, 256 ms against Turborepo’s 237 ms.',
+        buys: 'Nothing to keep in sync or reset.',
+        costs: 'Every run pays for discovery and the git walk.',
         sources: [
-          { label: 'Five real Turbo repos', href: 'benchmarks/#five-real-turbo-repos-2026-09-11' },
+          { label: 'Benchmarks', href: 'benchmarks/' },
           { label: 'Out of scope', href: 'comparison/#explicitly-out-of-scope-today' },
         ],
       },
@@ -648,8 +647,8 @@ export const CHOICES: readonly Choice[] = [
     cells: {
       vx: {
         chose:
-          'turbo() runs a turbo.json repository unchanged, and nx() runs an Nx workspace from its resolved graph. bunx @vzn/vx-migrate writes vx.config.ts files when you want to move for good.',
-        buys: 'A trial with one vx.workspace.ts and nothing rewritten.',
+          'bunx @vzn/vx-migrate writes vx.config.ts files from turbo.json or the Nx graph; turbo() and nx() are a temporary start until it has.',
+        buys: 'A move to native vx config without retyping the graph.',
         costs:
           'The plugins are not on npm until 0.1.0 is cut. nx() runs Nx executors through a Node bin. Moving to native configs means writing input lists.',
         sources: [
@@ -800,10 +799,10 @@ export const NEEDS: readonly Need[] = [
   },
   {
     id: 'keep-config',
-    label: 'Try it on our Turborepo or Nx repository with nothing rewritten',
+    label: 'Move off Turborepo or Nx without retyping the graph',
     decidedBy: ['adoption'],
     fits: ['vx'],
-    why: 'turbo() and nx() run the existing configuration as it is. nx init writes a new nx.json, and the others need new configuration.',
+    why: 'bunx @vzn/vx-migrate writes native vx config from turbo.json or the Nx graph. nx init writes a new nx.json, and the others need new configuration.',
   },
   {
     id: 'polyglot',
