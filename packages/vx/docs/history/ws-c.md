@@ -858,12 +858,14 @@ the fix), and after `stop` the bus reaches it no more (red with the
 detach removed); probed end to end (9 lines in 2.5 s, 2 before).
 `cli.md` says so.
 
-## C-61: run() refuses a concurrency that is not a positive integer
+## C-61: run() refuses the numbers the CLI refuses
 
 The CLI and the workspace config refuse a `concurrency` that is not a
-positive integer, but the façade took any: `run({ concurrency: 0 })`, a
-negative or `NaN` left no worker slot open and the run waited for good.
-run() now refuses it up front, naming the value. Row
-(`run-concurrency.test.ts`): 0, -1, 1.5 and NaN refused with the exact
-message, 1 runs; red without the check (the run hangs). The option's
-doc comment says so.
+positive integer, a `retries` that is not a non-negative integer and a
+`timeout` outside 1..2^31-1 ms; the façade took any. `run({
+concurrency: 0 })`, a negative or `NaN` left no worker slot open and the
+run waited for good; `retries: NaN` retried a failing task without end
+(3,745 attempts in 6 s); a bad `timeout` killed every task at once,
+failed 143. run() now refuses each up front, naming the value. Rows
+(`run-concurrency.test.ts`): each refused with the exact message, the
+edges run; red without the checks. The options' doc comments say so.

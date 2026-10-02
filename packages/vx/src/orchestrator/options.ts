@@ -116,6 +116,7 @@ export interface RunOptions {
    * `exec.retries` (explicit config wins, including `retries: 0`).
    * Threaded as an option only — never folded into any cache key, so
    * the same run with and without `--retry` derives identical keys.
+   * A non-negative integer; run() refuses anything else (C-61).
    */
   retries?: number
   /**
@@ -125,6 +126,8 @@ export interface RunOptions {
    * `exec.timeout` always wins. Threaded as an option only — never
    * folded into any cache key (a timed-out task fails and is never
    * cached), so a `--timeout` run cache-hits a plain run's entry.
+   * A positive integer of ms up to `2 ** 31 - 1`; run() refuses anything
+   * else (C-61).
    */
   timeout?: number
   /**
