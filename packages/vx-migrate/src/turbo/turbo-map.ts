@@ -148,8 +148,9 @@ const OUTPUT_LOGS_RUN_FLAG = new Set(['full', 'hash-only', 'errors-only', 'none'
 // nothing in turbo.json saying so. vx env names are explicit, so the
 // variables were stripped in silence and a build that inlines them
 // (Next's `NEXT_PUBLIC_*`) read empty values (item 940). A live mapping
-// (`envNames`) infers them as Turbo does; the migrate CLI names them in a
-// note. Turbo's own table (`packages/turbo-types/src/json/frameworks.json`),
+// (`envNames`) infers them as Turbo does; the migrate CLI lists the names
+// the package's own files spell (`sourceNames`) and says so in a note.
+// Turbo's own table (`packages/turbo-types/src/json/frameworks.json`),
 // in its order: a package takes the FIRST framework it matches, `all`
 // needing every dependency and `some` any one.
 const NITRO_ENV = [
@@ -267,6 +268,11 @@ export interface MapTurboOptions {
    * Absent (`vx migrate` writes files), a wildcard is a todo.
    */
   envNames?: readonly string[]
+  /**
+   * Without `envNames` (written configs): the upper-case names a package's
+   * own files spell, which a framework's `*` prefix is matched against.
+   */
+  sourceNames?: (dir: string) => Promise<readonly string[]>
   /**
    * `TURBO_CI_VENDOR_ENV_KEY`, which a platform sets (Vercel:
    * `NEXT_PUBLIC_VERCEL_`): names with it are left out of framework
@@ -1048,6 +1054,7 @@ export async function mapTurboWorkspace(
   // list, where the task's own `!` entries can take names back.
   const inferredOf = new Map<string, readonly string[]>()
   const usersOf = new Map<(typeof FRAMEWORK_ENV)[number], string[]>()
+  const sourcedOf = new Map<(typeof FRAMEWORK_ENV)[number], string[]>()
   for (const m of metas) {
     if (emitted.get(m.name)!.size === 0) continue
     const fw = FRAMEWORK_ENV.find((f) =>
@@ -1065,8 +1072,27 @@ export async function mapTurboWorkspace(
         return live.filter((n) => n.startsWith(head)).sort()
       })
       inferredOf.set(m.name, vendor ? names.filter((n) => !n.startsWith(vendor)) : names)
+    } else if (opts.sourceNames !== undefined) {
+      // A written config cannot ask the run's environment, and with the
+      // prefix only in a note, a migrated Next build inlined every
+      // NEXT_PUBLIC_ value empty. The names the package's own files spell
+      // are what its build reads.
+      const spelled = await opts.sourceNames(m.dir)
+      inferredOf.set(
+        m.name,
+        fw.env.flatMap((e) =>
+          e.endsWith('*') ? spelled.filter((n) => n.startsWith(e.slice(0, -1))) : [e],
+        ),
+      )
+      sourcedOf.set(fw, [...(sourcedOf.get(fw) ?? []), m.name])
     } else usersOf.set(fw, [...(usersOf.get(fw) ?? []), m.name])
   }
+  for (const [fw, users] of sourcedOf)
+    notes.push(
+      `Turbo infers ${fw.slug} in ${users.join(', ')} and hashes and passes ${fw.env.join(', ')} ` +
+        'to its tasks; the configs list the names their own files spell — add any only a ' +
+        'dependency reads to cache.inputs.env and exec.env.passThrough',
+    )
   for (const [fw, users] of usersOf)
     notes.push(
       `Turbo infers ${fw.slug} in ${users.join(', ')} and hashes and passes ${fw.env.join(', ')} to ` +

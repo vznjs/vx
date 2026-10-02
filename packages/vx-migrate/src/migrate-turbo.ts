@@ -44,6 +44,7 @@ export async function migrateTurbo(
     ...(tracked === null ? {} : { tracked: trackedKinds(tracked) }),
     // The file this writes is each task's config.
     ownConfig: () => `vx.config.${format}`,
+    sourceNames: (dir) => spelledNames(root, dir, tracked),
   })
 
   const projects: GeneratedProject[] = mapping.projects.map((p) => {
@@ -68,6 +69,34 @@ export async function migrateTurbo(
   }
 
   return { headerNotes: [], projects, extraFiles, notes: mapping.notes }
+}
+
+/** Source and env-example files a framework build reads its variables from. */
+const SPELLS_ENV =
+  /\.(c|m)?(j|t)sx?$|\.(vue|svelte|astro|html)$|(^|\/)\.env\.(example|sample|template)$/
+
+/**
+ * The upper-case names a package's tracked source spells (`NEXT_PUBLIC_API`
+ * in `process.env.NEXT_PUBLIC_API` or an `.env.example`), sorted. Without
+ * git, none: the note still names the framework's prefix.
+ */
+async function spelledNames(
+  root: string,
+  dir: string,
+  tracked: readonly string[] | null,
+): Promise<string[]> {
+  if (tracked === null) return []
+  const rel = relPosix(root, dir)
+  const prefix = rel === '' || rel === '.' ? '' : `${rel}/`
+  const names = new Set<string>()
+  for (const f of tracked) {
+    if (!f.startsWith(prefix) || !SPELLS_ENV.test(f)) continue
+    const text = await Bun.file(path.join(root, f))
+      .text()
+      .catch(() => '')
+    for (const m of text.matchAll(/\b[A-Z][A-Z0-9_]*_[A-Z0-9_]+\b/g)) names.add(m[0])
+  }
+  return [...names].sort()
 }
 
 /**
