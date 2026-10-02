@@ -104,7 +104,8 @@ export function sandboxRunUnion(nodes: Iterable<TaskNode>): SandboxRunUnion | nu
  * Linux, the runtime module's own load included) even when every task was
  * a cache hit and nothing executed; measured 2026-09-10 on this repo's
  * own warm gate: `classify + probe` 288 ms of a 798 ms run. A hit needs
- * no sandbox, so a hit pays nothing.
+ * no sandbox, so a hit pays nothing. `run()` arms early only when a
+ * sandboxed task is sure to execute (C-76).
  *
  * The domain union is computed here from every sandboxed node, because
  * SRT runs ONE filtering proxy per run and checks every request against
