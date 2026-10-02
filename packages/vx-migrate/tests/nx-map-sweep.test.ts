@@ -250,6 +250,28 @@ describe('nx-map: what the sweep found unheld', () => {
     )
   })
 
+  // Nx's `createTaskOverrides`: `options: "forward"` runs the dependency
+  // with this target's options (its configuration's merged in), which vx
+  // dropped without a word. CONTROL: cypress's atomized `e2e-ci` forwards
+  // empty options, which change nothing.
+  it('`options: "forward"` is reported when there are options to forward', async () => {
+    const a = await meta('a')
+    const fwd = { target: 'gen', options: 'forward' }
+    const t = await tasksOf([a], {
+      a: node('packages/a', {
+        gen: { command: 'gen' },
+        e2e: { executor: 'nx:noop', dependsOn: [fwd] },
+        build: { command: 'b', dependsOn: [fwd], configurations: { ci: { mode: 'ci' } } },
+        lint: { command: 'l', options: { fix: true }, dependsOn: [fwd] },
+      }),
+    })
+    const todo =
+      'dependsOn "gen": options forwarding is not supported — the dependency runs with its own options, not this target\'s'
+    expect(
+      ['e2e', 'build', 'build:ci', 'lint'].map((n) => t.get(`a#${n}`)!.todos.includes(todo)),
+    ).toEqual([false, false, true, true])
+  })
+
   // nx-examples: an e2e project's Nx edge to its app (implicitDependencies)
   // has no package.json entry, so vx's `^typecheck` did not reach the app:
   // nothing ordered it and the app's source edit left the e2e typecheck a

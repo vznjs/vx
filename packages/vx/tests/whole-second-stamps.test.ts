@@ -19,6 +19,8 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, setSystemTime, spyOn } from 'bun:test'
 import { Cache } from '../src/cache/index.js'
 import { movedInput } from '../src/orchestrator/task-hash.js'
+import { FingerprintWatch } from '../src/orchestrator/fingerprint-watch.js'
+import { computeWorkspaceFingerprints } from '../src/workspace/index.js'
 
 /** A whole second, well in the past so no real file carries it. */
 const SECOND = 1_700_000_000_000
@@ -148,5 +150,38 @@ describe('a whole-second stamp', () => {
     }
     expect(await snapshotAt(SECOND)).toBe(0)
     expect(await snapshotAt(SECOND + 7)).toBe(1)
+  })
+})
+
+// C-59 (A-2's lead): the run's watch over the fingerprinted files skipped a
+// file whose ctime was older than the run's read by more than 50 ms, so a
+// lockfile a task rewrote 400 ms after the read, stamped back to the whole
+// second, read as untouched and every key kept the old lockfile's bytes.
+describe("the fingerprint watch's whole-second stamp", () => {
+  const realStat = fs.statSync
+  afterEach(() => {
+    ;(fs.statSync as unknown as { mockRestore?(): void }).mockRestore?.()
+  })
+  async function movedAt(ctime: number): Promise<readonly string[] | undefined> {
+    const lock = path.join(root, 'pnpm-lock.yaml')
+    writeFileSync(lock, 'AAAA')
+    const read = await computeWorkspaceFingerprints(root, new Set())
+    const watch = new FingerprintWatch(root, read, SECOND + 500)
+    writeFileSync(lock, 'BBBB')
+    spyOn(fs, 'statSync').mockImplementation(((p: fs.PathLike, o?: fs.StatOptions) => {
+      const st = realStat(p, o as never)
+      if (st === undefined || String(p) !== lock) return st
+      return Object.assign(st, { ctimeMs: ctime })
+    }) as typeof fs.statSync)
+    watch.wrote()
+    const moved = watch.moved()
+    ;(fs.statSync as unknown as { mockRestore(): void }).mockRestore()
+    return moved
+  }
+
+  it('reads a lockfile stamped to the second before the read', async () => {
+    expect(await movedAt(SECOND)).toEqual(['pnpm-lock.yaml'])
+    // Control: a sub-second stamp 499 ms before the read is trusted.
+    expect(await movedAt(SECOND + 1)).toBeUndefined()
   })
 })
