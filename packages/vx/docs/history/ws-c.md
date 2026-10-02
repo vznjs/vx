@@ -681,6 +681,12 @@ with no prediction; a history read error fails open in both callers.
 
 ## Leads for other streams
 
+- **F:** `vx-reapi` `materialise-concurrency.test.ts` › "output files are
+  fetched and written at once" read a peak of 3 reads in flight for an
+  expected 5 in a full local gate (3/3 alone): each read holds 2 ms, so
+  under load the first ones finish before the last start. Hold the reads
+  until all have started (a latch), not for a fixed 2 ms.
+
 - **D:** a persistent task with `exec.remote: 'only'` is refused for
   lacking `cache` ("needs `cache`: its inputs are what a worker
   reproduces"), and adding `cache` is refused next ("`cache` is not
@@ -1015,6 +1021,12 @@ verbatim. It is now counted, not quoted, the same way. Row
 (`telemetry.test.ts` › a sink never receives what follows `--`): red
 without the fix. The option's doc comment says so.
 
+## C-75: signals.md says the stop kills the run's probes
+
+`modules/signals.md` described the stop's teardown as `terminateChildren`
+alone; since C-65 it also kills the run's running `cache.inputs.runtime`
+probes. Docs only.
+
 ## C-74: an executor's shared error is named once
 
 C-63 names a plugin executor's throw by prefixing the error's own
@@ -1033,29 +1045,17 @@ those a requested group stands for (C-52), that a run which failed
 elsewhere keeps none unless `--continue=always` (C-60), and that what
 they write streams through the wait (C-56). Docs only.
 
-## C-79: the task graph over random workspaces, on a PRNG that does not cycle
+## C-77: a subscriber that leaves mid-emit no longer hides the event
 
-`tests/task-graph-properties.test.ts` builds 2,000 seeded random
-workspaces (package-graph cycles, sparse holders, `name`, `^name`,
-`pkg#name`, `build.*`, `^build.*`, the odd typo and back edge) and holds
-`buildTaskGraph` to a recursive reference: the same tasks, edges and
-requested flags, and a refusal exactly where the reference refuses
-(43%: cycles and missing tasks). Mutants caught: the declaring project
-not seeding the `^` walk, a holder that does not stop it, the edge
-dedupe, a pattern matching its own task, requested promotion, a pattern
-holder's later matches, the pending list, and the undeclared-`^name`
-refusal. Re-adding a pending node already added survives; it builds the
-same graph.
-
-Writing it found the PRNG the property files shared,
-`(s * 1103515245 + 12345) % 2 ** 31` in floats, losing the product's
-low bits past 2 ** 53 and cycling: seed 298 after 71 draws, 1019 within
-11,079, so C-71's 2,000 graphs repeated. `tests/helpers/rng.ts`
-(mulberry32, `Math.imul`) replaces it there, here and in
-`summary-meters.test.ts` (whose `& 0x7fffffff` variant cycles after
-10,726, past the 8,000 draws its sweep takes); `tests/rng.test.ts` holds
-it to no cycle in a million draws and an even spread, both red on the
-old one. C-71 still passes on the full-period stream. Test only.
+`createEventBus` walked its subscriber array while a disposer spliced
+it, so a subscriber that unsubscribed during an emit shifted the next
+one into the slot the walk had passed. An embedder that subscribes
+before the run and calls `off()` on `run:end` took `run:end` from the
+terminal renderer behind it. The list is now replaced on subscribe and
+unsubscribe, never mutated, so an emit walks the list it began with at
+no per-emit cost; a subscriber added during an emit hears the next
+event. Rows (`events.test.ts` › createEventBus): both red without the
+fix. `modules/events.md` says so.
 
 ## C-76: the sandbox probe starts when a sandboxed task is sure to run
 
