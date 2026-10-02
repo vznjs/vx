@@ -615,7 +615,7 @@ export async function installPlugins(args: InstallPluginsArgs): Promise<() => vo
     } catch (err) {
       throw new PluginSetupError(
         plugin,
-        `plugin '${plugin.name}' failed to load: ${err instanceof Error ? err.message : String(err)}`,
+        `plugin '${plugin.name}' failed in setup: ${err instanceof Error ? err.message : String(err)}`,
       )
     }
   }
