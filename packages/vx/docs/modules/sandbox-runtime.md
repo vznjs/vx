@@ -709,6 +709,16 @@ is why `@vzn/vx#test.bun.shard-*` is the one task in this repo with no
 `sandbox` block. `weakerWhenNested` covers the Linux case; SRT offers no
 macOS equivalent because there is none to offer.
 
+## Network entries
+
+`initSandbox` checks the run's domain union against SRT's own
+`NetworkConfigSchema` before `initialize`, which does not: a URL or a
+dotless host matched nothing, and an allowed `*` opened every host for
+the run. The refusal names each entry. It is thrown past the Linux probe,
+which brings the runtime up, and only an armed run resets it, so
+`prepareSandbox`'s `arm()` resets the runtime on any failure; before
+that the process hung after the summary (2026-10-02).
+
 ## Loopback
 
 A runtime that opens a dual-stack socket reaches 127.0.0.1 as
