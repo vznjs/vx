@@ -16,6 +16,10 @@
   options, as Nx's `interpolate` does; read as one key it was no output,
   so nx-examples' cached `@nx/angular:application` builds restored
   nothing on a hit.
+- **P-8** docs: the `vx-migrate` README and the Nx design doc still said
+  a configuration task's `^` edges run the dependencies' default
+  configuration with a warning; #1991 made them pass the configuration
+  and no such warning exists. Both corrected in place.
 
 ## Notes
 
