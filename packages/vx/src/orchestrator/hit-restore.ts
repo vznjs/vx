@@ -61,7 +61,7 @@ export async function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome> 
   // The directories the positive globs cover whole. A `!` entry inside one
   // leaves the snapshot sound: a file added or removed there still bumps a
   // recorded directory, and the walk that follows applies the `!` (A-46).
-  const dirPrefixes = wholeSubtreePrefixes(splitNegations(outputs).positive)
+  const dirPrefixes = dirPrefixesOf(outputs)
   const cleanArgs = {
     projectDir: node.projectDir,
     outputs,
@@ -133,52 +133,54 @@ export async function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome> 
         setKnown = covers && (await args.cache.outputDirsCurrent!(node.projectDir, dirRows))
         endDirs()
       }
-      let actualAbs: string[]
-      let actualWsAbs: string[]
+      let treeMatches: boolean
       if (setKnown) {
-        actualAbs = projExpected.map((e) => path.join(node.projectDir, e.path))
-        actualWsAbs = []
+        // The snapshot proved the tree holds exactly the entry's project
+        // rows (one per path, the table's key) and no workspace output is
+        // declared, so the comparisons below hold by construction: mapping
+        // each row to a path and back was ~5 ms per 1,000 warm hits.
+        treeMatches = wsExpected.length === 0
       } else {
         const endGlob = span('output glob')
-        actualAbs = await resolveOutputs({
+        const actualAbs = await resolveOutputs({
           projectDir: node.projectDir,
           outputs,
           nestedProjectDirs: args.nestedProjectDirs,
         })
-        actualWsAbs = await resolveWorkspaceOutputs({
+        const actualWsAbs = await resolveWorkspaceOutputs({
           workspaceRoot: args.workspaceRoot,
           outputs: wsOutputs,
         })
         endGlob()
+        const setsMatch = (
+          actual: readonly string[],
+          exp: ReadonlyArray<{ path: string }>,
+        ): boolean => {
+          const expSet = new Set(exp.map((e) => e.path))
+          return actual.length === expSet.size && actual.every((r) => expSet.has(r))
+        }
+        // A stray a dependant's glob could have added is not a stray; a path
+        // this entry recorded is never dropped, even where that glob covers
+        // the whole tree (strapi's shape: both on `dist`).
+        const expectedRels = new Set(projExpected.map((e) => e.path))
+        const expectedWsRels = new Set(wsExpected.map((e) => e.path))
+        const actualRels = actualAbs
+          .map((p) => path.relative(node.projectDir, p).split(path.sep).join('/'))
+          .filter((rel) => expectedRels.has(rel) || !isAddition(rel))
+        const actualWsRels = actualWsAbs
+          .map((p) => path.relative(args.workspaceRoot, p).split(path.sep).join('/'))
+          .filter((rel) => expectedWsRels.has(rel) || !isAddition(rel))
+        const rowsPresent = (
+          actual: readonly string[],
+          exp: ReadonlyArray<{ path: string }>,
+        ): boolean => {
+          const have = new Set(actual)
+          return exp.every((e) => have.has(e.path))
+        }
+        treeMatches = additive
+          ? rowsPresent(actualRels, projExpected) && rowsPresent(actualWsRels, wsExpected)
+          : setsMatch(actualRels, projExpected) && setsMatch(actualWsRels, wsExpected)
       }
-      const setsMatch = (
-        actual: readonly string[],
-        exp: ReadonlyArray<{ path: string }>,
-      ): boolean => {
-        const expSet = new Set(exp.map((e) => e.path))
-        return actual.length === expSet.size && actual.every((r) => expSet.has(r))
-      }
-      // A stray a dependant's glob could have added is not a stray; a path
-      // this entry recorded is never dropped, even where that glob covers
-      // the whole tree (strapi's shape: both on `dist`).
-      const expectedRels = new Set(projExpected.map((e) => e.path))
-      const expectedWsRels = new Set(wsExpected.map((e) => e.path))
-      const actualRels = actualAbs
-        .map((p) => path.relative(node.projectDir, p).split(path.sep).join('/'))
-        .filter((rel) => expectedRels.has(rel) || !isAddition(rel))
-      const actualWsRels = actualWsAbs
-        .map((p) => path.relative(args.workspaceRoot, p).split(path.sep).join('/'))
-        .filter((rel) => expectedWsRels.has(rel) || !isAddition(rel))
-      const rowsPresent = (
-        actual: readonly string[],
-        exp: ReadonlyArray<{ path: string }>,
-      ): boolean => {
-        const have = new Set(actual)
-        return exp.every((e) => have.has(e.path))
-      }
-      const treeMatches = additive
-        ? rowsPresent(actualRels, projExpected) && rowsPresent(actualWsRels, wsExpected)
-        : setsMatch(actualRels, projExpected) && setsMatch(actualWsRels, wsExpected)
       if (treeMatches) {
         const endStat = span('output stat')
         skipRestore =
@@ -307,3 +309,21 @@ export async function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome> 
     wallclockEndNs: process.hrtime.bigint() - args.runStartHrTimeNs,
   }
 }
+
+/**
+ * The whole-subtree directories of a task's output globs, memoised by the
+ * list: a function of the declared globs alone, and a workspace declares a
+ * handful of output lists over thousands of tasks (~5 ms of a 1,000-hit
+ * warm run, unmemoised). Callers only read the result.
+ */
+function dirPrefixesOf(outputs: readonly string[]): readonly string[] | null {
+  const key = JSON.stringify(outputs)
+  let prefixes = prefixMemo.get(key)
+  if (prefixes === undefined) {
+    prefixes = wholeSubtreePrefixes(splitNegations(outputs).positive)
+    prefixMemo.set(key, prefixes)
+  }
+  return prefixes
+}
+
+const prefixMemo = new Map<string, readonly string[] | null>()
