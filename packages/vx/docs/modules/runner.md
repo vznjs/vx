@@ -62,6 +62,9 @@ export function shellQuote(arg: string): string
 export function withForwardArgs(command: string, args: readonly string[] | undefined): string
 // POSIX "terminated by signal N" → exit 128+N (SIGINT → 130, SIGTERM → 143).
 export function signalExitCode(signal: string): number // 128 + signo; 130 fallback
+// The signal a run's stop stands for, from its abort reason (SIGINT,
+// SIGHUP, else SIGTERM): a task stopped before its spawn exits as it.
+export function stopSignal(reason: unknown): 'SIGINT' | 'SIGHUP' | 'SIGTERM'
 export class PersistentReadyError extends Error // reason: 'timeout' | 'exited' | 'spawn'; exitCode?: the child's own
 export function streamToString(
   stream: ReadableStream<Uint8Array> | number | undefined,
