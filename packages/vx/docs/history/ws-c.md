@@ -1009,6 +1009,7 @@ read `failed in execute: plugin 'org/down' (executor 'down') failed in
 execute: pool down`. The prefix is now added once. Row
 (`plugin-capabilities.test.ts` › one error an executor rejects two tasks
 with is named once in each): red without the fix.
+
 ## C-73: architecture.md's end of run names the servers it keeps
 
 `architecture.md`'s run walk-through kept "persistent tasks the user
