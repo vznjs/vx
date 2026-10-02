@@ -326,7 +326,7 @@ export const CHOICES: readonly Choice[] = [
     cells: {
       vx: {
         chose:
-          'Bun. The npm package runs a binary with Bun inside, for Linux and macOS on x64 and arm64; from source it needs Bun 1.4 or later. Configs and plugins run on Bun.',
+          "Bun. The npm package runs a binary with Bun inside, for Linux (glibc, not Alpine's musl) and macOS on x64 and arm64; from source it needs Bun 1.4 or later. Configs and plugins run on Bun.",
         buys: 'Bun’s SQLite, process spawning, globbing and compression are built in, and one binary carries all of it.',
         costs:
           'A config or plugin that needs an API only Node has does not run. No native Windows: Windows runs vx under WSL.',
