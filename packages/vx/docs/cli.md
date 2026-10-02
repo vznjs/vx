@@ -1323,7 +1323,7 @@ run):
   is accepted: it asks for what watch already prints.)
 
 Persistent tasks (`exec.persistent`) re-spawn each cycle. A requested
-dev server stays up while watch idles; when the next cycle starts, the
+dev server stays up while watch idles, and what it writes keeps printing; when the next cycle starts, the
 old server is stopped first (the kill grace, then SIGKILL) and the cycle
 launches a fresh one, so the two never hold one port. Stopping watch
 stops the server too. For dev-server workflows where you want the server
