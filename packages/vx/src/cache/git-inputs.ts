@@ -556,7 +556,8 @@ export interface BlobSizeMemo {
  * the ones it lacks from one `cat-file` (65 ms over 3,000 loose objects,
  * the whole of the cost, measured 2026-10-02). A smudged (racy) entry
  * records 0 and is hashed from disk. An answer that cannot be read trusts
- * nothing.
+ * nothing. A filter that keeps the size (`tr a-z A-Z`) is not caught: only
+ * a read of every trusted file would be (caching.md, step 12).
  */
 async function dropResizedOids(enumeration: GitEnumeration, memo?: BlobSizeMemo): Promise<void> {
   const { trusted, indexed } = enumeration
