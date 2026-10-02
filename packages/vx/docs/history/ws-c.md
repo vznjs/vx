@@ -1051,6 +1051,7 @@ they write streams through the wait (C-56). Docs only.
 only reorders restores among themselves", a clause with no verb (C-51's
 note). It now says the rank can count a diamond twice and that this
 only reorders restores among themselves. Docs only.
+
 ## C-77: a subscriber that leaves mid-emit no longer hides the event
 
 `createEventBus` walked its subscriber array while a disposer spliced
