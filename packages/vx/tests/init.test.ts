@@ -495,6 +495,56 @@ describe('migrateScripts', () => {
     expect(outputs({ build: 'nextjs-build' })).toBe("'dist/**'")
   })
 
+  it("under Yarn 2+ a script's `run <script>` is spelled `yarn run` (D-92)", async () => {
+    // Yarn's shell reads `run x` as `yarn run x`; vx's shell has no `run`,
+    // and berry's `run test:unit packages/…` failed "command not found".
+    const root = await mkdtemp(path.join(os.tmpdir(), 'vx-berry-run-'))
+    try {
+      const app = path.join(root, 'packages', 'app')
+      await mkdir(app, { recursive: true })
+      const scripts = {
+        b: 'echo b',
+        args: 'run b --x',
+        chain: 'echo a && run b; run b || (run b)',
+        group: 'run b',
+        word: 'echo run b && docker run img',
+      }
+      const commands = (): Record<string, unknown> =>
+        Object.fromEntries(
+          (
+            migrateScripts([
+              {
+                name: 'app',
+                dir: app,
+                packageJson: { name: 'app', scripts } as never,
+                configPath: null,
+              },
+            ]).projects[0]?.tasks ?? []
+          ).map((t) => [
+            t.name,
+            (t.task?.['exec'] as { command?: string } | undefined)?.command ?? t.task,
+          ]),
+        )
+      await writeFile(
+        path.join(root, 'package.json'),
+        JSON.stringify({ private: true, packageManager: 'yarn@4.5.0' }),
+      )
+      expect(commands()).toEqual({
+        b: 'echo b',
+        args: 'yarn run b --x',
+        chain: 'echo a && yarn run b; yarn run b || (yarn run b)',
+        group: { dependsOn: ['b'] },
+        word: 'echo run b && docker run img',
+      })
+      // CONTROL: under npm, `run` is whatever the shell finds; kept.
+      await writeFile(path.join(root, 'package.json'), JSON.stringify({ private: true }))
+      await writeFile(path.join(root, 'package-lock.json'), '{}')
+      expect(commands()['args']).toBe('run b --x')
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   it('under Yarn 2+ a pre/post script is a task of its own, never folded (D-31)', async () => {
     // Yarn Berry runs no `pre` / `post` hooks (probed with 4.5.0: `yarn run
     // build` printed BUILD alone), and folding them made the migrated task
