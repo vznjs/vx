@@ -11,6 +11,7 @@ import { formatPlanText } from '../src/cli/plan-format.js'
 import { formatTaskHitLine } from '../src/orchestrator/framed-output.js'
 import { formatFlakySection } from '../src/orchestrator/summary.js'
 import { localExecutor } from '../src/exec/local-executor.js'
+import { FOREIGN_VERBS } from '../src/cli/foreign-flags.js'
 import { CACHE_LAYER_METHODS } from '../src/orchestrator/plugin-host.js'
 import { PLUGIN_HOOKS } from '../src/config.js'
 import { ESSENTIAL_ENV } from '../src/exec/env.js'
@@ -1298,6 +1299,26 @@ describe('the plugins guide rosters every hook a shipped plugin fills', () => {
     expect(page).toContain('`@vzn/vx-schedule-history` fills three at once')
     for (const hook of ['`schedule`', '`admit`', '`commands`']) expect(page).toContain(hook)
   })
+  // An install of any plugin answered 404 while the guide told readers to
+  // run one (J-92); the note's count is every public package but core.
+  it('its table is every public package but @vzn/vx, and the npm note counts them', () => {
+    const packagesDir = path.resolve(import.meta.dir, '..', '..')
+    const shipped = readdirSync(packagesDir)
+      .map((d) => path.join(packagesDir, d, 'package.json'))
+      .filter((f) => existsSync(f))
+      .map((f) => JSON.parse(readFileSync(f, 'utf8')) as { name: string; private?: boolean })
+      .filter((m) => m.private !== true && m.name !== '@vzn/vx')
+      .map((m) => m.name)
+      .sort()
+    const page = readFileSync(path.join(GUIDES, 'plugins.md'), 'utf8')
+    const section = /## Plugins that ship\n([\s\S]*?)\n## /.exec(page)![1]!
+    const rows = [...section.matchAll(/^\| `(@vzn\/[\w-]+)` /gm)].map((m) => m[1]!)
+    expect([...rows].sort()).toEqual(shipped)
+    const words = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine']
+    expect(section.replace(/\s+/g, ' ')).toContain(
+      `Only \`@vzn/vx\` is on npm today. The ${words[shipped.length]} plugins' first publish is pending`,
+    )
+  })
   it('its hook interface block is PLUGIN_HOOKS, in order', () => {
     const page = readFileSync(path.join(GUIDES, 'plugins.md'), 'utf8')
     const block = fencedBlock(page, 'ts', "import type { VxPlugin } from '@vzn/vx'")
@@ -1466,5 +1487,49 @@ describe('the values post states the principles CLAUDE.md numbers', () => {
     const section = /## The nine principles\n([\s\S]*?)\n## /.exec(page)
     expect(section).not.toBeNull()
     expect([...section![1]!.matchAll(/^\*\*[^*]+\*\*/gm)].length).toBe(numbered)
+  })
+})
+
+describe("the site's Turbo and Nx verb rows say what `vx <verb>` says", () => {
+  // The migrate guide mapped `nx reset` to "nothing" while `vx reset` named
+  // `vx cache prune` (J-90).
+  it('a row naming `nx <verb>` or `turbo <verb>` (no flag that changes it) holds the command and flags of its FOREIGN_VERBS hint', () => {
+    let rows = 0
+    for (const page of handAuthoredSitePages()) {
+      for (const line of readFileSync(page, 'utf8').split('\n')) {
+        const row = /^\|\s*`(?:nx|turbo) ([a-z-]+)(?: -[a-z] [^`-]*)?`\s*\|([^|]*)\|/.exec(line)
+        const hint = row && FOREIGN_VERBS[row[1]!]
+        if (!hint) continue
+        const command = /is `(vx [^`]+)`/.exec(hint)
+        if (!command) continue
+        rows++
+        const cell = row[2]!
+        expect(cell).toContain(command[1]!.split(/ [<[]/)[0]!)
+        for (const flag of command[1]!.matchAll(/--[a-z-]+/g)) expect(cell).toContain(flag[0])
+      }
+    }
+    expect(rows).toBe(4)
+  })
+})
+
+describe('the README and the CI guide say which packages npm has', () => {
+  // Both told readers to install plugins npm answers 404 for (J-93).
+  const NOTE = "Only `@vzn/vx` is on npm today; the plugins' first publish is pending."
+  it("the README's plugin table is every public package but @vzn/vx, under the note", () => {
+    const packagesDir = path.resolve(import.meta.dir, '..', '..')
+    const shipped = readdirSync(packagesDir)
+      .map((d) => path.join(packagesDir, d, 'package.json'))
+      .filter((f) => existsSync(f))
+      .map((f) => JSON.parse(readFileSync(f, 'utf8')) as { name: string; private?: boolean })
+      .filter((m) => m.private !== true && m.name !== '@vzn/vx')
+      .map((m) => m.name)
+      .sort()
+    const readme = readFileSync(path.resolve(packagesDir, '..', 'README.md'), 'utf8')
+    const rows = [...readme.matchAll(/^\| \[`(@vzn\/[\w-]+)`\]/gm)].map((m) => m[1]!)
+    expect([...rows].sort()).toEqual(shipped)
+    expect(readme).toContain(NOTE)
+  })
+  it('the CI guide, which imports @vzn/vx-github, carries it', () => {
+    expect(readFileSync(path.join(GUIDES, 'ci.md'), 'utf8')).toContain(NOTE)
   })
 })
