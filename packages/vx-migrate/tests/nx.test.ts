@@ -808,6 +808,59 @@ describe('nx()', () => {
       TIMEOUT,
     )
 
+    // Not a `.env` file, but the same blind spot: Nx 23's `includeIgnored`
+    // hashes a gitignored path from disk, which a vx glob never sees.
+    // Mapped as a glob, the task failed before it ran.
+    it(
+      'an includeIgnored input re-keys the task when the ignored file changes',
+      async () => {
+        await writeFile(lib('gen.json'), '1')
+        await writeFile(path.join(root, '.gitignore'), 'dist\nnode_modules\n.vx\n.nx\ngen.json\n')
+        Bun.spawnSync({ cmd: ['git', 'add', '-A'], cwd: root })
+        await libTargets({
+          gen: {
+            executor: 'nx:run-commands',
+            options: { command: 'cp gen.json out.txt', cwd: 'packages/lib' },
+            inputs: [{ fileset: '{projectRoot}/gen.json', includeIgnored: true }],
+            outputs: ['{projectRoot}/out.txt'],
+            cache: true,
+          },
+        })
+        const opts = { cwd: root, tasks: ['gen'], log: silent(), handleSignals: false }
+        expect(status(await run(opts), 'lib#gen')).toBe('success')
+        expect(status(await run(opts), 'lib#gen')).toBe('cache-hit')
+        await writeFile(lib('gen.json'), '2')
+        expect(status(await run(opts), 'lib#gen')).toBe('success')
+        expect(await Bun.file(lib('out.txt')).text()).toBe('2')
+      },
+      TIMEOUT,
+    )
+
+    // Nx's `getNxEnvVariablesForTask`: `nx exec -- <cmd>` in a package
+    // script reads NX_TASK_TARGET_PROJECT, and unset, it booted Nx's task
+    // runner and ran the target and its dependencies again.
+    it(
+      'a task sees the target Nx would hand it, a run-commands env winning',
+      async () => {
+        await libTargets({
+          tgt: {
+            executor: 'nx:run-commands',
+            options: {
+              command:
+                'printf "%s|%s|%s" "$NX_TASK_TARGET_PROJECT" "$NX_TASK_TARGET_TARGET" "$NX_TASK_TARGET_CONFIGURATION" > tgt.txt',
+              cwd: 'packages/lib',
+            },
+            configurations: { ci: { env: { NX_TASK_TARGET_TARGET: 'mine' } } },
+          },
+        })
+        const opts = { cwd: root, log: silent(), handleSignals: false }
+        expect(status(await run({ ...opts, tasks: ['tgt'] }), 'lib#tgt')).toBe('success')
+        expect(await Bun.file(lib('tgt.txt')).text()).toBe('lib|tgt|')
+        expect(status(await run({ ...opts, tasks: ['tgt:ci'] }), 'lib#tgt:ci')).toBe('success')
+        expect(await Bun.file(lib('tgt.txt')).text()).toBe('lib|mine|ci')
+      },
+      TIMEOUT,
+    )
     // nx-examples' cypress shape: the metadata sits on `e2e-ci`, and Nx's
     // `getOwnerTargetForTask` loads `.env.e2e-ci` and `.env.e2e` for every
     // member of its group. The atomized task loaded only `.env.e2e`.

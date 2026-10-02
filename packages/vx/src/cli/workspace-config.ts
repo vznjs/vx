@@ -12,7 +12,6 @@ import { Cache, noteSchemaReset } from '../cache/index.js'
 import { discoverProjects, loadProjects, loadWorkspacePlugins } from '../orchestrator/index.js'
 import type { VxPlugin } from '../orchestrator/index.js'
 import {
-  buildPackageGraph,
   computeWorkspaceFingerprint,
   FROZEN_WITHOUT_LOCK,
   type Workspace,
@@ -140,7 +139,6 @@ export async function loadCliProjects(
       cacheDir,
       plugins,
       projectMetas: metas,
-      packageGraph: buildPackageGraph([...metas]),
       seeds: scope,
       closure: false,
       lock,

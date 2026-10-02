@@ -187,6 +187,15 @@ export async function sandboxRequestFor(
    */
   cacheDir?: string,
 ): Promise<SandboxRequest> {
+  // SRT reads a Linux path holding a bracket as a glob and drops it from
+  // the writes, so no grant here could be mounted (B-60).
+  const home = toRealPath(node.projectDir)
+  if (process.platform === 'linux' && /[[\]]/.test(home)) {
+    throw new UserError(
+      `exec.sandbox: ${home} holds a bracket ([ or ]), and the Linux sandbox mounts no path ` +
+        `that does — rename the directory, or run the task without exec.sandbox`,
+    )
+  }
   const depDirs = [
     path.join(node.projectDir, 'node_modules'),
     path.join(workspaceRoot, 'node_modules'),

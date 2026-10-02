@@ -73,6 +73,32 @@ const kind = async (p: string): Promise<'file' | 'dir' | 'none'> => {
   return st === undefined ? 'none' : st.isDirectory() ? 'dir' : 'file'
 }
 
+// SRT reads a Linux path holding `[` or `]` as a glob and drops it from
+// the writes: under a directory named so, no grant of the project can be
+// mounted, and its tasks failed on denials that named no cause (or, before
+// B-57, ran with the workspace unwalled).
+describe.skipIf(process.platform !== 'linux')('a project under a bracketed directory', () => {
+  it('is refused with the directory named, before anything is created', async () => {
+    dir = path.join(root, 'packages', '[old]', 'proj')
+    await mkdir(dir, { recursive: true })
+    const err = await requestFor(['dist/']).then(
+      () => undefined,
+      (e: unknown) => (e as Error).message,
+    )
+    expect([err, await kind(path.join(dir, 'dist'))]).toEqual([
+      `exec.sandbox: ${dir} holds a bracket ([ or ]), and the Linux sandbox mounts no path ` +
+        `that does — rename the directory, or run the task without exec.sandbox`,
+      'none',
+    ])
+    // CONTROL: the same request a directory over, with no bracket, resolves.
+    dir = path.join(root, 'packages', 'old', 'proj')
+    await mkdir(dir, { recursive: true })
+    expect((await requestFor(['dist/'])).sandbox.config.allowWrite).toEqual([
+      path.join(dir, 'dist'),
+    ])
+  })
+})
+
 describe('the run-wide union SRT is armed with', () => {
   // `prepareSandbox` folds every sandboxed task into ONE allowlist,
   // because SRT runs one filtering proxy per run and checks every request

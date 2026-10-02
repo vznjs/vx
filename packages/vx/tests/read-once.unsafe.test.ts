@@ -107,16 +107,16 @@ describe.skipIf(strace === null)('one run touches each project file once, Bun in
     await rm(scratch, { recursive: true, force: true })
   })
 
-  async function tracedRun(name: string): Promise<(rel: string) => string[]> {
+  async function tracedRun(
+    name: string,
+    args: readonly string[] = ['run', 'build', '--all', '--dry'],
+  ): Promise<(rel: string) => string[]> {
     const out = path.join(scratch, `${name}.trace`)
     const p = Bun.spawnSync({
       cmd: [strace!, '-f', '-qq', '-y', '-e', 'trace=%file,%process', '-o', out].concat([
         process.execPath,
         BIN,
-        'run',
-        'build',
-        '--all',
-        '--dry',
+        ...args,
       ]),
       cwd: root,
       stdout: 'pipe',
@@ -150,6 +150,24 @@ describe.skipIf(strace === null)('one run touches each project file once, Bun in
       expect(warm('packages/a')).toEqual(['openat'])
       expect(warm('vx.workspace.mjs')).toEqual(['newfstatat', 'openat', 'openat'])
       expect(warm('pnpm-workspace.yaml')).toEqual(['newfstatat', 'openat'])
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'an --affected --frozen run reads the lock twice: the selection and the run',
+    async () => {
+      const vx = (...args: string[]) => {
+        const p = Bun.spawnSync({ cmd: [process.execPath, BIN, ...args], cwd: root })
+        expect(p.exitCode).toBe(0)
+      }
+      vx('lock')
+      await writeFile(path.join(root, 'packages', 'a', 'src', 'index.js'), 'export const x = 1\n')
+      gitInitCommit(root)
+      const run = await tracedRun('affected', ['run', 'build', '--affected=HEAD~1', '--frozen'])
+      // The selection's workspace-glob owners parsed it a third time only
+      // to learn it exists, which the staged load had already proved.
+      expect(run('vx-lock.json').filter((c) => c === 'openat')).toEqual(['openat', 'openat'])
     },
     TIMEOUT,
   )
