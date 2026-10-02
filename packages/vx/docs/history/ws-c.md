@@ -1010,3 +1010,15 @@ REQUESTED, and the persistent tasks they depend on": it now also names
 those a requested group stands for (C-52), that a run which failed
 elsewhere keeps none unless `--continue=always` (C-60), and that what
 they write streams through the wait (C-56). Docs only.
+
+## C-77: a subscriber that leaves mid-emit no longer hides the event
+
+`createEventBus` walked its subscriber array while a disposer spliced
+it, so a subscriber that unsubscribed during an emit shifted the next
+one into the slot the walk had passed. An embedder that subscribes
+before the run and calls `off()` on `run:end` took `run:end` from the
+terminal renderer behind it. The list is now replaced on subscribe and
+unsubscribe, never mutated, so an emit walks the list it began with at
+no per-emit cost; a subscriber added during an emit hears the next
+event. Rows (`events.test.ts` › createEventBus): both red without the
+fix. `modules/events.md` says so.
