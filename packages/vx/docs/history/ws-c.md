@@ -1048,3 +1048,15 @@ uncached sandboxed task): min 453 → 377 ms, median ~495 → ~440 over 12
 interleaved runs per arm. Rows: `sandbox-prewarm.unsafe.test.ts`; each
 half and the wait fail their row without themselves, and the control
 fails an unconditional prewarm.
+
+## C-83: twenty runs in one process give back what they took
+
+An embedder (`vx watch`, a daemon) runs many runs in one process. A
+probe of 200 runs of a graph with a cached task, a server, a task on it
+and a sandboxed task, alternating `handleSignals` and `holdPersistent`,
+found the open descriptors and the signal and exit listeners steady
+after the first runs and RSS flat at ~108 MB. `tests/repeated-runs.unsafe.test.ts`
+holds twenty such runs to the fifth's counts: red without the cache
+close (21 → 28 descriptors) and without the signal handlers' removal.
+A run that skips the sandbox reset leaks none of these, so the row says
+nothing about it. Test only.
