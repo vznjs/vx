@@ -617,6 +617,20 @@ file's siblings — and it is the narrowest thing the mechanism can
 express; the alternative is a declared output the task cannot produce.
 macOS matches paths rather than mounting, so the grant stays exact there.
 
+A read under the widened directory is never refused either: a task
+granted `write: ['out.txt']` read an undeclared `secret.txt` with no
+violation, and a cached run replayed its old bytes after it changed. So
+when a grant was widened, vx lists the directory as the task starts
+(`widenedEntries`), the strace pass also reads the `openat` calls that
+succeeded and were not for writing alone, and reports one of those
+entries that no grant covers — and the directory's listing while it
+holds one, since it names every sibling. The declared files, other
+grants and what the task made there itself stay readable. `grep -r` and
+`find` open each entry relative to a directory's descriptor, which the
+trace names only by number, so such a task's strace runs with `-y`,
+which prints the path each descriptor opened (40% slower on 2,000
+opens). No widened grant, no `-y` and no extra parse.
+
 ## A write grant that mounts nothing
 
 A bind covers what exists when the task STARTS, so a Linux write grant

@@ -64,7 +64,13 @@ import {
   UserError,
   xxh3hex,
 } from '../util/index.js'
-import { bindableReads, bindableWrites, buildCustomConfig, scratchWrites } from './sandbox-binds.js'
+import {
+  bindableReads,
+  bindableWrites,
+  buildCustomConfig,
+  scratchWrites,
+  widenedEntries,
+} from './sandbox-binds.js'
 import {
   atOrUnder,
   isMountableLiteral,
@@ -948,6 +954,8 @@ export async function wrapSandboxedCommand(
       server?: boolean
       /** Trace the command's `openat` calls to descriptor TRACE_FD (Linux; `wantsStraceDetection`). */
       trace?: 'plain' | 'seccomp'
+      /** Trace with `-y`, each descriptor's path printed: a read under a widened grant is judged. */
+      tracePaths?: boolean
     },
 ): Promise<{
   wrapped: string
@@ -1005,7 +1013,7 @@ export async function wrapSandboxedCommand(
   const ports = process.platform === 'linux' ? bridgedPorts(args.config) : []
   const grouped =
     process.platform === 'linux'
-      ? ownGroupCommand(tag, inTmp, args.trace)
+      ? ownGroupCommand(tag, inTmp, args.trace, args.tracePaths === true)
       : { command: taggedCommand, forwards: false, traced: false }
   const inner = [
     ports.length > 0 ? portBridgeInner(ports, tag) : '',
@@ -1083,6 +1091,7 @@ function ownGroupCommand(
   tag: string,
   userCommand: string,
   trace?: 'plain' | 'seccomp',
+  tracePaths = false,
 ): { command: string; forwards: boolean; traced: boolean } {
   // `sh`, as an unsandboxed task runs (`runner.ts`): the command ran under
   // bash here, so `[[ … ]]`, brace expansion and `echo 'a\tb'` read one
@@ -1132,6 +1141,10 @@ function ownGroupCommand(
     '-DD',
     '-f',
     ...(trace === 'seccomp' ? ['--seccomp-bpf'] : []),
+    // A read through a directory's descriptor (`find`, `grep -r`) names
+    // only the entry; `-y` prints the path it opened. 40% slower on 2,000
+    // opens, so only where a widened grant's reads are judged.
+    ...(tracePaths ? ['-y'] : []),
     '-qq',
     '-e',
     // A process's cwd moves on `chdir` and starts as its parent's at the
@@ -1478,8 +1491,14 @@ async function runSandboxedOnce(
   // kernel filter stops only on `openat`. strace ≥ 5.3 (2019); an older
   // one gets the slow form rather than no detection.
   const useStrace = await wantsStraceDetection()
+  // Before the spawn: what the task creates under a widened grant is its own.
+  const widened = useStrace ? widenedEntries(args.config.allowWrite) : undefined
   const { wrapped, tag, srtCommand, baselines, scratch, forwardsSignals, traced } =
-    await wrapSandboxedCommand({ ...args, ...(useStrace ? { trace: useStrace } : {}) })
+    await wrapSandboxedCommand({
+      ...args,
+      ...(useStrace ? { trace: useStrace } : {}),
+      ...(widened !== undefined && widened.size > 0 ? { tracePaths: true } : {}),
+    })
   const takeRecords = collectRecords(SandboxManager.getSandboxViolationStore(), srtCommand)
   // A stop that landed during the awaits above leaves nothing to kill yet:
   // spawned now, the task ran after the teardown swept the run's children.
@@ -1645,7 +1664,7 @@ async function runSandboxedOnce(
     process.platform === 'linux'
       ? [
           ...(straceLog
-            ? await parseStraceViolations(straceLog, args, baselines).catch(() => [])
+            ? await parseStraceViolations(straceLog, args, baselines, widened).catch(() => [])
             : []),
           ...refusedWrites(
             // Keyed by what SRT wrapped, the in-sandbox group wrapper
