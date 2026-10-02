@@ -484,7 +484,8 @@ Two `node_modules/.bin` directories are prepended to `PATH` so
 installed tools (`oxlint`, `vite`, etc.) work without `npx`: the
 project's own, then the WORKSPACE ROOT's, where a monorepo's shared
 tooling lives. Never a sibling project's, so sibling bins stay invisible
-(project isolation).
+(project isolation). A directory whose path holds `:` (PATH's delimiter)
+cannot be named in PATH and is left out; a task's 127 then says so.
 
 ### `dependsOn` (optional)
 
