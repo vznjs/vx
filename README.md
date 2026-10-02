@@ -100,7 +100,7 @@ key by key: [Turbo and Nx config support](https://vznjs.github.io/vx/compare/tur
 ## Install
 
 ```sh
-npm install -D @vzn/vx     # or: pnpm add -D · yarn add -D · bun add -d
+npm install -D @vzn/vx     # or: pnpm add -D -w · yarn add -D (-W on Yarn 1) · bun add -d
 ```
 
 The package ships a prebuilt binary for Linux and macOS, x64 and arm64
@@ -120,7 +120,7 @@ Give a task a cache block (what it reads, what it writes):
 
 ```ts
 // packages/app/vx.config.ts
-import { defineProject } from '@vzn/vx'
+import { defineProject } from '@vzn/vx/config'
 
 export default defineProject({
   tasks: {

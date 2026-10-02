@@ -371,9 +371,19 @@ describe('formatSkippedSection', () => {
       ]),
     ).toEqual([
       '',
-      '  Skipped:  2 tasks never started — blocked upstream',
+      '  Skipped:  2 tasks never started',
       '    ⊘ after the run stopped (fail-fast): y#build',
       '    ⊘ after z#build was aborted: w#build',
+    ])
+  })
+
+  // C-55: fail-fast's skips had no upstream to be blocked by, and the
+  // header said they were, over the cause line beneath it.
+  it('does not call a fail-fast skip blocked upstream', () => {
+    expect(formatSkippedSection([dep('x#build', 'failed'), dep('y#build', 'skipped')])).toEqual([
+      '',
+      '  Skipped:  1 task never started',
+      '    ⊘ after the run stopped (fail-fast): y#build',
     ])
   })
 
