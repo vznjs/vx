@@ -1058,6 +1058,7 @@ cache, so a hit above one restores ahead of its failure (C-1's shape).
 Red when the taint is disabled (`out/t2.txt` replays PARTIAL) and when a
 restore-tier hit releases its dependants before its deps settle (item
 963's hold). Test only.
+
 ## C-77: a subscriber that leaves mid-emit no longer hides the event
 
 `createEventBus` walked its subscriber array while a disposer spliced
