@@ -17,6 +17,8 @@ and an ignored one, which the status walk names with `--ignored=matching`
 (A-19). `ls-files --debug` gives the worktree size the index recorded
 for each entry, and a trusted OID whose blob is another size is dropped:
 a filter since removed left a stat-clean entry git never re-reads (A-60).
+A filter that kept the size passes the check; `caching.md` names it and
+the remedy, `git add --renormalize .`.
 The verdict is kept by a hash of the index file (`blob_verdicts`), so a
 warm run reads the file and one row and spawns nothing more; a changed
 index spawns the `--debug` listing, asks the cache's `blob_sizes` memo and

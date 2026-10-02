@@ -258,8 +258,8 @@ are recorded in `docs/history/ws-<id>.md` as `<ID>-<n>`, not in the
 numbered list below, so parallel PRs never collide on a number; the
 coordinator folds them into this file. Streams K to O were added
 later (K README and site, L security findings, M CI reliability, N adoption
-paths, O Windows, stopped: Windows is WSL and its workflow went
-2026-10-02); each stream's record and leads are
+paths, O Windows, stopped: Windows is WSL, and its workflow and native
+code paths went 2026-10-02); each stream's record and leads are
 its own `docs/history/ws-<id>.md`, fifteen files by 2026-10-01. Every
 green commit on `main` releases (`ci.yml` finishes `main`'s run and drops
 only queued ones; `auto-release.yml` releases any commit the last tag is
@@ -592,7 +592,9 @@ next?".
     group before it exits, so its guard kills nothing there to blur the
     two. (b) CLOSED as item 1078 on that evidence: the one failure since
     read `child: … (procfs is another pid namespace's), gone within
-21 ms` — a zombie, not a leak.
+21 ms` — a zombie, not a leak. (a) stays open for a macOS failure:
+    on Linux both files ran 25 of 25 clean beside six CPU burners
+    (Bun 1.4.2, 2026-10-02).
 24. DONE 2026-09-27 (fifth hit, CI on #1083, the same docs build after it
     had finished): an attempt whose last stderr line is strace's own and
     whose exit is non-zero is run once more, with a line saying why

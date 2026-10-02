@@ -48,6 +48,7 @@ import {
   shellQuote,
   withForwardArgs,
   signalExitCode,
+  stopSignal,
   spawnFailureText,
   streamToString,
   resourceUsageToCpuRss,
@@ -63,7 +64,13 @@ import {
   UserError,
   xxh3hex,
 } from '../util/index.js'
-import { bindableReads, bindableWrites, buildCustomConfig, scratchWrites } from './sandbox-binds.js'
+import {
+  bindableReads,
+  bindableWrites,
+  buildCustomConfig,
+  scratchWrites,
+  widenedEntries,
+} from './sandbox-binds.js'
 import {
   atOrUnder,
   isMountableLiteral,
@@ -485,6 +492,22 @@ function bundledJavaAgent(): { javaAgentJarPath?: string } {
 /** Whether this run's SRT scans at depth 1 and vx supplies the task-scoped denies (B-40). */
 let scopedDenyScan = false
 
+/**
+ * SRT's own deny scan, when `wrapSandboxedCommand` walks each task's write
+ * grants (B-40): none. SRT spawns its ripgrep on every wrap, and at depth
+ * 1 the scan finds only the root's entries, which SRT keeps only inside a
+ * write grant, where the scoped walk already reaches (the parity rows in
+ * `sandbox-deny-scan.unsafe.test.ts`). A no-op in rg's place ends the
+ * spawn's 3.8 ms at 1.0; SRT has no way to skip it.
+ */
+function scopedScanConfig(): { mandatoryDenySearchDepth: number; ripgrep?: { command: string } } {
+  try {
+    return { mandatoryDenySearchDepth: 1, ripgrep: { command: executablePath('true') } }
+  } catch {
+    return { mandatoryDenySearchDepth: 1 }
+  }
+}
+
 function linuxToolPaths(): { bwrapPath?: string; socatPath?: string } {
   if (process.platform !== 'linux') return {}
   const paths: { bwrapPath?: string; socatPath?: string } = {}
@@ -550,6 +573,9 @@ export async function initSandbox(opts?: {
   /** Whether any task of the run grants `gitConfig`: SRT reads it run-wide, so it is set per wrap (B-41). */
   gitConfig?: boolean
 }): Promise<void> {
+  // This run owns the session now; a reset an earlier run deferred to its
+  // last server would tear it down under this run's tasks (M-25).
+  resetDeferred = false
   // A reset a server's exit started unawaited: a watch cycle stops its
   // server and starts its run at once, and an init under that reset
   // found SRT up, hot-reloaded it, and had it torn down after (item 884).
@@ -567,9 +593,7 @@ export async function initSandbox(opts?: {
     filesystem: { denyRead: [], allowWrite: [], denyWrite: [] },
     ignoreViolations: DEFAULT_IGNORE_VIOLATIONS,
     ...linuxToolPaths(),
-    // SRT's own scan walks only the root's entries; `wrapSandboxedCommand`
-    // walks each task's write grants for the rest (B-40).
-    ...(scopedDenyScan ? { mandatoryDenySearchDepth: 1 } : {}),
+    ...(scopedDenyScan ? scopedScanConfig() : {}),
     ...bundledJavaAgent(),
   }
   if (!srtUp) await unlinkStaleMuxSockets()
@@ -947,6 +971,8 @@ export async function wrapSandboxedCommand(
       server?: boolean
       /** Trace the command's `openat` calls to descriptor TRACE_FD (Linux; `wantsStraceDetection`). */
       trace?: 'plain' | 'seccomp'
+      /** Trace with `-y`, each descriptor's path printed: a read under a widened grant is judged. */
+      tracePaths?: boolean
     },
 ): Promise<{
   wrapped: string
@@ -1004,7 +1030,7 @@ export async function wrapSandboxedCommand(
   const ports = process.platform === 'linux' ? bridgedPorts(args.config) : []
   const grouped =
     process.platform === 'linux'
-      ? ownGroupCommand(tag, inTmp, args.trace)
+      ? ownGroupCommand(tag, inTmp, args.trace, args.tracePaths === true)
       : { command: taggedCommand, forwards: false, traced: false }
   const inner = [
     ports.length > 0 ? portBridgeInner(ports, tag) : '',
@@ -1082,6 +1108,7 @@ function ownGroupCommand(
   tag: string,
   userCommand: string,
   trace?: 'plain' | 'seccomp',
+  tracePaths = false,
 ): { command: string; forwards: boolean; traced: boolean } {
   // `sh`, as an unsandboxed task runs (`runner.ts`): the command ran under
   // bash here, so `[[ … ]]`, brace expansion and `echo 'a\tb'` read one
@@ -1131,6 +1158,10 @@ function ownGroupCommand(
     '-DD',
     '-f',
     ...(trace === 'seccomp' ? ['--seccomp-bpf'] : []),
+    // A read through a directory's descriptor (`find`, `grep -r`) names
+    // only the entry; `-y` prints the path it opened. 40% slower on 2,000
+    // opens, so only where a widened grant's reads are judged.
+    ...(tracePaths ? ['-y'] : []),
     '-qq',
     '-e',
     // A process's cwd moves on `chdir` and starts as its parent's at the
@@ -1477,9 +1508,31 @@ async function runSandboxedOnce(
   // kernel filter stops only on `openat`. strace ≥ 5.3 (2019); an older
   // one gets the slow form rather than no detection.
   const useStrace = await wantsStraceDetection()
+  // Before the spawn: what the task creates under a widened grant is its own.
+  const widened = useStrace ? widenedEntries(args.config.allowWrite) : undefined
   const { wrapped, tag, srtCommand, baselines, scratch, forwardsSignals, traced } =
-    await wrapSandboxedCommand({ ...args, ...(useStrace ? { trace: useStrace } : {}) })
+    await wrapSandboxedCommand({
+      ...args,
+      ...(useStrace ? { trace: useStrace } : {}),
+      ...(widened !== undefined && widened.size > 0 ? { tracePaths: true } : {}),
+    })
   const takeRecords = collectRecords(SandboxManager.getSandboxViolationStore(), srtCommand)
+  // A stop that landed during the awaits above leaves nothing to kill yet:
+  // spawned now, the task ran after the teardown swept the run's children.
+  if (args.signal?.aborted === true) {
+    releaseBridges(tag)
+    takeRecords()
+    const signal = stopSignal(args.signal.reason)
+    return {
+      exitCode: signalExitCode(signal),
+      durationMs: Date.now() - start,
+      stdout: '',
+      stderr: '',
+      signal,
+      violations: [],
+      tracerFailed: false,
+    }
+  }
   // Beside the task directories, which every sandbox replaces with its own:
   // in the shared temp dir a concurrent task read this log, every path
   // this task opened (L-25).
@@ -1628,7 +1681,7 @@ async function runSandboxedOnce(
     process.platform === 'linux'
       ? [
           ...(straceLog
-            ? await parseStraceViolations(straceLog, args, baselines).catch(() => [])
+            ? await parseStraceViolations(straceLog, args, baselines, widened).catch(() => [])
             : []),
           ...refusedWrites(
             // Keyed by what SRT wrapped, the in-sandbox group wrapper

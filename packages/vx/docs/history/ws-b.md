@@ -103,6 +103,15 @@ In order of harm:
   Bun's `realpathSync` refuses such a path too (B-70). A refusal at
   discovery naming the directory would say why.
 
+- upstream (SRT, 0.0.76): a sandboxed `true` costs ~28 ms on Linux:
+  bwrap with SRT's binds ~6 ms, SRT's chain inside (bash three times,
+  two socat bridges, apply-seccomp) ~6.5 ms, strace's own start ~5 ms,
+  vx's wrapper ~1.3 ms (B-75 removed SRT's per-wrap `rg`, 2.8 ms). One
+  shell in place of three, and the bridges only for a task granted
+  network, would cut the chain; neither is an SRT option today
+  (2026-10-02). dash cannot stand in: SRT's `trap "kill %1 %2"` kills
+  no job there.
+
 ## Entries
 
 B-1. A glob grant's hit on a wall is not a grant of it (lead 1). On
@@ -1200,3 +1209,76 @@ successful ones. A refused `chdir` is a denied read of the directory:
 both line shapes, resolved where its process stood. Rows:
 `sandbox-chdir-denied.unsafe.test.ts` (both red without the fix); the
 B-61 row's fixture `chdir("nope")` is now a denial too.
+
+B-68. A workspace under a directory whose name holds PATH's delimiter
+(`…/x:y/ws`) split each `node_modules/.bin` into two PATH entries: one
+naming nothing, and one RELATIVE, so resolved against the task's cwd,
+where a planted file ran. The 127 verdict then said the bin was first on
+PATH. `buildIsolatedEnv` now leaves such a directory out, and
+`shellVerdict` names it and says to move the workspace. Rows:
+`env-path-delimiter.test.ts` (all three red without the fix).
+
+B-70. The sandbox runtime reads a Linux path holding `*` or `?` as a
+glob, as it does `[` (B-57, B-59, B-60), and no spelling makes either
+literal (its rewrite of each runs inside a class too): a read grant of
+`a*b.txt` also granted `aXb.txt`. `bindableReads` leaves such a read
+grant out (said once; the refused read is reported), `bindableWrites`
+drops such a write grant with the bracket ones (a trailing `/**`, which
+the runtime strips, kept), and a project under `w*s/` is refused. A
+backslash the runtime skips outright: Bun's `realpathSync` throws ENOENT
+on a path holding one (Node's does not; `stat` finds it), and the
+runtime mounts no path it cannot resolve, so a sandboxed project under
+`back\slash/` saw nothing and ran in `$HOME`. Such grants are left out
+the same way and such a project is refused on Linux; a row pins the Bun
+fact. Rows: `sandbox-glob-chars.unsafe.test.ts` (each changed site
+mutated back reddens one).
+
+B-71. On Linux a file write grant binds its directory (bwrap cannot
+rename onto a file mount), and a read there was never refused or
+reported: a task granted `write: ['out.txt']` read an undeclared
+`secret.txt`, and after it changed a cached run replayed its old bytes
+(reproduced). vx now lists each widened directory as the task starts
+(`widenedEntries`); the strace pass reads the successful `openat` calls
+not for writing alone and reports a read of one of those entries that no
+grant covers, and the directory's listing while it holds one. The
+declared file, other grants and what the task made itself stay readable.
+`grep -r` and `find` open entries relative to a directory's descriptor,
+so such a task traces with `-y`, whose printed paths place the read.
++3 ms per 20,000 traced opens, and `-y`, only when a grant was widened.
+Rows: `sandbox-widened-reads.unsafe.test.ts` (each guard mutated back
+reddens one); the 2026-09-20 "no violation" row now expects the reports.
+
+B-72. `runSandboxed` awaits the runtime, the tracer probe and the wrap
+before it spawns, and a stop that landed there was never looked at
+again: the task spawned after the teardown had swept the run's
+children, and ran (an aborted call wrote its marker, exit 0). It now
+asks just before the spawn and returns the stop's signal exit
+(`stopSignal`, shared with the local executor's B-55 path). The
+tracer-retry row that aborted before the call leaned on the bug and now
+aborts mid-run. Rows: `sandbox-abort-before-spawn.unsafe.test.ts` (both
+stop rows red without the fix).
+
+B-69. `execWord` split a command on blanks and kept its quotes, so
+`"./my build.sh" x` named `"./my`, and the 127 verdict said the file did
+not exist when its `#!` interpreter was the cause. It now reads the
+first word as the shell does: quotes group and are removed, a quoted
+builtin stays a builtin, an unterminated quote names nothing. Rows:
+`exec-word-quotes.test.ts` (seven red without the fix). The real-shell
+control claims only what dash, bash 5 and macOS's bash 3.2 all say (a
+failure naming the file without its quotes): it claimed exit 127, and
+macOS's sh exits 1.
+
+B-73. A persistent task awaits its key, and a sandboxed one the
+sandbox's arming, request and wrap, before it spawns. A stop landing in
+between was never looked at again: the server came up after the
+teardown, and a Ctrl-C 0.1 s into `vx run dev` took 7 s to end the run
+(~200 ms now). It now asks just before `runPersistent`, releases the
+bridges and placeholders, and is aborted with the exit of the signal a
+server would have been sent (`forwardedSignal`). Rows:
+`persistent-stop-before-spawn.test.ts` (red without the fix).
+
+B-74. A hang-up forwards SIGTERM to running tasks (`forwardedSignal`;
+to many servers SIGHUP means "reload"), so a spawned task stopped by one
+exits 143, while one stopped before its spawn (B-55, B-72) read 129.
+`stopSignal` now follows `forwardedSignal`. Rows:
+`stop-signal-before-spawn.test.ts` (the SIGHUP row red without the fix).
