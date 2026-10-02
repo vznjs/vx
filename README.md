@@ -103,8 +103,8 @@ key by key: [Turbo and Nx config support](https://vznjs.github.io/vx/compare/tur
 npm install -D @vzn/vx     # or: pnpm add -D -w · yarn add -D (-W on Yarn 1) · bun add -d
 ```
 
-The package ships a prebuilt binary for Linux and macOS, x64 and arm64
-(Windows via WSL); no Bun needed. The binary alone, from a
+The package ships a prebuilt binary for Linux (glibc, not Alpine's musl)
+and macOS, x64 and arm64 (Windows via WSL); no Bun needed. The binary alone, from a
 [release](https://github.com/vznjs/vx/releases), needs no Node either.
 
 ## Quick start

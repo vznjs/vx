@@ -21,7 +21,8 @@ npm install -D @vzn/vx    # or pnpm add -D -w · yarn add -D (-W on Yarn 1) · b
 ```
 
 The package ships the prebuilt standalone binary for your platform:
-Linux and macOS, x64 and arm64 (Windows under WSL). It is the same
+Linux (glibc, not Alpine's musl) and macOS, x64 and arm64 (Windows under
+WSL). It is the same
 binary the GitHub release carries, so a CI image can fetch the tarball
 directly and skip the package manager entirely. There is no postinstall
 that compiles anything, no download at first run, and no runtime to
