@@ -36,5 +36,14 @@ start` (in the build output) with Nx's port and `PORT`, and
   without `thirdParty`, the output emptied first; the type-check, the
   `package.json` and assets Nx added are TODOs. It was a failing
   placeholder.
+- **P2-6** The migrator writes `@nx/js:node` as `node` on its build
+  target's output file, named as Nx's `getFileToRun` names it, with Nx's
+  default inspector; and `@nx/js:node` is a server executor, so a graph
+  with no `continuous` (an Nx older than that field) no longer makes it
+  an ordinary task that never ends, in `nx()` or a migration.
 
 ## Leads for other streams
+
+- Core (`exec`): a migrated Nx target with `.env` files still runs under
+  `nx-env` from `@vzn/vx-migrate`; a task-level env-file field in core
+  would let the migrator write native config with no wrapper.

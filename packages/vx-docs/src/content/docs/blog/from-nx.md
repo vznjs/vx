@@ -53,7 +53,7 @@ behind a JSON options object:
 vx has no executors. A task is a shell command. When you migrate, an
 executor target is written as the command the executor was wrapping
 (jest, vitest, vite build and serve, eslint, tsc, playwright,
-cypress, storybook, next, esbuild), and any other
+cypress, storybook, next, esbuild, node), and any other
 executor is a placeholder the report lists, for you to write:
 
 ```ts
@@ -67,7 +67,8 @@ More explicit, more portable, and one less layer between you and the
 tool's own documentation. `nx:run-commands` targets are the shell they already
 were, and the server executors — `@nx/vite:dev-server`,
 `@nx/vite:preview-server`, `@nx/webpack:dev-server`, `@nx/next:server`,
-`@nx/storybook:storybook` and `@angular-devkit/build-angular:dev-server`
+`@nx/storybook:storybook`, `@nx/js:node` and
+`@angular-devkit/build-angular:dev-server`
 — come through as persistent tasks, whatever the target is called.
 Nothing is silently wrong.
 

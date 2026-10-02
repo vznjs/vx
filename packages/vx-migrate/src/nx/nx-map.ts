@@ -649,7 +649,19 @@ function buildTask(
     opts.pnp,
     meta.packageJson,
     opts.manifestField,
-    opts.nativeExecutors === true ? (spec) => targetOptionsOf(nodeMap, spec) : null,
+    opts.nativeExecutors === true
+      ? {
+          options: (spec) => targetOptionsOf(nodeMap, spec),
+          executor: (spec) => {
+            const [project, target] = spec.split(':')
+            const t =
+              project === undefined || target === undefined
+                ? undefined
+                : nodeMap[project]?.data?.targets?.[target]
+            return t?.executor ?? (t?.command === undefined ? undefined : 'nx:run-commands')
+          },
+        }
+      : null,
   )
 
   const inputs = emptyNxInputs()
@@ -859,7 +871,10 @@ function mapCommand(
   manifest: { readonly name?: unknown; readonly version?: unknown },
   manifestField: MapNxOptions['manifestField'],
   /** Non-null in a migration: what a `project:target:configuration` spec resolves to. */
-  native: ((spec: string) => Record<string, unknown> | undefined) | null,
+  native: {
+    readonly options: (spec: string) => Record<string, unknown> | undefined
+    readonly executor: (spec: string) => string | undefined
+  } | null,
 ): MappedCommand | null {
   const executor = target.executor
   if (executor === 'nx:noop') {
@@ -943,7 +958,8 @@ function mapCommand(
     const n = nativeExecutorCommand(executor, options, {
       projectRel,
       projectName,
-      targetOptions: native,
+      targetOptions: native.options,
+      targetExecutor: native.executor,
     })
     if (n === null) {
       todos.push(untranslatedTodo(executor))
@@ -1032,6 +1048,7 @@ const KNOWN_EXECUTORS: Record<string, { persistent: boolean }> = {
   '@nx/jest:jest': { persistent: false },
   '@nx/eslint:lint': { persistent: false },
   '@nx/js:tsc': { persistent: false },
+  '@nx/js:node': { persistent: true },
   '@nx/webpack:webpack': { persistent: false },
   '@nx/webpack:dev-server': { persistent: true },
   '@nx/esbuild:esbuild': { persistent: false },
