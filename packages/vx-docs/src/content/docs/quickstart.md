@@ -108,3 +108,5 @@ Start with one package and leave the rest of your tooling as it is.
 - A cache hit replays the first and last 8 MiB of a task's output.
 - A `kill -9` of vx leaves its persistent tasks running, except a server
   that exits when its stdin closes (esbuild `--watch`).
+- A process a task detaches into its own session (`setsid … &`) outlives
+  Ctrl-C: vx signals the task's process group.

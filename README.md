@@ -105,7 +105,7 @@ vx config. [Migration guide](https://vznjs.github.io/vx/guides/migrate/).
   wiped before every run and restore: no stale file survives.
 - **Sandboxed tasks:** opt in per task; a workspace file the task did
   not declare is out of its reach, so it cannot poison the cache.
-- **Clean exits:** Ctrl-C reaps every child.
+- **Clean exits:** Ctrl-C reaps each task's process group.
 - **Plugins at every stage:** remote cache, remote execution, telemetry,
   CLI verbs. Core ships none and needs none.
 - **Free:** MIT. No paywall, no cloud, no account.
