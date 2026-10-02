@@ -24,7 +24,7 @@ describe('execution.md follows the source it traces', () => {
     expect(named.sort()).toEqual([...cases].sort())
   })
 
-  // Step 11 named `git ls-files -s --others` and one `git status`. The
+  // Step 12 (11 until the graph moved ahead of it) named `git ls-files -s --others` and one `git status`. The
   // enumeration has spawned four commands since the OID work, and
   // `--others` is the one it deliberately does NOT pass — `status -uall`
   // answers untracked, and asking git for it again walked the same tree a
@@ -44,7 +44,7 @@ describe('execution.md follows the source it traces', () => {
     spawned.push(revParse![1]!)
     expect(spawned.sort()).toEqual(['cat-file', 'ls-files', 'rev-parse', 'status', 'var'])
 
-    const step = /11\. Bulk git populate([\s\S]*?)\n \u251c/.exec(doc)
+    const step = /12\. Bulk git populate([\s\S]*?)\n \u251c/.exec(doc)
     expect(step).not.toBeNull()
     const text = step![1]!
     expect(spawned.filter((c) => !text.includes(c))).toEqual([])
