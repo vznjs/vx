@@ -155,7 +155,10 @@ function ownerOf(dir: string, memo: Map<string, Owner>): Owner {
   try {
     const pm = (JSON.parse(read('package.json') ?? '') as { packageManager?: unknown })
       .packageManager
-    if (typeof pm === 'string')
+    // A manager vx knows nothing of (zod's `nub@0.8.3`) says nothing about
+    // hooks: the lockfile beside it does, and "nub ran `postbuild`" was a
+    // claim nothing had checked (D-96).
+    if (typeof pm === 'string' && /^(npm|pnpm|yarn|bun)@/.test(pm))
       manager = /^yarn@([2-9]|\d{2,})/.test(pm) ? 'berry' : pm.split('@')[0]
   } catch {}
   if (manager === undefined) {
