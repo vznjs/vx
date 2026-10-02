@@ -256,6 +256,12 @@ export interface MapTurboOptions {
   /** The TODO attached to a persistent task, in the consumer's words. */
   persistentTodo: string
   /**
+   * A task's `npm_package_name` / `npm_package_version`: `vx migrate` reads
+   * them from the manifest it imports (`{ raw: 'pkg.version' }`), so a bump
+   * reaches them; absent, the values themselves.
+   */
+  manifestField?(key: 'name' | 'version'): unknown
+  /**
    * The environment's variable names, when the mapping runs where the tasks
    * will (`turbo()`): an env wildcard (`NEXT_PUBLIC_*`) expands over them.
    * Absent (`vx migrate` writes files), a wildcard is a todo.
@@ -1069,24 +1075,26 @@ export async function mapTurboWorkspace(
         }
         continue
       }
-      tasks.push(
-        buildTask(
-          name,
-          defFor(name)!,
-          override ?? scriptCommand(name, script as string, scripts, pnp),
-          own,
-          defFor,
-          emitted,
-          emittedAnywhere,
-          globals,
-          opts,
-          relPosix(root, meta.dir),
-          rootDotenv,
-          rootMeta?.name,
-          { name: meta.name, persistentAt, withOf },
-          inferredOf.get(meta.name) ?? [],
-        ),
+      const command = override ?? scriptCommand(name, script as string, scripts, pnp)
+      const mapped = buildTask(
+        name,
+        defFor(name)!,
+        command,
+        own,
+        defFor,
+        emitted,
+        emittedAnywhere,
+        globals,
+        opts,
+        relPosix(root, meta.dir),
+        rootDotenv,
+        rootMeta?.name,
+        { name: meta.name, persistentAt, withOf },
+        inferredOf.get(meta.name) ?? [],
       )
+      if (override === undefined && mapped.task !== null)
+        npmScriptEnv(mapped.task, name, command === script, meta, opts)
+      tasks.push(mapped)
     }
     resolveSharedOutputs(tasks)
     projects.push({ name: meta.name, dir: meta.dir, tasks })
@@ -1122,6 +1130,38 @@ function sidecarId(entry: string, own: string, rootName: string | undefined): st
   const hashAt = entry.indexOf('#')
   if (hashAt === -1) return `${own}#${entry}`
   return entry.startsWith(`${ROOT}#`) ? `${rootName ?? ROOT}${entry.slice(ROOT.length)}` : entry
+}
+
+/**
+ * The `npm_*` variables Turbo's tasks see: it runs a script through the
+ * package manager (`pnpm run build`), which sets them, and vx runs the
+ * body itself, so `echo $npm_package_version` printed nothing. The event
+ * is the script's own name, which folded `pre`/`post` hooks do not share
+ * (core's `vx init` rule, D-34).
+ */
+function npmScriptEnv(
+  task: Record<string, unknown>,
+  script: string,
+  unfolded: boolean,
+  meta: ProjectMeta,
+  opts: MapTurboOptions,
+): void {
+  const exec = task['exec'] as { command: string; env?: Record<string, unknown> }
+  // Only a command that names one gets them, as core's `vx init` does: a
+  // written config reads the manifest through a JSON import, which a
+  // user's `tsc` over the package may refuse (G-123), and a live mapping
+  // keys as the written one does, so the two share a cache.
+  const named = new Set([...exec.command.matchAll(/\$\{?(npm_[A-Za-z0-9_]+)/g)].map((m) => m[1]))
+  const wanted = (v: string) => named.has(v)
+  const field = (key: 'name' | 'version', value: string): unknown =>
+    opts.manifestField?.(key) ?? value
+  const define: Record<string, unknown> = {}
+  if (wanted('npm_package_name')) define['npm_package_name'] = field('name', meta.name)
+  const version = meta.packageJson.version
+  if (typeof version === 'string' && version !== '' && wanted('npm_package_version'))
+    define['npm_package_version'] = field('version', version)
+  if (unfolded && wanted('npm_lifecycle_event')) define['npm_lifecycle_event'] = script
+  if (Object.keys(define).length > 0) exec.env = { ...exec.env, define }
 }
 
 function buildTask(

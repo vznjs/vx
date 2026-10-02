@@ -51,6 +51,19 @@ collapsed: create-t3-turbo 25 of 25 tasks and astro 122 of 122 agree.
 
 ## Leads for other streams
 
+- **core (exec):** a package manager's `run` sets `npm_package_name`,
+  `npm_package_version`, `npm_lifecycle_event` (and `npm_config_user_agent`,
+  `INIT_CWD`) for every script; vx sets none, so a program that reads
+  `process.env.npm_package_version` itself (a `vite.config` stamping the
+  version) builds `undefined` in under `turbo()`, `nx()` and `vx init`
+  alike. Only a script naming `$npm_*` gets them (D-34, G-136). Core
+  setting them per task from the project's manifest would close it for
+  all three (and key them as the manifest already is).
+- **Nx stream:** `nx()`'s `nx:run-script` mapping defines no `npm_*`
+  either: Nx runs the script through the package manager, so
+  `echo $npm_package_version` prints the version under Nx and nothing
+  under vx. G-136's `npmScriptEnv` rule would carry over.
+
 - **C/E:** in a `turbo()` workspace, `vx run build --all --dry=json`
   prints the plugin's warnings on STDOUT ahead of the JSON (the project
   stage's `warn` is `log.status` in `orchestrator/prepare.ts`), so the
@@ -1044,4 +1057,5 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
 - **G-128.** fix: Nx's parser takes every long flag camelCased, and its docs print `--nxBail`, `--skipNxCache`, `--maxParallel`, `--outputStyle`; `vx run` answered each with "unknown flag". `translateForeign` now reads a camelCase long flag as its kebab-case form when the table has an Nx row by that name, and the row decides as for the kebab spelling. Row (`foreign-flags` › Nx's camelCase spelling is the kebab-case flag, with an unknown camelCase name as the control).
 - **G-129.** fix: Nx names nx-examples' `@nx-example/cart` `cart`, and `vx run -t build -p cart` (Nx's `-p`, vx's `--filter`) matched nothing; `-p 'shared-*'` and `--exclude=cart` likewise. A name pattern that matches no package now matches the part after the scope, as pnpm reads `--filter core` for `@babel/core`: an exact name when one package carries it, a `*` pattern every one it reaches. A name a package carries still wins, and a scoped pattern never falls back. This replaces E-32's hint for the exact name (its typo hint stays) and the filter row that pinned "a bare `core` selects nothing"; the docs' "pnpm-style" filter now holds for this form. Rows (`filter` › a name that matches no package may leave out the scope; `select` › selects the one project whose name after the scope it is).
 - **G-130.** test: "a SIGKILLed task's port bridge leaves no socket behind" (`sandbox-runtime.unsafe`) failed once in the gate with 2 sockets during the run and 1 after. Cause: it counted its port's sockets across every task directory under the walled root, and a `kill -9`'d run leaves its directory there by design (no sweep by pid, item 965); this box held 10 such sockets from earlier runs, and one shared the row's ephemeral port. The row now counts this process's directories alone, and plants a dead run's socket for its port, so the case is every run's: without the scope it fails every time with the gate's numbers.
+- **G-136.** fix: Turbo runs a script through the package manager (`pnpm run build`), which sets `npm_package_name`, `npm_package_version` and `npm_lifecycle_event`; `turbo()` ran the body with none, so `echo $npm_package_version` printed nothing (Turbo 2.11, strict mode: `1.2.3`). A script that names one gets it defined now (the event only where no hook is folded in), core's `vx init` rule (D-34); a written config reads name and version from an imported manifest, so a bump reaches them. Defining all three for every task would key live and written configs apart (`examples/turbo` › written configs hit the cache turbo() filled) and put a JSON import a user's `tsc` may refuse in every config, so a program reading `process.env.npm_package_version` itself still sees none (lead below). Rows (`turbo.test` › the npm_* variables …; `migrate.test` › migrateTurbo: the npm_* variables: both red without the change).
 - **G-131.** fix: Turbo appends every package's `microfrontends.json` (else `.jsonc`, or `VC_MICROFRONTENDS_CONFIG_FILE_NAME`'s name) to the root's global deps, so an edit to `web`'s routes re-keys every task (with-microfrontends: Turbo 2.11's dry run moves all 18). `turbo()` read none, and the sibling apps' builds replayed from the cache. They join the global inputs now, a child's `{ "partOf" }` excepted as in Turbo; the mapping's key reads them. Row (`turbo.test` › a microfrontends config re-keys every package's tasks …: red without the change).
