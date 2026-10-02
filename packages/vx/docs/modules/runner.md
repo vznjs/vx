@@ -107,6 +107,11 @@ export function peakRssBytes(maxRSS: number): number // bytes, whatever unit the
   stat per entry on every spawn. The task's PATH still decides what
   the command resolves, inside the shell; `argv0` keeps `$0` the `sh`
   it always was.
+- **`exec`:** a plain `word args…` command runs as `exec word args…`, so
+  the program replaces the shell. A shell builtin keeps the shell, and so
+  does a bash reserved word that may open one line (`[[`, `time`,
+  `coproc`): macOS's `sh` is bash, and `exec [[ -f x ]]` there was
+  `exec: [[: not found`, exit 127 (B-56).
 - **stdio:** `stdin: 'ignore'` (no interactive prompts; a task reading
   stdin sees EOF, never a hang); `stdout: 'pipe'`, `stderr: 'pipe'`.
   `runPersistent` alone spawns with `stdin: 'pipe'` and never writes

@@ -972,6 +972,16 @@ describe('execWrap — grandchild-orphan mitigation', () => {
     expect(execWrap(':')).toBe(':')
   })
 
+  // macOS's `sh` is bash, where `[[` and `time` are reserved words, not
+  // programs: `exec [[ -f x ]]` is "exec: [[: not found", exit 127, where
+  // the bare command ran. Run under bash, as the guarantee.
+  it("leaves bash's reserved words alone (exec cannot run them)", () => {
+    for (const command of ['[[ -f /etc/passwd ]]', 'time /bin/sh -c true', 'coproc true']) {
+      const r = Bun.spawnSync(['bash', '-c', execWrap(command)], { stderr: 'pipe' })
+      expect([command, r.exitCode]).toEqual([command, 0])
+    }
+  })
+
   it('leaves compound commands and env-assignments to the shell', () => {
     expect(execWrap('a && b')).toBe('a && b')
     expect(execWrap('cmd | grep x')).toBe('cmd | grep x')

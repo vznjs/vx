@@ -206,6 +206,11 @@ const SHELL_BUILTINS = new Set([
   'let',
   'declare',
   'typeset',
+  // bash's reserved words that may open a one-line command; macOS's `sh`
+  // is bash, and `exec [[ … ]]` there is "exec: [[: not found".
+  '[[',
+  'time',
+  'coproc',
 ])
 
 /**
