@@ -720,9 +720,18 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
         // is not reported — being stopped at the wall is the sandbox
         // working, not a finding. Canonicalizing the baselines through the
         // symlink must not degenerate into "allow everything", and the
-        // absent file is what proves it did not.
+        // absent file is what proves it did not. The failed task's hint
+        // names it (`hiddenReadsOutside`), never counted.
         expect(existsSync(path.join(link, 'packages', 'app', 'out.txt'))).toBe(false)
-        expect((r.outcomes[0]?.sandboxViolationLines ?? []).join('\n')).not.toContain('token.txt')
+        const root = realpathSync(fixture.root)
+        expect([r.outcomes[0]?.sandboxViolations, r.outcomes[0]?.sandboxViolationLines]).toEqual([
+          0,
+          [
+            `vx: the sandbox hid paths outside the project that exist on this machine, which are ` +
+              `not reported as violations: ${root}/packages/secret/token.txt. If the task reads ` +
+              "one, grant it, e.g. `allow: { read: ['../secret/token.txt'] }`.",
+          ],
+        ])
       } finally {
         await rm(link, { force: true })
       }

@@ -4,6 +4,7 @@
 // task's owner can act on — inside the project, minus the loopback denial
 // no grant can avoid, minus what the task chose to ignore.
 
+import { statSync } from 'node:fs'
 import path from 'node:path'
 import { absolutize, atOrUnder, isUnderAny, localBindingOn, toRealPath } from './sandbox-paths.js'
 import { bindableReads } from './sandbox-binds.js'
@@ -496,6 +497,44 @@ export function refusedWritesOutside(
     if (!skip.some((s) => atOrUnder(v.path!, s))) paths.add(v.path)
   }
   return [...paths]
+}
+
+/**
+ * The paths outside the project a read was denied that exist on this
+ * machine, files first: the reads `reportableViolations` drops at the
+ * wall. A task that failed on one said only what its tool says for a
+ * missing file — `tsc` extending a root `tsconfig.base.json` read "File
+ * not found" — and nothing named the sandbox (2026-10-02). Never a
+ * violation — a failed task's hint (`runSandboxed`). What a process walks
+ * through to reach its cwd (the project's ancestors) and what `skip` names
+ * are left out, as is a path that does not exist on the host: that miss
+ * is the tool's own.
+ */
+export function hiddenReadsOutside(
+  violations: readonly SandboxViolation[],
+  opts: {
+    within: string
+    linked?: readonly string[]
+    config: ResolvedSandboxConfig
+    skip: readonly string[]
+  },
+): string[] {
+  const reported = reportedWithin(opts.within, opts.linked ?? [])
+  const home = toRealPath(opts.within)
+  const skip = opts.skip.map(toRealPath)
+  const found = new Map<string, boolean>()
+  for (const v of filterIgnored(describe(violations), opts.config.ignore)) {
+    const p = v.path
+    if (p === undefined || v.hint === true || !v.ignorable?.includes('read') || reported(v))
+      continue
+    if (found.has(p) || atOrUnder(home, p) || skip.some((s) => atOrUnder(p, s))) continue
+    try {
+      found.set(p, statSync(p).isDirectory())
+    } catch {
+      // Not on the host either: the tool's own miss.
+    }
+  }
+  return [...found].sort((a, b) => Number(a[1]) - Number(b[1])).map(([p]) => p)
 }
 
 /** Every record described: a seatbelt one parsed, a Linux one as produced. */
