@@ -388,6 +388,15 @@ describe('migrateScripts', () => {
     expect(notes({ name: 'r', scripts: [] })).toEqual([])
     expect(notes({ name: 'r' })).toEqual([])
     expect(notes()).toEqual([])
+    // D-87, react: a nameless root whose scripts would map says so, and
+    // how many; a hook rides with its script and is not counted.
+    const at = (outside: Record<string, unknown>) =>
+      migrateScripts([meta], outside, '/w').notes.filter((n) => n.includes('the workspace root'))
+    expect(at({ scripts: { prelint: 'echo', lint: 'eslint .', dev: 'pnpm -r dev' } })).toEqual([
+      'package.json (the workspace root) not mapped: it has no "name", and vx names a project by it; give it one and run `vx init` again to map 1 of its scripts (lint)',
+    ])
+    // CONTROL: nothing that would map keeps the old note.
+    expect(at({ scripts: { dev: 'pnpm -r dev' } })).toEqual([nameless])
   })
 
   it('a cycle of builds waits on the builds outside it, never on `^build` (nuxt)', () => {
@@ -480,6 +489,22 @@ describe('migrateScripts', () => {
     expect(outputs({ build: 'npm run b', b: 'next build' }, 'b')).toBe(
       "'.next/**', '!.next/cache/**'",
     )
+    // D-90: no tool above, so the dir the command writes or cleans (ky's
+    // `distribution`); a hidden dir, a file, a glob, or a scratch dir the
+    // command makes again is no guess.
+    expect(outputs({ build: 'del-cli distribution && tsc --project tsconfig.dist.json' })).toBe(
+      "'distribution/**'",
+    )
+    expect(outputs({ build: 'rimraf lib && babel src -d lib' })).toBe("'lib/**'")
+    expect(outputs({ build: 'tsc --outDir build' })).toBe("'build/**'")
+    expect(outputs({ build: 'esbuild src/x.ts --outdir=out' })).toBe("'out/**'")
+    expect(outputs({ build: 'rimraf dist types tsconfig.tsbuildinfo && tsc' })).toBe(
+      "'dist/**', 'types/**'",
+    )
+    expect(outputs({ build: 'shx rm -rf ./es && tsc' })).toBe("'es/**'")
+    expect(outputs({ build: 'rimraf .turbo && tsc' })).toBe("'dist/**'")
+    expect(outputs({ build: 'rimraf "lib/**" && tsc' })).toBe("'dist/**'")
+    expect(outputs({ build: 'rm -rf ./ids && mkdir ./ids && vite build' })).toBe("'dist/**'")
     // CONTROLS: anything else, and a near name, keep `dist/**`.
     expect(outputs({ build: 'tsc -b' })).toBe("'dist/**'")
     expect(outputs({ build: 'vite build' })).toBe("'dist/**'")

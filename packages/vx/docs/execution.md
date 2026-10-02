@@ -315,7 +315,8 @@ terminal and a task succeeding or failing. Read it alongside
        and no persistent child exited on its own before the run
        stopped it.
     8. FOREGROUND ONLY: if the user requested persistent tasks (dev
-       servers), the process now blocks until ONE of them, or a persistent task they
+       servers) and nothing else failed (or under `--continue=always`),
+       the process now blocks until ONE of them, or a persistent task they
        depend on, exits — the
        summary is already printed, `▸ <id> running` rows list what's
        alive, Ctrl-C reaps the process group. That first exit ends the

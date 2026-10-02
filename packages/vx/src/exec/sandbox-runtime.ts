@@ -1125,7 +1125,9 @@ function ownGroupCommand(
     ...(trace === 'seccomp' ? ['--seccomp-bpf'] : []),
     '-qq',
     '-e',
-    'trace=openat',
+    // A process's cwd moves on `chdir` and starts as its parent's at the
+    // fork (`deniedCalls`); `?` lets an arch without `fork` skip it.
+    TRACED_CALLS,
     '-o',
     `/dev/fd/${TRACE_FD}`,
     '--',
@@ -1140,6 +1142,9 @@ function ownGroupCommand(
   const watch = `{ IFS= read -r s && kill -s "$s" -- "-$c"; } 2>/dev/null <&3 3<&- &`
   return { command: `${tag0} ${run} ${watch} wait "$c"`, forwards: true, traced: true }
 }
+
+/** What strace stops on: the reads, and what moves or makes a process's cwd. */
+const TRACED_CALLS = 'trace=openat,chdir,fchdir,clone,?clone3,?fork,?vfork'
 
 /** The descriptor an in-sandbox strace writes its trace to (`ownGroupCommand`). */
 const TRACE_FD = 5
@@ -2122,7 +2127,7 @@ async function traceRefusal(form: 'plain' | 'seccomp'): Promise<string | null> {
       ...(form === 'seccomp' ? ['--seccomp-bpf'] : []),
       '-qq',
       '-e',
-      'trace=openat',
+      TRACED_CALLS,
       '-o',
       '/dev/null',
       '--',

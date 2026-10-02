@@ -28,8 +28,18 @@ In order of harm:
    grant as is), so a root project's `read: ['.']` still reads nested
    projects, `.git` and `.vx` under seatbelt. Needs a darwin probe
    (seatbelt precedence of a deny inside an allow) before a fix.
+6. Linux: a grant naming a path with `[` or `]` (a Next.js route,
+   `pages/[id].tsx`) cannot be granted. vx scans it as a `Bun.Glob`
+   class (no match, the read is denied and reported); the escaped
+   `\[id\]` matches, but SRT globs any Linux allow path holding a
+   bracket (`containsGlobChars`: a read is expanded as a class, a write
+   is dropped), so the hit is never mounted and, being a listed grant,
+   its denial goes unreported. A workspace whose own path holds a
+   bracket meets the same. Probed 2026-10-02. Fix needs a choice: widen
+   such a grant to its nearest bracket-free ancestor (as a file grant
+   is widened to its directory), said once. `read: ['.']` is unaffected.
 
-6. Linux: a grant under a workspace whose directory name holds a
+7. Linux: a grant under a workspace whose directory name holds a
    bracket does not resolve: `resolveSandboxConfig` resolves it to an
    absolute path and `expandGrants` reads that path's brackets as a
    `Bun.Glob` class, so `read: ['.']` there mounts nothing. Since B-57
@@ -1036,6 +1046,14 @@ nothing); with the fix the read itself is reported. Rows:
 holds it (red without the fix: `pwd` read `/root`), and the bare
 baseline's row now pins the two write violations (red without it).
 
+B-56. A plain command opening with a bash reserved word was `exec`'d:
+macOS's `sh` is bash, where `[[` and `time` are words, not
+programs, so `[[ -f x ]]` as a task's whole command was
+`exec: [[: not found`, exit 127, where the bare command ran. They now
+keep the shell, as builtins do. Row: `runner.test.ts` › execWrap ›
+leaves bash's reserved words alone, run under bash (red without the
+fix, 127). Linux's dash has neither, so only macOS ran it. `coproc`
+is left out: macOS's bash 3.2 has no such word (CI's macOS job).
 B-57. SRT globs any Linux read path holding `[` (`containsGlobChars`),
 where a bracket opens a class. A Next.js route granted escaped,
 `read: ['pages/\\[id\\].tsx']`, matched in vx's scan and was handed over
@@ -1057,6 +1075,34 @@ and decoded (`cStringPath`). Row: `sandbox-runtime.unsafe.test.ts` ›
 deniedCalls › decodes the C-string escapes strace writes a path with
 (red without the fix).
 
+B-59. SRT drops every Linux write path holding a bracket, so a grant
+like `write: ['out/\\[id\\]/']` bound nothing, yet the read grants were
+punched around it: `out/[id]` vanished from the task's view, its write
+read "Directory nonexistent", and the refusal went unreported, judged
+against the grant that named it. `bindableWrites` now drops such a path
+on Linux and says once which directory to grant instead; the write is
+then refused (`Read-only file system`) and reported. Row:
+`sandbox-runtime.unsafe.test.ts` › says so when a write path holds a
+bracket, and names the directory above it (red without the fix).
+B-60. A sandboxed task in a project under a directory whose name holds
+a bracket (`~/[old]/repo`) could not be sandboxed on Linux: SRT reads
+such a path as a glob, mounts no write path holding one, and vx's own
+grant expansion reads the bracket as a class, so `read: ['.']` mounted
+nothing and the task failed on denials that named no cause (before B-57
+the workspace ran unwalled instead). `sandboxRequestFor` now refuses it
+up front, naming the directory. This closes lead 7 (B-57's PR): an
+escape-aware expansion would still leave every write unmountable. Row:
+`sandbox-request.test.ts` › a project under a bracketed directory is
+refused with the directory named, before anything is created (red
+without the fix; the same project without the bracket is the control).
+
+Also measured, nothing shipped: a CPU profile of 50 sandboxed `true`
+tasks put 9 ms a task in `releaseBridges`' `rmSync` of the task's temp
+dir. The dir is empty; the call takes 0.4–0.8 ms in the run and 0.07 ms
+alone, the same as `rmdirSync` (median of 300, interleaved), so the
+profile's figure is attribution and the in-run cost is the host's.
+The unsandboxed path re-profiled (100 one-file tasks, `--force`,
+`--concurrency 1`) shows nothing new in `src/exec/` above B-50's floor.
 B-58. The output capture's head and tail bounds count UTF-16 units, and
 a cut between a surrogate pair's halves left a lone half on each side
 of the dropped-output line: a task printing past 8 MiB whose bound fell
@@ -1064,3 +1110,23 @@ inside an emoji replayed U+FFFD there. Each bound now steps past a
 pair. Row: `runner.test.ts` › streamToString › never cuts a character
 in two at either bound, one text per bound (each fix removed alone
 reddens it).
+
+B-61. The strace pass resolved every relative path against the task's
+starting cwd, so a denial after `cd src` (`cd src && cat secret.txt`)
+was reported as `<project>/secret.txt`, a file that does not exist, and
+`ignore: { read: ['src/secret.txt'] }` did not silence it. strace now
+also stops on `chdir`, `fchdir` and the fork calls, and `deniedCalls`
+follows each process's cwd (a child starts in its parent's at the fork;
+resolved after the whole pass, since a `vfork` child's lines precede its
+parent's `resumed` line; `fchdir` loses track, falling back to the
+starting cwd). Refuted first: `-y`, which names the directory on every
+line, cost 40% on a task opening 2,000 files (min of 9, interleaved
+against an origin/main worktree, 240 → 337 ms). The shipped form: 212 →
+210 ms on the same task, 451 → 419 on 200 forks. Rows:
+`sandbox-runtime.unsafe.test.ts` › deniedCalls › resolves a relative
+path against the cwd its process had moved to, and runSandboxed ›
+reports a denial under the directory the task changed into (each red
+without the fix). A clone with `CLONE_FS` (every thread) shares its
+creator's cwd rather than copying it, so a `chdir` by either moves both
+(libuv's pool after `process.chdir`): deniedCalls › moves a thread with
+the process whose cwd it shares (red with the flag ignored).
