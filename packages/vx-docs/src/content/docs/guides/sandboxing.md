@@ -54,7 +54,7 @@ export default defineProject({
 | `systemInfo`   | sysctl names a tool probes (`vfs.disk-space`)                     |
 | `machLookup`   | macOS services (`com.apple.FSEvents`)                             |
 | `pty`          | a terminal                                                        |
-| `gitConfig`    | inert: SRT drops the per-task flag                                |
+| `gitConfig`    | write the repository's `.git/config`, for this task only          |
 
 ## The boundary is the project
 
