@@ -399,7 +399,13 @@ The same holds where strace is present but may not attach (Yama's
 answers there, so detection also traces `true` once per run with a
 task's own flags (about 9 ms), and a refusal means no tracing, said once
 on stderr. Before, every sandboxed task failed twice on
-`attach: ptrace(PTRACE_SEIZE…): Operation not permitted` (B-18).
+`attach: ptrace(PTRACE_SEIZE…): Operation not permitted` (B-18). A
+probe that exits 0 having said something of strace's own counts too:
+a strace that cannot check the seccomp filter's order (it is itself
+traced) says `check_seccomp_order_tracer: …` and traces on without the
+filter, and inside the sandbox that line was the retry key, so every
+sandboxed task ran twice. Then the plain form is probed and used if it
+is quiet; if it speaks too, tasks run untraced, said once (B-64).
 
 A task that failed with nothing to show gets vx's own notes beside the
 failure, each a `SandboxViolation` marked `hint`: the cwd it cannot read
