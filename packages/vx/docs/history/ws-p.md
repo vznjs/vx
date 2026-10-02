@@ -67,6 +67,13 @@
   (`libs/shared/*`), `name:` / `directory:` labels, minimatch globs, and
   a bare word as a word in a name. Matched by name and `*` alone, a
   directory pattern named nothing and its edge was dropped.
+- **P-20** `nx()`: a live parity suite (`tests/nx-parity-live.test.ts`)
+  holds the `.env` names a task loads, in order, to Nx's own
+  `getEnvPathsForTask`, on Nx 22 and 23 in CI's live job.
+- **P-21** `nx-exec`: an executor runs from the workspace root, as Nx
+  forks it; it ran in the project dir, so one that resolves against
+  `process.cwd()` (`@nx/js`'s ts transformers, prettier's config) read
+  the wrong directory.
 
 ## Notes
 
