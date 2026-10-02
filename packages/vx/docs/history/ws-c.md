@@ -1010,3 +1010,27 @@ REQUESTED, and the persistent tasks they depend on": it now also names
 those a requested group stands for (C-52), that a run which failed
 elsewhere keeps none unless `--continue=always` (C-60), and that what
 they write streams through the wait (C-56). Docs only.
+
+## C-79: the task graph over random workspaces, on a PRNG that does not cycle
+
+`tests/task-graph-properties.test.ts` builds 2,000 seeded random
+workspaces (package-graph cycles, sparse holders, `name`, `^name`,
+`pkg#name`, `build.*`, `^build.*`, the odd typo and back edge) and holds
+`buildTaskGraph` to a recursive reference: the same tasks, edges and
+requested flags, and a refusal exactly where the reference refuses
+(43%: cycles and missing tasks). Mutants caught: the declaring project
+not seeding the `^` walk, a holder that does not stop it, the edge
+dedupe, a pattern matching its own task, requested promotion, a pattern
+holder's later matches, the pending list, and the undeclared-`^name`
+refusal. Re-adding a pending node already added survives; it builds the
+same graph.
+
+Writing it found the PRNG the property files shared,
+`(s * 1103515245 + 12345) % 2 ** 31` in floats, losing the product's
+low bits past 2 ** 53 and cycling: seed 298 after 71 draws, 1019 within
+11,079, so C-71's 2,000 graphs repeated. `tests/helpers/rng.ts`
+(mulberry32, `Math.imul`) replaces it there, here and in
+`summary-meters.test.ts` (whose `& 0x7fffffff` variant cycles after
+10,726, past the 8,000 draws its sweep takes); `tests/rng.test.ts` holds
+it to no cycle in a million draws and an even spread, both red on the
+old one. C-71 still passes on the full-period stream. Test only.
