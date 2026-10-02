@@ -1758,6 +1758,10 @@ in the `.npmrc` beside its lockfile, pnpm under
 `pnpm-workspace.yaml` (D-33). Bun and Yarn 1 run them whatever those say.
 Under Yarn 2+ a segment's `run <script>`, Yarn's shell builtin, is written
 `yarn run <script>`: vx's shell has no `run` (D-92).
+A Yarn 2+ repo on Plug'n'Play (no `nodeLinker: node-modules` or `pnpm` in
+`.yarnrc.yml`) keeps its bins in `.pnp.cjs`, where vx's PATH finds none;
+the report says so and names `nodeLinker: node-modules` or `yarn exec
+'<command>'` (D-108).
 A script reading `$npm_package_version`, `$npm_package_name` or
 `$npm_lifecycle_event`, which every manager sets and vx does not, gets
 them under `exec.env.define`, the first two read from an imported
