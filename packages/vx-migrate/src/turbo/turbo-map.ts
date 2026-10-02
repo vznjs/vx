@@ -10,6 +10,7 @@
 //     written.
 // The consumer decides what a global becomes through `splice`.
 
+import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { pruneOrphanPersistentNotes, type ProjectMeta, UserError } from '@vzn/vx'
 import { minimatchToVx } from '../glob-grammar.js'
@@ -674,6 +675,36 @@ function withGlobal(cfg: TurboJson): TurboJson {
   }
 }
 
+/**
+ * The microfrontends configs Turbo hashes into every task: each package's
+ * (the root's too) `microfrontends.json`, else `microfrontends.jsonc`, or
+ * the one name `VC_MICROFRONTENDS_CONFIG_FILE_NAME` gives, unless it is a
+ * child's `{ "partOf": … }` (Turbo's `update_turbo_json` appends them to
+ * the root's global deps). Unread, an edit to `web`'s routes replayed every
+ * sibling app's build (with-microfrontends, Turbo 2.11's dry run moves all
+ * 18 tasks). Paths are root-relative; `text` is what the mapping read.
+ */
+export function microfrontendsConfigs(
+  root: string,
+  dirs: readonly string[],
+  custom = process.env['VC_MICROFRONTENDS_CONFIG_FILE_NAME'] ?? '',
+): { rel: string; text: string }[] {
+  const names = custom === '' ? ['microfrontends.json', 'microfrontends.jsonc'] : [custom]
+  const out: { rel: string; text: string }[] = []
+  for (const dir of new Set(dirs.map((d) => path.resolve(d)))) {
+    const file = names.map((n) => path.join(dir, n)).find((f) => existsSync(f))
+    if (file === undefined) continue
+    const text = readFileSync(file, 'utf8')
+    let child = false
+    try {
+      const parsed = Bun.JSONC.parse(text) as { partOf?: unknown } | null
+      child = typeof parsed?.partOf === 'string'
+    } catch {}
+    if (!child) out.push({ rel: relPosix(root, file), text })
+  }
+  return out.sort((a, b) => (a.rel < b.rel ? -1 : 1))
+}
+
 export async function mapTurboWorkspace(
   root: string,
   metas: readonly ProjectMeta[],
@@ -722,6 +753,7 @@ export async function mapTurboWorkspace(
   const globalFiles = [
     ...globalDeps.filter((d) => envDependency(d) === null),
     ...(rootCfg.globalDotEnv ?? []),
+    ...microfrontendsConfigs(root, [root, ...metas.map((m) => m.dir)]).map((c) => c.rel),
   ]
   const rootDotenv = globalFiles.some((f) => isDotenvGlob(f))
   const globals = {

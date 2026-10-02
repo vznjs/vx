@@ -1218,6 +1218,52 @@ describe('turbo() under vx lock and --frozen', () => {
   )
 })
 
+// with-microfrontends: Turbo appends every package's microfrontends config
+// to the root's global deps, so an edit to `web`'s routes re-keys every
+// task. Unread, the sibling apps' builds replayed from the cache.
+describe('a microfrontends config', () => {
+  it(
+    "re-keys every package's tasks, as Turbo's global deps do; a child's partOf does not",
+    async () => {
+      const web = await pkg('web', { build: 'echo web' })
+      Bun.spawnSync({ cmd: ['git', 'add', '-A'], cwd: root })
+      const key = async () => {
+        const plan = await planRun({ cwd: root, tasks: ['lib#build'], log: silent() })
+        return plan.tasks.find((t) => t.node.id === 'lib#build')!.hash
+      }
+      const before = await key()
+      await writeFile(path.join(web, 'microfrontends.json'), '{ "applications": {} }')
+      const withConfig = await key()
+      expect(withConfig).not.toBe(before)
+      await writeFile(path.join(web, 'microfrontends.json'), '{ "applications": { "web": {} } }')
+      const edited = await key()
+      expect(edited).not.toBe(withConfig)
+      // `.jsonc` is the second name Turbo tries.
+      await rm(path.join(web, 'microfrontends.json'))
+      await writeFile(path.join(web, 'microfrontends.jsonc'), '// routes\n{ "applications": {} }')
+      const jsonc = await key()
+      expect(jsonc).not.toBe(before)
+      await writeFile(path.join(web, 'microfrontends.jsonc'), '{ "applications": { "a": {} } }')
+      expect(await key()).not.toBe(jsonc)
+      // A child's config names its parent; Turbo keys it into no global.
+      await rm(path.join(web, 'microfrontends.jsonc'))
+      await writeFile(path.join(web, 'microfrontends.json'), '{ "partOf": "web" }')
+      expect(await key()).toBe(before)
+      // VC_MICROFRONTENDS_CONFIG_FILE_NAME names the one file Turbo reads.
+      await rm(path.join(web, 'microfrontends.json'))
+      await writeFile(path.join(web, 'mfe.json'), '{ "applications": {} }')
+      expect(await key()).toBe(before)
+      process.env['VC_MICROFRONTENDS_CONFIG_FILE_NAME'] = 'mfe.json'
+      try {
+        expect(await key()).not.toBe(before)
+      } finally {
+        delete process.env['VC_MICROFRONTENDS_CONFIG_FILE_NAME']
+      }
+    },
+    TIMEOUT,
+  )
+})
+
 // with-shell-commands: `build: { dependsOn: ["prebuild", "^build"] }`, and
 // `tooling-config` has neither script. Its edge to `prebuild` made the
 // node a group, which keys nothing, so an edit to tooling-config replayed
