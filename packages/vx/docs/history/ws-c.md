@@ -956,6 +956,7 @@ probe (the run waits out the 30 s probe without the kill) and
 `scheduler.test.ts` › a rejected execute after the stop (red without the
 rejection arm's check; its control stays failed). `modules/scheduler.md`
 says so.
+
 ## C-63: a plugin executor's throw from `execute` names the plugin
 
 Every plugin hook's throw names the plugin and the hook (`accepts`,
