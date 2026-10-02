@@ -32,6 +32,7 @@ import {
   type LoadReads,
   loadWorkspace,
   FROZEN_WITHOUT_LOCK,
+  type Lockfile,
   readLockfile,
   resolveCacheDir,
   type ProjectEntry,
@@ -282,10 +283,24 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   // so consuming the lock by default would silently serve stale
   // freezes. `vx lock --check` is the full re-evaluation audit.
   // See docs/design/config-lock-2026-06.md.
-  const lock = options.frozen === true ? await readLockfile(workspaceRoot) : null
-  if (options.frozen === true && lock === null) {
-    throw new UserError(FROZEN_WITHOUT_LOCK)
-  }
+  // Read once, and only when a config is to be read from it: the CLI's
+  // selection pass may have staged every config (`options.staged`), and
+  // its load refused a frozen run without a lock. A 1,000-project lock is
+  // 1.1 MB of JSON (I-27).
+  let lockRead: Promise<Lockfile> | undefined
+  const readLock = (): Promise<Lockfile> =>
+    (lockRead ??= readLockfile(workspaceRoot).then((read) => {
+      if (read === null) throw new UserError(FROZEN_WITHOUT_LOCK)
+      return read
+    }))
+  const staged = options.staged
+  const allStaged =
+    staged !== undefined &&
+    projectMetas.every(
+      (m) => typeof m.configPath !== 'string' || m.configPath === '' || staged.has(m.name),
+    )
+  if (options.frozen === true && !allStaged) await readLock()
+  const lock = options.frozen === true ? readLock : null
 
   const loadArgs = {
     workspaceRoot,
@@ -423,26 +438,6 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   // cycle under `vx watch` (item 1029). run() owns both only once this
   // returns.
   try {
-    const gitFilesCache = new GitFilesCache()
-    // Bulk-populate via a single `git ls-files` at the workspace root —
-    // partitions the output by project. Avoids one fork+exec per project
-    // (~5-10ms each on Linux; the dominant cold-start cost on big
-    // monorepos). When any loaded task declares inputs.workspaceFiles,
-    // the enumeration must see every file from the root (no pathspec
-    // scoping) and additionally stores a workspace-wide partition.
-    const usesWorkspaceInputs = [...projects.values()].some((p) =>
-      Object.values(p.config.tasks ?? {}).some(
-        (t) => (t.cache?.inputs.workspaceFiles?.length ?? 0) > 0,
-      ),
-    )
-    const projectDirs = [...projects.values()].map((p) => p.dir)
-    const enumeration = await (git.started ??
-      startGitEnumeration(
-        workspaceRoot,
-        gitPathspecs(workspaceRoot, projectDirs, usesWorkspaceInputs),
-      ))
-    applyGitEnumeration(enumeration, workspaceRoot, projectDirs, gitFilesCache, usesWorkspaceInputs)
-    mark('git enumeration')
     const hashCache = createHashCache()
     const fingerprintWatch = new FingerprintWatch(workspaceRoot, fingerprints, fingerprintsAt)
 
@@ -468,7 +463,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
         workspaceFingerprint,
         fingerprintWatch,
         nestedDirsByProject,
-        gitFilesCache,
+        gitFilesCache: new GitFilesCache(),
         hashCache,
         workspaceProjectCount: projectMetas.length,
         empty:
@@ -523,11 +518,45 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
         )
       }
     }
-    // The graph is built; what follows is the plugins' (graph, key,
-    // schedule). Two rows, so a plugin's key stage reads as its own cost
-    // and not as graph building — a lockfile plugin's 1000 stats per run
-    // hid inside one `prepare (graph)` row until 2026-09-10.
+    // The graph is built; what follows is git's enumeration over its
+    // projects, then the plugins' stages (graph, key, schedule). Separate
+    // rows, so a plugin's key stage reads as its own cost and not as graph
+    // building — a lockfile plugin's 1000 stats per run hid inside one
+    // `prepare (graph)` row until 2026-09-10.
     mark('build graph')
+    const gitFilesCache = new GitFilesCache()
+    // Bulk-populate via a single `git ls-files` at the workspace root —
+    // partitions the output by project. Avoids one fork+exec per project
+    // (~5-10ms each on Linux; the dominant cold-start cost on big
+    // monorepos). When any task in the graph declares inputs.workspaceFiles,
+    // the enumeration must see every file from the root (no pathspec
+    // scoping) and additionally stores a workspace-wide partition.
+    // Over the projects that own a task, not every project loaded: a scoped
+    // run loads its dependency closure for the `^` walk, and a `lint` of one
+    // package walked the whole tree for it (~60 ms of git where one
+    // project's pathspec takes ~7, 1,000 projects). A node a `graph` hook
+    // adds in another project keys through `resolveFiles`' own spawn.
+    const graphDirs = new Set<string>()
+    let usesWorkspaceInputs = false
+    for (const n of nodes.values()) {
+      graphDirs.add(n.projectDir)
+      if ((n.config.cache?.inputs.workspaceFiles?.length ?? 0) > 0) usesWorkspaceInputs = true
+    }
+    const projectDirs = [...graphDirs]
+    const enumeration = await (git.started ??
+      startGitEnumeration(
+        workspaceRoot,
+        gitPathspecs(workspaceRoot, projectDirs, usesWorkspaceInputs),
+      ))
+    await applyGitEnumeration(
+      enumeration,
+      workspaceRoot,
+      projectDirs,
+      gitFilesCache,
+      usesWorkspaceInputs,
+      localCache,
+    )
+    mark('git enumeration')
     if (hasHook(plugins, 'graph')) {
       await applyGraphHooks(plugins, nodes, {
         workspaceRoot,

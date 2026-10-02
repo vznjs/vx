@@ -72,8 +72,6 @@ import { validateProjectConfig } from '../src/workspace/index.js'
 import { prepareSandbox, sandboxRequestFor } from '../src/orchestrator/sandbox-request.js'
 import type { TaskNode } from '../src/graph/index.js'
 
-const WIN32 = process.platform === 'win32'
-
 const TIMEOUT = 60_000
 
 interface Fixture {
@@ -1748,15 +1746,15 @@ describe.skipIf(!available || process.platform !== 'linux')(
 )
 
 describe.skipIf(!available || process.platform !== 'linux')(
-  'a write grant widens what a task can READ, and that is the cache-relevant half',
+  'a write grant widens what a task can READ, and the trace reports it',
   () => {
     // `bindableWrites` widens a FILE-shaped write grant to its DIRECTORY on
-    // Linux, because bwrap cannot rename onto an active file mount. The code
-    // says so, and says what it costs on the WRITE side ("the task may write
-    // its siblings"). The READ side was neither written down nor pinned: a
-    // read-write bind is readable, so the whole directory becomes readable
-    // too — and an undeclared read is exactly the thing the sandbox exists to
-    // catch, because the key folds this project's inputs (2026-09-20).
+    // Linux, because bwrap cannot rename onto an active file mount. A
+    // read-write bind is readable, so the whole directory became readable
+    // unreported — and an undeclared read is exactly the thing the sandbox
+    // exists to catch, because the key folds this project's inputs
+    // (2026-09-20). The read still succeeds; the strace pass now reports
+    // it (B-71, `tests/sandbox-widened-reads.unsafe.test.ts`).
     //
     // Linux-only by construction: macOS seatbelt matches paths rather than
     // mounting, so a file grant stays exact there.
@@ -1792,15 +1790,15 @@ describe.skipIf(!available || process.platform !== 'linux')(
       })
 
     it(
-      'a write grant at the project ROOT makes the whole root readable — no violation',
+      'a write grant at the project ROOT makes the whole root readable — and reported',
       async () => {
         const dir = await project('out.txt')
         const r = await run({ cwd: fixture.root, tasks: ['build'], log: collectingLogger(fixture) })
-        // The read SUCCEEDED and nothing reported it. This is the documented
-        // boundary being wider than the docs said, not a denial being missed:
-        // no syscall failed, so there is nothing for the strace pass to see.
-        expect(r.outcomes[0]?.status).toBe('success')
-        expect(r.outcomes[0]?.sandboxViolations).toBeUndefined()
+        // The read SUCCEEDED (no syscall failed), and the trace's successful
+        // opens under the widened directory report it, and the read of
+        // `dist/sibling.txt`, which lies under it too.
+        expect(r.outcomes[0]?.status).toBe('failed')
+        expect(r.outcomes[0]?.sandboxViolations).toBe(2)
         expect(await readFile(path.join(dir, 'probe', 'root.txt'), 'utf8')).toBe('AT THE ROOT')
       },
       TIMEOUT,
@@ -1815,12 +1813,12 @@ describe.skipIf(!available || process.platform !== 'linux')(
         const dir = await project('dist/out.txt')
         const r = await run({ cwd: fixture.root, tasks: ['build'], log: collectingLogger(fixture) })
         expect(r.outcomes[0]?.status).toBe('failed')
-        expect(r.outcomes[0]?.sandboxViolations).toBe(1)
+        // The root read is denied; the read of `dist/`'s sibling succeeds
+        // (the widening is real and scoped) and is reported.
+        expect(r.outcomes[0]?.sandboxViolations).toBe(2)
         // The redirection still creates the file; what the denial costs is
         // its CONTENT, which is the difference that matters.
         expect(await readFile(path.join(dir, 'probe', 'root.txt'), 'utf8')).toBe('')
-        // …while the widening itself is real and scoped: `dist/` IS readable,
-        // which is how `tsc --incremental` re-reads its own .tsbuildinfo.
         expect(await readFile(path.join(dir, 'probe', 'dist.txt'), 'utf8')).toBe('IN DIST')
       },
       TIMEOUT,
@@ -2749,7 +2747,7 @@ describe('resolveSandboxConfig', () => {
   // the collapse is pure path work, and what a grant covers is asked of
   // SRT's own strip and compiler — the first fix emitted `<glob>/**`, which
   // SRT strips back to `<glob>`, and a row that restated it passed.
-  it.skipIf(WIN32)('on macOS a glob directory keeps its subtree when collapsed', () => {
+  it('on macOS a glob directory keeps its subtree when collapsed', () => {
     const root = realpathSync(os.tmpdir())
     const real = Object.getOwnPropertyDescriptor(process, 'platform')!
     Object.defineProperty(process, 'platform', { value: 'darwin' })
@@ -2773,46 +2771,42 @@ describe('resolveSandboxConfig', () => {
     ])
   })
 
-  // Windows refuses exec.sandbox: no config is resolved there.
-  it.skipIf(WIN32)(
-    'collapses a whole-subtree pattern to its directory, and a single-level one NEVER',
-    async () => {
-      // The collapse is documented as "not a widening": `<d>/**` already
-      // covered every file under `<d>`, so folding it to `<d>` only adds the
-      // directory entry. That reasoning is exactly what fails for `<d>/*`,
-      // which covers the immediate children and nothing deeper — folding THAT
-      // to `<d>` would hand the task the directory itself and everything
-      // created in it later.
-      //
-      // The `**` half is pinned e2e above ("a whole-directory pattern grants
-      // the directory"). The single-star half was not pinned at all: widening
-      // the collapse regex to accept one star left the whole repo green, and
-      // this is a GRANT, so the two halves are one boundary.
-      const root = await mkdtemp(path.join(os.tmpdir(), 'vx-sbx-collapse-'))
-      try {
-        const sub = path.join(root, 'sub')
-        await mkdir(sub)
-        await Bun.write(path.join(sub, 'a.txt'), 'a')
-        const real = realpathSync(root)
-        const realSub = path.join(real, 'sub')
+  it('collapses a whole-subtree pattern to its directory, and a single-level one NEVER', async () => {
+    // The collapse is documented as "not a widening": `<d>/**` already
+    // covered every file under `<d>`, so folding it to `<d>` only adds the
+    // directory entry. That reasoning is exactly what fails for `<d>/*`,
+    // which covers the immediate children and nothing deeper — folding THAT
+    // to `<d>` would hand the task the directory itself and everything
+    // created in it later.
+    //
+    // The `**` half is pinned e2e above ("a whole-directory pattern grants
+    // the directory"). The single-star half was not pinned at all: widening
+    // the collapse regex to accept one star left the whole repo green, and
+    // this is a GRANT, so the two halves are one boundary.
+    const root = await mkdtemp(path.join(os.tmpdir(), 'vx-sbx-collapse-'))
+    try {
+      const sub = path.join(root, 'sub')
+      await mkdir(sub)
+      await Bun.write(path.join(sub, 'a.txt'), 'a')
+      const real = realpathSync(root)
+      const realSub = path.join(real, 'sub')
 
-        const deep = resolveSandboxConfig({ allow: { read: ['sub/**'] } }, root)
-        expect(deep.allowRead).toContain(realSub)
+      const deep = resolveSandboxConfig({ allow: { read: ['sub/**'] } }, root)
+      expect(deep.allowRead).toContain(realSub)
 
-        const shallow = resolveSandboxConfig({ allow: { read: ['sub/*'] } }, root)
-        expect(shallow.allowRead).not.toContain(realSub)
-        // CONTROL: it still granted something UNDER sub, so the row above is
-        // the collapse and not an empty resolution. Deliberately not the
-        // expanded child path: `expandGrants` glob-expands on Linux only
-        // (`platform !== 'linux'` returns early), so macOS keeps the literal
-        // `sub/*` while Linux yields `sub/a.txt`. What both must show is a
-        // grant BELOW sub and never sub itself, which is the claim anyway.
-        expect(shallow.allowRead.some((p) => p.startsWith(realSub + path.sep))).toBe(true)
-      } finally {
-        await rm(root, { recursive: true, force: true })
-      }
-    },
-  )
+      const shallow = resolveSandboxConfig({ allow: { read: ['sub/*'] } }, root)
+      expect(shallow.allowRead).not.toContain(realSub)
+      // CONTROL: it still granted something UNDER sub, so the row above is
+      // the collapse and not an empty resolution. Deliberately not the
+      // expanded child path: `expandGrants` glob-expands on Linux only
+      // (`platform !== 'linux'` returns early), so macOS keeps the literal
+      // `sub/*` while Linux yields `sub/a.txt`. What both must show is a
+      // grant BELOW sub and never sub itself, which is the claim anyway.
+      expect(shallow.allowRead.some((p) => p.startsWith(realSub + path.sep))).toBe(true)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
 
   it('canonicalizes symlinked paths, including non-existent suffixes', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'vx-sbx-realpath-'))
@@ -2950,6 +2944,8 @@ describe('deniedCalls (strace trace parsing)', () => {
     expect(deniedCalls(trace, '/ws/p').map((c) => [c.rawPath, c.dir])).toEqual([
       ['secret.txt', '/ws/p/src'],
       ['a', '/abs/deeper'],
+      // A chdir refused is a denial of its own (B-67), and moves nothing.
+      ['nope', '/ws/p/src'],
       ['b', '/ws/p/src'],
       // fchdir names no path: lost, so the starting cwd stands, as before.
       ['c', undefined],
@@ -2958,6 +2954,7 @@ describe('deniedCalls (strace trace parsing)', () => {
     ])
     // Without the starting cwd nothing is followed.
     expect(deniedCalls(trace).map((c) => c.dir)).toEqual([
+      undefined,
       undefined,
       undefined,
       undefined,
@@ -2980,6 +2977,8 @@ describe('deniedCalls (strace trace parsing)', () => {
       '22 chdir("deep")                   = 0',
       '20 openat(AT_FDCWD, "b", O_RDONLY) = -1 ENOENT (No such file or directory)',
       '23 openat(AT_FDCWD, "c", O_RDONLY) = -1 ENOENT (No such file or directory)',
+      '20 vfork()                          = 24',
+      '24 openat(AT_FDCWD, "e", O_RDONLY) = -1 ENOENT (No such file or directory)',
       '',
     ].join('\n')
     expect(deniedCalls(trace, '/ws').map((c) => [c.rawPath, c.dir])).toEqual([
@@ -2987,6 +2986,8 @@ describe('deniedCalls (strace trace parsing)', () => {
       ['b', '/ws/src/deep'],
       // A forked process copied the cwd at the fork, before the `chdir`.
       ['c', undefined],
+      // One forked after it copied the moved one.
+      ['e', '/ws/src/deep'],
     ])
   })
 
@@ -3067,8 +3068,7 @@ describe('deniedCalls (strace trace parsing)', () => {
   })
 })
 
-// strace is Linux's; Windows refuses exec.sandbox.
-describe.skipIf(WIN32)('parseStraceViolations (the deny anchor and the dedup key)', () => {
+describe('parseStraceViolations (the deny anchor and the dedup key)', () => {
   let dir = ''
   beforeEach(async () => {
     dir = realpathSync(await mkdtemp(path.join(os.tmpdir(), 'vx-strace-')))
@@ -3209,7 +3209,7 @@ describe.skipIf(WIN32)('parseStraceViolations (the deny anchor and the dedup key
  * parsed the seatbelt shape only, so on Linux every out-of-project
  * denial was reported and no `ignore` pattern ever matched.
  */
-describe.skipIf(WIN32)('reportableViolations', () => {
+describe('reportableViolations', () => {
   // Real-path anchored: both producers canonicalize before they record,
   // and on macOS `/tmp` is a symlink — a literal `/tmp/...` fixture would
   // pass or fail for the wrong reason.
@@ -3539,6 +3539,49 @@ describe.skipIf(WIN32)('reportableViolations', () => {
       `openat(x) = -1 ENOENT  [${home}/.vx-ignore-kept]`,
     ])
   })
+})
+
+// Seatbelt's SRT compiles a grant holding `[` as a regex in which a
+// backslash is a literal one, so the escaped spelling of a Next.js route
+// matched no file. vx hands it `[[]`, a class of one bracket (B-65).
+describe.skipIf(process.platform !== 'darwin')('a bracketed route under seatbelt', () => {
+  it(
+    'is granted by its escaped name, and not by the class spelling',
+    async () => {
+      if (!(await sandboxAvailable('bracketed route under seatbelt'))) return
+      await initSandbox()
+      const dir = realpathSync(await mkdtemp(path.join(os.tmpdir(), 'vx-brk-')))
+      try {
+        const proj = path.join(dir, 'app')
+        await mkdir(path.join(proj, 'pages'), { recursive: true })
+        const route = path.join(proj, 'pages', '[id].tsx')
+        await writeFile(route, 'route')
+        const run = (read: string) =>
+          runSandboxed({
+            command: `/bin/cat '${route}'`,
+            cwd: proj,
+            env: { PATH: process.env['PATH'] ?? '', HOME: process.env['HOME'] ?? '' },
+            baseAllowRead: [],
+            baseDenyRead: [dir],
+            reportWithin: proj,
+            reportLinked: [],
+            config: resolveSandboxConfig({ allow: { read: [read] } }, proj),
+          })
+        const escaped = await run('pages/\\[id\\].tsx')
+        // CONTROL: `[id]` is a class (`i` or `d`), which names no such file.
+        const classed = await run('pages/[id].tsx')
+        expect([escaped.stdout, classed.stdout, classed.exitCode === 0]).toEqual([
+          'route',
+          '',
+          false,
+        ])
+      } finally {
+        await resetSandbox()
+        await rm(dir, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
 })
 
 describe.skipIf(process.platform !== 'darwin')('nested seatbelt', () => {
@@ -4082,8 +4125,7 @@ describe('localBinding accepts a boolean or a port list', () => {
   })
 })
 
-// The bridge is a unix socket and socat; Windows refuses exec.sandbox.
-describe.skipIf(WIN32)('localBinding port list — the pure halves', () => {
+describe('localBinding port list — the pure halves', () => {
   // Item 652: the bridge's socket lives in SRT's temp directory, resolved
   // exactly as SRT resolves it. No row set the variables, so an EMPTY
   // `CLAUDE_CODE_TMPDIR` (a socket at `/vx-port-…`, the filesystem root)
@@ -4509,6 +4551,33 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
     } finally {
       releaseBridges(one.tag)
     }
+  })
+
+  // A later run's `initSandbox` takes over the session a server's run
+  // left up: the last server's release then ran the reset that run had
+  // deferred, under the later run's tasks, and its next wrap threw "Linux
+  // HTTP bridge socket does not exist" (the bridge-socket row's gate
+  // failure, M-15). The second init waits out any reset the release began.
+  it("a server released after a later run's init leaves that run's sandbox up", async () => {
+    const localPort = (): number => {
+      const l = Bun.listen({ hostname: '127.0.0.1', port: 0, socket: { data() {} } })
+      const p = l.port
+      l.stop(true)
+      return p
+    }
+    const server = await wrapSandboxedCommand(
+      args('true', {
+        config: resolveSandboxConfig({ allow: { localBinding: [localPort()] } }, dir),
+        server: true,
+      }),
+    )
+    const sock = /\S*claude-http-[0-9a-f]+\.sock/.exec(server.wrapped)![0]
+    await resetSandbox()
+    await initSandbox()
+    const up = existsSync(sock)
+    releaseBridges(server.tag)
+    await initSandbox()
+    expect([up, existsSync(sock)]).toEqual([true, true])
   })
 
   // A literal `ignore` entry is realpath'd WHOLE: a denial through a link
@@ -5782,9 +5851,14 @@ Bun.spawn = (cmd, opts) => {
       await Promise.all(pids.map((p) => waitForDead(p, 2_000)))
       const alive = pids.filter(isAlive)
       // A session leader's session id is its own pid: the `setsid` child.
-      const leaders = alive.filter(
-        (p) => Number(readFileSync(`/proc/${p}/stat`, 'utf8').split(') ')[1]!.split(' ')[3]) === p,
-      )
+      // One that exits after the filter has no entry, and is no leader.
+      const leaders = alive.filter((p) => {
+        try {
+          return Number(readFileSync(`/proc/${p}/stat`, 'utf8').split(') ')[1]!.split(' ')[3]) === p
+        } catch {
+          return false
+        }
+      })
       for (const p of alive) process.kill(p, 'SIGKILL')
       return { started: pids.length, alive, leaders }
     }

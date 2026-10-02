@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'bun:test'
 import type { ProjectMeta } from '@vzn/vx'
 import { emptyNxInputs, expandNxInputs } from '../src/nx/nx-inputs.js'
-import { mapNxOutputs } from '../src/nx/nx-outputs.js'
+import { mapNxOutputs, nxDefaultOutputs } from '../src/nx/nx-outputs.js'
 import { mapNxDeps, matchNxProjects } from '../src/nx/nx-deps.js'
 
 function inputs(entries: unknown[], named: Record<string, unknown[]> = {}) {
@@ -209,11 +209,28 @@ describe('mapNxOutputs', () => {
     }
   })
 
-  it('a non-string option and an unknown token are reported', () => {
-    expect(out(['{options.outDir}', '{foo}/x'], 'packages/a', { outDir: 42 }).todos).toEqual([
+  it('an object option and an unknown token are reported', () => {
+    expect(out(['{options.outDir}', '{foo}/x'], 'packages/a', { outDir: { a: 1 } }).todos).toEqual([
       'output "{options.outDir}": option "outDir" is not a literal string — resolve manually',
       'output "{foo}/x" uses a token vx does not support',
     ])
+  })
+
+  // Nx's `getOutputsForTargetAndConfiguration` (nx 23.2): a number is its
+  // text in the path, and an `outputPath` list is each of its paths. vx
+  // dropped the first with a todo and read the second as no outputPath,
+  // caching Nx's default directories instead, so a hit restored nothing.
+  it('a number option is its text; an outputPath list is each path', () => {
+    expect(out(['dist/v{options.n}'], 'packages/a', { n: 5 })).toEqual({
+      outFiles: [],
+      wsOutFiles: ['dist/v5'],
+      todos: [],
+    })
+    const todos: string[] = []
+    expect(
+      nxDefaultOutputs('build', { outputPath: ['dist/a', 'dist/b'] }, 'packages/a', todos),
+    ).toEqual(['dist/a', 'dist/b'])
+    expect(todos).toEqual([])
   })
 
   // nx-examples' @nx/angular:application build: `{options.outputPath.base}`
@@ -303,7 +320,7 @@ describe('mapNxDeps', () => {
       todos: [],
     })
     expect(deps([{ target: 'build', params: 'forward' }]).todos).toEqual([
-      'dependsOn "build": params forwarding is not supported — forward args via `vx run … -- args` instead',
+      'dependsOn `params: "forward"` is not supported — forward args via `vx run … -- args` instead',
     ])
     // CONTROL: a name that is no package still says so.
     expect(deps([{ target: 'build', projects: ['nope'] }]).todos).toEqual([
