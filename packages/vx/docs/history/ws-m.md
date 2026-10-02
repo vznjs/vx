@@ -336,9 +336,9 @@ sent, which F-9 replaced with the peer's count of HEADERS.
 M-29. `runner.test.ts` › an exec-wrapped process is the direct child
 (E's lead: it read `JITWorker` at load 6.6). The row slept a fixed 50 ms
 and read `/proc/<pid>/comm` once: until `sh` execs, comm is the forking
-Bun thread's name or `sh` (an immediate read, 20 of 20: `sh`). It now
-polls for `sleep` up to 3 s; a command with no exec still reads `sh` at
-the deadline, so the claim holds without a time in it.
+Bun thread's name or `sh` (an immediate read, 20 of 20: `sh`). The
+poll that replaced it landed as #2302; a command with no exec still
+reads `sh` at its deadline, so the claim holds without a time in it.
 
 M-30. `output-memory.unsafe.test.ts` › stays flat while a never-ready
 task floods stdout (D's lead: `long - short` read 140 MiB against 64,

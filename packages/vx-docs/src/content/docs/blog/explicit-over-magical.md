@@ -37,9 +37,7 @@ it as a key:
    trace is wrong for the other environment.
 3. **It over-approximates in the direction that hurts.** `**` as a
    default input turns a README edit into a rebuild of every task in the
-   package. Both Turbo's default and Nx's default do this; on
-   solidjs/solid, Turbo's per-package `**` hashing is a visible part of
-   the per-task overhead in the cold benchmark.
+   package. Both Turbo's default and Nx's default do this.
 
 The explicit declaration is a statement about what the task *depends
 on*, which is the thing a key must capture. Only the author of the

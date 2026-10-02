@@ -33,8 +33,8 @@ pins this list to `prepare.ts` and `run.ts`, and the spans to every
 - `package graph`
 - `open cache`
 - `load configs`
-- `git enumeration`
 - `build graph`
+- `git enumeration`
 - `plugin stages`
 - `classify + probe`
 - `run graph`

@@ -1061,23 +1061,20 @@ describe('execWrap — grandchild-orphan mitigation', () => {
     // `exec sleep` replaces sh, so the tracked child IS sleep. Killing
     // it reaps the real process; there is no surviving grandchild.
     const child = Bun.spawn(['sh', '-c', execWrap('sleep 30')], { stdout: 'pipe' })
-    // The pid vx tracks runs sleep directly (verified via /proc comm on Linux).
-    // Polled: until the exec lands, comm is the forking thread's name or
-    // `sh`, and a fixed 50 ms read Bun's `JITWorker` on a loaded gate (M-29).
-    // Without the exec it stays `sh`, and the row fails at the deadline.
-    const comm = async (): Promise<string> =>
-      (
+    // The pid vx tracks runs sleep directly (verified via /proc comm on
+    // Linux). sh's exec into sleep lands when the scheduler lets it: a fixed
+    // 50 ms read "sh" on a loaded CI runner, so poll until it changes. A
+    // wrapper that never execs stays "sh" through the deadline and fails.
+    let comm = 'sh'
+    for (const end = Date.now() + 5000; comm === 'sh' && Date.now() < end;) {
+      await Bun.sleep(10)
+      comm = (
         await Bun.file(`/proc/${child.pid}/comm`)
           .text()
           .catch(() => 'sleep\n')
       ).trim()
-    const deadline = Date.now() + 3_000
-    let seen = await comm()
-    while (seen !== 'sleep' && Date.now() < deadline) {
-      await Bun.sleep(10)
-      seen = await comm()
     }
-    expect(seen).toBe('sleep')
+    expect(comm).toBe('sleep')
     child.kill('SIGTERM')
     await child.exited
   })
