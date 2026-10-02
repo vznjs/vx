@@ -36,6 +36,10 @@
   `ui:build:ci` names target `build:ci` and is no edge where ui lacks it.
   vx read the last segment as a configuration and drew an edge to that
   configuration's task (or to `build`, with a todo) that Nx never draws.
+- **P-13** `nx()`: every task also gets `LERNA_PACKAGE_NAME`, the project
+  name Nx's `getNxEnvVariablesForTask` sets beside `NX_TASK_TARGET_*`;
+  Lerna runs on Nx's runner and documents it to scripts, and it was
+  unset.
 
 ## Notes
 
