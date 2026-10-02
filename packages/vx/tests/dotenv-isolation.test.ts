@@ -11,12 +11,9 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 
-const WIN32 = process.platform === 'win32'
-
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 
-// Windows has no shebang launch: `vx` there is a shim over `bun`.
-describe.skipIf(WIN32)('a workspace .env stays out of vx', () => {
+describe('a workspace .env stays out of vx', () => {
   let root: string
   beforeEach(async () => {
     root = await mkdtemp(path.join(os.tmpdir(), 'vx-dotenv-'))
