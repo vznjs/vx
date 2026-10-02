@@ -45,9 +45,10 @@ it), so a workspace that declares nothing runs and caches here.
   `plugin '<name>' (executor '<name>')`, or `executor '<name>'` for the
   local floor. A throwing `accepts` or `demand` is named by it.
 - `nameExecutorFailure(executor, err)` — a plugin executor's throw from
-  `execute`, its message prefixed `<label> failed in execute:`; the same
-  error object, so its class and cause stand. The floor's is untouched
-  (C-63).
+  `execute` as a `UserError` reading `<label> failed in execute: <reason>`
+  (C-63), the plugin's error as its `cause`: printed plainly, as every
+  stage's throw is, never as vx's internal error, and the plugin's own
+  error is never renamed (C-85). The floor's is untouched.
 - `resolveCache(plugins, ctx)` → `CacheLayer` (one layer as is; two or
   more chained in order — `ChainedCache`; a layer wrapping the local
   handle subsumes the bare local layer; none declared leaves the local
@@ -65,7 +66,9 @@ it), so a workspace that declares nothing runs and caches here.
   each plugin's `teardown()` under try/catch and a time bound
   (`teardownTimeoutMs()`: `VX_TEARDOWN_TIMEOUT_MS`, 3 s by default; a
   call that never settles is warned by name, never awaited past the
-  bound). Runs on every exit of a run once `prepareRun` has called the
+  bound). A throw is warned as every stage names one (C-84):
+  `plugin '<p>' failed in teardown: <reason>`; the run's verdict stands.
+  Runs on every exit of a run once `prepareRun` has called the
   plugins' factories (an early return, a refused setup, a throw before
   or during the schedule) and at the end of a plan, and `prepareRun`
   itself tears down and closes the cache when a stage or refusal after

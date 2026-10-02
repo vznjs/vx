@@ -27,6 +27,7 @@
 
 import { describe, expect, it } from 'bun:test'
 import { formatSummarySection, type SummaryStats } from '../src/orchestrator/summary.js'
+import { rng } from './helpers/rng.js'
 
 const BAR_WIDTH = 50
 /** ▰ filled, ▱ the dim remainder for not-yet-run tasks. */
@@ -116,12 +117,9 @@ describe('the tasks meter always fills exactly the bar width', () => {
     // interesting inputs for a largest-remainder allocator are the ones where
     // several buckets round the same way and the min-one correction then has
     // to claw a cell back — so this sweeps the space instead of guessing at
-    // it. Deterministic (a fixed LCG), so a failure is reproducible.
-    let seed = 0x2f6e2b1
-    const next = (n: number): number => {
-      seed = (seed * 1103515245 + 12345) & 0x7fffffff
-      return seed % n
-    }
+    // it. Deterministic (a seeded PRNG), so a failure is reproducible.
+    const r = rng(0x2f6e2b1)
+    const next = (n: number): number => Math.floor(r() * n)
     for (let i = 0; i < 2000; i++) {
       const failed = next(300)
       const successful = next(300)
