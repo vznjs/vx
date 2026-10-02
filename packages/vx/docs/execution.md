@@ -36,9 +36,9 @@ terminal and a task succeeding or failing. Read it alongside
  │       or not its globs claim cwd (pnpm's rule); when nothing claims
  │       cwd the nearest candidate wins. An UNSCOPED run (no explicit
  │       project scope, at least one bare task name) then starts
- │       step 11's git enumeration over the whole tree, overlapping
- │       steps 2–10; a scoped run waits, since its pathspecs depend on
- │       which configs load.
+ │       step 12's git enumeration over the whole tree, overlapping
+ │       steps 2–11; a scoped run waits, since its pathspecs depend on
+ │       which projects the task graph holds.
  │    2. loadWorkspace — parses the appropriate manifest. Bun.YAML
  │       for pnpm; the package.json forms read as bytes (readOnce,
  │       shared with step 1) and JSON.parse.
@@ -80,8 +80,11 @@ terminal and a task succeeding or failing. Read it alongside
  │       with the local cache into a LayeredCache (it wins); else
  │       resolveCache lets a plugin's `cache` capability wrap or
  │       replace it; else bare local.
- │   11. Bulk git populate — the enumeration step 1 started is
- │       awaited, or a scoped run starts it here. FOUR spawns at the
+ │   11. buildTaskGraph (see below).
+ │   12. Bulk git populate — the enumeration step 1 started is
+ │       awaited, or a scoped run starts it here over the projects
+ │       that own a task (not the dependency closure step 7 loaded,
+ │       which a `lint` of one package does not key). FOUR spawns at the
  │       root, three concurrent and the rev-parse asked while they run
  │       (`ls-files -s -v -z --debug` for the index: every tracked
  │       path's OID, its cache-state flag and its recorded size;
@@ -101,7 +104,6 @@ terminal and a task succeeding or failing. Read it alongside
  │       `blob_sizes` memo lacks (A-60): an OID whose blob is not the
  │       recorded size is not trusted. The run's HashCache is created
  │       after it.
- │   12. buildTaskGraph (see below).
  ├─ Task selection (graph/task-graph.ts:expandRequested)
  │    Bare task names fan out across the resolved candidate projects
  │    (every project that declares the task). Anchored entries
