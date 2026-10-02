@@ -1223,3 +1223,13 @@ runtime mounts no path it cannot resolve, so a sandboxed project under
 the same way and such a project is refused on Linux; a row pins the Bun
 fact. Rows: `sandbox-glob-chars.unsafe.test.ts` (each changed site
 mutated back reddens one).
+
+B-72. `runSandboxed` awaits the runtime, the tracer probe and the wrap
+before it spawns, and a stop that landed there was never looked at
+again: the task spawned after the teardown had swept the run's
+children, and ran (an aborted call wrote its marker, exit 0). It now
+asks just before the spawn and returns the stop's signal exit
+(`stopSignal`, shared with the local executor's B-55 path). The
+tracer-retry row that aborted before the call leaned on the bug and now
+aborts mid-run. Rows: `sandbox-abort-before-spawn.unsafe.test.ts` (both
+stop rows red without the fix).
