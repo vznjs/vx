@@ -169,7 +169,7 @@ bunx @vzn/vx-migrate --help    # the usage, exit 0
 
 ### Turbo
 
-Reads the root pipeline (`tasks` in Turbo 2, `pipeline` in Turbo 1), per-package `turbo.json` `extends` overlays and each package's scripts, through the same mapper `turbo()` runs live — so a repo reads the same whether you migrate it or run it as it is. Turbo's global fields become a generated root `vx-preset.ts` each config imports and spreads: TypeScript composition replaces global config. Turbo's `//#` root tasks are written to a `vx.config.ts` at the workspace root, which makes the root a project (core's D-39), and a package task's `//#x` edge reaches it.
+Reads the root pipeline (`tasks` in Turbo 2, `pipeline` in Turbo 1), per-package `turbo.json` `extends` overlays and each package's scripts, through the same mapper `turbo()` runs live — so a repo reads the same whether you migrate it or run it as it is. Turbo's global fields become a generated root `vx-preset.ts` each config imports and spreads: TypeScript composition replaces global config. So does a task's `env` that several configs share (`buildEnv`), where inline it would repeat in every package (vercel/ai: 63 names, twice in each of ~100 configs, half the output). Turbo's `//#` root tasks are written to a `vx.config.ts` at the workspace root, which makes the root a project (core's D-39), and a package task's `//#x` edge reaches it.
 
 | Turborepo                           | vx                                                                                                |
 | ----------------------------------- | ------------------------------------------------------------------------------------------------- |
