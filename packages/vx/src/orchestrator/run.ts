@@ -693,7 +693,11 @@ async function runOnBus(
         vxVersion: VERSION,
         // An embedder's `command` is redacted as the argv is: it passed a
         // token after `--` to every sink verbatim (C-67).
-        command: invocationCommand(options.command?.split(' ') ?? process.argv.slice(1)),
+        // Masked as the stored line is: `--tag key=$DEPLOY_KEY` sits before
+        // the `--` the count covers (L-44).
+        command: maskInvocation(
+          invocationCommand(options.command?.split(' ') ?? process.argv.slice(1)),
+        ),
         requestedTasks: [...options.tasks],
         cachePolicy: compactCachePolicy(policy),
         concurrency,

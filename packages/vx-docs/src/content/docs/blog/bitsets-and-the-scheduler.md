@@ -29,8 +29,11 @@ numbering: one bit per node, one row of 32-bit words per node, every
 row in a single `Uint32Array` (N² bits, so N² / 8 bytes — 1.3 MB at
 3,270 tasks). A union is a loop of bitwise ORs over those words; a
 size is a popcount. The same computation is **single-digit
-milliseconds**. The package graph uses the same representation, so a
-filter over a thousand packages is a handful of row ORs.
+milliseconds**. The package graph uses the same representation for
+dependents (`--filter '...app'`, `--affected`) and once a run asks for
+many closures. A filter seeded by one or two packages (`app...`)
+searches from them instead: building every row cost more than the one
+answer it needed.
 
 ## The tick
 

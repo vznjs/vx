@@ -88,6 +88,17 @@ describe('module pages state what their file does since the fix', () => {
     expect(src('cli/watch.ts')).not.toMatch(/\blistProjects\(/)
   })
 
+  it('package-graph.md: the first transitiveDeps asks are a search, not the bitsets (#2323)', () => {
+    const n = /const EARLY_SEARCHES = (\d+)/.exec(src('workspace/package-graph.ts'))?.[1]
+    expect(n).toBeDefined()
+    const rule = blocks('modules/package-graph.md', 'built on the FIRST query')
+    expect(rule.length).toBe(1)
+    expect(rule[0]).toContain(`\`transitiveDeps\` answers its first ${n} asks by a search`)
+    expect(rule[0]).toMatch(
+      /Past those, and for every `transitiveDependents` ask, a closure is a bitset/,
+    )
+  })
+
   it("logger.md: a kept server's output streams under its id after the summary (#2054)", () => {
     expect(src('orchestrator/logger.ts')).toContain('formatKeptLines(')
     expect(page('modules/logger.md')).toMatch(

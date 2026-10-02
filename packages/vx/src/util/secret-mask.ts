@@ -63,7 +63,16 @@ export function secretMask(
 ): SecretMask | null {
   const values = new Set<string>()
   const add = (value: string | undefined): void => {
-    if (value !== undefined && value.length >= MIN_SECRET_CHARS) values.add(value)
+    if (value === undefined || value.length < MIN_SECRET_CHARS) return
+    values.add(value)
+    // A multi-line value (a PEM key) is also masked line by line, as GitHub
+    // Actions does: a tool that indents or reflows it prints no copy of the
+    // whole value, and every line leaked (L-36).
+    if (!value.includes('\n')) return
+    for (const line of value.split(/\r?\n/)) {
+      const trimmed = line.trim()
+      if (trimmed.length >= MIN_SECRET_CHARS) values.add(trimmed)
+    }
   }
   for (const source of sources) {
     if (source === undefined) continue

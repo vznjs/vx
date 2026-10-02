@@ -238,8 +238,11 @@ workspace's lock just before it schedules — after the early exits,
 which touch no tree — and releases it with its cache handle, before a
 persistent task's wait. The lock is keyed by the workspace root's real
 path, so a symlinked spelling and the canonical cwd a CLI gets (macOS's
-`/var` → `/private/var`) name one lock. It lives under the temp
-directory, keyed by the resolved workspace root (`--cache-dir` does not
+`/var` → `/private/var`) name one lock. It lives in this user's own
+directory under the temp directory (`vx-runs-<uid>`, mode 0700; one that
+is a link or another owner's is refused and the run goes on unlocked,
+since a lock in the shared directory was anyone's to plant, L-47),
+keyed by the resolved workspace root (`--cache-dir` does not
 make two runs strangers; a read-only checkout can take it; two
 processes whose `TMPDIR` differs hold two locks, item 970), and is a
 directory HELD exactly while it is not empty. Its one entry,

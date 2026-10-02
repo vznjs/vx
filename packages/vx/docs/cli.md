@@ -244,7 +244,9 @@ failed to spawn 'git' … Install git and re-run` — the same the input
   would be a real `git diff` option. A range (`HEAD~1..HEAD`,
   `main...feature`) is refused there too, naming the base to pass
   alone — `ranges are not supported — pass the base alone ("HEAD~1")`
-  — because the other end is always the working tree. A ref that does
+  — because the other end is always the working tree; `<base>...HEAD`,
+  Turbo's CI spelling, is read as `<base>`, since vx diffs from the merge
+  base to a working tree that holds HEAD (D-117). A ref that does
   not exist is `git ref "<ref>" did not resolve`; in a shallow clone (CI's
   one-commit checkout) it adds that the clone is shallow and how to fetch
   the history (`git fetch --unshallow`, `fetch-depth: 0`).
@@ -737,7 +739,8 @@ down with it:
 
 - **`deps-ok`** (default): the failure's transitive dependents are
   skipped; independent siblings keep running. A server that dies after
-  it became ready is a failure to its dependents not yet started.
+  it became ready is a failure to its dependents not yet started,
+  including those that reach it through a group.
 - **`never`**: fail fast — the first failure stops dispatch. In-flight
   tasks finish naturally; everything not yet started (cache restores
   included) completes as skipped. A server that dies after it became
@@ -968,7 +971,8 @@ unchanged. Its `hash` is still set: dependents fold it.
 became ready — `timeout` (the readiness deadline fired), `exited` (the
 child exited first; `exitCode` is then its own) or `spawn` (the spawn
 itself failed). Every label reads it, `failed (never ready: timed out,
-exit 1)`.
+exit 1)`. A server the run's stop (a Ctrl-C) killed while it started is
+`aborted`, not failed, as any task the stop kills.
 
 **`sandboxViolations`** is present only on a sandboxed task with a
 SANDBOX VIOLATIONS section — the count of its denials (vx's own notes
@@ -1527,12 +1531,21 @@ vx-lock.json (2 projects have no vx.config; their tasks are never
 frozen)`), so an empty lock on a plugin-only workspace never reads like
 an audit.
 
+The lock is committed, so `vx lock` refuses to write one that holds a
+secret: a config that evaluated to the value of a secret-named variable
+(or one a task lists in `exec.env.secret`), say
+`` `--token ${process.env.API_TOKEN}` ``. It names each place
+(`a: tasks.deploy.exec.command holds $API_TOKEN`) and writes nothing.
+Masking it instead would freeze a `***` that `--frozen` runs. Let the
+shell expand it: `$API_TOKEN` in the command, the name in
+`exec.env.passThrough` (L-42).
+
 Exit codes:
 
 - `0` — lock written / lock is up to date.
 - `1` — parse error, workspace-discovery error, missing lock
-  (`--check` without one), or any drift (every mismatched project is
-  listed on stderr).
+  (`--check` without one), any drift (every mismatched project is
+  listed on stderr), or a secret value the lock would hold.
 
 ## Releasing (maintainers)
 
@@ -1788,9 +1801,10 @@ pnpm docs-build`; through `run-s` / `run-p` / `npm-run-all` or `concurrently
 a check twice (D-45). The rest check the whole repo (`lint: oxlint .`,
 `test: vitest`) and become the root's own tasks in a root vx.config, when
 the root has a `"name"` (vx skips a nameless root's config) and no config
-of its own; a hand-written one stays as written. The report says which, its
-examples of running the members spelled by the repo's manager (`--workspaces`
-under npm, `yarn workspaces foreach` under Yarn 2+);
+of its own; a hand-written one stays as written. The report names each script left out and why
+(a `pre` / `post` hook goes with its script, D-85), its examples of running
+the members spelled by the repo's manager (`--workspaces` under npm, `yarn
+workspaces foreach` under Yarn 2+), and says which;
 with nothing mapped it names the root whenever it has a script, a member
 or not (pnpm's root is not), and tells a root with no `"name"` to add one
 first (vuejs/core), naming the scripts that would then map (react, D-87). A single-package repo's root is its project and maps.
@@ -2050,8 +2064,9 @@ Exit codes: `0` success; `1` parse error or unknown target.
 Two runs on one workspace take turns: the second waits for the first's
 run lock and, after a second, says `[vx] waiting for another vx run
 (pid N) on this workspace to finish…` (see caching.md § Concurrent
-runs). The lock lives in the temp directory, so two runs take turns
-only when they share `TMPDIR`: a `nix develop` shell sets its own.
+runs). The lock lives in this user's own directory in the temp
+directory, so two runs take turns only when they are one user's and
+share `TMPDIR`: a `nix develop` shell sets its own.
 
 Every verb: a path vx must write that this user cannot (`EACCES`,
 `EPERM`, `EROFS` — a read-only checkout, another user's files) or that
