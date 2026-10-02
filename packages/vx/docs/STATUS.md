@@ -258,7 +258,8 @@ are recorded in `docs/history/ws-<id>.md` as `<ID>-<n>`, not in the
 numbered list below, so parallel PRs never collide on a number; the
 coordinator folds them into this file. Streams K to O were added
 later (K README and site, L security findings, M CI reliability, N adoption
-paths, O Windows); each stream's record and leads are
+paths, O Windows, stopped: Windows is WSL and its workflow went
+2026-10-02); each stream's record and leads are
 its own `docs/history/ws-<id>.md`, fifteen files by 2026-10-01. Every
 green commit on `main` releases (`ci.yml` finishes `main`'s run and drops
 only queued ones; `auto-release.yml` releases any commit the last tag is

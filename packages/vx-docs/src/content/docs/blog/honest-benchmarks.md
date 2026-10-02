@@ -64,7 +64,7 @@ own dependency, Node 22. vx is put on top through `turbo()` from `@vzn/vx-migrat
 two-line `vx.workspace.mjs`, no config rewritten, so both tools see the
 same graph and restore the identical 64 output files. vx runs as its
 compiled binary; Turbo 2.10 uses no daemon for `turbo run` (deprecated
-there since 2.9), so both pay their own discovery. Four cores, Linux, arms interleaved, medians.
+there since 2.8.11), so both pay their own discovery. Four cores, Linux, arms interleaved, medians.
 
 | `build` (4 tasks)              | vx         | Turbo 2.10.10  |
 | ------------------------------ | ---------- | -------------- |

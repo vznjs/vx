@@ -48,6 +48,29 @@ function filesUnder(files: readonly string[], rel: string): readonly string[] {
 }
 
 /**
+ * Which of `rels` (root-relative) git ignores: a path no glob over git's
+ * files can key. Untracked only (a tracked file is never ignored); empty
+ * outside a repo or without git.
+ */
+export async function gitIgnored(root: string, rels: readonly string[]): Promise<Set<string>> {
+  if (rels.length === 0) return new Set()
+  try {
+    const p = Bun.spawn(['git', 'check-ignore', '--stdin', '-z'], {
+      cwd: root,
+      stdin: new TextEncoder().encode(rels.map((r) => `${r}\0`).join('')),
+      stdout: 'pipe',
+      stderr: 'ignore',
+    })
+    const out = await new Response(p.stdout).text()
+    // 1: none ignored; anything else past 0 is no answer.
+    if ((await p.exited) !== 0) return new Set()
+    return new Set(out.split('\0').filter((f) => f !== ''))
+  } catch {
+    return new Set()
+  }
+}
+
+/**
  * What a project's tracked files are: their extensions (lower case, no
  * dot), directory names at any depth, and top-level entry names.
  */
@@ -87,9 +110,11 @@ export function trackedKinds(tracked: readonly string[]): (rel: string) => Track
 
 /**
  * What moves when the tracked set can: the HEAD reflog's size (a commit, a
- * checkout, a pull appends to it) and HEAD itself. A stat and a small read,
- * so a kept mapping stays a hit between commits. A file `git add`ed and not
- * yet committed is seen at the next mapping.
+ * checkout, a pull appends to it), HEAD itself, and the index's size and
+ * mtime (`git add`, `git rm`). Stats and a small read, so a kept mapping
+ * stays a hit between them; a run does not write the index. Without the
+ * index, a file `git add`ed under an output and not yet committed was not
+ * taken back by the kept mapping, and the run's clean deleted it.
  */
 export async function headStamp(root: string): Promise<string> {
   for (let dir = root; ;) {
@@ -103,7 +128,8 @@ export async function headStamp(root: string): Promise<string> {
       }
       const head = await readFile(path.join(gitDir, 'HEAD'), 'utf8').catch(() => '')
       const log = await lstat(path.join(gitDir, 'logs', 'HEAD')).catch(() => null)
-      return `${head.trim()}\0${log?.size ?? ''}`
+      const index = await lstat(path.join(gitDir, 'index')).catch(() => null)
+      return `${head.trim()}\0${log?.size ?? ''}\0${index?.size ?? ''}\0${index?.mtimeMs ?? ''}`
     }
     const up = path.dirname(dir)
     if (up === dir) return 'no-git'
