@@ -8,7 +8,7 @@ import {
   PERSISTENT_TODO,
   type ProjectMeta,
 } from '@vzn/vx'
-import { mapNxWorkspace, parseNxGraph } from './nx/nx-map.js'
+import { mapNxWorkspace, nxSizeText, parseNxGraph, readNxJson } from './nx/nx-map.js'
 import { trackedFiles, trackedKinds } from './tracked-outputs.js'
 
 export const NX_GRAPH_REL = '.nx/workspace-data/project-graph.json'
@@ -37,6 +37,42 @@ export async function migrateNx(
     ],
     projects: mapped.projects,
     extraFiles: [],
-    notes: mapped.notes,
+    notes: [...mapped.notes, ...workspaceNotes((await readNxJson(root).catch(() => null))?.json)],
   }
+}
+
+/**
+ * nx.json's run-wide settings `nx()` applies live and the written
+ * `vx.workspace.ts` cannot hold (core writes it): each is a line naming
+ * the field to add, or a migrated repo that ran one task at a time for a
+ * shared database ran on every core. nx.json only: the files are written
+ * for every machine, so `NX_PARALLEL` and friends are not read.
+ */
+function workspaceNotes(json: Record<string, unknown> | undefined): string[] {
+  const nx = json as
+    | {
+        parallel?: unknown
+        tasksRunnerOptions?: { default?: { options?: { parallel?: unknown } } }
+        defaultBase?: unknown
+        affected?: { defaultBase?: unknown }
+        maxCacheSize?: unknown
+      }
+    | undefined
+  const out: string[] = []
+  const parallel = nx?.parallel ?? nx?.tasksRunnerOptions?.default?.options?.parallel
+  if (typeof parallel === 'number' && Number.isInteger(parallel) && parallel > 0)
+    out.push(
+      `nx.json \`parallel: ${parallel}\`: add \`concurrency: ${parallel}\` to vx.workspace.ts`,
+    )
+  const base = nx?.defaultBase ?? nx?.affected?.defaultBase
+  if (typeof base === 'string' && base.trim() !== '')
+    out.push(
+      `nx.json \`defaultBase\` ${JSON.stringify(base.trim())}: add \`affectedBase: ${JSON.stringify(base.trim())}\` to vx.workspace.ts`,
+    )
+  const size = nxSizeText(nx?.maxCacheSize)
+  if (size !== undefined)
+    out.push(
+      `nx.json \`maxCacheSize\`: add \`cacheRetention: { maxSize: ${JSON.stringify(size)} }\` to vx.workspace.ts`,
+    )
+  return out
 }

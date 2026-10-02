@@ -1747,7 +1747,7 @@ the root has a `"name"` (vx skips a nameless root's config) and no config
 of its own; a hand-written one stays as written. The report says which;
 with nothing mapped it names the root whenever it has a script, a member
 or not (pnpm's root is not), and tells a root with no `"name"` to add one
-first (vuejs/core). A single-package repo's root is its project and maps.
+first (vuejs/core), naming the scripts that would then map (react, D-87). A single-package repo's root is its project and maps.
 A script that is nothing but `npm run <other>` (`pnpm <other>`, `yarn
 <other>`, `bun run <other>`, `npm test`, `npm start`) becomes a **group**
 over `<other>` — `dependsOn` and no command — so the graph runs and

@@ -194,6 +194,13 @@ project, vx's and Bun's versions. 1,000 packages warm, compiled, 41
 interleaved rounds: main 401.2 ms median (min 337.2), patch 377.9
 (309.2), A/A 373.2 (321.0); `load configs` 41.1 → 14.4 ms (min of 7).
 
+I-24. A config load without the closure builds no package graph. The
+CLI's selection pass, `vx info` and the reader's view each built one for
+`loadProjects`, which reads it only for the closure they never ask for;
+`packageGraph` is now required only with `closure: true`. 1,000
+packages, one edited, `run build --affected=HEAD~1`, compiled, 41
+interleaved rounds: main 359.0 ms median (min 309.1), patch 350.3
+(307.5), A/A 349.5 (296.4).
 I-22. An output glob whose static directory is absent is not scanned.
 A restore into a tree without its outputs scans each output glob twice
 (the check, then the clean), and `Bun.Glob.scanSync` of a missing

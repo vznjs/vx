@@ -28,8 +28,18 @@ In order of harm:
    grant as is), so a root project's `read: ['.']` still reads nested
    projects, `.git` and `.vx` under seatbelt. Needs a darwin probe
    (seatbelt precedence of a deny inside an allow) before a fix.
+6. Linux: a grant naming a path with `[` or `]` (a Next.js route,
+   `pages/[id].tsx`) cannot be granted. vx scans it as a `Bun.Glob`
+   class (no match, the read is denied and reported); the escaped
+   `\[id\]` matches, but SRT globs any Linux allow path holding a
+   bracket (`containsGlobChars`: a read is expanded as a class, a write
+   is dropped), so the hit is never mounted and, being a listed grant,
+   its denial goes unreported. A workspace whose own path holds a
+   bracket meets the same. Probed 2026-10-02. Fix needs a choice: widen
+   such a grant to its nearest bracket-free ancestor (as a file grant
+   is widened to its directory), said once. `read: ['.']` is unaffected.
 
-6. Linux: a grant under a workspace whose directory name holds a
+7. Linux: a grant under a workspace whose directory name holds a
    bracket does not resolve: `resolveSandboxConfig` resolves it to an
    absolute path and `expandGrants` reads that path's brackets as a
    `Bun.Glob` class, so `read: ['.']` there mounts nothing. Since B-57
@@ -1036,6 +1046,14 @@ nothing); with the fix the read itself is reported. Rows:
 holds it (red without the fix: `pwd` read `/root`), and the bare
 baseline's row now pins the two write violations (red without it).
 
+B-56. A plain command opening with a bash reserved word was `exec`'d:
+macOS's `sh` is bash, where `[[` and `time` are words, not
+programs, so `[[ -f x ]]` as a task's whole command was
+`exec: [[: not found`, exit 127, where the bare command ran. They now
+keep the shell, as builtins do. Row: `runner.test.ts` › execWrap ›
+leaves bash's reserved words alone, run under bash (red without the
+fix, 127). Linux's dash has neither, so only macOS ran it. `coproc`
+is left out: macOS's bash 3.2 has no such word (CI's macOS job).
 B-57. SRT globs any Linux read path holding `[` (`containsGlobChars`),
 where a bracket opens a class. A Next.js route granted escaped,
 `read: ['pages/\\[id\\].tsx']`, matched in vx's scan and was handed over
