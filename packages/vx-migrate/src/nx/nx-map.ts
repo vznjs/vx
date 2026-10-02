@@ -188,6 +188,13 @@ export interface MapNxOptions {
    * (null: none), which core holds an output to. Absent, every spelling.
    */
   readonly ownConfig?: (rel: string) => string | null
+  /**
+   * A script's `npm_package_name` / `npm_package_version`: `vx-migrate`
+   * reads them from the manifest it imports (`{ raw: 'pkg.version' }`), so a
+   * bump reaches a written config, as `turbo()`'s mapper does; absent, the
+   * values themselves (the plugin re-maps on a manifest edit).
+   */
+  readonly manifestField?: (key: 'name' | 'version') => unknown
 }
 
 /** The options with what the mapper reads itself: the root's dependency names. */
@@ -597,6 +604,7 @@ function buildTask(
     dotenv,
     opts.pnp,
     meta.packageJson,
+    opts.manifestField,
   )
 
   const inputs = emptyNxInputs()
@@ -628,6 +636,7 @@ function buildTask(
         Object.entries(nodeMap).map(([name, n]) => ({
           name,
           tags: ((n?.data as { tags?: unknown } | undefined)?.tags as string[] | undefined) ?? [],
+          ...(typeof n?.data?.root === 'string' ? { root: n.data.root } : {}),
         })),
       ),
     allTargetNames(nodeMap),
@@ -749,9 +758,10 @@ function npmScriptEnv(
   script: string,
   folded: boolean,
   manifest: { readonly name?: unknown; readonly version?: unknown },
+  manifestField: MapNxOptions['manifestField'],
   todos: string[],
-): Record<string, string> {
-  const env: Record<string, string> = {}
+): Record<string, unknown> {
+  const env: Record<string, unknown> = {}
   const unset = new Set<string>()
   for (const [, v] of command.matchAll(/\$\{?(npm_[A-Za-z0-9_]+)/g)) {
     const value =
@@ -762,8 +772,10 @@ function npmScriptEnv(
           : v === 'npm_lifecycle_event' && !folded
             ? script
             : undefined
-    if (typeof value === 'string') env[v!] = value
-    else unset.add(v!)
+    if (typeof value !== 'string') unset.add(v!)
+    else if (manifestField !== undefined && v !== 'npm_lifecycle_event')
+      env[v!] = manifestField(v === 'npm_package_name' ? 'name' : 'version')
+    else env[v!] = value
   }
   for (const v of unset)
     todos.push(`nx:run-script: \`$${v}\` is set by the package manager's \`run\`, not here — unset`)
@@ -773,7 +785,7 @@ function npmScriptEnv(
 /** What a target runs as; null for `nx:noop`, which is a group task. */
 interface MappedCommand {
   readonly command: string
-  readonly env: Readonly<Record<string, string>>
+  readonly env: Readonly<Record<string, unknown>>
   readonly readyWhen: string | undefined
   /** The `.env` files the command loads, relative to the project dir: key inputs. */
   readonly envInputs: readonly string[]
@@ -797,6 +809,7 @@ function mapCommand(
   dotenv: readonly string[] | null,
   pnp: boolean,
   manifest: { readonly name?: unknown; readonly version?: unknown },
+  manifestField: MapNxOptions['manifestField'],
 ): MappedCommand | null {
   const executor = target.executor
   if (executor === 'nx:noop') {
@@ -862,7 +875,7 @@ function mapCommand(
       const env =
         command === `yarn run ${script}`
           ? {}
-          : npmScriptEnv(command, script, command !== body, manifest, todos)
+          : npmScriptEnv(command, script, command !== body, manifest, manifestField, todos)
       return shell(command, undefined, { env, readyWhen: undefined })
     }
     todos.push(
