@@ -24,8 +24,9 @@ export interface WorkspaceConfig {
   cacheRetention?: { olderThan?: string; maxSize?: string }
   /**
    * The git ref a bare `--affected` compares with (`origin/develop`).
-   * `--affected=<base>` overrides it. Omitted → `origin/HEAD`, else
-   * `HEAD~1`. Never folded into a cache key.
+   * `--affected=<base>` overrides it. Omitted → `origin/HEAD`, then the
+   * first of `origin/main`, `origin/master`, `main`, `master` that is not
+   * HEAD, else `HEAD~1`. Never folded into a cache key.
    */
   affectedBase?: string
   /**

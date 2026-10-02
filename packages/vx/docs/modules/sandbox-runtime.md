@@ -447,8 +447,19 @@ one bracket (`literalReadPaths`): a route granted as
 a listed grant), and a workspace under a bracketed directory was never
 walled (B-57).
 
-SRT drops every Linux write path holding a bracket (it reads one as a
-glob), with no spelling that keeps it, so `bindableWrites` drops it
+A `*` or `?` in a Linux read path has no such spelling: SRT's rewrite of
+each runs inside a class too, so a grant of `a*b.txt` granted `aXb.txt`.
+`bindableReads` leaves such a grant out, says so once, and the strace
+pass judges against what is left, so a read of it is refused and
+reported. In a deny path the match is only a wider wall. A backslash
+SRT skips outright: Bun's `realpathSync` throws ENOENT on a path holding
+one (Node's does not; `stat` finds it), and SRT mounts no path it cannot
+resolve, so such a read or write grant is left out the same way, and a
+project under such a directory is refused on Linux: its task saw no
+project and ran in `$HOME`.
+
+SRT drops every Linux write path holding `[`, `]`, `*` or `?` (it reads
+one as a glob), with no spelling that keeps it, so `bindableWrites` drops it
 first and says so once, naming the directory above it: left in, the read
 grants were punched around a bind that never came, the directory
 vanished from the task's view ("Directory nonexistent"), and the refused
@@ -459,7 +470,8 @@ a spelling holding `[` as a regex in which a backslash is a literal one,
 so the escaped `pages/\[id\].tsx` named no file. vx spells `\[` as `[[]`
 and `\]` as `]` there (`seatbeltBrackets`). A project under a bracketed
 directory is refused on both platforms (B-60, B-65): seatbelt compiled
-vx's own workspace wall as a class too, so it matched nothing.
+vx's own workspace wall as a class too, so it matched nothing. So is one
+under a directory holding `*` or `?`, whose grants matched its siblings.
 
 SRT's in-sandbox network bridge is `socat TCP-LISTEN:3128` (and 1080),
 which socat 1.8 opens as an IPv6 socket. On a host without IPv6 it
@@ -605,6 +617,20 @@ file's siblings — and it is the narrowest thing the mechanism can
 express; the alternative is a declared output the task cannot produce.
 macOS matches paths rather than mounting, so the grant stays exact there.
 
+A read under the widened directory is never refused either: a task
+granted `write: ['out.txt']` read an undeclared `secret.txt` with no
+violation, and a cached run replayed its old bytes after it changed. So
+when a grant was widened, vx lists the directory as the task starts
+(`widenedEntries`), the strace pass also reads the `openat` calls that
+succeeded and were not for writing alone, and reports one of those
+entries that no grant covers — and the directory's listing while it
+holds one, since it names every sibling. The declared files, other
+grants and what the task made there itself stay readable. `grep -r` and
+`find` open each entry relative to a directory's descriptor, which the
+trace names only by number, so such a task's strace runs with `-y`,
+which prints the path each descriptor opened (40% slower on 2,000
+opens). No widened grant, no `-y` and no extra parse.
+
 ## A write grant that mounts nothing
 
 A bind covers what exists when the task STARTS, so a Linux write grant
@@ -692,7 +718,8 @@ machine goes through that proxy, which reports it WITH host and port.
   (`sandbox-request.ts`): null when no node declares `exec.sandbox`,
   else an armer whose `arm()` runs `probeSandbox` + `initSandbox` once,
   on the first sandboxed execution (`execute-task.ts` awaits it before
-  the request). `resetSandbox` runs at the end if it was armed.
+  the request), or earlier when one is sure to execute (C-76).
+  `resetSandbox` runs at the end if it was armed.
 - Execution goes through the placed `TaskExecutor`; the local floor
   (`exec/local-executor.ts`) calls `runSandboxed` instead of
   `runCommand` when the request carries `sandbox`. On violations

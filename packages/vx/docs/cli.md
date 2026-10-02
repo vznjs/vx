@@ -748,7 +748,8 @@ down with it:
   from a healthy run), and the next run without the failure rebuilds the
   rest.
 
-The mode rides the wire, so distributed runs honor it.
+The mode is the local scheduler's: a task a plugin executor runs
+elsewhere is one dispatch, failed or not, like any other.
 
 ### `--download <mode>`
 
@@ -1736,6 +1737,11 @@ as npm hands them to the script and not its hooks (item 905). The
 command is a small shell function, `vx_script`, around the three parts;
 it carries a TODO saying so; a `pre<x>` with no `x` stays a task of its own, and
 npm's lifecycle hooks (`prepack`, `prepublishOnly`, …) are never tasks.
+A package with no `build` script whose `prepack`, `prepublishOnly`,
+`prepublish` or `prepare` runs a builder (`bob build`, `tsc`, `tsup`, …)
+is named in the report, which says to add a `build` script running it
+(react-navigation's twelve packages, whose root `build` is `lerna run
+prepack`, mapped with no build at all).
 Where the package's manager runs no such hooks every `pre<x>` and
 `post<x>` is a task of its own: Yarn 2+ (the nearest `packageManager:
 yarn@2+`, or a Berry `yarn.lock`, D-31; a `packageManager` naming none of npm,
@@ -1767,6 +1773,12 @@ of its own; a hand-written one stays as written. The report says which;
 with nothing mapped it names the root whenever it has a script, a member
 or not (pnpm's root is not), and tells a root with no `"name"` to add one
 first (vuejs/core), naming the scripts that would then map (react, D-87). A single-package repo's root is its project and maps.
+A member's script that runs another member's work (`pnpm -C ../pinia
+run build`, `yarn workspace <name>`, `-r` / `--filter`, a `cd` or `-C`
+/ `--cwd` / `--prefix` into another member) keeps its command and gets a
+TODO naming that part: the graph runs that member's task once, so name it
+under `dependsOn` and drop it from the command (pinia). A directory inside
+the member or the root is no other member.
 A script that is nothing but `npm run <other>` (`pnpm <other>`, `yarn
 <other>`, `bun run <other>`, `npm test`, `npm start`) becomes a **group**
 over `<other>` — `dependsOn` and no command — so the graph runs and
@@ -1945,7 +1957,7 @@ it directly if you want the frozen view).
 
 ```
 vx show                          # list every project
-vx show <project>                # one project's resolved config
+vx show <project>                # one project's resolved config (`//`: the root project's)
 vx show <pkg>#<task>             # a single task (`//#<task>`: the root project's)
 vx show <task>                   # that task in every project declaring it
 vx show ... --format json        # machine-readable (default: pretty)
@@ -2441,7 +2453,7 @@ the two legends sum alike). The `time` spread counts executed tasks
 only — a hit's restore time never enters it — which is why one executed
 task reads as its own max, avg and min. The `result` row is the run in
 one line, last: tasks, cached (every hit, local or remote, over every
-task with a cache) and the wall time — `3 tasks · all cached · 40ms`
+task with a cache that ran or hit; a skipped task asked no cache) and the wall time — `3 tasks · all cached · 40ms`
 when nothing that could hit ran, with `N failed` after the count on a
 red run. A task with no `cache` block could never hit, so it is
 counted apart (`1 task · 1 no-cache · 37ms` for `vx run dev`). A test renders this run and

@@ -25,9 +25,8 @@ import {
   untilGroupsGone,
 } from './kill-tree.js'
 
-const WIN32 = process.platform === 'win32'
-/** `sh` names itself in its errors; `bun exec` on Windows keeps its own. */
-const SH_ARGV0 = WIN32 ? {} : { argv0: 'sh' }
+/** `sh` names itself in its errors. */
+const SH_ARGV0 = { argv0: 'sh' }
 
 export interface RunResult {
   exitCode: number
@@ -224,8 +223,6 @@ const SHELL_BUILTINS = new Set([
  * the shell.
  */
 export function execWrap(command: string): string {
-  // Bun's shell, the task shell on Windows, has no `exec`.
-  if (WIN32) return command
   const first = execWord(command)
   return first === undefined ? command : `exec ${command}`
 }
@@ -252,6 +249,14 @@ export function execWord(command: string): string | undefined {
 export function signalExitCode(signal: string): number {
   const num = (osConstants.signals as Partial<Record<string, number>>)[signal]
   return num === undefined ? 130 : 128 + num
+}
+
+/**
+ * The signal a run's stop stands for, from its abort reason: a task
+ * stopped before its spawn exits as if that signal had killed it.
+ */
+export function stopSignal(reason: unknown): 'SIGINT' | 'SIGHUP' | 'SIGTERM' {
+  return reason === 'SIGINT' || reason === 'SIGHUP' ? reason : 'SIGTERM'
 }
 
 /**
@@ -484,9 +489,8 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
           ],
           // Its own session and process group, so a kill reaches what it
           // forked (kill-tree.ts). stdin is a pipe, so a background group
-          // never stops on a terminal read. Windows has no groups, and a
-          // detached child there has no console.
-          detached: !WIN32,
+          // never stops on a terminal read.
+          detached: true,
         },
       ),
     )
@@ -695,9 +699,8 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
         stdio: ['ignore', 'pipe', 'pipe', ...(guard === undefined ? [] : [guard])],
         // Its own session and process group, so a kill reaches what it
         // forked (kill-tree.ts). stdin is ignored, so a background group
-        // never stops on a terminal read. Windows has no groups, and a
-        // detached child there has no console.
-        detached: !WIN32,
+        // never stops on a terminal read.
+        detached: true,
       }),
     )
   } catch (err) {

@@ -297,7 +297,7 @@ export interface LoadProjectConfigOptions {
  * order given, so a failure names the first broken file the way a
  * one-by-one load did). A single-path load is the one-element case.
  */
-const LOAD_WIDTH = 64
+const LOAD_WIDTH = 128
 
 export async function loadProjectConfigs(
   configPaths: readonly string[],
@@ -462,7 +462,9 @@ export async function loadProjectConfigs(
   try {
     // Loaded LOAD_WIDTH at a time: one import after another put 1,000 cold
     // configs at ~160 ms of imports where 64 at once take ~60 (D-68), and
-    // the width bounds the files a module load may hold open. A failure
+    // 128 took `load configs` from 432 to 411 ms more; the width bounds the
+    // files a module load may hold open, so it stays under macOS's default
+    // 256-descriptor limit. A failure
     // stops nothing (the rest are evaluated and stored for the next
     // attempt); the error thrown is the first in order, as the serial
     // loop's was.
@@ -541,13 +543,38 @@ const WATCHED_BUILTINS: ReadonlyArray<readonly [string, object]> = [
   ['Promise.prototype', Promise.prototype],
 ]
 
-type BuiltinSnapshot = ReadonlyArray<ReadonlyMap<PropertyKey, PropertyDescriptor>>
+interface OwnProperties {
+  keys: PropertyKey[]
+  descriptors: PropertyDescriptor[]
+  byKey: ReadonlyMap<PropertyKey, PropertyDescriptor>
+}
+
+type BuiltinSnapshot = readonly OwnProperties[]
 
 function builtinSnapshot(): BuiltinSnapshot {
-  return WATCHED_BUILTINS.map(
-    ([, proto]) =>
-      new Map(Reflect.ownKeys(proto).map((k) => [k, Object.getOwnPropertyDescriptor(proto, k)!])),
-  )
+  return WATCHED_BUILTINS.map(([, proto]) => {
+    const keys = Reflect.ownKeys(proto)
+    const descriptors = keys.map((k) => Object.getOwnPropertyDescriptor(proto, k)!)
+    return { keys, descriptors, byKey: new Map(keys.map((k, j) => [k, descriptors[j]!])) }
+  })
+}
+
+/**
+ * The same keys in the same order with the same descriptors: nothing to
+ * put back. Read by position, without the by-key lookups and the second
+ * pass for deleted keys, it is the cold path's common case once per
+ * evaluated config: the full check was ~0.1 ms a config, ~100 ms of a
+ * 1,000-config cold load.
+ */
+function unchanged(proto: object, keys: readonly PropertyKey[], was: OwnProperties): boolean {
+  if (keys.length !== was.keys.length) return false
+  for (let j = 0; j < keys.length; j++) {
+    const key = keys[j]!
+    if (key !== was.keys[j]) return false
+    if (!sameDescriptor(was.descriptors[j]!, Object.getOwnPropertyDescriptor(proto, key)!))
+      return false
+  }
+  return true
 }
 
 /** Loads run together, so the config named is the one whose load saw the change. */
@@ -565,8 +592,10 @@ function builtinsChanged(changed: readonly string[], configPath?: string): UserE
 function restoreBuiltins(before: BuiltinSnapshot): string[] {
   const changed: string[] = []
   WATCHED_BUILTINS.forEach(([name, proto], i) => {
-    const was = before[i]!
-    for (const key of Reflect.ownKeys(proto)) {
+    const keys = Reflect.ownKeys(proto)
+    if (unchanged(proto, keys, before[i]!)) return
+    const was = before[i]!.byKey
+    for (const key of keys) {
       const prior = was.get(key)
       const now = Object.getOwnPropertyDescriptor(proto, key)!
       if (prior !== undefined && sameDescriptor(prior, now)) continue

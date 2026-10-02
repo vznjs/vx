@@ -1,7 +1,5 @@
-// A file URL's `.pathname` is not a path on Windows: `new URL(import.meta.url)
-// .pathname` there is `/D:/a/vx/…`, which `path.dirname` and `path.join` turn
-// into `\D:\a\vx\…`, and every read under it is ENOENT. The shard dealer took
-// its test dir that way, so every Windows shard got no file list (O-6). A path
+// A file URL's `.pathname` is percent-encoded, not a path: a checkout
+// under a directory holding a space reads ENOENT under it (O-6). A path
 // comes from `import.meta.dir`, `fileURLToPath`, or `Bun.file(url)` itself.
 import { describe, expect, it } from 'bun:test'
 import { readFileSync } from 'node:fs'
