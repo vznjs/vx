@@ -700,6 +700,11 @@ with no prediction; a history read error fails open in both callers.
 - **F:** a kept server's crash after the summary exits 1, but the
   telemetry summary (`exitOk`) is emitted and flushed before the
   keep-alive wait, so a sink (the GitHub check run) reports success.
+- **B:** the sandbox probe's first `initSandbox` is ~110 ms of the
+  ~220 ms a run's first arm costs on Linux (SRT's `initialize`: an async
+  dependency check, the proxies, the seccomp monitor), and the SRT import
+  70–280 ms on the main thread; measured in isolation for C-76. Both are
+  paid once per process.
 
 - **A:** a kept server that crashes after the summary (`vx run dev`,
   the server exits 4, vx exits 1) is recorded `ok` with the server
@@ -1041,3 +1046,18 @@ cache, so a hit above one restores ahead of its failure (C-1's shape).
 Red when the taint is disabled (`out/t2.txt` replays PARTIAL) and when a
 restore-tier hit releases its dependants before its deps settle (item
 963's hold). Test only.
+## C-76: the sandbox probe starts when a sandboxed task is sure to run
+
+The probe (~220 ms of spawns on Linux) started on the first sandboxed
+task to execute, so it sat on the critical path after the classify and
+any upstream work. `run()` now starts it as soon as a sandboxed task is
+sure to execute: one no cache can answer (no `cache`, reads off,
+persistent) before the classify, a confirmed miss right after it. A run
+whose sandboxed tasks all hit still never probes. The end of the run
+waits for a probe still in flight before its reset: one that landed
+after it left the runtime's proxies up, and an embedder hung (the CLI's
+failure exit hid it). This repo's warm `vx run lint --all` (one
+uncached sandboxed task): min 453 → 377 ms, median ~495 → ~440 over 12
+interleaved runs per arm. Rows: `sandbox-prewarm.unsafe.test.ts`; each
+half and the wait fail their row without themselves, and the control
+fails an unconditional prewarm.

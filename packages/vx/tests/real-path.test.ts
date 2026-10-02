@@ -1,7 +1,5 @@
-// On Windows `realpathSync` kept the temp dir's 8.3 short name
-// (`RUNNER~1`) where `fs.promises.realpath` and git say `runneradmin`,
-// and a config's import closure was keyed under the short spelling
-// (O-16). The Windows job is the platform with a short-named temp dir.
+// A config's import closure was once keyed under one spelling of a
+// path while every caller compared another (O-16).
 import { realpath } from 'node:fs/promises'
 import os from 'node:os'
 import { expect, it } from 'bun:test'
