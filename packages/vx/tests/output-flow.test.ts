@@ -1205,6 +1205,22 @@ describe('persistent post-ready output', () => {
     }
   })
 
+  // A server that writes only `\r` updates never ends a line: what it
+  // held grew without bound and never printed.
+  it("a kept server's line that never ends prints at the cap", () => {
+    const out = sink()
+    const log = defaultLogger(NO_COLORS, { mode: 'broad' }, out)
+    const n = mkPersistent('app#server')
+    log.taskComplete(n, mkOutcome(n, 'success'))
+    log.runEnd?.()
+    const before = out.text().length
+    for (let i = 0; i < 2000; i++) log.taskStdout(n, `\rbuilding ${String(i).padStart(30, '.')}`)
+    const printed = out.text().slice(before)
+    expect(printed.startsWith('app#server │ \rbuilding')).toBe(true)
+    expect(printed.length).toBeGreaterThanOrEqual(64 * 1024)
+    expect(printed.length).toBeLessThan(80 * 1024)
+  })
+
   // The CLI's bus delivers one `run:end`; its last word is `settle`.
   it("settle prints a kept server's last partial line", () => {
     const out = sink()

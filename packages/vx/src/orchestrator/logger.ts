@@ -324,6 +324,7 @@ export function defaultLogger(
   // servers' logs while it ran (C-56). So a ready server's output streams
   // from then on, a line at a time under its id; the partial line each
   // holds waits for its newline, a second runEnd, or `settle`.
+  const KEPT_LINE_CAP = 64 * 1024
   const keptLines = new Map<string, { node: TaskNode; rest: string }>()
   const streamKept = (node: TaskNode, chunk: string): void => {
     const held = keptLines.get(node.id) ?? { node, rest: '' }
@@ -331,7 +332,13 @@ export function defaultLogger(
     const text = held.rest + chunk
     const cut = text.lastIndexOf('\n')
     if (cut < 0) {
-      held.rest = text
+      // A line that never ends (a `\r` progress bar) is printed at the cap
+      // rather than held without bound.
+      if (text.length < KEPT_LINE_CAP) held.rest = text
+      else {
+        held.rest = ''
+        writer.write(fenced(formatKeptLines(node, text, colors)))
+      }
       return
     }
     held.rest = text.slice(cut + 1)
