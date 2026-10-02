@@ -904,6 +904,9 @@ export async function mapTurboWorkspace(
       }
     }
   }
+  const scripted = new Set<string>()
+  for (const set of runnable.values()) for (const name of set) scripted.add(name)
+  const entry = new Set<string>()
   // A script-less task is Turbo's no-op node, and it keeps its edges. Its
   // `^` edge to its own name needs nothing (core's `^task` walks past a
   // project without the task to the nearest one with it); a `^` edge to
@@ -940,6 +943,26 @@ export async function mapTurboWorkspace(
       })
       const reached = caretNames.has(name) || crossIds.has(`${meta.name}#${name}`)
       if (sidecar || (local && reached)) emitted.get(meta.name)!.add(name)
+      // A name no package has a script for is an entry point of its own:
+      // `turbo run ci` over `ci: { dependsOn: ["lint", "build"] }`, or
+      // cal.com's `deploy` → `@calcom/web#build`, runs its edges, and vx
+      // said no project declares it. Its `pkg#task` edges stay in that
+      // package alone: core's `--filter`/`--affected` reach follows a task
+      // edge across packages, and cal.com's `deploy` in all 116 would have
+      // made every package a dependent of web.
+      else if (!scripted.has(name)) {
+        const kept = entryEdges(def?.dependsOn ?? [], meta.name, rootMeta?.name)
+        const keeps = kept.some((d) => {
+          if (envDependency(d) !== null || d.includes('$TURBO_ROOT$')) return false
+          if (d.startsWith('^'))
+            return d !== `^${name}` && [...runnable.values()].some((r) => r.has(d.slice(1)))
+          return d !== name && (own.has(d) || defined.has(d))
+        })
+        if (keeps) {
+          emitted.get(meta.name)!.add(name)
+          entry.add(`${meta.name}#${name}`)
+        }
+      }
     }
   }
   // Turbo's transit node (its with-vitest example; the docs' pattern for a
@@ -1072,9 +1095,15 @@ export async function mapTurboWorkspace(
         // task depending on them does the same (with-tailwind's `ui#dev`
         // starts `dev:styles` and `dev:components`; its `ui#build` builds
         // `build:styles` and `build:components`).
+        const groupDef = entry.has(`${meta.name}#${name}`)
+          ? {
+              ...defFor(name)!,
+              dependsOn: entryEdges(defFor(name)!.dependsOn ?? [], meta.name, rootMeta?.name),
+            }
+          : defFor(name)!
         const t = buildTask(
           name,
-          defFor(name)!,
+          groupDef,
           '',
           own,
           defFor,
@@ -1207,6 +1236,19 @@ function npmScriptEnv(
     define['npm_package_version'] = field('version', version)
   if (unfolded && wanted('npm_lifecycle_event')) define['npm_lifecycle_event'] = script
   if (Object.keys(define).length > 0) exec.env = { ...exec.env, define }
+}
+
+/**
+ * An entry group's edges in one package: `pkg#task` is that package's own
+ * task there and nobody's elsewhere (`//#task` the root's).
+ */
+function entryEdges(deps: readonly string[], pkg: string, rootName: string | undefined): string[] {
+  return deps.flatMap((d) => {
+    if (d.startsWith('^') || !d.includes('#') || envDependency(d) !== null) return [d]
+    const at = d.indexOf('#')
+    const owner = d.slice(0, at) === ROOT ? (rootName ?? ROOT) : d.slice(0, at)
+    return owner === pkg ? [d.slice(at + 1)] : []
+  })
 }
 
 function buildTask(
