@@ -681,6 +681,17 @@ with no prediction; a history read error fails open in both callers.
 
 ## Leads for other streams
 
+- **D:** a persistent task with `exec.remote: 'only'` is refused for
+  lacking `cache` ("needs `cache`: its inputs are what a worker
+  reproduces"), and adding `cache` is refused next ("`cache` is not
+  allowed on a persistent task"): a circular hint. A persistent task
+  runs on this machine; refuse `remote: 'only'` on it by that reason.
+- **E:** a dependency server that crashed mid-run still closes its
+  "since ready" block `(3ms) running`: the block is drawn at `runEnd`
+  from the outcome stored at ready, before run.ts marks the crash
+  failed. The footer, the `vx: … exited` lines and `--summarize` say
+  failed.
+
 - **B:** `runner.test.ts` › "keeps a ready server alive past its
   readyWhen timeout" failed on #2054's Linux CI: `echo up` missed its
   150 ms readiness bound under load (`PersistentReadyError … within
