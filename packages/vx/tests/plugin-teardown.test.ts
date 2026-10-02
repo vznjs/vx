@@ -139,7 +139,7 @@ describe('teardownPlugins — a dropped result is reported', () => {
     )
     expect({ after, warnings }).toEqual({
       after: true,
-      warnings: ["[vx] plugin 'org/bad' teardown failed: boom"],
+      warnings: ["[vx] plugin 'org/bad' failed in teardown: boom"],
     })
   })
 })
