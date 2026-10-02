@@ -1018,9 +1018,9 @@ random graphs, settling outcomes in any order (a restore-tier hit
 settles before its deps) with partial asks between, and holds every ask
 made once a task's ancestors have settled to a brute-force reference,
 in both modes: `--continue=always` and seeds alone
-(`--exclude-dependencies`). Mutants caught: a clean answer memoized
-before its deps' answers were final (C-23's rule; the seeds row), the
-memo kept unconditionally, `skipped` dropped from the poison set, the
+(`--exclude-dependencies`), on the full-period PRNG of C-79. Mutants
+caught: a clean answer memoized before its deps' answers were final
+(C-23's rule), the memo kept unconditionally, `skipped` dropped from the poison set, the
 seed check dropped from `judge`, and the tracker disabled when only
 seeds are set. Survivors are equivalent (a seed's deps; the memo's
 timing for a taint). Test only.
