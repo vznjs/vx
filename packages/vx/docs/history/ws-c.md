@@ -834,6 +834,21 @@ restore feeds an exec task. Cost (1,000 projects, 3,000 nodes, min of
 dispatch order `r1, r2, e` ahead of three idle restores): red without
 the pass. `modules/scheduler.md` says so.
 
+## C-56: a kept server's output streams after the summary
+
+`vx run dev --all` (or two requested servers) showed nothing its servers
+wrote while vx held them: a persistent task's output after ready goes
+to a bounded tail, flushed once at `runEnd`, which runs before the
+summary, and the keep-alive wait after it printed none of what followed.
+After that flush a kept server's output now streams, a line at a time
+under its id (`app#dev │ …`), its last partial line at `settle` (the
+bus delivers one `run:end`), a line that never ends (a `\r` progress
+bar) at 64 KiB rather than held without bound, fenced on GitHub Actions, silent under `errors-only`. Rows
+(`output-flow.test.ts`): the stream in broad and full (red without it),
+the partial line at `settle`,
+errors-only silent (red with its guard removed), and the fence (red with
+either fence removed). `cli.md` says so.
+
 ## C-55: a fail-fast skip is not "blocked upstream"
 
 `--continue=never`'s footer read `Skipped: 2 tasks never started —
