@@ -44,6 +44,10 @@
   `ui:build:ci` names target `build:ci` and is no edge where ui lacks it.
   vx read the last segment as a configuration and drew an edge to that
   configuration's task (or to `build`, with a todo) that Nx never draws.
+- **P-10** `nx()`: a `{ input, projects }` list is matched as Nx's
+  `findMatchingProjects` matches it (`*` patterns, `tag:`, `!`
+  exclusions). Looked up as literal names, a `tag:` or pattern entry was
+  a todo and its input left the key.
 - **P-11** `vx-migrate --from nx`: nx.json's `parallel`, `defaultBase`
   and `maxCacheSize`, which `nx()` applies live, are each a note naming
   the `vx.workspace.ts` field to add. The written workspace file holds
