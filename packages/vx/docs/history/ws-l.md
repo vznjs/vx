@@ -445,6 +445,14 @@
   there. It is now masked with the same rule before it is recorded.
   Row: `invocation-secret-mask.test.ts`, red without the fix.
 
+- L-40. `fix(orchestrator)`: a plugin's `ctx.warn` line reaches the
+  run's status channel, and a remote layer warns with the server's own
+  reply (vx-reapi's "could not record execution: …"), which may echo
+  what it was sent: a secret there printed whole. Every status line is
+  masked, and the two CLI paths that print a plugin's warning straight
+  to stderr (a plugin verb, a fingerprint claim) mask it too.
+  `plugin-warn-secret-mask.test.ts`, red without the fix.
+
 ## Leads for other streams
 
 - Cache owners: `src/cache/archive.ts` and `tar-stream.ts` changed under
