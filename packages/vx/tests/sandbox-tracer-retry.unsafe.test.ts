@@ -147,8 +147,9 @@ describe.skipIf(!available || process.platform !== 'linux' || realStrace === nul
     })
 
     it("the local executor hands the run's stop to the sandboxed run", async () => {
+      // Aborted once the first attempt has printed: an aborted request
+      // spawns nothing at all (B-55), so the stop lands mid-run.
       const stop = new AbortController()
-      stop.abort()
       const r = await localExecutor().execute({
         taskId: 'a#t',
         workspaceRoot: dir,
@@ -159,7 +160,7 @@ describe.skipIf(!available || process.platform !== 'linux' || realStrace === nul
         env: process.env,
         envDefine: {},
         capture: { stdout: true, stderr: true },
-        onStdout: () => {},
+        onStdout: () => stop.abort(),
         onStderr: () => {},
         signal: stop.signal,
         sandbox: {
