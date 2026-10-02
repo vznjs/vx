@@ -162,6 +162,14 @@ run leaves out; the rest are refusals.
   `--filter-prod`, `--test-pattern`, `--changed-files-ignore-pattern`,
   `-w` / `--workspace-root` all read `unknown flag` (`src/cli/foreign-flags.ts`
   holds Turbo's and Nx's only), though vx's `--filter` is pnpm's DSL.
+- B: the runner's exit-127 hint ("install it in this package or at the
+  workspace root") is wrong under Yarn Plug'n'Play, where the package IS
+  installed into `.pnp.cjs` and no `node_modules/.bin` exists (probed on
+  Yarn 4.5: `json5 --version` ran under `yarn run`, exit 127 under vx).
+  `vx init` names PnP since D-108; the hint could too.
+- B/C: `own-rss-high-water.test.ts` (#2256) raised a 200 MB peak in the
+  test runner and `last.test.ts`'s memory row failed whenever the two
+  shared a shard; fixed in #2322 by probing in a child process.
 
 ## Entries
 
@@ -867,3 +875,7 @@ packages/core`) selects the dependent whose `file:../lib` spec named
 - **D-100.** Nx run-commands' options pasted under a task's `exec` (`cwd`, `args`, `commands`, `parallel`, `shell`, `interactive`) were refused as unknown fields with no word on vx's home. Each now names it (`cd <dir> && …` in `command`; arguments after `--` on `vx run`; one task each, or `a & b; wait`; `command` always runs in a shell). Rows: `tests/config-schema-exec-keys.test.ts`, a typo control kept; red without the fix. (#2190)
 - **D-101.** pinia's online-playground `build` (`pnpm -C ../pinia run build && vite build`) mapped verbatim, so vx built pinia again outside the graph beside pinia's own task. The part of a member's script that runs another member's work — `yarn workspace`, a runner, `-r` / `--filter` / `--workspace`, a `cd` / `-C` / `--dir` / `--cwd` / `--prefix` whose innermost member is another one — now gets a TODO naming it; the command stays. Probed: flags pinia, kit, react, headlessui, pnpm/pnpm; not jest, docusaurus, lexical (root-directed). Rows: `tests/init-member-sibling.test.ts`, controls for a fixture, the root, the member itself, `$DIR`; red without the fix. (#2209)
 - **D-102.** A task written in package.json's shape (`tasks: { x: 'tsc -b' }`) was refused as `tasks.x must be an object` with no word on where the command goes. A non-empty string now adds `— a command is { exec: { command: "tsc -b" } }`; an empty string and other non-objects keep the bare message. Rows: `tests/config-schema-task-string.test.ts`, with controls; red without the fix. The schema contract record regenerated. (#2229)
+- **D-104.** react-navigation's twelve packages build only in `prepack: bob build`, and its root `build` (`lerna run prepack`) runs the members and is left out, so `vx init` mapped the repo with no build. A member with no `build` script whose `prepack` / `prepublishOnly` / `prepublish` / `prepare` runs a builder is named in a report note, which says to add a `build` script running it. Of 38 cloned repos only react-navigation trips it. Rows: `tests/init-lifecycle-build.test.ts`, controls for a package with a build, `prepare: husky`, the root's own hook; red without the fix. (#2244)
+- **D-105.** With no `build`, the report's `next:` line ran the first task: react-navigation was told `vx run clean --all`. It runs `build`, else the first task that neither serves (`persistent`) nor changes the repo (`clean`, `release`, `publish`, `deploy`, `version`, `format`, `fix`, …), else the first. Rows: `tests/init-next-task.test.ts`; red without the fix. (#2251)
+- **D-106.** A member whose package.json has no `name` is no project, and `vx init` left its scripts unmapped without a word (remix's `packages/component/bench`). Init names each nameless member with a script, in either report; the directories come from an internal `discoverProjects(workspace, nameless?)`, so `listProjects` / `listProjectMetas` keep their signatures. Rows: `tests/init-nameless-member.test.ts`, controls for a nameless member with no or only an empty script; red without the fix. (#2274)
+- **D-107.** On CI's one-commit checkout `--affected=HEAD~1` read only `git ref "HEAD~1" did not resolve`; in a shallow clone the refusal now says so and names `git fetch --unshallow` / `fetch-depth: 0`. The extra `git rev-parse --is-shallow-repository` runs only on that error path. Rows: `tests/affected-shallow.test.ts`, a full-clone control; red without the fix. (#2287)
