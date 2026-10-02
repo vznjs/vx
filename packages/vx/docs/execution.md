@@ -151,7 +151,8 @@ terminal and a task succeeding or failing. Read it alongside
  │                runner adds/removes each around its spawn.
  │    • SIGINT/SIGTERM/SIGHUP handlers (removed in a finally): on
  │                signal, forward it (SIGHUP as SIGTERM) to everything
- │                in liveChildren + persistentRegistry, wait
+ │                in liveChildren + persistentRegistry (and kill any
+ │                running cache.inputs.runtime probe, C-65), wait
  │                VX_KILL_GRACE_MS (2 s) for their groups, SIGKILL
  │                what is still there, let the run finish its own
  │                end (flush, teardown, cache close), then
