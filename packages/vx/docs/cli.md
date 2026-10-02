@@ -1717,7 +1717,11 @@ reach, and a TODO to order the cycle: `^build` there refuses the run.
 edge); `dev` / `start` / `serve` / `watch` /
 `preview` become persistent tasks, with a TODO to add `readyWhen` when
 another task depends on one, and so does a watcher: a `watch` segment in the script's name (`build:watch`),
-a `--watch` flag, `tsc -w` / `rollup -w`, or nodemon (D-40). A
+a `--watch` flag, `tsc -w` / `rollup -w`, or nodemon (D-40), and a server:
+`serve <dir>`, `http-server`, bare `vite`, a tool's `dev` / `serve` /
+`start` / `preview` verb (`next start`, `netlify dev`), or a script that
+runs such a script of its package by name (`cross-env X=1 pnpm start`),
+outside quotes and not sent to the background with `&` (D-91). A
 script whose name no task may carry (`lint#fix`, `^up`; the schema's
 rule, item 1000) is left out with a TODO rather than written into a
 config every later command refuses, and a `__proto__` script is written
@@ -1772,7 +1776,9 @@ pnpm docs-build`; through `run-s` / `run-p` / `npm-run-all` or `concurrently
 a check twice (D-45). The rest check the whole repo (`lint: oxlint .`,
 `test: vitest`) and become the root's own tasks in a root vx.config, when
 the root has a `"name"` (vx skips a nameless root's config) and no config
-of its own; a hand-written one stays as written. The report says which;
+of its own; a hand-written one stays as written. The report says which, its
+examples of running the members spelled by the repo's manager (`--workspaces`
+under npm, `yarn workspaces foreach` under Yarn 2+);
 with nothing mapped it names the root whenever it has a script, a member
 or not (pnpm's root is not), and tells a root with no `"name"` to add one
 first (vuejs/core), naming the scripts that would then map (react, D-87). A single-package repo's root is its project and maps.

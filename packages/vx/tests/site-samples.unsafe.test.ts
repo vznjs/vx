@@ -332,6 +332,21 @@ describe('the why-vx-is-fast concept quotes the benchmarks page', () => {
   })
 })
 
+describe("the quickstart's known limits are still limits", () => {
+  // It listed "A workspaceFiles glob stops at a git submodule's edge"; since
+  // 2026-09-27 the nested repository's files are listed and keyed
+  // (caching.md), and an edit inside a submodule under `workspaceFiles:
+  // ['sub/**']` missed, its revert hit (J-114).
+  it('caching.md keys a submodule under workspaceFiles, and the quickstart names no edge', () => {
+    const caching = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'caching.md'), 'utf8')
+    expect(caching.replace(/\s+/g, ' ')).toContain('and for a `workspaceFiles` glob')
+    const limits = /## Known limits\n([\s\S]*)$/.exec(
+      readFileSync(path.join(DOCS, 'quickstart.md'), 'utf8'),
+    )![1]!
+    expect(limits).not.toContain('submodule')
+  })
+})
+
 describe('the flaky-tasks post shows the section the footer prints', () => {
   it('its sample is formatFlakySection on the two findings it describes', () => {
     const page = readFileSync(path.join(DOCS, 'blog', 'flaky-tasks.md'), 'utf8')
