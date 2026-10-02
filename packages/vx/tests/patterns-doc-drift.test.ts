@@ -78,13 +78,16 @@ describe('patterns.md quotes the benchmark rows benchmarks.md has', () => {
         line
           .split('|')
           .slice(2, 5)
-          .map((cell) => cell.trim()),
+          // The figure, not its aside: patterns.md says `(vx 13% faster)`
+          // where the dated benchmarks.md row says `(1.2×)` (owner,
+          // 2026-10-02: every cell names vx's %).
+          .map((cell) => cell.trim().replace(/\s*\([^)]*\)$/, '')),
       )
     expect(rows.length).toBe(3)
     for (const cells of rows) {
       expect(cells.length).toBe(3)
       const row = new RegExp(
-        `^\\|[^|]*\\|\\s*${cells.map((c) => c.replace(/[.*+?^$()|[\]\\]/g, '\\$&')).join('\\s*\\|\\s*')}\\s*\\|`,
+        `^\\|[^|]*\\|\\s*${cells.map((c) => c.replace(/[.*+?^$()|[\]\\]/g, '\\$&')).join('(?:\\s*\\([^|)]*\\))?\\s*\\|\\s*')}(?:\\s*\\([^|)]*\\))?\\s*\\|`,
         'm',
       )
       const found = row.exec(bench)
