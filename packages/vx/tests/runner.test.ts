@@ -1227,8 +1227,13 @@ describe('runPersistent — the rows its sweep asked for', () => {
       await Promise.allSettled([polite.ready, deaf.ready])
       await polite.child.exited
       expect(await Bun.file(heard).exists()).toBe(true)
-      expect(await waitForDead(deaf.child.pid, 3_000)).toBe(true)
-      expect(deaf.child.signalCode).toBe('SIGKILL')
+      // `signalCode` is set when Bun reaps the child, after the kernel says
+      // dead: read right after `waitForDead` it was null 4 times in 50 (M-32).
+      const died = await Promise.race([
+        deaf.child.exited.then(() => deaf.child.signalCode),
+        Bun.sleep(3_000).then(() => 'still running'),
+      ])
+      expect(died).toBe('SIGKILL')
     } finally {
       if (prev === undefined) delete process.env['VX_KILL_GRACE_MS']
       else process.env['VX_KILL_GRACE_MS'] = prev

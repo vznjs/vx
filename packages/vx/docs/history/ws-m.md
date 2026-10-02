@@ -347,6 +347,15 @@ between them, green); both glob rows 6 of 6 beside eight busy loops.
 Which `until` timed out was not recorded. `task-glob-brackets.test.ts` ›
 an upstream's hit sets aside the route (F's macOS lead) is M-4 and M-5.
 
+M-32. `runner.test.ts` › a readyWhen timeout sends SIGTERM first, and
+SIGKILL to what ignores it: red on a docs-only PR's CI (run 37052235753,
+`signalCode` null). The row read `child.signalCode` right after
+`waitForDead`, which answers from the kernel (a zombie is dead); Bun sets
+`signalCode` only when it reaps the child on its loop. A SIGKILLed
+`sleep` read null there 4 times in 50, and SIGKILL 50 of 50 after
+`exited`. The row now reads it after `exited`, bounded at 3 s; the only
+site of the pattern.
+
 ## Leads for other streams
 
 - A: A-20 let a same-project dependant restore ahead of a producer whose
