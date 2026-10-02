@@ -1125,6 +1125,16 @@ creator's cwd rather than copying it, so a `chdir` by either moves both
 (libuv's pool after `process.chdir`): deniedCalls › moves a thread with
 the process whose cwd it shares (red with the flag ignored).
 
+B-62. The strace parse ran every regex on every trace line, and B-61
+added seven more for the lines no denial regex took, which is nearly
+every line (a successful open). Two substring tests now skip such a
+line before any regex. A synthetic 20,000-line trace (50 denials):
+11.0 ms on main before B-61, 3.6 ms now with cwd tracking, 2.0 without
+(min of 30, three alternations). The existing deniedCalls rows hold the
+parse: dropping any one of the gates' `resumed>`, `clone` or `fork(`
+tests reddens a row (the thread row gained a completed `vfork` line for
+the last).
+
 B-63. `cwdMounted`'s guard for a cwd the deny list already held (a
 single-package workspace, whose cwd is its anchor) held nothing: with it
 removed, such a task runs in its cwd and its read is reported exactly as
