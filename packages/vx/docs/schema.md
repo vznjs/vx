@@ -470,7 +470,8 @@ task's `define`, six characters or more; not a name ending `_FILE`,
 shows it: the task's output, the stdout the cache keeps and a hit
 replays, the command a cache entry stores (what `vx why` prints and a
 remote cache receives), the `$ command` line, telemetry records and
-`vx show`. A value
+`vx show`. A multi-line value (a PEM key) is also masked line by
+line, each line of six characters or more. A value
 split across two output chunks is still caught; the output holds back
 that many characters until the next chunk. A plugin that reads a task's
 config directly sees it as written. A secret whose name holds none of

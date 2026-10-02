@@ -438,6 +438,13 @@
   Turbo's TURBO_CACHE and TURBO_REMOTE_CACHE_READ_ONLY narrow the remote,
   `nx-cache.test.ts`'s resolve row; each red on its mutant.
 
+- L-36. `fix(util)`: a multi-line secret (a PEM key in a secret-named
+  variable) was masked only as a whole value, so a tool that indented or
+  reflowed it (`… | sed 's/^/  /'`) printed every line of the key in the
+  clear. Each line of six characters or more is now masked too, as GitHub
+  Actions does. Rows: `secret-mask-multiline.test.ts`, red without the
+  fix.
+
 ## Leads for other streams
 
 - Cache owners: `src/cache/archive.ts` and `tar-stream.ts` changed under
