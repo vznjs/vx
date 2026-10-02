@@ -239,11 +239,13 @@ failed to spawn 'git' … Install git and re-run` — the same the input
 - `--affected=<ref>` uses the given git ref. A value that is empty or
   starts with `-` is refused before git sees it: the ref is an argument,
   never a shell command, and an option-like one (`--output=<path>`)
-  would be a real `git diff` option. A range (`HEAD~1..HEAD`,
-  `main...feature`) is refused there too, naming the base to pass
-  alone — `ranges are not supported — pass the base alone ("HEAD~1")`
-  — because the other end is always the working tree. A ref that does
-  not exist is `git ref "<ref>" did not resolve`.
+  would be a real `git diff` option. A range ending at HEAD is Turbo's:
+  `main...HEAD` diffs from the merge base (as a bare `main` does) and
+  `main..HEAD` from `main` itself; vx's other end is the working tree, so
+  an uncommitted edit is in it too. A range ending elsewhere
+  (`main...feature` off that branch) is refused, naming the checkout to
+  make, and one with an empty or `-`-led end is refused before git runs.
+  A ref that does not exist is `git ref "<ref>" did not resolve`.
 - A member whose directory is a symlink to a place elsewhere under the
   workspace root (`packages/b -> ../ext/b`) is selected by a change at
   that real place too: git names the files where they live, not by the

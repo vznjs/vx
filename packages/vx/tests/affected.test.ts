@@ -181,15 +181,14 @@ describe('affectedProjects', () => {
     },
   )
 
-  // Turbo migrants type `--affected=HEAD~1..HEAD`; git's own refusal read as
-  // "did not resolve" about two refs that exist. The non-repository root
-  // proves the refusal comes before any git spawn: there, git's answer would
-  // be "not a git repository".
+  // A range whose end is not a commit, or starts with "-", is refused
+  // before git sees it: the non-repository root proves no spawn ran (git's
+  // answer there would be "not a git repository").
   it.each([
-    ['HEAD~1..HEAD', 'HEAD~1'],
-    ['main...feature', 'main'],
-    ['..HEAD', 'HEAD'],
-  ])('refuses the range %j before git sees it, naming the base %j', async (since, base) => {
+    ['..HEAD', 'HEAD..HEAD'],
+    ['HEAD~1..', 'HEAD~1..HEAD'],
+    ['HEAD~1...--output=x', 'HEAD~1...HEAD'],
+  ])('refuses the range %j before git sees it', async (since, shown) => {
     const bare = await mkdtemp(path.join(os.tmpdir(), 'vx-affected-range-'))
     try {
       for (const workspaceRoot of [root, bare]) {
@@ -199,13 +198,47 @@ describe('affectedProjects', () => {
         )
         expect(err).toBeInstanceOf(UserError)
         expect(err?.message).toBe(
-          `git ref "${since}" is a range: ranges are not supported — pass the base alone ` +
-            `("${base}"); vx diffs it against the working tree.`,
+          `git ref "${since}" is not a range vx takes: both ends name a commit ("${shown}"), ` +
+            'and neither starts with "-".',
         )
       }
     } finally {
       await rm(bare, { recursive: true, force: true })
     }
+  })
+
+  // Turbo's `--filter=[main...HEAD]` (changes on HEAD since the merge base)
+  // and `[main..HEAD]` (since main itself): vx refused both, though an end
+  // at HEAD is the working tree vx diffs against.
+  it('takes a range ending at HEAD: `...` from the merge base, `..` from the start', async () => {
+    await git(root, 'branch', '-m', 'main')
+    await git(root, 'checkout', '-q', '-b', 'feature')
+    await writeFile(path.join(root, 'packages/a/file.txt'), 'a-on-feature')
+    await git(root, 'add', '.')
+    await git(root, 'commit', '-q', '-m', 'feature: a')
+    await git(root, 'checkout', '-q', 'main')
+    await writeFile(path.join(root, 'packages/b/file.txt'), 'b-on-main')
+    await git(root, 'add', '.')
+    await git(root, 'commit', '-q', '-m', 'main: b')
+    await git(root, 'checkout', '-q', 'feature')
+    const sel = async (since: string) =>
+      [...(await affectedProjects({ workspaceRoot: root, since, projects }))].sort()
+    expect(await sel('main...HEAD')).toEqual(['a'])
+    expect(await sel('main...feature')).toEqual(['a'])
+    expect(await sel('main..HEAD')).toEqual(['a', 'b'])
+    // An end elsewhere is a tree vx does not have.
+    const err = await affectedProjects({
+      workspaceRoot: root,
+      since: 'feature...main',
+      projects,
+    }).then(
+      () => null,
+      (e: unknown) => e as Error,
+    )
+    expect(err?.message).toBe(
+      'git ref "feature...main" ends at "main", not HEAD: vx diffs against the working tree — ' +
+        'check out "main" and pass "feature...HEAD" (or "feature").',
+    )
   })
 
   it('CONTROL: the base a range refusal names works on its own', async () => {

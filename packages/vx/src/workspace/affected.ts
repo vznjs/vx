@@ -134,25 +134,42 @@ export async function affectedProjects(args: AffectedArgs): Promise<Set<string>>
       `git ref "${args.since}" is not a ref: a base cannot be empty or start with "-".`,
     )
   }
-  // `A..B` / `A...B` reached `rev-parse --verify`, which refuses a range, and
-  // the user read "did not resolve" about refs that both exist. `..` is
-  // illegal in a ref name (git-check-ref-format), so this refuses no ref.
-  const range = args.since.indexOf('..')
-  if (range >= 0) {
-    throw new UserError(
-      `git ref "${args.since}" is a range: ranges are not supported — pass the base alone ` +
-        `("${args.since.slice(0, range) || 'HEAD'}"); vx diffs it against the working tree.`,
-    )
+  // A range: Turbo's `[main...HEAD]` (changes on HEAD since the merge
+  // base) and `[A..HEAD]` (since A itself). vx diffs against the working
+  // tree, so an end at HEAD is the same set, plus any uncommitted edit; an
+  // end elsewhere is a tree vx does not have, and is refused. `..` is
+  // illegal in a ref name (git-check-ref-format), so this splits no ref.
+  let since = args.since
+  let fromMergeBase = true
+  const range = /^(.*?)(\.{2,3})(.*)$/s.exec(args.since)
+  if (range !== null) {
+    const [, from = '', dots, to = ''] = range
+    if (from === '' || to === '' || from.startsWith('-') || to.startsWith('-')) {
+      throw new UserError(
+        `git ref "${args.since}" is not a range vx takes: both ends name a commit ` +
+          `("${from || 'HEAD'}${dots}HEAD"), and neither starts with "-".`,
+      )
+    }
+    await verifyRef(args.workspaceRoot, to)
+    if (!refIsHead(args.workspaceRoot, to)) {
+      throw new UserError(
+        `git ref "${args.since}" ends at "${to}", not HEAD: vx diffs against the working ` +
+          `tree — check out "${to}" and pass "${from}${dots}HEAD" (or "${from}").`,
+      )
+    }
+    since = from
+    fromMergeBase = dots === '...'
   }
-  await verifyRef(args.workspaceRoot, args.since)
+  await verifyRef(args.workspaceRoot, since)
   // Diff from the MERGE BASE of `since` and HEAD, not from `since` itself:
   // on a branch whose base has moved on, `git diff <base>` reports every
   // file OTHER people changed on the base (over-selection that defeats a
   // CI `--affected`), and hides your own edit when the base later landed
   // byte-identical content. Turbo and Nx both diff from the merge base;
   // when there is none (unrelated histories, a detached probe) the ref
-  // itself is the base, as before.
-  const base = await mergeBase(args.workspaceRoot, args.since)
+  // itself is the base, as before. Turbo's two-dot range `A..HEAD` is the
+  // one form that diffs from A itself.
+  const base = fromMergeBase ? await mergeBase(args.workspaceRoot, since) : since
 
   const [diffed, untracked] = await Promise.all([
     // `--no-renames` is crucial for project-affected detection: with
