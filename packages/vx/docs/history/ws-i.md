@@ -536,6 +536,12 @@ status` re-hashes every tracked file, and vx runs it with
   1,000 configs in 340–390 ms against 28 warm. Serving evaluations
   under `--force` is a meaning change for the escape hatch, not a perf
   fix: the owner's call.
+- **Owner / E: a warm hit reads and masks its stored stdout whether or
+  not the view prints it.** 200 hits storing 1 MB each: the probe's
+  `getMany` read 296 ms of the main thread and the secret mask 57, for
+  2 KB printed. Reading stdout only for a hit the logger will show needs
+  the logger to say so before the probe (a contract change), or stdout
+  read at replay instead of with the entry.
 
 ## Probes refuted (2026-10-02)
 
