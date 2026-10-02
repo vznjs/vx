@@ -16,7 +16,7 @@ import { reapi } from '@vzn/vx-reapi'
 
 export default defineWorkspace({
   // Reads try the local cache first, then the remote; a remote hit is copied to local.
-  plugins: [reapi({ endpoint: 'cache.example.com:443' })],
+  plugins: [reapi({ endpoint: 'grpcs://cache.example.com:443' })],
 })
 ```
 
@@ -30,7 +30,8 @@ from the environment, and `VX_REAPI_EXECUTE=1` turns on remote execution the
 way `execute: true` does (off by default: a plugin must not move where a
 build runs merely by being configured for caching).
 
-TLS uses the system roots unless told otherwise. A server behind a private
+TLS is on for a `grpcs://` or `https://` endpoint, or with any PEM below;
+a bare `host:port` is plaintext. It uses the system roots unless told otherwise. A server behind a private
 CA takes `tlsCertificate` (or `VX_REAPI_TLS_CERTIFICATE`), a PEM file of
 that CA; one that asks for mutual TLS takes `tlsClientCertificate` and
 `tlsClientKey` (`VX_REAPI_TLS_CLIENT_CERTIFICATE` / `VX_REAPI_TLS_CLIENT_KEY`)
@@ -360,7 +361,7 @@ caching:
 
 ```ts
 reapi({
-  endpoint: 'grpc.example.com:443',
+  endpoint: 'grpcs://grpc.example.com:443',
   execute: true,
   platform: { 'container-image': 'docker://alpine:3.20', OSFamily: 'Linux' },
   capacity: 64, // concurrent remote tasks; becomes the scheduler's pool
