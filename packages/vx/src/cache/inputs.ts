@@ -1105,7 +1105,18 @@ async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
   const unmatchedLiterals = new Set(
     positive.map(normalizeGlob).filter(isLiteralPattern).map(stripTrailingSlash),
   )
-  // First pass: glob-filter to candidate absolute paths (no I/O).
+  // First pass: glob-filter to candidate absolute paths (no I/O). Git
+  // prints normalized relative paths, so under an absolute, normalized
+  // project dir a join is a concatenation: `path.resolve` per file was
+  // ~27 ms of a 900-task, 12,000-file warm run (I-30).
+  const base =
+    path.sep === '/' &&
+    path.isAbsolute(args.projectDir) &&
+    path.normalize(args.projectDir) === args.projectDir
+      ? args.projectDir.endsWith('/')
+        ? args.projectDir
+        : `${args.projectDir}/`
+      : undefined
   const candidates: string[] = []
   for (const rel of gitFiles) {
     if (unmatchedLiterals.size > 0) settleLiterals(unmatchedLiterals, rel)
@@ -1118,7 +1129,7 @@ async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
     }
     if (!matched) continue
     if (nested(rel) || excludeGlobs.some((g) => g.match(rel)) || ownOutput(rel)) continue
-    candidates.push(path.resolve(args.projectDir, rel))
+    candidates.push(base === undefined ? path.resolve(args.projectDir, rel) : base + rel)
   }
   if (unmatchedLiterals.size > 0) {
     await assertNoInvisibleLiteralInputs(unmatchedLiterals, args.projectDir, 'files')
@@ -1131,7 +1142,15 @@ async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
   // `git ls-files -s` can surface staged entries whose working-tree
   // file is gone; the hasher would otherwise throw ENOENT.
   const oids = args.gitFilesCache?.oidsFor(args.projectDir)
-  const resolved = candidates.filter((abs) => oids?.has(abs) === true || isInputOnDisk(abs)).sort()
+  const resolved = candidates.filter((abs) => oids?.has(abs) === true || isInputOnDisk(abs))
+  // Git's slice comes sorted and a common prefix keeps it so: one pass
+  // proves it instead of a sort per task.
+  for (let i = 1; i < resolved.length; i++) {
+    if (resolved[i - 1]! > resolved[i]!) {
+      resolved.sort()
+      break
+    }
+  }
   // Stored only on the way out: a declaration whose literal named an
   // invisible file threw above, and every task sharing it must throw too.
   args.projectFilesCache?.set(memoKey, { snapshot: gitFiles, result: resolved })
