@@ -1296,6 +1296,10 @@ describe('affectedProjects', () => {
     await git(root, 'commit', '-q', '-m', 'generated')
     const out = await affectedProjects({ workspaceRoot: root, since: 'HEAD~1', projects })
     expect([...out]).toEqual(['b'])
+    // Removed here, under this row's bound: the 6,000 files and their git
+    // objects timed out the afterEach (bun's 5 s default) on a box under
+    // I/O load (11.1 s for the row and its hooks, M-21).
+    await rm(root, { recursive: true, force: true })
   }, 30_000)
 
   // nx#18112, nx#20691: deleting a whole project marked every project
