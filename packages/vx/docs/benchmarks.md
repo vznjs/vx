@@ -165,7 +165,7 @@ measured with its own core.
 ## Head-to-head, 2026-09-03 (46 packages, `packages/vx-bench/compare.ts 10 5 1`)
 
 Same workspace, identical commands, every runner pinned to concurrency
-10, Turbo with no daemon (it uses none for `turbo run` since 2.9), vx as
+10, Turbo with no daemon (it uses none for `turbo run` since 2.8.11), vx as
 its compiled binary. Median of 1,
 this machine (macOS arm64, Bun 1.4.0). The harness then gave Nx npm
 where Turbo had bun (§ Why Nx is slower), so the Nx row is slower than a

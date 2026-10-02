@@ -206,6 +206,34 @@ describe('RunOptions.signal aborts a run in flight', () => {
     expect(await Bun.file(path.join(root, 'packages', 'app', 'ran.txt')).exists()).toBe(false)
   }, 20_000)
 
+  // C-65: a runtime probe still running when the run stopped held it until
+  // the probe ended (a Ctrl-C waited out the signal bound, ~7 s), and the
+  // task read failed for the probe the stop cut short.
+  it('the stop kills a running cache.inputs.runtime probe; the task is aborted', async () => {
+    const dir = await addProject(
+      root,
+      'app',
+      `export default { tasks: { t: {
+        exec: { command: 'true' },
+        cache: { inputs: { files: ['package.json'], runtime: ['echo $$ > probe.pid; exec sleep 30'] }, outputs: { files: [] } },
+      } } }`,
+    )
+    const ac = new AbortController()
+    const running = run({
+      cwd: root,
+      tasks: ['t'],
+      projects: ['app'],
+      log: silent,
+      handleSignals: false,
+      signal: ac.signal,
+    })
+    const pid = await waitForPid(path.join(dir, 'probe.pid'), 10_000)
+    ac.abort()
+    const r = await running
+    expect(r.outcomes.map((o) => o.status)).toEqual(['aborted'])
+    expect(await waitForDead(pid, 1_000)).toBe(true)
+  }, 20_000)
+
   // C-46: a stopped run's servers are already being torn down, so a
   // `holdPersistent` caller (the watch loop) is handed none: it would own
   // a stop() for a server that is going anyway.

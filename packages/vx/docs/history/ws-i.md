@@ -280,6 +280,14 @@ main). 1,000 packages, one edited, `run build --affected=HEAD~1`,
 compiled, 41 interleaved rounds: main 356.8 ms median (min 293.5),
 patch 311.9 (248.5), A/A 313.6 (255.5).
 
+I-31. A key names its input files by slicing the root off. `relFor`
+memoised `relPosix` per absolute path, and a Map lookup hashes the whole
+path per file per task; every input file is a normalized absolute path
+(`resolveInputs`), so under a normalized root its relative name is a
+slice, and the memo stays for anything else. Bench as I-30 (900 warm
+hits, 12,905 files), compiled, 21 interleaved rounds: `classify + probe`
+main 256.9 ms median (min 217.2), patch 241.8 (194.0), A/A 238.9
+(193.8); in-process total 600.1 (515.1), 551.6 (490.8), 550.6 (455.2).
 I-29. A `files` declaration compiles once per process. `resolveFiles`
 split, normalized and compiled each task's `cache.inputs.files` (and its
 outputs' matcher) per task, though a workspace declares a handful of
@@ -391,3 +399,13 @@ in-process total 280.0 (251.6), 272.4 (245.0), 274.4 (235.6).
   under a full local gate (I-19)**: twice, 9.9 and 14.8 s, the removal
   of `OUTPUT_DIRS_CAP + 1` directories inside the sandbox; green in
   shard-9 run alone on main and on the patch.
+
+- **Owner: a stale git index costs every run a re-hash (I stream).** On a
+  worktree whose index stat data no longer matches the files (a copied or
+  cache-restored checkout, a tool that rewrites files in place), `git
+status` re-hashes every tracked file, and vx runs it with
+  `--no-optional-locks` (item 880), so the index is never refreshed and
+  every run pays again. 300 projects, 12,905 files: 155–218 ms against
+  39–52 ms once any plain `git status` refreshed it. A fix takes the index
+  lock (a refresh when the walk was slow, or `update-index --refresh`),
+  which is the contention item 880 removed: the owner's call.

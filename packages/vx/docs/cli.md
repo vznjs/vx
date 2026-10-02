@@ -1750,7 +1750,8 @@ A script reading `$npm_package_version`, `$npm_package_name` or
 them under `exec.env.define`, the first two read from an imported
 `package.json` so a version bump reaches them; any other `$npm_*` it
 reads gets a TODO (D-34). Among several packages, a workspace root
-script that runs the members (`pnpm -r build`, `--filter`, `-C`, Yarn's
+script that runs the members (`pnpm -r build`, `--filter`, `-C`, pnpm's `pn` alias
+included (D-97), Yarn's
 `--cwd` and `yarn workspace <name>`, npm's `--prefix`, npm's
 and Yarn's workspace flags, a `cd` into or above a member, turbo, nx, lerna, `vp run`, vx itself) is not mapped
 (a flag counts on the package manager, or after `node <bin> run`, and not on the program it
@@ -1790,7 +1791,9 @@ and when no task caches it says a cache block from a TODO makes the
 second run a hit. Its `next:` line is a command the user can type: the
 runner that started vx (`npx`, `pnpm`, `yarn`, `bunx`, read from
 `npm_config_user_agent`) with the installed `vx` bin, else the
-`@vzn/vx` package; with no runner, a bare `vx`.
+`@vzn/vx` package; with no runner, a bare `vx`. Outside a git work tree it starts with
+`git init`, and with no script mapped with declaring a task, since the
+run would refuse without either.
 
 `vx init --plugin <seam>` writes a plugin instead: `plugins/<seam>.ts`,
 a small runnable plugin for that seam (`executor`, `cache`,
@@ -1970,7 +1973,8 @@ reads: description, command (`(group)` for group tasks), `dependsOn`,
 `sandbox`, `persistent`, and the cache block
 (`inputs.files` / `.workspaceFiles` / `.env` / `.tasks` / `.runtime` /
 `.workspaceRuntime`, `outputs.files` / `.workspaceFiles`). Fields the
-task does not set are not printed. `--format json` emits `{ name, dir,
+task does not set are not printed; a value that spans lines (a
+multi-line command) continues under its first line. `--format json` emits `{ name, dir,
 config }` with the config exactly as resolved. `vx show <pkg>#<task>`
 narrows to one task (`{ name, dir, task, config }` in JSON). A bare
 name that is no project is a task: `vx show build` prints the block
@@ -2037,7 +2041,7 @@ plugins:          2 — @vzn/vx-reapi (executor, cache); @vzn/vx-otel (telemetry
 workers:          2 — cgroup CPU quota 2 of 8 cores
 memory:           13 GB usable — cgroup limit; the machine has 16 GB
 cache dir:        /work/repo/.vx/cache
-cache versions:   keys vx-cache-v37 · index schema v28
+cache versions:   keys vx-cache-v39 · index schema v28
 cache entries:    42 (1.3 GB)
 orphans:          3 artifacts (12 MB) the index does not know — `vx cache prune` reaps them
 task runs (24h):  7 (5 cache hits)

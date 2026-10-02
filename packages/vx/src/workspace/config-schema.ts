@@ -765,6 +765,24 @@ const FOREIGN_FIELDS: ReadonlyMap<ReadonlySet<string>, Readonly<Record<string, s
       implicitDependencies: 'a `dependsOn` entry `pkg#task`, or a package.json dependency',
       name: 'the package.json `name` (a project is named by its package)',
       tags: '`--filter` (a name glob or a directory) to select projects',
+      // A package.json's, turbo.json's and project.json's keys, and a
+      // task's fields one level too high (D-99).
+      scripts:
+        "`tasks` (a script is a task's `exec.command`; `vx init` writes them from package.json)",
+      pipeline: '`tasks` (`bunx @vzn/vx-migrate` writes them from turbo.json)',
+      namedInputs: 'a module the vx.config imports, spread into `cache.inputs.files`',
+      root: "no field: a project's directory is where its package.json sits",
+      sourceRoot: "a task's `cache.inputs.files`",
+      projectType: 'no field: vx runs every project alike',
+      ...Object.fromEntries(
+        ['dependsOn', 'cache', 'exec', 'description'].map((k) => [
+          k,
+          `\`tasks.<name>.${k}\`: a project holds tasks, and each task its own \`${k}\``,
+        ]),
+      ),
+      inputs: '`tasks.<name>.cache.inputs.files`',
+      outputs: '`tasks.<name>.cache.outputs.files`',
+      env: '`tasks.<name>.cache.inputs.env` (to key a task on it) or `tasks.<name>.exec.env`',
     },
   ],
   // Turbo's turbo.json and Nx's nx.json keys, written into vx.workspace
