@@ -333,3 +333,40 @@ export function buildCustomConfig(
   }
   return custom
 }
+
+/**
+ * Linux: SRT's bwrap line with each `--tmpfs` it lays over a read-denied
+ * directory (the workspace root, a sibling's tree, the cwd with no read
+ * grant) remounted read-only once the mounts beneath it are made. bwrap's
+ * tmpfs is writable, so a write there succeeded and vanished with the
+ * sandbox: a task that wrote `../../dist` went green with its output gone,
+ * where seatbelt refuses the same write. Now it is `EROFS` on both, and a
+ * failed task's hint names the path. The mask a `scratch` glob's writes
+ * land in stays writable: that is the grant (`scratchWrites`). Placed
+ * before the `--` that ends bwrap's options; the words are SRT's own
+ * quoting, copied as they are.
+ */
+export function readOnlyMasks(wrapped: string, scratch: readonly string[] = []): string {
+  const masks: string[] = []
+  let prev = ''
+  for (const m of wrapped.matchAll(/(?:'[^']*'|"[^"]*"|[^\s'"])+/g)) {
+    if (m[0] === '--') {
+      const held = scratch.map((g) => {
+        const dir = toRealPath(path.dirname(g.slice(0, g.search(MOUNT_WILDCARDS) + 1)))
+        const holding = masks.filter((w) => atOrUnder(dir, unquoted(w)))
+        return holding.sort((a, b) => unquoted(b).length - unquoted(a).length)[0]
+      })
+      const ro = masks.filter((w) => !held.includes(w))
+      if (ro.length === 0) return wrapped
+      const words = ro.map((w) => `--remount-ro ${w} `).join('')
+      return `${wrapped.slice(0, m.index)}${words}${wrapped.slice(m.index)}`
+    }
+    if (prev === '--tmpfs') masks.push(m[0])
+    prev = m[0]
+  }
+  return wrapped
+}
+
+/** A word as SRT's `quote` spells it, read back: single-quoted runs and `"'"`. */
+const unquoted = (word: string): string =>
+  word.replace(/'([^']*)'|"([^"]*)"/g, (_, a: string | undefined, b: string | undefined) => a ?? b!)
