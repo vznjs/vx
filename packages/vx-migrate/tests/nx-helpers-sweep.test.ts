@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'bun:test'
 import type { ProjectMeta } from '@vzn/vx'
 import { emptyNxInputs, expandNxInputs } from '../src/nx/nx-inputs.js'
-import { mapNxOutputs } from '../src/nx/nx-outputs.js'
+import { mapNxOutputs, nxDefaultOutputs } from '../src/nx/nx-outputs.js'
 import { mapNxDeps, matchNxProjects } from '../src/nx/nx-deps.js'
 
 function inputs(entries: unknown[], named: Record<string, unknown[]> = {}) {
@@ -209,11 +209,28 @@ describe('mapNxOutputs', () => {
     }
   })
 
-  it('a non-string option and an unknown token are reported', () => {
-    expect(out(['{options.outDir}', '{foo}/x'], 'packages/a', { outDir: 42 }).todos).toEqual([
+  it('an object option and an unknown token are reported', () => {
+    expect(out(['{options.outDir}', '{foo}/x'], 'packages/a', { outDir: { a: 1 } }).todos).toEqual([
       'output "{options.outDir}": option "outDir" is not a literal string — resolve manually',
       'output "{foo}/x" uses a token vx does not support',
     ])
+  })
+
+  // Nx's `getOutputsForTargetAndConfiguration` (nx 23.2): a number is its
+  // text in the path, and an `outputPath` list is each of its paths. vx
+  // dropped the first with a todo and read the second as no outputPath,
+  // caching Nx's default directories instead, so a hit restored nothing.
+  it('a number option is its text; an outputPath list is each path', () => {
+    expect(out(['dist/v{options.n}'], 'packages/a', { n: 5 })).toEqual({
+      outFiles: [],
+      wsOutFiles: ['dist/v5'],
+      todos: [],
+    })
+    const todos: string[] = []
+    expect(
+      nxDefaultOutputs('build', { outputPath: ['dist/a', 'dist/b'] }, 'packages/a', todos),
+    ).toEqual(['dist/a', 'dist/b'])
+    expect(todos).toEqual([])
   })
 
   // nx-examples' @nx/angular:application build: `{options.outputPath.base}`
@@ -480,9 +497,11 @@ describe('Nx glob grammar in inputs', () => {
 
 describe('matchNxProjects', () => {
   const nodes = [
-    { name: 'lib-a', tags: ['lib', 'scope:web'] },
-    { name: 'lib-b', tags: ['lib'] },
-    { name: 'app', tags: ['app'] },
+    { name: 'lib-a', tags: ['lib', 'scope:web'], root: 'libs/shared/a' },
+    { name: 'lib-b', tags: ['lib'], root: 'libs/shared/b' },
+    { name: 'app', tags: ['app'], root: 'apps/app' },
+    { name: 'app-e2e', tags: [], root: 'apps/app-e2e' },
+    { name: 'app_old', tags: [], root: 'apps/old' },
   ]
   it('names, `*` patterns, tags and exclusions, as Nx reads a projects list', () => {
     expect(matchNxProjects(['app'], nodes)).toEqual(['app'])
@@ -490,8 +509,25 @@ describe('matchNxProjects', () => {
     expect(matchNxProjects(['tag:scope:*'], nodes)).toEqual(['lib-a'])
     expect(matchNxProjects(['tag:lib', '!lib-b'], nodes)).toEqual(['lib-a'])
     // A list that opens with an exclusion starts from every node.
-    expect(matchNxProjects(['!app'], nodes)).toEqual(['lib-a', 'lib-b'])
-    // A regex character in a name is a literal.
-    expect(matchNxProjects(['lib.a'], nodes)).toEqual([])
+    expect(matchNxProjects(['!app'], nodes)).toEqual(['lib-a', 'lib-b', 'app-e2e', 'app_old'])
+  })
+
+  // Nx's `findMatchingProjects` (nx 23.2): what vx's name-only reading
+  // missed. A directory pattern named no project; `name:` was a name
+  // with a colon in it.
+  it('a directory, a label, and a bare word that names no project', () => {
+    expect(matchNxProjects(['libs/shared/*'], nodes)).toEqual(['lib-a', 'lib-b'])
+    expect(matchNxProjects(['directory:apps/**'], nodes)).toEqual(['app', 'app-e2e', 'app_old'])
+    expect(matchNxProjects(['name:app'], nodes)).toEqual(['app'])
+    expect(matchNxProjects(['tag:scope:web'], nodes)).toEqual(['lib-a'])
+    // A bare word stands in as a word: `old` is `app_old`, `e2e` is not
+    // `app-e2e`'s (a hyphen joins); Nx does not escape it, so `lib.a` is
+    // `lib-a`.
+    expect(matchNxProjects(['old'], nodes)).toEqual(['app_old'])
+    expect(matchNxProjects(['e2e'], nodes)).toEqual([])
+    expect(matchNxProjects(['lib.a'], nodes)).toEqual(['lib-a'])
+    // A name match wins: the directory is not tried.
+    expect(matchNxProjects(['app*'], nodes)).toEqual(['app', 'app-e2e', 'app_old'])
+    expect(matchNxProjects(['', 'nx-cloud:x'], nodes)).toEqual([])
   })
 })

@@ -60,7 +60,6 @@ export function buildPackageGraph(
   // insurance against a future rule that does depend on it; it is not
   // what the stability rests on.
   const directDeps = new Map<string, string[]>()
-  const reachDeps = new Map<string, string[]>()
   const order = new Map<string, Set<string>>()
   const peers = new Map<string, Set<string>>()
   const sorted = [...projects].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
@@ -128,22 +127,30 @@ export function buildPackageGraph(
       if (!own.has(peer) && !reaches(peer, p.name)) own.add(peer)
     }
   }
-  for (const p of sorted) {
-    const own = order.get(p.name)!
-    directDeps.set(p.name, [...own].sort())
-    reachDeps.set(p.name, [...new Set([...own, ...peers.get(p.name)!])].sort())
-  }
+  for (const p of sorted) directDeps.set(p.name, [...order.get(p.name)!].sort())
 
-  // Reverse adjacency: who declares X as a workspace dep.
+  // REACH and its reverse (who declares X as a workspace dep) are read only
+  // by the transitive questions below, which an unscoped run never asks:
+  // built on the first one, as the closures are.
+  const reachDeps = new Map<string, string[]>()
   const directDependents = new Map<string, string[]>()
-  for (const [name, deps] of reachDeps) {
-    for (const d of deps) {
-      const arr = directDependents.get(d)
-      if (arr) arr.push(name)
-      else directDependents.set(d, [name])
+  let reachBuilt = false
+  const buildReach = (): void => {
+    if (reachBuilt) return
+    reachBuilt = true
+    for (const p of sorted) {
+      const own = order.get(p.name)!
+      reachDeps.set(p.name, [...new Set([...own, ...peers.get(p.name)!])].sort())
     }
+    for (const [name, deps] of reachDeps) {
+      for (const d of deps) {
+        const arr = directDependents.get(d)
+        if (arr) arr.push(name)
+        else directDependents.set(d, [name])
+      }
+    }
+    for (const arr of directDependents.values()) arr.sort()
   }
-  for (const arr of directDependents.values()) arr.sort()
 
   // Set-union DFS closures are O(P²) entries on dense layered graphs
   // (same disease the scheduler's reachOf had — 68 ms at 1090
@@ -224,6 +231,7 @@ export function buildPackageGraph(
     return (name) => {
       const cached = memo.get(name)
       if (cached) return cached
+      buildReach()
       if (closures === undefined) closures = bitsetClosures(edges)
       if (closures === null) {
         const result = reachableFrom(name, edges)
