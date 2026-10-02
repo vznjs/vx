@@ -333,6 +333,30 @@ entry (red without the fix). macOS is unchanged: there
 fix: both `wedged.test.ts` leads (`sent` 3 for 4, 0 for 1) counted RSTs
 sent, which F-9 replaced with the peer's count of HEADERS.
 
+M-29. `runner.test.ts` › an exec-wrapped process is the direct child
+(E's lead: it read `JITWorker` at load 6.6). The row slept a fixed 50 ms
+and read `/proc/<pid>/comm` once: until `sh` execs, comm is the forking
+Bun thread's name or `sh` (an immediate read, 20 of 20: `sh`). The
+poll that replaced it landed as #2302; a command with no exec still
+reads `sh` at its deadline, so the claim holds without a time in it.
+
+M-30. `output-memory.unsafe.test.ts` › stays flat while a never-ready
+task floods stdout (D's lead: `long - short` read 140 MiB against 64,
+`\r`). The rows read RSS, which holds what the allocator kept, not what
+the runner retains: beside eight busy loops a 1 s probe read 81 MiB (41
+idle), and a 3 s one grew 82 MiB in 1 of 3 runs with nothing retained.
+The probe now reads the JS heap after a full GC: 1-2 MiB at either
+duration, 8 of 8 runs clean beside eight busy loops, and 180-1,290 MiB
+with a mutant that keeps every chunk (all three rows red).
+
+M-31. Probes, nothing shipped. `watch-loop-members.test.ts` › a root
+package.json's workspaces that add a glob watch the packages they name
+(D's lead: an `until` past its 15 s once, 17 s): refuted that a new
+member's `package.json` landing after its directory goes unseen (2 s
+between them, green); both glob rows 6 of 6 beside eight busy loops.
+Which `until` timed out was not recorded. `task-glob-brackets.test.ts` ›
+an upstream's hit sets aside the route (F's macOS lead) is M-4 and M-5.
+
 ## Leads for other streams
 
 - A: A-20 let a same-project dependant restore ahead of a producer whose

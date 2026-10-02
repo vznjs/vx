@@ -67,7 +67,9 @@ export default defineProject({
         // inside this project, so the sandbox's read grant covers it) and
         // fails instead of skipping under VX_REQUIRE_NX. Both are key
         // inputs: a skip-mode hit must never answer for the live run.
-        env: { passThrough: ['VX_NX_MODULES', 'VX_REQUIRE_NX'] },
+        // VX_REQUIRE_REFTABLE: head-stamp-reftable.test.ts fails on a git
+        // too old for reftable instead of skipping.
+        env: { passThrough: ['VX_NX_MODULES', 'VX_REQUIRE_NX', 'VX_REQUIRE_REFTABLE'] },
         sandbox: {
           allow: {
             read: ['**/*'],
@@ -80,7 +82,7 @@ export default defineProject({
       cache: {
         inputs: {
           files: ['src/**', 'tests/**', 'package.json'],
-          env: ['VX_NX_MODULES', 'VX_REQUIRE_NX'],
+          env: ['VX_NX_MODULES', 'VX_REQUIRE_NX', 'VX_REQUIRE_REFTABLE'],
         },
         outputs: { files: [] },
       },

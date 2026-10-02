@@ -8,11 +8,7 @@
 import { expect, it } from 'bun:test'
 import type { TaskNode } from '../src/graph/index.js'
 import { excludeDependencies } from '../src/graph/task-graph.js'
-
-function rng(seed: number): () => number {
-  let s = seed
-  return () => (s = (s * 1103515245 + 12345) % 2147483648) / 2147483648
-}
+import { rng } from './helpers/rng.js'
 
 const NAMES = ['build', 'gen', 'test', 'lint']
 

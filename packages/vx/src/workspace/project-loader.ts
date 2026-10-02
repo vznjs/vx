@@ -1,4 +1,4 @@
-import { realpathSync, statSync } from 'node:fs'
+import { existsSync, realpathSync, statSync } from 'node:fs'
 import path from 'node:path'
 import type { ProjectConfig, WorkspaceConfig } from '../config.js'
 import { UserError, xxh3hex } from '../util/index.js'
@@ -200,6 +200,14 @@ const configExit = ((code?: number | string | null) => {
   throw new Error(`process.exit(${code ?? ''}) in a config: ${CONFIG_EXIT}`)
 }) as typeof process.exit
 
+/** A `.pnp.cjs` in `dir` or above: Yarn Plug'n'Play's install. */
+function pnpAbove(dir: string): boolean {
+  for (let d = dir; ; d = path.dirname(d)) {
+    if (existsSync(path.join(d, '.pnp.cjs'))) return true
+    if (path.dirname(d) === d) return false
+  }
+}
+
 /**
  * A bare import nothing above the config provides is refused BEFORE the
  * evaluation: left to Bun, a workspace with no `node_modules` would have
@@ -215,6 +223,14 @@ function refuseUnprovidedImports(bytes: Uint8Array, configPath: string, kind: st
     loader,
   )
   if (missing.length === 0) return
+  // Under Yarn Plug'n'Play the dependencies ARE installed, into a
+  // `.pnp.cjs` Bun does not read: "install them first" sent the user to a
+  // `yarn install` that changed nothing (D-109).
+  if (pnpAbove(path.dirname(configPath))) {
+    throw new UserError(
+      `${kind} config ${configPath}: cannot find '${missing[0]}' — Yarn Plug'n'Play installed the workspace's dependencies into .pnp.cjs, which Bun does not read; set \`nodeLinker: node-modules\` in .yarnrc.yml and run \`yarn install\``,
+    )
+  }
   throw new UserError(
     `${kind} config ${configPath}: cannot find '${missing[0]}' — no node_modules above the config provides it; install the workspace's dependencies first`,
   )

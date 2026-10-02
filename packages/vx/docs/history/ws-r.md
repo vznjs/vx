@@ -31,11 +31,24 @@
   `turbo()` file a way to run a Turbo repo unchanged; the docs README
   named a `benchRows` block that is `benchTable` and the old
   multiples-of-vx rule.
+- **R-8** The migrate guide's Nx section shows `vx init`'s and the
+  migrator's output and ends in native config (`nx()` and `nx.json`
+  removed), as the Turborepo section does. `try-it.unsafe.test.ts`
+  holds both transcripts to a run and builds each end state twice on
+  the written configs alone (success, then a hit).
 - **R-5** The compare page's choosing model said `turbo()` runs a
   Turbo repo unchanged, offered "try it with nothing rewritten" and
   quoted medusa and payload numbers measured through `turbo()`; the
   docs README and `cli.md`'s `vx init` said the same. Each now calls
   `turbo()` / `nx()` a temporary start toward native config.
+- **R-6** The vx-migrate README timed `nx-exec` against `nx run` (400
+  and 830 ms less per task), a speed claim for an Nx-mapped run; it now
+  names the ~220 ms each `nx-exec` line pays and that native config
+  pays none of it.
+- **R-7** The quickstart is native config first: the Turbo/Nx case
+  left `vx init`'s step for a short "Coming from Turbo or Nx" section,
+  `bunx @vzn/vx-migrate` first and the `turbo()` / `nx()` file a
+  temporary start.
 - **R-11** Five posts (why-vx-is-fast, no-daemon, no-choice,
   explicit-over-magical, one-binary) quoted solidjs/solid numbers
   measured through `turbo()`; each keeps only the native-config
