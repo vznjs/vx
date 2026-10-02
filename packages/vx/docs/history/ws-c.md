@@ -980,6 +980,17 @@ so a refusal still prints plainly and a bug as an internal error.
 Row (`plugin-capabilities.test.ts` › an executor's throw reaches the
 task's own stderr): red without the fix. `modules/executor.md` says so.
 
+## C-71: `--exclude-dependencies`' orders over random graphs, as a test
+
+A probe over 60,000 random graphs found `excludeDependencies` sound;
+it is now `exclude-dependencies-properties.test.ts` (2,000 seeded
+graphs): every order between two scheduled tasks survives (item 1019),
+a direct edge to a task still scheduled stays a real edge (item 980),
+no edge names a task that left. The two rules mask each other on order
+alone (item 980's mutant survived the first draft: the order-only walk
+re-adds the edge), so the row checks the edge's kind too; each mutant
+reddens it. `modules/task-graph.md` says so.
+
 ## C-67: an embedder's `command` reaches telemetry redacted
 
 Item 1057 kept what follows `--` (often a token) out of the command line
