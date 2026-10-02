@@ -16,6 +16,10 @@
   options, as Nx's `interpolate` does; read as one key it was no output,
   so nx-examples' cached `@nx/angular:application` builds restored
   nothing on a hit.
+- **P-7** `nx()`: a `dependsOn` entry's `options: "forward"`, which Nx's
+  `createTaskOverrides` turns into the dependency's overrides, is a todo
+  when the target has options to forward. It was dropped without a word,
+  and the dependency ran with its own options.
 
 ## Notes
 
