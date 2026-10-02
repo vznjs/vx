@@ -59,3 +59,39 @@ describe('every page explaining the blob-size check names what it cannot see', (
     for (const b of explained) expect(b).toMatch(/(?:keeps|kept) the size/)
   })
 })
+
+const SRC = path.resolve(import.meta.dir, '..', 'src')
+const src = (rel: string): string => readFileSync(path.join(SRC, rel), 'utf8')
+const page = (rel: string): string =>
+  readFileSync(path.join(DOCS, rel), 'utf8').split(/\s+/).join(' ')
+
+// Each row reads the fact from the source, then holds the page to it.
+describe('module pages state what their file does since the fix', () => {
+  it('bin.md: a lone --version is answered before the dispatcher loads (#1961)', () => {
+    expect(src('bin.ts')).toMatch(/argv\[0\] === '--version'/)
+    expect(page('modules/bin.md')).toMatch(/lone `--version`.{0,80}answered.{0,80}before/)
+  })
+
+  it('metrics.md: an unchanged key names the continue-taint before --no-cache (#1928)', () => {
+    expect(src('orchestrator/metrics.ts')).toContain('each ran beside a failed task')
+    const why = blocks('modules/metrics.md', '`whyDidThisRerun` compares')
+    expect(why.length).toBe(1)
+    expect(why[0]).toMatch(/beside a failed task.*Only when none applies/)
+  })
+
+  it('cli-watch.md: only the tasks the watch reaches keep a path from being dropped', () => {
+    expect(src('cli/watch-set.ts')).toContain('function reachableNames(')
+    const rule = blocks('modules/cli-watch.md', 'item 946')
+    expect(rule.length).toBe(1)
+    expect(rule[0]).toMatch(/a task the watch reaches declares as an input/)
+    expect(page('modules/cli-watch.md')).toContain('`discoverCliProjects`')
+    expect(src('cli/watch.ts')).not.toMatch(/\blistProjects\(/)
+  })
+
+  it("logger.md: a kept server's output streams under its id after the summary (#2054)", () => {
+    expect(src('orchestrator/logger.ts')).toContain('formatKeptLines(')
+    expect(page('modules/logger.md')).toMatch(
+      /streams below the summary a line at a time under its id/,
+    )
+  })
+})
