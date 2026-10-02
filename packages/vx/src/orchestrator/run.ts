@@ -908,7 +908,7 @@ async function runOnBus(
     // change the run's exit code — the run already happened.
     // Written again after the keep-alive wait: a kept server's crash or a
     // Ctrl-C there is the process's exit, and the first write said ok.
-    const summarize = async (runOk: boolean): Promise<void> => {
+    const summarize = async (runOk: boolean, final = list): Promise<void> => {
       if (options.summarize === undefined) return
       try {
         const wrote = await writeRunSummary({
@@ -921,7 +921,7 @@ async function runOnBus(
           totalMs,
           ok: runOk,
           ...(stoppedBy !== undefined && { exitCode: signalExitCode(stoppedBy) }),
-          outcomes: list,
+          outcomes: final,
           flaky,
         })
         log.status(`vx: summary written to ${wrote}`)
@@ -1113,8 +1113,13 @@ async function runOnBus(
         )
       }
       await terminateChildren(() => keepAlive.children)
-      await summarize(ok && first.code === 0)
-      return { ok: ok && first.code === 0, outcomes: list }
+      // The server that ended the session on its own, not cleanly, failed:
+      // the rewritten summary said `ok: false` over every task `success`
+      // and `failed: 0`, and so did the outcomes `--report` renders (C-53).
+      if (!stopRun.signal.aborted && first.code !== 0) failServer(node.id, first.code)
+      const final = [...outcomes.values()]
+      await summarize(ok && first.code === 0, final)
+      return { ok: ok && first.code === 0, outcomes: final }
     }
 
     return { ok, outcomes: list }
