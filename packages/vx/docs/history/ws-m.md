@@ -202,6 +202,17 @@ shell's and the child's deaths within 5 s. Red with the guard started
 in vx's group (`detached: false`); 20 of 20 green with the other grace
 rows beside two busy loops per core.
 
+M-18. CI's `@vzn/vx-docs#build` died 137 after astro finished (run
+36924217607, the item-925 class), and the tracer retry never fired: strace
+names itself by its argv[0], the absolute path vx runs it by, so CI's
+line reads `/usr/bin/strace: ptrace(PTRACE_LISTEN,…)` and
+`STRACE_OWN_ERROR` (`/^strace: /`) missed it. The test's fake printed a
+bare `strace: `. Also proven: under `--seccomp-bpf` strace 6.8 implies
+`--kill-on-exit`, so a SIGKILLed strace takes the task (exit 137) despite
+`-DD`, and B-11's "a tracer that dies leaves the command running" was
+false. Fixed: the key takes a path prefix; the fake prints `$0: `. Four
+retry rows red on the old key.
+
 ## Leads for other streams
 
 - A: A-20 let a same-project dependant restore ahead of a producer whose
