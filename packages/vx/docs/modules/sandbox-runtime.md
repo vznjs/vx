@@ -31,7 +31,7 @@ Three companions hold the rest, split 2026-09-09 as pure code motion:
   (`bindableWrites`), read grants punched around the write grants
   inside them (`punchWritePaths`), and the SRT custom config.
 - `sandbox-paths.ts` — `toRealPath`, `absolutize`, `atOrUnder`,
-  `isUnderAny`, `unique`.
+  `isUnderAny`, `sandboxReads`, `unique`.
 - `sandbox-deny-scan.ts` — `scopedMandatoryDenies`: SRT's mandatory
   write denies (`.bashrc`, `.mcp.json`, `.vscode/`, `.git/hooks`, …),
   found within each task's write grants instead of the whole root.
@@ -243,6 +243,9 @@ export function absolutize(p: string, cwd?: string): string
 // one copy of the check the sandbox code makes.
 export function atOrUnder(p: string, dir: string): boolean
 export function isUnderAny(abs: string, allow: Set<string>): boolean
+// Whether a sandboxed task may read a file: a read, write or baseline
+// grant at or above its canonical path (the shell verdict asks it).
+export function sandboxReads(sandbox: ExecuteSandbox, file: string): boolean
 export function unique(arr: readonly string[]): string[]
 export function localBindingOn(c: { localBinding?: boolean | readonly number[] }): boolean
 
@@ -444,8 +447,19 @@ one bracket (`literalReadPaths`): a route granted as
 a listed grant), and a workspace under a bracketed directory was never
 walled (B-57).
 
-SRT drops every Linux write path holding a bracket (it reads one as a
-glob), with no spelling that keeps it, so `bindableWrites` drops it
+A `*` or `?` in a Linux read path has no such spelling: SRT's rewrite of
+each runs inside a class too, so a grant of `a*b.txt` granted `aXb.txt`.
+`bindableReads` leaves such a grant out, says so once, and the strace
+pass judges against what is left, so a read of it is refused and
+reported. In a deny path the match is only a wider wall. A backslash
+SRT skips outright: Bun's `realpathSync` throws ENOENT on a path holding
+one (Node's does not; `stat` finds it), and SRT mounts no path it cannot
+resolve, so such a read or write grant is left out the same way, and a
+project under such a directory is refused on Linux: its task saw no
+project and ran in `$HOME`.
+
+SRT drops every Linux write path holding `[`, `]`, `*` or `?` (it reads
+one as a glob), with no spelling that keeps it, so `bindableWrites` drops it
 first and says so once, naming the directory above it: left in, the read
 grants were punched around a bind that never came, the directory
 vanished from the task's view ("Directory nonexistent"), and the refused
@@ -456,7 +470,8 @@ a spelling holding `[` as a regex in which a backslash is a literal one,
 so the escaped `pages/\[id\].tsx` named no file. vx spells `\[` as `[[]`
 and `\]` as `]` there (`seatbeltBrackets`). A project under a bracketed
 directory is refused on both platforms (B-60, B-65): seatbelt compiled
-vx's own workspace wall as a class too, so it matched nothing.
+vx's own workspace wall as a class too, so it matched nothing. So is one
+under a directory holding `*` or `?`, whose grants matched its siblings.
 
 SRT's in-sandbox network bridge is `socat TCP-LISTEN:3128` (and 1080),
 which socat 1.8 opens as an IPv6 socket. On a host without IPv6 it
@@ -689,7 +704,8 @@ machine goes through that proxy, which reports it WITH host and port.
   (`sandbox-request.ts`): null when no node declares `exec.sandbox`,
   else an armer whose `arm()` runs `probeSandbox` + `initSandbox` once,
   on the first sandboxed execution (`execute-task.ts` awaits it before
-  the request). `resetSandbox` runs at the end if it was armed.
+  the request), or earlier when one is sure to execute (C-76).
+  `resetSandbox` runs at the end if it was armed.
 - Execution goes through the placed `TaskExecutor`; the local floor
   (`exec/local-executor.ts`) calls `runSandboxed` instead of
   `runCommand` when the request carries `sandbox`. On violations

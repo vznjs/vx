@@ -44,7 +44,8 @@ export const WHAT_TO_DO: Readonly<Record<string, string>> = {
   package: "the project's package.json changed (a dependency, version or script)",
   workspace:
     'a lockfile or root manifest changed, which re-keys every task; a lockfile plugin keys each project on its own dependencies',
-  config: "the task's evaluated config changed (its vx.config or a file that imports)",
+  config:
+    "the task's evaluated config changed (its vx.config or a file it imports); `vx show <that task>` prints it as it is now",
   upstream: "a dependency's key moved; `vx why <that task>` says why",
   plugin: "a key plugin's material changed; that plugin decides what it folds",
 }
@@ -267,7 +268,9 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
                   '`vx why <that task>`',
                   upstream.map((n) => `\`vx why ${n}\``).join(', '),
                 )
-              : WHAT_TO_DO[k]
+              : k === 'config'
+                ? WHAT_TO_DO[k]!.replace('`vx show <that task>`', `\`vx show ${taskId}\``)
+                : WHAT_TO_DO[k]
           lines.push(`    ${k.padEnd(kindW)}  ${todo}`)
         }
       }

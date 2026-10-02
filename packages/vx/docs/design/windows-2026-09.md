@@ -9,13 +9,8 @@ replaces the 2026-09-10 "Windows is WSL" decision (coordinator,
 2026-09-28). Linux and macOS behaviour does not change: every fix is a
 separator-neutral rewrite or a `win32` branch.
 
-CI: `.github/workflows/windows.yml`, not required until green, in its
-own concurrency group so it never holds CI's. It runs on main and on a
-PR that touches the Windows paths, with a 12-minute bound. Queue cost on the first run
-(2026-09-28): 34 s to a runner (macOS 82 s, Linux 2 s), 25 s of
-`bun install`. Under fifteen streams' load the whole run queued 9 min.
-Its data step prints, per shard, the counts and each failing row with
-its first error line and its expected/received diff.
+CI: the Windows workflow was removed (owner, 2026-10-02: "we don't
+support Windows; Windows users use WSL").
 
 ## Decisions
 

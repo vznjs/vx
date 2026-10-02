@@ -367,7 +367,9 @@
           "[\"A=B\"]",
           "[\"A*\"]"
         ],
-        "$CONFIG: tasks.x must be an object": ["{\"x\":\"y\"}"]
+        "$CONFIG: tasks.x must be an object — a command is { exec: { command: \"y\" } }": [
+          "{\"x\":\"y\"}"
+        ]
       },
       "tasks.*": {
         "ok": ["<absent>", "<seed>"],
@@ -381,11 +383,17 @@
           "-1",
           "65536",
           "2147483648",
-          "\"\"",
-          "\"x\"",
-          "\"(\"",
-          "\"30d\"",
-          "\"10G\"",
+          "\"\""
+        ],
+        "$CONFIG: tasks.t must be an object — a command is { exec: { command: \"x\" } }": ["\"x\""],
+        "$CONFIG: tasks.t must be an object — a command is { exec: { command: \"(\" } }": ["\"(\""],
+        "$CONFIG: tasks.t must be an object — a command is { exec: { command: \"30d\" } }": [
+          "\"30d\""
+        ],
+        "$CONFIG: tasks.t must be an object — a command is { exec: { command: \"10G\" } }": [
+          "\"10G\""
+        ],
+        "$CONFIG: tasks.t must be an object — a command is { exec: { command: \"10\" } }": [
           "\"10\""
         ],
         "$CONFIG: tasks.t must be an object (fields: cache, dependsOn, description, exec), not an array": [

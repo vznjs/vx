@@ -1555,6 +1555,7 @@ describe('vx init on a workspace with no scripts', () => {
   it('writes the workspace file, prints an example config and the next command', async () => {
     const root = await makeRoot('vx-init-empty-')
     await addPackage(root, 'app', {})
+    Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
     try {
       const r = await vx(root, ['init'])
       expect({ code: r.code, err: r.err }).toEqual({ code: 0, err: '' })
@@ -1564,7 +1565,7 @@ describe('vx init on a workspace with no scripts', () => {
       )
       expect(r.out).toContain('no package.json scripts to turn into tasks')
       expect(r.out).toContain('satisfies ProjectConfig')
-      expect(r.out).toContain('next: vx run build --all')
+      expect(r.out).toContain('next: declare a task as the example shows, then vx run build --all')
       // Idempotent: a second init neither rewrites nor refuses.
       const again = await vx(root, ['init'])
       expect(again.code).toBe(0)
@@ -1585,6 +1586,7 @@ describe('vx init names the runner that started it', () => {
   it('in the next: line, with the package spec that runner resolves', async () => {
     const root = await makeRoot('vx-init-runner-')
     await addPackage(root, 'app', { build: 'tsc' })
+    Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
     const next = async (): Promise<string | undefined> => {
       const proc = Bun.spawn([process.execPath, BIN, 'init', '--dry'], {
         cwd: root,
@@ -1645,6 +1647,7 @@ describe('vx init (package.json scripts)', () => {
   let root: string
   beforeAll(async () => {
     root = await makeScriptsWorkspace()
+    Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
   })
   afterAll(async () => {
     await rm(root, { recursive: true, force: true })
