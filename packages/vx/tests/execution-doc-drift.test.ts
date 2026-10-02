@@ -35,7 +35,9 @@ describe('execution.md follows the source it traces', () => {
     const src = readFileSync(path.join(pkg, 'src', 'cache', 'git-inputs.ts'), 'utf8')
     const fn = /export async function startGitEnumeration\b[\s\S]*?\n\}/.exec(src)
     expect(fn).not.toBeNull()
-    const spawned = [...fn![0]!.matchAll(/spawnGit\(\s*\[\s*'([a-z-]+)'/g)].map((m) => m[1]!)
+    const spawned = [
+      ...new Set([...fn![0]!.matchAll(/spawnGit\(\s*\[\s*'([a-z-]+)'/g)].map((m) => m[1]!)),
+    ]
     // The rev-parse is asked through `repoFacts`, the memo the file hasher
     // shares: its command is read from there.
     expect(fn![0]!).toContain('repoFacts(workspaceRoot)')

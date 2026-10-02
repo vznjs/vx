@@ -30,7 +30,7 @@ const ENUMERATION = [
   '--no-optional-locks var -l',
   // The blob sizes a cold cache has not learned (A-60).
   '--no-optional-locks cat-file --batch-check=%(objectname) %(objectsize)',
-  'rev-parse --show-prefix --git-common-dir --show-object-format',
+  'rev-parse --show-prefix --git-common-dir --show-object-format --git-path index',
 ]
 
 describe('git spawns on a cold run', () => {
@@ -83,13 +83,20 @@ describe('git spawns on a cold run', () => {
       expect(await coldRun(['build', '--all'])).toEqual(
         [
           ...ENUMERATION,
+          '--no-optional-locks ls-files -s -v -z -- .',
+          // The recorded sizes a cold cache has no verdict for (A-60).
           '--no-optional-locks ls-files -s -v -z --debug -- .',
           '--no-optional-locks status --porcelain -z -uall --ignored=matching --no-renames -- .',
         ].sort(),
       )
-      // Warm, the sizes come from the cache: no cat-file.
+      // Warm, the index unchanged, its verdict comes from the cache: no
+      // `--debug` listing and no cat-file.
       await writeFile(log, '')
-      expect((await coldRun(['build', '--all'])).filter((c) => c.includes('cat-file'))).toEqual([])
+      expect(
+        (await coldRun(['build', '--all'])).filter(
+          (c) => c.includes('cat-file') || c.includes('--debug'),
+        ),
+      ).toEqual([])
     },
     TIMEOUT,
   )
@@ -100,6 +107,7 @@ describe('git spawns on a cold run', () => {
       expect(await coldRun(['a#build'])).toEqual(
         [
           ...ENUMERATION,
+          '--no-optional-locks ls-files -s -v -z -- packages/a',
           '--no-optional-locks ls-files -s -v -z --debug -- packages/a',
           '--no-optional-locks status --porcelain -z -uall --ignored=matching --no-renames -- packages/a',
         ].sort(),

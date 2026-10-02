@@ -230,7 +230,11 @@ async function planWorkspace(input: PlaygroundInput): Promise<PlaygroundResult> 
       untracked: [],
       undecodable: [],
       startedAtMs: Date.now(),
-      blobs: { digest: '', paths: [], oids: [], sizes: [] },
+      blobCheck: {
+        key: undefined,
+        blobs: async () => ({ paths: [], oids: [], sizes: [] }),
+        rekey: async () => undefined,
+      },
       catFile: async () => null,
     },
     root,

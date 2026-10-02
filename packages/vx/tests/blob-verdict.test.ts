@@ -1,9 +1,9 @@
 // The blob-size check (A-60) keeps its verdict, the paths an index
-// distrusts, by a digest of the entries, so a warm run reads one row
-// instead of looking up every blob. The verdict names paths, so the digest
-// covers them: `git mv` keeps an entry's OID and recorded size, and a digest
-// of those alone handed the renamed file the old path's verdict, trusting
-// a blob that stands for other bytes.
+// distrusts, by a hash of the index file, so a warm run reads one row and
+// spawns no `--debug` listing. The verdict names paths: `git mv` keeps an
+// entry's OID and recorded size, and a key of those alone handed the
+// renamed file the old path's verdict, trusting a blob that stands for
+// other bytes. The index file's bytes hold the path.
 
 import { mkdtemp, rm, utimes, writeFile } from 'node:fs/promises'
 import os from 'node:os'

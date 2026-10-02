@@ -960,7 +960,7 @@ describe('populateGitFilesCache — single workspace-wide git spawn', () => {
     await rm(workspaceRoot, { recursive: true, force: true })
   })
 
-  it('spawns git 5x concurrently for N projects, never once per project', async () => {
+  it('spawns git 6x for N projects, never once per project', async () => {
     // The bulk populate uses async Bun.spawn (ls-files + status + a
     // three-key `config` read, concurrent — only the first two scan
     // anything) and one spawnSync'd `rev-parse` asked while they run
@@ -998,9 +998,10 @@ describe('populateGitFilesCache — single workspace-wide git spawn', () => {
       // (repo→workspace path, common dir, object format), one `var -l` (the
       // clean-filter gate) — all concurrent, never per-project. `check-attr`
       // is NOT among them: this fixture declares no attributes, and paying
-      // for it here would mean paying for it in every plain repo. And one
-      // `cat-file` for the blob sizes: no memo here (A-60).
-      expect(spawnCount).toBe(5)
+      // for it here would mean paying for it in every plain repo. And, with
+      // no memo here, the `--debug` listing and one `cat-file` for the
+      // blob-size check (A-60).
+      expect(spawnCount).toBe(6)
       // Every project got a non-null entry partitioned from the bulk
       // listing — `src.ts` shows up project-relative.
       for (const dir of projectDirs) {

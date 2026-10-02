@@ -124,8 +124,8 @@ export function createTables(db: Database): void {
       size    INTEGER NOT NULL,
       seen_at INTEGER NOT NULL
     );
-    -- The paths an index's (path, OID, recorded size) entries distrust,
-    -- by their digest (A-60): a warm run reads one row, not one per blob.
+    -- The paths an index distrusts, by a hash of the index file and the
+    -- pathspecs (A-60): a warm run reads one row, not one per blob.
     CREATE TABLE IF NOT EXISTS blob_verdicts (
       digest  TEXT PRIMARY KEY,
       paths   TEXT NOT NULL,

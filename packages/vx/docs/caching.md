@@ -156,9 +156,8 @@ over (in order):
     declared-outputs-excluded, nested-projects-excluded), each file
     contributing its **git blob OID** (v20). On a clean tree the OID
     comes straight from the index — the run's up-front enumeration is
-    three concurrent spawns, `git ls-files -s -v -z --debug` (every
-    tracked path, its OID, its cache-state flag and the worktree size
-    the index recorded),
+    three concurrent spawns, `git ls-files -s -v -z` (every tracked
+    path, its OID and its cache-state flag),
     `git status --porcelain -z -uall --ignored=matching --no-renames`
     (dirty tracked paths, the untracked files and the ignored ones) and
     `git var -l` (the clean-filter gate's config) — so deriving these hashes
@@ -169,13 +168,14 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     holds that stat-clean entry clean without re-reading it, so status
     and the filter gate (today's config) both let the LF blob key the
     CRLF bytes. Which paths an index distrusts is a function of its
-    entries' paths, OIDs and recorded sizes, which a stat refresh
-    leaves alone, so the verdict is kept in `blob_verdicts` by their
-    digest and a warm run reads one row (per-entry lookups cost 250 ms
-    at 100,000 files). A changed index asks each blob's size, kept in
-    `blob_sizes` (fixed for its OID), and one `git cat-file
---batch-check` for the ones not yet known (65 ms over 3,000 loose
-    objects, 10 ms packed). A
+    entries, so the verdict is kept in `blob_verdicts` by a hash of
+    the index file and the pathspecs: a warm run reads the file and
+    one row (the `--debug` listing and a lookup per entry cost 550 ms
+    at 100,000 files). A changed index spawns
+    `git ls-files -s -v -z --debug` for the recorded sizes, takes each
+    blob's size from `blob_sizes` (fixed for its OID), and asks one
+    `git cat-file --batch-check` for the ones not yet known (65 ms
+    over 3,000 loose objects, 10 ms packed). A
     re-listing mid-run, or a nested repository's project, spawns
     `git ls-files -s --others --exclude-standard -z .` in the project
     dir instead, and its OIDs are not trusted: those files hash by
@@ -1358,8 +1358,8 @@ CREATE TABLE blob_sizes (
   seen_at INTEGER NOT NULL
 );
 
--- The paths an index's (path, OID, recorded size) entries distrust, by
--- their digest (A-60): a warm run reads one row, not one per blob. Swept
+-- The paths an index distrusts, by a hash of the index file and the
+-- pathspecs (A-60): a warm run reads one row, not one per blob. Swept
 -- with file_hashes.
 CREATE TABLE blob_verdicts (
   digest  TEXT PRIMARY KEY,

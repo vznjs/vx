@@ -114,6 +114,8 @@ describe('a run reads each root file once', () => {
         // Discovery's one read of the manifest, the loader's of the config.
         'packages/a/package.json': ['text'],
         'packages/a/vx.config.mjs': ['bytes'],
+        // The git index, once: its hash keys the blob-size verdict (A-60).
+        '.git/index': ['bytes'],
       })
     },
     TIMEOUT,

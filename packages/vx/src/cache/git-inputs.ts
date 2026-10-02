@@ -17,6 +17,8 @@ export interface RepoFacts {
   commonDir: string
   /** `--show-object-format`: the hash the index's blob OIDs are in. */
   objectFormat: 'sha1' | 'sha256'
+  /** `--git-path index` (it honours `GIT_INDEX_FILE`), relative to the directory asked. */
+  indexFile: string
 }
 
 const repoFactsMemo = new Map<string, RepoFacts>()
@@ -41,6 +43,8 @@ export function repoFacts(dir: string): RepoFacts | null {
         '--show-prefix',
         '--git-common-dir',
         '--show-object-format',
+        '--git-path',
+        'index',
       ],
       cwd: dir,
       stdout: 'pipe',
@@ -53,7 +57,7 @@ export function repoFacts(dir: string): RepoFacts | null {
   // One line per flag, in order. A git that does not know
   // `--show-object-format` echoes it back, as it does any unknown flag,
   // which reads as sha1 — what the flag's own spawn answered there too.
-  const [prefix = '', commonDir = '', format = ''] = new TextDecoder()
+  const [prefix = '', commonDir = '', format = '', indexFile = ''] = new TextDecoder()
     .decode(proc.stdout)
     .split('\n')
     .map((l) => l.trim())
@@ -61,6 +65,7 @@ export function repoFacts(dir: string): RepoFacts | null {
     prefix,
     commonDir,
     objectFormat: format === 'sha256' ? 'sha256' : 'sha1',
+    indexFile,
   }
   repoFactsMemo.set(dir, facts)
   return facts
@@ -455,7 +460,7 @@ export function fileIdentity(mode: string, oid: string): string {
 function parseLsFilesOutput(
   out: string,
   undecodableRecords: ReadonlySet<string>,
-  blobs?: { paths: string[]; oids: string[]; sizes: number[] },
+  blobs?: IndexBlobs,
 ): GitLsResult {
   const files: string[] = []
   const oids = new Map<string, string>()
@@ -512,23 +517,31 @@ function parseLsFilesOutput(
 
 /**
  * What the blob-size check keeps between runs (`Cache` is one): each blob's
- * size, fixed for its OID, and each verdict, the paths an index's
- * (OID, recorded size) pairs distrust, fixed for their digest.
+ * size, fixed for its OID, and each verdict, the paths an index distrusts,
+ * fixed for the index file's bytes (`IndexBlobCheck.key`).
  */
 export interface BlobSizeMemo {
   knownBlobSizes(oids: readonly string[]): Map<string, number>
   rememberBlobSizes(sizes: ReadonlyMap<string, number>): void
-  blobVerdict(digest: string): string[] | undefined
-  rememberBlobVerdict(digest: string, paths: readonly string[]): void
+  blobVerdict(key: string): string[] | undefined
+  rememberBlobVerdict(key: string, paths: readonly string[]): void
 }
 
 /** Each regular stage-0 index entry's path, raw OID and recorded worktree size, in index order. */
 export interface IndexBlobs {
-  /** xxh3 of the paths, OIDs and sizes: what the verdict is a function of. */
-  digest: string
-  paths: readonly string[]
-  oids: readonly string[]
-  sizes: readonly number[]
+  paths: string[]
+  oids: string[]
+  sizes: number[]
+}
+
+/** What the blob-size check reads, lazily: the verdict's key, and the listing a miss needs. */
+export interface IndexBlobCheck {
+  /** xxh3 of the index file and the pathspecs; undefined when the file could not be read. */
+  key: string | undefined
+  /** The entries `ls-files --debug` lists, or null when it fails. */
+  blobs(): Promise<IndexBlobs | null>
+  /** The key as the index stands now: a verdict is stored only for the index it came from. */
+  rekey(): Promise<string | undefined>
 }
 
 /**
@@ -537,20 +550,27 @@ export interface IndexBlobs {
  * was added from, and git holds a stat-clean entry clean without re-reading
  * it once the filter is gone (`core.autocrlf` turned off, a `.gitattributes`
  * rule removed): `status` and the filter gate, which reads today's config,
- * both let the blob stand for bytes it does not hold. The recorded sizes
- * cost no read of the worktree. Which paths a given index distrusts is a
- * function of its paths, OIDs and recorded sizes alone, which a stat refresh
- * leaves alone, so `memo` keeps the verdict by their digest and a warm run looks
- * up one row: per-entry lookups cost 250 ms at 100,000 files (2026-10-02).
- * A new digest asks the per-OID sizes, and `cat-file` for the ones `memo`
- * lacks. A smudged (racy) entry records 0 and is hashed from disk. An
- * answer that cannot be read trusts nothing.
+ * both let the blob stand for bytes it does not hold. Which paths an index
+ * distrusts is a function of the index alone, so `memo` keeps the verdict
+ * by a hash of the index file and a warm run reads one row: the `--debug`
+ * listing and a lookup per entry cost 550 ms at 100,000 files (2026-10-02).
+ * An index with no verdict spawns that listing (the recorded sizes), asks
+ * the per-OID sizes, and `cat-file` for the ones `memo` lacks; the verdict
+ * is stored only if the index is still the one it was read from. A smudged
+ * (racy) entry records 0 and is hashed from disk. An answer that cannot be
+ * read trusts nothing.
  */
 async function dropResizedOids(enumeration: GitEnumeration, memo?: BlobSizeMemo): Promise<void> {
-  const { trusted, blobs } = enumeration
-  if (blobs.oids.length === 0 || trusted.size === 0) return
-  let resized = memo?.blobVerdict(blobs.digest)
+  const { trusted, blobCheck } = enumeration
+  if (trusted.size === 0) return
+  const key = blobCheck.key
+  let resized = key === undefined ? undefined : memo?.blobVerdict(key)
   if (resized === undefined) {
+    const blobs = await blobCheck.blobs()
+    if (blobs === null) {
+      trusted.clear()
+      return
+    }
     const unique = [...new Set(blobs.oids)]
     const sizes = memo?.knownBlobSizes(unique) ?? new Map<string, number>()
     const unknown = unique.filter((oid) => !sizes.has(oid))
@@ -576,7 +596,9 @@ async function dropResizedOids(enumeration: GitEnumeration, memo?: BlobSizeMemo)
       // The index keeps the low 32 bits of a size.
       if (size === undefined || size % 2 ** 32 !== blobs.sizes[i]) resized.push(blobs.paths[i]!)
     }
-    memo?.rememberBlobVerdict(blobs.digest, resized)
+    if (key !== undefined && (await blobCheck.rekey()) === key) {
+      memo?.rememberBlobVerdict(key, resized)
+    }
   }
   for (const rel of resized) trusted.delete(rel)
 }
@@ -982,7 +1004,7 @@ export interface GitEnumeration {
   /** `Date.now()` before the spawns: what `trusted` says is true as of no earlier. */
   startedAtMs: number
   /** The blob-size check's input (`dropResizedOids`). */
-  blobs: IndexBlobs
+  blobCheck: IndexBlobCheck
   /** `git cat-file --batch-check` over `stdin`'s OIDs; null when it could not spawn. */
   catFile(stdin: string): Promise<{ exitCode: number; stdout: string } | null>
 }
@@ -1065,7 +1087,7 @@ export async function startGitEnumeration(
   // time (~50 ms of CPU, concurrent with status but contending with it).
   // `--debug` adds each entry's recorded stat, for the blob-size check
   // (`dropResizedOids`, A-60).
-  const listing = spawnGit(['ls-files', '-s', '-v', '-z', '--debug', '--', ...pathspecs])
+  const listing = spawnGit(['ls-files', '-s', '-v', '-z', '--', ...pathspecs])
   const running = Promise.all([
     listing,
     // `--ignored=matching` names an ignored path without descending into an
@@ -1107,7 +1129,22 @@ export async function startGitEnumeration(
   // at all. `--git-dir` named the per-worktree directory, so the gate
   // looked where the rule can never be.
   const facts = repoFacts(workspaceRoot)
+  // The blob-size check's verdict is a function of the index's entries, so
+  // the index file's bytes key it: one read, where `ls-files --debug` and a
+  // lookup per entry cost 250 ms at 100,000 files (A-60).
+  const pathspecKey = xxh3hex(pathspecs.join('\0'))
+  const readIndexKey = async (): Promise<string | undefined> => {
+    if (facts === null || facts.indexFile === '') return undefined
+    try {
+      const bytes = await Bun.file(path.resolve(workspaceRoot, facts.indexFile)).bytes()
+      return `${xxh3hex(bytes)}:${pathspecKey}`
+    } catch {
+      return undefined
+    }
+  }
+  const indexKeyRead = readIndexKey()
   const [ls, status, vars] = await running
+  const indexKey = await indexKeyRead
   if (ls === null) {
     throw gitSpawnRefusal(workspaceRoot)
   }
@@ -1118,14 +1155,13 @@ export async function startGitEnumeration(
         `Run 'git init' in your workspace root.${stderr ? ` (git: ${stderr})` : ''}`,
     )
   }
-  const parsedBlobs = { paths: [] as string[], oids: [] as string[], sizes: [] as number[] }
   const {
     files: tracked,
     oids,
     flagged,
     gitlinks,
     undecodable,
-  } = parseLsFilesOutput(ls.stdout, ls.undecodable, parsedBlobs)
+  } = parseLsFilesOutput(ls.stdout, ls.undecodable)
   // Normalize `status`'s repo-root-relative paths to workspace-relative (strip
   // the `--show-prefix`) so the dirty set is keyed identically to the trusted
   // OID map. Without this, when the workspace root is a git subdir, a modified
@@ -1203,11 +1239,16 @@ export async function startGitEnumeration(
     untracked: dirty === null ? null : untracked,
     undecodable,
     startedAtMs,
-    blobs: {
-      ...parsedBlobs,
-      digest: xxh3hex(
-        `${parsedBlobs.paths.join('\0')}\0\0${parsedBlobs.oids.join('\n')}\0${parsedBlobs.sizes.join('\n')}`,
-      ),
+    blobCheck: {
+      key: indexKey,
+      async blobs() {
+        const run = await spawnGit(['ls-files', '-s', '-v', '-z', '--debug', '--', ...pathspecs])
+        if (run === null || run.exitCode !== 0) return null
+        const blobs: IndexBlobs = { paths: [], oids: [], sizes: [] }
+        parseLsFilesOutput(run.stdout, run.undecodable, blobs)
+        return blobs
+      },
+      rekey: () => readIndexKey(),
     },
     // A missing blob is an answer ("missing"), never a fetch from a partial
     // clone's promisor remote.
