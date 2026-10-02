@@ -185,6 +185,21 @@ export function shouldShortCircuit(
   return nodes.size > 0
 }
 
+function maskInvocation(command: string): string {
+  return secretMask([process.env])?.mask(command) ?? command
+}
+
+/**
+ * A run's `--tag`s, stored on its history row and handed to telemetry
+ * (`vx.tag.<key>`): a tag that carries a secret is masked as the
+ * invocation line that spells it is (L-38).
+ */
+function maskTags(tags: Readonly<Record<string, string>>): Record<string, string> {
+  const mask = secretMask([process.env])
+  if (mask === null) return { ...tags }
+  return Object.fromEntries(Object.entries(tags).map(([k, v]) => [mask.mask(k), mask.mask(v)]))
+}
+
 /**
  * The command line a run hands to its telemetry sinks, with what follows
  * `--` counted, not quoted. Those are the task's arguments,
@@ -192,10 +207,6 @@ export function shouldShortCircuit(
  * GitHub job summary and a check-run posted over the API verbatim (item
  * 1057). Local history (`vx last`) keeps the whole line, on this machine.
  */
-function maskInvocation(command: string): string {
-  return secretMask([process.env])?.mask(command) ?? command
-}
-
 export function invocationCommand(argv: readonly string[]): string {
   const sep = argv.indexOf('--')
   if (sep === -1) return argv.join(' ')
@@ -698,7 +709,7 @@ async function runOnBus(
         arch: hostContext.arch,
         workspaceId: wsIdentity.id,
         workspaceName: wsIdentity.name,
-        tags: options.tags ?? {},
+        tags: maskTags(options.tags ?? {}),
       }
       telemetry = await subscribeTelemetry(
         prepared.plugins,
@@ -1095,7 +1106,7 @@ async function runOnBus(
       concurrency,
       flow: options.flow ?? null,
       forwardArgs: options.forwardArgs,
-      tags: options.tags ?? {},
+      tags: maskTags(options.tags ?? {}),
       git: gitContext,
       ci: ciContext,
       host: hostContext,
