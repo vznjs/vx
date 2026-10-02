@@ -521,6 +521,11 @@ body:has(.vx-landing) {
 }
 
 /* ---- the benchmark table and why ---- */
+.bench-formula {
+  font: var(--fw-regular) 13px / 1.5 var(--font-body);
+  color: var(--text-mut);
+  margin: 12px 0 16px;
+}
 .bench-table {
   width: 100%;
   border-collapse: collapse;
@@ -549,6 +554,11 @@ body:has(.vx-landing) {
 }
 .bench-table td {
   white-space: nowrap;
+}
+.bench-table .vs {
+  display: block;
+  font-size: 12px;
+  color: var(--text-mut);
 }
 .bench-table .vx {
   font-weight: var(--fw-bold);

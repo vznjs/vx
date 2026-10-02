@@ -38,3 +38,38 @@ describe('docs/cli.md § Environment variables vx reads matches what core reads'
     expect([...documented()].sort()).toEqual([...source].sort())
   })
 })
+
+// The task's PATH prefix is stated on several pages. #2192 left a bin
+// directory holding the delimiter out of PATH and updated two of them;
+// env.md still said every entry is prepended, and execute-task.md named
+// the project's bin alone though the workspace root's is prepended too.
+describe('every page stating the PATH prefix states all of it', () => {
+  /** The paragraphs (and list items) of a page that say a bin is prepended. */
+  const prefixBlocks = (rel: string): string[] =>
+    readFileSync(path.join(pkg, 'docs', rel), 'utf8')
+      .split(/\n\s*\n|\n(?=\s*(?:[-*]|\d+\.) )/)
+      .map((b) => b.split(/\s+/).join(' '))
+      .filter((b) => b.includes('node_modules/.bin') && /prepend/.test(b))
+
+  const PAGES = [
+    'execution.md',
+    'schema.md',
+    'architecture.md',
+    'modules/env.md',
+    'modules/execute-task.md',
+  ]
+
+  it.each(PAGES)("%s names the workspace root's bin beside the project's", (rel) => {
+    const blocks = prefixBlocks(rel)
+    expect(blocks.length).toBeGreaterThan(0)
+    for (const b of blocks)
+      expect(b).toMatch(/<workspaceRoot>\/node_modules\/\.bin|(?:WORKSPACE ROOT|workspace root)'s/)
+  })
+
+  it.each(['execution.md', 'schema.md', 'modules/env.md'])(
+    '%s says a bin directory holding the delimiter is left out',
+    (rel) => {
+      expect(prefixBlocks(rel).join(' ')).toMatch(/delimiter.{0,40} (?:is )?left out/)
+    },
+  )
+})
