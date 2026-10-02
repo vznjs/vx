@@ -1072,3 +1072,12 @@ uncached sandboxed task): min 453 → 377 ms, median ~495 → ~440 over 12
 interleaved runs per arm. Rows: `sandbox-prewarm.unsafe.test.ts`; each
 half and the wait fail their row without themselves, and the control
 fails an unconditional prewarm.
+
+## C-87: `--retry` says it never retries a server
+
+`schema.md` said the run-level `--retry` "applies to tasks that don't
+declare their own `retries`", and `cli.md` that it re-runs a failed
+task; a persistent task declares none, and a probe with `retries: 2`
+on a server that exited before it was ready ran it once and failed it,
+as `exec.retries` on a persistent task is refused. Both now say it never
+retries a persistent one. Docs only.
