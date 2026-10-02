@@ -108,3 +108,13 @@ persistent task` and vx exits 1). Row (`site-samples` › a post's link
   inherits the class. Row (`site-samples` › the cascade post names
   every way a key is preliminary), gated on the source; red without
   the fix.
+- **J2-10** The remote-execution post's "What goes remote" list said
+  sandboxed and `exec.remote: false` tasks stay local but not that
+  their dependants stay with them (`pinnedLocalSet` walks the dependant
+  edges from every pinned task, as the CI guide says), and it named
+  nothing of the runtime-probe rule (`withProbedRuntime`: a task whose
+  key folds `cache.inputs.runtime` runs here; its dependants may go).
+  Probes, nothing to fix: the post's one-artifact claim (vx-reapi stores
+  the `tar.zst` as one CAS blob) and the lockfile-aware-keys post. Row
+  (`site-samples` › the remote-execution post lists what placement keeps
+  local), red without the fix.

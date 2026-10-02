@@ -1891,3 +1891,33 @@ describe('the cascade post names every way a key is preliminary', () => {
     }
   })
 })
+
+// The remote-execution post said sandboxed and `exec.remote: false` tasks
+// stay local but not their dependants, which placement pins with them,
+// and named nothing of the runtime-probe rule.
+describe('the remote-execution post lists what placement keeps local', () => {
+  it('each pinning rule in pinnedLocalSet is in its list, with its reach', () => {
+    const src = readFileSync(
+      path.resolve(import.meta.dir, '..', 'src', 'orchestrator', 'placement.ts'),
+      'utf8',
+    )
+    for (const field of [
+      'exec?.persistent',
+      'exec?.sandbox',
+      'exec?.remote === false',
+      'inputs?.runtime',
+    ])
+      expect(src).toContain(field)
+    expect(src).toContain('pinned.add(up)') // the walk up the dependant edges
+    const post = readFileSync(path.join(DOCS, 'blog', 'remote-execution.md'), 'utf8')
+      .split(/\s+/)
+      .join(' ')
+    for (const line of [
+      'Not persistent tasks, or anything depending on one.',
+      'Not sandboxed tasks, or anything depending on one.',
+      'Not `exec.remote: false`, or anything depending on it.',
+      'Not a task whose key folds a runtime probe',
+    ])
+      expect(post).toContain(line)
+  })
+})
