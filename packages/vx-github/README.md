@@ -10,7 +10,7 @@ npm install -D @vzn/vx @vzn/vx-github   # or: pnpm add -D -w · yarn add -D (-W 
 
 ```ts
 // vx.workspace.ts
-import { defineWorkspace } from '@vzn/vx'
+import { defineWorkspace } from '@vzn/vx/config'
 import { github } from '@vzn/vx-github'
 
 export default defineWorkspace({

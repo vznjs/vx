@@ -12,7 +12,7 @@ npm install -D @vzn/vx @vzn/vx-lockfile   # or: pnpm add -D -w · yarn add -D (-
 
 ```ts
 // vx.workspace.ts
-import { defineWorkspace } from '@vzn/vx'
+import { defineWorkspace } from '@vzn/vx/config'
 import { pnpm } from '@vzn/vx-lockfile' // or bun, npm, yarn
 
 export default defineWorkspace({

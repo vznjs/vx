@@ -26,6 +26,10 @@ run leaves out; the rest are refusals.
 
 ## Leads for other streams
 
+- F: `vx-reapi` `materialise-concurrency.test` "output files are fetched and
+  written at once" read `peak` 4 against 5 once in a local gate
+  (2026-10-02); 5 of 5 green alone. The peak depends on fetches
+  overlapping, so a loaded box can finish one before the last starts.
 - A: `cache.outputs.files: ['{dist,lib/esm}/**']` saves an empty
   artifact and a hit restores nothing — `scanUnion` (cache/inputs.ts)
   scans with `Bun.Glob`, whose scan skips a brace holding a slash.
@@ -822,3 +826,4 @@ packages/core`) selects the dependent whose `file:../lib` spec named
   config-schema record's three messages regenerated.
 - **D-80.** `vx init` left out a root script that runs the members (D-45), but not one that runs such a script by name: vite's `ci-docs` (`pnpm build && pnpm docs-build`) and `test-docs` (`pnpm run docs-build`) mapped as root tasks, each running members' builds again beside their own. A root script calling a member-running root script (`pnpm x`, `npm run x`, `yarn x`, `bun run x`, to a fixed point) is left out too. Row (`init.test` › the workspace root among members is not mapped …, with a control calling a root script that runs no member). Probes, nothing else to fix: vite's other root scripts; openpanel (plain pnpm, as designed).
 - **D-81.** `vx init` read a workspace flag on any program as the package manager's: berry's nine root scripts over `yarn node -r ./scripts/setup-ts-execution …` (node's `--require`) were left out as running the members, as `mocha -r`, `tar -C` would be. A flag now counts on `pnpm`/`npm`/`yarn`/`bun` up to the program it runs (`node`, the name after `exec`/`dlx`/`x`), or after a `run` verb (npm/cli's `node . run test --workspaces`). Row: `init.test` › a workspace flag counts on the package manager …, with controls (`cross-env CI=1 pnpm -r`, `pnpm exec -r`, `yarn --cwd`, `node . run --workspaces`); red without the fix. Probes, nothing else to fix: jest (yarn), npm/cli, sveltejs/kit, vitest (pnpm).
+- **D-82.** `vx init` mapped a root script over `yarn workspace <name> …` (cal.com's `prisma: yarn workspace @calcom/prisma prisma`) as a root task, running a member's script from the root beside the member's own. It is left out as running the members. Row: the D-45 row of `init.test`, now with that script; red without the fix.

@@ -11,7 +11,7 @@ npm install -D @vzn/vx @vzn/vx-reapi   # or: pnpm add -D -w · yarn add -D (-W o
 
 ```ts
 // vx.workspace.ts
-import { defineWorkspace } from '@vzn/vx'
+import { defineWorkspace } from '@vzn/vx/config'
 import { reapi } from '@vzn/vx-reapi'
 
 export default defineWorkspace({

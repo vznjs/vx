@@ -303,6 +303,27 @@ describe('mapNxDeps', () => {
     })
   })
 
+  // Nx's `splitTargetFromNodes` (nx 23.3): this project's own target ranks
+  // first, then the named project's longest target. `ui:build:esm` read as
+  // `build` in configuration `esm` reached ui's `build`; `ui:pack:esm`,
+  // with no `pack` on ui, dropped the edge. CONTROL: `ui:build:ci` with no
+  // `build:ci` target is still `build` in configuration `ci`.
+  it('a colon target: own first, then the named project’s whole target name', () => {
+    const todos: string[] = []
+    const got = mapNxDeps(
+      ['ui:build:esm', 'ui:pack:esm', 'ui:lint', 'ui:build:ci'],
+      byNode,
+      (t) => t === 'ui:lint',
+      (_p, t, c) => (t === 'build' && c === 'ci' ? 'build:ci' : null),
+      (p, t) => p === 'ui' && ['build', 'build:esm', 'pack:esm', 'lint'].includes(t),
+      todos,
+    )
+    expect([got, todos]).toEqual([
+      ['@acme/ui#build:esm', '@acme/ui#pack:esm', 'ui:lint', '@acme/ui#build:ci'],
+      [],
+    ])
+  })
+
   it('object forms: self, a named project by its package name, and the ones vx cannot take', () => {
     expect(
       deps([
