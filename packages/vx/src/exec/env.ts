@@ -71,6 +71,7 @@ export interface BuildEnvOptions {
    * (`oxlint`, `tsc`, `vitest`, …) resolve without a PM wrapper. Matches
    * vite-task's behavior — explicit per-project bin, no tree walk, so
    * sibling projects' bins stay invisible per the project-isolation rule.
+   * One holding `path.delimiter` is left out: PATH cannot name it.
    */
   binPaths?: readonly string[]
 }
@@ -90,8 +91,12 @@ export function buildIsolatedEnv(opts: BuildEnvOptions): NodeJS.ProcessEnv {
     out[name] = value
   }
 
-  if (opts.binPaths && opts.binPaths.length > 0) {
-    const prefix = opts.binPaths.join(path.delimiter)
+  // A directory holding the delimiter cannot be named in PATH: split, it
+  // became two entries naming nothing, the second RELATIVE, so resolved
+  // against the task's cwd. The 127 verdict says why it is missing.
+  const bins = opts.binPaths?.filter((dir) => !dir.includes(path.delimiter)) ?? []
+  if (bins.length > 0) {
+    const prefix = bins.join(path.delimiter)
     out['PATH'] = out['PATH'] ? `${prefix}${path.delimiter}${out['PATH']}` : prefix
   }
 

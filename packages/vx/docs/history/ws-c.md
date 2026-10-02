@@ -962,7 +962,10 @@ are their own groups, killed at process exit (A-9) but not by the stop.
 The run's stop now kills them (`stopRuntimeProbes`, cache/inputs.ts),
 and a task whose `execute` rejects after the stop is `aborted`, with no
 error line, where it read failed for the probe the stop cut short.
-Measured: 1,021 ms. Rows: `abort.test.ts` › the stop kills a running
+Measured: 1,021 ms. The kill is the stopping run's: probes are kept
+per run (by its memo), so a second run in the process (an embedder's
+`inflight` case) keeps its own (`abort.test.ts` › one run's stop leaves
+another run's probe alone, red with the kill process-wide). Rows: `abort.test.ts` › the stop kills a running
 probe (the run waits out the 30 s probe without the kill) and
 `scheduler.test.ts` › a rejected execute after the stop (red without the
 rejection arm's check; its control stays failed). `modules/scheduler.md`
@@ -979,6 +982,13 @@ scheduler's line. The error object is kept (its class, cause and code),
 so a refusal still prints plainly and a bug as an internal error.
 Row (`plugin-capabilities.test.ts` › an executor's throw reaches the
 task's own stderr): red without the fix. `modules/executor.md` says so.
+
+## C-72: `--continue` rides no wire
+
+`cli.md` § Failure propagation ended "The mode rides the wire, so
+distributed runs honor it": the whole-run backend seam that carried it
+went with vx cloud. The mode is the local scheduler's; a task a plugin
+executor runs elsewhere is one dispatch like any other. Docs only.
 
 ## C-71: `--exclude-dependencies`' orders over random graphs, as a test
 
@@ -999,6 +1009,16 @@ telemetry sinks receive, but only for the argv fallback: an embedder's
 verbatim. It is now counted, not quoted, the same way. Row
 (`telemetry.test.ts` › a sink never receives what follows `--`): red
 without the fix. The option's doc comment says so.
+
+## C-74: an executor's shared error is named once
+
+C-63 names a plugin executor's throw by prefixing the error's own
+message, so one error object an executor rejects several tasks with (a
+failed connection it memoized) was prefixed once per task: the second
+read `failed in execute: plugin 'org/down' (executor 'down') failed in
+execute: pool down`. The prefix is now added once. Row
+(`plugin-capabilities.test.ts` › one error an executor rejects two tasks
+with is named once in each): red without the fix.
 
 ## C-73: architecture.md's end of run names the servers it keeps
 
