@@ -64,9 +64,11 @@ export function trackedKinds(tracked: readonly string[]): (rel: string) => Track
 
 /**
  * What moves when the tracked set can: the HEAD reflog's size (a commit, a
- * checkout, a pull appends to it) and HEAD itself. A stat and a small read,
- * so a kept mapping stays a hit between commits. A file `git add`ed and not
- * yet committed is seen at the next mapping.
+ * checkout, a pull appends to it), HEAD itself, and the index's size and
+ * mtime (`git add`, `git rm`). Stats and a small read, so a kept mapping
+ * stays a hit between them; a run does not write the index. Without the
+ * index, a file `git add`ed under an output and not yet committed was not
+ * taken back by the kept mapping, and the run's clean deleted it.
  */
 export async function headStamp(root: string): Promise<string> {
   for (let dir = root; ;) {
@@ -80,7 +82,8 @@ export async function headStamp(root: string): Promise<string> {
       }
       const head = await readFile(path.join(gitDir, 'HEAD'), 'utf8').catch(() => '')
       const log = await lstat(path.join(gitDir, 'logs', 'HEAD')).catch(() => null)
-      return `${head.trim()}\0${log?.size ?? ''}`
+      const index = await lstat(path.join(gitDir, 'index')).catch(() => null)
+      return `${head.trim()}\0${log?.size ?? ''}\0${index?.size ?? ''}\0${index?.mtimeMs ?? ''}`
     }
     const up = path.dirname(dir)
     if (up === dir) return 'no-git'
