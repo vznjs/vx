@@ -452,6 +452,14 @@
   with the same rule. `tag-secret-mask.test.ts`, both rows red without
   the fix.
 
+- L-45. `fix(vx-migrate)`: `turboCache()` with a signature key writes a
+  download to a temp and checks its tag before core sees a byte. The
+  temp sat in the OS temp dir, which a sandboxed task may read, so a
+  task in one project could read another's outputs there for the check's
+  length (the class of L-10). It lands in vx's cache directory, which
+  the sandbox walls. `vx-migrate/tests/turbo-cache-temp-dir.test.ts`,
+  red without the fix.
+
 ## Leads for other streams
 
 - Cache owners: `src/cache/archive.ts` and `tar-stream.ts` changed under
