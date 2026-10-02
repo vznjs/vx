@@ -1268,10 +1268,11 @@ const TRACER_RETRY_LINE =
  * On Linux the task runs under strace, which only REPORTS what the sandbox
  * denied. strace failing on its own (`ptrace(PTRACE_LISTEN,…): Input/output
  * error`, after a build that had finished) turned green work red on CI five
- * times (STATUS Next 24): its exit was the task's. Since B-11 it is not —
- * strace runs detached (`-DD`), and a tracer that dies leaves the command
- * running untraced — but the trace then stops short, and a denial after it
- * goes unreported. So an attempt whose stderr carries strace's own word is
+ * times (STATUS Next 24): its exit was the task's. Since B-11 strace runs
+ * detached (`-DD`), yet under `--seccomp-bpf` (strace 6.8 implies
+ * `--kill-on-exit`) a tracer that dies still SIGKILLs the command: exit
+ * 137 on CI (M-18). Untraced or killed, the trace stopped short and a
+ * denial after it goes unreported. So an attempt whose stderr carries strace's own word is
  * run once more, whatever its exit, unless the run is stopping: the sandbox kept its writes to what it
  * declared, so a second run redoes, not doubles, it.
  */
@@ -1329,8 +1330,13 @@ function collectRecords(
   }
 }
 
-/** strace's own message, a line of a traced task's stderr. */
-const STRACE_OWN_ERROR = /^strace: /
+/**
+ * strace's own message, a line of a traced task's stderr. strace names
+ * itself by its argv[0], the absolute path vx runs it by
+ * (`/usr/bin/strace: ptrace(PTRACE_LISTEN,…)` on CI), so a bare
+ * `strace: ` never matched there and the retry never fired.
+ */
+const STRACE_OWN_ERROR = /^(?:[^\s:]*\/)?strace: /
 
 /**
  * One attempt of `runSandboxed`.
@@ -1437,7 +1443,7 @@ async function runSandboxedOnce(
         // Read whatever the capture setting: a line of strace's own says
         // the trace stopped short.
         const lines = (partial + chunk).split('\n')
-        partial = (lines.pop() ?? '').slice(0, 64)
+        partial = (lines.pop() ?? '').slice(0, 512)
         if (lines.some((l) => STRACE_OWN_ERROR.test(l))) straceSpoke = true
         args.onStderr?.(chunk)
       },

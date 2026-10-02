@@ -336,6 +336,11 @@ export function refusedWritesOutside(violations, opts: { within; linked?; config
      store's Linux feed is ignored) AND (on Linux) from the strace log
      the spawn wrote,
      then calls `SandboxManager.cleanupAfterCommand()`.
+   - On Linux, an attempt whose stderr holds a line of strace's own
+     (strace names itself by its argv[0], `/usr/bin/strace: …`) is run
+     once more unless it timed out or the run is stopping: the trace
+     stopped short, and under `--seccomp-bpf` (which implies
+     `--kill-on-exit`) a dying strace SIGKILLs the task (exit 137; M-18).
 4. **Filtering.** Enforcement anchors at the workspace root, but only
    denials on a path inside `reportWithin` (the project) or one of
    `reportLinked` (the linked packages a cached task was denied because
