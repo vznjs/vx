@@ -606,13 +606,18 @@ function buildTask(
     rootDeps: opts.rootDeps,
   }
   expandNxInputs(target.inputs ?? [], upstream.namedOf(nodeName), at, inputs, todos)
+  const cacheWanted =
+    target.cache === true || (target.cache === undefined && opts.cacheable.has(targetName))
+  // An output only matters to a task vx caches: Nx's default `build` /
+  // `public` note sat on every uncached `build` that declares none.
+  const outTodos = cacheWanted ? todos : []
   const { outFiles, wsOutFiles } = mapNxOutputs(
     target.outputs ??
-      nxDefaultOutputs(targetName, options, projectRel, todos, opts.tracked?.(projectRel).tops),
+      nxDefaultOutputs(targetName, options, projectRel, outTodos, opts.tracked?.(projectRel).tops),
     options,
     projectRel,
     projectName,
-    todos,
+    outTodos,
   )
   const deps = mapNxDeps(
     target.dependsOn ?? [],
@@ -645,8 +650,6 @@ function buildTask(
   // made uncached only by the shared-output rule (2026-09-22).
   const readyWhen = mapped?.readyWhen
   const persistent = readyWhen !== undefined || persistentTarget(target)
-  const cacheWanted =
-    target.cache === true || (target.cache === undefined && opts.cacheable.has(targetName))
   const wild = wildcardOutput(outFiles, opts.tracked?.(projectRel)) ?? wildcardOutput(wsOutFiles)
   if (wild !== undefined && cacheWanted && !persistent) todos.push(wildcardTodo(wild))
   const own = wild === undefined ? ownFileOutput(outFiles, opts.ownConfig?.(projectRel)) : undefined
