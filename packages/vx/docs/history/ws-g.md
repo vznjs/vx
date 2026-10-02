@@ -51,13 +51,6 @@ collapsed: create-t3-turbo 25 of 25 tasks and astro 122 of 122 agree.
 
 ## Leads for other streams
 
-- **C/E:** in a `turbo()` workspace, `vx run build --all --dry=json`
-  prints the plugin's warnings on STDOUT ahead of the JSON (the project
-  stage's `warn` is `log.status` in `orchestrator/prepare.ts`), so the
-  output does not parse (`… --dry=json 2>/dev/null | jq` fails on
-  create-t3-turbo). Warnings belong on stderr, at least under `--json`
-  modes.
-
 - **F:** `vx-reapi` › a call a proxy cuts in transit ›
   RST_STREAM(INTERNAL_ERROR) reads as INTERNAL and is retried (F-1)
   counts `sent: 3` where it expects 4 under load: 2 of 3 runs failed
@@ -1048,3 +1041,4 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
 - **G-133.** fix: Turbo hashes the files of every workspace package the root depends on, transitively, into its global hash (`root_internal_package_dependencies_paths`). with-nestjs's root dev-depends on `@repo/eslint-config` and `api#lint` (`lint: {}`, no edge) lints with it: Turbo's dry run re-keys every task on an edit to the rules, `turbo()` keyed none, and the lints replayed from the cache. Each such package's `<dir>/**` joins the global inputs; the mapping key reads the root manifest. Row (`turbo.test` › the root's workspace dependencies key every task …, with a no-edge control: red without the change, and without the key's read).
 - **G-134.** fix: of the flags `turbo run --help` (2.11.6) lists, `--color`, `--no-color`, `--heap`, `--trace`, `--login`, `--no-update-notifier`, `--skip-infer`, `--root-turbo-json` and the ten `--experimental-otel-*` reached `vx run` as "unknown flag", no way on. Each is a refusal naming the vx way now (`FORCE_COLOR=1`, `NO_COLOR=1`, `--profile`, `otel()` …). Rows (`foreign-flags` › every flag Turbo's `run` lists is vx's own or in the table, a hand-written list: red without the change; the refusals' exact lines).
 - **G-135.** fix: a bracket range in a Turbo or Nx glob (`src/[a-c]*.js`) had no vx form, so the task's inputs fell back to every package file and any edit re-keyed it (Turbo's dry run moves it only for `a`–`c` files). `minimatchToVx` spells a range within digits or one case of letters out as a brace set, and a negated class in a positive glob as `?` (a superset); a range across kinds, backwards, or a negated class in a negation stays refused. Rows (`glob-grammar` › classes: red without the change; refusals as controls).
+- **G-139.** Probes against Turbo 2.11.6 (1.13.4 for Turbo 1 configs), nothing to fix: task graphs agree on all 33 of Turbo's examples, create-t3-turbo, shadcn-ui, cal.com, dub, formbricks and trigger.dev (no-op nodes aside, which vx walks past or keys); 22 `--filter` forms on t3; `--affected` on t3 (vx's whole-lockfile, `.npmrc` and `pnpm-workspace.yaml` re-keys are supersets); framework env inference on nine examples; `env` wildcards with `!` takes; `--` arguments key both; the restored file set of six output shapes (negations, dotfiles, `$TURBO_ROOT$`) after a real run; `turboCache()`'s wire against a recording server (and one with no batch-query endpoint); package configs extending another package's. Turbo-only behaviour vx leaves: a `{ "extends": false }` opt-out still runs under Turbo when a dependant's `^task` reaches it (only the entry point is excluded; vx honours the opt-out); an `extends` list not starting with `//` is refused by Turbo and mapped by vx; Turbo orders `^build` on no workspace peer, vx does (core, by design); a `passThroughEnv` wildcard keys vx on which names match (none of the probed repos has one). The C/E lead (plugin warnings on stdout under `--dry=json`) no longer holds: t3's JSON parses with stderr dropped; struck.
