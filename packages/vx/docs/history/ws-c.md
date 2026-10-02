@@ -825,6 +825,15 @@ restore feeds an exec task. Cost (1,000 projects, 3,000 nodes, min of
 dispatch order `r1, r2, e` ahead of three idle restores): red without
 the pass. `modules/scheduler.md` says so.
 
+## C-55: a fail-fast skip is not "blocked upstream"
+
+`--continue=never`'s footer read `Skipped: 2 tasks never started —
+blocked upstream` over `⊘ after the run stopped (fail-fast): …`: the
+header claimed a blocker the cause line beneath it denied. It says
+`blocked upstream` only when every skip has a blocker. Rows
+(`summary.test.ts`): a fail-fast skip alone, and the mixed row; both
+red on the old header. `cli.md` says so.
+
 ## C-53: a kept server's crash reads `failed` in the summary and report
 
 `vx run dev` whose server exited 4 after the summary exited 1, and the
