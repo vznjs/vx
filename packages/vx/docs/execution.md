@@ -84,17 +84,17 @@ terminal and a task succeeding or failing. Read it alongside
  │   12. Bulk git populate — the enumeration step 1 started is
  │       awaited, or a scoped run starts it here over the projects
  │       that own a task (not the dependency closure step 7 loaded,
- │       which a `lint` of one package does not key). FOUR spawns at the
- │       root, three concurrent and the rev-parse asked while they run
- │       (`ls-files -s -v -z --debug` for the index: every tracked
- │       path's OID, its cache-state flag and its recorded size;
+ │       which a `lint` of one package does not key). THREE spawns at
+ │       the root, concurrent, and the repository's facts asked while
+ │       they run (`ls-files -s -v -z --debug` for the index: every
+ │       tracked path's OID, its cache-state flag and its recorded size;
  │       `status --porcelain -z -uall` for
- │       the dirty AND untracked sets, the one worktree walk;
- │       `rev-parse --show-prefix --git-common-dir --show-object-format`,
- │       memoized per process and shared with the file hasher, which
- │       would otherwise spawn it again for the object format; `var -l`
+ │       the dirty AND untracked sets, the one worktree walk; `var -l`
  │       for core.autocrlf and the attributes files git reads outside
- │       the tree)
+ │       the tree; the facts — prefix, common dir, object format — read
+ │       off a plain `.git` directory, else one
+ │       `rev-parse --show-prefix --git-common-dir --show-object-format`,
+ │       memoized per process and shared with the file hasher)
  │       fill the per-project GitFilesCache with file lists + index
  │       OIDs. `ls-files --others` is NOT among them — status's
  │       `-uall` already answers untracked, and asking git twice
@@ -409,8 +409,8 @@ between machines and gives reproducible runs.
 
 The allowlist + isolation contract lives in
 [`modules/env.md`](./modules/env.md) and is the only field the
-contract assumes for "what every command needs to function on
-\*nix / Windows". Adding to the allowlist would be a deliberate
+contract assumes for "what every command needs to function" on
+Linux and macOS (Windows is WSL, which is Linux). Adding to the allowlist would be a deliberate
 schema-extending change (consumer code expects a particular set;
 broader access has cache-stability implications).
 

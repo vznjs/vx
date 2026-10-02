@@ -959,11 +959,11 @@ describe('populateGitFilesCache — single workspace-wide git spawn', () => {
     await rm(workspaceRoot, { recursive: true, force: true })
   })
 
-  it('spawns git 5x concurrently for N projects, never once per project', async () => {
+  it('spawns git 4x concurrently for N projects, never once per project', async () => {
     // The bulk populate uses async Bun.spawn (ls-files + status + a
     // three-key `config` read, concurrent — only the first two scan
-    // anything) and one spawnSync'd `rev-parse` asked while they run
-    // (`repoFacts`, memoized per directory); the per-project fallback uses
+    // anything); `repoFacts` reads this plain repository off the disk, so
+    // no `rev-parse` is spawned; the per-project fallback uses
     // spawnSync. Count both so a regression to per-project spawning is caught
     // either way. The guard is CONCURRENCY, not the literal count: the point is
     // O(1) bulk spawns, never O(N) per-project.
@@ -993,13 +993,12 @@ describe('populateGitFilesCache — single workspace-wide git spawn', () => {
       await populateGitFilesCache(workspaceRoot, projectDirs, cache)
       // One index-only `ls-files -s -v` (tracked list + index OIDs +
       // skip-worktree flags), one `status --porcelain -uall` (dirty set +
-      // untracked files — the ONLY worktree walk), one `rev-parse`
-      // (repo→workspace path, common dir, object format), one `var -l` (the
+      // untracked files — the ONLY worktree walk), one `var -l` (the
       // clean-filter gate) — all concurrent, never per-project. `check-attr`
       // is NOT among them: this fixture declares no attributes, and paying
       // for it here would mean paying for it in every plain repo. And one
       // `cat-file` for the blob sizes: no memo here (A-60).
-      expect(spawnCount).toBe(5)
+      expect(spawnCount).toBe(4)
       // Every project got a non-null entry partitioned from the bulk
       // listing — `src.ts` shows up project-relative.
       for (const dir of projectDirs) {

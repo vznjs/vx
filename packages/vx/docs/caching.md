@@ -186,6 +186,10 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     and prints only `UU <path>`: the deletion went unsaid, the file kept
     its index OID, and the run hit the output built with it (A-59).
 
+    Ref storage is not a key input: every ref vx reads comes from a git
+    command, so a repository in reftable storage (git 2.45) keys every
+    task as its files-backend twin (`tests/git-reftable.unsafe.test.ts`).
+
     A **submodule or an embedded repository** is enumerated by its own
     git: the workspace repository lists the nested one as a single entry
     (a gitlink, or `dir/` when untracked) and none of its files, so vx
@@ -619,6 +623,11 @@ is on):
    Until 2026-09-27 (A-3) the rename came first, and a commit refused
    past the busy timeout left the new bytes beside the old rows: every
    later hit on the key failed the task as a corrupt artifact.
+   A re-save (`--force`) first moves the previous artifact aside under
+   a temp name and unlinks it after the commit: ext4 flushes the
+   incoming file when a rename replaces one, 0.55 ms a save on the main
+   thread against 0.04 (a forced 1,000-task run 4.01 s → 3.46 s,
+   2026-10-02). A reader probing between the two renames misses.
 
 **The key is re-checked before the save** (item 743). It was taken
 before the command ran — at the task's start, or up front by the local
