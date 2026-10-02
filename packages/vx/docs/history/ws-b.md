@@ -1224,6 +1224,21 @@ the same way and such a project is refused on Linux; a row pins the Bun
 fact. Rows: `sandbox-glob-chars.unsafe.test.ts` (each changed site
 mutated back reddens one).
 
+B-71. On Linux a file write grant binds its directory (bwrap cannot
+rename onto a file mount), and a read there was never refused or
+reported: a task granted `write: ['out.txt']` read an undeclared
+`secret.txt`, and after it changed a cached run replayed its old bytes
+(reproduced). vx now lists each widened directory as the task starts
+(`widenedEntries`); the strace pass reads the successful `openat` calls
+not for writing alone and reports a read of one of those entries that no
+grant covers, and the directory's listing while it holds one. The
+declared file, other grants and what the task made itself stay readable.
+`grep -r` and `find` open entries relative to a directory's descriptor,
+so such a task traces with `-y`, whose printed paths place the read.
++3 ms per 20,000 traced opens, and `-y`, only when a grant was widened.
+Rows: `sandbox-widened-reads.unsafe.test.ts` (each guard mutated back
+reddens one); the 2026-09-20 "no violation" row now expects the reports.
+
 B-72. `runSandboxed` awaits the runtime, the tracer probe and the wrap
 before it spawns, and a stop that landed there was never looked at
 again: the task spawned after the teardown had swept the run's
