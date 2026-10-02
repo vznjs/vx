@@ -9,8 +9,8 @@ tags:
 excerpt: "A daemon answers 'what changed' quickly by keeping a second copy of the truth. vx keeps no copy. Every run pays its own discovery and still wins the warm benchmarks, because the discovery was made cheap instead of being hidden."
 ---
 
-Nx runs a daemon by default. Turborepo shipped one and, as of 2.10, is
-deprecating it. Both exist for the same reason: a warm run needs to
+Nx runs a daemon by default. Turborepo shipped one and, since 2.8.11,
+no longer uses it for `turbo run`. Both exist for the same reason: a warm run needs to
 know what changed since the last one, and walking the filesystem to
 find out is slow. So a background process watches the tree and keeps
 the answer ready.

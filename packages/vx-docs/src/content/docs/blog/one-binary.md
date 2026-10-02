@@ -20,12 +20,14 @@ you never install Bun.
 npm install -D @vzn/vx    # or pnpm add -D -w · yarn add -D (-W on Yarn 1) · bun add -d
 ```
 
-The package ships the prebuilt standalone binary for your platform:
-Linux and macOS, x64 and arm64 (Windows under WSL). It is the same
-binary the GitHub release carries, so a CI image can fetch the tarball
-directly and skip the package manager entirely. There is no postinstall
-that compiles anything, no download at first run, and no runtime to
-match.
+The package brings the prebuilt standalone binary for your platform as
+a per-platform optional dependency: Linux and macOS, x64 and arm64
+(Windows under WSL). It is the same binary the GitHub release carries,
+so a CI image can fetch the tarball directly and skip the package
+manager entirely. There is no postinstall that compiles anything, no
+download at first run, and no runtime to match. The npm package's
+`vx` command is a small Node launcher that starts that binary; the
+release binary needs no launcher.
 
 Your tasks are unaffected. `tsc`, `vite`, `eslint` run under whatever
 Node your project uses, because a task is a shell command and vx only
@@ -40,9 +42,10 @@ is vx's business.
 - **No version skew between the tool and its host.** A compiled binary
   carries its runtime. The `vx` that ran yesterday is the `vx` that
   runs today, byte for byte, on every machine in the team.
-- **No runtime to boot before vx's own code runs.** A compiled Bun
-  binary starts as itself, which is part of what keeps a fully cached
-  run in milliseconds.
+- **No runtime to boot before vx's own code runs**, run as the release
+  binary: a compiled Bun binary starts as itself, which is part of what
+  keeps a fully cached run in milliseconds. Through npm, the launcher
+  costs one Node start first.
 - **`vx.config.ts` evaluated natively.** TypeScript config with no
   transpile step, no `ts-node`, no loader flag. The binary resolves the
   `@vzn/vx` import from your `node_modules`, which is also why the

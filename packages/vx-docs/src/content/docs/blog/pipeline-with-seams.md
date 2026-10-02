@@ -19,8 +19,8 @@ it needs.
 ## The stages
 
 ```
-config → project → graph → key → fingerprint → schedule → admit
-        → executor / cache → telemetry
+config → discover → project → graph → key → fingerprint → schedule
+        → admit → executor / cache → telemetry
 setup and teardown wrap the run; commands adds a verb
 ```
 

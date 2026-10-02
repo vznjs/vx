@@ -158,3 +158,34 @@ persistent task` and vx exits 1). Row (`site-samples` › a post's link
   reads granted no wider than `cache.inputs` make the denial the
   under-declaration. Row (`site-samples` › the sandbox post judges a
   violation against the grants); red without the fix.
+
+- **J2-19** The pipeline-with-seams post's stage diagram ran
+  `config → project`, skipping `discover`, which its own table (pinned
+  by item 343) lists second. Row (`site-samples` › every arrow chain of
+  the pipeline stages is PLUGIN_HOOKS in order), over every site page
+  and core doc; red on the post without the fix.
+
+- **J2-20** The one-binary post installs from npm and then says no
+  runtime boots before vx's own code runs; the npm package's `bin` is
+  `launcher.cjs`, a Node script that spawns the platform binary (one
+  Node start first, ~65 ms by its own comment). It also said the
+  package ships the binary, which a per-platform optional dependency
+  carries. Both now say so. Row (`site-samples` › the one-binary post
+  says the npm command is a Node launcher), read from `build-npm.ts`
+  and the launcher; red without the fix.
+
+- **J2-21** The no-daemon post said Turborepo is deprecating its daemon
+  "as of 2.10"; turbo's 2.8.11 release notes deprecate it for
+  `turbo run`, as `comparison.md` says. The no-choice post measured Nx's
+  3.59 s "with the daemon running"; `compare.ts` runs every runner with
+  `CI=1`, Nx's daemon off, and the honest-benchmarks post said both
+  ran "with their daemons on". Row (`site-samples` › the posts state the
+  daemons as the benchmark ran them), reading the version from
+  `comparison.md` and the footing from the harness; red without the fix.
+
+- **J2-22** J2-17's class on a second page: the concepts page's "vx
+  alone" bullet said a restore costs about the same as an untouched
+  tree, of `vx-bench/run.ts`, whose restore row deletes the outputs
+  and extracts every artifact (239 against 906 ms at 1,000 projects in
+  `benchmarks.md`). Row (`site-samples` › the concepts page reads
+  run.ts's restore row as it is measured); red without the fix.
