@@ -128,13 +128,22 @@ export function deniedCalls(text: string, cwd?: string): DeniedCall[] {
   const pending = new Map<string, { syscall: string; rawPath: string }>()
   const out: DeniedCall[] = []
   const ops = new Map<string, Op[]>()
+  // A clone with CLONE_FS (every thread) shares its creator's cwd, so a
+  // `chdir` by either moves both: such a pid keeps the creator's list.
+  const sharing = new Map<string, string>()
+  const owner = (pid: string): string => sharing.get(pid) ?? pid
   const opsOf = (pid: string): Op[] => {
-    let list = ops.get(pid)
-    if (list === undefined) ops.set(pid, (list = []))
+    let list = ops.get(owner(pid))
+    if (list === undefined) ops.set(owner(pid), (list = []))
     return list
   }
   const parent = new Map<string, { pid: string; at: number }>()
-  const forking = new Map<string, number>()
+  const forking = new Map<string, { at: number; shared: boolean }>()
+  const forked = (from: string, child: string, at: number, shared: boolean): void => {
+    // Shared only while the child has done nothing of its own yet.
+    if (shared && !ops.has(child)) sharing.set(child, owner(from))
+    else parent.set(child, { pid: owner(from), at })
+  }
   const chdirring = new Map<string, string>()
   const denied = (pid: string, call: DeniedCall): void => {
     opsOf(pid).push({ call: out.length })
@@ -177,11 +186,13 @@ export function deniedCalls(text: string, cwd?: string): DeniedCall[] {
       if (to !== undefined && m[2] === '0') opsOf(m[1]!).push({ chdir: to })
     } else if ((m = FCHDIR_RE.exec(line)) !== null) opsOf(m[1]!).push({ lost: true })
     else if ((m = FORK_DONE_RE.exec(line)) !== null) {
-      parent.set(m[2]!, { pid: m[1]!, at: opsOf(m[1]!).length })
-    } else if ((m = FORK_UNFINISHED_RE.exec(line)) !== null) forking.set(m[1]!, opsOf(m[1]!).length)
-    else if ((m = FORK_RESUMED_RE.exec(line)) !== null) {
-      parent.set(m[2]!, { pid: m[1]!, at: forking.get(m[1]!) ?? opsOf(m[1]!).length })
+      forked(m[1]!, m[2]!, opsOf(m[1]!).length, line.includes('CLONE_FS'))
+    } else if ((m = FORK_UNFINISHED_RE.exec(line)) !== null) {
+      forking.set(m[1]!, { at: opsOf(m[1]!).length, shared: line.includes('CLONE_FS') })
+    } else if ((m = FORK_RESUMED_RE.exec(line)) !== null) {
+      const start = forking.get(m[1]!)
       forking.delete(m[1]!)
+      forked(m[1]!, m[2]!, start?.at ?? opsOf(m[1]!).length, start?.shared === true)
     }
   }
   if (cwd === undefined) return out

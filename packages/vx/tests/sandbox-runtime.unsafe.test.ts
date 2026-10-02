@@ -2930,6 +2930,30 @@ describe('deniedCalls (strace trace parsing)', () => {
     ])
   })
 
+  // A thread shares its creator's cwd (CLONE_FS) rather than copying it:
+  // a worker started before the main thread's `chdir` opens from the new
+  // directory, as libuv's pool does after `process.chdir`.
+  it('moves a thread with the process whose cwd it shares', () => {
+    const trace = [
+      '20 clone3({flags=CLONE_VM|CLONE_FS|CLONE_FILES|CLONE_SIGHAND|CLONE_THREAD, exit_signal=0}, 88) = 21',
+      '20 clone(child_stack=0x7f, flags=CLONE_VM|CLONE_FS|CLONE_THREAD <unfinished ...>',
+      '20 <... clone resumed>, parent_tid=[22]) = 22',
+      '20 clone(child_stack=NULL, flags=SIGCHLD) = 23',
+      '20 chdir("src")                    = 0',
+      '21 openat(AT_FDCWD, "a", O_RDONLY) = -1 ENOENT (No such file or directory)',
+      '22 chdir("deep")                   = 0',
+      '20 openat(AT_FDCWD, "b", O_RDONLY) = -1 ENOENT (No such file or directory)',
+      '23 openat(AT_FDCWD, "c", O_RDONLY) = -1 ENOENT (No such file or directory)',
+      '',
+    ].join('\n')
+    expect(deniedCalls(trace, '/ws').map((c) => [c.rawPath, c.dir])).toEqual([
+      ['a', '/ws/src'],
+      ['b', '/ws/src/deep'],
+      // A forked process copied the cwd at the fork, before the `chdir`.
+      ['c', undefined],
+    ])
+  })
+
   it('never double-counts: a resume retires its pending entry', () => {
     // A second resume for the same pid has nothing pending, so a stray
     // resumed line cannot re-emit the previous path.

@@ -1080,4 +1080,7 @@ against an origin/main worktree, 240 → 337 ms). The shipped form: 212 →
 `sandbox-runtime.unsafe.test.ts` › deniedCalls › resolves a relative
 path against the cwd its process had moved to, and runSandboxed ›
 reports a denial under the directory the task changed into (each red
-without the fix).
+without the fix). A clone with `CLONE_FS` (every thread) shares its
+creator's cwd rather than copying it, so a `chdir` by either moves both
+(libuv's pool after `process.chdir`): deniedCalls › moves a thread with
+the process whose cwd it shares (red with the flag ignored).

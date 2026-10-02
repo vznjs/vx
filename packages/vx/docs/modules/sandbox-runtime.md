@@ -380,7 +380,8 @@ pairs `<unfinished ...>` with its `<... resumed>` line, so a denial in a
 forked child is reported too — a single-line match dropped those, which
 made the violation list incomplete under concurrency. A relative path is
 resolved against the cwd its process had moved to: the parse follows
-each `chdir` and starts a child in its parent's cwd at the fork, after
+each `chdir` and starts a child in its parent's cwd at the fork (a
+thread, `CLONE_FS`, shares it instead), after
 the whole pass, since a `vfork` child's lines precede its parent's
 `resumed` line. Against the starting cwd, a denial after `cd src` named
 a file that does not exist and no `ignore` for the real one matched.
