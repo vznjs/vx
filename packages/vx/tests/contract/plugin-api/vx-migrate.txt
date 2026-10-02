@@ -103,6 +103,7 @@ export interface MapTurboOptions {
   persistentTodo: string
   manifestField?(key: 'name' | 'version'): unknown
   envNames?: readonly string[]
+  sourceNames?: (dirs: readonly string[]) => Promise<readonly string[]>
   vendorEnvPrefix?: string
   envMode?: string
   tracked?: (rel: string) => TrackedKinds
