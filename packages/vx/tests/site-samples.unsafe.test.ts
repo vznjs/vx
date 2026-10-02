@@ -137,18 +137,22 @@ describe('the plugins guide states the CacheLayer method count', () => {
 })
 
 // The environment-variables guide is the configure page's section now.
-describe("comparison.md's Turborepo cells say what Turbo hashes and runs", () => {
-  // Turbo 2.10.13's dry run lists `package.json` among a task's inputs (a
-  // description edit re-keyed it), and `turbo run build` printed npm's
-  // `> b@1.0.0 prebuild` and its output; the cells said "(via lockfile)"
-  // and "(no)" (J-109).
-  it('the package.json and pre/post rows name it', () => {
-    const doc = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'comparison.md'), 'utf8')
-    const turbo = (row: string) => new RegExp(`^\\| ${row} +\\| ([^|]*?) +\\|`, 'm').exec(doc)![1]
-    expect(turbo('Implicit-dependency hash \\(project `package.json`\\)')).toBe(
-      'yes — `package.json` is a default input',
+describe('CONTRIBUTING names what the gate runs on', () => {
+  // It said "Needs Bun ≥ 1.4 and git" and "No Node in the toolchain"; with no
+  // `node` on PATH every nx-exec row of @vzn/vx-migrate#test fails (J-107).
+  it('nx-exec.test.ts spawns node, and CONTRIBUTING names Node', () => {
+    const repo = path.resolve(import.meta.dir, '..', '..', '..')
+    const nxExec = readFileSync(
+      path.join(repo, 'packages', 'vx-migrate', 'tests', 'nx-exec.test.ts'),
+      'utf8',
     )
-    expect(turbo('Pre/post script lifecycle')).toBe('yes — the package manager runs them')
+    expect(nxExec).toContain("Bun.spawn(['node', BIN, ...args]")
+    const contributing = readFileSync(path.join(repo, 'CONTRIBUTING.md'), 'utf8').replace(
+      /\s+/g,
+      ' ',
+    )
+    expect(contributing).toContain('Needs Bun ≥ 1.4, git and Node')
+    expect(contributing).not.toContain('No Node in the toolchain')
   })
 })
 
@@ -1666,5 +1670,19 @@ describe("the site's reapi samples on port 443 name a TLS scheme", () => {
     )
     expect(samples.length).toBeGreaterThan(3)
     expect(samples.filter((s) => !/: (grpcs|https):\/\//.test(s))).toEqual([])
+  })
+})
+describe("comparison.md's Turborepo cells say what Turbo hashes and runs", () => {
+  // Turbo 2.10.13's dry run lists `package.json` among a task's inputs (a
+  // description edit re-keyed it), and `turbo run build` printed npm's
+  // `> b@1.0.0 prebuild` and its output; the cells said "(via lockfile)"
+  // and "(no)" (J-109).
+  it('the package.json and pre/post rows name it', () => {
+    const doc = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'comparison.md'), 'utf8')
+    const turbo = (row: string) => new RegExp(`^\\| ${row} +\\| ([^|]*?) +\\|`, 'm').exec(doc)![1]
+    expect(turbo('Implicit-dependency hash \\(project `package.json`\\)')).toBe(
+      'yes — `package.json` is a default input',
+    )
+    expect(turbo('Pre/post script lifecycle')).toBe('yes — the package manager runs them')
   })
 })

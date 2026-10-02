@@ -448,6 +448,22 @@ async function runRuntimeCommand(
  */
 const liveProbes = new Set<ReturnType<typeof Bun.spawn>>()
 let probeExitHooked = false
+
+/**
+ * Kill every runtime probe still running, with its tree. A run's stop asks
+ * this: a Ctrl-C while a probe ran waited for the probe, or for the signal
+ * handler's bound, about 7 s, before vx exited (C-65). Its answer is no
+ * longer needed; its caller sees it fail and the run reads it aborted.
+ */
+export function stopRuntimeProbes(): void {
+  for (const p of liveProbes) {
+    try {
+      process.kill(-p.pid, 'SIGKILL')
+    } catch {
+      // the group is gone
+    }
+  }
+}
 function killProbesOnExit(): void {
   if (probeExitHooked) return
   probeExitHooked = true
