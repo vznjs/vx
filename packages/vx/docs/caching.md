@@ -35,7 +35,7 @@ The cache key for one task is a **16-hex xxHash3 digest**, seed-chained
 over (in order):
 
 1. **`CACHE_VERSION`** — the key-derivation sentinel
-   (currently `'vx-cache-v38'`, in `src/cache/key-fold.ts`). Bumped when
+   (currently `'vx-cache-v39'`, in `src/cache/key-fold.ts`). Bumped when
    the key derivation or the artifact container changes, or stored bytes
    are wrong under an unchanged key. See
    [§ Bumping CACHE_VERSION](#bumping-cache_version).
@@ -171,7 +171,13 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     CRLF bytes. A blob's size is fixed for its OID, so the sizes are
     kept in `blob_sizes` and a warm run asks git for none; a cold one
     asks one `git cat-file --batch-check` (65 ms over 3,000 loose
-    objects, 10 ms packed). A
+    objects, 10 ms packed). The check is by size, so a filter that
+    keeps the size (a `filter` driver such as `tr a-z A-Z`), removed
+    after an add, still leaves a blob that stands for other bytes:
+    probed, the run hit the build of the filtered bytes. Only a read of
+    every trusted file would catch it, the cost the index OIDs exist to
+    avoid. After changing a filter, `git add --renormalize .` makes the
+    index describe the worktree again. A
     re-listing mid-run, or a nested repository's project, spawns
     `git ls-files -s --others --exclude-standard -z .` in the project
     dir instead, and its OIDs are not trusted: those files hash by
@@ -189,8 +195,12 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     for a nested repository inside a project (`vendor/lib` under a
     `**` glob — until 2026-09-27 its files never reached the key, and an
     edit there was a hit on the old output), for a project inside one,
-    and for a `workspaceFiles` glob. A submodule never initialised has
-    no `.git` and no files, and folds nothing. `--affected` follows the
+    and for a `workspaceFiles` glob. A gitlink whose directory has no
+    `.git` (a submodule never initialised, or one whose `.git` was
+    removed to vendor its files, the gitlink left in the index) has no
+    repository to ask and `git status` says nothing of it: its files
+    are listed by a walk and hash by content (A-61), so an empty one
+    folds nothing. `--affected` follows the
     same shape — git reports the nested repository as one changed path,
     and every project under it is selected.
 
@@ -1598,6 +1608,10 @@ was not), and the cache tests.
 
 ### History
 
+- **v38 → v39**: stored bytes wrong under an unchanged key (A-61). A
+  gitlink whose directory had lost its `.git` but held files listed
+  none of them, so an entry built from them sits under the key the
+  same directory empty derives.
 - **v37 → v38**: stored bytes wrong under an unchanged key (A-60). A
   file added under a clean filter that was later removed kept its LF
   index blob, git held it clean by its stat, and the key folded that

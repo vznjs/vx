@@ -124,9 +124,11 @@ export async function cleanOutputPaths(args: {
   rels: readonly string[]
 }): Promise<void>
 
-// Kill every runtime probe still running, with its tree: a run's stop
-// calls it, so a Ctrl-C does not wait a probe out (C-65).
-export function stopRuntimeProbes(): void
+// Kill every runtime probe still running that these memos (one run's
+// runtimeCache and workspaceRuntimeCache) started, with its tree: a run's
+// stop calls it, so a Ctrl-C does not wait a probe out, and another run in
+// the process keeps its own (C-65).
+export function stopRuntimeProbes(...memos: readonly Map<string, Promise<string>>[]): void
 ```
 
 ## File resolution rules

@@ -545,6 +545,21 @@ export async function configEvalKeyFromClosure(a: {
   return h.toString(16).padStart(16, '0')
 }
 
+/** `configEvalKeyFromClosure` over identities already in hand; null when one is missing. */
+export function configEvalKeyFromIdentities(a: {
+  closure: readonly string[]
+  identities: ReadonlyMap<string, string>
+  workspaceFingerprint: string
+}): string | null {
+  let h = keySeed(a.workspaceFingerprint)
+  for (const file of a.closure) {
+    const id = a.identities.get(file)
+    if (id === undefined) return null
+    h = xxh3(`${file}\0${id}`, h)
+  }
+  return h.toString(16).padStart(16, '0')
+}
+
 /**
  * Every file a config imports by relative specifier, transitively, outside
  * `node_modules`, the config itself excluded. `vx watch` watches these: a
