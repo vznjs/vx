@@ -30,6 +30,19 @@
   `discover` stage it lists through `discoverCliProjects`.
   `modules/logger.md` gained #2054's post-summary server stream. Rows
   (`module-page-claims`), red on each page without the fix.
+- **J2-3** cli.md's `--report` sample read `8ms saved`, its two hits'
+  restore times (5 + 3): the sum the paragraph under it says the header
+  does not take (`savedMs` sums the entries' stored exec times). The
+  sample's hits now store 2.01s and 640ms (`2.65s saved`), and the
+  Status list names a skip's label as the renderer writes it,
+  `skipped (blocked by lib#build)`. Row (`cli-doc-drift` › the --report
+  sample is what the renderer prints), red without the fix.
+
+## Leads for other streams
+
+- **E** `vx last` labels every skipped row `after <id> failed`
+  (`cli/last.ts`), where the run's Skipped section says
+  `after <id> was aborted` for a block whose root a signal killed.
 
 - **J2-6** #2227 dropped every native Windows branch, and two pages
   still described one: `modules/sandbox-runtime.md`'s Windows row said
