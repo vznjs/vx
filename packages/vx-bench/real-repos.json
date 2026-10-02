@@ -1,5 +1,5 @@
 {
-  "$comment": "One row per real Turbo or Nx repo benched against its own tool. update-site.ts renders README.md's real-repo table and the site's benchmarks/real-repos page from it; each row's heading names its section in packages/vx/docs/benchmarks.md, where the harness and every number are recorded. Values are vx / theirs; a ** marks the side that wins when it is theirs.",
+  "$comment": "One row per real Turbo or Nx repo benched against its own tool, vx running it through turbo() or nx(), not native config: nothing renders it until each repo is rerun on migrated native config (STATUS, Positioning). Each row's heading names its section in packages/vx/docs/benchmarks.md, where the harness and every number are recorded. Values are vx / theirs; a ** marks the side that wins when it is theirs.",
   "rows": [
     {
       "repo": "solidjs/solid",

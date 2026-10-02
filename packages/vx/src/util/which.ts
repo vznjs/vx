@@ -48,13 +48,8 @@ export function executablePath(name: string): string {
 }
 
 /**
- * The argv that runs `script` in the task shell: `sh -c` on Linux and
- * macOS, and Bun's own shell (`bun exec`) on Windows, which ships no `sh`
- * (docs/design/windows-2026-09.md § Decisions 1). Bun's shell reads the
- * same `&&`, `|`, `$(…)` and `VAR=x cmd` syntax that `bun run` uses there.
+ * The argv that runs `script` in the task shell: `sh -c`.
  */
 export function shellArgv(script: string): string[] {
-  return process.platform === 'win32'
-    ? [process.execPath, 'exec', script]
-    : [executablePath('sh'), '-c', script]
+  return [executablePath('sh'), '-c', script]
 }
