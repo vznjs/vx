@@ -2070,3 +2070,28 @@ describe('the one-binary post says the npm command is a Node launcher', () => {
     expect(post).toContain('Through npm, the launcher costs one Node start first.')
   })
 })
+
+describe('the posts state the daemons as the benchmark ran them', () => {
+  // The no-daemon post dated Turbo's `turbo run` daemon deprecation 2.10
+  // where comparison.md says 2.8.11 (turbo's 2.8.11 release notes), and
+  // the no-choice post measured Nx "with the daemon running" where the
+  // harness runs `CI=1`, Nx's daemon off (J2-21).
+  it("Turbo's version is comparison.md's, and Nx's daemon was off", () => {
+    const core = path.resolve(import.meta.dir, '..')
+    const comparison = readFileSync(path.join(core, 'docs', 'comparison.md'), 'utf8')
+    const version = /not for `turbo run` since (\d+\.\d+\.\d+)/.exec(comparison)?.[1]
+    expect(version).toBe('2.8.11')
+    const post = (name: string): string =>
+      readFileSync(path.join(DOCS, 'blog', name), 'utf8').replace(/\s+/g, ' ')
+    expect(post('no-daemon.md')).toContain(`since ${version}, no longer uses it for \`turbo run\``)
+    const harness = readFileSync(path.join(core, '..', 'vx-bench', 'compare.ts'), 'utf8')
+    expect(harness).toContain("(`CI=1`, so Nx's daemon is off;")
+    expect(post('no-choice-on-the-market.md')).toContain(
+      "Turborepo's 760ms, Nx's daemon off as in CI.",
+    )
+    expect(post('honest-benchmarks.md')).toContain(
+      "CI (`CI=1`: Nx's daemon off, and Turbo uses none for `turbo run`)",
+    )
+    expect(post('honest-benchmarks.md')).not.toContain('with their daemons on')
+  })
+})

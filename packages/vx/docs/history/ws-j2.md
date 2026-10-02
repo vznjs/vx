@@ -173,3 +173,12 @@ persistent task` and vx exits 1). Row (`site-samples` › a post's link
   carries. Both now say so. Row (`site-samples` › the one-binary post
   says the npm command is a Node launcher), read from `build-npm.ts`
   and the launcher; red without the fix.
+
+- **J2-21** The no-daemon post said Turborepo is deprecating its daemon
+  "as of 2.10"; turbo's 2.8.11 release notes deprecate it for
+  `turbo run`, as `comparison.md` says. The no-choice post measured Nx's
+  3.59 s "with the daemon running"; `compare.ts` runs every runner with
+  `CI=1`, Nx's daemon off, and the honest-benchmarks post said both
+  ran "with their daemons on". Row (`site-samples` › the posts state the
+  daemons as the benchmark ran them), reading the version from
+  `comparison.md` and the footing from the harness; red without the fix.
