@@ -1130,3 +1130,16 @@ without the fix). A clone with `CLONE_FS` (every thread) shares its
 creator's cwd rather than copying it, so a `chdir` by either moves both
 (libuv's pool after `process.chdir`): deniedCalls › moves a thread with
 the process whose cwd it shares (red with the flag ignored).
+
+B-65. Lead 7 (macOS brackets), from SRT's seatbelt source: a spelling
+holding `[` compiles as a regex (`globToRegex`), where `[id]` is a class
+and a backslash is escaped to a literal one, so neither spelling granted
+`pages/[id].tsx`; and vx's own workspace wall, an absolute path under a
+bracketed directory, compiled to a class that matched nothing, the
+workspace unwalled. On darwin vx now hands SRT `\[` as `[[]` and `\]` as
+`]` (`seatbeltBrackets`), and B-60's refusal of a project under a
+bracketed directory covers every platform but Windows. Rows:
+`sandbox-runtime.unsafe.test.ts` › a bracketed route under seatbelt › is
+granted by its escaped name, and not by the class spelling (darwin only:
+the verdict is CI's macOS job), and `sandbox-request.test.ts`' refusal
+row now runs off Linux too.

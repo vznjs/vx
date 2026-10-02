@@ -3541,6 +3541,49 @@ describe.skipIf(WIN32)('reportableViolations', () => {
   })
 })
 
+// Seatbelt's SRT compiles a grant holding `[` as a regex in which a
+// backslash is a literal one, so the escaped spelling of a Next.js route
+// matched no file. vx hands it `[[]`, a class of one bracket (B-65).
+describe.skipIf(process.platform !== 'darwin')('a bracketed route under seatbelt', () => {
+  it(
+    'is granted by its escaped name, and not by the class spelling',
+    async () => {
+      if (!(await sandboxAvailable('bracketed route under seatbelt'))) return
+      await initSandbox()
+      const dir = realpathSync(await mkdtemp(path.join(os.tmpdir(), 'vx-brk-')))
+      try {
+        const proj = path.join(dir, 'app')
+        await mkdir(path.join(proj, 'pages'), { recursive: true })
+        const route = path.join(proj, 'pages', '[id].tsx')
+        await writeFile(route, 'route')
+        const run = (read: string) =>
+          runSandboxed({
+            command: `/bin/cat '${route}'`,
+            cwd: proj,
+            env: { PATH: process.env['PATH'] ?? '', HOME: process.env['HOME'] ?? '' },
+            baseAllowRead: [],
+            baseDenyRead: [dir],
+            reportWithin: proj,
+            reportLinked: [],
+            config: resolveSandboxConfig({ allow: { read: [read] } }, proj),
+          })
+        const escaped = await run('pages/\\[id\\].tsx')
+        // CONTROL: `[id]` is a class (`i` or `d`), which names no such file.
+        const classed = await run('pages/[id].tsx')
+        expect([escaped.stdout, classed.stdout, classed.exitCode === 0]).toEqual([
+          'route',
+          '',
+          false,
+        ])
+      } finally {
+        await resetSandbox()
+        await rm(dir, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+})
+
 describe.skipIf(process.platform !== 'darwin')('nested seatbelt', () => {
   it(
     'macOS refuses to apply a policy inside a sandboxed process',
