@@ -203,15 +203,50 @@ export function invocationCommand(argv: readonly string[]): string {
  * (C-61): a `concurrency` of 0, a negative or NaN left no worker slot and
  * the run waited for good; a `retries` of NaN retried a failing task
  * without end; a `timeout` of 0, a negative, NaN or past the timer's range
- * killed every task at once.
+ * killed every task at once. And the words and shapes the CLI parses
+ * (C-86): a `continueMode` of `'sometimes'` ran as `deps-ok`, so a typo
+ * lost fail-fast without a word; a string `excludeDependencies` dropped
+ * nothing; a `projects` string or a `signal` that is no AbortSignal died
+ * a TypeError inside the run.
  */
-function refuseRunNumbers(options: RunOptions): void {
-  const refuse = (name: string, value: number, rule: string): never => {
-    throw new UserError(`RunOptions.${name} is ${String(value)}: it must be ${rule}`)
+function refuseRunOptions(options: RunOptions): void {
+  const refuse = (name: string, value: unknown, rule: string): never => {
+    const shown =
+      typeof value === 'string'
+        ? JSON.stringify(value)
+        : typeof value === 'number'
+          ? String(value)
+          : value === null
+            ? 'null'
+            : Array.isArray(value)
+              ? 'an array'
+              : typeof value === 'object'
+                ? 'an object'
+                : `a ${typeof value}`
+    throw new UserError(`RunOptions.${name} is ${shown}: it must be ${rule}`)
   }
+  const names = (v: unknown): boolean => Array.isArray(v) && v.every((s) => typeof s === 'string')
+  if (!names(options.tasks)) refuse('tasks', options.tasks, 'an array of task names')
   // No task named read "No projects declare task(s): ." (C-61).
   if (options.tasks.length === 0 || options.tasks.includes(''))
     throw new UserError(`RunOptions.tasks names no task: give at least one task name`)
+  if (options.projects !== undefined && !names(options.projects))
+    refuse('projects', options.projects, 'an array of project names')
+  if (options.forwardArgs !== undefined && !names(options.forwardArgs))
+    refuse('forwardArgs', options.forwardArgs, 'an array of strings')
+  const oneOf = (name: string, value: unknown, words: readonly string[]): void => {
+    if (value !== undefined && !words.includes(value as string))
+      refuse(name, value, `one of ${words.map((w) => `'${w}'`).join(', ')}`)
+  }
+  oneOf('continueMode', options.continueMode, ['never', 'deps-ok', 'always'])
+  oneOf('outputLogs', options.outputLogs, ['full', 'errors-only', 'none', 'hash-only'])
+  oneOf('download', options.download, ['all', 'toplevel', 'none'])
+  oneOf('flow', options.flow, ['focused', 'broad'])
+  const exclude = options.excludeDependencies
+  if (exclude !== undefined && exclude !== 'all' && !names(exclude))
+    refuse('excludeDependencies', exclude, "'all' or an array of task names")
+  if (options.signal !== undefined && !(options.signal instanceof AbortSignal))
+    refuse('signal', options.signal, 'an AbortSignal')
   const { concurrency, retries, timeout } = options
   if (concurrency !== undefined && !(Number.isInteger(concurrency) && concurrency > 0))
     refuse('concurrency', concurrency, 'a positive integer')
@@ -225,7 +260,7 @@ function refuseRunNumbers(options: RunOptions): void {
 }
 
 export async function run(options: RunOptions): Promise<RunSummary> {
-  refuseRunNumbers(options)
+  refuseRunOptions(options)
   // Color decision: a custom logger (tests, embedders) handles its
   // own formatting and asserts on plain strings, so we suppress
   // ANSI escapes for them. Only the defaultLogger (real terminal
@@ -1294,6 +1329,7 @@ async function applyCacheRetention(prepared: PreparedRun, log: Logger): Promise<
  * existence check — no artifact download, no ingest, no accessed_at bump.
  */
 export async function planRun(options: RunOptions): Promise<RunPlan> {
+  refuseRunOptions(options)
   // The plan is the product and goes to stdout (`--dry=json` is parsed):
   // what a stage says on the way goes to stderr (C-6).
   const log = options.log ?? defaultLogger(undefined, undefined, process.stderr)
