@@ -47,7 +47,7 @@
   {
     "key": "turbo.json envMode",
     "status": "mapped",
-    "reason": "Strict is vx's behaviour; `loose` gets a note, since vx passes only declared variables; under `turbo()` `TURBO_ENV_MODE` wins over it."
+    "reason": "Strict is vx's behaviour; `loose` gets a note, since vx passes only declared variables, and so do the tasks a Turbo 1 `pipeline` config's inferred mode ran loose (no pass-through list); under `turbo()` `TURBO_ENV_MODE` wins over it."
   },
   {
     "key": "turbo.json extends",
@@ -97,7 +97,7 @@
   {
     "key": "turbo.json tasks",
     "status": "supported",
-    "reason": "Each task (or Turbo 1 `pipeline`) becomes a vx task for the packages that declare the script."
+    "reason": "Each task (or Turbo 1 `pipeline`) becomes a vx task for the packages that declare the script. A script that names `$npm_package_name`, `$npm_package_version` or `$npm_lifecycle_event` gets it defined, as the package manager Turbo runs it through sets it."
   },
   {
     "key": "turbo.json ui",
@@ -267,7 +267,7 @@
   {
     "key": "turbo.json futureFlags.githubActionsRemoteBaseRefFallback",
     "status": "not-supported",
-    "reason": "Ignored; `--affected` defaults to `origin/HEAD`, else `HEAD~1`."
+    "reason": "Ignored; `--affected` defaults to `origin/HEAD`, then a trunk branch (`origin/main`, `main`, …), else `HEAD~1`."
   },
   {
     "key": "turbo.json futureFlags.globalConfiguration",
