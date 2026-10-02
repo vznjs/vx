@@ -2178,7 +2178,8 @@ app#build — run 019f5a02-…
 
 Under the rows, `what to do` gives one line per changed kind: what
 moves it and how to stop a move the task does not need. An `upstream`
-line names the `vx why` to run next for each dependency that moved.
+line names the `vx why` to run next for each dependency that moved; a
+`config` line names the `vx show` that prints the task's config now.
 
 A hit's line is `cache-hit · key …` (or `cache-hit-remote`): the status
 names the hit and its tier, so only an executed run carries the word.
