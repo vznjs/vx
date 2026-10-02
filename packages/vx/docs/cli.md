@@ -223,8 +223,10 @@ Run the task only in projects whose files changed since `<base>`.
   `defaultBase` and `TURBO_SCM_BASE`, `turbo()` on GitHub Actions from
   the pull request's base or the push's `before`, as Turbo does;
   [schema](schema.md)), else
-  `origin/HEAD`, falling back to
-  `HEAD~1` if `origin/HEAD` isn't resolvable. A clone with neither — a
+  `origin/HEAD`; without one (actions/checkout sets none, nor does a
+  repo with no remote), the first of `origin/main`, `origin/master`,
+  `main`, `master` that is not HEAD itself, as Turbo and Nx compare with
+  `main` (D-93); else `HEAD~1`. A clone with neither — a
   CI checkout at `fetch-depth: 1` — has no base at all, and vx says so
   (`--affected has no base here … a shallow clone?`) instead of failing
   on a `HEAD~1` nobody typed. And when the base IS the commit you are
@@ -1748,7 +1750,8 @@ A script reading `$npm_package_version`, `$npm_package_name` or
 them under `exec.env.define`, the first two read from an imported
 `package.json` so a version bump reaches them; any other `$npm_*` it
 reads gets a TODO (D-34). Among several packages, a workspace root
-script that runs the members (`pnpm -r build`, `--filter`, `-C`, Yarn's
+script that runs the members (`pnpm -r build`, `--filter`, `-C`, pnpm's `pn` alias
+included (D-97), Yarn's
 `--cwd` and `yarn workspace <name>`, npm's `--prefix`, npm's
 and Yarn's workspace flags, a `cd` into or above a member, turbo, nx, lerna, `vp run`, vx itself) is not mapped
 (a flag counts on the package manager, or after `node <bin> run`, and not on the program it
@@ -2035,7 +2038,7 @@ plugins:          2 — @vzn/vx-reapi (executor, cache); @vzn/vx-otel (telemetry
 workers:          2 — cgroup CPU quota 2 of 8 cores
 memory:           13 GB usable — cgroup limit; the machine has 16 GB
 cache dir:        /work/repo/.vx/cache
-cache versions:   keys vx-cache-v37 · index schema v28
+cache versions:   keys vx-cache-v38 · index schema v28
 cache entries:    42 (1.3 GB)
 orphans:          3 artifacts (12 MB) the index does not know — `vx cache prune` reaps them
 task runs (24h):  7 (5 cache hits)
@@ -2068,7 +2071,7 @@ unreported`: the sandbox still enforces, but a task that tolerates a
   denied read passes and caches with no word of it. The `--json` fact is
   `sandbox.untraced`, the reason or `null`.
 - `plugins` names every plugin `vx.workspace.*` declares and the seams
-  each fills, in pipeline order (`config`, `project`, `graph`, `key`,
+  each fills, in pipeline order (`config`, `discover`, `project`, `graph`, `key`,
   `fingerprint`, `schedule`, `admit`, `executor`, `cache`, `telemetry`,
   `setup`, `commands`), or `none`. It reads the declarations: a plugin
   that declines a task at run time still lists its seam here.

@@ -11,6 +11,7 @@
 // finds.
 
 import { describe, expect, it } from 'bun:test'
+import { PLUGIN_HOOKS } from '../src/config.js'
 import { CACHE_VERSION, SCHEMA_VERSION } from '../src/cache/index.js'
 import { formatRunSummary } from '../src/orchestrator/summary.js'
 import {
@@ -343,5 +344,18 @@ describe("`vx help`'s usage lines are cli.md's", () => {
       .filter((l) => l.startsWith('vx ') && !l.startsWith('vx -'))
     expect(shown.length).toBeGreaterThan(10)
     expect([...shown].sort()).toEqual([...documented].sort())
+  })
+})
+
+describe("vx info's plugins row lists the seams the doctor shows", () => {
+  // The doc's list left out `discover`, which `vx info` prints for turbo()
+  // and nx() (J-105). The doctor shows every hook but `teardown`.
+  it('the parenthesised list is PLUGIN_HOOKS without teardown, in order', async () => {
+    const doc = await Bun.file(new URL('../docs/cli.md', import.meta.url)).text()
+    const list = /each fills, in pipeline order \(([^)]*)\)/.exec(doc.replace(/\s+/g, ' '))![1]!
+    const named = [...list.matchAll(/`(\w+)`/g)].map((m) => m[1]!)
+    const doctor = await Bun.file(new URL('../src/orchestrator/doctor.ts', import.meta.url)).text()
+    expect(doctor).toContain("const SEAMS = PLUGIN_HOOKS.filter((h) => h !== 'teardown')")
+    expect(named).toEqual(PLUGIN_HOOKS.filter((h) => h !== 'teardown'))
   })
 })

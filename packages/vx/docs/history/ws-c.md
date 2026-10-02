@@ -681,6 +681,17 @@ with no prediction; a history read error fails open in both callers.
 
 ## Leads for other streams
 
+- **D:** a persistent task with `exec.remote: 'only'` is refused for
+  lacking `cache` ("needs `cache`: its inputs are what a worker
+  reproduces"), and adding `cache` is refused next ("`cache` is not
+  allowed on a persistent task"): a circular hint. A persistent task
+  runs on this machine; refuse `remote: 'only'` on it by that reason.
+- **E:** a dependency server that crashed mid-run still closes its
+  "since ready" block `(3ms) running`: the block is drawn at `runEnd`
+  from the outcome stored at ready, before run.ts marks the crash
+  failed. The footer, the `vx: … exited` lines and `--summarize` say
+  failed.
+
 - **B:** `runner.test.ts` › "keeps a ready server alive past its
   readyWhen timeout" failed on #2054's Linux CI: `echo up` missed its
   150 ms readiness bound under load (`PersistentReadyError … within
@@ -919,6 +930,15 @@ the fix), and after `stop` the bus reaches it no more (red with the
 detach removed); probed end to end (9 lines in 2.5 s, 2 before).
 `cli.md` says so.
 
+## C-58: two comments that claimed what the code does not
+
+J's leads (J-65, J-78). `resolveCache` said one plugin layer "is used as
+is", but a layer that does not wrap the local store is chained with it
+at the tail; it now says only a single layer left is used as is.
+`RunOptions.holdPersistent` said only the requested servers are handed
+back; it names the ones a requested group stands for (C-52) and their
+persistent dependencies (C-46). Comments only.
+
 ## C-61: run() refuses the numbers the CLI refuses
 
 The CLI and the workspace config refuse a `concurrency` that is not a
@@ -931,6 +951,22 @@ failed 143; and `tasks: []` read `No projects declare task(s): .`.
 run() now refuses each up front, naming the value. Rows
 (`run-concurrency.test.ts`): each refused with the exact message, the
 edges run; red without the checks. The options' doc comments say so.
+
+## C-65: the stop kills a running `cache.inputs.runtime` probe
+
+A Ctrl-C while a task's `cache.inputs.runtime` probe ran (a slow
+`docker version`, a hung `git`) waited for the probe: vx exited only at
+the signal handler's bound, ~7 s (8,017 ms with a 30 s probe), and an
+embedder's `RunOptions.signal` waited the probe out in full. The probes
+are their own groups, killed at process exit (A-9) but not by the stop.
+The run's stop now kills them (`stopRuntimeProbes`, cache/inputs.ts),
+and a task whose `execute` rejects after the stop is `aborted`, with no
+error line, where it read failed for the probe the stop cut short.
+Measured: 1,021 ms. Rows: `abort.test.ts` › the stop kills a running
+probe (the run waits out the 30 s probe without the kill) and
+`scheduler.test.ts` › a rejected execute after the stop (red without the
+rejection arm's check; its control stays failed). `modules/scheduler.md`
+says so.
 
 ## C-63: a plugin executor's throw from `execute` names the plugin
 
@@ -954,3 +990,11 @@ admission policy, failures, a stop, each `--continue` mode) against
 what `modules/scheduler.md` promises, and 300 against the taint
 tracker's definition. Each of three scheduler mutations reddens it:
 the item-963 hold, the skipped-upstream skip, the stop's skip.
+## C-67: an embedder's `command` reaches telemetry redacted
+
+Item 1057 kept what follows `--` (often a token) out of the command line
+telemetry sinks receive, but only for the argv fallback: an embedder's
+`RunOptions.command` (`vx run deploy -- --token=…`) went to every sink
+verbatim. It is now counted, not quoted, the same way. Row
+(`telemetry.test.ts` › a sink never receives what follows `--`): red
+without the fix. The option's doc comment says so.

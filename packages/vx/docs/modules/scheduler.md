@@ -203,7 +203,9 @@ file-system refusal or running out of descriptors reports plainly, once per run 
 <id> above`), anything else as `[vx] internal error in <id>`. The line
 goes to `onError` before the outcome lands (stderr when absent); a run
 gives it the task's own stderr, so the task's frame and the failure
-recap carry it.
+recap carry it. One that rejects after the run's stop is the stop's
+doing (a runtime probe it killed) and becomes `aborted`, with no line
+(C-65).
 
 ## What this does NOT do
 
