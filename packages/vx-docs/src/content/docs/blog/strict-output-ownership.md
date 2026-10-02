@@ -54,10 +54,11 @@ entry. On the next hit it checks two things:
    disk.
 
 If both hold, the restore is N stats and zero writes, zero
-decompression. That is the "current tree" short-circuit, and it is why
-the restore row and the no-op row in the
-[benchmarks](../../benchmarks/) are within a few milliseconds of each
-other. A tool that merges cannot do this; it does not know what "current"
+decompression. That is the "current tree" short-circuit, and it is the
+no-op row in the [benchmarks](../../benchmarks/): every task a hit over
+an intact tree. Their restore row deletes the outputs first, so every
+artifact is extracted, and it costs more. A tool that merges cannot
+skip that work when nothing is gone; it does not know what "current"
 means for a directory it only ever adds to.
 
 ## What the wipe never touches

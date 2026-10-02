@@ -777,6 +777,36 @@ const FOREIGN_FIELDS: ReadonlyMap<ReadonlySet<string>, Readonly<Record<string, s
         'a command run outside vx: a task never reads the terminal (its stdin is EOF, or a pipe vx holds under `persistent`)',
     },
   ],
+  // wireit's `files` / `output` and include-style spellings written into
+  // a cache block, refused with no word on where they go (D-118).
+  [
+    CACHE_FIELDS,
+    {
+      files: '`inputs.files`',
+      output: '`outputs.files`',
+      env: '`inputs.env`',
+      dependencies: "the task's `dependsOn` (an upstream's key folds into this one)",
+      enabled: 'no field: a task with a `cache` block caches, one without runs every time',
+    },
+  ],
+  [
+    CACHE_INPUT_FIELDS,
+    {
+      globs: '`files`',
+      include: '`files`',
+      patterns: '`files`',
+      exclude: "`files` with a `!` entry (`'!**/*.test.ts'`)",
+      ignore: "`files` with a `!` entry (`'!**/*.test.ts'`)",
+    },
+  ],
+  [
+    CACHE_OUTPUT_FIELDS,
+    {
+      globs: '`files`',
+      include: '`files`',
+      exclude: "`files` with a `!` entry (`'!dist/cache/**'`)",
+    },
+  ],
   // A package's turbo.json and Nx's project.json keys, written into a
   // project's vx.config (D-56). `tags` had read as a typo of `tasks`.
   [

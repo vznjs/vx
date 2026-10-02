@@ -716,7 +716,8 @@ describe('every benchmark figure a blog table quotes is a measured one', () => {
     ] as const) {
       const fresh = results.rows.find((r) => r['runner'] === runner)!['fresh'] as number
       const over = mmss(fresh - results.baseline['workBoundMs']!)
-      const row = new RegExp(`\\| ${label} +\\|[^|]*\\(\\+(${'[0-9:]+'})\\)`).exec(post)
+      // `(+1:35)`, or `(+1:35, vx 27% faster)` since every cell names vx's %.
+      const row = new RegExp(`\\| ${label} +\\|[^|]*\\(\\+(${'[0-9:]+'})[,)]`).exec(post)
       expect(row).not.toBeNull()
       expect({ runner, over: row![1] }).toEqual({ runner, over })
       checked += 1

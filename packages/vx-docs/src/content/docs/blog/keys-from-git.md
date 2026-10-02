@@ -59,10 +59,15 @@ worktree, and it answers two questions at once: which tracked files
 differ from the index, and what is untracked.
 
 An index id is trusted only where git stores the worktree bytes
-verbatim, so three prunes run against it: a dirty path (status), a
+verbatim, so four prunes run against it: a dirty path (status), a
 `skip-worktree` or `assume-unchanged` path (the `-v` flag, whose id
-says nothing about what is on disk), and a path a clean filter could
-rewrite. Every pruned path, and every untracked one, is hashed
+says nothing about what is on disk), a path a clean filter could
+rewrite, and an id whose blob is not the size the index recorded for
+the file (a filter since removed wrote it, and git still calls the
+file clean; the sizes are remembered per blob, so only a cold cache
+asks one `git cat-file`). A repository whose config weakens the stat
+git judges by (`core.trustctime=false`, `core.checkStat=minimal`)
+trusts no index id at all. Every pruned path, and every untracked one, is hashed
 in-process with the exact blob-id algorithm git uses
 (`blob <size>\0<bytes>`, SHA-1 — or SHA-256 in an
 `--object-format=sha256` repository).

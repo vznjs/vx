@@ -77,7 +77,8 @@ otel({
 
 - a root `vx.run` span — `cicd.pipeline.run.id`, `vcs.ref.head.revision`,
   `vcs.ref.head.name`, `vx.command` (the command line; what follows `--`
-  is counted, `-- <N arguments>`, never quoted), CI provider,
+  is counted, `-- <N arguments>`, never quoted, and a secret value
+  before it is `***`), CI provider,
   host/os/arch, vx version, `--tag k=v` →
   `vx.tag.<k>`, and `cicd.pipeline.result` (`success`, `failure`, or
   `cancellation` for a run stopped with nothing failed); a red run sets

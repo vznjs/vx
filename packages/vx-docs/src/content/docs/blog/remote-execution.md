@@ -55,10 +55,15 @@ tasks reserve none of the local CPU budget.
   declared inputs, so a worker would run it against an empty tree.
 - **Not persistent tasks, or anything depending on one.** A worker
   cannot reach a port on your machine; the placement stage knows.
-- **Not sandboxed tasks.** The sandbox is local machinery a worker does
-  not have, and a boundary verified remotely would pass vacuously.
-- **Not `exec.remote: false`.** A task that talks to Docker, a device
-  or a local daemon is pinned by one field.
+- **Not sandboxed tasks, or anything depending on one.** The sandbox
+  is local machinery a worker does not have, and a boundary verified
+  remotely would pass vacuously.
+- **Not `exec.remote: false`, or anything depending on it.** A task
+  that talks to Docker, a device or a local daemon is pinned by one
+  field.
+- **Not a task whose key folds a runtime probe** (`cache.inputs.runtime`,
+  `workspaceRuntime`): the key holds this machine's `node -v`, which a
+  worker cannot prove it shares. Its dependants may still go.
 
 A task's inputs on the worker are exactly what its cache key declares:
 `cache.inputs.files`, resolved env values, upstream outputs. Ambient

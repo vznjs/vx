@@ -70,6 +70,7 @@ import {
   bindableReads,
   bindableWrites,
   buildCustomConfig,
+  readOnlyMasks,
   scratchWrites,
   widenedEntries,
 } from './sandbox-binds.js'
@@ -88,6 +89,7 @@ import {
 } from './sandbox-deny-scan.js'
 import {
   parseStraceViolations,
+  refusedConnections,
   refusedWrites,
   refusedWritesOutside,
   reportableViolations,
@@ -542,6 +544,35 @@ function hostHasIpv6(): boolean {
 }
 
 /**
+ * Refuse a network entry SRT's own schema refuses, naming it. vx handed
+ * the union over unchecked, and SRT's proxy matched as it could: a URL
+ * (`https://example.com`), a dotless host or a port past 65535 matched
+ * nothing, so the grant silently reached no host, and `'*'`, which the
+ * schema refuses as too broad, opened every host to every sandboxed task
+ * of the run, the allowlist being the run's (2026-10-02).
+ */
+function assertDomains(
+  schema: SrtModule['NetworkConfigSchema'],
+  allowed: readonly string[],
+  denied: readonly string[],
+): void {
+  const bad = [
+    ...allowed
+      .filter((d) => !schema.shape.allowedDomains.safeParse([d]).success)
+      .map((d) => `allow.network "${d}"`),
+    ...denied
+      .filter((d) => !schema.shape.deniedDomains.safeParse([d]).success)
+      .map((d) => `deny.network "${d}"`),
+  ]
+  if (bad.length === 0) return
+  throw new UserError(
+    `sandbox: ${bad.join(', ')} is not a host pattern: name a host ("example.com"), a ` +
+      `subdomain wildcard ("*.example.com") or either with a port ("example.com:443"); no ` +
+      `scheme or path, and "*" or "*.com" is refused as too broad (a bare "*" only in deny)`,
+  )
+}
+
+/**
  * One-time SRT initialization per orchestrator run. Starts the proxy
  * servers + (on macOS) the violation log monitor. Safe to call repeatedly
  * — SRT itself returns early on the second call.
@@ -584,7 +615,8 @@ export async function initSandbox(opts?: {
   await resetting
   // Before SRT starts, so the very first task already has one.
   await mkdir(sandboxTmpdir(), { recursive: true })
-  const { SandboxManager } = await loadSrt()
+  const { SandboxManager, NetworkConfigSchema } = await loadSrt()
+  assertDomains(NetworkConfigSchema, opts?.allowedDomains ?? [], opts?.deniedDomains ?? [])
   scopedDenyScan = process.platform === 'linux' && canScopeDenyScan(process.cwd())
   const config: Parameters<typeof SandboxManager.initialize>[0] = {
     network: {
@@ -1065,7 +1097,8 @@ export async function wrapSandboxedCommand(
   // sandboxed server and all it forked outlived vx (turborepo#9666). Now
   // the namespace goes with vx, a `setsid` daemon inside included, a
   // traced one-shot task too: its strace runs inside (B-11).
-  if (process.platform === 'linux' && /^\S*bwrap /.test(wrapped)) wrapped = `exec ${wrapped}`
+  if (process.platform === 'linux' && /^\S*bwrap /.test(wrapped))
+    wrapped = `exec ${readOnlyMasks(wrapped, scratch)}`
   if (process.platform === 'linux' && !hostHasIpv6())
     wrapped = `SOCAT_DEFAULT_LISTEN_IP=4 ${wrapped}`
   if (args.server === true) liveServers.add(tag)
@@ -1730,6 +1763,7 @@ async function runSandboxedOnce(
             bindableWrites(args.config.allowWrite),
             scratch,
           ),
+          ...refusedConnections(records.map((v) => v.line)),
         ]
       : []
   if (straceLog) {
