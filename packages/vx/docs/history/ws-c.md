@@ -1030,13 +1030,15 @@ they write streams through the wait (C-56). Docs only.
 
 ## C-82: a run with servers in it always ends and leaves no child
 
-A probe of 190 seeded random graphs mixed one-shots that pass, fail or
-take a while with servers that get ready, crash before or after it,
-never get ready inside their timeout, or trap SIGTERM, under each
-`--continue` mode, with and without `holdPersistent`: every run ended
-and no child outlived it (or its held servers' `stop()`). It is now
-`tests/persistent-lifecycle-properties.unsafe.test.ts` (12 graphs,
-~5 s), red when the end of the graph does not SIGKILL what outlives the
-grace. A dropped SIGTERM or a leader-only one survives: the SIGKILL sweep
-still ends the groups, and graceful stops are not what this row holds.
-Unsafe for the liveness check. Test only.
+Probes of 190 and 120 seeded random graphs mixed one-shots that pass,
+fail or take a while with servers that get ready, crash before or after
+it, never get ready inside their timeout, or trap SIGTERM, under each
+`--continue` mode, with and without `holdPersistent`, run to the end or
+stopped by `RunOptions.signal` (SIGINT or SIGTERM) at a random moment:
+every run ended and no child outlived it (or its held servers'
+`stop()`). They are now `tests/persistent-lifecycle-properties.unsafe.test.ts`
+(12 graphs each, ~9 s): red when the end of the graph does not SIGKILL
+what outlives the grace, and both rows hang when the stop's teardown
+does not. A dropped SIGTERM or a leader-only one survives: the SIGKILL
+sweep still ends the groups, and graceful stops are not what these rows
+hold. Unsafe for the liveness check. Test only.
