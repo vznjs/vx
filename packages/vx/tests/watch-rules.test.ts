@@ -1015,9 +1015,15 @@ describe('fsClockNow — the arm instant on the mtime clock', () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-clock-'))
     try {
       const f = path.join(dir, 'edit.txt')
-      for (let i = 0; i < 2000; i++) {
+      // 2,000 writes, or as many as 2 s holds: five syscalls a write cost
+      // 0.36 s here and 2.3 s under strace, and past bun's 5 s with load
+      // beside it, where macOS CI's sandbox put it once (M-25). At least
+      // 100, so the sample is never empty.
+      const until = Date.now() + 2_000
+      let writes = 0
+      for (; writes < 2000 && (writes < 100 || Date.now() < until); writes++) {
         const armedAt = fsClockNow(dir)
-        fs.writeFileSync(f, String(i))
+        fs.writeFileSync(f, String(writes))
         expect(modifiedBefore(f, armedAt)).toBe(false)
       }
       expect(fs.existsSync(path.join(dir, '.vx-watch-clock'))).toBe(false)

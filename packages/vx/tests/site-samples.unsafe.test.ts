@@ -1812,6 +1812,53 @@ describe("a post's link into a guide section names the section", () => {
   })
 })
 
+describe('the lockfile post measures what the root reaches', () => {
+  // Every project's digest folds the root importer's closure, and this
+  // repository's root links its packages as devDependencies, so a bump
+  // the root reaches re-keys every task. The post claimed a bump re-keys
+  // "that package's own tasks and its dependants'" (J2-11): bumping
+  // protobufjs, under @vzn/vx-reapi, re-keyed all 56.
+  it('names a root-reached bump as every task, and its narrow example outside the root', () => {
+    const repo = path.resolve(import.meta.dir, '..', '..', '..')
+    interface Manifest {
+      name: string
+      dependencies?: Record<string, string>
+      devDependencies?: Record<string, string>
+    }
+    const manifest = (dir: string): Manifest =>
+      JSON.parse(readFileSync(path.join(dir, 'package.json'), 'utf8'))
+    const deps = (m: Manifest): Record<string, string> => ({
+      ...m.dependencies,
+      ...m.devDependencies,
+    })
+    const byName = new Map<string, string>()
+    for (const d of readdirSync(path.join(repo, 'packages'))) {
+      const dir = path.join(repo, 'packages', d)
+      if (existsSync(path.join(dir, 'package.json'))) {
+        byName.set(manifest(dir).name, dir)
+      }
+    }
+    const reached = new Set<string>()
+    for (const [name, range] of Object.entries(deps(manifest(repo)))) {
+      reached.add(name)
+      if (!range.startsWith('workspace:')) continue
+      for (const dep of Object.keys(deps(manifest(byName.get(name)!)))) reached.add(dep)
+    }
+    const post = readFileSync(path.join(DOCS, 'blog', 'lockfile-aware-keys.md'), 'utf8')
+    const sentences = section(post, 'Measured in the repository that ships it')
+      .replace(/\s+/g, ' ')
+      .split(/(?<=\.) /)
+    const claims = sentences.flatMap((s) => {
+      const bumped = /bumping `([^`]+)`/.exec(s)?.[1]
+      return bumped === undefined ? [] : [{ bumped, every: s.includes('every task') }]
+    })
+    expect(claims.filter((c) => c.every).length).toBeGreaterThan(0)
+    expect(claims.filter((c) => !c.every).length).toBeGreaterThan(0)
+    const wrong = claims.filter((c) => reached.has(c.bumped) !== c.every)
+    expect(wrong).toEqual([])
+  })
+})
+
 describe('the bitsets post says when the package graph searches instead', () => {
   it('a filter seeded by one or two packages is a search (#2323)', () => {
     const graph = readFileSync(

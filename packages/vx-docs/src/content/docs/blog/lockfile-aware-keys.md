@@ -6,7 +6,7 @@ authors:
 tags:
   - caching
   - plugins
-excerpt: "Every monorepo tool folds the lockfile into every key, so `pnpm update` invalidates the world. @vzn/vx-lockfile parses the lockfile and keys each task on its own project's dependency closure. In vx's own repo that turned 59 re-keyed tasks into 2."
+excerpt: "Every monorepo tool folds the lockfile into every key, so `pnpm update` invalidates the world. @vzn/vx-lockfile parses the lockfile and keys each task on its own project's dependency closure. In vx's own repo an astro bump re-keys 6 of 56 tasks, not all 56."
 ---
 
 Out of the box, vx does what everyone does with the lockfile: it goes
@@ -76,10 +76,17 @@ task and the rule that selects it are one rule, so they cannot drift.
 
 ## Measured in the repository that ships it
 
-vx's own repository declares `bun()`. Bumping one package's resolved
-version in `bun.lock` re-keys that package's own tasks and its
-dependants' instead of every task in the gate. That is the whole
-pitch: a dependency change costs what the dependency change touches.
+vx's own repository declares `bun()`. Measured 2026-10-02 with
+`vx run ci --all --dry=json` before and after a version bump in
+`bun.lock`: bumping `astro`, which only the docs site reaches, re-keys
+that site's 6 tasks of the gate's 56; without the plugin, all 56
+re-key.
+
+The root's closure is in every key, and this repository's root links
+seven of its packages as devDependencies, so bumping `protobufjs`
+(reached through `@vzn/vx-reapi`) re-keys every task either way. A
+dependency change costs what the dependency change touches, and the
+root touches every task.
 
 The plugin is separate from core on purpose. Core owns the `fingerprint`
 seam, the memo and the per-run gate; the lockfile *parsers* are
