@@ -681,13 +681,22 @@ with no prediction; a history read error fails open in both callers.
 
 ## Leads for other streams
 
-- **H:** `wireForwarder`, `toWireEvent`, `WireEvent` and `projectNode`
-  (`orchestrator/events.ts`) have no caller but `tests/dev.test.ts`: the
-  façade exports none of them, so the "serializable `WireEvent`" that
-  `RunOptions.bus`'s comment says core ships reaches no embedder, and
-  their comment cites a `createWireRenderer` removed with vx cloud.
-  `TaskView` stays on the façade with nothing producing it. Export the
-  wire form or remove it with `TaskView`: a contract call.
+- **F:** `vx-reapi` `materialise-concurrency.test.ts` › "output files are
+  fetched and written at once" read a peak of 3 reads in flight for an
+  expected 5 in a full local gate (3/3 alone): each read holds 2 ms, so
+  under load the first ones finish before the last start. Hold the reads
+  until all have started (a latch), not for a fixed 2 ms.
+
+- **D:** a persistent task with `exec.remote: 'only'` is refused for
+  lacking `cache` ("needs `cache`: its inputs are what a worker
+  reproduces"), and adding `cache` is refused next ("`cache` is not
+  allowed on a persistent task"): a circular hint. A persistent task
+  runs on this machine; refuse `remote: 'only'` on it by that reason.
+- **E:** a dependency server that crashed mid-run still closes its
+  "since ready" block `(3ms) running`: the block is drawn at `runEnd`
+  from the outcome stored at ready, before run.ts marks the crash
+  failed. The footer, the `vx: … exited` lines and `--summarize` say
+  failed.
 
 - **B:** `runner.test.ts` › "keeps a ready server alive past its
   readyWhen timeout" failed on #2054's Linux CI: `echo up` missed its
@@ -697,6 +706,11 @@ with no prediction; a history read error fails open in both callers.
 - **F:** a kept server's crash after the summary exits 1, but the
   telemetry summary (`exitOk`) is emitted and flushed before the
   keep-alive wait, so a sink (the GitHub check run) reports success.
+- **B:** the sandbox probe's first `initSandbox` is ~110 ms of the
+  ~220 ms a run's first arm costs on Linux (SRT's `initialize`: an async
+  dependency check, the proxies, the seccomp monitor), and the SRT import
+  70–280 ms on the main thread; measured in isolation for C-76. Both are
+  paid once per process.
 
 - **A:** a kept server that crashes after the summary (`vx run dev`,
   the server exits 4, vx exits 1) is recorded `ok` with the server
@@ -927,6 +941,15 @@ the fix), and after `stop` the bus reaches it no more (red with the
 detach removed); probed end to end (9 lines in 2.5 s, 2 before).
 `cli.md` says so.
 
+## C-58: two comments that claimed what the code does not
+
+J's leads (J-65, J-78). `resolveCache` said one plugin layer "is used as
+is", but a layer that does not wrap the local store is chained with it
+at the tail; it now says only a single layer left is used as is.
+`RunOptions.holdPersistent` said only the requested servers are handed
+back; it names the ones a requested group stands for (C-52) and their
+persistent dependencies (C-46). Comments only.
+
 ## C-61: run() refuses the numbers the CLI refuses
 
 The CLI and the workspace config refuse a `concurrency` that is not a
@@ -940,14 +963,24 @@ run() now refuses each up front, naming the value. Rows
 (`run-concurrency.test.ts`): each refused with the exact message, the
 edges run; red without the checks. The options' doc comments say so.
 
-## C-64: say who hears `runEnd` twice
+## C-65: the stop kills a running `cache.inputs.runtime` probe
 
-The logger's tail flush and three test comments said run() calls
-`runEnd` twice so the renderer hears both; `busLogger` delivers
-`run:end` once, so in the CLI the renderer hears one (C-56 met this: a
-kept server's last partial line waited on a second call that never
-came). The comments now say a renderer an embedder drives directly may
-hear both. Comments and a row title only.
+A Ctrl-C while a task's `cache.inputs.runtime` probe ran (a slow
+`docker version`, a hung `git`) waited for the probe: vx exited only at
+the signal handler's bound, ~7 s (8,017 ms with a 30 s probe), and an
+embedder's `RunOptions.signal` waited the probe out in full. The probes
+are their own groups, killed at process exit (A-9) but not by the stop.
+The run's stop now kills them (`stopRuntimeProbes`, cache/inputs.ts),
+and a task whose `execute` rejects after the stop is `aborted`, with no
+error line, where it read failed for the probe the stop cut short.
+Measured: 1,021 ms. The kill is the stopping run's: probes are kept
+per run (by its memo), so a second run in the process (an embedder's
+`inflight` case) keeps its own (`abort.test.ts` › one run's stop leaves
+another run's probe alone, red with the kill process-wide). Rows: `abort.test.ts` › the stop kills a running
+probe (the run waits out the 30 s probe without the kill) and
+`scheduler.test.ts` › a rejected execute after the stop (red without the
+rejection arm's check; its control stays failed). `modules/scheduler.md`
+says so.
 
 ## C-63: a plugin executor's throw from `execute` names the plugin
 
@@ -960,3 +993,82 @@ scheduler's line. The error object is kept (its class, cause and code),
 so a refusal still prints plainly and a bug as an internal error.
 Row (`plugin-capabilities.test.ts` › an executor's throw reaches the
 task's own stderr): red without the fix. `modules/executor.md` says so.
+
+## C-72: `--continue` rides no wire
+
+`cli.md` § Failure propagation ended "The mode rides the wire, so
+distributed runs honor it": the whole-run backend seam that carried it
+went with vx cloud. The mode is the local scheduler's; a task a plugin
+executor runs elsewhere is one dispatch like any other. Docs only.
+
+## C-71: `--exclude-dependencies`' orders over random graphs, as a test
+
+A probe over 60,000 random graphs found `excludeDependencies` sound;
+it is now `exclude-dependencies-properties.test.ts` (2,000 seeded
+graphs): every order between two scheduled tasks survives (item 1019),
+a direct edge to a task still scheduled stays a real edge (item 980),
+no edge names a task that left. The two rules mask each other on order
+alone (item 980's mutant survived the first draft: the order-only walk
+re-adds the edge), so the row checks the edge's kind too; each mutant
+reddens it. `modules/task-graph.md` says so.
+
+## C-67: an embedder's `command` reaches telemetry redacted
+
+Item 1057 kept what follows `--` (often a token) out of the command line
+telemetry sinks receive, but only for the argv fallback: an embedder's
+`RunOptions.command` (`vx run deploy -- --token=…`) went to every sink
+verbatim. It is now counted, not quoted, the same way. Row
+(`telemetry.test.ts` › a sink never receives what follows `--`): red
+without the fix. The option's doc comment says so.
+
+## C-75: signals.md says the stop kills the run's probes
+
+`modules/signals.md` described the stop's teardown as `terminateChildren`
+alone; since C-65 it also kills the run's running `cache.inputs.runtime`
+probes. Docs only.
+
+## C-74: an executor's shared error is named once
+
+C-63 names a plugin executor's throw by prefixing the error's own
+message, so one error object an executor rejects several tasks with (a
+failed connection it memoized) was prefixed once per task: the second
+read `failed in execute: plugin 'org/down' (executor 'down') failed in
+execute: pool down`. The prefix is now added once. Row
+(`plugin-capabilities.test.ts` › one error an executor rejects two tasks
+with is named once in each): red without the fix.
+
+## C-73: architecture.md's end of run names the servers it keeps
+
+`architecture.md`'s run walk-through kept "persistent tasks the user
+REQUESTED, and the persistent tasks they depend on": it now also names
+those a requested group stands for (C-52), that a run which failed
+elsewhere keeps none unless `--continue=always` (C-60), and that what
+they write streams through the wait (C-56). Docs only.
+
+## C-77: a subscriber that leaves mid-emit no longer hides the event
+
+`createEventBus` walked its subscriber array while a disposer spliced
+it, so a subscriber that unsubscribed during an emit shifted the next
+one into the slot the walk had passed. An embedder that subscribes
+before the run and calls `off()` on `run:end` took `run:end` from the
+terminal renderer behind it. The list is now replaced on subscribe and
+unsubscribe, never mutated, so an emit walks the list it began with at
+no per-emit cost; a subscriber added during an emit hears the next
+event. Rows (`events.test.ts` › createEventBus): both red without the
+fix. `modules/events.md` says so.
+
+## C-76: the sandbox probe starts when a sandboxed task is sure to run
+
+The probe (~220 ms of spawns on Linux) started on the first sandboxed
+task to execute, so it sat on the critical path after the classify and
+any upstream work. `run()` now starts it as soon as a sandboxed task is
+sure to execute: one no cache can answer (no `cache`, reads off,
+persistent) before the classify, a confirmed miss right after it. A run
+whose sandboxed tasks all hit still never probes. The end of the run
+waits for a probe still in flight before its reset: one that landed
+after it left the runtime's proxies up, and an embedder hung (the CLI's
+failure exit hid it). This repo's warm `vx run lint --all` (one
+uncached sandboxed task): min 453 → 377 ms, median ~495 → ~440 over 12
+interleaved runs per arm. Rows: `sandbox-prewarm.unsafe.test.ts`; each
+half and the wait fail their row without themselves, and the control
+fails an unconditional prewarm.
