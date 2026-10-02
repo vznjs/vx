@@ -23,6 +23,10 @@ export const WORKSPACE_CONFIG_FILENAMES = [
   'vx.workspace.mts',
   'vx.workspace.js',
   'vx.workspace.mjs',
+  // A CommonJS config (`module.exports = …`), as Vite and TS name theirs: it
+  // was ignored without a word (D-86).
+  'vx.workspace.cts',
+  'vx.workspace.cjs',
 ]
 
 /** Project configs already loaded in this process, by absolute path. */
@@ -660,7 +664,7 @@ async function refuseStaleWorkspaceImports(configPath: string, since: number): P
 }
 
 /**
- * Find and load `vx.workspace.{ts,mts,js,mjs}` from the workspace
+ * Find and load `vx.workspace.{ts,mts,js,mjs,cts,cjs}` from the workspace
  * root. Returns `null` if no such file exists (the common case;
  * the schema is fully optional). Validates the shape and throws
  * a `UserError` on malformed input.
