@@ -439,6 +439,7 @@ export class Cache implements CacheLayer {
   private readonly insertEntry: ReturnType<Database['prepare']>
   private readonly deleteEntryRow: ReturnType<Database['prepare']>
   private readonly selectEntry: ReturnType<Database['prepare']>
+  private readonly entryExists: ReturnType<Database['prepare']>
   private readonly bumpAccessed: ReturnType<Database['prepare']>
   private readonly touched = new Set<string>()
   private readonly insertEntryInput: ReturnType<Database['prepare']>
@@ -711,6 +712,12 @@ export class Cache implements CacheLayer {
         peak_rss_bytes = excluded.peak_rss_bytes
     `)
     this.selectEntry = this.db.prepare('SELECT * FROM entries WHERE hash = ?')
+    // `has` asks only whether the row is there: the whole row, stdout
+    // included, was built and dropped once per task of a `--dry` plan. A
+    // column off the index, so the table row is still read and a corrupt
+    // table refuses here as it does on `get` (`SELECT 1` answers from the
+    // index alone); stdout's overflow pages are not.
+    this.entryExists = this.db.prepare('SELECT exit_code FROM entries WHERE hash = ?')
     this.bumpAccessed = this.db.prepare('UPDATE entries SET accessed_at = ? WHERE hash = ?')
     // INSERT OR IGNORE: re-saving the same hash (idempotent ingest /
     // overlapping concurrent saves) leaves the existing rows untouched —
@@ -981,8 +988,7 @@ export class Cache implements CacheLayer {
 
   private async hasEntry(hash: string): Promise<'local' | 'remote' | null> {
     if (!this.read) return null
-    const row = this.selectEntry.get(hash) as EntryRow | undefined
-    if (!row) return null
+    if (this.entryExists.get(hash) === null) return null
     return existsSync(this.tarPath(hash)) ? 'local' : null
   }
 

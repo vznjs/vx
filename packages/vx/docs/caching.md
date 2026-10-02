@@ -567,7 +567,10 @@ The planning paths (`vx run --dry`, `--graph`) predict hits without
 side effects: against a remote cache they use a **lightweight
 existence probe** — no artifact download, no local ingest. A predicted
 `hit-remote` means the artifact exists remotely; the bytes move only
-when a real run needs them.
+when a real run needs them. Locally the probe reads whether the entry's
+row is there and stats the artifact, never the row itself: the whole
+row, its stored stdout included, made a 200-task plan over 1 MB outputs
+230 ms against 28 (min of 11, 2026-10-02).
 
 ## Cache policy (read/write axes)
 
