@@ -1720,7 +1720,8 @@ another task depends on one, and so does a watcher: a `watch` segment in the scr
 a `--watch` flag, `tsc -w` / `rollup -w`, or nodemon (D-40), and a server:
 `serve <dir>`, `http-server`, bare `vite`, a tool's `dev` / `serve` /
 `start` / `preview` verb (`next start`, `netlify dev`), or a script that
-runs such a script of its package by name (`cross-env X=1 pnpm start`),
+runs such a script of its package by name (`cross-env X=1 pnpm start`) or
+through a runner (`run-p web api`, `concurrently "npm:web" "npm:api"`, D-113),
 outside quotes and not sent to the background with `&` (D-91), read past
 a launcher's `--package <name>` / `-p <name>` (`pnpm dlx --package
 netlify-cli netlify dev`, D-112). A
