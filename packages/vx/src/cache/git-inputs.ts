@@ -853,6 +853,9 @@ export interface GitEnumeration {
   startedAtMs: number
 }
 
+/** Above this many project dirs the enumeration walks the whole tree. */
+export const MAX_SCOPED_PATHSPECS = 64
+
 /**
  * Pathspec scoping: when the run only needs a handful of projects
  * (scoped config loading), let git scan just those dirs — 75 ms →
@@ -868,7 +871,7 @@ export function gitPathspecs(
   const scoped =
     !workspaceWide &&
     rels.length > 0 &&
-    rels.length <= 64 &&
+    rels.length <= MAX_SCOPED_PATHSPECS &&
     rels.every((r) => r !== '' && r !== '.')
   return scoped ? rels : ['.']
 }

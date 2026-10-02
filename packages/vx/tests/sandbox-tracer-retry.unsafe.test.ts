@@ -185,3 +185,84 @@ describe.skipIf(!available || process.platform !== 'linux' || realStrace === nul
     })
   },
 )
+
+// strace that cannot check the seccomp filter's order (it is itself
+// traced, or the kernel answers oddly) says so on stderr and traces on
+// without the filter, exit 0. The detection's probe saw the exit and took
+// the fast form; inside the sandbox the same line read as the trace cut
+// short, and every sandboxed task ran twice.
+describe.skipIf(!available || process.platform !== 'linux' || realStrace === null)(
+  'a strace that warns at start and traces on',
+  () => {
+    let dir = ''
+    let prevPath: string | undefined
+    beforeEach(async () => {
+      dir = realpathSync(await mkdtemp(path.join(os.tmpdir(), 'vx-tracer-warn-')))
+      const bin = path.join(dir, 'bin')
+      await mkdir(bin)
+      await writeFile(
+        path.join(bin, 'strace'),
+        [
+          '#!/bin/sh',
+          `[ "$1" = "--version" ] && exec ${realStrace} "$@"`,
+          'for a; do last=$a; done',
+          `case "$last" in */true) ;; *) echo "$*" >> ${dir}/calls;; esac`,
+          'seccomp=',
+          'for a; do shift; if [ "$a" = --seccomp-bpf ]; then seccomp=1; else set -- "$@" "$a"; fi; done',
+          `[ -n "$seccomp" ] || [ -e ${dir}/always ] && echo "$0: check_seccomp_order_tracer: #0: unexpected exit status 1" >&2`,
+          `exec ${realStrace} "$@"`,
+          '',
+        ].join('\n'),
+      )
+      await chmod(path.join(bin, 'strace'), 0o755)
+      await writeFile(path.join(dir, 'calls'), '')
+      prevPath = process.env['PATH']
+      process.env['PATH'] = `${bin}:${prevPath ?? ''}`
+      await initSandbox()
+    })
+    afterEach(async () => {
+      process.env['PATH'] = prevPath
+      await resetSandbox()
+      await rm(dir, { recursive: true, force: true })
+    })
+
+    it('is used in the plain form, and the task runs once', async () => {
+      let streamed = ''
+      const r = await runSandboxed({
+        command: 'echo ran',
+        cwd: dir,
+        env: process.env,
+        baseAllowRead: [dir],
+        baseDenyRead: [],
+        reportWithin: dir,
+        reportLinked: [],
+        config: resolveSandboxConfig({ allow: { write: ['calls'] } }, dir),
+        onStderr: (s) => void (streamed += s),
+      })
+      // One traced call for the task, in the plain form.
+      const calls = (await readFile(path.join(dir, 'calls'), 'utf8')).split('\n').filter(Boolean)
+      expect([
+        r.stdout,
+        streamed,
+        calls.map((c) => [c.includes('-DD'), c.includes('--seccomp-bpf')]),
+      ]).toEqual(['ran\n', '', [[true, false]]])
+    })
+
+    // CONTROL past the first gate: a strace that speaks in both forms is
+    // not used at all, and the task runs once, untraced.
+    it('is not used when the plain form speaks too', async () => {
+      await writeFile(path.join(dir, 'always'), '')
+      const r = await runSandboxed({
+        command: 'echo ran',
+        cwd: dir,
+        env: process.env,
+        baseAllowRead: [dir],
+        baseDenyRead: [],
+        reportWithin: dir,
+        reportLinked: [],
+        config: resolveSandboxConfig({ allow: { write: ['calls'] } }, dir),
+      })
+      expect([r.stdout, await readFile(path.join(dir, 'calls'), 'utf8')]).toEqual(['ran\n', ''])
+    })
+  },
+)

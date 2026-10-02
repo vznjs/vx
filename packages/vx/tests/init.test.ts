@@ -978,6 +978,38 @@ describe('migrateScripts', () => {
     ])
   })
 
+  it('a root script reaching a member-running one through a script runner is left out (D-95)', () => {
+    // lexical's `ci-check` (`npm-run-all --parallel … tsc-website …`) ran
+    // `pnpm --filter @lexical/website run tsc` again as a root task.
+    const meta = (name: string, dir: string, scripts: Record<string, string>) => ({
+      name,
+      dir,
+      packageJson: { name, scripts } as never,
+      configPath: null,
+    })
+    const root = meta('root', '/w', {
+      'build:all': 'pnpm -r build',
+      ci: 'run-s build:all lint',
+      ci2: 'npm-run-all --parallel build:all lint',
+      ci3: 'concurrently "npm:build:all" "npm:lint"',
+      ci4: 'run-p build:*',
+      // CONTROLS: a runner over scripts that run no member (`*` stops at
+      // `:`), and one naming a script the root does not have.
+      ci5: 'run-s lint check:*',
+      ci6: 'run-p build',
+      'check:types': 'tsc',
+      'build:x:y': 'pnpm -r x',
+      lint: 'eslint .',
+    })
+    const a = meta('a', '/w/packages/a', { build: 'tsc' })
+    expect(
+      migrateScripts([root, a]).projects.map((p) => [p.name, p.tasks.map((t) => t.name)]),
+    ).toEqual([
+      ['a', ['build']],
+      ['root', ['ci5', 'ci6', 'check:types', 'lint']],
+    ])
+  })
+
   it("npm's lifecycle scripts are never tasks, but a hook of one is a task of its own", () => {
     // `postprepare` is npm's hook of `prepare`, and `prepare` is npm's own —
     // so it wraps nothing here and has to stand alone or it disappears.
