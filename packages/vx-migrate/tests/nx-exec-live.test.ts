@@ -26,7 +26,7 @@ let root: string
 const SHOWTGT = {
   executor: 'nx:run-commands',
   options: {
-    command: `printf '%s|' "$NX_TASK_TARGET_PROJECT" "$NX_TASK_TARGET_TARGET" "$NX_TASK_TARGET_CONFIGURATION" > tgtout.txt`,
+    command: `printf '%s|' "$NX_TASK_TARGET_PROJECT" "$NX_TASK_TARGET_TARGET" "$NX_TASK_TARGET_CONFIGURATION" "$LERNA_PACKAGE_NAME" > tgtout.txt`,
   },
   configurations: { ci: {} },
 }
@@ -389,8 +389,9 @@ describe.skipIf(!MODULES)('nx-exec against real Nx', () => {
     TIMEOUT,
   )
 
-  // P-5: `nx exec -- <cmd>` in a script reads NX_TASK_TARGET_PROJECT, and
-  // unset it starts Nx's own task runner. What the mapped line defines is
+  // P-5, P-13: `nx exec -- <cmd>` in a script reads NX_TASK_TARGET_PROJECT,
+  // and unset it starts Nx's own task runner; Lerna documents
+  // LERNA_PACKAGE_NAME to scripts. What the mapped line defines is
   // what `nx run` hands the task, a configuration's included.
   it(
     'a task sees the target `nx run` hands it',
@@ -458,8 +459,8 @@ describe.skipIf(!MODULES)('nx-exec against real Nx', () => {
         seen[nxTarget] = { nx: byNx, vx: await Bun.file(out).text() }
       }
       expect(seen).toEqual({
-        'lib:showtgt': { nx: 'lib|showtgt||', vx: 'lib|showtgt||' },
-        'lib:showtgt:ci': { nx: 'lib|showtgt|ci|', vx: 'lib|showtgt|ci|' },
+        'lib:showtgt': { nx: 'lib|showtgt||lib|', vx: 'lib|showtgt||lib|' },
+        'lib:showtgt:ci': { nx: 'lib|showtgt|ci|lib|', vx: 'lib|showtgt|ci|lib|' },
       })
     },
     TIMEOUT,
