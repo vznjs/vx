@@ -1006,12 +1006,21 @@ export async function wrapSandboxedCommand(
     process.platform === 'linux'
       ? ownGroupCommand(tag, inTmp, args.trace)
       : { command: taggedCommand, forwards: false, traced: false }
-  const inner =
-    ports.length > 0 ? `${portBridgeInner(ports, tag)} ${grouped.command}` : grouped.command
+  const inner = [
+    ports.length > 0 ? portBridgeInner(ports, tag) : '',
+    process.platform === 'linux' && args.config.network !== undefined ? PROXY_BRIDGE_WAIT : '',
+    grouped.command,
+  ]
+    .filter((part) => part !== '')
+    .join(' ')
   let wrapped = await wrapForTask(
     SandboxManager,
     inner,
-    process.platform === 'linux' ? literalReadPaths(customConfig) : customConfig,
+    process.platform === 'linux'
+      ? literalReadPaths(customConfig)
+      : process.platform === 'darwin'
+        ? seatbeltBrackets(customConfig)
+        : customConfig,
     ports.length > 0 || asksUnixSockets(args.config),
     args.config.gitConfig === true,
   )
@@ -1176,6 +1185,30 @@ function literalReadPaths(
   }
 }
 
+/**
+ * macOS: a grant's escaped bracket as seatbelt's SRT can read it. vx hands
+ * it the pattern, and SRT compiles any spelling holding `[` as a regex in
+ * which a backslash is a literal one, so `pages/\[id\].tsx` matched no
+ * file and the route could not be granted. `[[]` is a class of one `[`; a
+ * lone `]` is plain text (B-65).
+ */
+function seatbeltBrackets(
+  config: Parameters<SrtModule['SandboxManager']['wrapWithSandbox']>[2],
+): Parameters<SrtModule['SandboxManager']['wrapWithSandbox']>[2] {
+  const fs = config?.filesystem
+  if (fs === undefined) return config
+  const literal = (paths: readonly string[]): string[] =>
+    paths.map((p) => p.replaceAll('\\[', '[[]').replaceAll('\\]', ']'))
+  return {
+    ...config,
+    filesystem: {
+      ...fs,
+      allowWrite: literal(fs.allowWrite),
+      ...(fs.allowRead !== undefined ? { allowRead: literal(fs.allowRead) } : {}),
+    },
+  }
+}
+
 /** SRT's wrap, with the socket lift and the git-config grant this task asked for, or none (L-6, B-41). */
 function wrapForTask(
   SandboxManager: SrtModule['SandboxManager'],
@@ -1202,6 +1235,18 @@ function wrapForTask(
 export function bridgedPorts(c: Pick<ResolvedSandboxConfig, 'localBinding'>): number[] {
   return Array.isArray(c.localBinding) ? [...new Set(c.localBinding)] : []
 }
+
+/**
+ * Linux: SRT starts its in-sandbox proxy bridges (`socat TCP-LISTEN:3128`
+ * and `:1080`) in the background and runs the command at once, so a
+ * networked task that dialled the proxy first met "connection refused"
+ * (curl's `000`) on a loaded box (M-20). This waits, in front of the
+ * command, until both listen in the task's network namespace, read off
+ * /proc/net (IPv4 or IPv6, state 0A). Bounded at ~5 s: a bridge that never
+ * listens leaves the command to meet the refusal it met before.
+ */
+const PROXY_BRIDGE_WAIT =
+  "( i=0; until grep -qsE ':0C38 [0-9A-F]+:0000 0A' /proc/net/tcp /proc/net/tcp6 && grep -qsE ':0438 [0-9A-F]+:0000 0A' /proc/net/tcp /proc/net/tcp6; do [ $i -ge 500 ] && break; i=$((i+1)); sleep 0.01; done );"
 
 /** Where a bridge's unix socket lives: the sandbox tmpdir, bound read-write on both sides. */
 export function portBridgeSocket(tag: string, port: number): string {

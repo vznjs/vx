@@ -36,7 +36,7 @@ interface LoadProjectsBase {
   plugins: readonly VxPlugin[]
   projectMetas: readonly ProjectMeta[]
   seeds: 'all' | Iterable<string> // unknown / config-less names ignored
-  lock: Lockfile | null // read from the lock instead of evaluating
+  lock: (() => Promise<Lockfile>) | null // read from the lock instead of evaluating; asked only when a config is read
   evalCache: LoadProjectConfigOptions['evalCache']
   warn: (m: string) => void
   staged?: ReadonlyMap<string, ProjectEntry> // entries a load in this process already produced

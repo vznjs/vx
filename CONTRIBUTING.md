@@ -10,7 +10,8 @@ bun install
 bun packages/vx/src/bin.ts run ci --all   # the gate: lint, every test, the docs build
 ```
 
-Needs Bun ≥ 1.4 and git. On Linux the sandboxed tasks also need
+Needs Bun ≥ 1.4, git and Node (vx-migrate's `nx-exec` tests run it, as
+Nx runs executors). On Linux the sandboxed tasks also need
 `bubblewrap`, `socat` and `ripgrep` (`apt install bubblewrap socat
 ripgrep`); macOS has its sandbox built in. If the gate refuses your git
 config (`core.checkStat=minimal` or `core.trustctime=false`), run it with
@@ -21,8 +22,9 @@ Something to work on: the ordered list in
 
 ## The shape of a change
 
-- **Bun ≥ 1.4 only.** No Node in the toolchain, no build step: `bun
-packages/vx/src/bin.ts` runs the CLI from source.
+- **Bun ≥ 1.4 only.** No build step: `bun packages/vx/src/bin.ts` runs
+  the CLI from source. Node runs only what is Node's own: `nx-exec` and
+  the npm launcher.
 - **Gate before you push.** From the repo root, `bun packages/vx/src/bin.ts
 run ci --all` runs lint (oxlint type-aware + oxfmt), every package's
   tests, and the docs build — the same tasks CI runs, through vx itself.

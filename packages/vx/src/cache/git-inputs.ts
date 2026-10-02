@@ -6,7 +6,7 @@
 // task declared. Nothing here reads a config or applies a boundary.
 
 import path from 'node:path'
-import { existsSync, lstatSync, realpathSync } from 'node:fs'
+import { existsSync, lstatSync, readdirSync, realpathSync } from 'node:fs'
 import { UserError, executablePath, gitSpawnRefusal } from '../util/index.js'
 
 /** Three facts of the repository a directory is in, from one `git rev-parse`. */
@@ -394,12 +394,37 @@ function expandNestedRepos(
     }
     out ??= files.slice(0, i)
     const abs = path.join(cwd, nested)
-    if (!existsSync(path.join(abs, '.git'))) continue
+    if (!existsSync(path.join(abs, '.git'))) {
+      // No repository answers for it: a submodule never initialised (empty)
+      // or one whose `.git` was removed to vendor its files, the gitlink
+      // left in the index and `git status` silent. Its files are what the
+      // task reads, so a walk lists them; they hash by content (A-61).
+      for (const f of walkFiles(abs)) out.push(`${nested}/${f}`)
+      continue
+    }
     const inner = runGitLsFiles(abs)
     for (const f of inner.files) out.push(`${nested}/${f}`)
     for (const f of inner.undecodable) undecodable.push(`${nested}/${f}`)
   }
   return { files: out ?? files, undecodable }
+}
+
+/** Every file and symlink under `dir`, relative and `/`-separated; a `.git` is skipped, a link not followed. */
+function walkFiles(dir: string, rel = ''): string[] {
+  let entries
+  try {
+    entries = readdirSync(path.join(dir, rel), { withFileTypes: true })
+  } catch {
+    return []
+  }
+  const out: string[] = []
+  for (const e of entries) {
+    if (e.name === '.git') continue
+    const r = rel === '' ? e.name : `${rel}/${e.name}`
+    if (e.isDirectory()) out.push(...walkFiles(dir, r))
+    else out.push(r)
+  }
+  return out
 }
 
 /**
@@ -449,6 +474,108 @@ function parseLsFilesOutput(out: string, undecodableRecords: ReadonlySet<string>
     if (flag !== undefined && (flag === 'S' || (flag >= 'a' && flag <= 'z'))) flagged.add(filePath)
   }
   return { files, oids, flagged, gitlinks, undecodable }
+}
+
+/**
+ * `ls-files -s -v -z --debug` as the plain `-s -v -z` stream, plus the size
+ * the index records for each regular stage-0 entry's worktree file and its
+ * raw OID. With `-z`, each record's NUL is followed by its five
+ * newline-ended debug lines (ctime, mtime, dev/ino, uid/gid, size/flags),
+ * then the next record.
+ */
+function stripLsDebug(run: GitRun): {
+  plain: string
+  undecodable: Set<string>
+  indexed: Map<string, { oid: string; size: number }>
+} {
+  const segs = run.stdout.split('\0')
+  const records: string[] = []
+  const undecodable = new Set<string>()
+  const indexed = new Map<string, { oid: string; size: number }>()
+  let record = segs[0]!
+  let recordRaw = record
+  for (let i = 1; i <= segs.length; i++) {
+    const seg = segs[i]
+    let rest = ''
+    let size = -1
+    if (seg !== undefined) {
+      let at = 0
+      for (let k = 0; k < 5 && at >= 0; k++) {
+        const nl = seg.indexOf('\n', at)
+        if (nl < 0) at = -1
+        else {
+          if (k === 4) size = Number(/size: (\d+)/.exec(seg.slice(at, nl))?.[1] ?? -1)
+          at = nl + 1
+        }
+      }
+      rest = at < 0 ? '' : seg.slice(at)
+    }
+    if (record.length > 0) {
+      records.push(record)
+      if (run.undecodable.has(recordRaw)) undecodable.add(record)
+      const m = LS_FILES_STAGE_RE.exec(record)
+      if (m !== null && m[4] === '0' && (m[2] === '100644' || m[2] === '100755')) {
+        indexed.set(record.slice(m[0].length), { oid: m[3]!, size })
+      }
+    }
+    record = rest
+    recordRaw = seg ?? ''
+  }
+  return { plain: records.join('\0'), undecodable, indexed }
+}
+
+/** Blob sizes learned once and kept: a blob's size is fixed for its OID. `Cache` is one. */
+export interface BlobSizeMemo {
+  knownBlobSizes(oids: readonly string[]): Map<string, number>
+  rememberBlobSizes(sizes: ReadonlyMap<string, number>): void
+}
+
+/**
+ * Drop each trusted OID whose blob is not the size the index recorded for
+ * the worktree file (A-60). A clean filter's blob differs from the file it
+ * was added from, and git holds a stat-clean entry clean without re-reading
+ * it once the filter is gone (`core.autocrlf` turned off, a `.gitattributes`
+ * rule removed): `status` and the filter gate, which reads today's config,
+ * both let the blob stand for bytes it does not hold. The recorded sizes
+ * cost no read of the worktree; the blob sizes come from `memo`, and only
+ * the ones it lacks from one `cat-file` (65 ms over 3,000 loose objects,
+ * the whole of the cost, measured 2026-10-02). A smudged (racy) entry
+ * records 0 and is hashed from disk. An answer that cannot be read trusts
+ * nothing.
+ */
+async function dropResizedOids(enumeration: GitEnumeration, memo?: BlobSizeMemo): Promise<void> {
+  const { trusted, indexed } = enumeration
+  const wanted = new Set<string>()
+  for (const rel of trusted.keys()) {
+    const entry = indexed.get(rel)
+    if (entry !== undefined) wanted.add(entry.oid)
+  }
+  if (wanted.size === 0) return
+  const sizes = memo?.knownBlobSizes([...wanted]) ?? new Map<string, number>()
+  const unknown = [...wanted].filter((oid) => !sizes.has(oid))
+  if (unknown.length > 0) {
+    const run = await enumeration.catFile(unknown.join('\n') + '\n')
+    if (run === null || run.exitCode !== 0) {
+      trusted.clear()
+      return
+    }
+    const learned = new Map<string, number>()
+    for (const line of run.stdout.split('\n')) {
+      const sp = line.indexOf(' ')
+      const n = Number(line.slice(sp + 1))
+      if (sp > 0 && line.slice(sp + 1) !== '' && Number.isInteger(n))
+        learned.set(line.slice(0, sp), n)
+    }
+    for (const [oid, n] of learned) sizes.set(oid, n)
+    memo?.rememberBlobSizes(learned)
+  }
+  for (const rel of trusted.keys()) {
+    const entry = indexed.get(rel)
+    if (entry === undefined) continue // a symlink: its blob is its target string
+    const size = sizes.get(entry.oid)
+    // The index keeps the low 32 bits of a size.
+    if (size === undefined || size % 2 ** 32 !== entry.size) trusted.delete(rel)
+  }
 }
 
 /** One completed `git` invocation. */
@@ -825,7 +952,7 @@ export async function populateGitFilesCache(
     workspaceRoot,
     gitPathspecs(workspaceRoot, projectDirs, workspaceWide),
   )
-  applyGitEnumeration(enumeration, workspaceRoot, projectDirs, cache, workspaceWide)
+  await applyGitEnumeration(enumeration, workspaceRoot, projectDirs, cache, workspaceWide)
 }
 
 /** What one workspace-wide enumeration learned, before it is partitioned per project. */
@@ -851,6 +978,10 @@ export interface GitEnumeration {
   undecodable: readonly string[]
   /** `Date.now()` before the spawns: what `trusted` says is true as of no earlier. */
   startedAtMs: number
+  /** Each regular stage-0 entry's raw OID and the worktree size the index recorded. */
+  indexed: ReadonlyMap<string, { oid: string; size: number }>
+  /** `git cat-file --batch-check` over `stdin`'s OIDs; null when it could not spawn. */
+  catFile(stdin: string): Promise<{ exitCode: number; stdout: string } | null>
 }
 
 /** Above this many project dirs the enumeration walks the whole tree. */
@@ -891,7 +1022,11 @@ export async function startGitEnumeration(
   // bulk-populate costs max(ls-files, status) wall time, not the sum
   // (status alone is ~74 ms on a 1000-project tree; serial spawning
   // was a measurable warm-path regression vs the pre-OID code).
-  const spawnGit = async (args: string[], stdin?: string): Promise<GitRun | null> => {
+  const spawnGit = async (
+    args: string[],
+    stdin?: string,
+    env?: Record<string, string>,
+  ): Promise<GitRun | null> => {
     try {
       const proc = Bun.spawn({
         // `status` refreshes the index when it can take `index.lock`, so
@@ -903,6 +1038,7 @@ export async function startGitEnumeration(
         stdin: stdin === undefined ? 'ignore' : new TextEncoder().encode(stdin),
         stdout: 'pipe',
         stderr: 'pipe',
+        ...(env !== undefined ? { env: { ...process.env, ...env } } : {}),
       })
       const [stdout, stderr, exitCode] = await Promise.all([
         new Response(proc.stdout).bytes(),
@@ -924,8 +1060,14 @@ export async function startGitEnumeration(
   // tracked paths are dirty AND which files are untracked. Asking
   // `ls-files --others` for the untracked set walked the same tree a second
   // time (~50 ms of CPU, concurrent with status but contending with it).
+  // `--debug` adds each entry's recorded stat, for the blob-size check
+  // (`dropResizedOids`, A-60).
+  const listing = spawnGit(['ls-files', '-s', '-v', '-z', '--debug', '--', ...pathspecs]).then(
+    (run) =>
+      run === null || run.exitCode !== 0 ? { run, debug: null } : { run, debug: stripLsDebug(run) },
+  )
   const running = Promise.all([
-    spawnGit(['ls-files', '-s', '-v', '-z', '--', ...pathspecs]),
+    listing,
     // `--ignored=matching` names an ignored path without descending into an
     // ignored directory: git applies an ignored `.gitattributes` as it does
     // any other, and the filter gate below must see it (A-19).
@@ -965,7 +1107,7 @@ export async function startGitEnumeration(
   // at all. `--git-dir` named the per-worktree directory, so the gate
   // looked where the rule can never be.
   const facts = repoFacts(workspaceRoot)
-  const [ls, status, vars] = await running
+  const [{ run: ls, debug }, status, vars] = await running
   if (ls === null) {
     throw gitSpawnRefusal(workspaceRoot)
   }
@@ -982,7 +1124,7 @@ export async function startGitEnumeration(
     flagged,
     gitlinks,
     undecodable,
-  } = parseLsFilesOutput(ls.stdout, ls.undecodable)
+  } = parseLsFilesOutput(debug!.plain, debug!.undecodable)
   // Normalize `status`'s repo-root-relative paths to workspace-relative (strip
   // the `--show-prefix`) so the dirty set is keyed identically to the trusted
   // OID map. Without this, when the workspace root is a git subdir, a modified
@@ -1060,6 +1202,13 @@ export async function startGitEnumeration(
     untracked: dirty === null ? null : untracked,
     undecodable,
     startedAtMs,
+    indexed: debug!.indexed,
+    // A missing blob is an answer ("missing"), never a fetch from a partial
+    // clone's promisor remote.
+    catFile: (stdin) =>
+      spawnGit(['cat-file', '--batch-check=%(objectname) %(objectsize)'], stdin, {
+        GIT_NO_LAZY_FETCH: '1',
+      }),
   }
 }
 
@@ -1089,13 +1238,15 @@ export function lazyGitEnumeration(workspaceRoot: string): LazyGitEnumeration {
 }
 
 /** The partition half of `populateGitFilesCache`: store per-project slices of one enumeration. */
-export function applyGitEnumeration(
+export async function applyGitEnumeration(
   enumeration: GitEnumeration,
   workspaceRoot: string,
   projectDirs: readonly string[],
   cache: GitFilesCache,
   workspaceWide = false,
-): void {
+  memo?: BlobSizeMemo,
+): Promise<void> {
+  await dropResizedOids(enumeration, memo)
   const { all, trusted } = enumeration
   cache.setWorktreeDirty(enumeration.dirty)
   cache.enumeratedAtMs = enumeration.startedAtMs
