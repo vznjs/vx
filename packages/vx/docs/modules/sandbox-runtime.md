@@ -428,8 +428,14 @@ path, so it spells each `[` in a read or deny path as `[[]`, a class of
 one bracket (`literalReadPaths`): a route granted as
 `pages/\[id\].tsx` matched and was never mounted (its denial unreported,
 a listed grant), and a workspace under a bracketed directory was never
-walled (B-57). A write path holding a bracket SRT drops, with no spelling
-that keeps it.
+walled (B-57).
+
+SRT drops every Linux write path holding a bracket (it reads one as a
+glob), with no spelling that keeps it, so `bindableWrites` drops it
+first and says so once, naming the directory above it: left in, the read
+grants were punched around a bind that never came, the directory
+vanished from the task's view ("Directory nonexistent"), and the refused
+write went unreported, judged against the grant (B-59).
 
 SRT's in-sandbox network bridge is `socat TCP-LISTEN:3128` (and 1080),
 which socat 1.8 opens as an IPv6 socket. On a host without IPv6 it
