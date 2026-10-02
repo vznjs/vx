@@ -56,13 +56,15 @@ describe('exec.timeout — normal task', () => {
   it(
     'a task that overruns is SIGTERMed, reported failed, and not cached',
     async () => {
+      // The deadlines here are 1 s: `pid.txt` is written before them only
+      // if the shell has started, and a slow start lost it at 300 ms (M-24).
       const dir = await addProject(
         fixture.root,
         'slow',
         `export default {
           tasks: {
             build: {
-              exec: { command: 'echo $$ > pid.txt && exec sleep 30', timeout: 300 },
+              exec: { command: 'echo $$ > pid.txt && exec sleep 30', timeout: 1000 },
               cache: { inputs: { files: ['package.json'] }, outputs: { files: [] } },
             },
           },
@@ -76,7 +78,7 @@ describe('exec.timeout — normal task', () => {
       expect(r.ok).toBe(false)
       expect(r.outcomes[0]!.status).toBe('failed')
       // The timeout note streamed into the task's output.
-      expect(fixture.err.join('\n')).toContain('timed out after 300ms')
+      expect(fixture.err.join('\n')).toContain('timed out after 1000ms')
       // The child must be dead once the run returns. `exec` in the fixture is
       // what gives this assertion teeth: `$$` is the shell's pid and exec keeps
       // that pid while replacing the image, so pid.txt names the SLEEPER. As a
@@ -161,7 +163,7 @@ describe('exec.timeout — persistent task (readiness bound)', () => {
             dev: {
               exec: {
                 command: 'echo $$ > pid.txt && echo wrong-banner && exec sleep 30',
-                timeout: 300,
+                timeout: 1000,
                 persistent: { readyWhen: 'Listening' },
               },
             },
@@ -183,8 +185,8 @@ describe('exec.timeout — persistent task (readiness bound)', () => {
       // The reason reaches the TASK's stderr stream — the frame, and an
       // embedder's logger — not the process's stderr, which a custom
       // logger never sees (this pin used to assert the bare write).
-      expect(fixture.err.join('\n')).toContain('not ready within 300ms')
-      expect(stderrText).not.toContain('not ready within 300ms')
+      expect(fixture.err.join('\n')).toContain('not ready within 1000ms')
+      expect(stderrText).not.toContain('not ready within 1000ms')
       // The child must be dead once the run returns. `exec` in the fixture is
       // what gives this assertion teeth: `$$` is the shell's pid and exec keeps
       // that pid while replacing the image, so pid.txt names the SLEEPER. As a
