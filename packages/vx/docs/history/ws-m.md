@@ -309,6 +309,20 @@ available! 10.9.4 -> 12.2.0" after the JSON, and the joined parse threw.
 The JSON is now stdout's alone. Row: a fake npm whose stderr holds the
 notice (red without the fix, the gate's error).
 
+M-28. `sandbox-runtime.unsafe.test.ts` › a traced sandboxed one-shot
+task's children die with vx that is descheduled after the spawn (I-9's
+lead: ENOENT reading `/proc/<pid>/stat` after `isAlive`). `isAlive` sent
+signal 0, then read the state, and took the read's ENOENT for "no
+procfs, so alive"; but it reads only where procfs is this process's own,
+so ENOENT there is a pid reaped between the two calls, and a dying child
+read alive and then threw at the row's next read. Gone now reads dead,
+and the row's session-leader read counts a vanished pid as no leader.
+Row (`alive-helper.unsafe`): signal 0 held to "lands" for a pid with no
+entry (red without the fix). macOS is unchanged: there
+`procfsIsOwn()` is false and nothing is read. Also probed, nothing to
+fix: both `wedged.test.ts` leads (`sent` 3 for 4, 0 for 1) counted RSTs
+sent, which F-9 replaced with the peer's count of HEADERS.
+
 ## Leads for other streams
 
 - A: A-20 let a same-project dependant restore ahead of a producer whose
