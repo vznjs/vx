@@ -81,6 +81,14 @@ persistent task` and vx exits 1). Row (`site-samples` › a post's link
   into a guide section names the section), red on four posts without
   the fix.
 
+- **J2-13** The why-did-this-rerun post's verdict table had six
+  unchanged-key endings; `metrics.ts` has seven since #1928's
+  continue-taint verdict ("neither run saved it: each ran beside a
+  failed task …"). The configure guide had the row; the pin matched
+  single-quoted notes only, and that verdict is a template literal, so
+  it held neither page to it. The post now lists it, and the pin reads
+  template literals too (an interpolated group reads `(…)`), expecting
+  10; red on the post without the fix.
 - **J2-11** The lockfile-aware-keys post said a `bun.lock` bump in
   vx's repo re-keys "that package's own tasks and its dependants'", and
   its excerpt "59 re-keyed tasks into 2". Measured 2026-10-02 (`run ci

@@ -291,8 +291,12 @@ describe('the configure guide quotes what vx why says', () => {
     // run never reach it; every other note opens `cache key` or `this task`.
     const from = src.indexOf('function unchangedKeyNote')
     const verdicts = src.slice(from, src.indexOf('\n// ----', from))
-    const notes = [...verdicts.matchAll(/'((?:cache key|this task )[^']*)'/g)].map((m) => m[1]!)
-    expect(notes.length).toBe(9)
+    // A template literal's interpolated group reads `(…)` on the pages: the
+    // continue-taint verdict was one, and a quote-only match missed it (J2-13).
+    const notes = [...verdicts.matchAll(/(['`])((?:cache key|this task )(?:(?!\1)[^\\])*)\1/g)].map(
+      (m) => m[2]!.replace(/\([^()]*\$\{[^}]*\}[^()]*\)/g, '(…)'),
+    )
+    expect(notes.length).toBe(10)
     for (const note of notes) {
       expect(guide).toContain(note)
       expect(post).toContain(note)
