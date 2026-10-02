@@ -561,9 +561,16 @@ export interface BlobSizeMemo {
 async function dropResizedOids(enumeration: GitEnumeration, memo?: BlobSizeMemo): Promise<void> {
   const { trusted, indexed } = enumeration
   const wanted = new Set<string>()
+  // Each trusted path's index entry, found once: a second lookup by path
+  // in the check below was half of this pass on a 12,905-file tree.
+  const rels: string[] = []
+  const entries: Array<{ oid: string; size: number }> = []
   for (const rel of trusted.keys()) {
     const entry = indexed.get(rel)
-    if (entry !== undefined) wanted.add(entry.oid)
+    if (entry === undefined) continue // a symlink: its blob is its target string
+    rels.push(rel)
+    entries.push(entry)
+    wanted.add(entry.oid)
   }
   if (wanted.size === 0) return
   const sizes = memo?.knownBlobSizes([...wanted]) ?? new Map<string, number>()
@@ -584,12 +591,11 @@ async function dropResizedOids(enumeration: GitEnumeration, memo?: BlobSizeMemo)
     for (const [oid, n] of learned) sizes.set(oid, n)
     memo?.rememberBlobSizes(learned)
   }
-  for (const rel of trusted.keys()) {
-    const entry = indexed.get(rel)
-    if (entry === undefined) continue // a symlink: its blob is its target string
+  for (let i = 0; i < rels.length; i++) {
+    const entry = entries[i]!
     const size = sizes.get(entry.oid)
     // The index keeps the low 32 bits of a size.
-    if (size === undefined || size % 2 ** 32 !== entry.size) trusted.delete(rel)
+    if (size === undefined || size % 2 ** 32 !== entry.size) trusted.delete(rels[i]!)
   }
 }
 
