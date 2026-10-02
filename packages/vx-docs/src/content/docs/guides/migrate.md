@@ -198,6 +198,9 @@ where Nx ran it, with the executor's option defaults applied:
 | `@nx/vite:preview-server`           | `vite preview --outDir=../../dist/apps/web …`               |
 | `@nx/storybook:storybook`           | `cd ../.. && storybook dev --port=9009 --config-dir=libs/a/.storybook` |
 | `@nx/storybook:build`               | `cd ../.. && storybook build --config-dir=… --output-dir=…` |
+| `@nx/next:build`                    | `next build`, `NX_NEXT_OUTPUT_PATH` set to `outputPath`     |
+| `@nx/next:server`                   | `next dev --port=4200` (or `next start` in the build output) |
+| `@nx/cypress:cypress`               | `cd ../.. && cypress run --project=apps/web-e2e --config-file=cypress.config.ts --e2e` |
 
 What an executor did besides its tool (a type-check before a Vite
 build, a `package.json` or `assets` copied into the output) is a TODO

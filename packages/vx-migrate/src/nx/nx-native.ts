@@ -37,7 +37,13 @@ export interface NativeCommand {
 }
 
 type Options = Readonly<Record<string, unknown>>
-type Translate = (o: Options, ctx: NativeContext, todos: string[]) => NativeCommand['command']
+/** The line, or null when this target's options have no plain form (a Next custom server). */
+type Translate = (
+  o: Options,
+  ctx: NativeContext,
+  todos: string[],
+  env: Record<string, string>,
+) => string | null
 
 /** The plain line for `executor`, or null when it has none here. */
 export function nativeExecutorCommand(
@@ -50,10 +56,8 @@ export function nativeExecutorCommand(
   if (translate === undefined) return null
   const todos: string[] = []
   const env: Record<string, string> = {}
-  // Playwright's one env var; every other executor sets none the tool reads.
-  if (name === '@nx/playwright:playwright' && typeof options['cacheDir'] === 'string')
-    env['PWTEST_CACHE_DIR'] = options['cacheDir']
-  return { command: translate(options, ctx, todos), env, todos }
+  const command = translate(options, ctx, todos, env)
+  return command === null ? null : { command, env, todos }
 }
 
 /** The TODO an executor with no translator carries; one reason per executor, so the report lists its tasks. */
@@ -291,7 +295,8 @@ const tsc: Translate = (o, ctx, todos) => {
 }
 
 /** `@nx/playwright:playwright`: `playwright test` from the workspace root, options as kebab flags. */
-const playwright: Translate = (o, ctx, todos) => {
+const playwright: Translate = (o, ctx, todos, env) => {
+  if (typeof o['cacheDir'] === 'string') env['PWTEST_CACHE_DIR'] = o['cacheDir']
   const args = ['playwright', 'test']
   if (Array.isArray(o['testFiles']))
     for (const f of o['testFiles']) if (typeof f === 'string') args.push(shellQuote(f))
@@ -503,7 +508,182 @@ const storybookBuild: Translate = (o, ctx, todos) => {
   return fromRoot(ctx, args.join(' '))
 }
 
+/** Next's own build flags, as `createCliOptions` spells them. */
+const NEXT_BUILD_FLAGS: Readonly<Record<string, string>> = {
+  experimentalAppOnly: 'experimental-app-only',
+  experimentalBuildMode: 'experimental-build-mode',
+  profile: 'profile',
+  debug: 'debug',
+  turbo: 'turbo',
+  webpack: 'webpack',
+}
+
+/**
+ * `@nx/next:build`: `next build` in the project dir. `withNx` in the
+ * project's next.config reads `NX_NEXT_OUTPUT_PATH`, which Nx set to
+ * `outputPath`; what Nx wrote into `outputPath` after the build is a TODO.
+ */
+const nextBuild: Translate = (o, ctx, todos, env) => {
+  const args = [
+    'next',
+    'build',
+    ...mappedFlags(
+      o,
+      NEXT_BUILD_FLAGS,
+      new Set([
+        'outputPath',
+        'nextConfig',
+        'buildLibsFromSource',
+        'includeDevDependenciesInPackageJson',
+        'generateLockfile',
+        'skipOverrides',
+        'skipPackageManager',
+        'fileReplacements',
+      ]),
+      todos,
+      '@nx/next:build',
+      'next',
+    ),
+  ]
+  if (typeof o['outputPath'] === 'string') {
+    const out = wsPath(o['outputPath'], ctx)
+    env['NX_NEXT_OUTPUT_PATH'] = out
+    todos.push(
+      `@nx/next:build wrote a package.json (a \`next start\` script) into ${out}` +
+        (out === ctx.projectRel ? '' : ', and copied next.config and public/ there') +
+        ' — next build does not',
+    )
+  }
+  if (Array.isArray(o['fileReplacements']) && o['fileReplacements'].length > 0)
+    todos.push('@nx/next:build applied `fileReplacements` — next build has no such step')
+  return args.join(' ')
+}
+
+/**
+ * `@nx/next:server`: `next dev` in the project dir (`dev`, the default),
+ * else `next start` in the build target's output dir; Nx's port 4200 and
+ * `PORT` as Nx sets them. A custom server runs another target: no line.
+ */
+const nextServer: Translate = (o, ctx, todos, env) => {
+  if (typeof o['customServerTarget'] === 'string') return null
+  const port = typeof o['port'] === 'number' ? o['port'] : 4200
+  env['PORT'] = String(port)
+  const dev = o['dev'] !== false
+  const args = ['next', dev ? 'dev' : 'start', `--port=${port}`]
+  if (typeof o['hostname'] === 'string') args.push(`--hostname=${shellQuote(o['hostname'])}`)
+  if (!dev && typeof o['keepAliveTimeout'] === 'number')
+    args.push(`--keepAliveTimeout=${o['keepAliveTimeout']}`)
+  if (dev && o['turbo'] === true) args.push('--turbo')
+  if (dev && o['webpack'] === true) args.push('--webpack')
+  if (o['experimentalHttps'] === true) args.push('--experimental-https')
+  for (const [k, f] of [
+    ['experimentalHttpsKey', 'experimental-https-key'],
+    ['experimentalHttpsCert', 'experimental-https-cert'],
+    ['experimentalHttpsCa', 'experimental-https-ca'],
+  ] as const)
+    if (typeof o[k] === 'string') args.push(`--${f}=${shellQuote(projPath(o[k], ctx))}`)
+  const line = args.join(' ')
+  if (dev) return line
+  const build = buildTargetOptions(o, ctx, todos, '@nx/next:server')
+  if (typeof build['outputPath'] !== 'string') {
+    todos.push('@nx/next:server ran `next start` in its build target’s outputPath, which is unset')
+    return line
+  }
+  return `cd ${shellQuote(projPath(build['outputPath'], ctx))} && ${line}`
+}
+
+/** Cypress's run flags with one spelling (`cypress run --help`). */
+const CYPRESS_FLAGS: Readonly<Record<string, string>> = {
+  browser: 'browser',
+  spec: 'spec',
+  tag: 'tag',
+  headed: 'headed',
+  headless: 'headless',
+  record: 'record',
+  key: 'key',
+  parallel: 'parallel',
+  ciBuildId: 'ci-build-id',
+  group: 'group',
+  reporter: 'reporter',
+  quiet: 'quiet',
+  autoCancelAfterFailures: 'auto-cancel-after-failures',
+  reporterOptions: 'reporter-options',
+}
+
+/**
+ * `@nx/cypress:cypress`: `cypress run` (`open` under `watch`) from the
+ * workspace root, on the config file's directory as Nx passes it. A
+ * dev server Nx started first is a TODO: vx runs it as a dependency.
+ */
+const cypress: Translate = (o, ctx, todos) => {
+  const args = ['cypress', o['watch'] === true ? 'open' : 'run']
+  if (typeof o['cypressConfig'] === 'string') {
+    const cfg = wsPath(o['cypressConfig'], ctx)
+    const slash = cfg.lastIndexOf('/')
+    args.push(
+      `--project=${shellQuote(slash === -1 ? '.' : cfg.slice(0, slash))}`,
+      `--config-file=${shellQuote(cfg.slice(slash + 1))}`,
+    )
+  }
+  args.push(o['testingType'] === 'component' ? '--component' : '--e2e')
+  const config: string[] = []
+  if (typeof o['baseUrl'] === 'string') config.push(`baseUrl=${o['baseUrl']}`)
+  if (typeof o['ignoreTestFiles'] === 'string')
+    config.push(`excludeSpecPattern=${o['ignoreTestFiles']}`)
+  if (config.length > 0) args.push(`--config=${shellQuote(config.join(','))}`)
+  if (o['env'] !== undefined && o['env'] !== null && typeof o['env'] === 'object') {
+    const pairs = Object.entries(o['env'] as Record<string, unknown>)
+    if (
+      pairs.every(
+        ([, v]) => ['string', 'number', 'boolean'].includes(typeof v) && !String(v).includes(','),
+      )
+    )
+      args.push(`--env=${shellQuote(pairs.map(([k, v]) => `${k}=${String(v)}`).join(','))}`)
+    else
+      todos.push(
+        '@nx/cypress:cypress `env` has a value `--env` cannot carry — move it into the cypress config',
+      )
+  }
+  if (o['exit'] === false) args.push('--no-exit')
+  args.push(
+    ...mappedFlags(
+      o,
+      CYPRESS_FLAGS,
+      new Set([
+        'cypressConfig',
+        'watch',
+        'testingType',
+        'baseUrl',
+        'env',
+        'exit',
+        'devServerTarget',
+        'skipServe',
+        'runnerUi',
+        'ignoreTestFiles',
+        // The dev server's port, which Nx picks for the server it starts.
+        'port',
+      ]),
+      todos,
+      '@nx/cypress:cypress',
+      'cypress',
+    ),
+  )
+  if (typeof o['devServerTarget'] === 'string' && o['skipServe'] !== true)
+    todos.push(
+      `@nx/cypress:cypress started ${JSON.stringify(o['devServerTarget'])} first and tested its URL — ` +
+        'depend on that server task and set its URL as baseUrl',
+    )
+  if (o['testingType'] === 'component')
+    todos.push(
+      "@nx/cypress:cypress component testing reads Nx's build target through its preset — check the cypress config",
+    )
+  return fromRoot(ctx, args.join(' '))
+}
+
 const TRANSLATORS: Readonly<Record<string, Translate>> = {
+  '@nx/next:build': nextBuild,
+  '@nx/next:server': nextServer,
+  '@nx/cypress:cypress': cypress,
   '@nx/vite:dev-server': viteDev,
   '@nx/vite:preview-server': vitePreview,
   '@nx/storybook:storybook': storybookDev,

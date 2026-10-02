@@ -18,5 +18,12 @@
   that configuration), and `@nx/storybook:storybook` / `:build` as
   `storybook dev` (on Nx's port 9009) / `storybook build` from the
   workspace root. Each was a failing placeholder.
+- **P2-3** The migrator writes `@nx/next:build` as `next build` with
+  `NX_NEXT_OUTPUT_PATH` set, `@nx/next:server` as `next dev` / `next
+start` (in the build output) with Nx's port and `PORT`, and
+  `@nx/cypress:cypress` as `cypress run` / `open` from the workspace root
+  on the config file's directory; the dev server Nx started first, and
+  the files `next build` did not write, are TODOs. Each was a failing
+  placeholder.
 
 ## Leads for other streams
