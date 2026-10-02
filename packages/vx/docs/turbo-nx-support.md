@@ -22,7 +22,7 @@ Every key `turbo.json`, `nx.json` and `project.json` accept, read from the upstr
 | `concurrency` | mapped, with a note | turbo() fills the workspace's `concurrency` when `vx.workspace.ts` sets none (`"50%"` of the cores too); `TURBO_CONCURRENCY` wins over it, as in Turbo. |
 | `daemon` | not applicable | vx has no daemon by design. |
 | `dangerouslyDisablePackageManagerCheck` | not applicable | Turbo's package-manager check; vx has none. |
-| `envMode` | mapped, with a note | Strict is vx's behaviour; `loose` gets a note, since vx passes only declared variables; under `turbo()` `TURBO_ENV_MODE` wins over it. |
+| `envMode` | mapped, with a note | Strict is vx's behaviour; `loose` gets a note, since vx passes only declared variables, and so do the tasks a Turbo 1 `pipeline` config's inferred mode ran loose (no pass-through list); under `turbo()` `TURBO_ENV_MODE` wins over it. |
 | `extends` | supported | Package configs' `extends` chains are followed as Turbo does; cycles and missing parents are refused. |
 | `futureFlags` | mapped, with a note | The flags are not read; what they gate (`global`, structured inputs) is detected by shape. |
 | `global` | mapped, with a note | `inputs`, `env` and `passThroughEnv` are read as the `global*` fields they replace; `envMode: loose` gets a note. |
@@ -35,7 +35,7 @@ Every key `turbo.json`, `nx.json` and `project.json` accept, read from the upstr
 | `tasks` | supported | Each task (or Turbo 1 `pipeline`) becomes a vx task for the packages that declare the script. |
 | `ui` | not applicable | Terminal UI choice. |
 | `tasks.*.cache` | supported | `cache: false` means no cache block: the task always runs. |
-| `tasks.*.dependsOn` | mapped, with a note | Same syntax; edges to tasks nobody runs are dropped; `$TURBO_ROOT$` deps get a TODO; `$NAME` becomes env. A package without the script of a `^` task others run keys it as Turbo's no-op node does: a cached `true` task with no outputs. |
+| `tasks.*.dependsOn` | mapped, with a note | Same syntax; edges to tasks nobody runs are dropped; `$TURBO_ROOT$` deps get a TODO; `$NAME` becomes env. A package without the script of a `^` task others run keys it as Turbo's no-op node does: a cached `true` task with no outputs. A task name no package has a script for (`ci: { dependsOn: ["lint", "build"] }`) is a group wherever it has an edge, so `vx run ci` runs them as `turbo run ci` does. |
 | `tasks.*.description` | supported | Copied to the task's `description`. |
 | `tasks.*.env` | mapped, with a note | Goes to `cache.inputs.env` and `exec.env.passThrough`; under `turbo()` a `*` name expands over the run's environment, as Turbo does; otherwise wildcards get a TODO. |
 | `tasks.*.inputs` | mapped, with a note | Globs translated; `$TURBO_DEFAULT$` becomes `**/*`, `$TURBO_ROOT$` workspace files; unsafe globs get a TODO. |

@@ -226,6 +226,7 @@ async function planWorkspace(input: PlaygroundInput): Promise<PlaygroundResult> 
       trusted,
       dirty: false,
       changed: [],
+      untracked: [],
       undecodable: [],
       startedAtMs: Date.now(),
     },

@@ -1164,6 +1164,32 @@ describe('turbo-map: envMode "loose"', () => {
   })
 })
 
+// Turbo 1's default env mode, "infer", runs a task loose unless a
+// pass-through list applies (1.13.4 on dub and trigger.dev: every task
+// loose), so a `pipeline` repo's tasks read variables nobody declared and
+// vx passed none of them, saying nothing.
+describe("turbo-map: Turbo 1's inferred loose mode", () => {
+  it('names the tasks no pass-through list covers; a global list or Turbo 2 are strict', async () => {
+    const notes = async (cfg: Record<string, unknown>, envMode = '') => {
+      await writeFile(path.join(root, 'turbo.json'), JSON.stringify(cfg))
+      const m = await mapTurboWorkspace(root, [], { ...opts, envMode })
+      return m.notes.filter((n) => n.includes('loose'))
+    }
+    const pipeline = { build: {}, test: { passThroughEnv: [] }, lint: {} }
+    expect(await notes({ pipeline })).toEqual([
+      'Turbo 1 runs build, lint in loose env mode (no passThroughEnv, so its "infer" mode ' +
+        'passes every environment variable); vx passes only the declared ones — list what each ' +
+        'reads in exec.env.passThrough (or cache.inputs.env)',
+    ])
+    expect([
+      await notes({ pipeline, globalPassThroughEnv: [] }),
+      await notes({ pipeline: { test: { passThroughEnv: ['X'] } } }),
+      await notes({ tasks: pipeline }),
+      await notes({ pipeline }, 'strict'),
+    ]).toEqual([[], [], [], []])
+  })
+})
+
 describe('turbo-map: a field of the wrong type is refused by name (L-15)', () => {
   // Fuzzed: `"dependsOn": true` printed `TypeError: true is not iterable`
   // with its stack from `bunx @vzn/vx-migrate`; fifteen such shapes each
@@ -1382,9 +1408,40 @@ describe('turbo-map: `with`', () => {
   it('a no-script node no other package reaches is no group', async () => {
     const m = await map(
       { tasks: { build: { dependsOn: ['^build'] }, test: { dependsOn: ['build'] } } },
-      { lib: { scripts: { build: 'b' } } },
+      { lib: { scripts: { build: 'b' } }, app: { scripts: { build: 'b', test: 't' } } },
     )
-    expect(m.projects[0]!.tasks.map((t) => t.name)).toEqual(['build'])
+    expect(m.projects.find((p) => p.name === 'lib')!.tasks.map((t) => t.name)).toEqual(['build'])
+  })
+
+  // `turbo run ci` over `ci: { dependsOn: ["lint", "build"] }` with no `ci`
+  // script anywhere runs every package's lint and build, and cal.com's
+  // `deploy: { dependsOn: ["@calcom/web#build"] }` builds web; vx said no
+  // project declares either. A `pkg#task` edge stays in pkg: in all 116
+  // of cal.com's packages it made every one a dependent of web.
+  it('a no-script name no package has a script for is a group wherever it has an edge of its own', async () => {
+    const m = await map(
+      {
+        tasks: {
+          build: { dependsOn: ['^build'] },
+          lint: {},
+          ci: { dependsOn: ['lint', 'build'] },
+          deploy: { dependsOn: ['web#build'] },
+          noop: {},
+        },
+      },
+      { web: { scripts: { build: 'b' } }, lib: { scripts: { lint: 'l' } } },
+    )
+    const tasks = (p: string) =>
+      Object.fromEntries(
+        m.projects.find((x) => x.name === p)!.tasks.map((t) => [t.name, t.task?.['dependsOn']]),
+      )
+    expect([tasks('web'), tasks('lib')]).toEqual([
+      // `web#build` is web's own: the group stays there, so no package
+      // gains a task edge to web that core's reach would follow.
+      { build: ['^build'], ci: ['build'], deploy: ['build'] },
+      // lib's `build` is Turbo's no-op node over lib's files (G-117).
+      { build: ['^build'], lint: undefined, ci: ['lint', 'build'] },
+    ])
   })
 
   it('a pair that names each other is one edge, not a cycle', async () => {
