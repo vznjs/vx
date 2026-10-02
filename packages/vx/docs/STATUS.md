@@ -258,7 +258,8 @@ are recorded in `docs/history/ws-<id>.md` as `<ID>-<n>`, not in the
 numbered list below, so parallel PRs never collide on a number; the
 coordinator folds them into this file. Streams K to O were added
 later (K README and site, L security findings, M CI reliability, N adoption
-paths, O Windows); each stream's record and leads are
+paths, O Windows, stopped: Windows is WSL and its workflow went
+2026-10-02); each stream's record and leads are
 its own `docs/history/ws-<id>.md`, fifteen files by 2026-10-01. Every
 green commit on `main` releases (`ci.yml` finishes `main`'s run and drops
 only queued ones; `auto-release.yml` releases any commit the last tag is
@@ -266,6 +267,14 @@ behind): v0.0.299 by 2026-10-01. Since 2026-09-30 one worker session
 at a time (W12, W13, …) takes a queue from the coordinator and records
 its items in the stream file of their area (adoption in `ws-g.md`) or
 its own `ws-W<n>.md`.
+
+**Positioning (owner, 2026-10-02; `docs/history/ws-r.md`).** vx is the
+fastest task runner, shown by the native-config benchmark with every
+competitor cell as `(vx N% faster|slower)`. Never say vx works in, runs
+or speeds up a Turbo or Nx repo: `@vzn/vx-migrate` / `vx init` is a
+temporary start toward native config. The real-repo rows measured
+`turbo()` / `nx()` and are off the README and site; they need a rerun
+on migrated native config before they are quoted again.
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
 under Bun 1.4.2 is the only gate: the 2026-09-19 container shipped

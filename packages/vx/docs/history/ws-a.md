@@ -484,3 +484,11 @@ Found by the A-59 fuzzer once it toggled `core.autocrlf` and `.gitattributes`. `
 
 - Rows: `git-trust.test.ts` › "an index blob a filter wrote that no longer applies" (red without the check: `cache-hit`); `git-spawns-once.test.ts` pins the cold `cat-file` and none warm.
 - Lead for M: `output-dirs.test.ts` › "does not descend a symlinked directory, records a missing prefix as absent, and nothing over the cap" hit its 10 s timeout in two of five local gates (A-59, A-60); green alone, and in the other gates.
+
+### A-61 — a gitlink whose directory lost its `.git` lists its files (2026-10-02)
+
+Found by the fuzzer once it made and unmade an embedded repository under a project. `git add -A` took `src/vendor` as a gitlink; with `vendor/.git` removed (vendoring a submodule's files without `git rm --cached`) the index keeps the gitlink, `git status` says nothing, and `expandNestedRepos` dropped the entry as an uninitialised submodule with no files. The task read `vendor/*` and the key folded none of it: an edit there was a green hit. Such a directory is now listed by a walk (`walkFiles`, skipping a `.git`), its files hashed by content; an empty one still folds nothing. `CACHE_VERSION` v39: an entry built from those files sits under the key the empty directory derives. `caching.md` and `modules/git-inputs.md` say so.
+
+- Row: `gitlink-without-git.test.ts`, red without the walk.
+- Also probed clean (about 13,000 fuzz steps over five op sets): cache policies per run, two clones sharing a remote layer, two runs sharing a `--cache-dir` at once, index flags, config imports rewritten with the mtime put back, a cached producer read by content.
+- Not a defect: a reader with `tasks: []` and a glob over a gitignored generated directory folds nothing for it, as documented (fold the producer's key).

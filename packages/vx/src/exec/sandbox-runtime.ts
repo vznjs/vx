@@ -63,7 +63,7 @@ import {
   UserError,
   xxh3hex,
 } from '../util/index.js'
-import { bindableWrites, buildCustomConfig, scratchWrites } from './sandbox-binds.js'
+import { bindableReads, bindableWrites, buildCustomConfig, scratchWrites } from './sandbox-binds.js'
 import {
   atOrUnder,
   isMountableLiteral,
@@ -1167,7 +1167,8 @@ function asksUnixSockets(c: Pick<ResolvedSandboxConfig, 'unixSockets'>): boolean
  * but SRT reads any holding `[` as a glob, where a bracket opens a class:
  * a route granted as `pages/\[id\].tsx` was never mounted (its denial
  * unreported, a listed grant), and a workspace under `[ws]/` was never
- * walled. `[[]` is a class of one `[`; a lone `]` is plain text to it.
+ * walled. `[[]` is a class of one `[`; a lone `]` is plain text to it. A
+ * `*` or `?` has no such spelling: `bindableReads` leaves its grant out.
  */
 function literalReadPaths(
   config: Parameters<SrtModule['SandboxManager']['wrapWithSandbox']>[2],
@@ -1179,8 +1180,9 @@ function literalReadPaths(
     ...config,
     filesystem: {
       ...fs,
+      // A `*` or `?` in a deny path matches its siblings too: a wider wall.
       denyRead: escape(fs.denyRead),
-      ...(fs.allowRead !== undefined ? { allowRead: escape(fs.allowRead) } : {}),
+      ...(fs.allowRead !== undefined ? { allowRead: escape(bindableReads(fs.allowRead)) } : {}),
     },
   }
 }
