@@ -1176,6 +1176,16 @@ granted by its escaped name, and not by the class spelling (darwin only:
 the verdict is CI's macOS job), and `sandbox-request.test.ts`' refusal
 row now runs off Linux too.
 
+B-66. A sandboxed `./build.sh` that the host has but no grant reads is
+not there inside the sandbox: the shell says "not found", and no trace
+sees the `execve`. `shellVerdict` read the host's file and blamed its
+`#!` line. It now asks the request's grants (`sandboxReads`) and names
+the file as hidden by the sandbox, with the grant to add. Rows:
+`shell-verdict-sandbox.test.ts` (red without the fix; the unsandboxed
+verdict is the control). Also ranked, nothing cut: the unsandboxed
+spawn is ~2.4 ms, of which `sh` is ~1 ms (direct exec 0.9 ms min); the
+shell runs B-9's guard line and is the command's API, so it stays.
+
 B-67. strace traces `chdir` since B-61, but the parse used only the
 successful ones. A refused `chdir` is a denied read of the directory:
 `cd src` into a directory no grant holds failed with no violation, and
