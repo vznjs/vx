@@ -777,6 +777,7 @@ describe('migrateScripts', () => {
       ci: 'vx run ci --all',
       'build:common': 'yarn --cwd ./packages/common build:esm',
       'build:b': 'npm --prefix packages/b run build',
+      prisma: 'yarn workspace @calcom/prisma prisma',
       release: 'vp run build && vp exec changeset publish',
       // vite: each runs the members through a root script that does.
       'build:all': 'pnpm -r run build',

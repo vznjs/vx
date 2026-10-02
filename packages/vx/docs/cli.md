@@ -1734,7 +1734,7 @@ them under `exec.env.define`, the first two read from an imported
 `package.json` so a version bump reaches them; any other `$npm_*` it
 reads gets a TODO (D-34). Among several packages, a workspace root
 script that runs the members (`pnpm -r build`, `--filter`, `-C`, Yarn's
-`--cwd`, npm's `--prefix`, npm's
+`--cwd` and `yarn workspace <name>`, npm's `--prefix`, npm's
 and Yarn's workspace flags, `cd`, turbo, nx, lerna, `vp run`, vx itself) is not mapped
 (a flag counts on the package manager, or after a `run`, and not on the program it
 runs: berry's `yarn node -r ./setup.ts` is node's `--require`, D-81),
@@ -1845,6 +1845,14 @@ copy to the source.
 | turbo  | `--cache-dir <v>`                                 | same    | `--cache-dir <path>`                                                                                                          |
 | turbo  | `--profile`                                       | same    | `--profile[=<path>]` (Chrome trace)                                                                                           |
 | turbo  | `--only`                                          | alias   | `--exclude-dependencies`                                                                                                      |
+| turbo  | `--color`                                         | refuse  | set `FORCE_COLOR=1`                                                                                                           |
+| turbo  | `--no-color`                                      | refuse  | set `NO_COLOR=1`                                                                                                              |
+| turbo  | `--heap <v>`, `--trace <v>`                       | refuse  | use `--profile[=<path>]` for vx's own trace                                                                                   |
+| turbo  | `--login <v>`                                     | refuse  | vx has no login: a remote cache is a plugin (`turboCache()` from @vzn/vx-migrate)                                             |
+| turbo  | `--no-update-notifier`                            | refuse  | vx prints no update notice: drop it                                                                                           |
+| turbo  | `--skip-infer`                                    | refuse  | vx runs the binary it is: drop it                                                                                             |
+| turbo  | `--root-turbo-json <v>`                           | refuse  | `turbo()` reads the `turbo.json` at the workspace root: move it there                                                         |
+| turbo  | `--experimental-otel-*`                           | refuse  | telemetry is a plugin: `otel()` from @vzn/vx-otel in vx.workspace.ts                                                          |
 | nx     | `--parallel <n>`                                  | alias   | `--concurrency <n>` (`--parallel=false` is 1)                                                                                 |
 | turbo  | `--parallel`                                      | refuse  | vx always honours `dependsOn`; `--concurrency <n>` sets how many run at once                                                  |
 | turbo  | `--scope <v>`                                     | refuse  | use `--filter <pkg>`                                                                                                          |
@@ -2011,7 +2019,7 @@ plugins:          2 — @vzn/vx-reapi (executor, cache); @vzn/vx-otel (telemetry
 workers:          2 — cgroup CPU quota 2 of 8 cores
 memory:           13 GB usable — cgroup limit; the machine has 16 GB
 cache dir:        /work/repo/.vx/cache
-cache versions:   keys vx-cache-v36 · index schema v28
+cache versions:   keys vx-cache-v37 · index schema v28
 cache entries:    42 (1.3 GB)
 orphans:          3 artifacts (12 MB) the index does not know — `vx cache prune` reaps them
 task runs (24h):  7 (5 cache hits)

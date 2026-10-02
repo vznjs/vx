@@ -26,7 +26,10 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   folds, so an executor elsewhere reproduces what a hit would match.
 - `localExecutor()` — the floor at the tail of every executor list.
   Runs the command on this machine; what a plugin declining a task
-  hands it back to. Internal (`src/exec/local-executor.ts`), not on
+  hands it back to. A request whose `signal` is already aborted (a stop
+  that landed during the output clean) spawns nothing and returns the
+  signal's exit: the command ran after the teardown had swept the run's
+  children, and a Ctrl-C took 7.6 s (B-55). Internal (`src/exec/local-executor.ts`), not on
   `@vzn/vx`.
 - `isLocalExecutor(executor)` — whether it is core's own, by identity (a
   plugin may name its executor 'local'): core bounds a plugin's

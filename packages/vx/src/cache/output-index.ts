@@ -67,6 +67,8 @@ export class OutputIndex {
    * hash refreshes rather than appends).
    */
   replaceFileRows(hash: string, rows: ReadonlyArray<[string, number, number, number]>): void {
+    // A stamp taken for the rows this replaces describes their files, not these.
+    this.pendingStamps.delete(hash)
     this.deleteOutputFiles.run(hash)
     for (const [rel, size, mode, mtime] of rows) {
       this.insertOutputFile.run(hash, rel, size, mode, mtime)
@@ -83,8 +85,9 @@ export class OutputIndex {
     // warm-hit path (called up to 3× per hit) reuses one statement instead of
     // recompiling on every call.
     // A reader in the same process (`vx watch`'s next cycle, a test) sees
-    // the stamps taken, not only the ones flushed.
-    this.flushOutputDirs()
+    // the stamps taken, not only the ones flushed: overlaid below from
+    // memory. A flush here committed a transaction per read, and a restore
+    // reads its rows twice.
     const placeholders = hashes.map(() => '?').join(',')
     const stmt = this.db.query(
       `SELECT entry_hash, path, size_bytes, mode, mtime_ms, ino, ctime_ms FROM output_files WHERE entry_hash IN (${placeholders})`,
@@ -113,6 +116,15 @@ export class OutputIndex {
       if (r.ino !== null && r.ctime_ms !== null) {
         row.ino = r.ino
         row.ctimeMs = r.ctime_ms
+      }
+      const pending = this.pendingStamps.get(r.entry_hash)
+      if (pending !== undefined) {
+        for (const [rel, ino, ctime] of pending) {
+          if (rel !== r.path) continue
+          row.ino = ino
+          row.ctimeMs = ctime
+          break
+        }
       }
       list.push(row)
     }
