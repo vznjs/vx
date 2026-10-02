@@ -186,6 +186,10 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     and prints only `UU <path>`: the deletion went unsaid, the file kept
     its index OID, and the run hit the output built with it (A-59).
 
+    Ref storage is not a key input: every ref vx reads comes from a git
+    command, so a repository in reftable storage (git 2.45) keys every
+    task as its files-backend twin (`tests/git-reftable.unsafe.test.ts`).
+
     A **submodule or an embedded repository** is enumerated by its own
     git: the workspace repository lists the nested one as a single entry
     (a gitlink, or `dir/` when untracked) and none of its files, so vx

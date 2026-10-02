@@ -720,6 +720,39 @@ record is dropped: no config can silence it and it carries no
 information. It is not a hole — a connection that actually left the
 machine goes through that proxy, which reports it WITH host and port.
 
+## What a sandboxed task costs (Linux, 2026-10-02)
+
+A sandboxed `true` costs ~28 ms in `runSandboxed` and ~35 ms per task in
+`vx run --concurrency 1` (100 tasks; an unsandboxed one costs ~2 ms, a
+bare spawn's floor). Measured by stripping one layer at a time from the
+wrapped command, min of 20–25:
+
+| part                                                                   | cost           | whose                            |
+| ---------------------------------------------------------------------- | -------------- | -------------------------------- |
+| bwrap with SRT's binds                                                 | ~6 ms (4 bare) | SRT, bwrap                       |
+| SRT's chain inside: bash three times, two socat bridges, apply-seccomp | ~6.5 ms        | SRT                              |
+| strace's own start (a bare `strace true` is 5.7 ms)                    | ~5 ms          | the denial report                |
+| SRT's per-wrap `rg`                                                    | 2.8 ms         | gone (B-75: `true` in its place) |
+| vx's wrapper: the signal watcher, `setsid`, `sh`                       | ~1.3 ms        | vx                               |
+| vx's JS: request, wrap, parse, scheduling                              | ~3 ms          | vx                               |
+
+Inside `vx run` the request and the walls add binds, so `runSandboxed`
+reads 28–30 ms there. What is vx's is at its floor: removing the watcher
+or `setsid` saves under 0.5 ms (noise), and both are correctness
+(signal forwarding, `kill 0`). A CPU profile names `rmSync` (947 ms per
+100 tasks) and `realpathSync` (250 ms) as the top cost; timed in place
+they are 0.4 ms and 0.23 ms a task: the profiler charges the main
+thread's wait on child processes to the last native call. Time a
+suspect in place before cutting it.
+
+The wrap itself (~3 ms with B-75's `true`, 1 ms of which is that spawn)
+is SRT's `generateFilesystemArgs` resolving each deny path (realpath,
+lstat, a symlink walk) and a `mkdtemp` per wrap; vx's own share of it
+is a sliver of a 400-wrap profile. What is left is SRT's to cut: one shell in place of three, and the
+bridges only for a task granted network. Neither is an option today,
+and dash cannot stand in for bash there (SRT's `trap "kill %1 %2"` kills
+no job under dash).
+
 ## Integration points
 
 - `src/orchestrator/run.ts` calls `prepareSandbox(nodes)`

@@ -109,7 +109,7 @@ export function captureGitContext(
  * about the layout is unfamiliar (the caller then spawns git). Handles a
  * `.git` directory, a `.git` FILE (`gitdir: …` — a linked worktree, whose
  * refs live under `commondir`), a symbolic HEAD, a detached HEAD, loose refs
- * and `packed-refs`.
+ * and `packed-refs`. A reftable repository is always null.
  */
 function readHeadDirect(
   workspaceRoot: string,
@@ -126,6 +126,16 @@ function readHeadDirect(
     const commonFile = path.join(gitDir, 'commondir')
     if (fs.existsSync(commonFile)) {
       commonDir = path.resolve(gitDir, fs.readFileSync(commonFile, 'utf8').trim())
+    }
+    // Reftable storage (`git init --ref-format=reftable`, git 2.45): HEAD
+    // names `refs/heads/.invalid` and the refs live in `reftable/`, so the
+    // files say nothing true about HEAD. A leftover `packed-refs` there was
+    // read as the answer; git is asked instead.
+    if (
+      fs.existsSync(path.join(gitDir, 'reftable')) ||
+      fs.existsSync(path.join(commonDir, 'reftable'))
+    ) {
+      return null
     }
     const head = fs.readFileSync(path.join(gitDir, 'HEAD'), 'utf8').trim()
     const SHA = /^[0-9a-f]{40,64}$/
