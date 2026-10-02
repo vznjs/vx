@@ -39,16 +39,33 @@ export function ignoredFilesProbe(rels: readonly string[]): string {
  * whole tree also keyed `hosting/docker/.env.example`, which trigger.dev's
  * `apps/*\/.env`-shaped globs never reach. Turbo's `*` matches a leading
  * dot and the shell's does not, so a segment that opens on `*` is spelled
- * again for hidden names. Null for a glob the shell would read otherwise
- * (`**`, a class, a brace, a quote): the caller keeps the walk.
+ * again for hidden names. `<dir>/**\/<name>` (create-turbo's
+ * `**\/.env.*local`) is a `find -name`, which matches a leading dot and
+ * skips `node_modules` as Turbo does. Null for a glob the shell would read
+ * otherwise (`**` elsewhere, a class, a brace, a quote): the caller keeps
+ * the walk.
  */
 export function dotenvGlobsProbe(globs: readonly string[]): string | null {
+  const safe = (seg: string): boolean =>
+    /^[A-Za-z0-9._@+*-]+$/.test(seg) && !seg.includes('**') && seg !== '.' && seg !== '..'
   const words = new Set<string>()
+  const finds: string[] = []
   for (const glob of globs) {
-    let alts = ['']
-    for (const seg of glob.split('/')) {
-      if (!/^[A-Za-z0-9._@+*-]+$/.test(seg) || seg.includes('**') || seg === '.' || seg === '..')
+    const segs = glob.split('/')
+    const deep = segs.indexOf('**')
+    if (deep !== -1) {
+      const dir = segs.slice(0, deep)
+      const name = segs.slice(deep + 1)
+      if (name.length !== 1 || !safe(name[0]!) || dir.some((d) => !safe(d) || d.includes('*')))
         return null
+      finds.push(
+        `find ${dir.length === 0 ? '.' : dir.join('/')} \\( -name node_modules -o -name .git \\) -prune -o -type f -name '${name[0]}' -print`,
+      )
+      continue
+    }
+    let alts = ['']
+    for (const seg of segs) {
+      if (!safe(seg)) return null
       const forms =
         seg === '*' ? ['*', '.[!.]*', '..?*'] : seg.startsWith('*') ? [seg, `.${seg}`] : [seg]
       alts = alts.flatMap((a) => forms.map((f) => (a === '' ? f : `${a}/${f}`)))
@@ -56,5 +73,11 @@ export function dotenvGlobsProbe(globs: readonly string[]): string | null {
     }
     for (const a of alts) words.add(a)
   }
-  return `LC_ALL=C; export LC_ALL; for f in ${[...words].join(' ')}; do [ -f "$f" ] && printf '%s\\n' "$f"; done | sort -u | while IFS= read -r f; do printf '%s\\n' "$f"; cat -- "$f"; echo .; done`
+  const list = [
+    ...(words.size === 0
+      ? []
+      : [`for f in ${[...words].join(' ')}; do [ -f "$f" ] && printf '%s\\n' "$f"; done`]),
+    ...finds.map((f) => `${f} 2>/dev/null | sed 's|^\\./||'`),
+  ]
+  return `LC_ALL=C; export LC_ALL; { ${list.join('; ')}; } | sort -u | while IFS= read -r f; do printf '%s\\n' "$f"; cat -- "$f"; echo .; done`
 }
