@@ -968,3 +968,12 @@ scheduler's line. The error object is kept (its class, cause and code),
 so a refusal still prints plainly and a bug as an internal error.
 Row (`plugin-capabilities.test.ts` › an executor's throw reaches the
 task's own stderr): red without the fix. `modules/executor.md` says so.
+
+## C-67: an embedder's `command` reaches telemetry redacted
+
+Item 1057 kept what follows `--` (often a token) out of the command line
+telemetry sinks receive, but only for the argv fallback: an embedder's
+`RunOptions.command` (`vx run deploy -- --token=…`) went to every sink
+verbatim. It is now counted, not quoted, the same way. Row
+(`telemetry.test.ts` › a sink never receives what follows `--`): red
+without the fix. The option's doc comment says so.
