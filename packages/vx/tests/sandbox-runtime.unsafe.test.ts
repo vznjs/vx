@@ -37,7 +37,12 @@ import {
   runSandboxed,
   wrapSandboxedCommand,
 } from '../src/exec/sandbox-runtime.js'
-import { buildCustomConfig, punchWritePaths, scratchWrites } from '../src/exec/sandbox-binds.js'
+import {
+  bindableWrites,
+  buildCustomConfig,
+  punchWritePaths,
+  scratchWrites,
+} from '../src/exec/sandbox-binds.js'
 import {
   bridgedPorts,
   portBridgeHostArgv,
@@ -2596,6 +2601,37 @@ describe('resolveSandboxConfig', () => {
         expect(said.join('')).toContain(
           `the write grant ${root}/gone/away/*.txt matches nothing yet`,
         )
+      } finally {
+        spy.mockRestore()
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+  )
+
+  // SRT drops every Linux write path holding a bracket, so the grant
+  // bound nothing and the task's write read only "a write no grant covers"
+  // beside the grant that named it.
+  it.skipIf(process.platform !== 'linux')(
+    'says so when a write path holds a bracket, and names the directory above it',
+    async () => {
+      const root = realpathSync(await mkdtemp(path.join(os.tmpdir(), 'vx-sbx-bracket-')))
+      await mkdir(path.join(root, 'out', '[id]'), { recursive: true })
+      const said: string[] = []
+      const spy = spyOn(process.stderr, 'write').mockImplementation((chunk: unknown) => {
+        said.push(String(chunk))
+        return true
+      })
+      try {
+        await mkdir(path.join(root, 'dist'))
+        judged({ allow: { read: ['.'], write: ['out/\\[id\\]/', 'dist/'] } }, root)
+        // Out of the binds, so the read grants keep the directory and the
+        // refused write is judged against no grant.
+        expect(bindableWrites([`${root}/out/[id]`, `${root}/dist`])).toEqual([`${root}/dist`])
+        expect(said.filter((l) => l.includes('holds a bracket'))).toEqual([
+          `[vx] sandbox: the write grant ${root}/out/[id] holds a bracket, and the Linux ` +
+            `sandbox mounts no write path that does, so a write under it is refused. Grant ` +
+            `the directory above it instead: ${root}/out/\n`,
+        ])
       } finally {
         spy.mockRestore()
         await rm(root, { recursive: true, force: true })

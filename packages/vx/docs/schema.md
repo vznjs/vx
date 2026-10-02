@@ -1064,6 +1064,9 @@ file created later is not covered — grant its directory instead. On both
 platforms `<dir>/**` and `<dir>/**/*` collapse to `<dir>`, so
 `read: ['**/*']` lets a task list its own cwd; a `<dir>` that is itself a
 glob keeps its subtree (`.*.tmp/**` covers what is inside each match).
+On Linux a WRITE path holding a bracket cannot be mounted (the runtime
+drops it): vx says so once, names the directory above it to grant
+instead, and a write under it is refused and reported.
 
 A Linux WRITE grant that matches nothing when the task starts therefore
 mounts nothing. Where a read grant mounts its directory, the task's first

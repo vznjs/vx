@@ -413,6 +413,13 @@ below it, or a deny that is the cwd), vx denies the cwd too: the task
 enters an empty directory, its reads there are refused and reported, and
 its writes are the scratch the write observer reports (B-53).
 
+SRT drops every Linux write path holding a bracket (it reads one as a
+glob), with no spelling that keeps it, so `bindableWrites` drops it
+first and says so once, naming the directory above it: left in, the read
+grants were punched around a bind that never came, the directory
+vanished from the task's view ("Directory nonexistent"), and the refused
+write went unreported, judged against the grant (B-59).
+
 SRT's in-sandbox network bridge is `socat TCP-LISTEN:3128` (and 1080),
 which socat 1.8 opens as an IPv6 socket. On a host without IPv6 it
 failed ("Address family not supported by protocol") into /dev/null, and
