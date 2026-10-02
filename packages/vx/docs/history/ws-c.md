@@ -1048,3 +1048,20 @@ uncached sandboxed task): min 453 → 377 ms, median ~495 → ~440 over 12
 interleaved runs per arm. Rows: `sandbox-prewarm.unsafe.test.ts`; each
 half and the wait fail their row without themselves, and the control
 fails an unconditional prewarm.
+
+## C-85: a plugin executor's throw is the plugin's, not vx's internal error
+
+Every pipeline stage turns a plugin's throw into a refusal naming the
+plugin (`safe()`); a plugin executor's throw from `execute` kept its
+class, so a plain `Error` printed `[vx] internal error in a#build:
+plugin 'p' (executor 'e') failed in execute: boom`, calling the plugin's
+failure vx's bug. `nameExecutorFailure` now returns a `UserError` with
+that message and the plugin's error as its `cause`: printed plainly,
+and a second task rejected with the same reason says `as <id> above`.
+The plugin's own error is no longer renamed in place, so the C-74 guard
+went with it. Rows (`plugin-capabilities.test.ts` › an executor's throw
+reaches the task's own stderr; one error an executor rejects two tasks
+with is named once in each, now read from each task's frame line): the
+first red without the change, both red on the old rename without its
+guard. `modules/executor.md`, `modules/plugin-host.md` and
+`execution.md` say so.
