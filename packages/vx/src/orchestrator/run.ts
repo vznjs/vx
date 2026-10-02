@@ -41,6 +41,7 @@ import {
   UserError,
   machineParallelism,
   teardownTimeoutMs,
+  secretMask,
 } from '../util/index.js'
 import { keyedProjects } from './keyed-projects.js'
 import { prepareSandbox } from './sandbox-request.js'
@@ -191,6 +192,10 @@ export function shouldShortCircuit(
  * GitHub job summary and a check-run posted over the API verbatim (item
  * 1057). Local history (`vx last`) keeps the whole line, on this machine.
  */
+function maskInvocation(command: string): string {
+  return secretMask([process.env])?.mask(command) ?? command
+}
+
 export function invocationCommand(argv: readonly string[]): string {
   const sep = argv.indexOf('--')
   if (sep === -1) return argv.join(' ')
@@ -1046,7 +1051,10 @@ async function runOnBus(
       endedAtMs,
       totalMs,
       ok,
-      command: options.command ?? process.argv.slice(1).join(' '),
+      // The invocation is stored and `vx last` prints it: a secret passed
+      // after `--` (`-- --token=$NPM_TOKEN`) is masked here as the task's
+      // own output masks it, so cache.db holds no plaintext value.
+      command: maskInvocation(options.command ?? process.argv.slice(1).join(' ')),
       requestedTasks: options.tasks,
       cachePolicy: compactCachePolicy(policy),
       concurrency,

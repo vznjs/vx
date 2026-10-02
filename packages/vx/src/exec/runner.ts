@@ -235,9 +235,23 @@ export function execWrap(command: string): string {
  */
 export function execWord(command: string): string | undefined {
   if (SHELL_CONTROL.test(command)) return undefined
-  const first = command.trimStart().split(/\s+/)[0] ?? ''
-  if (first === '' || first.includes('=') || SHELL_BUILTINS.has(first)) return undefined
-  return first
+  // The word as the shell reads it: quotes group and are removed, so
+  // `"./my tool.sh"` names one file (the verdict looked for `"./my`).
+  const raw = command.trimStart()
+  let first = ''
+  let quote = ''
+  let i = 0
+  for (; i < raw.length; i++) {
+    const c = raw[i]!
+    if (quote !== '') {
+      if (c === quote) quote = ''
+      else first += c
+    } else if (c === "'" || c === '"') quote = c
+    else if (/\s/.test(c)) break
+    else first += c
+  }
+  if (quote !== '' || first === '' || raw.slice(0, i).includes('=')) return undefined
+  return SHELL_BUILTINS.has(first) ? undefined : first
 }
 
 /**
@@ -252,11 +266,13 @@ export function signalExitCode(signal: string): number {
 }
 
 /**
- * The signal a run's stop stands for, from its abort reason: a task
- * stopped before its spawn exits as if that signal had killed it.
+ * The signal a run's stop sends a task, from its abort reason: a task
+ * stopped before its spawn exits as if that signal had killed it. As
+ * `forwardedSignal` (orchestrator/signals.ts): a hang-up forwards SIGTERM
+ * (to many servers SIGHUP means "reload"), so it reads as SIGTERM here.
  */
-export function stopSignal(reason: unknown): 'SIGINT' | 'SIGHUP' | 'SIGTERM' {
-  return reason === 'SIGINT' || reason === 'SIGHUP' ? reason : 'SIGTERM'
+export function stopSignal(reason: unknown): 'SIGINT' | 'SIGTERM' {
+  return reason === 'SIGINT' ? 'SIGINT' : 'SIGTERM'
 }
 
 /**
