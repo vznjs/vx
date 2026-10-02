@@ -241,6 +241,19 @@ describe('the configure guide states the concurrency default `vx help` states', 
 // The trusting-the-cache guide merged into the caching guide (the site redo,
 // R3), and that into the configure page (the short site); its `vx why`
 // table and sample moved with it.
+describe("comparison.md's Nx flag cells", () => {
+  // Nx 23.2.1's `run-many --help` marks `--all` "[deprecated]" (run-many
+  // takes every project when no -p is given), and `--outputStyle` "defines
+  // how Nx emits outputs tasks logs": no per-run JSON summary (J-112).
+  it('every-project is implicit, and Nx writes no JSON summary', () => {
+    const doc = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'comparison.md'), 'utf8')
+    const nx = (row: string) =>
+      new RegExp(`^\\| ${row} +\\|[^|]*\\| ([^|]*?) +\\|`, 'm').exec(doc)![1]
+    expect(nx('recursive \\(every project\\)')).toBe('implicit (no `-p`); `--all` deprecated')
+    expect(nx('per-run JSON summary')).toBe('—')
+  })
+})
+
 describe('the configure guide quotes what vx why says', () => {
   const guide = section(readFileSync(path.join(GUIDES, 'configure.md'), 'utf8'), 'Caching')
   const post = readFileSync(path.join(DOCS, 'blog', 'why-did-this-rerun.md'), 'utf8')
