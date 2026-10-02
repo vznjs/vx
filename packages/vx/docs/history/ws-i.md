@@ -326,6 +326,24 @@ were rejoined for the parser to split again, with a regex per size line
 and the stage regex twice per record. Bench as I-30, timed in place:
 split + parse ~24 + ~13 ms on main, ~8.5 + ~12.3 patched.
 
+I-30. A key's input paths join by concatenation (#2128). Git prints
+normalized relative paths, so under an absolute, normalized project dir
+a candidate is the dir, a slash and the path; `path.resolve` per file
+was ~27 ms of the run, and re-sorting an already sorted slice ~9 ms
+more. 300 projects of 40 source files (12,905 tracked), `build test
+lint`, 900 warm hits, compiled, 21 interleaved rounds: `classify +
+probe` main 249.1 ms median (min 216.8), patch 226.3 (194.2), A/A 219.2
+(196.2).
+I-36. `dropResizedOids` looks each trusted path up once (#2220). Its
+two passes each found a path's index entry by path; the first now keeps
+them side by side. Bench as I-30, timed in place: the pass ~17.2 ms on
+main, ~13.6 patched (the check 8.2 → 2.4).
+I-37. The package graph builds its reach on first use (#2228). REACH
+and its reverse adjacency were built eagerly; only the transitive
+accessors read them, and an unscoped run asks none. 1,000 projects,
+warm, 14 rounds, `package graph`: main 13.6 ms median (min 8.5), patch
+11.4 (7.1), A/A 14.9 (9.9).
+
 ## Leads for other streams
 
 - **Any: a task's spawn holds the main thread ~1.2 ms under load
