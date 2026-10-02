@@ -26,7 +26,7 @@
 // Arguments: Nx appends every option it does not consume (`--name=value`),
 // the `args` option and the arguments given on its command line to EACH
 // command unless `forwardAllArgs` is false, fills `{args}` with them, and
-// `{args.name}` with one of them. vx appends `vx run … -- <args>` to the
+// `{args.name}` with one of them, a forwarded one first. vx appends `vx run … -- <args>` to the
 // end of the line, so a line of more than one command is a function the
 // forwarded arguments reach as `"$@"` (nx#12165).
 
@@ -83,6 +83,21 @@ const FN = 'nx_run_commands'
  * neither, and a command that reads them means nothing there.
  */
 const NX_RUN = `nx_run() { nx_c=$1; shift; if [ $# -eq 0 ]; then eval "$nx_c"; else eval "$nx_c \\"\\$@\\""; fi; }`
+
+/**
+ * Prints `{args.$1}` as Nx fills it: the forwarded arguments' value as the
+ * yargs-parser call over `__unparsed__` reads it (`--k=v`, `--k v`, `--k`
+ * as `true`, `--no-k` as `false`, `-k` for a one-letter key, repeats
+ * joined with a comma), else `$2`, the options' value. A bare `--` stops
+ * nothing, as under `nx run`.
+ */
+const NX_VAL =
+  'nx_val() { nx_k=$1; nx_v=$2; nx_n=; shift 2; while [ $# -gt 0 ]; do nx_x=; nx_s=; ' +
+  'case $1 in "--$nx_k="*) nx_x=${1#*=}; nx_s=1;; "--$nx_k") nx_s=2;; "--no-$nx_k") nx_x=false; nx_s=1;; esac; ' +
+  'if [ -z "$nx_s" ] && [ ${#nx_k} -eq 1 ]; then case $1 in "-$nx_k="*) nx_x=${1#*=}; nx_s=1;; "-$nx_k") nx_s=2;; esac; fi; ' +
+  'if [ "$nx_s" = 2 ]; then if [ $# -gt 1 ] && case $2 in --*|-[!0-9]*) false;; *) true;; esac; then nx_x=$2; shift; else nx_x=true; fi; fi; ' +
+  'if [ -n "$nx_s" ]; then if [ -n "$nx_n" ]; then nx_v="$nx_v,$nx_x"; else nx_v=$nx_x; nx_n=1; fi; fi; ' +
+  `shift; done; printf '%s' "$nx_v"; }`
 
 /** A no-op: Nx completes a target with `commands: []` at once (nx#31345). */
 const NOOP = 'true'
@@ -280,6 +295,7 @@ export function mapRunCommands(
         : true
 
   const commands: Interpolated[] = []
+  let named = false
   for (const e of entries) {
     const c = e.command
     if (c.includes('{args.') && c.includes('{args}')) {
@@ -289,11 +305,19 @@ export function mapRunCommands(
     let text: string
     let runtime: Interpolated['runtime']
     if (c.includes('{args.')) {
-      text = c.replace(/\{args\.([^}]+)\}/g, (_, k: string) => templateText(parsed[k]))
+      // Spliced in as text, as Nx splices it, once the arguments are known.
+      text =
+        'eval ' +
+        c
+          .split(/\{args\.([^}]+)\}/)
+          .map((p, i) =>
+            i % 2 === 0
+              ? shellQuote(p)
+              : `"$(nx_val ${shellQuote(p)} ${shellQuote(templateText(parsed[p]))} "$@")"`,
+          )
+          .join('')
       runtime = 'none'
-      todos.push(
-        '`{args.*}` is filled from the target’s options — a value passed after `vx run … --` does not reach it',
-      )
+      named = true
     } else if (c.includes('{args}')) {
       text = c.replace(/\{args\}/g, `${[...unknownArgs, '"$@"'].join(' ')} ${argsOption ?? ''}`)
       runtime = 'inline'
@@ -337,7 +361,9 @@ export function mapRunCommands(
     parallel && pieces.length > 1
       ? `trap 'trap "" TERM USR1; kill -TERM 0; wait; exit 1' USR1; ${pieces.map((p) => `{ trap 'nx_term=1' TERM; ${p} || [ -n "$nx_term" ] || kill -USR1 $$; } &`).join(' ')} wait`
       : pieces.join(' && ')
-  const helper = commands.some((c) => c.runtime === 'append') ? `${NX_RUN}; ` : ''
+  const helper =
+    (commands.some((c) => c.runtime === 'append') ? `${NX_RUN}; ` : '') +
+    (named ? `${NX_VAL}; ` : '')
   return {
     command: `${helper}${FN}() { ${body}; }; ${cd}${FN}`,
     env,
