@@ -1126,3 +1126,135 @@ task; a persistent task declares none, and a probe with `retries: 2`
 on a server that exited before it was ready ran it once and failed it,
 as `exec.retries` on a persistent task is refused. Both now say it never
 retries a persistent one. Docs only.
+
+- **H:** `wireForwarder`, `toWireEvent`, `WireEvent` and `projectNode`
+  (`orchestrator/events.ts`) have no caller but `tests/dev.test.ts`: the
+  façade exports none of them, so the "serializable `WireEvent`" that
+  `RunOptions.bus`'s comment says core ships reaches no embedder, and
+  their comment cites a `createWireRenderer` removed with vx cloud.
+  `TaskView` stays on the façade with nothing producing it. Export the
+  wire form or remove it with `TaskView`: a contract call.
+
+## C-64: say who hears `runEnd` twice
+
+The logger's tail flush and three test comments said run() calls
+`runEnd` twice so the renderer hears both; `busLogger` delivers
+`run:end` once, so in the CLI the renderer hears one (C-56 met this: a
+kept server's last partial line waited on a second call that never
+came). The comments now say a renderer an embedder drives directly may
+hear both. Comments and a row title only.
+
+## C-66: a plugin hears nothing after its teardown
+
+The normal path tore the plugins down before the keep-alive wait but
+released their bus subscriptions (`ctx.on` handlers, telemetry sinks)
+only in run()'s finally, after it: through a whole `vx run dev`
+session a plugin's `onTaskStdout` heard the server after its own
+`teardown()` had closed what it writes to. The subscriptions are now
+released just before the teardown. Row (`keep-alive.test.ts` › a plugin
+hears nothing after its teardown while vx holds a server): red without
+the fix (`torn:AFTER`). `modules/plugin.md` says so.
+
+## C-68: schema.md says which servers the end of the graph keeps
+
+`schema.md`'s persistent semantics said the end of the graph SIGTERMs
+every persistent subprocess; the foreground keeps the requested ones,
+those a requested group stands for (C-52) and their persistent
+dependencies (C-46), unless the run failed elsewhere (C-60). The bullet
+now says so. Docs only.
+
+## C-78: the taint rule holds over random graphs
+
+`tests/taint-properties.test.ts` drives `taintTracker` over 3,000 seeded
+random graphs, settling outcomes in any order (a restore-tier hit
+settles before its deps) with partial asks between, and holds every ask
+made once a task's ancestors have settled to a brute-force reference,
+in both modes: `--continue=always` and seeds alone
+(`--exclude-dependencies`), on the full-period PRNG of C-79. Mutants
+caught: a clean answer memoized before its deps' answers were final
+(C-23's rule), the memo kept unconditionally, `skipped` dropped from the poison set, the
+seed check dropped from `judge`, and the tracker disabled when only
+seeds are set. Survivors are equivalent (a seed's deps; the memo's
+timing for a taint). Test only.
+
+## C-79: the task graph over random workspaces, on a PRNG that does not cycle
+
+`tests/task-graph-properties.test.ts` builds 2,000 seeded random
+workspaces (package-graph cycles, sparse holders, `name`, `^name`,
+`pkg#name`, `build.*`, `^build.*`, the odd typo and back edge) and holds
+`buildTaskGraph` to a recursive reference: the same tasks, edges and
+requested flags, and a refusal exactly where the reference refuses
+(43%: cycles and missing tasks). Mutants caught: the declaring project
+not seeding the `^` walk, a holder that does not stop it, the edge
+dedupe, a pattern matching its own task, requested promotion, a pattern
+holder's later matches, the pending list, and the undeclared-`^name`
+refusal. Re-adding a pending node already added survives; it builds the
+same graph.
+Writing it found the PRNG the property files shared,
+`(s * 1103515245 + 12345) % 2 ** 31` in floats, losing the product's
+low bits past 2 ** 53 and cycling: seed 298 after 71 draws, 1019 within
+11,079, so C-71's 2,000 graphs repeated. `tests/helpers/rng.ts`
+(mulberry32, `Math.imul`) replaces it there, here and in
+`summary-meters.test.ts` (whose `& 0x7fffffff` variant cycles after
+10,726, past the 8,000 draws its sweep takes); `tests/rng.test.ts` holds
+it to no cycle in a million draws and an even spread, both red on the
+old one. C-71 still passes on the full-period stream. Test only.
+
+## C-81: scheduler.md's restore-rank sentence reads
+
+`modules/scheduler.md` said "A rank that can count a diamond twice which
+only reorders restores among themselves", a clause with no verb (C-51's
+note). It now says the rank can count a diamond twice and that this
+only reorders restores among themselves. Docs only.
+
+## C-82: a run with servers in it always ends and leaves no child
+
+Probes of 190 and 120 seeded random graphs mixed one-shots that pass,
+fail or take a while with servers that get ready, crash before or after
+it, never get ready inside their timeout, or trap SIGTERM, under each
+`--continue` mode, with and without `holdPersistent`, run to the end or
+stopped by `RunOptions.signal` (SIGINT or SIGTERM) at a random moment:
+every run ended and no child outlived it (or its held servers'
+`stop()`). They are now `tests/persistent-lifecycle-properties.unsafe.test.ts`
+(12 graphs each, ~9 s): red when the end of the graph does not SIGKILL
+what outlives the grace, and both rows hang when the stop's teardown
+does not. A dropped SIGTERM or a leader-only one survives: the SIGKILL
+sweep still ends the groups, and graceful stops are not what these rows
+hold. Unsafe for the liveness check. Test only.
+
+## C-83: twenty runs in one process give back what they took
+
+An embedder (`vx watch`, a daemon) runs many runs in one process. A
+probe of 200 runs of a graph with a cached task, a server, a task on it
+and a sandboxed task, alternating `handleSignals` and `holdPersistent`,
+found the open descriptors and the signal and exit listeners steady
+after the first runs and RSS flat at ~108 MB. `tests/repeated-runs.unsafe.test.ts`
+holds twenty such runs to the fifth's counts: red without the cache
+close (21 → 28 descriptors) and without the signal handlers' removal.
+A run that skips the sandbox reset leaks none of these, so the row says
+nothing about it. Test only.
+
+## C-84: a teardown's throw is named as every stage's is
+
+A probe threw from each plugin hook through `vx run`: every stage said
+`plugin '<p>' failed in <stage>: <reason>` (C-54 for setup), and no
+stack reached the user, except teardown, which said `plugin '<p>'
+teardown failed: boom`. It now says `failed in teardown`; the run's
+verdict still stands. Row (`plugin-teardown.test.ts` › a teardown that
+throws is told by its message): red without the change.
+`modules/plugin-host.md` says so.
+
+## Probes and leads (2026-10-02)
+
+Probe, not fixed (2026-10-02): a dependency server that exits non-zero in
+the same instant the graph ends can read as the end-of-graph stop's kill:
+`shutdownPersistent` judges "ended" before Bun has reaped it. 15 of 40
+runs read green when the server exited 3 as its last dependant finished;
+with 200 ms between them 40 of 40 failed it. One event-loop yield before
+the check did not separate the cases (the stop's SIGTERM and the
+server's own exit race), so the window stays; its dependants had passed.
+
+Lead for E (watch): `watch-loop.test.ts` › "a server that rewrites a file
+in its project is named after three restarts (item 948)" timed out once
+on macOS (#2247, run 37056783434) and passed on its re-run; no output
+was captured past the timeout.

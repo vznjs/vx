@@ -9,8 +9,8 @@
   </g>
   <text x="250" y="250" font-family="'Space Grotesk', 'Hanken Grotesk', Helvetica, Arial, sans-serif" font-size="112" font-weight="700" fill="#f2f4f0">vx</text>
   <text font-family="'Hanken Grotesk', Helvetica, Arial, sans-serif" font-size="56" font-weight="700" fill="#f2f4f0">
-    <tspan x="96" y="380">A faster runner for your</tspan>
-    <tspan x="96" y="448" fill="#c6f84e">Turborepo or Nx</tspan><tspan fill="#f2f4f0"> repo.</tspan>
+    <tspan x="96" y="380">The <tspan fill="#c6f84e">fastest</tspan> task runner</tspan>
+    <tspan x="96" y="448">for JS monorepos.</tspan>
   </text>
   <text x="96" y="540" font-family="'IBM Plex Mono', Menlo, monospace" font-size="32" fill="#9198a1">$ npm install -D @vzn/vx</text>
 </svg>

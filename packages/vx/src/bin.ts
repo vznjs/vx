@@ -9,10 +9,14 @@ async function main(): Promise<void> {
     // `vx --version` needs one leaf module; the dispatcher and the util
     // barrel it pulled in were 20 ms of its 28 (2026-10-01).
     if (argv.length === 1 && (argv[0] === '--version' || argv[0] === 'version')) {
-      process.stdout.write(`vx ${(await import('./version.js')).VERSION}\n`)
+      // `Bun.stdout`, not `process.stdout`: the Node stream's first touch is
+      // ~7 ms, half of this verb (2026-10-02). A reader gone (EPIPE) is no
+      // failure of the line.
+      await Bun.write(Bun.stdout, `vx ${(await import('./version.js')).VERSION}\n`).catch(() => {})
       settled = true
       return
     }
+    listenForReadersGone()
     const { registerCoreAlias, run } = await import('./cli/index.js')
     // Every `import … from '@vzn/vx'` this process evaluates — a plugin
     // package, a workspace or project config — resolves to THIS core, not to
@@ -86,8 +90,11 @@ process.on('beforeExit', () => {
 // and exits with its own verdict; what was going to the reader goes
 // nowhere. Same for stderr (`2>&1 | head`). Here and not in the logger:
 // an embedder's streams are the embedder's.
-for (const stream of [process.stdout, process.stderr]) {
-  stream.on('error', () => {})
+// Set up past `--version`, which never touches the Node streams.
+function listenForReadersGone(): void {
+  for (const stream of [process.stdout, process.stderr]) {
+    stream.on('error', () => {})
+  }
 }
 
 void main()

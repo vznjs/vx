@@ -30,7 +30,27 @@
   `discover` stage it lists through `discoverCliProjects`.
   `modules/logger.md` gained #2054's post-summary server stream. Rows
   (`module-page-claims`), red on each page without the fix.
+- **J2-3** cli.md's `--report` sample read `8ms saved`, its two hits'
+  restore times (5 + 3): the sum the paragraph under it says the header
+  does not take (`savedMs` sums the entries' stored exec times). The
+  sample's hits now store 2.01s and 640ms (`2.65s saved`), and the
+  Status list names a skip's label as the renderer writes it,
+  `skipped (blocked by lib#build)`. Row (`cli-doc-drift` › the --report
+  sample is what the renderer prints), red without the fix.
 
+## Leads for other streams
+
+- **E** `vx last` labels every skipped row `after <id> failed`
+  (`cli/last.ts`), where the run's Skipped section says
+  `after <id> was aborted` for a block whose root a signal killed.
+
+- **J2-6** #2227 dropped every native Windows branch, and two pages
+  still described one: `modules/sandbox-runtime.md`'s Windows row said
+  `probeSandbox` reports the sandbox unavailable and `exec.sandbox` is
+  refused before the run (no such branch is left; under WSL the Linux
+  row applies), and `execution.md` called the allowlist what a command
+  needs on "\*nix / Windows". Row (`doc-references` › no page describes
+  a Windows branch the source dropped), red without the fix.
 - **J2-7** The sandboxing guide's grant table called `gitConfig`
   "inert: SRT drops the per-task flag"; since B-41 the run union carries
   it and each wrap sets it for its own task (`perTaskRun`), and the
@@ -47,3 +67,94 @@
   three conditions, now with config-cache.md; `site-samples` › the
   bare imports it lets through are the two the gate passes), red
   without the fix.
+
+- **J2-9** Blog posts pointed at guide sections under the titles of
+  the guide pages the short site merged away: "Running tasks",
+  "Dev & long-running tasks", "Lockfile-aware caching", "Caching" for
+  the configure guide's "Why did it re-run?", and "`vx mcp` — AI
+  agents". The dev-servers post also promised "the readiness patterns
+  for the common servers"; the Dev tasks section has one Vite example.
+  Each link now names `Guide › Section`. Probe, nothing to fix: the
+  dev-servers post's foreground claims (a server exiting 3 under
+  `vx run dev api` prints `exited with code 3; stopping 1 other
+persistent task` and vx exits 1). Row (`site-samples` › a post's link
+  into a guide section names the section), red on four posts without
+  the fix.
+
+- **J2-13** The why-did-this-rerun post's verdict table had six
+  unchanged-key endings; `metrics.ts` has seven since #1928's
+  continue-taint verdict ("neither run saved it: each ran beside a
+  failed task …"). The configure guide had the row; the pin matched
+  single-quoted notes only, and that verdict is a template literal, so
+  it held neither page to it. The post now lists it, and the pin reads
+  template literals too (an interpolated group reads `(…)`), expecting
+  10; red on the post without the fix.
+- **J2-11** The lockfile-aware-keys post said a `bun.lock` bump in
+  vx's repo re-keys "that package's own tasks and its dependants'", and
+  its excerpt "59 re-keyed tasks into 2". Measured 2026-10-02 (`run ci
+--all --dry=json` keys before and after): an `astro` bump re-keys 6 of
+  56 tasks with `bun()`, 56 without; a `protobufjs` bump re-keys all 56
+  with it, since every digest folds the root's closure and the root
+  links seven workspace packages. The post now gives both. Row
+  (`site-samples` › the lockfile post measures what the root reaches),
+  read from the manifests; red without the fix and with the narrow
+  example swapped for `@types/bun`.
+
+- **J2-16** The cascade-through-inputs post named one way a key is
+  preliminary (a same-project upstream's outputs). `stable-keys.ts` also
+  classes an upstream's root-anchored outputs, an uncached upstream
+  that may write in the project (item 743), and a cached in-place
+  rewriter the key does not fold (item 750), and every dependant
+  inherits the class. Row (`site-samples` › the cascade post names
+  every way a key is preliminary), gated on the source; red without
+  the fix.
+- **J2-10** The remote-execution post's "What goes remote" list said
+  sandboxed and `exec.remote: false` tasks stay local but not that
+  their dependants stay with them (`pinnedLocalSet` walks the dependant
+  edges from every pinned task, as the CI guide says), and it named
+  nothing of the runtime-probe rule (`withProbedRuntime`: a task whose
+  key folds `cache.inputs.runtime` runs here; its dependants may go).
+  Probes, nothing to fix: the post's one-artifact claim (vx-reapi stores
+  the `tar.zst` as one CAS blob) and the lockfile-aware-keys post. Row
+  (`site-samples` › the remote-execution post lists what placement keeps
+  local), red without the fix.
+- **J2-12** #2323 answers a scoped run's first 8 `transitiveDeps` asks
+  by a search; `modules/package-graph.md` still said both closures are
+  bitsets built on the first query, and the bitsets post said a filter
+  over a thousand packages is "a handful of row ORs". Both now say
+  when the graph searches. Rows (`module-page-claims` › package-graph.md,
+  the count read from `EARLY_SEARCHES`; `site-samples` › the bitsets
+  post says when the package graph searches instead), red without the
+  fix.
+- **J2-14** The watch-mode post's "always ignored" list left out
+  git-ignored paths, which the loop drops through one `git check-ignore`
+  per debounce window (a pid file or log a task writes there re-ran the
+  loop forever before it), and called `--verbosity` refused where
+  `--verbosity 0` is accepted. Row (`site-samples` › the watch post
+  names what the loop ignores and refuses), read from
+  `IGNORED_SEGMENTS`, `IGNORED_SUFFIXES` and `WATCH_REFUSED_FLAGS`;
+  red without the fix.
+- **J2-15** The keys-from-git post said three prunes run against an
+  index id; #2076's blob-size check (A-60) is a fourth (a filter since
+  removed wrote the blob, and git still calls the file clean), and a
+  config that weakens git's stat (`core.trustctime=false`,
+  `core.checkStat=minimal`) trusts no id at all. `caching.md` had both.
+  Row (`site-samples` › the keys-from-git post names every way an index
+  id is distrusted), gated on `git-inputs.ts`; red without the fix.
+- **J2-17** The strict-output-ownership post said the benchmarks'
+  restore and no-op rows sit within a few milliseconds because of the
+  "current tree" short-circuit. The restore row deletes the outputs
+  first (`vx-bench/run.ts`), so it extracts every artifact; the
+  short-circuit is the no-op row alone (475 against 743 ms in
+  `results.json`). Row (`site-samples` › the output-ownership post reads
+  the benchmark rows as they are measured), read from the harness and
+  `results.json`; red without the fix.
+
+- **J2-18** The sandbox post said a sandboxed task that reads a file
+  its inputs never named fails on the denied read, beside a sample
+  granting `read: ['.']`, which lets that read through: a violation is
+  a denial, and only the grants deny (`sandbox-request.ts` derives
+  nothing from `cache`). The post now says the grants judge it and that
+  reads granted no wider than `cache.inputs` make the denial the
+  under-declaration. Row (`site-samples` › the sandbox post judges a
+  violation against the grants); red without the fix.
