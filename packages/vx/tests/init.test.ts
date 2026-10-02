@@ -388,6 +388,15 @@ describe('migrateScripts', () => {
     expect(notes({ name: 'r', scripts: [] })).toEqual([])
     expect(notes({ name: 'r' })).toEqual([])
     expect(notes()).toEqual([])
+    // D-87, react: a nameless root whose scripts would map says so, and
+    // how many; a hook rides with its script and is not counted.
+    const at = (outside: Record<string, unknown>) =>
+      migrateScripts([meta], outside, '/w').notes.filter((n) => n.includes('the workspace root'))
+    expect(at({ scripts: { prelint: 'echo', lint: 'eslint .', dev: 'pnpm -r dev' } })).toEqual([
+      'package.json (the workspace root) not mapped: it has no "name", and vx names a project by it; give it one and run `vx init` again to map 1 of its scripts (lint)',
+    ])
+    // CONTROL: nothing that would map keeps the old note.
+    expect(at({ scripts: { dev: 'pnpm -r dev' } })).toEqual([nameless])
   })
 
   it('a cycle of builds waits on the builds outside it, never on `^build` (nuxt)', () => {
@@ -775,6 +784,7 @@ describe('migrateScripts', () => {
       ci: 'vx run ci --all',
       'build:common': 'yarn --cwd ./packages/common build:esm',
       'build:b': 'npm --prefix packages/b run build',
+      prisma: 'yarn workspace @calcom/prisma prisma',
       release: 'vp run build && vp exec changeset publish',
       // vite: each runs the members through a root script that does.
       'build:all': 'pnpm -r run build',
@@ -843,6 +853,32 @@ describe('migrateScripts', () => {
     ).toEqual([
       ['a', ['build']],
       ['root', ['bench', 'mocha', 'pack', 'watch']],
+    ])
+  })
+
+  it('a cd runs the members only into a member, and a run verb only on node (D-83)', () => {
+    // bun's root: `test/` is no member, and docker's `-w` is its workdir.
+    const meta = (name: string, dir: string, scripts: Record<string, string>) => ({
+      name,
+      dir,
+      packageJson: { name, scripts } as never,
+      configPath: null,
+    })
+    const root = meta('root', '/w', {
+      typecheck: 'tsc --noEmit && cd test && bun run typecheck',
+      linux: 'docker run --rm -w /root/bun img',
+      // CONTROLS: into a member, above one, or where vx cannot tell.
+      unit: 'cd packages/a && vitest run',
+      quoted: "cd './packages/a/src' && tsc",
+      above: 'cd packages && ls',
+      dyn: 'cd "$DIR" && make',
+    })
+    const a = meta('a', '/w/packages/a', { build: 'tsc' })
+    expect(
+      migrateScripts([root, a]).projects.map((p) => [p.name, p.tasks.map((t) => t.name)]),
+    ).toEqual([
+      ['a', ['build']],
+      ['root', ['typecheck', 'linux']],
     ])
   })
 

@@ -14,6 +14,34 @@ function inputs(entries: unknown[], named: Record<string, unknown[]> = {}) {
 }
 
 describe('expandNxInputs', () => {
+  // Nx 23's `includeIgnored` hashes the path from disk, which a vx glob
+  // never sees. A literal is a workspace-root probe; a glob or a
+  // dependency's fileset is a todo; a negated literal filters nothing.
+  it('an includeIgnored fileset: a literal is probed, a glob is a todo', () => {
+    const got = inputs([
+      { fileset: '{projectRoot}/gen/api.json', includeIgnored: true },
+      { fileset: "{workspaceRoot}/it's.env", includeIgnored: true },
+      { fileset: '!{projectRoot}/gen/old.json', includeIgnored: true },
+      { fileset: '{projectRoot}/gen/**', includeIgnored: true },
+      { fileset: '{projectRoot}/gen/x', includeIgnored: true, dependencies: true },
+    ])
+    const todo = (e: unknown) =>
+      `input ${JSON.stringify(e)}: vx keys only the files git lists, so a gitignored match is ` +
+      'not in the key — read it with a cache.inputs.workspaceRuntime probe'
+    expect([got.files, got.wsFiles, got.runtimeCmds, got.todos]).toEqual([
+      [],
+      [],
+      [
+        `cat -- packages/a/gen/api.json 2>/dev/null; echo "$?"`,
+        `cat -- 'it'\\''s.env' 2>/dev/null; echo "$?"`,
+      ],
+      [
+        todo({ fileset: '{projectRoot}/gen/**', includeIgnored: true }),
+        todo({ fileset: '{projectRoot}/gen/x', includeIgnored: true, dependencies: true }),
+      ],
+    ])
+  })
+
   it('a negated {workspaceRoot} glob stays negated', () => {
     expect(inputs(['!{workspaceRoot}/secret.json']).wsFiles).toEqual(['!secret.json'])
   })
@@ -303,6 +331,24 @@ describe('mapNxDeps', () => {
     })
   })
 
+  // Nx's `splitTargetFromNodes` (nx 23.3): this project's own target ranks
+  // first, then the named project's whole target name. `ui:build:esm` read
+  // as `build` in configuration `esm` reached ui's `build`; `ui:pack:esm`,
+  // with no `pack` on ui, dropped the edge. `ui:build:ci`, with no
+  // `build:ci` target, is no edge in Nx: a colon names no configuration.
+  it('a colon target: own first, then the named project’s whole target name', () => {
+    const todos: string[] = []
+    const got = mapNxDeps(
+      ['ui:build:esm', 'ui:pack:esm', 'ui:lint', 'ui:build:ci'],
+      byNode,
+      (t) => t === 'ui:lint',
+      (_p, t, c) => (t === 'build' && c === 'ci' ? 'build:ci' : null),
+      (p, t) => p === 'ui' && ['build', 'build:esm', 'pack:esm', 'lint'].includes(t),
+      todos,
+    )
+    expect([got, todos]).toEqual([['@acme/ui#build:esm', '@acme/ui#pack:esm', 'ui:lint'], []])
+  })
+
   it('object forms: self, a named project by its package name, and the ones vx cannot take', () => {
     expect(
       deps([
@@ -417,16 +463,16 @@ describe('Nx glob grammar in inputs', () => {
     const got = inputs([
       '{projectRoot}/+(a|b).ts',
       '!{projectRoot}/!(a).ts',
-      '{projectRoot}/[a-z].ts',
-      '{projectRoot}/[!a].ts',
+      '{projectRoot}/[a-Z].ts',
+      '!{projectRoot}/[!a].ts',
     ])
     expect([got.files, got.todos]).toEqual([
       [],
       [
         'input "{projectRoot}/+(a|b).ts": glob syntax vx cannot take — map manually',
         'input "!{projectRoot}/!(a).ts": glob syntax vx cannot take — map manually',
-        'input "{projectRoot}/[a-z].ts": glob syntax vx cannot take — map manually',
-        'input "{projectRoot}/[!a].ts": glob syntax vx cannot take — map manually',
+        'input "{projectRoot}/[a-Z].ts": glob syntax vx cannot take — map manually',
+        'input "!{projectRoot}/[!a].ts": glob syntax vx cannot take — map manually',
       ],
     ])
   })

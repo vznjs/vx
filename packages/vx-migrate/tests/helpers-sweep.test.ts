@@ -7,7 +7,7 @@ import { describe, expect, it } from 'bun:test'
 import { pruneOrphanPersistentNotes, type GeneratedTask } from '@vzn/vx'
 import { scriptCommand } from '../src/script-command.js'
 import { resolveSharedOutputs } from '../src/shared-outputs.js'
-import { dotenvCandidates, listDotenv, nonAtomizedTargetOf } from '../src/nx/nx-dotenv.js'
+import { dotenvCandidates, listDotenv, ownerTargetOf } from '../src/nx/nx-dotenv.js'
 
 describe('scriptCommand: the package manager’s own lifecycle hooks never ride a task', () => {
   it.each(['pack', 'publish', 'version'])('`pre%s` / `post%s` stay out of the task', (name) => {
@@ -136,7 +136,10 @@ describe('resolveSharedOutputs: the edge orders a pair in either direction', () 
 describe('nx dotenv', () => {
   it('an empty nonAtomizedTarget is no parent', () => {
     const targets = { 'e2e-ci--a': { metadata: { nonAtomizedTarget: '' } } }
-    expect(nonAtomizedTargetOf('e2e-ci--a', targets, { g: ['e2e-ci--a'] })).toBeUndefined()
+    expect(ownerTargetOf('e2e-ci--a', targets, { g: ['e2e-ci--a'] })).toEqual([
+      'e2e-ci--a',
+      undefined,
+    ])
   })
 
   it('`.<id>.env` names are listed beside `.env*` ones', async () => {
