@@ -69,11 +69,16 @@ describe.skipIf(!available)('a sandboxed task and the host’s services', () => 
       stderr: 'pipe',
     })
     const text = (await new Response(r.stdout).text()) + (await new Response(r.stderr).text())
-    const said = text
-      .split('\n')
-      .map((l) => l.replace(/^.*?│\s?/, '').trim())
-      .filter((l) => /^(TCP|UNIX|no tcp|no unix)$/.test(l))
-      .sort()
+    // A set: where the refused connect is a violation (seatbelt), the task
+    // fails and the failure recap prints its last line again.
+    const said = [
+      ...new Set(
+        text
+          .split('\n')
+          .map((l) => l.replace(/^.*?│\s?/, '').trim())
+          .filter((l) => /^(TCP|UNIX|no tcp|no unix)$/.test(l)),
+      ),
+    ].sort()
     expect(said, text).toEqual(['no tcp', 'no unix'])
   }, 30_000)
 })
