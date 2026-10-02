@@ -62,6 +62,12 @@
   name Nx's `getNxEnvVariablesForTask` sets beside `NX_TASK_TARGET_*`;
   Lerna runs on Nx's runner and documents it to scripts, and it was
   unset.
+- **P-16** `nx()`: a `projects` list (on `dependsOn` and on an input) is
+  matched by a port of Nx's `findMatchingProjects`,
+  checked case by case against Nx 23.2's own: project directories
+  (`libs/shared/*`), `name:` / `directory:` labels, minimatch globs, and
+  a bare word as a word in a name. Matched by name and `*` alone, a
+  directory pattern named nothing and its edge was dropped.
 
 ## Notes
 
