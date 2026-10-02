@@ -16,10 +16,6 @@
   options, as Nx's `interpolate` does; read as one key it was no output,
   so nx-examples' cached `@nx/angular:application` builds restored
   nothing on a hit.
-- **P-7** `nx()`: a `dependsOn` entry's `options: "forward"`, which Nx's
-  `createTaskOverrides` turns into the dependency's overrides, is a todo
-  when the target has options to forward. It was dropped without a word,
-  and the dependency ran with its own options.
 - **P-4** `nx()`: a grouped target's `.env` files are named by the group
   member that carries `nonAtomizedTarget` and that parent, as Nx's
   `getOwnerTargetForTask` names them: cypress's atomized
@@ -31,11 +27,19 @@
   `getNxEnvVariablesForTask` sets them. A package script's
   `nx exec -- <cmd>` found them unset and booted Nx's task runner, which
   ran the target and its dependencies a second time.
+- **P-7** `nx()`: a `dependsOn` entry's `options: "forward"`, which Nx's
+  `createTaskOverrides` turns into the dependency's overrides, is a todo
+  when the target has options to forward. It was dropped without a word,
+  and the dependency ran with its own options.
 - **P-9** `nx()`: a `dependsOn` string's part after `project:` is one
   target name, as Nx's `readProjectAndTargetFromTargetString` joins it:
   `ui:build:ci` names target `build:ci` and is no edge where ui lacks it.
   vx read the last segment as a configuration and drew an edge to that
   configuration's task (or to `build`, with a todo) that Nx never draws.
+- **P-14** test: `nx-exec-live` holds P-5's `NX_TASK_TARGET_*` to what
+  `nx run` hands the task, a configuration's included (Nx 22 and 23.2,
+  12/12 each; fails with the define undone). The live suite also passes
+  whole on Nx 23.2.1, which CI does not run (it pins `nx@22`).
 
 ## Notes
 
