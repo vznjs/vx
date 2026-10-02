@@ -1016,7 +1016,11 @@ export async function wrapSandboxedCommand(
   let wrapped = await wrapForTask(
     SandboxManager,
     inner,
-    process.platform === 'linux' ? literalReadPaths(customConfig) : customConfig,
+    process.platform === 'linux'
+      ? literalReadPaths(customConfig)
+      : process.platform === 'darwin'
+        ? seatbeltBrackets(customConfig)
+        : customConfig,
     ports.length > 0 || asksUnixSockets(args.config),
     args.config.gitConfig === true,
   )
@@ -1177,6 +1181,30 @@ function literalReadPaths(
       ...fs,
       denyRead: escape(fs.denyRead),
       ...(fs.allowRead !== undefined ? { allowRead: escape(fs.allowRead) } : {}),
+    },
+  }
+}
+
+/**
+ * macOS: a grant's escaped bracket as seatbelt's SRT can read it. vx hands
+ * it the pattern, and SRT compiles any spelling holding `[` as a regex in
+ * which a backslash is a literal one, so `pages/\[id\].tsx` matched no
+ * file and the route could not be granted. `[[]` is a class of one `[`; a
+ * lone `]` is plain text (B-65).
+ */
+function seatbeltBrackets(
+  config: Parameters<SrtModule['SandboxManager']['wrapWithSandbox']>[2],
+): Parameters<SrtModule['SandboxManager']['wrapWithSandbox']>[2] {
+  const fs = config?.filesystem
+  if (fs === undefined) return config
+  const literal = (paths: readonly string[]): string[] =>
+    paths.map((p) => p.replaceAll('\\[', '[[]').replaceAll('\\]', ']'))
+  return {
+    ...config,
+    filesystem: {
+      ...fs,
+      allowWrite: literal(fs.allowWrite),
+      ...(fs.allowRead !== undefined ? { allowRead: literal(fs.allowRead) } : {}),
     },
   }
 }

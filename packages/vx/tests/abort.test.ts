@@ -262,6 +262,44 @@ describe('RunOptions.signal aborts a run in flight', () => {
     expect(await waitForDead(pid, 1_000)).toBe(true)
   }, 20_000)
 
+  // C-65: probes are the run's own. Two runs in one process (an embedder's
+  // daemon, the `inflight` case): stopping one kills its probe, not the
+  // other's, whose task still answers.
+  it("one run's stop leaves another run's runtime probe alone", async () => {
+    const config = (pidFile: string, rest: string) => `export default { tasks: { t: {
+      exec: { command: 'true' },
+      cache: { inputs: { files: ['package.json'], runtime: ['echo $$ > ${pidFile}; ${rest}'] }, outputs: { files: [] } },
+    } } }`
+    const a = await addProject(root, 'app', config('probe.pid', 'exec sleep 30'))
+    const otherRoot = await makeWorkspace({ prefix: 'vx-abort-other-' })
+    try {
+      const b = await addProject(otherRoot, 'app', config('probe.pid', 'sleep 1; echo v1'))
+      const ac = new AbortController()
+      const runA = run({
+        cwd: root,
+        tasks: ['t'],
+        projects: ['app'],
+        log: silent,
+        handleSignals: false,
+        signal: ac.signal,
+      })
+      const runB = run({
+        cwd: otherRoot,
+        tasks: ['t'],
+        projects: ['app'],
+        log: silent,
+        handleSignals: false,
+      })
+      await waitForPid(path.join(a, 'probe.pid'), 10_000)
+      await waitForPid(path.join(b, 'probe.pid'), 10_000)
+      ac.abort()
+      expect((await runA).outcomes.map((o) => o.status)).toEqual(['aborted'])
+      expect((await runB).outcomes.map((o) => o.status)).toEqual(['success'])
+    } finally {
+      await rm(otherRoot, { recursive: true, force: true })
+    }
+  }, 20_000)
+
   // C-46: a stopped run's servers are already being torn down, so a
   // `holdPersistent` caller (the watch loop) is handed none: it would own
   // a stop() for a server that is going anyway.

@@ -33,6 +33,7 @@ import {
   type TaskExecutor,
   type TaskInputs,
   PersistentReadyError,
+  sandboxReads,
 } from '../exec/index.js'
 import { isGroupTask, RestoreDemoted, type TaskNode, type TaskOutcome } from '../graph/index.js'
 import { killGraceMs, maskedEmitter, printable, relPosix, secretMask, span } from '../util/index.js'
@@ -889,6 +890,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         cwd: node.projectDir,
         bins: taskBinDirs(node, args.workspaceRoot),
         signal: res.signal,
+        hidden: req.sandbox && ((f: string) => !sandboxReads(req.sandbox!, f)),
       })
       if (verdict !== undefined) log.taskStderr(node, `\n${verdict}\n`)
       // A committed file another task's clean removed, still gone: vx

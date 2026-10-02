@@ -106,6 +106,7 @@ export interface MapTurboOptions {
   envMode?: string
   tracked?: (rel: string) => TrackedKinds
   ownConfig?: (rel: string) => string | null
+  ignored?: (rels: readonly string[]) => Promise<ReadonlySet<string>>
 }
 == type MigrateArgs (src/index.ts)
 export interface MigrateArgs {

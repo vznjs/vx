@@ -681,6 +681,17 @@ with no prediction; a history read error fails open in both callers.
 
 ## Leads for other streams
 
+- **D:** a persistent task with `exec.remote: 'only'` is refused for
+  lacking `cache` ("needs `cache`: its inputs are what a worker
+  reproduces"), and adding `cache` is refused next ("`cache` is not
+  allowed on a persistent task"): a circular hint. A persistent task
+  runs on this machine; refuse `remote: 'only'` on it by that reason.
+- **E:** a dependency server that crashed mid-run still closes its
+  "since ready" block `(3ms) running`: the block is drawn at `runEnd`
+  from the outcome stored at ready, before run.ts marks the crash
+  failed. The footer, the `vx: … exited` lines and `--summarize` say
+  failed.
+
 - **B:** `runner.test.ts` › "keeps a ready server alive past its
   readyWhen timeout" failed on #2054's Linux CI: `echo up` missed its
   150 ms readiness bound under load (`PersistentReadyError … within
@@ -961,7 +972,10 @@ are their own groups, killed at process exit (A-9) but not by the stop.
 The run's stop now kills them (`stopRuntimeProbes`, cache/inputs.ts),
 and a task whose `execute` rejects after the stop is `aborted`, with no
 error line, where it read failed for the probe the stop cut short.
-Measured: 1,021 ms. Rows: `abort.test.ts` › the stop kills a running
+Measured: 1,021 ms. The kill is the stopping run's: probes are kept
+per run (by its memo), so a second run in the process (an embedder's
+`inflight` case) keeps its own (`abort.test.ts` › one run's stop leaves
+another run's probe alone, red with the kill process-wide). Rows: `abort.test.ts` › the stop kills a running
 probe (the run waits out the 30 s probe without the kill) and
 `scheduler.test.ts` › a rejected execute after the stop (red without the
 rejection arm's check; its control stays failed). `modules/scheduler.md`
@@ -979,6 +993,17 @@ so a refusal still prints plainly and a bug as an internal error.
 Row (`plugin-capabilities.test.ts` › an executor's throw reaches the
 task's own stderr): red without the fix. `modules/executor.md` says so.
 
+## C-71: `--exclude-dependencies`' orders over random graphs, as a test
+
+A probe over 60,000 random graphs found `excludeDependencies` sound;
+it is now `exclude-dependencies-properties.test.ts` (2,000 seeded
+graphs): every order between two scheduled tasks survives (item 1019),
+a direct edge to a task still scheduled stays a real edge (item 980),
+no edge names a task that left. The two rules mask each other on order
+alone (item 980's mutant survived the first draft: the order-only walk
+re-adds the edge), so the row checks the edge's kind too; each mutant
+reddens it. `modules/task-graph.md` says so.
+
 ## C-67: an embedder's `command` reaches telemetry redacted
 
 Item 1057 kept what follows `--` (often a token) out of the command line
@@ -987,3 +1012,11 @@ telemetry sinks receive, but only for the argv fallback: an embedder's
 verbatim. It is now counted, not quoted, the same way. Row
 (`telemetry.test.ts` › a sink never receives what follows `--`): red
 without the fix. The option's doc comment says so.
+
+## C-73: architecture.md's end of run names the servers it keeps
+
+`architecture.md`'s run walk-through kept "persistent tasks the user
+REQUESTED, and the persistent tasks they depend on": it now also names
+those a requested group stands for (C-52), that a run which failed
+elsewhere keeps none unless `--continue=always` (C-60), and that what
+they write streams through the wait (C-56). Docs only.
