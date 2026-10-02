@@ -252,11 +252,13 @@ export function signalExitCode(signal: string): number {
 }
 
 /**
- * The signal a run's stop stands for, from its abort reason: a task
- * stopped before its spawn exits as if that signal had killed it.
+ * The signal a run's stop sends a task, from its abort reason: a task
+ * stopped before its spawn exits as if that signal had killed it. As
+ * `forwardedSignal` (orchestrator/signals.ts): a hang-up forwards SIGTERM
+ * (to many servers SIGHUP means "reload"), so it reads as SIGTERM here.
  */
-export function stopSignal(reason: unknown): 'SIGINT' | 'SIGHUP' | 'SIGTERM' {
-  return reason === 'SIGINT' || reason === 'SIGHUP' ? reason : 'SIGTERM'
+export function stopSignal(reason: unknown): 'SIGINT' | 'SIGTERM' {
+  return reason === 'SIGINT' ? 'SIGINT' : 'SIGTERM'
 }
 
 /**
