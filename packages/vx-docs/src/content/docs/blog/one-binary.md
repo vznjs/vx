@@ -17,7 +17,7 @@ you never install Bun.
 ## What you install
 
 ```bash
-npm install -D @vzn/vx    # or pnpm add -D · yarn add -D · bun add -d
+npm install -D @vzn/vx    # or pnpm add -D -w · yarn add -D (-W on Yarn 1) · bun add -d
 ```
 
 The package ships the prebuilt standalone binary for your platform:

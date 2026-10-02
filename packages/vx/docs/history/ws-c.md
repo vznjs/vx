@@ -834,6 +834,15 @@ restore feeds an exec task. Cost (1,000 projects, 3,000 nodes, min of
 dispatch order `r1, r2, e` ahead of three idle restores): red without
 the pass. `modules/scheduler.md` says so.
 
+## C-55: a fail-fast skip is not "blocked upstream"
+
+`--continue=never`'s footer read `Skipped: 2 tasks never started —
+blocked upstream` over `⊘ after the run stopped (fail-fast): …`: the
+header claimed a blocker the cause line beneath it denied. It says
+`blocked upstream` only when every skip has a blocker. Rows
+(`summary.test.ts`): a fail-fast skip alone, and the mixed row; both
+red on the old header. `cli.md` says so.
+
 ## C-53: a kept server's crash reads `failed` in the summary and report
 
 `vx run dev` whose server exited 4 after the summary exited 1, and the
@@ -868,3 +877,14 @@ each exit 1 with the healthy server dead (both hang without the fix,
 the crash row with its clause removed), and the `--continue=always`
 control holds (red with that exception removed). `cli.md` and
 `execution.md` say so.
+## C-57: a server watch holds keeps printing while watch idles
+
+`vx watch dev` showed its server's log only until the cycle's run
+returned: run() unsubscribed its renderer from the bus on the way out,
+while the `holdPersistent` servers it handed back kept writing into it.
+A run that hands servers back now keeps its renderer until the caller's
+`stop` lands, and leaves the bus then. Row (`held-persistent.test.ts`):
+a held server's line after the return reaches the logger (red without
+the fix), and after `stop` the bus reaches it no more (red with the
+detach removed); probed end to end (9 lines in 2.5 s, 2 before).
+`cli.md` says so.

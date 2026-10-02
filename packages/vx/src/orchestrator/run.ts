@@ -219,11 +219,28 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   // it twice (item 635). Otherwise a fresh internal bus.
   const bus = options.bus ?? createEventBus()
   const unsubscribeTerminal = bus.subscribe(terminalSubscriber(sink))
-  try {
-    return await runOnBus(options, bus, colors, () => terminal?.failureRecap() ?? [])
-  } finally {
+  const detach = (): void => {
     unsubscribeTerminal()
     terminal?.settle()
+  }
+  let held = false
+  try {
+    const summary = await runOnBus(options, bus, colors, () => terminal?.failureRecap() ?? [])
+    if (summary.persistent === undefined) return summary
+    // Servers handed back still running still write: `vx watch dev` printed
+    // none of its server's log while it idled, the renderer gone with this
+    // return (C-57). It stays until the caller stops them.
+    held = true
+    const { stop } = summary.persistent
+    return {
+      ...summary,
+      persistent: {
+        ...summary.persistent,
+        stop: (signal) => stop(signal).finally(detach),
+      },
+    }
+  } finally {
+    if (!held) detach()
   }
 }
 

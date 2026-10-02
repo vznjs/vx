@@ -49,6 +49,8 @@ export interface ParsedFilter {
   sinceViaDeps?: true
   /** A path form carrying a glob (`./packages/*`): matched over the root-relative project dir. */
   pathGlob?: Bun.Glob
+  /** `./a/**`'s `a`: a trailing `**` matches zero dirs, and `Bun.Glob` does not (D-84). */
+  pathGlobBase?: Bun.Glob
   /** The workspace root `pathGlob` is relative to. */
   pathRoot?: string
   /** `//`: the project at `matcher` itself, never the ones under it. */
@@ -142,6 +144,7 @@ export function parseFilter(raw: string, workspaceRoot: string): ParsedFilter {
   let isPath = false
   let matcher = s
   let pathGlob: Bun.Glob | undefined
+  let pathGlobBase: Bun.Glob | undefined
   const pathForm =
     s.startsWith('./') || s === '.'
       ? s
@@ -157,7 +160,9 @@ export function parseFilter(raw: string, workspaceRoot: string): ParsedFilter {
     // A member glob, not a task glob: `Bun.Glob`'s alphabet, the class included.
     if (BUN_GLOB_WILDCARDS.test(pathForm)) {
       const rel = path.relative(workspaceRoot, matcher).split(path.sep).join('/')
-      pathGlob = new Bun.Glob(rel.replace(/\/+$/, ''))
+      const glob = rel.replace(/\/+$/, '')
+      pathGlob = new Bun.Glob(glob)
+      if (glob.endsWith('/**')) pathGlobBase = new Bun.Glob(glob.slice(0, -3))
     }
   }
 
@@ -171,6 +176,7 @@ export function parseFilter(raw: string, workspaceRoot: string): ParsedFilter {
     isPath,
     matcher,
     ...(pathGlob !== undefined ? { pathGlob, pathRoot: workspaceRoot } : {}),
+    ...(pathGlobBase !== undefined ? { pathGlobBase } : {}),
     ...(gitSince !== undefined ? { gitSince } : {}),
     ...(sinceViaDeps ? { sinceViaDeps: true as const } : {}),
   }
@@ -221,13 +227,14 @@ function matchSelector(filter: ParsedFilter, projects: ProjectMeta[]): string[] 
     if (filter.pathGlob !== undefined) {
       // The glob is matched against the project's own dir, as pnpm and
       // Turbo do: `./packages/*` is the packages directly under `packages`,
-      // `./packages/**` reaches the nested ones too.
+      // `./packages/**` reaches the nested ones too, and `./packages/kit/**`
+      // kit itself (kit's `check`: pnpm and Turbo read `**` as zero dirs too).
       for (const p of projects) {
         const rel = path
           .relative(filter.pathRoot ?? '', p.dir)
           .split(path.sep)
           .join('/')
-        if (filter.pathGlob.match(rel)) out.push(p.name)
+        if (filter.pathGlob.match(rel) || filter.pathGlobBase?.match(rel) === true) out.push(p.name)
       }
     }
     return out
