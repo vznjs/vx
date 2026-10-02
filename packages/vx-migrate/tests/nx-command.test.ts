@@ -12,6 +12,7 @@ import { mapRunCommands } from '../src/nx-command.js'
 const CTX = { projectRel: 'packages/a', projectName: 'a' }
 /** The helper every line that forwards arguments to more than one command starts with. */
 const NX_RUN = `nx_run() { nx_c=$1; shift; if [ $# -eq 0 ]; then eval "$nx_c"; else eval "$nx_c \\"\\$@\\""; fi; }; `
+const NX_OPT = `nx_opt() { nx_k=$1; shift; for nx_a; do case $nx_a in "--$nx_k"|"--$nx_k="*|"--no-$nx_k") return 0;; esac; if [ \${#nx_k} -eq 1 ]; then case $nx_a in "-$nx_k"|"-$nx_k="*) return 0;; esac; fi; done; return 1; }; `
 
 function line(options: Record<string, unknown>, ctx = CTX) {
   const todos: string[] = []
@@ -216,6 +217,11 @@ describe('an empty command list is a no-op, as Nx completes it (nx#31345)', () =
 })
 
 describe('arguments as Nx builds them (nx#12165)', () => {
+  // Each unconsumed option unless the forwarded arguments name it.
+  const OPTS =
+    `nx_opt outFile "$@" || nx_u="$nx_u "--outFile=packages/a/build/main.js; ` +
+    `nx_opt watch "$@" || nx_u="$nx_u "--watch=false; ` +
+    `nx_opt mode "$@" || nx_u="$nx_u "'--mode="a b"'; `
   it('an option run-commands does not consume is forwarded to each command as --name=value', () => {
     expect(
       line({
@@ -228,8 +234,9 @@ describe('arguments as Nx builds them (nx#12165)', () => {
       }).out?.command,
     ).toBe(
       NX_RUN +
-        `nx_run_commands() { (nx_run 'tsc -b --outFile=packages/a/build/main.js --watch=false --mode="a b"' "$@") && ` +
-        `(nx_run 'echo done --outFile=packages/a/build/main.js --watch=false --mode="a b"' "$@"); }; cd ../.. && nx_run_commands`,
+        NX_OPT +
+        `nx_run_commands() { (nx_u=; ${OPTS}nx_run 'tsc -b'"$nx_u" "$@") && ` +
+        `(nx_u=; ${OPTS}nx_run 'echo done'"$nx_u" "$@"); }; cd ../.. && nx_run_commands`,
     )
   })
 
@@ -244,7 +251,9 @@ describe('arguments as Nx builds them (nx#12165)', () => {
       line({ command: 'deploy {args} --yes', env: undefined, region: 'eu', args: '--tag=x' }).out
         ?.command,
     ).toBe(
-      'nx_run_commands() { (deploy --region=eu "$@" --tag=x --yes); }; cd ../.. && nx_run_commands',
+      NX_OPT +
+        `nx_run_commands() { (nx_u=; nx_opt region "$@" || nx_u="$nx_u"'--region=eu '; ` +
+        `eval 'deploy '"$nx_u"'"$@" --tag=x'' --yes'); }; cd ../.. && nx_run_commands`,
     )
     // A value passed after `vx run … --` wins, as `nx run`'s does.
     const dotted = line(

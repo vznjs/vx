@@ -22,7 +22,6 @@ import { rm, rmdir } from 'node:fs/promises'
 import type { CacheInputs } from '../config.js'
 import {
   asTrees,
-  executablePath,
   isExecutableMissing,
   isLiteralPattern,
   normalizeGlob,
@@ -385,6 +384,7 @@ async function runRuntimeCommand(
   command: string,
   cwd: string,
   binDirs: readonly string[],
+  owner: RuntimeMemo | undefined,
 ): Promise<string> {
   const ambient = process.env['PATH']
   const prefix = binDirs.join(path.delimiter)
@@ -393,17 +393,15 @@ async function runRuntimeCommand(
     // vx's own `sh`, resolved on its PATH before the probe's: Bun.spawn looks
     // a bare name up on the child's PATH, which leads with the project's
     // `node_modules/.bin`, so a dependency's `sh` bin ran every probe (J-69).
-    const argv =
-      process.platform === 'win32' ? shellArgv(command) : [executablePath('sh'), '-c', command]
-    proc = Bun.spawn(argv, {
+    proc = Bun.spawn(shellArgv(command), {
       cwd,
       env: { ...process.env, PATH: ambient ? `${prefix}${path.delimiter}${ambient}` : prefix },
       stdin: 'ignore',
       stdout: 'pipe',
       stderr: 'pipe',
       // Its own group, so the probe's whole tree can be taken down with vx
-      // (`killProbesOnExit`). Windows has no groups.
-      detached: process.platform !== 'win32',
+      // (`killProbesOnExit`).
+      detached: true,
     })
   } catch (err) {
     // The probe runs through `sh -c` like a task: a box without sh names
@@ -416,6 +414,12 @@ async function runRuntimeCommand(
     throw new UserError(`cache.inputs runtime command failed to spawn: ${command} (cwd: ${cwd})`)
   }
   liveProbes.add(proc)
+  let mine: Set<ReturnType<typeof Bun.spawn>> | undefined
+  if (owner !== undefined) {
+    mine = probesOf.get(owner) ?? new Set()
+    probesOf.set(owner, mine)
+    mine.add(proc)
+  }
   killProbesOnExit()
   let stdout, stderr, exitCode
   try {
@@ -426,6 +430,7 @@ async function runRuntimeCommand(
     ])
   } finally {
     liveProbes.delete(proc)
+    mine?.delete(proc)
   }
   const output = `${stdout}${stderr}`.trim()
   if (exitCode !== 0) {
@@ -449,18 +454,26 @@ async function runRuntimeCommand(
 const liveProbes = new Set<ReturnType<typeof Bun.spawn>>()
 let probeExitHooked = false
 
+type RuntimeMemo = Map<string, Promise<string>>
+/** The probes each run started, by the run's memo: one run's stop is not another's. */
+const probesOf = new WeakMap<RuntimeMemo, Set<ReturnType<typeof Bun.spawn>>>()
+
 /**
- * Kill every runtime probe still running, with its tree. A run's stop asks
- * this: a Ctrl-C while a probe ran waited for the probe, or for the signal
- * handler's bound, about 7 s, before vx exited (C-65). Its answer is no
- * longer needed; its caller sees it fail and the run reads it aborted.
+ * Kill every runtime probe still running that these memos (one run's
+ * `runtimeCache` and `workspaceRuntimeCache`) started, with its tree. A
+ * run's stop asks this: a Ctrl-C while a probe ran waited for the probe,
+ * or for the signal handler's bound, about 7 s, before vx exited (C-65).
+ * Its answer is no longer needed; its caller sees it fail and the run
+ * reads it aborted. Another run in the process keeps its own.
  */
-export function stopRuntimeProbes(): void {
-  for (const p of liveProbes) {
-    try {
-      process.kill(-p.pid, 'SIGKILL')
-    } catch {
-      // the group is gone
+export function stopRuntimeProbes(...memos: readonly RuntimeMemo[]): void {
+  for (const memo of memos) {
+    for (const p of probesOf.get(memo) ?? []) {
+      try {
+        process.kill(-p.pid, 'SIGKILL')
+      } catch {
+        // the group is gone
+      }
     }
   }
 }
@@ -501,7 +514,7 @@ async function resolveRuntimeValues(
       const key = `${memoKeyPrefix}${cmd}`
       let p = memo?.get(key)
       if (p === undefined) {
-        p = runRuntimeCommand(cmd, cwd, binDirs)
+        p = runRuntimeCommand(cmd, cwd, binDirs, memo)
         memo?.set(key, p)
       }
       return [cmd, await p] as [string, string]
@@ -1166,7 +1179,18 @@ async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
   // claims as an input. See the refusal below for why this is not simply
   // honoured instead.
   const unmatchedLiterals = new Set(plan.literals)
-  // First pass: glob-filter to candidate absolute paths (no I/O).
+  // First pass: glob-filter to candidate absolute paths (no I/O). Git
+  // prints normalized relative paths, so under an absolute, normalized
+  // project dir a join is a concatenation: `path.resolve` per file was
+  // ~27 ms of a 900-task, 12,000-file warm run (I-30).
+  const base =
+    path.sep === '/' &&
+    path.isAbsolute(args.projectDir) &&
+    path.normalize(args.projectDir) === args.projectDir
+      ? args.projectDir.endsWith('/')
+        ? args.projectDir
+        : `${args.projectDir}/`
+      : undefined
   const candidates: string[] = []
   const verdicts = plan.verdicts
   for (const rel of gitFiles) {
@@ -1180,7 +1204,7 @@ async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
       verdicts.set(rel, input)
     }
     if (!input || nested(rel)) continue
-    candidates.push(path.resolve(args.projectDir, rel))
+    candidates.push(base === undefined ? path.resolve(args.projectDir, rel) : base + rel)
   }
   if (unmatchedLiterals.size > 0) {
     await assertNoInvisibleLiteralInputs(unmatchedLiterals, args.projectDir, 'files')
@@ -1193,7 +1217,15 @@ async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
   // `git ls-files -s` can surface staged entries whose working-tree
   // file is gone; the hasher would otherwise throw ENOENT.
   const oids = args.gitFilesCache?.oidsFor(args.projectDir)
-  const resolved = candidates.filter((abs) => oids?.has(abs) === true || isInputOnDisk(abs)).sort()
+  const resolved = candidates.filter((abs) => oids?.has(abs) === true || isInputOnDisk(abs))
+  // Git's slice comes sorted and a common prefix keeps it so: one pass
+  // proves it instead of a sort per task.
+  for (let i = 1; i < resolved.length; i++) {
+    if (resolved[i - 1]! > resolved[i]!) {
+      resolved.sort()
+      break
+    }
+  }
   // Stored only on the way out: a declaration whose literal named an
   // invisible file threw above, and every task sharing it must throw too.
   args.projectFilesCache?.set(memoKey, { snapshot: gitFiles, result: resolved })

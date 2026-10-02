@@ -717,7 +717,16 @@ async function verifyRef(workspaceRoot: string, ref: string): Promise<void> {
         (stderr.length > 0 ? `: ${stderr}` : ''),
     )
   }
-  throw new UserError(`git ref "${ref}" did not resolve. Pass a branch or commit you have locally.`)
+  // A shallow clone (CI's checkout fetches one commit by default) has no
+  // HEAD~1 and no base branch: the ref exists, the history does not.
+  const shallow = spawnGitSync(['rev-parse', '--is-shallow-repository'], workspaceRoot, 'pipe')
+  const isShallow = new TextDecoder().decode(shallow.stdout).trim() === 'true'
+  throw new UserError(
+    `git ref "${ref}" did not resolve. Pass a branch or commit you have locally.` +
+      (isShallow
+        ? ' This clone is shallow: fetch the history the base needs (`git fetch --unshallow`, or `fetch-depth: 0` on actions/checkout).'
+        : ''),
+  )
 }
 
 function isDirectory(abs: string): boolean {

@@ -76,3 +76,25 @@ export function unique(arr: readonly string[]): string[] {
 export function localBindingOn(c: { localBinding?: boolean | readonly number[] }): boolean {
   return c.localBinding === true || (Array.isArray(c.localBinding) && c.localBinding.length > 0)
 }
+
+/**
+ * Whether a sandboxed task may read `file`: it lies under a read grant,
+ * a write grant or a baseline read, by its canonical path. A path no
+ * grant holds is not there inside the sandbox, which the shell reports
+ * as "not found" with no denial a trace can see (an `execve`).
+ */
+export function sandboxReads(
+  sandbox: {
+    readonly baseAllowRead: readonly string[]
+    readonly config: {
+      readonly allowRead: readonly string[]
+      readonly allowWrite: readonly string[]
+    }
+  },
+  file: string,
+): boolean {
+  const real = toRealPath(file)
+  return [...sandbox.baseAllowRead, ...sandbox.config.allowRead, ...sandbox.config.allowWrite].some(
+    (g) => atOrUnder(real, toRealPath(g)),
+  )
+}

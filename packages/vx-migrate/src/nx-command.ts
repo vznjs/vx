@@ -28,7 +28,9 @@
 // command unless `forwardAllArgs` is false, fills `{args}` with them, and
 // `{args.name}` with one of them, a forwarded one first. vx appends `vx run … -- <args>` to the
 // end of the line, so a line of more than one command is a function the
-// forwarded arguments reach as `"$@"` (nx#12165).
+// forwarded arguments reach as `"$@"` (nx#12165). An option the forwarded
+// arguments name is not appended: Nx drops it, and the line decides it
+// once it has them (`nx_opt`).
 
 import path from 'node:path'
 import { relPosix } from './paths.js'
@@ -83,6 +85,14 @@ const FN = 'nx_run_commands'
  * neither, and a command that reads them means nothing there.
  */
 const NX_RUN = `nx_run() { nx_c=$1; shift; if [ $# -eq 0 ]; then eval "$nx_c"; else eval "$nx_c \\"\\$@\\""; fi; }`
+
+/**
+ * Whether the forwarded arguments name option `$1`, as the yargs-parser
+ * call over `__unparsed__` reads them (no camel-case expansion, no dot
+ * notation): `--k`, `--k=v`, `--no-k`, and `-k` for a one-letter key.
+ * A bare `--` stops nothing: `nx run` hands what follows it on as well.
+ */
+const NX_OPT = `nx_opt() { nx_k=$1; shift; for nx_a; do case $nx_a in "--$nx_k"|"--$nx_k="*|"--no-$nx_k") return 0;; esac; if [ \${#nx_k} -eq 1 ]; then case $nx_a in "-$nx_k"|"-$nx_k="*) return 0;; esac; fi; done; return 1; }`
 
 /**
  * Prints `{args.$1}` as Nx fills it: the forwarded arguments' value as the
@@ -205,6 +215,15 @@ interface CommandEntry {
 interface Interpolated {
   readonly text: string
   readonly runtime: 'append' | 'inline' | 'none'
+  /**
+   * The unconsumed options as `[name, --name=value]`, for a command that
+   * forwards them: Nx drops one the forwarded arguments name
+   * (`unknownOptions` skips a key `__unparsed__` holds), so which of them
+   * the command gets is known only once vx run's arguments are.
+   */
+  readonly baked: readonly (readonly [string, string])[]
+  /** The `args` option, after the unconsumed options. */
+  readonly tail: string | undefined
 }
 
 /**
@@ -284,9 +303,9 @@ export function mapRunCommands(
     ...Object.fromEntries(unknown),
     ...(argsOption ? parseArgsOption(argsOption.replace(/(^"|"$)/g, '')) : {}),
   }
-  const unknownArgs = unknown
+  const baked = unknown
     .filter(([k, v]) => typeof v !== 'object' && parsed[k] === v)
-    .map(([k, v]) => nxQuoteArg(`--${k}=${String(v)}`))
+    .map(([k, v]) => [k, expand(nxQuoteArg(`--${k}=${String(v)}`), ctx)] as const)
   const forwardAll = (e: CommandEntry): boolean =>
     typeof e.forwardAllArgs === 'boolean'
       ? e.forwardAllArgs
@@ -304,6 +323,7 @@ export function mapRunCommands(
     }
     let text: string
     let runtime: Interpolated['runtime']
+    let tail: string | undefined
     if (c.includes('{args.')) {
       // Spliced in as text, as Nx splices it, once the arguments are known.
       text =
@@ -319,16 +339,23 @@ export function mapRunCommands(
       runtime = 'none'
       named = true
     } else if (c.includes('{args}')) {
-      text = c.replace(/\{args\}/g, `${[...unknownArgs, '"$@"'].join(' ')} ${argsOption ?? ''}`)
+      text = c
+      tail = `"$@" ${argsOption ?? ''}`
       runtime = 'inline'
     } else if (forwardAll(e)) {
-      text = [c, ...unknownArgs, ...(argsOption ? [argsOption] : [])].join(' ')
+      text = c
+      tail = argsOption
       runtime = 'append'
     } else {
       text = c
       runtime = 'none'
     }
-    commands.push({ text: expand(text, ctx), runtime })
+    commands.push({
+      text: expand(text, ctx),
+      runtime,
+      baked: runtime === 'none' ? [] : baked,
+      tail: tail === undefined ? undefined : expand(tail, ctx),
+    })
   }
 
   const cd = cdPrefix(options['cwd'], ctx)
@@ -343,16 +370,43 @@ export function mapRunCommands(
     )
   }
   const only = commands.length === 1 ? commands[0]! : undefined
-  if (only !== undefined && only.runtime === 'append') {
-    return { command: `${cd}${only.text}`, env, readyWhen: pattern, envFile }
+  if (only !== undefined && only.runtime === 'append' && only.baked.length === 0) {
+    const line = only.tail === undefined ? only.text : `${only.text} ${only.tail}`
+    return { command: `${cd}${line}`, env, readyWhen: pattern, envFile }
   }
   // A subshell per command, as Nx gives each a shell of its own; a comment
   // in one must not swallow the `)` that closes it.
-  const pieces = commands.map((c) =>
-    c.runtime === 'append'
-      ? `(nx_run ${shellQuote(c.text)} "$@")`
-      : `(${c.text}${c.text.includes('#') ? '\n' : ''})`,
-  )
+  const pieces = commands.map((c) => {
+    // The unconsumed options the forwarded arguments leave, as text: each
+    // after a space when appended, before one where `{args}` stood.
+    const kept = c.baked
+      .map(([k, arg]) => {
+        const word =
+          c.runtime === 'inline' ? `"$nx_u"${shellQuote(`${arg} `)}` : `"$nx_u "${shellQuote(arg)}`
+        return `nx_opt ${shellQuote(k)} "$@" || nx_u=${word}; `
+      })
+      .join('')
+    if (c.runtime === 'append') {
+      if (kept === '') {
+        const text = c.tail === undefined ? c.text : `${c.text} ${c.tail}`
+        return `(nx_run ${shellQuote(text)} "$@")`
+      }
+      const tail = c.tail === undefined ? '' : `" "${shellQuote(c.tail)}`
+      return `(nx_u=; ${kept}nx_run ${shellQuote(c.text)}"$nx_u"${tail} "$@")`
+    }
+    if (c.runtime === 'inline') {
+      if (kept === '') {
+        const text = c.text.replaceAll('{args}', c.tail!)
+        return `(${text}${text.includes('#') ? '\n' : ''})`
+      }
+      const text = c.text
+        .split('{args}')
+        .map((p) => shellQuote(p))
+        .join(`"$nx_u"${shellQuote(c.tail!)}`)
+      return `(nx_u=; ${kept}eval ${text})`
+    }
+    return `(${c.text}${c.text.includes('#') ? '\n' : ''})`
+  })
   // Each job's shell catches the TERM so it outlives it and the line's
   // `wait` covers its command's exit (a subshell resets a caught signal,
   // so the command itself still takes the TERM); the flag keeps a job TERMed
@@ -363,6 +417,7 @@ export function mapRunCommands(
       : pieces.join(' && ')
   const helper =
     (commands.some((c) => c.runtime === 'append') ? `${NX_RUN}; ` : '') +
+    (commands.some((c) => c.runtime !== 'none' && c.baked.length > 0) ? `${NX_OPT}; ` : '') +
     (named ? `${NX_VAL}; ` : '')
   return {
     command: `${helper}${FN}() { ${body}; }; ${cd}${FN}`,
