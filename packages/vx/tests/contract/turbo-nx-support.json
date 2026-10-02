@@ -577,7 +577,7 @@
   {
     "key": "project.json targets.*.executor",
     "status": "mapped",
-    "reason": "`run-commands` and `run-script` become shell lines, `noop` a group task; under `nx()` others run through `nx-exec`; the migrator writes the command a jest, vitest, vite build, eslint, tsc or playwright executor runs, and a TODO placeholder for any other."
+    "reason": "`run-commands` and `run-script` become shell lines, `noop` a group task; under `nx()` others run through `nx-exec`; the migrator writes the command a jest, vitest, vite, eslint, tsc, playwright or storybook executor runs, and a TODO placeholder for any other."
   },
   {
     "key": "project.json targets.*.options",

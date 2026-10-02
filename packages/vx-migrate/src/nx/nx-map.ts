@@ -649,7 +649,7 @@ function buildTask(
     opts.pnp,
     meta.packageJson,
     opts.manifestField,
-    opts.nativeExecutors === true,
+    opts.nativeExecutors === true ? (spec) => targetOptionsOf(nodeMap, spec) : null,
   )
 
   const inputs = emptyNxInputs()
@@ -855,7 +855,8 @@ function mapCommand(
   pnp: boolean,
   manifest: { readonly name?: unknown; readonly version?: unknown },
   manifestField: MapNxOptions['manifestField'],
-  native: boolean,
+  /** Non-null in a migration: what a `project:target:configuration` spec resolves to. */
+  native: ((spec: string) => Record<string, unknown> | undefined) | null,
 ): MappedCommand | null {
   const executor = target.executor
   if (executor === 'nx:noop') {
@@ -935,8 +936,12 @@ function mapCommand(
     todos.push(`target has neither an executor nor a command — options: ${JSON.stringify(options)}`)
     return line(PLACEHOLDER)
   }
-  if (native) {
-    const n = nativeExecutorCommand(executor, options, { projectRel, projectName })
+  if (native !== null) {
+    const n = nativeExecutorCommand(executor, options, {
+      projectRel,
+      projectName,
+      targetOptions: native,
+    })
     if (n === null) {
       todos.push(untranslatedTodo(executor))
       return line(untranslatedPlaceholder(executor, options))
@@ -953,6 +958,27 @@ function mapCommand(
     ...line(nxExecCommand(executor, projectName, targetName, configuration, options, files)),
     envInputs: files,
   }
+}
+
+/**
+ * A `project:target[:configuration]` spec's options as Nx's
+ * `readTargetOptions` gives them: the configuration's (else the default
+ * one's) over the target's own. Undefined for a target the graph lacks.
+ */
+function targetOptionsOf(
+  nodeMap: Readonly<Record<string, NxNode>>,
+  spec: string,
+): Record<string, unknown> | undefined {
+  const [project, target, ...rest] = spec.split(':')
+  const t =
+    project === undefined || target === undefined
+      ? undefined
+      : nodeMap[project]?.data?.targets?.[target]
+  if (t === undefined) return undefined
+  const configuration = rest.length > 0 ? rest.join(':') : undefined
+  const all = variants(target!, t)
+  return (configuration === undefined ? all[0] : all.find((v) => v.configuration === configuration))
+    ?.options
 }
 
 function argsTodo(options: Record<string, unknown>, todos: string[]): void {

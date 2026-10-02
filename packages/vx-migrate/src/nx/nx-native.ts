@@ -26,6 +26,8 @@ export interface NativeContext {
   /** Project dir relative to the workspace root, `.` for the root. */
   readonly projectRel: string
   readonly projectName: string
+  /** A `project:target[:configuration]` spec's options (a server's `buildTarget`). */
+  readonly targetOptions?: (spec: string) => Options | undefined
 }
 
 export interface NativeCommand {
@@ -305,7 +307,207 @@ const playwright: Translate = (o, ctx, todos) => {
   return fromRoot(ctx, o['skipInstall'] === true ? line : `playwright install && ${line}`)
 }
 
+/**
+ * Each listed option as its CLI flag, through `flag`; an option the map
+ * lacks is a TODO naming it, as the executor handed it to the tool.
+ */
+function mappedFlags(
+  o: Options,
+  flags: Readonly<Record<string, string>>,
+  skip: ReadonlySet<string>,
+  todos: string[],
+  executor: string,
+  where: string,
+): string[] {
+  const out: string[] = []
+  for (const [k, v] of Object.entries(o)) {
+    if (skip.has(k)) continue
+    const name = flags[k]
+    if (name !== undefined) out.push(...flag(name, v, todos, executor))
+    else
+      todos.push(
+        `${executor} option ${JSON.stringify(k)} has no ${where} flag — set it in ${where}'s config`,
+      )
+  }
+  return out
+}
+
+/** A server's `buildTarget` options, or `{}` with a TODO when the graph has no such target. */
+function buildTargetOptions(
+  o: Options,
+  ctx: NativeContext,
+  todos: string[],
+  executor: string,
+): Options {
+  const spec = o['buildTarget']
+  if (typeof spec !== 'string') return {}
+  const found = ctx.targetOptions?.(spec)
+  if (found === undefined)
+    todos.push(
+      `${executor}: buildTarget ${JSON.stringify(spec)} is not in the graph — its configFile and mode are not read`,
+    )
+  return found ?? {}
+}
+
+/** Vite's server and preview flags; the rest of Vite's server options live in its config. */
+const VITE_SERVE_FLAGS: Readonly<Record<string, string>> = {
+  port: 'port',
+  host: 'host',
+  strictPort: 'strictPort',
+  open: 'open',
+  cors: 'cors',
+  mode: 'mode',
+  base: 'base',
+  force: 'force',
+}
+
+/**
+ * `@nx/vite:dev-server`: `vite` (serve) rooted at the project, on the
+ * build target's config file and mode, the server options as flags.
+ */
+const viteDev: Translate = (o, ctx, todos) => {
+  const build = buildTargetOptions(o, ctx, todos, '@nx/vite:dev-server')
+  const args = ['vite']
+  if (typeof build['configFile'] === 'string')
+    args.push(`--config=${shellQuote(projPath(build['configFile'], ctx))}`)
+  const opts: Record<string, unknown> =
+    typeof build['mode'] === 'string' && o['mode'] === undefined
+      ? { ...o, mode: build['mode'] }
+      : { ...o }
+  if (typeof opts['proxyConfig'] === 'string')
+    todos.push(
+      '@nx/vite:dev-server loaded `proxyConfig` as server.proxy — move it into the vite config',
+    )
+  args.push(
+    ...mappedFlags(
+      opts,
+      VITE_SERVE_FLAGS,
+      new Set(['buildTarget', 'buildLibsFromSource', 'proxyConfig']),
+      todos,
+      '@nx/vite:dev-server',
+      'vite',
+    ),
+  )
+  return args.join(' ')
+}
+
+/**
+ * `@nx/vite:preview-server`: `vite preview` over the build target's
+ * output dir (or `staticFilePath`, read from the project dir as Nx does).
+ */
+const vitePreview: Translate = (o, ctx, todos) => {
+  const build = buildTargetOptions(o, ctx, todos, '@nx/vite:preview-server')
+  const args = ['vite', 'preview']
+  if (typeof build['configFile'] === 'string')
+    args.push(`--config=${shellQuote(projPath(build['configFile'], ctx))}`)
+  const outDir =
+    typeof o['staticFilePath'] === 'string'
+      ? o['staticFilePath']
+      : typeof build['outputPath'] === 'string'
+        ? projPath(build['outputPath'], ctx)
+        : undefined
+  if (outDir !== undefined) args.push(`--outDir=${shellQuote(outDir)}`)
+  const opts: Record<string, unknown> =
+    typeof build['mode'] === 'string' && o['mode'] === undefined
+      ? { ...o, mode: build['mode'] }
+      : { ...o }
+  if (typeof opts['proxyConfig'] === 'string')
+    todos.push(
+      '@nx/vite:preview-server loaded `proxyConfig` as preview.proxy — move it into the vite config',
+    )
+  args.push(
+    ...mappedFlags(
+      opts,
+      VITE_SERVE_FLAGS,
+      new Set(['buildTarget', 'proxyConfig', 'staticFilePath', 'watch']),
+      todos,
+      '@nx/vite:preview-server',
+      'vite',
+    ),
+  )
+  todos.push(
+    '@nx/vite:preview-server built the app (in watch mode) before serving it — add its build task to dependsOn',
+  )
+  return args.join(' ')
+}
+
+/** Storybook's flags shared by `dev` and `build`, as its CLI spells them. */
+const STORYBOOK_COMMON: Readonly<Record<string, string>> = {
+  configDir: 'config-dir',
+  loglevel: 'loglevel',
+  quiet: 'quiet',
+  docs: 'docs',
+  docsMode: 'docs',
+  webpackStatsJson: 'webpack-stats-json',
+  debugWebpack: 'debug-webpack',
+  disableTelemetry: 'disable-telemetry',
+}
+
+/** `configDir` and `outputDir` with Nx's tokens filled: Storybook reads them from the workspace root. */
+function storybookPaths(o: Options, ctx: NativeContext): Options {
+  const out: Record<string, unknown> = { ...o }
+  for (const k of ['configDir', 'outputDir'])
+    if (typeof out[k] === 'string') out[k] = wsPath(out[k], ctx)
+  return out
+}
+
+/**
+ * `@nx/storybook:storybook`: `storybook dev` from the workspace root,
+ * where Nx hands the options to Storybook's own server; the schema's port
+ * (9009) is applied, as Nx applies it, over Storybook's own 6006.
+ */
+const storybookDev: Translate = (o, ctx, todos) => {
+  const opts: Record<string, unknown> = { port: 9009, ...storybookPaths(o, ctx) }
+  if (opts['noOpen'] === true || opts['open'] === false) opts['noOpen'] = true
+  const args = [
+    'storybook',
+    'dev',
+    ...mappedFlags(
+      opts,
+      {
+        ...STORYBOOK_COMMON,
+        port: 'port',
+        host: 'host',
+        https: 'https',
+        sslCa: 'ssl-ca',
+        sslCert: 'ssl-cert',
+        sslKey: 'ssl-key',
+        ci: 'ci',
+        smokeTest: 'smoke-test',
+        previewUrl: 'preview-url',
+        noOpen: 'no-open',
+      },
+      new Set(['open', 'uiFramework']),
+      todos,
+      '@nx/storybook:storybook',
+      'storybook',
+    ),
+  ]
+  return fromRoot(ctx, args.join(' '))
+}
+
+/** `@nx/storybook:build`: `storybook build` from the workspace root, `outputDir` as `--output-dir`. */
+const storybookBuild: Translate = (o, ctx, todos) => {
+  const args = [
+    'storybook',
+    'build',
+    ...mappedFlags(
+      storybookPaths(o, ctx),
+      { ...STORYBOOK_COMMON, outputDir: 'output-dir' },
+      new Set(['uiFramework']),
+      todos,
+      '@nx/storybook:build',
+      'storybook',
+    ),
+  ]
+  return fromRoot(ctx, args.join(' '))
+}
+
 const TRANSLATORS: Readonly<Record<string, Translate>> = {
+  '@nx/vite:dev-server': viteDev,
+  '@nx/vite:preview-server': vitePreview,
+  '@nx/storybook:storybook': storybookDev,
+  '@nx/storybook:build': storybookBuild,
   '@nx/jest:jest': jest,
   '@nx/vitest:test': vitest,
   '@nx/vite:test': vitest,

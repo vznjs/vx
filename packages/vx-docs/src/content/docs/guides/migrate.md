@@ -194,6 +194,10 @@ where Nx ran it, with the executor's option defaults applied:
 | `@nx/eslint:lint`                   | `eslint .`                                                  |
 | `@nx/js:tsc`                        | `rm -rf ../../dist/libs/a && tsc -p tsconfig.lib.json --outDir ../../dist/libs/a --rootDir .` |
 | `@nx/playwright:playwright`         | `cd ../.. && playwright install && playwright test --pass-with-no-tests …` |
+| `@nx/vite:dev-server`               | `vite --config=vite.config.ts --mode=…` (the build target's config and mode) |
+| `@nx/vite:preview-server`           | `vite preview --outDir=../../dist/apps/web …`               |
+| `@nx/storybook:storybook`           | `cd ../.. && storybook dev --port=9009 --config-dir=libs/a/.storybook` |
+| `@nx/storybook:build`               | `cd ../.. && storybook build --config-dir=… --output-dir=…` |
 
 What an executor did besides its tool (a type-check before a Vite
 build, a `package.json` or `assets` copied into the output) is a TODO

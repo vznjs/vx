@@ -12,5 +12,11 @@
   is a placeholder that fails naming it and its options, one TODO per
   executor. It wrote an `nx-exec` line, so a migrated repo still needed
   Nx installed to run. `nx()` keeps `nx-exec`.
+- **P2-2** The migrator writes `@nx/vite:dev-server` as `vite` and
+  `@nx/vite:preview-server` as `vite preview` on the `buildTarget`'s config
+  file, mode and output dir (a configuration's own `buildTarget` read in
+  that configuration), and `@nx/storybook:storybook` / `:build` as
+  `storybook dev` (on Nx's port 9009) / `storybook build` from the
+  workspace root. Each was a failing placeholder.
 
 ## Leads for other streams

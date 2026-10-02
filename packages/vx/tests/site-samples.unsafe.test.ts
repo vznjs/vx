@@ -790,7 +790,7 @@ describe('the from-nx post says how executors run, and names the servers', () =>
     expect(src).toContain(
       'line(nxExecCommand(executor, projectName, targetName, configuration, options, files))',
     )
-    expect(src).toContain('nativeExecutorCommand(executor, options, { projectRel, projectName })')
+    expect(src).toContain('nativeExecutorCommand(executor, options, {')
   })
   it('the benchmark figures it states are the benchmarks page’s', () => {
     const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
