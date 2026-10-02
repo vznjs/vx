@@ -1200,3 +1200,26 @@ successful ones. A refused `chdir` is a denied read of the directory:
 both line shapes, resolved where its process stood. Rows:
 `sandbox-chdir-denied.unsafe.test.ts` (both red without the fix); the
 B-61 row's fixture `chdir("nope")` is now a denial too.
+
+B-68. A workspace under a directory whose name holds PATH's delimiter
+(`…/x:y/ws`) split each `node_modules/.bin` into two PATH entries: one
+naming nothing, and one RELATIVE, so resolved against the task's cwd,
+where a planted file ran. The 127 verdict then said the bin was first on
+PATH. `buildIsolatedEnv` now leaves such a directory out, and
+`shellVerdict` names it and says to move the workspace. Rows:
+`env-path-delimiter.test.ts` (all three red without the fix).
+
+B-70. The sandbox runtime reads a Linux path holding `*` or `?` as a
+glob, as it does `[` (B-57, B-59, B-60), and no spelling makes either
+literal (its rewrite of each runs inside a class too): a read grant of
+`a*b.txt` also granted `aXb.txt`. `bindableReads` leaves such a read
+grant out (said once; the refused read is reported), `bindableWrites`
+drops such a write grant with the bracket ones (a trailing `/**`, which
+the runtime strips, kept), and a project under `w*s/` is refused. A
+backslash the runtime skips outright: Bun's `realpathSync` throws ENOENT
+on a path holding one (Node's does not; `stat` finds it), and the
+runtime mounts no path it cannot resolve, so a sandboxed project under
+`back\slash/` saw nothing and ran in `$HOME`. Such grants are left out
+the same way and such a project is refused on Linux; a row pins the Bun
+fact. Rows: `sandbox-glob-chars.unsafe.test.ts` (each changed site
+mutated back reddens one).
