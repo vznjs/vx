@@ -396,6 +396,15 @@ lies inside it: bwrap builds the path to a bind, so the cwd lists, and a
 root's `read: ['.']`, bound as its children around the walls, drew the
 note on every failure (B-20).
 
+bwrap enters the task's cwd only if a mount holds it, and otherwise
+`$HOME`, with no word: a project granted no read (`sandbox: {}`, its own
+`node_modules` absent) ran in the home directory, where `cat x.txt` read
+`~/x.txt` and a `mkdir dist` met `Read-only file system`. On Linux, when
+no grant holds the cwd (`cwdMounted`: one at or above it, an existing one
+below it, or a deny that is the cwd), vx denies the cwd too: the task
+enters an empty directory, its reads there are refused and reported, and
+its writes are the scratch the write observer reports (B-53).
+
 SRT's in-sandbox network bridge is `socat TCP-LISTEN:3128` (and 1080),
 which socat 1.8 opens as an IPv6 socket. On a host without IPv6 it
 failed ("Address family not supported by protocol") into /dev/null, and
