@@ -1842,6 +1842,14 @@ copy to the source.
 | turbo  | `--cache-dir <v>`                                 | same    | `--cache-dir <path>`                                                                                                          |
 | turbo  | `--profile`                                       | same    | `--profile[=<path>]` (Chrome trace)                                                                                           |
 | turbo  | `--only`                                          | alias   | `--exclude-dependencies`                                                                                                      |
+| turbo  | `--color`                                         | refuse  | set `FORCE_COLOR=1`                                                                                                           |
+| turbo  | `--no-color`                                      | refuse  | set `NO_COLOR=1`                                                                                                              |
+| turbo  | `--heap <v>`, `--trace <v>`                       | refuse  | use `--profile[=<path>]` for vx's own trace                                                                                   |
+| turbo  | `--login <v>`                                     | refuse  | vx has no login: a remote cache is a plugin (`turboCache()` from @vzn/vx-migrate)                                             |
+| turbo  | `--no-update-notifier`                            | refuse  | vx prints no update notice: drop it                                                                                           |
+| turbo  | `--skip-infer`                                    | refuse  | vx runs the binary it is: drop it                                                                                             |
+| turbo  | `--root-turbo-json <v>`                           | refuse  | `turbo()` reads the `turbo.json` at the workspace root: move it there                                                         |
+| turbo  | `--experimental-otel-*`                           | refuse  | telemetry is a plugin: `otel()` from @vzn/vx-otel in vx.workspace.ts                                                          |
 | nx     | `--parallel <n>`                                  | alias   | `--concurrency <n>` (`--parallel=false` is 1)                                                                                 |
 | turbo  | `--parallel`                                      | refuse  | vx always honours `dependsOn`; `--concurrency <n>` sets how many run at once                                                  |
 | turbo  | `--scope <v>`                                     | refuse  | use `--filter <pkg>`                                                                                                          |
