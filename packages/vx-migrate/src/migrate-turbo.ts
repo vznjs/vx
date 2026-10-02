@@ -44,7 +44,7 @@ export async function migrateTurbo(
     ...(tracked === null ? {} : { tracked: trackedKinds(tracked) }),
     // The file this writes is each task's config.
     ownConfig: () => `vx.config.${format}`,
-    sourceNames: (dir) => spelledNames(root, dir, tracked),
+    sourceNames: (dirs) => spelledNames(root, dirs, tracked),
   })
 
   const projects: GeneratedProject[] = mapping.projects.map((p) => {
@@ -76,21 +76,23 @@ const SPELLS_ENV =
   /\.(c|m)?(j|t)sx?$|\.(vue|svelte|astro|html)$|(^|\/)\.env\.(example|sample|template)$/
 
 /**
- * The upper-case names a package's tracked source spells (`NEXT_PUBLIC_API`
+ * The upper-case names the tracked source under `dirs` spells (`NEXT_PUBLIC_API`
  * in `process.env.NEXT_PUBLIC_API` or an `.env.example`), sorted. Without
  * git, none: the note still names the framework's prefix.
  */
 async function spelledNames(
   root: string,
-  dir: string,
+  dirs: readonly string[],
   tracked: readonly string[] | null,
 ): Promise<string[]> {
   if (tracked === null) return []
-  const rel = relPosix(root, dir)
-  const prefix = rel === '' || rel === '.' ? '' : `${rel}/`
+  const prefixes = dirs.map((dir) => {
+    const rel = relPosix(root, dir)
+    return rel === '' || rel === '.' ? '' : `${rel}/`
+  })
   const names = new Set<string>()
   for (const f of tracked) {
-    if (!f.startsWith(prefix) || !SPELLS_ENV.test(f)) continue
+    if (!SPELLS_ENV.test(f) || !prefixes.some((p) => f.startsWith(p))) continue
     const text = await Bun.file(path.join(root, f))
       .text()
       .catch(() => '')

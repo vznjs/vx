@@ -269,10 +269,10 @@ export interface MapTurboOptions {
    */
   envNames?: readonly string[]
   /**
-   * Without `envNames` (written configs): the upper-case names a package's
-   * own files spell, which a framework's `*` prefix is matched against.
+   * Without `envNames` (written configs): the upper-case names the files
+   * under `dirs` spell, which a framework's `*` prefix is matched against.
    */
-  sourceNames?: (dir: string) => Promise<readonly string[]>
+  sourceNames?: (dirs: readonly string[]) => Promise<readonly string[]>
   /**
    * `TURBO_CI_VENDOR_ENV_KEY`, which a platform sets (Vercel:
    * `NEXT_PUBLIC_VERCEL_`): names with it are left out of framework
@@ -1076,8 +1076,12 @@ export async function mapTurboWorkspace(
       // A written config cannot ask the run's environment, and with the
       // prefix only in a note, a migrated Next build inlined every
       // NEXT_PUBLIC_ value empty. The names the package's own files spell
-      // are what its build reads.
-      const spelled = await opts.sourceNames(m.dir)
+      // are what its build reads, and so are its workspace dependencies':
+      // Next bundles their source (cal.com's web spells 23, with them 58).
+      const closure = new Set<ProjectMeta>([m])
+      for (const p of closure)
+        for (const d of metas) if (!closure.has(d) && declares(p, d.name)) closure.add(d)
+      const spelled = await opts.sourceNames([...closure].map((p) => p.dir))
       inferredOf.set(
         m.name,
         fw.env.flatMap((e) =>
@@ -1090,8 +1094,9 @@ export async function mapTurboWorkspace(
   for (const [fw, users] of sourcedOf)
     notes.push(
       `Turbo infers ${fw.slug} in ${users.join(', ')} and hashes and passes ${fw.env.join(', ')} ` +
-        'to its tasks; the configs list the names their own files spell — add any only a ' +
-        'dependency reads to cache.inputs.env and exec.env.passThrough',
+        'to its tasks; the configs list the names their files and their workspace ' +
+        'dependencies’ spell — add any only an installed dependency reads to cache.inputs.env ' +
+        'and exec.env.passThrough',
     )
   for (const [fw, users] of usersOf)
     notes.push(
