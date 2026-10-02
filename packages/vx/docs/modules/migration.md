@@ -92,7 +92,7 @@ export function delegatedScript(command: string): string | null
   has no `workspaces` field, while packages with scripts sit beneath it,
   is reported as such: the report names the packages the missing field
   never reaches (item 248) instead of "nothing to migrate".
-- The workspace file is written when no `vx.workspace.{ts,mts,js,mjs}` exists:
+- The workspace file is written when no `vx.workspace.{ts,mts,js,mjs,cts,cjs}` exists:
   a migrated workspace declares its plugins, and an empty list is a
   complete workspace (the floor).
 - Nothing is overwritten without `force`: a discovered project with any

@@ -681,14 +681,14 @@ describe('turbo-map: Turbo’s glob grammar', () => {
     const t = await taskOf(
       {
         tasks: {
-          build: { inputs: ['src/**/*.[jt]s', '!**/*.[jt]s.map', 'lib/[a-z]/**'], outputs: [] },
+          build: { inputs: ['src/**/*.[jt]s', '!**/*.[jt]s.map', 'lib/[a-Z]/**'], outputs: [] },
         },
       },
       { a: { scripts: { build: 'b' } } },
     )
     expect({ files: cacheOf(t)!.inputs.files, todos: t.todos }).toEqual({
       files: ['src/**/*.{[jt],j,t}s', '!**/*.{j,t}s.map', '**/*'],
-      todos: ['input "lib/[a-z]/**": glob syntax vx cannot take — map manually'],
+      todos: ['input "lib/[a-Z]/**": glob syntax vx cannot take — map manually'],
     })
   })
 
