@@ -53,6 +53,7 @@ export interface GitEnumeration {
   trusted: Map<string, string> // path → index OID, for the tracked-clean ones
   dirty: boolean | null
   changed: readonly string[] | null // what `status` listed (dirty, both sides of a rename, untracked)
+  untracked: readonly string[] | null // status's untracked set, before nested repos expand (ls-files --others)
   undecodable: readonly string[] // listed paths whose names are not UTF-8, root-relative
   startedAtMs: number // Date.now() before the spawns
 }

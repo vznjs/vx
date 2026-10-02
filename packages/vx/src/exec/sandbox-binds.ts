@@ -35,16 +35,18 @@ type SrtModule = typeof import('@anthropic-ai/sandbox-runtime')
 export function bindableWrites(paths: readonly string[]): string[] {
   if (process.platform !== 'linux') return [...paths]
   return unique(
-    paths.map((p) => {
-      if (!isMountableLiteral(p)) return p
-      try {
-        if (statSync(p).isDirectory()) return p
-      } catch {
-        // Does not exist yet: `prepareOutputsForBind` creates a file for a
-        // file-shaped grant, so treat it as one.
-      }
-      return path.dirname(p)
-    }),
+    paths
+      .filter((p) => !holdsBracket(p))
+      .map((p) => {
+        if (!isMountableLiteral(p)) return p
+        try {
+          if (statSync(p).isDirectory()) return p
+        } catch {
+          // Does not exist yet: `prepareOutputsForBind` creates a file for a
+          // file-shaped grant, so treat it as one.
+        }
+        return path.dirname(p)
+      }),
   )
 }
 
@@ -186,6 +188,32 @@ export function punchWritePaths(readPath: string, writePaths: readonly string[])
     )
   }
   return out
+}
+
+/** Grants already reported — once per process, not per spawn. */
+const warnedBracket = new Set<string>()
+
+/**
+ * SRT drops every Linux write path holding a bracket (it reads one as a
+ * glob, and a write path must be a path), and no spelling keeps it. Left
+ * in, the read grants were punched around a bind that never came, the
+ * directory vanished from the task's view, its write read "Directory
+ * nonexistent" with no word of the grant, and the refused write went
+ * unreported, judged against it. Dropped from the binds instead, and said
+ * once: the remedy is the deepest directory above it whose name holds none.
+ */
+function holdsBracket(grant: string): boolean {
+  const at = grant.search(/[[\]]/)
+  if (at === -1) return false
+  if (!warnedBracket.has(grant)) {
+    warnedBracket.add(grant)
+    process.stderr.write(
+      `[vx] sandbox: the write grant ${grant} holds a bracket, and the Linux sandbox mounts no ` +
+        `write path that does, so a write under it is refused. Grant the directory above it ` +
+        `instead: ${grant.slice(0, grant.lastIndexOf(path.sep, at) + 1)}\n`,
+    )
+  }
+  return true
 }
 
 /**
