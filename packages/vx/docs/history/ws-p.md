@@ -71,6 +71,15 @@
   `nx run` hands the task, a configuration's included (Nx 22 and 23.2,
   12/12 each; fails with the define undone). The live suite also passes
   whole on Nx 23.2.1, which CI does not run (it pins `nx@22`).
+- **P-19** `nx()`: a `{ workingDirectory }` input (Nx 23: the directory
+  Nx was started from, `cwd:relative` in its task plan) keys nothing: a
+  vx task runs in its project dir wherever vx starts. It was a todo,
+  "not representable".
+- **P-17** `nx()`: an output todo (Nx's default `build` / `public` note,
+  an unresolvable `{options.x}`) is said only for a target vx caches; it
+  sat on every uncached `build` that declares no outputs (found diffing a
+  synthetic workspace's mapping against Nx 23's own task graph, whose
+  edges all agreed).
 - **P-18** `nx()`: outputs checked case by case against Nx 23.2's own
   `getOutputsForTargetAndConfiguration`: an `outputPath` list is each of
   its paths (read as none, the build cached Nx's default directories and

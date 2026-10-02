@@ -279,7 +279,10 @@ function servesCommand(command: string): boolean {
         words[i]!.startsWith('-') ||
         (/^(pnpm|npm|yarn)$/.test(words[i]!) && LAUNCHERS.has(words[i + 1] ?? '')))
     ) {
-      i++
+      // A launcher's `--package <name>` / `-p <name>` names what to install,
+      // not the program: docusaurus's `pnpm dlx --package netlify-cli netlify
+      // dev` read `netlify-cli` as the program (D-112).
+      i += words[i] === '--package' || words[i] === '-p' ? 2 : 1
     }
     const [program, verb] = [words[i], words[i + 1]]
     if (program === undefined) continue
@@ -506,6 +509,48 @@ function siblingRun(script: string, dir: string, others: readonly string[]): str
   }
   return undefined
 }
+
+/**
+ * The package globs a `lerna.json` beside a lone root lists (Lerna's
+ * default when it names none), or undefined: Lerna-classic repos list
+ * their packages there, not in `workspaces`, and vx saw the root alone
+ * (D-111).
+ */
+function lernaPackages(dir: string): string[] | undefined {
+  let json: unknown
+  try {
+    json = JSON.parse(readFileSync(path.join(dir, 'lerna.json'), 'utf8'))
+  } catch {
+    return undefined
+  }
+  const listed = (json as { packages?: unknown } | null)?.packages
+  return Array.isArray(listed) && listed.every((g) => typeof g === 'string') && listed.length > 0
+    ? listed
+    : ['packages/*']
+}
+
+function lernaNote(globs: readonly string[]): string {
+  const list = globs.map((g) => JSON.stringify(g)).join(', ')
+  return `lerna.json lists the packages (${list}), but package.json declares no \`workspaces\`, so vx sees the root alone: add \`"workspaces": [${list}]\` to package.json and run \`vx init\` again`
+}
+
+/**
+ * Yarn 2+ installs with Plug'n'Play unless `.yarnrc.yml` names another
+ * linker: a package's bins live in `.pnp.cjs`, and a task's `json5` exited
+ * 127 under vx, which runs no `yarn` in front of a command (probed on Yarn
+ * 4.5).
+ */
+function usesPnp(dir: string): boolean {
+  let rc = ''
+  try {
+    rc = readFileSync(path.join(dir, '.yarnrc.yml'), 'utf8')
+  } catch {}
+  const linker = /^nodeLinker:\s*["']?([\w-]+)/m.exec(rc)?.[1]
+  return linker === undefined || linker === 'pnp'
+}
+
+const PNP_NOTE =
+  "Yarn Plug'n'Play installs this repo: a package's bins live in `.pnp.cjs`, not `node_modules/.bin`, so a task's `tsc` is not found under vx — set `nodeLinker: node-modules` in `.yarnrc.yml` and run `yarn install`, or write each command as `yarn exec '<command>'`"
 
 /** A package manager running a script by name: `pnpm build`, `npm run x`, `bun run x`. */
 const RUNS_SCRIPT =
@@ -810,6 +855,9 @@ export function migrateScripts(
       projects.push({ name: meta.name, dir: meta.dir, importLines, tasks })
     }
   }
+  const owner = metas[0] === undefined ? undefined : ownerOf(metas[0].dir, hookMemo)
+  if (owner?.manager === 'berry' && usesPnp(owner.at)) notes.push(PNP_NOTE)
+
   if (lifecycleBuilds.length > 0) {
     const [name, hook, command] = lifecycleBuilds[0]!
     const more = lifecycleBuilds.length - 1
@@ -817,6 +865,8 @@ export function migrateScripts(
       `${lifecycleBuilds.length === 1 ? 'a package builds' : `${lifecycleBuilds.length} packages build`} only in a lifecycle script (\`${hook}: ${command}\` in ${name}${more > 0 ? ` and ${more} more` : ''}), which the package manager runs on pack or install and vx never runs: add a \`build\` script running it and run \`vx init\` again`,
     )
   }
+  const lerna = metas.length === 1 ? lernaPackages(metas[0]!.dir) : undefined
+  if (lerna !== undefined) notes.push(lernaNote(lerna))
   breakBuildCycles(projects, metas)
   pruneOrphanPersistentNotes(projects, PERSISTENT_TODO)
   return {

@@ -1007,25 +1007,31 @@ describe.if(CHUNKING_SUPPORTED)('the Action it builds, beyond the Action', () =>
       release = r
     })
     let executes = 0
+    const stop = new AbortController()
+    // The stop comes once the server holds the call: on a 200 ms timer, a
+    // loaded box stopped the run before its Execute was sent, so nothing
+    // was there to cancel (6 of 20 beside twelve busy loops, M-33).
     fake.onExecute = () => {
       executes++
+      setTimeout(() => stop.abort(), 0)
       return { stages: ['EXECUTING'], hold: forever }
     }
-    const stop = new AbortController()
     const cancelled = fake.executesCancelled
     try {
-      const refused = await withExecutor((run) => {
-        setTimeout(() => stop.abort(), 200)
-        return refusal(
+      const refused = await withExecutor((run) =>
+        refusal(
           Promise.race([
             run(request({ signal: stop.signal })),
-            Bun.sleep(2000).then(() => {
+            Bun.sleep(5000).then(() => {
               throw new Error('the stop was not heard')
             }),
           ]),
-        )
-      })
-      await Bun.sleep(50)
+        ),
+      )
+      // The cancel reaches the server on its own time: polled as the sibling
+      // rows do, not a fixed 50 ms.
+      const deadline = Date.now() + 3_000
+      while (fake.executesCancelled === cancelled && Date.now() < deadline) await Bun.sleep(5)
       const before = await withExecutor((run) => refusal(run(request({ signal: stop.signal }))))
       expect([refused, fake.executesCancelled - cancelled, before, executes]).toEqual([
         'vx/reapi: pkg#gen: the run stopped before its remote execution finished',

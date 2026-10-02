@@ -150,6 +150,10 @@ export function expandNxInputs(
       // and an output follows from its inputs. Nothing to map, and the todo
       // it was sat on 881 tasks of three real Nx repos (G-49).
       if (o.dependentTasksOutputFiles !== undefined) return
+      // `{ workingDirectory }` hashes where Nx was started (`cwd:relative`
+      // in its plan). A vx task runs in its project dir from wherever vx
+      // is started, so the fact is the same for every run: nothing to key.
+      if (o.workingDirectory === 'relative' || o.workingDirectory === 'absolute') return
       if (typeof o.input === 'string') {
         // Nx 23 still reads the pre-17 spellings `projects: "dependencies"`
         // (`^input`) and `projects: "self"` (the project's own); taken as
