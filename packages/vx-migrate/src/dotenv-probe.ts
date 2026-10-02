@@ -33,6 +33,9 @@ export function ignoredFilesProbe(rels: readonly string[]): string {
   return `for f in ${rels.map(shellQuote).join(' ')}; do [ -f "$f" ] && { printf '%s\\n' "$f"; cat -- "$f"; echo .; }; done; :`
 }
 
+/** How every `dotenvGlobsProbe` line opens, and no other probe's. */
+export const DOTENV_GLOBS_HEAD = 'LC_ALL=C; export LC_ALL; { '
+
 /**
  * The files the root-relative `.env` globs name, name and bytes, run at the
  * workspace root: Turbo hashes exactly these, and `DOTENV_PROBE` over the
@@ -79,5 +82,5 @@ export function dotenvGlobsProbe(globs: readonly string[]): string | null {
       : [`for f in ${[...words].join(' ')}; do [ -f "$f" ] && printf '%s\\n' "$f"; done`]),
     ...finds.map((f) => `${f} 2>/dev/null | sed 's|^\\./||'`),
   ]
-  return `LC_ALL=C; export LC_ALL; { ${list.join('; ')}; } | sort -u | while IFS= read -r f; do printf '%s\\n' "$f"; cat -- "$f"; echo .; done`
+  return `${DOTENV_GLOBS_HEAD}${list.join('; ')}; } | sort -u | while IFS= read -r f; do printf '%s\\n' "$f"; cat -- "$f"; echo .; done`
 }

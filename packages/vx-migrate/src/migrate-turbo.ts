@@ -21,6 +21,7 @@ import {
 } from './turbo/turbo-map.js'
 import { relPosix } from './paths.js'
 import { gitIgnored, trackedFiles, trackedKinds } from './tracked-outputs.js'
+import { DOTENV_GLOBS_HEAD, DOTENV_PROBE, DOTENV_PROBE_TOP } from './dotenv-probe.js'
 
 /** What a task's `npm_package_*` read: the manifest, so a bump reaches them. */
 const MANIFEST_IMPORT = "import pkg from './package.json' with { type: 'json' }"
@@ -54,8 +55,12 @@ export async function migrateTurbo(
   })
 
   const shared = hoistTaskEnv(mapping.projects)
+  const probes = nameProbes(mapping.projects)
   const projects: GeneratedProject[] = mapping.projects.map((p) => {
-    const used = new Set<string>(shared.usedBy.get(p.name))
+    const used = new Set<string>([
+      ...(shared.usedBy.get(p.name) ?? []),
+      ...(probes.usedBy.get(p.name) ?? []),
+    ])
     for (const t of p.tasks) for (const kind of t.uses) used.add(PRESET_NAMES[kind])
     const readsManifest = p.tasks.some((t) => JSON.stringify(t.task ?? {}).includes('"pkg.'))
     return {
@@ -71,10 +76,16 @@ export async function migrateTurbo(
 
   const { inputs, env, pass } = mapping.globals
   const extraFiles: MigrationPlan['extraFiles'] = []
-  if (inputs.length > 0 || env.length > 0 || pass.length > 0 || shared.lists.length > 0) {
+  if (
+    inputs.length > 0 ||
+    env.length > 0 ||
+    pass.length > 0 ||
+    shared.lists.length > 0 ||
+    probes.named.length > 0
+  ) {
     extraFiles.push({
       relPath: presetFile(format),
-      contents: renderPreset(inputs, env, pass, shared.lists),
+      contents: renderPreset(inputs, env, pass, shared.lists, probes.named),
     })
   }
 
@@ -232,11 +243,77 @@ function identifier(task: string): string {
   return id === '' || /^[0-9]/.test(id) ? `task${id[0]?.toUpperCase() ?? ''}${id.slice(1)}` : id
 }
 
+/**
+ * The `.env` probes, by name: Turbo hashes a task's `.env` files although
+ * git ignores them, and a glob over git's files sees none, so the mapper
+ * keys them through a shell line that prints each file. Inline in every
+ * package's config, that line read as noise nobody could review.
+ */
+type Probe = { name: string; command: string; doc: string; field: string }
+
+const PROBES: readonly Probe[] = [
+  {
+    name: 'dotenvFiles',
+    command: DOTENV_PROBE_TOP,
+    doc: "Each `.env` file in the task's directory, name and bytes",
+    field: 'runtime',
+  },
+  {
+    name: 'dotenvFilesDeep',
+    command: DOTENV_PROBE,
+    doc: "Each `.env` file under the task's directory, name and bytes",
+    field: 'runtime',
+  },
+]
+
+function nameProbes(projects: readonly TurboMappedProject[]): {
+  named: Probe[]
+  usedBy: Map<string, Set<string>>
+} {
+  const named: Probe[] = []
+  const rootGlobs: Probe[] = []
+  const usedBy = new Map<string, Set<string>>()
+  const probeFor = (v: unknown): Probe | undefined => {
+    const known = PROBES.find((x) => x.command === v) ?? rootGlobs.find((x) => x.command === v)
+    if (known !== undefined || typeof v !== 'string' || !v.startsWith(DOTENV_GLOBS_HEAD))
+      return known
+    // Each root `.env` glob set is its own line; the globals' is the one most share.
+    const probe: Probe = {
+      name: `dotenvRootFiles${rootGlobs.length === 0 ? '' : rootGlobs.length + 1}`,
+      command: v,
+      doc: "The `.env` files the workspace's root globs name, name and bytes",
+      field: 'workspaceRuntime',
+    }
+    rootGlobs.push(probe)
+    return probe
+  }
+  for (const p of projects)
+    for (const t of p.tasks) {
+      const inputs = (t.task?.['cache'] as { inputs?: Record<string, unknown> } | undefined)?.inputs
+      for (const field of ['runtime', 'workspaceRuntime']) {
+        const list = inputs?.[field]
+        if (!Array.isArray(list)) continue
+        list.forEach((v, i) => {
+          const probe = probeFor(v)
+          if (probe === undefined) return
+          list[i] = { raw: probe.name }
+          if (!named.includes(probe)) named.push(probe)
+          let used = usedBy.get(p.name)
+          if (used === undefined) usedBy.set(p.name, (used = new Set()))
+          used.add(probe.name)
+        })
+      }
+    }
+  const order = [...PROBES, ...rootGlobs]
+  return { named: named.sort((a, b) => order.indexOf(a) - order.indexOf(b)), usedBy }
+}
+
 function renderPreset(
   inputs: string[],
   env: string[],
   pass: string[],
   shared: readonly SharedList[],
+  probes: readonly Probe[],
 ): string {
   // Escape each entry via the shared `quote()` — a turbo.json global (a file
   // glob, or an env name a user hand-wrote) may contain a `'`/`\`/newline that
@@ -279,6 +356,15 @@ function renderPreset(
       `// turbo.json's \`${l.task}\` env: hashed and passed where a config spreads it.`,
       `export const ${l.name} = ${arr([...l.values])}`,
     )
+  for (const probe of probes) {
+    lines.push(
+      '',
+      `// ${probe.doc}. Turbo hashes`,
+      "// `.env` files although git ignores them, and a glob over git's files",
+      `// sees none: cache.inputs.${probe.field} keys them.`,
+      `export const ${probe.name} = ${quote(probe.command)}`,
+    )
+  }
   lines.push('')
   return lines.join('\n')
 }

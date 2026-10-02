@@ -122,10 +122,6 @@ const drain = async (body: AsyncIterable<Uint8Array>): Promise<void> => {
   }
 }
 
-const WIN32 = process.platform === 'win32'
-// A Windows link target may be spelled with either separator.
-const LINK_SEP = WIN32 ? /[\\/]/ : '/'
-
 /**
  * Sidecar shape. `files` maps an entry name to `[mode, mtimeMs]` — a
  * pair, not an object, because the sidecar is real entropy inside an
@@ -271,9 +267,7 @@ export async function planArtifact(args: PackArgs): Promise<ArtifactPlan> {
           `output ${shown} is not a regular file (a symlink to a directory?): vx stores regular files only — emit a file there, or narrow cache.outputs.files to the files the task produces, or take it back with a '!' entry`,
         )
       }
-      // Windows reports 0o666 (0o444 read-only) and never an exec bit: a
-      // Linux restore of that would be world-writable.
-      const mode = WIN32 ? 0o644 : st.mode & 0o777
+      const mode = st.mode & 0o777
       meta.files[name] = [mode, Math.floor(st.mtimeMs)]
       return {
         name,
@@ -788,9 +782,7 @@ class Extractor {
     let n = 0
     for (const s of this.staged) {
       const [mode, mtimeMs] = metaFor(s.name)
-      // Windows has no mode bits: chmod there only sets the read-only
-      // attribute, and a read-only restore refuses the next rename over it.
-      if ((mode & 0o777) !== createdMode && !WIN32) chmodSync(s.tmp, mode & 0o777)
+      if ((mode & 0o777) !== createdMode) chmodSync(s.tmp, mode & 0o777)
       if (mtimeMs !== undefined) {
         // A Date, not seconds: Bun reads a negative number of seconds as
         // "now", and a Date before 1970 as itself (Bun 1.4.2).
@@ -904,7 +896,7 @@ async function resolveThrough(p: string): Promise<string> {
       at = path.parse(link).root
       rest = link.slice(at.length)
     }
-    pending.push(...rest.split(LINK_SEP).filter(Boolean).reverse())
+    pending.push(...rest.split('/').filter(Boolean).reverse())
   }
   return at
 }
