@@ -383,6 +383,20 @@ describe('the strict-output-ownership post names what the wipe never touches', (
   })
 })
 
+describe('the Nx tables mark projects: "dependencies" deprecated', () => {
+  // Nx 23.2.1 runs a dependsOn of `{ projects: "dependencies" }` and warns
+  // "This is deprecated and will be removed in Nx v24" (J-113).
+  it('comparison.md and parity.md say so', () => {
+    const docs = path.resolve(import.meta.dir, '..', 'docs')
+    expect(readFileSync(path.join(docs, 'comparison.md'), 'utf8')).toContain(
+      '`^lint` (`{projects:"dependencies"}` deprecated)',
+    )
+    expect(readFileSync(path.join(docs, 'parity.md'), 'utf8')).toContain(
+      '`"dependsOn": ["^build"]` (`{ projects: "dependencies" }` deprecated)',
+    )
+  })
+})
+
 describe('the why pages name every component kind the key records', () => {
   const src = readFileSync(
     path.resolve(import.meta.dir, '..', 'src', 'cache', 'key-fold.ts'),
