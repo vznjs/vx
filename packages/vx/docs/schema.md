@@ -1067,9 +1067,15 @@ platforms `<dir>/**` and `<dir>/**/*` collapse to `<dir>`, so
 glob keeps its subtree (`.*.tmp/**` covers what is inside each match).
 Unlike a task glob, a grant keeps `Bun.Glob`'s brackets: `[id]` is a
 class, so a Next.js route is granted escaped, `read: ['pages/\\[id\\].tsx']`.
-On Linux a WRITE path holding a bracket cannot be mounted (the runtime
-drops it): vx says so once, names the directory above it to grant
-instead, and a write under it is refused and reported.
+On Linux a WRITE path holding a bracket, `*` or `?` cannot be mounted
+(the runtime drops it): vx says so once, names the directory above it to
+grant instead, and a write under it is refused and reported. A READ path
+whose name holds `*` or `?` (granted escaped, `a\\*b.txt`) cannot be
+granted alone either — the runtime would grant its siblings too — so vx
+leaves it out, says so once, and a read of it is refused and reported.
+A Linux grant of either kind holding a backslash is left out the same
+way: Bun's `realpath` refuses such a path, and the runtime mounts none
+it cannot resolve.
 
 A Linux WRITE grant that matches nothing when the task starts therefore
 mounts nothing. Where a read grant mounts its directory, the task's first
@@ -1200,11 +1206,14 @@ Inside a write grant, a file named like a shell or tool config
 to the task, down to three levels below the workspace root, ignored by
 git or not.
 
-**No bracket in the project's path.** The runtime reads a path holding
-`[` or `]` as a pattern: on Linux it mounts no write path that does, and
-macOS's rules compile it as a character class. So a sandboxed task in a
-project under such a directory (`~/[old]/repo`) is refused, naming it:
-rename the directory or drop `exec.sandbox`.
+**No `[`, `]`, `*` or `?` in the project's path.** The runtime reads a
+path holding one as a pattern: on Linux it mounts no write path that
+does and a read grant matches its siblings, and macOS's rules compile it
+as a pattern too. So a sandboxed task in a project under such a directory
+(`~/[old]/repo`, `~/w*s/repo`) is refused, naming it: rename the
+directory or drop `exec.sandbox`. On Linux so is a project under a
+directory holding a backslash, which the runtime cannot mount at all (its
+task saw no project and ran in `$HOME`).
 
 **macOS cannot nest.** `sandbox_apply` is refused inside a sandboxed
 process, so a task that itself sandboxes something (vx's own test suite)
@@ -1628,7 +1637,7 @@ lists the messages a user meets most:
 | `<level> has field "<key>", which vx <version> removed — use <replacement>`                                       | A field an earlier release accepted (`exec.resources`, removed in 0.0.19). The message names what replaced it (`design/versioning-1.0.md` § Deprecation).                                                                      |
 | `<level> must be an object (fields: <fields>), not an array`                                                      | An array where an object goes — `outputs: ['dist/**']` (Turbo's spelling) is `outputs: { files: ['dist/**'] }`, and the message says so.                                                                                       |
 | `cannot find '<name>' — no node_modules above the config provides it; install the workspace's dependencies first` | A bare import nothing installed serves — a fresh clone before its install, or a typo. Refused before the config is evaluated, so Bun never auto-installs it from the registry (it would, when no `node_modules` exists above). |
-| `tasks.<name> must be an object`                                                                                  | The task value is null / a string / etc.                                                                                                                                                                                       |
+| `tasks.<name> must be an object`                                                                                  | The task value is null / a string / etc.; a string (package.json's `name: 'command'`) adds the `{ exec: { command } }` it goes in.                                                                                             |
 | `exec must be an object with a command string`                                                                    | `exec` is malformed.                                                                                                                                                                                                           |
 | `exec.command must be a non-empty string`                                                                         | Forgot `command`, or an empty or whitespace-only string.                                                                                                                                                                       |
 | `exec.command holds a NUL, which no command line can carry`                                                       | A `\0` in the command (a template slip); the spawn refused it as exit 127, "not on this task's PATH", with the NUL printed as a space.                                                                                         |
@@ -1674,7 +1683,9 @@ on the task names vx's home for it instead (D-37): Turbo's `outputs`,
 `inputs`, `env`, `passThroughEnv`, `persistent`, `outputLogs`, `interactive`
 and `with`, Nx's target `executor`, `options`, `continuous` (D-49), `cwd`,
 `parallelism` and `configurations` (D-89), and a `command`
-(`cmd`, `script`) on the task or `cmd` on `exec`. So `outputs` on a task
+(`cmd`, `script`) on the task or `cmd` on `exec`, and on `exec` Nx
+run-commands' `cwd`, `args`, `commands`, `parallel`, `shell` and
+`interactive` (D-100). So `outputs` on a task
 ends `— vx spells it cache.outputs.files` in code quotes. A `cache` that
 is no object (Turbo's `cache: false`) and a `persistent` that is none
 (`true`) name the shape to write.

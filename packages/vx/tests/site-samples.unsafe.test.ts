@@ -213,8 +213,6 @@ describe("the README's comparison agrees with comparison.md on Turbo's daemon", 
     )
     const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
     expect(bench.replace(/\s+/g, ' ')).toContain('(it uses none for `turbo run` since 2.8.11)')
-    const post = readFileSync(path.join(DOCS, 'blog', 'honest-benchmarks.md'), 'utf8')
-    expect(post.replace(/\s+/g, ' ')).toContain('(deprecated there since 2.8.11)')
   })
 })
 
@@ -683,25 +681,13 @@ describe('the honest-benchmarks post quotes the benchmarks page', () => {
       '1m 13s',
       '114m 06s',
       '67ms',
-      '40.6 s',
-      '45.5 s',
-      '66 ms',
-      '127 ms',
-      '51 ms',
-      '95 ms',
-      '53.6 s',
-      '58.2 s',
-      '80 ms',
-      '166 ms',
-      '59 ms',
-      '93 ms',
     ]) {
       expect(page).toContain(figure)
       expect(bench).toContain(figure)
     }
   })
   it('the runners it names are the versions the benchmarks page ran', () => {
-    for (const version of ['Turbo 2.10.12', 'Nx 23.2.0', 'Turbo 2.10.10']) {
+    for (const version of ['Turbo 2.10.12', 'Nx 23.2.0']) {
       expect(page).toContain(version)
       expect(bench).toContain(version)
     }

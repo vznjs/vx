@@ -2,8 +2,8 @@
 
 Everything for adopting [`@vzn/vx`](https://github.com/vznjs/vx) from Turborepo or Nx, in one package with zero dependencies:
 
-- **`turbo()`** — run a Turbo repository under vx with nothing written. The plugin fills vx's `project` stage from `turbo.json` and each package's `package.json` scripts. A trial that commits nothing.
-- **`nx()`** — run an Nx repository under vx with nothing written: the same stage, filled from Nx's resolved project graph. Executor targets (`@nx/js:tsc`, `@nx/vite:build`, your own) run as themselves through **`nx-exec`**, one executor per process.
+- **`turbo()`** — a temporary start for a Turbo repository: the plugin fills vx's `project` stage from `turbo.json` and each package's `package.json` scripts until the migrator writes native config.
+- **`nx()`** — the same temporary start for an Nx repository, filled from Nx's resolved project graph. Executor targets (`@nx/js:tsc`, `@nx/vite:build`, your own) run as themselves through **`nx-exec`**, one executor per process.
 - **`bunx @vzn/vx-migrate`** — write one `vx.config.ts` per workspace package from your `turbo.json`, or an exported Nx project graph, plus the workspace file every run needs. Runs without a workspace file, so it is the first command, not the second.
 - **`turboCache()`** and **`nxCache()`** — keep the remote cache you have: any server speaking Turbo's `/v8/artifacts` API (Vercel's hosted cache included) or Nx's self-hosted `/v1/cache` spec.
 
@@ -16,14 +16,14 @@ declares `turbo()` or `nx()` and prints the install-and-run line. Add
 `turboCache()` or `nxCache()` to keep your remote cache:
 
 ```ts
-// vx.workspace.ts — a Turbo repo, unchanged, with its remote cache
+// vx.workspace.ts — a Turbo repo mid-migration, with its remote cache
 import { defineWorkspace } from '@vzn/vx/config'
 import { turbo, turboCache } from '@vzn/vx-migrate'
 
 export default defineWorkspace({ plugins: [turboCache(), turbo()] })
 ```
 
-## `turbo()` — run a Turbo repo unchanged
+## `turbo()` — a Turbo repo, mid-migration
 
 Then `vx run build --all` runs every package's `build` script the way `turbo run build` would: `dependsOn` edges (`^build`, same-package deps, `pkg#task`), `inputs` / `outputs` as the cache block, `env` / `passThroughEnv`, `cache: false`, `persistent`. Turbo's global fields (`globalDependencies`, `globalEnv`, `globalPassThroughEnv`, Turbo 1's `globalDotEnv`) are inlined into every task; a `*` env name (`NEXT_PUBLIC_*`) expands over the run's environment, as Turbo matches it; `*` is Turbo's only wildcard (`\*`, a leading `\!`, `?` and `[` are literal), and a literal vx cannot key (unkey's `NEXT_PUBLIC_\*`) is left out, reported once only when the run's environment sets it; per-package `turbo.json` overlays apply. A `turbo.jsonc` (Turbo 2.5+) is read wherever a `turbo.json` would be, at the root and in a package; a workspace root with neither is refused, naming the fix. Turbo 2's framework inference (a package on `next` has `NEXT_PUBLIC_*` and `NEXT_DEPLOYMENT_ID` hashed and passed; Turbo's whole table, `expo`, `nuxt`, `remix`, `@sveltejs/kit` and the rest, each package taking the first framework it matches, as Turbo does, and leaving out names under the platform's `TURBO_CI_VENDOR_ENV_KEY`) applies too: the prefix expands over the run's environment into that package's tasks, and a task's `!` entry takes names back (`bunx @vzn/vx-migrate`, which writes files for another environment, names each framework and its packages in a note instead). What runs is what a migration would have written, minus the file: the key a task derives here equals the key the written config would derive.
 
@@ -72,10 +72,10 @@ Rules:
 - Turbo 2.11's `global` block (`futureFlags.globalConfiguration`) is read as the `globalDependencies`, `globalEnv` and `globalPassThroughEnv` it replaces.
 - An unknown Turbo key is a todo naming it; `extends` is accepted and ignored (the overlay order above is what it means).
 
-## `nx()` — run an Nx repo unchanged
+## `nx()` — an Nx repo, mid-migration
 
 ```ts
-// vx.workspace.ts — an Nx repo, unchanged
+// vx.workspace.ts — an Nx repo, mid-migration
 import { defineWorkspace } from '@vzn/vx/config'
 import { nx } from '@vzn/vx-migrate'
 
@@ -96,6 +96,7 @@ Nx's own option handling, rendered as one POSIX `sh` line (`vx show` prints it):
 - **Where:** the workspace root unless `cwd` says otherwise — a `cd` from the project dir, since vx has no per-task cwd — with `{projectRoot}`, `{projectName}` and `{workspaceRoot}` expanded.
 - **How:** each command runs in a shell of its own. `commands` run in **parallel** unless `parallel: false` (Nx's default): all start at once, the first failure TERMs the rest and fails the task once they have exited (exit 1, as Nx), and the task succeeds once every command has (nx#28477). With `parallel: false` they run in order and the first failure stops the rest. `commands: []` is a no-op that succeeds (nx#31345).
 - **Arguments:** every option run-commands does not consume is appended to each command as `--name=value`, then `args`, then whatever follows `vx run … --` — per command unless `forwardAllArgs` is false (nx#12165). `{args}` takes them in place; `{args.name}` is the value passed after `vx run … --` under that name, else the target's options and `args`, spliced in as text as Nx splices it.
+- **An argument replaces its option:** an option the arguments after `vx run … --` name (`--region=us`, `--region us`, `--no-region`, `-r` for a one-letter option; no camel-case expansion) is not appended, as Nx drops it; the line decides once it has them. `tests/nx-run-commands-override-live.test.ts` holds it to `nx run`.
 - **Environment:** `env` is `exec.env.define` (so it is in the key), and `color: true` sets `FORCE_COLOR=true`, as Nx does (nx#20465). `envFile` is loaded after the task's `.env` files (below), a name they already set winning, as in Nx (nx#23581).
 - **`readyWhen`** makes the task persistent with that string as its `readyWhen`, so dependents start once it is printed; several strings, all of which Nx waits for, are one pattern here that matches the first (a todo).
 - **Reported, not reproduced:** per-command `prefix` / `color` decoration, `streamOutput: false`. Display-only options (`usePty`, `tty`, `verbose`) change nothing here: vx runs every task without a pseudo-terminal.
@@ -173,7 +174,7 @@ bunx @vzn/vx-migrate --help    # the usage, exit 0
 
 ### Turbo
 
-Reads the root pipeline (`tasks` in Turbo 2, `pipeline` in Turbo 1), per-package `turbo.json` `extends` overlays and each package's scripts, through the same mapper `turbo()` runs live — so a repo reads the same whether you migrate it or run it as it is. Turbo's global fields become a generated root `vx-preset.ts` each config imports and spreads: TypeScript composition replaces global config. Turbo's `//#` root tasks are written to a `vx.config.ts` at the workspace root, which makes the root a project (core's D-39), and a package task's `//#x` edge reaches it.
+Reads the root pipeline (`tasks` in Turbo 2, `pipeline` in Turbo 1), per-package `turbo.json` `extends` overlays and each package's scripts, through the same mapper `turbo()` runs live — so the written configs say what the plugin was doing. Turbo's global fields become a generated root `vx-preset.ts` each config imports and spreads: TypeScript composition replaces global config. So does a task's `env` that several configs share (`buildEnv`), where inline it would repeat in every package (vercel/ai: 63 names, twice in each of ~100 configs, half the output). Turbo's `//#` root tasks are written to a `vx.config.ts` at the workspace root, which makes the root a project (core's D-39), and a package task's `//#x` edge reaches it.
 
 | Turborepo                           | vx                                                                                                |
 | ----------------------------------- | ------------------------------------------------------------------------------------------------- |
@@ -186,7 +187,7 @@ Reads the root pipeline (`tasks` in Turbo 2, `pipeline` in Turbo 1), per-package
 
 ### Nx
 
-Reads the **resolved** project graph only (`.nx/workspace-data/project-graph.json` when exported, else the one the workspace's own `nx graph` exports into a temp file, as `nx()` does), through the same mapper `nx()` runs live — so a repo reads the same whether you migrate it or run it as it is. Targets Nx plugins infer at runtime are frozen as the snapshot saw them. `nx:run-commands` is the one shell line `nx()` runs (see [`nx:run-commands`](#nxrun-commands) above: where, parallel or in order, forwarded arguments, `env`, `readyWhen`) — storybook's `compile` is `cd ../../.. && node ./scripts/build/build-package.ts --cwd code/lib/cli`; a plain `command` is that shorthand; `nx:run-script` is the package's script body with its `pre<name>` / `post<name>` hooks folded in (or `yarn run <name>` when the body calls yarn's `run` builtin; an empty script is the placeholder with a todo), `nx:noop` is a group task; **every other executor is an `nx-exec` line** carrying the executor and its resolved options, no TODO — keep `nx` and `@vzn/vx-migrate` installed for as long as a config runs one, and replace the line with the bare command (`vite build`, `tsc -p …`) when the target leaves Nx. A target with `configurations` writes one task per configuration (`build`, `build:ci`). Named inputs expand from `nx.json` when readable. An output path is kept as written, a `!` one too (`{projectRoot}/dist` → `dist`, `{projectRoot}/bin/tool` → `bin/tool`; one naming an unset `{options.x}` is dropped, as Nx drops it; a dotted `{options.outputPath.base}` walks the options, as Nx does): vx reads a bare path as the file or the whole tree under it, so a directory and an extensionless binary both save and restore. nx.json's `parallel`, `defaultBase` and `maxCacheSize`, which `nx()` applies live, are each a note naming the `vx.workspace.ts` field to add (`concurrency`, `affectedBase`, `cacheRetention.maxSize`): the workspace file is written without them, and from nx.json alone, never the environment. vx derives package edges from `package.json`; an Nx graph edge with no manifest path (`implicitDependencies`, a tsconfig path) becomes, for each `^target` of the dependant, an explicit `pkg#target` edge to what Nx's own walk reaches — each dependency that has the target, and through one that lacks it, its dependencies — so the order and the key are Nx's.
+Reads the **resolved** project graph only (`.nx/workspace-data/project-graph.json` when exported, else the one the workspace's own `nx graph` exports into a temp file, as `nx()` does), through the same mapper `nx()` runs live — so the written configs say what the plugin was doing. Targets Nx plugins infer at runtime are frozen as the snapshot saw them. `nx:run-commands` is the one shell line `nx()` runs (see [`nx:run-commands`](#nxrun-commands) above: where, parallel or in order, forwarded arguments, `env`, `readyWhen`) — storybook's `compile` is `cd ../../.. && node ./scripts/build/build-package.ts --cwd code/lib/cli`; a plain `command` is that shorthand; `nx:run-script` is the package's script body with its `pre<name>` / `post<name>` hooks folded in (or `yarn run <name>` when the body calls yarn's `run` builtin; an empty script is the placeholder with a todo), `nx:noop` is a group task; **every other executor is an `nx-exec` line** carrying the executor and its resolved options, no TODO — keep `nx` and `@vzn/vx-migrate` installed for as long as a config runs one, and replace the line with the bare command (`vite build`, `tsc -p …`) when the target leaves Nx. A target with `configurations` writes one task per configuration (`build`, `build:ci`). Named inputs expand from `nx.json` when readable. An output path is kept as written, a `!` one too (`{projectRoot}/dist` → `dist`, `{projectRoot}/bin/tool` → `bin/tool`; one naming an unset `{options.x}` is dropped, as Nx drops it; a dotted `{options.outputPath.base}` walks the options, as Nx does): vx reads a bare path as the file or the whole tree under it, so a directory and an extensionless binary both save and restore. nx.json's `parallel`, `defaultBase` and `maxCacheSize`, which `nx()` applies live, are each a note naming the `vx.workspace.ts` field to add (`concurrency`, `affectedBase`, `cacheRetention.maxSize`): the workspace file is written without them, and from nx.json alone, never the environment. vx derives package edges from `package.json`; an Nx graph edge with no manifest path (`implicitDependencies`, a tsconfig path) becomes, for each `^target` of the dependant, an explicit `pkg#target` edge to what Nx's own walk reaches — each dependency that has the target, and through one that lacks it, its dependencies — so the order and the key are Nx's.
 
 ## `turboCache()` — a Turbo remote cache
 

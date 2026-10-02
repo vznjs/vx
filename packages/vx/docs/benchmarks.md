@@ -15,6 +15,13 @@ what fails loudly on a stale lock (a `--frozen` run trusts it, owner
 2026-06-13, `docs/design/config-lock-2026-06.md`); only a project the
 lock lacks fails the frozen run itself.
 
+Only the native-config runs (each runner on the same graph from its own
+config: the stress run, the head-to-heads, the scaling table) measure
+vx. Every real-repo section below ran vx through `turbo()` or `nx()` on
+the repo's own `turbo.json` or Nx graph: a migration bridge, kept here
+as a record, not a claim (owner, 2026-10-02). Those repos are to be
+rerun on the native config `bunx @vzn/vx-migrate` writes.
+
 ## Warm-run overhead (2026-09-02)
 
 The number that matters most to a developer is the warm no-op run: every

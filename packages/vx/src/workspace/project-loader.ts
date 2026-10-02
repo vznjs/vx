@@ -297,7 +297,7 @@ export interface LoadProjectConfigOptions {
  * order given, so a failure names the first broken file the way a
  * one-by-one load did). A single-path load is the one-element case.
  */
-const LOAD_WIDTH = 64
+const LOAD_WIDTH = 128
 
 export async function loadProjectConfigs(
   configPaths: readonly string[],
@@ -462,7 +462,9 @@ export async function loadProjectConfigs(
   try {
     // Loaded LOAD_WIDTH at a time: one import after another put 1,000 cold
     // configs at ~160 ms of imports where 64 at once take ~60 (D-68), and
-    // the width bounds the files a module load may hold open. A failure
+    // 128 took `load configs` from 432 to 411 ms more; the width bounds the
+    // files a module load may hold open, so it stays under macOS's default
+    // 256-descriptor limit. A failure
     // stops nothing (the rest are evaluated and stored for the next
     // attempt); the error thrown is the first in order, as the serial
     // loop's was.
