@@ -223,6 +223,11 @@ order. One project of 4,000 tasks with outputs built its graph in
   returns the rest as `keyOnly` with the edges each task lost
 - `excludeDependencies(nodes, [...])` drops named edges only
 
+`tests/exclude-dependencies-properties.test.ts` holds both forms over
+2,000 seeded random graphs: every order between two tasks still
+scheduled survives (item 1019), a direct edge to a task still scheduled
+stays a real one (item 980), and no edge names a task that left (C-71).
+
 `tests/output-collision.test.ts` covers the overlapping-output refusal:
 what is refused, the spellings that name one path (`./dist/**` against
 `dist/**`), the literal that is a whole tree (`dist` against
