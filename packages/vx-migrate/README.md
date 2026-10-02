@@ -106,6 +106,10 @@ Nx's own option handling, rendered as one POSIX `sh` line (`vx show` prints it):
 
 Nx loads a task's `.env` files into its environment — the project's before the workspace root's, the most specific name first (`.env.build.production.local`, `.env.build.production`, …, `.env.local`, `.local.env`, `.env`), the first to define a name winning and the environment winning over every file — unless `NX_LOAD_DOT_ENV_FILES=false`. `nx()` finds the ones that exist from one listing of each project dir per run (about 4 ms at 1,000 projects) and the task loads them when it runs, with Nx's own parser: a shell line runs under `nx-env --dotenv <file>… --`, an executor line passes `--dotenv <file>` to `nx-exec`. Their values never enter a config, so a `.env.local` secret is not in `vx show`, `vx-lock.json` or a migrated `vx.config.ts`. A cached task keys on their bytes through a `cache.inputs.runtime` probe (`for f in …; do echo "$f"; cat -- "$f"; …`), which sees a gitignored file a glob would not; a file added or removed changes the command, and so the key, on the next run. `tests/nx-exec-live.test.ts` compares what the line sees with what `nx run` gives the same target.
 
+### The target a task sees
+
+Every task gets `NX_TASK_TARGET_PROJECT`, `NX_TASK_TARGET_TARGET` and, where it runs a configuration, `NX_TASK_TARGET_CONFIGURATION` in `exec.env.define`, as Nx hands them to every task; a run-commands `env` wins. A package script's `nx exec -- <cmd>` reads them: without them it starts Nx's own task runner, which runs the target and its dependencies again.
+
 ### nx.json `parallel`
 
 `parallel` (or the legacy `tasksRunnerOptions.default.options.parallel`) is the run's `concurrency` when `vx.workspace.ts` sets none: a repo that set `1` for a shared resource ran on every core under vx before.

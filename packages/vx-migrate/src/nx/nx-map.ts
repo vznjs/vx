@@ -697,8 +697,19 @@ function buildTask(
   const exec: Record<string, unknown> = { command: mapped.command }
   const env: Record<string, unknown> = {}
   if (inputs.envNames.length > 0) env.passThrough = inputs.envNames
-  if (Object.keys(mapped.env).length > 0) env.define = mapped.env
-  if (Object.keys(env).length > 0) exec.env = env
+  // Nx hands every task its target (`getNxEnvVariablesForTask`), and
+  // `nx exec -- <cmd>`, a package script's way to run under Nx, reads it:
+  // unset, it booted Nx's own task runner, which ran the target and its
+  // dependencies again. A run-commands `env` still wins, as in Nx.
+  env.define = {
+    NX_TASK_TARGET_PROJECT: projectName,
+    NX_TASK_TARGET_TARGET: targetName,
+    ...(variant.configuration === undefined
+      ? {}
+      : { NX_TASK_TARGET_CONFIGURATION: variant.configuration }),
+    ...mapped.env,
+  }
+  exec.env = env
   if (readyWhen !== undefined) {
     exec.persistent = { readyWhen }
   } else if (persistent) {

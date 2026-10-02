@@ -7,6 +7,11 @@
   `splitInputsIntoSelfAndDependencies` still reads them; taken as project
   names, each was a todo and its input dropped (a dependency or own edit
   re-keyed nothing).
+- **P-5** `nx()`: every task gets `NX_TASK_TARGET_PROJECT`,
+  `NX_TASK_TARGET_TARGET` and `NX_TASK_TARGET_CONFIGURATION`, as Nx's
+  `getNxEnvVariablesForTask` sets them. A package script's
+  `nx exec -- <cmd>` found them unset and booted Nx's task runner, which
+  ran the target and its dependencies a second time.
 
 ## Notes
 
