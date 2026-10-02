@@ -332,10 +332,10 @@ describe('mapNxDeps', () => {
   })
 
   // Nx's `splitTargetFromNodes` (nx 23.3): this project's own target ranks
-  // first, then the named project's longest target. `ui:build:esm` read as
-  // `build` in configuration `esm` reached ui's `build`; `ui:pack:esm`,
-  // with no `pack` on ui, dropped the edge. CONTROL: `ui:build:ci` with no
-  // `build:ci` target is still `build` in configuration `ci`.
+  // first, then the named project's whole target name. `ui:build:esm` read
+  // as `build` in configuration `esm` reached ui's `build`; `ui:pack:esm`,
+  // with no `pack` on ui, dropped the edge. `ui:build:ci`, with no
+  // `build:ci` target, is no edge in Nx: a colon names no configuration.
   it('a colon target: own first, then the named project’s whole target name', () => {
     const todos: string[] = []
     const got = mapNxDeps(
@@ -346,10 +346,7 @@ describe('mapNxDeps', () => {
       (p, t) => p === 'ui' && ['build', 'build:esm', 'pack:esm', 'lint'].includes(t),
       todos,
     )
-    expect([got, todos]).toEqual([
-      ['@acme/ui#build:esm', '@acme/ui#pack:esm', 'ui:lint', '@acme/ui#build:ci'],
-      [],
-    ])
+    expect([got, todos]).toEqual([['@acme/ui#build:esm', '@acme/ui#pack:esm', 'ui:lint'], []])
   })
 
   it('object forms: self, a named project by its package name, and the ones vx cannot take', () => {
@@ -466,16 +463,16 @@ describe('Nx glob grammar in inputs', () => {
     const got = inputs([
       '{projectRoot}/+(a|b).ts',
       '!{projectRoot}/!(a).ts',
-      '{projectRoot}/[a-z].ts',
-      '{projectRoot}/[!a].ts',
+      '{projectRoot}/[a-Z].ts',
+      '!{projectRoot}/[!a].ts',
     ])
     expect([got.files, got.todos]).toEqual([
       [],
       [
         'input "{projectRoot}/+(a|b).ts": glob syntax vx cannot take — map manually',
         'input "!{projectRoot}/!(a).ts": glob syntax vx cannot take — map manually',
-        'input "{projectRoot}/[a-z].ts": glob syntax vx cannot take — map manually',
-        'input "{projectRoot}/[!a].ts": glob syntax vx cannot take — map manually',
+        'input "{projectRoot}/[a-Z].ts": glob syntax vx cannot take — map manually',
+        'input "!{projectRoot}/[!a].ts": glob syntax vx cannot take — map manually',
       ],
     ])
   })

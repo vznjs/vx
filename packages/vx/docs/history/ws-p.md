@@ -26,6 +26,15 @@
   hashed from disk, gitignored or missing) is read by a workspace-root
   probe when it names one path, and is a todo when it is a glob. Mapped
   as a plain glob, a gitignored literal failed the task before it ran.
+- **P-7** `nx()`: a `dependsOn` entry's `options: "forward"`, which Nx's
+  `createTaskOverrides` turns into the dependency's overrides, is a todo
+  when the target has options to forward. It was dropped without a word,
+  and the dependency ran with its own options.
+- **P-9** `nx()`: a `dependsOn` string's part after `project:` is one
+  target name, as Nx's `readProjectAndTargetFromTargetString` joins it:
+  `ui:build:ci` names target `build:ci` and is no edge where ui lacks it.
+  vx read the last segment as a configuration and drew an edge to that
+  configuration's task (or to `build`, with a todo) that Nx never draws.
 
 ## Notes
 
