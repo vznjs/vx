@@ -89,7 +89,8 @@ The value, of 6 characters or more, of a variable whose name holds
 `TOKEN`, `SECRET`, `KEY`, `PASSWORD`, `PASSWD` or `CREDENTIAL` (not one
 ending `_FILE`, `_PATH` or `_DIR`, nor `GIT_CONFIG_KEY_<n>`), or that a
 task lists in `exec.env.secret`, is printed as `***` wherever vx shows, stores or
-exports it: task output, the stdout a hit replays, commands, telemetry,
+exports it: task output, the stdout a hit replays, commands, an
+executor's error, telemetry,
 `vx show` and `vx mcp`'s `listTasks` (L-26). Values in the run history are digests under a per-store
 salt, and what follows `--` on the command line reaches telemetry as a
 count, not a quote. A remote executor (`@vzn/vx-reapi`) receives a

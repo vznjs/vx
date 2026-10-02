@@ -281,6 +281,15 @@ files and their git objects; 11.1 s for the row and its hooks. The row
 11 ms after, under the same load. No other row of the suites makes a
 fixture past 1,500 files.
 
+M-25. `watch-rules.test.ts` › fsClockNow — a write made right after it
+is never "modified before" it timed out at 5 s on macOS CI (run
+36794690005). The row samples 2,000 writes at five syscalls each: 0.36 s
+here, 2.3 s under `strace -f`, past 5 s with load beside that (all
+twelve shards under strace beside four busy loops), the shape a slow
+sandbox gives every syscall. It now samples 2,000 writes or as many as
+2 s holds, at least 100. With 400 µs injected per file syscall
+(`strace -e inject=…:delay_enter=400`) the old row fails (6.8 s), the
+new passes (2.2 s).
 M-26. M-25's sweep (all twelve shards under `strace -f` beside four busy
 loops) also timed out `foreign-flags.test.ts` › a Turbo or Nx verb names
 what does it in vx: 22 `vx` starts in series, 1.6 s idle and past bun's
@@ -373,6 +382,26 @@ between them, green); both glob rows 6 of 6 beside eight busy loops.
 Which `until` timed out was not recorded. `task-glob-brackets.test.ts` ›
 an upstream's hit sets aside the route (F's macOS lead) is M-4 and M-5.
 
+M-32. `runner.test.ts` › a readyWhen timeout sends SIGTERM first, and
+SIGKILL to what ignores it: red on a docs-only PR's CI (run 37052235753,
+`signalCode` null). The row read `child.signalCode` right after
+`waitForDead`, which answers from the kernel (a zombie is dead); Bun sets
+`signalCode` only when it reaps the child on its loop. A SIGKILLed
+`sleep` read null there 4 times in 50, and SIGKILL 50 of 50 after
+`exited`. The row now reads it after `exited`, bounded at 3 s; the only
+site of the pattern.
+
+M-33. `vx-reapi` `executor-sweep.test.ts` › the run stopping cancels the
+Execute stream: found by a scan for fixed sleeps before an assertion,
+not by a failure on record. The row stopped the run on a 200 ms timer
+and read the server's cancel count 50 ms after; beside twelve busy
+loops it failed 6 of 20 with `executes` 0 (the stop came before the
+Execute was sent, so nothing was there to cancel). The fake's
+`onExecute` now stops the run once it holds the call, the cancel count
+is polled as its sibling rows do, and the unheard-stop bound is 5 s:
+0 of 20 under the same load. The same scan's other timer-aborted rows
+(`vx-github` 502 wait, `vx-otel` 503 wait) were 0 of 20 there.
+
 ## Leads for other streams
 
 - A: A-20 let a same-project dependant restore ahead of a producer whose
@@ -386,7 +415,10 @@ an upstream's hit sets aside the route (F's macOS lead) is M-4 and M-5.
   that does not touch the launcher). The launcher exited 130 and the fake
   binary's INT trap never wrote `heard` (ENOENT). Once in the survey; cause
   unproven. The forward is gated on `inForeground()`, which reads `ps` on
-  macOS.
+  macOS. Twice more on main's macOS job (runs 36767290231, 36785326912,
+  2026-09-30), both before the launcher moved to CommonJS and `execve`
+  (#1979, #1981, 2026-10-01); none in the CI runs surveyed after them
+  (2026-10-01 06:00 to 2026-10-02 15:30).
 - B (done, M-14): `keep-alive.test.ts` › a kill -9 in the persistent shutdown's grace
   takes the server a dead shell left. The server writes `late.txt` 1 s
   after its SIGTERM mark, a timed fuse, and the row's kill comes after
