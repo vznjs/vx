@@ -141,7 +141,7 @@ export async function loadCliProjects(
       projectMetas: metas,
       seeds: scope,
       closure: false,
-      lock,
+      lock: lock === null ? null : async () => lock,
       evalCache:
         cache === null
           ? undefined

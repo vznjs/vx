@@ -555,7 +555,8 @@ describe('executor capability — end-to-end via run()', () => {
       })
       expect(summary.ok).toBe(false)
       expect(seen).toEqual([
-        'pkg-a#hello: [vx] internal error in pkg-a#hello: pool down\n',
+        // Named as every other hook's throw is (C-63).
+        "pkg-a#hello: [vx] internal error in pkg-a#hello: plugin 'org/down' (executor 'down') failed in execute: pool down\n",
         'done pkg-a#hello',
       ])
     } finally {
