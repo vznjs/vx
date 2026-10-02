@@ -336,6 +336,11 @@ export function refusedWritesOutside(violations, opts: { within; linked?; config
      store's Linux feed is ignored) AND (on Linux) from the strace log
      the spawn wrote,
      then calls `SandboxManager.cleanupAfterCommand()`.
+   - On Linux, a task that declares `allow.network` waits, in front of its
+     command, until SRT's in-sandbox proxy bridges (`socat TCP-LISTEN`
+     on 3128 and 1080, started in the background) listen, read off
+     `/proc/net/tcp{,6}`, at most ~5 s: its first dial met "connection
+     refused" on a loaded box (M-20).
 4. **Filtering.** Enforcement anchors at the workspace root, but only
    denials on a path inside `reportWithin` (the project) or one of
    `reportLinked` (the linked packages a cached task was denied because
