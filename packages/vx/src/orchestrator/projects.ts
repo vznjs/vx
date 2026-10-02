@@ -7,7 +7,7 @@
 import path from 'node:path'
 import type { ProjectConfig } from '../config.js'
 import {
-  frozenProjectConfig,
+  frozenProjectConfigs,
   loadProjectConfigs,
   validateProjectConfig,
   type LoadProjectConfigOptions,
@@ -216,7 +216,7 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
         typeof m.configPath === 'string' && args.staged?.get(m.name) === undefined,
     )
     const loaded = lock
-      ? await Promise.all(withFile.map((m) => frozenProjectConfig(lock, m, workspaceRoot)))
+      ? await frozenProjectConfigs(lock, withFile, workspaceRoot, args.evalCache?.store)
       : await loadProjectConfigs(
           withFile.map((m) => m.configPath),
           args.evalCache !== undefined ? { evalCache: args.evalCache } : {},

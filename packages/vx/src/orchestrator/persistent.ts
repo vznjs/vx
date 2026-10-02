@@ -25,8 +25,8 @@ export interface KeepAlive {
 /**
  * A persistent task the user REQUESTED (or one surfaced for display) is the
  * run's whole purpose — it is left running and blocked on at the very end,
- * after the summary. So is every persistent task a kept one depends on,
- * directly or through groups: `vx run dev --filter app` stopped the api#dev
+ * after the summary. So is every persistent task a requested group stands
+ * for, and every one a kept one depends on, directly or through groups: `vx run dev --filter app` stopped the api#dev
  * its app#dev was started against (C-46). A one-shot's persistent deps are
  * not kept on its account; it has finished with them. Only in the real CLI
  * foreground: a custom logger or `handleSignals: false` (watch mode,
@@ -38,11 +38,15 @@ export function selectKeepAlive(
   foreground: boolean,
 ): KeepAlive {
   const out: KeepAlive = { nodes: [], children: [] }
-  if (!foreground) return out
-  const stack = [...registry.keys()].filter((id) => {
-    const n = nodes.get(id)
-    return n !== undefined && (n.requested || n.surfaced === true)
-  })
+  if (!foreground || registry.size === 0) return out
+  // A requested GROUP is a requested server's stand-in: `vx run app#dev`
+  // over `dev: { dependsOn: ['^dev'] }` started every server and exited 0
+  // at the end of the graph, stopping them all (C-52).
+  const stack: string[] = []
+  for (const [id, n] of nodes) {
+    if (!n.requested && n.surfaced !== true) continue
+    if (registry.has(id) || isGroupTask(n)) stack.push(id)
+  }
   const reached = new Set<string>()
   while (stack.length > 0) {
     const id = stack.pop()!

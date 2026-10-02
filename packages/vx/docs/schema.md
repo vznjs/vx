@@ -25,7 +25,7 @@ tasks.
 ## Project config
 
 ```ts
-import { defineProject } from '@vzn/vx'
+import { defineProject } from '@vzn/vx/config'
 
 export default defineProject({
   tasks: {
@@ -1124,7 +1124,8 @@ task's own exit; no violation is reported.
 **Baseline** (`sandbox: {}`): the task reads nothing in the workspace,
 writes nothing but its own `TMPDIR` and reaches no domain no task of the run lists — not even its own project
 directory, which is why `allow: { read: ['.'] }` is the first line of
-almost every real block. The read wall is the WORKSPACE ROOT: a path
+almost every real block. The task still starts in its own directory, an empty one
+then: a relative read is refused and reported, never resolved elsewhere. The read wall is the WORKSPACE ROOT: a path
 outside it (`~/.cache`, `/etc`, the toolchain) is readable and folds into
 no key, so a task whose output depends on one declares it as a key input
 (`inputs.runtime`, `inputs.env`) — the sandbox does not catch it (item
@@ -1249,7 +1250,7 @@ Loaded from `vx.workspace.{ts,mts,js,mjs}` at the workspace root.
 default.
 
 ```ts
-import { defineWorkspace } from '@vzn/vx'
+import { defineWorkspace } from '@vzn/vx/config'
 import { otel } from '@vzn/vx-otel'
 
 export default defineWorkspace({
@@ -1368,7 +1369,7 @@ machinery by design.
 ## Helpers
 
 ```ts
-import { defineProject, defineWorkspace } from '@vzn/vx'
+import { defineProject, defineWorkspace } from '@vzn/vx/config'
 
 // Identity functions; their purpose is type inference.
 defineProject<T extends ProjectConfig>(config: T): T
@@ -1387,7 +1388,7 @@ type-only form gives the same editor checking for free, and is what
 `vx init` / `@vzn/vx-migrate` write:
 
 ```ts
-import type { ProjectConfig, WorkspaceConfig } from '@vzn/vx'
+import type { ProjectConfig, WorkspaceConfig } from '@vzn/vx/config'
 export default { tasks: { … } } satisfies ProjectConfig
 export default { plugins: [] } satisfies WorkspaceConfig
 ```
@@ -1399,7 +1400,7 @@ strictly worse.
 ## Full example
 
 ```ts
-import { defineProject } from '@vzn/vx'
+import { defineProject } from '@vzn/vx/config'
 
 export default defineProject({
   tasks: {
@@ -1500,7 +1501,7 @@ was deliberately rejected — the language already does this). Plain TS
 arrays:
 
 ```ts
-import { defineProject } from '@vzn/vx'
+import { defineProject } from '@vzn/vx/config'
 
 const srcInputs = ['src/**', 'tsconfig.json']
 
@@ -1524,7 +1525,7 @@ A preset is a TypeScript function that returns a `TaskConfig`:
 
 ```ts
 // presets/ts-build.ts
-import type { TaskConfig } from '@vzn/vx'
+import type { TaskConfig } from '@vzn/vx/config'
 
 export function tsBuild(opts?: { tsconfig?: string }): TaskConfig {
   return {
@@ -1540,7 +1541,7 @@ export function tsBuild(opts?: { tsconfig?: string }): TaskConfig {
 
 ```ts
 // packages/app/vx.config.ts
-import { defineProject } from '@vzn/vx'
+import { defineProject } from '@vzn/vx/config'
 import { tsBuild } from '../../presets/ts-build.ts'
 
 export default defineProject({

@@ -1299,6 +1299,26 @@ describe('the plugins guide rosters every hook a shipped plugin fills', () => {
     expect(page).toContain('`@vzn/vx-schedule-history` fills three at once')
     for (const hook of ['`schedule`', '`admit`', '`commands`']) expect(page).toContain(hook)
   })
+  // An install of any plugin answered 404 while the guide told readers to
+  // run one (J-92); the note's count is every public package but core.
+  it('its table is every public package but @vzn/vx, and the npm note counts them', () => {
+    const packagesDir = path.resolve(import.meta.dir, '..', '..')
+    const shipped = readdirSync(packagesDir)
+      .map((d) => path.join(packagesDir, d, 'package.json'))
+      .filter((f) => existsSync(f))
+      .map((f) => JSON.parse(readFileSync(f, 'utf8')) as { name: string; private?: boolean })
+      .filter((m) => m.private !== true && m.name !== '@vzn/vx')
+      .map((m) => m.name)
+      .sort()
+    const page = readFileSync(path.join(GUIDES, 'plugins.md'), 'utf8')
+    const section = /## Plugins that ship\n([\s\S]*?)\n## /.exec(page)![1]!
+    const rows = [...section.matchAll(/^\| `(@vzn\/[\w-]+)` /gm)].map((m) => m[1]!)
+    expect([...rows].sort()).toEqual(shipped)
+    const words = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine']
+    expect(section.replace(/\s+/g, ' ')).toContain(
+      `Only \`@vzn/vx\` is on npm today. The ${words[shipped.length]} plugins' first publish is pending`,
+    )
+  })
   it('its hook interface block is PLUGIN_HOOKS, in order', () => {
     const page = readFileSync(path.join(GUIDES, 'plugins.md'), 'utf8')
     const block = fencedBlock(page, 'ts', "import type { VxPlugin } from '@vzn/vx'")
@@ -1489,5 +1509,64 @@ describe("the site's Turbo and Nx verb rows say what `vx <verb>` says", () => {
       }
     }
     expect(rows).toBe(4)
+  })
+})
+
+describe('the README and the CI guide say which packages npm has', () => {
+  // Both told readers to install plugins npm answers 404 for (J-93).
+  const NOTE = "Only `@vzn/vx` is on npm today; the plugins' first publish is pending."
+  it("the README's plugin table is every public package but @vzn/vx, under the note", () => {
+    const packagesDir = path.resolve(import.meta.dir, '..', '..')
+    const shipped = readdirSync(packagesDir)
+      .map((d) => path.join(packagesDir, d, 'package.json'))
+      .filter((f) => existsSync(f))
+      .map((f) => JSON.parse(readFileSync(f, 'utf8')) as { name: string; private?: boolean })
+      .filter((m) => m.private !== true && m.name !== '@vzn/vx')
+      .map((m) => m.name)
+      .sort()
+    const readme = readFileSync(path.resolve(packagesDir, '..', 'README.md'), 'utf8')
+    const rows = [...readme.matchAll(/^\| \[`(@vzn\/[\w-]+)`\]/gm)].map((m) => m[1]!)
+    expect([...rows].sort()).toEqual(shipped)
+    expect(readme).toContain(NOTE)
+  })
+  it('the CI guide, which imports @vzn/vx-github, carries it', () => {
+    expect(readFileSync(path.join(GUIDES, 'ci.md'), 'utf8')).toContain(NOTE)
+  })
+})
+
+describe('a config sample imports the schema from @vzn/vx/config', () => {
+  // `@vzn/vx` is core's own src/index.ts: a user's tsc over a package that
+  // includes its vx.config.ts walked core's Bun-only sources and printed
+  // 527 errors, where `@vzn/vx/config` checked clean (J-94).
+  it('no page, README or example imports only config.ts exports from @vzn/vx', async () => {
+    const schema = new Set(Object.keys(await import('../src/config.js')))
+    for (const t of ['ProjectConfig', 'WorkspaceConfig', 'TaskConfig']) schema.add(t)
+    const repo = path.resolve(import.meta.dir, '..', '..', '..')
+    const files = [
+      ...handAuthoredSitePages(),
+      path.join(repo, 'README.md'),
+      ...readdirSync(path.join(repo, 'packages')).map((d) =>
+        path.join(repo, 'packages', d, 'README.md'),
+      ),
+      ...readdirSync(path.join(repo, 'packages', 'vx', 'docs'))
+        .filter((f) => f.endsWith('.md'))
+        .map((f) => path.join(repo, 'packages', 'vx', 'docs', f)),
+      path.join(repo, 'examples', 'basic', 'packages', 'app', 'vx.config.ts'),
+      path.join(repo, 'examples', 'basic', 'packages', 'lib', 'vx.config.ts'),
+    ].filter((f) => existsSync(f))
+    const offenders: string[] = []
+    let schemaImports = 0
+    for (const f of files) {
+      for (const m of readFileSync(f, 'utf8').matchAll(
+        /^import (?:type )?\{([^}]+)\} from '(@vzn\/vx(?:\/config)?)'/gm,
+      )) {
+        const names = m[1]!.split(',').map((n) => n.trim().replace(/^type /, ''))
+        if (!names.every((n) => schema.has(n))) continue
+        schemaImports++
+        if (m[2] === '@vzn/vx') offenders.push(`${path.relative(repo, f)}: ${m[0]}`)
+      }
+    }
+    expect(offenders).toEqual([])
+    expect(schemaImports).toBeGreaterThan(20)
   })
 })

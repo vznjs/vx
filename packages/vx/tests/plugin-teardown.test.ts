@@ -467,7 +467,7 @@ describe('the lifecycle is reached on a run that never started', () => {
 
   it('a setup that throws tears down every other plugin, not the one that threw', async () => {
     await withPlugins(`setup() { throw new Error('b boom') },`)
-    expect(await settle(runT())).toBe("plugin 'org/b' failed to load: b boom")
+    expect(await settle(runT())).toBe("plugin 'org/b' failed in setup: b boom")
     expect(seen()).toEqual(['a-setup', 'a-teardown'])
   })
 
