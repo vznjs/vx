@@ -1048,3 +1048,13 @@ uncached sandboxed task): min 453 → 377 ms, median ~495 → ~440 over 12
 interleaved runs per arm. Rows: `sandbox-prewarm.unsafe.test.ts`; each
 half and the wait fail their row without themselves, and the control
 fails an unconditional prewarm.
+
+## C-84: a teardown's throw is named as every stage's is
+
+A probe threw from each plugin hook through `vx run`: every stage said
+`plugin '<p>' failed in <stage>: <reason>` (C-54 for setup), and no
+stack reached the user, except teardown, which said `plugin '<p>'
+teardown failed: boom`. It now says `failed in teardown`; the run's
+verdict still stands. Row (`plugin-teardown.test.ts` › a teardown that
+throws is told by its message): red without the change.
+`modules/plugin-host.md` says so.

@@ -539,7 +539,7 @@ export async function teardownPlugins(
       }
     } catch (err) {
       warn(
-        `[vx] plugin '${plugin.name}' teardown failed: ${err instanceof Error ? err.message : String(err)}`,
+        `[vx] plugin '${plugin.name}' failed in teardown: ${err instanceof Error ? err.message : String(err)}`,
       )
     }
   }

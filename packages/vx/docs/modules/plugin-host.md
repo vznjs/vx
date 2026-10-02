@@ -65,7 +65,9 @@ it), so a workspace that declares nothing runs and caches here.
   each plugin's `teardown()` under try/catch and a time bound
   (`teardownTimeoutMs()`: `VX_TEARDOWN_TIMEOUT_MS`, 3 s by default; a
   call that never settles is warned by name, never awaited past the
-  bound). Runs on every exit of a run once `prepareRun` has called the
+  bound). A throw is warned as every stage names one (C-84):
+  `plugin '<p>' failed in teardown: <reason>`; the run's verdict stands.
+  Runs on every exit of a run once `prepareRun` has called the
   plugins' factories (an early return, a refused setup, a throw before
   or during the schedule) and at the end of a plan, and `prepareRun`
   itself tears down and closes the cache when a stage or refusal after
