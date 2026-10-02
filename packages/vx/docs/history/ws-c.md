@@ -825,6 +825,15 @@ restore feeds an exec task. Cost (1,000 projects, 3,000 nodes, min of
 dispatch order `r1, r2, e` ahead of three idle restores): red without
 the pass. `modules/scheduler.md` says so.
 
+## C-55: a fail-fast skip is not "blocked upstream"
+
+`--continue=never`'s footer read `Skipped: 2 tasks never started —
+blocked upstream` over `⊘ after the run stopped (fail-fast): …`: the
+header claimed a blocker the cause line beneath it denied. It says
+`blocked upstream` only when every skip has a blocker. Rows
+(`summary.test.ts`): a fail-fast skip alone, and the mixed row; both
+red on the old header. `cli.md` says so.
+
 ## C-53: a kept server's crash reads `failed` in the summary and report
 
 `vx run dev` whose server exited 4 after the summary exited 1, and the
@@ -845,6 +854,18 @@ Every stage's throw reads `plugin '<name>' failed in <stage>: …`, and
 its `setup` threw (an unknown `ctx.on` hook name included). It now says
 `failed in setup`. Rows (`plugin.test.ts`, `plugin-teardown.test.ts`)
 pin the text; red on the old message.
+
+## C-59: the fingerprint watch reads a whole-second lockfile stamp
+
+A's lead (A-2). The watch over the fingerprinted files skipped a file
+whose ctime was more than `FILE_HASH_RACY_MS` (50 ms) older than the
+run's read. On a file system that keeps whole seconds, a lockfile a
+task rewrote 400 ms after the read is stamped to the second before it,
+read as untouched, and every key after it kept the old lockfile's bytes:
+a stale hit. The window now widens by A-2's `racyWindowMs`. Row
+(`whole-second-stamps.test.ts` › the fingerprint watch's whole-second
+stamp, simulated ctime): red without the fix; a sub-second stamp 499 ms
+before the read stays trusted. `modules/fingerprint-watch.md` says so.
 
 ## C-57: a server watch holds keeps printing while watch idles
 
