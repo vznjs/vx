@@ -836,3 +836,11 @@ Ctrl-C stopped is not. Rows (`keep-alive.test.ts`): the exit-1 row reads
 `app#other` failed with exit 1 and `failed: 1` (red without the fix);
 the Ctrl-C row reads `success` (red with the abort guard removed). The
 run history still says `ok` (lead for A). `execution.md` says so.
+## C-54: a plugin whose `setup` throws is named with the hook
+
+Every stage's throw reads `plugin '<name>' failed in <stage>: …`, and
+`modules/plugin.md` promises one line naming the plugin and the hook;
+`setup` alone said `failed to load`, though the plugin had loaded and
+its `setup` threw (an unknown `ctx.on` hook name included). It now says
+`failed in setup`. Rows (`plugin.test.ts`, `plugin-teardown.test.ts`)
+pin the text; red on the old message.
