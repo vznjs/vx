@@ -223,7 +223,16 @@ export function noteSchemaReset(cache: Cache, warn: (message: string) => void): 
 //        the last entry's bytes on disk under a green run (item 886). A row
 //        is current only with the inode and ctime recorded after the save
 //        or restore that wrote it. The cache KEY is unchanged.
-export const SCHEMA_VERSION = 'v28'
+//   v29: entries.stdout moved to entry_stdout. SQLite rewrites a whole
+//        record on UPDATE, so the run-end `accessed_at` bump rewrote each
+//        hit's stored stdout (up to 16 MB) with its overflow pages: 200
+//        hits of 1 MB cost the close 125-150 ms. The cache KEY is
+//        unchanged.
+export const SCHEMA_VERSION = 'v29'
+
+/** An entry row with its stdout, which lives apart (v29); none stored reads as ''. */
+const SELECT_ENTRY =
+  "SELECT e.*, COALESCE(s.stdout, '') AS stdout FROM entries e LEFT JOIN entry_stdout s ON s.hash = e.hash"
 
 /** A schema version's number (`v28` → 28); one that is not `v<n>` is older than any. */
 function schemaOrdinal(version: string): number {
@@ -439,6 +448,8 @@ export class Cache implements CacheLayer {
   private readonly insertEntry: ReturnType<Database['prepare']>
   private readonly deleteEntryRow: ReturnType<Database['prepare']>
   private readonly selectEntry: ReturnType<Database['prepare']>
+  private readonly upsertStdout: ReturnType<Database['prepare']>
+  private readonly deleteStdout: ReturnType<Database['prepare']>
   private readonly bumpAccessed: ReturnType<Database['prepare']>
   private readonly touched = new Set<string>()
   private readonly insertEntryInput: ReturnType<Database['prepare']>
@@ -674,7 +685,7 @@ export class Cache implements CacheLayer {
             }
             if (found === SCHEMA_VERSION) return null
             this.db.exec(
-              'DROP TABLE IF EXISTS entries; DROP TABLE IF EXISTS runs; DROP TABLE IF EXISTS file_hashes; DROP TABLE IF EXISTS blob_sizes; DROP TABLE IF EXISTS output_files; DROP TABLE IF EXISTS invocations; DROP TABLE IF EXISTS run_task_inputs; DROP TABLE IF EXISTS entry_inputs; DROP TABLE IF EXISTS config_evals; DROP TABLE IF EXISTS config_closures; DROP TABLE IF EXISTS output_dirs;',
+              'DROP TABLE IF EXISTS entries; DROP TABLE IF EXISTS runs; DROP TABLE IF EXISTS file_hashes; DROP TABLE IF EXISTS blob_sizes; DROP TABLE IF EXISTS output_files; DROP TABLE IF EXISTS invocations; DROP TABLE IF EXISTS run_task_inputs; DROP TABLE IF EXISTS entry_inputs; DROP TABLE IF EXISTS config_evals; DROP TABLE IF EXISTS config_closures; DROP TABLE IF EXISTS output_dirs; DROP TABLE IF EXISTS entry_stdout;',
             )
             this.db
               .prepare("UPDATE schema_meta SET value = ? WHERE key = 'version'")
@@ -696,10 +707,9 @@ export class Cache implements CacheLayer {
 
     this.deleteEntryRow = this.db.prepare('DELETE FROM entries WHERE hash = ?')
     this.insertEntry = this.db.prepare(`
-      INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, stdout, created_at, accessed_at, cpu_ms, peak_rss_bytes)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, created_at, accessed_at, cpu_ms, peak_rss_bytes)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(hash) DO UPDATE SET
-        stdout         = excluded.stdout,
         project        = excluded.project,
         task           = excluded.task,
         command        = excluded.command,
@@ -710,7 +720,11 @@ export class Cache implements CacheLayer {
         cpu_ms         = excluded.cpu_ms,
         peak_rss_bytes = excluded.peak_rss_bytes
     `)
-    this.selectEntry = this.db.prepare('SELECT * FROM entries WHERE hash = ?')
+    this.upsertStdout = this.db.prepare(
+      'INSERT INTO entry_stdout(hash, stdout) VALUES (?, ?) ON CONFLICT(hash) DO UPDATE SET stdout = excluded.stdout',
+    )
+    this.deleteStdout = this.db.prepare('DELETE FROM entry_stdout WHERE hash = ?')
+    this.selectEntry = this.db.prepare(`${SELECT_ENTRY} WHERE e.hash = ?`)
     this.bumpAccessed = this.db.prepare('UPDATE entries SET accessed_at = ? WHERE hash = ?')
     // INSERT OR IGNORE: re-saving the same hash (idempotent ingest /
     // overlapping concurrent saves) leaves the existing rows untouched —
@@ -954,7 +968,7 @@ export class Cache implements CacheLayer {
       const placeholders = chunk.map(() => '?').join(',')
       rows.push(
         ...(this.db
-          .query(`SELECT * FROM entries WHERE hash IN (${placeholders})`)
+          .query(`${SELECT_ENTRY} WHERE e.hash IN (${placeholders})`)
           .all(...(chunk as readonly SQLQueryBindings[])) as EntryRow[]),
       )
     }
@@ -1574,6 +1588,8 @@ export class Cache implements CacheLayer {
     // (not the per-run path) so a warm all-cache-hit run — which never
     // saves — writes none of them.
     const insertEntry = this.insertEntry
+    const upsertStdout = this.upsertStdout
+    const deleteStdout = this.deleteStdout
     const outputs = this.outputs
     const insertEntryInput = this.insertEntryInput
     const inputComponents = meta.inputComponents
@@ -1623,7 +1639,6 @@ export class Cache implements CacheLayer {
         0,
         meta.durationMs,
         totalBytes,
-        stdoutText,
         now,
         now,
         // From the artifact, on both paths: a save indexes what it just
@@ -1631,6 +1646,8 @@ export class Cache implements CacheLayer {
         scanned.exec?.cpuMs ?? null,
         scanned.exec?.peakRssBytes ?? null,
       )
+      if (stdoutText === '') deleteStdout.run(hash)
+      else upsertStdout.run(hash, stdoutText)
       outputs.replaceFileRows(hash, outputFileRows)
       // INSERT OR IGNORE: identical inputs derive this same hash, so a
       // re-save's rows are identical — keep the first set, skip the rest.
