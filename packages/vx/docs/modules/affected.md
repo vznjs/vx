@@ -125,7 +125,9 @@ is complete — the config-import channel stops at project boundaries and
 
 - Try `git symbolic-ref --short -q refs/remotes/origin/HEAD` (e.g.
   `origin/main`).
-- Fall back to `HEAD~1` if the symbolic-ref isn't set.
+- Without the symbolic-ref, the first of `origin/main`, `origin/master`,
+  `main`, `master` that exists and is not HEAD's commit (one
+  `for-each-ref`; D-93), else `HEAD~1`.
 - If `HEAD~1` does not resolve either (a CI checkout at
   `fetch-depth: 1`), a `UserError` asks to fetch history or name the
   base (`--affected=origin/main`).

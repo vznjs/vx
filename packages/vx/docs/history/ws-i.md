@@ -194,6 +194,15 @@ project, vx's and Bun's versions. 1,000 packages warm, compiled, 41
 interleaved rounds: main 401.2 ms median (min 337.2), patch 377.9
 (309.2), A/A 373.2 (321.0); `load configs` 41.1 → 14.4 ms (min of 7).
 
+I-25. A run that names more projects than pathspecs scope starts git
+early. A scoped run waited for its configs before enumerating, to scope
+the pathspecs to the projects they pull in; above
+`MAX_SCOPED_PATHSPECS` (64) the walk is the whole tree either way, so
+such a run (an `--affected` selection on a large workspace) now starts
+it beside the workspace load, as an unscoped run does. 1,000 packages,
+one edited (167 selected), `run build --affected=HEAD~1`, compiled, 41
+interleaved rounds: main 323.3 ms median (min 273.5), patch 298.1
+(255.7), A/A 294.4 (254.2).
 I-24. A config load without the closure builds no package graph. The
 CLI's selection pass, `vx info` and the reader's view each built one for
 `loadProjects`, which reads it only for the closure they never ask for;
@@ -234,6 +243,29 @@ compiled, 21 interleaved rounds: `run graph` main 962.6 ms median (min
 `restoreOutputs`) stays: the rows in hand would cross the `CacheLayer`
 seam.
 
+I-27. A frozen run reads the lock only for a config it reads. The run
+parsed the whole lock again even when the CLI's selection pass had staged
+every config (its load refused a frozen run without a lock);
+`LoadProjectsBase.lock` is now a reader asked only when a config is
+read from it, and `prepareRun` reads up front only when some configured
+project is not staged. Row: `read-once.unsafe.test.ts` counts one open
+of `vx-lock.json` for an `--affected --frozen` run (two before). 1,000
+packages, one edited, `run build --affected=HEAD~1`, compiled, 25
+interleaved rounds, `load configs` stage: main 23.3 ms median (min
+14.3), patch 15.2 (10.1), A/A 13.4 (10.1). Wall, 81 rounds: main 324.4
+(276.3), patch 322.3 (258.5), A/A 318.9 (269.1), within its noise.
+I-28. A closed cache leaves its WAL empty. With `PERSIST_WAL` (O-10)
+and the default `journal_size_limit` (-1), SQLite's last close
+checkpoints the WAL but keeps every frame, so each later connection
+recovered them at open and copied them into the database again at its
+close: 738 frames, 4.4 MB, on the 1,000-project bench cache. Any
+non-negative limit makes that close truncate the file to zero bytes (it
+stays, as O-10 needs). Open plus close of a cache that read one row, 15
+cycles on a copy of that cache: main 3.30 ms median (min 3.13), patch
+1.29 (1.02). A run pays one such cycle, a `--filter` or `--affected`
+run two (the selection's load and the run). Whole-run wall does not
+resolve ~2 ms per cycle at this box's spread. Row: `cache.test.ts` ›
+the WAL a closed cache leaves (red on main: 243,112 bytes).
 I-26. An `--affected` run walks the worktree once. The selection
 spawned `git ls-files --others` for its untracked files, and the run then
 walked the tree again with `git status -uall`. The discovery's lazy
@@ -247,6 +279,15 @@ the discovery. Rows: the equivalence, and a logging git counting one
 main). 1,000 packages, one edited, `run build --affected=HEAD~1`,
 compiled, 41 interleaved rounds: main 356.8 ms median (min 293.5),
 patch 311.9 (248.5), A/A 313.6 (255.5).
+
+I-29. A `files` declaration compiles once per process. `resolveFiles`
+split, normalized and compiled each task's `cache.inputs.files` (and its
+outputs' matcher) per task, though a workspace declares a handful of
+lists over thousands of tasks; `filesPlan` keys them by the declaration
+and its outputs, and a refused declaration is never stored. 1,000
+packages warm, compiled, 25 interleaved rounds: `classify + probe` main
+86.3 ms median (min 73.1), patch 77.3 (73.2), A/A 78.3 (67.3);
+in-process total 280.0 (251.6), 272.4 (245.0), 274.4 (235.6).
 
 ## Leads for other streams
 
