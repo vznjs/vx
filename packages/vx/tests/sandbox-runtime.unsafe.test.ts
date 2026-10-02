@@ -2950,6 +2950,8 @@ describe('deniedCalls (strace trace parsing)', () => {
     expect(deniedCalls(trace, '/ws/p').map((c) => [c.rawPath, c.dir])).toEqual([
       ['secret.txt', '/ws/p/src'],
       ['a', '/abs/deeper'],
+      // A chdir refused is a denial of its own (B-67), and moves nothing.
+      ['nope', '/ws/p/src'],
       ['b', '/ws/p/src'],
       // fchdir names no path: lost, so the starting cwd stands, as before.
       ['c', undefined],
@@ -2958,6 +2960,7 @@ describe('deniedCalls (strace trace parsing)', () => {
     ])
     // Without the starting cwd nothing is followed.
     expect(deniedCalls(trace).map((c) => c.dir)).toEqual([
+      undefined,
       undefined,
       undefined,
       undefined,
@@ -2980,6 +2983,8 @@ describe('deniedCalls (strace trace parsing)', () => {
       '22 chdir("deep")                   = 0',
       '20 openat(AT_FDCWD, "b", O_RDONLY) = -1 ENOENT (No such file or directory)',
       '23 openat(AT_FDCWD, "c", O_RDONLY) = -1 ENOENT (No such file or directory)',
+      '20 vfork()                          = 24',
+      '24 openat(AT_FDCWD, "e", O_RDONLY) = -1 ENOENT (No such file or directory)',
       '',
     ].join('\n')
     expect(deniedCalls(trace, '/ws').map((c) => [c.rawPath, c.dir])).toEqual([
@@ -2987,6 +2992,8 @@ describe('deniedCalls (strace trace parsing)', () => {
       ['b', '/ws/src/deep'],
       // A forked process copied the cwd at the fork, before the `chdir`.
       ['c', undefined],
+      // One forked after it copied the moved one.
+      ['e', '/ws/src/deep'],
     ])
   })
 
@@ -3539,6 +3546,49 @@ describe.skipIf(WIN32)('reportableViolations', () => {
       `openat(x) = -1 ENOENT  [${home}/.vx-ignore-kept]`,
     ])
   })
+})
+
+// Seatbelt's SRT compiles a grant holding `[` as a regex in which a
+// backslash is a literal one, so the escaped spelling of a Next.js route
+// matched no file. vx hands it `[[]`, a class of one bracket (B-65).
+describe.skipIf(process.platform !== 'darwin')('a bracketed route under seatbelt', () => {
+  it(
+    'is granted by its escaped name, and not by the class spelling',
+    async () => {
+      if (!(await sandboxAvailable('bracketed route under seatbelt'))) return
+      await initSandbox()
+      const dir = realpathSync(await mkdtemp(path.join(os.tmpdir(), 'vx-brk-')))
+      try {
+        const proj = path.join(dir, 'app')
+        await mkdir(path.join(proj, 'pages'), { recursive: true })
+        const route = path.join(proj, 'pages', '[id].tsx')
+        await writeFile(route, 'route')
+        const run = (read: string) =>
+          runSandboxed({
+            command: `/bin/cat '${route}'`,
+            cwd: proj,
+            env: { PATH: process.env['PATH'] ?? '', HOME: process.env['HOME'] ?? '' },
+            baseAllowRead: [],
+            baseDenyRead: [dir],
+            reportWithin: proj,
+            reportLinked: [],
+            config: resolveSandboxConfig({ allow: { read: [read] } }, proj),
+          })
+        const escaped = await run('pages/\\[id\\].tsx')
+        // CONTROL: `[id]` is a class (`i` or `d`), which names no such file.
+        const classed = await run('pages/[id].tsx')
+        expect([escaped.stdout, classed.stdout, classed.exitCode === 0]).toEqual([
+          'route',
+          '',
+          false,
+        ])
+      } finally {
+        await resetSandbox()
+        await rm(dir, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
 })
 
 describe.skipIf(process.platform !== 'darwin')('nested seatbelt', () => {

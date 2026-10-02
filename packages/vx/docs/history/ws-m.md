@@ -222,6 +222,41 @@ the afterAll's rm of the 2000-project tree took 4.2 s under load; it now
 has a bound matched to that work, as its beforeAll does. No other
 fixture of that size in the suites.
 
+M-23. `runner.test.ts` › keeps a ready server alive past its readyWhen
+timeout failed on CI (run 37011271243, a PR touching no runner code):
+`persistent task not ready within 150ms`. The row, and its twin › a
+server ready before the deadline outlives it, need the child's first
+line inside a 150 ms window, and a loaded sandboxed shard missed it, so
+the row failed on its premise, not its claim. Both now use a 1 s window
+and wait from the spawn to 250 ms past it. With the first line delayed
+300 ms (the loaded box) the old rows fail 2 of 2 and the new pass; with
+both of the timer's guards removed the new rows still fail 2 of 2.
+Same class, same file: › a readyWhen timeout sends SIGTERM first set
+each shell's TERM trap against a 100 ms window. A 200 ms start failed
+the polite half; the deaf half passed by dying of the TERM it was meant
+to ignore (nothing asserted the SIGKILL). Now the 1 s window, and the
+deaf child's `signalCode` must be `SIGKILL`: with its trap removed the
+row fails (`SIGTERM`), where it passed before. The class, grepped (a
+trap or first write in a fresh shell against a deadline of 100-300 ms):
+`runner.test.ts` › a timed-out command returns only once its group is
+gone (106 ms with a 300 ms start), `task-timeout.test.ts`'s two trap
+rows, `persistent-ready-timeout.test.ts` › a never-ready server that
+ignores SIGTERM, `keep-alive.test.ts` › a never-ready server a dead
+shell left: each red with a 300 ms shell start, green on a 1 s
+deadline. The trap-and-exit-0 row passed red-forced, by 143, without
+its case; it now asserts the trap's own line in `out.txt`.
+M-20. `sandbox-runtime.unsafe.test.ts` › the proxy refuses a denied
+domain the allow glob covers read curl's `000` for the first host, not
+the proxy's 403, in a local run of every test task beside four busy
+loops per core. SRT starts its in-sandbox bridges (`socat
+TCP-LISTEN:3128` / `:1080`) in the background and evals the command at
+once, so a networked task's first dial raced the listen: a product bug
+any loaded run could meet. Fixed: a networked task's command waits until
+both listen (`/proc/net/tcp{,6}`, ~5 s bound).
+`sandbox-proxy-ready.unsafe.test.ts`: a fake `socat` starts the 3128
+listener 500 ms late; red without the wait; a task with no network is not
+held (control). Cost within noise: a networked `true`, min of 15
+interleaved, 86 ms with the wait against 90 without, under load.
 M-21. M-19's class under I/O load (two `dd … conv=fsync` loops beside
 four busy loops): `affected.test.ts` › six thousand changed files timed
 out its afterEach (bun's 5 s default), which removed the row's 6,000
@@ -229,6 +264,13 @@ files and their git objects; 11.1 s for the row and its hooks. The row
 (30 s bound) now removes its root itself: the hook took 2.4 s before,
 11 ms after, under the same load. No other row of the suites makes a
 fixture past 1,500 files.
+
+M-24. M-23's class, the rest of it (a first write in a fresh shell
+against a 300 ms deadline): `persistent-ready-timeout.test.ts` › a task
+that overruns is SIGTERMed and › never-matching readyWhen + timeout
+(`echo $$ > pid.txt`), and `execute-task.test.ts` › a TIMEOUT kill is a
+real failure and IS retried (`echo x >> tries.txt`, once per attempt).
+Each red with a 600 ms shell start, green on a 1 s deadline.
 
 ## Leads for other streams
 

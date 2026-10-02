@@ -1199,10 +1199,11 @@ Inside a write grant, a file named like a shell or tool config
 to the task, down to three levels below the workspace root, ignored by
 git or not.
 
-**Linux: no bracket in the project's path.** The runtime reads a path
-holding `[` or `]` as a glob and mounts no write path that does, so a
-sandboxed task in a project under such a directory (`~/[old]/repo`) is
-refused, naming it: rename the directory or drop `exec.sandbox`.
+**No bracket in the project's path.** The runtime reads a path holding
+`[` or `]` as a pattern: on Linux it mounts no write path that does, and
+macOS's rules compile it as a character class. So a sandboxed task in a
+project under such a directory (`~/[old]/repo`) is refused, naming it:
+rename the directory or drop `exec.sandbox`.
 
 **macOS cannot nest.** `sandbox_apply` is refused inside a sandboxed
 process, so a task that itself sandboxes something (vx's own test suite)
@@ -1328,7 +1329,7 @@ interface WorkspaceConfig {
   `vx cache prune`.
 - **`affectedBase`** — the git ref a bare `--affected` compares with
   (`origin/develop`); `--affected=<base>` still wins. Omitted →
-  `origin/HEAD`, else `HEAD~1`. A plugin's `config` stage may set it:
+  `origin/HEAD`, then the first of `origin/main`, `origin/master`, `main`, `master` that is not HEAD (D-93), else `HEAD~1`. A plugin's `config` stage may set it:
   `nx()` from `NX_BASE` or nx.json's `defaultBase`, `turbo()` from
   `TURBO_SCM_BASE`, else on GitHub Actions from `GITHUB_BASE_REF` or the
   push event's `before`, as Turbo does. Not folded into any cache key.

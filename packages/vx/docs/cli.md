@@ -223,8 +223,10 @@ Run the task only in projects whose files changed since `<base>`.
   `defaultBase` and `TURBO_SCM_BASE`, `turbo()` on GitHub Actions from
   the pull request's base or the push's `before`, as Turbo does;
   [schema](schema.md)), else
-  `origin/HEAD`, falling back to
-  `HEAD~1` if `origin/HEAD` isn't resolvable. A clone with neither — a
+  `origin/HEAD`; without one (actions/checkout sets none, nor does a
+  repo with no remote), the first of `origin/main`, `origin/master`,
+  `main`, `master` that is not HEAD itself, as Turbo and Nx compare with
+  `main` (D-93); else `HEAD~1`. A clone with neither — a
   CI checkout at `fetch-depth: 1` — has no base at all, and vx says so
   (`--affected has no base here … a shallow clone?`) instead of failing
   on a `HEAD~1` nobody typed. And when the base IS the commit you are
@@ -1736,7 +1738,8 @@ it carries a TODO saying so; a `pre<x>` with no `x` stays a task of its own, and
 npm's lifecycle hooks (`prepack`, `prepublishOnly`, …) are never tasks.
 Where the package's manager runs no such hooks every `pre<x>` and
 `post<x>` is a task of its own: Yarn 2+ (the nearest `packageManager:
-yarn@2+`, or a Berry `yarn.lock`, D-31), npm under `ignore-scripts=true`
+yarn@2+`, or a Berry `yarn.lock`, D-31; a `packageManager` naming none of npm,
+pnpm, yarn or bun defers to the lockfile, D-96), npm under `ignore-scripts=true`
 in the `.npmrc` beside its lockfile, pnpm under
 `enable-pre-post-scripts=false` there or `enablePrePostScripts: false` in
 `pnpm-workspace.yaml` (D-33). Bun and Yarn 1 run them whatever those say.
@@ -1747,14 +1750,16 @@ A script reading `$npm_package_version`, `$npm_package_name` or
 them under `exec.env.define`, the first two read from an imported
 `package.json` so a version bump reaches them; any other `$npm_*` it
 reads gets a TODO (D-34). Among several packages, a workspace root
-script that runs the members (`pnpm -r build`, `--filter`, `-C`, Yarn's
+script that runs the members (`pnpm -r build`, `--filter`, `-C`, pnpm's `pn` alias
+included (D-97), Yarn's
 `--cwd` and `yarn workspace <name>`, npm's `--prefix`, npm's
 and Yarn's workspace flags, a `cd` into or above a member, turbo, nx, lerna, `vp run`, vx itself) is not mapped
 (a flag counts on the package manager, or after `node <bin> run`, and not on the program it
 runs: berry's `yarn node -r ./setup.ts` is node's `--require`, D-81; bun's
 `cd test && …` enters no member, D-83),
 nor is one that runs such a script by name (vite's `ci-docs`: `pnpm build &&
-pnpm docs-build`), and neither is one whose name a member's task carries, so `--all` never runs
+pnpm docs-build`; through `run-s` / `run-p` / `npm-run-all` or `concurrently
+"npm:x"` too, lexical's `ci-check`, D-95), and neither is one whose name a member's task carries, so `--all` never runs
 a check twice (D-45). The rest check the whole repo (`lint: oxlint .`,
 `test: vitest`) and become the root's own tasks in a root vx.config, when
 the root has a `"name"` (vx skips a nameless root's config) and no config
@@ -1966,7 +1971,8 @@ reads: description, command (`(group)` for group tasks), `dependsOn`,
 `sandbox`, `persistent`, and the cache block
 (`inputs.files` / `.workspaceFiles` / `.env` / `.tasks` / `.runtime` /
 `.workspaceRuntime`, `outputs.files` / `.workspaceFiles`). Fields the
-task does not set are not printed. `--format json` emits `{ name, dir,
+task does not set are not printed; a value that spans lines (a
+multi-line command) continues under its first line. `--format json` emits `{ name, dir,
 config }` with the config exactly as resolved. `vx show <pkg>#<task>`
 narrows to one task (`{ name, dir, task, config }` in JSON). A bare
 name that is no project is a task: `vx show build` prints the block
@@ -2033,7 +2039,7 @@ plugins:          2 — @vzn/vx-reapi (executor, cache); @vzn/vx-otel (telemetry
 workers:          2 — cgroup CPU quota 2 of 8 cores
 memory:           13 GB usable — cgroup limit; the machine has 16 GB
 cache dir:        /work/repo/.vx/cache
-cache versions:   keys vx-cache-v37 · index schema v28
+cache versions:   keys vx-cache-v39 · index schema v28
 cache entries:    42 (1.3 GB)
 orphans:          3 artifacts (12 MB) the index does not know — `vx cache prune` reaps them
 task runs (24h):  7 (5 cache hits)
@@ -2066,7 +2072,7 @@ unreported`: the sandbox still enforces, but a task that tolerates a
   denied read passes and caches with no word of it. The `--json` fact is
   `sandbox.untraced`, the reason or `null`.
 - `plugins` names every plugin `vx.workspace.*` declares and the seams
-  each fills, in pipeline order (`config`, `project`, `graph`, `key`,
+  each fills, in pipeline order (`config`, `discover`, `project`, `graph`, `key`,
   `fingerprint`, `schedule`, `admit`, `executor`, `cache`, `telemetry`,
   `setup`, `commands`), or `none`. It reads the declarations: a plugin
   that declines a task at run time still lists its seam here.

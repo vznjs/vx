@@ -53,10 +53,20 @@
   the `vx.workspace.ts` field to add. The written workspace file holds
   none of them, so nx-examples' `parallel: 1` ran on every core once
   migrated, without a word.
+- **P-15** docs: the `vx-migrate` README says what environment an `nx()`
+  task sees. Nx hands every task the whole environment, vx only the
+  essentials, the declared `{ env }` names and what `nx()` defines; a
+  shell's `NODE_ENV` reached no task and nothing said so.
 - **P-13** `nx()`: every task also gets `LERNA_PACKAGE_NAME`, the project
   name Nx's `getNxEnvVariablesForTask` sets beside `NX_TASK_TARGET_*`;
   Lerna runs on Nx's runner and documents it to scripts, and it was
   unset.
+- **P-16** `nx()`: a `projects` list (on `dependsOn` and on an input) is
+  matched by a port of Nx's `findMatchingProjects`,
+  checked case by case against Nx 23.2's own: project directories
+  (`libs/shared/*`), `name:` / `directory:` labels, minimatch globs, and
+  a bare word as a word in a name. Matched by name and `*` alone, a
+  directory pattern named nothing and its edge was dropped.
 
 ## Notes
 
