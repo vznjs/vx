@@ -821,7 +821,15 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       })
       .catch(async (raw: unknown) => {
         const err = nameExecutorFailure(args.executor, raw)
-        const message = err instanceof Error ? err.message : String(err)
+        // A remote executor's message carries the server's own text, which
+        // may echo the env it was sent: masked here, where it is printed,
+        // and on the error the scheduler prints with its cause (L-39).
+        if (secrets !== null) {
+          for (const e of [err, err instanceof Error ? err.cause : undefined])
+            if (e instanceof Error) e.message = secrets.mask(e.message)
+        }
+        const message =
+          err instanceof Error ? err.message : (secrets?.mask(String(err)) ?? String(err))
         log.taskStderr(node, `${message}\n`)
         await sweepPlaceholders(placeholders)
         throw err
@@ -907,7 +915,9 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         signal: res.signal,
         hidden: req.sandbox && ((f: string) => !sandboxReads(req.sandbox!, f)),
       })
-      if (verdict !== undefined) log.taskStderr(node, `\n${verdict}\n`)
+      // The line quotes the command's first word, which a config may have
+      // built from a secret: masked as the task's own output is (L-37).
+      if (verdict !== undefined) log.taskStderr(node, `\n${secrets?.mask(verdict) ?? verdict}\n`)
       // A committed file another task's clean removed, still gone: vx
       // cleans outputs before a run where Turbo does not, so a reader with
       // no edge to the producer fails naming only the file (A-48).

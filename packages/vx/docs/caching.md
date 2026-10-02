@@ -186,6 +186,10 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     and prints only `UU <path>`: the deletion went unsaid, the file kept
     its index OID, and the run hit the output built with it (A-59).
 
+    Ref storage is not a key input: every ref vx reads comes from a git
+    command, so a repository in reftable storage (git 2.45) keys every
+    task as its files-backend twin (`tests/git-reftable.unsafe.test.ts`).
+
     A **submodule or an embedded repository** is enumerated by its own
     git: the workspace repository lists the nested one as a single entry
     (a gitlink, or `dir/` when untracked) and none of its files, so vx
@@ -553,13 +557,20 @@ short run still ships every artifact before the process exits. Upload
 failures log via `onRemoteError` and are otherwise ignored (the task
 already succeeded; the only loss is the remote entry).
 
+An upload is the outputs as the task wrote them; secret masking does
+not reach file contents, so a task whose outputs embed a secret is one
+to leave uncached ([security](./security.md)).
+
 ### Planning probes (`--dry` / `--graph`)
 
 The planning paths (`vx run --dry`, `--graph`) predict hits without
 side effects: against a remote cache they use a **lightweight
 existence probe** — no artifact download, no local ingest. A predicted
 `hit-remote` means the artifact exists remotely; the bytes move only
-when a real run needs them.
+when a real run needs them. Locally the probe reads whether the entry's
+row is there and stats the artifact, never the row itself: the whole
+row, its stored stdout included, made a 200-task plan over 1 MB outputs
+230 ms against 28 (min of 11, 2026-10-02).
 
 ## Cache policy (read/write axes)
 
@@ -619,6 +630,11 @@ is on):
    Until 2026-09-27 (A-3) the rename came first, and a commit refused
    past the busy timeout left the new bytes beside the old rows: every
    later hit on the key failed the task as a corrupt artifact.
+   A re-save (`--force`) first moves the previous artifact aside under
+   a temp name and unlinks it after the commit: ext4 flushes the
+   incoming file when a rename replaces one, 0.55 ms a save on the main
+   thread against 0.04 (a forced 1,000-task run 4.01 s → 3.46 s,
+   2026-10-02). A reader probing between the two renames misses.
 
 **The key is re-checked before the save** (item 743). It was taken
 before the command ran — at the task's start, or up front by the local
@@ -1118,6 +1134,11 @@ never the artifact's size). An artifact up to 4 MiB compressed is decoded in one
 first — the stream setup costs ~35 µs each, 4% of the headline
 restore row when every artifact is a one-file `dist/` — and then fed
 to the same reader and extractor, so there is one extraction path.
+The reader reads a header in place when it lies within one chunk and
+its numeric fields off the bytes when they are plain octal (anything
+else takes the full parse): a 4-entry artifact's read 50–57 µs → 22–23
+(min of 15), and a 300-artifact, 20-file restore run's reader 224 → 92
+ms of main thread (2026-10-02).
 The 2 GiB decompression ceiling applies to both: declared size and
 output length for the one-call decode, a running count for the stream.
 An ingest bounds the compressed body first: a remote body past the

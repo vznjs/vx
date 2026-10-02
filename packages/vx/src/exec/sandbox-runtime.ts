@@ -33,6 +33,7 @@ import {
   existsSync,
   mkdirSync,
   openSync,
+  readFileSync,
   readlinkSync,
   realpathSync,
   rmSync,
@@ -60,6 +61,7 @@ import {
   executablePath,
   grantPrefix,
   isTmpdirRefusal,
+  procfsIsOwn,
   TMPDIR_HINT,
   UserError,
   xxh3hex,
@@ -68,6 +70,7 @@ import {
   bindableReads,
   bindableWrites,
   buildCustomConfig,
+  readOnlyMasks,
   scratchWrites,
   widenedEntries,
 } from './sandbox-binds.js'
@@ -86,6 +89,7 @@ import {
 } from './sandbox-deny-scan.js'
 import {
   parseStraceViolations,
+  refusedConnections,
   refusedWrites,
   refusedWritesOutside,
   reportableViolations,
@@ -540,6 +544,35 @@ function hostHasIpv6(): boolean {
 }
 
 /**
+ * Refuse a network entry SRT's own schema refuses, naming it. vx handed
+ * the union over unchecked, and SRT's proxy matched as it could: a URL
+ * (`https://example.com`), a dotless host or a port past 65535 matched
+ * nothing, so the grant silently reached no host, and `'*'`, which the
+ * schema refuses as too broad, opened every host to every sandboxed task
+ * of the run, the allowlist being the run's (2026-10-02).
+ */
+function assertDomains(
+  schema: SrtModule['NetworkConfigSchema'],
+  allowed: readonly string[],
+  denied: readonly string[],
+): void {
+  const bad = [
+    ...allowed
+      .filter((d) => !schema.shape.allowedDomains.safeParse([d]).success)
+      .map((d) => `allow.network "${d}"`),
+    ...denied
+      .filter((d) => !schema.shape.deniedDomains.safeParse([d]).success)
+      .map((d) => `deny.network "${d}"`),
+  ]
+  if (bad.length === 0) return
+  throw new UserError(
+    `sandbox: ${bad.join(', ')} is not a host pattern: name a host ("example.com"), a ` +
+      `subdomain wildcard ("*.example.com") or either with a port ("example.com:443"); no ` +
+      `scheme or path, and "*" or "*.com" is refused as too broad (a bare "*" only in deny)`,
+  )
+}
+
+/**
  * One-time SRT initialization per orchestrator run. Starts the proxy
  * servers + (on macOS) the violation log monitor. Safe to call repeatedly
  * — SRT itself returns early on the second call.
@@ -582,7 +615,8 @@ export async function initSandbox(opts?: {
   await resetting
   // Before SRT starts, so the very first task already has one.
   await mkdir(sandboxTmpdir(), { recursive: true })
-  const { SandboxManager } = await loadSrt()
+  const { SandboxManager, NetworkConfigSchema } = await loadSrt()
+  assertDomains(NetworkConfigSchema, opts?.allowedDomains ?? [], opts?.deniedDomains ?? [])
   scopedDenyScan = process.platform === 'linux' && canScopeDenyScan(process.cwd())
   const config: Parameters<typeof SandboxManager.initialize>[0] = {
     network: {
@@ -1063,11 +1097,15 @@ export async function wrapSandboxedCommand(
   // sandboxed server and all it forked outlived vx (turborepo#9666). Now
   // the namespace goes with vx, a `setsid` daemon inside included, a
   // traced one-shot task too: its strace runs inside (B-11).
-  if (process.platform === 'linux' && /^\S*bwrap /.test(wrapped)) wrapped = `exec ${wrapped}`
+  if (process.platform === 'linux' && /^\S*bwrap /.test(wrapped))
+    wrapped = `exec ${readOnlyMasks(wrapped, scratch)}`
   if (process.platform === 'linux' && !hostHasIpv6())
     wrapped = `SOCAT_DEFAULT_LISTEN_IP=4 ${wrapped}`
   if (args.server === true) liveServers.add(tag)
-  if (ports.length > 0) spawnHostBridges(ports, tag)
+  if (ports.length > 0) {
+    spawnHostBridges(ports, tag)
+    await hostBridgesListen(ports, tag)
+  }
   return {
     wrapped,
     tag,
@@ -1320,12 +1358,47 @@ const hostBridges = new Map<
   { ports: readonly number[]; procs: Array<ReturnType<typeof Bun.spawn>> }
 >()
 
+/**
+ * Wait until each host-side bridge listens on its port, so a server that
+ * says it is ready inside the sandbox is reachable on the host: the socat
+ * starts asynchronously, and a held server's port refused a connection
+ * right after its ready line under I/O load (M-22). Read off
+ * /proc/net/tcp (127.0.0.1, state 0A); skipped where /proc is not this
+ * process's (its net table could be another namespace's), ended early by
+ * a bridge that exited (a port already taken), and bounded at 5 s.
+ */
+async function hostBridgesListen(ports: readonly number[], tag: string): Promise<void> {
+  if (!procfsIsOwn()) return
+  const want = ports.map((p) => `0100007F:${p.toString(16).toUpperCase().padStart(4, '0')}`)
+  const procs = hostBridges.get(tag)?.procs ?? []
+  const until = Date.now() + 5_000
+  while (Date.now() < until && procs.every((p) => p.exitCode === null)) {
+    let table: string
+    try {
+      table = readFileSync('/proc/net/tcp', 'utf8')
+    } catch {
+      return
+    }
+    const listening = new Set<string>()
+    for (const line of table.split('\n')) {
+      const f = line.trim().split(/\s+/)
+      if (f[3] === '0A' && f[1] !== undefined) listening.add(f[1])
+    }
+    if (want.every((w) => listening.has(w))) return
+    await Bun.sleep(5)
+  }
+}
+
 function spawnHostBridges(ports: readonly number[], tag: string): void {
   const procs: Array<ReturnType<typeof Bun.spawn>> = []
   for (const p of ports) {
     // A spawn failure (no socat on the host) is the task's to report:
     // its own side dies the same way, in its frame.
     try {
+      // socat resolved on vx's PATH, as every tool vx spawns: by bare name
+      // Bun.spawn walked the startup PATH (M-22).
+      const [tool, ...rest] = portBridgeHostArgv(tag, p)
+      const argv = [executablePath(tool!), ...rest]
       // Guarded, in a group of its own (kill-tree.ts): a plain child of vx
       // was in no group the guard lists, and a `kill -9` of vx left it
       // listening on the port under init, where the next run's bridge
@@ -1333,7 +1406,7 @@ function spawnHostBridges(ports: readonly number[], tag: string): void {
       procs.push(
         spawnGuarded((guard) =>
           guard === undefined
-            ? Bun.spawn(portBridgeHostArgv(tag, p), {
+            ? Bun.spawn(argv, {
                 stdio: ['ignore', 'ignore', 'ignore'],
                 detached: true,
               })
@@ -1341,7 +1414,7 @@ function spawnHostBridges(ports: readonly number[], tag: string): void {
                 [
                   executablePath('sh'),
                   '-c',
-                  `${guardLine(3)}exec ${portBridgeHostArgv(tag, p).map(shellQuote).join(' ')}`,
+                  `${guardLine(3)}exec ${argv.map(shellQuote).join(' ')}`,
                 ],
                 { stdio: ['ignore', 'ignore', 'ignore', guard], detached: true },
               ),
@@ -1690,6 +1763,7 @@ async function runSandboxedOnce(
             bindableWrites(args.config.allowWrite),
             scratch,
           ),
+          ...refusedConnections(records.map((v) => v.line)),
         ]
       : []
   if (straceLog) {
