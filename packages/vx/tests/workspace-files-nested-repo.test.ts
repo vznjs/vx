@@ -67,6 +67,9 @@ describe('a workspaceFiles glob over a nested repository', () => {
       'up-to-date',
       'success',
     ])
-    expect(edited.split(' ').at(-1)).not.toBe(hit.split(' ').at(-1))
+    // The hash ends each task line; the output's last word is the summary's
+    // run time, which two runs of 42 ms shared on macOS CI (M-34).
+    const hash = (out: string): string => out.split('\n')[0]!.split(' ').at(-1)!
+    expect([hash(hit) === hash(first), hash(edited) === hash(hit)]).toEqual([true, false])
   })
 })

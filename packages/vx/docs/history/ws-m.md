@@ -377,6 +377,13 @@ is polled as its sibling rows do, and the unheard-stop bound is 5 s:
 0 of 20 under the same load. The same scan's other timer-aborted rows
 (`vx-github` 502 wait, `vx-otel` 503 wait) were 0 of 20 there.
 
+M-34. `workspace-files-nested-repo.test.ts` › an edit inside it is a
+miss: red on macOS CI (run 37061744178, `not "42ms"`). The row meant to
+compare the hit's and the edited run's hashes but took the last word of
+the whole output, which is the summary's run time: the two runs both
+took 42 ms. It now compares the first line's hash (and the hit's against
+the first run's). The edit was a miss all along; no stale hit.
+
 ## Leads for other streams
 
 - A: A-20 let a same-project dependant restore ahead of a producer whose
