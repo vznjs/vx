@@ -469,6 +469,19 @@ export function formatPersistentTailBlock(
 }
 
 /**
+ * What a kept server writes after the summary, one line at a time under its
+ * id (`app#dev │ Local: http://localhost:5173`), so several servers'
+ * logs read apart. `text` holds whole lines, its last newline cut off.
+ */
+export function formatKeptLines(node: TaskNode, text: string, colors: ColorSupport): string {
+  const prefix = `${paintTaskId(node, colors)} ${paint('', '│', colors, { dim: true })} `
+  return text
+    .split('\n')
+    .map((line) => `${prefix}${line}\n`)
+    .join('')
+}
+
+/**
  * Between the requested task's frame and the summary footer, list the
  * persistent tasks (dev servers / watchers) the run is keeping alive in
  * the foreground — one `▸ <id> running` row each, so it's clear which

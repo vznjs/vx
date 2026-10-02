@@ -19,11 +19,13 @@
 import type { GeneratedTask, ProjectMeta } from '@vzn/vx'
 import { emptyNxInputs, expandNxInputs, type NxInputs } from './nx-inputs.js'
 import { nxProjectOutputs } from './nx-outputs.js'
+import { matchNxProjects } from './nx-deps.js'
 
 interface GraphNode {
   name?: string
   data?: {
     root?: string
+    tags?: unknown[]
     namedInputs?: Record<string, unknown[]>
     targets?: Record<string, { outputs?: string[]; options?: Record<string, unknown> }>
   }
@@ -70,6 +72,11 @@ export function planNxUpstream(
   metaByNode: ReadonlyMap<string, ProjectMeta>,
 ): NxUpstream {
   const isProject = (n: string): boolean => typeof nodes[n]?.data?.root === 'string'
+  const projectTags = Object.entries(nodes).map(([name, n]) => ({
+    name,
+    tags: Array.isArray(n?.data?.tags) ? n.data.tags.filter((t) => typeof t === 'string') : [],
+    ...(typeof n?.data?.root === 'string' ? { root: n.data.root } : {}),
+  }))
   const direct = new Map<string, string[]>()
   if (typeof dependencies === 'object' && dependencies !== null) {
     for (const [source, edges] of Object.entries(
@@ -277,7 +284,18 @@ export function planNxUpstream(
     todos: string[],
     edges: Set<string>,
   ): void => {
-    for (const p of of) {
+    // Nx reads the list as `dependsOn`'s `projects` (`findMatchingProjects`):
+    // `*` patterns, `tag:` and `!` exclusions. Looked up as names, a
+    // `tag:shared` reader was a todo and its input dropped from the key.
+    const literal = of.filter(
+      (p) =>
+        !/^!|^tag:|\*/.test(p) &&
+        nodes[p] === undefined &&
+        matchNxProjects([p], projectTags).length === 0,
+    )
+    for (const p of literal)
+      todos.push(`input project ${JSON.stringify(p)} is not a graph node — map manually`)
+    for (const p of matchNxProjects(of, projectTags)) {
       const u = { name }
       const meta = metaByNode.get(p)
       if (meta !== undefined) {
@@ -287,8 +305,6 @@ export function planNxUpstream(
         const r = under(p, u.name)
         merge(r.inputs, into)
         todos.push(...r.todos)
-      } else {
-        todos.push(`input project ${JSON.stringify(p)} is not a graph node — map manually`)
       }
     }
   }

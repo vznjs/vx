@@ -238,6 +238,13 @@ itself started at once; red 3 of 3 without the wait. The row's
 red left it on for the rest of the file; it is restored in a `finally`
 now (the file's other nine spies already were). Whether that spy made
 the later rows time out is not proven.
+M-21. M-19's class under I/O load (two `dd … conv=fsync` loops beside
+four busy loops): `affected.test.ts` › six thousand changed files timed
+out its afterEach (bun's 5 s default), which removed the row's 6,000
+files and their git objects; 11.1 s for the row and its hooks. The row
+(30 s bound) now removes its root itself: the hook took 2.4 s before,
+11 ms after, under the same load. No other row of the suites makes a
+fixture past 1,500 files.
 
 ## Leads for other streams
 

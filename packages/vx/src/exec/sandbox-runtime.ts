@@ -744,20 +744,19 @@ function canonicalBaselines(
  * only if it exists in the new root, and otherwise `$HOME`, with no word:
  * a project granted no read ran in the home directory, where `cat x.txt`
  * read `~/x.txt`. A grant at or above the cwd holds it, and so does an
- * existing one below (bwrap builds the path to a bind), and so does a
- * deny that IS the cwd (a single-package workspace's anchor). When none does,
+ * existing one below (bwrap builds the path to a bind). When none does,
  * the cwd is denied instead: an empty directory the task enters, whose
- * reads are refused and reported as the anchor's are.
+ * reads are refused and reported as the anchor's are. A single-package
+ * workspace's cwd is its anchor, denied already; the runtime takes the
+ * second entry as the same mount.
  */
 function cwdMounted(
   cwd: string,
   fs: {
     allowRead?: readonly string[] | undefined
     allowWrite?: readonly string[] | undefined
-    denyRead?: readonly string[] | undefined
   },
 ): boolean {
-  if (fs.denyRead?.includes(cwd) === true) return true
   return [...(fs.allowRead ?? []), ...(fs.allowWrite ?? [])].some(
     (p) => atOrUnder(cwd, p) || (atOrUnder(p, cwd) && existsSync(p)),
   )
