@@ -986,6 +986,7 @@ task's own stderr): red without the fix. `modules/executor.md` says so.
 distributed runs honor it": the whole-run backend seam that carried it
 went with vx cloud. The mode is the local scheduler's; a task a plugin
 executor runs elsewhere is one dispatch like any other. Docs only.
+
 ## C-67: an embedder's `command` reaches telemetry redacted
 
 Item 1057 kept what follows `--` (often a token) out of the command line
