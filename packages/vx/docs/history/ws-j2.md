@@ -182,3 +182,10 @@ persistent task` and vx exits 1). Row (`site-samples` › a post's link
   ran "with their daemons on". Row (`site-samples` › the posts state the
   daemons as the benchmark ran them), reading the version from
   `comparison.md` and the footing from the harness; red without the fix.
+
+- **J2-22** J2-17's class on a second page: the concepts page's "vx
+  alone" bullet said a restore costs about the same as an untouched
+  tree, of `vx-bench/run.ts`, whose restore row deletes the outputs
+  and extracts every artifact (239 against 906 ms at 1,000 projects in
+  `benchmarks.md`). Row (`site-samples` › the concepts page reads
+  run.ts's restore row as it is measured); red without the fix.

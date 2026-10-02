@@ -2095,3 +2095,22 @@ describe('the posts state the daemons as the benchmark ran them', () => {
     expect(post('honest-benchmarks.md')).not.toContain('with their daemons on')
   })
 })
+
+describe("the concepts page reads run.ts's restore row as it is measured", () => {
+  // J2-17's class on a second page: "a restore costs about the same as an
+  // untouched tree", of a harness whose restore row deletes the outputs
+  // (J2-22).
+  it('the restore row extracts, and the page says so', () => {
+    const harness = readFileSync(
+      path.resolve(import.meta.dir, '..', '..', 'vx-bench', 'run.ts'),
+      'utf8',
+    )
+    expect(harness).toContain('warm-restore   — outputs deleted, cache intact (full extract path)')
+    const page = readFileSync(path.join(DOCS, 'concepts', 'why-vx-is-fast.md'), 'utf8').replace(
+      /\s+/g,
+      ' ',
+    )
+    expect(page).toContain('Its restore row deletes the outputs first and extracts every artifact')
+    expect(page).not.toContain('a restore costs about the same as an untouched tree')
+  })
+})
