@@ -385,6 +385,24 @@ function siblingRun(script: string, dir: string, others: readonly string[]): str
   return undefined
 }
 
+/**
+ * Yarn 2+ installs with Plug'n'Play unless `.yarnrc.yml` names another
+ * linker: a package's bins live in `.pnp.cjs`, and a task's `json5` exited
+ * 127 under vx, which runs no `yarn` in front of a command (probed on Yarn
+ * 4.5).
+ */
+function usesPnp(dir: string): boolean {
+  let rc = ''
+  try {
+    rc = readFileSync(path.join(dir, '.yarnrc.yml'), 'utf8')
+  } catch {}
+  const linker = /^nodeLinker:\s*["']?([\w-]+)/m.exec(rc)?.[1]
+  return linker === undefined || linker === 'pnp'
+}
+
+const PNP_NOTE =
+  "Yarn Plug'n'Play installs this repo: a package's bins live in `.pnp.cjs`, not `node_modules/.bin`, so a task's `tsc` is not found under vx — set `nodeLinker: node-modules` in `.yarnrc.yml` and run `yarn install`, or write each command as `yarn exec '<command>'`"
+
 /** A package manager running a script by name: `pnpm build`, `npm run x`, `bun run x`. */
 const RUNS_SCRIPT =
   /(?:^|[\s;&|(])(?:pnpm|pn|npm|yarn|bun)\s+(?:run(?:-script)?\s+)?([^\s;&|()'"-][^\s;&|()'"]*)/g
@@ -681,6 +699,8 @@ export function migrateScripts(
       projects.push({ name: meta.name, dir: meta.dir, importLines, tasks })
     }
   }
+  const owner = metas[0] === undefined ? undefined : ownerOf(metas[0].dir, hookMemo)
+  if (owner?.manager === 'berry' && usesPnp(owner.at)) notes.push(PNP_NOTE)
   breakBuildCycles(projects, metas)
   pruneOrphanPersistentNotes(projects, PERSISTENT_TODO)
   return {
