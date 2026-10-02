@@ -2944,6 +2944,8 @@ describe('deniedCalls (strace trace parsing)', () => {
       '22 chdir("deep")                   = 0',
       '20 openat(AT_FDCWD, "b", O_RDONLY) = -1 ENOENT (No such file or directory)',
       '23 openat(AT_FDCWD, "c", O_RDONLY) = -1 ENOENT (No such file or directory)',
+      '20 vfork()                          = 24',
+      '24 openat(AT_FDCWD, "e", O_RDONLY) = -1 ENOENT (No such file or directory)',
       '',
     ].join('\n')
     expect(deniedCalls(trace, '/ws').map((c) => [c.rawPath, c.dir])).toEqual([
@@ -2951,6 +2953,8 @@ describe('deniedCalls (strace trace parsing)', () => {
       ['b', '/ws/src/deep'],
       // A forked process copied the cwd at the fork, before the `chdir`.
       ['c', undefined],
+      // One forked after it copied the moved one.
+      ['e', '/ws/src/deep'],
     ])
   })
 
