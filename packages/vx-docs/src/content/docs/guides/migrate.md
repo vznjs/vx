@@ -102,7 +102,7 @@ npx vx run test --all      # 3 up-to-date
 | ----------------------------------------------------------- | ------------------------------------------------------------------------ |
 | `tasks` / `pipeline`                                        | `tasks`                                                                  |
 | `dependsOn`                                                 | `dependsOn`, the same `'build'`, `'^build'`, `'pkg#build'` syntax        |
-| `inputs`                                                    | `cache.inputs.files`                                                     |
+| `inputs`                                                    | `cache.inputs.files`; a glob that reaches a nested workspace package also in `cache.inputs.workspaceFiles` |
 | `outputs`                                                   | `cache.outputs.files`                                                    |
 | `env`                                                       | `cache.inputs.env` **and** `exec.env.passThrough`                        |
 | `passThroughEnv`                                            | `exec.env.passThrough`                                                   |
@@ -182,7 +182,7 @@ installed.
 | `nx run app:build:production`        | `vx run app#build:production`                             |
 | `nx affected -t test`                | `vx run test --affected` (`nx()` takes `NX_BASE` or `defaultBase` as its base) |
 | `nx graph`                           | `vx run build --all --graph`                              |
-| `nx reset`                           | `vx cache prune`, or remove the cache directory `vx info` names; there is no daemon |
+| `nx reset`                           | `vx cache prune --older-than <age>` trims it; remove the cache directory `vx info` names to drop it all; there is no daemon |
 | Nx Cloud cache                       | [`nxCache()`](../ci/#remote-cache) for a self-hosted Nx cache |
 
 Generators, Nx Console and module-boundary rules have no vx equivalent;

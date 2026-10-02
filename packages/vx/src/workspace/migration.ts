@@ -365,6 +365,7 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
   } else if (empty) {
     report.push(
       `${verb}: no package.json scripts to turn into tasks.`,
+      ...(args.notes ?? []).map((n) => `note: ${n}`),
       hasWorkspaceFile
         ? `${workspaceName} already exists.`
         : dry
@@ -477,7 +478,9 @@ export function vxInvocation(userAgent: string | undefined, installed: boolean):
     case 'pnpm':
       return installed ? 'pnpm vx' : 'pnpm dlx @vzn/vx'
     case 'yarn':
-      return installed ? 'yarn vx' : 'yarn dlx @vzn/vx'
+      // `dlx` is Yarn 2+; Yarn 1 answers `Command "dlx" not found`.
+      if (installed) return 'yarn vx'
+      return userAgent!.startsWith('yarn/1.') ? 'npx @vzn/vx' : 'yarn dlx @vzn/vx'
     default:
       return 'vx'
   }

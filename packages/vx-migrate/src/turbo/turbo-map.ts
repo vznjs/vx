@@ -177,8 +177,9 @@ const OUTPUT_LOGS_RUN_FLAG = new Set(['full', 'hash-only', 'errors-only', 'none'
 // nothing in turbo.json saying so. vx env names are explicit, so the
 // variables were stripped in silence and a build that inlines them
 // (Next's `NEXT_PUBLIC_*`) read empty values (item 940). A live mapping
-// (`envNames`) infers them as Turbo does; the migrate CLI names them in a
-// note. Turbo's own table (`packages/turbo-types/src/json/frameworks.json`),
+// (`envNames`) infers them as Turbo does; the migrate CLI lists the names
+// the package's own files spell (`sourceNames`) and says so in a note.
+// Turbo's own table (`packages/turbo-types/src/json/frameworks.json`),
 // in its order: a package takes the FIRST framework it matches, `all`
 // needing every dependency and `some` any one.
 const NITRO_ENV = [
@@ -296,6 +297,11 @@ export interface MapTurboOptions {
    * Absent (`vx migrate` writes files), a wildcard is a todo.
    */
   envNames?: readonly string[]
+  /**
+   * Without `envNames` (written configs): the upper-case names the files
+   * under `dirs` spell, which a framework's `*` prefix is matched against.
+   */
+  sourceNames?: (dirs: readonly string[]) => Promise<readonly string[]>
   /**
    * `TURBO_CI_VENDOR_ENV_KEY`, which a platform sets (Vercel:
    * `NEXT_PUBLIC_VERCEL_`): names with it are left out of framework
@@ -1131,6 +1137,7 @@ export async function mapTurboWorkspace(
   // list, where the task's own `!` entries can take names back.
   const inferredOf = new Map<string, readonly string[]>()
   const usersOf = new Map<(typeof FRAMEWORK_ENV)[number], string[]>()
+  const sourcedOf = new Map<(typeof FRAMEWORK_ENV)[number], string[]>()
   for (const m of metas) {
     if (emitted.get(m.name)!.size === 0) continue
     const fw = FRAMEWORK_ENV.find((f) =>
@@ -1148,8 +1155,32 @@ export async function mapTurboWorkspace(
         return live.filter((n) => n.startsWith(head)).sort()
       })
       inferredOf.set(m.name, vendor ? names.filter((n) => !n.startsWith(vendor)) : names)
+    } else if (opts.sourceNames !== undefined) {
+      // A written config cannot ask the run's environment, and with the
+      // prefix only in a note, a migrated Next build inlined every
+      // NEXT_PUBLIC_ value empty. The names the package's own files spell
+      // are what its build reads, and so are its workspace dependencies':
+      // Next bundles their source (cal.com's web spells 23, with them 58).
+      const closure = new Set<ProjectMeta>([m])
+      for (const p of closure)
+        for (const d of metas) if (!closure.has(d) && declares(p, d.name)) closure.add(d)
+      const spelled = await opts.sourceNames([...closure].map((p) => p.dir))
+      inferredOf.set(
+        m.name,
+        fw.env.flatMap((e) =>
+          e.endsWith('*') ? spelled.filter((n) => n.startsWith(e.slice(0, -1))) : [e],
+        ),
+      )
+      sourcedOf.set(fw, [...(sourcedOf.get(fw) ?? []), m.name])
     } else usersOf.set(fw, [...(usersOf.get(fw) ?? []), m.name])
   }
+  for (const [fw, users] of sourcedOf)
+    notes.push(
+      `Turbo infers ${fw.slug} in ${users.join(', ')} and hashes and passes ${fw.env.join(', ')} ` +
+        'to its tasks; the configs list the names their files and their workspace ' +
+        'dependencies’ spell — add any only an installed dependency reads to cache.inputs.env ' +
+        'and exec.env.passThrough',
+    )
   for (const [fw, users] of usersOf)
     notes.push(
       `Turbo infers ${fw.slug} in ${users.join(', ')} and hashes and passes ${fw.env.join(', ')} to ` +
@@ -1291,9 +1322,70 @@ export async function mapTurboWorkspace(
     }
   }
 
+  nestedInputs(root, projects)
   resolveSharedWorkspaceOutputs(root, projects)
   pruneOrphanPersistentNotes(projects, opts.persistentTodo)
   return { projects, notes, globals }
+}
+
+/**
+ * Turbo hashes a package's files as git lists them, nested workspace
+ * packages included (probed on 2.11.6: `a#build` keys `n/x.ts` of a
+ * package `n` inside `a`). cal.com's `@calcom/app-store` holds ~100 app
+ * packages its source imports by relative path; core's file globs stop at
+ * a nested project, so an edit to an app replayed `@calcom/web#build`
+ * from the cache. Each file glob that reaches a nested package is listed
+ * again in `workspaceFiles`, anchored there, or at the package when it
+ * opens on `**` (its own files are keyed twice, the same way).
+ */
+function nestedInputs(root: string, projects: readonly TurboMappedProject[]): void {
+  const rels = projects.map((p) => relPosix(root, p.dir))
+  projects.forEach((p, i) => {
+    const own = rels[i]!
+    if (own === '' || own === '.') return
+    const inside = rels.filter((r) => r.startsWith(`${own}/`)).map((r) => r.slice(own.length + 1))
+    // A package inside a nested one is reached through it.
+    const nested = inside.filter((n) => !inside.some((m) => n.startsWith(`${m}/`)))
+    if (nested.length === 0) return
+    for (const t of p.tasks) {
+      const inputs = (t.task?.['cache'] as { inputs?: Record<string, unknown> } | undefined)?.inputs
+      const files = inputs?.['files']
+      if (inputs === undefined || !Array.isArray(files)) continue
+      const extra: string[] = []
+      for (const g of files) {
+        if (typeof g !== 'string') continue
+        const neg = g.startsWith('!')
+        const body = neg ? g.slice(1) : g
+        // One that opens on `**` reaches them all: listed once, at the package.
+        if (body.startsWith('**')) extra.push(`${neg ? '!' : ''}${own}/${body}`)
+        else
+          for (const n of nested) {
+            const under = reanchor(body, n)
+            if (under !== null) extra.push(`${neg ? '!' : ''}${own}/${n}/${under}`)
+          }
+      }
+      if (!extra.some((g) => !g.startsWith('!'))) continue
+      const ws = inputs['workspaceFiles']
+      inputs['workspaceFiles'] = uniq([...(Array.isArray(ws) ? ws : []), ...extra])
+    }
+  })
+}
+
+/**
+ * The part of a package-relative glob below `dir`, its nested package's
+ * directory: `**\/*.ts` under `n` is `**\/*.ts`, `src/**` under `src/n`
+ * is `**`; null when the glob cannot reach a file there.
+ */
+function reanchor(glob: string, dir: string): string | null {
+  const gs = glob.split('/')
+  const ds = dir.split('/')
+  for (let i = 0; i < ds.length; i++) {
+    const seg = gs[i]
+    if (seg === undefined) return null
+    if (seg === '**') return gs.slice(i).join('/')
+    if (!new Bun.Glob(seg).match(ds[i]!)) return null
+  }
+  return gs.length > ds.length ? gs.slice(ds.length).join('/') : null
 }
 
 /**
