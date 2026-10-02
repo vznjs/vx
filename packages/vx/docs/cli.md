@@ -737,7 +737,8 @@ down with it:
 
 - **`deps-ok`** (default): the failure's transitive dependents are
   skipped; independent siblings keep running. A server that dies after
-  it became ready is a failure to its dependents not yet started.
+  it became ready is a failure to its dependents not yet started,
+  including those that reach it through a group.
 - **`never`**: fail fast — the first failure stops dispatch. In-flight
   tasks finish naturally; everything not yet started (cache restores
   included) completes as skipped. A server that dies after it became
