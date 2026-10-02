@@ -230,6 +230,13 @@ files and their git objects; 11.1 s for the row and its hooks. The row
 11 ms after, under the same load. No other row of the suites makes a
 fixture past 1,500 files.
 
+M-24. M-23's class, the rest of it (a first write in a fresh shell
+against a 300 ms deadline): `persistent-ready-timeout.test.ts` › a task
+that overruns is SIGTERMed and › never-matching readyWhen + timeout
+(`echo $$ > pid.txt`), and `execute-task.test.ts` › a TIMEOUT kill is a
+real failure and IS retried (`echo x >> tries.txt`, once per attempt).
+Each red with a 600 ms shell start, green on a 1 s deadline.
+
 ## Leads for other streams
 
 - A: A-20 let a same-project dependant restore ahead of a producer whose
