@@ -153,6 +153,17 @@ describe('the configure guide names the essential allowlist', () => {
 })
 
 // The remote-execution guide is the CI page's section now.
+describe("comparison.md's Turborepo cache-skip cell", () => {
+  // It called Turbo's --no-cache deprecated; Turbo 2.10.13 and 2.11.7 document
+  // it as `--cache=local:r,remote:r`, and a --no-cache run after a cached one
+  // replayed the hit (J-110).
+  it('names the spec that skips both, and what --force and --no-cache each skip', () => {
+    const doc = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'comparison.md'), 'utf8')
+    const cell = /^\| skip cache reads\+writes +\| ([^|]*?) +\|/m.exec(doc)![1]
+    expect(cell).toBe('`--cache=local:,remote:` (`--force` skips reads, `--no-cache` writes)')
+  })
+})
+
 describe('the CI guide states the wire chunk sizes', () => {
   it('its uploads bullet names the default chunk, which is SAFE_CHUNK_BYTES', () => {
     const wire = readFileSync(
