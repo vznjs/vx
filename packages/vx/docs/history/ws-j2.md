@@ -91,3 +91,12 @@ persistent task` and vx exits 1). Row (`site-samples` › a post's link
   (`site-samples` › the lockfile post measures what the root reaches),
   read from the manifests; red without the fix and with the narrow
   example swapped for `@types/bun`.
+
+- **J2-17** The strict-output-ownership post said the benchmarks'
+  restore and no-op rows sit within a few milliseconds because of the
+  "current tree" short-circuit. The restore row deletes the outputs
+  first (`vx-bench/run.ts`), so it extracts every artifact; the
+  short-circuit is the no-op row alone (475 against 743 ms in
+  `results.json`). Row (`site-samples` › the output-ownership post reads
+  the benchmark rows as they are measured), read from the harness and
+  `results.json`; red without the fix.
