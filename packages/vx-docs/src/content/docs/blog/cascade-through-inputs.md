@@ -72,13 +72,17 @@ closure moves it. The fold is also *filtered*: only the upstreams the
 graph actually connects are folded, so an unrelated package's edit does
 not move it.
 
-There is one subtlety the scheduler is careful about. A task whose
-input globs could match a same-project upstream's declared outputs (a
-`test` task reading `dist/**` produced by `build`) has a key that is
-technically pure but *preliminary*: the files it reads are the upstream's
-outputs, which may not exist yet. Such a task stays gated on its
-dependencies and is excluded from the up-front probe. The rule that
-finds it is shared between the local restore tier and remote prefetch,
-so the two cannot disagree about which keys are stable.
+There is one subtlety the scheduler is careful about. A key is
+technically pure but *preliminary* when an upstream may write a file
+the task reads before it runs, so the bytes it hashed up front are not
+the ones it will read: a same-project upstream's declared outputs its
+globs can meet (a `test` task reading `dist/**` produced by `build`),
+an upstream's root-anchored `outputs.workspaceFiles`, an upstream with
+no `cache` block that may write in the project, or a cached upstream
+that rewrites its own inputs in place (a formatter) whose key this one
+does not fold. Such a task, and every task depending on it, stays gated
+on its dependencies and is excluded from the up-front probe. The rule
+that finds it is shared between the local restore tier and remote
+prefetch, so the two cannot disagree about which keys are stable.
 
 Full derivation and every version's reason: [Caching](../../caching/).

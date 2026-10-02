@@ -4,7 +4,7 @@
 
 import type { ProjectConfig } from '../config.js'
 import { flagHint, refusedWord, seeHelp } from './help.js'
-import { relPosix, xxh3hex } from '../util/index.js'
+import { relPosix, secretMask, xxh3hex } from '../util/index.js'
 import {
   findWorkspaceRoot,
   type LoadReads,
@@ -86,6 +86,15 @@ async function writeLock(root: string, metas: ConfiguredMeta[], bare: number): P
   const projects: Record<string, LockfileEntry> = {}
   // `listProjects` sorts by name — stable lockfile diffs for free.
   for (let i = 0; i < metas.length; i++) projects[metas[i]!.name] = entries[i]!
+  const leaks = secretsIn(projects)
+  if (leaks.length > 0) {
+    process.stderr.write(
+      `vx lock: ${LOCKFILE_NAME} is committed, and these configs evaluated to a secret value:\n` +
+        leaks.map((l) => `  ${l}\n`).join('') +
+        `let the shell expand it ($API_TOKEN in the command, the name in exec.env.passThrough) instead of reading process.env in the config\n`,
+    )
+    return 1
+  }
   const lock: Lockfile = { version: LOCKFILE_VERSION, projects }
   await writeLockfile(root, lock)
   const n = metas.length
@@ -93,6 +102,40 @@ async function writeLock(root: string, metas: ConfiguredMeta[], bare: number): P
     `vx: locked ${n} project config${n === 1 ? '' : 's'} → ${LOCKFILE_NAME}${bareNote(bare)}\n`,
   )
   return 0
+}
+
+/**
+ * Each place an evaluated config holds the value of a secret in this
+ * environment, by the rule output masking uses (a secret-named variable,
+ * or one a task lists in `exec.env.secret`). The lock is committed, so
+ * such a value would be published, and masking it would freeze a `***`
+ * that `--frozen` runs (L-42).
+ */
+function secretsIn(projects: Record<string, LockfileEntry>): string[] {
+  const named = new Set<string>()
+  for (const entry of Object.values(projects)) {
+    for (const task of Object.values(entry.config.tasks ?? {}))
+      for (const n of task?.exec?.env?.secret ?? []) named.add(n)
+  }
+  const secrets: [value: string, name: string][] = []
+  for (const [name, value] of Object.entries(process.env)) {
+    if (value !== undefined && secretMask([{ [name]: value }], named.has(name) ? [name] : []))
+      secrets.push([value, name])
+  }
+  if (secrets.length === 0) return []
+  const found: string[] = []
+  const walk = (project: string, at: string, v: unknown): void => {
+    if (typeof v === 'string') {
+      for (const [value, name] of secrets)
+        if (v.includes(value)) found.push(`${project}: ${at} holds $${name}`)
+    } else if (Array.isArray(v)) {
+      v.forEach((x, i) => walk(project, `${at}[${i}]`, x))
+    } else if (v !== null && typeof v === 'object') {
+      for (const [k, x] of Object.entries(v)) walk(project, at === '' ? k : `${at}.${k}`, x)
+    }
+  }
+  for (const [project, entry] of Object.entries(projects)) walk(project, '', entry.config)
+  return found
 }
 
 /**

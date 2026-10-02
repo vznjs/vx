@@ -786,6 +786,10 @@ function buildTask(
     }
     return { name: variant.name, task: { dependsOn: deps }, todos }
   }
+  if (opts.nativeExecutors === true) {
+    const call = nxSelfCall(mapped.command)
+    if (call !== undefined) todos.push(call)
+  }
   const exec: Record<string, unknown> = { command: mapped.command }
   const env: Record<string, unknown> = {}
   if (inputs.envNames.length > 0) env.passThrough = inputs.envNames
@@ -1004,6 +1008,21 @@ function mapCommand(
     ...line(nxExecCommand(executor, projectName, targetName, configuration, options, files)),
     envInputs: files,
   }
+}
+
+/**
+ * A written command that still runs Nx (`nx run app:build`, `npx nx test`,
+ * a package script's `nx exec -- tsc`) works only while Nx is installed:
+ * the migration's TODO for it. Undefined for a line that does not.
+ */
+function nxSelfCall(command: string): string | undefined {
+  const m = /(?:^|[\s;&|('"])(?:(?:npx|bunx|pnpm(?: exec)?|yarn)\s+)?nx\s+([a-z][\w:-]*)/.exec(
+    command,
+  )
+  if (m === null) return undefined
+  return m[1] === 'exec'
+    ? 'the command runs under `nx exec --`, which needs Nx installed — drop `nx exec --` and keep the command after it'
+    : `the command runs \`nx ${m[1]}\`, which needs Nx installed — name that task in dependsOn, or run its command here`
 }
 
 const isReleasePublish = (executor: string | undefined): boolean =>

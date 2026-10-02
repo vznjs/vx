@@ -60,6 +60,9 @@
   leads; the reasons, install, migration and status lines say the same
   in fewer words (1,096 → about 1,020 words), and the unpinned "over
   4,000 core tests" count went.
+- **R-12** The benchmarks page's generated stress table and the
+  benchmarks post's runner table show each competitor cell as
+  `(vx N% faster)` with the formula line, not a multiple.
 
 ## Leads
 
@@ -67,3 +70,5 @@
   real-repo sections) measured `turbo()` / `nx()`, not native config.
   Rerun each repo after `bunx @vzn/vx-migrate` writes native configs
   before any of them is quoted again.
+- benchmarks.md's dated head-to-head sections still read as multiples
+  (`(1.6×)`); they are hand-typed records, converted only with a rerun.
