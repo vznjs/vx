@@ -33,6 +33,7 @@ import {
   existsSync,
   mkdirSync,
   openSync,
+  readFileSync,
   readlinkSync,
   realpathSync,
   rmSync,
@@ -59,6 +60,7 @@ import {
   executablePath,
   grantPrefix,
   isTmpdirRefusal,
+  procfsIsOwn,
   TMPDIR_HINT,
   UserError,
   xxh3hex,
@@ -1033,7 +1035,10 @@ export async function wrapSandboxedCommand(
   if (process.platform === 'linux' && !hostHasIpv6())
     wrapped = `SOCAT_DEFAULT_LISTEN_IP=4 ${wrapped}`
   if (args.server === true) liveServers.add(tag)
-  if (ports.length > 0) spawnHostBridges(ports, tag)
+  if (ports.length > 0) {
+    spawnHostBridges(ports, tag)
+    await hostBridgesListen(ports, tag)
+  }
   return {
     wrapped,
     tag,
@@ -1232,7 +1237,7 @@ export function portBridgeInner(ports: readonly number[], tag: string): string {
  */
 export function portBridgeHostArgv(tag: string, port: number): string[] {
   return [
-    'socat',
+    executablePath('socat'),
     `TCP-LISTEN:${port},bind=127.0.0.1,fork,reuseaddr`,
     `UNIX-CONNECT:${portBridgeSocket(tag, port)},retry=40,interval=0.25`,
   ]
@@ -1242,6 +1247,37 @@ const hostBridges = new Map<
   string,
   { ports: readonly number[]; procs: Array<ReturnType<typeof Bun.spawn>> }
 >()
+
+/**
+ * Wait until each host-side bridge listens on its port, so a server that
+ * says it is ready inside the sandbox is reachable on the host: the socat
+ * starts asynchronously, and a held server's port refused a connection
+ * right after its ready line under I/O load (M-22). Read off
+ * /proc/net/tcp (127.0.0.1, state 0A); skipped where /proc is not this
+ * process's (its net table could be another namespace's), ended early by
+ * a bridge that exited (a port already taken), and bounded at 5 s.
+ */
+async function hostBridgesListen(ports: readonly number[], tag: string): Promise<void> {
+  if (!procfsIsOwn()) return
+  const want = ports.map((p) => `0100007F:${p.toString(16).toUpperCase().padStart(4, '0')}`)
+  const procs = hostBridges.get(tag)?.procs ?? []
+  const until = Date.now() + 5_000
+  while (Date.now() < until && procs.every((p) => p.exitCode === null)) {
+    let table: string
+    try {
+      table = readFileSync('/proc/net/tcp', 'utf8')
+    } catch {
+      return
+    }
+    const listening = new Set<string>()
+    for (const line of table.split('\n')) {
+      const f = line.trim().split(/\s+/)
+      if (f[3] === '0A' && f[1] !== undefined) listening.add(f[1])
+    }
+    if (want.every((w) => listening.has(w))) return
+    await Bun.sleep(5)
+  }
+}
 
 function spawnHostBridges(ports: readonly number[], tag: string): void {
   const procs: Array<ReturnType<typeof Bun.spawn>> = []

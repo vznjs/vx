@@ -222,6 +222,23 @@ the afterAll's rm of the 2000-project tree took 4.2 s under load; it now
 has a bound matched to that work, as its beforeAll does. No other
 fixture of that size in the suites.
 
+M-22. Under I/O load (as M-21) the unsafe suite's held-server row,
+`sandbox-runtime.unsafe.test.ts` › a held server keeps its port through
+its run's reset, met a refusal on the server's host port right after
+its ready line, and every later row of the file timed out. Cause of the
+first: the host side of a `localBinding` bridge is a socat vx spawned
+and never waited for, so the task, and its ready line, could come first:
+a product race. Fixed: the task starts once each host socat listens
+(`/proc/net/tcp`, 5 s bound, skipped where /proc is not vx's), and the
+host socat is resolved on vx's PATH like every tool vx runs (it was a
+bare name, so the startup PATH's). `sandbox-port-bridge-ready.unsafe.test.ts`:
+a fake `socat` starts the host listener 1 s late and a shell task marks
+itself started at once; red 3 of 3 without the wait. The row's
+`SandboxManager.reset` spy was restored only past its asserts, so the
+red left it on for the rest of the file; it is restored in a `finally`
+now (the file's other nine spies already were). Whether that spy made
+the later rows time out is not proven.
+
 ## Leads for other streams
 
 - A: A-20 let a same-project dependant restore ahead of a producer whose

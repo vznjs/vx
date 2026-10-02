@@ -690,7 +690,10 @@ prefixes the sandboxed command with `portBridgeInner`: one
 per port, backgrounded and reaped with the shell (as SRT starts its own
 proxy bridges), and spawns the host side, `portBridgeHostArgv`: one
 `socat TCP-LISTEN:<port>,bind=127.0.0.1,fork UNIX-CONNECT:<sock>,retry=…`
-per port. The unix socket lives in the sandbox tmpdir, bound read-write on
+per port, socat resolved on vx's PATH. The task starts once each host
+socat listens (`/proc/net/tcp`, 5 s bound, skipped where /proc is not
+vx's, ended by a bridge that exited): a server that said it was ready
+inside could meet a refusal on the host first (M-22). The unix socket lives in the sandbox tmpdir, bound read-write on
 both sides. The task's side has to CREATE a unix socket under SRT's seccomp
 filter, so `prepareSandbox` passes `allowAllUnixSockets` when any task
 declares a port list (or `unixSockets`), and `wrapSandboxedCommand` then
