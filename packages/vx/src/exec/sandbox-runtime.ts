@@ -738,6 +738,30 @@ function canonicalBaselines(
 }
 
 /**
+ * Linux: does some mount hold the task's cwd? bwrap enters the old cwd
+ * only if it exists in the new root, and otherwise `$HOME`, with no word:
+ * a project granted no read ran in the home directory, where `cat x.txt`
+ * read `~/x.txt`. A grant at or above the cwd holds it, and so does an
+ * existing one below (bwrap builds the path to a bind), and so does a
+ * deny that IS the cwd (a single-package workspace's anchor). When none does,
+ * the cwd is denied instead: an empty directory the task enters, whose
+ * reads are refused and reported as the anchor's are.
+ */
+function cwdMounted(
+  cwd: string,
+  fs: {
+    allowRead?: readonly string[] | undefined
+    allowWrite?: readonly string[] | undefined
+    denyRead?: readonly string[] | undefined
+  },
+): boolean {
+  if (fs.denyRead?.includes(cwd) === true) return true
+  return [...(fs.allowRead ?? []), ...(fs.allowWrite ?? [])].some(
+    (p) => atOrUnder(cwd, p) || (atOrUnder(p, cwd) && existsSync(p)),
+  )
+}
+
+/**
  * A write grant that names a path in the project must BIND one there. The
  * grant was realpath'd, so `out.txt -> ../b/src/x` (committed, or planted
  * by the task's own previous run) bound project b's directory writable,
@@ -958,6 +982,9 @@ export async function wrapSandboxedCommand(
   const customConfig = buildCustomConfig(args, baselines)
   const scratch = pendingWriteGrants(args.config, customConfig!.filesystem!, baselines.denyRead)
   customConfig!.filesystem!.denyRead!.push(toRealPath(taskTmpRoot()))
+  if (process.platform === 'linux' && !cwdMounted(baselines.cwd, customConfig!.filesystem!)) {
+    customConfig!.filesystem!.denyRead!.push(baselines.cwd)
+  }
   customConfig!.filesystem!.allowWrite!.push(toRealPath(tmp))
   if (scopedDenyScan) {
     customConfig!.filesystem!.denyWrite!.push(
