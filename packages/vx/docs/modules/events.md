@@ -34,5 +34,9 @@ run removes on its way out (`orchestrator.md`).
 
 - Fan-out is synchronous, so terminal output is byte-identical to the
   pre-bus direct-call era.
+- An emit reaches the subscribers there were when it began: one that
+  unsubscribes during it does not take the event from the next (an
+  embedder's `off()` on `run:end` did, from the terminal renderer;
+  C-77), and one added during it hears the next event.
 - Raw `TaskOutcome`s are NOT serializable (bigint + graph back-refs);
   anything crossing a process boundary goes through `toWireEvent`.

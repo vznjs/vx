@@ -617,6 +617,20 @@ file's siblings — and it is the narrowest thing the mechanism can
 express; the alternative is a declared output the task cannot produce.
 macOS matches paths rather than mounting, so the grant stays exact there.
 
+A read under the widened directory is never refused either: a task
+granted `write: ['out.txt']` read an undeclared `secret.txt` with no
+violation, and a cached run replayed its old bytes after it changed. So
+when a grant was widened, vx lists the directory as the task starts
+(`widenedEntries`), the strace pass also reads the `openat` calls that
+succeeded and were not for writing alone, and reports one of those
+entries that no grant covers — and the directory's listing while it
+holds one, since it names every sibling. The declared files, other
+grants and what the task made there itself stay readable. `grep -r` and
+`find` open each entry relative to a directory's descriptor, which the
+trace names only by number, so such a task's strace runs with `-y`,
+which prints the path each descriptor opened (40% slower on 2,000
+opens). No widened grant, no `-y` and no extra parse.
+
 ## A write grant that mounts nothing
 
 A bind covers what exists when the task STARTS, so a Linux write grant
@@ -769,6 +783,9 @@ That deferred reset runs unawaited from the server's exit, and a watch
 cycle stops its server and starts its next run at once. `initSandbox`
 therefore waits for a reset in flight: an init under it found SRT up,
 hot-reloaded it, and had it torn down after (item 884).
+An init also takes the session over: it cancels a reset an earlier run
+deferred, so that run's last server, released later, no longer tears SRT
+down under this run's tasks; this run's own end resets it (M-25).
 Pinned in the unsafe suite on Linux: a sandboxed server on a listed port
 answers a downstream task's fetch and the host's, and after the run the
 port is closed; the control with `localBinding: true` is refused.

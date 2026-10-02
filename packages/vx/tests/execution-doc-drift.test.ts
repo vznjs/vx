@@ -80,12 +80,11 @@ describe('execution.md follows the source it traces', () => {
     expect(named.filter((f) => !folded.includes(f)).sort()).toEqual([])
   })
 
-  it('the essential-allowlist sentence names every POSIX name in ESSENTIAL_ENV', () => {
+  it('the essential-allowlist sentence names every name in ESSENTIAL_ENV', () => {
     const m = /\*\*Essential allowlist\*\* \(([\s\S]*?)\)\./.exec(doc)
     expect(m).not.toBeNull()
     const named = new Set([...m![1]!.matchAll(/`([A-Z_]+)`/g)].map((x) => x[1]!))
-    const posix = ESSENTIAL_ENV.slice(0, ESSENTIAL_ENV.indexOf('SYSTEMROOT'))
-    expect(posix.length).toBeGreaterThan(10)
-    for (const name of posix) expect(named).toContain(name)
+    named.delete('ESSENTIAL_ENV')
+    expect([...named]).toEqual([...ESSENTIAL_ENV])
   })
 })
