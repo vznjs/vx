@@ -18,6 +18,7 @@ import { trackedKinds } from '../tracked-outputs.js'
 import { relPosix } from '../paths.js'
 import {
   mapTurboWorkspace,
+  microfrontendsConfigs,
   rootTaskProject,
   turboConfigFile,
   type TurboMappedProject,
@@ -163,8 +164,8 @@ const textOf = (file: string): Promise<string> =>
 
 /**
  * Everything the mapping reads: the root's and each package's
- * `turbo.json` / `turbo.jsonc`, every package manifest, the root's and
- * `.yarnrc.yml`.
+ * `turbo.json` / `turbo.jsonc`, every package manifest, the root's,
+ * `.yarnrc.yml` and the microfrontends configs.
  */
 async function run(root: string, metas: readonly ProjectMeta[]): Promise<AdoptionRun> {
   const dirs = [root, ...metas.map((m) => m.dir)]
@@ -184,6 +185,7 @@ async function run(root: string, metas: readonly ProjectMeta[]): Promise<Adoptio
       await textOf(path.join(root, '.yarnrc.yml')),
       // Its dependencies are global inputs, a member or not.
       await textOf(path.join(root, 'package.json')),
+      JSON.stringify(microfrontendsConfigs(root, dirs)),
       // A config file added beside mapped tasks changes what an output may cover.
       JSON.stringify(metas.map((m) => [m.name, m.dir, m.packageJson, m.configPath])),
     ],

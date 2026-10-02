@@ -67,7 +67,7 @@
   {
     "key": "turbo.json globalDependencies",
     "status": "mapped",
-    "reason": "Becomes `cache.inputs.workspaceFiles`; `$NAME` entries become env inputs. Under `turbo()` the files of every package the root depends on, transitively, join them, as in Turbo's global hash."
+    "reason": "Becomes `cache.inputs.workspaceFiles`; `$NAME` entries become env inputs. Under `turbo()` every package's `microfrontends.json` (or `.jsonc`, or the name `VC_MICROFRONTENDS_CONFIG_FILE_NAME` gives) joins them, as in Turbo, unless it is a child's `partOf`, and so do the files of every package the root depends on, transitively, as in Turbo's global hash."
   },
   {
     "key": "turbo.json globalEnv",
