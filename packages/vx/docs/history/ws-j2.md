@@ -31,6 +31,13 @@
   `modules/logger.md` gained #2054's post-summary server stream. Rows
   (`module-page-claims`), red on each page without the fix.
 
+- **J2-6** #2227 dropped every native Windows branch, and two pages
+  still described one: `modules/sandbox-runtime.md`'s Windows row said
+  `probeSandbox` reports the sandbox unavailable and `exec.sandbox` is
+  refused before the run (no such branch is left; under WSL the Linux
+  row applies), and `execution.md` called the allowlist what a command
+  needs on "\*nix / Windows". Row (`doc-references` › no page describes
+  a Windows branch the source dropped), red without the fix.
 - **J2-7** The sandboxing guide's grant table called `gitConfig`
   "inert: SRT drops the per-task flag"; since B-41 the run union carries
   it and each wrap sets it for its own task (`perTaskRun`), and the

@@ -409,8 +409,8 @@ between machines and gives reproducible runs.
 
 The allowlist + isolation contract lives in
 [`modules/env.md`](./modules/env.md) and is the only field the
-contract assumes for "what every command needs to function on
-\*nix / Windows". Adding to the allowlist would be a deliberate
+contract assumes for "what every command needs to function" on
+Linux and macOS (Windows is WSL, which is Linux). Adding to the allowlist would be a deliberate
 schema-extending change (consumer code expects a particular set;
 broader access has cache-stability implications).
 
