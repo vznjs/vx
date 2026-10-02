@@ -8,7 +8,7 @@
 import { existsSync } from 'node:fs'
 import { unlink } from 'node:fs/promises'
 import path from 'node:path'
-import { relPosix, UserError } from '../util/index.js'
+import { executablePath, relPosix, UserError } from '../util/index.js'
 import type { ProjectMeta } from './workspace.js'
 import { loadWorkspace, unreachedHint, unreachedPackages } from './workspace.js'
 import { WORKSPACE_CONFIG_FILENAMES } from './project-loader.js'
@@ -412,12 +412,34 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
     report.push('', 'no task caches yet: add the cache block a TODO shows, and a second run hits')
   }
   const installed = existsSync(path.join(root, 'node_modules', '@vzn', 'vx', 'package.json'))
-  report.push(
-    '',
-    `next: ${vxInvocation(process.env['npm_config_user_agent'], installed)} run ${firstTask} --all`,
-  )
+  // The line is the next thing to type, so it names what that run would
+  // refuse without: a git work tree (vx keys inputs on git's view) and,
+  // with no scripts mapped, a task to run.
+  const run = `${vxInvocation(process.env['npm_config_user_agent'], installed)} run ${firstTask} --all`
+  const steps = [
+    ...(inGitWorkTree(root) ? [] : ['git init']),
+    ...(empty ? [`declare a task as the example shows`] : []),
+  ]
+  report.push('', `next: ${steps.length === 0 ? run : `${steps.join(', ')}, then ${run}`}`)
   process.stdout.write(`${report.join('\n')}\n`)
   return 0
+}
+
+function inGitWorkTree(root: string): boolean {
+  try {
+    return (
+      Bun.spawnSync({
+        cmd: [executablePath('git'), 'rev-parse', '--is-inside-work-tree'],
+        cwd: root,
+        stdout: 'pipe',
+        stderr: 'ignore',
+      })
+        .stdout.toString()
+        .trim() === 'true'
+    )
+  } catch {
+    return false
+  }
 }
 
 /**

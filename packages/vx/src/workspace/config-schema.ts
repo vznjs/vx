@@ -754,7 +754,22 @@ const FOREIGN_FIELDS: ReadonlyMap<ReadonlySet<string>, Readonly<Record<string, s
         'one task per configuration (`build:production`, with its own `exec.command`)',
     },
   ],
-  [EXEC_FIELDS, { cmd: '`command`', script: '`command`' }],
+  [
+    EXEC_FIELDS,
+    {
+      cmd: '`command`',
+      script: '`command`',
+      // Nx run-commands' options and shell-runner habits, refused with no
+      // word on where they go (D-100).
+      cwd: '`cd <dir> && …` in `command`: a task runs in its project directory',
+      args: 'the arguments written into `command`, or after `--` on `vx run`',
+      commands: 'one `command` (`a && b`, or `a & b; wait` to run them at once), or one task each',
+      parallel: 'one task each, which vx runs at once, or `a & b; wait` in `command`',
+      shell: 'no field: `command` always runs in a shell',
+      interactive:
+        'a command run outside vx: a task never reads the terminal (its stdin is EOF, or a pipe vx holds under `persistent`)',
+    },
+  ],
   // A package's turbo.json and Nx's project.json keys, written into a
   // project's vx.config (D-56). `tags` had read as a typo of `tasks`.
   [
@@ -765,6 +780,24 @@ const FOREIGN_FIELDS: ReadonlyMap<ReadonlySet<string>, Readonly<Record<string, s
       implicitDependencies: 'a `dependsOn` entry `pkg#task`, or a package.json dependency',
       name: 'the package.json `name` (a project is named by its package)',
       tags: '`--filter` (a name glob or a directory) to select projects',
+      // A package.json's, turbo.json's and project.json's keys, and a
+      // task's fields one level too high (D-99).
+      scripts:
+        "`tasks` (a script is a task's `exec.command`; `vx init` writes them from package.json)",
+      pipeline: '`tasks` (`bunx @vzn/vx-migrate` writes them from turbo.json)',
+      namedInputs: 'a module the vx.config imports, spread into `cache.inputs.files`',
+      root: "no field: a project's directory is where its package.json sits",
+      sourceRoot: "a task's `cache.inputs.files`",
+      projectType: 'no field: vx runs every project alike',
+      ...Object.fromEntries(
+        ['dependsOn', 'cache', 'exec', 'description'].map((k) => [
+          k,
+          `\`tasks.<name>.${k}\`: a project holds tasks, and each task its own \`${k}\``,
+        ]),
+      ),
+      inputs: '`tasks.<name>.cache.inputs.files`',
+      outputs: '`tasks.<name>.cache.outputs.files`',
+      env: '`tasks.<name>.cache.inputs.env` (to key a task on it) or `tasks.<name>.exec.env`',
     },
   ],
   // Turbo's turbo.json and Nx's nx.json keys, written into vx.workspace
@@ -788,6 +821,24 @@ const FOREIGN_FIELDS: ReadonlyMap<ReadonlySet<string>, Readonly<Record<string, s
       defaultBase: '`affectedBase`',
       tasksRunnerOptions: 'a cache plugin in `plugins` (`nxCache()` from `@vzn/vx-migrate`)',
       globalPassThroughEnv: '`exec.env.passThrough` on the tasks it passes to',
+      // pnpm-workspace.yaml's, Lerna's and the package.json's own keys
+      // pasted into vx.workspace: refused with no word on where vx reads
+      // them (D-98).
+      packages:
+        "`workspaces` in package.json or pnpm-workspace.yaml's `packages`, where vx reads the members",
+      workspaces:
+        "`workspaces` in package.json or pnpm-workspace.yaml's `packages`, where vx reads the members",
+      projects:
+        "`workspaces` in package.json or pnpm-workspace.yaml's `packages`, where vx reads the members",
+      ignore:
+        'a `!` pattern in the workspace globs (package.json `workspaces` or pnpm-workspace.yaml)',
+      catalog:
+        "pnpm-workspace.yaml's or package.json's `catalog`, where the package manager reads it",
+      npmClient: "no field: a task's command runs as written, with no package manager in between",
+      cache:
+        "each task's `cache` in its project's vx.config (a task caches only when it declares one)",
+      remote: 'a cache plugin in `plugins`',
+      env: '`cache.inputs.env` on the tasks it keys, or `exec.env` on the tasks it passes to',
     },
   ],
 ])

@@ -2950,6 +2950,8 @@ describe('deniedCalls (strace trace parsing)', () => {
     expect(deniedCalls(trace, '/ws/p').map((c) => [c.rawPath, c.dir])).toEqual([
       ['secret.txt', '/ws/p/src'],
       ['a', '/abs/deeper'],
+      // A chdir refused is a denial of its own (B-67), and moves nothing.
+      ['nope', '/ws/p/src'],
       ['b', '/ws/p/src'],
       // fchdir names no path: lost, so the starting cwd stands, as before.
       ['c', undefined],
@@ -2958,6 +2960,7 @@ describe('deniedCalls (strace trace parsing)', () => {
     ])
     // Without the starting cwd nothing is followed.
     expect(deniedCalls(trace).map((c) => c.dir)).toEqual([
+      undefined,
       undefined,
       undefined,
       undefined,
