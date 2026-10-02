@@ -171,7 +171,10 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     entries, so the verdict is kept in `blob_verdicts` by a hash of
     the index file and the pathspecs: a warm run reads the file and
     one row (the `--debug` listing and a lookup per entry cost 550 ms
-    at 100,000 files). A changed index spawns
+    at 100,000 files). The key stands only for an index written before
+    the run began and still in place after its listing, so a `git add`
+    between the two cannot pair one index's verdict with the other's
+    entries; any other run checks every blob. A changed index spawns
     `git ls-files -s -v -z --debug` for the recorded sizes, takes each
     blob's size from `blob_sizes` (fixed for its OID), and asks one
     `git cat-file --batch-check` for the ones not yet known (65 ms
