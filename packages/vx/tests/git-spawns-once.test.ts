@@ -1,9 +1,10 @@
 // The git a cold run spawns, as an exact list. The input enumeration asked
 // `rev-parse --show-prefix --git-common-dir` and the file hasher asked
-// `rev-parse --show-object-format` in a spawn of its own; one `rev-parse`
-// answers all three (`repoFacts` in cache/git-inputs.ts), whichever reader
-// asks first — the enumeration on an unscoped run, the config load's
-// `hashBytes` on a scoped one.
+// `rev-parse --show-object-format` in a spawn of its own; `repoFacts` in
+// cache/git-inputs.ts answers all three once, whichever reader asks first —
+// the enumeration on an unscoped run, the config load's `hashBytes` on a
+// scoped one — and for a plain repository, this fixture's, reads them off
+// the disk without a spawn at all.
 //
 // A shim first on the child's PATH logs every git call: the real CLI in a
 // subprocess, because which git runs is decided by the PATH vx resolves on.
@@ -30,7 +31,6 @@ const ENUMERATION = [
   '--no-optional-locks var -l',
   // The blob sizes a cold cache has not learned (A-60).
   '--no-optional-locks cat-file --batch-check=%(objectname) %(objectsize)',
-  'rev-parse --show-prefix --git-common-dir --show-object-format',
 ]
 
 describe('git spawns on a cold run', () => {
@@ -78,7 +78,7 @@ describe('git spawns on a cold run', () => {
   }
 
   it(
-    'unscoped: one rev-parse, asked by the enumeration, answers the hasher too',
+    'unscoped: no rev-parse; the facts the enumeration reads answer the hasher too',
     async () => {
       expect(await coldRun(['build', '--all'])).toEqual(
         [
@@ -95,7 +95,7 @@ describe('git spawns on a cold run', () => {
   )
 
   it(
-    'scoped: one rev-parse, asked by the config load, answers the enumeration too',
+    'scoped: no rev-parse; the facts the config load reads answer the enumeration too',
     async () => {
       expect(await coldRun(['a#build'])).toEqual(
         [

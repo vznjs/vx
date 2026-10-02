@@ -476,7 +476,7 @@ task's `define`, six characters or more; not a name ending `_FILE`,
 shows it: the task's output, the stdout the cache keeps and a hit
 replays, the command a cache entry stores (what `vx why` prints and a
 remote cache receives), the `$ command` line, telemetry records,
-`vx show`, and the run's own invocation line that `vx last` prints (a
+`vx show`, an executor's error (a remote server's reply), and the run's own invocation line that `vx last` prints (a
 secret passed after `--`) and its `--tag`s. A multi-line value (a PEM
 key) is also masked line by line, each line of six characters or more.
 A value

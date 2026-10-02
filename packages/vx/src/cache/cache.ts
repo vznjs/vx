@@ -1590,8 +1590,24 @@ export class Cache implements CacheLayer {
     // whole. A commit that fails after the rename takes the artifact back
     // out: the old rows then name no artifact, which a probe reads as a
     // miss.
+    //
+    // A previous artifact is moved aside first, never renamed over: ext4
+    // flushes the incoming file's delayed blocks when a rename replaces a
+    // file, 0.55 ms against 0.04 on the main thread with the write lock
+    // held (a `--force` run, 2026-10-02). A reader probing between the two
+    // renames finds no artifact, a miss (`ArtifactVanishedError`); one
+    // holding the old file still reads it whole. The aside name is a temp
+    // name, so a crash before its unlink leaves an orphan the sweep takes.
+    const aside = this.tempPath(hash)
+    let displaced = false
     let renamed = false
     const tx = this.db.transaction(() => {
+      try {
+        renameSync(finalPath, aside)
+        displaced = true
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err
+      }
       renameSync(tmpPath, finalPath)
       renamed = true
       insertEntry.run(
@@ -1628,11 +1644,13 @@ export class Cache implements CacheLayer {
     try {
       tx.immediate()
     } catch (err) {
-      await unlink(renamed ? finalPath : tmpPath).catch(() => undefined)
-      throw err
-    } finally {
       endTx()
+      await unlink(renamed ? finalPath : tmpPath).catch(() => undefined)
+      if (displaced) await unlink(aside).catch(() => undefined)
+      throw err
     }
+    endTx()
+    if (displaced) await unlink(aside).catch(() => undefined)
   }
 
   /** Apply the deferred accessed_at bumps in one statement. */
