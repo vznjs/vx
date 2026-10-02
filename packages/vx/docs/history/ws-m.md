@@ -230,6 +230,16 @@ files and their git objects; 11.1 s for the row and its hooks. The row
 11 ms after, under the same load. No other row of the suites makes a
 fixture past 1,500 files.
 
+M-25. `watch-rules.test.ts` › fsClockNow — a write made right after it
+is never "modified before" it timed out at 5 s on macOS CI (run
+36794690005). The row samples 2,000 writes at five syscalls each: 0.36 s
+here, 2.3 s under `strace -f`, past 5 s with load beside that (all
+twelve shards under strace beside four busy loops), the shape a slow
+sandbox gives every syscall. It now samples 2,000 writes or as many as
+2 s holds, at least 100. With 400 µs injected per file syscall
+(`strace -e inject=…:delay_enter=400`) the old row fails (6.8 s), the
+new passes (2.2 s).
+
 ## Leads for other streams
 
 - A: A-20 let a same-project dependant restore ahead of a producer whose
@@ -243,7 +253,10 @@ fixture past 1,500 files.
   that does not touch the launcher). The launcher exited 130 and the fake
   binary's INT trap never wrote `heard` (ENOENT). Once in the survey; cause
   unproven. The forward is gated on `inForeground()`, which reads `ps` on
-  macOS.
+  macOS. Twice more on main's macOS job (runs 36767290231, 36785326912,
+  2026-09-30), both before the launcher moved to CommonJS and `execve`
+  (#1979, #1981, 2026-10-01); none in the CI runs surveyed after them
+  (2026-10-01 06:00 to 2026-10-02 15:30).
 - B (done, M-14): `keep-alive.test.ts` › a kill -9 in the persistent shutdown's grace
   takes the server a dead shell left. The server writes `late.txt` 1 s
   after its SIGTERM mark, a timed fuse, and the row's kill comes after
