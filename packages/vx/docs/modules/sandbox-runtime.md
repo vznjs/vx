@@ -336,6 +336,11 @@ export function refusedWritesOutside(violations, opts: { within; linked?; config
      store's Linux feed is ignored) AND (on Linux) from the strace log
      the spawn wrote,
      then calls `SandboxManager.cleanupAfterCommand()`.
+   - On Linux, an attempt whose stderr holds a line of strace's own
+     (strace names itself by its argv[0], `/usr/bin/strace: …`) is run
+     once more unless it timed out or the run is stopping: the trace
+     stopped short, and under `--seccomp-bpf` (which implies
+     `--kill-on-exit`) a dying strace SIGKILLs the task (exit 137; M-18).
 4. **Filtering.** Enforcement anchors at the workspace root, but only
    denials on a path inside `reportWithin` (the project) or one of
    `reportLinked` (the linked packages a cached task was denied because
@@ -395,6 +400,15 @@ asks whether a read grant covers the cwd, and on Linux also whether one
 lies inside it: bwrap builds the path to a bind, so the cwd lists, and a
 root's `read: ['.']`, bound as its children around the walls, drew the
 note on every failure (B-20).
+
+bwrap enters the task's cwd only if a mount holds it, and otherwise
+`$HOME`, with no word: a project granted no read (`sandbox: {}`, its own
+`node_modules` absent) ran in the home directory, where `cat x.txt` read
+`~/x.txt` and a `mkdir dist` met `Read-only file system`. On Linux, when
+no grant holds the cwd (`cwdMounted`: one at or above it, an existing one
+below it, or a deny that is the cwd), vx denies the cwd too: the task
+enters an empty directory, its reads there are refused and reported, and
+its writes are the scratch the write observer reports (B-53).
 
 SRT's in-sandbox network bridge is `socat TCP-LISTEN:3128` (and 1080),
 which socat 1.8 opens as an IPv6 socket. On a host without IPv6 it
