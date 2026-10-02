@@ -354,6 +354,22 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
     persistentOpts.timeoutMs = effectiveTimeout
   }
 
+  // A stop that landed during the awaits above (the key, the sandbox's
+  // arming, request and wrap) leaves nothing to kill yet: spawned now, the
+  // server came up after the teardown and held the run's exit 7 s.
+  if (args.stopSignal?.aborted === true) {
+    if (bridgeTag !== undefined) releaseBridges(bridgeTag)
+    await placeholderSweeper(placeholders)()
+    const reason: unknown = args.stopSignal.reason
+    return {
+      node,
+      status: 'aborted',
+      exitCode: signalExitCode(reason === 'SIGINT' || reason === 'SIGHUP' ? reason : 'SIGTERM'),
+      durationMs: 0,
+      wallclockStartNs,
+      wallclockEndNs: process.hrtime.bigint() - args.runStartHrTimeNs,
+    }
+  }
   const spawn = runPersistent(persistentOpts)
   // The host side of a port bridge lives exactly as long as the server:
   // released on the child's exit, whether the run tore it down or it died.
