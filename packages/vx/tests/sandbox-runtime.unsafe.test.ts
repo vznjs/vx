@@ -720,9 +720,13 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
         // is not reported — being stopped at the wall is the sandbox
         // working, not a finding. Canonicalizing the baselines through the
         // symlink must not degenerate into "allow everything", and the
-        // absent file is what proves it did not. The failed task's hint
-        // names it (`hiddenReadsOutside`), never counted.
+        // absent file is what proves it did not. On Linux the failed
+        // task's hint names it (`hiddenReadsOutside`), never counted;
+        // macOS logs a seatbelt record late or not at all, so there only
+        // the count is held.
         expect(existsSync(path.join(link, 'packages', 'app', 'out.txt'))).toBe(false)
+        expect(r.outcomes[0]?.sandboxViolations ?? 0).toBe(0)
+        if (process.platform !== 'linux') return
         const root = realpathSync(fixture.root)
         expect([r.outcomes[0]?.sandboxViolations, r.outcomes[0]?.sandboxViolationLines]).toEqual([
           0,
