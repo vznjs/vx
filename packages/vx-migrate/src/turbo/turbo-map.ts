@@ -1403,12 +1403,13 @@ function reanchor(glob: string, dir: string): string | null {
 /**
  * A name both a global list and the task's own list carry — `globalEnv`
  * and a task `env`, `globalDependencies` and a `$TURBO_ROOT$/` input —
- * is listed once, in its first position. Only concrete strings are
- * compared: the `vx migrate` renderer splices globals as an opaque
- * preset spread, which stays as written.
+ * is listed once, in its first position. `spliced` names the global values
+ * an opaque preset spread already holds (`vx-migrate`'s configs): written
+ * twice there, a migrated config listed `tsconfig.base.json` twice and
+ * keyed apart from the live `turbo()` run, which lists it once.
  */
-function uniq(values: readonly unknown[]): unknown[] {
-  const seen = new Set<string>()
+function uniq(values: readonly unknown[], spliced: readonly string[] = []): unknown[] {
+  const seen = new Set<string>(spliced)
   const out: unknown[] = []
   for (const v of values) {
     if (typeof v === 'string') {
@@ -1512,6 +1513,12 @@ function buildTask(
     uses.add(kind)
     return opts.splice(kind, values)
   }
+  // The global names a splice holds out of `uniq`'s sight: an opaque
+  // preset spread (`vx-migrate`), never the names themselves (`turbo()`).
+  const hidden = (...kinds: TurboGlobal[]): string[] =>
+    kinds.flatMap((k) =>
+      opts.splice(k, globals[k]).some((v) => typeof v !== 'string') ? globals[k] : [],
+    )
   const persistent = def.persistent === true
   const cacheEnabled = def.cache !== false && !persistent
 
@@ -1662,7 +1669,10 @@ function buildTask(
     opts.envNames,
   )
 
-  const passThrough = uniq([...global('env'), ...global('pass'), ...envNames, ...passNames])
+  const passThrough = uniq(
+    [...global('env'), ...global('pass'), ...envNames, ...passNames],
+    hidden('env', 'pass'),
+  )
 
   const exec: Record<string, unknown> = { command }
   if (passThrough.length > 0) exec.env = { passThrough }
@@ -1805,7 +1815,7 @@ function buildTask(
       return { name, todos, task, uses }
     }
 
-    const cacheEnv = uniq([...global('env'), ...envNames])
+    const cacheEnv = uniq([...global('env'), ...envNames], hidden('env'))
 
     // Turbo hashes a root task over the whole repo; core stops a root
     // project's own globs at every member (D-39), so as `files` a root
@@ -1816,7 +1826,7 @@ function buildTask(
       wsOutFiles.unshift(...outFiles.splice(0))
     }
     const inputs: Record<string, unknown> = { files }
-    if (wsFiles.length > 0) inputs.workspaceFiles = uniq(wsFiles)
+    if (wsFiles.length > 0) inputs.workspaceFiles = uniq(wsFiles, hidden('inputs'))
     if (cacheEnv.length > 0) inputs.env = cacheEnv
     if (pkgDotenv) inputs.runtime = [pkgDotenvDeep ? DOTENV_PROBE : DOTENV_PROBE_TOP]
     if (wsDotenv.length > 0) inputs.workspaceRuntime = [dotenvGlobsProbe(wsDotenv) ?? DOTENV_PROBE]

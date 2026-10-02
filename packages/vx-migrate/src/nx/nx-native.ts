@@ -28,6 +28,10 @@ export interface NativeContext {
   readonly projectName: string
   /** A `project:target[:configuration]` spec's options (a server's `buildTarget`). */
   readonly targetOptions?: (spec: string) => Options | undefined
+  /** The executor a spec's target runs (`nx:run-commands` for a plain `command`). */
+  readonly targetExecutor?: (spec: string) => string | undefined
+  /** The project's `sourceRoot`, else its `src` dir where one exists (workspace-relative). */
+  readonly sourceRoot?: () => string | undefined
 }
 
 export interface NativeCommand {
@@ -790,7 +794,104 @@ const esbuild: Translate = (o, ctx, todos) => {
   )
 }
 
+/**
+ * `@nx/js:node`: `node` on the build target's output file from the
+ * workspace root, where Nx forks it, with Nx's `--inspect` (on by default)
+ * and `runtimeArgs` before it and `args` after. The output file is Nx's
+ * `getFileToRun`: `outputPath` and `outputFileName`, else the main's name,
+ * under the main's directory for a tsc or swc build. A build target with
+ * no `outputPath` (an inferred one) has no file here: no line.
+ */
+const node: Translate = (o, ctx, todos) => {
+  const spec = typeof o['buildTarget'] === 'string' ? o['buildTarget'] : undefined
+  if (spec === undefined) return null
+  const build = {
+    ...ctx.targetOptions?.(spec),
+    ...(o['buildTargetOptions'] as Options | undefined),
+  }
+  const executor = ctx.targetExecutor?.(spec)
+  if (typeof build['outputPath'] !== 'string') return null
+  const out = wsPath(build['outputPath'], ctx)
+  const main = typeof build['main'] === 'string' ? wsPath(build['main'], ctx) : undefined
+  let file: string
+  if (typeof build['outputFileName'] === 'string') file = build['outputFileName']
+  else if (main === undefined) return null
+  else {
+    const base = main
+      .split('/')
+      .at(-1)!
+      .replace(/\.[^.]*$/, '')
+    const formats = Array.isArray(build['format']) ? build['format'] : [build['format'] ?? 'esm']
+    const ext = executor === '@nx/esbuild:esbuild' && !formats.includes('esm') ? '.cjs' : '.js'
+    file = `${base}${ext}`
+    if (executor === '@nx/js:tsc' || executor === '@nx/js:swc') {
+      const dir = main.slice(0, main.lastIndexOf('/') + 1)
+      const root =
+        dir === `${out}/` || dir.startsWith(`${out}/`)
+          ? out
+          : typeof build['rootDir'] === 'string'
+            ? wsPath(build['rootDir'], ctx)
+            : ctx.projectRel
+      const rel = root === '.' ? dir : dir.startsWith(`${root}/`) ? dir.slice(root.length + 1) : dir
+      file = `${rel}${file}`
+    }
+  }
+  const args = ['node']
+  if (Array.isArray(o['runtimeArgs']))
+    for (const a of o['runtimeArgs']) if (typeof a === 'string') args.push(shellQuote(a))
+  const inspect = o['inspect'] === undefined || o['inspect'] === true ? 'inspect' : o['inspect']
+  if (typeof inspect === 'string' && inspect !== '') {
+    const host = typeof o['host'] === 'string' ? o['host'] : 'localhost'
+    const port = typeof o['port'] === 'number' ? o['port'] : 9229
+    args.push(`--${inspect}=${shellQuote(`${host}:${port}`)}`)
+  }
+  args.push(shellQuote(`${out}/${file}`))
+  if (Array.isArray(o['args']))
+    for (const a of o['args']) if (typeof a === 'string') args.push(shellQuote(a))
+  todos.push(
+    `@nx/js:node built ${JSON.stringify(spec)} first` +
+      (o['watch'] === false ? '' : ' and rebuilt and restarted on change') +
+      ' — add its build task to dependsOn',
+  )
+  return fromRoot(ctx, args.join(' '))
+}
+
+/**
+ * `@nx/js:swc`: swc's CLI from the project dir, as Nx's `getSwcCmd` builds
+ * it: the source dir (`sourceRoot`, or the project itself when `main` sits
+ * outside it), `-d` the output, the project's `.swcrc` unless `swcrc`
+ * names another; the output emptied first under `clean` (its default).
+ */
+const swc: Translate = (o, ctx, todos) => {
+  if (typeof o['outputPath'] !== 'string') return null
+  const out = shellQuote(projPath(o['outputPath'], ctx))
+  const main = typeof o['main'] === 'string' ? wsPath(o['main'], ctx) : undefined
+  let input = '.'
+  const root = ctx.sourceRoot?.()
+  if (root !== undefined) {
+    const src = wsPath(root, ctx)
+    input = main !== undefined && !main.startsWith(`${src}/`) ? '.' : projPath(src, ctx)
+  }
+  const swcrc = typeof o['swcrc'] === 'string' ? projPath(o['swcrc'], ctx) : '.swcrc'
+  const args = ['swc', shellQuote(input), '-d', out, `--config-file=${shellQuote(swcrc)}`]
+  if (o['stripLeadingPaths'] === true) args.push('--strip-leading-paths')
+  if (o['watch'] === true) args.push('--watch')
+  if (o['skipTypeCheck'] !== true)
+    todos.push(
+      '@nx/js:swc type-checked the project (tsc) besides compiling — add a typecheck task to dependsOn, or drop this line',
+    )
+  todos.push(
+    '@nx/js:swc wrote a package.json (main, types, exports) into the output dir — swc does not',
+  )
+  if (Array.isArray(o['assets']) && o['assets'].length > 0)
+    todos.push('@nx/js:swc copied `assets` into the output dir — swc does not; add a copy step')
+  const line = args.join(' ')
+  return o['clean'] === false ? line : `rm -rf ${out} && ${line}`
+}
+
 const TRANSLATORS: Readonly<Record<string, Translate>> = {
+  '@nx/js:swc': swc,
+  '@nx/js:node': node,
   '@nx/esbuild:esbuild': esbuild,
   '@nx/next:build': nextBuild,
   '@nx/next:server': nextServer,

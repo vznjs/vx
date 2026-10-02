@@ -23,6 +23,7 @@ export interface TaskEnvSecrets {
   readonly secret?: readonly string[]
 }
 export function maskedCommand(command: string, env?: TaskEnvSecrets): string
+export function maskedLine(line: string): string // this process's secrets only
 export function maskedEmitter(
   mask: SecretMask,
   emit: (text: string) => void,
@@ -46,6 +47,8 @@ between two writes is not caught.
 Callers: `orchestrator/execute-task.ts` (live output, captured stdout),
 `orchestrator/hit-restore.ts` (a replayed hit's stdout),
 `orchestrator/framed-output.ts`, `orchestrator/events.ts` and
-`orchestrator/telemetry.ts` (the command), `orchestrator/remote-prefetch.ts`
-(the command a remote hit's entry row stores), `cli/show.ts`; `maskedCommand`
+`orchestrator/telemetry.ts` (the command; `events.ts` also masks every
+status line, where plugin warnings land, L-40), `orchestrator/remote-prefetch.ts`
+(the command a remote hit's entry row stores), `cli/show.ts`, `cli/plugin-commands.ts` and `cli/select.ts` (a
+plugin's warning, `maskedLine`); `maskedCommand`
 is on `@vzn/vx` for `@vzn/vx-mcp`'s `listTasks` (L-26).

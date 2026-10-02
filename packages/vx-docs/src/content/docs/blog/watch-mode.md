@@ -47,7 +47,10 @@ cycle, which the cache serves, and then settles.
 
 Always ignored regardless: `node_modules`, `.git`, `.vx`, the run's
 resolved cache directory wherever `--cache-dir` put it, `.tsbuildinfo`
-files and editor backup files (a trailing `~`).
+files, editor backup files (a trailing `~`), and any untracked path git
+ignores (one `git check-ignore` per debounce window): such a path is in
+no key, so a task writing a pid file or a log there would re-run the
+loop forever.
 
 ## Watchers that are actually watching
 
@@ -72,8 +75,8 @@ reach.
 - Ctrl-C prints `vx watch: stopped`, tears down the in-flight cycle's
   children and exits 0 only once they are gone.
 - Flags that describe one run (`--dry`, `--graph`, `--summarize`,
-  `--profile`, `--report`, `--report-file`, `--verbosity`) are rejected
-  up front, because a loop has no single run.
+  `--profile`, `--report`, `--report-file`, `--verbosity` above 0) are
+  rejected up front, because a loop has no single run.
 - Persistent tasks re-spawn each cycle. For a server that should stay
   up across edits, the tool's own watch (`vite`, `tsc -b -w`) is the
   right layer.

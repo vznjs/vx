@@ -3,7 +3,14 @@ import path from 'node:path'
 import type { ProjectConfig, WorkspaceConfig } from '../config.js'
 import { UserError, xxh3hex } from '../util/index.js'
 import { validateProjectConfig, validateWorkspace } from './config-schema.js'
-import { beginEvalRound, CONFIG_EXIT, evalBudgetMs, evaluateConfigFresh } from './config-eval.js'
+import {
+  beginEvalRound,
+  builtinsChangedBy,
+  CONFIG_EXIT,
+  evalBudgetMs,
+  evaluateConfigFresh,
+  WATCHED_BUILTIN_NAMES,
+} from './config-eval.js'
 import { hasEsmExport, unprovidedBareImports } from './config-imports.js'
 import {
   configEvalKey,
@@ -434,6 +441,9 @@ export async function loadProjectConfigs(
   // `node:stream`), ~7 ms of a two-config warm run where every load hit.
   let builtins: BuiltinSnapshot = []
   let env: Readonly<Record<string, string | undefined>> = {}
+  // More than one evaluation in flight: a change seen after one load may
+  // be another's.
+  let overlapping = false
   const loadOne = async (entry: (typeof prepared)[number]): Promise<Loaded> => {
     const { configPath, cacheKey } = entry
     // A fast key that missed: the closure is stale or the file changed.
@@ -475,7 +485,12 @@ export async function loadProjectConfigs(
     // Before anything reads through them: a replaced `Array.prototype.includes`
     // turned the JSON-data walk's own check into "a cyclic reference".
     const changed = repeat ? [] : [...restoreBuiltins(builtins), ...restoreEnv(env)]
-    if (changed.length > 0) throw builtinsChanged(changed, configPath)
+    // Loads overlap, so another config's change can surface after this
+    // one: named here, the refusal blamed the wrong file (D-119). The round
+    // finds the one that made it.
+    if (changed.length > 0) {
+      throw overlapping ? new ChangedInRound(changed) : builtinsChanged(changed, configPath)
+    }
     assertDefaultObject(mod, 'Project', configPath)
     // Validation runs HERE, on whichever object we ended up with, so a
     // malformed config reports the identical UserError whether it was
@@ -522,6 +537,7 @@ export async function loadProjectConfigs(
       builtins = builtinSnapshot()
       env = { ...process.env }
     }
+    overlapping = misses.length > 1
     let next = 0
     const lane = async (): Promise<void> => {
       while (next < misses.length) {
@@ -539,6 +555,14 @@ export async function loadProjectConfigs(
       }
     }
     const changed = misses.length > 0 ? [...restoreBuiltins(builtins), ...restoreEnv(env)] : []
+    if (first?.failed instanceof ChangedInRound) {
+      for (const i of misses) {
+        const configPath = prepared[i]!.configPath
+        const own = await builtinsChangedBy(configPath)
+        if (own.length > 0) throw builtinsChanged(own, configPath)
+      }
+      throw builtinsChanged(first.failed.changed)
+    }
     if (first !== undefined) throw first.failed
     if (changed.length > 0) throw builtinsChanged(changed)
     return results.map((r) => (r as Loaded).config)
@@ -565,20 +589,18 @@ export async function loadProjectConfigs(
  * load runs in this process, so the round compares them before and after,
  * puts back what changed (a failed load too) and refuses.
  */
-const WATCHED_BUILTINS: ReadonlyArray<readonly [string, object]> = [
-  ['Object.prototype', Object.prototype],
-  ['Array.prototype', Array.prototype],
-  // What vx itself runs on: `Bun.hash.xxHash3 = () => 7n` gave every task
-  // the key 00000000, and a changed command replayed the old output (D-75).
-  ['Bun', Bun],
-  ['Bun.hash', Bun.hash],
-  ['JSON', JSON],
-  ['Math', Math],
-  ['String.prototype', String.prototype],
-  ['Map.prototype', Map.prototype],
-  ['Set.prototype', Set.prototype],
-  ['Promise.prototype', Promise.prototype],
-]
+// `Bun` and `Bun.hash` are what vx itself runs on: `Bun.hash.xxHash3 = ()
+// => 7n` gave every task the key 00000000, and a changed command replayed
+// the old output (D-75).
+const WATCHED_BUILTINS: ReadonlyArray<readonly [string, object]> = WATCHED_BUILTIN_NAMES.map(
+  (name) =>
+    [
+      name,
+      name
+        .split('.')
+        .reduce<unknown>((o, k) => (o as Record<string, unknown>)[k], globalThis) as object,
+    ] as const,
+)
 
 interface OwnProperties {
   keys: PropertyKey[]
@@ -614,7 +636,12 @@ function unchanged(proto: object, keys: readonly PropertyKey[], was: OwnProperti
   return true
 }
 
-/** Loads run together, so the config named is the one whose load saw the change. */
+/** A change seen by one of several overlapping loads; the round names its config. */
+class ChangedInRound {
+  constructor(readonly changed: readonly string[]) {}
+}
+
+/** Without `configPath`, no config alone was found to make the change. */
 function builtinsChanged(changed: readonly string[], configPath?: string): UserError {
   const who = configPath === undefined ? 'a project config' : configPath
   const env = changed.some((c) => c.startsWith('process.env.'))

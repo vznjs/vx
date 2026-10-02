@@ -358,6 +358,8 @@ export interface PluginContext {
   readonly workspaceRoot: string
   /** Where vx's cache lives — read-only as far as the plugin is concerned. */
   readonly cacheDir: string
+  /** Funnel warnings into the run:status channel, as every hook's context does. */
+  warn(message: string): void
   /**
    * The run event bus. A plugin can subscribe directly if its needs exceed
    * the hooks; the subscription ends with the run, as a hook's does.
@@ -539,6 +541,7 @@ export async function installPlugins(args: InstallPluginsArgs): Promise<() => vo
     const ctx: PluginContext = {
       workspaceRoot,
       cacheDir,
+      warn,
       // A subscription made past the hooks leaves with the run like a
       // hook's does: the bus can outlive the run (`RunOptions.bus`), and
       // one left behind hears every later run on it (item 635).
