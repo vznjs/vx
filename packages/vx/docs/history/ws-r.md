@@ -36,6 +36,11 @@
   removed), as the Turborepo section does. `try-it.unsafe.test.ts`
   holds both transcripts to a run and builds each end state twice on
   the written configs alone (success, then a hit).
+- **R-5** The compare page's choosing model said `turbo()` runs a
+  Turbo repo unchanged, offered "try it with nothing rewritten" and
+  quoted medusa and payload numbers measured through `turbo()`; the
+  docs README and `cli.md`'s `vx init` said the same. Each now calls
+  `turbo()` / `nx()` a temporary start toward native config.
 
 ## Leads
 

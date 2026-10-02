@@ -193,7 +193,7 @@ export async function sandboxRequestFor(
   // character class, so vx's own workspace wall matched nothing (B-65).
   // A `*` or `?` is one too, and its grants matched the project's siblings.
   const home = toRealPath(node.projectDir)
-  if (process.platform !== 'win32' && /[[\]*?]/.test(home)) {
+  if (/[[\]*?]/.test(home)) {
     throw new UserError(
       `exec.sandbox: ${home} holds [, ], * or ?, which the sandbox runtime reads as a ` +
         `pattern, not a name — rename the directory, or run the task without exec.sandbox`,
