@@ -438,16 +438,16 @@ describe('Nx glob grammar in inputs', () => {
     const got = inputs([
       '{projectRoot}/+(a|b).ts',
       '!{projectRoot}/!(a).ts',
-      '{projectRoot}/[a-z].ts',
-      '{projectRoot}/[!a].ts',
+      '{projectRoot}/[a-Z].ts',
+      '!{projectRoot}/[!a].ts',
     ])
     expect([got.files, got.todos]).toEqual([
       [],
       [
         'input "{projectRoot}/+(a|b).ts": glob syntax vx cannot take — map manually',
         'input "!{projectRoot}/!(a).ts": glob syntax vx cannot take — map manually',
-        'input "{projectRoot}/[a-z].ts": glob syntax vx cannot take — map manually',
-        'input "{projectRoot}/[!a].ts": glob syntax vx cannot take — map manually',
+        'input "{projectRoot}/[a-Z].ts": glob syntax vx cannot take — map manually',
+        'input "!{projectRoot}/[!a].ts": glob syntax vx cannot take — map manually',
       ],
     ])
   })
