@@ -60,6 +60,8 @@ A task with `exec.sandbox` runs where only what it declares exists:
   none);
 - the network is closed except to the domains granted, one union per
   run: a task granted any domain reaches every domain the run grants;
+  with none, it reaches no listener on the host's loopback and no unix
+  socket outside the workspace (L-46);
 - its temp directory, port-bridge socket and trace log are its own
   (mode 0700), unreachable from another task and another local user;
 - the host's credential stores (`~/.ssh`, `~/.gnupg`, `~/.aws`,
@@ -105,6 +107,13 @@ action's Command, which the remote stores in its CAS, as Bazel's
 `--action_env` does, so a secret a remote task needs is trusted to that
 remote. `vx lock` refuses to write a lock holding a secret value: the lock is
 committed (L-42).
+
+Masking covers the text vx shows and stores, not a task's outputs: they
+are cached and uploaded as the task wrote them, so a build that bakes a
+secret into a file (a server bundle reading `process.env.API_KEY`) hands
+it to every reader of the remote cache. Keep secrets out of cached
+outputs, or give that task no `cache`. vx does not scan outputs for
+secret values: a name-based match would refuse public `*_KEY` values too.
 
 ## Releases
 

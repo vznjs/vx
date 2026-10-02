@@ -971,7 +971,8 @@ unchanged. Its `hash` is still set: dependents fold it.
 became ready — `timeout` (the readiness deadline fired), `exited` (the
 child exited first; `exitCode` is then its own) or `spawn` (the spawn
 itself failed). Every label reads it, `failed (never ready: timed out,
-exit 1)`.
+exit 1)`. A server the run's stop (a Ctrl-C) killed while it started is
+`aborted`, not failed, as any task the stop kills.
 
 **`sandboxViolations`** is present only on a sandboxed task with a
 SANDBOX VIOLATIONS section — the count of its denials (vx's own notes
@@ -1800,9 +1801,10 @@ pnpm docs-build`; through `run-s` / `run-p` / `npm-run-all` or `concurrently
 a check twice (D-45). The rest check the whole repo (`lint: oxlint .`,
 `test: vitest`) and become the root's own tasks in a root vx.config, when
 the root has a `"name"` (vx skips a nameless root's config) and no config
-of its own; a hand-written one stays as written. The report says which, its
-examples of running the members spelled by the repo's manager (`--workspaces`
-under npm, `yarn workspaces foreach` under Yarn 2+);
+of its own; a hand-written one stays as written. The report names each script left out and why
+(a `pre` / `post` hook goes with its script, D-85), its examples of running
+the members spelled by the repo's manager (`--workspaces` under npm, `yarn
+workspaces foreach` under Yarn 2+), and says which;
 with nothing mapped it names the root whenever it has a script, a member
 or not (pnpm's root is not), and tells a root with no `"name"` to add one
 first (vuejs/core), naming the scripts that would then map (react, D-87). A single-package repo's root is its project and maps.
@@ -2062,8 +2064,9 @@ Exit codes: `0` success; `1` parse error or unknown target.
 Two runs on one workspace take turns: the second waits for the first's
 run lock and, after a second, says `[vx] waiting for another vx run
 (pid N) on this workspace to finish…` (see caching.md § Concurrent
-runs). The lock lives in the temp directory, so two runs take turns
-only when they share `TMPDIR`: a `nix develop` shell sets its own.
+runs). The lock lives in this user's own directory in the temp
+directory, so two runs take turns only when they are one user's and
+share `TMPDIR`: a `nix develop` shell sets its own.
 
 Every verb: a path vx must write that this user cannot (`EACCES`,
 `EPERM`, `EROFS` — a read-only checkout, another user's files) or that

@@ -478,7 +478,9 @@ shows it: the task's output and the line vx adds under a shell's 127 or
 replays, the command a cache entry stores (what `vx why` prints and a
 remote cache receives), the `$ command` line, telemetry records,
 `vx show`, an executor's error or a plugin's warning (a remote's reply), and the run's own invocation line that `vx last` prints (a
-secret passed after `--`) and its `--tag`s. A value
+secret passed after `--`) and its `--tag`s. A multi-line value (a PEM
+key) is also masked line by line, each line of six characters or more.
+A value
 split across two output chunks is still caught; the output holds back
 that many characters until the next chunk. A plugin that reads a task's
 config directly sees it as written. A secret whose name holds none of
@@ -1129,6 +1131,14 @@ the rest stays denied outright. macOS matches paths rather than
 mounting, so a file grant stays exact there. Pinned in
 `tests/sandbox-runtime.unsafe.test.ts` (2026-09-20) and
 `tests/sandbox-widened-reads.unsafe.test.ts`.
+
+**A `network` entry is a host pattern**: `example.com`, `*.example.com`,
+either with a port (`example.com:443`), or `localhost`. A scheme or path
+(`https://example.com`), a dotless host, a bad port, and `*` or `*.com`
+(too broad) refuse the run with the entry named; `deny.network` also
+takes a bare `*` (deny all, `*:22` for one port). Until 2026-10-02 such an
+entry matched nothing with no word, and an allowed `*` opened every host
+to every sandboxed task of the run.
 
 **`network` is per-RUN, not per-task.** SRT runs one filtering proxy
 per `vx run` and checks every request against the allowlist that proxy

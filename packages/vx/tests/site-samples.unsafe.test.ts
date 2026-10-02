@@ -18,6 +18,8 @@ import { ESSENTIAL_ENV } from '../src/exec/env.js'
 import type { RunPlan } from '../src/orchestrator/plan.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
 import type { TaskOutcome } from '../src/graph/scheduler.js'
+import { IGNORED_SEGMENTS } from '../src/cli/watch-fs.js'
+import { WATCH_REFUSED_FLAGS } from '../src/cli/help.js'
 
 const GUIDES = path.resolve(
   import.meta.dir,
@@ -1889,5 +1891,137 @@ describe('the cascade post names every way a key is preliminary', () => {
       expect(src).toContain(code)
       expect(post).toContain(phrase)
     }
+  })
+})
+
+// The remote-execution post said sandboxed and `exec.remote: false` tasks
+// stay local but not their dependants, which placement pins with them,
+// and named nothing of the runtime-probe rule.
+describe('the remote-execution post lists what placement keeps local', () => {
+  it('each pinning rule in pinnedLocalSet is in its list, with its reach', () => {
+    const src = readFileSync(
+      path.resolve(import.meta.dir, '..', 'src', 'orchestrator', 'placement.ts'),
+      'utf8',
+    )
+    for (const field of [
+      'exec?.persistent',
+      'exec?.sandbox',
+      'exec?.remote === false',
+      'inputs?.runtime',
+    ])
+      expect(src).toContain(field)
+    expect(src).toContain('pinned.add(up)') // the walk up the dependant edges
+    const post = readFileSync(path.join(DOCS, 'blog', 'remote-execution.md'), 'utf8')
+      .split(/\s+/)
+      .join(' ')
+    for (const line of [
+      'Not persistent tasks, or anything depending on one.',
+      'Not sandboxed tasks, or anything depending on one.',
+      'Not `exec.remote: false`, or anything depending on it.',
+      'Not a task whose key folds a runtime probe',
+    ])
+      expect(post).toContain(line)
+  })
+})
+
+describe('the bitsets post says when the package graph searches instead', () => {
+  it('a filter seeded by one or two packages is a search (#2323)', () => {
+    const graph = readFileSync(
+      path.resolve(import.meta.dir, '..', 'src', 'workspace', 'package-graph.ts'),
+      'utf8',
+    )
+    expect(graph).toContain('transitiveDeps: makeAccessor(reachDeps, searchDeps)')
+    const post = readFileSync(path.join(DOCS, 'blog', 'bitsets-and-the-scheduler.md'), 'utf8')
+    expect(post.replace(/\s+/g, ' ')).toContain(
+      'A filter seeded by one or two packages (`app...`) searches from them instead',
+    )
+  })
+})
+
+describe('the watch post names what the loop ignores and refuses', () => {
+  // The post's ignore list left out git-ignored paths, which the loop skips
+  // through `git check-ignore`, and called `--verbosity` refused where
+  // `--verbosity 0` is accepted (J2-14).
+  const cli = path.resolve(import.meta.dir, '..', 'src', 'cli')
+  const post = readFileSync(path.join(DOCS, 'blog', 'watch-mode.md'), 'utf8').replace(/\s+/g, ' ')
+  it('every ignored segment and suffix, and git-ignored paths', () => {
+    const filter = readFileSync(path.join(cli, 'watch-filter.ts'), 'utf8')
+    const suffixes = /const IGNORED_SUFFIXES = \[([^\]]*)\]/.exec(filter)?.[1]
+    expect(suffixes).toBeDefined()
+    const named = [...IGNORED_SEGMENTS, ...[...suffixes!.matchAll(/'([^']+)'/g)].map((m) => m[1]!)]
+    expect(named.filter((n) => !post.includes(`\`${n}\``))).toEqual([])
+    expect(filter).toContain("'check-ignore'")
+    expect(post).toContain('any untracked path git ignores (one `git check-ignore`')
+  })
+  it('every refused flag, and --verbosity only above 0', () => {
+    expect(WATCH_REFUSED_FLAGS.filter((f) => !post.includes(`\`${f}\``))).toEqual([])
+    expect(readFileSync(path.join(cli, 'watch.ts'), 'utf8')).toContain('parsed.verbosity > 0')
+    expect(post).toContain('`--verbosity` above 0')
+  })
+})
+
+describe('the keys-from-git post names every way an index id is distrusted', () => {
+  // The post counted three prunes after the blob-size check (A-60) made a
+  // fourth, and left out the stat-weakening config that trusts no id (J2-15).
+  it('the blob-size check and the weakened stat, as git-inputs.ts runs them', () => {
+    const src = readFileSync(
+      path.resolve(import.meta.dir, '..', 'src', 'cache', 'git-inputs.ts'),
+      'utf8',
+    )
+    expect(src).toContain('async function dropResizedOids(')
+    expect(src).toContain("vars.get('core.trustctime')")
+    expect(src).toContain("vars.get('core.checkstat')")
+    const post = readFileSync(path.join(DOCS, 'blog', 'keys-from-git.md'), 'utf8').replace(
+      /\s+/g,
+      ' ',
+    )
+    expect(post).toContain('so four prunes run against it')
+    expect(post).toContain('an id whose blob is not the size the index recorded for the file')
+    expect(post).toContain('(`core.trustctime=false`, `core.checkStat=minimal`) trusts no index id')
+  })
+})
+
+describe('the output-ownership post reads the benchmark rows as they are measured', () => {
+  // It said the restore and no-op rows sit within a few milliseconds and
+  // credited the short-circuit for it; the restore row deletes the outputs
+  // first, so the short-circuit is the no-op row alone (J2-17).
+  it('the no-op row is the short-circuit, and the restore row extracts', () => {
+    const bench = path.resolve(import.meta.dir, '..', '..', 'vx-bench')
+    const harness = readFileSync(path.join(bench, 'run.ts'), 'utf8')
+    expect(harness).toContain('warm-restore   — outputs deleted, cache intact (full extract path)')
+    const results = JSON.parse(readFileSync(path.join(bench, 'results.json'), 'utf8')) as {
+      rows: { runner: string; warmNoRestore: number; warmRestore: number }[]
+    }
+    const vx = results.rows.find((r) => r.runner === 'vx')!
+    expect(vx.warmRestore).toBeGreaterThan(vx.warmNoRestore)
+    const post = readFileSync(
+      path.join(DOCS, 'blog', 'strict-output-ownership.md'),
+      'utf8',
+    ).replace(/\s+/g, ' ')
+    expect(post).toContain('it is the no-op row in the [benchmarks](../../benchmarks/)')
+    expect(post).toContain(
+      'Their restore row deletes the outputs first, so every artifact is extracted',
+    )
+  })
+})
+
+describe('the sandbox post judges a violation against the grants', () => {
+  // It said a read of a file the inputs never named fails, beside a sample
+  // granting `read: ['.']`, which lets that read through: the report
+  // filters denials, and only the grants deny (J2-18).
+  it('a denial inside the project fails the task; the grants decide what is denied', () => {
+    const src = (rel: string): string =>
+      readFileSync(path.resolve(import.meta.dir, '..', 'src', rel), 'utf8')
+    expect(src('orchestrator/execute-task.ts')).toContain(
+      'if (userSandbox && violations.some((v) => v.hint !== true) && code === 0) code = 1',
+    )
+    expect(src('orchestrator/sandbox-request.ts')).toContain('reportWithin: node.projectDir')
+    const post = readFileSync(path.join(DOCS, 'blog', 'the-sandbox.md'), 'utf8').replace(
+      /\s+/g,
+      ' ',
+    )
+    expect(post).toContain("sandbox: { allow: { read: ['.'] } }")
+    expect(post).toContain('the violation is judged against the grants alone')
+    expect(post).not.toContain('reads a file its inputs never named fails')
   })
 })
