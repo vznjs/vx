@@ -1737,6 +1737,8 @@ yarn@2+`, or a Berry `yarn.lock`, D-31), npm under `ignore-scripts=true`
 in the `.npmrc` beside its lockfile, pnpm under
 `enable-pre-post-scripts=false` there or `enablePrePostScripts: false` in
 `pnpm-workspace.yaml` (D-33). Bun and Yarn 1 run them whatever those say.
+Under Yarn 2+ a segment's `run <script>`, Yarn's shell builtin, is written
+`yarn run <script>`: vx's shell has no `run` (D-92).
 A script reading `$npm_package_version`, `$npm_package_name` or
 `$npm_lifecycle_event`, which every manager sets and vx does not, gets
 them under `exec.env.define`, the first two read from an imported

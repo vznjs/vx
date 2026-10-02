@@ -926,3 +926,15 @@ failed 143; and `tasks: []` read `No projects declare task(s): .`.
 run() now refuses each up front, naming the value. Rows
 (`run-concurrency.test.ts`): each refused with the exact message, the
 edges run; red without the checks. The options' doc comments say so.
+
+## C-63: a plugin executor's throw from `execute` names the plugin
+
+Every plugin hook's throw names the plugin and the hook (`accepts`,
+`demand`, the factories; C-54 for `setup`); a throw from a plugin
+executor's `execute` read `[vx] internal error in pkg-a#hello: pool
+down`, naming neither. Its message now reads `plugin 'org/down'
+(executor 'down') failed in execute: pool down`, in the frame and the
+scheduler's line. The error object is kept (its class, cause and code),
+so a refusal still prints plainly and a bug as an internal error.
+Row (`plugin-capabilities.test.ts` › an executor's throw reaches the
+task's own stderr): red without the fix. `modules/executor.md` says so.

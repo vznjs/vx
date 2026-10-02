@@ -37,7 +37,7 @@ import {
 import { isGroupTask, RestoreDemoted, type TaskNode, type TaskOutcome } from '../graph/index.js'
 import { killGraceMs, maskedEmitter, printable, relPosix, secretMask, span } from '../util/index.js'
 import { SIGNAL_SHUTDOWN_GRACE_MS } from './signals.js'
-import { executorLabel } from './plugin-host.js'
+import { executorLabel, nameExecutorFailure } from './plugin-host.js'
 import {
   mayWriteFingerprint,
   type Placeholder,
@@ -805,7 +805,8 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         assertExecuteResult(args.executor.name, node.id, r)
         return r
       })
-      .catch(async (err: unknown) => {
+      .catch(async (raw: unknown) => {
+        const err = nameExecutorFailure(args.executor, raw)
         const message = err instanceof Error ? err.message : String(err)
         log.taskStderr(node, `${message}\n`)
         await sweepPlaceholders(placeholders)
