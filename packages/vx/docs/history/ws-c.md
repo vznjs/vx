@@ -1072,3 +1072,57 @@ uncached sandboxed task): min 453 → 377 ms, median ~495 → ~440 over 12
 interleaved runs per arm. Rows: `sandbox-prewarm.unsafe.test.ts`; each
 half and the wait fail their row without themselves, and the control
 fails an unconditional prewarm.
+
+## C-80: no partial tree survives a failing run, over random graphs
+
+`tests/continue-cache-properties.test.ts` runs 24 seeded random graphs
+end to end, three runs each: a healthy run warms every entry; some
+inputs change and some tasks fail (a flag outside every key) under one
+`--continue` mode; a healthy run with the same keys. That run must
+execute exactly the changed tasks the failing run did not save, and
+every output must hold its healthy bytes: an output is its input plus
+its deps' outputs, and a failure writes PARTIAL. `g`'s tasks have no
+cache, so a hit above one restores ahead of its failure (C-1's shape).
+Red when the taint is disabled (`out/t2.txt` replays PARTIAL) and when a
+restore-tier hit releases its dependants before its deps settle (item
+963's hold). Test only.
+
+## C-85: a plugin executor's throw is the plugin's, not vx's internal error
+
+Every pipeline stage turns a plugin's throw into a refusal naming the
+plugin (`safe()`); a plugin executor's throw from `execute` kept its
+class, so a plain `Error` printed `[vx] internal error in a#build:
+plugin 'p' (executor 'e') failed in execute: boom`, calling the plugin's
+failure vx's bug. `nameExecutorFailure` now returns a `UserError` with
+that message and the plugin's error as its `cause`: printed plainly,
+and a second task rejected with the same reason says `as <id> above`.
+The plugin's own error is no longer renamed in place, so the C-74 guard
+went with it. Rows (`plugin-capabilities.test.ts` › an executor's throw
+reaches the task's own stderr; one error an executor rejects two tasks
+with is named once in each, now read from each task's frame line): the
+first red without the change, both red on the old rename without its
+guard. `modules/executor.md`, `modules/plugin-host.md` and
+`execution.md` say so.
+
+## C-86: run() refuses a word or a shape the CLI would not pass
+
+C-61 refused the façade's bad numbers; its words and shapes went
+through. A probe of `run()` with what a JS embedder can pass: a
+`continueMode` of `'sometimes'` ran as `deps-ok`, so a typo lost
+fail-fast without a word; `outputLogs`, `download` and `flow` took any
+string; a string `excludeDependencies` dropped nothing; a `projects`
+string and a `signal` that is no `AbortSignal` died a `TypeError` inside
+the run. `run()` and `planRun()` (which checked nothing) now refuse
+each as a `UserError` naming the option, what it is and what it must be.
+Row (`run-option-shapes.test.ts` › refuses a word or a shape the CLI would
+not pass, at run() and planRun()): red without the change; its control
+runs each word the CLI passes. `modules/orchestrator.md` says so.
+
+## C-87: `--retry` says it never retries a server
+
+`schema.md` said the run-level `--retry` "applies to tasks that don't
+declare their own `retries`", and `cli.md` that it re-runs a failed
+task; a persistent task declares none, and a probe with `retries: 2`
+on a server that exited before it was ready ran it once and failed it,
+as `exec.retries` on a persistent task is refused. Both now say it never
+retries a persistent one. Docs only.
