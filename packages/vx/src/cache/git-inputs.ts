@@ -841,6 +841,12 @@ export interface GitEnumeration {
    * paths (both sides of a rename) and untracked files. Null when it failed.
    */
   changed: readonly string[] | null
+  /**
+   * What `git status` listed as untracked, workspace-relative and before
+   * nested repositories are expanded — `git ls-files --others
+   * --exclude-standard`'s set. Null when it failed.
+   */
+  untracked: readonly string[] | null
   /** Workspace-relative paths whose names are not UTF-8 (`decodeGitZ`). */
   undecodable: readonly string[]
   /** `Date.now()` before the spawns: what `trusted` says is true as of no earlier. */
@@ -1048,6 +1054,7 @@ export async function startGitEnumeration(
     trusted,
     dirty: worktreeDirty,
     changed: dirty === null ? null : [...dirty, ...untracked],
+    untracked: dirty === null ? null : untracked,
     undecodable,
     startedAtMs,
   }
