@@ -18,10 +18,9 @@ that binary.
    scripts, and a `vx.workspace.ts`. A root script that checks the whole
    repo (`lint: eslint .`) becomes a task in a root `vx.config.ts`; one
    that runs the members (`pnpm -r build`) does not. No task gets a `cache` block, so
-   nothing is cached yet: add the one each `build`'s TODO shows. Beside
-   `turbo.json` or `nx.json` it writes only a `vx.workspace.ts` that
-   declares `turbo()` or `nx()`: a temporary start, until
-   `bunx @vzn/vx-migrate` writes native configs.
+   nothing is cached yet: add the one each `build`'s TODO shows. A
+   repo with `turbo.json` or `nx.json` starts at
+   [Coming from Turbo or Nx](#coming-from-turbo-or-nx) instead.
 3. Or write one by hand, beside a package's `package.json`.
 
 ## Config
@@ -74,8 +73,13 @@ Start with one package and leave the rest of your tooling as it is.
 3. Edit a file the build reads. `vx run build --dry` now predicts a miss.
 4. Add configs to more packages. `^build` orders them by your `package.json` dependencies.
 
-Coming from Turbo or Nx? `bunx @vzn/vx-migrate` writes native configs
-from `turbo.json` or the Nx graph: [Migrate](../guides/migrate/).
+## Coming from Turbo or Nx
+
+`bunx @vzn/vx-migrate` writes the native `vx.config.ts` files from
+`turbo.json` or the Nx graph; from there everything above applies.
+`vx init` in such a repo writes only a `vx.workspace.ts` declaring
+`turbo()` or `nx()`: a temporary start, dropped once the configs exist.
+[Migrate](../guides/migrate/) has the steps.
 
 ## Common problems
 

@@ -40,6 +40,10 @@
   and 830 ms less per task), a speed claim for an Nx-mapped run; it now
   names the ~220 ms each `nx-exec` line pays and that native config
   pays none of it.
+- **R-7** The quickstart is native config first: the Turbo/Nx case
+  left `vx init`'s step for a short "Coming from Turbo or Nx" section,
+  `bunx @vzn/vx-migrate` first and the `turbo()` / `nx()` file a
+  temporary start.
 
 ## Leads
 
