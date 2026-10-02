@@ -123,6 +123,8 @@ const KNOWN_TASK_KEYS = new Set([
   'persistent',
   'extends',
   'outputLogs',
+  // `outputLogs` as Turbo 1 spells it (renamed in 2.0; 1.13 still reads it).
+  'outputMode',
   'dotEnv',
   'command',
   'description',
@@ -388,8 +390,8 @@ function checkTurboShape(cfg: unknown, label: string): void {
         refuse(`${at}.inputs`, 'an array of globs')
       for (const k of TASK_FLAGS)
         if (d[k] !== undefined && typeof d[k] !== 'boolean') refuse(`${at}.${k}`, 'true or false')
-      if (d['outputLogs'] !== undefined && typeof d['outputLogs'] !== 'string')
-        refuse(`${at}.outputLogs`, 'a string')
+      for (const k of ['outputLogs', 'outputMode'])
+        if (d[k] !== undefined && typeof d[k] !== 'string') refuse(`${at}.${k}`, 'a string')
     }
   }
 }
@@ -1277,13 +1279,15 @@ function buildTask(
       `turbo key "command" (${JSON.stringify(def['command'])}) is not an argv, null or a toolchain map of them — the script runs; write the command by hand`,
     )
   }
-  const outputLogs = (def as { outputLogs?: unknown }).outputLogs
+  const logsKey =
+    (def as { outputLogs?: unknown }).outputLogs !== undefined ? 'outputLogs' : 'outputMode'
+  const outputLogs = (def as Record<string, unknown>)[logsKey]
   if (outputLogs !== undefined && outputLogs !== OUTPUT_LOGS_DEFAULT) {
     todos.push(
       typeof outputLogs === 'string' && OUTPUT_LOGS_RUN_FLAG.has(outputLogs)
-        ? `turbo key "outputLogs" (${JSON.stringify(outputLogs)}) is a per-run setting in vx — ` +
+        ? `turbo key "${logsKey}" (${JSON.stringify(outputLogs)}) is a per-run setting in vx — ` +
             `run with --output-logs ${outputLogs}`
-        : `turbo key "outputLogs" (${JSON.stringify(outputLogs)}) is not a value vx knows — ` +
+        : `turbo key "${logsKey}" (${JSON.stringify(outputLogs)}) is not a value vx knows — ` +
             'run with --output-logs full|hash-only|errors-only|none',
     )
   }

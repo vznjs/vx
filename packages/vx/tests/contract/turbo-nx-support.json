@@ -142,7 +142,7 @@
   {
     "key": "turbo.json tasks.*.outputLogs",
     "status": "mapped",
-    "reason": "`new-only` is vx's default; other values get a TODO pointing at `--output-logs`."
+    "reason": "`new-only` is vx's default; other values get a TODO pointing at `--output-logs`. Turbo 1's `outputMode` is read as it."
   },
   {
     "key": "turbo.json tasks.*.outputs",

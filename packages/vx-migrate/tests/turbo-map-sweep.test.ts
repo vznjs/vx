@@ -1164,6 +1164,28 @@ describe('turbo-map: envMode "loose"', () => {
   })
 })
 
+// Turbo 1 spells `outputLogs` `outputMode` (1.13.4 resolves it as the task's
+// log mode); read as an unknown key, `new-only` said "no vx equivalent —
+// map it manually" where `outputLogs: "new-only"` says nothing.
+describe("turbo-map: Turbo 1's outputMode", () => {
+  it('is outputLogs: new-only says nothing, another value names the run flag', async () => {
+    const todos = async (outputMode: unknown) =>
+      (await taskOf({ pipeline: { build: { outputMode } } }, { a: { scripts: { build: 'b' } } }))
+        .todos
+    expect([await todos('new-only'), await todos('errors-only')]).toEqual([
+      [],
+      [
+        'turbo key "outputMode" ("errors-only") is a per-run setting in vx — run with --output-logs errors-only',
+      ],
+    ])
+    const refused = await map({ pipeline: { build: { outputMode: 1 } } }, {}).then(
+      () => 'mapped',
+      (e: unknown) => String(e),
+    )
+    expect(refused).toBe('UserError: turbo.json: pipeline."build".outputMode must be a string')
+  })
+})
+
 describe('turbo-map: a field of the wrong type is refused by name (L-15)', () => {
   // Fuzzed: `"dependsOn": true` printed `TypeError: true is not iterable`
   // with its stack from `bunx @vzn/vx-migrate`; fifteen such shapes each

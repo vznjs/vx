@@ -41,7 +41,7 @@ Every key `turbo.json`, `nx.json` and `project.json` accept, read from the upstr
 | `tasks.*.inputs` | mapped, with a note | Globs translated; `$TURBO_DEFAULT$` becomes `**/*`, `$TURBO_ROOT$` workspace files; unsafe globs get a TODO. |
 | `tasks.*.interactive` | not supported | vx gives no task the terminal, so a prompt reads end of input; `true` gets a TODO saying so. |
 | `tasks.*.interruptible` | not applicable | Maps to nothing, silently: `vx watch` stops and re-spawns every persistent task each cycle. |
-| `tasks.*.outputLogs` | mapped, with a note | `new-only` is vx's default; other values get a TODO pointing at `--output-logs`. |
+| `tasks.*.outputLogs` | mapped, with a note | `new-only` is vx's default; other values get a TODO pointing at `--output-logs`. Turbo 1's `outputMode` is read as it. |
 | `tasks.*.outputs` | mapped, with a note | Become `cache.outputs`, negations kept; vx cleans outputs, so a wildcard first segment leaves the task uncached with a TODO (save one of a kind the package tracks none of: `*.xml`, `**/dist/**`, `dist-*/**`) and a committed file under an output is taken back with `!`. |
 | `tasks.*.passThroughEnv` | mapped, with a note | Goes to `exec.env.passThrough`, not hashed; under `turbo()` a `*` name expands over the run's environment; otherwise wildcards get a TODO. |
 | `tasks.*.persistent` | mapped, with a note | An uncached `exec.persistent` task, with a `readyWhen` TODO when something depends on it. |
