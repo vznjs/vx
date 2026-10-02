@@ -296,6 +296,9 @@ A verb that throws anything but a `UserError` fails in one line, no stack:
 | `@vzn/vx-github`            | `telemetry` ([GitHub Actions](../ci/#github-actions)) |
 | `@vzn/vx-mcp`               | `commands` ([below](#vx-mcp))              |
 
+Only `@vzn/vx` is on npm today. The seven plugins' first publish is
+pending, so installing one fails until then.
+
 One plugin can fill several: `@vzn/vx-schedule-history` fills three at once.
 
 ## OpenTelemetry
