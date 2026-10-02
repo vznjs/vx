@@ -1858,3 +1858,24 @@ describe('the lockfile post measures what the root reaches', () => {
     expect(wrong).toEqual([])
   })
 })
+
+describe('the keys-from-git post names every way an index id is distrusted', () => {
+  // The post counted three prunes after the blob-size check (A-60) made a
+  // fourth, and left out the stat-weakening config that trusts no id (J2-15).
+  it('the blob-size check and the weakened stat, as git-inputs.ts runs them', () => {
+    const src = readFileSync(
+      path.resolve(import.meta.dir, '..', 'src', 'cache', 'git-inputs.ts'),
+      'utf8',
+    )
+    expect(src).toContain('async function dropResizedOids(')
+    expect(src).toContain("vars.get('core.trustctime')")
+    expect(src).toContain("vars.get('core.checkstat')")
+    const post = readFileSync(path.join(DOCS, 'blog', 'keys-from-git.md'), 'utf8').replace(
+      /\s+/g,
+      ' ',
+    )
+    expect(post).toContain('so four prunes run against it')
+    expect(post).toContain('an id whose blob is not the size the index recorded for the file')
+    expect(post).toContain('(`core.trustctime=false`, `core.checkStat=minimal`) trusts no index id')
+  })
+})

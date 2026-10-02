@@ -91,3 +91,11 @@ persistent task` and vx exits 1). Row (`site-samples` › a post's link
   (`site-samples` › the lockfile post measures what the root reaches),
   read from the manifests; red without the fix and with the narrow
   example swapped for `@types/bun`.
+
+- **J2-15** The keys-from-git post said three prunes run against an
+  index id; #2076's blob-size check (A-60) is a fourth (a filter since
+  removed wrote the blob, and git still calls the file clean), and a
+  config that weakens git's stat (`core.trustctime=false`,
+  `core.checkStat=minimal`) trusts no id at all. `caching.md` had both.
+  Row (`site-samples` › the keys-from-git post names every way an index
+  id is distrusted), gated on `git-inputs.ts`; red without the fix.
