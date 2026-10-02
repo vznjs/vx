@@ -44,13 +44,21 @@
   `ui:build:ci` names target `build:ci` and is no edge where ui lacks it.
   vx read the last segment as a configuration and drew an edge to that
   configuration's task (or to `build`, with a todo) that Nx never draws.
+- **P-10** `nx()`: a `{ input, projects }` list is matched as Nx's
+  `findMatchingProjects` matches it (`*` patterns, `tag:`, `!`
+  exclusions). Looked up as literal names, a `tag:` or pattern entry was
+  a todo and its input left the key.
 - **P-11** `vx-migrate --from nx`: nx.json's `parallel`, `defaultBase`
   and `maxCacheSize`, which `nx()` applies live, are each a note naming
   the `vx.workspace.ts` field to add. The written workspace file holds
   none of them, so nx-examples' `parallel: 1` ran on every core once
   migrated, without a word.
-- **P-16** `nx()`: a `projects` list (on `dependsOn`, and the input form
-  once P-10 lands) is matched by a port of Nx's `findMatchingProjects`,
+- **P-13** `nx()`: every task also gets `LERNA_PACKAGE_NAME`, the project
+  name Nx's `getNxEnvVariablesForTask` sets beside `NX_TASK_TARGET_*`;
+  Lerna runs on Nx's runner and documents it to scripts, and it was
+  unset.
+- **P-16** `nx()`: a `projects` list (on `dependsOn` and on an input) is
+  matched by a port of Nx's `findMatchingProjects`,
   checked case by case against Nx 23.2's own: project directories
   (`libs/shared/*`), `name:` / `directory:` labels, minimatch globs, and
   a bare word as a word in a name. Matched by name and `*` alone, a
