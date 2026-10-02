@@ -1776,6 +1776,9 @@ of its own; a hand-written one stays as written. The report says which;
 with nothing mapped it names the root whenever it has a script, a member
 or not (pnpm's root is not), and tells a root with no `"name"` to add one
 first (vuejs/core), naming the scripts that would then map (react, D-87). A single-package repo's root is its project and maps.
+A member whose package.json has no `name` is no project; one with a
+script is named in the report, to be given a name (remix's
+`packages/component/bench`, D-106).
 A member's script that runs another member's work (`pnpm -C ../pinia
 run build`, `yarn workspace <name>`, `-r` / `--filter`, a `cd` or `-C`
 / `--cwd` / `--prefix` into another member) keeps its command and gets a
