@@ -721,7 +721,7 @@ describe('vx migrate (nx)', () => {
     // An executor with no plain command is a gap the report lists by executor.
     // Nothing depends on serve: no readiness note to report (item 602).
     expect(todos.get('pkg-a#serve')).toEqual([
-      'executor "@nx/webpack:dev-server" has no plain command here — replace the placeholder with the line it runs',
+      'executor "@nx/webpack:dev-server" has no plain command here — `nx g @nx/webpack:convert-to-inferred` rewrites it as the command Nx infers; run it and migrate again, or replace the placeholder with the line it runs',
     ])
     // No `inputs` is Nx's own default set, not a gap (item 591).
     expect(result.out).not.toMatch(/cache enabled with no declared inputs/)

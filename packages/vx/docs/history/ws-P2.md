@@ -25,5 +25,10 @@ start` (in the build output) with Nx's port and `PORT`, and
   on the config file's directory; the dev server Nx started first, and
   the files `next build` did not write, are TODOs. Each was a failing
   placeholder.
+- **P2-4** An executor the migrator has no command for, from a plugin
+  that ships `convert-to-inferred` (`@nx/webpack`, `@nx/rollup`, …),
+  names that generator in its TODO: those executors feed their options
+  to the project's config function, so no flag line reproduces them, and
+  Nx's generator moves them into the config.
 
 ## Leads for other streams

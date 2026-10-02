@@ -62,8 +62,34 @@ export function nativeExecutorCommand(
 
 /** The TODO an executor with no translator carries; one reason per executor, so the report lists its tasks. */
 export function untranslatedTodo(executor: string): string {
-  return `executor ${JSON.stringify(executor)} has no plain command here — replace the placeholder with the line it runs`
+  const head = `executor ${JSON.stringify(executor)} has no plain command here — `
+  const plugin = executor.replace(/^@nrwl\//, '@nx/').split(':')[0]!
+  return CONVERTS_TO_INFERRED.has(plugin)
+    ? `${head}\`nx g ${plugin}:convert-to-inferred\` rewrites it as the command Nx infers; ` +
+        'run it and migrate again, or replace the placeholder with the line it runs'
+    : `${head}replace the placeholder with the line it runs`
 }
+
+/**
+ * The Nx plugins that ship a `convert-to-inferred` generator (Nx 23.2):
+ * it turns an executor target into the inferred one, whose graph entry is
+ * the tool's own command, which this migrator writes as it is. Webpack's
+ * and Rollup's executors hand their options to the project's config
+ * function, so no flag line reproduces them: the generator moves them
+ * into the config.
+ */
+const CONVERTS_TO_INFERRED: ReadonlySet<string> = new Set([
+  '@nx/cypress',
+  '@nx/eslint',
+  '@nx/jest',
+  '@nx/next',
+  '@nx/playwright',
+  '@nx/rollup',
+  '@nx/storybook',
+  '@nx/vite',
+  '@nx/vitest',
+  '@nx/webpack',
+])
 
 /** The placeholder an untranslated executor target runs: it fails, naming the executor and the options to translate. */
 export function untranslatedPlaceholder(executor: string, options: Options): string {

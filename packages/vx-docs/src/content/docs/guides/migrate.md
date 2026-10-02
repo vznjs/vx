@@ -206,7 +206,10 @@ What an executor did besides its tool (a type-check before a Vite
 build, a `package.json` or `assets` copied into the output) is a TODO
 on the task. Any other executor is a placeholder that fails naming the
 executor and its options, and the report lists its tasks under one TODO
-per executor: write the command it runs.
+per executor: write the command it runs. Where the executor's Nx plugin
+ships `convert-to-inferred` (Webpack and Rollup, whose options feed the
+project's config function), the TODO names it: run
+`nx g @nx/webpack:convert-to-inferred`, then migrate again.
 
 | Nx                                   | vx                                                        |
 | ------------------------------------ | --------------------------------------------------------- |
