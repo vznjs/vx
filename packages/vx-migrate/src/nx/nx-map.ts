@@ -633,6 +633,7 @@ function buildTask(
     variant.name === targetName
       ? undefined
       : { node: nodeName, configuration: variant.configuration! },
+    options,
   )
 
   // Nx's rule, not a guess: a target is cached when it says `cache: true`
