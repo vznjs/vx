@@ -216,6 +216,7 @@ describe('applyMigration', () => {
   })
 
   it('next names build wherever it sits, else the first task', async () => {
+    Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
     mkdirSync(path.join(root, 'app'))
     await apply(plan([['app', [task('lint', exec('x')), task('build', exec('tsc'))]]]), {
       force: true,
