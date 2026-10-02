@@ -32,6 +32,7 @@ import {
   type LoadReads,
   loadWorkspace,
   FROZEN_WITHOUT_LOCK,
+  type Lockfile,
   readLockfile,
   resolveCacheDir,
   type ProjectEntry,
@@ -282,10 +283,24 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   // so consuming the lock by default would silently serve stale
   // freezes. `vx lock --check` is the full re-evaluation audit.
   // See docs/design/config-lock-2026-06.md.
-  const lock = options.frozen === true ? await readLockfile(workspaceRoot) : null
-  if (options.frozen === true && lock === null) {
-    throw new UserError(FROZEN_WITHOUT_LOCK)
-  }
+  // Read once, and only when a config is to be read from it: the CLI's
+  // selection pass may have staged every config (`options.staged`), and
+  // its load refused a frozen run without a lock. A 1,000-project lock is
+  // 1.1 MB of JSON (I-27).
+  let lockRead: Promise<Lockfile> | undefined
+  const readLock = (): Promise<Lockfile> =>
+    (lockRead ??= readLockfile(workspaceRoot).then((read) => {
+      if (read === null) throw new UserError(FROZEN_WITHOUT_LOCK)
+      return read
+    }))
+  const staged = options.staged
+  const allStaged =
+    staged !== undefined &&
+    projectMetas.every(
+      (m) => typeof m.configPath !== 'string' || m.configPath === '' || staged.has(m.name),
+    )
+  if (options.frozen === true && !allStaged) await readLock()
+  const lock = options.frozen === true ? readLock : null
 
   const loadArgs = {
     workspaceRoot,
