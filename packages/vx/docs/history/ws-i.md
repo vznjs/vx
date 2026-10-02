@@ -179,6 +179,14 @@ key, the copy rebuilds, and its `pnpm install` (and the pinned pnpm's
 self-install) cannot reach the registry from a task, whose environment
 carries no proxy.
 
+I-20. A warm hit's tree check does less JS. The whole-subtree output
+prefixes are memoised by the declared list, and a hit whose directory
+snapshot proved the set skips mapping each row to a path and back.
+1,000 packages warm, compiled, 25 interleaved rounds, `run graph`
+stage: main 85.4 ms median (min 68.2), patch 69.0 (49.3), A/A 65.8
+(55.0). Wall, 61 rounds: main 411.6 ms median (min 327.1), patch
+384.5 (321.3), A/A 398.7 (330.1).
+
 ## Leads for other streams
 
 - **Owner / coordinator: skip macOS where it cannot differ from
