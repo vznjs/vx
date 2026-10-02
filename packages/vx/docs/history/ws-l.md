@@ -445,15 +445,6 @@
   there. It is now masked with the same rule before it is recorded.
   Row: `invocation-secret-mask.test.ts`, red without the fix.
 
-- L-41. `fix(sandbox)`: a sandboxed task read the host's credential
-  stores (probed: `~/.ssh/id_ed25519`, `~/.npmrc`, `~/.aws/credentials`
-  printed under `allow: { read: ['.'] }`). Reads outside the workspace
-  stay open by design, but a dependency the task runs could copy a key
-  into a declared output, and the cache hands that to every reader of a
-  shared remote. The stores present on the host are now in the read
-  deny set, and a task that needs one (`npm publish`'s `~/.npmrc`)
-  names it in `allow.read`. `sandbox-credential-stores.unsafe.test.ts`,
-  red without the fix; `~/.cache` stays readable in the same row.
 - L-38. `fix(orchestrator)`: a `--tag` value is stored on the run's
   history row and reaches telemetry as `vx.tag.<key>`. A tag carrying a
   secret (`--tag key=$DEPLOY_KEY`) was masked in the stored invocation
