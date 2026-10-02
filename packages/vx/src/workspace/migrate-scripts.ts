@@ -247,12 +247,13 @@ function upstreamBuildOnWorker(tasks: GeneratedTask[]): void {
 /**
  * A root script that runs the members rather than checking the repo:
  * pnpm's `-r` / `--filter` / `-C`, Yarn's `--cwd` (excalidraw's
- * `build:common`), npm's `--prefix`, the workspace flags, Bun's `--filter`,
+ * `build:common`) and `yarn workspace <name>` (cal.com's `prisma`), npm's
+ * `--prefix`, the workspace flags, Bun's `--filter`,
  * Vite+'s `vp run` (tiptap), and the other runners, vx itself included. Mapped, it ran every member's
  * task again beside the member's own (D-45).
  */
 const RUNS_MEMBERS =
-  /(^|[\s;&|(])(turbo|nx|lerna|ultra|wireit|nps|moon|rush|vx)(\s|$)|\bworkspaces?\s+(foreach|run)\b|\bvp\s+run\s/
+  /(^|[\s;&|(])(turbo|nx|lerna|ultra|wireit|nps|moon|rush|vx)(\s|$)|\bworkspaces?\s+(foreach|run)\b|\byarn\s+workspace\s|\bvp\s+run\s/
 
 /** A workspace flag, read only where a package manager takes it (`pmRunsMembers`). */
 const MEMBER_FLAG =
