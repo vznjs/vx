@@ -36,6 +36,10 @@
   quoted medusa and payload numbers measured through `turbo()`; the
   docs README and `cli.md`'s `vx init` said the same. Each now calls
   `turbo()` / `nx()` a temporary start toward native config.
+- **R-6** The vx-migrate README timed `nx-exec` against `nx run` (400
+  and 830 ms less per task), a speed claim for an Nx-mapped run; it now
+  names the ~220 ms each `nx-exec` line pays and that native config
+  pays none of it.
 
 ## Leads
 

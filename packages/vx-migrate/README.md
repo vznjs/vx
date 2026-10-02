@@ -156,7 +156,7 @@ nx-env [--dotenv <file>]... [--envFile <file>] -- <command> [args…]
 
 `nx-env` loads the `.env` files and a run-commands `envFile` with Nx's own functions, then runs the command with `sh -c`, whatever follows it appended as vx appends forwarded arguments; its exit is the shell's.
 
-Why the command carries the options: vx's key sees them (resolved-config hashing holds), no ambient state decides what runs, `vx show` prints the truth and the line pastes into a shell. Measured against `nx run <p>:<t> --skip-nx-cache --exclude-task-dependencies` on the same workspace: about 400 ms less per executed task at 200 projects and 830 ms at 1,000 with the daemon off (the only mode a sandbox allows), and still ahead of a warm daemon; the remaining ~220 ms floor is Nx's own module graph, paid on a miss only. The numbers and the design are in `docs/design/nx-unchanged-2026-09.md`.
+Why the command carries the options: vx's key sees them (resolved-config hashing holds), no ambient state decides what runs, `vx show` prints the truth and the line pastes into a shell. Each executed `nx-exec` line still loads Nx's own module graph (about 220 ms, on a miss only): it is a bridge, and the bare command that replaces it in native config pays none of that. The design is in `docs/design/nx-unchanged-2026-09.md`.
 
 ## `bunx @vzn/vx-migrate` — write the configs
 
