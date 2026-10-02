@@ -98,6 +98,13 @@ export interface AffectedArgs {
    * package graph cannot see (item 1085).
    */
   taskEdges?: () => Promise<ReadonlyMap<string, readonly string[]>>
+  /**
+   * The untracked files, workspace-relative, from a walk the caller shares
+   * with the run (`GitEnumeration.untracked`); null or absent spawns `git
+   * ls-files --others` here. The selection's own walk was a second one the
+   * run then paid again (I-26).
+   */
+  untracked?: () => Promise<readonly string[] | null>
 }
 
 export interface FingerprintClaims {
@@ -186,7 +193,9 @@ export async function affectedProjects(args: AffectedArgs): Promise<Set<string>>
     // enumeration does (`git ls-files --cached --others --exclude-standard`),
     // so a brand-new source file changes a task's cache key. Union it in or
     // `--affected` skips a package that genuinely has new work.
-    gitPaths(args.workspaceRoot, ['ls-files', '--others', '--exclude-standard', '-z']),
+    (async () =>
+      (await args.untracked?.().catch(() => null)) ??
+      gitPaths(args.workspaceRoot, ['ls-files', '--others', '--exclude-standard', '-z']))(),
   ])
 
   // vx-lock.json (workspace-root metadata) is excluded like a gitignored

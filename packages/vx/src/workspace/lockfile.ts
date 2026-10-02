@@ -153,7 +153,15 @@ export async function frozenProjectConfigs(
   const entries = metas.map((meta) => {
     const rel = relPosix(root, meta.configPath)
     const entry = lock.projects[meta.name]
-    if (!entry || entry.configPath !== rel) {
+    if (entry !== undefined && entry.configPath !== rel) {
+      // A renamed or moved config: "has no entry for a" named an entry the
+      // lock holds, under its old path (D-88).
+      throw new UserError(
+        `${LOCKFILE_NAME} locks "${meta.name}" at ${entry.configPath}, but its config is ${rel} now — ` +
+          `run \`vx lock\` to refresh, or delete ${LOCKFILE_NAME}`,
+      )
+    }
+    if (!entry) {
       throw new UserError(
         `${LOCKFILE_NAME} has no entry for "${meta.name}" (${rel}) — ` +
           `run \`vx lock\` to refresh, or delete ${LOCKFILE_NAME}`,
