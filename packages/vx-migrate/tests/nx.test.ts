@@ -833,6 +833,35 @@ describe('nx()', () => {
       },
       TIMEOUT,
     )
+    // nx-examples' cypress shape: the metadata sits on `e2e-ci`, and Nx's
+    // `getOwnerTargetForTask` loads `.env.e2e-ci` and `.env.e2e` for every
+    // member of its group. The atomized task loaded only `.env.e2e`.
+    it('an atomized target loads its group owner’s files', async () => {
+      await writeFile(lib('.env.e2e-ci'), 'A=ci\n')
+      await writeFile(lib('.env.e2e'), 'A=e2e\n')
+      await writeFile(lib('.env.e2e-ci--a'), 'A=own\n')
+      const g = structuredClone(GRAPH) as unknown as {
+        graph: {
+          nodes: Record<string, { data: { targets: Record<string, unknown>; metadata?: unknown } }>
+        }
+      }
+      const data = g.graph.nodes['lib']!.data
+      Object.assign(data.targets, {
+        e2e: { executor: 'nx:run-commands', options: { command: 'echo e2e' } },
+        'e2e-ci--a': { executor: 'nx:run-commands', options: { command: 'echo a' } },
+        'e2e-ci': {
+          executor: 'nx:noop',
+          dependsOn: ['e2e-ci--a'],
+          metadata: { nonAtomizedTarget: 'e2e' },
+        },
+      })
+      data.metadata = { targetGroups: { 'E2E (CI)': ['e2e-ci--a', 'e2e-ci'] } }
+      await writeFile(path.join(root, 'graph.json'), JSON.stringify(g))
+      const plan = await planRun({ cwd: root, tasks: ['e2e-ci--a'], log: silent() })
+      expect(plan.tasks.find((t) => t.node.id === 'lib#e2e-ci--a')!.node.config.exec?.command).toBe(
+        "nx-env --dotenv .env.e2e-ci --dotenv .env.e2e -- 'cd ../.. && echo a'",
+      )
+    })
 
     it(
       'a run-commands `envFile` is loaded under them (nx#23581)',

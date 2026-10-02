@@ -294,8 +294,9 @@ terminal and a task succeeding or failing. Read it alongside
  │
  └─ End-of-run
     1. SIGTERM dependency-only persistent children; persistent tasks
-       the user REQUESTED, and the persistent tasks they depend on,
-       are kept alive (see below).
+       the user REQUESTED, those a requested group stands for (through
+       nested groups, not through a one-shot), and the persistent tasks
+       they depend on, are kept alive (see below).
     2. Run summary footer (projects / tasks / cache meters + info +
        time + result) — counts only real tasks (with `exec`); group tasks
        don't pollute the totals; failure frames replay just above it.
@@ -320,7 +321,9 @@ terminal and a task succeeding or failing. Read it alongside
        alive, Ctrl-C reaps the process group. That first exit ends the
        session: the others are torn down (SIGTERM, grace, SIGKILL) and
        a non-zero exit makes the run exit 1, so a script's `vx run dev`
-       fails when the server it started fell over. Under
+       fails when the server it started fell over. That server then reads
+       `failed` with its own exit in the rewritten `--summarize` and in the
+       outcomes `--report` renders; one a Ctrl-C stopped does not. Under
        `holdPersistent` (the watch loop) run() instead returns them on
        `RunSummary.persistent`, still running, for the caller to stop.
 ```

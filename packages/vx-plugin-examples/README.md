@@ -21,7 +21,7 @@ into your workspace.
 Use one in `vx.workspace.ts`:
 
 ```ts
-import { defineWorkspace } from '@vzn/vx'
+import { defineWorkspace } from '@vzn/vx/config'
 import { envKey } from './plugins/key.ts'
 
 export default defineWorkspace({ plugins: [envKey(['NODE_ENV'])] })

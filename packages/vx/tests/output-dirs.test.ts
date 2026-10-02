@@ -154,7 +154,7 @@ describe('Cache.recordOutputDirs / outputDirsCurrent', () => {
   })
 
   it('a stamp is taken only for a file that still matches its row', async () => {
-    // Through the batch read, which flushes the pending stamps first.
+    // Through the batch read, which overlays the pending stamps.
     const stamped = () => ({ ino: cache.loadOutputFilesBatch(['h1']).get('h1')![0]!.ino ?? null })
     w('dist/a.js', 'changed and longer')
     cache.recordOutputStamps('h1', proj, root)
@@ -165,6 +165,26 @@ describe('Cache.recordOutputDirs / outputDirsCurrent', () => {
     utimesSync(path.join(proj, 'dist/a.js'), new Date(r.mtimeMs), new Date(r.mtimeMs))
     cache.recordOutputStamps('h1', proj, root)
     expect(stamped().ino).not.toBeNull()
+  })
+
+  it('a re-save drops the stamp taken for the rows it replaces', async () => {
+    const stamped = () => cache.loadOutputFilesBatch(['h1']).get('h1')![0]!.ino ?? null
+    const save = () =>
+      cache.save({
+        hash: 'h1',
+        projectDir: proj,
+        outputFiles: [path.join(proj, 'dist/a.js')],
+        entry: { taskId: 'p#build', command: 'x', durationMs: 1, stdout: '' },
+      })
+    // CONTROL: the file as saved is stamped, and the stamp is read pending.
+    cache.recordOutputStamps('h1', proj, root)
+    expect(stamped()).not.toBeNull()
+    await save()
+    expect(stamped()).toBeNull()
+    // Nor does it land at close.
+    cache.close()
+    cache = new Cache(path.join(root, 'cache'))
+    expect(stamped()).toBeNull()
   })
 
   it('a directory recorded absent that now exists is not current', async () => {
@@ -247,9 +267,14 @@ describe('Cache.recordOutputDirs / outputDirsCurrent', () => {
     await cache.recordOutputDirs('h1', proj, ['dist'])
     expect(rows()).toEqual([])
     expect(await cache.outputDirsCurrent(proj, [])).toBe(false) // no rows ⇒ never a skip
-    // 8,193 mkdirs and the walk over them are real work: 7.7 s on a loaded
-    // CI runner under four parallel shards (2026-09-16), over bun's 5 s
-    // default. The bound matches the work and still catches a hang.
+    // Removed here, under this row's bound: left to the afterEach (bun's
+    // 5 s default), the rm of 8,193 directories timed it out on a loaded
+    // box (11.3 s for the row and its hooks, M-19).
+    rmSync(path.join(proj, 'dist'), { recursive: true })
+    // 8,193 mkdirs, the walk over them and their removal are real work:
+    // 7.7 s on a loaded CI runner under four parallel shards (2026-09-16),
+    // over bun's 5 s default. The bound matches the work and still catches
+    // a hang.
   }, 30_000)
 
   it('a directory modified within the racy window is not snapshotted at all (coarse timestamps)', async () => {
