@@ -388,6 +388,15 @@ describe('migrateScripts', () => {
     expect(notes({ name: 'r', scripts: [] })).toEqual([])
     expect(notes({ name: 'r' })).toEqual([])
     expect(notes()).toEqual([])
+    // D-87, react: a nameless root whose scripts would map says so, and
+    // how many; a hook rides with its script and is not counted.
+    const at = (outside: Record<string, unknown>) =>
+      migrateScripts([meta], outside, '/w').notes.filter((n) => n.includes('the workspace root'))
+    expect(at({ scripts: { prelint: 'echo', lint: 'eslint .', dev: 'pnpm -r dev' } })).toEqual([
+      'package.json (the workspace root) not mapped: it has no "name", and vx names a project by it; give it one and run `vx init` again to map 1 of its scripts (lint)',
+    ])
+    // CONTROL: nothing that would map keeps the old note.
+    expect(at({ scripts: { dev: 'pnpm -r dev' } })).toEqual([nameless])
   })
 
   it('a cycle of builds waits on the builds outside it, never on `^build` (nuxt)', () => {
@@ -480,10 +489,76 @@ describe('migrateScripts', () => {
     expect(outputs({ build: 'npm run b', b: 'next build' }, 'b')).toBe(
       "'.next/**', '!.next/cache/**'",
     )
+    // D-90: no tool above, so the dir the command writes or cleans (ky's
+    // `distribution`); a hidden dir, a file, a glob, or a scratch dir the
+    // command makes again is no guess.
+    expect(outputs({ build: 'del-cli distribution && tsc --project tsconfig.dist.json' })).toBe(
+      "'distribution/**'",
+    )
+    expect(outputs({ build: 'rimraf lib && babel src -d lib' })).toBe("'lib/**'")
+    expect(outputs({ build: 'tsc --outDir build' })).toBe("'build/**'")
+    expect(outputs({ build: 'esbuild src/x.ts --outdir=out' })).toBe("'out/**'")
+    expect(outputs({ build: 'rimraf dist types tsconfig.tsbuildinfo && tsc' })).toBe(
+      "'dist/**', 'types/**'",
+    )
+    expect(outputs({ build: 'shx rm -rf ./es && tsc' })).toBe("'es/**'")
+    expect(outputs({ build: 'rimraf .turbo && tsc' })).toBe("'dist/**'")
+    expect(outputs({ build: 'rimraf "lib/**" && tsc' })).toBe("'dist/**'")
+    expect(outputs({ build: 'rm -rf ./ids && mkdir ./ids && vite build' })).toBe("'dist/**'")
     // CONTROLS: anything else, and a near name, keep `dist/**`.
     expect(outputs({ build: 'tsc -b' })).toBe("'dist/**'")
     expect(outputs({ build: 'vite build' })).toBe("'dist/**'")
     expect(outputs({ build: 'nextjs-build' })).toBe("'dist/**'")
+  })
+
+  it("under Yarn 2+ a script's `run <script>` is spelled `yarn run` (D-92)", async () => {
+    // Yarn's shell reads `run x` as `yarn run x`; vx's shell has no `run`,
+    // and berry's `run test:unit packages/…` failed "command not found".
+    const root = await mkdtemp(path.join(os.tmpdir(), 'vx-berry-run-'))
+    try {
+      const app = path.join(root, 'packages', 'app')
+      await mkdir(app, { recursive: true })
+      const scripts = {
+        b: 'echo b',
+        args: 'run b --x',
+        chain: 'echo a && run b; run b || (run b)',
+        group: 'run b',
+        word: 'echo run b && docker run img',
+      }
+      const commands = (): Record<string, unknown> =>
+        Object.fromEntries(
+          (
+            migrateScripts([
+              {
+                name: 'app',
+                dir: app,
+                packageJson: { name: 'app', scripts } as never,
+                configPath: null,
+              },
+            ]).projects[0]?.tasks ?? []
+          ).map((t) => [
+            t.name,
+            (t.task?.['exec'] as { command?: string } | undefined)?.command ?? t.task,
+          ]),
+        )
+      await writeFile(
+        path.join(root, 'package.json'),
+        JSON.stringify({ private: true, packageManager: 'yarn@4.5.0' }),
+      )
+      expect(commands()).toEqual({
+        b: 'echo b',
+        args: 'yarn run b --x',
+        chain: 'echo a && yarn run b; yarn run b || (yarn run b)',
+        group: { dependsOn: ['b'] },
+        word: 'echo run b && docker run img',
+      })
+      // CONTROL: under npm, `run` is whatever the shell finds; kept.
+      await writeFile(path.join(root, 'package.json'), JSON.stringify({ private: true }))
+      await writeFile(path.join(root, 'package-lock.json'), '{}')
+      expect(commands()['args']).toBe('run b --x')
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
   })
 
   it('under Yarn 2+ a pre/post script is a task of its own, never folded (D-31)', async () => {

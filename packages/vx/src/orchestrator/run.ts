@@ -193,7 +193,34 @@ export function invocationCommand(argv: readonly string[]): string {
   return [...argv.slice(0, sep), '--', `<${rest} argument${rest === 1 ? '' : 's'}>`].join(' ')
 }
 
+/**
+ * The bounds the CLI and the workspace config already hold, at the façade
+ * (C-61): a `concurrency` of 0, a negative or NaN left no worker slot and
+ * the run waited for good; a `retries` of NaN retried a failing task
+ * without end; a `timeout` of 0, a negative, NaN or past the timer's range
+ * killed every task at once.
+ */
+function refuseRunNumbers(options: RunOptions): void {
+  const refuse = (name: string, value: number, rule: string): never => {
+    throw new UserError(`RunOptions.${name} is ${String(value)}: it must be ${rule}`)
+  }
+  // No task named read "No projects declare task(s): ." (C-61).
+  if (options.tasks.length === 0 || options.tasks.includes(''))
+    throw new UserError(`RunOptions.tasks names no task: give at least one task name`)
+  const { concurrency, retries, timeout } = options
+  if (concurrency !== undefined && !(Number.isInteger(concurrency) && concurrency > 0))
+    refuse('concurrency', concurrency, 'a positive integer')
+  if (retries !== undefined && !(Number.isInteger(retries) && retries >= 0))
+    refuse('retries', retries, 'a non-negative integer')
+  if (
+    timeout !== undefined &&
+    !(Number.isInteger(timeout) && timeout > 0 && timeout <= MAX_TIMEOUT_MS)
+  )
+    refuse('timeout', timeout, `a positive integer of ms, at most ${MAX_TIMEOUT_MS}`)
+}
+
 export async function run(options: RunOptions): Promise<RunSummary> {
+  refuseRunNumbers(options)
   // Color decision: a custom logger (tests, embedders) handles its
   // own formatting and asserts on plain strings, so we suppress
   // ANSI escapes for them. Only the defaultLogger (real terminal
@@ -844,7 +871,21 @@ async function runOnBus(
     const foreground = options.log === undefined && (options.handleSignals ?? true)
     // An aborted run's children are already being torn down: nothing to hold.
     const hold = options.holdPersistent === true && !stopRun.signal.aborted
-    const keepAlive = selectKeepAlive(persistentRegistry, nodes, foreground || hold)
+    // A run that failed elsewhere holds nothing: `vx run dev --all` with one
+    // server that never became ready sat on the others for good, so a
+    // script hung, and the Ctrl-C that ended it read 130 over the failure
+    // (C-60). A kept server's own crash ends the wait below as before, and
+    // `--continue=always` asked to keep going, and does. The watch loop
+    // (`holdPersistent`) still holds: a failing test in a cycle stopped
+    // the dev server the next change would restart anyway.
+    let keepAlive = selectKeepAlive(persistentRegistry, nodes, foreground || hold)
+    const failedElsewhere =
+      ![...outcomes.values()].every((o) => isPassStatus(o.status)) ||
+      [...persistentRegistry.values()].some(
+        (c) => hasEnded(c) && c.exitCode !== 0 && !keepAlive.children.includes(c),
+      )
+    if (failedElsewhere && !hold && options.continueMode !== 'always')
+      keepAlive = { nodes: [], children: [] }
     const crashedPersistent = (
       await shutdownPersistent(persistentRegistry, keepAlive.children)
     ).filter((c) => endedBeforeStop?.has(persistentRegistry.get(c.id)!) ?? true)
