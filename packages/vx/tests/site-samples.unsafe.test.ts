@@ -1672,3 +1672,17 @@ describe("the site's reapi samples on port 443 name a TLS scheme", () => {
     expect(samples.filter((s) => !/: (grpcs|https):\/\//.test(s))).toEqual([])
   })
 })
+describe("comparison.md's Turborepo cells say what Turbo hashes and runs", () => {
+  // Turbo 2.10.13's dry run lists `package.json` among a task's inputs (a
+  // description edit re-keyed it), and `turbo run build` printed npm's
+  // `> b@1.0.0 prebuild` and its output; the cells said "(via lockfile)"
+  // and "(no)" (J-109).
+  it('the package.json and pre/post rows name it', () => {
+    const doc = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'comparison.md'), 'utf8')
+    const turbo = (row: string) => new RegExp(`^\\| ${row} +\\| ([^|]*?) +\\|`, 'm').exec(doc)![1]
+    expect(turbo('Implicit-dependency hash \\(project `package.json`\\)')).toBe(
+      'yes — `package.json` is a default input',
+    )
+    expect(turbo('Pre/post script lifecycle')).toBe('yes — the package manager runs them')
+  })
+})
