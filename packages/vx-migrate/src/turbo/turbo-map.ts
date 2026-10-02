@@ -62,6 +62,30 @@ const keyable = (name: string): boolean =>
   name.length > 0 && !name.startsWith('!') && !/[*?[\]{}=\0]/.test(name)
 
 /**
+ * The names of `names` a live mapping can read differently: each a `*` in
+ * one of `configs` (turbo.json texts, any string, a superset) or in Turbo's
+ * framework table matches, and each core cannot key (a literal one is
+ * dropped only when no variable has it). The kept mapping keyed on every
+ * name, so any variable that came or went (a CI step's, `VX_TIMING`)
+ * remapped the workspace: ~330 ms a run on vercel/ai.
+ */
+export function envNamesThatMap(configs: readonly string[], names: readonly string[]): string[] {
+  const patterns = new Set(FRAMEWORK_ENV.flatMap((f) => f.env).filter((e) => e.includes('*')))
+  for (const text of configs)
+    for (const m of text.matchAll(/"((?:[^"\\]|\\.)*)"/g))
+      if (m[1]!.includes('*')) patterns.add(m[1]!)
+  // Backslashes and a leading `!` dropped, every `*` a wildcard: wider
+  // than Turbo's reading, never narrower.
+  const res = [...patterns].map(
+    (p) =>
+      new RegExp(
+        `^${p.replaceAll('\\', '').replace(/^!/, '').split('*').map(RegExp.escape).join('.*')}$`,
+      ),
+  )
+  return names.filter((n) => !keyable(n) || res.some((re) => re.test(n)))
+}
+
+/**
  * A Turbo env list's explicit names, read as Turbo reads them
  * (`wildcard_to_regex_pattern`): `*` is the one wildcard, `\*` a
  * literal `*`, a leading `\!` a literal `!`, and every other character

@@ -18,6 +18,7 @@ import { collectGaps } from '../plugin-gaps.js'
 import { gitIgnored, trackedKinds } from '../tracked-outputs.js'
 import { relPosix } from '../paths.js'
 import {
+  envNamesThatMap,
   mapTurboWorkspace,
   microfrontendsConfigs,
   rootTaskProject,
@@ -226,13 +227,14 @@ async function run(root: string, metas: readonly ProjectMeta[]): Promise<Adoptio
   const configs = await Promise.all(
     dirs.flatMap((d) => ['turbo.json', 'turbo.jsonc'].map((f) => textOf(path.join(d, f)))),
   )
+  const envNames = envNamesThatMap(configs, envNamesNow())
   return {
     name: 'turbo',
     spareTracked: true,
     reads: [
       JSON.stringify(dirs),
-      // An env wildcard expands over these (`envNames`); a new name maps afresh.
-      JSON.stringify(envNamesNow()),
+      // An env wildcard expands over these; a new name it matches maps afresh.
+      JSON.stringify(envNames),
       process.env['TURBO_CI_VENDOR_ENV_KEY'] ?? '',
       process.env['TURBO_ENV_MODE'] ?? '',
       ...configs,
@@ -243,7 +245,7 @@ async function run(root: string, metas: readonly ProjectMeta[]): Promise<Adoptio
       // A config file added beside mapped tasks changes what an output may cover.
       JSON.stringify(metas.map((m) => [m.name, m.dir, m.packageJson, m.configPath])),
     ],
-    map: (tracked) => mapAll(root, metas, tracked),
+    map: (tracked) => mapAll(root, metas, envNames, tracked),
   }
 }
 
@@ -256,6 +258,7 @@ async function run(root: string, metas: readonly ProjectMeta[]): Promise<Adoptio
 async function mapAll(
   root: string,
   metas: readonly ProjectMeta[],
+  envNames: readonly string[],
   trackedFiles: () => Promise<readonly string[] | null>,
 ): Promise<AdoptionMapping> {
   const tracked = await trackedFiles()
@@ -268,7 +271,7 @@ async function mapAll(
     // Inline: the values themselves, where `vx migrate` splices a preset import.
     splice: (_kind, values) => values,
     persistentTodo: PERSISTENT_NOTE,
-    envNames: envNamesNow(),
+    envNames,
     vendorEnvPrefix: process.env['TURBO_CI_VENDOR_ENV_KEY'] ?? '',
     envMode: process.env['TURBO_ENV_MODE'] ?? '',
     ...(tracked === null ? {} : { tracked: trackedKinds(tracked) }),
