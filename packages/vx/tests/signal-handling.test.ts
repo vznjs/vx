@@ -153,9 +153,12 @@ describe('signal handling during vx run (e2e)', () => {
       const deadline = Date.now() + 10_000
       while (!existsSync(up) && Date.now() < deadline) await Bun.sleep(20)
       // The positive first: the running vx holds an entry here.
-      const locks = readdirSync(tmp).filter((n) => n.startsWith('vx-run-'))
+      // Each user's locks sit in a directory of their own (L-47).
+      const uid = process.getuid?.()
+      const lockRoot = uid === undefined ? tmp : path.join(tmp, `vx-runs-${uid}`)
+      const locks = readdirSync(lockRoot).filter((n) => n.startsWith('vx-run-'))
       expect(locks.length).toBe(1)
-      expect(readdirSync(path.join(tmp, locks[0]!))).toEqual([
+      expect(readdirSync(path.join(lockRoot, locks[0]!))).toEqual([
         expect.stringMatching(new RegExp(`^h-${proc.pid}-`)),
       ])
       proc.kill('SIGINT')
@@ -170,8 +173,8 @@ describe('signal handling during vx run (e2e)', () => {
       // With what each leftover holds: its entry (the hook never ran) or
       // nothing (the directory's removal was skipped). macOS CI left one
       // once (item 867).
-      const left = readdirSync(tmp).filter((n) => n.startsWith('vx-run-'))
-      expect(left.map((n) => [n, readdirSync(path.join(tmp, n))])).toEqual([])
+      const left = readdirSync(lockRoot).filter((n) => n.startsWith('vx-run-'))
+      expect(left.map((n) => [n, readdirSync(path.join(lockRoot, n))])).toEqual([])
     } finally {
       await rm(tmp, { recursive: true, force: true })
     }
