@@ -416,6 +416,7 @@
 ## Leads for other streams
 
 - **G / CLI** `foreign-flags.ts` marks Turbo's `--no-cache` `same` as vx's. Turbo 2.10.13 and 2.11.7 document it as `--cache=local:r,remote:r` (reads on, writes off), and a second `turbo run build --no-cache` replayed a cache hit; vx's `--no-cache` turns reads off too, so a Turbo user's `--no-cache` re-executes everything under vx. An alias to `--cache=local:r,remote:r` (and `cli.md`'s rendered row) is the fix (J-110).
+- **G / CLI** `foreign-flags.ts` aliases Nx's `--skip-nx-cache` to `--force` (reads off, writes on). Nx 23.2.1: after `nx reset`, `nx run a:build --skipNxCache` then a plain run reports `0/1 hit`, and the next `1/1`: the skipped run wrote nothing, so `--no-cache` is its spelling (as `parity.md` says). With `--force`, a vx run under that flag fills the cache Nx's would not (J-110).
 - **C** `orchestrator/prepare.ts:242` says frozen configs load "after a
   content-hash tripwire"; there is none (`frozenProjectConfig` checks
   nothing, by design). The comment claims a guarantee the code lacks.
