@@ -1200,3 +1200,11 @@ successful ones. A refused `chdir` is a denied read of the directory:
 both line shapes, resolved where its process stood. Rows:
 `sandbox-chdir-denied.unsafe.test.ts` (both red without the fix); the
 B-61 row's fixture `chdir("nope")` is now a denial too.
+
+B-68. A workspace under a directory whose name holds PATH's delimiter
+(`…/x:y/ws`) split each `node_modules/.bin` into two PATH entries: one
+naming nothing, and one RELATIVE, so resolved against the task's cwd,
+where a planted file ran. The 127 verdict then said the bin was first on
+PATH. `buildIsolatedEnv` now leaves such a directory out, and
+`shellVerdict` names it and says to move the workspace. Rows:
+`env-path-delimiter.test.ts` (all three red without the fix).
