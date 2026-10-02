@@ -742,6 +742,16 @@ const FOREIGN_FIELDS: ReadonlyMap<ReadonlySet<string>, Readonly<Record<string, s
         '`exec.command`: vx runs one shell command (`nx()` from `@vzn/vx-migrate` runs an Nx executor as one)',
       options: '`exec.command` (a run-commands `options.command`) and `exec.env`',
       outputLogs: 'the `--output-logs` flag of `vx run`',
+      // Turbo's `interactive` / `with`, Nx's `cwd` / `parallelism` /
+      // `configurations`: refused with no word on where they went (D-89).
+      interactive:
+        'a command run outside vx: a task never reads the terminal (its stdin is EOF, or a pipe vx holds under `exec.persistent`)',
+      with: '`dependsOn` on each task it runs beside: a persistent one stays up, and this task starts once it is ready',
+      cwd: '`cd <dir> && …` in `exec.command`: a task runs in its project directory',
+      parallelism:
+        '`concurrency: 1` in vx.workspace or `--concurrency 1` on the run: no task runs alone beside others',
+      configurations:
+        'one task per configuration (`build:production`, with its own `exec.command`)',
     },
   ],
   [EXEC_FIELDS, { cmd: '`command`', script: '`command`' }],

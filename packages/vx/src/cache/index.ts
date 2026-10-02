@@ -50,6 +50,7 @@ export {
   GitFilesCache,
   applyGitEnumeration,
   gitPathspecs,
+  MAX_SCOPED_PATHSPECS,
   repoRootOf,
   startGitEnumeration,
   lazyGitEnumeration,
