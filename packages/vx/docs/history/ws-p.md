@@ -22,6 +22,20 @@
   `e2e-ci--<spec>` loads `.env.e2e-ci` and `.env.e2e`. vx named them by
   the task's own name, so it loaded `.env.e2e-ci--<spec>`, which Nx never
   does, and missed `.env.e2e-ci`.
+- **P-11** `vx-migrate --from nx`: nx.json's `parallel`, `defaultBase`
+  and `maxCacheSize`, which `nx()` applies live, are each a note naming
+  the `vx.workspace.ts` field to add. The written workspace file holds
+  none of them, so nx-examples' `parallel: 1` ran on every core once
+  migrated, without a word.
+- **P-5** `nx()`: every task gets `NX_TASK_TARGET_PROJECT`,
+  `NX_TASK_TARGET_TARGET` and `NX_TASK_TARGET_CONFIGURATION`, as Nx's
+  `getNxEnvVariablesForTask` sets them. A package script's
+  `nx exec -- <cmd>` found them unset and booted Nx's task runner, which
+  ran the target and its dependencies a second time.
+- **P-6** `nx()`: a `{ fileset, includeIgnored: true }` input (Nx 23:
+  hashed from disk, gitignored or missing) is read by a workspace-root
+  probe when it names one path, and is a todo when it is a glob. Mapped
+  as a plain glob, a gitignored literal failed the task before it ran.
 - **P-7** `nx()`: a `dependsOn` entry's `options: "forward"`, which Nx's
   `createTaskOverrides` turns into the dependency's overrides, is a todo
   when the target has options to forward. It was dropped without a word,
@@ -47,3 +61,8 @@
 - `tests/npm-pack.unsafe.test.ts` failed once in a full gate
   (`JSON Parse error` on `npm pack --dry-run --json` output) and passed
   on the re-run and alone (2026-10-02, npm 10.9.4).
+- Core's `MigrationPlan` (`workspace/migration.ts`) has no field for the
+  workspace file's settings, so a migrator can only name them in a note
+  (P-11); `turbo`'s `concurrency` / `cacheMaxSize` / `TURBO_SCM_BASE` are
+  in the same place. A `workspace` field on the plan would let both write
+  them.
