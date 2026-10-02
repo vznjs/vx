@@ -56,6 +56,14 @@ Linux, so the task is refused instead, and a root with one keeps SRT's
 own depth-3 scan. `sandbox-deny-scan.unsafe.test.ts` holds the binds
 equal to SRT's whole-root scan for three grant sets.
 
+SRT still spawned its `rg` on every wrap for those root entries, and
+cannot skip it. At depth 1 a hit lies in the root, which SRT keeps only
+inside a write grant, where the scoped walk already reaches, so vx hands
+SRT `true` as its ripgrep command (B-75): the spawn's 3.8 ms is 1.0, and
+100 sandboxed `true` tasks at concurrency 1 run in 3.50 s against 3.95
+(−4.4 ms a task, interleaved, three rounds). The parity rows arm SRT as
+vx does, with a root entry (`.ZshRC`) only a scan finds.
+
 `allow.gitConfig` is read by SRT from the run's config only, so a run
 with a task that grants it sets `allowGitConfig` per wrap, one wrap at a
 time, as it does the unix-socket lift, and the scoped scan leaves that

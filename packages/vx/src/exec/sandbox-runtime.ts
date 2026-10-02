@@ -486,6 +486,22 @@ function bundledJavaAgent(): { javaAgentJarPath?: string } {
 /** Whether this run's SRT scans at depth 1 and vx supplies the task-scoped denies (B-40). */
 let scopedDenyScan = false
 
+/**
+ * SRT's own deny scan, when `wrapSandboxedCommand` walks each task's write
+ * grants (B-40): none. SRT spawns its ripgrep on every wrap, and at depth
+ * 1 the scan finds only the root's entries, which SRT keeps only inside a
+ * write grant, where the scoped walk already reaches (the parity rows in
+ * `sandbox-deny-scan.unsafe.test.ts`). A no-op in rg's place ends the
+ * spawn's 3.8 ms at 1.0; SRT has no way to skip it.
+ */
+function scopedScanConfig(): { mandatoryDenySearchDepth: number; ripgrep?: { command: string } } {
+  try {
+    return { mandatoryDenySearchDepth: 1, ripgrep: { command: executablePath('true') } }
+  } catch {
+    return { mandatoryDenySearchDepth: 1 }
+  }
+}
+
 function linuxToolPaths(): { bwrapPath?: string; socatPath?: string } {
   if (process.platform !== 'linux') return {}
   const paths: { bwrapPath?: string; socatPath?: string } = {}
@@ -568,9 +584,7 @@ export async function initSandbox(opts?: {
     filesystem: { denyRead: [], allowWrite: [], denyWrite: [] },
     ignoreViolations: DEFAULT_IGNORE_VIOLATIONS,
     ...linuxToolPaths(),
-    // SRT's own scan walks only the root's entries; `wrapSandboxedCommand`
-    // walks each task's write grants for the rest (B-40).
-    ...(scopedDenyScan ? { mandatoryDenySearchDepth: 1 } : {}),
+    ...(scopedDenyScan ? scopedScanConfig() : {}),
     ...bundledJavaAgent(),
   }
   if (!srtUp) await unlinkStaleMuxSockets()
