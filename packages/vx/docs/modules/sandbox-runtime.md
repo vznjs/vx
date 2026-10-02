@@ -180,7 +180,7 @@ export interface SandboxedRunArgs {
   timeoutMs?: number
   capture?: CaptureConfig
   baseAllowRead: readonly string[] // node_modules + resolved workspace links
-  baseDenyRead: readonly string[] // [workspaceRoot] — the task may not leave its project
+  baseDenyRead: readonly string[] // [workspaceRoot, ...credential stores] — not its project's neighbours, nor ~/.ssh (L-41)
   reportWithin: string // projectDir — only denials in here are worth reporting
   reportLinked: readonly string[] // withheld linked packages (canonical) — reported too
   config: ResolvedSandboxConfig // its allowWrite is the whole write set: none is derived

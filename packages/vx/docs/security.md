@@ -62,6 +62,9 @@ A task with `exec.sandbox` runs where only what it declares exists:
   run: a task granted any domain reaches every domain the run grants;
 - its temp directory, port-bridge socket and trace log are its own
   (mode 0700), unreachable from another task and another local user;
+- the host's credential stores (`~/.ssh`, `~/.gnupg`, `~/.aws`,
+  `~/.npmrc`, `~/.netrc` and the like; the list is in the schema's
+  sandbox section) are unreadable unless `allow.read` names one (L-41);
 - vx's own cache directory, wherever `cacheDir` puts it in the
   workspace, is a wall like `.vx`: a broad grant stops at it, and a write
   grant that would bind it is refused (L-24);
@@ -76,7 +79,9 @@ task is never cached. See [Sandboxing tasks](https://vznjs.github.io/vx/guides/s
 
 - **A task with no `exec.sandbox`.** It runs with your permissions.
 - **Reads outside the workspace root.** `~/.cache`, `/etc` and the like
-  stay readable (tools need them) and fold into no key.
+  stay readable (tools need them) and fold into no key. The credential
+  stores under home (`~/.ssh`, `~/.aws`, `~/.npmrc` and the like) are
+  not: a task reads one only when its `allow.read` names it (L-41).
 - **Resource use.** CPU, memory and disk are bounded by timeouts and the
   artifact ceiling, not by the sandbox.
 - **A weaker sandbox where the host cannot nest one**:
