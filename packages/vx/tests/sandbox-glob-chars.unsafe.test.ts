@@ -78,7 +78,7 @@ describe.skipIf(!linux)('a grant holding * or ?', () => {
   })
 })
 
-describe.skipIf(process.platform === 'win32')('a project under a directory holding * or ?', () => {
+describe('a project under a directory holding * or ?', () => {
   let root = ''
   beforeEach(async () => {
     root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'vx-glob-req-')))

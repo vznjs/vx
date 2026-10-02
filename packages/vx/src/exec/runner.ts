@@ -4,7 +4,7 @@
 // process exits. cpuMs / peakRssBytes are then surfaced on RunResult and
 // folded into the v11 `runs` table by the orchestrator.
 
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync } from 'node:fs'
 import { constants as osConstants } from 'node:os'
 import {
   shellArgv,
@@ -25,9 +25,8 @@ import {
   untilGroupsGone,
 } from './kill-tree.js'
 
-const WIN32 = process.platform === 'win32'
-/** `sh` names itself in its errors; `bun exec` on Windows keeps its own. */
-const SH_ARGV0 = WIN32 ? {} : { argv0: 'sh' }
+/** `sh` names itself in its errors. */
+const SH_ARGV0 = { argv0: 'sh' }
 
 export interface RunResult {
   exitCode: number
@@ -224,8 +223,6 @@ const SHELL_BUILTINS = new Set([
  * the shell.
  */
 export function execWrap(command: string): string {
-  // Bun's shell, the task shell on Windows, has no `exec`.
-  if (WIN32) return command
   const first = execWord(command)
   return first === undefined ? command : `exec ${command}`
 }
@@ -255,11 +252,13 @@ export function signalExitCode(signal: string): number {
 }
 
 /**
- * The signal a run's stop stands for, from its abort reason: a task
- * stopped before its spawn exits as if that signal had killed it.
+ * The signal a run's stop sends a task, from its abort reason: a task
+ * stopped before its spawn exits as if that signal had killed it. As
+ * `forwardedSignal` (orchestrator/signals.ts): a hang-up forwards SIGTERM
+ * (to many servers SIGHUP means "reload"), so it reads as SIGTERM here.
  */
-export function stopSignal(reason: unknown): 'SIGINT' | 'SIGHUP' | 'SIGTERM' {
-  return reason === 'SIGINT' || reason === 'SIGHUP' ? reason : 'SIGTERM'
+export function stopSignal(reason: unknown): 'SIGINT' | 'SIGTERM' {
+  return reason === 'SIGINT' ? 'SIGINT' : 'SIGTERM'
 }
 
 /**
@@ -492,9 +491,8 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
           ],
           // Its own session and process group, so a kill reaches what it
           // forked (kill-tree.ts). stdin is a pipe, so a background group
-          // never stops on a terminal read. Windows has no groups, and a
-          // detached child there has no console.
-          detached: !WIN32,
+          // never stops on a terminal read.
+          detached: true,
         },
       ),
     )
@@ -703,9 +701,8 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
         stdio: ['ignore', 'pipe', 'pipe', ...(guard === undefined ? [] : [guard])],
         // Its own session and process group, so a kill reaches what it
         // forked (kill-tree.ts). stdin is ignored, so a background group
-        // never stops on a terminal read. Windows has no groups, and a
-        // detached child there has no console.
-        detached: !WIN32,
+        // never stops on a terminal read.
+        detached: true,
       }),
     )
   } catch (err) {
@@ -758,18 +755,15 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
  * `true` read 44 MB through vx while its shell's `VmHWM` was 1.9 MB, and
  * 300 MB allocated in the parent made `true` read 328 MB (2026-09-12).
  * Read after the child exits so it covers the whole task's span (the mark
- * is monotonic). Linux reads `VmHWM`; elsewhere the current RSS is the
- * bound in hand.
+ * is monotonic). Linux reads its own peak (`getrusage`); elsewhere the
+ * current RSS is the bound in hand.
  */
 export function ownRssHighWater(): number {
-  if (process.platform === 'linux') {
-    try {
-      const m = /VmHWM:\s+(\d+) kB/.exec(readFileSync('/proc/self/status', 'utf8'))
-      if (m !== null) return Number(m[1]) * 1024
-    } catch {
-      // /proc unreadable: fall through to the current RSS.
-    }
-  }
+  // getrusage's own peak, not `/proc/self/status`'s `VmHWM`: one syscall
+  // where generating and parsing the status file was ~20 µs a task alone
+  // and ~70 ms of a 1,000-task cold run. It is the same mark, raised only
+  // by the image this one exec'd from (a shell), within the floor's slack.
+  if (process.platform === 'linux') return peakRssBytes(process.resourceUsage().maxRSS)
   return process.memoryUsage.rss()
 }
 
