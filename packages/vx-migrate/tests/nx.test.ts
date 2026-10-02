@@ -835,6 +835,32 @@ describe('nx()', () => {
       },
       TIMEOUT,
     )
+
+    // Nx's `getNxEnvVariablesForTask`: `nx exec -- <cmd>` in a package
+    // script reads NX_TASK_TARGET_PROJECT, and unset, it booted Nx's task
+    // runner and ran the target and its dependencies again.
+    it(
+      'a task sees the target Nx would hand it, a run-commands env winning',
+      async () => {
+        await libTargets({
+          tgt: {
+            executor: 'nx:run-commands',
+            options: {
+              command:
+                'printf "%s|%s|%s" "$NX_TASK_TARGET_PROJECT" "$NX_TASK_TARGET_TARGET" "$NX_TASK_TARGET_CONFIGURATION" > tgt.txt',
+              cwd: 'packages/lib',
+            },
+            configurations: { ci: { env: { NX_TASK_TARGET_TARGET: 'mine' } } },
+          },
+        })
+        const opts = { cwd: root, log: silent(), handleSignals: false }
+        expect(status(await run({ ...opts, tasks: ['tgt'] }), 'lib#tgt')).toBe('success')
+        expect(await Bun.file(lib('tgt.txt')).text()).toBe('lib|tgt|')
+        expect(status(await run({ ...opts, tasks: ['tgt:ci'] }), 'lib#tgt:ci')).toBe('success')
+        expect(await Bun.file(lib('tgt.txt')).text()).toBe('lib|mine|ci')
+      },
+      TIMEOUT,
+    )
     // nx-examples' cypress shape: the metadata sits on `e2e-ci`, and Nx's
     // `getOwnerTargetForTask` loads `.env.e2e-ci` and `.env.e2e` for every
     // member of its group. The atomized task loaded only `.env.e2e`.

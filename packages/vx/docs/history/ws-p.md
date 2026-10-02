@@ -22,6 +22,11 @@
   `e2e-ci--<spec>` loads `.env.e2e-ci` and `.env.e2e`. vx named them by
   the task's own name, so it loaded `.env.e2e-ci--<spec>`, which Nx never
   does, and missed `.env.e2e-ci`.
+- **P-5** `nx()`: every task gets `NX_TASK_TARGET_PROJECT`,
+  `NX_TASK_TARGET_TARGET` and `NX_TASK_TARGET_CONFIGURATION`, as Nx's
+  `getNxEnvVariablesForTask` sets them. A package script's
+  `nx exec -- <cmd>` found them unset and booted Nx's task runner, which
+  ran the target and its dependencies a second time.
 - **P-6** `nx()`: a `{ fileset, includeIgnored: true }` input (Nx 23:
   hashed from disk, gitignored or missing) is read by a workspace-root
   probe when it names one path, and is a todo when it is a glob. Mapped
