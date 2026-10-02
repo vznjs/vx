@@ -344,6 +344,38 @@ function cdsToMembers(script: string, rootDir: string, memberDirs: readonly stri
 }
 
 /**
+ * The manager a root's files name, or undefined: `pnpm-workspace.yaml` is
+ * pnpm's whatever the lockfile, and the npm `ownerOf` falls back to at the
+ * file-system root with no lockfile anywhere is no claim.
+ */
+function rootManager(dir: string, memo: Map<string, Owner>): string | undefined {
+  if (existsSync(path.join(dir, 'pnpm-workspace.yaml'))) return 'pnpm'
+  const owner = ownerOf(dir, memo)
+  const guessed =
+    owner.at === path.parse(owner.at).root && !existsSync(path.join(owner.at, 'package-lock.json'))
+  return guessed ? undefined : owner.manager
+}
+
+/**
+ * How the repo's own manager runs the members, for the root note: an npm
+ * repo read "(`pnpm -r`, `--filter`, a runner)" (insomnia).
+ */
+function membersExample(manager: string | undefined): string {
+  switch (manager) {
+    case 'npm':
+      return '`--workspaces`, `-w`'
+    case 'yarn':
+      return '`yarn workspaces run`, `yarn workspace`'
+    case 'berry':
+      return '`yarn workspaces foreach`, `yarn workspace`'
+    case 'bun':
+      return '`bun --filter`'
+    default:
+      return '`pnpm -r`, `--filter`'
+  }
+}
+
+/**
  * The hooks a package's build hides in when it has no `build` script:
  * react-navigation's twelve packages build in `prepack: bob build`, their
  * root's `build` (`lerna run prepack`) runs the members and is left out,
@@ -559,7 +591,7 @@ export function migrateScripts(
       : undefined)
   if (rootName !== undefined && rootMapped > 0) {
     notes.push(
-      `${rootName} (the workspace root): its scripts that check the whole repo are its tasks; those that run the members (\`pnpm -r\`, \`--filter\`, a runner) or share a member's task name are left out`,
+      `${rootName} (the workspace root): its scripts that check the whole repo are its tasks; those that run the members (${membersExample(rootMeta && rootManager(rootMeta.dir, hookMemo))}, a runner) or share a member's task name are left out`,
     )
   } else if (rootName === 'package.json' && outsideDir !== undefined && unnamedMaps().length > 0) {
     // react's nameless root: "its scripts run the workspace" was not why,
