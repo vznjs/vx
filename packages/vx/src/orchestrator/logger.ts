@@ -4,6 +4,7 @@ import {
   formatFailureRecap,
   formatFrameClose,
   formatFrameOpen,
+  formatKeptLines,
   formatPersistentTailBlock,
   formatTaskBlock,
   formatTaskExecutedLine,
@@ -318,6 +319,26 @@ export function defaultLogger(
     { node: TaskNode; outcome?: TaskOutcome; out: Tail; err: Tail }
   >()
   let flushedPersistent = false
+  // After that flush nothing prints a tail again, yet a kept server writes
+  // for as long as vx holds it: `vx run dev --all` showed none of its
+  // servers' logs while it ran (C-56). So a ready server's output streams
+  // from then on, a line at a time under its id; the partial line each
+  // holds waits for its newline, or for the last runEnd.
+  const keptLines = new Map<string, { node: TaskNode; rest: string }>()
+  const streamKept = (node: TaskNode, chunk: string): void => {
+    const held = keptLines.get(node.id) ?? { node, rest: '' }
+    keptLines.set(node.id, held)
+    const text = held.rest + chunk
+    const cut = text.lastIndexOf('\n')
+    if (cut < 0) {
+      held.rest = text
+      return
+    }
+    held.rest = text.slice(cut + 1)
+    writer.write(fenced(formatKeptLines(node, text.slice(0, cut), colors)))
+  }
+  const printsKept = (tail: { outcome?: TaskOutcome }): boolean =>
+    flushedPersistent && tail.outcome !== undefined && view.mode !== 'errors-only'
   // The recap's material, decided at each failure so nothing is held for a
   // task that passed. A buffered task's tail is read off the buffers the
   // frame drains; a live-streamed one keeps no buffer, so a bounded ring
@@ -483,6 +504,13 @@ export function defaultLogger(
       // like the failures below: run() calls runEnd twice on the success
       // path (once before the summary, once in its finally), and a
       // kept-alive child keeps writing between the two.
+      if (flushedPersistent) {
+        for (const held of keptLines.values()) {
+          if (held.rest.length > 0)
+            writer.write(fenced(formatKeptLines(held.node, held.rest, colors)))
+          held.rest = ''
+        }
+      }
       if (!flushedPersistent) {
         flushedPersistent = true
         if (view.mode !== 'none' && view.mode !== 'errors-only') {
@@ -533,7 +561,8 @@ export function defaultLogger(
       }
       const tail = persistentTails.get(node.id)
       if (tail !== undefined) {
-        appendTail(tail.out, chunk)
+        if (printsKept(tail)) streamKept(node, chunk)
+        else appendTail(tail.out, chunk)
         return
       }
       pushChunk(stdoutBuffers, node.id, chunk)
@@ -550,7 +579,8 @@ export function defaultLogger(
       }
       const tail = persistentTails.get(node.id)
       if (tail !== undefined) {
-        appendTail(tail.err, chunk)
+        if (printsKept(tail)) streamKept(node, chunk)
+        else appendTail(tail.err, chunk)
         return
       }
       pushChunk(stderrBuffers, node.id, chunk)
