@@ -10,6 +10,7 @@
 //     written.
 // The consumer decides what a global becomes through `splice`.
 
+import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { pruneOrphanPersistentNotes, type ProjectMeta, UserError } from '@vzn/vx'
 import { minimatchToVx } from '../glob-grammar.js'
@@ -674,6 +675,80 @@ function withGlobal(cfg: TurboJson): TurboJson {
   }
 }
 
+/**
+ * The packages the workspace root depends on, transitively, as root-relative
+ * `<dir>/**` globs: Turbo hashes their files into its global hash
+ * (`root_internal_package_dependencies_paths`), so an edit to one re-keys
+ * every task. with-nestjs's root dev-depends on `@repo/eslint-config`, and
+ * `api#lint` (`lint: {}`, no edge) lints with it; unread, an edit to the
+ * shared rules replayed every lint from the cache.
+ */
+function rootDependencyGlobs(
+  root: string,
+  rootPkg: ProjectMeta['packageJson'],
+  metas: readonly ProjectMeta[],
+): string[] {
+  const byName = new Map(metas.map((m) => [m.name, m]))
+  const depsOf = (pkg: ProjectMeta['packageJson']): string[] =>
+    (['dependencies', 'devDependencies', 'optionalDependencies'] as const).flatMap((f) => {
+      const d: unknown = pkg[f]
+      return d !== null && typeof d === 'object' ? Object.keys(d) : []
+    })
+  const seen = new Set<string>()
+  const queue = depsOf(rootPkg)
+  while (queue.length > 0) {
+    const name = queue.pop()!
+    const meta = byName.get(name)
+    if (meta === undefined || seen.has(name)) continue
+    seen.add(name)
+    queue.push(...depsOf(meta.packageJson))
+  }
+  const out: string[] = []
+  for (const name of seen) {
+    const rel = relPosix(root, byName.get(name)!.dir)
+    if (rel !== '' && rel !== '.') out.push(`${rel}/**`)
+  }
+  return out.sort()
+}
+
+/** The root's manifest; `{}` when it is missing or no object. */
+async function rootPackageJson(root: string): Promise<ProjectMeta['packageJson']> {
+  const pkg = (await Bun.file(path.join(root, 'package.json'))
+    .json()
+    .catch(() => null)) as unknown
+  return (pkg !== null && typeof pkg === 'object' ? pkg : {}) as ProjectMeta['packageJson']
+}
+
+/**
+ * The microfrontends configs Turbo hashes into every task: each package's
+ * (the root's too) `microfrontends.json`, else `microfrontends.jsonc`, or
+ * the one name `VC_MICROFRONTENDS_CONFIG_FILE_NAME` gives, unless it is a
+ * child's `{ "partOf": … }` (Turbo's `update_turbo_json` appends them to
+ * the root's global deps). Unread, an edit to `web`'s routes replayed every
+ * sibling app's build (with-microfrontends, Turbo 2.11's dry run moves all
+ * 18 tasks). Paths are root-relative; `text` is what the mapping read.
+ */
+export function microfrontendsConfigs(
+  root: string,
+  dirs: readonly string[],
+  custom = process.env['VC_MICROFRONTENDS_CONFIG_FILE_NAME'] ?? '',
+): { rel: string; text: string }[] {
+  const names = custom === '' ? ['microfrontends.json', 'microfrontends.jsonc'] : [custom]
+  const out: { rel: string; text: string }[] = []
+  for (const dir of new Set(dirs.map((d) => path.resolve(d)))) {
+    const file = names.map((n) => path.join(dir, n)).find((f) => existsSync(f))
+    if (file === undefined) continue
+    const text = readFileSync(file, 'utf8')
+    let child = false
+    try {
+      const parsed = Bun.JSONC.parse(text) as { partOf?: unknown } | null
+      child = typeof parsed?.partOf === 'string'
+    } catch {}
+    if (!child) out.push({ rel: relPosix(root, file), text })
+  }
+  return out.sort((a, b) => (a.rel < b.rel ? -1 : 1))
+}
+
 export async function mapTurboWorkspace(
   root: string,
   metas: readonly ProjectMeta[],
@@ -719,9 +794,12 @@ export async function mapTurboWorkspace(
   // (item 937). A `.env`-shaped one is gitignored as a rule, and a glob
   // over git's files keyed nothing: the workspace probe keys them (item
   // 1032).
+  const rootMeta = metas.find((m) => path.resolve(m.dir) === path.resolve(root))
   const globalFiles = [
     ...globalDeps.filter((d) => envDependency(d) === null),
     ...(rootCfg.globalDotEnv ?? []),
+    ...rootDependencyGlobs(root, rootMeta?.packageJson ?? (await rootPackageJson(root)), metas),
+    ...microfrontendsConfigs(root, [root, ...metas.map((m) => m.dir)]).map((c) => c.rel),
   ]
   const rootDotenv = globalFiles.some((f) => isDotenvGlob(f))
   const globals = {
@@ -734,8 +812,7 @@ export async function mapTurboWorkspace(
   }
 
   // The workspace root as a project (a `vx.config` there, D-39) holds
-  // Turbo's `//#task`s; Turbo runs no plain task in the root package.
-  const rootMeta = metas.find((m) => path.resolve(m.dir) === path.resolve(root))
+  // Turbo's `//#task`s (`rootMeta`, above); Turbo runs no plain task in the root package.
   const files = new Map<string, TurboJson>([[ROOT, rootCfg]])
   for (const meta of metas) {
     if (meta === rootMeta) continue

@@ -775,6 +775,7 @@ describe('migrateScripts', () => {
       ci: 'vx run ci --all',
       'build:common': 'yarn --cwd ./packages/common build:esm',
       'build:b': 'npm --prefix packages/b run build',
+      prisma: 'yarn workspace @calcom/prisma prisma',
       release: 'vp run build && vp exec changeset publish',
       // vite: each runs the members through a root script that does.
       'build:all': 'pnpm -r run build',
@@ -814,6 +815,36 @@ describe('migrateScripts', () => {
     const ex = meta('ex', '/w/apps/a/ex', { build: 'tsc' })
     const lib = meta('lib', '/w/packages/lib', { build: 'tsc' })
     expect(migrateScripts([app, ex, lib]).projects.map((p) => p.name)).toEqual(['app', 'ex', 'lib'])
+  })
+
+  it('a workspace flag counts on the package manager, not the program it runs (D-81)', () => {
+    // berry's root `bench` passes node's `-r` (`--require`) through
+    // `yarn node`, and was left out as `pnpm -r`.
+    const meta = (name: string, dir: string, scripts: Record<string, string>) => ({
+      name,
+      dir,
+      packageJson: { name, scripts } as never,
+      configPath: null,
+    })
+    const root = meta('root', '/w', {
+      bench: 'yarn node -r ./scripts/setup-ts-execution ./scripts/bench.ts',
+      mocha: 'mocha -r ts-node/register',
+      pack: 'tar -C dist -czf out.tgz .',
+      watch: 'pnpm exec tsc -w',
+      // CONTROLS: the manager's own flags still run the members.
+      every: 'cross-env CI=1 pnpm -r test',
+      each: 'pnpm exec -r tsc',
+      some: 'NODE_ENV=x yarn --cwd packages/a build',
+      // npm/cli runs its own npm.
+      self: 'node . run test --workspaces --if-present',
+    })
+    const a = meta('a', '/w/packages/a', { build: 'tsc' })
+    expect(
+      migrateScripts([root, a]).projects.map((p) => [p.name, p.tasks.map((t) => t.name)]),
+    ).toEqual([
+      ['a', ['build']],
+      ['root', ['bench', 'mocha', 'pack', 'watch']],
+    ])
   })
 
   it("npm's lifecycle scripts are never tasks, but a hook of one is a task of its own", () => {

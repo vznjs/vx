@@ -202,6 +202,26 @@ shell's and the child's deaths within 5 s. Red with the guard started
 in vx's group (`detached: false`); 20 of 20 green with the other grace
 rows beside two busy loops per core.
 
+M-18. CI's `@vzn/vx-docs#build` died 137 after astro finished (run
+36924217607, the item-925 class), and the tracer retry never fired: strace
+names itself by its argv[0], the absolute path vx runs it by, so CI's
+line reads `/usr/bin/strace: ptrace(PTRACE_LISTEN,…)` and
+`STRACE_OWN_ERROR` (`/^strace: /`) missed it. The test's fake printed a
+bare `strace: `. Also proven: under `--seccomp-bpf` strace 6.8 implies
+`--kill-on-exit`, so a SIGKILLed strace takes the task (exit 137) despite
+`-DD`, and B-11's "a tracer that dies leaves the command running" was
+false. Fixed: the key takes a path prefix; the fake prints `$0: `. Four
+retry rows red on the old key.
+
+M-19. Two teardown hooks on bun's 5 s default timed out in a local
+run of every test task beside four busy loops per core.
+`output-dirs.test.ts` › nothing over the cap: the row (30 s bound) makes
+8,193 directories and its afterEach removed them: 7.4 s and red under
+that load, 51 ms once the row removes them itself. `scale-graph.test.ts`:
+the afterAll's rm of the 2000-project tree took 4.2 s under load; it now
+has a bound matched to that work, as its beforeAll does. No other
+fixture of that size in the suites.
+
 ## Leads for other streams
 
 - A: A-20 let a same-project dependant restore ahead of a producer whose
