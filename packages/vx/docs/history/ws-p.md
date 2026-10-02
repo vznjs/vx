@@ -40,6 +40,10 @@
   `createTaskOverrides` turns into the dependency's overrides, is a todo
   when the target has options to forward. It was dropped without a word,
   and the dependency ran with its own options.
+- **P-8** docs: the `vx-migrate` README and the Nx design doc still said
+  a configuration task's `^` edges run the dependencies' default
+  configuration with a warning; #1991 made them pass the configuration
+  and no such warning exists. Both corrected in place.
 - **P-9** `nx()`: a `dependsOn` string's part after `project:` is one
   target name, as Nx's `readProjectAndTargetFromTargetString` joins it:
   `ui:build:ci` names target `build:ci` and is no edge where ui lacks it.
@@ -49,6 +53,10 @@
   `nx run` hands the task, a configuration's included (Nx 22 and 23.2,
   12/12 each; fails with the define undone). The live suite also passes
   whole on Nx 23.2.1, which CI does not run (it pins `nx@22`).
+- **P-13** `nx()`: every task also gets `LERNA_PACKAGE_NAME`, the project
+  name Nx's `getNxEnvVariablesForTask` sets beside `NX_TASK_TARGET_*`;
+  Lerna runs on Nx's runner and documents it to scripts, and it was
+  unset.
 
 ## Notes
 
