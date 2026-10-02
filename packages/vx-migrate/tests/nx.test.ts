@@ -808,6 +808,34 @@ describe('nx()', () => {
       TIMEOUT,
     )
 
+    // Not a `.env` file, but the same blind spot: Nx 23's `includeIgnored`
+    // hashes a gitignored path from disk, which a vx glob never sees.
+    // Mapped as a glob, the task failed before it ran.
+    it(
+      'an includeIgnored input re-keys the task when the ignored file changes',
+      async () => {
+        await writeFile(lib('gen.json'), '1')
+        await writeFile(path.join(root, '.gitignore'), 'dist\nnode_modules\n.vx\n.nx\ngen.json\n')
+        Bun.spawnSync({ cmd: ['git', 'add', '-A'], cwd: root })
+        await libTargets({
+          gen: {
+            executor: 'nx:run-commands',
+            options: { command: 'cp gen.json out.txt', cwd: 'packages/lib' },
+            inputs: [{ fileset: '{projectRoot}/gen.json', includeIgnored: true }],
+            outputs: ['{projectRoot}/out.txt'],
+            cache: true,
+          },
+        })
+        const opts = { cwd: root, tasks: ['gen'], log: silent(), handleSignals: false }
+        expect(status(await run(opts), 'lib#gen')).toBe('success')
+        expect(status(await run(opts), 'lib#gen')).toBe('cache-hit')
+        await writeFile(lib('gen.json'), '2')
+        expect(status(await run(opts), 'lib#gen')).toBe('success')
+        expect(await Bun.file(lib('out.txt')).text()).toBe('2')
+      },
+      TIMEOUT,
+    )
+
     it(
       'a run-commands `envFile` is loaded under them (nx#23581)',
       async () => {

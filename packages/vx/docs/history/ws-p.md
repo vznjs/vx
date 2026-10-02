@@ -16,6 +16,10 @@
   options, as Nx's `interpolate` does; read as one key it was no output,
   so nx-examples' cached `@nx/angular:application` builds restored
   nothing on a hit.
+- **P-6** `nx()`: a `{ fileset, includeIgnored: true }` input (Nx 23:
+  hashed from disk, gitignored or missing) is read by a workspace-root
+  probe when it names one path, and is a todo when it is a glob. Mapped
+  as a plain glob, a gitignored literal failed the task before it ran.
 
 ## Notes
 
