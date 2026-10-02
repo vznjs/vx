@@ -1648,6 +1648,30 @@ describe('the README and the CI guide say which packages npm has', () => {
   it('the CI guide, which imports @vzn/vx-github, carries it', () => {
     expect(readFileSync(path.join(GUIDES, 'ci.md'), 'utf8')).toContain(NOTE)
   })
+  // Found, not listed: J-93 pinned two pages, and the quickstart's `bunx
+  // @vzn/vx-migrate` and the configure guide's `bun add -d
+  // @vzn/vx-lockfile` sent a reader to a 404 with no word (J2-25).
+  it('every Docs page that installs, runs or imports a plugin says npm has none yet', () => {
+    const packagesDir = path.resolve(import.meta.dir, '..', '..')
+    const plugins = readdirSync(packagesDir)
+      .map((d) => path.join(packagesDir, d, 'package.json'))
+      .filter((f) => existsSync(f))
+      .map((f) => JSON.parse(readFileSync(f, 'utf8')) as { name: string; private?: boolean })
+      .filter((m) => m.private !== true && m.name !== '@vzn/vx')
+      .map((m) => m.name.replace('/', '\\/'))
+    const use = new RegExp(
+      `(?:bunx|npx|add(?: -[dDW])*|install(?: -[DgW])*|from) '?(?:${plugins.join('|')})\\b`,
+    )
+    const pages = handAuthoredSitePages().filter((p) => !p.includes(`${path.sep}blog${path.sep}`))
+    const using = pages.filter((p) => use.test(readFileSync(p, 'utf8')))
+    expect(using.length).toBeGreaterThan(3)
+    const silent = using
+      .filter(
+        (p) => !readFileSync(p, 'utf8').replace(/\s+/g, ' ').includes('first publish is pending'),
+      )
+      .map((p) => p.slice(DOCS.length + 1))
+    expect(silent).toEqual([])
+  })
 })
 
 describe('a config sample imports the schema from @vzn/vx/config', () => {

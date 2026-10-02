@@ -216,3 +216,13 @@ persistent task` and vx exits 1). Row (`site-samples` › a post's link
   times a mapped run), over the README, the migrate guide and the
   from-\* posts; red without the fix, and it found the third after
   the first two were gone.
+
+- **J2-25** Only `@vzn/vx` is on npm (0.0.367; every plugin 404,
+  checked 2026-10-02). J-93 put the "first publish is pending" note on
+  the README and the CI guide, pinned by name; the migrate and plugins
+  guides carry it too, but the quickstart's `bunx @vzn/vx-migrate` and
+  the configure guide's `bun add -d @vzn/vx-lockfile` sent a reader to
+  a 404 with no word. Both now say it. Row (`site-samples` › every Docs
+  page that installs, runs or imports a plugin says npm has none yet),
+  the plugins read from the manifests and the pages found; red on both
+  without the fix.
