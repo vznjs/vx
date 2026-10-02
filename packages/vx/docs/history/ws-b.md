@@ -1057,6 +1057,25 @@ and decoded (`cStringPath`). Row: `sandbox-runtime.unsafe.test.ts` ›
 deniedCalls › decodes the C-string escapes strace writes a path with
 (red without the fix).
 
+B-60. A sandboxed task in a project under a directory whose name holds
+a bracket (`~/[old]/repo`) could not be sandboxed on Linux: SRT reads
+such a path as a glob, mounts no write path holding one, and vx's own
+grant expansion reads the bracket as a class, so `read: ['.']` mounted
+nothing and the task failed on denials that named no cause (before B-57
+the workspace ran unwalled instead). `sandboxRequestFor` now refuses it
+up front, naming the directory. This closes lead 7 (B-57's PR): an
+escape-aware expansion would still leave every write unmountable. Row:
+`sandbox-request.test.ts` › a project under a bracketed directory is
+refused with the directory named, before anything is created (red
+without the fix; the same project without the bracket is the control).
+
+Also measured, nothing shipped: a CPU profile of 50 sandboxed `true`
+tasks put 9 ms a task in `releaseBridges`' `rmSync` of the task's temp
+dir. The dir is empty; the call takes 0.4–0.8 ms in the run and 0.07 ms
+alone, the same as `rmdirSync` (median of 300, interleaved), so the
+profile's figure is attribution and the in-run cost is the host's.
+The unsandboxed path re-profiled (100 one-file tasks, `--force`,
+`--concurrency 1`) shows nothing new in `src/exec/` above B-50's floor.
 B-58. The output capture's head and tail bounds count UTF-16 units, and
 a cut between a surrogate pair's halves left a lone half on each side
 of the dropped-output line: a task printing past 8 MiB whose bound fell
