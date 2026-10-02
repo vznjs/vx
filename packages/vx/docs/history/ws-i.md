@@ -354,7 +354,7 @@ patch 311.9 (248.5), A/A 313.6 (255.5).
 - **Owner: a stale git index costs every run a re-hash (I stream).** On a
   worktree whose index stat data no longer matches the files (a copied or
   cache-restored checkout, a tool that rewrites files in place), `git
-  status` re-hashes every tracked file, and vx runs it with
+status` re-hashes every tracked file, and vx runs it with
   `--no-optional-locks` (item 880), so the index is never refreshed and
   every run pays again. 300 projects, 12,905 files: 155–218 ms against
   39–52 ms once any plain `git status` refreshed it. A fix takes the index
