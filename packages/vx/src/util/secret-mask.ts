@@ -17,6 +17,22 @@ const SECRET_NAME = /TOKEN|SECRET|KEY|PASSWORD|PASSWD|CREDENTIAL/i
 const NOT_SECRET = /_(FILE|PATH|DIR)$|^GIT_CONFIG_KEY_\d+$/i
 
 /**
+ * Each name's verdict, decided once: every task asks it of the whole
+ * process env (two regex tests a variable, ~10 µs a call at 150 names).
+ * The values are read fresh each time; only the name decides this.
+ */
+const secretNames = new Map<string, boolean>()
+
+function secretNamed(name: string): boolean {
+  let secret = secretNames.get(name)
+  if (secret === undefined) {
+    secret = SECRET_NAME.test(name) && !NOT_SECRET.test(name)
+    secretNames.set(name, secret)
+  }
+  return secret
+}
+
+/**
  * Values shorter than this are not masked: `KEY=1` would mask every `1`
  * in every line, and a value that short is no secret worth the noise.
  */
@@ -51,9 +67,7 @@ export function secretMask(
   }
   for (const source of sources) {
     if (source === undefined) continue
-    for (const name in source) {
-      if (SECRET_NAME.test(name) && !NOT_SECRET.test(name)) add(source[name])
-    }
+    for (const name in source) if (secretNamed(name)) add(source[name])
     for (const name of named) add(source[name])
   }
   if (values.size === 0) return null
