@@ -93,7 +93,8 @@ Five of those names were listed only after a config using them had
 been cached as pure. An identifier
 escape is the one spelling a name list cannot see, so a backslash in
 code position is refused on sight, and a bare import of anything but
-`@vzn/vx` is refused too: a pure closure is relative files.
+`@vzn/vx/config` (the entry `vx init` writes) and `@vzn/vx`'s pure
+helpers is refused too: a pure closure is relative files.
 
 A config that passes is keyed by the git blob ids of its **whole
 import closure** — so an edit to the preset invalidates the cached
