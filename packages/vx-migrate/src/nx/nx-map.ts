@@ -632,6 +632,7 @@ function buildTask(
         Object.entries(nodeMap).map(([name, n]) => ({
           name,
           tags: ((n?.data as { tags?: unknown } | undefined)?.tags as string[] | undefined) ?? [],
+          ...(typeof n?.data?.root === 'string' ? { root: n.data.root } : {}),
         })),
       ),
     allTargetNames(nodeMap),

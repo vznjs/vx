@@ -97,6 +97,11 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
 - An executor's `demand` is a hint: one that throws is warned once,
   naming the plugin, and that executor is asked no more that run (item
   1022).
+- A plugin executor's `execute` that throws fails the task, its message
+  prefixed `plugin '<p>' (executor '<e>') failed in execute:` in the
+  frame and the scheduler's line; the error keeps its class, so a
+  `UserError` still prints plainly and a plain `Error` as an internal
+  one (C-63). The local executor's own throw is vx's and is not renamed.
 
 ## Rules
 

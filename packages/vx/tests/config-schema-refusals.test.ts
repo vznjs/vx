@@ -301,6 +301,23 @@ describe('task refusals the sweep found unheld (item 653)', () => {
     expect(where({ outputLogs: 'new-only' })).toBe(
       'vx spells it the `--output-logs` flag of `vx run`',
     )
+    // D-89: Turbo's `interactive` / `with`, Nx's `cwd`, `parallelism`,
+    // `configurations`.
+    expect(where({ interactive: true })).toBe(
+      'vx spells it a command run outside vx: a task never reads the terminal (its stdin is EOF, or a pipe vx holds under `exec.persistent`)',
+    )
+    expect(where({ with: ['api#dev'] })).toBe(
+      'vx spells it `dependsOn` on each task it runs beside: a persistent one stays up, and this task starts once it is ready',
+    )
+    expect(where({ cwd: 'src' })).toBe(
+      'vx spells it `cd <dir> && …` in `exec.command`: a task runs in its project directory',
+    )
+    expect(where({ parallelism: false })).toBe(
+      'vx spells it `concurrency: 1` in vx.workspace or `--concurrency 1` on the run: no task runs alone beside others',
+    )
+    expect(where({ configurations: {} })).toBe(
+      'vx spells it one task per configuration (`build:production`, with its own `exec.command`)',
+    )
   })
 })
 
