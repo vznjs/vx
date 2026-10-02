@@ -1633,24 +1633,25 @@ bare `(403)` (item 1098).
 ## `vx init`
 
 In a Turbo or Nx repo (a `turbo.json`, `turbo.jsonc` or `nx.json` at
-the root) it writes `vx.workspace.ts` declaring `turbo()` or `nx()`
-from `@vzn/vx-migrate` and nothing else: those read the repo's own
-config live, so no task is copied. The `next:` line is one command:
-install what the file imports and is missing, with the manager the
-lockfile names (at the workspace root: pnpm's `-w`, Yarn 1's `-W`,
-which Yarn Berry lacks), then run the config's `build` (else its first task).
-An existing workspace file is kept and named unless it already
-declares the plugin; `--force` replaces it. When the repo shows a remote
+the root; Turbo's when both) it writes native `vx.config.ts` files from
+the runner's config, through the `@vzn/vx-migrate` writer installed in
+the workspace (`--from turbo` or `--from nx`, and init's `--dry`,
+`--force`, `--mjs`); it never declares `turbo()` or `nx()`. With no writer
+installed it names the install line for the lockfile's manager (at the
+workspace root: pnpm's `-w`, Yarn 1's `-W`, which Yarn Berry lacks) and
+exits 1, writing nothing. A writer's failure is init's exit. After a
+write it says the runner's file is no longer read and can be deleted,
+except an nx.json while a written task runs `nx-exec` or `nx-env`
+(Nx's executor API reads it). When the repo shows a remote
 cache — turbo.json's `remoteCache`, a `.turbo/config.json` naming a
 team or token (`turbo link` writes it), or a line setting `TURBO_TOKEN` /
 `NX_SELF_HOSTED_REMOTE_CACHE_SERVER` (`NAME:` or `NAME=`, not a comment)
 in `.github/workflows/*`, `.gitlab-ci.yml` or `.circleci/config.yml`,
-and turbo.json does not say `remoteCache.enabled: false` — it
-declares `turboCache()` / `nxCache()` beside the runner and names the
-file that showed it (a kept file lacking it is told to add it); the
-plugin is inert where its variable is unset. An nx.json that connects
-Nx Cloud (`nxCloudId`, `nxCloudAccessToken`, the `nx-cloud` runner) is
-named instead: vx does not speak its wire, so runs cache locally.
+and turbo.json does not say `remoteCache.enabled: false` — it names the
+file that showed it and `turboCache()` / `nxCache()` to add to the
+workspace file. An nx.json that connects Nx Cloud (`nxCloudId`,
+`nxCloudAccessToken`, the `nx-cloud` runner) is named instead: vx does
+not speak its wire, so runs cache locally.
 
 Anywhere else it scaffolds a workspace that comes from nowhere: one `vx.config.ts` per
 package from its `package.json` scripts, plus a `vx.workspace.ts` of

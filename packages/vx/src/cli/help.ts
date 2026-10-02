@@ -164,7 +164,7 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     '  vx init              Generate vx.workspace.ts + one vx.config.ts per package',
     '                       from package.json scripts. Unmappable settings become',
     '                       TODO(vx-migrate) comments. Beside turbo.json or nx.json:',
-    '                       only vx.workspace.ts, declaring turbo() or nx().',
+    '                       the same from that config, via @vzn/vx-migrate.',
     '      --dry            Print the generated files instead of writing them.',
     '      --force          Overwrite existing vx.config.* files.',
     '      --plugin <seam>  Instead: write plugins/<seam>.ts, a runnable plugin, and its',
