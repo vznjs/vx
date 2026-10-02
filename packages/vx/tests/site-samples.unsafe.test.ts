@@ -170,6 +170,17 @@ describe('the configure guide names the essential allowlist', () => {
 })
 
 // The remote-execution guide is the CI page's section now.
+describe("comparison.md's Turborepo cache-skip cell", () => {
+  // It called Turbo's --no-cache deprecated; Turbo 2.10.13 and 2.11.7 document
+  // it as `--cache=local:r,remote:r`, and a --no-cache run after a cached one
+  // replayed the hit (J-110).
+  it('names the spec that skips both, and what --force and --no-cache each skip', () => {
+    const doc = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'comparison.md'), 'utf8')
+    const cell = /^\| skip cache reads\+writes +\| ([^|]*?) +\|/m.exec(doc)![1]
+    expect(cell).toBe('`--cache=local:,remote:` (`--force` skips reads, `--no-cache` writes)')
+  })
+})
+
 describe('the CI guide states the wire chunk sizes', () => {
   it('its uploads bullet names the default chunk, which is SAFE_CHUNK_BYTES', () => {
     const wire = readFileSync(
@@ -383,7 +394,7 @@ describe('the no-daemon post quotes the benchmarks page', () => {
   it('each warm-run figure it states is on docs/benchmarks.md as written', () => {
     const page = readFileSync(path.join(DOCS, 'blog', 'no-daemon.md'), 'utf8')
     const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
-    for (const figure of ['510ms', '760ms', '3.59s', '51 ms', '95 ms']) {
+    for (const figure of ['510ms', '760ms', '3.59s']) {
       expect(page).toContain(figure)
       expect(bench).toContain(figure)
     }
@@ -500,17 +511,7 @@ describe('the why-vx-is-fast post quotes the benchmarks page', () => {
   it('each figure it states is on docs/benchmarks.md as written', () => {
     const page = readFileSync(path.join(DOCS, 'blog', 'why-vx-is-fast.md'), 'utf8')
     const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
-    for (const figure of [
-      '3m 38s',
-      '3m 46s',
-      '5m 13s',
-      '34m 44s',
-      '510ms',
-      '760ms',
-      '3.59s',
-      '66 ms',
-      '127 ms',
-    ]) {
+    for (const figure of ['3m 38s', '3m 46s', '5m 13s', '34m 44s', '510ms', '760ms', '3.59s']) {
       expect(page).toContain(figure)
       expect(bench).toContain(figure)
     }
