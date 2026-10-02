@@ -23,6 +23,53 @@ export async function trackedFiles(root: string): Promise<string[] | null> {
   }
 }
 
+const sortedMemo = new WeakMap<readonly string[], readonly string[]>()
+
+/**
+ * The files under `rel/` (all of them for the root). In a sorted list they
+ * are one run, found by a binary search: every project scanned the whole
+ * list, twice, and a cold mapping of 1,000 packages spent 177 ms there.
+ */
+function filesUnder(files: readonly string[], rel: string): readonly string[] {
+  if (rel === '' || rel === '.') return files
+  let sorted = sortedMemo.get(files)
+  if (sorted === undefined) sortedMemo.set(files, (sorted = [...files].sort()))
+  const prefix = `${rel}/`
+  let lo = 0
+  let hi = sorted.length
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1
+    if (sorted[mid]! < prefix) lo = mid + 1
+    else hi = mid
+  }
+  const out: string[] = []
+  for (let i = lo; i < sorted.length && sorted[i]!.startsWith(prefix); i++) out.push(sorted[i]!)
+  return out
+}
+
+/**
+ * Which of `rels` (root-relative) git ignores: a path no glob over git's
+ * files can key. Untracked only (a tracked file is never ignored); empty
+ * outside a repo or without git.
+ */
+export async function gitIgnored(root: string, rels: readonly string[]): Promise<Set<string>> {
+  if (rels.length === 0) return new Set()
+  try {
+    const p = Bun.spawn(['git', 'check-ignore', '--stdin', '-z'], {
+      cwd: root,
+      stdin: new TextEncoder().encode(rels.map((r) => `${r}\0`).join('')),
+      stdout: 'pipe',
+      stderr: 'ignore',
+    })
+    const out = await new Response(p.stdout).text()
+    // 1: none ignored; anything else past 0 is no answer.
+    if ((await p.exited) !== 0) return new Set()
+    return new Set(out.split('\0').filter((f) => f !== ''))
+  } catch {
+    return new Set()
+  }
+}
+
 /**
  * What a project's tracked files are: their extensions (lower case, no
  * dot), directory names at any depth, and top-level entry names.
@@ -47,8 +94,7 @@ export function trackedKinds(tracked: readonly string[]): (rel: string) => Track
       const dirs = new Set<string>()
       const tops = new Set<string>()
       const all = rel === '' || rel === '.'
-      for (const f of tracked) {
-        if (!all && !f.startsWith(`${rel}/`)) continue
+      for (const f of filesUnder(tracked, rel)) {
         const own = all ? f : f.slice(rel.length + 1)
         const ext = path.posix.extname(own)
         if (ext !== '') exts.add(ext.slice(1).toLowerCase())
@@ -64,9 +110,14 @@ export function trackedKinds(tracked: readonly string[]): (rel: string) => Track
 
 /**
  * What moves when the tracked set can: the HEAD reflog's size (a commit, a
- * checkout, a pull appends to it) and HEAD itself. A stat and a small read,
- * so a kept mapping stays a hit between commits. A file `git add`ed and not
- * yet committed is seen at the next mapping.
+ * checkout, a pull appends to it), HEAD itself, and the index's size and
+ * mtime (`git add`, `git rm`). Stats and a small read, so a kept mapping
+ * stays a hit between them; a run does not write the index. Without the
+ * index, a file `git add`ed under an output and not yet committed was not
+ * taken back by the kept mapping, and the run's clean deleted it. Under
+ * reftable storage HEAD reads `ref: refs/heads/.invalid` and no reflog file
+ * exists, so the ref stack's table list stands for both: every ref update
+ * names a new table in it.
  */
 export async function headStamp(root: string): Promise<string> {
   for (let dir = root; ;) {
@@ -80,7 +131,15 @@ export async function headStamp(root: string): Promise<string> {
       }
       const head = await readFile(path.join(gitDir, 'HEAD'), 'utf8').catch(() => '')
       const log = await lstat(path.join(gitDir, 'logs', 'HEAD')).catch(() => null)
-      return `${head.trim()}\0${log?.size ?? ''}`
+      const index = await lstat(path.join(gitDir, 'index')).catch(() => null)
+      // A worktree's own stack holds its HEAD; the common one, its branches.
+      const common = await readFile(path.join(gitDir, 'commondir'), 'utf8').catch(() => null)
+      const tables = await Promise.all(
+        [gitDir, ...(common === null ? [] : [path.resolve(gitDir, common.trim())])].map((d) =>
+          readFile(path.join(d, 'reftable', 'tables.list'), 'utf8').catch(() => ''),
+        ),
+      )
+      return `${head.trim()}\0${log?.size ?? ''}\0${index?.size ?? ''}\0${index?.mtimeMs ?? ''}\0${tables.join('\0')}`
     }
     const up = path.dirname(dir)
     if (up === dir) return 'no-git'
@@ -143,10 +202,7 @@ export function spareTrackedOutputs(
   const todos: [string, string][] = []
   for (const p of projects) {
     const rel = path.relative(root, p.dir).split(path.sep).join('/')
-    const own =
-      rel === ''
-        ? tracked
-        : tracked.filter((f) => f.startsWith(`${rel}/`)).map((f) => f.slice(rel.length + 1))
+    const own = rel === '' ? tracked : filesUnder(tracked, rel).map((f) => f.slice(rel.length + 1))
     for (const t of p.tasks) {
       const outputs = (t.task?.['cache'] as { outputs?: Outputs } | undefined)?.outputs
       if (outputs === undefined) continue

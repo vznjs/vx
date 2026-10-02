@@ -24,7 +24,7 @@ describe('execution.md follows the source it traces', () => {
     expect(named.sort()).toEqual([...cases].sort())
   })
 
-  // Step 11 named `git ls-files -s --others` and one `git status`. The
+  // Step 12 (11 until the graph moved ahead of it) named `git ls-files -s --others` and one `git status`. The
   // enumeration has spawned four commands since the OID work, and
   // `--others` is the one it deliberately does NOT pass — `status -uall`
   // answers untracked, and asking git for it again walked the same tree a
@@ -42,9 +42,9 @@ describe('execution.md follows the source it traces', () => {
     const facts = /export function repoFacts\b[\s\S]*?\n\}/.exec(src)
     const revParse = /executablePath\('git'\),\s*'([a-z-]+)'/.exec(facts?.[0] ?? '')
     spawned.push(revParse![1]!)
-    expect(spawned.sort()).toEqual(['ls-files', 'rev-parse', 'status', 'var'])
+    expect(spawned.sort()).toEqual(['cat-file', 'ls-files', 'rev-parse', 'status', 'var'])
 
-    const step = /11\. Bulk git populate([\s\S]*?)\n \u251c/.exec(doc)
+    const step = /12\. Bulk git populate([\s\S]*?)\n \u251c/.exec(doc)
     expect(step).not.toBeNull()
     const text = step![1]!
     expect(spawned.filter((c) => !text.includes(c))).toEqual([])
@@ -80,12 +80,11 @@ describe('execution.md follows the source it traces', () => {
     expect(named.filter((f) => !folded.includes(f)).sort()).toEqual([])
   })
 
-  it('the essential-allowlist sentence names every POSIX name in ESSENTIAL_ENV', () => {
+  it('the essential-allowlist sentence names every name in ESSENTIAL_ENV', () => {
     const m = /\*\*Essential allowlist\*\* \(([\s\S]*?)\)\./.exec(doc)
     expect(m).not.toBeNull()
     const named = new Set([...m![1]!.matchAll(/`([A-Z_]+)`/g)].map((x) => x[1]!))
-    const posix = ESSENTIAL_ENV.slice(0, ESSENTIAL_ENV.indexOf('SYSTEMROOT'))
-    expect(posix.length).toBeGreaterThan(10)
-    for (const name of posix) expect(named).toContain(name)
+    named.delete('ESSENTIAL_ENV')
+    expect([...named]).toEqual([...ESSENTIAL_ENV])
   })
 })

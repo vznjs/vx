@@ -572,7 +572,8 @@ export const FOREIGN_VERBS: Readonly<Record<string, string>> = {
   ls: '`turbo ls` is `vx show` here: every project, its directory and its task count',
   query:
     '`turbo query` has no vx form: `vx run <task> --dry=json` prints the planned graph as JSON',
-  reset: '`nx reset` is `vx cache prune` here (or remove the cache directory `vx info` names)',
+  reset:
+    '`nx reset` is `vx cache prune --older-than <age>` here, or remove the cache directory `vx info` names to drop it all',
   daemon: 'vx has no daemon: there is nothing to start or stop',
   login: TURBO_LOGIN,
   logout: TURBO_LOGIN,

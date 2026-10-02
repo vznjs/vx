@@ -14,7 +14,9 @@ own end-of-run path (which records no history for a stopped run), and exits 128 
 The signal stops the run the way `RunOptions.signal` does (item 849):
 `run()` holds one `AbortController`, which the embedder's signal and the
 process handler both abort, so the scheduler dispatches nothing more and
-the abort listener runs `terminateChildren`. `run()` awaits that teardown
+the abort listener runs `terminateChildren` and kills the run's running
+`cache.inputs.runtime` probes (C-65), whose answers nothing needs now and
+which a Ctrl-C used to wait out. `run()` awaits that teardown
 before it leaves, then the handler waits for `done` (bounded by
 `boundMs`: the grace, one telemetry flush and each plugin's teardown at
 `VX_TEARDOWN_TIMEOUT_MS`, and 2 s of slack) and for stdout to drain, and
