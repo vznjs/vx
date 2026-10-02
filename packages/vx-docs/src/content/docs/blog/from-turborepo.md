@@ -56,8 +56,10 @@ bunx @vzn/vx-migrate         # write them; never overwrites without --force
 `@vzn/vx-migrate` is its own package so it runs before any vx file
 exists. It reads the root pipeline and any per-package `extends`,
 inlines the matching `package.json` script as the task's command, and
-emits one `vx.config.ts` per package. It emits a task only where the
-script exists. Anything it cannot infer becomes a `TODO(vx-migrate)`
+emits one `vx.config.ts` per package. A task goes where the script
+exists, and to a package without it that another package's `^` task
+reaches: a cached `true` with no outputs, Turbo's no-op node, so an edit
+there still re-keys its dependants. Anything it cannot infer becomes a `TODO(vx-migrate)`
 comment, never a silently wrong value. It renders from the same mapper
 `turbo()` runs, so the files say exactly what the plugin was
 already doing.

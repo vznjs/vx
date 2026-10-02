@@ -97,7 +97,7 @@
   {
     "key": "turbo.json tasks",
     "status": "supported",
-    "reason": "Each task (or Turbo 1 `pipeline`) becomes a vx task for the packages that declare the script."
+    "reason": "Each task (or Turbo 1 `pipeline`) becomes a vx task for the packages that declare the script, and a key-only one where a `^` edge reaches a package without it (`dependsOn`, below)."
   },
   {
     "key": "turbo.json ui",
