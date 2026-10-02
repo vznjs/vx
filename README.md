@@ -103,8 +103,8 @@ vx config. [Migration guide](https://vznjs.github.io/vx/guides/migrate/).
 - **A cache you can trust:** TypeScript configs are evaluated before
   hashing, so imports and computed values are in the key. Outputs are
   wiped before every run and restore: no stale file survives.
-- **Sandboxed tasks:** opt in per task; an undeclared read fails the
-  build instead of poisoning the cache.
+- **Sandboxed tasks:** opt in per task; a workspace file the task did
+  not declare is out of its reach, so it cannot poison the cache.
 - **Clean exits:** Ctrl-C reaps every child.
 - **Plugins at every stage:** remote cache, remote execution, telemetry,
   CLI verbs. Core ships none and needs none.
