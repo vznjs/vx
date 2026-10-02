@@ -1320,7 +1320,8 @@ interface WorkspaceConfig {
   (`origin/develop`); `--affected=<base>` still wins. Omitted →
   `origin/HEAD`, else `HEAD~1`. A plugin's `config` stage may set it:
   `nx()` from `NX_BASE` or nx.json's `defaultBase`, `turbo()` from
-  `TURBO_SCM_BASE`. Not folded into any cache key.
+  `TURBO_SCM_BASE`, else on GitHub Actions from `GITHUB_BASE_REF` or the
+  push event's `before`, as Turbo does. Not folded into any cache key.
 - **`plugins`** — the run-level extension points. Optional: core
   applies no plugin by default, and the local executor and the local
   cache are its floor — the tail of every executor list and cache chain

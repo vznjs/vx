@@ -220,7 +220,9 @@ Run the task only in projects whose files changed since `<base>`.
 
 - `--affected` (no value) uses the workspace's `affectedBase` when it
   names one (`nx()` and `turbo()` set it from `NX_BASE` / nx.json's
-  `defaultBase` and `TURBO_SCM_BASE`; [schema](schema.md)), else
+  `defaultBase` and `TURBO_SCM_BASE`, `turbo()` on GitHub Actions from
+  the pull request's base or the push's `before`, as Turbo does;
+  [schema](schema.md)), else
   `origin/HEAD`, falling back to
   `HEAD~1` if `origin/HEAD` isn't resolvable. A clone with neither — a
   CI checkout at `fetch-depth: 1` — has no base at all, and vx says so
