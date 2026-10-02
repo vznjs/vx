@@ -213,13 +213,11 @@ describe('vx migrate (turbo)', () => {
       expect(build.dependsOn).toEqual(['^build', 'codegen'])
       // $TURBO_DEFAULT$ → '**/*' position preserved; negation passes
       // through. $TURBO_ROOT$/<path> inputs and globalDependencies are
-      // both root-relative → inputs.workspaceFiles (preset spread first,
-      // then the explicit entry — duplicates are a faithful mapping).
+      // both root-relative → inputs.workspaceFiles, listed once as the live
+      // `turbo()` lists it: the preset spread holds the explicit entry, and
+      // written twice the migrated config keyed apart from the live run.
       expect(build.cache?.inputs.files).toEqual(['**/*', '!**/*.md'])
-      expect(build.cache?.inputs.workspaceFiles).toEqual([
-        'tsconfig.base.json',
-        'tsconfig.base.json',
-      ])
+      expect(build.cache?.inputs.workspaceFiles).toEqual(['tsconfig.base.json'])
       // env → BOTH cache.inputs.env and passThrough; globalEnv spread into
       // both; globalPassThroughEnv into passThrough only; wildcard dropped.
       expect(build.cache?.inputs.env).toEqual(['GLOBAL_MODE', 'NODE_ENV'])
@@ -271,10 +269,7 @@ describe('vx migrate (turbo)', () => {
       // Inherited inputs from root; same-project dep `codegen` dropped
       // silently because lib has no codegen script (turbo semantics).
       expect(build.cache?.inputs.files).toEqual(['**/*', '!**/*.md'])
-      expect(build.cache?.inputs.workspaceFiles).toEqual([
-        'tsconfig.base.json',
-        'tsconfig.base.json',
-      ])
+      expect(build.cache?.inputs.workspaceFiles).toEqual(['tsconfig.base.json'])
       expect(build.dependsOn).toEqual(['^build'])
     },
     TIMEOUT,
