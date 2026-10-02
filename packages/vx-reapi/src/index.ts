@@ -110,7 +110,7 @@ export interface ReapiPluginOptions extends Partial<ReapiOptions> {
  * read first, so the remote is asked only on a local miss:
  *
  * ```ts
- * plugins: [reapi({ endpoint: 'grpc.example.com:443' })]
+ * plugins: [reapi({ endpoint: 'grpcs://grpc.example.com:443' })]
  * ```
  *
  * Declines when no endpoint is configured, so it is safe to leave declared.
