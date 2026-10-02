@@ -627,6 +627,7 @@ function buildTask(
         Object.entries(nodeMap).map(([name, n]) => ({
           name,
           tags: ((n?.data as { tags?: unknown } | undefined)?.tags as string[] | undefined) ?? [],
+          ...(typeof n?.data?.root === 'string' ? { root: n.data.root } : {}),
         })),
       ),
     allTargetNames(nodeMap),
@@ -697,10 +698,13 @@ function buildTask(
   // Nx hands every task its target (`getNxEnvVariablesForTask`), and
   // `nx exec -- <cmd>`, a package script's way to run under Nx, reads it:
   // unset, it booted Nx's own task runner, which ran the target and its
-  // dependencies again. A run-commands `env` still wins, as in Nx.
+  // dependencies again. `LERNA_PACKAGE_NAME` is the project too: Lerna
+  // runs on Nx's runner and documents it to scripts. A run-commands `env`
+  // still wins, as in Nx.
   env.define = {
     NX_TASK_TARGET_PROJECT: projectName,
     NX_TASK_TARGET_TARGET: targetName,
+    LERNA_PACKAGE_NAME: projectName,
     ...(variant.configuration === undefined
       ? {}
       : { NX_TASK_TARGET_CONFIGURATION: variant.configuration }),

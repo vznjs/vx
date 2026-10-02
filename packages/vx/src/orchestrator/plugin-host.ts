@@ -439,6 +439,23 @@ export async function resolveCache(
 /** The plugin each resolved executor came from, so a hook of it that throws is named. */
 const executorPlugin = new WeakMap<TaskExecutor, string>()
 
+/**
+ * A plugin executor's throw from `execute`, named as every other hook's
+ * is: `plugin 'p' (executor 'e') failed in execute: …`. It read `internal
+ * error in <task>: pool down`, naming neither (C-63). The error itself is
+ * kept, its class, cause and code with it, so the scheduler still tells a
+ * refusal from a bug; the floor's own throw is vx's and stays as it is.
+ */
+export function nameExecutorFailure(executor: TaskExecutor, err: unknown): unknown {
+  if (!(err instanceof Error) || !executorPlugin.has(executor)) return err
+  try {
+    err.message = `${executorLabel(executor)} failed in execute: ${err.message}`
+  } catch {
+    // A frozen error keeps its own words.
+  }
+  return err
+}
+
 /** How a message names `executor`: its plugin and its own name, or its name alone (the floor). */
 export function executorLabel(executor: TaskExecutor): string {
   const plugin = executorPlugin.get(executor)
