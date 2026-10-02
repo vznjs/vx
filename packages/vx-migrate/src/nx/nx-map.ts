@@ -45,6 +45,7 @@ import {
 import { emptyNxInputs, expandNxInputs } from './nx-inputs.js'
 import { planNxUpstream, type NxUpstream } from './nx-upstream.js'
 import { mapNxOutputs, nxDefaultOutputs, nxProjectOutputs } from './nx-outputs.js'
+import { nativeExecutorCommand, untranslatedPlaceholder, untranslatedTodo } from './nx-native.js'
 
 const PLACEHOLDER = "echo 'TODO(vx-migrate): fill in' && exit 1"
 
@@ -195,6 +196,13 @@ export interface MapNxOptions {
    * values themselves (the plugin re-maps on a manifest edit).
    */
   readonly manifestField?: (key: 'name' | 'version') => unknown
+  /**
+   * Executor targets as the plain command the executor drives
+   * (nx-native.ts), a placeholder and a TODO where there is none: the
+   * written config runs without Nx. Absent, every executor is an `nx-exec`
+   * line, as the plugin runs it.
+   */
+  readonly nativeExecutors?: boolean
 }
 
 /** The options with what the mapper reads itself: the root's dependency names. */
@@ -641,6 +649,7 @@ function buildTask(
     opts.pnp,
     meta.packageJson,
     opts.manifestField,
+    opts.nativeExecutors === true,
   )
 
   const inputs = emptyNxInputs()
@@ -846,6 +855,7 @@ function mapCommand(
   pnp: boolean,
   manifest: { readonly name?: unknown; readonly version?: unknown },
   manifestField: MapNxOptions['manifestField'],
+  native: boolean,
 ): MappedCommand | null {
   const executor = target.executor
   if (executor === 'nx:noop') {
@@ -925,17 +935,31 @@ function mapCommand(
     todos.push(`target has neither an executor nor a command — options: ${JSON.stringify(options)}`)
     return line(PLACEHOLDER)
   }
+  if (native) {
+    const n = nativeExecutorCommand(executor, options, { projectRel, projectName })
+    if (n === null) {
+      todos.push(untranslatedTodo(executor))
+      return line(untranslatedPlaceholder(executor, options))
+    }
+    todos.push(...n.todos)
+    argsTodo(options, todos)
+    return shell(n.command, undefined, { env: n.env, readyWhen: undefined })
+  }
   // Every other executor runs as itself, one process per task, through
   // this package's `nx-exec` bin: the executor and its options are on the
   // command line, so the key sees them and the line pastes into a shell.
+  argsTodo(options, todos)
+  return {
+    ...line(nxExecCommand(executor, projectName, targetName, configuration, options, files)),
+    envInputs: files,
+  }
+}
+
+function argsTodo(options: Record<string, unknown>, todos: string[]): void {
   if (/\{args\.[^}]*\}/.test(JSON.stringify(options))) {
     todos.push(
       '`{args.*}` in the options: params forwarding is not supported — put the value in the option',
     )
-  }
-  return {
-    ...line(nxExecCommand(executor, projectName, targetName, configuration, options, files)),
-    envInputs: files,
   }
 }
 

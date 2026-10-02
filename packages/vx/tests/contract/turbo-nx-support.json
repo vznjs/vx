@@ -577,12 +577,12 @@
   {
     "key": "project.json targets.*.executor",
     "status": "mapped",
-    "reason": "`run-commands` and `run-script` become shell lines, `noop` a group task; others run through `nx-exec`."
+    "reason": "`run-commands` and `run-script` become shell lines, `noop` a group task; under `nx()` others run through `nx-exec`; the migrator writes the command a jest, vitest, vite build, eslint, tsc or playwright executor runs, and a TODO placeholder for any other."
   },
   {
     "key": "project.json targets.*.options",
     "status": "mapped",
-    "reason": "Passed as `nx-exec`'s `--options` or rendered into `run-commands`; `{args.*}` forwarding gets a TODO."
+    "reason": "Rendered into `run-commands`, the migrator's executor command or the placeholder, or passed as `nx-exec`'s `--options`; `{args.*}` forwarding gets a TODO."
   },
   {
     "key": "project.json targets.*.outputs",
