@@ -112,7 +112,7 @@
   {
     "key": "turbo.json tasks.*.dependsOn",
     "status": "mapped",
-    "reason": "Same syntax; edges to tasks nobody runs are dropped; `$TURBO_ROOT$` deps get a TODO; `$NAME` becomes env. A package without the script of a `^` task others run keys it as Turbo's no-op node does: a cached `true` task with no outputs."
+    "reason": "Same syntax; edges to tasks nobody runs are dropped; `$TURBO_ROOT$` deps get a TODO; `$NAME` becomes env. A package without the script of a `^` task others run keys it as Turbo's no-op node does: a cached `true` task with no outputs, its own edges kept."
   },
   {
     "key": "turbo.json tasks.*.description",

@@ -1217,3 +1217,37 @@ describe('turbo() under vx lock and --frozen', () => {
     TIMEOUT,
   )
 })
+
+// with-shell-commands: `build: { dependsOn: ["prebuild", "^build"] }`, and
+// `tooling-config` has neither script. Its edge to `prebuild` made the
+// node a group, which keys nothing, so an edit to tooling-config replayed
+// every dependant's build; Turbo's no-op node hashes its files.
+describe('a no-op node with an edge of its own', () => {
+  it(
+    "keys a dependant's task on the script-less package's files",
+    async () => {
+      await writeFile(
+        path.join(root, 'turbo.json'),
+        JSON.stringify({
+          tasks: {
+            build: { dependsOn: ['prebuild', '^build'], outputs: ['dist/**'] },
+            prebuild: {},
+          },
+        }),
+      )
+      await writeFile(
+        path.join(root, 'packages', 'lib', 'package.json'),
+        JSON.stringify({ name: 'lib', version: '1.0.0' }),
+      )
+      Bun.spawnSync({ cmd: ['git', 'add', '-A'], cwd: root })
+      const key = async () => {
+        const plan = await planRun({ cwd: root, tasks: ['app#build'], log: silent() })
+        return plan.tasks.find((t) => t.node.id === 'app#build')!.hash
+      }
+      const before = await key()
+      await writeFile(path.join(root, 'packages', 'lib', 'src', 'index.js'), '// edited\n')
+      expect(await key()).not.toBe(before)
+    },
+    TIMEOUT,
+  )
+})
