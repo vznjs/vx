@@ -23,7 +23,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import {
-  frozenProjectConfig,
+  frozenProjectConfigs,
   LOCKFILE_NAME,
   LOCKFILE_VERSION,
   lockfilePath,
@@ -32,6 +32,7 @@ import {
 } from '../src/workspace/lockfile.js'
 import type { Lockfile } from '../src/workspace/lockfile.js'
 import type { ProjectConfig } from '../src/config.js'
+import type { ConfigEvalStore } from '../src/workspace/config-cache.js'
 
 let root: string
 
@@ -63,6 +64,26 @@ async function rejection(p: Promise<unknown>): Promise<Error> {
 }
 
 const CONFIG: ProjectConfig = { tasks: { build: { exec: { command: 'echo hi' } } } }
+
+/** One project's frozen config, as a run of one would load it. */
+async function frozenProjectConfig(
+  l: Lockfile,
+  meta: { name: string; configPath: string },
+  r: string,
+  store?: ConfigEvalStore,
+): Promise<ProjectConfig> {
+  return (await frozenProjectConfigs(l, [meta], r, store))[0]!
+}
+
+/** A `ConfigEvalStore` over a Map: what the local cache keeps, minus SQLite. */
+function memStore(): ConfigEvalStore & { rows: Map<string, string> } {
+  const rows = new Map<string, string>()
+  return {
+    rows,
+    getConfigEval: (k) => rows.get(k) ?? null,
+    putConfigEval: (k, v) => void rows.set(k, v),
+  }
+}
 
 function lock(over: Partial<Lockfile> = {}): Lockfile {
   return {
@@ -416,5 +437,59 @@ describe('frozenProjectConfig — the trust model', () => {
       },
     })
     expect(await frozenProjectConfig(empty, metaFor('pkg/vx.config.ts'), root)).toEqual({})
+  })
+})
+
+describe('frozenProjectConfigs — the validation memo', () => {
+  const metaFor = (rel: string) => ({ name: 'pkg', configPath: path.join(root, rel) })
+  const broken = (): Lockfile =>
+    lock({
+      projects: {
+        pkg: {
+          configPath: 'pkg/vx.config.ts',
+          configHash: 'h',
+          config: { tasks: [{ exec: { command: 'x' } }] } as unknown as ProjectConfig,
+        },
+      },
+    })
+
+  it('serves the verdict on the same lock bytes without validating again', async () => {
+    const store = memStore()
+    await writeRaw(JSON.stringify(lock()))
+    await frozenProjectConfig((await readLockfile(root))!, metaFor('pkg/vx.config.ts'), root, store)
+    expect(store.rows.size).toBe(1)
+    // The same bytes read again, the object then broken in memory: only a
+    // served verdict lets it through.
+    const again = (await readLockfile(root))!
+    again.projects['pkg']!.config = broken().projects['pkg']!.config
+    expect(await frozenProjectConfig(again, metaFor('pkg/vx.config.ts'), root, store)).toEqual(
+      again.projects['pkg']!.config,
+    )
+  })
+
+  it('validates other bytes afresh', async () => {
+    const store = memStore()
+    await writeRaw(JSON.stringify(lock()))
+    await frozenProjectConfig((await readLockfile(root))!, metaFor('pkg/vx.config.ts'), root, store)
+    await writeRaw(JSON.stringify(broken()))
+    const err = await rejection(
+      frozenProjectConfig((await readLockfile(root))!, metaFor('pkg/vx.config.ts'), root, store),
+    )
+    expect(err.message).toBe(
+      `${LOCKFILE_NAME} (pkg): \`tasks\` must be an object keyed by task name`,
+    )
+  })
+
+  it('remembers no refusal, and nothing for a lock not read from disk', async () => {
+    const store = memStore()
+    await writeRaw(JSON.stringify(broken()))
+    for (let i = 0; i < 2; i++) {
+      const err = await rejection(
+        frozenProjectConfig((await readLockfile(root))!, metaFor('pkg/vx.config.ts'), root, store),
+      )
+      expect(err.message).toContain('must be an object keyed by task name')
+    }
+    await frozenProjectConfig(lock(), metaFor('pkg/vx.config.ts'), root, store)
+    expect(store.rows.size).toBe(0)
   })
 })
