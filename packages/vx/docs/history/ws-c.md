@@ -700,6 +700,11 @@ with no prediction; a history read error fails open in both callers.
 - **F:** a kept server's crash after the summary exits 1, but the
   telemetry summary (`exitOk`) is emitted and flushed before the
   keep-alive wait, so a sink (the GitHub check run) reports success.
+- **B:** the sandbox probe's first `initSandbox` is ~110 ms of the
+  ~220 ms a run's first arm costs on Linux (SRT's `initialize`: an async
+  dependency check, the proxies, the seccomp monitor), and the SRT import
+  70–280 ms on the main thread; measured in isolation for C-76. Both are
+  paid once per process.
 
 - **A:** a kept server that crashes after the summary (`vx run dev`,
   the server exits 4, vx exits 1) is recorded `ok` with the server
