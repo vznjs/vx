@@ -17,8 +17,9 @@ and an ignored one, which the status walk names with `--ignored=matching`
 (A-19). `ls-files --debug` adds the worktree size the index recorded
 for each entry, and a trusted OID whose blob is another size is dropped:
 a filter since removed left a stat-clean entry git never re-reads (A-60).
-The blob sizes come from the cache's `blob_sizes` memo, the unknown ones
-from one `git cat-file --batch-check`; `applyGitEnumeration` runs the
+The verdict is kept by the entries' digest (`blob_verdicts`), so a warm
+run reads one row; a changed index asks the cache's `blob_sizes` memo and
+one `git cat-file --batch-check` for the unknown ones; `applyGitEnumeration` runs the
 check, so every caller of it gets it. Split from `inputs.ts` on 2026-09-10:
 this file talks to git; `inputs.ts` decides which files a task declared
 and where the project boundary is.
@@ -61,12 +62,20 @@ export interface GitEnumeration {
   untracked: readonly string[] | null // status's untracked set, before nested repos expand (ls-files --others)
   undecodable: readonly string[] // listed paths whose names are not UTF-8, root-relative
   startedAtMs: number // Date.now() before the spawns
-  indexed: ReadonlyMap<string, { oid: string; size: number }> // regular stage-0 entry → OID, recorded size
+  blobs: IndexBlobs // the blob-size check's input (A-60)
   catFile(stdin: string): Promise<{ exitCode: number; stdout: string } | null> // blob sizes (A-60)
+}
+export interface IndexBlobs {
+  digest: string // xxh3 of the paths, OIDs and sizes: the verdict's key
+  paths: readonly string[] // regular stage-0 entries, index order
+  oids: readonly string[]
+  sizes: readonly number[] // the worktree size the index recorded
 }
 export interface BlobSizeMemo {
   knownBlobSizes(oids: readonly string[]): Map<string, number>
   rememberBlobSizes(sizes: ReadonlyMap<string, number>): void
+  blobVerdict(digest: string): string[] | undefined
+  rememberBlobVerdict(digest: string, paths: readonly string[]): void
 }
 export interface LazyGitEnumeration {
   start(): Promise<GitEnumeration> // the whole-tree enumeration, started once

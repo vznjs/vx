@@ -168,9 +168,13 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     stores the LF blob of a CRLF file, and once the filter is gone git
     holds that stat-clean entry clean without re-reading it, so status
     and the filter gate (today's config) both let the LF blob key the
-    CRLF bytes. A blob's size is fixed for its OID, so the sizes are
-    kept in `blob_sizes` and a warm run asks git for none; a cold one
-    asks one `git cat-file --batch-check` (65 ms over 3,000 loose
+    CRLF bytes. Which paths an index distrusts is a function of its
+    entries' paths, OIDs and recorded sizes, which a stat refresh
+    leaves alone, so the verdict is kept in `blob_verdicts` by their
+    digest and a warm run reads one row (per-entry lookups cost 250 ms
+    at 100,000 files). A changed index asks each blob's size, kept in
+    `blob_sizes` (fixed for its OID), and one `git cat-file
+--batch-check` for the ones not yet known (65 ms over 3,000 loose
     objects, 10 ms packed). A
     re-listing mid-run, or a nested repository's project, spawns
     `git ls-files -s --others --exclude-standard -z .` in the project
@@ -1351,6 +1355,15 @@ CREATE TABLE file_hashes (
 CREATE TABLE blob_sizes (
   oid     TEXT PRIMARY KEY,
   size    INTEGER NOT NULL,
+  seen_at INTEGER NOT NULL
+);
+
+-- The paths an index's (path, OID, recorded size) entries distrust, by
+-- their digest (A-60): a warm run reads one row, not one per blob. Swept
+-- with file_hashes.
+CREATE TABLE blob_verdicts (
+  digest  TEXT PRIMARY KEY,
+  paths   TEXT NOT NULL,
   seen_at INTEGER NOT NULL
 );
 

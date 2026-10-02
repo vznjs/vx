@@ -56,6 +56,7 @@ export {
   lazyGitEnumeration,
   type LazyGitEnumeration,
   type GitEnumeration,
+  type BlobSizeMemo,
 } from './git-inputs.js'
 export { LayeredCache, type RemoteCacheLayer } from './layered-cache.js'
 export { ChainedCache } from './chained-cache.js'
