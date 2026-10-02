@@ -20,6 +20,12 @@
   a configuration task's `^` edges run the dependencies' default
   configuration with a warning; #1991 made them pass the configuration
   and no such warning exists. Both corrected in place.
+- **P-4** `nx()`: a grouped target's `.env` files are named by the group
+  member that carries `nonAtomizedTarget` and that parent, as Nx's
+  `getOwnerTargetForTask` names them: cypress's atomized
+  `e2e-ci--<spec>` loads `.env.e2e-ci` and `.env.e2e`. vx named them by
+  the task's own name, so it loaded `.env.e2e-ci--<spec>`, which Nx never
+  does, and missed `.env.e2e-ci`.
 
 ## Notes
 
