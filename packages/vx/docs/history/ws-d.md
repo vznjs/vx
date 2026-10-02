@@ -26,6 +26,20 @@ run leaves out; the rest are refusals.
 
 ## Leads for other streams
 
+- E: `vx lock --check` words a renamed or moved config as `"a"
+(packages/a/vx.config.ts) is not in the lock` (`src/cli/lock.ts`,
+  the `entry.configPath !== rel` branch) while the lock holds "a" under
+  its old path; `--frozen`'s refusal names both paths since D-88.
+- E: `--filter ./kit` run from `packages/` is read from the workspace
+  root (as pnpm 12 does; Turbo 2.11 reads it from the cwd) and refused
+  "Did you mean @sveltejs/kit?". When the cwd-relative reading would
+  match, the hint could name the root-relative path (`./packages/kit`)
+  for a Turbo user (`didYouMeanProject`, `src/cli/select.ts`).
+- A: an unscoped run's early `lazyGitEnumeration(root).start()` holds
+  the main thread ~6.5 ms synchronously (300-project bench workspace;
+  the `workspace config` stage reads 15 ms unscoped against 2 ms
+  scoped), so the overlap it was started for is partly serial;
+  `repoFacts`' `spawnSync` is one candidate.
 - F: `vx-reapi` `materialise-concurrency.test` "output files are fetched and
   written at once" read `peak` 4 against 5 once in a local gate
   (2026-10-02); 5 of 5 green alone. The peak depends on fetches
@@ -831,3 +845,4 @@ packages/core`) selects the dependent whose `file:../lib` spec named
 - **D-87.** facebook/react's root package.json has no `name`, and `vx init` said "not mapped: its scripts run the workspace" — not why: 29 of its scripts (`lint`, `flow`, `prettier`, the `build-for-*` ones) are the repo's own and map once it is named. The note now says the root has no name, and how many scripts naming it maps, listing them. Row: `init.test` › an outside root is named by its manifest …, the D-87 cases, with a control whose scripts all run the members; red without the fix. Probes on the way: starlight, lexical, react-router (pnpm), prisma (`turbo()`): nothing new (lexical's root `build: node scripts/build.mjs` is D-85's case).
 - **D-86.** A `vx.config.cjs` / `.cts` (or `vx.workspace.cjs` / `.cts`) was no config name, and was ignored without a word: its project's tasks were "declared nowhere" (probed: three CommonJS configs, one task ran). Both names are now read, after the ESM ones; `module.exports` is the config, as Node reads a CommonJS default (an `exports.default` needs `__esModule`, as in Node). Linux discovery is one `readdir` per project either way. Row: the D-86 cases of `tests/contract-discovery.test.ts` (recorded), red without the fix. Probe on the way, no gap: npm 10's `packages/**` workspaces (nested, no `node_modules`, no dot dir) match vx's discovery.
 - **D-83.** Probing oven-sh/bun's root (a plain Bun workspace): `typecheck` (`tsc --noEmit && cd test && bun run typecheck`) was left out as running the members on any `cd`, and `run:linux` (`docker run … -w /root/bun`) on D-81's `run` fallback. A `cd` now counts into or above a member's directory, or to a target vx cannot read (`$DIR`, `~`); the `run` fallback only as `node <bin> run` (npm/cli). Row: `init.test` › a cd runs the members only into a member …, with controls (`cd packages/a`, a quoted subdir, `cd packages`, `cd "$DIR"`); red without the fix. Re-probed jest, npm/cli, kit, vitest, berry: unchanged.
+- **D-88.** A config renamed or moved after `vx lock` (`vx.config.mjs` → `.ts`) was refused under `--frozen` as `vx-lock.json has no entry for "a"`, while the lock holds "a" under its old path. It now says the lock holds it at the old path and names the new one. Row: `lockfile-boundary.test` › refuses when the entry points at a DIFFERENT config path, the message compared whole; red without the fix.

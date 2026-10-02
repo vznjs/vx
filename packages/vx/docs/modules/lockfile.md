@@ -58,7 +58,8 @@ that walks the graph stages) reads the lock the same way under
   full re-evaluation, and the CI recipe is `vx lock --check && vx run
 --frozen`. `configHash` exists for `--check`'s file-changed report.
 - A missing entry (or a missing lock) under `--frozen` is a hard
-  `UserError` — never a silent fallback to evaluation.
+  `UserError` — never a silent fallback to evaluation. An entry under
+  another path (a config renamed or moved) names both paths (D-88).
 - `writeLockfile` writes a temp file beside the lock and renames it over
   the lock, so a reader sees the old lock or the new one, never a
   truncated one. A write in place truncated first, and a `--frozen` run
