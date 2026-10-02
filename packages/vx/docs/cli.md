@@ -1790,7 +1790,9 @@ and when no task caches it says a cache block from a TODO makes the
 second run a hit. Its `next:` line is a command the user can type: the
 runner that started vx (`npx`, `pnpm`, `yarn`, `bunx`, read from
 `npm_config_user_agent`) with the installed `vx` bin, else the
-`@vzn/vx` package; with no runner, a bare `vx`.
+`@vzn/vx` package; with no runner, a bare `vx`. Outside a git work tree it starts with
+`git init`, and with no script mapped with declaring a task, since the
+run would refuse without either.
 
 `vx init --plugin <seam>` writes a plugin instead: `plugins/<seam>.ts`,
 a small runnable plugin for that seam (`executor`, `cache`,
