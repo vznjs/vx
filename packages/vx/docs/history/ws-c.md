@@ -681,6 +681,17 @@ with no prediction; a history read error fails open in both callers.
 
 ## Leads for other streams
 
+- **D:** a persistent task with `exec.remote: 'only'` is refused for
+  lacking `cache` ("needs `cache`: its inputs are what a worker
+  reproduces"), and adding `cache` is refused next ("`cache` is not
+  allowed on a persistent task"): a circular hint. A persistent task
+  runs on this machine; refuse `remote: 'only'` on it by that reason.
+- **E:** a dependency server that crashed mid-run still closes its
+  "since ready" block `(3ms) running`: the block is drawn at `runEnd`
+  from the outcome stored at ready, before run.ts marks the crash
+  failed. The footer, the `vx: … exited` lines and `--summarize` say
+  failed.
+
 - **B:** `runner.test.ts` › "keeps a ready server alive past its
   readyWhen timeout" failed on #2054's Linux CI: `echo up` missed its
   150 ms readiness bound under load (`PersistentReadyError … within
@@ -968,3 +979,20 @@ scheduler's line. The error object is kept (its class, cause and code),
 so a refusal still prints plainly and a bug as an internal error.
 Row (`plugin-capabilities.test.ts` › an executor's throw reaches the
 task's own stderr): red without the fix. `modules/executor.md` says so.
+
+## C-67: an embedder's `command` reaches telemetry redacted
+
+Item 1057 kept what follows `--` (often a token) out of the command line
+telemetry sinks receive, but only for the argv fallback: an embedder's
+`RunOptions.command` (`vx run deploy -- --token=…`) went to every sink
+verbatim. It is now counted, not quoted, the same way. Row
+(`telemetry.test.ts` › a sink never receives what follows `--`): red
+without the fix. The option's doc comment says so.
+
+## C-73: architecture.md's end of run names the servers it keeps
+
+`architecture.md`'s run walk-through kept "persistent tasks the user
+REQUESTED, and the persistent tasks they depend on": it now also names
+those a requested group stands for (C-52), that a run which failed
+elsewhere keeps none unless `--continue=always` (C-60), and that what
+they write streams through the wait (C-56). Docs only.

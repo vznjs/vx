@@ -640,7 +640,9 @@ async function runOnBus(
       runContextRecord = {
         runId,
         vxVersion: VERSION,
-        command: options.command ?? invocationCommand(process.argv.slice(1)),
+        // An embedder's `command` is redacted as the argv is: it passed a
+        // token after `--` to every sink verbatim (C-67).
+        command: invocationCommand(options.command?.split(' ') ?? process.argv.slice(1)),
         requestedTasks: [...options.tasks],
         cachePolicy: compactCachePolicy(policy),
         concurrency,

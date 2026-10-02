@@ -1057,6 +1057,13 @@ interface FilesPlan {
   positiveGlobs: Bun.Glob[]
   /** The literal entries, each naming one path (see `unmatchedLiterals`). */
   literals: string[]
+  /**
+   * Whether a project-relative path is an input by the declaration alone:
+   * a positive glob selects it, and no exclude and no own output takes it
+   * back. Projects repeat their relative paths (`src/index.ts`,
+   * `package.json`), so each is matched once per plan.
+   */
+  verdicts: Map<string, boolean>
 }
 
 /**
@@ -1098,6 +1105,7 @@ function filesPlan(
           ownOutput: outputMatcher(ownOutputs, globFor),
           positiveGlobs: asTrees(positive).map(globFor),
           literals: positive.map(normalizeGlob).filter(isLiteralPattern).map(stripTrailingSlash),
+          verdicts: new Map<string, boolean>(),
         }
   filesPlans.set(key, plan)
   return plan
@@ -1160,17 +1168,18 @@ async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
   const unmatchedLiterals = new Set(plan.literals)
   // First pass: glob-filter to candidate absolute paths (no I/O).
   const candidates: string[] = []
+  const verdicts = plan.verdicts
   for (const rel of gitFiles) {
     if (unmatchedLiterals.size > 0) settleLiterals(unmatchedLiterals, rel)
-    let matched = false
-    for (const g of positiveGlobs) {
-      if (g.match(rel)) {
-        matched = true
-        break
-      }
+    let input = verdicts.get(rel)
+    if (input === undefined) {
+      input =
+        positiveGlobs.some((g) => g.match(rel)) &&
+        !excludeGlobs.some((g) => g.match(rel)) &&
+        !ownOutput(rel)
+      verdicts.set(rel, input)
     }
-    if (!matched) continue
-    if (nested(rel) || excludeGlobs.some((g) => g.match(rel)) || ownOutput(rel)) continue
+    if (!input || nested(rel)) continue
     candidates.push(path.resolve(args.projectDir, rel))
   }
   if (unmatchedLiterals.size > 0) {

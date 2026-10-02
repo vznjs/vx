@@ -399,3 +399,13 @@ in-process total 280.0 (251.6), 272.4 (245.0), 274.4 (235.6).
   under a full local gate (I-19)**: twice, 9.9 and 14.8 s, the removal
   of `OUTPUT_DIRS_CAP + 1` directories inside the sandbox; green in
   shard-9 run alone on main and on the patch.
+
+- **Owner: a stale git index costs every run a re-hash (I stream).** On a
+  worktree whose index stat data no longer matches the files (a copied or
+  cache-restored checkout, a tool that rewrites files in place), `git
+status` re-hashes every tracked file, and vx runs it with
+  `--no-optional-locks` (item 880), so the index is never refreshed and
+  every run pays again. 300 projects, 12,905 files: 155–218 ms against
+  39–52 ms once any plain `git status` refreshed it. A fix takes the index
+  lock (a refresh when the walk was slow, or `update-index --refresh`),
+  which is the contention item 880 removed: the owner's call.
