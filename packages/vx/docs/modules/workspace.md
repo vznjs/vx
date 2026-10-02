@@ -61,7 +61,7 @@ export interface ProjectMeta {
   name: string // canonical from package.json
   dir: string // absolute project directory
   packageJson: PackageJson
-  configPath: string | null // absolute path to vx.config.{ts,mts,js,mjs}
+  configPath: string | null // absolute path to vx.config.{ts,mts,js,mjs,cts,cjs}
 }
 
 export function findWorkspaceRoot(start: string, reads?: LoadReads): Promise<string>
@@ -176,14 +176,14 @@ Globs every `package.json` matching the patterns (`Bun.Glob`,
   its name. With no vx config among them they are left out, named on one
   stderr line, and the rest runs; with one, a `UserError` names every
   root-relative path and the way on (rename one, or a `!` glob).
-- Find the first existing `vx.config.{ts,mts,js,mjs}` sibling; that
+- Find the first existing `vx.config.{ts,mts,js,mjs,cts,cjs}` sibling; that
   becomes `configPath`. Projects without a config keep
   `configPath: null` — they're still in the workspace graph (so
   cross-package deps work) but contribute no tasks.
 - `node_modules` paths are explicitly skipped even when a
   pathological `**` glob would match them.
 - The root package is a project too when it holds a
-  `vx.config.{ts,mts,js,mjs}` and no glob lists `.` (D-39): a
+  `vx.config.{ts,mts,js,mjs,cts,cjs}` and no glob lists `.` (D-39): a
   workspace-root task (Turbo's `//#task`, an Nx root project) without
   changing the package manager's member list. Its globs stop at every
   member, as any parent project's do. Design:

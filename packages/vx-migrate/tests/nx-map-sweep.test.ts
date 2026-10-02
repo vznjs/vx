@@ -404,6 +404,11 @@ describe('a cached target that declares no outputs', () => {
         'no outputs declared: Nx also caches packages/b/public for this target — vx cleans an output before the run, so add it to the outputs by hand only if it holds nothing committed',
       ],
     })
+    // The README said both were always a todo (J-98).
+    const readme = await Bun.file(path.join(import.meta.dir, '..', 'README.md')).text()
+    expect(readme).toContain(
+      "Nx's `{projectRoot}/build` and `{projectRoot}/public` are outputs too when git tracks nothing under them; one that holds a tracked file is a todo",
+    )
   })
 })
 
