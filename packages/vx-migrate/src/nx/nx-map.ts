@@ -13,6 +13,7 @@
 // configuration is a task of its own, `<target>:<configuration>`; the
 // default configuration is folded into the base task.
 
+import { existsSync } from 'node:fs'
 import path from 'node:path'
 import {
   buildPackageGraph,
@@ -45,6 +46,7 @@ import {
 import { emptyNxInputs, expandNxInputs } from './nx-inputs.js'
 import { planNxUpstream, type NxUpstream } from './nx-upstream.js'
 import { mapNxOutputs, nxDefaultOutputs, nxProjectOutputs } from './nx-outputs.js'
+import { nativeExecutorCommand, untranslatedPlaceholder, untranslatedTodo } from './nx-native.js'
 
 const PLACEHOLDER = "echo 'TODO(vx-migrate): fill in' && exit 1"
 
@@ -195,6 +197,13 @@ export interface MapNxOptions {
    * values themselves (the plugin re-maps on a manifest edit).
    */
   readonly manifestField?: (key: 'name' | 'version') => unknown
+  /**
+   * Executor targets as the plain command the executor drives
+   * (nx-native.ts), a placeholder and a TODO where there is none: the
+   * written config runs without Nx. Absent, every executor is an `nx-exec`
+   * line, as the plugin runs it.
+   */
+  readonly nativeExecutors?: boolean
 }
 
 /** The options with what the mapper reads itself: the root's dependency names. */
@@ -306,6 +315,7 @@ export async function mapNxWorkspace(
       : await listDotenv(root, [...relOf.values()])
 
   const mapped: Array<{ meta: ProjectMeta; tasks: GeneratedTask[] }> = []
+  let releasePublish = 0
   // A configuration variant's task (`build:production`) and what it runs.
   const configured = new WeakMap<GeneratedTask, string>()
   // The target an atomizer split (cypress's `e2e`, named by each
@@ -332,6 +342,14 @@ export async function mapNxWorkspace(
     }
     const atomized = new Set(Object.values(targets).map((t) => t.metadata?.nonAtomizedTarget))
     for (const [targetName, target] of Object.entries(targets)) {
+      // Nx adds `nx-release-publish` to every package for `nx release
+      // publish`, which skips a private package and a published version
+      // and rewrites `workspace:` ranges first: no one line is that, and a
+      // failing placeholder per package was the migration's loudest gap.
+      if (opts.nativeExecutors === true && isReleasePublish(target.executor)) {
+        releasePublish++
+        continue
+      }
       for (const v of variants(targetName, target)) {
         const t = buildTask(
           meta,
@@ -427,6 +445,12 @@ export async function mapNxWorkspace(
           `nx.json \`sync.globalGenerators\` (${globalSync.map((g) => JSON.stringify(g)).join(', ')}): ` +
             'Nx runs them before a run, and vx does not — run `nx sync` when they are out of date',
         ]
+  if (releasePublish > 0)
+    notes.push(
+      `\`@nx/js:release-publish\` on ${releasePublish} project${releasePublish === 1 ? '' : 's'} ` +
+        '(`nx-release-publish`, Nx release’s publish step) is not written: publish with your ' +
+        'package manager (`npm publish`, `pnpm publish -r`, `bun publish`)',
+    )
   for (const [gens, n] of mapOpts.syncTasks)
     notes.push(
       `\`syncGenerators\` (${gens}) on ${n} task${n === 1 ? '' : 's'}: ` +
@@ -641,6 +665,28 @@ function buildTask(
     opts.pnp,
     meta.packageJson,
     opts.manifestField,
+    opts.nativeExecutors === true
+      ? {
+          options: (spec) => targetOptionsOf(nodeMap, spec),
+          // Nx's swc reads the project's `sourceRoot`, else `src` where it exists.
+          sourceRoot: () => {
+            const declared = (nodeMap[nodeName]?.data as { sourceRoot?: unknown } | undefined)
+              ?.sourceRoot
+            if (typeof declared === 'string') return declared
+            return existsSync(path.join(meta.dir, 'src'))
+              ? path.posix.join(projectRel, 'src')
+              : undefined
+          },
+          executor: (spec) => {
+            const [project, target] = spec.split(':')
+            const t =
+              project === undefined || target === undefined
+                ? undefined
+                : nodeMap[project]?.data?.targets?.[target]
+            return t?.executor ?? (t?.command === undefined ? undefined : 'nx:run-commands')
+          },
+        }
+      : null,
   )
 
   const inputs = emptyNxInputs()
@@ -739,6 +785,10 @@ function buildTask(
       return { name: variant.name, task: null, todos }
     }
     return { name: variant.name, task: { dependsOn: deps }, todos }
+  }
+  if (opts.nativeExecutors === true) {
+    const call = nxSelfCall(mapped.command)
+    if (call !== undefined) todos.push(call)
   }
   const exec: Record<string, unknown> = { command: mapped.command }
   const env: Record<string, unknown> = {}
@@ -849,6 +899,12 @@ function mapCommand(
   pnp: boolean,
   manifest: { readonly name?: unknown; readonly version?: unknown },
   manifestField: MapNxOptions['manifestField'],
+  /** Non-null in a migration: what a `project:target:configuration` spec resolves to. */
+  native: {
+    readonly options: (spec: string) => Record<string, unknown> | undefined
+    readonly executor: (spec: string) => string | undefined
+    readonly sourceRoot: () => string | undefined
+  } | null,
 ): MappedCommand | null {
   const executor = target.executor
   if (executor === 'nx:noop') {
@@ -928,17 +984,76 @@ function mapCommand(
     todos.push(`target has neither an executor nor a command — options: ${JSON.stringify(options)}`)
     return line(PLACEHOLDER)
   }
+  if (native !== null) {
+    const n = nativeExecutorCommand(executor, options, {
+      projectRel,
+      projectName,
+      targetOptions: native.options,
+      targetExecutor: native.executor,
+      sourceRoot: native.sourceRoot,
+    })
+    if (n === null) {
+      todos.push(untranslatedTodo(executor))
+      return line(untranslatedPlaceholder(executor, options))
+    }
+    todos.push(...n.todos)
+    argsTodo(options, todos)
+    return shell(n.command, undefined, { env: n.env, readyWhen: undefined })
+  }
   // Every other executor runs as itself, one process per task, through
   // this package's `nx-exec` bin: the executor and its options are on the
   // command line, so the key sees them and the line pastes into a shell.
+  argsTodo(options, todos)
+  return {
+    ...line(nxExecCommand(executor, projectName, targetName, configuration, options, files)),
+    envInputs: files,
+  }
+}
+
+/**
+ * A written command that still runs Nx (`nx run app:build`, `npx nx test`,
+ * a package script's `nx exec -- tsc`) works only while Nx is installed:
+ * the migration's TODO for it. Undefined for a line that does not.
+ */
+function nxSelfCall(command: string): string | undefined {
+  const m = /(?:^|[\s;&|('"])(?:(?:npx|bunx|pnpm(?: exec)?|yarn)\s+)?nx\s+([a-z][\w:-]*)/.exec(
+    command,
+  )
+  if (m === null) return undefined
+  return m[1] === 'exec'
+    ? 'the command runs under `nx exec --`, which needs Nx installed — drop `nx exec --` and keep the command after it'
+    : `the command runs \`nx ${m[1]}\`, which needs Nx installed — name that task in dependsOn, or run its command here`
+}
+
+const isReleasePublish = (executor: string | undefined): boolean =>
+  executor === '@nx/js:release-publish' || executor === '@nrwl/js:release-publish'
+
+/**
+ * A `project:target[:configuration]` spec's options as Nx's
+ * `readTargetOptions` gives them: the configuration's (else the default
+ * one's) over the target's own. Undefined for a target the graph lacks.
+ */
+function targetOptionsOf(
+  nodeMap: Readonly<Record<string, NxNode>>,
+  spec: string,
+): Record<string, unknown> | undefined {
+  const [project, target, ...rest] = spec.split(':')
+  const t =
+    project === undefined || target === undefined
+      ? undefined
+      : nodeMap[project]?.data?.targets?.[target]
+  if (t === undefined) return undefined
+  const configuration = rest.length > 0 ? rest.join(':') : undefined
+  const all = variants(target!, t)
+  return (configuration === undefined ? all[0] : all.find((v) => v.configuration === configuration))
+    ?.options
+}
+
+function argsTodo(options: Record<string, unknown>, todos: string[]): void {
   if (/\{args\.[^}]*\}/.test(JSON.stringify(options))) {
     todos.push(
       '`{args.*}` in the options: params forwarding is not supported — put the value in the option',
     )
-  }
-  return {
-    ...line(nxExecCommand(executor, projectName, targetName, configuration, options, files)),
-    envInputs: files,
   }
 }
 
@@ -982,6 +1097,7 @@ const KNOWN_EXECUTORS: Record<string, { persistent: boolean }> = {
   '@nx/jest:jest': { persistent: false },
   '@nx/eslint:lint': { persistent: false },
   '@nx/js:tsc': { persistent: false },
+  '@nx/js:node': { persistent: true },
   '@nx/webpack:webpack': { persistent: false },
   '@nx/webpack:dev-server': { persistent: true },
   '@nx/esbuild:esbuild': { persistent: false },

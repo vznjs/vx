@@ -76,6 +76,9 @@ export default defineProject({
             systemInfo: ['vfs.disk-space', 'net.link.addr'],
             localBinding: true,
           },
+          // remote-cache-degrade.test.ts dials a host that does not
+          // resolve on purpose; the proxy refuses it, and that is the row.
+          ignore: { network: ['no-such-host.invalid:80'] },
         },
       },
       dependsOn: ['install'],

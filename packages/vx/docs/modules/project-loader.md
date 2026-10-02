@@ -109,7 +109,12 @@ readers that reach it here.
   before its round evaluates anything, before anything reads through
   them (a replaced `Array.prototype.includes` broke the JSON-data walk
   itself); what changed is put back, a failed load's too, and the load
-  is refused naming the property. A round where every config hits takes
+  is refused naming the property. Loads overlap (`LOAD_WIDTH` at a time),
+  so the load that sees a change may not be the one that made it: when
+  more than one evaluation was in flight, the round evaluates each of its
+  configs alone in a throwaway worker that reports what it changed, and
+  names the first that changes something (it named an innocent config
+  before, D-119); none found, it says "a project config". A round where every config hits takes
   no snapshot: reading every descriptor of `Bun` builds its lazy
   members, 7 ms of a warm run (E-88).
 - A first load may not change `process.env` either: a config that set
