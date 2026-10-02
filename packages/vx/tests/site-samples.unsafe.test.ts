@@ -897,6 +897,29 @@ describe.each([
   })
 })
 
+// The sandboxing guide called `gitConfig` inert ("SRT drops the per-task
+// flag") after B-41 made it take effect for the task that grants it.
+describe('the sandboxing guide says what gitConfig grants', () => {
+  it('the flag reaches the wrap per task, and the guide does not call it inert', () => {
+    const runtime = readFileSync(
+      path.resolve(import.meta.dir, '..', 'src', 'exec', 'sandbox-runtime.ts'),
+      'utf8',
+    )
+    const binds = readFileSync(
+      path.resolve(import.meta.dir, '..', 'src', 'exec', 'sandbox-binds.ts'),
+      'utf8',
+    )
+    expect(binds).toContain('allowGitConfig: c.gitConfig')
+    expect(runtime).toContain('perTaskRun')
+    const row = readFileSync(path.join(GUIDES, 'sandboxing.md'), 'utf8')
+      .split('\n')
+      .find((l) => l.startsWith('| `gitConfig`'))
+    expect(row).toBeDefined()
+    expect(row).not.toMatch(/inert|drops/)
+    expect(row).toContain('this task only')
+  })
+})
+
 // The same widening, and the same lesson: the binaries were pinned on two
 // pages and `introduction.md` names them too, in the LONG spelling only
 // (item 381, 2026-09-19). Found rather than listed, and each binary is
