@@ -39,7 +39,7 @@ In order of harm:
    such a grant to its nearest bracket-free ancestor (as a file grant
    is widened to its directory), said once. `read: ['.']` is unaffected.
 
-6. Linux: a grant under a workspace whose directory name holds a
+7. Linux: a grant under a workspace whose directory name holds a
    bracket does not resolve: `resolveSandboxConfig` resolves it to an
    absolute path and `expandGrants` reads that path's brackets as a
    `Bun.Glob` class, so `read: ['.']` there mounts nothing. Since B-57
