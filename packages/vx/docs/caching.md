@@ -1127,6 +1127,11 @@ never the artifact's size). An artifact up to 4 MiB compressed is decoded in one
 first — the stream setup costs ~35 µs each, 4% of the headline
 restore row when every artifact is a one-file `dist/` — and then fed
 to the same reader and extractor, so there is one extraction path.
+The reader reads a header in place when it lies within one chunk and
+its numeric fields off the bytes when they are plain octal (anything
+else takes the full parse): a 4-entry artifact's read 50–57 µs → 22–23
+(min of 15), and a 300-artifact, 20-file restore run's reader 224 → 92
+ms of main thread (2026-10-02).
 The 2 GiB decompression ceiling applies to both: declared size and
 output length for the one-call decode, a running count for the stream.
 An ingest bounds the compressed body first: a remote body past the
