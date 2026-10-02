@@ -30,3 +30,10 @@
   `discover` stage it lists through `discoverCliProjects`.
   `modules/logger.md` gained #2054's post-summary server stream. Rows
   (`module-page-claims`), red on each page without the fix.
+
+- **J2-7** The sandboxing guide's grant table called `gitConfig`
+  "inert: SRT drops the per-task flag"; since B-41 the run union carries
+  it and each wrap sets it for its own task (`perTaskRun`), and the
+  deny scan skips `.git/config` for that task, as schema.md and
+  `modules/sandbox-runtime.md` already said. Row (`site-samples` › the
+  sandboxing guide says what gitConfig grants), red without the fix.
