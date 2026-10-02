@@ -3,7 +3,6 @@
 // fields into a root vx-preset.ts that each generated config imports and
 // spreads — TypeScript composition replaces turbo's global config.
 
-import { existsSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 import {
   type GeneratedProject,
@@ -20,8 +19,9 @@ import {
   type TurboMappedProject,
 } from './turbo/turbo-map.js'
 import { relPosix } from './paths.js'
-import { gitIgnored, trackedFiles, trackedKinds } from './tracked-outputs.js'
+import { gitIgnored, spareTrackedOutputs, trackedFiles, trackedKinds } from './tracked-outputs.js'
 import { DOTENV_PROBE, DOTENV_PROBE_TOP } from './dotenv-probe.js'
+import { adoptedToolNotes } from './workspace-notes.js'
 
 /** What a task's `npm_package_*` read: the manifest, so a bump reaches them. */
 const MANIFEST_IMPORT = "import pkg from './package.json' with { type: 'json' }"
@@ -54,6 +54,15 @@ export async function migrateTurbo(
     sourceNames: (dirs) => spelledNames(root, dirs, tracked),
     ignored: (rels) => gitIgnored(root, rels),
   })
+  // Turbo never cleans an output and vx cleans one before every run: a
+  // written `dist/**` beside a committed `dist/keep.js` deleted it on the
+  // first run. turbo() takes such files back each run; the configs must.
+  if (tracked !== null)
+    for (const [id, todo] of spareTrackedOutputs(root, mapping.projects, tracked)) {
+      const at = id.lastIndexOf('#')
+      const p = mapping.projects.find((x) => x.name === id.slice(0, at))
+      p?.tasks.find((t) => t.name === id.slice(at + 1))?.todos.push(todo)
+    }
 
   const shared = hoistTaskEnv(mapping.projects)
   const probes = nameProbes(mapping.projects)
@@ -90,51 +99,17 @@ export async function migrateTurbo(
     })
   }
 
-  return { headerNotes: await workspaceNotes(root), projects, extraFiles, notes: mapping.notes }
-}
-
-/** Each lockfile and the `@vzn/vx-lockfile` plugin that claims it. */
-const LOCKFILES: ReadonlyArray<readonly [file: string, plugin: string]> = [
-  ['pnpm-lock.yaml', 'pnpm'],
-  ['bun.lock', 'bun'],
-  ['bun.lockb', 'bun'],
-  ['package-lock.json', 'npm'],
-  ['npm-shrinkwrap.json', 'npm'],
-  ['yarn.lock', 'yarn'],
-]
-
-/**
- * What the written configs leave to vx.workspace.ts. `vx init` declares
- * `turbo()` beside turbo.json, and after the migration it still read
- * turbo.json every run, filling any task the configs leave out, with
- * nothing saying it is now redundant: the configs ARE the mapping. And
- * Turbo keys each package on its own lockfile entries, where core keys
- * every task on the whole lockfile: without a lockfile plugin a dependency
- * bump re-ran every task (hey-api: a `pnpm-lock.yaml` edit re-keyed all 42
- * builds, none with `pnpm()`).
- */
-async function workspaceNotes(root: string): Promise<string[]> {
-  const notes: string[] = []
-  let declared = ''
-  for (const name of readdirSync(root)) {
-    if (!/^vx\.workspace\.(ts|mts|js|mjs|cts|cjs)$/.test(name)) continue
-    declared = await Bun.file(path.join(root, name)).text()
-    if (/\bturbo\s*\(/.test(declared))
-      notes.push(
-        `${name} still declares turbo(), which reads turbo.json every run and fills any task ` +
-          'a vx.config does not declare; the configs written here declare them all. Once ' +
-          '`vx run` does what turbo did, remove turbo() (and its import), then turbo.json',
-      )
-    break
+  return {
+    headerNotes: await adoptedToolNotes(root, {
+      plugin: 'turbo',
+      config: 'turbo.json',
+      runner: 'turbo',
+      keys: (lock) => `Turbo keys each package on its own ${lock} entries`,
+    }),
+    projects,
+    extraFiles,
+    notes: mapping.notes,
   }
-  const lock = LOCKFILES.find(([file]) => existsSync(path.join(root, file)))
-  if (lock !== undefined && !declared.includes('@vzn/vx-lockfile'))
-    notes.push(
-      `Turbo keys each package on its own ${lock[0]} entries; vx keys every task on the whole ` +
-        `file, so a dependency bump re-runs them all. Declare ${lock[1]}() from @vzn/vx-lockfile ` +
-        "in vx.workspace.ts to key each task on its package's dependency closure",
-    )
-  return notes
 }
 
 /** Source and env-example files a framework build reads its variables from. */

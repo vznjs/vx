@@ -67,6 +67,11 @@ describe('a workspaceFiles glob over a nested repository', () => {
       'up-to-date',
       'success',
     ])
-    expect(edited.split(' ').at(-1)).not.toBe(hit.split(' ').at(-1))
+    // The key is the last word of the task's own line; the output's last
+    // word is the summary's duration, which two runs can share (42 ms both
+    // on macOS CI) whether or not the key moved.
+    const key = (out: string): string | undefined => out.split('\n')[0]!.split(' ').at(-1)
+    expect(key(edited)).toMatch(/^[0-9a-f]{16}$/)
+    expect(key(edited)).not.toBe(key(hit))
   })
 })

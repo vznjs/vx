@@ -179,6 +179,7 @@ next: npm install -D @vzn/vx-migrate && npx vx run build --all
 $ bunx @vzn/vx-migrate
 vx-migrate: nx graph → vx.config.ts
 note: migrating from the resolved project-graph snapshot — plugin-inferred targets are frozen as static config; an executor target becomes the command its executor runs, or a placeholder the TODOs below list; targets with `.env` files run through `nx-env` (keep @vzn/vx-migrate installed)
+note: vx.workspace.ts still declares nx(), which reads nx.json every run and fills any task a vx.config does not declare; the configs written here declare them all. Once `vx run` does what nx did, remove nx() (and its import), then nx.json
 
 2 tasks migrated clean, 0 TODOs
 files written:
@@ -207,6 +208,8 @@ where Nx ran it, with the executor's option defaults applied:
 | `@nx/next:server`                   | `next dev --port=4200` (or `next start` in the build output) |
 | `@nx/cypress:cypress`               | `cd ../.. && cypress run --project=apps/web-e2e --config-file=cypress.config.ts --e2e` |
 | `@nx/esbuild:esbuild`               | `cd ../.. && rm -rf dist/apps/api && esbuild apps/api/src/main.ts --bundle --packages=external --format=esm …` |
+| `@nx/js:node`                       | `cd ../.. && node --inspect=localhost:9229 dist/apps/api/main.js` (the build target's output) |
+| `@nx/js:swc`                        | `rm -rf ../../dist/libs/a && swc src -d ../../dist/libs/a --config-file=.swcrc` |
 
 What an executor did besides its tool (a type-check before a Vite
 build, a `package.json` or `assets` copied into the output) is a TODO

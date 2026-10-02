@@ -476,8 +476,8 @@ task's `define`, six characters or more; not a name ending `_FILE`,
 shows it: the task's output, the stdout the cache keeps and a hit
 replays, the command a cache entry stores (what `vx why` prints and a
 remote cache receives), the `$ command` line, telemetry records,
-`vx show`, and the run's own invocation line that `vx last` prints (a
-secret passed after `--`). A value
+`vx show`, an executor's error or a plugin's warning (a remote's reply), and the run's own invocation line that `vx last` prints (a
+secret passed after `--`) and its `--tag`s. A value
 split across two output chunks is still caught; the output holds back
 that many characters until the next chunk. A plugin that reads a task's
 config directly sees it as written. A secret whose name holds none of
@@ -1148,6 +1148,12 @@ outside it (`~/.cache`, `/etc`, the toolchain) is readable and folds into
 no key, so a task whose output depends on one declares it as a key input
 (`inputs.runtime`, `inputs.env`) — the sandbox does not catch it (item
 966).
+The one exception is where tools keep credentials, denied unless a
+grant names one (`read: ['.', '~/.npmrc']` for a publish), since a
+dependency the task ran could copy a key into an output the cache
+shares (L-41): `~/.ssh`, `~/.gnupg`, `~/.aws`, `~/.azure`, `~/.kube`,
+`~/.config/gcloud`, `~/.config/gh`, `~/.docker/config.json`, `~/.netrc`,
+`~/.git-credentials`, `~/.npmrc`, `~/.yarnrc.yml`, `~/.pypirc`.
 What it grants from there is the union of the read grants and, on Linux,
 the DIRECTORY holding each file-shaped write grant (above).
 Nothing is inherited from `cache` — `cache.inputs` says what INVALIDATES a task, `sandbox.allow`

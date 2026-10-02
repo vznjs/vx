@@ -897,6 +897,29 @@ describe.each([
   })
 })
 
+// The sandboxing guide called `gitConfig` inert ("SRT drops the per-task
+// flag") after B-41 made it take effect for the task that grants it.
+describe('the sandboxing guide says what gitConfig grants', () => {
+  it('the flag reaches the wrap per task, and the guide does not call it inert', () => {
+    const runtime = readFileSync(
+      path.resolve(import.meta.dir, '..', 'src', 'exec', 'sandbox-runtime.ts'),
+      'utf8',
+    )
+    const binds = readFileSync(
+      path.resolve(import.meta.dir, '..', 'src', 'exec', 'sandbox-binds.ts'),
+      'utf8',
+    )
+    expect(binds).toContain('allowGitConfig: c.gitConfig')
+    expect(runtime).toContain('perTaskRun')
+    const row = readFileSync(path.join(GUIDES, 'sandboxing.md'), 'utf8')
+      .split('\n')
+      .find((l) => l.startsWith('| `gitConfig`'))
+    expect(row).toBeDefined()
+    expect(row).not.toMatch(/inert|drops/)
+    expect(row).toContain('this task only')
+  })
+})
+
 // The same widening, and the same lesson: the binaries were pinned on two
 // pages and `introduction.md` names them too, in the LONG spelling only
 // (item 381, 2026-09-19). Found rather than listed, and each binary is
@@ -1739,5 +1762,99 @@ describe("comparison.md's Turborepo cells say what Turbo hashes and runs", () =>
       'yes — `package.json` is a default input',
     )
     expect(turbo('Pre/post script lifecycle')).toBe('yes — the package manager runs them')
+  })
+})
+
+// Blog links into a guide section kept the titles of the guide pages the
+// short site merged away ("Running tasks", "Dev & long-running tasks"),
+// and one promised readiness patterns for common servers the section
+// never held. A link into a guide section names that section.
+describe("a post's link into a guide section names the section", () => {
+  it('its text holds the heading its anchor lands on', () => {
+    const plain = (s: string): string => s.replace(/[`*_]/g, '').replace(/\s+/g, ' ').toLowerCase()
+    const slug = (h: string): string =>
+      h
+        .toLowerCase()
+        .replace(/[^\p{L}\p{N} _-]/gu, '')
+        .replace(/ /g, '-')
+    const headings = new Map<string, Map<string, string>>()
+    const headingOf = (guide: string, anchor: string): string | undefined => {
+      if (!headings.has(guide)) {
+        const map = new Map<string, string>()
+        for (const m of readFileSync(path.join(GUIDES, `${guide}.md`), 'utf8').matchAll(
+          /^#{2,6}\s+(.*?)\s*$/gm,
+        ))
+          map.set(slug(m[1]!), m[1]!)
+        headings.set(guide, map)
+      }
+      return headings.get(guide)!.get(anchor)
+    }
+    const wrong: string[] = []
+    let checked = 0
+    // A post's pointer to its guide; the glossary's and compare page's
+    // inline links are prose ("remote caching"), not section names.
+    const posts = handAuthoredSitePages().filter((p) => p.includes(`${path.sep}blog${path.sep}`))
+    for (const page of posts) {
+      const text = readFileSync(page, 'utf8')
+      for (const m of text.matchAll(
+        /\[([^\]]+)\]\((?:\.\.\/)+guides\/([a-z-]+)\/#([a-z0-9-]+)\)/g,
+      )) {
+        const heading = headingOf(m[2]!, m[3]!)
+        checked++
+        if (heading === undefined || !plain(m[1]!).includes(plain(heading)))
+          wrong.push(`${path.relative(DOCS, page)}: [${m[1]}] → ${m[2]}#${m[3]}`)
+      }
+    }
+    expect(checked).toBeGreaterThan(5)
+    expect(wrong).toEqual([])
+    const post = readFileSync(path.join(DOCS, 'blog', 'dev-servers-in-the-graph.md'), 'utf8')
+    expect(post).not.toContain('readiness patterns for the common servers')
+  })
+})
+
+describe('the lockfile post measures what the root reaches', () => {
+  // Every project's digest folds the root importer's closure, and this
+  // repository's root links its packages as devDependencies, so a bump
+  // the root reaches re-keys every task. The post claimed a bump re-keys
+  // "that package's own tasks and its dependants'" (J2-11): bumping
+  // protobufjs, under @vzn/vx-reapi, re-keyed all 56.
+  it('names a root-reached bump as every task, and its narrow example outside the root', () => {
+    const repo = path.resolve(import.meta.dir, '..', '..', '..')
+    interface Manifest {
+      name: string
+      dependencies?: Record<string, string>
+      devDependencies?: Record<string, string>
+    }
+    const manifest = (dir: string): Manifest =>
+      JSON.parse(readFileSync(path.join(dir, 'package.json'), 'utf8'))
+    const deps = (m: Manifest): Record<string, string> => ({
+      ...m.dependencies,
+      ...m.devDependencies,
+    })
+    const byName = new Map<string, string>()
+    for (const d of readdirSync(path.join(repo, 'packages'))) {
+      const dir = path.join(repo, 'packages', d)
+      if (existsSync(path.join(dir, 'package.json'))) {
+        byName.set(manifest(dir).name, dir)
+      }
+    }
+    const reached = new Set<string>()
+    for (const [name, range] of Object.entries(deps(manifest(repo)))) {
+      reached.add(name)
+      if (!range.startsWith('workspace:')) continue
+      for (const dep of Object.keys(deps(manifest(byName.get(name)!)))) reached.add(dep)
+    }
+    const post = readFileSync(path.join(DOCS, 'blog', 'lockfile-aware-keys.md'), 'utf8')
+    const sentences = section(post, 'Measured in the repository that ships it')
+      .replace(/\s+/g, ' ')
+      .split(/(?<=\.) /)
+    const claims = sentences.flatMap((s) => {
+      const bumped = /bumping `([^`]+)`/.exec(s)?.[1]
+      return bumped === undefined ? [] : [{ bumped, every: s.includes('every task') }]
+    })
+    expect(claims.filter((c) => c.every).length).toBeGreaterThan(0)
+    expect(claims.filter((c) => !c.every).length).toBeGreaterThan(0)
+    const wrong = claims.filter((c) => reached.has(c.bumped) !== c.every)
+    expect(wrong).toEqual([])
   })
 })
