@@ -40,7 +40,7 @@ import {
   type DotenvListing,
   existingDotenv,
   listDotenv,
-  nonAtomizedTargetOf,
+  ownerTargetOf,
 } from './nx-dotenv.js'
 import { emptyNxInputs, expandNxInputs } from './nx-inputs.js'
 import { planNxUpstream, type NxUpstream } from './nx-upstream.js'
@@ -314,16 +314,12 @@ export async function mapNxWorkspace(
       l: DotenvListing,
       targetName: string,
       configuration: string | undefined,
-    ): string[] =>
-      existingDotenv(
-        dotenvCandidates(
-          projectRel,
-          targetName,
-          configuration,
-          nonAtomizedTargetOf(targetName, targets, node?.data?.metadata?.targetGroups),
-        ),
-        l,
-      ).map((f) => relPosix(projectRel, f))
+    ): string[] => {
+      const [owner, parent] = ownerTargetOf(targetName, targets, node?.data?.metadata?.targetGroups)
+      return existingDotenv(dotenvCandidates(projectRel, owner, configuration, parent), l).map(
+        (f) => relPosix(projectRel, f),
+      )
+    }
     for (const [targetName, target] of Object.entries(targets)) {
       for (const v of variants(targetName, target)) {
         const t = buildTask(
@@ -637,6 +633,7 @@ function buildTask(
     variant.name === targetName
       ? undefined
       : { node: nodeName, configuration: variant.configuration! },
+    options,
   )
 
   // Nx's rule, not a guess: a target is cached when it says `cache: true`
@@ -697,8 +694,19 @@ function buildTask(
   const exec: Record<string, unknown> = { command: mapped.command }
   const env: Record<string, unknown> = {}
   if (inputs.envNames.length > 0) env.passThrough = inputs.envNames
-  if (Object.keys(mapped.env).length > 0) env.define = mapped.env
-  if (Object.keys(env).length > 0) exec.env = env
+  // Nx hands every task its target (`getNxEnvVariablesForTask`), and
+  // `nx exec -- <cmd>`, a package script's way to run under Nx, reads it:
+  // unset, it booted Nx's own task runner, which ran the target and its
+  // dependencies again. A run-commands `env` still wins, as in Nx.
+  env.define = {
+    NX_TASK_TARGET_PROJECT: projectName,
+    NX_TASK_TARGET_TARGET: targetName,
+    ...(variant.configuration === undefined
+      ? {}
+      : { NX_TASK_TARGET_CONFIGURATION: variant.configuration }),
+    ...mapped.env,
+  }
+  exec.env = env
   if (readyWhen !== undefined) {
     exec.persistent = { readyWhen }
   } else if (persistent) {

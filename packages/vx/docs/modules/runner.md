@@ -189,7 +189,9 @@ full byte size in heap for the task's whole life:
   replays. Unbounded, a task printing 200 MB cost vx 620 MB of RSS on
   the miss and on every hit, and its stdout sat whole in `cache.db`
   (2026-09-16). `tests/capture-cap.test.ts` pins the head, the tail,
-  the line, the live stream, and the replay.
+  the line, the live stream, and the replay. A bound never falls
+  between a surrogate pair's halves (the bounds count UTF-16 units, and
+  a halved emoji read U+FFFD in the replay, B-58).
 
 Measured through the real CLI on a task writing 150 MB with
 `--output-logs none`: peak RSS 294 → 81 MiB, and flat in task volume

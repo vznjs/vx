@@ -108,7 +108,7 @@ filesystem traversal order.
 Per-project `package.json` is **NOT** folded in here — that is the
 project's own digest in [`task-hash.md`](./task-hash.md) (a separate
 `projectPackageJsonHash` field of `CacheKeyInput`). Deliberately absent
-too: `vx.workspace.{ts,mts,js,mjs}`. Everything it can declare —
+too: `vx.workspace.{ts,mts,js,mjs,cts,cjs}`. Everything it can declare —
 `concurrency`, `cacheDir`, `timeout`, the plugin list — is placement,
 storage or observability, never what a command produces; folding it
 would split the cache between a laptop declaring the local plugins and

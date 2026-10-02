@@ -788,6 +788,8 @@ export function droppedOutputLine(dropped: number): string {
   )
 }
 
+const isHighSurrogate = (code: number): boolean => code >= 0xd800 && code <= 0xdbff
+
 /**
  * A head-and-tail accumulator: the head fills once, the tail is a ring
  * of chunks trimmed from the front, so memory is bounded by the two
@@ -801,11 +803,14 @@ class BoundedCapture {
 
   push(chunk: string): void {
     if (this.head.length < CAPTURE_HEAD_CHARS) {
-      const room = CAPTURE_HEAD_CHARS - this.head.length
+      let room = CAPTURE_HEAD_CHARS - this.head.length
       if (chunk.length <= room) {
         this.head += chunk
         return
       }
+      // Never between a surrogate pair's halves: the bounds count UTF-16
+      // units, and a halved character read U+FFFD in the replay.
+      if (isHighSurrogate(chunk.charCodeAt(room - 1))) room--
       this.head += chunk.slice(0, room)
       chunk = chunk.slice(room)
     }
@@ -819,9 +824,10 @@ class BoundedCapture {
         this.tailLen -= first.length
         this.dropped += first.length
       } else {
-        this.tail[0] = first.slice(excess)
-        this.tailLen -= excess
-        this.dropped += excess
+        const cut = isHighSurrogate(first.charCodeAt(excess - 1)) ? excess + 1 : excess
+        this.tail[0] = first.slice(cut)
+        this.tailLen -= cut
+        this.dropped += cut
       }
     }
   }
