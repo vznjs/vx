@@ -44,7 +44,10 @@ export function captureWorkspaceIdentity(workspaceRoot: string): WorkspaceIdenti
 - `captureGitContext(root, dirty, env)` — reads `HEAD` from the `.git`
   files first (a `.git` directory or a linked worktree's `gitdir:` file,
   a symbolic or detached HEAD, loose refs and `packed-refs`): no spawn
-  on a familiar layout. Anything unfamiliar falls back to ONE
+  on a familiar layout. A repository in reftable ref storage (a
+  `reftable/` directory; its HEAD file names `refs/heads/.invalid`) is
+  never read from its files, and anything else unfamiliar falls back
+  to ONE
   `git rev-parse HEAD --abbrev-ref HEAD` spawn (commit on line 1, branch
   on line 2), behind try/catch. A detached HEAD takes the branch the CI
   environment names, when one does. `dirty` is passed in — the run's

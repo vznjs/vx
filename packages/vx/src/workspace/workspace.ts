@@ -522,6 +522,18 @@ function absent<T>(err: unknown, value: T): T {
 }
 
 export async function listProjects(workspace: Workspace): Promise<ProjectMeta[]> {
+  return discoverProjects(workspace)
+}
+
+/**
+ * `listProjects`, and `nameless` collects each member directory whose
+ * manifest has no `name`: `vx init` names them, since their scripts map to
+ * nothing.
+ */
+export async function discoverProjects(
+  workspace: Workspace,
+  nameless?: string[],
+): Promise<ProjectMeta[]> {
   // Run all package globs concurrently. Disk-bound walks parallelize
   // well; serializing them just stretches the discovery phase by N×.
   const { positive, negative } = splitPackageGlobs(workspace.packageGlobs)
@@ -567,6 +579,7 @@ export async function listProjects(workspace: Workspace): Promise<ProjectMeta[]>
     if (entry === null) continue
     const { dir, pkg, configPath } = entry
     if (!pkg.name) {
+      nameless?.push(dir)
       // A nameless manifest can't be addressed, filtered, or made affected —
       // and vx identifies projects by name, so it simply vanishes. Silent is
       // fine for a dir that declares no tasks; a dir with a vx config was

@@ -245,7 +245,9 @@ failed to spawn 'git' … Install git and re-run` — the same the input
   `main...feature`) is refused there too, naming the base to pass
   alone — `ranges are not supported — pass the base alone ("HEAD~1")`
   — because the other end is always the working tree. A ref that does
-  not exist is `git ref "<ref>" did not resolve`.
+  not exist is `git ref "<ref>" did not resolve`; in a shallow clone (CI's
+  one-commit checkout) it adds that the clone is shallow and how to fetch
+  the history (`git fetch --unshallow`, `fetch-depth: 0`).
 - A member whose directory is a symlink to a place elsewhere under the
   workspace root (`packages/b -> ../ext/b`) is selected by a change at
   that real place too: git names the files where they live, not by the
@@ -399,7 +401,7 @@ stays clean).
 | `--force`                          | boolean        | off                                | Re-execute everything (skip cache reads) but still REFRESH the cache (writes stay on). Output globs are cleaned (so the saved snapshot is clean).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `--cache <spec>`                   | value          | all axes on                        | Per-layer read/write control. See below. An EMPTY spec (`--cache=`) is a parse error — it applied nothing and left every axis on; pass `--no-cache` to disable them all.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `--cache-dir <path>`               | value          | workspace `cacheDir` / `.vx/cache` | Cache directory override, resolved relative to cwd (absolute paths used as-is). Beats the `defineWorkspace({ cacheDir })` field and the `.vx/cache` default, for every cache the run opens — the config-evaluation cache that `--affected` owners, the picker and the watch sweep read included, so the workspace's default dir is not created beside it. A per-run knob — never folded into a cache key. `--cache-dir=<path>` form too; the space form rejects a value starting with `-`. A directory this user cannot write into fails the run before any task with `cache directory <path> is not writable (EACCES: …)` — every run records its history there.                                                                          |
-| `--retry <n>`                      | value          | `0`                                | Re-run a failed task up to `n` more times. Run-level default only: a task's own `exec.retries` wins (even an explicit `0`). Never affects cache keys. `--retry=<n>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `--retry <n>`                      | value          | `0`                                | Re-run a failed task up to `n` more times; never a persistent one. Run-level default only: a task's own `exec.retries` wins (even an explicit `0`). Never affects cache keys. `--retry=<n>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | `--continue[=<mode>]`              | value          | `deps-ok`                          | What a failed task takes down with it. `never` stops dispatch on the first failure; `deps-ok` (default) skips only its dependents; `always` (bare `--continue`) runs dependents anyway. See § Failure propagation.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `--timeout <ms>`                   | positive int   | none                               | Default per-task timeout for tasks without their own `exec.timeout`. Sits above `VX_TASK_TIMEOUT` + workspace `timeout`; per-task `exec.timeout` always wins. A runaway task is killed + `failed`. Never affects cache keys. `--timeout=<ms>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `--frozen`                         | boolean        | off                                | Load configs from `vx-lock.json` instead of evaluating (CI) — the run's, and the ones `--affected` owners and the picker select from. See § `--frozen`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
@@ -1715,7 +1717,11 @@ reach, and a TODO to order the cycle: `^build` there refuses the run.
 edge); `dev` / `start` / `serve` / `watch` /
 `preview` become persistent tasks, with a TODO to add `readyWhen` when
 another task depends on one, and so does a watcher: a `watch` segment in the script's name (`build:watch`),
-a `--watch` flag, `tsc -w` / `rollup -w`, or nodemon (D-40). A
+a `--watch` flag, `tsc -w` / `rollup -w`, or nodemon (D-40), and a server:
+`serve <dir>`, `http-server`, bare `vite`, a tool's `dev` / `serve` /
+`start` / `preview` verb (`next start`, `netlify dev`), or a script that
+runs such a script of its package by name (`cross-env X=1 pnpm start`),
+outside quotes and not sent to the background with `&` (D-91). A
 script whose name no task may carry (`lint#fix`, `^up`; the schema's
 rule, item 1000) is left out with a TODO rather than written into a
 config every later command refuses, and a `__proto__` script is written
@@ -1770,10 +1776,15 @@ pnpm docs-build`; through `run-s` / `run-p` / `npm-run-all` or `concurrently
 a check twice (D-45). The rest check the whole repo (`lint: oxlint .`,
 `test: vitest`) and become the root's own tasks in a root vx.config, when
 the root has a `"name"` (vx skips a nameless root's config) and no config
-of its own; a hand-written one stays as written. The report says which;
+of its own; a hand-written one stays as written. The report says which, its
+examples of running the members spelled by the repo's manager (`--workspaces`
+under npm, `yarn workspaces foreach` under Yarn 2+);
 with nothing mapped it names the root whenever it has a script, a member
 or not (pnpm's root is not), and tells a root with no `"name"` to add one
 first (vuejs/core), naming the scripts that would then map (react, D-87). A single-package repo's root is its project and maps.
+A member whose package.json has no `name` is no project; one with a
+script is named in the report, to be given a name (remix's
+`packages/component/bench`, D-106).
 A member's script that runs another member's work (`pnpm -C ../pinia
 run build`, `yarn workspace <name>`, `-r` / `--filter`, a `cd` or `-C`
 / `--cwd` / `--prefix` into another member) keeps its command and gets a
@@ -1804,9 +1815,13 @@ and when no task caches it says a cache block from a TODO makes the
 second run a hit. Its `next:` line is a command the user can type: the
 runner that started vx (`npx`, `pnpm`, `yarn`, `bunx`, read from
 `npm_config_user_agent`) with the installed `vx` bin, else the
-`@vzn/vx` package; with no runner, a bare `vx`. Outside a git work tree it starts with
+`@vzn/vx` package (`npx` under Yarn 1, which has no `dlx`); with no
+runner, a bare `vx`. Outside a git work tree it starts with
 `git init`, and with no script mapped with declaring a task, since the
-run would refuse without either.
+run would refuse without either. It runs `build`, else the first task that
+neither serves (`persistent`) nor changes the repo (`clean`, `release`,
+`publish`, `deploy`, `version`, `format`, `fix`, …), else the first task
+(react-navigation was told `vx run clean --all`).
 
 `vx init --plugin <seam>` writes a plugin instead: `plugins/<seam>.ts`,
 a small runnable plugin for that seam (`executor`, `cache`,

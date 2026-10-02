@@ -296,6 +296,67 @@ beside 161 runs of the file was clean, and which earlier row's release
 landed in it is not proven. The keep-alive grace rows (M-14, M-17) did
 not fail again: 12 of 12 runs of the file beside a forced gate.
 
+M-26. Probes, nothing shipped. macOS CI, 2026-10-02: of the last 200
+completed CI runs, 7 were red: 6 on a commit or PR title the
+Conventional Commits check refused, and 1 on a quoted-`exec` row that
+macOS `sh` answers 1 where dash answers 127 (its PR's own, not on main).
+None was a timing failure. `npm-launcher.test.ts` › a signal sent
+to the launcher alone (macOS, run 36365513736): the launcher exits only
+on its child's exit, so 130 with no `heard` means the binary's `sh` died
+of the SIGINT without running its INT trap while waiting on a foreground
+`sleep`. Not reproduced: the same script under `bash --posix` and dash
+ran the trap 100 of 100 with the SIGINT landing anywhere in the loop.
+macOS's `/bin/sh` is bash 3.2, not testable here; that it differs is the
+open suspicion, not a cause.
+
+M-27. `npm-pack.unsafe.test.ts` (ws-p's lead: `JSON Parse error` once in
+a gate, npm 10.9.4). The helper parsed stdout and stderr joined, from
+the first `[`. npm prints its update notice to stderr at exit when its
+background registry check finishes before the command, a race a loaded
+gate's slower pack loses: a `prepack` of `sleep 4` and no
+`_update-notifier-last-checked` printed "New major version of npm
+available! 10.9.4 -> 12.2.0" after the JSON, and the joined parse threw.
+The JSON is now stdout's alone. Row: a fake npm whose stderr holds the
+notice (red without the fix, the gate's error).
+
+M-28. `sandbox-runtime.unsafe.test.ts` › a traced sandboxed one-shot
+task's children die with vx that is descheduled after the spawn (I-9's
+lead: ENOENT reading `/proc/<pid>/stat` after `isAlive`). `isAlive` sent
+signal 0, then read the state, and took the read's ENOENT for "no
+procfs, so alive"; but it reads only where procfs is this process's own,
+so ENOENT there is a pid reaped between the two calls, and a dying child
+read alive and then threw at the row's next read. Gone now reads dead,
+and the row's session-leader read counts a vanished pid as no leader.
+Row (`alive-helper.unsafe`): signal 0 held to "lands" for a pid with no
+entry (red without the fix). macOS is unchanged: there
+`procfsIsOwn()` is false and nothing is read. Also probed, nothing to
+fix: both `wedged.test.ts` leads (`sent` 3 for 4, 0 for 1) counted RSTs
+sent, which F-9 replaced with the peer's count of HEADERS.
+
+M-29. `runner.test.ts` › an exec-wrapped process is the direct child
+(E's lead: it read `JITWorker` at load 6.6). The row slept a fixed 50 ms
+and read `/proc/<pid>/comm` once: until `sh` execs, comm is the forking
+Bun thread's name or `sh` (an immediate read, 20 of 20: `sh`). The
+poll that replaced it landed as #2302; a command with no exec still
+reads `sh` at its deadline, so the claim holds without a time in it.
+
+M-30. `output-memory.unsafe.test.ts` › stays flat while a never-ready
+task floods stdout (D's lead: `long - short` read 140 MiB against 64,
+`\r`). The rows read RSS, which holds what the allocator kept, not what
+the runner retains: beside eight busy loops a 1 s probe read 81 MiB (41
+idle), and a 3 s one grew 82 MiB in 1 of 3 runs with nothing retained.
+The probe now reads the JS heap after a full GC: 1-2 MiB at either
+duration, 8 of 8 runs clean beside eight busy loops, and 180-1,290 MiB
+with a mutant that keeps every chunk (all three rows red).
+
+M-31. Probes, nothing shipped. `watch-loop-members.test.ts` › a root
+package.json's workspaces that add a glob watch the packages they name
+(D's lead: an `until` past its 15 s once, 17 s): refuted that a new
+member's `package.json` landing after its directory goes unseen (2 s
+between them, green); both glob rows 6 of 6 beside eight busy loops.
+Which `until` timed out was not recorded. `task-glob-brackets.test.ts` ›
+an upstream's hit sets aside the route (F's macOS lead) is M-4 and M-5.
+
 ## Leads for other streams
 
 - A: A-20 let a same-project dependant restore ahead of a producer whose

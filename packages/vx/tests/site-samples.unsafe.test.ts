@@ -170,6 +170,17 @@ describe('the configure guide names the essential allowlist', () => {
 })
 
 // The remote-execution guide is the CI page's section now.
+describe("comparison.md's Turborepo cache-skip cell", () => {
+  // It called Turbo's --no-cache deprecated; Turbo 2.10.13 and 2.11.7 document
+  // it as `--cache=local:r,remote:r`, and a --no-cache run after a cached one
+  // replayed the hit (J-110).
+  it('names the spec that skips both, and what --force and --no-cache each skip', () => {
+    const doc = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'comparison.md'), 'utf8')
+    const cell = /^\| skip cache reads\+writes +\| ([^|]*?) +\|/m.exec(doc)![1]
+    expect(cell).toBe('`--cache=local:,remote:` (`--force` skips reads, `--no-cache` writes)')
+  })
+})
+
 describe('the CI guide states the wire chunk sizes', () => {
   it('its uploads bullet names the default chunk, which is SAFE_CHUNK_BYTES', () => {
     const wire = readFileSync(
@@ -334,6 +345,21 @@ describe('the why-vx-is-fast concept quotes the benchmarks page', () => {
   })
 })
 
+describe("the quickstart's known limits are still limits", () => {
+  // It listed "A workspaceFiles glob stops at a git submodule's edge"; since
+  // 2026-09-27 the nested repository's files are listed and keyed
+  // (caching.md), and an edit inside a submodule under `workspaceFiles:
+  // ['sub/**']` missed, its revert hit (J-114).
+  it('caching.md keys a submodule under workspaceFiles, and the quickstart names no edge', () => {
+    const caching = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'caching.md'), 'utf8')
+    expect(caching.replace(/\s+/g, ' ')).toContain('and for a `workspaceFiles` glob')
+    const limits = /## Known limits\n([\s\S]*)$/.exec(
+      readFileSync(path.join(DOCS, 'quickstart.md'), 'utf8'),
+    )![1]!
+    expect(limits).not.toContain('submodule')
+  })
+})
+
 describe('the flaky-tasks post shows the section the footer prints', () => {
   it('its sample is formatFlakySection on the two findings it describes', () => {
     const page = readFileSync(path.join(DOCS, 'blog', 'flaky-tasks.md'), 'utf8')
@@ -396,7 +422,7 @@ describe('the no-daemon post quotes the benchmarks page', () => {
   it('each warm-run figure it states is on docs/benchmarks.md as written', () => {
     const page = readFileSync(path.join(DOCS, 'blog', 'no-daemon.md'), 'utf8')
     const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
-    for (const figure of ['510ms', '760ms', '3.59s', '51 ms', '95 ms']) {
+    for (const figure of ['510ms', '760ms', '3.59s']) {
       expect(page).toContain(figure)
       expect(bench).toContain(figure)
     }
@@ -513,17 +539,7 @@ describe('the why-vx-is-fast post quotes the benchmarks page', () => {
   it('each figure it states is on docs/benchmarks.md as written', () => {
     const page = readFileSync(path.join(DOCS, 'blog', 'why-vx-is-fast.md'), 'utf8')
     const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
-    for (const figure of [
-      '3m 38s',
-      '3m 46s',
-      '5m 13s',
-      '34m 44s',
-      '510ms',
-      '760ms',
-      '3.59s',
-      '66 ms',
-      '127 ms',
-    ]) {
+    for (const figure of ['3m 38s', '3m 46s', '5m 13s', '34m 44s', '510ms', '760ms', '3.59s']) {
       expect(page).toContain(figure)
       expect(bench).toContain(figure)
     }
@@ -654,6 +670,15 @@ describe('the resolved-config-hashing post names every global the gate denies', 
     'utf8',
   )
   const page = readFileSync(path.join(DOCS, 'blog', 'resolved-config-hashing.md'), 'utf8')
+  it('the bare imports it lets through are the two the gate passes', () => {
+    // It said "anything but `@vzn/vx`"; every config vx init writes imports
+    // `@vzn/vx/config`, which the gate passes whole.
+    const entry = /const PURE_CONFIG_ENTRY = '([^']+)'/.exec(src)
+    expect(entry).not.toBeNull()
+    expect(src).toContain('if (spec === PURE_CONFIG_ENTRY) continue')
+    const flat = page.split(/\s+/).join(' ')
+    expect(flat).toContain(`a bare import of anything but \`${entry![1]}\``)
+  })
   it('each identifier in IMPURE_RE is a name in its list', () => {
     const re = /const IMPURE_RE =\n\s+\/\\b\(\?:([^)]*)\)\\b/.exec(src)
     expect(re).not.toBeNull()

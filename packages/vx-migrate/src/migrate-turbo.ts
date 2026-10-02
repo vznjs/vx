@@ -3,7 +3,7 @@
 // fields into a root vx-preset.ts that each generated config imports and
 // spreads — TypeScript composition replaces turbo's global config.
 
-import { readdirSync } from 'node:fs'
+import { existsSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 import {
   type GeneratedProject,
@@ -51,6 +51,7 @@ export async function migrateTurbo(
     ...(tracked === null ? {} : { tracked: trackedKinds(tracked) }),
     // The file this writes is each task's config.
     ownConfig: () => `vx.config.${format}`,
+    sourceNames: (dirs) => spelledNames(root, dirs, tracked),
     ignored: (rels) => gitIgnored(root, rels),
   })
 
@@ -89,27 +90,81 @@ export async function migrateTurbo(
     })
   }
 
-  return { headerNotes: await turboStillDeclared(root), projects, extraFiles, notes: mapping.notes }
+  return { headerNotes: await workspaceNotes(root), projects, extraFiles, notes: mapping.notes }
 }
 
+/** Each lockfile and the `@vzn/vx-lockfile` plugin that claims it. */
+const LOCKFILES: ReadonlyArray<readonly [file: string, plugin: string]> = [
+  ['pnpm-lock.yaml', 'pnpm'],
+  ['bun.lock', 'bun'],
+  ['bun.lockb', 'bun'],
+  ['package-lock.json', 'npm'],
+  ['npm-shrinkwrap.json', 'npm'],
+  ['yarn.lock', 'yarn'],
+]
+
 /**
- * `vx init` declares `turbo()` beside turbo.json, and after the migration
- * it still read turbo.json every run, filling any task the configs leave
- * out, with nothing saying it is now redundant: the configs ARE the
- * mapping. The repo is native once it goes.
+ * What the written configs leave to vx.workspace.ts. `vx init` declares
+ * `turbo()` beside turbo.json, and after the migration it still read
+ * turbo.json every run, filling any task the configs leave out, with
+ * nothing saying it is now redundant: the configs ARE the mapping. And
+ * Turbo keys each package on its own lockfile entries, where core keys
+ * every task on the whole lockfile: without a lockfile plugin a dependency
+ * bump re-ran every task (hey-api: a `pnpm-lock.yaml` edit re-keyed all 42
+ * builds, none with `pnpm()`).
  */
-async function turboStillDeclared(root: string): Promise<string[]> {
+async function workspaceNotes(root: string): Promise<string[]> {
+  const notes: string[] = []
+  let declared = ''
   for (const name of readdirSync(root)) {
     if (!/^vx\.workspace\.(ts|mts|js|mjs|cts|cjs)$/.test(name)) continue
-    const text = await Bun.file(path.join(root, name)).text()
-    if (/\bturbo\s*\(/.test(text))
-      return [
+    declared = await Bun.file(path.join(root, name)).text()
+    if (/\bturbo\s*\(/.test(declared))
+      notes.push(
         `${name} still declares turbo(), which reads turbo.json every run and fills any task ` +
           'a vx.config does not declare; the configs written here declare them all. Once ' +
           '`vx run` does what turbo did, remove turbo() (and its import), then turbo.json',
-      ]
+      )
+    break
   }
-  return []
+  const lock = LOCKFILES.find(([file]) => existsSync(path.join(root, file)))
+  if (lock !== undefined && !declared.includes('@vzn/vx-lockfile'))
+    notes.push(
+      `Turbo keys each package on its own ${lock[0]} entries; vx keys every task on the whole ` +
+        `file, so a dependency bump re-runs them all. Declare ${lock[1]}() from @vzn/vx-lockfile ` +
+        "in vx.workspace.ts to key each task on its package's dependency closure",
+    )
+  return notes
+}
+
+/** Source and env-example files a framework build reads its variables from. */
+const SPELLS_ENV =
+  /\.(c|m)?(j|t)sx?$|\.(vue|svelte|astro|html)$|(^|\/)\.env\.(example|sample|template)$/
+
+/**
+ * The upper-case names the tracked source under `dirs` spells (`NEXT_PUBLIC_API`
+ * in `process.env.NEXT_PUBLIC_API` or an `.env.example`), sorted. Without
+ * git, none: the note still names the framework's prefix.
+ */
+async function spelledNames(
+  root: string,
+  dirs: readonly string[],
+  tracked: readonly string[] | null,
+): Promise<string[]> {
+  if (tracked === null) return []
+  const prefixes = dirs.map((dir) => {
+    const rel = relPosix(root, dir)
+    return rel === '' || rel === '.' ? '' : `${rel}/`
+  })
+  const names = new Set<string>()
+  for (const f of tracked) {
+    if (!SPELLS_ENV.test(f) || !prefixes.some((p) => f.startsWith(p))) continue
+    const text = await Bun.file(path.join(root, f))
+      .text()
+      .catch(() => '')
+    for (const m of text.matchAll(/\b[A-Z][A-Z0-9_]*_[A-Z0-9_]+\b/g)) names.add(m[0])
+  }
+  return [...names].sort()
 }
 
 /**
