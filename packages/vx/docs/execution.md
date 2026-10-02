@@ -294,8 +294,9 @@ terminal and a task succeeding or failing. Read it alongside
  │
  └─ End-of-run
     1. SIGTERM dependency-only persistent children; persistent tasks
-       the user REQUESTED, and the persistent tasks they depend on,
-       are kept alive (see below).
+       the user REQUESTED, those a requested group stands for (through
+       nested groups, not through a one-shot), and the persistent tasks
+       they depend on, are kept alive (see below).
     2. Run summary footer (projects / tasks / cache meters + info +
        time + result) — counts only real tasks (with `exec`); group tasks
        don't pollute the totals; failure frames replay just above it.

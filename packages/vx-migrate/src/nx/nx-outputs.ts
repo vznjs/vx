@@ -87,7 +87,14 @@ export function mapNxOutputs(
     let s = o.slice(neg.length)
     // Every `{options.x}`, not the first: `dist/{options.a}/{options.b}`.
     for (const optTok of o.matchAll(/\{options\.([^}]+)\}/g)) {
-      const v = options[optTok[1]!]
+      // A dotted path walks the options, as Nx's `_interpolate` does:
+      // @nx/angular:application's `{options.outputPath.base}` read as one
+      // key was no output, and a cached build's hit restored nothing.
+      let v: unknown = options
+      for (const k of optTok[1]!.split('.')) {
+        v = v !== null && typeof v === 'object' ? (v as Record<string, unknown>)[k] : undefined
+        if (!v) break
+      }
       // Nx leaves a falsy option's token in place and drops the output
       // (`getOutputsForTargetAndConfiguration`): @nx/eslint's
       // `{options.outputFile}` with no outputFile is no output, not a todo
