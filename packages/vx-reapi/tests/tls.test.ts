@@ -250,3 +250,38 @@ it('a TLS option wins over its env var; an env path is trimmed and an empty one 
     })
   }
 })
+
+// The README's sample was `cache.example.com:443`, which connects in
+// plaintext and fails against the TLS server on that port (J-96): the
+// scheme, not the port, turns TLS on.
+it('a bare host:port is plaintext and grpcs:// is TLS, with no PEM to decide it', async () => {
+  const open = await startFakeReapi()
+  const port = open.endpoint.split(':')[1]
+  const reach = async (endpoint: string): Promise<string> => {
+    const client = new ReapiClient({ endpoint, callTimeoutMs: 3000 })
+    try {
+      return await client.findMissingBlobs([{ hash: 'a'.repeat(64), size_bytes: 1 }]).then(
+        () => 'ok',
+        () => 'refused',
+      )
+    } finally {
+      client.close()
+    }
+  }
+  try {
+    expect([await reach(`localhost:${port}`), await reach(`grpcs://localhost:${port}`)]).toEqual([
+      'ok',
+      'refused',
+    ])
+  } finally {
+    open.stop()
+  }
+})
+
+it("the README's samples on port 443 name a TLS scheme", async () => {
+  const readme = await readFile(path.join(import.meta.dir, '..', 'README.md'), 'utf8')
+  const src = await readFile(path.join(import.meta.dir, '..', 'src', 'index.ts'), 'utf8')
+  const samples = [...(readme + src).matchAll(/endpoint: '([^']+:443)'/g)].map((m) => m[1]!)
+  expect(samples.length).toBeGreaterThan(2)
+  expect(samples.filter((e) => !/^(grpcs|https):\/\//.test(e))).toEqual([])
+})

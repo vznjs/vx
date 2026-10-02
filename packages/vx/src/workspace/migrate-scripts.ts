@@ -155,7 +155,10 @@ function ownerOf(dir: string, memo: Map<string, Owner>): Owner {
   try {
     const pm = (JSON.parse(read('package.json') ?? '') as { packageManager?: unknown })
       .packageManager
-    if (typeof pm === 'string')
+    // A manager vx knows nothing of (zod's `nub@0.8.3`) says nothing about
+    // hooks: the lockfile beside it does, and "nub ran `postbuild`" was a
+    // claim nothing had checked (D-96).
+    if (typeof pm === 'string' && /^(npm|pnpm|yarn|bun)@/.test(pm))
       manager = /^yarn@([2-9]|\d{2,})/.test(pm) ? 'berry' : pm.split('@')[0]
   } catch {}
   if (manager === undefined) {
@@ -343,6 +346,44 @@ const RUNS_SCRIPT =
   /(?:^|[\s;&|(])(?:pnpm|npm|yarn|bun)\s+(?:run(?:-script)?\s+)?([^\s;&|()'"-][^\s;&|()'"]*)/g
 
 /**
+ * The scripts a command runs by name: a package manager's (`pnpm x`, `npm
+ * run x`), `run-s` / `run-p` / `npm-run-all` (`build:*` is one segment,
+ * `build:**` any), and `concurrently "npm:x"`. A root `ci: run-s build:all
+ * lint` over `build:all: pnpm -r build` mapped as a root task (D-95).
+ */
+function scriptRefs(command: string, scripts: readonly (readonly [string, string])[]): string[] {
+  const refs = [...command.matchAll(RUNS_SCRIPT)].map((m) => m[1]!)
+  for (const m of command.matchAll(/["']?\b(?:npm|pnpm|yarn|bun):([^\s"']+)/g)) refs.push(m[1]!)
+  for (const segment of command.split(/&&|\|\||[;|()]/)) {
+    const words = segment.trim().split(/\s+/)
+    const at = words.findIndex((w) => /^(run-s|run-p|npm-run-all)$/.test(w))
+    if (at < 0) continue
+    for (const w of words.slice(at + 1)) {
+      if (w.startsWith('-')) continue
+      const name = w.replace(/^(["'])(.*)\1$/, '$2')
+      if (!name.includes('*')) {
+        refs.push(name)
+        continue
+      }
+      const re = new RegExp(
+        `^${name
+          .split(/(\*\*|\*)/)
+          .map((part) =>
+            part === '**'
+              ? '.*'
+              : part === '*'
+                ? '[^:]*'
+                : part.replace(/[.+?^${}()|[\]\\]/g, '\\$&'),
+          )
+          .join('')}$`,
+      )
+      for (const [n] of scripts) if (re.test(n)) refs.push(n)
+    }
+  }
+  return refs
+}
+
+/**
  * The scripts that run the members, directly or through another of these
  * scripts: vite's `ci-docs` (`pnpm build && pnpm docs-build`) runs each
  * member's build through the root's own `build` (`pnpm -r … run build`).
@@ -367,7 +408,7 @@ function runningMembers(
     grew = false
     for (const [n, v] of text) {
       if (out.has(n)) continue
-      if ([...v.matchAll(RUNS_SCRIPT)].some((m) => out.has(m[1]!))) {
+      if (scriptRefs(v, text).some((r) => out.has(r))) {
         out.add(n)
         grew = true
       }

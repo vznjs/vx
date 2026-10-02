@@ -834,6 +834,21 @@ restore feeds an exec task. Cost (1,000 projects, 3,000 nodes, min of
 dispatch order `r1, r2, e` ahead of three idle restores): red without
 the pass. `modules/scheduler.md` says so.
 
+## C-56: a kept server's output streams after the summary
+
+`vx run dev --all` (or two requested servers) showed nothing its servers
+wrote while vx held them: a persistent task's output after ready goes
+to a bounded tail, flushed once at `runEnd`, which runs before the
+summary, and the keep-alive wait after it printed none of what followed.
+After that flush a kept server's output now streams, a line at a time
+under its id (`app#dev │ …`), its last partial line at `settle` (the
+bus delivers one `run:end`), a line that never ends (a `\r` progress
+bar) at 64 KiB rather than held without bound, fenced on GitHub Actions, silent under `errors-only`. Rows
+(`output-flow.test.ts`): the stream in broad and full (red without it),
+the partial line at `settle`,
+errors-only silent (red with its guard removed), and the fence (red with
+either fence removed). `cli.md` says so.
+
 ## C-55: a fail-fast skip is not "blocked upstream"
 
 `--continue=never`'s footer read `Skipped: 2 tasks never started —
@@ -904,6 +919,15 @@ the fix), and after `stop` the bus reaches it no more (red with the
 detach removed); probed end to end (9 lines in 2.5 s, 2 before).
 `cli.md` says so.
 
+## C-58: two comments that claimed what the code does not
+
+J's leads (J-65, J-78). `resolveCache` said one plugin layer "is used as
+is", but a layer that does not wrap the local store is chained with it
+at the tail; it now says only a single layer left is used as is.
+`RunOptions.holdPersistent` said only the requested servers are handed
+back; it names the ones a requested group stands for (C-52) and their
+persistent dependencies (C-46). Comments only.
+
 ## C-61: run() refuses the numbers the CLI refuses
 
 The CLI and the workspace config refuse a `concurrency` that is not a
@@ -927,3 +951,14 @@ session a plugin's `onTaskStdout` heard the server after its own
 released just before the teardown. Row (`keep-alive.test.ts` › a plugin
 hears nothing after its teardown while vx holds a server): red without
 the fix (`torn:AFTER`). `modules/plugin.md` says so.
+## C-63: a plugin executor's throw from `execute` names the plugin
+
+Every plugin hook's throw names the plugin and the hook (`accepts`,
+`demand`, the factories; C-54 for `setup`); a throw from a plugin
+executor's `execute` read `[vx] internal error in pkg-a#hello: pool
+down`, naming neither. Its message now reads `plugin 'org/down'
+(executor 'down') failed in execute: pool down`, in the frame and the
+scheduler's line. The error object is kept (its class, cause and code),
+so a refusal still prints plainly and a bug as an internal error.
+Row (`plugin-capabilities.test.ts` › an executor's throw reaches the
+task's own stderr): red without the fix. `modules/executor.md` says so.
