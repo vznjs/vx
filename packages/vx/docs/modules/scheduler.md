@@ -168,8 +168,11 @@ one that finishes early releases them once its own deps have settled,
 so `dependsOn` order holds through a hit (released at its own finish,
 an `e2e` ran beside the `db:migrate` two edges up; item 963). An exec-tier task's count is the
 exact closure over the exec tier alone; a restore's is the sum over its
-direct exec-tier dependents of one plus theirs, a rank that can count a
-diamond twice, which only reorders restores among themselves, on a lane
+direct exec-tier dependents of one plus theirs, plus the rank of each
+restore that depends on it, since that one releases its dependents only
+after it (C-51: `r1 → r2 → e` ranked `r1` 0, behind every idle restore,
+and `e` waited for it; skipped when no restore feeds an exec task, so an
+all-hit run pays nothing). A rank that can count a diamond twice which only reorders restores among themselves, on a lane
 twice the exec cap. A warm run's exec tier is its group tasks with no
 edges among them, and the whole-graph closure (476 packages: 1,428
 nodes, 12.8k edges of 45-word bitsets) was 10 ms of the run-graph
