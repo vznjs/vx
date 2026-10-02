@@ -1021,9 +1021,10 @@ holds it (red without the fix: `pwd` read `/root`), and the bare
 baseline's row now pins the two write violations (red without it).
 
 B-56. A plain command opening with a bash reserved word was `exec`'d:
-macOS's `sh` is bash, where `[[`, `time` and `coproc` are words, not
+macOS's `sh` is bash, where `[[` and `time` are words, not
 programs, so `[[ -f x ]]` as a task's whole command was
 `exec: [[: not found`, exit 127, where the bare command ran. They now
 keep the shell, as builtins do. Row: `runner.test.ts` › execWrap ›
 leaves bash's reserved words alone, run under bash (red without the
-fix, 127). Linux's dash has none of the three, so only macOS ran it.
+fix, 127). Linux's dash has neither, so only macOS ran it. `coproc`
+is left out: macOS's bash 3.2 has no such word (CI's macOS job).

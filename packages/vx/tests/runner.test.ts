@@ -976,7 +976,7 @@ describe('execWrap — grandchild-orphan mitigation', () => {
   // programs: `exec [[ -f x ]]` is "exec: [[: not found", exit 127, where
   // the bare command ran. Run under bash, as the guarantee.
   it("leaves bash's reserved words alone (exec cannot run them)", () => {
-    for (const command of ['[[ -f /etc/passwd ]]', 'time /bin/sh -c true', 'coproc true']) {
+    for (const command of ['[[ -f /etc/passwd ]]', 'time /bin/sh -c true']) {
       const r = Bun.spawnSync(['bash', '-c', execWrap(command)], { stderr: 'pipe' })
       expect([command, r.exitCode]).toEqual([command, 0])
     }

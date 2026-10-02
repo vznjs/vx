@@ -210,7 +210,6 @@ const SHELL_BUILTINS = new Set([
   // is bash, and `exec [[ … ]]` there is "exec: [[: not found".
   '[[',
   'time',
-  'coproc',
 ])
 
 /**
