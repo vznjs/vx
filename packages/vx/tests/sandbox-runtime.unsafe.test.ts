@@ -4104,9 +4104,8 @@ describe.skipIf(WIN32)('localBinding port list — the pure halves', () => {
     expect(inner).toContain('TCP:127.0.0.1:3001')
     // Backgrounded socats are reaped with the shell, as SRT reaps its own.
     expect(inner.endsWith("trap 'kill $(jobs -p) 2>/dev/null' EXIT;")).toBe(true)
-    // The host's socat is resolved on vx's PATH, as every tool vx spawns.
     expect(portBridgeHostArgv('t1', 3000)).toEqual([
-      Bun.which('socat')!,
+      'socat',
       'TCP-LISTEN:3000,bind=127.0.0.1,fork,reuseaddr',
       `UNIX-CONNECT:${sock},retry=40,interval=0.25`,
     ])

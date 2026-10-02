@@ -1237,7 +1237,7 @@ export function portBridgeInner(ports: readonly number[], tag: string): string {
  */
 export function portBridgeHostArgv(tag: string, port: number): string[] {
   return [
-    executablePath('socat'),
+    'socat',
     `TCP-LISTEN:${port},bind=127.0.0.1,fork,reuseaddr`,
     `UNIX-CONNECT:${portBridgeSocket(tag, port)},retry=40,interval=0.25`,
   ]
@@ -1285,6 +1285,10 @@ function spawnHostBridges(ports: readonly number[], tag: string): void {
     // A spawn failure (no socat on the host) is the task's to report:
     // its own side dies the same way, in its frame.
     try {
+      // socat resolved on vx's PATH, as every tool vx spawns: by bare name
+      // Bun.spawn walked the startup PATH (M-22).
+      const [tool, ...rest] = portBridgeHostArgv(tag, p)
+      const argv = [executablePath(tool!), ...rest]
       // Guarded, in a group of its own (kill-tree.ts): a plain child of vx
       // was in no group the guard lists, and a `kill -9` of vx left it
       // listening on the port under init, where the next run's bridge
@@ -1292,7 +1296,7 @@ function spawnHostBridges(ports: readonly number[], tag: string): void {
       procs.push(
         spawnGuarded((guard) =>
           guard === undefined
-            ? Bun.spawn(portBridgeHostArgv(tag, p), {
+            ? Bun.spawn(argv, {
                 stdio: ['ignore', 'ignore', 'ignore'],
                 detached: true,
               })
@@ -1300,7 +1304,7 @@ function spawnHostBridges(ports: readonly number[], tag: string): void {
                 [
                   executablePath('sh'),
                   '-c',
-                  `${guardLine(3)}exec ${portBridgeHostArgv(tag, p).map(shellQuote).join(' ')}`,
+                  `${guardLine(3)}exec ${argv.map(shellQuote).join(' ')}`,
                 ],
                 { stdio: ['ignore', 'ignore', 'ignore', guard], detached: true },
               ),
