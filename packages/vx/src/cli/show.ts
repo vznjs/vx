@@ -339,6 +339,12 @@ function taskBlock(taskName: string, raw: TaskConfig): string {
     add('outputs.workspaceFiles', list(cache.outputs.workspaceFiles))
   }
   const labelW = Math.max(...rows.map(([label]) => label.length))
-  const body = rows.map(([label, value]) => `  ${`${label}:`.padEnd(labelW + 1)} ${value}`)
+  // A multi-line value (a generated `vx_script` wrapper, a heredoc)
+  // continues under its first line, not at column 0 where it reads as
+  // the next task's header.
+  const indent = `\n${' '.repeat(labelW + 4)}`
+  const body = rows.map(
+    ([label, value]) => `  ${`${label}:`.padEnd(labelW + 1)} ${value.replaceAll('\n', indent)}`,
+  )
   return `${taskName}\n${body.join('\n')}\n`
 }
