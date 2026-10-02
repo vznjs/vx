@@ -9,6 +9,7 @@
 
 import { nxWorkspacePath, underProject } from './nx-outputs.js'
 import { minimatchToVx } from '../glob-grammar.js'
+import { shellQuote } from '../nx-command.js'
 
 export interface NxInputs {
   readonly files: string[]
@@ -108,6 +109,10 @@ export function expandNxInputs(
         into.runtimeCmds.push(o.runtime)
         return
       }
+      if (typeof o.fileset === 'string' && o.includeIgnored === true) {
+        ignored(entry, o.fileset, o.dependencies === true)
+        return
+      }
       if (typeof o.fileset === 'string') {
         // `dependencies: true` is each dependency's fileset, as `^{projectRoot}/…`
         // is. Expanded as the project's own, a dependency's edit re-keyed
@@ -167,6 +172,25 @@ export function expandNxInputs(
       }
     }
     todos.push(`input ${JSON.stringify(entry)} not representable in vx`)
+  }
+  // `{ fileset, includeIgnored: true }` (Nx 23) hashes the path from disk,
+  // gitignored or generated, a missing one included. vx's globs see only
+  // what git lists: mapped as one, a gitignored literal failed the task
+  // before it ran. A literal path is read by a probe at the workspace root
+  // instead, its exit telling a missing file from an empty one.
+  const ignored = (entry: unknown, fileset: string, deps: boolean): void => {
+    const neg = fileset.startsWith('!')
+    const p = nxWorkspacePath(neg ? fileset.slice(1) : fileset, at.rel, at.name)
+    if (deps || p === null || /[*?[{]/.test(p)) {
+      todos.push(
+        `input ${JSON.stringify(entry)}: vx keys only the files git lists, so a gitignored ` +
+          'match is not in the key — read it with a cache.inputs.workspaceRuntime probe',
+      )
+      return
+    }
+    // A negation filters only other includeIgnored matches, and a literal
+    // reads no others.
+    if (!neg) into.runtimeCmds.push(`cat -- ${shellQuote(p)} 2>/dev/null; echo "$?"`)
   }
   for (const entry of entries) expand(entry, new Set())
   // Nx matches a project fileset with no positive glob against every project
