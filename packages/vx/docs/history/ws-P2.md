@@ -50,6 +50,15 @@ start` (in the build output) with Nx's port and `PORT`, and
   (`@nx/js:release-publish`, which Nx adds to every package) as a
   failing placeholder per package: the report has one note naming the
   package manager's own `publish`. `nx()` still runs it.
+- **P2-9** A migrated command that still runs Nx (`nx run b:build`,
+  `npx nx test`, `nx exec -- tsc`) carries a TODO naming what to write
+  instead: it works only while Nx is installed, and it passed the
+  report clean.
+- **P2-10** An Nx migration's report says what `vx.workspace.ts` still
+  holds, as the Turbo one does (the helper is now shared): the `nx()`
+  `vx init` declared, which keeps reading nx.json and filling tasks, and
+  a lockfile with no `@vzn/vx-lockfile` plugin, where a bump re-runs
+  every task that Nx re-ran per project.
 
 ## Leads for other streams
 

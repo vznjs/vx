@@ -55,4 +55,11 @@ export { isUnsupportedBun, MIN_BUN, unsupportedBunMessage } from './bun-version.
 export { executablePath, shellArgv } from './which.js'
 export { procfsIsOwn } from './procfs.js'
 export { realPath } from './real-path.js'
-export { maskedCommand, maskedEmitter, MASKED, secretMask, type SecretMask } from './secret-mask.js'
+export {
+  maskedCommand,
+  maskedEmitter,
+  maskedLine,
+  MASKED,
+  secretMask,
+  type SecretMask,
+} from './secret-mask.js'

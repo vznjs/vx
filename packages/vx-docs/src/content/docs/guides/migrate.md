@@ -179,6 +179,7 @@ next: npm install -D @vzn/vx-migrate && npx vx run build --all
 $ bunx @vzn/vx-migrate
 vx-migrate: nx graph → vx.config.ts
 note: migrating from the resolved project-graph snapshot — plugin-inferred targets are frozen as static config; an executor target becomes the command its executor runs, or a placeholder the TODOs below list; targets with `.env` files run through `nx-env` (keep @vzn/vx-migrate installed)
+note: vx.workspace.ts still declares nx(), which reads nx.json every run and fills any task a vx.config does not declare; the configs written here declare them all. Once `vx run` does what nx did, remove nx() (and its import), then nx.json
 
 2 tasks migrated clean, 0 TODOs
 files written:
