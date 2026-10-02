@@ -134,6 +134,17 @@ export function buildPackageGraph(
   // built on the first one, as the closures are.
   const reachDeps = new Map<string, string[]>()
   const directDependents = new Map<string, string[]>()
+  /** One project's REACH list, made on first ask (`buildReach` makes them all). */
+  const reachOf = (name: string): string[] => {
+    let reach = reachDeps.get(name)
+    if (reach === undefined) {
+      const own = order.get(name)
+      if (own === undefined) return []
+      reach = [...new Set([...own, ...peers.get(name)!])].sort()
+      reachDeps.set(name, reach)
+    }
+    return reach
+  }
   let reachBuilt = false
   const buildReach = (): void => {
     if (reachBuilt) return
@@ -224,13 +235,40 @@ export function buildPackageGraph(
   // does a `^task` walk (it reads `directDeps`). Building both closures
   // eagerly was 12 ms of a 240 ms warm run at 1000 projects × 30 deps
   // (profiled 2026-09-09) for answers nobody read.
-  function makeAccessor(edges: Map<string, string[]>): (name: string) => string[] {
+  // A scoped run asks one or two seeds' closures: a search from each over
+  // the REACH lists it visits answers them without every project's list
+  // and the whole graph's bitsets (8–13 ms at 1,000 projects for one
+  // `--filter`). The same set, in the same name order; past a few asks
+  // the bitsets are cheaper per question.
+  const EARLY_SEARCHES = 8
+  const searchDeps = (name: string): string[] => {
+    const seen = new Set<string>()
+    const stack = [...reachOf(name)]
+    while (stack.length > 0) {
+      const cur = stack.pop()!
+      if (seen.has(cur)) continue
+      seen.add(cur)
+      for (const d of reachOf(cur)) stack.push(d)
+    }
+    return [...seen].sort()
+  }
+  function makeAccessor(
+    edges: Map<string, string[]>,
+    search?: (name: string) => string[],
+  ): (name: string) => string[] {
     const memo = new Map<string, string[]>()
     let closures: Uint32Array | null | undefined
     const words = (names.length + 31) >>> 5
+    let searched = 0
     return (name) => {
       const cached = memo.get(name)
       if (cached) return cached
+      if (search !== undefined && closures === undefined && searched < EARLY_SEARCHES) {
+        searched++
+        const result = search(name)
+        memo.set(name, result)
+        return result
+      }
       buildReach()
       if (closures === undefined) closures = bitsetClosures(edges)
       if (closures === null) {
@@ -257,7 +295,7 @@ export function buildPackageGraph(
 
   return {
     directDeps: (name) => directDeps.get(name) ?? [],
-    transitiveDeps: makeAccessor(reachDeps),
+    transitiveDeps: makeAccessor(reachDeps, searchDeps),
     transitiveDependents: makeAccessor(directDependents),
   }
 }

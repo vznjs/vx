@@ -1106,7 +1106,9 @@ change the exit code — the run already happened, the same contract
 Labels the invocation. Repeatable; `--tag=k=v` form too. The pair is
 split on the **first** `=`, so values may contain `=` (e.g. a URL). An
 empty key is a parse error. Tags are recorded on the run's
-`invocations` row so dashboards can filter runs by label.
+`invocations` row so dashboards can filter runs by label, and reach
+telemetry as `vx.tag.<key>`; a secret value in one is masked there as
+in the task's output (see [Masking](./schema.md)).
 
 ## Sandbox
 
@@ -1721,7 +1723,9 @@ a `--watch` flag, `tsc -w` / `rollup -w`, or nodemon (D-40), and a server:
 `serve <dir>`, `http-server`, bare `vite`, a tool's `dev` / `serve` /
 `start` / `preview` verb (`next start`, `netlify dev`), or a script that
 runs such a script of its package by name (`cross-env X=1 pnpm start`),
-outside quotes and not sent to the background with `&` (D-91). A
+outside quotes and not sent to the background with `&` (D-91), read past
+a launcher's `--package <name>` / `-p <name>` (`pnpm dlx --package
+netlify-cli netlify dev`, D-112). A
 script whose name no task may carry (`lint#fix`, `^up`; the schema's
 rule, item 1000) is left out with a TODO rather than written into a
 config every later command refuses, and a `__proto__` script is written

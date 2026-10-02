@@ -49,7 +49,9 @@ behavior lives in the plugin package (vite-style), not in core.
   exception (item 849), nor is one that never started its schedule (a
   refused setup, a factory that threw, an unresolved name) or a plan
   (item 1021); a second signal, or a `kill -9`, is. A plugin whose own
-  `setup` threw is not torn down. (The older `eventSink` seam is gone since
+  `setup` threw is not torn down. Its `ctx.on` handlers and telemetry
+  sinks are released just before `teardown()`, so it hears nothing after
+  it, a server vx keeps in the foreground included (C-66). (The older `eventSink` seam is gone since
   pipeline v2; `setup(ctx)` on the bus and `telemetry` are the two
   observe paths.)
 - **No defaults, one floor.** Core applies no plugin on its own; its
