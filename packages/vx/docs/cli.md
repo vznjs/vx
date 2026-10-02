@@ -2070,7 +2070,7 @@ unreported`: the sandbox still enforces, but a task that tolerates a
   denied read passes and caches with no word of it. The `--json` fact is
   `sandbox.untraced`, the reason or `null`.
 - `plugins` names every plugin `vx.workspace.*` declares and the seams
-  each fills, in pipeline order (`config`, `project`, `graph`, `key`,
+  each fills, in pipeline order (`config`, `discover`, `project`, `graph`, `key`,
   `fingerprint`, `schedule`, `admit`, `executor`, `cache`, `telemetry`,
   `setup`, `commands`), or `none`. It reads the declarations: a plugin
   that declines a task at run time still lists its seam here.
