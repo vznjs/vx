@@ -59,6 +59,12 @@ An executor target is written as the command its executor runs (jest,
 vitest, vite, eslint, tsc, …); any other executor is a placeholder the
 report lists, for you to write.
 
+The `nx()` plugin, which reads the graph live, is different: executor
+targets keep running as executors. Each becomes an `nx-exec`
+line that runs the executor in its own Node process through Nx's public
+`runExecutor`, with the executor and its options on the command line,
+so vx's key sees them and `vx show` prints what runs.
+
 ## The one real shift: executors become commands
 
 An Nx target runs through an executor, a plugin that wraps a tool
