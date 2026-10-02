@@ -1635,7 +1635,8 @@ bare `(403)` (item 1098).
 In a Turbo or Nx repo (a `turbo.json`, `turbo.jsonc` or `nx.json` at
 the root) it writes `vx.workspace.ts` declaring `turbo()` or `nx()`
 from `@vzn/vx-migrate` and nothing else: those read the repo's own
-config live, so no task is copied. The `next:` line is one command:
+config live, so no task is copied, as a temporary start until
+`bunx @vzn/vx-migrate` writes the `vx.config.ts` files. The `next:` line is one command:
 install what the file imports and is missing, with the manager the
 lockfile names (at the workspace root: pnpm's `-w`, Yarn 1's `-W`,
 which Yarn Berry lacks), then run the config's `build` (else its first task).

@@ -1143,7 +1143,7 @@ describe('vx init — the generated build is not a cached no-op', () => {
         const r = await vx(root, ['init'])
         expect({ code: r.code, err: r.err }).toEqual({ code: 0, err: '' })
         expect(r.out).toBe(
-          `vx init: ${file} found — turbo() from @vzn/vx-migrate runs this repo as it is; nothing else written.\n` +
+          `vx init: ${file} found — turbo() from @vzn/vx-migrate runs its tasks as a start, until \`bunx @vzn/vx-migrate\` writes vx configs; nothing else written.\n` +
             'wrote vx.workspace.ts.\n\n' +
             'next: npm install -D @vzn/vx-migrate && vx run compile --all\n',
         )

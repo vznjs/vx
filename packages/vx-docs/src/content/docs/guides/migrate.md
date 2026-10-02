@@ -36,7 +36,7 @@ export default { plugins: [turbo()] } satisfies WorkspaceConfig
 
 ```text
 $ npx vx init
-vx init: turbo.json found — turbo() from @vzn/vx-migrate runs this repo as it is; nothing else written.
+vx init: turbo.json found — turbo() from @vzn/vx-migrate runs its tasks as a start, until `bunx @vzn/vx-migrate` writes vx configs; nothing else written.
 wrote vx.workspace.ts.
 
 next: npm install -D @vzn/vx-migrate && npx vx run build --all
