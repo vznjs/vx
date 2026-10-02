@@ -37,7 +37,12 @@ import {
   runSandboxed,
   wrapSandboxedCommand,
 } from '../src/exec/sandbox-runtime.js'
-import { buildCustomConfig, punchWritePaths, scratchWrites } from '../src/exec/sandbox-binds.js'
+import {
+  bindableWrites,
+  buildCustomConfig,
+  punchWritePaths,
+  scratchWrites,
+} from '../src/exec/sandbox-binds.js'
 import {
   bridgedPorts,
   portBridgeHostArgv,
@@ -2603,6 +2608,37 @@ describe('resolveSandboxConfig', () => {
     },
   )
 
+  // SRT drops every Linux write path holding a bracket, so the grant
+  // bound nothing and the task's write read only "a write no grant covers"
+  // beside the grant that named it.
+  it.skipIf(process.platform !== 'linux')(
+    'says so when a write path holds a bracket, and names the directory above it',
+    async () => {
+      const root = realpathSync(await mkdtemp(path.join(os.tmpdir(), 'vx-sbx-bracket-')))
+      await mkdir(path.join(root, 'out', '[id]'), { recursive: true })
+      const said: string[] = []
+      const spy = spyOn(process.stderr, 'write').mockImplementation((chunk: unknown) => {
+        said.push(String(chunk))
+        return true
+      })
+      try {
+        await mkdir(path.join(root, 'dist'))
+        judged({ allow: { read: ['.'], write: ['out/\\[id\\]/', 'dist/'] } }, root)
+        // Out of the binds, so the read grants keep the directory and the
+        // refused write is judged against no grant.
+        expect(bindableWrites([`${root}/out/[id]`, `${root}/dist`])).toEqual([`${root}/dist`])
+        expect(said.filter((l) => l.includes('holds a bracket'))).toEqual([
+          `[vx] sandbox: the write grant ${root}/out/[id] holds a bracket, and the Linux ` +
+            `sandbox mounts no write path that does, so a write under it is refused. Grant ` +
+            `the directory above it instead: ${root}/out/\n`,
+        ])
+      } finally {
+        spy.mockRestore()
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+  )
+
   it.skipIf(process.platform !== 'linux')(
     'says so when a WRITE grant mounts nothing, and names the directory to grant instead',
     async () => {
@@ -2886,6 +2922,71 @@ describe('deniedCalls (strace trace parsing)', () => {
       '/ws/q"t.txt',
       '/ws/b\\s\tt\n',
       '/ws/A\u00011',
+    ])
+  })
+
+  // Given the starting cwd, each process's `chdir` and forks are followed:
+  // a denial after `cd src` was reported against the starting cwd, naming
+  // a file that does not exist, and no `ignore` for the real one matched.
+  // A vfork child's lines come before its parent's `resumed` line.
+  it('resolves a relative path against the cwd its process had moved to', () => {
+    const trace = [
+      '10 chdir("src")                     = 0',
+      '10 vfork( <unfinished ...>',
+      '11 openat(AT_FDCWD, "secret.txt", O_RDONLY) = -1 ENOENT (No such file or directory)',
+      '10 <... vfork resumed>)            = 11',
+      '10 clone(child_stack=NULL, flags=SIGCHLD, child_tidptr=0x7f) = 12',
+      '12 chdir("/abs")                    = 0',
+      '12 chdir("deeper" <unfinished ...>',
+      '12 <... chdir resumed>)            = 0',
+      '12 openat(AT_FDCWD, "a", O_RDONLY) = -1 EACCES (Permission denied)',
+      '10 chdir("nope")                   = -1 ENOENT (No such file or directory)',
+      '10 openat(AT_FDCWD, "b", O_RDONLY) = -1 ENOENT (No such file or directory)',
+      '10 fchdir(3)                       = 0',
+      '10 openat(AT_FDCWD, "c", O_RDONLY) = -1 ENOENT (No such file or directory)',
+      '13 openat(AT_FDCWD, "d", O_RDONLY) = -1 ENOENT (No such file or directory)',
+      '',
+    ].join('\n')
+    expect(deniedCalls(trace, '/ws/p').map((c) => [c.rawPath, c.dir])).toEqual([
+      ['secret.txt', '/ws/p/src'],
+      ['a', '/abs/deeper'],
+      ['b', '/ws/p/src'],
+      // fchdir names no path: lost, so the starting cwd stands, as before.
+      ['c', undefined],
+      // A process with no fork in the trace started where the task did.
+      ['d', undefined],
+    ])
+    // Without the starting cwd nothing is followed.
+    expect(deniedCalls(trace).map((c) => c.dir)).toEqual([
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+    ])
+  })
+
+  // A thread shares its creator's cwd (CLONE_FS) rather than copying it:
+  // a worker started before the main thread's `chdir` opens from the new
+  // directory, as libuv's pool does after `process.chdir`.
+  it('moves a thread with the process whose cwd it shares', () => {
+    const trace = [
+      '20 clone3({flags=CLONE_VM|CLONE_FS|CLONE_FILES|CLONE_SIGHAND|CLONE_THREAD, exit_signal=0}, 88) = 21',
+      '20 clone(child_stack=0x7f, flags=CLONE_VM|CLONE_FS|CLONE_THREAD <unfinished ...>',
+      '20 <... clone resumed>, parent_tid=[22]) = 22',
+      '20 clone(child_stack=NULL, flags=SIGCHLD) = 23',
+      '20 chdir("src")                    = 0',
+      '21 openat(AT_FDCWD, "a", O_RDONLY) = -1 ENOENT (No such file or directory)',
+      '22 chdir("deep")                   = 0',
+      '20 openat(AT_FDCWD, "b", O_RDONLY) = -1 ENOENT (No such file or directory)',
+      '23 openat(AT_FDCWD, "c", O_RDONLY) = -1 ENOENT (No such file or directory)',
+      '',
+    ].join('\n')
+    expect(deniedCalls(trace, '/ws').map((c) => [c.rawPath, c.dir])).toEqual([
+      ['a', '/ws/src'],
+      ['b', '/ws/src/deep'],
+      // A forked process copied the cwd at the fork, before the `chdir`.
+      ['c', undefined],
     ])
   })
 
@@ -4653,6 +4754,60 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
     ])
   })
 
+  // SRT reads any Linux read path holding `[` as a glob, where a bracket
+  // opens a class: a Next.js route granted by its escaped name matched,
+  // was never mounted, and its denial went unreported (a listed grant),
+  // and a workspace under a bracketed directory was never walled.
+  const bracketed = async (ws: string) => {
+    const proj = path.join(ws, 'app')
+    await mkdir(path.join(proj, 'pages'), { recursive: true })
+    await mkdir(path.join(ws, 'other'))
+    await writeFile(path.join(proj, 'pages', '[id].tsx'), 'route')
+    await writeFile(path.join(ws, 'other', 'x.txt'), 'sibling')
+    return (command: string, read: string[]) =>
+      runSandboxed(
+        args(command, {
+          cwd: proj,
+          baseAllowRead: [],
+          baseDenyRead: [ws],
+          reportWithin: proj,
+          config: resolveSandboxConfig({ allow: { read } }, proj),
+        }),
+      )
+  }
+
+  it('mounts a granted path whose name holds a bracket', async () => {
+    const run = await bracketed(path.join(dir, 'ws'))
+    const route = await run("cat 'pages/[id].tsx'", ['pages/\\[id\\].tsx'])
+    expect([route.exitCode, route.stdout]).toEqual([0, 'route'])
+  })
+
+  // A grant under such a workspace does not resolve yet (vx's own scan
+  // reads the bracket too; ws-b.md lead 7), so the row pins the wall alone.
+  it('walls a workspace whose directory name holds a bracket', async () => {
+    const run = await bracketed(path.join(dir, '[ws]'))
+    const sibling = await run('cat ../other/x.txt', ['.'])
+    expect([sibling.exitCode === 0, sibling.stdout]).toEqual([false, ''])
+  })
+
+  it('reports a denial under the directory the task changed into', async () => {
+    const proj = path.join(dir, 'proj')
+    await mkdir(path.join(proj, 'src'), { recursive: true })
+    await writeFile(path.join(proj, 'src', 'secret.txt'), 's')
+    await writeFile(path.join(proj, 'src', 'x.txt'), 'x')
+    const r = await runSandboxed(
+      args('cd src && cat secret.txt; (cd .. && cat src/secret.txt); true', {
+        cwd: proj,
+        baseAllowRead: [],
+        baseDenyRead: [dir],
+        reportWithin: proj,
+        config: resolveSandboxConfig({ allow: { read: ['src/x.txt'] } }, proj),
+      }),
+    )
+    // One file, read from two cwds: one denial.
+    expect(r.violations.map((v) => v.target)).toEqual([path.join(proj, 'src', 'secret.txt')])
+  })
+
   it('a spawn that throws is exit 127 with the reason, not a rejection', async () => {
     const r = await runSandboxed(args('true', { cwd: path.join(dir, 'gone') }))
     // spawnFailed: no shell ran, so execute-task says nothing of a missing command (A-41).
@@ -4741,7 +4896,7 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
         '--seccomp-bpf',
         '-qq',
         '-e',
-        'trace=openat',
+        'trace=openat,chdir,fchdir,clone,?clone3,?fork,?vfork',
         '-o',
         '/dev/fd/5',
         '--',

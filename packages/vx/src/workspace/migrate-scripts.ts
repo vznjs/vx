@@ -107,7 +107,41 @@ const OWN_COMMANDS: Readonly<Record<string, ReadonlySet<string>>> = {
  * `enablePrePostScripts: false` in `pnpm-workspace.yaml` (D-33); Bun and
  * Yarn 1 run them whatever those say. No manager found is npm's default.
  */
-function runsScriptHooks(dir: string, memo: Map<string, string | null>): string | null {
+function runsScriptHooks(dir: string, memo: Map<string, Owner>): string | null {
+  const { manager, at } = ownerOf(dir, memo)
+  const read = (f: string): string | undefined => {
+    try {
+      return readFileSync(path.join(at, f), 'utf8')
+    } catch {
+      return undefined
+    }
+  }
+  const npmrc = read('.npmrc') ?? ''
+  const set = (key: string, value: string): boolean =>
+    new RegExp(`^\\s*${key}\\s*=\\s*${value}\\s*$`, 'm').test(npmrc)
+  const runs =
+    manager === 'berry'
+      ? false
+      : manager === 'npm'
+        ? !set('ignore-scripts', 'true')
+        : manager === 'pnpm'
+          ? !set('enable-pre-post-scripts', 'false') &&
+            !/^enablePrePostScripts:\s*false\s*$/m.test(read('pnpm-workspace.yaml') ?? '')
+          : true
+  return runs ? manager : null
+}
+
+/** The package manager that owns a directory, and the directory that says so. */
+interface Owner {
+  manager: string
+  at: string
+}
+
+/**
+ * The nearest `packageManager` field or lockfile from `dir` up: `berry` for
+ * Yarn 2+, `yarn` for Yarn 1, else the manager's name; none found is npm.
+ */
+function ownerOf(dir: string, memo: Map<string, Owner>): Owner {
   const known = memo.get(dir)
   if (known !== undefined) return known
   const read = (f: string): string | undefined => {
@@ -131,27 +165,26 @@ function runsScriptHooks(dir: string, memo: Map<string, string | null>): string 
     else if (existsSync(path.join(dir, 'package-lock.json'))) manager = 'npm'
     else if (['bun.lock', 'bun.lockb'].some((f) => existsSync(path.join(dir, f)))) manager = 'bun'
   }
-  let answer: string | null
-  if (manager === undefined) {
-    const up = path.dirname(dir)
-    answer = up === dir ? 'npm' : runsScriptHooks(up, memo)
-  } else {
-    const npmrc = read('.npmrc') ?? ''
-    const set = (key: string, value: string): boolean =>
-      new RegExp(`^\\s*${key}\\s*=\\s*${value}\\s*$`, 'm').test(npmrc)
-    const runs =
-      manager === 'berry'
-        ? false
-        : manager === 'npm'
-          ? !set('ignore-scripts', 'true')
-          : manager === 'pnpm'
-            ? !set('enable-pre-post-scripts', 'false') &&
-              !/^enablePrePostScripts:\s*false\s*$/m.test(read('pnpm-workspace.yaml') ?? '')
-            : true
-    answer = runs ? manager : null
-  }
-  memo.set(dir, answer)
-  return answer
+  const up = path.dirname(dir)
+  const owner =
+    manager !== undefined
+      ? { manager, at: dir }
+      : up === dir
+        ? { manager: 'npm', at: dir }
+        : ownerOf(up, memo)
+  memo.set(dir, owner)
+  return owner
+}
+
+/**
+ * Yarn 2+ runs a script in its own shell, where `run <script>` is `yarn
+ * run <script>`; vx's shell has no `run`, and 23 of berry's scripts
+ * (`run build:zip:worker`, `run test:unit packages/…`) mapped to tasks
+ * that failed "command not found" (D-92). Spelled out, at the head of
+ * each `&&` / `||` / `;` / `|` segment.
+ */
+function berryRun(command: string): string {
+  return command.replace(/(^|&&|\|\||[;|(])(\s*)run(?=\s)/g, '$1$2yarn run')
 }
 
 const MANIFEST_IMPORT = "import pkg from './package.json' with { type: 'json' }"
@@ -354,7 +387,7 @@ export function migrateScripts(
   outsideDir?: string,
 ): MigrationPlan {
   const projects: GeneratedProject[] = []
-  const hookMemo = new Map<string, string | null>()
+  const hookMemo = new Map<string, Owner>()
   // The workspace root among members: many of its scripts run the
   // workspace (`npm run build --workspaces`, `pnpm -r build`), and a root
   // task made of one ran every member's build again under `--all`. Since
@@ -433,6 +466,20 @@ export function migrateScripts(
     typeof outsideScripts === 'object' &&
     outsideScripts !== null &&
     Object.values(outsideScripts).some((v) => typeof v === 'string' && v !== '')
+  const unnamedMaps = (): string[] => {
+    const meta: ProjectMeta = {
+      name: 'package.json',
+      dir: outsideDir!,
+      packageJson: outside as never,
+      configPath: null,
+    }
+    const scripts = scriptsOf(meta)
+    return Object.keys(rootScripts(meta)).filter((n) => {
+      // A hook rides in its script's command and is no script to name.
+      const base = /^(?:pre|post)(.+)$/.exec(n)?.[1]
+      return !LIFECYCLE.test(n) && (base === undefined || !(base in scripts))
+    })
+  }
   const rootName =
     root?.name ??
     (outsideRuns
@@ -451,6 +498,14 @@ export function migrateScripts(
           ? `; left out as a member's task name, so \`--all\` never runs one twice: ${listed(shared)} — one that does other work maps by hand under a name of its own`
           : ''),
     )
+  } else if (rootName === 'package.json' && outsideDir !== undefined && unnamedMaps().length > 0) {
+    // react's nameless root: "its scripts run the workspace" was not why,
+    // and 30 of its scripts (`build`, `lint`, `test`) map once it has a
+    // name (D-87).
+    const would = unnamedMaps()
+    notes.push(
+      `package.json (the workspace root) not mapped: it has no "name", and vx names a project by it; give it one and run \`vx init\` again to map ${would.length} of its scripts (${would.slice(0, 8).join(', ')}${would.length > 8 ? ', …' : ''})`,
+    )
   } else if (rootName !== undefined) {
     // A nameless root's vx.config is skipped (vx names projects by their
     // manifest's name), so the hand-written one needs a name first (vuejs/core).
@@ -465,6 +520,7 @@ export function migrateScripts(
     const scripts = meta === rootMeta ? rootScripts(meta) : scriptsOf(meta)
     const hooksBy = runsScriptHooks(meta.dir, hookMemo)
     const runsHooks = hooksBy !== null
+    const berry = ownerOf(meta.dir, hookMemo).manager === 'berry'
     const runnable = Object.keys(scripts).filter(
       (n) => typeof scripts[n] === 'string' && scripts[n] !== '',
     )
@@ -493,7 +549,7 @@ export function migrateScripts(
       if (!isTask(name)) continue
 
       const todos: string[] = []
-      const own = scripts[name] as string
+      const own = berry ? berryRun(scripts[name] as string) : (scripts[name] as string)
       const delegate = delegatedScript(own)
       // npm lifecycle hooks (`prepack`, `prepublishOnly`, …) belong to the
       // package manager and never ride inside a task — `pack` stays alone.

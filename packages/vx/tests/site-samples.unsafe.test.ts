@@ -1600,3 +1600,56 @@ describe('an install at the workspace root names the flag pnpm and Yarn 1 requir
     expect(seen).toBeGreaterThan(15)
   })
 })
+
+describe('the plugin examples say which seams they cover', () => {
+  // The README and architecture.md said "one runnable plugin per seam";
+  // nine of PLUGIN_HOOKS' fourteen have one (J-101).
+  it('the README names the seams with no example, and its table is plugins/*.ts', () => {
+    const dir = path.resolve(import.meta.dir, '..', '..', 'vx-plugin-examples')
+    const covered = readdirSync(path.join(dir, 'plugins'))
+      .filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts'))
+      .map((f) => f.slice(0, -3))
+      .sort()
+    const readme = readFileSync(path.join(dir, 'README.md'), 'utf8')
+    const rows = [...readme.matchAll(/^\| `(\w+)` +\|/gm)].map((m) => m[1]!).sort()
+    expect(rows).toEqual(covered)
+    const none = PLUGIN_HOOKS.filter((h) => !covered.includes(h))
+    const words = [
+      'zero',
+      'one',
+      'two',
+      'three',
+      'four',
+      'five',
+      'six',
+      'seven',
+      'eight',
+      'nine',
+      'ten',
+    ]
+    const named = none.map((h) => `\`${h}\``)
+    const list = `${named.slice(0, -1).join(', ')} and ${named.at(-1)}`
+    expect(readme.replace(/\s+/g, ' ')).toContain(
+      `for each of ${words[covered.length]} seams (${list} have none)`,
+    )
+    const arch = readFileSync(
+      path.resolve(import.meta.dir, '..', 'docs', 'architecture.md'),
+      'utf8',
+    )
+    expect(arch).toContain(`one runnable plugin for each of ${words[covered.length]} seams`)
+  })
+})
+
+describe("the site's reapi samples on port 443 name a TLS scheme", () => {
+  // A bare `host:443` is plaintext to vx-reapi; the CI and configure guides
+  // showed one (J-96). vx-reapi's tls.test.ts holds the client to it.
+  it('every `endpoint: …:443` on a page starts grpcs:// or https://', () => {
+    const samples = handAuthoredSitePages().flatMap((p) =>
+      [...readFileSync(p, 'utf8').matchAll(/endpoint: '([^']+:443)'/g)].map(
+        (m) => `${path.basename(p)}: ${m[1]!}`,
+      ),
+    )
+    expect(samples.length).toBeGreaterThan(3)
+    expect(samples.filter((s) => !/: (grpcs|https):\/\//.test(s))).toEqual([])
+  })
+})

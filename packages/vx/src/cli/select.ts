@@ -26,7 +26,7 @@ import type { ProjectConfig } from '../config.js'
 import type { ProjectEntry } from '../workspace/index.js'
 import { parseDependencySpec } from '../graph/index.js'
 import { nearest, UserError } from '../util/index.js'
-import { claimedAffected, fingerprintClaims } from '../orchestrator/index.js'
+import { claimedAffected, fingerprintClaims, gitOfDiscovery } from '../orchestrator/index.js'
 import {
   type CliLoadOptions,
   discoverCliProjects,
@@ -60,17 +60,19 @@ export async function workspaceGlobOwners(
     }
     return false
   }
-  // A frozen run with no lock is refused here, before the tolerant sweep
-  // below could answer "nothing affected" and exit 0 without ever reaching
-  // the run's own refusal.
-  if (load.frozen === true && (await readLockfile(root)) === null) {
-    throw new UserError(FROZEN_WITHOUT_LOCK)
-  }
   try {
     const staged = await stagedLoad()
     return [...staged.values()].filter((p) => declaresMatch(p.config)).map((p) => p.name)
   } catch {
     // Fall through to the per-file sweep.
+  }
+  // A frozen run with no lock is refused here, before the tolerant sweep
+  // below could answer "nothing affected" and exit 0 without ever reaching
+  // the run's own refusal. Asked only once the staged load failed: a
+  // frozen load that succeeded read the lock, and a second read parsed it
+  // again (1,000 projects: a 1.1 MB lock, ~10 ms).
+  if (load.frozen === true && (await readLockfile(root)) === null) {
+    throw new UserError(FROZEN_WITHOUT_LOCK)
   }
   const owners: string[] = []
   await Promise.all(
@@ -228,6 +230,11 @@ export async function resolveFilters(
     return { error: err instanceof Error ? err.message : String(err) }
   }
   const walksGraph = parsed.some((f) => f.withDeps || f.withDependents || f.onlyDeps)
+  // A filter that diffs against git starts the run's whole-tree walk now:
+  // the diff reads its untracked files from it (one walk where it spawned
+  // its own), and the run reuses it with the discovery (I-26).
+  const git = parsed.some((f) => f.gitSince !== undefined) ? gitOfDiscovery(projects) : undefined
+  void git?.start()
   // Every reader of the staged configs in this pass — the `pkg#task`
   // edge walk, the `workspaceFiles` owners of a changed path — shares
   // ONE load, and the run reuses it (`RunOptions.staged`): the `project`
@@ -260,6 +267,7 @@ export async function resolveFilters(
           workspaceGlobOwners(root, projects, changed, load, stagedOnce),
         fingerprintClaims: () => workspaceFingerprintClaims(root, projects, load),
         taskEdges: async () => edges ?? taskEdgesFrom(await stagedOnce()),
+        ...(git !== undefined ? { untracked: async () => (await git.start()).untracked } : {}),
       })
       affectedByFilter.set(f, names)
     } catch (err) {

@@ -38,7 +38,7 @@ export const WORKSPACE_FINGERPRINT_FILES = [
   'bunfig.toml',
 ]
 
-// DELIBERATELY ABSENT: `vx.workspace.{ts,mts,js,mjs}`. Everything it can
+// DELIBERATELY ABSENT: `vx.workspace.{ts,mts,js,mjs,cts,cjs}`. Everything it can
 // declare — `concurrency`, `cacheDir`, `timeout`, and the
 // plugin list — is placement, storage or observability, never what a
 // command produces; core's three seams may change WHERE a task runs, not

@@ -1012,7 +1012,7 @@ export async function wrapSandboxedCommand(
   let wrapped = await wrapForTask(
     SandboxManager,
     inner,
-    customConfig,
+    process.platform === 'linux' ? literalReadPaths(customConfig) : customConfig,
     ports.length > 0 || asksUnixSockets(args.config),
     args.config.gitConfig === true,
   )
@@ -1125,7 +1125,9 @@ function ownGroupCommand(
     ...(trace === 'seccomp' ? ['--seccomp-bpf'] : []),
     '-qq',
     '-e',
-    'trace=openat',
+    // A process's cwd moves on `chdir` and starts as its parent's at the
+    // fork (`deniedCalls`); `?` lets an arch without `fork` skip it.
+    TRACED_CALLS,
     '-o',
     `/dev/fd/${TRACE_FD}`,
     '--',
@@ -1141,11 +1143,38 @@ function ownGroupCommand(
   return { command: `${tag0} ${run} ${watch} wait "$c"`, forwards: true, traced: true }
 }
 
+/** What strace stops on: the reads, and what moves or makes a process's cwd. */
+const TRACED_CALLS = 'trace=openat,chdir,fchdir,clone,?clone3,?fork,?vfork'
+
 /** The descriptor an in-sandbox strace writes its trace to (`ownGroupCommand`). */
 const TRACE_FD = 5
 
 function asksUnixSockets(c: Pick<ResolvedSandboxConfig, 'unixSockets'>): boolean {
   return c.unixSockets === true || (c.unixSockets !== undefined && c.unixSockets.length > 0)
+}
+
+/**
+ * Linux: the read paths as SRT must be handed them to take each as the
+ * name it is. vx has expanded every grant by then, so each is a path,
+ * but SRT reads any holding `[` as a glob, where a bracket opens a class:
+ * a route granted as `pages/\[id\].tsx` was never mounted (its denial
+ * unreported, a listed grant), and a workspace under `[ws]/` was never
+ * walled. `[[]` is a class of one `[`; a lone `]` is plain text to it.
+ */
+function literalReadPaths(
+  config: Parameters<SrtModule['SandboxManager']['wrapWithSandbox']>[2],
+): Parameters<SrtModule['SandboxManager']['wrapWithSandbox']>[2] {
+  const fs = config?.filesystem
+  if (fs === undefined) return config
+  const escape = (paths: readonly string[]): string[] => paths.map((p) => p.replaceAll('[', '[[]'))
+  return {
+    ...config,
+    filesystem: {
+      ...fs,
+      denyRead: escape(fs.denyRead),
+      ...(fs.allowRead !== undefined ? { allowRead: escape(fs.allowRead) } : {}),
+    },
+  }
 }
 
 /** SRT's wrap, with the socket lift and the git-config grant this task asked for, or none (L-6, B-41). */
@@ -2098,7 +2127,7 @@ async function traceRefusal(form: 'plain' | 'seccomp'): Promise<string | null> {
       ...(form === 'seccomp' ? ['--seccomp-bpf'] : []),
       '-qq',
       '-e',
-      'trace=openat',
+      TRACED_CALLS,
       '-o',
       '/dev/null',
       '--',

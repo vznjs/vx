@@ -21,6 +21,10 @@ import { PLUGIN_IMPORT, pluginSource, testPlugin } from './helpers/plugin.js'
 import { claimedAffected } from '../src/orchestrator/index.js'
 import type { FingerprintContext, VxPlugin } from '../src/index.js'
 import { UserError } from '../src/util/index.js'
+import { addProject, gitInitCommit, makeWorkspace } from './helpers/workspace.js'
+import { startGitEnumeration } from '../src/cache/index.js'
+
+const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 
 async function git(cwd: string, ...args: string[]): Promise<void> {
   // -c commit.gpgsign=false defends against environments (CI sandboxes,
@@ -747,6 +751,40 @@ describe('affectedProjects', () => {
     expect([...out]).toEqual([])
   })
 
+  it("reads the run's walk for untracked files: `git ls-files --others`' set", async () => {
+    await writeFile(path.join(root, '.gitignore'), 'ignored/\n')
+    await git(root, 'add', '.')
+    await git(root, 'commit', '-q', '-m', 'gitignore')
+    await mkdir(path.join(root, 'packages/a/ignored'), { recursive: true })
+    await writeFile(path.join(root, 'packages/a/ignored/blob.bin'), 'junk')
+    await writeFile(path.join(root, 'packages/a/new.ts'), 'x')
+    await mkdir(path.join(root, 'packages/b/deep/dir'), { recursive: true })
+    await writeFile(path.join(root, 'packages/b/deep/dir/y.ts'), 'y')
+    await mkdir(path.join(root, 'packages/b/inner'), { recursive: true })
+    await git(path.join(root, 'packages/b/inner'), 'init', '-q')
+    await writeFile(path.join(root, 'packages/b/inner/z.ts'), 'z')
+    const others = Bun.spawnSync({
+      cmd: ['git', 'ls-files', '--others', '--exclude-standard', '-z'],
+      cwd: root,
+    })
+      .stdout.toString()
+      .split('\0')
+      .filter((p) => p !== '')
+    const walk = await startGitEnumeration(root, ['.'])
+    expect([...walk.untracked!].sort()).toEqual(others.sort())
+    expect(others.length).toBe(3)
+    const read = (untracked: readonly string[]) =>
+      affectedProjects({
+        workspaceRoot: root,
+        since: 'HEAD',
+        projects,
+        untracked: async () => untracked,
+      })
+    expect([...(await read(walk.untracked!))].sort()).toEqual(['a', 'b'])
+    // CONTROL: the answer is the walk's, not a spawn of its own.
+    expect([...(await read([]))]).toEqual([])
+  })
+
   describe('a workspace-fingerprint change re-keys every task, so it must select every project', () => {
     // `computeWorkspaceFingerprint` folds the root lockfiles + workspace
     // definition into EVERY task's cache key. Those files sit at the workspace
@@ -1296,6 +1334,10 @@ describe('affectedProjects', () => {
     await git(root, 'commit', '-q', '-m', 'generated')
     const out = await affectedProjects({ workspaceRoot: root, since: 'HEAD~1', projects })
     expect([...out]).toEqual(['b'])
+    // Removed here, under this row's bound: the 6,000 files and their git
+    // objects timed out the afterEach (bun's 5 s default) on a box under
+    // I/O load (11.1 s for the row and its hooks, M-21).
+    await rm(root, { recursive: true, force: true })
   }, 30_000)
 
   // nx#18112, nx#20691: deleting a whole project marked every project
@@ -2030,5 +2072,41 @@ describe('a fingerprint claim in a workspace BELOW the git root', () => {
     expect(asked).toHaveLength(1)
     expect(new TextDecoder().decode(asked[0]!.before!)).toBe('lockfileVersion: 9\nv1\n')
     expect(new TextDecoder().decode(asked[0]!.after!)).toBe('lockfileVersion: 9\nv2\n')
+  })
+})
+
+describe('an --affected run walks the worktree once', () => {
+  it('the selection reads the walk the run reuses: one status, no ls-files --others', async () => {
+    const root = await makeWorkspace({ prefix: 'vx-affected-walk-', git: false })
+    try {
+      for (const name of ['a', 'b']) {
+        await addProject(root, name, {
+          config: `export default { tasks: { build: { exec: { command: 'true' } } } }\n`,
+          files: { 'src/index.js': 'export {}\n' },
+        })
+      }
+      gitInitCommit(root)
+      await writeFile(path.join(root, 'packages/a/src/new.js'), 'export {}\n')
+      const bin = path.join(root, '.gitbin')
+      const log = path.join(root, '.gitbin.log')
+      await mkdir(bin)
+      await writeFile(
+        path.join(bin, 'git'),
+        `#!/bin/sh\necho "$*" >> '${log}'\nexec '${Bun.which('git')!}' "$@"\n`,
+        { mode: 0o755 },
+      )
+      await writeFile(path.join(root, '.gitignore'), '.gitbin*\n')
+      const p = Bun.spawnSync({
+        cmd: [process.execPath, BIN, 'run', 'build', '--affected=HEAD', '--dry'],
+        cwd: root,
+        env: { ...process.env, PATH: `${bin}:${process.env['PATH']}`, NO_COLOR: '1' },
+      })
+      expect([p.exitCode, p.stderr.toString()]).toEqual([0, ''])
+      const lines = (await Bun.file(log).text()).split('\n')
+      const count = (re: RegExp) => lines.filter((l) => re.test(l)).length
+      expect([count(/(^| )status /), count(/ls-files .*--others/)]).toEqual([1, 0])
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
   })
 })

@@ -297,8 +297,9 @@ history row) would take most of it back; STATUS Next.
 
 - Nx's configuration propagation (`^build` under `--configuration
 production` builds dependencies with `production` where they have it)
-  is a todo on the `<target>:<configuration>` task; its edges are the
-  base target's.
+  was a todo here; it shipped in #1991: a `^name` of a configuration
+  task is an edge per dependency, to its configured task where it
+  declares one.
 - Batch executors (`NX_BATCH_MODE`) run one task per process here.
 - Task-graph-aware executors under `NX_BUILDABLE_LIBRARIES_TASK_GRAPH`
   see no task graph and take the project-graph path.
