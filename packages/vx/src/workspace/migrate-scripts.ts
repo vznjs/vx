@@ -237,6 +237,86 @@ function isWatcher(name: string, command: string): boolean {
   )
 }
 
+/** A server run alone (`serve website`, `http-server`), or a tool's own server verb. */
+const SERVERS = new Set(['serve', 'http-server', 'live-server', 'sirv', 'webpack-dev-server'])
+const SERVER_TOOLS = new Set([
+  'vite',
+  'next',
+  'astro',
+  'nuxt',
+  'nuxi',
+  'remix',
+  'react-router',
+  'docusaurus',
+  'storybook',
+  'netlify',
+  'wrangler',
+  'webpack',
+  'expo',
+  'react-native',
+])
+const SERVER_VERBS = new Set(['dev', 'serve', 'start', 'preview'])
+const LAUNCHERS = new Set(['cross-env', 'npx', 'bunx', 'exec', 'dlx'])
+
+/**
+ * A command that runs a server (D-91): docusaurus's `serve website` and
+ * `netlify dev` mapped as one-shot tasks, so a dependent waited forever and
+ * a server that exits on stdin EOF ended at once. Read per `&&` segment,
+ * past env assignments and launchers; a quoted string is another tool's
+ * argument (`start-server-and-test 'vite preview' …` exits).
+ */
+function servesCommand(command: string): boolean {
+  for (const segment of foreground(command.replace(/"[^"]*"|'[^']*'/g, ' '))) {
+    const words = segment
+      .trim()
+      .split(/\s+/)
+      .filter((w) => w !== '')
+    let i = 0
+    while (
+      i < words.length &&
+      (/^[A-Za-z_][A-Za-z0-9_]*=/.test(words[i]!) ||
+        LAUNCHERS.has(words[i]!) ||
+        words[i]!.startsWith('-') ||
+        (/^(pnpm|npm|yarn)$/.test(words[i]!) && LAUNCHERS.has(words[i + 1] ?? '')))
+    ) {
+      i++
+    }
+    const [program, verb] = [words[i], words[i + 1]]
+    if (program === undefined) continue
+    if (SERVERS.has(program)) return true
+    if (SERVER_TOOLS.has(program) && verb !== undefined && SERVER_VERBS.has(verb)) return true
+    if (program === 'vite' && (verb === undefined || verb.startsWith('-'))) return true
+  }
+  return false
+}
+
+/**
+ * Whether script `name` never exits: by name, as a watcher, as a server, or
+ * running such a script of its own package by name (docusaurus's
+ * `start:baseUrl`: `cross-env BASE_URL=… pnpm start`).
+ */
+function isPersistent(
+  name: string,
+  scripts: Readonly<Record<string, unknown>>,
+  seen: Set<string> = new Set(),
+): boolean {
+  const own = scripts[name]
+  if (typeof own !== 'string' || seen.has(name)) return false
+  seen.add(name)
+  if (PERSISTENT_TASK_NAMES.has(name) || isWatcher(name, own) || servesCommand(own)) return true
+  return foreground(own).some((segment) =>
+    [...segment.matchAll(RUNS_SCRIPT)].some((m) => isPersistent(m[1]!, scripts, seen)),
+  )
+}
+
+/** The `&&` / `;` / `|` segments of a command, less those it backgrounds with a single `&`. */
+function foreground(command: string): string[] {
+  return command
+    .split(/&&|\|\||[;|()]/)
+    .flatMap((part) => part.split('&').slice(-1))
+    .filter((segment) => segment.trim() !== '')
+}
+
 function scriptsOf(meta: ProjectMeta): Record<string, unknown> {
   // package.json is a boundary: `scripts` is whatever the file holds. A
   // string or an array would enumerate its indices as script names.
@@ -703,7 +783,7 @@ export function migrateScripts(
         )
       }
       const task: Record<string, unknown> = { exec }
-      if (PERSISTENT_TASK_NAMES.has(name) || isWatcher(name, own)) {
+      if (isPersistent(name, scripts)) {
         exec['persistent'] = {}
         todos.push(PERSISTENT_TODO)
       }
