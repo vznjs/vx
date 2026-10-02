@@ -187,6 +187,19 @@ project, vx's and Bun's versions. 1,000 packages warm, compiled, 41
 interleaved rounds: main 401.2 ms median (min 337.2), patch 377.9
 (309.2), A/A 373.2 (321.0); `load configs` 41.1 → 14.4 ms (min of 7).
 
+I-21. A restore's row reads stop committing. `loadOutputFilesBatch`
+flushed the pending output stamps and directory snapshots before every
+read, and a restore reads its rows twice, so a 1,000-restore run
+committed ~1,000 small transactions the close would have batched (the
+profile: ~250 ms of main thread in the flush and the reads). The read now
+overlays the pending stamps; a re-save drops the stamps of the rows it
+replaces. 1,000 packages, every `dist` removed before each rep,
+compiled, 21 interleaved rounds: `run graph` main 962.6 ms median (min
+777.4), patch 935.5 (654.0), A/A 949.2 (716.9); in-process total 1,289.0
+(1,074.6), 1,247.3 (936.6), 1,235.8 (1,003.9). The second read (inside
+`restoreOutputs`) stays: the rows in hand would cross the `CacheLayer`
+seam.
+
 ## Leads for other streams
 
 - **Owner / coordinator: skip macOS where it cannot differ from
