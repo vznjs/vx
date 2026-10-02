@@ -108,7 +108,7 @@ Nx loads a task's `.env` files into its environment — the project's before the
 
 ### The target a task sees
 
-Every task gets `NX_TASK_TARGET_PROJECT`, `NX_TASK_TARGET_TARGET` and, where it runs a configuration, `NX_TASK_TARGET_CONFIGURATION` in `exec.env.define`, as Nx hands them to every task; a run-commands `env` wins. A package script's `nx exec -- <cmd>` reads them: without them it starts Nx's own task runner, which runs the target and its dependencies again.
+Every task gets `NX_TASK_TARGET_PROJECT`, `NX_TASK_TARGET_TARGET`, `LERNA_PACKAGE_NAME` (the project, which Lerna on Nx's runner documents to scripts) and, where it runs a configuration, `NX_TASK_TARGET_CONFIGURATION` in `exec.env.define`, as Nx hands them to every task; a run-commands `env` wins. A package script's `nx exec -- <cmd>` reads them: without them it starts Nx's own task runner, which runs the target and its dependencies again.
 
 ### nx.json `parallel`
 
