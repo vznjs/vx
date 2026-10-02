@@ -137,8 +137,9 @@ are refused too: they format one run's result.
 1. `parseRunArgs` + validate the watch-mode rejections above.
 2. `cli/run.ts:resolveRunOptions(parsed, cwd, tasks)` → `RunOptions`.
    Same scope resolution as `vx run`.
-3. Enumerate projects in the resolved scope via `listProjects`. Empty
-   scope → exit 1.
+3. Enumerate projects in the resolved scope via `discoverCliProjects`
+   (discovery plus the plugins' `discover` stage, as `vx run` lists
+   them). Empty scope → exit 1.
 4. **Initial run.** Print `vx watch: initial run...`; call
    `orchestrator.run(opts)`. One that ran nothing and failed (a task
    no project declares) exits 1.
@@ -193,8 +194,12 @@ are refused too: they format one run's result.
      every cycle), and each project's declared outputs
      (`cache.outputs.files`, root-relative `workspaceFiles`) — a cycle
      that writes `dist/` is not an edit, and neither is `dist` itself;
-     a path some task declares as an input is never dropped, whoever
-     declares it as an output (item 946), and a task's own outputs (and
+     a path a task the watch reaches declares as an input is never
+     dropped, whoever declares it as an output (item 946) — the
+     requested tasks and the names their `dependsOn` reaches, in any
+     project; a name pattern keeps every task (`watch-set.ts`; until
+     the fix a `lint` reading `**/*` took `build`'s `dist/` write for
+     its input and re-ran `vx watch build` on every save), and a task's own outputs (and
      their directory) are no input of it, as its key reads them, so a
      `turbo()` task reading `**/*` does not re-run on its own `dist/` —
      the directory holding an output tree, `outputContainer`, which the

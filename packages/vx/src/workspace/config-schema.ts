@@ -282,7 +282,14 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
     const where = `${configPath}: tasks.${name}`
     assertTaskName(name, configPath)
     if (!task || typeof task !== 'object') {
-      throw new UserError(`${where} must be an object`)
+      // package.json's shape, `name: 'command'`, was refused without the
+      // object that holds the command.
+      const raw: unknown = task
+      throw new UserError(
+        typeof raw === 'string' && raw.trim() !== ''
+          ? `${where} must be an object — a command is { exec: { command: ${JSON.stringify(raw)} } }`
+          : `${where} must be an object`,
+      )
     }
     assertKnownFields(task, TASK_FIELDS, where)
     const exec = (task as { exec?: unknown }).exec
@@ -754,7 +761,22 @@ const FOREIGN_FIELDS: ReadonlyMap<ReadonlySet<string>, Readonly<Record<string, s
         'one task per configuration (`build:production`, with its own `exec.command`)',
     },
   ],
-  [EXEC_FIELDS, { cmd: '`command`', script: '`command`' }],
+  [
+    EXEC_FIELDS,
+    {
+      cmd: '`command`',
+      script: '`command`',
+      // Nx run-commands' options and shell-runner habits, refused with no
+      // word on where they go (D-100).
+      cwd: '`cd <dir> && …` in `command`: a task runs in its project directory',
+      args: 'the arguments written into `command`, or after `--` on `vx run`',
+      commands: 'one `command` (`a && b`, or `a & b; wait` to run them at once), or one task each',
+      parallel: 'one task each, which vx runs at once, or `a & b; wait` in `command`',
+      shell: 'no field: `command` always runs in a shell',
+      interactive:
+        'a command run outside vx: a task never reads the terminal (its stdin is EOF, or a pipe vx holds under `persistent`)',
+    },
+  ],
   // A package's turbo.json and Nx's project.json keys, written into a
   // project's vx.config (D-56). `tags` had read as a typo of `tasks`.
   [
