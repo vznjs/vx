@@ -202,7 +202,7 @@ installed.
 | `nx run app:build:production`        | `vx run app#build:production`                             |
 | `nx affected -t test`                | `vx run test --affected` (`nx()` takes `NX_BASE` or `defaultBase` as its base) |
 | `nx graph`                           | `vx run build --all --graph`                              |
-| `nx reset`                           | `vx cache prune`, or remove the cache directory `vx info` names; there is no daemon |
+| `nx reset`                           | `vx cache prune --older-than <age>` trims it; remove the cache directory `vx info` names to drop it all; there is no daemon |
 | Nx Cloud cache                       | [`nxCache()`](../ci/#remote-cache) for a self-hosted Nx cache |
 
 Generators, Nx Console and module-boundary rules have no vx equivalent;

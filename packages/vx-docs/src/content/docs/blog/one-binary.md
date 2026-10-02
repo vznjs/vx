@@ -41,8 +41,8 @@ is vx's business.
   carries its runtime. The `vx` that ran yesterday is the `vx` that
   runs today, byte for byte, on every machine in the team.
 - **No runtime to boot before vx's own code runs.** A compiled Bun
-  binary starts as itself, which is part of what makes a 50 ms fully
-  cached run on a real repository possible at all.
+  binary starts as itself, which is part of what keeps a fully cached
+  run in milliseconds.
 - **`vx.config.ts` evaluated natively.** TypeScript config with no
   transpile step, no `ts-node`, no loader flag. The binary resolves the
   `@vzn/vx` import from your `node_modules`, which is also why the

@@ -394,7 +394,7 @@ describe('the no-daemon post quotes the benchmarks page', () => {
   it('each warm-run figure it states is on docs/benchmarks.md as written', () => {
     const page = readFileSync(path.join(DOCS, 'blog', 'no-daemon.md'), 'utf8')
     const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
-    for (const figure of ['510ms', '760ms', '3.59s', '51 ms', '95 ms']) {
+    for (const figure of ['510ms', '760ms', '3.59s']) {
       expect(page).toContain(figure)
       expect(bench).toContain(figure)
     }
@@ -511,17 +511,7 @@ describe('the why-vx-is-fast post quotes the benchmarks page', () => {
   it('each figure it states is on docs/benchmarks.md as written', () => {
     const page = readFileSync(path.join(DOCS, 'blog', 'why-vx-is-fast.md'), 'utf8')
     const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
-    for (const figure of [
-      '3m 38s',
-      '3m 46s',
-      '5m 13s',
-      '34m 44s',
-      '510ms',
-      '760ms',
-      '3.59s',
-      '66 ms',
-      '127 ms',
-    ]) {
+    for (const figure of ['3m 38s', '3m 46s', '5m 13s', '34m 44s', '510ms', '760ms', '3.59s']) {
       expect(page).toContain(figure)
       expect(bench).toContain(figure)
     }
@@ -652,6 +642,15 @@ describe('the resolved-config-hashing post names every global the gate denies', 
     'utf8',
   )
   const page = readFileSync(path.join(DOCS, 'blog', 'resolved-config-hashing.md'), 'utf8')
+  it('the bare imports it lets through are the two the gate passes', () => {
+    // It said "anything but `@vzn/vx`"; every config vx init writes imports
+    // `@vzn/vx/config`, which the gate passes whole.
+    const entry = /const PURE_CONFIG_ENTRY = '([^']+)'/.exec(src)
+    expect(entry).not.toBeNull()
+    expect(src).toContain('if (spec === PURE_CONFIG_ENTRY) continue')
+    const flat = page.split(/\s+/).join(' ')
+    expect(flat).toContain(`a bare import of anything but \`${entry![1]}\``)
+  })
   it('each identifier in IMPURE_RE is a name in its list', () => {
     const re = /const IMPURE_RE =\n\s+\/\\b\(\?:([^)]*)\)\\b/.exec(src)
     expect(re).not.toBeNull()

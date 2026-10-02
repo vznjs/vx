@@ -30,3 +30,14 @@
   `discover` stage it lists through `discoverCliProjects`.
   `modules/logger.md` gained #2054's post-summary server stream. Rows
   (`module-page-claims`), red on each page without the fix.
+
+- **J2-5** The config-eval cache's purity gate passes any import of
+  `@vzn/vx/config` (`PURE_CONFIG_ENTRY`, since #2013), the entry every
+  config `vx init` and vx-migrate write. `modules/config-cache.md`,
+  `comparison.md` and the resolved-config-hashing post said a bare
+  import of anything but `@vzn/vx` opts a config out, so a reader of
+  any of them concluded the generated configs evaluate live every run.
+  Rows (`doc-references` › comparison.md states the purity gate's
+  three conditions, now with config-cache.md; `site-samples` › the
+  bare imports it lets through are the two the gate passes), red
+  without the fix.

@@ -555,8 +555,9 @@ describe('executor capability — end-to-end via run()', () => {
       })
       expect(summary.ok).toBe(false)
       expect(seen).toEqual([
-        // Named as every other hook's throw is (C-63).
-        "pkg-a#hello: [vx] internal error in pkg-a#hello: plugin 'org/down' (executor 'down') failed in execute: pool down\n",
+        // Named as every other hook's throw is (C-63), and plainly: the
+        // plugin's, not an internal error of vx's (C-85).
+        "pkg-a#hello: [vx] pkg-a#hello: plugin 'org/down' (executor 'down') failed in execute: pool down\n",
         'done pkg-a#hello',
       ])
     } finally {
@@ -597,13 +598,14 @@ describe('executor capability — end-to-end via run()', () => {
         concurrency: 1,
         log: {
           ...makeSilentLogger(),
-          taskStderr: (n, c) => void (c.startsWith('[vx]') && seen.push(`${n.id}: ${c}`)),
+          // Each task's own frame line, where a name added twice showed.
+          taskStderr: (n, c) => void (c.startsWith('plugin ') && seen.push(`${n.id}: ${c}`)),
         },
         handleSignals: false,
       })
       expect(seen.sort()).toEqual([
-        "pkg-a#a: [vx] internal error in pkg-a#a: plugin 'org/down' (executor 'down') failed in execute: pool down\n",
-        "pkg-a#b: [vx] internal error in pkg-a#b: plugin 'org/down' (executor 'down') failed in execute: pool down\n",
+        "pkg-a#a: plugin 'org/down' (executor 'down') failed in execute: pool down\n",
+        "pkg-a#b: plugin 'org/down' (executor 'down') failed in execute: pool down\n",
       ])
     } finally {
       cleanup()
