@@ -164,7 +164,7 @@ over (in order):
     `git var -l` (the clean-filter gate's config) — so deriving these hashes
     costs zero file reads and zero per-file stats. Each trusted OID's
     blob must be the size the index recorded for the file (A-60): `git
-    add` under a clean filter (`core.autocrlf=true`, a `text` rule)
+add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     stores the LF blob of a CRLF file, and once the filter is gone git
     holds that stat-clean entry clean without re-reading it, so status
     and the filter gate (today's config) both let the LF blob key the
