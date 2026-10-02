@@ -107,6 +107,11 @@ describe('foreground keep-alive ends when one requested server exits', () => {
       // Written before the wait, it said ok over an exit 1.
       const summary = JSON.parse(readFileSync(path.join(root, 's.json'), 'utf8'))
       expect([summary.ok, summary.exitCode]).toEqual([expected === 0, expected])
+      // C-53: and it named no failure: every task `success`, `failed: 0`.
+      const other = summary.tasks.find((t: { id: string }) => t.id === 'app#other')
+      expect([other.status, other.exitCode, summary.summary.failed]).toEqual(
+        exitCode === 0 ? ['success', 0, 0] : ['failed', exitCode, 1],
+      )
     }, 20_000)
   }
 
@@ -166,6 +171,8 @@ describe('foreground keep-alive ends when one requested server exits', () => {
     expect(await waitForDead(pid, 1_000)).toBe(true)
     const summary = JSON.parse(readFileSync(path.join(root, 's.json'), 'utf8'))
     expect([summary.ok, summary.exitCode]).toEqual([false, 130])
+    // The user stopped it: no failure (C-53's guard).
+    expect(summary.tasks.map((t: { status: string }) => t.status)).toEqual(['success'])
   }, 20_000)
   // C-46: a kept server keeps the persistent tasks it depends on. Under
   // `--filter app` only app#dev was kept, and the api#dev it was started
