@@ -32,7 +32,7 @@ read each file and hash it, or keep a daemon around so they do not have
 to. vx spawns one `git ls-files -s`, which returns the file list *and*
 every clean file's blob object id, and one concurrent `git status` to
 prune anything that diverges from the index. Clean-tree key derivation
-costs zero file reads, zero stats and zero database lookups.
+costs zero source-file reads, zero stats and zero database lookups.
 
 Dirty files get the identical blob id computed in-process, so a key
 never flips when you commit. That class of spurious miss, "I committed

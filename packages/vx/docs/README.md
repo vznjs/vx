@@ -93,7 +93,7 @@ each is recorded in [optimizations.md](./optimizations.md).
   Turborepo 2.10 takes 342 ms and Nx 23 takes 1.38 s on the identical
   workspace — and restoring every output is 1.5× faster than Turbo
   ([benchmarks.md](./benchmarks.md), 2026-09).
-- At 15k input files, deriving every cache key costs **zero file reads**
+- At 15k input files, deriving every cache key costs **zero source-file reads**
   — hashes come from git's index for tracked, clean files.
 - No daemon. Nothing to keep warm, nothing to restart.
 

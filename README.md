@@ -179,7 +179,7 @@ keep your Turbo or Nx remote cache. [Parity map](packages/vx/docs/parity.md) ·
 | ------------------------- | ----------------------------------------- | ------------------------------ | ---------------- |
 | Config                    | TypeScript, evaluated into the cache key  | JSON (static)                  | JSON (static)    |
 | Output ownership          | **Strict**: wiped before exec and restore | Additive (stale files survive) | Additive         |
-| Clean-tree hashing        | **Zero reads** (git index OIDs)           | git OIDs                       | re-hash / daemon |
+| Clean-tree hashing        | **No source reads** (git index OIDs)      | git OIDs                       | re-hash / daemon |
 | Daemon required for speed | **No**                                    | Optional                       | Yes              |
 | Per-task sandbox          | **Yes**: kernel-level, opt-in             | No                             | No               |
 | Plugin API                | **Yes**: every pipeline stage             | No                             | Yes (TS-tied)    |
