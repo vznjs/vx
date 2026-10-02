@@ -139,7 +139,7 @@ describe('the plugins guide states the CacheLayer method count', () => {
 // The environment-variables guide is the configure page's section now.
 describe('the lockfile pages say what Turborepo keys', () => {
   // The post said "every monorepo tool folds the lockfile into every key" and
-  // parity.md "the global hash covers the lockfile"; Turbo 2.5.8's dry run,
+  // parity.md "the global hash covers the lockfile"; Turbo 2.5.8's and 2.10.13's dry run,
   // after an is-odd bump in package a, moved a#build alone and left b#build
   // and the global external-dependency hash as they were (J-108).
   it('the post names vx alone, and the parity row the per-package re-key', () => {
