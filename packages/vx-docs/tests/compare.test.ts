@@ -367,8 +367,15 @@ describe('the choosing page', () => {
     const bench = path.join(import.meta.dir, '../src/content/docs/benchmarks.md')
     if (!existsSync(bench)) throw new Error(`${bench} is missing: run the site's import task first`)
     const measured = readFileSync(bench, 'utf8')
-    const figures = [...text(main).matchAll(/\d[\d,.]*\s?(?:ms|s)\b|\d[\d.]*×/g)].map((m) => m[0])
-    expect(figures.length).toBeGreaterThanOrEqual(4)
+    const FIGURE = /\d[\d,.]*\s?(?:ms|s)\b|\d[\d.]*×/g
+    // Its four figures were real-repo runs through turbo() and went with
+    // them (owner, 2026-10-02); the pattern still has to find one.
+    expect([...'947 ms, 3.29 s, 1.9×'.matchAll(FIGURE)].map((m) => m[0])).toEqual([
+      '947 ms',
+      '3.29 s',
+      '1.9×',
+    ])
+    const figures = [...text(main).matchAll(FIGURE)].map((m) => m[0])
     expect(figures.filter((f) => !measured.includes(f))).toEqual([])
   })
 

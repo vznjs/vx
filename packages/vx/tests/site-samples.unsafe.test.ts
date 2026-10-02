@@ -157,17 +157,15 @@ describe('CONTRIBUTING names what the gate runs on', () => {
 })
 
 describe('the configure guide names the essential allowlist', () => {
-  it('its "always gets a small essential allowlist" sentence names every POSIX name in ESSENTIAL_ENV', () => {
+  it('its "always gets a small essential allowlist" sentence names every name in ESSENTIAL_ENV', () => {
     const page = section(
       readFileSync(path.join(GUIDES, 'configure.md'), 'utf8'),
       'Environment variables',
     )
-    const m = /essential allowlist so normal CLI tools\s+work:([\s\S]*?)plus the Windows/.exec(page)
+    const m = /essential allowlist so normal CLI tools\s+work:([\s\S]*?)\. vx sets/.exec(page)
     expect(m).not.toBeNull()
     const named = new Set([...m![1]!.matchAll(/`([A-Z_]+)`/g)].map((x) => x[1]!))
-    const posix = ESSENTIAL_ENV.slice(0, ESSENTIAL_ENV.indexOf('SYSTEMROOT'))
-    expect(posix.length).toBeGreaterThan(10)
-    for (const name of posix) expect(named).toContain(name)
+    expect([...named]).toEqual([...ESSENTIAL_ENV])
   })
 })
 
@@ -407,6 +405,20 @@ describe('the strict-output-ownership post names what the wipe never touches', (
     expect(names.length).toBe(2)
     for (const name of names) expect(section![1]!).toContain('`' + name + '`')
     expect(section![1]!).toContain('`node_modules/**` is a legitimate output')
+  })
+})
+
+describe('the Nx tables mark projects: "dependencies" deprecated', () => {
+  // Nx 23.2.1 runs a dependsOn of `{ projects: "dependencies" }` and warns
+  // "This is deprecated and will be removed in Nx v24" (J-113).
+  it('comparison.md and parity.md say so', () => {
+    const docs = path.resolve(import.meta.dir, '..', 'docs')
+    expect(readFileSync(path.join(docs, 'comparison.md'), 'utf8')).toContain(
+      '`^lint` (`{projects:"dependencies"}` deprecated)',
+    )
+    expect(readFileSync(path.join(docs, 'parity.md'), 'utf8')).toContain(
+      '`"dependsOn": ["^build"]` (`{ projects: "dependencies" }` deprecated)',
+    )
   })
 })
 
