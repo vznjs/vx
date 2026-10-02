@@ -441,6 +441,7 @@ export async function loadProjectConfigs(
   // `node:stream`), ~7 ms of a two-config warm run where every load hit.
   let builtins: BuiltinSnapshot = []
   let env: Readonly<Record<string, string | undefined>> = {}
+  let cwd = ''
   // More than one evaluation in flight: a change seen after one load may
   // be another's.
   let overlapping = false
@@ -484,7 +485,9 @@ export async function loadProjectConfigs(
       : await loadDefaultExport(configPath, 'Project', bytes!)
     // Before anything reads through them: a replaced `Array.prototype.includes`
     // turned the JSON-data walk's own check into "a cyclic reference".
-    const changed = repeat ? [] : [...restoreBuiltins(builtins), ...restoreEnv(env)]
+    const changed = repeat
+      ? []
+      : [...restoreBuiltins(builtins), ...restoreEnv(env), ...restoreCwd(cwd)]
     // Loads overlap, so another config's change can surface after this
     // one: named here, the refusal blamed the wrong file (D-119). The round
     // finds the one that made it.
@@ -536,6 +539,7 @@ export async function loadProjectConfigs(
     if (misses.length > 0) {
       builtins = builtinSnapshot()
       env = { ...process.env }
+      cwd = process.cwd()
     }
     overlapping = misses.length > 1
     let next = 0
@@ -554,7 +558,10 @@ export async function loadProjectConfigs(
         if (r.closure !== undefined) learnedClosures.push(r.closure)
       }
     }
-    const changed = misses.length > 0 ? [...restoreBuiltins(builtins), ...restoreEnv(env)] : []
+    const changed =
+      misses.length > 0
+        ? [...restoreBuiltins(builtins), ...restoreEnv(env), ...restoreCwd(cwd)]
+        : []
     if (first?.failed instanceof ChangedInRound) {
       for (const i of misses) {
         const configPath = prepared[i]!.configPath
@@ -644,9 +651,13 @@ class ChangedInRound {
 /** Without `configPath`, no config alone was found to make the change. */
 function builtinsChanged(changed: readonly string[], configPath?: string): UserError {
   const who = configPath === undefined ? 'a project config' : configPath
-  const env = changed.some((c) => c.startsWith('process.env.'))
-    ? '; a task gets an env var through `exec.env.define` or `passThrough`'
-    : ''
+  const env =
+    (changed.some((c) => c.startsWith('process.env.'))
+      ? '; a task gets an env var through `exec.env.define` or `passThrough`'
+      : '') +
+    (changed.some((c) => c.startsWith('process.cwd'))
+      ? '; a task runs in its project directory, and `cd <dir> && …` in `exec.command` moves it'
+      : '')
   return new UserError(
     `${who} changed ${changed.join(', ')} while it was evaluated — a config must not change the built-ins vx runs on: other configs are read through them and cache keys are made with them${env}`,
   )
@@ -700,6 +711,20 @@ function restoreEnv(before: Readonly<Record<string, string | undefined>>): strin
     }
   }
   return changed
+}
+
+/**
+ * A config's `process.chdir()` moved the whole process: every relative path
+ * vx resolves after it, its own and a plugin's, read from the config's
+ * choice (D-120). Put back, and named as the change.
+ */
+function restoreCwd(before: string): string[] {
+  // Through globalThis: the playground bundles this module, and its
+  // browser shim carries no free process global.
+  const proc = globalThis.process
+  if (before === '' || proc.cwd() === before) return []
+  proc.chdir(before)
+  return ['process.cwd (a chdir)']
 }
 
 function sameDescriptor(a: PropertyDescriptor, b: PropertyDescriptor): boolean {

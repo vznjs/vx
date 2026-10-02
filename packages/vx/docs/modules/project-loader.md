@@ -117,6 +117,10 @@ readers that reach it here.
   before, D-119); none found, it says "a project config". A round where every config hits takes
   no snapshot: reading every descriptor of `Bun` builds its lazy
   members, 7 ms of a warm run (E-88).
+- A first load may not move the process either: a config's
+  `process.chdir()` left every relative path vx resolved after it reading
+  from the config's choice; the working directory is put back and the load
+  refused, naming `process.cwd (a chdir)` (D-120).
 - A first load may not change `process.env` either: a config that set
   a variable gave it to every project's `passThrough` and to vx's own
   `VX_*` reads, and a repeat load, in a worker, gave it to neither
