@@ -55,6 +55,8 @@ export interface ScheduleOptions {
   signal?: AbortSignal
   /** Failure propagation; default 'deps-ok'. */
   continueMode?: ContinueMode
+  /** A ready server that died: its dependants not yet started skip (through groups too); under 'never' dispatch stops. */
+  serverDied?: (id: string) => boolean
   execute: (node: TaskNode, upstream: TaskOutcome[]) => Promise<TaskOutcome>
   onStart?: (node: TaskNode) => void
   onFinish?: (outcome: TaskOutcome) => void
@@ -172,8 +174,8 @@ direct exec-tier dependents of one plus theirs, plus the rank of each
 restore that depends on it, since that one releases its dependents only
 after it (C-51: `r1 → r2 → e` ranked `r1` 0, behind every idle restore,
 and `e` waited for it; skipped when no restore feeds an exec task, so an
-all-hit run pays nothing). A rank that can count a diamond twice which only reorders restores among themselves, on a lane
-twice the exec cap. A warm run's exec tier is its group tasks with no
+all-hit run pays nothing). The rank can count a diamond twice; that only
+reorders restores among themselves, on a lane twice the exec cap. A warm run's exec tier is its group tasks with no
 edges among them, and the whole-graph closure (476 packages: 1,428
 nodes, 12.8k edges of 45-word bitsets) was 10 ms of the run-graph
 stage (48.1 → 37.7 ms, min of 6).
@@ -222,6 +224,13 @@ propagation, independent siblings, throw handling, priority contract,
 a perf guard on `computeReverseDepCount` (dense 100×30 graph must
 stay under 1.5 s; old code took 7.2 s), and the two-tier contract
 (restore-tier ready immediately / low priority / failed-dep bypass).
+`tests/scheduler-properties.test.ts` holds the promises over seeded
+random graphs (restores, demotions, groups, pools, an admission policy,
+failures, a stop, each `--continue` mode): one outcome per task, an
+exec task starts after everything above it finished, `deps-ok` never
+runs over a failure, a skip names a failed ancestor, nothing starts
+after the stop, every lane stays under its cap; and the taint tracker
+against its definition (C-70).
 
 ## Replacing this module
 

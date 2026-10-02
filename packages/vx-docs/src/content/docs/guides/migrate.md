@@ -80,6 +80,11 @@ files written:
 next: bunx vx run build --all
 ```
 
+Where the repo has a lockfile and `vx.workspace.ts` declares no
+`@vzn/vx-lockfile` plugin, the report names the one for it (`pnpm()` for
+`pnpm-lock.yaml`): Turbo keys each package on its own lockfile entries,
+and vx keys every task on the whole file until a plugin claims it.
+
 ### Try it in five minutes
 
 [`examples/turbo`](https://github.com/vznjs/vx/tree/main/examples/turbo)
@@ -102,7 +107,7 @@ npx vx run test --all      # 3 up-to-date
 | ----------------------------------------------------------- | ------------------------------------------------------------------------ |
 | `tasks` / `pipeline`                                        | `tasks`                                                                  |
 | `dependsOn`                                                 | `dependsOn`, the same `'build'`, `'^build'`, `'pkg#build'` syntax        |
-| `inputs`                                                    | `cache.inputs.files`                                                     |
+| `inputs`                                                    | `cache.inputs.files`; a glob that reaches a nested workspace package also in `cache.inputs.workspaceFiles` |
 | `outputs`                                                   | `cache.outputs.files`                                                    |
 | `env`                                                       | `cache.inputs.env` **and** `exec.env.passThrough`                        |
 | `passThroughEnv`                                            | `exec.env.passThrough`                                                   |
@@ -111,7 +116,7 @@ npx vx run test --all      # 3 up-to-date
 | `with` | `dependsOn` a persistent sidecar, started beside the task |
 | `interruptible` | nothing: `vx watch` re-spawns every persistent task each cycle |
 | `tags` | nothing: labels Turbo keeps out of the hash and the behaviour |
-| `outputLogs`                                                | `"new-only"` is the default; other values are the run's `--output-logs` |
+| `outputLogs` (Turbo 1: `outputMode`)                        | `"new-only"` is the default; other values are the run's `--output-logs` |
 | `dotEnv` (Turbo 1), a `.env` input                          | `cache.inputs.runtime`: a probe that prints every `.env` file's name and bytes, because a gitignored `.env` is invisible to a git glob (written configs name it from the preset: `dotenvFiles`, `dotenvFilesDeep`); a root one (`$TURBO_ROOT$/.env`, `globalDotEnv`) is `cache.inputs.workspaceRuntime` |
 | an input or `globalDependencies` path git ignores (`config.local.json`) | `cache.inputs.workspaceRuntime`: a probe that prints the file's name and bytes, since core refuses a file input git ignores; a gitignored file a glob matches is not keyed |
 | `command` (Turbo 2.11) | `exec.command` (the argv, quoted); `null` or `[]` is no task |
@@ -147,6 +152,11 @@ The command itself comes from your `package.json` script, with its
 5. Preview the configs with `bunx @vzn/vx-migrate --dry`, then write them
    with `bunx @vzn/vx-migrate`. With `turbo.json` there too, pass
    `--from nx` (or `--from turbo`).
+6. Once `vx run build --all` does what `nx run-many -t build` did,
+   remove `nx()` and its import from `vx.workspace.ts`, then delete
+   `nx.json`: the configs declare every task the graph had. Keep `nx`
+   and `@vzn/vx-migrate` installed only while a config still runs an
+   `nx-exec` or `nx-env` line.
 
 ```ts
 import type { WorkspaceConfig } from '@vzn/vx/config'
@@ -155,17 +165,60 @@ import { nx } from '@vzn/vx-migrate'
 export default { plugins: [nx()] } satisfies WorkspaceConfig
 ```
 
-Executor targets keep running as executors. Each becomes one `nx-exec`
-line, which runs the executor through Nx's public `runExecutor`, with its
-options on the command line so the cache key sees them:
+```text
+$ npx vx init
+vx init: nx.json found — nx() from @vzn/vx-migrate, a temporary start until bunx @vzn/vx-migrate writes native config; nothing else written.
+wrote vx.workspace.ts.
 
-```bash
-nx-exec @nx/js:tsc --project lib --target build --options '{"main":"src/index.ts","tsConfig":"tsconfig.lib.json"}'
+next: npm install -D @vzn/vx-migrate && npx vx run build --all
 ```
 
-Replace each with the command the executor wraps when you want to drop
-Nx; until the last one is gone, keep `nx` and `@vzn/vx-migrate`
-installed.
+`bunx @vzn/vx-migrate` reports what it wrote:
+
+```text
+$ bunx @vzn/vx-migrate
+vx-migrate: nx graph → vx.config.ts
+note: migrating from the resolved project-graph snapshot — plugin-inferred targets are frozen as static config; an executor target becomes the command its executor runs, or a placeholder the TODOs below list; targets with `.env` files run through `nx-env` (keep @vzn/vx-migrate installed)
+note: vx.workspace.ts still declares nx(), which reads nx.json every run and fills any task a vx.config does not declare; the configs written here declare them all. Once `vx run` does what nx did, remove nx() (and its import), then nx.json
+
+2 tasks migrated clean, 0 TODOs
+files written:
+  packages/app/vx.config.ts
+  packages/lib/vx.config.ts
+
+next: bunx vx run build --all
+```
+
+An executor target is written as the command its executor runs, from
+where Nx ran it, with the executor's option defaults applied:
+
+| Executor                            | Written as                                                  |
+| ----------------------------------- | ----------------------------------------------------------- |
+| `@nx/jest:jest`                     | `cd ../.. && jest --config=libs/a/jest.config.ts …`         |
+| `@nx/vitest:test`, `@nx/vite:test`  | `vitest run --config=vite.config.ts …`                      |
+| `@nx/vite:build`                    | `vite build --outDir=../../dist/libs/a --emptyOutDir …`     |
+| `@nx/eslint:lint`                   | `eslint .`                                                  |
+| `@nx/js:tsc`                        | `rm -rf ../../dist/libs/a && tsc -p tsconfig.lib.json --outDir ../../dist/libs/a --rootDir .` |
+| `@nx/playwright:playwright`         | `cd ../.. && playwright install && playwright test --pass-with-no-tests …` |
+| `@nx/vite:dev-server`               | `vite --config=vite.config.ts --mode=…` (the build target's config and mode) |
+| `@nx/vite:preview-server`           | `vite preview --outDir=../../dist/apps/web …`               |
+| `@nx/storybook:storybook`           | `cd ../.. && storybook dev --port=9009 --config-dir=libs/a/.storybook` |
+| `@nx/storybook:build`               | `cd ../.. && storybook build --config-dir=… --output-dir=…` |
+| `@nx/next:build`                    | `next build`, `NX_NEXT_OUTPUT_PATH` set to `outputPath`     |
+| `@nx/next:server`                   | `next dev --port=4200` (or `next start` in the build output) |
+| `@nx/cypress:cypress`               | `cd ../.. && cypress run --project=apps/web-e2e --config-file=cypress.config.ts --e2e` |
+| `@nx/esbuild:esbuild`               | `cd ../.. && rm -rf dist/apps/api && esbuild apps/api/src/main.ts --bundle --packages=external --format=esm …` |
+| `@nx/js:node`                       | `cd ../.. && node --inspect=localhost:9229 dist/apps/api/main.js` (the build target's output) |
+| `@nx/js:swc`                        | `rm -rf ../../dist/libs/a && swc src -d ../../dist/libs/a --config-file=.swcrc` |
+
+What an executor did besides its tool (a type-check before a Vite
+build, a `package.json` or `assets` copied into the output) is a TODO
+on the task. Any other executor is a placeholder that fails naming the
+executor and its options, and the report lists its tasks under one TODO
+per executor: write the command it runs. Where the executor's Nx plugin
+ships `convert-to-inferred` (Webpack and Rollup, whose options feed the
+project's config function), the TODO names it: run
+`nx g @nx/webpack:convert-to-inferred`, then migrate again.
 
 | Nx                                   | vx                                                        |
 | ------------------------------------ | --------------------------------------------------------- |
@@ -182,7 +235,7 @@ installed.
 | `nx run app:build:production`        | `vx run app#build:production`                             |
 | `nx affected -t test`                | `vx run test --affected` (`nx()` takes `NX_BASE` or `defaultBase` as its base) |
 | `nx graph`                           | `vx run build --all --graph`                              |
-| `nx reset`                           | `vx cache prune`, or remove the cache directory `vx info` names; there is no daemon |
+| `nx reset`                           | `vx cache prune --older-than <age>` trims it; remove the cache directory `vx info` names to drop it all; there is no daemon |
 | Nx Cloud cache                       | [`nxCache()`](../ci/#remote-cache) for a self-hosted Nx cache |
 
 Generators, Nx Console and module-boundary rules have no vx equivalent;

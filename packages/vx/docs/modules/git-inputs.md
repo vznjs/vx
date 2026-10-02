@@ -17,6 +17,8 @@ and an ignored one, which the status walk names with `--ignored=matching`
 (A-19). `ls-files --debug` adds the worktree size the index recorded
 for each entry, and a trusted OID whose blob is another size is dropped:
 a filter since removed left a stat-clean entry git never re-reads (A-60).
+A filter that kept the size passes the check; `caching.md` names it and
+the remedy, `git add --renormalize .`.
 The blob sizes come from the cache's `blob_sizes` memo, the unknown ones
 from one `git cat-file --batch-check`; `applyGitEnumeration` runs the
 check, so every caller of it gets it. Split from `inputs.ts` on 2026-09-10:
@@ -100,8 +102,10 @@ export async function populateGitFilesCache(
 
 export function runGitLsFiles(cwd: string): GitLsResult // the synchronous per-project fallback
 
-// One `git rev-parse --show-prefix --git-common-dir --show-object-format` per
-// directory per process; null (not remembered) when git fails.
+// Read off a plain `.git` directory (no location variable, no include, no
+// `.git` file), else one `git rev-parse --show-prefix --git-common-dir
+// --show-object-format`; per directory per process; null (not remembered)
+// when git fails.
 export interface RepoFacts {
   prefix: string
   commonDir: string
@@ -140,9 +144,11 @@ reads outside the tree) concurrently and asks `repoFacts` for the
 prefix and the common dir while they run; the file hasher
 (`file-hashes.ts`) asks the same memo for the object format at the same
 directory (the workspace root, `new Cache(dir, policy, workspaceRoot)`),
-so a cold run spawns ONE `rev-parse` whichever asks first — the
+so a cold run learns them ONCE whichever asks first — the
 enumeration on an unscoped run, the config load on a scoped one
-(`tests/git-spawns-once.test.ts` holds both as exact lists). The config
+(`tests/git-spawns-once.test.ts` holds both as exact lists). A plain
+repository answers off the disk with no spawn at all (~3 ms a run;
+`tests/repo-facts-disk.test.ts` holds it to git's answer). The config
 read stays a spawn of its own: `rev-parse` prints no config value.
 `lazyGitEnumeration` holds a run's whole-tree enumeration: an unscoped
 run starts it at once; a `discover` hook's `worktreeChanges()` starts it

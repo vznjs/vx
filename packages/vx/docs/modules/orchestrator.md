@@ -200,7 +200,12 @@ on the returned summary is `true` iff every outcome passes
 (`isPassStatus`: `failed`, `skipped` and `aborted` do not) and no
 persistent task crashed. CLI maps this to exit code 1. Setup throws (`UserError`
 from discovery/loader/graph/plugin-setup) are caught at
-`cli/run.ts:runCmd`.
+`cli/run.ts:runCmd`. Before anything starts, `run()` and `planRun()`
+refuse, as a `UserError` naming the option and what it must be, an
+option the CLI would never pass: a number out of its bound (C-61), a
+word outside its set (`continueMode`, `outputLogs`, `download`, `flow`),
+a list that is not one of strings, an `excludeDependencies` that is
+neither `'all'` nor names, a `signal` that is no `AbortSignal` (C-86).
 
 ## Tests
 
@@ -233,8 +238,11 @@ workspace's lock just before it schedules — after the early exits,
 which touch no tree — and releases it with its cache handle, before a
 persistent task's wait. The lock is keyed by the workspace root's real
 path, so a symlinked spelling and the canonical cwd a CLI gets (macOS's
-`/var` → `/private/var`) name one lock. It lives under the temp
-directory, keyed by the resolved workspace root (`--cache-dir` does not
+`/var` → `/private/var`) name one lock. It lives in this user's own
+directory under the temp directory (`vx-runs-<uid>`, mode 0700; one that
+is a link or another owner's is refused and the run goes on unlocked,
+since a lock in the shared directory was anyone's to plant, L-47),
+keyed by the resolved workspace root (`--cache-dir` does not
 make two runs strangers; a read-only checkout can take it; two
 processes whose `TMPDIR` differs hold two locks, item 970), and is a
 directory HELD exactly while it is not empty. Its one entry,

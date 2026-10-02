@@ -1707,19 +1707,17 @@ describe.skipIf(!available || process.platform !== 'linux')(
       async () => {
         // The neighbouring row proves this for a task that declares
         // `allow.read` and no write. This is the case the TYPE describes:
-        // no allow block at all. Nothing binds the project, so its `dist`
-        // is the sandbox's scratch: the writes are reported and fail the
-        // run — the honest outcome, not a silent empty artifact. (This row
-        // read `Read-only file system` while the task ran in `$HOME`.)
+        // no allow block at all. Nothing binds the project, so it is a
+        // read-only mask (`readOnlyMasks`): the `mkdir` is refused, reported
+        // and fails the run — the honest outcome, not a silent empty
+        // artifact. (The mask was writable before 2026-10-02, and the
+        // `openat` under it was reported too.)
         const dir = realpathSync(await project(undefined))
         const r = await run({ cwd: fixture.root, tasks: ['build'], log: collectingLogger(fixture) })
         expect(r.ok).toBe(false)
         expect([r.outcomes[0]?.status, r.outcomes[0]?.sandboxViolationLines]).toEqual([
           'failed',
-          [
-            `mkdir(${dir}/dist) = a write no grant covers  [${dir}/dist]`,
-            `openat(${dir}/dist/app.js) = a write no grant covers  [${dir}/dist/app.js]`,
-          ],
+          [`mkdir(${dir}/dist) = a write no grant covers  [${dir}/dist]`],
         ])
         expect(existsSync(path.join(dir, 'dist', 'app.js'))).toBe(false)
       },
@@ -4343,34 +4341,39 @@ describe.skipIf(!available || process.platform !== 'linux')(
           config: `export default { tasks: { t: { exec: { command: 'true', sandbox: { allow: { read: ['.'] } } } } } }`,
         })
         const reset = spyOn(SandboxManager, 'reset')
-        const held = await run({
-          cwd: fixture.root,
-          tasks: ['srv#serve'],
-          holdPersistent: true,
-          log: collectingLogger(fixture),
-        })
+        // Restored whatever fails: a red here left the spy on SRT's reset
+        // for every later row of the file (M-22).
         try {
-          expect(held.persistent?.ids).toEqual(['srv#serve'])
-          expect(await accepts(port)).toBe(true)
-          const later = await run({
+          const held = await run({
             cwd: fixture.root,
-            tasks: ['other#t'],
+            tasks: ['srv#serve'],
+            holdPersistent: true,
             log: collectingLogger(fixture),
           })
-          expectOk(later, fixture)
-          expect(await accepts(port)).toBe(true)
-          // Both runs' resets waited on the server.
-          expect(reset).toHaveBeenCalledTimes(0)
+          try {
+            expect(held.persistent?.ids).toEqual(['srv#serve'])
+            expect(await accepts(port)).toBe(true)
+            const later = await run({
+              cwd: fixture.root,
+              tasks: ['other#t'],
+              log: collectingLogger(fixture),
+            })
+            expectOk(later, fixture)
+            expect(await accepts(port)).toBe(true)
+            // Both runs' resets waited on the server.
+            expect(reset).toHaveBeenCalledTimes(0)
+          } finally {
+            await held.persistent?.stop('SIGTERM')
+          }
+          const until = Date.now() + 3_000
+          while ((await accepts(port)) && Date.now() < until) await Bun.sleep(50)
+          expect(await accepts(port)).toBe(false)
+          // The server's exit ran the reset they deferred.
+          while (reset.mock.calls.length === 0 && Date.now() < until) await Bun.sleep(20)
+          expect(reset).toHaveBeenCalledTimes(1)
         } finally {
-          await held.persistent?.stop('SIGTERM')
+          reset.mockRestore()
         }
-        const until = Date.now() + 3_000
-        while ((await accepts(port)) && Date.now() < until) await Bun.sleep(50)
-        expect(await accepts(port)).toBe(false)
-        // The server's exit ran the reset they deferred.
-        while (reset.mock.calls.length === 0 && Date.now() < until) await Bun.sleep(20)
-        expect(reset).toHaveBeenCalledTimes(1)
-        reset.mockRestore()
       },
       TIMEOUT,
     )

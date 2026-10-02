@@ -64,9 +64,11 @@ reads. vx did that once and removed it. `cache.inputs` says what
 one was derived from the other, a path added for caching silently
 widened the sandbox, and a path the task genuinely needed had to be
 laundered through the cache key to become readable. Two declarations,
-and the place they meet is the violation: a sandboxed task that reads a
-file its inputs never named fails on the denied read, which is exactly
-the under-declaration you wanted to find.
+and the violation is judged against the grants alone: a sandboxed task
+that reads a project file its grants never named fails on the denied
+read. `read: ['.']` grants the whole project, inputs or not; grant
+reads no wider than `cache.inputs` (`read: ['src', '.eslintrc']`) and
+that denial is exactly the under-declaration you wanted to find.
 
 ## What a violation looks like
 

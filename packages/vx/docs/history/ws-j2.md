@@ -14,3 +14,187 @@
   `origin/master`, `main`, `master`) that is not HEAD comes between,
   and the workspace's `affectedBase` comes first. Row
   (`affected-default-pages`), red on both pages without the fix.
+- **J2-4** Six module pages a fix left behind (the commit updated cli.md
+  or caching.md, not the page for the file it changed).
+  `modules/summary.md` said the result row's rate is over the tasks
+  that have a cache; since #2212 a skipped task (and one still to run)
+  is out of it. `modules/git-inputs.md` presented the blob-size check
+  as catching a removed filter; since #2226 caching.md says a filter
+  that kept the size passes. `modules/bin.md` said bin.ts never parses
+  argv; since #1961 it answers a lone `--version` before loading the
+  dispatcher. `modules/metrics.md`'s re-execution causes lacked #1928's
+  continue-taint, so its "only when none applies" named `--no-cache`
+  wrongly. `modules/cli-watch.md` said any task's input keeps a path
+  from being dropped, and that projects come from `listProjects`;
+  since 44a5f86 only the tasks the watch reaches count, and since the
+  `discover` stage it lists through `discoverCliProjects`.
+  `modules/logger.md` gained #2054's post-summary server stream. Rows
+  (`module-page-claims`), red on each page without the fix.
+- **J2-2** The failure recap's samples. `modules/framed-output.md`
+  headed two tails and `… and 2 more failed` with `2 tasks`; the
+  renderer counts all four. Both samples drew `◼` without the `︎`
+  selector the renderer prints. cli.md said a tail reads stdout then
+  stderr; a live-streamed task's reads as its chunks arrived (probed:
+  `out1 err1 out2` live, `out1 out2 err1` buffered), and it omitted the
+  dropped-capture note and the `, and` join. Rows (`cli-doc-drift` ›
+  the failure recap samples are what the renderer prints), red on both
+  pages without the fix.
+- **J2-3** cli.md's `--report` sample read `8ms saved`, its two hits'
+  restore times (5 + 3): the sum the paragraph under it says the header
+  does not take (`savedMs` sums the entries' stored exec times). The
+  sample's hits now store 2.01s and 640ms (`2.65s saved`), and the
+  Status list names a skip's label as the renderer writes it,
+  `skipped (blocked by lib#build)`. Row (`cli-doc-drift` › the --report
+  sample is what the renderer prints), red without the fix.
+
+## Leads for other streams
+
+- **E** `vx last` labels every skipped row `after <id> failed`
+  (`cli/last.ts`), where the run's Skipped section says
+  `after <id> was aborted` for a block whose root a signal killed.
+
+- **J2-6** #2227 dropped every native Windows branch, and two pages
+  still described one: `modules/sandbox-runtime.md`'s Windows row said
+  `probeSandbox` reports the sandbox unavailable and `exec.sandbox` is
+  refused before the run (no such branch is left; under WSL the Linux
+  row applies), and `execution.md` called the allowlist what a command
+  needs on "\*nix / Windows". Row (`doc-references` › no page describes
+  a Windows branch the source dropped), red without the fix.
+- **J2-7** The sandboxing guide's grant table called `gitConfig`
+  "inert: SRT drops the per-task flag"; since B-41 the run union carries
+  it and each wrap sets it for its own task (`perTaskRun`), and the
+  deny scan skips `.git/config` for that task, as schema.md and
+  `modules/sandbox-runtime.md` already said. Row (`site-samples` › the
+  sandboxing guide says what gitConfig grants), red without the fix.
+- **J2-5** The config-eval cache's purity gate passes any import of
+  `@vzn/vx/config` (`PURE_CONFIG_ENTRY`, since #2013), the entry every
+  config `vx init` and vx-migrate write. `modules/config-cache.md`,
+  `comparison.md` and the resolved-config-hashing post said a bare
+  import of anything but `@vzn/vx` opts a config out, so a reader of
+  any of them concluded the generated configs evaluate live every run.
+  Rows (`doc-references` › comparison.md states the purity gate's
+  three conditions, now with config-cache.md; `site-samples` › the
+  bare imports it lets through are the two the gate passes), red
+  without the fix.
+
+- **J2-9** Blog posts pointed at guide sections under the titles of
+  the guide pages the short site merged away: "Running tasks",
+  "Dev & long-running tasks", "Lockfile-aware caching", "Caching" for
+  the configure guide's "Why did it re-run?", and "`vx mcp` — AI
+  agents". The dev-servers post also promised "the readiness patterns
+  for the common servers"; the Dev tasks section has one Vite example.
+  Each link now names `Guide › Section`. Probe, nothing to fix: the
+  dev-servers post's foreground claims (a server exiting 3 under
+  `vx run dev api` prints `exited with code 3; stopping 1 other
+persistent task` and vx exits 1). Row (`site-samples` › a post's link
+  into a guide section names the section), red on four posts without
+  the fix.
+
+- **J2-13** The why-did-this-rerun post's verdict table had six
+  unchanged-key endings; `metrics.ts` has seven since #1928's
+  continue-taint verdict ("neither run saved it: each ran beside a
+  failed task …"). The configure guide had the row; the pin matched
+  single-quoted notes only, and that verdict is a template literal, so
+  it held neither page to it. The post now lists it, and the pin reads
+  template literals too (an interpolated group reads `(…)`), expecting
+  10; red on the post without the fix.
+- **J2-11** The lockfile-aware-keys post said a `bun.lock` bump in
+  vx's repo re-keys "that package's own tasks and its dependants'", and
+  its excerpt "59 re-keyed tasks into 2". Measured 2026-10-02 (`run ci
+--all --dry=json` keys before and after): an `astro` bump re-keys 6 of
+  56 tasks with `bun()`, 56 without; a `protobufjs` bump re-keys all 56
+  with it, since every digest folds the root's closure and the root
+  links seven workspace packages. The post now gives both. Row
+  (`site-samples` › the lockfile post measures what the root reaches),
+  read from the manifests; red without the fix and with the narrow
+  example swapped for `@types/bun`.
+
+- **J2-16** The cascade-through-inputs post named one way a key is
+  preliminary (a same-project upstream's outputs). `stable-keys.ts` also
+  classes an upstream's root-anchored outputs, an uncached upstream
+  that may write in the project (item 743), and a cached in-place
+  rewriter the key does not fold (item 750), and every dependant
+  inherits the class. Row (`site-samples` › the cascade post names
+  every way a key is preliminary), gated on the source; red without
+  the fix.
+- **J2-10** The remote-execution post's "What goes remote" list said
+  sandboxed and `exec.remote: false` tasks stay local but not that
+  their dependants stay with them (`pinnedLocalSet` walks the dependant
+  edges from every pinned task, as the CI guide says), and it named
+  nothing of the runtime-probe rule (`withProbedRuntime`: a task whose
+  key folds `cache.inputs.runtime` runs here; its dependants may go).
+  Probes, nothing to fix: the post's one-artifact claim (vx-reapi stores
+  the `tar.zst` as one CAS blob) and the lockfile-aware-keys post. Row
+  (`site-samples` › the remote-execution post lists what placement keeps
+  local), red without the fix.
+- **J2-12** #2323 answers a scoped run's first 8 `transitiveDeps` asks
+  by a search; `modules/package-graph.md` still said both closures are
+  bitsets built on the first query, and the bitsets post said a filter
+  over a thousand packages is "a handful of row ORs". Both now say
+  when the graph searches. Rows (`module-page-claims` › package-graph.md,
+  the count read from `EARLY_SEARCHES`; `site-samples` › the bitsets
+  post says when the package graph searches instead), red without the
+  fix.
+- **J2-14** The watch-mode post's "always ignored" list left out
+  git-ignored paths, which the loop drops through one `git check-ignore`
+  per debounce window (a pid file or log a task writes there re-ran the
+  loop forever before it), and called `--verbosity` refused where
+  `--verbosity 0` is accepted. Row (`site-samples` › the watch post
+  names what the loop ignores and refuses), read from
+  `IGNORED_SEGMENTS`, `IGNORED_SUFFIXES` and `WATCH_REFUSED_FLAGS`;
+  red without the fix.
+- **J2-15** The keys-from-git post said three prunes run against an
+  index id; #2076's blob-size check (A-60) is a fourth (a filter since
+  removed wrote the blob, and git still calls the file clean), and a
+  config that weakens git's stat (`core.trustctime=false`,
+  `core.checkStat=minimal`) trusts no id at all. `caching.md` had both.
+  Row (`site-samples` › the keys-from-git post names every way an index
+  id is distrusted), gated on `git-inputs.ts`; red without the fix.
+- **J2-17** The strict-output-ownership post said the benchmarks'
+  restore and no-op rows sit within a few milliseconds because of the
+  "current tree" short-circuit. The restore row deletes the outputs
+  first (`vx-bench/run.ts`), so it extracts every artifact; the
+  short-circuit is the no-op row alone (475 against 743 ms in
+  `results.json`). Row (`site-samples` › the output-ownership post reads
+  the benchmark rows as they are measured), read from the harness and
+  `results.json`; red without the fix.
+
+- **J2-18** The sandbox post said a sandboxed task that reads a file
+  its inputs never named fails on the denied read, beside a sample
+  granting `read: ['.']`, which lets that read through: a violation is
+  a denial, and only the grants deny (`sandbox-request.ts` derives
+  nothing from `cache`). The post now says the grants judge it and that
+  reads granted no wider than `cache.inputs` make the denial the
+  under-declaration. Row (`site-samples` › the sandbox post judges a
+  violation against the grants); red without the fix.
+
+- **J2-19** The pipeline-with-seams post's stage diagram ran
+  `config → project`, skipping `discover`, which its own table (pinned
+  by item 343) lists second. Row (`site-samples` › every arrow chain of
+  the pipeline stages is PLUGIN_HOOKS in order), over every site page
+  and core doc; red on the post without the fix.
+
+- **J2-20** The one-binary post installs from npm and then says no
+  runtime boots before vx's own code runs; the npm package's `bin` is
+  `launcher.cjs`, a Node script that spawns the platform binary (one
+  Node start first, ~65 ms by its own comment). It also said the
+  package ships the binary, which a per-platform optional dependency
+  carries. Both now say so. Row (`site-samples` › the one-binary post
+  says the npm command is a Node launcher), read from `build-npm.ts`
+  and the launcher; red without the fix.
+
+- **J2-21** The no-daemon post said Turborepo is deprecating its daemon
+  "as of 2.10"; turbo's 2.8.11 release notes deprecate it for
+  `turbo run`, as `comparison.md` says. The no-choice post measured Nx's
+  3.59 s "with the daemon running"; `compare.ts` runs every runner with
+  `CI=1`, Nx's daemon off, and the honest-benchmarks post said both
+  ran "with their daemons on". Row (`site-samples` › the posts state the
+  daemons as the benchmark ran them), reading the version from
+  `comparison.md` and the footing from the harness; red without the fix.
+
+- **J2-22** J2-17's class on a second page: the concepts page's "vx
+  alone" bullet said a restore costs about the same as an untouched
+  tree, of `vx-bench/run.ts`, whose restore row deletes the outputs
+  and extracts every artifact (239 against 906 ms at 1,000 projects in
+  `benchmarks.md`). Row (`site-samples` › the concepts page reads
+  run.ts's restore row as it is measured); red without the fix.

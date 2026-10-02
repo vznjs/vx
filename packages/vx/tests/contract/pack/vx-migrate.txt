@@ -21,6 +21,7 @@ src/nx/nx-deps.ts
 src/nx/nx-dotenv.ts
 src/nx/nx-inputs.ts
 src/nx/nx-map.ts
+src/nx/nx-native.ts
 src/nx/nx-outputs.ts
 src/nx/nx-upstream.ts
 src/paths.ts
@@ -34,3 +35,4 @@ src/tracked-outputs.ts
 src/turbo-cache/index.ts
 src/turbo/index.ts
 src/turbo/turbo-map.ts
+src/workspace-notes.ts

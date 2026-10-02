@@ -344,8 +344,72 @@ accessors read them, and an unscoped run asks none. 1,000 projects,
 warm, 14 rounds, `package graph`: main 13.6 ms median (min 8.5), patch
 11.4 (7.1), A/A 14.9 (9.9).
 
+I-38. Cold configs load 128 at a time (#2241). The main thread is
+mostly idle in the lanes' imports (~52 ms of CPU in a ~420 ms stage),
+so a wider window overlaps more; 128 stays under macOS's default
+256-descriptor limit. 1,000 projects, cold, 12 rounds, `load configs`:
+main (64) 432.3 ms median (min 391.1), patch 411.2 (369.2), A/A 435.8
+(412.3).
+I-39. An attempt takes its stop listener off when it settles (#2248).
+Each executed task added an `abort` listener to the run's stop signal
+and never removed it; each add scans the list for a duplicate, so the
+cost was quadratic. `addEventListener` self time: 93 ms of a 1,000-task
+cold run on main, below the top 40 frames patched. Row:
+`stop-listener.test.ts`.
+I-40. Reverted (#2320). #2256 read vx's own RSS peak through getrusage
+on the claim that it is `VmHWM` raised only by a small pre-exec image.
+Under vfork the pre-exec image is the PARENT's memory: vx spawned from a
+300 MB test runner read a 300 MB floor, and a task holding 150 MB
+reported no peak (`last.test.ts`'s e2e row, red in a local gate). The
+floor reads `VmHWM` again; `own-rss-high-water.test.ts` spawns from a
+300 MB parent to hold it. The claim's own row compared the two marks in
+a process whose parent was small, so it could not see it.
+I-41. A warm config's key is synchronous (#2266): the batch identities
+were awaited through a promise per file and per config. 1,000 projects,
+warm, 14 rounds, `load configs`: main 37.3 ms median (min 30.7), patch
+32.3 (27.9), A/A 35.5 (29.5).
+
+I-42. An env name's secret verdict is decided once (#2283).
+`secretMask` runs per executed task and per hit that replays stdout,
+over the whole process env, two regex tests a variable; the verdict
+depends on the name alone, the values are still read fresh. 1,000-task
+cold run, 150 variables: `secretMask` inclusive 107.0 ms on main, 41.9
+patched.
+I-43. A scoped run enumerates git over the projects it keys (#2306).
+It loads its dependency closure for the `^` walk, and the enumeration
+covered every loaded project: a one-task `--filter` on 1,000 projects
+walked the whole tree. The graph is built first; the enumeration covers
+the projects that own a task. `run build --filter pkg-500`, 15 rounds:
+main 181.2 ms median (min 160.2), patch 113.3 (104.5), A/A 181.2
+(159.5). The `build graph` and `git enumeration` rows swapped.
+
+I-44. A scoped run's closure is a search (#2323). The first ask of a
+transitive set built every project's REACH list and the whole graph's
+bitset closures; the first eight asks now search from the seed. Warm
+`run build --filter pkg-500`, 1,000 projects, 15 rounds, `load configs`:
+main 18.4 ms median (min 16.7), patch 11.3 (9.7), A/A 18.8 (16.0).
+
+I-45. A plain repository's facts are read off the disk (#2329). Every
+run spawned `git rev-parse --show-prefix --git-common-dir
+--show-object-format`; a `.git` directory with a HEAD on the same file
+system answers all three. 10 projects warm, 15 rounds, `workspace
+config`: main 14.3 ms median (min 11.3), patch 9.6 (5.8), A/A 13.1
+(8.6).
+
+I-46. A re-saved artifact moves aside before the rename (#2346). ext4
+flushes the incoming file when a rename replaces one: 0.55 ms a save on
+the main thread, inside the IMMEDIATE transaction, against 0.04 for a
+free name. 1,000-task `--force` build, min of 7: main 4,014 ms, patch
+3,456; a cold run 3,931 against 3,833.
+
 ## Leads for other streams
 
+- **A: a cold save commits one SQLite transaction per entry.** The
+  commits are 292 ms of a 1,000-task cold run's main thread (~0.3 ms
+  each, the ~16 pages of I-6) and the artifact rename inside them 87 ms.
+  A group commit over the save lane's queue would cut both, but it
+  changes when a saved entry becomes visible and how long the write
+  lock is held, in save-path code; not a small PR.
 - **Any: a task's spawn holds the main thread ~1.2 ms under load
   (I-35's cold profile).** Bun spawns with `vfork`, so the parent waits
   for the child's `execve`: 1,225 ms of a 1,000-task cold run's main
@@ -466,3 +530,34 @@ status` re-hashes every tracked file, and vx runs it with
   39–52 ms once any plain `git status` refreshed it. A fix takes the index
   lock (a refresh when the walk was slow, or `update-index --refresh`),
   which is the contention item 880 removed: the owner's call.
+- **Owner: `--force` re-evaluates every config.** The config-eval cache
+  honours the local read axis (`config-evals.ts`, pinned by
+  `config-cache.test.ts`), so `--force` and `--cache=local:w` load
+  1,000 configs in 340–390 ms against 28 warm. Serving evaluations
+  under `--force` is a meaning change for the escape hatch, not a perf
+  fix: the owner's call.
+
+## Probes refuted (2026-10-02)
+
+- Group commit, sized: the save's statements on the real schema, 1,000
+  saves, cost 182–191 ms one per transaction, 108–114 in fours, 86–111
+  in eights. ≤ 75 µs a save, ~2.5 % of the cold main thread; not taken.
+- The per-config built-in check is at its floor: positional
+  `getOwnPropertyDescriptor` 62 µs for the ten objects, one
+  `getOwnPropertyDescriptors` each 82–92; the env check's
+  `Object.keys` walk 14–16 µs, a spread 51–69.
+- A restore reads its rows twice (`restoreOutputsOnce`,
+  `recordOutputStamps`), ~23 µs a SELECT in the run against 2–5 alone.
+  Reusing the first: restore wall min 932 → 872 one order, 1,009 → 974
+  the other, 878 → 961 over 31 rounds; an A/A spread 150 ms. Main-thread
+  CPU ±50 ms either way. Below this box's resolution; not taken.
+- A lazy `node:readline/promises` (re-run of item 755): `startup` stage
+  median 7.8 → 5.0 ms, wall 60.8 vs 62.4 and 60.2 vs 61.4 min of 61 in
+  both orders. Still refuted: the load moves, it does not go.
+- The restore's second row read again, on 40-file artifacts, measured
+  as main-thread on-CPU time (`/proc/self/task/<pid>/schedstat` at
+  exit, a preload; A/A within 7 ms at min): 300 restores, 11 rounds,
+  min 926.5 → 889.6 ms, median 979.3 → 981.7. Still not taken.
+- The RSS floor read only when a peak passes the last `VmHWM` reading:
+  1,000-task cold run, same measure, 7 rounds, min 2,424 → 2,399 one
+  order and 2,404 → 2,467 the other; A/A 15 ms. Not taken.

@@ -25,9 +25,8 @@ remote execution and no seam to add one. There is no way to change
 where a task runs. The config is JSON, so a shared input list is a
 `globalDependencies` array you keep in sync by hand, and nothing
 computed can participate in a key. Inputs default to every file in the
-package, which turns a README edit into a rebuild and makes the
-per-task overhead visible in the [solidjs/solid
-benchmark](../honest-benchmarks/). Outputs are restored additively, so
+package, which turns a README edit into a rebuild and adds hashing to
+every task. Outputs are restored additively, so
 a deleted file survives a cache hit. And the parts that would have
 grown into a platform are being deprecated rather than finished: the
 daemon, `--parallel`, `--no-cache`, `--remote-only` are all deprecated
@@ -54,7 +53,7 @@ executors wrapping every tool behind a JSON options object), and a
 cold-run cost that is not in the same league: on the same 3,270-task
 workspace, Nx's cold build burns 114 minutes of CPU where Turborepo
 burns 73 seconds and vx 35. A fully cached run takes 3.59s against
-Turborepo's 760ms, with the daemon running.
+Turborepo's 760ms, Nx's daemon off as in CI.
 
 Nx is the right tool if you want the platform. If you want the runner,
 you pay for the platform's weight and are steered toward its price.

@@ -10,6 +10,7 @@ import {
 } from '@vzn/vx'
 import { mapNxWorkspace, nxSizeText, parseNxGraph, readNxJson } from './nx/nx-map.js'
 import { trackedFiles, trackedKinds } from './tracked-outputs.js'
+import { adoptedToolNotes } from './workspace-notes.js'
 
 /** What a task's `npm_package_*` read: the manifest, so a bump reaches them. */
 const MANIFEST_IMPORT = "import pkg from './package.json' with { type: 'json' }"
@@ -32,12 +33,21 @@ export async function migrateNx(
     // The file this writes is each task's config.
     ownConfig: () => `vx.config.${format}`,
     manifestField: (key) => ({ raw: `pkg.${key}` }),
+    nativeExecutors: true,
+  })
+  const adopted = await adoptedToolNotes(root, {
+    plugin: 'nx',
+    config: 'nx.json',
+    runner: 'nx',
+    keys: (lock) => `Nx keys each project on the npm packages it depends on in ${lock}`,
   })
   return {
     headerNotes: [
       'migrating from the resolved project-graph snapshot — plugin-inferred targets ' +
-        'are frozen as static config; executor targets run through `nx-exec` and ' +
-        'targets with `.env` files through `nx-env` (keep @vzn/vx-migrate and nx installed)',
+        'are frozen as static config; an executor target becomes the command its executor ' +
+        'runs, or a placeholder the TODOs below list; targets with `.env` files run through ' +
+        '`nx-env` (keep @vzn/vx-migrate installed)',
+      ...adopted,
     ],
     projects: mapped.projects.map((p) =>
       p.tasks.some((t) => JSON.stringify(t.task ?? {}).includes('"pkg.'))

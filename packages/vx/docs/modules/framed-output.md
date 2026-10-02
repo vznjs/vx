@@ -118,15 +118,15 @@ Group tasks (no `exec`) render empty string — they aren't real tasks.
 summary's own sections (see [`failure-recap.md`](./failure-recap.md)):
 
 ```
-  Failed:   2 tasks — the last lines each one printed
+  Failed:   4 tasks — the last lines each one printed
 
-  ◼ app#fail — failed (exit 3)
+  ◼︎ app#fail — failed (exit 3)
   … 70 earlier lines
 line 71
 …
 line 100
 
-  ◼ app#dep — failed (exit 1)
+  ◼︎ app#dep — failed (exit 1)
   (no output)
 
   … and 2 more failed: app#f6, app#f7

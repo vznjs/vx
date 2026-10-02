@@ -24,8 +24,9 @@ These are reproducible on your own machine, not marketing figures:
   fresh / warm-no-restore / warm-restore, from a `vx lock` snapshot
   (`--frozen`), as every vx bench runs it. A 100-project workspace
   replays fully-cached in **74 ms** whole-process (1,000 projects in
-  172 ms), and a restore costs about the same as an untouched tree;
-  the current floors are in [Benchmarks](../../benchmarks/).
+  172 ms). Its restore row deletes the outputs first and extracts
+  every artifact, so it costs more than the untouched tree; the
+  current floors are in [Benchmarks](../../benchmarks/).
 - **Head-to-head vs Turborepo and Nx** — `bun packages/vx-bench/compare.ts` scaffolds
   one repo (1,090 packages, 100 dependency layers, a `build`,
   `installDeps` and `test` task each: 3,270 tasks) and runs all three runners across the same three cache states.

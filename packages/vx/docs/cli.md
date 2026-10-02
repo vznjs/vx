@@ -244,7 +244,9 @@ failed to spawn 'git' … Install git and re-run` — the same the input
   would be a real `git diff` option. A range (`HEAD~1..HEAD`,
   `main...feature`) is refused there too, naming the base to pass
   alone — `ranges are not supported — pass the base alone ("HEAD~1")`
-  — because the other end is always the working tree. A ref that does
+  — because the other end is always the working tree; `<base>...HEAD`,
+  Turbo's CI spelling, is read as `<base>`, since vx diffs from the merge
+  base to a working tree that holds HEAD (D-117). A ref that does
   not exist is `git ref "<ref>" did not resolve`; in a shallow clone (CI's
   one-commit checkout) it adds that the clone is shallow and how to fetch
   the history (`git fetch --unshallow`, `fetch-depth: 0`).
@@ -401,7 +403,7 @@ stays clean).
 | `--force`                          | boolean        | off                                | Re-execute everything (skip cache reads) but still REFRESH the cache (writes stay on). Output globs are cleaned (so the saved snapshot is clean).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `--cache <spec>`                   | value          | all axes on                        | Per-layer read/write control. See below. An EMPTY spec (`--cache=`) is a parse error — it applied nothing and left every axis on; pass `--no-cache` to disable them all.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `--cache-dir <path>`               | value          | workspace `cacheDir` / `.vx/cache` | Cache directory override, resolved relative to cwd (absolute paths used as-is). Beats the `defineWorkspace({ cacheDir })` field and the `.vx/cache` default, for every cache the run opens — the config-evaluation cache that `--affected` owners, the picker and the watch sweep read included, so the workspace's default dir is not created beside it. A per-run knob — never folded into a cache key. `--cache-dir=<path>` form too; the space form rejects a value starting with `-`. A directory this user cannot write into fails the run before any task with `cache directory <path> is not writable (EACCES: …)` — every run records its history there.                                                                          |
-| `--retry <n>`                      | value          | `0`                                | Re-run a failed task up to `n` more times. Run-level default only: a task's own `exec.retries` wins (even an explicit `0`). Never affects cache keys. `--retry=<n>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `--retry <n>`                      | value          | `0`                                | Re-run a failed task up to `n` more times; never a persistent one. Run-level default only: a task's own `exec.retries` wins (even an explicit `0`). Never affects cache keys. `--retry=<n>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | `--continue[=<mode>]`              | value          | `deps-ok`                          | What a failed task takes down with it. `never` stops dispatch on the first failure; `deps-ok` (default) skips only its dependents; `always` (bare `--continue`) runs dependents anyway. See § Failure propagation.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `--timeout <ms>`                   | positive int   | none                               | Default per-task timeout for tasks without their own `exec.timeout`. Sits above `VX_TASK_TIMEOUT` + workspace `timeout`; per-task `exec.timeout` always wins. A runaway task is killed + `failed`. Never affects cache keys. `--timeout=<ms>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `--frozen`                         | boolean        | off                                | Load configs from `vx-lock.json` instead of evaluating (CI) — the run's, and the ones `--affected` owners and the picker select from. See § `--frozen`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
@@ -608,9 +610,13 @@ above the end (and GitHub's API returns only a job log's last 5,000).
 So after the summary, a `Failed:` block repeats, for each failed task,
 its id, its failure label (`failed (exit 3)`, or its kind:
 `failed (timed out, exit 143)`) and the last 30 lines of its output,
-stdout then stderr as the frame orders them, capped at 8 KiB. A note
+capped at 8 KiB, in its frame's order: stdout then stderr for a
+buffered task, as they arrived for the one task streamed live. A note
 says what was cut: `… 1,204 earlier lines`, or
-`… 12,288 bytes cut from the start of the line below`. The first five
+`… 12,288 bytes cut from the start of the line below`, and for a
+persistent task that failed before it was ready,
+`the capture dropped 1,024 characters of the task's output`; several
+join with `, and`. The first five
 failures get a tail; the rest are named:
 `… and 2 more failed: app#f6, app#f7`. Colour codes pass through as
 the task printed them. It prints on a terminal, in CI and on GitHub
@@ -623,7 +629,7 @@ exit code and no `--summarize` or `--dry=json` output.
 ```
   Failed:   1 task — the last lines it printed
 
-  ◼ app#fail — failed (exit 3)
+  ◼︎ app#fail — failed (exit 3)
   … 70 earlier lines
 line 71
 …
@@ -736,10 +742,13 @@ end-of-run summary always prints.
 down with it:
 
 - **`deps-ok`** (default): the failure's transitive dependents are
-  skipped; independent siblings keep running.
+  skipped; independent siblings keep running. A server that dies after
+  it became ready is a failure to its dependents not yet started,
+  including those that reach it through a group.
 - **`never`**: fail fast — the first failure stops dispatch. In-flight
   tasks finish naturally; everything not yet started (cache restores
-  included) completes as skipped.
+  included) completes as skipped. A server that dies after it became
+  ready stops dispatch the same way.
 - **`always`** (bare `--continue`): dependents run even when an
   upstream failed — to surface every failure in one pass. A task
   downstream of a failure (directly, or through successes built on it)
@@ -966,7 +975,8 @@ unchanged. Its `hash` is still set: dependents fold it.
 became ready — `timeout` (the readiness deadline fired), `exited` (the
 child exited first; `exitCode` is then its own) or `spawn` (the spawn
 itself failed). Every label reads it, `failed (never ready: timed out,
-exit 1)`.
+exit 1)`. A server the run's stop (a Ctrl-C) killed while it started is
+`aborted`, not failed, as any task the stop kills.
 
 **`sandboxViolations`** is present only on a sandboxed task with a
 SANDBOX VIOLATIONS section — the count of its denials (vx's own notes
@@ -1040,7 +1050,7 @@ totals plus a table, one row per task:
 ```markdown
 ## vx run — passed
 
-**3 tasks** · 3 success · 0 failed · 2 cached · 1.23s total · 8ms saved
+**3 tasks** · 3 success · 0 failed · 2 cached · 1.23s total · 2.65s saved
 
 | Task      | Status  | Cache      | Duration |
 | --------- | ------- | ---------- | -------- |
@@ -1052,8 +1062,8 @@ totals plus a table, one row per task:
 `Status` is the task outcome (`success` / `failed (exit N)`, with the
 signal an exit above 128 stands for, `failed (exit 137, 128 + SIGKILL)`,
 or a timeout's reason, `failed (timed out, exit 143)`, a persistent
-task's `never ready: …`, or a sandboxed task's violation count /
-`skipped`);
+task's `never ready: …`, or a sandboxed task's violation count, or
+`skipped`, naming what blocked it: `skipped (blocked by lib#build)`);
 `Cache` is its provenance (`miss` / `no-cache` for a task with no `cache`
 block, which never consulted it / `local` / `remote` / `up-to-date` /
 `—`). Aborted tasks (a Ctrl-C teardown) are excluded from the totals but
@@ -1068,9 +1078,10 @@ distinction is the point:
 - **`N total`** sums `Duration` over the tasks that actually EXECUTED —
   the time this run spent.
 - **`N saved`** sums the exec times the cache hits SKIPPED, read from
-  each entry as it was stored. It is deliberately not the hits'
-  `Duration` column, which is the restore they cost this run: summing
-  that reported a task taking 2.01s cold as "6ms saved".
+  each entry as it was stored (above, 2.01s and 640ms). It is
+  deliberately not the hits' `Duration` column, which is the restore
+  they cost this run: summing that reported a task taking 2.01s cold
+  as "6ms saved".
 
 Only `markdown` is supported today (`json` is reserved; a bad value is a
 parse error). Built purely from the run's outcomes after it returns — it
@@ -1106,7 +1117,9 @@ change the exit code — the run already happened, the same contract
 Labels the invocation. Repeatable; `--tag=k=v` form too. The pair is
 split on the **first** `=`, so values may contain `=` (e.g. a URL). An
 empty key is a parse error. Tags are recorded on the run's
-`invocations` row so dashboards can filter runs by label.
+`invocations` row so dashboards can filter runs by label, and reach
+telemetry as `vx.tag.<key>`; a secret value in one is masked there as
+in the task's output (see [Masking](./schema.md)).
 
 ## Sandbox
 
@@ -1522,12 +1535,21 @@ vx-lock.json (2 projects have no vx.config; their tasks are never
 frozen)`), so an empty lock on a plugin-only workspace never reads like
 an audit.
 
+The lock is committed, so `vx lock` refuses to write one that holds a
+secret: a config that evaluated to the value of a secret-named variable
+(or one a task lists in `exec.env.secret`), say
+`` `--token ${process.env.API_TOKEN}` ``. It names each place
+(`a: tasks.deploy.exec.command holds $API_TOKEN`) and writes nothing.
+Masking it instead would freeze a `***` that `--frozen` runs. Let the
+shell expand it: `$API_TOKEN` in the command, the name in
+`exec.env.passThrough` (L-42).
+
 Exit codes:
 
 - `0` — lock written / lock is up to date.
 - `1` — parse error, workspace-discovery error, missing lock
-  (`--check` without one), or any drift (every mismatched project is
-  listed on stderr).
+  (`--check` without one), any drift (every mismatched project is
+  listed on stderr), or a secret value the lock would hold.
 
 ## Releasing (maintainers)
 
@@ -1717,7 +1739,14 @@ reach, and a TODO to order the cycle: `^build` there refuses the run.
 edge); `dev` / `start` / `serve` / `watch` /
 `preview` become persistent tasks, with a TODO to add `readyWhen` when
 another task depends on one, and so does a watcher: a `watch` segment in the script's name (`build:watch`),
-a `--watch` flag, `tsc -w` / `rollup -w`, or nodemon (D-40). A
+a `--watch` flag, `tsc -w` / `rollup -w`, or nodemon (D-40), and a server:
+`serve <dir>`, `http-server`, bare `vite`, a tool's `dev` / `serve` /
+`start` / `preview` verb (`next start`, `netlify dev`), or a script that
+runs such a script of its package by name (`cross-env X=1 pnpm start`) or
+through a runner (`run-p web api`, `concurrently "npm:web" "npm:api"`, D-113),
+outside quotes and not sent to the background with `&` (D-91), read past
+a launcher's `--package <name>` / `-p <name>` (`pnpm dlx --package
+netlify-cli netlify dev`, D-112). A
 script whose name no task may carry (`lint#fix`, `^up`; the schema's
 rule, item 1000) is left out with a TODO rather than written into a
 config every later command refuses, and a `__proto__` script is written
@@ -1754,6 +1783,10 @@ in the `.npmrc` beside its lockfile, pnpm under
 `pnpm-workspace.yaml` (D-33). Bun and Yarn 1 run them whatever those say.
 Under Yarn 2+ a segment's `run <script>`, Yarn's shell builtin, is written
 `yarn run <script>`: vx's shell has no `run` (D-92).
+A Yarn 2+ repo on Plug'n'Play (no `nodeLinker: node-modules` or `pnpm` in
+`.yarnrc.yml`) keeps its bins in `.pnp.cjs`, where vx's PATH finds none;
+the report says so and names `nodeLinker: node-modules` or `yarn exec
+'<command>'` (D-108).
 A script reading `$npm_package_version`, `$npm_package_name` or
 `$npm_lifecycle_event`, which every manager sets and vx does not, gets
 them under `exec.env.define`, the first two read from an imported
@@ -1772,10 +1805,16 @@ pnpm docs-build`; through `run-s` / `run-p` / `npm-run-all` or `concurrently
 a check twice (D-45). The rest check the whole repo (`lint: oxlint .`,
 `test: vitest`) and become the root's own tasks in a root vx.config, when
 the root has a `"name"` (vx skips a nameless root's config) and no config
-of its own; a hand-written one stays as written. The report says which;
+of its own; a hand-written one stays as written. The report names each script left out and why
+(a `pre` / `post` hook goes with its script, D-85), its examples of running
+the members spelled by the repo's manager (`--workspaces` under npm, `yarn
+workspaces foreach` under Yarn 2+), and says which;
 with nothing mapped it names the root whenever it has a script, a member
 or not (pnpm's root is not), and tells a root with no `"name"` to add one
 first (vuejs/core), naming the scripts that would then map (react, D-87). A single-package repo's root is its project and maps.
+A lone root beside a `lerna.json` (Lerna-classic: packages listed there, not
+in `workspaces`) gets a note naming the `workspaces` globs to add, Lerna's
+`packages/*` default when it lists none (D-111).
 A member whose package.json has no `name` is no project; one with a
 script is named in the report, to be given a name (remix's
 `packages/component/bench`, D-106).
@@ -2029,8 +2068,9 @@ Exit codes: `0` success; `1` parse error or unknown target.
 Two runs on one workspace take turns: the second waits for the first's
 run lock and, after a second, says `[vx] waiting for another vx run
 (pid N) on this workspace to finish…` (see caching.md § Concurrent
-runs). The lock lives in the temp directory, so two runs take turns
-only when they share `TMPDIR`: a `nix develop` shell sets its own.
+runs). The lock lives in this user's own directory in the temp
+directory, so two runs take turns only when they are one user's and
+share `TMPDIR`: a `nix develop` shell sets its own.
 
 Every verb: a path vx must write that this user cannot (`EACCES`,
 `EPERM`, `EROFS` — a read-only checkout, another user's files) or that

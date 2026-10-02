@@ -154,6 +154,11 @@ describe('nx-map: what the sweep found unheld', () => {
       '`syncGenerators` ("@nx/js:typescript-sync") on 2 tasks: Nx runs them before those targets, and vx does not — run `nx sync` when they are out of date',
       '`syncGenerators` ("@acme/tools:sync") on 1 task: Nx runs them before those targets, and vx does not — run `nx sync` when they are out of date',
     ])
+    // The README called them a todo per task after G-109 (J-103).
+    const readme = await Bun.file(path.join(import.meta.dir, '..', 'README.md')).text()
+    expect(readme).toContain(
+      '`syncGenerators` (Nx runs them first) is one workspace note per generator list, counting its tasks and naming `nx sync`',
+    )
   })
 
   // Nx runs them before a run's tasks; they were dropped in silence.
@@ -266,7 +271,7 @@ describe('nx-map: what the sweep found unheld', () => {
       }),
     })
     const todo =
-      'dependsOn "gen": options forwarding is not supported — the dependency runs with its own options, not this target\'s'
+      'dependsOn `options: "forward"` is not supported — the dependency runs with its own options, not this target\'s'
     expect(
       ['e2e', 'build', 'build:ci', 'lint'].map((n) => t.get(`a#${n}`)!.todos.includes(todo)),
     ).toEqual([false, false, true, true])

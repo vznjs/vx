@@ -147,6 +147,8 @@ const KNOWN_TASK_KEYS = new Set([
   'persistent',
   'extends',
   'outputLogs',
+  // `outputLogs` as Turbo 1 spells it (renamed in 2.0; 1.13 still reads it).
+  'outputMode',
   'dotEnv',
   'command',
   'description',
@@ -466,8 +468,8 @@ function checkTurboShape(cfg: unknown, label: string): void {
         refuse(`${at}.inputs`, 'an array of globs')
       for (const k of TASK_FLAGS)
         if (d[k] !== undefined && typeof d[k] !== 'boolean') refuse(`${at}.${k}`, 'true or false')
-      if (d['outputLogs'] !== undefined && typeof d['outputLogs'] !== 'string')
-        refuse(`${at}.outputLogs`, 'a string')
+      for (const k of ['outputLogs', 'outputMode'])
+        if (d[k] !== undefined && typeof d[k] !== 'string') refuse(`${at}.${k}`, 'a string')
     }
   }
 }
@@ -1021,6 +1023,7 @@ export async function mapTurboWorkspace(
   // whenever the node is run: such a node is a group task (below). One no
   // other package reaches stays none (a `test: [build]` in a package with
   // no tests adds nothing Turbo's `^` would not).
+  const sidecarGroups = new Set<string>()
   for (const meta of metas) {
     const scripts = packageScripts(meta)
     const own = runnable.get(meta.name)!
@@ -1046,6 +1049,7 @@ export async function mapTurboWorkspace(
         )
       })
       const reached = caretNames.has(name) || crossIds.has(`${meta.name}#${name}`)
+      if (sidecar) sidecarGroups.add(`${meta.name}#${name}`)
       if (sidecar || (local && reached)) emitted.get(meta.name)!.add(name)
       // A name no package has a script for is an entry point of its own:
       // `turbo run ci` over `ci: { dependsOn: ["lint", "build"] }`, or
@@ -1108,6 +1112,10 @@ export async function mapTurboWorkspace(
   // `ui#build` hashes ui's files into theirs. Walked past, vx's `^build`
   // folded nothing of ui, and an edit to it replayed both apps (a stale
   // hit). Key-only too, with no outputs: Turbo's no-op cleans nothing.
+  // One with edges of its own (with-shell-commands' `tooling-config#build`
+  // → `prebuild`) was a group, which keys nothing: Turbo's node still
+  // hashes the package's files, so it is key-only with its edges. A node
+  // that starts persistent sidecars stays a group.
   const keyOnly = new Map<string, Set<string>>()
   for (const meta of metas) {
     const scripts = packageScripts(meta)
@@ -1116,7 +1124,7 @@ export async function mapTurboWorkspace(
       const def = defFor(name)
       if (!caretSelf.has(name) || !withScript.has(name) || transit.has(name)) continue
       if (scripts[name] !== undefined || commandOverride(def) !== undefined) continue
-      if (emitted.get(meta.name)!.has(name)) continue
+      if (sidecarGroups.has(`${meta.name}#${name}`)) continue
       if (def?.cache === false || def?.persistent === true) continue
       emitted.get(meta.name)!.add(name)
       runnable.get(meta.name)!.add(name)
@@ -1162,9 +1170,13 @@ export async function mapTurboWorkspace(
       const spelled = await opts.sourceNames([...closure].map((p) => p.dir))
       inferredOf.set(
         m.name,
-        fw.env.flatMap((e) =>
-          e.endsWith('*') ? spelled.filter((n) => n.startsWith(e.slice(0, -1))) : [e],
-        ),
+        // The bare prefix is no name: formbricks' web spells `NEXT_PUBLIC_`
+        // in a `startsWith` test, and the configs keyed a variable of it.
+        fw.env.flatMap((e) => {
+          if (!e.endsWith('*')) return [e]
+          const head = e.slice(0, -1)
+          return spelled.filter((n) => n.startsWith(head) && n.length > head.length)
+        }),
       )
       sourcedOf.set(fw, [...(sourcedOf.get(fw) ?? []), m.name])
     } else usersOf.set(fw, [...(usersOf.get(fw) ?? []), m.name])
@@ -1317,20 +1329,82 @@ export async function mapTurboWorkspace(
     }
   }
 
+  nestedInputs(root, projects)
   resolveSharedWorkspaceOutputs(root, projects)
   pruneOrphanPersistentNotes(projects, opts.persistentTodo)
   return { projects, notes, globals }
 }
 
 /**
+ * Turbo hashes a package's files as git lists them, nested workspace
+ * packages included (probed on 2.11.6: `a#build` keys `n/x.ts` of a
+ * package `n` inside `a`). cal.com's `@calcom/app-store` holds ~100 app
+ * packages its source imports by relative path; core's file globs stop at
+ * a nested project, so an edit to an app replayed `@calcom/web#build`
+ * from the cache. Each file glob that reaches a nested package is listed
+ * again in `workspaceFiles`, anchored there, or at the package when it
+ * opens on `**` (its own files are keyed twice, the same way).
+ */
+function nestedInputs(root: string, projects: readonly TurboMappedProject[]): void {
+  const rels = projects.map((p) => relPosix(root, p.dir))
+  projects.forEach((p, i) => {
+    const own = rels[i]!
+    if (own === '' || own === '.') return
+    const inside = rels.filter((r) => r.startsWith(`${own}/`)).map((r) => r.slice(own.length + 1))
+    // A package inside a nested one is reached through it.
+    const nested = inside.filter((n) => !inside.some((m) => n.startsWith(`${m}/`)))
+    if (nested.length === 0) return
+    for (const t of p.tasks) {
+      const inputs = (t.task?.['cache'] as { inputs?: Record<string, unknown> } | undefined)?.inputs
+      const files = inputs?.['files']
+      if (inputs === undefined || !Array.isArray(files)) continue
+      const extra: string[] = []
+      for (const g of files) {
+        if (typeof g !== 'string') continue
+        const neg = g.startsWith('!')
+        const body = neg ? g.slice(1) : g
+        // One that opens on `**` reaches them all: listed once, at the package.
+        if (body.startsWith('**')) extra.push(`${neg ? '!' : ''}${own}/${body}`)
+        else
+          for (const n of nested) {
+            const under = reanchor(body, n)
+            if (under !== null) extra.push(`${neg ? '!' : ''}${own}/${n}/${under}`)
+          }
+      }
+      if (!extra.some((g) => !g.startsWith('!'))) continue
+      const ws = inputs['workspaceFiles']
+      inputs['workspaceFiles'] = uniq([...(Array.isArray(ws) ? ws : []), ...extra])
+    }
+  })
+}
+
+/**
+ * The part of a package-relative glob below `dir`, its nested package's
+ * directory: `**\/*.ts` under `n` is `**\/*.ts`, `src/**` under `src/n`
+ * is `**`; null when the glob cannot reach a file there.
+ */
+function reanchor(glob: string, dir: string): string | null {
+  const gs = glob.split('/')
+  const ds = dir.split('/')
+  for (let i = 0; i < ds.length; i++) {
+    const seg = gs[i]
+    if (seg === undefined) return null
+    if (seg === '**') return gs.slice(i).join('/')
+    if (!new Bun.Glob(seg).match(ds[i]!)) return null
+  }
+  return gs.length > ds.length ? gs.slice(ds.length).join('/') : null
+}
+
+/**
  * A name both a global list and the task's own list carry — `globalEnv`
  * and a task `env`, `globalDependencies` and a `$TURBO_ROOT$/` input —
- * is listed once, in its first position. Only concrete strings are
- * compared: the `vx migrate` renderer splices globals as an opaque
- * preset spread, which stays as written.
+ * is listed once, in its first position. `spliced` names the global values
+ * an opaque preset spread already holds (`vx-migrate`'s configs): written
+ * twice there, a migrated config listed `tsconfig.base.json` twice and
+ * keyed apart from the live `turbo()` run, which lists it once.
  */
-function uniq(values: readonly unknown[]): unknown[] {
-  const seen = new Set<string>()
+function uniq(values: readonly unknown[], spliced: readonly string[] = []): unknown[] {
+  const seen = new Set<string>(spliced)
   const out: unknown[] = []
   for (const v of values) {
     if (typeof v === 'string') {
@@ -1434,6 +1508,12 @@ function buildTask(
     uses.add(kind)
     return opts.splice(kind, values)
   }
+  // The global names a splice holds out of `uniq`'s sight: an opaque
+  // preset spread (`vx-migrate`), never the names themselves (`turbo()`).
+  const hidden = (...kinds: TurboGlobal[]): string[] =>
+    kinds.flatMap((k) =>
+      opts.splice(k, globals[k]).some((v) => typeof v !== 'string') ? globals[k] : [],
+    )
   const persistent = def.persistent === true
   const cacheEnabled = def.cache !== false && !persistent
 
@@ -1461,13 +1541,15 @@ function buildTask(
       `turbo key "command" (${JSON.stringify(def['command'])}) is not an argv, null or a toolchain map of them — the script runs; write the command by hand`,
     )
   }
-  const outputLogs = (def as { outputLogs?: unknown }).outputLogs
+  const logsKey =
+    (def as { outputLogs?: unknown }).outputLogs !== undefined ? 'outputLogs' : 'outputMode'
+  const outputLogs = (def as Record<string, unknown>)[logsKey]
   if (outputLogs !== undefined && outputLogs !== OUTPUT_LOGS_DEFAULT) {
     todos.push(
       typeof outputLogs === 'string' && OUTPUT_LOGS_RUN_FLAG.has(outputLogs)
-        ? `turbo key "outputLogs" (${JSON.stringify(outputLogs)}) is a per-run setting in vx — ` +
+        ? `turbo key "${logsKey}" (${JSON.stringify(outputLogs)}) is a per-run setting in vx — ` +
             `run with --output-logs ${outputLogs}`
-        : `turbo key "outputLogs" (${JSON.stringify(outputLogs)}) is not a value vx knows — ` +
+        : `turbo key "${logsKey}" (${JSON.stringify(outputLogs)}) is not a value vx knows — ` +
             'run with --output-logs full|hash-only|errors-only|none',
     )
   }
@@ -1582,7 +1664,10 @@ function buildTask(
     opts.envNames,
   )
 
-  const passThrough = uniq([...global('env'), ...global('pass'), ...envNames, ...passNames])
+  const passThrough = uniq(
+    [...global('env'), ...global('pass'), ...envNames, ...passNames],
+    hidden('env', 'pass'),
+  )
 
   const exec: Record<string, unknown> = { command }
   if (passThrough.length > 0) exec.env = { passThrough }
@@ -1723,7 +1808,7 @@ function buildTask(
       return { name, todos, task, uses }
     }
 
-    const cacheEnv = uniq([...global('env'), ...envNames])
+    const cacheEnv = uniq([...global('env'), ...envNames], hidden('env'))
 
     // Turbo hashes a root task over the whole repo; core stops a root
     // project's own globs at every member (D-39), so as `files` a root
@@ -1734,7 +1819,7 @@ function buildTask(
       wsOutFiles.unshift(...outFiles.splice(0))
     }
     const inputs: Record<string, unknown> = { files }
-    if (wsFiles.length > 0) inputs.workspaceFiles = uniq(wsFiles)
+    if (wsFiles.length > 0) inputs.workspaceFiles = uniq(wsFiles, hidden('inputs'))
     if (cacheEnv.length > 0) inputs.env = cacheEnv
     if (pkgDotenv) inputs.runtime = [pkgDotenvDeep ? DOTENV_PROBE : DOTENV_PROBE_TOP]
     if (wsDotenv) inputs.workspaceRuntime = [DOTENV_PROBE]

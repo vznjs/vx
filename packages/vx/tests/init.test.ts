@@ -105,7 +105,7 @@ describe('vx init source detection', () => {
     async () => {
       const root = await makeRoot('vx-init-root-')
       const note =
-        "fixture-root (the workspace root): its scripts that check the whole repo are its tasks; those that run the members (`pnpm -r`, `--filter`, a runner) or share a member's task name are left out"
+        'fixture-root (the workspace root): its scripts that check the whole repo are its tasks; left out as running the members (`pnpm -r`, `--filter`, a runner): build'
       try {
         await addPackage(root, 'a', { build: 'tsc' })
         // CONTROL: a root with no scripts says nothing.
@@ -813,6 +813,35 @@ describe('migrateScripts', () => {
         watcher: 'node watcher-report.js',
       }),
     ).toEqual([])
+    // D-91: a server, by its command or a persistent script it runs by name
+    // (docusaurus's `serve website`, `cross-env … pnpm start`, vitest's `vite`).
+    expect(
+      persistent({
+        'serve:site': 'serve website',
+        'serve:ssl': 'pnpm build && serve website/build --ssl-cert c',
+        start: 'docusaurus start',
+        'start:base': "cross-env BASE_URL='/b/' pnpm start",
+        client: 'vite',
+        pv: 'vite preview --port 3',
+        ns: 'next start',
+        nd: 'pnpm build && netlify dev',
+        ws: 'webpack serve',
+        build: 'tsc',
+      }),
+    ).toEqual(['client', 'nd', 'ns', 'pv', 'serve:site', 'serve:ssl', 'start', 'start:base', 'ws'])
+    // CONTROLS: a build, a server another tool runs and stops, or one sent
+    // to the background before the real command.
+    expect(
+      persistent({
+        vb: 'vite build',
+        nb: 'next build',
+        sb: 'storybook build',
+        e2e: 'start-server-and-test "vite preview" 4173 "playwright test"',
+        bg: 'pnpm preview & playwright test',
+        preview: 'vite preview',
+        dock: 'docker run -w /x img',
+      }).filter((n) => n !== 'preview'),
+    ).toEqual([])
   })
 
   it('the readiness note rides only a persistent task something depends on', () => {
@@ -841,6 +870,8 @@ describe('migrateScripts', () => {
     // task; one that runs the members, or shares a member's task name, is
     // not (remix: `vx run lint` found no project).
     const rootMeta = meta('root', '/w', {
+      // D-85: a left-out script's hook goes with it, not into a task.
+      prebuild: 'rm -rf dist',
       build: 'tsc -b',
       lint: 'eslint .',
       test: 'npm run test --workspaces',
@@ -867,7 +898,7 @@ describe('migrateScripts', () => {
       ['root', ['lint', 'check', 'typos']],
     ])
     expect(plan.notes).toEqual([
-      "root (the workspace root): its scripts that check the whole repo are its tasks; those that run the members (`pnpm -r`, `--filter`, a runner) or share a member's task name are left out",
+      "root (the workspace root): its scripts that check the whole repo are its tasks; left out as running the members (`pnpm -r`, `--filter`, a runner): test, dev, play, e2e, ci, build:common, build:b, prisma and 4 more; left out as a member's task name, so `--all` never runs one twice: build — one that does other work maps by hand under a name of its own",
     ])
     // CONTROL: a hand-written root config stays as written.
     const configured = { ...rootMeta, configPath: '/w/vx.config.ts' }
@@ -919,6 +950,34 @@ describe('migrateScripts', () => {
     ).toEqual([
       ['a', ['build']],
       ['root', ['bench', 'mocha', 'pack', 'watch']],
+    ])
+  })
+
+  it("a root script's hook is judged with its script, never by a member's name (D-85)", () => {
+    // npm/cli: each member declares `postlint`, and the root's own was
+    // dropped from its `lint` as a member's task name.
+    const meta = (name: string, dir: string, scripts: Record<string, string>) => ({
+      name,
+      dir,
+      packageJson: { name, scripts } as never,
+      configPath: null,
+    })
+    const root = meta('root', '/w', { lint: 'eslint .', postlint: 'echo after' })
+    const a = meta('a', '/w/packages/a', { build: 'tsc', postlint: 'true' })
+    const plan = migrateScripts([root, a])
+    expect(plan.projects[1]!.tasks).toEqual([
+      {
+        name: 'lint',
+        todos: [
+          'npm ran `postlint` around this script without being asked; folded into the command in that order',
+        ],
+        task: {
+          exec: { command: 'vx_script() {\n(eslint . "$@"\n) && (echo after\n)\n}\nvx_script' },
+        },
+      },
+    ])
+    expect(plan.notes).toEqual([
+      'root (the workspace root): its scripts that check the whole repo are its tasks',
     ])
   })
 
