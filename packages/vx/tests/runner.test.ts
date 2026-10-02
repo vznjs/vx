@@ -1061,23 +1061,20 @@ describe('execWrap — grandchild-orphan mitigation', () => {
     // `exec sleep` replaces sh, so the tracked child IS sleep. Killing
     // it reaps the real process; there is no surviving grandchild.
     const child = Bun.spawn(['sh', '-c', execWrap('sleep 30')], { stdout: 'pipe' })
-    // The pid vx tracks runs sleep directly (verified via /proc comm on Linux).
-    // Polled: until the exec lands, comm is the forking thread's name or
-    // `sh`, and a fixed 50 ms read Bun's `JITWorker` on a loaded gate (M-29).
-    // Without the exec it stays `sh`, and the row fails at the deadline.
-    const comm = async (): Promise<string> =>
-      (
+    // The pid vx tracks runs sleep directly (verified via /proc comm on
+    // Linux). sh's exec into sleep lands when the scheduler lets it: a fixed
+    // 50 ms read "sh" on a loaded CI runner, so poll until it changes. A
+    // wrapper that never execs stays "sh" through the deadline and fails.
+    let comm = 'sh'
+    for (const end = Date.now() + 5000; comm === 'sh' && Date.now() < end;) {
+      await Bun.sleep(10)
+      comm = (
         await Bun.file(`/proc/${child.pid}/comm`)
           .text()
           .catch(() => 'sleep\n')
       ).trim()
-    const deadline = Date.now() + 3_000
-    let seen = await comm()
-    while (seen !== 'sleep' && Date.now() < deadline) {
-      await Bun.sleep(10)
-      seen = await comm()
     }
-    expect(seen).toBe('sleep')
+    expect(comm).toBe('sleep')
     child.kill('SIGTERM')
     await child.exited
   })
@@ -1266,39 +1263,33 @@ describe('runCommand — the rows its sweep asked for', () => {
     expect(r.stderr).not.toContain('Install a POSIX sh')
   })
 
-  it.skipIf(process.platform === 'win32')(
-    'a timed-out command returns only once its group is gone',
-    async () => {
-      // The shell dies on the timeout's TERM; its child ignores it. runCommand
-      // waits out the grace for the group, then SIGKILLs what is left. The
-      // child inherits the ignore at fork: a trap set inside a new sh raced
-      // the 100 ms timeout on a slow macOS runner and the group died at 142.
-      // The outer shell's own trap raced it too (a 300 ms start: 106 ms,
-      // M-23), so the deadline is one a shell's start meets.
-      const prev = process.env['VX_KILL_GRACE_MS']
-      process.env['VX_KILL_GRACE_MS'] = '400'
-      try {
-        const r = await runCommand({
-          command: `trap "" TERM; sleep 30 & trap - TERM; wait`,
-          cwd: dir,
-          env: { PATH: process.env.PATH ?? '' },
-          timeoutMs: START_WINDOW_MS,
-        })
-        expect(r.timedOut).toBe(true)
-        expect(r.durationMs).toBeGreaterThanOrEqual(START_WINDOW_MS + 400)
-      } finally {
-        if (prev === undefined) delete process.env['VX_KILL_GRACE_MS']
-        else process.env['VX_KILL_GRACE_MS'] = prev
-      }
-    },
-    10_000,
-  )
+  it('a timed-out command returns only once its group is gone', async () => {
+    // The shell dies on the timeout's TERM; its child ignores it. runCommand
+    // waits out the grace for the group, then SIGKILLs what is left. The
+    // child inherits the ignore at fork: a trap set inside a new sh raced
+    // the 100 ms timeout on a slow macOS runner and the group died at 142.
+    // The outer shell's own trap raced it too (a 300 ms start: 106 ms,
+    // M-23), so the deadline is one a shell's start meets.
+    const prev = process.env['VX_KILL_GRACE_MS']
+    process.env['VX_KILL_GRACE_MS'] = '400'
+    try {
+      const r = await runCommand({
+        command: `trap "" TERM; sleep 30 & trap - TERM; wait`,
+        cwd: dir,
+        env: { PATH: process.env.PATH ?? '' },
+        timeoutMs: START_WINDOW_MS,
+      })
+      expect(r.timedOut).toBe(true)
+      expect(r.durationMs).toBeGreaterThanOrEqual(START_WINDOW_MS + 400)
+    } finally {
+      if (prev === undefined) delete process.env['VX_KILL_GRACE_MS']
+      else process.env['VX_KILL_GRACE_MS'] = prev
+    }
+  }, 10_000)
 
-  it.skipIf(process.platform === 'win32')(
-    'a finished command is struck from the guard: what it left runs past a vx kill -9',
-    async () => {
-      const runner = path.resolve(import.meta.dir, '..', 'src', 'exec', 'runner.ts')
-      const script = `
+  it('a finished command is struck from the guard: what it left runs past a vx kill -9', async () => {
+    const runner = path.resolve(import.meta.dir, '..', 'src', 'exec', 'runner.ts')
+    const script = `
         const { runCommand } = await import(${JSON.stringify(runner)})
         await runCommand({
           command: '(sleep 1; echo late > late.txt) >/dev/null 2>&1 & echo up > up.txt',
@@ -1307,15 +1298,13 @@ describe('runCommand — the rows its sweep asked for', () => {
         })
         process.kill(process.pid, 'SIGKILL')
       `
-      const proc = Bun.spawn([process.execPath, '-e', script], {
-        stdout: 'ignore',
-        stderr: 'ignore',
-      })
-      expect(await proc.exited).toBe(137)
-      expect(await Bun.file(path.join(dir, 'up.txt')).exists()).toBe(true)
-      await Bun.sleep(2_000)
-      expect(await Bun.file(path.join(dir, 'late.txt')).exists()).toBe(true)
-    },
-    20_000,
-  )
+    const proc = Bun.spawn([process.execPath, '-e', script], {
+      stdout: 'ignore',
+      stderr: 'ignore',
+    })
+    expect(await proc.exited).toBe(137)
+    expect(await Bun.file(path.join(dir, 'up.txt')).exists()).toBe(true)
+    await Bun.sleep(2_000)
+    expect(await Bun.file(path.join(dir, 'late.txt')).exists()).toBe(true)
+  }, 20_000)
 })

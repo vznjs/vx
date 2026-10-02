@@ -67,7 +67,7 @@
   {
     "key": "turbo.json globalDependencies",
     "status": "mapped",
-    "reason": "Becomes `cache.inputs.workspaceFiles`; `$NAME` entries become env inputs. Under `turbo()` every package's `microfrontends.json` (or `.jsonc`, or the name `VC_MICROFRONTENDS_CONFIG_FILE_NAME` gives) joins them, as in Turbo, unless it is a child's `partOf`, and so do the files of every package the root depends on, transitively, as in Turbo's global hash. A path git ignores (`config.local.json`) is keyed by a `cache.inputs.workspaceRuntime` probe of its name and bytes, as Turbo hashes it; a glob reaches only files git reports."
+    "reason": "Becomes `cache.inputs.workspaceFiles`; `$NAME` entries become env inputs. Under `turbo()` every package's `microfrontends.json` (or `.jsonc`, or the name `VC_MICROFRONTENDS_CONFIG_FILE_NAME` gives) joins them, as in Turbo, unless it is a child's `partOf`, and so do the files of every package the root depends on, transitively, as in Turbo 2's global hash (Turbo 1, a `pipeline` turbo.json, leaves them out, and so does the mapping). A path git ignores (`config.local.json`) is keyed by a `cache.inputs.workspaceRuntime` probe of its name and bytes, as Turbo hashes it; a glob reaches only files git reports."
   },
   {
     "key": "turbo.json globalEnv",
@@ -127,7 +127,7 @@
   {
     "key": "turbo.json tasks.*.inputs",
     "status": "mapped",
-    "reason": "Globs translated; `$TURBO_DEFAULT$` becomes `**/*`, `$TURBO_ROOT$` workspace files; unsafe globs get a TODO; a path git ignores is keyed by a `cache.inputs.workspaceRuntime` probe, as for `globalDependencies`."
+    "reason": "Globs translated; `$TURBO_DEFAULT$` becomes `**/*`, `$TURBO_ROOT$` workspace files; unsafe globs get a TODO; a path git ignores is keyed by a `cache.inputs.workspaceRuntime` probe, as for `globalDependencies`; a glob that reaches a workspace package nested in the task's package is also listed in `cache.inputs.workspaceFiles`, since Turbo hashes the nested package's files with its parent's."
   },
   {
     "key": "turbo.json tasks.*.interactive",

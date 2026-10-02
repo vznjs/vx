@@ -240,7 +240,7 @@ async function place(lockDir: string): Promise<string | null> {
   await mkdir(staging)
   try {
     await writeFile(path.join(staging, entry), '')
-    await (WIN32 ? renameWin32(staging, lockDir) : rename(staging, lockDir))
+    await rename(staging, lockDir)
     return entry
   } catch (err) {
     await rm(staging, { recursive: true, force: true })
@@ -248,36 +248,6 @@ async function place(lockDir: string): Promise<string | null> {
     if (code === 'ENOTEMPTY' || code === 'EEXIST') return null
     throw err
   }
-}
-
-const WIN32 = process.platform === 'win32'
-
-/**
- * Windows renames no directory onto another, even an empty one: EPERM
- * where POSIX gives ENOTEMPTY, which read as a refusal and ran every
- * contender unlocked. A name that exists is taken; an empty one (a
- * holder's leave that lost its rmdir) is removed and the rename tried
- * once more, as POSIX's rename onto it would replace it.
- */
-async function renameWin32(staging: string, lockDir: string): Promise<void> {
-  try {
-    await rename(staging, lockDir)
-    return
-  } catch (err) {
-    const code = (err as NodeJS.ErrnoException).code
-    if (code !== 'EPERM' && code !== 'EACCES') throw err
-    const empty = await rmdir(lockDir).then(
-      () => true,
-      () => false,
-    )
-    if (!empty) throw Object.assign(new Error('run lock taken'), { code: 'EEXIST' })
-  }
-  await rename(staging, lockDir).catch((err: NodeJS.ErrnoException) => {
-    if (err.code === 'EPERM' || err.code === 'EACCES') {
-      throw Object.assign(new Error('run lock taken'), { code: 'EEXIST' })
-    }
-    throw err
-  })
 }
 
 /**

@@ -438,6 +438,13 @@
   Turbo's TURBO_CACHE and TURBO_REMOTE_CACHE_READ_ONLY narrow the remote,
   `nx-cache.test.ts`'s resolve row; each red on its mutant.
 
+- L-35. `fix(orchestrator)`: the run's invocation line, stored in
+  cache.db and printed by `vx last` (and in its "re-run what failed"
+  line), kept a secret passed after `--` whole: `vx run deploy --
+--token=$NPM_TOKEN` masked the value in the task's output but not
+  there. It is now masked with the same rule before it is recorded.
+  Row: `invocation-secret-mask.test.ts`, red without the fix.
+
 ## Leads for other streams
 
 - Cache owners: `src/cache/archive.ts` and `tar-stream.ts` changed under

@@ -265,6 +265,16 @@ files and their git objects; 11.1 s for the row and its hooks. The row
 11 ms after, under the same load. No other row of the suites makes a
 fixture past 1,500 files.
 
+M-26. M-25's sweep (all twelve shards under `strace -f` beside four busy
+loops) also timed out `foreign-flags.test.ts` › a Turbo or Nx verb names
+what does it in vx: 22 `vx` starts in series, 1.6 s idle and past bun's
+5 s there. They are independent, so they now run at once and the row
+asserts the whole result set: 0.5 s idle; under the same strace and load
+the old row fails (5.0 s) and the new passes (3.6 s). The sweep's other
+5 s timeout, `ci-output.test.ts` › no escape sequence …, runs its verbs
+in an order the state needs (miss, hit, failure, readers), so it is left;
+`show-info.test.ts`'s sandbox line failed only because strace cannot
+nest under strace.
 M-24. M-23's class, the rest of it (a first write in a fresh shell
 against a 300 ms deadline): `persistent-ready-timeout.test.ts` › a task
 that overruns is SIGTERMed and › never-matching readyWhen + timeout
@@ -326,9 +336,9 @@ sent, which F-9 replaced with the peer's count of HEADERS.
 M-29. `runner.test.ts` › an exec-wrapped process is the direct child
 (E's lead: it read `JITWorker` at load 6.6). The row slept a fixed 50 ms
 and read `/proc/<pid>/comm` once: until `sh` execs, comm is the forking
-Bun thread's name or `sh` (an immediate read, 20 of 20: `sh`). It now
-polls for `sleep` up to 3 s; a command with no exec still reads `sh` at
-the deadline, so the claim holds without a time in it.
+Bun thread's name or `sh` (an immediate read, 20 of 20: `sh`). The
+poll that replaced it landed as #2302; a command with no exec still
+reads `sh` at its deadline, so the claim holds without a time in it.
 
 M-30. `output-memory.unsafe.test.ts` › stays flat while a never-ready
 task floods stdout (D's lead: `long - short` read 140 MiB against 64,

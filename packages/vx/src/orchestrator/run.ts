@@ -41,6 +41,7 @@ import {
   UserError,
   machineParallelism,
   teardownTimeoutMs,
+  secretMask,
 } from '../util/index.js'
 import { keyedProjects } from './keyed-projects.js'
 import { prepareSandbox } from './sandbox-request.js'
@@ -191,6 +192,10 @@ export function shouldShortCircuit(
  * GitHub job summary and a check-run posted over the API verbatim (item
  * 1057). Local history (`vx last`) keeps the whole line, on this machine.
  */
+function maskInvocation(command: string): string {
+  return secretMask([process.env])?.mask(command) ?? command
+}
+
 export function invocationCommand(argv: readonly string[]): string {
   const sep = argv.indexOf('--')
   if (sep === -1) return argv.join(' ')
@@ -670,6 +675,25 @@ async function runOnBus(
     }
 
     const sandboxArmer = prepareSandbox(nodes.values())
+    // The probe is ~220 ms of spawns, paid by the first sandboxed task to
+    // execute. A task no cache can answer (no `cache`, reads off, or
+    // persistent) is sure to: start it now, under the classify and the
+    // upstream work. The task's own `arm()` rethrows a refusal, and the
+    // end of the run waits for it: one that landed after the reset left
+    // SRT's proxies holding the process open.
+    const surelyRuns = (n: TaskNode): boolean =>
+      n.config.exec?.persistent !== undefined ||
+      n.config.cache === undefined ||
+      !(policy.localRead || policy.remoteRead)
+    const sandboxed =
+      sandboxArmer === null
+        ? []
+        : [...nodes.values()].filter((n) => n.config.exec?.sandbox !== undefined)
+    let prewarming: Promise<void> | undefined
+    const prewarm = (): void => {
+      prewarming ??= sandboxArmer?.arm().catch(() => {})
+    }
+    if (sandboxed.some(surelyRuns)) prewarm()
     const keyed = keyedProjects(nodes, prepared.keyOnly)
     const outputDirSnapshots: OutputDirSnapshot[] = []
     // Saves run off the execution slot, twice the cap at once (memory:
@@ -771,6 +795,8 @@ async function runOnBus(
         hashCache,
         concurrency,
       })
+      // A confirmed miss runs too.
+      if (sandboxed.some((n) => shortCircuit.preProbed.get(n.id)?.hit === null)) prewarm()
     }
 
     // Whether this task runs behind a failure (`continueMode: 'always'`
@@ -1025,7 +1051,10 @@ async function runOnBus(
       endedAtMs,
       totalMs,
       ok,
-      command: options.command ?? process.argv.slice(1).join(' '),
+      // The invocation is stored and `vx last` prints it: a secret passed
+      // after `--` (`-- --token=$NPM_TOKEN`) is masked here as the task's
+      // own output masks it, so cache.db holds no plaintext value.
+      command: maskInvocation(options.command ?? process.argv.slice(1).join(' ')),
       requestedTasks: options.tasks,
       cachePolicy: compactCachePolicy(policy),
       concurrency,
@@ -1127,6 +1156,7 @@ async function runOnBus(
     // Tear down SRT's network bridge + (on macOS) log monitor. No-op if
     // no task was sandboxed; otherwise SRT keeps proxy servers alive and
     // the next vx run would init on top of stale state.
+    await prewarming
     if (sandboxArmer?.armed) {
       try {
         await resetSandbox()

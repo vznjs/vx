@@ -392,11 +392,8 @@ highest priority:
 1. **Essential allowlist** (hard-coded in `src/exec/env.ts`, and pinned
    against this list by a test): `PATH`, `HOME`, `SHELL`, `USER`,
    `LOGNAME`, `TMPDIR`, `TEMP`, `TMP`, `LANG`, `LC_ALL`, `LC_CTYPE`,
-   `TERM`, `COLORTERM`, `FORCE_COLOR`, `NO_COLOR`, `CI`, `NODE_OPTIONS`,
-   and the Windows set `SYSTEMROOT`, `APPDATA`, `LOCALAPPDATA`,
-   `PROGRAMDATA`, `PROGRAMFILES`, `PROGRAMFILES(X86)`, `COMSPEC`,
-   `PATHEXT`, `SYSTEMDRIVE`, `WINDIR`, `USERPROFILE`, `HOMEDRIVE`,
-   `HOMEPATH`, `NUMBER_OF_PROCESSORS`, `PROCESSOR_ARCHITECTURE`. Nothing else from the parent environment reaches a task —
+   `TERM`, `COLORTERM`, `FORCE_COLOR`, `NO_COLOR`, `CI`, `NODE_OPTIONS`.
+   Nothing else from the parent environment reaches a task —
    that is the whole list. Without these, typical CLI tools break. vx
    adds two markers of its own on top, `VX_RUN_WORKSPACE` (the root of
    the workspace running the task) and `VX_RUN_TASK` (`project#task`):
@@ -472,8 +469,9 @@ task's `define`, six characters or more; not a name ending `_FILE`,
 `_PATH` or `_DIR`, nor git's `GIT_CONFIG_KEY_<n>`) is printed as `***` wherever vx
 shows it: the task's output, the stdout the cache keeps and a hit
 replays, the command a cache entry stores (what `vx why` prints and a
-remote cache receives), the `$ command` line, telemetry records and
-`vx show`. A value
+remote cache receives), the `$ command` line, telemetry records,
+`vx show`, and the run's own invocation line that `vx last` prints (a
+secret passed after `--`). A value
 split across two output chunks is still caught; the output holds back
 that many characters until the next chunk. A plugin that reads a task's
 config directly sees it as written. A secret whose name holds none of
@@ -1067,9 +1065,15 @@ platforms `<dir>/**` and `<dir>/**/*` collapse to `<dir>`, so
 glob keeps its subtree (`.*.tmp/**` covers what is inside each match).
 Unlike a task glob, a grant keeps `Bun.Glob`'s brackets: `[id]` is a
 class, so a Next.js route is granted escaped, `read: ['pages/\\[id\\].tsx']`.
-On Linux a WRITE path holding a bracket cannot be mounted (the runtime
-drops it): vx says so once, names the directory above it to grant
-instead, and a write under it is refused and reported.
+On Linux a WRITE path holding a bracket, `*` or `?` cannot be mounted
+(the runtime drops it): vx says so once, names the directory above it to
+grant instead, and a write under it is refused and reported. A READ path
+whose name holds `*` or `?` (granted escaped, `a\\*b.txt`) cannot be
+granted alone either — the runtime would grant its siblings too — so vx
+leaves it out, says so once, and a read of it is refused and reported.
+A Linux grant of either kind holding a backslash is left out the same
+way: Bun's `realpath` refuses such a path, and the runtime mounts none
+it cannot resolve.
 
 A Linux WRITE grant that matches nothing when the task starts therefore
 mounts nothing. Where a read grant mounts its directory, the task's first
@@ -1108,13 +1112,15 @@ an active file mount — every atomic writer stages beside its target and
 renames — so a FILE-shaped grant is bound as its DIRECTORY. That
 directory is then readable AND writable in full: with
 `write: ['out.txt']` in the project root, every file in the project root
-can be read, undeclared, with no violation (there is no denial for the
-detector to report — the read simply succeeds). Put declared outputs in
-a subdirectory and the rest stays denied: under `write: ['dist/out.txt']`
-the task reads `dist/` freely and an undeclared read at the project root
-still fails. macOS matches paths rather than mounting, so a file grant
-stays exact there. Pinned both ways in
-`tests/sandbox-runtime.unsafe.test.ts` (2026-09-20).
+can be read. Such a read succeeds, so there is no denial; vx reports it
+from the trace instead, as a violation: a read of anything that was in
+that directory when the task started and that no grant covers, the
+directory's listing included. The declared file and what the task made
+there itself stay readable. Put declared outputs in a subdirectory and
+the rest stays denied outright. macOS matches paths rather than
+mounting, so a file grant stays exact there. Pinned in
+`tests/sandbox-runtime.unsafe.test.ts` (2026-09-20) and
+`tests/sandbox-widened-reads.unsafe.test.ts`.
 
 **`network` is per-RUN, not per-task.** SRT runs one filtering proxy
 per `vx run` and checks every request against the allowlist that proxy
@@ -1200,11 +1206,14 @@ Inside a write grant, a file named like a shell or tool config
 to the task, down to three levels below the workspace root, ignored by
 git or not.
 
-**No bracket in the project's path.** The runtime reads a path holding
-`[` or `]` as a pattern: on Linux it mounts no write path that does, and
-macOS's rules compile it as a character class. So a sandboxed task in a
-project under such a directory (`~/[old]/repo`) is refused, naming it:
-rename the directory or drop `exec.sandbox`.
+**No `[`, `]`, `*` or `?` in the project's path.** The runtime reads a
+path holding one as a pattern: on Linux it mounts no write path that
+does and a read grant matches its siblings, and macOS's rules compile it
+as a pattern too. So a sandboxed task in a project under such a directory
+(`~/[old]/repo`, `~/w*s/repo`) is refused, naming it: rename the
+directory or drop `exec.sandbox`. On Linux so is a project under a
+directory holding a backslash, which the runtime cannot mount at all (its
+task saw no project and ran in `$HOME`).
 
 **macOS cannot nest.** `sandbox_apply` is refused inside a sandboxed
 process, so a task that itself sandboxes something (vx's own test suite)
@@ -1628,7 +1637,7 @@ lists the messages a user meets most:
 | `<level> has field "<key>", which vx <version> removed — use <replacement>`                                       | A field an earlier release accepted (`exec.resources`, removed in 0.0.19). The message names what replaced it (`design/versioning-1.0.md` § Deprecation).                                                                      |
 | `<level> must be an object (fields: <fields>), not an array`                                                      | An array where an object goes — `outputs: ['dist/**']` (Turbo's spelling) is `outputs: { files: ['dist/**'] }`, and the message says so.                                                                                       |
 | `cannot find '<name>' — no node_modules above the config provides it; install the workspace's dependencies first` | A bare import nothing installed serves — a fresh clone before its install, or a typo. Refused before the config is evaluated, so Bun never auto-installs it from the registry (it would, when no `node_modules` exists above). |
-| `tasks.<name> must be an object`                                                                                  | The task value is null / a string / etc.                                                                                                                                                                                       |
+| `tasks.<name> must be an object`                                                                                  | The task value is null / a string / etc.; a string (package.json's `name: 'command'`) adds the `{ exec: { command } }` it goes in.                                                                                             |
 | `exec must be an object with a command string`                                                                    | `exec` is malformed.                                                                                                                                                                                                           |
 | `exec.command must be a non-empty string`                                                                         | Forgot `command`, or an empty or whitespace-only string.                                                                                                                                                                       |
 | `exec.command holds a NUL, which no command line can carry`                                                       | A `\0` in the command (a template slip); the spawn refused it as exit 127, "not on this task's PATH", with the NUL printed as a space.                                                                                         |
@@ -1674,7 +1683,9 @@ on the task names vx's home for it instead (D-37): Turbo's `outputs`,
 `inputs`, `env`, `passThroughEnv`, `persistent`, `outputLogs`, `interactive`
 and `with`, Nx's target `executor`, `options`, `continuous` (D-49), `cwd`,
 `parallelism` and `configurations` (D-89), and a `command`
-(`cmd`, `script`) on the task or `cmd` on `exec`. So `outputs` on a task
+(`cmd`, `script`) on the task or `cmd` on `exec`, and on `exec` Nx
+run-commands' `cwd`, `args`, `commands`, `parallel`, `shell` and
+`interactive` (D-100). So `outputs` on a task
 ends `— vx spells it cache.outputs.files` in code quotes. A `cache` that
 is no object (Turbo's `cache: false`) and a `persistent` that is none
 (`true`) name the shape to write.
