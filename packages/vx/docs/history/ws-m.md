@@ -236,7 +236,15 @@ each shell's TERM trap against a 100 ms window. A 200 ms start failed
 the polite half; the deaf half passed by dying of the TERM it was meant
 to ignore (nothing asserted the SIGKILL). Now the 1 s window, and the
 deaf child's `signalCode` must be `SIGKILL`: with its trap removed the
-row fails (`SIGTERM`), where it passed before.
+row fails (`SIGTERM`), where it passed before. The class, grepped (a
+trap or first write in a fresh shell against a deadline of 100-300 ms):
+`runner.test.ts` › a timed-out command returns only once its group is
+gone (106 ms with a 300 ms start), `task-timeout.test.ts`'s two trap
+rows, `persistent-ready-timeout.test.ts` › a never-ready server that
+ignores SIGTERM, `keep-alive.test.ts` › a never-ready server a dead
+shell left: each red with a 300 ms shell start, green on a 1 s
+deadline. The trap-and-exit-0 row passed red-forced, by 143, without
+its case; it now asserts the trap's own line in `out.txt`.
 
 ## Leads for other streams
 
