@@ -1639,3 +1639,22 @@ describe('the plugin examples say which seams they cover', () => {
     expect(arch).toContain(`one runnable plugin for each of ${words[covered.length]} seams`)
   })
 })
+
+describe("the plugins guide rosters turbo() and nx()'s hooks", () => {
+  // The row named `project` and `fingerprint`; `vx info` on a turbo()
+  // workspace lists `config, discover, project, fingerprint` (J-104).
+  it('the @vzn/vx-migrate row names every hook the adoption plugins define', () => {
+    const src = path.resolve(import.meta.dir, '..', '..', 'vx-migrate', 'src')
+    const text = ['adoption-plugin.ts', 'turbo/index.ts', 'nx/index.ts']
+      .map((f) => readFileSync(path.join(src, f), 'utf8'))
+      .join('\n')
+    const defined = PLUGIN_HOOKS.filter(
+      (h) => new RegExp(`^\\s+(async )?${h}\\(`, 'm').test(text) || text.includes(`{ ${h}: {`),
+    )
+    expect(defined).toEqual(['config', 'discover', 'project', 'fingerprint'])
+    const page = readFileSync(path.join(GUIDES, 'plugins.md'), 'utf8')
+    const row = /^\| `@vzn\/vx-migrate` +\|([^|]*)\|/m.exec(page)![1]!
+    const adoption = row.split(';')[0]!
+    expect([...adoption.matchAll(/`(\w+)`/g)].map((m) => m[1]!)).toEqual(defined)
+  })
+})
