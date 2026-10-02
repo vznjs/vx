@@ -836,6 +836,7 @@ Ctrl-C stopped is not. Rows (`keep-alive.test.ts`): the exit-1 row reads
 `app#other` failed with exit 1 and `failed: 1` (red without the fix);
 the Ctrl-C row reads `success` (red with the abort guard removed). The
 run history still says `ok` (lead for A). `execution.md` says so.
+
 ## C-54: a plugin whose `setup` throws is named with the hook
 
 Every stage's throw reads `plugin '<name>' failed in <stage>: …`, and
