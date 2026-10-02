@@ -38,3 +38,19 @@
   row applies), and `execution.md` called the allowlist what a command
   needs on "\*nix / Windows". Row (`doc-references` › no page describes
   a Windows branch the source dropped), red without the fix.
+- **J2-7** The sandboxing guide's grant table called `gitConfig`
+  "inert: SRT drops the per-task flag"; since B-41 the run union carries
+  it and each wrap sets it for its own task (`perTaskRun`), and the
+  deny scan skips `.git/config` for that task, as schema.md and
+  `modules/sandbox-runtime.md` already said. Row (`site-samples` › the
+  sandboxing guide says what gitConfig grants), red without the fix.
+- **J2-5** The config-eval cache's purity gate passes any import of
+  `@vzn/vx/config` (`PURE_CONFIG_ENTRY`, since #2013), the entry every
+  config `vx init` and vx-migrate write. `modules/config-cache.md`,
+  `comparison.md` and the resolved-config-hashing post said a bare
+  import of anything but `@vzn/vx` opts a config out, so a reader of
+  any of them concluded the generated configs evaluate live every run.
+  Rows (`doc-references` › comparison.md states the purity gate's
+  three conditions, now with config-cache.md; `site-samples` › the
+  bare imports it lets through are the two the gate passes), red
+  without the fix.

@@ -344,8 +344,36 @@ accessors read them, and an unscoped run asks none. 1,000 projects,
 warm, 14 rounds, `package graph`: main 13.6 ms median (min 8.5), patch
 11.4 (7.1), A/A 14.9 (9.9).
 
+I-38. Cold configs load 128 at a time (#2241). The main thread is
+mostly idle in the lanes' imports (~52 ms of CPU in a ~420 ms stage),
+so a wider window overlaps more; 128 stays under macOS's default
+256-descriptor limit. 1,000 projects, cold, 12 rounds, `load configs`:
+main (64) 432.3 ms median (min 391.1), patch 411.2 (369.2), A/A 435.8
+(412.3).
+I-39. An attempt takes its stop listener off when it settles (#2248).
+Each executed task added an `abort` listener to the run's stop signal
+and never removed it; each add scans the list for a duplicate, so the
+cost was quadratic. `addEventListener` self time: 93 ms of a 1,000-task
+cold run on main, below the top 40 frames patched. Row:
+`stop-listener.test.ts`.
+I-40. vx's own RSS peak comes from getrusage (#2256), not
+`/proc/self/status`: the same mark, never below `VmHWM`, one syscall.
+`ownRssHighWater` inclusive: 75.6 ms of a 1,000-task cold run on main,
+13.9 patched. Row: `own-rss-high-water.test.ts` (the current RSS and a
+kilobyte unit each fail it).
+I-41. A warm config's key is synchronous (#2266): the batch identities
+were awaited through a promise per file and per config. 1,000 projects,
+warm, 14 rounds, `load configs`: main 37.3 ms median (min 30.7), patch
+32.3 (27.9), A/A 35.5 (29.5).
+
 ## Leads for other streams
 
+- **A: a cold save commits one SQLite transaction per entry.** The
+  commits are 292 ms of a 1,000-task cold run's main thread (~0.3 ms
+  each, the ~16 pages of I-6) and the artifact rename inside them 87 ms.
+  A group commit over the save lane's queue would cut both, but it
+  changes when a saved entry becomes visible and how long the write
+  lock is held, in save-path code; not a small PR.
 - **Any: a task's spawn holds the main thread ~1.2 ms under load
   (I-35's cold profile).** Bun spawns with `vfork`, so the parent waits
   for the child's `execve`: 1,225 ms of a 1,000-task cold run's main
