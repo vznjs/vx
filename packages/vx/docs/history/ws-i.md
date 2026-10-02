@@ -187,6 +187,16 @@ project, vx's and Bun's versions. 1,000 packages warm, compiled, 41
 interleaved rounds: main 401.2 ms median (min 337.2), patch 377.9
 (309.2), A/A 373.2 (321.0); `load configs` 41.1 → 14.4 ms (min of 7).
 
+I-25. A run that names more projects than pathspecs scope starts git
+early. A scoped run waited for its configs before enumerating, to scope
+the pathspecs to the projects they pull in; above
+`MAX_SCOPED_PATHSPECS` (64) the walk is the whole tree either way, so
+such a run (an `--affected` selection on a large workspace) now starts
+it beside the workspace load, as an unscoped run does. 1,000 packages,
+one edited (167 selected), `run build --affected=HEAD~1`, compiled, 41
+interleaved rounds: main 323.3 ms median (min 273.5), patch 298.1
+(255.7), A/A 294.4 (254.2).
+
 ## Leads for other streams
 
 - **Owner / coordinator: skip macOS where it cannot differ from
