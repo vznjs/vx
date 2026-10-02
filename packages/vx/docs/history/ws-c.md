@@ -912,6 +912,7 @@ at the tail; it now says only a single layer left is used as is.
 `RunOptions.holdPersistent` said only the requested servers are handed
 back; it names the ones a requested group stands for (C-52) and their
 persistent dependencies (C-46). Comments only.
+
 ## C-61: run() refuses the numbers the CLI refuses
 
 The CLI and the workspace config refuse a `concurrency` that is not a
