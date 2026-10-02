@@ -538,7 +538,7 @@ async function runOnBus(
   // ends after it is the stop's own kill, and was named a crash (item 1061).
   let endedBeforeStop: ReadonlySet<ReturnType<typeof Bun.spawn>> | undefined
   const onAbort = (): void => {
-    stopRuntimeProbes()
+    stopRuntimeProbes(hashCache.runtime, hashCache.workspaceRuntime)
     endedBeforeStop = new Set([...persistentRegistry.values()].filter(hasEnded))
     aborting = terminateChildren(
       () => [...liveChildren, ...persistentRegistry.values()],
