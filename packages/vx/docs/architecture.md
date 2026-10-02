@@ -452,7 +452,7 @@ restoreTier, … })` runs the DAG two-tier. Each ready node invokes
 
 ## The project loader & the config-time imports problem
 
-`workspace/project-loader.ts` loads each `vx.config.{ts,mts,js,mjs}`
+`workspace/project-loader.ts` loads each `vx.config.{ts,mts,js,mjs,cts,cjs}`
 via Bun's native `await import()` — no jiti, no esbuild, no
 transpile-on-load step. We append a content-hash query string
 (`?vx-bust=<xxh3>`) to the import specifier so:

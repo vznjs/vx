@@ -18,6 +18,7 @@ import { afterAll, expect, it } from 'bun:test'
 import {
   findWorkspaceRoot,
   listProjects,
+  loadProjectConfig,
   loadWorkspace,
   loadWorkspaceConfig,
 } from '../src/workspace/index.js'
@@ -123,6 +124,47 @@ it('each discovery case answers as tests/contract/discovery.json records', async
     const read = config?.concurrency
     live[`workspace config: ${wsNames.slice(i).join(' + ')}`] =
       typeof read === 'number' ? wsNames[read - 1] : null
+  }
+
+  // D-86: the CommonJS names, after the ESM ones (`module.exports`).
+  const CJS = (v: number): string =>
+    `module.exports = { tasks: { t${v}: { exec: { command: 'true' } } } }\n`
+  for (const files of [
+    ['vx.config.cts', 'vx.config.cjs'],
+    ['vx.config.cjs'],
+    ['vx.config.mjs', 'vx.config.cts'],
+  ]) {
+    const root = fixture({
+      'package.json': pkg('root', { workspaces: ['packages/*'] }),
+      'packages/a/package.json': pkg('a'),
+      ...Object.fromEntries(
+        files.map((f, i) => [`packages/a/${f}`, f.endsWith('.mjs') ? CONFIG(i) : CJS(i)]),
+      ),
+    })
+    const [meta] = await listProjects(await loadWorkspace(root))
+    const config = meta?.configPath == null ? null : await loadProjectConfig(meta.configPath)
+    live[`project config: ${files.join(' + ')}`] =
+      meta?.configPath == null
+        ? null
+        : [path.basename(meta.configPath), Object.keys(config?.tasks ?? {})]
+  }
+  for (const files of [
+    ['vx.workspace.cts', 'vx.workspace.cjs'],
+    ['vx.workspace.cjs'],
+    ['vx.workspace.mjs', 'vx.workspace.cts'],
+  ]) {
+    const root = fixture({
+      'package.json': pkg('root', { workspaces: ['packages/*'] }),
+      ...Object.fromEntries(
+        files.map((f, i) => [
+          f,
+          f.endsWith('.mjs') ? WS_CONFIG(i + 1) : `module.exports = { concurrency: ${i + 1} }\n`,
+        ]),
+      ),
+    })
+    const read = (await loadWorkspaceConfig(root))?.concurrency
+    live[`workspace config: ${files.join(' + ')}`] =
+      typeof read === 'number' ? files[read - 1] : null
   }
 
   const text = JSON.stringify(live, null, 2) + '\n'

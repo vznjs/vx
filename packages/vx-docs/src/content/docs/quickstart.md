@@ -13,7 +13,7 @@ that binary.
 ## Install
 
 1. Install it at the workspace root: `npm install -D @vzn/vx` (in a pnpm
-   workspace, `pnpm add -D @vzn/vx`: npm refuses `workspace:*`).
+   workspace, `pnpm add -D -w @vzn/vx`: npm refuses `workspace:*`).
 2. Run `npx vx init`. It writes a `vx.config.ts` per package from its
    scripts, and a `vx.workspace.ts`. A root script that checks the whole
    repo (`lint: eslint .`) becomes a task in a root `vx.config.ts`; one
