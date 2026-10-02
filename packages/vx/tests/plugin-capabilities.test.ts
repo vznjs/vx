@@ -564,6 +564,52 @@ describe('executor capability — end-to-end via run()', () => {
     }
   })
 
+  // C-74: the name is added to the error itself, so one error an executor
+  // rejects every task with (a failed connection it memoized) was named
+  // once per task: the second read `failed in execute: plugin … failed in
+  // execute: pool down`.
+  it('one error an executor rejects two tasks with is named once in each', async () => {
+    const { workspaceRoot, cleanup } = await writeFixture()
+    try {
+      await Bun.write(
+        path.join(workspaceRoot, 'pkg-a/vx.config.mjs'),
+        `export default { tasks: { a: { exec: { command: 'echo a' } }, b: { exec: { command: 'echo b' } } } }`,
+      )
+      await Bun.write(
+        path.join(workspaceRoot, 'vx.workspace.mjs'),
+        localWorkspaceSource([
+          pluginSource(
+            'org/down',
+            `{ executor() {
+               const down = new Error('pool down')
+               return { name: 'down', async execute() { throw down } }
+             },
+           }`,
+          ),
+        ]),
+      )
+      await gitInit(workspaceRoot)
+      const seen: string[] = []
+      await run({
+        cwd: workspaceRoot,
+        projects: ['pkg-a'],
+        tasks: ['a', 'b'],
+        concurrency: 1,
+        log: {
+          ...makeSilentLogger(),
+          taskStderr: (n, c) => void (c.startsWith('[vx]') && seen.push(`${n.id}: ${c}`)),
+        },
+        handleSignals: false,
+      })
+      expect(seen.sort()).toEqual([
+        "pkg-a#a: [vx] internal error in pkg-a#a: plugin 'org/down' (executor 'down') failed in execute: pool down\n",
+        "pkg-a#b: [vx] internal error in pkg-a#b: plugin 'org/down' (executor 'down') failed in execute: pool down\n",
+      ])
+    } finally {
+      cleanup()
+    }
+  })
+
   it('a cacheable task executed by a plugin executor is saved and replayed as a hit', async () => {
     const { workspaceRoot, cleanup } = await writeFixture()
     try {
