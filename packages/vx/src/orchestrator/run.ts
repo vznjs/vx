@@ -194,6 +194,12 @@ export function invocationCommand(argv: readonly string[]): string {
 }
 
 export async function run(options: RunOptions): Promise<RunSummary> {
+  // The boundary the CLI and the workspace config already hold: a 0, a
+  // negative or a NaN left no worker slot, and the run waited for good (C-61).
+  const c = options.concurrency
+  if (c !== undefined && !(Number.isInteger(c) && c > 0)) {
+    throw new UserError(`RunOptions.concurrency is ${String(c)}: it must be a positive integer`)
+  }
   // Color decision: a custom logger (tests, embedders) handles its
   // own formatting and asserts on plain strings, so we suppress
   // ANSI escapes for them. Only the defaultLogger (real terminal

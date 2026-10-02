@@ -857,3 +857,13 @@ a held server's line after the return reaches the logger (red without
 the fix), and after `stop` the bus reaches it no more (red with the
 detach removed); probed end to end (9 lines in 2.5 s, 2 before).
 `cli.md` says so.
+
+## C-61: run() refuses a concurrency that is not a positive integer
+
+The CLI and the workspace config refuse a `concurrency` that is not a
+positive integer, but the façade took any: `run({ concurrency: 0 })`, a
+negative or `NaN` left no worker slot open and the run waited for good.
+run() now refuses it up front, naming the value. Row
+(`run-concurrency.test.ts`): 0, -1, 1.5 and NaN refused with the exact
+message, 1 runs; red without the check (the run hangs). The option's
+doc comment says so.

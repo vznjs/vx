@@ -47,6 +47,7 @@ export interface RunOptions {
    * as `staged` is.
    */
   discovered?: { root: string; projects: ProjectMeta[] }
+  /** Worker slots: a positive integer; run() refuses anything else (C-61). */
   concurrency?: number
   /**
    * Cache directory override (`--cache-dir <path>`). Absolute, or relative
