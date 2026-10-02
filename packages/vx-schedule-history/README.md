@@ -5,7 +5,7 @@ History-based scheduling for [`@vzn/vx`](https://github.com/vznjs/vx): a `schedu
 ## Usage
 
 ```sh
-npm install -D @vzn/vx @vzn/vx-schedule-history   # or: pnpm add -D · yarn add -D · bun add -d
+npm install -D @vzn/vx @vzn/vx-schedule-history   # or: pnpm add -D -w · yarn add -D (-W on Yarn 1) · bun add -d
 ```
 
 ```ts

@@ -1571,6 +1571,36 @@ describe('a config sample imports the schema from @vzn/vx/config', () => {
   })
 })
 
+describe('an install at the workspace root names the flag pnpm and Yarn 1 require', () => {
+  // pnpm 9 refuses `pnpm add -D` at a workspace root (ERR_PNPM_ADDING_TO_ROOT)
+  // and Yarn 1 refuses `yarn add -D` there without -W; the README lines
+  // and the quickstart said neither (J-95). vx init's own line is the source.
+  it('every `pnpm add -D` / `yarn add -D` in a page or README is the root form init prints', () => {
+    const init = readFileSync(path.resolve(import.meta.dir, '..', 'src', 'cli', 'init.ts'), 'utf8')
+    expect(init).toContain("pnpm: 'pnpm add -D -w'")
+    expect(init).toContain('`${INSTALL.yarn} -W`')
+    const repo = path.resolve(import.meta.dir, '..', '..', '..')
+    const files = [
+      ...handAuthoredSitePages(),
+      path.join(repo, 'README.md'),
+      ...readdirSync(path.join(repo, 'packages')).map((d) =>
+        path.join(repo, 'packages', d, 'README.md'),
+      ),
+    ].filter((f) => existsSync(f))
+    const bad: string[] = []
+    let seen = 0
+    for (const f of files) {
+      for (const m of readFileSync(f, 'utf8').matchAll(/(pnpm|yarn) add -[Dd]\b[^\n`·]*/g)) {
+        seen++
+        const ok = m[1] === 'pnpm' ? / -w\b/.test(m[0]) : /-W\b/.test(m[0])
+        if (!ok) bad.push(`${path.relative(repo, f)}: ${m[0]}`)
+      }
+    }
+    expect(bad).toEqual([])
+    expect(seen).toBeGreaterThan(15)
+  })
+})
+
 describe("the Turbo pages say where a script-less package's task comes from", () => {
   // The from-turborepo post said the migrator "emits a task only where the
   // script exists"; a package a `^` edge reaches without it gets a key-only
