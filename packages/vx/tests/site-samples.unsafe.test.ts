@@ -170,6 +170,22 @@ describe('the CI guide states the wire chunk sizes', () => {
   })
 })
 
+describe("the README's comparison agrees with comparison.md on Turbo's daemon", () => {
+  // The README called Turbo's daemon "Optional" for speed; Turbo 2.10's
+  // `run --help` marks --daemon and --no-daemon deprecated ("The daemon is
+  // no longer used for `turbo run`"), as comparison.md says (J-111).
+  it('both say turbo run uses none', () => {
+    const repo = path.resolve(import.meta.dir, '..', '..', '..')
+    const readme = readFileSync(path.join(repo, 'README.md'), 'utf8')
+    const row = /^\| Daemon required for speed \|[^|]*\| ([^|]*?) +\|/m.exec(readme)![1]
+    expect(row).toBe('No (`turbo run` has none)')
+    const doc = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'comparison.md'), 'utf8')
+    expect(doc).toContain(
+      '| Daemon / persistent project-graph process | not for `turbo run` since 2.9',
+    )
+  })
+})
+
 describe('the quickstart shows what a run prints and what its flags do', () => {
   it('the `vx run build` hit comment opens with the glyph and words formatTaskHitLine prints for a local hit', () => {
     // The page showed ◌, a glyph no source file prints (item 312, 2026-09-16).
