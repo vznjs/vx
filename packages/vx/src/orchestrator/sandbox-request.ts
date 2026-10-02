@@ -3,6 +3,7 @@
 // (bwrap cannot bind a path that does not exist). Shared by the cached path
 // (through the executor) and the persistent path (spawned in execute-task).
 
+import { existsSync } from 'node:fs'
 import { lstat, mkdir, readdir, realpath, rm, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import path from 'node:path'
@@ -254,7 +255,13 @@ export async function sandboxRequestFor(
     // 0.0.76). A grant naming a wall is not strictly outside it and wins.
     // Without it a root task's `read: ['.']` read its nested projects under
     // seatbelt (B-4).
-    baseDenyRead: process.platform === 'darwin' ? [workspaceRoot, ...walls] : [workspaceRoot],
+    // The host's credential stores are denied too: the rest of home stays
+    // readable (tools need `~/.cache`), but a dependency the task runs
+    // could copy a key into an output the cache shares (L-41).
+    baseDenyRead: [
+      ...(process.platform === 'darwin' ? [workspaceRoot, ...walls] : [workspaceRoot]),
+      ...credentialStores(workspaceRoot),
+    ],
     // …but only denials INSIDE the project are worth reporting. A task
     // bumping into the wall is the sandbox working, not a finding: the
     // walk `bun build --compile` makes from `/` down to its cwd lists
@@ -552,6 +559,44 @@ export function untouchedPlaceholderLine(projectDir: string, placeholder: string
     `file, which the task never wrote (removed again). If the task creates a directory there ` +
     `("File exists" from its own mkdir), spell the grant \`${rel}/\` — a literal without the ` +
     `slash is a file.`
+  )
+}
+
+/**
+ * Where tools keep credentials under the user's home. A sandboxed task
+ * reads none of them unless its `allow.read` names one (a publish task's
+ * `~/.npmrc`).
+ */
+const CREDENTIAL_STORES = [
+  '.ssh',
+  '.gnupg',
+  '.aws',
+  '.azure',
+  '.kube',
+  '.config/gcloud',
+  '.config/gh',
+  '.docker/config.json',
+  '.netrc',
+  '.git-credentials',
+  '.npmrc',
+  '.yarnrc.yml',
+  '.pypirc',
+]
+
+/** The stores present on this host, learned once per home. */
+let presentStores: { home: string; paths: string[] } | undefined
+
+/** The credential stores to deny, less any that holds the workspace. */
+function credentialStores(workspaceRoot: string): string[] {
+  const home = homedir()
+  if (presentStores?.home !== home) {
+    presentStores = {
+      home,
+      paths: CREDENTIAL_STORES.map((rel) => path.join(home, rel)).filter((p) => existsSync(p)),
+    }
+  }
+  return presentStores.paths.filter(
+    (p) => workspaceRoot !== p && !workspaceRoot.startsWith(p + path.sep),
   )
 }
 
