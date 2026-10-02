@@ -252,7 +252,37 @@ function upstreamBuildOnWorker(tasks: GeneratedTask[]): void {
  * task again beside the member's own (D-45).
  */
 const RUNS_MEMBERS =
-  /(^|[\s;&|(])(turbo|nx|lerna|ultra|wireit|nps|moon|rush|vx)(\s|$)|\s(-r|--recursive|--filter|-F|--workspaces|-ws|--workspace|-w|-C|--dir|--cwd|--prefix|--if-present|--parallel|--stream)(\s|=|$)|\bworkspaces?\s+(foreach|run)\b|\bvp\s+run\s|\bcd\s/
+  /(^|[\s;&|(])(turbo|nx|lerna|ultra|wireit|nps|moon|rush|vx)(\s|$)|\bworkspaces?\s+(foreach|run)\b|\bvp\s+run\s|\bcd\s/
+
+/** A workspace flag, read only where a package manager takes it (`pmRunsMembers`). */
+const MEMBER_FLAG =
+  /^(-r|--recursive|--filter|-F|--workspaces|-ws|--workspace|-w|-C|--dir|--cwd|--prefix|--if-present|--parallel|--stream)(=|$)/
+
+/**
+ * The workspace flags are a package manager's: on the program it runs they
+ * mean something else, and berry's `bench` (`yarn node -r ./setup.ts …`,
+ * node's `--require`) was left out as running the members (D-81). With no
+ * manager named, a `run` verb is one.
+ */
+function pmRunsMembers(script: string): boolean {
+  for (const segment of script.split(/&&|\|\||[;|()]/)) {
+    const words = segment.trim().split(/\s+/)
+    let i = words.findIndex((w) => /^(pnpm|npm|yarn|bun)$/.test(w))
+    // npm/cli runs itself: `node . run test --workspaces`.
+    if (i < 0) i = words.indexOf('run')
+    if (i < 0) continue
+    // `exec`, `dlx` and `x` take the manager's flags up to the program name.
+    let program = false
+    for (i++; i < words.length; i++) {
+      const w = words[i]!
+      if (MEMBER_FLAG.test(w)) return true
+      if (program && !w.startsWith('-')) break
+      if (w === 'node') break
+      if (w === 'exec' || w === 'dlx' || w === 'x') program = true
+    }
+  }
+  return false
+}
 
 /** A package manager running a script by name: `pnpm build`, `npm run x`, `bun run x`. */
 const RUNS_SCRIPT =
@@ -267,7 +297,9 @@ function runningMembers(scripts: Readonly<Record<string, unknown>>): Set<string>
   const text = Object.entries(scripts).filter(
     (e): e is [string, string] => typeof e[1] === 'string',
   )
-  const out = new Set(text.filter(([, v]) => RUNS_MEMBERS.test(` ${v}`)).map(([n]) => n))
+  const out = new Set(
+    text.filter(([, v]) => RUNS_MEMBERS.test(` ${v}`) || pmRunsMembers(v)).map(([n]) => n),
+  )
   for (let grew = true; grew;) {
     grew = false
     for (const [n, v] of text) {
