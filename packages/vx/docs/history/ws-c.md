@@ -943,3 +943,11 @@ scheduler's line. The error object is kept (its class, cause and code),
 so a refusal still prints plainly and a bug as an internal error.
 Row (`plugin-capabilities.test.ts` › an executor's throw reaches the
 task's own stderr): red without the fix. `modules/executor.md` says so.
+
+## C-68: schema.md says which servers the end of the graph keeps
+
+`schema.md`'s persistent semantics said the end of the graph SIGTERMs
+every persistent subprocess; the foreground keeps the requested ones,
+those a requested group stands for (C-52) and their persistent
+dependencies (C-46), unless the run failed elsewhere (C-60). The bullet
+now says so. Docs only.

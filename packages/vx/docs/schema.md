@@ -369,8 +369,13 @@ Semantics:
   fine (a daemon that forks and returns).
 - **End-of-graph SIGTERM.** Once the rest of the graph finishes
   (success OR failure of downstream), the orchestrator sends `SIGTERM`
-  to every persistent subprocess and waits for them to exit before
-  returning.
+  to every persistent subprocess it does not keep, and waits for them to
+  exit (`SIGKILL` past the kill grace). In the foreground it KEEPS the
+  persistent tasks you requested, those a requested group stands for,
+  and the persistent tasks they depend on: vx stays up after the summary
+  until one of them exits or you press Ctrl-C, streaming what they write.
+  A run where anything else failed keeps none and exits 1, unless
+  `--continue=always` (`cli.md` § Output, "Pinned persistent tasks").
 - **`cache` is rejected.** The config loader throws on
   `cache + persistent` — persistent tasks don't terminate, so there's
   no exit code to cache and no outputs to capture at a well-defined
