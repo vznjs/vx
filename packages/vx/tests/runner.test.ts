@@ -1061,12 +1061,20 @@ describe('execWrap — grandchild-orphan mitigation', () => {
     // `exec sleep` replaces sh, so the tracked child IS sleep. Killing
     // it reaps the real process; there is no surviving grandchild.
     const child = Bun.spawn(['sh', '-c', execWrap('sleep 30')], { stdout: 'pipe' })
-    await Bun.sleep(50) // let sh complete the exec into sleep
-    // The pid vx tracks runs sleep directly (verified via /proc comm on Linux).
-    const comm = await Bun.file(`/proc/${child.pid}/comm`)
-      .text()
-      .catch(() => 'sleep\n')
-    expect(comm.trim()).toBe('sleep')
+    // The pid vx tracks runs sleep directly (verified via /proc comm on
+    // Linux). sh's exec into sleep lands when the scheduler lets it: a fixed
+    // 50 ms read "sh" on a loaded CI runner, so poll until it changes. A
+    // wrapper that never execs stays "sh" through the deadline and fails.
+    let comm = 'sh'
+    for (const end = Date.now() + 5000; comm === 'sh' && Date.now() < end;) {
+      await Bun.sleep(10)
+      comm = (
+        await Bun.file(`/proc/${child.pid}/comm`)
+          .text()
+          .catch(() => 'sleep\n')
+      ).trim()
+    }
+    expect(comm).toBe('sleep')
     child.kill('SIGTERM')
     await child.exited
   })
