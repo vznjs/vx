@@ -27,7 +27,7 @@ the browser, not a consumer of its API, and
 | `packages/vx-lockfile`         | `@vzn/vx-lockfile` — `pnpm()` `bun()` `npm()` `yarn()`: each claims its lockfile and keys each task on its project's own dependency closure; parsers over core's `lockfileClaim` |
 | `packages/vx-docs`             | Astro Starlight docs site; imports `packages/vx/docs/**` at build time; bundles core's planner for the browser playground (private)                                              |
 | `packages/vx-bench`            | synthetic workspace generator + runners for vx / Turbo / Nx (private)                                                                                                            |
-| `packages/vx-plugin-examples`  | one runnable plugin per seam, each run by its tests through `run()` (private)                                                                                                    |
+| `packages/vx-plugin-examples`  | one runnable plugin for each of nine seams, each run by its tests through `run()` (private)                                                                                      |
 
 Core never imports a sibling package. The integrations reach core
 through two seams: the public API (45 runtime symbols, a deliberate
@@ -452,7 +452,7 @@ restoreTier, … })` runs the DAG two-tier. Each ready node invokes
 
 ## The project loader & the config-time imports problem
 
-`workspace/project-loader.ts` loads each `vx.config.{ts,mts,js,mjs}`
+`workspace/project-loader.ts` loads each `vx.config.{ts,mts,js,mjs,cts,cjs}`
 via Bun's native `await import()` — no jiti, no esbuild, no
 transpile-on-load step. We append a content-hash query string
 (`?vx-bust=<xxh3>`) to the import specifier so:

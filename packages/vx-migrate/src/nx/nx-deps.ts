@@ -107,6 +107,8 @@ export function mapNxDeps(
   matchProjects: (patterns: readonly string[]) => string[] = (ps) => [...ps],
   targetNames: readonly string[] = [],
   asked?: { readonly node: string; readonly configuration: string },
+  /** This target's options, its configuration's merged in: what `options: "forward"` hands on. */
+  forwarded?: Readonly<Record<string, unknown>>,
 ): string[] {
   const entries = expandTargetGlobs(raw, targetNames, (p) => metaByNode.has(p), ownTarget)
   const deps: string[] = []
@@ -131,42 +133,32 @@ export function mapNxDeps(
         if (ownTarget(d)) deps.push(named(self, d))
         continue
       }
-      const [project = '', targetPart, configuration] = d.split(':')
+      const project = d.slice(0, colon)
+      const rest = d.slice(colon + 1)
       const m = metaByNode.get(project)
       // Nx splits at the colon only when the head names a project; else
       // the whole string is a target of this project (`test:unit`, as
       // script-inferred targets are named). It was read as project `test`
-      // and the edge dropped (item 915).
-      if (m === undefined && ownTarget(d)) {
+      // and the edge dropped (item 915). This project's own target ranks
+      // first (`splitTargetFromNodes`).
+      if (ownTarget(d)) {
         deps.push(named(self, d))
         continue
       }
-      if (m === undefined || targetPart === undefined || targetPart === '') {
+      if (m === undefined || rest === '') {
         todos.push(
           `dependsOn ${JSON.stringify(d)} names ${JSON.stringify(project)}, which is not a ` +
             'workspace package in this graph — edge dropped',
         )
         continue
       }
-      if (!hasTarget(project, targetPart)) continue
-      // A configuration is a task of its own (`build:ci`) unless it is the
-      // target's default, which the base task carries; an edge naming one
-      // follows it there. A configuration the target does not declare has
-      // no task to reach, so the edge falls back to the base with a todo.
-      if (configuration !== undefined) {
-        const named = taskNameFor(project, targetPart, configuration)
-        if (named === null) {
-          todos.push(
-            `dependsOn ${JSON.stringify(d)}: ${project} declares no ${JSON.stringify(configuration)} ` +
-              `configuration on ${targetPart} — depending on ${m.name}#${targetPart}`,
-          )
-        } else {
-          deps.push(`${m.name}#${named}`)
-          continue
-        }
-      }
-      const task = configuration === undefined ? named(project, targetPart) : targetPart
-      deps.push(`${m.name}#${task}`)
+      // The rest is ONE target name, colons and all, as Nx's
+      // `readProjectAndTargetFromTargetString` joins it: `ui:build:esm` is
+      // ui's `build:esm`, and `ui:build:ci` names target `build:ci`, never
+      // build's `ci` configuration (the run's configuration is what an edge
+      // passes on). Nx draws no edge where ui has no such target; vx sent
+      // one to the configuration's task, or to `build` with a todo.
+      if (hasTarget(project, rest)) deps.push(`${m.name}#${named(project, rest)}`)
       continue
     }
     if (d && typeof d === 'object') {
@@ -175,6 +167,16 @@ export function mapNxDeps(
       if (t === undefined) {
         todos.push(`dependsOn ${JSON.stringify(d)} has no target — dropped`)
         continue
+      }
+      // `options: "forward"` hands the dependency this target's options as
+      // overrides (`createTaskOverrides`): a different command, which vx's
+      // one task per target cannot be. Nothing to hand on, nothing to say
+      // (cypress's atomized `e2e-ci` forwards its empty options).
+      if (o.options === 'forward' && forwarded !== undefined && Object.keys(forwarded).length > 0) {
+        todos.push(
+          `dependsOn ${JSON.stringify(t)}: options forwarding is not supported — the dependency ` +
+            "runs with its own options, not this target's",
+        )
       }
       // `ignore` is Nx's default; only `forward` asks for something vx lacks.
       if (o.params === 'forward') {

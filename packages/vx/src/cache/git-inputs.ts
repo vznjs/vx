@@ -855,8 +855,7 @@ function parseStatusOutput(
   const untracked: string[] = []
   const undecodable = new Set<string>()
   let ignoredAttributes = false
-  for (let i = 0; i < tokens.length; i++) {
-    const token = tokens[i]!
+  for (const token of tokens) {
     if (token.length < 4) continue
     if (token[0] === '!') {
       if (token === '!! .gitattributes' || token.endsWith('/.gitattributes'))
@@ -869,19 +868,9 @@ function parseStatusOutput(
       untracked.push(token.slice(3))
       continue
     }
+    // No rename record follows: the spawn passes `--no-renames`, so a
+    // rename's source is a record of its own (items 976, A-59).
     dirty.add(token.slice(3))
-    // An R or C in either column → the next token is the rename/copy
-    // source path. Y carries it for a rename git sees in the worktree (the
-    // copy added with `git add -N`, the original removed): read on X alone,
-    // the source was parsed as a record of its own, stayed trusted, and a
-    // deleted file was keyed from the index (item 976).
-    const x = token[0]
-    const y = token[1]
-    const renamed = x === 'R' || x === 'C' || y === 'R' || y === 'C'
-    if (renamed && i + 1 < tokens.length && tokens[i + 1]!.length > 0) {
-      i++
-      dirty.add(tokens[i]!)
-    }
   }
   return { dirty, untracked, undecodable, ignoredAttributes }
 }
@@ -954,6 +943,12 @@ export interface GitEnumeration {
    * paths (both sides of a rename) and untracked files. Null when it failed.
    */
   changed: readonly string[] | null
+  /**
+   * What `git status` listed as untracked, workspace-relative and before
+   * nested repositories are expanded — `git ls-files --others
+   * --exclude-standard`'s set. Null when it failed.
+   */
+  untracked: readonly string[] | null
   /** Workspace-relative paths whose names are not UTF-8 (`decodeGitZ`). */
   undecodable: readonly string[]
   /** `Date.now()` before the spawns: what `trusted` says is true as of no earlier. */
@@ -1048,7 +1043,18 @@ export async function startGitEnumeration(
     // `--ignored=matching` names an ignored path without descending into an
     // ignored directory: git applies an ignored `.gitattributes` as it does
     // any other, and the filter gate below must see it (A-19).
-    spawnGit(['status', '--porcelain', '-z', '-uall', '--ignored=matching', '--', ...pathspecs]),
+    // `--no-renames`: a deletion paired as an unmerged path's rename source
+    // prints only as `UU <path>`, and the deleted file stayed trusted (A-59).
+    spawnGit([
+      'status',
+      '--porcelain',
+      '-z',
+      '-uall',
+      '--ignored=matching',
+      '--no-renames',
+      '--',
+      ...pathspecs,
+    ]),
     // The gate for whether a clean filter can rewrite bytes between the
     // index and the worktree: git's merged config (`core.autocrlf`) and,
     // from git 2.42, the attributes files it reads outside the tree
@@ -1165,6 +1171,7 @@ export async function startGitEnumeration(
     trusted,
     dirty: worktreeDirty,
     changed: dirty === null ? null : [...dirty, ...untracked],
+    untracked: dirty === null ? null : untracked,
     undecodable,
     startedAtMs,
     indexed: debug!.indexed,

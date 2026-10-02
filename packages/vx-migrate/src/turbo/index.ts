@@ -8,6 +8,7 @@
 // A task the package's own vx.config already declares wins; the plugin never
 // overwrites a user's hand.
 
+import { readFileSync } from 'node:fs'
 import { availableParallelism } from 'node:os'
 import path from 'node:path'
 import type { ProjectMeta, VxPlugin } from '@vzn/vx'
@@ -18,6 +19,7 @@ import { trackedKinds } from '../tracked-outputs.js'
 import { relPosix } from '../paths.js'
 import {
   mapTurboWorkspace,
+  microfrontendsConfigs,
   rootTaskProject,
   turboConfigFile,
   type TurboMappedProject,
@@ -54,8 +56,11 @@ export function turbo(options: TurboPluginOptions = {}): VxPlugin {
           workspace.concurrency = keys.concurrency
         if (workspace.cacheRetention === undefined && keys.cacheRetention !== undefined)
           workspace.cacheRetention = keys.cacheRetention
-        // `turbo run --affected` compares with TURBO_SCM_BASE when set.
-        const base = Bun.env['TURBO_SCM_BASE']?.trim()
+        // `turbo run --affected` compares with TURBO_SCM_BASE when set, and
+        // on GitHub Actions with what the event names.
+        const base =
+          Bun.env['TURBO_SCM_BASE']?.trim() ||
+          githubActionsBase(options.root ?? ctx.workspaceRoot, keys.remoteBaseFallback === true)
         if (workspace.affectedBase === undefined && base) workspace.affectedBase = base
       },
       // `//#task` keys run on the root, as Turbo runs them: named here, the
@@ -105,9 +110,54 @@ function turboSize(v: string): string | undefined {
   return `${n}${SIZE_UNITS[u]}`
 }
 
+const UNKNOWN_SHA = '0'.repeat(40)
+
+/**
+ * Turbo's `--affected` base on GitHub Actions when `TURBO_SCM_BASE` is
+ * unset (`get_github_base_ref`): a pull request's `GITHUB_BASE_REF`, else
+ * the push event's `before`, or the parent of its first commit when the
+ * push is new or forced. vx guessed `origin/HEAD`, which on a push to the
+ * default branch is the commit itself: nothing was affected where Turbo
+ * ran the pushed commits' packages. `origin/<ref>` stands in for a base
+ * ref the checkout lacks only under Turbo's
+ * `futureFlags.githubActionsRemoteBaseRefFallback`, as in Turbo.
+ */
+function githubActionsBase(root: string, remoteFallback: boolean): string | undefined {
+  if (!Bun.env['GITHUB_ACTIONS']) return undefined
+  const ref = Bun.env['GITHUB_BASE_REF']
+  if (ref) {
+    if (!remoteFallback) return ref
+    const has = (r: string) =>
+      Bun.spawnSync(['git', 'rev-parse', '--verify', '--quiet', '--end-of-options', r], {
+        cwd: root,
+        stdout: 'ignore',
+        stderr: 'ignore',
+      }).exitCode === 0
+    return has(ref) || !has(`origin/${ref}`) ? ref : `origin/${ref}`
+  }
+  const eventPath = Bun.env['GITHUB_EVENT_PATH']
+  if (!eventPath) return undefined
+  let event: { before?: unknown; forced?: unknown; commits?: unknown }
+  try {
+    event = JSON.parse(readFileSync(eventPath, 'utf8')) as typeof event
+  } catch {
+    return undefined
+  }
+  const before = typeof event.before === 'string' ? event.before : ''
+  if (before === UNKNOWN_SHA || event.forced === true) {
+    const commits = Array.isArray(event.commits) ? event.commits : []
+    const id = (commits[0] as { id?: unknown } | undefined)?.id
+    return commits.length > 0 && commits.length < 2048 && typeof id === 'string'
+      ? `${id}^`
+      : undefined
+  }
+  return before === '' ? undefined : before
+}
+
 async function workspaceKeys(root: string): Promise<{
   concurrency?: number
   cacheRetention?: { maxSize?: string; olderThan?: string }
+  remoteBaseFallback?: boolean
 }> {
   const file = await turboConfigFile(root)
   if (file === null) return {}
@@ -128,8 +178,13 @@ async function workspaceKeys(root: string): Promise<{
     const v = e !== undefined && e !== '' ? e : (global?.[key] ?? raw[key])
     return typeof v === 'string' && v.trim() !== '' && v.trim() !== '0' ? v.trim() : undefined
   }
-  const out: { concurrency?: number; cacheRetention?: { maxSize?: string; olderThan?: string } } =
-    {}
+  const out: {
+    concurrency?: number
+    cacheRetention?: { maxSize?: string; olderThan?: string }
+    remoteBaseFallback?: boolean
+  } = {}
+  const flags = raw['futureFlags'] as { githubActionsRemoteBaseRefFallback?: unknown } | undefined
+  if (flags?.githubActionsRemoteBaseRefFallback === true) out.remoteBaseFallback = true
   const c = read('concurrency', 'TURBO_CONCURRENCY')
   if (c !== undefined) {
     const pct = /^(\d+)%$/.exec(c)
@@ -163,7 +218,8 @@ const textOf = (file: string): Promise<string> =>
 
 /**
  * Everything the mapping reads: the root's and each package's
- * `turbo.json` / `turbo.jsonc`, every package manifest and `.yarnrc.yml`.
+ * `turbo.json` / `turbo.jsonc`, every package manifest, the root's,
+ * `.yarnrc.yml` and the microfrontends configs.
  */
 async function run(root: string, metas: readonly ProjectMeta[]): Promise<AdoptionRun> {
   const dirs = [root, ...metas.map((m) => m.dir)]
@@ -181,6 +237,9 @@ async function run(root: string, metas: readonly ProjectMeta[]): Promise<Adoptio
       process.env['TURBO_ENV_MODE'] ?? '',
       ...configs,
       await textOf(path.join(root, '.yarnrc.yml')),
+      // Its dependencies are global inputs, a member or not.
+      await textOf(path.join(root, 'package.json')),
+      JSON.stringify(microfrontendsConfigs(root, dirs)),
       // A config file added beside mapped tasks changes what an output may cover.
       JSON.stringify(metas.map((m) => [m.name, m.dir, m.packageJson, m.configPath])),
     ],

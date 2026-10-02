@@ -35,7 +35,7 @@ The cache key for one task is a **16-hex xxHash3 digest**, seed-chained
 over (in order):
 
 1. **`CACHE_VERSION`** — the key-derivation sentinel
-   (currently `'vx-cache-v37'`, in `src/cache/key-fold.ts`). Bumped when
+   (currently `'vx-cache-v38'`, in `src/cache/key-fold.ts`). Bumped when
    the key derivation or the artifact container changes, or stored bytes
    are wrong under an unchanged key. See
    [§ Bumping CACHE_VERSION](#bumping-cache_version).
@@ -159,22 +159,26 @@ over (in order):
     three concurrent spawns, `git ls-files -s -v -z --debug` (every
     tracked path, its OID, its cache-state flag and the worktree size
     the index recorded),
-    `git status --porcelain -z -uall --ignored=matching` (dirty tracked
-    paths, the untracked files and the ignored ones) and `git var -l` (the clean-filter gate's
-    config) — so deriving these hashes
+    `git status --porcelain -z -uall --ignored=matching --no-renames`
+    (dirty tracked paths, the untracked files and the ignored ones) and
+    `git var -l` (the clean-filter gate's config) — so deriving these hashes
     costs zero file reads and zero per-file stats. Each trusted OID's
     blob must be the size the index recorded for the file (A-60): `git
-add` under a clean filter (`core.autocrlf=true`, a `text` rule)
+    add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     stores the LF blob of a CRLF file, and once the filter is gone git
     holds that stat-clean entry clean without re-reading it, so status
     and the filter gate (today's config) both let the LF blob key the
     CRLF bytes. A blob's size is fixed for its OID, so the sizes are
     kept in `blob_sizes` and a warm run asks git for none; a cold one
     asks one `git cat-file --batch-check` (65 ms over 3,000 loose
-    objects, 10 ms packed). A re-listing mid-run, or a nested repository's project, spawns
+    objects, 10 ms packed). A
+    re-listing mid-run, or a nested repository's project, spawns
     `git ls-files -s --others --exclude-standard -z .` in the project
     dir instead, and its OIDs are not trusted: those files hash by
-    content.
+    content. `--no-renames`, because status pairs a deleted file with a
+    similar unmerged path (a conflict mid-resolve) as its rename source
+    and prints only `UU <path>`: the deletion went unsaid, the file kept
+    its index OID, and the run hit the output built with it (A-59).
 
     A **submodule or an embedded repository** is enumerated by its own
     git: the workspace repository lists the nested one as a single entry
@@ -1594,11 +1598,16 @@ was not), and the cache tests.
 
 ### History
 
-- **v36 → v37**: stored bytes wrong under an unchanged key (A-60). A
+- **v37 → v38**: stored bytes wrong under an unchanged key (A-60). A
   file added under a clean filter that was later removed kept its LF
   index blob, git held it clean by its stat, and the key folded that
   blob while the task read the CRLF bytes. The blob-size check cannot
   reach an entry already saved that way.
+- **v36 → v37**: stored bytes wrong under an unchanged key (A-59).
+  `git status` paired a deleted file with a similar unmerged path as its
+  rename source and printed only `UU <path>`, so the file kept its index
+  OID and the key folded it while the task ran without it. The fix
+  (`--no-renames`) cannot reach an entry already saved that way.
 - **v35 → v36**: the container changes (L-19). Every artifact ends in a
   `.vx-sum` entry, a CRC-32 over the entries before it, and scan and
   restore refuse one whose sum is absent or wrong: a byte flipped in a

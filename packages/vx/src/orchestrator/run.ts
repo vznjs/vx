@@ -193,7 +193,34 @@ export function invocationCommand(argv: readonly string[]): string {
   return [...argv.slice(0, sep), '--', `<${rest} argument${rest === 1 ? '' : 's'}>`].join(' ')
 }
 
+/**
+ * The bounds the CLI and the workspace config already hold, at the façade
+ * (C-61): a `concurrency` of 0, a negative or NaN left no worker slot and
+ * the run waited for good; a `retries` of NaN retried a failing task
+ * without end; a `timeout` of 0, a negative, NaN or past the timer's range
+ * killed every task at once.
+ */
+function refuseRunNumbers(options: RunOptions): void {
+  const refuse = (name: string, value: number, rule: string): never => {
+    throw new UserError(`RunOptions.${name} is ${String(value)}: it must be ${rule}`)
+  }
+  // No task named read "No projects declare task(s): ." (C-61).
+  if (options.tasks.length === 0 || options.tasks.includes(''))
+    throw new UserError(`RunOptions.tasks names no task: give at least one task name`)
+  const { concurrency, retries, timeout } = options
+  if (concurrency !== undefined && !(Number.isInteger(concurrency) && concurrency > 0))
+    refuse('concurrency', concurrency, 'a positive integer')
+  if (retries !== undefined && !(Number.isInteger(retries) && retries >= 0))
+    refuse('retries', retries, 'a non-negative integer')
+  if (
+    timeout !== undefined &&
+    !(Number.isInteger(timeout) && timeout > 0 && timeout <= MAX_TIMEOUT_MS)
+  )
+    refuse('timeout', timeout, `a positive integer of ms, at most ${MAX_TIMEOUT_MS}`)
+}
+
 export async function run(options: RunOptions): Promise<RunSummary> {
+  refuseRunNumbers(options)
   // Color decision: a custom logger (tests, embedders) handles its
   // own formatting and asserts on plain strings, so we suppress
   // ANSI escapes for them. Only the defaultLogger (real terminal
@@ -219,11 +246,28 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   // it twice (item 635). Otherwise a fresh internal bus.
   const bus = options.bus ?? createEventBus()
   const unsubscribeTerminal = bus.subscribe(terminalSubscriber(sink))
-  try {
-    return await runOnBus(options, bus, colors, () => terminal?.failureRecap() ?? [])
-  } finally {
+  const detach = (): void => {
     unsubscribeTerminal()
     terminal?.settle()
+  }
+  let held = false
+  try {
+    const summary = await runOnBus(options, bus, colors, () => terminal?.failureRecap() ?? [])
+    if (summary.persistent === undefined) return summary
+    // Servers handed back still running still write: `vx watch dev` printed
+    // none of its server's log while it idled, the renderer gone with this
+    // return (C-57). It stays until the caller stops them.
+    held = true
+    const { stop } = summary.persistent
+    return {
+      ...summary,
+      persistent: {
+        ...summary.persistent,
+        stop: (signal) => stop(signal).finally(detach),
+      },
+    }
+  } finally {
+    if (!held) detach()
   }
 }
 
@@ -827,7 +871,21 @@ async function runOnBus(
     const foreground = options.log === undefined && (options.handleSignals ?? true)
     // An aborted run's children are already being torn down: nothing to hold.
     const hold = options.holdPersistent === true && !stopRun.signal.aborted
-    const keepAlive = selectKeepAlive(persistentRegistry, nodes, foreground || hold)
+    // A run that failed elsewhere holds nothing: `vx run dev --all` with one
+    // server that never became ready sat on the others for good, so a
+    // script hung, and the Ctrl-C that ended it read 130 over the failure
+    // (C-60). A kept server's own crash ends the wait below as before, and
+    // `--continue=always` asked to keep going, and does. The watch loop
+    // (`holdPersistent`) still holds: a failing test in a cycle stopped
+    // the dev server the next change would restart anyway.
+    let keepAlive = selectKeepAlive(persistentRegistry, nodes, foreground || hold)
+    const failedElsewhere =
+      ![...outcomes.values()].every((o) => isPassStatus(o.status)) ||
+      [...persistentRegistry.values()].some(
+        (c) => hasEnded(c) && c.exitCode !== 0 && !keepAlive.children.includes(c),
+      )
+    if (failedElsewhere && !hold && options.continueMode !== 'always')
+      keepAlive = { nodes: [], children: [] }
     const crashedPersistent = (
       await shutdownPersistent(persistentRegistry, keepAlive.children)
     ).filter((c) => endedBeforeStop?.has(persistentRegistry.get(c.id)!) ?? true)
@@ -908,7 +966,7 @@ async function runOnBus(
     // change the run's exit code — the run already happened.
     // Written again after the keep-alive wait: a kept server's crash or a
     // Ctrl-C there is the process's exit, and the first write said ok.
-    const summarize = async (runOk: boolean): Promise<void> => {
+    const summarize = async (runOk: boolean, final = list): Promise<void> => {
       if (options.summarize === undefined) return
       try {
         const wrote = await writeRunSummary({
@@ -921,7 +979,7 @@ async function runOnBus(
           totalMs,
           ok: runOk,
           ...(stoppedBy !== undefined && { exitCode: signalExitCode(stoppedBy) }),
-          outcomes: list,
+          outcomes: final,
           flaky,
         })
         log.status(`vx: summary written to ${wrote}`)
@@ -1113,8 +1171,13 @@ async function runOnBus(
         )
       }
       await terminateChildren(() => keepAlive.children)
-      await summarize(ok && first.code === 0)
-      return { ok: ok && first.code === 0, outcomes: list }
+      // The server that ended the session on its own, not cleanly, failed:
+      // the rewritten summary said `ok: false` over every task `success`
+      // and `failed: 0`, and so did the outcomes `--report` renders (C-53).
+      if (!stopRun.signal.aborted && first.code !== 0) failServer(node.id, first.code)
+      const final = [...outcomes.values()]
+      await summarize(ok && first.code === 0, final)
+      return { ok: ok && first.code === 0, outcomes: final }
     }
 
     return { ok, outcomes: list }

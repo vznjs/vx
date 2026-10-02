@@ -681,6 +681,23 @@ with no prediction; a history read error fails open in both callers.
 
 ## Leads for other streams
 
+- **B:** `runner.test.ts` › "keeps a ready server alive past its
+  readyWhen timeout" failed on #2054's Linux CI: `echo up` missed its
+  150 ms readiness bound under load (`PersistentReadyError … within
+150ms`). The bound is a claim about the box; a wider timeout with the
+  sleep past it keeps the row's point.
+- **F:** a kept server's crash after the summary exits 1, but the
+  telemetry summary (`exitOk`) is emitted and flushed before the
+  keep-alive wait, so a sink (the GitHub check run) reports success.
+
+- **A:** a kept server that crashes after the summary (`vx run dev`,
+  the server exits 4, vx exits 1) is recorded `ok` with the server
+  `success` in the run history: `recordRunBundle` runs before the
+  keep-alive wait and the cache is closed by the time the wait ends, so
+  `vx last` says `ok`. C-53 fixed the summary and the report; the
+  history needs an update path (reopen, mark the invocation and that
+  row failed).
+
 - **E:** a plugin command's plain `throw` (`commands.probe.run` throwing
   `new Error('boom')`) prints `vx: Error: boom` and a stack, and names
   no plugin (`src/cli/index.ts`), where every other stage says
@@ -789,3 +806,113 @@ Turbo's //#task as the root project's task: the refusal, a scoped run
 that pulls the root in, and the `cache.inputs.tasks` spelling): red with
 either site reverted, and with the `cache.inputs.tasks` rewrite alone
 mutated.
+
+## C-52: a requested group keeps the servers it stands for
+
+`vx run app#dev` over `dev: { dependsOn: ['^dev'] }` (a group, the
+Turbo-style fan-out) started every server, stopped them all at the end
+of the graph and exited 0. `selectKeepAlive` seeded its walk from
+requested (or surfaced) persistent tasks only, and a cross-project
+group's deps are not surfaced (that marking stays inside the project).
+The walk now also starts from each requested group, through nested
+groups to the persistent tasks below; a one-shot under it keeps none.
+Row (`persistent-shutdown.test.ts` › keeps the persistent tasks a
+requested group stands for): red without the seed; probed end to end
+(held until Ctrl-C, exit 130). `execution.md` says so.
+
+## C-51: a restore under another restore ranks by what that one blocks
+
+`tieredReverseDepCount` ranked a restore by its direct exec-tier
+dependents only. A restore's dependents are released once its own deps
+have settled (item 963), so in `r1 → r2 → e` (two hits, one miss) `r1`
+blocks `e` too, yet ranked 0 and restored after every idle hit before
+`e` could start. Each restore now hands its rank to its restore deps, in
+one Kahn pass over the restore tier's reversed edges, skipped when no
+restore feeds an exec task. Cost (1,000 projects, 3,000 nodes, min of
+50): a run whose `test` tasks miss, 0.50 → 1.4 ms; all hits, 0.17 →
+0.21–0.28 ms (noise). Rows (`scheduler.test.ts` › the rank table and the
+dispatch order `r1, r2, e` ahead of three idle restores): red without
+the pass. `modules/scheduler.md` says so.
+
+## C-55: a fail-fast skip is not "blocked upstream"
+
+`--continue=never`'s footer read `Skipped: 2 tasks never started —
+blocked upstream` over `⊘ after the run stopped (fail-fast): …`: the
+header claimed a blocker the cause line beneath it denied. It says
+`blocked upstream` only when every skip has a blocker. Rows
+(`summary.test.ts`): a fail-fast skip alone, and the mixed row; both
+red on the old header. `cli.md` says so.
+
+## C-53: a kept server's crash reads `failed` in the summary and report
+
+`vx run dev` whose server exited 4 after the summary exited 1, and the
+rewritten `--summarize` said `ok: false` with every task `success` and
+`failed: 0`; the outcomes `--report` renders said the same. The server
+that ended the session on its own, not cleanly, is now failed with its
+own exit, as item 1071 does for one that crashed before the stop; one a
+Ctrl-C stopped is not. Rows (`keep-alive.test.ts`): the exit-1 row reads
+`app#other` failed with exit 1 and `failed: 1` (red without the fix);
+the Ctrl-C row reads `success` (red with the abort guard removed). The
+run history still says `ok` (lead for A). `execution.md` says so.
+
+## C-54: a plugin whose `setup` throws is named with the hook
+
+Every stage's throw reads `plugin '<name>' failed in <stage>: …`, and
+`modules/plugin.md` promises one line naming the plugin and the hook;
+`setup` alone said `failed to load`, though the plugin had loaded and
+its `setup` threw (an unknown `ctx.on` hook name included). It now says
+`failed in setup`. Rows (`plugin.test.ts`, `plugin-teardown.test.ts`)
+pin the text; red on the old message.
+
+## C-60: a run that failed holds no server
+
+`vx run dev --all` with one server that never became ready (or a
+dependency-only server that crashed, or any task failed) still held its
+healthy servers: a script's `vx run dev` hung for good, and the Ctrl-C
+that ended it read 130 over the failure. A run with a failure elsewhere
+now stops its servers and exits 1; a kept server's own crash ends the
+wait as before; `--continue=always` holds as before, and so does the
+watch loop (`holdPersistent`), whose next change restarts the server
+anyway (`held-persistent.test.ts`, red without that exception). Rows
+(`keep-alive.test.ts`): a server never ready and a dependency-only crash
+each exit 1 with the healthy server dead (both hang without the fix,
+the crash row with its clause removed), and the `--continue=always`
+control holds (red with that exception removed). `cli.md` and
+`execution.md` say so.
+
+## C-59: the fingerprint watch reads a whole-second lockfile stamp
+
+A's lead (A-2). The watch over the fingerprinted files skipped a file
+whose ctime was more than `FILE_HASH_RACY_MS` (50 ms) older than the
+run's read. On a file system that keeps whole seconds, a lockfile a
+task rewrote 400 ms after the read is stamped to the second before it,
+read as untouched, and every key after it kept the old lockfile's bytes:
+a stale hit. The window now widens by A-2's `racyWindowMs`. Row
+(`whole-second-stamps.test.ts` › the fingerprint watch's whole-second
+stamp, simulated ctime): red without the fix; a sub-second stamp 499 ms
+before the read stays trusted. `modules/fingerprint-watch.md` says so.
+
+## C-57: a server watch holds keeps printing while watch idles
+
+`vx watch dev` showed its server's log only until the cycle's run
+returned: run() unsubscribed its renderer from the bus on the way out,
+while the `holdPersistent` servers it handed back kept writing into it.
+A run that hands servers back now keeps its renderer until the caller's
+`stop` lands, and leaves the bus then. Row (`held-persistent.test.ts`):
+a held server's line after the return reaches the logger (red without
+the fix), and after `stop` the bus reaches it no more (red with the
+detach removed); probed end to end (9 lines in 2.5 s, 2 before).
+`cli.md` says so.
+
+## C-61: run() refuses the numbers the CLI refuses
+
+The CLI and the workspace config refuse a `concurrency` that is not a
+positive integer, a `retries` that is not a non-negative integer and a
+`timeout` outside 1..2^31-1 ms; the façade took any. `run({
+concurrency: 0 })`, a negative or `NaN` left no worker slot open and the
+run waited for good; `retries: NaN` retried a failing task without end
+(3,745 attempts in 6 s); a bad `timeout` killed every task at once,
+failed 143; and `tasks: []` read `No projects declare task(s): .`.
+run() now refuses each up front, naming the value. Rows
+(`run-concurrency.test.ts`): each refused with the exact message, the
+edges run; red without the checks. The options' doc comments say so.

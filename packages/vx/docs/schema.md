@@ -1,7 +1,7 @@
 # Config schema
 
-Complete reference for every field accepted by `vx.config.{ts,mts,js,mjs}`
-and the optional workspace-level `vx.workspace.{ts,mts,js,mjs}`. The
+Complete reference for every field accepted by `vx.config.{ts,mts,js,mjs,cts,cjs}`
+and the optional workspace-level `vx.workspace.{ts,mts,js,mjs,cts,cjs}`. The
 authoritative TypeScript definitions live in `src/config.ts` and are
 re-exported from `@vzn/vx`.
 
@@ -25,7 +25,7 @@ tasks.
 ## Project config
 
 ```ts
-import { defineProject } from '@vzn/vx'
+import { defineProject } from '@vzn/vx/config'
 
 export default defineProject({
   tasks: {
@@ -1064,6 +1064,10 @@ file created later is not covered — grant its directory instead. On both
 platforms `<dir>/**` and `<dir>/**/*` collapse to `<dir>`, so
 `read: ['**/*']` lets a task list its own cwd; a `<dir>` that is itself a
 glob keeps its subtree (`.*.tmp/**` covers what is inside each match).
+Unlike a task glob, a grant keeps `Bun.Glob`'s brackets: `[id]` is a
+class, so a Next.js route is granted escaped, `read: ['pages/\\[id\\].tsx']`.
+On Linux a WRITE path holding a bracket is not mounted (the runtime drops
+it); grant its parent directory.
 
 A Linux WRITE grant that matches nothing when the task starts therefore
 mounts nothing. Where a read grant mounts its directory, the task's first
@@ -1124,7 +1128,8 @@ task's own exit; no violation is reported.
 **Baseline** (`sandbox: {}`): the task reads nothing in the workspace,
 writes nothing but its own `TMPDIR` and reaches no domain no task of the run lists — not even its own project
 directory, which is why `allow: { read: ['.'] }` is the first line of
-almost every real block. The read wall is the WORKSPACE ROOT: a path
+almost every real block. The task still starts in its own directory, an empty one
+then: a relative read is refused and reported, never resolved elsewhere. The read wall is the WORKSPACE ROOT: a path
 outside it (`~/.cache`, `/etc`, the toolchain) is readable and folds into
 no key, so a task whose output depends on one declares it as a key input
 (`inputs.runtime`, `inputs.env`) — the sandbox does not catch it (item
@@ -1193,6 +1198,11 @@ Inside a write grant, a file named like a shell or tool config
 to the task, down to three levels below the workspace root, ignored by
 git or not.
 
+**Linux: no bracket in the project's path.** The runtime reads a path
+holding `[` or `]` as a glob and mounts no write path that does, so a
+sandboxed task in a project under such a directory (`~/[old]/repo`) is
+refused, naming it: rename the directory or drop `exec.sandbox`.
+
 **macOS cannot nest.** `sandbox_apply` is refused inside a sandboxed
 process, so a task that itself sandboxes something (vx's own test suite)
 cannot be sandboxed on macOS. `weakerWhenNested` covers the Linux case;
@@ -1244,12 +1254,12 @@ The loader rejects:
 
 ## Workspace config (`vx.workspace.ts`)
 
-Loaded from `vx.workspace.{ts,mts,js,mjs}` at the workspace root.
+Loaded from `vx.workspace.{ts,mts,js,mjs,cts,cjs}` at the workspace root.
 **Optional** — when missing, every field falls back to its built-in
 default.
 
 ```ts
-import { defineWorkspace } from '@vzn/vx'
+import { defineWorkspace } from '@vzn/vx/config'
 import { otel } from '@vzn/vx-otel'
 
 export default defineWorkspace({
@@ -1319,7 +1329,8 @@ interface WorkspaceConfig {
   (`origin/develop`); `--affected=<base>` still wins. Omitted →
   `origin/HEAD`, else `HEAD~1`. A plugin's `config` stage may set it:
   `nx()` from `NX_BASE` or nx.json's `defaultBase`, `turbo()` from
-  `TURBO_SCM_BASE`. Not folded into any cache key.
+  `TURBO_SCM_BASE`, else on GitHub Actions from `GITHUB_BASE_REF` or the
+  push event's `before`, as Turbo does. Not folded into any cache key.
 - **`plugins`** — the run-level extension points. Optional: core
   applies no plugin by default, and the local executor and the local
   cache are its floor — the tail of every executor list and cache chain
@@ -1368,7 +1379,7 @@ machinery by design.
 ## Helpers
 
 ```ts
-import { defineProject, defineWorkspace } from '@vzn/vx'
+import { defineProject, defineWorkspace } from '@vzn/vx/config'
 
 // Identity functions; their purpose is type inference.
 defineProject<T extends ProjectConfig>(config: T): T
@@ -1387,7 +1398,7 @@ type-only form gives the same editor checking for free, and is what
 `vx init` / `@vzn/vx-migrate` write:
 
 ```ts
-import type { ProjectConfig, WorkspaceConfig } from '@vzn/vx'
+import type { ProjectConfig, WorkspaceConfig } from '@vzn/vx/config'
 export default { tasks: { … } } satisfies ProjectConfig
 export default { plugins: [] } satisfies WorkspaceConfig
 ```
@@ -1399,7 +1410,7 @@ strictly worse.
 ## Full example
 
 ```ts
-import { defineProject } from '@vzn/vx'
+import { defineProject } from '@vzn/vx/config'
 
 export default defineProject({
   tasks: {
@@ -1500,7 +1511,7 @@ was deliberately rejected — the language already does this). Plain TS
 arrays:
 
 ```ts
-import { defineProject } from '@vzn/vx'
+import { defineProject } from '@vzn/vx/config'
 
 const srcInputs = ['src/**', 'tsconfig.json']
 
@@ -1524,7 +1535,7 @@ A preset is a TypeScript function that returns a `TaskConfig`:
 
 ```ts
 // presets/ts-build.ts
-import type { TaskConfig } from '@vzn/vx'
+import type { TaskConfig } from '@vzn/vx/config'
 
 export function tsBuild(opts?: { tsconfig?: string }): TaskConfig {
   return {
@@ -1540,7 +1551,7 @@ export function tsBuild(opts?: { tsconfig?: string }): TaskConfig {
 
 ```ts
 // packages/app/vx.config.ts
-import { defineProject } from '@vzn/vx'
+import { defineProject } from '@vzn/vx/config'
 import { tsBuild } from '../../presets/ts-build.ts'
 
 export default defineProject({

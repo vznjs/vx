@@ -34,41 +34,125 @@ import type {
  * clean. We pair them by pid instead (a process has at most
  * one syscall in flight, so the pid is a sufficient key).
  *
- * We capture the first quoted-string argument as the path. paths that
- * are relative resolve against the task's cwd (set by Bun.spawn).
+ * We capture the first quoted-string argument as the path, a C string
+ * (`cStringPath` decodes it). Paths that are relative resolve against the
+ * task's cwd (set by Bun.spawn).
  */
 const SYSCALLS = 'openat|access|statx|newfstatat'
+const QUOTED = '"((?:[^"\\\\]|\\\\.)+)"'
 const STRACE_DONE_RE = new RegExp(
-  `^(\\d+)\\s+(${SYSCALLS})\\([^"]*"([^"]+)"[^)]*\\)\\s*=\\s*-1\\s+(ENOENT|EACCES|EPERM)`,
+  `^(\\d+)\\s+(${SYSCALLS})\\([^"]*${QUOTED}[^)]*\\)\\s*=\\s*-1\\s+(ENOENT|EACCES|EPERM)`,
 )
-const STRACE_UNFINISHED_RE = new RegExp(`^(\\d+)\\s+(${SYSCALLS})\\([^"]*"([^"]+)"[^)]*<unfinished`)
+const STRACE_UNFINISHED_RE = new RegExp(`^(\\d+)\\s+(${SYSCALLS})\\([^"]*${QUOTED}[^)]*<unfinished`)
 const STRACE_RESUMED_RE = new RegExp(
   `^(\\d+)\\s+<\\.\\.\\. (${SYSCALLS}) resumed>.*?=\\s*-1\\s+(ENOENT|EACCES|EPERM)`,
 )
 /** A resumed call that SUCCEEDED — clears the pending entry, emits nothing. */
 const STRACE_RESUMED_OK_RE = new RegExp(`^(\\d+)\\s+<\\.\\.\\. (${SYSCALLS}) resumed>`)
 
+const C_ESCAPES: Record<string, number> = { n: 10, t: 9, r: 13, v: 11, f: 12, a: 7, b: 8 }
+
+/**
+ * The path a strace C string spells. strace escapes a quote, a backslash
+ * and a control byte, and writes a non-ASCII byte as octal (`é` is
+ * `\303\251`): read raw, `q"t.txt` was cut at `q\` and `é.txt` named
+ * `\303\251.txt`, so the report and every `ignore` pattern missed the file.
+ */
+function cStringPath(raw: string): string {
+  if (!raw.includes('\\')) return raw
+  const bytes: number[] = []
+  for (let i = 0; i < raw.length; i++) {
+    const c = raw[i]!
+    if (c !== '\\') {
+      bytes.push(...Buffer.from(c, 'utf8'))
+      continue
+    }
+    const next = raw[++i] ?? ''
+    const octal = /^[0-7]{1,3}/.exec(raw.slice(i, i + 3))?.[0]
+    const hex = next === 'x' ? /^[0-9a-fA-F]{1,2}/.exec(raw.slice(i + 1, i + 3))?.[0] : undefined
+    if (octal !== undefined) {
+      bytes.push(parseInt(octal, 8))
+      i += octal.length - 1
+    } else if (hex !== undefined) {
+      bytes.push(parseInt(hex, 16))
+      i += hex.length
+    } else {
+      bytes.push(C_ESCAPES[next] ?? next.charCodeAt(0))
+    }
+  }
+  return Buffer.from(bytes).toString('utf8')
+}
+
 /** One denied syscall, however strace chose to lay it out. */
 export interface DeniedCall {
   syscall: string
   rawPath: string
   errno: string
+  /**
+   * The directory a relative `rawPath` was opened from, when the trace
+   * shows the process (or one it was forked from) changed into one; absent
+   * where it never did, or where it lost track (`fchdir`).
+   */
+  dir?: string
 }
+
+// The calls that move a process's cwd, and the ones that make a process:
+// a child starts in its parent's cwd as it was at the fork.
+const CHDIR_DONE_RE = new RegExp(`^(\\d+)\\s+chdir\\(${QUOTED}\\)\\s*=\\s*0`)
+const CHDIR_UNFINISHED_RE = new RegExp(`^(\\d+)\\s+chdir\\(${QUOTED} <unfinished`)
+const CHDIR_RESUMED_RE = /^(\d+)\s+<\.\.\. chdir resumed>.*?=\s*(-?\d+)/
+const FCHDIR_RE = /^(\d+)\s+(?:fchdir\(\d+\)|<\.\.\. fchdir resumed>.*?)\s*=\s*0/
+const FORK = '(?:clone3?|v?fork)'
+const FORK_DONE_RE = new RegExp(`^(\\d+)\\s+${FORK}\\(.*\\)\\s*=\\s*(\\d+)$`)
+const FORK_UNFINISHED_RE = new RegExp(`^(\\d+)\\s+${FORK}\\(.*<unfinished`)
+const FORK_RESUMED_RE = new RegExp(`^(\\d+)\\s+<\\.\\.\\. ${FORK} resumed>.*?=\\s*(\\d+)$`)
+
+/** What a process did, in order, as far as its cwd and its denials go. */
+type Op = { chdir: string } | { lost: true } | { call: number }
 
 /**
  * Walk the trace, pairing `<unfinished ...>` with its `<... resumed>` line.
+ * Given the task's starting `cwd`, also follow each process's `chdir` and
+ * forks, so a denial of `secret.txt` after `cd src` is `src/secret.txt`:
+ * resolved against the starting cwd, it named a file that does not exist
+ * and no `ignore` pattern for the real one matched. Resolved after the
+ * whole pass: a `vfork` child's lines come before its parent's
+ * `resumed` line names it. (`-y` names the directory on every line, but
+ * cost 40% on 2,000 opens; this costs a stop per process.)
  *
  * Exported for testing: this is the security-relevant half of the Linux
  * detector, and a synthetic trace pins the split-line shapes deterministically
  * where an end-to-end run only produces them when strace happens to interleave.
  */
-export function deniedCalls(text: string): DeniedCall[] {
+export function deniedCalls(text: string, cwd?: string): DeniedCall[] {
   const pending = new Map<string, { syscall: string; rawPath: string }>()
   const out: DeniedCall[] = []
+  const ops = new Map<string, Op[]>()
+  // A clone with CLONE_FS (every thread) shares its creator's cwd, so a
+  // `chdir` by either moves both: such a pid keeps the creator's list.
+  const sharing = new Map<string, string>()
+  const owner = (pid: string): string => sharing.get(pid) ?? pid
+  const opsOf = (pid: string): Op[] => {
+    let list = ops.get(owner(pid))
+    if (list === undefined) ops.set(owner(pid), (list = []))
+    return list
+  }
+  const parent = new Map<string, { pid: string; at: number }>()
+  const forking = new Map<string, { at: number; shared: boolean }>()
+  const forked = (from: string, child: string, at: number, shared: boolean): void => {
+    // Shared only while the child has done nothing of its own yet.
+    if (shared && !ops.has(child)) sharing.set(child, owner(from))
+    else parent.set(child, { pid: owner(from), at })
+  }
+  const chdirring = new Map<string, string>()
+  const denied = (pid: string, call: DeniedCall): void => {
+    opsOf(pid).push({ call: out.length })
+    out.push(call)
+  }
   for (const line of text.split('\n')) {
     const done = STRACE_DONE_RE.exec(line)
     if (done?.[2] !== undefined && done[3] !== undefined && done[4] !== undefined) {
-      out.push({ syscall: done[2], rawPath: done[3], errno: done[4] })
+      denied(done[1]!, { syscall: done[2], rawPath: cStringPath(done[3]), errno: done[4] })
       continue
     }
     const unfinished = STRACE_UNFINISHED_RE.exec(line)
@@ -77,19 +161,65 @@ export function deniedCalls(text: string): DeniedCall[] {
       unfinished[2] !== undefined &&
       unfinished[3] !== undefined
     ) {
-      pending.set(unfinished[1], { syscall: unfinished[2], rawPath: unfinished[3] })
+      pending.set(unfinished[1], { syscall: unfinished[2], rawPath: cStringPath(unfinished[3]) })
       continue
     }
     const resumedOk = STRACE_RESUMED_OK_RE.exec(line)
-    if (resumedOk?.[1] === undefined) continue
-    const held = pending.get(resumedOk[1])
-    pending.delete(resumedOk[1])
-    const resumed = STRACE_RESUMED_RE.exec(line)
-    // Only a resume that carries a DENIAL is a violation; a successful
-    // resume just retires the pending entry.
-    if (held !== undefined && resumed?.[3] !== undefined) {
-      out.push({ syscall: held.syscall, rawPath: held.rawPath, errno: resumed[3] })
+    if (resumedOk?.[1] !== undefined) {
+      const held = pending.get(resumedOk[1])
+      pending.delete(resumedOk[1])
+      const resumed = STRACE_RESUMED_RE.exec(line)
+      // Only a resume that carries a DENIAL is a violation; a successful
+      // resume just retires the pending entry.
+      if (held !== undefined && resumed?.[3] !== undefined) {
+        denied(resumedOk[1], { ...held, errno: resumed[3] })
+      }
+      continue
     }
+    if (cwd === undefined) continue
+    let m: RegExpExecArray | null
+    if ((m = CHDIR_DONE_RE.exec(line)) !== null) opsOf(m[1]!).push({ chdir: cStringPath(m[2]!) })
+    else if ((m = CHDIR_UNFINISHED_RE.exec(line)) !== null) chdirring.set(m[1]!, cStringPath(m[2]!))
+    else if ((m = CHDIR_RESUMED_RE.exec(line)) !== null) {
+      const to = chdirring.get(m[1]!)
+      chdirring.delete(m[1]!)
+      if (to !== undefined && m[2] === '0') opsOf(m[1]!).push({ chdir: to })
+    } else if ((m = FCHDIR_RE.exec(line)) !== null) opsOf(m[1]!).push({ lost: true })
+    else if ((m = FORK_DONE_RE.exec(line)) !== null) {
+      forked(m[1]!, m[2]!, opsOf(m[1]!).length, line.includes('CLONE_FS'))
+    } else if ((m = FORK_UNFINISHED_RE.exec(line)) !== null) {
+      forking.set(m[1]!, { at: opsOf(m[1]!).length, shared: line.includes('CLONE_FS') })
+    } else if ((m = FORK_RESUMED_RE.exec(line)) !== null) {
+      const start = forking.get(m[1]!)
+      forking.delete(m[1]!)
+      forked(m[1]!, m[2]!, start?.at ?? opsOf(m[1]!).length, start?.shared === true)
+    }
+  }
+  if (cwd === undefined) return out
+  // dirsOf(pid)[i]: the process's cwd before its op i (undefined: lost).
+  const dirs = new Map<string, (string | undefined)[]>()
+  const dirsOf = (pid: string): (string | undefined)[] => {
+    const known = dirs.get(pid)
+    if (known !== undefined) return known
+    dirs.set(pid, []) // a cycle reads as lost
+    const from = parent.get(pid)
+    let dir: string | undefined = from === undefined ? cwd : dirsOf(from.pid)[from.at]
+    const list: (string | undefined)[] = [dir]
+    for (const op of ops.get(pid) ?? []) {
+      if ('chdir' in op) {
+        dir = path.isAbsolute(op.chdir) ? op.chdir : dir && path.resolve(dir, op.chdir)
+      } else if ('lost' in op) dir = undefined
+      list.push(dir)
+    }
+    dirs.set(pid, list)
+    return list
+  }
+  for (const [pid, list] of ops) {
+    list.forEach((op, i) => {
+      if (!('call' in op)) return
+      const dir = dirsOf(pid)[i]
+      if (dir !== undefined && dir !== cwd) out[op.call]!.dir = dir
+    })
   }
   return out
 }
@@ -115,8 +245,8 @@ export async function parseStraceViolations(
 
   const seen = new Set<string>()
   const out: SandboxViolation[] = []
-  for (const { syscall, rawPath, errno } of deniedCalls(text)) {
-    const abs = toRealPath(absolutize(rawPath, baselines.cwd))
+  for (const { syscall, rawPath, errno, dir } of deniedCalls(text, baselines.cwd)) {
+    const abs = toRealPath(absolutize(rawPath, dir ?? baselines.cwd))
     // Only report paths under the workspace-root deny anchor — system
     // libs / /proc / /sys / etc. probes are not interesting violations.
     if (!denyAnchors.some((root) => atOrUnder(abs, root))) continue

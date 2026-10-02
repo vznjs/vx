@@ -96,9 +96,12 @@ import type { CacheKeyInput } from './layer.js'
 // artifact records none (item 943).
 // v36: each artifact ends in a `.vx-sum` CRC-32 of its entries, checked on
 // scan and restore; a v35 artifact has none (L-19).
-// v37: an entry saved while the key folded a filtered LF blob for CRLF
+// v37: an entry saved while `git status` hid a deletion (paired as an
+// unmerged path's rename source) holds output built without a file its key
+// folds (A-59).
+// v38: an entry saved while the key folded a filtered LF blob for CRLF
 // bytes on disk, the filter since removed, holds the CRLF build (A-60).
-export const CACHE_VERSION = 'vx-cache-v37'
+export const CACHE_VERSION = 'vx-cache-v38'
 
 /**
  * The digest a key folds for an input gone between its enumeration and its

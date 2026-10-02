@@ -5,12 +5,12 @@ telemetry plugin that writes every `vx run` as a **job summary** on the
 workflow run page.
 
 ```sh
-npm install -D @vzn/vx @vzn/vx-github   # or: pnpm add -D · yarn add -D · bun add -d
+npm install -D @vzn/vx @vzn/vx-github   # or: pnpm add -D -w · yarn add -D (-W on Yarn 1) · bun add -d
 ```
 
 ```ts
 // vx.workspace.ts
-import { defineWorkspace } from '@vzn/vx'
+import { defineWorkspace } from '@vzn/vx/config'
 import { github } from '@vzn/vx-github'
 
 export default defineWorkspace({

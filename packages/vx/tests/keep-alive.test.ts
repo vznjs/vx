@@ -107,6 +107,11 @@ describe('foreground keep-alive ends when one requested server exits', () => {
       // Written before the wait, it said ok over an exit 1.
       const summary = JSON.parse(readFileSync(path.join(root, 's.json'), 'utf8'))
       expect([summary.ok, summary.exitCode]).toEqual([expected === 0, expected])
+      // C-53: and it named no failure: every task `success`, `failed: 0`.
+      const other = summary.tasks.find((t: { id: string }) => t.id === 'app#other')
+      expect([other.status, other.exitCode, summary.summary.failed]).toEqual(
+        exitCode === 0 ? ['success', 0, 0] : ['failed', exitCode, 1],
+      )
     }, 20_000)
   }
 
@@ -166,6 +171,8 @@ describe('foreground keep-alive ends when one requested server exits', () => {
     expect(await waitForDead(pid, 1_000)).toBe(true)
     const summary = JSON.parse(readFileSync(path.join(root, 's.json'), 'utf8'))
     expect([summary.ok, summary.exitCode]).toEqual([false, 130])
+    // The user stopped it: no failure (C-53's guard).
+    expect(summary.tasks.map((t: { status: string }) => t.status)).toEqual(['success'])
   }, 20_000)
   // C-46: a kept server keeps the persistent tasks it depends on. Under
   // `--filter app` only app#dev was kept, and the api#dev it was started
@@ -202,6 +209,71 @@ describe('foreground keep-alive ends when one requested server exits', () => {
     expect(await proc.exited).toBe(130)
     await reading
     expect(await Promise.all(pids.map((p) => waitForDead(p, 1_000)))).toEqual([true, true])
+  }, 20_000)
+
+  // C-60: a run that failed held its healthy servers for good: a script's
+  // `vx run dev --all` hung, and the Ctrl-C that ended it read 130.
+  const failing = (bad: string) => `export default { tasks: {
+    dev: { exec: { command: 'echo $$ > pid.txt; echo READY; exec sleep 30', persistent: { readyWhen: 'READY' } } },
+    ${bad}
+  } }`
+  for (const [title, bad, tasks] of [
+    [
+      'a server that never became ready',
+      `bad: { exec: { command: 'exit 3', persistent: { readyWhen: 'READY' } } },`,
+      ['dev', 'bad'],
+    ],
+    [
+      // Its crash surfaces at the end of the graph, after e2e passed.
+      'a dependency-only server that crashed',
+      `mock: { exec: { command: 'echo READY; sleep 0.2; exit 5', persistent: { readyWhen: 'READY' } } },
+       e2e: { dependsOn: ['mock'], exec: { command: 'sleep 0.6' } },`,
+      ['dev', 'e2e'],
+    ],
+  ] as const) {
+    it(`${title} stops the healthy server and exits 1`, async () => {
+      const dir = await addProject(root, 'app', failing(bad))
+      const proc = track(
+        Bun.spawn([process.execPath, BIN, 'run', ...tasks, '--all'], {
+          cwd: root,
+          stdout: 'ignore',
+          stderr: 'ignore',
+          env: { ...process.env, VX_KILL_GRACE_MS: '200' },
+        }),
+      )
+      const pid = await waitForPid(path.join(dir, 'pid.txt'), 10_000)
+      expect(await proc.exited).toBe(1)
+      expect(await waitForDead(pid, 1_000)).toBe(true)
+    }, 20_000)
+  }
+
+  it('CONTROL: under --continue=always the healthy server is held', async () => {
+    const dir = await addProject(
+      root,
+      'app',
+      failing(`bad: { exec: { command: 'exit 3', persistent: { readyWhen: 'READY' } } },`),
+    )
+    const proc = track(
+      Bun.spawn([process.execPath, BIN, 'run', 'dev', 'bad', '--all', '--continue=always'], {
+        cwd: root,
+        stdout: 'pipe',
+        stderr: 'pipe',
+        env: { ...process.env, CI: '', GITHUB_ACTIONS: '', VX_KILL_GRACE_MS: '200' },
+      }),
+    )
+    let out = ''
+    const reading = (async () => {
+      for await (const chunk of proc.stdout) out += new TextDecoder().decode(chunk)
+    })()
+    const pid = await waitForPid(path.join(dir, 'pid.txt'), 10_000)
+    const deadline = Date.now() + 10_000
+    while (!out.includes('─ vx ') && Date.now() < deadline) await Bun.sleep(20)
+    expect(out).toContain('─ vx ')
+    expect(isAlive(pid)).toBe(true)
+    proc.kill('SIGINT')
+    expect(await proc.exited).toBe(130)
+    await reading
+    expect(await waitForDead(pid, 1_000)).toBe(true)
   }, 20_000)
 })
 

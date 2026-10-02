@@ -84,7 +84,7 @@ describe('git spawns on a cold run', () => {
         [
           ...ENUMERATION,
           '--no-optional-locks ls-files -s -v -z --debug -- .',
-          '--no-optional-locks status --porcelain -z -uall --ignored=matching -- .',
+          '--no-optional-locks status --porcelain -z -uall --ignored=matching --no-renames -- .',
         ].sort(),
       )
       // Warm, the sizes come from the cache: no cat-file.
@@ -101,7 +101,7 @@ describe('git spawns on a cold run', () => {
         [
           ...ENUMERATION,
           '--no-optional-locks ls-files -s -v -z --debug -- packages/a',
-          '--no-optional-locks status --porcelain -z -uall --ignored=matching -- packages/a',
+          '--no-optional-locks status --porcelain -z -uall --ignored=matching --no-renames -- packages/a',
         ].sort(),
       )
     },
