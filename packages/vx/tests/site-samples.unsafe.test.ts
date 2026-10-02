@@ -15,6 +15,8 @@ import { FOREIGN_VERBS } from '../src/cli/foreign-flags.js'
 import { CACHE_LAYER_METHODS } from '../src/orchestrator/plugin-host.js'
 import { PLUGIN_HOOKS } from '../src/config.js'
 import { ESSENTIAL_ENV } from '../src/exec/env.js'
+import { IGNORED_SEGMENTS } from '../src/cli/watch-fs.js'
+import { WATCH_REFUSED_FLAGS } from '../src/cli/help.js'
 import type { RunPlan } from '../src/orchestrator/plan.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
 import type { TaskOutcome } from '../src/graph/scheduler.js'
@@ -1809,5 +1811,27 @@ describe("a post's link into a guide section names the section", () => {
     expect(wrong).toEqual([])
     const post = readFileSync(path.join(DOCS, 'blog', 'dev-servers-in-the-graph.md'), 'utf8')
     expect(post).not.toContain('readiness patterns for the common servers')
+  })
+})
+
+describe('the watch post names what the loop ignores and refuses', () => {
+  // The post's ignore list left out git-ignored paths, which the loop skips
+  // through `git check-ignore`, and called `--verbosity` refused where
+  // `--verbosity 0` is accepted (J2-14).
+  const cli = path.resolve(import.meta.dir, '..', 'src', 'cli')
+  const post = readFileSync(path.join(DOCS, 'blog', 'watch-mode.md'), 'utf8').replace(/\s+/g, ' ')
+  it('every ignored segment and suffix, and git-ignored paths', () => {
+    const filter = readFileSync(path.join(cli, 'watch-filter.ts'), 'utf8')
+    const suffixes = /const IGNORED_SUFFIXES = \[([^\]]*)\]/.exec(filter)?.[1]
+    expect(suffixes).toBeDefined()
+    const named = [...IGNORED_SEGMENTS, ...[...suffixes!.matchAll(/'([^']+)'/g)].map((m) => m[1]!)]
+    expect(named.filter((n) => !post.includes(`\`${n}\``))).toEqual([])
+    expect(filter).toContain("'check-ignore'")
+    expect(post).toContain('any untracked path git ignores (one `git check-ignore`')
+  })
+  it('every refused flag, and --verbosity only above 0', () => {
+    expect(WATCH_REFUSED_FLAGS.filter((f) => !post.includes(`\`${f}\``))).toEqual([])
+    expect(readFileSync(path.join(cli, 'watch.ts'), 'utf8')).toContain('parsed.verbosity > 0')
+    expect(post).toContain('`--verbosity` above 0')
   })
 })
