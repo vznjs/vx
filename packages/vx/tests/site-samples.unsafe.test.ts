@@ -192,6 +192,10 @@ describe("the README's comparison agrees with comparison.md on Turbo's daemon", 
     expect(doc.replace(/\s+/g, ' ')).toContain(
       'it has deprecated its own daemon for `turbo run` (2.8.11) and `--parallel` (by 2.9.18)',
     )
+    const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
+    expect(bench.replace(/\s+/g, ' ')).toContain('(it uses none for `turbo run` since 2.8.11)')
+    const post = readFileSync(path.join(DOCS, 'blog', 'honest-benchmarks.md'), 'utf8')
+    expect(post.replace(/\s+/g, ' ')).toContain('(deprecated there since 2.8.11)')
   })
 })
 
