@@ -402,10 +402,7 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
       for (const f of replaced) report.push(`  ${relPosix(root, f)}`)
     }
   }
-  const firstTask =
-    plan.projects.flatMap((p) => p.tasks.map((t) => t.name)).find((n) => n === 'build') ??
-    plan.projects[0]?.tasks[0]?.name ??
-    'build'
+  const firstTask = nextTask(plan.projects.flatMap((p) => p.tasks))
   // A run of tasks none of which caches is never a hit, and a first try
   // that runs twice to see the cache work saw it run twice.
   if (!cached && [...todos.keys()].some(isCacheTodo)) {
@@ -440,6 +437,25 @@ function inGitWorkTree(root: string): boolean {
   } catch {
     return false
   }
+}
+
+/** Names that change the repo or the world rather than check it. */
+const NOT_A_TRY = /^(clean|reset|nuke|release|publish|deploy|version|format|fix)(?:$|[:\-_.])/
+
+/**
+ * The task the `next:` line runs: `build`, else the first task that
+ * neither serves nor changes anything, else the first. react-navigation, whose
+ * packages build in `prepack`, was told `vx run clean --all` (D-105).
+ */
+function nextTask(tasks: readonly GeneratedTask[]): string {
+  const names = tasks.filter((t) => t.task !== null).map((t) => t.name)
+  const fit = tasks.find(
+    (t) =>
+      t.task !== null &&
+      !NOT_A_TRY.test(t.name) &&
+      (t.task['exec'] as { persistent?: unknown } | undefined)?.persistent === undefined,
+  )
+  return names.includes('build') ? 'build' : (fit?.name ?? names[0] ?? 'build')
 }
 
 /**

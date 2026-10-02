@@ -1806,7 +1806,10 @@ runner that started vx (`npx`, `pnpm`, `yarn`, `bunx`, read from
 `npm_config_user_agent`) with the installed `vx` bin, else the
 `@vzn/vx` package; with no runner, a bare `vx`. Outside a git work tree it starts with
 `git init`, and with no script mapped with declaring a task, since the
-run would refuse without either.
+run would refuse without either. It runs `build`, else the first task that
+neither serves (`persistent`) nor changes the repo (`clean`, `release`,
+`publish`, `deploy`, `version`, `format`, `fix`, …), else the first task
+(react-navigation was told `vx run clean --all`).
 
 `vx init --plugin <seam>` writes a plugin instead: `plugins/<seam>.ts`,
 a small runnable plugin for that seam (`executor`, `cache`,
