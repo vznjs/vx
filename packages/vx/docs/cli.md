@@ -245,7 +245,9 @@ failed to spawn 'git' … Install git and re-run` — the same the input
   `main...feature`) is refused there too, naming the base to pass
   alone — `ranges are not supported — pass the base alone ("HEAD~1")`
   — because the other end is always the working tree. A ref that does
-  not exist is `git ref "<ref>" did not resolve`.
+  not exist is `git ref "<ref>" did not resolve`; in a shallow clone (CI's
+  one-commit checkout) it adds that the clone is shallow and how to fetch
+  the history (`git fetch --unshallow`, `fetch-depth: 0`).
 - A member whose directory is a symlink to a place elsewhere under the
   workspace root (`packages/b -> ../ext/b`) is selected by a change at
   that real place too: git names the files where they live, not by the
@@ -392,7 +394,7 @@ stays clean).
 | ---------------------------------- | -------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `--filter <pattern>`               | repeatable     | (none)                             | pnpm-style filter DSL (see above). `--filter=<pattern>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `--all`                            | boolean        | off                                | Select every project that declares the task.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| `--affected[=<base>]`              | optional value | off                                | Select the projects changed since `<base>` and their dependents (default `affectedBase`, else `origin/HEAD`); sugar for `--filter "...[<base>]"`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `--affected[=<base>]`              | optional value | off                                | Select the projects changed since `<base>` and their dependents (default `affectedBase`, else `origin/HEAD`, else `main` or `master`, else `HEAD~1`); sugar for `--filter "...[<base>]"`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `--exclude-dependencies[=<names>]` | optional value | off                                | Drop `dependsOn` edges. No value = all (just the requested task runs; a group's members run as the group); comma-list = drop only those names, each of which some project must declare (a typo is refused with the nearest name, item 1026). An edge to a task the run schedules anyway (`--all` requests it) stays, so the two still run in order, and so does the order through a dropped task: with `gen` dropped from `test → gen → build` and `build` requested, `test` still waits for `build`. An empty `=` value is a parse error (ambiguous — see below). A dropped dependency does not run but is still keyed, so every key is the one a full run derives; a task keyed on one may hit but does not save (`caching.md` step 10). |
 | `--concurrency <n>`                | int or `<n>%`  | cores, capped by the cgroup quota  | Maximum parallel tasks that EXECUTE; confirmed cache-hit restores are disk work and run on their own lane, up to twice this. `1` serializes both; `50%` is half the CPUs (rounded, never below 1; over 100% is allowed for I/O-bound work). `--concurrency=<n>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `--no-cache`                       | boolean        | off                                | Disable caching entirely (no reads, no writes); output globs are NOT cleaned.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
@@ -1636,7 +1638,8 @@ bare `(403)` (item 1098).
 In a Turbo or Nx repo (a `turbo.json`, `turbo.jsonc` or `nx.json` at
 the root) it writes `vx.workspace.ts` declaring `turbo()` or `nx()`
 from `@vzn/vx-migrate` and nothing else: those read the repo's own
-config live, so no task is copied. The `next:` line is one command:
+config live, so no task is copied — a temporary start until
+`bunx @vzn/vx-migrate` writes native config. The `next:` line is one command:
 install what the file imports and is missing, with the manager the
 lockfile names (at the workspace root: pnpm's `-w`, Yarn 1's `-W`,
 which Yarn Berry lacks), then run the config's `build` (else its first task).
@@ -1737,6 +1740,11 @@ as npm hands them to the script and not its hooks (item 905). The
 command is a small shell function, `vx_script`, around the three parts;
 it carries a TODO saying so; a `pre<x>` with no `x` stays a task of its own, and
 npm's lifecycle hooks (`prepack`, `prepublishOnly`, …) are never tasks.
+A package with no `build` script whose `prepack`, `prepublishOnly`,
+`prepublish` or `prepare` runs a builder (`bob build`, `tsc`, `tsup`, …)
+is named in the report, which says to add a `build` script running it
+(react-navigation's twelve packages, whose root `build` is `lerna run
+prepack`, mapped with no build at all).
 Where the package's manager runs no such hooks every `pre<x>` and
 `post<x>` is a task of its own: Yarn 2+ (the nearest `packageManager:
 yarn@2+`, or a Berry `yarn.lock`, D-31; a `packageManager` naming none of npm,
@@ -1768,6 +1776,9 @@ of its own; a hand-written one stays as written. The report says which;
 with nothing mapped it names the root whenever it has a script, a member
 or not (pnpm's root is not), and tells a root with no `"name"` to add one
 first (vuejs/core), naming the scripts that would then map (react, D-87). A single-package repo's root is its project and maps.
+A member whose package.json has no `name` is no project; one with a
+script is named in the report, to be given a name (remix's
+`packages/component/bench`, D-106).
 A member's script that runs another member's work (`pnpm -C ../pinia
 run build`, `yarn workspace <name>`, `-r` / `--filter`, a `cd` or `-C`
 / `--cwd` / `--prefix` into another member) keeps its command and gets a
@@ -1798,9 +1809,13 @@ and when no task caches it says a cache block from a TODO makes the
 second run a hit. Its `next:` line is a command the user can type: the
 runner that started vx (`npx`, `pnpm`, `yarn`, `bunx`, read from
 `npm_config_user_agent`) with the installed `vx` bin, else the
-`@vzn/vx` package; with no runner, a bare `vx`. Outside a git work tree it starts with
+`@vzn/vx` package (`npx` under Yarn 1, which has no `dlx`); with no
+runner, a bare `vx`. Outside a git work tree it starts with
 `git init`, and with no script mapped with declaring a task, since the
-run would refuse without either.
+run would refuse without either. It runs `build`, else the first task that
+neither serves (`persistent`) nor changes the repo (`clean`, `release`,
+`publish`, `deploy`, `version`, `format`, `fix`, …), else the first task
+(react-navigation was told `vx run clean --all`).
 
 `vx init --plugin <seam>` writes a plugin instead: `plugins/<seam>.ts`,
 a small runnable plugin for that seam (`executor`, `cache`,

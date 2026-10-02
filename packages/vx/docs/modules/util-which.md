@@ -38,15 +38,13 @@ export function shellArgv(script: string): string[]
 - The answer is absolute even for a relative PATH entry (`Bun.which`
   resolves one against this process's cwd).
 
-- `shellArgv` is the task shell's argv: `[sh, '-c', script]`, and on
-  Windows `[bun, 'exec', script]`, Bun's shell, since Windows ships no
-  `sh` (`docs/design/windows-2026-09.md` § Decisions 1).
+- `shellArgv` is the task shell's argv: `[sh, '-c', script]`, `sh`
+  resolved by `executablePath`.
 
 ## Not here
 
-The `cache.inputs.runtime` probe (`cache/inputs.ts`) still spawns a
-bare `sh`, against vx's ambient PATH led by the task's
-`node_modules/.bin` (on Windows, `shellArgv`).
+The `cache.inputs.runtime` probe (`cache/inputs.ts`) spawns
+`shellArgv` with a PATH led by the task's `node_modules/.bin`.
 
 ## Tests
 

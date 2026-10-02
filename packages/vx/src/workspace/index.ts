@@ -45,6 +45,7 @@ export {
 } from './config-cache.js'
 export {
   findWorkspaceRoot,
+  discoverProjects,
   listProjects,
   namedProject,
   loadWorkspace,
