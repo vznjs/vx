@@ -183,11 +183,13 @@ Sharing the patterns doesn't mean sharing the overhead. On the
 476-package / 1,428-node synthetic workspace
 (`packages/vx-bench/compare.ts 20 25 1`, 2026-09-02):
 
-| Runner | Fresh (cold) | Warm (no restore) | Warm (restore) |
-| ------ | ------------ | ----------------- | -------------- |
-| **vx** | 1m 40s       | **297 ms**        | **416 ms**     |
-| Turbo  | 1m 40s       | 342 ms (1.2×)     | 612 ms (1.5×)  |
-| Nx     | 3m 23s       | 1.38 s (4.7×)     | 1.33 s (3.2×)  |
+| Runner | Fresh (cold)           | Warm (no restore)      | Warm (restore)         |
+| ------ | ---------------------- | ---------------------- | ---------------------- |
+| **vx** | 1m 40s                 | **297 ms**             | **416 ms**             |
+| Turbo  | 1m 40s (vx same)       | 342 ms (vx 13% faster) | 612 ms (vx 32% faster) |
+| Nx     | 3m 23s (vx 50% faster) | 1.38 s (vx 78% faster) | 1.33 s (vx 68% faster) |
+
+vx N% faster: vx takes N% less time than that tool (1 − vx ÷ theirs).
 
 Full breakdown + methodology in [`benchmarks.md`](./benchmarks.md).
 

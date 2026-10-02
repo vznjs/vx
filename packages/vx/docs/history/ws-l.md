@@ -100,8 +100,8 @@
 22. Telemetry. `vx-otel` exports task output as log records from the
     bus, whose chunks `maskedEmitter` masks on the one-shot and the
     persistent path alike; the command is masked in the task view
-    (L-11, L-14). An executor's thrown message is printed unmasked, but a
-    plugin executor is trusted code with a config's reach. No bug.
+    (L-11, L-14). An executor's thrown message was printed unmasked, and
+    vx-reapi's carries the remote server's own text (L-39).
 23. What vx-reapi uploads. A symlinked input is sent as a link node
     (`lstat`, its target string), never its target's bytes, and core's
     input glob does not descend into a symlinked directory
@@ -458,6 +458,13 @@
   task's own), and nothing pinned either. Row:
   `sandbox-host-services.unsafe.test.ts`, with the host reaching both
   as its control; red with the sandbox block removed.
+- L-39. `fix(orchestrator)`: an executor that throws has its message
+  printed in the task's stream and by the scheduler. vx-reapi's carries
+  the remote server's status text, which vx does not control: a server
+  that echoed the Command's env put a secret in both, beside a masked
+  task output. Audit 22 had called the message trusted plugin code. The
+  message and its cause are masked. `executor-error-secret-mask.test.ts`,
+  red without the fix.
 
 ## Leads for other streams
 

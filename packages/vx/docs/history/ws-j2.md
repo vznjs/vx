@@ -30,7 +30,27 @@
   `discover` stage it lists through `discoverCliProjects`.
   `modules/logger.md` gained #2054's post-summary server stream. Rows
   (`module-page-claims`), red on each page without the fix.
+- **J2-3** cli.md's `--report` sample read `8ms saved`, its two hits'
+  restore times (5 + 3): the sum the paragraph under it says the header
+  does not take (`savedMs` sums the entries' stored exec times). The
+  sample's hits now store 2.01s and 640ms (`2.65s saved`), and the
+  Status list names a skip's label as the renderer writes it,
+  `skipped (blocked by lib#build)`. Row (`cli-doc-drift` › the --report
+  sample is what the renderer prints), red without the fix.
 
+## Leads for other streams
+
+- **E** `vx last` labels every skipped row `after <id> failed`
+  (`cli/last.ts`), where the run's Skipped section says
+  `after <id> was aborted` for a block whose root a signal killed.
+
+- **J2-6** #2227 dropped every native Windows branch, and two pages
+  still described one: `modules/sandbox-runtime.md`'s Windows row said
+  `probeSandbox` reports the sandbox unavailable and `exec.sandbox` is
+  refused before the run (no such branch is left; under WSL the Linux
+  row applies), and `execution.md` called the allowlist what a command
+  needs on "\*nix / Windows". Row (`doc-references` › no page describes
+  a Windows branch the source dropped), red without the fix.
 - **J2-7** The sandboxing guide's grant table called `gitConfig`
   "inert: SRT drops the per-task flag"; since B-41 the run union carries
   it and each wrap sets it for its own task (`perTaskRun`), and the
@@ -60,3 +80,14 @@
 persistent task` and vx exits 1). Row (`site-samples` › a post's link
   into a guide section names the section), red on four posts without
   the fix.
+
+- **J2-11** The lockfile-aware-keys post said a `bun.lock` bump in
+  vx's repo re-keys "that package's own tasks and its dependants'", and
+  its excerpt "59 re-keyed tasks into 2". Measured 2026-10-02 (`run ci
+--all --dry=json` keys before and after): an `astro` bump re-keys 6 of
+  56 tasks with `bun()`, 56 without; a `protobufjs` bump re-keys all 56
+  with it, since every digest folds the root's closure and the root
+  links seven workspace packages. The post now gives both. Row
+  (`site-samples` › the lockfile post measures what the root reaches),
+  read from the manifests; red without the fix and with the narrow
+  example swapped for `@types/bun`.
