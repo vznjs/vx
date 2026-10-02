@@ -637,7 +637,9 @@ grants and what the task made there itself stay readable. `grep -r` and
 `find` open each entry relative to a directory's descriptor, which the
 trace names only by number, so such a task's strace runs with `-y`,
 which prints the path each descriptor opened (40% slower on 2,000
-opens). No widened grant, no `-y` and no extra parse.
+opens). The parse takes a descriptor's printed path up to the `, "` that
+opens the file argument, since a directory's name may hold a quote
+(`4</ws/q"d>`). No widened grant, no `-y` and no extra parse.
 
 ## A write grant that mounts nothing
 

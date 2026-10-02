@@ -41,10 +41,16 @@ import type {
  */
 const SYSCALLS = 'openat|access|statx|newfstatat'
 const QUOTED = '"((?:[^"\\\\]|\\\\.)+)"'
+// The directory descriptor a call names, `-y`'s path included: taken up to
+// the `, "` that opens the path argument, since a directory's name may hold
+// a quote (`4</ws/q"d>`).
+const DIRFD = '(?:AT_FDCWD|\\d+)(?:<.*?>)?, '
 const STRACE_DONE_RE = new RegExp(
-  `^(\\d+)\\s+(${SYSCALLS})\\([^"]*${QUOTED}[^)]*\\)\\s*=\\s*-1\\s+(ENOENT|EACCES|EPERM)`,
+  `^(\\d+)\\s+(${SYSCALLS})\\((?:${DIRFD})?${QUOTED}[^)]*\\)\\s*=\\s*-1\\s+(ENOENT|EACCES|EPERM)`,
 )
-const STRACE_UNFINISHED_RE = new RegExp(`^(\\d+)\\s+(${SYSCALLS})\\([^"]*${QUOTED}[^)]*<unfinished`)
+const STRACE_UNFINISHED_RE = new RegExp(
+  `^(\\d+)\\s+(${SYSCALLS})\\((?:${DIRFD})?${QUOTED}[^)]*<unfinished`,
+)
 const STRACE_RESUMED_RE = new RegExp(
   `^(\\d+)\\s+<\\.\\.\\. (${SYSCALLS}) resumed>.*?=\\s*-1\\s+(ENOENT|EACCES|EPERM)`,
 )
@@ -57,10 +63,10 @@ const STRACE_RESUMED_OK_RE = new RegExp(`^(\\d+)\\s+<\\.\\.\\. (${SYSCALLS}) res
  */
 const READ_FLAGS = '(?![A-Z_|]*O_WRONLY)[A-Z_|]+'
 const OPEN_READ_RE = new RegExp(
-  `^(\\d+)\\s+openat\\((AT_FDCWD|\\d+)(?:<[^"]*>)?, ${QUOTED}, ${READ_FLAGS}[^)]*\\)\\s*=\\s*\\d+(?:<(.*)>)?$`,
+  `^(\\d+)\\s+openat\\((AT_FDCWD|\\d+)(?:<.*?>)?, ${QUOTED}, ${READ_FLAGS}[^)]*\\)\\s*=\\s*\\d+(?:<(.*)>)?$`,
 )
 const OPEN_READ_UNFINISHED_RE = new RegExp(
-  `^(\\d+)\\s+openat\\((AT_FDCWD|\\d+)(?:<[^"]*>)?, ${QUOTED}, ${READ_FLAGS}.*<unfinished`,
+  `^(\\d+)\\s+openat\\((AT_FDCWD|\\d+)(?:<.*?>)?, ${QUOTED}, ${READ_FLAGS}.*<unfinished`,
 )
 const RESUMED_FD_RE = /resumed>.*\)\s*=\s*\d+(?:<(.*)>)?$/
 
