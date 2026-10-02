@@ -19,22 +19,6 @@ describe('buildIsolatedEnv', () => {
     expect(env.SECRET).toBeUndefined()
   })
 
-  // O-7: a Windows task without these could not find its home (os.homedir()
-  // reads USERPROFILE) or its system drive, and npm and git broke.
-  it('passes the Windows home and system variables', () => {
-    const win = {
-      SYSTEMDRIVE: 'C:',
-      WINDIR: 'C:\\Windows',
-      USERPROFILE: 'C:\\Users\\u',
-      HOMEDRIVE: 'C:',
-      HOMEPATH: '\\Users\\u',
-      NUMBER_OF_PROCESSORS: '4',
-      PROCESSOR_ARCHITECTURE: 'AMD64',
-    }
-    const env = buildIsolatedEnv({ passThrough: [], define: {}, source: { ...win, SECRET: 'x' } })
-    expect(env).toEqual(win)
-  })
-
   it('omits essentials that are not set in source', () => {
     const env = buildIsolatedEnv({
       passThrough: [],

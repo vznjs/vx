@@ -438,26 +438,6 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   // cycle under `vx watch` (item 1029). run() owns both only once this
   // returns.
   try {
-    const gitFilesCache = new GitFilesCache()
-    // Bulk-populate via a single `git ls-files` at the workspace root —
-    // partitions the output by project. Avoids one fork+exec per project
-    // (~5-10ms each on Linux; the dominant cold-start cost on big
-    // monorepos). When any loaded task declares inputs.workspaceFiles,
-    // the enumeration must see every file from the root (no pathspec
-    // scoping) and additionally stores a workspace-wide partition.
-    const usesWorkspaceInputs = [...projects.values()].some((p) =>
-      Object.values(p.config.tasks ?? {}).some(
-        (t) => (t.cache?.inputs.workspaceFiles?.length ?? 0) > 0,
-      ),
-    )
-    const projectDirs = [...projects.values()].map((p) => p.dir)
-    const enumeration = await (git.started ??
-      startGitEnumeration(
-        workspaceRoot,
-        gitPathspecs(workspaceRoot, projectDirs, usesWorkspaceInputs),
-      ))
-    applyGitEnumeration(enumeration, workspaceRoot, projectDirs, gitFilesCache, usesWorkspaceInputs)
-    mark('git enumeration')
     const hashCache = createHashCache()
     const fingerprintWatch = new FingerprintWatch(workspaceRoot, fingerprints, fingerprintsAt)
 
@@ -483,7 +463,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
         workspaceFingerprint,
         fingerprintWatch,
         nestedDirsByProject,
-        gitFilesCache,
+        gitFilesCache: new GitFilesCache(),
         hashCache,
         workspaceProjectCount: projectMetas.length,
         empty:
@@ -538,11 +518,45 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
         )
       }
     }
-    // The graph is built; what follows is the plugins' (graph, key,
-    // schedule). Two rows, so a plugin's key stage reads as its own cost
-    // and not as graph building — a lockfile plugin's 1000 stats per run
-    // hid inside one `prepare (graph)` row until 2026-09-10.
+    // The graph is built; what follows is git's enumeration over its
+    // projects, then the plugins' stages (graph, key, schedule). Separate
+    // rows, so a plugin's key stage reads as its own cost and not as graph
+    // building — a lockfile plugin's 1000 stats per run hid inside one
+    // `prepare (graph)` row until 2026-09-10.
     mark('build graph')
+    const gitFilesCache = new GitFilesCache()
+    // Bulk-populate via a single `git ls-files` at the workspace root —
+    // partitions the output by project. Avoids one fork+exec per project
+    // (~5-10ms each on Linux; the dominant cold-start cost on big
+    // monorepos). When any task in the graph declares inputs.workspaceFiles,
+    // the enumeration must see every file from the root (no pathspec
+    // scoping) and additionally stores a workspace-wide partition.
+    // Over the projects that own a task, not every project loaded: a scoped
+    // run loads its dependency closure for the `^` walk, and a `lint` of one
+    // package walked the whole tree for it (~60 ms of git where one
+    // project's pathspec takes ~7, 1,000 projects). A node a `graph` hook
+    // adds in another project keys through `resolveFiles`' own spawn.
+    const graphDirs = new Set<string>()
+    let usesWorkspaceInputs = false
+    for (const n of nodes.values()) {
+      graphDirs.add(n.projectDir)
+      if ((n.config.cache?.inputs.workspaceFiles?.length ?? 0) > 0) usesWorkspaceInputs = true
+    }
+    const projectDirs = [...graphDirs]
+    const enumeration = await (git.started ??
+      startGitEnumeration(
+        workspaceRoot,
+        gitPathspecs(workspaceRoot, projectDirs, usesWorkspaceInputs),
+      ))
+    await applyGitEnumeration(
+      enumeration,
+      workspaceRoot,
+      projectDirs,
+      gitFilesCache,
+      usesWorkspaceInputs,
+      localCache,
+    )
+    mark('git enumeration')
     if (hasHook(plugins, 'graph')) {
       await applyGraphHooks(plugins, nodes, {
         workspaceRoot,

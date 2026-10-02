@@ -706,17 +706,18 @@ describe('the evaluation deadline', () => {
     // deadlines elapse (a single unsettled promise inside `Promise.all` hangs
     // the cycle exactly as the no-deadline case did).
     //
-    // The two budgets are deliberately far apart so this discriminates: the
-    // second call cannot settle by its own timer inside the ceiling below, so
-    // a pass proves the first call's timeout rejected it.
+    // The message is the proof: the second call's own budget is a minute, so
+    // only the first call's 200 ms deadline can reject it inside the ceiling,
+    // and the rejection names that budget. A 500 ms ceiling between the two
+    // budgets raced a loaded box's late 200 ms timer and read HUNG (D-94).
     process.env[BUDGET_ENV] = '200'
     const first = evaluateConfigFresh(await write(HANG))
-    process.env[BUDGET_ENV] = '800'
+    process.env[BUDGET_ENV] = '60000'
     const second = evaluateConfigFresh(await write(HANG))
 
-    const outcomes = await Promise.all([settleOrHang(first, 5000), settleOrHang(second, 500)])
+    const outcomes = await Promise.all([settleOrHang(first, 5000), settleOrHang(second, 5000)])
     // Both name the budget of whichever call timed out FIRST — the sibling's
-    // own 800ms budget never applied to it.
+    // own minute never applied to it.
     for (const o of outcomes) expect(o).toBe('REJECTED config worker did not answer within 200ms')
   }, 15_000)
 
@@ -759,10 +760,10 @@ describe('the evaluation deadline', () => {
     // settling before the behaviour moves; pinned meanwhile so it cannot drift.
     process.env[BUDGET_ENV] = '0'
     const file = await write('await Bun.sleep(400)\nexport default { tasks: { ok: {} } }\n')
-    const started = Date.now()
+    // The config sleeps 400 ms, so a rejection naming 0 ms fired before it
+    // could answer; a wall-clock bound on top raced a loaded box (D-94).
     const outcome = await settleOrHang(evaluateConfigFresh(file), 5000)
     expect(outcome).toBe('REJECTED config worker did not answer within 0ms')
-    expect(Date.now() - started).toBeLessThan(300)
   }, 15_000)
 
   it('a budget past the timer ceiling falls back instead of firing at 1ms', async () => {

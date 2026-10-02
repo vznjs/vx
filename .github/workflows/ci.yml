@@ -100,6 +100,10 @@ jobs:
       - name: vx run ci
         env:
           VX_REQUIRE_SANDBOX: '1'
+          # The reftable rows (core's git-reftable.unsafe.test.ts, vx-migrate's
+          # head-stamp-reftable.test.ts) need git 2.45; the runner's git is
+          # newer, and an older one fails them here instead of skipping.
+          VX_REQUIRE_REFTABLE: '1'
           # The API-break law needs the last v* tag (full history above);
           # without one it fails here instead of passing.
           VX_REQUIRE_TAGS: '1'

@@ -271,7 +271,7 @@ describe('nx-map: what the sweep found unheld', () => {
       }),
     })
     const todo =
-      'dependsOn "gen": options forwarding is not supported — the dependency runs with its own options, not this target\'s'
+      'dependsOn `options: "forward"` is not supported — the dependency runs with its own options, not this target\'s'
     expect(
       ['e2e', 'build', 'build:ci', 'lint'].map((n) => t.get(`a#${n}`)!.todos.includes(todo)),
     ).toEqual([false, false, true, true])

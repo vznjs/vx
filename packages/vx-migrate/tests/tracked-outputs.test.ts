@@ -74,3 +74,34 @@ describe('trackedKinds', () => {
     expect(of('')).toEqual(of('.'))
   })
 })
+
+// A project's files are found by a binary search over the sorted list
+// (every project scanned all of them: 177 ms of a cold 1,000-package
+// mapping). The run must hold exactly the files under `rel/`: a sibling
+// whose name extends it sorts on either side of the run.
+describe('trackedKinds: a project sees exactly the files under it', () => {
+  it('not a sibling sharing its name, wherever the list puts it', () => {
+    const tracked = [
+      'packages/p10/c.css',
+      'packages/p1/sub/d.js',
+      'packages/p1-x/a.md',
+      'packages/p1/b.ts',
+      'packages/p1.old/e.yml',
+      'README.txt',
+    ]
+    const kinds = trackedKinds(tracked)('packages/p1')
+    expect([[...kinds.exts].sort(), [...kinds.tops].sort(), [...kinds.dirs].sort()]).toEqual([
+      ['js', 'ts'],
+      ['b.ts', 'sub'],
+      ['sub'],
+    ])
+    expect([...trackedKinds(tracked)('').exts].sort()).toEqual([
+      'css',
+      'js',
+      'md',
+      'ts',
+      'txt',
+      'yml',
+    ])
+  })
+})
