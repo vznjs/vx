@@ -114,6 +114,10 @@ Every task gets `NX_TASK_TARGET_PROJECT`, `NX_TASK_TARGET_TARGET`, `LERNA_PACKAG
 
 Nx hands every task its whole environment; vx hands a task only its essentials (`PATH`, `HOME`, `CI`, `NODE_OPTIONS`, …), the names its Nx `{ env }` inputs declare (which also key it), and what `nx()` defines (the target, `.env` files, a run-commands `env`). A variable set in the shell and read by no declared input, `NODE_ENV` or `DATABASE_URL`, does not reach the task: declare it as an `{ env }` input of the target in the Nx config.
 
+### Atomized targets
+
+Two cached tasks on one workspace path cannot both keep their cache, and the first declared is kept. Cypress's atomizer gives `e2e` the whole `videos` dir and each `e2e-ci--<spec>` a subdir of it, so `nx()` also tries the split target (a `nonAtomizedTarget`) last and keeps the order that caches more tasks: each spec's CI task keeps its cache and `e2e` runs uncached, with the todo. Where the specs share the split target's one path (jest's coverage dir) the declared order stands.
+
 ### nx.json `parallel`
 
 `parallel` (or the legacy `tasksRunnerOptions.default.options.parallel`) is the run's `concurrency` when `vx.workspace.ts` sets none: a repo that set `1` for a shared resource ran on every core under vx before.
