@@ -77,8 +77,11 @@ const { CONFIG_TEXTS, ENV, FILES } = (await import(
   ENV: Record<string, string>
   FILES: Record<string, string>
 }
-const { NOT_AN_OBJECT } = (await import(path.join(DOCS, 'src/playground/config-eval.ts'))) as {
+const { NOT_AN_OBJECT, NOT_AN_OBJECT_FUNCTION } = (await import(
+  path.join(DOCS, 'src/playground/config-eval.ts')
+)) as {
   NOT_AN_OBJECT: string
+  NOT_AN_OBJECT_FUNCTION: string
 }
 
 // The page's workspace and its Run (item 700), imported the same way.
@@ -442,6 +445,8 @@ const variants = new Map<string, { cli: PlanTask[]; bundle: BundlePlan }>()
 let control: { cli: PlanTask[]; bundle: BundlePlan }
 const NOT_OBJECT_TEXTS: Record<string, string> = {
   'a number': 'export default 42\n',
+  // Vite's shape: the CLI and the page both add that it is a function (D-110).
+  'a function': 'export default () => ({ tasks: {} })\n',
   'no default export':
     "import { defineProject } from '@vzn/vx'\nexport const config = defineProject({})\n",
 }
@@ -698,9 +703,9 @@ describe("the page evaluates a config's text as the CLI does (item 699)", () => 
       const { cli, page } = notObject.get(name)!
       const file = path.join(ws, CONFIG_FILE['@pg/docs']!)
       expect(cli.exitCode).toBe(1)
-      expect(cli.stderr).toBe(`vx: Project config at ${file} did not export a default object\n`)
-      expect(page).toEqual({ ok: false, error: NOT_AN_OBJECT })
-      expect(cli.stderr.replace(file, 'vx.config.mjs')).toBe(`vx: ${NOT_AN_OBJECT}\n`)
+      const want = name === 'a function' ? NOT_AN_OBJECT_FUNCTION : NOT_AN_OBJECT
+      expect(page).toEqual({ ok: false, error: want })
+      expect(cli.stderr.replace(file, 'vx.config.mjs')).toBe(`vx: ${want}\n`)
     })
   }
 

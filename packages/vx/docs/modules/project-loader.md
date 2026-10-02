@@ -75,7 +75,7 @@ readers that reach it here.
   next attempt), and the error thrown is the first in that order. A hit
   is taken synchronously, so the warm path is unchanged.
 - The default export must be a non-null object. Anything else throws
-  `"Project config at <path> did not export a default object"`
+  `"Project config at <path> did not export a default object"` (a function default export adds `: it exports a function, …`, D-110)
   (`Workspace config at …` for a workspace file) — from
   the same check on both paths.
 - Both paths read the same environment: each Worker request carries the

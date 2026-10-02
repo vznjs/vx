@@ -37,12 +37,21 @@ export const WORKSPACE_CONFIG_FILENAMES = [
   'vx.workspace.cjs',
 ]
 
+/** What a function default export is told; the playground says the same. */
+const EXPORTED_A_FUNCTION =
+  'it exports a function, and vx reads the object itself — export what the function returns'
+
 /** Project configs already loaded in this process, by absolute path. */
 const loadedConfigs = new Set<string>()
 
 function assertDefaultObject(mod: unknown, kind: string, configPath: string): void {
   if (!mod || typeof mod !== 'object') {
-    throw new UserError(`${kind} config at ${configPath} did not export a default object`)
+    // Vite's `defineConfig(() => ({ … }))` shape: vx reads the object, and
+    // the bare refusal did not say what was there instead (D-110).
+    throw new UserError(
+      `${kind} config at ${configPath} did not export a default object` +
+        (typeof mod === 'function' ? `: ${EXPORTED_A_FUNCTION}` : ''),
+    )
   }
 }
 
