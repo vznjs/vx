@@ -1,7 +1,7 @@
 # Config schema
 
-Complete reference for every field accepted by `vx.config.{ts,mts,js,mjs}`
-and the optional workspace-level `vx.workspace.{ts,mts,js,mjs}`. The
+Complete reference for every field accepted by `vx.config.{ts,mts,js,mjs,cts,cjs}`
+and the optional workspace-level `vx.workspace.{ts,mts,js,mjs,cts,cjs}`. The
 authoritative TypeScript definitions live in `src/config.ts` and are
 re-exported from `@vzn/vx`.
 
@@ -1064,6 +1064,10 @@ file created later is not covered — grant its directory instead. On both
 platforms `<dir>/**` and `<dir>/**/*` collapse to `<dir>`, so
 `read: ['**/*']` lets a task list its own cwd; a `<dir>` that is itself a
 glob keeps its subtree (`.*.tmp/**` covers what is inside each match).
+Unlike a task glob, a grant keeps `Bun.Glob`'s brackets: `[id]` is a
+class, so a Next.js route is granted escaped, `read: ['pages/\\[id\\].tsx']`.
+On Linux a WRITE path holding a bracket is not mounted (the runtime drops
+it); grant its parent directory.
 
 A Linux WRITE grant that matches nothing when the task starts therefore
 mounts nothing. Where a read grant mounts its directory, the task's first
@@ -1194,6 +1198,11 @@ Inside a write grant, a file named like a shell or tool config
 to the task, down to three levels below the workspace root, ignored by
 git or not.
 
+**Linux: no bracket in the project's path.** The runtime reads a path
+holding `[` or `]` as a glob and mounts no write path that does, so a
+sandboxed task in a project under such a directory (`~/[old]/repo`) is
+refused, naming it: rename the directory or drop `exec.sandbox`.
+
 **macOS cannot nest.** `sandbox_apply` is refused inside a sandboxed
 process, so a task that itself sandboxes something (vx's own test suite)
 cannot be sandboxed on macOS. `weakerWhenNested` covers the Linux case;
@@ -1245,7 +1254,7 @@ The loader rejects:
 
 ## Workspace config (`vx.workspace.ts`)
 
-Loaded from `vx.workspace.{ts,mts,js,mjs}` at the workspace root.
+Loaded from `vx.workspace.{ts,mts,js,mjs,cts,cjs}` at the workspace root.
 **Optional** — when missing, every field falls back to its built-in
 default.
 

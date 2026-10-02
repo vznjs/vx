@@ -340,6 +340,12 @@ describe('applyFilters', () => {
     expect(pick('./*')).toEqual(['docs'])
     expect(pick('./packages/c*')).toEqual(['core'])
     expect(pick('./nothing/*')).toEqual([])
+    // D-84: a trailing `**` matches zero dirs, so the package at its base
+    // is in (kit's `check`, pnpm 12 and Turbo); `*` never matches none.
+    expect(pick('./packages/core/**')).toEqual(['core', 'inner'])
+    expect(pick('{packages/core/**}')).toEqual(['core', 'inner'])
+    expect(pick('./packages/c*/**')).toEqual(['core', 'inner'])
+    expect(pick('./packages/core/*')).toEqual(['inner'])
   })
 
   it('path filter selects packages under the directory', () => {

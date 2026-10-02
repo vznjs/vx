@@ -16,6 +16,10 @@
   options, as Nx's `interpolate` does; read as one key it was no output,
   so nx-examples' cached `@nx/angular:application` builds restored
   nothing on a hit.
+- **P-7** `nx()`: a `dependsOn` entry's `options: "forward"`, which Nx's
+  `createTaskOverrides` turns into the dependency's overrides, is a todo
+  when the target has options to forward. It was dropped without a word,
+  and the dependency ran with its own options.
 - **P-4** `nx()`: a grouped target's `.env` files are named by the group
   member that carries `nonAtomizedTarget` and that parent, as Nx's
   `getOwnerTargetForTask` names them: cypress's atomized
@@ -27,6 +31,16 @@
   the `vx.workspace.ts` field to add. The written workspace file holds
   none of them, so nx-examples' `parallel: 1` ran on every core once
   migrated, without a word.
+- **P-5** `nx()`: every task gets `NX_TASK_TARGET_PROJECT`,
+  `NX_TASK_TARGET_TARGET` and `NX_TASK_TARGET_CONFIGURATION`, as Nx's
+  `getNxEnvVariablesForTask` sets them. A package script's
+  `nx exec -- <cmd>` found them unset and booted Nx's task runner, which
+  ran the target and its dependencies a second time.
+- **P-9** `nx()`: a `dependsOn` string's part after `project:` is one
+  target name, as Nx's `readProjectAndTargetFromTargetString` joins it:
+  `ui:build:ci` names target `build:ci` and is no edge where ui lacks it.
+  vx read the last segment as a configuration and drew an edge to that
+  configuration's task (or to `build`, with a todo) that Nx never draws.
 
 ## Notes
 
