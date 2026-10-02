@@ -1000,6 +1000,20 @@ null control); `show-info.test.ts` › the rendered sandbox rows. A new
 fact is a contract change: `schemas/info.json`, `docs/api.md` and
 `vx-mcp`'s `tools.json` record it, so the title and a commit carry `!`.
 
+B-55. A stop that landed after a task was dispatched but before its
+spawn (during its output clean, or the request's build) still ran the
+command: the request's signal was already aborted and the local
+executor spawned regardless, after the teardown had swept the run's
+children. Probe: 20,000 stale outputs to clean, SIGINT 0.3–0.7 s in;
+the command's marker was written every time and the run took 7.6 s
+(the signal's bound) where 0.5 s was due. The local executor now spawns
+nothing for an aborted request and returns the signal's exit; the task
+reads aborted, nothing cached. Row: `executor.test.ts` › spawns nothing
+for a request whose signal is already aborted (red without the fix; the
+same request not aborted is the control). Lead for the orchestrator
+stream: `runAttempt` still cleans outputs and builds the request after
+the stop; a check there would skip that work too, and a plugin executor
+handed the aborted request decides for itself.
 B-53. A Linux sandboxed task whose cwd no mount held ran in `$HOME`.
 bwrap enters the old cwd only if it exists in the new root, else
 `$HOME`, silently; a project with no read grant and no `node_modules` of
@@ -1032,3 +1046,10 @@ on Linux and says once which directory to grant instead; the write is
 then refused (`Read-only file system`) and reported. Row:
 `sandbox-runtime.unsafe.test.ts` › says so when a write path holds a
 bracket, and names the directory above it (red without the fix).
+B-58. The output capture's head and tail bounds count UTF-16 units, and
+a cut between a surrogate pair's halves left a lone half on each side
+of the dropped-output line: a task printing past 8 MiB whose bound fell
+inside an emoji replayed U+FFFD there. Each bound now steps past a
+pair. Row: `runner.test.ts` › streamToString › never cuts a character
+in two at either bound, one text per bound (each fix removed alone
+reddens it).
