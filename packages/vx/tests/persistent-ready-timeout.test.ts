@@ -127,7 +127,8 @@ describe('exec.timeout — persistent task (readiness bound)', () => {
       // `trap '' TERM` survives exec, so the readiness timeout's SIGTERM
       // lands on a sleeper that shrugs it off; not in the persistent
       // registry (never ready), nothing else would ever kill it. Fails
-      // without the escalation: the child outlives the run by 30 s.
+      // without the escalation: the child outlives the run by 30 s. A 1 s
+      // deadline: at 300 ms a TERM before the trap left no pid.txt (M-23).
       const dir = await addProject(
         fixture.root,
         'srv',
@@ -136,7 +137,7 @@ describe('exec.timeout — persistent task (readiness bound)', () => {
             dev: {
               exec: {
                 command: "trap '' TERM; echo $$ > pid.txt && echo wrong-banner && exec sleep 30",
-                timeout: 300,
+                timeout: 1000,
                 persistent: { readyWhen: 'Listening' },
               },
             },
