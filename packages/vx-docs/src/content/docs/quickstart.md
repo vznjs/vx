@@ -5,7 +5,8 @@ description: Install vx, describe one task, and run it from the cache the second
 
 Run your first cached task in five minutes.
 
-You need a git repository on Linux or macOS (on Windows, use WSL). vx is
+You need a git repository on Linux with glibc (not Alpine's musl) or macOS
+(on Windows, use WSL). vx is
 one prebuilt binary. The release binary alone needs neither Node nor Bun;
 installed from npm, the `vx` command is a small Node script that runs
 that binary.

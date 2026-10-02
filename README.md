@@ -44,7 +44,7 @@ Same graph, commands and concurrency: [how it is measured](https://vznjs.github.
 npm install -D @vzn/vx     # or: pnpm add -D -w · yarn add -D (-W on Yarn 1) · bun add -d
 ```
 
-A prebuilt binary for Linux and macOS (x64, arm64); no Bun needed. The
+A prebuilt binary for Linux (glibc, not Alpine's musl) and macOS (x64, arm64); no Bun needed. The
 [release](https://github.com/vznjs/vx/releases) binary needs no Node either.
 Windows: use WSL.
 

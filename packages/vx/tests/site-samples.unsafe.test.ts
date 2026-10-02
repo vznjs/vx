@@ -2271,3 +2271,29 @@ describe('the git-index claim names what a clean key still reads', () => {
     }
   })
 })
+
+describe('the install pages name the libc the Linux binary needs', () => {
+  // The Linux binaries request /lib64/ld-linux-x86-64.so.2: in a root
+  // without glibc the npm package's `vx` fails to start (`No such file or
+  // directory`), and with the loader and its libs it prints its version
+  // (J-100). With no musl target, each page that names the platforms says
+  // glibc.
+  it('build-npm ships no musl target, and the README, quickstart and one-binary post say glibc', () => {
+    const build = readFileSync(
+      path.resolve(import.meta.dir, '..', 'scripts', 'build-npm.ts'),
+      'utf8',
+    )
+    const targets = [...build.matchAll(/\{ target: '([a-z0-9-]+)'/g)].map((m) => m[1]!)
+    expect(targets).toEqual(['linux-x64', 'linux-arm64', 'darwin-x64', 'darwin-arm64'])
+    const flat = (p: string) => readFileSync(p, 'utf8').replace(/\s+/g, ' ')
+    expect(flat(path.resolve(import.meta.dir, '..', '..', '..', 'README.md'))).toContain(
+      "prebuilt binary for Linux (glibc, not Alpine's musl) and macOS",
+    )
+    expect(flat(path.join(DOCS, 'quickstart.md'))).toContain(
+      "on Linux with glibc (not Alpine's musl) or macOS",
+    )
+    expect(flat(path.join(DOCS, 'blog', 'one-binary.md'))).toContain(
+      "Linux (glibc, not Alpine's musl) and macOS",
+    )
+  })
+})
