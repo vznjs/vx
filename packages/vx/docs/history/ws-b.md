@@ -1130,16 +1130,3 @@ without the fix). A clone with `CLONE_FS` (every thread) shares its
 creator's cwd rather than copying it, so a `chdir` by either moves both
 (libuv's pool after `process.chdir`): deniedCalls › moves a thread with
 the process whose cwd it shares (red with the flag ignored).
-
-B-63. `cwdMounted`'s guard for a cwd the deny list already held (a
-single-package workspace, whose cwd is its anchor) held nothing: with it
-removed, such a task runs in its cwd and its read is reported exactly as
-with it (probed), since the runtime takes the second deny entry as the
-same mount. Removed. The module page no longer says strace stops only
-on `openat` (B-61 added the cwd calls).
-
-Also measured, nothing to cut: 200 no-cache `true` tasks, unsandboxed,
-`--concurrency 1`, take 422–550 ms in vx (2.1–2.7 ms a task, five runs),
-and a bare `Bun.spawn` loop of the same `sh -c 'exec true'` with both
-pipes read takes 2.4–2.8 ms a spawn. The unsandboxed path is at the
-spawn floor; B-50's ranking of the miss path stands.
