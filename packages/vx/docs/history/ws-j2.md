@@ -315,3 +315,13 @@ persistent task` and vx exits 1). Row (`site-samples` › a post's link
   J-102 made the pillar say; the trace row that backs it (on the task's
   own file) names the scope. Row (`landing` › the six lines, the
   callout it pins); red without the fix.
+
+- **J2-8** The configure guide said "a task sees only the variables
+  you pass it" and gave `CI` as a `passThrough` example, and the
+  explicit-over-magical post said env reaches a task only through
+  `exec.env` (one-command-per-task: an environment built from it): `CI`, `PATH`, `NODE_OPTIONS` and the rest of
+  `ESSENTIAL_ENV` reach every task undeclared. Both name the allowlist
+  now; the guide's example is `GITHUB_ACTIONS`. Probes, nothing to
+  fix: the-sandbox, values and what-vx-is posts. Row (`site-samples` ›
+  no page says a task sees only what it declares, past the allowlist),
+  red without the fix.
