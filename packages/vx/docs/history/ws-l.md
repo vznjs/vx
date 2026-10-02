@@ -452,13 +452,6 @@
   with the same rule. `tag-secret-mask.test.ts`, both rows red without
   the fix.
 
-- L-40. `fix(orchestrator)`: a plugin's `ctx.warn` line reaches the
-  run's status channel, and a remote layer warns with the server's own
-  reply (vx-reapi's "could not record execution: …"), which may echo
-  what it was sent: a secret there printed whole. Every status line is
-  masked, and the two CLI paths that print a plugin's warning straight
-  to stderr (a plugin verb, a fingerprint claim) mask it too.
-  `plugin-warn-secret-mask.test.ts`, red without the fix.
 - L-39. `fix(orchestrator)`: an executor that throws has its message
   printed in the task's stream and by the scheduler. vx-reapi's carries
   the remote server's status text, which vx does not control: a server
