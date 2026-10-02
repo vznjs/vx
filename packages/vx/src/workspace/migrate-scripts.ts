@@ -942,6 +942,20 @@ export function migrateScripts(
     const tasks: GeneratedTask[] = []
     let readsManifest = false
     let buildFromWireit = false
+    const wireitRaw = (meta.packageJson as unknown as { wireit?: unknown }).wireit
+    const wireitConfig: Record<string, unknown> =
+      typeof wireitRaw === 'object' && wireitRaw !== null && !Array.isArray(wireitRaw)
+        ? (wireitRaw as Record<string, unknown>)
+        : {}
+    const declared = scriptsOf(meta)
+    const wireitOnly = (meta === rootMeta ? [] : Object.keys(wireitConfig)).filter(
+      (n) =>
+        !(n in declared) &&
+        taskNameProblem(n) === null &&
+        typeof wireitConfig[n] === 'object' &&
+        wireitConfig[n] !== null,
+    )
+    const hasOrWireit = (n: string): boolean => has(n) || wireitOnly.includes(n)
     for (const name of names) {
       if (!isTask(name)) continue
 
@@ -949,7 +963,7 @@ export function migrateScripts(
       const own = berry ? berryRun(scripts[name] as string) : (scripts[name] as string)
       const wireit = wireitEntry(meta, name, own)
       if (wireit !== undefined) {
-        const mapped = wireitTask(wireit, meta.dir, has, memberByDir, workspaceDir)
+        const mapped = wireitTask(wireit, meta.dir, hasOrWireit, memberByDir, workspaceDir)
         tasks.push({ name, todos: mapped.todos, task: mapped.task })
         if (name === 'build') buildFromWireit = true
         continue
@@ -1017,6 +1031,13 @@ export function migrateScripts(
         task['dependsOn'] = ['build']
       }
       tasks.push({ name, todos, task })
+    }
+    // A wireit config may hold a script with no `scripts` entry, run only
+    // as another's dependency (lit's tests-typescript `test:ts5_6`).
+    for (const name of wireitOnly) {
+      const config = wireitConfig[name] as Record<string, unknown>
+      const mapped = wireitTask(config, meta.dir, hasOrWireit, memberByDir, workspaceDir)
+      tasks.push({ name, todos: mapped.todos, task: mapped.task })
     }
     for (const [name, why] of refused) {
       tasks.push({

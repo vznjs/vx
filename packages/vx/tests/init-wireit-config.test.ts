@@ -88,6 +88,42 @@ it('maps command, dependencies, files, output, env and service', () => {
   expect(app['plain']!.task).toEqual({ exec: { command: 'vite build' } })
 })
 
+it('maps a wireit-only script another depends on, at a member, not at the root', () => {
+  const plan = migrateScripts([
+    {
+      name: 'root',
+      dir: '/w',
+      packageJson: {
+        name: 'root',
+        scripts: { lint: 'eslint .' },
+        wireit: { extra: { command: 'x' } },
+      } as never,
+      configPath: null,
+    },
+    {
+      name: 'a',
+      dir: '/w/packages/a',
+      packageJson: {
+        name: 'a',
+        scripts: { test: 'wireit' },
+        wireit: {
+          test: { dependencies: ['test:ts5'] },
+          // No `scripts` entry: run only as test's dependency (lit's tests-typescript).
+          'test:ts5': { command: 'tsc --noEmit' },
+        },
+      } as never,
+      configPath: null,
+    },
+  ])
+  const tasks = (n: string) =>
+    Object.fromEntries(plan.projects.find((p) => p.name === n)!.tasks.map((t) => [t.name, t.task]))
+  expect(tasks('a')).toEqual({
+    test: { dependsOn: ['test:ts5'] },
+    'test:ts5': { exec: { command: 'tsc --noEmit' } },
+  })
+  expect(Object.keys(tasks('root'))).toEqual(['lint'])
+})
+
 it('the mapped tasks run, and the second run hits', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'vx-wireit-'))
   try {

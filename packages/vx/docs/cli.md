@@ -1753,7 +1753,8 @@ names the member in that directory, `lit-html#build`), `files` plus
 `output` its cache block (a path outside the package that no other member
 holds is a `workspaceFiles` entry), `env` its `exec.env` (an `external`
 name is passed through and keyed), and `service` makes it persistent, with
-`readyWhen` from `readyWhen.lineMatches`. `cascade: false`, `clean: false`,
+`readyWhen` from `readyWhen.lineMatches`. A member's wireit entry with no
+`scripts` entry, run only as another's dependency, maps as a task too. `cascade: false`, `clean: false`,
 `files` without `output`, a path into another member and any other field
 get a TODO.
 A package with no `build` script whose `prepack`, `prepublishOnly`,
