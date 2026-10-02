@@ -17,6 +17,8 @@ and an ignored one, which the status walk names with `--ignored=matching`
 (A-19). `ls-files --debug` adds the worktree size the index recorded
 for each entry, and a trusted OID whose blob is another size is dropped:
 a filter since removed left a stat-clean entry git never re-reads (A-60).
+A filter that kept the size passes the check; `caching.md` names it and
+the remedy, `git add --renormalize .`.
 The blob sizes come from the cache's `blob_sizes` memo, the unknown ones
 from one `git cat-file --batch-check`; `applyGitEnumeration` runs the
 check, so every caller of it gets it. Split from `inputs.ts` on 2026-09-10:
@@ -200,7 +202,9 @@ with the files `git ls-files` lists inside it, prefixed by its path,
 recursively (`expandNestedRepos`). They carry no index OID, so they hash
 by content. One spawn per nested repository per listing; a listing with
 none pays nothing. A gitlink with no `.git` behind it (a submodule never
-initialised) has no files and stays out. Until 2026-09-27 (A-1) the
+initialised, or one whose `.git` was removed to vendor its files) has no
+repository to ask, so a walk lists what is there (`walkFiles`, A-61);
+an empty one folds nothing. Until 2026-09-27 (A-1) the
 entry was dropped as a directory, the files never reached the key, and
 an edit inside the nested repository was a hit on the old output while
 `git status` named the path.

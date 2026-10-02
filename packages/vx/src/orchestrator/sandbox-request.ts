@@ -104,7 +104,8 @@ export function sandboxRunUnion(nodes: Iterable<TaskNode>): SandboxRunUnion | nu
  * Linux, the runtime module's own load included) even when every task was
  * a cache hit and nothing executed; measured 2026-09-10 on this repo's
  * own warm gate: `classify + probe` 288 ms of a 798 ms run. A hit needs
- * no sandbox, so a hit pays nothing.
+ * no sandbox, so a hit pays nothing. `run()` arms early only when a
+ * sandboxed task is sure to execute (C-76).
  *
  * The domain union is computed here from every sandboxed node, because
  * SRT runs ONE filtering proxy per run and checks every request against
@@ -187,13 +188,24 @@ export async function sandboxRequestFor(
    */
   cacheDir?: string,
 ): Promise<SandboxRequest> {
-  // SRT reads a Linux path holding a bracket as a glob and drops it from
-  // the writes, so no grant here could be mounted (B-60).
+  // The runtime reads a path holding a bracket as a pattern: on Linux it
+  // mounts no such write path (B-60); seatbelt's rules compile it as a
+  // character class, so vx's own workspace wall matched nothing (B-65).
+  // A `*` or `?` is one too, and its grants matched the project's siblings.
   const home = toRealPath(node.projectDir)
-  if (process.platform === 'linux' && /[[\]]/.test(home)) {
+  if (/[[\]*?]/.test(home)) {
     throw new UserError(
-      `exec.sandbox: ${home} holds a bracket ([ or ]), and the Linux sandbox mounts no path ` +
-        `that does — rename the directory, or run the task without exec.sandbox`,
+      `exec.sandbox: ${home} holds [, ], * or ?, which the sandbox runtime reads as a ` +
+        `pattern, not a name — rename the directory, or run the task without exec.sandbox`,
+    )
+  }
+  // Bun's realpath throws ENOENT on a path holding a backslash, and SRT
+  // mounts no path it cannot resolve: the task saw no project and ran in
+  // $HOME.
+  if (process.platform === 'linux' && home.includes('\\')) {
+    throw new UserError(
+      `exec.sandbox: ${home} holds a backslash, which the Linux sandbox cannot resolve, so ` +
+        `it mounts none of the project — rename the directory, or run the task without exec.sandbox`,
     )
   }
   const depDirs = [

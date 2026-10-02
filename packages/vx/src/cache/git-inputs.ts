@@ -6,7 +6,7 @@
 // task declared. Nothing here reads a config or applies a boundary.
 
 import path from 'node:path'
-import { existsSync, lstatSync, realpathSync } from 'node:fs'
+import { existsSync, lstatSync, readdirSync, realpathSync } from 'node:fs'
 import { UserError, executablePath, gitSpawnRefusal } from '../util/index.js'
 
 /** Three facts of the repository a directory is in, from one `git rev-parse`. */
@@ -360,7 +360,7 @@ export function runGitLsFiles(cwd: string): GitLsResult {
     )
   }
   const { text, undecodable } = decodeGitZ(proc.stdout)
-  const parsed = parseLsFilesOutput(text, undecodable)
+  const parsed = parseLsFilesOutput(text.length === 0 ? [] : text.split('\0'), undecodable)
   const nested = expandNestedRepos(cwd, parsed.files, parsed.gitlinks)
   parsed.files = nested.files
   parsed.undecodable.push(...nested.undecodable)
@@ -394,12 +394,37 @@ function expandNestedRepos(
     }
     out ??= files.slice(0, i)
     const abs = path.join(cwd, nested)
-    if (!existsSync(path.join(abs, '.git'))) continue
+    if (!existsSync(path.join(abs, '.git'))) {
+      // No repository answers for it: a submodule never initialised (empty)
+      // or one whose `.git` was removed to vendor its files, the gitlink
+      // left in the index and `git status` silent. Its files are what the
+      // task reads, so a walk lists them; they hash by content (A-61).
+      for (const f of walkFiles(abs)) out.push(`${nested}/${f}`)
+      continue
+    }
     const inner = runGitLsFiles(abs)
     for (const f of inner.files) out.push(`${nested}/${f}`)
     for (const f of inner.undecodable) undecodable.push(`${nested}/${f}`)
   }
   return { files: out ?? files, undecodable }
+}
+
+/** Every file and symlink under `dir`, relative and `/`-separated; a `.git` is skipped, a link not followed. */
+function walkFiles(dir: string, rel = ''): string[] {
+  let entries
+  try {
+    entries = readdirSync(path.join(dir, rel), { withFileTypes: true })
+  } catch {
+    return []
+  }
+  const out: string[] = []
+  for (const e of entries) {
+    if (e.name === '.git') continue
+    const r = rel === '' ? e.name : `${rel}/${e.name}`
+    if (e.isDirectory()) out.push(...walkFiles(dir, r))
+    else out.push(r)
+  }
+  return out
 }
 
 /**
@@ -420,15 +445,22 @@ export function fileIdentity(mode: string, oid: string): string {
 // `h`, …) in front. `--others` paths print bare; with `-z`, core.quotePath
 // quoting is off, so a bare path containing a literal tab still cannot
 // match the fixed-form prefix. Both answers come from ONE spawn.
-function parseLsFilesOutput(out: string, undecodableRecords: ReadonlySet<string>): GitLsResult {
+//
+// `debug`, for a `--debug` listing: each record's recorded size (aligned
+// with `records`) in, and each regular stage-0 entry's raw OID and size out.
+function parseLsFilesOutput(
+  records: readonly string[],
+  undecodableRecords: ReadonlySet<string>,
+  debug?: { sizes: readonly number[]; indexed: Map<string, { oid: string; size: number }> },
+): GitLsResult {
   const files: string[] = []
   const oids = new Map<string, string>()
   const flagged = new Set<string>()
   const gitlinks = new Set<string>()
   const undecodable: string[] = []
-  if (out.length === 0) return { files, oids, flagged, gitlinks, undecodable }
   // NUL-separated; trailing NUL produces an empty segment we skip.
-  for (const record of out.split('\0')) {
+  for (let i = 0; i < records.length; i++) {
+    const record = records[i]!
     if (record.length === 0) continue
     const m = LS_FILES_STAGE_RE.exec(record)
     const filePath = m === null ? record : record.slice(m[0].length) // --others: bare path
@@ -439,6 +471,9 @@ function parseLsFilesOutput(out: string, undecodableRecords: ReadonlySet<string>
     const stage = m[4]!
     if ((mode === '100644' || mode === '100755' || mode === '120000') && stage === '0') {
       oids.set(filePath, fileIdentity(mode, m[3]!))
+      if (debug !== undefined && mode !== '120000') {
+        debug.indexed.set(filePath, { oid: m[3]!, size: debug.sizes[i]! })
+      }
     } else if (mode === '160000') {
       gitlinks.add(filePath)
     }
@@ -452,21 +487,23 @@ function parseLsFilesOutput(out: string, undecodableRecords: ReadonlySet<string>
 }
 
 /**
- * `ls-files -s -v -z --debug` as the plain `-s -v -z` stream, plus the size
- * the index records for each regular stage-0 entry's worktree file and its
- * raw OID. With `-z`, each record's NUL is followed by its five
- * newline-ended debug lines (ctime, mtime, dev/ino, uid/gid, size/flags),
- * then the next record.
+ * `ls-files -s -v -z --debug` as the plain `-s -v -z` records, plus the size
+ * the index records for each, aligned. With `-z`, each record's NUL is
+ * followed by its five newline-ended debug lines (ctime, mtime, dev/ino,
+ * uid/gid, size/flags), then the next record. The records go to
+ * `parseLsFilesOutput` as they are: joining them for it to split again,
+ * a regex per size line and a second regex per record were ~14 ms of a
+ * 12,905-file listing.
  */
-function stripLsDebug(run: GitRun): {
-  plain: string
+function splitLsDebug(run: GitRun): {
+  records: string[]
+  sizes: number[]
   undecodable: Set<string>
-  indexed: Map<string, { oid: string; size: number }>
 } {
   const segs = run.stdout.split('\0')
   const records: string[] = []
+  const sizes: number[] = []
   const undecodable = new Set<string>()
-  const indexed = new Map<string, { oid: string; size: number }>()
   let record = segs[0]!
   let recordRaw = record
   for (let i = 1; i <= segs.length; i++) {
@@ -479,7 +516,13 @@ function stripLsDebug(run: GitRun): {
         const nl = seg.indexOf('\n', at)
         if (nl < 0) at = -1
         else {
-          if (k === 4) size = Number(/size: (\d+)/.exec(seg.slice(at, nl))?.[1] ?? -1)
+          if (k === 4) {
+            const field = seg.indexOf('size: ', at)
+            if (field >= 0 && field < nl) {
+              const n = parseInt(seg.slice(field + 6, nl), 10)
+              if (!Number.isNaN(n)) size = n
+            }
+          }
           at = nl + 1
         }
       }
@@ -487,16 +530,13 @@ function stripLsDebug(run: GitRun): {
     }
     if (record.length > 0) {
       records.push(record)
+      sizes.push(size)
       if (run.undecodable.has(recordRaw)) undecodable.add(record)
-      const m = LS_FILES_STAGE_RE.exec(record)
-      if (m !== null && m[4] === '0' && (m[2] === '100644' || m[2] === '100755')) {
-        indexed.set(record.slice(m[0].length), { oid: m[3]!, size })
-      }
     }
     record = rest
     recordRaw = seg ?? ''
   }
-  return { plain: records.join('\0'), undecodable, indexed }
+  return { records, sizes, undecodable }
 }
 
 /** Blob sizes learned once and kept: a blob's size is fixed for its OID. `Cache` is one. */
@@ -516,14 +556,22 @@ export interface BlobSizeMemo {
  * the ones it lacks from one `cat-file` (65 ms over 3,000 loose objects,
  * the whole of the cost, measured 2026-10-02). A smudged (racy) entry
  * records 0 and is hashed from disk. An answer that cannot be read trusts
- * nothing.
+ * nothing. A filter that keeps the size (`tr a-z A-Z`) is not caught: only
+ * a read of every trusted file would be (caching.md, step 12).
  */
 async function dropResizedOids(enumeration: GitEnumeration, memo?: BlobSizeMemo): Promise<void> {
   const { trusted, indexed } = enumeration
   const wanted = new Set<string>()
+  // Each trusted path's index entry, found once: a second lookup by path
+  // in the check below was half of this pass on a 12,905-file tree.
+  const rels: string[] = []
+  const entries: Array<{ oid: string; size: number }> = []
   for (const rel of trusted.keys()) {
     const entry = indexed.get(rel)
-    if (entry !== undefined) wanted.add(entry.oid)
+    if (entry === undefined) continue // a symlink: its blob is its target string
+    rels.push(rel)
+    entries.push(entry)
+    wanted.add(entry.oid)
   }
   if (wanted.size === 0) return
   const sizes = memo?.knownBlobSizes([...wanted]) ?? new Map<string, number>()
@@ -544,12 +592,11 @@ async function dropResizedOids(enumeration: GitEnumeration, memo?: BlobSizeMemo)
     for (const [oid, n] of learned) sizes.set(oid, n)
     memo?.rememberBlobSizes(learned)
   }
-  for (const rel of trusted.keys()) {
-    const entry = indexed.get(rel)
-    if (entry === undefined) continue // a symlink: its blob is its target string
+  for (let i = 0; i < rels.length; i++) {
+    const entry = entries[i]!
     const size = sizes.get(entry.oid)
     // The index keeps the low 32 bits of a size.
-    if (size === undefined || size % 2 ** 32 !== entry.size) trusted.delete(rel)
+    if (size === undefined || size % 2 ** 32 !== entry.size) trusted.delete(rels[i]!)
   }
 }
 
@@ -1039,7 +1086,7 @@ export async function startGitEnumeration(
   // (`dropResizedOids`, A-60).
   const listing = spawnGit(['ls-files', '-s', '-v', '-z', '--debug', '--', ...pathspecs]).then(
     (run) =>
-      run === null || run.exitCode !== 0 ? { run, debug: null } : { run, debug: stripLsDebug(run) },
+      run === null || run.exitCode !== 0 ? { run, debug: null } : { run, debug: splitLsDebug(run) },
   )
   const running = Promise.all([
     listing,
@@ -1093,13 +1140,14 @@ export async function startGitEnumeration(
         `Run 'git init' in your workspace root.${stderr ? ` (git: ${stderr})` : ''}`,
     )
   }
+  const indexed = new Map<string, { oid: string; size: number }>()
   const {
     files: tracked,
     oids,
     flagged,
     gitlinks,
     undecodable,
-  } = parseLsFilesOutput(debug!.plain, debug!.undecodable)
+  } = parseLsFilesOutput(debug!.records, debug!.undecodable, { sizes: debug!.sizes, indexed })
   // Normalize `status`'s repo-root-relative paths to workspace-relative (strip
   // the `--show-prefix`) so the dirty set is keyed identically to the trusted
   // OID map. Without this, when the workspace root is a git subdir, a modified
@@ -1177,7 +1225,7 @@ export async function startGitEnumeration(
     untracked: dirty === null ? null : untracked,
     undecodable,
     startedAtMs,
-    indexed: debug!.indexed,
+    indexed,
     // A missing blob is an answer ("missing"), never a fetch from a partial
     // clone's promisor remote.
     catFile: (stdin) =>
@@ -1232,7 +1280,28 @@ export async function applyGitEnumeration(
   // ~9k files; ~5 ms this way). '/' sorts below most filename chars,
   // so the range [prefix, prefix+'\xff…') is contiguous in the sorted
   // array; lowerBound on `prefix` and on `prefix + '￿'` bracket it.
-  const sorted = [...all].sort()
+  // Git lists in order; a list that already is skips the sort.
+  let inOrder = true
+  for (let i = 1; i < all.length; i++) {
+    if (all[i - 1]! > all[i]!) {
+      inOrder = false
+      break
+    }
+  }
+  const sorted = inOrder ? all : [...all].sort()
+  // Git prints normalized relative paths, so under an absolute, normalized
+  // root a join is a concatenation: `path.join` per tracked file and
+  // `path.relative` per project were most of this pass (I-30's rule).
+  const base =
+    path.sep === '/' &&
+    path.isAbsolute(workspaceRoot) &&
+    path.normalize(workspaceRoot) === workspaceRoot
+      ? workspaceRoot.endsWith('/')
+        ? workspaceRoot
+        : `${workspaceRoot}/`
+      : undefined
+  const abs = (rel: string): string =>
+    base === undefined ? path.join(workspaceRoot, rel) : base + rel
   const lowerBound = (key: string): number => {
     let lo = 0
     let hi = sorted.length
@@ -1244,11 +1313,14 @@ export async function applyGitEnumeration(
     return lo
   }
   for (const projectDir of projectDirs) {
-    const relPrefix = path.relative(workspaceRoot, projectDir).split(path.sep).join('/')
+    const relPrefix =
+      base !== undefined && projectDir.startsWith(base) && path.normalize(projectDir) === projectDir
+        ? projectDir.slice(base.length).replace(/\/$/, '')
+        : path.relative(workspaceRoot, projectDir).split(path.sep).join('/')
     if (relPrefix === '' || relPrefix === '.') {
       cache.set(projectDir, all)
       const rootOids = new Map<string, string>()
-      for (const [rel, oid] of trusted) rootOids.set(path.join(workspaceRoot, rel), oid)
+      for (const [rel, oid] of trusted) rootOids.set(abs(rel), oid)
       cache.setOids(projectDir, rootOids)
       continue
     }
@@ -1261,7 +1333,7 @@ export async function applyGitEnumeration(
       const rel = sorted[i]!
       matches.push(rel.slice(prefix.length))
       const oid = trusted.get(rel)
-      if (oid !== undefined) projOids.set(path.join(workspaceRoot, rel), oid)
+      if (oid !== undefined) projOids.set(abs(rel), oid)
     }
     // An empty slice is a directory git did not see, not an empty project:
     // a project has at least its package.json, tracked or untracked. A
@@ -1283,7 +1355,7 @@ export async function applyGitEnumeration(
   }
   if (workspaceWide) {
     const rootOids = new Map<string, string>()
-    for (const [rel, oid] of trusted) rootOids.set(path.join(workspaceRoot, rel), oid)
+    for (const [rel, oid] of trusted) rootOids.set(abs(rel), oid)
     cache.set(workspaceRoot, all)
     cache.setOids(workspaceRoot, rootOids)
     cache.setWorkspaceRoot(workspaceRoot)

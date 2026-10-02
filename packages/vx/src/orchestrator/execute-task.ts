@@ -33,10 +33,11 @@ import {
   type TaskExecutor,
   type TaskInputs,
   PersistentReadyError,
+  sandboxReads,
 } from '../exec/index.js'
 import { isGroupTask, RestoreDemoted, type TaskNode, type TaskOutcome } from '../graph/index.js'
 import { killGraceMs, maskedEmitter, printable, relPosix, secretMask, span } from '../util/index.js'
-import { SIGNAL_SHUTDOWN_GRACE_MS } from './signals.js'
+import { forwardedSignal, SIGNAL_SHUTDOWN_GRACE_MS } from './signals.js'
 import { executorLabel, nameExecutorFailure } from './plugin-host.js'
 import {
   mayWriteFingerprint,
@@ -353,6 +354,22 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
     persistentOpts.timeoutMs = effectiveTimeout
   }
 
+  // A stop that landed during the awaits above (the key, the sandbox's
+  // arming, request and wrap) leaves nothing to kill yet: spawned now, the
+  // server came up after the teardown and held the run's exit 7 s.
+  if (args.stopSignal?.aborted === true) {
+    if (bridgeTag !== undefined) releaseBridges(bridgeTag)
+    await placeholderSweeper(placeholders)()
+    return {
+      node,
+      status: 'aborted',
+      // The signal a spawned server would have been sent (a hang-up forwards SIGTERM).
+      exitCode: signalExitCode(forwardedSignal(args.stopSignal.reason)),
+      durationMs: 0,
+      wallclockStartNs,
+      wallclockEndNs: process.hrtime.bigint() - args.runStartHrTimeNs,
+    }
+  }
   const spawn = runPersistent(persistentOpts)
   // The host side of a port bridge lives exactly as long as the server:
   // released on the child's exit, whether the run tore it down or it died.
@@ -492,11 +509,22 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // The local executor keeps its own timer (it signals the process group).
   let timeoutTimer: ReturnType<typeof setTimeout> | undefined
   let timeoutFired = false
+  // The attempt's listener on the run's stop signal, taken off once the
+  // attempt settles. Left on, every task of the run added one: the list
+  // grew to the task count, and each add scans it for a duplicate, ~100 ms
+  // of a 1,000-task cold run.
+  let unlistenStop: (() => void) | undefined
   function requestSignal(): AbortSignal {
     const stop = new AbortController()
     const abort = (): void => stop.abort(args.stopSignal?.reason)
+    unlistenStop?.()
+    unlistenStop = undefined
     if (args.stopSignal?.aborted === true) abort()
-    else args.stopSignal?.addEventListener('abort', abort, { once: true })
+    else if (args.stopSignal !== undefined) {
+      const run = args.stopSignal
+      run.addEventListener('abort', abort, { once: true })
+      unlistenStop = () => run.removeEventListener('abort', abort)
+    }
     if (effectiveTimeout !== undefined) {
       clearTimeout(timeoutTimer)
       timeoutFired = false
@@ -800,6 +828,8 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       })
       .finally(() => {
         clearTimeout(timeoutTimer)
+        unlistenStop?.()
+        unlistenStop = undefined
         flushMasked()
       })
     endExec()
@@ -875,6 +905,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         cwd: node.projectDir,
         bins: taskBinDirs(node, args.workspaceRoot),
         signal: res.signal,
+        hidden: req.sandbox && ((f: string) => !sandboxReads(req.sandbox!, f)),
       })
       if (verdict !== undefined) log.taskStderr(node, `\n${verdict}\n`)
       // A committed file another task's clean removed, still gone: vx

@@ -265,12 +265,97 @@ files and their git objects; 11.1 s for the row and its hooks. The row
 11 ms after, under the same load. No other row of the suites makes a
 fixture past 1,500 files.
 
+M-26. M-25's sweep (all twelve shards under `strace -f` beside four busy
+loops) also timed out `foreign-flags.test.ts` › a Turbo or Nx verb names
+what does it in vx: 22 `vx` starts in series, 1.6 s idle and past bun's
+5 s there. They are independent, so they now run at once and the row
+asserts the whole result set: 0.5 s idle; under the same strace and load
+the old row fails (5.0 s) and the new passes (3.6 s). The sweep's other
+5 s timeout, `ci-output.test.ts` › no escape sequence …, runs its verbs
+in an order the state needs (miss, hit, failure, readers), so it is left;
+`show-info.test.ts`'s sandbox line failed only because strace cannot
+nest under strace.
 M-24. M-23's class, the rest of it (a first write in a fresh shell
 against a 300 ms deadline): `persistent-ready-timeout.test.ts` › a task
 that overruns is SIGTERMed and › never-matching readyWhen + timeout
 (`echo $$ > pid.txt`), and `execute-task.test.ts` › a TIMEOUT kill is a
 real failure and IS retried (`echo x >> tries.txt`, once per attempt).
 Each red with a 600 ms shell start, green on a 1 s deadline.
+
+M-25. `sandbox-bridge-socket.unsafe.test.ts` › is removed when the task
+ends, root-caused (M-15, M-16 left it open). A run whose server outlives
+it defers SRT's reset to that server's release. A later run's
+`initSandbox` found SRT up and kept it, so the release, landing during
+the later run, reset SRT under it: its next wrap threw the gate's text,
+"Linux HTTP bridge socket does not exist", or bwrap could not find the
+socket (a release 20 ms into a bridged run, 3 of 3). An init now cancels
+the deferred reset; the later run's own end resets. Row: a server
+released after a later run's init leaves that run's sandbox up (red 3 of
+3 without the fix). Not reproduced in the gate itself: a forced gate
+beside 161 runs of the file was clean, and which earlier row's release
+landed in it is not proven. The keep-alive grace rows (M-14, M-17) did
+not fail again: 12 of 12 runs of the file beside a forced gate.
+
+M-26. Probes, nothing shipped. macOS CI, 2026-10-02: of the last 200
+completed CI runs, 7 were red: 6 on a commit or PR title the
+Conventional Commits check refused, and 1 on a quoted-`exec` row that
+macOS `sh` answers 1 where dash answers 127 (its PR's own, not on main).
+None was a timing failure. `npm-launcher.test.ts` › a signal sent
+to the launcher alone (macOS, run 36365513736): the launcher exits only
+on its child's exit, so 130 with no `heard` means the binary's `sh` died
+of the SIGINT without running its INT trap while waiting on a foreground
+`sleep`. Not reproduced: the same script under `bash --posix` and dash
+ran the trap 100 of 100 with the SIGINT landing anywhere in the loop.
+macOS's `/bin/sh` is bash 3.2, not testable here; that it differs is the
+open suspicion, not a cause.
+
+M-27. `npm-pack.unsafe.test.ts` (ws-p's lead: `JSON Parse error` once in
+a gate, npm 10.9.4). The helper parsed stdout and stderr joined, from
+the first `[`. npm prints its update notice to stderr at exit when its
+background registry check finishes before the command, a race a loaded
+gate's slower pack loses: a `prepack` of `sleep 4` and no
+`_update-notifier-last-checked` printed "New major version of npm
+available! 10.9.4 -> 12.2.0" after the JSON, and the joined parse threw.
+The JSON is now stdout's alone. Row: a fake npm whose stderr holds the
+notice (red without the fix, the gate's error).
+
+M-28. `sandbox-runtime.unsafe.test.ts` › a traced sandboxed one-shot
+task's children die with vx that is descheduled after the spawn (I-9's
+lead: ENOENT reading `/proc/<pid>/stat` after `isAlive`). `isAlive` sent
+signal 0, then read the state, and took the read's ENOENT for "no
+procfs, so alive"; but it reads only where procfs is this process's own,
+so ENOENT there is a pid reaped between the two calls, and a dying child
+read alive and then threw at the row's next read. Gone now reads dead,
+and the row's session-leader read counts a vanished pid as no leader.
+Row (`alive-helper.unsafe`): signal 0 held to "lands" for a pid with no
+entry (red without the fix). macOS is unchanged: there
+`procfsIsOwn()` is false and nothing is read. Also probed, nothing to
+fix: both `wedged.test.ts` leads (`sent` 3 for 4, 0 for 1) counted RSTs
+sent, which F-9 replaced with the peer's count of HEADERS.
+
+M-29. `runner.test.ts` › an exec-wrapped process is the direct child
+(E's lead: it read `JITWorker` at load 6.6). The row slept a fixed 50 ms
+and read `/proc/<pid>/comm` once: until `sh` execs, comm is the forking
+Bun thread's name or `sh` (an immediate read, 20 of 20: `sh`). The
+poll that replaced it landed as #2302; a command with no exec still
+reads `sh` at its deadline, so the claim holds without a time in it.
+
+M-30. `output-memory.unsafe.test.ts` › stays flat while a never-ready
+task floods stdout (D's lead: `long - short` read 140 MiB against 64,
+`\r`). The rows read RSS, which holds what the allocator kept, not what
+the runner retains: beside eight busy loops a 1 s probe read 81 MiB (41
+idle), and a 3 s one grew 82 MiB in 1 of 3 runs with nothing retained.
+The probe now reads the JS heap after a full GC: 1-2 MiB at either
+duration, 8 of 8 runs clean beside eight busy loops, and 180-1,290 MiB
+with a mutant that keeps every chunk (all three rows red).
+
+M-31. Probes, nothing shipped. `watch-loop-members.test.ts` › a root
+package.json's workspaces that add a glob watch the packages they name
+(D's lead: an `until` past its 15 s once, 17 s): refuted that a new
+member's `package.json` landing after its directory goes unseen (2 s
+between them, green); both glob rows 6 of 6 beside eight busy loops.
+Which `until` timed out was not recorded. `task-glob-brackets.test.ts` ›
+an upstream's hit sets aside the route (F's macOS lead) is M-4 and M-5.
 
 ## Leads for other streams
 
@@ -293,7 +378,7 @@ Each red with a 600 ms shell start, green on a 1 s deadline.
   red (`late.txt` exists), 100 ms passes. B-38 gated row 620's child on
   a `go` file written after its death; this row needs the same. E's
   sandboxed gate saw a keep-alive grace row fail once at ~17:50.
-- B: `sandbox-bridge-socket.unsafe.test.ts` failed once in E's gate
+- B (root-caused, M-25): `sandbox-bridge-socket.unsafe.test.ts` failed once in E's gate
   (~17:50), error not recorded. Not reproduced: 2 full sandboxed gates
   and 5 runs under 16 CPU hogs. The bridge socket binds 30-60 ms after
   the run starts (120-350 ms under load) against the row's 1 s task
