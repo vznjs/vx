@@ -1106,7 +1106,9 @@ change the exit code — the run already happened, the same contract
 Labels the invocation. Repeatable; `--tag=k=v` form too. The pair is
 split on the **first** `=`, so values may contain `=` (e.g. a URL). An
 empty key is a parse error. Tags are recorded on the run's
-`invocations` row so dashboards can filter runs by label.
+`invocations` row so dashboards can filter runs by label, and reach
+telemetry as `vx.tag.<key>`; a secret value in one is masked there as
+in the task's output (see [Masking](./schema.md)).
 
 ## Sandbox
 
