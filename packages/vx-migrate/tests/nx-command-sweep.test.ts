@@ -42,11 +42,11 @@ describe('the --name=value Nx appends, quoted as Nx quotes it', () => {
   const forwarded = (value: string) =>
     line({ commands: ['a', 'b'], parallel: false, q: value }).out?.command
   const expected = (arg: string) => {
-    const q = shellQuote(`a ${arg}`)
-    const r = shellQuote(`b ${arg}`)
+    const opt = `nx_u=; nx_opt q "$@" || nx_u="$nx_u "${shellQuote(arg)}; `
     return (
       `nx_run() { nx_c=$1; shift; if [ $# -eq 0 ]; then eval "$nx_c"; else eval "$nx_c \\"\\$@\\""; fi; }; ` +
-      `nx_run_commands() { (nx_run ${q} "$@") && (nx_run ${r} "$@"); }; cd ../.. && nx_run_commands`
+      `nx_opt() { nx_k=$1; shift; for nx_a; do case $nx_a in "--$nx_k"|"--$nx_k="*|"--no-$nx_k") return 0;; esac; if [ \${#nx_k} -eq 1 ]; then case $nx_a in "-$nx_k"|"-$nx_k="*) return 0;; esac; fi; done; return 1; }; ` +
+      `nx_run_commands() { (${opt}nx_run a"$nx_u" "$@") && (${opt}nx_run b"$nx_u" "$@"); }; cd ../.. && nx_run_commands`
     )
   }
 
