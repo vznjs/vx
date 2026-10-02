@@ -290,7 +290,7 @@ describe('vx show (e2e)', () => {
       const r = await vx(root, ['show', 'app#bui'])
       expect(r.code).toBe(1)
       // The hint is a spec to paste, as `vx run`'s is (E-34).
-      expect(r.err).toBe('vx: unknown task: "app#bui" — did you mean app#build, app#ci?\n')
+      expect(r.err).toBe('vx show: unknown task: "app#bui" — did you mean app#build, app#ci?\n')
     },
     TIMEOUT,
   )

@@ -87,7 +87,7 @@ export async function showCmd(args: readonly string[]): Promise<number> {
   if (projectName !== undefined && (taskName !== undefined || byName.has(projectName))) {
     if (!byName.has(projectName)) {
       throw new UserError(
-        `unknown project: "${projectName}"${suggest(projectName, [...byName.keys()])}`,
+        `vx show: unknown project: "${projectName}"${suggest(projectName, [...byName.keys()])}`,
       )
     }
   }
@@ -114,7 +114,7 @@ export async function showCmd(args: readonly string[]): Promise<number> {
       // `nx show projects` lists them; here a bare `vx show` does.
       const nx = projectName === 'projects' ? ' (`nx show projects` is `vx show` here)' : ''
       throw new UserError(
-        `unknown project or task: "${projectName}"${nx}${suggest(projectName!, [...byName.keys(), ...names])}`,
+        `vx show: unknown project or task: "${projectName}"${nx}${suggest(projectName!, [...byName.keys(), ...names])}`,
       )
     }
     process.stdout.write(renderTaskAcross(root, declaring, projectName!, parsed.format))
@@ -136,7 +136,7 @@ export async function showCmd(args: readonly string[]): Promise<number> {
   const task = declaredTask(config, taskName)
   if (task === undefined) {
     throw new UserError(
-      `unknown task: "${meta.name}#${taskName}"${suggest(taskName, Object.keys(config?.tasks ?? {}), `${meta.name}#`)}`,
+      `vx show: unknown task: "${meta.name}#${taskName}"${suggest(taskName, Object.keys(config?.tasks ?? {}), `${meta.name}#`)}`,
     )
   }
   process.stdout.write(renderTask(meta.name, dir, taskName, task, parsed.format))
