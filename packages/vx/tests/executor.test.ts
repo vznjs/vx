@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'bun:test'
+import { existsSync, mkdtempSync, rmSync } from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 import {
   assertExecuteResult,
   selectExecutor,
@@ -104,6 +107,28 @@ describe('localExecutor', () => {
       req({ command: 'echo kept 1>&2; echo kept', capture: { stdout: false, stderr: false } }),
     )
     expect([dropped.stdout, dropped.stderr]).toEqual(['', ''])
+  })
+
+  // A stop that lands while a task cleans its outputs reaches the request
+  // as an aborted signal; the command ran anyway, after the teardown had
+  // swept the run's children, and held the run to the signal's bound
+  // (a Ctrl-C took 7.6 s, not 0.5).
+  it('spawns nothing for a request whose signal is already aborted', async () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), 'vx-aborted-'))
+    try {
+      const marker = path.join(dir, 'ran')
+      const stop = new AbortController()
+      stop.abort('SIGINT')
+      const res = await localExecutor().execute(
+        req({ command: `touch ${marker}`, signal: stop.signal }),
+      )
+      expect([existsSync(marker), res.exitCode, res.signal]).toEqual([false, 130, 'SIGINT'])
+      // CONTROL: the same request, not aborted, runs.
+      await localExecutor().execute(req({ command: `touch ${marker}` }))
+      expect(existsSync(marker)).toBe(true)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 
   it('is named local', () => {
