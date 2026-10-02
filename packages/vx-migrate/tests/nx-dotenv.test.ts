@@ -7,12 +7,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import {
-  dotenvCandidates,
-  existingDotenv,
-  listDotenv,
-  nonAtomizedTargetOf,
-} from '../src/nx/nx-dotenv.js'
+import { dotenvCandidates, existingDotenv, listDotenv, ownerTargetOf } from '../src/nx/nx-dotenv.js'
 import { fakeNx } from './helpers/fake-nx.js'
 
 const NX_ENV = path.resolve(import.meta.dir, '..', 'src', 'nx-env.cjs')
@@ -45,15 +40,27 @@ describe('dotenvCandidates — Nx’s getEnvPathsForTask', () => {
     ])
   })
 
-  it('an atomized target’s parent comes from the project’s targetGroups', () => {
+  // nx-examples' cypress graph: the metadata sits on `e2e-ci`, and Nx's
+  // `getOwnerTargetForTask` names every member of its group by `e2e-ci`
+  // and `e2e`. The atomized task's own name loaded no `.env.e2e-ci`.
+  it('a grouped target’s files are named by the group’s owner and its parent', () => {
     const targets = {
-      'e2e-ci': {},
-      'e2e-ci--a': { metadata: { nonAtomizedTarget: 'e2e-ci' } },
+      e2e: {},
+      'e2e-ci': { metadata: { nonAtomizedTarget: 'e2e' } },
+      'e2e-ci--a': {},
     }
-    const groups = { E2E: ['e2e-ci--a', 'e2e-ci'] }
-    expect(nonAtomizedTargetOf('e2e-ci--a', targets, groups)).toBe('e2e-ci')
-    expect(nonAtomizedTargetOf('build', targets, groups)).toBeUndefined()
-    expect(nonAtomizedTargetOf('e2e-ci--a', targets, undefined)).toBeUndefined()
+    const groups = { 'E2E (CI)': ['e2e-ci--a', 'e2e-ci'] }
+    expect([
+      ownerTargetOf('e2e-ci--a', targets, groups),
+      ownerTargetOf('e2e-ci', targets, groups),
+      ownerTargetOf('e2e', targets, groups),
+      ownerTargetOf('e2e-ci--a', targets, undefined),
+    ]).toEqual([
+      ['e2e-ci', 'e2e'],
+      ['e2e-ci', 'e2e'],
+      ['e2e', undefined],
+      ['e2e-ci--a', undefined],
+    ])
   })
 
   it('keeps the ones a listing of each directory holds, in order', async () => {
