@@ -97,7 +97,7 @@
   {
     "key": "turbo.json tasks",
     "status": "supported",
-    "reason": "Each task (or Turbo 1 `pipeline`) becomes a vx task for the packages that declare the script, and a key-only one where a `^` edge reaches a package without it (`dependsOn`, below)."
+    "reason": "Each task (or Turbo 1 `pipeline`) becomes a vx task for the packages that declare the script, and a key-only one where a `^` edge reaches a package without it (`dependsOn`, below). A script that names `$npm_package_name`, `$npm_package_version` or `$npm_lifecycle_event` gets it defined, as the package manager Turbo runs it through sets it."
   },
   {
     "key": "turbo.json ui",
@@ -267,7 +267,7 @@
   {
     "key": "turbo.json futureFlags.githubActionsRemoteBaseRefFallback",
     "status": "not-supported",
-    "reason": "Ignored; `--affected` defaults to `origin/HEAD`, else `HEAD~1`."
+    "reason": "Ignored; `--affected` defaults to `origin/HEAD`, then a trunk branch (`origin/main`, `main`, …), else `HEAD~1`."
   },
   {
     "key": "turbo.json futureFlags.globalConfiguration",

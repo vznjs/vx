@@ -1405,6 +1405,32 @@ describe('the writer: what the sweep found unheld', () => {
   )
 })
 
+// A written config reads `npm_package_*` from the manifest it imports, so
+// a bump reaches them, and only where the command names one: the JSON
+// import is one a user's `tsc` over the package may refuse.
+describe('migrateTurbo: the npm_* variables', () => {
+  it('a command that names one reads it from the manifest; another gets none', async () => {
+    const root = await makeRoot('vx-migrate-npm-env-')
+    try {
+      await writeFile(path.join(root, 'turbo.json'), JSON.stringify({ tasks: { v: {}, b: {} } }))
+      const scripts = { v: 'echo $npm_package_version', b: 'tsc' }
+      const dir = await addPackage(root, 'a', scripts)
+      const packageJson = { name: 'a', version: '1.0.0', scripts }
+      const meta = { name: 'a', dir, packageJson: packageJson as never, configPath: null }
+      const [p] = (await migrateTurbo(root, [meta], 'ts')).projects
+      expect(p!.importLines).toEqual(["import pkg from './package.json' with { type: 'json' }"])
+      const exec = (n: string) => p!.tasks.find((t) => t.name === n)!.task!['exec']
+      expect(exec('v')).toEqual({
+        command: 'echo $npm_package_version',
+        env: { define: { npm_package_version: { raw: 'pkg.version' } } },
+      })
+      expect(exec('b')).toEqual({ command: 'tsc' })
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+})
+
 describe('the preset, exactly', () => {
   async function preset(turboJson: Record<string, unknown>) {
     const root = await makeRoot('vx-migrate-preset-sweep-')
