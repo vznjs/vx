@@ -12,7 +12,7 @@ npm install -D @vzn/vx @vzn/vx-mcp   # or: pnpm add -D · yarn add -D · bun add
 
 ```ts
 // vx.workspace.ts
-import { defineWorkspace } from '@vzn/vx'
+import { defineWorkspace } from '@vzn/vx/config'
 import { mcp } from '@vzn/vx-mcp'
 
 export default defineWorkspace({
