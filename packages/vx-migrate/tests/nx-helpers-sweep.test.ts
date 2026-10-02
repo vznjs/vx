@@ -480,9 +480,11 @@ describe('Nx glob grammar in inputs', () => {
 
 describe('matchNxProjects', () => {
   const nodes = [
-    { name: 'lib-a', tags: ['lib', 'scope:web'] },
-    { name: 'lib-b', tags: ['lib'] },
-    { name: 'app', tags: ['app'] },
+    { name: 'lib-a', tags: ['lib', 'scope:web'], root: 'libs/shared/a' },
+    { name: 'lib-b', tags: ['lib'], root: 'libs/shared/b' },
+    { name: 'app', tags: ['app'], root: 'apps/app' },
+    { name: 'app-e2e', tags: [], root: 'apps/app-e2e' },
+    { name: 'app_old', tags: [], root: 'apps/old' },
   ]
   it('names, `*` patterns, tags and exclusions, as Nx reads a projects list', () => {
     expect(matchNxProjects(['app'], nodes)).toEqual(['app'])
@@ -490,8 +492,25 @@ describe('matchNxProjects', () => {
     expect(matchNxProjects(['tag:scope:*'], nodes)).toEqual(['lib-a'])
     expect(matchNxProjects(['tag:lib', '!lib-b'], nodes)).toEqual(['lib-a'])
     // A list that opens with an exclusion starts from every node.
-    expect(matchNxProjects(['!app'], nodes)).toEqual(['lib-a', 'lib-b'])
-    // A regex character in a name is a literal.
-    expect(matchNxProjects(['lib.a'], nodes)).toEqual([])
+    expect(matchNxProjects(['!app'], nodes)).toEqual(['lib-a', 'lib-b', 'app-e2e', 'app_old'])
+  })
+
+  // Nx's `findMatchingProjects` (nx 23.2): what vx's name-only reading
+  // missed. A directory pattern named no project; `name:` was a name
+  // with a colon in it.
+  it('a directory, a label, and a bare word that names no project', () => {
+    expect(matchNxProjects(['libs/shared/*'], nodes)).toEqual(['lib-a', 'lib-b'])
+    expect(matchNxProjects(['directory:apps/**'], nodes)).toEqual(['app', 'app-e2e', 'app_old'])
+    expect(matchNxProjects(['name:app'], nodes)).toEqual(['app'])
+    expect(matchNxProjects(['tag:scope:web'], nodes)).toEqual(['lib-a'])
+    // A bare word stands in as a word: `old` is `app_old`, `e2e` is not
+    // `app-e2e`'s (a hyphen joins); Nx does not escape it, so `lib.a` is
+    // `lib-a`.
+    expect(matchNxProjects(['old'], nodes)).toEqual(['app_old'])
+    expect(matchNxProjects(['e2e'], nodes)).toEqual([])
+    expect(matchNxProjects(['lib.a'], nodes)).toEqual(['lib-a'])
+    // A name match wins: the directory is not tried.
+    expect(matchNxProjects(['app*'], nodes)).toEqual(['app', 'app-e2e', 'app_old'])
+    expect(matchNxProjects(['', 'nx-cloud:x'], nodes)).toEqual([])
   })
 })

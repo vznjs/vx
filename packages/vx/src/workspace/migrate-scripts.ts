@@ -55,12 +55,14 @@ const LIFECYCLE = /^(pre|post)(install|publish|pack|version)$|^(prepare|prepubli
  */
 export function delegatedScript(command: string): string | null {
   const m =
-    /^(?:(?:npm run|(pnpm|yarn|bun)(?: (run))?) ([^\s&|;<>()$`'"\\]+)|npm (test|start))$/.exec(
+    /^(?:(?:npm run|(pnpm|pn|yarn|bun)(?: (run))?) ([^\s&|;<>()$`'"\\]+)|npm (test|start))$/.exec(
       command.trim(),
     )
   if (m === null) return null
   if (m[4] !== undefined) return m[4]
-  const [, manager, run, name] = m
+  const [, alias, run, name] = m
+  // `pn` is pnpm's own short name (pnpm 11; pnpm/pnpm's scripts run it).
+  const manager = alias === 'pn' ? 'pnpm' : alias
   // Bare, the manager's own command wins over a script of that name:
   // `bun test` is Bun's test runner and `bun build` its bundler, never the
   // `test` / `build` script, and a group over the script ran the wrong
@@ -107,7 +109,41 @@ const OWN_COMMANDS: Readonly<Record<string, ReadonlySet<string>>> = {
  * `enablePrePostScripts: false` in `pnpm-workspace.yaml` (D-33); Bun and
  * Yarn 1 run them whatever those say. No manager found is npm's default.
  */
-function runsScriptHooks(dir: string, memo: Map<string, string | null>): string | null {
+function runsScriptHooks(dir: string, memo: Map<string, Owner>): string | null {
+  const { manager, at } = ownerOf(dir, memo)
+  const read = (f: string): string | undefined => {
+    try {
+      return readFileSync(path.join(at, f), 'utf8')
+    } catch {
+      return undefined
+    }
+  }
+  const npmrc = read('.npmrc') ?? ''
+  const set = (key: string, value: string): boolean =>
+    new RegExp(`^\\s*${key}\\s*=\\s*${value}\\s*$`, 'm').test(npmrc)
+  const runs =
+    manager === 'berry'
+      ? false
+      : manager === 'npm'
+        ? !set('ignore-scripts', 'true')
+        : manager === 'pnpm'
+          ? !set('enable-pre-post-scripts', 'false') &&
+            !/^enablePrePostScripts:\s*false\s*$/m.test(read('pnpm-workspace.yaml') ?? '')
+          : true
+  return runs ? manager : null
+}
+
+/** The package manager that owns a directory, and the directory that says so. */
+interface Owner {
+  manager: string
+  at: string
+}
+
+/**
+ * The nearest `packageManager` field or lockfile from `dir` up: `berry` for
+ * Yarn 2+, `yarn` for Yarn 1, else the manager's name; none found is npm.
+ */
+function ownerOf(dir: string, memo: Map<string, Owner>): Owner {
   const known = memo.get(dir)
   if (known !== undefined) return known
   const read = (f: string): string | undefined => {
@@ -121,7 +157,10 @@ function runsScriptHooks(dir: string, memo: Map<string, string | null>): string 
   try {
     const pm = (JSON.parse(read('package.json') ?? '') as { packageManager?: unknown })
       .packageManager
-    if (typeof pm === 'string')
+    // A manager vx knows nothing of (zod's `nub@0.8.3`) says nothing about
+    // hooks: the lockfile beside it does, and "nub ran `postbuild`" was a
+    // claim nothing had checked (D-96).
+    if (typeof pm === 'string' && /^(npm|pnpm|yarn|bun)@/.test(pm))
       manager = /^yarn@([2-9]|\d{2,})/.test(pm) ? 'berry' : pm.split('@')[0]
   } catch {}
   if (manager === undefined) {
@@ -131,27 +170,26 @@ function runsScriptHooks(dir: string, memo: Map<string, string | null>): string 
     else if (existsSync(path.join(dir, 'package-lock.json'))) manager = 'npm'
     else if (['bun.lock', 'bun.lockb'].some((f) => existsSync(path.join(dir, f)))) manager = 'bun'
   }
-  let answer: string | null
-  if (manager === undefined) {
-    const up = path.dirname(dir)
-    answer = up === dir ? 'npm' : runsScriptHooks(up, memo)
-  } else {
-    const npmrc = read('.npmrc') ?? ''
-    const set = (key: string, value: string): boolean =>
-      new RegExp(`^\\s*${key}\\s*=\\s*${value}\\s*$`, 'm').test(npmrc)
-    const runs =
-      manager === 'berry'
-        ? false
-        : manager === 'npm'
-          ? !set('ignore-scripts', 'true')
-          : manager === 'pnpm'
-            ? !set('enable-pre-post-scripts', 'false') &&
-              !/^enablePrePostScripts:\s*false\s*$/m.test(read('pnpm-workspace.yaml') ?? '')
-            : true
-    answer = runs ? manager : null
-  }
-  memo.set(dir, answer)
-  return answer
+  const up = path.dirname(dir)
+  const owner =
+    manager !== undefined
+      ? { manager, at: dir }
+      : up === dir
+        ? { manager: 'npm', at: dir }
+        : ownerOf(up, memo)
+  memo.set(dir, owner)
+  return owner
+}
+
+/**
+ * Yarn 2+ runs a script in its own shell, where `run <script>` is `yarn
+ * run <script>`; vx's shell has no `run`, and 23 of berry's scripts
+ * (`run build:zip:worker`, `run test:unit packages/…`) mapped to tasks
+ * that failed "command not found" (D-92). Spelled out, at the head of
+ * each `&&` / `||` / `;` / `|` segment.
+ */
+function berryRun(command: string): string {
+  return command.replace(/(^|&&|\|\||[;|(])(\s*)run(?=\s)/g, '$1$2yarn run')
 }
 
 const MANIFEST_IMPORT = "import pkg from './package.json' with { type: 'json' }"
@@ -269,7 +307,7 @@ const MEMBER_FLAG =
 function pmRunsMembers(script: string): boolean {
   for (const segment of script.split(/&&|\|\||[;|()]/)) {
     const words = segment.trim().split(/\s+/)
-    let i = words.findIndex((w) => /^(pnpm|npm|yarn|bun)$/.test(w))
+    let i = words.findIndex((w) => /^(pnpm|pn|npm|yarn|bun)$/.test(w))
     // npm/cli runs itself: `node . run test --workspaces`.
     if (i < 0) i = words.findIndex((w, j) => w === 'run' && words[j - 2] === 'node')
     if (i < 0) continue
@@ -307,7 +345,45 @@ function cdsToMembers(script: string, rootDir: string, memberDirs: readonly stri
 
 /** A package manager running a script by name: `pnpm build`, `npm run x`, `bun run x`. */
 const RUNS_SCRIPT =
-  /(?:^|[\s;&|(])(?:pnpm|npm|yarn|bun)\s+(?:run(?:-script)?\s+)?([^\s;&|()'"-][^\s;&|()'"]*)/g
+  /(?:^|[\s;&|(])(?:pnpm|pn|npm|yarn|bun)\s+(?:run(?:-script)?\s+)?([^\s;&|()'"-][^\s;&|()'"]*)/g
+
+/**
+ * The scripts a command runs by name: a package manager's (`pnpm x`, `npm
+ * run x`), `run-s` / `run-p` / `npm-run-all` (`build:*` is one segment,
+ * `build:**` any), and `concurrently "npm:x"`. A root `ci: run-s build:all
+ * lint` over `build:all: pnpm -r build` mapped as a root task (D-95).
+ */
+function scriptRefs(command: string, scripts: readonly (readonly [string, string])[]): string[] {
+  const refs = [...command.matchAll(RUNS_SCRIPT)].map((m) => m[1]!)
+  for (const m of command.matchAll(/["']?\b(?:npm|pnpm|yarn|bun):([^\s"']+)/g)) refs.push(m[1]!)
+  for (const segment of command.split(/&&|\|\||[;|()]/)) {
+    const words = segment.trim().split(/\s+/)
+    const at = words.findIndex((w) => /^(run-s|run-p|npm-run-all)$/.test(w))
+    if (at < 0) continue
+    for (const w of words.slice(at + 1)) {
+      if (w.startsWith('-')) continue
+      const name = w.replace(/^(["'])(.*)\1$/, '$2')
+      if (!name.includes('*')) {
+        refs.push(name)
+        continue
+      }
+      const re = new RegExp(
+        `^${name
+          .split(/(\*\*|\*)/)
+          .map((part) =>
+            part === '**'
+              ? '.*'
+              : part === '*'
+                ? '[^:]*'
+                : part.replace(/[.+?^${}()|[\]\\]/g, '\\$&'),
+          )
+          .join('')}$`,
+      )
+      for (const [n] of scripts) if (re.test(n)) refs.push(n)
+    }
+  }
+  return refs
+}
 
 /**
  * The scripts that run the members, directly or through another of these
@@ -334,7 +410,7 @@ function runningMembers(
     grew = false
     for (const [n, v] of text) {
       if (out.has(n)) continue
-      if ([...v.matchAll(RUNS_SCRIPT)].some((m) => out.has(m[1]!))) {
+      if (scriptRefs(v, text).some((r) => out.has(r))) {
         out.add(n)
         grew = true
       }
@@ -354,7 +430,7 @@ export function migrateScripts(
   outsideDir?: string,
 ): MigrationPlan {
   const projects: GeneratedProject[] = []
-  const hookMemo = new Map<string, string | null>()
+  const hookMemo = new Map<string, Owner>()
   // The workspace root among members: many of its scripts run the
   // workspace (`npm run build --workspaces`, `pnpm -r build`), and a root
   // task made of one ran every member's build again under `--all`. Since
@@ -454,6 +530,7 @@ export function migrateScripts(
     const scripts = meta === rootMeta ? rootScripts(meta) : scriptsOf(meta)
     const hooksBy = runsScriptHooks(meta.dir, hookMemo)
     const runsHooks = hooksBy !== null
+    const berry = ownerOf(meta.dir, hookMemo).manager === 'berry'
     const runnable = Object.keys(scripts).filter(
       (n) => typeof scripts[n] === 'string' && scripts[n] !== '',
     )
@@ -482,7 +559,7 @@ export function migrateScripts(
       if (!isTask(name)) continue
 
       const todos: string[] = []
-      const own = scripts[name] as string
+      const own = berry ? berryRun(scripts[name] as string) : (scripts[name] as string)
       const delegate = delegatedScript(own)
       // npm lifecycle hooks (`prepack`, `prepublishOnly`, …) belong to the
       // package manager and never ride inside a task — `pack` stays alone.

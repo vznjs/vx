@@ -223,8 +223,10 @@ Run the task only in projects whose files changed since `<base>`.
   `defaultBase` and `TURBO_SCM_BASE`, `turbo()` on GitHub Actions from
   the pull request's base or the push's `before`, as Turbo does;
   [schema](schema.md)), else
-  `origin/HEAD`, falling back to
-  `HEAD~1` if `origin/HEAD` isn't resolvable. A clone with neither — a
+  `origin/HEAD`; without one (actions/checkout sets none, nor does a
+  repo with no remote), the first of `origin/main`, `origin/master`,
+  `main`, `master` that is not HEAD itself, as Turbo and Nx compare with
+  `main` (D-93); else `HEAD~1`. A clone with neither — a
   CI checkout at `fetch-depth: 1` — has no base at all, and vx says so
   (`--affected has no base here … a shallow clone?`) instead of failing
   on a `HEAD~1` nobody typed. And when the base IS the commit you are
@@ -673,7 +675,11 @@ other persistent task`), and a non-zero exit makes the run exit 1.
    stopped, and vx exits 130. A run with a failure elsewhere (a task
    failed or skipped, a server never ready or crashed) holds nothing: it
    stops its servers and exits 1, unless `--continue=always`; `vx watch`
-   keeps its server through a failed cycle.
+   keeps its server through a failed cycle. While vx holds them, what
+   the servers write streams below the summary a line at a time under
+   each one's id (`app#dev │ Local: http://localhost:5173`), except
+   under `--output-logs errors-only`, `hash-only` or `none`; a single
+   requested server in the focused flow streams raw from its frame.
 3. **Worker rows** — one per worker slot (sized
    `min(concurrency, 10)`), no glyph and no spinner: the live ticking
    elapsed time leads (`     568ms running  <id>`). A task stays in
@@ -1694,7 +1700,10 @@ wrong tree for every package that writes elsewhere. The block the TODO
 shows names `dist/**`, or the default output of the framework the command
 runs: `.next/**` minus `!.next/cache/**` for `next build`, `.output/**`
 for Nuxt, `build/**` for Remix, React Router, Create React App and
-Docusaurus, `public/**` for Gatsby, `storybook-static/**` for Storybook.
+Docusaurus, `public/**` for Gatsby, `storybook-static/**` for Storybook;
+for any other command, the directory it names with `--outDir` / `--out-dir`
+/ `-d`, else the ones it cleans first (`del-cli distribution`, `rimraf lib
+types`), unless it makes one again with `mkdir` (D-90).
 A package in a cycle of builds (nuxt's `@nuxt/nitro-server` devDepends
 on `nuxt`, which depends on it; pnpm sorts it away) gets, instead of
 `^build`, an edge to each build outside its cycle that `^build` would
@@ -1729,23 +1738,28 @@ it carries a TODO saying so; a `pre<x>` with no `x` stays a task of its own, and
 npm's lifecycle hooks (`prepack`, `prepublishOnly`, …) are never tasks.
 Where the package's manager runs no such hooks every `pre<x>` and
 `post<x>` is a task of its own: Yarn 2+ (the nearest `packageManager:
-yarn@2+`, or a Berry `yarn.lock`, D-31), npm under `ignore-scripts=true`
+yarn@2+`, or a Berry `yarn.lock`, D-31; a `packageManager` naming none of npm,
+pnpm, yarn or bun defers to the lockfile, D-96), npm under `ignore-scripts=true`
 in the `.npmrc` beside its lockfile, pnpm under
 `enable-pre-post-scripts=false` there or `enablePrePostScripts: false` in
 `pnpm-workspace.yaml` (D-33). Bun and Yarn 1 run them whatever those say.
+Under Yarn 2+ a segment's `run <script>`, Yarn's shell builtin, is written
+`yarn run <script>`: vx's shell has no `run` (D-92).
 A script reading `$npm_package_version`, `$npm_package_name` or
 `$npm_lifecycle_event`, which every manager sets and vx does not, gets
 them under `exec.env.define`, the first two read from an imported
 `package.json` so a version bump reaches them; any other `$npm_*` it
 reads gets a TODO (D-34). Among several packages, a workspace root
-script that runs the members (`pnpm -r build`, `--filter`, `-C`, Yarn's
+script that runs the members (`pnpm -r build`, `--filter`, `-C`, pnpm's `pn` alias
+included (D-97), Yarn's
 `--cwd` and `yarn workspace <name>`, npm's `--prefix`, npm's
 and Yarn's workspace flags, a `cd` into or above a member, turbo, nx, lerna, `vp run`, vx itself) is not mapped
 (a flag counts on the package manager, or after `node <bin> run`, and not on the program it
 runs: berry's `yarn node -r ./setup.ts` is node's `--require`, D-81; bun's
 `cd test && …` enters no member, D-83),
 nor is one that runs such a script by name (vite's `ci-docs`: `pnpm build &&
-pnpm docs-build`), and neither is one whose name a member's task carries, so `--all` never runs
+pnpm docs-build`; through `run-s` / `run-p` / `npm-run-all` or `concurrently
+"npm:x"` too, lexical's `ci-check`, D-95), and neither is one whose name a member's task carries, so `--all` never runs
 a check twice (D-45). The rest check the whole repo (`lint: oxlint .`,
 `test: vitest`) and become the root's own tasks in a root vx.config, when
 the root has a `"name"` (vx skips a nameless root's config) and no config
@@ -2024,7 +2038,7 @@ plugins:          2 — @vzn/vx-reapi (executor, cache); @vzn/vx-otel (telemetry
 workers:          2 — cgroup CPU quota 2 of 8 cores
 memory:           13 GB usable — cgroup limit; the machine has 16 GB
 cache dir:        /work/repo/.vx/cache
-cache versions:   keys vx-cache-v38 · index schema v28
+cache versions:   keys vx-cache-v39 · index schema v28
 cache entries:    42 (1.3 GB)
 orphans:          3 artifacts (12 MB) the index does not know — `vx cache prune` reaps them
 task runs (24h):  7 (5 cache hits)
@@ -2057,7 +2071,7 @@ unreported`: the sandbox still enforces, but a task that tolerates a
   denied read passes and caches with no word of it. The `--json` fact is
   `sandbox.untraced`, the reason or `null`.
 - `plugins` names every plugin `vx.workspace.*` declares and the seams
-  each fills, in pipeline order (`config`, `project`, `graph`, `key`,
+  each fills, in pipeline order (`config`, `discover`, `project`, `graph`, `key`,
   `fingerprint`, `schedule`, `admit`, `executor`, `cache`, `telemetry`,
   `setup`, `commands`), or `none`. It reads the declarations: a plugin
   that declines a task at run time still lists its seam here.

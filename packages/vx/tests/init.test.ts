@@ -489,10 +489,76 @@ describe('migrateScripts', () => {
     expect(outputs({ build: 'npm run b', b: 'next build' }, 'b')).toBe(
       "'.next/**', '!.next/cache/**'",
     )
+    // D-90: no tool above, so the dir the command writes or cleans (ky's
+    // `distribution`); a hidden dir, a file, a glob, or a scratch dir the
+    // command makes again is no guess.
+    expect(outputs({ build: 'del-cli distribution && tsc --project tsconfig.dist.json' })).toBe(
+      "'distribution/**'",
+    )
+    expect(outputs({ build: 'rimraf lib && babel src -d lib' })).toBe("'lib/**'")
+    expect(outputs({ build: 'tsc --outDir build' })).toBe("'build/**'")
+    expect(outputs({ build: 'esbuild src/x.ts --outdir=out' })).toBe("'out/**'")
+    expect(outputs({ build: 'rimraf dist types tsconfig.tsbuildinfo && tsc' })).toBe(
+      "'dist/**', 'types/**'",
+    )
+    expect(outputs({ build: 'shx rm -rf ./es && tsc' })).toBe("'es/**'")
+    expect(outputs({ build: 'rimraf .turbo && tsc' })).toBe("'dist/**'")
+    expect(outputs({ build: 'rimraf "lib/**" && tsc' })).toBe("'dist/**'")
+    expect(outputs({ build: 'rm -rf ./ids && mkdir ./ids && vite build' })).toBe("'dist/**'")
     // CONTROLS: anything else, and a near name, keep `dist/**`.
     expect(outputs({ build: 'tsc -b' })).toBe("'dist/**'")
     expect(outputs({ build: 'vite build' })).toBe("'dist/**'")
     expect(outputs({ build: 'nextjs-build' })).toBe("'dist/**'")
+  })
+
+  it("under Yarn 2+ a script's `run <script>` is spelled `yarn run` (D-92)", async () => {
+    // Yarn's shell reads `run x` as `yarn run x`; vx's shell has no `run`,
+    // and berry's `run test:unit packages/…` failed "command not found".
+    const root = await mkdtemp(path.join(os.tmpdir(), 'vx-berry-run-'))
+    try {
+      const app = path.join(root, 'packages', 'app')
+      await mkdir(app, { recursive: true })
+      const scripts = {
+        b: 'echo b',
+        args: 'run b --x',
+        chain: 'echo a && run b; run b || (run b)',
+        group: 'run b',
+        word: 'echo run b && docker run img',
+      }
+      const commands = (): Record<string, unknown> =>
+        Object.fromEntries(
+          (
+            migrateScripts([
+              {
+                name: 'app',
+                dir: app,
+                packageJson: { name: 'app', scripts } as never,
+                configPath: null,
+              },
+            ]).projects[0]?.tasks ?? []
+          ).map((t) => [
+            t.name,
+            (t.task?.['exec'] as { command?: string } | undefined)?.command ?? t.task,
+          ]),
+        )
+      await writeFile(
+        path.join(root, 'package.json'),
+        JSON.stringify({ private: true, packageManager: 'yarn@4.5.0' }),
+      )
+      expect(commands()).toEqual({
+        b: 'echo b',
+        args: 'yarn run b --x',
+        chain: 'echo a && yarn run b; yarn run b || (yarn run b)',
+        group: { dependsOn: ['b'] },
+        word: 'echo run b && docker run img',
+      })
+      // CONTROL: under npm, `run` is whatever the shell finds; kept.
+      await writeFile(path.join(root, 'package.json'), JSON.stringify({ private: true }))
+      await writeFile(path.join(root, 'package-lock.json'), '{}')
+      expect(commands()['args']).toBe('run b --x')
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
   })
 
   it('under Yarn 2+ a pre/post script is a task of its own, never folded (D-31)', async () => {
@@ -879,6 +945,38 @@ describe('migrateScripts', () => {
     ).toEqual([
       ['a', ['build']],
       ['root', ['typecheck', 'linux']],
+    ])
+  })
+
+  it('a root script reaching a member-running one through a script runner is left out (D-95)', () => {
+    // lexical's `ci-check` (`npm-run-all --parallel … tsc-website …`) ran
+    // `pnpm --filter @lexical/website run tsc` again as a root task.
+    const meta = (name: string, dir: string, scripts: Record<string, string>) => ({
+      name,
+      dir,
+      packageJson: { name, scripts } as never,
+      configPath: null,
+    })
+    const root = meta('root', '/w', {
+      'build:all': 'pnpm -r build',
+      ci: 'run-s build:all lint',
+      ci2: 'npm-run-all --parallel build:all lint',
+      ci3: 'concurrently "npm:build:all" "npm:lint"',
+      ci4: 'run-p build:*',
+      // CONTROLS: a runner over scripts that run no member (`*` stops at
+      // `:`), and one naming a script the root does not have.
+      ci5: 'run-s lint check:*',
+      ci6: 'run-p build',
+      'check:types': 'tsc',
+      'build:x:y': 'pnpm -r x',
+      lint: 'eslint .',
+    })
+    const a = meta('a', '/w/packages/a', { build: 'tsc' })
+    expect(
+      migrateScripts([root, a]).projects.map((p) => [p.name, p.tasks.map((t) => t.name)]),
+    ).toEqual([
+      ['a', ['build']],
+      ['root', ['ci5', 'ci6', 'check:types', 'lint']],
     ])
   })
 

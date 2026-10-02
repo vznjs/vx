@@ -83,8 +83,9 @@ terminal and a task succeeding or failing. Read it alongside
  │   11. Bulk git populate — the enumeration step 1 started is
  │       awaited, or a scoped run starts it here. FOUR spawns at the
  │       root, three concurrent and the rev-parse asked while they run
- │       (`ls-files -s -v -z` for the index: every tracked path's OID
- │       and its cache-state flag; `status --porcelain -z -uall` for
+ │       (`ls-files -s -v -z --debug` for the index: every tracked
+ │       path's OID, its cache-state flag and its recorded size;
+ │       `status --porcelain -z -uall` for
  │       the dirty AND untracked sets, the one worktree walk;
  │       `rev-parse --show-prefix --git-common-dir --show-object-format`,
  │       memoized per process and shared with the file hasher, which
@@ -95,8 +96,11 @@ terminal and a task succeeding or failing. Read it alongside
  │       OIDs. `ls-files --others` is NOT among them — status's
  │       `-uall` already answers untracked, and asking git twice
  │       walked the same tree again. A fifth, `check-attr`, runs only
- │       when an attributes file could rewrite bytes. The run's
- │       HashCache is created after it.
+ │       when an attributes file could rewrite bytes, and a sixth,
+ │       `cat-file --batch-check`, only for blob sizes the cache's
+ │       `blob_sizes` memo lacks (A-60): an OID whose blob is not the
+ │       recorded size is not trusted. The run's HashCache is created
+ │       after it.
  │   12. buildTaskGraph (see below).
  ├─ Task selection (graph/task-graph.ts:expandRequested)
  │    Bare task names fan out across the resolved candidate projects
@@ -411,7 +415,7 @@ broader access has cache-stability implications).
 | Exec exits non-zero                                                                                                                                              | Task is `failed`; cache NOT written; output streamed live + the failure frame replays at run end                                                                                                                                                                                                                                                                                                                                                          |
 | `exec.timeout` overrun                                                                                                                                           | SIGTERM to the task's group, SIGKILL for whoever is left after the grace; task is `failed` (timed out), exit 143 (137 when the SIGKILL took it, and the line says so), never cached                                                                                                                                                                                                                                                                       |
 | Child killed by Ctrl-C teardown (SIGINT/SIGTERM/SIGHUP), or by an embedder's `RunOptions.signal` abort — which also completes every never-started task `aborted` | Task is `aborted` — not counted, not recorded. An attempt that ends while the run is stopping is `aborted` whatever its exit: a trap that exits 0 is not cached, and a failure is not retried (item 962). What it printed still shows in its frame. A child killed by a signal while the run is NOT stopping (a supervisor's SIGTERM, a `kill` from another shell) is `failed (exit 143, 128 + SIGTERM)`: retried, shown, and fail-fast trips (item 1100) |
-| `execute()` throws (internal error)                                                                                                                              | Task marked `failed`; stderr written `[vx] internal error in <id>` (a `UserError` reports plainly)                                                                                                                                                                                                                                                                                                                                                        |
+| `execute()` throws (internal error)                                                                                                                              | Task marked `failed`; stderr written `[vx] internal error in <id>` (a `UserError` reports plainly); a plugin executor's throw is prefixed `plugin '<p>' (executor '<e>') failed in execute:` (C-63)                                                                                                                                                                                                                                                       |
 | Persistent task exits before ready                                                                                                                               | Task marked `failed` with `exited before becoming ready (exit N)`; its output already streamed live                                                                                                                                                                                                                                                                                                                                                       |
 | Upstream task fails                                                                                                                                              | Dependents marked `skipped` (exit 1, durationMs 0); no command runs — EXCEPT a restore-tier task, whose confirmed cache hit still restores (its key is dep-independent)                                                                                                                                                                                                                                                                                   |
 | Sandbox violation (macOS monitor / Linux structural)                                                                                                             | Task is `failed`; violations render in the frame; nothing cached                                                                                                                                                                                                                                                                                                                                                                                          |
