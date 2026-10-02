@@ -24,6 +24,9 @@
   a temporary start, not a way to run a repo unchanged; the benchmarks
   post's solidjs rows went (they measured `turbo()`), and benchmarks.md
   says its real-repo sections are a record, not a claim.
+- **R-3** `vx init` in a Turbo or Nx repo said `turbo()` "runs this
+  repo as it is"; it now names the file a temporary start until
+  `bunx @vzn/vx-migrate` writes native config.
 
 ## Leads
 
@@ -31,6 +34,3 @@
   real-repo sections) measured `turbo()` / `nx()`, not native config.
   Rerun each repo after `bunx @vzn/vx-migrate` writes native configs
   before any of them is quoted again.
-- `vx init`'s own output in a Turbo repo still says `turbo()` "runs
-  this repo as it is" (core CLI text, pinned by tests): reword in a
-  `fix(cli)` change.
