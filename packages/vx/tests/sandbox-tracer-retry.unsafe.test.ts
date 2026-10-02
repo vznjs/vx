@@ -44,13 +44,14 @@ describe.skipIf(!available || process.platform !== 'linux' || realStrace === nul
           `case "$last" in */true) exec ${realStrace} "$@";; esac`,
           `n=$(cat ${dir}/count 2>/dev/null); n=\${n:-0}`,
           `echo $((n+1)) > ${dir}/count`,
-          `[ -e ${dir}/early ] && echo 'strace: early' >&2`,
+          // strace names itself by its argv[0], the absolute path vx runs it by.
+          `[ -e ${dir}/early ] && echo "$0: early" >&2`,
           `${realStrace} "$@"`,
           'rc=$?',
           `if [ "$n" = 0 ] && [ ! -e ${dir}/calm ]; then`,
-          `  if [ -e ${dir}/split ]; then printf 'stra' >&2; sleep 0.3; printf 'ce: cut\\n' >&2`,
-          `  elif [ -e ${dir}/bare ]; then printf 'strace: bare' >&2`,
-          '  else echo "strace: ptrace(PTRACE_LISTEN,pid:1,sig:0): Input/output error" >&2; fi',
+          `  if [ -e ${dir}/split ]; then printf '%sstra' "\${0%strace}" >&2; sleep 0.3; printf 'ce: cut\\n' >&2`,
+          `  elif [ -e ${dir}/bare ]; then printf '%s: bare' "$0" >&2`,
+          '  else echo "$0: ptrace(PTRACE_LISTEN,pid:1,sig:0): Input/output error" >&2; fi',
           `  [ -e ${dir}/zero ] && exit $rc`,
           '  exit 1',
           'fi',
@@ -96,8 +97,7 @@ describe.skipIf(!available || process.platform !== 'linux' || realStrace === nul
       expect(await run('echo ran')).toEqual({
         exitCode: 0,
         stdout: 'ran\nran\n',
-        streamed:
-          "strace: ptrace(PTRACE_LISTEN,pid:1,sig:0): Input/output error\n[vx] the sandbox's tracer (strace) failed on its own; running the task again\n",
+        streamed: `${dir}/bin/strace: ptrace(PTRACE_LISTEN,pid:1,sig:0): Input/output error\n[vx] the sandbox's tracer (strace) failed on its own; running the task again\n`,
         calls: 2,
       })
     })
@@ -107,8 +107,7 @@ describe.skipIf(!available || process.platform !== 'linux' || realStrace === nul
       expect(await run('echo ran')).toEqual({
         exitCode: 0,
         stdout: 'ran\nran\n',
-        streamed:
-          "strace: ptrace(PTRACE_LISTEN,pid:1,sig:0): Input/output error\n[vx] the sandbox's tracer (strace) failed on its own; running the task again\n",
+        streamed: `${dir}/bin/strace: ptrace(PTRACE_LISTEN,pid:1,sig:0): Input/output error\n[vx] the sandbox's tracer (strace) failed on its own; running the task again\n`,
         calls: 2,
       })
     })
@@ -141,7 +140,7 @@ describe.skipIf(!available || process.platform !== 'linux' || realStrace === nul
       const r = await run('echo ran', undefined, stop.signal)
       expect([r.stdout, r.streamed, r.calls]).toEqual([
         'ran\n',
-        'strace: ptrace(PTRACE_LISTEN,pid:1,sig:0): Input/output error\n',
+        `${dir}/bin/strace: ptrace(PTRACE_LISTEN,pid:1,sig:0): Input/output error\n`,
         1,
       ])
     })

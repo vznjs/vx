@@ -802,3 +802,16 @@ groups to the persistent tasks below; a one-shot under it keeps none.
 Row (`persistent-shutdown.test.ts` › keeps the persistent tasks a
 requested group stands for): red without the seed; probed end to end
 (held until Ctrl-C, exit 130). `execution.md` says so.
+## C-51: a restore under another restore ranks by what that one blocks
+
+`tieredReverseDepCount` ranked a restore by its direct exec-tier
+dependents only. A restore's dependents are released once its own deps
+have settled (item 963), so in `r1 → r2 → e` (two hits, one miss) `r1`
+blocks `e` too, yet ranked 0 and restored after every idle hit before
+`e` could start. Each restore now hands its rank to its restore deps, in
+one Kahn pass over the restore tier's reversed edges, skipped when no
+restore feeds an exec task. Cost (1,000 projects, 3,000 nodes, min of
+50): a run whose `test` tasks miss, 0.50 → 1.4 ms; all hits, 0.17 →
+0.21–0.28 ms (noise). Rows (`scheduler.test.ts` › the rank table and the
+dispatch order `r1, r2, e` ahead of three idle restores): red without
+the pass. `modules/scheduler.md` says so.

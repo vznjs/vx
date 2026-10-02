@@ -83,6 +83,23 @@ describe('expandNxInputs', () => {
       // `dependentTasksOutputFiles` is nothing to map: vx folds the upstream keys (G-49).
     ])
   })
+
+  // Nx's `splitInputsIntoSelfAndDependencies` (nx 23.3) still reads the
+  // pre-17 `projects: "dependencies"` as `^input` and `"self"` as the own input.
+  it('the legacy projects: "dependencies" and "self" spellings', () => {
+    const got = inputs(
+      [
+        { input: 'prod', projects: 'dependencies' },
+        { input: 'lib', projects: 'self' },
+      ],
+      { prod: ['{projectRoot}/src/**'], lib: ['{projectRoot}/lib/**'] },
+    )
+    expect([got.files, got.upstream, got.todos]).toEqual([
+      ['lib/**'],
+      [{ name: 'prod', of: 'deps' }],
+      [],
+    ])
+  })
 })
 
 // analogjs's 32 `eslint:lint` tasks each carried the todo for `eslint`, a
