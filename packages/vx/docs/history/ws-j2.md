@@ -118,3 +118,11 @@ persistent task` and vx exits 1). Row (`site-samples` › a post's link
   the `tar.zst` as one CAS blob) and the lockfile-aware-keys post. Row
   (`site-samples` › the remote-execution post lists what placement keeps
   local), red without the fix.
+- **J2-12** #2323 answers a scoped run's first 8 `transitiveDeps` asks
+  by a search; `modules/package-graph.md` still said both closures are
+  bitsets built on the first query, and the bitsets post said a filter
+  over a thousand packages is "a handful of row ORs". Both now say
+  when the graph searches. Rows (`module-page-claims` › package-graph.md,
+  the count read from `EARLY_SEARCHES`; `site-samples` › the bitsets
+  post says when the package graph searches instead), red without the
+  fix.

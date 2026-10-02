@@ -1921,3 +1921,17 @@ describe('the remote-execution post lists what placement keeps local', () => {
       expect(post).toContain(line)
   })
 })
+
+describe('the bitsets post says when the package graph searches instead', () => {
+  it('a filter seeded by one or two packages is a search (#2323)', () => {
+    const graph = readFileSync(
+      path.resolve(import.meta.dir, '..', 'src', 'workspace', 'package-graph.ts'),
+      'utf8',
+    )
+    expect(graph).toContain('transitiveDeps: makeAccessor(reachDeps, searchDeps)')
+    const post = readFileSync(path.join(DOCS, 'blog', 'bitsets-and-the-scheduler.md'), 'utf8')
+    expect(post.replace(/\s+/g, ' ')).toContain(
+      'A filter seeded by one or two packages (`app...`) searches from them instead',
+    )
+  })
+})
