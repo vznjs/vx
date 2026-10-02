@@ -990,6 +990,7 @@ no edge names a task that left. The two rules mask each other on order
 alone (item 980's mutant survived the first draft: the order-only walk
 re-adds the edge), so the row checks the edge's kind too; each mutant
 reddens it. `modules/task-graph.md` says so.
+
 ## C-67: an embedder's `command` reaches telemetry redacted
 
 Item 1057 kept what follows `--` (often a token) out of the command line
