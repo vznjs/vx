@@ -1066,8 +1066,9 @@ platforms `<dir>/**` and `<dir>/**/*` collapse to `<dir>`, so
 glob keeps its subtree (`.*.tmp/**` covers what is inside each match).
 Unlike a task glob, a grant keeps `Bun.Glob`'s brackets: `[id]` is a
 class, so a Next.js route is granted escaped, `read: ['pages/\\[id\\].tsx']`.
-On Linux a WRITE path holding a bracket is not mounted (the runtime drops
-it); grant its parent directory.
+On Linux a WRITE path holding a bracket cannot be mounted (the runtime
+drops it): vx says so once, names the directory above it to grant
+instead, and a write under it is refused and reported.
 
 A Linux WRITE grant that matches nothing when the task starts therefore
 mounts nothing. Where a read grant mounts its directory, the task's first
