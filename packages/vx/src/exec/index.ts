@@ -29,7 +29,13 @@ export {
   thrownReason,
 } from './sandbox-runtime.js'
 export { type DeniedCall } from './sandbox-violations.js'
-export { atOrUnder, isMountableLiteral, MOUNT_WILDCARDS, toRealPath } from './sandbox-paths.js'
+export {
+  atOrUnder,
+  isMountableLiteral,
+  MOUNT_WILDCARDS,
+  sandboxReads,
+  toRealPath,
+} from './sandbox-paths.js'
 export { bindableWrites, punchWalls } from './sandbox-binds.js'
 export { isLocalExecutor, localExecutor } from './local-executor.js'
 export { holdGroups, killTree, untilGroupsGone } from './kill-tree.js'

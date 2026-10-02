@@ -19,8 +19,8 @@ export function isAlive(pid: number): boolean {
     return false
   }
   // A procfs mounted for another pid namespace (the sandbox's) names some
-  // other process at this pid; there signal 0 is the only answer, and a
-  // zombie counts until init reaps it.
+  // other process at this pid, and macOS has none; there signal 0 is the
+  // only answer, and a zombie counts until init reaps it.
   if (!procfsIsOwn()) return true
   try {
     const stat = readFileSync(`/proc/${pid}/stat`, 'utf8')
@@ -29,7 +29,9 @@ export function isAlive(pid: number): boolean {
     const state = stat.charAt(stat.lastIndexOf(')') + 2)
     if (state === 'Z' || state === 'X') return false
   } catch {
-    // No procfs (macOS): signal 0 is the only answer, and launchd reaps fast.
+    // Procfs is our own here, so no entry means the pid was reaped after
+    // signal 0 landed (I-9, M-28).
+    return false
   }
   return true
 }

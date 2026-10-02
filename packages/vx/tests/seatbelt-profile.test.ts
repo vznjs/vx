@@ -19,8 +19,6 @@ import {
 } from '../src/exec/sandbox-runtime.js'
 import { UserError } from '../src/util/index.js'
 
-const WIN32 = process.platform === 'win32'
-
 const base = { allowRead: [], allowWrite: [] }
 
 describe('sbplResolvedPath', () => {
@@ -42,8 +40,7 @@ describe('sbplResolvedPath', () => {
   })
 })
 
-// Seatbelt is macOS's; its POSIX paths are not Windows'.
-describe.skipIf(WIN32)('macProfileRules and a unix socket reached through a symlink', () => {
+describe('macProfileRules and a unix socket reached through a symlink', () => {
   let root: string
   beforeEach(async () => {
     // A short path directly under the OS temp dir, as the socket rows do:
@@ -155,7 +152,7 @@ describe('macProfileRules, capability by capability', () => {
 // On Linux a glob's hit on a wall is dropped before the bind (B-1). Seatbelt
 // matches the glob as a regex, so macOS denies each wall a glob reaches at
 // the profile's tail, carving out a literal grant at or inside it (B-12).
-describe.skipIf(WIN32)('darwinWallRules', () => {
+describe('darwinWallRules', () => {
   it('denies each reached wall, keeps literal grants inside it, and names nothing else', () => {
     expect(
       darwinWallRules(
