@@ -290,3 +290,28 @@ export function isWorkspaceConfigFile(name: string): boolean {
  * workspace is the one it ignores.
  */
 const FINGERPRINT_FILES: ReadonlySet<string> = new Set(WORKSPACE_FINGERPRINT_FILES)
+
+/**
+ * The files under the workspace git lists, tracked and untracked, ignored
+ * ones aside: what existed when watch armed, so a path born and gone
+ * since is told from a deletion (watch-judge.ts). Undefined when git
+ * cannot answer: no inventory, every gone path is a deletion as before.
+ */
+export function gitFiles(workspaceRoot: string): Set<string> | undefined {
+  let proc: ReturnType<typeof Bun.spawnSync>
+  try {
+    proc = Bun.spawnSync({
+      cmd: [executablePath('git'), 'ls-files', '-z', '--cached', '--others', '--exclude-standard'],
+      cwd: workspaceRoot,
+      stdout: 'pipe',
+      stderr: 'ignore',
+    })
+  } catch {
+    return undefined
+  }
+  if (proc.exitCode !== 0) return undefined
+  const files = new Set<string>()
+  for (const p of new TextDecoder().decode(proc.stdout).split('\0'))
+    if (p.length > 0) files.add(path.join(workspaceRoot, p))
+  return files
+}
