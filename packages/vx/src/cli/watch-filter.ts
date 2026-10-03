@@ -340,7 +340,8 @@ export function gitFiles(workspaceRoot: string): Set<string> | undefined {
   const files = new Set<string>()
   for (const p of new TextDecoder().decode(proc.stdout).split('\0')) {
     if (p.length === 0) continue
-    let abs = path.join(workspaceRoot, p)
+    // An untracked nested repository is listed as `dir/`.
+    let abs = path.join(workspaceRoot, p.endsWith('/') ? p.slice(0, -1) : p)
     files.add(abs)
     for (abs = path.dirname(abs); abs !== workspaceRoot && !files.has(abs); abs = path.dirname(abs))
       files.add(abs)

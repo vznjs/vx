@@ -32,6 +32,7 @@ import {
   lstatSync,
   existsSync,
   mkdirSync,
+  mkdtempSync,
   openSync,
   readFileSync,
   readlinkSync,
@@ -39,6 +40,7 @@ import {
   rmSync,
   statSync,
   unlinkSync,
+  writeFileSync,
 } from 'node:fs'
 import { mkdir, unlink } from 'node:fs/promises'
 import type { SandboxConfig } from '../config.js'
@@ -162,7 +164,12 @@ async function probeUncached(weakerNested: boolean): Promise<SandboxAvailability
   if (!SandboxManager.isSupportedPlatform()) {
     return { available: false, reason: `platform ${process.platform} not supported` }
   }
-  const deps = SandboxManager.checkDependencies()
+  // SRT checks the scan command its live config names, and once that is
+  // vx's no-scan file (B-92) a process `exit` hook may have removed it
+  // while the process goes on: name one that is there.
+  const deps = SandboxManager.checkDependencies(
+    noScan === undefined ? undefined : { command: scanCommandAgain() },
+  )
   if (deps.errors.length > 0) return { available: false, reason: dependencyReason(deps.errors) }
   const long = socketPathRefusal()
   if (long !== undefined) return { available: false, reason: long }
@@ -503,14 +510,50 @@ let scopedDenyScan = false
  * 1 the scan finds only the root's entries, which SRT keeps only inside a
  * write grant, where the scoped walk already reaches (the parity rows in
  * `sandbox-deny-scan.unsafe.test.ts`). A no-op in rg's place ends the
- * spawn's 3.8 ms at 1.0; SRT has no way to skip it.
+ * spawn's 3.8 ms at 1.0; SRT has no way to skip it. A file that cannot be
+ * exec'd ends it sooner still: `posix_spawn` refuses it (ENOEXEC) in
+ * 0.32 ms against `true`'s 1.06, SRT reads the refusal as an empty scan,
+ * and its dependency check (`Bun.which`) still finds the file (B-92).
  */
 function scopedScanConfig(): { mandatoryDenySearchDepth: number; ripgrep?: { command: string } } {
   try {
-    return { mandatoryDenySearchDepth: 1, ripgrep: { command: executablePath('true') } }
+    return { mandatoryDenySearchDepth: 1, ripgrep: { command: noScanCommand() } }
   } catch {
-    return { mandatoryDenySearchDepth: 1 }
+    try {
+      return { mandatoryDenySearchDepth: 1, ripgrep: { command: executablePath('true') } }
+    } catch {
+      return { mandatoryDenySearchDepth: 1 }
+    }
   }
+}
+
+let noScan: string | undefined
+
+/** The no-scan file again (made anew if gone), or `true` where it cannot be. */
+function scanCommandAgain(): string {
+  try {
+    return noScanCommand()
+  } catch {
+    return executablePath('true')
+  }
+}
+/**
+ * An empty executable only this process can write: SRT runs it outside the
+ * sandbox on every wrap, so it lives in a fresh 0700 directory, never in the
+ * shared `/tmp/claude`. Made once a process, again if a temp cleaner took it.
+ */
+function noScanCommand(): string {
+  if (noScan !== undefined && existsSync(noScan)) return noScan
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'vx-noscan-'))
+  const file = path.join(dir, 'rg')
+  writeFileSync(file, '', { mode: 0o700 })
+  if (noScan === undefined) {
+    process.on('exit', () => {
+      if (noScan !== undefined) rmSync(path.dirname(noScan), { recursive: true, force: true })
+    })
+  }
+  noScan = file
+  return file
 }
 
 function linuxToolPaths(): { bwrapPath?: string; socatPath?: string } {

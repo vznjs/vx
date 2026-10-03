@@ -92,13 +92,16 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   that may take the task: a `remote` executor is skipped outright for a
   `pinnedLocal` task, then `accepts` decides. An `accepts` that throws
   is a `UserError` naming the executor as `label` does (the run passes
-  `executorLabel`, which names its plugin too; item 1022). The local
+  `executorLabel`, which names its plugin too; item 1022), and so is
+  one that answers a Promise (`async accepts`), which read as a yes.
+  The local
   executor is the tail of the list and accepts everything, so the
   throw for "every executor declined" is unreachable from `run()`; it
   stays for a caller that builds its own list.
-- An executor's `demand` is a hint: one that throws is warned once,
-  naming the plugin, and that executor is asked no more that run (item
-  1022).
+- An executor's `demand` is a hint: one that throws, or an `async`
+  one that rejects, is warned once, naming the plugin, and that
+  executor is asked no more that run (item 1022;
+  `placement-async-hints.test.ts`).
 - A plugin executor's `execute` that throws fails the task, its message
   prefixed `plugin '<p>' (executor '<e>') failed in execute:` in the
   frame and the scheduler's line (C-63), plainly, as a refusal: the

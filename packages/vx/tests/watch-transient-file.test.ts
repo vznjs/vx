@@ -71,3 +71,20 @@ it('a directory that held listed files and is gone starts one', async () => {
   judge.pending.set(path.join(dir, 'packages', 'b'), 'packages/b')
   expect(judge.judge()).toBe('packages/b')
 })
+
+// Git lists a nested repository (a submodule, a vendored clone) as one
+// entry and never the files inside it, which keys do read: a file there
+// that existed at the arm and is gone is a deletion.
+it('a file gone from inside a nested repository starts one', async () => {
+  dir = await mkdtemp(path.join(os.tmpdir(), 'vx-watch-transient-'))
+  await mkdir(path.join(dir, 'vend'), { recursive: true })
+  Bun.spawnSync(['git', 'init', '-q'], { cwd: dir })
+  Bun.spawnSync(['git', 'init', '-q'], { cwd: path.join(dir, 'vend') })
+  await writeFile(path.join(dir, 'vend', 'inner.txt'), 'x\n')
+  const listed = gitFiles(dir)
+  expect(listed?.has(path.join(dir, 'vend'))).toBe(true)
+  await rm(path.join(dir, 'vend', 'inner.txt'))
+  const judge = judgeIn(dir, listed)
+  judge.pending.set(path.join(dir, 'vend', 'inner.txt'), 'vend/inner.txt')
+  expect(judge.judge()).toBe('vend/inner.txt')
+})

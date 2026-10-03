@@ -501,12 +501,19 @@ async function runOnBus(
   // it surfaced as a bare stack, or mid-run from the completion path
   // (item 1022).
   const tellDemand = (executor: TaskExecutor, remaining: ReadonlySet<string>): void => {
-    try {
-      executor.demand!(remaining)
-    } catch (err) {
-      demandOf.delete(executor)
+    const failed = (err: unknown): void => {
+      if (!demandOf.delete(executor)) return
       const m = err instanceof Error ? err.message : String(err)
       log.status(`[vx] ${executorLabel(executor)} failed in demand: ${m}; not asked again this run`)
+    }
+    try {
+      // An `async demand` that rejects did so where no one listened: an
+      // unhandled rejection, a stack, the run killed. Its rejection is a
+      // throw like any other.
+      const ret: unknown = executor.demand!(remaining)
+      if (ret instanceof Promise) ret.catch(failed)
+    } catch (err) {
+      failed(err)
     }
   }
   for (const [executor, remaining] of demandOf) tellDemand(executor, remaining)

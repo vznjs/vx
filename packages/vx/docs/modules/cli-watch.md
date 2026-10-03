@@ -312,6 +312,8 @@ non-persistent tasks where each cycle should re-run cleanly.
 - Start a cycle on a file born and gone since the arm (vim's `4913`
   write probe): `gitFiles` lists what existed at the arm, and a gone path
   it did not list was never read by a key (`watch-transient-file.test.ts`).
+  Git lists a nested repository (a submodule, a vendored clone) as one
+  entry, so a gone path under one is still a deletion.
 
 - Doesn't accept the interactive picker — task name is required.
 - Doesn't filter events through declared input globs.

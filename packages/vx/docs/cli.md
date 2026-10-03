@@ -1667,6 +1667,10 @@ refused rather than ignored; and GitHub's hourly API limit for an
 unauthenticated address is named, with its reset time, instead of a
 bare `(403)` (item 1098).
 
+Exit codes: `0` the new binary installed, or already at that version;
+`1` anything refused or swapped back: from source, from npm, a host it
+cannot reach, a digest that does not match, a binary that does not start.
+
 ## `vx init`
 
 In a Turbo or Nx repo (a `turbo.json`, `turbo.jsonc` or `nx.json` at
@@ -2221,6 +2225,11 @@ declared, untraced }`, `declared` the count of tasks with `exec.sandbox`,
   `untraced` the reason denied reads go unreported or null). The
   pretty rows render this object;
   there is no second source.
+- `--cache-dir <path>` reads the cache a run with the same flag uses, as
+  `vx why`, `vx last` and `vx cache prune` do.
+
+Exit codes: `0` the facts printed, a config that did not load included;
+`1` no workspace here or above, or a parse error.
 
 ## `vx why`
 
@@ -2398,7 +2407,9 @@ verb's line names in passing (`vx lock --check` beside `--frozen`) is
 not one. A plugin verb completes `--help` only. Task and project
 names are not completed (they are the workspace's, and a completion
 that evaluates configs on every Tab is the wrong price). An unknown
-shell is an error naming the three, exit 1.
+shell is an error naming the three.
+
+Exit codes: `0` the script printed; `1` an unknown shell.
 
 ## Plugin commands
 
