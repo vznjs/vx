@@ -1627,14 +1627,14 @@ its own (owner, 2026-10-03), and `tests/workflow-runner.unsafe.test.ts`
 holds it. The tasks are `@vzn/vx`'s `release.*`, all uncached and in no
 `ci` graph:
 
-| Task                    | Does                                                                                                                                  |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `release.stamp`         | writes `VX_RELEASE_VERSION` into `packages/vx/package.json`, the manifest the binary inlines                                          |
-| `release.npm`           | checks npm can publish with provenance (>= 11.5.1, `sigstore` loads); else installs npm into `dist/npm-cli/`                          |
+| Task                    | Does                                                                                                                                     |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `release.stamp`         | writes `VX_RELEASE_VERSION` into `packages/vx/package.json`, the manifest the binary inlines                                             |
+| `release.npm`           | checks npm can publish with provenance (>= 11.5.1, `sigstore` loads); else installs npm into `dist/npm-cli/`                             |
 | `release.prove.<os>`    | launches the host's binary (re-signed only if macOS refuses it) and asserts `vx <version>`; on darwin, launches both (x64 under Rosetta) |
-| `release.assemble.<os>` | emits the platform packages under `dist/npm` (linux: also `@vzn/vx` and the plugins)                                                  |
-| `release.publish.<os>`  | `npm publish --provenance` each in order, skipping one the registry holds                                                             |
-| `release.auto`          | decides the version, creates the release with its notes, dispatches the two workflows                                                 |
+| `release.assemble.<os>` | emits the platform packages under `dist/npm` (linux: also `@vzn/vx` and the plugins)                                                     |
+| `release.publish.<os>`  | `npm publish --provenance` each in order, skipping one the registry holds                                                                |
+| `release.auto`          | decides the version, creates the release with its notes, dispatches the two workflows                                                    |
 
 The version reaches them as `VX_RELEASE_VERSION` (the tag or the
 dispatch input) and each refuses one that is not a version. Every one
