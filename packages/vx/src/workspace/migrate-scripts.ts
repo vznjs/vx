@@ -661,12 +661,15 @@ export function migrateScripts(
   // the task, so `--all` never runs one check twice.
   const outsideName =
     typeof outside?.['name'] === 'string' && outside['name'] !== '' ? outside['name'] : undefined
+  // insomnia's root is named as its `packages/insomnia`: a root config made
+  // it a project, and every later run was refused for the duplicate (D-129).
+  const clash = outsideName === undefined ? undefined : metas.find((m) => m.name === outsideName)
   const rootMeta: ProjectMeta | undefined =
     root !== undefined
       ? root.configPath === null
         ? root
         : undefined
-      : outsideName !== undefined && outsideDir !== undefined
+      : outsideName !== undefined && outsideDir !== undefined && clash === undefined
         ? { name: outsideName, dir: outsideDir, packageJson: outside as never, configPath: null }
         : undefined
   const memberTasks = new Set(
@@ -773,6 +776,11 @@ export function migrateScripts(
         (shared.length > 0
           ? `; left out as a member's task name, so \`--all\` never runs one twice: ${listed(shared)} — one that does other work maps by hand under a name of its own`
           : ''),
+    )
+  } else if (clash !== undefined && outsideDir !== undefined && unnamedMaps().length > 0) {
+    const would = unnamedMaps()
+    notes.push(
+      `${clash.name} (the workspace root) not mapped: ${path.relative(outsideDir, clash.dir).split(path.sep).join('/')} has the same "name", and vx names a project by it; rename the root's and run \`vx init\` again to map ${would.length} of its scripts (${would.slice(0, 8).join(', ')}${would.length > 8 ? ', …' : ''})`,
     )
   } else if (rootName === 'package.json' && outsideDir !== undefined && unnamedMaps().length > 0) {
     // react's nameless root: "its scripts run the workspace" was not why,
