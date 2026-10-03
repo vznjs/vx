@@ -363,3 +363,11 @@ persistent task` and vx exits 1). Row (`site-samples` › a post's link
   (`ExecuteArgs` says it is abridged, and the row honours a `// …`).
   Row (`module-page-claims` › a module page lists exactly the fields
   its interface has), red without the fix.
+
+- **J2-41** `cli.md`'s `vx info --format json` bullet gave `sandbox` as
+  `{ available, reason, declared }`; the object carries `untraced` too,
+  which the same section names as a fact. The bullet lists it now. The
+  top-level row held only field names; a sibling row
+  (`cli-doc-drift` › gives each object field the keys the object
+  carries) holds each documented shape to `InfoFacts`, red without the
+  fix.

@@ -2192,7 +2192,8 @@ cgroupLimitBytes }`, the limit null when none binds), `cacheDir`, `cacheVersion`
   (`{ artifacts, bytes }`, always present), `runs24h`, `hits24h` (task
   runs, as the row), `flakyTasks` (`[{ taskId, project, task, keys, passes, failures }]`,
   empty when none), `lockfile`, `sandbox` (`{ available, reason,
-declared }`, `declared` the count of tasks with `exec.sandbox`). The
+declared, untraced }`, `declared` the count of tasks with `exec.sandbox`,
+  `untraced` the reason denied reads go unreported or null). The
   pretty rows render this object;
   there is no second source.
 
