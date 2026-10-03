@@ -14,6 +14,7 @@ import { describe, expect, it } from 'bun:test'
 import { PLUGIN_HOOKS } from '../src/config.js'
 import { CACHE_VERSION, SCHEMA_VERSION } from '../src/cache/index.js'
 import { formatRunSummary } from '../src/orchestrator/summary.js'
+import { parseInfoArgs } from '../src/cli/info.js'
 import { appendRecapRing, createRecapRing, recapTail } from '../src/orchestrator/failure-recap.js'
 import { formatRunReportMarkdown } from '../src/orchestrator/run-report.js'
 import {
@@ -127,6 +128,23 @@ describe('docs/cli.md — the `vx info` sample quotes the current versions', () 
 // `sandbox` were printed and named nowhere. Both sides are read from their
 // source: the `InfoFacts` interface in doctor.ts (what the object carries),
 // and the bullet's backticked names.
+// The sandbox bullet called its field "the `--json` fact"; `vx info --json`
+// is refused (J2-62). Each flag the section names is one the verb takes.
+describe('docs/cli.md — every flag the `vx info` section names, the verb takes', () => {
+  it('parses each with a value and no error', async () => {
+    const doc = await Bun.file(new URL('../docs/cli.md', import.meta.url)).text()
+    const section = doc.slice(doc.indexOf('\n## `vx info`\n'), doc.indexOf('\n## `vx why`\n'))
+    // `--version` there is strace's, the probe the sandbox bullet describes.
+    const flags = new Set(
+      Array.from(section.matchAll(/`(--[a-z-]+)/g), (m) => m[1] as string).filter(
+        (f) => f !== '--version',
+      ),
+    )
+    expect([...flags].toSorted()).toEqual(['--cache-dir', '--format'])
+    for (const f of flags) expect(parseInfoArgs([f, 'json']).error).toBeUndefined()
+  })
+})
+
 describe('docs/cli.md — the `vx info --format json` list is the InfoFacts object', () => {
   it('names every top-level field, and nothing the object does not carry', async () => {
     // An interface's body, doc comments dropped: `FlakyTask` is the
@@ -513,5 +531,49 @@ describe('the failure recap samples are what the renderer prints', () => {
         '  Failed:   4 tasks — the last lines each one printed',
       ),
     ).toBe(elide(rendered))
+  })
+})
+
+describe('docs/cli.md — the glyph table is the renderer', () => {
+  // The table gave `⏺` the status words "success/failed", but a failed
+  // task always draws `◼`: no row ever printed `⏺ … failed` (J2-58). The
+  // expected map comes from rendering every outcome, not from a list here.
+  it('each glyph carries the status words a rendered row gives it', async () => {
+    const node = {
+      id: 'a#b',
+      projectName: 'a',
+      taskName: 'b',
+      config: { exec: { command: 'x' }, cache: { inputs: { files: [] }, outputs: { files: [] } } },
+    } as unknown as TaskNode
+    const outcomes: TaskOutcome[] = [
+      { node, status: 'success', exitCode: 0, durationMs: 1 },
+      { node, status: 'failed', exitCode: 1, durationMs: 1 },
+      { node, status: 'skipped', exitCode: 0, durationMs: 0 },
+      ...(['cache-hit', 'cache-hit-remote'] as const).flatMap((status) =>
+        [true, false].map((restored) => ({ node, status, exitCode: 0, durationMs: 1, restored })),
+      ),
+    ]
+    const rendered = new Map<string, Set<string>>()
+    for (const o of outcomes) {
+      const [glyph, ...cells] = formatTaskExecutedLine(node, o)
+        .replaceAll('︎', '')
+        .trim()
+        .split(/\s+/)
+      const word = cells.find((c) => ['success', 'failed', 'skipped'].includes(c))!
+      rendered.set(glyph!, (rendered.get(glyph!) ?? new Set()).add(word))
+    }
+    const doc = await Bun.file(new URL('../docs/cli.md', import.meta.url)).text()
+    const table = doc.slice(doc.indexOf('| Glyph |'))
+    const documented = new Map<string, Set<string>>()
+    for (const row of table.split('\n').slice(2)) {
+      if (!row.startsWith('|')) break
+      const cells = row.split('|').map((c) => c.trim())
+      const glyph = cells[1]!.replaceAll('`', '')
+      // The persistent pin is drawn by the live region, not a task row.
+      if (glyph !== '▸') documented.set(glyph, new Set(cells[3]!.split('/')))
+    }
+    const plain = (m: Map<string, Set<string>>) =>
+      Object.fromEntries([...m].map(([g, s]) => [g, [...s].toSorted()]))
+    expect(plain(documented)).toEqual(plain(rendered))
   })
 })

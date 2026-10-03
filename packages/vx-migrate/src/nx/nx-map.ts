@@ -976,10 +976,13 @@ function mapCommand(
     command: string,
     envFile: string | undefined,
     rest: Pick<MappedCommand, 'env' | 'readyWhen'> = { env: {}, readyWhen: undefined },
+    readyAll: readonly string[] = [],
   ): MappedCommand => {
-    if (files.length === 0 && envFile === undefined) return { ...rest, command, envInputs: [] }
+    if (files.length === 0 && envFile === undefined && readyAll.length === 0)
+      return { ...rest, command, envInputs: [] }
     const flags = files.flatMap((f) => ['--dotenv', shellQuote(f)])
     if (envFile !== undefined) flags.push('--envFile', shellQuote(envFile))
+    for (const s of readyAll) flags.push('--ready-when', shellQuote(s))
     return {
       ...rest,
       command: `nx-env ${flags.join(' ')} -- ${shellQuote(command)}`,
@@ -1005,7 +1008,7 @@ function mapCommand(
         : path.posix.isAbsolute(rc.envFile)
           ? rc.envFile
           : relPosix(projectRel, path.posix.normalize(rc.envFile))
-    return shell(rc.command, envFile, { env: rc.env, readyWhen: rc.readyWhen })
+    return shell(rc.command, envFile, { env: rc.env, readyWhen: rc.readyWhen }, rc.readyAll)
   }
   if (executor === 'nx:run-script') {
     const script = typeof options.script === 'string' ? options.script : targetName

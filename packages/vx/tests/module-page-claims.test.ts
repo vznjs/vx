@@ -446,3 +446,21 @@ describe('util-settle.md names every grace killGraceMs serves', () => {
     expect(rule[0]).toContain('overrides all three')
   })
 })
+
+// cli-watch.md listed "doesn't re-read the package globs" under what watch
+// does not do, after item 1018 made the cycle a glob edit starts re-read
+// the bases (J2-66). The rows that drive it name the item.
+describe("cli-watch.md's account of the package globs is the loop's", () => {
+  it('says a glob edit re-reads the bases, and lists no such gap', () => {
+    const rows = readFileSync(path.join(SRC, '..', 'tests', 'watch-loop-members.test.ts'), 'utf8')
+    expect(rows).toContain('// Item 1018: the glob list itself.')
+    expect(src('cli/watch.ts')).toContain('re-read with the set: a glob added to the list')
+    const text = page('modules/cli-watch.md')
+    expect(text).toContain('a glob added there is watched from the cycle it triggers, item 1018')
+    const at = text.indexOf('## What this does NOT do')
+    expect(at).toBeGreaterThan(-1)
+    const notDo = text.slice(at, text.indexOf('## ', at + 3))
+    expect(notDo).toContain('declared input globs')
+    expect(notDo).not.toContain('package globs')
+  })
+})

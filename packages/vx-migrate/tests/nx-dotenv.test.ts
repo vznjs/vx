@@ -171,7 +171,8 @@ describe('nx-env', () => {
 
   // Item 829's rows: each fails with one line of nx-env.cjs or
   // nx-dotenv.cjs undone.
-  const USAGE = 'usage: nx-env [--dotenv <file>]... [--envFile <file>] -- <command> [args…]'
+  const USAGE =
+    'usage: nx-env [--dotenv <file>]... [--envFile <file>] [--ready-when <string>]... -- <command> [args…]'
 
   it('each usage error says which; --help and -h print the usage and exit 0', async () => {
     expect(await nxEnv(['--dotenv'])).toEqual({

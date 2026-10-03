@@ -119,7 +119,10 @@ secret values: a name-based match would refuse public `*_KEY` values too.
 
 Release binaries carry a build-provenance attestation
 (`gh attestation verify vx-<target> --repo vznjs/vx`); `vx upgrade`
-checks each download's SHA-256 before it replaces anything; npm packages
+checks each download's SHA-256 before it replaces anything, which proves
+the bytes arrived intact, not who built them: the digest comes from the
+release that serves the asset, and no signature is checked (owner,
+2026-10-03: no release signing key for now); npm packages
 publish with provenance; every third-party action in CI runs from a
 full commit SHA; and a workflow hands an event's or a dispatcher's value
 to a script through `env`, never pasted in (a release tag is checked as a

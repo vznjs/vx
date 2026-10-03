@@ -1544,3 +1544,18 @@ any operation is sent again, then refused after four attempts. Open, a
 decision: the execute stall timer starts at the EXECUTING stage, so a
 server that queues an action and never starts it holds the task until
 Ctrl-C; bounding queue time is a behaviour change.
+
+B-100. The F stream's other plugins, and the queue bound. vx-otel
+(#2689): a collector that is down, answers 500 or never answers leaves
+the run green, its exit inside core's flush deadline, one warning per
+signal. vx-github (#2691): a 403 without `checks: write`, a rate-limit
+403 and no token each leave the run green with the job summary written
+and say why once. vx-mcp (#2696): every malformed request and unknown
+tool was already answered; a non-string method (-32600, id echoed) and a
+5 MB line gained rows. B-99's open decision, taken: vx-reapi's
+`queueTimeoutMs` bounds the wait until EXECUTING (#2716); past it the
+Execute stream is cancelled and the executor rejects with core's new
+`executorFallback(reason)`, which runs the task on the local floor with
+one line, or fails a `remote: 'only'` task naming the reason. Unset, the
+task's `exec.timeout` bounds the queue as a timeout. The client has no
+`CancelOperation`, so a server may still run an orphaned action.

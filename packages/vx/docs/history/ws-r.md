@@ -260,6 +260,15 @@ prune` all match. Fixed: the Run blocks used bare `vx`, which a local
   vx does (`vx init`'s `lerna.json` note, the foreign-field refusal
   hints, the script mapper's runner list); design/history records.
 
+- **R-41** Site laws: `vx-docs/tests/site-edit-orphans.test.ts` holds every
+  built page (redirect stubs, landing, 404 and the blog's generated
+  listings aside) to an edit link naming a real file (this project's, or
+  an imported page's `editUrl`) and to at least one inbound link from
+  another page; both held on the first run (a renamed edit target and a
+  page nothing links to each fail it). The playground already plans as
+  the CLI does for its page workspace, three labs per state and the
+  scenarios (`playground-parity.unsafe.test.ts`), so nothing was added.
+
 ## Leads
 
 - Real-repo rows (`packages/vx-bench/real-repos.json`, benchmarks.md's

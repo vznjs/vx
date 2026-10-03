@@ -466,7 +466,10 @@ environment can hold: non-empty, with no `=` and no NUL, and a `define`
 value holds no NUL. Such a name is refused at load; it used to reach the
 child split at its `=` or not at all.
 
-Anything outside these three layers is invisible to the child (a
+Anything outside these three layers, and the two variables vx sets for
+the run (`VX_RUN_WORKSPACE`, `VX_RUN_TASK`), is invisible to the child:
+a host credential (`SSH_AUTH_SOCK`, `GITHUB_TOKEN`) reaches a task only
+when `passThrough` names it, held end to end by `env.test.ts` (a
 sandboxed task with a restricted network also gets the sandbox's own
 proxy, CA and `TMPDIR` values over these names:
 `modules/sandbox-runtime.md` § The environment SRT sets). This

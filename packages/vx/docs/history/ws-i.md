@@ -492,6 +492,17 @@ join stay for the scheduler and `vx mcp`. 1,000 projects, warm, 25
 rounds: `plan` median 100.8 → 64.3 ms, the dry run 188.7 → 151.6 (A/A
 102.1 / 191.8).
 
+I-62. `--affected` asks `git merge-base` before verifying its ref
+(#2686): a merge base proves the ref resolves, so the synchronous
+`rev-parse --verify` runs only when there is none. 100 projects,
+`--affected=HEAD~1 --dry`, 40 rounds: startup median 36.9 → 35.8 ms,
+min 34.0 → 30.6 (A/A 37.4 / 33.6).
+
+I-63. `vx info` runs its sandbox probe under the loads (#2693), started
+once the root and the workspace config are found so both refusals stay
+as fast; the two git facts are asked while it runs. 100 projects, 40
+rounds: median 113.8 → 107.3 ms, min 96.1 → 87.6 (A/A 116.0 / 95.2).
+
 ## Leads for other streams
 
 - **A: a cold save commits one SQLite transaction per entry.** The
@@ -801,3 +812,11 @@ status` re-hashes every tracked file, and vx runs it with
   10 s, 4 in 20 s), 12 descriptors and 88 MB at 1,000; one watcher for the
   tree, and the idle syscalls are the runtime's thread futexes and one
   `pread64` a second. Nothing to cut.
+- 100 projects, compiled: cold `run build --all` is the tasks (`run
+graph` ~260 ms), then `load configs` 33, close 12–15 (the checkpoint
+  lead); a restore-all run is the 100 restores (~56 ms, 0.56 a task on
+  the wall); a no-op ~65 ms with no stage above 16. The restore reads
+  its `output_files` rows twice (restore, then stamps), ~20 µs each.
+- `vx show <task>` ~30 ms at 100 projects: it already loads only the
+  named project; startup, the stream touch, the workspace config and
+  discovery are the rest.
