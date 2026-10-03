@@ -597,6 +597,31 @@ record: 0.14 and 0.06 s. A backoff of 1,999 ms and a 503 not resent each
 fail both rows. The suite's other slow rows (1.45 s) wait their own 700
 ms deadline, which is their claim.
 
+M-50. Probes, nothing shipped. A junit sweep of every suite (core's
+12 shards, each plugin) for M-49's class, a row near bun's 5 s default:
+none past M-49's own. The slowest core rows (10.1 s down to 2.0 s) set
+their own limits (8 to 120 s); the default-limit rows top out at 1.40 s
+(`run-lock.test.ts` › a wait longer than a second; `runner.test.ts`'s
+readiness windows at 1.25 to 1.31 s), whose time is a fixed sleep, the
+claim itself, that load does not stretch as it stretched M-49's two
+runs. vx-reapi's 2.1 s rows run under `--timeout 90000`. `vx init`
+held on odd script names: `a#b`, `^up` and `""` are refused with the
+reason; spaces, `/`, `...`, `run` and non-ASCII names map and run by
+name; `-flag` maps but reads as a flag, so only `a#-flag` reaches it.
+Non-string `scripts` values and a `scripts` that is not an object are
+skipped without a crash, as npm skips them.
+
+M-51. `pnpm-workspace.yaml`'s `packages` decides the members, as pnpm
+reads it, and a root `package.json` whose `workspaces` listed other globs
+was dropped without a word: in a bun or npm repo with a stale yaml,
+`vx init` mapped `packages/*` and lost `apps/*`. Init now names the
+unread list in a note (array or `{ packages }` form) and what to do; the
+same list, or none, says nothing. Probes that held: `pnpm-workspace.yaml`
+in flow style with comments and mixed quotes, a block list with inline
+comments, a `catalog`, and `!**/test/**` under `packages/**`.
+`init.test.ts` › names a package.json workspaces list pnpm-workspace.yaml
+overrides; red without the fix.
+
 ## Leads for other streams
 
 - A: A-20 let a same-project dependant restore ahead of a producer whose

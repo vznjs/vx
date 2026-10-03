@@ -10,3 +10,5 @@
 // metrics + per-task logs over HTTP/JSON — no OpenTelemetry SDK dependency.
 
 export { otel, type OtelPluginOptions } from './plugin.js'
+// The transport the `post` option takes, and the TLS material it is handed.
+export { type OtlpTls, type PostFn } from './sink.js'

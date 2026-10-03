@@ -147,6 +147,20 @@ prune` all match. Fixed: the Run blocks used bare `vx`, which a local
   say it maps that until the migrator writes native config, and the
   guide's try-it block names its first runs the bridge.
 
+- **R-27** The landing's "Start in a minute" promised "up-to-date in
+  milliseconds" on the second build right after `vx init`, which writes
+  no cache block (both scratch walkthroughs re-ran every task). Its
+  comments now name the step between; the landing test pins it.
+
+- **R-28** Plugin pages against source: every `@vzn/vx-*` import in a
+  README or guide names a live export; every option-table row exists in
+  source, and every option a plugin accepts is documented except test
+  seams (otel `post`, github `fetchFn` / `sizeOf`). #2535 had already
+  documented `reapi()`'s metadata options and made it refuse the PEM-text
+  ones and `onWarn`; its new `WireOnly` type sat in the plugin-API record
+  unnamed, which reddened `plugin-exports-documented` on main. The
+  README now names it.
+
 ## Leads
 
 - Real-repo rows (`packages/vx-bench/real-repos.json`, benchmarks.md's

@@ -35,6 +35,7 @@ import { type CliLoadOptions, discoverCliProjects, loadCliWorkspace } from './wo
 import {
   isIgnoredWatchPath,
   isWorkspaceConfigFile,
+  gitFiles,
   isWorkspaceFingerprintFile,
   makeRootEventFilter,
   makeWatchIgnore,
@@ -419,12 +420,15 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
 
   /** The instant the watchers go live, on the mtime clock (see `fsClockNow`): a path last modified before it is the initial run's, not an edit. */
   const armedAt = fsClockNow(cacheDir)
+  /** What existed at the arm, so a file born and gone since is no deletion (watch-judge.ts). */
+  const existedAtArm = gitFiles(workspaceRoot)
   /** Which settled paths are changes (watch-judge.ts); `pending` holds what fired since. */
   const changes = new ChangeJudge({
     workspaceRoot,
     armedAt,
     held: () => held !== undefined,
     uncached: () => uncached,
+    ...(existedAtArm !== undefined ? { existedAtArm } : {}),
   })
   /** Per-project arms by directory, so `rearm` can add and drop them. */
   const perProject = new Map<string, WatchHandle>()

@@ -324,6 +324,9 @@ describe('the landing page', () => {
       'npx vx run build --all',
       'npx vx run build --all',
     ])
+    // `vx init` writes no cache block (its report says so), so the block
+    // that promises a hit on the second build names the step between.
+    expect(/npx vx init +# ([^\n]*)/.exec(start)![1]).toContain('add the cache block')
     const subs = [...start.matchAll(/<p class="sub">([\s\S]*?)<\/p>/g)].map((m) => text(m[1]!))
     expect(subs).toEqual([
       // `vx init` is the temporary start; the migrator writes the native

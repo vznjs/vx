@@ -141,7 +141,12 @@ readers that reach it here.
   back, and the load refused naming the file, a failed load's change
   included (D-126): the workspace config's bytes are in no key, so a
   removed `Object.prototype.exec` replayed the old command. Globals are
-  left out: it loads first in every run, filtered or not.
+  left out: it loads first in every run, filtered or not. Of `Bun` it reads
+  the descriptors of the members vx reads (`BUN_MEMBERS_VX_READS`, held to
+  every `Bun.<name>` in `src/`) and keeps the rest's keys and order: some
+  members are built on their first read (`Bun.postgres` loads `bun:sql`),
+  and the full read was 4.4–5 ms of every warm run. A replaced member vx
+  does not read is not caught here.
 - Nor change the umask: a config's `process.umask(0o777)` left every file
   vx and its tasks wrote after it `000`, a cache artifact a user other than
   root could not read back. A worker shares the process's umask (a
@@ -168,7 +173,10 @@ readers that reach it here.
   30 s): a top-level await that never settles fails the load, naming
   the config and the budget, where it hung `vx run` silently (D-66).
   The evaluation itself cannot be cancelled; a timer it left running
-  still holds the process open after the run reports.
+  still holds the process open after the run reports. A synchronous
+  loop (`while (true) {}`) holds the thread the deadline fires on, so it
+  hangs until killed; a repeat load, in its Worker, still fails at the
+  budget. Bounding it would take the worker per config D-68 measured out.
 - A Promise default export is awaited on both paths, so an async
   config resolves to its object on the first load and in the Worker
   alike (D-5). The awaited value is checked again, a workspace
