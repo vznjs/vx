@@ -858,3 +858,18 @@ of all three overruns, not a measured cause. The row now holds the only
 reader of the shell's FIFO and releases the grandchild itself, 50 ms
 after the EOF, through a second FIFO the grandchild waits on: nothing
 after the exit forks. 10 of 10 green; a 0 ms drain fails it 5 of 5.
+
+M-69. Security audit, two more classes; no finding. (3) `vx mcp`: the
+server answers `initialize`, `ping`, `tools/list` and `tools/call` only
+(no resources), and no tool takes a path: its arguments are `project`,
+`task`, `taskId`, `runId`, `limit` and `scope`, bound into SQL as
+parameters, never joined into a file path; an unknown argument is
+refused (`unknown-arguments.test.ts`) and `tests/contract/tools.json`
+pins every schema, so a path argument cannot arrive without a contract
+change. (4) Plugin specifiers: vx resolves none. `plugins` holds the
+values the workspace config imported itself, and a string there is
+refused at load, never imported: probed with
+`plugins: ['../../outside-plugin.js']`, the run stops on "`plugins[0]`
+must be an object … not a module name" and the file is not loaded
+(`config-schema-refusals.test.ts` pins the line). What a config imports
+is its author's code, resolved by Bun from the config's directory.
