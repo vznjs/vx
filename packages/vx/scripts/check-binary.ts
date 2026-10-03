@@ -44,6 +44,7 @@ run(
     'build',
     '--compile',
     '--no-compile-autoload-dotenv',
+    '--compile-autoload-package-json',
     '--minify',
     '--bytecode',
     `--target=bun-${host}`,
@@ -154,3 +155,54 @@ if (probe.exitCode !== 0 || probed !== 'unset') {
   process.exit(1)
 }
 console.log(`${path.relative(root, out)} leaves a workspace .env out of its environment`)
+
+// A compiled Bun resolves an on-disk package by its root `index.*` alone
+// unless built with --compile-autoload-package-json: `main` and `exports`
+// went unread, and a workspace config importing `@vzn/vx-reapi` failed on
+// `cannot find '@grpc/grpc-js'` (`main: build/src/index.js`, #1891). A
+// config that imports a scoped package whose `main` is nested, and one
+// whose `exports` is: the task must print both values.
+const resolve = mkdtempSync(path.join(os.tmpdir(), 'vx-check-resolve-'))
+const pkgDir = (name: string): string => path.join(resolve, 'node_modules', '@fixture', name)
+mkdirSync(path.join(pkgDir('main'), 'lib'), { recursive: true })
+mkdirSync(path.join(pkgDir('exports'), 'lib'), { recursive: true })
+mkdirSync(path.join(resolve, 'packages', 'a'), { recursive: true })
+writeFileSync(
+  path.join(pkgDir('main'), 'package.json'),
+  JSON.stringify({ name: '@fixture/main', main: 'lib/x.js' }),
+)
+writeFileSync(path.join(pkgDir('main'), 'lib', 'x.js'), "module.exports = { m: 'via-main' }\n")
+writeFileSync(
+  path.join(pkgDir('exports'), 'package.json'),
+  JSON.stringify({ name: '@fixture/exports', type: 'module', exports: { '.': './lib/e.js' } }),
+)
+writeFileSync(path.join(pkgDir('exports'), 'lib', 'e.js'), "export const e = 'via-exports'\n")
+writeFileSync(
+  path.join(resolve, 'package.json'),
+  JSON.stringify({ name: 'ws', private: true, workspaces: ['packages/*'] }),
+)
+writeFileSync(path.join(resolve, 'packages', 'a', 'package.json'), JSON.stringify({ name: 'a' }))
+writeFileSync(
+  path.join(resolve, 'packages', 'a', 'vx.config.mjs'),
+  `import { m } from '@fixture/main'
+import { e } from '@fixture/exports'
+export default { tasks: { probe: { exec: { command: \`echo "resolved=\${m},\${e}"\` } } } }
+`,
+)
+Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: resolve })
+const resolved = Bun.spawnSync({
+  cmd: [out, 'run', 'a#probe'],
+  cwd: resolve,
+  stdout: 'pipe',
+  stderr: 'pipe',
+})
+rmSync(resolve, { recursive: true, force: true })
+const resolvedOut = text(resolved.stdout) + text(resolved.stderr)
+const got2 = /^resolved=(\S+)$/m.exec(resolvedOut)?.[1]
+if (resolved.exitCode !== 0 || got2 !== 'via-main,via-exports') {
+  process.stderr.write(
+    `binary ignored a package's main or exports: got ${got2} (exit ${resolved.exitCode}), expected via-main,via-exports\n${resolvedOut}`,
+  )
+  process.exit(1)
+}
+console.log(`${path.relative(root, out)} resolves a package's main and exports`)

@@ -39,8 +39,9 @@ plugin, the `TaskExecutor` contract for an executor.
 - `src/plugins/` stays absent: `tests/module-boundaries.test.ts` and
   `tests/package-boundaries.unsafe.test.ts` fail the day a directory
   appears there, so a new plugin starts life as a package.
-- Every package carries a root `index.ts` shim for Bun's compiled binary,
-  which resolves packages by directory convention and ignores `exports`
+- Every package carries a root `index.ts` shim for compiled binaries built
+  without `--compile-autoload-package-json` (vx 0.0.484 and older), which
+  resolve packages by directory convention and ignore `exports`
   (`tests/package-entry-shims.unsafe.test.ts`).
 
 ## The packages

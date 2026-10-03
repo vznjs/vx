@@ -329,7 +329,7 @@ jobs:
       - name: compiled binary launches after ad-hoc re-sign
         run: |
           cd packages/vx
-          bun build --compile --no-compile-autoload-dotenv --target=bun-darwin-arm64 src/bin.ts --outfile /tmp/vx-ci
+          bun build --compile --no-compile-autoload-dotenv --compile-autoload-package-json --target=bun-darwin-arm64 src/bin.ts --outfile /tmp/vx-ci
           codesign --verify /tmp/vx-ci && echo "bun's own signature: valid" || echo "bun's own signature: INVALID (expected on Bun 1.4.0)"
           codesign -s - --force /tmp/vx-ci
           # The binary inlines packages/vx/package.json's version; the release
