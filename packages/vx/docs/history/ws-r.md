@@ -210,6 +210,16 @@ prune` all match. Fixed: the Run blocks used bare `vx`, which a local
   figures the row shows (all agreed; a planted `10%` fails it). README:
   re-read against sources, nothing to change.
 
+- **R-35** Wording sweep (README, docs/, site, package and example
+  READMEs): no page said vx works in, runs or speeds up a Turbo or Nx
+  repo, and no mapped run carried a speed claim.
+  `turbo-nx-wording.unsafe.test.ts` now holds that (a planted line fails
+  it). Windows now reads "native Windows" plus WSL in `runner.md`,
+  `util-paths.md` and the sandbox cell of the choosing table. The Nx
+  executor table (the migrate guide, vx-migrate README, from-nx and
+  one-command-per-task posts, schema.md) still describes the shipped
+  translation; it changes with P2's code change to nx-exec.
+
 ## Leads
 
 - Real-repo rows (`packages/vx-bench/real-repos.json`, benchmarks.md's

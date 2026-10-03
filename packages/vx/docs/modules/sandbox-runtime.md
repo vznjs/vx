@@ -3,9 +3,11 @@
 ## Purpose
 
 Thin wrapper around `@anthropic-ai/sandbox-runtime` (SRT) for running a
-single task inside a filesystem + network sandbox with strict isolation.
-Used by `executeCachedTask` when the task's config declares
-`exec.sandbox`.
+single task inside a filesystem + network sandbox with strict isolation,
+for a task whose config declares `exec.sandbox`. The local executor
+(`local-executor.ts`) calls `runSandboxed` for the attempt
+`executeCachedTask` builds; a persistent task's path in
+`execute-task.ts` wraps its command with `wrapSandboxedCommand` itself.
 
 Policy: **fail on violation, no cache for failed tasks.** The sandbox
 enforces the declared grants at the kernel level; a task that reads
@@ -186,7 +188,7 @@ export function resolveSandboxConfig(
   walls?: readonly string[], // canonical dirs a glob's hits stop at (sandbox-request.ts `wallOff`)
 ): ResolvedSandboxConfig
 // scratchWrites judged, the mountless reported once each; the scratch returned
-export function pendingWriteGrants(config, fs, anchors): string[]
+export function pendingWriteGrants(config, fs, anchors, within): string[]
 
 export interface SandboxedRunArgs {
   command: string
@@ -706,8 +708,12 @@ the failure names neither vx nor the grant, so `expandGrants` hands the
 grant over as `pendingWrites`, and `pendingWriteGrants` reports it —
 once per grant, before the task runs — and names the directory to grant
 instead (`grantPrefix`, the directory the pattern was in, not the scan's
-anchor one component above it). Read grants are not reported: a read
-matching nothing is ordinary.
+anchor one component above it). Both are spelled as a committed config
+spells them: from the task's directory (`'*.log'`, then
+`allow: { write: ['.'] }`), from `~`, or whole outside both; the
+absolute path held only on the machine that printed it (B-97,
+`sandbox-empty-grant-spelling.unsafe.test.ts`). Read grants are not
+reported: a read matching nothing is ordinary.
 
 Where no bind holds the glob's directory, it is the deny anchor's
 scratch, the mask `readOnlyMasks` leaves writable: the task creates,

@@ -183,6 +183,13 @@ sync`", advice for a repo leaving Nx: they say to keep what the
   one `test-ci--<spec>` target per file). It migrates and plans; each
   spec task shares `test`'s coverage dir, so it runs uncached with the
   TODO that says so.
+- **P2-38** Next's inferred build outputs `.next/!(cache)/**/*` and
+  `.next/!(cache)`; vx's glob has no extglob and read `!(cache)` as a
+  literal dir, so a migrated Next build saved nothing and a cache hit
+  restored no `.next`. Outputs now go through the glob grammar: a
+  whole-segment `!(a|b)` is `*` with `!` outputs taking `{a,b}` back,
+  other minimatch forms are `minimatchToVx`'s, and one with no vx
+  spelling is dropped with a TODO.
 
 ## Leads for other streams
 

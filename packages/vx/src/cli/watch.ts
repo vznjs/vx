@@ -432,6 +432,23 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
   })
   /** Per-project arms by directory, so `rearm` can add and drop them. */
   const perProject = new Map<string, WatchHandle>()
+  // An OS watch holds the directory's inode, not its path: one removed and
+  // made again (`rm -rf packages && git checkout packages`) keeps reporting
+  // for the deleted one. Each arm notes the directory it holds, and a
+  // re-arm replaces any whose path now names another. The birth time is
+  // part of the name: a freed inode number is handed straight to the next
+  // directory made (measured on this box's /tmp), so the number alone
+  // said "the same one" of a new directory.
+  const armedAs = new Map<string, string>()
+  const inodeOf = (dir: string): string | undefined => {
+    try {
+      const st = fs.statSync(dir)
+      return `${st.dev}:${st.ino}:${st.birthtimeMs}`
+    } catch {
+      return undefined
+    }
+  }
+  const stale = (dir: string): boolean => armedAs.get(dir) !== inodeOf(dir)
   /** The root arm: recursive when workspace-wide, else the root's own files only. */
   let rootArm: WatchHandle = CLOSED
   const armProject = (proj: ProjectMeta): void => {
@@ -442,6 +459,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
         trigger(`${proj.name} ${filename}`, path.join(proj.dir, filename))
       })
       perProject.set(proj.dir, handle)
+      armedAs.set(proj.dir, inodeOf(proj.dir) ?? '')
     } catch (err) {
       sayCannot(`cannot watch ${proj.dir}`, err)
     }
@@ -629,7 +647,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
     } else if (!workspaceWide) {
       const keep = new Set(projectDirs)
       for (const [dir, handle] of perProject) {
-        if (keep.has(dir)) continue
+        if (keep.has(dir) && !stale(dir)) continue
         handle.close()
         perProject.delete(dir)
       }
@@ -655,15 +673,60 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
   // re-read with the set: a glob added to the list watched nothing new
   // until a restart (item 1018).
   const baseArms = new Map<string, WatchHandle>()
+  // A base removed and made again is no event to its own watch (it holds
+  // the deleted directory) nor to the root arm, which drops every name but
+  // its own files: `watching 0 project(s)` and silence until a restart. So
+  // each base is watched from its nearest directory that exists, for the
+  // next name on the way down: its parent while it is there, an ancestor
+  // when the parent went too (`apps/` removed under `apps/web/*`).
+  const baseParents = new Map<string, WatchHandle>()
+  let baseNames = new Map<string, Set<string>>()
+  const armBaseParents = (): void => {
+    baseNames = new Map()
+    for (const base of memberBases) {
+      let dir = path.dirname(base)
+      let name = path.basename(base)
+      while (inodeOf(dir) === undefined && dir !== workspaceRoot && dir !== path.dirname(dir)) {
+        name = path.basename(dir)
+        dir = path.dirname(dir)
+      }
+      baseNames.set(dir, (baseNames.get(dir) ?? new Set()).add(name))
+    }
+    for (const [dir, handle] of baseParents) {
+      if (baseNames.has(dir) && !stale(dir)) continue
+      handle.close()
+      baseParents.delete(dir)
+    }
+    for (const dir of baseNames.keys()) {
+      if (baseParents.has(dir)) continue
+      try {
+        baseParents.set(
+          dir,
+          arm(dir, false, (filename) => {
+            if (!baseNames.get(dir)?.has(filename)) return
+            reread = true
+            const abs = path.join(dir, filename)
+            trigger(path.relative(workspaceRoot, abs), abs)
+          }),
+        )
+        armedAs.set(dir, inodeOf(dir) ?? '')
+      } catch (err) {
+        sayCannot(`cannot watch ${dir}`, err)
+      }
+    }
+  }
   const armBases = (): void => {
+    armBaseParents()
     const want = new Set(memberBases)
     for (const [base, handle] of baseArms) {
-      if (want.has(base)) continue
+      if (want.has(base) && !stale(base)) continue
       handle.close()
       baseArms.delete(base)
     }
     for (const base of want) {
       if (baseArms.has(base)) continue
+      // Gone for now: its parent's arm hears it come back.
+      if (inodeOf(base) === undefined) continue
       let members = memberEntries(base)
       try {
         baseArms.set(
@@ -683,6 +746,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
             trigger(`${path.relative(workspaceRoot, base)}/${filename}`, path.join(base, filename))
           }),
         )
+        armedAs.set(base, inodeOf(base) ?? '')
       } catch (err) {
         sayCannot(`cannot watch ${base}`, err)
       }

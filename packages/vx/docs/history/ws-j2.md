@@ -428,3 +428,21 @@ persistent task` and vx exits 1). Row (`site-samples` › a post's link
   red without the fix. Invariants audited clean: config-cache,
   deferred-outputs, plugin-commands, plugin-host, local-shortcircuit,
   config, history, lockfile, kill-tree. That ends the Invariants audit.
+
+- **J2-51** `sandbox-runtime.md`'s Purpose said `executeCachedTask`
+  uses it; since the executor seam the local executor calls
+  `runSandboxed`, and only a persistent task's path in `execute-task.ts`
+  wraps a command itself. Row (`module-page-claims` › sandbox-runtime.md's
+  Purpose names who calls it), red without the fix.
+- **J2-52** Three Purpose sections behind their source: `timing.md`
+  counted `prepareRun`'s marks as seven (it records eight), `doctor.md`
+  gave `sandbox` without `untraced` (J2-41's drift on another page), and
+  `plugin-host.md` named three of the eight stages the host runs. Rows
+  (`module-page-claims` › timing, doctor and plugin-host Purpose sections
+  match the source), each generated from the source and red without the
+  fix.
+- **J2-53** `util-settle.md` and `settle.ts`'s comment said two graces
+  share `killGraceMs` and `VX_KILL_GRACE_MS` overrides both; the signal
+  teardown is a third. Row (`module-page-claims` › util-settle.md names
+  every grace killGraceMs serves), red without the fix. That ends the
+  Purpose audit: every module page's Purpose read against its source.
