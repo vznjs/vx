@@ -463,9 +463,10 @@ Also seen once, in this entry's own gate on main:
 read 18 open descriptors after run five and 17 at the end (listeners
 steady). Not reproduced: 30 runs of the file beside eight busy loops,
 3 of the 34 unsafe files up to it, 2 of the whole unsafe suite with
-each descriptor named. The suspect, unproven: a killed child's pidfd
-(each run's reset SIGTERMs SRT's socat bridge and does not await its
-exit) still open at the run-five snapshot.
+each descriptor named. Refuted: a killed child's pidfd still open at
+the snapshot (each run's reset SIGTERMs SRT's socat and does not await
+its exit). Six sandboxed runs read the same pidfd, socket and pipe count
+right after `run()` returned and 300 ms later.
 
 ## Leads for other streams
 
