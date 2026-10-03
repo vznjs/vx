@@ -315,7 +315,10 @@ export async function mapNxWorkspace(
     const t = nodeMap[project]?.data?.targets?.[target]
     if (t === undefined) return null
     const v = variants(target, t).find((x) => x.configuration === configuration)
-    return v === undefined ? null : v.name
+    if (v === undefined) return null
+    // The name another target holds is that target's (see the loop below).
+    const others = nodeMap[project]?.data?.targets ?? {}
+    return v.name !== target && Object.hasOwn(others, v.name) ? null : v.name
   }
 
   // Once per project, not per task and variant: `path.relative` was a
@@ -358,6 +361,11 @@ export async function mapNxWorkspace(
       )
     }
     const atomized = new Set(Object.values(targets).map((t) => t.metadata?.nonAtomizedTarget))
+    // A target's name wins over a configuration task's (`vite`'s `build`
+    // is `vite:build`, which target `vite:build` names), as Nx resolves
+    // `a:vite:build` to the target: two keys of one name in the written
+    // object kept the last, and the real build was silently `vite --x`.
+    const taken = new Set(Object.keys(targets))
     for (const [targetName, target] of Object.entries(targets)) {
       // Nx adds `nx-release-publish` to every package for `nx release
       // publish`, which skips a private package and a published version
@@ -367,7 +375,16 @@ export async function mapNxWorkspace(
         releasePublish++
         continue
       }
+      const clashes: string[] = []
+      let base: GeneratedTask | undefined
       for (const v of variants(targetName, target)) {
+        if (v.name !== targetName) {
+          if (taken.has(v.name)) {
+            clashes.push(v.configuration!)
+            continue
+          }
+          taken.add(v.name)
+        }
         const t = buildTask(
           meta,
           projectRel,
@@ -385,9 +402,14 @@ export async function mapNxWorkspace(
           listing === null ? null : dotenvFor(listing, targetName, v.configuration),
         )
         if (v.name !== targetName) configured.set(t, v.configuration!)
+        else base = t
         if (atomized.has(targetName)) split.add(t)
         tasks.push(t)
       }
+      for (const c of clashes)
+        base?.todos.push(
+          `configuration ${JSON.stringify(c)} would be task "${targetName}:${c}", which another target names — not written; give it a task of its own name`,
+        )
     }
     mapped.push({ meta, tasks })
   }
