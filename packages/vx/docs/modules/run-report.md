@@ -2,7 +2,7 @@
 
 ## Purpose
 
-`vx run --report=markdown` / `--report-file=<path>`: a moon-style
+`vx run --report=markdown` / `--report-file=<path>`: a
 per-task table + totals line rendered after the run, machine-clean for
 CI step summaries (`vx run ci --report-file="$GITHUB_STEP_SUMMARY"`).
 

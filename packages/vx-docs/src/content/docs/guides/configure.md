@@ -257,7 +257,7 @@ export default defineWorkspace({
 | Plugin   | A package's key folds                                                                 | Install-wide, for every package |
 | -------- | ------------------------------------------------------------------------------------- | ------------------------------- |
 | `pnpm()` | every package it reaches, by name, version and resolved peers, with integrity and any patch | every top-level field but `importers`, `packages`, `snapshots`, `patchedDependencies`, `catalogs` and `overrides` (`settings`, `onlyBuiltDependencies`, …) |
-| `bun()`  | the same, through Bun's hoisted layout                                                | every top-level field but `workspaces`, `packages`, `catalog`, `catalogs` and `overrides` (`patchedDependencies`, `trustedDependencies`, …) |
+| `bun()`  | the same, through Bun's hoisted layout                                                | every top-level field but `workspaces`, `packages`, `catalog`, `catalogs`, `overrides` and `patchedDependencies` (`trustedDependencies`, …) |
 | `npm()`  | the same, from `package-lock.json` versions 2 and 3                                   | the root package's `overrides` |
 | `yarn()` | the same, from a berry lockfile, each entry with every field but its dependency lists; a yarn 1 lockfile records no workspaces, so every package folds the whole file | `__metadata`, and the root workspace's entry (its `dependenciesMeta`) through the root's closure |
 
