@@ -7,7 +7,7 @@
 // node_modules, no symlinks: there the scoped walk is stricter, which
 // sandbox-deny-scan.test.ts holds).
 
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, afterEach, beforeAll, describe, expect, it, spyOn } from 'bun:test'
@@ -118,11 +118,19 @@ describe.skipIf(!available || process.platform !== 'linux')('the scoped deny sca
     })
   }
 
-  it("SRT's own scan is a no-op in rg's place, so a wrap spawns no rg", async () => {
-    expect(await vxScan()).toEqual({
-      mandatoryDenySearchDepth: 1,
-      ripgrep: { command: Bun.which('true') },
-    })
+  it("SRT's own scan is a file that cannot be exec'd, so a wrap spawns nothing", async () => {
+    const scan = await vxScan()
+    expect(scan.mandatoryDenySearchDepth).toBe(1)
+    const command = (scan.ripgrep as { command: string }).command
+    // SRT's dependency check is `Bun.which`; a scan that cannot start reads
+    // as empty (B-92).
+    expect(Bun.which(command)).toBe(command)
+    expect(statSync(command).size).toBe(0)
+    // Run outside the sandbox on every wrap: writable by this user alone.
+    expect(statSync(command).mode & 0o077).toBe(0)
+    expect(statSync(path.dirname(command)).mode & 0o077).toBe(0)
+    expect(statSync(path.dirname(command)).uid).toBe(process.getuid!())
+    expect(() => Bun.spawnSync([command])).toThrow('ENOEXEC')
   })
 
   it('a task wrap hands SRT the scoped denies of its write grants', async () => {

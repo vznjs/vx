@@ -61,8 +61,16 @@ cannot skip it. At depth 1 a hit lies in the root, which SRT keeps only
 inside a write grant, where the scoped walk already reaches, so vx hands
 SRT `true` as its ripgrep command (B-75): the spawn's 3.8 ms is 1.0, and
 100 sandboxed `true` tasks at concurrency 1 run in 3.50 s against 3.95
-(−4.4 ms a task, interleaved, three rounds). The parity rows arm SRT as
-vx does, with a root entry (`.ZshRC`) only a scan finds.
+(−4.4 ms a task, interleaved, three rounds). Since B-92 the command is
+an empty file that cannot be exec'd: `posix_spawn` refuses it (ENOEXEC)
+in 0.32 ms against `true`'s 1.06, SRT reads the refusal as an empty
+scan, and its dependency check (`Bun.which`) still finds the file. SRT
+runs it outside the sandbox, so it lives in a fresh 0700 `mkdtemp`
+directory under the OS temp dir, made once a process and removed at
+exit, never in the shared `/tmp/claude`; `true` stays the fallback.
+100 sandboxed `true` tasks at concurrency 1: 2,846 ms against 2,721
+(min of 8, interleaved; medians 2,948 and 2,812). The parity rows arm
+SRT as vx does, with a root entry (`.ZshRC`) only a scan finds.
 
 `allow.gitConfig` is read by SRT from the run's config only, so a run
 with a task that grants it sets `allowGitConfig` per wrap, one wrap at a
@@ -790,14 +798,14 @@ A sandboxed `true` costs ~28 ms in `runSandboxed` and ~35 ms per task in
 bare spawn's floor). Measured by stripping one layer at a time from the
 wrapped command, min of 20–25:
 
-| part                                                                   | cost           | whose                            |
-| ---------------------------------------------------------------------- | -------------- | -------------------------------- |
-| bwrap with SRT's binds                                                 | ~6 ms (4 bare) | SRT, bwrap                       |
-| SRT's chain inside: bash three times, two socat bridges, apply-seccomp | ~6.5 ms        | SRT                              |
-| strace's own start (a bare `strace true` is 5.7 ms)                    | ~5 ms          | the denial report                |
-| SRT's per-wrap `rg`                                                    | 2.8 ms         | gone (B-75: `true` in its place) |
-| vx's wrapper: the signal watcher, `setsid`, `sh`                       | ~1.3 ms        | vx                               |
-| vx's JS: request, wrap, parse, scheduling                              | ~3 ms          | vx                               |
+| part                                                                   | cost           | whose                                          |
+| ---------------------------------------------------------------------- | -------------- | ---------------------------------------------- |
+| bwrap with SRT's binds                                                 | ~6 ms (4 bare) | SRT, bwrap                                     |
+| SRT's chain inside: bash three times, two socat bridges, apply-seccomp | ~6.5 ms        | SRT                                            |
+| strace's own start (a bare `strace true` is 5.7 ms)                    | ~5 ms          | the denial report                              |
+| SRT's per-wrap `rg`                                                    | 2.8 ms         | gone (B-75, B-92: a refused exec in its place) |
+| vx's wrapper: the signal watcher, `setsid`, `sh`                       | ~1.3 ms        | vx                                             |
+| vx's JS: request, wrap, parse, scheduling                              | ~3 ms          | vx                                             |
 
 Inside `vx run` the request and the walls add binds, so `runSandboxed`
 reads 28–30 ms there. What is vx's is at its floor: removing the watcher
@@ -808,7 +816,7 @@ they are 0.4 ms and 0.23 ms a task: the profiler charges the main
 thread's wait on child processes to the last native call. Time a
 suspect in place before cutting it.
 
-The wrap itself (~3 ms with B-75's `true`, 1 ms of which is that spawn)
+The wrap itself (~3 ms with B-75's `true`, 1 ms of which was that spawn, 0.3 since B-92)
 is SRT's `generateFilesystemArgs` resolving each deny path (realpath,
 lstat, a symlink walk) and a `mkdtemp` per wrap; vx's own share of it
 is a sliver of a 400-wrap profile. What is left is SRT's to cut: one shell in place of three, and the
