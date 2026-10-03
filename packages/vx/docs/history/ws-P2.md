@@ -235,6 +235,12 @@ sync`", advice for a repo leaving Nx: they say to keep what the
   that config alone, the `@nx/js:tsc` target as its `nx-exec` line (the
   integrated one after listing its directories, as the note says).
   Breaking `nx-exec` fails both.
+- **P2-46** A run-commands target with several `readyWhen` strings was
+  ready on the first of them, with a TODO: Nx waits for every one, and
+  vx's `readyWhen` is one pattern matched per line. The line now runs
+  under `nx-env --ready-when` (one per string), which passes stdout and
+  stderr through and prints `nx-env: ready` once all have appeared; the
+  task's `readyWhen` matches that line, and the TODO is gone.
 
 ## Leads for other streams
 
