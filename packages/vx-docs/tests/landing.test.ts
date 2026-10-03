@@ -326,7 +326,9 @@ describe('the landing page', () => {
     ])
     const subs = [...start.matchAll(/<p class="sub">([\s\S]*?)<\/p>/g)].map((m) => text(m[1]!))
     expect(subs).toEqual([
-      'Coming from Turbo or Nx: bunx @vzn/vx-migrate or vx init gives a temporary start; move to native vx config.',
+      // `vx init` is the temporary start; the migrator writes the native
+      // config, and npm has no copy of it yet (J2-28).
+      'Coming from Turbo or Nx: vx init gives a temporary start, and bunx @vzn/vx-migrate writes the native vx config (its first publish is pending).',
     ])
     expect(text(start)).not.toMatch(/turbo\.json|nx\.json|unchanged|faster/i)
   })

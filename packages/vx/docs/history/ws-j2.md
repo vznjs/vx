@@ -298,3 +298,11 @@ persistent task` and vx exits 1). Row (`site-samples` › a post's link
   word of servers at all. It now says it under "What can't be
   sandboxed". Row (`site-samples` › the sandboxing guide says a server
   is never traced), gated on `execute-task.ts`; red without the fix.
+- **J2-28** The landing said "`bunx @vzn/vx-migrate` or `vx init`
+  gives a temporary start": the migrator writes the native config, the
+  destination, not a temporary start, and npm has no copy of it yet
+  (J2-25's class, on the one page that row cannot see: it scans
+  Markdown). It now says `vx init` is the temporary start and the
+  migrator writes native config, its first publish pending. Row
+  (`landing` › shows how to start, the sentence it pins); red without
+  the fix.
