@@ -33,9 +33,9 @@ type SidebarItem = NonNullable<StarlightUserConfig['sidebar']>[number]
 
 /** Each sidebar section's items, keyed by the label its top-level group carries. */
 const SIDEBAR_GROUPS: Record<'Docs' | 'Reference', SidebarItem[]> = {
-  // Six pages (design/site-short-2026-09.md § The shape), each the goal in
-  // one line and short sections, then the playground; the landing's
-  // diagram teaches the ideas.
+  // Seven pages (design/site-short-2026-09.md § The shape, plus
+  // Troubleshooting), each the goal in one line and short sections, then
+  // the playground; the landing's diagram teaches the ideas.
   Docs: [
     { label: 'Quickstart', link: '/quickstart/' },
     { label: 'Configure', link: '/guides/configure/' },
@@ -43,6 +43,7 @@ const SIDEBAR_GROUPS: Record<'Docs' | 'Reference', SidebarItem[]> = {
     { label: 'CI and remote', link: '/guides/ci/' },
     { label: 'Migrate', link: '/guides/migrate/' },
     { label: 'Plugins', link: '/guides/plugins/' },
+    { label: 'Troubleshooting', link: '/guides/troubleshooting/' },
     { label: 'Try it', link: '/playground/' },
   ],
   // Four short groups in plain words. The caching deep dive and "What a run
