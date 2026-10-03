@@ -520,6 +520,13 @@ TODO, and with `check`'s edge to `build`, `vx run check` built twice
 and ran `lint` outside the graph. Its parts that run an own task are
 now named in a TODO (`init-own-script-chain.test.ts`, red on main).
 
+M-42. M-41's review, its other finding: a workspace whose globs match
+no package (`"workspaces": ["packages/*"]` over an empty `packages/`)
+was told only "no package.json scripts to turn into tasks", which was
+true and named nothing to fix. A note now names the globs that match no
+`package.json`; a member under them, scripts or not, drops it. Row in
+`init.test.ts`, red on main.
+
 ## Leads for other streams
 
 - A: A-20 let a same-project dependant restore ahead of a producer whose
