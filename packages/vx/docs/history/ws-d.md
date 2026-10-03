@@ -26,6 +26,13 @@ run leaves out; the rest are refusals.
 
 ## Leads for other streams
 
+- E: `--filter packages/b` (a path without `./`) is refused "no projects
+  matched" with no hint; pnpm reads it as a name too, but
+  `didYouMeanProject` (`src/cli/select.ts`) could name `./packages/b`.
+- Exec: `armTimeout` › settle() lets a grandchild that traps the SIGTERM
+  finish inside the grace failed once on macOS CI (#2405, true vs false
+  at 133 ms) and passed on re-run: a timing-sensitive row.
+
 - E: `vx init` on an Nx repo suggests `vx run <first targetDefaults key> --all`
   when `nx.json`'s `targetDefaults` names no `build` (`firstTask`,
   `src/cli/init.ts`): electron/forge got `vx run coverage:base --all`
@@ -889,3 +896,6 @@ packages/core`) selects the dependent whose `file:../lib` spec named
 - **D-119.** Configs load 128 at a time, so a watched built-in one config changed could surface after another's load, and the refusal named the wrong file (probed 3 of 3). With loads overlapping, the round now evaluates each config alone in a throwaway worker and names the first that changes something, else "a project config"; the worker runs only on this error path. Rows: `tests/config-builtins-blame.test.ts`, a single-config control; red without the fix. (#2382)
 - **D-120.** A config's `process.chdir()` moved the whole vx process, and every relative path after it read from the config's choice. Each load round compares `process.cwd()`, puts it back and refuses the change as `process.cwd (a chdir)`, blamed as in D-119. Rows: `tests/config-chdir.test.ts`, an innocent control, each checking the cwd is restored; red without the fix. (#2389)
 - **D-121.** `config-eval.test` › a REJECTED evaluation does not poison a later one raced the clock on macOS (a 1000 ms budget to reject; a 1200 ms sleep to outlast it). The rejected load now has 3000 ms, and the healthy load blocks on a release file written by a timer due after the rejected load's own; timers fire in deadline order, so no row is a guess about speed. Red with the clear removed from the `finally`. (#2393)
+- **D-110.** A config in Vite's shape, `export default () => ({ tasks: {} })`, was refused as "did not export a default object" with no word on what it did export. The refusal adds `: it exports a function, and vx reads the object itself — export what the function returns`, for project and workspace configs, on the first load and a repeat one (the eval worker flags a function, which JSON cannot carry). The playground mirrors it. Rows: `tests/config-function-export.test.ts`, a number control; red without the fix, and red with only the worker half reverted. (#2315)
+- **D-122.** One config's `globalThis.x` reached every config loaded after it in the process: `vx run --all` ran `echo leaked`, a `--filter` of the reader alone `echo none`. `globalThis` joins the watched built-ins (put back, refused naming `globalThis.<key>`, blamed as in D-119), and descriptors compare by `Object.is` so `globalThis.NaN` reads unchanged. Cold 300-config load 60.5 → 63.9 ms, warm unchanged. Refuted as fixable: a config mutating an imported module leaks the same way (probed), and splitting the module registry needs a worker per config; the loader page names the limit and the hint says a shared _constant_. Rows: `tests/config-global-leak.test.ts`; red without the watch, and all three red without `Object.is`. The D-68 overlap row now signals through a shared module. (#2436)
+- **D-123.** `--affected` probed against Turbo and Nx across moves, deletes and nesting, no gap: a moved file selects both projects, a moved project its new dir, a deleted one nothing, a nested project its own files (its parent's once unlisted), a root-only change none, a renamed package its new name with dependents; `[HEAD~1]` and `...[HEAD~1]` agree. Lockfile bumps are held by vx-lockfile's own `affected` rows. Rows: `tests/affected-moves.test.ts`; the move row is red with `--find-renames` for `--no-renames`. Also probed, no gap: pnpm's `{dir}`, `...{dir}`, `{dir}...`, `^` and `!` selectors; a config's `process.exit()` (refused) and `process.exitCode` (no effect on the run). (#2430)
