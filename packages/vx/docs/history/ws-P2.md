@@ -97,6 +97,11 @@ sync`", advice for a repo leaving Nx: they say to keep what the
   `verdaccio --config … --listen localhost:4873` from the workspace root,
   a server, its storage cleared under `clear`; the npm and yarn registry
   Nx set while it ran is a TODO. Read from the executor in Nx 23.2.1.
+- **P2-19** `repeated-runs.unsafe.test.ts` compared the open descriptor
+  count exactly between run 5 and run 20, and failed CI on #2455 at
+  18 → 17: a descriptor still closing at run 5. The claim is no growth,
+  so descriptors may fall, never rise; listeners still hold exactly. A
+  per-run descriptor leak and an added listener both still fail it.
 - **P2-20** Nx 15–16's `@nrwl/workspace:run-commands` / `run-script`
   (and `@nx/workspace:`), which an older graph keeps as written, are the
   `nx:` executors they re-exported: the migration wrote each as a

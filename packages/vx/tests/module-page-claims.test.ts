@@ -1,7 +1,7 @@
 // Module pages a fix left behind: the commit updated cli.md or caching.md
 // and the page for the file it changed kept the old claim. Each row holds
 // one page to what its code now does.
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { formatRunSummary } from '../src/orchestrator/summary.js'
@@ -135,5 +135,67 @@ describe('module pages state what their file does since the fix', () => {
     expect(page('modules/logger.md')).toMatch(
       /streams below the summary a line at a time under its id/,
     )
+  })
+})
+
+// J2-39: eight signatures on the module pages lacked a parameter the
+// source takes (deniedCalls' cwd and reads, migrateScripts' outside, …).
+describe('a module page lists every parameter its function takes', () => {
+  const strip = (s: string): string => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '')
+  /** Top-level parameters of the list at `at` (generics skipped), or null. */
+  const arity = (text: string, at: number): number | null => {
+    let i = at
+    if (text[i] === '<') {
+      for (let d = 0; i < text.length; i++) {
+        if (text[i] === '<') d++
+        else if (text[i] === '>' && text[i - 1] !== '=' && --d === 0) {
+          i++
+          break
+        }
+      }
+    }
+    if (text[i] !== '(') return null
+    let depth = 0
+    let commas = 0
+    let any = false
+    for (i++; i < text.length; i++) {
+      const c = text[i]!
+      if ('([{<'.includes(c)) depth++
+      else if (')]}'.includes(c) || (c === '>' && text[i - 1] !== '=')) {
+        if (depth === 0 && c === ')') return any ? commas + 1 : 0
+        depth--
+      } else if (c === ',' && depth === 0) {
+        if (/^\s*\)/.test(text.slice(i + 1))) return commas + 1
+        commas++
+      } else if (!/\s/.test(c)) any = true
+    }
+    return null
+  }
+  const exported = (text: string): [string, number | null][] =>
+    [...strip(text).matchAll(/export (?:async )?function (\w+)/g)].map((m) => [
+      m[1]!,
+      arity(strip(text), m.index! + m[0].length),
+    ])
+
+  it('each documented export function has a source arity to match', () => {
+    const counts = new Map<string, Set<number | null>>()
+    for (const rel of readdirSync(SRC, { recursive: true }) as string[]) {
+      if (!rel.endsWith('.ts')) continue
+      for (const [name, n] of exported(readFileSync(path.join(SRC, rel), 'utf8'))) {
+        counts.set(name, (counts.get(name) ?? new Set()).add(n))
+      }
+    }
+    const off: string[] = []
+    let seen = 0
+    for (const f of readdirSync(path.join(DOCS, 'modules'))) {
+      for (const [name, n] of exported(readFileSync(path.join(DOCS, 'modules', f), 'utf8'))) {
+        const src = counts.get(name)
+        if (src === undefined) continue
+        seen++
+        if (!src.has(n)) off.push(`${f}: ${name} lists ${n}, source takes ${[...src].join('/')}`)
+      }
+    }
+    expect(seen).toBeGreaterThan(200)
+    expect(off).toEqual([])
   })
 })

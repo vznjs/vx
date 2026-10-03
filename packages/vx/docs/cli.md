@@ -1697,7 +1697,8 @@ when `packages/*/package.json` files sit below it unreached, both
 declares no workspaces … Add "workspaces": ["packages/*"] to
 package.json and re-run") rather than "no scripts" or "run vx init". A
 workspace whose globs match no `package.json` gets a note naming them
-(M-42). With
+(M-42); a nameless member, or two sharing a name, is matched and
+named on its own line instead (M-46). With
 no `package.json` here or above, `init` says to create one (`bun init` or
 `npm init -y`) first. Every
 generated config is typed for the editor through
@@ -1819,7 +1820,9 @@ workspaces foreach` under Yarn 2+), and says which;
 with nothing mapped it names the root whenever it has a script, a member
 or not (pnpm's root is not), and why: its scripts run the workspace, or
 share a member's task name (listed), or both; it tells a root with no `"name"` to add one
-first (vuejs/core), naming the scripts that would then map (react, D-87). A single-package repo's root is its project and maps.
+first (vuejs/core), naming the scripts that would then map (react, D-87), and a root whose
+`"name"` a member also carries to rename it, since a root config would make the
+workspace refuse every run for the duplicate (insomnia, D-129). A single-package repo's root is its project and maps.
 A lone root beside a `lerna.json` (Lerna-classic: packages listed there, not
 in `workspaces`) gets a note naming the `workspaces` globs to add, Lerna's
 `packages/*` default when it lists none (D-111).
