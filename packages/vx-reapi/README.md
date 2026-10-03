@@ -28,7 +28,8 @@ optional `grpc(s)://` or `http(s)://` scheme, is refused at startup with a
 line naming the setting. `VX_REAPI_ENDPOINT` / `VX_REAPI_INSTANCE` configure it
 from the environment, and `VX_REAPI_EXECUTE=1` turns on remote execution the
 way `execute: true` does (off by default: a plugin must not move where a
-build runs merely by being configured for caching).
+build runs merely by being configured for caching). `execute` is a
+boolean: a string (`process.env.X`) is refused.
 `instanceName` is the option form of `VX_REAPI_INSTANCE`, and `headers`
 adds gRPC metadata to every call: a hosted server's API key goes there
 (`headers: { 'x-buildbuddy-api-key': process.env.BB_KEY! }`).

@@ -60,6 +60,7 @@ naming the header.
 With only a traces URL set, metrics and logs are not
 exported (they used to be POSTed to the traces URL, which a collector
 refuses), and `metrics: true` or `logs: true` without a URL says so once.
+Both are booleans: a string (`'false'` is truthy) is refused.
 
 Options override env:
 

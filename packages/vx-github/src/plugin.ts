@@ -147,6 +147,13 @@ const GITHUB_PLUGIN_KEYS: Record<keyof GithubPluginOptions, true> = {
 
 export function github(options: GithubPluginOptions = {}): VxPlugin {
   refuseUnknownOptions('github()', options, Object.keys(GITHUB_PLUGIN_KEYS))
+  // A switch read from the environment arrives as a string: `'true'` (or `'false'`) failed
+  // the boolean tests and the check run was posted or skipped with no word.
+  if (options.checks !== undefined && typeof options.checks !== 'boolean') {
+    throw new Error(
+      `vx-github: checks must be true or false, got ${JSON.stringify(options.checks)}`,
+    )
+  }
   return definePlugin(import.meta, {
     telemetry(ctx) {
       const file = options.summaryFile ?? process.env['GITHUB_STEP_SUMMARY']
