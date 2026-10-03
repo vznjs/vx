@@ -197,6 +197,12 @@ prune` all match. Fixed: the Run blocks used bare `vx`, which a local
   `github.com/vznjs/vx/(tree|blob)/main` paths and `.md` anchors (a
   planted `clix.md` fails it).
 
+- **R-33** Migrate guides against `vx init` / `bunx @vzn/vx-migrate`
+  today: every Turbo and Nx sample already matched (try-it rows, green).
+  The "Try it in five minutes" comments (`3 miss`, `3 up-to-date`, the
+  migrate count) had no row; `examples.unsafe.test.ts` now compares them
+  to the run's cache legend (a planted `3 local` fails it).
+
 ## Leads
 
 - Real-repo rows (`packages/vx-bench/real-repos.json`, benchmarks.md's

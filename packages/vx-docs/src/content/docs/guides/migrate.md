@@ -118,7 +118,7 @@ and vx keys every task on the whole file until a plugin claims it.
 [`examples/turbo`](https://github.com/vznjs/vx/tree/main/examples/turbo)
 is a Turbo repo with that `vx.workspace.ts` added. The first runs go
 through `turbo()`, the bridge; the last runs on the written configs alone,
-the goal. Every line is what a test runs on each commit
+the goal. Each line and its comment is what a test runs and sees on each commit
 (`packages/vx/tests/examples.unsafe.test.ts`).
 
 ```sh
