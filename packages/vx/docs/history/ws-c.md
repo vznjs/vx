@@ -1360,3 +1360,20 @@ held by C-89's row. Test only. The sync run-lock release (~0.5 ms) was
 dropped: a sync call cannot be held pending, so the race row could not
 be rewritten as asked, and the refusal rows inject through
 `node:fs/promises`.
+
+## C-92: a held server that dies after the run is said
+
+`vx watch` sat on "watching" over a dev server that had exited 3: a run
+that hands its servers back (`holdPersistent`) said nothing of a death
+after it returned, while `vx run`'s keep-alive says
+`vx: <id> exited with code <n>`. `run()` now watches each held server
+and says a non-zero exit, but not one the holder's `stop()` caused, nor
+again one that died during the graph. Rows
+(`held-server-exit.test.ts`): the death row red without the change;
+the stop() control red when the stop is not told apart. `cli.md` and
+`execution.md` say so.
+
+Probes (2026-10-03), `vx watch` edge cases, all clean: a server that
+exits before it is ready fails the cycle, watch keeps watching and the
+next change starts it; Ctrl-C while a held server traps TERM and INT
+ends watch 0 after the kill grace with the server gone.
