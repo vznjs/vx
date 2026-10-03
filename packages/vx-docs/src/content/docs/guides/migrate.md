@@ -281,7 +281,9 @@ where Nx ran it, with the executor's option defaults applied:
 
 What an executor did besides its tool (a type-check before a Vite
 build, a `package.json` or `assets` copied into the output) is a TODO
-on the task. Any other executor is a placeholder that fails naming the
+on the task. What it ran first is an edge: an `@nx/js:node` or
+`@nx/vite:preview-server` task depends on its `buildTarget`, and a
+Cypress task on its `devServerTarget`. Any other executor is a placeholder that fails naming the
 executor and its options, and the report lists its tasks under one TODO
 per executor: write the command it runs. Where the executor's Nx plugin
 ships `convert-to-inferred` (Webpack and Rollup, whose options feed the

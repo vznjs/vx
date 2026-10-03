@@ -155,6 +155,9 @@ sync`", advice for a repo leaving Nx: they say to keep what the
   stripped, then `main.js`, else `dist/<projectRoot>/main.js`; a build
   target with no options still resolves by its executor, so the edge is
   written.
+- **P2-29** The migrate guide says what P2-24, P2-25 and P2-28 write:
+  a server task depends on the build its executor ran first, and a
+  Cypress task on its dev server.
 
 ## Leads for other streams
 
