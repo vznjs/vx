@@ -6,7 +6,7 @@ authors:
 tags:
   - correctness
   - sandbox
-excerpt: "A cache is only correct if the declared inputs are the complete set of files the task reads. Instead of inferring that set, vx lets a task run with the declared paths as the only ones it can touch, and fails the run on anything else."
+excerpt: "A cache is only correct if the declared inputs are the complete set of files the task reads. Instead of inferring that set, vx lets a task run with the declared paths as the only workspace files it can touch, and fails the run on an undeclared one of its own."
 ---
 
 The [previous post](../explicit-over-magical/) argued that inputs must

@@ -2214,3 +2214,146 @@ describe('no migration page times a mapped run', () => {
     expect(hits).toEqual([])
   })
 })
+
+describe("the Turbo pages say where a script-less package's task comes from", () => {
+  // The from-turborepo post said the migrator "emits a task only where the
+  // script exists"; a package a `^` edge reaches without it gets a key-only
+  // `true` (G-117, J-97). vx-migrate's migrate.test.ts drives the mapper.
+  it('the post and the support table name the key-only task', () => {
+    const post = readFileSync(path.join(DOCS, 'blog', 'from-turborepo.md'), 'utf8').replace(
+      /\s+/g,
+      ' ',
+    )
+    expect(post).toContain(
+      "and to a package without it that another package's `^` task reaches: a cached `true` with no outputs",
+    )
+    const support = readFileSync(
+      path.resolve(import.meta.dir, '..', 'docs', 'turbo-nx-support.md'),
+      'utf8',
+    )
+    const row = /^\| `tasks` \|.*$/m.exec(support)![0]
+    expect(row).toContain('a key-only one where a `^` edge reaches a package without it')
+  })
+})
+
+describe('the git-index claim names what a clean key still reads', () => {
+  // The README said "no file is read" and the no-daemon post "no file reads
+  // at all", but a warm key reads each project's package.json and the
+  // lockfile (strace of a warm `vx run`, J-99). What the index spares is the
+  // sources.
+  it('the key folds package.json bytes, and both pages say "source"', () => {
+    const hash = readFileSync(
+      path.resolve(import.meta.dir, '..', 'src', 'orchestrator', 'task-hash.ts'),
+      'utf8',
+    )
+    expect(hash).toContain("path: path.join(args.node.projectDir, 'package.json')")
+    const readme = readFileSync(
+      path.resolve(import.meta.dir, '..', '..', '..', 'README.md'),
+      'utf8',
+    )
+    expect(readme.replace(/\s+/g, ' ')).toContain(
+      "**No source-file reads to hash:** on a clean tree, keys come from git's index;",
+    )
+    const post = readFileSync(path.join(DOCS, 'blog', 'no-daemon.md'), 'utf8').replace(/\s+/g, ' ')
+    expect(post).toContain('is keyed with no read of a source file')
+    const flat = (p: string) => readFileSync(p, 'utf8').replace(/\s+/g, ' ')
+    expect(readme).toContain('| **No source reads** (git index OIDs)')
+    expect(flat(path.resolve(import.meta.dir, '..', 'docs', 'README.md'))).toContain(
+      'deriving every cache key costs **zero source-file reads**',
+    )
+    for (const page of [
+      ['blog', 'why-vx-is-fast.md'],
+      ['concepts', 'why-vx-is-fast.md'],
+    ]) {
+      expect(flat(path.join(DOCS, ...page))).toContain(
+        'Clean-tree key derivation costs zero source-file reads',
+      )
+    }
+  })
+})
+
+describe('the install pages name the libc the Linux binary needs', () => {
+  // The Linux binaries request /lib64/ld-linux-x86-64.so.2: in a root
+  // without glibc the npm package's `vx` fails to start (`No such file or
+  // directory`), and with the loader and its libs it prints its version
+  // (J-100). With no musl target, each page that names the platforms says
+  // glibc.
+  it('build-npm ships no musl target, and the README, quickstart and one-binary post say glibc', () => {
+    const build = readFileSync(
+      path.resolve(import.meta.dir, '..', 'scripts', 'build-npm.ts'),
+      'utf8',
+    )
+    const targets = [...build.matchAll(/\{ target: '([a-z0-9-]+)'/g)].map((m) => m[1]!)
+    expect(targets).toEqual(['linux-x64', 'linux-arm64', 'darwin-x64', 'darwin-arm64'])
+    const flat = (p: string) => readFileSync(p, 'utf8').replace(/\s+/g, ' ')
+    expect(flat(path.resolve(import.meta.dir, '..', '..', '..', 'README.md'))).toContain(
+      "prebuilt binary for Linux (glibc, not Alpine's musl) and macOS",
+    )
+    expect(flat(path.join(DOCS, 'quickstart.md'))).toContain(
+      "on Linux with glibc (not Alpine's musl) or macOS",
+    )
+    expect(flat(path.join(DOCS, 'blog', 'one-binary.md'))).toContain(
+      "Linux (glibc, not Alpine's musl) and macOS",
+    )
+    const choosing = path.resolve(DOCS, '..', '..', 'components', 'demos', 'model', 'choosing.ts')
+    expect(readFileSync(choosing, 'utf8')).toContain(
+      "for Linux (glibc, not Alpine's musl) and macOS",
+    )
+  })
+})
+
+describe('the sandbox pitch claims what the sandbox does', () => {
+  // The landing and README said a sandboxed task fails on any undeclared
+  // read; a tolerated sibling read and a read outside the workspace pass
+  // (sandbox-runtime › a tolerated sibling read passes …, J-102).
+  it('the landing, README and sandboxing guide say "out of reach", not "fails"', () => {
+    const repo = path.resolve(import.meta.dir, '..', '..', '..')
+    const flat = (p: string) => readFileSync(p, 'utf8').replace(/\s+/g, ' ')
+    expect(flat(path.join(repo, 'packages', 'vx-docs', 'src', 'pages', 'index.astro'))).toContain(
+      "body: 'A sandboxed task cannot read a workspace file it did not declare.'",
+    )
+    expect(flat(path.join(repo, 'README.md'))).toContain(
+      'a workspace file the task did not declare is out of its reach, so it cannot poison the cache.',
+    )
+    expect(flat(path.join(GUIDES, 'sandboxing.md'))).toContain(
+      'so an undeclared input cannot hide in the cache.',
+    )
+    expect(flat(path.join(DOCS, 'blog', 'the-sandbox.md'))).toContain(
+      'the only workspace files it can touch, and fails the run on an undeclared one of its own.',
+    )
+  })
+})
+
+describe('the README says what Ctrl-C reaches', () => {
+  // "Ctrl-C reaps every child": a task's `setsid sleep … &` outlived a
+  // SIGINT'd `vx run` (exit 130, the sleep still running), since vx signals
+  // the task's process group (J-106).
+  it('the README names the process group, and the quickstart the setsid limit', () => {
+    const repo = path.resolve(import.meta.dir, '..', '..', '..')
+    const flat = (p: string) => readFileSync(p, 'utf8').replace(/\s+/g, ' ')
+    expect(flat(path.join(repo, 'README.md'))).toContain(
+      "**Clean exits:** Ctrl-C reaps each task's process group.",
+    )
+    expect(flat(path.join(DOCS, 'quickstart.md'))).toContain(
+      "A process a task detaches into its own session (`setsid … &`) outlives Ctrl-C: vx signals the task's process group.",
+    )
+  })
+})
+
+// The environment-variables guide is the configure page's section now.
+describe('the lockfile pages say what Turborepo keys', () => {
+  // The post said "every monorepo tool folds the lockfile into every key" and
+  // parity.md "the global hash covers the lockfile"; Turbo 2.5.8's and 2.10.13's dry run,
+  // after an is-odd bump in package a, moved a#build alone and left b#build
+  // and the global external-dependency hash as they were (J-108).
+  it('the post names vx alone, and the parity row the per-package re-key', () => {
+    const post = readFileSync(path.join(DOCS, 'blog', 'lockfile-aware-keys.md'), 'utf8').replace(
+      /\s+/g,
+      ' ',
+    )
+    expect(post).toContain('excerpt: "Out of the box vx folds the lockfile into every key')
+    expect(post).toContain('(Turborepo keys each package on the lockfile changes that reach it)')
+    const parity = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'parity.md'), 'utf8')
+    expect(parity).toContain('| a lockfile change re-keys the packages whose dependencies moved')
+  })
+})
