@@ -94,6 +94,11 @@
   (Nx 6m 59s cold, 4.50 s cached; vx 47% / 92% faster), pinned to
   benchmarks.md. A native rerun of the headline run replaces it.
 
+- **R-20** The site's posts, concept page and configure guide quoted
+  the no-lock column (510ms, 3m 46s, 34.61s) with no %: now the
+  headline column the README shows (476ms, 3m 47s, 34.33s), each
+  Turbo/Nx figure with vx's %, and the npm note beside Nx's. Pins follow.
+
 ## Leads
 
 - Real-repo rows (`packages/vx-bench/real-repos.json`, benchmarks.md's
