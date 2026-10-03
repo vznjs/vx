@@ -148,6 +148,11 @@ root, as pnpm has it: the walk stops at the nearest one, listed by an
 outer workspace or not. From `apps/inner` the walk went past its own file
 to the outer workspace while `apps/inner/pkgs/x` stopped there, two roots
 and two caches for one tree, until item 990.
+A `package.json` with `workspaces` of its own is a root the same way
+unless the outer root lists that directory itself, as npm reads it: a
+nested workspace inside a member (`apps/tool/ws` under `apps/*`) was
+claimed through `apps/tool`, and its members ran in a workspace that does
+not list them (D-137).
 
 When nothing claims `start` — a standalone package, or a subdirectory
 of a single-project repo — the nearest candidate wins. A bare
