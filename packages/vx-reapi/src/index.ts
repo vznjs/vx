@@ -35,9 +35,9 @@ export { type ReapiOptions } from './wire.js'
 // context, so `reapi({ onWarn })` was dropped without a word and
 // `reapi({ tlsClientCertPem })` skipped the pair check. `ReapiRemoteCache`,
 // composed by hand, takes them.
-type WireOnly = 'tlsCaPem' | 'tlsClientCertPem' | 'tlsClientKeyPem' | 'onWarn'
-
-export interface ReapiPluginOptions extends Partial<Omit<ReapiOptions, WireOnly>> {
+export interface ReapiPluginOptions extends Partial<
+  Omit<ReapiOptions, 'tlsCaPem' | 'tlsClientCertPem' | 'tlsClientKeyPem' | 'onWarn'>
+> {
   /**
    * Client-side bound on one action, from the EXECUTING transition. See
    * `ReapiExecutorOptions.executeTimeoutMs`; `exec.timeout` wins per task.
