@@ -45,7 +45,7 @@ to declare in every environment:
 | `OTEL_EXPORTER_OTLP_COMPRESSION`                        | `gzip` or `none` (default); `OTEL_EXPORTER_OTLP_<SIGNAL>_COMPRESSION` for one signal, the `compression` option over both                                                           |
 | `OTEL_EXPORTER_OTLP_CERTIFICATE`                        | a PEM file of the CA that signed the collector's certificate (`_<SIGNAL>_` for one signal)                                                                                         |
 | `OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE` / `_CLIENT_KEY` | PEM files of a client certificate and key, for a collector that asks for mutual TLS                                                                                                |
-| `OTEL_EXPORTER_OTLP_PROTOCOL`                           | vx sends OTLP/HTTP JSON only; under `grpc` a failed export says so                                                                                                                 |
+| `OTEL_EXPORTER_OTLP_PROTOCOL`                           | vx sends OTLP/HTTP JSON only; under `grpc` a failed export says so (`OTEL_EXPORTER_OTLP_<SIGNAL>_PROTOCOL` per signal)                                                             |
 
 Each signal ships only to its own URL: the base endpoint's `/v1/<signal>`
 (appended to its path, before any query), or its override. A signal's own endpoint alone is enough: with only a metrics or logs
