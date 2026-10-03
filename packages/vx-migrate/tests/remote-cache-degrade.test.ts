@@ -255,10 +255,23 @@ for (const wire of ['turboCache', 'nxCache'] as const) {
       expect(srv.store.size).toBe(1)
       await coldAgain(root)
       srv.state.mode = 'flaky'
+      // The resend waits Turbo's 2 s backoff on `Bun.sleep`, which the
+      // plugin reads when the run builds it: real, the wait put the row at
+      // 7 s on a loaded runner, past its 5 s limit (#2504). Recorded and
+      // answered at once, it proves the backoff without spending it.
+      const sleep = Bun.sleep
+      const backoffs: number[] = []
+      Bun.sleep = ((ms: number | Date) => {
+        if (ms !== 2_000) return sleep(ms)
+        backoffs.push(ms)
+        return Promise.resolve()
+      }) as typeof Bun.sleep
       try {
         const r = await run({ cwd: root, tasks: ['build'], handleSignals: false })
         expect(r.outcomes.map((o) => o.status)).toEqual(['cache-hit-remote'])
+        expect(backoffs).toEqual([2_000])
       } finally {
+        Bun.sleep = sleep
         srv.state.mode = 'ok'
       }
     })
