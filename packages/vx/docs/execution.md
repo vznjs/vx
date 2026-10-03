@@ -644,7 +644,7 @@ were accepted and wrote nothing until item 992).
   wallclock span. Default path: `profile.json` (cwd-relative). One
   `tid` per project so concurrent tasks render on distinct lanes.
   Open with `chrome://tracing` or https://ui.perfetto.dev.
-- **`--report[=markdown]`** — a moon-style markdown table to stdout
+- **`--report[=markdown]`** — a markdown table to stdout
   after the run (CI step summaries).
 
 Writers live in `orchestrator/run-artifacts.ts:writeRunSummary` /
