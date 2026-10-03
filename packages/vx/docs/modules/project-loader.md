@@ -156,7 +156,9 @@ readers that reach it here.
   each other's 0 and can leave the process there: the main thread alone
   reads it, around a load that is alone in its round or before and after
   a round of several, and the worker only when blaming a config, the one
-  evaluation in flight (`config-umask-concurrent.test.ts`).
+  evaluation in flight, putting it back before it answers; the round puts it
+  back after each blame too, as a worker ended at its budget restores
+  nothing (`config-umask-concurrent.test.ts`).
 - A first load may not add or replace a global either: one config's
   `globalThis.x = …` reached every config loaded after it in the process,
   so `vx run --all` read it and a `--filter` of the reader alone did not

@@ -605,6 +605,10 @@ export async function loadProjectConfigs(
       for (const i of misses) {
         const configPath = prepared[i]!.configPath
         const own = await builtinsChangedBy(configPath)
+        // The blaming worker is gone, so this thread reads alone; and a
+        // worker that outlived its budget was ended before it could put
+        // the umask back.
+        restoreUmask(umask)
         if (own.length > 0) throw builtinsChanged(own, configPath)
       }
       throw builtinsChanged(changedInRound)

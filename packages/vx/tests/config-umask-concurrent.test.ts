@@ -90,3 +90,42 @@ export default { tasks: {} }
     workerReads: 0,
   })
 })
+
+// A blaming worker is ended once it answers or outlives its budget, and an
+// ended worker puts nothing back: the round restores the umask itself after
+// each blame. This config moves it everywhere and, in the blaming worker,
+// never finishes, so only that restore can keep the mask.
+it('a blame that outlives its budget leaves the umask as it found it', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-umask-blame-'))
+  const mask = process.umask()
+  const budget = process.env['VX_CONFIG_WORKER_TIMEOUT_MS']
+  process.env['VX_CONFIG_WORKER_TIMEOUT_MS'] = '300'
+  const hangs = `import { isMainThread } from 'node:worker_threads'
+process.umask(0o777)
+if (!isMainThread) await new Promise(() => {})
+export default { tasks: {} }
+`
+  let moved: string
+  try {
+    const files = await Promise.all(
+      [innocent, hangs, innocent].map(async (src, i) => {
+        const file = path.join(dir, `p${i}`, 'vx.config.mjs')
+        await Bun.write(file, src)
+        return file
+      }),
+    )
+    const message = await loadProjectConfigs(files).then(
+      () => 'loaded',
+      (err: Error) => err.message,
+    )
+    expect(message).toStartWith('a project config changed process.umask')
+    moved =
+      process.umask() === mask ? 'umask kept' : `umask moved to ${process.umask().toString(8)}`
+  } finally {
+    process.umask(mask)
+    if (budget === undefined) delete process.env['VX_CONFIG_WORKER_TIMEOUT_MS']
+    else process.env['VX_CONFIG_WORKER_TIMEOUT_MS'] = budget
+    await rm(dir, { recursive: true, force: true })
+  }
+  expect(moved).toBe('umask kept')
+})
