@@ -49,6 +49,7 @@ export interface JudgeContext {
   armedAt: number
   held(): boolean
   uncached(): ReadonlySet<string>
+  existedAtArm?: ReadonlySet<string> // what git listed at the arm; absent when it could not answer
 }
 export class ChangeJudge {
   readonly pending: Map<string, string> // path → label, what fired since the last judgement
@@ -65,6 +66,7 @@ export function makeWatchIgnore(
   inputs?,
 ): (base: string, filename: string) => boolean // the above plus the cache dir and every declared output no task reads
 export function gitIgnored(workspaceRoot: string, paths: readonly string[]): Set<string> // one `git check-ignore --stdin`
+export function gitFiles(workspaceRoot: string): Set<string> | undefined // one `git ls-files` at the arm
 export function makeRootEventFilter(
   workspaceRoot: string,
   projectDirs: readonly string[],
@@ -305,6 +307,9 @@ non-persistent tasks where each cycle should re-run cleanly.
   it is neither ignored nor declared: the loop re-runs on it, and after
   three cycles in a row started by the same path after a run, watch
   names it and the remedy once (`watch-loop-selfwrite.test.ts`).
+- Start a cycle on a file born and gone since the arm (vim's `4913`
+  write probe): `gitFiles` lists what existed at the arm, and a gone path
+  it did not list was never read by a key (`watch-transient-file.test.ts`).
 
 - Doesn't accept the interactive picker — task name is required.
 - Doesn't filter events through declared input globs.
