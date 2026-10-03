@@ -97,6 +97,10 @@ sync`", advice for a repo leaving Nx: they say to keep what the
   `verdaccio --config … --listen localhost:4873` from the workspace root,
   a server, its storage cleared under `clear`; the npm and yarn registry
   Nx set while it ran is a TODO. Read from the executor in Nx 23.2.1.
+- **P2-20** Nx 15–16's `@nrwl/workspace:run-commands` / `run-script`
+  (and `@nx/workspace:`), which an older graph keeps as written, are the
+  `nx:` executors they re-exported: the migration wrote each as a
+  failing placeholder, and `nx()` ran them through `nx-exec`.
 
 ## Leads for other streams
 
