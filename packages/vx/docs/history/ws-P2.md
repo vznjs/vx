@@ -228,6 +228,13 @@ sync`", advice for a repo leaving Nx: they say to keep what the
   says what to do when Node cannot resolve it from the workspace root;
   `NX_VERBOSE_LOGGING=true` keeps the whole error. Live rows hold both
   shapes to real Nx.
+- **P2-45** The Nx path end to end against real Nx (CI's live job), on a
+  package-based and an integrated workspace: `vx init` writes `nx()`,
+  `vx run build --all` runs through it, `bunx @vzn/vx-migrate` writes
+  native config, and with `nx()` removed the same build runs green from
+  that config alone, the `@nx/js:tsc` target as its `nx-exec` line (the
+  integrated one after listing its directories, as the note says).
+  Breaking `nx-exec` fails both.
 
 ## Leads for other streams
 
