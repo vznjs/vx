@@ -164,7 +164,11 @@ export function untracedReason(): Promise<string | null>
 export interface ResolvedSandboxConfig {
   /* same shape as SandboxConfig, paths absolute */
 }
-export function resolveSandboxConfig(cfg: SandboxConfig, projectDir: string): ResolvedSandboxConfig
+export function resolveSandboxConfig(
+  cfg: SandboxConfig,
+  projectDir: string,
+  walls?: readonly string[], // canonical dirs a glob's hits stop at (sandbox-request.ts `wallOff`)
+): ResolvedSandboxConfig
 // scratchWrites judged, the mountless reported once each; the scratch returned
 export function pendingWriteGrants(config, fs, anchors): string[]
 
@@ -279,8 +283,13 @@ export interface DeniedCall {
   rawPath: string
   errno: string
 }
-export function deniedCalls(text: string): DeniedCall[] // strace lines, split calls paired
-export function parseStraceViolations(logPath, args, baselines): Promise<SandboxViolation[]>
+export function deniedCalls(text: string, cwd?: string, reads?: boolean): DeniedCall[] // strace lines, split calls paired; paths follow each chdir from cwd; reads: successful opens too
+export function parseStraceViolations(
+  logPath,
+  args,
+  baselines,
+  widened?,
+): Promise<SandboxViolation[]> // widened: `widenedEntries` at task start; none, no read parse
 export function reportableViolations(
   violations: readonly SandboxViolation[],
   opts: { within: string; linked?: readonly string[]; config: ResolvedSandboxConfig },

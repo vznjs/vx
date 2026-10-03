@@ -342,3 +342,14 @@ persistent task` and vx exits 1). Row (`site-samples` › a post's link
   the module pages' defaults, the `VX_*` names. Row
   (`site-troubleshooting` › names the skipped config dir warning), red
   without the fix.
+
+- **J2-39** Eight signatures on the module pages lacked a parameter
+  their source takes: `deniedCalls` (`cwd`, `reads`),
+  `resolveSandboxConfig` (`walls`), `parseStraceViolations`
+  (`widened`), `sandboxRequestFor` (`cacheDir`), `streamToString`
+  (`retain`), `migrateScripts` (`outside`, `outsideDir`),
+  `sweepConfigs` (`tasks`), `makeRootEventFilter`
+  (`claimedRootFiles`). Each page lists them now. Row
+  (`module-page-claims` › a module page lists every parameter its
+  function takes), generated from every page's `export function` and
+  the source's top-level parameter count; red without the fix.

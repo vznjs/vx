@@ -77,7 +77,11 @@ export function foldScriptHooks(
 
 // migrate-scripts.ts — the package.json-scripts mapper `vx init` runs through the seam;
 // core-internal, not on `@vzn/vx`
-export function migrateScripts(metas: readonly ProjectMeta[]): MigrationPlan
+export function migrateScripts(
+  metas: readonly ProjectMeta[],
+  outside?: Readonly<Record<string, unknown>>, // the root manifest when the root is no member
+  outsideDir?: string, // where it sits
+): MigrationPlan
 export function delegatedScript(command: string): string | null
 ```
 
