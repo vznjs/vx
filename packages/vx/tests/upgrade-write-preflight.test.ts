@@ -49,7 +49,12 @@ it.skipIf(skipAsRoot('upgrade write preflight'))(
     await mkdir(bin)
     await writeFile(path.join(bin, 'vx'), 'old')
     await chmod(bin, 0o555)
-    expect([await refused(path.join(bin, 'vx')), fetched]).toEqual([refusal(bin, 'EACCES'), 0])
+    try {
+      expect([await refused(path.join(bin, 'vx')), fetched]).toEqual([refusal(bin, 'EACCES'), 0])
+    } finally {
+      // Writable again, or the cleanup cannot remove what it holds.
+      await chmod(bin, 0o755)
+    }
   },
 )
 
