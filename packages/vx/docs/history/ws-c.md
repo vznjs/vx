@@ -1559,3 +1559,31 @@ settles exits 130 in 0.1 s, and a settle that nothing can drive is named
 each other. Refuted: a "leftover server" after `vx run … | head -1` was
 the probe shell itself, its command line holding the marker it grepped
 for (CLAUDE.md's `pgrep -f` rule); none outlived its run in 10 tries.
+
+## C-102: the Linux watch tree skips `node_modules`, `.git` and `.vx`
+
+Bun's recursive `fs.watch` on Linux is one inotify watch per directory
+and descended into the trees the loop drops by name: this repo's root
+arm held 4,657 watches where 435 matter, and a big `node_modules` meets
+the OS limit (8,192 on many distros) and polls. On Linux the recursive
+arm is now a tree of non-recursive watches (`treeWatcher`) that never
+enters them; a directory that appears is watched and its contents
+reported, one that goes or moves is dropped (an inotify watch follows
+the inode); the arming walk throws at the watch limit so the pool still
+polls. Arm 75 → 43 ms, min of 6 interleaved. Rows
+(`watch-tree-linux.test.ts`): the ignored trees and the limit, red
+without the change; a new directory and a move, both ways. The fake
+`fs.watch` in `watch-rules.test.ts` gained `on`. `modules/cli-watch.md`
+says so.
+Checked: Bun's recursive form did not follow a symlinked directory either (an edit under the link's target: no event), so not following one is no change.
+
+Probes (2026-10-03), clean at 20× their committed seeds on fresh seeds
+(local only): the scheduler properties (3,000 graphs per `--continue`
+mode, 6,000 taint graphs), the server-death properties (1,800 seeds,
+the row's 60 s bound caps it there), the watch judgement (1,200
+sequences).
+C-103 (#2594), split out after #2578 merged at its first commit: dropping a gone path's watches walked every watch per
+deleted path; a directory is watched before anything under it, so a
+path with no watch has none below and costs one lookup (10,000
+deletions under 400 watched directories: 432 → 164 ms CPU, min of 3,
+interleaved).
