@@ -1220,7 +1220,10 @@ run...` precedes it.
    on; a removed one is dropped. An edit to the glob list itself (the
    root `package.json`'s `workspaces`, `pnpm-workspace.yaml`) re-reads
    the set, so a glob added there is watched from the cycle it triggers
-   (item 1018). Under `--filter` or `--affected` the scope is the one
+   (item 1018). A base removed and made again (a checkout that restores
+   `packages/`) is heard from its nearest directory that exists, and a
+   watch whose directory was replaced is armed again (an OS watch holds
+   the deleted one; `watch-recreated-dirs.test.ts`). Under `--filter` or `--affected` the scope is the one
    resolved at start, and a new package joins it only as a dependency of
    it; a glob of another shape (`apps/**`) has no such directory, so a
    package added under it waits for a restart. A task's own declared outputs (`cache.outputs.files`,
