@@ -1635,3 +1635,11 @@ hit, and a Ctrl-C'd run releases the lock at once; the three
 sibling and a cached dependant at `--concurrency 2` give exactly the
 documented outcomes, `always` saves nothing built on the failure (the
 second run is a miss), and `never` skips a pending cache restore.
+
+Probes (2026-10-03), clean: under `--continue=never` a failure while a
+server is still starting lets the server reach ready (in flight), skips
+its dependant as fail-fast and leaves no server process; `--affected`
+marks both projects for a file `git mv`ed between them, the project of a
+deleted file staged or not, and a branch's own project against `main`;
+`vx watch --affected=main` across two branch switches runs one cycle
+each and keeps the scope it resolved at start, as `cli.md` says.
