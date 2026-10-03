@@ -583,12 +583,15 @@ hashing); the `LayeredCache` additionally gates its own remote
 read-through (`remoteRead`), upload (`remoteWrite`), and prefetch
 (`remoteRead`). The orchestrator derives two booleans per task:
 
-- `willRead = task has a cache block AND (localRead || remoteRead)`
-- `willWrite = task has a cache block AND (localWrite || remoteWrite)`
+- `willRead = task has a cache block AND it is not remote-only AND (localRead || remoteRead)`
+- `willWrite = task has a cache block AND it is not remote-only AND (localWrite || remoteWrite)`
 
 A task reads the cache only when `willRead`, saves only when
 `willWrite`, and cleans its declared outputs before exec only when
-`willWrite`.
+`willWrite`. Remote-only is an `exec.remote: 'only'` task placed on a
+remote executor: it never touches this machine's disk (no probe, no
+restore, no output clean, no local save), and its result lives in the
+remote executor's own store.
 
 The CLI maps three flags to a policy (precedence: start all-on → apply
 `--cache` → `--no-cache` forces all off → `--force` forces both reads
@@ -1208,7 +1211,8 @@ leaves it); a link to a directory, or a dangling one, has no bytes to
 store, so the save refuses it by name rather than cache an entry that
 restores to nothing. So does a link whose target is outside the
 project: vx reads outputs outside the task's sandbox, and a planted
-link packed a file the task could not read (L-23). The clean before exec and restore removes every
+link packed a file the task could not read (L-23). Each refusal names
+the path as the config spells it (`workspaceFiles output gen/latest`). The clean before exec and restore removes every
 file AND symlink the output globs cover (a link is unlinked, never
 followed) and prunes the directories it emptied (before a miss it keeps
 the directory a wildcard glob is rooted at, `dist` for `dist/**`, as the

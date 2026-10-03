@@ -210,6 +210,11 @@ sync`", advice for a repo leaving Nx: they say to keep what the
   internals (an executor's throw, a missing executor package). It
   reports one as `nx run`'s `handleErrors` does: the message, and the
   stack only under `NX_VERBOSE_LOGGING=true`; exit 1 either way.
+- **P2-41** A run-commands entry with `prefix`, `prefixColor`, `color`
+  or `bgColor` in a serial run (`parallel: false`) is refused by Nx (it
+  throws), so the target never ran under Nx; the mapper wrote a working
+  line with a cosmetic TODO. It is the placeholder with Nx's reason now,
+  as `readyWhen` without `parallel` already was.
 
 ## Leads for other streams
 

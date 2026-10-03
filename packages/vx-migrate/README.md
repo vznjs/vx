@@ -104,7 +104,7 @@ Nx's own option handling, rendered as one POSIX `sh` line (`vx show` prints it):
 - **An argument replaces its option:** an option the arguments after `vx run … --` name (`--region=us`, `--region us`, `--no-region`, `-r` for a one-letter option; no camel-case expansion) is not appended, as Nx drops it; the line decides once it has them. `tests/nx-run-commands-override-live.test.ts` holds it to `nx run`.
 - **Environment:** `env` is `exec.env.define` (so it is in the key), and `color: true` sets `FORCE_COLOR=true`, as Nx does (nx#20465). `envFile` is loaded after the task's `.env` files (below), a name they already set winning, as in Nx (nx#23581).
 - **`readyWhen`** makes the task persistent with that string as its `readyWhen`, so dependents start once it is printed; several strings, all of which Nx waits for, are one pattern here that matches the first (a todo).
-- **Reported, not reproduced:** per-command `prefix` / `color` decoration, `streamOutput: false`. Display-only options (`usePty`, `tty`, `verbose`) change nothing here: vx runs every task without a pseudo-terminal.
+- **Reported, not reproduced:** per-command `prefix` / `color` decoration, `streamOutput: false`. Decoration in a serial run (`parallel: false`), which Nx refuses, is the failing placeholder with Nx's reason, as `readyWhen` there is. Display-only options (`usePty`, `tty`, `verbose`) change nothing here: vx runs every task without a pseudo-terminal.
 
 `tests/nx-exec-live.test.ts` holds each of these shapes to Nx's own run-commands executor on the same options and arguments.
 

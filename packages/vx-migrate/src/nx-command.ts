@@ -266,6 +266,20 @@ export function mapRunCommands(
     todos.push('nx:run-commands: Nx refuses `readyWhen` without `parallel: true`')
     return null
   }
+  const decorated = entries.some(
+    (e) =>
+      e.prefix !== undefined ||
+      e.prefixColor !== undefined ||
+      e.color !== undefined ||
+      e.bgColor !== undefined,
+  )
+  // Nx throws on decoration in a serial run; the target never ran under Nx.
+  if (decorated && !parallel) {
+    todos.push(
+      'nx:run-commands: Nx refuses `prefix` / `prefixColor` / `color` / `bgColor` without `parallel: true`',
+    )
+    return null
+  }
 
   const env = mapEnv(options, todos)
   const envFile =
@@ -278,15 +292,7 @@ export function mapRunCommands(
   if (Array.isArray(options['__unparsed__']) && options['__unparsed__'].length > 0) {
     todos.push('nx:run-commands: `__unparsed__` in the graph is not forwarded')
   }
-  if (
-    entries.some(
-      (e) =>
-        e.prefix !== undefined ||
-        e.prefixColor !== undefined ||
-        e.color !== undefined ||
-        e.bgColor !== undefined,
-    )
-  ) {
+  if (decorated) {
     todos.push(
       'nx:run-commands: per-command `prefix` / `color` output decoration is not reproduced',
     )

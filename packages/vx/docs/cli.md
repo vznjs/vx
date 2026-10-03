@@ -40,6 +40,7 @@ vx upgrade [tag]      # self-update a compiled binary
 vx completions bash|zsh|fish
 
 # Meta
+vx                    # in a workspace, vx --help; outside one, says so and exits 1
 vx help [VERB]
 vx --help, -h
 vx version
