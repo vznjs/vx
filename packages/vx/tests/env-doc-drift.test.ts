@@ -39,6 +39,31 @@ describe('docs/cli.md § Environment variables vx reads matches what core reads'
   })
 })
 
+// The section said "the variables core reads" and named no CI variable,
+// though `CI` and `GITHUB_ACTIONS` pick the output and the provider list
+// fills the invocation row (J2-63). Read from both sources.
+describe('docs/cli.md § Environment variables names the CI variables core reads', () => {
+  it('names each one the output view and the CI detection read', () => {
+    const src = (rel: string): string => readFileSync(path.join(pkg, 'src', rel), 'utf8')
+    const logger = src('orchestrator/logger.ts')
+    const view = logger.slice(logger.indexOf('export function resolveOutputView('))
+    const read = new Set(
+      Array.from(view.slice(0, view.indexOf('\n}\n')).matchAll(/env\['(\w+)'\]/g), (m) => m[1]!),
+    )
+    const ctx = src('orchestrator/run-context.ts')
+    const list = ctx.slice(
+      ctx.indexOf('const CI_PROVIDERS'),
+      ctx.indexOf('\n]\n', ctx.indexOf('const CI_PROVIDERS')),
+    )
+    for (const m of list.matchAll(/\['(\w+)', '\w+'\]/g)) read.add(m[1]!)
+    expect(read.has('CI') && read.has('GITHUB_ACTIONS') && read.has('CIRCLECI')).toBe(true)
+    const doc = readFileSync(path.join(pkg, 'docs', 'cli.md'), 'utf8')
+    const start = doc.indexOf('## Environment variables vx reads')
+    const section = doc.slice(start, doc.indexOf('\n## ', start + 1))
+    expect([...read].filter((v) => !section.includes(`\`${v}\``))).toEqual([])
+  })
+})
+
 // The task's PATH prefix is stated on several pages. #2192 left a bin
 // directory holding the delimiter out of PATH and updated two of them;
 // env.md still said every entry is prepended, and execute-task.md named
