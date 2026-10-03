@@ -103,8 +103,8 @@ filesystem walk yields `src\index.ts` vs `src/index.ts`. Folding
 those into the hash differently is the kind of cross-platform paper
 cut we don't want.
 
-vx is POSIX-shell only at the runner level, so Windows isn't
-officially supported anyway — but normalizing cache-key paths costs
+vx is POSIX-shell only at the runner level, so native Windows isn't
+supported anyway (Windows runs the Linux build under WSL) — but normalizing cache-key paths costs
 nothing and keeps things robust.
 
 ## Tests
