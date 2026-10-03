@@ -1303,7 +1303,6 @@ describe('first loads run together (D-68)', () => {
     dir = await mkdtemp(path.join(os.tmpdir(), 'vx-d68-'))
   })
   afterEach(async () => {
-    delete (globalThis as { __vxD68?: unknown }).__vxD68
     delete process.env['VX_CONFIG_WORKER_TIMEOUT_MS']
     await rm(dir, { recursive: true, force: true })
   })
@@ -1319,12 +1318,14 @@ describe('first loads run together (D-68)', () => {
   it('overlap: a config waiting on a later one loads, where one at a time never would', async () => {
     // `a` settles only when `b` has run. In order, one at a time, `a` held
     // the loop until its deadline.
+    // The channel is a module both import: a global is refused (D-122).
     process.env['VX_CONFIG_WORKER_TIMEOUT_MS'] = '2000'
-    const a = await config(
-      'a',
-      'await new Promise((r) => { globalThis.__vxD68 = r })\n' + task('echo a'),
+    await writeFile(
+      path.join(dir, 'chan.mjs'),
+      'export let release\nexport const released = new Promise((r) => { release = r })\n',
     )
-    const b = await config('b', 'globalThis.__vxD68?.()\n' + task('echo b'))
+    const a = await config('a', "await (await import('../chan.mjs')).released\n" + task('echo a'))
+    const b = await config('b', "(await import('../chan.mjs')).release()\n" + task('echo b'))
     const got = await loadProjectConfigs([a, b])
     expect(got.map((c) => c.tasks?.['t']?.exec?.command)).toEqual(['echo a', 'echo b'])
   })
