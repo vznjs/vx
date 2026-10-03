@@ -2670,6 +2670,12 @@ its own colour.
 Programmatic callers passing a custom `log` to the run options always
 see plain text.
 
+Only a run's own output (`vx run`, `vx watch`) is painted. Every other
+verb (`show`, `info`, `why`, `last`, a `--dry` plan, `--graph`, `cache
+prune`, `help`) prints plain text whatever `FORCE_COLOR` says, so a
+script that forces colour for a run's log still parses them
+(`tests/cli-colors-e2e.test.ts`).
+
 ## Remote cache (plugin-driven)
 
 Core ships **no remote-cache wire client** — the remote cache is a
