@@ -62,7 +62,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
       expect(r.outcomes[0]?.sandboxViolationLines).toEqual([
         `vx: the sandbox refused writes outside the project, which are not reported as ` +
           `violations: ${root}/out.txt. If the task needs one, grant its directory, e.g. ` +
-          `\`allow: { write: ['${root}/'] }\`.`,
+          "`allow: { write: ['../../'] }`.",
       ])
       expect(existsSync(path.join(root, 'out.txt'))).toBe(false)
     })
