@@ -579,6 +579,50 @@ helper (`off('OTEL_TRACES_EXPORTER')`, `read('concurrency',
 takes both; a template is recorded with `*` per placeholder, which pins
 its shape. Differential: the old reader fails the new record (#2435).
 
+## H-51: plugin entries export only their documented API
+
+1.0 freezes every export (versioning-1.0.md), and the plugin entries
+re-exported ~60 helpers only their own tests used: vx-github's Checks
+API calls, vx-otel's OTLP builders, vx-lockfile's parser namespaces,
+vx-migrate's mappers, cache clients and CLI, vx-reapi's wire and Merkle
+encoders. Each entry now exports its plugins, their options types and
+what a documented option or class needs (vx-github's `FetchFn`,
+vx-reapi's `ReapiRemoteCache` with `ReapiOptions`); tests import the
+module. vx-schedule-history kept its helpers: its README documents them
+for policies. Breaking, declared per package (#2503, #2508, #2512,
+#2520, #2521).
+
+## H-52: every plugin export named in its README
+
+`plugin-exports-documented.unsafe.test.ts` requires each name in a
+plugin-api record in that package's README. It found vx-migrate's and
+vx-schedule-history's options types unnamed, and vx-otel's `post` option
+undocumented with its `PostFn` and `OtlpTls` types unexported, so a config
+could not name them; both are exported now. Differential: dropping the
+vx-migrate names lists exactly those four types (#2527).
+
+## H-53: every plugin env read named in its README
+
+`plugin-env.txt` records each variable a plugin reads; nothing held that
+its README names it, and vx-migrate honoured eleven no doc mentioned
+(`TURBO_CONCURRENCY`, `NX_PARALLEL`, `GITHUB_BASE_REF`, …), vx-otel the
+per-signal protocol. Each is named now, and
+`plugin-env-documented.unsafe.test.ts` requires every recorded read, a
+`<SIGNAL>` family or a named member covering a template. Differential:
+the old READMEs list exactly those twelve (#2531).
+
+## H-54: reapi() refuses the wire-form options it ignored
+
+`ReapiPluginOptions` extended all of `ReapiOptions`, so `reapi()`
+accepted `onWarn`, replaced by the plugin's own warn without a word, and
+the PEM-text TLS fields, which skipped the cert-and-key pair check the
+file options get. They are refused as unknown now; `ReapiRemoteCache`
+still takes them. `wire-only-options.test.ts`: four rows fail without
+the fix (#2535). It merged at its first commit, whose named key alias
+joined the API record and reddened H-52's law on main; #2537 named it
+in the README, #2541 inlined it (a `!`: v0.0.421 had shipped the
+record).
+
 ## Leads for other streams
 
 - **A:** a task that rewrites its own input with the same bytes is never
