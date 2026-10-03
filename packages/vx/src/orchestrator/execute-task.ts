@@ -25,6 +25,8 @@ import {
   wrapSandboxedCommand,
   signalExitCode,
   isLocalExecutor,
+  isExecutorFallback,
+  localExecutor,
   type CaptureConfig,
   type ExecuteRequest,
   assertExecuteResult,
@@ -45,6 +47,7 @@ import {
   secretMask,
   secretNamed,
   span,
+  UserError,
 } from '../util/index.js'
 import { forwardedSignal, SIGNAL_SHUTDOWN_GRACE_MS } from './signals.js'
 import { executorLabel, nameExecutorFailure } from './plugin-host.js'
@@ -895,7 +898,23 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         assertExecuteResult(args.executor.name, node.id, r)
         return r
       })
-      .catch(async (raw: unknown) => {
+      .catch(async (thrown: unknown) => {
+        let raw = thrown
+        // A remote that gives the task back (it never started it): run it on
+        // the local floor with a request of its own, so its timeout counts
+        // from now. `remote: 'only'` keeps it off this machine: refused.
+        if (isExecutorFallback(raw) && args.executor.remote === true) {
+          const why = secrets?.mask(raw.message) ?? raw.message
+          if (remoteOnly) {
+            raw = new UserError(`${why}, and remote: 'only' keeps it off this machine`)
+          } else {
+            log.status(`[vx] ${node.id}: ${why} — running it here`)
+            clearTimeout(timeoutTimer)
+            const local = await localExecutor().execute(await buildRequest())
+            assertExecuteResult('local', node.id, local)
+            return local
+          }
+        }
         const err = nameExecutorFailure(args.executor, raw)
         // A remote executor's message carries the server's own text, which
         // may echo the env it was sent: masked here, where it is printed,

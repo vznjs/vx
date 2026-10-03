@@ -271,6 +271,14 @@ prune` all match. Fixed: the Run blocks used bare `vx`, which a local
   titles, since a squash titles the commit after its PR (an edited
   footer fails it). The first push was generated in a shallow clone (11 entries)
   and CI's full history held 28: generate from an unshallowed checkout.
+- **R-41** Site laws: `vx-docs/tests/site-edit-orphans.test.ts` holds every
+  built page (redirect stubs, landing, 404 and the blog's generated
+  listings aside) to an edit link naming a real file (this project's, or
+  an imported page's `editUrl`) and to at least one inbound link from
+  another page; both held on the first run (a renamed edit target and a
+  page nothing links to each fail it). The playground already plans as
+  the CLI does for its page workspace, three labs per state and the
+  scenarios (`playground-parity.unsafe.test.ts`), so nothing was added.
 
 ## Leads
 

@@ -1671,7 +1671,10 @@ stack; so is a release document cut after the headers arrived or not
 JSON (a captive portal's page served with a 200): `could not read the
 release from api.github.com (…) — nothing replaced; …`, and an asset
 download cut the same way: `could not download the release asset from
-github.com (…) — nothing replaced; …`. The new binary
+github.com (…) — nothing replaced; …`. A binary whose directory this
+user cannot write (a root-owned `/usr/local/bin`) is refused before the
+download: `cannot write to <dir> (EACCES), where this vx lives — nothing
+downloaded; re-run as a user who can (sudo vx upgrade), …`. The new binary
 keeps the old one's mode (and, as root, its owner), and must answer
 `--version` before the upgrade reports it installed: one that does not
 start on this machine — or does not answer within 10 s — is swapped back
@@ -1683,7 +1686,8 @@ bare `(403)` (item 1098).
 
 Exit codes: `0` the new binary installed, or already at that version;
 `1` anything refused or swapped back: from source, from npm, a host it
-cannot reach, a digest that does not match, a binary that does not start.
+cannot reach, a directory it cannot write, a digest that does not match,
+a binary that does not start.
 
 ## `vx init`
 
@@ -2068,7 +2072,8 @@ product verb to it under a notice.
 Introspect the workspace's **live resolved configs** — what a run
 would see right now. Configs load through the same path a run uses,
 plugin `config` and `project` stages included, so a package a plugin
-gives tasks to (the zero-migration Turbo shape) shows them; cached
+gives tasks to (`turbo()` or `nx()` from `@vzn/vx-migrate`, a
+temporary start toward native config) shows them; cached
 evaluations are served from the local cache like a run's. `vx show`
 never reads `vx-lock.json` (the lock is already the frozen JSON — open
 it directly if you want the frozen view).
@@ -2204,7 +2209,7 @@ exec.sandbox and will fail` says it first: root inside a container
   (no `strace` on PATH, one whose `--version` fails, or one that may not
   attach) adds `, untraced — <why>, so the reads it denies go
 unreported`: the sandbox still enforces, but a task that tolerates a
-  denied read passes and caches with no word of it. The `--json` fact is
+  denied read passes and caches with no word of it. The `--format json` fact is
   `sandbox.untraced`, the reason or `null`.
 - `plugins` names every plugin `vx.workspace.*` declares and the seams
   each fills, in pipeline order (`config`, `discover`, `project`, `graph`, `key`,
@@ -2522,7 +2527,10 @@ task are the last row.
 | `VX_RUN_WORKSPACE`, `VX_RUN_TASK` | set by vx             | —       | Set on every task's environment (the workspace root; `project#task`). Read back by a `vx run` a task starts: one in the same workspace is refused, since a nested run is invisible to the outer graph and a loop back to its own task forks without bound (`docs/schema.md` § `env`).          |
 
 Colors are the two conventions in § Output format › Colors (`NO_COLOR`,
-`FORCE_COLOR`). Core never reads `GITHUB_STEP_SUMMARY`: `--report`
+`FORCE_COLOR`). A truthy `CI` picks the CI output flow and
+`GITHUB_ACTIONS` its `::group::` framing (§ Output); the run's
+`invocations` row records the provider, the first truthy of
+`GITHUB_ACTIONS`, `GITLAB_CI`, `BUILDKITE`, `CIRCLECI`, then `CI`. Core never reads `GITHUB_STEP_SUMMARY`: `--report`
 prints to stdout, and `--report-file=<path>` appends to a file, so on
 Actions pass `--report-file="$GITHUB_STEP_SUMMARY"`.
 

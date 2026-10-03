@@ -229,6 +229,8 @@ export function defineWorkspace<T extends WorkspaceConfig>(
 ): T
 == function escapeMarkdownCell (src/orchestrator/run-report.ts)
 export function escapeMarkdownCell(value: string): string
+== function executorFallback (src/exec/executor.ts)
+export function executorFallback(reason: string): Error
 == function exitSignal (src/exec/runner.ts)
 export function exitSignal(code: number): string | undefined
 == function findWorkspaceRoot (src/workspace/workspace.ts)

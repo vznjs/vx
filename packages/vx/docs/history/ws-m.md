@@ -887,3 +887,19 @@ wrote `run.pid`, so on that runner something moved the file's mtime or
 ctime past the arm, or the stamp read early. Not reproduced on Linux
 (it is FSEvents' path); once in about 400 main runs (2026-10-02 20:25 to
 2026-10-03 10:03).
+
+M-72. Security queue (2), `vx upgrade`'s verification: the checksum
+half holds. It refuses a release whose asset publishes no `sha256:`
+digest and a download whose SHA-256 differs, before anything is
+replaced; mutation held both (`upgrade.test.ts`: the mismatch guard off
+fails "a download that does not match the release digest replaces
+nothing", the missing-digest guard off fails two `releaseAsset` rows).
+The signature half is not built, as item 1096 records: the digest comes
+from the same release API as the asset, so it guards the transfer, not
+who built the binary. Releases are attested (L-12,
+`actions/attest-build-provenance`) but the binary does not verify the
+attestation; Sigstore verification in-process is a bundle, certificate
+chain and transparency-log check with no dependency to lean on. The
+smaller close is a signed checksum file (ed25519 or minisign) with the
+public key compiled in, which needs a signing key held as a release
+secret: an owner decision, not made here.

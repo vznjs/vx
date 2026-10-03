@@ -14,6 +14,7 @@ import { describe, expect, it } from 'bun:test'
 import { PLUGIN_HOOKS } from '../src/config.js'
 import { CACHE_VERSION, SCHEMA_VERSION } from '../src/cache/index.js'
 import { formatRunSummary } from '../src/orchestrator/summary.js'
+import { parseInfoArgs } from '../src/cli/info.js'
 import { appendRecapRing, createRecapRing, recapTail } from '../src/orchestrator/failure-recap.js'
 import { formatRunReportMarkdown } from '../src/orchestrator/run-report.js'
 import {
@@ -127,6 +128,23 @@ describe('docs/cli.md — the `vx info` sample quotes the current versions', () 
 // `sandbox` were printed and named nowhere. Both sides are read from their
 // source: the `InfoFacts` interface in doctor.ts (what the object carries),
 // and the bullet's backticked names.
+// The sandbox bullet called its field "the `--json` fact"; `vx info --json`
+// is refused (J2-62). Each flag the section names is one the verb takes.
+describe('docs/cli.md — every flag the `vx info` section names, the verb takes', () => {
+  it('parses each with a value and no error', async () => {
+    const doc = await Bun.file(new URL('../docs/cli.md', import.meta.url)).text()
+    const section = doc.slice(doc.indexOf('\n## `vx info`\n'), doc.indexOf('\n## `vx why`\n'))
+    // `--version` there is strace's, the probe the sandbox bullet describes.
+    const flags = new Set(
+      Array.from(section.matchAll(/`(--[a-z-]+)/g), (m) => m[1] as string).filter(
+        (f) => f !== '--version',
+      ),
+    )
+    expect([...flags].toSorted()).toEqual(['--cache-dir', '--format'])
+    for (const f of flags) expect(parseInfoArgs([f, 'json']).error).toBeUndefined()
+  })
+})
+
 describe('docs/cli.md — the `vx info --format json` list is the InfoFacts object', () => {
   it('names every top-level field, and nothing the object does not carry', async () => {
     // An interface's body, doc comments dropped: `FlakyTask` is the

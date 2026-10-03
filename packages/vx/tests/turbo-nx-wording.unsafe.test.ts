@@ -17,6 +17,8 @@ const CLAIMS = [
   ),
   new RegExp(`\\b${TOOL}[^.\\n]{0,30}\\bunchanged\\b`, 'gi'),
   new RegExp(`\\bunchanged\\b[^.\\n]{0,15}\\b${TOOL}`, 'gi'),
+  // "zero-migration" sells the mapping as the destination, not a start (J2-61).
+  /\bzero[- ]migration\b/gi,
 ]
 const PAGES = [
   'README.md',
@@ -57,8 +59,9 @@ describe('no page says vx works in a Turbo or Nx repo', () => {
         'Bring a Turbo repo unchanged.',
         'An unchanged Nx workspace builds.',
         'vx speeds up an Nx repo.',
+        'the zero-migration Turbo shape',
       ].map((t) => claims('t', t).length),
-    ).toEqual([1, 1, 1, 1, 1, 1, 1])
+    ).toEqual([1, 1, 1, 1, 1, 1, 1, 1])
     expect(claims('t', 'Move a Turborepo or Nx repo to native vx config.')).toEqual([])
   })
 })

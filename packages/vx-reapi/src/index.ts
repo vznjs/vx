@@ -44,6 +44,11 @@ export interface ReapiPluginOptions extends Partial<
    */
   executeTimeoutMs?: number
   /**
+   * Bound on the time an action waits QUEUED before a worker starts it. See
+   * `ReapiExecutorOptions.queueTimeoutMs`; past it the task runs here.
+   */
+  queueTimeoutMs?: number
+  /**
    * Endpoint, or omit to read `VX_REAPI_ENDPOINT`. With neither the plugin
    * DECLINES — a declared-but-unconfigured plugin costs nothing and must
    * never fail a run.
@@ -173,6 +178,7 @@ function assertEndpoint(endpoint: string, from: string): void {
 /** Each option `ReapiPluginOptions` names, with its kind: derived from the type, so the two cannot drift. */
 const REAPI_PLUGIN_KEYS: PluginOptionKinds<ReapiPluginOptions> = {
   executeTimeoutMs: 'number',
+  queueTimeoutMs: 'number',
   endpoint: 'string',
   execute: 'boolean',
   platform: 'object',
@@ -236,6 +242,7 @@ export function reapi(options: ReapiPluginOptions = {}): VxPlugin {
         ...(options.executeTimeoutMs === undefined
           ? {}
           : { executeTimeoutMs: options.executeTimeoutMs }),
+        ...(options.queueTimeoutMs === undefined ? {} : { queueTimeoutMs: options.queueTimeoutMs }),
         warn: (m) => ctx.warn(m),
       })
     },

@@ -171,6 +171,9 @@ export type {
 // (`runCommand` / `runSandboxed`, the local executor's own primitives, left
 // the façade 2026-09-10: no executor plugin built on them — `@vzn/vx-reapi`
 // speaks a wire — and a seam with no consumer is a special case in waiting.)
+// A remote executor gives a task back to the local floor by rejecting with
+// this (B-100): core runs it here and says why once.
+export { executorFallback } from './exec/index.js'
 export type {
   ExecuteRequest,
   ExecuteResult,
