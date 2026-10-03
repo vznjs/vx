@@ -241,6 +241,10 @@ function treeWatcher(root: string, listener: (filename: string) => void): WatchH
   let armed = false
   let warned = false
   const drop = (rel: string): void => {
+    // A directory is watched before anything under it, so a path with no
+    // watch of its own has none below: a deleted file costs one lookup,
+    // not a walk of every watch (an `rm -rf` of 10,000 files).
+    if (!watchers.has(rel)) return
     for (const [key, w] of watchers) {
       if (key !== rel && !key.startsWith(rel + '/')) continue
       w.close()
