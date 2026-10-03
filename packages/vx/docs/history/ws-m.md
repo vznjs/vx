@@ -873,3 +873,17 @@ refused at load, never imported: probed with
 must be an object … not a module name" and the file is not loaded
 (`config-schema-refusals.test.ts` pins the line). What a config imports
 is its author's code, resolved by Bun from the config's directory.
+
+M-70. Main's macOS job, run 37089948846 (#2460, a docs change): two
+`vx watch` rows each saw one cycle start right after `watching`, with
+no edit made. `watch-loop-selfwrite.test.ts` named it, `app run.pid;
+re-running...`; `cli.test.ts` › editor swap files counted it (1) and
+named nothing. The swap-file row now asserts the re-run lines themselves
+(`[]`), so a repeat says which path; driven red by writing `index.txt`
+in place of the swap file, it names `one src/index.txt`. Lead, not a
+cause: the judge drops a first sighting whose mtime and ctime are both
+before `armedAt`, and `armedAt` is stamped after the initial run that
+wrote `run.pid`, so on that runner something moved the file's mtime or
+ctime past the arm, or the stamp read early. Not reproduced on Linux
+(it is FSEvents' path); once in about 400 main runs (2026-10-02 20:25 to
+2026-10-03 10:03).
