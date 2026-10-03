@@ -65,13 +65,17 @@ SRT `true` as its ripgrep command (B-75): the spawn's 3.8 ms is 1.0, and
 an empty file that cannot be exec'd: `posix_spawn` refuses it (ENOEXEC)
 in 0.32 ms against `true`'s 1.06, SRT reads the refusal as an empty
 scan, and its dependency check (`Bun.which`) still finds the file. SRT
-runs it outside the sandbox, so it lives in a fresh 0700 `mkdtemp`
-directory under the OS temp dir, made once a process and removed at
-exit, never in the shared `/tmp/claude`; `true` stays the fallback.
-The availability probe hands SRT's dependency check that file made anew
-if gone, not the path SRT's live config holds: an `exit` hook run with
-the process still going (a test emits one) removed it, and every probe
-after read "ripgrep not found" (`sandbox-noscan-gone.unsafe.test.ts`).
+runs it outside the sandbox, so it lives in this user's own 0700
+directory under the OS temp dir (`vx-noscan-<uid>`), never in the shared
+`/tmp/claude`. One per user, not per process (B-93): a `mkdtemp` one per
+process outlived every SIGKILLed run, and the exit hook that removed it
+also fired under a test's emitted `exit` with the process going on. A
+directory at the name with another owner or group or other bits (a link
+reads 0777), or a file there that is not empty or not executable, is
+refused for `true` (`sandbox-noscan-dir.unsafe.test.ts`). The
+availability probe hands SRT's dependency check that file made anew if
+a temp cleaner took it, not the path SRT's live config holds
+(`sandbox-noscan-gone.unsafe.test.ts`).
 100 sandboxed `true` tasks at concurrency 1: 2,846 ms against 2,721
 (min of 8, interleaved; medians 2,948 and 2,812). The parity rows arm
 SRT as vx does, with a root entry (`.ZshRC`) only a scan finds.

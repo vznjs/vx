@@ -3,7 +3,7 @@
 // dependency check about the live config, which still named it, and read
 // "ripgrep not found": every sandboxed test after `sandbox-trace-exit`
 // (which emits `exit` mid-run) failed on CI. The probe must not hinge on a
-// file vx made.
+// file vx made. (Since B-93 vx never removes it; a temp cleaner may.)
 
 import { existsSync, rmSync } from 'node:fs'
 import path from 'node:path'
