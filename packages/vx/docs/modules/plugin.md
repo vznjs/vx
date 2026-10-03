@@ -21,7 +21,8 @@ value of the wrong kind naming the kind. `kinds` is a
 `PluginOptionKinds<Options>`: each option with the one kind its type
 allows (`'any'` for a union of kinds), derived from the interface, so the
 type checker refuses a missing option, an extra one or a wrong kind.
-Every first-party factory calls it.
+Every first-party factory calls it. Its third argument was a list of
+names until 0.0.397; it is the kinds record since.
 
 ## Capabilities
 
