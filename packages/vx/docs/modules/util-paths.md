@@ -2,9 +2,11 @@
 
 ## Purpose
 
-Normalize path separators to forward slashes so cache keys are stable
-across Windows / \*nix. Used wherever a path participates in a cache
-key (input file paths, output file paths, etc.).
+Normalize path separators to forward slashes so a path in a cache key
+has one spelling. Every platform vx runs on (Linux, macOS, Windows
+through WSL) already separates with `/`, so `toPosix` returns its input
+there. Used wherever a path participates in a cache key (input file
+paths, output file paths, etc.).
 
 ## Public surface
 
@@ -97,15 +99,11 @@ that expands the grant sees a wildcard.
 
 ## Why
 
-A workspace cloned on Windows would otherwise produce a different
-cache key than the same workspace on Linux for the same task — the
-filesystem walk yields `src\index.ts` vs `src/index.ts`. Folding
-those into the hash differently is the kind of cross-platform paper
-cut we don't want.
-
-vx is POSIX-shell only at the runner level, so native Windows isn't
-supported anyway (Windows runs the Linux build under WSL) — but normalizing cache-key paths costs
-nothing and keeps things robust.
+A key folds paths, so a path must have one spelling: a walk that
+yielded `src\index.ts` where another yielded `src/index.ts` would key
+the same task twice. vx runs only where the separator is `/` (native
+Windows is not supported; use WSL), so the conversion is a fast-path
+no-op today, and costs nothing to keep.
 
 ## Tests
 

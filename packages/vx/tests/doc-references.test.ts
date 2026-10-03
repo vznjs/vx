@@ -236,5 +236,13 @@ describe('no page describes a Windows branch the source dropped', () => {
       .split(/\s+/)
       .join(' ')
     expect(exec).not.toContain('/ Windows')
+    // J2-50: util-paths.md framed toPosix as keeping keys stable for a
+    // workspace cloned on native Windows, which vx does not run on.
+    const paths = readFileSync(path.join(pkg, 'docs', 'modules', 'util-paths.md'), 'utf8')
+      .split(/\s+/)
+      .join(' ')
+    expect(paths).not.toContain('across Windows')
+    expect(paths).not.toContain('cloned on Windows')
+    expect(paths).toContain('Windows through WSL')
   })
 })
