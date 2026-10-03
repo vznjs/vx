@@ -27,6 +27,11 @@ export interface DeriveStableKeysArgs {
   nestedDirsByProject: Map<string, string[]>
   gitFilesCache: GitFilesCache
   hashCache: HashCache
+  /**
+   * Filled with each uncached task's key when no upstream can write where
+   * that key reads, so execute-task need not derive it a second time.
+   */
+  uncachedKeys?: Map<string, string>
 }
 
 export interface StableKey {
@@ -237,6 +242,18 @@ export async function deriveStableKeys(args: DeriveStableKeysArgs): Promise<Stab
 
     const cacheEnabled = node.config.cache !== undefined
     if (cacheEnabled && !unstable) stableKeys.push({ hash, node })
+    // An uncached key reads its whole project, so `dependsOnSiblingOutputs`
+    // (which answers false for it) is not the gate: any upstream that may
+    // write into this project, or anywhere, leaves the key preliminary.
+    else if (
+      !cacheEnabled &&
+      !unstable &&
+      !outputProjects.has(node.projectName) &&
+      unfolded?.has(node.projectName) !== true &&
+      !wsOutputUpstream &&
+      !wsUnfoldedHere
+    )
+      args.uncachedKeys?.set(id, hash)
   }
   return stableKeys
 }

@@ -103,7 +103,11 @@ import type { RunOptions, RunSummary } from './options.js'
 
 // Per run, never shared: a `vx watch` process runs many, and a shared map
 // is one `preProbed.set` away from leaking a hit across cycles.
-const emptyShortCircuit = (): ShortCircuit => ({ preProbed: new Map(), restoreTier: new Set() })
+const emptyShortCircuit = (): ShortCircuit => ({
+  preProbed: new Map(),
+  restoreTier: new Set(),
+  uncachedKeys: new Map(),
+})
 
 /**
  * Parse the `VX_TASK_TIMEOUT` env var (ms) — the "global" run-level task
@@ -891,6 +895,7 @@ async function runOnBus(
 
     const buildExecuteArgs = (node: TaskNode, upstream: TaskOutcome[], reuseProbe = true) => {
       const probe = reuseProbe ? shortCircuit.preProbed.get(node.id) : undefined
+      const upfrontKey = shortCircuit.uncachedKeys.get(node.id)
       if (
         options.continueMode === 'always' &&
         node.deps.some((d) => deadServerBehind(nodes, serverDied, d) !== undefined)
@@ -921,6 +926,7 @@ async function runOnBus(
         gitFilesCache,
         hashCache,
         ...(probe !== undefined ? { preProbed: probe } : {}),
+        ...(upfrontKey !== undefined ? { upfrontKey } : {}),
         ...(tainted ? { taintedUpstream: true } : {}),
         ...(dependedOn.has(node.id) ? {} : { noDependants: true as const }),
         fingerprintWatch,
