@@ -847,6 +847,29 @@ held to cli.md and the schema. The tool's description, what an agent
 reads first, had lost `configErrors` and `sandbox`; it names every
 answer key now, held both ways to `tests/contract/tools.json` (#2710).
 
+## H-78: vx upgrade checks it can write before it downloads
+
+Run where vx's directory is not writable, `vx upgrade` downloaded the
+release and then failed at the rename with a raw `EACCES`. It checks
+that directory first and refuses in one line, naming `sudo vx
+upgrade` or a writable install, before anything is fetched (#2704).
+
+## H-79: the zsh completion script works autoloaded and sourced
+
+`vx completions zsh` saved on `fpath` as `_vx` is autoloaded as the
+completion function itself, and it only ran `compdef` there, so the
+first Tab completed nothing. The script now completes when it is
+`_vx` and registers when sourced; both ways are held by stubbing
+`compadd` and `compdef`, with no pty, so the rows run on macOS CI (#2714).
+
+## H-80: help and completions skip the plugin load without a workspace file
+
+`vx help`, `vx <verb> --help` and `vx completions`, which a shell runs
+at every start, imported the orchestrator (~50 ms) to list plugin
+verbs where no `vx.workspace.*` exists to declare one: 52 → 31 ms,
+57 → 36 for completions. `vx --version` (14 ms) and a warm no-op run
+already loaded only what they need (#2729).
+
 ## Leads for other streams
 
 - **A:** a task that rewrites its own input with the same bytes is never
