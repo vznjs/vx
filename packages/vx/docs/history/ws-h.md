@@ -679,6 +679,35 @@ reads named no field. telemetry.md § Records reprints
 each streaming kind's fields; `telemetry-doc.test.ts` holds every field,
 its optionality and each kind's row to telemetry.ts both ways (#2592).
 
+## H-60: discovery's refusals held word for word
+
+H-58's refusal law read config-schema.ts alone. It reads the loader and
+discovery too now (project-loader.ts, workspace.ts), and counts a pin
+written across concatenated literals or as a regex. Five refusals of a
+plugin-named project (`namedProject`: a shape that is not
+`{ dir, name }`, a directory outside the root, another project's
+directory or name, a name its package.json does not give) were in no
+test; `discovery-refusals.test.ts` pins each whole (#2599).
+
+## H-61: a VX_* read the env reader cannot see
+
+env-doc-drift held cli.md's variables to core's reads as exact sets,
+but finds a read by its spelling; a read through a helper
+(`envInt('VX_X')`) passed every law undocumented, the gap H-50 closed
+for plugins. `env-reads-complete.test.ts` requires every quoted
+`'VX_*'` name in core's source to be a read the reader finds; an
+injected helper read fails it while env-doc-drift passes (#2606).
+
+## H-62: cli.md's exit codes are every code the CLI returns
+
+The exit-code records drive documented outcomes and H-57 ties each
+section to them; a code the source returns that no record drives was
+seen by neither. `exit-codes-complete.test.ts` collects each verb's
+`return N`, bin.ts's own and 128 + n per stop signal, and requires
+exactly that set in cli.md's exit-code statements, plugin verbs aside:
+{0, 1, 129, 130, 143} both ways. A new `return 2` or a dropped `129`
+fails it (#2610).
+
 ## Leads for other streams
 
 - **A:** a task that rewrites its own input with the same bytes is never
