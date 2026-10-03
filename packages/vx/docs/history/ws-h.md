@@ -870,6 +870,12 @@ verbs where no `vx.workspace.*` exists to declare one: 52 → 31 ms,
 57 → 36 for completions. `vx --version` (14 ms) and a warm no-op run
 already loaded only what they need (#2729).
 
+## H-81: a mistyped task typed as a verb names the task
+
+`vx build` already named `vx run build`; `vx biuld` said only "unknown
+command". A word a few edits from a task now names the task and its
+`vx run`, unless a verb is as close (`vx rnu` still hints `run`) (#2731).
+
 ## Leads for other streams
 
 - **A:** a task that rewrites its own input with the same bytes is never
