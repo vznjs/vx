@@ -1126,7 +1126,8 @@ trailing slash — `write: ['coverage/']` — or as a glob (`'dist/**'`);
 outside the project (`'~/.bun/install/cache/'`) only these two shapes are
 created, never a file.
 Spell a directory as a bare literal and the task's own `mkdir` meets
-"File exists"; the failure then says so, names the `dir/` spelling, and
+"File exists" ("Not a directory" for a path inside it, `mkdir -p
+coverage/lcov`); the failure then says so, names the `dir/` spelling, and
 vx removes the empty file it made (it takes back any placeholder the
 task never wrote, so an unwritten one is never archived as an output).
 A grant that leaves the project through a symlink is refused: the grant
