@@ -99,6 +99,13 @@
   guide's step 3 said the `next:` line "runs what turbo/nx ran"; it now
   calls that build a check of the mapping, not a way to run the repo.
 
+- **R-21** The quickstart and overview walked as a new user in a
+  scratch npm workspace: `vx init`'s files and report, every Run line,
+  `--dry` before and after an edit, `--graph`, `why`, `last`, `cache
+prune` all match. Fixed: the Run blocks used bare `vx`, which a local
+  install does not put on PATH (now named once), and the hit comment
+  said "a hit" where the default output prints `up-to-date`.
+
 ## Leads
 
 - Real-repo rows (`packages/vx-bench/real-repos.json`, benchmarks.md's
