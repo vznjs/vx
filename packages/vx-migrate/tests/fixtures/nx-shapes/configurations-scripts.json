@@ -1,0 +1,141 @@
+{
+  "graph": {
+    "nodes": {
+      "web": {
+        "name": "web",
+        "data": {
+          "root": "apps/web",
+          "targets": {
+            "build": {
+              "executor": "@nx/vite:build",
+              "options": {
+                "outputPath": "dist/apps/web",
+                "configFile": "apps/web/vite.config.ts"
+              },
+              "configurations": {
+                "production": {
+                  "mode": "production"
+                },
+                "development": {
+                  "mode": "development",
+                  "outputPath": "dist/apps/web-dev"
+                }
+              },
+              "defaultConfiguration": "production",
+              "outputs": ["{options.outputPath}"],
+              "cache": true,
+              "dependsOn": [
+                {
+                  "target": "build",
+                  "dependencies": true,
+                  "params": "forward"
+                }
+              ],
+              "inputs": [
+                "production",
+                "^production",
+                {
+                  "env": "VITE_API_URL"
+                }
+              ]
+            },
+            "lint": {
+              "executor": "@nx/eslint:lint",
+              "options": {
+                "lintFilePatterns": ["apps/web/**/*.ts"]
+              },
+              "outputs": ["{options.outputFile}"],
+              "cache": true
+            },
+            "test": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "test"
+              },
+              "cache": true,
+              "dependsOn": [
+                {
+                  "target": "build",
+                  "projects": "self"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "api": {
+        "name": "api",
+        "data": {
+          "root": "apps/api",
+          "implicitDependencies": ["shared"],
+          "targets": {
+            "build": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "build"
+              },
+              "outputs": ["{projectRoot}/dist"],
+              "cache": true,
+              "dependsOn": ["^build"]
+            },
+            "deploy": {
+              "executor": "nx:run-commands",
+              "options": {
+                "command": "node deploy.mjs"
+              },
+              "configurations": {
+                "staging": {
+                  "command": "node deploy.mjs --env=staging"
+                }
+              },
+              "dependsOn": ["build"]
+            }
+          }
+        }
+      },
+      "shared": {
+        "name": "shared",
+        "data": {
+          "root": "libs/shared",
+          "targets": {
+            "build": {
+              "executor": "@nx/js:tsc",
+              "options": {
+                "outputPath": "dist/libs/shared",
+                "tsConfig": "libs/shared/tsconfig.lib.json",
+                "main": "libs/shared/src/index.ts"
+              },
+              "outputs": ["{options.outputPath}"],
+              "cache": true
+            }
+          }
+        }
+      }
+    },
+    "dependencies": {
+      "web": [
+        {
+          "source": "web",
+          "target": "shared",
+          "type": "static"
+        }
+      ],
+      "api": [
+        {
+          "source": "api",
+          "target": "shared",
+          "type": "implicit"
+        }
+      ],
+      "shared": []
+    }
+  },
+  "scripts": {
+    "web": {
+      "test": "bun test"
+    },
+    "api": {
+      "build": "tsc"
+    }
+  }
+}

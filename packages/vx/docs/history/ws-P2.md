@@ -76,6 +76,13 @@ sync`", advice for a repo leaving Nx: they say to keep what the
   run-commands variants) are
   test fixtures: `tests/nx-shape-fixtures.test.ts` migrates each through
   the CLI and loads every written config. They found P2-11 and P2-12.
+- **P2-14** Three more shapes join them: configurations with
+  `{options.outputPath}` outputs, `nx:run-script` and implicit
+  dependencies; every input kind (runtime, workspace filesets, another
+  project's named input, `projects: "*"`); `{projectRoot}` /
+  `{projectName}` interpolation and a script that calls nx. Rows now pin
+  commands, outputs and dependsOn, not only task names. All three
+  migrated correctly.
 
 ## Leads for other streams
 
