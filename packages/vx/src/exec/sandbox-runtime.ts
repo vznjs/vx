@@ -1794,7 +1794,7 @@ async function runSandboxedOnce(
       config: args.config,
       skip: [taskTmpRoot(), ...srtDefaultWritePaths()],
     })
-    if (outside.length > 0) violations.push(outsideWritesHint(outside))
+    if (outside.length > 0) violations.push(outsideWritesHint(outside, baselines.denyRead))
   }
 
   // The one denial macOS never logs. MEASURED 2026-09-05, same machine, two
@@ -1862,20 +1862,33 @@ async function runSandboxedOnce(
 }
 
 /** The hint for writes refused outside the project, a few paths named. */
-function outsideWritesHint(paths: readonly string[]): SandboxViolation {
+function outsideWritesHint(paths: readonly string[], walled: readonly string[]): SandboxViolation {
   const shown = paths.slice(0, 5).join(', ')
   const more = paths.length > 5 ? ` and ${paths.length - 5} more` : ''
   const home = toRealPath(os.homedir())
   const dir = path.dirname(paths[0]!)
   const spelled = atOrUnder(dir, home) ? `~${dir.slice(home.length)}` : dir
-  return {
-    timestamp: new Date(),
-    hint: true,
-    line:
-      `vx: the sandbox refused writes outside the project, which are not reported as ` +
-      `violations: ${shown}${more}. If the task needs one, grant its directory, e.g. ` +
-      `\`allow: { write: ['${spelled}/'] }\`.`,
-  }
+  const refused =
+    `vx: the sandbox refused writes outside the project, which are not reported as ` +
+    `violations: ${shown}${more}.`
+  // Granting a system temp directory opens it to every write of the task;
+  // the task already has a temp directory of its own. A workspace kept
+  // under one is the workspace, and its directory is the grant.
+  const first = paths[0]!
+  const scratchTemp =
+    hostTempRoots().some((t) => atOrUnder(first, t)) &&
+    !walled.some((w) => atOrUnder(first, toRealPath(w)))
+  const line = scratchTemp
+    ? `${refused} The task has its own temp directory, empty at its start: write under ` +
+      `$TMPDIR (os.tmpdir() in Node and Bun) instead of a fixed path.`
+    : `${refused} If the task needs one, grant its directory, e.g. ` +
+      `\`allow: { write: ['${spelled}/'] }\`.`
+  return { timestamp: new Date(), hint: true, line }
+}
+
+/** The host's shared temp directories, canonical: what a fixed temp path in a tool names. */
+function hostTempRoots(): string[] {
+  return [...new Set(['/tmp', '/var/tmp', os.tmpdir()].map(toRealPath))]
 }
 
 function hiddenReadsHint(paths: readonly string[], within: string): SandboxViolation {
