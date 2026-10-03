@@ -207,12 +207,10 @@ describe('cli run()', () => {
       }
       process.chdir(root)
       expect(await run(['run', 'build', 'lint', 'typo-here', '--all', '--dry'])).toBe(1)
-      expect(stderr).toContain('no projects declare task(s): typo-here.')
       // The control, and the whole point: the names that DO resolve are not
-      // in the message. Asserted per name, because `toContain` on the good
-      // line would pass on the fallback's wording too.
-      expect(stderr).not.toContain('build')
-      expect(stderr).not.toContain('lint')
+      // among the unresolved; they appear only as what exists (M-56). The
+      // whole line, because `toContain` would pass on the fallback's wording.
+      expect(stderr).toBe('vx run: no projects declare task(s): typo-here. Tasks: build, lint.\n')
     } finally {
       process.chdir(origCwd)
       await rm(root, { recursive: true, force: true })

@@ -38,6 +38,7 @@ import {
   parseSize,
   printTimings,
   ulid,
+  listed,
   nearest,
   UserError,
   machineParallelism,
@@ -378,7 +379,7 @@ async function runOnBus(
   // case too; the message is identical, so that branch stays below.
   if (prepared.unresolvedTasks.length > 0) {
     log.status(
-      `No projects declare task(s): ${prepared.unresolvedTasks.join(', ')}.${elsewhereHint(prepared.declaredElsewhere)}${didYouMean(prepared.unresolvedTasks, prepared.hintProjects)}${await initHint(prepared)}`,
+      `No projects declare task(s): ${prepared.unresolvedTasks.join(', ')}.${elsewhereHint(prepared.declaredElsewhere)}${didYouMean(prepared.unresolvedTasks, prepared.hintProjects, prepared.declaredElsewhere)}${await initHint(prepared)}`,
     )
     await teardown()
     prepared.cache.close()
@@ -1427,7 +1428,7 @@ export async function planRun(options: RunOptions): Promise<RunPlan> {
       return {
         tasks: [],
         unresolvedTasks: prepared.unresolvedTasks,
-        unresolvedHint: `${elsewhereHint(prepared.declaredElsewhere)}${didYouMean(prepared.unresolvedTasks, prepared.hintProjects)}${await initHint(prepared)}`,
+        unresolvedHint: `${elsewhereHint(prepared.declaredElsewhere)}${didYouMean(prepared.unresolvedTasks, prepared.hintProjects, prepared.declaredElsewhere)}${await initHint(prepared)}`,
       }
     }
     if (prepared.empty === 'no-tasks-declared' && prepared.declaredElsewhere.length > 0) {
@@ -1520,12 +1521,16 @@ async function initHint(prepared: {
 function didYouMean(
   unresolved: readonly string[],
   projects: ReadonlyMap<string, ProjectEntry>,
+  elsewhere: readonly string[] = [],
 ): string {
   const tasksOf = (p: ProjectEntry | undefined): string[] => Object.keys(p?.config.tasks ?? {})
   const allTasks = new Set<string>()
   for (const p of projects.values()) for (const t of tasksOf(p)) allTasks.add(t)
   // A Set: two typos of the same task hint it once, not once per typo.
   const hints = new Set<string>()
+  // A typo past two edits named nothing to pick from (M-56): with no near
+  // name, say what exists instead.
+  const lists = new Set<string>()
   for (const spec of unresolved) {
     const at = spec.indexOf('#')
     const nx = nxProjectTarget(spec, projects)
@@ -1536,18 +1541,31 @@ function didYouMean(
     if (at < 0) {
       const t = nearest(spec, allTasks)
       if (t !== undefined) hints.add(t)
+      // A name outside the selection is already said, with `--all`.
+      else if (allTasks.size > 0 && !elsewhere.includes(spec)) {
+        lists.add(`Tasks: ${listed(allTasks)}.`)
+      }
       continue
     }
     const [proj, task] = [spec.slice(0, at), spec.slice(at + 1)]
     if (!projects.has(proj)) {
       const p = projectNamed(proj, projects) ?? nearest(proj, projects.keys())
       if (p !== undefined && tasksOf(projects.get(p)).includes(task)) hints.add(`${p}#${task}`)
+      else if (p === undefined && projects.size > 0) {
+        lists.add(`No project is named ${proj}; projects: ${listed(projects.keys())}.`)
+      }
       continue
     }
     const t = nearest(task, tasksOf(projects.get(proj)))
     if (t !== undefined) hints.add(`${proj}#${t}`)
+    else if (tasksOf(projects.get(proj)).length > 0) {
+      lists.add(`${proj}'s tasks: ${listed(tasksOf(projects.get(proj)))}.`)
+    }
   }
-  return hints.size === 0 ? '' : ` Did you mean ${[...hints].join(', ')}?`
+  return (
+    (hints.size === 0 ? '' : ` Did you mean ${[...hints].join(', ')}?`) +
+    [...lists].map((l) => ` ${l}`).join('')
+  )
 }
 
 /**

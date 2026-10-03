@@ -36,7 +36,15 @@ describe('findWorkspaceRoot', () => {
   })
 
   it('throws clearly when no workspace root signal exists in any parent', async () => {
-    await expect(findWorkspaceRoot(dir)).rejects.toThrow(/Could not find a workspace root/)
+    const said = await findWorkspaceRoot(dir).then(
+      () => '',
+      (err: Error) => err.message,
+    )
+    // The whole line, next step included (M-56): it named what was missing
+    // and not what to do.
+    expect(said).toBe(
+      `Could not find a workspace root in any parent of ${dir} (looked for pnpm-workspace.yaml or package.json): run vx inside a project, or create a package.json (\`bun init\` or \`npm init -y\`) and run \`vx init\``,
+    )
   })
 
   it('accepts a bare package.json as workspace root (single-project mode)', async () => {

@@ -24,7 +24,7 @@ import {
 import type { ProjectConfig } from '../config.js'
 import type { ProjectEntry } from '../workspace/index.js'
 import { parseDependencySpec } from '../graph/index.js'
-import { maskedLine, nearest, UserError } from '../util/index.js'
+import { listed, maskedLine, nearest, UserError } from '../util/index.js'
 import {
   claimedAffected,
   fingerprintClaims,
@@ -468,5 +468,5 @@ function didYouMeanProject(
     const scoped = bare === undefined ? undefined : byBare.get(bare)
     if (scoped?.length === 1) return `. Did you mean ${scoped[0]}?`
   }
-  return ''
+  return names.length === 0 ? '' : `. Projects: ${listed(names)}`
 }

@@ -49,7 +49,7 @@ export {
 export { appendTail, createTail, resetTail, tailText, type Tail } from './tail.js'
 export { ulid } from './ulid.js'
 export { splitTaskId } from './task-id.js'
-export { editDistance, nearMatches, nearest } from './edit-distance.js'
+export { editDistance, listed, nearMatches, nearest } from './edit-distance.js'
 export { CORE_VERBS, MOVED_VERBS } from './verbs.js'
 export { isUnsupportedBun, MIN_BUN, unsupportedBunMessage } from './bun-version.js'
 export { executablePath, shellArgv } from './which.js'
