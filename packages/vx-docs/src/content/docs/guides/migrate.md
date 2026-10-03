@@ -21,7 +21,8 @@ your `package.json` scripts.
 2. Run `npx vx init`. Beside `turbo.json` or `turbo.jsonc` it writes this
    `vx.workspace.ts` and nothing else, then prints a `next:` line.
 3. Run that line. It installs `@vzn/vx-migrate` with your lockfile's
-   manager, then runs what `turbo run build` ran, under vx's cache.
+   manager, then builds once through `turbo()`: a check that the mapping
+   holds before you write configs, not a way to keep running the repo.
 4. Preview the configs with `bunx @vzn/vx-migrate --dry`, then write them
    with `bunx @vzn/vx-migrate`: one `vx.config.ts` per package, plus a
    `vx-preset.ts` when turbo.json has global fields or a task `env` several
@@ -170,7 +171,8 @@ The command itself comes from your `package.json` script, with its
    A CI file that sets `NX_SELF_HOSTED_REMOTE_CACHE_SERVER` adds `nxCache()`;
    an Nx Cloud workspace is named instead, since vx cannot share its cache.
 3. Run the `next:` line it prints. It installs `@vzn/vx-migrate`, then
-   runs what `nx run-many -t build` ran, under vx's cache.
+   builds once through `nx()`: a check that the mapping holds before you
+   write configs, not a way to keep running the repo.
 4. `vx-migrate` reads the resolved graph, never `nx.json` alone: an
    exported `.nx/workspace-data/project-graph.json`, else the one your
    installed `nx` exports for it (`nx graph`, as `nx()` runs). Without
