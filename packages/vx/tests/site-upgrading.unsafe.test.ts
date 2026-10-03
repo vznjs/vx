@@ -16,7 +16,21 @@ function footers(md: string): string[] {
   return [...md.matchAll(/^## .+\n\n(.+)\n/gm)].map((m) => m[1]!).toSorted()
 }
 
+const shallow =
+  Bun.spawnSync(['git', 'rev-parse', '--is-shallow-repository'], { cwd: ROOT })
+    .stdout.toString()
+    .trim() === 'true'
+
 it('guides/upgrading.md carries every breaking footer in git log', () => {
+  // A shallow checkout (actions/checkout's default depth 1, the macOS job)
+  // holds none of the history: where CI sets VX_REQUIRE_TAGS, the job that
+  // fetches it all, that is a failure, never a pass (as api-break's row).
+  if (shallow) {
+    expect(process.env['VX_REQUIRE_TAGS'] === '1' ? 'a shallow checkout: fetch-depth 0' : '').toBe(
+      '',
+    )
+    return
+  }
   const want = footers(page(commitsBetween('', 'HEAD', ROOT)))
   expect(want.length).toBeGreaterThanOrEqual(11)
   expect(footers(readFileSync(PAGE, 'utf8'))).toEqual(want)
