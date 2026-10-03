@@ -31,7 +31,7 @@ const graph = {
   dependencies: { a: [{ source: 'a', target: 'b', type: 'static' }] },
 }
 
-async function map(nativeExecutors: boolean) {
+async function map(migration: boolean) {
   const root = await mkdtemp(path.join(os.tmpdir(), 'vx-nx-publish-'))
   try {
     await writeFile(path.join(root, 'package.json'), '{"name":"root","private":true}')
@@ -44,7 +44,7 @@ async function map(nativeExecutors: boolean) {
     return await mapNxWorkspace(root, metas, parseNxGraph(JSON.stringify(graph), 'g'), {
       persistentTodo: 'p',
       cacheable: new Set(),
-      nativeExecutors,
+      migration,
     })
   } finally {
     await rm(root, { recursive: true, force: true })

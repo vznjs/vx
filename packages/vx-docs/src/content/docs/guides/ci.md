@@ -21,10 +21,10 @@ vx run test --affected                 # changed since the base branch, and depe
 vx run test --affected=origin/main     # changed since that ref
 vx run app#build api#test              # exact tasks, from anywhere
 vx run lint test build --all           # several tasks, one graph
-vx run test -- --bail                  # the child runs: bun test --bail; the key sees it
+vx run test --all -- --bail            # the child runs: bun test --bail; the key sees it
 vx run build --all --dry               # the plan, nothing runs
-vx run build --graph=g.dot             # the task graph as Graphviz DOT
-vx watch test                          # re-run whenever its files change
+vx run build --all --graph=g.dot       # the task graph as Graphviz DOT
+vx watch test --all                    # re-run whenever its files change
 ```
 
 `--dry` prints what would run and where each result would come from:

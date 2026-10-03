@@ -183,16 +183,15 @@ The command itself comes from your `package.json` script, with its
 5. Preview the configs with `bunx @vzn/vx-migrate --dry`, then write them
    with `bunx @vzn/vx-migrate`. With `turbo.json` there too, pass
    `--from nx` (or `--from turbo`).
-6. Review each `TODO(vx-migrate)` comment. An executor with no plain
-   command is a placeholder that fails until you write the line it runs;
-   a task a project's own `vx.config.ts` declares wins, and `nx()` fills
-   only the rest.
+6. Review each `TODO(vx-migrate)` comment, and rewrite each `nx-exec`
+   line (an executor target) as the command it runs; a task a project's
+   own `vx.config.ts` declares wins, and `nx()` fills only the rest.
 7. Once `vx run build --all` does what `nx run-many -t build` did,
    remove `nx()` and its import from `vx.workspace.ts`, then delete
    `nx.json`: the configs declare every task the graph had, and the
-   migrator's `note:` says so while `nx()` is still there. Keep
-   `@vzn/vx-migrate` installed only while a config still runs an
-   `nx-env` line.
+   migrator's `note:` says so while `nx()` is still there. Keep Nx and
+   `@vzn/vx-migrate` installed while a config still runs an `nx-exec`
+   line, and `@vzn/vx-migrate` while one runs an `nx-env` line.
 
 ```ts
 import type { WorkspaceConfig } from '@vzn/vx/config'
@@ -214,7 +213,7 @@ next: npm install -D @vzn/vx-migrate && npx vx run build --all
 ```text
 $ bunx @vzn/vx-migrate
 vx-migrate: nx graph → vx.config.ts
-note: migrating from the resolved project-graph snapshot — plugin-inferred targets are frozen as static config; an executor target becomes the command its executor runs, or a placeholder the TODOs below list; targets with `.env` files run through `nx-env` (keep @vzn/vx-migrate installed)
+note: migrating from the resolved project-graph snapshot — plugin-inferred targets are frozen as static config; `nx:run-commands` targets are their shell lines, and every other executor runs as itself through `nx-exec` (keep Nx and @vzn/vx-migrate installed until those targets are rewritten as commands); targets with `.env` files run through `nx-env`
 note: vx.workspace.ts still declares nx(), which reads nx.json every run and fills any task a vx.config does not declare; the configs written here declare them all. Once `vx run` does what nx did, remove nx() (and its import), then nx.json
 note: Nx keys each project on the npm packages it depends on in package-lock.json; vx keys every task on the whole file, so a dependency bump re-runs them all. Declare npm() from @vzn/vx-lockfile in vx.workspace.ts to key each task on its package's dependency closure
 
@@ -259,42 +258,17 @@ export default {
 } satisfies ProjectConfig
 ```
 
-An executor target is written as the command its executor runs, from
-where Nx ran it, with the executor's option defaults applied:
+An executor target is written as an `nx-exec` line: the executor runs
+as itself, in its own Node process through Nx's public `runExecutor`,
+with its options on the command line, as `nx()` runs it. The migrator
+translates no executor; `nx:run-commands` targets are their shell
+lines, `nx:run-script` the package script, and `nx:noop` a group task.
+Rewriting each `nx-exec` line as the command the executor wraps (jest,
+`vite build`, `tsc -p …`) is the step that lets you remove Nx:
 
-| Executor                            | Written as                                                  |
-| ----------------------------------- | ----------------------------------------------------------- |
-| `@nx/jest:jest`                     | `cd ../.. && jest --config=libs/a/jest.config.ts …`         |
-| `@nx/vitest:test`, `@nx/vite:test`  | `vitest run --config=vite.config.ts …`                      |
-| `@nx/vite:build`                    | `vite build --outDir=../../dist/libs/a --emptyOutDir …`     |
-| `@nx/eslint:lint`                   | `eslint .`                                                  |
-| `@nx/js:tsc`                        | `rm -rf ../../dist/libs/a && tsc -p tsconfig.lib.json --outDir ../../dist/libs/a --rootDir .` |
-| `@nx/playwright:playwright`         | `cd ../.. && playwright install && playwright test --pass-with-no-tests …` |
-| `@nx/vite:dev-server`               | `vite --config=vite.config.ts --mode=…` (the build target's config and mode) |
-| `@nx/vite:preview-server`           | `vite preview --outDir=../../dist/apps/web …`               |
-| `@nx/storybook:storybook`           | `cd ../.. && storybook dev --port=9009 --config-dir=libs/a/.storybook` |
-| `@nx/storybook:build`               | `cd ../.. && storybook build --config-dir=… --output-dir=…` |
-| `@nx/next:build`                    | `next build`, `NX_NEXT_OUTPUT_PATH` set to `outputPath`     |
-| `@nx/next:server`                   | `next dev --port=4200` (or `next start` in the build output) |
-| `@nx/cypress:cypress`               | `cd ../.. && cypress run --project=apps/web-e2e --config-file=cypress.config.ts --e2e` |
-| `@nx/esbuild:esbuild`               | `cd ../.. && rm -rf dist/apps/api && esbuild apps/api/src/main.ts --bundle --packages=external --format=esm …` |
-| `@nx/js:node`                       | `cd ../.. && node --inspect=localhost:9229 dist/apps/api/main.js` (the build target's output) |
-| `@nx/js:swc`                        | `rm -rf ../../dist/libs/a && swc src -d ../../dist/libs/a --config-file=.swcrc` |
-| `@nx/js:verdaccio`                  | `cd ../.. && verdaccio --config .verdaccio/config.yml --listen localhost:4873` (a server) |
-| `@nx/web:file-server`               | `cd ../.. && cp dist/apps/web/index.html dist/apps/web/404.html && http-server dist/apps/web -c-1 --cors -a=localhost '-P=http://localhost:4200?' -p=4200` (an inferred `serve-static`, `spa`) |
-| `@nx/angular:package`, `@nx/angular:ng-packagr-lite` | `cd ../.. && ng-packagr -p libs/ui/ng-package.json -c libs/ui/tsconfig.lib.prod.json` |
-
-What an executor did besides its tool (a type-check before a Vite
-build, a `package.json` or `assets` copied into the output) is a TODO
-on the task. What it ran first is an edge: an `@nx/js:node`,
-`@nx/vite:preview-server` or `@nx/web:file-server` task depends on its
-`buildTarget` (a bare `build` is the project's own), and a
-Cypress task on its `devServerTarget`. Any other executor is a placeholder that fails naming the
-executor and its options, and the report lists its tasks under one TODO
-per executor: write the command it runs. Where the executor's Nx plugin
-ships `convert-to-inferred` (Webpack and Rollup, whose options feed the
-project's config function), the TODO names it: run
-`nx g @nx/webpack:convert-to-inferred`, then migrate again.
+```ts
+test: { exec: { command: `nx-exec @nx/jest:jest --project a --target test --options '{"jestConfig":"libs/a/jest.config.ts"}'` } }
+```
 
 | Nx                                   | vx                                                        |
 | ------------------------------------ | --------------------------------------------------------- |

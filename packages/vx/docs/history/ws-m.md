@@ -798,3 +798,7 @@ a secret-named one, and compares the stored text, so a change still
 shows. Rows of names the rule already catches are stored as before (no
 spurious `changed` after the upgrade). `why.test.ts` › a name only
 exec.env.secret makes secret (red without the mark, `REGION` control).
+keep their hashes. Not
+covered: a name made secret by `exec.env.secret` alone, which run history
+does not record. `why.test.ts` › a secret-named env input (text and json;
+red without the fix, the `REGION` control unmasked).

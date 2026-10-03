@@ -34,7 +34,7 @@ describe('a target with neither executor nor command', () => {
     const mapped = await mapNxWorkspace('/w', [meta], parseNxGraph(JSON.stringify(graph), 'g'), {
       persistentTodo: 'p',
       cacheable: new Set(),
-      nativeExecutors: true,
+      migration: true,
     })
     const tasks = Object.fromEntries(mapped.projects[0]!.tasks.map((t) => [t.name, t]))
     expect(Object.keys(tasks).sort()).toEqual(['build', 'build-deps'])

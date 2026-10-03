@@ -1625,6 +1625,15 @@ Not required when:
 - Doc-only updates.
 - Refactors that don't change the bytes fed into the hash.
 
+`tests/contract-stored-format.test.ts` holds the layout rows: it
+records the index's DDL beside `SCHEMA_VERSION` and a fixture
+artifact's entries, sidecar and digest beside `CACHE_VERSION`
+(`tests/contract/stored-format.json`), and fails when either layout
+moves under its recorded version. Every bump of either version
+regenerates the record
+(`VX_UPDATE_CONTRACT=1 bun test tests/contract-stored-format.test.ts`),
+which refuses a layout that moved without one.
+
 The bump procedure has a dedicated skill at
 `.claude/skills/bump-cache-version/` (used as `/bump-cache-version`).
 Files touched, in the skill's order: `src/cache/key-fold.ts` (the constant),
@@ -1632,7 +1641,8 @@ this doc (history), `docs/modules/cache.md` (the quoted version, and the
 key/entry shape if it changed), `CLAUDE.md` § Live invariants (the quoted
 version — the decision log it once named was retired 2026-09-02),
 `docs/STATUS.md` (the entry that says why the bump was needed, or why it
-was not), and the cache tests.
+was not), the cache tests, and `tests/contract/stored-format.json`
+(regenerated, above).
 
 ### History
 

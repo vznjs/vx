@@ -1220,8 +1220,8 @@ run...` precedes it.
    on; a removed one is dropped. An edit to the glob list itself (the
    root `package.json`'s `workspaces`, `pnpm-workspace.yaml`) re-reads
    the set, so a glob added there is watched from the cycle it triggers
-   (item 1018). A base removed and made again (a checkout that restores
-   `packages/`) is heard from its nearest directory that exists, and a
+   (item 1018). A base, or a directory a config imports from, removed and made
+   again (a checkout that restores `packages/`) is heard from its nearest directory that exists, and a
    watch whose directory was replaced is armed again (an OS watch holds
    the deleted one; `watch-recreated-dirs.test.ts`). Under `--filter` or `--affected` the scope is the one
    resolved at start, and a new package joins it only as a dependency of
@@ -2036,7 +2036,10 @@ checked-in JSON Schema (draft 2020-12) shipped with the package:
 key set, so a field vx adds is a schema change, never a surprise.
 `tests/cli-json-schemas.test.ts` holds each verb's output to its schema,
 each declared field to some output, and each object's keys to the
-source type.
+source type. `tests/cli-json-doc.test.ts` holds this page to the
+schemas: each `{ … }` a verb's section shows is an object its schema
+closes with those keys, each object the verb prints whole is shown, and
+`vx info`'s field list is its schema's top level.
 
 ## `vx show`
 
@@ -2315,7 +2318,9 @@ task with no `cache` block derives a key too — it is what dependents
 fold — but saves no entry, so for it the verb can only report the key
 change and says so.
 `--format json` emits one machine-readable object (`{ taskId, runId,
-why, diff }`).
+why, diff }`); when the task's recorded runs predate run ids, `{ taskId,
+why, diff, explanation }`, `why` and `diff` null and `explanation` the
+latest cache entry's key.
 
 Exit codes: `0` the task's run explained; `1` no recorded run of the
 task, a `--run` with no row for it, or a parse error.

@@ -1512,3 +1512,17 @@ holds only on the machine that printed them. Now as the config spells
 them, from the task's directory (`'*.log'`, then
 `allow: { write: ['.'] }`), from `~`, or whole (#2622), as B-87 did for
 the outside-writes hint. Row: `sandbox-empty-grant-spelling.unsafe.test.ts`.
+
+B-98. The unsandboxed per-task cost ranked again without overlap: 500
+uncached `true` tasks at concurrency 1 save nothing, so no save lane
+runs beside a span, and timestamps around each phase (instrumentation
+not committed) sum to the wall. Per task, mean of 3 runs: `runCommand`
+1.24 ms (89%), then vx's own: before the spawn 85 µs (the key 12, the
+path to `secretMask` 21, `secretMask` with the write-reach checks and
+`buildRequest` 47, the executor's own 4), the scheduler and logging
+around a task 41, after the run 37, admission 9. The largest single item
+is still `secretMask`'s walk of `process.env` (~25 µs, B-94). Cutting
+it needs one env snapshot per run shared by the mask and `taskEnv`,
+which both read `process.env` fresh per task; at ~10 ms per 500 tasks
+it sits inside a min-of-8 wall A/B's ±10 ms. Not cut. The unsandboxed
+path has no step a wall A/B resolves.

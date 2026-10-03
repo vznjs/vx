@@ -44,7 +44,7 @@ async function dependsOn(bImplicit: string[], bManifest: Record<string, unknown>
   const mapped = await mapNxWorkspace('/w', metas, parseNxGraph(JSON.stringify(graph), 'g'), {
     persistentTodo: 'p',
     cacheable: new Set(),
-    nativeExecutors: true,
+    migration: true,
   })
   // The input twins (`nx-input:default`) are another rule's edges.
   const own = (d: unknown) => !String(d).includes('#nx-input:')

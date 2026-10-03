@@ -853,18 +853,16 @@ describe('the from-nx post says how executors run, and names the servers', () =>
     })
     expect(page.replace(/\s+/g, ' ')).toContain('come through as persistent tasks')
   })
-  it('the post and the guide say nx() runs executors through nx-exec and the migrator writes commands', () => {
+  it('the post and the guide say executors run through nx-exec, in nx() and the migration alike', () => {
     expect(page).toContain('Each becomes an `nx-exec`')
-    expect(page.replace(/\s+/g, ' ')).toContain(
-      'an executor target is written as the command the executor was wrapping',
-    )
-    expect(guide).toContain('An executor target is written as the command its executor runs')
-    // The mapper agrees: the plugin's executor line is `nxExecCommand`'s
-    // (its `.env` files appended), the migrator's is nx-native.ts's.
+    expect(page.replace(/\s+/g, ' ')).toContain('executor target is written as its `nx-exec` line')
+    expect(guide).toContain('An executor target is written as an `nx-exec` line')
+    // The mapper agrees: one executor line, `nxExecCommand`'s (its `.env`
+    // files appended), and no translator beside it (owner, 2026-10-03).
     expect(src).toContain(
       'line(nxExecCommand(executor, projectName, targetName, configuration, options, files))',
     )
-    expect(src).toContain('nativeExecutorCommand(executor, options, {')
+    expect(src).not.toContain('nativeExecutorCommand')
   })
   it('the benchmark figures it states are the benchmarks page’s', () => {
     const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
@@ -1480,20 +1478,19 @@ describe('the plugins guide rosters every hook a shipped plugin fills', () => {
 })
 
 // The migrate-from-nx guide is the migrate page's Nx section (the short site).
-describe('the migrate-from-nx guide names the executors the migrator writes as commands', () => {
-  it('its table is nx-native.ts’s translators, the legacy linter name aside', () => {
+describe('the migrate-from-nx guide lists no translated executor', () => {
+  it('no executor table, and no translator module behind one', () => {
     const page = section(readFileSync(path.join(GUIDES, 'migrate.md'), 'utf8'), 'Nx')
-    const src = readFileSync(
-      path.resolve(import.meta.dir, '..', '..', 'vx-migrate', 'src', 'nx', 'nx-native.ts'),
-      'utf8',
-    )
-    const table = /const TRANSLATORS: [^=]*= \{([\s\S]*?)\n\}/.exec(src)![1]!
-    const translated = [...table.matchAll(/'(@[^']+)':/g)].map((x) => x[1]!)
-    const named = [...page.matchAll(/^\| (`@[^|]+)\|/gm)].flatMap((row) =>
-      [...row[1]!.matchAll(/`(@[^`]+)`/g)].map((x) => x[1]!),
-    )
-    expect(translated.length).toBeGreaterThan(5)
-    expect(named.sort()).toEqual(translated.filter((e) => e !== '@nx/linter:eslint').sort())
+    expect([...page.matchAll(/^\| `@[^|]+\|/gm)].map((row) => row[0])).toEqual([])
+    expect(
+      existsSync(
+        path.resolve(import.meta.dir, '..', '..', 'vx-migrate', 'src', 'nx', 'nx-native.ts'),
+      ),
+    ).toBe(false)
+    // The positive: the module the line comes from is there.
+    expect(
+      existsSync(path.resolve(import.meta.dir, '..', '..', 'vx-migrate', 'src', 'nx', 'nx-map.ts')),
+    ).toBe(true)
   })
 })
 
