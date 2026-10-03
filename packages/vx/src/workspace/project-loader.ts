@@ -733,6 +733,7 @@ const BUN_MEMBERS_VX_READS: readonly PropertyKey[] = [
   'spawnSync',
   'stdout',
   'stringWidth',
+  'stripANSI',
   'version',
   'which',
   'write',

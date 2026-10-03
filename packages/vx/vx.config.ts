@@ -13,6 +13,10 @@ export const SHARD_COUNT = 12
 // `core.checkStat=minimal`, which vx then declines to trust, A-6) or sign
 // every commit a fixture makes; neither is the code under test.
 const GIT_HERMETIC = { GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' }
+// vx forces colour on a task unless it sees FORCE_COLOR. The suite spawns
+// vx and its tasks and reads their output as text, so it runs with colour
+// off, as a host that sets none ran it before vx forced it.
+const SUITE_ENV = { ...GIT_HERMETIC, FORCE_COLOR: '0' }
 // `bun build --compile --target=bun-<t>` for a target other than the
 // running Bun fetches `@oven/bun-<t>` from the npm registry once, extracts
 // it into `<cwd>/.<hash>-00000000.tmp/` and moves the runtime into
@@ -33,7 +37,7 @@ const shardTask = (i: number) => ({
     command: `bun test --only-failures $(bun scripts/test-shard.ts ${i} ${SHARD_COUNT})`,
     env: {
       passThrough: ['VX_REQUIRE_SANDBOX', 'VX_REQUIRE_WATCH_EVENTS', 'VX_REQUIRE_NONROOT'],
-      define: GIT_HERMETIC,
+      define: SUITE_ENV,
     },
     sandbox: {
       allow: {
@@ -184,7 +188,7 @@ export default defineProject({
             // gate, 2026-09-28). A path, unset on CI; not a key input.
             'NODE_EXTRA_CA_CERTS',
           ],
-          define: GIT_HERMETIC,
+          define: SUITE_ENV,
         },
       },
       cache: {

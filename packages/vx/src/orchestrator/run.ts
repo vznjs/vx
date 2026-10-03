@@ -59,6 +59,7 @@ import { assembleRunSummary, isPassStatus } from './telemetry.js'
 import type { RunContextRecord } from './telemetry.js'
 import { defaultLogger, resolveOutputView, type Logger } from './logger.js'
 import { detectColors, type ColorSupport } from './colors.js'
+import { plainOutput } from './plain-output.js'
 import { formatPersistentList } from './framed-output.js'
 import { LocalHistoryProvider } from './history.js'
 import { plan, type RunPlan } from './plan.js'
@@ -307,7 +308,12 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   // outlives the run, and a renderer left behind reported the next run on
   // it twice (item 635). Otherwise a fresh internal bus.
   const bus = options.bus ?? createEventBus()
-  const unsubscribeTerminal = bus.subscribe(terminalSubscriber(sink))
+  // Tasks run with colour forced (exec/env.ts); where the terminal prints
+  // plain, their escapes are stripped. A custom logger gets the task's
+  // bytes as written, as the cache holds them: it formats its own output.
+  const unsubscribeTerminal = bus.subscribe(
+    terminalSubscriber(terminal === null || colors.enabled ? sink : plainOutput(sink)),
+  )
   const detach = (): void => {
     unsubscribeTerminal()
     terminal?.settle()

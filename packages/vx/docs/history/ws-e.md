@@ -630,3 +630,18 @@ walked on fixtures.
   hues by char-code sum, vx's framed output already hashes a project to
   a hue; Nx also sets `FORCE_COLOR=true` on every task it spawns unless
   the user set it, which vx does not (a task gets the variable as set).
+- **E-103.** A task's output is a pipe, so tsc, eslint and bun test
+  printed plain under vx while Nx and Turbo showed their colour (owner,
+  2026-10-03: "force colors, strip them before outputting on CI"). vx
+  now sets `FORCE_COLOR=1` on every task that sees neither
+  `FORCE_COLOR` nor a non-empty `NO_COLOR`, and `plainOutput` strips the
+  escapes from task output wherever vx's own output is plain, live and
+  replayed, holding an escape cut across chunks; a custom `log` still
+  gets the bytes as written. The cache stores the coloured bytes, one
+  form for every machine. This reverses the nx#23259 stance
+  `terminal.unsafe.test.ts` pinned (a task writing its output to a file
+  gets escapes; it opts out with `FORCE_COLOR: '0'`). The repo's own
+  suites define `FORCE_COLOR=0`: they spawn vx and read its output as
+  text, and 59 rows went red under the forced value. Rows: `env.test.ts` ›
+  forces colour unless…, `plain-output.test.ts`, `cli-colors-e2e.test.ts`
+  › a task's colour; each red without its half.

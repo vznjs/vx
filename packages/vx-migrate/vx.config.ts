@@ -70,9 +70,10 @@ export default defineProject({
         // VX_REQUIRE_REFTABLE: head-stamp-reftable.test.ts fails on a git
         // too old for reftable instead of skipping.
         // Fixture repos assume git's defaults; a global config may sign commits.
+        // FORCE_COLOR=0: the suite reads vx's and its tasks' output as text.
         env: {
           passThrough: ['VX_NX_MODULES', 'VX_REQUIRE_NX', 'VX_REQUIRE_REFTABLE'],
-          define: { GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' },
+          define: { GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1', FORCE_COLOR: '0' },
         },
         sandbox: {
           allow: {

@@ -78,30 +78,36 @@ describe('a vx that paints its own output on a terminal', () => {
     await rm(root, { recursive: true, force: true })
   })
 
-  // nx#23259: the runner forced FORCE_COLOR into every task, so a task
-  // writing to a pipe or a file got escapes. vx paints its own output on a
-  // terminal and leaves the task's environment as the host set it.
-  it('vx painting its own output on a terminal sets no FORCE_COLOR for the task', async () => {
+  // A task's stdout is a pipe, so vx forces colour (owner, 2026-10-03,
+  // reversing the nx#23259 stance) and strips it where it prints plain. A
+  // task that writes its own output to a file sets FORCE_COLOR=0 itself.
+  it('vx on a terminal sets FORCE_COLOR=1 for a task, and NO_COLOR keeps it unset', async () => {
     const env: Record<string, string> = { CI: '', GITHUB_ACTIONS: '' }
     for (const [k, v] of Object.entries(process.env)) {
       if (v !== undefined && k !== 'NO_COLOR' && k !== 'FORCE_COLOR' && k !== 'CI') env[k] = v
     }
-    let screen = ''
-    const proc = Bun.spawn([process.execPath, BIN, 'run', 'fc', '--all', '--output-logs=full'], {
-      cwd: root,
-      env,
-      terminal: {
-        data: (_term, data) => {
-          screen += new TextDecoder().decode(data)
+    const onTerminal = async (extra: Record<string, string>) => {
+      let screen = ''
+      const proc = Bun.spawn([process.execPath, BIN, 'run', 'fc', '--all', '--output-logs=full'], {
+        cwd: root,
+        env: { ...env, ...extra },
+        terminal: {
+          data: (_term, data) => {
+            screen += new TextDecoder().decode(data)
+          },
         },
-      },
-    })
-    const code = await proc.exited
-    proc.terminal?.close()
-    expect({
-      code,
-      painted: screen.includes('\x1b[38;2;'),
-      task: /^FC=\[[^\]\r\n]*\]/m.exec(screen)?.[0],
-    }).toEqual({ code: 0, painted: true, task: 'FC=[]' })
+      })
+      const code = await proc.exited
+      proc.terminal?.close()
+      return {
+        code,
+        painted: screen.includes('\x1b[38;2;'),
+        task: /^FC=\[[^\]\r\n]*\]/m.exec(screen)?.[0],
+      }
+    }
+    expect([await onTerminal({}), await onTerminal({ NO_COLOR: '1' })]).toEqual([
+      { code: 0, painted: true, task: 'FC=[1]' },
+      { code: 0, painted: false, task: 'FC=[]' },
+    ])
   })
 })

@@ -1,6 +1,7 @@
 // Colour, end to end. `detectColors` is held in colors.test.ts; this holds
 // the CLI to it: `vx run` paints only when FORCE_COLOR asks off a TTY (the
-// suite's pipes are not one), and NO_COLOR wins; every other verb prints
+// suite's pipes are not one), and NO_COLOR wins; a task runs with colour
+// forced and vx strips it where its own output is plain; every other verb prints
 // plain text whatever is set, so a script that forces colour for a run's
 // log still parses `vx show` or a `--dry` plan.
 
@@ -22,7 +23,7 @@ beforeAll(async () => {
   await writeFile(path.join(app, 'src', 'a.txt'), 'x\n')
   await writeFile(
     path.join(app, 'vx.config.mjs'),
-    "export default { tasks: { build: { exec: { command: 'echo hi' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } } } } }\n",
+    "export default { tasks: { build: { exec: { command: 'echo hi' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } } }, paint: { exec: { command: `printf 'fc=%s \\\\033[31mred\\\\033[0m\\\\n' \"$FORCE_COLOR\"` }, cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } } } } }\n",
   )
   const git = gitIn(root)
   git('init', '-q')
@@ -32,8 +33,8 @@ afterAll(async () => {
   await rm(root, { recursive: true, force: true })
 })
 
-/** Whether `vx <args>` wrote an escape sequence on either stream under `env`. */
-function painted(args: string[], env: Record<string, string>): boolean {
+/** What `vx <args>` wrote on both streams under `env`. */
+function output(args: string[], env: Record<string, string>): string {
   const base = { ...process.env }
   delete base['NO_COLOR']
   delete base['FORCE_COLOR']
@@ -42,7 +43,12 @@ function painted(args: string[], env: Record<string, string>): boolean {
     cwd: root,
     env: { ...base, ...env },
   })
-  return (p.stdout.toString() + p.stderr.toString()).includes(ESC)
+  return p.stdout.toString() + p.stderr.toString()
+}
+
+/** Whether `vx <args>` wrote an escape sequence on either stream under `env`. */
+function painted(args: string[], env: Record<string, string>): boolean {
+  return output(args, env).includes(ESC)
 }
 
 describe('vx paints only a run, and only as the env asks', () => {
@@ -56,6 +62,27 @@ describe('vx paints only a run, and only as the env asks', () => {
         painted(run, { FORCE_COLOR: '0' }),
         painted(run, { FORCE_COLOR: '1', NO_COLOR: '1' }),
       ]).toEqual([false, true, false, false])
+    },
+    TIMEOUT,
+  )
+
+  it(
+    "a task's colour: forced on, kept where vx paints, stripped where it does not",
+    () => {
+      const paint = ['run', 'paint', '--all', '--output-logs', 'full']
+      const red = `${ESC}31mred${ESC}0m`
+      // The miss under FORCE_COLOR stores the painted bytes; the hit that
+      // follows replays them into a pipe, plain.
+      const forced = output([...paint, '--force'], { FORCE_COLOR: '1' })
+      const replayed = output(paint, {})
+      const noColor = output([...paint, '--force'], { NO_COLOR: '1' })
+      expect([
+        forced.includes(`fc=1 ${red}`),
+        replayed.includes('fc=1 red'),
+        replayed.includes(ESC),
+        noColor.includes('fc= red'),
+        noColor.includes(ESC),
+      ]).toEqual([true, true, false, true, false])
     },
     TIMEOUT,
   )

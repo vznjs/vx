@@ -409,7 +409,10 @@ highest priority:
    `LOGNAME`, `TMPDIR`, `TEMP`, `TMP`, `LANG`, `LC_ALL`, `LC_CTYPE`,
    `TERM`, `COLORTERM`, `FORCE_COLOR`, `NO_COLOR`, `CI`, `NODE_OPTIONS`.
    Nothing else from the parent environment reaches a task —
-   that is the whole list. Without these, typical CLI tools break. vx
+   that is the whole list. When neither `FORCE_COLOR` nor a non-empty
+   `NO_COLOR` reaches the task by any layer, vx sets `FORCE_COLOR=1`
+   (its own output strips the colour where it prints plain; `docs/cli.md`
+   § Colors). Without these, typical CLI tools break. vx
    adds two markers of its own on top, `VX_RUN_WORKSPACE` (the root of
    the workspace running the task) and `VX_RUN_TASK` (`project#task`):
    a task whose command shells out to `vx run` in that same workspace

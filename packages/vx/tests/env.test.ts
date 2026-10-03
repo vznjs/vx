@@ -37,11 +37,38 @@ describe('buildIsolatedEnv', () => {
   // holding `undefined` — and the env is handed to every executor plugin,
   // where `Object.entries` sees the second. The exact key set can.
   it('an essential unset in source is no key at all, not one holding undefined', () => {
-    expect(Object.keys(buildIsolatedEnv({ passThrough: [], define: {}, source: {} }))).toEqual([])
+    // FORCE_COLOR is vx's own (the row below), not the source's.
+    expect(Object.keys(buildIsolatedEnv({ passThrough: [], define: {}, source: {} }))).toEqual([
+      'FORCE_COLOR',
+    ])
     // CONTROL: one that IS set is the one key there.
     expect(
       Object.keys(buildIsolatedEnv({ passThrough: [], define: {}, source: { HOME: '/h' } })),
-    ).toEqual(['HOME'])
+    ).toEqual(['HOME', 'FORCE_COLOR'])
+  })
+
+  it('forces colour unless the task already sees FORCE_COLOR or a NO_COLOR', () => {
+    const seen = (source: NodeJS.ProcessEnv, define: Record<string, string> = {}) => {
+      const env = buildIsolatedEnv({ passThrough: [], define, source })
+      return [env['FORCE_COLOR'], env['NO_COLOR']]
+    }
+    expect([
+      seen({}),
+      seen({ FORCE_COLOR: '0' }),
+      seen({ FORCE_COLOR: '' }),
+      seen({ NO_COLOR: '1' }),
+      seen({ NO_COLOR: '' }),
+      seen({}, { FORCE_COLOR: '3' }),
+      seen({}, { NO_COLOR: 'y' }),
+    ]).toEqual([
+      ['1', undefined],
+      ['0', undefined],
+      ['', undefined],
+      [undefined, '1'],
+      ['1', ''],
+      ['3', undefined],
+      [undefined, 'y'],
+    ])
   })
 
   it('forwards passThrough values from source', () => {
@@ -317,8 +344,10 @@ describe('what a task sees of the host environment, end to end', () => {
       const seen = (JSON.parse(await Bun.file(path.join(dir, 'seen.json')).text()) as string[])
         .filter((n) => !CHILD_SET.has(n))
         .sort()
+      const forced = process.env['FORCE_COLOR'] === undefined && !process.env['NO_COLOR']
       const expected = [
         ...ESSENTIAL_ENV.filter((n) => process.env[n] !== undefined),
+        ...(forced ? ['FORCE_COLOR'] : []),
         'VX_ENV_PASSED',
         'VX_ENV_DEFINED',
         VX_RUN_TASK_ENV,

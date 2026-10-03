@@ -2694,9 +2694,18 @@ ANSI truecolor (`ansi-16m`) sequences, gated by env:
 supports-color, chalk and Node follow; until 2026-09-24 vx read every
 non-empty value as "on", so a CI setting `FORCE_COLOR=0` got escape
 sequences in its log (the bug Nx has as nx#35292). An empty `NO_COLOR`
-has no effect (no-color.org). This is vx's own output only: a task
-gets `FORCE_COLOR` and `NO_COLOR` passed through as set, and decides
-its own colour.
+has no effect (no-color.org).
+
+A task's output is a pipe, so a tool would print plain; vx sets
+`FORCE_COLOR=1` on every task, as Nx and Turbo do, unless the task
+already sees a `FORCE_COLOR` (any value, `0` included) or a non-empty
+`NO_COLOR`. The cache stores the coloured bytes, and wherever vx's own
+output is plain (a pipe, CI without `FORCE_COLOR`, `NO_COLOR`) it
+strips the escapes from task output, live and replayed alike, an
+escape cut across two chunks included (`tests/plain-output.test.ts`,
+`tests/cli-colors-e2e.test.ts`). A custom `log` passed to `run()` gets
+task output as written. A task that writes its own output to a file
+and wants it plain sets `env: { define: { FORCE_COLOR: '0' } }`.
 
 Programmatic callers passing a custom `log` to the run options always
 see plain text.

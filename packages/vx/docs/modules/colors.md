@@ -43,11 +43,15 @@ Standard env precedence:
 Node); reading any non-empty `FORCE_COLOR` as on painted a piped CI log
 that set `FORCE_COLOR=0` (nx#35292's bug, fixed 2026-09-24). The task
 environment is not this module's: `exec/env.ts` passes both variables
-to a task as set.
+to a task as set, and sets `FORCE_COLOR=1` when the task sees neither.
 
 `orchestrator.run()` always passes `{ enabled: false }` when the
 caller provides a custom `log` — programmatic embedders see plain
-text, which keeps test assertions clean.
+text, which keeps test assertions clean; task output reaches it as
+the task wrote it. When the default renderer's colours are off,
+`run()` hands it task output through `plainOutput`
+(`plain-output.ts`), which strips the escapes a forced task wrote and
+holds one cut at a chunk's end until the next chunk.
 
 ## `paint(color, text, colors, opts)`
 
