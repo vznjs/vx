@@ -657,8 +657,6 @@ next?".
 
 27. DONE as item 1070 — `nx()` keeps an output path as written; a bare literal keeps the directory short-circuit.
 
-28. DONE 2026-10-03 (owner ask) — `vx prune <project...> [--docker]` is back as a verb of `@vzn/vx-lockfile`'s four plugins, each lockfile pruned to what the subset installs (bun, pnpm, npm, yarn 1 frozen-installed offline in its tests; yarn 4 `--immutable` checked by hand). A verb's owner is now a package, so `bun()` + `pnpm()` share one `prune`. Not done: a `file:` dependency outside the copied projects is not copied.
-
 ## Decisions (this arc)
 
 - **Rust rewrite: stay (2026-09-29).** Assessed and prototyped on Bun
