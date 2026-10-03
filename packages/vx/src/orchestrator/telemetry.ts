@@ -9,8 +9,8 @@
 // folded in — instead of each re-deriving an ad-hoc shape from the raw,
 // rendering-oriented `WireEvent` stream.
 //
-// A sink is observe-only BY CONSTRUCTION: its only input is an immutable
-// record; its `TelemetryContext` carries read-only metadata and NO mutable
+// A sink is observe-only BY CONSTRUCTION: its only input is a plain-data
+// record (one object every sink receives, not frozen); its `TelemetryContext` carries read-only metadata and NO mutable
 // run handle (no bus, no Cache, no RunRequest). There is no API path from a
 // sink back into scheduling/caching/exec — telemetry provably cannot change
 // what or how tasks run. Contrast `cache`/`executor`, which return objects

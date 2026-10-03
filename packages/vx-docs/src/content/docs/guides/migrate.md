@@ -118,7 +118,7 @@ and vx keys every task on the whole file until a plugin claims it.
 [`examples/turbo`](https://github.com/vznjs/vx/tree/main/examples/turbo)
 is a Turbo repo with that `vx.workspace.ts` added. The first runs go
 through `turbo()`, the bridge; the last runs on the written configs alone,
-the goal. Every line is what a test runs on each commit
+the goal. Each line and its comment is what a test runs and sees on each commit
 (`packages/vx/tests/examples.unsafe.test.ts`).
 
 ```sh
@@ -281,12 +281,14 @@ where Nx ran it, with the executor's option defaults applied:
 | `@nx/js:node`                       | `cd ../.. && node --inspect=localhost:9229 dist/apps/api/main.js` (the build target's output) |
 | `@nx/js:swc`                        | `rm -rf ../../dist/libs/a && swc src -d ../../dist/libs/a --config-file=.swcrc` |
 | `@nx/js:verdaccio`                  | `cd ../.. && verdaccio --config .verdaccio/config.yml --listen localhost:4873` (a server) |
+| `@nx/web:file-server`               | `cd ../.. && cp dist/apps/web/index.html dist/apps/web/404.html && http-server dist/apps/web -c-1 --cors -a=localhost '-P=http://localhost:4200?' -p=4200` (an inferred `serve-static`, `spa`) |
 | `@nx/angular:package`, `@nx/angular:ng-packagr-lite` | `cd ../.. && ng-packagr -p libs/ui/ng-package.json -c libs/ui/tsconfig.lib.prod.json` |
 
 What an executor did besides its tool (a type-check before a Vite
 build, a `package.json` or `assets` copied into the output) is a TODO
-on the task. What it ran first is an edge: an `@nx/js:node` or
-`@nx/vite:preview-server` task depends on its `buildTarget`, and a
+on the task. What it ran first is an edge: an `@nx/js:node`,
+`@nx/vite:preview-server` or `@nx/web:file-server` task depends on its
+`buildTarget` (a bare `build` is the project's own), and a
 Cypress task on its `devServerTarget`. Any other executor is a placeholder that fails naming the
 executor and its options, and the report lists its tasks under one TODO
 per executor: write the command it runs. Where the executor's Nx plugin

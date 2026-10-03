@@ -98,6 +98,7 @@ export async function initCmd(args: readonly string[]): Promise<number> {
   if (await Bun.file(path.join(root, 'nx.json')).exists()) {
     return adopt(root, 'nx', 'nx.json', parsed)
   }
+  const unmapped = namelessNotes(root, nameless)
   return applyMigration({
     root,
     metas,
@@ -108,10 +109,8 @@ export async function initCmd(args: readonly string[]): Promise<number> {
     ),
     source: 'package.json scripts',
     verb: 'vx init',
-    notes: [
-      ...(await unreadWorkspaces(root, workspace.packageGlobs)),
-      ...namelessNotes(root, nameless),
-    ],
+    notes: [...(await unreadWorkspaces(root, workspace.packageGlobs)), ...unmapped],
+    unmapped: unmapped.length > 0,
     dry: parsed.dry,
     force: parsed.force,
     init: true,

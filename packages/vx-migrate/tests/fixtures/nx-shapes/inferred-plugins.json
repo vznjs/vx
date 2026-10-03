@@ -26,11 +26,22 @@
               "options": { "command": "vite", "cwd": "apps/web" },
               "parallelism": true
             },
+            "dev": {
+              "continuous": true,
+              "executor": "nx:run-commands",
+              "options": { "command": "vite", "cwd": "apps/web" },
+              "parallelism": true
+            },
             "preview": {
               "continuous": true,
               "dependsOn": ["build"],
               "executor": "nx:run-commands",
               "options": { "command": "vite preview", "cwd": "apps/web" }
+            },
+            "serve-static": {
+              "continuous": true,
+              "executor": "@nx/web:file-server",
+              "options": { "buildTarget": "build", "spa": true }
             },
             "test": {
               "executor": "nx:run-commands",

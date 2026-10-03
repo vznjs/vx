@@ -20,6 +20,8 @@ import type { TaskNode } from '../src/graph/task-graph.js'
 import type { TaskOutcome } from '../src/graph/scheduler.js'
 import { IGNORED_SEGMENTS } from '../src/cli/watch-fs.js'
 import { WATCH_REFUSED_FLAGS } from '../src/cli/help.js'
+import { createTelemetrySource } from '../src/orchestrator/telemetry.js'
+import type { RunSummaryRecord, TelemetrySink } from '../src/orchestrator/telemetry.js'
 
 const GUIDES = path.resolve(
   import.meta.dir,
@@ -2532,5 +2534,67 @@ describe('the sandboxing guide says a server is never traced', () => {
     expect(guide).toContain(
       'A persistent task (a dev server) runs inside the same walls, but nothing traces it',
     )
+  })
+})
+
+// J2-45: five pages and the source called a telemetry record immutable;
+// every sink receives the same unfrozen object, so a change one sink makes
+// reaches the next.
+describe('no page calls a telemetry record immutable', () => {
+  it('a sink sees what the sink before it changed', () => {
+    const seen: unknown[] = []
+    const first: TelemetrySink = {
+      onRunSummary: (s) => {
+        ;(s as unknown as { changed: boolean }).changed = true
+      },
+    }
+    const second: TelemetrySink = {
+      onRunSummary: (s) => {
+        seen.push((s as unknown as { changed?: boolean }).changed)
+      },
+    }
+    const source = createTelemetrySource({
+      sinks: [first, second],
+      run: { runId: 'r' } as never,
+    })
+    source.emitSummary({ kind: 'run.summary' } as unknown as RunSummaryRecord)
+    expect(seen).toEqual([true])
+  })
+
+  it('the docs and the site say plain-data records', () => {
+    const core = path.resolve(import.meta.dir, '..')
+    const pages = [
+      path.join(core, 'docs', 'modules', 'telemetry.md'),
+      path.join(core, 'docs', 'architecture.md'),
+      path.join(core, 'src', 'orchestrator', 'telemetry.ts'),
+      path.join(DOCS, 'blog', 'telemetry-never-breaks-a-run.md'),
+      path.join(DOCS, 'blog', 'pipeline-with-seams.md'),
+    ]
+    const claims = pages.filter((p) =>
+      /immutable (run )?records?|an immutable\s+record/.test(readFileSync(p, 'utf8')),
+    )
+    expect(claims).toEqual([])
+    for (const p of pages) expect(readFileSync(p, 'utf8')).toMatch(/plain-data/)
+  })
+})
+
+// J2-46: telemetry.md said consumers reject unknown majors; the version
+// is one integer and no first-party sink reads a record's `v`.
+describe('telemetry.md claims no receiver check the sinks lack', () => {
+  it('no first-party plugin reads a record version, and the page says so', () => {
+    const root = path.resolve(import.meta.dir, '..', '..')
+    const readers: string[] = []
+    for (const pkg of readdirSync(root)) {
+      if (pkg === 'vx' || !existsSync(path.join(root, pkg, 'src'))) continue
+      for (const f of readdirSync(path.join(root, pkg, 'src'), { recursive: true }) as string[]) {
+        if (!f.endsWith('.ts')) continue
+        const text = readFileSync(path.join(root, pkg, 'src', f), 'utf8')
+        if (/\b(record|rec|r|s|summary)\.v\b/.test(text)) readers.push(`${pkg}/${f}`)
+      }
+    }
+    expect(readers).toEqual([])
+    const page = readFileSync(path.join(root, 'vx', 'docs', 'modules', 'telemetry.md'), 'utf8')
+    expect(page).not.toContain('consumers reject unknown majors')
+    expect(page).toContain('no first-party sink checks it')
   })
 })

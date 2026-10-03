@@ -474,6 +474,17 @@ load was 15–25 µs a config. 1,000 projects, cold, 13 rounds: `load
 configs` min 204.6 → 194.0 ms, median 234.5 → 210.4 (A/A 208.7 /
 234.7).
 
+I-59. A project config that spells no CommonJS name and holds no
+backslash is served without Bun's ESM parse (#2573); a syntax error
+reaching the served path has its `?vx-held=` query stripped. 1,000
+projects, cold, 30 rounds: `load configs` min 200.3 → 181.8 ms, median
+222.0 → 201.6 (A/A 196.3 / 219.3).
+
+I-60. The config-cache lexer copies plain code in runs (#2589), 9 → 2
+ms per 1,000 configs; output identical over 3,378 inputs. 1,000
+projects, cold, 30 rounds: `load configs` min 174.1 → 161.0 ms, median
+190.3 → 177.6 (A/A 165.7 / 189.6).
+
 ## Leads for other streams
 
 - **A: a cold save commits one SQLite transaction per entry.** The
@@ -724,3 +735,9 @@ status` re-hashes every tracked file, and vx runs it with
   the task env 17 µs. `Bun.spawn` holds the main thread ~0.5 ms a spawn
   (vfork, then ~62 `rt_sigaction` and the `execve` in the child), env
   size aside; that is the runtime's.
+- Inside a warm 1,000-project run `git ls-files` (615 KB) waits on its
+  pipe, 65–80 ms against 8 standalone. Written to a temp file it took
+  12–19 ms, but `git enumeration` stayed 21.6 against 22.3 ms (A/A 22.1,
+  25 rounds): the stage waits on `git status`, 35–45 ms in a run.
+- `knownBlobSizes` as one `json_each` query instead of 900-wide chunks:
+  2.8 against 3.7 ms for 2,005 sizes; not taken.

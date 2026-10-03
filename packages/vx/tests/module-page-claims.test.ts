@@ -331,3 +331,19 @@ describe("plugin.md's fail-the-run list is the hooks plugin-host guards", () => 
     expect([...new Set(hooks)].filter((h) => !rule[0]!.includes(`\`${h}\``))).toEqual([])
   })
 })
+
+// J2-46: task-hash.md said any change to what joins the key needs a
+// CACHE_VERSION bump; caching.md exempts a change in which values flow
+// into an existing field. telemetry.md said consumers reject unknown
+// majors (site-samples holds that).
+describe('task-hash.md claims the bump rule caching.md states', () => {
+  it('task-hash.md exempts what caching.md exempts', () => {
+    expect(page('caching.md')).toContain(
+      'Behavioural changes that adjust _which_ values flow into existing key components',
+    )
+    const rule = blocks('modules/task-hash.md', 'CACHE_VERSION` bump')
+    expect(rule).toHaveLength(1)
+    expect(rule[0]).toContain('a change in which values flow into an existing field does not')
+    expect(rule[0]).not.toContain('Any change to what participates')
+  })
+})

@@ -396,6 +396,24 @@ persistent task` and vx exits 1). Row (`site-samples` › a post's link
   Row (`module-page-claims` › every name a module index exports is in
   code on a module page), red without the fix.
 
+- **J2-45** `telemetry.md`, `architecture.md`, two blog posts and
+  `telemetry.ts` called a telemetry record immutable. Every sink receives
+  the same object, unfrozen, so a change one sink makes reaches the next
+  (probed; `task.end` also hands sinks the outcome's own `outputs`). Each
+  says plain-data records now, and the module page says a sink must not
+  change one. Rows (`site-samples` › no page calls a telemetry record
+  immutable: the sharing as a control, the wording red without the fix).
+- **J2-46** Two Invariants claims past their source: `task-hash.md` said
+  any change to what joins the key needs a `CACHE_VERSION` bump, where
+  `caching.md` exempts a change in which values flow into an existing
+  field; `telemetry.md` said consumers reject unknown majors, where the
+  version is one integer no first-party sink reads. Rows
+  (`module-page-claims` › task-hash.md claims the bump rule caching.md
+  states; `site-samples` › telemetry.md claims no receiver check the
+  sinks lack), red without the fix. Invariants audited clean so far:
+  stable-keys, fingerprint-watch, run-context, download-policy,
+  remote-prefetch, run-report, telemetry-host, util-hash, timing, events.
+
 - **J2-47** `upgrade.md` said compiled-binary detection uses NOT
   `import.meta.path`; `isCompiledBinary` ORs it in last (it was the only
   check in the 2026-06-15 bug). The page and the source comment say
