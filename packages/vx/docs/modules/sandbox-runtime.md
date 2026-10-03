@@ -843,7 +843,12 @@ proxy bridges), and spawns the host side, `portBridgeHostArgv`: one
 per port, socat resolved on vx's PATH. The task starts once each host
 socat listens (`/proc/net/tcp`, 5 s bound, skipped where /proc is not
 vx's, ended by a bridge that exited): a server that said it was ready
-inside could meet a refusal on the host first (M-22). The unix socket lives in the sandbox tmpdir, bound read-write on
+inside could meet a refusal on the host first (M-22). That table cannot
+tell the bridge from another listener: a port the host already held
+counted as the bridge's, whose own bind failed unseen, so the task passed
+and a client of the port reached the other process. `portsHeld` reads the
+table first and the wrap refuses such a port by name (2026-10-03,
+`sandbox-port-held.unsafe.test.ts`). The unix socket lives in the sandbox tmpdir, bound read-write on
 both sides. The task's side has to CREATE a unix socket under SRT's seccomp
 filter, so `prepareSandbox` passes `allowAllUnixSockets` when any task
 declares a port list (or `unixSockets`), and `wrapSandboxedCommand` then
