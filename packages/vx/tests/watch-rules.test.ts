@@ -824,7 +824,7 @@ describe('armWatcher against a fake fs.watch', () => {
       cb: (event: string, filename: string) => void,
     ) => {
       if (deliver) queueMicrotask(() => cb('rename', WATCH_PROBE))
-      return { close: () => (closed = true) } as unknown as fs.FSWatcher
+      return { close: () => (closed = true), on: () => {} } as unknown as fs.FSWatcher
     }) as unknown as typeof fs.watch)
     return { closed: () => closed }
   }
@@ -862,7 +862,7 @@ describe('armWatcher against a fake fs.watch', () => {
         cb('change', null)
         cb('change', path.join('src', 'a.ts'))
       })
-      return { close: () => {} } as unknown as fs.FSWatcher
+      return { close: () => {}, on: () => {} } as unknown as fs.FSWatcher
     }) as unknown as typeof fs.watch)
     try {
       const armed = armWatcher(dir, true, (f) => seen.push(f), 100)
