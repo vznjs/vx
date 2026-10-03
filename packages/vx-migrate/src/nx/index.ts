@@ -21,7 +21,13 @@
 import { stat } from 'node:fs/promises'
 import { availableParallelism } from 'node:os'
 import path from 'node:path'
-import { type GeneratedProject, type ProjectMeta, UserError, type VxPlugin } from '@vzn/vx'
+import {
+  refuseUnknownOptions,
+  type GeneratedProject,
+  type ProjectMeta,
+  UserError,
+  type VxPlugin,
+} from '@vzn/vx'
 import { type AdoptionRun, adoptionPlugin } from '../adoption-plugin.js'
 import { collectGaps } from '../plugin-gaps.js'
 import { mapNxWorkspace, type NxGraph, nxSizeText, parseNxGraph, readNxJson } from './nx-map.js'
@@ -60,8 +66,12 @@ export interface NxPluginOptions {
   readonly graph?: string
 }
 
+/** Every option `NxPluginOptions` names: the type checker holds the two to each other. */
+const NX_PLUGIN_KEYS: Record<keyof NxPluginOptions, true> = { root: true, graph: true }
+
 /** The plugin: the adoption skeleton over `mapNxWorkspace`, one mapping per run. */
 export function nx(options: NxPluginOptions = {}): VxPlugin {
+  refuseUnknownOptions('nx()', options, Object.keys(NX_PLUGIN_KEYS))
   // One graph load per RUN, shared by `discover` and `project`: the run
   // hands both stages the same projects array (discover's, grown by what
   // it named), so its identity is the run's, as the mapping's is.

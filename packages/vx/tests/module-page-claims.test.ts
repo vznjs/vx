@@ -112,6 +112,15 @@ describe('module pages state what their file does since the fix', () => {
     expect(diff[0]).toContain('committed, staged and unstaged changes')
   })
 
+  it('orchestrator.md: a crashed server is named mid-run and after the summary (#2152)', () => {
+    const run = src('orchestrator/run.ts')
+    expect(run).toContain('exited with code ${code} while the run went on`')
+    expect(run).toContain('exited with code ${code} before the run stopped it`')
+    const page_ = page('modules/orchestrator.md').replace(/\s+/g, ' ')
+    expect(page_).toContain('`vx: <id> exited with code <n> before the run stopped it`')
+    expect(page_).toContain('`vx: <id> exited with code <n> while the run went on`')
+  })
+
   it("logger.md: a kept server's output streams under its id after the summary (#2054)", () => {
     expect(src('orchestrator/logger.ts')).toContain('formatKeptLines(')
     expect(page('modules/logger.md')).toMatch(

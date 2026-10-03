@@ -17,6 +17,7 @@ import {
   type TaskExecutor,
   type VxPlugin,
   UserError,
+  refuseUnknownOptions,
 } from '@vzn/vx'
 import { ReapiRemoteCache } from './cache.js'
 import { reapiExecutor } from './executor.js'
@@ -199,7 +200,33 @@ function assertEndpoint(endpoint: string, from: string): void {
   }
 }
 
+/** Every option `ReapiPluginOptions` names: the type checker holds the two to each other. */
+const REAPI_PLUGIN_KEYS: Record<keyof ReapiPluginOptions, true> = {
+  executeTimeoutMs: true,
+  endpoint: true,
+  execute: true,
+  platform: true,
+  capacity: true,
+  tlsCertificate: true,
+  tlsClientCertificate: true,
+  tlsClientKey: true,
+  instanceName: true,
+  headers: true,
+  tls: true,
+  tlsCaPem: true,
+  tlsClientCertPem: true,
+  tlsClientKeyPem: true,
+  toolName: true,
+  toolVersion: true,
+  correlatedInvocationsId: true,
+  onWarn: true,
+  callTimeoutMs: true,
+  metaTimeoutMs: true,
+  chunkBytes: true,
+}
+
 export function reapi(options: ReapiPluginOptions = {}): VxPlugin {
+  refuseUnknownOptions('reapi()', options, Object.keys(REAPI_PLUGIN_KEYS))
   let executorClient: ReapiClient | undefined
   let remoteCache: ReapiRemoteCache | undefined
   return definePlugin(import.meta, {

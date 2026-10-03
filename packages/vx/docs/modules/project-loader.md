@@ -121,6 +121,17 @@ readers that reach it here.
   `process.chdir()` left every relative path vx resolved after it reading
   from the config's choice; the working directory is put back and the load
   refused, naming `process.cwd (a chdir)` (D-120).
+- A first load may not add or replace a global either: one config's
+  `globalThis.x = …` reached every config loaded after it in the process,
+  so `vx run --all` read it and a `--filter` of the reader alone did not
+  (D-122). `globalThis` is watched with the built-ins above: put back,
+  refused naming `globalThis.<key>`; a constant configs share goes in a
+  module each one imports. Cost: +3 ms on a cold 300-config load, none warm.
+  Not covered: first loads share the module registry, so a config that
+  mutates an imported module's state is read the same way by the configs
+  loaded after it (probed: `--all` read `leaked`, `--filter` of the reader
+  `none`). Isolating it would take a worker per config, which D-68 measured
+  out; keep shared modules constant.
 - A first load may not change `process.env` either: a config that set
   a variable gave it to every project's `passThrough` and to vx's own
   `VX_*` reads, and a repeat load, in a worker, gave it to neither

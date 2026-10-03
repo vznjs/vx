@@ -98,6 +98,10 @@
   the no-lock column (510ms, 3m 46s, 34.61s) with no %: now the
   headline column the README shows (476ms, 3m 47s, 34.33s), each
   Turbo/Nx figure with vx's %, and the npm note beside Nx's. Pins follow.
+- **R-19** Site guides audited for claims that vx runs a Turbo or Nx
+  repo or is faster through `turbo()` / `nx()`. One left: the migrate
+  guide's step 3 said the `next:` line "runs what turbo/nx ran"; it now
+  calls that build a check of the mapping, not a way to run the repo.
 
 ## Leads
 

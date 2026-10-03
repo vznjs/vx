@@ -666,6 +666,9 @@ function builtinsChanged(changed: readonly string[], configPath?: string): UserE
       : '') +
     (changed.some((c) => c.startsWith('process.cwd'))
       ? '; a task runs in its project directory, and `cd <dir> && …` in `exec.command` moves it'
+      : '') +
+    (changed.some((c) => c.startsWith('globalThis.'))
+      ? '; a constant configs share goes in a module each one imports'
       : '')
   return new UserError(
     `${who} changed ${changed.join(', ')} while it was evaluated — a config must not change the built-ins vx runs on: other configs are read through them and cache keys are made with them${env}`,
@@ -738,7 +741,8 @@ function restoreCwd(before: string): string[] {
 
 function sameDescriptor(a: PropertyDescriptor, b: PropertyDescriptor): boolean {
   return (
-    a.value === b.value &&
+    // `globalThis.NaN` is watched (D-122), and NaN !== NaN.
+    Object.is(a.value, b.value) &&
     a.get === b.get &&
     a.set === b.set &&
     a.writable === b.writable &&

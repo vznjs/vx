@@ -86,6 +86,7 @@ export {
   type FingerprintContext,
   type VxPlugin,
   definePlugin,
+  refuseUnknownOptions,
   type PluginHooks,
   type PluginOrigin,
 } from './plugin.js'

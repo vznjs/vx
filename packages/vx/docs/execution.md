@@ -333,7 +333,8 @@ terminal and a task succeeding or failing. Read it alongside
        `failed` with its own exit in the rewritten `--summarize` and in the
        outcomes `--report` renders; one a Ctrl-C stopped does not. Under
        `holdPersistent` (the watch loop) run() instead returns them on
-       `RunSummary.persistent`, still running, for the caller to stop.
+       `RunSummary.persistent`, still running, for the caller to stop;
+       one that dies on its own after that is said, its `stop()` is not.
 ```
 
 ## One command per task

@@ -700,7 +700,11 @@ same regex again.
 
 A write refused OUTSIDE the project is no violation (nothing a key
 reads), but it may be why the task failed: a failed task gets one note
-naming those paths and the directory to grant (`refusedWritesOutside`;
+naming those paths and the directory to grant, or, for a path under the
+host's shared temp directory (`/tmp`, `/var/tmp`, `os.tmpdir()`) that no
+wall holds, `$TMPDIR` instead: the task has an empty temp directory of
+its own, and a grant would open the shared one to every write (#2424)
+(`refusedWritesOutside`;
 `/dev`, `/proc`, `/sys` and the task's own temp root left out, since
 Linux's observer records every write attempt). `bun build --compile`
 said only "Failed to extract executable" when its cache was not

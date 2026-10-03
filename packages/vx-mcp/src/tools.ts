@@ -134,6 +134,19 @@ export async function handleToolCall(
     )
   }
   const args = (argsRaw ?? {}) as Record<string, unknown>
+  // A key the tool does not take is refused, naming the ones it does: a
+  // misspelt filter (`tsk` for `task`) was ignored, and the call answered
+  // the whole unfiltered history as if it were the filtered one.
+  const def = TOOLS.find((t) => t.name === name)
+  if (def !== undefined) {
+    const takes = Object.keys((def.inputSchema['properties'] ?? {}) as Record<string, unknown>)
+    const extra = Object.keys(args).filter((k) => !takes.includes(k))
+    if (extra.length > 0) {
+      throw new UserError(
+        `${name}: unknown argument${extra.length === 1 ? '' : 's'} ${extra.map((k) => JSON.stringify(k)).join(', ')} — it takes ${takes.length === 0 ? 'none' : takes.join(', ')}`,
+      )
+    }
+  }
   switch (name) {
     case 'listTasks':
       return listTasks(args, ctx)

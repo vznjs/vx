@@ -1564,6 +1564,24 @@ export interface ReachGraph {
 }
 ```
 
+## `refuseUnknownOptions`
+
+function · `src/orchestrator/plugin.ts`
+
+Refuse an option a plugin factory does not take, as core refuses an
+unknown config field. Bun strips a config's types, so a misspelt option
+(`reapi({ endpont })`) reached the factory, which read it as unset and
+quietly declined: the run went local with no word. `factory` names the
+call in the message (`reapi()`), `known` is the options the factory reads.
+
+```ts
+export function refuseUnknownOptions(
+  factory: string,
+  options: unknown,
+  known: readonly string[],
+): void
+```
+
 ## `RemoteCacheLayer`
 
 type · `src/cache/layered-cache.ts`
