@@ -57,6 +57,7 @@ is the wider matrix and the reasoning.
 | Capability                 | Turbo                                                                 | Nx                                              | vite-task                           | vx                                                                                                      |
 | -------------------------- | --------------------------------------------------------------------- | ----------------------------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------- |
 | pnpm-style filter DSL      | `--filter`                                                            | `--projects`, `--exclude`                       | `--filter`                          | `--filter`                                                                                              |
+| select by project tag      | —                                                                     | `-p tag:<name>`                                 | —                                   | `--filter tag:<name>` (config `tags`; `-p tag:` aliases it)                                             |
 | recursive (every project)  | implicit                                                              | implicit (no `-p`); `--all` deprecated          | `-r`                                | `--all`                                                                                                 |
 | transitive deps            | `pkg...`                                                              | `--with-deps` (legacy)                          | `-t`                                | `pkg...` (via DSL)                                                                                      |
 | `pkg#task` addressing      | yes                                                                   | `nx run pkg:target`                             | yes                                 | yes                                                                                                     |
@@ -508,9 +509,6 @@ in [`design/turbo-nx-test-gaps.md`](./design/turbo-nx-test-gaps.md).
   vx scopes `forwardArgs` to user-requested nodes only — passing
   `vx run build -- --foo` does NOT pollute upstream tasks' cache keys.
   Explicit > magical (architecture principle #1).
-- **No tag-based selectors (`tag:foo`, `!tag:bar`).** Nx has project
-  tags as a generator/devkit concept. vx project identity is
-  workspace path + package.json name only.
 
 ### Filter DSL
 

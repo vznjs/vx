@@ -287,6 +287,13 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
   // The top level too: `task:` (singular) loaded as a project with no
   // tasks and every request against it said "no projects declare".
   assertKnownFields(config, PROJECT_FIELDS, configPath)
+  const tags: unknown = config.tags
+  if (
+    tags !== undefined &&
+    (!Array.isArray(tags) || tags.some((t) => typeof t !== 'string' || t.trim() === ''))
+  ) {
+    throw new UserError(`${configPath}: \`tags\` must be an array of non-empty strings`)
+  }
   const tasks = config.tasks
   if (tasks === undefined) return
   if (typeof tasks !== 'object' || tasks === null || Array.isArray(tasks)) {
@@ -728,7 +735,9 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
 // discarded, so the task hashes as if the field were never written and vx
 // serves a stale artifact — the same reasoning `sandbox` already
 // encodes. A new field must be added here deliberately.
-const PROJECT_FIELDS = new Set(['tasks'])
+// `tasks` first: `nearest` breaks a tie by order, and `taks` is one edit
+// from both.
+const PROJECT_FIELDS = new Set(['tasks', 'tags'])
 const TASK_FIELDS = new Set(['description', 'exec', 'dependsOn', 'cache'])
 const EXEC_FIELDS = new Set([
   'command',
@@ -867,7 +876,7 @@ const FOREIGN_FIELDS: ReadonlyMap<ReadonlySet<string>, Readonly<Record<string, s
     },
   ],
   // A package's turbo.json and Nx's project.json keys, written into a
-  // project's vx.config (D-56). `tags` had read as a typo of `tasks`.
+  // project's vx.config (D-56).
   [
     PROJECT_FIELDS,
     {
@@ -875,7 +884,6 @@ const FOREIGN_FIELDS: ReadonlyMap<ReadonlySet<string>, Readonly<Record<string, s
       extends: 'an imported module spread into `tasks` (a vx.config is code; nothing is inherited)',
       implicitDependencies: 'a `dependsOn` entry `pkg#task`, or a package.json dependency',
       name: 'the package.json `name` (a project is named by its package)',
-      tags: '`--filter` (a name glob or a directory) to select projects',
       // A package.json's, turbo.json's and project.json's keys, and a
       // task's fields one level too high (D-99).
       scripts:

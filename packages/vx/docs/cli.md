@@ -171,7 +171,9 @@ A filter that matches nothing refuses the run (`no projects matched
 filter(s): …`) with `Did you mean <name>?` when a project name is within
 two edits, or when exactly one scoped project's name after its `/` is
 (`--filter vx-mcp` hints `@vzn/vx-mcp`), and `Projects: a, b` otherwise
-(M-56). A list names eight, then a count.
+(M-56). A list names eight, then a count. An unmatched `tag:` filter
+hints the nearest tag instead (`Did you mean tag:scope:web?`), else
+lists the tags.
 
 | Form              | Meaning                                                                                                                                                                                                                                                                                                                |
 | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -181,6 +183,7 @@ two edits, or when exactly one scoped project's name after its `/` is
 | `./<glob>`        | A glob over root-relative project dirs: `./packages/*` (direct children), `{apps/**}` (nested too; a trailing `**` matches zero dirs, so `./packages/kit/**` holds kit itself, as pnpm and Turbo read it). A path that names a project dir literally is read literally first, so `./packages/[abc]` is that directory. |
 | `.`               | The root project alone, when the root is a project (D-39); otherwise the packages under the root, i.e. every package, not the one you are standing in.                                                                                                                                                                 |
 | `//`              | The root project alone, Turbo's name for it; matches nothing when the root is no project (D-46).                                                                                                                                                                                                                       |
+| `tag:<pattern>`   | The projects whose config `tags` hold a match, as Nx's `tag:` reads them (`*` as in a name). Takes every operator a name takes: `!tag:x`, `...tag:x`, `tag:x^...`, `tag:x[main]`. Nx's `--projects tag:x` aliases it.                                                                                                  |
 | `<pattern>...`    | Match + all transitive dependencies (see below what an edge is).                                                                                                                                                                                                                                                       |
 | `...<pattern>`    | Match + all transitive dependents.                                                                                                                                                                                                                                                                                     |
 | `<pattern>^...`   | Only the transitive dependencies, excluding the matched package itself.                                                                                                                                                                                                                                                |
@@ -2127,16 +2130,16 @@ has that name) and `vx show project <name>` say `vx show` and
 No target: one line per project — name, root-relative dir, task count,
 and a `(no vx config)` marker for config-less packages; one whose
 tasks all come from plugins reads `N tasks (no vx config; from
-plugins)`. With `--format json` it's an array of `{ name, dir, tasks:
-string[] }`.
+plugins)`; a project's `tags` follow in brackets. With `--format json`
+it's an array of `{ name, dir, tags: string[], tasks: string[] }`.
 
 ```
 $ vx show
-app   packages/app   3 tasks
+app   packages/app   3 tasks  [scope:web]
 bare  packages/bare  (no vx config)
 ```
 
-`vx show <project>` prints a block per task with every field the run
+`vx show <project>` prints its `tags` under the header, then a block per task with every field the run
 reads: description, command (`(group)` for group tasks), `dependsOn`,
 `timeout`, `retries`, `env.passThrough` / `env.define`, `remote`,
 `sandbox`, `persistent`, and the cache block

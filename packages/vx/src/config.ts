@@ -130,6 +130,11 @@ const _pluginHooksMatch: [HooksNotListed, HooksNotOnPlugin] extends [never, neve
 void _pluginHooksMatch
 
 export interface ProjectConfig {
+  /**
+   * Labels for selection: `--filter tag:<name>` picks the projects that
+   * carry one. Not in any cache key: a tag changes no task's behaviour.
+   */
+  tags?: readonly string[]
   /** Tasks declared by this project, keyed by task name. */
   tasks?: Record<string, TaskConfig>
 }

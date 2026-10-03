@@ -254,6 +254,16 @@ export async function resolveFilters(
       return { error: err instanceof Error ? err.message : String(err) }
     }
   }
+  // A tag lives in the config, so a `tag:` selector needs the staged load
+  // (a `project` plugin may have given or edited the tags).
+  let tags: Map<string, readonly string[]> | undefined
+  if (parsed.some((f) => f.tag === true)) {
+    try {
+      tags = new Map([...(await stagedOnce()).values()].map((p) => [p.name, p.config.tags ?? []]))
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : String(err) }
+    }
+  }
   const graph = buildPackageGraph(projects, edges)
   // The graph a run reusing this discovery builds is this one when no task
   // edge went into it.
@@ -290,6 +300,7 @@ export async function resolveFilters(
     projects,
     graph,
     affectedByFilter,
+    ...(tags !== undefined ? { tags } : {}),
     // A `[<since>]` selector matching nothing is the ordinary "nothing
     // changed" outcome, reported below; only a name/path pattern that
     // matched nothing is worth flagging as a probable typo.
@@ -332,14 +343,14 @@ export async function resolveFilters(
     // the patterns are in the error, and the nearest project name is the
     // hint a typo needs.
     return {
-      error: `no projects matched filter(s): ${raw.join(', ')}${didYouMeanProject(unmatched, projects)}`,
+      error: `no projects matched filter(s): ${raw.join(', ')}${didYouMean(unmatched, projects, tags)}`,
     }
   }
   // Something matched, so the run proceeds; a pattern that matched nothing
   // alongside it is still worth a line — it is probably a typo.
   for (const f of unmatched)
     process.stderr.write(
-      `vx: filter "${f}" matched no projects${didYouMeanProject([f], projects)}\n`,
+      `vx: filter "${f}" matched no projects${didYouMean([f], projects, tags)}\n`,
     )
   let staged: Map<string, ProjectEntry> | undefined
   if (stagedPromise !== undefined) {
@@ -445,6 +456,20 @@ export async function pickTask(
   } finally {
     rl.close()
   }
+}
+
+/** The hint for the first unmatched pattern: a near tag for a `tag:` one, else a near project name. */
+function didYouMean(
+  unmatched: readonly string[],
+  projects: Iterable<{ name: string }>,
+  tags: ReadonlyMap<string, readonly string[]> | undefined,
+): string {
+  const first = unmatched[0]?.replace(/^!|\.\.\.$|^\.\.\.|\^/g, '')
+  if (first?.startsWith('tag:') !== true) return didYouMeanProject(unmatched, projects)
+  const known = [...new Set([...(tags?.values() ?? [])].flat())].sort()
+  if (known.length === 0) return '. No project declares tags'
+  const best = nearest(first.slice(4), known)
+  return best !== undefined ? `. Did you mean tag:${best}?` : `. Tags: ${listed(known)}`
 }
 
 /** `. Did you mean @acme/app?` for the first unmatched pattern within two edits of a project name. */

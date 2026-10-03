@@ -633,3 +633,63 @@ describe('a selector narrowed by a git range (D-44)', () => {
     expect(sel('{./libs/[c]*}[HEAD]', ['core', '@s/lib'])).toEqual(['core'])
   })
 })
+
+describe('`tag:<pattern>` selects by the config tags (Nx `tag:`)', () => {
+  // app -> ui -> utils; lib standalone
+  const projects = [
+    mkProject('app', `${ROOT}/packages/app`, ['ui']),
+    mkProject('ui', `${ROOT}/packages/ui`, ['utils']),
+    mkProject('utils', `${ROOT}/packages/utils`),
+    mkProject('lib', `${ROOT}/packages/lib`),
+  ]
+  const graph = buildPackageGraph(projects)
+  const tags = new Map<string, readonly string[]>([
+    ['app', ['scope:web', 'type:app']],
+    ['ui', ['scope:web', 'type:ui']],
+    ['utils', ['type:util']],
+  ])
+  const sel = (...raws: string[]): string[] =>
+    [
+      ...applyFilters({ filters: raws.map((r) => parseFilter(r, ROOT)), projects, graph, tags }),
+    ].sort()
+
+  it('parses the tag apart from the operators', () => {
+    const f = parseFilter('!...tag:scope:web^...', ROOT)
+    expect([f.tag, f.matcher, f.negate, f.withDependents, f.onlyDeps]).toEqual([
+      true,
+      'scope:web',
+      true,
+      true,
+      true,
+    ])
+    const g = parseFilter('tag:ui[main]', ROOT)
+    expect([g.tag, g.matcher, g.gitSince]).toEqual([true, 'ui', 'main'])
+    expect(() => parseFilter('tag:', ROOT)).toThrow('filter "tag:" names no tag')
+  })
+
+  it('matches every project carrying the tag, a `*` glob included', () => {
+    expect(sel('tag:scope:web')).toEqual(['app', 'ui'])
+    expect(sel('tag:type:*')).toEqual(['app', 'ui', 'utils'])
+    expect(sel('tag:*:ui')).toEqual(['ui'])
+    // A name is no tag, and a tag no name.
+    expect(sel('tag:app')).toEqual([])
+    expect(sel('scope:web')).toEqual([])
+  })
+
+  it('composes with the walks and the excludes as a name selector does', () => {
+    expect(sel('tag:type:util...')).toEqual(['utils'])
+    expect(sel('...tag:type:util')).toEqual(['app', 'ui', 'utils'])
+    expect(sel('...^tag:type:util')).toEqual(['app', 'ui'])
+    expect(sel('tag:type:ui^...')).toEqual(['utils'])
+    expect(sel('!tag:scope:web')).toEqual(['lib', 'utils'])
+    expect(sel('tag:type:*', '!tag:type:app')).toEqual(['ui', 'utils'])
+  })
+
+  it('narrows by a git range like a name selector', () => {
+    const f = parseFilter('tag:scope:web[main]', ROOT)
+    const affectedByFilter = new Map([[f, new Set(['ui', 'lib'])]])
+    expect([...applyFilters({ filters: [f], projects, graph, tags, affectedByFilter })]).toEqual([
+      'ui',
+    ])
+  })
+})

@@ -67,7 +67,7 @@ const LEVEL_TYPES: Record<'workspace' | 'project', Record<string, string[]>> = {
     }),
   },
   project: {
-    '': keys<ProjectConfig>({ tasks: true }),
+    '': keys<ProjectConfig>({ tags: true, tasks: true }),
     'tasks.*': keys<TaskConfig>({ description: true, exec: true, dependsOn: true, cache: true }),
     'tasks.*.exec': keys<ExecConfig>({
       command: true,
@@ -157,6 +157,7 @@ function projectSeed(): Record<string, unknown> {
     systemInfo: grants.systemInfo,
   }
   return {
+    tags: ['scope:web'],
     tasks: {
       t: {
         description: 'd',

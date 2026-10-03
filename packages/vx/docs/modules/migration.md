@@ -25,6 +25,7 @@ export interface GeneratedProject {
   name: string
   dir: string
   importLines: string[]
+  tags?: readonly string[] // written as the config's `tags` when non-empty (an Nx project's)
   tasks: GeneratedTask[]
 }
 export interface GeneratedTask {

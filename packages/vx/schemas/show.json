@@ -12,13 +12,14 @@
     "listRow": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["name", "dir", "tasks"],
+      "required": ["name", "dir", "tags", "tasks"],
       "properties": {
         "name": { "type": "string" },
         "dir": {
           "type": "string",
           "description": "relative to the workspace root, POSIX separators"
         },
+        "tags": { "$ref": "#/$defs/stringList" },
         "tasks": { "type": "array", "items": { "type": "string" } }
       }
     },
@@ -34,6 +35,7 @@
           "description": "null when the package has no vx config and no plugin gave it one",
           "additionalProperties": false,
           "properties": {
+            "tags": { "$ref": "#/$defs/stringList" },
             "tasks": { "type": "object", "additionalProperties": { "$ref": "#/$defs/taskConfig" } }
           }
         }
