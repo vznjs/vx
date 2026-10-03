@@ -884,7 +884,10 @@ settings (`HTTPS_PROXY`, `GIT_SSH_COMMAND` and the like, all pointing at
 its localhost proxy with its own credential), the same with the host's
 proxy variables unset. The unit rows held only `buildIsolatedEnv`; the
 new row runs a task and compares the names it saw with the exact set
-(the shell's own `PWD`, `SHLVL`, `_`, `OLDPWD` aside). Red when
+(what the child sets itself aside: the shell's `PWD`, `SHLVL`, `_`,
+`OLDPWD`, and on macOS `__CF_USER_TEXT_ENCODING`, which CoreFoundation
+writes into the probe's own `node`; the first macOS run read it as a
+leak). Red when
 `buildIsolatedEnv` forwards `SSH_AUTH_SOCK`. `env.test.ts` › what a task
 sees of the host environment, end to end; `schema.md` names the run's two
 and the row.

@@ -279,8 +279,11 @@ describe('what a task sees of the temp directory, end to end', () => {
 // so a second env built anywhere on the way (an executor, a wrapper) cannot
 // widen it unseen (M-71).
 describe('what a task sees of the host environment, end to end', () => {
-  // Set by the shell vx runs a command line under, not by vx.
-  const SHELL_SET = new Set(['PWD', 'SHLVL', '_', 'OLDPWD'])
+  // Set by the child itself, not by vx: the shell a command line runs
+  // under, and on macOS CoreFoundation, which writes
+  // `__CF_USER_TEXT_ENCODING` into the environment of a process linked
+  // against it, the probe's `node` included (macOS CI, job 111184881471).
+  const CHILD_SET = new Set(['PWD', 'SHLVL', '_', 'OLDPWD', '__CF_USER_TEXT_ENCODING'])
   const PLANTED = {
     SSH_AUTH_SOCK: '/tmp/vx-env-agent.sock',
     GITHUB_TOKEN: 'ghp_vx_env_probe',
@@ -312,7 +315,7 @@ describe('what a task sees of the host environment, end to end', () => {
       const r = await run({ cwd: root, tasks: ['probe'], log: quiet })
       expect(r.ok).toBe(true)
       const seen = (JSON.parse(await Bun.file(path.join(dir, 'seen.json')).text()) as string[])
-        .filter((n) => !SHELL_SET.has(n))
+        .filter((n) => !CHILD_SET.has(n))
         .sort()
       const expected = [
         ...ESSENTIAL_ENV.filter((n) => process.env[n] !== undefined),
