@@ -553,7 +553,8 @@ export function placeholderSweeper(placeholders: readonly Placeholder[]): () => 
  * The line a failed task gets for a placeholder it never wrote. Not a
  * diagnosis — the task may have died before its first write — but the
  * one clue to the trap: a grant that meant a directory is bound as a
- * file, and the task's own `mkdir` says only "File exists". Added when
+ * file, and the task's own `mkdir` says only "File exists" (or "Not a
+ * directory" for a path inside it, B-96). Added when
  * the task already failed and the sandbox reported nothing else, so it
  * never reddens a pass and never buries a real denial.
  */
@@ -562,7 +563,7 @@ export function untouchedPlaceholderLine(projectDir: string, placeholder: string
   return (
     `vx: the sandbox write grant \`${rel}\` named nothing on disk, so vx bound it as an empty ` +
     `file, which the task never wrote (removed again). If the task creates a directory there ` +
-    `("File exists" from its own mkdir), spell the grant \`${rel}/\` — a literal without the ` +
+    `("File exists" or "Not a directory" from its own mkdir), spell the grant \`${rel}/\` — a literal without the ` +
     `slash is a file.`
   )
 }

@@ -2620,6 +2620,7 @@ describe('resolveSandboxConfig', () => {
       r,
       buildCustomConfig({ config: r }, { allowRead: [], denyRead: [root] })!.filesystem!,
       [root],
+      root,
     )
     return r
   }
@@ -2642,9 +2643,7 @@ describe('resolveSandboxConfig', () => {
         const read = resolveSandboxConfig({ allow: { read: [`${root}/none/deeper/*`] } }, root)
         const write = judged({ allow: { read: ['.'], write: ['gone/away/*.txt'] } }, root)
         expect([read.allowRead, write.allowWrite]).toEqual([[], []])
-        expect(said.join('')).toContain(
-          `the write grant ${root}/gone/away/*.txt matches nothing yet`,
-        )
+        expect(said.join('')).toContain(`the write grant 'gone/away/*.txt' matches nothing yet`)
       } finally {
         spy.mockRestore()
         await rm(root, { recursive: true, force: true })
@@ -2730,7 +2729,7 @@ describe('resolveSandboxConfig', () => {
         expect(said.length).toBe(1)
         expect(said[0]).toContain('matches nothing yet')
         // The remedy is the directory the pattern was IN, not its parent.
-        expect(said[0]).toContain(`${path.join(realpathSync(root), 'g')}/**`)
+        expect(said[0]).toContain("`allow: { write: ['g/'] }`")
       } finally {
         await rm(root, { recursive: true, force: true })
       }
@@ -2778,7 +2777,7 @@ describe('resolveSandboxConfig', () => {
         } finally {
           spy.mockRestore()
         }
-        expect(said.map((l) => l.includes(`${root}/g/*.bin matches nothing yet`))).toEqual([true])
+        expect(said.map((l) => l.includes(`'g/*.bin' matches nothing yet`))).toEqual([true])
       } finally {
         await rm(root, { recursive: true, force: true })
       }

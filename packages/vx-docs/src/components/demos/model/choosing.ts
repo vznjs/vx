@@ -138,7 +138,7 @@ export const CHOICES: readonly Choice[] = [
           "A local sandbox, opt-in per task (exec.sandbox), on Linux and macOS. A workspace read or a write outside the grants is denied; one of the task's own files fails it.",
         buys: "An undeclared read of the task's own files turns into a failed task on your own machine and in CI, before it becomes a stale hit.",
         costs:
-          'It is off until a task opts in. Its grants are a second list next to the inputs, and it proves the key only as far as the two agree. No Windows.',
+          'It is off until a task opts in. Its grants are a second list next to the inputs, and it proves the key only as far as the two agree. No native Windows.',
         sources: [
           { label: 'Sandboxing tasks', href: 'guides/sandboxing/' },
           {

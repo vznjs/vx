@@ -60,6 +60,12 @@ export type HistoryTable = ReadonlyMap<string, TaskHistory>
 
 export interface HistoryProvider {
   loadFor(taskIds: readonly string[]): Promise<HistoryTable>
+  /**
+   * Only `p50DurationMs` of each task `loadFor` would answer, for a reader
+   * that needs nothing else (`--dry`'s prediction). Optional: without it
+   * the reader takes them from `loadFor`.
+   */
+  p50sFor?(taskIds: readonly string[]): Promise<ReadonlyMap<string, number>>
 }
 
 /** A no-op provider — every lookup returns an empty table. */
@@ -96,15 +102,7 @@ export class LocalHistoryProvider implements HistoryProvider {
   async loadFor(taskIds: readonly string[]): Promise<HistoryTable> {
     const out = new Map<string, TaskHistory>()
     if (taskIds.length === 0) return out
-
-    const floorRow = this.db
-      .query(
-        `SELECT MIN(id) AS id FROM runs WHERE run_id =
-           (SELECT run_id FROM invocations ORDER BY rowid DESC LIMIT 1 OFFSET ?)`,
-      )
-      .get(this.recent - 1) as { id: number | null }
-    // Fewer invocations than the window (or none): the whole table is the window.
-    const floor = floorRow.id ?? 0
+    const floor = this.floor()
 
     // `skipped` rows are excluded: a skip is a task the run never executed,
     // so it belongs in no success/hit RATE and no duration. Percentiles are
@@ -187,6 +185,44 @@ export class LocalHistoryProvider implements HistoryProvider {
       })
     }
     return out
+  }
+
+  /**
+   * The same window's p50s alone. `loadFor`'s rates and resource maxima
+   * read every row of the window and join each hit to its entry: 38 ms at
+   * 27,000 rows against 4 for the executed successes' durations alone.
+   */
+  async p50sFor(taskIds: readonly string[]): Promise<ReadonlyMap<string, number>> {
+    const out = new Map<string, number>()
+    if (taskIds.length === 0) return out
+    const rows = this.db
+      .query(
+        `SELECT project, task, GROUP_CONCAT(duration_ms) AS ds FROM runs
+         WHERE id >= ? AND status = 'success' AND (cache_hit IS NULL OR cache_hit = 0)
+         GROUP BY project, task`,
+      )
+      .all(this.floor()) as Array<{ project: string; task: string; ds: string }>
+    const wanted = new Set(taskIds)
+    for (const row of rows) {
+      const key = `${row.project}#${row.task}`
+      if (!wanted.has(key)) continue
+      const durations = row.ds.split(',').map(Number)
+      durations.sort((a, b) => a - b)
+      out.set(key, pickPercentile(durations, 0.5))
+    }
+    return out
+  }
+
+  /** The first `runs` id of the newest `recent` invocations (see `loadFor`). */
+  private floor(): number {
+    const row = this.db
+      .query(
+        `SELECT MIN(id) AS id FROM runs WHERE run_id =
+           (SELECT run_id FROM invocations ORDER BY rowid DESC LIMIT 1 OFFSET ?)`,
+      )
+      .get(this.recent - 1) as { id: number | null }
+    // Fewer invocations than the window (or none): the whole table is the window.
+    return row.id ?? 0
   }
 
   /** Mixed-outcome key count per `project#task`, over the slice, for `pairs` only. */
