@@ -61,6 +61,17 @@ export const WATCHED_BUILTIN_NAMES = [
   // A global one config set reached every config loaded after it in the
   // process: `--all` read it, `--filter` of the reader alone did not (D-122).
   'globalThis',
+  // What the check itself and vx's matching read through: a replaced
+  // `Reflect.ownKeys` blinded the check, and `RegExp.prototype.test` or
+  // `Date.now` ran vx on a config's choice (D-124).
+  'Reflect',
+  'Object',
+  'Array',
+  'RegExp.prototype',
+  'Function.prototype',
+  'Date',
+  'Date.prototype',
+  'Number.prototype',
 ] as const
 
 const WORKER_SRC = `
@@ -109,7 +120,10 @@ self.onmessage = async (e) => {
   const watched = e.data.blame
     ? ${JSON.stringify(WATCHED_BUILTIN_NAMES)}.map((n) => [n, n.split('.').reduce((o, k) => o[k], globalThis)])
     : null
-  const own = (o) => new Map(Reflect.ownKeys(o).map((k) => [k, Object.getOwnPropertyDescriptor(o, k)]))
+  // Taken before the import: a config can replace them (D-124).
+  const RO = Reflect.ownKeys
+  const GD = Object.getOwnPropertyDescriptor
+  const own = (o) => new Map(RO(o).map((k) => [k, GD(o, k)]))
   const before = watched?.map(([, o]) => own(o))
   const envBefore = watched ? { ...live } : null
   const cwdBefore = watched ? globalThis.process.cwd() : null
