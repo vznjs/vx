@@ -169,6 +169,12 @@ run leaves out; the rest are refusals.
   `--filter-prod`, `--test-pattern`, `--changed-files-ignore-pattern`,
   `-w` / `--workspace-root` all read `unknown flag` (`src/cli/foreign-flags.ts`
   holds Turbo's and Nx's only), though vx's `--filter` is pnpm's DSL.
+- orchestrator: a project config written as `vx.config.json` (or `.yaml`,
+  `.tsx`, `vxconfig.ts`, `.vx.config.ts`) is not read, and a run says only
+  "no projects declare task(s): build" (probed with `--all`).
+  `initHint` (`src/orchestrator/run.ts`) runs on that error path only;
+  with no project config it could name a member's `vx.config.<other>`
+  and the names vx reads.
 - util: `PERMISSION_HINT` (`src/util/errors.ts`) reads "a path vx must
   write is not writable by this user" for every EACCES / EPERM that
   reaches `bin.ts`, a refused READ included. D-132 / D-133 name the
@@ -914,3 +920,4 @@ packages/core`) selects the dependent whose `file:../lib` spec named
 - **D-131.** `VX_CONFIG_WORKER_TIMEOUT_MS` was documented as bounding a config evaluation "in process or in its worker"; a first load runs in process, and `while (true) {}` holds the thread the deadline fires on, so `vx run` hung until killed (probed past a 2 s budget). The docs say so; bounding it would take D-68's measured-out worker per config. A repeat load's worker still fails at the budget. Rows: `tests/config-eval-sync-loop.test.ts`; red with the timer's reject removed. (#2522)
 - **D-132.** As a non-root user, a member's `package.json` at mode 000 dropped its project from `--all` under a green run (D-128's warning said it had none), and an unreadable config read "a path vx must write is not writable". A member manifest, a project config, the root manifest and `vx.workspace.ts` vx may not read now refuse as `<file>: not readable by this user (EACCES)`; a member directory it may not search is named and skipped. Rows: `tests/workspace-unreadable.test.ts` (non-root, `VX_REQUIRE_NONROOT` on CI; run as `nobody` locally), red without the fix; a first push assumed a canonical temp root and was red on macOS. Probed, no gap: the config cache follows a `node_modules` package and its version, a tsconfig `paths` alias and its retarget; package edges (`workspace:`, matching and non-matching ranges, dev / peer / optional, `npm:`, `link:`, `file:`), a package cycle (refused under `^build`), and `...a` / `a...` / `^` selectors over it. (#2533)
 - **D-133.** A glob other than `<dir>/*` is scanned, and the scan threw EACCES at a member directory vx may not open, with the write wording; it cannot skip the directory, so the load is refused naming it and the glob. Merged apart from D-132, whose PR merged before this commit landed. Rows: `tests/workspace-unreadable.test.ts`; red without the fix. (#2548)
+- **D-134.** `--affected` probed with a member that is a real `git submodule add` checkout and with an untracked nested repo, no gap: a dirty edit, an untracked file, a moved pointer (unstaged or committed) and `.gitmodules`' own `ignore = all` each select the submodule's project, and its cache key follows dirty and committed edits. `affected.test` drove a gitlink and `diff.ignoreSubmodules`; the two cases it left undriven are pinned. Rows: `tests/affected-submodule.test.ts`; both red without `--ignore-submodules=none`. Also probed, no gap: `--affected` over modified, untracked, ignored and staged-then-deleted files; `--filter` spellings (`@s/*`, `*a`, `{dir}`, `./dir`, `!`, `...`, `^`, an empty value, a case typo). (#2568)
