@@ -25,7 +25,7 @@
 // this handle, declared by a plugin's `cache` hook. The contract every
 // layer speaks is `CacheLayer` in layer.ts; `plugin-host.ts` enforces it.
 
-import { Database, type SQLQueryBindings } from 'bun:sqlite'
+import { Database } from 'bun:sqlite'
 import {
   accessSync,
   closeSync,
@@ -38,7 +38,7 @@ import {
 } from 'node:fs'
 import { readdir, rm, stat, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import { createTables } from './schema.js'
+import { createTables, inHashes } from './schema.js'
 import {
   UserError,
   formatBytes,
@@ -968,16 +968,8 @@ export class Cache implements CacheLayer {
   private async getManyEntries(hashes: readonly string[]): Promise<Map<string, CacheEntry>> {
     const out = new Map<string, CacheEntry>()
     if (!this.read || hashes.length === 0) return out
-    const rows: EntryRow[] = []
-    for (let i = 0; i < hashes.length; i += 900) {
-      const chunk = hashes.slice(i, i + 900)
-      const placeholders = chunk.map(() => '?').join(',')
-      rows.push(
-        ...(this.db
-          .query(`${SELECT_ENTRY} WHERE e.hash IN (${placeholders})`)
-          .all(...(chunk as readonly SQLQueryBindings[])) as EntryRow[]),
-      )
-    }
+    const { test, params } = inHashes(hashes)
+    const rows = this.db.query(`${SELECT_ENTRY} WHERE e.hash ${test}`).all(...params) as EntryRow[]
     if (rows.length === 0) return out
     const present = rows.map((r) => existsSync(this.tarPath(r.hash)))
     const live = rows.filter((_r, i) => present[i])
@@ -1691,15 +1683,8 @@ export class Cache implements CacheLayer {
   }
 
   private writeAccessed(hashes: readonly string[], now: number): void {
-    // Chunked: SQLite's bound-parameter ceiling is 32k on modern
-    // builds, but 900 keeps us safe on any build at negligible cost.
-    for (let i = 0; i < hashes.length; i += 900) {
-      const chunk = hashes.slice(i, i + 900)
-      const placeholders = chunk.map(() => '?').join(',')
-      this.db
-        .prepare(`UPDATE entries SET accessed_at = ? WHERE hash IN (${placeholders})`)
-        .run(now, ...chunk)
-    }
+    const { test, params } = inHashes(hashes)
+    this.db.prepare(`UPDATE entries SET accessed_at = ? WHERE hash ${test}`).run(now, ...params)
   }
 
   /**
@@ -1895,13 +1880,9 @@ export class Cache implements CacheLayer {
       // space the unlinks free. Rows-first failed there before any file went,
       // and the one verb meant to free a full disk freed nothing (A-14).
       await Promise.all(hashes.map((h) => rm(this.tarPath(h), { force: true })))
+      const { test, params } = inHashes(rows)
       const deleteRows = this.db.transaction(() => {
-        for (let i = 0; i < rows.length; i += 900) {
-          const chunk = rows.slice(i, i + 900)
-          this.db
-            .prepare(`DELETE FROM entries WHERE hash IN (${chunk.map(() => '?').join(',')})`)
-            .run(...(chunk as readonly SQLQueryBindings[]))
-        }
+        this.db.prepare(`DELETE FROM entries WHERE hash ${test}`).run(...params)
       })
       try {
         deleteRows()

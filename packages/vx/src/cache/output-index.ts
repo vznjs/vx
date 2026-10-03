@@ -8,7 +8,7 @@
 /** `mtime_ms` of a recorded output prefix that did not exist when the snapshot was taken. */
 const ABSENT_DIR_MTIME = -1
 
-import type { Database, SQLQueryBindings } from 'bun:sqlite'
+import type { Database } from 'bun:sqlite'
 import { lstatSync, statSync } from 'node:fs'
 import { lstat, readdir } from 'node:fs/promises'
 import path from 'node:path'
@@ -21,6 +21,7 @@ import {
   type OutputFileRow,
   WORKSPACE_OUTPUT_PREFIX,
 } from './layer.js'
+import { inHashes } from './schema.js'
 
 export class OutputIndex {
   private readonly insertOutputFile: ReturnType<Database['prepare']>
@@ -78,21 +79,18 @@ export class OutputIndex {
   loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]> {
     const out = new Map<string, OutputFileRow[]>()
     if (hashes.length === 0) return out
-    // Inline placeholders for an IN-list — bun:sqlite doesn't ship
-    // rarray, but `IN (?, ?, …)` with N≤~999 is fast and avoids per-
-    // hash select.get() overhead. `db.query` (not `db.prepare`) caches the
-    // compiled statement keyed by the SQL text — so the dominant single-hash
-    // warm-hit path (called up to 3× per hit) reuses one statement instead of
-    // recompiling on every call.
+    // `db.query` (not `db.prepare`) caches the compiled statement keyed by
+    // the SQL text, which `inHashes` keeps to two: the single-hash warm-hit
+    // path (called up to 3× per hit) reuses one instead of recompiling.
     // A reader in the same process (`vx watch`'s next cycle, a test) sees
     // the stamps taken, not only the ones flushed: overlaid below from
     // memory. A flush here committed a transaction per read, and a restore
     // reads its rows twice.
-    const placeholders = hashes.map(() => '?').join(',')
+    const { test, params } = inHashes(hashes)
     const stmt = this.db.query(
-      `SELECT entry_hash, path, size_bytes, mode, mtime_ms, ino, ctime_ms FROM output_files WHERE entry_hash IN (${placeholders})`,
+      `SELECT entry_hash, path, size_bytes, mode, mtime_ms, ino, ctime_ms FROM output_files WHERE entry_hash ${test}`,
     )
-    const rows = stmt.all(...(hashes as readonly SQLQueryBindings[])) as Array<{
+    const rows = stmt.all(...params) as Array<{
       entry_hash: string
       path: string
       size_bytes: number
@@ -318,12 +316,10 @@ export class OutputIndex {
     // A reader in the same process (`vx watch`'s next cycle, a test) sees
     // what was snapshotted, not what was flushed.
     this.flushOutputDirs()
-    const placeholders = hashes.map(() => '?').join(',')
+    const { test, params } = inHashes(hashes)
     const rows = this.db
-      .query(
-        `SELECT entry_hash, path, mtime_ms FROM output_dirs WHERE entry_hash IN (${placeholders})`,
-      )
-      .all(...(hashes as readonly SQLQueryBindings[])) as Array<{
+      .query(`SELECT entry_hash, path, mtime_ms FROM output_dirs WHERE entry_hash ${test}`)
+      .all(...params) as Array<{
       entry_hash: string
       path: string
       mtime_ms: number
