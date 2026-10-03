@@ -1467,3 +1467,18 @@ back to `true` (#2579). The local gate missed the first: without
 `VX_REQUIRE_SANDBOX` an unavailable sandbox is a skip, so a gate on a
 sandbox change sets it. Rows: `sandbox-noscan-gone.unsafe.test.ts`,
 `sandbox-noscan-dir.unsafe.test.ts`.
+
+B-94. Probes, nothing shipped. (1) B-92/B-93's noscan rows as the
+non-root `probe` user: 11 pass, the root-only owner row skipped. (2) A
+SIGKILLed vx leaves no process (bwrap's `--die-with-parent` takes the
+tree), but each running sandboxed task leaves its `vx-tasks/vx-task-*`
+directory and often its strace log: 752 entries, 3 MB, from this
+session's killed runs; a clean run leaves none. Not swept: liveness by
+pid in a temp dir that containers of other pid namespaces may share
+could remove a live task's TMPDIR, a worse failure than 3 MB. SRT's own
+sockets and `srt-obs-*` are left the same way, SRT's to clean. (3) The
+largest unsandboxed step, `secretMask` (B-91: 25 µs a miss), memoised
+by value set: 14.1 to 11.9 µs, noise; the cost is walking `process.env`,
+not building the pattern. Reverted. The unsandboxed path's top three
+(`secretMask` 25, output resolve 22, key 21 µs) stay below what a wall
+A/B resolves; that line is closed.
