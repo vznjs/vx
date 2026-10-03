@@ -278,9 +278,15 @@ export function selectExecutor(
   for (const executor of executors) {
     if (task.pinnedLocal && executor.remote === true) continue
     if (executor.accepts === undefined) return executor
-    let taken: boolean
+    let taken: unknown
     try {
       taken = executor.accepts(task)
+      // An `async accepts` answers a Promise: truthy, so the executor took
+      // every task, and a rejection went unheard (the shape of H-16's admit).
+      if (taken instanceof Promise) {
+        taken.catch(() => {})
+        throw new Error('returned a Promise; accepts is synchronous')
+      }
     } catch (err) {
       const m = err instanceof Error ? err.message : String(err)
       throw new UserError(`${label(executor)} failed in accepts for ${task.taskId}: ${m}`)
