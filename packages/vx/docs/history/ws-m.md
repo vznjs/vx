@@ -730,6 +730,25 @@ rest of the verbs' refusals: `vx init` (`--frce` hints `--force`, a bare
 `cli.test.ts` › a flag before any verb is called a flag (exact lines; red
 without the fix), and `-V` now pins its line.
 
+M-61. Security audit, three classes. (1) Archive extraction held:
+`..`, absolute, drive and NUL names, a pax `path` that renames into a
+traversal, symlinked parents, a planted link or hardlink at the target,
+and symlink, hardlink and device entries (never materialised) each have
+a row in `archive-security.test.ts` / `tar-stream.test.ts`. (2) Secrets
+held: with `API_TOKEN` and `MY_PAT` in `cache.inputs.env` and
+`passThrough`, no value appeared in `vx why` (it shows a 64-bit hash of
+each), `vx last`, `vx show`, `--summarize` or the cache database. Lead,
+not fixed: that hash is unsalted xxh3, so a short secret named in
+`cache.inputs.env` can be guessed from `vx why`'s output; it stays local.
+(3) Outputs linked out held: a file link out (`/etc/hostname`, another
+project's file) refuses the save with its target, and a `dist` linked to
+an outside directory packs none of its files (the containment filter;
+Bun 1.4's glob follows the link) and deletes none. Fixed: in that last
+case the empty-artifact warning blamed the glob; it now names `dist`,
+the target, and that vx keeps only outputs inside the project.
+`cache-declaration-warnings.test.ts` › an output directory linked out of
+the project is named as the cause; red without the fix.
+
 ## Leads for other streams
 
 - A: A-20 let a same-project dependant restore ahead of a producer whose

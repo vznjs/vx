@@ -3,6 +3,7 @@
 // and an output set that resolves to no files saves an artifact a later hit
 // "restores". Both are said once, on the miss, on the run's status line.
 
+import { realpathSync } from 'node:fs'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -93,6 +94,25 @@ describe('cache declarations that match nothing', () => {
     ])
     // The hit says nothing: the warning belongs to the run that saved.
     expect(await runTask('lost')).toEqual([])
+  })
+
+  it('an output directory linked out of the project is named as the cause (M-61)', async () => {
+    // Every file under a `dist` that links out is dropped as outside the
+    // project, so the artifact is empty; the warning blamed the glob.
+    const outside = await mkdtemp(path.join(os.tmpdir(), 'vx-decl-out-'))
+    try {
+      await writeFile(path.join(outside, 'creds.txt'), 'not yours\n')
+      await writeFile(
+        path.join(root, 'packages', 'app', 'vx.config.mjs'),
+        `export default { tasks: { linked: { exec: { command: 'ln -sfn ${outside} dist' },
+          cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } } } } }\n`,
+      )
+      expect(await runTask('linked')).toEqual([
+        `[vx] app#linked: cache.outputs matched no files (dist/**) — an empty artifact is saved; a later hit restores nothing — dist is a symlink to ${realpathSync(outside)}, outside the project, and vx keeps only outputs inside it: make dist a directory`,
+      ])
+    } finally {
+      await rm(outside, { recursive: true, force: true })
+    }
   })
 
   it('a hit with no rows is up-to-date while its globs still match nothing, and wipes a stray', async () => {

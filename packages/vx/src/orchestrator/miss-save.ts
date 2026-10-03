@@ -7,6 +7,7 @@
 // a later run replays. Moved out of execute-task.ts 2026-09-09 as pure
 // code motion.
 
+import { lstatSync, realpathSync } from 'node:fs'
 import path from 'node:path'
 import {
   type CacheLayer,
@@ -16,7 +17,7 @@ import {
   WORKSPACE_OUTPUT_PREFIX,
 } from '../cache/index.js'
 import type { TaskNode } from '../graph/index.js'
-import { asTrees, span, taskGlob, wholeSubtreePrefixes } from '../util/index.js'
+import { asTrees, span, staticPrefix, taskGlob, wholeSubtreePrefixes } from '../util/index.js'
 import type { Logger } from './logger.js'
 import type { TaskInputComponent } from './task-hash.js'
 
@@ -129,12 +130,15 @@ export async function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<void>
     // `cache.outputs` is not a write grant; `exec.sandbox.allow.write` is.
     const sandboxed = node.config.exec?.sandbox !== undefined
     const grantsWrite = (node.config.exec?.sandbox?.allow?.write?.length ?? 0) > 0
+    const linkedOut = outputDirLinkedOut(node.projectDir, a.outputs)
     log.status(
       `[vx] ${node.id}: cache.outputs matched no files (${[...a.outputs, ...a.wsOutputs].join(', ')}) — ` +
         `an empty artifact is saved; a later hit restores nothing` +
-        (sandboxed && !grantsWrite
-          ? ` — the task is sandboxed and declares no exec.sandbox.allow.write, so its writes never reached disk`
-          : ''),
+        (linkedOut !== undefined
+          ? ` — ${linkedOut.dir} is a symlink to ${linkedOut.target}, outside the project, and vx keeps only outputs inside it: make ${linkedOut.dir} a directory`
+          : sandboxed && !grantsWrite
+            ? ` — the task is sandboxed and declares no exec.sandbox.allow.write, so its writes never reached disk`
+            : ''),
     )
   }
   const save = async (): Promise<void> => {
@@ -260,5 +264,45 @@ function markWritten(
   // to git" rule as the project drop above.
   if (outputFiles.length + wsOutputFiles.length > 0) {
     a.gitFilesCache?.invalidateWorkspacePartition()
+  }
+}
+
+/**
+ * The first output directory a pattern names that is a symlink resolving
+ * outside the project: every file under it is dropped as out of the
+ * project, and the empty-artifact warning blamed the glob (M-61).
+ */
+function outputDirLinkedOut(
+  projectDir: string,
+  outputs: readonly string[],
+): { dir: string; target: string } | undefined {
+  const realProject = realpathOrNull(projectDir) ?? projectDir
+  // `dist` names the tree `dist/**`: the same reading the resolver gives.
+  for (const pattern of asTrees(outputs.filter((o) => !o.startsWith('!')))) {
+    const literal = staticPrefix(pattern)
+      .split('/')
+      .filter((p) => p !== '' && p !== '.')
+    for (let i = 1; i <= literal.length; i++) {
+      const dir = literal.slice(0, i).join('/')
+      const abs = path.join(projectDir, dir)
+      try {
+        if (!lstatSync(abs).isSymbolicLink()) continue
+      } catch {
+        break
+      }
+      const target = realpathOrNull(abs)
+      if (target !== null && target !== realProject && !target.startsWith(realProject + path.sep)) {
+        return { dir, target }
+      }
+    }
+  }
+  return undefined
+}
+
+function realpathOrNull(p: string): string | null {
+  try {
+    return realpathSync(p)
+  } catch {
+    return null
   }
 }
