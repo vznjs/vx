@@ -28,7 +28,20 @@ export async function run(argv: readonly string[]): Promise<number> {
   }
 
   switch (command) {
-    case undefined:
+    case undefined: {
+      // A bare `vx` where no workspace is printed 151 lines of help, none
+      // of which says the one thing wrong: there is nothing here to run.
+      const { findWorkspaceRoot } = await import('../workspace/index.js')
+      try {
+        await findWorkspaceRoot(process.cwd())
+      } catch (err) {
+        if (!isUserError(err)) throw err
+        process.stderr.write(`vx: ${err.message}; \`vx help\` lists the verbs\n`)
+        return 1
+      }
+      printHelp(await (await plugins()).pluginCommandHelp())
+      return 0
+    }
     case '--help':
     case '-h':
       printHelp(await (await plugins()).pluginCommandHelp())
