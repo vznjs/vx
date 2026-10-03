@@ -554,6 +554,19 @@ persistent task` and vx exits 1). Row (`site-samples` › a post's link
   hints, the visibility table, the failure recap's limits and sample,
   the live region's row cap and redraw floor, and the persistent-task
   exit line.
+- **J2-64** `turbo-nx-support.md` (generated from
+  `tests/contract/turbo-nx-support.json`) had two wrong flag rows:
+  `futureFlags.githubActionsRemoteBaseRefFallback` was "not supported,
+  ignored" while `turbo()` reads it and compares a missing base ref as
+  `origin/<ref>`, and `futureFlags.watchUsingTaskInputs` said `vx watch`
+  "watches each task's declared inputs" where watch hears every change
+  in a watched project (cli.md). Rows: `turbo-nx-support-flags.unsafe`
+  (a flag row marked not supported names a flag `turbo()`'s code never
+  reads, with a control that the scan sees one it does) and
+  `turbo-nx-support` › watchUsingTaskInputs' note; both red without the
+  fix. Checked clean in cli.md: the top-level shape and refusals, the
+  remote-cache and analytics sections (the `runs` columns), Programmatic
+  API's names. Spot-checked clean: nx.json's not-read keys.
 - **J2-65** `parity.md` mapped Nx's `--skipNxCache` to `--no-cache`,
   and the Nx parity case titled for it drove `--no-cache`, never the
   flag; vx aliases it to `--force` (`foreign-flags.ts`). The row says

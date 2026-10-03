@@ -124,6 +124,17 @@ describe('Turbo and Nx config support (docs/turbo-nx-support.md)', () => {
     ).toEqual([])
   })
 
+  // The row said `vx watch` "watches each task's declared inputs"; it
+  // hears every change in a watched project, as cli.md states (J2-64).
+  it("watchUsingTaskInputs' note says what cli.md says watch hears", () => {
+    const row = table.find((r) => r.key === 'turbo.json futureFlags.watchUsingTaskInputs')!
+    const cli = readFileSync(path.join(import.meta.dir, '..', 'docs', 'cli.md'), 'utf8')
+    expect(cli.split(/\s+/).join(' ')).toContain(
+      "We deliberately don't filter events against per-task `cache.inputs.files`",
+    )
+    expect(row.reason).toContain('re-runs on any change in a watched project')
+  })
+
   it('the page is the table rendered', () => {
     const live = render(table)
     if (process.env['VX_UPDATE_CONTRACT'] === '1' && process.env['CI'] !== 'true') {

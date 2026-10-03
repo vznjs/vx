@@ -66,12 +66,12 @@ Every key `turbo.json`, `nx.json` and `project.json` accept, read from the upstr
 | `futureFlags.experimentalObservability` | not applicable | Turbo telemetry export; vx's is a telemetry plugin. |
 | `futureFlags.experimentalPythonWorkspaces` | not supported | Ignored; vx discovers projects from `package.json` workspaces only. |
 | `futureFlags.filterUsingTasks` | not supported | Ignored; `--filter` keeps vx's semantics. |
-| `futureFlags.githubActionsRemoteBaseRefFallback` | not supported | Ignored; `--affected` defaults to `origin/HEAD`, then a trunk branch (`origin/main`, `main`, …), else `HEAD~1`. |
+| `futureFlags.githubActionsRemoteBaseRefFallback` | supported | `turbo()` follows it on GitHub Actions: a pull request's base ref the checkout lacks is compared as `origin/<ref>`, as in Turbo. |
 | `futureFlags.globalConfiguration` | supported | The `global` block is read whenever present, flag or not. |
 | `futureFlags.longerSignatureKey` | mapped, with a note | Not read; `turboCache()` always requires a signature key of at least 32 bytes. |
 | `futureFlags.pruneIncludesGlobalFiles` | not applicable | Affects only `turbo prune`; vx has none. |
 | `futureFlags.strictTaskEntrypointSelection` | not supported | Ignored. |
-| `futureFlags.watchUsingTaskInputs` | not supported | Ignored; `vx watch` watches each task's declared inputs. |
+| `futureFlags.watchUsingTaskInputs` | not supported | Ignored; `vx watch` re-runs on any change in a watched project but a declared output, and the cache keys decide what executes. |
 | `boundaries.dependencies` | not applicable | A Turbo boundaries import rule. |
 | `boundaries.dependents` | not applicable | A Turbo boundaries import rule. |
 | `boundaries.implicitDependencies` | not applicable | A Turbo boundaries import rule. |
