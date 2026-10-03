@@ -561,15 +561,15 @@ Reported task lines share one column grid —
 the glyph SHAPE encodes the cache axis, the glyph COLOR (and the
 status word) the task axis.
 
-| Glyph | Cache axis                 | Status word    |
-| ----- | -------------------------- | -------------- |
-| `⏺`   | miss — the task ran        | success/failed |
-| `►`   | fresh (up-to-date)         | success        |
-| `⇢`   | restored from local cache  | success        |
-| `⇣`   | restored from remote       | success        |
-| `◼`   | failed                     | failed         |
-| `⊘`   | skipped (blocked upstream) | skipped        |
-| `▸`   | persistent (dev server)    | running        |
+| Glyph | Cache axis                 | Status word |
+| ----- | -------------------------- | ----------- |
+| `⏺`   | miss — the task ran        | success     |
+| `►`   | fresh (up-to-date)         | success     |
+| `⇢`   | restored from local cache  | success     |
+| `⇣`   | restored from remote       | success     |
+| `◼`   | failed                     | failed      |
+| `⊘`   | skipped (blocked upstream) | skipped     |
+| `▸`   | persistent (dev server)    | running     |
 
 A live WORKER row carries no glyph: the ticking elapsed time leads it,
 which is the motion the run has instead of a spinner.
@@ -1181,11 +1181,12 @@ every file beside it is readable without a violation — `schema.md`
 § `exec.sandbox` has the shape and the remedy (outputs in a
 subdirectory).
 
-`vx run` lazily initialises the sandbox runtime only when at least
-one task in the graph declares `exec.sandbox`. If runtime deps are
-missing (bwrap on Linux, sandbox-exec on macOS) or the platform is
-unsupported, the orchestrator errors out with a clear message before
-any task runs.
+`vx run` arms the sandbox runtime when a task that declares
+`exec.sandbox` is about to execute; a cache hit needs none. If the
+platform cannot host it (Linux needs `bwrap`, `socat` and `rg` on PATH;
+macOS, `sandbox-exec`), that task fails with one line, `sandbox not
+available: <reason>`, and never runs unsandboxed. Tasks without a
+sandbox run as usual, and the failure's dependents follow `--continue`.
 
 ## `vx watch`
 
@@ -1410,9 +1411,9 @@ Evict old or oversized cache entries. Operates on
 
 `prune` is the only `vx cache` subcommand: the statistics other runners
 put under a `cache` verb — the directory, the entry count, the size —
-are part of [`vx info`](#vx-info), and `vx cache stats`, `clean` and
-their neighbours say so rather than printing a bare "unknown
-subcommand".
+are part of [`vx info`](#vx-info), and `vx cache stats`, `list`, `ls`,
+`clean`, `gc`, `purge` and their neighbours say so (`list` also names
+`vx last --list`) rather than printing a bare "unknown subcommand".
 
 ```
 vx cache prune --older-than <duration>     # Drop entries last accessed before now - duration.
@@ -2404,7 +2405,10 @@ run that failed, past any green one since, and with `--list` lists only
 failed runs. `--format json`
 emits `{ invocation, tasks }` for scripting, and `--list --format json`
 an array of the same `invocation` objects, newest first. An unknown run id fails
-loud and points at `--list`. A run id may be typed as a unique prefix; a
+loud and points at `--list`. Before any run, every form says so
+(`vx last: no recorded runs yet — run something first`, exit 1; `--list`
+prints `no recorded runs`, exit 0), and past green runs only,
+`--list --failed` prints `no recorded run failed`. A run id may be typed as a unique prefix; a
 prefix several runs share fails and lists them. A replayed run with
 failures ends with the command that re-runs them (`re-run what failed:
 vx run app#test -- …`, with the arguments the run forwarded).
@@ -2680,6 +2684,12 @@ its own colour.
 
 Programmatic callers passing a custom `log` to the run options always
 see plain text.
+
+Only a run's own output (`vx run`, `vx watch`) is painted. Every other
+verb (`show`, `info`, `why`, `last`, a `--dry` plan, `--graph`, `cache
+prune`, `help`) prints plain text whatever `FORCE_COLOR` says, so a
+script that forces colour for a run's log still parses them
+(`tests/cli-colors-e2e.test.ts`).
 
 ## Remote cache (plugin-driven)
 
