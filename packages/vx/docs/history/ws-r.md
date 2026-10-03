@@ -71,6 +71,11 @@
   benchmarks post's runner table show each competitor cell as
   `(vx N% faster)` with the formula line, not a multiple.
 
+- **R-15** The migrate guide shows the `vx.config.ts` vx-migrate
+  writes for one package, Turbo and Nx, held byte for byte to a run
+  (`try-it.unsafe.test.ts`). The from-nx post's figures were the
+  no-lock column; now the headline vx column, with vx's %.
+
 ## Leads
 
 - Real-repo rows (`packages/vx-bench/real-repos.json`, benchmarks.md's
