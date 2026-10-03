@@ -170,3 +170,30 @@ describe('the terminal demo', () => {
     // 5 s default (5,006 ms) though it passes alone.
   }, 20_000)
 })
+
+// Each starter's README opens with `npm install`, and the fixtures above
+// link node_modules instead of installing, so nothing ran it: npm refuses
+// pnpm's `workspace:` protocol (EUNSUPPORTEDPROTOCOL), and both starters
+// declared `"lib": "workspace:*"` until 2026-10-03.
+describe('the starters install with the package manager their README names', () => {
+  it('no npm starter declares a workspace: dependency', () => {
+    const bad: string[] = []
+    for (const name of ['basic', 'turbo']) {
+      expect(readFileSync(path.join(EXAMPLES, name, 'README.md'), 'utf8')).toContain('npm install')
+      for (const pkg of [
+        'package.json',
+        'packages/app/package.json',
+        'packages/lib/package.json',
+      ]) {
+        const json = JSON.parse(readFileSync(path.join(EXAMPLES, name, pkg), 'utf8')) as Record<
+          string,
+          Record<string, string> | undefined
+        >
+        for (const field of ['dependencies', 'devDependencies'])
+          for (const [dep, spec] of Object.entries(json[field] ?? {}))
+            if (spec.startsWith('workspace:')) bad.push(`${name}/${pkg}: ${dep} ${spec}`)
+      }
+    }
+    expect(bad).toEqual([])
+  })
+})

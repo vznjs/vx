@@ -2,6 +2,6 @@
   "name": "app",
   "private": true,
   "dependencies": {
-    "lib": "workspace:*"
+    "lib": "*"
   }
 }
