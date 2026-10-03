@@ -390,6 +390,13 @@ const OTEL_PLUGIN_KEYS: Record<keyof OtelPluginOptions, true> = {
  */
 export function otel(opts: OtelPluginOptions = {}): VxPlugin {
   refuseUnknownOptions('otel()', opts, Object.keys(OTEL_PLUGIN_KEYS))
+  // A switch read from the environment arrives as a string, and `'false'`
+  // is truthy: the signal was exported though it was turned off.
+  for (const name of ['metrics', 'logs'] as const) {
+    if (opts[name] !== undefined && typeof opts[name] !== 'boolean') {
+      throw new Error(`[vx-otel] ${name} must be true or false, got ${JSON.stringify(opts[name])}`)
+    }
+  }
   return definePlugin(import.meta, {
     telemetry(ctx: TelemetryContext): TelemetrySink | undefined {
       const config = resolveOtelConfig(opts, process.env, (m) => ctx.warn(m))

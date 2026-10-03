@@ -227,6 +227,13 @@ const REAPI_PLUGIN_KEYS: Record<keyof ReapiPluginOptions, true> = {
 
 export function reapi(options: ReapiPluginOptions = {}): VxPlugin {
   refuseUnknownOptions('reapi()', options, Object.keys(REAPI_PLUGIN_KEYS))
+  // A switch read from the environment arrives as a string: `'true'` failed
+  // the `=== true` test and the feature stayed off with no word.
+  if (options.execute !== undefined && typeof options.execute !== 'boolean') {
+    throw new Error(
+      `@vzn/vx-reapi: execute must be true or false, got ${JSON.stringify(options.execute)}`,
+    )
+  }
   let executorClient: ReapiClient | undefined
   let remoteCache: ReapiRemoteCache | undefined
   return definePlugin(import.meta, {
