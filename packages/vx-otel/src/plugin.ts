@@ -232,7 +232,10 @@ export function resolveOtelConfig(
         continue
       }
       const k = raw.toLowerCase()
-      const fault = headerValueFault(v)
+      // An option's value may be a number or an object: refused like a
+      // value fetch cannot send, not left to throw `value.trim is not a
+      // function` out of the plugin.
+      const fault = typeof v === 'string' ? headerValueFault(v) : 'a non-string value'
       if (fault === null) out[k] = v
       else if (!dropped.has(k)) {
         dropped.add(k)

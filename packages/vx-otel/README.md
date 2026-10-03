@@ -53,7 +53,9 @@ endpoint set, that signal exports and the others stay off. Spans and log records
 request, so a large run stays under a collector's body limit. Header names are case-insensitive (a signal's own
 `Authorization` replaces the shared `authorization`); a name no header can
 carry (`Authorization: Basic …` written curl-style, with a colon) is not
-sent, and the warning prints neither its name nor its value.
+sent, and the warning prints neither its name nor its value. A `headers`
+option value that is not a string is not sent either, with a warning
+naming the header.
 
 With only a traces URL set, metrics and logs are not
 exported (they used to be POSTed to the traces URL, which a collector
