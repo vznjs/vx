@@ -657,6 +657,9 @@ export function migrateScripts(
   const root = metas.length > 1 ? workspaceRootOf(metas) : undefined
   const notes: string[] = []
   const lifecycleBuilds: [string, string, string][] = []
+  // Members that got no config: with nothing named they vanished from the
+  // summary, and a reader could not tell skipped from forgotten.
+  const idle: string[] = []
   // The rest check the whole repo (`lint: oxlint .`, `test: vitest`):
   // `vx run lint` found no project in remix, wagmi or element-plus. Such a
   // script maps onto the root, when the root has a name (vx skips a
@@ -958,6 +961,19 @@ export function migrateScripts(
       const importLines = readsManifest ? [MANIFEST_IMPORT] : []
       projects.push({ name: meta.name, dir: meta.dir, importLines, tasks })
     }
+  }
+  for (const meta of mapped) {
+    if (meta === rootMeta || projects.some((p) => p.dir === meta.dir)) continue
+    const scripts = scriptsOf(meta)
+    const runs = Object.keys(scripts).some(
+      (n) => typeof scripts[n] === 'string' && scripts[n] !== '' && !LIFECYCLE.test(n),
+    )
+    if (!runs && !lifecycleBuilds.some(([name]) => name === meta.name)) idle.push(meta.name)
+  }
+  if (idle.length > 0 && projects.length > 0) {
+    notes.push(
+      `${idle.length === 1 ? '1 package got' : `${idle.length} packages got`} no vx.config.ts, having no script to run (none, or only the package manager's lifecycle hooks): ${listed(idle)}; each is still a project, and a task declared in its own vx.config.ts runs`,
+    )
   }
   const owner = metas[0] === undefined ? undefined : ownerOf(metas[0].dir, hookMemo)
   if (owner?.manager === 'berry' && usesPnp(owner.at)) notes.push(PNP_NOTE)
