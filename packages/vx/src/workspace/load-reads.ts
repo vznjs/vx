@@ -5,6 +5,8 @@
 // it. The map lives exactly as long as the load: a `vx watch` cycle is a
 // new load and reads fresh bytes.
 
+import { isPermissionError, UserError } from '../util/index.js'
+
 /** The files one load has read, by absolute path: the bytes, or null when no file is there. */
 export type LoadReads = Map<string, Promise<Uint8Array | null>>
 
@@ -28,5 +30,17 @@ export function readOnce(reads: LoadReads | undefined, file: string): Promise<Ui
 
 async function readIfFile(file: string): Promise<Uint8Array | null> {
   const f = Bun.file(file)
-  return (await f.exists()) ? await f.bytes() : null
+  return (await f.exists()) ? await f.bytes().catch((err: unknown) => unreadable(err, file)) : null
+}
+
+/**
+ * A read the file system refused is the user's to fix, named as a read: a
+ * config at mode 000 reached the user as "a path vx must write is not
+ * writable" (D-132). Anything else is rethrown as it came.
+ */
+export function unreadable(err: unknown, file: string): never {
+  if (isPermissionError(err)) {
+    throw new UserError(`${file}: not readable by this user (${err.code})`)
+  }
+  throw err
 }

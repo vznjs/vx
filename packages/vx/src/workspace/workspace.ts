@@ -1,16 +1,17 @@
-import type { Dirent } from 'node:fs'
-import { readdir, stat } from 'node:fs/promises'
+import { constants, type Dirent } from 'node:fs'
+import { access, readdir, stat } from 'node:fs/promises'
 import path from 'node:path'
 import type { ProjectConfig, WorkspaceConfig } from '../config.js'
 import {
   BUN_GLOB_WILDCARDS,
   isOutOfFds,
+  isPermissionError,
   relPosix,
   slashBraceExpansions,
   UserError,
   normalizeBunGlob,
 } from '../util/index.js'
-import { type LoadReads, readOnce } from './load-reads.js'
+import { type LoadReads, readOnce, unreadable } from './load-reads.js'
 
 export interface PackageJson {
   name: string
@@ -548,6 +549,30 @@ function absent<T>(err: unknown, value: T): T {
   return value
 }
 
+/**
+ * A member's manifest text, or null when there is none. A manifest this
+ * user may not read is refused, not skipped: its project dropped out of
+ * `--all` and the run went green without it (D-132). A directory it may
+ * not search hides whether a manifest is there at all, so that one is
+ * named and skipped (a service's data directory under `packages/*`).
+ */
+async function readManifest(root: string, dir: string, file: string): Promise<string | null> {
+  try {
+    return await Bun.file(file).text()
+  } catch (err) {
+    if (!isPermissionError(err)) return absent(err, null)
+    const searchable = await access(dir, constants.X_OK).then(
+      () => true,
+      () => false,
+    )
+    if (searchable) unreadable(err, file)
+    process.stderr.write(
+      `vx: ${relPosix(root, dir)} is not readable by this user — skipped, with any project in it\n`,
+    )
+    return null
+  }
+}
+
 export async function listProjects(workspace: Workspace): Promise<ProjectMeta[]> {
   return discoverProjects(workspace)
 }
@@ -591,9 +616,7 @@ export async function discoverProjects(
       const pkgJsonPath = dir + path.sep + 'package.json'
       const [configPath, text] = await Promise.all([
         findConfigFile(dir),
-        Bun.file(pkgJsonPath)
-          .text()
-          .catch((err: unknown) => absent(err, null)),
+        readManifest(workspace.root, dir, pkgJsonPath),
       ])
       if (text === null) {
         // A member dir with a vx config and no manifest was skipped without
@@ -712,9 +735,7 @@ export async function namedProject(
   const pkgJsonPath = dir + path.sep + 'package.json'
   const [configPath, text] = await Promise.all([
     findConfigFile(dir),
-    Bun.file(pkgJsonPath)
-      .text()
-      .catch((err: unknown) => absent(err, null)),
+    readManifest(workspace.root, dir, pkgJsonPath),
   ])
   if (
     text === null &&
