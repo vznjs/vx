@@ -2,6 +2,7 @@
 // workspace-root globs. Extracted from `buildTask` in item 606.
 
 import path from 'node:path'
+import { minimatchToVx } from '../glob-grammar.js'
 import { takingBack } from '../shared-outputs.js'
 
 interface NxOutputs {
@@ -149,11 +150,43 @@ export function mapNxOutputs(
       )
       continue
     }
-    if (projectRel === '.') outFiles.push(neg + s)
-    else if (s.startsWith(`${projectRel}/`)) outFiles.push(neg + s.slice(projectRel.length + 1))
-    else wsOutFiles.push(neg + path.posix.normalize(s).replace(/^\.\//, ''))
+    const globs = vxOutputGlobs(neg + s)
+    if (globs === null) {
+      todos.push(`output ${JSON.stringify(o)} has a glob form vx cannot spell — dropped`)
+      continue
+    }
+    for (const g of globs) {
+      const gn = g.startsWith('!') ? '!' : ''
+      const gs = g.slice(gn.length)
+      if (projectRel === '.') outFiles.push(g)
+      else if (gs.startsWith(`${projectRel}/`)) outFiles.push(gn + gs.slice(projectRel.length + 1))
+      else wsOutFiles.push(gn + path.posix.normalize(gs).replace(/^\.\//, ''))
+    }
   }
   return { outFiles: takingBack(outFiles), wsOutFiles: takingBack(wsOutFiles) }
+}
+
+/**
+ * An Nx output in vx's glob grammar, or null when it has none. Next's
+ * inferred build writes `.next/!(cache)/**\/*`, which vx read as a literal
+ * `!(cache)` dir: the build saved nothing and a hit restored no `.next`.
+ * A whole-segment `!(a|b)` is `*` with `!` outputs taking `{a,b}` back;
+ * the rest is `minimatchToVx`'s.
+ */
+function vxOutputGlobs(o: string): string[] | null {
+  const negated = o.startsWith('!')
+  const segs = o.slice(negated ? 1 : 0).split('/')
+  const at = segs.findIndex((seg) => /^!\([^()|{},]+(\|[^()|{},]+)*\)$/.test(seg))
+  if (at !== -1) {
+    if (negated) return null
+    const alts = segs[at]!.slice(2, -1).split('|')
+    const back = alts.length === 1 ? alts[0]! : `{${alts.join(',')}}`
+    const pos = vxOutputGlobs([...segs.slice(0, at), '*', ...segs.slice(at + 1)].join('/'))
+    const neg = minimatchToVx([...segs.slice(0, at), back, ...segs.slice(at + 1)].join('/'), true)
+    return pos === null || neg === null ? null : [...pos, `!${neg}`]
+  }
+  const g = minimatchToVx(segs.join('/'), negated)
+  return g === null ? null : [(negated ? '!' : '') + g]
 }
 
 /**
