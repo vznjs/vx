@@ -11,12 +11,17 @@ consults capabilities at fixed points and otherwise ignores plugins —
 behavior lives in the plugin package (vite-style), not in core.
 
 A factory that takes options calls `refuseUnknownOptions('name()',
-options, known)` first: Bun strips a config's types, so a misspelt option
+options, kinds)` first: Bun strips a config's types, so a misspelt option
 (`reapi({ endpont })`) reached the factory as unset and the plugin
-declined with no word. It refuses the key as core refuses an unknown
-config field, naming the allowed keys and the nearest one. Every
-first-party factory does, its `known` held to its options interface by
-the type checker (a `Record<keyof Options, true>` literal).
+declined with no word, and a value of the wrong kind (`process.env.X`
+where a boolean or a number belongs, a number where a string does) was
+misread or threw a bare TypeError. It refuses the key as core refuses an
+unknown config field, naming the allowed keys and the nearest one, and a
+value of the wrong kind naming the kind. `kinds` is a
+`PluginOptionKinds<Options>`: each option with the one kind its type
+allows (`'any'` for a union of kinds), derived from the interface, so the
+type checker refuses a missing option, an extra one or a wrong kind.
+Every first-party factory calls it.
 
 ## Capabilities
 

@@ -13,8 +13,8 @@ const said = (execute: unknown): string => {
 }
 
 it('execute that is not a boolean is refused', () => {
-  expect(said('true')).toBe('@vzn/vx-reapi: execute must be true or false, got "true"')
-  expect(said(1)).toBe('@vzn/vx-reapi: execute must be true or false, got 1')
+  expect(said('true')).toBe('reapi() option "execute" must be a boolean, got "true"')
+  expect(said(1)).toBe('reapi() option "execute" must be a boolean, got 1')
 })
 
 it('a boolean, or none, is taken', () => {

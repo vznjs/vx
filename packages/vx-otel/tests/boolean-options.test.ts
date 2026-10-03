@@ -13,8 +13,8 @@ const said = (opts: Record<string, unknown>): string => {
 }
 
 it('metrics or logs that is not a boolean is refused', () => {
-  expect(said({ metrics: 'false' })).toBe('[vx-otel] metrics must be true or false, got "false"')
-  expect(said({ logs: 0 })).toBe('[vx-otel] logs must be true or false, got 0')
+  expect(said({ metrics: 'false' })).toBe('otel() option "metrics" must be a boolean, got "false"')
+  expect(said({ logs: 0 })).toBe('otel() option "logs" must be a boolean, got 0')
 })
 
 it('booleans are taken', () => {

@@ -483,29 +483,69 @@ export function definePlugin(origin: PluginOrigin, hooks: PluginHooks): VxPlugin
   return { ...hooks, name, [PLUGIN_PACKAGE]: name } as VxPlugin
 }
 
+/** What `refuseUnknownOptions` holds an option's value to. */
+type OptionKind<V> = [V] extends [string]
+  ? 'string'
+  : [V] extends [number]
+    ? 'number'
+    : [V] extends [boolean]
+      ? 'boolean'
+      : [V] extends [(...args: never[]) => unknown]
+        ? 'function'
+        : [V] extends [object]
+          ? 'object'
+          : 'any'
+
 /**
- * Refuse an option a plugin factory does not take, as core refuses an
- * unknown config field. Bun strips a config's types, so a misspelt option
- * (`reapi({ endpont })`) reached the factory, which read it as unset and
- * quietly declined: the run went local with no word. `factory` names the
- * call in the message (`reapi()`), `known` is the options the factory reads.
+ * Every option a factory takes, each with the one kind its type allows
+ * (`'any'` for a union of kinds, such as `false | { … }`). Derived from
+ * the options interface, so the type checker refuses a missing option, an
+ * extra one or a wrong kind.
  */
-export function refuseUnknownOptions(
+export type PluginOptionKinds<T> = {
+  readonly [K in keyof Required<T>]-?: OptionKind<Required<T>[K]>
+}
+
+/**
+ * Refuse an option a plugin factory does not take, or a value of the wrong
+ * kind, as core refuses an unknown config field. Bun strips a config's
+ * types, so a misspelt option (`reapi({ endpont })`) reached the factory,
+ * which read it as unset and quietly declined, and a string where a number
+ * or a boolean belongs (`process.env.X`) was misread or threw a bare
+ * TypeError. `factory` names the call in the message (`reapi()`).
+ */
+export function refuseUnknownOptions<T>(
   factory: string,
   options: unknown,
-  known: readonly string[],
+  kinds: PluginOptionKinds<T>,
 ): void {
   if (options === undefined) return
   if (options === null || typeof options !== 'object' || Array.isArray(options)) {
     throw new UserError(`${factory}: options must be an object`)
   }
-  for (const key of Object.keys(options)) {
-    if (known.includes(key)) continue
-    const near = nearest(key, known)
-    throw new UserError(
-      `${factory} has unknown option "${key}" (allowed: ${[...known].sort().join(', ')})` +
-        (near === undefined ? '' : ` — did you mean ${near}?`),
-    )
+  const known = kinds as Readonly<Record<string, string>>
+  const names = Object.keys(known)
+  for (const [key, value] of Object.entries(options)) {
+    const kind = known[key]
+    if (kind === undefined) {
+      const near = nearest(key, names)
+      throw new UserError(
+        `${factory} has unknown option "${key}" (allowed: ${[...names].sort().join(', ')})` +
+          (near === undefined ? '' : ` — did you mean ${near}?`),
+      )
+    }
+    if (value === undefined || kind === 'any') continue
+    const ok =
+      kind === 'object'
+        ? value !== null && typeof value === 'object' && !Array.isArray(value)
+        : typeof value === kind
+    if (!ok) {
+      const got =
+        typeof value === 'function' ? 'a function' : (JSON.stringify(value) ?? String(value))
+      throw new UserError(
+        `${factory} option "${key}" must be ${kind === 'object' ? 'an' : 'a'} ${kind}, got ${got}`,
+      )
+    }
   }
 }
 
