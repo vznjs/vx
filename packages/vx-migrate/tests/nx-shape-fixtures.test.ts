@@ -33,6 +33,8 @@ async function migrate(shape: string): Promise<{
   out: string
   tasks: Record<string, string[]>
   configs: Record<string, Record<string, Record<string, unknown>>>
+  /** Each written config's `tags`. */
+  tags: Record<string, readonly string[] | undefined>
   /** Unlisted shapes: the projects core finds once the note's globs are added. */
   discovered?: string[]
 }> {
@@ -93,13 +95,13 @@ async function migrate(shape: string): Promise<{
     const [out, code] = await Promise.all([new Response(proc.stdout).text(), proc.exited])
     const tasks: Record<string, string[]> = {}
     const configs: Record<string, Record<string, Record<string, unknown>>> = {}
+    const tags: Record<string, readonly string[] | undefined> = {}
     for (const [name, rel] of roots) {
       const file = path.join(root, rel, 'vx.config.ts')
       if (!(await Bun.file(file).exists())) continue
-      const loaded = ((await loadProjectConfig(file)).tasks ?? {}) as Record<
-        string,
-        Record<string, unknown>
-      >
+      const config = await loadProjectConfig(file)
+      const loaded = (config.tasks ?? {}) as Record<string, Record<string, unknown>>
+      tags[name] = config.tags
       tasks[name] = Object.keys(loaded).sort()
       configs[name] = loaded
     }
@@ -120,7 +122,7 @@ async function migrate(shape: string): Promise<{
       if ((plan.unresolvedTasks ?? []).length > 0)
         throw new Error(`unresolved: ${plan.unresolvedTasks!.join(', ')}`)
     }
-    return { code, out, tasks, configs, ...(discovered === undefined ? {} : { discovered }) }
+    return { code, out, tasks, configs, tags, ...(discovered === undefined ? {} : { discovered }) }
   } finally {
     await rm(root, { recursive: true, force: true })
   }
@@ -156,6 +158,8 @@ describe('vx-migrate on the Nx shapes real repos have: every written config load
       data: ['build', 'nx-input:default', 'nx-input:production'],
     })
     expect(r.out).toContain('outside the workspace — vx caches only inside it; dropped')
+    // Each Nx project's tags are written as its vx `tags`.
+    expect(r.tags).toEqual({ api: ['type:app'], util: ['type:lib'], data: ['type:lib'] })
   }, 30_000)
 
   it('continuous serve, atomized e2e and a root project', async () => {

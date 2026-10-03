@@ -68,6 +68,7 @@ interface NxNode {
   name?: string
   data?: {
     root?: string
+    tags?: unknown[]
     namedInputs?: Record<string, unknown[]>
     targets?: Record<string, NxTarget>
     metadata?: { targetGroups?: unknown }
@@ -280,6 +281,14 @@ export interface NxMapping {
   readonly projects: GeneratedProject[]
   /** Workspace-wide gaps, one line each. */
   readonly notes: string[]
+}
+
+/** A node's tags as vx takes them: a blank one would be refused at load. */
+function nxTags(node: NxNode | undefined): string[] {
+  const tags = node?.data?.tags
+  return Array.isArray(tags)
+    ? tags.filter((t): t is string => typeof t === 'string' && t.trim() !== '')
+    : []
 }
 
 function normRel(p: string): string {
@@ -541,10 +550,12 @@ export async function mapNxWorkspace(
       }
       dropUnheldDeps(t, emitted, emittedIds)
     }
+    const tags = nxTags(nodeName === undefined ? undefined : nodeMap[nodeName])
     projects.push({
       name: meta.name,
       dir: meta.dir,
       importLines: [],
+      ...(tags.length > 0 ? { tags } : {}),
       tasks: resolveSharedOutputs(tasks),
     })
   }
@@ -820,7 +831,7 @@ function buildTask(
         patterns,
         Object.entries(nodeMap).map(([name, n]) => ({
           name,
-          tags: ((n?.data as { tags?: unknown } | undefined)?.tags as string[] | undefined) ?? [],
+          tags: nxTags(n),
           ...(typeof n?.data?.root === 'string' ? { root: n.data.root } : {}),
         })),
       ),

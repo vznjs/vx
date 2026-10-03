@@ -101,6 +101,7 @@ export function adoptionPlugin(
       }
       const project = mapped.byName.get(ctx.name)
       if (project === undefined) return
+      if (project.tags !== undefined) config.tags ??= project.tags
       config.tasks ??= {}
       for (const t of project.tasks) {
         if (t.task === null) continue

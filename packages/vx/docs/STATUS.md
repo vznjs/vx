@@ -657,6 +657,16 @@ next?".
 
 27. DONE as item 1070 — `nx()` keeps an output path as written; a bare literal keeps the directory short-circuit.
 
+28. DONE (2026-10-03, owner's ask, Nx #2675). Project `tags`: a
+    vx.config's `tags` (non-empty strings; D-56 refused the key) select
+    by `--filter tag:<pattern>`, every name operator included; Nx's
+    `--projects tag:` aliases it. Read from the staged load, so a
+    `project` plugin's tags count; loaded only when a `tag:` filter is
+    present. In no cache key (only the task config is hashed). `vx show`
+    and `vx mcp`'s `listTasks` list them; `nx()` and the Nx migrator
+    carry each project's Nx `tags`. Rows: `project-tags.test.ts`,
+    `filter.test.ts` › `tag:`, `nx.test.ts` › "an Nx project's tags".
+
 ## Decisions (this arc)
 
 - **Rust rewrite: stay (2026-09-29).** Assessed and prototyped on Bun
