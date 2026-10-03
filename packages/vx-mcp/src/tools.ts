@@ -36,7 +36,7 @@ const TOOLS: readonly ToolDef[] = [
   {
     name: 'listTasks',
     description:
-      'Every project and the tasks a run would see — command, dependsOn, whether it caches — ' +
+      'Every project, its tags, and the tasks a run would see — command, dependsOn, whether it caches — ' +
       'resolved like `vx run` resolves them (plugin stages included). Optional `project` narrows to one.',
     inputSchema: {
       type: 'object',
@@ -185,6 +185,7 @@ async function listTasks(
     projects: [...projects.values()].map((p) => ({
       name: p.name,
       dir: p.dir,
+      tags: p.config.tags ?? [],
       tasks: Object.entries(p.config.tasks ?? {}).map(([taskName, task]) => ({
         name: taskName,
         id: `${p.name}#${taskName}`,
