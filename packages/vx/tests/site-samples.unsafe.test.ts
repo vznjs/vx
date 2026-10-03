@@ -2480,3 +2480,21 @@ describe('every plugin README names each option its factory takes', () => {
     expect(missing).toEqual([])
   })
 })
+
+describe('the sandboxing guide says a server is never traced', () => {
+  // A persistent task runs inside the walls but untraced, so step 4's
+  // "an undeclared read fails it and names the path" never happens for one;
+  // #2451 tells a failing one so, and the guide had no word (J2-36).
+  it('execute-task names the untraced server, and the guide says so', () => {
+    expect(
+      readFileSync(
+        path.resolve(import.meta.dir, '..', 'src', 'orchestrator', 'execute-task.ts'),
+        'utf8',
+      ),
+    ).toContain('ran in the sandbox, which reports nothing for a server')
+    const guide = readFileSync(path.join(GUIDES, 'sandboxing.md'), 'utf8').replace(/\s+/g, ' ')
+    expect(guide).toContain(
+      'A persistent task (a dev server) runs inside the same walls, but nothing traces it',
+    )
+  })
+})
