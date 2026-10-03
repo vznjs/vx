@@ -21,7 +21,9 @@ export default defineWorkspace({
 ```
 
 `ReapiRemoteCache` is the layer class behind `reapi()`, for a workspace that
-composes cache layers by hand. With no endpoint configured (or a blank
+composes cache layers by hand. The package exports `reapi`, `ReapiPluginOptions`,
+`ReapiRemoteCache` and its `ReapiOptions`; the wire client, the Merkle
+encoders and the executor are internal. With no endpoint configured (or a blank
 one) the plugin **declines** and costs nothing, so it is
 safe to leave declared. An endpoint that is not `host[:port]`, with an
 optional `grpc(s)://` or `http(s)://` scheme, is refused at startup with a
