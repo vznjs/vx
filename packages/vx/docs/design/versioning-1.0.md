@@ -175,6 +175,12 @@ on a PR, the same diff between its base and head needs the title marked
   `tests/contract/plugin-api/<package>.txt`; a package without a
   record, or a record without a package, fails. A type the package
   takes from `@vzn/vx` is held by core's record, not again here.
+  A record holds what a package exports; its README says what that is:
+  `tests/plugin-exports-documented.unsafe.test.ts` requires every name a
+  record holds in the package's README, and
+  `tests/plugin-options-documented.unsafe.test.ts` every field of its
+  options types, since `refuseUnknownOptions` accepts each one. A name
+  only tests use is kept off the entry; tests import the module.
 - **Verbs, flags and variables.** `tests/contract-cli-surface.test.ts`
   records each core verb with the flags it accepts (`verbFlags`, which
   `completions.test.ts` holds to the verb's parser both ways) and every
@@ -183,7 +189,10 @@ on a PR, the same diff between its base and head needs the title marked
   when it takes a value no parser could (a path, a ref), else the words
   the CLI's source spells and fixed grammar probes (numbers, durations,
   sizes, cache modes) it takes. A dropped verb, flag, value or variable is
-  a removed line there.
+  a removed line there. `tests/cli-verb-sections.test.ts` holds each
+  verb's `docs/cli.md` section to it: every flag the verb accepts is named
+  there, its synopsis names none it refuses, and it states the exit codes
+  the exit-code records hold for it.
 - **The plugins' variables.** A CI workflow, not a config, sets
   `VX_REAPI_ENDPOINT` or `OTEL_EXPORTER_OTLP_ENDPOINT`, so a rename
   drops the remote with no config change to review.
@@ -194,7 +203,9 @@ on a PR, the same diff between its base and head needs the title marked
   `<package> <NAME>` line each; a lost line is a break. A name built from
   a template is recorded with `*` per placeholder
   (`OTEL_EXPORTER_OTLP_*_PROTOCOL`), which pins its shape, not the words
-  the placeholder takes.
+  the placeholder takes. `tests/plugin-env-documented.unsafe.test.ts`
+  requires each recorded read in its package's README (a `<SIGNAL>`
+  family, or a named member for a template).
 - **Workspace discovery.** `tests/contract-discovery.test.ts` builds a
   fixture for each layout (`pnpm-workspace.yaml`, `workspaces` as an
   array or `{ packages }`, a negated and a recursive glob, both manifests
