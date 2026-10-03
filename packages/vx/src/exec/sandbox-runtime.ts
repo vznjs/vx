@@ -32,7 +32,6 @@ import {
   lstatSync,
   existsSync,
   mkdirSync,
-  mkdtempSync,
   openSync,
   readFileSync,
   readlinkSync,
@@ -538,19 +537,42 @@ function scanCommandAgain(): string {
   }
 }
 /**
- * An empty executable only this process can write: SRT runs it outside the
- * sandbox on every wrap, so it lives in a fresh 0700 directory, never in the
- * shared `/tmp/claude`. Made once a process, again if a temp cleaner took it.
+ * An empty executable only this user can write: SRT runs it outside the
+ * sandbox on every wrap, so it lives in this user's own 0700 directory under
+ * the OS temp dir, never the shared `/tmp/claude`. One directory per user,
+ * not per process: a per-process one outlived every SIGKILLed run, and the
+ * exit hook that removed it fired under a test's emitted `exit` with the
+ * process going on (B-93). Anything else at the name (another owner, group
+ * or other bits, a link, a non-empty file) is refused, and the caller falls
+ * back to `true`.
  */
 function noScanCommand(): string {
   if (noScan !== undefined && existsSync(noScan)) return noScan
-  const dir = mkdtempSync(path.join(os.tmpdir(), 'vx-noscan-'))
+  const uid = process.getuid!()
+  const dir = path.join(os.tmpdir(), `vx-noscan-${uid}`)
+  try {
+    mkdirSync(dir, { mode: 0o700 })
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err
+  }
+  const d = lstatSync(dir)
+  // A link reads mode 0777 here, and a file at the name fails the write
+  // below (ENOTDIR).
+  if (d.uid !== uid || (d.mode & 0o077) !== 0) {
+    throw new Error(`${dir} is not this user's own directory`)
+  }
   const file = path.join(dir, 'rg')
-  writeFileSync(file, '', { mode: 0o700 })
-  if (noScan === undefined) {
-    process.on('exit', () => {
-      if (noScan !== undefined) rmSync(path.dirname(noScan), { recursive: true, force: true })
-    })
+  try {
+    writeFileSync(file, '', { mode: 0o700, flag: 'wx' })
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err
+  }
+  const f = lstatSync(file)
+  // SRT's dependency check (`Bun.which`) refuses what is not an executable
+  // file, which would make the sandbox unavailable rather than fall back. A
+  // directory's size is never 0.
+  if (f.size !== 0 || (f.mode & 0o100) === 0) {
+    throw new Error(`${file} is not an empty executable of this user's`)
   }
   noScan = file
   return file
