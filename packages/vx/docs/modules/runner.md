@@ -71,6 +71,7 @@ export function streamToString(
   stream: ReadableStream<Uint8Array> | number | undefined,
   onChunk?: (s: string) => void,
   signal?: AbortSignal,
+  retain?: boolean, // default true; false drains the stream and feeds onChunk, keeps no copy
 ): Promise<string>
 export function resourceUsageToCpuRss(
   usage: ReturnType<ReturnType<typeof Bun.spawn>['resourceUsage']>,
