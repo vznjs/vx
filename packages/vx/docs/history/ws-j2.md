@@ -371,3 +371,9 @@ persistent task` and vx exits 1). Row (`site-samples` › a post's link
   (`cli-doc-drift` › gives each object field the keys the object
   carries) holds each documented shape to `InfoFacts`, red without the
   fix.
+
+- **J2-42** #2537 named "the `WireOnly` keys" in the vx-reapi README
+  while #2541 inlined that type, so the README named a type nothing
+  declares. The sentence names the four keys alone. Row
+  (`plugin-exports-documented` › names no type-shaped identifier its
+  package and core lack), red without the fix.
