@@ -468,6 +468,12 @@ keys and order. 10 projects, warm no-op, compiled, 31 rounds: wall min
 44.2 → 40.4 ms, median 49.5 → 46.1 (A/A 44.7 / 49.7); `workspace config`
 10.4–11.7 → 5.2–5.7 ms.
 
+I-58. Overlapping config loads check the env once, at the round's end
+(#2564), as most built-ins are: reading all 149 variables after every
+load was 15–25 µs a config. 1,000 projects, cold, 13 rounds: `load
+configs` min 204.6 → 194.0 ms, median 234.5 → 210.4 (A/A 208.7 /
+234.7).
+
 ## Leads for other streams
 
 - **A: a cold save commits one SQLite transaction per entry.** The
@@ -701,3 +707,20 @@ status` re-hashes every tracked file, and vx runs it with
   `cli/select` 1.15. Of the miss-only modules none costs over 0.12 ms;
   the module barrels load them all, so splitting them would save ~0.5 ms
   at most. `node:readline/promises` was the one worth moving (#2506).
+- The bench copies themselves had the stale index of the lead above:
+  `git enumeration` read ~55 ms at 1,000 projects, and status took 26 ms
+  once each copy was refreshed. Refresh every arm before measuring git.
+- Serving config bytes through `onLoad` no longer beats Bun's own read:
+  never serving measured min 180.6 against 184.8 ms, median 205.7 against
+  205.3 (`load configs`, 1,000 projects, 15 rounds; 2026-09-24 had 256 →
+  181). It stays for the bytes guarantee, not for speed.
+- `LOAD_WIDTH` 32, 128 and 1,024: `load configs` median 210.2, 206.8,
+  202.1 ms over 15 rounds; noise.
+- The output-dir snapshot flush at close as one DELETE and blocked
+  INSERTs: 7–9 ms against 9–11 per 1,000 entries. The commit's page
+  writes dominate; not taken.
+- Per-task costs below a measurable run gain: `ownRssHighWater`'s
+  `/proc/self/status` read is 8 µs, `secretMask` over `process.env` and
+  the task env 17 µs. `Bun.spawn` holds the main thread ~0.5 ms a spawn
+  (vfork, then ~62 `rt_sigaction` and the `execve` in the child), env
+  size aside; that is the runtime's.
