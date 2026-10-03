@@ -43,6 +43,7 @@ export interface ApplyMigrationArgs {
   force: boolean
   init?: boolean
   notes?: readonly string[]
+  unmapped?: boolean
   format?: MigrationFormat
 }
 ```

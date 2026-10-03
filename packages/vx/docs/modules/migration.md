@@ -46,6 +46,7 @@ export interface ApplyMigrationArgs {
   force: boolean
   init?: boolean
   notes?: readonly string[]
+  unmapped?: boolean // init: scripts exist, none became a task (M-59)
   format?: MigrationFormat // default 'ts'
 }
 export function applyMigration(args: ApplyMigrationArgs): Promise<number>

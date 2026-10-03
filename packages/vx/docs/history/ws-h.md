@@ -659,6 +659,26 @@ synopsis names no flag it refuses, it states its exit codes, and every
 code the exit-code records hold for it is one it names. Differential:
 the old cli.md fails three rows on exactly those gaps (#2570).
 
+## H-58: schema.md and every refusal held to the config schema
+
+The record holds each level the validator accepts; schema.md reprinted
+ten as interfaces, and the project root and `sandbox.ignore` were in no
+reprint. `config-levels-doc.test.ts` requires every record level as an
+interface block or inline object type with exactly its fields, and
+every reprinted interface to be a level; the page reprints
+`ProjectConfig` and `SandboxIgnore`. `config-refusals-pinned.test.ts`
+requires each `throw new UserError` in config-schema.ts word for word in
+a test, a contract record or the error table: 90 of 95 were, and the
+five plugin-shape refusals are pinned whole (#2586).
+
+## H-59: telemetry.md's records held to the source
+
+The telemetry records are a 1.0 contract, and the page a sink author
+reads named no field. telemetry.md § Records reprints
+`RunContextRecord`, `TaskTelemetry` and `RunSummaryRecord` and tabulates
+each streaming kind's fields; `telemetry-doc.test.ts` holds every field,
+its optionality and each kind's row to telemetry.ts both ways (#2592).
+
 ## Leads for other streams
 
 - **A:** a task that rewrites its own input with the same bytes is never

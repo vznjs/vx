@@ -1,7 +1,7 @@
 // The refusals a bad config meets are part of the config contract: a user
-// greps for the message they got. Each one the validator can say
-// (`throw new UserError(…)` in workspace/config-schema.ts) is held word for
-// word somewhere: a test, the schema contract records (which drive every
+// greps for the message they got. Each one the validator, the loader or
+// discovery can say (`throw new UserError(…)` in workspace/config-schema.ts,
+// project-loader.ts and workspace.ts) is held word for word somewhere: a test, the schema contract records (which drive every
 // field and rule), or docs/schema.md's error table (schema-doc-drift
 // provokes each row). The law reads each refusal's static text and
 // requires it in one of those; the rows below pin the five plugin-shape
@@ -63,10 +63,12 @@ describe('the plugin-shape refusals, whole', () => {
   })
 })
 
-const SRC = readFileSync(
-  path.join(import.meta.dir, '..', 'src', 'workspace', 'config-schema.ts'),
-  'utf8',
-)
+// The validator, the loader around it, and discovery: everything that
+// refuses a workspace before a task runs.
+const SOURCES = ['config-schema.ts', 'project-loader.ts', 'workspace.ts'].map((file) => ({
+  file,
+  text: readFileSync(path.join(import.meta.dir, '..', 'src', 'workspace', file), 'utf8'),
+}))
 
 /** Each `throw new UserError(…)`'s static text, as fragments of 14+ characters. */
 function refusals(src: string): Array<{ line: number; fragments: string[] }> {
@@ -97,11 +99,15 @@ function corpus(): string {
   const table = doc.slice(doc.indexOf('## Schema validation errors'))
   // This file's own pins count; its extraction code names no refusal.
   const own = readFileSync(import.meta.path, 'utf8')
-  return [...tests, ...records, table, own].join('\n').replaceAll('\\`', '`')
+  const text = [...tests, ...records, table, own].join('\n').replaceAll('\\`', '`')
+  // A pin written across concatenated literals, or as a regex, holds the
+  // words too: read each with the joins and the escapes taken out.
+  const joined = text.replace(/['`]\s*\+\s*\n\s*['`]/g, '')
+  return `${joined}\n${joined.replace(/\\([^\w\s])/g, '$1')}`
 }
 
-describe('every config refusal is held word for word', () => {
-  const sites = refusals(SRC)
+describe('every config and discovery refusal is held word for word', () => {
+  const sites = SOURCES.flatMap(({ file, text }) => refusals(text).map((s) => ({ ...s, file })))
 
   it('reads each refusal and its static text', () => {
     expect(sites.length).toBeGreaterThan(80)
@@ -115,7 +121,7 @@ describe('every config refusal is held word for word', () => {
     const held = corpus()
     const loose = sites
       .filter((s) => s.fragments.length > 0 && !s.fragments.some((f) => held.includes(f)))
-      .map((s) => `config-schema.ts:${s.line} ${s.fragments[0]}`)
+      .map((s) => `${s.file}:${s.line} ${s.fragments[0]}`)
     expect(loose).toEqual([])
   })
 })

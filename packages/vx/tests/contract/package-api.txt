@@ -326,6 +326,7 @@ export interface ApplyMigrationArgs {
   force: boolean
   init?: boolean
   notes?: readonly string[]
+  unmapped?: boolean
   format?: MigrationFormat
 }
 == type At (src/config.ts)
