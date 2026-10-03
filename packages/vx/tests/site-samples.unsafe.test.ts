@@ -1648,6 +1648,30 @@ describe('the README and the CI guide say which packages npm has', () => {
   it('the CI guide, which imports @vzn/vx-github, carries it', () => {
     expect(readFileSync(path.join(GUIDES, 'ci.md'), 'utf8')).toContain(NOTE)
   })
+  // Found, not listed: J-93 pinned two pages, and the quickstart's `bunx
+  // @vzn/vx-migrate` and the configure guide's `bun add -d
+  // @vzn/vx-lockfile` sent a reader to a 404 with no word (J2-25).
+  it('every Docs page that installs, runs or imports a plugin says npm has none yet', () => {
+    const packagesDir = path.resolve(import.meta.dir, '..', '..')
+    const plugins = readdirSync(packagesDir)
+      .map((d) => path.join(packagesDir, d, 'package.json'))
+      .filter((f) => existsSync(f))
+      .map((f) => JSON.parse(readFileSync(f, 'utf8')) as { name: string; private?: boolean })
+      .filter((m) => m.private !== true && m.name !== '@vzn/vx')
+      .map((m) => m.name.replace('/', '\\/'))
+    const use = new RegExp(
+      `(?:bunx|npx|add(?: -[dDW])*|install(?: -[DgW])*|from) '?(?:${plugins.join('|')})\\b`,
+    )
+    const pages = handAuthoredSitePages().filter((p) => !p.includes(`${path.sep}blog${path.sep}`))
+    const using = pages.filter((p) => use.test(readFileSync(p, 'utf8')))
+    expect(using.length).toBeGreaterThan(3)
+    const silent = using
+      .filter(
+        (p) => !readFileSync(p, 'utf8').replace(/\s+/g, ' ').includes('first publish is pending'),
+      )
+      .map((p) => p.slice(DOCS.length + 1))
+    expect(silent).toEqual([])
+  })
 })
 
 describe('a config sample imports the schema from @vzn/vx/config', () => {
@@ -2125,5 +2149,68 @@ describe("the concepts page reads run.ts's restore row as it is measured", () =>
     )
     expect(page).toContain('Its restore row deletes the outputs first and extracts every artifact')
     expect(page).not.toContain('a restore costs about the same as an untouched tree')
+  })
+})
+
+describe('every page naming what vx-otel exports names each signal', () => {
+  // The telemetry post and the workspace file's comment said traces and
+  // metrics; the plugin exports logs too, on by default (J2-23).
+  it("each sentence on vx-otel's traces names every signal plugin.ts sends", () => {
+    const repo = path.resolve(import.meta.dir, '..', '..', '..')
+    const plugin = readFileSync(path.join(repo, 'packages', 'vx-otel', 'src', 'plugin.ts'), 'utf8')
+    const list = /\(\[('traces'[^\]]*)\] as const\)/.exec(plugin)?.[1]
+    expect(list).toBeDefined()
+    const signals = [...list!.matchAll(/'(\w+)'/g)].map((m) => m[1]!)
+    expect(signals).toEqual(['traces', 'metrics', 'logs'])
+    const coreDocs = path.join(repo, 'packages', 'vx', 'docs')
+    const files = [
+      ...handAuthoredSitePages(),
+      ...readdirSync(coreDocs)
+        .filter((f) => f.endsWith('.md'))
+        .map((f) => path.join(coreDocs, f)),
+      ...readdirSync(path.join(repo, 'packages')).map((d) =>
+        path.join(repo, 'packages', d, 'README.md'),
+      ),
+      path.join(repo, 'README.md'),
+      path.join(repo, 'vx.workspace.ts'),
+    ].filter((f) => existsSync(f))
+    const wrong: string[] = []
+    let seen = 0
+    for (const file of files) {
+      const text = readFileSync(file, 'utf8')
+        .replace(/\s*\/\/\s*/g, ' ')
+        .replace(/\s+/g, ' ')
+      for (const sentence of text.split(/(?<=[.;]) /)) {
+        if (!/vx-otel|otel\(\)/.test(sentence) || !/\btraces\b/.test(sentence)) continue
+        if (/OTEL_LOGS_EXPORTER=none/.test(sentence)) continue
+        seen++
+        if (signals.some((s) => !sentence.includes(s))) {
+          wrong.push(`${path.basename(file)}: ${sentence.slice(0, 100)}`)
+        }
+      }
+    }
+    expect(seen).toBeGreaterThan(2)
+    expect(wrong).toEqual([])
+  })
+})
+
+describe('no migration page times a mapped run', () => {
+  // Owner rule: no speed claims for Turbo/Nx-mapped runs. vx-migrate's
+  // README gave a mapped run's warm wall ("~200 ms warm", "median 284 →
+  // 243 ms") beside the stage costs it may state (J2-24).
+  it('the README, the guide and the from-* posts name no mapped run wall', () => {
+    const repo = path.resolve(import.meta.dir, '..', '..', '..')
+    const pages = [
+      path.join(repo, 'packages', 'vx-migrate', 'README.md'),
+      path.join(GUIDES, 'migrate.md'),
+      path.join(DOCS, 'blog', 'from-turborepo.md'),
+      path.join(DOCS, 'blog', 'from-nx.md'),
+    ]
+    const wall = /~?\d[\d,.]* ?m?s warm\b|median \d[\d,.]* → \d[\d,.]* ?m?s\b/
+    const hits = pages.flatMap((p) => {
+      const m = wall.exec(readFileSync(p, 'utf8').replace(/\s+/g, ' '))
+      return m === null ? [] : [`${path.basename(p)}: ${m[0]}`]
+    })
+    expect(hits).toEqual([])
   })
 })

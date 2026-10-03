@@ -198,3 +198,31 @@ persistent task` and vx exits 1). Row (`site-samples` › a post's link
   and extracts every artifact (239 against 906 ms at 1,000 projects in
   `benchmarks.md`). Row (`site-samples` › the concepts page reads
   run.ts's restore row as it is measured); red without the fix.
+
+- **J2-23** The telemetry post and `vx.workspace.ts`'s comment said
+  `@vzn/vx-otel` exports traces and metrics; it exports logs too, on by
+  default when an endpoint is set (`OTEL_LOGS_EXPORTER=none` turns them
+  off). The plugins guide, the architecture page and the plugin's README
+  had it. Row (`site-samples` › every page naming what vx-otel exports
+  names each signal), the signals read from `plugin.ts`; red on both
+  without the fix.
+
+- **J2-24** Owner rule, no speed claims for Turbo/Nx-mapped runs:
+  `vx-migrate`'s README gave three mapped runs' warm wall times ("a run
+  that is otherwise the same ~200 ms warm", "~96 ms of a 417 ms warm
+  run on refine", "median 284 → 243 ms"). The stage costs it states
+  (the mapping's 42 ms, the key's 43 ms) stay: they are what the bridge
+  adds, not a run's speed. Row (`site-samples` › no migration page
+  times a mapped run), over the README, the migrate guide and the
+  from-\* posts; red without the fix, and it found the third after
+  the first two were gone.
+
+- **J2-25** Only `@vzn/vx` is on npm (0.0.367; every plugin 404,
+  checked 2026-10-02). J-93 put the "first publish is pending" note on
+  the README and the CI guide, pinned by name; the migrate and plugins
+  guides carry it too, but the quickstart's `bunx @vzn/vx-migrate` and
+  the configure guide's `bun add -d @vzn/vx-lockfile` sent a reader to
+  a 404 with no word. Both now say it. Row (`site-samples` › every Docs
+  page that installs, runs or imports a plugin says npm has none yet),
+  the plugins read from the manifests and the pages found; red on both
+  without the fix.
