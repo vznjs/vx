@@ -13,6 +13,9 @@ const ABSENT = -1n
 function settledState(abs: string): bigint {
   let st: fs.Stats
   try {
+    // A link is its target string, as the key folds it: following it saw
+    // a retarget to equal bytes as "the same" and ran nothing.
+    if (fs.lstatSync(abs).isSymbolicLink()) return xxh3(`link:${fs.readlinkSync(abs)}`)
     st = fs.statSync(abs)
   } catch {
     return ABSENT
