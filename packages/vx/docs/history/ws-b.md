@@ -1390,3 +1390,21 @@ measured (2026-10-03, 400 interleaved spawns): `/usr/bin/true` direct
 0.90 ms median, behind `sh -c 'exec …'` 1.68, with the guard line 1.72.
 The guard costs ~0.03 ms; the shell's own start ~0.75 is the task's API
 and the guard's host (B-9), so nothing in `exec` is cut.
+
+B-86. On Linux every sandbox mask and bind is a mount point, and git's
+discovery stops at one: a task granted the repository's `.git` read "not
+a git repository … Stopping at filesystem boundary". A task whose grants
+name a `.git` gets `GIT_DISCOVERY_ACROSS_FILESYSTEM=1` unless it sets
+it; only such a task, since git-aware tools read it (vx's own repo probe
+spawned an extra `rev-parse` in the sandboxed shards when every task got
+it) (#2474). Rows: `sandbox-git-discovery.unsafe.test.ts`.
+
+B-87. A refused write in the workspace was told to grant its absolute
+path, which a committed config holds only on the machine that printed
+it, and a path holding a quote came out as no JS string. Grants are
+spelled from the project in the workspace and quoted safely (#2481).
+Rows: `sandbox-hint-spelling.unsafe.test.ts`. Also measured (500
+interleaved, in process): `runCommand('true')` 1.08 ms median against a
+bare `Bun.spawn` of `sh -c 'exec true'` reading both pipes through
+`Response` at 1.65: the runner's own work is below the spawn floor, so
+the unsandboxed task path in `exec` has nothing left to cut (B-82, B-85).
