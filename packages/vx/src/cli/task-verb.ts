@@ -6,28 +6,39 @@
 
 import { nxProjectTarget, projectNamed } from '../orchestrator/index.js'
 import { findWorkspaceRoot, loadWorkspace } from '../workspace/index.js'
+import { nearest } from '../util/index.js'
 import { findCwdProject } from './select.js'
 import { discoverCliProjects, loadCliProjects } from './workspace-config.js'
 
-/** The `vx run` a task typed as a verb means, or null when no project declares it. */
+/**
+ * The `vx run` a task typed as a verb means, or null when no project
+ * declares it. With `typo`, a word a few edits from a task (`vx biuld`)
+ * names that task: the caller passes it only when no verb is closer.
+ */
 export async function taskVerbHint(
   command: string,
   rest: readonly string[],
   cwd: string,
+  typo = false,
 ): Promise<string | null> {
   if (command.includes('#')) return `\`${command}\` is a task: vx run ${command}`
   const projects = await workspaceProjects(cwd)
   if (projects === null) return null
-  if (![...projects.values()].some((p) => p.config.tasks?.[command] !== undefined)) return null
+  const tasks = new Set<string>()
+  for (const p of projects.values()) for (const t of Object.keys(p.config.tasks ?? {})) tasks.add(t)
+  const task = tasks.has(command) ? command : typo ? nearest(command, tasks) : undefined
+  if (task === undefined) return null
   // Nx's `nx build app`: the word after the target is its project.
   const project = rest[0] === undefined ? undefined : projectNamed(rest[0], projects)
   const run =
     project !== undefined
-      ? `vx run ${command} --filter ${project}`
+      ? `vx run ${task} --filter ${project}`
       : (await findCwdProject(cwd)) === null
-        ? `vx run ${command} --all`
-        : `vx run ${command}`
-  return `\`${command}\` is a task here, not a command: ${run}`
+        ? `vx run ${task} --all`
+        : `vx run ${task}`
+  return task === command
+    ? `\`${command}\` is a task here, not a command: ${run}`
+    : `unknown command: ${command}; did you mean the task \`${task}\`? ${run}`
 }
 
 /**

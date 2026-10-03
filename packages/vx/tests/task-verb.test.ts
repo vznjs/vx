@@ -48,9 +48,9 @@ describe('a task typed as a verb', () => {
       1,
       'vx: `dev` is a task here, not a command: vx run dev --all\n',
     ])
-    const [code, err] = vx(root, 'buidl')
+    const [code, err] = vx(root, 'deploy')
     expect(code).toBe(1)
-    expect(err.split('\n')[0]).toBe('vx: unknown command: buidl (see `vx help`)')
+    expect(err.split('\n')[0]).toBe('vx: unknown command: deploy (see `vx help`)')
   })
 
   it("Nx's `project:target` on vx run names the `project#task` it means", () => {
