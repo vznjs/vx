@@ -160,7 +160,8 @@ export function mayWriteFingerprint(node: TaskNode, workspaceRoot: string): bool
   untouched ones (an unwritten placeholder is never archived as an
   output), and a failed task is told that a grant it meant as a
   directory is spelled `dir/` — its own `mkdir` said only "File exists",
-  and the file used to survive every later clean (2026-09-16).
+  or "Not a directory" for a path inside it (B-96), and the file used to
+  survive every later clean (2026-09-16).
 
 ## Tests
 
