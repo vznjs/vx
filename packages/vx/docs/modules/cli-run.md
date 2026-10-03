@@ -46,7 +46,7 @@ export interface RunArgs {
   error?: string // parser-error message
 }
 
-export function parseRunArgs(args: readonly string[]): RunArgs
+export function parseRunArgs(args: readonly string[], verb: 'run' | 'watch' = 'run'): RunArgs
 export function parseConcurrency(v: string, cpus?: number): number | null
 export function detectFlow(
   parsed: Pick<RunArgs, 'all' | 'filters' | 'affected'>,
@@ -71,7 +71,8 @@ export async function resolveRunOptions(
 
 ## Parser
 
-`parseRunArgs(argv)` walks the array once:
+`parseRunArgs(argv, verb)` walks the array once (`verb` names whose help a
+refusal points at: `vx watch` reads the same flags, M-58):
 
 1. Split on the first `--` — everything after is `forwardArgs`.
 2. Loop the prefix: recognize each flag form. Optional-value flags

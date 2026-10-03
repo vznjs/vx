@@ -44,6 +44,26 @@ describe('cli run()', () => {
     expect(stdout).toMatch(/^vx \d/)
   })
 
+  it('vx watch names its own help, and vx cache its one subcommand (M-58)', async () => {
+    const said = async (args: string[]): Promise<[number, string]> => {
+      stderr = ''
+      return [await run(args), stderr]
+    }
+    expect([
+      // `watch` reads `run`'s flags, and pointed at `vx run --help`.
+      await said(['watch', 'build', '--debounce=abc']),
+      await said(['watch', 'build', '--filtr=app']),
+      await said(['cache', 'bogus']),
+      // CONTROL: a near miss keeps its one name.
+      await said(['cache', 'prnue']),
+    ]).toEqual([
+      [1, 'vx watch: unknown flag: --debounce=abc (see `vx watch --help`)\n'],
+      [1, 'vx watch: unknown flag: --filtr=app (did you mean --filter?) (see `vx watch --help`)\n'],
+      [1, 'vx cache: unknown subcommand: bogus. The subcommand is prune (see `vx cache --help`)\n'],
+      [1, 'vx cache: unknown subcommand: prnue. Did you mean prune? (see `vx cache --help`)\n'],
+    ])
+  })
+
   // Every verb answered `unknown flag: --help` and exited 1 until
   // 2026-09-04 — the one thing every user types first. The list is the
   // dispatcher's own verbs; a new verb that forgets this fails here.

@@ -699,6 +699,18 @@ message; `vx last` names `--list`; a flag typo hints. Not changed:
 sentence's). `show-error-prefix.test.ts`'s three exact lines; red
 without the fix.
 
+M-58. The remaining verbs' refusals, scanned: `vx watch` reads `vx run`'s
+flags through `parseRunArgs`, and its unknown-flag line pointed at `vx run
+--help` (the verb's own `vx watch --help` exists and lists what watch
+takes); the parser now takes the verb, for the hint and the pointer. `vx
+cache <word>` with nothing near named no subcommand; it says `The
+subcommand is prune`. Held: `vx cache` bare and `clear` (names prune),
+bad `--max-size` / `--older-than` (an example each), `vx lock` with an
+argument or no lock file, `vx why` and `vx last` (`--format` lists the
+values, a flag typo hints), `vx watch` bare and its refused flags, `vx
+upgrade` with an unknown flag. `cli.test.ts` › vx watch names its own
+help (exact lines; red without the fix).
+
 ## Leads for other streams
 
 - A: A-20 let a same-project dependant restore ahead of a producer whose
