@@ -92,6 +92,6 @@ describe('@nx/js:node on a build target with no output options', () => {
     expect((serve.task!['exec'] as { command: string }).command).toBe(
       'cd ../.. && node --inspect=localhost:9229 dist/apps/api/main.js',
     )
-    expect(serve.task!['dependsOn']).toEqual(['api#build'])
+    expect(serve.task!['dependsOn']).toEqual(['build'])
   })
 })

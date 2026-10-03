@@ -189,6 +189,13 @@ sync`", advice for a repo leaving Nx: they say to keep what the
   `dependentTasksOutputFiles` inputs, `nonAtomizedTarget` metadata). The
   atoms keep their cache and `test`, whose dir holds theirs, runs
   uncached; the jest fixture gains the metadata real graphs carry.
+- **P2-35** An executor's build edge on its own project was written as
+  `<project>#build` beside the graph's own `build`: webpack's inferred
+  `serve-static` (graph `dependsOn` plus `@nx/web:file-server`'s
+  `buildTarget`) depended on one task twice. An own-project edge is now
+  the bare name, deduplicated. A fourteenth shape fixture: `@nx/webpack`
+  on pnpm (install-settings `json` inputs, the pnpm-major `runtime`
+  probe, `configurations`, `serve-static`).
 
 ## Leads for other streams
 

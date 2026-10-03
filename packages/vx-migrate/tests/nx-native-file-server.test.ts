@@ -122,7 +122,7 @@ describe('@nx/web:file-server', () => {
     expect((task.task!['exec'] as { command: string }).command).toBe(
       "cd ../.. && cp dist/apps/web/index.html dist/apps/web/404.html && http-server dist/apps/web -c-1 --cors -a=localhost '-P=http://localhost:4200?' -p=4200",
     )
-    expect(task.task!['dependsOn']).toEqual(['web#build'])
+    expect(task.task!['dependsOn']).toEqual(['build'])
     expect(task.todos).toContain(rebuilt('build'))
   })
 })

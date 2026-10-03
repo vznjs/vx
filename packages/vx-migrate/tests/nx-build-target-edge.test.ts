@@ -79,9 +79,9 @@ describe('a server executor’s build target', () => {
       ),
     )
     const dependsOn = (id: string) => tasks.get(id)!.task!['dependsOn']
-    expect(dependsOn('api#serve')).toEqual(['api#build'])
-    expect(dependsOn('api#serve-dev')).toEqual(['api#build:development'])
-    expect(dependsOn('web#preview')).toEqual(['web#build'])
+    expect(dependsOn('api#serve')).toEqual(['build'])
+    expect(dependsOn('api#serve-dev')).toEqual(['build:development'])
+    expect(dependsOn('web#preview')).toEqual(['build'])
     // A build target the graph lacks stays a TODO, with no edge.
     expect(dependsOn('api#serve-ghost')).toBeUndefined()
     expect(tasks.get('api#serve-ghost')!.todos).toEqual([

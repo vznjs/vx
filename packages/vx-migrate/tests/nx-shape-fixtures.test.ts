@@ -3,7 +3,8 @@
 // with a root project, per-project named inputs and filesets, run-commands
 // variants, configurations with run-script, every input kind, token
 // interpolation, an integrated repo of `project.json` projects, the
-// TypeScript plugin, @nx/jest and @nx/vitest atomized per spec), migrated
+// TypeScript plugin, @nx/jest and @nx/vitest atomized per spec, @nx/webpack
+// on pnpm), migrated
 // through the CLI. Every config it writes must load and plan: a written config vx
 // refuses (an output outside the workspace, P2-11) fails the whole repo.
 
@@ -383,5 +384,29 @@ describe('vx-migrate on the Nx shapes real repos have: every written config load
       '@va/ui#nx-input:fileset-b5bc262e8cd5876f',
       '@va/ui#nx-input:fileset-b408f97d9dd36e9b',
     ])
+  }, 30_000)
+  it('@nx/webpack on pnpm: install-settings inputs, a runtime probe, serve-static', async () => {
+    const r = await migrate('webpack-pnpm')
+    expect(r.code).toBe(0)
+    expect(r.tasks).toEqual({
+      '@wp/kit': ['build', 'nx-input:production'],
+      '@wp/shop': ['build', 'build:development', 'preview', 'serve', 'serve-static'],
+    })
+    const shop = r.configs['@wp/shop']!
+    expect(shop['build']!['cache']).toEqual({
+      inputs: {
+        files: ['**/*', '!**/{*.,}{spec,test}.{j,t}s{x,}{.snap,}'],
+        workspaceFiles: ['tsconfig.json', 'pnpm-workspace.yaml', 'package.json'],
+        workspaceRuntime: [
+          `node -e "try{console.log('pnpm major '+require('child_process').execSync('pnpm --version',{stdio:['ignore','pipe','ignore']}).toString().trim().split('.')[0])}catch{console.log('pnpm major unavailable')}"`,
+        ],
+      },
+      outputs: { files: [], workspaceFiles: ['dist/apps/shop'] },
+    })
+    // The graph's edge and the file server's build are one task, written once.
+    expect(shop['serve-static']!['dependsOn']).toEqual(['build'])
+    expect((shop['serve-static']!['exec'] as { command: string }).command).toBe(
+      "cd ../.. && cp dist/apps/shop/index.html dist/apps/shop/404.html && http-server dist/apps/shop -c-1 --cors -a=localhost '-P=http://localhost:3000?' -p=3000",
+    )
   }, 30_000)
 })

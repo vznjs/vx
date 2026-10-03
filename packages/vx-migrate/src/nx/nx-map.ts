@@ -913,7 +913,9 @@ function buildTask(
     const m = project === undefined ? undefined : metaByNode.get(project)
     if (m === undefined || target === undefined) continue
     const name = (rest.length > 0 && taskNameFor(project!, target, rest.join(':'))) || target
-    const id = `${m.name}#${name}`
+    // The project's own task is its bare name, as the graph's own edges
+    // spell it: webpack's `serve-static` has both, and wrote both.
+    const id = m === meta ? name : `${m.name}#${name}`
     if (!deps.includes(id)) deps.push(id)
   }
   if (deps.length > 0) task.dependsOn = deps
