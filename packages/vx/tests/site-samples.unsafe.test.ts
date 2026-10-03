@@ -2400,3 +2400,43 @@ describe('the headline Nx note quotes the fixed-harness figures', () => {
     expect(bench).toContain('`npm run` costs 202 ms of')
   })
 })
+
+describe('the Nx output pages say one outside the workspace is dropped', () => {
+  // #2417 drops it with a todo (core refuses `..`, so the written config
+  // failed to load); turbo-nx-support.md and the README still made every
+  // output outside the project a workspace file (J2-30).
+  it('nx-outputs.ts drops it, and both pages say so', () => {
+    const repo = path.resolve(import.meta.dir, '..', '..', '..')
+    const src = readFileSync(
+      path.join(repo, 'packages', 'vx-migrate', 'src', 'nx', 'nx-outputs.ts'),
+      'utf8',
+    )
+    expect(src).toContain("'vx caches only inside it; dropped'")
+    const flat = (p: string): string => readFileSync(p, 'utf8').replace(/\s+/g, ' ')
+    expect(flat(path.join(repo, 'packages', 'vx', 'docs', 'turbo-nx-support.md'))).toContain(
+      'paths outside the project become workspace files, and one outside the workspace is dropped with a TODO;',
+    )
+    expect(flat(path.join(repo, 'packages', 'vx-migrate', 'README.md'))).toContain(
+      'an output outside the workspace (an old generator',
+    )
+  })
+})
+
+describe('the sandbox pages say a refused temp write points at $TMPDIR', () => {
+  // #2424 names $TMPDIR, not a grant, for a write refused under the host's
+  // shared temp directory; the module page and the guide still said every
+  // refused write outside the project names the directory to grant (J2-32).
+  it('the hint names $TMPDIR there, and both pages say so', () => {
+    const core = path.resolve(import.meta.dir, '..')
+    expect(readFileSync(path.join(core, 'src', 'exec', 'sandbox-runtime.ts'), 'utf8')).toContain(
+      'The task has its own temp directory, empty at its start: write under',
+    )
+    const flat = (p: string): string => readFileSync(p, 'utf8').replace(/\s+/g, ' ')
+    expect(flat(path.join(core, 'docs', 'modules', 'sandbox-runtime.md'))).toContain(
+      "or, for a path under the host's shared temp directory",
+    )
+    expect(flat(path.join(GUIDES, 'sandboxing.md'))).toContain(
+      "under the host's temp directory it names `$TMPDIR` instead",
+    )
+  })
+})
