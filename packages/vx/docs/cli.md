@@ -2446,7 +2446,11 @@ and not completed, nor completed and then refused: a flag another
 verb's line names in passing (`vx lock --check` beside `--frozen`) is
 not one. A plugin verb completes `--help` only. Task and project
 names are not completed (they are the workspace's, and a completion
-that evaluates configs on every Tab is the wrong price). An unknown
+that evaluates configs on every Tab is the wrong price). The zsh script
+works both ways zsh loads one: from `$fpath` it completes on the first
+Tab (it rang the bell there until 2026-10-03 and completed on the
+second), and sourced it registers itself; `tests/completions-shells.test.ts`
+drives an interactive zsh and fish where they are installed. An unknown
 shell is an error naming the three, and the nearest of them when one is
 within two edits (`got bsh). Did you mean bash?`).
 
