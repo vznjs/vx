@@ -187,7 +187,11 @@ describe('a run', () => {
           tasks: {
             go: {
               exec: {
-                command: 'echo "${name} start" >> ../../order.log; echo said-${name}; sleep 0.3; echo "${name} end" >> ../../order.log',
+                // Each holds until all three have started (2 s at most), so
+                // tasks run side by side overlap whatever the machine's
+                // load; a fixed sleep let a slow runner finish a and c
+                // before b started, and the control read b as alone.
+                command: 'echo "${name} start" >> ../../order.log; echo said-${name}; for i in $(seq 40); do [ $(grep -c start ../../order.log) -ge 3 ] && break; sleep 0.05; done; echo "${name} end" >> ../../order.log',
                 ${extra}
               },
             },

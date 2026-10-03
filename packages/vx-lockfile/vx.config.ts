@@ -67,6 +67,11 @@ export default defineProject({
         sandbox: {
           allow: {
             read: ['**/*'],
+            // pnpm 12 locks its store in a fixed host directory, whatever
+            // --store-dir or TMPDIR say, and checks TLS through trustd on
+            // macOS even offline (prune.test.ts's installs).
+            write: ['/tmp/pnpm-store-operation-locks-*/'],
+            machLookup: ['com.apple.trustd.agent'],
             systemInfo: ['vfs.disk-space', 'net.link.addr'],
             localBinding: true,
           },
