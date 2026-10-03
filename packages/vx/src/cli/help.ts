@@ -216,7 +216,8 @@ export function refusedWord(arg: string): string {
 export function flagHint(verb: string, arg: string): string {
   if (!arg.startsWith('-')) return ''
   const name = arg.replace(/=.*$/, '')
-  const flags = acceptedFlags(verb)
+  // Every core verb answers `--help`, which no usage line spells.
+  const flags = ['--help', ...acceptedFlags(verb)]
   // `--json` is gh's and Nx's spelling; a verb with `--format` reads it
   // there, and no edit budget reaches `--format json` from `--json`.
   if (name === '--json' && flags.includes('--format')) return ' (did you mean --format json?)'

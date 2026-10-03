@@ -5,7 +5,8 @@
 // project names are not (a completion that evaluates configs on every
 // Tab is the wrong price).
 
-import { acceptedFlags, CORE_VERBS, seeHelp } from './help.js'
+import { acceptedFlags, CORE_VERBS, flagHint, seeHelp } from './help.js'
+import { nearest } from '../util/index.js'
 
 export type CompletionShell = 'bash' | 'zsh' | 'fish'
 const SHELLS: readonly CompletionShell[] = ['bash', 'zsh', 'fish']
@@ -95,8 +96,17 @@ export async function completionsCmd(
 ): Promise<number> {
   const shell = args[0]
   if (args.length !== 1 || !(SHELLS as readonly string[]).includes(shell ?? '')) {
+    const flag = args.find((a) => a.startsWith('-'))
+    if (flag !== undefined) {
+      process.stderr.write(
+        `vx completions: unknown flag: ${flag}${flagHint('completions', flag)}${seeHelp('completions')}\n`,
+      )
+      return 1
+    }
+    const one = shell !== undefined && args.length === 1
+    const best = one ? nearest(shell, SHELLS) : undefined
     process.stderr.write(
-      `vx completions: expected one shell — bash, zsh or fish${shell !== undefined && args.length === 1 ? ` (got ${shell})` : ''}${seeHelp('completions')}\n`,
+      `vx completions: expected one shell — bash, zsh or fish${one ? ` (got ${shell})` : ''}${best === undefined ? '' : `. Did you mean ${best}?`}${seeHelp('completions')}\n`,
     )
     return 1
   }

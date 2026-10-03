@@ -13,7 +13,7 @@
 // deno upgrade — "update" is what package managers do to indexes.
 
 import { chmod, chown, link, rename, rm, stat } from 'node:fs/promises'
-import { seeHelp } from './help.js'
+import { flagHint, seeHelp } from './help.js'
 import { UserError } from '../util/index.js'
 import { VERSION } from '../version.js'
 
@@ -275,7 +275,9 @@ export async function replaceBinary(
 export async function upgradeCmd(args: readonly string[]): Promise<number> {
   const unknown = args.find((a) => a.startsWith('-'))
   if (unknown !== undefined) {
-    process.stderr.write(`vx upgrade: unknown flag: ${unknown}${seeHelp('upgrade')}\n`)
+    process.stderr.write(
+      `vx upgrade: unknown flag: ${unknown}${flagHint('upgrade', unknown)}${seeHelp('upgrade')}\n`,
+    )
     return 1
   }
   // One release is installed; a second tag was dropped without a word and

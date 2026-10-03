@@ -433,9 +433,11 @@ Mutual exclusion:
 Unknown flags are a parse error (`unknown flag: --foo`), naming the
 nearest flag the verb accepts when one is within two edits
 (`unknown flag: --concurency (did you mean --concurrency?)`). Every verb
-does this against its own usage line: `vx info --formt` hints
-`--format`, `vx lock --chek` hints `--check`, and `--json` on a verb
-that takes `--format` hints `--format json`.
+does this against its own usage line and `--help`: `vx info --formt`
+hints `--format`, `vx lock --chek` hints `--check`, `vx upgrade --hlp`
+hints `--help`, and `--json` on a verb that takes `--format` hints
+`--format json`. `vx version` takes no word, so `vx version --hlp` is
+refused (exit 1) where it once printed the version.
 
 A task typed where the verb goes (`turbo build`, `nx build app`) is
 refused with the `vx run` that runs it: `vx build` names
@@ -2417,9 +2419,10 @@ verb's line names in passing (`vx lock --check` beside `--frozen`) is
 not one. A plugin verb completes `--help` only. Task and project
 names are not completed (they are the workspace's, and a completion
 that evaluates configs on every Tab is the wrong price). An unknown
-shell is an error naming the three.
+shell is an error naming the three, and the nearest of them when one is
+within two edits (`got bsh). Did you mean bash?`).
 
-Exit codes: `0` the script printed; `1` an unknown shell.
+Exit codes: `0` the script printed; `1` an unknown shell or flag.
 
 ## Plugin commands
 

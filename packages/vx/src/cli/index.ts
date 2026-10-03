@@ -2,7 +2,7 @@
 // handler lives in a sibling `<name>.ts`; tests import its parsers there.
 
 import { VERSION } from '../version.js'
-import { CORE_VERBS, printHelp } from './help.js'
+import { CORE_VERBS, flagHint, printHelp, refusedWord, seeHelp } from './help.js'
 import { FOREIGN_VERBS } from './foreign-flags.js'
 import { isUserError, MOVED_VERBS, nearest, UserError } from '../util/index.js'
 
@@ -49,6 +49,12 @@ export async function run(argv: readonly string[]): Promise<number> {
           process.stderr.write(`${pointer}\n`)
           return 1
         }
+        if (unknown && verb.startsWith('-')) {
+          process.stderr.write(
+            `vx help: unknown flag: ${verb}${flagHint('help', verb)} (see \`vx help\`)\n`,
+          )
+          return 1
+        }
         if (unknown) {
           const declared = resolved === null ? [] : resolved.declaredVerbs
           process.stderr.write(
@@ -61,9 +67,19 @@ export async function run(argv: readonly string[]): Promise<number> {
       return 0
     }
     case '--version':
-    case 'version':
+    case 'version': {
+      // `vx version --hlp` printed the version and exited 0: a word it
+      // takes no more of is refused, as every other verb refuses one.
+      const extra = rest[0]
+      if (extra !== undefined) {
+        process.stderr.write(
+          `vx version: ${refusedWord(extra)}: ${extra}${flagHint('version', extra)}${seeHelp('version')}\n`,
+        )
+        return 1
+      }
       process.stdout.write(`vx ${VERSION}\n`)
       return 0
+    }
     case 'run':
       return await (await import('./run.js')).runCmd(rest)
     case 'watch':
