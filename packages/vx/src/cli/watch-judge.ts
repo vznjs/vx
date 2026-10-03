@@ -152,13 +152,21 @@ export class ChangeJudge {
     const editForUncached = (p: string): boolean =>
       [...this.ctx.uncached()].some((dir) => p.startsWith(dir + path.sep)) &&
       !this.writtenDuringLastCycle(p)
+    // A path still there names the cycle before a gone one: an editor or
+    // `sed -i` saving through a temporary file fires that file first, and
+    // the cycle was announced by a name already renamed away.
+    let gone: [label: string, abs: string] | undefined
     for (const [p, l] of this.pending) {
       if (ignored.has(p) && !editForUncached(p)) continue
-      if (!this.sameState(p) && first === undefined) {
-        first = l
-        firstAbs = p
+      if (this.sameState(p) || first !== undefined) continue
+      if (!fs.existsSync(p)) {
+        gone ??= [l, p]
+        continue
       }
+      first = l
+      firstAbs = p
     }
+    if (first === undefined && gone !== undefined) [first, firstAbs] = gone
     this.pending.clear()
     const byServer = firstAbs !== undefined && this.ctx.held()
     if (firstAbs === undefined || !this.writtenDuringLastCycle(firstAbs, true)) {
