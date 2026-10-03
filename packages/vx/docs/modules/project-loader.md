@@ -217,6 +217,11 @@ What `onLoad` source cannot be, it is not handed:
   `exports`, `require`, `this` or `__dirname` at the top) would lose its
   exports. `hasEsmExport` (config-imports.ts) asks Bun's own parser for
   an ESM `export`; without one, the config takes Bun's path, `?vx-bust=`.
+  Source that spells none of those names and holds no backslash (an
+  escaped `\u006dodule` is CommonJS to Bun too) is a module on either
+  path and skips the parse: 18–20 ms off 1,000 cold configs (median of
+  30, interleaved, 2026-10-03). A syntax error then reaches the served
+  path, and its position's query is stripped like a `ResolveMessage`'s.
 - **Only UTF-8.** Bun's loader reads invalid UTF-8 as Latin-1 and a
   decoder would repair it to U+FFFD, a different string; a strict decode
   that fails sends the config down Bun's path. And the source goes over
