@@ -711,6 +711,15 @@ values, a flag typo hints), `vx watch` bare and its refused flags, `vx
 upgrade` with an unknown flag. `cli.test.ts` › vx watch names its own
 help (exact lines; red without the fix).
 
+M-59. `vx init` on a workspace whose scripts could not become tasks (a
+member, or the single package, with no `name`) opened `no package.json
+scripts to turn into tasks.`, over a note naming the scripts it skipped
+(M-46 and M-54 left it). It now opens `no package.json scripts became
+tasks.` when such a note is printed; a workspace with no scripts at all
+keeps its line. Globs that held: `packages/*/`, `./packages/*`,
+`./apps/*`, `apps/*/`. `init.test.ts` › names the root when a single
+package has no name pins the headline; red without the fix.
+
 M-60. A flag before any verb (`vx --all`, `vx -V`, `vx --verison`) was
 refused as `unknown command: --all`, naming the wrong kind of word. It now
 reads `vx: unknown flag: --all; a verb's flags follow the verb`, with
@@ -720,14 +729,6 @@ rest of the verbs' refusals: `vx init` (`--frce` hints `--force`, a bare
 (`--json` hints `--format json`), `vx help <word>` (near-misses a verb).
 `cli.test.ts` › a flag before any verb is called a flag (exact lines; red
 without the fix), and `-V` now pins its line.
-M-59. `vx init` on a workspace whose scripts could not become tasks (a
-member, or the single package, with no `name`) opened `no package.json
-scripts to turn into tasks.`, over a note naming the scripts it skipped
-(M-46 and M-54 left it). It now opens `no package.json scripts became
-tasks.` when such a note is printed; a workspace with no scripts at all
-keeps its line. Globs that held: `packages/*/`, `./packages/*`,
-`./apps/*`, `apps/*/`. `init.test.ts` › names the root when a single
-package has no name pins the headline; red without the fix.
 
 ## Leads for other streams
 
