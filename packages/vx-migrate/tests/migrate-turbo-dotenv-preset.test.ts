@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { quoteTsLiteral, type ProjectMeta } from '@vzn/vx'
-import { DOTENV_PROBE, DOTENV_PROBE_TOP } from '../src/dotenv-probe.js'
+import { DOTENV_PROBE, DOTENV_PROBE_TOP, dotenvGlobsProbe } from '../src/dotenv-probe.js'
 import { migrateTurbo } from '../src/migrate-turbo.js'
 
 let root: string
@@ -50,11 +50,14 @@ describe('migrateTurbo: the .env probes', () => {
       exports: preset.split('\n').filter((l) => l.startsWith('export const')),
     }).toEqual({
       build: [[{ raw: 'dotenvFiles' }], undefined],
-      test: [[{ raw: 'dotenvFilesDeep' }], [{ raw: 'dotenvFilesDeep' }]],
-      imports: ["import { dotenvFiles, dotenvFilesDeep } from '../../vx-preset.js'"],
+      test: [[{ raw: 'dotenvFilesDeep' }], [{ raw: 'dotenvRootFiles' }]],
+      imports: [
+        "import { dotenvFiles, dotenvFilesDeep, dotenvRootFiles } from '../../vx-preset.js'",
+      ],
       exports: [
         `export const dotenvFiles = ${quoteTsLiteral(DOTENV_PROBE_TOP)}`,
         `export const dotenvFilesDeep = ${quoteTsLiteral(DOTENV_PROBE)}`,
+        `export const dotenvRootFiles = ${quoteTsLiteral(dotenvGlobsProbe(['.env'])!)}`,
       ],
     })
   })

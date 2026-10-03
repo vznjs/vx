@@ -22,12 +22,18 @@ import {
   resolveSharedOutputs,
   resolveSharedWorkspaceOutputs,
   takingBack,
+  literalTailMatches,
   wildcardOutput,
   wildcardTodo,
 } from '../shared-outputs.js'
 import { packageScripts, relPosix } from '../paths.js'
-import type { TrackedKinds } from '../tracked-outputs.js'
-import { DOTENV_PROBE, DOTENV_PROBE_TOP, ignoredFilesProbe } from '../dotenv-probe.js'
+import { MAX_SPARED, type TrackedKinds } from '../tracked-outputs.js'
+import {
+  DOTENV_PROBE,
+  DOTENV_PROBE_TOP,
+  dotenvGlobsProbe,
+  ignoredFilesProbe,
+} from '../dotenv-probe.js'
 
 /** `path.relative` with forward slashes — the shape an ESM specifier or a report line needs. */
 interface TurboTask {
@@ -906,7 +912,7 @@ export async function mapTurboWorkspace(
       : rootDependencyGlobs(root, rootMeta?.packageJson ?? (await rootPackageJson(root)), metas)),
     ...microfrontendsConfigs(root, [root, ...metas.map((m) => m.dir)]).map((c) => c.rel),
   ]
-  const rootDotenv = globalFiles.some((f) => isDotenvGlob(f))
+  const rootDotenv = globalFiles.filter((f) => isDotenvGlob(f))
   // Turbo globs an explicit input on the disk, gitignored or not. Core
   // refuses a literal input git ignores (it would key nothing), so a
   // `config.local.json` in globalDependencies ran every task uncached: a
@@ -1500,7 +1506,7 @@ function buildTask(
   globals: TurboMapping['globals'],
   opts: MapTurboOptions,
   pkgDir: string,
-  rootDotenv: boolean,
+  rootDotenv: readonly string[],
   rootName: string | undefined,
   sidecars: {
     readonly name: string
@@ -1708,7 +1714,8 @@ function buildTask(
     let pkgDotenv = false
     // Any of them below the package root needs the walk.
     let pkgDotenvDeep = false
-    let wsDotenv = rootDotenv
+    // The root-relative `.env` globs, probed at the workspace root.
+    const wsDotenv = [...rootDotenv]
     // globalDependencies are workspace-root-relative by definition —
     // they map to inputs.workspaceFiles, not project-relative files.
     const wsFiles: unknown[] = [...global('inputs')]
@@ -1742,7 +1749,8 @@ function buildTask(
         const body = wax
         const up = climbed(translated)
         if (!neg && isDotenvGlob(body)) {
-          if (body.startsWith('$TURBO_ROOT$/') || up !== null) wsDotenv = true
+          if (body.startsWith('$TURBO_ROOT$/')) wsDotenv.push(body.slice('$TURBO_ROOT$/'.length))
+          else if (up !== null) wsDotenv.push(up)
           else {
             pkgDotenv = true
             if (body.includes('/')) pkgDotenvDeep = true
@@ -1817,7 +1825,15 @@ function buildTask(
       } else outFiles.push(neg + o)
     }
 
-    const wild = wildcardOutput(outFiles, opts.tracked?.(pkgDir))
+    // A committed file a literal-tail wildcard reaches is taken back, as
+    // the runtime spares a tracked output; past the runtime's limit the
+    // task stays uncached.
+    for (const o of [...outFiles]) {
+      const hits = literalTailMatches(o, opts.tracked?.(pkgDir))
+      if (hits !== null && hits.length <= MAX_SPARED)
+        for (const h of hits) if (!outFiles.includes(`!${h}`)) outFiles.push(`!${h}`)
+    }
+    const wild = wildcardOutput(outFiles, opts.tracked?.(pkgDir), true)
     if (wild !== undefined) {
       todos.push(wildcardTodo(wild))
       return { name, todos, task, uses }
@@ -1842,7 +1858,7 @@ function buildTask(
     if (wsFiles.length > 0) inputs.workspaceFiles = uniq(wsFiles, hidden('inputs'))
     if (cacheEnv.length > 0) inputs.env = cacheEnv
     if (pkgDotenv) inputs.runtime = [pkgDotenvDeep ? DOTENV_PROBE : DOTENV_PROBE_TOP]
-    if (wsDotenv) inputs.workspaceRuntime = [DOTENV_PROBE]
+    if (wsDotenv.length > 0) inputs.workspaceRuntime = [dotenvGlobsProbe(wsDotenv) ?? DOTENV_PROBE]
     for (const rel of rels.keys()) if (!isLiteral(rel)) rels.delete(rel)
     literals.tasks.push({ inputs, rels })
     const outputs: Record<string, unknown> = { files: takingBack(outFiles) }

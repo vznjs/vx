@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { UserError, type ProjectMeta } from '@vzn/vx'
-import { DOTENV_PROBE, DOTENV_PROBE_TOP } from '../src/dotenv-probe.js'
+import { DOTENV_PROBE, DOTENV_PROBE_TOP, dotenvGlobsProbe } from '../src/dotenv-probe.js'
 import { mapTurboWorkspace, type TurboMappedTask } from '../src/turbo/turbo-map.js'
 
 let root: string
@@ -279,7 +279,7 @@ describe('turbo-map: what the sweep found unheld', () => {
       files: ['src/**'],
       ws: undefined,
       runtime: 'top',
-      wsRuntime: 'walk',
+      wsRuntime: [dotenvGlobsProbe(['.env'])],
       todos: [],
     })
   })
@@ -735,7 +735,8 @@ describe('turbo-map: a wildcard-first output of an untracked kind', () => {
     ['*.ts', false],
     ['*.{xml,json}', false],
     ['**/*.xml', false],
-    ['*/report.xml', false],
+    // It reaches only `<dir>/report.xml`, and the package tracks none.
+    ['*/report.xml', true],
     ['report*', false],
     ['**/dist/**', true],
     ['./**/build/**', true],
@@ -775,8 +776,9 @@ describe('turbo-map: a wildcard-first output of an untracked kind', () => {
                 exts: new Set(['ts', 'json']),
                 dirs: new Set(['src']),
                 tops: new Set(['src', 'package.json']),
+                files: ['src/index.ts', 'package.json'],
               }
-            : { exts: new Set(), dirs: new Set(), tops: new Set() },
+            : { exts: new Set(), dirs: new Set(), tops: new Set(), files: [] },
       },
     )
     expect(mapped.projects[0]!.tasks[0]!.task!['cache'] !== undefined).toBe(cached)
@@ -804,7 +806,10 @@ describe('turbo-map: `.env` inputs', () => {
     [{ inputs: ['src/**', '.env.local'] }, { files: ['src/**'], runtime: 'top' }],
     [{ dotEnv: ['.env.local'] }, { files: ['**/*'], runtime: 'top' }],
     [{ inputs: ['.env*', 'config/.env.local'] }, { files: [], runtime: 'walk' }],
-    [{ inputs: ['$TURBO_ROOT$/.env'] }, { files: [], workspaceRuntime: 'walk' }],
+    [
+      { inputs: ['$TURBO_ROOT$/.env'] },
+      { files: [], workspaceRuntime: [dotenvGlobsProbe(['.env'])] },
+    ],
   ])('%j keys %j', async (def, expected) => {
     const t = await taskOf({ tasks: { build: def } }, { a: { scripts: { build: 'b' } } })
     const got = inputsOf(t)
