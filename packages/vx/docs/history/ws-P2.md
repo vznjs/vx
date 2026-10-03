@@ -92,6 +92,9 @@ sync`", advice for a repo leaving Nx: they say to keep what the
 - **P2-16** One Nx edge spelled two ways (`ui:gen` and
   `{ projects: ["ui"], target: "gen" }`) was listed twice in the written
   `dependsOn`; `mapNxDeps` now returns each edge once.
+- **P2-17** An integrated repo (a root project, `project.json` projects
+  in no workspace glob, an Angular builder) joins the shape fixtures: the
+  row follows P2-15's note and asserts core then finds every project.
 - **P2-18** `@nx/js:verdaccio` (the `local-registry` target Nx's
   `setup-verdaccio` writes) migrates to the registry it forks:
   `verdaccio --config … --listen localhost:4873` from the workspace root,
