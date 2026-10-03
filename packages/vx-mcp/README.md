@@ -43,7 +43,8 @@ Run the agent from inside the workspace — `vx mcp` finds the workspace
 | `getWorkspaceInfo` | "What is this workspace, and what will a run use?" — `vx info --format json`: versions, the git status cache, projects and tasks (and the configs that did not load), plugins and their seams, the worker count and memory budget with their sources, cache versions and state, flaky tasks, the sandbox runtime's verdict for this host and how many tasks declare one, the lock.                                                                                                                                                                                                                                                                                                                                                                                                                           |
 
 Arguments are checked, never coerced: `arguments` that is not an object
-(a string, an array), a key the tool does not take (`tsk` for `task`),
+(a string, an array), a key the tool does not take (`tsk` for `task`, or a `task` in
+`getCacheStats`' scope),
 a filter that is not a non-empty string, or a `limit` that is not a
 finite number is refused with a line naming it, rather than answered
 for a question the agent did not ask.
