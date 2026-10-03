@@ -1643,3 +1643,23 @@ marks both projects for a file `git mv`ed between them, the project of a
 deleted file staged or not, and a branch's own project against `main`;
 `vx watch --affected=main` across two branch switches runs one cycle
 each and keeps the scope it resolved at start, as `cli.md` says.
+
+Probes (2026-10-03), clean, harder variants of the run-lifecycle list:
+a Ctrl-C during the restore of a 200 MB, 40-file artifact leaves a tree
+the next run restores intact (5 of 5); a run lock held by a `kill -9`ed
+run is reclaimed at once; a `vx run` beside a `vx watch` cycle waits on
+it by pid and is then a hit; `--affected` marks the dependant of a
+deleted project, and both sides of a renamed project directory; a
+branch switch that changes a project's `vx.config` under `vx watch`
+runs the new command, and the old one after switching back; five
+branch switches give one cycle each with every output right, repeats
+restored from cache.
+
+Probes (2026-10-03), clean, scheduler and retries: at two workers a
+3 s task beside four 0.5 s ones runs last under core's structural rank
+(4.0 s; by design, `architecture.md`: durations are the
+\`@vzn/vx-schedule-history\` plugin's), and first with that plugin
+(3.0 s, the optimum); a task past its \`exec.timeout\` fails as timed
+out, its dependant is skipped and named, a sibling runs; under
+\`retries\` a failed attempt's stray output is cleaned before the next
+attempt, and the entry holds the passing attempt's files alone.
