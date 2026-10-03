@@ -104,7 +104,8 @@ export function peakRssBytes(maxRSS: number): number // bytes, whatever unit the
 ## Spawning rules
 
 - **Shell:** `Bun.spawn([executablePath('sh'), '-c', command], { argv0: 'sh', ... })`.
-  POSIX-shell only; Windows is unsupported (no `cmd.exe` branch). The
+  POSIX-shell only; native Windows is unsupported (no `cmd.exe` branch),
+  and Windows runs the Linux build under WSL. The
   shell is resolved ONCE per process on vx's own PATH
   (`util/which.ts`), never the task's: the task's PATH leads with its
   project's `node_modules/.bin`, and Bun resolving the bare `sh`
@@ -323,7 +324,7 @@ spawn returned left a `kill -9`'s orphan in 4 of 40 runs under load
   takes even that.
 - **Doesn't strip ANSI.** Color sequences pass through verbatim,
   enabling color-preserving cache-hit replays.
-- **No Windows support.** `sh -c` only.
+- **No native Windows.** `sh -c` only; Windows means WSL.
 
 ## Tests
 
