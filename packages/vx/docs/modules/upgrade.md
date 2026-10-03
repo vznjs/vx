@@ -43,15 +43,16 @@ never Bun's `fetch` stack (832c349).
 ## Invariants
 
 - Compiled-binary detection keys off `Bun.main` / `process.argv[1]`
-  (`/$bunfs/…`), NOT `import.meta.path` — under `--minify --bytecode`
-  the latter reports the original source path (the 2026-06-15 bug).
+  (`/$bunfs/…`); `import.meta.path` is only a last fallback, since under
+  `--minify --bytecode` it reports the original source path (the
+  2026-06-15 bug, when it was the only check).
 - Running from source refuses with a git-pull hint; an npm-installed
   binary (the launcher runs `…/node_modules/@vzn/vx-<os>-<arch>/vx`,
   a compiled binary that passes the bunfs check) refuses with the npm
   command — npm owns that file, and the next install would put the
   version it knows back (`npmOwnedBinary`, item 234).
 - `isBunfsPath(p)`, `releaseAsset(release, name)` and
-  `replaceBinary(dest, url, sha256)` exported for tests; the tests stub
+  `replaceBinary(dest, url, sha256, starts?)` exported for tests; the tests stub
   `fetch`, and the compiled path against a real release stays manual
   (proven 2026-09-16 with a scratch binary: `0.0.0 → latest`, verified,
   replaced, `--version` reported the release).

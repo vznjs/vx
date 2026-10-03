@@ -29,7 +29,7 @@ export function isBunfsPath(p: string): boolean {
 
 /**
  * True when running as a `bun build --compile` binary. Keys off
- * `Bun.main` (and argv[1]) rather than `import.meta.path`: with
+ * `Bun.main` (and argv[1]), `import.meta.path` only last: with
  * `--minify --bytecode` — vx's release build flags — `import.meta.path`
  * reports the ORIGINAL SOURCE path, not the bunfs path, so the old
  * check silently failed for every installed binary and `vx

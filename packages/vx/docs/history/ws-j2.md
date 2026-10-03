@@ -395,3 +395,18 @@ persistent task` and vx exits 1). Row (`site-samples` › a post's link
   `MOVED_VERBS` (util). Each page that owns the file names them now.
   Row (`module-page-claims` › every name a module index exports is in
   code on a module page), red without the fix.
+
+- **J2-47** `upgrade.md` said compiled-binary detection uses NOT
+  `import.meta.path`; `isCompiledBinary` ORs it in last (it was the only
+  check in the 2026-06-15 bug). The page and the source comment say
+  last fallback now, and the Invariants prose names `replaceBinary`'s
+  `starts?`. Row (`module-page-claims` › upgrade.md's detection
+  invariant names every path it checks), red without the fix.
+- **J2-48** `plugin.md` listed the stages whose throw fails the run,
+  naming the plugin, as `config`, `project`, `graph`, `key` and
+  `schedule`; `discover` and `fingerprint`'s `affected` pass the same
+  guard. Row (`module-page-claims` › plugin.md's fail-the-run list is
+  the hooks plugin-host guards), generated from `safe()`'s call sites;
+  red without the fix. Invariants audited clean: config-cache,
+  deferred-outputs, plugin-commands, plugin-host, local-shortcircuit,
+  config, history, lockfile, kill-tree. That ends the Invariants audit.
