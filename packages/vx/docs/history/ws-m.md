@@ -563,6 +563,17 @@ and a malformed member manifest refused with its path.
 `init.test.ts` › does not call a matched but unaddressable member
 unmatched; red without the fix.
 
+M-47. Probes, nothing shipped. Held: edges through `file:../a`,
+`link:../b`, a `peerDependencies` range and an `optionalDependencies`
+`workspace:~` (each orders the run and joins `--filter d...`); a root that
+lists itself (`workspaces: [".", …]`) keeps its `lint` and leaves out its
+`build` under the member-name rule; `vx init` from inside a member finds
+the root. Lead, not changed: init refuses the whole workspace when one
+member already has a vx config, and `--force` would overwrite that
+hand-written file, so a half-adopted workspace has no clean path. Pinned
+on purpose (`init.test.ts` › refuses to overwrite without --force, like
+migrate); keeping such a project and writing the rest is the owner's call.
+
 ## Leads for other streams
 
 - A: A-20 let a same-project dependant restore ahead of a producer whose
