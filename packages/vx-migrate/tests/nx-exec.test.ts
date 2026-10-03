@@ -4,7 +4,7 @@
 // (`nx-exec-live.test.ts`, gated on VX_NX_MODULES); this one pins the bin's
 // own contract — argv, the graph injection, the exit — without a network
 // install.
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -34,7 +34,9 @@ let root: string
 let cwd: string
 
 beforeEach(async () => {
-  root = await mkdtemp(path.join(tmpdir(), 'vx-nx-exec-'))
+  // Canonical: nx-exec reports the realpath, and a TMPDIR behind a symlink
+  // (macOS /tmp, /var) would differ from the mkdtemp spelling.
+  root = await realpath(await mkdtemp(path.join(tmpdir(), 'vx-nx-exec-')))
   cwd = path.join(root, 'packages', 'app')
   await mkdir(cwd, { recursive: true })
   await mkdir(path.join(root, '.nx', 'workspace-data'), { recursive: true })

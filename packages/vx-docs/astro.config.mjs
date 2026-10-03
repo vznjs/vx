@@ -29,6 +29,11 @@ export default defineConfig({
   vite: {
     cacheDir: './.astro/vite',
     ssr: { external: ['satteri'] },
+    // The site has no PostCSS config. Without an inline one Vite searches
+    // every parent up to the workspace root, reading the root package.json
+    // the build's sandbox hides: Linux answers ENOENT and the search goes
+    // on, macOS's seatbelt answers EPERM and the build failed.
+    css: { postcss: {} },
   },
   site,
   base,

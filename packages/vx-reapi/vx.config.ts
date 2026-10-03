@@ -51,6 +51,8 @@ export default defineProject({
             'VX_REAPI_EXEC_ENDPOINT',
             'VX_REQUIRE_REAPI_EXEC',
           ],
+          // Fixture repos assume git's defaults; a global config may sign commits.
+          define: { GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' },
         },
       },
       cache: {

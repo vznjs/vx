@@ -2,7 +2,7 @@
 // files core's migration seam writes. The fixture links `@vzn/vx` into each
 // tmp workspace, as the scaffolded files import it.
 
-import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
@@ -1510,7 +1510,10 @@ describe('vx migrate — a repo core finds no workspace root in', () => {
         ['rush', 'rush.json', '{ "projects": [] }\n'],
         ['none', 'README.md', 'nothing\n'],
       ] as const) {
-        const dir = await mkdtemp(path.join(os.tmpdir(), `vx-migrate-noroot-${name}-`))
+        // Canonical: core names the realpath; macOS /tmp is a link.
+        const dir = await realpath(
+          await mkdtemp(path.join(os.tmpdir(), `vx-migrate-noroot-${name}-`)),
+        )
         await mkdir(path.dirname(path.join(dir, file)), { recursive: true })
         await writeFile(path.join(dir, file), text)
         seen[name] = await vx(dir, ['--dry'])
