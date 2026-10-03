@@ -1526,3 +1526,21 @@ it needs one env snapshot per run shared by the mask and `taskEnv`,
 which both read `process.env` fresh per task; at ~10 ms per 500 tasks
 it sits inside a min-of-8 wall A/B's ±10 ms. Not cut. The unsandboxed
 path has no step a wall A/B resolves.
+
+B-99. vx-reapi's error paths (F stream): exec timeout, UNAVAILABLE retry,
+a partial or aborted CAS upload, a digest mismatch on download, a result
+missing a declared output. None serves wrong bytes: every read is held to
+the digest it asked for, and an ActionCache entry is written only after
+its upload resolves. A result missing a declared literal output is what
+the action produced, as a local run that never writes it saves without
+it, not a stale hit; a record whose blobs are gone executes. An
+integrity failure on the execute path reaches the user through core's
+named `UserError`. Pinned (#2666), each row red with its guard mutated
+away: an upload that never lands records no entry, an entry the server
+refuses to record is a miss, forged artifact bytes are refused, an
+unreadable artifact is a miss, a record replay meeting a forged blob
+executes and writes nothing, and an Execute refused UNAVAILABLE before
+any operation is sent again, then refused after four attempts. Open, a
+decision: the execute stall timer starts at the EXECUTING stage, so a
+server that queues an action and never starts it holds the task until
+Ctrl-C; bounding queue time is a behaviour change.
