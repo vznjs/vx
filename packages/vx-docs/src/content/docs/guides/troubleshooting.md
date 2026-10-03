@@ -30,7 +30,8 @@ specific to one guide stay there: [Sandboxing](../sandboxing/#common-problems),
   a TODO with the block to add.
 - **A task hit after you changed a file.** The file is not in
   `cache.inputs.files`. `vx why <project#task>` shows what the key saw;
-  [`exec.sandbox`](../sandboxing/) refuses a read you did not declare.
+  [`exec.sandbox`](../sandboxing/), with reads granted no wider than
+  the inputs, refuses that read and names it.
 - **A task re-ran and you do not know why.** `vx why <project#task>`
   names the part of the key that changed.
 - **A variable is empty inside the command.** Past a small essential

@@ -2089,6 +2089,13 @@ describe('the sandbox post judges a violation against the grants', () => {
     expect(post).toContain("sandbox: { allow: { read: ['.'] } }")
     expect(post).toContain('the violation is judged against the grants alone')
     expect(post).not.toContain('reads a file its inputs never named fails')
+    // The Troubleshooting page (#2470) said the sandbox refuses a read you
+    // did not declare, of a file missing from the inputs (J2-37).
+    const trouble = readFileSync(path.join(GUIDES, 'troubleshooting.md'), 'utf8').replace(
+      /\s+/g,
+      ' ',
+    )
+    expect(trouble).toContain('with reads granted no wider than the inputs, refuses that read')
   })
 })
 
