@@ -42,7 +42,7 @@ describe('an undefined named input', () => {
       const mapped = await mapNxWorkspace(root, metas, parseNxGraph(JSON.stringify(graph), 'g'), {
         persistentTodo: 'p',
         cacheable: new Set(),
-        nativeExecutors: true,
+        migration: true,
       })
       const tasks = new Map(
         mapped.projects.flatMap((p) =>

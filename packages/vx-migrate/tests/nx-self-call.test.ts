@@ -30,7 +30,7 @@ const graph = {
   dependencies: {},
 }
 
-async function todos(nativeExecutors: boolean): Promise<Record<string, string[]>> {
+async function todos(migration: boolean): Promise<Record<string, string[]>> {
   const root = await mkdtemp(path.join(os.tmpdir(), 'vx-nx-self-'))
   try {
     await writeFile(path.join(root, 'package.json'), '{"name":"root","private":true}')
@@ -45,7 +45,7 @@ async function todos(nativeExecutors: boolean): Promise<Record<string, string[]>
     const mapped = await mapNxWorkspace(root, metas, parseNxGraph(JSON.stringify(graph), 'g'), {
       persistentTodo: 'p',
       cacheable: new Set(),
-      nativeExecutors,
+      migration,
     })
     return Object.fromEntries(mapped.projects[0]!.tasks.map((t) => [t.name, t.todos]))
   } finally {
