@@ -204,6 +204,11 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   const swept = await sweepConfigs(allProjects, workspaceRoot, load, opts.tasks)
   const watched = await watchedProjects(workspaceRoot, allProjects, scope, load, swept.staged)
   const ws = await loadCliWorkspace(workspaceRoot)
+  const claimsOf = (plugins: Parameters<typeof fingerprintClaims>[0]): Set<string> =>
+    new Set([
+      ...fingerprintClaims(plugins).keys(),
+      ...(opts.frozen === true ? [LOCKFILE_NAME] : []),
+    ])
   return await runWatchLoop({
     opts,
     held,
@@ -231,6 +236,10 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
       const now = await watchedProjects(workspaceRoot, all, inScope(all), load, sweep.staged)
       return {
         projects: now,
+        // A plugin the workspace config gained since claims its file from
+        // the cycle that loaded it; read once, its edits started nothing
+        // until a restart.
+        claimedRootFiles: claimsOf((await loadCliWorkspace(workspaceRoot)).plugins),
         memberBases: memberBaseDirs(workspace),
         workspaceWide: sweep.workspaceWide,
         workspaceInputs: sweep.workspaceInputs,
@@ -245,10 +254,7 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
     // Under --frozen every cycle's configs are the lock's, so a re-lock is
     // the one edit that changes what a cycle runs; unheard, the loop ran
     // the old lock until a restart (item 971).
-    claimedRootFiles: new Set([
-      ...fingerprintClaims(ws.plugins).keys(),
-      ...(opts.frozen === true ? [LOCKFILE_NAME] : []),
-    ]),
+    claimedRootFiles: claimsOf(ws.plugins),
     // The RESOLVED cache dir, not the `.vx` literal — see `makeWatchIgnore`.
     cacheDir: opts.cacheDir ?? ws.cacheDir,
   })
@@ -295,6 +301,7 @@ interface WatchLoopArgs {
 
 interface Rediscovered {
   projects: readonly ProjectMeta[]
+  claimedRootFiles: ReadonlySet<string>
   memberBases: readonly string[]
   workspaceWide: boolean
   workspaceInputs: readonly string[]
@@ -318,6 +325,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
   let outputs = args.outputs
   let inputs = args.inputs
   let uncached = args.uncached
+  let claimedRootFiles = args.claimedRootFiles
   let configImportFiles = args.configImports
   let wsConfigImportFiles = args.workspaceConfigImports
   // A dev server stays up while the loop idles; the cycle that replaces it
@@ -397,12 +405,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
   // project would otherwise trigger every save during `bun install` —
   // and vx's own cache writes would trigger a cycle that writes again.
   let isIgnoredPath = makeWatchIgnore(cacheDir, outputs, inputs)
-  let matters = makeRootEventFilter(
-    workspaceRoot,
-    projectDirs,
-    workspaceInputs,
-    args.claimedRootFiles,
-  )
+  let matters = makeRootEventFilter(workspaceRoot, projectDirs, workspaceInputs, claimedRootFiles)
   /** Since the last cycle, a member came or went, or a file that shapes the watched set changed (`shapesWatchedSet`). */
   let reread = false
 
@@ -462,7 +465,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
               isWorkspaceFingerprintFile(filename) ||
               isWorkspaceConfigFile(filename) ||
               filename === 'package.json' ||
-              args.claimedRootFiles.has(filename)
+              claimedRootFiles.has(filename)
             ) {
               if (shapesWatchedSet(filename) || filename === LOCKFILE_NAME) reread = true
               trigger(`root ${filename}`, path.join(workspaceRoot, filename))
@@ -604,18 +607,14 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
     outputs = next.outputs
     inputs = next.inputs
     uncached = next.uncached
+    claimedRootFiles = next.claimedRootFiles
     configImportFiles = next.configImports
     wsConfigImportFiles = next.workspaceConfigImports
     packageDirs = next.packageDirs
     memberBases = next.memberBases
     armBases()
     isIgnoredPath = makeWatchIgnore(cacheDir, outputs, inputs)
-    matters = makeRootEventFilter(
-      workspaceRoot,
-      projectDirs,
-      workspaceInputs,
-      args.claimedRootFiles,
-    )
+    matters = makeRootEventFilter(workspaceRoot, projectDirs, workspaceInputs, claimedRootFiles)
     if (next.workspaceWide !== workspaceWide) {
       // A task started or stopped declaring `workspaceFiles`: the other
       // arm's shape. Until item 891 the choice was made once, at start, and

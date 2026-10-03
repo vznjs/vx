@@ -1337,8 +1337,9 @@ via the [workspace fingerprint](./caching.md#cache-key-derivation).
 Watch mode hears those because it watches the workspace root
 (non-recursively). A lockfile a plugin claims still triggers a cycle,
 and so does any other root file a plugin claims (`turbo.json` under
-`turbo()`, item 961); the keys then decide which projects actually
-re-run. Under `vx watch --frozen` every cycle's configs come from
+`turbo()`, item 961), a plugin added to the workspace config mid-watch
+included from the cycle that loads it; the keys then decide which
+projects actually re-run. Under `vx watch --frozen` every cycle's configs come from
 `vx-lock.json`, so a config edit alone changes no command, and a re-lock
 (`vx lock`) is a cycle that re-reads the watched set (item 971).
 
