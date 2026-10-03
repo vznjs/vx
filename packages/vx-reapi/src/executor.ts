@@ -12,7 +12,7 @@
 import { mkdir, writeFile, chmod, readlink, realpath, rm, symlink, unlink } from 'node:fs/promises'
 import { constants, existsSync } from 'node:fs'
 import path from 'node:path'
-import { isLiteralPattern, isUserError, normalizeGlob, UserError } from '@vzn/vx'
+import { executorFallback, isLiteralPattern, isUserError, normalizeGlob, UserError } from '@vzn/vx'
 import type { ExecuteRequest, ExecuteResult, TaskExecutor, TaskPlacement } from '@vzn/vx'
 import {
   buildInputTree,
@@ -507,6 +507,14 @@ export interface ReapiExecutorOptions {
    * counted). Overridden per task by `exec.timeout`. Defaults to 10 minutes.
    */
   executeTimeoutMs?: number
+  /**
+   * Bound on the time an action waits for a worker: from Execute until the
+   * EXECUTING transition. Past it the Execute stream is cancelled and the
+   * task is given back to run on this machine, said once (B-100). Unset, an
+   * action waits for a worker as long as the task's own `exec.timeout`
+   * lets it (core's, from the request), and with neither, without bound.
+   */
+  queueTimeoutMs?: number
   /** REAPI platform properties (`container-image`, `OSFamily`, …). */
   platform?: Record<string, string>
   /** How many tasks this executor runs at once; becomes the scheduler's pool. */
@@ -531,11 +539,13 @@ export function acceptsTask(task: TaskPlacement): boolean {
 export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = {}): TaskExecutor {
   // A zero or non-number bound stopped every action the moment it began
   // executing.
-  const ms = opts.executeTimeoutMs
-  if (ms !== undefined && !(typeof ms === 'number' && Number.isFinite(ms) && ms > 0)) {
-    throw new Error(
-      `@vzn/vx-reapi: executeTimeoutMs must be a positive number of ms (got ${JSON.stringify(ms)})`,
-    )
+  for (const key of ['executeTimeoutMs', 'queueTimeoutMs'] as const) {
+    const ms = opts[key]
+    if (ms !== undefined && !(typeof ms === 'number' && Number.isFinite(ms) && ms > 0)) {
+      throw new Error(
+        `@vzn/vx-reapi: ${key} must be a positive number of ms (got ${JSON.stringify(ms)})`,
+      )
+    }
   }
   const warn = opts.warn ?? (() => undefined)
   // One Capabilities round trip per executor, not per task — the answer
@@ -921,15 +931,25 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
       const stallAfter = req.timeoutMs ?? opts.executeTimeoutMs ?? DEFAULT_EXECUTE_TIMEOUT_MS
       const stall = new AbortController()
       let stallTimer: ReturnType<typeof setTimeout> | undefined
+      // Waiting for a worker, bounded only when `queueTimeoutMs` says so.
+      const queued = new AbortController()
+      const queueTimer =
+        opts.queueTimeoutMs === undefined
+          ? undefined
+          : setTimeout(() => queued.abort(), opts.queueTimeoutMs)
       const armStall = (): void => {
+        clearTimeout(queueTimer)
         if (stallTimer !== undefined) return
         stallTimer = setTimeout(() => stall.abort(), stallAfter)
       }
       // The run's stop (Ctrl-C, an embedder's abort) cancels the operation
       // stream as the stall does; unheard, vx waited on the remote for as
       // long as the action ran.
-      const stop =
-        req.signal === undefined ? stall.signal : AbortSignal.any([stall.signal, req.signal])
+      const stop = AbortSignal.any([
+        stall.signal,
+        queued.signal,
+        ...(req.signal === undefined ? [] : [req.signal]),
+      ])
       let op: Operation
       try {
         if (req.signal?.aborted === true) throw new Error('aborted before Execute')
@@ -951,6 +971,11 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
             `vx/reapi: ${req.taskId}: the run stopped before its remote execution finished`,
           )
         }
+        if (queued.signal.aborted) {
+          throw executorFallback(
+            `vx/reapi: no worker started the action within queueTimeoutMs (${opts.queueTimeoutMs}ms); its Execute stream was cancelled`,
+          )
+        }
         if (stall.signal.aborted) {
           throw new UserError(
             `vx/reapi: ${req.taskId} was still executing ${stallAfter}ms after the worker ` +
@@ -961,6 +986,7 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
         }
         throw err
       } finally {
+        clearTimeout(queueTimer)
         if (stallTimer !== undefined) clearTimeout(stallTimer)
       }
       if (op.error !== undefined && (op.error.code ?? 0) !== 0) {

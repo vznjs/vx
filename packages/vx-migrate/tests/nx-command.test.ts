@@ -302,15 +302,14 @@ describe('env, color and readyWhen (nx#20465)', () => {
     })
   })
 
-  it('`readyWhen` is the persistent pattern, escaped; several strings are a todo', () => {
+  it('`readyWhen` is the persistent pattern, escaped; several strings wait for all under nx-env', () => {
     expect(line({ command: 'serve', readyWhen: 'Local: (http)' }).out?.readyWhen).toBe(
       'Local: \\(http\\)',
     )
     const many = line({ commands: ['api', 'web'], readyWhen: ['api up', 'web up'] })
-    expect(many.out?.readyWhen).toBe('api up|web up')
-    expect(many.todos).toEqual([
-      'nx:run-commands: Nx waits for every `readyWhen` string ("api up", "web up"); vx takes one pattern, so the task is ready on the first of them',
-    ])
+    expect(many.out?.readyWhen).toBe('^nx-env: ready$')
+    expect(many.out?.readyAll).toEqual(['api up', 'web up'])
+    expect(many.todos).toEqual([])
   })
 
   it('`envFile` is handed on as declared, `{projectRoot}` expanded (nx#23581)', () => {

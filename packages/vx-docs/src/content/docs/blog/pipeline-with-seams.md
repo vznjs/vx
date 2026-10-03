@@ -6,7 +6,7 @@ authors:
 tags:
   - design
   - plugins
-excerpt: 'vx is built like Vite: a core pipeline with a named hook at every stage, and plugins that fill exactly the stage they need. A remote cache is one hook. A lockfile parser is one hook. Zero-migration Turbo support is one hook.'
+excerpt: 'vx is built like Vite: a core pipeline with a named hook at every stage, and plugins that fill exactly the stage they need. A remote cache is one hook. A lockfile parser is one hook. Reading turbo.json as a start toward native config is one hook.'
 ---
 
 The word "plugin" usually means one of two things. Either a plugin is a
