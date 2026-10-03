@@ -24,6 +24,7 @@ export interface TaskEnvSecrets {
 }
 export function maskedCommand(command: string, env?: TaskEnvSecrets): string
 export function maskedLine(line: string): string // this process's secrets only
+export function secretNamed(name: string): boolean // the name rule alone; `vx why` hides such an env input's hashes
 export function maskedEmitter(
   mask: SecretMask,
   emit: (text: string) => void,

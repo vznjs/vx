@@ -730,6 +730,16 @@ rest of the verbs' refusals: `vx init` (`--frce` hints `--force`, a bare
 `cli.test.ts` › a flag before any verb is called a flag (exact lines; red
 without the fix), and `-V` now pins its line.
 
+M-62. M-61's lead, fixed: `vx why` printed a secret-named
+`cache.inputs.env` variable's before and after as its 64-bit xxh3, an
+unsalted hash of the value, so a short secret was recoverable from a CI
+log that printed `vx why`. Both forms now show `*** → ***` for a name the
+masking rule calls secret (`secretNamed`, now exported); the row still
+says the value changed, and other env inputs keep their hashes. Not
+covered: a name made secret by `exec.env.secret` alone, which run history
+does not record. `why.test.ts` › a secret-named env input (text and json;
+red without the fix, the `REGION` control unmasked).
+
 ## Leads for other streams
 
 - A: A-20 let a same-project dependant restore ahead of a producer whose

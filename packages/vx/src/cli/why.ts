@@ -16,7 +16,7 @@ import {
   whyDidThisRerunQuery as whyDidThisRerun,
   resolveRunId,
 } from '../orchestrator/index.js'
-import { nearMatches, printable, UserError } from '../util/index.js'
+import { MASKED, nearMatches, printable, secretNamed, UserError } from '../util/index.js'
 import { findWorkspaceRoot } from '../workspace/index.js'
 import { cliCacheDir, parseCacheDirFlag, warnToStderr } from './workspace-config.js'
 
@@ -212,7 +212,22 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
         `vx why: run ${runId} has no row for ${taskId}; \`vx last --list\` shows the recorded runs, \`vx last <runId>\` what one ran`,
       )
     }
-    const diff = cacheKeyDiff(db, runId, taskId)
+    // A secret-named env input's hashes are its value, unsalted: a short one
+    // is recoverable from a CI log that printed `vx why` (M-62). The row
+    // still says the value changed.
+    const raw = cacheKeyDiff(db, runId, taskId)
+    const diff = {
+      ...raw,
+      entries: raw.entries.map((e) =>
+        e.kind === 'env' && secretNamed(e.name)
+          ? {
+              ...e,
+              ...(e.before === undefined ? {} : { before: MASKED }),
+              ...(e.after === undefined ? {} : { after: MASKED }),
+            }
+          : e,
+      ),
+    }
 
     if (parsed.format === 'json') {
       process.stdout.write(`${JSON.stringify({ taskId, runId, why, diff })}\n`)
