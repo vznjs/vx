@@ -1447,8 +1447,10 @@ calls (31.0 ms) to 500 (10.6 ms), wall within noise. Keys unchanged, no
 `CACHE_VERSION` bump. Rows: `uncached-key-once.test.ts`.
 Then the per-task ranking on cached misses (500 one-file tasks,
 concurrency 1, `--force`): `run graph` 2,248 ms against `miss: execute`
-2,013, so vx's own share is about 0.47 ms a task: output resolve 0.10,
-key 0.07, clean 0.03, recheck 0.02, request 0.02, and `secretMask` 0.025
-(timed in place; a CPU profile put it at 0.1, sampling skew). Saves
-(1.7 ms) run on the save lane off the slot. Nothing above 0.1 ms is
-left to cut outside the spawn.
+2,013. The in-run spans overstate each step (an awaited span also counts
+the save lane's work that runs meanwhile), and so does a CPU profile
+(it put `ownRssHighWater` at 106 µs and `secretMask` at 100). Timed in
+isolation: output resolve 22 µs, `secretMask` 25, the RSS floor read 7,
+an uncached key 21 (a run with no saves). Saves (1.7 ms) run on the save
+lane off the slot. No step is worth a cut: each is under 1% of a task,
+below what a min-of-N wall A/B resolves.
