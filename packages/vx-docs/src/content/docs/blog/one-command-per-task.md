@@ -45,7 +45,7 @@ capability in vx becomes a transformation of the same triple:
   about the task has to be serialisable beyond what it already is.
 - **The sandbox** wraps the command in `bwrap` or seatbelt with the
   declared paths. There is exactly one process to confine.
-- **Replay** stores the captured stdout in the cache row and prints it
+- **Replay** stores the captured stdout in the cache index and prints it
   byte-identical on a hit, NUL bytes, carriage-return progress
   rewrites and raw ANSI included. A hit looks like the run.
 - **Migration** from Turborepo or Nx is mostly a rendering problem,
