@@ -1,0 +1,175 @@
+{
+  "manifests": {
+    "@ts/core": {
+      "dependencies": {
+        "@ts/util": "*"
+      }
+    }
+  },
+  "graph": {
+    "nodes": {
+      "@ts/util": {
+        "name": "@ts/util",
+        "data": {
+          "root": "packages/util",
+          "targets": {
+            "typecheck": {
+              "dependsOn": ["build", "^typecheck"],
+              "command": "tsc --build --emitDeclarationOnly",
+              "options": {
+                "cwd": "packages/util"
+              },
+              "cache": true,
+              "inputs": [
+                "{projectRoot}/package.json",
+                "{projectRoot}/tsconfig.json",
+                "{projectRoot}/tsconfig.lib.json",
+                "{projectRoot}/src/**/*.ts",
+                "!{projectRoot}/out-tsc/**/*",
+                "!{projectRoot}/dist/**/*",
+                {
+                  "dependentTasksOutputFiles": "**/*.{d.ts,d.cts,d.mts,tsbuildinfo}",
+                  "transitive": true
+                },
+                {
+                  "fileset": "{projectRoot}/**/*.{d.ts,d.cts,d.mts}",
+                  "dependencies": true
+                },
+                "{workspaceRoot}/tsconfig.base.json"
+              ],
+              "outputs": [
+                "{projectRoot}/out-tsc/**/*.{d.ts,d.cts,d.mts}",
+                "{projectRoot}/out-tsc/tsconfig.tsbuildinfo"
+              ],
+              "syncGenerators": ["@nx/js:typescript-sync"]
+            },
+            "build": {
+              "dependsOn": ["^build"],
+              "command": "tsc --build tsconfig.lib.json",
+              "options": {
+                "cwd": "packages/util"
+              },
+              "cache": true,
+              "inputs": [
+                "{projectRoot}/package.json",
+                "{projectRoot}/tsconfig.json",
+                "{projectRoot}/tsconfig.lib.json",
+                "{projectRoot}/src/**/*.ts",
+                "!{projectRoot}/out-tsc/**/*",
+                "!{projectRoot}/dist/**/*",
+                {
+                  "dependentTasksOutputFiles": "**/*.{d.ts,d.cts,d.mts,tsbuildinfo}",
+                  "transitive": true
+                },
+                {
+                  "fileset": "{projectRoot}/**/*.{d.ts,d.cts,d.mts}",
+                  "dependencies": true
+                },
+                "{workspaceRoot}/tsconfig.base.json"
+              ],
+              "outputs": [
+                "{projectRoot}/dist/**/*.{js,cjs,mjs,jsx,d.ts,d.cts,d.mts}{,.map}",
+                "{projectRoot}/dist/tsconfig.lib.tsbuildinfo"
+              ],
+              "syncGenerators": ["@nx/js:typescript-sync"]
+            },
+            "build-deps": {
+              "dependsOn": ["^build"]
+            },
+            "watch-deps": {
+              "continuous": true,
+              "dependsOn": ["build-deps"],
+              "command": "npx nx watch --projects @ts/util --includeDependentProjects -- npx nx build-deps @ts/util"
+            }
+          }
+        }
+      },
+      "@ts/core": {
+        "name": "@ts/core",
+        "data": {
+          "root": "packages/core",
+          "targets": {
+            "typecheck": {
+              "dependsOn": ["build", "^typecheck"],
+              "command": "tsc --build --emitDeclarationOnly",
+              "options": {
+                "cwd": "packages/core"
+              },
+              "cache": true,
+              "inputs": [
+                "{projectRoot}/package.json",
+                "{projectRoot}/tsconfig.json",
+                "{projectRoot}/tsconfig.lib.json",
+                "{projectRoot}/src/**/*.ts",
+                "!{projectRoot}/out-tsc/**/*",
+                "!{projectRoot}/dist/**/*",
+                {
+                  "dependentTasksOutputFiles": "**/*.{d.ts,d.cts,d.mts,tsbuildinfo}",
+                  "transitive": true
+                },
+                {
+                  "fileset": "{projectRoot}/**/*.{d.ts,d.cts,d.mts}",
+                  "dependencies": true
+                },
+                "{workspaceRoot}/tsconfig.base.json"
+              ],
+              "outputs": [
+                "{projectRoot}/out-tsc/**/*.{d.ts,d.cts,d.mts}",
+                "{projectRoot}/out-tsc/tsconfig.tsbuildinfo"
+              ],
+              "syncGenerators": ["@nx/js:typescript-sync"]
+            },
+            "build": {
+              "dependsOn": ["^build"],
+              "command": "tsc --build tsconfig.lib.json",
+              "options": {
+                "cwd": "packages/core"
+              },
+              "cache": true,
+              "inputs": [
+                "{projectRoot}/package.json",
+                "{projectRoot}/tsconfig.json",
+                "{projectRoot}/tsconfig.lib.json",
+                "{projectRoot}/src/**/*.ts",
+                "!{projectRoot}/out-tsc/**/*",
+                "!{projectRoot}/dist/**/*",
+                {
+                  "dependentTasksOutputFiles": "**/*.{d.ts,d.cts,d.mts,tsbuildinfo}",
+                  "transitive": true
+                },
+                {
+                  "fileset": "{projectRoot}/**/*.{d.ts,d.cts,d.mts}",
+                  "dependencies": true
+                },
+                "{workspaceRoot}/tsconfig.base.json"
+              ],
+              "outputs": [
+                "{projectRoot}/dist/**/*.{js,cjs,mjs,jsx,d.ts,d.cts,d.mts}{,.map}",
+                "{projectRoot}/dist/tsconfig.lib.tsbuildinfo"
+              ],
+              "syncGenerators": ["@nx/js:typescript-sync"]
+            },
+            "build-deps": {
+              "dependsOn": ["^build"]
+            },
+            "watch-deps": {
+              "continuous": true,
+              "dependsOn": ["build-deps"],
+              "command": "npx nx watch --projects @ts/core --includeDependentProjects -- npx nx build-deps @ts/core"
+            }
+          }
+        }
+      }
+    },
+    "dependencies": {
+      "@ts/core": [
+        {
+          "source": "@ts/core",
+          "target": "@ts/util",
+          "type": "static"
+        }
+      ],
+      "@ts/util": []
+    }
+  }
+}

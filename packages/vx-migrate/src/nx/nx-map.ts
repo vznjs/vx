@@ -111,11 +111,20 @@ export function parseNxGraph(text: string, label: string): NxGraph {
     )
   }
   checkNxNodes(nodes as Record<string, unknown>, label)
-  for (const node of Object.values(nodes as Record<string, NxNode>))
-    for (const target of Object.values(node.data?.targets ?? {})) {
+  for (const node of Object.values(nodes as Record<string, NxNode>)) {
+    const targets = node.data?.targets ?? {}
+    for (const [name, target] of Object.entries(targets)) {
       const canonical = target.executor === undefined ? undefined : LEGACY[target.executor]
       if (canonical !== undefined) target.executor = canonical
+      // Nx's own normalization (`target-normalization`): a target with
+      // neither runs its dependencies, or is nothing and is dropped. A graph
+      // that skipped it (an older export) wrote a failing placeholder.
+      if (target.executor === undefined && target.command === undefined) {
+        if ((target.dependsOn ?? []).length > 0) target.executor = 'nx:noop'
+        else delete targets[name]
+      }
     }
+  }
   return { nodes: nodes as Record<string, NxNode>, dependencies: g.dependencies }
 }
 
