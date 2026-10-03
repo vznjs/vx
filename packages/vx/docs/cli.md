@@ -61,9 +61,9 @@ directory, a member reached through a link (`packages/b -> ../ext/b`)
 included.
 
 **Every requested name must resolve.** If any positional matches no
-project in scope, the run refuses to start — `No projects declare
-task(s): <name>.` on stdout (`vx run: no projects declare task(s):
-<name>.` on stderr under `--dry` / `--graph`), exit 1, with `Did you mean <task>?` when a
+project in scope, the run refuses to start — `vx run: no projects
+declare task(s): <name>.` on stderr, a run and `--dry` / `--graph` alike
+(a run printed it to stdout until 2026-10-03), exit 1, with `Did you mean <task>?` when a
 declared task (or, for `pkg#task`, a runnable spec) is within two edits,
 and with no name that near, what exists: `Tasks: build, test.`, `No
 project is named zzz; projects: a, b.`, or `a's tasks: build, test.`
@@ -1796,7 +1796,7 @@ the kept ones under `kept`, so a half-adopted workspace adopts the rest
 
 A missing `vx.workspace.*` is not an error. A run where no package has
 a config fails before any task, exit 1:
-``No projects declare task(s): build. No package declares a vx.config — run `vx init` to write one per package from its package.json scripts.``
+``vx run: no projects declare task(s): build. No package declares a vx.config — run `vx init` to write one per package from its package.json scripts.``
 
 Two npm conventions are mapped rather than copied, because copying them
 loses behaviour. `pre<x>` / `post<x>` hooks, which npm runs around `x`

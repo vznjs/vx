@@ -1825,6 +1825,7 @@ export interface RunSummary {
   ok: boolean
   outcomes: TaskOutcome[]
   persistent?: HeldPersistent
+  refused?: string
 }
 ```
 

@@ -56,6 +56,7 @@ export interface RunSummary {
   ok: boolean
   outcomes: TaskOutcome[]
   persistent?: HeldPersistent // { ids, stop() }, set only under holdPersistent
+  refused?: string // why the run refused to start; the caller prints it
 }
 ```
 

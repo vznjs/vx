@@ -48,6 +48,7 @@ export interface RunSummary {
   ok: boolean
   outcomes: TaskOutcome[]
   persistent?: HeldPersistent // { ids, stop() }: what holdPersistent handed back
+  refused?: string // why the run refused to start (ok false, nothing ran); the caller prints it, vx run on stderr
 }
 ```
 
