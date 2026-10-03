@@ -1339,8 +1339,9 @@ via the [workspace fingerprint](./caching.md#cache-key-derivation).
 Watch mode hears those because it watches the workspace root
 (non-recursively). A lockfile a plugin claims still triggers a cycle,
 and so does any other root file a plugin claims (`turbo.json` under
-`turbo()`, item 961); the keys then decide which projects actually
-re-run. Under `vx watch --frozen` every cycle's configs come from
+`turbo()`, item 961), a plugin added to the workspace config mid-watch
+included from the cycle that loads it; the keys then decide which
+projects actually re-run. Under `vx watch --frozen` every cycle's configs come from
 `vx-lock.json`, so a config edit alone changes no command, and a re-lock
 (`vx lock`) is a cycle that re-reads the watched set (item 971).
 
@@ -1767,7 +1768,11 @@ as a computed key, since a literal `__proto__:` sets the prototype. An
 existing `vx.workspace.*` in any extension the loader reads (`.mts`
 included) is kept, and `--force` REPLACES a package's config of another
 extension (`replaced:` in the report) rather than writing a second one
-the loader would choose between by its order (item 1033).
+the loader would choose between by its order (item 1033). Without
+`--force`, `init` never overwrites: a package that already has a vx
+config keeps it, untouched, the rest get theirs, and the report lists
+the kept ones under `kept`, so a half-adopted workspace adopts the rest
+(M-52). `@vzn/vx-migrate` still refuses an existing config.
 
 A missing `vx.workspace.*` is not an error. A run where no package has
 a config fails before any task, exit 1:

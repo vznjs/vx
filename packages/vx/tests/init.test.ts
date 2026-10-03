@@ -1837,12 +1837,37 @@ describe('vx init (package.json scripts)', () => {
     TIMEOUT,
   )
 
-  it('refuses to overwrite without --force, like migrate', async () => {
+  it('keeps each config it finds, writes the missing ones, and names the kept (M-52)', async () => {
+    // A half-adopted workspace: one config edited by hand, one gone. The
+    // whole init was refused, and --force would have replaced the edit.
+    const app = path.join(root, 'packages', 'app', 'vx.config.ts')
+    const lib = path.join(root, 'packages', 'lib', 'vx.config.ts')
+    const hand = "export default { tasks: { build: { exec: { command: 'echo mine' } } } }\n"
+    await writeFile(app, hand)
+    await rm(lib)
     const again = await vx(root, ['init'])
-    expect(again.code).toBe(1)
-    expect(again.err).toContain('refusing to overwrite')
+    expect({ code: again.code, err: again.err }).toEqual({ code: 0, err: '' })
+    expect(await Bun.file(app).text()).toBe(hand)
+    expect(await Bun.file(lib).exists()).toBe(true)
+    const lines = again.out.split('\n')
+    const from = lines.indexOf('files written:')
+    expect(lines.slice(from, from + 4)).toEqual([
+      'files written:',
+      '  packages/lib/vx.config.ts',
+      'kept (each already has a vx config):',
+      '  packages/app/vx.config.ts',
+    ])
+    // CONTROL: nothing missing, nothing written, every config named kept.
+    const third = await vx(root, ['init'])
+    expect(third.code).toBe(0)
+    expect(third.out).toContain(
+      'no files written\nkept (each already has a vx config):\n  packages/app/vx.config.ts\n  packages/lib/vx.config.ts\n',
+    )
+    expect(await Bun.file(app).text()).toBe(hand)
+    // --force still replaces, as asked.
     const forced = await vx(root, ['init', '--force'])
     expect(forced.code).toBe(0)
+    expect(await Bun.file(app).text()).not.toBe(hand)
   })
 
   it('is also the fallback source of vx migrate when no turbo.json or nx exists', async () => {
