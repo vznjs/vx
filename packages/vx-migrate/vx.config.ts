@@ -69,7 +69,11 @@ export default defineProject({
         // inputs: a skip-mode hit must never answer for the live run.
         // VX_REQUIRE_REFTABLE: head-stamp-reftable.test.ts fails on a git
         // too old for reftable instead of skipping.
-        env: { passThrough: ['VX_NX_MODULES', 'VX_REQUIRE_NX', 'VX_REQUIRE_REFTABLE'] },
+        // Fixture repos assume git's defaults; a global config may sign commits.
+        env: {
+          passThrough: ['VX_NX_MODULES', 'VX_REQUIRE_NX', 'VX_REQUIRE_REFTABLE'],
+          define: { GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' },
+        },
         sandbox: {
           allow: {
             read: ['**/*'],
