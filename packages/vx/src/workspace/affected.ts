@@ -125,8 +125,11 @@ export interface FingerprintClaims {
 export async function affectedProjects(args: AffectedArgs): Promise<Set<string>> {
   // Turbo's CI spelling, `[origin/main...HEAD]`, is the base alone here:
   // vx already diffs from the merge base (three dots' meaning), and the
-  // working tree it diffs to holds HEAD (D-117). Any other range is refused.
-  const since = /^(.+)\.\.\.HEAD$/.exec(args.since)?.[1] ?? args.since
+  // working tree it diffs to holds HEAD (D-117). Its two-dot `[A..HEAD]`
+  // diffs from A itself (G-145). Any other range is refused.
+  const headRange = /^(.+?)(\.{2,3})HEAD$/s.exec(args.since)
+  const since = headRange?.[1] ?? args.since
+  const fromMergeBase = headRange?.[2] !== '..'
   // The base reaches git as an argument, never through a shell, so `$(…)`
   // is opaque — but an option-like value is not: `--output=<path>` is a
   // real `git diff` option and an arbitrary file write. This is a security
@@ -155,8 +158,9 @@ export async function affectedProjects(args: AffectedArgs): Promise<Set<string>>
   // CI `--affected`), and hides your own edit when the base later landed
   // byte-identical content. Turbo and Nx both diff from the merge base;
   // when there is none (unrelated histories, a detached probe) the ref
-  // itself is the base, as before.
-  const base = await mergeBase(args.workspaceRoot, since)
+  // itself is the base, as before. Turbo's two-dot range `A..HEAD` is the
+  // one form that diffs from A itself.
+  const base = fromMergeBase ? await mergeBase(args.workspaceRoot, since) : since
 
   const [diffed, untracked] = await Promise.all([
     // `--no-renames` is crucial for project-affected detection: with

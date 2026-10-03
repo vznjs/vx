@@ -1258,3 +1258,66 @@ Lead for E (watch): `watch-loop.test.ts` › "a server that rewrites a file
 in its project is named after three restarts (item 948)" timed out once
 on macOS (#2247, run 37056783434) and passed on its re-run; no output
 was captured past the timeout.
+
+## C-62: a server a Ctrl-C killed while it started is aborted
+
+A Ctrl-C while a dev server was still starting read `failed (never
+ready: exited, exit 130)`, with a failure recap and a "failed to become
+ready" line, where every other task the stop kills is `aborted` (item
+962). A readiness failure after the run's stop now returns `aborted`.
+Row (`abort.test.ts` › a server still starting when the run stops is
+aborted, not failed): red without the fix; probed through the CLI
+(3/3 aborted). `cli.md` says so.
+
+## C-70: the scheduler's promises over random graphs, as a test
+
+Three probes this stream ran (C-51 to C-69) checked the scheduler and
+the taint tracker over thousands of random graphs and found nothing;
+a probe that confirms a thesis becomes a test. `scheduler-properties.
+test.ts` runs 450 seeded graphs (restores, demotions, groups, pools, an
+admission policy, failures, a stop, each `--continue` mode) against
+what `modules/scheduler.md` promises, and 300 against the taint
+tracker's definition. Each of three scheduler mutations reddens it:
+the item-963 hold, the skipped-upstream skip, the stop's skip. It
+draws from the full-period PRNG of C-79: the float LCG it first used
+cycled within 15,000 draws, so most graphs repeated.
+
+## C-88: what waits on a server that died mid-run no longer runs
+
+A ready server that exited non-zero while the graph ran was failed only
+at the run's end: its dependants not yet started ran against it, and
+`--continue=never` kept dispatching. The scheduler takes
+`serverDied(id)`, answered by run() from the persistent registry: a
+dependant of a dead server skips, `blockedBy` the server, and under
+`never` dispatch stops. Rows (`server-crash-fail-fast.test.ts`): the
+`never` row red without the change, the `deps-ok` row red without its
+half; `b`, which does not depend on the server, still runs under
+`deps-ok`. `cli.md` and `modules/scheduler.md` say so.
+
+## C-89: a task behind a group skips when the group's server dies
+
+C-88 skipped a dead server's direct dependants not yet started. A group
+finishes the moment its server is ready, so a task depending on the
+group ran against a server that died mid-run. The scheduler's check now
+follows groups to the server (`deadServerVia`), and the skip names it.
+Row: `server-crash-through-group.test.ts` (a group over a group), red
+without the change.
+
+## C-69: a server that dies mid-run is said when it dies
+
+A dependency server that crashed while its dependants ran (an `e2e`
+against an `api#dev` that fell over) was named only at the end of the
+run, `vx: api#dev exited with code 1 before the run stopped it`, while
+the dependant's failures scrolled past with no word of why. vx now says
+`vx: <id> exited with code <n> while the run went on` when it happens;
+not once the graph is done (the end of the run and the keep-alive wait
+say it), not under a stop, not for an exit 0. Rows
+(`keep-alive.test.ts` › a persistent server that dies before the run
+stops it): the crash rows read the new line first; each of the three
+guards removed reddens a row. `schema.md` says so.
+
+Open lead (2026-10-02): under `--continue=always` a task dispatched after its
+server died (C-88) still saves: the taint reads settled outcomes, and a
+ready server's says `success` until the run ends. A fix must record
+whether the server was dead at the task's dispatch, so a grand-dependant
+inherits it; not done.

@@ -402,6 +402,20 @@ is polled as its sibling rows do, and the unheard-stop bound is 5 s:
 0 of 20 under the same load. The same scan's other timer-aborted rows
 (`vx-github` 502 wait, `vx-otel` 503 wait) were 0 of 20 there.
 
+M-34. `keep-alive.test.ts` › a SIGKILLed vx takes …'s backgrounded
+server / child with it, and › a kill -9 while vx is descheduled: the
+last keep-alive grace rows on M-14's fuse. Each grandchild wrote
+`late.txt` one second after it started, and the row read the file as
+"survived vx's kill -9"; the kill comes after the pid poll, so a slow
+poll or kill on a loaded gate turned a correct vx red. With 1.2 s
+before the kill the old rows fail 3 of 3; the grandchild now waits on
+`go`, written once the row has seen it die (5 s bound, a zombie under
+a sandbox's procfs), and the new rows pass 3 of 3 there and fail 3 of 3
+with the guard's kill line made a no-op. The other gate row named with
+it, `sandbox-bridge-socket.unsafe.test.ts` › is removed when the task
+ends, is M-25's (#2255), with no failure on record since: 12 of 12 runs
+of both files beside eight busy loops on four cores, current main.
+
 ## Leads for other streams
 
 - A: A-20 let a same-project dependant restore ahead of a producer whose

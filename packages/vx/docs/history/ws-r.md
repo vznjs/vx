@@ -59,6 +59,10 @@
 - **R-13** patterns.md's performance table and the docs README's
   headline line gave Turbo and Nx as multiples; they now give vx's %
   by the same formula, with the formula line.
+- **R-10** The migrate guide's Nx step 6 still named `nx-exec` lines,
+  which the migrator no longer writes (it writes an executor target as
+  the command it runs), and not the `note:` that P's #2349 prints while
+  `nx()` remains; it now names both rightly.
 - **R-9** README prose tightened, data first: the benchmark table
   leads; the reasons, install, migration and status lines say the same
   in fewer words (1,096 → about 1,020 words), and the unpinned "over
@@ -66,6 +70,11 @@
 - **R-12** The benchmarks page's generated stress table and the
   benchmarks post's runner table show each competitor cell as
   `(vx N% faster)` with the formula line, not a multiple.
+
+- **R-15** The migrate guide shows the `vx.config.ts` vx-migrate
+  writes for one package, Turbo and Nx, held byte for byte to a run
+  (`try-it.unsafe.test.ts`). The from-nx post's figures were the
+  no-lock column; now the headline vx column, with vx's %.
 
 ## Leads
 

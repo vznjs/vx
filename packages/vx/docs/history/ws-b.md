@@ -1306,3 +1306,18 @@ wrapper is ~1.3 ms and its JS ~3; an unsandboxed one ~1.7 ms a task in
 a run, the `sh` layer (+0.8 ms) being the kill guard's (B-9). A CPU
 profile's top items there (`rmSync`, `realpathSync`) timed in place at
 0.4 and 0.23 ms a task.
+
+B-77. SRT's proxy records a refused host (`deny network-outbound
+<host>:<port> (<reason>)`) on both platforms, but on Linux vx read only
+the write observer's records: a task denied a host failed through its
+own `403` with no report, and one that survived it passed. The line has
+no `deny(<n>)`, so `ignore.network` could not silence it on macOS
+either. `refusedConnections` reads it; the classifier takes its shape
+(#2378). `@vzn/vx-migrate#test` ignores the host its degrade row dials.
+Rows: `sandbox-proxy-denials.unsafe.test.ts`.
+
+B-78. The write observer records strace's own log as `deny openat
+/dev/fd/5`, and `refusedWrites` resolved it in vx's process: a vx
+started with `5>out.log` in a single-package workspace failed a clean
+task on a write to `out.log`. Records under `/dev/` and `/proc/` are
+skipped (#2380). Rows: `sandbox-fd-records.test.ts`.

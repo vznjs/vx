@@ -26,7 +26,12 @@ import type { ProjectConfig } from '../config.js'
 import type { ProjectEntry } from '../workspace/index.js'
 import { parseDependencySpec } from '../graph/index.js'
 import { maskedLine, nearest, UserError } from '../util/index.js'
-import { claimedAffected, fingerprintClaims, gitOfDiscovery } from '../orchestrator/index.js'
+import {
+  claimedAffected,
+  fingerprintClaims,
+  gitOfDiscovery,
+  keepDiscoveryGraph,
+} from '../orchestrator/index.js'
 import {
   type CliLoadOptions,
   discoverCliProjects,
@@ -251,6 +256,9 @@ export async function resolveFilters(
     }
   }
   const graph = buildPackageGraph(projects, edges)
+  // The graph a run reusing this discovery builds is this one when no task
+  // edge went into it.
+  if (edges === undefined) keepDiscoveryGraph(projects, graph)
 
   // Resolve every `[<since>]` filter against git before the pure
   // applyFilters pass runs. One spawn per distinct ref — usually

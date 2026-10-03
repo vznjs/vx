@@ -402,6 +402,20 @@ the main thread, inside the IMMEDIATE transaction, against 0.04 for a
 free name. 1,000-task `--force` build, min of 7: main 4,014 ms, patch
 3,456; a cold run 3,931 against 3,833.
 
+I-47. A tar header is read in place and its numbers off the bytes
+(#2376). Each header was copied out of its chunk, zero-checked with a
+callback per byte, and had three numeric fields decoded through a
+TextDecoder and a regex. 4-entry artifact, min of 15: 50–57 µs → 22–23
+per read; compiled, `tarEntries` inclusive per restore run of 300
+40-file artifacts 224 → 92 ms; main-thread on-CPU time (schedstat, 11
+rounds) min 936.7 → 873.5 ms, A/A within 7.
+
+I-48. A planned entry is probed without reading its row (#2386). `has`
+ran `SELECT *`, building each row's stored stdout to learn it exists;
+it now selects one column off the index (the table row is still read,
+so a corrupt table refuses). `--dry` `plan` stage, 200 tasks storing
+1 MB each: 239.4 ms min → 27.3; 1,000 empty-stdout tasks 89.2 → 85.1.
+
 ## Leads for other streams
 
 - **A: a cold save commits one SQLite transaction per entry.** The
@@ -536,6 +550,12 @@ status` re-hashes every tracked file, and vx runs it with
   1,000 configs in 340–390 ms against 28 warm. Serving evaluations
   under `--force` is a meaning change for the escape hatch, not a perf
   fix: the owner's call.
+- **Owner / E: a warm hit reads and masks its stored stdout whether or
+  not the view prints it.** 200 hits storing 1 MB each: the probe's
+  `getMany` read 296 ms of the main thread and the secret mask 57, for
+  2 KB printed. Reading stdout only for a hit the logger will show needs
+  the logger to say so before the probe (a contract change), or stdout
+  read at replay instead of with the entry.
 
 ## Probes refuted (2026-10-02)
 

@@ -18,10 +18,8 @@ export function createTables(db: Database): void {
   `)
 
   db.exec(`
-    -- The queryable index: command, exit_code, duration, size,
-    -- timestamps, and stdout, which the <hash>.tar.zst artifact also
-    -- carries so it survives a remote round trip; a local hit
-    -- replays it from here.
+    -- The queryable index: command, exit_code, duration, size and
+    -- timestamps; stdout in entry_stdout below.
     CREATE TABLE IF NOT EXISTS entries (
       hash         TEXT PRIMARY KEY,
       project      TEXT NOT NULL,
@@ -30,12 +28,20 @@ export function createTables(db: Database): void {
       exit_code    INTEGER NOT NULL,
       duration_ms  INTEGER NOT NULL,
       size_bytes   INTEGER NOT NULL,
-      stdout       TEXT NOT NULL DEFAULT '',
       created_at   INTEGER NOT NULL,
       accessed_at  INTEGER NOT NULL,
       -- v26: the producing execution's usage, from the artifact's sidecar.
       cpu_ms         INTEGER,
       peak_rss_bytes INTEGER
+    );
+    -- v29: an entry's stdout, which the <hash>.tar.zst artifact also
+    -- carries so it survives a remote round trip; a local hit replays it
+    -- from here. Its own table: an UPDATE rewrites a whole record, and the
+    -- accessed_at bump rewrote up to 16 MB a hit. No row: empty stdout.
+    CREATE TABLE IF NOT EXISTS entry_stdout (
+      hash   TEXT PRIMARY KEY,
+      stdout TEXT NOT NULL,
+      FOREIGN KEY (hash) REFERENCES entries(hash) ON DELETE CASCADE
     );
     CREATE TABLE IF NOT EXISTS runs (
       id                  INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -365,7 +365,8 @@ Semantics:
 - **Crash after ready ⇒ failed run.** A persistent task that exits
   non-zero (or is killed) on its own after it became ready fails the
   run, and vx names it: `vx: <id> exited with code <n>` (a signal death
-  as its `128 + n` code). Its own outcome is `failed` with that exit
+  as its `128 + n` code), at once while the graph still runs (`… while
+the run went on`), so a dependant failing against it reads why. Its own outcome is `failed` with that exit
   code, and the footer counts it so (item 1071). An exit 0 on its own is
   fine (a daemon that forks and returns).
 - **End-of-graph SIGTERM.** Once the rest of the graph finishes
@@ -1216,7 +1217,9 @@ denials INSIDE the project are reported, because those are the reads
 that make a cache key wrong. A write refused past the wall is named
 beside a FAILED task, never counted, with the directory to grant: a
 tool that cannot fill its cache (`~/.bun/install/cache`) rarely says
-where it tried. To reach a path outside the project but
+where it tried. So is a read the wall hid of a path that exists on the
+host, with the grant spelled from the project (`'../../tsconfig.base.json'`):
+the tool said only "not found". To reach a path outside the project but
 inside the workspace — a workspace-level fixture — declare it; a path
 outside the workspace is not walled (above).
 
@@ -1659,7 +1662,7 @@ lists the messages a user meets most:
 
 | Symptom                                                                                                                               | Cause                                                                                                                                                                                                                          |
 | ------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `did not export a default object`                                                                                                     | Forgot `export default`, or exported a non-object.                                                                                                                                                                             |
+| `did not export a default object`                                                                                                     | Forgot `export default`, or exported a non-object; a function (Vite's `defineConfig(() => …)` shape) adds that it is one and to export what it returns (D-110).                                                                |
 | `tasks must be an object keyed by task name`                                                                                          | `tasks` is not an object — an ARRAY included.                                                                                                                                                                                  |
 | `<path> is <what> — a config must be JSON data, because the cache key folds its JSON`                                                 | A value JSON cannot carry, anywhere in the config: a function, a symbol, a bigint, `NaN` / `±Infinity`, `undefined` in an array, a cycle, a getter or an object that is not plain (`Date`, `Map`, `RegExp`, a class instance). |
 | `<level> has unknown field "<key>"`                                                                                                   | Typo'd / unsupported key (see below).                                                                                                                                                                                          |

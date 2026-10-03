@@ -53,7 +53,7 @@ executors wrapping every tool behind a JSON options object), and a
 cold-run cost that is not in the same league: on the same 3,270-task
 workspace, Nx's cold build burns 114 minutes of CPU where Turborepo
 burns 73 seconds and vx 35. A fully cached run takes 3.59s against
-Turborepo's 760ms, with the daemon running.
+Turborepo's 760ms, Nx's daemon off as in CI.
 
 Nx is the right tool if you want the platform. If you want the runner,
 you pay for the platform's weight and are steered toward its price.

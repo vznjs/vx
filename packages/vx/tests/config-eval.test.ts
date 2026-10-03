@@ -98,7 +98,6 @@ describe('evaluateConfigFresh: what crosses back', () => {
     ['a boolean', 'export default true\n'],
     ['null', 'export default null\n'],
     ['undefined', 'export default undefined\n'],
-    ['a function', 'export default function defineProject() {}\n'],
     ['no default export at all', 'export const tasks = {}\n'],
   ]
 
@@ -107,6 +106,15 @@ describe('evaluateConfigFresh: what crosses back', () => {
       expect(await evaluateConfigFresh(await write(body))).toBeNull()
     })
   }
+
+  it('answers a function, not null, when the config default-exports one (D-110)', async () => {
+    // So the loader's refusal says it is a function, as the in-process path's does.
+    expect(
+      typeof (await evaluateConfigFresh(
+        await write('export default function defineProject() {}\n'),
+      )),
+    ).toBe('function')
+  })
 
   it('passes an array default export through instead of judging it', async () => {
     // Deliberately NOT null: `typeof [] === 'object'`, so the in-process path
