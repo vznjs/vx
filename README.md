@@ -44,7 +44,7 @@ Same graph, commands and concurrency: [how it is measured](https://vznjs.github.
 npm install -D @vzn/vx     # or: pnpm add -D -w · yarn add -D (-W on Yarn 1) · bun add -d
 ```
 
-A prebuilt binary for Linux (glibc, not Alpine's musl) and macOS (x64, arm64); no Bun needed. The
+A prebuilt binary for Linux (glibc, not Alpine's musl) and macOS, x64 and arm64; no Bun needed. The
 [release](https://github.com/vznjs/vx/releases) binary needs no Node either.
 Windows: use WSL.
 
@@ -94,9 +94,12 @@ More: [Quickstart](https://vznjs.github.io/vx/quickstart/) ·
 ## Coming from Turbo or Nx
 
 `bunx @vzn/vx-migrate` writes a `vx.config.ts` per package from
-`turbo.json` or the Nx graph. `vx init` there writes a `vx.workspace.ts`
-that reads them in place: a temporary start. The numbers above are native
-vx config. [Migration guide](https://vznjs.github.io/vx/guides/migrate/).
+`turbo.json` or the Nx graph; you keep those and delete the old config.
+Beside `turbo.json` or `nx.json`, `vx init` writes only a
+`vx.workspace.ts` that maps the old config until then: a temporary
+start, not a way to run the repo. The numbers above are native vx
+config. `@vzn/vx-migrate`'s first npm publish is pending.
+[Migration guide](https://vznjs.github.io/vx/guides/migrate/).
 
 ## More than speed
 
