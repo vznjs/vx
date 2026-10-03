@@ -101,7 +101,7 @@ function catalogLock(range: string, hoisted: string): string {
   const nested = hoisted.startsWith('6')
     ? ''
     : `
-    "is-odd/is-number": ["is-number@6.0.0", "", {}, "sha512-six"],
+    "is-odd/is-number": ["is-number@6.0.0", "", {}, "sha512-6.0.0"],
 `
   return `{
   "lockfileVersion": 2,
@@ -193,16 +193,16 @@ describe('workspace digests', () => {
     expect(after.get('packages/a')).toBe(before.get('packages/a'))
   })
 
-  it('a catalog bump moves every workspace: bun.lock records the catalog (turborepo#12635)', () => {
+  it('a catalog bump moves the workspace that names `catalog:` (turborepo#12635, D-141)', () => {
     const moved = (before: string, after: string) => {
       const b = digests(before)
       const a = digests(after)
       return [...a.keys()].filter((k) => a.get(k) !== b.get(k))
     }
+    // `b`'s is-odd still installs is-number 6.0.0, now nested: the same
+    // bytes, so `b` stays put (D-140), and the catalog text reaches no one.
     expect(moved(catalogLock('^6.0.0', '6.0.0'), catalogLock('^7.0.0', '7.0.0'))).toEqual([
-      '.',
       'packages/a',
-      'packages/b',
     ])
     // Inside the range, the catalog unchanged: the hoisted entry moves
     // the workspace that names `catalog:` and no other.
@@ -327,11 +327,6 @@ describe('every input the digest must read', () => {
       'patchedDependencies',
       '"patchedDependencies": { "x@1.0.0": "p/a.patch" },',
       '"patchedDependencies": { "x@1.0.0": "p/b.patch" },',
-    ],
-    [
-      'catalogs',
-      '"catalogs": { "react": { "react": "^18" } },',
-      '"catalogs": { "react": { "react": "^19" } },',
     ],
   ])('the install-wide %s moves every workspace', (_, one, two) => {
     const text = (extra: string) =>

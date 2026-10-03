@@ -231,6 +231,15 @@ prune` all match. Fixed: the Run blocks used bare `vx`, which a local
   write, then the read; read `.` + write `dist/**` succeeds). The
   plugins and configure samples already have pins.
 
+- **R-37** Nx guide after P2-39 (#2632, every executor but
+  run-commands, run-script and noop through `nx-exec`): the try-it rows
+  (`vx init`, `bunx @vzn/vx-migrate`, the written lib config) pass; the
+  guide's `nx-exec @nx/jest:jest …` sample is the line
+  `nx-migrate-nx-exec.test.ts` asserts; from-nx's server list is
+  `KNOWN_EXECUTORS`' persistent set. The choosing table's adoption cell
+  now says the written config runs executors through `nx-exec` until
+  each line is rewritten.
+
 ## Leads
 
 - Real-repo rows (`packages/vx-bench/real-repos.json`, benchmarks.md's

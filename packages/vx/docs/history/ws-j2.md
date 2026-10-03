@@ -475,6 +475,16 @@ persistent task` and vx exits 1). Row (`site-samples` › a post's link
   boundary, concurrent runs and their messages, the config-evaluation
   cache's key, the performance notes, the file-hash prune's daily
   limit, and what is not in the key.
+- **J2-56** `execution.md` read against source: its timeline listed the
+  workspace file's fields (concurrency, cacheDir, timeout,
+  cacheRetention, plugins) without `affectedBase`. Row
+  (`doc-references` › execution.md's workspace-config step names every
+  field), generated from `WorkspaceConfig`, red without the fix. Checked
+  clean: the dispatcher's verbs, every function the timeline names, the
+  env allowlist and its layers, the failure table and the default
+  `--continue` mode, the glyph grid, stdin per task kind, the cgroup
+  rounding, the executor-capacity refusal, the plan outcomes and
+  formatters, and the run artifacts.
 - **J2-54** `architecture.md` read claim by claim against source: its
   "What's intentionally absent" bullet listed the pipeline stages a
   plugin fills without `discover` (J2-48's drift on another page). Row

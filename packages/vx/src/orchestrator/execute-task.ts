@@ -36,7 +36,16 @@ import {
   sandboxReads,
 } from '../exec/index.js'
 import { isGroupTask, RestoreDemoted, type TaskNode, type TaskOutcome } from '../graph/index.js'
-import { killGraceMs, maskedEmitter, printable, relPosix, secretMask, span } from '../util/index.js'
+import {
+  killGraceMs,
+  MASKED,
+  maskedEmitter,
+  printable,
+  relPosix,
+  secretMask,
+  secretNamed,
+  span,
+} from '../util/index.js'
 import { forwardedSignal, SIGNAL_SHUTDOWN_GRACE_MS } from './signals.js'
 import { executorLabel, nameExecutorFailure } from './plugin-host.js'
 import {
@@ -778,6 +787,13 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         ...(args.hashCache !== undefined ? { hashCache: args.hashCache } : {}),
       })
     : undefined
+  // A name only `exec.env.secret` makes secret is not one the name rule
+  // sees later: its row carries the mark, so `vx why` hides its hash (M-63).
+  const named = node.config.exec?.env?.secret
+  if (named !== undefined)
+    for (const c of captured)
+      if (c.kind === 'env' && named.includes(c.name) && !secretNamed(c.name))
+        c.hash = MASKED + c.hash
   const inputs: TaskInputs | undefined = described?.inputs
   // A declared input set that resolves to NOTHING is the quiet stale hit:
   // the key stops moving with this project's source and every later run
