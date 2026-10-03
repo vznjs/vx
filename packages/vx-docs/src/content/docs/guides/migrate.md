@@ -183,7 +183,11 @@ The command itself comes from your `package.json` script, with its
 5. Preview the configs with `bunx @vzn/vx-migrate --dry`, then write them
    with `bunx @vzn/vx-migrate`. With `turbo.json` there too, pass
    `--from nx` (or `--from turbo`).
-6. Once `vx run build --all` does what `nx run-many -t build` did,
+6. Review each `TODO(vx-migrate)` comment. An executor with no plain
+   command is a placeholder that fails until you write the line it runs;
+   a task a project's own `vx.config.ts` declares wins, and `nx()` fills
+   only the rest.
+7. Once `vx run build --all` does what `nx run-many -t build` did,
    remove `nx()` and its import from `vx.workspace.ts`, then delete
    `nx.json`: the configs declare every task the graph had, and the
    migrator's `note:` says so while `nx()` is still there. Keep

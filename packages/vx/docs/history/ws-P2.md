@@ -158,6 +158,12 @@ sync`", advice for a repo leaving Nx: they say to keep what the
 - **P2-29** The migrate guide says what P2-24, P2-25 and P2-28 write:
   a server task depends on the build its executor ran first, and a
   Cypress task on its dev server.
+- **P2-30** The Nx guide, walked end to end: every step's command and
+  transcript is already held to a run by `try-it.unsafe.test.ts` (init,
+  the `next:` build through `nx()`, the migrator's report, the written
+  config, the native end state). The one step that differed from the
+  Turborepo list was missing: review the `TODO(vx-migrate)` comments,
+  where an untranslated executor's placeholder fails until written.
 
 ## Leads for other streams
 
