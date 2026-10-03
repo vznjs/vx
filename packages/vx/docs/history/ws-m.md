@@ -478,6 +478,22 @@ Refuted: a memoized grace (`killGraceMs` reads the env each call) and
 on Linux with `sh` as `bash --posix` beside eight busy loops. macOS's
 `sh` is bash 3.2 and is not here to probe.
 
+M-39. The plugin suites' timed waits (vx-otel, vx-github, vx-mcp,
+vx-lockfile, vx-migrate), swept for a timer standing in for a state.
+Three rows claimed "a deadline during the retry wait ends it" with an
+abort on a 50 ms timer from the call's start and a 150 ms bound on the
+whole call: `collector.test.ts` › a deadline during the wait ends the
+retries and warns the 503, and `github.test.ts` › … warns the 502 and
+› a drop, then the deadline during the wait. The timer could beat the
+first POST, and the bound counted the POST and any stall. The abort is
+now armed by the first POST (vx-otel's from its fake collector, behind
+a 2 s Retry-After), and the bound runs from the abort. With an 80 ms
+collector or a 160 ms stall in the first POST the old rows fail and
+the new pass; each new row fails with the sink or check-run posting
+again after the abort, or with the abort not heard in the wait. The
+rest hold: the other waits are polls on a state or a hang a client
+abort releases.
+
 ## Leads for other streams
 
 - A: A-20 let a same-project dependant restore ahead of a producer whose

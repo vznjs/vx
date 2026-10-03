@@ -854,26 +854,33 @@ describe('every output the vx-github sweep found unheld', () => {
 
   // F-46: the deadline passed during the wait, the next POST threw an
   // AbortError, and the warning named it instead of GitHub's 502.
+  // The abort is armed by the first POST, so it lands in the 200 ms wait: a
+  // 50 ms timer from the call's start could beat that POST (M-39).
   it('a deadline during the wait ends the retries and warns the 502', async () => {
     const { postCheckRun } = await import('../src/checks.js')
     const warns: string[] = []
     let calls = 0
     const deadline = new AbortController()
-    setTimeout(() => deadline.abort(), 50)
-    const t0 = Date.now()
+    let abortedAt = 0
     await postCheckRun({
       env: { token: 't', repository: 'o/r', sha: 's', apiUrl: 'https://api' },
       payload: {},
       fetchFn: async (_url, init) => {
         calls++
         if (init.signal?.aborted === true) throw new DOMException('aborted', 'AbortError')
+        if (calls === 1)
+          setTimeout(() => {
+            abortedAt = Date.now()
+            deadline.abort()
+          }, 0)
         return { ok: false, status: 502, text: async () => 'bad gateway' }
       },
       warn: (m) => warns.push(m),
       signal: deadline.signal,
     })
     expect([calls, warns]).toEqual([1, ['vx-github: check-run POST failed (502): bad gateway']])
-    expect(Date.now() - t0).toBeLessThan(150)
+    // Slept out, the wait ends ~200 ms after the abort.
+    expect(Date.now() - abortedAt).toBeLessThan(150)
   })
 
   it('a refused certificate is not retried; its message is warned (F-40)', async () => {
@@ -1231,7 +1238,7 @@ describe('the check run, as its second sweep found it unheld', () => {
   /** Answers in turn ('drop' throws, a string throws with that code); the calls' times. */
   const post = async (
     answers: (number | 'drop' | { code: string })[],
-    over: { apiUrl?: string; signal?: AbortSignal } = {},
+    over: { apiUrl?: string; signal?: AbortSignal; onCall?: () => void } = {},
   ) => {
     const { postCheckRun } = await import('../src/checks.js')
     const warns: string[] = []
@@ -1243,6 +1250,7 @@ describe('the check run, as its second sweep found it unheld', () => {
       fetchFn: async (url, init) => {
         urls.push(url)
         at.push(Date.now())
+        over.onCall?.()
         if (init.signal?.aborted === true) throw new DOMException('aborted', 'AbortError')
         const a = answers[urls.length - 1] ?? 201
         if (a === 'drop') throw new Error('connection reset')
@@ -1299,10 +1307,15 @@ describe('the check run, as its second sweep found it unheld', () => {
 
   it('a drop, then the deadline during the wait: one warning, at once', async () => {
     const deadline = new AbortController()
-    setTimeout(() => deadline.abort(), 50)
-    const t0 = Date.now()
-    const r = await post(['drop'], { signal: deadline.signal })
-    expect([r.warns, Date.now() - t0 < 150]).toEqual([
+    let abortedAt = 0
+    // Armed by the first POST, so it lands in the wait (M-39).
+    const onCall = () =>
+      setTimeout(() => {
+        abortedAt = Date.now()
+        deadline.abort()
+      }, 0)
+    const r = await post(['drop'], { signal: deadline.signal, onCall })
+    expect([r.warns, Date.now() - abortedAt < 150]).toEqual([
       ['vx-github: check-run POST failed: the flush deadline passed before it could be retried'],
       true,
     ])
