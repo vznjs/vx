@@ -70,7 +70,14 @@ export function completionScript(shell: CompletionShell, verbs: readonly string[
         ...table.map((t) => `    ${t.verb}) compadd -- ${t.words.join(' ')} ;;`),
         '  esac',
         '}',
-        'compdef _vx vx',
+        // Autoloaded from $fpath (the `#compdef` file), this body runs on
+        // the first Tab: it must complete then, not only define `_vx`, or
+        // that Tab rings the bell. Sourced, it registers instead.
+        'if [[ "${funcstack[1]}" == _vx ]]; then',
+        '  _vx "$@"',
+        'else',
+        '  compdef _vx vx',
+        'fi',
         '',
       ].join('\n')
     case 'fish':
