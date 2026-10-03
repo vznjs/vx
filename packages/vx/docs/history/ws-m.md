@@ -1022,3 +1022,11 @@ darwin's runs last, after the prove and the attestation, and publishes the
 draft. An asset already attached is skipped, so a re-run completes the
 set. `tests/release-provenance.unsafe.test.ts` now reads the upload tasks.
 Not provable here: the GitHub API calls.
+
+M-82. Two gate tasks failed on the owner's Mac only. pnpm 12 locks its
+store in `/tmp/pnpm-store-operation-locks-<uid>` whatever `--store-dir`
+or `TMPDIR` say (strace, pnpm 12.8.1) and asks trustd on macOS, so
+`@vzn/vx-lockfile#test`'s pnpm install was refused; the task now grants
+both. `check.binary`'s fixture commit read the host's git config, which
+signed through 1Password's SSH signer that seatbelt refuses; its git now
+runs on git's defaults. The pnpm row reproduced on Linux with pnpm 12.

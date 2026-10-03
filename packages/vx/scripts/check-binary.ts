@@ -244,6 +244,9 @@ const git = (...args: string[]): void => {
   Bun.spawnSync({
     cmd: ['git', '-c', 'user.email=ci@vx', '-c', 'user.name=ci', ...args],
     cwd: bare,
+    // A host config that signs commits (an SSH signer such as 1Password's)
+    // reaches a service the sandbox refuses; the fixture needs git's defaults.
+    env: { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' },
   })
 }
 git('init', '-q')
