@@ -171,6 +171,16 @@ prune` all match. Fixed: the Run blocks used bare `vx`, which a local
   `examples.unsafe.test.ts` refuses a `workspace:` spec in an npm
   starter (fails with the old spec).
 
+- **R-30** Benchmark numbers against data: README and landing cells are
+  generated from `results.json` (`update-site.ts --check` passes); every
+  Turbo/Nx figure a post or guide states is on `benchmarks.md`; every
+  hand-typed vx % there matches the generated table. New
+  `site-bench-percent.unsafe.test.ts` holds each `<figure> (vx N% …)` on
+  a page to the same pair on `benchmarks.md`, so a new run cannot leave
+  a stale % behind (a planted 36% for 37% fails it). The Linux head-to-
+  head tables cite their runs (dates, harness, command) but have no
+  committed data file; the headline rerun lead covers them.
+
 ## Leads
 
 - Real-repo rows (`packages/vx-bench/real-repos.json`, benchmarks.md's
