@@ -486,7 +486,8 @@ shows it: the task's output and the line vx adds under a shell's 127 or
 126 (the command's first word), the stdout the cache keeps and a hit
 replays, the command a cache entry stores (what `vx why` prints and a
 remote cache receives), the `$ command` line, telemetry records,
-`vx show`, an executor's error or a plugin's warning (a remote's reply), and the run's own invocation line that `vx last` prints (a
+`vx show`, the hashes `vx why` gives for such a variable in
+`cache.inputs.env` (its value, unsalted: the row names it and its change), an executor's error or a plugin's warning (a remote's reply), and the run's own invocation line that `vx last` prints (a
 secret passed after `--`) and its `--tag`s. A multi-line value (a PEM
 key) is also masked line by line, each line of six characters or more.
 A value

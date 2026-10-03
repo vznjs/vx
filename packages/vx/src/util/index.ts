@@ -61,5 +61,6 @@ export {
   maskedLine,
   MASKED,
   secretMask,
+  secretNamed,
   type SecretMask,
 } from './secret-mask.js'

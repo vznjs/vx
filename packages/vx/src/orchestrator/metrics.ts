@@ -14,7 +14,7 @@ import type { Database } from 'bun:sqlite'
 // rule written once cannot drift.
 import { KEYED_RUNS_SQL } from '../cache/index.js'
 import { splitTaskId } from '../graph/index.js'
-import { clampInt } from '../util/index.js'
+import { clampInt, MASKED, secretNamed } from '../util/index.js'
 import type { TaskInputComponent } from './task-hash.js'
 import { isPassStatus } from './telemetry.js'
 
@@ -557,6 +557,11 @@ export function diffKeyComponents(
   const old = new Map(before.map((c) => [id(c), c]))
   const entries: InputDiffEntry[] = []
   let unchangedCount = 0
+  // A secret-named env input's hash is its value, unsalted: a short one is
+  // recoverable from a log that printed `vx why` (M-62). The diff says it
+  // changed and never shows the hash.
+  const shown = (c: TaskInputComponent): string =>
+    c.kind === 'env' && secretNamed(c.name) ? MASKED : c.hash
   const keys = new Set<string>([...cur.keys(), ...old.keys()])
   for (const key of keys) {
     const a = cur.get(key)
@@ -568,13 +573,13 @@ export function diffKeyComponents(
           kind: a.kind,
           name: a.name,
           change: 'changed',
-          before: b.hash,
-          after: a.hash,
+          before: shown(b),
+          after: shown(a),
         })
     } else if (a) {
-      entries.push({ kind: a.kind, name: a.name, change: 'added', before: null, after: a.hash })
+      entries.push({ kind: a.kind, name: a.name, change: 'added', before: null, after: shown(a) })
     } else if (b) {
-      entries.push({ kind: b.kind, name: b.name, change: 'removed', before: b.hash, after: null })
+      entries.push({ kind: b.kind, name: b.name, change: 'removed', before: shown(b), after: null })
     }
   }
   // Code-unit order, not `localeCompare`: collation follows the machine's
