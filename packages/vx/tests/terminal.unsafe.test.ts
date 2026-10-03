@@ -57,6 +57,72 @@ describe('a task under a vx that runs on a terminal', () => {
   }, 20_000)
 })
 
+// `exec.interactive` (Turbo #1235, Nx #8269): on a terminal the task gets
+// vx's own stdin, stdout and stderr, and a typed line reaches it.
+describe('an interactive task under a vx on a terminal', () => {
+  const PROBE =
+    '[ -t 0 ] && echo IN-TTY; [ -t 1 ] && echo OUT-TTY; echo ASKING; read line; echo "got:[$line]"'
+
+  const onTerminal = async (config: string, task: string) => {
+    const root = await makeWorkspace({ prefix: 'vx-interactive-tty-' })
+    try {
+      await addProject(root, 'app', { config })
+      let screen = ''
+      let typed = false
+      const proc = Bun.spawn([process.execPath, BIN, 'run', task, '--output-logs=full'], {
+        cwd: root,
+        env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1' },
+        terminal: {
+          data: (term, data) => {
+            screen += new TextDecoder().decode(data)
+            // Typed once the task asks: a line typed earlier would sit in
+            // the terminal's queue and prove nothing about the hand-over.
+            if (!typed && /^ASKING\r?$/m.test(screen)) {
+              typed = true
+              term.write('hello\r')
+            }
+          },
+        },
+      })
+      // A vx that never hands the line over waits on it for good: stopped,
+      // so a failing row fails in seconds and leaves no server behind.
+      const stop = setTimeout(() => proc.kill('SIGTERM'), 8_000)
+      const code = await proc.exited
+      clearTimeout(stop)
+      proc.terminal?.close()
+      const lines = screen.split(/\r?\n/)
+      return {
+        code,
+        answers: lines.filter((l) => /^(IN-TTY|OUT-TTY|got:\[.*\])$/.test(l)),
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  }
+
+  it('reads what is typed, on the terminal itself', async () => {
+    const config = `export default { tasks: { ask: { exec: { command: ${JSON.stringify(PROBE)}, interactive: true } } } }`
+    expect(await onTerminal(config, 'app#ask')).toEqual({
+      code: 0,
+      answers: ['IN-TTY', 'OUT-TTY', 'got:[hello]'],
+    })
+  }, 20_000)
+
+  it('a server holds it too, and the run ends when it exits', async () => {
+    const config = `export default { tasks: { dev: { exec: { command: ${JSON.stringify(PROBE)}, interactive: true, persistent: {} } } } }`
+    expect(await onTerminal(config, 'app#dev')).toEqual({
+      code: 0,
+      answers: ['IN-TTY', 'OUT-TTY', 'got:[hello]'],
+    })
+  }, 20_000)
+
+  // CONTROL: the same command undeclared reads end of input at once.
+  it('without the field the task reads no terminal', async () => {
+    const config = `export default { tasks: { ask: { exec: { command: ${JSON.stringify(PROBE)} } } } }`
+    expect(await onTerminal(config, 'app#ask')).toEqual({ code: 0, answers: ['got:[]'] })
+  }, 20_000)
+})
+
 describe('a vx that paints its own output on a terminal', () => {
   let root: string
   beforeEach(async () => {

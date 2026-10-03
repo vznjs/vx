@@ -91,6 +91,13 @@ the mode; `ci: true` whenever `CI` is truthy.
 - **`hash-only`** — one line per task with its key, no output.
 - **`none`** — no per-task output.
 
+A task handed the terminal (`exec.interactive`, with `defaultLogger`'s
+`tty` option, which `run()` sets from `RunOptions.tty`) writes to it
+directly. Its start removes the status region for the rest of the run
+and settles the coalesced writes; in `full`, `focused` and `broad` a
+live frame opens before it and closes after, and what vx says about it
+(a timeout, a shell verdict) streams inside.
+
 `status()` lines (header, summary) always print. Group tasks never
 print in any mode. A ready persistent task the run keeps (`vx run dev`)
 is held to a bounded tail until `runEnd`, which flushes it before the

@@ -178,7 +178,7 @@ export function defaultLogger(
   colors: ColorSupport = detectColors(),
   view: OutputView = { mode: 'full' },
   out: StatusStream = process.stdout,
-  opts: { forceFloorMs?: number; coalesce?: boolean } = {},
+  opts: { forceFloorMs?: number; coalesce?: boolean; tty?: boolean } = {},
 ): DefaultLogger {
   // Per-task buffers, split by stream. Splitting lets the framed-output
   // renderer put stdout under `├─ stdout` and stderr under `├─ stderr`.
@@ -440,8 +440,16 @@ export function defaultLogger(
   // group (see markSurfacedDeps) — is a "primary" node the focused
   // view shows. Groups never stream (no output of their own).
   const isPrimary = (node: TaskNode): boolean => node.requested || node.surfaced === true
+  // A task handed the terminal writes to it directly, so the status region
+  // goes for good (it would repaint over a prompt) and, in the views that
+  // frame executed work, a live frame opens before it and closes after;
+  // what vx itself says about it streams inside.
+  const holdsTerminal = (node: TaskNode): boolean =>
+    opts.tty === true && node.config.exec?.interactive === true
+  const framesTerminal = view.mode === 'full' || view.mode === 'focused' || view.mode === 'broad'
   const streamsLive = (node: TaskNode): boolean =>
-    view.mode === 'focused' && isPrimary(node) && !isGroupTask(node) && requestedCount <= 1
+    (framesTerminal && holdsTerminal(node)) ||
+    (view.mode === 'focused' && isPrimary(node) && !isGroupTask(node) && requestedCount <= 1)
 
   return {
     settle() {
@@ -487,6 +495,11 @@ export function defaultLogger(
     },
     taskStart(node) {
       if (isGroupTask(node)) return
+      if (holdsTerminal(node)) {
+        killStatus()
+        // What is coalesced lands before the task writes past it.
+        writer.settle()
+      }
       // Focused flow: the status line exists for the dependency
       // phase only. The moment a requested node starts streaming,
       // clear it for good — its raw output owns the terminal now.
@@ -647,7 +660,10 @@ export function defaultLogger(
         // the terminal where a frame would have: a task that traps Ctrl-C
         // and exits 0 is aborted since item 962, and its frame was dropped
         // with the count.
-        const framed = view.mode === 'full' || (view.mode === 'focused' && isPrimary(node))
+        const framed =
+          view.mode === 'full' ||
+          (view.mode === 'focused' && isPrimary(node)) ||
+          (framesTerminal && holdsTerminal(node))
         if (framed && !isGroupTask(node)) {
           if (streamsLive(node)) {
             if (streamMidLine) {
@@ -713,6 +729,14 @@ export function defaultLogger(
         refresh(true)
       }
       if (isGroupTask(node)) return
+      if (holdsTerminal(node) && streamsLive(node) && outcome.status !== 'skipped') {
+        if (streamMidLine) {
+          writer.write('\n')
+          streamMidLine = false
+        }
+        emitFrameClose(formatFrameClose(node, outcome, colors))
+        return
+      }
       const isHit = isCacheHit(outcome.status)
       switch (view.mode) {
         case 'none':

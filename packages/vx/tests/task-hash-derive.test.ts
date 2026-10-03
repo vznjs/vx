@@ -219,6 +219,7 @@ describe('computeTaskHash — what the config contributes', () => {
       timeout: 5_000,
       retries: 2,
       persistent: { readyWhen: 'ready' },
+      interactive: true,
       remote: true,
       sandbox: {},
     }

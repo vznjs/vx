@@ -417,6 +417,34 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
           }
         }
       }
+      const interactive = (exec as { interactive?: unknown }).interactive
+      if (interactive !== undefined && typeof interactive !== 'boolean') {
+        throw new UserError(`${where}.exec.interactive must be a boolean (or omitted)`)
+      }
+      if (interactive === true) {
+        if (cache !== undefined) {
+          throw new UserError(
+            `${where}: \`cache\` is not allowed on an interactive task — what it does ` +
+              `depends on what is typed, which no key holds`,
+          )
+        }
+        // bwrap's --new-session keeps the terminal usable (probed), but the
+        // sandboxed spawn pipes the task's streams: its stderr is read for
+        // the tracer's own errors (sandbox-runtime.ts).
+        if ((exec as { sandbox?: unknown }).sandbox !== undefined) {
+          throw new UserError(
+            `${where}: \`sandbox\` is not allowed on an interactive task — a sandboxed ` +
+              `task's output passes through vx, and an interactive one writes to the terminal`,
+          )
+        }
+        const ready = (exec as { persistent?: { readyWhen?: unknown } }).persistent
+        if (typeof ready === 'object' && ready !== null && ready.readyWhen !== undefined) {
+          throw new UserError(
+            `${where}: \`persistent.readyWhen\` is not allowed on an interactive task — ` +
+              `its output goes to the terminal, so vx reads none of it; it is ready once spawned`,
+          )
+        }
+      }
       const persistent = (exec as { persistent?: unknown }).persistent
       if (persistent !== undefined) {
         if (typeof persistent !== 'object' || persistent === null) {
@@ -708,6 +736,7 @@ const EXEC_FIELDS = new Set([
   'timeout',
   'retries',
   'persistent',
+  'interactive',
   'remote',
   'sandbox',
 ])
@@ -784,8 +813,7 @@ const FOREIGN_FIELDS: ReadonlyMap<ReadonlySet<string>, Readonly<Record<string, s
       outputLogs: 'the `--output-logs` flag of `vx run`',
       // Turbo's `interactive` / `with`, Nx's `cwd` / `parallelism` /
       // `configurations`: refused with no word on where they went (D-89).
-      interactive:
-        'a command run outside vx: a task never reads the terminal (its stdin is EOF, or a pipe vx holds under `exec.persistent`)',
+      interactive: '`exec.interactive: true`',
       with: '`dependsOn` on each task it runs beside: a persistent one stays up, and this task starts once it is ready',
       cwd: '`cd <dir> && …` in `exec.command`: a task runs in its project directory',
       parallelism:
@@ -806,8 +834,6 @@ const FOREIGN_FIELDS: ReadonlyMap<ReadonlySet<string>, Readonly<Record<string, s
       commands: 'one `command` (`a && b`, or `a & b; wait` to run them at once), or one task each',
       parallel: 'one task each, which vx runs at once, or `a & b; wait` in `command`',
       shell: 'no field: `command` always runs in a shell',
-      interactive:
-        'a command run outside vx: a task never reads the terminal (its stdin is EOF, or a pipe vx holds under `persistent`)',
     },
   ],
   // wireit's `files` / `output` and include-style spellings written into

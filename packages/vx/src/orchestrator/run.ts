@@ -72,6 +72,7 @@ import {
   placeTasks,
   planExecutorOf,
   poolOfPlacement,
+  terminalHolders,
   UNPLACED_EXECUTOR,
   locallyPlaced,
 } from './placement.js'
@@ -295,7 +296,10 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   // See docs/design/event-stream-2026-06.md.
   const terminal =
     options.log === undefined
-      ? defaultLogger(colors, resolveOutputView(options), process.stdout, { coalesce: true })
+      ? defaultLogger(colors, resolveOutputView(options), process.stdout, {
+          coalesce: true,
+          ...(options.tty === true ? { tty: true } : {}),
+        })
       : null
   const sink = options.log ?? terminal!
   // An injected bus already has surfaces subscribed; we add the terminal
@@ -466,6 +470,7 @@ async function runOnBus(
   // worker slot. Group tasks run nothing; persistent tasks never reach an
   // executor (local by construction) — both stay off the map.
   const placements = await abandoning(() => placeTasks(nodes, executors))
+  const holders = await abandoning(() => terminalHolders(nodes, options.tty === true))
   // A `remote: 'only'` task nobody takes succeeds WITHOUT running. That is
   // deliberate — on a machine with no remote pool the ambient state already
   // is what the task would have produced — but it must not be SILENT: a task
@@ -934,6 +939,7 @@ async function runOnBus(
         ...(upfrontKey !== undefined ? { upfrontKey } : {}),
         ...(tainted ? { taintedUpstream: true } : {}),
         ...(dependedOn.has(node.id) ? {} : { noDependants: true as const }),
+        ...(holders.has(node.id) ? { terminal: true as const } : {}),
         fingerprintWatch,
         ...(sandboxArmer !== null ? { armSandbox: () => sandboxArmer.arm() } : {}),
         keyedProjects: keyed,
@@ -967,6 +973,7 @@ async function runOnBus(
       settledOf: (o) => deferredSaves.get(o.node.id),
       ...(hasPooledExecutor(executors) ? { poolOf: poolOfPlacement(placements) } : {}),
       ...(admit !== undefined ? { admit } : {}),
+      ...(holders.size > 0 ? { exclusive: holders } : {}),
       ...(options.continueMode !== undefined ? { continueMode: options.continueMode } : {}),
       serverDied,
       signal: stopRun.signal,

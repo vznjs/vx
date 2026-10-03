@@ -72,6 +72,8 @@ export interface ScheduleOptions {
   poolOf?: (id: string) => { name: string; capacity: number } | undefined
   /** Admission over the worker count for local exec-tier tasks; `false` parks the task. */
   admit?: (id: string, running: ReadonlySet<string>) => boolean
+  /** Tasks that hold the terminal: each starts once nothing runs, and nothing starts beside it. */
+  exclusive?: ReadonlySet<string>
 }
 
 export async function runGraph(options: ScheduleOptions): Promise<Map<string, TaskOutcome>>
@@ -158,12 +160,18 @@ concurrency` check for exec-tier nodes — including its O(1) early-out
    `admissionHeldMs` — `--summarize` rows, the event stream and the
    footer's `admit held N tasks` show the policy's hand; no policy, no
    field, no clock read.
-5. **Failed upstream** → an exec-tier node is marked `skipped`
+5. **Exclusive nodes** (`exec.interactive` on a TTY) hold the terminal.
+   When one is the next exec-tier node and anything runs, it parks and
+   the tick dispatches nothing more, restores included, so the running
+   nodes drain; it starts once none runs, and nothing starts while it
+   holds. A persistent one releases at spawn, when `execute` resolves.
+   A higher-priority node that becomes ready first still goes first.
+6. **Failed upstream** → an exec-tier node is marked `skipped`
    synchronously (no `execute` call). Restore-tier nodes **bypass**
    this check — their key is dep-success-independent (pure-input
    transitive hashing), so a valid cached output reports `cache-hit`
    even when a dep failed.
-6. When every node has an outcome and nothing is active, resolve.
+7. When every node has an outcome and nothing is active, resolve.
 
 Priority within a queue: highest transitive-reverse-dependent count
 first (`computeReverseDepCount` — an exact bitset closure swept in

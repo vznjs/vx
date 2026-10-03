@@ -76,6 +76,7 @@ const LEVEL_TYPES: Record<'workspace' | 'project', Record<string, string[]>> = {
       timeout: true,
       retries: true,
       persistent: true,
+      interactive: true,
       sandbox: true,
     }),
     'tasks.*.exec.env': keys<ExecEnv>({ passThrough: true, define: true, secret: true }),
@@ -175,6 +176,7 @@ function projectSeed(): Record<string, unknown> {
           },
         },
       },
+      i: { exec: { command: 'true', interactive: true } },
       c: {
         exec: { command: 'true', retries: 1 },
         cache: {

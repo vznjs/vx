@@ -376,6 +376,16 @@ export interface ExecConfig {
    */
   persistent?: PersistentConfig
   /**
+   * The task reads the terminal: a prompt, a REPL, a watch mode's keys.
+   * When vx's stdin is a TTY the task gets vx's stdin, stdout and stderr
+   * as they are, and no other task starts while it runs (a persistent one:
+   * until it is spawned). It runs in its own session, so `/dev/tty` still
+   * cannot be opened. Off a TTY (CI) it runs as any task. Always on this
+   * machine, never cached; not allowed with `cache`, `sandbox` or
+   * `persistent.readyWhen`.
+   */
+  interactive?: boolean
+  /**
    * Confine this task's process: what it may read, write and reach.
    * Nothing is confined unless this is present.
    *

@@ -114,8 +114,9 @@ const TURBO_JSON = {
     codegen: { outputs: ['src/gen/**', '$TURBO_ROOT$/generated/api.ts'] },
     lint: { cache: false },
     dev: { cache: false, persistent: true },
-    test: { passThroughEnv: ['CI'], interactive: true, outputs: [] },
-    'app#test': { passThroughEnv: ['CI'], interactive: true, outputs: ['coverage/**'] },
+    test: { passThroughEnv: ['CI'], outputs: [] },
+    'app#test': { passThroughEnv: ['CI'], outputs: ['coverage/**'] },
+    seed: { interactive: true },
     deploy: { outputs: [] },
   },
 }
@@ -129,6 +130,7 @@ async function makeTurboWorkspace(): Promise<string> {
     lint: 'eslint .',
     dev: 'vite',
     test: 'vitest run',
+    seed: 'node seed.js',
   })
   const libDir = await addPackage(root, 'lib', { build: 'tsc' })
   await writeFile(
@@ -284,6 +286,11 @@ describe('vx migrate (turbo)', () => {
       // passThroughEnv is passThrough-only — not a cache input.
       expect(test.cache?.inputs.env).toEqual(['GLOBAL_MODE'])
 
+      // interactive:true → exec.interactive and no cache (Turbo refuses one that caches).
+      const seed = tasks.seed!
+      expect(seed.exec?.interactive).toBe(true)
+      expect(seed.cache).toBeUndefined()
+
       // No package declares a `deploy` script → task not emitted.
       expect(tasks.deploy).toBeUndefined()
     },
@@ -371,17 +378,16 @@ describe('vx migrate (turbo)', () => {
   it('reports clean/TODO counts and lists each TODO under its project#task', () => {
     // app: codegen + lint clean; build 2 TODOs ($TURBO_ROOT$ dep,
     // env wildcard — the $TURBO_ROOT$ input now maps
-    // to inputs.workspaceFiles instead of a TODO), test 1 (interactive).
+    // to inputs.workspaceFiles instead of a TODO); test and seed clean.
     // lib#build 2 (inherited $TURBO_ROOT$ dep, env wildcard). app#dev is
     // persistent and nothing depends on it, so its readiness note is no
     // TODO: it counts as clean (item 602).
-    expect(result.out).toContain('3 tasks migrated clean')
-    expect(result.out).toContain('5 TODO')
+    expect(result.out).toContain('5 tasks migrated clean')
+    expect(result.out).toContain('4 TODO')
     const todos = todosOf(result.out)
-    expect([...todos.keys()].sort()).toEqual(['app#build', 'app#test', 'lib#build'])
+    expect([...todos.keys()].sort()).toEqual(['app#build', 'lib#build'])
     expect(todos.get('app#build')!.map((r) => r.split(' ')[0])).toEqual(['dependsOn', 'env'])
     expect(todos.get('app#build')![0]).toContain('$TURBO_ROOT$')
-    expect(todos.get('app#test')!.join()).toContain('interactive')
     expect(todos.get('lib#build')).toHaveLength(2)
   })
 

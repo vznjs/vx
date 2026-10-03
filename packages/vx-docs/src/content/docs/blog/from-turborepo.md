@@ -72,6 +72,7 @@ already doing.
 | `cache: false`                                 | omit the `cache` block                                  |
 | `persistent: true`                             | `exec.persistent: { readyWhen }`                        |
 | `with` | `dependsOn` a persistent sidecar, started beside the task |
+| `interactive: true` | `exec.interactive: true`: the task gets the terminal, alone |
 | `extends`                                      | a package task merges over the root's; `false` alone opts out, `false` + keys runs on those alone |
 | `interruptible` | nothing: `vx watch` re-spawns every persistent task each cycle |
 | `tags` | nothing: labels Turbo keeps out of the hash and the behaviour |

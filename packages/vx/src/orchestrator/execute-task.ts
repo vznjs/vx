@@ -227,6 +227,8 @@ export interface ExecuteArgs {
    * walk cost 1,000 read-only misses 1.62 → 1.78 s, item 750).
    */
   noDependants?: true
+  /** The task holds vx's terminal (`terminalHolders`): its stdio is vx's own. */
+  terminal?: true
 }
 
 /**
@@ -362,6 +364,7 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
     onStderr: serverErr ? (chunk) => serverErr.push(chunk) : (chunk) => log.taskStderr(node, chunk),
     ...(args.liveChildren !== undefined ? { liveChildren: args.liveChildren } : {}),
     ...(signalChannel ? { signalChannel } : {}),
+    ...(args.terminal === true ? { terminal: true } : {}),
   }
   if (step.persistent.readyWhen !== undefined) {
     persistentOpts.readyWhen = step.persistent.readyWhen
@@ -1146,6 +1149,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       // through this flag — the policy gates above only cover vx's OWN cache.
       ...(cfgCacheable && !(policy.localRead || policy.remoteRead) ? { refresh: true } : {}),
       outputs: { files: outputs, workspaceFiles: wsOutputs },
+      ...(args.terminal === true ? { terminal: true as const } : {}),
     }
     if (!userSandbox) return base
     await args.armSandbox?.()

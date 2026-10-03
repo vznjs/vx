@@ -409,6 +409,43 @@ describe('defaultLogger status line integration', () => {
     expect(s.text().endsWith('└─ one#test ── (100ms) success\n\n')).toBe(true)
   })
 
+  // `exec.interactive` on a TTY: the task writes to the terminal itself, so
+  // a region repainted under it would draw over its prompt.
+  it('a task handed the terminal kills the region for good and frames itself, in broad', () => {
+    const view = (handed: boolean) => {
+      const s = tty()
+      const log = defaultLogger(NO_COLORS, { mode: 'broad' }, s, {
+        forceFloorMs: 0,
+        ...(handed ? { tty: true } : {}),
+      })
+      log.runStart?.({ total: 2 })
+      const ask = mkNode('one#ask')
+      ;(ask.config.exec as { interactive?: boolean }).interactive = true
+      log.taskStart?.(ask)
+      const before = s.chunks.length
+      log.taskStderr(ask, 'vx says\n')
+      const streamed = s.chunks.slice(before)
+      log.taskComplete(ask, mkOutcome(ask, 'success'))
+      const later = mkNode('two#build')
+      const beforeLater = s.chunks.length
+      log.taskStart?.(later)
+      return {
+        open: s.text().includes('┌─ one#ask'),
+        streamed,
+        closed: s.text().includes('└─ one#ask ── (100ms) success\n\n'),
+        regionAfter: s.chunks.slice(beforeLater).join('').includes('two#build'),
+      }
+    }
+    expect(view(true)).toEqual({
+      open: true,
+      streamed: ['vx says\n'],
+      closed: true,
+      regionAfter: false,
+    })
+    // CONTROL: no terminal handed over, so broad buffers it and keeps the region.
+    expect(view(false)).toEqual({ open: false, streamed: [], closed: false, regionAfter: true })
+  })
+
   it('group-task starts do not disturb the status line', () => {
     const s = tty()
     const log = defaultLogger(NO_COLORS, { mode: 'focused' }, s, { forceFloorMs: 0 })

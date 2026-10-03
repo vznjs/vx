@@ -171,6 +171,35 @@ const CASES: Array<[string, () => string | null | Promise<string | null>]> = [
         },
       }),
   ],
+  [
+    'exec.interactive must be a boolean (or omitted)',
+    () => validated({ tasks: { b: { exec: { command: 'x', interactive: 'yes' } } } }),
+  ],
+  [
+    'cache is not allowed on an interactive task',
+    () =>
+      validated({
+        tasks: {
+          b: {
+            exec: { command: 'x', interactive: true },
+            cache: { inputs: { files: [] }, outputs: { files: [] } },
+          },
+        },
+      }),
+  ],
+  [
+    'sandbox is not allowed on an interactive task',
+    () => validated({ tasks: { b: { exec: { command: 'x', interactive: true, sandbox: {} } } } }),
+  ],
+  [
+    'persistent.readyWhen is not allowed on an interactive task',
+    () =>
+      validated({
+        tasks: {
+          b: { exec: { command: 'x', interactive: true, persistent: { readyWhen: 'up' } } },
+        },
+      }),
+  ],
   ['a task with no exec must declare dependsOn', () => validated({ tasks: { b: {} } })],
   [
     'cache requires exec',

@@ -443,6 +443,7 @@ export interface ExecConfig {
   timeout?: number
   retries?: number
   persistent?: PersistentConfig
+  interactive?: boolean
   sandbox?: SandboxConfig
 }
 ```
@@ -488,6 +489,7 @@ export interface ExecuteRequest {
   readonly signal?: AbortSignal
   readonly liveChildren?: Set<ReturnType<typeof Bun.spawn>>
   readonly sandbox?: ExecuteSandbox
+  readonly terminal?: true
 }
 ```
 
@@ -1764,6 +1766,7 @@ export interface RunOptions {
   handleSignals?: boolean
   signal?: AbortSignal
   holdPersistent?: boolean
+  tty?: boolean
   log?: Logger
   bus?: EventBus
   inflight?: Map<string, Promise<void>>

@@ -417,14 +417,14 @@ describe('turbo-map: what the sweep found unheld', () => {
     ])
   })
 
-  // `interactive` has nothing to map: Turbo hands stdin only in its TUI and
-  // vx hands no task the terminal. The todo says what a prompt meets (35
-  // "map it manually" todos on uploadthing). `false` is Turbo's default.
-  it('an interactive task says a prompt reads end of input', async () => {
+  // Turbo's `interactive` is vx's `exec.interactive`. Turbo refuses one
+  // that caches and vx refuses `cache` on one, so `push` maps uncached
+  // without `cache: false`. `false` is Turbo's default.
+  it('an interactive task maps to exec.interactive, uncached', async () => {
     await writeFile(
       path.join(root, 'turbo.json'),
       JSON.stringify({
-        tasks: { push: { interactive: true, cache: false }, test: { interactive: false } },
+        tasks: { push: { interactive: true, outputs: ['x/**'] }, test: { interactive: false } },
       }),
     )
     const dir = path.join(root, 'packages', 'a')
@@ -435,14 +435,16 @@ describe('turbo-map: what the sweep found unheld', () => {
       [{ name: 'a', dir, packageJson: packageJson as never, configPath: null }],
       opts,
     )
-    expect(m.projects[0]!.tasks.map((t) => [t.name, t.todos])).toEqual([
-      [
-        'push',
-        [
-          'turbo key "interactive": vx gives no task the terminal, so a prompt reads end of input — run a task that asks for input outside vx',
-        ],
-      ],
-      ['test', []],
+    expect(
+      m.projects[0]!.tasks.map((t) => [
+        t.name,
+        t.todos,
+        (t.task!['exec'] as { interactive?: boolean }).interactive,
+        t.task!['cache'] !== undefined,
+      ]),
+    ).toEqual([
+      ['push', [], true, false],
+      ['test', [], undefined, true],
     ])
   })
 

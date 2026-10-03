@@ -5,12 +5,16 @@
       "exec=<absent>": "$CONFIG: tasks.t: a task with no `exec` must declare `dependsOn` (group tasks exist to chain dependencies)"
     },
     "pairs": {
+      "cache={\"inputs\":{\"files\":[\"src/**\"],\"workspaceFiles\":[\"tsconfig.json\"],\"env\":[\"A\"],\"tasks\":[],\"runtime\":[\"node -v\"],\"workspaceRuntime\":[\"bun -v\"]},\"outputs\":{\"files\":[\"dist/**\"],\"workspaceFiles\":[\"out/**\"]}} + exec.interactive=true": "$CONFIG: tasks.t: `cache` is not allowed on an interactive task — what it does depends on what is typed, which no key holds",
       "cache={\"inputs\":{\"files\":[\"src/**\"],\"workspaceFiles\":[\"tsconfig.json\"],\"env\":[\"A\"],\"tasks\":[],\"runtime\":[\"node -v\"],\"workspaceRuntime\":[\"bun -v\"]},\"outputs\":{\"files\":[\"dist/**\"],\"workspaceFiles\":[\"out/**\"]}} + exec.persistent={\"readyWhen\":\"ready\"}": "$CONFIG: tasks.t: `cache` is not allowed on a persistent task — persistent tasks don't terminate, so there's no exit to cache",
       "cache={\"inputs\":{\"files\":[\"src/**\"],\"workspaceFiles\":[\"tsconfig.json\"],\"env\":[\"A\"],\"tasks\":[],\"runtime\":[\"node -v\"],\"workspaceRuntime\":[\"bun -v\"]},\"outputs\":{\"files\":[\"dist/**\"],\"workspaceFiles\":[\"out/**\"]}} + exec.remote=\"only\"": "ok",
+      "cache={\"inputs\":{\"files\":[]},\"outputs\":{\"files\":[]}} + exec.interactive=true": "$CONFIG: tasks.t: `cache` is not allowed on an interactive task — what it does depends on what is typed, which no key holds",
       "cache={\"inputs\":{\"files\":[]},\"outputs\":{\"files\":[]}} + exec.persistent={\"readyWhen\":\"ready\"}": "$CONFIG: tasks.t: `cache` is not allowed on a persistent task — persistent tasks don't terminate, so there's no exit to cache",
       "cache={\"inputs\":{\"files\":[]},\"outputs\":{\"files\":[]}} + exec.remote=\"only\"": "ok",
       "dependsOn=[\"^t\"] + exec=<absent>": "ok",
       "dependsOn=[\"t\"] + exec=<absent>": "ok",
+      "exec.interactive=true + exec.persistent={\"readyWhen\":\"ready\"}": "$CONFIG: tasks.t: `persistent.readyWhen` is not allowed on an interactive task — its output goes to the terminal, so vx reads none of it; it is ready once spawned",
+      "exec.interactive=true + exec.sandbox={\"allow\":{\"read\":[\".\"],\"write\":[\"dist\"],\"network\":[\"example.com\"],\"systemInfo\":[\"vfs.disk-space\"],\"unixSockets\":[\"/run/x.sock\"],\"localBinding\":[3000],\"machLookup\":[\"com.apple.x\"],\"pty\":true,\"gitConfig\":false},\"deny\":{\"network\":[\"example.org\"]},\"ignore\":{\"read\":[\".\"],\"write\":[\"dist\"],\"network\":[\"example.com\"],\"systemInfo\":[\"vfs.disk-space\"]},\"weakerWhenNested\":true,\"weakerNetworkIsolation\":false}": "$CONFIG: tasks.t: `sandbox` is not allowed on an interactive task — a sandboxed task's output passes through vx, and an interactive one writes to the terminal",
       "exec.persistent={\"readyWhen\":\"ready\"} + exec.retries=1": "$CONFIG: tasks.t: `retries` is not allowed on a persistent task — persistent tasks don't terminate, so there's no failed exit to retry"
     }
   },

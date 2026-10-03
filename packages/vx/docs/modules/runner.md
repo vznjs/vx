@@ -39,6 +39,7 @@ export interface RunOptions {
   capture?: CaptureConfig // omitted → both retained
   timeoutMs?: number // SIGTERM the child when it elapses; result flagged `timedOut`
   liveChildren?: Set<ReturnType<typeof Bun.spawn>> // run-scoped registry; child added on spawn, removed on exit
+  terminal?: boolean // inherit vx's stdin, stdout and stderr (exec.interactive on a TTY)
 }
 
 export function runCommand(opts: RunOptions): Promise<RunResult>
@@ -124,7 +125,9 @@ export function peakRssBytes(maxRSS: number): number // bytes, whatever unit the
   `runPersistent` alone spawns with `stdin: 'pipe'` and never writes
   it: a dev server that exits on stdin EOF (esbuild `--watch`) stays up
   while vx lives, and sees EOF when vx exits (execution.md § Output
-  capture and rendering).
+  capture and rendering). `terminal: true` (an `exec.interactive` task
+  on a TTY) spawns either with `'inherit'` on all three: no stream, no
+  capture, no callbacks.
 - **forwardArgs** are appended to `command` after a single space, each
   quoted via `shellQuote(arg)` (i.e. `'...'`-quoted when not safe), by
   `withForwardArgs` — before a `#` comment still open at the command's

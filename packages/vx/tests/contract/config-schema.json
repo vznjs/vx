@@ -338,7 +338,16 @@
     "levels": {
       "": ["tasks"],
       "tasks.*": ["cache", "dependsOn", "description", "exec"],
-      "tasks.*.exec": ["command", "env", "persistent", "remote", "retries", "sandbox", "timeout"],
+      "tasks.*.exec": [
+        "command",
+        "env",
+        "interactive",
+        "persistent",
+        "remote",
+        "retries",
+        "sandbox",
+        "timeout"
+      ],
       "tasks.*.exec.env": ["define", "passThrough", "secret"],
       "tasks.*.exec.persistent": ["readyWhen"],
       "tasks.*.exec.sandbox": [
@@ -547,7 +556,7 @@
           "\"10G\"",
           "\"10\""
         ],
-        "$CONFIG: tasks.t.exec must be an object (fields: command, env, persistent, remote, retries, sandbox, timeout), not an array": [
+        "$CONFIG: tasks.t.exec must be an object (fields: command, env, interactive, persistent, remote, retries, sandbox, timeout), not an array": [
           "[]",
           "[\"x\"]",
           "[\"\"]",
@@ -564,7 +573,7 @@
           "[\"A*\"]"
         ],
         "$CONFIG: tasks.t.exec.command must be a non-empty string": ["{}"],
-        "$CONFIG: tasks.t.exec has unknown field \"x\" (allowed: command, env, persistent, remote, retries, sandbox, timeout)": [
+        "$CONFIG: tasks.t.exec has unknown field \"x\" (allowed: command, env, interactive, persistent, remote, retries, sandbox, timeout)": [
           "{\"x\":\"y\"}"
         ]
       },
@@ -1635,6 +1644,40 @@
       "tasks.*.exec.sandbox.weakerNetworkIsolation": {
         "ok": ["<absent>", "true", "false"],
         "$CONFIG: tasks.t.exec.sandbox.weakerNetworkIsolation must be a boolean": [
+          "null",
+          "0",
+          "1",
+          "1.5",
+          "-1",
+          "65536",
+          "2147483648",
+          "\"\"",
+          "\"x\"",
+          "\"(\"",
+          "\"30d\"",
+          "\"10G\"",
+          "\"10\"",
+          "[]",
+          "[\"x\"]",
+          "[\"\"]",
+          "[1]",
+          "[3000]",
+          "[\"/x\"]",
+          "[\"!/x\"]",
+          "[\"../x\"]",
+          "[\"!x\"]",
+          "[\"!!x\",\"y\"]",
+          "[\".\"]",
+          "[\"**\"]",
+          "[\"A=B\"]",
+          "[\"A*\"]",
+          "{}",
+          "{\"x\":\"y\"}"
+        ]
+      },
+      "tasks.*.exec.interactive": {
+        "ok": ["<absent>", "true", "false"],
+        "$CONFIG: tasks.i.exec.interactive must be a boolean (or omitted)": [
           "null",
           "0",
           "1",

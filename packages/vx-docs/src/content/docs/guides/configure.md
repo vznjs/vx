@@ -63,6 +63,7 @@ missing `'pkg#task'` is an error.
 | `exec.retries`    | re-run a failed task this many times                          |
 | `exec.persistent` | a server or watcher that does not exit ([below](#dev-tasks))  |
 | `exec.sandbox`    | only the declared files and network ([Sandboxing](../sandboxing/)) |
+| `exec.interactive` | reads the terminal: a prompt, a REPL, a TUI; runs alone, never cached |
 | `exec.remote`     | `false` keeps it here; `'only'` for a remote pool ([Remote execution](../ci/#remote-execution)) |
 
 `exec.remote` is the one `exec` field stripped from the key: where a task

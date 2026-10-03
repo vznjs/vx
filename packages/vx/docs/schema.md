@@ -136,6 +136,7 @@ interface ExecConfig {
   timeout?: number // ms before vx SIGTERMs the child (see below)
   retries?: number // max additional attempts after a failure (see below)
   persistent?: PersistentConfig // long-running task (dev server, watcher)
+  interactive?: boolean // reads the terminal: a prompt, a REPL (see below)
   sandbox?: SandboxConfig // opt-in OS sandbox for this command
 }
 ```
@@ -390,6 +391,42 @@ the run went on`), so a dependant failing against it reads why. Its own outcome 
   `cache + persistent` — persistent tasks don't terminate, so there's
   no exit code to cache and no outputs to capture at a well-defined
   moment.
+
+#### `interactive` (optional)
+
+`true` hands the task the terminal: a prompt (`drizzle-kit push`), a
+REPL, a watch mode that reads keys. Turbo's `interactive`.
+
+- **On a TTY** (vx's stdin is one) the task gets vx's own stdin,
+  stdout and stderr. Its output is not framed, masked, kept or
+  replayed: it goes to the terminal as the task writes it. A frame
+  line opens before it and closes after (`--output-logs full`, and
+  the default views), and the live status region goes for the rest
+  of the run, as it would repaint over a prompt.
+- **Alone.** It starts once nothing else runs, and nothing starts
+  until it exits. A persistent one holds the terminal from its spawn
+  to the run's end, so other tasks may run once it is spawned (their
+  output goes to the same terminal), a run may hold one, and every
+  other interactive task must be its dependency. A run that breaks
+  either is refused before any task runs.
+- **Off a TTY** (CI, a pipe) it runs as any task: stdin is empty, or
+  a pipe vx holds for a persistent one, and it runs beside others.
+  A prompt there reads end of input; it never hangs.
+- **Here, never cached.** No executor plugin is offered it, and
+  `cache` is refused. `sandbox` is refused (a sandboxed task's
+  output passes through vx), and so is `persistent.readyWhen` (vx
+  reads none of its output; it is ready once spawned).
+- It runs in its own session, as every task does, so a tool that
+  opens `/dev/tty` itself rather than its stdin still cannot, and
+  the terminal's resize signal does not reach it. Ctrl-C reaches vx,
+  which stops the run; a task that puts the terminal in raw mode
+  reads the key itself.
+
+```ts
+'db:push': {
+  exec: { command: 'drizzle-kit push', interactive: true },
+}
+```
 
 #### `ExecEnv` (optional)
 
@@ -1739,6 +1776,10 @@ lists the messages a user meets most:
 | `exec.persistent.readyWhen must be a string regex`                                                                                    | Non-string `readyWhen`.                                                                                                                                                                                                        |
 | `exec.persistent.readyWhen is not a valid regex (<error>)`                                                                            | A `readyWhen` the runner could not compile (`(`); it failed the task as an internal error at run time.                                                                                                                         |
 | `cache is not allowed on a persistent task`                                                                                           | persistent + cache combined.                                                                                                                                                                                                   |
+| `exec.interactive must be a boolean (or omitted)`                                                                                     | Wrong shape.                                                                                                                                                                                                                   |
+| `cache is not allowed on an interactive task`                                                                                         | interactive + cache combined: what it does depends on what is typed.                                                                                                                                                           |
+| `sandbox is not allowed on an interactive task`                                                                                       | interactive + sandbox combined.                                                                                                                                                                                                |
+| `persistent.readyWhen is not allowed on an interactive task`                                                                          | vx reads none of an interactive task's output.                                                                                                                                                                                 |
 | `a task with no exec must declare dependsOn`                                                                                          | Group task with no edges.                                                                                                                                                                                                      |
 | `cache requires exec`                                                                                                                 | Group task with `cache`.                                                                                                                                                                                                       |
 | `dependsOn must be an array of strings`                                                                                               | Wrong shape.                                                                                                                                                                                                                   |
@@ -1777,11 +1818,11 @@ nearest accepted spelling when one is within two edits:
 passThrough, secret) — did you mean passThrough?`. A field another runner spells
 on the task names vx's home for it instead (D-37): Turbo's `outputs`,
 `inputs`, `env`, `passThroughEnv`, `persistent`, `outputLogs`, `interactive`
-and `with`, Nx's target `executor`, `options`, `continuous` (D-49), `cwd`,
+(`exec.interactive`) and `with`, Nx's target `executor`, `options`, `continuous` (D-49), `cwd`,
 `parallelism` and `configurations` (D-89), and a `command`
 (`cmd`, `script`) on the task or `cmd` on `exec`, and on `exec` Nx
-run-commands' `cwd`, `args`, `commands`, `parallel`, `shell` and
-`interactive` (D-100), and in a `cache` block wireit's `files` / `output`,
+run-commands' `cwd`, `args`, `commands`, `parallel` and `shell`
+(D-100), and in a `cache` block wireit's `files` / `output`,
 `env`, `dependencies`, `enabled`, and `globs` / `include` / `patterns` /
 `exclude` / `ignore` under `inputs` or `outputs` (D-118). So `outputs` on a task
 ends `— vx spells it cache.outputs.files` in code quotes. A `cache` that

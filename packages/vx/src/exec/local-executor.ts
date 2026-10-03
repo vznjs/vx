@@ -45,7 +45,7 @@ export function localExecutor(): TaskExecutor {
         ...(req.timeoutMs !== undefined ? { timeoutMs: req.timeoutMs } : {}),
       }
       if (req.sandbox === undefined) {
-        const res = await runCommand(common)
+        const res = await runCommand(req.terminal === true ? { ...common, terminal: true } : common)
         return { ...res, violations: [] }
       }
       return runSandboxed({

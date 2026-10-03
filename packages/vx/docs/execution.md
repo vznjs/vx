@@ -493,15 +493,17 @@ wire forwarders attach beside it). What renders:
   blocks collapse under `::group::` commands; failures stay open and
   emit `::error` annotations.
 
-There is no special handling for binary output or interactive
-prompts. Stdin is never the terminal, and the rule splits
-on `exec.persistent`:
+There is no special handling for binary output. Stdin is never the
+terminal unless the task declares `exec.interactive` and vx's stdin is
+a TTY (schema.md § `interactive`): then the task gets vx's stdin,
+stdout and stderr, runs alone, and nothing of it passes through vx.
+Otherwise the rule splits on `exec.persistent`:
 
 - **A one-shot task** gets `'ignore'`: it sees EOF at once, so a task
   that reads stdin finishes instead of hanging CI
   (`tests/runner.test.ts` › "a task that reads stdin sees EOF at once,
-  never a hang"). Tasks that need TTY input won't work and shouldn't be
-  cached anyway.
+  never a hang"). A task that needs TTY input declares
+  `exec.interactive`.
 - **A persistent task** gets a pipe vx holds and never writes: it stays
   open while vx lives and ends when vx does. A dev server that exits on
   stdin EOF — esbuild `--watch`, the Vite case in turborepo#8915 —
@@ -510,7 +512,7 @@ on `exec.persistent`:
   exits on stdin EOF stays up while vx runs"). Each task has its own
   pipe, so several persistent tasks never compete for keystrokes; none
   receives any, so a server's keyboard shortcuts (Vite's `h`, `r`) do
-  not reach it — run it directly for those. Not the terminal, because
+  not reach it unless it declares `exec.interactive`. Not the terminal, because
   several servers would steal each other's input, and a CI's
   `/dev/null` stdin is the same EOF. Turbo's stream mode draws the same
   line: its pin is named `nonpersistent_task_sees_eof_on_stdin`.

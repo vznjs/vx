@@ -48,7 +48,10 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   cannot reach a process it spawned; a non-zero exit after the timeout's
   abort is recorded `timedOut`; one that has not returned within the
   kill grace of the abort is abandoned, the attempt settled without it),
-  `liveChildren?`, `sandbox?: ExecuteSandbox`,
+  `liveChildren?`, `sandbox?: ExecuteSandbox`, `terminal?: true` (the
+  task holds vx's terminal, `exec.interactive` on a TTY: its stdio is
+  vx's own and the callbacks hear nothing; placement hands such a task
+  to core's local executor alone),
   `inputs?: TaskInputs`, `cacheKey?` (a cacheable task's key, the address
   an executor's own remote record uses), `refresh?` (cache reads are off:
   do not answer from that record), `remoteOnly?` (`exec.remote: 'only'`:

@@ -28,8 +28,8 @@ describe('a removed config field names its replacement (versioning-1.0.md § Dep
     )
     // Control: a field no release ever had is still an unknown field.
     expect(execRefusal({ command: 'true', resourcez: 1 })).toBe(
-      `${CFG}: tasks.t.exec has unknown field "resourcez" (allowed: command, env, persistent, ` +
-        'remote, retries, sandbox, timeout)',
+      `${CFG}: tasks.t.exec has unknown field "resourcez" (allowed: command, env, interactive, ` +
+        'persistent, remote, retries, sandbox, timeout)',
     )
   })
 

@@ -315,9 +315,7 @@ describe('task refusals the sweep found unheld (item 653)', () => {
     )
     // D-89: Turbo's `interactive` / `with`, Nx's `cwd`, `parallelism`,
     // `configurations`.
-    expect(where({ interactive: true })).toBe(
-      'vx spells it a command run outside vx: a task never reads the terminal (its stdin is EOF, or a pipe vx holds under `exec.persistent`)',
-    )
+    expect(where({ interactive: true })).toBe('vx spells it `exec.interactive: true`')
     expect(where({ with: ['api#dev'] })).toBe(
       'vx spells it `dependsOn` on each task it runs beside: a persistent one stays up, and this task starts once it is ready',
     )
