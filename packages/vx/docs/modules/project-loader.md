@@ -120,7 +120,15 @@ readers that reach it here.
   more than one evaluation was in flight, the round evaluates each of its
   configs alone in a throwaway worker that reports what it changed, and
   names the first that changes something (it named an innocent config
-  before, D-119); none found, it says "a project config". A round where every config hits takes
+  before, D-119); none found, it says "a project config". While loads
+  overlap, each one is checked against only the built-ins the loader
+  itself reads through between loads (`Object.prototype`, `JSON`, the
+  `Promise`, `Map` and `Set` prototypes, `Bun.hash`), and the rest once,
+  at the round's end: all of them after every load was ~73 µs a config,
+  a quarter of a cold load of 1,000. A change found at the end may have
+  broken another config's load, so it is refused first, and a round that
+  changed anything stores none of its evaluations. A lone load checks
+  them all. A round where every config hits takes
   no snapshot: reading every descriptor of `Bun` builds its lazy
   members, 7 ms of a warm run (E-88).
 - A first load may not move the process either: a config's
