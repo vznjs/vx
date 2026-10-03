@@ -438,6 +438,16 @@ run executes few of the ~20 statements every open prepared. 10
 projects, compiled, `open cache` min 1.7 → 1.3 ms over 31 rounds,
 median 1.9 → 1.6; whole run within noise.
 
+I-53. The index reads hash batches through `json_each` (#2428). A list
+of `?` is a new statement per length, compiled each run; one JSON array
+keeps one, and a single hash keeps `= ?`. 1,000 projects, warm, 31
+rounds: `probe` min 12.2 → 10.6 ms (A/A 12.1), `close` 7.1 → 6.6.
+
+I-54. A run's history goes 40 rows to an INSERT (#2445), each distinct
+forward-args list digested once. 1,000 projects, warm, 31 rounds:
+`record history` min 13.4 → 11.2 ms, median 18.7 → 15.2 (A/A 13.8 /
+18.9).
+
 ## Leads for other streams
 
 - **A: a cold save commits one SQLite transaction per entry.** The
@@ -464,6 +474,11 @@ median 1.9 → 1.6; whole run within noise.
   `synchronous = OFF` (a power cut may corrupt the index) or
   `SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE` (bun:sqlite has no `db_config`)
   removes it.
+- **Owner: the `accessed_at` bump is ~2 ms of a 1,000-hit close.** The
+  UPDATE is 1.3 ms and its pages ~0.6 ms more of the checkpoint.
+  Writing only rows older than a window (`AND accessed_at < ?`) would
+  cut it on reruns, but LRU order and the "last used" time shown would
+  hold only to that window.
 - **Any: a warm run's first `process.stdout` touch loads `node:stream`.**
   Writing through `Bun.stdout` instead saved 1.1 ms of main-thread CPU
   and 2.4 ms wall on a 10-project warm run. It needs TTY detection
@@ -633,3 +648,9 @@ status` re-hashes every tracked file, and vx runs it with
 - Cold config load at 100 configs is the imports; the per-config
   built-in check is 25 µs (327 descriptors), the double decode below
   resolution.
+- `discover projects` at 1,000 projects is I/O: the 1,000 readdirs and
+  manifest reads alone take ~9 ms async (15 sync); 16 ms in the stage.
+- `package graph` at 1,000 projects: the per-project loop 3–7 ms, cold
+  JIT in the function's own body; a closure hoisted out of it tied (4.61
+  ms both). Persisting the graph across runs would cut it, at the risk
+  of a stale order; not taken.
