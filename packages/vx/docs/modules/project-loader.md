@@ -99,8 +99,14 @@ readers that reach it here.
   real `process.exit` in place only once the last has left. An exit a
   config schedules for later (a timer) is not covered.
 - A first load may not change the built-ins vx runs on:
-  `Object.prototype`, `Array.prototype`, `String`, `Map`, `Set` and
-  `Promise` prototypes, `Bun`, `Bun.hash`, `JSON` and `Math`. Every
+  `Object.prototype`, `Array.prototype`, `String`, `Map`, `Set`,
+  `Promise`, `RegExp`, `Function`, `Number` and `Date` prototypes,
+  `Object`, `Array`, `Reflect`, `Date`, `Bun`, `Bun.hash`, `JSON` and
+  `Math`. The check reads through primitives taken before any config runs,
+  in indexed loops: a config that set `Reflect.ownKeys = () => []` (or
+  `Array.prototype.forEach`) blinded it before, and its
+  `Object.prototype.exec` ran in another project's task (D-124; +2 ms on a
+  cold 300-config load, none warm). Every
   config is read through them and cache keys are made with them
   (`Bun.hash.xxHash3 = () => 7n` keyed every task 00000000, D-75), and
   the key folds each config's own JSON, so `Object.prototype.exec` set in one config ran in another

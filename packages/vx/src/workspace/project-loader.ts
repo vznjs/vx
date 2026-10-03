@@ -449,7 +449,7 @@ export async function loadProjectConfigs(
   // Taken only when a config is evaluated in this process: reading every
   // descriptor of `Bun` makes Bun build its lazy members (`bun:sql`,
   // `node:stream`), ~7 ms of a two-config warm run where every load hit.
-  let builtins: BuiltinSnapshot = []
+  let builtins: BuiltinSnapshot | undefined
   let env: Readonly<Record<string, string | undefined>> = {}
   let cwd = ''
   let umask = -1
@@ -632,20 +632,51 @@ const WATCHED_BUILTINS: ReadonlyArray<readonly [string, object]> = WATCHED_BUILT
     ] as const,
 )
 
+// The check reads through these, taken when a round's snapshot is, before
+// any of its configs runs: a config that set `Reflect.ownKeys = () => []`
+// blinded it, and its `Object.prototype.exec` ran in another project's
+// task (D-124). Each round keeps its own, so an overlapping round cannot
+// hand it a replaced one. The compare and put-back use indexed loops only
+// (a replaced `Array.prototype.forEach` skipped them).
+interface Primitives {
+  ownKeys: typeof Reflect.ownKeys
+  descriptorOf: typeof Object.getOwnPropertyDescriptor
+  defineOwn: typeof Object.defineProperty
+  deleteOwn: typeof Reflect.deleteProperty
+  hasOwn: typeof Object.hasOwn
+  same: typeof Object.is
+  keyName: typeof String
+}
+
 interface OwnProperties {
   keys: PropertyKey[]
   descriptors: PropertyDescriptor[]
-  byKey: ReadonlyMap<PropertyKey, PropertyDescriptor>
 }
 
-type BuiltinSnapshot = readonly OwnProperties[]
+interface BuiltinSnapshot {
+  readonly prims: Primitives
+  readonly props: readonly OwnProperties[]
+}
 
 function builtinSnapshot(): BuiltinSnapshot {
-  return WATCHED_BUILTINS.map(([, proto]) => {
-    const keys = Reflect.ownKeys(proto)
-    const descriptors = keys.map((k) => Object.getOwnPropertyDescriptor(proto, k)!)
-    return { keys, descriptors, byKey: new Map(keys.map((k, j) => [k, descriptors[j]!])) }
-  })
+  const prims: Primitives = {
+    ownKeys: Reflect.ownKeys,
+    descriptorOf: Object.getOwnPropertyDescriptor,
+    defineOwn: Object.defineProperty,
+    deleteOwn: Reflect.deleteProperty,
+    hasOwn: Object.hasOwn,
+    same: Object.is,
+    keyName: String,
+  }
+  const props: OwnProperties[] = []
+  for (let i = 0; i < WATCHED_BUILTINS.length; i++) {
+    const proto = WATCHED_BUILTINS[i]![1]
+    const keys = prims.ownKeys(proto)
+    const descriptors: PropertyDescriptor[] = []
+    for (let j = 0; j < keys.length; j++) descriptors[j] = prims.descriptorOf(proto, keys[j]!)!
+    props[i] = { keys, descriptors }
+  }
+  return { prims, props }
 }
 
 /**
@@ -655,13 +686,17 @@ function builtinSnapshot(): BuiltinSnapshot {
  * evaluated config: the full check was ~0.1 ms a config, ~100 ms of a
  * 1,000-config cold load.
  */
-function unchanged(proto: object, keys: readonly PropertyKey[], was: OwnProperties): boolean {
+function unchanged(
+  p: Primitives,
+  proto: object,
+  keys: readonly PropertyKey[],
+  was: OwnProperties,
+): boolean {
   if (keys.length !== was.keys.length) return false
   for (let j = 0; j < keys.length; j++) {
     const key = keys[j]!
     if (key !== was.keys[j]) return false
-    if (!sameDescriptor(was.descriptors[j]!, Object.getOwnPropertyDescriptor(proto, key)!))
-      return false
+    if (!sameDescriptor(p, was.descriptors[j]!, p.descriptorOf(proto, key)!)) return false
   }
   return true
 }
@@ -693,27 +728,38 @@ function builtinsChanged(changed: readonly string[], configPath?: string): UserE
 }
 
 /** Puts back what changed since `before`, naming each property it put back. */
-function restoreBuiltins(before: BuiltinSnapshot): string[] {
+function restoreBuiltins(before: BuiltinSnapshot | undefined): string[] {
   const changed: string[] = []
-  WATCHED_BUILTINS.forEach(([name, proto], i) => {
-    const keys = Reflect.ownKeys(proto)
-    if (unchanged(proto, keys, before[i]!)) return
-    const was = before[i]!.byKey
-    for (const key of keys) {
-      const prior = was.get(key)
-      const now = Object.getOwnPropertyDescriptor(proto, key)!
-      if (prior !== undefined && sameDescriptor(prior, now)) continue
-      changed.push(`${name}.${String(key)}`)
-      if (prior === undefined) Reflect.deleteProperty(proto, key)
-      else Object.defineProperty(proto, key, prior)
-    }
-    for (const [key, prior] of was) {
-      if (!Object.hasOwn(proto, key)) {
-        changed.push(`${name}.${String(key)}`)
-        Object.defineProperty(proto, key, prior)
+  if (before === undefined) return changed
+  const p = before.prims
+  for (let i = 0; i < WATCHED_BUILTINS.length; i++) {
+    const name = WATCHED_BUILTINS[i]![0]
+    const proto = WATCHED_BUILTINS[i]![1]
+    const was = before.props[i]!
+    const keys = p.ownKeys(proto)
+    if (unchanged(p, proto, keys, was)) continue
+    // Slow path, a change only: a linear lookup keeps it off `Map`.
+    for (let j = 0; j < keys.length; j++) {
+      const key = keys[j]!
+      let prior: PropertyDescriptor | undefined
+      for (let k = 0; k < was.keys.length; k++) {
+        if (was.keys[k] === key) {
+          prior = was.descriptors[k]
+          break
+        }
       }
+      if (prior !== undefined && sameDescriptor(p, prior, p.descriptorOf(proto, key)!)) continue
+      changed[changed.length] = name + '.' + p.keyName(key)
+      if (prior === undefined) p.deleteOwn(proto, key)
+      else p.defineOwn(proto, key, prior)
     }
-  })
+    for (let k = 0; k < was.keys.length; k++) {
+      const key = was.keys[k]!
+      if (p.hasOwn(proto, key)) continue
+      changed[changed.length] = name + '.' + p.keyName(key)
+      p.defineOwn(proto, key, was.descriptors[k]!)
+    }
+  }
   return changed
 }
 
@@ -776,10 +822,10 @@ function restoreUmask(before: number): string[] {
   return ['process.umask']
 }
 
-function sameDescriptor(a: PropertyDescriptor, b: PropertyDescriptor): boolean {
+function sameDescriptor(p: Primitives, a: PropertyDescriptor, b: PropertyDescriptor): boolean {
   return (
     // `globalThis.NaN` is watched (D-122), and NaN !== NaN.
-    Object.is(a.value, b.value) &&
+    p.same(a.value, b.value) &&
     a.get === b.get &&
     a.set === b.set &&
     a.writable === b.writable &&

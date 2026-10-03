@@ -396,6 +396,26 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
     if (spawn.child === undefined) void onExit()
     else void spawn.child.exited.then(onExit, onExit)
   }
+  // Said once if readiness is slow: a dependency's output is hidden unless
+  // it fails, and with no `exec.timeout` the wait never ends, so a run
+  // whose `readyWhen` never matched showed nothing at all.
+  const readyWhen = step.persistent.readyWhen
+  const noticeMs = readyNoticeMs()
+  const notice =
+    readyWhen === undefined
+      ? undefined
+      : setTimeout(() => {
+          if (isAborted(args.stopSignal)) return
+          const after = noticeMs < 1000 ? `${noticeMs} ms` : `${noticeMs / 1000} s`
+          const unbounded = effectiveTimeout === undefined ? ', with no exec.timeout' : ''
+          log.status(
+            `vx: ${node.id} not ready after ${after}: waiting for a line matching /${readyWhen}/ (readyWhen)${unbounded}`,
+          )
+        }, noticeMs)
+  if (notice !== undefined) {
+    const quiet = (): void => clearTimeout(notice)
+    void spawn.ready.then(quiet, quiet)
+  }
   try {
     await spawn.ready
   } catch (err) {
@@ -1336,4 +1356,14 @@ function taskEnv(node: TaskNode, step: ExecConfig, workspaceRoot: string): NodeJ
 
 function isAborted(signal: AbortSignal | undefined): boolean {
   return signal?.aborted === true
+}
+
+/**
+ * How long a server may take to match `readyWhen` before vx says it waits.
+ * `VX_READY_NOTICE_MS` overrides it, as `VX_KILL_GRACE_MS` does the grace.
+ */
+function readyNoticeMs(): number {
+  const raw = process.env['VX_READY_NOTICE_MS']
+  if (raw !== undefined && /^[0-9]+$/.test(raw) && Number(raw) > 0) return Number(raw)
+  return 10_000
 }

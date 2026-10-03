@@ -134,7 +134,10 @@ export interface RunSummary {
     Under `RunOptions.holdPersistent` (the watch loop) the same
     selection applies outside the foreground, and run() returns at
     once with the kept tasks on `RunSummary.persistent`: the caller
-    owns them and its `stop()` is the same teardown.
+    owns them and its `stop()` is the same teardown. One that dies on
+    its own after that is named (`vx: <id> exited with code <n>`,
+    #2442), so a watch loop idling over a dead server says so; the
+    teardown its `stop()` runs is not.
     `RunOptions.signal` aborts a run from outside through the same
     teardown: the scheduler dispatches nothing further (never-started
     tasks complete `aborted`) and run() returns to its caller.
