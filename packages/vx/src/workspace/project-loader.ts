@@ -506,7 +506,10 @@ export async function loadProjectConfigs(
       ? []
       : [
           ...restoreBuiltins(builtins, overlapping),
-          ...restoreEnv(env),
+          // Overlapping, the env is checked once at the round's end, as most
+          // built-ins are: reading all of it after every load was 15–25 µs a
+          // config (149 variables, compiled, 2026-10-03).
+          ...(overlapping ? [] : restoreEnv(env)),
           ...restoreCwd(cwd),
           ...restoreUmask(umask),
         ]
@@ -590,7 +593,7 @@ export async function loadProjectConfigs(
             ...restoreUmask(umask),
           ]
         : []
-    // Overlapping loads check most built-ins only here, so a change one
+    // Overlapping loads check most built-ins and the env only here, so a change one
     // config made may have broken another's load: it is refused first, and
     // nothing the round evaluated is stored.
     const changedInRound =
