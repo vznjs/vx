@@ -873,3 +873,18 @@ refused at load, never imported: probed with
 must be an object … not a module name" and the file is not loaded
 (`config-schema-refusals.test.ts` pins the line). What a config imports
 is its author's code, resolved by Bun from the config's directory.
+
+M-71. Security queue (1), task env isolation: held, now by a law at
+the spawn. A task sees the allowlist (`ESSENTIAL_ENV`), what it names in
+`passThrough` or `define`, `VX_RUN_WORKSPACE` and `VX_RUN_TASK`; probed
+under `vx run` with `SSH_AUTH_SOCK`, `GITHUB_TOKEN`,
+`AWS_SECRET_ACCESS_KEY` and `NPM_TOKEN` set, none reached a plain or a
+sandboxed task. A sandboxed one also gets the sandbox runtime's own proxy
+settings (`HTTPS_PROXY`, `GIT_SSH_COMMAND` and the like, all pointing at
+its localhost proxy with its own credential), the same with the host's
+proxy variables unset. The unit rows held only `buildIsolatedEnv`; the
+new row runs a task and compares the names it saw with the exact set
+(the shell's own `PWD`, `SHLVL`, `_`, `OLDPWD` aside). Red when
+`buildIsolatedEnv` forwards `SSH_AUTH_SOCK`. `env.test.ts` › what a task
+sees of the host environment, end to end; `schema.md` names the run's two
+and the row.
