@@ -515,3 +515,13 @@ persistent task` and vx exits 1). Row (`site-samples` › a post's link
   symbols, footer and DOT colours, the `--summarize` and `--profile`
   shapes, `--report` and `--report-file`, `--tag`; and `vx init` and
   the Output format section (the footer sections, the colour gates).
+- **J2-59** `cli.md`'s `vx watch` section read against source: its exit
+  codes left out that `--affected` selecting nothing prints the note and
+  exits 0 without watching. Contract case
+  (`contract-exit-codes`, `vx watch build --affected=HEAD` → 0) and row
+  (the watch exit codes name the empty --affected exit), the row red
+  without the fix. Checked clean: the lifecycle messages, the probe
+  file, its 2 s timeout and the 250 ms poller, `VX_WATCH_POLL`, the
+  watch-limit notice, the 150 ms debounce, the three-cycle notice, the
+  ignored segments and suffixes, the refused flags and their reasons,
+  the signals it forwards, and `cycle failed`.

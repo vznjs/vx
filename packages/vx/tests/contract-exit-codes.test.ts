@@ -27,6 +27,7 @@ const CASES: ReadonlyArray<readonly [string, readonly string[]]> = [
   ['run: --graph to an unwritable path', ['run', 'build', '--all', '--graph=package.json/g.dot']],
   ['an unknown verb', ['no-such-verb']],
   ['watch: a rejected flag', ['watch', 'build', '--all', '--dry']],
+  ['watch: nothing affected since the ref', ['watch', 'build', '--affected=HEAD']],
   ['cache prune: no policy', ['cache', 'prune']],
   ['cache prune: a policy', ['cache', 'prune', '--older-than', '1d']],
   ['lock: write', ['lock']],
@@ -74,5 +75,14 @@ it('each documented outcome exits as tests/contract/exit-codes.json records', ()
     writeFileSync(RECORD, text)
   }
   expect(text).toBe(readFileSync(RECORD, 'utf8'))
-  // Fifteen sequential spawns: about 3 s alone, past bun's 5 s default under a loaded gate.
+  // Sixteen sequential spawns: about 3 s alone, past bun's 5 s default under a loaded gate.
 }, 60_000)
+
+it('the watch exit codes name the empty --affected exit', () => {
+  // `vx watch build --affected=HEAD` exits 0 without watching, as the
+  // contract above records; the watch section's exit codes left it out (J2-59).
+  const doc = readFileSync(path.join(import.meta.dir, '..', 'docs', 'cli.md'), 'utf8')
+  const watch = doc.slice(doc.indexOf('## `vx watch`'), doc.indexOf('## `vx cache prune`'))
+  const codes = watch.slice(watch.indexOf('### Exit codes'))
+  expect(codes.slice(0, codes.indexOf('- `1`'))).toContain('when `--affected` selects nothing')
+})
