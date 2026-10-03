@@ -135,11 +135,14 @@ const releaseTasks = {
                         'dist/vx-darwin-arm64.cstemp',
                       ],
                       machLookup: ['com.apple.trustd.agent'],
-                      // Bun's x64 runtime probes CPU features under Rosetta.
-                      systemInfo: ['hw.optional.bmi1', 'hw.optional.avx2_0'],
                     }
                   : {}),
               },
+              // Bun's x64 runtime probes CPU features under Rosetta; the
+              // denied read changes nothing it prints.
+              ...(os === 'darwin'
+                ? { ignore: { systemInfo: ['hw.optional.bmi1', 'hw.optional.avx2_0'] } }
+                : {}),
             },
           },
         },
