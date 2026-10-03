@@ -104,10 +104,11 @@ const TOOLS: readonly ToolDef[] = [
   {
     name: 'getWorkspaceInfo',
     description:
-      'The workspace doctor (`vx info --format json`): vx, bun and git versions, the git status cache, ' +
-      'projects and tasks, the plugins and the seams each fills, the worker count and memory budget a run ' +
-      'will use and where each comes from, the cache dir and versions, entries, orphans, task runs and hits in ' +
-      'the last 24h, flaky tasks, whether vx-lock.json exists — the facts a bug report needs.',
+      'The workspace doctor, the object `vx info --format json` prints: vx, bun, bunSupported, git, ' +
+      'gitStatusCache, workspaceRoot, projects, tasks, configErrors, plugins (and the seams each fills), ' +
+      'workers and memory (what a run will use, and where each comes from), cacheDir, cacheVersion, ' +
+      'schemaVersion, cacheEntries, cacheBytes, orphans, runs24h, hits24h, flakyTasks, lockfile, sandbox ' +
+      '— the facts a bug report needs.',
     inputSchema: { type: 'object', properties: {} },
   },
 ]

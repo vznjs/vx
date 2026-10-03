@@ -525,6 +525,13 @@ persistent task` and vx exits 1). Row (`site-samples` › a post's link
   watch-limit notice, the 150 ms debounce, the three-cycle notice, the
   ignored segments and suffixes, the refused flags and their reasons,
   the signals it forwards, and `cycle failed`.
+- **J2-62** `cli.md`'s `vx info` sandbox bullet called its field "the
+  `--json` fact"; `vx info --json` is refused (the verb takes
+  `--format json`). Row (`cli-doc-drift` › every flag the `vx info`
+  section names, the verb takes), red without the fix. Checked clean:
+  `vx show`'s rows, JSON shapes, near-miss and empty-target refusals and
+  the file-system refusal lines; `vx info`'s sample against the current
+  constants, the sandbox, plugin, workers and orphans rows.
 - **J2-58** `cli.md`'s `vx run` section read against source: the glyph
   table gave `⏺` the status words "success/failed", but a failed task
   always draws `◼`. Row (`cli-doc-drift` › the glyph table is the
@@ -549,3 +556,14 @@ persistent task` and vx exits 1). Row (`site-samples` › a post's link
   fix. Checked clean in cli.md: the top-level shape and refusals, the
   remote-cache and analytics sections (the `runs` columns), Programmatic
   API's names. Spot-checked clean: nx.json's not-read keys.
+- **J2-63** `cli.md`'s Environment variables section said it lists "the
+  variables core reads" and named no CI variable, though a truthy `CI`
+  picks the output flow, `GITHUB_ACTIONS` its group framing, and
+  `GITHUB_ACTIONS` / `GITLAB_CI` / `BUILDKITE` / `CIRCLECI` / `CI` name
+  the provider on the `invocations` row. Row (`env-doc-drift` › names
+  the CI variables core reads), generated from `resolveOutputView`'s
+  reads and `CI_PROVIDERS`, red without the fix. Checked clean: the
+  `VX_*` defaults, `vx why` (the verdict after #2668, the row kinds, the
+  refusals), `vx last` (sixteen hits, the 13-character prefix, the
+  messages), the `vx prune` and `vx stats` pointers, `vx completions`,
+  and Plugin commands.
