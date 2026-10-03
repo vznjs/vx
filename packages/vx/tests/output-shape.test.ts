@@ -283,7 +283,7 @@ describe('a symlinked workspace output (e2e)', () => {
         await addProject(root, 'app', { config: config(JSON.stringify(target).slice(1, -1)) })
         const r = await summarized(root, ['app#build'])
         expect(r.text).toContain(
-          `output workspace-outputs/gen/latest is a symlink to ${await realpath(target)}, outside the project`,
+          `workspaceFiles output gen/latest is a symlink to ${await realpath(target)}, outside the project`,
         )
       } finally {
         await rm(root, { recursive: true, force: true })
