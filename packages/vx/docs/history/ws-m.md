@@ -574,6 +574,18 @@ hand-written file, so a half-adopted workspace has no clean path. Pinned
 on purpose (`init.test.ts` › refuses to overwrite without --force, like
 migrate); keeping such a project and writing the rest is the owner's call.
 
+M-49. `remote-cache-degrade.test.ts` › a 503 heals on the resend
+(turboCache) › a download answered 503 once timed out at 7,094 ms
+against bun's 5 s on #2504's plugin-packages job (an unrelated diff).
+Cause: `withRetry` waits Turbo's real 2 s backoff before the resend
+(`remote-retry.ts`), so both wires' rows took 2.1 s idle (2.16 and 2.08
+s, junit) on top of two `vx run`s, and a loaded runner crossed the limit.
+The row now swaps `Bun.sleep`, which the plugin reads when the run builds
+it, for one that records the 2 s and resolves at once, and asserts the
+record: 0.14 and 0.06 s. A backoff of 1,999 ms and a 503 not resent each
+fail both rows. The suite's other slow rows (1.45 s) wait their own 700
+ms deadline, which is their claim.
+
 ## Leads for other streams
 
 - A: A-20 let a same-project dependant restore ahead of a producer whose
