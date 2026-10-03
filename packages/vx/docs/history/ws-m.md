@@ -824,6 +824,13 @@ now reads the workspace globs against the root and names the base.
 `cache-declaration-warnings.test.ts` › and a workspaceFiles directory
 linked out of the workspace (red without the fix).
 
+M-66. Class (3) probe, the save refusal: a `workspaceFiles` output
+linked out of the project was refused by vx's own entry name,
+`output workspace-outputs/gen/latest`, a path the config never wrote.
+The three save refusals (link out, dangling, not a file) now say
+`workspaceFiles output gen/latest`. `output-shape.test.ts` › to another
+project's file is still refused pins the line (red without the fix).
+
 M-67. Security audit, remote responses that lie about size or digest.
 Held, each pinned: (1) core's `ingest` bounds the compressed body
 before the decode (a `Content-Length` past the ceiling's bound, or a
@@ -839,9 +846,3 @@ an inline AC body that fails its digest is streamed instead (F-8);
 `nxCache()` hand their body to the same `ingest`. Not covered: a
 digest function this runtime cannot compute is checked by size alone
 (`canDigest`); the cache layer addresses its blobs by SHA-256 (`digestOf`).
-M-66. Class (3) probe, the save refusal: a `workspaceFiles` output
-linked out of the project was refused by vx's own entry name,
-`output workspace-outputs/gen/latest`, a path the config never wrote.
-The three save refusals (link out, dangling, not a file) now say
-`workspaceFiles output gen/latest`. `output-shape.test.ts` › to another
-project's file is still refused pins the line (red without the fix).
