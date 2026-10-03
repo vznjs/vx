@@ -1284,7 +1284,7 @@ all-miss run that follows is explained; the artifacts it orphaned are
 `vx cache prune`'s to reap.
 
 ```sql
--- src/cache/schema.ts (SCHEMA_VERSION = 'v29', in cache.ts)
+-- src/cache/schema.ts (SCHEMA_VERSION = 'v30', in cache.ts)
 
 CREATE TABLE schema_meta (
   key   TEXT PRIMARY KEY,  -- 'version', 'cache_version', 'orphans_swept_at', 'file_hashes_swept_at', 'value_salt'
@@ -1402,7 +1402,7 @@ CREATE TABLE blob_sizes (
   seen_at INTEGER NOT NULL
 );
 
--- The paths an index distrusts, by a hash of the index file and the
+-- v30: the paths an index distrusts, by a hash of the index file and the
 -- pathspecs (A-60): a warm run reads one row, not one per blob. Swept
 -- with file_hashes.
 CREATE TABLE blob_verdicts (

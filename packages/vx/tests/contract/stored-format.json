@@ -1,6 +1,6 @@
 {
   "index": {
-    "version": "v29",
+    "version": "v30",
     "layout": [
       "CREATE INDEX invocations_branch  ON invocations(branch)",
       "",
@@ -17,6 +17,12 @@
       "CREATE TABLE blob_sizes (",
       "oid     TEXT PRIMARY KEY,",
       "size    INTEGER NOT NULL,",
+      "seen_at INTEGER NOT NULL",
+      ")",
+      "",
+      "CREATE TABLE blob_verdicts (",
+      "digest  TEXT PRIMARY KEY,",
+      "paths   TEXT NOT NULL,",
       "seen_at INTEGER NOT NULL",
       ")",
       "",

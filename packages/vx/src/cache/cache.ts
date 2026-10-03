@@ -228,7 +228,10 @@ export function noteSchemaReset(cache: Cache, warn: (message: string) => void): 
 //        hit's stored stdout (up to 16 MB) with its overflow pages: 200
 //        hits of 1 MB cost the close 125-150 ms. The cache KEY is
 //        unchanged.
-export const SCHEMA_VERSION = 'v29'
+//   v30: blob_verdicts — the blob-size check's verdict by a hash of the
+//        index file (A-60), so a warm run reads one row. The cache KEY is
+//        unchanged.
+export const SCHEMA_VERSION = 'v30'
 
 /** An entry row with its stdout, which lives apart (v29); none stored reads as ''. */
 const SELECT_ENTRY =
