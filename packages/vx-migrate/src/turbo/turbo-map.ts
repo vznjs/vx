@@ -108,6 +108,7 @@ function explicitEnv(
   entries: readonly string[],
   gap: (entry: string, literal: string | null) => void,
   live?: readonly string[],
+  spelled?: { readonly names: readonly string[]; readonly used: (entry: string) => void },
 ): string[] {
   const out: string[] = []
   const excluded: RegExp[] = []
@@ -130,6 +131,18 @@ function explicitEnv(
       // does a live mapping, and the names it finds are keyed and passed.
       const re = regex(parts)
       out.push(...live.filter((n) => re.test(n) && keyable(n)).sort())
+    } else if (spelled !== undefined) {
+      // A written config cannot ask the run's environment: the names the
+      // package's files spell stand in for it (clerk's root `E2E_*`), the
+      // bare prefix no name.
+      const re = regex(parts)
+      const bare = parts.join('')
+      const hits = spelled.names.filter((n) => n !== bare && re.test(n) && keyable(n))
+      if (hits.length === 0) gap(e, null)
+      else {
+        out.push(...hits)
+        spelled.used(e)
+      }
     } else gap(e, null)
   }
   return out.filter((n) => !excluded.some((re) => re.test(n)))
@@ -1145,6 +1158,19 @@ export async function mapTurboWorkspace(
   // A live mapping infers as Turbo does: the prefix joins each task's env
   // list, where the task's own `!` entries can take names back.
   const inferredOf = new Map<string, readonly string[]>()
+  // The names a package's files and its workspace dependencies' spell, once.
+  const spelledMemo = new Map<string, Promise<readonly string[]>>()
+  const spelledBy = (m: ProjectMeta): Promise<readonly string[]> => {
+    let names = spelledMemo.get(m.name)
+    if (names === undefined) {
+      const closure = new Set<ProjectMeta>([m])
+      for (const p of closure)
+        for (const d of metas) if (!closure.has(d) && declares(p, d.name)) closure.add(d)
+      names = opts.sourceNames!([...closure].map((p) => p.dir))
+      spelledMemo.set(m.name, names)
+    }
+    return names
+  }
   const usersOf = new Map<(typeof FRAMEWORK_ENV)[number], string[]>()
   const sourcedOf = new Map<(typeof FRAMEWORK_ENV)[number], string[]>()
   for (const m of metas) {
@@ -1170,10 +1196,7 @@ export async function mapTurboWorkspace(
       // NEXT_PUBLIC_ value empty. The names the package's own files spell
       // are what its build reads, and so are its workspace dependencies':
       // Next bundles their source (cal.com's web spells 23, with them 58).
-      const closure = new Set<ProjectMeta>([m])
-      for (const p of closure)
-        for (const d of metas) if (!closure.has(d) && declares(p, d.name)) closure.add(d)
-      const spelled = await opts.sourceNames([...closure].map((p) => p.dir))
+      const spelled = await spelledBy(m)
       inferredOf.set(
         m.name,
         // The bare prefix is no name: formbricks' web spells `NEXT_PUBLIC_`
@@ -1200,6 +1223,28 @@ export async function mapTurboWorkspace(
         'its tasks; vx env names are explicit — list the ones they read in cache.inputs.env ' +
         'and exec.env.passThrough',
     )
+
+  // A task's own `*` env name, in a written config: expanded over the
+  // names its package spells (`explicitEnv`), each entry noted once.
+  const wildcardUses = new Map<string, number>()
+  const spelledOf = new Map<
+    string,
+    { readonly names: readonly string[]; readonly used: (entry: string) => void }
+  >()
+  if (opts.envNames === undefined && opts.sourceNames !== undefined)
+    for (const meta of metas) {
+      const { defined, defFor } = definitions(meta)
+      const wild = [...defined].some((name) =>
+        [...(defFor(name)?.env ?? []), ...(defFor(name)?.passThroughEnv ?? [])].some(
+          (e) => !e.startsWith('!') && /(?<!\\)\*/.test(e),
+        ),
+      )
+      if (!wild) continue
+      spelledOf.set(meta.name, {
+        names: await spelledBy(meta),
+        used: (e) => wildcardUses.set(e, (wildcardUses.get(e) ?? 0) + 1),
+      })
+    }
 
   const projects: TurboMappedProject[] = []
   const literals = { tasks: [] as Literals[], globalIgnored }
@@ -1235,6 +1280,7 @@ export async function mapTurboWorkspace(
             rootMeta?.name,
             { name: meta.name, persistentAt, withOf },
             inferredOf.get(meta.name) ?? [],
+            spelledOf.get(meta.name),
           ),
         )
         continue
@@ -1266,6 +1312,7 @@ export async function mapTurboWorkspace(
           rootMeta?.name,
           { name: meta.name, persistentAt, withOf },
           inferredOf.get(meta.name) ?? [],
+          spelledOf.get(meta.name),
         )
         // Emitted even when its edges all drop: other packages' edges were
         // validated against it, and `dependsOn: []` is a group that waits
@@ -1316,6 +1363,7 @@ export async function mapTurboWorkspace(
         rootMeta?.name,
         { name: meta.name, persistentAt, withOf },
         inferredOf.get(meta.name) ?? [],
+        spelledOf.get(meta.name),
       )
       if (override === undefined && mapped.task !== null)
         npmScriptEnv(mapped.task, name, command === script, meta, opts)
@@ -1336,6 +1384,12 @@ export async function mapTurboWorkspace(
   }
 
   nestedInputs(root, projects)
+  for (const [entry, n] of wildcardUses)
+    notes.push(
+      `env ${JSON.stringify(entry)}: the configs list the names the files of each task's ` +
+        `package and its workspace dependencies spell (${n} task${n === 1 ? '' : 's'}) — add ` +
+        'any other a task reads to cache.inputs.env and exec.env.passThrough',
+    )
   resolveSharedWorkspaceOutputs(root, projects)
   pruneOrphanPersistentNotes(projects, opts.persistentTodo)
   return { projects, notes, globals }
@@ -1494,6 +1548,7 @@ function buildTask(
     readonly withOf: ReadonlyMap<string, readonly string[]>
   },
   inferred: readonly string[],
+  spelled?: { readonly names: readonly string[]; readonly used: (entry: string) => void },
 ): TurboMappedTask {
   const todos: string[] = []
   // A glob that climbs out of the package (`../../packages/app-store/
@@ -1663,11 +1718,13 @@ function buildTask(
         ),
       ),
     opts.envNames,
+    spelled,
   )
   const passNames: string[] = explicitEnv(
     def.passThroughEnv ?? [],
     (e, literal) => todos.push(envGap('passThroughEnv', e, literal, ' — list explicit names')),
     opts.envNames,
+    spelled,
   )
 
   const passThrough = uniq(
