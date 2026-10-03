@@ -110,6 +110,13 @@ prune` all match. Fixed: the Run blocks used bare `vx`, which a local
   install does not put on PATH (now named once), and the hit comment
   said "a hit" where the default output prints `up-to-date`.
 
+- **R-22** Owner-rules audit of the README and site: every competitor
+  benchmark cell shows vx's %, Windows always means WSL, no page says vx
+  runs a Turbo or Nx repo or is faster through the bridge; nothing left
+  to fix. New Docs page, Troubleshooting: each first-run error as vx
+  prints it (each string checked in source and in a run), then the
+  surprises and platforms, linking each guide's own list.
+
 ## Leads
 
 - Real-repo rows (`packages/vx-bench/real-repos.json`, benchmarks.md's
