@@ -21,7 +21,10 @@ rules stand between them and neither changes what the task is:
   failure; a default run carries no check. `--exclude-dependencies`
   seeds the same taint (`seeds`): a task whose key folds a dependency
   that did not run (`excluded-keys.md`) has bytes nothing vouches for,
-  and so does everything built on it. No seed and no `always` keeps
+  and so does everything built on it. Under `always`, `run()` also seeds
+  a task that starts while a server it depends on (through groups too,
+  `deadServerBehind`) has died: the server's outcome says `success`
+  until the run ends, so no settled outcome holds that failure yet. No seed and no `always` keeps
   the check off. A task's taint is read from its deps' SETTLED outcomes
   (the scheduler's `onFinish` feeds `settled`), not from what it saw at
   dispatch: a restore-tier hit dispatches before its deps settle, saw
