@@ -557,11 +557,12 @@ export function diffKeyComponents(
   const old = new Map(before.map((c) => [id(c), c]))
   const entries: InputDiffEntry[] = []
   let unchangedCount = 0
-  // A secret-named env input's hash is its value, unsalted: a short one is
+  // A secret env input's hash is its value, unsalted: a short one is
   // recoverable from a log that printed `vx why` (M-62). The diff says it
-  // changed and never shows the hash.
+  // changed and never shows the hash. Secret by name, or by the mark a
+  // task's `exec.env.secret` put on its row (M-63).
   const shown = (c: TaskInputComponent): string =>
-    c.kind === 'env' && secretNamed(c.name) ? MASKED : c.hash
+    c.kind === 'env' && (secretNamed(c.name) || c.hash.startsWith(MASKED)) ? MASKED : c.hash
   const keys = new Set<string>([...cur.keys(), ...old.keys()])
   for (const key of keys) {
     const a = cur.get(key)

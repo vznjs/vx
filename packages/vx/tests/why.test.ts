@@ -771,4 +771,46 @@ describe('vx why — a secret-named env input', () => {
     },
     TIMEOUT,
   )
+
+  it(
+    'a name only exec.env.secret makes secret is hidden too (M-63)',
+    async () => {
+      const root = await makeWorkspaceRoot({ prefix: 'vx-why-named-', git: false })
+      try {
+        const appDir = path.join(root, 'packages', 'app')
+        await mkdir(path.join(appDir, 'src'), { recursive: true })
+        await writeFile(path.join(appDir, 'package.json'), JSON.stringify({ name: 'app' }))
+        await writeFile(path.join(appDir, 'src', 'input.txt'), 'v1\n')
+        await writeFile(
+          path.join(appDir, 'vx.config.mjs'),
+          `export default { tasks: { build: { exec: { command: 'cat src/input.txt > out.txt', env: { secret: ['GH_PAT'] } },
+            cache: { inputs: { files: ['src/**'], env: ['GH_PAT', 'REGION'] }, outputs: { files: ['out.txt'] } } } } }\n`,
+        )
+        const git = gitIn(root)
+        git('init', '-q')
+        git('add', '-A')
+        await vx(root, ['run', 'build', '--all'], { GH_PAT: 'pat-value-one', REGION: 'eu' })
+        await vx(root, ['run', 'build', '--all'], { GH_PAT: 'pat-value-two', REGION: 'us' })
+        const text = await vx(root, ['why', 'app#build'])
+        expect(
+          text.out
+            .split('\n')
+            .filter((l) => /^\s+changed\s+env\s/.test(l))
+            .map((l) => l.trim().replace(/[0-9a-f]{16}/g, '<hash>')),
+        ).toEqual([
+          'changed env   GH_PAT',
+          // CONTROL: a name neither the rule nor the task calls secret.
+          'changed env   REGION  <hash> → <hash>',
+        ])
+        const json = JSON.parse((await vx(root, ['why', 'app#build', '--format', 'json'])).out) as {
+          diff: { entries: { kind: string; name: string; before?: string; after?: string }[] }
+        }
+        const pat = json.diff.entries.find((e) => e.name === 'GH_PAT')
+        expect([pat?.before, pat?.after]).toEqual(['***', '***'])
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
 })
