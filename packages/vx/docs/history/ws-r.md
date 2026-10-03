@@ -132,6 +132,14 @@ prune` all match. Fixed: the Run blocks used bare `vx`, which a local
   base. The line now says what it compares with, and Common problems
   has the error.
 
+- **R-25** README order: benchmark table, what vx is (three lines),
+  install, quick start, then the rest. Cut what no source holds: the
+  status table's maturity labels (pre-alpha says it), the comparison's
+  "daemon required for speed" (now what each tool runs: vx none, Turbo
+  none for `turbo run`, Nx on by default, as comparison.md has it) and
+  its uncited OTel row. The migrate guide already matches `vx init` and
+  vx-migrate byte for byte (R-15's pins).
+
 ## Leads
 
 - Real-repo rows (`packages/vx-bench/real-repos.json`, benchmarks.md's
