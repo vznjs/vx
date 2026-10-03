@@ -17,6 +17,7 @@ nx-env --help: exit 0
 nx-env argv starts: (a flag)
 nx-env --dotenv
 nx-env --envFile
+nx-env --ready-when
 nx-env (no arguments): exit 2
 vx-migrate --from turbo
 vx-migrate --from nx
