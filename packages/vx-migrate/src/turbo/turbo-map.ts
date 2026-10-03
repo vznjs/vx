@@ -22,11 +22,12 @@ import {
   resolveSharedOutputs,
   resolveSharedWorkspaceOutputs,
   takingBack,
+  literalTailMatches,
   wildcardOutput,
   wildcardTodo,
 } from '../shared-outputs.js'
 import { packageScripts, relPosix } from '../paths.js'
-import type { TrackedKinds } from '../tracked-outputs.js'
+import { MAX_SPARED, type TrackedKinds } from '../tracked-outputs.js'
 import {
   DOTENV_PROBE,
   DOTENV_PROBE_TOP,
@@ -1335,6 +1336,7 @@ export async function mapTurboWorkspace(
   }
 
   nestedInputs(root, projects)
+  literalEnvGapsOnce(projects, notes)
   resolveSharedWorkspaceOutputs(root, projects)
   pruneOrphanPersistentNotes(projects, opts.persistentTodo)
   return { projects, notes, globals }
@@ -1381,6 +1383,25 @@ function nestedInputs(root: string, projects: readonly TurboMappedProject[]): vo
       inputs['workspaceFiles'] = uniq([...(Array.isArray(ws) ? ws : []), ...extra])
     }
   })
+}
+
+/**
+ * A literal env name core cannot key (`\\*`, which Turbo reads as the one
+ * variable `*`) keys nothing in Turbo either unless the run sets it, so it
+ * is no task's to fix: openstatus's root `build` env wrote the same
+ * TODO into 45 configs. Reported once, with how many tasks name it.
+ */
+function literalEnvGapsOnce(projects: readonly TurboMappedProject[], notes: string[]): void {
+  const counts = new Map<string, number>()
+  for (const p of projects)
+    for (const t of p.tasks)
+      t.todos = t.todos.filter((todo) => {
+        if (!/^(env|passThroughEnv) ".*": Turbo reads this as the one variable /s.test(todo))
+          return true
+        counts.set(todo, (counts.get(todo) ?? 0) + 1)
+        return false
+      })
+  for (const [todo, n] of counts) notes.push(`${todo} (${n} task${n === 1 ? '' : 's'})`)
 }
 
 /**
@@ -1804,7 +1825,15 @@ function buildTask(
       } else outFiles.push(neg + o)
     }
 
-    const wild = wildcardOutput(outFiles, opts.tracked?.(pkgDir))
+    // A committed file a literal-tail wildcard reaches is taken back, as
+    // the runtime spares a tracked output; past the runtime's limit the
+    // task stays uncached.
+    for (const o of [...outFiles]) {
+      const hits = literalTailMatches(o, opts.tracked?.(pkgDir))
+      if (hits !== null && hits.length <= MAX_SPARED)
+        for (const h of hits) if (!outFiles.includes(`!${h}`)) outFiles.push(`!${h}`)
+    }
+    const wild = wildcardOutput(outFiles, opts.tracked?.(pkgDir), true)
     if (wild !== undefined) {
       todos.push(wildcardTodo(wild))
       return { name, todos, task, uses }

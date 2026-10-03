@@ -43,6 +43,13 @@ In order of harm:
 
 ## Leads for other streams
 
+- **A:** an uncached task's key is derived twice: `deriveStableKeys`
+  (local short-circuit) and again in `executeCachedTask`, which gets no
+  `preProbed` for a task with no `cache`. 300 `true` tasks at
+  concurrency 1: `task hash` 600 calls, 46–53 ms, about 0.08 ms a task
+  for the second (2026-10-03). A non-preliminary stable key could be
+  handed on as it is for a cached one.
+
 - **A:** a local save decodes and re-parses the artifact it just packed
   (`save: scan`, about 0.1 ms per save, B-37). The checks there guard
   the ingest boundary, and vx's own bytes could skip them. A save also
@@ -1321,3 +1328,35 @@ B-78. The write observer records strace's own log as `deny openat
 started with `5>out.log` in a single-package workspace failed a clean
 task on a write to `out.log`. Records under `/dev/` and `/proc/` are
 skipped (#2380). Rows: `sandbox-fd-records.test.ts`.
+
+B-79. bwrap's `--tmpfs` is writable, and SRT lays one over each
+read-denied directory: a sandboxed write to the workspace root or an
+ungranted cwd succeeded and vanished, so the task went green with its
+output gone, where seatbelt refuses it. `readOnlyMasks` remounts each
+read-only before bwrap's `--`; the mask a pending write glob's scratch
+lies in stays writable (#2371). Rows:
+`sandbox-readonly-masks.unsafe.test.ts`.
+
+B-80. SRT's `initialize` does not run its own `NetworkConfigSchema`: a
+URL or a dotless host in `allow.network` matched nothing with no word,
+and `'*'` opened every host to every sandboxed task of the run.
+`initSandbox` refuses such an entry by name. The refusal, the first
+failure thrown past the Linux probe, left the runtime up and the process
+hung after the summary; `arm()` now resets it on any failure (#2383).
+Rows: `sandbox-network-patterns.unsafe.test.ts` (the hang row is killed
+at 20 s without the reset).
+
+B-81. A sandboxed task that failed on a read the wall refused said only
+what its tool says for a missing file. A failed task now names the
+hidden paths that exist on the host, with the grant (`hiddenReadsOutside`);
+never counted, never on a pass. macOS logs the seatbelt record late, so
+its row holds the hint on Linux only (#2387). Rows:
+`sandbox-hidden-reads.unsafe.test.ts`.
+
+B-82. The unsandboxed per-task cost, in a run (300 `true` tasks,
+concurrency 1, `VX_TIMING`, 3 runs): 1.75 ms of graph time a task, of
+which `runCommand` 1.40–1.47 (the spawn floor and the kill guard's
+shell, #2355), `task hash` 0.17 (computed twice, lead for A above), the
+rest 0.15. `miss: execute` outside `runCommand` is 0.05. Nothing in
+`exec` is cut: the shell is the task's API and the guard must run in it
+before the command (B-9).

@@ -31,7 +31,7 @@ read each file and hash it, or keep a daemon around so they do not have
 to. vx spawns one `git ls-files -s`, which returns the file list *and*
 every clean file's blob object id, and one concurrent `git status` to
 prune anything that diverges from the index. Clean-tree key derivation
-costs zero file reads, zero stats and zero database lookups.
+costs zero source-file reads, zero stats and zero database lookups.
 
 Dirty files get the identical blob id computed in-process, so a key
 never flips when you commit. That class of spurious miss, "I committed
@@ -63,9 +63,10 @@ onto a current tree costs about what an untouched tree costs.
 
 ## 4. One artifact format end to end
 
-A cache entry is one `tar.zst` archive plus a SQLite row. Metadata and
-the captured stdout live in the row, so a hit is one indexed `SELECT`
-and a replay from the row, not a decompression. The same bytes go over
+A cache entry is one `tar.zst` archive plus SQLite rows. Metadata and
+the captured stdout live in the index (the stdout in a side table, so
+the run's access-time bump never rewrites it), so a hit is one indexed
+`SELECT` and a replay from it, not a decompression. The same bytes go over
 the wire to a remote cache; nothing is repacked at the boundary.
 Packing is in-process (vx's own streaming tar), the publish is an atomic
 rename, and each save is a single transaction.

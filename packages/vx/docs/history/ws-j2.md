@@ -226,3 +226,18 @@ persistent task` and vx exits 1). Row (`site-samples` › a post's link
   page that installs, runs or imports a plugin says npm has none yet),
   the plugins read from the manifests and the pages found; red on both
   without the fix.
+
+- **J2-26** #2392 moved an entry's stdout out of the `entries` row into
+  `entry_stdout` (so the run-end `accessed_at` bump stops rewriting up
+  to 16 MB a hit); `modules/cache.md`'s `get` bullet, `optimizations.md`
+  row 17f, the why-vx-is-fast post and the one-command-per-task post
+  still put it in the row. Row (`site-samples` › the pages say where an
+  entry stdout lives), gated on `schema.ts`; red without the fix.
+
+- **J2-27** #2288 (docs untouched) stopped a bare `--affected` asking
+  git twice: `verifyRef` skips a ref the default base's search already
+  resolved, and a `HEAD~n` base is its own merge base, so no
+  `git merge-base` spawns. `modules/affected.md`'s algorithm still had
+  both spawns unconditional, and its step 2 rendered "- unstaged
+  changes" as a nested list item. Row (`module-page-claims` ›
+  affected.md), gated on `affected.ts`; red without the fix.

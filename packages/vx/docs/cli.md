@@ -756,9 +756,10 @@ down with it:
   runs and cleans its outputs as usual but is **never saved**: under
   pure-input hashing its key is the one a healthy run derives, while its
   bytes were built on a partial tree, so caching it would hand the next
-  clean run a stale hit. A cache hit still restores (that artifact came
-  from a healthy run), and the next run without the failure rebuilds the
-  rest.
+  clean run a stale hit. A server that died after it became ready is
+  such a failure to what starts after its death. A cache hit still
+  restores (that artifact came from a healthy run), and the next run
+  without the failure rebuilds the rest.
 
 The mode is the local scheduler's: a task a plugin executor runs
 elsewhere is one dispatch, failed or not, like any other.

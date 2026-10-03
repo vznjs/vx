@@ -99,6 +99,19 @@ describe('module pages state what their file does since the fix', () => {
     )
   })
 
+  it('affected.md: a resolved base skips the verify and the merge-base spawn (#2288)', () => {
+    const src_ = src('workspace/affected.ts')
+    expect(src_).toContain('if (resolvedRefs.has(`${workspaceRoot}\\0${ref}`)) return')
+    expect(src_).toContain('const HEAD_ANCESTOR = ')
+    const verify = blocks('modules/affected.md', '`verifyRef(workspaceRoot, since)`')
+    expect(verify.length).toBe(1)
+    expect(verify[0]).toContain('is not asked again (#2288)')
+    const diff = blocks('modules/affected.md', '`git diff --name-only <merge-base(since, HEAD)>`')
+    expect(diff.length).toBe(1)
+    expect(diff[0]).toContain('no `git merge-base` spawns (#2288)')
+    expect(diff[0]).toContain('committed, staged and unstaged changes')
+  })
+
   it("logger.md: a kept server's output streams under its id after the summary (#2054)", () => {
     expect(src('orchestrator/logger.ts')).toContain('formatKeptLines(')
     expect(page('modules/logger.md')).toMatch(

@@ -2,7 +2,7 @@
   "name": "@vzn/vx",
   "version": "0.0.0",
   "license": "MIT",
-  "description": "A fast, correct task runner and build cache for JavaScript monorepos.",
+  "description": "The fastest task runner and build cache for JavaScript monorepos.",
   "homepage": "https://vznjs.github.io/vx/",
   "keywords": [
     "vx",
