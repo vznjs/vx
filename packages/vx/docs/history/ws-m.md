@@ -790,3 +790,10 @@ keep their hashes. Not
 covered: a name made secret by `exec.env.secret` alone, which run history
 does not record. `why.test.ts` › a secret-named env input (text and json;
 red without the fix, the `REGION` control unmasked).
+
+M-66. Class (3) probe, the save refusal: a `workspaceFiles` output
+linked out of the project was refused by vx's own entry name,
+`output workspace-outputs/gen/latest`, a path the config never wrote.
+The three save refusals (link out, dangling, not a file) now say
+`workspaceFiles output gen/latest`. `output-shape.test.ts` › to another
+project's file is still refused pins the line (red without the fix).
