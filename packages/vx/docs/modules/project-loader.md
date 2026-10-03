@@ -127,6 +127,13 @@ readers that reach it here.
   `process.chdir()` left every relative path vx resolved after it reading
   from the config's choice; the working directory is put back and the load
   refused, naming `process.cwd (a chdir)` (D-120).
+- `vx.workspace.ts` gets the same guard: it runs in this process too, and
+  its `Object.prototype.exec` ran in a project's group task. Built-ins,
+  `process.env`, the cwd and the umask are snapshotted around its load, put
+  back, and the load refused naming the file, a failed load's change
+  included (D-126): the workspace config's bytes are in no key, so a
+  removed `Object.prototype.exec` replayed the old command. Globals are
+  left out: it loads first in every run, filtered or not.
 - Nor change the umask: a config's `process.umask(0o777)` left every file
   vx and its tasks wrote after it `000`, a cache artifact a user other than
   root could not read back. A worker shares the process's umask (a

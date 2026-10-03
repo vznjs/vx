@@ -655,10 +655,11 @@ interface OwnProperties {
 
 interface BuiltinSnapshot {
   readonly prims: Primitives
-  readonly props: readonly OwnProperties[]
+  /** Undefined for a watched name the snapshot leaves out. */
+  readonly props: readonly (OwnProperties | undefined)[]
 }
 
-function builtinSnapshot(): BuiltinSnapshot {
+function builtinSnapshot(leaveOut?: string): BuiltinSnapshot {
   const prims: Primitives = {
     ownKeys: Reflect.ownKeys,
     descriptorOf: Object.getOwnPropertyDescriptor,
@@ -668,8 +669,12 @@ function builtinSnapshot(): BuiltinSnapshot {
     same: Object.is,
     keyName: String,
   }
-  const props: OwnProperties[] = []
+  const props: (OwnProperties | undefined)[] = []
   for (let i = 0; i < WATCHED_BUILTINS.length; i++) {
+    if (WATCHED_BUILTINS[i]![0] === leaveOut) {
+      props[i] = undefined
+      continue
+    }
     const proto = WATCHED_BUILTINS[i]![1]
     const keys = prims.ownKeys(proto)
     const descriptors: PropertyDescriptor[] = []
@@ -735,7 +740,8 @@ function restoreBuiltins(before: BuiltinSnapshot | undefined): string[] {
   for (let i = 0; i < WATCHED_BUILTINS.length; i++) {
     const name = WATCHED_BUILTINS[i]![0]
     const proto = WATCHED_BUILTINS[i]![1]
-    const was = before.props[i]!
+    const was = before.props[i]
+    if (was === undefined) continue
     const keys = p.ownKeys(proto)
     if (unchanged(p, proto, keys, was)) continue
     // Slow path, a change only: a linear lookup keeps it off `Map`.
@@ -890,7 +896,29 @@ export async function loadWorkspaceConfig(root: string): Promise<WorkspaceConfig
     const since = workspaceLoadedAt.get(configPath)
     if (since !== undefined) await refuseStaleWorkspaceImports(configPath, since)
     const startedAt = Date.now()
-    const mod = (await loadDefaultExport(configPath, 'Workspace', bytes)) as WorkspaceConfig
+    // The same guard a project config's first load has: the workspace config
+    // runs in this process too, and its `Object.prototype.exec` ran in a
+    // project's task under a key that never saw it (D-126). Its globals are
+    // left out: it loads first in every run, filtered or not, so none
+    // depends on what else loaded (D-122's case), and plugins' tests and
+    // tools hand state through them.
+    const builtins = builtinSnapshot('globalThis')
+    const env = { ...process.env }
+    const cwd = process.cwd()
+    const umask = currentUmask()
+    let mod: WorkspaceConfig
+    try {
+      mod = (await loadDefaultExport(configPath, 'Workspace', bytes)) as WorkspaceConfig
+    } finally {
+      const changed = [
+        ...restoreBuiltins(builtins),
+        ...restoreEnv(env),
+        ...restoreCwd(cwd),
+        ...restoreUmask(umask),
+      ]
+      // eslint-disable-next-line no-unsafe-finally -- the refusal outranks the load's own error
+      if (changed.length > 0) throw builtinsChanged(changed, configPath)
+    }
     // Checked again once awaited, as a project config is: a Promise default
     // passed the first check, and `Promise.resolve(null)` crashed the
     // validator with a stack while `Promise.resolve(42)` loaded as no
