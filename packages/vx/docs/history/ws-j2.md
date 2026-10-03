@@ -428,3 +428,21 @@ persistent task` and vx exits 1). Row (`site-samples` › a post's link
   red without the fix. Invariants audited clean: config-cache,
   deferred-outputs, plugin-commands, plugin-host, local-shortcircuit,
   config, history, lockfile, kill-tree. That ends the Invariants audit.
+
+- **J2-49** `cli-help.md`'s Purpose said the help text is the
+  fall-through after `vx <unknown-command>`; that path prints one line
+  naming the verb and pointing at `vx help`. It names the paths that do
+  print it now, a bare `vx` among them. Row (`module-page-claims` ›
+  cli-help.md's Purpose names the paths that print the text), red
+  without the fix.
+- **J2-50** `util-paths.md` framed `toPosix` as keeping keys stable for
+  a workspace cloned on native Windows, which vx does not run on: every
+  supported platform separates with `/`, so the conversion is a no-op.
+  The Purpose and Why say so and point Windows at WSL. Row
+  (`doc-references` › no page describes a Windows branch the source
+  dropped, widened), red without the fix. Purpose sections read clean so
+  far: chained-cache, affected, bin, cache, deferred-outputs, env,
+  filter, fingerprint, plan, plan-format, telemetry-host,
+  util-edit-distance, util-real-path, cli, cli-format, cli-watch,
+  colors, dependency-spec, execute-task, history, nested-dirs, options,
+  prepare, run-context, stable-keys, tally, task-graph.
