@@ -130,14 +130,17 @@ export function parseNxGraph(text: string, label: string): NxGraph {
 
 /**
  * Nx 15–16's names for its own executors, which a graph keeps as the
- * project wrote them: each re-exported `nx:`'s, and a migration read
- * them as unknown executors, a failing placeholder each.
+ * project wrote them: the workspace ones re-exported `nx:`'s, and a migration read
+ * them as unknown executors, a failing placeholder each. The node
+ * executors wrapped `@nx/js:node`'s.
  */
 const LEGACY: Readonly<Record<string, string>> = {
   '@nrwl/workspace:run-commands': 'nx:run-commands',
   '@nx/workspace:run-commands': 'nx:run-commands',
   '@nrwl/workspace:run-script': 'nx:run-script',
   '@nx/workspace:run-script': 'nx:run-script',
+  '@nrwl/node:node': '@nx/js:node',
+  '@nx/node:node': '@nx/js:node',
 }
 
 const isRecord = (v: unknown): v is Record<string, unknown> =>

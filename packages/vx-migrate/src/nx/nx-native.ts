@@ -849,7 +849,8 @@ const node: Translate = (o, ctx, todos, _env, deps) => {
     ...ctx.targetOptions?.(spec),
     ...(o['buildTargetOptions'] as Options | undefined),
   }
-  const executor = ctx.targetExecutor?.(spec)
+  // An Nx 15 build keeps the `@nrwl/` name; tsc still writes under the main's dir.
+  const executor = ctx.targetExecutor?.(spec)?.replace(/^@nrwl\//, '@nx/')
   let fileToRun: string
   if (typeof build['outputPath'] !== 'string' && typeof build['outputFileName'] !== 'string') {
     // Nx's `getFileToRun` for a build target with no output options (the

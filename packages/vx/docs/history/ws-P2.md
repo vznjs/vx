@@ -183,6 +183,10 @@ sync`", advice for a repo leaving Nx: they say to keep what the
   one `test-ci--<spec>` target per file). It migrates and plans; each
   spec task shares `test`'s coverage dir, so it runs uncached with the
   TODO that says so.
+- **P2-37** Nx 15–16's `@nrwl/node:node` and `@nx/node:node`, wrappers
+  over the js node executor, were failing placeholders; they map to
+  `@nx/js:node`. Its output file reads an `@nrwl/js:tsc` / `swc` build
+  as the `@nx/` one (tsc writes under the main's dir either way).
 
 ## Leads for other streams
 
