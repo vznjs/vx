@@ -77,6 +77,12 @@ with the directory to grant; under the host's temp directory it names
 - A group task: it has no command.
 - A task that itself sandboxes, on macOS (a sandbox cannot nest).
 
+A persistent task (a dev server) runs inside the same walls, but nothing
+traces it: a read outside its grants is refused as missing (`ENOENT`) and
+named nowhere, and step 4's failure does not happen. One that exits
+failing before it is ready says so beside its failure; run its command
+as a one-shot sandboxed task to see what it was refused.
+
 ## Common problems
 
 - **`write /proc/self/uid_map: Operation not permitted`.** You are root in a container. Run as a normal user, or set `weakerWhenNested: true` on every sandboxed task.

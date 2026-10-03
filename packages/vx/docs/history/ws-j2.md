@@ -290,3 +290,11 @@ persistent task` and vx exits 1). Row (`site-samples` › a post's link
   `holdPersistent` sentence still had the caller owning the servers
   with no word of it. Row (`module-page-claims` › orchestrator.md, a
   held server), gated on `run.ts`; red without the fix.
+
+- **J2-36** The sandboxing guide's step 4 says an undeclared read fails
+  the task and names the path; a persistent task (a dev server) is
+  never traced, so its refusals are named nowhere and read as the
+  tool's own `ENOENT`. #2451 tells a failing one so; the guide had no
+  word of servers at all. It now says it under "What can't be
+  sandboxed". Row (`site-samples` › the sandboxing guide says a server
+  is never traced), gated on `execute-task.ts`; red without the fix.
