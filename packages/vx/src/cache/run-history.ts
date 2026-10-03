@@ -4,6 +4,7 @@
 // its statements over the store's handle; `Cache` delegates.
 
 import type { Database, SQLQueryBindings } from 'bun:sqlite'
+import { lazyStatement } from './schema.js'
 import type { InvocationRecord, RunRecord } from './layer.js'
 
 export class RunHistory {
@@ -15,7 +16,9 @@ export class RunHistory {
     /** The store's salted value digest (L-4). */
     private readonly digestValue: (value: string) => string,
   ) {
-    this.insertRun = this.db.prepare(`
+    this.insertRun = lazyStatement(
+      this.db,
+      `
       INSERT INTO runs(
         hash, project, task, status, exit_code, duration_ms, forward_args,
         started_at, ended_at,
@@ -24,8 +27,11 @@ export class RunHistory {
         blocked_by, timed_out, sandbox_violations, not_ready
       )
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?,  ?, ?, ?, ?, ?,  ?, ?, ?,  ?, ?, ?, ?)
-    `)
-    this.insertInvocation = this.db.prepare(`
+    `,
+    )
+    this.insertInvocation = lazyStatement(
+      this.db,
+      `
       INSERT INTO invocations(
         run_id, command, requested_tasks, cache_policy, concurrency, flow,
         started_at, ended_at, total_duration_ms,
@@ -36,7 +42,8 @@ export class RunHistory {
       )
       VALUES (?, ?, ?, ?, ?, ?,  ?, ?, ?,  ?, ?, ?, ?, ?,  ?,  ?, ?, ?, ?, ?,  ?, ?, ?, ?, ?)
       ON CONFLICT(run_id) DO NOTHING
-    `)
+    `,
+    )
   }
 
   recordRun(run: RunRecord): void {

@@ -137,6 +137,18 @@ export function mapNxOutputs(
     // (`asTrees`), and keeps a hit's directory short-circuit for either. The
     // `<rel>/**` this wrote for an extensionless name matched nothing under
     // a FILE, so a binary like `dist/bin/tool` was never saved (Next 27).
+    // A path that leaves the workspace (an old generator's
+    // `reportsDirectory: "../../coverage/<lib>"`, read from the workspace
+    // root as Nx 23 reads it) has no place in a config: core refuses `..`,
+    // so the written file failed to load and every task with it.
+    const norm = path.posix.normalize(s.replace(/^\/+/, ''))
+    if (norm === '..' || norm.startsWith('../')) {
+      todos.push(
+        `output ${JSON.stringify(o)} resolves to ${JSON.stringify(norm)}, outside the workspace — ` +
+          'vx caches only inside it; dropped',
+      )
+      continue
+    }
     if (projectRel === '.') outFiles.push(neg + s)
     else if (s.startsWith(`${projectRel}/`)) outFiles.push(neg + s.slice(projectRel.length + 1))
     else wsOutFiles.push(neg + path.posix.normalize(s).replace(/^\.\//, ''))

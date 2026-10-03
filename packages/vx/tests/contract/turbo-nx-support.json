@@ -122,7 +122,7 @@
   {
     "key": "turbo.json tasks.*.env",
     "status": "mapped",
-    "reason": "Goes to `cache.inputs.env` and `exec.env.passThrough`; under `turbo()` a `*` name expands over the run's environment, as Turbo does; otherwise wildcards get a TODO."
+    "reason": "Goes to `cache.inputs.env` and `exec.env.passThrough`; under `turbo()` a `*` name expands over the run's environment, as Turbo does; the CLI lists the names the package's files spell, and a wildcard nothing spells gets a TODO."
   },
   {
     "key": "turbo.json tasks.*.inputs",
@@ -152,7 +152,7 @@
   {
     "key": "turbo.json tasks.*.passThroughEnv",
     "status": "mapped",
-    "reason": "Goes to `exec.env.passThrough`, not hashed; under `turbo()` a `*` name expands over the run's environment; otherwise wildcards get a TODO."
+    "reason": "Goes to `exec.env.passThrough`, not hashed; under `turbo()` a `*` name expands over the run's environment; the CLI lists the names the package's files spell, and a wildcard nothing spells gets a TODO."
   },
   {
     "key": "turbo.json tasks.*.persistent",
@@ -432,7 +432,7 @@
   {
     "key": "nx.json sync",
     "status": "not-supported",
-    "reason": "Global sync generators never run; vx warns once per run to run `nx sync`."
+    "reason": "Global sync generators never run; under `nx()` vx warns once per run to run `nx sync`, and a migration notes keeping their output by hand."
   },
   {
     "key": "nx.json migrate",
@@ -517,7 +517,7 @@
   {
     "key": "nx.json targetDefaults.*.syncGenerators",
     "status": "not-supported",
-    "reason": "One workspace note per generator list, counting its tasks, says to run `nx sync`; vx never runs sync generators."
+    "reason": "One workspace note per generator list, counting its tasks, says to run `nx sync` (a migration: keep their output by hand); vx never runs sync generators."
   },
   {
     "key": "project.json name",
@@ -637,7 +637,7 @@
   {
     "key": "project.json targets.*.syncGenerators",
     "status": "not-supported",
-    "reason": "One workspace note per generator list, counting its tasks, says to run `nx sync`; vx never runs sync generators."
+    "reason": "One workspace note per generator list, counting its tasks, says to run `nx sync` (a migration: keep their output by hand); vx never runs sync generators."
   },
   {
     "key": "inputs: a string",
