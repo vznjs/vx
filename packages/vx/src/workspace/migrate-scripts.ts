@@ -874,6 +874,25 @@ export function migrateScripts(
           `\`${sibling}\` runs another member's work outside the graph, again beside that member's own task: name that task under dependsOn (\`<member>#<task>\`) and drop it from the command`,
         )
       }
+      // A chain of this package's own scripts (`check: pnpm run build &&
+      // pnpm run lint`) ran each again inside the command, beside the task
+      // of that name: `vx run check` built twice. The chain's order may
+      // matter, so it is named rather than turned into a group.
+      const ownRuns = own
+        .split(/&&|\|\||;/)
+        .map((part) => part.trim())
+        .filter((part) => {
+          const d = delegatedScript(part)
+          return d !== null && d !== name && isTask(d)
+        })
+      if (ownRuns.length > 0) {
+        const list = ownRuns.map((r) => `\`${r}\``).join(', ')
+        todos.push(
+          ownRuns.length === 1
+            ? `${list} runs this package's own task again inside the command, beside that task: name it under dependsOn and drop it from the command`
+            : `${list} run this package's own tasks again inside the command, beside those tasks: name them under dependsOn and drop them from the command`,
+        )
+      }
       const exec: Record<string, unknown> = { command }
       const npm = npmEnv(command, name, hooks.length > 0)
       if (Object.keys(npm.define).length > 0) exec['env'] = { define: npm.define }
