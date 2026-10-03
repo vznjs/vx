@@ -220,6 +220,17 @@ prune` all match. Fixed: the Run blocks used bare `vx`, which a local
   one-command-per-task posts, schema.md) still describes the shipped
   translation; it changes with P2's code change to nx-exec.
 
+- **R-36** Guides run as written on a fixture (examples/basic copy, the
+  checkout's vx). The CI guide's block runs from the root, where three
+  lines refused ("not inside a project"): `--graph=g.dot`,
+  `-- --bail` and `vx watch test`; each now passes `--all`, and
+  `vx-docs/tests/ci-guide-commands.test.ts` holds every line to a
+  selector. Held as written: the flag table against `vx run --help`,
+  the `--dry` and `vx why` samples' shape, forwarding (`args: --bail`),
+  and the sandbox guide's steps 1–5 (`sandbox: {}` fails naming the
+  write, then the read; read `.` + write `dist/**` succeeds). The
+  plugins and configure samples already have pins.
+
 ## Leads
 
 - Real-repo rows (`packages/vx-bench/real-repos.json`, benchmarks.md's
