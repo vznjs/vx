@@ -1346,3 +1346,17 @@ lock's release 0.6 ms (two async fs calls; a sync release would close
 the window `run-lock-fs.test.ts` drives, a rewrite for 0.5 ms). Retention
 plus flushes 0.6 ms; one transaction for them measured no gain (close
 min 2.6 vs 2.6 ms, 15 interleaved runs per arm). Nothing shipped.
+
+## C-91: a server's death held over random graphs
+
+`tests/server-death-properties.test.ts`: 600 seeded graphs with groups
+and servers that die at random points, all three modes. After a death
+nothing depending on the server starts under `deps-ok`, nothing starts
+under `never`, a skip charged to a server names a dead one, and every
+task ends. Red when the `deps-ok` check or the `never` trip is removed.
+The group walk survived here (a group finishes when its server is
+ready, so the shape that needs it is rare in these graphs) and stays
+held by C-89's row. Test only. The sync run-lock release (~0.5 ms) was
+dropped: a sync call cannot be held pending, so the race row could not
+be rewritten as asked, and the refusal rows inject through
+`node:fs/promises`.
