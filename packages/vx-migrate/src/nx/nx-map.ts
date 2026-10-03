@@ -751,7 +751,7 @@ function buildTask(
     opts.manifestField,
     opts.nativeExecutors === true
       ? {
-          options: (spec) => targetOptionsOf(nodeMap, spec),
+          options: (spec) => targetOptionsOf(nodeMap, qualifySpec(nodeMap, nodeName, spec)),
           // Nx's swc reads the project's `sourceRoot`, else `src` where it exists.
           sourceRoot: () => {
             const declared = (nodeMap[nodeName]?.data as { sourceRoot?: unknown } | undefined)
@@ -762,7 +762,7 @@ function buildTask(
               : undefined
           },
           executor: (spec) => {
-            const [project, target] = spec.split(':')
+            const [project, target] = qualifySpec(nodeMap, nodeName, spec).split(':')
             const t =
               project === undefined || target === undefined
                 ? undefined
@@ -770,7 +770,7 @@ function buildTask(
             return t?.executor ?? (t?.command === undefined ? undefined : 'nx:run-commands')
           },
           outputs: (spec) => {
-            const [project, target] = spec.split(':')
+            const [project, target] = qualifySpec(nodeMap, nodeName, spec).split(':')
             return project === undefined || target === undefined
               ? undefined
               : nodeMap[project]?.data?.targets?.[target]?.outputs
@@ -909,7 +909,7 @@ function buildTask(
   // What the executor ran first, as Nx resolves the spec: an omitted
   // configuration is the target's default (its base task).
   for (const spec of mapped?.deps ?? []) {
-    const [project, target, ...rest] = spec.split(':')
+    const [project, target, ...rest] = qualifySpec(nodeMap, nodeName, spec).split(':')
     const m = project === undefined ? undefined : metaByNode.get(project)
     if (m === undefined || target === undefined) continue
     const name = (rest.length > 0 && taskNameFor(project!, target, rest.join(':'))) || target
@@ -1134,6 +1134,20 @@ const isReleasePublish = (executor: string | undefined): boolean =>
   executor === '@nx/js:release-publish' || executor === '@nrwl/js:release-publish'
 
 /**
+ * A spec as Nx's `parseTargetString` reads it for an executor: a first
+ * segment that names no project is a target of the current one
+ * (`buildTarget: "build"`, as Nx infers `serve-static`).
+ */
+function qualifySpec(
+  nodeMap: Readonly<Record<string, NxNode>>,
+  current: string,
+  spec: string,
+): string {
+  const first = spec.split(':')[0]!
+  return nodeMap[first] === undefined && first !== current ? `${current}:${spec}` : spec
+}
+
+/**
  * A `project:target[:configuration]` spec's options as Nx's
  * `readTargetOptions` gives them: the configuration's (else the default
  * one's) over the target's own. Undefined for a target the graph lacks.
@@ -1206,6 +1220,7 @@ const KNOWN_EXECUTORS: Record<string, { persistent: boolean }> = {
   '@nx/js:verdaccio': { persistent: true },
   '@nx/webpack:webpack': { persistent: false },
   '@nx/webpack:dev-server': { persistent: true },
+  '@nx/web:file-server': { persistent: true },
   '@nx/esbuild:esbuild': { persistent: false },
   '@nx/rollup:rollup': { persistent: false },
   '@nx/next:build': { persistent: false },

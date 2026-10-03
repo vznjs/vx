@@ -133,9 +133,11 @@ describe('vx-migrate on the Nx shapes real repos have: every written config load
       '@fx/web': [
         'build',
         'build-deps',
+        'dev',
         'lint',
         'preview',
         'serve',
+        'serve-static',
         'test',
         'typecheck',
         'watch-deps',
