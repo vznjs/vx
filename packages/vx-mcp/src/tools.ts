@@ -357,12 +357,23 @@ async function getRunHistory(
   }
 }
 
+/**
+ * A `project#task` with both halves: `#build` and `app#` held a `#` and
+ * were answered as task ids that no run could ever have, a null answer an
+ * agent reads as "never ran".
+ */
+function isTaskId(id: unknown): id is string {
+  if (typeof id !== 'string') return false
+  const [project, task] = splitTaskId(id)
+  return id.includes('#') && project !== '' && task !== ''
+}
+
 async function explainCacheKey(
   args: Record<string, unknown>,
   ctx: ToolContext,
 ): Promise<Record<string, unknown>> {
   const taskId = args['taskId']
-  if (typeof taskId !== 'string' || !taskId.includes('#')) {
+  if (!isTaskId(taskId)) {
     throw new UserError('explainCacheKey: taskId must be a "project#task" string')
   }
   const [project, task] = splitTaskId(taskId)
@@ -411,7 +422,8 @@ async function whyDidThisRerun(
   if (given !== undefined && typeof given !== 'string') {
     throw new UserError('whyDidThisRerun: runId, when given, must be a string')
   }
-  if (!taskId.includes('#')) {
+  if (given === '') throw new UserError('whyDidThisRerun: runId, when given, must not be empty')
+  if (!isTaskId(taskId)) {
     throw new UserError('whyDidThisRerun: taskId must be a "project#task" string')
   }
   const cache = Cache.inspect(ctx.cacheDir)
