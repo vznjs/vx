@@ -241,7 +241,8 @@ describe('task refusals the sweep found unheld (item 653)', () => {
     const why = (g: string, own: string) =>
       `${CFG}: tasks.t.cache.outputs.files: "${g}" covers the project's own ${own} — vx deletes a ` +
       `task's outputs before it runs and restores them on a hit, so the project would lose ` +
-      `its manifest and config. Name the directory the task writes, such as "dist/**".`
+      `its manifest and config. Name the directory the task writes, such as "dist/**", ` +
+      `or take the file back with "!${own}".`
     expect(out('**')).toBe(why('**', 'package.json'))
     expect(out('*.json')).toBe(why('*.json', 'package.json'))
     expect(out('vx.config.*')).toBe(why('vx.config.*', 'vx.config.ts'))
@@ -255,6 +256,17 @@ describe('task refusals the sweep found unheld (item 653)', () => {
     for (const g of ['dist/**', '**/*.d.ts', 'out.json', 'src/**/*.js', '**/*.js']) {
       expect(out(g)).toBeNull()
     }
+    // Taken back by a `!`, the file is never cleaned or restored: it loads.
+    const outs = (files: string[]) =>
+      taskRefusal({
+        exec: { command: 'x' },
+        cache: { inputs: { files: [] }, outputs: { files } },
+      })
+    expect(outs(['**', '!package.json', '!vx.config.ts'])).toBeNull()
+    expect(outs(['*.ts', '!vx.config.*'])).toBeNull()
+    // CONTROLS: a take-back of one own file leaves the other refused.
+    expect(outs(['**', '!package.json'])).toBe(why('**', 'vx.config.ts'))
+    expect(outs(['**', '!vx.config.ts'])).toBe(why('**', 'package.json'))
   })
 
   it('a null cache is refused by name, not by a TypeError from the field scan', () => {

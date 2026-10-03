@@ -112,7 +112,7 @@ describe('an output that covers the project’s own package.json', () => {
     expect([t.name, t.task?.['cache'], t.todos]).toEqual(['build', undefined, [TODO]])
   })
 
-  it('nx(): a cached target runs uncached with a todo', async () => {
+  it('nx(): a cached target takes the manifest back and stays cached', async () => {
     const a = await pkg('a', { build: 'tsdown' })
     const m = await mapNxWorkspace(
       root,
@@ -138,7 +138,14 @@ describe('an output that covers the project’s own package.json', () => {
       { persistentTodo: 'PERSIST', cacheable: new Set<string>() },
     )
     const t = m.projects[0]!.tasks.find((x) => x.name === 'build')!
-    expect(t.task?.['cache']).toBeUndefined()
-    expect(t.todos).toContain(TODO)
+    const cache = t.task?.['cache'] as { outputs: { files: string[] } }
+    expect(cache.outputs.files).toEqual(['package.json', 'dist', '!package.json'])
+    expect(t.todos).not.toContain(TODO)
+    // The loader takes it.
+    const file = path.join(a.dir, 'vx.config.mjs')
+    await writeFile(file, `export default { tasks: { build: ${JSON.stringify(t.task)} } }\n`)
+    expect((await loadProjectConfig(file)).tasks?.['build']?.cache?.outputs.files).toEqual(
+      cache.outputs.files,
+    )
   })
 })

@@ -2084,7 +2084,7 @@
         "$CONFIG: tasks.c.cache.outputs.files: \".\" names the project directory itself and selects nothing — name the directory the task writes, such as \"dist/**\"": [
           "[\".\"]"
         ],
-        "$CONFIG: tasks.c.cache.outputs.files: \"**\" covers the project's own package.json — vx deletes a task's outputs before it runs and restores them on a hit, so the project would lose its manifest and config. Name the directory the task writes, such as \"dist/**\".": [
+        "$CONFIG: tasks.c.cache.outputs.files: \"**\" covers the project's own package.json — vx deletes a task's outputs before it runs and restores them on a hit, so the project would lose its manifest and config. Name the directory the task writes, such as \"dist/**\", or take the file back with \"!package.json\".": [
           "[\"**\"]"
         ]
       },
