@@ -659,6 +659,16 @@ probes that held: `prepare` dropped, a `prebuild` folded into `build`, an
 config at the root beside `vx.workspace.ts`. `init.test.ts` › names the
 root when a single package has no name; red without the fix.
 
+M-55. Probes, nothing shipped. macOS CI's `@vzn/vx#test.bun.unsafe`
+died by SIGKILL (exit 137) once, on #2557's first head (job
+111139135100), right after #2555 (M-53) merged; the log names no row,
+since the suite had printed only its header. M-53 is not the cause: the
+peak RSS of every process `output-memory.unsafe.test.ts` spawns is 263
+MiB before and after it (twice each, `RUSAGE_CHILDREN`), far under a
+macOS runner's 7 GB, and the same suite with M-53 passed on macOS on
+#2555's own run, on main's push after it, and on #2557's next head. The
+killer is unknown; the next occurrence needs the file that was running.
+
 ## Leads for other streams
 
 - A: A-20 let a same-project dependant restore ahead of a producer whose
