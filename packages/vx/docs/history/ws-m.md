@@ -964,9 +964,10 @@ M-76. The seven plugin packages had never reached npm: trusted
 publishing cannot create a package, so every release's plugin publishes
 failed. On 2026-10-03 each got a `0.0.0` placeholder (package.json
 only, published from the owner's machine) and a GitHub Actions trusted
-publisher for `npm.yml`. Release 0.0.483's run then left
-`@vzn/vx-linux-x64@0.0.483` spent: absent from the registry, no staged
-version listed, and every re-publish refused with E409 "Cannot publish
-over previously staged version", while `@vzn/vx@0.0.483` went out
-naming it. The loop's `npm view` skip cannot see a spent version, so a
-re-run dies on it; the next release publishes the whole set fresh.
+publisher for `npm.yml`; release 0.0.484 then published all twelve
+packages. A publish lands on the registry minutes after `npm publish`
+returns: `@vzn/vx-linux-x64@0.0.483` was absent for over ten minutes
+and every re-publish was refused with E409 "Cannot publish over
+previously staged version", and then it appeared. The loop's
+`npm view` skip cannot see a version in that window, so a re-run during
+it dies on E409; wait, do not cut a new release for it.
