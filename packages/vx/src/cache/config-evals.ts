@@ -4,6 +4,7 @@
 // Owns its statements over the store's handle; `Cache` delegates.
 
 import type { Database, SQLQueryBindings } from 'bun:sqlite'
+import { lazyStatement } from './schema.js'
 
 export class ConfigEvalTable {
   private readonly selectConfigEval: ReturnType<Database['prepare']>
@@ -18,11 +19,13 @@ export class ConfigEvalTable {
   ) {
     this.read = policy.read
     this.write = policy.write
-    this.selectConfigEval = this.db.prepare('SELECT json FROM config_evals WHERE key = ?')
-    this.insertConfigEval = this.db.prepare(
+    this.selectConfigEval = lazyStatement(this.db, 'SELECT json FROM config_evals WHERE key = ?')
+    this.insertConfigEval = lazyStatement(
+      this.db,
       'INSERT OR REPLACE INTO config_evals(key, json, created_at) VALUES (?, ?, ?)',
     )
-    this.upsertConfigClosure = this.db.prepare(
+    this.upsertConfigClosure = lazyStatement(
+      this.db,
       'INSERT INTO config_closures(config_path, files_json, created_at) VALUES (?, ?, ?) ON CONFLICT(config_path) DO UPDATE SET files_json = excluded.files_json, created_at = excluded.created_at',
     )
   }
