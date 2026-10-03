@@ -58,6 +58,9 @@ export const WATCHED_BUILTIN_NAMES = [
   'Map.prototype',
   'Set.prototype',
   'Promise.prototype',
+  // A global one config set reached every config loaded after it in the
+  // process: `--all` read it, `--filter` of the reader alone did not (D-122).
+  'globalThis',
 ] as const
 
 const WORKER_SRC = `
@@ -111,7 +114,7 @@ self.onmessage = async (e) => {
   const envBefore = watched ? { ...live } : null
   const cwdBefore = watched ? globalThis.process.cwd() : null
   const same = (a, b) =>
-    a !== undefined && b !== undefined && a.value === b.value && a.get === b.get && a.set === b.set &&
+    a !== undefined && b !== undefined && Object.is(a.value, b.value) && a.get === b.get && a.set === b.set &&
     a.writable === b.writable && a.enumerable === b.enumerable && a.configurable === b.configurable
   const changed = () => {
     if (watched === null) return undefined
