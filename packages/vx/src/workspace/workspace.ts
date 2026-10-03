@@ -396,6 +396,28 @@ export function memberBaseDirs(workspace: Workspace): string[] {
 }
 
 /**
+ * True when a member glob reaches a `package.json` other than the root's,
+ * addressable or not: a nameless manifest, or two sharing a name, is
+ * matched and left out, not unmatched (M-46).
+ */
+export async function reachesManifest(workspace: Workspace): Promise<boolean> {
+  const { positive, negative } = splitPackageGlobs(workspace.packageGlobs)
+  const root = path.resolve(workspace.root)
+  for (const pattern of positive) {
+    for (const dir of await memberDirs(workspace.root, pattern)) {
+      if (path.resolve(dir) === root) continue
+      if (negative.length > 0 && excludedBy(relPosix(workspace.root, dir), negative)) continue
+      try {
+        if ((await stat(path.join(dir, 'package.json'))).isFile()) return true
+      } catch (err) {
+        absent(err, undefined)
+      }
+    }
+  }
+  return false
+}
+
+/**
  * The directories a workspace glob names. For the `<dir>/*` shape this is
  * one readdir of `<dir>` — the same answer `Bun.Glob` gives, at a third of
  * the cost (measured 2026-09-02: 25 ms → ~2 ms for 1000 members). A

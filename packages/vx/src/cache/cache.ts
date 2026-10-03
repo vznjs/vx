@@ -2054,10 +2054,17 @@ const SQLITE_FCNTL_PERSIST_WAL = 10
  * `sqlite3_close_v2` does), so `cache.db` and its `-wal` and `-shm` stayed
  * open after `Cache.close()`: a leaked descriptor per run for an embedder
  * (O-10).
- * `close(true)` finalizes them and closes.
+ * `close(true)` finalizes them and closes. Below the Bun floor (1.3.14) it
+ * does not finalize: it answers SQLITE_BUSY, "database is locked", and every
+ * `vx run` exited 1 with that stack after its tasks had passed (M-44). There
+ * the deferred close is the one that closes.
  */
 function closeDb(db: Database): void {
-  db.close(true)
+  try {
+    db.close(true)
+  } catch {
+    db.close()
+  }
 }
 
 /**

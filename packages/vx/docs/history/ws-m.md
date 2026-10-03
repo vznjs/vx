@@ -534,6 +534,46 @@ name is left out, as the report says; a member with no scripts gets no
 config; a member's own `pnpm-workspace.yaml` is not read, so its
 packages are no members, as pnpm itself reads only the outermost one.
 
+M-44. On Bun 1.3.14 (the container's default, below the floor), every
+`vx run` with a local cache exited 1 with "database is locked" from
+`Cache.close()`, after its tasks had passed: found while probing `vx init`
+on a bun workspace with object-form `workspaces` (`packages`, `apps/**`,
+a `!` glob; that layout holds). O-10's `db.close(true)` finalizes live
+statements on 1.4.2 but answers SQLITE_BUSY on 1.3.14 (a five-line
+`bun:sqlite` probe, both ways). `closeDb` falls back to `close()`, the
+pre-O-10 close, when `close(true)` refuses; both 1.3.14 workspaces then
+exit 0. `cache-close-old-bun.test.ts` stands a refusing `close(true)` in
+for the old runtime; without the fallback it fails with the same error.
+M-45. Probes, nothing shipped: a Yarn 4 workspace (`yarn.lock`,
+`packageManager: yarn@4`, no `.yarnrc.yml`). The root `build` over
+`yarn workspaces foreach` is left out as running the members; `prepack`
+gets no task; `b#test`'s `yarn build && jest` gets M-41's own-task TODO;
+init warns that Plug'n'Play hides `node_modules/.bin` and names both
+fixes.
+
+M-46. M-42's note said "match no package.json" of globs that matched
+three: a nameless member and two sharing a name, each left out of
+`metas`, which the note asked. It now asks the globs
+(`reachesManifest`); a negated member still counts as unmatched. Probes
+that held: lifecycle scripts (`install`, `prepare`, `postinstall`,
+`prepublishOnly` dropped; `pre`/`post` folded, except under Yarn
+Berry; `version` kept, a root `changeset version` is user-run), root
+fan-out over `bun --filter`, `pnpm -r`, `npm --workspaces` left out,
+and a malformed member manifest refused with its path.
+`init.test.ts` › does not call a matched but unaddressable member
+unmatched; red without the fix.
+
+M-47. Probes, nothing shipped. Held: edges through `file:../a`,
+`link:../b`, a `peerDependencies` range and an `optionalDependencies`
+`workspace:~` (each orders the run and joins `--filter d...`); a root that
+lists itself (`workspaces: [".", …]`) keeps its `lint` and leaves out its
+`build` under the member-name rule; `vx init` from inside a member finds
+the root. Lead, not changed: init refuses the whole workspace when one
+member already has a vx config, and `--force` would overwrite that
+hand-written file, so a half-adopted workspace has no clean path. Pinned
+on purpose (`init.test.ts` › refuses to overwrite without --force, like
+migrate); keeping such a project and writing the rest is the owner's call.
+
 ## Leads for other streams
 
 - A: A-20 let a same-project dependant restore ahead of a producer whose

@@ -12,6 +12,7 @@ specific to one guide stay there: [Sandboxing](../sandboxing/#common-problems),
 | vx prints                                          | Fix                                                                     |
 | -------------------------------------------------- | ----------------------------------------------------------------------- |
 | `not inside a project`                             | Run from a package directory, or pass `--all` or `--filter <pattern>`.  |
+| `… has a vx config but no package.json — skipped` | Add a `package.json` with a `"name"` to that directory: vx names a project by it. |
 | `vx requires git: … is not inside a git work tree` | Run `git init` at the workspace root.                                   |
 | `vx requires git: failed to spawn 'git'`           | Install git.                                                            |
 | `--affected has no base here`                      | Fetch the history (`fetch-depth: 0` in CI), or pass `--affected=<ref>`. |

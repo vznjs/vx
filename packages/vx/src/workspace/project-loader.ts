@@ -456,6 +456,7 @@ export async function loadProjectConfigs(
   // More than one evaluation in flight: a change seen after one load may
   // be another's.
   let overlapping = false
+  let tainted = false
   const loadOne = async (entry: (typeof prepared)[number]): Promise<Loaded> => {
     const { configPath, cacheKey } = entry
     // A fast key that missed: the closure is stale or the file changed.
@@ -500,7 +501,7 @@ export async function loadProjectConfigs(
     const changed = repeat
       ? []
       : [
-          ...restoreBuiltins(builtins),
+          ...restoreBuiltins(builtins, overlapping),
           ...restoreEnv(env),
           ...restoreCwd(cwd),
           ...restoreUmask(umask),
@@ -585,20 +586,30 @@ export async function loadProjectConfigs(
             ...restoreUmask(umask),
           ]
         : []
-    if (first?.failed instanceof ChangedInRound) {
+    // Overlapping loads check most built-ins only here, so a change one
+    // config made may have broken another's load: it is refused first, and
+    // nothing the round evaluated is stored.
+    const changedInRound =
+      first?.failed instanceof ChangedInRound
+        ? first.failed.changed
+        : overlapping && changed.length > 0
+          ? changed
+          : undefined
+    if (changedInRound !== undefined) {
+      tainted = true
       for (const i of misses) {
         const configPath = prepared[i]!.configPath
         const own = await builtinsChangedBy(configPath)
         if (own.length > 0) throw builtinsChanged(own, configPath)
       }
-      throw builtinsChanged(first.failed.changed)
+      throw builtinsChanged(changedInRound)
     }
     if (first !== undefined) throw first.failed
     if (changed.length > 0) throw builtinsChanged(changed)
     return results.map((r) => (r as Loaded).config)
   } finally {
     endRound()
-    if (store !== undefined) {
+    if (store !== undefined && !tainted) {
       if (evals.length > 0) {
         if (store.putConfigEvals !== undefined) store.putConfigEvals(evals)
         else for (const [k, json] of evals) store.putConfigEval(k, json)
@@ -655,10 +666,11 @@ interface OwnProperties {
 
 interface BuiltinSnapshot {
   readonly prims: Primitives
-  readonly props: readonly OwnProperties[]
+  /** Undefined for a watched name the snapshot leaves out. */
+  readonly props: readonly (OwnProperties | undefined)[]
 }
 
-function builtinSnapshot(): BuiltinSnapshot {
+function builtinSnapshot(leaveOut?: string): BuiltinSnapshot {
   const prims: Primitives = {
     ownKeys: Reflect.ownKeys,
     descriptorOf: Object.getOwnPropertyDescriptor,
@@ -668,8 +680,12 @@ function builtinSnapshot(): BuiltinSnapshot {
     same: Object.is,
     keyName: String,
   }
-  const props: OwnProperties[] = []
+  const props: (OwnProperties | undefined)[] = []
   for (let i = 0; i < WATCHED_BUILTINS.length; i++) {
+    if (WATCHED_BUILTINS[i]![0] === leaveOut) {
+      props[i] = undefined
+      continue
+    }
     const proto = WATCHED_BUILTINS[i]![1]
     const keys = prims.ownKeys(proto)
     const descriptors: PropertyDescriptor[] = []
@@ -727,15 +743,36 @@ function builtinsChanged(changed: readonly string[], configPath?: string): UserE
   )
 }
 
+/**
+ * The built-ins checked after each of several overlapping loads: the ones
+ * the loader itself reads through between loads (its promises, maps, sets,
+ * JSON and keys). The rest are checked once, at the round's end: all of
+ * them after every load was ~73 µs a config, a quarter of a cold load of
+ * 1,000 (2026-10-03). A lone load checks them all. By index, decided at
+ * module load: a lookup through a `Set` is one a config can replace (D-124).
+ */
+const EVERY_LOAD: readonly boolean[] = WATCHED_BUILTINS.map(([name]) =>
+  [
+    'Object.prototype',
+    'JSON',
+    'Promise.prototype',
+    'Map.prototype',
+    'Set.prototype',
+    'Bun.hash',
+  ].includes(name),
+)
+
 /** Puts back what changed since `before`, naming each property it put back. */
-function restoreBuiltins(before: BuiltinSnapshot | undefined): string[] {
+function restoreBuiltins(before: BuiltinSnapshot | undefined, everyLoadOnly = false): string[] {
   const changed: string[] = []
   if (before === undefined) return changed
   const p = before.prims
   for (let i = 0; i < WATCHED_BUILTINS.length; i++) {
     const name = WATCHED_BUILTINS[i]![0]
+    if (everyLoadOnly && !EVERY_LOAD[i]) continue
     const proto = WATCHED_BUILTINS[i]![1]
-    const was = before.props[i]!
+    const was = before.props[i]
+    if (was === undefined) continue
     const keys = p.ownKeys(proto)
     if (unchanged(p, proto, keys, was)) continue
     // Slow path, a change only: a linear lookup keeps it off `Map`.
@@ -890,7 +927,29 @@ export async function loadWorkspaceConfig(root: string): Promise<WorkspaceConfig
     const since = workspaceLoadedAt.get(configPath)
     if (since !== undefined) await refuseStaleWorkspaceImports(configPath, since)
     const startedAt = Date.now()
-    const mod = (await loadDefaultExport(configPath, 'Workspace', bytes)) as WorkspaceConfig
+    // The same guard a project config's first load has: the workspace config
+    // runs in this process too, and its `Object.prototype.exec` ran in a
+    // project's task under a key that never saw it (D-126). Its globals are
+    // left out: it loads first in every run, filtered or not, so none
+    // depends on what else loaded (D-122's case), and plugins' tests and
+    // tools hand state through them.
+    const builtins = builtinSnapshot('globalThis')
+    const env = { ...process.env }
+    const cwd = process.cwd()
+    const umask = currentUmask()
+    let mod: WorkspaceConfig
+    try {
+      mod = (await loadDefaultExport(configPath, 'Workspace', bytes)) as WorkspaceConfig
+    } finally {
+      const changed = [
+        ...restoreBuiltins(builtins),
+        ...restoreEnv(env),
+        ...restoreCwd(cwd),
+        ...restoreUmask(umask),
+      ]
+      // eslint-disable-next-line no-unsafe-finally -- the refusal outranks the load's own error
+      if (changed.length > 0) throw builtinsChanged(changed, configPath)
+    }
     // Checked again once awaited, as a project config is: a Promise default
     // passed the first check, and `Promise.resolve(null)` crashed the
     // validator with a stack while `Promise.resolve(42)` loaded as no

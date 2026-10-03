@@ -120,13 +120,28 @@ readers that reach it here.
   more than one evaluation was in flight, the round evaluates each of its
   configs alone in a throwaway worker that reports what it changed, and
   names the first that changes something (it named an innocent config
-  before, D-119); none found, it says "a project config". A round where every config hits takes
+  before, D-119); none found, it says "a project config". While loads
+  overlap, each one is checked against only the built-ins the loader
+  itself reads through between loads (`Object.prototype`, `JSON`, the
+  `Promise`, `Map` and `Set` prototypes, `Bun.hash`), and the rest once,
+  at the round's end: all of them after every load was ~73 µs a config,
+  a quarter of a cold load of 1,000. A change found at the end may have
+  broken another config's load, so it is refused first, and a round that
+  changed anything stores none of its evaluations. A lone load checks
+  them all. A round where every config hits takes
   no snapshot: reading every descriptor of `Bun` builds its lazy
   members, 7 ms of a warm run (E-88).
 - A first load may not move the process either: a config's
   `process.chdir()` left every relative path vx resolved after it reading
   from the config's choice; the working directory is put back and the load
   refused, naming `process.cwd (a chdir)` (D-120).
+- `vx.workspace.ts` gets the same guard: it runs in this process too, and
+  its `Object.prototype.exec` ran in a project's group task. Built-ins,
+  `process.env`, the cwd and the umask are snapshotted around its load, put
+  back, and the load refused naming the file, a failed load's change
+  included (D-126): the workspace config's bytes are in no key, so a
+  removed `Object.prototype.exec` replayed the old command. Globals are
+  left out: it loads first in every run, filtered or not.
 - Nor change the umask: a config's `process.umask(0o777)` left every file
   vx and its tasks wrote after it `000`, a cache artifact a user other than
   root could not read back. A worker shares the process's umask (a

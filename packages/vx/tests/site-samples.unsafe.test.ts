@@ -236,8 +236,8 @@ describe("the README's comparison agrees with comparison.md on Turbo's daemon", 
   it('both say turbo run uses none', () => {
     const repo = path.resolve(import.meta.dir, '..', '..', '..')
     const readme = readFileSync(path.join(repo, 'README.md'), 'utf8')
-    const row = /^\| Daemon required for speed \|[^|]*\| ([^|]*?) +\|/m.exec(readme)![1]
-    expect(row).toBe('No (`turbo run` has none)')
+    const row = /^\| Daemon +\|[^|]*\| ([^|]*?) +\|/m.exec(readme)![1]
+    expect(row).toBe('None for `turbo run`')
     const doc = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'comparison.md'), 'utf8')
     // Bisected over npm: 2.8.10's help still offers --daemon, 2.8.11's marks
     // it deprecated and unused by `turbo run`; 2.10 deprecates neither

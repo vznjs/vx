@@ -38,6 +38,12 @@ that is green on CI's pinned 1.4.2:
 
 Twenty-one of that container's 23 failures were these four.
 
+On Bun 1.3.14 (2026-10-03), `Database.close(true)` with a prepared statement
+alive answers SQLITE_BUSY ("database is locked") instead of finalizing it, so
+every `vx run` with a local cache exited 1 with that stack after its tasks
+passed. `cache.ts`'s `closeDb` now falls back to the deferred `close()` there
+(M-44).
+
 ## Where the verdict is reported, and why there
 
 `vx info`'s `bun` ROW, which already carried the version and not its meaning.
