@@ -140,6 +140,13 @@ prune` all match. Fixed: the Run blocks used bare `vx`, which a local
   its uncited OTel row. The migrate guide already matches `vx init` and
   vx-migrate byte for byte (R-15's pins).
 
+- **R-26** Migration framing: the guide's transcripts and written config
+  still match a run byte for byte (`try-it.unsafe.test.ts`, 10/10 with
+  `examples`). The vx-migrate README's `turbo()` / `nx()` sections said
+  "Then `vx run build --all` runs … the way turbo/nx would"; they now
+  say it maps that until the migrator writes native config, and the
+  guide's try-it block names its first runs the bridge.
+
 ## Leads
 
 - Real-repo rows (`packages/vx-bench/real-repos.json`, benchmarks.md's
