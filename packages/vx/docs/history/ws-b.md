@@ -47,11 +47,9 @@ In order of harm:
    reads "connection refused" and the proxy's record (B-77) is lost.
 8. Upstream (SRT): the mandatory-deny scan spawns its ripgrep on every
    wrap whenever a write config is set (always, for vx), though vx scans
-   the same paths itself (B-40) and hands SRT `true` (B-75). The spawn
-   is 1.09 ms median a wrap against 0.32 for a command that fails to
-   start (300 interleaved), but SRT's dependency check reads the same
-   setting, so a missing one would mark the sandbox unavailable. A
-   switch to skip the scan would save ~0.8 ms a sandboxed task.
+   the same paths itself (B-40). vx now hands it a file that cannot be
+   exec'd (B-92), a 0.3 ms refused spawn; a switch to skip the scan
+   would save that too.
 
 ## Leads for other streams
 
@@ -1454,3 +1452,11 @@ isolation: output resolve 22 µs, `secretMask` 25, the RSS floor read 7,
 an uncached key 21 (a run with no saves). Saves (1.7 ms) run on the save
 lane off the slot. No step is worth a cut: each is under 1% of a task,
 below what a min-of-N wall A/B resolves.
+
+B-92. SRT's per-wrap ripgrep spawn (lead 8): vx handed it `true`, a 1.06
+ms spawn. An empty file `posix_spawn` refuses (ENOEXEC) costs 0.32,
+reads as an empty scan, and still passes SRT's `Bun.which` dependency
+check, which a missing path would fail. SRT runs it outside the sandbox,
+so it sits in a private 0700 `mkdtemp` dir, not `/tmp/claude` (#2565).
+100 sandboxed `true` tasks, concurrency 1, min of 8: 2,846 ms to 2,721.
+Row: `sandbox-deny-scan.unsafe.test.ts`.
