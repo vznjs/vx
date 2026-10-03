@@ -27,8 +27,7 @@ import {
 import { mapRunCommands, shellQuote } from '../nx-command.js'
 import { scriptCommand, yarnPnp } from '../script-command.js'
 import {
-  ownFileOutput,
-  ownFileTodo,
+  ownFileTakeBacks,
   resolveSharedOutputs,
   resolveSharedWorkspaceOutputs,
   wildcardOutput,
@@ -845,11 +844,19 @@ function buildTask(
   // made uncached only by the shared-output rule (2026-09-22).
   const readyWhen = mapped?.readyWhen
   const persistent = readyWhen !== undefined || persistentTarget(target)
-  const wild = wildcardOutput(outFiles, opts.tracked?.(projectRel)) ?? wildcardOutput(wsOutFiles)
+  // vx cleans outputs before a run and Nx never does. With git's file list
+  // known, a wildcard-first output (`**/*.d.ts`) stays cached: each
+  // committed file it reaches is taken back with `!` after mapping
+  // (`spareTrackedOutputs`), and what the clean removes is what the task
+  // writes (owner, 2026-10-03). Without it, the sources cannot be told apart.
+  const wild =
+    opts.tracked === undefined
+      ? (wildcardOutput(outFiles) ?? wildcardOutput(wsOutFiles))
+      : undefined
   if (wild !== undefined && cacheWanted && !persistent) todos.push(wildcardTodo(wild))
-  const own = wild === undefined ? ownFileOutput(outFiles, opts.ownConfig?.(projectRel)) : undefined
-  if (own !== undefined && cacheWanted && !persistent) todos.push(ownFileTodo(own))
-  const cacheEnabled = !persistent && cacheWanted && wild === undefined && own === undefined
+  // The manifest or config an output covers is taken back, so core loads it.
+  if (wild === undefined) outFiles.push(...ownFileTakeBacks(outFiles, opts.ownConfig?.(projectRel)))
+  const cacheEnabled = !persistent && cacheWanted && wild === undefined
   if (persistent && cacheWanted) {
     todos.push('Nx caches this target, and vx never caches a persistent task — uncached here')
   }
