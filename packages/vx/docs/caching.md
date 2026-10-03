@@ -583,12 +583,15 @@ hashing); the `LayeredCache` additionally gates its own remote
 read-through (`remoteRead`), upload (`remoteWrite`), and prefetch
 (`remoteRead`). The orchestrator derives two booleans per task:
 
-- `willRead = task has a cache block AND (localRead || remoteRead)`
-- `willWrite = task has a cache block AND (localWrite || remoteWrite)`
+- `willRead = task has a cache block AND it is not remote-only AND (localRead || remoteRead)`
+- `willWrite = task has a cache block AND it is not remote-only AND (localWrite || remoteWrite)`
 
 A task reads the cache only when `willRead`, saves only when
 `willWrite`, and cleans its declared outputs before exec only when
-`willWrite`.
+`willWrite`. Remote-only is an `exec.remote: 'only'` task placed on a
+remote executor: it never touches this machine's disk (no probe, no
+restore, no output clean, no local save), and its result lives in the
+remote executor's own store.
 
 The CLI maps three flags to a policy (precedence: start all-on → apply
 `--cache` → `--no-cache` forces all off → `--force` forces both reads

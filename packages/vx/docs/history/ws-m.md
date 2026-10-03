@@ -842,3 +842,18 @@ of all three overruns, not a measured cause. The row now holds the only
 reader of the shell's FIFO and releases the grandchild itself, 50 ms
 after the EOF, through a second FIFO the grandchild waits on: nothing
 after the exit forks. 10 of 10 green; a 0 ms drain fails it 5 of 5.
+M-67. Security audit, remote responses that lie about size or digest.
+Held, each pinned: (1) core's `ingest` bounds the compressed body
+before the decode (a `Content-Length` past the ceiling's bound, or a
+body that counts past it while streaming, L-5), decodes no further than
+the artifact ceiling, checks the artifact's own checksum, and refuses
+an artifact stored under another key or none: with that check removed,
+`remote-artifact-names.test.ts`' two key rows fail. (2) `@vzn/vx-reapi`
+holds every read to the digest it ASKED for, never the reply's: batch
+entries, ByteStream reads (the size as bytes pass, the hash at the
+end), zstd replies decoded no further than the declared size (L-3), and
+an inline AC body that fails its digest is streamed instead (F-8);
+`integrity.test.ts`, `read-bounds.test.ts`. `turboCache()` /
+`nxCache()` hand their body to the same `ingest`. Not covered: a
+digest function this runtime cannot compute is checked by size alone
+(`canDigest`); the cache layer addresses its blobs by SHA-256 (`digestOf`).
