@@ -67,8 +67,9 @@ export function parseLockfile(text: string): Lockfile {
       isWorkspace: p !== '' && !p.startsWith('node_modules/') && !p.includes('/node_modules/'),
     })
   }
-  const root = record((record(d!['packages']) ?? {})[''])
-  const global = JSON.stringify({ lockfileVersion: version, overrides: root?.['overrides'] })
+  // Root `overrides` are not folded: what an override forced is the entry a
+  // workspace reaches, and npm 10 does not write them here at all (D-142).
+  const global = JSON.stringify({ lockfileVersion: version })
   return { version, packages, global }
 }
 
