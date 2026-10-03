@@ -494,6 +494,19 @@ again after the abort, or with the abort not heard in the wait. The
 rest hold: the other waits are polls on a state or a hang a client
 abort releases.
 
+M-40. Probes, nothing shipped. The core suite's sleeps over 25 ms (64),
+swept for one standing in for "started" or "dead": the kill-after-sleep
+rows are marker-based since M-14 and M-17. Refuted as races:
+`cli-picker.test.ts`'s 50 ms before an answer (a `PassThrough` buffers
+it: 7 of 7 with every sleep at 0); `runner.test.ts` › routes each stream
+to its own callback, 50 ms after `exited` (green with a 60 ms busy spin
+there, 3 of 3: the pipes are read by then); the poll watcher rows' 30 ms
+(the baseline scan is synchronous; the wait keeps the edit off its
+clock tick); `persistent-ready-timeout.test.ts`'s 200 ms before
+`isAlive` (Bun reaps the exec'd sleeper). Closed: the lead five streams
+filed on `output-dirs-snapshot.test.ts` is A-45's (its keep-alive runs
+after the build), 20 of 20 beside eight busy loops.
+
 ## Leads for other streams
 
 - A: A-20 let a same-project dependant restore ahead of a producer whose
