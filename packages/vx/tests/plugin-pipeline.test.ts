@@ -951,8 +951,8 @@ describe('admit stage', () => {
       })
       expect(summary.ok).toBe(true)
       expect(status.filter((m) => m.includes('failed in admit')).sort()).toEqual([
-        "plugin 'org/boom' failed in admit: returned a Promise; admit is synchronous; admitting every task from here on",
-        "plugin 'org/later' failed in admit: returned a Promise; admit is synchronous; admitting every task from here on",
+        "[vx] plugin 'org/boom' failed in admit: returned a Promise; admit is synchronous; admitting every task from here on",
+        "[vx] plugin 'org/later' failed in admit: returned a Promise; admit is synchronous; admitting every task from here on",
       ])
     },
     TIMEOUT,
@@ -1378,7 +1378,7 @@ describe('plugin-host, called directly', () => {
       expect({ first: admit('b', busy), next: admit('b', busy), said }).toEqual({
         first: true,
         next: true,
-        said: ["plugin 'org/boom' failed in admit: boom; admitting every task from here on"],
+        said: ["[vx] plugin 'org/boom' failed in admit: boom; admitting every task from here on"],
       })
     })
   })
