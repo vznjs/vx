@@ -110,6 +110,8 @@ exports.readProjectsConfigurationFromProjectGraph = (g) => ({
 exports.runExecutor = async (description, overrides, context) => {
   const node = context.projectGraph.nodes[description.project]
   const target = node.data.targets[description.target]
+  // \`throws\`: the executor (or its resolution) throws, as a missing package does.
+  if (typeof target.options.throws === 'string') throw new Error(target.options.throws)
   fs.writeFileSync(path.join(context.root, 'record.json'), JSON.stringify({
     description, overrides, target,
     context: {
