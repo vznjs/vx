@@ -118,8 +118,11 @@ export interface RunSummary {
     their own, not cleanly (`CrashedPersistent`: a non-zero exit or a
     signal): each fails the run, its outcome becomes `failed` with that
     code (a kept server that has already died likewise, item 1071), and
-    a status line names it
-    (`vx: <id> exited with code <n>`, item 892). Read before the stop,
+    a status line after the summary names it
+    (`vx: <id> exited with code <n> before the run stopped it`, item
+    892). One that died while the graph still ran was also named at that
+    moment (`vx: <id> exited with code <n> while the run went on`,
+    #2152), so a dependant failing against it reads why. Read before the stop,
     so the SIGTERM's own 143 is never one; and on a stopped run (Ctrl-C,
     an embedder's abort) only the servers that had ended when the stop
     landed count, since the stop's own teardown kills the rest before

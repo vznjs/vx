@@ -250,3 +250,11 @@ persistent task` and vx exits 1). Row (`site-samples` › a post's link
   outside the project a workspace file. Row (`site-samples` › the Nx
   output pages say one outside the workspace is dropped), gated on
   `nx-outputs.ts`; red without the fix.
+
+- **J2-31** #2152 names a dependency server that dies while the graph
+  still runs at that moment, with a line ending
+  `while the run went on`; `schema.md` took it, `modules/orchestrator.md`
+  did not, and its end-of-run line was item 892's form, without the
+  `before the run stopped it` the code prints. Row
+  (`module-page-claims` › orchestrator.md), both lines read from
+  `run.ts`; red without the fix.
