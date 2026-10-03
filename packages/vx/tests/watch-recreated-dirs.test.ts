@@ -5,7 +5,7 @@
 // and no edit after it ran until a restart. Made again inside one window,
 // the re-read found the same project paths and kept their dead watches.
 
-import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
@@ -169,5 +169,71 @@ describe('vx watch over a nested base whose parent is made again', () => {
       await rm(root, { recursive: true, force: true })
       await rm(outside, { recursive: true, force: true })
     }
+  }, 40_000)
+})
+
+// A config's import from outside the projects (`../../shared/preset.mjs`)
+// is watched by directory (item 949): restored after removal, that watch
+// held the deleted directory, and an edit to the preset ran nothing.
+describe('vx watch over a config import directory made again', () => {
+  it('an edit to a restored preset re-runs under its new value', async () => {
+    const root = await makeWorkspace({ prefix: 'vx-import-dir-' })
+    const outside = await mkdtemp(path.join(os.tmpdir(), 'vx-import-count-'))
+    const log = path.join(outside, 'runs.log')
+    await mkdir(path.join(root, 'shared'))
+    await writeFile(path.join(root, 'shared', 'preset.mjs'), "export const word = 'v1'\n")
+    const dir = path.join(root, 'packages', 'app')
+    await mkdir(dir, { recursive: true })
+    await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'app' }))
+    await writeFile(
+      path.join(dir, 'vx.config.mjs'),
+      `import { word } from '../../shared/preset.mjs'\nexport default { tasks: { build: { exec: { command: 'echo ' + word + ' >> ${log}' } } } }\n`,
+    )
+    const w = startWatch(root)
+    try {
+      await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
+      const copy = await mkdtemp(path.join(os.tmpdir(), 'vx-shared-copy-'))
+      await cp(path.join(root, 'shared'), path.join(copy, 'shared'), { recursive: true })
+      await rm(path.join(root, 'shared'), { recursive: true, force: true })
+      await until(() => w.err().includes('cycle failed'), 'the cycle that cannot load the preset')
+      await cp(path.join(copy, 'shared'), path.join(root, 'shared'), { recursive: true })
+      await rm(copy, { recursive: true, force: true })
+      await until(() => w.out().includes('vx watch: watching 1 project(s)\n'), 'the re-arm')
+      await writeFile(path.join(root, 'shared', 'preset.mjs'), "export const word = 'v2'\n")
+      await until(async () => (await readFile(log, 'utf8')).includes('v2'), 'the run under v2')
+    } finally {
+      w.proc.kill('SIGTERM')
+      await w.proc.exited
+      await rm(root, { recursive: true, force: true })
+      await rm(outside, { recursive: true, force: true })
+    }
+  }, 40_000)
+})
+
+// A directory under a base with no package yet is watched for the
+// `package.json` that makes it one (item 891). Made again inside one
+// window, its name never left the base, so nothing re-armed it, and the
+// manifest that landed after was heard by no one.
+describe('vx watch over a package directory made again before its manifest', () => {
+  const f = useWatchFixture()
+
+  it('the manifest written after it is replaced joins the package', async () => {
+    const later = path.join(f.root, 'packages', 'later')
+    await mkdir(later)
+    f.watch = startWatch(f.root)
+    const w = f.watch
+    await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
+    await initialOnly(w, f.log)
+    // Replaced in one rename (POSIX renames onto an empty directory), so
+    // the base's names never change: no member event, whatever the timing.
+    const fresh = await mkdtemp(path.join(os.tmpdir(), 'vx-later-'))
+    await rename(fresh, later)
+    await until(() => w.out().split('vx watch: watching').length >= 3, 'the re-arm')
+    await writeFile(path.join(later, 'package.json'), JSON.stringify({ name: 'later' }))
+    await writeFile(
+      path.join(later, 'vx.config.mjs'),
+      "export default { tasks: { build: { exec: { command: 'true' } } } }\n",
+    )
+    await until(() => w.out().includes('watching 2 project(s)'), 'the package joining')
   }, 40_000)
 })
