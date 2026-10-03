@@ -557,6 +557,9 @@ function usesPnp(dir: string): boolean {
 const PNP_NOTE =
   "Yarn Plug'n'Play installs this repo: a package's bins live in `.pnp.cjs`, not `node_modules/.bin`, so a task's `tsc` is not found under vx — set `nodeLinker: node-modules` in `.yarnrc.yml` and run `yarn install`, or write each command as `yarn exec '<command>'`"
 
+/** A runner of this package's scripts by name: `run-p build:*`. */
+const RUNS_OWN = /(?:^|\s)(?:run-s|run-p|npm-run-all)(?:\s|$)/
+
 /** A package manager running a script by name: `pnpm build`, `npm run x`, `bun run x`. */
 const RUNS_SCRIPT =
   /(?:^|[\s;&|(])(?:pnpm|pn|npm|yarn|bun)\s+(?:run(?:-script)?\s+)?([^\s;&|()'"-][^\s;&|()'"]*)/g
@@ -827,6 +830,9 @@ export function migrateScripts(
     }
     const tasks: GeneratedTask[] = []
     let readsManifest = false
+    const text = Object.entries(scripts).filter(
+      (e): e is [string, string] => typeof e[1] === 'string',
+    )
     for (const name of names) {
       if (!isTask(name)) continue
 
@@ -878,19 +884,34 @@ export function migrateScripts(
       // pnpm run lint`) ran each again inside the command, beside the task
       // of that name: `vx run check` built twice. The chain's order may
       // matter, so it is named rather than turned into a group.
+      // Through `run-s` / `run-p` / `npm-run-all` too (`build: run-p
+      // build:*`), each segment naming every task it runs (M-48). A
+      // persistent one has PERSISTENT_TODO.
+      const persistent = isPersistent(name, scripts)
+      let ranTasks = 0
       const ownRuns = own
         .split(/&&|\|\||;/)
         .map((part) => part.trim())
         .filter((part) => {
           const d = delegatedScript(part)
-          return d !== null && d !== name && isTask(d)
+          if (d !== null) {
+            if (d === name || !isTask(d)) return false
+            ranTasks++
+            return true
+          }
+          if (persistent || !RUNS_OWN.test(part)) return false
+          const refs = new Set(scriptRefs(part, text).filter((r) => r !== name && isTask(r)))
+          ranTasks += refs.size
+          return refs.size > 0
         })
       if (ownRuns.length > 0) {
         const list = ownRuns.map((r) => `\`${r}\``).join(', ')
         todos.push(
-          ownRuns.length === 1
-            ? `${list} runs this package's own task again inside the command, beside that task: name it under dependsOn and drop it from the command`
-            : `${list} run this package's own tasks again inside the command, beside those tasks: name them under dependsOn and drop them from the command`,
+          `${list} ${ownRuns.length === 1 ? 'runs' : 'run'} this package's own ${
+            ranTasks === 1
+              ? 'task again inside the command, beside that task: name it'
+              : 'tasks again inside the command, beside those tasks: name them'
+          } under dependsOn and drop ${ownRuns.length === 1 ? 'it' : 'them'} from the command`,
         )
       }
       const exec: Record<string, unknown> = { command }
@@ -903,7 +924,7 @@ export function migrateScripts(
         )
       }
       const task: Record<string, unknown> = { exec }
-      if (isPersistent(name, scripts)) {
+      if (persistent) {
         exec['persistent'] = {}
         todos.push(PERSISTENT_TODO)
       }
