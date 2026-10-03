@@ -1181,11 +1181,12 @@ every file beside it is readable without a violation — `schema.md`
 § `exec.sandbox` has the shape and the remedy (outputs in a
 subdirectory).
 
-`vx run` lazily initialises the sandbox runtime only when at least
-one task in the graph declares `exec.sandbox`. If runtime deps are
-missing (bwrap on Linux, sandbox-exec on macOS) or the platform is
-unsupported, the orchestrator errors out with a clear message before
-any task runs.
+`vx run` arms the sandbox runtime when a task that declares
+`exec.sandbox` is about to execute; a cache hit needs none. If the
+platform cannot host it (Linux needs `bwrap`, `socat` and `rg` on PATH;
+macOS, `sandbox-exec`), that task fails with one line, `sandbox not
+available: <reason>`, and never runs unsandboxed. Tasks without a
+sandbox run as usual, and the failure's dependents follow `--continue`.
 
 ## `vx watch`
 
