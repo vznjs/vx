@@ -181,6 +181,15 @@ Globs every `package.json` matching the patterns (`Bun.Glob`,
 - A member dir (`<dir>/*` shape) with a vx config but no `package.json` is
   skipped with a stderr line naming it (D-128): `--all` said only that no
   package matched, and a run from inside it "not inside a project".
+- A file this user may not read is refused as a read (D-132):
+  `<file>: not readable by this user (EACCES)`, for a member's manifest, a
+  project config, the root's manifest and `vx.workspace.ts`. A manifest
+  at mode 000 had dropped its project from `--all` under a green run. A
+  member directory it may not search hides whether a manifest is there,
+  so it is named on stderr and skipped (a service's data directory under
+  `packages/*`). Any other glob shape is scanned, and the scan stops at
+  such a directory and cannot skip it, so the load is refused naming the
+  directory and the glob.
 - A name several manifests share: pnpm accepts it (vite's playground,
   sveltejs/kit's test apps); vx cannot, since a project is addressed by
   its name. With no vx config among them they are left out, named on one

@@ -9,7 +9,6 @@ import {
   CONFIG_EXIT,
   evalBudgetMs,
   evaluateConfigFresh,
-  UmaskChanged,
   WATCHED_BUILTIN_NAMES,
 } from './config-eval.js'
 import { hasEsmExport, unprovidedBareImports } from './config-imports.js'
@@ -20,7 +19,7 @@ import {
   configImports,
   type ConfigEvalStore,
 } from './config-cache.js'
-import { readOnce } from './load-reads.js'
+import { readOnce, unreadable } from './load-reads.js'
 
 // The validator lives in config-schema.ts; re-exported so a reader that
 // reaches the loader for it (the tests do) keeps working.
@@ -401,7 +400,9 @@ export async function loadProjectConfigs(
       })
       if (fastKey !== null) return { configPath, bytes: null, cacheKey: fastKey, indexed: true }
     }
-    const bytes = await Bun.file(configPath).bytes()
+    const bytes = await Bun.file(configPath)
+      .bytes()
+      .catch((err: unknown) => unreadable(err, configPath))
     const keyed =
       evalCache === undefined
         ? null
@@ -465,7 +466,9 @@ export async function loadProjectConfigs(
     let closure = entry.closure
     let key = cacheKey
     if (entry.indexed) {
-      bytes = await Bun.file(configPath).bytes()
+      bytes = await Bun.file(configPath)
+        .bytes()
+        .catch((err: unknown) => unreadable(err, configPath))
       const keyed = await configEvalKey({
         configPath,
         bytes,
@@ -492,7 +495,6 @@ export async function loadProjectConfigs(
     if (repeat) refuseUnprovidedImports(bytes!, configPath, 'Project')
     const mod = repeat
       ? await evaluateConfigFresh(configPath).catch((err: unknown) => {
-          if (err instanceof UmaskChanged) throw builtinsChanged(['process.umask'], configPath)
           throw configLoadError(err, configPath, 'Project') ?? err
         })
       : await loadDefaultExport(configPath, 'Project', bytes!)
@@ -504,7 +506,10 @@ export async function loadProjectConfigs(
           ...restoreBuiltins(builtins, overlapping),
           ...restoreEnv(env),
           ...restoreCwd(cwd),
-          ...restoreUmask(umask),
+          // Alone in the round: nothing else reads the umask now. Beside
+          // other loads the round reads it once they are done (see
+          // `currentUmask`).
+          ...(overlapping ? [] : restoreUmask(umask)),
         ]
     // Loads overlap, so another config's change can surface after this
     // one: named here, the refusal blamed the wrong file (D-119). The round
@@ -600,12 +605,22 @@ export async function loadProjectConfigs(
       for (const i of misses) {
         const configPath = prepared[i]!.configPath
         const own = await builtinsChangedBy(configPath)
+        // The blaming worker is gone, so this thread reads alone; and a
+        // worker that outlived its budget was ended before it could put
+        // the umask back.
+        restoreUmask(umask)
         if (own.length > 0) throw builtinsChanged(own, configPath)
       }
       throw builtinsChanged(changedInRound)
     }
     if (first !== undefined) throw first.failed
-    if (changed.length > 0) throw builtinsChanged(changed)
+    // One load in the round, in the worker (a repeat load), is the one
+    // that moved it: the worker no longer reads the umask to say so.
+    if (changed.length > 0)
+      throw builtinsChanged(
+        changed,
+        misses.length === 1 ? prepared[misses[0]!]!.configPath : undefined,
+      )
     return results.map((r) => (r as Loaded).config)
   } finally {
     endRound()
@@ -670,7 +685,52 @@ interface BuiltinSnapshot {
   readonly props: readonly (OwnProperties | undefined)[]
 }
 
-function builtinSnapshot(leaveOut?: string): BuiltinSnapshot {
+/**
+ * The members of `Bun` vx reads, which the workspace config's guard checks;
+ * of the rest it keeps the keys and their order, not their descriptors.
+ * Some members are built on their first read (`postgres` loaded `bun:sql`,
+ * 3.4 ms), and the guard runs on every warm run, where its full read of
+ * `Bun` was 4.4–5 ms of a 45 ms no-op (compiled, 2026-10-03). A project
+ * config's guard reads them all. Held to every `Bun.<name>` in `src/` by
+ * tests/workspace-guard-bun.test.ts.
+ */
+const BUN_MEMBERS_VX_READS: readonly PropertyKey[] = [
+  'Archive',
+  'BunFile',
+  'CryptoHasher',
+  'Glob',
+  'JSONC',
+  'Subprocess',
+  'Transpiler',
+  'YAML',
+  'color',
+  'deepEquals',
+  'env',
+  'file',
+  'hash',
+  'main',
+  'nanoseconds',
+  'plugin',
+  'randomUUIDv7',
+  'resolveSync',
+  'semver',
+  'serve',
+  'sleep',
+  'spawn',
+  'spawnSync',
+  'stdout',
+  'stringWidth',
+  'version',
+  'which',
+  'write',
+  'zstdCompress',
+  'zstdDecompress',
+]
+
+/** A descriptor the snapshot did not read. */
+const UNREAD: PropertyDescriptor = Object.freeze({})
+
+function builtinSnapshot(leaveOut?: string, onlyBunMembersVxReads = false): BuiltinSnapshot {
   const prims: Primitives = {
     ownKeys: Reflect.ownKeys,
     descriptorOf: Object.getOwnPropertyDescriptor,
@@ -689,7 +749,12 @@ function builtinSnapshot(leaveOut?: string): BuiltinSnapshot {
     const proto = WATCHED_BUILTINS[i]![1]
     const keys = prims.ownKeys(proto)
     const descriptors: PropertyDescriptor[] = []
-    for (let j = 0; j < keys.length; j++) descriptors[j] = prims.descriptorOf(proto, keys[j]!)!
+    const narrow = onlyBunMembersVxReads && proto === Bun
+    for (let j = 0; j < keys.length; j++) {
+      const key = keys[j]!
+      descriptors[j] =
+        narrow && !BUN_MEMBERS_VX_READS.includes(key) ? UNREAD : prims.descriptorOf(proto, key)!
+    }
     props[i] = { keys, descriptors }
   }
   return { prims, props }
@@ -712,7 +777,9 @@ function unchanged(
   for (let j = 0; j < keys.length; j++) {
     const key = keys[j]!
     if (key !== was.keys[j]) return false
-    if (!sameDescriptor(p, was.descriptors[j]!, p.descriptorOf(proto, key)!)) return false
+    const prior = was.descriptors[j]!
+    if (prior === UNREAD) continue
+    if (!sameDescriptor(p, prior, p.descriptorOf(proto, key)!)) return false
   }
   return true
 }
@@ -785,6 +852,7 @@ function restoreBuiltins(before: BuiltinSnapshot | undefined, everyLoadOnly = fa
           break
         }
       }
+      if (prior === UNREAD) continue
       if (prior !== undefined && sameDescriptor(p, prior, p.descriptorOf(proto, key)!)) continue
       changed[changed.length] = name + '.' + p.keyName(key)
       if (prior === undefined) p.deleteOwn(proto, key)
@@ -794,7 +862,8 @@ function restoreBuiltins(before: BuiltinSnapshot | undefined, everyLoadOnly = fa
       const key = was.keys[k]!
       if (p.hasOwn(proto, key)) continue
       changed[changed.length] = name + '.' + p.keyName(key)
-      p.defineOwn(proto, key, was.descriptors[k]!)
+      // An unread member cannot be put back as it was; it is refused all the same.
+      if (was.descriptors[k] !== UNREAD) p.defineOwn(proto, key, was.descriptors[k]!)
     }
   }
   return changed
@@ -848,8 +917,9 @@ function currentUmask(): number {
   // Through globalThis, as restoreCwd: the playground's shim has no umask.
   const proc = globalThis.process as { umask?: (mask?: number) => number }
   if (typeof proc.umask !== 'function') return -1
-  // No argument reads it: setting 0 and back would open a window where a
-  // file written by an overlapping write landed world-writable.
+  // Bun reads it by setting 0 and putting it back (probed on 1.4.2: four
+  // workers reading at once left the process at 0), so it is read on this
+  // thread only, and never while the config worker evaluates.
   return proc.umask()
 }
 
@@ -933,7 +1003,7 @@ export async function loadWorkspaceConfig(root: string): Promise<WorkspaceConfig
     // left out: it loads first in every run, filtered or not, so none
     // depends on what else loaded (D-122's case), and plugins' tests and
     // tools hand state through them.
-    const builtins = builtinSnapshot('globalThis')
+    const builtins = builtinSnapshot('globalThis', true)
     const env = { ...process.env }
     const cwd = process.cwd()
     const umask = currentUmask()

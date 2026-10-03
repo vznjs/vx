@@ -277,10 +277,13 @@ where Nx ran it, with the executor's option defaults applied:
 | `@nx/js:node`                       | `cd ../.. && node --inspect=localhost:9229 dist/apps/api/main.js` (the build target's output) |
 | `@nx/js:swc`                        | `rm -rf ../../dist/libs/a && swc src -d ../../dist/libs/a --config-file=.swcrc` |
 | `@nx/js:verdaccio`                  | `cd ../.. && verdaccio --config .verdaccio/config.yml --listen localhost:4873` (a server) |
+| `@nx/angular:package`, `@nx/angular:ng-packagr-lite` | `cd ../.. && ng-packagr -p libs/ui/ng-package.json -c libs/ui/tsconfig.lib.prod.json` |
 
 What an executor did besides its tool (a type-check before a Vite
 build, a `package.json` or `assets` copied into the output) is a TODO
-on the task. Any other executor is a placeholder that fails naming the
+on the task. What it ran first is an edge: an `@nx/js:node` or
+`@nx/vite:preview-server` task depends on its `buildTarget`, and a
+Cypress task on its `devServerTarget`. Any other executor is a placeholder that fails naming the
 executor and its options, and the report lists its tasks under one TODO
 per executor: write the command it runs. Where the executor's Nx plugin
 ships `convert-to-inferred` (Webpack and Rollup, whose options feed the

@@ -256,6 +256,18 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
   const configName = `vx.config.${format}`
   const workspaceName = `vx.workspace.${format}`
   const empty = plan.projects.length === 0
+  // `vx init` never overwrites a member's config: a half-adopted workspace
+  // keeps each one it has, by name, and gets the rest (M-52). It refused
+  // the whole workspace, and `--force` would have replaced the hand-written
+  // file; `--force` still replaces, as asked.
+  const kept: string[] = []
+  const projects = plan.projects.filter((p) => {
+    if (!init || force || p.tasks.length === 0) return true
+    const existing = metas.find((m) => m.dir === p.dir)?.configPath
+    if (!existing) return true
+    kept.push(relPosix(root, existing))
+    return false
+  })
   if (empty && !init) {
     throw new UserError(
       `nothing to migrate: no ${source === 'package.json scripts' ? 'package.json scripts in any workspace member' : 'tasks in ' + source}`,
@@ -263,7 +275,7 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
   }
 
   const files: { relPath: string; abs: string; contents: string }[] = []
-  for (const p of plan.projects) {
+  for (const p of projects) {
     if (p.tasks.length === 0) continue
     const abs = path.join(p.dir, configName)
     files.push({
@@ -291,7 +303,7 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
     const conflicts = new Set<string>()
     // A discovered project with ANY existing vx config (.ts/.mjs/.js) — refuse
     // so we never shadow a hand-written config with a fresh .ts.
-    for (const p of plan.projects) {
+    for (const p of projects) {
       if (p.tasks.length === 0) continue
       const meta = metas.find((m) => m.dir === p.dir)
       if (meta?.configPath) conflicts.add(relPosix(root, meta.configPath))
@@ -316,7 +328,7 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
   // order, and the report said "written" for a file the run never loaded
   // (item 1033).
   const replaced: string[] = []
-  for (const p of plan.projects) {
+  for (const p of projects) {
     if (p.tasks.length === 0) continue
     const existing = metas.find((m) => m.dir === p.dir)?.configPath
     if (existing && existing !== path.join(p.dir, configName)) replaced.push(existing)
@@ -337,7 +349,7 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
   let todoCount = 0
   let clean = 0
   let cached = false
-  for (const p of plan.projects) {
+  for (const p of projects) {
     for (const t of p.tasks) {
       if (t.todos.length === 0 && t.task !== null) clean++
       if (t.task !== null && 'cache' in t.task) cached = true
@@ -408,8 +420,13 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
       }
     }
     report.push(...plan.notes)
-    report.push(dry ? 'files (dry run, nothing written):' : 'files written:')
+    if (files.length === 0) report.push(dry ? 'no files (dry run)' : 'no files written')
+    else report.push(dry ? 'files (dry run, nothing written):' : 'files written:')
     for (const f of files) report.push(`  ${f.relPath}`)
+    if (kept.length > 0) {
+      report.push('kept (each already has a vx config):')
+      for (const f of kept) report.push(`  ${f}`)
+    }
     if (replaced.length > 0) {
       report.push(dry ? 'would replace (dry run):' : 'replaced:')
       for (const f of replaced) report.push(`  ${relPosix(root, f)}`)

@@ -622,6 +622,53 @@ comments, a `catalog`, and `!**/test/**` under `packages/**`.
 `init.test.ts` › names a package.json workspaces list pnpm-workspace.yaml
 overrides; red without the fix.
 
+M-52. M-47's lead, decided (never overwrite): `vx init` on a workspace
+where some packages already had a vx config refused the whole run, and
+`--force` would have replaced the hand-written file. Init now keeps each
+existing config untouched, writes the missing ones, and lists the kept
+under `kept (each already has a vx config):`; with nothing missing it
+says `no files written`. `--force` still replaces; `@vzn/vx-migrate`
+still refuses. `init.test.ts` › keeps each config it finds (replacing
+the row that pinned the refusal) fails without the fix and without its
+`force` guard; `migration.test.ts`'s refusal row fails without the
+`init` guard.
+
+M-53. `output-memory.unsafe.test.ts` › an opted-down stream does not
+grow went red in a full gate: retained 160 MiB minus 40 MiB read 122
+against a 120 MiB line. Cause: both rows of the file read RSS, the
+allocator's high-water of the chunks pushed through, which JSC does not
+hand back; six quiet runs read −7 to +63 MiB for that delta, and a loaded
+reader lets more chunks pile up (the logger row had already hit 88
+against 80 and carried a min-of-2 for it). `Bun.gc(true)` before an RSS
+read changes nothing (probed). Both probes now read `heapUsed` after
+`Bun.gc(true)`, with the result still referenced: exact and repeatable
+(capture 17 → 17 MiB kept, 1 → 1 dropped; logger `full` 81 → 241,
+`none` / `hash-only` 1 → 1), so the lines drop to a quarter of the
+extra volume and the min-of-2 goes. With retention bounded, volume alone
+could not tell a dropped capture from a kept one (a capture that ignored
+`false` passed the old row), so the row also asserts the dropped side
+holds over 8 MiB less than the kept. Each mutant fails its line: an
+unbounded cap (120), `capture: false` ignored (0), either mode out of
+`discardsOutput` (160). The file passes 3 of 3 under 8 busy loops.
+
+M-54. `vx init` on a single-package repo whose `package.json` has no
+`name` said `not mapped:  — its package.json has no "name"…`: the root's
+own path is the empty relative path. It now says `the root`. Single-package
+probes that held: `prepare` dropped, a `prebuild` folded into `build`, an
+`npm run clean && tsc` chain given M-41's TODO, `start` persistent, one
+config at the root beside `vx.workspace.ts`. `init.test.ts` › names the
+root when a single package has no name; red without the fix.
+
+M-55. Probes, nothing shipped. macOS CI's `@vzn/vx#test.bun.unsafe`
+died by SIGKILL (exit 137) once, on #2557's first head (job
+111139135100), right after #2555 (M-53) merged; the log names no row,
+since the suite had printed only its header. M-53 is not the cause: the
+peak RSS of every process `output-memory.unsafe.test.ts` spawns is 263
+MiB before and after it (twice each, `RUSAGE_CHILDREN`), far under a
+macOS runner's 7 GB, and the same suite with M-53 passed on macOS on
+#2555's own run, on main's push after it, and on #2557's next head. The
+killer is unknown; the next occurrence needs the file that was running.
+
 ## Leads for other streams
 
 - A: A-20 let a same-project dependant restore ahead of a producer whose

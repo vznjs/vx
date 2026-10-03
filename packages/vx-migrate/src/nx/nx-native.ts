@@ -1,7 +1,7 @@
 // What a migrated Nx executor target runs as once Nx is gone: the plain
 // command line the executor drives, read from each executor's source in
 // Nx 23.2 (`@nx/jest`, `@nx/vitest`, `@nx/vite`, `@nx/eslint`, `@nx/js`,
-// `@nx/playwright`). The `nx()` plugin keeps `nx-exec`; a written config
+// `@nx/playwright`, `@nx/angular`). The `nx()` plugin keeps `nx-exec`; a written config
 // is native vx, so an executor with no line here is a placeholder and a
 // TODO naming it, never an `nx-exec` line that needs Nx installed.
 //
@@ -19,6 +19,7 @@
 // copied into the output, a type-check before a Vite build, assets — is a
 // TODO on the task, not a silent drop.
 
+import path from 'node:path'
 import { shellQuote } from '../nx-command.js'
 import { relPosix } from '../paths.js'
 
@@ -30,6 +31,8 @@ export interface NativeContext {
   readonly targetOptions?: (spec: string) => Options | undefined
   /** The executor a spec's target runs (`nx:run-commands` for a plain `command`). */
   readonly targetExecutor?: (spec: string) => string | undefined
+  /** A spec's target's `outputs`, as the graph holds them. */
+  readonly targetOutputs?: (spec: string) => readonly string[] | undefined
   /** The project's `sourceRoot`, else its `src` dir where one exists (workspace-relative). */
   readonly sourceRoot?: () => string | undefined
 }
@@ -51,6 +54,17 @@ type Translate = (
   env: Record<string, string>,
   deps: string[],
 ) => string | null
+
+/**
+ * Nx's `stripGlobToBaseDir`: an `outputs` entry is a cache pattern and may
+ * hold a glob; the base dir is everything before the glob's segment.
+ */
+function stripGlobToBaseDir(p: string): string {
+  const glob = p.search(/[*?[{(]/)
+  if (glob === -1) return p.replace(/\/+$/, '')
+  const sep = p.slice(0, glob).lastIndexOf('/')
+  return sep === -1 ? '' : p.slice(0, sep)
+}
 
 /** The plain line for `executor`, or null when it has none here. */
 export function nativeExecutorCommand(
@@ -836,12 +850,38 @@ const node: Translate = (o, ctx, todos, _env, deps) => {
     ...(o['buildTargetOptions'] as Options | undefined),
   }
   const executor = ctx.targetExecutor?.(spec)
-  if (typeof build['outputPath'] !== 'string') return null
-  const out = wsPath(build['outputPath'], ctx)
+  let fileToRun: string
+  if (typeof build['outputPath'] !== 'string' && typeof build['outputFileName'] !== 'string') {
+    // Nx's `getFileToRun` for a build target with no output options (the
+    // inferred `webpack-cli build` of a Nest app): its first `outputs`
+    // entry, the glob stripped to its base dir, then `main.js`; with none,
+    // `dist/<projectRoot>/main.js`.
+    const [project, target] = spec.split(':')
+    const first =
+      target === undefined ? undefined : ctx.targetOutputs?.(`${project}:${target}`)?.[0]
+    const dir =
+      first === undefined
+        ? path.posix.join('dist', ctx.projectRel)
+        : stripGlobToBaseDir(wsPath(first, ctx))
+    fileToRun = path.posix.join(dir, 'main.js')
+    todos.push(
+      `@nx/js:node ran ${fileToRun}, Nx's default for a build target with no outputPath, or its .cjs/.mjs twin when missing — check the build's output file`,
+    )
+  } else {
+    if (typeof build['outputPath'] !== 'string') return null
+    fileToRun = buildOutputFile(build, executor, ctx)
+    if (fileToRun === '') return null
+  }
+  return nodeLine(o, ctx, todos, deps, spec, fileToRun)
+}
+
+/** Nx's `getOutputFileName` under `outputPath`, workspace-relative; `''` when it has no answer. */
+function buildOutputFile(build: Options, executor: string | undefined, ctx: NativeContext): string {
+  const out = wsPath(build['outputPath'] as string, ctx)
   const main = typeof build['main'] === 'string' ? wsPath(build['main'], ctx) : undefined
   let file: string
   if (typeof build['outputFileName'] === 'string') file = build['outputFileName']
-  else if (main === undefined) return null
+  else if (main === undefined) return ''
   else {
     const base = main
       .split('/')
@@ -862,6 +902,18 @@ const node: Translate = (o, ctx, todos, _env, deps) => {
       file = `${rel}${file}`
     }
   }
+  return `${out}/${file}`
+}
+
+/** The `node` line `@nx/js:node` runs on `fileToRun`, and the build it ran first. */
+function nodeLine(
+  o: Options,
+  ctx: NativeContext,
+  todos: string[],
+  deps: string[],
+  spec: string,
+  fileToRun: string,
+): string {
   const args = ['node']
   if (Array.isArray(o['runtimeArgs']))
     for (const a of o['runtimeArgs']) if (typeof a === 'string') args.push(shellQuote(a))
@@ -871,10 +923,11 @@ const node: Translate = (o, ctx, todos, _env, deps) => {
     const port = typeof o['port'] === 'number' ? o['port'] : 9229
     args.push(`--${inspect}=${shellQuote(`${host}:${port}`)}`)
   }
-  args.push(shellQuote(`${out}/${file}`))
+  args.push(shellQuote(fileToRun))
   if (Array.isArray(o['args']))
     for (const a of o['args']) if (typeof a === 'string') args.push(shellQuote(a))
-  if (ctx.targetOptions?.(spec) !== undefined) {
+  // A target with no options still names an executor (an inferred `command`).
+  if (ctx.targetOptions?.(spec) !== undefined || ctx.targetExecutor?.(spec) !== undefined) {
     deps.push(spec)
     if (o['watch'] !== false)
       todos.push(
@@ -959,7 +1012,41 @@ const verdaccio: Translate = (o, ctx, todos, env) => {
   return fromRoot(ctx, line)
 }
 
+/**
+ * `@nx/angular:package` and `ng-packagr-lite`: ng-packagr on the project's
+ * `ng-package.json` (`project`, by default under the project root) with
+ * `tsConfig`, from the workspace root where Nx resolves both. Nx adds two
+ * steps ng-packagr's CLI lacks: it points the tsconfig `paths` of the
+ * buildable libraries this one imports at their built output, and it
+ * swaps in its own stylesheet processor (Tailwind from the project's
+ * config). Both are TODOs.
+ */
+const angularPackage =
+  (executor: string): Translate =>
+  (o, ctx, todos) => {
+    const project =
+      typeof o['project'] === 'string'
+        ? wsPath(o['project'], ctx)
+        : `${ctx.projectRel === '.' ? '' : `${ctx.projectRel}/`}ng-package.json`
+    const args = ['ng-packagr', '-p', shellQuote(project)]
+    if (typeof o['tsConfig'] === 'string') args.push('-c', shellQuote(wsPath(o['tsConfig'], ctx)))
+    if (o['watch'] === true) args.push('--watch')
+    if (o['poll'] !== undefined)
+      todos.push(`${executor} option "poll" has no ng-packagr flag — not carried`)
+    todos.push(
+      `${executor} pointed the tsconfig \`paths\` of buildable workspace libraries this one imports at their built output — ng-packagr reads the tsconfig as written`,
+      `${executor} processed styles with Nx's stylesheet processor (Tailwind from the project's config) — check ng-packagr's own output`,
+    )
+    if (executor === '@nx/angular:ng-packagr-lite')
+      todos.push(
+        "@nx/angular:ng-packagr-lite ran Nx's reduced ng-packagr for incremental builds — ng-packagr builds the full package",
+      )
+    return fromRoot(ctx, args.join(' '))
+  }
+
 const TRANSLATORS: Readonly<Record<string, Translate>> = {
+  '@nx/angular:package': angularPackage('@nx/angular:package'),
+  '@nx/angular:ng-packagr-lite': angularPackage('@nx/angular:ng-packagr-lite'),
   '@nx/js:verdaccio': verdaccio,
   '@nx/js:swc': swc,
   '@nx/js:node': node,

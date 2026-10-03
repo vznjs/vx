@@ -152,6 +152,25 @@ prune` all match. Fixed: the Run blocks used bare `vx`, which a local
   no cache block (both scratch walkthroughs re-ran every task). Its
   comments now name the step between; the landing test pins it.
 
+- **R-28** Plugin pages against source: every `@vzn/vx-*` import in a
+  README or guide names a live export; every option-table row exists in
+  source, and every option a plugin accepts is documented except test
+  seams (otel `post`, github `fetchFn` / `sizeOf`). #2535 had already
+  documented `reapi()`'s metadata options and made it refuse the PEM-text
+  ones and `onWarn`; its new `WireOnly` type sat in the plugin-API record
+  unnamed, which reddened `plugin-exports-documented` on main. The
+  README now names it.
+
+- **R-29** Both starters (`examples/basic`, `examples/turbo`) open their
+  README with `npm install`, which failed: `app` declared
+  `"lib": "workspace:*"`, a pnpm protocol npm refuses
+  (EUNSUPPORTEDPROTOCOL). The examples test links node_modules instead
+  of installing, so nothing ran it. Now `"*"` (npm resolves the
+  workspace package); `examples/basic` installs from npm with the
+  published vx and runs 3 miss, then 3 up-to-date. A row in
+  `examples.unsafe.test.ts` refuses a `workspace:` spec in an npm
+  starter (fails with the old spec).
+
 ## Leads
 
 - Real-repo rows (`packages/vx-bench/real-repos.json`, benchmarks.md's

@@ -29,11 +29,19 @@ export interface ProbedEntry {
 export interface ShortCircuit {
   preProbed: Map<string, ProbedEntry> // every stable task's probe, hit or miss
   restoreTier: Set<string> // the confirmed local hits
+  uncachedKeys: Map<string, string> // uncached task id → its reused key
 }
 export async function startLocalShortCircuit(args: ShortCircuitArgs): Promise<ShortCircuit>
 ```
 
-- `startLocalShortCircuit(args)` → `{ preProbed, restoreTier }`.
+- `startLocalShortCircuit(args)` → `{ preProbed, restoreTier, uncachedKeys }`.
+- `uncachedKeys` — the up-front keys of uncached tasks that no upstream
+  can change (stable-keys.md), minus every task `restoreTierExclusions`
+  names (a root-anchored output may land in its project with no edge).
+  execute-task uses one as `upfrontKey` instead of deriving it again:
+  500 uncached tasks took 1,000 `task hash` calls (31.0 ms summed, min
+  of 8) and now take 500 (10.6 ms); the wall moved within noise
+  (B-91).
 - `ProbedEntry { hash, hit }` — consumed by execute-task (probe reuse:
   the up-front probes ARE execute's probes, hoisted — no double work).
 

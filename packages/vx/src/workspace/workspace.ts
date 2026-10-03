@@ -1,16 +1,17 @@
-import type { Dirent } from 'node:fs'
-import { readdir, stat } from 'node:fs/promises'
+import { constants, type Dirent } from 'node:fs'
+import { access, readdir, stat } from 'node:fs/promises'
 import path from 'node:path'
 import type { ProjectConfig, WorkspaceConfig } from '../config.js'
 import {
   BUN_GLOB_WILDCARDS,
   isOutOfFds,
+  isPermissionError,
   relPosix,
   slashBraceExpansions,
   UserError,
   normalizeBunGlob,
 } from '../util/index.js'
-import { type LoadReads, readOnce } from './load-reads.js'
+import { type LoadReads, readOnce, unreadable } from './load-reads.js'
 
 export interface PackageJson {
   name: string
@@ -469,13 +470,28 @@ async function memberDirs(root: string, pattern: string): Promise<string[]> {
     // `pack*/*` did not (item 987). Followed only where the depth is bounded:
     // under `**` the scan would walk every pnpm `node_modules` link.
     const followSymlinks = !expanded.includes('**')
-    for await (const rel of glob.scan({ cwd: root, onlyFiles: true, dot: false, followSymlinks })) {
-      // Skip nested node_modules — workspace package globs shouldn't
-      // ever reach into them, but a pathological pattern like `**`
-      // would. Avoid splitting the path on the hot loop.
-      if (rel.includes(`${path.sep}node_modules${path.sep}`)) continue
-      if (rel.startsWith(`node_modules${path.sep}`)) continue
-      dirs.push(path.dirname(path.resolve(root, rel)))
+    try {
+      for await (const rel of glob.scan({
+        cwd: root,
+        onlyFiles: true,
+        dot: false,
+        followSymlinks,
+      })) {
+        // Skip nested node_modules — workspace package globs shouldn't
+        // ever reach into them, but a pathological pattern like `**`
+        // would. Avoid splitting the path on the hot loop.
+        if (rel.includes(`${path.sep}node_modules${path.sep}`)) continue
+        if (rel.startsWith(`node_modules${path.sep}`)) continue
+        dirs.push(path.dirname(path.resolve(root, rel)))
+      }
+    } catch (err) {
+      // The scan stops at a directory it may not open and cannot skip it,
+      // so the readdir path's skip is not on offer here (D-132).
+      if (!isPermissionError(err)) throw err
+      const where = relPosix(root, path.resolve(root, err.path ?? ''))
+      throw new UserError(
+        `${where}: not readable by this user (${err.code}), and the workspace glob "${pattern}" walks into it`,
+      )
     }
   }
   return dirs
@@ -548,6 +564,30 @@ function absent<T>(err: unknown, value: T): T {
   return value
 }
 
+/**
+ * A member's manifest text, or null when there is none. A manifest this
+ * user may not read is refused, not skipped: its project dropped out of
+ * `--all` and the run went green without it (D-132). A directory it may
+ * not search hides whether a manifest is there at all, so that one is
+ * named and skipped (a service's data directory under `packages/*`).
+ */
+async function readManifest(root: string, dir: string, file: string): Promise<string | null> {
+  try {
+    return await Bun.file(file).text()
+  } catch (err) {
+    if (!isPermissionError(err)) return absent(err, null)
+    const searchable = await access(dir, constants.X_OK).then(
+      () => true,
+      () => false,
+    )
+    if (searchable) unreadable(err, file)
+    process.stderr.write(
+      `vx: ${relPosix(root, dir)} is not readable by this user — skipped, with any project in it\n`,
+    )
+    return null
+  }
+}
+
 export async function listProjects(workspace: Workspace): Promise<ProjectMeta[]> {
   return discoverProjects(workspace)
 }
@@ -591,9 +631,7 @@ export async function discoverProjects(
       const pkgJsonPath = dir + path.sep + 'package.json'
       const [configPath, text] = await Promise.all([
         findConfigFile(dir),
-        Bun.file(pkgJsonPath)
-          .text()
-          .catch((err: unknown) => absent(err, null)),
+        readManifest(workspace.root, dir, pkgJsonPath),
       ])
       if (text === null) {
         // A member dir with a vx config and no manifest was skipped without
@@ -712,9 +750,7 @@ export async function namedProject(
   const pkgJsonPath = dir + path.sep + 'package.json'
   const [configPath, text] = await Promise.all([
     findConfigFile(dir),
-    Bun.file(pkgJsonPath)
-      .text()
-      .catch((err: unknown) => absent(err, null)),
+    readManifest(workspace.root, dir, pkgJsonPath),
   ])
   if (
     text === null &&

@@ -141,13 +141,24 @@ readers that reach it here.
   back, and the load refused naming the file, a failed load's change
   included (D-126): the workspace config's bytes are in no key, so a
   removed `Object.prototype.exec` replayed the old command. Globals are
-  left out: it loads first in every run, filtered or not.
+  left out: it loads first in every run, filtered or not. Of `Bun` it reads
+  the descriptors of the members vx reads (`BUN_MEMBERS_VX_READS`, held to
+  every `Bun.<name>` in `src/`) and keeps the rest's keys and order: some
+  members are built on their first read (`Bun.postgres` loads `bun:sql`),
+  and the full read was 4.4–5 ms of every warm run. A replaced member vx
+  does not read is not caught here.
 - Nor change the umask: a config's `process.umask(0o777)` left every file
   vx and its tasks wrote after it `000`, a cache artifact a user other than
   root could not read back. A worker shares the process's umask (a
-  `chdir` there stays the worker's), so a repeat load is checked too: the
-  worker puts it back after every evaluation and the load is refused,
-  naming `process.umask` (D-125).
+  `chdir` there stays the worker's), so a repeat load is checked too, and
+  the load is refused naming `process.umask` (D-125). Bun reads the umask
+  by setting 0 and putting it back, so two threads reading it at once see
+  each other's 0 and can leave the process there: the main thread alone
+  reads it, around a load that is alone in its round or before and after
+  a round of several, and the worker only when blaming a config, the one
+  evaluation in flight, putting it back before it answers; the round puts it
+  back after each blame too, as a worker ended at its budget restores
+  nothing (`config-umask-concurrent.test.ts`).
 - A first load may not add or replace a global either: one config's
   `globalThis.x = …` reached every config loaded after it in the process,
   so `vx run --all` read it and a `--filter` of the reader alone did not

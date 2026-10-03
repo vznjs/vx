@@ -136,6 +136,28 @@ sync`", advice for a repo leaving Nx: they say to keep what the
   testing; the migrated e2e task now depends on that server task, by the
   channel P2-24 added. The URL Nx passed as `baseUrl` stays a TODO
   unless the options set one; `skipServe` starts nothing.
+- **P2-27** The shape fixtures now plan every written task through core's
+  `planRun` (git-initialised fixture roots), so a config that loads but
+  that core refuses to plan fails its row: a mutant keeping a `^codegen`
+  no project declares passed the load-only check and fails the plan. A
+  tenth shape pins P2-22 and P2-23 end to end (a manifest cycle Nx
+  breaks with `!a`, a configuration named like another target).
+- **P2-26** `@nx/angular:package` and `ng-packagr-lite`, the Angular
+  library builds in an Nx repo, were failing placeholders. They migrate
+  to the ng-packagr line Nx ran (`ng-packagr -p … -c …` from the
+  workspace root), read from the executors in Nx 23.2.1; Nx's tsconfig
+  path remapping for buildable libraries and its stylesheet processor
+  are TODOs.
+- **P2-28** `@nx/js:node` on a build target with no output options (a
+  Nest app's inferred `webpack-cli build`, the Nx 20+ default) was a
+  failing placeholder with no build edge. It now runs the file Nx's
+  `getFileToRun` names: the target's first `outputs` entry, glob
+  stripped, then `main.js`, else `dist/<projectRoot>/main.js`; a build
+  target with no options still resolves by its executor, so the edge is
+  written.
+- **P2-29** The migrate guide says what P2-24, P2-25 and P2-28 write:
+  a server task depends on the build its executor ran first, and a
+  Cypress task on its dev server.
 
 ## Leads for other streams
 

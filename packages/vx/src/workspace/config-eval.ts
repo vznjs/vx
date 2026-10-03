@@ -128,8 +128,12 @@ self.onmessage = async (e) => {
   const envBefore = watched ? { ...live } : null
   const cwdBefore = watched ? globalThis.process.cwd() : null
   // The umask is the process's, not the worker's: a config's umask(0o777)
-  // here left every file vx wrote after it 000 (D-125). Put back below.
-  const umaskIn = globalThis.process.umask()
+  // here left every file vx wrote after it 000 (D-125). Read only when
+  // blaming, the one evaluation in flight: Bun reads it by setting 0 and
+  // back, so this read beside the main thread's left the process at 0
+  // and blamed an innocent config. An ordinary load's change is the
+  // loader's to see, on the main thread, once the round is done.
+  const umaskIn = watched ? globalThis.process.umask() : null
   const same = (a, b) =>
     a !== undefined && b !== undefined && Object.is(a.value, b.value) && a.get === b.get && a.set === b.set &&
     a.writable === b.writable && a.enumerable === b.enumerable && a.configurable === b.configurable
@@ -148,9 +152,7 @@ self.onmessage = async (e) => {
     return out
   }
   const umaskBack = () => {
-    if (globalThis.process.umask() === umaskIn) return false
-    globalThis.process.umask(umaskIn)
-    return true
+    if (umaskIn !== null && globalThis.process.umask() !== umaskIn) globalThis.process.umask(umaskIn)
   }
   try {
     const ns = await import(path)
@@ -160,24 +162,29 @@ self.onmessage = async (e) => {
     const mod = await ns?.default
     const isObject = mod !== null && typeof mod === 'object'
     const nonJson = isObject ? nonJsonPaths(mod) : []
+    // Seen, then put back, BEFORE the reply: the caller terminates a
+    // blaming worker as soon as it answers, and a restore after the reply
+    // lost that race and left the process at the config's mask.
+    const report = changed()
+    umaskBack()
     postMessage({
       id,
       ok: true,
       nonJson,
       json: isObject && nonJson.length === 0 ? JSON.stringify(mod) : null,
       fn: typeof mod === 'function',
-      changed: changed(),
-      umask: umaskBack(),
+      changed: report,
     })
   } catch (err) {
+    const report = changed()
+    umaskBack()
     postMessage({
       id,
       ok: false,
       name: err?.name ?? 'Error',
       message: err?.message ?? String(err),
       stack: err?.stack ?? null,
-      changed: changed(),
-      umask: umaskBack(),
+      changed: report,
       position:
         err?.position && typeof err.position === 'object'
           ? { file: err.position.file, line: err.position.line, column: err.position.column }
@@ -189,9 +196,6 @@ self.onmessage = async (e) => {
 
 const FUNCTION_EXPORT = (): void => {}
 
-/** A repeat load moved the process's umask; the loader names the config (D-125). */
-export class UmaskChanged extends Error {}
-
 const WORKER_URL = `data:text/javascript,${encodeURIComponent(WORKER_SRC)}`
 
 interface WorkerReply {
@@ -200,8 +204,6 @@ interface WorkerReply {
   json: string | null
   /** The default export is a function, which JSON cannot carry back. */
   fn?: boolean
-  /** The evaluation moved the process's umask; the worker put it back. */
-  umask?: boolean
   nonJson: NonJsonValue[]
   name: string
   message: string
@@ -363,7 +365,6 @@ export async function evaluateConfigFresh(configPath: string): Promise<unknown> 
       timer.unref?.()
       w.postMessage({ id, path: abs, env: { ...process.env } })
     })
-    if (reply.umask === true) throw new UmaskChanged()
     const [nonJson] = reply.nonJson
     if (nonJson !== undefined) throw new UserError(nonJsonMessage(configPath, nonJson))
     // A function stands in for the one the config exported, so the caller's
