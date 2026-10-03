@@ -33,8 +33,9 @@ specific to one guide stay there: [Sandboxing](../sandboxing/#common-problems),
   [`exec.sandbox`](../sandboxing/) refuses a read you did not declare.
 - **A task re-ran and you do not know why.** `vx why <project#task>`
   names the part of the key that changed.
-- **A variable is empty inside the command.** vx passes only what you
-  list: add it to `exec.env.passThrough`
+- **A variable is empty inside the command.** Past a small essential
+  allowlist (`PATH`, `HOME`, `CI` and a few more), vx passes only what
+  you list: add it to `exec.env.passThrough`
   ([Environment variables](../configure/#environment-variables)).
 - **`dist/` is empty after `tsc -b`.** tsc's build info sits outside
   `dist/`; add `tsconfig.tsbuildinfo` to `outputs.files`

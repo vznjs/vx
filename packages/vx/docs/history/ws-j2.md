@@ -324,4 +324,4 @@ persistent task` and vx exits 1). Row (`site-samples` › a post's link
   now; the guide's example is `GITHUB_ACTIONS`. Probes, nothing to
   fix: the-sandbox, values and what-vx-is posts. Row (`site-samples` ›
   no page says a task sees only what it declares, past the allowlist),
-  red without the fix.
+  red without the fix. The Troubleshooting page (#2470), added since, said "vx passes only what you list" too; it names the allowlist now, and the row holds it.

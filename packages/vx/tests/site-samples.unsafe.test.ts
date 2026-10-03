@@ -178,6 +178,12 @@ describe('no page says a task sees only what it declares, past the allowlist', (
     expect(one.split(/\s+/).join(' ')).toContain(
       'an isolated environment: a small essential allowlist (`PATH`, `HOME`, `CI`, `NODE_OPTIONS` and a few more), then what `exec.env` says',
     )
+    // The Troubleshooting page (#2470) came after, with "vx passes only
+    // what you list" (J2-8).
+    const trouble = readFileSync(path.join(GUIDES, 'troubleshooting.md'), 'utf8')
+    expect(trouble.split(/\s+/).join(' ')).toContain(
+      'Past a small essential allowlist (`PATH`, `HOME`, `CI` and a few more), vx passes only what you list',
+    )
   })
 })
 
