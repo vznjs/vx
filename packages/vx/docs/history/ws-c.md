@@ -1445,3 +1445,42 @@ does not join a running watch (`cli.md` says the scope is resolved at
 start); a server that exits 0 after ready is fine (`schema.md`);
 `computeReverseDepCount` is O(E·N/32), 11.5 µs a task at 20,000 tasks
 against 4.3 at 1,000, and runs only without history priorities.
+
+## C-95: no watch cycle for a file born and gone since the arm
+
+vim's `4913` write probe, or a tool's lock file, created and removed
+after watch armed, read as a deletion and started a cycle with nothing
+changed. `gitFiles()` (one `git ls-files` at the arm) lists what existed,
+with every directory above a listed file (a first cut missed directories:
+a project moved away whole is one event on its directory, and the cycle
+dropping it never ran; caught by probe before merge). An ignored path,
+or no inventory, is a deletion as before. Blind spot, said in the
+source: a file born between a judgement and that cycle's keys, and gone
+by the next judgement. Rows (`watch-transient-file.test.ts`): the born-
+and-gone file and the gone directory, red without the change; controls
+for a listed file, no inventory, and a new file still present.
+A property row (`watch-judge-properties.test.ts`, 60 seeded sequences of creates, edits and deletes against a model of what the loop last saw) holds C-94 and C-95 together; the inventory rule's removal fails it.
+
+## C-97: a submodule path no longer unignores a watch batch
+
+`git check-ignore --stdin` refuses a whole batch (exit 128, "is in
+submodule") when one path sits inside a submodule, and `gitIgnored` read
+the refusal as nothing ignored: a pid file judged in the same window as
+a write under the submodule started cycles again. It now asks with
+`-v -n` (one record per path; a `!` match is not ignored), skips the
+refused path by the record count and asks the rest; a refusal before
+any record checks once for a work tree, outside one nothing is ignored
+as before. Rows (`watch-ignore-submodule.test.ts`): the submodule path
+first, two first, last, red without the change; controls without it and
+outside a repository. `modules/cli-watch.md` says so.
+
+Lead for the migrate stream (2026-10-03): `@vzn/vx-migrate`'s
+`gitIgnored` (`src/tracked-outputs.ts`) has C-97's class: one path inside
+a submodule makes `git check-ignore --stdin` exit 128 and the whole batch
+reads as nothing ignored. Core's watch copy now skips the refused path
+by `-v -n` record count (C-97, #2534); the same shape fits there.
+
+Lead for the reapi stream (2026-10-03): `vx-reapi`'s
+`materialise-concurrency.test.ts` › "output files are fetched and written
+at once, each with its own bytes" saw a peak of 4 against 5 in one local
+gate and passed on the re-run (a timing claim on concurrency, unproven).
