@@ -554,6 +554,18 @@ persistent task` and vx exits 1). Row (`site-samples` › a post's link
   hints, the visibility table, the failure recap's limits and sample,
   the live region's row cap and redraw floor, and the persistent-task
   exit line.
+- **J2-65** `parity.md` mapped Nx's `--skipNxCache` to `--no-cache`,
+  and the Nx parity case titled for it drove `--no-cache`, never the
+  flag; vx aliases it to `--force` (`foreign-flags.ts`). The row says
+  `--force` with `foreign-flags.test.ts` as its pin, the case drives
+  `--skipNxCache` itself, and a row (`foreign-flags` › parity.md names
+  the flag vx rewrites each aliased flag to) runs every flag in the
+  map's left column through `translateForeign`; red without the fix.
+  Checked clean: `security.md` (the secret rule, `--no-install`, the
+  CRC, the credential stores, the cache plugins' read-only variables,
+  the release rules' tests), `flows.md` (every function its diagrams
+  name, skipped outcomes' exit 1, the prune and plan paths), `api.md`
+  (generated and held).
 - **J2-63** `cli.md`'s Environment variables section said it lists "the
   variables core reads" and named no CI variable, though a truthy `CI`
   picks the output flow, `GITHUB_ACTIONS` its group framing, and
