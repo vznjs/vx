@@ -68,6 +68,9 @@ export function refIsHead(workspaceRoot: string, ref: string): boolean
 --end-of-options <ref>`. Throws `UserError` if the ref doesn't resolve
    locally. A ref the default base's search already resolved to a
    commit (`resolvedRefs`, per workspace) is not asked again (#2288).
+   On the merge-base path it runs only when `git merge-base` finds no
+   base: a merge base proves the ref resolves, and the check was a
+   synchronous spawn before every one.
 2. `git diff --name-only <merge-base(since, HEAD)>` (`<since>` itself
    when there is no merge base) — emits the union of committed, staged
    and unstaged changes. Matches Turbo's `[<since>]` semantics. A base
