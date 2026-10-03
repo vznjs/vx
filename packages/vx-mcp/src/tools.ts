@@ -205,7 +205,9 @@ async function listTasks(
  */
 function parseCacheScope(raw: unknown): 'all' | { project: string } {
   if (raw === undefined || raw === 'all') return 'all'
-  if (typeof raw === 'object' && raw !== null) {
+  // Only `project`: a `task` beside it was ignored, and the project's
+  // numbers came back as the task's.
+  if (typeof raw === 'object' && raw !== null && Object.keys(raw).every((k) => k === 'project')) {
     const project = (raw as { project?: unknown }).project
     if (typeof project === 'string' && project.length > 0) return { project }
   }
