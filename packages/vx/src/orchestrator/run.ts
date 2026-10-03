@@ -544,7 +544,21 @@ async function runOnBus(
   // (`signals.ts`); the handlers are removed in the finally below so
   // repeated run() calls (test suites) never stack listeners.
   const liveChildren = new Set<ReturnType<typeof Bun.spawn>>()
-  const persistentRegistry = new Map<string, ReturnType<typeof Bun.spawn>>()
+  // A server that ends on its own while the graph still runs is said at
+  // once: its dependants were failing against it, and the end of the run
+  // was the first word of it (C-69). Not once the graph is done (the end
+  // of the run and the keep-alive wait say it) nor under a stop.
+  let graphDone = false
+  const persistentRegistry = new (class extends Map<string, ReturnType<typeof Bun.spawn>> {
+    override set(id: string, child: ReturnType<typeof Bun.spawn>): this {
+      super.set(id, child)
+      void child.exited.then((code) => {
+        if (code !== 0 && !graphDone && !stopRun.signal.aborted)
+          log.status(`vx: ${id} exited with code ${code} while the run went on`)
+      })
+      return this
+    }
+  })()
   // One stop for the run: an embedder's `RunOptions.signal` and a process
   // signal both abort it. The scheduler stops dispatching (it reads the
   // signal), the children are torn down, and run() returns through its own
@@ -951,6 +965,7 @@ async function runOnBus(
       // Empty when the short-circuit didn't fire → byte-identical.
       restoreTier: shortCircuit.restoreTier,
     })
+    graphDone = true
 
     // Which persistent children outlive the graph, and the bounded SIGTERM
     // of the rest, before the summary prints. Scoped to the real CLI

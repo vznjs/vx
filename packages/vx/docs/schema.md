@@ -365,7 +365,8 @@ Semantics:
 - **Crash after ready ⇒ failed run.** A persistent task that exits
   non-zero (or is killed) on its own after it became ready fails the
   run, and vx names it: `vx: <id> exited with code <n>` (a signal death
-  as its `128 + n` code). Its own outcome is `failed` with that exit
+  as its `128 + n` code), at once while the graph still runs (`… while
+the run went on`), so a dependant failing against it reads why. Its own outcome is `failed` with that exit
   code, and the footer counts it so (item 1071). An exit 0 on its own is
   fine (a daemon that forks and returns).
 - **End-of-graph SIGTERM.** Once the rest of the graph finishes
