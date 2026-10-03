@@ -2,7 +2,8 @@
 // on: a zero, negative or non-number one ended every call, or stopped every
 // action, the moment it began (stream F).
 import { expect, it } from 'bun:test'
-import { ReapiClient, reapiExecutor } from '../src/index.js'
+import { reapiExecutor } from '../src/executor.js'
+import { ReapiClient } from '../src/wire.js'
 
 const said = (make: () => unknown): string => {
   try {
