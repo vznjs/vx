@@ -1587,3 +1587,27 @@ deleted path; a directory is watched before anything under it, so a
 path with no watch has none below and costs one lookup (10,000
 deletions under 400 watched directories: 432 → 164 ms CPU, min of 3,
 interleaved).
+
+## C-104: watches whose directory was removed and made again are re-armed
+
+An OS watch holds an inode: after `rm -rf packages` and a restore, the
+base's watch sat on the deleted directory and the root arm drops every
+name but its own files, so watch said `watching 0 project(s)` and ran
+no edit until a restart (CLI: output `ok3` after an `ok4` edit). Made
+again inside one window, the re-read kept the dead project watches.
+Each base is now watched from its nearest existing directory for the
+next name down, and a re-arm replaces project, base and parent watches
+whose directory changed, named by dev, inode and birth time (a freed
+inode number went straight to the next directory: the same `ino`
+twice, measured). Rows (`watch-recreated-dirs.test.ts`, five): each
+guard's removal fails its row. `cli.md` says so. Probes the same hour,
+clean: fail-then-fix with a cached task; `packages/` moved away and
+back (the watch follows the inode).
+
+Probes (2026-10-03), clean: random storms of directory trees made,
+moved and removed, file edits and born-and-gone probe files against a
+cached `src/**` task, 15 rounds on the native Linux tree (C-102) and 10
+on the poller (`VX_WATCH_POLL=1`): the output always the final input.
+The day's new timing-sensitive rows (claimed files, per-cycle timing, the Linux tree, async sinks and hints, submodule ignores, transient files, the judge property) ran 8 times idle and 4 beside six CPU burners: no failure.
+Ctrl-C while a cycle stops a held server that takes 1.5 s to exit on SIGTERM: watch waits for it, exits 0 in 1.2 s, nothing left on the port.
+Storm on the C-104 branch with whole-`packages/` restores (in one window and 2.5 s apart) mixed in, each round ending in an edit: 12 rounds, the output always the final input (before C-104 the first slow restore left watch at `watching 0 project(s)`).

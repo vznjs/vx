@@ -778,3 +778,15 @@ the project is named as the cause; red without the fix.
   and 5 runs under 16 CPU hogs. The bridge socket binds 30-60 ms after
   the run starts (120-350 ms under load) against the row's 1 s task
   and 2 s wait. The failure text is needed to go further.
+
+M-62. M-61's lead, fixed: `vx why` printed a secret-named
+`cache.inputs.env` variable's before and after as its 64-bit xxh3, an
+unsalted hash of the value, so a short secret was recoverable from a CI
+log that printed `vx why`. `diffKeyComponents`, the join `vx why` and the
+playground share, now carries `***` for a name the masking rule calls
+secret (`secretNamed`, now exported), and the text row shows the name and
+its change with no hash (supervisor: the safer fix); other env inputs
+keep their hashes. Not
+covered: a name made secret by `exec.env.secret` alone, which run history
+does not record. `why.test.ts` › a secret-named env input (text and json;
+red without the fix, the `REGION` control unmasked).
