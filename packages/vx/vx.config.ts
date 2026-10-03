@@ -135,6 +135,8 @@ const releaseTasks = {
                         'dist/vx-darwin-arm64.cstemp',
                       ],
                       machLookup: ['com.apple.trustd.agent'],
+                      // Bun's x64 runtime probes CPU features under Rosetta.
+                      systemInfo: ['hw.optional.bmi1', 'hw.optional.avx2_0'],
                     }
                   : {}),
               },
