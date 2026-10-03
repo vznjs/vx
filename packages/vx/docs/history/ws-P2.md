@@ -89,6 +89,9 @@ sync`", advice for a repo leaving Nx: they say to keep what the
   writes a `package.json` (`name`, `private`) where there is none and
   one note naming the directories to add to `workspaces` or
   `pnpm-workspace.yaml`.
+- **P2-16** One Nx edge spelled two ways (`ui:gen` and
+  `{ projects: ["ui"], target: "gen" }`) was listed twice in the written
+  `dependsOn`; `mapNxDeps` now returns each edge once.
 
 ## Leads for other streams
 

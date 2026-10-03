@@ -322,7 +322,6 @@ describe('mapNxDeps', () => {
         '@acme/ui#build',
         '@acme/ui#build-esm',
         '^lint',
-        '@acme/ui#build-esm',
       ],
       todos: [],
     })
