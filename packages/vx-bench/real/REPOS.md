@@ -283,5 +283,6 @@ nothing under either tool. Not a runner comparison.
 
 ## Results
 
-`docs/benchmarks.md`, "Five real Turbo repos" — the build tables — and
-"Wide graphs". Raw rows per arm live in the session scratchpad only.
+These runs timed the migration bridge, not native vx config, and
+`docs/benchmarks.md` no longer quotes them (git history keeps them).
+They return there once rerun on native config.
