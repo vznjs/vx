@@ -708,6 +708,38 @@ exactly that set in cli.md's exit-code statements, plugin verbs aside:
 {0, 1, 129, 130, 143} both ways. A new `return 2` or a dropped `129`
 fails it (#2610).
 
+## H-63: the hook tables hold PLUGIN_HOOKS, stages in run order
+
+The pages that list the plugin hooks were held to name each one, so a
+row for a hook that does not exist passed, and so did any order:
+architecture.md and modules/plugin.md listed `executor` first, ahead
+of `config`. `plugin-hook-tables.test.ts` holds each hook table
+(architecture, modules/plugin, design/pipeline) to `PLUGIN_HOOKS` as
+an exact set, `setup`/`teardown` aside where the page covers them in
+prose, and requires the stages `config` through `telemetry` in the
+order a run calls them; both tables now place `executor` just before
+`cache` (#2623).
+
+## H-64: the drain row waits on its parent's exit, not a poll
+
+The post-exit drain row failed on macOS CI at 317 ms against the
+250 ms drain: its grandchild polled the parent with `kill -0`, forking
+`sleep 0.01` a turn. It reads a FIFO only the parent holds open now,
+so the exit is its EOF, and prints 50 ms later. A first cut that
+printed at the EOF passed with a 0 ms drain, holding nothing; with
+the 50 ms it fails at 0 ms and holds at 100 ms under 3x CPU load
+(#2631).
+
+## H-65: cli.md's JSON shapes are the schemas'
+
+Each verb's `--format json` was held to its schema, but nothing held
+the shapes cli.md prints: `vx why` showed one of its two objects, not
+`{ taskId, why, diff, explanation }` for runs without a run id.
+`cli-json-doc.test.ts` requires each `{ … }` a verb's JSON paragraphs
+show to be an object its schema closes with those keys, every object
+the verb prints whole to be shown, and `vx info`'s field list to be
+its schema's top level (#2639).
+
 ## Leads for other streams
 
 - **A:** a task that rewrites its own input with the same bytes is never
