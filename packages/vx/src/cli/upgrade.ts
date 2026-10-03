@@ -12,7 +12,9 @@
 // Named `upgrade` (not `update`) per CLI convention: bun upgrade,
 // deno upgrade — "update" is what package managers do to indexes.
 
-import { chmod, chown, link, rename, rm, stat } from 'node:fs/promises'
+import { constants } from 'node:fs'
+import { access, chmod, chown, link, rename, rm, stat } from 'node:fs/promises'
+import path from 'node:path'
 import { flagHint, seeHelp } from './help.js'
 import { UserError } from '../util/index.js'
 import { VERSION } from '../version.js'
@@ -218,6 +220,15 @@ export async function replaceBinary(
   sha256: string,
   starts?: (dest: string) => boolean,
 ): Promise<void> {
+  // The swap writes beside the binary: a directory this user cannot write
+  // (a root-owned /usr/local/bin) failed at the rename, the whole release
+  // downloaded for nothing, and the hint named npm, which this binary is not.
+  const dir = path.dirname(dest)
+  await access(dir, constants.W_OK).catch((err: NodeJS.ErrnoException) => {
+    throw new UserError(
+      `vx upgrade: cannot write to ${dir} (${err.code ?? err.message}), where this vx lives — nothing downloaded; re-run as a user who can (sudo vx upgrade), or install vx somewhere you can write`,
+    )
+  })
   const res = await fetchOrRefuse(url, { redirect: 'follow' }, 'download the release asset')
   if (!res.ok) {
     throw new UserError(
@@ -258,8 +269,7 @@ export async function replaceBinary(
     if (kept) await rm(old, { force: true })
     const msg = err instanceof Error ? err.message : String(err)
     throw new UserError(
-      `vx upgrade: could not replace ${dest} (${msg}) — ` +
-        `check permissions, or reinstall with npm install -g @vzn/vx`,
+      `vx upgrade: could not replace ${dest} (${msg}) — nothing replaced; check the permissions of ${dest} and its directory`,
     )
   }
   if (starts === undefined || starts(dest)) {

@@ -42,6 +42,9 @@ interface NxCommandContext {
   readonly projectName: string
 }
 
+/** The line `nx-env --ready-when` prints once every string is seen (`READY` in nx-env.cjs). */
+const NX_ENV_READY = '^nx-env: ready$'
+
 /** A run-commands target as vx runs it. */
 export interface RunCommandsLine {
   readonly command: string
@@ -49,6 +52,12 @@ export interface RunCommandsLine {
   readonly env: Readonly<Record<string, string>>
   /** Nx's `readyWhen` as the pattern `exec.persistent.readyWhen` takes, when the target has one. */
   readonly readyWhen: string | undefined
+  /**
+   * Several `readyWhen` strings, all of which Nx waits for: the line runs
+   * under `nx-env --ready-when`, which prints its ready line once all have
+   * appeared, and `readyWhen` matches that line.
+   */
+  readonly readyAll?: readonly string[]
   /** `envFile` as declared: workspace-root-relative, or absolute. */
   readonly envFile: string | undefined
 }
@@ -368,17 +377,14 @@ export function mapRunCommands(
   const pattern =
     readyWhen.length === 0
       ? undefined
-      : readyWhen.map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')
-  if (readyWhen.length > 1) {
-    todos.push(
-      `nx:run-commands: Nx waits for every \`readyWhen\` string (${readyWhen.map((s) => JSON.stringify(s)).join(', ')}); ` +
-        'vx takes one pattern, so the task is ready on the first of them',
-    )
-  }
+      : readyWhen.length === 1
+        ? readyWhen[0]!.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+        : NX_ENV_READY
+  const ready = readyWhen.length > 1 ? { readyAll: readyWhen } : {}
   const only = commands.length === 1 ? commands[0]! : undefined
   if (only !== undefined && only.runtime === 'append' && only.baked.length === 0) {
     const line = only.tail === undefined ? only.text : `${only.text} ${only.tail}`
-    return { command: `${cd}${line}`, env, readyWhen: pattern, envFile }
+    return { command: `${cd}${line}`, env, readyWhen: pattern, envFile, ...ready }
   }
   // A subshell per command, as Nx gives each a shell of its own; a comment
   // in one must not swallow the `)` that closes it.
@@ -430,6 +436,7 @@ export function mapRunCommands(
     env,
     readyWhen: pattern,
     envFile,
+    ...ready,
   }
 }
 

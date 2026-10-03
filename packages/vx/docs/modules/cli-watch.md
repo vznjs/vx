@@ -187,7 +187,10 @@ are refused too: they format one run's result.
      such directory.
    - The same re-read follows a cycle started by a file that shapes
      the watched set (`shapesWatchedSet`): a `package.json` (a
-     dependency added under `--filter` widens the closure), a project
+     dependency added under `--filter` widens the closure; the root's
+     `workspaces`, like `pnpm-workspace.yaml`, is the glob list, and the
+     re-read takes its bases too, so a glob added there is watched from
+     the cycle it triggers, item 1018), a project
      config (a task that starts or stops declaring `workspaceFiles`
      swaps the arm between per-project and root, `dropMode` /
      `armMode`) or the workspace config. And a directory under a
@@ -324,9 +327,6 @@ non-persistent tasks where each cycle should re-run cleanly.
 - Doesn't filter events through declared input globs.
 - Doesn't dedupe events by project — every file change triggers a
   re-run of the user's specified task across the entire scope.
-- Doesn't re-read the package globs: a `pnpm-workspace.yaml` edit that
-  adds a new base directory is a cycle, but the base is watched only
-  from the next start.
 - Doesn't carry a persistent task through a cycle: it stays up while
   watch idles, and the next cycle stops and re-spawns it.
 - Re-key a cycle when a task rewrites a lockfile _during_ it: the keys

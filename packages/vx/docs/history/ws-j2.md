@@ -525,6 +525,17 @@ persistent task` and vx exits 1). Row (`site-samples` › a post's link
   watch-limit notice, the 150 ms debounce, the three-cycle notice, the
   ignored segments and suffixes, the refused flags and their reasons,
   the signals it forwards, and `cycle failed`.
+- **J2-61** Owner rule: `cli.md`'s `vx show` called a plugin-fed
+  workspace "the zero-migration Turbo shape", and the pipeline blog
+  post's excerpt sold "Zero-migration Turbo support": the mapping as the
+  destination, not a start toward native config. Both reworded; the
+  `turbo-nx-wording` law gains the pattern, red on both pages without
+  the fix. Checked clean: `vx cache prune` (units, zero and bare-number
+  refusals, orphan grace and name rule, messages), `--frozen`, `vx lock`
+  (bare-project note, secret refusal), Releasing (version rule, twelve
+  npm packages), `vx upgrade`'s messages and 10 s start check,
+  `vx migrate`'s pointer, the foreign-verb hints, Machine-readable
+  output.
 - **J2-62** `cli.md`'s `vx info` sandbox bullet called its field "the
   `--json` fact"; `vx info --json` is refused (the verb takes
   `--format json`). Row (`cli-doc-drift` › every flag the `vx info`
@@ -543,6 +554,18 @@ persistent task` and vx exits 1). Row (`site-samples` › a post's link
   hints, the visibility table, the failure recap's limits and sample,
   the live region's row cap and redraw floor, and the persistent-task
   exit line.
+- **J2-65** `parity.md` mapped Nx's `--skipNxCache` to `--no-cache`,
+  and the Nx parity case titled for it drove `--no-cache`, never the
+  flag; vx aliases it to `--force` (`foreign-flags.ts`). The row says
+  `--force` with `foreign-flags.test.ts` as its pin, the case drives
+  `--skipNxCache` itself, and a row (`foreign-flags` › parity.md names
+  the flag vx rewrites each aliased flag to) runs every flag in the
+  map's left column through `translateForeign`; red without the fix.
+  Checked clean: `security.md` (the secret rule, `--no-install`, the
+  CRC, the credential stores, the cache plugins' read-only variables,
+  the release rules' tests), `flows.md` (every function its diagrams
+  name, skipped outcomes' exit 1, the prune and plan paths), `api.md`
+  (generated and held).
 - **J2-63** `cli.md`'s Environment variables section said it lists "the
   variables core reads" and named no CI variable, though a truthy `CI`
   picks the output flow, `GITHUB_ACTIONS` its group framing, and
@@ -566,3 +589,15 @@ persistent task` and vx exits 1). Row (`site-samples` › a post's link
   layered-cache, lockfile-claim, metrics, migration, nested-dirs,
   options, package-graph, project-loader, runner, scheduler and
   signals.
+- **J2-66** `modules/cli-watch.md` listed "doesn't re-read the package
+  globs" (a new base watched only from the next start) under what watch
+  does not do, though item 1018 made the cycle a glob-list edit starts
+  re-read the bases, as cli.md says. The bullet is gone and the re-read
+  bullet names it. Row (`module-page-claims` › cli-watch.md's account of
+  the package globs is the loop's), red without the fix, its negative
+  proven live alone. Checked clean: every module page's Tests citations
+  resolve, `patterns.md` (the git enumeration), `docs/README.md` (its
+  numbers trace to benchmarks.md), `upstream-ledger.md`'s two open rows
+  (still documented limits), the site's `why-vx-is-fast.md` (its numbers
+  trace), the root README (14 hooks, publish status), CONTRIBUTING and
+  both examples' READMEs.

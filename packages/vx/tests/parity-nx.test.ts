@@ -286,12 +286,12 @@ describe('Nx parity — cache control and failure handling', () => {
   })
 
   it(
-    '`--skipNxCache` (vx: `--no-cache`) executes even when a hit exists',
+    '`--skipNxCache` (vx: `--force`) executes even when a hit exists',
     async () => {
       await vx(root, ['run', 'lib#lint'])
       const hit = await summarized(root, ['lib#lint'])
       expect(hit.tasks.get('lib#lint')?.['status']).toBe('cache-hit')
-      const skipped = await summarized(root, ['lib#lint', '--no-cache'])
+      const skipped = await summarized(root, ['lib#lint', '--skipNxCache'])
       expect(skipped.tasks.get('lib#lint')?.['status']).toBe('success')
     },
     TIMEOUT,

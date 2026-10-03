@@ -1247,10 +1247,12 @@ run...` precedes it.
    `**/*` beside `vx watch build` asks nothing) — and neither do `node_modules`,
    `.git` or the cache directory. A write the task did NOT declare (a
    task with no `cache` block declares nothing) is caught by state,
-   judged once the bytes have settled: a file whose bytes did not
-   change since the loop last saw it is not an edit, nor is a directory
+   judged once the bytes have settled: a file whose bytes and mode did
+   not change since the loop last saw it is not an edit (a `chmod` is one,
+   as the key reads the executable bit), nor is a directory
    whose entries (names and sizes) did not, nor a path that stayed
-   gone; a path the loop has never judged is an edit only if it was
+   gone; a symlink is its target string, as the key folds it, so a
+   retarget is an edit; a path the loop has never judged is an edit only if it was
    modified after the watchers went live (macOS delivers the initial
    run's own writes after the arm; the later of the path's mtime and
    ctime says which side of it a path belongs to, so a file moved in
@@ -1671,7 +1673,10 @@ stack; so is a release document cut after the headers arrived or not
 JSON (a captive portal's page served with a 200): `could not read the
 release from api.github.com (…) — nothing replaced; …`, and an asset
 download cut the same way: `could not download the release asset from
-github.com (…) — nothing replaced; …`. The new binary
+github.com (…) — nothing replaced; …`. A binary whose directory this
+user cannot write (a root-owned `/usr/local/bin`) is refused before the
+download: `cannot write to <dir> (EACCES), where this vx lives — nothing
+downloaded; re-run as a user who can (sudo vx upgrade), …`. The new binary
 keeps the old one's mode (and, as root, its owner), and must answer
 `--version` before the upgrade reports it installed: one that does not
 start on this machine — or does not answer within 10 s — is swapped back
@@ -1683,7 +1688,8 @@ bare `(403)` (item 1098).
 
 Exit codes: `0` the new binary installed, or already at that version;
 `1` anything refused or swapped back: from source, from npm, a host it
-cannot reach, a digest that does not match, a binary that does not start.
+cannot reach, a directory it cannot write, a digest that does not match,
+a binary that does not start.
 
 ## `vx init`
 
@@ -2068,7 +2074,8 @@ product verb to it under a notice.
 Introspect the workspace's **live resolved configs** — what a run
 would see right now. Configs load through the same path a run uses,
 plugin `config` and `project` stages included, so a package a plugin
-gives tasks to (the zero-migration Turbo shape) shows them; cached
+gives tasks to (`turbo()` or `nx()` from `@vzn/vx-migrate`, a
+temporary start toward native config) shows them; cached
 evaluations are served from the local cache like a run's. `vx show`
 never reads `vx-lock.json` (the lock is already the frozen JSON — open
 it directly if you want the frozen view).

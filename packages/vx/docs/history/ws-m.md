@@ -888,6 +888,24 @@ ctime past the arm, or the stamp read early. Not reproduced on Linux
 (it is FSEvents' path); once in about 400 main runs (2026-10-02 20:25 to
 2026-10-03 10:03).
 
+M-71. Security queue (1), task env isolation: held, now by a law at
+the spawn. A task sees the allowlist (`ESSENTIAL_ENV`), what it names in
+`passThrough` or `define`, `VX_RUN_WORKSPACE` and `VX_RUN_TASK`; probed
+under `vx run` with `SSH_AUTH_SOCK`, `GITHUB_TOKEN`,
+`AWS_SECRET_ACCESS_KEY` and `NPM_TOKEN` set, none reached a plain or a
+sandboxed task. A sandboxed one also gets the sandbox runtime's own proxy
+settings (`HTTPS_PROXY`, `GIT_SSH_COMMAND` and the like, all pointing at
+its localhost proxy with its own credential), the same with the host's
+proxy variables unset. The unit rows held only `buildIsolatedEnv`; the
+new row runs a task and compares the names it saw with the exact set
+(what the child sets itself aside: the shell's `PWD`, `SHLVL`, `_`,
+`OLDPWD`, and on macOS `__CF_USER_TEXT_ENCODING`, which CoreFoundation
+writes into the probe's own `node`; the first macOS run read it as a
+leak). Red when
+`buildIsolatedEnv` forwards `SSH_AUTH_SOCK`. `env.test.ts` › what a task
+sees of the host environment, end to end; `schema.md` names the run's two
+and the row.
+
 M-72. Security queue (2), `vx upgrade`'s verification: the checksum
 half holds. It refuses a release whose asset publishes no `sha256:`
 digest and a download whose SHA-256 differs, before anything is
@@ -903,3 +921,9 @@ chain and transparency-log check with no dependency to lean on. The
 smaller close is a signed checksum file (ed25519 or minisign) with the
 public key compiled in, which needs a signing key held as a release
 secret: an owner decision, not made here.
+
+M-73. M-72's decision (owner, 2026-10-03): no release signing key for
+now; `vx upgrade` keeps the checksum, and the docs say what it proves.
+`cli.md` and `modules/upgrade.md` already did (item 1096); `security.md`'s
+Releases paragraph said only that the SHA-256 is checked, and now says it
+proves the bytes arrived intact, not who built them.

@@ -526,6 +526,20 @@ export interface ExecutorContext extends BaseContext {
 }
 ```
 
+## `executorFallback`
+
+function · `src/exec/executor.ts`
+
+What a remote executor rejects with when it gives a task back: core runs
+the same request on the local floor and says `reason` once (a remote that
+never started it, B-100). A task placed `remote: 'only'` must not run
+here, so it fails naming `reason` instead. Matched by name, as
+`isUserError` is: a plugin's `@vzn/vx` can be another copy of this class.
+
+```ts
+export function executorFallback(reason: string): Error
+```
+
 ## `exitSignal`
 
 function · `src/exec/runner.ts`
