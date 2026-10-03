@@ -688,6 +688,17 @@ missing: it adds that vx runs inside a project, or that a new one
 needs a package.json (bun init, npm init -y) and `vx init`
 (`workspace.test.ts`, the whole line; red without it). A flag or verb typo already hinted.
 
+M-57. M-56 for `vx show`: an unknown project, task, or bare name with
+no near miss said only what was unknown. It now lists what exists:
+`; projects: app, lib`, `; its tasks: app#build, app#test`, `; projects
+and tasks: …` (`listed`); a near miss keeps its `did you mean`. Probes
+that held: `vx why` on an unknown spec points at `vx last --list` once
+runs exist (and near-misses a spec); `vx watch` reuses `vx run`'s M-56
+message; `vx last` names `--list`; a flag typo hints. Not changed:
+`--filter=zzz...` reads `zzz....` (the filter's own dots, then the
+sentence's). `show-error-prefix.test.ts`'s three exact lines; red
+without the fix.
+
 ## Leads for other streams
 
 - A: A-20 let a same-project dependant restore ahead of a producer whose
