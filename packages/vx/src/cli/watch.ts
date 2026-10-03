@@ -42,6 +42,7 @@ import {
 } from './watch-filter.js'
 import { CLOSED, fsClockNow, type WatchHandle, WatcherPool } from './watch-fs.js'
 import { ChangeJudge } from './watch-judge.js'
+import { restartTimings } from '../util/index.js'
 import { memberEntries, sameMembers, sweepConfigs, watchedProjects } from './watch-set.js'
 
 /** One line for a watcher or re-read the OS refused; the loop goes on without it. */
@@ -357,6 +358,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
         try {
           await held?.stop()
           held = undefined
+          restartTimings()
           const start = Date.now()
           held = (await runOrchestrator(opts)).persistent
           changes.lastCycle = { start, end: Date.now() }
