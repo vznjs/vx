@@ -26,7 +26,8 @@ composes cache layers by hand. The package exports `reapi`, `ReapiPluginOptions`
 encoders and the executor are internal. `ReapiOptions` is the connection
 as the plugin resolves it: the same fields, with the PEM text itself
 (`tlsCaPem`, `tlsClientCertPem`, `tlsClientKeyPem`) in place of the files,
-and `onWarn` for a degraded-but-recovered call; `reapi()` refuses those four,
+and `onWarn` for a degraded-but-recovered call; `reapi()` refuses those four
+(the `WireOnly` keys),
 reading files and warning through vx. With no endpoint configured (or a blank
 one) the plugin **declines** and costs nothing, so it is
 safe to leave declared. An endpoint that is not `host[:port]`, with an
@@ -52,11 +53,6 @@ that CA; one that asks for mutual TLS takes `tlsClientCertificate` and
 — Bazel's `--tls_certificate`, `--tls_client_certificate` and
 `--tls_client_key`. Any of them turns TLS on; a file that cannot be read
 is refused at startup, naming the setting.
-`tlsCaPem`, `tlsClientCertPem` and `tlsClientKeyPem` take the PEM text
-itself instead of a file; the file options above win where both are set.
-`toolName` and `toolVersion` (default `vx`, `0.0.0`) and
-`correlatedInvocationsId` fill REAPI's `RequestMetadata`, which a server's
-UI shows; the last groups several runs as one build.
 
 ## How a vx cache key becomes a REAPI entry
 

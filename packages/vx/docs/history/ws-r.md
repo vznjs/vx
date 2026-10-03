@@ -153,13 +153,13 @@ prune` all match. Fixed: the Run blocks used bare `vx`, which a local
   comments now name the step between; the landing test pins it.
 
 - **R-28** Plugin pages against source: every `@vzn/vx-*` import in a
-  README or guide names a live export; every option table row exists in
-  source, and every option a plugin's `refuseUnknownOptions` accepts is
-  documented except test seams (otel `post`, github `fetchFn` /
-  `sizeOf`). `reapi()`'s six undocumented ones (`tls*Pem`, `toolName`,
-  `toolVersion`, `correlatedInvocationsId`) are now in its README.
-  Lead: `reapi({ onWarn })` is accepted but the plugin overrides it
-  with `ctx.warn` (index.ts:200, 255), so a user's `onWarn` never runs.
+  README or guide names a live export; every option-table row exists in
+  source, and every option a plugin accepts is documented except test
+  seams (otel `post`, github `fetchFn` / `sizeOf`). #2535 had already
+  documented `reapi()`'s metadata options and made it refuse the PEM-text
+  ones and `onWarn`; its new `WireOnly` type sat in the plugin-API record
+  unnamed, which reddened `plugin-exports-documented` on main. The
+  README now names it.
 
 ## Leads
 
