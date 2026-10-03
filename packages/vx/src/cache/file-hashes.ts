@@ -74,6 +74,7 @@ export class FileHashStore {
     this.db.transaction(() => {
       this.db.prepare('DELETE FROM file_hashes WHERE seen_at < ?').run(cutoff)
       this.db.prepare('DELETE FROM blob_sizes WHERE seen_at < ?').run(cutoff)
+      this.db.prepare('DELETE FROM blob_verdicts WHERE seen_at < ?').run(cutoff)
       this.db
         .prepare('INSERT OR REPLACE INTO schema_meta(key, value) VALUES (?, ?)')
         .run(FILE_HASHES_SWEPT_AT, String(now))
@@ -104,6 +105,26 @@ export class FileHashStore {
       this.db.transaction(() => {
         for (const [oid, size] of sizes) insert.run(oid, size, now)
       })()
+    } catch (err) {
+      if (!isIndexFull(err)) throw err
+    }
+  }
+
+  /** The paths a stored verdict distrusts, or undefined when none is stored for `digest`. */
+  blobVerdict(digest: string): string[] | undefined {
+    const row = this.db.query('SELECT paths FROM blob_verdicts WHERE digest = ?').get(digest) as {
+      paths: string
+    } | null
+    return row === null ? undefined : (JSON.parse(row.paths) as string[])
+  }
+
+  /** Store a verdict; a memo, so a full disk skips it. */
+  rememberBlobVerdict(digest: string, paths: readonly string[]): void {
+    if (!this.write) return
+    try {
+      this.db
+        .query('INSERT OR REPLACE INTO blob_verdicts(digest, paths, seen_at) VALUES (?, ?, ?)')
+        .run(digest, JSON.stringify(paths), Date.now())
     } catch (err) {
       if (!isIndexFull(err)) throw err
     }

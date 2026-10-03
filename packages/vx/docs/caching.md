@@ -156,9 +156,8 @@ over (in order):
     declared-outputs-excluded, nested-projects-excluded), each file
     contributing its **git blob OID** (v20). On a clean tree the OID
     comes straight from the index — the run's up-front enumeration is
-    three concurrent spawns, `git ls-files -s -v -z --debug` (every
-    tracked path, its OID, its cache-state flag and the worktree size
-    the index recorded),
+    three concurrent spawns, `git ls-files -s -v -z` (every tracked
+    path, its OID and its cache-state flag),
     `git status --porcelain -z -uall --ignored=matching --no-renames`
     (dirty tracked paths, the untracked files and the ignored ones) and
     `git var -l` (the clean-filter gate's config) — so deriving these hashes
@@ -168,16 +167,25 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     stores the LF blob of a CRLF file, and once the filter is gone git
     holds that stat-clean entry clean without re-reading it, so status
     and the filter gate (today's config) both let the LF blob key the
-    CRLF bytes. A blob's size is fixed for its OID, so the sizes are
-    kept in `blob_sizes` and a warm run asks git for none; a cold one
-    asks one `git cat-file --batch-check` (65 ms over 3,000 loose
-    objects, 10 ms packed). The check is by size, so a filter that
-    keeps the size (a `filter` driver such as `tr a-z A-Z`), removed
-    after an add, still leaves a blob that stands for other bytes:
-    probed, the run hit the build of the filtered bytes. Only a read of
-    every trusted file would catch it, the cost the index OIDs exist to
-    avoid. After changing a filter, `git add --renormalize .` makes the
-    index describe the worktree again. A
+    CRLF bytes. Which paths an index distrusts is a function of its
+    entries, so the verdict is kept in `blob_verdicts` by a hash of
+    the index file and the pathspecs: a warm run reads the file and
+    one row (the `--debug` listing and a lookup per entry cost 550 ms
+    at 100,000 files). The key stands only for an index written before
+    the run began and still in place after its listing, so a `git add`
+    between the two cannot pair one index's verdict with the other's
+    entries; any other run checks every blob. A changed index spawns
+    `git ls-files -s -v -z --debug` for the recorded sizes, takes each
+    blob's size from `blob_sizes` (fixed for its OID), and asks one
+    `git cat-file --batch-check` for the ones not yet known (65 ms
+    over 3,000 loose objects, 10 ms packed). The check is by size,
+    so a filter that keeps the size (a `filter` driver such as
+    `tr a-z A-Z`), removed after an add, still leaves a blob that
+    stands for other bytes: probed, the run hit the build of the
+    filtered bytes. Only a read of every trusted file would catch it,
+    the cost the index OIDs exist to avoid. After changing a filter,
+    `git add --renormalize .` makes the index describe the worktree
+    again. A
     re-listing mid-run, or a nested repository's project, spawns
     `git ls-files -s --others --exclude-standard -z .` in the project
     dir instead, and its OIDs are not trusted: those files hash by
@@ -1276,7 +1284,7 @@ all-miss run that follows is explained; the artifacts it orphaned are
 `vx cache prune`'s to reap.
 
 ```sql
--- src/cache/schema.ts (SCHEMA_VERSION = 'v29', in cache.ts)
+-- src/cache/schema.ts (SCHEMA_VERSION = 'v30', in cache.ts)
 
 CREATE TABLE schema_meta (
   key   TEXT PRIMARY KEY,  -- 'version', 'cache_version', 'orphans_swept_at', 'file_hashes_swept_at', 'value_salt'
@@ -1391,6 +1399,15 @@ CREATE TABLE file_hashes (
 CREATE TABLE blob_sizes (
   oid     TEXT PRIMARY KEY,
   size    INTEGER NOT NULL,
+  seen_at INTEGER NOT NULL
+);
+
+-- v30: the paths an index distrusts, by a hash of the index file and the
+-- pathspecs (A-60): a warm run reads one row, not one per blob. Swept
+-- with file_hashes.
+CREATE TABLE blob_verdicts (
+  digest  TEXT PRIMARY KEY,
+  paths   TEXT NOT NULL,
   seen_at INTEGER NOT NULL
 );
 

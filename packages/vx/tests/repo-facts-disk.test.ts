@@ -1,6 +1,6 @@
 // `repoFacts` reads the plain repository off the disk and asks git for
 // anything else. Either way it must say what `git rev-parse --show-prefix
-// --git-common-dir --show-object-format` says, in each layout a workspace
+// --git-common-dir --show-object-format --git-path index` says, in each layout a workspace
 // sits in.
 
 import { mkdir, mkdtemp, realpath, rm, symlink } from 'node:fs/promises'
@@ -26,16 +26,18 @@ function git(cwd: string, ...args: string[]): string {
 
 /** What git says, in `repoFacts`' shape. */
 function asked(dir: string): unknown {
-  const [prefix = '', commonDir = '', format = ''] = git(
+  const [prefix = '', commonDir = '', format = '', indexFile = ''] = git(
     dir,
     'rev-parse',
     '--show-prefix',
     '--git-common-dir',
     '--show-object-format',
+    '--git-path',
+    'index',
   )
     .split('\n')
     .map((l) => l.trim())
-  return { prefix, commonDir, objectFormat: format === 'sha256' ? 'sha256' : 'sha1' }
+  return { prefix, commonDir, objectFormat: format === 'sha256' ? 'sha256' : 'sha1', indexFile }
 }
 
 /** `repoFacts` for `dir`, and whether it spawned to answer. */
@@ -107,6 +109,17 @@ describe('repoFacts', () => {
       expect(facts(root).spawned).toBe(true)
     } finally {
       delete process.env['GIT_DIR']
+    }
+  })
+
+  it('asks git when GIT_INDEX_FILE moves the index', () => {
+    git(tmp, 'init', '-q', 'repo')
+    const root = path.join(tmp, 'repo')
+    process.env['GIT_INDEX_FILE'] = path.join(tmp, 'other-index')
+    try {
+      expect(facts(root).spawned).toBe(true)
+    } finally {
+      delete process.env['GIT_INDEX_FILE']
     }
   })
 })

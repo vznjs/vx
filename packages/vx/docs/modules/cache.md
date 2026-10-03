@@ -295,7 +295,7 @@ export const CACHE_VERSION = 'vx-cache-v39' // key-fold.ts
 // identity a file has (A-55); absentOr maps ENOENT/ENOTDIR to it.
 export const ABSENT_INPUT = 'absent' // key-fold.ts
 export function absentOr(err: unknown): string
-export const SCHEMA_VERSION = 'v29'
+export const SCHEMA_VERSION = 'v30'
 export function noteSchemaReset(cache: Cache, warn: (message: string) => void): void
 
 // The two WHERE fragments every history query shares, so "a run that
@@ -538,7 +538,7 @@ Outputs` additionally refuses when the archive cannot produce an output
 ## `CACHE_VERSION` / `SCHEMA_VERSION`
 
 `CACHE_VERSION` is currently `'vx-cache-v39'`; `SCHEMA_VERSION` is
-`'v29'`. Bump `CACHE_VERSION` when:
+`'v30'`. Bump `CACHE_VERSION` when:
 
 - A new field is added to the cache KEY derivation (folded inside
   `key()`).

@@ -144,6 +144,13 @@ export function createTables(db: Database): void {
       size    INTEGER NOT NULL,
       seen_at INTEGER NOT NULL
     );
+    -- v30: the paths an index distrusts, by a hash of the index file and the
+    -- pathspecs (A-60): a warm run reads one row, not one per blob.
+    CREATE TABLE IF NOT EXISTS blob_verdicts (
+      digest  TEXT PRIMARY KEY,
+      paths   TEXT NOT NULL,
+      seen_at INTEGER NOT NULL
+    );
     -- v16: per-output-file fingerprints, scoped by the cache entry
     -- that produced them. Lets loadOutputFilesBatch(hashes) answer
     -- "for entry X, what are its outputs supposed to look like?"

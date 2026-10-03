@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## cache: move the index schema to v30 for blob_verdicts
+
+SCHEMA_VERSION v29 -> v30; an older index is dropped on first open and its artifacts are left for `vx cache prune`.
+
 ## vx-migrate: run every Nx executor through nx-exec
 
 a migrated config writes nx-exec lines where it wrote jest, vite, tsc, node and other executor commands.

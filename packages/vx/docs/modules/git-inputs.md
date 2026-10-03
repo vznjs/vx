@@ -14,13 +14,15 @@ differ from the bytes on disk. The gate looks for a `.gitattributes`
 among every listed path, untracked and modified ones too: git applies
 those, and a scan of the trusted paths alone never saw them (item 977),
 and an ignored one, which the status walk names with `--ignored=matching`
-(A-19). `ls-files --debug` adds the worktree size the index recorded
+(A-19). `ls-files --debug` gives the worktree size the index recorded
 for each entry, and a trusted OID whose blob is another size is dropped:
 a filter since removed left a stat-clean entry git never re-reads (A-60).
 A filter that kept the size passes the check; `caching.md` names it and
 the remedy, `git add --renormalize .`.
-The blob sizes come from the cache's `blob_sizes` memo, the unknown ones
-from one `git cat-file --batch-check`; `applyGitEnumeration` runs the
+The verdict is kept by a hash of the index file (`blob_verdicts`), so a
+warm run reads the file and one row and spawns nothing more; a changed
+index spawns the `--debug` listing, asks the cache's `blob_sizes` memo and
+one `git cat-file --batch-check` for the unknown ones; `applyGitEnumeration` runs the
 check, so every caller of it gets it. Split from `inputs.ts` on 2026-09-10:
 this file talks to git; `inputs.ts` decides which files a task declared
 and where the project boundary is.
@@ -63,12 +65,24 @@ export interface GitEnumeration {
   untracked: readonly string[] | null // status's untracked set, before nested repos expand (ls-files --others)
   undecodable: readonly string[] // listed paths whose names are not UTF-8, root-relative
   startedAtMs: number // Date.now() before the spawns
-  indexed: ReadonlyMap<string, { oid: string; size: number }> // regular stage-0 entry → OID, recorded size
+  blobCheck: IndexBlobCheck // the blob-size check's input (A-60)
   catFile(stdin: string): Promise<{ exitCode: number; stdout: string } | null> // blob sizes (A-60)
+}
+export interface IndexBlobs {
+  paths: string[] // regular stage-0 entries, index order (`ls-files --debug`)
+  oids: string[]
+  sizes: number[] // the worktree size the index recorded
+}
+export interface IndexBlobCheck {
+  key: string | undefined // xxh3 of the index file and the pathspecs: the verdict's key
+  blobs(): Promise<IndexBlobs | null> // the `--debug` listing, spawned on a miss
+  rekey(): Promise<string | undefined> // the key now: a verdict is stored only for its index
 }
 export interface BlobSizeMemo {
   knownBlobSizes(oids: readonly string[]): Map<string, number>
   rememberBlobSizes(sizes: ReadonlyMap<string, number>): void
+  blobVerdict(digest: string): string[] | undefined
+  rememberBlobVerdict(digest: string, paths: readonly string[]): void
 }
 export interface LazyGitEnumeration {
   start(): Promise<GitEnumeration> // the whole-tree enumeration, started once
@@ -102,14 +116,15 @@ export async function populateGitFilesCache(
 
 export function runGitLsFiles(cwd: string): GitLsResult // the synchronous per-project fallback
 
-// Read off a plain `.git` directory (no location variable, no include, no
-// `.git` file), else one `git rev-parse --show-prefix --git-common-dir
-// --show-object-format`; per directory per process; null (not remembered)
-// when git fails.
+// Read off a plain `.git` directory (no location variable or
+// `GIT_INDEX_FILE`, no include, no `.git` file), else one `git rev-parse
+// --show-prefix --git-common-dir --show-object-format --git-path index`;
+// per directory per process; null (not remembered) when git fails.
 export interface RepoFacts {
   prefix: string
   commonDir: string
   objectFormat: 'sha1' | 'sha256'
+  indexFile: string
 }
 export function repoFacts(dir: string): RepoFacts | null
 export function repoRootOf(workspaceRoot: string, gitPrefix: string): string // the repo root, from `--show-prefix`

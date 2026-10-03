@@ -26,6 +26,8 @@ export class Cache implements CacheLayer {
   hashFiles(paths: readonly string[]): Promise<Map<string, string>>
   knownBlobSizes(oids: readonly string[]): Map<string, number>
   rememberBlobSizes(sizes: ReadonlyMap<string, number>): void
+  blobVerdict(digest: string): string[] | undefined
+  rememberBlobVerdict(digest: string, paths: readonly string[]): void
   key(input: CacheKeyInput): Promise<string>
   async get(hash: string, _ctx?: CacheGetContext): Promise<CacheEntry | null>
   getIngested(hash: string): Promise<CacheEntry | null>

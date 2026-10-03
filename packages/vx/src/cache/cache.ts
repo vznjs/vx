@@ -228,7 +228,10 @@ export function noteSchemaReset(cache: Cache, warn: (message: string) => void): 
 //        hit's stored stdout (up to 16 MB) with its overflow pages: 200
 //        hits of 1 MB cost the close 125-150 ms. The cache KEY is
 //        unchanged.
-export const SCHEMA_VERSION = 'v29'
+//   v30: blob_verdicts — the blob-size check's verdict by a hash of the
+//        index file (A-60), so a warm run reads one row. The cache KEY is
+//        unchanged.
+export const SCHEMA_VERSION = 'v30'
 
 /** An entry row with its stdout, which lives apart (v29); none stored reads as ''. */
 const SELECT_ENTRY =
@@ -685,7 +688,7 @@ export class Cache implements CacheLayer {
             }
             if (found === SCHEMA_VERSION) return null
             this.db.exec(
-              'DROP TABLE IF EXISTS entries; DROP TABLE IF EXISTS runs; DROP TABLE IF EXISTS file_hashes; DROP TABLE IF EXISTS blob_sizes; DROP TABLE IF EXISTS output_files; DROP TABLE IF EXISTS invocations; DROP TABLE IF EXISTS run_task_inputs; DROP TABLE IF EXISTS entry_inputs; DROP TABLE IF EXISTS config_evals; DROP TABLE IF EXISTS config_closures; DROP TABLE IF EXISTS output_dirs; DROP TABLE IF EXISTS entry_stdout;',
+              'DROP TABLE IF EXISTS entries; DROP TABLE IF EXISTS runs; DROP TABLE IF EXISTS file_hashes; DROP TABLE IF EXISTS blob_sizes; DROP TABLE IF EXISTS blob_verdicts; DROP TABLE IF EXISTS output_files; DROP TABLE IF EXISTS invocations; DROP TABLE IF EXISTS run_task_inputs; DROP TABLE IF EXISTS entry_inputs; DROP TABLE IF EXISTS config_evals; DROP TABLE IF EXISTS config_closures; DROP TABLE IF EXISTS output_dirs; DROP TABLE IF EXISTS entry_stdout;',
             )
             this.db
               .prepare("UPDATE schema_meta SET value = ? WHERE key = 'version'")
@@ -830,6 +833,14 @@ export class Cache implements CacheLayer {
   /** `BlobSizeMemo`: remember blob sizes, honouring the local WRITE axis. */
   rememberBlobSizes(sizes: ReadonlyMap<string, number>): void {
     this.guard(() => this.files.rememberBlobSizes(sizes))
+  }
+  /** `BlobSizeMemo`: the paths an index with this digest distrusts, when known. */
+  blobVerdict(digest: string): string[] | undefined {
+    return this.guard(() => this.files.blobVerdict(digest))
+  }
+  /** `BlobSizeMemo`: remember a verdict, honouring the local WRITE axis. */
+  rememberBlobVerdict(digest: string, paths: readonly string[]): void {
+    this.guard(() => this.files.rememberBlobVerdict(digest, paths))
   }
   /**
    * `relPosix` against the run's workspace root, memoized: the same three

@@ -86,23 +86,26 @@ terminal and a task succeeding or failing. Read it alongside
  │       that own a task (not the dependency closure step 7 loaded,
  │       which a `lint` of one package does not key). THREE spawns at
  │       the root, concurrent, and the repository's facts asked while
- │       they run (`ls-files -s -v -z --debug` for the index: every
- │       tracked path's OID, its cache-state flag and its recorded size;
+ │       they run (`ls-files -s -v -z` for the index: every tracked
+ │       path's OID and its cache-state flag;
  │       `status --porcelain -z -uall` for
  │       the dirty AND untracked sets, the one worktree walk; `var -l`
  │       for core.autocrlf and the attributes files git reads outside
- │       the tree; the facts — prefix, common dir, object format — read
- │       off a plain `.git` directory, else one
- │       `rev-parse --show-prefix --git-common-dir --show-object-format`,
+ │       the tree; the facts — prefix, common dir, object format, index
+ │       file — read off a plain `.git` directory, else one
+ │       `rev-parse --show-prefix --git-common-dir --show-object-format
+ │       --git-path index`,
  │       memoized per process and shared with the file hasher)
  │       fill the per-project GitFilesCache with file lists + index
  │       OIDs. `ls-files --others` is NOT among them — status's
  │       `-uall` already answers untracked, and asking git twice
  │       walked the same tree again. A fifth, `check-attr`, runs only
- │       when an attributes file could rewrite bytes, and a sixth,
- │       `cat-file --batch-check`, only for blob sizes the cache's
- │       `blob_sizes` memo lacks (A-60): an OID whose blob is not the
- │       recorded size is not trusted. The run's HashCache is created
+ │       when an attributes file could rewrite bytes. An index the
+ │       cache holds no blob-size verdict for (keyed by the index
+ │       file's hash, A-60) adds `ls-files --debug` for the recorded
+ │       sizes and `cat-file --batch-check` for the blob sizes
+ │       `blob_sizes` lacks: an OID whose blob is not the recorded size
+ │       is not trusted. The run's HashCache is created
  │       after it.
  ├─ Task selection (graph/task-graph.ts:expandRequested)
  │    Bare task names fan out across the resolved candidate projects
