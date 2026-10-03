@@ -14,8 +14,9 @@ These are reproducible on your own machine, not marketing figures:
 
 - **The runner's overhead on a cold build**, the number to read first.
   On the 3,270-task workspace the tasks alone take 3m 38s under an ideal
-  schedule; vx finishes in 3m 46s (+0:08), Turborepo in 5m 13s (+1:35),
-  Nx in 34m 44s (+31:06) — one unit for every runner. A runner that adds
+  schedule; vx finishes in 3m 47s (+0:09), Turborepo in 5m 13s (+1:35,
+  vx 27% faster), Nx in 34m 44s (+31:06, vx 89% faster; it ran every
+  task through npm, a harness fault) — one unit for every runner. A runner that adds
   seconds to a three-minute build is a different tool from one that adds
   half an hour, and the per-package figure (8 ms, 88 ms and 1,712 ms per
   package) is how each grows with the codebase.
