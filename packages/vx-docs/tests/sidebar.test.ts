@@ -1,6 +1,6 @@
 // The site's three places and two sidebars (design/site-short-2026-09.md §
 // The shape), read from the built HTML: what a reader sees, not what the
-// config says. The Docs' sidebar is the six pages, then the playground; the Reference ends
+// config says. The Docs' sidebar is the eight pages, then the playground; the Reference ends
 // with the one way into the internals. Every page shows exactly one of the
 // two (the blog keeps its own), and no sidebar links an internals page. The
 // Guide is gone: no page shows a sidebar of its own.
@@ -18,7 +18,7 @@ const PLACES: [string, string][] = [
   ['Reference', 'cli/'],
   ['Blog', 'blog/'],
 ]
-// The Docs are six pages, no groups (design/site-short-2026-09.md).
+// The Docs are eight pages, no groups (design/site-short-2026-09.md's six, Troubleshooting, Upgrading).
 const DOCS_PAGES: [string, string][] = [
   ['Quickstart', 'quickstart/'],
   ['Configure', 'guides/configure/'],
@@ -27,6 +27,7 @@ const DOCS_PAGES: [string, string][] = [
   ['Migrate', 'guides/migrate/'],
   ['Plugins', 'guides/plugins/'],
   ['Troubleshooting', 'guides/troubleshooting/'],
+  ['Upgrading to 1.0', 'guides/upgrading/'],
 ]
 const REFERENCE_GROUPS = ['CLI', 'Config', 'Benchmarks', 'Compare']
 const INTERNALS_TOP = ['overview/', 'architecture/', 'optimizations/', 'patterns/', 'flows/']
@@ -107,7 +108,7 @@ describe('the sidebars', () => {
   const docs = sidebarList(html('quickstart/'))!
   const reference = sidebarList(html('cli/'))!
 
-  it('the Docs are the design’s six pages, then the playground', () => {
+  it('the Docs are the eight pages, then the playground', () => {
     expect(groupLabels(docs)).toEqual([])
     expect(sidebarLinks(docs)).toEqual([...DOCS_PAGES, ['Try it', 'playground/']])
   })
