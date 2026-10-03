@@ -146,6 +146,7 @@ export class LocalHistoryProvider implements HistoryProvider {
     private readonly recent: number = DEFAULT_RECENT,
   ) {}
   async loadFor(taskIds: readonly string[]): Promise<HistoryTable>
+  async p50sFor(taskIds: readonly string[]): Promise<ReadonlyMap<string, number>>
 }
 == class TaskLogBuffer (src/orchestrator/task-log-buffer.ts)
 export class TaskLogBuffer {
@@ -665,6 +666,7 @@ export interface HeldPersistent {
 == type HistoryProvider (src/orchestrator/history.ts)
 export interface HistoryProvider {
   loadFor(taskIds: readonly string[]): Promise<HistoryTable>
+  p50sFor?(taskIds: readonly string[]): Promise<ReadonlyMap<string, number>>
 }
 == type HistoryTable (src/orchestrator/history.ts)
 export type HistoryTable = ReadonlyMap<string, TaskHistory>

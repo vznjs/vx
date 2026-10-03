@@ -683,6 +683,7 @@ type · `src/orchestrator/history.ts`
 ```ts
 export interface HistoryProvider {
   loadFor(taskIds: readonly string[]): Promise<HistoryTable>
+  p50sFor?(taskIds: readonly string[]): Promise<ReadonlyMap<string, number>>
 }
 ```
 
@@ -983,6 +984,7 @@ export class LocalHistoryProvider implements HistoryProvider {
     private readonly recent: number = DEFAULT_RECENT,
   ) {}
   async loadFor(taskIds: readonly string[]): Promise<HistoryTable>
+  async p50sFor(taskIds: readonly string[]): Promise<ReadonlyMap<string, number>>
 }
 ```
 
