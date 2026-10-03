@@ -174,7 +174,10 @@ readers that reach it here.
   a variable gave it to every project's `passThrough` and to vx's own
   `VX_*` reads, and a repeat load, in a worker, gave it to neither
   (D-76). The same snapshot, compare, put back and refuse; a task gets
-  a value through `exec.env.define` or the host's `passThrough`.
+  a value through `exec.env.define` or the host's `passThrough`. While
+  loads overlap it is compared once, at the round's end, as most
+  built-ins are: reading every variable after every load was 15–25 µs a
+  config.
 - A first load has the Worker's deadline too (`VX_CONFIG_WORKER_TIMEOUT_MS`,
   30 s): a top-level await that never settles fails the load, naming
   the config and the budget, where it hung `vx run` silently (D-66).
