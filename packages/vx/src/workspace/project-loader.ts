@@ -20,7 +20,7 @@ import {
   configImports,
   type ConfigEvalStore,
 } from './config-cache.js'
-import { readOnce } from './load-reads.js'
+import { readOnce, unreadable } from './load-reads.js'
 
 // The validator lives in config-schema.ts; re-exported so a reader that
 // reaches the loader for it (the tests do) keeps working.
@@ -401,7 +401,9 @@ export async function loadProjectConfigs(
       })
       if (fastKey !== null) return { configPath, bytes: null, cacheKey: fastKey, indexed: true }
     }
-    const bytes = await Bun.file(configPath).bytes()
+    const bytes = await Bun.file(configPath)
+      .bytes()
+      .catch((err: unknown) => unreadable(err, configPath))
     const keyed =
       evalCache === undefined
         ? null
@@ -465,7 +467,9 @@ export async function loadProjectConfigs(
     let closure = entry.closure
     let key = cacheKey
     if (entry.indexed) {
-      bytes = await Bun.file(configPath).bytes()
+      bytes = await Bun.file(configPath)
+        .bytes()
+        .catch((err: unknown) => unreadable(err, configPath))
       const keyed = await configEvalKey({
         configPath,
         bytes,
