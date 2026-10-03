@@ -103,8 +103,9 @@ export function computeGroupHash(upstream: TaskOutcome[]): string
 
 ## Invariants
 
-- Any change to what participates in the key requires a
-  `CACHE_VERSION` bump (see
+- A new key field, or a change in the order or framing of existing ones,
+  requires a `CACHE_VERSION` bump; a change in which values flow into an
+  existing field does not, since it moves those keys itself (see
   [`../caching.md`](../caching.md#bumping-cache_version)).
 - Hash algorithm is xxHash3 via `util/hash.ts` (16-hex keys).
 

@@ -36,7 +36,7 @@ setup and teardown wrap the run; commands adds a verb
 | `admit`       | Vet each local dispatch against what is running right now; `false` holds the task.         |
 | `executor`    | Decide where one task's command runs.                                                      |
 | `cache`       | Provide a layer where artifacts live.                                                      |
-| `telemetry`   | Receive immutable run records. Cannot change behaviour, by construction.                   |
+| `telemetry`   | Receive plain-data run records. Cannot change behaviour, by construction.                  |
 | `setup`       | Once per run, after the planning stages and before the first task.                         |
 | `commands`    | Add a CLI verb. Core's verbs match first; nothing can shadow `vx run`.                     |
 | `teardown`    | Flush and close at the end of the run.                                                     |
