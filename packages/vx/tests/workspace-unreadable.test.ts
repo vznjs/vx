@@ -75,6 +75,15 @@ describe.skipIf(skipAsRoot('a workspace file this user may not read'))(
       })
     })
 
+    it('refuses a directory a scanned glob may not open, naming the glob', async () => {
+      await writeFile(path.join(root, 'package.json'), '{"name":"r","workspaces":["packages/**"]}')
+      expect(await run('packages/b')).toEqual({
+        code: 1,
+        err: 'vx: packages/b: not readable by this user (EACCES), and the workspace glob "packages/**" walks into it',
+        planned: [],
+      })
+    })
+
     it('CONTROL: every member readable plans both', async () => {
       expect(await run('')).toEqual({ code: 0, err: '', planned: ['a', 'b'] })
     })
