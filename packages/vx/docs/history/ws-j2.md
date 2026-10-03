@@ -446,3 +446,15 @@ persistent task` and vx exits 1). Row (`site-samples` › a post's link
   teardown is a third. Row (`module-page-claims` › util-settle.md names
   every grace killGraceMs serves), red without the fix. That ends the
   Purpose audit: every module page's Purpose read against its source.
+
+- **J2-54** `architecture.md` read claim by claim against source: its
+  "What's intentionally absent" bullet listed the pipeline stages a
+  plugin fills without `discover` (J2-48's drift on another page). Row
+  (`architecture-doc-drift` › architecture.md's absent-JS-tasks bullet
+  names every hook), generated from `PLUGIN_HOOKS`, red without the fix.
+  Checked clean: the package and module tables (eight modules, three
+  root files, nine example seams, 46 façade names), the orchestrator
+  inventory, the import matrix against the real edges, the capability
+  table, the repo's own `vx.workspace.ts`, the cache cluster, the
+  scheduler, the runner, the data flow, the loader, the replaceability
+  paths, the remote-cache subsystem and the `runs` columns.
