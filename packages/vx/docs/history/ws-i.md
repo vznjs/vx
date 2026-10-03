@@ -433,6 +433,11 @@ each hit's stored stdout (up to 16 MB). `entry_stdout` holds it;
 `SCHEMA_VERSION` v29. 200 hits storing 1 MB: `close` 136–163 ms → 5–9,
 whole warm run min 548.7 → 399.0; 1,000 empty-stdout tasks a tie.
 
+I-52. The index prepares its statements on first use (#2418). A warm
+run executes few of the ~20 statements every open prepared. 10
+projects, compiled, `open cache` min 1.7 → 1.3 ms over 31 rounds,
+median 1.9 → 1.6; whole run within noise.
+
 ## Leads for other streams
 
 - **A: a cold save commits one SQLite transaction per entry.** The
@@ -451,6 +456,19 @@ whole warm run min 548.7 → 399.0; 1,000 empty-stdout tasks a tie.
   (`guardWrite`, ~80 ms of the same run). Batching the lines would
   widen the window in which a reused pgid could be killed, which
   kill-tree.ts says never happens; not taken.
+- **Owner: the close's WAL checkpoint is ~3 ms of every run.** A warm
+  run writes ~25 frames; the last close checkpoints them: fsync of the
+  WAL (1.0 ms) and the database (1.0), the WAL truncated (0.5), and the
+  next run's first write syncs a fresh header (0.7) and the directory
+  (0.2). `db.close` alone 2.2–3.4 ms on 100 projects. Only
+  `synchronous = OFF` (a power cut may corrupt the index) or
+  `SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE` (bun:sqlite has no `db_config`)
+  removes it.
+- **Any: a warm run's first `process.stdout` touch loads `node:stream`.**
+  Writing through `Bun.stdout` instead saved 1.1 ms of main-thread CPU
+  and 2.4 ms wall on a 10-project warm run. It needs TTY detection
+  without `node:tty` (3.6–8 ms to load) and new flush and EPIPE
+  handling across ~120 write sites.
 - **Owner / coordinator: skip macOS where it cannot differ from
   Linux (I-14).** 135 of 436 commits since 2026-09-27 touch nothing the
   macOS job can see differently: not core's `src/`, `tests/`,
@@ -598,3 +616,20 @@ status` re-hashes every tracked file, and vx runs it with
 - The RSS floor read only when a peak passes the last `VmHWM` reading:
   1,000-task cold run, same measure, 7 rounds, min 2,424 → 2,399 one
   order and 2,404 → 2,467 the other; A/A 15 ms. Not taken.
+
+## Probes refuted (2026-10-03)
+
+- Git enumeration is at its floor: `ls-files` 5.4 ms, `status` 7.9,
+  `var -l` 4.2 alone on this repo (min of 9), and a 10-project warm run
+  waits 0.9 ms on them, the rest overlapping config loading;
+  `--ignored=matching` costs ~0.3.
+- Batching the cache open's pragmas: no gain; its ~165 µs is the first
+  database access, whichever statement makes it.
+- Stable keys at 1,000 projects: ~31 µs a task, spread over input
+  resolution (14), the fold (7) and the rest (7); no step stands out.
+- The probe's artifact checks as one `readdir` of the cache directory:
+  0.41 ms against 1.56 for 1,000 `existsSync`, but a shared directory
+  of 50,000 artifacts reverses it; not taken.
+- Cold config load at 100 configs is the imports; the per-config
+  built-in check is 25 µs (327 descriptors), the double decode below
+  resolution.
