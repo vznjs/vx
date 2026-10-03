@@ -1875,10 +1875,10 @@ describe.skipIf(!available || process.platform !== 'linux')(
 describe.skipIf(!available || process.platform !== 'linux')(
   'an undeclared read, run for real',
   () => {
-    // The landing's fifth callout, "a read you did not declare fails the
-    // task", as a real trace: `app#build` reads `banner.txt` without
-    // declaring it and fails with exactly one violation line naming it, and
-    // declaring the file lets the task pass. (The Guide's stale-hit demo,
+    // The landing's fifth callout (a workspace file you did not declare is
+    // out of reach) on the task's own files, as a real trace: `app#build`
+    // reads `banner.txt` without declaring it and fails with exactly one
+    // violation line naming it, and declaring the file lets the task pass. (The Guide's stale-hit demo,
     // which held its text to a synthetic trace, went with the Guide.)
     let fixture: Fixture
 

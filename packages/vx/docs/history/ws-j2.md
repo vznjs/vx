@@ -306,3 +306,12 @@ persistent task` and vx exits 1). Row (`site-samples` › a post's link
   migrator writes native config, its first publish pending. Row
   (`landing` › shows how to start, the sentence it pins); red without
   the fix.
+
+- **J2-29** J-102's class on the landing picture: its fifth callout
+  said "A read you did not declare fails the task", beside a drawing
+  of `app#build` reading `../secrets.env`, a read the sandbox refuses
+  silently (the wall), and a read outside the workspace is allowed.
+  It now says a workspace file you did not declare is out of reach, as
+  J-102 made the pillar say; the trace row that backs it (on the task's
+  own file) names the scope. Row (`landing` › the six lines, the
+  callout it pins); red without the fix.

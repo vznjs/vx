@@ -28,7 +28,7 @@ const LINES = [
   ['parallel', '2 Parallel. ui and api build at once.'],
   ['cache', '3 Cache. Unchanged work comes back from the cache.'],
   ['changed', '4 Only what changed. You edited app; only app runs.'],
-  ['sandbox', '5 Sandbox. A read you did not declare fails the task.'],
+  ['sandbox', '5 Sandbox. A workspace file you did not declare is out of reach.'],
   ['plugins', '6 Plugins. Swap the cache, runner or telemetry. No fork.'],
 ]
 
