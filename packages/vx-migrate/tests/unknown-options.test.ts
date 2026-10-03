@@ -18,7 +18,7 @@ it('a misspelt option is refused, naming the nearest one', () => {
     'turbo() has unknown option "rot" (allowed: root) \u2014 did you mean root?',
   )
   expect(refusal(() => nx({ rot: '.' } as never))).toBe(
-    'nx() has unknown option "rot" (allowed: graph, root) \u2014 did you mean root?',
+    'nx() has unknown option "rot" (allowed: executors, graph, root) \u2014 did you mean root?',
   )
   expect(refusal(() => turboCache({ apiURL: 'x' } as never))).toBe(
     'turboCache() has unknown option "apiURL" (allowed: apiUrl, retries, signatureKey, teamId, teamSlug, timeoutMs, token, uploadTimeoutMs) \u2014 did you mean apiUrl?',
