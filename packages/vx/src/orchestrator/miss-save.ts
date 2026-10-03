@@ -130,12 +130,16 @@ export async function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<void>
     // `cache.outputs` is not a write grant; `exec.sandbox.allow.write` is.
     const sandboxed = node.config.exec?.sandbox !== undefined
     const grantsWrite = (node.config.exec?.sandbox?.allow?.write?.length ?? 0) > 0
-    const linkedOut = outputDirLinkedOut(node.projectDir, a.outputs)
+    // The workspace side too: a `workspaceFiles` directory linked out of
+    // the workspace drops every file the same way (M-65).
+    const linkedOut =
+      outputDirLinkedOut(node.projectDir, a.outputs, 'the project') ??
+      outputDirLinkedOut(a.workspaceRoot, a.wsOutputs, 'the workspace')
     log.status(
       `[vx] ${node.id}: cache.outputs matched no files (${[...a.outputs, ...a.wsOutputs].join(', ')}) — ` +
         `an empty artifact is saved; a later hit restores nothing` +
         (linkedOut !== undefined
-          ? ` — ${linkedOut.dir} is a symlink to ${linkedOut.target}, outside the project, and vx keeps only outputs inside it: make ${linkedOut.dir} a directory`
+          ? ` — ${linkedOut.dir} is a symlink to ${linkedOut.target}, outside ${linkedOut.base}, and vx keeps only outputs inside it: make ${linkedOut.dir} a directory`
           : sandboxed && !grantsWrite
             ? ` — the task is sandboxed and declares no exec.sandbox.allow.write, so its writes never reached disk`
             : ''),
@@ -269,14 +273,16 @@ function markWritten(
 
 /**
  * The first output directory a pattern names that is a symlink resolving
- * outside the project: every file under it is dropped as out of the
- * project, and the empty-artifact warning blamed the glob (M-61).
+ * outside `baseDir` (the project, or the workspace root for
+ * `workspaceFiles`): every file under it is dropped as outside, and the
+ * empty-artifact warning blamed the glob (M-61, M-65).
  */
 function outputDirLinkedOut(
-  projectDir: string,
+  baseDir: string,
   outputs: readonly string[],
-): { dir: string; target: string } | undefined {
-  const realProject = realpathOrNull(projectDir) ?? projectDir
+  base: string,
+): { dir: string; target: string; base: string } | undefined {
+  const realProject = realpathOrNull(baseDir) ?? baseDir
   // `dist` names the tree `dist/**`: the same reading the resolver gives.
   for (const pattern of asTrees(outputs.filter((o) => !o.startsWith('!')))) {
     const literal = staticPrefix(pattern)
@@ -284,7 +290,7 @@ function outputDirLinkedOut(
       .filter((p) => p !== '' && p !== '.')
     for (let i = 1; i <= literal.length; i++) {
       const dir = literal.slice(0, i).join('/')
-      const abs = path.join(projectDir, dir)
+      const abs = path.join(baseDir, dir)
       try {
         if (!lstatSync(abs).isSymbolicLink()) continue
       } catch {
@@ -292,7 +298,7 @@ function outputDirLinkedOut(
       }
       const target = realpathOrNull(abs)
       if (target !== null && target !== realProject && !target.startsWith(realProject + path.sep)) {
-        return { dir, target }
+        return { dir, target, base }
       }
     }
   }

@@ -46,6 +46,10 @@ vx version
 vx --version
 ```
 
+Each verb's lines are the usage lines `vx <verb> --help` prints, word
+for word (`tests/cli-help-synopsis.test.ts`); the flags a verb accepts
+are read from that line.
+
 Multiple positional tasks run in one orchestrator invocation with a
 shared task graph: `vx run build lint test` fans out all three across
 the resolved project scope. Anchored entries (`pkg#task`) target a
