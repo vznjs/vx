@@ -654,3 +654,21 @@ status` re-hashes every tracked file, and vx runs it with
   JIT in the function's own body; a closure hoisted out of it tied (4.61
   ms both). Persisting the graph across runs would cut it, at the risk
   of a stale order; not taken.
+- The cold index's blob-size `cat-file` started as soon as git answers
+  (under the config load): `git enumeration` min 51.8 → 52.1 ms over 13
+  cold rounds at 1,000 projects. Git's own trace shows `ls-files` and
+  `status` done ~30 ms after the spawn, yet the run reads them only once
+  the config load has finished; yielding to the event loop every 16 or 4
+  configs slowed the load by 30–100 ms and did not bring git's answer
+  earlier. What holds it is not found; not taken.
+- `containedIn`'s two `realpath`s a miss (root and output directory)
+  against one `lstat` per component below the root: 9–11 ms against 3–4
+  per 1,000 calls, ~13 ms of a 2.5 s cold run at 1,000 projects. Below
+  what this box resolves on the run; not taken.
+- CLI startup, compiled: `vx --version` min 9.96 ms against 7.04 for an
+  empty compiled binary; the warm no-op `run` (10 projects) 44.8 ms, of
+  which the `run` path's import is 3.1–3.5 ms (~240 bundled modules,
+  module bodies uncounted by the profiler) and the rest the pipeline and
+  the runtime's own exit. The verbs are already imported on use;
+  `git var -l` (the filter gate's config) stays a spawn, since reading
+  git's merged config ourselves would have to match its includes.

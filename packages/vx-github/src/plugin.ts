@@ -6,6 +6,7 @@
 import { appendFile, stat } from 'node:fs/promises'
 import {
   refuseUnknownOptions,
+  type PluginOptionKinds,
   definePlugin,
   type RunSummaryRecord,
   type TelemetrySink,
@@ -134,26 +135,19 @@ function headerValueFault(value: string): string | null {
   return past ? 'a character past Latin-1' : null
 }
 
-/** Every option `GithubPluginOptions` names: the type checker holds the two to each other. */
-const GITHUB_PLUGIN_KEYS: Record<keyof GithubPluginOptions, true> = {
-  summaryFile: true,
-  title: true,
-  checks: true,
-  checkName: true,
-  append: true,
-  fetchFn: true,
-  sizeOf: true,
+/** Each option `GithubPluginOptions` names, with its kind: derived from the type, so the two cannot drift. */
+const GITHUB_PLUGIN_KEYS: PluginOptionKinds<GithubPluginOptions> = {
+  summaryFile: 'string',
+  title: 'string',
+  checks: 'boolean',
+  checkName: 'string',
+  append: 'function',
+  fetchFn: 'function',
+  sizeOf: 'function',
 }
 
 export function github(options: GithubPluginOptions = {}): VxPlugin {
-  refuseUnknownOptions('github()', options, Object.keys(GITHUB_PLUGIN_KEYS))
-  // A switch read from the environment arrives as a string: `'true'` (or `'false'`) failed
-  // the boolean tests and the check run was posted or skipped with no word.
-  if (options.checks !== undefined && typeof options.checks !== 'boolean') {
-    throw new Error(
-      `vx-github: checks must be true or false, got ${JSON.stringify(options.checks)}`,
-    )
-  }
+  refuseUnknownOptions('github()', options, GITHUB_PLUGIN_KEYS)
   return definePlugin(import.meta, {
     telemetry(ctx) {
       const file = options.summaryFile ?? process.env['GITHUB_STEP_SUMMARY']

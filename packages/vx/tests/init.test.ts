@@ -1611,6 +1611,24 @@ describe('vx init — the generated build is not a cached no-op', () => {
 })
 
 describe('vx init on a workspace with no scripts', () => {
+  // Globs that reach no package said only "no scripts", naming nothing to
+  // fix (M-42).
+  it('names the workspace globs that match no package.json', async () => {
+    const root = await makeRoot('vx-init-noglob-')
+    try {
+      const notes = async (): Promise<string[]> =>
+        (await vx(root, ['init', '--dry'])).out.split('\n').filter((l) => l.startsWith('note: '))
+      expect(await notes()).toEqual([
+        'note: the workspace globs ("packages/*") match no package.json: add a package under one, or fix the glob',
+      ])
+      // CONTROL: a member under the glob, still with no scripts.
+      await addPackage(root, 'app', {})
+      expect(await notes()).toEqual([])
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   it('writes the workspace file, prints an example config and the next command', async () => {
     const root = await makeRoot('vx-init-empty-')
     await addPackage(root, 'app', {})

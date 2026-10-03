@@ -57,8 +57,9 @@ capability in vx becomes a transformation of the same triple:
 ## The environment is declared too
 
 A command's environment is part of what it does, so it is not
-inherited wholesale. Each task gets an isolated environment built from
-`exec.env`: values you set (part of the config, so in the key) and
+inherited wholesale. Each task gets an isolated environment: a small
+essential allowlist (`PATH`, `HOME`, `CI`, `NODE_OPTIONS` and a few
+more), then what `exec.env` says: values you set (part of the config, so in the key) and
 variables you `passThrough` from the parent (not in the key).
 `cache.inputs.env` puts a variable in the key but does not pass it to
 the task, so a variable that changes the output and must reach the

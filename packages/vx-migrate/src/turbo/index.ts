@@ -12,7 +12,7 @@ import { readFileSync } from 'node:fs'
 import { availableParallelism } from 'node:os'
 import path from 'node:path'
 import type { ProjectMeta, VxPlugin } from '@vzn/vx'
-import { refuseUnknownOptions } from '@vzn/vx'
+import { refuseUnknownOptions, type PluginOptionKinds } from '@vzn/vx'
 import { type AdoptionRun, adoptionPlugin } from '../adoption-plugin.js'
 import type { AdoptionMapping } from '../mapping-cache.js'
 import { collectGaps } from '../plugin-gaps.js'
@@ -40,15 +40,17 @@ export interface TurboPluginOptions {
   readonly root?: string
 }
 
-/** Every option `TurboPluginOptions` names: the type checker holds the two to each other. */
-const TURBO_PLUGIN_KEYS: Record<keyof TurboPluginOptions, true> = { root: true }
+/** Each option `TurboPluginOptions` names, with its kind: derived from the type, so the two cannot drift. */
+const TURBO_PLUGIN_KEYS: PluginOptionKinds<TurboPluginOptions> = {
+  root: 'string',
+}
 
 /**
  * The plugin: the adoption skeleton over `mapTurboWorkspace`, one mapping
  * per run (`adoption-plugin.ts` says why).
  */
 export function turbo(options: TurboPluginOptions = {}): VxPlugin {
-  refuseUnknownOptions('turbo()', options, Object.keys(TURBO_PLUGIN_KEYS))
+  refuseUnknownOptions('turbo()', options, TURBO_PLUGIN_KEYS)
   return adoptionPlugin(
     import.meta,
     (ctx) => run(options.root ?? ctx.workspaceRoot, ctx.projects),

@@ -9,6 +9,7 @@ import {
   CONFIG_EXIT,
   evalBudgetMs,
   evaluateConfigFresh,
+  UmaskChanged,
   WATCHED_BUILTIN_NAMES,
 } from './config-eval.js'
 import { hasEsmExport, unprovidedBareImports } from './config-imports.js'
@@ -451,6 +452,7 @@ export async function loadProjectConfigs(
   let builtins: BuiltinSnapshot | undefined
   let env: Readonly<Record<string, string | undefined>> = {}
   let cwd = ''
+  let umask = -1
   // More than one evaluation in flight: a change seen after one load may
   // be another's.
   let overlapping = false
@@ -490,6 +492,7 @@ export async function loadProjectConfigs(
     if (repeat) refuseUnprovidedImports(bytes!, configPath, 'Project')
     const mod = repeat
       ? await evaluateConfigFresh(configPath).catch((err: unknown) => {
+          if (err instanceof UmaskChanged) throw builtinsChanged(['process.umask'], configPath)
           throw configLoadError(err, configPath, 'Project') ?? err
         })
       : await loadDefaultExport(configPath, 'Project', bytes!)
@@ -497,7 +500,12 @@ export async function loadProjectConfigs(
     // turned the JSON-data walk's own check into "a cyclic reference".
     const changed = repeat
       ? []
-      : [...restoreBuiltins(builtins, overlapping), ...restoreEnv(env), ...restoreCwd(cwd)]
+      : [
+          ...restoreBuiltins(builtins, overlapping),
+          ...restoreEnv(env),
+          ...restoreCwd(cwd),
+          ...restoreUmask(umask),
+        ]
     // Loads overlap, so another config's change can surface after this
     // one: named here, the refusal blamed the wrong file (D-119). The round
     // finds the one that made it.
@@ -550,6 +558,7 @@ export async function loadProjectConfigs(
       builtins = builtinSnapshot()
       env = { ...process.env }
       cwd = process.cwd()
+      umask = currentUmask()
     }
     overlapping = misses.length > 1
     let next = 0
@@ -570,7 +579,12 @@ export async function loadProjectConfigs(
     }
     const changed =
       misses.length > 0
-        ? [...restoreBuiltins(builtins), ...restoreEnv(env), ...restoreCwd(cwd)]
+        ? [
+            ...restoreBuiltins(builtins),
+            ...restoreEnv(env),
+            ...restoreCwd(cwd),
+            ...restoreUmask(umask),
+          ]
         : []
     // Overlapping loads check most built-ins only here, so a change one
     // config made may have broken another's load: it is refused first, and
@@ -713,6 +727,9 @@ function builtinsChanged(changed: readonly string[], configPath?: string): UserE
     (changed.some((c) => c.startsWith('process.cwd'))
       ? '; a task runs in its project directory, and `cd <dir> && …` in `exec.command` moves it'
       : '') +
+    (changed.some((c) => c.startsWith('process.umask'))
+      ? '; a task sets its own with `umask <mode> && …` in `exec.command`'
+      : '') +
     (changed.some((c) => c.startsWith('globalThis.'))
       ? '; a constant configs share goes in a module each one imports'
       : '')
@@ -814,6 +831,26 @@ function restoreCwd(before: string): string[] {
   if (before === '' || proc.cwd() === before) return []
   proc.chdir(before)
   return ['process.cwd (a chdir)']
+}
+
+/**
+ * A config's `process.umask()` set the mode of every file vx and its tasks
+ * wrote after it: a cache artifact and a task's outputs landed `000`, which
+ * a user other than root could not read back (D-125). Put back, and named.
+ */
+function currentUmask(): number {
+  // Through globalThis, as restoreCwd: the playground's shim has no umask.
+  const proc = globalThis.process as { umask?: (mask?: number) => number }
+  if (typeof proc.umask !== 'function') return -1
+  // No argument reads it: setting 0 and back would open a window where a
+  // file written by an overlapping write landed world-writable.
+  return proc.umask()
+}
+
+function restoreUmask(before: number): string[] {
+  if (before === -1 || currentUmask() === before) return []
+  ;(globalThis.process as { umask: (mask: number) => number }).umask(before)
+  return ['process.umask']
 }
 
 function sameDescriptor(p: Primitives, a: PropertyDescriptor, b: PropertyDescriptor): boolean {

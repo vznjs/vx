@@ -568,7 +568,18 @@ export async function discoverProjects(
           .text()
           .catch((err: unknown) => absent(err, null)),
       ])
-      if (text === null) return null
+      if (text === null) {
+        // A member dir with a vx config and no manifest was skipped without
+        // a word: `--all` said no package matched, and a run from inside
+        // it "not inside a project" (D-128). The config was found in the
+        // same flight as the failed read, so naming it costs nothing.
+        if (configPath !== null) {
+          process.stderr.write(
+            `vx: ${relPosix(workspace.root, dir)} has a vx config but no package.json — skipped: vx names a project by its package.json "name"\n`,
+          )
+        }
+        return null
+      }
       const pkg = parsePackageJson(text, pkgJsonPath)
       return { dir, pkg, configPath }
     }),
@@ -604,7 +615,12 @@ export async function discoverProjects(
       projects.push({ name, dir, packageJson: pkg, configPath })
       continue
     }
-    const dirs = group.map((e) => relPosix(workspace.root, e.dir)).sort()
+    // The root's own manifest is '' relative to itself, and the refusal read
+    // "in workspace:  and packages/a" (D-127).
+    const dirs = group
+      .map((e) => relPosix(workspace.root, e.dir))
+      .sort()
+      .map((d) => (d === '' ? 'the workspace root' : d))
     // pnpm accepts two manifests of one name (vite's playground, sveltejs/kit's
     // test apps); vx cannot, since a project is addressed by it. Like a
     // nameless one, a pair that declares no vx tasks is left out, so the

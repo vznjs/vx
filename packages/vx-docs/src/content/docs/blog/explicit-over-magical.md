@@ -72,7 +72,9 @@ The same principle sets most of the schema:
   nobody has to over-declare edges to be safe; and there is sparse
   `^task` bridging, so a package that lacks `build` does not need a
   filler task for its dependents' `^build` to walk through it.
-- Env reaches a task only through `exec.env`. A variable that merely
+- Past the essential allowlist every task gets (`PATH`, `HOME`, `CI`,
+  `NODE_OPTIONS` and a few more), env reaches a task only through
+  `exec.env`. A variable that merely
   has to be present goes under `passThrough` and stays out of the key.
   One that changes the output goes under `passThrough` and
   `cache.inputs.env`: the first passes it to the task, the second puts

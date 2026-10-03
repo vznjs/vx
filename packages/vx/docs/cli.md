@@ -1280,7 +1280,9 @@ run...` precedes it.
    that checks every 250 ms, with the notice `vx watch: <dir>: no OS
 watch events within 2000 ms; polling every 250 ms instead`.
 3. **On change.** The triggering path is logged
-   (`vx watch: <project> <relpath>; re-running...`) and the
+   (`vx watch: <project> <relpath>; re-running...`): the first changed
+   path that still exists, so an editor's temporary file renamed away
+   names nothing; a deletion names the cycle when nothing else changed. The
    orchestrator is invoked again with the same options. Events arriving
    while a run is in flight queue and drain after the current cycle.
    Re-runs are debounced ~150ms after the last event.
@@ -1693,7 +1695,9 @@ next command to run. A root
 when `packages/*/package.json` files sit below it unreached, both
 `init` and a run that finds no config say so instead ("package.json
 declares no workspaces … Add "workspaces": ["packages/*"] to
-package.json and re-run") rather than "no scripts" or "run vx init". With
+package.json and re-run") rather than "no scripts" or "run vx init". A
+workspace whose globs match no `package.json` gets a note naming them
+(M-42). With
 no `package.json` here or above, `init` says to create one (`bun init` or
 `npm init -y`) first. Every
 generated config is typed for the editor through
@@ -1844,7 +1848,11 @@ test` and `bun lint` do run the script. Arguments, flags or a `&&`
 chain make it a real command again and
 it is left verbatim, and so is one whose target becomes no task (a
 lifecycle script, or a hook folded into another script): a group over
-it would name a task nothing defines (D-12).
+it would name a task nothing defines (D-12). A verbatim chain whose
+parts run this package's own scripts (`check: pnpm run build && pnpm run
+lint`) gets a TODO naming those parts: each ran again inside the command,
+beside its own task, so `vx run check` built twice (M-41). Its order may
+matter, so it is not made a group.
 
 The report lists each TODO once per reason: tasks that share one are
 named together (the first five, then a count; the files carry each),

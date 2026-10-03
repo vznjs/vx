@@ -478,6 +478,62 @@ Refuted: a memoized grace (`killGraceMs` reads the env each call) and
 on Linux with `sh` as `bash --posix` beside eight busy loops. macOS's
 `sh` is bash 3.2 and is not here to probe.
 
+M-39. The plugin suites' timed waits (vx-otel, vx-github, vx-mcp,
+vx-lockfile, vx-migrate), swept for a timer standing in for a state.
+Three rows claimed "a deadline during the retry wait ends it" with an
+abort on a 50 ms timer from the call's start and a 150 ms bound on the
+whole call: `collector.test.ts` › a deadline during the wait ends the
+retries and warns the 503, and `github.test.ts` › … warns the 502 and
+› a drop, then the deadline during the wait. The timer could beat the
+first POST, and the bound counted the POST and any stall. The abort is
+now armed by the first POST (vx-otel's from its fake collector, behind
+a 2 s Retry-After), and the bound runs from the abort. With an 80 ms
+collector or a 160 ms stall in the first POST the old rows fail and
+the new pass; each new row fails with the sink or check-run posting
+again after the abort, or with the abort not heard in the wait. The
+rest hold: the other waits are polls on a state or a hang a client
+abort releases.
+
+M-40. Probes, nothing shipped. The core suite's sleeps over 25 ms (64),
+swept for one standing in for "started" or "dead": the kill-after-sleep
+rows are marker-based since M-14 and M-17. Refuted as races:
+`cli-picker.test.ts`'s 50 ms before an answer (a `PassThrough` buffers
+it: 7 of 7 with every sleep at 0); `runner.test.ts` › routes each stream
+to its own callback, 50 ms after `exited` (green with a 60 ms busy spin
+there, 3 of 3: the pipes are read by then); the poll watcher rows' 30 ms
+(the baseline scan is synchronous; the wait keeps the edit off its
+clock tick); `persistent-ready-timeout.test.ts`'s 200 ms before
+`isAlive` (Bun reaps the exec'd sleeper). Closed: the lead five streams
+filed on `output-dirs-snapshot.test.ts` is A-45's (its keep-alive runs
+after the build), 20 of 20 beside eight busy loops.
+
+M-41. `vx init` on plain pnpm and bun workspaces (no Turbo, no Nx),
+reviewed: the configs it writes run (`build`, `test` across members, a
+`^build` edge on each build, servers persistent), cache nothing until a
+TODO's block is added, as the report says, and the odd layouts held (a
+single package, a glob that matches nothing, a member with no scripts,
+broken JSON named with its path, bun's object `workspaces`, a negated
+or `**` glob, init from inside a member, existing configs refused with
+exit 1). One defect: a script chaining this package's own scripts
+(`check: pnpm run build && pnpm run lint`) was written verbatim with no
+TODO, and with `check`'s edge to `build`, `vx run check` built twice
+and ran `lint` outside the graph. Its parts that run an own task are
+now named in a TODO (`init-own-script-chain.test.ts`, red on main).
+
+M-42. M-41's review, its other finding: a workspace whose globs match
+no package (`"workspaces": ["packages/*"]` over an empty `packages/`)
+was told only "no package.json scripts to turn into tasks", which was
+true and named nothing to fix. A note now names the globs that match no
+`package.json`; a member under them, scripts or not, drops it. Row in
+`init.test.ts`, red on main.
+
+M-43. Probes, nothing shipped: more `vx init` layouts held. Root-only
+scripts become the root's tasks (`build` keeps `^build`, `test` waits
+on it) and the run takes them; a root script sharing a member's task
+name is left out, as the report says; a member with no scripts gets no
+config; a member's own `pnpm-workspace.yaml` is not read, so its
+packages are no members, as pnpm itself reads only the outermost one.
+
 ## Leads for other streams
 
 - A: A-20 let a same-project dependant restore ahead of a producer whose
