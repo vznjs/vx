@@ -1416,7 +1416,7 @@ describe.each(['pnpm', 'bun'])(
       const set = /const PER_\w+ = new Set\(\[([\s\S]*?)\]\)/.exec(src)
       expect(set).not.toBeNull()
       const keys = [...set![1]!.matchAll(/'(\w+)'/g)].map((m) => m[1]!)
-      expect(keys.length).toBe(manager === 'pnpm' ? 6 : 5)
+      expect(keys.length).toBe(6)
       const page = section(readFileSync(path.join(GUIDES, 'configure.md'), 'utf8'), 'Lockfiles')
       // That manager's OWN row, not the page: a whole-page search lets one
       // row cover for the other's omission — which is how the bun list lost

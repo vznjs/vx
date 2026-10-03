@@ -1387,6 +1387,9 @@ to stay up across changes, use the dev tool's own watch (`vite`,
   signal watch received (a Ctrl-C as SIGINT; a SIGTERM or SIGHUP as SIGTERM),
   `VX_KILL_GRACE_MS` (2 s), then SIGKILL — and the process leaves only
   once it has returned, so a CI cancellation never orphans a task.
+  Also `0`, with no watch, when `--affected` selects nothing: watch
+  prints `vx watch: nothing affected since <ref>` and exits as `vx run`
+  does.
 - `1` — parser error, missing scope, or a task name no project in
   scope declares: the initial run refuses it as `vx run` does, with the
   same `Did you mean` hint, and watch exits rather than re-run the
@@ -2051,6 +2054,14 @@ source type. `tests/cli-json-doc.test.ts` holds this page to the
 schemas: each `{ … }` a verb's section shows is an object its schema
 closes with those keys, each object the verb prints whole is shown, and
 `vx info`'s field list is its schema's top level.
+
+**Streams.** A verb whose stdout is a product (a `--format json`
+document, `--dry` / `--dry=json`, `--graph`'s DOT, a completion
+script) writes that product alone there; a notice or warning it meets
+on the way (a cache index from an earlier vx, a plugin's warning) goes
+to stderr, as every refusal does. `vx run`'s stdout is the run's frame,
+the tasks' output it carries. `tests/cli-streams.test.ts` holds each
+product verb to it under a notice.
 
 ## `vx show`
 
