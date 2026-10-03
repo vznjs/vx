@@ -919,6 +919,8 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
       // it exists: on Linux the write lands in the sandbox's scratch and the
       // grant must still count it, and on macOS the glob must cover what is
       // inside the directory, not only the directory (2026-09-29).
+      // `vfs.disk-space`: macOS 27's `cp` and bash ask it, and an ungranted
+      // ask is a violation that fails the task.
       const projDir = await addProject(fixture.root, 'tempdir', {
         files: { 'src/x.txt': 'hi' },
         config: `
@@ -927,7 +929,7 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
               build: {
                 exec: {
                   command: 'mkdir .a1.tmp && cp src/x.txt .a1.tmp/f && mv .a1.tmp/f dist/f && rmdir .a1.tmp',
-                  sandbox: { allow: { read: ['.'], write: ['dist/', '.*.tmp/**'] } },
+                  sandbox: { allow: { read: ['.'], write: ['dist/', '.*.tmp/**'], systemInfo: ['vfs.disk-space'] } },
                 },
                 cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
               },
@@ -1030,6 +1032,8 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
   it(
     'a `dist/` write grant is a directory the task may fill',
     async () => {
+      // `vfs.disk-space`: macOS 27's `cp` and bash ask it, and an ungranted
+      // ask is a violation that fails the task.
       const projDir = await addProject(fixture.root, 'dirslash', {
         files: { 'src/x.txt': 'hi' },
         config: `
@@ -1038,7 +1042,7 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
               build: {
                 exec: {
                   command: 'mkdir -p dist && cp src/x.txt dist/out.txt',
-                  sandbox: { allow: { read: ['.'], write: ['dist/'] } },
+                  sandbox: { allow: { read: ['.'], write: ['dist/'], systemInfo: ['vfs.disk-space'] } },
                 },
                 cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
               },
@@ -1312,6 +1316,8 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
       // task's TMPDIR lived: b listed a's and read what a kept there. The
       // probe reads both layouts, the old (`vx-task-*` at the top) and the
       // walled one, for as long as a holds its file.
+      // `vfs.disk-space`: macOS 27's `cp` and bash ask it, and an ungranted
+      // ask is a violation that fails the task.
       const shared =
         process.env['CLAUDE_CODE_TMPDIR'] || process.env['CLAUDE_TMPDIR'] || '/tmp/claude'
       const task = (command: string): string => `
@@ -1320,7 +1326,7 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
             probe: {
               exec: {
                 command: ${JSON.stringify(command)},
-                sandbox: { allow: { read: ['.'], write: ['out.txt'] } },
+                sandbox: { allow: { read: ['.'], write: ['out.txt'], systemInfo: ['vfs.disk-space'] } },
               },
             },
           },

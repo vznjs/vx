@@ -13,6 +13,7 @@
 // evaluates; `evaluateConfig` turns the reader's text into one), and a cache
 // layer whose store is a set of keys.
 
+import './shim/install.js'
 import { platformCalls, setEnv } from './shim/platform.js'
 import { useVfs, Vfs } from './shim/vfs.js'
 import type { ProjectConfig } from '../../../vx/src/config.js'

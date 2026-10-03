@@ -2,9 +2,8 @@
 // `Bun` and `process` global in core to `__vxBun` / `__vxProcess`
 // (scripts/build-playground.ts, `define`), so core's source is bundled
 // unchanged and cannot reach the host's Bun or process even when the host
-// has them. This module is the entry's first import, so both objects exist
-// before any core module's top level runs (`util/timing.ts` reads both at
-// load).
+// has them. `install.ts`, the entry's first import, publishes both before
+// any core module's top level runs (`util/timing.ts` reads both at load).
 //
 // What it provides, and why each is needed:
 //   hash.xxHash3  — the key fold and the workspace fingerprint (xxh3.ts);
@@ -115,6 +114,3 @@ export function setEnv(values: Record<string, string>): void {
   for (const k of Object.keys(env)) delete env[k]
   Object.assign(env, values)
 }
-
-;(globalThis as Record<string, unknown>).__vxBun = bun
-;(globalThis as Record<string, unknown>).__vxProcess = proc

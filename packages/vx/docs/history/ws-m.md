@@ -927,3 +927,24 @@ now; `vx upgrade` keeps the checksum, and the docs say what it proves.
 `cli.md` and `modules/upgrade.md` already did (item 1096); `security.md`'s
 Releases paragraph said only that the SHA-256 is checked, and now says it
 proves the bytes arrived intact, not who built them.
+
+M-74. The local gate on a Mac (owner's MacBook, macOS 27.0.1, Bun
+1.4.2), which CI never runs whole: seven tasks red, none a test
+failure. (1) A global git config that signs commits (1Password's
+`op-ssh-sign`) ran the signer from the plugin suites' fixture commits,
+and its mach-lookup failed `vx-github#test` and `vx-otel#test`; every
+plugin test task now defines core's `GIT_CONFIG_GLOBAL=/dev/null`. (2)
+vx-migrate's nx-exec and no-root rows compared a `mkdtemp` path with the
+realpath the code reports; a TMPDIR behind a link split them (reproduced
+on Linux with a linked TMPDIR). (3) macOS 27's `cp` and bash ask
+`vfs.disk-space`; three sandbox-runtime fixtures now grant it. (4)
+`check.binary`'s `codesign` is a `system-fsctl` violation no grant
+lifts; Bun 1.4.2's output is already ad-hoc signed and launches, so the
+script re-signs only a binary that fails to launch. (5) Vite's PostCSS
+search read the root `package.json` the docs build's sandbox hides:
+ENOENT on Linux, EPERM (thrown) on macOS; the site now passes an inline
+empty PostCSS config. (6) The playground bundle read `Bun` through a
+global that importing the shim's source repointed, so on macOS's file
+order (bundle, shim, page) nine docs rows failed; the globals moved to
+`shim/install.ts`, held by `playground-shim-isolation.test.ts` (red
+without the move). Not code: `npm-pack` and `try-it` need npm on PATH.

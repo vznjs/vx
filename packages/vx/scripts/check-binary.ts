@@ -1,7 +1,7 @@
 // The compiled binary, as a user meets it: compile THIS host's target the
 // way release.yml does, make it launchable (Bun 1.4.0's `--compile`
 // signature is rejected by macOS until re-signed ad hoc — the release
-// workflow does the same), and assert `--version` reports the version
+// workflow does the same; below, only when the launch fails), and assert `--version` reports the version
 // package.json carries, which src/version.ts inlines and the release
 // workflows stamp. A layout move broke that stamp unseen for a week once
 // (2026-08-26 → 09-03); this runs in every `vx run ci`.
@@ -53,10 +53,17 @@ run(
   ],
   'compile',
 )
-if (process.platform === 'darwin') run(['codesign', '-s', '-', '--force', out], 'codesign')
 
 const want = `vx ${((await Bun.file(path.join(root, 'package.json')).json()) as { version: string }).version}`
-const got = Bun.spawnSync({ cmd: [out, '--version'], stdout: 'pipe', stderr: 'pipe' })
+const launch = () => Bun.spawnSync({ cmd: [out, '--version'], stdout: 'pipe', stderr: 'pipe' })
+let got = launch()
+// Re-sign only a binary macOS refused: Bun 1.4.2's output is already
+// ad-hoc signed and launches, and `codesign` inside the sandbox is a
+// `system-fsctl` violation no grant can lift (macOS 27, 2026-10-03).
+if (got.exitCode !== 0 && process.platform === 'darwin') {
+  run(['codesign', '-s', '-', '--force', out], 'codesign')
+  got = launch()
+}
 const version = text(got.stdout).trim()
 if (got.exitCode !== 0 || version !== want) {
   process.stderr.write(
