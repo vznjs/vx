@@ -8,6 +8,7 @@
 // ancestor directory's, else `node_modules/d` — Node's own walk.
 
 import { reachDigests } from '@vzn/vx'
+import type { PruneScope } from './scope.js'
 
 export interface Lockfile {
   readonly version: number
@@ -157,6 +158,49 @@ export function importerDigests(lock: Lockfile): ReadonlyMap<string, string> {
     )
   }
   return out
+}
+
+/**
+ * The lockfile cut to the workspaces at `dirs` (`.` the root) and what
+ * they reach through Node's walk, each at the path it held; the root
+ * entry's `workspaces` becomes `workspaces`, the list the pruned root
+ * manifest carries. Version 2's legacy `dependencies` tree is cut to the
+ * same paths.
+ */
+export function pruneLockfile(text: string, scope: PruneScope): string {
+  const { dirs, members, workspaces } = scope
+  const lock = parseLockfile(text)
+  const doc = JSON.parse(text) as Json
+  const reached = new Set<string>()
+  const visit = (p: string | undefined): void => {
+    if (p === undefined || reached.has(p)) return
+    const e = lock.packages.get(p)!
+    if (members.has(p) && !dirs.has(p)) {
+      throw new Error(`package-lock.json: ${p} is a workspace the subset leaves out`)
+    }
+    reached.add(p)
+    if (e.link !== undefined) return visit(lock.packages.has(e.link) ? e.link : undefined)
+    for (const name of e.deps.keys()) visit(resolve(lock, p, name))
+  }
+  for (const [p, e] of lock.packages) {
+    const linked = e.link !== undefined && dirs.has(e.link)
+    if (linked || dirs.has(p === '' ? '.' : p)) visit(p)
+  }
+  const packages = record(doc['packages'])!
+  for (const p of Object.keys(packages)) if (!reached.has(p)) delete packages[p]
+  const rootEntry = record(packages[''])
+  if (rootEntry?.['workspaces'] !== undefined) rootEntry['workspaces'] = [...workspaces]
+  const prune = (tree: unknown, base: string): void => {
+    const deps = record(tree)
+    if (deps === undefined) return
+    for (const [name, sub] of Object.entries(deps)) {
+      const p = `${base}node_modules/${name}`
+      if (!reached.has(p)) delete deps[name]
+      else prune(record(sub)?.['dependencies'], `${p}/`)
+    }
+  }
+  prune(doc['dependencies'], '')
+  return `${JSON.stringify(doc, null, 2)}\n`
 }
 
 /** `node_modules/a/node_modules/@s/b` → `@s/b`. */

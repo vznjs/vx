@@ -657,6 +657,8 @@ next?".
 
 27. DONE as item 1070 — `nx()` keeps an output path as written; a bare literal keeps the directory short-circuit.
 
+28. DONE 2026-10-03 (owner ask) — `vx prune <project...> [--docker]` is back as a verb of `@vzn/vx-lockfile`'s four plugins, each lockfile pruned to what the subset installs (bun, pnpm, npm, yarn 1 frozen-installed offline in its tests; yarn 4 `--immutable` checked by hand). A verb's owner is now a package, so `bun()` + `pnpm()` share one `prune`. Not done: a `file:` dependency outside the copied projects is not copied.
+
 ## Decisions (this arc)
 
 - **Rust rewrite: stay (2026-09-29).** Assessed and prototyped on Bun
@@ -689,6 +691,9 @@ next?".
   declared as an input instead.
 - **Every project's lockfile key folds the root importer (item 733).**
   What the root declares is reachable from every task.
+- **A plugin verb's owner is its package (2026-10-03).** Plugins of two
+  packages on one verb are refused; plugins of one package share it and
+  the first declared runs (`@vzn/vx-lockfile`'s `prune`).
 
 - **Declaring `cache` may narrow core's own grant, never widen one
   (owner-delegated, 2026-09-24, item 726).** The user's `sandbox.allow`

@@ -69,11 +69,11 @@ list, and the cache dir derived from the staged config. The stage
 shapes `cacheDir`, so a verb reading the file raw would open a
 directory the run never used. Plugin warnings go to stderr. A plugin
 verb the dispatcher could never reach — one naming a core verb, or one
-two plugins both declare — is refused by the workspace VALIDATOR
+plugins of two packages both declare — is refused by the workspace VALIDATOR
 (`validateWorkspace`, against `util/verbs.ts`), so a run refuses it
 exactly as a reading verb or the plugin-verb lookup does. `MOVED_VERBS`
-there maps a verb a package owns now (`migrate`) or that was removed
-(`prune`) to its pointer; a plugin may still declare one.
+there maps a verb a package owns now (`migrate`, `prune`) or that was
+removed (`stats`) to its pointer; a plugin may still declare one.
 
 ## What this does NOT do
 

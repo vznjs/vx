@@ -26,6 +26,7 @@ import * as pnpmLock from './pnpm.js'
 import * as bunLock from './bun.js'
 import * as npmLock from './npm.js'
 import * as yarnLock from './yarn.js'
+import { pruneCommand } from './prune.js'
 
 export interface LockfileOptions {
   /**
@@ -93,9 +94,9 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
     return new Error(`${named} — regenerate it with \`${manager.name} install\``)
   }
   const extraFiles = manager.extraFiles
-  return definePlugin(
-    import.meta,
-    lockfileClaim({
+  return definePlugin(import.meta, {
+    commands: { prune: pruneCommand },
+    ...lockfileClaim({
       file: manager.file,
       part: manager.name,
       version: DIGEST_VERSION,
@@ -126,7 +127,7 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
         }
       },
     }),
-  )
+  })
 }
 
 /** Each option `LockfileOptions` names, with its kind: derived from the type, so the two cannot drift. */

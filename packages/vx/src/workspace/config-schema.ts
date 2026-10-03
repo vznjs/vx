@@ -204,14 +204,16 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
           // dead: core verbs are matched first, and two plugins on one verb
           // would run the first declared and hide the second. Here, in the
           // schema, so every loader of the file — a run, a reading verb, the
-          // plugin-verb lookup — refuses it the same way.
+          // plugin-verb lookup — refuses it the same way. The owner is the
+          // package: two plugins one package exports (`bun()` and `pnpm()`
+          // both carry `prune`) are one owner, and the first declared runs.
           if ((CORE_VERBS as readonly string[]).includes(verb)) {
             throw new UserError(
               `${configPath}: plugin '${plug.name}' declares command '${verb}', a core verb — core verbs cannot be shadowed`,
             )
           }
           const owner = verbOwners.get(verb)
-          if (owner !== undefined) {
+          if (owner !== undefined && owner !== plug.name) {
             throw new UserError(
               `${configPath}: plugins '${owner}' and '${plug.name}' both declare command '${verb}' — a verb has one owner`,
             )
