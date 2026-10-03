@@ -39,6 +39,8 @@ let reply: Reply = { status: 200, body: '{}' }
 /** Answered first, one per request, before `reply`; `hits` counts requests. */
 let queue: (Reply & { retryAfter?: string })[] = []
 let hits = 0
+/** Run as each request arrives, after `hits` counts it. */
+let onHit: (() => void) | undefined
 /** Each request's path and `content-encoding`, in arrival order. */
 let seen: { path: string; encoding: string | null; json: boolean }[] = []
 let server: ReturnType<typeof Bun.serve>
@@ -62,6 +64,7 @@ beforeAll(() => {
         json,
       })
       hits++
+      onHit?.()
       const next = queue.shift()
       if (next !== undefined) {
         return new Response(next.body, {
@@ -403,20 +406,35 @@ describe('a collector that sheds load', () => {
 
   // F-46: the deadline ended the wait, and the loop posted again past it:
   // core had given up on the flush, and the 503 was never told.
+  // The abort lands in the 2 s wait the 503's Retry-After asks for, 300 ms
+  // after the 503 left: a 50 ms timer from the flush's start raced the
+  // POST itself on a loaded box (M-39).
   it('a deadline during the wait ends the retries and warns the 503', async () => {
-    queue = [{ status: 503, body: 'busy' }]
+    queue = [{ status: 503, body: 'busy', retryAfter: '2' }]
     hits = 0
     reply = { status: 200, body: '{}' }
     const warnings: string[] = []
     const sink = sinkAgainst(warnings)
     driveOneTask(sink)
     const deadline = new AbortController()
-    setTimeout(() => deadline.abort(), 50)
-    const t0 = Date.now()
-    await sink.flush(deadline.signal)
+    let abortedAt = 0
+    onHit = () => {
+      onHit = undefined
+      setTimeout(() => {
+        abortedAt = Date.now()
+        deadline.abort()
+      }, 300)
+    }
+    try {
+      await sink.flush(deadline.signal)
+    } finally {
+      onHit = undefined
+    }
+    // Slept out, the wait ends ~1.7 s after the abort.
+    const afterAbort = Date.now() - abortedAt
     expect([hits, warnings.length, warnings[0]?.includes('HTTP 503: busy')]).toEqual([1, 1, true])
-    expect(Date.now() - t0).toBeLessThan(150)
-  })
+    expect(afterAbort).toBeLessThan(1_000)
+  }, 10_000)
 })
 
 // F-40: a certificate fetch refuses fails the same way every time, and its
