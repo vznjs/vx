@@ -240,6 +240,20 @@ prune` all match. Fixed: the Run blocks used bare `vx`, which a local
   now says the written config runs executors through `nx-exec` until
   each line is rewritten.
 
+- **R-38** Plugin READMEs against code (three read-only audits, each
+  finding checked before the edit). vx-otel: `vx.cache.source` has
+  `none`. vx-github: the Checks API cap is bytes; the summary follows
+  what the step already wrote. vx-lockfile: install names key bun and
+  npm only; berry folds `__metadata`'s `version` and `cacheKey`;
+  `--affected` narrows only at `scope: 'project'`. vx-schedule-history:
+  vx's CI assumes four tasks; `criticalPathPriorities` takes `assume`.
+  vx-mcp: four methods (`ping`). vx-reapi: resolver-target endpoints,
+  `tls: false` beats a PEM, ~51% (not 45) for 390 → 590 ms (README and
+  `wire.ts`), the design doc's path, small puts read whole, when
+  `executeTimeoutMs` is checked, SHA256 only, priority and salt not
+  plugin options, the execution suites' env vars. The Turbo guide's
+  try-it and examples rows pass on main.
+
 ## Leads
 
 - Real-repo rows (`packages/vx-bench/real-repos.json`, benchmarks.md's
