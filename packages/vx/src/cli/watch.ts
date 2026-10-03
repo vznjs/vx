@@ -530,7 +530,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
         if (!packageDirs.has(dir)) want.add(dir)
       }
     for (const [dir, handle] of pending) {
-      if (want.has(dir)) continue
+      if (want.has(dir) && !stale(dir)) continue
       handle.close()
       pending.delete(dir)
     }
@@ -548,6 +548,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
             if (filename === 'package.json') arrived()
           }),
         )
+        armedAs.set(dir, inodeOf(dir) ?? '')
       } catch (err) {
         sayCannot(`cannot watch ${dir}`, err)
         continue
@@ -745,7 +746,12 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
             // and cost an uncached task one execution per cycle (CI,
             // 2026-09-10).
             const now = memberEntries(base)
-            if (sameMembers(members, now)) return
+            // The same names, but a directory still without a package made
+            // again (or replaced by a rename): its pending watch holds the
+            // deleted one, and the `package.json` that lands next is heard
+            // only by a new arm.
+            const entry = path.join(base, filename)
+            if (sameMembers(members, now) && !(pending.has(entry) && stale(entry))) return
             members = now
             reread = true
             trigger(`${path.relative(workspaceRoot, base)}/${filename}`, path.join(base, filename))
