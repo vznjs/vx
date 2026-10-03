@@ -220,6 +220,14 @@ sync`", advice for a repo leaving Nx: they say to keep what the
   the graph) with "no project … in the Nx project graph", where `nx run`
   computes the graph and runs it. A cache without the project is
   computed once in-process; one that holds it is used as before.
+- **P2-44** An executor package that is not installed reached the user
+  as Nx's "Unable to resolve <pkg>:<executor>." over Node's resolver
+  error and its require stack, or, in a workspace with no tsconfig, over
+  the local-plugin lookup's "unable to find tsconfig.base.json" (what
+  real Nx printed on CI). `nx-exec` names the package in one line and
+  says what to do when Node cannot resolve it from the workspace root;
+  `NX_VERBOSE_LOGGING=true` keeps the whole error. Live rows hold both
+  shapes to real Nx.
 
 ## Leads for other streams
 
