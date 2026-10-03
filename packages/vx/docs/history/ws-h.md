@@ -648,6 +648,17 @@ worker; 5 and 6 before) and holds a blame that outlives its budget. The
 first push restored after the blame's reply, which the loader cuts short;
 CI caught it, 1 run in 30 (#2556).
 
+## H-57: each verb's cli.md section held to its flags and exit codes
+
+The verbs, flags and exit codes were recorded and held to the parsers,
+but no verb past `run` was held to its own cli.md section: `vx info
+--cache-dir` was in none, and info, completions and upgrade stated no
+exit codes. `cli-verb-sections.test.ts`: every flag a verb accepts is
+named in its section's code (watch names the run flags it refuses), its
+synopsis names no flag it refuses, it states its exit codes, and every
+code the exit-code records hold for it is one it names. Differential:
+the old cli.md fails three rows on exactly those gaps (#2570).
+
 ## Leads for other streams
 
 - **A:** a task that rewrites its own input with the same bytes is never
