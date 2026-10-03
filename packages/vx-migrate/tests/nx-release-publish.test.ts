@@ -42,7 +42,6 @@ async function map(migration: boolean) {
       configPath: null,
     }))
     return await mapNxWorkspace(root, metas, parseNxGraph(JSON.stringify(graph), 'g'), {
-      persistentTodo: 'p',
       cacheable: new Set(),
       migration,
     })

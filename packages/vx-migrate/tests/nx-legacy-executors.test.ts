@@ -30,7 +30,6 @@ describe('legacy run-commands and run-script executors', () => {
   for (const migration of [true, false]) {
     it(`map as their nx: twin (${migration ? 'migration' : 'nx()'})`, async () => {
       const mapped = await mapNxWorkspace('/w', [meta], parseNxGraph(JSON.stringify(graph), 'g'), {
-        persistentTodo: 'p',
         cacheable: new Set(),
         migration,
       })

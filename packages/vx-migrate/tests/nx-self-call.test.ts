@@ -43,7 +43,6 @@ async function todos(migration: boolean): Promise<Record<string, string[]>> {
       },
     ]
     const mapped = await mapNxWorkspace(root, metas, parseNxGraph(JSON.stringify(graph), 'g'), {
-      persistentTodo: 'p',
       cacheable: new Set(),
       migration,
     })

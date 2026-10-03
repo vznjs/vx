@@ -41,7 +41,6 @@ it('a directory pattern in `projects` reaches the projects under it', async () =
     ]),
   )
   const m = await mapNxWorkspace(root, metas, { nodes, dependencies: {} } as NxGraph, {
-    persistentTodo: 'PERSIST',
     cacheable: new Set(),
   })
   const app = m.projects.find((p) => p.name === 'app')!.tasks.find((t) => t.name === 'gen')!

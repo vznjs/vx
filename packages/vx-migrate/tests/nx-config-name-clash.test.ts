@@ -42,7 +42,6 @@ const meta: ProjectMeta = {
 describe('a configuration task named like another target', () => {
   it('is not written; the target keeps its name, an edge to it reaches the base', async () => {
     const mapped = await mapNxWorkspace('/w', [meta], parseNxGraph(JSON.stringify(graph), 'g'), {
-      persistentTodo: 'p',
       cacheable: new Set(),
       migration: true,
     })

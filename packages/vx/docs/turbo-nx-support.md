@@ -147,7 +147,7 @@ Every key `turbo.json`, `nx.json` and `project.json` accept, read from the upstr
 | `targets.*.dependsOn` | mapped, with a note | `project:target` becomes `pkg#target`; project patterns and tags resolved; a target glob (`test:e2e--*`) expands over the workspace's target names, as Nx 19.5+ does, a same-project one over its own; `params: forward` gets a TODO. |
 | `targets.*.command` | mapped, with a note | Run as the `run-commands` shorthand: one POSIX sh line. |
 | `targets.*.cache` | supported | `cache: true` (or `cacheableOperations`) gives a cache block; persistent tasks stay uncached. |
-| `targets.*.continuous` | mapped, with a note | An uncached `exec.persistent` task, with a `readyWhen` note when something depends on it. |
+| `targets.*.continuous` | supported | An uncached `exec.persistent` task, ready on spawn: Nx starts its dependents once it has started, and so does vx. A run-commands `readyWhen` becomes `exec.persistent.readyWhen`. |
 | `targets.*.parallelism` | not supported | `parallelism: false` gets a TODO to run with `--concurrency 1`; vx has no per-task exclusivity. |
 | `targets.*.metadata` | mapped, with a note | Only `nonAtomizedTarget` is read, to find `.env` files. |
 | `targets.*.syncGenerators` | not supported | One workspace note per generator list, counting its tasks, says to run `nx sync` (a migration: keep their output by hand); vx never runs sync generators. |

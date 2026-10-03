@@ -21,7 +21,6 @@ import {
   type GeneratedProject,
   type GeneratedTask,
   type ProjectMeta,
-  pruneOrphanPersistentNotes,
   UserError,
 } from '@vzn/vx'
 import { mapRunCommands, shellQuote } from '../nx-command.js'
@@ -196,8 +195,6 @@ function checkNxNodes(nodes: Record<string, unknown>, label: string): void {
 }
 
 export interface MapNxOptions {
-  /** The note a persistent task carries (the CLI's TODO, the plugin's warning). */
-  readonly persistentTodo: string
   /** nx.json's legacy `cacheableOperations`, for a graph whose targets carry no `cache` field. */
   readonly cacheable: ReadonlySet<string>
   /**
@@ -554,7 +551,6 @@ export async function mapNxWorkspace(
   }
 
   resolveAtomizedWorkspaceOutputs(root, projects, split)
-  pruneOrphanPersistentNotes(projects, opts.persistentTodo)
   // A migration leaves Nx behind, so `nx sync` is no advice there: what a
   // generator keeps (the TypeScript one's tsconfig `references`) is the
   // user's to keep. `nx()` runs with Nx installed.
@@ -916,8 +912,9 @@ function buildTask(
   if (readyWhen !== undefined) {
     exec.persistent = { readyWhen }
   } else if (persistent) {
+    // Nx starts a continuous task's dependents once it has started
+    // (tasks-schedule.js `canBeScheduled`, Nx 23): ready on spawn, as here.
     exec.persistent = {}
-    todos.push(opts.persistentTodo)
   }
   const task: Record<string, unknown> = { exec }
   if (deps.length > 0) task.dependsOn = deps

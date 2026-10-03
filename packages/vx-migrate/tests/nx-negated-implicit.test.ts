@@ -42,7 +42,6 @@ async function dependsOn(bImplicit: string[], bManifest: Record<string, unknown>
     meta('c', {}),
   ]
   const mapped = await mapNxWorkspace('/w', metas, parseNxGraph(JSON.stringify(graph), 'g'), {
-    persistentTodo: 'p',
     cacheable: new Set(),
     migration: true,
   })

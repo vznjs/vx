@@ -621,8 +621,8 @@
   },
   {
     "key": "project.json targets.*.continuous",
-    "status": "mapped",
-    "reason": "An uncached `exec.persistent` task, with a `readyWhen` note when something depends on it."
+    "status": "supported",
+    "reason": "An uncached `exec.persistent` task, ready on spawn: Nx starts its dependents once it has started, and so does vx. A run-commands `readyWhen` becomes `exec.persistent.readyWhen`."
   },
   {
     "key": "project.json targets.*.parallelism",

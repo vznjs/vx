@@ -361,7 +361,7 @@ describe.skipIf(!MODULES)('nx-exec against real Nx', () => {
             },
             dependencies: {},
           },
-          { persistentTodo: 'n/a', cacheable: new Set() },
+          { cacheable: new Set() },
         )
         const exec = mapped.projects[0]!.tasks.find((t) => t.name === 'showenv')!.task!['exec'] as {
           command: string
@@ -421,7 +421,7 @@ describe.skipIf(!MODULES)('nx-exec against real Nx', () => {
           },
           dependencies: {},
         },
-        { persistentTodo: 'n/a', cacheable: new Set() },
+        { cacheable: new Set() },
       )
       const seen: Record<string, { nx: string; vx: string }> = {}
       for (const [nxTarget, vxTask] of [

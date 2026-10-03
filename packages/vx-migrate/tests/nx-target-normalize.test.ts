@@ -32,7 +32,6 @@ describe('a target with neither executor nor command', () => {
       configPath: null,
     }
     const mapped = await mapNxWorkspace('/w', [meta], parseNxGraph(JSON.stringify(graph), 'g'), {
-      persistentTodo: 'p',
       cacheable: new Set(),
       migration: true,
     })

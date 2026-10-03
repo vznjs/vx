@@ -1270,7 +1270,7 @@ describe('vx migrate (nx) — a server target is persistent', () => {
                 targets: {
                   // The executor says server, whatever the target is called.
                   ui: { executor: '@nx/vite:dev-server', options: {} },
-                  // Depends on tail: the readiness note is tail's alone (602).
+                  // Depends on tail: Nx starts it once tail has started, as vx does.
                   e2e: {
                     executor: 'nx:run-commands',
                     options: { command: 'cypress' },
@@ -1304,10 +1304,8 @@ describe('vx migrate (nx) — a server target is persistent', () => {
         .sort()
       expect(persistent).toEqual(['preview', 'tail', 'ui'])
       expect(tasks['ui']!.exec?.persistent).toEqual({})
-      expect(r.out).toContain('app#tail: persistent task')
-      expect(r.out).not.toContain('app#serve: persistent task')
-      expect(r.out).not.toContain('app#ui: persistent task')
-      expect(r.out).not.toContain('app#preview: persistent task')
+      // Nx gates no dependent on readiness either: no note, even for tail.
+      expect(r.out).not.toContain('persistent task')
     } finally {
       await rm(root, { recursive: true, force: true })
     }

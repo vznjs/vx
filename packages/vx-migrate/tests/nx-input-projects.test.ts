@@ -54,7 +54,6 @@ it('a pattern, a tag and an exclusion name the graph’s projects; an unknown na
     ]),
   )
   const m = await mapNxWorkspace(root, metas, { nodes, dependencies: {} } as NxGraph, {
-    persistentTodo: 'PERSIST',
     cacheable: new Set(),
   })
   const test = m.projects.find((p) => p.name === 'app')!.tasks.find((t) => t.name === 'test')!

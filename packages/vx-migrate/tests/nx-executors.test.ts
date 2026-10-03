@@ -41,7 +41,6 @@ const meta: ProjectMeta = {
 
 async function execs(executors: NxExecutors): Promise<Record<string, Record<string, unknown>>> {
   const mapped = await mapNxWorkspace('/w', [meta], graph, {
-    persistentTodo: 'p',
     cacheable: new Set(),
     executors,
   })
