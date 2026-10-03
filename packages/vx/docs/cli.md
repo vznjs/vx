@@ -1250,7 +1250,8 @@ run...` precedes it.
    judged once the bytes have settled: a file whose bytes did not
    change since the loop last saw it is not an edit, nor is a directory
    whose entries (names and sizes) did not, nor a path that stayed
-   gone; a path the loop has never judged is an edit only if it was
+   gone; a symlink is its target string, as the key folds it, so a
+   retarget is an edit; a path the loop has never judged is an edit only if it was
    modified after the watchers went live (macOS delivers the initial
    run's own writes after the arm; the later of the path's mtime and
    ctime says which side of it a path belongs to, so a file moved in
