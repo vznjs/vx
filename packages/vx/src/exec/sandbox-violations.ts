@@ -682,6 +682,11 @@ export function refusedWrites(
     if (/^\/(?:dev|proc)\//.test(raw)) continue
     const abs = toRealPath(raw)
     if (isUnderAny(abs, binds) || underGlob(abs, globs)) continue
+    // A directory a write bind lies in exists, since bwrap made it to mount
+    // the bind: `mkdir -p node_modules/.cache/tool` under a grant of
+    // `node_modules/.cache/` met EEXIST on `node_modules`, wrote nothing,
+    // and the attempt failed a clean task (2026-10-03).
+    if (syscall.startsWith('mkdir') && [...binds].some((b) => atOrUnder(b, abs))) continue
     const key = `${syscall}|${abs}`
     if (seen.has(key)) continue
     seen.add(key)
