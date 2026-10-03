@@ -30,6 +30,19 @@ export interface WorkspaceConfig {
    */
   affectedBase?: string
   /**
+   * Where this run's remote cache writes land. `'trusted'` reads and
+   * writes the trusted keys, for the default branch's CI. `'read-only'`
+   * reads them and writes nothing; omitted, `vx run` off CI takes it, and
+   * on CI (or with `--cache` naming the remote) `'trusted'`. Any other
+   * name (`'pr-123'`) is an untrusted scope: reads try the scope's keys,
+   * then the trusted ones, and writes go to the scope's only, so a PR never
+   * writes what the default branch reads. A client-side convention, not a
+   * security boundary: only a cache server that scopes writes by token
+   * can refuse a run that ignores it. `VX_CACHE_SCOPE` beats it. Never
+   * folded into a cache key.
+   */
+  cacheScope?: string
+  /**
    * Plugins registered for this workspace, consulted in this order once
    * per `vx run`: each fills any of the pipeline stages and capabilities
    * below, and core's own executor and cache store sit at the tail of

@@ -1,4 +1,8 @@
+@vzn/vx-github GITHUB_ACTIONS
 @vzn/vx-github GITHUB_API_URL
+@vzn/vx-github GITHUB_EVENT_PATH
+@vzn/vx-github GITHUB_REF
+@vzn/vx-github GITHUB_REF_NAME
 @vzn/vx-github GITHUB_REPOSITORY
 @vzn/vx-github GITHUB_SHA
 @vzn/vx-github GITHUB_STEP_SUMMARY

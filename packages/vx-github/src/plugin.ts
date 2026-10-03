@@ -19,6 +19,7 @@ import {
   type CheckRunEnv,
   type FetchFn,
 } from './checks.js'
+import { githubCacheScope } from './cache-scope.js'
 import { clampJobSummary, MAX_JOB_SUMMARY_BYTES, renderJobSummary } from './summary.js'
 
 export interface GithubPluginOptions {
@@ -40,6 +41,12 @@ export interface GithubPluginOptions {
   checks?: boolean
   /** Check-run name. Default: `'vx'`. */
   checkName?: string
+  /**
+   * Set the workspace's `cacheScope` from the run's ref when it names none:
+   * a push to the default branch stays trusted, a pull request writes to
+   * `pr-<n>`, any other ref to `ref-<name>`. Default: on; `false` opts out.
+   */
+  cacheScope?: boolean
   /** Test seam — inject the append. Defaults to fs appendFile. */
   append?: (file: string, markdown: string) => Promise<void>
   /** Test seam — inject the Checks API transport. Defaults to fetch. */
@@ -141,6 +148,7 @@ const GITHUB_PLUGIN_KEYS: PluginOptionKinds<GithubPluginOptions> = {
   title: 'string',
   checks: 'boolean',
   checkName: 'string',
+  cacheScope: 'boolean',
   append: 'function',
   fetchFn: 'function',
   sizeOf: 'function',
@@ -149,6 +157,11 @@ const GITHUB_PLUGIN_KEYS: PluginOptionKinds<GithubPluginOptions> = {
 export function github(options: GithubPluginOptions = {}): VxPlugin {
   refuseUnknownOptions('github()', options, GITHUB_PLUGIN_KEYS)
   return definePlugin(import.meta, {
+    async config(workspace) {
+      if (options.cacheScope === false || workspace.cacheScope !== undefined) return
+      const scope = await githubCacheScope(process.env)
+      if (scope !== undefined) workspace.cacheScope = scope
+    },
     telemetry(ctx) {
       const file = options.summaryFile ?? process.env['GITHUB_STEP_SUMMARY']
       if (file === undefined || file === '') return undefined

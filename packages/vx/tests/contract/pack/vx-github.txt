@@ -2,6 +2,7 @@ LICENSE
 README.md
 index.ts
 package.json
+src/cache-scope.ts
 src/checks.ts
 src/index.ts
 src/plugin.ts

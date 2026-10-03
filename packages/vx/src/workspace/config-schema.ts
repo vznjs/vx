@@ -30,12 +30,26 @@ import { nonJsonMessage, nonJsonPaths } from './json-data.js'
 // the same reason the task levels reject them: `plugin: [...]` (singular)
 // declared no plugins and ran the workspace bare, `cacheDirectory` left the
 // cache where it was — a config that loads and quietly does nothing it says.
+const CACHE_SCOPE_RULE =
+  "must be 'trusted', 'read-only', or a scope name of letters, digits and . _ - / @ (at most 128), like 'pr-123'"
+
+/** `cacheScope`'s rule, shared with `VX_CACHE_SCOPE`. */
+export function isCacheScope(v: unknown): v is string {
+  return typeof v === 'string' && /^[\w.@/-]{1,128}$/.test(v)
+}
+
+/** Why `VX_CACHE_SCOPE` is refused, in `cacheScope`'s words. */
+export function cacheScopeEnvError(): UserError {
+  return new UserError(`VX_CACHE_SCOPE ${CACHE_SCOPE_RULE}`)
+}
+
 const WORKSPACE_FIELDS = new Set([
   'concurrency',
   'cacheDir',
   'timeout',
   'cacheRetention',
   'affectedBase',
+  'cacheScope',
   'plugins',
 ])
 
@@ -111,6 +125,9 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
     if (typeof config.affectedBase !== 'string' || !/^[^-\s]\S*$/.test(config.affectedBase)) {
       throw new UserError(`${configPath}: \`affectedBase\` must be a git ref like 'origin/main'`)
     }
+  }
+  if (config.cacheScope !== undefined && !isCacheScope(config.cacheScope)) {
+    throw new UserError(`${configPath}: \`cacheScope\` ${CACHE_SCOPE_RULE}`)
   }
   if (config.plugins !== undefined) {
     if (!Array.isArray(config.plugins)) {

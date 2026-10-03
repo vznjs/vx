@@ -16,6 +16,7 @@ import {
   type CacheLayer,
   type CachePolicy,
   FULL_CACHE_POLICY,
+  scopeCachePolicy,
   GitFilesCache,
   LayeredCache,
   applyGitEnumeration,
@@ -29,6 +30,8 @@ import {
   computeNestedProjectDirs,
   computeWorkspaceFingerprints,
   findWorkspaceRoot,
+  cacheScopeEnvError,
+  isCacheScope,
   type LoadReads,
   loadWorkspace,
   FROZEN_WITHOUT_LOCK,
@@ -90,6 +93,8 @@ export interface PreparedRun {
    * would be saved still cleans its outputs before executing.
    */
   hasRemoteLayer: boolean
+  /** `--cache` with the workspace's `cacheScope` applied: what the layers were built under. */
+  cachePolicy: CachePolicy
   /**
    * Scheduling priorities from plugins' `schedule` stage (task id → weight,
    * merged over the structural baseline by the scheduler). Empty when no
@@ -257,7 +262,14 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
 
   // The local cache opens BEFORE the configs load: it is also where their
   // cached evaluations live.
-  const policy: CachePolicy = options.cache ?? FULL_CACHE_POLICY
+  // `VX_CACHE_SCOPE` wins over the workspace (and `github()`'s guess):
+  // a CI job that knows its trust level says so without editing config.
+  const envScope = process.env['VX_CACHE_SCOPE'] || undefined
+  if (envScope !== undefined && !isCacheScope(envScope)) throw cacheScopeEnvError()
+  const policy: CachePolicy = scopeCachePolicy(
+    options.cache ?? FULL_CACHE_POLICY,
+    envScope ?? workspaceConfig?.cacheScope ?? options.defaultCacheScope,
+  )
   const localCache = new Cache(
     cacheDir,
     { read: policy.localRead, write: policy.localWrite },
@@ -455,6 +467,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
         cache,
         localCache,
         hasRemoteLayer,
+        cachePolicy: policy,
         priorities: new Map(),
         nodes: new Map(),
         keyOnly: new Map(),
@@ -610,6 +623,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       cache,
       localCache,
       hasRemoteLayer,
+      cachePolicy: policy,
       priorities,
       nodes,
       keyOnly,

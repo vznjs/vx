@@ -5,12 +5,7 @@
 import type { ProjectEntry } from '../workspace/index.js'
 import { loadWorkspace, unreachedHint, unreachedPackages } from '../workspace/index.js'
 import path from 'node:path'
-import {
-  type CacheLayer,
-  type CachePolicy,
-  FULL_CACHE_POLICY,
-  stopRuntimeProbes,
-} from '../cache/index.js'
+import { type CacheLayer, type CachePolicy, stopRuntimeProbes } from '../cache/index.js'
 import { VERSION } from '../version.js'
 import {
   resetSandbox,
@@ -673,10 +668,7 @@ async function runOnBus(
     // actually governed the run. Reading the raw request here made tasks
     // clean their outputs before every exec for a save that never
     // happened.
-    const policy: CachePolicy = effectiveCachePolicy(
-      options.cache ?? FULL_CACHE_POLICY,
-      prepared.hasRemoteLayer,
-    )
+    const policy: CachePolicy = effectiveCachePolicy(prepared.cachePolicy, prepared.hasRemoteLayer)
     if (options.remoteRequested === true && !prepared.hasRemoteLayer) {
       log.status(
         'vx: --cache named the remote cache, but no cache plugin in vx.workspace.* supplies one — the remote axes are off for this run',
@@ -1452,10 +1444,7 @@ export async function planRun(options: RunOptions): Promise<RunPlan> {
       workspaceRoot: prepared.workspaceRoot,
       workspaceFingerprint: prepared.workspaceFingerprint,
       cache: prepared.cache,
-      cachePolicy: effectiveCachePolicy(
-        options.cache ?? FULL_CACHE_POLICY,
-        prepared.hasRemoteLayer,
-      ),
+      cachePolicy: effectiveCachePolicy(prepared.cachePolicy, prepared.hasRemoteLayer),
       forwardArgs: options.forwardArgs,
       nestedDirsByProject: prepared.nestedDirsByProject,
       gitFilesCache: prepared.gitFilesCache,

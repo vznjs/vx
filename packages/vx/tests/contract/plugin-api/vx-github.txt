@@ -13,6 +13,7 @@ export interface GithubPluginOptions {
   title?: string
   checks?: boolean
   checkName?: string
+  cacheScope?: boolean
   append?: (file: string, markdown: string) => Promise<void>
   fetchFn?: FetchFn
   sizeOf?: (file: string) => Promise<number>

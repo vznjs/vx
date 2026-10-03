@@ -30,6 +30,24 @@ vulnerability), never in a public issue.
   or the tools' own `TURBO_REMOTE_CACHE_READ_ONLY`, `TURBO_CACHE` and
   `NX_SKIP_REMOTE_CACHE`, which the cache plugins honour (L-34).
 
+## Cache poisoning
+
+A pull request that can write the cache the default branch reads can
+plant bytes main later replays (CREEP, CVE-2025-36852). The boundary is
+the credential, enforced by the cache server: the default branch's job
+holds a token that writes the trusted keys, and a pull request's job
+holds one that cannot (read-only, or confined by the server to its own
+namespace), or none.
+
+`cacheScope` is the client half. `'pr-123'` reads its own keys,
+then the trusted ones, and writes only its own, which `github()` sets on
+Actions (`pr-<n>`, `ref-<name>`; the default branch stays trusted)
+and `VX_CACHE_SCOPE` sets on any CI.
+It keeps honest runs apart and stops a non-hermetic PR build from
+landing where main reads; it is not a boundary, since the PR's own
+config decides it and any run holding a write credential can write any
+key.
+
 ## What vx checks on bytes it did not write
 
 Every artifact that arrives from a remote, and every one read back from

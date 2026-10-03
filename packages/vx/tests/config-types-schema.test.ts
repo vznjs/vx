@@ -34,6 +34,7 @@ const WORKSPACE = [
   'affectedBase',
   'cacheDir',
   'cacheRetention',
+  'cacheScope',
   'concurrency',
   'plugins',
   'timeout',

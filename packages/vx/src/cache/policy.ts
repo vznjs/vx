@@ -20,6 +20,12 @@ export interface CachePolicy {
   localWrite: boolean
   remoteRead: boolean
   remoteWrite: boolean
+  /**
+   * An untrusted scope (`cacheScope: 'pr-123'`): remote reads try this
+   * scope's keys, then the trusted ones; remote writes go to this scope's
+   * keys only. Absent = trusted. See {@link scopeCachePolicy}.
+   */
+  remoteScope?: string
 }
 
 /** All four axes on — the default when no cache flag is passed. */
@@ -83,4 +89,18 @@ export function parseCachePolicy(spec: string, base: CachePolicy = FULL_CACHE_PO
     }
   }
   return out
+}
+
+/**
+ * Apply a workspace's `cacheScope` to the run's policy. `'trusted'` (or
+ * none) changes nothing; `'read-only'` turns remote writes off; any other
+ * name is an untrusted scope. A clamp, never a widening: `--cache` still
+ * decides which axes are on. A client-side convention, not a boundary —
+ * any run holding a write credential can write a trusted key; only the
+ * cache server, by token, can refuse it (docs/security.md).
+ */
+export function scopeCachePolicy(policy: CachePolicy, scope: string | undefined): CachePolicy {
+  if (scope === undefined || scope === 'trusted') return policy
+  if (scope === 'read-only') return { ...policy, remoteWrite: false }
+  return { ...policy, remoteScope: scope }
 }

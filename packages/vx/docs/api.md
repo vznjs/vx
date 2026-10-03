@@ -271,6 +271,7 @@ export interface CachePolicy {
   localWrite: boolean
   remoteRead: boolean
   remoteWrite: boolean
+  remoteScope?: string
 }
 ```
 
@@ -1437,6 +1438,7 @@ export interface PreparedRun {
   cache: CacheLayer
   localCache: Cache
   hasRemoteLayer: boolean
+  cachePolicy: CachePolicy
   priorities: ReadonlyMap<string, number>
   nodes: Map<string, TaskNode>
   keyOnly: ReadonlyMap<string, TaskNode>
@@ -1747,6 +1749,7 @@ export interface RunOptions {
   cacheDir?: string
   cache?: CachePolicy
   remoteRequested?: boolean
+  defaultCacheScope?: string
   frozen?: boolean
   outputLogs?: 'full' | 'errors-only' | 'none' | 'hash-only'
   download?: 'all' | 'toplevel' | 'none'
@@ -2388,6 +2391,7 @@ export interface WorkspaceConfig {
   timeout?: number
   cacheRetention?: { olderThan?: string; maxSize?: string }
   affectedBase?: string
+  cacheScope?: string
   plugins?: readonly Plugin[]
 }
 ```

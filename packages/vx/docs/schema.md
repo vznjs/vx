@@ -1370,6 +1370,8 @@ interface WorkspaceConfig {
   cacheRetention?: { olderThan?: string; maxSize?: string }
   /** The git ref a bare `--affected` compares with. */
   affectedBase?: string
+  /** Where remote writes land: 'trusted' (default), 'read-only', or an untrusted scope name. */
+  cacheScope?: string
   /** Run-level plugins (cache / executor / telemetry capabilities). */
   plugins?: readonly Plugin[]
 }
@@ -1418,6 +1420,22 @@ interface WorkspaceConfig {
   `nx()` from `NX_BASE` or nx.json's `defaultBase`, `turbo()` from
   `TURBO_SCM_BASE`, else on GitHub Actions from `GITHUB_BASE_REF` or the
   push event's `before`, as Turbo does. Not folded into any cache key.
+- **`cacheScope`** — where this run's remote cache writes land.
+  `'trusted'` reads and writes the task keys: the default branch's CI.
+  `'read-only'` reads them and writes nothing: a laptop. Omitted, `vx
+run` takes `'read-only'` off CI (`CI` unset, `0` or `false`) and
+  `'trusted'` on CI or when `--cache` names the remote; `run()` takes
+  `RunOptions.defaultCacheScope`, else `'trusted'`.
+  Any other name (`'pr-123'`; letters, digits, `. _ - / @`, at most 128) is an untrusted scope: a remote read tries the scope's key, then
+  the trusted one, and a write goes to the scope's only, so a pull request
+  never writes what the default branch reads, and two scopes never see
+  each other. A scope's key is derived from the task key, so every
+  remote wire stores it unchanged. A clamp on `--cache`, never a
+  widening. `github()` sets it on Actions: `pr-<n>`, `ref-<name>` off
+  the default branch. `VX_CACHE_SCOPE` beats both. A client-side convention, not a security
+  boundary: a run holding a write credential can write any key, so only
+  a cache server that scopes writes by token can refuse one
+  (`docs/security.md` § Cache poisoning). Not folded into any cache key.
 - **`plugins`** — the run-level extension points. Optional: core
   applies no plugin by default, and the local executor and the local
   cache are its floor — the tail of every executor list and cache chain
