@@ -90,6 +90,7 @@ src/orchestrator/miss-save.ts
 src/orchestrator/options.ts
 src/orchestrator/persistent.ts
 src/orchestrator/placement.ts
+src/orchestrator/plain-output.ts
 src/orchestrator/plan.ts
 src/orchestrator/plugin-host.ts
 src/orchestrator/plugin.ts

@@ -74,6 +74,11 @@ export function buildIsolatedEnv(opts: BuildEnvOptions): NodeJS.ProcessEnv {
   for (const [name, value] of Object.entries(opts.define)) {
     out[name] = value
   }
+  // A task's output is a pipe, so a tool asks no TTY and prints plain. vx
+  // forces colour, as Nx and Turbo do, and strips it where its own output
+  // is plain (`plainOutput`), so the cache holds one form for every
+  // machine. Any FORCE_COLOR the task already sees, or a NO_COLOR, wins.
+  if (out['FORCE_COLOR'] === undefined && !out['NO_COLOR']) out['FORCE_COLOR'] = '1'
 
   // A directory holding the delimiter cannot be named in PATH: split, it
   // became two entries naming nothing, the second RELATIVE, so resolved
