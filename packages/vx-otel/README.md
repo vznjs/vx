@@ -68,6 +68,9 @@ otel({
   headers: { authorization: 'Bearer …' },
   metrics: true, // default
   logs: true, // default: each executed task's output tail
+  timeoutMs: 15_000, // default: per request
+  compression: 'none', // default; 'gzip' for every signal
+  tracesEndpoint: 'https://traces.example.com/v1/traces', // one signal's full URL; also metricsEndpoint, logsEndpoint
 })
 ```
 
