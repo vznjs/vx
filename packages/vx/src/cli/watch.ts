@@ -578,12 +578,14 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
     }
     importNames = want
     for (const [dir, handle] of importArms) {
-      if (want.has(dir)) continue
+      if (want.has(dir) && !stale(dir)) continue
       handle.close()
       importArms.delete(dir)
     }
     for (const dir of want.keys()) {
       if (importArms.has(dir)) continue
+      // Gone for now: its ancestor's arm (`armAncestors`) hears it return.
+      if (inodeOf(dir) === undefined) continue
       try {
         importArms.set(
           dir,
@@ -605,10 +607,12 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
             )
           }),
         )
+        armedAs.set(dir, inodeOf(dir) ?? '')
       } catch (err) {
         sayCannot(`cannot watch ${dir}`, err)
       }
     }
+    armAncestors()
   }
 
   const watchingLine = (count: number): string =>
@@ -676,34 +680,35 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
   // A base removed and made again is no event to its own watch (it holds
   // the deleted directory) nor to the root arm, which drops every name but
   // its own files: `watching 0 project(s)` and silence until a restart. So
-  // each base is watched from its nearest directory that exists, for the
-  // next name on the way down: its parent while it is there, an ancestor
-  // when the parent went too (`apps/` removed under `apps/web/*`).
-  const baseParents = new Map<string, WatchHandle>()
-  let baseNames = new Map<string, Set<string>>()
-  const armBaseParents = (): void => {
-    baseNames = new Map()
-    for (const base of memberBases) {
+  // each base, and each directory a config imports from, is watched from
+  // its nearest directory that exists, for the next name on the way down:
+  // its parent while it is there, an ancestor when the parent went too
+  // (`apps/` removed under `apps/web/*`).
+  const ancestorArms = new Map<string, WatchHandle>()
+  let ancestorNames = new Map<string, Set<string>>()
+  const armAncestors = (): void => {
+    ancestorNames = new Map()
+    for (const base of [...memberBases, ...importNames.keys()]) {
       let dir = path.dirname(base)
       let name = path.basename(base)
       while (inodeOf(dir) === undefined && dir !== workspaceRoot && dir !== path.dirname(dir)) {
         name = path.basename(dir)
         dir = path.dirname(dir)
       }
-      baseNames.set(dir, (baseNames.get(dir) ?? new Set()).add(name))
+      ancestorNames.set(dir, (ancestorNames.get(dir) ?? new Set()).add(name))
     }
-    for (const [dir, handle] of baseParents) {
-      if (baseNames.has(dir) && !stale(dir)) continue
+    for (const [dir, handle] of ancestorArms) {
+      if (ancestorNames.has(dir) && !stale(dir)) continue
       handle.close()
-      baseParents.delete(dir)
+      ancestorArms.delete(dir)
     }
-    for (const dir of baseNames.keys()) {
-      if (baseParents.has(dir)) continue
+    for (const dir of ancestorNames.keys()) {
+      if (ancestorArms.has(dir)) continue
       try {
-        baseParents.set(
+        ancestorArms.set(
           dir,
           arm(dir, false, (filename) => {
-            if (!baseNames.get(dir)?.has(filename)) return
+            if (!ancestorNames.get(dir)?.has(filename)) return
             reread = true
             const abs = path.join(dir, filename)
             trigger(path.relative(workspaceRoot, abs), abs)
@@ -716,7 +721,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
     }
   }
   const armBases = (): void => {
-    armBaseParents()
+    armAncestors()
     const want = new Set(memberBases)
     for (const [base, handle] of baseArms) {
       if (want.has(base) && !stale(base)) continue
