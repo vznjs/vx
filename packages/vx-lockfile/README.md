@@ -47,6 +47,27 @@ The claim, the per-project key, the memo and the `--affected` diff are core's `l
 
 `vx run test --affected=origin/main` after a lockfile change used to select every project. With a plugin declared at `scope: 'project'`, core hands it the lockfile at the base ref and in the working tree; it digests both and names the projects whose digest moved. At `scope: 'workspace'` a change still selects every project. A lockfile that appeared or was deleted still selects everything — every project's `node_modules` is in question.
 
+## `vx prune`
+
+Declaring any of the four plugins adds `vx prune` (the `commands` seam): the workspace cut to some projects and their transitive workspace dependencies, for a Docker build that installs and builds only what it ships — `turbo prune`.
+
+```sh
+vx prune <project...> [--out-dir <dir>] [--docker]
+```
+
+The out dir (default `out/`, relative to the cwd) gets the root `package.json` with `workspaces` rewritten to the subset's dirs, `pnpm-workspace.yaml` with `packages` rewritten (every other key as written), each lockfile at the root **pruned** to what the subset installs, the install config (`.npmrc`, `.yarnrc.yml`, `.pnpmfile.cjs`, `bunfig.toml`, `.nvmrc`, `.node-version`, the patch files `patchedDependencies` names, Yarn's `yarnPath` and plugins), `vx.workspace.*`, the root `vx.config.*`, and each project directory less `node_modules`, `.git`, `.vx` and `.turbo`. A workspace package a copied vx config imports (a local plugin) comes along with its closure: the config loads before any task. A relative config import that leaves the subset is warned about. `--docker` writes `json/` — the root install files and each project's `package.json`, the cacheable install layer — and `full/`, everything:
+
+```dockerfile
+COPY out/json/ .
+RUN bun install --frozen-lockfile
+COPY out/full/ .
+RUN bunx vx run app#build
+```
+
+The pruned lockfile is the source with whole entries cut, in the package manager's own layout, so it installs with a frozen lockfile (`bun install --frozen-lockfile`, `pnpm install --frozen-lockfile`, `npm ci`, `yarn install --immutable`) and a line only another project reaches no longer busts the install layer. Kept: the root's and each kept workspace's entries and every package they reach — through Bun's and npm's hoisted walk (a package stays at the path it held; nothing is re-hoisted), pnpm's snapshots, Yarn's descriptors. Workspace-wide fields (catalogs, overrides, patches, settings, `trustedDependencies`) stay whole: the root manifest still names them. pnpm's env document stays whole. Yarn classic records no workspaces, so its walk starts at each kept manifest's dependencies.
+
+Refused, with the reason: an out dir that is or contains the root, one inside a copied project, one that already has content; a project name the workspace lacks (the root is always kept); `bun.lockb` without `bun.lock` (binary — `bun install --save-text-lockfile`). A `file:` or `link:` dependency outside every copied project is not copied. One plugin or four, there is one `prune`: it prunes every lockfile at the root.
+
 ## Testing
 
-`bun test` covers each parser's digests (transitive bumps, nested versions, workspace links, peer suffixes, patches, install-wide knobs, cycles, key order, aliases, refusals) and `vx run` / `vx why` / `--affected` end to end. vx's own repository declares `bun()`.
+`bun test` covers each parser's digests (transitive bumps, nested versions, workspace links, peer suffixes, patches, install-wide knobs, cycles, key order, aliases, refusals) and `vx run` / `vx why` / `--affected` end to end. `vx prune` is pinned on lockfiles each package manager wrote (bun 1.4, pnpm 10, npm 10, yarn 1 and 4) and end to end: the pruned lockfile is installed frozen and offline by bun always, and by pnpm, npm and yarn 1 where they are on PATH (yarn 1's `--frozen-lockfile` passes a lockfile missing entries, so its check is an install that leaves the file byte-identical). vx's own repository declares `bun()`.

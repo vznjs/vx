@@ -12,6 +12,8 @@
 // Bun.YAML is the parser: no dependency, and the file is plain YAML.
 
 import { reachDigests } from '@vzn/vx'
+import { pruneSections } from './blocks.js'
+import type { PruneScope } from './scope.js'
 
 export interface Lockfile {
   readonly version: string
@@ -278,6 +280,45 @@ function buildGraph(lock: Lockfile): Graph {
     for (const [name, version] of deps) link(from, '.', name, version)
   }
   return { index, material, edges }
+}
+
+/**
+ * The lockfile cut to the importers at `dirs` (`.` the root) and the
+ * packages they reach; every other section as written — catalogs, patches,
+ * overrides and settings are the workspace's, and the subset's manifests
+ * still name them. A multi-document lockfile keeps the env document whole.
+ */
+export function pruneLockfile(text: string, { dirs }: PruneScope): string {
+  const marker = [...text.matchAll(/^---[ \t]*$/gm)].at(-1)
+  const cut = marker === undefined ? 0 : marker.index + marker[0].length
+  const lock = parseLockfile(text)
+  const reached = new Set<string>()
+  const visit = (dir: string, deps: ReadonlyMap<string, string>): void => {
+    for (const [name, version] of deps) {
+      if (version.startsWith('link:')) {
+        const target = joinPosix(dir, version.slice('link:'.length))
+        if (lock.importers.has(target) && !dirs.has(target)) {
+          throw new Error(`pnpm-lock.yaml: ${dir} links ${target}, which the subset leaves out`)
+        }
+        continue
+      }
+      const key = snapshotKey(lock, name, version)
+      if (reached.has(key)) continue
+      reached.add(key)
+      visit('.', lock.snapshots.get(key) ?? new Map())
+    }
+  }
+  for (const [dir, deps] of lock.importers) if (dirs.has(dir)) visit(dir, deps)
+  const v9 = Number.parseInt(lock.version, 10) >= 9
+  const packages = new Set([...reached].map((key) => (v9 ? packageKey(key) : key)))
+  return (
+    text.slice(0, cut) +
+    pruneSections(text.slice(cut), {
+      importers: (dir) => dirs.has(dir),
+      packages: (key) => packages.has(key),
+      snapshots: (key) => reached.has(key),
+    })
+  )
 }
 
 /** `packages/a` + `../b` → `packages/b`; `.` + `packages/a` → `packages/a`. POSIX, as the lockfile writes paths. */

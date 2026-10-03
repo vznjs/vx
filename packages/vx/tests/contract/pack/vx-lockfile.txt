@@ -2,8 +2,11 @@ LICENSE
 README.md
 index.ts
 package.json
+src/blocks.ts
 src/bun.ts
 src/index.ts
 src/npm.ts
 src/pnpm.ts
+src/prune.ts
+src/scope.ts
 src/yarn.ts

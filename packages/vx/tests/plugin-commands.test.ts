@@ -176,6 +176,24 @@ describe('plugin commands', () => {
     await expect(cli(['show'])).rejects.toThrow(refusal)
   })
 
+  it('two plugins of one package naming a verb are one owner: the first declared runs, help lists it once', async () => {
+    // @vzn/vx-lockfile's bun() and pnpm() both carry `prune`; a workspace
+    // declaring both was refused as two owners.
+    const SECOND = pluginSource(
+      'org/hello',
+      `{ commands: { hello: { description: 'second hi', run() { return 8 } } } }`,
+    )
+    await Bun.write(path.join(root, 'vx.workspace.mjs'), localWorkspaceSource([HELLO, SECOND]))
+    expect(await cli(['hello'])).toBe(7)
+    expect(await cli(['help'])).toBe(0)
+    expect(
+      out
+        .join('')
+        .split('\n')
+        .filter((l) => l.includes('vx hello')),
+    ).toEqual(['  vx hello             says hi (org/hello)'])
+  })
+
   it('an unknown verb is still unknown, and says where help is', async () => {
     await Bun.write(path.join(root, 'vx.workspace.mjs'), localWorkspaceSource([HELLO]))
     expect(await cli(['nope'])).toBe(1)

@@ -689,6 +689,9 @@ next?".
   declared as an input instead.
 - **Every project's lockfile key folds the root importer (item 733).**
   What the root declares is reachable from every task.
+- **A plugin verb's owner is its package (2026-10-03).** Plugins of two
+  packages on one verb are refused; plugins of one package share it and
+  the first declared runs (`@vzn/vx-lockfile`'s `prune`).
 
 - **Declaring `cache` may narrow core's own grant, never widen one
   (owner-delegated, 2026-09-24, item 726).** The user's `sandbox.allow`

@@ -40,7 +40,7 @@ entry read back from `vx-lock.json` (a hand-editable file — the same
 boundary), and `orchestrator/projects.ts` after each plugin's `project`
 edit (a broken edit is refused naming the plugin). `validateWorkspace`
 runs once per `vx.workspace.*` load: fields, plugin shapes, and the verb
-rules (a plugin may not shadow a core verb; a verb has one owner).
+rules (a plugin may not shadow a core verb; a verb has one owner, a package).
 
 ## Rules
 

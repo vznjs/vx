@@ -291,11 +291,12 @@ upstream repos.
    time: a task's command is exactly what its config says.
    - vite-task: `enablePrePostScripts` (default true).
 
-10. **`vx prune` — shipped (2026-08-25), `@vzn/vx-prune` from 2026-09-10, REMOVED 2026-09-11 (owner).** Was: workspace subset for Docker
-    builds: target + transitive workspace deps, rewritten
-    `pnpm-workspace.yaml`, root manifests, unpruned lockfile
-    (deliberate — per-format lockfile pruning is out of phase 1),
-    `--docker` json/full split for layer caching.
+10. **`vx prune` — shipped (2026-08-25), `@vzn/vx-prune` from 2026-09-10, removed 2026-09-11, back 2026-10-03 as a verb of `@vzn/vx-lockfile`.** Workspace subset for Docker
+    builds: targets + transitive workspace deps, workspace lists rewritten,
+    root manifests and vx configs, each lockfile (bun, pnpm, npm, yarn)
+    PRUNED to what the subset installs so it installs frozen, `--docker`
+    json/full split for layer caching. The 2026-09 verb copied the
+    lockfile unpruned.
     - Turbo: `turbo prune`.
 
 11. **Cache TTL / size caps in config — shipped (2026-09-23, item 658) as `cacheRetention`.** `defineWorkspace({ cacheRetention: {

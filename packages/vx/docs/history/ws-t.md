@@ -49,3 +49,4 @@ lacked (research in the project thread, 2026-10-03).
   and `vx mcp`'s `listTasks` list them; `nx()` and the Nx migrator
   carry each project's Nx `tags`. Rows: `project-tags.test.ts`,
   `filter.test.ts` › `tag:`, `nx.test.ts` › "an Nx project's tags".
+- **T-4.** 2026-10-03 (owner ask) — `vx prune <project...> [--docker]` is back as a verb of `@vzn/vx-lockfile`'s four plugins, each lockfile pruned to what the subset installs (bun, pnpm, npm, yarn 1 frozen-installed offline in its tests; yarn 4 `--immutable` checked by hand). A verb's owner is now a package, so `bun()` + `pnpm()` share one `prune`. Not done: a `file:` dependency outside the copied projects is not copied.

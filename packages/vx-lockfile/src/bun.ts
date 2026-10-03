@@ -11,6 +11,7 @@
 // Bun.JSONC is the parser: no dependency, and the file is Bun's own.
 
 import { reachDigests } from '@vzn/vx'
+import type { PruneScope } from './scope.js'
 
 export interface Lockfile {
   readonly version: string
@@ -253,6 +254,83 @@ export function importerDigests(
     out.set(dir, Bun.hash.xxHash3(`${global}\0${digests[i]!}`).toString(16).padStart(16, '0'))
   }
   return out
+}
+
+/**
+ * The lockfile cut to the workspaces at `dirs` (`.` the root) and the
+ * packages they reach through Bun's hoisted walk, each where it sat: Bun
+ * installs a nested key whose root counterpart is gone as written
+ * (`--frozen-lockfile` passes), so nothing is re-hoisted. Every other
+ * field as written — catalogs, overrides, patches and trusted
+ * dependencies are the workspace's, and the root manifest still names them.
+ */
+export function pruneLockfile(text: string, { dirs }: PruneScope): string {
+  const lock = parseLockfile(text)
+  const doc = Bun.JSONC.parse(text) as Json
+  const reached = new Set<string>()
+  const visit = (key: string | undefined): void => {
+    if (key === undefined || reached.has(key)) return
+    reached.add(key)
+    const entry = lock.packages.get(key)!
+    const at = entry.id.indexOf('@workspace:')
+    if (at !== -1) {
+      const dir = entry.id.slice(at + '@workspace:'.length) || '.'
+      if (!dirs.has(dir))
+        throw new Error(`bun.lock: ${key} is workspace ${dir}, which the subset leaves out`)
+      return
+    }
+    for (const name of entry.deps.keys()) visit(resolve(lock, key, name))
+  }
+  for (const [dir, deps] of lock.workspaces) {
+    if (!dirs.has(dir)) continue
+    let from = ''
+    for (const [name, wsDir] of lock.workspaceDirs) if (wsDir === dir && dir !== '.') from = name
+    if (from !== '') visit(from)
+    for (const name of deps.keys()) visit(resolve(lock, from, name))
+  }
+  const workspaces = record(doc['workspaces']) ?? {}
+  for (const dir of Object.keys(workspaces))
+    if (!dirs.has(dir === '' ? '.' : dir)) delete workspaces[dir]
+  const packages = record(doc['packages']) ?? {}
+  for (const key of Object.keys(packages)) if (!reached.has(key)) delete packages[key]
+  return writeLockfile(doc)
+}
+
+/**
+ * Bun's own text layout, so a pruned file diffs against the source as
+ * removals: two-space indent, a trailing comma after every member but the
+ * document's last, each `packages` entry on one line with a blank line
+ * between entries.
+ */
+function writeLockfile(doc: Json): string {
+  const inline = (v: unknown): string => {
+    if (Array.isArray(v)) return `[${v.map(inline).join(', ')}]`
+    const r = record(v)
+    if (r === undefined) return JSON.stringify(v)
+    const members = Object.entries(r).map(([k, x]) => `${JSON.stringify(k)}: ${inline(x)}`)
+    return members.length === 0 ? '{}' : `{ ${members.join(', ')} }`
+  }
+  const block = (v: unknown, depth: number): string => {
+    const pad = '  '.repeat(depth + 1)
+    const end = '  '.repeat(depth)
+    if (Array.isArray(v)) {
+      return v.length === 0
+        ? '[]'
+        : `[\n${v.map((x) => `${pad}${block(x, depth + 1)},\n`).join('')}${end}]`
+    }
+    const r = record(v)
+    if (r === undefined) return JSON.stringify(v)
+    const members = Object.entries(r)
+    if (members.length === 0) return '{}'
+    return `{\n${members.map(([k, x]) => `${pad}${JSON.stringify(k)}: ${block(x, depth + 1)},\n`).join('')}${end}}`
+  }
+  const members = Object.entries(doc).map(([k, v]) => {
+    if (k !== 'packages') return `  ${JSON.stringify(k)}: ${block(v, 1)}`
+    const entries = Object.entries(record(v) ?? {})
+    if (entries.length === 0) return `  "packages": {}`
+    return `  "packages": {\n${entries.map(([p, t]) => `    ${JSON.stringify(p)}: ${inline(t)},\n`).join('\n')}  }`
+  })
+  return `{\n${members.join(',\n')}\n}\n`
 }
 
 /** The name a package key installs under: its last segment, scope included. */

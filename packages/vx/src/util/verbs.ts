@@ -29,7 +29,7 @@ export const MOVED_VERBS: Readonly<Record<string, string>> = {
     'vx migrate moved to @vzn/vx-migrate: run `bunx @vzn/vx-migrate` (turbo.json or an Nx ' +
     'project graph → vx.config.ts); `vx init` reads package.json scripts',
   prune:
-    'vx prune was removed (2026-09-11): the Docker-subset verb is not shipped; copy the ' +
-    'workspace and `--filter` the build instead',
+    'vx prune comes from @vzn/vx-lockfile: declare pnpm(), bun(), npm() or yarn() in ' +
+    'vx.workspace.ts',
   stats: 'vx stats was removed (H-19): run `vx info`, which prints the same report',
 }

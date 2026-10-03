@@ -2397,11 +2397,21 @@ task, a `--run` with no row for it, or a parse error.
 
 ## `vx prune`
 
-Removed (owner, 2026-09-11). It was a core verb until 2026-09-10 and the
-`@vzn/vx-prune` package after; the Docker-subset use case is a workspace
-copy plus `--filter` on the build. Typing `vx prune` prints that and
-exits 1 — unless a declared plugin claims the verb through the
-`commands` seam, which is how a workspace would bring it back.
+```
+vx prune <project...> [--out-dir <dir>] [--docker]
+```
+
+A plugin verb of `@vzn/vx-lockfile`: declaring `pnpm()`, `bun()`,
+`npm()` or `yarn()` adds it. It copies the named projects, their
+transitive workspace dependencies, the root manifests (workspace lists
+rewritten to the subset), the vx configs and each lockfile pruned to what
+the subset installs into `--out-dir` (default `out/`), so a Docker build
+installs it with a frozen lockfile; `--docker` splits `json/` (the
+install layer) from `full/`. `turbo prune`. Reference:
+`packages/vx-lockfile/README.md` § `vx prune`. Without the plugin, typing
+`vx prune` says where it comes from and exits 1. History: core verb
+2026-08-25, `@vzn/vx-prune` 2026-09-10, removed 2026-09-11 (it copied the
+lockfile unpruned), back in `@vzn/vx-lockfile` 2026-10-03.
 
 ## `vx stats`
 
@@ -2532,8 +2542,10 @@ and the reservation its `admit` hook packs.) The dispatcher tries core's verbs
 first and consults plugins only for a word core does not know, loading
 the workspace config from the cwd to find them (outside a workspace the
 verb is simply unknown). A plugin verb that names a core verb, or one
-two plugins both declare, is refused when the workspace loads — such a
-verb could never run, or would hide the other plugin's. A plugin verb's
+plugins of two packages both declare, is refused when the workspace
+loads — such a verb could never run, or would hide the other plugin's.
+Plugins of one package are one owner (`bun()` and `pnpm()` both carry
+`prune`): the first declared runs. A plugin verb's
 return value is the exit code, an integer 0–255 (anything else — nothing,
 a fraction, 256, which the OS would keep as 0 — fails naming the plugin
 and the verb), and a thrown `UserError` prints as

@@ -11,8 +11,11 @@
 // lockfile's root descriptors only, so a workspace's digest is the root's
 // reach through the descriptors the file resolves.
 
+import path from 'node:path'
 import { reachDigests } from '@vzn/vx'
 import { stable } from './pnpm.js'
+import { pruneEntries, yamlKey } from './blocks.js'
+import type { PruneScope } from './scope.js'
 
 export interface Lockfile {
   readonly generation: 'berry' | 'classic'
@@ -36,6 +39,8 @@ export interface Lockfile {
 
 export interface Entry {
   readonly deps: ReadonlyMap<string, string>
+  /** What the entry installs: `deps` less berry's peers, which its parent provides. */
+  readonly installs: ReadonlyMap<string, string>
   /** resolution + checksum / version + resolved + integrity */
   readonly resolution: string
 }
@@ -79,6 +84,7 @@ function parseBerry(text: string): Lockfile {
     )
     entries.set(resolution, {
       deps: depsOf(e, ['dependencies', 'peerDependencies']),
+      installs: depsOf(e, ['dependencies']),
       resolution: `${resolution}\0${stable(material)}`,
     })
     // Yarn joins a key's descriptors with ', '; a range's own trailing
@@ -136,6 +142,7 @@ function parseClassic(text: string): Lockfile {
     // to carry that edge, so each entry carries its own descriptors.
     entries.set(id, {
       deps,
+      installs: deps,
       resolution: `${fields['version'] ?? ''}\0${fields['resolved'] ?? ''}\0${fields['integrity'] ?? ''}\0${[...keys].sort().join(',')}`,
     })
     for (const k of keys) descriptors.set(k, id)
@@ -291,4 +298,55 @@ export function importerDigests(lock: Lockfile): ReadonlyMap<string, string> {
   }
   for (const [dir, id] of lock.workspaces) out.set(dir, fold(digests[index.get(id)!]!))
   return out
+}
+
+/**
+ * The lockfile cut to the entries the workspaces at `dirs` install, each
+ * entry's text as written. Berry walks from the kept workspace entries;
+ * classic records no workspaces, so its walk starts at each kept
+ * manifest's dependencies (a workspace sibling has no entry and is
+ * skipped).
+ */
+export function pruneLockfile(text: string, scope: PruneScope): string {
+  const { dirs, members, manifests } = scope
+  const lock = parseLockfile(text)
+  const reached = new Set<string>()
+  const visit = (id: string | undefined): void => {
+    if (id === undefined || reached.has(id)) return
+    const ws = id.indexOf('@workspace:')
+    const dir = ws === -1 ? undefined : id.slice(ws + '@workspace:'.length)
+    if (dir !== undefined && members.has(dir) && !dirs.has(dir)) {
+      throw new Error(`yarn.lock: ${id} is a workspace the subset leaves out`)
+    }
+    reached.add(id)
+    for (const [name, range] of lock.entries.get(id)!.installs) {
+      for (const target of resolveDescriptor(lock, id, name, range)) visit(target)
+    }
+  }
+  const berry = lock.generation === 'berry'
+  if (berry) {
+    for (const [dir, id] of lock.workspaces) if (dirs.has(dir)) visit(id)
+  } else {
+    for (const [dir, deps] of manifests) {
+      if (!dirs.has(dir)) continue
+      for (const [name, range] of deps) {
+        // Classic keys a workspace's `file:` / `link:` path from the root:
+        // `file:./vendor/x` in packages/a is `file:./packages/a/vendor/x`.
+        const local = /^(file|link):(?!\/)(.*)$/.exec(range)
+        const keyed =
+          local === null || dir === '.' ? range : `${local[1]}:./${path.posix.join(dir, local[2]!)}`
+        visit(lock.descriptors.get(`${name}@${keyed}`))
+      }
+    }
+  }
+  const lines = text.split('\n')
+  const first = (line: string): string =>
+    berry
+      ? yamlKey(line).split(',')[0]!.trimStart()
+      : unquote(line.replace(/:\s*$/, '').split(',')[0]!.trim())
+  return pruneEntries(lines, 0, lines.length, 0, (line) => {
+    if (line.startsWith('__metadata:')) return true
+    const id = lock.descriptors.get(first(line))
+    return id !== undefined && reached.has(id)
+  }).join('\n')
 }
