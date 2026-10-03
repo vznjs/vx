@@ -2522,7 +2522,10 @@ task are the last row.
 | `VX_RUN_WORKSPACE`, `VX_RUN_TASK` | set by vx             | —       | Set on every task's environment (the workspace root; `project#task`). Read back by a `vx run` a task starts: one in the same workspace is refused, since a nested run is invisible to the outer graph and a loop back to its own task forks without bound (`docs/schema.md` § `env`).          |
 
 Colors are the two conventions in § Output format › Colors (`NO_COLOR`,
-`FORCE_COLOR`). Core never reads `GITHUB_STEP_SUMMARY`: `--report`
+`FORCE_COLOR`). A truthy `CI` picks the CI output flow and
+`GITHUB_ACTIONS` its `::group::` framing (§ Output); the run's
+`invocations` row records the provider, the first truthy of
+`GITHUB_ACTIONS`, `GITLAB_CI`, `BUILDKITE`, `CIRCLECI`, then `CI`. Core never reads `GITHUB_STEP_SUMMARY`: `--report`
 prints to stdout, and `--report-file=<path>` appends to a file, so on
 Actions pass `--report-file="$GITHUB_STEP_SUMMARY"`.
 
