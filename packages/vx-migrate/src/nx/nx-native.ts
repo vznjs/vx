@@ -1092,6 +1092,22 @@ const fileServer: Translate = (o, ctx, todos, _env, deps) => {
 }
 
 /**
+ * `@nx/playwright:merge-reports` (the `e2e-ci--merge-reports` Nx infers
+ * beside atomized Playwright specs): `playwright merge-reports` on the
+ * blob reporter's dir with `--config` from the project dir, skipped when
+ * the dir is missing, as Nx skips it. Nx read the dir from the config's
+ * reporters; the line names Playwright's default, `blob-report`.
+ */
+const mergeReports: Translate = (o, _ctx, todos) => {
+  if (typeof o['config'] !== 'string') return null
+  const dir = 'blob-report'
+  todos.push(
+    "@nx/playwright:merge-reports read the blob reporter's outputDir from the Playwright config — the line uses its default, blob-report; check it",
+  )
+  return `if [ -d ${dir} ]; then playwright merge-reports ${dir} --config ${shellQuote(o['config'])}; fi`
+}
+
+/**
  * `@nx/angular:package` and `ng-packagr-lite`: ng-packagr on the project's
  * `ng-package.json` (`project`, by default under the project root) with
  * `tsConfig`, from the workspace root where Nx resolves both. Nx adds two
@@ -1146,4 +1162,5 @@ const TRANSLATORS: Readonly<Record<string, Translate>> = {
   '@nx/linter:eslint': eslint,
   '@nx/js:tsc': tsc,
   '@nx/playwright:playwright': playwright,
+  '@nx/playwright:merge-reports': mergeReports,
 }

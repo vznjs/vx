@@ -281,6 +281,7 @@ where Nx ran it, with the executor's option defaults applied:
 | `@nx/js:node`                       | `cd ../.. && node --inspect=localhost:9229 dist/apps/api/main.js` (the build target's output) |
 | `@nx/js:swc`                        | `rm -rf ../../dist/libs/a && swc src -d ../../dist/libs/a --config-file=.swcrc` |
 | `@nx/js:verdaccio`                  | `cd ../.. && verdaccio --config .verdaccio/config.yml --listen localhost:4873` (a server) |
+| `@nx/playwright:merge-reports`      | `if [ -d blob-report ]; then playwright merge-reports blob-report --config playwright.config.ts; fi` |
 | `@nx/web:file-server`               | `cd ../.. && cp dist/apps/web/index.html dist/apps/web/404.html && http-server dist/apps/web -c-1 --cors -a=localhost '-P=http://localhost:4200?' -p=4200` (an inferred `serve-static`, `spa`) |
 | `@nx/angular:package`, `@nx/angular:ng-packagr-lite` | `cd ../.. && ng-packagr -p libs/ui/ng-package.json -c libs/ui/tsconfig.lib.prod.json` |
 

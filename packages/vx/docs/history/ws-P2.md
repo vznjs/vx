@@ -196,6 +196,11 @@ sync`", advice for a repo leaving Nx: they say to keep what the
   the bare name, deduplicated. A fourteenth shape fixture: `@nx/webpack`
   on pnpm (install-settings `json` inputs, the pnpm-major `runtime`
   probe, `configurations`, `serve-static`).
+- **P2-36** `@nx/playwright:merge-reports`, the `e2e-ci--merge-reports`
+  the Playwright plugin infers beside atomized specs, was a failing
+  placeholder. It is `playwright merge-reports` on the blob dir with
+  `--config` from the project dir, skipped when the dir is missing, as
+  Nx skips it; the blob dir Nx read from the config is a TODO.
 
 ## Leads for other streams
 

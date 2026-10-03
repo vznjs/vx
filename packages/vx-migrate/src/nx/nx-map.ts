@@ -1230,6 +1230,7 @@ const KNOWN_EXECUTORS: Record<string, { persistent: boolean }> = {
   '@nx/storybook:storybook': { persistent: true },
   '@nx/storybook:build': { persistent: false },
   '@nx/playwright:playwright': { persistent: false },
+  '@nx/playwright:merge-reports': { persistent: false },
   '@nx/cypress:cypress': { persistent: false },
   '@angular-devkit/build-angular:dev-server': { persistent: true },
 }
