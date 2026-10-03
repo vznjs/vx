@@ -2405,7 +2405,10 @@ run that failed, past any green one since, and with `--list` lists only
 failed runs. `--format json`
 emits `{ invocation, tasks }` for scripting, and `--list --format json`
 an array of the same `invocation` objects, newest first. An unknown run id fails
-loud and points at `--list`. A run id may be typed as a unique prefix; a
+loud and points at `--list`. Before any run, every form says so
+(`vx last: no recorded runs yet — run something first`, exit 1; `--list`
+prints `no recorded runs`, exit 0), and past green runs only,
+`--list --failed` prints `no recorded run failed`. A run id may be typed as a unique prefix; a
 prefix several runs share fails and lists them. A replayed run with
 failures ends with the command that re-runs them (`re-run what failed:
 vx run app#test -- …`, with the arguments the run forwarded).
