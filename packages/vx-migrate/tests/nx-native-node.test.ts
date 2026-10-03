@@ -37,7 +37,7 @@ const api = {
   targetExecutor: (spec: string) => builds[spec]?.executor,
 }
 const todo = (spec: string) =>
-  `@nx/js:node built "${spec}" first and rebuilt and restarted on change — add its build task to dependsOn`
+  `@nx/js:node rebuilt "${spec}" and restarted on change — vx builds it once, first`
 
 describe('@nx/js:node', () => {
   it('an esbuild cjs build: main.cjs, inspector on by default', () => {
@@ -45,6 +45,7 @@ describe('@nx/js:node', () => {
       command: 'cd ../.. && node --inspect=localhost:9229 dist/apps/api/main.cjs',
       env: {},
       todos: [todo('api:build')],
+      deps: ['api:build'],
     })
   })
 
@@ -58,7 +59,8 @@ describe('@nx/js:node', () => {
     ).toEqual({
       command: 'cd ../.. && node dist/apps/api/src/main.js --port 3000',
       env: {},
-      todos: ['@nx/js:node built "api:build-tsc" first — add its build task to dependsOn'],
+      todos: [],
+      deps: ['api:build-tsc'],
     })
   })
 

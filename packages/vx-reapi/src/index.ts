@@ -24,49 +24,11 @@ import { ReapiRemoteCache } from './cache.js'
 import { reapiExecutor } from './executor.js'
 import { ReapiClient, type ReapiOptions } from './wire.js'
 
+// `ReapiRemoteCache` is public for a workspace that composes cache
+// layers by hand; the wire, the Merkle encoders and the executor are
+// internal (1.0 freezes what this file exports).
 export { ReapiRemoteCache } from './cache.js'
-export {
-  acceptsTask,
-  globToOutputPath,
-  outputPathSets,
-  reapiExecutor,
-  type OutputPathSets,
-  type ReapiExecutorOptions,
-} from './executor.js'
-export {
-  buildInputTree,
-  canDigest,
-  COMPRESSOR,
-  decodeDirectory,
-  decodeTree,
-  DIGEST_FUNCTION,
-  digestWith,
-  encodeAction,
-  encodeCommand,
-  encodeDigest,
-  encodeDirectory,
-  encodeNodeProperties,
-  OUTPUT_DIRECTORY_FORMAT,
-  sha256,
-  type Blob,
-  type DigestFunctionName,
-  type InputTree,
-  type NodeProperties,
-} from './merkle.js'
-export {
-  assertBunSupportsChunking,
-  CHUNK_BYTES,
-  MIN_BUN,
-  ReapiClient,
-  SAFE_CHUNK_BYTES,
-  type ExecuteOptions,
-  type ExecuteResponse,
-  type Operation,
-  type ServerCapabilities,
-  type ActionResult,
-  type Digest,
-  type ReapiOptions,
-} from './wire.js'
+export { type ReapiOptions } from './wire.js'
 
 export interface ReapiPluginOptions extends Partial<ReapiOptions> {
   /**

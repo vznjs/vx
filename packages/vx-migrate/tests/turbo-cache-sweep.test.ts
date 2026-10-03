@@ -5,7 +5,7 @@ import { describe, expect, it } from 'bun:test'
 import { mkdtemp, readdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { artifactTag, resolveTurboCacheConfig, TurboRemoteCache } from '../src/index.js'
+import { artifactTag, resolveTurboCacheConfig, TurboRemoteCache } from '../src/turbo-cache/index.js'
 
 const TOKEN = 't'
 const BASE = { apiUrl: 'http://turbo.invalid', token: TOKEN, retries: 0 }

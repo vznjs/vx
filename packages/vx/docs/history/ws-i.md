@@ -448,6 +448,19 @@ forward-args list digested once. 1,000 projects, warm, 31 rounds:
 `record history` min 13.4 → 11.2 ms, median 18.7 → 15.2 (A/A 13.8 /
 18.9).
 
+I-55. Overlapping config loads check most watched built-ins once per
+round (#2466). After each load, only those the loader reads through
+between loads (`Object.prototype`, `JSON`, the `Promise`, `Map` and
+`Set` prototypes, `Bun.hash`); the rest at the round's end, which
+refuses first and stores nothing. 1,000 projects, cold, 13 rounds:
+`load configs` min 275.7 → 207.5 ms, median 306.6 → 228.8 (A/A 296.8 /
+323.2).
+
+I-56. `node:readline/promises` is imported only when the picker asks
+(#2506): every `vx run` loaded it for the one interactive use, ~0.7 ms
+past the stdout stream. 10 projects, warm no-op, compiled, 41 rounds:
+wall min 44.8 → 43.9 ms, median 50.0 → 48.4 (A/A 44.9 / 49.6).
+
 ## Leads for other streams
 
 - **A: a cold save commits one SQLite transaction per entry.** The
@@ -672,3 +685,12 @@ status` re-hashes every tracked file, and vx runs it with
   the runtime's own exit. The verbs are already imported on use;
   `git var -l` (the filter gate's config) stays a spawn, since reading
   git's merged config ourselves would have to match its includes.
+- A warm hit's output check lists nothing: one `lstat` per recorded
+  output directory and one `stat` per output file, ~10 µs a hit; the
+  1,000-hit run graph is ~12 ms of main-thread CPU in all.
+- Lazy loading on the `run` path, compiled probe: `util` 1.6 ms (mostly
+  `node:fs`, `node:os`, `node:path` first loads a run needs anyway),
+  `exec` 0.7, `cache` 0.45, `workspace` 1.15, `orchestrator` 0.6,
+  `cli/select` 1.15. Of the miss-only modules none costs over 0.12 ms;
+  the module barrels load them all, so splitting them would save ~0.5 ms
+  at most. `node:readline/promises` was the one worth moving (#2506).

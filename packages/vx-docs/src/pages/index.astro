@@ -87,9 +87,9 @@ const reasons = [
 
 // Start: four commands, native config from the first one.
 const startCommands = `npm install -D @vzn/vx
-npx vx init                 # a vx.config.ts per package, from its scripts
-npx vx run build --all      # builds in dependency order; stores the results
-npx vx run build --all      # again: up-to-date in milliseconds`
+npx vx init                 # a vx.config.ts per package; add the cache block each TODO shows
+npx vx run build --all      # builds in dependency order; stores what is cached
+npx vx run build --all      # again: the cached tasks are up-to-date`
 
 const footCols = {
   docs: [

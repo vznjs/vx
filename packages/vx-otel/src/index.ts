@@ -10,17 +10,3 @@
 // metrics + per-task logs over HTTP/JSON — no OpenTelemetry SDK dependency.
 
 export { otel, type OtelPluginOptions } from './plugin.js'
-export {
-  buildLogsRequest,
-  buildMetricsRequest,
-  buildTraceRequest,
-  resourceAttributes,
-  runSpanAttributes,
-  SEMCONV,
-  taskSpanAttributes,
-  taskStatusCode,
-  VX_ATTR,
-  type KeyValue,
-  type OtlpLogRecord,
-  type OtlpSpan,
-} from './otlp.js'

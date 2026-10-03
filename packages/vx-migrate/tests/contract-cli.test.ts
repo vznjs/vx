@@ -17,7 +17,7 @@ import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from '
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, expect, it } from 'bun:test'
-import { parseMigrateArgs } from '../src/index.js'
+import { parseMigrateArgs } from '../src/migrate.js'
 
 const SRC = path.join(import.meta.dir, '..', 'src')
 const RECORD = path.join(import.meta.dir, 'contract', 'cli.txt')

@@ -7,7 +7,7 @@
 // of it sit outside the table; the table shows each stage's own share.
 
 const enabled = process.env.VX_TIMING !== undefined && process.env.VX_TIMING !== ''
-const t0 = Bun.nanoseconds()
+let t0 = Bun.nanoseconds()
 const marks: Array<[label: string, ns: number]> = []
 
 /** Record the end of a stage. No-op unless `VX_TIMING` is set. */
@@ -18,6 +18,18 @@ export function mark(label: string): void {
 
 const spans = new Map<string, [count: number, ns: number]>()
 const noop = (): void => {}
+
+/**
+ * Start a new table: `vx watch` runs one per cycle in one process, and
+ * without this a cycle's table reprinted every earlier cycle's rows and
+ * its first stage counted the idle wait before it.
+ */
+export function restartTimings(): void {
+  if (!enabled) return
+  t0 = Bun.nanoseconds()
+  marks.length = 0
+  spans.clear()
+}
 
 /**
  * Time one occurrence of a repeated operation (a per-task probe, a restore):

@@ -557,6 +557,9 @@ function usesPnp(dir: string): boolean {
 const PNP_NOTE =
   "Yarn Plug'n'Play installs this repo: a package's bins live in `.pnp.cjs`, not `node_modules/.bin`, so a task's `tsc` is not found under vx — set `nodeLinker: node-modules` in `.yarnrc.yml` and run `yarn install`, or write each command as `yarn exec '<command>'`"
 
+/** A runner of this package's scripts by name: `run-p build:*`. */
+const RUNS_OWN = /(?:^|\s)(?:run-s|run-p|npm-run-all)(?:\s|$)/
+
 /** A package manager running a script by name: `pnpm build`, `npm run x`, `bun run x`. */
 const RUNS_SCRIPT =
   /(?:^|[\s;&|(])(?:pnpm|pn|npm|yarn|bun)\s+(?:run(?:-script)?\s+)?([^\s;&|()'"-][^\s;&|()'"]*)/g
@@ -661,12 +664,15 @@ export function migrateScripts(
   // the task, so `--all` never runs one check twice.
   const outsideName =
     typeof outside?.['name'] === 'string' && outside['name'] !== '' ? outside['name'] : undefined
+  // insomnia's root is named as its `packages/insomnia`: a root config made
+  // it a project, and every later run was refused for the duplicate (D-129).
+  const clash = outsideName === undefined ? undefined : metas.find((m) => m.name === outsideName)
   const rootMeta: ProjectMeta | undefined =
     root !== undefined
       ? root.configPath === null
         ? root
         : undefined
-      : outsideName !== undefined && outsideDir !== undefined
+      : outsideName !== undefined && outsideDir !== undefined && clash === undefined
         ? { name: outsideName, dir: outsideDir, packageJson: outside as never, configPath: null }
         : undefined
   const memberTasks = new Set(
@@ -774,6 +780,11 @@ export function migrateScripts(
           ? `; left out as a member's task name, so \`--all\` never runs one twice: ${listed(shared)} — one that does other work maps by hand under a name of its own`
           : ''),
     )
+  } else if (clash !== undefined && outsideDir !== undefined && unnamedMaps().length > 0) {
+    const would = unnamedMaps()
+    notes.push(
+      `${clash.name} (the workspace root) not mapped: ${path.relative(outsideDir, clash.dir).split(path.sep).join('/')} has the same "name", and vx names a project by it; rename the root's and run \`vx init\` again to map ${would.length} of its scripts (${would.slice(0, 8).join(', ')}${would.length > 8 ? ', …' : ''})`,
+    )
   } else if (rootName === 'package.json' && outsideDir !== undefined && unnamedMaps().length > 0) {
     // react's nameless root: "its scripts run the workspace" was not why,
     // and 30 of its scripts (`build`, `lint`, `test`) map once it has a
@@ -827,6 +838,9 @@ export function migrateScripts(
     }
     const tasks: GeneratedTask[] = []
     let readsManifest = false
+    const text = Object.entries(scripts).filter(
+      (e): e is [string, string] => typeof e[1] === 'string',
+    )
     for (const name of names) {
       if (!isTask(name)) continue
 
@@ -878,19 +892,34 @@ export function migrateScripts(
       // pnpm run lint`) ran each again inside the command, beside the task
       // of that name: `vx run check` built twice. The chain's order may
       // matter, so it is named rather than turned into a group.
+      // Through `run-s` / `run-p` / `npm-run-all` too (`build: run-p
+      // build:*`), each segment naming every task it runs (M-48). A
+      // persistent one has PERSISTENT_TODO.
+      const persistent = isPersistent(name, scripts)
+      let ranTasks = 0
       const ownRuns = own
         .split(/&&|\|\||;/)
         .map((part) => part.trim())
         .filter((part) => {
           const d = delegatedScript(part)
-          return d !== null && d !== name && isTask(d)
+          if (d !== null) {
+            if (d === name || !isTask(d)) return false
+            ranTasks++
+            return true
+          }
+          if (persistent || !RUNS_OWN.test(part)) return false
+          const refs = new Set(scriptRefs(part, text).filter((r) => r !== name && isTask(r)))
+          ranTasks += refs.size
+          return refs.size > 0
         })
       if (ownRuns.length > 0) {
         const list = ownRuns.map((r) => `\`${r}\``).join(', ')
         todos.push(
-          ownRuns.length === 1
-            ? `${list} runs this package's own task again inside the command, beside that task: name it under dependsOn and drop it from the command`
-            : `${list} run this package's own tasks again inside the command, beside those tasks: name them under dependsOn and drop them from the command`,
+          `${list} ${ownRuns.length === 1 ? 'runs' : 'run'} this package's own ${
+            ranTasks === 1
+              ? 'task again inside the command, beside that task: name it'
+              : 'tasks again inside the command, beside those tasks: name them'
+          } under dependsOn and drop ${ownRuns.length === 1 ? 'it' : 'them'} from the command`,
         )
       }
       const exec: Record<string, unknown> = { command }
@@ -903,7 +932,7 @@ export function migrateScripts(
         )
       }
       const task: Record<string, unknown> = { exec }
-      if (isPersistent(name, scripts)) {
+      if (persistent) {
         exec['persistent'] = {}
         todos.push(PERSISTENT_TODO)
       }

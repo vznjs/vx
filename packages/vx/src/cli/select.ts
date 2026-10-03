@@ -3,7 +3,6 @@
 // cwd sits in, and the interactive picker. Every read of the workspace
 // here goes through the staged load, so the answer is the run's.
 
-import readline from 'node:readline/promises'
 import path from 'node:path'
 import fs from 'node:fs'
 import {
@@ -404,6 +403,9 @@ export async function pickTask(
     const desc = e.description ? `  ${e.description}` : ''
     out.write(`  ${n}. ${id}${desc}\n`)
   })
+  // Imported here, the picker's one use: a run that never asks paid ~0.7 ms
+  // for it at every start, past the stdout stream it shares code with.
+  const readline = await import('node:readline/promises')
   const rl = readline.createInterface({
     input: io.input ?? process.stdin,
     output: io.output ?? process.stdout,

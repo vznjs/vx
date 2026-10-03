@@ -38,6 +38,8 @@ export interface NativeCommand {
   readonly command: string
   readonly env: Readonly<Record<string, string>>
   readonly todos: readonly string[]
+  /** `project:target[:configuration]` specs the executor ran first: the task's edges. */
+  readonly deps?: readonly string[]
 }
 
 type Options = Readonly<Record<string, unknown>>
@@ -47,6 +49,7 @@ type Translate = (
   ctx: NativeContext,
   todos: string[],
   env: Record<string, string>,
+  deps: string[],
 ) => string | null
 
 /** The plain line for `executor`, or null when it has none here. */
@@ -60,8 +63,10 @@ export function nativeExecutorCommand(
   if (translate === undefined) return null
   const todos: string[] = []
   const env: Record<string, string> = {}
-  const command = translate(options, ctx, todos, env)
-  return command === null ? null : { command, env, todos }
+  const deps: string[] = []
+  const command = translate(options, ctx, todos, env, deps)
+  if (command === null) return null
+  return deps.length > 0 ? { command, env, todos, deps } : { command, env, todos }
 }
 
 /** The TODO an executor with no translator carries; one reason per executor, so the report lists its tasks. */
@@ -430,7 +435,7 @@ const viteDev: Translate = (o, ctx, todos) => {
  * `@nx/vite:preview-server`: `vite preview` over the build target's
  * output dir (or `staticFilePath`, read from the project dir as Nx does).
  */
-const vitePreview: Translate = (o, ctx, todos) => {
+const vitePreview: Translate = (o, ctx, todos, _env, deps) => {
   const build = buildTargetOptions(o, ctx, todos, '@nx/vite:preview-server')
   const args = ['vite', 'preview']
   if (typeof build['configFile'] === 'string')
@@ -460,9 +465,19 @@ const vitePreview: Translate = (o, ctx, todos) => {
       'vite',
     ),
   )
-  todos.push(
-    '@nx/vite:preview-server built the app (in watch mode) before serving it — add its build task to dependsOn',
-  )
+  // Nx built the app first, in watch mode: the build is an edge, the
+  // rebuild while serving is what vx does not do.
+  const spec = o['buildTarget']
+  if (typeof spec === 'string' && ctx.targetOptions?.(spec) !== undefined) {
+    deps.push(spec)
+    if (o['watch'] !== false)
+      todos.push(
+        '@nx/vite:preview-server rebuilt the app in watch mode while serving — vx builds it once, first',
+      )
+  } else
+    todos.push(
+      '@nx/vite:preview-server built the app (in watch mode) before serving it — add its build task to dependsOn',
+    )
   return args.join(' ')
 }
 
@@ -643,9 +658,10 @@ const CYPRESS_FLAGS: Readonly<Record<string, string>> = {
 /**
  * `@nx/cypress:cypress`: `cypress run` (`open` under `watch`) from the
  * workspace root, on the config file's directory as Nx passes it. A
- * dev server Nx started first is a TODO: vx runs it as a dependency.
+ * dev server Nx started first is a dependency; the URL it printed, which
+ * Nx passed as `baseUrl`, is a TODO.
  */
-const cypress: Translate = (o, ctx, todos) => {
+const cypress: Translate = (o, ctx, todos, _env, deps) => {
   const args = ['cypress', o['watch'] === true ? 'open' : 'run']
   if (typeof o['cypressConfig'] === 'string') {
     const cfg = wsPath(o['cypressConfig'], ctx)
@@ -698,11 +714,21 @@ const cypress: Translate = (o, ctx, todos) => {
       'cypress',
     ),
   )
-  if (typeof o['devServerTarget'] === 'string' && o['skipServe'] !== true)
-    todos.push(
-      `@nx/cypress:cypress started ${JSON.stringify(o['devServerTarget'])} first and tested its URL — ` +
-        'depend on that server task and set its URL as baseUrl',
-    )
+  const server = o['devServerTarget']
+  if (typeof server === 'string' && o['skipServe'] !== true) {
+    // A target with no options still names an executor (a plain `command`).
+    if (ctx.targetExecutor?.(server) !== undefined || ctx.targetOptions?.(server) !== undefined) {
+      deps.push(server)
+      if (typeof o['baseUrl'] !== 'string')
+        todos.push(
+          `@nx/cypress:cypress tested the URL ${JSON.stringify(server)} printed as baseUrl — set baseUrl in the cypress config`,
+        )
+    } else
+      todos.push(
+        `@nx/cypress:cypress started ${JSON.stringify(server)} first and tested its URL — ` +
+          'depend on that server task and set its URL as baseUrl',
+      )
+  }
   if (o['testingType'] === 'component')
     todos.push(
       "@nx/cypress:cypress component testing reads Nx's build target through its preset — check the cypress config",
@@ -802,7 +828,7 @@ const esbuild: Translate = (o, ctx, todos) => {
  * under the main's directory for a tsc or swc build. A build target with
  * no `outputPath` (an inferred one) has no file here: no line.
  */
-const node: Translate = (o, ctx, todos) => {
+const node: Translate = (o, ctx, todos, _env, deps) => {
   const spec = typeof o['buildTarget'] === 'string' ? o['buildTarget'] : undefined
   if (spec === undefined) return null
   const build = {
@@ -848,11 +874,18 @@ const node: Translate = (o, ctx, todos) => {
   args.push(shellQuote(`${out}/${file}`))
   if (Array.isArray(o['args']))
     for (const a of o['args']) if (typeof a === 'string') args.push(shellQuote(a))
-  todos.push(
-    `@nx/js:node built ${JSON.stringify(spec)} first` +
-      (o['watch'] === false ? '' : ' and rebuilt and restarted on change') +
-      ' — add its build task to dependsOn',
-  )
+  if (ctx.targetOptions?.(spec) !== undefined) {
+    deps.push(spec)
+    if (o['watch'] !== false)
+      todos.push(
+        `@nx/js:node rebuilt ${JSON.stringify(spec)} and restarted on change — vx builds it once, first`,
+      )
+  } else
+    todos.push(
+      `@nx/js:node built ${JSON.stringify(spec)} first` +
+        (o['watch'] === false ? '' : ' and rebuilt and restarted on change') +
+        ' — add its build task to dependsOn',
+    )
   return fromRoot(ctx, args.join(' '))
 }
 

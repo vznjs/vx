@@ -574,6 +574,43 @@ hand-written file, so a half-adopted workspace has no clean path. Pinned
 on purpose (`init.test.ts` › refuses to overwrite without --force, like
 migrate); keeping such a project and writing the rest is the owner's call.
 
+M-48. M-41's own-task TODO read only `pnpm run x` / `npm run x`
+segments: `build: run-p build:*` and `ci: npm-run-all -s lint test` ran
+this package's own tasks inside the command with no word, though
+`scriptRefs` already reads those runners (D-95, D-113). The check now asks
+`scriptRefs` of a `run-s` / `run-p` / `npm-run-all` segment, counts every
+task it names, and skips a persistent task (`dev: run-p watch:*` has the
+persistent TODO). Probes that held: `--mjs` on M-44's and M-47's layouts.
+`init-own-script-chain.test.ts` › names a run-s / run-p / npm-run-all
+part; red without the fix, and the persistent control red without its
+guard.
+
+M-49. `remote-cache-degrade.test.ts` › a 503 heals on the resend
+(turboCache) › a download answered 503 once timed out at 7,094 ms
+against bun's 5 s on #2504's plugin-packages job (an unrelated diff).
+Cause: `withRetry` waits Turbo's real 2 s backoff before the resend
+(`remote-retry.ts`), so both wires' rows took 2.1 s idle (2.16 and 2.08
+s, junit) on top of two `vx run`s, and a loaded runner crossed the limit.
+The row now swaps `Bun.sleep`, which the plugin reads when the run builds
+it, for one that records the 2 s and resolves at once, and asserts the
+record: 0.14 and 0.06 s. A backoff of 1,999 ms and a 503 not resent each
+fail both rows. The suite's other slow rows (1.45 s) wait their own 700
+ms deadline, which is their claim.
+
+M-50. Probes, nothing shipped. A junit sweep of every suite (core's
+12 shards, each plugin) for M-49's class, a row near bun's 5 s default:
+none past M-49's own. The slowest core rows (10.1 s down to 2.0 s) set
+their own limits (8 to 120 s); the default-limit rows top out at 1.40 s
+(`run-lock.test.ts` › a wait longer than a second; `runner.test.ts`'s
+readiness windows at 1.25 to 1.31 s), whose time is a fixed sleep, the
+claim itself, that load does not stretch as it stretched M-49's two
+runs. vx-reapi's 2.1 s rows run under `--timeout 90000`. `vx init`
+held on odd script names: `a#b`, `^up` and `""` are refused with the
+reason; spaces, `/`, `...`, `run` and non-ASCII names map and run by
+name; `-flag` maps but reads as a flag, so only `a#-flag` reaches it.
+Non-string `scripts` values and a `scripts` that is not an object are
+skipped without a crash, as npm skips them.
+
 ## Leads for other streams
 
 - A: A-20 let a same-project dependant restore ahead of a producer whose

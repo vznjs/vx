@@ -1424,3 +1424,16 @@ spawn 0.34, spawn to exit 20.4 (bwrap, SRT's chain, strace), after exit
 of SRT's protected dotfiles 4), ~0.2 ms in all: not cut, a memo of
 paths a task may create would cross item 738's limit for under 1%.
 Nothing in vx's half is worth cutting; the wrap's cost is SRT's.
+
+B-89. The write observer records every attempt, so `mkdir -p
+node_modules/.cache/tool` under a grant of `node_modules/.cache/` read
+as a refused write of `node_modules` and failed a clean task: the call
+met EEXIST on a directory bwrap made to mount the bind. `refusedWrites`
+skips a `mkdir` of a directory a write bind lies in (#2504). Rows:
+`sandbox-mkdir-ancestor.unsafe.test.ts`.
+
+B-90. SRT's seccomp filter answers `socket(AF_UNIX)` with EPERM, which
+outranks strace's trace, so a task connecting to a Docker or ssh-agent
+socket without `unixSockets` read only "socket(1, 1, 0): Operation not
+permitted" and no report. The schema names that symptom and the grant
+(#2513, docs only: the refusal is invisible to vx).

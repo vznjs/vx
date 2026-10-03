@@ -1049,7 +1049,11 @@ patterns per class a denial is reported in — `read`, `write`,
 that would have permitted it; any other name is refused. Every grant is
 the task's own: `unixSockets` (or a `localBinding` port list, whose
 bridge is a unix socket) lifts the `socket(AF_UNIX)` block for the task
-that declares it, never for the run's other sandboxed tasks:
+that declares it, never for the run's other sandboxed tasks. On Linux
+the block is the kernel's answer to the call itself, so it is reported
+nowhere: the task reads only its tool's own `socket(1, 1, 0): Operation
+not permitted` (a Docker, ssh-agent or database socket), and the grant
+is `unixSockets`:
 
 ```ts
 exec: {
@@ -1745,6 +1749,7 @@ Workspace-discovery errors (`src/workspace/workspace.ts`):
 | `<file>: packages must be an array of glob strings`                                  | `pnpm-workspace.yaml` `packages:` is a bare string, etc.                                                                                                                                                                                                   |
 | `<file>: must be a JSON object`                                                      | A `package.json` (the root's or a member's) is `null`, a list or a scalar; it crashed with a TypeError until item 988.                                                                                                                                     |
 | `<file>: "name" must be a string with no surrounding whitespace`                     | A `package.json` `name` is a number, an object, or has surrounding whitespace (npm refuses one too); `{"name":123}` planned `123#build` until item 988.                                                                                                    |
+| `<file>: "name" cannot hold "#" — vx addresses a task as <name>#<task>`              | A `package.json` `name` holds `#` (npm refuses one too): `{"name":"a#b"}` planned `a#b#build` under `--all`, but `vx run a#b#build` and a `dependsOn` split at the first `#` and found nothing.                                                            |
 | `<file>: must be a mapping (packages: and pnpm's settings)`                          | `pnpm-workspace.yaml` is a list or a scalar. A mapping with no `packages:` (pnpm 10 settings or catalogs in a single-package repo) is not an error: the root's `package.json` decides, as without the file (item 984).                                     |
 | `<file>: workspaces must be an array of glob strings`                                | `package.json` `workspaces` holds a non-string entry.                                                                                                                                                                                                      |
 | `<file>: workspaces.packages must be an array of glob strings`                       | The yarn-legacy `workspaces: { packages: [...] }` form holds a non-string entry.                                                                                                                                                                           |

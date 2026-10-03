@@ -16,13 +16,14 @@ import {
   MIN_SIGNATURE_KEY_LENGTH,
   resolveTurboCacheConfig,
   TurboRemoteCache,
-  turboCache,
   turboRemoteAccess,
-} from '../src/index.js'
+} from '../src/turbo-cache/index.js'
+import { turboCache } from '../src/index.js'
 
 const TOKEN = 'secret-token'
 const KEY = 'k'.repeat(40)
 const PLUGIN_INDEX = path.resolve(import.meta.dir, '..', 'src', 'index.ts')
+const TURBO_CACHE = path.resolve(import.meta.dir, '..', 'src', 'turbo-cache', 'index.ts')
 
 interface Stored {
   body: Uint8Array
@@ -435,7 +436,7 @@ describe('TurboRemoteCache against the spec server', () => {
       const dir = await mkdtemp(path.join(tmpdir(), 'vx-turbo-exit-'))
       try {
         const script = `
-          import { artifactTag, resolveTurboCacheConfig, TurboRemoteCache } from ${JSON.stringify(PLUGIN_INDEX)}
+          import { artifactTag, resolveTurboCacheConfig, TurboRemoteCache } from ${JSON.stringify(TURBO_CACHE)}
           import { readdirSync } from 'node:fs'
           const body = new Uint8Array(1024).fill(7)
           const tag = await artifactTag(Buffer.from(${JSON.stringify(KEY)}), 'ab90', 'team_1', new Blob([body]))

@@ -52,22 +52,43 @@ and key derivation logic live here.
  * CacheLayer so callers don't need a discriminated union.
  */
 export interface CacheLayer {
+  readonly local?: Cache | undefined // the local handle this layer wraps (LayeredCache)
+  readonly hasRemote?: boolean
+  remoteHasMany?(hashes: readonly string[]): Promise<Set<string> | null> // one batched probe; null = no batch info, probe per hash
+  markRemoteAbsent?(hashes: Iterable<string>): void
+  drainUploads?(): Promise<void> // await the background write-through uploads
   key(input: CacheKeyInput): Promise<string>
-  get(hash: string): Promise<CacheEntry | null>
+  get(hash: string, ctx?: CacheGetContext): Promise<CacheEntry | null>
+  getMany?(hashes: readonly string[]): Promise<Map<string, CacheEntry>>
+  has(hash: string): Promise<'local' | 'remote' | null>
+  prefetch(hash: string, ctx?: CacheGetContext): Promise<boolean>
+  loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]>
+  isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): Promise<boolean>
+  // The output-directory short-circuit (A-2): record, load, and judge the
+  // stamps of a hit's output dirs, so a current tree is not re-walked.
+  recordOutputDirs?(
+    hash: string,
+    projectDir: string,
+    prefixes: readonly string[],
+    holds?: (files: readonly string[]) => boolean,
+  ): Promise<void>
+  recordOutputStamps?(hash: string, projectDir: string, workspaceRoot: string): void
+  loadOutputDirsBatch?(hashes: readonly string[]): Map<string, OutputDirRow[]>
+  outputDirsCurrent?(projectDir: string, rows: readonly OutputDirRow[]): Promise<boolean>
   // workspaceRoot anchors the artifact's `workspace-outputs/` entries
   // (cache.outputs.workspaceFiles); omitted → only `outputs/` restores.
   restoreOutputs(hash: string, projectDir: string, workspaceRoot?: string): Promise<void>
   save(args: SaveArgs): Promise<void>
+  ingest(hash: string, body: Blob | Response, meta: IngestMeta): Promise<void> // adopt an artifact a remote served
   // The ONE run-history write: a whole `vx run` atomically, the per-task
   // `runs` rows + one `invocations` header row in ONE transaction. The
   // input-fingerprint rows (entry_inputs) do NOT live here — they ride
   // the entry-save transaction (miss path only), so a warm run is free.
   recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void
   stats(opts?: CacheStatsOptions): CacheStats // { project? } narrows both aggregates
+  hashFile(filePath: string): Promise<string>
+  outputsPath(hash: string): string
   prune(options: PruneOptions): Promise<PruneResult>
-  // `Cache` only (not the layer contract): what prune's orphan sweep
-  // would reap right now — `vx info`'s `orphans` row.
-  orphanStats(): Promise<{ orphans: number; orphanBytes: number }>
   close(): void
 }
 
@@ -121,6 +142,9 @@ export class Cache implements CacheLayer {
     mode?: 'open' | 'inspect', // 'inspect' (Cache.inspect): a reading verb, never resets the index
   )
   // ... CacheLayer methods
+  // Not on the layer contract: what prune's orphan sweep would reap right
+  // now — `vx info`'s `orphans` row.
+  orphanStats(): Promise<{ orphans: number; orphanBytes: number }>
 }
 
 export interface PruneOptions {
@@ -147,6 +171,13 @@ export interface CacheKeyInput {
   workspaceRoot: string
   upstreamHashes: string[]
   upstreamIds?: ReadonlyMap<string, string> // (Tier 3) hash → upstream task id, capture-NAMING only (not folded)
+  // The dependency closure with group tasks expanded, for an executor that
+  // ships inputs; never folded.
+  upstreamGraft?: ReadonlyArray<{
+    readonly taskId: string
+    readonly hash: string
+    readonly projectDir: string
+  }>
   workspaceFingerprint: string
   forwardArgs?: readonly string[] // CLI args after `--`
   fileHashes?: ReadonlyMap<string, string> // (v20) abs path → git blob OID; mapped paths skip hashFile
@@ -204,7 +235,11 @@ export interface CacheEntry {
   command: string // exec.command verbatim
   exitCode: number
   durationMs: number
+  cpuMs?: number // the producing run's, from the artifact's sidecar
+  peakRssBytes?: number
   outputFiles: string[] // project-relative POSIX paths
+  outputRows?: OutputFileRow[] // the rows behind outputFiles, when the layer had them
+  outputDirRows?: OutputDirRow[] // the directory short-circuit's rows, from getMany
   stdout: string // stderr is not cached
   storedAt: string // ISO timestamp
   source?: 'local' | 'remote' // (LayeredCache) which layer served the hit
@@ -228,6 +263,12 @@ export interface RunRecord {
   wallclockEndNs?: bigint
   cacheHit?: boolean // convenience for flamegraph color
   attempts?: number // >1 when the task retried (the within-run flaky signal)
+  cached?: boolean // the task declared `cache`
+  // v27: why it failed or was skipped, as the run's footer said it
+  blockedBy?: string
+  timedOut?: true
+  sandboxViolations?: number
+  notReady?: 'timeout' | 'exited' | 'spawn'
 }
 
 export interface CacheStats {

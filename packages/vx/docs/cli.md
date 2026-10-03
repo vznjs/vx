@@ -1239,7 +1239,9 @@ run...` precedes it.
    modified after the watchers went live (macOS delivers the initial
    run's own writes after the arm; the later of the path's mtime and
    ctime says which side of it a path belongs to, so a file moved in
-   with an old mtime by `mv`, `cp -p` or `tar x` still counts); and
+   with an old mtime by `mv`, `cp -p` or `tar x` still counts), and a
+   path git did not list at the arm that is gone again (vim's `4913`
+   write probe, a lock file) is no edit; and
    nothing is judged while a cycle runs — its
    own writes are mid-flight, a `dist` deleted and not yet rebuilt is
    a state the tree will not keep — so paths that land mid-run are
@@ -1820,7 +1822,9 @@ workspaces foreach` under Yarn 2+), and says which;
 with nothing mapped it names the root whenever it has a script, a member
 or not (pnpm's root is not), and why: its scripts run the workspace, or
 share a member's task name (listed), or both; it tells a root with no `"name"` to add one
-first (vuejs/core), naming the scripts that would then map (react, D-87). A single-package repo's root is its project and maps.
+first (vuejs/core), naming the scripts that would then map (react, D-87), and a root whose
+`"name"` a member also carries to rename it, since a root config would make the
+workspace refuse every run for the duplicate (insomnia, D-129). A single-package repo's root is its project and maps.
 A lone root beside a `lerna.json` (Lerna-classic: packages listed there, not
 in `workspaces`) gets a note naming the `workspaces` globs to add, Lerna's
 `packages/*` default when it lists none (D-111).
@@ -1852,8 +1856,10 @@ lifecycle script, or a hook folded into another script): a group over
 it would name a task nothing defines (D-12). A verbatim chain whose
 parts run this package's own scripts (`check: pnpm run build && pnpm run
 lint`) gets a TODO naming those parts: each ran again inside the command,
-beside its own task, so `vx run check` built twice (M-41). Its order may
-matter, so it is not made a group.
+beside its own task, so `vx run check` built twice (M-41). So does a
+part that runs them through `run-s`, `run-p` or `npm-run-all`
+(`build: run-p build:*`), unless the task is persistent (M-48). Its
+order may matter, so it is not made a group.
 
 The report lists each TODO once per reason: tasks that share one are
 named together (the first five, then a count; the files carry each),
@@ -2197,7 +2203,8 @@ cgroupLimitBytes }`, the limit null when none binds), `cacheDir`, `cacheVersion`
   (`{ artifacts, bytes }`, always present), `runs24h`, `hits24h` (task
   runs, as the row), `flakyTasks` (`[{ taskId, project, task, keys, passes, failures }]`,
   empty when none), `lockfile`, `sandbox` (`{ available, reason,
-declared }`, `declared` the count of tasks with `exec.sandbox`). The
+declared, untraced }`, `declared` the count of tasks with `exec.sandbox`,
+  `untraced` the reason denied reads go unreported or null). The
   pretty rows render this object;
   there is no second source.
 
@@ -2439,7 +2446,7 @@ task are the last row.
 
 | Var                               | Value                 | Default | Effect                                                                                                                                                                                                                                                                                         |
 | --------------------------------- | --------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `VX_TIMING`                       | any non-empty         | off     | Print the stage table to stderr after a run or a `--dry` (`docs/modules/timing.md`).                                                                                                                                                                                                           |
+| `VX_TIMING`                       | any non-empty         | off     | Print the stage table to stderr after a run, a `--dry`, or each `vx watch` cycle (`docs/modules/timing.md`).                                                                                                                                                                                   |
 | `VX_TASK_TIMEOUT`                 | positive integer (ms) | none    | The default timeout for tasks without their own `exec.timeout`, one rung below `--timeout` / `RunOptions.timeout` and one above the workspace `timeout`. Empty, non-integer or non-positive is ignored; a value past the largest timer (~24.8 days) is clamped to it, never refused.           |
 | `VX_KILL_GRACE_MS`                | positive integer (ms) | 2000    | The SIGTERM → SIGKILL grace a child that ignores SIGTERM gets: on a timeout, on a signal, and at the end-of-run shutdown of persistent tasks. Out of range falls back to the default.                                                                                                          |
 | `VX_READY_NOTICE_MS`              | positive integer (ms) | 10000   | How long a persistent task may take to match `readyWhen` before vx says once what it waits for. Out of range falls back to the default.                                                                                                                                                        |

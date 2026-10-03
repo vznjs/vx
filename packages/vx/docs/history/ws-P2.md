@@ -97,6 +97,11 @@ sync`", advice for a repo leaving Nx: they say to keep what the
   `verdaccio --config … --listen localhost:4873` from the workspace root,
   a server, its storage cleared under `clear`; the npm and yarn registry
   Nx set while it ran is a TODO. Read from the executor in Nx 23.2.1.
+- **P2-19** `repeated-runs.unsafe.test.ts` compared the open descriptor
+  count exactly between run 5 and run 20, and failed CI on #2455 at
+  18 → 17: a descriptor still closing at run 5. The claim is no growth,
+  so descriptors may fall, never rise; listeners still hold exactly. A
+  per-run descriptor leak and an added listener both still fail it.
 - **P2-20** Nx 15–16's `@nrwl/workspace:run-commands` / `run-script`
   (and `@nx/workspace:`), which an older graph keeps as written, are the
   `nx:` executors they re-exported: the migration wrote each as a
@@ -117,6 +122,17 @@ sync`", advice for a repo leaving Nx: they say to keep what the
   key, and the real build became `vite --x`, uncached. The target keeps
   its name, as Nx resolves `a:vite:build` to it; the configuration is a
   todo, and an edge to it reaches its base task.
+- **P2-24** `@nx/js:node` and `@nx/vite:preview-server` built their
+  `buildTarget` before running, and the migration said so in a TODO: the
+  written `serve` ran `node dist/apps/api/main.cjs` with no edge to the
+  build, a failure on a clean checkout. A translator now hands back the
+  specs its executor ran first, and each is a `dependsOn` edge, its
+  configuration resolved as Nx resolves it; the watch-mode rebuild stays
+  a TODO, and a build target the graph lacks keeps the old one.
+- **P2-25** `@nx/cypress:cypress` started its `devServerTarget` before
+  testing; the migrated e2e task now depends on that server task, by the
+  channel P2-24 added. The URL Nx passed as `baseUrl` stays a TODO
+  unless the options set one; `skipServe` starts nothing.
 
 ## Leads for other streams
 

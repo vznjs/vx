@@ -22,6 +22,9 @@ export interface AffectedArgs {
   /** Cross-project `dependsOn` edges, project → projects its tasks name;
    *  asked only when a package was renamed or removed (item 1085). */
   taskEdges?: () => Promise<ReadonlyMap<string, readonly string[]>>
+  /** The untracked files, from a walk shared with the run; null or absent
+   *  spawns `git ls-files --others` here (I-26). */
+  untracked?: () => Promise<readonly string[] | null>
 }
 
 export function affectedProjects(args: AffectedArgs): Promise<Set<string>>
