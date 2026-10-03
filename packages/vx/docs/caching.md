@@ -695,8 +695,10 @@ or not it saves. `cache.outputs matched no files (build/**)` — an empty
 artifact was saved and a later hit restores nothing — is said on the
 save path. Both are almost always a glob
 against the wrong directory; the output line names one other cause when
-it applies, a sandboxed task with no `exec.sandbox.allow.write`, whose
-writes never reached disk. `outputs.files: []` is a deliberate cached
+it applies: a sandboxed task with no `exec.sandbox.allow.write`, whose
+writes never reached disk, or an output directory that is a symlink out
+of the project (`workspaceFiles`: out of the workspace), whose files vx
+drops as outside. `outputs.files: []` is a deliberate cached
 no-op and says nothing; a task with no `cache` block is never checked.
 
 **The outputs are what exists when the task's command exits.** The run
