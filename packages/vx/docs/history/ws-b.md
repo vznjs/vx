@@ -1454,3 +1454,16 @@ isolation: output resolve 22 µs, `secretMask` 25, the RSS floor read 7,
 an uncached key 21 (a run with no saves). Saves (1.7 ms) run on the save
 lane off the slot. No step is worth a cut: each is under 1% of a task,
 below what a min-of-N wall A/B resolves.
+
+B-93. B-92's no-scan file sat in a `mkdtemp` directory per process,
+removed by an exit hook. Two faults: `sandbox-trace-exit` emits `exit`
+mid-run, the hook removed the file, and every later probe read "ripgrep
+(…/rg) not found" from SRT's live config, failing the unsafe suite on
+CI (#2565, fixed there: the probe names a file that exists); and a
+SIGKILLed run left its directory (3 kills, 3 dirs). Now one 0700
+`vx-noscan-<uid>` directory, never removed; another owner, group or
+other bits, a link, or a file that is not an empty executable falls
+back to `true` (#2579). The local gate missed the first: without
+`VX_REQUIRE_SANDBOX` an unavailable sandbox is a skip, so a gate on a
+sandbox change sets it. Rows: `sandbox-noscan-gone.unsafe.test.ts`,
+`sandbox-noscan-dir.unsafe.test.ts`.
