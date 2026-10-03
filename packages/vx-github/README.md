@@ -41,6 +41,8 @@ summary lines the plugin posts (the site's CI guide sample is rendered from it).
 github({
   summaryFile: '/path/override.md', // default: $GITHUB_STEP_SUMMARY
   title: 'build & test', // default: 'vx run'
+  checks: true, // default: on with GITHUB_TOKEN; true warns when it is missing, false opts out
+  checkName: 'ci', // default: 'vx', the check run's name
 })
 ```
 

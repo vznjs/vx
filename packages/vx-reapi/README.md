@@ -29,9 +29,13 @@ line naming the setting. `VX_REAPI_ENDPOINT` / `VX_REAPI_INSTANCE` configure it
 from the environment, and `VX_REAPI_EXECUTE=1` turns on remote execution the
 way `execute: true` does (off by default: a plugin must not move where a
 build runs merely by being configured for caching).
+`instanceName` is the option form of `VX_REAPI_INSTANCE`, and `headers`
+adds gRPC metadata to every call: a hosted server's API key goes there
+(`headers: { 'x-buildbuddy-api-key': process.env.BB_KEY! }`).
 
 TLS is on for a `grpcs://` or `https://` endpoint, or with any PEM below;
-a bare `host:port` is plaintext. It uses the system roots unless told otherwise. A server behind a private
+a bare `host:port` is plaintext, unless `tls: true` turns it on (`tls: false`
+turns it off). It uses the system roots unless told otherwise. A server behind a private
 CA takes `tlsCertificate` (or `VX_REAPI_TLS_CERTIFICATE`), a PEM file of
 that CA; one that asks for mutual TLS takes `tlsClientCertificate` and
 `tlsClientKey` (`VX_REAPI_TLS_CLIENT_CERTIFICATE` / `VX_REAPI_TLS_CLIENT_KEY`)
