@@ -83,6 +83,15 @@ sync`", advice for a repo leaving Nx: they say to keep what the
   `{projectName}` interpolation and a script that calls nx. Rows now pin
   commands, outputs and dependsOn, not only task names. All three
   migrated correctly.
+- **P2-15** An Nx project no workspace glob lists (an integrated repo's
+  `project.json` library) got a `vx.config.ts` core never found: it
+  discovers a project only by a listed `package.json`. The migration now
+  writes a `package.json` (`name`, `private`) where there is none and
+  one note naming the directories to add to `workspaces` or
+  `pnpm-workspace.yaml`.
+- **P2-16** One Nx edge spelled two ways (`ui:gen` and
+  `{ projects: ["ui"], target: "gen" }`) was listed twice in the written
+  `dependsOn`; `mapNxDeps` now returns each edge once.
 
 ## Leads for other streams
 

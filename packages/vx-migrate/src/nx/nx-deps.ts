@@ -266,5 +266,7 @@ export function mapNxDeps(
       'dependsOn `params: "forward"` is not supported — forward args via `vx run … -- args` instead',
     )
   }
-  return deps
+  // One edge spelled twice (`ui:gen` and `{ projects: ["ui"], target: "gen" }`)
+  // is one dependency; the written config listed it twice.
+  return [...new Set(deps)]
 }
