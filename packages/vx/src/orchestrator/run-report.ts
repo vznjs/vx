@@ -1,5 +1,5 @@
 // Markdown run report (`vx run --report=markdown` / `--report-file=<path>`).
-// A moon-style table — one row per task plus a header line of totals —
+// A table — one row per task plus a header line of totals —
 // rendered after a run so CI can put it in a step summary
 // (`vx run ci --report-file="$GITHUB_STEP_SUMMARY"`). Pure: the run's
 // finished outcomes in, a markdown string out. No ANSI, no live region —

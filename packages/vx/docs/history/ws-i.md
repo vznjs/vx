@@ -356,15 +356,152 @@ and never removed it; each add scans the list for a duplicate, so the
 cost was quadratic. `addEventListener` self time: 93 ms of a 1,000-task
 cold run on main, below the top 40 frames patched. Row:
 `stop-listener.test.ts`.
-I-40. vx's own RSS peak comes from getrusage (#2256), not
-`/proc/self/status`: the same mark, never below `VmHWM`, one syscall.
-`ownRssHighWater` inclusive: 75.6 ms of a 1,000-task cold run on main,
-13.9 patched. Row: `own-rss-high-water.test.ts` (the current RSS and a
-kilobyte unit each fail it).
+I-40. Reverted (#2320). #2256 read vx's own RSS peak through getrusage
+on the claim that it is `VmHWM` raised only by a small pre-exec image.
+Under vfork the pre-exec image is the PARENT's memory: vx spawned from a
+300 MB test runner read a 300 MB floor, and a task holding 150 MB
+reported no peak (`last.test.ts`'s e2e row, red in a local gate). The
+floor reads `VmHWM` again; `own-rss-high-water.test.ts` spawns from a
+300 MB parent to hold it. The claim's own row compared the two marks in
+a process whose parent was small, so it could not see it.
 I-41. A warm config's key is synchronous (#2266): the batch identities
 were awaited through a promise per file and per config. 1,000 projects,
 warm, 14 rounds, `load configs`: main 37.3 ms median (min 30.7), patch
 32.3 (27.9), A/A 35.5 (29.5).
+
+I-42. An env name's secret verdict is decided once (#2283).
+`secretMask` runs per executed task and per hit that replays stdout,
+over the whole process env, two regex tests a variable; the verdict
+depends on the name alone, the values are still read fresh. 1,000-task
+cold run, 150 variables: `secretMask` inclusive 107.0 ms on main, 41.9
+patched.
+I-43. A scoped run enumerates git over the projects it keys (#2306).
+It loads its dependency closure for the `^` walk, and the enumeration
+covered every loaded project: a one-task `--filter` on 1,000 projects
+walked the whole tree. The graph is built first; the enumeration covers
+the projects that own a task. `run build --filter pkg-500`, 15 rounds:
+main 181.2 ms median (min 160.2), patch 113.3 (104.5), A/A 181.2
+(159.5). The `build graph` and `git enumeration` rows swapped.
+
+I-44. A scoped run's closure is a search (#2323). The first ask of a
+transitive set built every project's REACH list and the whole graph's
+bitset closures; the first eight asks now search from the seed. Warm
+`run build --filter pkg-500`, 1,000 projects, 15 rounds, `load configs`:
+main 18.4 ms median (min 16.7), patch 11.3 (9.7), A/A 18.8 (16.0).
+
+I-45. A plain repository's facts are read off the disk (#2329). Every
+run spawned `git rev-parse --show-prefix --git-common-dir
+--show-object-format`; a `.git` directory with a HEAD on the same file
+system answers all three. 10 projects warm, 15 rounds, `workspace
+config`: main 14.3 ms median (min 11.3), patch 9.6 (5.8), A/A 13.1
+(8.6).
+
+I-46. A re-saved artifact moves aside before the rename (#2346). ext4
+flushes the incoming file when a rename replaces one: 0.55 ms a save on
+the main thread, inside the IMMEDIATE transaction, against 0.04 for a
+free name. 1,000-task `--force` build, min of 7: main 4,014 ms, patch
+3,456; a cold run 3,931 against 3,833.
+
+I-47. A tar header is read in place and its numbers off the bytes
+(#2376). Each header was copied out of its chunk, zero-checked with a
+callback per byte, and had three numeric fields decoded through a
+TextDecoder and a regex. 4-entry artifact, min of 15: 50–57 µs → 22–23
+per read; compiled, `tarEntries` inclusive per restore run of 300
+40-file artifacts 224 → 92 ms; main-thread on-CPU time (schedstat, 11
+rounds) min 936.7 → 873.5 ms, A/A within 7.
+
+I-48. A planned entry is probed without reading its row (#2386). `has`
+ran `SELECT *`, building each row's stored stdout to learn it exists;
+it now selects one column off the index (the table row is still read,
+so a corrupt table refuses). `--dry` `plan` stage, 200 tasks storing
+1 MB each: 239.4 ms min → 27.3; 1,000 empty-stdout tasks 89.2 → 85.1.
+
+I-49. A bare `--affected` base asks git once (#2288). The ref `revParse`
+resolved is kept per workspace; `verifyRef` and a `HEAD~1`-style merge
+base answer from it. 1,000 projects, warm `--affected`, 15 rounds:
+main 290.7 ms median (min 261.7), patch 277.2 (248.9), A/A 289.5
+(250.9); 11 git spawns → 9.
+
+I-50. The run takes the selection's package graph (#2311). A filtered
+run built the graph in the CLI's selection and again in the run; the
+run now reuses it. One package-graph build (~8 ms at 1,000 projects)
+less per filtered run.
+
+I-51. An entry's stdout lives apart from its `accessed_at` (#2392).
+SQLite rewrites a whole record on UPDATE, so the run-end bump rewrote
+each hit's stored stdout (up to 16 MB). `entry_stdout` holds it;
+`SCHEMA_VERSION` v29. 200 hits storing 1 MB: `close` 136–163 ms → 5–9,
+whole warm run min 548.7 → 399.0; 1,000 empty-stdout tasks a tie.
+
+I-52. The index prepares its statements on first use (#2418). A warm
+run executes few of the ~20 statements every open prepared. 10
+projects, compiled, `open cache` min 1.7 → 1.3 ms over 31 rounds,
+median 1.9 → 1.6; whole run within noise.
+
+I-53. The index reads hash batches through `json_each` (#2428). A list
+of `?` is a new statement per length, compiled each run; one JSON array
+keeps one, and a single hash keeps `= ?`. 1,000 projects, warm, 31
+rounds: `probe` min 12.2 → 10.6 ms (A/A 12.1), `close` 7.1 → 6.6.
+
+I-54. A run's history goes 40 rows to an INSERT (#2445), each distinct
+forward-args list digested once. 1,000 projects, warm, 31 rounds:
+`record history` min 13.4 → 11.2 ms, median 18.7 → 15.2 (A/A 13.8 /
+18.9).
+
+I-55. Overlapping config loads check most watched built-ins once per
+round (#2466). After each load, only those the loader reads through
+between loads (`Object.prototype`, `JSON`, the `Promise`, `Map` and
+`Set` prototypes, `Bun.hash`); the rest at the round's end, which
+refuses first and stores nothing. 1,000 projects, cold, 13 rounds:
+`load configs` min 275.7 → 207.5 ms, median 306.6 → 228.8 (A/A 296.8 /
+323.2).
+
+I-56. `node:readline/promises` is imported only when the picker asks
+(#2506): every `vx run` loaded it for the one interactive use, ~0.7 ms
+past the stdout stream. 10 projects, warm no-op, compiled, 41 rounds:
+wall min 44.8 → 43.9 ms, median 50.0 → 48.4 (A/A 44.9 / 49.6).
+
+I-57. The workspace config's guard reads only the `Bun` members vx reads
+(#2538). D-126's full read of `Bun` ran on every warm run and built its
+lazy members (`postgres` loads `bun:sql`, 3.4 ms); it now keeps the rest's
+keys and order. 10 projects, warm no-op, compiled, 31 rounds: wall min
+44.2 → 40.4 ms, median 49.5 → 46.1 (A/A 44.7 / 49.7); `workspace config`
+10.4–11.7 → 5.2–5.7 ms.
+
+I-58. Overlapping config loads check the env once, at the round's end
+(#2564), as most built-ins are: reading all 149 variables after every
+load was 15–25 µs a config. 1,000 projects, cold, 13 rounds: `load
+configs` min 204.6 → 194.0 ms, median 234.5 → 210.4 (A/A 208.7 /
+234.7).
+
+I-59. A project config that spells no CommonJS name and holds no
+backslash is served without Bun's ESM parse (#2573); a syntax error
+reaching the served path has its `?vx-held=` query stripped. 1,000
+projects, cold, 30 rounds: `load configs` min 200.3 → 181.8 ms, median
+222.0 → 201.6 (A/A 196.3 / 219.3).
+
+I-60. The config-cache lexer copies plain code in runs (#2589), 9 → 2
+ms per 1,000 configs; output identical over 3,378 inputs. 1,000
+projects, cold, 30 rounds: `load configs` min 174.1 → 161.0 ms, median
+190.3 → 177.6 (A/A 165.7 / 189.6).
+
+I-61. `--dry` reads only p50s from the history (#2618):
+`LocalHistoryProvider.p50sFor`, the window's executed successes'
+durations, 38 → 4 ms at 27,000 rows; `loadFor`'s rates and per-hit entry
+join stay for the scheduler and `vx mcp`. 1,000 projects, warm, 25
+rounds: `plan` median 100.8 → 64.3 ms, the dry run 188.7 → 151.6 (A/A
+102.1 / 191.8).
+
+I-62. `--affected` asks `git merge-base` before verifying its ref
+(#2686): a merge base proves the ref resolves, so the synchronous
+`rev-parse --verify` runs only when there is none. 100 projects,
+`--affected=HEAD~1 --dry`, 40 rounds: startup median 36.9 → 35.8 ms,
+min 34.0 → 30.6 (A/A 37.4 / 33.6).
+
+I-63. `vx info` runs its sandbox probe under the loads (#2693), started
+once the root and the workspace config are found so both refusals stay
+as fast; the two git facts are asked while it runs. 100 projects, 40
+rounds: median 113.8 → 107.3 ms, min 96.1 → 87.6 (A/A 116.0 / 95.2).
 
 ## Leads for other streams
 
@@ -384,6 +521,24 @@ warm, 14 rounds, `load configs`: main 37.3 ms median (min 30.7), patch
   (`guardWrite`, ~80 ms of the same run). Batching the lines would
   widen the window in which a reused pgid could be killed, which
   kill-tree.ts says never happens; not taken.
+- **Owner: the close's WAL checkpoint is ~3 ms of every run.** A warm
+  run writes ~25 frames; the last close checkpoints them: fsync of the
+  WAL (1.0 ms) and the database (1.0), the WAL truncated (0.5), and the
+  next run's first write syncs a fresh header (0.7) and the directory
+  (0.2). `db.close` alone 2.2–3.4 ms on 100 projects. Only
+  `synchronous = OFF` (a power cut may corrupt the index) or
+  `SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE` (bun:sqlite has no `db_config`)
+  removes it.
+- **Owner: the `accessed_at` bump is ~2 ms of a 1,000-hit close.** The
+  UPDATE is 1.3 ms and its pages ~0.6 ms more of the checkpoint.
+  Writing only rows older than a window (`AND accessed_at < ?`) would
+  cut it on reruns, but LRU order and the "last used" time shown would
+  hold only to that window.
+- **Any: a warm run's first `process.stdout` touch loads `node:stream`.**
+  Writing through `Bun.stdout` instead saved 1.1 ms of main-thread CPU
+  and 2.4 ms wall on a 10-project warm run. It needs TTY detection
+  without `node:tty` (3.6–8 ms to load) and new flush and EPIPE
+  handling across ~120 write sites.
 - **Owner / coordinator: skip macOS where it cannot differ from
   Linux (I-14).** 135 of 436 commits since 2026-09-27 touch nothing the
   macOS job can see differently: not core's `src/`, `tests/`,
@@ -494,3 +649,174 @@ status` re-hashes every tracked file, and vx runs it with
   39–52 ms once any plain `git status` refreshed it. A fix takes the index
   lock (a refresh when the walk was slow, or `update-index --refresh`),
   which is the contention item 880 removed: the owner's call.
+- **Owner: `--force` re-evaluates every config.** The config-eval cache
+  honours the local read axis (`config-evals.ts`, pinned by
+  `config-cache.test.ts`), so `--force` and `--cache=local:w` load
+  1,000 configs in 340–390 ms against 28 warm. Serving evaluations
+  under `--force` is a meaning change for the escape hatch, not a perf
+  fix: the owner's call.
+- **Owner / E: a warm hit reads and masks its stored stdout whether or
+  not the view prints it.** 200 hits storing 1 MB each: the probe's
+  `getMany` read 296 ms of the main thread and the secret mask 57, for
+  2 KB printed. Reading stdout only for a hit the logger will show needs
+  the logger to say so before the probe (a contract change), or stdout
+  read at replay instead of with the entry.
+
+- **Owner: the first touch of `process.stdout` / `process.stderr`.** A
+  compiled binary that only reads `process.stdout` takes 18 ms against 7
+  for one that does not: Bun builds the Node stream machinery on first
+  use. Inside a warm run the touch (`listenForReadersGone`) is 3.7 ms, ~9%
+  of a 10-project no-op. Writing through `Bun.stdout` instead touches 125
+  sites in 32 files and the drain rules `bin.ts` holds (the 2026-09-15
+  and 2026-09-20 truncations); not taken as a perf PR.
+
+## Probes refuted (2026-10-02)
+
+- Group commit, sized: the save's statements on the real schema, 1,000
+  saves, cost 182–191 ms one per transaction, 108–114 in fours, 86–111
+  in eights. ≤ 75 µs a save, ~2.5 % of the cold main thread; not taken.
+- The per-config built-in check is at its floor: positional
+  `getOwnPropertyDescriptor` 62 µs for the ten objects, one
+  `getOwnPropertyDescriptors` each 82–92; the env check's
+  `Object.keys` walk 14–16 µs, a spread 51–69.
+- A restore reads its rows twice (`restoreOutputsOnce`,
+  `recordOutputStamps`), ~23 µs a SELECT in the run against 2–5 alone.
+  Reusing the first: restore wall min 932 → 872 one order, 1,009 → 974
+  the other, 878 → 961 over 31 rounds; an A/A spread 150 ms. Main-thread
+  CPU ±50 ms either way. Below this box's resolution; not taken.
+- A lazy `node:readline/promises` (re-run of item 755): `startup` stage
+  median 7.8 → 5.0 ms, wall 60.8 vs 62.4 and 60.2 vs 61.4 min of 61 in
+  both orders. Still refuted: the load moves, it does not go.
+- The restore's second row read again, on 40-file artifacts, measured
+  as main-thread on-CPU time (`/proc/self/task/<pid>/schedstat` at
+  exit, a preload; A/A within 7 ms at min): 300 restores, 11 rounds,
+  min 926.5 → 889.6 ms, median 979.3 → 981.7. Still not taken.
+- The RSS floor read only when a peak passes the last `VmHWM` reading:
+  1,000-task cold run, same measure, 7 rounds, min 2,424 → 2,399 one
+  order and 2,404 → 2,467 the other; A/A 15 ms. Not taken.
+
+## Probes refuted (2026-10-03)
+
+- Git enumeration is at its floor: `ls-files` 5.4 ms, `status` 7.9,
+  `var -l` 4.2 alone on this repo (min of 9), and a 10-project warm run
+  waits 0.9 ms on them, the rest overlapping config loading;
+  `--ignored=matching` costs ~0.3.
+- Batching the cache open's pragmas: no gain; its ~165 µs is the first
+  database access, whichever statement makes it.
+- Stable keys at 1,000 projects: ~31 µs a task, spread over input
+  resolution (14), the fold (7) and the rest (7); no step stands out.
+- The probe's artifact checks as one `readdir` of the cache directory:
+  0.41 ms against 1.56 for 1,000 `existsSync`, but a shared directory
+  of 50,000 artifacts reverses it; not taken.
+- Cold config load at 100 configs is the imports; the per-config
+  built-in check is 25 µs (327 descriptors), the double decode below
+  resolution.
+- `discover projects` at 1,000 projects is I/O: the 1,000 readdirs and
+  manifest reads alone take ~9 ms async (15 sync); 16 ms in the stage.
+- `package graph` at 1,000 projects: the per-project loop 3–7 ms, cold
+  JIT in the function's own body; a closure hoisted out of it tied (4.61
+  ms both). Persisting the graph across runs would cut it, at the risk
+  of a stale order; not taken.
+- The cold index's blob-size `cat-file` started as soon as git answers
+  (under the config load): `git enumeration` min 51.8 → 52.1 ms over 13
+  cold rounds at 1,000 projects. Git's own trace shows `ls-files` and
+  `status` done ~30 ms after the spawn, yet the run reads them only once
+  the config load has finished; yielding to the event loop every 16 or 4
+  configs slowed the load by 30–100 ms and did not bring git's answer
+  earlier. What holds it is not found; not taken.
+- `containedIn`'s two `realpath`s a miss (root and output directory)
+  against one `lstat` per component below the root: 9–11 ms against 3–4
+  per 1,000 calls, ~13 ms of a 2.5 s cold run at 1,000 projects. Below
+  what this box resolves on the run; not taken.
+- CLI startup, compiled: `vx --version` min 9.96 ms against 7.04 for an
+  empty compiled binary; the warm no-op `run` (10 projects) 44.8 ms, of
+  which the `run` path's import is 3.1–3.5 ms (~240 bundled modules,
+  module bodies uncounted by the profiler) and the rest the pipeline and
+  the runtime's own exit. The verbs are already imported on use;
+  `git var -l` (the filter gate's config) stays a spawn, since reading
+  git's merged config ourselves would have to match its includes.
+- A warm hit's output check lists nothing: one `lstat` per recorded
+  output directory and one `stat` per output file, ~10 µs a hit; the
+  1,000-hit run graph is ~12 ms of main-thread CPU in all.
+- Lazy loading on the `run` path, compiled probe: `util` 1.6 ms (mostly
+  `node:fs`, `node:os`, `node:path` first loads a run needs anyway),
+  `exec` 0.7, `cache` 0.45, `workspace` 1.15, `orchestrator` 0.6,
+  `cli/select` 1.15. Of the miss-only modules none costs over 0.12 ms;
+  the module barrels load them all, so splitting them would save ~0.5 ms
+  at most. `node:readline/promises` was the one worth moving (#2506).
+- The bench copies themselves had the stale index of the lead above:
+  `git enumeration` read ~55 ms at 1,000 projects, and status took 26 ms
+  once each copy was refreshed. Refresh every arm before measuring git.
+- Serving config bytes through `onLoad` no longer beats Bun's own read:
+  never serving measured min 180.6 against 184.8 ms, median 205.7 against
+  205.3 (`load configs`, 1,000 projects, 15 rounds; 2026-09-24 had 256 →
+  181). It stays for the bytes guarantee, not for speed.
+- `LOAD_WIDTH` 32, 128 and 1,024: `load configs` median 210.2, 206.8,
+  202.1 ms over 15 rounds; noise.
+- The output-dir snapshot flush at close as one DELETE and blocked
+  INSERTs: 7–9 ms against 9–11 per 1,000 entries. The commit's page
+  writes dominate; not taken.
+- Per-task costs below a measurable run gain: `ownRssHighWater`'s
+  `/proc/self/status` read is 8 µs, `secretMask` over `process.env` and
+  the task env 17 µs. `Bun.spawn` holds the main thread ~0.5 ms a spawn
+  (vfork, then ~62 `rt_sigaction` and the `execve` in the child), env
+  size aside; that is the runtime's.
+- Inside a warm 1,000-project run `git ls-files` (615 KB) waits on its
+  pipe, 65–80 ms against 8 standalone. Written to a temp file it took
+  12–19 ms, but `git enumeration` stayed 21.6 against 22.3 ms (A/A 22.1,
+  25 rounds): the stage waits on `git status`, 35–45 ms in a run.
+- `knownBlobSizes` as one `json_each` query instead of 900-wide chunks:
+  2.8 against 3.7 ms for 2,005 sizes; not taken.
+- The dry-run history query's join as two-level grouping (pair and hit
+  hash, then one entry lookup per hash): 34 against 36 ms; as a
+  materialized hit-entry subquery: 54. Same rows both; not taken. The
+  plan's per-task `has()` is 6 µs.
+- `vx --help` loads the plugin layer to list plugin verbs: 20 ms outside
+  a workspace, 11 for `--version`. A rare verb; not taken.
+- A warm no-op spawns git three times, once per question (`ls-files`,
+  `status`, `var -l`); nothing repeats within a run. At 1,000 projects
+  `git status` is 45 ms in the run and 26 standalone; 17 of the 26 are
+  its untracked walk, the input set itself. At 10 projects all three are
+  5–7 ms and overlap the config load: the stage reads 0.5 ms.
+- `vx --version` is 10.0 ms against 6.9 for a compiled binary that
+  imports `version.ts` and writes it. Moving the `beforeExit` guard past
+  `--version` measured 9.5 against 10.0 (A/A 9.8, 40 rounds); not taken.
+  A `--format=cjs` build: 10.2–10.5 either way, the warm no-op unchanged.
+  The rest follows the bundle's reach: the same probe with the CLI
+  imported but unused is 5.9 ms, used 9.0. One compiled bundle sets up
+  every module the CLI reaches, so per-verb lazy imports cut nothing.
+- This repo's warm all-hits `ci --all` (`GIT_CONFIG_GLOBAL=/dev/null`; the
+  container's `core.checkStat=minimal` distrusts every index OID and
+  hashes from disk, 197 ms of keys): ~285 ms. Ranked: keys 74 ms for 58
+  tasks, spread over resolution, hashing and the fold; `check.bun` 74 ms,
+  uncached by design and on every path, ~25 ms of it Bun's own start (the
+  util barrel's imports are 2 of them); the workspace config 14 ms. The 55
+  hits restore in ~1 ms each.
+- The sandbox SDK waits for its socat bridges with a 0/100/200/300 ms
+  backoff, and an isolated probe slept the 100 ms every time (probe and
+  init 158 against 59 ms polled every 5 ms, 12 runs each). In a real run
+  the bridge is up at the first or second check, so the sleep never
+  falls: a `bun patch` measured 341.6 against 348.7 ms cold on a
+  sandboxed 10-project copy (A/A 358.8) and 324 against 336 on the gate
+  (A/A 343); not taken.
+- Cold config load on this repo (11 TS configs, fresh `--cache-dir`):
+  22–36 ms, no part above 4 ms of a profile.
+- `vx --help`, timed inside the compiled binary (ms from start): past the
+  `--version` branch at 4.8, Node streams touched by 9.0
+  (`listenForReadersGone`, every verb but `--version`), CLI imported by
+  10.1, plugin layer imported by 12.6, plugin verbs listed by 13.1 outside
+  a workspace (5–8 ms more inside one: it loads the workspace's plugins).
+  Each verb already imports on use; the one cost left is the stream
+  touch, the owner lead above.
+- Idle `vx watch`: 0.2% of a core at 10 and at 1,000 projects (2 ticks in
+  10 s, 4 in 20 s), 12 descriptors and 88 MB at 1,000; one watcher for the
+  tree, and the idle syscalls are the runtime's thread futexes and one
+  `pread64` a second. Nothing to cut.
+- 100 projects, compiled: cold `run build --all` is the tasks (`run
+graph` ~260 ms), then `load configs` 33, close 12–15 (the checkpoint
+  lead); a restore-all run is the 100 restores (~56 ms, 0.56 a task on
+  the wall); a no-op ~65 ms with no stage above 16. The restore reads
+  its `output_files` rows twice (restore, then stamps), ~20 µs each.
+- `vx show <task>` ~30 ms at 100 projects: it already loads only the
+  named project; startup, the stream touch, the workspace config and
+  discovery are the rest.

@@ -9,12 +9,19 @@ can never drift on the stability gate.
 
 ## Public surface
 
-- `deriveStableKeys(args)` — topo walk deriving every task's key the
+- `deriveStableKeys(args: DeriveStableKeysArgs): StableKey[]` — `StableKey`
+  is `{ hash, node }`; topo walk deriving every task's key the
   same way execute-task does; returns stable+cacheable non-group tasks
   with their keys. A persistent task is keyed as on the live path (the
   two paths must agree, item 727: a key only one path had gave its
   dependents a second key a `--force` run never saved under;
-  `keyed-projects.test.ts` R4 compares them).
+  `keyed-projects.test.ts` R4 compares them). Given `uncachedKeys`, it
+  also fills in each uncached task's key when nothing upstream may
+  write into its project or anywhere (no transitive producer or
+  unfolded rewriter there, no workspace writer, no unstable dependency):
+  an uncached key reads its whole project, so `dependsOnSiblingOutputs`,
+  which answers false for it, is not that gate
+  (`uncached-key-once.test.ts`).
 - `dependsOnSiblingOutputs(node, upstreamOutputProjects, hasWsOutputUpstream, dirByProject?, sameProject?)`
   — the conservative gate, fed the TRANSITIVE-upstream output producers
   `deriveStableKeys` accumulates in topo order. The key is preliminary

@@ -17,61 +17,37 @@ import {
   type TaskExecutor,
   type VxPlugin,
   UserError,
+  refuseUnknownOptions,
+  type PluginOptionKinds,
 } from '@vzn/vx'
 import { ReapiRemoteCache } from './cache.js'
 import { reapiExecutor } from './executor.js'
 import { ReapiClient, type ReapiOptions } from './wire.js'
 
+// `ReapiRemoteCache` is public for a workspace that composes cache
+// layers by hand; the wire, the Merkle encoders and the executor are
+// internal (1.0 freezes what this file exports).
 export { ReapiRemoteCache } from './cache.js'
-export {
-  acceptsTask,
-  globToOutputPath,
-  outputPathSets,
-  reapiExecutor,
-  type OutputPathSets,
-  type ReapiExecutorOptions,
-} from './executor.js'
-export {
-  buildInputTree,
-  canDigest,
-  COMPRESSOR,
-  decodeDirectory,
-  decodeTree,
-  DIGEST_FUNCTION,
-  digestWith,
-  encodeAction,
-  encodeCommand,
-  encodeDigest,
-  encodeDirectory,
-  encodeNodeProperties,
-  OUTPUT_DIRECTORY_FORMAT,
-  sha256,
-  type Blob,
-  type DigestFunctionName,
-  type InputTree,
-  type NodeProperties,
-} from './merkle.js'
-export {
-  assertBunSupportsChunking,
-  CHUNK_BYTES,
-  MIN_BUN,
-  ReapiClient,
-  SAFE_CHUNK_BYTES,
-  type ExecuteOptions,
-  type ExecuteResponse,
-  type Operation,
-  type ServerCapabilities,
-  type ActionResult,
-  type Digest,
-  type ReapiOptions,
-} from './wire.js'
+export { type ReapiOptions } from './wire.js'
 
-export interface ReapiPluginOptions extends Partial<ReapiOptions> {
+// The connection's wire form, not the plugin's: the plugin reads PEM FILES
+// (`tlsCertificate`, …, checked as a pair) and warns through its own
+// context, so `reapi({ onWarn })` was dropped without a word and
+// `reapi({ tlsClientCertPem })` skipped the pair check. `ReapiRemoteCache`,
+// composed by hand, takes them.
+export interface ReapiPluginOptions extends Partial<
+  Omit<ReapiOptions, 'tlsCaPem' | 'tlsClientCertPem' | 'tlsClientKeyPem' | 'onWarn'>
+> {
   /**
    * Client-side bound on one action, from the EXECUTING transition. See
    * `ReapiExecutorOptions.executeTimeoutMs`; `exec.timeout` wins per task.
    */
   executeTimeoutMs?: number
+  /**
+   * Bound on the time an action waits QUEUED before a worker starts it. See
+   * `ReapiExecutorOptions.queueTimeoutMs`; past it the task runs here.
+   */
+  queueTimeoutMs?: number
   /**
    * Endpoint, or omit to read `VX_REAPI_ENDPOINT`. With neither the plugin
    * DECLINES — a declared-but-unconfigured plugin costs nothing and must
@@ -199,7 +175,30 @@ function assertEndpoint(endpoint: string, from: string): void {
   }
 }
 
+/** Each option `ReapiPluginOptions` names, with its kind: derived from the type, so the two cannot drift. */
+const REAPI_PLUGIN_KEYS: PluginOptionKinds<ReapiPluginOptions> = {
+  executeTimeoutMs: 'number',
+  queueTimeoutMs: 'number',
+  endpoint: 'string',
+  execute: 'boolean',
+  platform: 'object',
+  capacity: 'number',
+  tlsCertificate: 'string',
+  tlsClientCertificate: 'string',
+  tlsClientKey: 'string',
+  instanceName: 'string',
+  headers: 'object',
+  tls: 'boolean',
+  toolName: 'string',
+  toolVersion: 'string',
+  correlatedInvocationsId: 'string',
+  callTimeoutMs: 'number',
+  metaTimeoutMs: 'number',
+  chunkBytes: 'number',
+}
+
 export function reapi(options: ReapiPluginOptions = {}): VxPlugin {
+  refuseUnknownOptions('reapi()', options, REAPI_PLUGIN_KEYS)
   let executorClient: ReapiClient | undefined
   let remoteCache: ReapiRemoteCache | undefined
   return definePlugin(import.meta, {
@@ -243,6 +242,7 @@ export function reapi(options: ReapiPluginOptions = {}): VxPlugin {
         ...(options.executeTimeoutMs === undefined
           ? {}
           : { executeTimeoutMs: options.executeTimeoutMs }),
+        ...(options.queueTimeoutMs === undefined ? {} : { queueTimeoutMs: options.queueTimeoutMs }),
         warn: (m) => ctx.warn(m),
       })
     },

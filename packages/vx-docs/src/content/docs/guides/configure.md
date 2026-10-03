@@ -113,7 +113,8 @@ both. A task that adds files beside an upstream task's outputs wipes
 nothing before a run and only the files it recorded before a restore. A failed task is never saved. `--force` runs
 and refreshes the cache; `--no-cache` ignores it.
 
-A fully cached 3,270-task run: vx 510ms, Turborepo 760ms, Nx 3.59s
+A fully cached 3,270-task run: vx 476ms, Turborepo 760ms (vx 37% faster),
+Nx 3.59s (vx 86% faster)
 ([benchmarks](../../benchmarks/); the key, part by part:
 [Caching in depth](../../caching/)).
 
@@ -127,7 +128,7 @@ vx why app#build
 app#build — run 019f5a02-…
   this run   2026-07-13T05:39:20.590Z · success · executed · key f7ee661520…
   previous   2026-07-13T05:37:29.550Z · success · key 8b2e9bb2e8…
-  verdict    cache key changed between the previous run and this one (inputs differ)
+  verdict    cache key changed: file packages/app/src/index.ts
 
   what changed (1 component, 41 unchanged):
     changed file  packages/app/src/index.ts  a1b2c3… → d4e5f6…
@@ -138,7 +139,8 @@ app#build — run 019f5a02-…
 
 | The verdict line says | It means |
 | --- | --- |
-| `cache key changed between the previous run and this one (inputs differ)` | the lines below name what changed |
+| `cache key changed: env MODE, file packages/app/src/index.ts` | those inputs moved (three named, then a count); the lines below show each |
+| `cache key changed between the previous run and this one (inputs differ)` | the key moved and neither entry kept its components (pruned, or a failed run saved none) |
 | `cache key unchanged — this run was served from cache, nothing re-ran` | a hit |
 | `cache key unchanged — the previous run on this key failed and saved nothing, so there was nothing to hit` | a failure saves no entry |
 | `cache key unchanged — re-executed because this run did not read the cache (--force, or a --cache without read)` | the run's policy read no cache |
@@ -153,11 +155,11 @@ A hit after you changed something means that something is not declared.
 
 ## Environment variables
 
-A task sees only the variables you pass it:
+Past a small essential allowlist (below), a task sees only the variables you pass it:
 
 | List                   | The command sees it | The key sees it | Use it for                                          |
 | ---------------------- | ------------------- | --------------- | --------------------------------------------------- |
-| `exec.env.passThrough` | yes                 | no              | secrets and CI flags (`CI`, `GH_TOKEN`); stays on this machine |
+| `exec.env.passThrough` | yes                 | no              | secrets and CI flags (`GITHUB_ACTIONS`, `GH_TOKEN`); stays on this machine |
 | `cache.inputs.env`     | no                  | yes             | with `passThrough`: a variable that changes the output |
 | `exec.env.define`      | yes                 | yes             | a literal value; a remote task gets it too          |
 
@@ -206,6 +208,9 @@ block. A sandboxed server on Linux lists its port in
 `vx.workspace.ts`, beside the root `package.json`, is optional. Without
 it, vx runs and caches on this machine.
 
+Only `@vzn/vx` is on npm today; the plugins' first publish is pending,
+so installing one of the packages below fails until then.
+
 ```ts
 // vx.workspace.ts
 import { defineWorkspace } from '@vzn/vx/config'
@@ -251,8 +256,8 @@ export default defineWorkspace({
 
 | Plugin   | A package's key folds                                                                 | Install-wide, for every package |
 | -------- | ------------------------------------------------------------------------------------- | ------------------------------- |
-| `pnpm()` | every package it reaches, by name, version and resolved peers, with integrity and any patch | every top-level field but `importers`, `packages`, `snapshots`, `patchedDependencies` and `catalogs` (`settings`, `overrides`, `onlyBuiltDependencies`, …) |
-| `bun()`  | the same, through Bun's hoisted layout                                                | every top-level field but `workspaces` and `packages` (`overrides`, `patchedDependencies`, catalogs, `trustedDependencies`, …) |
+| `pnpm()` | every package it reaches, by name, version and resolved peers, with integrity and any patch | every top-level field but `importers`, `packages`, `snapshots`, `patchedDependencies`, `catalogs` and `overrides` (`settings`, `onlyBuiltDependencies`, …) |
+| `bun()`  | the same, through Bun's hoisted layout                                                | every top-level field but `workspaces`, `packages`, `catalog`, `catalogs`, `overrides` and `patchedDependencies` (`trustedDependencies`, …) |
 | `npm()`  | the same, from `package-lock.json` versions 2 and 3                                   | the root package's `overrides` |
 | `yarn()` | the same, from a berry lockfile, each entry with every field but its dependency lists; a yarn 1 lockfile records no workspaces, so every package folds the whole file | `__metadata`, and the root workspace's entry (its `dependenciesMeta`) through the root's closure |
 

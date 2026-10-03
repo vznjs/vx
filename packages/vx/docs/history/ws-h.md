@@ -535,6 +535,318 @@ refused at graph build naming the task (`Task a#build: Invalid dependency
 spec …`), held by `dependency-spec.test.ts`, `task-graph.test.ts` and
 `config-schema-refusals.test.ts`; and `vx stats` was removed in H-19.
 
+## H-45: the variables the plugins read are a record
+
+CI, not a config, sets `VX_REAPI_ENDPOINT`, `OTEL_EXPORTER_OTLP_ENDPOINT`,
+`GITHUB_TOKEN` or `TURBO_TOKEN`, and only core's `VX_*` reads were
+recorded. `tests/contract/plugin-env.txt` holds each plugin package's
+reads, found in its source (a write or a comment is not one).
+Differential: dropping `VX_REAPI_ENDPOINT` from the record failed it
+(#2410).
+
+## H-46: exit codes that need a state or a signal
+
+`exit-codes.json` held only what one fixture reaches as is.
+`exit-codes-states.json` adds a missing or drifted lock, `--frozen`
+without one, `show` of an unknown target, `why`/`last` with and without
+a run, `completions` of an unknown shell, and 130/143/129 on
+SIGINT/SIGTERM/SIGHUP; cli.md states `why`'s, `last`'s and
+`completions`' codes (#2432, from #2412).
+
+## H-47: the `--profile` trace is a record
+
+Perfetto and scripts read it, and renaming `args.exitCode` passed every
+contract test. `profile-wire.json` holds its key paths and types, and
+cli.md's sample is held to them (#2413).
+
+## H-48: what is not the contract
+
+`--report`'s markdown and the files `vx init` writes are for people;
+versioning-1.0.md now says so (#2432, from #2415).
+
+## H-49: `vx init`'s exit codes
+
+Documented in cli.md and recorded in `exit-codes-init.json`: no
+`package.json`, an unknown flag, `--dry`, a write, a refusal over
+existing files, `--force` (#2420).
+
+## H-50: plugin env reads through a helper
+
+H-45's reader saw only reads that name the variable. A name handed to a
+helper (`off('OTEL_TRACES_EXPORTER')`, `read('concurrency',
+'TURBO_CONCURRENCY')`) or built from a template
+(`OTEL_EXPORTER_OTLP_${SIGNAL}_PROTOCOL`) passed a rename. The reader
+takes both; a template is recorded with `*` per placeholder, which pins
+its shape. Differential: the old reader fails the new record (#2435).
+
+## H-51: plugin entries export only their documented API
+
+1.0 freezes every export (versioning-1.0.md), and the plugin entries
+re-exported ~60 helpers only their own tests used: vx-github's Checks
+API calls, vx-otel's OTLP builders, vx-lockfile's parser namespaces,
+vx-migrate's mappers, cache clients and CLI, vx-reapi's wire and Merkle
+encoders. Each entry now exports its plugins, their options types and
+what a documented option or class needs (vx-github's `FetchFn`,
+vx-reapi's `ReapiRemoteCache` with `ReapiOptions`); tests import the
+module. vx-schedule-history kept its helpers: its README documents them
+for policies. Breaking, declared per package (#2503, #2508, #2512,
+#2520, #2521).
+
+## H-52: every plugin export named in its README
+
+`plugin-exports-documented.unsafe.test.ts` requires each name in a
+plugin-api record in that package's README. It found vx-migrate's and
+vx-schedule-history's options types unnamed, and vx-otel's `post` option
+undocumented with its `PostFn` and `OtlpTls` types unexported, so a config
+could not name them; both are exported now. Differential: dropping the
+vx-migrate names lists exactly those four types (#2527).
+
+## H-53: every plugin env read named in its README
+
+`plugin-env.txt` records each variable a plugin reads; nothing held that
+its README names it, and vx-migrate honoured eleven no doc mentioned
+(`TURBO_CONCURRENCY`, `NX_PARALLEL`, `GITHUB_BASE_REF`, …), vx-otel the
+per-signal protocol. Each is named now, and
+`plugin-env-documented.unsafe.test.ts` requires every recorded read, a
+`<SIGNAL>` family or a named member covering a template. Differential:
+the old READMEs list exactly those twelve (#2531).
+
+## H-54: reapi() refuses the wire-form options it ignored
+
+`ReapiPluginOptions` extended all of `ReapiOptions`, so `reapi()`
+accepted `onWarn`, replaced by the plugin's own warn without a word, and
+the PEM-text TLS fields, which skipped the cert-and-key pair check the
+file options get. They are refused as unknown now; `ReapiRemoteCache`
+still takes them. `wire-only-options.test.ts`: four rows fail without
+the fix (#2535). It merged at its first commit, whose named key alias
+joined the API record and reddened H-52's law on main; #2537 named it
+in the README, #2541 inlined it (a `!`: v0.0.421 had shipped the
+record).
+
+## H-55: every plugin option named in its README
+
+`refuseUnknownOptions` accepts every field of a plugin's options type,
+and 1.0 freezes them; H-54's two defects hid in unnamed ones.
+`plugin-options-documented.unsafe.test.ts` reads each `…Options` type in
+the plugin-api records and requires every field in a code span or sample
+of the package's README. It found vx-github's three test seams unnamed;
+the README names them as such. Differential: the old README lists exactly
+those three (#2542).
+
+## H-56: the umask read on one thread, never during a load
+
+Bun's `process.umask()` reads the mask by setting 0 and putting it back:
+four workers reading at once left the process at 0 in every run. Config
+loading read it on the main thread around each first load while the
+config worker read it around each repeat load, so a mixed round could
+blame an innocent config (`show-info.test`, red under gate load) or leave
+vx writing world-writable files. The worker reads it only when blaming,
+the one evaluation in flight, and restores before it answers; the main
+thread reads it around a lone load or before and after a round, and after
+each blame. `config-umask-concurrent.test.ts` counts the reads (2 main, 0
+worker; 5 and 6 before) and holds a blame that outlives its budget. The
+first push restored after the blame's reply, which the loader cuts short;
+CI caught it, 1 run in 30 (#2556).
+
+## H-57: each verb's cli.md section held to its flags and exit codes
+
+The verbs, flags and exit codes were recorded and held to the parsers,
+but no verb past `run` was held to its own cli.md section: `vx info
+--cache-dir` was in none, and info, completions and upgrade stated no
+exit codes. `cli-verb-sections.test.ts`: every flag a verb accepts is
+named in its section's code (watch names the run flags it refuses), its
+synopsis names no flag it refuses, it states its exit codes, and every
+code the exit-code records hold for it is one it names. Differential:
+the old cli.md fails three rows on exactly those gaps (#2570).
+
+## H-58: schema.md and every refusal held to the config schema
+
+The record holds each level the validator accepts; schema.md reprinted
+ten as interfaces, and the project root and `sandbox.ignore` were in no
+reprint. `config-levels-doc.test.ts` requires every record level as an
+interface block or inline object type with exactly its fields, and
+every reprinted interface to be a level; the page reprints
+`ProjectConfig` and `SandboxIgnore`. `config-refusals-pinned.test.ts`
+requires each `throw new UserError` in config-schema.ts word for word in
+a test, a contract record or the error table: 90 of 95 were, and the
+five plugin-shape refusals are pinned whole (#2586).
+
+## H-59: telemetry.md's records held to the source
+
+The telemetry records are a 1.0 contract, and the page a sink author
+reads named no field. telemetry.md § Records reprints
+`RunContextRecord`, `TaskTelemetry` and `RunSummaryRecord` and tabulates
+each streaming kind's fields; `telemetry-doc.test.ts` holds every field,
+its optionality and each kind's row to telemetry.ts both ways (#2592).
+
+## H-60: discovery's refusals held word for word
+
+H-58's refusal law read config-schema.ts alone. It reads the loader and
+discovery too now (project-loader.ts, workspace.ts), and counts a pin
+written across concatenated literals or as a regex. Five refusals of a
+plugin-named project (`namedProject`: a shape that is not
+`{ dir, name }`, a directory outside the root, another project's
+directory or name, a name its package.json does not give) were in no
+test; `discovery-refusals.test.ts` pins each whole (#2599).
+
+## H-61: a VX_* read the env reader cannot see
+
+env-doc-drift held cli.md's variables to core's reads as exact sets,
+but finds a read by its spelling; a read through a helper
+(`envInt('VX_X')`) passed every law undocumented, the gap H-50 closed
+for plugins. `env-reads-complete.test.ts` requires every quoted
+`'VX_*'` name in core's source to be a read the reader finds; an
+injected helper read fails it while env-doc-drift passes (#2606).
+
+## H-62: cli.md's exit codes are every code the CLI returns
+
+The exit-code records drive documented outcomes and H-57 ties each
+section to them; a code the source returns that no record drives was
+seen by neither. `exit-codes-complete.test.ts` collects each verb's
+`return N`, bin.ts's own and 128 + n per stop signal, and requires
+exactly that set in cli.md's exit-code statements, plugin verbs aside:
+{0, 1, 129, 130, 143} both ways. A new `return 2` or a dropped `129`
+fails it (#2610).
+
+## H-63: the hook tables hold PLUGIN_HOOKS, stages in run order
+
+The pages that list the plugin hooks were held to name each one, so a
+row for a hook that does not exist passed, and so did any order:
+architecture.md and modules/plugin.md listed `executor` first, ahead
+of `config`. `plugin-hook-tables.test.ts` holds each hook table
+(architecture, modules/plugin, design/pipeline) to `PLUGIN_HOOKS` as
+an exact set, `setup`/`teardown` aside where the page covers them in
+prose, and requires the stages `config` through `telemetry` in the
+order a run calls them; both tables now place `executor` just before
+`cache` (#2623).
+
+## H-64: the drain row waits on its parent's exit, not a poll
+
+The post-exit drain row failed on macOS CI at 317 ms against the
+250 ms drain: its grandchild polled the parent with `kill -0`, forking
+`sleep 0.01` a turn. It reads a FIFO only the parent holds open now,
+so the exit is its EOF, and prints 50 ms later. A first cut that
+printed at the EOF passed with a 0 ms drain, holding nothing; with
+the 50 ms it fails at 0 ms and holds at 100 ms under 3x CPU load
+(#2631).
+
+## H-65: cli.md's JSON shapes are the schemas'
+
+Each verb's `--format json` was held to its schema, but nothing held
+the shapes cli.md prints: `vx why` showed one of its two objects, not
+`{ taskId, why, diff, explanation }` for runs without a run id.
+`cli-json-doc.test.ts` requires each `{ … }` a verb's JSON paragraphs
+show to be an object its schema closes with those keys, every object
+the verb prints whole to be shown, and `vx info`'s field list to be
+its schema's top level (#2639).
+
+## H-66: a stored layout moves only with its version
+
+`SCHEMA_VERSION` gates the index and `CACHE_VERSION` the artifact, but
+neither layout was tied to its version: a column or a container change
+that forgot the bump passed every test, and the next vx read it as the
+old layout. `contract-stored-format.test.ts` records the index DDL a
+fresh open makes beside `SCHEMA_VERSION`, and a fixture artifact's tar
+entries, sidecar and sha256 beside `CACHE_VERSION`
+(`tests/contract/stored-format.json`). A layout that moves under its
+recorded version fails, and the regeneration refuses it; an added
+column, a sidecar field, the ustar magic and a renamed `.vx-sum` each
+fail unbumped. The bump skill names the regeneration (#2645).
+
+## H-67: each verb's help usage is its cli.md synopsis
+
+The help usage line is what the parser accepts (`acceptedFlags`
+reads it); cli.md's Top-level shape repeats it by hand and was held to
+the dispatcher by verb name only, so a flag on one line and not the
+other passed. `cli-help-synopsis.test.ts` requires each core verb's
+usage lines to be its synopsis lines word for word, and its own help
+cut to print them (#2654).
+
+## H-68: every verb's refusal names the nearest word
+
+`flagHint` read a verb's flags from its usage line, where no verb
+spells `--help`, so `vx upgrade --hlp` and `vx help --hlp` said
+"unknown" with no hint; `vx completions bsh` named no shell, and
+`vx version --hlp` printed the version and exited 0. Every core verb
+now hints `--help`, completions names the nearest shell and refuses a
+flag as a flag, and `vx version` refuses a word (exit 1).
+`cli-hint-every-verb.test.ts` holds a row per verb; 15 of 17 fail
+without the fix (#2656).
+
+## H-69: a bare vx with no workspace says so
+
+A bare `vx` where no workspace is printed the 151-line reference and
+exited 0, none of it saying nothing here can run. It prints the
+refusal every verb gives there, plus where the verbs are listed, and
+exits 1; inside a workspace, and `--help` / `-h` anywhere, it is the
+reference as before (#2658).
+
+## H-70: vx init names the members it leaves without a config
+
+`vx init` on plain pnpm and bun workspaces (brace globs, negations,
+`apps/**`, a member nested in a member, the `workspaces: { packages }`
+form) mapped right; lifecycle hooks are never tasks. A member with no
+script to run (none, or only `postinstall`-style hooks) got no
+`vx.config.ts` and vanished from the report. The report names them now
+and says each is still a project (#2664).
+
+## H-71: vx why's verdict names what moved the key
+
+A key that moved only by a declared env var read "cache key changed
+between the previous run and this one (inputs differ)" above a table.
+When the diff names the components, the verdict names them, three at
+most and a count: `cache key changed: env MODE`. The JSON note is
+unchanged; the control is an unchanged key (#2668).
+
+## H-72: vx run's refusal to start goes to stderr
+
+Every no-match case already named why in one line with a "did you
+mean" or what exists, exit 1; `--filter` typos were hinted too. A run
+printed "No projects declare task(s): …" through the status logger, to
+stdout, while `--dry` and `--graph` said it on stderr as `vx run: …`.
+`run()` returns the refusal as `RunSummary.refused` (additive) and
+`vx run` / `vx watch` print it on stderr; a run and its plan refuse
+alike (#2676).
+
+## H-73: a product verb's stdout holds its product alone
+
+`cli-streams.test.ts` runs each verb whose stdout is a product
+(`show`, `--format json`, `--dry`, `--dry=json`, `--graph`, `cache
+prune`, completions) under a cache index from an older vx: the product
+alone on stdout, the notice on stderr; the reading verbs refuse it on
+stderr, stdout empty. No leak was found; the plan path's logger or
+`warnToStderr` sent to stdout each fail rows. `vx run`'s stdout stays
+the run's frame (#2682).
+
+## H-74: colour held end to end
+
+`detectColors` was unit-tested; nothing ran the CLI under the
+variables. `cli-colors-e2e.test.ts` requires `vx run` plain off a TTY,
+painted under `FORCE_COLOR=1`, plain under `FORCE_COLOR=0` and under
+`NO_COLOR`, and every other verb plain even under `FORCE_COLOR=1`;
+cli.md says only a run's own output is painted (#2688).
+
+## H-75: vx last says nothing has run before a run
+
+Bare `vx last` was right. `--failed` before any run said "no recorded
+run failed", a run id pointed at an empty `--list`, and `--list
+--failed` past green runs said "no recorded runs". Every form says
+nothing has run when nothing has, and `--list --failed` says none
+failed (#2692).
+
+## H-76: vx cache list, ls, gc and purge name their verb
+
+`stats` and `clean` already pointed at their verb; `list` and `ls`
+said only "The subcommand is prune". They point at `vx info` and
+`vx last --list` now, and `gc` / `purge` at `prune` (#2702).
+
+## H-77: getWorkspaceInfo's description names its fields
+
+`vx info` and the MCP tool share one collector, and the fields were
+held to cli.md and the schema. The tool's description, what an agent
+reads first, had lost `configErrors` and `sandbox`; it names every
+answer key now, held both ways to `tests/contract/tools.json` (#2710).
+
 ## Leads for other streams
 
 - **A:** a task that rewrites its own input with the same bytes is never

@@ -26,3 +26,21 @@ describe('README documents every tool the server lists', () => {
     )
   })
 })
+
+describe("README names each tool's arguments", () => {
+  // explainCacheKey and whyDidThisRerun take `taskId`, which their rows
+  // never named; an operator scripting a call read `pkg#build` and guessed
+  // (J2-34). Every inputSchema property is named in its tool's row.
+  it('each row names every property of its inputSchema', () => {
+    const readme = readFileSync(path.join(import.meta.dir, '..', 'README.md'), 'utf8')
+    const missing: string[] = []
+    for (const tool of listTools()) {
+      const row = readme.split('\n').find((l) => l.startsWith(`| \`${tool.name}\``)) ?? ''
+      const props = Object.keys((tool.inputSchema as { properties?: object }).properties ?? {})
+      for (const p of props) {
+        if (!row.includes(`\`${p}\``) && !row.includes(`\`${p}:`)) missing.push(`${tool.name}.${p}`)
+      }
+    }
+    expect(missing).toEqual([])
+  })
+})

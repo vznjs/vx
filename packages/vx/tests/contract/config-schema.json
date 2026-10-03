@@ -1699,9 +1699,8 @@
         ]
       },
       "tasks.*.cache.inputs": {
-        "$CONFIG: tasks.c.cache.inputs is required when `cache` is set": [
-          "<absent>",
-          "null",
+        "$CONFIG: tasks.c.cache.inputs is required when `cache` is set": ["<absent>", "null"],
+        "$CONFIG: tasks.c.cache.inputs must be an object — `inputs: { files: [...] }`": [
           "true",
           "false",
           "0",
@@ -2001,9 +2000,8 @@
         ]
       },
       "tasks.*.cache.outputs": {
-        "$CONFIG: tasks.c.cache.outputs is required when `cache` is set": [
-          "<absent>",
-          "null",
+        "$CONFIG: tasks.c.cache.outputs is required when `cache` is set": ["<absent>", "null"],
+        "$CONFIG: tasks.c.cache.outputs must be an object — `outputs: { files: [...] }`": [
           "true",
           "false",
           "0",

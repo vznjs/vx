@@ -6,11 +6,11 @@
 // task declared. Nothing here reads a config or applies a boundary.
 
 import path from 'node:path'
-import { existsSync, lstatSync, readdirSync, realpathSync } from 'node:fs'
+import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync } from 'node:fs'
 import { UserError, executablePath, gitSpawnRefusal, xxh3hex } from '../util/index.js'
 import { FILE_HASH_RACY_MS, racyWindowMs } from './layer.js'
 
-/** Three facts of the repository a directory is in, from one `git rev-parse`. */
+/** Three facts of the repository a directory is in: read off the disk, or one `git rev-parse`. */
 export interface RepoFacts {
   /** `--show-prefix`: the directory's path below the worktree root, `''` at the root. */
   prefix: string
@@ -35,6 +35,11 @@ const repoFactsMemo = new Map<string, RepoFacts>()
 export function repoFacts(dir: string): RepoFacts | null {
   const hit = repoFactsMemo.get(dir)
   if (hit !== undefined) return hit
+  const read = repoFactsFromDisk(dir)
+  if (read !== undefined) {
+    repoFactsMemo.set(dir, read)
+    return read
+  }
   let proc
   try {
     proc = Bun.spawnSync({
@@ -70,6 +75,77 @@ export function repoFacts(dir: string): RepoFacts | null {
   }
   repoFactsMemo.set(dir, facts)
   return facts
+}
+
+/** Variables that move where git finds the repository or its index: with any set, git is asked. */
+const GIT_LOCATION_ENV = [
+  'GIT_INDEX_FILE',
+  'GIT_DIR',
+  'GIT_WORK_TREE',
+  'GIT_COMMON_DIR',
+  'GIT_CEILING_DIRECTORIES',
+  'GIT_DISCOVERY_ACROSS_FILESYSTEM',
+]
+
+/**
+ * `repoFacts` for the plain case, read off the disk: the nearest `.git`
+ * DIRECTORY above `dir` (resolved as git resolves its cwd), on the same
+ * file system, holding a `HEAD`, and its config's object format. The
+ * spawn it saves was ~3 ms of every run, synchronous. Undefined — ask
+ * git — for anything else: a `.git` file (a linked worktree, a
+ * submodule), a location variable, an include in the config, a format it
+ * cannot read, no repository at all.
+ */
+function repoFactsFromDisk(dir: string): RepoFacts | undefined {
+  if (GIT_LOCATION_ENV.some((name) => process.env[name] !== undefined)) return undefined
+  try {
+    const real = realpathSync(dir)
+    const dev = lstatSync(real).dev
+    for (let at = real; ;) {
+      const dotGit = path.join(at, '.git')
+      const st = lstatSync(dotGit, { throwIfNoEntry: false })
+      if (st !== undefined) {
+        if (!st.isDirectory() || !existsSync(path.join(dotGit, 'HEAD'))) return undefined
+        const objectFormat = configObjectFormat(readFileSync(path.join(dotGit, 'config'), 'utf8'))
+        if (objectFormat === undefined) return undefined
+        const below = path.relative(at, real).split(path.sep).join('/')
+        return {
+          prefix: below === '' ? '' : `${below}/`,
+          commonDir: path.relative(real, dotGit).split(path.sep).join('/'),
+          objectFormat,
+          indexFile: path.relative(real, path.join(dotGit, 'index')).split(path.sep).join('/'),
+        }
+      }
+      const parent = path.dirname(at)
+      if (parent === at || lstatSync(parent).dev !== dev) return undefined
+      at = parent
+    }
+  } catch {
+    return undefined
+  }
+}
+
+/** `[extensions] objectFormat` of a repository config, sha1 when unset; undefined when unsure. */
+function configObjectFormat(config: string): 'sha1' | 'sha256' | undefined {
+  let section = ''
+  let format: 'sha1' | 'sha256' = 'sha1'
+  for (const raw of config.split('\n')) {
+    const line = raw.trim()
+    if (line === '' || line.startsWith('#') || line.startsWith(';')) continue
+    const head = /^\[\s*([A-Za-z0-9.-]+)/.exec(line)
+    if (head !== null) {
+      section = head[1]!.toLowerCase()
+      if (section === 'include' || section === 'includeif') return undefined
+      continue
+    }
+    if (section !== 'extensions') continue
+    const kv = /^([A-Za-z0-9-]+)\s*=\s*(.*)$/.exec(line)
+    if (kv === null || kv[1]!.toLowerCase() !== 'objectformat') continue
+    const value = kv[2]!.toLowerCase()
+    if (value === 'sha256' || value === 'sha1') format = value
+    else return undefined
+  }
+  return format
 }
 
 export class GitFilesCache extends Map<string, readonly string[]> {

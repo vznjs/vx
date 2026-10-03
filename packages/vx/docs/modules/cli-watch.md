@@ -38,7 +38,7 @@ export interface ConfigSweep {
   workspaceConfigImports: string[]
   staged: Map<string, ProjectEntry> | null
 }
-export async function sweepConfigs(projects, workspaceRoot, load?): Promise<ConfigSweep>
+export async function sweepConfigs(projects, workspaceRoot, load?, tasks?): Promise<ConfigSweep> // tasks: judge only what the run can reach
 export function memberEntries(base: string): ReadonlySet<string>
 export function sameMembers(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean
 
@@ -49,6 +49,7 @@ export interface JudgeContext {
   armedAt: number
   held(): boolean
   uncached(): ReadonlySet<string>
+  existedAtArm?: ReadonlySet<string> // what git listed at the arm; absent when it could not answer
 }
 export class ChangeJudge {
   readonly pending: Map<string, string> // path → label, what fired since the last judgement
@@ -65,10 +66,12 @@ export function makeWatchIgnore(
   inputs?,
 ): (base: string, filename: string) => boolean // the above plus the cache dir and every declared output no task reads
 export function gitIgnored(workspaceRoot: string, paths: readonly string[]): Set<string> // one `git check-ignore --stdin`
+export function gitFiles(workspaceRoot: string): Set<string> | undefined // one `git ls-files` at the arm
 export function makeRootEventFilter(
   workspaceRoot: string,
   projectDirs: readonly string[],
   workspaceInputs: readonly string[],
+  claimedRootFiles?: ReadonlySet<string>, // fingerprint plugins' claims, and vx-lock.json under --frozen
 ): (filename: string) => boolean
 export function shapesWatchedSet(filename: string): boolean // a manifest, a config or a fingerprint file: re-read the watched set
 export function isWorkspaceFingerprintFile(name: string): boolean
@@ -114,7 +117,12 @@ export class WatcherPool {
 delivery before the loop trusts a watcher (a probe file the watcher
 must report within the timeout); `pollWatcher` is the fallback that
 re-walks the tree when the platform's watcher never does, or when the
-OS watch limit refuses one (`ENOSPC` / `EMFILE`, E-49).
+OS watch limit refuses one (`ENOSPC` / `EMFILE`, E-49). On Linux a
+recursive arm is one non-recursive watch per directory that never enters
+`node_modules`, `.git` or `.vx` (whose events the loop drops anyway):
+this repo's root arm went from 4,657 inotify watches to 435 and its arm
+from 75 to 43 ms (min of 6, interleaved); a directory that appears is
+watched and what it already holds reported (`watch-tree-linux.test.ts`).
 
 ## Flag surface
 
@@ -179,7 +187,10 @@ are refused too: they format one run's result.
      such directory.
    - The same re-read follows a cycle started by a file that shapes
      the watched set (`shapesWatchedSet`): a `package.json` (a
-     dependency added under `--filter` widens the closure), a project
+     dependency added under `--filter` widens the closure; the root's
+     `workspaces`, like `pnpm-workspace.yaml`, is the glob list, and the
+     re-read takes its bases too, so a glob added there is watched from
+     the cycle it triggers, item 1018), a project
      config (a task that starts or stops declaring `workspaceFiles`
      swaps the arm between per-project and root, `dropMode` /
      `armMode`) or the workspace config. And a directory under a
@@ -299,19 +310,23 @@ non-persistent tasks where each cycle should re-run cleanly.
   path no cache key can see starts nothing — the pid file or log a dev
   server rewrites on every start made the loop re-run itself forever
   (item 237). A tracked file matching a pattern is not ignored, by git's
-  rule; outside a repository nothing is.
+  rule; outside a repository nothing is. A path inside a submodule makes
+  git refuse the batch; that path is skipped and the rest asked again
+  (`watch-ignore-submodule.test.ts`).
 - Settle a file the task rewrites with DIFFERENT bytes every run when
   it is neither ignored nor declared: the loop re-runs on it, and after
   three cycles in a row started by the same path after a run, watch
   names it and the remedy once (`watch-loop-selfwrite.test.ts`).
+- Start a cycle on a file born and gone since the arm (vim's `4913`
+  write probe): `gitFiles` lists what existed at the arm, and a gone path
+  it did not list was never read by a key (`watch-transient-file.test.ts`).
+  Git lists a nested repository (a submodule, a vendored clone) as one
+  entry, so a gone path under one is still a deletion.
 
 - Doesn't accept the interactive picker — task name is required.
 - Doesn't filter events through declared input globs.
 - Doesn't dedupe events by project — every file change triggers a
   re-run of the user's specified task across the entire scope.
-- Doesn't re-read the package globs: a `pnpm-workspace.yaml` edit that
-  adds a new base directory is a cycle, but the base is watched only
-  from the next start.
 - Doesn't carry a persistent task through a cycle: it stays up while
   watch idles, and the next cycle stops and re-spawns it.
 - Re-key a cycle when a task rewrites a lockfile _during_ it: the keys

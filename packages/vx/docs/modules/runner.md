@@ -71,6 +71,7 @@ export function streamToString(
   stream: ReadableStream<Uint8Array> | number | undefined,
   onChunk?: (s: string) => void,
   signal?: AbortSignal,
+  retain?: boolean, // default true; false drains the stream and feeds onChunk, keeps no copy
 ): Promise<string>
 export function resourceUsageToCpuRss(
   usage: ReturnType<ReturnType<typeof Bun.spawn>['resourceUsage']>,
@@ -103,7 +104,8 @@ export function peakRssBytes(maxRSS: number): number // bytes, whatever unit the
 ## Spawning rules
 
 - **Shell:** `Bun.spawn([executablePath('sh'), '-c', command], { argv0: 'sh', ... })`.
-  POSIX-shell only; Windows is unsupported (no `cmd.exe` branch). The
+  POSIX-shell only; native Windows is unsupported (no `cmd.exe` branch),
+  and Windows runs the Linux build under WSL. The
   shell is resolved ONCE per process on vx's own PATH
   (`util/which.ts`), never the task's: the task's PATH leads with its
   project's `node_modules/.bin`, and Bun resolving the bare `sh`
@@ -283,6 +285,24 @@ logger keeps the one bounded tail (registered at `taskStart`, so it
 covers the pre-ready window too), which is what surfaces pre-ready
 output on a fail-before-ready outcome.
 
+## What an unsandboxed task costs (Linux, 2026-10-02)
+
+Min / median of 400 interleaved runs of one external command
+(`/usr/bin/env`), in process:
+
+| part                                                                    | cost           |
+| ----------------------------------------------------------------------- | -------------- |
+| the process itself, spawned directly, both pipes read                   | 0.87 / 1.11 ms |
+| the `sh -c` layer: the guard line, then `exec`                          | +0.8 ms        |
+| the rest of `runCommand` (timeout arm, drain, rusage, `VmHWM` at 12 µs) | +0.1 ms        |
+
+In a 300-task run (`vx run --concurrency 1`, `true`) the graph costs
+1.7 ms a task, 1.4–1.5 of it in `runCommand`. The shell is the one
+cut that would show, and it is the kill guard's: the child lists its
+own group before it runs anything, and vx writing the line after the
+spawn returned left a `kill -9`'s orphan in 4 of 40 runs under load
+(B-9). The rest is below what an A/B resolves.
+
 ## What this does NOT do
 
 - **Doesn't time out unless asked.** One-shot commands run unbounded
@@ -304,7 +324,7 @@ output on a fail-before-ready outcome.
   takes even that.
 - **Doesn't strip ANSI.** Color sequences pass through verbatim,
   enabling color-preserving cache-hit replays.
-- **No Windows support.** `sh -c` only.
+- **No native Windows.** `sh -c` only; Windows means WSL.
 
 ## Tests
 

@@ -194,6 +194,10 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     and prints only `UU <path>`: the deletion went unsaid, the file kept
     its index OID, and the run hit the output built with it (A-59).
 
+    Ref storage is not a key input: every ref vx reads comes from a git
+    command, so a repository in reftable storage (git 2.45) keys every
+    task as its files-backend twin (`tests/git-reftable.unsafe.test.ts`).
+
     A **submodule or an embedded repository** is enumerated by its own
     git: the workspace repository lists the nested one as a single entry
     (a gitlink, or `dir/` when untracked) and none of its files, so vx
@@ -561,13 +565,20 @@ short run still ships every artifact before the process exits. Upload
 failures log via `onRemoteError` and are otherwise ignored (the task
 already succeeded; the only loss is the remote entry).
 
+An upload is the outputs as the task wrote them; secret masking does
+not reach file contents, so a task whose outputs embed a secret is one
+to leave uncached ([security](./security.md)).
+
 ### Planning probes (`--dry` / `--graph`)
 
 The planning paths (`vx run --dry`, `--graph`) predict hits without
 side effects: against a remote cache they use a **lightweight
 existence probe** — no artifact download, no local ingest. A predicted
 `hit-remote` means the artifact exists remotely; the bytes move only
-when a real run needs them.
+when a real run needs them. Locally the probe reads whether the entry's
+row is there and stats the artifact, never the row itself: the whole
+row, its stored stdout included, made a 200-task plan over 1 MB outputs
+230 ms against 28 (min of 11, 2026-10-02).
 
 ## Cache policy (read/write axes)
 
@@ -580,12 +591,15 @@ hashing); the `LayeredCache` additionally gates its own remote
 read-through (`remoteRead`), upload (`remoteWrite`), and prefetch
 (`remoteRead`). The orchestrator derives two booleans per task:
 
-- `willRead = task has a cache block AND (localRead || remoteRead)`
-- `willWrite = task has a cache block AND (localWrite || remoteWrite)`
+- `willRead = task has a cache block AND it is not remote-only AND (localRead || remoteRead)`
+- `willWrite = task has a cache block AND it is not remote-only AND (localWrite || remoteWrite)`
 
 A task reads the cache only when `willRead`, saves only when
 `willWrite`, and cleans its declared outputs before exec only when
-`willWrite`.
+`willWrite`. Remote-only is an `exec.remote: 'only'` task placed on a
+remote executor: it never touches this machine's disk (no probe, no
+restore, no output clean, no local save), and its result lives in the
+remote executor's own store.
 
 The CLI maps three flags to a policy (precedence: start all-on → apply
 `--cache` → `--no-cache` forces all off → `--force` forces both reads
@@ -627,6 +641,11 @@ is on):
    Until 2026-09-27 (A-3) the rename came first, and a commit refused
    past the busy timeout left the new bytes beside the old rows: every
    later hit on the key failed the task as a corrupt artifact.
+   A re-save (`--force`) first moves the previous artifact aside under
+   a temp name and unlinks it after the commit: ext4 flushes the
+   incoming file when a rename replaces one, 0.55 ms a save on the main
+   thread against 0.04 (a forced 1,000-task run 4.01 s → 3.46 s,
+   2026-10-02). A reader probing between the two renames misses.
 
 **The key is re-checked before the save** (item 743). It was taken
 before the command ran — at the task's start, or up front by the local
@@ -687,8 +706,10 @@ or not it saves. `cache.outputs matched no files (build/**)` — an empty
 artifact was saved and a later hit restores nothing — is said on the
 save path. Both are almost always a glob
 against the wrong directory; the output line names one other cause when
-it applies, a sandboxed task with no `exec.sandbox.allow.write`, whose
-writes never reached disk. `outputs.files: []` is a deliberate cached
+it applies: a sandboxed task with no `exec.sandbox.allow.write`, whose
+writes never reached disk, or an output directory that is a symlink out
+of the project (`workspaceFiles`: out of the workspace), whose files vx
+drops as outside. `outputs.files: []` is a deliberate cached
 no-op and says nothing; a task with no `cache` block is never checked.
 
 **The outputs are what exists when the task's command exits.** The run
@@ -1126,6 +1147,11 @@ never the artifact's size). An artifact up to 4 MiB compressed is decoded in one
 first — the stream setup costs ~35 µs each, 4% of the headline
 restore row when every artifact is a one-file `dist/` — and then fed
 to the same reader and extractor, so there is one extraction path.
+The reader reads a header in place when it lies within one chunk and
+its numeric fields off the bytes when they are plain octal (anything
+else takes the full parse): a 4-entry artifact's read 50–57 µs → 22–23
+(min of 15), and a 300-artifact, 20-file restore run's reader 224 → 92
+ms of main thread (2026-10-02).
 The 2 GiB decompression ceiling applies to both: declared size and
 output length for the one-call decode, a running count for the stream.
 An ingest bounds the compressed body first: a remote body past the
@@ -1193,7 +1219,8 @@ leaves it); a link to a directory, or a dangling one, has no bytes to
 store, so the save refuses it by name rather than cache an entry that
 restores to nothing. So does a link whose target is outside the
 project: vx reads outputs outside the task's sandbox, and a planted
-link packed a file the task could not read (L-23). The clean before exec and restore removes every
+link packed a file the task could not read (L-23). Each refusal names
+the path as the config spells it (`workspaceFiles output gen/latest`). The clean before exec and restore removes every
 file AND symlink the output globs cover (a link is unlinked, never
 followed) and prunes the directories it emptied (before a miss it keeps
 the directory a wildcard glob is rooted at, `dist` for `dist/**`, as the
@@ -1257,7 +1284,7 @@ all-miss run that follows is explained; the artifacts it orphaned are
 `vx cache prune`'s to reap.
 
 ```sql
--- src/cache/schema.ts (SCHEMA_VERSION = 'v28', in cache.ts)
+-- src/cache/schema.ts (SCHEMA_VERSION = 'v29', in cache.ts)
 
 CREATE TABLE schema_meta (
   key   TEXT PRIMARY KEY,  -- 'version', 'cache_version', 'orphans_swept_at', 'file_hashes_swept_at', 'value_salt'
@@ -1281,11 +1308,18 @@ CREATE TABLE entries (
   exit_code    INTEGER NOT NULL,
   duration_ms  INTEGER NOT NULL,
   size_bytes   INTEGER NOT NULL,  -- artifact size
-  stdout       TEXT NOT NULL DEFAULT '',  -- captured stdout (pure-SQL hit replay)
   created_at   INTEGER NOT NULL,  -- ms-epoch
   accessed_at  INTEGER NOT NULL,  -- ms-epoch; bumps batch at flush (LRU)
   cpu_ms         INTEGER,         -- v26: the producing execution's usage, from
   peak_rss_bytes INTEGER          --      the artifact's sidecar (save + ingest)
+);
+
+-- v29: stdout apart from its entry. An UPDATE rewrites a whole record, so
+-- the accessed_at bump rewrote each hit's stdout (up to 16 MB): 200 hits
+-- of 1 MB cost the run's close 125-150 ms.
+CREATE TABLE entry_stdout (
+  hash   TEXT PRIMARY KEY,         -- FK entries(hash) ON DELETE CASCADE
+  stdout TEXT NOT NULL             -- captured stdout (pure-SQL hit replay); no row = ''
 );
 
 CREATE TABLE runs (
@@ -1614,6 +1648,15 @@ Not required when:
 - Doc-only updates.
 - Refactors that don't change the bytes fed into the hash.
 
+`tests/contract-stored-format.test.ts` holds the layout rows: it
+records the index's DDL beside `SCHEMA_VERSION` and a fixture
+artifact's entries, sidecar and digest beside `CACHE_VERSION`
+(`tests/contract/stored-format.json`), and fails when either layout
+moves under its recorded version. Every bump of either version
+regenerates the record
+(`VX_UPDATE_CONTRACT=1 bun test tests/contract-stored-format.test.ts`),
+which refuses a layout that moved without one.
+
 The bump procedure has a dedicated skill at
 `.claude/skills/bump-cache-version/` (used as `/bump-cache-version`).
 Files touched, in the skill's order: `src/cache/key-fold.ts` (the constant),
@@ -1621,7 +1664,8 @@ this doc (history), `docs/modules/cache.md` (the quoted version, and the
 key/entry shape if it changed), `CLAUDE.md` § Live invariants (the quoted
 version — the decision log it once named was retired 2026-09-02),
 `docs/STATUS.md` (the entry that says why the bump was needed, or why it
-was not), and the cache tests.
+was not), the cache tests, and `tests/contract/stored-format.json`
+(regenerated, above).
 
 ### History
 

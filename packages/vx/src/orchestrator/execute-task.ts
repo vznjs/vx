@@ -25,6 +25,8 @@ import {
   wrapSandboxedCommand,
   signalExitCode,
   isLocalExecutor,
+  isExecutorFallback,
+  localExecutor,
   type CaptureConfig,
   type ExecuteRequest,
   assertExecuteResult,
@@ -36,7 +38,17 @@ import {
   sandboxReads,
 } from '../exec/index.js'
 import { isGroupTask, RestoreDemoted, type TaskNode, type TaskOutcome } from '../graph/index.js'
-import { killGraceMs, maskedEmitter, printable, relPosix, secretMask, span } from '../util/index.js'
+import {
+  killGraceMs,
+  MASKED,
+  maskedEmitter,
+  printable,
+  relPosix,
+  secretMask,
+  secretNamed,
+  span,
+  UserError,
+} from '../util/index.js'
 import { forwardedSignal, SIGNAL_SHUTDOWN_GRACE_MS } from './signals.js'
 import { executorLabel, nameExecutorFailure } from './plugin-host.js'
 import {
@@ -161,6 +173,12 @@ export interface ExecuteArgs {
    */
   preProbed?: { hash: string; hit: CacheEntry | null }
   /**
+   * An uncached task's key as the up-front pass derived it, present only
+   * when no upstream can change it (`deriveStableKeys`' `uncachedKeys`):
+   * used verbatim instead of deriving the same key again.
+   */
+  upfrontKey?: string
+  /**
    * Start the sandbox runtime, on the first task that executes inside one
    * (run.ts, `prepareSandbox`). Absent when no task in the run declares a
    * sandbox. A cache hit never calls it: a hit needs no sandbox.
@@ -274,7 +292,8 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
   const hash =
     args.noDependants === true
       ? undefined
-      : await computeTaskHash({
+      : (args.upfrontKey ??
+        (await computeTaskHash({
           node,
           upstream: args.upstream,
           workspaceRoot: args.workspaceRoot,
@@ -284,7 +303,7 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
           nestedProjectDirs: args.nestedProjectDirs,
           ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
           ...(args.hashCache !== undefined ? { hashCache: args.hashCache } : {}),
-        })
+        })))
 
   // The args after `--` reach a server as they reach any task. A readyWhen
   // server once got none — "so the matcher sees the unmodified output",
@@ -396,14 +415,67 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
     if (spawn.child === undefined) void onExit()
     else void spawn.child.exited.then(onExit, onExit)
   }
+  // Said once if readiness is slow: a dependency's output is hidden unless
+  // it fails, and with no `exec.timeout` the wait never ends, so a run
+  // whose `readyWhen` never matched showed nothing at all.
+  const readyWhen = step.persistent.readyWhen
+  const noticeMs = readyNoticeMs()
+  const notice =
+    readyWhen === undefined
+      ? undefined
+      : setTimeout(() => {
+          if (isAborted(args.stopSignal)) return
+          const after = noticeMs < 1000 ? `${noticeMs} ms` : `${noticeMs / 1000} s`
+          const unbounded = effectiveTimeout === undefined ? ', with no exec.timeout' : ''
+          log.status(
+            `vx: ${node.id} not ready after ${after}: waiting for a line matching /${readyWhen}/ (readyWhen)${unbounded}`,
+          )
+        }, noticeMs)
+  if (notice !== undefined) {
+    const quiet = (): void => clearTimeout(notice)
+    void spawn.ready.then(quiet, quiet)
+  }
   try {
     await spawn.ready
   } catch (err) {
+    // A server the run's stop killed while it started is aborted, as any
+    // task the stop kills (item 962): it read `failed (never ready:
+    // exited, exit 130)` with a recap after every Ctrl-C (C-62). The stop
+    // aborts before it kills, so it is set by the time the child is gone.
+    // Read through a call: the early return above narrows `aborted` to
+    // false, but the stop can land during `spawn.ready`.
+    if (isAborted(args.stopSignal)) {
+      return {
+        node,
+        status: 'aborted',
+        exitCode: err instanceof PersistentReadyError ? (err.exitCode ?? 1) : 1,
+        durationMs: spawn.readyMs(),
+        wallclockStartNs,
+        wallclockEndNs: process.hrtime.bigint() - args.runStartHrTimeNs,
+      }
+    }
     const message = err instanceof Error ? err.message : String(err)
     // The task's OWN stream, not the process's: the frame is where a
     // reader looks for why a task failed, and a run with a custom logger
     // (an embedder, the MCP server) never saw a bare stderr write at all.
     log.taskStderr(node, `\n[vx] ${node.id}: persistent task failed to become ready: ${message}\n`)
+    // A server is never traced, so the sandbox's refusals reach no report:
+    // a dev server that died on a file outside its grants read only as the
+    // tool's own "not found" (2026-10-03). Said for a sandboxed server that
+    // exited failing, which is the shape a refusal takes.
+    if (
+      step.sandbox !== undefined &&
+      err instanceof PersistentReadyError &&
+      err.reason === 'exited' &&
+      err.exitCode !== 0
+    ) {
+      log.taskStderr(
+        node,
+        `[vx] ${node.id} ran in the sandbox, which reports nothing for a server: a path outside ` +
+          `its grants reads as missing (ENOENT), a refused write as read-only (EROFS). Check ` +
+          `exec.sandbox.allow, or run the command as a one-shot sandboxed task to see what it was refused.\n`,
+      )
+    }
     // The server is dead or being torn down, so the sweep on its exit may
     // already be running: ask the shared one rather than starting a second.
     for (const p of await sweptUntouched()) {
@@ -605,19 +677,19 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // authoritative stable key) and skip the probe below.
   const preProbed = args.preProbed
   const hash =
-    preProbed !== undefined
-      ? preProbed.hash
-      : await computeTaskHash({
-          node,
-          upstream,
-          workspaceRoot: args.workspaceRoot,
-          workspaceFingerprint: args.workspaceFingerprint,
-          cache,
-          forwardArgs: args.forwardArgs,
-          nestedProjectDirs: args.nestedProjectDirs,
-          ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
-          ...(args.hashCache !== undefined ? { hashCache: args.hashCache } : {}),
-        })
+    preProbed?.hash ??
+    args.upfrontKey ??
+    (await computeTaskHash({
+      node,
+      upstream,
+      workspaceRoot: args.workspaceRoot,
+      workspaceFingerprint: args.workspaceFingerprint,
+      cache,
+      forwardArgs: args.forwardArgs,
+      nestedProjectDirs: args.nestedProjectDirs,
+      ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
+      ...(args.hashCache !== undefined ? { hashCache: args.hashCache } : {}),
+    }))
 
   // The local no-op half of `exec.remote: 'only'`: no remote executor took
   // the task, so it succeeds without running. The hash was still computed —
@@ -718,6 +790,13 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         ...(args.hashCache !== undefined ? { hashCache: args.hashCache } : {}),
       })
     : undefined
+  // A name only `exec.env.secret` makes secret is not one the name rule
+  // sees later: its row carries the mark, so `vx why` hides its hash (M-63).
+  const named = node.config.exec?.env?.secret
+  if (named !== undefined)
+    for (const c of captured)
+      if (c.kind === 'env' && named.includes(c.name) && !secretNamed(c.name))
+        c.hash = MASKED + c.hash
   const inputs: TaskInputs | undefined = described?.inputs
   // A declared input set that resolves to NOTHING is the quiet stale hit:
   // the key stops moving with this project's source and every later run
@@ -819,9 +898,33 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         assertExecuteResult(args.executor.name, node.id, r)
         return r
       })
-      .catch(async (raw: unknown) => {
+      .catch(async (thrown: unknown) => {
+        let raw = thrown
+        // A remote that gives the task back (it never started it): run it on
+        // the local floor with a request of its own, so its timeout counts
+        // from now. `remote: 'only'` keeps it off this machine: refused.
+        if (isExecutorFallback(raw) && args.executor.remote === true) {
+          const why = secrets?.mask(raw.message) ?? raw.message
+          if (remoteOnly) {
+            raw = new UserError(`${why}, and remote: 'only' keeps it off this machine`)
+          } else {
+            log.status(`[vx] ${node.id}: ${why} — running it here`)
+            clearTimeout(timeoutTimer)
+            const local = await localExecutor().execute(await buildRequest())
+            assertExecuteResult('local', node.id, local)
+            return local
+          }
+        }
         const err = nameExecutorFailure(args.executor, raw)
-        const message = err instanceof Error ? err.message : String(err)
+        // A remote executor's message carries the server's own text, which
+        // may echo the env it was sent: masked here, where it is printed,
+        // and on the error the scheduler prints with its cause (L-39).
+        if (secrets !== null) {
+          for (const e of [err, err instanceof Error ? err.cause : undefined])
+            if (e instanceof Error) e.message = secrets.mask(e.message)
+        }
+        const message =
+          err instanceof Error ? err.message : (secrets?.mask(String(err)) ?? String(err))
         log.taskStderr(node, `${message}\n`)
         await sweepPlaceholders(placeholders)
         throw err
@@ -907,7 +1010,9 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         signal: res.signal,
         hidden: req.sandbox && ((f: string) => !sandboxReads(req.sandbox!, f)),
       })
-      if (verdict !== undefined) log.taskStderr(node, `\n${verdict}\n`)
+      // The line quotes the command's first word, which a config may have
+      // built from a secret: masked as the task's own output is (L-37).
+      if (verdict !== undefined) log.taskStderr(node, `\n${secrets?.mask(verdict) ?? verdict}\n`)
       // A committed file another task's clean removed, still gone: vx
       // cleans outputs before a run where Turbo does not, so a reader with
       // no edge to the producer fails naming only the file (A-48).
@@ -1289,4 +1394,18 @@ function taskEnv(node: TaskNode, step: ExecConfig, workspaceRoot: string): NodeJ
   env[VX_RUN_WORKSPACE_ENV] = workspaceRoot
   env[VX_RUN_TASK_ENV] = node.id
   return env
+}
+
+function isAborted(signal: AbortSignal | undefined): boolean {
+  return signal?.aborted === true
+}
+
+/**
+ * How long a server may take to match `readyWhen` before vx says it waits.
+ * `VX_READY_NOTICE_MS` overrides it, as `VX_KILL_GRACE_MS` does the grace.
+ */
+function readyNoticeMs(): number {
+  const raw = process.env['VX_READY_NOTICE_MS']
+  if (raw !== undefined && /^[0-9]+$/.test(raw) && Number(raw) > 0) return Number(raw)
+  return 10_000
 }

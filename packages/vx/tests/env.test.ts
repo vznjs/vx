@@ -2,7 +2,12 @@ import os from 'node:os'
 import path from 'node:path'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { describe, expect, it } from 'bun:test'
-import { buildIsolatedEnv } from '../src/exec/env.js'
+import {
+  buildIsolatedEnv,
+  ESSENTIAL_ENV,
+  VX_RUN_TASK_ENV,
+  VX_RUN_WORKSPACE_ENV,
+} from '../src/exec/env.js'
 import { resolveInputs } from '../src/cache/index.js'
 import { run } from '../src/orchestrator/index.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
@@ -265,6 +270,67 @@ describe('what a task sees of the temp directory, end to end', () => {
       }
       await rm(root, { recursive: true, force: true })
       await rm(tmp, { recursive: true, force: true })
+    }
+  })
+})
+
+// What a host credential reaches: nothing it is not named for. The unit
+// rows above hold `buildIsolatedEnv`; this holds the spawn a real run makes,
+// so a second env built anywhere on the way (an executor, a wrapper) cannot
+// widen it unseen (M-71).
+describe('what a task sees of the host environment, end to end', () => {
+  // Set by the child itself, not by vx: the shell a command line runs
+  // under, and on macOS CoreFoundation, which writes
+  // `__CF_USER_TEXT_ENCODING` into the environment of a process linked
+  // against it, the probe's `node` included (macOS CI, job 111184881471).
+  const CHILD_SET = new Set(['PWD', 'SHLVL', '_', 'OLDPWD', '__CF_USER_TEXT_ENCODING'])
+  const PLANTED = {
+    SSH_AUTH_SOCK: '/tmp/vx-env-agent.sock',
+    GITHUB_TOKEN: 'ghp_vx_env_probe',
+    AWS_SECRET_ACCESS_KEY: 'vx-env-probe-secret',
+    NPM_TOKEN: 'vx-env-probe-npm',
+    VX_ENV_PASSED: 'passed',
+  }
+
+  it('the allowlist, the names a task passes through or defines, and the run’s own two, exactly', async () => {
+    const root = await makeWorkspace({ prefix: 'vx-env-host-' })
+    const saved = Object.fromEntries(Object.keys(PLANTED).map((k) => [k, process.env[k]]))
+    try {
+      const dir = await addProject(root, 'app', {
+        config: `
+          export default {
+            tasks: {
+              probe: {
+                exec: {
+                  command: "node -e 'require(\\"fs\\").writeFileSync(\\"seen.json\\", JSON.stringify(Object.keys(process.env)))'",
+                  env: { passThrough: ['VX_ENV_PASSED'], define: { VX_ENV_DEFINED: 'd' } },
+                },
+              },
+            },
+          }
+        `,
+      })
+      Object.assign(process.env, PLANTED)
+      const quiet = { status() {}, taskStdout() {}, taskStderr() {}, taskComplete() {} }
+      const r = await run({ cwd: root, tasks: ['probe'], log: quiet })
+      expect(r.ok).toBe(true)
+      const seen = (JSON.parse(await Bun.file(path.join(dir, 'seen.json')).text()) as string[])
+        .filter((n) => !CHILD_SET.has(n))
+        .sort()
+      const expected = [
+        ...ESSENTIAL_ENV.filter((n) => process.env[n] !== undefined),
+        'VX_ENV_PASSED',
+        'VX_ENV_DEFINED',
+        VX_RUN_TASK_ENV,
+        VX_RUN_WORKSPACE_ENV,
+      ].sort()
+      expect(seen).toEqual(expected)
+    } finally {
+      for (const [k, v] of Object.entries(saved)) {
+        if (v === undefined) delete process.env[k]
+        else process.env[k] = v
+      }
+      await rm(root, { recursive: true, force: true })
     }
   })
 })

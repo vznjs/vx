@@ -112,7 +112,9 @@ export function parseConcurrency(v: string, cpus = machineParallelism()): number
   return n === null || n < 1 ? null : n
 }
 
-export function parseRunArgs(rawArgs: readonly string[]): RunArgs {
+/** `verb` is the one being parsed for: `vx watch` reads `vx run`'s flags, and
+ * its refusals pointed at `vx run --help` (M-58). */
+export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' = 'run'): RunArgs {
   const out: RunArgs = {
     tasks: [],
     filters: [],
@@ -182,7 +184,7 @@ export function parseRunArgs(rawArgs: readonly string[]): RunArgs {
     } else if (RETIRED_EXCLUDE_DEPENDENCIES.test(a ?? '')) {
       return {
         ...out,
-        error: `unknown flag: ${a} (the flag is --exclude-dependencies)${seeHelp('run')}`,
+        error: `unknown flag: ${a} (the flag is --exclude-dependencies)${seeHelp(verb)}`,
       }
     } else if (a === '--exclude-dependencies') {
       out.excludeDependencies = 'all'
@@ -363,7 +365,7 @@ export function parseRunArgs(rawArgs: readonly string[]): RunArgs {
       }
       out.report = fmt
     } else if (a !== undefined && a.startsWith('-')) {
-      return { ...out, error: `unknown flag: ${a}${flagHint('run', a)}${seeHelp('run')}` }
+      return { ...out, error: `unknown flag: ${a}${flagHint(verb, a)}${seeHelp(verb)}` }
     } else if (a !== undefined) {
       out.tasks.push(a)
     }
@@ -665,6 +667,10 @@ export async function runCmd(args: readonly string[]): Promise<number> {
   // the scheduler, cache, retries and telemetry unchanged above it); there
   // is no whole-run delegation seam to consult.
   const summary = await runOrchestrator(opts)
+  if (summary.refused !== undefined) {
+    process.stderr.write(`vx run: ${summary.refused}\n`)
+    return 1
+  }
   const result: RunResult = { ok: summary.ok, outcomes: summary.outcomes.map(projectOutcome) }
   if (parsed.verbosity > 0) printSummary(result)
   // Report generation is post-run, gated on the flags — zero cost when

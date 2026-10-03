@@ -134,6 +134,7 @@ describe('package boundaries', () => {
       'defineProject',
       'defineWorkspace',
       'escapeMarkdownCell',
+      'executorFallback',
       'exitSignal',
       'findWorkspaceRoot',
       'foldScriptHooks',
@@ -167,6 +168,9 @@ describe('package boundaries', () => {
       'pruneOrphanPersistentNotes',
       'quoteTsLiteral',
       'reachDigests',
+      // Stream F: a plugin factory refuses a misspelt option, as core
+      // refuses an unknown config field.
+      'refuseUnknownOptions',
       'resolveRunId',
       'run',
       'splitTaskId',

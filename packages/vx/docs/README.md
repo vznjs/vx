@@ -90,10 +90,11 @@ each is recorded in [optimizations.md](./optimizations.md).
 
 - A fully-cached run on a 100-project workspace completes in **74 ms**
   wall-clock; on 476 packages / 1,428 tasks in **297 ms**, where
-  Turborepo 2.10 takes 342 ms and Nx 23 takes 1.38 s on the identical
-  workspace — and restoring every output is 1.5× faster than Turbo
+  Turborepo 2.10 takes 342 ms (vx 13% faster) and Nx 23 takes 1.38 s
+  (vx 78% faster) on the identical workspace — and restoring every
+  output, vx is 32% faster than Turbo
   ([benchmarks.md](./benchmarks.md), 2026-09).
-- At 15k input files, deriving every cache key costs **zero file reads**
+- At 15k input files, deriving every cache key costs **zero source-file reads**
   — hashes come from git's index for tracked, clean files.
 - No daemon. Nothing to keep warm, nothing to restart.
 
@@ -146,7 +147,7 @@ import { defineWorkspace } from '@vzn/vx/config'
 export default defineWorkspace({ plugins: [] })
 ```
 
-Run things:
+Run things (from a local install, prefix `npx` or `bunx`):
 
 ```bash
 vx run build                    # current package (+ its dependency graph)

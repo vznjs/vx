@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { UserError, type ProjectMeta } from '@vzn/vx'
-import { DOTENV_PROBE, DOTENV_PROBE_TOP } from '../src/dotenv-probe.js'
+import { DOTENV_PROBE, DOTENV_PROBE_TOP, dotenvGlobsProbe } from '../src/dotenv-probe.js'
 import { mapTurboWorkspace, type TurboMappedTask } from '../src/turbo/turbo-map.js'
 
 let root: string
@@ -177,10 +177,10 @@ describe('turbo-map: what the sweep found unheld', () => {
     }).toEqual({
       env: ['VITE_X', 'NEXT_PUBLIC_A', 'NEXT_PUBLIC_B', 'API'],
       pass: ['VITE_X', 'NEXT_PUBLIC_A', 'NEXT_PUBLIC_B', 'API', 'TOKEN_1'],
-      todos: [
-        'env "FOO_?": Turbo reads this as the one variable "FOO_?" (only `*` is a wildcard), a name vx cannot key — dropped',
+      todos: [],
+      notes: [
+        'env "FOO_?": Turbo reads this as the one variable "FOO_?" (only `*` is a wildcard), a name vx cannot key — dropped (1 task)',
       ],
-      notes: [],
     })
   })
 
@@ -196,11 +196,16 @@ describe('turbo-map: what the sweep found unheld', () => {
     }
     const pkgs = { a: { scripts: { build: 'b' } } }
     const read = async (live?: string[]) => {
-      const t = (await map(turbo, pkgs, live)).projects[0]!.tasks[0]!
-      return { env: (t.task!['cache'] as { inputs: { env?: unknown } }).inputs.env, todos: t.todos }
+      const m = await map(turbo, pkgs, live)
+      const t = m.projects[0]!.tasks[0]!
+      return {
+        env: (t.task!['cache'] as { inputs: { env?: unknown } }).inputs.env,
+        todos: [...t.todos, ...m.notes],
+      }
     }
+    // Reported once for the workspace, with the count of tasks naming it.
     const literal = (entry: string, name: string): string =>
-      `env ${JSON.stringify(entry)}: Turbo reads this as the one variable ${JSON.stringify(name)} (only \`*\` is a wildcard), a name vx cannot key — dropped`
+      `env ${JSON.stringify(entry)}: Turbo reads this as the one variable ${JSON.stringify(name)} (only \`*\` is a wildcard), a name vx cannot key — dropped (1 task)`
     // Live: the escaped names are set nowhere, so Turbo hashes nothing for
     // them; the exclusion's \* is no wildcard, so B_1 stays.
     expect(await read(['B_1', 'NEXT_PUBLIC_A'])).toEqual({ env: ['API', 'B_1'], todos: [] })
@@ -212,9 +217,9 @@ describe('turbo-map: what the sweep found unheld', () => {
     expect(await read()).toEqual({
       env: ['API'],
       todos: [
+        'env "B_*": wildcards are not supported in vx env names — list explicit names in cache.inputs.env + exec.env.passThrough',
         literal('NEXT_PUBLIC_\\*', 'NEXT_PUBLIC_*'),
         literal('\\!NEXT_PUBLIC_VERCEL_\\*', '!NEXT_PUBLIC_VERCEL_*'),
-        'env "B_*": wildcards are not supported in vx env names — list explicit names in cache.inputs.env + exec.env.passThrough',
       ],
     })
   })
@@ -274,7 +279,7 @@ describe('turbo-map: what the sweep found unheld', () => {
       files: ['src/**'],
       ws: undefined,
       runtime: 'top',
-      wsRuntime: 'walk',
+      wsRuntime: [dotenvGlobsProbe(['.env'])],
       todos: [],
     })
   })
@@ -544,11 +549,12 @@ describe('turbo-map: what the sweep found unheld', () => {
   it.each(['FOO_?', 'FOO_[AB]', '\\*'])(
     'env and passThroughEnv %s are refused as wildcards',
     async (name) => {
-      const t = await taskOf(
+      const m = await map(
         { tasks: { build: { env: [name], passThroughEnv: [name] } } },
         { a: { scripts: { build: 'b' } } },
       )
-      expect(t.todos).toHaveLength(2)
+      const t = m.projects[0]!.tasks[0]!
+      expect([...t.todos, ...m.notes]).toHaveLength(2)
       expect(t.task!['exec']).toEqual({ command: 'b' })
     },
   )
@@ -729,7 +735,8 @@ describe('turbo-map: a wildcard-first output of an untracked kind', () => {
     ['*.ts', false],
     ['*.{xml,json}', false],
     ['**/*.xml', false],
-    ['*/report.xml', false],
+    // It reaches only `<dir>/report.xml`, and the package tracks none.
+    ['*/report.xml', true],
     ['report*', false],
     ['**/dist/**', true],
     ['./**/build/**', true],
@@ -769,8 +776,9 @@ describe('turbo-map: a wildcard-first output of an untracked kind', () => {
                 exts: new Set(['ts', 'json']),
                 dirs: new Set(['src']),
                 tops: new Set(['src', 'package.json']),
+                files: ['src/index.ts', 'package.json'],
               }
-            : { exts: new Set(), dirs: new Set(), tops: new Set() },
+            : { exts: new Set(), dirs: new Set(), tops: new Set(), files: [] },
       },
     )
     expect(mapped.projects[0]!.tasks[0]!.task!['cache'] !== undefined).toBe(cached)
@@ -798,7 +806,10 @@ describe('turbo-map: `.env` inputs', () => {
     [{ inputs: ['src/**', '.env.local'] }, { files: ['src/**'], runtime: 'top' }],
     [{ dotEnv: ['.env.local'] }, { files: ['**/*'], runtime: 'top' }],
     [{ inputs: ['.env*', 'config/.env.local'] }, { files: [], runtime: 'walk' }],
-    [{ inputs: ['$TURBO_ROOT$/.env'] }, { files: [], workspaceRuntime: 'walk' }],
+    [
+      { inputs: ['$TURBO_ROOT$/.env'] },
+      { files: [], workspaceRuntime: [dotenvGlobsProbe(['.env'])] },
+    ],
   ])('%j keys %j', async (def, expected) => {
     const t = await taskOf({ tasks: { build: def } }, { a: { scripts: { build: 'b' } } })
     const got = inputsOf(t)

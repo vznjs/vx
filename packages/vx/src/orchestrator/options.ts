@@ -211,9 +211,9 @@ export interface RunOptions {
    */
   inflight?: Map<string, Promise<void>>
   /**
-   * `--tag k=v` pairs (Tier-3). Persisted verbatim on the run's
-   * `invocations` row (JSON object) so dashboards can filter runs by
-   * label. CLI parsing is the CLI's job; the orchestrator just records.
+   * `--tag k=v` pairs (Tier-3). Persisted on the run's `invocations`
+   * row (JSON object) so dashboards can filter runs by label, a secret
+   * value masked (L-38). CLI parsing is the CLI's job.
    */
   tags?: Record<string, string>
   /**
@@ -258,6 +258,12 @@ export interface RunSummary {
   outcomes: TaskOutcome[]
   /** The persistent tasks `RunOptions.holdPersistent` handed back; absent when none is running. */
   persistent?: HeldPersistent
+  /**
+   * Why the run refused to start, nothing having run (`ok` is false): a
+   * requested task no selected project declares, with what is near. The
+   * caller prints it; `vx run` writes it to stderr.
+   */
+  refused?: string
 }
 
 export interface HeldPersistent {

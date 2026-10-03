@@ -114,12 +114,13 @@ function unwrapGraph(g) {
 }
 
 /**
- * The cached graph, or a fresh one when the cache is missing or unreadable.
+ * The cached graph, or a fresh one when the cache is missing, unreadable or
+ * lacks the project.
  * The daemon is never dialed: NX_DAEMON is off for this process before `nx`
  * loads, so the fallback computes in-process — slow, bounded, and it writes
  * Nx's cache for the next task.
  */
-async function loadGraph(nx) {
+async function loadGraph(nx, project) {
   const pg = nx('nx/src/project-graph/project-graph')
   let graph = null
   try {
@@ -127,7 +128,11 @@ async function loadGraph(nx) {
   } catch {
     // No cache, or a shape the reader did not understand: compute below.
   }
-  if (graph === null) graph = unwrapGraph(await pg.createProjectGraphAsync({ exitOnError: false }))
+  // A cache written before the project existed (one added since Nx last
+  // ran) is stale: \`nx run\` computes the graph and finds it, so compute.
+  if (graph === null || graph.nodes[project] === undefined) {
+    graph = unwrapGraph(await pg.createProjectGraphAsync({ exitOnError: false }))
+  }
   if (graph === null) throw new Error('nx produced a project graph with no nodes')
   return { graph, pg }
 }
@@ -159,7 +164,7 @@ async function main(argv) {
   // process, so the task's `.env` files (nx-dotenv.cjs) are its env.
   loadTaskEnv(nx, process.env, args.dotenv, undefined)
 
-  const { graph, pg } = await loadGraph(nx)
+  const { graph, pg } = await loadGraph(nx, args.project)
   const node = graph.nodes[args.project]
   if (node === undefined) {
     process.stderr.write(
@@ -196,7 +201,6 @@ async function main(argv) {
   }
   // An executor yields once per result and a server yields for as long as it
   // runs; the exit is the LAST result's, as `nx run` reports it.
-  let ok = false
   const description = { project: args.project, target: args.target }
   if (args.configuration !== undefined) description.configuration = args.configuration
   // Parsed by Nx itself, as `nx run` parses what follows the target. Loaded
@@ -212,10 +216,34 @@ async function main(argv) {
     const { __overrides_unparsed__: _raw, ...parsed } = createOverrides(args.overrides)
     overrides = parsed
   }
-  for await (const result of await runExecutor(description, overrides, context)) {
-    ok = result !== null && typeof result === 'object' && result.success === true
+  // As `nx run` reads it (`getLastValueFromAsyncIterableIterator`): the
+  // generator's RETURN value when it has one, else the last yield. A
+  // `for await` drops the return: an executor that only returns
+  // `{ success: true }` exited 1, and a server that yields success and
+  // returns failure when it dies (@nx/web:file-server) exited 0.
+  const results = await runExecutor(description, overrides, context)
+  const iterator = (results[Symbol.asyncIterator] || results[Symbol.iterator]).call(results)
+  let last
+  for (;;) {
+    const step = await iterator.next()
+    if (step.done) {
+      if (step.value !== undefined) last = step.value
+      break
+    }
+    last = step.value
   }
+  const ok = last !== null && typeof last === 'object' && last.success === true
   return ok ? 0 : 1
+}
+
+/** Does `pkg` resolve from the working directory (the workspace root, once Nx runs)? */
+function installed(pkg) {
+  try {
+    createRequire(path.join(process.cwd(), 'package.json')).resolve(`${pkg}/package.json`)
+    return true
+  } catch {
+    return false
+  }
 }
 
 /**
@@ -229,7 +257,38 @@ function finish(code) {
   process.stdout.write('', () => process.stderr.write('', () => process.exit(code)))
 }
 
+// As `nx run` reports a thrown error (`handleErrors`): the message, and
+// the stack only under verbose logging. A missing executor package or an
+// executor's own throw printed a stack of Nx internals every time.
 main(process.argv.slice(2)).then(finish, (err) => {
-  process.stderr.write(`nx-exec: ${err && err.stack ? err.stack : String(err)}\n`)
+  const message = err && err.message ? err.message : String(err)
+  const verbose = process.env.NX_VERBOSE_LOGGING === 'true'
+  // Nx's "Unable to resolve <pkg>:<executor>." with a package Node cannot
+  // find from the workspace root: not installed. Nx's own second line
+  // varies (Node's "Cannot find module" and its require stack, or the
+  // local-plugin lookup's "unable to find tsconfig.base.json"); either,
+  // with a package Node cannot resolve, is the refusal. A local plugin
+  // Nx found and failed on says something else, and keeps Nx's message.
+  const unresolved = /^Unable to resolve (.+):([^:\n]+)\.\n([^\n]*)/.exec(message)
+  const notFound =
+    unresolved !== null &&
+    (unresolved[3].startsWith(`Cannot find module '${unresolved[1]}/package.json'`) ||
+      unresolved[3].startsWith('unable to find tsconfig'))
+  if (!verbose && notFound && !installed(unresolved[1])) {
+    process.stderr.write(
+      `nx-exec: executor package ${JSON.stringify(unresolved[1])} is not installed in this workspace ` +
+        `(${unresolved[1]}:${unresolved[2]}) — add it to devDependencies, or write the task as the command ` +
+        'the executor runs\n',
+    )
+    finish(1)
+    return
+  }
+  const more =
+    err && err.stack
+      ? verbose
+        ? `\n${err.stack}`
+        : '\nSet NX_VERBOSE_LOGGING=true to see the stack trace.'
+      : ''
+  process.stderr.write(`nx-exec: ${message}${more}\n`)
   finish(1)
 })

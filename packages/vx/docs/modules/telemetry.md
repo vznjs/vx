@@ -51,11 +51,93 @@ is pre-folded, bigint wallclock spans are decimal strings.
 - `TELEMETRY_SCHEMA_VERSION` — bumped when a record's shape changes, so a
   receiver can refuse what it cannot read.
 
+## Records
+
+What a sink receives, field by field (`TELEMETRY_SCHEMA_VERSION` 3;
+held to the source by `telemetry-doc.test.ts`). An optional field is
+additive: a consumer treats it as absent when a producer predates it.
+
+```ts
+interface RunContextRecord {
+  runId: string // ULID shared by every record of one run
+  vxVersion: string
+  command: string // the command line; what follows `--` counted, never quoted
+  requestedTasks: readonly string[]
+  cachePolicy: string // e.g. 'lR,lW,rR,rW'
+  concurrency: number
+  flow: 'focused' | 'broad' | null
+  workspaceId: string // from the normalized git remote (v2)
+  workspaceName: string
+  commitSha: string | null
+  branch: string | null
+  defaultBranch: string | null // a trunk run: branch === defaultBranch (v2)
+  dirty: boolean | null
+  ci: boolean
+  ciProvider: string | null
+  host: string | null
+  os: string
+  arch: string
+  tags: Readonly<Record<string, string>> // `--tag k=v`
+}
+
+interface TaskTelemetry {
+  taskId: string
+  project: string
+  task: string
+  status: TaskStatus
+  cacheSource: CacheSource
+  exitCode: number
+  durationMs: number
+  hash?: string
+  cpuMs?: number
+  peakRssBytes?: number
+  where?: string // an executor's placement; absent when run here
+  outputs?: 'deferred' // the outputs stayed remote (`--download=none`)
+  attempts?: number // more than one: the task retried
+  blockedBy?: string // on a skipped task, the failure at the root of it
+  timedOut?: true // on a failed task, vx's own timeout killed it
+  sandboxViolations?: number
+  notReady?: 'timeout' | 'exited' | 'spawn' // a persistent task never ready
+  wallclockStartNs?: string // bigint ns from the run's start, as a decimal string
+  wallclockEndNs?: string
+}
+
+interface RunSummaryRecord {
+  v: number
+  run: RunContextRecord
+  startedAt: number
+  endedAt: number
+  totalDurationMs: number
+  taskCount: number
+  failedCount: number
+  abortedCount: number // stopped by a signal or an abort, not in `tasks` (v3)
+  hitCount: number
+  hitLocalCount: number
+  hitRemoteCount: number
+  exitOk: boolean
+  tasks: readonly TaskTelemetry[]
+}
+```
+
+Each streaming record carries `v` and `kind`, and:
+
+| `kind`       | Fields                                                |
+| ------------ | ----------------------------------------------------- |
+| `run.start`  | `run`, `total`, `ts`, `startedAt`                     |
+| `task.start` | `runId`, `taskId`, `project`, `task`, `command`, `ts` |
+| `task.log`   | `runId`, `taskId`, `stream`, `chunk`, `ts` (opt-in)   |
+| `task.end`   | `runId`, `ts`, every `TaskTelemetry` field            |
+| `run.end`    | `runId`, `ts`                                         |
+
 ## Invariants
 
-- **Observe-only by construction**: sinks receive immutable records and
-  a read-only context — no bus, no Cache, no path back into scheduling.
+- **Observe-only by construction**: sinks receive plain-data records and
+  a read-only context. A record is one object every sink receives, and
+  it is not frozen, so a sink must not change it — no bus, no Cache, no path back into scheduling.
 - **Crash isolation**: a throwing sink is disabled for the run, never
-  propagates.
+  propagates, and so is an `async` hook that rejects; it is said once,
+  however many rejections follow (`telemetry-async-hooks.test.ts`).
 - `task.log` is opt-in via `TelemetrySink.wants` (default excludes it).
-- Version bumps are additive-or-bump: consumers reject unknown majors.
+- Version bumps are additive-or-bump: a record whose shape changes bumps
+  `TELEMETRY_SCHEMA_VERSION`, an integer, which a receiver may check to
+  refuse what it cannot read; no first-party sink checks it.

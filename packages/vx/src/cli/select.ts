@@ -3,7 +3,6 @@
 // cwd sits in, and the interactive picker. Every read of the workspace
 // here goes through the staged load, so the answer is the run's.
 
-import readline from 'node:readline/promises'
 import path from 'node:path'
 import fs from 'node:fs'
 import {
@@ -25,8 +24,13 @@ import {
 import type { ProjectConfig } from '../config.js'
 import type { ProjectEntry } from '../workspace/index.js'
 import { parseDependencySpec } from '../graph/index.js'
-import { nearest, UserError } from '../util/index.js'
-import { claimedAffected, fingerprintClaims, gitOfDiscovery } from '../orchestrator/index.js'
+import { listed, maskedLine, nearest, UserError } from '../util/index.js'
+import {
+  claimedAffected,
+  fingerprintClaims,
+  gitOfDiscovery,
+  keepDiscoveryGraph,
+} from '../orchestrator/index.js'
 import {
   type CliLoadOptions,
   discoverCliProjects,
@@ -104,7 +108,7 @@ async function workspaceFingerprintClaims(
   const ctx = {
     workspaceRoot: root,
     cacheDir: load.cacheDir ?? ws.cacheDir,
-    warn: (m: string) => process.stderr.write(`${m}\n`),
+    warn: (m: string) => process.stderr.write(`${maskedLine(m)}\n`),
     projects: projects.map((p) => ({ name: p.name, dir: p.dir })),
   }
   return {
@@ -251,6 +255,9 @@ export async function resolveFilters(
     }
   }
   const graph = buildPackageGraph(projects, edges)
+  // The graph a run reusing this discovery builds is this one when no task
+  // edge went into it.
+  if (edges === undefined) keepDiscoveryGraph(projects, graph)
 
   // Resolve every `[<since>]` filter against git before the pure
   // applyFilters pass runs. One spawn per distinct ref — usually
@@ -396,6 +403,9 @@ export async function pickTask(
     const desc = e.description ? `  ${e.description}` : ''
     out.write(`  ${n}. ${id}${desc}\n`)
   })
+  // Imported here, the picker's one use: a run that never asks paid ~0.7 ms
+  // for it at every start, past the stdout stream it shares code with.
+  const readline = await import('node:readline/promises')
   const rl = readline.createInterface({
     input: io.input ?? process.stdin,
     output: io.output ?? process.stdout,
@@ -458,5 +468,5 @@ function didYouMeanProject(
     const scoped = bare === undefined ? undefined : byBare.get(bare)
     if (scoped?.length === 1) return `. Did you mean ${scoped[0]}?`
   }
-  return ''
+  return names.length === 0 ? '' : `. Projects: ${listed(names)}`
 }

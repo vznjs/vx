@@ -189,9 +189,16 @@ export async function plan(args: PlanArgs): Promise<RunPlan> {
   if (args.history !== undefined) {
     try {
       const realIds = tasks.filter((t) => t.cacheStatus !== 'group').map((t) => t.node.id)
-      const table = await args.history.loadFor(realIds)
+      const p50s =
+        args.history.p50sFor !== undefined
+          ? await args.history.p50sFor(realIds)
+          : new Map(
+              [...(await args.history.loadFor(realIds))].flatMap(([id, h]) =>
+                h.p50DurationMs === undefined ? [] : [[id, h.p50DurationMs] as const],
+              ),
+            )
       for (const t of tasks) {
-        const p50 = table.get(t.node.id)?.p50DurationMs
+        const p50 = p50s.get(t.node.id)
         if (p50 !== undefined) t.p50Ms = p50
       }
       return { tasks, predicted: predictPlan(tasks), ...downgradeField(args) }

@@ -3,7 +3,21 @@
 // them lives in the store that owns the table (file-hashes, config-evals,
 // output-index, history) or in cache.ts for `entries` and `entry_inputs`.
 
-import type { Database } from 'bun:sqlite'
+import type { Database, SQLQueryBindings } from 'bun:sqlite'
+
+/**
+ * A statement prepared on its first `run` or `get`. A warm run executes few
+ * of the index's statements, and preparing every one at the open cost each
+ * run ~0.4 ms (2026-10-03).
+ */
+export function lazyStatement(db: Database, sql: string): ReturnType<Database['prepare']> {
+  let statement: ReturnType<Database['prepare']> | undefined
+  const prepared = (): ReturnType<Database['prepare']> => (statement ??= db.prepare(sql))
+  return {
+    run: (...params: SQLQueryBindings[]) => prepared().run(...params),
+    get: (...params: SQLQueryBindings[]) => prepared().get(...params),
+  } as unknown as ReturnType<Database['prepare']>
+}
 
 export function createTables(db: Database): void {
   // Cached config evaluations (workspace/config-cache.ts): the validated
@@ -18,10 +32,8 @@ export function createTables(db: Database): void {
   `)
 
   db.exec(`
-    -- The queryable index: command, exit_code, duration, size,
-    -- timestamps, and stdout, which the <hash>.tar.zst artifact also
-    -- carries so it survives a remote round trip; a local hit
-    -- replays it from here.
+    -- The queryable index: command, exit_code, duration, size and
+    -- timestamps; stdout in entry_stdout below.
     CREATE TABLE IF NOT EXISTS entries (
       hash         TEXT PRIMARY KEY,
       project      TEXT NOT NULL,
@@ -30,12 +42,20 @@ export function createTables(db: Database): void {
       exit_code    INTEGER NOT NULL,
       duration_ms  INTEGER NOT NULL,
       size_bytes   INTEGER NOT NULL,
-      stdout       TEXT NOT NULL DEFAULT '',
       created_at   INTEGER NOT NULL,
       accessed_at  INTEGER NOT NULL,
       -- v26: the producing execution's usage, from the artifact's sidecar.
       cpu_ms         INTEGER,
       peak_rss_bytes INTEGER
+    );
+    -- v29: an entry's stdout, which the <hash>.tar.zst artifact also
+    -- carries so it survives a remote round trip; a local hit replays it
+    -- from here. Its own table: an UPDATE rewrites a whole record, and the
+    -- accessed_at bump rewrote up to 16 MB a hit. No row: empty stdout.
+    CREATE TABLE IF NOT EXISTS entry_stdout (
+      hash   TEXT PRIMARY KEY,
+      stdout TEXT NOT NULL,
+      FOREIGN KEY (hash) REFERENCES entries(hash) ON DELETE CASCADE
     );
     CREATE TABLE IF NOT EXISTS runs (
       id                  INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -228,4 +248,17 @@ export function createTables(db: Database): void {
       FOREIGN KEY (entry_hash) REFERENCES entries(hash) ON DELETE CASCADE
     );
   `)
+}
+
+/**
+ * A `WHERE <column> …` test against many hashes, as one statement whatever
+ * their number. A list of `?` is a new statement per length, compiled each
+ * run: 2.0 ms against 1.4 for 900 hashes through `json_each` (2026-10-03).
+ * One hash keeps `= ?`, ~3 µs cheaper than parsing a one-element array, on
+ * the per-hit path that asks for one at a time.
+ */
+export function inHashes(hashes: readonly string[]): { test: string; params: string[] } {
+  return hashes.length === 1
+    ? { test: '= ?', params: [hashes[0]!] }
+    : { test: 'IN (SELECT value FROM json_each(?))', params: [JSON.stringify(hashes)] }
 }

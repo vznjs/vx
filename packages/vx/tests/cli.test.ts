@@ -44,6 +44,42 @@ describe('cli run()', () => {
     expect(stdout).toMatch(/^vx \d/)
   })
 
+  it('a flag before any verb is called a flag, not a command (M-60)', async () => {
+    const said = async (args: string[]): Promise<[number, string]> => {
+      stderr = ''
+      return [await run(args), stderr]
+    }
+    expect([await said(['--verison']), await said(['--all']), await said(['rnu'])]).toEqual([
+      [
+        1,
+        "vx: unknown flag: --verison (did you mean --version?); a verb's flags follow the verb (see `vx help`)\n",
+      ],
+      [1, "vx: unknown flag: --all; a verb's flags follow the verb (see `vx help`)\n"],
+      // CONTROL: a word without a dash is still a command.
+      [1, 'vx: unknown command: rnu. Did you mean run? (see `vx help`)\n'],
+    ])
+  })
+
+  it('vx watch names its own help, and vx cache its one subcommand (M-58)', async () => {
+    const said = async (args: string[]): Promise<[number, string]> => {
+      stderr = ''
+      return [await run(args), stderr]
+    }
+    expect([
+      // `watch` reads `run`'s flags, and pointed at `vx run --help`.
+      await said(['watch', 'build', '--debounce=abc']),
+      await said(['watch', 'build', '--filtr=app']),
+      await said(['cache', 'bogus']),
+      // CONTROL: a near miss keeps its one name.
+      await said(['cache', 'prnue']),
+    ]).toEqual([
+      [1, 'vx watch: unknown flag: --debounce=abc (see `vx watch --help`)\n'],
+      [1, 'vx watch: unknown flag: --filtr=app (did you mean --filter?) (see `vx watch --help`)\n'],
+      [1, 'vx cache: unknown subcommand: bogus. The subcommand is prune (see `vx cache --help`)\n'],
+      [1, 'vx cache: unknown subcommand: prnue. Did you mean prune? (see `vx cache --help`)\n'],
+    ])
+  })
+
   // Every verb answered `unknown flag: --help` and exited 1 until
   // 2026-09-04 — the one thing every user types first. The list is the
   // dispatcher's own verbs; a new verb that forgets this fails here.
@@ -207,12 +243,10 @@ describe('cli run()', () => {
       }
       process.chdir(root)
       expect(await run(['run', 'build', 'lint', 'typo-here', '--all', '--dry'])).toBe(1)
-      expect(stderr).toContain('no projects declare task(s): typo-here.')
       // The control, and the whole point: the names that DO resolve are not
-      // in the message. Asserted per name, because `toContain` on the good
-      // line would pass on the fallback's wording too.
-      expect(stderr).not.toContain('build')
-      expect(stderr).not.toContain('lint')
+      // among the unresolved; they appear only as what exists (M-56). The
+      // whole line, because `toContain` would pass on the fallback's wording.
+      expect(stderr).toBe('vx run: no projects declare task(s): typo-here. Tasks: build, lint.\n')
     } finally {
       process.chdir(origCwd)
       await rm(root, { recursive: true, force: true })
@@ -364,9 +398,11 @@ describe('cli run()', () => {
     expect(stdout).toMatch(/^vx \d/)
   })
 
-  it('-V is rejected as unknown', async () => {
+  it('-V is rejected as unknown, pointing at --version (M-60)', async () => {
     expect(await run(['-V'])).toBe(1)
-    expect(stderr).toContain('unknown command')
+    expect(stderr).toBe(
+      "vx: unknown flag: -V (did you mean --version?); a verb's flags follow the verb (see `vx help`)\n",
+    )
   })
 })
 
@@ -842,7 +878,7 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
 
     const code = await run(['run', '--all', 'hello', '--report=markdown'])
     expect(code).toBe(0)
-    // Header + the moon-style table with one row for the task.
+    // Header + the table with one row for the task.
     expect(stdout).toContain('## vx run')
     expect(stdout).toContain('| Task | Status | Cache | Duration |')
     expect(stdout).toMatch(/\| one#hello \| success \| miss \|/)
@@ -1229,10 +1265,11 @@ describe('vx watch end-to-end against a real fixture workspace', () => {
       )
 
       // Give the watch loop a moment; no `re-running` line should appear
-      // after the initial run.
+      // after the initial run. The lines themselves, not their count: a
+      // count of 1 on macOS CI (run 37089948846) did not say which path
+      // started the cycle (M-70).
       await new Promise((r) => setTimeout(r, 400))
-      const reRunCount = (stdout.match(/re-running\.\.\./g) ?? []).length
-      expect(reRunCount).toBe(0)
+      expect(stdout.split('\n').filter((l) => l.includes('re-running...'))).toEqual([])
 
       process.emit('SIGINT')
       await cmd

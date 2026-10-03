@@ -4,12 +4,8 @@
 // are two origins; the same-origin control proves the row sees a token.
 
 import { afterAll, beforeAll, expect, it } from 'bun:test'
-import {
-  NxRemoteCache,
-  resolveNxCacheConfig,
-  resolveTurboCacheConfig,
-  TurboRemoteCache,
-} from '../src/index.js'
+import { NxRemoteCache, resolveNxCacheConfig } from '../src/nx-cache/index.js'
+import { resolveTurboCacheConfig, TurboRemoteCache } from '../src/turbo-cache/index.js'
 
 const TOKEN = 'secret-token'
 const seen: { method: string; auth: string | null }[] = []

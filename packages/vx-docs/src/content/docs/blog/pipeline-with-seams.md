@@ -6,7 +6,7 @@ authors:
 tags:
   - design
   - plugins
-excerpt: 'vx is built like Vite: a core pipeline with a named hook at every stage, and plugins that fill exactly the stage they need. A remote cache is one hook. A lockfile parser is one hook. Zero-migration Turbo support is one hook.'
+excerpt: 'vx is built like Vite: a core pipeline with a named hook at every stage, and plugins that fill exactly the stage they need. A remote cache is one hook. A lockfile parser is one hook. Reading turbo.json as a start toward native config is one hook.'
 ---
 
 The word "plugin" usually means one of two things. Either a plugin is a
@@ -19,8 +19,8 @@ it needs.
 ## The stages
 
 ```
-config → project → graph → key → fingerprint → schedule → admit
-        → executor / cache → telemetry
+config → discover → project → graph → key → fingerprint → schedule
+        → admit → executor / cache → telemetry
 setup and teardown wrap the run; commands adds a verb
 ```
 
@@ -36,7 +36,7 @@ setup and teardown wrap the run; commands adds a verb
 | `admit`       | Vet each local dispatch against what is running right now; `false` holds the task.         |
 | `executor`    | Decide where one task's command runs.                                                      |
 | `cache`       | Provide a layer where artifacts live.                                                      |
-| `telemetry`   | Receive immutable run records. Cannot change behaviour, by construction.                   |
+| `telemetry`   | Receive plain-data run records. Cannot change behaviour, by construction.                  |
 | `setup`       | Once per run, after the planning stages and before the first task.                         |
 | `commands`    | Add a CLI verb. Core's verbs match first; nothing can shadow `vx run`.                     |
 | `teardown`    | Flush and close at the end of the run.                                                     |

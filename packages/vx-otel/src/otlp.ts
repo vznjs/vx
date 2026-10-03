@@ -46,7 +46,7 @@ function int64Attr(key: string, v: string): KeyValue {
 
 // --- semantic-convention keys ------------------------------------------
 
-export const SEMCONV = {
+const SEMCONV = {
   pipelineRunId: 'cicd.pipeline.run.id',
   pipelineResult: 'cicd.pipeline.result',
   taskName: 'cicd.pipeline.task.name',
@@ -72,7 +72,7 @@ export const SEMCONV = {
  * question as "what is this repo's trunk", and a decoder reading the wrong
  * one would quietly mis-classify every run's trust scope.
  */
-export const VX_ATTR = {
+const VX_ATTR = {
   // run
   schema: 'vx.telemetry.schema',
   workspaceId: 'vx.workspace.id',
@@ -154,7 +154,7 @@ export interface OtlpSpan {
  * own (`extra`), whose `service.name` / `service.version` vx's replace.
  * Run/VCS context rides span attrs.
  */
-export function resourceAttributes(
+function resourceAttributes(
   serviceName: string,
   vxVersion: string,
   extra: Readonly<Record<string, string>> = {},

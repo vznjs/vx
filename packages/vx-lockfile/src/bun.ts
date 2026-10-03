@@ -20,6 +20,8 @@ export interface Lockfile {
   readonly workspaceDirs: ReadonlyMap<string, string>
   /** node_modules path → the package there */
   readonly packages: ReadonlyMap<string, Entry>
+  /** `patchedDependencies`: `name@version` (or `name`) → the patch file's path */
+  readonly patches: ReadonlyMap<string, string>
   /** Material every workspace folds: the lockfile version and install-wide knobs. */
   readonly global: string
 }
@@ -34,7 +36,19 @@ export interface Entry {
 
 type Json = Record<string, unknown>
 /** The top-level fields the digest reads per workspace. */
-const PER_WORKSPACE = new Set(['workspaces', 'packages'])
+// Read per workspace: the workspaces and packages themselves, and the fields
+// whose whole effect is the `packages` entry a workspace reaches — how a
+// range was written (catalogs, D-141), what an override forced (D-142) and
+// what a patch changed (D-143). Folded into every workspace, one such edit
+// re-keyed them all.
+const PER_WORKSPACE = new Set([
+  'workspaces',
+  'packages',
+  'catalog',
+  'catalogs',
+  'overrides',
+  'patchedDependencies',
+])
 
 const DEP_FIELDS = [
   'dependencies',
@@ -79,8 +93,20 @@ export function parseLockfile(text: string): Lockfile {
   // scripts run (item 933).
   const rest: Json = {}
   for (const [k, v] of Object.entries(d)) if (!PER_WORKSPACE.has(k)) rest[k] = v
+
+  const patches = new Map<string, string>()
+  for (const [k, v] of Object.entries(record(d['patchedDependencies']) ?? {})) {
+    patches.set(k, typeof v === 'string' ? v : JSON.stringify(v))
+  }
   const global = JSON.stringify(rest)
-  return { version: String(d['lockfileVersion']), workspaces, workspaceDirs, packages, global }
+  return {
+    version: String(d['lockfileVersion']),
+    workspaces,
+    workspaceDirs,
+    packages,
+    patches,
+    global,
+  }
 }
 
 function depsOf(m: Json): ReadonlyMap<string, string> {
@@ -165,7 +191,25 @@ export function importerDigests(
     }
     return i
   }
-  for (const [p, e] of lock.packages) node(p, `${p}\0${e.id}\0${e.resolution}`)
+  // The name a package is installed under and what it is, not where: a
+  // re-hoist (`is-odd/is-number` → `is-number`, one version) re-keyed
+  // every project reaching it with the same bytes installed (D-140). Where
+  // it sits still decides what it resolves; that is the edges.
+  for (const [p, e] of lock.packages) node(p, `${installName(p)}\0${e.id}\0${e.resolution}`)
+  // A patch is part of the package it patches: an edit to one only `b`
+  // reaches re-keyed every workspace while it was install-wide (D-143).
+  // One that names no entry stays install-wide, so it still moves a key.
+  const loose: [string, string, string][] = []
+  for (const [key, file] of [...lock.patches].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
+    const own = `\npatch\0${key}\0${file}\0${files.get(file) ?? ''}`
+    let hit = false
+    for (const [p, e] of lock.packages) {
+      if (e.id !== key && e.id.slice(0, e.id.lastIndexOf('@')) !== key) continue
+      material[index.get(p)!] += own
+      hit = true
+    }
+    if (!hit) loose.push([key, file, files.get(file) ?? ''])
+  }
   for (const [p, e] of lock.packages) {
     const from = index.get(p)!
     for (const [name, spec] of e.deps) {
@@ -202,14 +246,18 @@ export function importerDigests(
   const out = new Map<string, string>()
   // The global digest rides as DATA: Bun's xxHash3 reads only the low 32
   // bits of a seed, so two lockfiles' globals could share one (item 682).
-  // A patch's content beside its path; nothing added without one, so a
-  // lockfile with no patches keys as it did.
-  const patches = [...files].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
   const globalMaterial =
-    patches.length === 0 ? lock.global : `${lock.global}\0${JSON.stringify(patches)}`
+    loose.length === 0 ? lock.global : `${lock.global}\0${JSON.stringify(loose)}`
   const global = Bun.hash.xxHash3(globalMaterial).toString(16).padStart(16, '0')
   for (const [dir, i] of importers) {
     out.set(dir, Bun.hash.xxHash3(`${global}\0${digests[i]!}`).toString(16).padStart(16, '0'))
   }
   return out
+}
+
+/** The name a package key installs under: its last segment, scope included. */
+function installName(key: string): string {
+  const parts = key.split('/')
+  const scoped = parts.length >= 2 && parts[parts.length - 2]!.startsWith('@')
+  return scoped ? parts.slice(-2).join('/') : parts[parts.length - 1]!
 }

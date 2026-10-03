@@ -6,6 +6,7 @@ export { prepareRun, type PreparedRun } from './prepare.js'
 export {
   discoverProjects,
   gitOfDiscovery,
+  keepDiscoveryGraph,
   loadProjects,
   loadResolvedProjects,
   loadWorkspacePlugins,
@@ -85,6 +86,8 @@ export {
   type FingerprintContext,
   type VxPlugin,
   definePlugin,
+  refuseUnknownOptions,
+  type PluginOptionKinds,
   type PluginHooks,
   type PluginOrigin,
 } from './plugin.js'

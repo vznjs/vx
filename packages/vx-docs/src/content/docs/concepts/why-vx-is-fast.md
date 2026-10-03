@@ -14,8 +14,9 @@ These are reproducible on your own machine, not marketing figures:
 
 - **The runner's overhead on a cold build**, the number to read first.
   On the 3,270-task workspace the tasks alone take 3m 38s under an ideal
-  schedule; vx finishes in 3m 46s (+0:08), Turborepo in 5m 13s (+1:35),
-  Nx in 34m 44s (+31:06) — one unit for every runner. A runner that adds
+  schedule; vx finishes in 3m 47s (+0:09), Turborepo in 5m 13s (+1:35,
+  vx 27% faster), Nx in 34m 44s (+31:06, vx 89% faster; it ran every
+  task through npm, a harness fault) — one unit for every runner. A runner that adds
   seconds to a three-minute build is a different tool from one that adds
   half an hour, and the per-package figure (8 ms, 88 ms and 1,712 ms per
   package) is how each grows with the codebase.
@@ -24,8 +25,9 @@ These are reproducible on your own machine, not marketing figures:
   fresh / warm-no-restore / warm-restore, from a `vx lock` snapshot
   (`--frozen`), as every vx bench runs it. A 100-project workspace
   replays fully-cached in **74 ms** whole-process (1,000 projects in
-  172 ms), and a restore costs about the same as an untouched tree;
-  the current floors are in [Benchmarks](../../benchmarks/).
+  172 ms). Its restore row deletes the outputs first and extracts
+  every artifact, so it costs more than the untouched tree; the
+  current floors are in [Benchmarks](../../benchmarks/).
 - **Head-to-head vs Turborepo and Nx** — `bun packages/vx-bench/compare.ts` scaffolds
   one repo (1,090 packages, 100 dependency layers, a `build`,
   `installDeps` and `test` task each: 3,270 tasks) and runs all three runners across the same three cache states.
@@ -61,7 +63,7 @@ and faster:
   yields the tracked file list *and* every clean file's blob OID; a
   concurrent `git status` prunes anything that diverges and lists untracked
   files. Clean-tree key derivation
-  costs zero reads, zero stats, zero database lookups. Dirty files get the
+  costs zero source-file reads, zero stats, zero database lookups. Dirty files get the
   identical blob OID computed in-process, so a key never flips across a
   commit boundary — a class of spurious miss the others accept.
 - **Bitset graph algorithms.** Scheduler priority and the package graph

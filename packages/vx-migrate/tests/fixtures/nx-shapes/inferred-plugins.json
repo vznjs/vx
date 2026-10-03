@@ -1,0 +1,129 @@
+{
+  "graph": {
+    "nodes": {
+      "@fx/web": {
+        "name": "@fx/web",
+        "type": "app",
+        "data": {
+          "root": "apps/web",
+          "sourceRoot": "apps/web/src",
+          "tags": ["scope:web"],
+          "targets": {
+            "build": {
+              "executor": "nx:run-commands",
+              "options": { "command": "vite build", "cwd": "apps/web" },
+              "cache": true,
+              "dependsOn": ["^build"],
+              "inputs": ["production", "^production", { "externalDependencies": ["vite"] }],
+              "outputs": ["{workspaceRoot}/dist/apps/web"],
+              "configurations": { "production": { "args": ["--mode=production"] } },
+              "defaultConfiguration": "production",
+              "parallelism": true
+            },
+            "serve": {
+              "continuous": true,
+              "executor": "nx:run-commands",
+              "options": { "command": "vite", "cwd": "apps/web" },
+              "parallelism": true
+            },
+            "dev": {
+              "continuous": true,
+              "executor": "nx:run-commands",
+              "options": { "command": "vite", "cwd": "apps/web" },
+              "parallelism": true
+            },
+            "preview": {
+              "continuous": true,
+              "dependsOn": ["build"],
+              "executor": "nx:run-commands",
+              "options": { "command": "vite preview", "cwd": "apps/web" }
+            },
+            "serve-static": {
+              "continuous": true,
+              "executor": "@nx/web:file-server",
+              "options": { "buildTarget": "build", "spa": true }
+            },
+            "test": {
+              "executor": "nx:run-commands",
+              "options": {
+                "command": "jest",
+                "cwd": "apps/web",
+                "env": { "TS_NODE_COMPILER_OPTIONS": "{\"moduleResolution\":\"node10\"}" }
+              },
+              "cache": true,
+              "inputs": ["default", "^production", { "externalDependencies": ["jest"] }],
+              "outputs": ["{workspaceRoot}/coverage/{projectRoot}"],
+              "dependsOn": [{ "target": "build", "projects": "dependencies", "params": "forward" }]
+            },
+            "lint": {
+              "executor": "nx:run-commands",
+              "options": { "command": "eslint .", "cwd": "apps/web" },
+              "cache": true,
+              "inputs": [
+                "default",
+                "^default",
+                "{workspaceRoot}/eslint.config.mjs",
+                { "externalDependencies": ["eslint"] }
+              ],
+              "outputs": ["{options.outputFile}"]
+            },
+            "typecheck": {
+              "executor": "nx:run-commands",
+              "options": { "command": "tsc --build --emitDeclarationOnly", "cwd": "apps/web" },
+              "cache": true,
+              "dependsOn": ["^typecheck"],
+              "inputs": ["production", "^production", { "externalDependencies": ["typescript"] }],
+              "outputs": ["{projectRoot}/out-tsc/**/*.d.ts", "{projectRoot}/tsconfig.tsbuildinfo"],
+              "syncGenerators": ["@nx/js:typescript-sync"]
+            },
+            "build-deps": { "executor": "nx:noop", "dependsOn": ["^build"] },
+            "watch-deps": {
+              "continuous": true,
+              "dependsOn": ["build-deps"],
+              "executor": "nx:run-commands",
+              "options": {
+                "command": "npx nx watch --projects @fx/web --includeDependentProjects -- npx nx build-deps @fx/web"
+              }
+            }
+          }
+        }
+      },
+      "@fx/ui": {
+        "name": "@fx/ui",
+        "type": "lib",
+        "data": {
+          "root": "libs/ui",
+          "targets": {
+            "build": {
+              "executor": "nx:run-commands",
+              "options": { "command": "vite build", "cwd": "libs/ui" },
+              "cache": true,
+              "dependsOn": ["^build"],
+              "inputs": ["production", "^production"],
+              "outputs": ["{projectRoot}/dist"]
+            },
+            "test": {
+              "executor": "nx:run-commands",
+              "options": { "command": "jest", "cwd": "libs/ui" },
+              "cache": true,
+              "inputs": ["default", "^production"],
+              "outputs": ["{workspaceRoot}/coverage/{projectRoot}"]
+            },
+            "typecheck": {
+              "executor": "nx:run-commands",
+              "options": { "command": "tsc --build --emitDeclarationOnly", "cwd": "libs/ui" },
+              "cache": true,
+              "dependsOn": ["^typecheck"],
+              "inputs": ["production", "^production"],
+              "outputs": ["{projectRoot}/out-tsc/**/*.d.ts"]
+            }
+          }
+        }
+      }
+    },
+    "dependencies": {
+      "@fx/web": [{ "source": "@fx/web", "target": "@fx/ui", "type": "static" }],
+      "@fx/ui": []
+    }
+  }
+}

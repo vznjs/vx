@@ -21,7 +21,14 @@
 import { stat } from 'node:fs/promises'
 import { availableParallelism } from 'node:os'
 import path from 'node:path'
-import { type GeneratedProject, type ProjectMeta, UserError, type VxPlugin } from '@vzn/vx'
+import {
+  refuseUnknownOptions,
+  type PluginOptionKinds,
+  type GeneratedProject,
+  type ProjectMeta,
+  UserError,
+  type VxPlugin,
+} from '@vzn/vx'
 import { type AdoptionRun, adoptionPlugin } from '../adoption-plugin.js'
 import { collectGaps } from '../plugin-gaps.js'
 import { mapNxWorkspace, type NxGraph, nxSizeText, parseNxGraph, readNxJson } from './nx-map.js'
@@ -60,8 +67,15 @@ export interface NxPluginOptions {
   readonly graph?: string
 }
 
+/** Each option `NxPluginOptions` names, with its kind: derived from the type, so the two cannot drift. */
+const NX_PLUGIN_KEYS: PluginOptionKinds<NxPluginOptions> = {
+  root: 'string',
+  graph: 'string',
+}
+
 /** The plugin: the adoption skeleton over `mapNxWorkspace`, one mapping per run. */
 export function nx(options: NxPluginOptions = {}): VxPlugin {
+  refuseUnknownOptions('nx()', options, NX_PLUGIN_KEYS)
   // One graph load per RUN, shared by `discover` and `project`: the run
   // hands both stages the same projects array (discover's, grown by what
   // it named), so its identity is the run's, as the mapping's is.
@@ -579,13 +593,3 @@ async function loadGraphText(
   }
   return { text: await Bun.file(snapshot).text(), label: path.relative(root, snapshot) }
 }
-
-export {
-  mapNxWorkspace,
-  nxExecCommand,
-  parseNxGraph,
-  readNxJsonFacts,
-  type MapNxOptions,
-  type NxGraph,
-  type NxMapping,
-} from './nx-map.js'

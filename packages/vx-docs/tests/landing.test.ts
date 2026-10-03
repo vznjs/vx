@@ -28,7 +28,7 @@ const LINES = [
   ['parallel', '2 Parallel. ui and api build at once.'],
   ['cache', '3 Cache. Unchanged work comes back from the cache.'],
   ['changed', '4 Only what changed. You edited app; only app runs.'],
-  ['sandbox', '5 Sandbox. A read you did not declare fails the task.'],
+  ['sandbox', '5 Sandbox. A workspace file you did not declare is out of reach.'],
   ['plugins', '6 Plugins. Swap the cache, runner or telemetry. No fork.'],
 ]
 
@@ -301,6 +301,11 @@ describe('the landing page', () => {
     expect(text(/<p class="bench-formula">([\s\S]*?)<\/p>/.exec(bench)![1]!)).toBe(
       'vx N% faster: vx takes N% less time than that tool (1 − vx ÷ theirs); N% slower: N% more (vx ÷ theirs − 1).',
     )
+    const notes = [...bench.matchAll(/<p class="bench-formula">([\s\S]*?)<\/p>/g)].map((m) =>
+      text(m[1]!),
+    )
+    expect(notes).toHaveLength(2)
+    expect(notes[1]).toStartWith("Nx's column ran every task through npm run")
     const reasons = [...bench.matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/g)].map((m) => text(m[1]!))
     expect(reasons).toHaveLength(3)
   })
@@ -319,9 +324,14 @@ describe('the landing page', () => {
       'npx vx run build --all',
       'npx vx run build --all',
     ])
+    // `vx init` writes no cache block (its report says so), so the block
+    // that promises a hit on the second build names the step between.
+    expect(/npx vx init +# ([^\n]*)/.exec(start)![1]).toContain('add the cache block')
     const subs = [...start.matchAll(/<p class="sub">([\s\S]*?)<\/p>/g)].map((m) => text(m[1]!))
     expect(subs).toEqual([
-      'Coming from Turbo or Nx: bunx @vzn/vx-migrate or vx init gives a temporary start; move to native vx config.',
+      // `vx init` is the temporary start; the migrator writes the native
+      // config, and npm has no copy of it yet (J2-28).
+      'Coming from Turbo or Nx: vx init gives a temporary start, and bunx @vzn/vx-migrate writes the native vx config (its first publish is pending).',
     ])
     expect(text(start)).not.toMatch(/turbo\.json|nx\.json|unchanged|faster/i)
   })
@@ -452,6 +462,19 @@ describe('a shared link shows the card', () => {
     expect(/<title>([^<]*)<\/title>/.exec(page())?.[1]).toBe(
       'vx — the fastest task runner for JS monorepos',
     )
+  })
+
+  // The PNG is rendered from public/og.svg; the card said "a faster runner
+  // for your Turborepo or Nx repo" after the page stopped (2026-10-02).
+  it('the card says what the page says', () => {
+    const svg = readFileSync(path.resolve(import.meta.dir, '../public/og.svg'), 'utf8')
+    const lines = [
+      ...svg.matchAll(/<tspan x="96"[^>]*>([\s\S]*?)<\/tspan>\s*(?=<tspan x=|<\/text>)/g),
+    ]
+      .map((m) => text(m[1]!))
+      .join(' ')
+    const h1 = text(/<h1\b[^>]*>([\s\S]*?)<\/h1>/.exec(page())![1]!)
+    expect(lines).toBe(h1)
   })
 
   it('the card is a 1200×630 PNG', () => {

@@ -35,6 +35,12 @@ export default defineProject({
 })
 ```
 
+```ts
+interface ProjectConfig {
+  tasks?: Record<string, TaskConfig> // keyed by task name
+}
+```
+
 `defineProject` is an identity function — it exists purely so
 TypeScript narrows literal types in your config (clean autocomplete,
 strict validation against the schema). It has zero runtime effect.
@@ -323,7 +329,9 @@ for it to exit. Instead it considers the task "ready":
   (colour, OSC titles), so `^` and `$` anchor to a line as you read
   it and `Local:` matches Vite's bold `Local` under `FORCE_COLOR`.
   The trailing partial line is tested too, so prompt-style banners
-  without a newline (`printf 'Listening on :3000'`) count.
+  without a newline (`printf 'Listening on :3000'`) count. A server
+  not ready after 10 s (`VX_READY_NOTICE_MS`) is said once, naming
+  the pattern it waits for, and whether `exec.timeout` bounds the wait.
 
 ```ts
 dev: {
@@ -365,13 +373,19 @@ Semantics:
 - **Crash after ready ⇒ failed run.** A persistent task that exits
   non-zero (or is killed) on its own after it became ready fails the
   run, and vx names it: `vx: <id> exited with code <n>` (a signal death
-  as its `128 + n` code). Its own outcome is `failed` with that exit
+  as its `128 + n` code), at once while the graph still runs (`… while
+the run went on`), so a dependant failing against it reads why. Its own outcome is `failed` with that exit
   code, and the footer counts it so (item 1071). An exit 0 on its own is
   fine (a daemon that forks and returns).
 - **End-of-graph SIGTERM.** Once the rest of the graph finishes
   (success OR failure of downstream), the orchestrator sends `SIGTERM`
-  to every persistent subprocess and waits for them to exit before
-  returning.
+  to every persistent subprocess it does not keep, and waits for them to
+  exit (`SIGKILL` past the kill grace). In the foreground it KEEPS the
+  persistent tasks you requested, those a requested group stands for,
+  and the persistent tasks they depend on: vx stays up after the summary
+  until one of them exits or you press Ctrl-C, streaming what they write.
+  A run where anything else failed keeps none and exits 1, unless
+  `--continue=always` (`cli.md` § Output, "Pinned persistent tasks").
 - **`cache` is rejected.** The config loader throws on
   `cache + persistent` — persistent tasks don't terminate, so there's
   no exit code to cache and no outputs to capture at a well-defined
@@ -452,7 +466,10 @@ environment can hold: non-empty, with no `=` and no NUL, and a `define`
 value holds no NUL. Such a name is refused at load; it used to reach the
 child split at its `=` or not at all.
 
-Anything outside these three layers is invisible to the child (a
+Anything outside these three layers, and the two variables vx sets for
+the run (`VX_RUN_WORKSPACE`, `VX_RUN_TASK`), is invisible to the child:
+a host credential (`SSH_AUTH_SOCK`, `GITHUB_TOKEN`) reaches a task only
+when `passThrough` names it, held end to end by `env.test.ts` (a
 sandboxed task with a restricted network also gets the sandbox's own
 proxy, CA and `TMPDIR` values over these names:
 `modules/sandbox-runtime.md` § The environment SRT sets). This
@@ -468,11 +485,15 @@ matches Turbo's `passThroughEnv` semantics and exists for two reasons:
 `KEY`, `PASSWORD`, `PASSWD` or `CREDENTIAL` (vx's own environment or a
 task's `define`, six characters or more; not a name ending `_FILE`,
 `_PATH` or `_DIR`, nor git's `GIT_CONFIG_KEY_<n>`) is printed as `***` wherever vx
-shows it: the task's output, the stdout the cache keeps and a hit
+shows it: the task's output and the line vx adds under a shell's 127 or
+126 (the command's first word), the stdout the cache keeps and a hit
 replays, the command a cache entry stores (what `vx why` prints and a
 remote cache receives), the `$ command` line, telemetry records,
-`vx show`, and the run's own invocation line that `vx last` prints (a
-secret passed after `--`). A value
+`vx show`, the hashes `vx why` gives for such a variable in
+`cache.inputs.env` (its value, unsalted: the row names it and its change), an executor's error or a plugin's warning (a remote's reply), and the run's own invocation line that `vx last` prints (a
+secret passed after `--`) and its `--tag`s. A multi-line value (a PEM
+key) is also masked line by line, each line of six characters or more.
+A value
 split across two output chunks is still caught; the output holds back
 that many characters until the next chunk. A plugin that reads a task's
 config directly sees it as written. A secret whose name holds none of
@@ -693,6 +714,11 @@ propagation for cross-project relationships), but it is there for the
 cases that genuinely need root-anchored inputs. The hard
 project-boundary rule continues to apply to project-relative `files`
 globs only.
+
+No input or output glob, `files` or `workspaceFiles`, may be absolute
+or hold a `..` segment, and a brace arm counts: `{../shared,src}/**` and
+`{/etc,src}/*` are refused at load, where the glob engine would have
+matched nothing under that arm and said so nowhere.
 
 Still applied: the always-ignored set (`node_modules/**`, `.git/**`,
 `.vx/**`, `*.tsbuildinfo`, `vx-lock.json`, `*.bun-build`, `.<16 hex>-<8 hex>.tmp/**`) and the task's own declared
@@ -1024,10 +1050,17 @@ interface SandboxGrants {
   network?: true | string[] // an allowlist of domains; `true` adds none (below)
   systemInfo?: string[] // sysctl names, e.g. 'vfs.disk-space' (macOS)
   unixSockets?: true | string[] // AF_UNIX bind/connect, all or by path (Linux: any path)
-  localBinding?: boolean | number[] // bind and reach localhost ports (macOS; Linux needs no grant); a list also exposes them to the host
+  localBinding?: boolean | number[] // bind and reach localhost ports (macOS; Linux needs no grant); a list also exposes them to the host (a port the host already holds fails the task)
   machLookup?: string[] // mach global-names (macOS)
   pty?: boolean // acquire a TTY
   gitConfig?: boolean // write the repository's .git/config (this task only)
+}
+
+interface SandboxIgnore {
+  read?: string[] // denied reads to leave out of the report
+  write?: string[]
+  systemInfo?: string[]
+  network?: string[] // '<host>:<port>'
 }
 ```
 
@@ -1038,7 +1071,11 @@ patterns per class a denial is reported in — `read`, `write`,
 that would have permitted it; any other name is refused. Every grant is
 the task's own: `unixSockets` (or a `localBinding` port list, whose
 bridge is a unix socket) lifts the `socket(AF_UNIX)` block for the task
-that declares it, never for the run's other sandboxed tasks:
+that declares it, never for the run's other sandboxed tasks. On Linux
+the block is the kernel's answer to the call itself, so it is reported
+nowhere: the task reads only its tool's own `socket(1, 1, 0): Operation
+not permitted` (a Docker, ssh-agent or database socket), and the grant
+is `unixSockets`:
 
 ```ts
 exec: {
@@ -1080,10 +1117,12 @@ A Linux WRITE grant that matches nothing when the task starts therefore
 mounts nothing. Where a read grant mounts its directory, the task's first
 write under it fails with `Read-only file system` — a message naming
 neither vx nor the grant — so vx reports that grant itself before the
-task runs, once, and names the directory to grant instead. Where no mount
-holds the directory, it is the sandbox's own scratch: the task may
-create, write and remove what the glob matches, and nothing it leaves
-there outlives the task. That is right for a tool's temp directory and
+task runs, once, and names the directory to grant instead, spelled as
+the config spells it (`allow: { write: ['gen/'] }`). Where no mount
+holds the directory, it is the sandbox's own scratch, the one mask left
+writable: the task may create, write and remove what the glob matches
+(anything else it writes there too), and nothing it leaves there
+outlives the task. That is right for a tool's temp directory and
 wrong for an output. A read grant matching nothing is ordinary
 (an optional file, a cache not yet populated) and is not reported. A
 pattern under a directory that does not exist yet matches nothing the
@@ -1097,7 +1136,8 @@ trailing slash — `write: ['coverage/']` — or as a glob (`'dist/**'`);
 outside the project (`'~/.bun/install/cache/'`) only these two shapes are
 created, never a file.
 Spell a directory as a bare literal and the task's own `mkdir` meets
-"File exists"; the failure then says so, names the `dir/` spelling, and
+"File exists" ("Not a directory" for a path inside it, `mkdir -p
+coverage/lcov`); the failure then says so, names the `dir/` spelling, and
 vx removes the empty file it made (it takes back any placeholder the
 task never wrote, so an unwritten one is never archived as an output).
 A grant that leaves the project through a symlink is refused: the grant
@@ -1123,6 +1163,14 @@ mounting, so a file grant stays exact there. Pinned in
 `tests/sandbox-runtime.unsafe.test.ts` (2026-09-20) and
 `tests/sandbox-widened-reads.unsafe.test.ts`.
 
+**A `network` entry is a host pattern**: `example.com`, `*.example.com`,
+either with a port (`example.com:443`), or `localhost`. A scheme or path
+(`https://example.com`), a dotless host, a bad port, and `*` or `*.com`
+(too broad) refuse the run with the entry named; `deny.network` also
+takes a bare `*` (deny all, `*:22` for one port). Until 2026-10-02 such an
+entry matched nothing with no word, and an allowed `*` opened every host
+to every sandboxed task of the run.
+
 **`network` is per-RUN, not per-task.** SRT runs one filtering proxy
 per `vx run` and checks every request against the allowlist that proxy
 was started with: the union of every domain list any sandboxed task in
@@ -1131,8 +1179,11 @@ that declares no network reaches the domains another task of the run
 listed, and `network: true` reaches only those (nothing in a run with no
 list). `deny.network` is the run's too: the proxy starts with the union
 of every task's denies and refuses those domains to every task, checked
-before the allowlist (B-21). On Linux a refused request fails only through the
-task's own exit; no violation is reported.
+before the allowlist (B-21). A refused request is a violation on both
+platforms, `deny network-outbound <host>:<port> (<reason>)` from the
+proxy, and fails the task even when it survived the refusal;
+`ignore: { network: ['<host>:<port>'] }` silences one. Until 2026-10-02
+Linux reported none, and the line could not be ignored on macOS.
 
 **Baseline** (`sandbox: {}`): the task reads nothing in the workspace,
 writes nothing but its own `TMPDIR` and reaches no domain no task of the run lists — not even its own project
@@ -1143,6 +1194,12 @@ outside it (`~/.cache`, `/etc`, the toolchain) is readable and folds into
 no key, so a task whose output depends on one declares it as a key input
 (`inputs.runtime`, `inputs.env`) — the sandbox does not catch it (item
 966).
+The one exception is where tools keep credentials, denied unless a
+grant names one (`read: ['.', '~/.npmrc']` for a publish), since a
+dependency the task ran could copy a key into an output the cache
+shares (L-41): `~/.ssh`, `~/.gnupg`, `~/.aws`, `~/.azure`, `~/.kube`,
+`~/.config/gcloud`, `~/.config/gh`, `~/.docker/config.json`, `~/.netrc`,
+`~/.git-credentials`, `~/.npmrc`, `~/.yarnrc.yml`, `~/.pypirc`.
 What it grants from there is the union of the read grants and, on Linux,
 the DIRECTORY holding each file-shaped write grant (above).
 Nothing is inherited from `cache` — `cache.inputs` says what INVALIDATES a task, `sandbox.allow`
@@ -1169,28 +1226,42 @@ file: an edge to `ui#source` (inputs `src/**`) covers a read of
 `ui/README.md` too.
 
 **A missing write grant fails the task.** On macOS seatbelt refuses the
-write and reports it. On Linux the write meets a read-only bind, or, where
-the project directory is the boundary anchor's scratch, it succeeds inside
-the sandbox and leaves nothing on disk: in a single-package workspace
-(the project directory IS the workspace root, the anchor below), and at
-the project root around a write grant punched out of a read grant
-(`read: ['.']` with `write: ['dist/']`; the children are bound one by one
-and the directory holding them is the scratch). Either way the runtime's
-write observer saw the attempt, and a write no grant binds is reported
-and fails the task, even when the command swallowed the error and exited
-0 (B-5; before it, both Linux shapes passed with nothing reported, items
-444 and 1011). The remedy is to declare it: `allow: { write: [...] }`.
+write and reports it. On Linux the write meets a read-only bind or a
+read-only mask: the empty directory the sandbox lays over what it hides
+(the workspace root around a project, a single-package workspace's root,
+the project root around a write grant punched out of a read grant —
+`read: ['.']` with `write: ['dist/']` binds the children one by one). It
+is `Read-only file system` on both; until 2026-10-02 the Linux mask was
+writable, and a write there succeeded and left nothing on disk. The
+runtime's write observer saw the attempt, and a write no grant binds is
+reported and fails the task, even when the command swallowed the error
+and exited 0 (B-5; before it, both Linux shapes passed with nothing
+reported, items 444 and 1011). A write outside the project is refused
+the same way and named on a failed task, never counted. The remedy is to
+declare it: `allow: { write: [...] }`.
 
 **The boundary is the workspace root.** A task may not leave its own
 project, so every sibling project and every root file is denied. Being
 stopped at that wall is the sandbox working, not a finding: only
 denials INSIDE the project are reported, because those are the reads
 that make a cache key wrong. A write refused past the wall is named
-beside a FAILED task, never counted, with the directory to grant: a
+beside a FAILED task, never counted, with the directory to grant, spelled
+from the project when it is in the workspace (under the host's temp
+directory, `$TMPDIR`, the task's own, instead): a
 tool that cannot fill its cache (`~/.bun/install/cache`) rarely says
-where it tried. To reach a path outside the project but
+where it tried. So is a read the wall hid of a path that exists on the
+host, with the grant spelled from the project (`'../../tsconfig.base.json'`):
+the tool said only "not found". To reach a path outside the project but
 inside the workspace — a workspace-level fixture — declare it; a path
 outside the workspace is not walled (above).
+
+**git in a sandboxed task** reads the repository only if it is granted:
+`read: ['.', '../../.git']` from a project two levels down (`.git` is a
+wall, so `read: ['.']` in a root project leaves it out too). On Linux
+a task whose grants name a `.git` gets `GIT_DISCOVERY_ACROSS_FILESYSTEM=1`
+(a value the task sets wins), since every sandbox mount is a filesystem
+boundary git's discovery stops at. `git rev-parse` and `git log` then answer as outside;
+`git status` reports a file the task may not read as deleted.
 
 **Policy: fail on violation.** An undeclared read, or a write the
 sandbox refuses, fails the task, and a failed task is never cached.
@@ -1631,7 +1702,7 @@ lists the messages a user meets most:
 
 | Symptom                                                                                                                               | Cause                                                                                                                                                                                                                          |
 | ------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `did not export a default object`                                                                                                     | Forgot `export default`, or exported a non-object.                                                                                                                                                                             |
+| `did not export a default object`                                                                                                     | Forgot `export default`, or exported a non-object; a function (Vite's `defineConfig(() => …)` shape) adds that it is one and to export what it returns (D-110).                                                                |
 | `tasks must be an object keyed by task name`                                                                                          | `tasks` is not an object — an ARRAY included.                                                                                                                                                                                  |
 | `<path> is <what> — a config must be JSON data, because the cache key folds its JSON`                                                 | A value JSON cannot carry, anywhere in the config: a function, a symbol, a bigint, `NaN` / `±Infinity`, `undefined` in an array, a cycle, a getter or an object that is not plain (`Date`, `Map`, `RegExp`, a class instance). |
 | `<level> has unknown field "<key>"`                                                                                                   | Typo'd / unsupported key (see below).                                                                                                                                                                                          |
@@ -1651,12 +1722,14 @@ lists the messages a user meets most:
 | `cache requires exec`                                                                                                                 | Group task with `cache`.                                                                                                                                                                                                       |
 | `dependsOn must be an array of strings`                                                                                               | Wrong shape.                                                                                                                                                                                                                   |
 | `cache.inputs is required when cache is set`                                                                                          | Forgot `inputs`.                                                                                                                                                                                                               |
+| `cache.inputs must be an object`                                                                                                      | Present but not an object: a string (`outputs: 'dist'`). An array is the row above.                                                                                                                                            |
 | `cache.inputs.files must be an array`                                                                                                 | Wrong shape.                                                                                                                                                                                                                   |
 | `cache.inputs.runtime must be an array of non-empty shell command strings with no NUL`                                                | Non-string / empty entry, or one holding a NUL.                                                                                                                                                                                |
 | `cache.inputs.workspaceRuntime must be an array of non-empty shell command strings with no NUL`                                       | Non-string / empty entry, or one holding a NUL.                                                                                                                                                                                |
 | `cache.inputs.tasks must be an array of non-empty strings`                                                                            | Non-string / empty entry, or a bare string.                                                                                                                                                                                    |
 | `cache.inputs.tasks: "<name>" names no task in <task>.dependsOn`                                                                      | An exact entry no `dependsOn` entry of its form names.                                                                                                                                                                         |
 | `cache.outputs is required when cache is set`                                                                                         | Forgot `outputs`.                                                                                                                                                                                                              |
+| `cache.outputs must be an object`                                                                                                     | Present but not an object: a string (`outputs: 'dist'`). An array is the row above.                                                                                                                                            |
 | `cache.outputs.files must be an array`                                                                                                | Wrong shape.                                                                                                                                                                                                                   |
 | `cache.inputs.files: every entry is a negation, which selects NOTHING`                                                                | Only `!` globs — nothing to subtract from.                                                                                                                                                                                     |
 | `cache.outputs.files: every entry is a negation, which selects NOTHING`                                                               | Only `!` globs: a `!` entry only takes back what a positive glob selected (A-44).                                                                                                                                              |
@@ -1687,7 +1760,9 @@ and `with`, Nx's target `executor`, `options`, `continuous` (D-49), `cwd`,
 `parallelism` and `configurations` (D-89), and a `command`
 (`cmd`, `script`) on the task or `cmd` on `exec`, and on `exec` Nx
 run-commands' `cwd`, `args`, `commands`, `parallel`, `shell` and
-`interactive` (D-100). So `outputs` on a task
+`interactive` (D-100), and in a `cache` block wireit's `files` / `output`,
+`env`, `dependencies`, `enabled`, and `globs` / `include` / `patterns` /
+`exclude` / `ignore` under `inputs` or `outputs` (D-118). So `outputs` on a task
 ends `— vx spells it cache.outputs.files` in code quotes. A `cache` that
 is no object (Turbo's `cache: false`) and a `persistent` that is none
 (`true`) name the shape to write.
@@ -1700,6 +1775,7 @@ Workspace-discovery errors (`src/workspace/workspace.ts`):
 | `<file>: packages must be an array of glob strings`                                  | `pnpm-workspace.yaml` `packages:` is a bare string, etc.                                                                                                                                                                                                   |
 | `<file>: must be a JSON object`                                                      | A `package.json` (the root's or a member's) is `null`, a list or a scalar; it crashed with a TypeError until item 988.                                                                                                                                     |
 | `<file>: "name" must be a string with no surrounding whitespace`                     | A `package.json` `name` is a number, an object, or has surrounding whitespace (npm refuses one too); `{"name":123}` planned `123#build` until item 988.                                                                                                    |
+| `<file>: "name" cannot hold "#" — vx addresses a task as <name>#<task>`              | A `package.json` `name` holds `#` (npm refuses one too): `{"name":"a#b"}` planned `a#b#build` under `--all`, but `vx run a#b#build` and a `dependsOn` split at the first `#` and found nothing.                                                            |
 | `<file>: must be a mapping (packages: and pnpm's settings)`                          | `pnpm-workspace.yaml` is a list or a scalar. A mapping with no `packages:` (pnpm 10 settings or catalogs in a single-package repo) is not an error: the root's `package.json` decides, as without the file (item 984).                                     |
 | `<file>: workspaces must be an array of glob strings`                                | `package.json` `workspaces` holds a non-string entry.                                                                                                                                                                                                      |
 | `<file>: workspaces.packages must be an array of glob strings`                       | The yarn-legacy `workspaces: { packages: [...] }` form holds a non-string entry.                                                                                                                                                                           |

@@ -178,18 +178,18 @@ this machine (macOS arm64, Bun 1.4.0). The harness then gave Nx npm
 where Turbo had bun (§ Why Nx is slower), so the Nx row is slower than a
 fair one. Every runner runs as in CI (`CI=1`), so Nx's daemon is off:
 
-| Runner      | Version | Fresh (cold) | Warm (no restore) | Warm (restore) |
-| ----------- | ------- | ------------ | ----------------- | -------------- |
-| vx          | 0.0.0   | 10.45 s      | 76 ms             | 83 ms          |
-| vx (frozen) | 0.0.0   | 10.49 s      | 83 ms             | 88 ms          |
-| turbo       | 2.10.12 | 10.58 s      | **71 ms**         | 97 ms          |
-| nx          | 23.2.0  | 19.66 s      | 540 ms            | 531 ms         |
+| Runner      | Version | Fresh (cold)            | Warm (no restore)        | Warm (restore)         |
+| ----------- | ------- | ----------------------- | ------------------------ | ---------------------- |
+| vx          | 0.0.0   | 10.45 s                 | 76 ms                    | 83 ms                  |
+| vx (frozen) | 0.0.0   | 10.49 s                 | 83 ms                    | 88 ms                  |
+| turbo       | 2.10.12 | 10.58 s (vx 1% faster)  | **71 ms** (vx 8% slower) | 97 ms (vx 14% faster)  |
+| nx          | 23.2.0  | 19.66 s (vx 46% faster) | 540 ms (vx 85% faster)   | 531 ms (vx 84% faster) |
 
 Read it honestly: at 46 packages Turborepo 2.10 and vx are within a few
 milliseconds of each other on a fully-cached run, and neither keeps a
 process between runs: Turbo 2.10 uses no daemon for `turbo run` (its docs
 say so from 2.9), so both work out what changed on every invocation. vx wins
-the restore case and ties the cold one; Nx is 7× off. The remaining
+the restore case and ties the cold one; vx is 85% faster than Nx warm. The remaining
 fixed cost at this size is process start + git, not the pipeline.
 
 The same 46-package run on the four-core Linux container (2026-09-24,
@@ -200,12 +200,12 @@ with the table above). Turbo 2.11.3 (no daemon for `turbo run`) and Nx
 system of the invocation and every child it waited for; a daemon that
 outlives the invocation would not be counted, and none runs here:
 
-| Runner      | Version | Fresh (cold) | Warm (no restore) | Warm (restore) | CPU, cold |
-| ----------- | ------- | ------------ | ----------------- | -------------- | --------- |
-| vx          | 0.0.0   | 10.29 s      | 79 ms             | 104 ms         | 846 ms    |
-| vx (frozen) | 0.0.0   | 10.27 s      | **74 ms**         | **95 ms**      | 826 ms    |
-| turbo       | 2.11.3  | 10.43 s      | 86 ms (1.1×)      | 136 ms (1.3×)  | 1.33 s    |
-| nx          | 23.2.1  | 22.08 s      | 844 ms (10.7×)    | 862 ms (8.3×)  | 43.79 s   |
+| Runner      | Version | Fresh (cold)            | Warm (no restore)      | Warm (restore)         | CPU, cold               |
+| ----------- | ------- | ----------------------- | ---------------------- | ---------------------- | ----------------------- |
+| vx          | 0.0.0   | 10.29 s                 | 79 ms                  | 104 ms                 | 846 ms                  |
+| vx (frozen) | 0.0.0   | 10.27 s                 | **74 ms**              | **95 ms**              | 826 ms                  |
+| turbo       | 2.11.3  | 10.43 s (vx 1% faster)  | 86 ms (vx 8% faster)   | 136 ms (vx 23% faster) | 1.33 s (vx 36% faster)  |
+| nx          | 23.2.1  | 22.08 s (vx 53% faster) | 844 ms (vx 90% faster) | 862 ms (vx 87% faster) | 43.79 s (vx 98% faster) |
 
 The ideal schedule is 10.00 s, so vx and Turbo both sit on the critical
 path cold, and warm they are within a few milliseconds at this size (the
@@ -216,22 +216,22 @@ The same harness at **476 packages / 1,428 graph nodes**
 (`packages/vx-bench/compare.ts 20 25 1`, 2026-09-02, same machine; a mid-size data
 point — the committed `packages/vx-bench/RESULTS.md` is the 3,270-task run below):
 
-| Runner      | Fresh (cold) | Warm (no restore) | Warm (restore) |
-| ----------- | ------------ | ----------------- | -------------- |
-| vx          | 1m 40s       | **297 ms**        | **416 ms**     |
-| vx (frozen) | 1m 40s       | 285 ms            | 399 ms         |
-| turbo       | 1m 40s       | 342 ms (1.2×)     | 612 ms (1.5×)  |
-| nx          | 3m 23s       | 1.38 s (4.7×)     | 1.33 s (3.2×)  |
+| Runner      | Fresh (cold)           | Warm (no restore)      | Warm (restore)         |
+| ----------- | ---------------------- | ---------------------- | ---------------------- |
+| vx          | 1m 40s                 | **297 ms**             | **416 ms**             |
+| vx (frozen) | 1m 40s                 | 285 ms                 | 399 ms                 |
+| turbo       | 1m 40s (vx same)       | 342 ms (vx 13% faster) | 612 ms (vx 32% faster) |
+| nx          | 3m 23s (vx 50% faster) | 1.38 s (vx 78% faster) | 1.33 s (vx 68% faster) |
 
 The same size on the four-core Linux container (2026-09-25, after items
 744, 753 and 754, the fixed harness, median of 1; ideal schedule 1m 36s):
 
-| Runner      | Fresh (cold) | Warm (no restore) | Warm (restore) | CPU, cold |
-| ----------- | ------------ | ----------------- | -------------- | --------- |
-| vx          | 1m 37s       | **225 ms**        | **367 ms**     | 7.06 s    |
-| vx (frozen) | 1m 37s       | 209 ms            | 377 ms         | 6.94 s    |
-| turbo       | 1m 39s       | 247 ms (1.1×)     | 392 ms (1.1×)  | 13.84 s   |
-| nx          | 2m 27s       | 1.84 s (8.2×)     | 1.89 s (5.2×)  | 7m 23s    |
+| Runner      | Fresh (cold)           | Warm (no restore)      | Warm (restore)         | CPU, cold               |
+| ----------- | ---------------------- | ---------------------- | ---------------------- | ----------------------- |
+| vx          | 1m 37s                 | **225 ms**             | **367 ms**             | 7.06 s                  |
+| vx (frozen) | 1m 37s                 | 209 ms                 | 377 ms                 | 6.94 s                  |
+| turbo       | 1m 39s (vx 2% faster)  | 247 ms (vx 8% faster)  | 392 ms (vx 6% faster)  | 13.84 s (vx 48% faster) |
+| nx          | 2m 27s (vx 34% faster) | 1.84 s (vx 87% faster) | 1.89 s (vx 80% faster) | 7m 23s (vx 98% faster)  |
 
 Read it honestly: the 2026-09-24 run on this box had Turbo 2.11 winning
 both warm columns (303 and 446 ms against vx's 376 and 478). Item 744
@@ -292,12 +292,12 @@ columns are unaffected. Next 18 re-runs it. The whole 3,270-task shape
 on this box with the fixed harness (2026-09-25, after items 744, 753 and
 754, median of 1; ideal schedule 3m 38s):
 
-| Runner      | Fresh (cold)  | Warm (no restore) | Warm (restore) | CPU, cold       |
-| ----------- | ------------- | ----------------- | -------------- | --------------- |
-| vx          | **3m 40s**    | **359 ms**        | **653 ms**     | **16.05 s**     |
-| vx (frozen) | 3m 41s        | 292 ms            | 651 ms         | 16.46 s         |
-| turbo       | 5m 4s (1.4×)  | 431 ms (1.2×)     | 722 ms (1.1×)  | 33.27 s (2.1×)  |
-| nx          | 6m 59s (1.9×) | 4.50 s (12.5×)    | 4.60 s (7.0×)  | 20m 55s (78.2×) |
+| Runner      | Fresh (cold)           | Warm (no restore)      | Warm (restore)         | CPU, cold               |
+| ----------- | ---------------------- | ---------------------- | ---------------------- | ----------------------- |
+| vx          | **3m 40s**             | **359 ms**             | **653 ms**             | **16.05 s**             |
+| vx (frozen) | 3m 41s                 | 292 ms                 | 651 ms                 | 16.46 s                 |
+| turbo       | 5m 4s (vx 27% faster)  | 431 ms (vx 16% faster) | 722 ms (vx 9% faster)  | 33.27 s (vx 51% faster) |
+| nx          | 6m 59s (vx 47% faster) | 4.50 s (vx 92% faster) | 4.60 s (vx 85% faster) | 20m 55s (vx 98% faster) |
 
 The day before, Turbo 2.11 won both warm columns here (496 and 856 ms
 against vx's 678 and 971). Item 744 found why: vx's stable-key pass
@@ -329,15 +329,19 @@ as a CI pipeline runs it; _vx, no lock_ is the same run evaluating every
 config per run.
 The committed `packages/vx-bench/RESULTS.md` / `packages/vx-bench/results.json` are this run.
 
-|                                 | vx                                                         | vx, no lock | Turborepo     | Nx                |
-| ------------------------------- | ---------------------------------------------------------- | ----------- | ------------- | ----------------- |
-| **Cold** (nothing cached)       | **3m 47s**                                                 | 3m 46s      | 5m 13s (1.4×) | 34m 44s (9.2×)    |
-| **Warm**, nothing to rebuild    | **476ms**                                                  | 510ms       | 760ms (1.6×)  | 3.59s (7.6×)      |
-| **Warm**, restore outputs       | **743ms**                                                  | 777ms       | 1.17s (1.6×)  | 4.15s (5.6×)      |
-| **CPU burned**, cold (user+sys) | **34.33s**                                                 | 34.61s      | 1m 13s (2.1×) | 114m 06s (199.4×) |
-| **CPU burned**, warm (user+sys) | **1.33s**                                                  | 1.34s       | 4.40s (3.3×)  | 5.54s (4.2×)      |
-| _Baseline_ (theoretical best)   | 3m 38s cold; 0 warm, restore, CPU                          | —           | —             | —                 |
-| _Measured floors_ (context)     | git walk 67ms · walk + raw copy 352ms · task shells 33.15s | —           | —             | —                 |
+|                                 | vx                                                         | vx, no lock | Turborepo              | Nx                       |
+| ------------------------------- | ---------------------------------------------------------- | ----------- | ---------------------- | ------------------------ |
+| **Cold** (nothing cached)       | **3m 47s**                                                 | 3m 46s      | 5m 13s (vx 27% faster) | 34m 44s (vx 89% faster)  |
+| **Warm**, nothing to rebuild    | **476ms**                                                  | 510ms       | 760ms (vx 37% faster)  | 3.59s (vx 86% faster)    |
+| **Warm**, restore outputs       | **743ms**                                                  | 777ms       | 1.17s (vx 36% faster)  | 4.15s (vx 82% faster)    |
+| **CPU burned**, cold (user+sys) | **34.33s**                                                 | 34.61s      | 1m 13s (vx 53% faster) | 114m 06s (vx 99% faster) |
+| **CPU burned**, warm (user+sys) | **1.33s**                                                  | 1.34s       | 4.40s (vx 69% faster)  | 5.54s (vx 75% faster)    |
+| _Baseline_ (theoretical best)   | 3m 38s cold; 0 warm, restore, CPU                          | —           | —                      | —                        |
+| _Measured floors_ (context)     | git walk 67ms · walk + raw copy 352ms · task shells 33.15s | —           | —                      | —                        |
+
+vx N% faster: vx takes N% less time than that tool (1 − vx ÷ theirs); N% slower: N% more (vx ÷ theirs − 1).
+
+Nx's column ran every task through npm run (~200 ms of CPU each; Turbo ran bun run), a harness fault since fixed; with bun, on a 4-core Linux box, Nx took 6m 59s cold and 4.50 s fully cached (vx 47% and 92% faster).
 
 **Baseline** is the theoretical best case, so each row shows its overhead:
 cold is the tasks' own durations list-scheduled on 10 workers along the
@@ -453,593 +457,12 @@ runner's own costs on a trivial task; the 3,270-task table at the top,
 where each task sleeps a second and every runner is scheduled the same
 way, is where the same shape is compared against Turborepo and Nx.
 
-## A real Turbo repo: solidjs/solid (2026-09-10)
-
-Not a synthetic workspace: `solidjs/solid` at b25c557 (5 packages,
-pnpm 9, Turbo 2.10.10 as the repo's own devDependency, Node 22), with
-vx put on top of the repo's own `turbo.json` through `turbo()` (then `@vzn/vx-turbo`, now `@vzn/vx-migrate`) —
-a two-line `vx.workspace.mjs`, no config rewritten. Both tools see the
-same graph: `build` is four executed tasks (`solid-js#types`, `#link`,
-`#build`, `solid-element#build`; Turbo lists three more `build` nodes
-for packages with no such script and runs nothing for them), and
-`test test-types` is seven. Both restore the identical 64 output files.
-vx as its compiled binary, Turbo with no daemon (2.10 uses none for
-`turbo run`, so every run pays its own discovery, the same footing vx is
-on; the `--no-daemon` the script passes is ignored), four
-cores, Linux, arms interleaved. Medians (3 reps for `build`, 2 for
-`test`); the script is `packages/vx-bench/real/turbo-repo.sh`.
-
-| `build` (4 tasks)             | vx         | Turbo 2.10.10  |
-| ----------------------------- | ---------- | -------------- |
-| cold (caches + outputs wiped) | **40.6 s** | 45.5 s (1.12×) |
-| warm, outputs wiped (restore) | **66 ms**  | 127 ms (1.9×)  |
-| warm, nothing wiped (no-op)   | **51 ms**  | 95 ms (1.9×)   |
-
-| `test test-types` (7 tasks) | vx         | Turbo 2.10.10  |
-| --------------------------- | ---------- | -------------- |
-| cold                        | **53.6 s** | 58.2 s (1.09×) |
-| warm, restore               | **80 ms**  | 166 ms (2.1×)  |
-| warm, no-op                 | **59 ms**  | 93 ms (1.6×)   |
-
-Read it honestly: the cold rows are rollup, tsc and vitest — the
-runner is a few percent of them, and the 4–5 s gap is Turbo's per-task
-work around the same commands (its `**` default inputs hashed per
-package, its log capture, its cache write), not measured to the frame
-here. The warm rows are the product: with everything cached, vx
-answers in 50–80 ms where Turbo takes 95–170 ms, and the restore case
-— what a CI job or a fresh checkout does — is where the ratio is
-widest. Neither tool has a daemon to turn on for this: Turbo's docs
-deprecate it for `turbo run` from 2.9, and vx has none.
-
-## Five real Turbo repos (2026-09-11)
-
-The same footing as the solid run, on the largest Turbo repos on GitHub:
-the repo's own `turbo.json`, vx on top through `@vzn/vx-migrate`'s `turbo()` with a
-two-line `vx.workspace.mjs`, both tools scoped by the repo's own
-filters, four cores, Linux, arms interleaved, medians of three reps.
-Both tools at Turbo's default of 10 workers (vx's default is the core
-count; medusa's own script says `--concurrency=100%` and both get it).
-Turbo's dry-run and vx's `--dry` plan the same `pkg#task` set on every
-repo. One binary for all five (the restore and warm-hit fixes of
-STATUS 141 are in it). The script is `packages/vx-bench/real/turbo-repo.sh`;
-`noop2` is a second consecutive no-op. Every repo's revision, toolchain,
-scope and bench-side adjustment is in `packages/vx-bench/real/REPOS.md`.
-
-What the harness does that the first attempt did not, all of it for
-Turbo's benefit as much as vx's: every git-ignored artifact outside the
-installs and the two caches is cleaned before a cold and a restore arm
-(Turbo does not clean outputs; the first run leaked `.turbo` logs,
-prebuilt files and 42 stale `tsconfig.tsbuildinfo` files between
-arms); the repo's root `node_modules/.bin` is on PATH as the repo's own
-`yarn build` would have it (bare, Turbo lost medusa's `rollup`); npm
-trusts this container's proxy CA (cal.com's embed build runs `npx`);
-and astro's `build` inputs exclude its own outputs (below).
-
-Two tasks needed a bench-side output list, declared in the repo's
-`vx.workspace.mjs` as a ten-line project-stage plugin and named here so
-nobody reads them as the plugin's own mapping: medusa's `build` outputs
-are `*/**` minus `!src/**` in turbo.json, which `turbo()` runs
-uncached, so the bench names `dist/**` and `.medusa/**`; and
-cal.com's `@calcom/web#build` writes 110 symlinks to `node_modules`
-directories under `.next/node_modules`, which vx's artifact format does
-not store, so the bench names the rest of `.next` — everything
-`next start` reads — and Turbo's artifact carries the 110 links too.
-An artifact still stores no directory symlink; the save refuses one by name.
-
-### withastro/astro (32 `build` tasks, pnpm 10, Turbo 2.10.2)
-
-astro's `build` declares `inputs: ["**/*", …]`, and an explicit Turbo
-input glob matches the filesystem, gitignored or not — so as shipped,
-each package's own `dist/**` is in its hash. Turbo's first run after a
-restore then rebuilds the whole graph (59.6 s on the first harness),
-and because 19 of the 32 builds are not byte-reproducible the run after
-that rebuilds those 19 again (48.8 s, 13 cached), forever. Probed with
-`--dry=json`: appending one byte to a gitignored `dist/index.js` changes
-the task hash. vx excludes a task's declared outputs from its inputs on
-the same config. The table is on the fixed config — `!dist/**/*` and
-`!src/**/*.prebuilt*` added to the `build`, `build:ci` and `prebuild`
-inputs — so Turbo is measured at its best.
-
-| `build`                       | vx         | Turbo 2.10.2   |
-| ----------------------------- | ---------- | -------------- |
-| cold (caches + outputs wiped) | **52.0 s** | 62.9 s (1.21×) |
-| warm, outputs wiped (restore) | **887 ms** | 1.58 s (1.78×) |
-| warm, nothing wiped (no-op)   | **627 ms** | 1.17 s (1.86×) |
-| second no-op                  | **632 ms** | 1.18 s (1.86×) |
-
-### payloadcms/payload (45 `build` tasks, pnpm 10, Turbo 2.10.4)
-
-Scoped as the repo's own `build:all` (the four templates excluded).
-Turbo's default inputs (the git-tracked files), no explicit glob.
-
-| `build`                       | vx          | Turbo 2.10.4       |
-| ----------------------------- | ----------- | ------------------ |
-| cold (caches + outputs wiped) | **126.9 s** | 127.5 s (1.00×)    |
-| warm, outputs wiped (restore) | **3.44 s**  | 3.46 s (1.01×)     |
-| warm, nothing wiped (no-op)   | 256 ms      | **237 ms** (0.93×) |
-| second no-op                  | 275 ms      | **267 ms** (0.97×) |
-
-Parity, and the doc says so: the no-op rows are within noise of each
-other and Turbo takes both. The difference in what the two runs DO is
-not noise: on every hit vx loads the 14,430 recorded output rows and
-stats every file (~36 ms) to prove the outputs are intact, Turbo checks
-nothing on disk — delete a file under `dist` and `turbo run build` still
-prints a hit. Before STATUS 141 this repo read 129 s / 6.3 s / 372 ms /
-325 ms for vx.
-
-### medusajs/medusa (83 `build` + `build:plugin` tasks, yarn 3, Turbo 1.13.4)
-
-The repo's own `--concurrency=100%` for both. 24k tracked files.
-
-| `build build:plugin`          | vx         | Turbo 1.13.4   |
-| ----------------------------- | ---------- | -------------- |
-| cold (caches + outputs wiped) | **308 s**  | 315 s (1.02×)  |
-| warm, outputs wiped (restore) | **3.86 s** | 7.16 s (1.85×) |
-| warm, nothing wiped (no-op)   | **947 ms** | 3.29 s (3.5×)  |
-| second no-op                  | **953 ms** | 3.12 s (3.3×)  |
-
-Before STATUS 141 vx's no-op here was 2.5 s: every task carried the
-same `globalDependencies` literal and resolved it against the whole
-enumeration, 76 of 83 were hashed twice, and the absent `.medusa/**`
-prefix refused every directory snapshot.
-
-### n8n-io/n8n (70 `build` tasks, pnpm 12, Turbo 2.9.18, Node 24)
-
-| `build`                       | vx         | Turbo 2.9.18        |
-| ----------------------------- | ---------- | ------------------- |
-| cold (caches + outputs wiped) | 137.2 s    | **133.7 s** (0.97×) |
-| warm, outputs wiped (restore) | **8.27 s** | 12.5 s (1.52×)      |
-| warm, nothing wiped (no-op)   | **842 ms** | 1.36 s (1.62×)      |
-| second no-op                  | **839 ms** | 1.34 s (1.60×)      |
-
-The cold row is `n8n-nodes-base#build` (55 s alone) plus what fits
-around it; a first vx rep read 193 s in the disk's slow phase and the
-median absorbed it.
-
-### calcom/cal.com (13 `build` tasks, yarn 3, Turbo 2.7.1, scope `@calcom/web...`)
-
-Three of the thirteen are `cache: false` in turbo.json (prisma's
-generate among them, ~12 s together) and run on every arm under both
-tools, so the warm rows have a 12 s floor. `.env` from the example with
-the two empty secrets filled, `SKIP_DB_MIGRATIONS=1`, no database.
-
-| `build`                       | vx          | Turbo 2.7.1     |
-| ----------------------------- | ----------- | --------------- |
-| cold (caches + outputs wiped) | **245.7 s** | 250.7 s (1.02×) |
-| warm, outputs wiped (restore) | **17.4 s**  | 19.9 s (1.14×)  |
-| warm, nothing wiped (no-op)   | **14.7 s**  | 18.5 s (1.26×)  |
-| second no-op                  | **14.5 s**  | 17.8 s (1.22×)  |
-
-### Wide graphs (2026-09-11, one rep, 3 workers)
-
-Each repo's whole task set, not only `build`: the graph a team actually
-runs. One rep per arm and both tools at 3 workers, because the session's
-memory cgroup allows 13.3 GiB and the wide sets' typecheck and lint
-processes run at 3.6–5.7 GB resident each. Same harness, same cleanup,
-same scope as the build tables. Two sets ran; three could not, and the
-reasons are the repos' own (below), the same under both tools.
-
-**payloadcms/payload — `build lint`, 89 tasks.** payload's `lint` is
-`cache: false` in its own turbo.json, so the 44 lint tasks run on every
-arm under both tools (~225 s at 3 workers); the three warm rows are
-that floor, and the cold row is the floor plus the 45 builds.
-
-| `build lint`                  | vx        | Turbo 2.10.4      |
-| ----------------------------- | --------- | ----------------- |
-| cold (caches + outputs wiped) | **318 s** | 334 s (1.05×)     |
-| warm, outputs wiped (restore) | 229 s     | **223 s** (0.97×) |
-| warm, nothing wiped (no-op)   | **227 s** | 228 s (1.01×)     |
-| second no-op                  | **226 s** | 226 s (1.00×)     |
-
-**calcom/cal.com — `build lint`, 24 tasks, scope `@calcom/web...`.**
-`type-check` is `cache: false` in the repo's turbo.json and stays out;
-the three uncached build tasks (~12 s) run on every arm as in the build
-table, so the warm rows are the runner plus that floor.
-
-| `build lint`                  | vx         | Turbo 2.7.1         |
-| ----------------------------- | ---------- | ------------------- |
-| cold (caches + outputs wiped) | 246.0 s    | **236.8 s** (0.96×) |
-| warm, outputs wiped (restore) | **16.2 s** | 19.7 s (1.22×)      |
-| warm, nothing wiped (no-op)   | **14.3 s** | 17.7 s (1.23×)      |
-| second no-op                  | **14.3 s** | 18.0 s (1.26×)      |
-
-**medusajs/medusa — `build build:plugin test`, 157 tasks: dropped.**
-medusa's `test` declares no `dependsOn`, so on a cold tree both tools
-start tests before the packages they import are built: vx lost
-`@medusajs/auth#test` (`Cannot find module '@medusajs/framework/awilix'`,
-and it passed on the restore arm once the build existed), Turbo lost
-`@medusajs/dashboard#test` (`Failed to resolve entry for package
-"@medusajs/admin-vite-plugin"`) on all four arms. A repo configuration
-gap the two runners expose identically; not a number for either.
-
-**withastro/astro — `build test`, 55 tasks: dropped**, the same gap:
-`test` depends on `^test` only, and its tests import their own package's
-`dist`. Turbo lost `@astrojs/internal-helpers#test`, `upgrade#test` and
-`telemetry#test` on every arm; vx's scheduler happened to run the builds
-first and lost `@astrojs/language-server#test`, which imports
-`packages/astro/dist` across packages, plus `@astrojs/ts-plugin#test`,
-which downloads VS Code and cannot behind this proxy.
-
-**n8n-io/n8n — `build typecheck lint`, 220 tasks: dropped** (owner). The
-editor-ui's vue-tsc and eslint at 3.6–5.7 GB resident each do not fit
-the cgroup beside anything else.
-
-## Real Nx repos (2026-09-11)
-
-The Turbo footing for Nx: the repo's own Nx (`NX_DAEMON=false`,
-`NX_NO_CLOUD=true`) against vx on the `vx.config` files
-`bunx @vzn/vx-migrate --from nx` wrote from the repo's exported graph,
-both tools at the worker count the repo's `nx.json` sets, medians of
-three interleaved reps, the same cleanup and arm logs as
-`turbo-repo.sh`. The script is `packages/vx-bench/real/nx-repo.sh` —
-the Turbo harness runs the Turbo repos and this one runs these, and
-each names the other only for the footing they share. Parity is the
-task graph: `nx run-many … --graph`
-against `vx --dry=json` plan the same `project#target` set. Every
-revision, toolchain and bench-side rule (the configs rewritten to
-`.mjs`, the pinned package manager on PATH) is in
-`packages/vx-bench/real/REPOS.md` § Nx repos.
-
-### TanStack/query (25 `build` tasks, pnpm 11, Nx 22.1.3, `parallel: 5`)
-
-Scoped as the repo's own `build` script (`examples/**` and
-`integrations/**` excluded). Every target is `nx:run-script`.
-
-| `build`                       | vx         | Nx 22.1.3      |
-| ----------------------------- | ---------- | -------------- |
-| cold (caches + outputs wiped) | **47.4 s** | 55.1 s (1.16×) |
-| warm, outputs wiped (restore) | **656 ms** | 1.98 s (3.02×) |
-| warm, nothing wiped (no-op)   | **174 ms** | 1.88 s (10.8×) |
-| second no-op                  | **156 ms** | 1.89 s (12.1×) |
-
-### strapi/strapi (39 `build` tasks, yarn 4, Nx 20.8.4, `parallel: 8`, `--nx-ignore-cycles`)
-
-Every package script is yarn's `run -T <root bin>`, so each task is
-`yarn run build` under both tools (STATUS 142); the per-package
-`build` is `npm-run-all clean --parallel build:code build:types`,
-a rollup and a tsc into one `dist`. The cold row is 39 of those at
-eight workers on four cores; the warm rows are the runner.
-
-| `build`                       | vx          | Nx 20.8.4       |
-| ----------------------------- | ----------- | --------------- |
-| cold (caches + outputs wiped) | **238.2 s** | 245.7 s (1.03×) |
-| warm, outputs wiped (restore) | **1.61 s**  | 3.94 s (2.44×)  |
-| warm, nothing wiped (no-op)   | **341 ms**  | 4.02 s (11.8×)  |
-| second no-op                  | **349 ms**  | 4.07 s (11.7×)  |
-
-### novuhq/novu (37 `build` tasks, pnpm 11, Nx 21.3.11, `parallel: 4`)
-
-Scoped as the repo's own `build` script (`nextjs` and `nestjs`
-excluded). The builds carry their `prebuild` / `postbuild` hooks under
-both tools (STATUS 144); the first vx cold rep read 335 s against
-290–291 s for the other two, the disk's slow phase, absorbed by the
-median.
-
-| `build`                       | vx          | Nx 21.3.11      |
-| ----------------------------- | ----------- | --------------- |
-| cold (caches + outputs wiped) | **291.2 s** | 299.4 s (1.03×) |
-| warm, outputs wiped (restore) | **3.10 s**  | 9.05 s (2.92×)  |
-| warm, nothing wiped (no-op)   | **655 ms**  | 8.55 s (13.1×)  |
-| second no-op                  | **642 ms**  | 8.69 s (13.5×)  |
-
-### TanStack/router (85 `build` + `test:build` tasks, pnpm 11, Nx 23.2.0, `parallel: 5`)
-
-Scoped as the repo's own `build` script (`examples/**` and `e2e/**`
-excluded): 43 `build` (`vite build`) and 42 `test:build` (`publint` +
-`attw --pack`) over 42 packages and a benchmark. Seven packages reach
-their core only through `peerDependencies`; the first vx cold run
-built `router-devtools-core` before `router-core`'s `dist` existed and
-failed, which is STATUS 149 (a workspace peer orders the build unless
-it closes a cycle) — the rows below are on that fix. Nx 23 keeps its
-cache per user outside the repo; the harness pins it inside so the
-cold arm is cold (`REPOS.md`).
-
-| `build test:build`            | vx          | Nx 23.2.0       |
-| ----------------------------- | ----------- | --------------- |
-| cold (caches + outputs wiped) | **199.9 s** | 226.7 s (1.13×) |
-| warm, outputs wiped (restore) | **1.00 s**  | 3.33 s (3.32×)  |
-| warm, nothing wiped (no-op)   | **505 ms**  | 3.21 s (6.4×)   |
-| second no-op                  | **513 ms**  | 3.30 s (6.4×)   |
-
-### refinedev/refine (35 `build` tasks, pnpm 9, Nx 18.2.2, `parallel: 3`)
-
-The library builds only (`tsup && node ../shared/generate-declarations.js`):
-`examples/**` out as the repo's own scope, and the two Next apps out of
-both tools — `refine-ui` fetches Google Fonts through `next/font`
-(no egress here) and `live-previews` is one 280 s `next build` that
-would be the whole cold arm (`REPOS.md`). No `parallel` in `nx.json`,
-so both tools run at Nx's default of 3.
-
-| `build`                       | vx          | Nx 18.2.2       |
-| ----------------------------- | ----------- | --------------- |
-| cold (caches + outputs wiped) | **104.2 s** | 115.3 s (1.11×) |
-| warm, outputs wiped (restore) | **636 ms**  | 2.23 s (3.5×)   |
-| warm, nothing wiped (no-op)   | **184 ms**  | 2.11 s (11.5×)  |
-| second no-op                  | **183 ms**  | 2.18 s (11.9×)  |
-
-Where a real no-op goes (refine, `VX_TIMING=1`, 180 ms wall): ~15 ms
-of runtime boot, 27 ms startup, 34 ms of git enumeration (two spawns
-scoped to the 35 packages), 34 ms deriving the 35 keys and probing
-them in one query, 42 ms proving the outputs intact — 6,790 files
-under 35 `dist/**`, stat'ed at ~6 µs each, the one cost that scales
-with the repo's output size rather than its task count — and 5 ms of
-history (STATUS 153).
-
-## Adoption paths on real repos (2026-09-28)
-
-Each `@vzn/vx-migrate` plugin run live on a public repo against the
-repo's own tool, same box (4 cores, Bun 1.4.2), both under
-`unshare -n`, medians of three interleaved reps. vx runs the tasks the
-plugin maps with no `vx.config` written.
-
-### vueuse/vueuse (Turbo 2.10.12, `turbo()`, `efdd69a`)
-
-`build` (12 tasks, `tsdown`) through `turbo()` with nothing written,
-against `turbo run build`; each tool's own `--cache-dir`, medians of
-three interleaved reps.
-
-As checked in, vx cannot run it cold: every package's `tsdown` config
-imports `packages/metadata/index.json`, the output of
-`@vueuse/metadata#update`, and `turbo.json` gives the builds no edge to
-it. vueuse's own `build` script runs `nr update` first, and Turbo never
-deletes an output before a task runs, so the old file is read. vx
-cleans `update`'s output before `update` runs, and the ten unordered
-builds fail reading it. With the edge the repo leaves implicit
-(`build` `dependsOn: ["@vueuse/metadata#update"]`), both run cold:
-
-| `build` | vx         | Turbo 2.10.12  |
-| ------- | ---------- | -------------- |
-| cold    | **21.4 s** | 29.2 s (1.36×) |
-| restore | 263 ms     | **128 ms**     |
-| no-op   | 246 ms     | **51–161 ms**  |
-
-Turbo's no-op alternates: its key for `metadata#update` flips between
-two values on consecutive runs (`84fcf722…`, `abaf2e87…`), so every
-other no-op rebuilds (7.3–7.7 s). vx's stays at 211–262 ms.
-
-### TanStack/query (Nx 23.2.1, `nx()`, `2e1ad64`)
-
-`nx run-many --target=build --exclude='examples/**'
---exclude='integrations/**'` against `vx run build --filter
-'./packages/*'` through `nx()` with nothing written: the same 25 build
-tasks and the same edges (plus the 10 `nx-input:production` twins that
-carry `^production`). Nx daemon and cloud off, medians of three
-interleaved reps.
-
-| `build` | vx         | Nx 23.2.1      |
-| ------- | ---------- | -------------- |
-| cold    | **34.6 s** | 37.1 s (1.07×) |
-| restore | **910 ms** | 1.62 s (1.78×) |
-| no-op   | **291 ms** | 1.60 s (5.50×) |
-
-A cold Nx run deletes `.nx/workspace-data/*.db` as well as the cache
-directory: with the directory gone and the database kept, Nx reported
-25 of 25 tasks as local cache hits and restored no file (`build/` and
-`dist/` stayed absent).
-
-### TanStack/router (Nx 23.2.1, `nx()`, `41ebd28`)
-
-`nx run-many --target=build --exclude='examples/**' --exclude='e2e/**'`
-against `vx run build --all --filter '!./examples/**' --filter
-'!./e2e/**'` through `nx()` with nothing written: the same 43 build
-tasks and the same edges (plus 28 `nx-input` twins). Same harness as
-TanStack/query above.
-
-| `build` | vx          | Nx 23.2.1       |
-| ------- | ----------- | --------------- |
-| cold    | **123.0 s** | 138.0 s (1.12×) |
-| restore | **1.27 s**  | 3.82 s (3.01×)  |
-| no-op   | **626 ms**  | 3.91 s (6.25×)  |
-
-### unocss/unocss (Turbo 2.10.13, `turbo()`, `f05ee3a`)
-
-`turbo run build --filter='./packages-*/*'` against `vx run build
---filter './packages-*/*'` through `turbo()` with nothing written: the
-same 42 tasks and the same edges. Medians of three interleaved reps.
-The repo runs from a bind mount at `/mnt`: under the scratch path,
-tsx's IPC socket passed the 108-byte `sun_path` limit and `prepare`
-failed.
-
-| `build` | vx         | Turbo 2.10.13  |
-| ------- | ---------- | -------------- |
-| cold    | **45.1 s** | 47.3 s (1.05×) |
-| restore | 859 ms     | **185 ms**     |
-| no-op   | 770 ms     | **126 ms**     |
-
-vx's warm rows are one task: `@unocss/vscode#build` runs
-`vscode-ext-gen`, which rewrites `README.md` and its generated `meta.ts` with the same bytes, so vx withholds its save
-(`README.md changed after its key was taken`) and runs it again every
-time, 550–900 ms. The other 41 are a 160 ms no-op. The gap is kept on
-purpose: saving when the bytes match again is the check item 1015
-replaced, and with it the edited-and-reverted row in
-`tests/inputs-moved.test.ts` replays the edit's output (H-34). Closing
-it needs to know the task was the only writer (`caching.md` § the
-re-check before a save).
-
-### typescript-eslint (Nx 23.2.1, `nx()`, `0bbe5e7`)
-
-`nx run-many -t build --exclude website website-eslint` against `vx
-run build --all --filter '!website' --filter
-'!@typescript-eslint/website-eslint'` through `nx()` with nothing
-written: the same 16 build tasks, inferred by `@nx/js/typescript`, and
-the same edges. Executor targets run through `nx-exec`, on PATH as an
-install of `@vzn/vx-migrate` puts it. The repo runs from a bind mount
-at `/mnt` (tsx's socket path, as unocss above).
-
-| `build` | vx         | Nx 23.2.1      |
-| ------- | ---------- | -------------- |
-| cold    | **16.8 s** | 17.8 s (1.06×) |
-| restore | **1.50 s** | 2.95 s (1.97×) |
-| no-op   | **1.11 s** | 2.96 s (2.67×) |
-
-Both no-ops run `types#copy-ast-spec`, which Nx declares
-`cache: false` (540 ms of vx's 1.11 s).
-
-### trpc/trpc (Turbo 2.10.12, `turbo()`, `ec0b0a4`)
-
-`turbo --filter=./packages/* build` against `vx run build --filter
-'./packages/*'` through `turbo()` with nothing written: the same 7
-tasks and edges. From the `/mnt` bind mount, as unocss above.
-
-| `build` | vx        | Turbo 2.10.12 |
-| ------- | --------- | ------------- |
-| cold    | **7.8 s** | 8.1 s (1.04×) |
-| restore | 6.57 s    | **210 ms**    |
-| no-op   | 6.37 s    | **143 ms**    |
-
-Five of the seven `build` tasks list the package's own `package.json`
-as an output (the build rewrites `exports`, with the same bytes), so
-`turbo()` runs them uncached (N-20): every vx run builds them. Were the
-output dropped, the rewrite of an input during the run would still
-withhold the save (the unocss row above); the fix is core's.
-
-### shadcn-ui/ui (Turbo 2.9.18, `turbo()`, `984f435`)
-
-`turbo run build --filter=./packages/*` against `vx run build --filter
-'./packages/*'` through `turbo()` with nothing written: the same 3
-tasks and edges (`typecheck`'s 5 match too). From the `/mnt` bind
-mount, as unocss above.
-
-| `build` | vx         | Turbo 2.9.18   |
-| ------- | ---------- | -------------- |
-| cold    | **21.4 s** | 24.4 s (1.14×) |
-| restore | **221 ms** | 567 ms (2.57×) |
-| no-op   | **216 ms** | 545 ms (2.52×) |
-
-### TanStack/form (Nx 23.2.1, `nx()`, `555509c`)
-
-`nx run-many -t build` over the 14 packages against `vx run build
---filter './packages/*'` through `nx()` with nothing written: the same
-14 tasks and edges. Over `--all` the 57 `build`, 17 `test:lib`, 52
-`test:types`, 17 `test:eslint` and 28 `test:build` tasks match too;
-the three root-only targets have no package to attach to. `test:lib`
-and `test:types` pass and a second run is 75 hits in 67 ms.
-
-| `build` | vx         | Nx 23.2.1      |
-| ------- | ---------- | -------------- |
-| cold    | **40.3 s** | 44.2 s (1.10×) |
-| restore | **335 ms** | 1.16 s (3.45×) |
-| no-op   | **247 ms** | 1.15 s (4.64×) |
-
-### t3-oss/create-t3-turbo (Turbo 2.5.8, `turbo()`, `8f945b7`)
-
-`turbo run lint` against `vx run lint --all` through `turbo()` with
-nothing written: the same 12 tasks and edges once Turbo's script-less
-`topo` and `build` nodes are passed through (`build`'s 5, `typecheck`'s
-14 and `format`'s 11 match too). `typecheck` writes the
-`.cache/tsbuildinfo.json` `build` declares, so its 3 tasks run
-uncached with a todo. `@acme/nextjs#build` fetches Google Fonts and
-fails under both tools on this box, so `lint` is measured.
-
-| `lint`  | vx         | Turbo 2.5.8    |
-| ------- | ---------- | -------------- |
-| cold    | **27.2 s** | 29.6 s (1.09×) |
-| restore | **199 ms** | 340 ms (1.71×) |
-| no-op   | **174 ms** | 342 ms (1.97×) |
-
-### TanStack/table (Nx 23.2.1, `nx()`, `21d713f`)
-
-`nx run-many -t build` over the 18 packages against `vx run build
---filter './packages/*'` through `nx()`, with an empty root
-`vx.config.mjs` so the root project's `format` (every `build` depends
-on it) is a task. Over `--all` the 419 `build`, 37 `test:build`, 21
-`test:lib`, 20 `test:eslint`, 436 `test:types` and 417 `test:e2e`
-tasks match Nx's, edges too. Each project's `public` input lists its
-own `dist`, which failed the run until `nx()` dropped a path input
-inside the project's outputs (N-25). Both tools rerun the uncached
-`format` (prettier over the repo, about 1 s) on every run.
-
-| `build` | vx         | Nx 23.2.1      |
-| ------- | ---------- | -------------- |
-| cold    | **28.7 s** | 32.6 s (1.14×) |
-| restore | **1.57 s** | 3.81 s (2.42×) |
-| no-op   | **1.42 s** | 3.74 s (2.64×) |
-
-### resend/react-email (Turbo 2.9.14, `turbo()`, `15419ff`)
-
-`turbo run build --filter='!web'` against `vx run build --all --filter
-'!web'` through `turbo()`: the same 6 tasks and edges (`typecheck`'s 7
-and `test`'s 10 match too; `^postbuild` names no script). `web#build`
-needs a `REDIS_URL` secret and is left out under both. Three builds
-are Next apps, and a restore writes 218 MB (demo's `.react-email`
-alone is 959 files, 133 MB), so restore is the one phase here where
-Turbo leads: `restore: extract` sums 2.0 s over the 6 tasks.
-
-| `build` | vx         | Turbo 2.9.14       |
-| ------- | ---------- | ------------------ |
-| cold    | **98.6 s** | 103.8 s (1.05×)    |
-| restore | 1.09 s     | **896 ms** (0.82×) |
-| no-op   | **285 ms** | 289 ms (1.01×)     |
-
-## Real repos re-measured (2026-09-27)
-
-Roadmap 2.5: astro and refine again, same revisions, harnesses and
-scopes as above, now through the adoption plugins with nothing written
-(`turbo()` / `nx()` in `vx.workspace.mjs`). Compiled vx at main 889a95c,
-Bun 1.4.2, the 4-core container, medians of three interleaved reps.
-This box is slower than 2026-09-11's (Nx cold 178 s here, 115 s then),
-so compare ratios, not absolute numbers.
-
-| astro `build` (32) | vx         | Turbo 2.10.2   |
-| ------------------ | ---------- | -------------- |
-| cold               | **76.0 s** | 86.4 s (1.14×) |
-| restore            | **1.74 s** | 2.38 s (1.37×) |
-| no-op              | **786 ms** | 1.86 s (2.36×) |
-| second no-op       | **792 ms** | 2.02 s (2.55×) |
-
-| refine `build` (35, + 14 `nx-input` twins) | vx          | Nx 18.2.2       |
-| ------------------------------------------ | ----------- | --------------- |
-| cold                                       | **158.8 s** | 178.2 s (1.12×) |
-| restore                                    | **1.35 s**  | 2.83 s (2.10×)  |
-| no-op                                      | **396 ms**  | 2.87 s (7.2×)   |
-| second no-op                               | **386 ms**  | 2.73 s (7.1×)   |
-
-vx leads every row. refine's warm ratios fell from ~11.5× because
-`nx()` maps the whole graph on every run: against the same repo with
-`vx-migrate --from nx` configs written, a warm no-op reads 396 ms
-median (min 364) under `nx()` and 291 (min 272) written, 15
-interleaved rounds, A/A (a second `nx()` copy) 393 (min 350). Of a
-377 ms no-op, `load configs` is 90 ms; the plugin maps all 206
-projects when the run asks for 35.
-
-Day-end A/B, main 889a95c against fa419f76 (item 960), 1,000 synthetic
-projects warm, source runs: a tie. n=15 medians 404 / 422, A/A 424;
-n=21 418 / 420, A/A 401. Stage mins over 15 runs move within the A/A
-spread.
-
-Later the same day (main 3e927f9c, after the `turbo()` / `nx()` mapping
-cache and `--filter` discovering once), no-op, 15 interleaved rounds,
-A/A beside: astro 763 → 715 ms median (A/A 719). refine did not move
-(375 → 396, A/A 410, git defaults): `nx()`'s graph key now runs a
-whole-repo `git status -uall` each run (80–99 ms alone on refine), which
-ate what the mapping cache saved. Restore is not bound by worker count:
-refine at `--concurrency 6` 1,057 ms median against 1,148 at 3, A/A
-1,183. Under a git config that weakens stat (`core.checkStat=minimal`,
-`core.trustctime=false`) every input hashes instead of trusting git's
-OIDs, by design: refine's no-op read 448 ms there against 396.
-
-astro again on main 4b7c396a, after A-11 (nested-project boundaries by
-ancestor lookup; the same filtered no-op read 449 → 263 ms median
-against its parent, A/A 260), three interleaved reps:
-
-| astro `build` (32) | vx         | Turbo 2.10.2   |
-| ------------------ | ---------- | -------------- |
-| cold               | **48.0 s** | 57.9 s (1.21×) |
-| restore            | **478 ms** | 1.43 s (2.98×) |
-| no-op              | **249 ms** | 1.38 s (5.55×) |
-| second no-op       | **264 ms** | 1.35 s (5.13×) |
-
-refine on the same commit, three interleaved reps. Nx itself ran
-faster on this box than at 889a95c (cold 178 → 106 s), so read the
-ratios; vx's no-op fell 396 → 303 ms, while item 1075's whole-repo
-`git status` still costs ~90 ms of it (a G lead):
-
-| refine `build` (35) | vx         | Nx 18.2.2       |
-| ------------------- | ---------- | --------------- |
-| cold                | **96.2 s** | 105.9 s (1.10×) |
-| restore             | **1.06 s** | 1.19 s (1.13×)  |
-| no-op               | **303 ms** | 1.16 s (3.84×)  |
-| second no-op        | **271 ms** | 1.19 s (4.40×)  |
+## Real repos
+
+Earlier sections here timed vx on public Turbo and Nx repos through
+`@vzn/vx-migrate`'s plugins or the configs it wrote. Those runs measured
+the migration bridge, not native vx config, and are removed; a rerun on
+native config is pending (STATUS). The record is in git history.
 
 ## Performance history
 

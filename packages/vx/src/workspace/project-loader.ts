@@ -3,7 +3,14 @@ import path from 'node:path'
 import type { ProjectConfig, WorkspaceConfig } from '../config.js'
 import { UserError, xxh3hex } from '../util/index.js'
 import { validateProjectConfig, validateWorkspace } from './config-schema.js'
-import { beginEvalRound, CONFIG_EXIT, evalBudgetMs, evaluateConfigFresh } from './config-eval.js'
+import {
+  beginEvalRound,
+  builtinsChangedBy,
+  CONFIG_EXIT,
+  evalBudgetMs,
+  evaluateConfigFresh,
+  WATCHED_BUILTIN_NAMES,
+} from './config-eval.js'
 import { hasEsmExport, unprovidedBareImports } from './config-imports.js'
 import {
   configEvalKey,
@@ -12,7 +19,7 @@ import {
   configImports,
   type ConfigEvalStore,
 } from './config-cache.js'
-import { readOnce } from './load-reads.js'
+import { readOnce, unreadable } from './load-reads.js'
 
 // The validator lives in config-schema.ts; re-exported so a reader that
 // reaches the loader for it (the tests do) keeps working.
@@ -30,12 +37,21 @@ export const WORKSPACE_CONFIG_FILENAMES = [
   'vx.workspace.cjs',
 ]
 
+/** What a function default export is told; the playground says the same. */
+const EXPORTED_A_FUNCTION =
+  'it exports a function, and vx reads the object itself — export what the function returns'
+
 /** Project configs already loaded in this process, by absolute path. */
 const loadedConfigs = new Set<string>()
 
 function assertDefaultObject(mod: unknown, kind: string, configPath: string): void {
   if (!mod || typeof mod !== 'object') {
-    throw new UserError(`${kind} config at ${configPath} did not export a default object`)
+    // Vite's `defineConfig(() => ({ … }))` shape: vx reads the object, and
+    // the bare refusal did not say what was there instead (D-110).
+    throw new UserError(
+      `${kind} config at ${configPath} did not export a default object` +
+        (typeof mod === 'function' ? `: ${EXPORTED_A_FUNCTION}` : ''),
+    )
   }
 }
 
@@ -107,8 +123,14 @@ function servableSource(bytes: Uint8Array, loader: 'ts' | 'js'): string | null {
   } catch {
     return null
   }
-  return hasEsmExport(source, loader) ? source : null
+  return !COMMONJS_HINT.test(source) || hasEsmExport(source, loader) ? source : null
 }
+
+// What makes Bun run a file as CommonJS is one of these names at the top
+// level (an escaped `\u006dodule` too, so any backslash counts). Source
+// with none of them runs as a module whichever path loads it, so it skips
+// the parse: 16–20 µs a config, 1,000 cold configs (2026-10-03).
+const COMMONJS_HINT = /\b(?:module|exports|require|this|__dirname|__filename)\b|\\/
 
 /** vx's module-cache query, which no user wrote: stripped from anything shown to them. */
 const BUST_QUERY = /\?vx-(?:bust|held)=[^'"\s]*/g
@@ -287,7 +309,11 @@ export function configLoadError(err: unknown, configPath: string, kind: string):
   }
   if (name === 'BuildMessage') {
     const pos = (err as { position?: BuildPosition | null }).position ?? {}
-    const file = typeof pos.file === 'string' && pos.file.length > 0 ? pos.file : configPath
+    // A served config's position names its specifier, query and all.
+    const file =
+      typeof pos.file === 'string' && pos.file.length > 0
+        ? pos.file.replace(BUST_QUERY, '')
+        : configPath
     const at =
       typeof pos.line === 'number'
         ? `:${pos.line}${typeof pos.column === 'number' ? `:${pos.column}` : ''}`
@@ -384,7 +410,9 @@ export async function loadProjectConfigs(
       })
       if (fastKey !== null) return { configPath, bytes: null, cacheKey: fastKey, indexed: true }
     }
-    const bytes = await Bun.file(configPath).bytes()
+    const bytes = await Bun.file(configPath)
+      .bytes()
+      .catch((err: unknown) => unreadable(err, configPath))
     const keyed =
       evalCache === undefined
         ? null
@@ -432,8 +460,14 @@ export async function loadProjectConfigs(
   // Taken only when a config is evaluated in this process: reading every
   // descriptor of `Bun` makes Bun build its lazy members (`bun:sql`,
   // `node:stream`), ~7 ms of a two-config warm run where every load hit.
-  let builtins: BuiltinSnapshot = []
+  let builtins: BuiltinSnapshot | undefined
   let env: Readonly<Record<string, string | undefined>> = {}
+  let cwd = ''
+  let umask = -1
+  // More than one evaluation in flight: a change seen after one load may
+  // be another's.
+  let overlapping = false
+  let tainted = false
   const loadOne = async (entry: (typeof prepared)[number]): Promise<Loaded> => {
     const { configPath, cacheKey } = entry
     // A fast key that missed: the closure is stale or the file changed.
@@ -442,7 +476,9 @@ export async function loadProjectConfigs(
     let closure = entry.closure
     let key = cacheKey
     if (entry.indexed) {
-      bytes = await Bun.file(configPath).bytes()
+      bytes = await Bun.file(configPath)
+        .bytes()
+        .catch((err: unknown) => unreadable(err, configPath))
       const keyed = await configEvalKey({
         configPath,
         bytes,
@@ -474,8 +510,26 @@ export async function loadProjectConfigs(
       : await loadDefaultExport(configPath, 'Project', bytes!)
     // Before anything reads through them: a replaced `Array.prototype.includes`
     // turned the JSON-data walk's own check into "a cyclic reference".
-    const changed = repeat ? [] : [...restoreBuiltins(builtins), ...restoreEnv(env)]
-    if (changed.length > 0) throw builtinsChanged(changed, configPath)
+    const changed = repeat
+      ? []
+      : [
+          ...restoreBuiltins(builtins, overlapping),
+          // Overlapping, the env is checked once at the round's end, as most
+          // built-ins are: reading all of it after every load was 15–25 µs a
+          // config (149 variables, compiled, 2026-10-03).
+          ...(overlapping ? [] : restoreEnv(env)),
+          ...restoreCwd(cwd),
+          // Alone in the round: nothing else reads the umask now. Beside
+          // other loads the round reads it once they are done (see
+          // `currentUmask`).
+          ...(overlapping ? [] : restoreUmask(umask)),
+        ]
+    // Loads overlap, so another config's change can surface after this
+    // one: named here, the refusal blamed the wrong file (D-119). The round
+    // finds the one that made it.
+    if (changed.length > 0) {
+      throw overlapping ? new ChangedInRound(changed) : builtinsChanged(changed, configPath)
+    }
     assertDefaultObject(mod, 'Project', configPath)
     // Validation runs HERE, on whichever object we ended up with, so a
     // malformed config reports the identical UserError whether it was
@@ -521,7 +575,10 @@ export async function loadProjectConfigs(
     if (misses.length > 0) {
       builtins = builtinSnapshot()
       env = { ...process.env }
+      cwd = process.cwd()
+      umask = currentUmask()
     }
+    overlapping = misses.length > 1
     let next = 0
     const lane = async (): Promise<void> => {
       while (next < misses.length) {
@@ -538,13 +595,49 @@ export async function loadProjectConfigs(
         if (r.closure !== undefined) learnedClosures.push(r.closure)
       }
     }
-    const changed = misses.length > 0 ? [...restoreBuiltins(builtins), ...restoreEnv(env)] : []
+    const changed =
+      misses.length > 0
+        ? [
+            ...restoreBuiltins(builtins),
+            ...restoreEnv(env),
+            ...restoreCwd(cwd),
+            ...restoreUmask(umask),
+          ]
+        : []
+    // Overlapping loads check most built-ins and the env only here, so a change one
+    // config made may have broken another's load: it is refused first, and
+    // nothing the round evaluated is stored.
+    const changedInRound =
+      first?.failed instanceof ChangedInRound
+        ? first.failed.changed
+        : overlapping && changed.length > 0
+          ? changed
+          : undefined
+    if (changedInRound !== undefined) {
+      tainted = true
+      for (const i of misses) {
+        const configPath = prepared[i]!.configPath
+        const own = await builtinsChangedBy(configPath)
+        // The blaming worker is gone, so this thread reads alone; and a
+        // worker that outlived its budget was ended before it could put
+        // the umask back.
+        restoreUmask(umask)
+        if (own.length > 0) throw builtinsChanged(own, configPath)
+      }
+      throw builtinsChanged(changedInRound)
+    }
     if (first !== undefined) throw first.failed
-    if (changed.length > 0) throw builtinsChanged(changed)
+    // One load in the round, in the worker (a repeat load), is the one
+    // that moved it: the worker no longer reads the umask to say so.
+    if (changed.length > 0)
+      throw builtinsChanged(
+        changed,
+        misses.length === 1 ? prepared[misses[0]!]!.configPath : undefined,
+      )
     return results.map((r) => (r as Loaded).config)
   } finally {
     endRound()
-    if (store !== undefined) {
+    if (store !== undefined && !tainted) {
       if (evals.length > 0) {
         if (store.putConfigEvals !== undefined) store.putConfigEvals(evals)
         else for (const [k, json] of evals) store.putConfigEval(k, json)
@@ -565,35 +658,119 @@ export async function loadProjectConfigs(
  * load runs in this process, so the round compares them before and after,
  * puts back what changed (a failed load too) and refuses.
  */
-const WATCHED_BUILTINS: ReadonlyArray<readonly [string, object]> = [
-  ['Object.prototype', Object.prototype],
-  ['Array.prototype', Array.prototype],
-  // What vx itself runs on: `Bun.hash.xxHash3 = () => 7n` gave every task
-  // the key 00000000, and a changed command replayed the old output (D-75).
-  ['Bun', Bun],
-  ['Bun.hash', Bun.hash],
-  ['JSON', JSON],
-  ['Math', Math],
-  ['String.prototype', String.prototype],
-  ['Map.prototype', Map.prototype],
-  ['Set.prototype', Set.prototype],
-  ['Promise.prototype', Promise.prototype],
-]
+// `Bun` and `Bun.hash` are what vx itself runs on: `Bun.hash.xxHash3 = ()
+// => 7n` gave every task the key 00000000, and a changed command replayed
+// the old output (D-75).
+const WATCHED_BUILTINS: ReadonlyArray<readonly [string, object]> = WATCHED_BUILTIN_NAMES.map(
+  (name) =>
+    [
+      name,
+      name
+        .split('.')
+        .reduce<unknown>((o, k) => (o as Record<string, unknown>)[k], globalThis) as object,
+    ] as const,
+)
+
+// The check reads through these, taken when a round's snapshot is, before
+// any of its configs runs: a config that set `Reflect.ownKeys = () => []`
+// blinded it, and its `Object.prototype.exec` ran in another project's
+// task (D-124). Each round keeps its own, so an overlapping round cannot
+// hand it a replaced one. The compare and put-back use indexed loops only
+// (a replaced `Array.prototype.forEach` skipped them).
+interface Primitives {
+  ownKeys: typeof Reflect.ownKeys
+  descriptorOf: typeof Object.getOwnPropertyDescriptor
+  defineOwn: typeof Object.defineProperty
+  deleteOwn: typeof Reflect.deleteProperty
+  hasOwn: typeof Object.hasOwn
+  same: typeof Object.is
+  keyName: typeof String
+}
 
 interface OwnProperties {
   keys: PropertyKey[]
   descriptors: PropertyDescriptor[]
-  byKey: ReadonlyMap<PropertyKey, PropertyDescriptor>
 }
 
-type BuiltinSnapshot = readonly OwnProperties[]
+interface BuiltinSnapshot {
+  readonly prims: Primitives
+  /** Undefined for a watched name the snapshot leaves out. */
+  readonly props: readonly (OwnProperties | undefined)[]
+}
 
-function builtinSnapshot(): BuiltinSnapshot {
-  return WATCHED_BUILTINS.map(([, proto]) => {
-    const keys = Reflect.ownKeys(proto)
-    const descriptors = keys.map((k) => Object.getOwnPropertyDescriptor(proto, k)!)
-    return { keys, descriptors, byKey: new Map(keys.map((k, j) => [k, descriptors[j]!])) }
-  })
+/**
+ * The members of `Bun` vx reads, which the workspace config's guard checks;
+ * of the rest it keeps the keys and their order, not their descriptors.
+ * Some members are built on their first read (`postgres` loaded `bun:sql`,
+ * 3.4 ms), and the guard runs on every warm run, where its full read of
+ * `Bun` was 4.4–5 ms of a 45 ms no-op (compiled, 2026-10-03). A project
+ * config's guard reads them all. Held to every `Bun.<name>` in `src/` by
+ * tests/workspace-guard-bun.test.ts.
+ */
+const BUN_MEMBERS_VX_READS: readonly PropertyKey[] = [
+  'Archive',
+  'BunFile',
+  'CryptoHasher',
+  'Glob',
+  'JSONC',
+  'Subprocess',
+  'Transpiler',
+  'YAML',
+  'color',
+  'deepEquals',
+  'env',
+  'file',
+  'hash',
+  'main',
+  'nanoseconds',
+  'plugin',
+  'randomUUIDv7',
+  'resolveSync',
+  'semver',
+  'serve',
+  'sleep',
+  'spawn',
+  'spawnSync',
+  'stdout',
+  'stringWidth',
+  'version',
+  'which',
+  'write',
+  'zstdCompress',
+  'zstdDecompress',
+]
+
+/** A descriptor the snapshot did not read. */
+const UNREAD: PropertyDescriptor = Object.freeze({})
+
+function builtinSnapshot(leaveOut?: string, onlyBunMembersVxReads = false): BuiltinSnapshot {
+  const prims: Primitives = {
+    ownKeys: Reflect.ownKeys,
+    descriptorOf: Object.getOwnPropertyDescriptor,
+    defineOwn: Object.defineProperty,
+    deleteOwn: Reflect.deleteProperty,
+    hasOwn: Object.hasOwn,
+    same: Object.is,
+    keyName: String,
+  }
+  const props: (OwnProperties | undefined)[] = []
+  for (let i = 0; i < WATCHED_BUILTINS.length; i++) {
+    if (WATCHED_BUILTINS[i]![0] === leaveOut) {
+      props[i] = undefined
+      continue
+    }
+    const proto = WATCHED_BUILTINS[i]![1]
+    const keys = prims.ownKeys(proto)
+    const descriptors: PropertyDescriptor[] = []
+    const narrow = onlyBunMembersVxReads && proto === Bun
+    for (let j = 0; j < keys.length; j++) {
+      const key = keys[j]!
+      descriptors[j] =
+        narrow && !BUN_MEMBERS_VX_READS.includes(key) ? UNREAD : prims.descriptorOf(proto, key)!
+    }
+    props[i] = { keys, descriptors }
+  }
+  return { prims, props }
 }
 
 /**
@@ -603,50 +780,105 @@ function builtinSnapshot(): BuiltinSnapshot {
  * evaluated config: the full check was ~0.1 ms a config, ~100 ms of a
  * 1,000-config cold load.
  */
-function unchanged(proto: object, keys: readonly PropertyKey[], was: OwnProperties): boolean {
+function unchanged(
+  p: Primitives,
+  proto: object,
+  keys: readonly PropertyKey[],
+  was: OwnProperties,
+): boolean {
   if (keys.length !== was.keys.length) return false
   for (let j = 0; j < keys.length; j++) {
     const key = keys[j]!
     if (key !== was.keys[j]) return false
-    if (!sameDescriptor(was.descriptors[j]!, Object.getOwnPropertyDescriptor(proto, key)!))
-      return false
+    const prior = was.descriptors[j]!
+    if (prior === UNREAD) continue
+    if (!sameDescriptor(p, prior, p.descriptorOf(proto, key)!)) return false
   }
   return true
 }
 
-/** Loads run together, so the config named is the one whose load saw the change. */
+/** A change seen by one of several overlapping loads; the round names its config. */
+class ChangedInRound {
+  constructor(readonly changed: readonly string[]) {}
+}
+
+/** Without `configPath`, no config alone was found to make the change. */
 function builtinsChanged(changed: readonly string[], configPath?: string): UserError {
   const who = configPath === undefined ? 'a project config' : configPath
-  const env = changed.some((c) => c.startsWith('process.env.'))
-    ? '; a task gets an env var through `exec.env.define` or `passThrough`'
-    : ''
+  const env =
+    (changed.some((c) => c.startsWith('process.env.'))
+      ? '; a task gets an env var through `exec.env.define` or `passThrough`'
+      : '') +
+    (changed.some((c) => c.startsWith('process.cwd'))
+      ? '; a task runs in its project directory, and `cd <dir> && …` in `exec.command` moves it'
+      : '') +
+    (changed.some((c) => c.startsWith('process.umask'))
+      ? '; a task sets its own with `umask <mode> && …` in `exec.command`'
+      : '') +
+    (changed.some((c) => c.startsWith('globalThis.'))
+      ? '; a constant configs share goes in a module each one imports'
+      : '')
   return new UserError(
     `${who} changed ${changed.join(', ')} while it was evaluated — a config must not change the built-ins vx runs on: other configs are read through them and cache keys are made with them${env}`,
   )
 }
 
+/**
+ * The built-ins checked after each of several overlapping loads: the ones
+ * the loader itself reads through between loads (its promises, maps, sets,
+ * JSON and keys). The rest are checked once, at the round's end: all of
+ * them after every load was ~73 µs a config, a quarter of a cold load of
+ * 1,000 (2026-10-03). A lone load checks them all. By index, decided at
+ * module load: a lookup through a `Set` is one a config can replace (D-124).
+ */
+const EVERY_LOAD: readonly boolean[] = WATCHED_BUILTINS.map(([name]) =>
+  [
+    'Object.prototype',
+    'JSON',
+    'Promise.prototype',
+    'Map.prototype',
+    'Set.prototype',
+    'Bun.hash',
+  ].includes(name),
+)
+
 /** Puts back what changed since `before`, naming each property it put back. */
-function restoreBuiltins(before: BuiltinSnapshot): string[] {
+function restoreBuiltins(before: BuiltinSnapshot | undefined, everyLoadOnly = false): string[] {
   const changed: string[] = []
-  WATCHED_BUILTINS.forEach(([name, proto], i) => {
-    const keys = Reflect.ownKeys(proto)
-    if (unchanged(proto, keys, before[i]!)) return
-    const was = before[i]!.byKey
-    for (const key of keys) {
-      const prior = was.get(key)
-      const now = Object.getOwnPropertyDescriptor(proto, key)!
-      if (prior !== undefined && sameDescriptor(prior, now)) continue
-      changed.push(`${name}.${String(key)}`)
-      if (prior === undefined) Reflect.deleteProperty(proto, key)
-      else Object.defineProperty(proto, key, prior)
-    }
-    for (const [key, prior] of was) {
-      if (!Object.hasOwn(proto, key)) {
-        changed.push(`${name}.${String(key)}`)
-        Object.defineProperty(proto, key, prior)
+  if (before === undefined) return changed
+  const p = before.prims
+  for (let i = 0; i < WATCHED_BUILTINS.length; i++) {
+    const name = WATCHED_BUILTINS[i]![0]
+    if (everyLoadOnly && !EVERY_LOAD[i]) continue
+    const proto = WATCHED_BUILTINS[i]![1]
+    const was = before.props[i]
+    if (was === undefined) continue
+    const keys = p.ownKeys(proto)
+    if (unchanged(p, proto, keys, was)) continue
+    // Slow path, a change only: a linear lookup keeps it off `Map`.
+    for (let j = 0; j < keys.length; j++) {
+      const key = keys[j]!
+      let prior: PropertyDescriptor | undefined
+      for (let k = 0; k < was.keys.length; k++) {
+        if (was.keys[k] === key) {
+          prior = was.descriptors[k]
+          break
+        }
       }
+      if (prior === UNREAD) continue
+      if (prior !== undefined && sameDescriptor(p, prior, p.descriptorOf(proto, key)!)) continue
+      changed[changed.length] = name + '.' + p.keyName(key)
+      if (prior === undefined) p.deleteOwn(proto, key)
+      else p.defineOwn(proto, key, prior)
     }
-  })
+    for (let k = 0; k < was.keys.length; k++) {
+      const key = was.keys[k]!
+      if (p.hasOwn(proto, key)) continue
+      changed[changed.length] = name + '.' + p.keyName(key)
+      // An unread member cannot be put back as it was; it is refused all the same.
+      if (was.descriptors[k] !== UNREAD) p.defineOwn(proto, key, was.descriptors[k]!)
+    }
+  }
   return changed
 }
 
@@ -675,9 +907,45 @@ function restoreEnv(before: Readonly<Record<string, string | undefined>>): strin
   return changed
 }
 
-function sameDescriptor(a: PropertyDescriptor, b: PropertyDescriptor): boolean {
+/**
+ * A config's `process.chdir()` moved the whole process: every relative path
+ * vx resolves after it, its own and a plugin's, read from the config's
+ * choice (D-120). Put back, and named as the change.
+ */
+function restoreCwd(before: string): string[] {
+  // Through globalThis: the playground bundles this module, and its
+  // browser shim carries no free process global.
+  const proc = globalThis.process
+  if (before === '' || proc.cwd() === before) return []
+  proc.chdir(before)
+  return ['process.cwd (a chdir)']
+}
+
+/**
+ * A config's `process.umask()` set the mode of every file vx and its tasks
+ * wrote after it: a cache artifact and a task's outputs landed `000`, which
+ * a user other than root could not read back (D-125). Put back, and named.
+ */
+function currentUmask(): number {
+  // Through globalThis, as restoreCwd: the playground's shim has no umask.
+  const proc = globalThis.process as { umask?: (mask?: number) => number }
+  if (typeof proc.umask !== 'function') return -1
+  // Bun reads it by setting 0 and putting it back (probed on 1.4.2: four
+  // workers reading at once left the process at 0), so it is read on this
+  // thread only, and never while the config worker evaluates.
+  return proc.umask()
+}
+
+function restoreUmask(before: number): string[] {
+  if (before === -1 || currentUmask() === before) return []
+  ;(globalThis.process as { umask: (mask: number) => number }).umask(before)
+  return ['process.umask']
+}
+
+function sameDescriptor(p: Primitives, a: PropertyDescriptor, b: PropertyDescriptor): boolean {
   return (
-    a.value === b.value &&
+    // `globalThis.NaN` is watched (D-122), and NaN !== NaN.
+    p.same(a.value, b.value) &&
     a.get === b.get &&
     a.set === b.set &&
     a.writable === b.writable &&
@@ -742,7 +1010,29 @@ export async function loadWorkspaceConfig(root: string): Promise<WorkspaceConfig
     const since = workspaceLoadedAt.get(configPath)
     if (since !== undefined) await refuseStaleWorkspaceImports(configPath, since)
     const startedAt = Date.now()
-    const mod = (await loadDefaultExport(configPath, 'Workspace', bytes)) as WorkspaceConfig
+    // The same guard a project config's first load has: the workspace config
+    // runs in this process too, and its `Object.prototype.exec` ran in a
+    // project's task under a key that never saw it (D-126). Its globals are
+    // left out: it loads first in every run, filtered or not, so none
+    // depends on what else loaded (D-122's case), and plugins' tests and
+    // tools hand state through them.
+    const builtins = builtinSnapshot('globalThis', true)
+    const env = { ...process.env }
+    const cwd = process.cwd()
+    const umask = currentUmask()
+    let mod: WorkspaceConfig
+    try {
+      mod = (await loadDefaultExport(configPath, 'Workspace', bytes)) as WorkspaceConfig
+    } finally {
+      const changed = [
+        ...restoreBuiltins(builtins),
+        ...restoreEnv(env),
+        ...restoreCwd(cwd),
+        ...restoreUmask(umask),
+      ]
+      // eslint-disable-next-line no-unsafe-finally -- the refusal outranks the load's own error
+      if (changed.length > 0) throw builtinsChanged(changed, configPath)
+    }
     // Checked again once awaited, as a project config is: a Promise default
     // passed the first check, and `Promise.resolve(null)` crashed the
     // validator with a stack while `Promise.resolve(42)` loaded as no

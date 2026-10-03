@@ -1,0 +1,141 @@
+{
+  "manifests": {
+    "@ja/auth": {
+      "dependencies": {
+        "@ja/ui": "*"
+      }
+    }
+  },
+  "graph": {
+    "nodes": {
+      "@ja/auth": {
+        "name": "@ja/auth",
+        "type": "lib",
+        "data": {
+          "root": "libs/auth",
+          "targets": {
+            "test": {
+              "command": "jest",
+              "options": {
+                "cwd": "libs/auth",
+                "env": {
+                  "TS_NODE_COMPILER_OPTIONS": "{\"moduleResolution\":\"node10\",\"module\":\"commonjs\",\"customConditions\":null}"
+                }
+              },
+              "cache": true,
+              "inputs": [
+                "default",
+                "^production",
+                "{workspaceRoot}/jest.preset.js",
+                {
+                  "externalDependencies": ["jest", "ts-jest"]
+                }
+              ],
+              "outputs": ["{workspaceRoot}/coverage/libs/auth"]
+            },
+            "test-ci--src/lib/login.spec.ts": {
+              "command": "jest src/lib/login.spec.ts",
+              "options": {
+                "cwd": "libs/auth",
+                "env": {
+                  "TS_NODE_COMPILER_OPTIONS": "{\"moduleResolution\":\"node10\",\"module\":\"commonjs\",\"customConditions\":null}"
+                }
+              },
+              "cache": true,
+              "inputs": [
+                "default",
+                "^production",
+                "{workspaceRoot}/jest.preset.js",
+                {
+                  "externalDependencies": ["jest", "ts-jest"]
+                }
+              ],
+              "outputs": ["{workspaceRoot}/coverage/libs/auth"]
+            },
+            "test-ci--src/lib/token.spec.ts": {
+              "command": "jest src/lib/token.spec.ts",
+              "options": {
+                "cwd": "libs/auth",
+                "env": {
+                  "TS_NODE_COMPILER_OPTIONS": "{\"moduleResolution\":\"node10\",\"module\":\"commonjs\",\"customConditions\":null}"
+                }
+              },
+              "cache": true,
+              "inputs": [
+                "default",
+                "^production",
+                "{workspaceRoot}/jest.preset.js",
+                {
+                  "externalDependencies": ["jest", "ts-jest"]
+                }
+              ],
+              "outputs": ["{workspaceRoot}/coverage/libs/auth"]
+            },
+            "test-ci": {
+              "executor": "nx:noop",
+              "cache": true,
+              "inputs": [
+                "default",
+                "^production",
+                "{workspaceRoot}/jest.preset.js",
+                {
+                  "externalDependencies": ["jest", "ts-jest"]
+                }
+              ],
+              "outputs": ["{workspaceRoot}/coverage/libs/auth"],
+              "dependsOn": [
+                {
+                  "target": "test-ci--src/lib/login.spec.ts",
+                  "params": "forward",
+                  "options": "forward"
+                },
+                {
+                  "target": "test-ci--src/lib/token.spec.ts",
+                  "params": "forward",
+                  "options": "forward"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "@ja/ui": {
+        "name": "@ja/ui",
+        "type": "lib",
+        "data": {
+          "root": "libs/ui",
+          "targets": {
+            "test": {
+              "command": "jest",
+              "options": {
+                "cwd": "libs/ui",
+                "env": {
+                  "TS_NODE_COMPILER_OPTIONS": "{\"moduleResolution\":\"node10\",\"module\":\"commonjs\",\"customConditions\":null}"
+                }
+              },
+              "cache": true,
+              "inputs": [
+                "default",
+                "^production",
+                {
+                  "externalDependencies": ["jest"]
+                }
+              ],
+              "outputs": []
+            }
+          }
+        }
+      }
+    },
+    "dependencies": {
+      "@ja/auth": [
+        {
+          "source": "@ja/auth",
+          "target": "@ja/ui",
+          "type": "static"
+        }
+      ],
+      "@ja/ui": []
+    }
+  }
+}

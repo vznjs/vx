@@ -6,7 +6,7 @@ import {
   OUT_OF_FDS_HINT,
 } from '../util/index.js'
 import { computeReverseDepCount, mergePriorities, tieredReverseDepCount } from './priorities.js'
-import type { TaskNode } from './task-graph.js'
+import { isGroupTask, type TaskNode } from './task-graph.js'
 
 /**
  * Thrown by `execute` for a restore-tier task that turned out to have
@@ -181,6 +181,14 @@ export interface ScheduleOptions {
    *     be the next clean run's stale hit (`ExecuteArgs.taintedUpstream`).
    */
   continueMode?: ContinueMode
+  /**
+   * A failure the graph's outcomes do not hold yet: a persistent task
+   * that died after it became ready. Its outcome said `success` when it
+   * was ready, so this is how a dependant not yet started learns of it:
+   * under 'deps-ok' it is skipped as below a failed task, and under
+   * 'never' it stops dispatch.
+   */
+  serverDied?: (id: string) => boolean
   execute: (node: TaskNode, upstream: TaskOutcome[]) => Promise<TaskOutcome>
   onStart?: (node: TaskNode) => void
   onFinish?: (outcome: TaskOutcome) => void
@@ -328,6 +336,26 @@ class ReadyHeap {
     }
     return top
   }
+}
+
+/**
+ * The dead server a dependency stands for: itself, or one a group reaches.
+ * A group is a name for its deps, and it finished the moment the server
+ * was ready, so a task behind it ran against the dead one.
+ */
+export function deadServerBehind(
+  nodes: ReadonlyMap<string, TaskNode>,
+  serverDied: (id: string) => boolean,
+  id: string,
+): string | undefined {
+  if (serverDied(id)) return id
+  const n = nodes.get(id)
+  if (n === undefined || !isGroupTask(n)) return undefined
+  for (const d of n.deps) {
+    const dead = deadServerBehind(nodes, serverDied, d)
+    if (dead !== undefined) return dead
+  }
+  return undefined
 }
 
 /**
@@ -563,8 +591,21 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
     // they're dep-independent, so they typically restore before a dep
     // could fail anyway.
     const aborted = (): boolean => options.signal?.aborted === true
+    const serverDied = options.serverDied ?? ((): boolean => false)
+    const deadServerVia = (id: string): string | undefined =>
+      deadServerBehind(nodes, serverDied, id)
+    const servers =
+      options.serverDied === undefined
+        ? []
+        : [...nodes.values()]
+            .filter((n) => n.config.exec?.persistent !== undefined)
+            .map((n) => n.id)
     const willSkip = (id: string): boolean => {
       if (failFastTripped || aborted()) return true
+      if (continueMode === 'never' && servers.some(serverDied)) {
+        failFastTripped = true
+        return true
+      }
       if (inRestoreTier(id)) return false
       if (continueMode === 'always') return false
       const node = nodes.get(id) as TaskNode
@@ -580,7 +621,8 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
           u?.status === 'failed' ||
           u?.status === 'skipped' ||
           u?.status === 'aborted' ||
-          blockedRestores.has(d)
+          blockedRestores.has(d) ||
+          deadServerVia(d) !== undefined
         )
       })
     }
@@ -651,6 +693,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
           const viaRestore = node.deps.find((d) => blockedRestores.has(d))
           const blockedBy =
             blocker?.node.id ??
+            node.deps.map(deadServerVia).find((d) => d !== undefined) ??
             viaSkip?.blockedBy ??
             (viaRestore === undefined ? undefined : blockedRestores.get(viaRestore))
           finishOne(id, {

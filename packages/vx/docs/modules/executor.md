@@ -33,6 +33,10 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   again after its own awaits (the runtime, the tracer probe, the wrap),
   just before the spawn: a stop landing there ran the task (B-72). Internal (`src/exec/local-executor.ts`), not on
   `@vzn/vx`.
+- `executorFallback(reason)` / `isExecutorFallback(err)` — a remote
+  executor's way to give a task back, and core's test for it (matched by
+  name, so another copy of `@vzn/vx` is recognised); see below. Only the
+  first is on `@vzn/vx`.
 - `isLocalExecutor(executor)` — whether it is core's own, by identity (a
   plugin may name its executor 'local'): core bounds a plugin's
   `execute` after the request's abort, never the local one's (H-14).
@@ -92,18 +96,28 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   that may take the task: a `remote` executor is skipped outright for a
   `pinnedLocal` task, then `accepts` decides. An `accepts` that throws
   is a `UserError` naming the executor as `label` does (the run passes
-  `executorLabel`, which names its plugin too; item 1022). The local
+  `executorLabel`, which names its plugin too; item 1022), and so is
+  one that answers a Promise (`async accepts`), which read as a yes.
+  The local
   executor is the tail of the list and accepts everything, so the
   throw for "every executor declined" is unreachable from `run()`; it
   stays for a caller that builds its own list.
-- An executor's `demand` is a hint: one that throws is warned once,
-  naming the plugin, and that executor is asked no more that run (item
-  1022).
+- An executor's `demand` is a hint: one that throws, or an `async`
+  one that rejects, is warned once, naming the plugin, and that
+  executor is asked no more that run (item 1022;
+  `placement-async-hints.test.ts`).
 - A plugin executor's `execute` that throws fails the task, its message
   prefixed `plugin '<p>' (executor '<e>') failed in execute:` in the
   frame and the scheduler's line (C-63), plainly, as a refusal: the
   plugin is named, so it is not vx's internal error (C-85). The local
   executor's own throw is vx's and is not renamed.
+- `executorFallback(reason)` (on the façade) is how a `remote` executor
+  gives a task back: its `execute` rejects with it, core says
+  `[vx] <task>: <reason> — running it here` once and runs a fresh request
+  (its own timeout) on the local executor. A task placed
+  `remote: 'only'` fails naming `reason` instead. A non-remote executor's
+  fallback is an ordinary failure (B-100; `executor-fallback.test.ts`).
+  `@vzn/vx-reapi`'s `queueTimeoutMs` is its consumer.
 
 ## Rules
 

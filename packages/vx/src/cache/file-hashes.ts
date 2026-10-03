@@ -7,6 +7,7 @@
 // the store's handle; `Cache` delegates.
 
 import type { Database } from 'bun:sqlite'
+import { lazyStatement } from './schema.js'
 import { lstatSync, readlinkSync } from 'node:fs'
 import path from 'node:path'
 import { fileIdentity, repoFacts } from './git-inputs.js'
@@ -35,10 +36,13 @@ export class FileHashStore {
      */
     private readonly repoDir?: string,
   ) {
-    this.selectFileHash = this.db.prepare(
+    this.selectFileHash = lazyStatement(
+      this.db,
       'SELECT mtime_ms, size_bytes, ctime_ms, ino, content_hash FROM file_hashes WHERE path = ?',
     )
-    this.upsertFileHash = this.db.prepare(`
+    this.upsertFileHash = lazyStatement(
+      this.db,
+      `
       INSERT INTO file_hashes(path, mtime_ms, size_bytes, ctime_ms, ino, content_hash, seen_at)
       VALUES (?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(path) DO UPDATE SET
@@ -48,7 +52,8 @@ export class FileHashStore {
         ino          = excluded.ino,
         content_hash = excluded.content_hash,
         seen_at      = excluded.seen_at
-    `)
+    `,
+    )
   }
 
   /**

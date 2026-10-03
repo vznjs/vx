@@ -78,6 +78,8 @@ export interface TrackedKinds {
   readonly exts: ReadonlySet<string>
   readonly dirs: ReadonlySet<string>
   readonly tops: ReadonlySet<string>
+  /** The files themselves, project-relative. */
+  readonly files: readonly string[]
 }
 
 /**
@@ -93,16 +95,18 @@ export function trackedKinds(tracked: readonly string[]): (rel: string) => Track
       const exts = new Set<string>()
       const dirs = new Set<string>()
       const tops = new Set<string>()
+      const files: string[] = []
       const all = rel === '' || rel === '.'
       for (const f of filesUnder(tracked, rel)) {
         const own = all ? f : f.slice(rel.length + 1)
+        files.push(own)
         const ext = path.posix.extname(own)
         if (ext !== '') exts.add(ext.slice(1).toLowerCase())
         const segs = own.split('/')
         tops.add(segs[0]!)
         for (let i = 0; i < segs.length - 1; i++) dirs.add(segs[i]!)
       }
-      memo.set(rel, (kinds = { exts, dirs, tops }))
+      memo.set(rel, (kinds = { exts, dirs, tops, files }))
     }
     return kinds
   }
@@ -114,7 +118,10 @@ export function trackedKinds(tracked: readonly string[]): (rel: string) => Track
  * mtime (`git add`, `git rm`). Stats and a small read, so a kept mapping
  * stays a hit between them; a run does not write the index. Without the
  * index, a file `git add`ed under an output and not yet committed was not
- * taken back by the kept mapping, and the run's clean deleted it.
+ * taken back by the kept mapping, and the run's clean deleted it. Under
+ * reftable storage HEAD reads `ref: refs/heads/.invalid` and no reflog file
+ * exists, so the ref stack's table list stands for both: every ref update
+ * names a new table in it.
  */
 export async function headStamp(root: string): Promise<string> {
   for (let dir = root; ;) {
@@ -129,7 +136,14 @@ export async function headStamp(root: string): Promise<string> {
       const head = await readFile(path.join(gitDir, 'HEAD'), 'utf8').catch(() => '')
       const log = await lstat(path.join(gitDir, 'logs', 'HEAD')).catch(() => null)
       const index = await lstat(path.join(gitDir, 'index')).catch(() => null)
-      return `${head.trim()}\0${log?.size ?? ''}\0${index?.size ?? ''}\0${index?.mtimeMs ?? ''}`
+      // A worktree's own stack holds its HEAD; the common one, its branches.
+      const common = await readFile(path.join(gitDir, 'commondir'), 'utf8').catch(() => null)
+      const tables = await Promise.all(
+        [gitDir, ...(common === null ? [] : [path.resolve(gitDir, common.trim())])].map((d) =>
+          readFile(path.join(d, 'reftable', 'tables.list'), 'utf8').catch(() => ''),
+        ),
+      )
+      return `${head.trim()}\0${log?.size ?? ''}\0${index?.size ?? ''}\0${index?.mtimeMs ?? ''}\0${tables.join('\0')}`
     }
     const up = path.dirname(dir)
     if (up === dir) return 'no-git'
@@ -165,7 +179,7 @@ function coveredTracked(globs: readonly string[], files: readonly string[]): str
 }
 
 /** Past this many, a task's take-backs cost its runs more than its cache saves. */
-const MAX_SPARED = 16
+export const MAX_SPARED = 16
 
 interface Outputs {
   files?: unknown

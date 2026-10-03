@@ -8,7 +8,8 @@
 /** `mtime_ms` of a recorded output prefix that did not exist when the snapshot was taken. */
 const ABSENT_DIR_MTIME = -1
 
-import type { Database, SQLQueryBindings } from 'bun:sqlite'
+import type { Database } from 'bun:sqlite'
+import { inHashes, lazyStatement } from './schema.js'
 import { lstatSync, statSync } from 'node:fs'
 import { lstat, readdir } from 'node:fs/promises'
 import path from 'node:path'
@@ -42,21 +43,26 @@ export class OutputIndex {
   private readonly pendingStamps = new Map<string, Array<[string, number, number]>>()
 
   constructor(private readonly db: Database) {
-    this.insertOutputFile = this.db.prepare(`
+    this.insertOutputFile = lazyStatement(
+      this.db,
+      `
       INSERT INTO output_files(entry_hash, path, size_bytes, mode, mtime_ms)
       VALUES (?, ?, ?, ?, ?)
       ON CONFLICT(entry_hash, path) DO UPDATE SET
         size_bytes = excluded.size_bytes,
         mode       = excluded.mode,
         mtime_ms   = excluded.mtime_ms
-    `)
-    this.deleteOutputFiles = this.db.prepare('DELETE FROM output_files WHERE entry_hash = ?')
-    this.insertOutputDir = this.db.prepare(
+    `,
+    )
+    this.deleteOutputFiles = lazyStatement(this.db, 'DELETE FROM output_files WHERE entry_hash = ?')
+    this.insertOutputDir = lazyStatement(
+      this.db,
       'INSERT INTO output_dirs(entry_hash, path, mtime_ms) VALUES (?, ?, ?)',
     )
-    this.deleteOutputDirs = this.db.prepare('DELETE FROM output_dirs WHERE entry_hash = ?')
-    this.entryExists = this.db.prepare('SELECT 1 FROM entries WHERE hash = ?')
-    this.stampOutputFile = this.db.prepare(
+    this.deleteOutputDirs = lazyStatement(this.db, 'DELETE FROM output_dirs WHERE entry_hash = ?')
+    this.entryExists = lazyStatement(this.db, 'SELECT 1 FROM entries WHERE hash = ?')
+    this.stampOutputFile = lazyStatement(
+      this.db,
       'UPDATE output_files SET ino = ?, ctime_ms = ? WHERE entry_hash = ? AND path = ?',
     )
   }
@@ -78,21 +84,18 @@ export class OutputIndex {
   loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]> {
     const out = new Map<string, OutputFileRow[]>()
     if (hashes.length === 0) return out
-    // Inline placeholders for an IN-list — bun:sqlite doesn't ship
-    // rarray, but `IN (?, ?, …)` with N≤~999 is fast and avoids per-
-    // hash select.get() overhead. `db.query` (not `db.prepare`) caches the
-    // compiled statement keyed by the SQL text — so the dominant single-hash
-    // warm-hit path (called up to 3× per hit) reuses one statement instead of
-    // recompiling on every call.
+    // `db.query` (not `db.prepare`) caches the compiled statement keyed by
+    // the SQL text, which `inHashes` keeps to two: the single-hash warm-hit
+    // path (called up to 3× per hit) reuses one instead of recompiling.
     // A reader in the same process (`vx watch`'s next cycle, a test) sees
     // the stamps taken, not only the ones flushed: overlaid below from
     // memory. A flush here committed a transaction per read, and a restore
     // reads its rows twice.
-    const placeholders = hashes.map(() => '?').join(',')
+    const { test, params } = inHashes(hashes)
     const stmt = this.db.query(
-      `SELECT entry_hash, path, size_bytes, mode, mtime_ms, ino, ctime_ms FROM output_files WHERE entry_hash IN (${placeholders})`,
+      `SELECT entry_hash, path, size_bytes, mode, mtime_ms, ino, ctime_ms FROM output_files WHERE entry_hash ${test}`,
     )
-    const rows = stmt.all(...(hashes as readonly SQLQueryBindings[])) as Array<{
+    const rows = stmt.all(...params) as Array<{
       entry_hash: string
       path: string
       size_bytes: number
@@ -318,12 +321,10 @@ export class OutputIndex {
     // A reader in the same process (`vx watch`'s next cycle, a test) sees
     // what was snapshotted, not what was flushed.
     this.flushOutputDirs()
-    const placeholders = hashes.map(() => '?').join(',')
+    const { test, params } = inHashes(hashes)
     const rows = this.db
-      .query(
-        `SELECT entry_hash, path, mtime_ms FROM output_dirs WHERE entry_hash IN (${placeholders})`,
-      )
-      .all(...(hashes as readonly SQLQueryBindings[])) as Array<{
+      .query(`SELECT entry_hash, path, mtime_ms FROM output_dirs WHERE entry_hash ${test}`)
+      .all(...params) as Array<{
       entry_hash: string
       path: string
       mtime_ms: number

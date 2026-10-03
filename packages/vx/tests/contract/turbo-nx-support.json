@@ -97,7 +97,7 @@
   {
     "key": "turbo.json tasks",
     "status": "supported",
-    "reason": "Each task (or Turbo 1 `pipeline`) becomes a vx task for the packages that declare the script. A script that names `$npm_package_name`, `$npm_package_version` or `$npm_lifecycle_event` gets it defined, as the package manager Turbo runs it through sets it."
+    "reason": "Each task (or Turbo 1 `pipeline`) becomes a vx task for the packages that declare the script, and a key-only one where a `^` edge reaches a package without it (`dependsOn`, below). A script that names `$npm_package_name`, `$npm_package_version` or `$npm_lifecycle_event` gets it defined, as the package manager Turbo runs it through sets it."
   },
   {
     "key": "turbo.json ui",
@@ -122,7 +122,7 @@
   {
     "key": "turbo.json tasks.*.env",
     "status": "mapped",
-    "reason": "Goes to `cache.inputs.env` and `exec.env.passThrough`; under `turbo()` a `*` name expands over the run's environment, as Turbo does; otherwise wildcards get a TODO."
+    "reason": "Goes to `cache.inputs.env` and `exec.env.passThrough`; under `turbo()` a `*` name expands over the run's environment, as Turbo does; the CLI lists the names the package's files spell, and a wildcard nothing spells gets a TODO."
   },
   {
     "key": "turbo.json tasks.*.inputs",
@@ -147,12 +147,12 @@
   {
     "key": "turbo.json tasks.*.outputs",
     "status": "mapped",
-    "reason": "Become `cache.outputs`, negations kept; vx cleans outputs, so a wildcard first segment leaves the task uncached with a TODO (save one of a kind the package tracks none of: `*.xml`, `**/dist/**`, `dist-*/**`) and a file git tracks under an output, committed or only `git add`ed, is taken back with `!`."
+    "reason": "Become `cache.outputs`, negations kept; vx cleans outputs, so a wildcard first segment leaves the task uncached with a TODO (save one of a kind the package tracks none of: `*.xml`, `**/dist/**`, `dist-*/**`, and a literal rest such as `*/package.json`, whose committed matches, up to 16, are taken back with `!`) and a file git tracks under an output, committed or only `git add`ed, is taken back with `!`."
   },
   {
     "key": "turbo.json tasks.*.passThroughEnv",
     "status": "mapped",
-    "reason": "Goes to `exec.env.passThrough`, not hashed; under `turbo()` a `*` name expands over the run's environment; otherwise wildcards get a TODO."
+    "reason": "Goes to `exec.env.passThrough`, not hashed; under `turbo()` a `*` name expands over the run's environment; the CLI lists the names the package's files spell, and a wildcard nothing spells gets a TODO."
   },
   {
     "key": "turbo.json tasks.*.persistent",
@@ -266,8 +266,8 @@
   },
   {
     "key": "turbo.json futureFlags.githubActionsRemoteBaseRefFallback",
-    "status": "not-supported",
-    "reason": "Ignored; `--affected` defaults to `origin/HEAD`, then a trunk branch (`origin/main`, `main`, …), else `HEAD~1`."
+    "status": "supported",
+    "reason": "`turbo()` follows it on GitHub Actions: a pull request's base ref the checkout lacks is compared as `origin/<ref>`, as in Turbo."
   },
   {
     "key": "turbo.json futureFlags.globalConfiguration",
@@ -292,7 +292,7 @@
   {
     "key": "turbo.json futureFlags.watchUsingTaskInputs",
     "status": "not-supported",
-    "reason": "Ignored; `vx watch` watches each task's declared inputs."
+    "reason": "Ignored; `vx watch` re-runs on any change in a watched project but a declared output, and the cache keys decide what executes."
   },
   {
     "key": "turbo.json boundaries.dependencies",
@@ -432,7 +432,7 @@
   {
     "key": "nx.json sync",
     "status": "not-supported",
-    "reason": "Global sync generators never run; vx warns once per run to run `nx sync`."
+    "reason": "Global sync generators never run; under `nx()` vx warns once per run to run `nx sync`, and a migration notes keeping their output by hand."
   },
   {
     "key": "nx.json migrate",
@@ -517,7 +517,7 @@
   {
     "key": "nx.json targetDefaults.*.syncGenerators",
     "status": "not-supported",
-    "reason": "One workspace note per generator list, counting its tasks, says to run `nx sync`; vx never runs sync generators."
+    "reason": "One workspace note per generator list, counting its tasks, says to run `nx sync` (a migration: keep their output by hand); vx never runs sync generators."
   },
   {
     "key": "project.json name",
@@ -577,17 +577,17 @@
   {
     "key": "project.json targets.*.executor",
     "status": "mapped",
-    "reason": "`run-commands` and `run-script` become shell lines, `noop` a group task; others run through `nx-exec`."
+    "reason": "`run-commands` and `run-script` become shell lines, `noop` a group task; every other executor runs through `nx-exec`, under `nx()` and in the migrator's written config alike (the migrator translates no executor)."
   },
   {
     "key": "project.json targets.*.options",
     "status": "mapped",
-    "reason": "Passed as `nx-exec`'s `--options` or rendered into `run-commands`; `{args.*}` forwarding gets a TODO."
+    "reason": "Rendered into `run-commands`, or passed as `nx-exec`'s `--options`; `{args.*}` forwarding gets a TODO."
   },
   {
     "key": "project.json targets.*.outputs",
     "status": "mapped",
-    "reason": "Tokens and `{options.x}` resolved; paths outside the project become workspace files; negations kept; vx cleans outputs, so a wildcard first segment leaves the task uncached with a TODO (save one of a kind the project tracks none of: `*.xml`, `**/dist/**`, `dist-*/**`) and a file git tracks under an output, committed or only `git add`ed, is taken back with `!`."
+    "reason": "Tokens and `{options.x}` resolved; paths outside the project become workspace files, and one outside the workspace is dropped with a TODO; negations kept; vx cleans outputs, so a wildcard first segment leaves the task uncached with a TODO (save one of a kind the project tracks none of: `*.xml`, `**/dist/**`, `dist-*/**`) and a file git tracks under an output, committed or only `git add`ed, is taken back with `!`."
   },
   {
     "key": "project.json targets.*.defaultConfiguration",
@@ -637,7 +637,7 @@
   {
     "key": "project.json targets.*.syncGenerators",
     "status": "not-supported",
-    "reason": "One workspace note per generator list, counting its tasks, says to run `nx sync`; vx never runs sync generators."
+    "reason": "One workspace note per generator list, counting its tasks, says to run `nx sync` (a migration: keep their output by hand); vx never runs sync generators."
   },
   {
     "key": "inputs: a string",

@@ -8,7 +8,14 @@
 // plugin — declare it in vx.workspace.ts. The trade: the env var ALONE no
 // longer auto-exports; you must `defineWorkspace({ plugins: [otel()] })`.
 
-import { definePlugin, type TelemetryContext, type TelemetrySink, type VxPlugin } from '@vzn/vx'
+import {
+  refuseUnknownOptions,
+  type PluginOptionKinds,
+  definePlugin,
+  type TelemetryContext,
+  type TelemetrySink,
+  type VxPlugin,
+} from '@vzn/vx'
 import { readFileSync } from 'node:fs'
 import { OtelSink, type OtlpTls, type PostFn } from './sink.js'
 
@@ -226,7 +233,10 @@ export function resolveOtelConfig(
         continue
       }
       const k = raw.toLowerCase()
-      const fault = headerValueFault(v)
+      // An option's value may be a number or an object: refused like a
+      // value fetch cannot send, not left to throw `value.trim is not a
+      // function` out of the plugin.
+      const fault = typeof v === 'string' ? headerValueFault(v) : 'a non-string value'
       if (fault === null) out[k] = v
       else if (!dropped.has(k)) {
         dropped.add(k)
@@ -284,6 +294,16 @@ export function resolveOtelConfig(
       }
     }
     return pem.get(file)
+  }
+  // The option is held to the variable's rule: a zero, negative or
+  // non-number timeout aborted every export the moment it started.
+  if (
+    opts.timeoutMs !== undefined &&
+    !(typeof opts.timeoutMs === 'number' && Number.isFinite(opts.timeoutMs) && opts.timeoutMs > 0)
+  ) {
+    throw new Error(
+      `[vx-otel] timeoutMs must be a positive number of ms, got ${JSON.stringify(opts.timeoutMs)}`,
+    )
   }
   const timeoutMs = opts.timeoutMs ?? envTimeout(env['OTEL_EXPORTER_OTLP_TIMEOUT']) ?? 15_000
   const tls: Partial<Record<'traces' | 'metrics' | 'logs', OtlpTls>> = {}
@@ -347,6 +367,21 @@ export function resolveOtelConfig(
   }
 }
 
+/** Each option `OtelPluginOptions` names, with its kind: derived from the type, so the two cannot drift. */
+const OTEL_PLUGIN_KEYS: PluginOptionKinds<OtelPluginOptions> = {
+  endpoint: 'string',
+  tracesEndpoint: 'string',
+  metricsEndpoint: 'string',
+  logsEndpoint: 'string',
+  serviceName: 'string',
+  headers: 'object',
+  metrics: 'boolean',
+  logs: 'boolean',
+  timeoutMs: 'number',
+  compression: 'string',
+  post: 'function',
+}
+
 /**
  * The OpenTelemetry exporter plugin. Declared in vx.workspace.ts via
  * `defineWorkspace({ plugins: [otel()] })`. Contributes a telemetry sink that
@@ -355,6 +390,7 @@ export function resolveOtelConfig(
  * Declines when no OTLP endpoint is set.
  */
 export function otel(opts: OtelPluginOptions = {}): VxPlugin {
+  refuseUnknownOptions('otel()', opts, OTEL_PLUGIN_KEYS)
   return definePlugin(import.meta, {
     telemetry(ctx: TelemetryContext): TelemetrySink | undefined {
       const config = resolveOtelConfig(opts, process.env, (m) => ctx.warn(m))

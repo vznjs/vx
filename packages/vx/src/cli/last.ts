@@ -208,6 +208,10 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
   noteSchemaReset(cache, warnToStderr)
   try {
     const db = cache.dbHandle()
+    // Nothing recorded at all is its own answer: `--failed` said "no
+    // recorded run failed" and a run id pointed at a `--list` that lists
+    // nothing, while `--list --failed` past green runs said there were none.
+    const noRuns = (): boolean => listInvocations(db, { limit: 1 }).length === 0
 
     if (parsed.list !== undefined) {
       const invocations =
@@ -219,7 +223,9 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
         return 0
       }
       if (invocations.length === 0) {
-        process.stdout.write('no recorded runs\n')
+        process.stdout.write(
+          parsed.failed === true && !noRuns() ? 'no recorded run failed\n' : 'no recorded runs\n',
+        )
         return 0
       }
       for (const inv of invocations) {
@@ -241,11 +247,13 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
           : (listInvocations(db, { limit: 1 })[0] ?? null)
     if (inv === null || inv === undefined) {
       throw new UserError(
-        parsed.runId !== undefined
-          ? `vx last: no recorded run ${parsed.runId} (vx last --list shows recent runs)`
-          : parsed.failed === true
-            ? 'vx last: no recorded run failed'
-            : 'vx last: no recorded runs yet — run something first',
+        noRuns()
+          ? 'vx last: no recorded runs yet — run something first'
+          : parsed.runId !== undefined
+            ? `vx last: no recorded run ${parsed.runId} (vx last --list shows recent runs)`
+            : parsed.failed === true
+              ? 'vx last: no recorded run failed'
+              : 'vx last: no recorded runs yet — run something first',
       )
     }
     const detail = getRun(db, inv.runId)

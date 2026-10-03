@@ -12,6 +12,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { runLockPath } from '../src/orchestrator/run-lock.js'
 import { isAlive, waitForDead } from './helpers/alive.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
+import { localWorkspaceSource } from './helpers/local-workspace.js'
+import { pluginSource } from './helpers/plugin.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 
@@ -174,6 +176,61 @@ describe('foreground keep-alive ends when one requested server exits', () => {
     // The user stopped it: no failure (C-53's guard).
     expect(summary.tasks.map((t: { status: string }) => t.status)).toEqual(['success'])
   }, 20_000)
+  // C-66: a plugin's subscriptions were released only after the keep-alive
+  // wait, so through a dev session it heard the server after its teardown.
+  it('a plugin hears nothing after its teardown while vx holds a server', async () => {
+    const heard = path.join(root, 'heard.txt')
+    writeFileSync(
+      path.join(root, 'vx.workspace.mjs'),
+      localWorkspaceSource(
+        [
+          pluginSource(
+            'org/ear',
+            `{
+              setup(ctx) {
+                ctx.on('onTaskStdout', (_n, c) => appendFileSync(${JSON.stringify(heard)}, (globalThis.__torn ? 'torn:' : 'live:') + c))
+              },
+              teardown() { globalThis.__torn = true },
+            }`,
+          ),
+        ],
+        "import { appendFileSync } from 'node:fs'\n",
+      ),
+    )
+    const dir = await addProject(
+      root,
+      'app',
+      `export default { tasks: { dev: { exec: {
+        command: 'echo $$ > pid.txt; echo READY; while [ ! -f go ]; do sleep 0.02; done; echo AF""TER; exec sleep 30',
+        persistent: { readyWhen: 'READY' },
+      } } } }`,
+    )
+    const proc = track(
+      Bun.spawn([process.execPath, BIN, 'run', 'app#dev'], {
+        cwd: root,
+        stdout: 'pipe',
+        stderr: 'pipe',
+        env: { ...process.env, CI: '', GITHUB_ACTIONS: '', VX_KILL_GRACE_MS: '200' },
+      }),
+    )
+    let out = ''
+    const reading = (async () => {
+      for await (const chunk of proc.stdout) out += new TextDecoder().decode(chunk)
+    })()
+    const pid = await waitForPid(path.join(dir, 'pid.txt'), 10_000)
+    const deadline = Date.now() + 10_000
+    while (!out.includes('─ vx ') && Date.now() < deadline) await Bun.sleep(20)
+    writeFileSync(path.join(dir, 'go'), '')
+    while (!out.includes('AFTER') && Date.now() < deadline) await Bun.sleep(20)
+    expect(out).toContain('AFTER')
+    proc.kill('SIGINT')
+    expect(await proc.exited).toBe(130)
+    await reading
+    expect(await waitForDead(pid, 1_000)).toBe(true)
+    // It heard the server while the run was its; nothing after its teardown.
+    expect(readFileSync(heard, 'utf8')).toBe('live:READY\n')
+  }, 20_000)
+
   // C-46: a kept server keeps the persistent tasks it depends on. Under
   // `--filter app` only app#dev was kept, and the api#dev it was started
   // against was stopped at the end of the graph.
@@ -334,7 +391,11 @@ describe('a persistent server that dies before the run stops it', () => {
     await addProject(root, 'app', crashing('echo READY; sleep 0.1; touch gone; exit 3'))
     expect(await run(root, ['e2e'])).toEqual({
       code: 1,
-      said: ['vx: app#srv exited with code 3 before the run stopped it'],
+      // C-69: said when it happens, while the dependant still runs.
+      said: [
+        'vx: app#srv exited with code 3 while the run went on',
+        'vx: app#srv exited with code 3 before the run stopped it',
+      ],
       pinned: [],
       tally: '1 failed · 1 success · 2 total',
     })
@@ -344,6 +405,7 @@ describe('a persistent server that dies before the run stops it', () => {
   it('a dependency-only server killed by a signal is named by its exit code', async () => {
     await addProject(root, 'app', crashing('echo READY; sleep 0.1; touch gone; kill -TERM $$'))
     expect((await run(root, ['e2e'])).said).toEqual([
+      'vx: app#srv exited with code 143 while the run went on',
       'vx: app#srv exited with code 143 before the run stopped it',
     ])
   }, 20_000)
@@ -418,7 +480,10 @@ describe('a persistent server that dies before the run stops it', () => {
       await interrupted('echo $$ > srv.pid; echo READY; sleep 0.1; touch gone; sleep 0.3; exit 3'),
     ).toEqual({
       code: 130,
-      said: ['vx: app#srv exited with code 3 before the run stopped it'],
+      said: [
+        'vx: app#srv exited with code 3 while the run went on',
+        'vx: app#srv exited with code 3 before the run stopped it',
+      ],
       tally: '1 failed · 1 total',
     })
   }, 20_000)
@@ -427,7 +492,10 @@ describe('a persistent server that dies before the run stops it', () => {
     await addProject(root, 'app', crashing('echo READY; sleep 0.1; touch gone; exit 3'))
     expect(await run(root, ['srv', 'e2e'])).toEqual({
       code: 1,
-      said: ['vx: app#srv exited with code 3'],
+      said: [
+        'vx: app#srv exited with code 3 while the run went on',
+        'vx: app#srv exited with code 3',
+      ],
       pinned: [],
       tally: '1 failed · 1 success · 2 total',
     })
@@ -557,9 +625,11 @@ describe('a SIGKILLed vx takes the groups it holds with it', () => {
   // The rest of a `kill -9`: vx's group guard (kill-tree.ts) holds the
   // groups vx has not finished with and SIGKILLs them when vx's end of
   // its pipe closes. Each row's grandchild watches nothing, so only the
-  // group kill takes it (turborepo#9666). It writes `late.txt` a second
-  // after it starts: a file, not a pid, because under a sandbox's pid
-  // namespace a killed orphan stays a zombie that signal 0 still finds.
+  // group kill takes it (turborepo#9666). It writes `late.txt` once the row
+  // writes `go`, after the kill: a file, not a pid, because under a
+  // sandbox's pid namespace a killed orphan stays a zombie that signal 0
+  // still finds. A second's timer from its start went red with a correct
+  // vx whenever the pid poll and the guard's kill took longer (M-14's class).
   // `stall` preloads a Bun.spawn that blocks vx for three seconds after
   // each task spawn returns: the child runs first, as on a loaded box, and
   // the kill lands before vx's own next step (B-9).
@@ -587,10 +657,15 @@ Bun.spawn = (cmd, opts) => {
         { cwd: root, stdout: 'ignore', stderr: 'ignore' },
       ),
     )
-    await waitForPid(path.join(dir, 'pid.txt'), 10_000)
+    const child = await waitForPid(path.join(dir, 'pid.txt'), 10_000)
     process.kill(proc.pid, 'SIGKILL')
     expect(await proc.exited).toBe(137)
-    // Twice the grandchild's second: without the guard it writes at one.
+    // `go` written before the guard's kill lands reached a live child
+    // (B-38); under a sandbox's procfs a killed child stays a zombie, and
+    // this waits out the 5 s.
+    await waitForDead(child, 5_000)
+    await Bun.write(path.join(dir, 'go'), '')
+    // A child the guard missed sees `go` within 0.02 s and writes.
     await Bun.sleep(2_000)
     return existsSync(path.join(dir, 'late.txt'))
   }
@@ -598,7 +673,7 @@ Bun.spawn = (cmd, opts) => {
   it('a SIGKILLed vx takes an unsandboxed persistent task’s backgrounded server with it', async () => {
     expect(
       await outlivesVx(
-        `{ command: '(sleep 1; echo late > late.txt) & echo $! > pid.txt; echo READY; wait', persistent: { readyWhen: 'READY' } }`,
+        `{ command: '(while [ ! -f go ]; do sleep 0.02; done; echo late > late.txt) & echo $! > pid.txt; echo READY; wait', persistent: { readyWhen: 'READY' } }`,
       ),
     ).toBe(false)
   }, 20_000)
@@ -607,7 +682,7 @@ Bun.spawn = (cmd, opts) => {
     expect(
       // It ignores SIGTERM, as a server's cleanup might: only a SIGKILL takes it.
       await outlivesVx(
-        `{ command: '(trap "" INT TERM; sleep 1; echo late > late.txt) & echo $! > pid.txt; wait' }`,
+        `{ command: '(trap "" INT TERM; while [ ! -f go ]; do sleep 0.02; done; echo late > late.txt) & echo $! > pid.txt; wait' }`,
       ),
     ).toBe(false)
   }, 20_000)
@@ -615,7 +690,7 @@ Bun.spawn = (cmd, opts) => {
   it('a task’s group is listed before it runs: a kill -9 while vx is descheduled takes it', async () => {
     expect(
       await outlivesVx(
-        `{ command: '(trap "" INT TERM; sleep 1; echo late > late.txt) & echo $! > pid.txt; wait' }`,
+        `{ command: '(trap "" INT TERM; while [ ! -f go ]; do sleep 0.02; done; echo late > late.txt) & echo $! > pid.txt; wait' }`,
         true,
       ),
     ).toBe(false)

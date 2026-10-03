@@ -27,25 +27,25 @@ export default defineWorkspace({
 **declines safely** (exports nothing) when no endpoint is set — so it is safe
 to declare in every environment:
 
-| Variable                                                | Purpose                                                                                                                                                              |
-| ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `OTEL_EXPORTER_OTLP_ENDPOINT`                           | base collector URL (e.g. `http://localhost:4318`)                                                                                                                    |
-| `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`                    | full traces URL override                                                                                                                                             |
-| `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT`                   | full metrics URL override                                                                                                                                            |
-| `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`                      | full logs URL override                                                                                                                                               |
-| `OTEL_LOGS_EXPORTER=none`                               | export traces + metrics only                                                                                                                                         |
-| `OTEL_METRICS_EXPORTER=none`                            | no metrics                                                                                                                                                           |
-| `OTEL_TRACES_EXPORTER=none`                             | no traces                                                                                                                                                            |
-| `OTEL_SDK_DISABLED=true`                                | export nothing (the plugin declines)                                                                                                                                 |
-| `OTEL_SERVICE_NAME`                                     | service name (default `vx`)                                                                                                                                          |
-| `OTEL_EXPORTER_OTLP_HEADERS`                            | `k=v,k=v` headers (e.g. auth), percent-encoded                                                                                                                       |
-| `OTEL_EXPORTER_OTLP_<SIGNAL>_HEADERS`                   | one signal's headers, over the shared ones                                                                                                                           |
-| `OTEL_RESOURCE_ATTRIBUTES`                              | `k=v,k=v` resource attributes, percent-encoded (a malformed one is dropped whole and warned); its `service.name` names the service when `OTEL_SERVICE_NAME` is unset |
-| `OTEL_EXPORTER_OTLP_TIMEOUT`                            | per-request timeout in ms (default 15000, at most 2³¹−1); `OTEL_EXPORTER_OTLP_<SIGNAL>_TIMEOUT` for one signal                                                       |
-| `OTEL_EXPORTER_OTLP_COMPRESSION`                        | `gzip` or `none` (default); `OTEL_EXPORTER_OTLP_<SIGNAL>_COMPRESSION` for one signal, the `compression` option over both                                             |
-| `OTEL_EXPORTER_OTLP_CERTIFICATE`                        | a PEM file of the CA that signed the collector's certificate (`_<SIGNAL>_` for one signal)                                                                           |
-| `OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE` / `_CLIENT_KEY` | PEM files of a client certificate and key, for a collector that asks for mutual TLS                                                                                  |
-| `OTEL_EXPORTER_OTLP_PROTOCOL`                           | vx sends OTLP/HTTP JSON only; under `grpc` a failed export says so                                                                                                   |
+| Variable                                                | Purpose                                                                                                                                                                            |
+| ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `OTEL_EXPORTER_OTLP_ENDPOINT`                           | base collector URL (e.g. `http://localhost:4318`)                                                                                                                                  |
+| `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`                    | full traces URL override                                                                                                                                                           |
+| `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT`                   | full metrics URL override                                                                                                                                                          |
+| `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`                      | full logs URL override                                                                                                                                                             |
+| `OTEL_LOGS_EXPORTER=none`                               | export traces + metrics only                                                                                                                                                       |
+| `OTEL_METRICS_EXPORTER=none`                            | no metrics                                                                                                                                                                         |
+| `OTEL_TRACES_EXPORTER=none`                             | no traces                                                                                                                                                                          |
+| `OTEL_SDK_DISABLED=true`                                | export nothing (the plugin declines)                                                                                                                                               |
+| `OTEL_SERVICE_NAME`                                     | service name (default `vx`)                                                                                                                                                        |
+| `OTEL_EXPORTER_OTLP_HEADERS`                            | `k=v,k=v` headers (e.g. auth), percent-encoded                                                                                                                                     |
+| `OTEL_EXPORTER_OTLP_<SIGNAL>_HEADERS`                   | one signal's headers, over the shared ones                                                                                                                                         |
+| `OTEL_RESOURCE_ATTRIBUTES`                              | `k=v,k=v` resource attributes, percent-encoded (a malformed one is dropped whole and warned); its `service.name` names the service when `OTEL_SERVICE_NAME` is unset               |
+| `OTEL_EXPORTER_OTLP_TIMEOUT`                            | per-request timeout in ms (default 15000, at most 2³¹−1); `OTEL_EXPORTER_OTLP_<SIGNAL>_TIMEOUT` for one signal. The `timeoutMs` option must be a positive number, or it is refused |
+| `OTEL_EXPORTER_OTLP_COMPRESSION`                        | `gzip` or `none` (default); `OTEL_EXPORTER_OTLP_<SIGNAL>_COMPRESSION` for one signal, the `compression` option over both                                                           |
+| `OTEL_EXPORTER_OTLP_CERTIFICATE`                        | a PEM file of the CA that signed the collector's certificate (`_<SIGNAL>_` for one signal)                                                                                         |
+| `OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE` / `_CLIENT_KEY` | PEM files of a client certificate and key, for a collector that asks for mutual TLS                                                                                                |
+| `OTEL_EXPORTER_OTLP_PROTOCOL`                           | vx sends OTLP/HTTP JSON only; under `grpc` a failed export says so (`OTEL_EXPORTER_OTLP_<SIGNAL>_PROTOCOL` per signal)                                                             |
 
 Each signal ships only to its own URL: the base endpoint's `/v1/<signal>`
 (appended to its path, before any query), or its override. A signal's own endpoint alone is enough: with only a metrics or logs
@@ -53,11 +53,20 @@ endpoint set, that signal exports and the others stay off. Spans and log records
 request, so a large run stays under a collector's body limit. Header names are case-insensitive (a signal's own
 `Authorization` replaces the shared `authorization`); a name no header can
 carry (`Authorization: Basic …` written curl-style, with a colon) is not
-sent, and the warning prints neither its name nor its value.
+sent, and the warning prints neither its name nor its value. A `headers`
+option value that is not a string is not sent either, with a warning
+naming the header.
 
 With only a traces URL set, metrics and logs are not
 exported (they used to be POSTed to the traces URL, which a collector
 refuses), and `metrics: true` or `logs: true` without a URL says so once.
+Both are booleans: a string (`'false'` is truthy) is refused.
+
+The package exports `otel`, its options type `OtelPluginOptions`, and the
+types of the `post` option (a `PostFn`: the transport, fetch unless given,
+handed each request's URL, body, headers, abort signal and `OtlpTls`). The
+OTLP builders are internal (the wire they send is the contract,
+`tests/contract/otlp.txt`).
 
 Options override env:
 
@@ -68,6 +77,9 @@ otel({
   headers: { authorization: 'Bearer …' },
   metrics: true, // default
   logs: true, // default: each executed task's output tail
+  timeoutMs: 15_000, // default: per request
+  compression: 'none', // default; 'gzip' for every signal
+  tracesEndpoint: 'https://traces.example.com/v1/traces', // one signal's full URL; also metricsEndpoint, logsEndpoint
 })
 ```
 
@@ -77,7 +89,8 @@ otel({
 
 - a root `vx.run` span — `cicd.pipeline.run.id`, `vcs.ref.head.revision`,
   `vcs.ref.head.name`, `vx.command` (the command line; what follows `--`
-  is counted, `-- <N arguments>`, never quoted), CI provider,
+  is counted, `-- <N arguments>`, never quoted, and a secret value
+  before it is `***`), CI provider,
   host/os/arch, vx version, `--tag k=v` →
   `vx.tag.<k>`, and `cicd.pipeline.result` (`success`, `failure`, or
   `cancellation` for a run stopped with nothing failed); a red run sets
@@ -85,7 +98,7 @@ otel({
 - a child `vx.task` span per task — `cicd.pipeline.task.name`,
   `cicd.pipeline.task.run.result` (the convention's enum: `success` for a
   run or a hit, `failure`, `timeout`, `skip`, `cancellation`), vx's own
-  status as `vx.task.status`, `vx.cache.source` (miss/local/remote),
+  status as `vx.task.status`, `vx.cache.source` (miss/local/remote, or none for a task that never ran),
   `vx.task.hash`, duration, CPU ms, peak RSS, and on a skipped task its root
   blocker (`vx.task.blocked_by`), on a timed-out one `vx.task.timed_out`, on
   a sandboxed one its violation count (`vx.task.sandbox_violations`), on a
@@ -121,7 +134,10 @@ Swallowed, but not silent: an export that does not land warns once per
 signal URL, naming what happened — a collector that cannot be reached, one
 that refuses the request (`HTTP 401`, `404`, `500`, with the collector's own
 message), or one that accepts it and reports part of the data dropped
-(OTLP's `partialSuccess`). The URL in that line is printed with any
+(OTLP's `partialSuccess`). A collector that answers with a redirect
+is refused too, naming where it points: like the OTel SDK exporters,
+vx-otel follows none, since a header such as `x-honeycomb-team` would
+reach the new origin with it. The URL in that line is printed with any
 userinfo and query string replaced by `***`, so an endpoint that carries
 its credential in the URL does not leak it into a CI log. The run stays
 green either way; a collector that

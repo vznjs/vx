@@ -6,7 +6,7 @@ authors:
 tags:
   - plugins
   - telemetry
-excerpt: "A telemetry sink in vx receives immutable records and a read-only context. There is no API path from a sink back into scheduling, caching or execution, a sink that throws is disabled for the run, and a sink that hangs is cut off after three seconds. The guarantee is structural."
+excerpt: "A telemetry sink in vx receives plain-data records and a read-only context. There is no API path from a sink back into scheduling, caching or execution, a sink that throws is disabled for the run, and a sink that hangs is cut off after three seconds. The guarantee is structural."
 ---
 
 Every build tool eventually grows an integration point for "tell
@@ -30,7 +30,7 @@ interface TelemetrySink {
 }
 ```
 
-A sink is handed immutable records and a read-only context: the
+A sink is handed plain-data records and a read-only context: the
 workspace root, the cache directory, a `warn` function. No event bus,
 no cache handle, no run request. There is no method on anything it
 receives that reaches scheduling, caching or execution. The guarantee
@@ -67,7 +67,7 @@ fills is not a no-op call, it is no call.
 
 ## What is built on it
 
-- **`@vzn/vx-otel`** maps each run to OTLP traces and metrics over
+- **`@vzn/vx-otel`** maps each run to OTLP traces, metrics and logs over
   HTTP/JSON with no OpenTelemetry SDK dependency. The wire format is
   small and the SDK is not.
 - **`@vzn/vx-github`** writes every run as a GitHub Actions job summary

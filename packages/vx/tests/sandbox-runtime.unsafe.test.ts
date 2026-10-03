@@ -539,6 +539,41 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
     TIMEOUT,
   )
 
+  // The landing and README said a sandboxed task "fails on any read it did
+  // not declare" (J-102): a sibling's file is out of reach but the wall is
+  // silent, and a read outside the workspace is open.
+  it(
+    'a tolerated sibling read passes having read nothing, and a read outside the workspace passes',
+    async () => {
+      await addProject(fixture.root, 'secret', {
+        files: { 'token.txt': 'shh' },
+        config: `export default { tasks: {} }`,
+      })
+      const dir = await addProject(fixture.root, 'reader', {
+        files: { 'src/x.txt': 'hi' },
+        config: `
+          export default {
+            tasks: {
+              peek: {
+                exec: {
+                  command: '{ cat ../secret/token.txt || echo none; head -c 1 /etc/passwd >/dev/null && echo host; } > out.txt',
+                  sandbox: { allow: { write: ['out.txt'] } },
+                },
+              },
+            },
+          }
+        `,
+      })
+      const r = await run({ cwd: fixture.root, tasks: ['peek'], log: collectingLogger(fixture) })
+      expect([r.outcomes[0]?.status, r.outcomes[0]?.sandboxViolationLines ?? []]).toEqual([
+        'success',
+        [],
+      ])
+      expect(await readFile(path.join(dir, 'out.txt'), 'utf8')).toBe('none\nhost\n')
+    },
+    TIMEOUT,
+  )
+
   it(
     'denies reads of workspace-root files not in inputs → task fails',
     async () => {
@@ -720,9 +755,22 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
         // is not reported — being stopped at the wall is the sandbox
         // working, not a finding. Canonicalizing the baselines through the
         // symlink must not degenerate into "allow everything", and the
-        // absent file is what proves it did not.
+        // absent file is what proves it did not. On Linux the failed
+        // task's hint names it (`hiddenReadsOutside`), never counted;
+        // macOS logs a seatbelt record late or not at all, so there only
+        // the count is held.
         expect(existsSync(path.join(link, 'packages', 'app', 'out.txt'))).toBe(false)
-        expect((r.outcomes[0]?.sandboxViolationLines ?? []).join('\n')).not.toContain('token.txt')
+        expect(r.outcomes[0]?.sandboxViolations ?? 0).toBe(0)
+        if (process.platform !== 'linux') return
+        const root = realpathSync(fixture.root)
+        expect([r.outcomes[0]?.sandboxViolations, r.outcomes[0]?.sandboxViolationLines]).toEqual([
+          0,
+          [
+            `vx: the sandbox hid paths outside the project that exist on this machine, which are ` +
+              `not reported as violations: ${root}/packages/secret/token.txt. If the task reads ` +
+              "one, grant it, e.g. `allow: { read: ['../secret/token.txt'] }`.",
+          ],
+        ])
       } finally {
         await rm(link, { force: true })
       }
@@ -1707,19 +1755,17 @@ describe.skipIf(!available || process.platform !== 'linux')(
       async () => {
         // The neighbouring row proves this for a task that declares
         // `allow.read` and no write. This is the case the TYPE describes:
-        // no allow block at all. Nothing binds the project, so its `dist`
-        // is the sandbox's scratch: the writes are reported and fail the
-        // run — the honest outcome, not a silent empty artifact. (This row
-        // read `Read-only file system` while the task ran in `$HOME`.)
+        // no allow block at all. Nothing binds the project, so it is a
+        // read-only mask (`readOnlyMasks`): the `mkdir` is refused, reported
+        // and fails the run — the honest outcome, not a silent empty
+        // artifact. (The mask was writable before 2026-10-02, and the
+        // `openat` under it was reported too.)
         const dir = realpathSync(await project(undefined))
         const r = await run({ cwd: fixture.root, tasks: ['build'], log: collectingLogger(fixture) })
         expect(r.ok).toBe(false)
         expect([r.outcomes[0]?.status, r.outcomes[0]?.sandboxViolationLines]).toEqual([
           'failed',
-          [
-            `mkdir(${dir}/dist) = a write no grant covers  [${dir}/dist]`,
-            `openat(${dir}/dist/app.js) = a write no grant covers  [${dir}/dist/app.js]`,
-          ],
+          [`mkdir(${dir}/dist) = a write no grant covers  [${dir}/dist]`],
         ])
         expect(existsSync(path.join(dir, 'dist', 'app.js'))).toBe(false)
       },
@@ -1829,10 +1875,10 @@ describe.skipIf(!available || process.platform !== 'linux')(
 describe.skipIf(!available || process.platform !== 'linux')(
   'an undeclared read, run for real',
   () => {
-    // The landing's fifth callout, "a read you did not declare fails the
-    // task", as a real trace: `app#build` reads `banner.txt` without
-    // declaring it and fails with exactly one violation line naming it, and
-    // declaring the file lets the task pass. (The Guide's stale-hit demo,
+    // The landing's fifth callout (a workspace file you did not declare is
+    // out of reach) on the task's own files, as a real trace: `app#build`
+    // reads `banner.txt` without declaring it and fails with exactly one
+    // violation line naming it, and declaring the file lets the task pass. (The Guide's stale-hit demo,
     // which held its text to a synthetic trace, went with the Guide.)
     let fixture: Fixture
 
@@ -2574,6 +2620,7 @@ describe('resolveSandboxConfig', () => {
       r,
       buildCustomConfig({ config: r }, { allowRead: [], denyRead: [root] })!.filesystem!,
       [root],
+      root,
     )
     return r
   }
@@ -2596,9 +2643,7 @@ describe('resolveSandboxConfig', () => {
         const read = resolveSandboxConfig({ allow: { read: [`${root}/none/deeper/*`] } }, root)
         const write = judged({ allow: { read: ['.'], write: ['gone/away/*.txt'] } }, root)
         expect([read.allowRead, write.allowWrite]).toEqual([[], []])
-        expect(said.join('')).toContain(
-          `the write grant ${root}/gone/away/*.txt matches nothing yet`,
-        )
+        expect(said.join('')).toContain(`the write grant 'gone/away/*.txt' matches nothing yet`)
       } finally {
         spy.mockRestore()
         await rm(root, { recursive: true, force: true })
@@ -2684,7 +2729,7 @@ describe('resolveSandboxConfig', () => {
         expect(said.length).toBe(1)
         expect(said[0]).toContain('matches nothing yet')
         // The remedy is the directory the pattern was IN, not its parent.
-        expect(said[0]).toContain(`${path.join(realpathSync(root), 'g')}/**`)
+        expect(said[0]).toContain("`allow: { write: ['g/'] }`")
       } finally {
         await rm(root, { recursive: true, force: true })
       }
@@ -2732,7 +2777,7 @@ describe('resolveSandboxConfig', () => {
         } finally {
           spy.mockRestore()
         }
-        expect(said.map((l) => l.includes(`${root}/g/*.bin matches nothing yet`))).toEqual([true])
+        expect(said.map((l) => l.includes(`'g/*.bin' matches nothing yet`))).toEqual([true])
       } finally {
         await rm(root, { recursive: true, force: true })
       }
@@ -3671,6 +3716,60 @@ describe('sandbox probe', () => {
     TIMEOUT,
   )
 
+  // cli.md said a missing runtime stops the run before any task; the runtime
+  // arms when a sandboxed task executes, and that task fails alone (J2-60).
+  it.skipIf(process.platform !== 'linux')(
+    'no sandbox runtime: the sandboxed task fails alone, and cli.md says so',
+    async () => {
+      const root = await makeWorkspaceRoot({ prefix: 'vx-sandbox-alone-' })
+      const bin = await mkdtemp(path.join(os.tmpdir(), 'vx-no-srt-bin-'))
+      try {
+        await addProject(root, 'app', {
+          config: `
+            export default {
+              tasks: {
+                plain: { exec: { command: 'echo PLAIN-RAN' } },
+                boxed: { exec: { command: 'echo BOXED-RAN', sandbox: {} } },
+              },
+            }
+          `,
+        })
+        await symlink(process.execPath, path.join(bin, 'bun'))
+        for (const name of ['sh', 'git']) await symlink(Bun.which(name)!, path.join(bin, name))
+        const p = Bun.spawnSync({
+          cmd: [
+            process.execPath,
+            path.resolve(import.meta.dir, '..', 'src', 'bin.ts'),
+            'run',
+            'plain',
+            'boxed',
+            '--all',
+          ],
+          cwd: root,
+          stdout: 'pipe',
+          stderr: 'pipe',
+          env: { ...process.env, NO_COLOR: '1', CI: '', PATH: bin },
+        })
+        const text = new TextDecoder().decode(p.stdout) + new TextDecoder().decode(p.stderr)
+        expect(p.exitCode).toBe(1)
+        expect(text).toContain('success no-cache app#plain')
+        expect(text).toContain('failed  no-cache app#boxed')
+        expect(text.split('\n')).not.toContain('BOXED-RAN')
+        expect(text).toContain('[vx] app#boxed: sandbox not available: ')
+        const doc = await readFile(path.resolve(import.meta.dir, '..', 'docs', 'cli.md'), 'utf8')
+        const section = doc.slice(doc.indexOf('\n## Sandbox\n'), doc.indexOf('\n## `vx watch`\n'))
+        expect(section).not.toContain('before\nany task runs')
+        expect(section.replace(/\s+/g, ' ')).toContain(
+          'that task fails with one line, `sandbox not available: <reason>`',
+        )
+      } finally {
+        await rm(root, { recursive: true, force: true })
+        await rm(bin, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
   // A temp directory that is not there fails the runtime's own mkdtemp;
   // the verdict named the path and no knob (item 243).
   it(
@@ -4343,34 +4442,39 @@ describe.skipIf(!available || process.platform !== 'linux')(
           config: `export default { tasks: { t: { exec: { command: 'true', sandbox: { allow: { read: ['.'] } } } } } }`,
         })
         const reset = spyOn(SandboxManager, 'reset')
-        const held = await run({
-          cwd: fixture.root,
-          tasks: ['srv#serve'],
-          holdPersistent: true,
-          log: collectingLogger(fixture),
-        })
+        // Restored whatever fails: a red here left the spy on SRT's reset
+        // for every later row of the file (M-22).
         try {
-          expect(held.persistent?.ids).toEqual(['srv#serve'])
-          expect(await accepts(port)).toBe(true)
-          const later = await run({
+          const held = await run({
             cwd: fixture.root,
-            tasks: ['other#t'],
+            tasks: ['srv#serve'],
+            holdPersistent: true,
             log: collectingLogger(fixture),
           })
-          expectOk(later, fixture)
-          expect(await accepts(port)).toBe(true)
-          // Both runs' resets waited on the server.
-          expect(reset).toHaveBeenCalledTimes(0)
+          try {
+            expect(held.persistent?.ids).toEqual(['srv#serve'])
+            expect(await accepts(port)).toBe(true)
+            const later = await run({
+              cwd: fixture.root,
+              tasks: ['other#t'],
+              log: collectingLogger(fixture),
+            })
+            expectOk(later, fixture)
+            expect(await accepts(port)).toBe(true)
+            // Both runs' resets waited on the server.
+            expect(reset).toHaveBeenCalledTimes(0)
+          } finally {
+            await held.persistent?.stop('SIGTERM')
+          }
+          const until = Date.now() + 3_000
+          while ((await accepts(port)) && Date.now() < until) await Bun.sleep(50)
+          expect(await accepts(port)).toBe(false)
+          // The server's exit ran the reset they deferred.
+          while (reset.mock.calls.length === 0 && Date.now() < until) await Bun.sleep(20)
+          expect(reset).toHaveBeenCalledTimes(1)
         } finally {
-          await held.persistent?.stop('SIGTERM')
+          reset.mockRestore()
         }
-        const until = Date.now() + 3_000
-        while ((await accepts(port)) && Date.now() < until) await Bun.sleep(50)
-        expect(await accepts(port)).toBe(false)
-        // The server's exit ran the reset they deferred.
-        while (reset.mock.calls.length === 0 && Date.now() < until) await Bun.sleep(20)
-        expect(reset).toHaveBeenCalledTimes(1)
-        reset.mockRestore()
       },
       TIMEOUT,
     )

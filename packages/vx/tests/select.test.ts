@@ -77,7 +77,9 @@ describe('resolveFilters', () => {
     // With `some` for `every`, the git filter's empty answer spoke for both
     // and the typo exited 0 as "nothing affected since HEAD".
     const { value } = await quiet(() => resolveFilters(root, ['nosuch', '[HEAD]']))
-    expect(value).toEqual({ error: 'no projects matched filter(s): nosuch, [HEAD]' })
+    expect(value).toEqual({
+      error: 'no projects matched filter(s): nosuch, [HEAD]. Projects: app, lib',
+    })
   })
 
   it('a typo beside a walk that came back empty names the typo, with its hint', async () => {
@@ -102,7 +104,7 @@ describe('resolveFilters', () => {
     })
     // CONTROL: a name that matched nothing beside one that did IS said.
     const typo = await quiet(() => resolveFilters(root, ['app', 'nosuch']))
-    expect(typo.stderr).toBe('vx: filter "nosuch" matched no projects\n')
+    expect(typo.stderr).toBe('vx: filter "nosuch" matched no projects. Projects: app, lib\n')
     // A typo beside a match names the nearest project, as the all-missed error does.
     const near = await quiet(() => resolveFilters(root, ['app', 'apq']))
     expect(near.stderr).toBe('vx: filter "apq" matched no projects. Did you mean app?\n')
@@ -173,8 +175,8 @@ describe('resolveFilters — a scoped name typed without its scope (E-32)', () =
     }
     expect(errors).toEqual([
       { error: 'no projects matched filter(s): wbe. Did you mean @acme/web?' },
-      // Two scopes share the name: no single answer, so no hint.
-      { error: 'no projects matched filter(s): dup' },
+      // Two scopes share the name: no single answer, so the projects (M-56).
+      { error: 'no projects matched filter(s): dup. Projects: @acme/dup, @acme/web, @other/dup' },
     ])
   })
 })

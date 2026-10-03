@@ -55,8 +55,8 @@ beforeAll(async () => {
       run({ task: 'boxed', runId: 'r1', sandboxViolations: 2 }),
     ])
     const entry = cache.dbHandle().query(
-      `INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, stdout, created_at, accessed_at)
-         VALUES (?, 'a', 'build', ?, 0, 1, 1, '', ?, ?)`,
+      `INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, created_at, accessed_at)
+         VALUES (?, 'a', 'build', ?, 0, 1, 1, ?, ?)`,
     )
     entry.run('old', 'tsc --old', 1_000, 1_000)
     entry.run('new', 'tsc', 2_000, 2_000)

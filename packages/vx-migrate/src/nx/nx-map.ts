@@ -109,7 +109,33 @@ export function parseNxGraph(text: string, label: string): NxGraph {
     )
   }
   checkNxNodes(nodes as Record<string, unknown>, label)
+  for (const node of Object.values(nodes as Record<string, NxNode>)) {
+    const targets = node.data?.targets ?? {}
+    for (const [name, target] of Object.entries(targets)) {
+      const canonical = target.executor === undefined ? undefined : LEGACY[target.executor]
+      if (canonical !== undefined) target.executor = canonical
+      // Nx's own normalization (`target-normalization`): a target with
+      // neither runs its dependencies, or is nothing and is dropped. A graph
+      // that skipped it (an older export) wrote a failing placeholder.
+      if (target.executor === undefined && target.command === undefined) {
+        if ((target.dependsOn ?? []).length > 0) target.executor = 'nx:noop'
+        else delete targets[name]
+      }
+    }
+  }
   return { nodes: nodes as Record<string, NxNode>, dependencies: g.dependencies }
+}
+
+/**
+ * Nx 15–16's names for its own executors, which a graph keeps as the
+ * project wrote them: each re-exported `nx:`'s, and a migration read
+ * them as unknown executors, a failing placeholder each.
+ */
+const LEGACY: Readonly<Record<string, string>> = {
+  '@nrwl/workspace:run-commands': 'nx:run-commands',
+  '@nx/workspace:run-commands': 'nx:run-commands',
+  '@nrwl/workspace:run-script': 'nx:run-script',
+  '@nx/workspace:run-script': 'nx:run-script',
 }
 
 const isRecord = (v: unknown): v is Record<string, unknown> =>
@@ -195,6 +221,12 @@ export interface MapNxOptions {
    * values themselves (the plugin re-maps on a manifest edit).
    */
   readonly manifestField?: (key: 'name' | 'version') => unknown
+  /**
+   * A one-shot migration (`bunx @vzn/vx-migrate`), not the live plugin:
+   * `nx-release-publish` is not written, and the notes and TODOs speak to
+   * a written config. Executors are `nx-exec` lines either way.
+   */
+  readonly migration?: boolean
 }
 
 /** The options with what the mapper reads itself: the root's dependency names. */
@@ -289,7 +321,10 @@ export async function mapNxWorkspace(
     const t = nodeMap[project]?.data?.targets?.[target]
     if (t === undefined) return null
     const v = variants(target, t).find((x) => x.configuration === configuration)
-    return v === undefined ? null : v.name
+    if (v === undefined) return null
+    // The name another target holds is that target's (see the loop below).
+    const others = nodeMap[project]?.data?.targets ?? {}
+    return v.name !== target && Object.hasOwn(others, v.name) ? null : v.name
   }
 
   // Once per project, not per task and variant: `path.relative` was a
@@ -306,6 +341,7 @@ export async function mapNxWorkspace(
       : await listDotenv(root, [...relOf.values()])
 
   const mapped: Array<{ meta: ProjectMeta; tasks: GeneratedTask[] }> = []
+  let releasePublish = 0
   // A configuration variant's task (`build:production`) and what it runs.
   const configured = new WeakMap<GeneratedTask, string>()
   // The target an atomizer split (cypress's `e2e`, named by each
@@ -331,8 +367,30 @@ export async function mapNxWorkspace(
       )
     }
     const atomized = new Set(Object.values(targets).map((t) => t.metadata?.nonAtomizedTarget))
+    // A target's name wins over a configuration task's (`vite`'s `build`
+    // is `vite:build`, which target `vite:build` names), as Nx resolves
+    // `a:vite:build` to the target: two keys of one name in the written
+    // object kept the last, and the real build was silently `vite --x`.
+    const taken = new Set(Object.keys(targets))
     for (const [targetName, target] of Object.entries(targets)) {
+      // Nx adds `nx-release-publish` to every package for `nx release
+      // publish`, which skips a private package and a published version
+      // and rewrites `workspace:` ranges first: no one line is that, and a
+      // failing placeholder per package was the migration's loudest gap.
+      if (opts.migration === true && isReleasePublish(target.executor)) {
+        releasePublish++
+        continue
+      }
+      const clashes: string[] = []
+      let base: GeneratedTask | undefined
       for (const v of variants(targetName, target)) {
+        if (v.name !== targetName) {
+          if (taken.has(v.name)) {
+            clashes.push(v.configuration!)
+            continue
+          }
+          taken.add(v.name)
+        }
         const t = buildTask(
           meta,
           projectRel,
@@ -350,9 +408,14 @@ export async function mapNxWorkspace(
           listing === null ? null : dotenvFor(listing, targetName, v.configuration),
         )
         if (v.name !== targetName) configured.set(t, v.configuration!)
+        else base = t
         if (atomized.has(targetName)) split.add(t)
         tasks.push(t)
       }
+      for (const c of clashes)
+        base?.todos.push(
+          `configuration ${JSON.stringify(c)} would be task "${targetName}:${c}", which another target names — not written; give it a task of its own name`,
+        )
     }
     mapped.push({ meta, tasks })
   }
@@ -382,14 +445,32 @@ export async function mapNxWorkspace(
       emittedIds.add(`${meta.name}#${t.name}`)
     }
   }
-  const nxEdges = nxDependencyTargets(nodeMap, g.dependencies)
+  const nxDirect = nxDirectDeps(nodeMap, g.dependencies)
+  const nxEdges = nxDependencyTargets(nodeMap, nxDirect)
+  const nxClosureMemo = new Map<string, ReadonlySet<string>>()
+  const nxClosure = (from: string): ReadonlySet<string> => {
+    let r = nxClosureMemo.get(from)
+    if (r !== undefined) return r
+    const seen = new Set<string>()
+    const stack = [...(nxDirect.get(from) ?? [])]
+    while (stack.length > 0) {
+      const n = stack.pop()!
+      if (seen.has(n) || n === from) continue
+      seen.add(n)
+      stack.push(...(nxDirect.get(n) ?? []))
+    }
+    nxClosureMemo.set(from, (r = seen))
+    return r
+  }
   // What vx's `^` already reaches: a manifest path, direct or through
   // another project, orders `^x` and folds its key (item 931). Built once,
   // on the first `^` edge.
+  let pkgGraph: ReturnType<typeof buildPackageGraph> | undefined
+  const packageGraph = () => (pkgGraph ??= buildPackageGraph([...metas]))
   let reach: ((name: string) => ReadonlySet<string>) | undefined
   const reached = (name: string): ReadonlySet<string> => {
     if (reach === undefined) {
-      const graph = buildPackageGraph([...metas])
+      const graph = packageGraph()
       const memo = new Map<string, ReadonlySet<string>>()
       reach = (n) => {
         let r = memo.get(n)
@@ -406,8 +487,19 @@ export async function mapNxWorkspace(
       const c = configured.get(t)
       if (nodeName !== undefined && c !== undefined)
         passConfiguration(t.task, nodeName, c, nxEdges, metaByNode, emittedIds, taskNameFor)
-      if (nodeName !== undefined)
+      if (nodeName !== undefined) {
+        narrowToNxGraph(
+          t.task,
+          nodeName,
+          meta.name,
+          nxClosure,
+          nxEdges,
+          metaByNode,
+          emittedIds,
+          (p) => packageGraph().directDeps(p),
+        )
         followNxGraph(t.task, nodeName, meta.name, nxEdges, metaByNode, emittedIds, reached)
+      }
       dropUnheldDeps(t, emitted, emittedIds)
     }
     projects.push({
@@ -420,17 +512,30 @@ export async function mapNxWorkspace(
 
   resolveAtomizedWorkspaceOutputs(root, projects, split)
   pruneOrphanPersistentNotes(projects, opts.persistentTodo)
+  // A migration leaves Nx behind, so `nx sync` is no advice there: what a
+  // generator keeps (the TypeScript one's tsconfig `references`) is the
+  // user's to keep. `nx()` runs with Nx installed.
+  const syncAdvice =
+    opts.migration === true
+      ? 'keep what they write (`@nx/js:typescript-sync`: the tsconfig `references`) up to date by hand'
+      : 'run `nx sync` when they are out of date'
   const notes: string[] =
     globalSync.length === 0
       ? []
       : [
           `nx.json \`sync.globalGenerators\` (${globalSync.map((g) => JSON.stringify(g)).join(', ')}): ` +
-            'Nx runs them before a run, and vx does not — run `nx sync` when they are out of date',
+            `Nx runs them before a run, and vx does not — ${syncAdvice}`,
         ]
+  if (releasePublish > 0)
+    notes.push(
+      `\`@nx/js:release-publish\` on ${releasePublish} project${releasePublish === 1 ? '' : 's'} ` +
+        '(`nx-release-publish`, Nx release’s publish step) is not written: publish with your ' +
+        'package manager (`npm publish`, `pnpm publish -r`, `bun publish`)',
+    )
   for (const [gens, n] of mapOpts.syncTasks)
     notes.push(
       `\`syncGenerators\` (${gens}) on ${n} task${n === 1 ? '' : 's'}: ` +
-        'Nx runs them before those targets, and vx does not — run `nx sync` when they are out of date',
+        `Nx runs them before those targets, and vx does not — ${syncAdvice}`,
     )
   return { projects, notes }
 }
@@ -651,13 +756,18 @@ function buildTask(
     rootDeps: opts.rootDeps,
   }
   expandNxInputs(target.inputs ?? [], upstream.namedOf(nodeName), at, inputs, todos)
+  const cacheWanted =
+    target.cache === true || (target.cache === undefined && opts.cacheable.has(targetName))
+  // An output only matters to a task vx caches: Nx's default `build` /
+  // `public` note sat on every uncached `build` that declares none.
+  const outTodos = cacheWanted ? todos : []
   const { outFiles, wsOutFiles } = mapNxOutputs(
     target.outputs ??
-      nxDefaultOutputs(targetName, options, projectRel, todos, opts.tracked?.(projectRel).tops),
+      nxDefaultOutputs(targetName, options, projectRel, outTodos, opts.tracked?.(projectRel).tops),
     options,
     projectRel,
     projectName,
-    todos,
+    outTodos,
   )
   const deps = mapNxDeps(
     target.dependsOn ?? [],
@@ -691,8 +801,6 @@ function buildTask(
   // made uncached only by the shared-output rule (2026-09-22).
   const readyWhen = mapped?.readyWhen
   const persistent = readyWhen !== undefined || persistentTarget(target)
-  const cacheWanted =
-    target.cache === true || (target.cache === undefined && opts.cacheable.has(targetName))
   const wild = wildcardOutput(outFiles, opts.tracked?.(projectRel)) ?? wildcardOutput(wsOutFiles)
   if (wild !== undefined && cacheWanted && !persistent) todos.push(wildcardTodo(wild))
   const own = wild === undefined ? ownFileOutput(outFiles, opts.ownConfig?.(projectRel)) : undefined
@@ -736,6 +844,10 @@ function buildTask(
       return { name: variant.name, task: null, todos }
     }
     return { name: variant.name, task: { dependsOn: deps }, todos }
+  }
+  if (opts.migration === true) {
+    const call = nxSelfCall(mapped.command)
+    if (call !== undefined) todos.push(call)
   }
   const exec: Record<string, unknown> = { command: mapped.command }
   const env: Record<string, unknown> = {}
@@ -864,10 +976,13 @@ function mapCommand(
     command: string,
     envFile: string | undefined,
     rest: Pick<MappedCommand, 'env' | 'readyWhen'> = { env: {}, readyWhen: undefined },
+    readyAll: readonly string[] = [],
   ): MappedCommand => {
-    if (files.length === 0 && envFile === undefined) return { ...rest, command, envInputs: [] }
+    if (files.length === 0 && envFile === undefined && readyAll.length === 0)
+      return { ...rest, command, envInputs: [] }
     const flags = files.flatMap((f) => ['--dotenv', shellQuote(f)])
     if (envFile !== undefined) flags.push('--envFile', shellQuote(envFile))
+    for (const s of readyAll) flags.push('--ready-when', shellQuote(s))
     return {
       ...rest,
       command: `nx-env ${flags.join(' ')} -- ${shellQuote(command)}`,
@@ -893,7 +1008,7 @@ function mapCommand(
         : path.posix.isAbsolute(rc.envFile)
           ? rc.envFile
           : relPosix(projectRel, path.posix.normalize(rc.envFile))
-    return shell(rc.command, envFile, { env: rc.env, readyWhen: rc.readyWhen })
+    return shell(rc.command, envFile, { env: rc.env, readyWhen: rc.readyWhen }, rc.readyAll)
   }
   if (executor === 'nx:run-script') {
     const script = typeof options.script === 'string' ? options.script : targetName
@@ -928,14 +1043,36 @@ function mapCommand(
   // Every other executor runs as itself, one process per task, through
   // this package's `nx-exec` bin: the executor and its options are on the
   // command line, so the key sees them and the line pastes into a shell.
+  argsTodo(options, todos)
+  return {
+    ...line(nxExecCommand(executor, projectName, targetName, configuration, options, files)),
+    envInputs: files,
+  }
+}
+
+/**
+ * A written command that still runs Nx (`nx run app:build`, `npx nx test`,
+ * a package script's `nx exec -- tsc`) works only while Nx is installed:
+ * the migration's TODO for it. Undefined for a line that does not.
+ */
+function nxSelfCall(command: string): string | undefined {
+  const m = /(?:^|[\s;&|('"])(?:(?:npx|bunx|pnpm(?: exec)?|yarn)\s+)?nx\s+([a-z][\w:-]*)/.exec(
+    command,
+  )
+  if (m === null) return undefined
+  return m[1] === 'exec'
+    ? 'the command runs under `nx exec --`, which needs Nx installed — drop `nx exec --` and keep the command after it'
+    : `the command runs \`nx ${m[1]}\`, which needs Nx installed — name that task in dependsOn, or run its command here`
+}
+
+const isReleasePublish = (executor: string | undefined): boolean =>
+  executor === '@nx/js:release-publish' || executor === '@nrwl/js:release-publish'
+
+function argsTodo(options: Record<string, unknown>, todos: string[]): void {
   if (/\{args\.[^}]*\}/.test(JSON.stringify(options))) {
     todos.push(
       '`{args.*}` in the options: params forwarding is not supported — put the value in the option',
     )
-  }
-  return {
-    ...line(nxExecCommand(executor, projectName, targetName, configuration, options, files)),
-    envInputs: files,
   }
 }
 
@@ -979,8 +1116,11 @@ const KNOWN_EXECUTORS: Record<string, { persistent: boolean }> = {
   '@nx/jest:jest': { persistent: false },
   '@nx/eslint:lint': { persistent: false },
   '@nx/js:tsc': { persistent: false },
+  '@nx/js:node': { persistent: true },
+  '@nx/js:verdaccio': { persistent: true },
   '@nx/webpack:webpack': { persistent: false },
   '@nx/webpack:dev-server': { persistent: true },
+  '@nx/web:file-server': { persistent: true },
   '@nx/esbuild:esbuild': { persistent: false },
   '@nx/rollup:rollup': { persistent: false },
   '@nx/next:build': { persistent: false },
@@ -1007,20 +1147,11 @@ function persistentTarget(target: NxTarget): boolean {
   return known?.persistent ?? false
 }
 
-/**
- * The projects Nx links a `^target` edge of `from` to
- * (`processTasksForDependencies`): each dependency on the NX graph that
- * has the target, and through one that lacks it, that one's
- * dependencies. vx's `^target` follows package.json alone, so an edge Nx
- * draws from `implicitDependencies` or a tsconfig path (nx-examples'
- * e2e projects → their apps) ordered nothing and folded nothing: an
- * app's source edit left its e2e `typecheck` a hit. It was reported
- * "not representable"; it is an explicit `pkg#target` edge.
- */
-function nxDependencyTargets(
+/** Each project node's direct dependencies on the Nx graph, projects only. */
+function nxDirectDeps(
   nodeMap: Readonly<Record<string, NxNode>>,
   dependencies: unknown,
-): (from: string, target: string) => readonly string[] {
+): Map<string, string[]> {
   const direct = new Map<string, string[]>()
   if (typeof dependencies === 'object' && dependencies !== null) {
     for (const [source, edges] of Object.entries(dependencies as Record<string, NxEdge[]>)) {
@@ -1034,6 +1165,23 @@ function nxDependencyTargets(
       direct.set(source, [...new Set(to)])
     }
   }
+  return direct
+}
+
+/**
+ * The projects Nx links a `^target` edge of `from` to
+ * (`processTasksForDependencies`): each dependency on the NX graph that
+ * has the target, and through one that lacks it, that one's
+ * dependencies. vx's `^target` follows package.json alone, so an edge Nx
+ * draws from `implicitDependencies` or a tsconfig path (nx-examples'
+ * e2e projects → their apps) ordered nothing and folded nothing: an
+ * app's source edit left its e2e `typecheck` a hit. It was reported
+ * "not representable"; it is an explicit `pkg#target` edge.
+ */
+function nxDependencyTargets(
+  nodeMap: Readonly<Record<string, NxNode>>,
+  direct: ReadonlyMap<string, readonly string[]>,
+): (from: string, target: string) => readonly string[] {
   const memo = new Map<string, readonly string[]>()
   return (from, target) => {
     const key = `${from}\0${target}`
@@ -1094,6 +1242,54 @@ function passConfiguration(
     }
   }
   task['dependsOn'] = out
+}
+
+/**
+ * A `^name` whose manifest reaches a project Nx's graph does not (an
+ * `implicitDependencies: ["!a"]` that breaks a manifest cycle) becomes the
+ * explicit edges Nx draws for it: vx's `^` follows the manifest, and the
+ * edge Nx dropped came back as a task cycle core refused.
+ */
+function narrowToNxGraph(
+  task: Record<string, unknown> | null,
+  nodeName: string,
+  pkgName: string,
+  nxClosure: (node: string) => ReadonlySet<string>,
+  nxEdges: (from: string, target: string) => readonly string[],
+  metaByNode: ReadonlyMap<string, ProjectMeta>,
+  emittedIds: ReadonlySet<string>,
+  directDeps: (pkg: string) => readonly string[],
+): void {
+  const deps = task?.['dependsOn']
+  if (
+    task === null ||
+    !Array.isArray(deps) ||
+    !deps.some((d) => typeof d === 'string' && d.startsWith('^'))
+  )
+    return
+  const nx = new Set<string>()
+  for (const n of nxClosure(nodeName)) {
+    const m = metaByNode.get(n)
+    if (m !== undefined) nx.add(m.name)
+  }
+  if (directDeps(pkgName).every((p) => nx.has(p))) return
+  const out: unknown[] = []
+  for (const d of deps) {
+    if (typeof d !== 'string' || !d.startsWith('^') || d.includes('*')) {
+      out.push(d)
+      continue
+    }
+    const name = d.slice(1)
+    for (const n of nxEdges(nodeName, name)) {
+      const m = metaByNode.get(n)
+      if (m === undefined) continue
+      const id = `${m.name}#${name}`
+      if (emittedIds.has(id) && !out.includes(id)) out.push(id)
+    }
+  }
+  // A group keeps its list, as `dropUnheldDeps` keeps one.
+  if (out.length > 0 || task['exec'] === undefined) task['dependsOn'] = out
+  else delete task['dependsOn']
 }
 
 /** Each `^name` of `task` gains the explicit edges Nx's graph draws for it and vx's `^` does not. */

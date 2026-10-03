@@ -3,6 +3,7 @@
 // (bwrap cannot bind a path that does not exist). Shared by the cached path
 // (through the executor) and the persistent path (spawned in execute-task).
 
+import { existsSync } from 'node:fs'
 import { lstat, mkdir, readdir, realpath, rm, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import path from 'node:path'
@@ -10,6 +11,7 @@ import type { ExecConfig } from '../config.js'
 import {
   bindableWrites,
   initSandbox,
+  resetSandbox,
   probeSandbox,
   punchWalls,
   resolveSandboxConfig,
@@ -140,6 +142,10 @@ export function prepareSandbox(nodes: Iterable<TaskNode>): SandboxArmer | null {
             ...(gitConfig ? { gitConfig: true } : {}),
           })
         } catch (err) {
+          // The Linux probe brings the runtime up, and only an armed run
+          // resets it: a refusal past the probe left its proxy holding the
+          // process open, and the run hung after its summary (2026-10-02).
+          await resetSandbox().catch(() => {})
           // A throw from the runtime itself (its bridge needs socat, which
           // the dependency check does not cover) gets the same one-line
           // verdict as a refused probe, not an internal error with a stack.
@@ -254,7 +260,13 @@ export async function sandboxRequestFor(
     // 0.0.76). A grant naming a wall is not strictly outside it and wins.
     // Without it a root task's `read: ['.']` read its nested projects under
     // seatbelt (B-4).
-    baseDenyRead: process.platform === 'darwin' ? [workspaceRoot, ...walls] : [workspaceRoot],
+    // The host's credential stores are denied too: the rest of home stays
+    // readable (tools need `~/.cache`), but a dependency the task runs
+    // could copy a key into an output the cache shares (L-41).
+    baseDenyRead: [
+      ...(process.platform === 'darwin' ? [workspaceRoot, ...walls] : [workspaceRoot]),
+      ...credentialStores(workspaceRoot),
+    ],
     // …but only denials INSIDE the project are worth reporting. A task
     // bumping into the wall is the sandbox working, not a finding: the
     // walk `bun build --compile` makes from `/` down to its cwd lists
@@ -541,7 +553,8 @@ export function placeholderSweeper(placeholders: readonly Placeholder[]): () => 
  * The line a failed task gets for a placeholder it never wrote. Not a
  * diagnosis — the task may have died before its first write — but the
  * one clue to the trap: a grant that meant a directory is bound as a
- * file, and the task's own `mkdir` says only "File exists". Added when
+ * file, and the task's own `mkdir` says only "File exists" (or "Not a
+ * directory" for a path inside it, B-96). Added when
  * the task already failed and the sandbox reported nothing else, so it
  * never reddens a pass and never buries a real denial.
  */
@@ -550,8 +563,46 @@ export function untouchedPlaceholderLine(projectDir: string, placeholder: string
   return (
     `vx: the sandbox write grant \`${rel}\` named nothing on disk, so vx bound it as an empty ` +
     `file, which the task never wrote (removed again). If the task creates a directory there ` +
-    `("File exists" from its own mkdir), spell the grant \`${rel}/\` — a literal without the ` +
+    `("File exists" or "Not a directory" from its own mkdir), spell the grant \`${rel}/\` — a literal without the ` +
     `slash is a file.`
+  )
+}
+
+/**
+ * Where tools keep credentials under the user's home. A sandboxed task
+ * reads none of them unless its `allow.read` names one (a publish task's
+ * `~/.npmrc`).
+ */
+const CREDENTIAL_STORES = [
+  '.ssh',
+  '.gnupg',
+  '.aws',
+  '.azure',
+  '.kube',
+  '.config/gcloud',
+  '.config/gh',
+  '.docker/config.json',
+  '.netrc',
+  '.git-credentials',
+  '.npmrc',
+  '.yarnrc.yml',
+  '.pypirc',
+]
+
+/** The stores present on this host, learned once per home. */
+let presentStores: { home: string; paths: string[] } | undefined
+
+/** The credential stores to deny, less any that holds the workspace. */
+function credentialStores(workspaceRoot: string): string[] {
+  const home = homedir()
+  if (presentStores?.home !== home) {
+    presentStores = {
+      home,
+      paths: CREDENTIAL_STORES.map((rel) => path.join(home, rel)).filter((p) => existsSync(p)),
+    }
+  }
+  return presentStores.paths.filter(
+    (p) => workspaceRoot !== p && !workspaceRoot.startsWith(p + path.sep),
   )
 }
 

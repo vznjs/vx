@@ -360,6 +360,37 @@ describe('loadProjectConfig', () => {
       await refuses('inputs', '!a/../b/**')
     })
 
+    it('a brace arm that escapes or is absolute is refused too (M-64)', async () => {
+      // `{../shared,src}/**` splits on `/` into `{..`, so it loaded, and the
+      // glob engine matched nothing under its `..` arm: an input that left
+      // the key without a word. The arms are segments, and an absolute arm
+      // is an absolute glob.
+      const load = async (where: 'inputs' | 'outputs', glob: string) => {
+        const file = path.join(dir, 'vx.config.mjs')
+        const inputs = where === 'inputs' ? [glob] : ['src/**']
+        const outputs = where === 'outputs' ? [glob] : ['dist/**']
+        await writeFile(
+          file,
+          `export default { tasks: { build: {
+            exec: { command: 'tsc' },
+            cache: { inputs: { files: ${JSON.stringify(inputs)} }, outputs: { files: ${JSON.stringify(outputs)} } },
+          } } }`,
+        )
+        return loadProjectConfig(file)
+      }
+      for (const glob of ['{../shared,src}/**', '{src,..}/*', 'x{..}/*', '!{../a,b}/**'])
+        await expect(load('inputs', glob)).rejects.toThrow(/path segments are not allowed/)
+      await expect(load('outputs', '{..,dist}/**')).rejects.toThrow(/path segments are not allowed/)
+      for (const glob of ['{/etc,src}/*', 'src/{a,/etc}/*', '!{/etc,b}/*'])
+        await expect(load('inputs', glob)).rejects.toThrow(/absolute paths are not allowed/)
+      await expect(load('outputs', '{dist,/tmp/x}/**')).rejects.toThrow(
+        /absolute paths are not allowed/,
+      )
+      // CONTROL: arms that stay inside, and a name that only holds dots.
+      for (const glob of ['{src,lib}/**', '{a..b,src}/**', 'a,/b/**'])
+        expect((await load('inputs', glob)).tasks?.['build']?.cache?.inputs?.files).toEqual([glob])
+    })
+
     it('a name that merely STARTS with dots is not an escape', async () => {
       // The control: the refusal compares whole segments, and widening it
       // to a prefix test would reject an ordinary directory. `..foo` is a
@@ -1303,7 +1334,6 @@ describe('first loads run together (D-68)', () => {
     dir = await mkdtemp(path.join(os.tmpdir(), 'vx-d68-'))
   })
   afterEach(async () => {
-    delete (globalThis as { __vxD68?: unknown }).__vxD68
     delete process.env['VX_CONFIG_WORKER_TIMEOUT_MS']
     await rm(dir, { recursive: true, force: true })
   })
@@ -1319,12 +1349,14 @@ describe('first loads run together (D-68)', () => {
   it('overlap: a config waiting on a later one loads, where one at a time never would', async () => {
     // `a` settles only when `b` has run. In order, one at a time, `a` held
     // the loop until its deadline.
+    // The channel is a module both import: a global is refused (D-122).
     process.env['VX_CONFIG_WORKER_TIMEOUT_MS'] = '2000'
-    const a = await config(
-      'a',
-      'await new Promise((r) => { globalThis.__vxD68 = r })\n' + task('echo a'),
+    await writeFile(
+      path.join(dir, 'chan.mjs'),
+      'export let release\nexport const released = new Promise((r) => { release = r })\n',
     )
-    const b = await config('b', 'globalThis.__vxD68?.()\n' + task('echo b'))
+    const a = await config('a', "await (await import('../chan.mjs')).released\n" + task('echo a'))
+    const b = await config('b', "(await import('../chan.mjs')).release()\n" + task('echo b'))
     const got = await loadProjectConfigs([a, b])
     expect(got.map((c) => c.tasks?.['t']?.exec?.command)).toEqual(['echo a', 'echo b'])
   })

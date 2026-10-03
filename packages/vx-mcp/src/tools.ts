@@ -104,10 +104,11 @@ const TOOLS: readonly ToolDef[] = [
   {
     name: 'getWorkspaceInfo',
     description:
-      'The workspace doctor (`vx info --format json`): vx, bun and git versions, the git status cache, ' +
-      'projects and tasks, the plugins and the seams each fills, the worker count and memory budget a run ' +
-      'will use and where each comes from, the cache dir and versions, entries, orphans, task runs and hits in ' +
-      'the last 24h, flaky tasks, whether vx-lock.json exists — the facts a bug report needs.',
+      'The workspace doctor, the object `vx info --format json` prints: vx, bun, bunSupported, git, ' +
+      'gitStatusCache, workspaceRoot, projects, tasks, configErrors, plugins (and the seams each fills), ' +
+      'workers and memory (what a run will use, and where each comes from), cacheDir, cacheVersion, ' +
+      'schemaVersion, cacheEntries, cacheBytes, orphans, runs24h, hits24h, flakyTasks, lockfile, sandbox ' +
+      '— the facts a bug report needs.',
     inputSchema: { type: 'object', properties: {} },
   },
 ]
@@ -134,6 +135,19 @@ export async function handleToolCall(
     )
   }
   const args = (argsRaw ?? {}) as Record<string, unknown>
+  // A key the tool does not take is refused, naming the ones it does: a
+  // misspelt filter (`tsk` for `task`) was ignored, and the call answered
+  // the whole unfiltered history as if it were the filtered one.
+  const def = TOOLS.find((t) => t.name === name)
+  if (def !== undefined) {
+    const takes = Object.keys((def.inputSchema['properties'] ?? {}) as Record<string, unknown>)
+    const extra = Object.keys(args).filter((k) => !takes.includes(k))
+    if (extra.length > 0) {
+      throw new UserError(
+        `${name}: unknown argument${extra.length === 1 ? '' : 's'} ${extra.map((k) => JSON.stringify(k)).join(', ')} — it takes ${takes.length === 0 ? 'none' : takes.join(', ')}`,
+      )
+    }
+  }
   switch (name) {
     case 'listTasks':
       return listTasks(args, ctx)
@@ -192,7 +206,9 @@ async function listTasks(
  */
 function parseCacheScope(raw: unknown): 'all' | { project: string } {
   if (raw === undefined || raw === 'all') return 'all'
-  if (typeof raw === 'object' && raw !== null) {
+  // Only `project`: a `task` beside it was ignored, and the project's
+  // numbers came back as the task's.
+  if (typeof raw === 'object' && raw !== null && Object.keys(raw).every((k) => k === 'project')) {
     const project = (raw as { project?: unknown }).project
     if (typeof project === 'string' && project.length > 0) return { project }
   }
@@ -342,12 +358,23 @@ async function getRunHistory(
   }
 }
 
+/**
+ * A `project#task` with both halves: `#build` and `app#` held a `#` and
+ * were answered as task ids that no run could ever have, a null answer an
+ * agent reads as "never ran".
+ */
+function isTaskId(id: unknown): id is string {
+  if (typeof id !== 'string') return false
+  const [project, task] = splitTaskId(id)
+  return id.includes('#') && project !== '' && task !== ''
+}
+
 async function explainCacheKey(
   args: Record<string, unknown>,
   ctx: ToolContext,
 ): Promise<Record<string, unknown>> {
   const taskId = args['taskId']
-  if (typeof taskId !== 'string' || !taskId.includes('#')) {
+  if (!isTaskId(taskId)) {
     throw new UserError('explainCacheKey: taskId must be a "project#task" string')
   }
   const [project, task] = splitTaskId(taskId)
@@ -396,7 +423,8 @@ async function whyDidThisRerun(
   if (given !== undefined && typeof given !== 'string') {
     throw new UserError('whyDidThisRerun: runId, when given, must be a string')
   }
-  if (!taskId.includes('#')) {
+  if (given === '') throw new UserError('whyDidThisRerun: runId, when given, must not be empty')
+  if (!isTaskId(taskId)) {
     throw new UserError('whyDidThisRerun: taskId must be a "project#task" string')
   }
   const cache = Cache.inspect(ctx.cacheDir)

@@ -14,7 +14,11 @@ import { describe, expect, it } from 'bun:test'
 import { PLUGIN_HOOKS } from '../src/config.js'
 import { CACHE_VERSION, SCHEMA_VERSION } from '../src/cache/index.js'
 import { formatRunSummary } from '../src/orchestrator/summary.js'
+import { parseInfoArgs } from '../src/cli/info.js'
+import { appendRecapRing, createRecapRing, recapTail } from '../src/orchestrator/failure-recap.js'
+import { formatRunReportMarkdown } from '../src/orchestrator/run-report.js'
 import {
+  formatFailureRecap,
   formatTaskBlock,
   formatTaskExecutedLine,
   formatTaskHitLine,
@@ -124,6 +128,23 @@ describe('docs/cli.md — the `vx info` sample quotes the current versions', () 
 // `sandbox` were printed and named nowhere. Both sides are read from their
 // source: the `InfoFacts` interface in doctor.ts (what the object carries),
 // and the bullet's backticked names.
+// The sandbox bullet called its field "the `--json` fact"; `vx info --json`
+// is refused (J2-62). Each flag the section names is one the verb takes.
+describe('docs/cli.md — every flag the `vx info` section names, the verb takes', () => {
+  it('parses each with a value and no error', async () => {
+    const doc = await Bun.file(new URL('../docs/cli.md', import.meta.url)).text()
+    const section = doc.slice(doc.indexOf('\n## `vx info`\n'), doc.indexOf('\n## `vx why`\n'))
+    // `--version` there is strace's, the probe the sandbox bullet describes.
+    const flags = new Set(
+      Array.from(section.matchAll(/`(--[a-z-]+)/g), (m) => m[1] as string).filter(
+        (f) => f !== '--version',
+      ),
+    )
+    expect([...flags].toSorted()).toEqual(['--cache-dir', '--format'])
+    for (const f of flags) expect(parseInfoArgs([f, 'json']).error).toBeUndefined()
+  })
+})
+
 describe('docs/cli.md — the `vx info --format json` list is the InfoFacts object', () => {
   it('names every top-level field, and nothing the object does not carry', async () => {
     // An interface's body, doc comments dropped: `FlakyTask` is the
@@ -158,6 +179,63 @@ describe('docs/cli.md — the `vx info --format json` list is the InfoFacts obje
     const undocumented = [...topLevel].filter((k) => !named.has(k)).sort()
     const unknown = [...named].filter((k) => !anyKey.has(k) && !literals.has(k)).sort()
     expect({ undocumented, unknown }).toEqual({ undocumented: [], unknown: [] })
+  })
+
+  // J2-41: the bullet gave `sandbox` as `{ available, reason, declared }`
+  // after `untraced` joined the object; a shape lists all its keys.
+  it('gives each object field the keys the object carries', async () => {
+    const strip = (s: string): string => s.replace(/\/\*\*[\s\S]*?\*\//g, '')
+    const read = (file: string): Promise<string> =>
+      Bun.file(new URL(`../src/orchestrator/${file}`, import.meta.url)).text()
+    const doctor = strip(await read('doctor.ts'))
+    const flaky = strip(await read('failure-mode.ts'))
+    const info = doctor.slice(doctor.indexOf('export interface InfoFacts {'))
+    const keysOf = (body: string): string =>
+      Array.from(body.matchAll(/(\w+)\??:/g), (m) => m[1]!)
+        .sort()
+        .join(',')
+    /** The keys of `name`'s object type in InfoFacts, an element type's for an array. */
+    const sourceKeys = (name: string): string => {
+      const at = info.search(new RegExp(`^ {2}${name}\\??:`, 'm'))
+      const line = info.slice(at, info.indexOf('\n', at))
+      if (line.includes('FlakyTask[]')) {
+        const open = flaky.indexOf('export interface FlakyTask {')
+        return keysOf(flaky.slice(open + 27, flaky.indexOf('\n}', open)))
+      }
+      let depth = 0
+      let body = ''
+      for (const c of info.slice(info.indexOf('{', at))) {
+        if (c === '{') depth++
+        else if (c === '}' && --depth === 0) break
+        else if (depth > 0) body += c
+      }
+      return keysOf(body)
+    }
+    const doc = await Bun.file(new URL('../docs/cli.md', import.meta.url)).text()
+    const start = doc.indexOf('- `--format json` prints the same facts')
+    const bullet = doc.slice(start, doc.indexOf('\n- ', start + 1)).replace(/\s+/g, ' ')
+    const shapes = Array.from(bullet.matchAll(/`(\w+)` \(`\[?\{([^`}]*)\}/g), (m) => [
+      m[1]!,
+      m[2]!
+        .split(',')
+        .map((k) => k.trim())
+        .sort()
+        .join(','),
+    ])
+    expect(new Set(shapes.map(([name]) => name))).toEqual(
+      new Set([
+        'configErrors',
+        'flakyTasks',
+        'gitStatusCache',
+        'memory',
+        'orphans',
+        'plugins',
+        'sandbox',
+        'workers',
+      ]),
+    )
+    const off = shapes.filter(([name, keys]) => sourceKeys(name!) !== keys)
+    expect(off.map(([name, keys]) => `${name}: {${keys}} vs {${sourceKeys(name!)}}`)).toEqual([])
   })
 })
 
@@ -253,6 +331,50 @@ describe('docs/cli.md — the frame sample is what the renderer prints', () => {
     const start = doc.lastIndexOf('```\n', end - 1) + 4
     expect(start).toBeGreaterThan(4)
     expect(doc.slice(start, end)).toBe(rendered)
+  })
+})
+
+// The report sample's "8ms saved" was its hits' restore times, 5 + 3: the
+// sum the paragraph under it says the header does not take. Render it.
+describe('docs/cli.md — the --report sample is what the renderer prints', () => {
+  it('the header and table, with the hits saving what their entries stored', async () => {
+    const rendered = formatRunReportMarkdown({
+      ok: true,
+      outcomes: [
+        { taskId: 'web#build', status: 'success', exitCode: 0, durationMs: 1230 },
+        {
+          taskId: 'web#test',
+          status: 'cache-hit',
+          exitCode: 0,
+          durationMs: 5,
+          restored: true,
+          storedDurationMs: 2010,
+        },
+        {
+          taskId: 'api#test',
+          status: 'cache-hit',
+          exitCode: 0,
+          durationMs: 3,
+          restored: false,
+          storedDurationMs: 640,
+        },
+      ],
+    })
+    const doc = await Bun.file(new URL('../docs/cli.md', import.meta.url)).text()
+    const start = doc.indexOf('```markdown\n## vx run — passed\n')
+    expect(start).toBeGreaterThan(-1)
+    const sample = doc.slice(start + 12, doc.indexOf('\n```\n', start) + 1)
+    // The page's formatter pads the table; the cells are what is compared.
+    const cells = (md: string): string[] =>
+      md.split('\n').map((l) =>
+        l.startsWith('|')
+          ? l
+              .split('|')
+              .map((c) => (/^\s*-+\s*$/.test(c) ? '---' : c.trim()))
+              .join('|')
+          : l,
+      )
+    expect(cells(sample)).toEqual(cells(rendered))
   })
 })
 
@@ -357,5 +479,101 @@ describe("vx info's plugins row lists the seams the doctor shows", () => {
     const doctor = await Bun.file(new URL('../src/orchestrator/doctor.ts', import.meta.url)).text()
     expect(doctor).toContain("const SEAMS = PLUGIN_HOOKS.filter((h) => h !== 'teardown')")
     expect(named).toEqual(PLUGIN_HOOKS.filter((h) => h !== 'teardown'))
+  })
+})
+
+// The recap samples drew the failed glyph without the text-presentation
+// selector the renderer prints after it (`◼︎`), and cli.md said the tail
+// reads stdout then stderr, which only a buffered task's does. Render
+// both pages' samples; the hundred-line tail's middle is elided in them.
+describe('the failure recap samples are what the renderer prints', () => {
+  const node = (id: string): TaskNode =>
+    ({
+      id,
+      projectName: id.split('#')[0],
+      taskName: id.split('#')[1],
+      config: { exec: { command: 'x' } },
+    }) as unknown as TaskNode
+  const entry = (id: string, exitCode: number, output: string) => {
+    const ring = createRecapRing()
+    appendRecapRing(ring, output)
+    const outcome: TaskOutcome = { node: node(id), status: 'failed', exitCode, durationMs: 5 }
+    return { node: outcome.node, outcome, tail: recapTail(ring), droppedChars: 0 }
+  }
+  const hundred = Array.from({ length: 100 }, (_, i) => `line ${i + 1}\n`).join('')
+  const elide = (lines: string[]): string =>
+    lines
+      .filter((l) => !/^line (7[2-9]|8\d|9\d)$/.test(l) || l === 'line 72')
+      .map((l) => (l === 'line 72' ? '…' : l))
+      .join('\n')
+  const sample = async (rel: string, firstLine: string): Promise<string> => {
+    const doc = await Bun.file(new URL(`../docs/${rel}`, import.meta.url)).text()
+    const start = doc.indexOf(`\`\`\`\n${firstLine}\n`)
+    expect(start).toBeGreaterThan(-1)
+    return doc.slice(start + 4, doc.indexOf('\n```\n', start))
+  }
+
+  it("cli.md's one-failure block", async () => {
+    const rendered = formatFailureRecap([entry('app#fail', 3, hundred)], []).slice(1)
+    expect(await sample('cli.md', '  Failed:   1 task — the last lines it printed')).toBe(
+      elide(rendered),
+    )
+  })
+
+  it("framed-output.md's block, with a silent failure and two past the limit", async () => {
+    const rendered = formatFailureRecap(
+      [entry('app#fail', 3, hundred), entry('app#dep', 1, '')],
+      ['app#f6', 'app#f7'],
+    ).slice(1)
+    expect(
+      await sample(
+        'modules/framed-output.md',
+        '  Failed:   4 tasks — the last lines each one printed',
+      ),
+    ).toBe(elide(rendered))
+  })
+})
+
+describe('docs/cli.md — the glyph table is the renderer', () => {
+  // The table gave `⏺` the status words "success/failed", but a failed
+  // task always draws `◼`: no row ever printed `⏺ … failed` (J2-58). The
+  // expected map comes from rendering every outcome, not from a list here.
+  it('each glyph carries the status words a rendered row gives it', async () => {
+    const node = {
+      id: 'a#b',
+      projectName: 'a',
+      taskName: 'b',
+      config: { exec: { command: 'x' }, cache: { inputs: { files: [] }, outputs: { files: [] } } },
+    } as unknown as TaskNode
+    const outcomes: TaskOutcome[] = [
+      { node, status: 'success', exitCode: 0, durationMs: 1 },
+      { node, status: 'failed', exitCode: 1, durationMs: 1 },
+      { node, status: 'skipped', exitCode: 0, durationMs: 0 },
+      ...(['cache-hit', 'cache-hit-remote'] as const).flatMap((status) =>
+        [true, false].map((restored) => ({ node, status, exitCode: 0, durationMs: 1, restored })),
+      ),
+    ]
+    const rendered = new Map<string, Set<string>>()
+    for (const o of outcomes) {
+      const [glyph, ...cells] = formatTaskExecutedLine(node, o)
+        .replaceAll('︎', '')
+        .trim()
+        .split(/\s+/)
+      const word = cells.find((c) => ['success', 'failed', 'skipped'].includes(c))!
+      rendered.set(glyph!, (rendered.get(glyph!) ?? new Set()).add(word))
+    }
+    const doc = await Bun.file(new URL('../docs/cli.md', import.meta.url)).text()
+    const table = doc.slice(doc.indexOf('| Glyph |'))
+    const documented = new Map<string, Set<string>>()
+    for (const row of table.split('\n').slice(2)) {
+      if (!row.startsWith('|')) break
+      const cells = row.split('|').map((c) => c.trim())
+      const glyph = cells[1]!.replaceAll('`', '')
+      // The persistent pin is drawn by the live region, not a task row.
+      if (glyph !== '▸') documented.set(glyph, new Set(cells[3]!.split('/')))
+    }
+    const plain = (m: Map<string, Set<string>>) =>
+      Object.fromEntries([...m].map(([g, s]) => [g, [...s].toSorted()]))
+    expect(plain(documented)).toEqual(plain(rendered))
   })
 })

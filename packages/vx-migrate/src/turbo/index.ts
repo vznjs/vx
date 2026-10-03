@@ -12,6 +12,7 @@ import { readFileSync } from 'node:fs'
 import { availableParallelism } from 'node:os'
 import path from 'node:path'
 import type { ProjectMeta, VxPlugin } from '@vzn/vx'
+import { refuseUnknownOptions, type PluginOptionKinds } from '@vzn/vx'
 import { type AdoptionRun, adoptionPlugin } from '../adoption-plugin.js'
 import type { AdoptionMapping } from '../mapping-cache.js'
 import { collectGaps } from '../plugin-gaps.js'
@@ -39,11 +40,17 @@ export interface TurboPluginOptions {
   readonly root?: string
 }
 
+/** Each option `TurboPluginOptions` names, with its kind: derived from the type, so the two cannot drift. */
+const TURBO_PLUGIN_KEYS: PluginOptionKinds<TurboPluginOptions> = {
+  root: 'string',
+}
+
 /**
  * The plugin: the adoption skeleton over `mapTurboWorkspace`, one mapping
  * per run (`adoption-plugin.ts` says why).
  */
 export function turbo(options: TurboPluginOptions = {}): VxPlugin {
+  refuseUnknownOptions('turbo()', options, TURBO_PLUGIN_KEYS)
   return adoptionPlugin(
     import.meta,
     (ctx) => run(options.root ?? ctx.workspaceRoot, ctx.projects),
@@ -282,14 +289,3 @@ async function mapAll(
   for (const project of mapped.projects) byName.set(project.name, project)
   return { byName, gaps: collectGaps(mapped.projects, mapped.notes) }
 }
-
-// The mapper itself, for tools that render what this plugin runs live
-// (`@vzn/vx-migrate` writes it to files).
-export {
-  mapTurboWorkspace,
-  type MapTurboOptions,
-  type TurboGlobal,
-  type TurboMappedProject,
-  type TurboMappedTask,
-  type TurboMapping,
-} from './turbo-map.js'

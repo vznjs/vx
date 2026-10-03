@@ -6,7 +6,7 @@ authors:
 tags:
   - migration
   - nx
-excerpt: "Moving an Nx repo to vx: `nx()` is a temporary start, executors included, then executors become shell commands in native config. `bunx @vzn/vx-migrate` reads the resolved project graph Nx itself uses, so plugin-inferred targets come along, and an executor target migrates as the `nx-exec` line that runs it."
+excerpt: "Moving an Nx repo to vx: `nx()` is a temporary start, executors included, then executors become shell commands in native config. `bunx @vzn/vx-migrate` reads the resolved project graph Nx itself uses, so plugin-inferred targets come along, and an executor target migrates as an `nx-exec` line for you to rewrite as its command."
 ---
 
 Leaving Nx is a bigger step than leaving Turborepo, and the honest
@@ -51,9 +51,10 @@ behind a JSON options object:
 ```
 
 vx has no executors. A task is a shell command. When you migrate, an
-executor target is written as the `nx-exec` line that runs it — no
-placeholder — and, target by target, that
-line becomes the command the executor was wrapping:
+executor target is written as its `nx-exec` line, which still runs the
+executor through Nx; the migrator translates none of them. Rewriting
+each as the command the executor was wrapping is yours, and it is the
+step that lets you remove Nx:
 
 ```ts
 build: {
@@ -63,11 +64,11 @@ build: {
 ```
 
 More explicit, more portable, and one less layer between you and the
-tool's own documentation. Every executor runs through `nx-exec` until
-you replace it, `nx:run-commands` targets are the shell they already
+tool's own documentation. `nx:run-commands` targets are the shell they already
 were, and the server executors — `@nx/vite:dev-server`,
 `@nx/vite:preview-server`, `@nx/webpack:dev-server`, `@nx/next:server`,
-`@nx/storybook:storybook` and `@angular-devkit/build-angular:dev-server`
+`@nx/storybook:storybook`, `@nx/js:node`, `@nx/js:verdaccio`, `@nx/web:file-server` and
+`@angular-devkit/build-angular:dev-server`
 — come through as persistent tasks, whatever the target is called.
 Nothing is silently wrong.
 
@@ -85,8 +86,8 @@ bunx @vzn/vx-migrate         # write them; never overwrites without --force
 
 It asks your installed `nx` for the graph (`nx graph`) rather than
 guessing at plugin-inferred targets from `nx.json`. The generated
-files freeze that snapshot as static config: review them, replace the
-`nx-exec` lines when you are ready, fill the TODOs.
+files freeze that snapshot as static config: review them and fill the
+TODOs.
 
 ## What maps
 
@@ -112,8 +113,9 @@ so a shared input list is an import.
 ## What you drop, and what replaces it
 
 - **The daemon.** vx has [none](../no-daemon/). On the 3,270-task
-  benchmark a fully cached run is 510ms to Nx's 3.59s, and the cold
-  run burns 34.61s of CPU to Nx's 114m 06s.
+  benchmark, on native config, a fully cached run is 476ms to Nx's
+  3.59s (vx 86% faster), and the cold run burns 34.33s of CPU to Nx's
+  114m 06s (vx 99% faster).
 - **Nx Cloud's distributed execution.** The seam is public:
   `@vzn/vx-reapi` runs tasks on any Bazel Remote Execution API pool.
   There is no first-party service and there will not be one.

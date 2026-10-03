@@ -45,7 +45,7 @@ capability in vx becomes a transformation of the same triple:
   about the task has to be serialisable beyond what it already is.
 - **The sandbox** wraps the command in `bwrap` or seatbelt with the
   declared paths. There is exactly one process to confine.
-- **Replay** stores the captured stdout in the cache row and prints it
+- **Replay** stores the captured stdout in the cache index and prints it
   byte-identical on a hit, NUL bytes, carriage-return progress
   rewrites and raw ANSI included. A hit looks like the run.
 - **Migration** from Turborepo or Nx is mostly a rendering problem,
@@ -57,8 +57,9 @@ capability in vx becomes a transformation of the same triple:
 ## The environment is declared too
 
 A command's environment is part of what it does, so it is not
-inherited wholesale. Each task gets an isolated environment built from
-`exec.env`: values you set (part of the config, so in the key) and
+inherited wholesale. Each task gets an isolated environment: a small
+essential allowlist (`PATH`, `HOME`, `CI`, `NODE_OPTIONS` and a few
+more), then what `exec.env` says: values you set (part of the config, so in the key) and
 variables you `passThrough` from the parent (not in the key).
 `cache.inputs.env` puts a variable in the key but does not pass it to
 the task, so a variable that changes the output and must reach the
@@ -83,5 +84,5 @@ configs and retired it: technology-specific knowledge is the
 community's to write as presets, in TypeScript, on top of a runner that
 only knows what a command is.
 
-Reference: [Running tasks](../../guides/ci/#run-and-filter) and
-[Environment variables](../../guides/configure/#environment-variables).
+Reference: [CI and remote › Run and filter](../../guides/ci/#run-and-filter) and
+[Configure › Environment variables](../../guides/configure/#environment-variables).

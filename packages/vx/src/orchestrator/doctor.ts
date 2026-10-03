@@ -114,8 +114,34 @@ export interface CollectInfoOptions {
 export async function collectInfo(cwd: string, opts: CollectInfoOptions = {}): Promise<InfoFacts> {
   const warn = opts.warn ?? warnToStderr
   const reads: LoadReads = new Map()
+  // Both first: outside a workspace, or under a workspace config that does
+  // not load, the doctor refuses at once, with no probe (~180 ms) ahead.
   const root = await findWorkspaceRoot(cwd, reads)
-  const { workspaceConfig, plugins } = await loadWorkspacePlugins(root, warn)
+  const workspace = await loadWorkspacePlugins(root, warn)
+  // The sandbox probe asks nothing of the workspace, so it runs under the
+  // loads below instead of after them. Awaited on every path: it resets
+  // the runtime it brought up, whose sockets would hold the process open.
+  const probing = sandboxProbe()
+  // Rejects only if the reset does; awaited below, never unhandled.
+  probing.catch(() => {})
+  try {
+    return await collectWorkspaceInfo(cwd, root, reads, workspace, opts, probing)
+  } catch (err) {
+    // The workspace's refusal is the error worth reporting.
+    await probing.catch(() => {})
+    throw err
+  }
+}
+
+async function collectWorkspaceInfo(
+  cwd: string,
+  root: string,
+  reads: LoadReads,
+  { workspaceConfig, plugins }: Awaited<ReturnType<typeof loadWorkspacePlugins>>,
+  opts: CollectInfoOptions,
+  probing: Promise<Omit<InfoFacts['sandbox'], 'declared'>>,
+): Promise<InfoFacts> {
+  const warn = opts.warn ?? warnToStderr
   const cacheDir =
     opts.cacheDir === undefined
       ? resolveCacheDir(root, workspaceConfig)
@@ -173,7 +199,10 @@ export async function collectInfo(cwd: string, opts: CollectInfoOptions = {}): P
   }
 
   const lockPresent = await Bun.file(lockfilePath(root)).exists()
-  const sandbox = await sandboxFact(sandboxed)
+  // Asked while the probe runs: each is a synchronous spawn.
+  const git = gitVersion()
+  const statusCache = gitStatusCache(root)
+  const sandbox = { ...(await probing), declared: sandboxed }
   return {
     vx: VERSION,
     // An unsupported Bun does not stop a run, it makes the run's ANSWERS
@@ -183,12 +212,12 @@ export async function collectInfo(cwd: string, opts: CollectInfoOptions = {}): P
     // have, which is a property 19 tests hold on purpose.
     bun: Bun.version,
     bunSupported: !isUnsupportedBun(Bun.version),
-    git: gitVersion(),
+    git,
     // The one `git status` walk per run is the warm path's critical path on
     // a large tree (~55 ms at 1000 projects, measured 2026-09-02). git's
     // own caches make it near-free after the first run, and they are OFF by
     // default — say so, since nothing else in a run would.
-    gitStatusCache: gitStatusCache(root),
+    gitStatusCache: statusCache,
     workspaceRoot: root,
     projects: metas.length,
     tasks: taskCount,
@@ -224,24 +253,19 @@ export async function collectInfo(cwd: string, opts: CollectInfoOptions = {}): P
 }
 
 /**
- * The runtime probe's verdict — one sandboxed `true` (memoized) — and the
- * count of loaded tasks that would meet it. The probe initializes the
- * Linux runtime, whose proxy sockets would keep a standalone process
- * alive; reset after asking, since the doctor runs nothing.
+ * The runtime probe's verdict — one sandboxed `true` (memoized). The probe
+ * initializes the Linux runtime, whose proxy sockets would keep a
+ * standalone process alive; reset after asking, since the doctor runs
+ * nothing.
  */
-async function sandboxFact(declared: number): Promise<InfoFacts['sandbox']> {
+async function sandboxProbe(): Promise<Omit<InfoFacts['sandbox'], 'declared'>> {
   try {
     const verdict = await probeSandbox()
     const untraced = verdict.available ? await untracedReason() : null
-    return {
-      available: verdict.available,
-      reason: stableSandboxReason(verdict.reason),
-      declared,
-      untraced,
-    }
+    return { available: verdict.available, reason: stableSandboxReason(verdict.reason), untraced }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    return { available: false, reason: stableSandboxReason(message), declared, untraced: null }
+    return { available: false, reason: stableSandboxReason(message), untraced: null }
   } finally {
     await resetSandbox()
   }

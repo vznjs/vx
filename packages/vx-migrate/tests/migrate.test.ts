@@ -7,7 +7,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { loadProjectConfig, type TaskConfig } from '@vzn/vx'
-import { parseMigrateArgs } from '../src/index.js'
+import { parseMigrateArgs } from '../src/migrate.js'
 import { migrateNx } from '../src/migrate-nx.js'
 import { migrateTurbo } from '../src/migrate-turbo.js'
 import { fakeNxCli, nxCalls } from './helpers/fake-nx.js'
@@ -138,6 +138,37 @@ async function makeTurboWorkspace(): Promise<string> {
   return root
 }
 
+// The from-turborepo post said the migrator "emits a task only where the
+// script exists"; since G-117 a package a `^` edge reaches without the
+// script gets a key-only `true` (J-97). The README states it.
+describe("vx migrate (turbo): a package without a ^ task's script", () => {
+  it(
+    'gets a cached `true` with no outputs, as the README says',
+    async () => {
+      const root = await makeRoot('vx-migrate-noop-')
+      try {
+        await writeFile(
+          path.join(root, 'turbo.json'),
+          JSON.stringify({ tasks: { build: { dependsOn: ['^build'], outputs: ['dist/**'] } } }),
+        )
+        await addPackage(root, 'ui', {})
+        await addPackage(root, 'web', { build: 'tsc -b' }, { ui: 'workspace:*' })
+        expect((await vx(root, [])).code).toBe(0)
+        const ui = await loadProjectConfig(path.join(root, 'packages', 'ui', 'vx.config.ts'))
+        const build = (ui.tasks as Record<string, TaskConfig>).build!
+        expect([build.exec?.command, build.cache?.outputs?.files]).toEqual(['true', []])
+        const readme = await Bun.file(path.join(import.meta.dir, '..', 'README.md')).text()
+        expect(readme).toContain(
+          'A package without the script of a `^` task others run gets the same key-only task',
+        )
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+})
+
 // Turbo's `//#` root tasks: the CLI writes the root's vx.config.ts, which
 // is what makes core read the root as a project (D-39); the live plugin can
 // only say so. Five of eleven real Turbo repos had root tasks, and 36 edges
@@ -213,13 +244,11 @@ describe('vx migrate (turbo)', () => {
       expect(build.dependsOn).toEqual(['^build', 'codegen'])
       // $TURBO_DEFAULT$ → '**/*' position preserved; negation passes
       // through. $TURBO_ROOT$/<path> inputs and globalDependencies are
-      // both root-relative → inputs.workspaceFiles (preset spread first,
-      // then the explicit entry — duplicates are a faithful mapping).
+      // both root-relative → inputs.workspaceFiles, listed once as the live
+      // `turbo()` lists it: the preset spread holds the explicit entry, and
+      // written twice the migrated config keyed apart from the live run.
       expect(build.cache?.inputs.files).toEqual(['**/*', '!**/*.md'])
-      expect(build.cache?.inputs.workspaceFiles).toEqual([
-        'tsconfig.base.json',
-        'tsconfig.base.json',
-      ])
+      expect(build.cache?.inputs.workspaceFiles).toEqual(['tsconfig.base.json'])
       // env → BOTH cache.inputs.env and passThrough; globalEnv spread into
       // both; globalPassThroughEnv into passThrough only; wildcard dropped.
       expect(build.cache?.inputs.env).toEqual(['GLOBAL_MODE', 'NODE_ENV'])
@@ -271,10 +300,7 @@ describe('vx migrate (turbo)', () => {
       // Inherited inputs from root; same-project dep `codegen` dropped
       // silently because lib has no codegen script (turbo semantics).
       expect(build.cache?.inputs.files).toEqual(['**/*', '!**/*.md'])
-      expect(build.cache?.inputs.workspaceFiles).toEqual([
-        'tsconfig.base.json',
-        'tsconfig.base.json',
-      ])
+      expect(build.cache?.inputs.workspaceFiles).toEqual(['tsconfig.base.json'])
       expect(build.dependsOn).toEqual(['^build'])
     },
     TIMEOUT,
@@ -651,8 +677,7 @@ describe('vx migrate (nx)', () => {
       expect(test.exec?.command).toBe('jest')
       expect(test.cache?.inputs.files).toEqual(['**/*'])
 
-      // A foreign executor runs as itself through nx-exec, its options on
-      // the line; dependsOn/cache parts kept.
+      // Any executor runs as itself through nx-exec; dependsOn/cache parts kept.
       const serve = tasks.serve!
       expect(serve.exec?.command).toBe(
         `nx-exec @nx/webpack:dev-server --project pkg-a --target serve --options '{"port":4200}'`,
@@ -718,10 +743,9 @@ describe('vx migrate (nx)', () => {
     expect(aBuild).not.toMatch(/workspaceRoot/)
     expect(aBuild).toMatch(/externalDependencies/)
     expect(aBuild).toMatch(/params/)
-    // An executor is no gap any more: nx-exec runs it. Its lifetime still is.
-    expect(result.out).not.toMatch(/no shell equivalent/)
-    // Nothing depends on serve: no readiness note to report (item 602).
-    expect(todos.has('pkg-a#serve')).toBe(false)
+    // An executor is its nx-exec line, no gap to report. Nothing depends on
+    // serve: no readiness note to report (item 602).
+    expect(todos.get('pkg-a#serve')).toBeUndefined()
     // No `inputs` is Nx's own default set, not a gap (item 591).
     expect(result.out).not.toMatch(/cache enabled with no declared inputs/)
     expect(todos.get('pkg-b#build')?.join() ?? '').not.toMatch(/cwd/)
@@ -1116,7 +1140,7 @@ describe('parseMigrateArgs', () => {
 })
 
 describe('vx migrate (nx) — executors', () => {
-  it('every executor becomes an nx-exec line carrying its options, with no TODO', async () => {
+  it('a known executor becomes its command, any other a placeholder naming it', async () => {
     const root = await makeRoot('vx-migrate-nx-exec-')
     try {
       await addPackage(root, 'app', {})
@@ -1198,6 +1222,7 @@ describe('vx migrate (nx) — executors', () => {
         outputs: { files: ['dist'] },
       })
       expect(tasks['dev']!.exec?.persistent).toBeUndefined()
+      // Every executor is its nx-exec line, a configuration named on it.
       expect(tasks['test']!.exec?.command).toBe(
         'nx-exec @nx/vitest:test --project app --target test',
       )
@@ -1215,7 +1240,7 @@ describe('vx migrate (nx) — executors', () => {
       expect(r.out).not.toContain('mapped from executor')
       // No other project declares `ci`: Nx runs the default there too.
       expect(r.out).not.toContain('Nx runs dependencies with the same')
-      expect(r.out).toContain('executor targets run through `nx-exec`')
+      expect(r.out).toContain('every other executor runs as itself through `nx-exec`')
     } finally {
       await rm(root, { recursive: true, force: true })
     }

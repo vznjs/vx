@@ -1,0 +1,16 @@
+{
+  "traceEvents": "array",
+  "traceEvents[]": "object",
+  "traceEvents[].args": "object",
+  "traceEvents[].args.cpuMs": "number",
+  "traceEvents[].args.exitCode": "number",
+  "traceEvents[].args.hash": "null | string",
+  "traceEvents[].args.peakRssBytes": "number",
+  "traceEvents[].cat": "string",
+  "traceEvents[].dur": "number",
+  "traceEvents[].name": "string",
+  "traceEvents[].ph": "string",
+  "traceEvents[].pid": "number",
+  "traceEvents[].tid": "number",
+  "traceEvents[].ts": "number"
+}

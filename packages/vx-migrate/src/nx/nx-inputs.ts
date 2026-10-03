@@ -89,8 +89,12 @@ export function expandNxInputs(
       // Bare string = named-input reference.
       const members = named[s]
       if (members === undefined) {
+        // Over-keyed, never under: an empty input list keyed a cached task
+        // on its config alone, a stale hit after every source edit (an
+        // nx.json `extends` preset not installed where the snapshot is read).
+        if (neg === '') into.files.push('**/*')
         todos.push(
-          `named input ${JSON.stringify(s)} not found in nx.json or the project — declare its globs manually`,
+          `named input ${JSON.stringify(s)} not found in nx.json or the project — keyed on the whole project (\`**/*\`) until its globs are declared`,
         )
         return
       }
@@ -150,6 +154,10 @@ export function expandNxInputs(
       // and an output follows from its inputs. Nothing to map, and the todo
       // it was sat on 881 tasks of three real Nx repos (G-49).
       if (o.dependentTasksOutputFiles !== undefined) return
+      // `{ workingDirectory }` hashes where Nx was started (`cwd:relative`
+      // in its plan). A vx task runs in its project dir from wherever vx
+      // is started, so the fact is the same for every run: nothing to key.
+      if (o.workingDirectory === 'relative' || o.workingDirectory === 'absolute') return
       if (typeof o.input === 'string') {
         // Nx 23 still reads the pre-17 spellings `projects: "dependencies"`
         // (`^input`) and `projects: "self"` (the project's own); taken as

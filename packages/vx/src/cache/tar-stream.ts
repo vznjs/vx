@@ -53,6 +53,8 @@ function octal(h: Uint8Array, off: number, len: number): number {
     for (let i = off + 1; i < off + len; i++) n = n * 256 + h[i]!
     return n
   }
+  const plain = plainOctal(h, off, len)
+  if (plain !== null) return plain
   const s = field(h, off, len).trim()
   if (s === '') return 0
   // Every digit, not the longest parseable prefix: `parseInt` would read
@@ -61,10 +63,33 @@ function octal(h: Uint8Array, off: number, len: number): number {
   return parseInt(s, 8)
 }
 
+/**
+ * The field every writer emits — octal digits between ASCII spaces, ended
+ * by a NUL or the field's end — read off the bytes; null for anything
+ * else, which `octal` reads the slow way. Three fields a header through a
+ * decoder and a regex were most of a small artifact's read (2026-10-02).
+ */
+function plainOctal(h: Uint8Array, off: number, len: number): number | null {
+  const end = off + len
+  let i = off
+  while (i < end && h[i] === 0x20) i++
+  let n = 0
+  while (i < end && h[i]! >= 0x30 && h[i]! <= 0x37) n = n * 8 + (h[i++]! - 0x30)
+  while (i < end && h[i] === 0x20) i++
+  return i === end || h[i] === 0 ? n : null
+}
+
+function isZeroBlock(h: Uint8Array): boolean {
+  for (let i = 0; i < BLOCK; i++) if (h[i] !== 0) return false
+  return true
+}
+
 function checksumOk(h: Uint8Array): boolean {
   const stored = octal(h, 148, 8)
-  let sum = 0
-  for (let i = 0; i < BLOCK; i++) sum += i >= 148 && i < 156 ? 32 : h[i]!
+  // The checksum field counts as eight spaces.
+  let sum = 8 * 32
+  for (let i = 0; i < 148; i++) sum += h[i]!
+  for (let i = 156; i < BLOCK; i++) sum += h[i]!
   return sum === stored
 }
 
@@ -107,6 +132,18 @@ class Source {
 
   /** Exactly `n` bytes, or null at a clean end (nothing buffered), or a TarFormatError mid-entry. */
   async exact(n: number, what: string): Promise<Uint8Array | null> {
+    // Within one chunk, a view: the copy below was a third of a small
+    // artifact's read. Nothing writes to what this returns.
+    const c0 = this.chunks[0]
+    if (c0 !== undefined && c0.byteLength - this.head >= n) {
+      const view = c0.subarray(this.head, this.head + n)
+      this.head += n
+      if (this.head === c0.byteLength) {
+        this.chunks.shift()
+        this.head = 0
+      }
+      return view
+    }
     const out = new Uint8Array(n)
     let got = 0
     while (got < n) {
@@ -163,7 +200,7 @@ export async function* tarEntries(stream: ReadableStream<Uint8Array>): AsyncGene
       if (zeroBlocks === 0) throw new TarFormatError('archive has no end-of-archive marker')
       return
     }
-    if (h.every((b) => b === 0)) {
+    if (isZeroBlock(h)) {
       zeroBlocks++
       if (zeroBlocks >= 2) return
       continue

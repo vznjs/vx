@@ -70,7 +70,9 @@ caches.
 
 ### C. Normal task
 
-1. `computeTaskHash(...)` — see below.
+1. `computeTaskHash(...)` — see below — unless the up-front pass
+   already has the key: a `preProbed` hash, or an uncached task's
+   `upfrontKey` (local-shortcircuit.md; a persistent task takes it too).
 2. `cleanArgs = { projectDir, outputs, nestedProjectDirs }` is
    prepared once.
 3. **If caching is on**: `cache.get(hash)`.

@@ -455,7 +455,7 @@ function encodeFileNode(f: FileNode): Uint8Array {
  * `Timestamp { seconds = 1, nanos = 2 }`. Getting either shape wrong changes
  * the Directory bytes and therefore every digest above it.
  */
-export function encodeNodeProperties(np: NodeProperties): Uint8Array {
+function encodeNodeProperties(np: NodeProperties): Uint8Array {
   const parts: Uint8Array[] = []
   if (np.mtimeMs !== undefined) {
     const seconds = Math.floor(np.mtimeMs / 1000)
@@ -481,7 +481,7 @@ export function encodeDirectory(dir: Directory): Uint8Array {
 }
 
 /** REAPI `DigestFunction.Value`. SHA256 is the universal baseline. */
-export const DIGEST_FUNCTION = {
+const DIGEST_FUNCTION = {
   UNKNOWN: 0,
   SHA256: 1,
   SHA1: 2,
@@ -495,7 +495,7 @@ export const DIGEST_FUNCTION = {
 export type DigestFunctionName = keyof typeof DIGEST_FUNCTION
 
 /** REAPI `Compressor.Value`. */
-export const COMPRESSOR = { IDENTITY: 0, ZSTD: 1, DEFLATE: 2, BROTLI: 3 } as const
+const COMPRESSOR = { IDENTITY: 0, ZSTD: 1, DEFLATE: 2, BROTLI: 3 } as const
 
 /** Node.js hash names for the digest functions we can actually compute. */
 const HASH_ALGO: Partial<Record<DigestFunctionName, string>> = {
@@ -542,7 +542,7 @@ export interface NodeProperties {
   mtimeMs?: number
 }
 
-export const OUTPUT_DIRECTORY_FORMAT = {
+const OUTPUT_DIRECTORY_FORMAT = {
   TREE_ONLY: 0,
   DIRECTORY_ONLY: 1,
   TREE_AND_DIRECTORY: 2,

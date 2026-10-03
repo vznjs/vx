@@ -12,13 +12,14 @@ excerpt: 'A fully cached run of 3,270 tasks finishes in about half a second with
 The headline number is the one you pay on every uncached build: what
 the runner adds on top of your tasks. On a synthetic workspace of
 1,090 packages and 3,270 tasks whose ideal schedule is 3m 38s, vx
-finishes the cold build in 3m 46s, eight seconds over the schedule.
-Turborepo finishes in 5m 13s (a minute and a half over) and Nx in
-34m 44s (half an hour over).
-Warm, a fully cached `vx run build test --all` finishes in 510ms,
-Turborepo in 760ms and Nx in 3.59s; the cold build burns
-35 s of CPU in vx, 73 s in Turborepo and 114 minutes in Nx, each runner
-in its own native config.
+finishes the cold build in 3m 47s, nine seconds over the schedule.
+Turborepo finishes in 5m 13s (vx 27% faster) and Nx in 34m 44s
+(vx 89% faster).
+Warm, a fully cached `vx run build test --all` finishes in 476ms,
+Turborepo in 760ms (vx 37% faster) and Nx in 3.59s (vx 86% faster); the
+cold build burns 34 s of CPU in vx, 73 s in Turborepo (vx 53% faster)
+and 114 minutes in Nx (vx 99% faster), each runner in its own native
+config. Nx's figures ran every task through npm, a harness fault ([Benchmarks](../../benchmarks/) has the fixed run).
 
 None of that comes from a microbenchmark trick. It comes from five
 decisions, and every one of them is also a reason to trust the cache
@@ -31,7 +32,7 @@ read each file and hash it, or keep a daemon around so they do not have
 to. vx spawns one `git ls-files -s`, which returns the file list *and*
 every clean file's blob object id, and one concurrent `git status` to
 prune anything that diverges from the index. Clean-tree key derivation
-costs zero file reads, zero stats and zero database lookups.
+costs zero source-file reads, zero stats and zero database lookups.
 
 Dirty files get the identical blob id computed in-process, so a key
 never flips when you commit. That class of spurious miss, "I committed
@@ -63,9 +64,10 @@ onto a current tree costs about what an untouched tree costs.
 
 ## 4. One artifact format end to end
 
-A cache entry is one `tar.zst` archive plus a SQLite row. Metadata and
-the captured stdout live in the row, so a hit is one indexed `SELECT`
-and a replay from the row, not a decompression. The same bytes go over
+A cache entry is one `tar.zst` archive plus SQLite rows. Metadata and
+the captured stdout live in the index (the stdout in a side table, so
+the run's access-time bump never rewrites it), so a hit is one indexed
+`SELECT` and a replay from it, not a decompression. The same bytes go over
 the wire to a remote cache; nothing is repacked at the boundary.
 Packing is in-process (vx's own streaming tar), the publish is an atomic
 rename, and each save is a single transaction.

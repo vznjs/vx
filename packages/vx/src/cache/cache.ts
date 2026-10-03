@@ -25,7 +25,7 @@
 // this handle, declared by a plugin's `cache` hook. The contract every
 // layer speaks is `CacheLayer` in layer.ts; `plugin-host.ts` enforces it.
 
-import { Database, type SQLQueryBindings } from 'bun:sqlite'
+import { Database } from 'bun:sqlite'
 import {
   accessSync,
   closeSync,
@@ -38,7 +38,7 @@ import {
 } from 'node:fs'
 import { readdir, rm, stat, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import { createTables } from './schema.js'
+import { createTables, inHashes, lazyStatement } from './schema.js'
 import {
   UserError,
   formatBytes,
@@ -223,7 +223,16 @@ export function noteSchemaReset(cache: Cache, warn: (message: string) => void): 
 //        the last entry's bytes on disk under a green run (item 886). A row
 //        is current only with the inode and ctime recorded after the save
 //        or restore that wrote it. The cache KEY is unchanged.
-export const SCHEMA_VERSION = 'v28'
+//   v29: entries.stdout moved to entry_stdout. SQLite rewrites a whole
+//        record on UPDATE, so the run-end `accessed_at` bump rewrote each
+//        hit's stored stdout (up to 16 MB) with its overflow pages: 200
+//        hits of 1 MB cost the close 125-150 ms. The cache KEY is
+//        unchanged.
+export const SCHEMA_VERSION = 'v29'
+
+/** An entry row with its stdout, which lives apart (v29); none stored reads as ''. */
+const SELECT_ENTRY =
+  "SELECT e.*, COALESCE(s.stdout, '') AS stdout FROM entries e LEFT JOIN entry_stdout s ON s.hash = e.hash"
 
 /** A schema version's number (`v28` → 28); one that is not `v<n>` is older than any. */
 function schemaOrdinal(version: string): number {
@@ -439,7 +448,9 @@ export class Cache implements CacheLayer {
   private readonly insertEntry: ReturnType<Database['prepare']>
   private readonly deleteEntryRow: ReturnType<Database['prepare']>
   private readonly selectEntry: ReturnType<Database['prepare']>
-  private readonly bumpAccessed: ReturnType<Database['prepare']>
+  private readonly upsertStdout: ReturnType<Database['prepare']>
+  private readonly deleteStdout: ReturnType<Database['prepare']>
+  private readonly entryExists: ReturnType<Database['prepare']>
   private readonly touched = new Set<string>()
   private readonly insertEntryInput: ReturnType<Database['prepare']>
   /** The per-file (mtime, size) → blob-OID memo behind `hashFile`. */
@@ -674,7 +685,7 @@ export class Cache implements CacheLayer {
             }
             if (found === SCHEMA_VERSION) return null
             this.db.exec(
-              'DROP TABLE IF EXISTS entries; DROP TABLE IF EXISTS runs; DROP TABLE IF EXISTS file_hashes; DROP TABLE IF EXISTS blob_sizes; DROP TABLE IF EXISTS blob_verdicts; DROP TABLE IF EXISTS output_files; DROP TABLE IF EXISTS invocations; DROP TABLE IF EXISTS run_task_inputs; DROP TABLE IF EXISTS entry_inputs; DROP TABLE IF EXISTS config_evals; DROP TABLE IF EXISTS config_closures; DROP TABLE IF EXISTS output_dirs;',
+              'DROP TABLE IF EXISTS entries; DROP TABLE IF EXISTS runs; DROP TABLE IF EXISTS file_hashes; DROP TABLE IF EXISTS blob_sizes; DROP TABLE IF EXISTS blob_verdicts; DROP TABLE IF EXISTS output_files; DROP TABLE IF EXISTS invocations; DROP TABLE IF EXISTS run_task_inputs; DROP TABLE IF EXISTS entry_inputs; DROP TABLE IF EXISTS config_evals; DROP TABLE IF EXISTS config_closures; DROP TABLE IF EXISTS output_dirs; DROP TABLE IF EXISTS entry_stdout;',
             )
             this.db
               .prepare("UPDATE schema_meta SET value = ? WHERE key = 'version'")
@@ -694,12 +705,13 @@ export class Cache implements CacheLayer {
 
     createTables(this.db)
 
-    this.deleteEntryRow = this.db.prepare('DELETE FROM entries WHERE hash = ?')
-    this.insertEntry = this.db.prepare(`
-      INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, stdout, created_at, accessed_at, cpu_ms, peak_rss_bytes)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    this.deleteEntryRow = lazyStatement(this.db, 'DELETE FROM entries WHERE hash = ?')
+    this.insertEntry = lazyStatement(
+      this.db,
+      `
+      INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, created_at, accessed_at, cpu_ms, peak_rss_bytes)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(hash) DO UPDATE SET
-        stdout         = excluded.stdout,
         project        = excluded.project,
         task           = excluded.task,
         command        = excluded.command,
@@ -709,16 +721,29 @@ export class Cache implements CacheLayer {
         accessed_at    = excluded.accessed_at,
         cpu_ms         = excluded.cpu_ms,
         peak_rss_bytes = excluded.peak_rss_bytes
-    `)
-    this.selectEntry = this.db.prepare('SELECT * FROM entries WHERE hash = ?')
-    this.bumpAccessed = this.db.prepare('UPDATE entries SET accessed_at = ? WHERE hash = ?')
+    `,
+    )
+    this.upsertStdout = lazyStatement(
+      this.db,
+      'INSERT INTO entry_stdout(hash, stdout) VALUES (?, ?) ON CONFLICT(hash) DO UPDATE SET stdout = excluded.stdout',
+    )
+    this.deleteStdout = lazyStatement(this.db, 'DELETE FROM entry_stdout WHERE hash = ?')
+    this.selectEntry = lazyStatement(this.db, `${SELECT_ENTRY} WHERE e.hash = ?`)
+    // `has` asks only whether the row is there, with no stdout joined. A
+    // column off the index, so the table row is still read and a corrupt
+    // table refuses here as it does on `get` (`SELECT 1` answers from the
+    // index alone).
+    this.entryExists = lazyStatement(this.db, 'SELECT exit_code FROM entries WHERE hash = ?')
     // INSERT OR IGNORE: re-saving the same hash (idempotent ingest /
     // overlapping concurrent saves) leaves the existing rows untouched —
     // identical inputs derive the identical hash, so the rows are too.
-    this.insertEntryInput = this.db.prepare(`
+    this.insertEntryInput = lazyStatement(
+      this.db,
+      `
       INSERT OR IGNORE INTO entry_inputs(entry_hash, kind, name, hash)
       VALUES (?, ?, ?, ?)
-    `)
+    `,
+    )
     // The slices: each owns its statements over this handle and its table(s);
     // the schema above is the one place every table is declared.
     this.files = new FileHashStore(this.db, cacheDir, this.write, repoDir)
@@ -956,16 +981,8 @@ export class Cache implements CacheLayer {
   private async getManyEntries(hashes: readonly string[]): Promise<Map<string, CacheEntry>> {
     const out = new Map<string, CacheEntry>()
     if (!this.read || hashes.length === 0) return out
-    const rows: EntryRow[] = []
-    for (let i = 0; i < hashes.length; i += 900) {
-      const chunk = hashes.slice(i, i + 900)
-      const placeholders = chunk.map(() => '?').join(',')
-      rows.push(
-        ...(this.db
-          .query(`SELECT * FROM entries WHERE hash IN (${placeholders})`)
-          .all(...(chunk as readonly SQLQueryBindings[])) as EntryRow[]),
-      )
-    }
+    const { test, params } = inHashes(hashes)
+    const rows = this.db.query(`${SELECT_ENTRY} WHERE e.hash ${test}`).all(...params) as EntryRow[]
     if (rows.length === 0) return out
     const present = rows.map((r) => existsSync(this.tarPath(r.hash)))
     const live = rows.filter((_r, i) => present[i])
@@ -989,8 +1006,7 @@ export class Cache implements CacheLayer {
 
   private async hasEntry(hash: string): Promise<'local' | 'remote' | null> {
     if (!this.read) return null
-    const row = this.selectEntry.get(hash) as EntryRow | undefined
-    if (!row) return null
+    if (this.entryExists.get(hash) === null) return null
     return existsSync(this.tarPath(hash)) ? 'local' : null
   }
 
@@ -1582,6 +1598,8 @@ export class Cache implements CacheLayer {
     // (not the per-run path) so a warm all-cache-hit run — which never
     // saves — writes none of them.
     const insertEntry = this.insertEntry
+    const upsertStdout = this.upsertStdout
+    const deleteStdout = this.deleteStdout
     const outputs = this.outputs
     const insertEntryInput = this.insertEntryInput
     const inputComponents = meta.inputComponents
@@ -1598,8 +1616,24 @@ export class Cache implements CacheLayer {
     // whole. A commit that fails after the rename takes the artifact back
     // out: the old rows then name no artifact, which a probe reads as a
     // miss.
+    //
+    // A previous artifact is moved aside first, never renamed over: ext4
+    // flushes the incoming file's delayed blocks when a rename replaces a
+    // file, 0.55 ms against 0.04 on the main thread with the write lock
+    // held (a `--force` run, 2026-10-02). A reader probing between the two
+    // renames finds no artifact, a miss (`ArtifactVanishedError`); one
+    // holding the old file still reads it whole. The aside name is a temp
+    // name, so a crash before its unlink leaves an orphan the sweep takes.
+    const aside = this.tempPath(hash)
+    let displaced = false
     let renamed = false
     const tx = this.db.transaction(() => {
+      try {
+        renameSync(finalPath, aside)
+        displaced = true
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err
+      }
       renameSync(tmpPath, finalPath)
       renamed = true
       insertEntry.run(
@@ -1615,7 +1649,6 @@ export class Cache implements CacheLayer {
         0,
         meta.durationMs,
         totalBytes,
-        stdoutText,
         now,
         now,
         // From the artifact, on both paths: a save indexes what it just
@@ -1623,6 +1656,8 @@ export class Cache implements CacheLayer {
         scanned.exec?.cpuMs ?? null,
         scanned.exec?.peakRssBytes ?? null,
       )
+      if (stdoutText === '') deleteStdout.run(hash)
+      else upsertStdout.run(hash, stdoutText)
       outputs.replaceFileRows(hash, outputFileRows)
       // INSERT OR IGNORE: identical inputs derive this same hash, so a
       // re-save's rows are identical — keep the first set, skip the rest.
@@ -1636,11 +1671,13 @@ export class Cache implements CacheLayer {
     try {
       tx.immediate()
     } catch (err) {
-      await unlink(renamed ? finalPath : tmpPath).catch(() => undefined)
-      throw err
-    } finally {
       endTx()
+      await unlink(renamed ? finalPath : tmpPath).catch(() => undefined)
+      if (displaced) await unlink(aside).catch(() => undefined)
+      throw err
     }
+    endTx()
+    if (displaced) await unlink(aside).catch(() => undefined)
   }
 
   /** Apply the deferred accessed_at bumps in one statement. */
@@ -1659,15 +1696,8 @@ export class Cache implements CacheLayer {
   }
 
   private writeAccessed(hashes: readonly string[], now: number): void {
-    // Chunked: SQLite's bound-parameter ceiling is 32k on modern
-    // builds, but 900 keeps us safe on any build at negligible cost.
-    for (let i = 0; i < hashes.length; i += 900) {
-      const chunk = hashes.slice(i, i + 900)
-      const placeholders = chunk.map(() => '?').join(',')
-      this.db
-        .prepare(`UPDATE entries SET accessed_at = ? WHERE hash IN (${placeholders})`)
-        .run(now, ...chunk)
-    }
+    const { test, params } = inHashes(hashes)
+    this.db.prepare(`UPDATE entries SET accessed_at = ? WHERE hash ${test}`).run(now, ...params)
   }
 
   /**
@@ -1863,13 +1893,9 @@ export class Cache implements CacheLayer {
       // space the unlinks free. Rows-first failed there before any file went,
       // and the one verb meant to free a full disk freed nothing (A-14).
       await Promise.all(hashes.map((h) => rm(this.tarPath(h), { force: true })))
+      const { test, params } = inHashes(rows)
       const deleteRows = this.db.transaction(() => {
-        for (let i = 0; i < rows.length; i += 900) {
-          const chunk = rows.slice(i, i + 900)
-          this.db
-            .prepare(`DELETE FROM entries WHERE hash IN (${chunk.map(() => '?').join(',')})`)
-            .run(...(chunk as readonly SQLQueryBindings[]))
-        }
+        this.db.prepare(`DELETE FROM entries WHERE hash ${test}`).run(...params)
       })
       try {
         deleteRows()
@@ -2036,10 +2062,17 @@ const SQLITE_FCNTL_PERSIST_WAL = 10
  * `sqlite3_close_v2` does), so `cache.db` and its `-wal` and `-shm` stayed
  * open after `Cache.close()`: a leaked descriptor per run for an embedder
  * (O-10).
- * `close(true)` finalizes them and closes.
+ * `close(true)` finalizes them and closes. Below the Bun floor (1.3.14) it
+ * does not finalize: it answers SQLITE_BUSY, "database is locked", and every
+ * `vx run` exited 1 with that stack after its tasks had passed (M-44). There
+ * the deferred close is the one that closes.
  */
 function closeDb(db: Database): void {
-  db.close(true)
+  try {
+    db.close(true)
+  } catch {
+    db.close()
+  }
 }
 
 /**

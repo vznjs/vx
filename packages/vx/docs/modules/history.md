@@ -24,6 +24,8 @@ export type HistoryTable = ReadonlyMap<string, TaskHistory>
 
 export interface HistoryProvider {
   loadFor(taskIds: readonly string[]): Promise<HistoryTable>
+  /** `loadFor`'s p50s alone; optional, a reader without it uses `loadFor`. */
+  p50sFor?(taskIds: readonly string[]): Promise<ReadonlyMap<string, number>>
 }
 export class EmptyHistoryProvider implements HistoryProvider {}
 
@@ -48,8 +50,9 @@ export class LocalHistoryProvider implements HistoryProvider {
 ## Who reads it
 
 - `plan.ts` (`--dry` / `--graph`): attaches each would-run task's p50 and
-  predicts the run's wall-clock. Explicit inspection commands, so the
-  read's cost is fine there.
+  predicts the run's wall-clock, through `p50sFor` when the provider has
+  it: the executed successes' durations alone, 4 ms against `loadFor`'s
+  38 at 27,000 rows (its rates and per-hit entry join read every row).
 - `@vzn/vx-schedule-history` (opt-in): the `schedule` stage's
   priorities, over a 20-invocation window by default.
 - Nothing on the default `vx run` path.
@@ -96,7 +99,8 @@ stay exact). Measured 2026-09-09 at 116k rows, 1,000 pairs, window 50:
 
 The same rule, applied at the end of every run and by the doctor:
 
-- `detectFlaky(db, candidates)` — the run's executed, keyed,
+- `detectFlaky(db, candidates)` — each a `FlakyCandidate`
+  (`{ project, task, hash, status, attempts }`): the run's executed, keyed,
   cache-declaring outcomes (`run.ts` builds the list; a hit, a skip, a
   group or a task with no `cache` block is not one), judged BEFORE the
   run's own rows land. A pass on a key that failed before, a failure on

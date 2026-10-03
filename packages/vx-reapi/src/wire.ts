@@ -37,7 +37,7 @@ function varintBytes(n: number): Uint8Array {
  * one size with no peer-dependence. 128 KB was the default and stalled a
  * 1 MiB write against bazel-remote in 2 of 12 fresh runs on Bun 1.4.2, each
  * costing the call's 30 s deadline before the downgrade below retried it;
- * 65535 stalled in none (F-20). It costs ~45% on a 32 MiB upload
+ * 65535 stalled in none (F-20). It costs ~51% on a 32 MiB upload
  * (390 → 590 ms on loopback), far below one expected stall. A larger
  * `chunkBytes` stays available, with the downgrade as its net.
  *
@@ -213,21 +213,31 @@ interface ServiceClients {
   bs: grpc.Client
   caps: grpc.Client
   exec: grpc.Client
+  ops: grpc.Client
 }
 
 type Ctors = Record<string, new (...a: unknown[]) => grpc.Client>
-let loaded: { v2: Ctors; bs: Ctors } | undefined
+let loaded: { v2: Ctors; bs: Ctors; ops: Ctors } | undefined
 
 /** Parsed ONCE per process: proto parsing is ~28 ms and identical every time. */
-function ctors(): { v2: Ctors; bs: Ctors } {
+function ctors(): { v2: Ctors; bs: Ctors; ops: Ctors } {
   if (loaded !== undefined) return loaded
+  // remote_execution.proto imports google.longrunning: its Operations
+  // service comes with the same parse.
   const reapi = grpc.loadPackageDefinition(
     protoLoader.loadSync('build/bazel/remote/execution/v2/remote_execution.proto', LOAD_OPTIONS),
-  ) as unknown as { build: { bazel: { remote: { execution: { v2: Ctors } } } } }
+  ) as unknown as {
+    build: { bazel: { remote: { execution: { v2: Ctors } } } }
+    google: { longrunning: Ctors }
+  }
   const bytestream = grpc.loadPackageDefinition(
     protoLoader.loadSync('google/bytestream/bytestream.proto', LOAD_OPTIONS),
   ) as unknown as { google: { bytestream: Ctors } }
-  loaded = { v2: reapi.build.bazel.remote.execution.v2, bs: bytestream.google.bytestream }
+  loaded = {
+    v2: reapi.build.bazel.remote.execution.v2,
+    bs: bytestream.google.bytestream,
+    ops: reapi.google.longrunning,
+  }
   return loaded
 }
 
@@ -256,14 +266,14 @@ const MAX_MESSAGE_BYTES = 256 * 1024 * 1024
 const FLOW_CONTROL_WINDOW = 16 * 1024 * 1024
 
 /**
- * All five service stubs share ONE channel. Constructing them independently
- * opens one HTTP/2 connection per service to the same endpoint — five times
- * the sockets, five times the flow-control state, and a server that sees five
+ * All six service stubs share ONE channel. Constructing them independently
+ * opens one HTTP/2 connection per service to the same endpoint — six times
+ * the sockets, six times the flow-control state, and a server that sees six
  * clients where there is one. `channelOverride` is grpc-js's supported way to
  * bind extra stubs onto an existing channel.
  */
 function loadServices(target: string, creds: grpc.ChannelCredentials): ServiceClients {
-  const { v2, bs } = ctors()
+  const { v2, bs, ops } = ctors()
   // An ActionResult listing a real dependency tree is megabytes, and the
   // default limit rejects it with RESOURCE_EXHAUSTED — measured at 4 359 595
   // bytes against the 4 194 304 default. Applied to EVERY stub: the limit is
@@ -281,6 +291,7 @@ function loadServices(target: string, creds: grpc.ChannelCredentials): ServiceCl
     caps: new v2['Capabilities']!(target, creds, shared),
     exec: new v2['Execution']!(target, creds, shared),
     bs: new bs['ByteStream']!(target, creds, shared),
+    ops: new ops['Operations']!(target, creds, shared),
   }
 }
 
@@ -483,6 +494,17 @@ export class ReapiClient {
     // not silently lengthen every metadata probe too.
     this.metaTimeoutMs = opts.metaTimeoutMs ?? Math.min(this.callTimeoutMs, META_TIMEOUT_CAP_MS)
     this.onWarn = opts.onWarn ?? (() => undefined)
+    // A zero, negative or non-number deadline ended every call as it began.
+    for (const [name, ms] of [
+      ['callTimeoutMs', this.callTimeoutMs],
+      ['metaTimeoutMs', this.metaTimeoutMs],
+    ] as const) {
+      if (!(typeof ms === 'number' && Number.isFinite(ms) && ms > 0)) {
+        throw new Error(
+          `@vzn/vx-reapi: ${name} must be a positive number of ms (got ${JSON.stringify(ms)})`,
+        )
+      }
+    }
     if (!Number.isInteger(this.chunkBytes) || this.chunkBytes < 1) {
       throw new Error(
         `@vzn/vx-reapi: chunkBytes must be a positive integer (got ${this.chunkBytes})`,
@@ -1355,6 +1377,7 @@ export class ReapiClient {
           operationName === ''
             ? await this.operationStream('execute', req, signal, opts.onStage, (n) => {
                 operationName = n
+                opts.onOperation?.(n)
               })
             : await this.operationStream(
                 'waitExecution',
@@ -1388,6 +1411,23 @@ export class ReapiClient {
       if (delay === undefined) throw failure
       await abortableSleep(delay, signal)
     }
+  }
+
+  /**
+   * `Operations.CancelOperation`: closing the Execute stream leaves a queued
+   * action to the server, which may still run it. One attempt on the
+   * control-plane deadline: a cancel is a courtesy, and a server without
+   * the service answers UNIMPLEMENTED.
+   */
+  cancelOperation(name: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      ;(this.svc.ops as unknown as Record<string, Function>)['cancelOperation']!(
+        { name },
+        this.meta(),
+        this.boundedMeta(),
+        (err: grpc.ServiceError | null) => (err ? reject(err) : resolve()),
+      )
+    })
   }
 
   /** Re-attach to an in-flight operation after a disconnect. */
@@ -1527,6 +1567,8 @@ export interface Operation {
 }
 
 export interface ExecuteOptions {
+  /** The operation's name, once the server has given one. */
+  onOperation?: (name: string) => void
   /** Default TRUE: vx owns the cache decision, so the server must not re-check its own AC. */
   skipCacheLookup?: boolean
   inlineStdout?: boolean

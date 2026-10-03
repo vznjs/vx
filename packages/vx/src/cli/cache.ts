@@ -23,6 +23,8 @@ const CACHE_ELSEWHERE: Record<string, string> = {
   status: '`vx info` reports the cache directory, its entry count and its size',
   size: '`vx info` reports the cache directory, its entry count and its size',
   entries: '`vx info` reports the cache directory, its entry count and its size',
+  list: '`vx info` reports the cache entry count and size, and `vx last --list` the recent runs',
+  ls: '`vx info` reports the cache entry count and size, and `vx last --list` the recent runs',
   dir: '`vx info` prints the cache directory this workspace uses',
   path: '`vx info` prints the cache directory this workspace uses',
   clean: '`vx cache prune` is the eviction verb (`--older-than`, `--max-size`)',
@@ -30,13 +32,16 @@ const CACHE_ELSEWHERE: Record<string, string> = {
   rm: '`vx cache prune` is the eviction verb (`--older-than`, `--max-size`)',
   delete: '`vx cache prune` is the eviction verb (`--older-than`, `--max-size`)',
   evict: '`vx cache prune` is the eviction verb (`--older-than`, `--max-size`)',
+  gc: '`vx cache prune` is the eviction verb (`--older-than`, `--max-size`)',
+  purge: '`vx cache prune` is the eviction verb (`--older-than`, `--max-size`)',
 }
 
 function cacheSubHint(sub: string): string {
   const elsewhere = CACHE_ELSEWHERE[sub]
   if (elsewhere !== undefined) return ` — ${elsewhere}`
   const best = nearest(sub, ['prune'])
-  return best === undefined ? '' : `. Did you mean ${best}?`
+  // `prune` is the one subcommand: name it when nothing is near (M-58).
+  return best === undefined ? '. The subcommand is prune' : `. Did you mean ${best}?`
 }
 
 export async function cacheCmd(args: readonly string[]): Promise<number> {

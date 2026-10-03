@@ -105,7 +105,7 @@ describe('vx init source detection', () => {
     async () => {
       const root = await makeRoot('vx-init-root-')
       const note =
-        "fixture-root (the workspace root): its scripts that check the whole repo are its tasks; those that run the members (`pnpm -r`, `--filter`, a runner) or share a member's task name are left out"
+        'fixture-root (the workspace root): its scripts that check the whole repo are its tasks; left out as running the members (`pnpm -r`, `--filter`, a runner): build'
       try {
         await addPackage(root, 'a', { build: 'tsc' })
         // CONTROL: a root with no scripts says nothing.
@@ -870,6 +870,8 @@ describe('migrateScripts', () => {
     // task; one that runs the members, or shares a member's task name, is
     // not (remix: `vx run lint` found no project).
     const rootMeta = meta('root', '/w', {
+      // D-85: a left-out script's hook goes with it, not into a task.
+      prebuild: 'rm -rf dist',
       build: 'tsc -b',
       lint: 'eslint .',
       test: 'npm run test --workspaces',
@@ -896,7 +898,7 @@ describe('migrateScripts', () => {
       ['root', ['lint', 'check', 'typos']],
     ])
     expect(plan.notes).toEqual([
-      "root (the workspace root): its scripts that check the whole repo are its tasks; those that run the members (`pnpm -r`, `--filter`, a runner) or share a member's task name are left out",
+      "root (the workspace root): its scripts that check the whole repo are its tasks; left out as running the members (`pnpm -r`, `--filter`, a runner): test, dev, play, e2e, ci, build:common, build:b, prisma and 4 more; left out as a member's task name, so `--all` never runs one twice: build — one that does other work maps by hand under a name of its own",
     ])
     // CONTROL: a hand-written root config stays as written.
     const configured = { ...rootMeta, configPath: '/w/vx.config.ts' }
@@ -948,6 +950,34 @@ describe('migrateScripts', () => {
     ).toEqual([
       ['a', ['build']],
       ['root', ['bench', 'mocha', 'pack', 'watch']],
+    ])
+  })
+
+  it("a root script's hook is judged with its script, never by a member's name (D-85)", () => {
+    // npm/cli: each member declares `postlint`, and the root's own was
+    // dropped from its `lint` as a member's task name.
+    const meta = (name: string, dir: string, scripts: Record<string, string>) => ({
+      name,
+      dir,
+      packageJson: { name, scripts } as never,
+      configPath: null,
+    })
+    const root = meta('root', '/w', { lint: 'eslint .', postlint: 'echo after' })
+    const a = meta('a', '/w/packages/a', { build: 'tsc', postlint: 'true' })
+    const plan = migrateScripts([root, a])
+    expect(plan.projects[1]!.tasks).toEqual([
+      {
+        name: 'lint',
+        todos: [
+          'npm ran `postlint` around this script without being asked; folded into the command in that order',
+        ],
+        task: {
+          exec: { command: 'vx_script() {\n(eslint . "$@"\n) && (echo after\n)\n}\nvx_script' },
+        },
+      },
+    ])
+    expect(plan.notes).toEqual([
+      'root (the workspace root): its scripts that check the whole repo are its tasks',
     ])
   })
 
@@ -1581,6 +1611,105 @@ describe('vx init — the generated build is not a cached no-op', () => {
 })
 
 describe('vx init on a workspace with no scripts', () => {
+  // Globs that reach no package said only "no scripts", naming nothing to
+  // fix (M-42).
+  it('names the workspace globs that match no package.json', async () => {
+    const root = await makeRoot('vx-init-noglob-')
+    try {
+      const notes = async (): Promise<string[]> =>
+        (await vx(root, ['init', '--dry'])).out.split('\n').filter((l) => l.startsWith('note: '))
+      expect(await notes()).toEqual([
+        'note: the workspace globs ("packages/*") match no package.json: add a package under one, or fix the glob',
+      ])
+      // CONTROL: a member under the glob, still with no scripts.
+      await addPackage(root, 'app', {})
+      expect(await notes()).toEqual([])
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('names the root when a single package has no name (M-54)', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'vx-init-nameless-root-'))
+    try {
+      await writeFile(
+        path.join(root, 'package.json'),
+        JSON.stringify({ private: true, scripts: { build: 'tsc' } }),
+      )
+      const lines = (await vx(root, ['init', '--dry'])).out.split('\n')
+      expect(lines.filter((l) => l.startsWith('note: not mapped'))).toEqual([
+        'note: not mapped: the root — its package.json has no "name", and vx names a project by it; give it one and run `vx init` again',
+      ])
+      // The scripts exist: the headline said there were none (M-59).
+      expect(lines.filter((l) => l.startsWith('vx init:'))).toEqual([
+        'vx init: no package.json scripts became tasks.',
+      ])
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('names a package.json workspaces list pnpm-workspace.yaml overrides (M-51)', async () => {
+    const root = await makeRoot('vx-init-bothws-')
+    try {
+      await addPackage(root, 'a', { build: 'true' })
+      const note = async (): Promise<string[]> =>
+        (await vx(root, ['init', '--dry'])).out
+          .split('\n')
+          .filter((l) => l.includes("package.json's `workspaces`"))
+      const manifest = (workspaces?: unknown) =>
+        writeFile(
+          path.join(root, 'package.json'),
+          JSON.stringify({ name: 'fixture-root', private: true, workspaces }),
+        )
+      await manifest(['apps/*'])
+      expect(await note()).toEqual([
+        "note: pnpm-workspace.yaml's `packages` lists the members, as pnpm reads them; package.json's `workspaces` (\"apps/*\") is not read: if bun, npm or yarn installs this repo, copy those globs into pnpm-workspace.yaml's `packages`, or delete that key so package.json decides",
+      ])
+      // The object form is read too.
+      await manifest({ packages: ['apps/*'] })
+      expect(await note()).toHaveLength(1)
+      // CONTROLS: the same list, and none at all, say nothing.
+      await manifest(['packages/*'])
+      expect(await note()).toEqual([])
+      await manifest(undefined)
+      expect(await note()).toEqual([])
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('does not call a matched but unaddressable member unmatched', async () => {
+    const root = await makeRoot('vx-init-unaddr-')
+    try {
+      const globNote = async (): Promise<string[]> =>
+        (await vx(root, ['init', '--dry'])).out
+          .split('\n')
+          .filter((l) => l.startsWith('note: the workspace globs'))
+      // CONTROL: no member at all is still named (M-42).
+      expect(await globNote()).toHaveLength(1)
+      // Two manifests sharing a name: both matched, both left out (M-46).
+      for (const dir of ['b', 'c']) {
+        await mkdir(path.join(root, 'packages', dir), { recursive: true })
+        await writeFile(
+          path.join(root, 'packages', dir, 'package.json'),
+          JSON.stringify({ name: 'dup', scripts: { build: 'true' } }),
+        )
+      }
+      expect(await globNote()).toEqual([])
+      // A nameless manifest alone: matched, not addressable.
+      await rm(path.join(root, 'packages'), { recursive: true })
+      await mkdir(path.join(root, 'packages', 'a'), { recursive: true })
+      await writeFile(
+        path.join(root, 'packages', 'a', 'package.json'),
+        JSON.stringify({ scripts: { build: 'true' } }),
+      )
+      expect(await globNote()).toEqual([])
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   it('writes the workspace file, prints an example config and the next command', async () => {
     const root = await makeRoot('vx-init-empty-')
     await addPackage(root, 'app', {})
@@ -1728,12 +1857,37 @@ describe('vx init (package.json scripts)', () => {
     TIMEOUT,
   )
 
-  it('refuses to overwrite without --force, like migrate', async () => {
+  it('keeps each config it finds, writes the missing ones, and names the kept (M-52)', async () => {
+    // A half-adopted workspace: one config edited by hand, one gone. The
+    // whole init was refused, and --force would have replaced the edit.
+    const app = path.join(root, 'packages', 'app', 'vx.config.ts')
+    const lib = path.join(root, 'packages', 'lib', 'vx.config.ts')
+    const hand = "export default { tasks: { build: { exec: { command: 'echo mine' } } } }\n"
+    await writeFile(app, hand)
+    await rm(lib)
     const again = await vx(root, ['init'])
-    expect(again.code).toBe(1)
-    expect(again.err).toContain('refusing to overwrite')
+    expect({ code: again.code, err: again.err }).toEqual({ code: 0, err: '' })
+    expect(await Bun.file(app).text()).toBe(hand)
+    expect(await Bun.file(lib).exists()).toBe(true)
+    const lines = again.out.split('\n')
+    const from = lines.indexOf('files written:')
+    expect(lines.slice(from, from + 4)).toEqual([
+      'files written:',
+      '  packages/lib/vx.config.ts',
+      'kept (each already has a vx config):',
+      '  packages/app/vx.config.ts',
+    ])
+    // CONTROL: nothing missing, nothing written, every config named kept.
+    const third = await vx(root, ['init'])
+    expect(third.code).toBe(0)
+    expect(third.out).toContain(
+      'no files written\nkept (each already has a vx config):\n  packages/app/vx.config.ts\n  packages/lib/vx.config.ts\n',
+    )
+    expect(await Bun.file(app).text()).toBe(hand)
+    // --force still replaces, as asked.
     const forced = await vx(root, ['init', '--force'])
     expect(forced.code).toBe(0)
+    expect(await Bun.file(app).text()).not.toBe(hand)
   })
 
   it('is also the fallback source of vx migrate when no turbo.json or nx exists', async () => {

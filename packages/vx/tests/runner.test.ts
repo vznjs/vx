@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -132,19 +132,32 @@ describe('runCommand', () => {
   // nx#36863, nx#35302: output a task's background child printed just
   // after the task exited was missing from the log and the replay. Within
   // the post-exit drain it is kept: live, and in what the cache stores.
-  // The grandchild prints once its parent is gone, not after a fixed
-  // sleep: `sleep 0.1` plus a loaded macOS runner's start-up overran the
-  // 250 ms drain (CI, 292 ms), and the claim is "just after the exit".
+  // The TEST releases the grandchild: it holds the only reader of `gone`,
+  // whose one writer is the shell (the exit is its EOF), and 50 ms after
+  // that EOF writes `go`, which the grandchild waits on to print. Late
+  // enough that a 0 ms drain loses it; and nothing after the exit forks.
+  // The grandchild's own `sleep 0.05` (CI, macOS, 2026-10-03), a fixed
+  // `sleep 0.1` (292 ms) and a `kill -0` loop forking `sleep 0.01` (317 ms)
+  // each paid an exec under load and overran the 250 ms drain (M-68).
   it('a grandchild that prints within the post-exit drain reaches the live stream and the result', async () => {
+    const gone = path.join(cwd, 'gone')
+    const go = path.join(cwd, 'go')
+    expect(Bun.spawnSync(['mkfifo', gone, go]).exitCode).toBe(0)
     let live = ''
-    const result = await runCommand({
-      command: '(while kill -0 $$ 2>/dev/null; do sleep 0.01; done; echo TAIL) & echo HEAD',
+    const running = runCommand({
+      command: '(read _ < go; echo TAIL) & exec 3> gone; echo HEAD',
       cwd,
       env: { PATH: process.env.PATH ?? '' },
       onStdout: (chunk) => {
         live += chunk
       },
     })
+    // Opening `gone` for reading is what lets the shell's `exec 3> gone`
+    // go on, so this reader is held before the shell can exit.
+    await readFile(gone)
+    await Bun.sleep(50)
+    await writeFile(go, '\n')
+    const result = await running
     expect(result.exitCode).toBe(0)
     expect(result.stdout).toBe('HEAD\nTAIL\n')
     expect(live).toBe('HEAD\nTAIL\n')
@@ -1224,8 +1237,13 @@ describe('runPersistent — the rows its sweep asked for', () => {
       await Promise.allSettled([polite.ready, deaf.ready])
       await polite.child.exited
       expect(await Bun.file(heard).exists()).toBe(true)
-      expect(await waitForDead(deaf.child.pid, 3_000)).toBe(true)
-      expect(deaf.child.signalCode).toBe('SIGKILL')
+      // `signalCode` is set when Bun reaps the child, after the kernel says
+      // dead: read right after `waitForDead` it was null 4 times in 50 (M-32).
+      const died = await Promise.race([
+        deaf.child.exited.then(() => deaf.child.signalCode),
+        Bun.sleep(3_000).then(() => 'still running'),
+      ])
+      expect(died).toBe('SIGKILL')
     } finally {
       if (prev === undefined) delete process.env['VX_KILL_GRACE_MS']
       else process.env['VX_KILL_GRACE_MS'] = prev

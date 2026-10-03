@@ -1072,3 +1072,594 @@ uncached sandboxed task): min 453 → 377 ms, median ~495 → ~440 over 12
 interleaved runs per arm. Rows: `sandbox-prewarm.unsafe.test.ts`; each
 half and the wait fail their row without themselves, and the control
 fails an unconditional prewarm.
+
+## C-80: no partial tree survives a failing run, over random graphs
+
+`tests/continue-cache-properties.test.ts` runs 24 seeded random graphs
+end to end, three runs each: a healthy run warms every entry; some
+inputs change and some tasks fail (a flag outside every key) under one
+`--continue` mode; a healthy run with the same keys. That run must
+execute exactly the changed tasks the failing run did not save, and
+every output must hold its healthy bytes: an output is its input plus
+its deps' outputs, and a failure writes PARTIAL. `g`'s tasks have no
+cache, so a hit above one restores ahead of its failure (C-1's shape).
+Red when the taint is disabled (`out/t2.txt` replays PARTIAL) and when a
+restore-tier hit releases its dependants before its deps settle (item
+963's hold). Test only.
+
+## C-85: a plugin executor's throw is the plugin's, not vx's internal error
+
+Every pipeline stage turns a plugin's throw into a refusal naming the
+plugin (`safe()`); a plugin executor's throw from `execute` kept its
+class, so a plain `Error` printed `[vx] internal error in a#build:
+plugin 'p' (executor 'e') failed in execute: boom`, calling the plugin's
+failure vx's bug. `nameExecutorFailure` now returns a `UserError` with
+that message and the plugin's error as its `cause`: printed plainly,
+and a second task rejected with the same reason says `as <id> above`.
+The plugin's own error is no longer renamed in place, so the C-74 guard
+went with it. Rows (`plugin-capabilities.test.ts` › an executor's throw
+reaches the task's own stderr; one error an executor rejects two tasks
+with is named once in each, now read from each task's frame line): the
+first red without the change, both red on the old rename without its
+guard. `modules/executor.md`, `modules/plugin-host.md` and
+`execution.md` say so.
+
+## C-86: run() refuses a word or a shape the CLI would not pass
+
+C-61 refused the façade's bad numbers; its words and shapes went
+through. A probe of `run()` with what a JS embedder can pass: a
+`continueMode` of `'sometimes'` ran as `deps-ok`, so a typo lost
+fail-fast without a word; `outputLogs`, `download` and `flow` took any
+string; a string `excludeDependencies` dropped nothing; a `projects`
+string and a `signal` that is no `AbortSignal` died a `TypeError` inside
+the run. `run()` and `planRun()` (which checked nothing) now refuse
+each as a `UserError` naming the option, what it is and what it must be.
+Row (`run-option-shapes.test.ts` › refuses a word or a shape the CLI would
+not pass, at run() and planRun()): red without the change; its control
+runs each word the CLI passes. `modules/orchestrator.md` says so.
+
+## C-87: `--retry` says it never retries a server
+
+`schema.md` said the run-level `--retry` "applies to tasks that don't
+declare their own `retries`", and `cli.md` that it re-runs a failed
+task; a persistent task declares none, and a probe with `retries: 2`
+on a server that exited before it was ready ran it once and failed it,
+as `exec.retries` on a persistent task is refused. Both now say it never
+retries a persistent one. Docs only.
+
+- **H:** `wireForwarder`, `toWireEvent`, `WireEvent` and `projectNode`
+  (`orchestrator/events.ts`) have no caller but `tests/dev.test.ts`: the
+  façade exports none of them, so the "serializable `WireEvent`" that
+  `RunOptions.bus`'s comment says core ships reaches no embedder, and
+  their comment cites a `createWireRenderer` removed with vx cloud.
+  `TaskView` stays on the façade with nothing producing it. Export the
+  wire form or remove it with `TaskView`: a contract call.
+
+## C-64: say who hears `runEnd` twice
+
+The logger's tail flush and three test comments said run() calls
+`runEnd` twice so the renderer hears both; `busLogger` delivers
+`run:end` once, so in the CLI the renderer hears one (C-56 met this: a
+kept server's last partial line waited on a second call that never
+came). The comments now say a renderer an embedder drives directly may
+hear both. Comments and a row title only.
+
+## C-66: a plugin hears nothing after its teardown
+
+The normal path tore the plugins down before the keep-alive wait but
+released their bus subscriptions (`ctx.on` handlers, telemetry sinks)
+only in run()'s finally, after it: through a whole `vx run dev`
+session a plugin's `onTaskStdout` heard the server after its own
+`teardown()` had closed what it writes to. The subscriptions are now
+released just before the teardown. Row (`keep-alive.test.ts` › a plugin
+hears nothing after its teardown while vx holds a server): red without
+the fix (`torn:AFTER`). `modules/plugin.md` says so.
+
+## C-68: schema.md says which servers the end of the graph keeps
+
+`schema.md`'s persistent semantics said the end of the graph SIGTERMs
+every persistent subprocess; the foreground keeps the requested ones,
+those a requested group stands for (C-52) and their persistent
+dependencies (C-46), unless the run failed elsewhere (C-60). The bullet
+now says so. Docs only.
+
+## C-78: the taint rule holds over random graphs
+
+`tests/taint-properties.test.ts` drives `taintTracker` over 3,000 seeded
+random graphs, settling outcomes in any order (a restore-tier hit
+settles before its deps) with partial asks between, and holds every ask
+made once a task's ancestors have settled to a brute-force reference,
+in both modes: `--continue=always` and seeds alone
+(`--exclude-dependencies`), on the full-period PRNG of C-79. Mutants
+caught: a clean answer memoized before its deps' answers were final
+(C-23's rule), the memo kept unconditionally, `skipped` dropped from the poison set, the
+seed check dropped from `judge`, and the tracker disabled when only
+seeds are set. Survivors are equivalent (a seed's deps; the memo's
+timing for a taint). Test only.
+
+## C-79: the task graph over random workspaces, on a PRNG that does not cycle
+
+`tests/task-graph-properties.test.ts` builds 2,000 seeded random
+workspaces (package-graph cycles, sparse holders, `name`, `^name`,
+`pkg#name`, `build.*`, `^build.*`, the odd typo and back edge) and holds
+`buildTaskGraph` to a recursive reference: the same tasks, edges and
+requested flags, and a refusal exactly where the reference refuses
+(43%: cycles and missing tasks). Mutants caught: the declaring project
+not seeding the `^` walk, a holder that does not stop it, the edge
+dedupe, a pattern matching its own task, requested promotion, a pattern
+holder's later matches, the pending list, and the undeclared-`^name`
+refusal. Re-adding a pending node already added survives; it builds the
+same graph.
+Writing it found the PRNG the property files shared,
+`(s * 1103515245 + 12345) % 2 ** 31` in floats, losing the product's
+low bits past 2 ** 53 and cycling: seed 298 after 71 draws, 1019 within
+11,079, so C-71's 2,000 graphs repeated. `tests/helpers/rng.ts`
+(mulberry32, `Math.imul`) replaces it there, here and in
+`summary-meters.test.ts` (whose `& 0x7fffffff` variant cycles after
+10,726, past the 8,000 draws its sweep takes); `tests/rng.test.ts` holds
+it to no cycle in a million draws and an even spread, both red on the
+old one. C-71 still passes on the full-period stream. Test only.
+
+## C-81: scheduler.md's restore-rank sentence reads
+
+`modules/scheduler.md` said "A rank that can count a diamond twice which
+only reorders restores among themselves", a clause with no verb (C-51's
+note). It now says the rank can count a diamond twice and that this
+only reorders restores among themselves. Docs only.
+
+## C-82: a run with servers in it always ends and leaves no child
+
+Probes of 190 and 120 seeded random graphs mixed one-shots that pass,
+fail or take a while with servers that get ready, crash before or after
+it, never get ready inside their timeout, or trap SIGTERM, under each
+`--continue` mode, with and without `holdPersistent`, run to the end or
+stopped by `RunOptions.signal` (SIGINT or SIGTERM) at a random moment:
+every run ended and no child outlived it (or its held servers'
+`stop()`). They are now `tests/persistent-lifecycle-properties.unsafe.test.ts`
+(12 graphs each, ~9 s): red when the end of the graph does not SIGKILL
+what outlives the grace, and both rows hang when the stop's teardown
+does not. A dropped SIGTERM or a leader-only one survives: the SIGKILL
+sweep still ends the groups, and graceful stops are not what these rows
+hold. Unsafe for the liveness check. Test only.
+
+## C-83: twenty runs in one process give back what they took
+
+An embedder (`vx watch`, a daemon) runs many runs in one process. A
+probe of 200 runs of a graph with a cached task, a server, a task on it
+and a sandboxed task, alternating `handleSignals` and `holdPersistent`,
+found the open descriptors and the signal and exit listeners steady
+after the first runs and RSS flat at ~108 MB. `tests/repeated-runs.unsafe.test.ts`
+holds twenty such runs to the fifth's counts: red without the cache
+close (21 → 28 descriptors) and without the signal handlers' removal.
+A run that skips the sandbox reset leaks none of these, so the row says
+nothing about it. Test only.
+
+## C-84: a teardown's throw is named as every stage's is
+
+A probe threw from each plugin hook through `vx run`: every stage said
+`plugin '<p>' failed in <stage>: <reason>` (C-54 for setup), and no
+stack reached the user, except teardown, which said `plugin '<p>'
+teardown failed: boom`. It now says `failed in teardown`; the run's
+verdict still stands. Row (`plugin-teardown.test.ts` › a teardown that
+throws is told by its message): red without the change.
+`modules/plugin-host.md` says so.
+
+## Probes and leads (2026-10-02)
+
+Probe, not fixed (2026-10-02): a dependency server that exits non-zero in
+the same instant the graph ends can read as the end-of-graph stop's kill:
+`shutdownPersistent` judges "ended" before Bun has reaped it. 15 of 40
+runs read green when the server exited 3 as its last dependant finished;
+with 200 ms between them 40 of 40 failed it. One event-loop yield before
+the check did not separate the cases (the stop's SIGTERM and the
+server's own exit race), so the window stays; its dependants had passed.
+
+Lead for E (watch): `watch-loop.test.ts` › "a server that rewrites a file
+in its project is named after three restarts (item 948)" timed out once
+on macOS (#2247, run 37056783434) and passed on its re-run; no output
+was captured past the timeout.
+
+## C-62: a server a Ctrl-C killed while it started is aborted
+
+A Ctrl-C while a dev server was still starting read `failed (never
+ready: exited, exit 130)`, with a failure recap and a "failed to become
+ready" line, where every other task the stop kills is `aborted` (item
+962). A readiness failure after the run's stop now returns `aborted`.
+Row (`abort.test.ts` › a server still starting when the run stops is
+aborted, not failed): red without the fix; probed through the CLI
+(3/3 aborted). `cli.md` says so.
+
+## C-70: the scheduler's promises over random graphs, as a test
+
+Three probes this stream ran (C-51 to C-69) checked the scheduler and
+the taint tracker over thousands of random graphs and found nothing;
+a probe that confirms a thesis becomes a test. `scheduler-properties.
+test.ts` runs 450 seeded graphs (restores, demotions, groups, pools, an
+admission policy, failures, a stop, each `--continue` mode) against
+what `modules/scheduler.md` promises, and 300 against the taint
+tracker's definition. Each of three scheduler mutations reddens it:
+the item-963 hold, the skipped-upstream skip, the stop's skip. It
+draws from the full-period PRNG of C-79: the float LCG it first used
+cycled within 15,000 draws, so most graphs repeated.
+
+## C-88: what waits on a server that died mid-run no longer runs
+
+A ready server that exited non-zero while the graph ran was failed only
+at the run's end: its dependants not yet started ran against it, and
+`--continue=never` kept dispatching. The scheduler takes
+`serverDied(id)`, answered by run() from the persistent registry: a
+dependant of a dead server skips, `blockedBy` the server, and under
+`never` dispatch stops. Rows (`server-crash-fail-fast.test.ts`): the
+`never` row red without the change, the `deps-ok` row red without its
+half; `b`, which does not depend on the server, still runs under
+`deps-ok`. `cli.md` and `modules/scheduler.md` say so.
+
+## C-89: a task behind a group skips when the group's server dies
+
+C-88 skipped a dead server's direct dependants not yet started. A group
+finishes the moment its server is ready, so a task depending on the
+group ran against a server that died mid-run. The scheduler's check now
+follows groups to the server (`deadServerVia`), and the skip names it.
+Row: `server-crash-through-group.test.ts` (a group over a group), red
+without the change.
+
+## C-69: a server that dies mid-run is said when it dies
+
+A dependency server that crashed while its dependants ran (an `e2e`
+against an `api#dev` that fell over) was named only at the end of the
+run, `vx: api#dev exited with code 1 before the run stopped it`, while
+the dependant's failures scrolled past with no word of why. vx now says
+`vx: <id> exited with code <n> while the run went on` when it happens;
+not once the graph is done (the end of the run and the keep-alive wait
+say it), not under a stop, not for an exit 0. Rows
+(`keep-alive.test.ts` › a persistent server that dies before the run
+stops it): the crash rows read the new line first; each of the three
+guards removed reddens a row. `schema.md` says so.
+
+Open lead (2026-10-02): under `--continue=always` a task dispatched after its
+server died (C-88) still saves: the taint reads settled outcomes, and a
+ready server's says `success` until the run ends. A fix must record
+whether the server was dead at the task's dispatch, so a grand-dependant
+inherits it; not done.
+
+## C-90: nothing built after a server died is saved under `--continue=always`
+
+The lead filed with C-69's record. Under `always` a task downstream of a
+failure runs but is never saved; a server that died mid-run is such a
+failure (C-88), but its outcome said `success` until the run ended, so a
+task dispatched after the death, and every task built on it, saved under
+healthy keys, and the next healthy run replayed them as hits. `run()`
+now seeds the taint at such a task's dispatch (`deadServerBehind`, now
+shared with the scheduler), and the tracker carries it on. Row:
+`always-dead-server-taint.test.ts`, red without the change (both the
+dependant and its grand-dependant replayed). `cli.md` and
+`modules/admission.md` say so.
+
+Probe (2026-10-03, the supervisor's ask from E2's profile): the warm
+no-op run's `record history` (~4 ms) and `close` (~3 ms), 20 hits.
+Record history: the bundle's 21 inserts 0.85 ms (cold-process first
+calls, index upkeep) and its commit 0.7 ms. Close: `closeDb` 1.1 ms is
+the last connection's WAL checkpoint (0.03 ms with a second handle
+open); `bun:sqlite` has no `db_config`, so `NO_CKPT_ON_CLOSE` is out
+of reach, and holding a handle leaks a descriptor (O-10). The run
+lock's release 0.6 ms (two async fs calls; a sync release would close
+the window `run-lock-fs.test.ts` drives, a rewrite for 0.5 ms). Retention
+plus flushes 0.6 ms; one transaction for them measured no gain (close
+min 2.6 vs 2.6 ms, 15 interleaved runs per arm). Nothing shipped.
+
+## C-91: a server's death held over random graphs
+
+`tests/server-death-properties.test.ts`: 600 seeded graphs with groups
+and servers that die at random points, all three modes. After a death
+nothing depending on the server starts under `deps-ok`, nothing starts
+under `never`, a skip charged to a server names a dead one, and every
+task ends. Red when the `deps-ok` check or the `never` trip is removed.
+The group walk survived here (a group finishes when its server is
+ready, so the shape that needs it is rare in these graphs) and stays
+held by C-89's row. Test only. The sync run-lock release (~0.5 ms) was
+dropped: a sync call cannot be held pending, so the race row could not
+be rewritten as asked, and the refusal rows inject through
+`node:fs/promises`.
+
+## C-92: a held server that dies after the run is said
+
+`vx watch` sat on "watching" over a dev server that had exited 3: a run
+that hands its servers back (`holdPersistent`) said nothing of a death
+after it returned, while `vx run`'s keep-alive says
+`vx: <id> exited with code <n>`. `run()` now watches each held server
+and says a non-zero exit, but not one the holder's `stop()` caused, nor
+again one that died during the graph. Rows
+(`held-server-exit.test.ts`): the death row red without the change;
+the stop() control red when the stop is not told apart. `cli.md` and
+`execution.md` say so.
+
+Probes (2026-10-03), `vx watch` edge cases, all clean: a server that
+exits before it is ready fails the cycle, watch keeps watching and the
+next change starts it; Ctrl-C while a held server traps TERM and INT
+ends watch 0 after the kill grace with the server gone.
+
+## C-93: a server slow to match `readyWhen` is said
+
+A dependency server whose `readyWhen` never matched held its dependants
+in silence: its output is hidden unless it fails, and with no
+`exec.timeout` the wait never ends (a probe: 5.6 s and not one line). vx
+now says once, after 10 s (`VX_READY_NOTICE_MS`), `vx: <id> not ready
+after 10 s: waiting for a line matching /<re>/ (readyWhen)`, adding
+`, with no exec.timeout` when nothing bounds it; not under a stop.
+Rows (`ready-wait-notice.test.ts`): bounded and unbounded, red without
+the change; a server ready in time says nothing. `schema.md`, the env
+table in `cli.md` and the CLI-surface contract carry the variable.
+
+Probes (2026-10-03), clean: a `readyWhen` that is no regex is refused at
+load; the lifecycle property row widened to 240 seeds (120 run to the
+end, 120 stopped at a random moment, every kind of server) found no run
+that hung and no child that outlived its run.
+
+## C-94: a watch cycle is named by a path that still exists
+
+`sed -i` (and an editor that saves through a temporary file) fires the
+temporary file's event first, so `vx watch` announced
+`app sedzCKbWc; re-running...`, a name already renamed away, never the
+`vx.config.mjs` the user edited. The judgement now lets a changed path
+that still exists name the cycle before a gone one; a deletion names it
+when nothing else changed. Rows (`watch-label-live-path.test.ts`, the
+judge driven directly): red without the change; the deletion control
+passes both ways. `cli.md` says so.
+
+A temporary file created and removed with nothing else changed (vim's
+`4913` write probe) still started a cycle; C-95 (#2502) takes it.
+
+Lead for E (2026-10-03): a dependency server that dies mid-run is
+counted failed at the run's end (`failServer`, item 1071, C-88), but
+the failure recap never shows its last lines: the terminal logger keeps
+a recap ring only for an outcome that completes `failed`, and a server
+completes `success` when it becomes ready. The footer says `1 failed`
+and `vx: <id> exited with code <n> before the run stopped it`, and the
+"Failed:" section is absent, so why it crashed is nowhere in a broad
+or CI log. The logger needs to keep a running server's ring until the
+run ends and take the late verdict (a `taskFailedLate`-shaped call from
+`run.ts`).
+
+Probes (2026-10-03), clean: `vx watch` with a project added, deleted,
+or moved away and back mid-watch; one added while another's config is
+broken; a held server that crashes while the loop idles, or ignores
+SIGTERM for 1.5 s (the next cycle's server still binds the port); a
+dependency cycle and a self-dependency; two servers and their dependant
+under `--concurrency 1`.
+
+## C-96: one `VX_TIMING` table per watch cycle
+
+Under `vx watch` the marks lived for the process: each cycle's table
+reprinted every earlier cycle's rows, and its `startup` row ran from the
+previous cycle's last mark, the idle wait included (1.4 s and 3.4 s for
+a 10 ms cycle). `restartTimings()` (util/timing.ts) starts each cycle's
+table. Row (`watch-timing.test.ts`): one `startup` row per table, timed
+below the idle wait; red without the change. `modules/timing.md` and
+the `VX_TIMING` row in `cli.md` say so.
+
+Probes (2026-10-03), clean: a dependency that breaks and is fixed
+mid-watch under `--filter`; a held dev server does not hold the run
+lock; `--concurrency` refuses 0, negatives, fractions and words. By
+design, not changed: under a `--filter` glob a new matching package
+does not join a running watch (`cli.md` says the scope is resolved at
+start); a server that exits 0 after ready is fine (`schema.md`);
+`computeReverseDepCount` is O(E·N/32), 11.5 µs a task at 20,000 tasks
+against 4.3 at 1,000, and runs only without history priorities.
+
+## C-95: no watch cycle for a file born and gone since the arm
+
+vim's `4913` write probe, or a tool's lock file, created and removed
+after watch armed, read as a deletion and started a cycle with nothing
+changed. `gitFiles()` (one `git ls-files` at the arm) lists what existed,
+with every directory above a listed file (a first cut missed directories:
+a project moved away whole is one event on its directory, and the cycle
+dropping it never ran; caught by probe before merge). An ignored path,
+or no inventory, is a deletion as before. Blind spot, said in the
+source: a file born between a judgement and that cycle's keys, and gone
+by the next judgement. Rows (`watch-transient-file.test.ts`): the born-
+and-gone file and the gone directory, red without the change; controls
+for a listed file, no inventory, and a new file still present.
+A property row (`watch-judge-properties.test.ts`, 60 seeded sequences of creates, edits and deletes against a model of what the loop last saw) holds C-94 and C-95 together; the inventory rule's removal fails it.
+
+## C-97: a submodule path no longer unignores a watch batch
+
+`git check-ignore --stdin` refuses a whole batch (exit 128, "is in
+submodule") when one path sits inside a submodule, and `gitIgnored` read
+the refusal as nothing ignored: a pid file judged in the same window as
+a write under the submodule started cycles again. It now asks with
+`-v -n` (one record per path; a `!` match is not ignored), skips the
+refused path by the record count and asks the rest; a refusal before
+any record checks once for a work tree, outside one nothing is ignored
+as before. Rows (`watch-ignore-submodule.test.ts`): the submodule path
+first, two first, last, red without the change; controls without it and
+outside a repository. `modules/cli-watch.md` says so.
+
+Lead for the migrate stream (2026-10-03): `@vzn/vx-migrate`'s
+`gitIgnored` (`src/tracked-outputs.ts`) has C-97's class: one path inside
+a submodule makes `git check-ignore --stdin` exit 128 and the whole batch
+reads as nothing ignored. Core's watch copy now skips the refused path
+by `-v -n` record count (C-97, #2534); the same shape fits there.
+
+Lead for the reapi stream (2026-10-03): `vx-reapi`'s
+`materialise-concurrency.test.ts` › "output files are fetched and written
+at once, each with its own bytes" saw a peak of 4 against 5 in one local
+gate and passed on the re-run (a timing claim on concurrency, unproven).
+
+## C-98: plugin-claimed root files are re-read when watch re-arms
+
+The root files fingerprint plugins claim (item 971's set) were read once
+at start: a plugin added to the workspace config mid-watch claimed its
+file, the cycle ran under it, and an edit to that file started nothing
+until a restart. `rediscover` now recomputes the set from the reloaded
+workspace, and the loop reads it through a variable `rearm` replaces.
+Rows (`watch-claimed-files.test.ts`): the mid-watch plugin, red without
+the change (timed out); the file claimed at start, both ways. `cli.md`
+says so.
+
+## C-100: the admit stage's warnings say `[vx]` first
+
+A plugin hook made to throw at each stage in turn (config, discover,
+project, graph, key, schedule, admit, cache, executor, telemetry,
+setup, teardown): every one names the plugin and the stage, no stack,
+exit 1 where the stage is required and 0 where it fails open. Every
+warning on the status line says `[vx]` first except admit's two, so a
+plugin's failure read as task output in a CI log. Both now do. Rows
+(`admit-warning-prefix.test.ts`, `buildAdmission` driven directly):
+both lines pinned with `toEqual`, red without the change.
+`modules/plugin-host.md` says so.
+
+Probes (2026-10-03), clean: persistent tasks under `--affected` (a
+server in an unaffected project joins as a dependency; a kept dev
+server stays up); a held server's exit codes (0 → 0; 3, a SIGTERM, a
+SIGKILL → 1, each named); watch keeps its server through a failed
+initial cycle; random edit storms against a cached task, fast and with
+edits mid-cycle, 22 rounds, the output always the final input; config
+imports, direct and transitive.
+More, clean: exit codes under each `--continue` mode, an unknown task
+and a filter matching nothing (1 each); a 1,000-task workspace plans in
+124 ms and restores warm in 27 ms of `run graph`; a workspace config
+that breaks and is fixed mid-watch.
+
+## C-99: a file gone from a nested repository is a watch deletion
+
+C-95 (#2502) merged before its last commit: `git ls-files` lists a
+nested repository (a submodule, a vendored clone) as one entry and never
+the files inside, which keys read, so a file there that existed at the
+arm and is gone read as born-and-gone and started nothing. Under a
+nested repository (`inNestedRepo`) a gone path is a deletion; an
+untracked one's `dir/` entry is stored without its slash. Row
+(`watch-transient-file.test.ts` › "a file gone from inside a nested
+repository starts one"): red without the change. `modules/cli-watch.md`
+says so. Learned: the PR first carried a port of #2541 while main was red on
+`plugin-exports-documented`; the port changed a plugin-api contract
+record, and `api-break.unsafe.test.ts` failed the PR for a title with no
+`!`. A ported fix that moves a contract record carries its `!`, or the
+base is merged once the fix lands (done here).
+
+## C-101: async plugin hints and sinks never crash a run
+
+`demand` and `accepts` are synchronous executor hints. An `async
+demand()` that rejected was an unhandled rejection: a stack of vx's own
+frames and the run killed, exit 1 (reproduced). An `async accepts()`
+answered a Promise, truthy, so the executor took every task and its
+rejection went unheard (H-16's admit shape). `tellDemand` routes a
+returned Promise's rejection through the throw path (named once, asked
+no more); `selectExecutor` refuses a Promise from `accepts` by name. A
+telemetry sink's `async onRecord` / `onRunSummary` had the same hole
+(exit 1, a stack: observability breaking the run); a rejection now
+disables the sink as a throw does, said once (`disable` gained a guard,
+held by a row whose rejections are in flight together). A grep of
+every plugin hook called without `await` leaves those five, all guarded. Rows (`placement-async-hints.test.ts`, `telemetry-async-hooks.test.ts`):
+async demand and async accepts, red without the change; a sync-throw
+demand control both ways. `modules/executor.md` and `modules/telemetry.md` say so.
+
+Probes (2026-10-03), clean: Ctrl-C while a plugin's `setup` never
+settles exits 130 in 0.1 s, and a settle that nothing can drive is named
+("can never settle"); two `vx watch` loops in one workspace do not wake
+each other. Refuted: a "leftover server" after `vx run … | head -1` was
+the probe shell itself, its command line holding the marker it grepped
+for (CLAUDE.md's `pgrep -f` rule); none outlived its run in 10 tries.
+
+## C-102: the Linux watch tree skips `node_modules`, `.git` and `.vx`
+
+Bun's recursive `fs.watch` on Linux is one inotify watch per directory
+and descended into the trees the loop drops by name: this repo's root
+arm held 4,657 watches where 435 matter, and a big `node_modules` meets
+the OS limit (8,192 on many distros) and polls. On Linux the recursive
+arm is now a tree of non-recursive watches (`treeWatcher`) that never
+enters them; a directory that appears is watched and its contents
+reported, one that goes or moves is dropped (an inotify watch follows
+the inode); the arming walk throws at the watch limit so the pool still
+polls. Arm 75 → 43 ms, min of 6 interleaved. Rows
+(`watch-tree-linux.test.ts`): the ignored trees and the limit, red
+without the change; a new directory and a move, both ways. The fake
+`fs.watch` in `watch-rules.test.ts` gained `on`. `modules/cli-watch.md`
+says so.
+Checked: Bun's recursive form did not follow a symlinked directory either (an edit under the link's target: no event), so not following one is no change.
+
+Probes (2026-10-03), clean at 20× their committed seeds on fresh seeds
+(local only): the scheduler properties (3,000 graphs per `--continue`
+mode, 6,000 taint graphs), the server-death properties (1,800 seeds,
+the row's 60 s bound caps it there), the watch judgement (1,200
+sequences).
+C-103 (#2594), split out after #2578 merged at its first commit: dropping a gone path's watches walked every watch per
+deleted path; a directory is watched before anything under it, so a
+path with no watch has none below and costs one lookup (10,000
+deletions under 400 watched directories: 432 → 164 ms CPU, min of 3,
+interleaved).
+
+## C-104: watches whose directory was removed and made again are re-armed
+
+An OS watch holds an inode: after `rm -rf packages` and a restore, the
+base's watch sat on the deleted directory and the root arm drops every
+name but its own files, so watch said `watching 0 project(s)` and ran
+no edit until a restart (CLI: output `ok3` after an `ok4` edit). Made
+again inside one window, the re-read kept the dead project watches.
+Each base is now watched from its nearest existing directory for the
+next name down, and a re-arm replaces project, base and parent watches
+whose directory changed, named by dev, inode and birth time (a freed
+inode number went straight to the next directory: the same `ino`
+twice, measured). Rows (`watch-recreated-dirs.test.ts`, five): each
+guard's removal fails its row. `cli.md` says so. Probes the same hour,
+clean: fail-then-fix with a cached task; `packages/` moved away and
+back (the watch follows the inode).
+
+Probes (2026-10-03), clean: random storms of directory trees made,
+moved and removed, file edits and born-and-gone probe files against a
+cached `src/**` task, 15 rounds on the native Linux tree (C-102) and 10
+on the poller (`VX_WATCH_POLL=1`): the output always the final input.
+The day's new timing-sensitive rows (claimed files, per-cycle timing, the Linux tree, async sinks and hints, submodule ignores, transient files, the judge property) ran 8 times idle and 4 beside six CPU burners: no failure.
+Ctrl-C while a cycle stops a held server that takes 1.5 s to exit on SIGTERM: watch waits for it, exits 0 in 1.2 s, nothing left on the port.
+Storm on the C-104 branch with whole-`packages/` restores (in one window and 2.5 s apart) mixed in, each round ending in an edit: 12 rounds, the output always the final input (before C-104 the first slow restore left watch at `watching 0 project(s)`).
+
+## C-105: import and pending directories made again are re-armed
+
+C-105 (#2634, split out after #2620 merged at its first commit), same class: a config import directory (a shared preset
+outside the projects, item 949) restored after a removal kept its dead
+watch; import directories joined the ancestor arms and the re-arm's
+directory check (a sixth row); and a pending package directory (no package.json yet) replaced
+kept its dead watch too; the base's names never change, so its watch
+now re-arms when a pending entry's directory changed. First cut tried a
+removal and a make: it passed locally (the two reached the base as
+separate member changes) and failed in the gate (seen together), so the
+row replaces the directory with one rename (POSIX renames onto an empty
+directory), which no member change can catch; each guard's removal
+fails it.
+
+Probes (2026-10-03), clean, against `cli.md` and `caching.md`: a
+Ctrl-C while a cached task has half-written its outputs leaves no
+entry (the next run is a miss and rebuilds); two `vx run` at once take
+turns on the run lock, the waiter says whom it waits for and is then a
+hit, and a Ctrl-C'd run releases the lock at once; the three
+`--continue` modes over a failing task, an in-flight sibling, a queued
+sibling and a cached dependant at `--concurrency 2` give exactly the
+documented outcomes, `always` saves nothing built on the failure (the
+second run is a miss), and `never` skips a pending cache restore.
+
+Probes (2026-10-03), clean: under `--continue=never` a failure while a
+server is still starting lets the server reach ready (in flight), skips
+its dependant as fail-fast and leaves no server process; `--affected`
+marks both projects for a file `git mv`ed between them, the project of a
+deleted file staged or not, and a branch's own project against `main`;
+`vx watch --affected=main` across two branch switches runs one cycle
+each and keeps the scope it resolved at start, as `cli.md` says.
+
+Probes (2026-10-03), clean, harder variants of the run-lifecycle list:
+a Ctrl-C during the restore of a 200 MB, 40-file artifact leaves a tree
+the next run restores intact (5 of 5); a run lock held by a `kill -9`ed
+run is reclaimed at once; a `vx run` beside a `vx watch` cycle waits on
+it by pid and is then a hit; `--affected` marks the dependant of a
+deleted project, and both sides of a renamed project directory; a
+branch switch that changes a project's `vx.config` under `vx watch`
+runs the new command, and the old one after switching back; five
+branch switches give one cycle each with every output right, repeats
+restored from cache.
+
+Probes (2026-10-03), clean, scheduler and retries: at two workers a
+3 s task beside four 0.5 s ones runs last under core's structural rank
+(4.0 s; by design, `architecture.md`: durations are the
+\`@vzn/vx-schedule-history\` plugin's), and first with that plugin
+(3.0 s, the optimum); a task past its \`exec.timeout\` fails as timed
+out, its dependant is skipped and named, a sibling runs; under
+\`retries\` a failed attempt's stray output is cleaned before the next
+attempt, and the entry holds the passing attempt's files alone.

@@ -15,7 +15,7 @@ import type { Cache, CacheLayer, CachePolicy } from '../cache/index.js'
 import { PLUGIN_PACKAGE, type ProjectConfig, type WorkspaceConfig } from '../config.js'
 import type { TaskExecutor } from '../exec/index.js'
 import type { TaskNode, TaskOutcome } from '../graph/index.js'
-import { UserError } from '../util/index.js'
+import { nearest, UserError } from '../util/index.js'
 import type { ProjectMeta } from '../workspace/index.js'
 import type { EventBus, RunStartInfo } from './events.js'
 import type { TelemetryContext, TelemetrySink } from './telemetry.js'
@@ -358,6 +358,8 @@ export interface PluginContext {
   readonly workspaceRoot: string
   /** Where vx's cache lives — read-only as far as the plugin is concerned. */
   readonly cacheDir: string
+  /** Funnel warnings into the run:status channel, as every hook's context does. */
+  warn(message: string): void
   /**
    * The run event bus. A plugin can subscribe directly if its needs exceed
    * the hooks; the subscription ends with the run, as a hook's does.
@@ -481,6 +483,72 @@ export function definePlugin(origin: PluginOrigin, hooks: PluginHooks): VxPlugin
   return { ...hooks, name, [PLUGIN_PACKAGE]: name } as VxPlugin
 }
 
+/** What `refuseUnknownOptions` holds an option's value to. */
+type OptionKind<V> = [V] extends [string]
+  ? 'string'
+  : [V] extends [number]
+    ? 'number'
+    : [V] extends [boolean]
+      ? 'boolean'
+      : [V] extends [(...args: never[]) => unknown]
+        ? 'function'
+        : [V] extends [object]
+          ? 'object'
+          : 'any'
+
+/**
+ * Every option a factory takes, each with the one kind its type allows
+ * (`'any'` for a union of kinds, such as `false | { … }`). Derived from
+ * the options interface, so the type checker refuses a missing option, an
+ * extra one or a wrong kind.
+ */
+export type PluginOptionKinds<T> = {
+  readonly [K in keyof Required<T>]-?: OptionKind<Required<T>[K]>
+}
+
+/**
+ * Refuse an option a plugin factory does not take, or a value of the wrong
+ * kind, as core refuses an unknown config field. Bun strips a config's
+ * types, so a misspelt option (`reapi({ endpont })`) reached the factory,
+ * which read it as unset and quietly declined, and a string where a number
+ * or a boolean belongs (`process.env.X`) was misread or threw a bare
+ * TypeError. `factory` names the call in the message (`reapi()`).
+ */
+export function refuseUnknownOptions<T>(
+  factory: string,
+  options: unknown,
+  kinds: PluginOptionKinds<T>,
+): void {
+  if (options === undefined) return
+  if (options === null || typeof options !== 'object' || Array.isArray(options)) {
+    throw new UserError(`${factory}: options must be an object`)
+  }
+  const known = kinds as Readonly<Record<string, string>>
+  const names = Object.keys(known)
+  for (const [key, value] of Object.entries(options)) {
+    const kind = known[key]
+    if (kind === undefined) {
+      const near = nearest(key, names)
+      throw new UserError(
+        `${factory} has unknown option "${key}" (allowed: ${[...names].sort().join(', ')})` +
+          (near === undefined ? '' : ` — did you mean ${near}?`),
+      )
+    }
+    if (value === undefined || kind === 'any') continue
+    const ok =
+      kind === 'object'
+        ? value !== null && typeof value === 'object' && !Array.isArray(value)
+        : typeof value === kind
+    if (!ok) {
+      const got =
+        typeof value === 'function' ? 'a function' : (JSON.stringify(value) ?? String(value))
+      throw new UserError(
+        `${factory} option "${key}" must be ${kind === 'object' ? 'an' : 'a'} ${kind}, got ${got}`,
+      )
+    }
+  }
+}
+
 export interface InstallPluginsArgs {
   plugins: readonly Plugin[]
   workspaceRoot: string
@@ -539,6 +607,7 @@ export async function installPlugins(args: InstallPluginsArgs): Promise<() => vo
     const ctx: PluginContext = {
       workspaceRoot,
       cacheDir,
+      warn,
       // A subscription made past the hooks leaves with the run like a
       // hook's does: the bus can outlive the run (`RunOptions.bus`), and
       // one left behind hears every later run on it (item 635).

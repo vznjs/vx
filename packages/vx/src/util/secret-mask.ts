@@ -23,7 +23,7 @@ const NOT_SECRET = /_(FILE|PATH|DIR)$|^GIT_CONFIG_KEY_\d+$/i
  */
 const secretNames = new Map<string, boolean>()
 
-function secretNamed(name: string): boolean {
+export function secretNamed(name: string): boolean {
   let secret = secretNames.get(name)
   if (secret === undefined) {
     secret = SECRET_NAME.test(name) && !NOT_SECRET.test(name)
@@ -63,7 +63,16 @@ export function secretMask(
 ): SecretMask | null {
   const values = new Set<string>()
   const add = (value: string | undefined): void => {
-    if (value !== undefined && value.length >= MIN_SECRET_CHARS) values.add(value)
+    if (value === undefined || value.length < MIN_SECRET_CHARS) return
+    values.add(value)
+    // A multi-line value (a PEM key) is also masked line by line, as GitHub
+    // Actions does: a tool that indents or reflows it prints no copy of the
+    // whole value, and every line leaked (L-36).
+    if (!value.includes('\n')) return
+    for (const line of value.split(/\r?\n/)) {
+      const trimmed = line.trim()
+      if (trimmed.length >= MIN_SECRET_CHARS) values.add(trimmed)
+    }
   }
   for (const source of sources) {
     if (source === undefined) continue
@@ -122,6 +131,11 @@ export function secretMask(
 /** A task's command as vx shows it: its secret values masked. */
 export function maskedCommand(command: string, env?: TaskEnvSecrets): string {
   return secretMask([process.env, env?.define], env?.secret)?.mask(command) ?? command
+}
+
+/** A line vx prints for no one task (a plugin's warning): this process's secrets masked. */
+export function maskedLine(line: string): string {
+  return secretMask([process.env])?.mask(line) ?? line
 }
 
 /** What of a task's `exec.env` names its secrets. */

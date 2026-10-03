@@ -8,6 +8,12 @@ subtracts from what the positive globs found — a literal one excludes
 its tree, and a wildcard one is matched against the member's manifest
 (`<pattern>/package.json`) as pnpm matches it, so `!**/test/**` excludes
 `packages/test` itself (item 986) — in both discovery and the root-claim walk.
+A negation applies whatever its position, as pnpm reads its own file: a
+later positive glob does not re-include what it excluded. npm and bun
+read `package.json` `workspaces` in order and disagree with each other
+(npm drops a negation a later pattern matches as text; bun lets the last
+pattern matching a path decide), so a list that re-includes after a
+negation names a member vx leaves out (probed npm 10 and bun 1.4, D-147).
 A read that finds nothing (a missing directory, a dangling link, no
 config) is absent; a read the process could not make, out of file
 descriptors (`EMFILE`, `ENFILE`), fails discovery with the `ulimit -n`
@@ -91,6 +97,10 @@ export interface ProjectEntry {
 export function unreachedPackages(workspace: Workspace): Promise<string[]>
 export function unreachedHint(unreached: readonly string[]): string
 
+// Whether a member glob reaches any package.json but the root's,
+// addressable or not; `vx init` names globs that reach none (M-46).
+export function reachesManifest(workspace: Workspace): Promise<boolean>
+
 // The directories a recursive watch must cover to see every member.
 export function memberBaseDirs(workspace: Workspace): string[]
 
@@ -144,6 +154,11 @@ root, as pnpm has it: the walk stops at the nearest one, listed by an
 outer workspace or not. From `apps/inner` the walk went past its own file
 to the outer workspace while `apps/inner/pkgs/x` stopped there, two roots
 and two caches for one tree, until item 990.
+A `package.json` with `workspaces` of its own is a root the same way
+unless the outer root lists that directory itself, as npm reads it: a
+nested workspace inside a member (`apps/tool/ws` under `apps/*`) was
+claimed through `apps/tool`, and its members ran in a workspace that does
+not list them (D-137).
 
 When nothing claims `start` — a standalone package, or a subdirectory
 of a single-project repo — the nearest candidate wins. A bare
@@ -174,11 +189,27 @@ Globs every `package.json` matching the patterns (`Bun.Glob`,
 
 - Skip if no `name` field (`discoverProjects` collects the directory for
   `vx init`, which names one that has scripts, D-106).
+- A member dir (`<dir>/*` shape) with a vx config but no `package.json` is
+  skipped with a stderr line naming it (D-128): `--all` said only that no
+  package matched, and a run from inside it "not inside a project".
+- A file this user may not read is refused as a read (D-132):
+  `<file>: not readable by this user (EACCES)`, for a member's manifest, a
+  project config, the root's manifest and `vx.workspace.ts`. A manifest
+  at mode 000 had dropped its project from `--all` under a green run. A
+  member directory it may not search hides whether a manifest is there,
+  so it is named on stderr and skipped (a service's data directory under
+  `packages/*`). Any other glob shape is scanned, and the scan stops at
+  such a directory and cannot skip it, so the load is refused naming the
+  directory and the glob.
 - A name several manifests share: pnpm accepts it (vite's playground,
   sveltejs/kit's test apps); vx cannot, since a project is addressed by
   its name. With no vx config among them they are left out, named on one
   stderr line, and the rest runs; with one, a `UserError` names every
   root-relative path and the way on (rename one, or a `!` glob).
+- One package reached by two paths, a member and a link to it
+  (`apps/docs` linking to `../packages/docs`), is one project, kept at the
+  path that reaches it through no link (D-135); real paths are resolved
+  only for a name several manifests share.
 - Find the first existing `vx.config.{ts,mts,js,mjs,cts,cjs}` sibling; that
   becomes `configPath`. Projects without a config keep
   `configPath: null` — they're still in the workspace graph (so

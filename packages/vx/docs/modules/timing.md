@@ -4,7 +4,7 @@
 
 Answer "where did the warm run go?" without a profiler. With
 `VX_TIMING` set to anything but the empty string, `mark(label)` records
-the end of each stage — `prepareRun`'s seven, then `run()`'s, the
+the end of each stage — `prepareRun`'s eight, then `run()`'s, the
 first of which is marked as `prepareRun` returns and holds the graph,
 key and schedule hooks, so a plugin's cost is its own row — and
 `span(label)` accumulates the repeated per-task operations: the probe,
@@ -13,6 +13,9 @@ labels are listed below. `printTimings()` writes the table to stderr
 at the end of the run, and at the end of a `--dry` run — a dry run is
 how the prepare stages get profiled on a real repo with no install to
 run against.
+`vx watch` calls `restartTimings()` as each cycle starts, so a cycle's
+table holds its own stages alone, timed from its start rather than
+across the idle wait before it (`tests/watch-timing.test.ts`).
 
 A span's total is WALL summed per call, and the calls run under the
 scheduler's concurrency, so a span that overlaps other work reads far

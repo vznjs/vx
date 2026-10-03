@@ -18,7 +18,7 @@ export {
   OUT_OF_FDS_HINT,
 } from './errors.js'
 export { xxh3, xxh3hex } from './hash.js'
-export { mark, printTimings, span } from './timing.js'
+export { mark, printTimings, restartTimings, span } from './timing.js'
 export { clampInt, formatElapsed, MAX_TIMEOUT_MS, parseDecimalInt } from './num.js'
 export {
   asTrees,
@@ -49,10 +49,18 @@ export {
 export { appendTail, createTail, resetTail, tailText, type Tail } from './tail.js'
 export { ulid } from './ulid.js'
 export { splitTaskId } from './task-id.js'
-export { editDistance, nearMatches, nearest } from './edit-distance.js'
+export { editDistance, listed, nearMatches, nearest } from './edit-distance.js'
 export { CORE_VERBS, MOVED_VERBS } from './verbs.js'
 export { isUnsupportedBun, MIN_BUN, unsupportedBunMessage } from './bun-version.js'
 export { executablePath, shellArgv } from './which.js'
 export { procfsIsOwn } from './procfs.js'
 export { realPath } from './real-path.js'
-export { maskedCommand, maskedEmitter, MASKED, secretMask, type SecretMask } from './secret-mask.js'
+export {
+  maskedCommand,
+  maskedEmitter,
+  maskedLine,
+  MASKED,
+  secretMask,
+  secretNamed,
+  type SecretMask,
+} from './secret-mask.js'

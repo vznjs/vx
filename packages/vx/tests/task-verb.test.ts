@@ -48,9 +48,9 @@ describe('a task typed as a verb', () => {
       1,
       'vx: `dev` is a task here, not a command: vx run dev --all\n',
     ])
-    const [code, err] = vx(root, 'buidl')
+    const [code, err] = vx(root, 'deploy')
     expect(code).toBe(1)
-    expect(err.split('\n')[0]).toBe('vx: unknown command: buidl (see `vx help`)')
+    expect(err.split('\n')[0]).toBe('vx: unknown command: deploy (see `vx help`)')
   })
 
   it("Nx's `project:target` on vx run names the `project#task` it means", () => {
@@ -63,17 +63,19 @@ describe('a task typed as a verb', () => {
       '',
       "vx run: `app:build lib:dev` is Nx's project:target: vx run app#build lib#dev\n",
     ])
-    expect(run(root, 'app:build', '--all')[1]).toBe(
-      'No projects declare task(s): app:build. Did you mean app#build?\n',
+    expect(run(root, 'app:build', '--all')[2]).toBe(
+      'vx run: no projects declare task(s): app:build. Did you mean app#build?\n',
     )
-    expect(run(path.join(root, 'packages', 'lib'), 'lib:build')[1]).toBe(
-      'No projects declare task(s): lib:build. Did you mean lib#build?\n',
+    expect(run(path.join(root, 'packages', 'lib'), 'lib:build')[2]).toBe(
+      'vx run: no projects declare task(s): lib:build. Did you mean lib#build?\n',
     )
     // A task the project does not declare is no Nx spelling: the plain lines stand.
     expect(run(root, 'app:nope')[2]).toBe(
       'vx run: not inside a project. Pass --all for every project, --filter <pattern> to filter, or run from within a project directory.\n',
     )
-    expect(run(root, 'app:nope', '--all')[1]).toBe('No projects declare task(s): app:nope.\n')
+    expect(run(root, 'app:nope', '--all')[2]).toBe(
+      'vx run: no projects declare task(s): app:nope. Tasks: build, dev.\n',
+    )
   })
 
   // nx-examples names `@nx-example/cart` `cart`, and its users type
@@ -89,11 +91,11 @@ describe('a task typed as a verb', () => {
       expect(run('web:build')[1]).toBe(
         "vx run: `web:build` is Nx's project:target: vx run @s/web#build\n",
       )
-      expect(run('web#build')[0]).toBe(
-        'No projects declare task(s): web#build. Did you mean @s/web#build?\n',
+      expect(run('web#build')[1]).toBe(
+        'vx run: no projects declare task(s): web#build. Did you mean @s/web#build?\n',
       )
-      expect(run('ap#build')[0]).toBe(
-        'No projects declare task(s): ap#build. Did you mean app#build?\n',
+      expect(run('ap#build')[1]).toBe(
+        'vx run: no projects declare task(s): ap#build. Did you mean app#build?\n',
       )
       expect(vx(root, 'build', 'web')).toEqual([
         1,

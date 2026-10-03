@@ -43,7 +43,7 @@ describe('vx watch loop (e2e)', () => {
       code: 1,
       watching: false,
     })
-    expect(w.out()).toContain('No projects declare task(s): buidl. Did you mean build?')
+    expect(w.err()).toContain('vx watch: no projects declare task(s): buidl. Did you mean build?')
     // CONTROL: the declared name watches (the case above never got there).
     f.watch = startWatch(f.root)
     const ok = f.watch

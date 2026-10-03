@@ -53,6 +53,232 @@
   explicit-over-magical, one-binary) quoted solidjs/solid numbers
   measured through `turbo()`; each keeps only the native-config
   benchmark, and site-samples stops pinning the solid figures.
+- **R-14** The share card (`og.svg` / `og.png`) still said "a faster
+  runner for your Turborepo or Nx repo"; it now carries the page's
+  headline, and the landing test holds the card's text to the `<h1>`.
+- **R-13** patterns.md's performance table and the docs README's
+  headline line gave Turbo and Nx as multiples; they now give vx's %
+  by the same formula, with the formula line.
+- **R-10** The migrate guide's Nx step 6 still named `nx-exec` lines,
+  which the migrator no longer writes (it writes an executor target as
+  the command it runs), and not the `note:` that P's #2349 prints while
+  `nx()` remains; it now names both rightly.
+- **R-9** README prose tightened, data first: the benchmark table
+  leads; the reasons, install, migration and status lines say the same
+  in fewer words (1,096 → about 1,020 words), and the unpinned "over
+  4,000 core tests" count went.
+- **R-12** The benchmarks page's generated stress table and the
+  benchmarks post's runner table show each competitor cell as
+  `(vx N% faster)` with the formula line, not a multiple.
+
+- **R-15** The migrate guide shows the `vx.config.ts` vx-migrate
+  writes for one package, Turbo and Nx, held byte for byte to a run
+  (`try-it.unsafe.test.ts`). The from-nx post's figures were the
+  no-lock column; now the headline vx column, with vx's %.
+
+- **R-16** README polish, each figure checked: the bench block matches
+  `results.json` (`update-site.ts --check`); the platforms read x64
+  and arm64 for Linux too (build-npm's targets); the Turbo/Nx paragraph
+  says init maps the old config only until the written configs replace
+  it, and that vx-migrate is not on npm yet; the npm description says
+  fastest.
+
+- **R-17** benchmarks.md: every Turbo/Nx cell of the head-to-head
+  tables shows vx's % (the × multiples went); the sections that timed
+  vx through `turbo()` / `nx()` or migrated configs on real repos are
+  removed until a native-config rerun.
+
+- **R-18** The headline Nx column (README, landing, benchmarks.md) paid
+  `npm run` per task, a harness fault. `update-site.ts` now prints one
+  note under each table with the cause and the fixed harness's read
+  (Nx 6m 59s cold, 4.50 s cached; vx 47% / 92% faster), pinned to
+  benchmarks.md. A native rerun of the headline run replaces it.
+
+- **R-20** The site's posts, concept page and configure guide quoted
+  the no-lock column (510ms, 3m 46s, 34.61s) with no %: now the
+  headline column the README shows (476ms, 3m 47s, 34.33s), each
+  Turbo/Nx figure with vx's %, and the npm note beside Nx's. Pins follow.
+- **R-19** Site guides audited for claims that vx runs a Turbo or Nx
+  repo or is faster through `turbo()` / `nx()`. One left: the migrate
+  guide's step 3 said the `next:` line "runs what turbo/nx ran"; it now
+  calls that build a check of the mapping, not a way to run the repo.
+
+- **R-21** The quickstart and overview walked as a new user in a
+  scratch npm workspace: `vx init`'s files and report, every Run line,
+  `--dry` before and after an edit, `--graph`, `why`, `last`, `cache
+prune` all match. Fixed: the Run blocks used bare `vx`, which a local
+  install does not put on PATH (now named once), and the hit comment
+  said "a hit" where the default output prints `up-to-date`.
+
+- **R-22** Owner-rules audit of the README and site: every competitor
+  benchmark cell shows vx's %, Windows always means WSL, no page says vx
+  runs a Turbo or Nx repo or is faster through the bridge; nothing left
+  to fix. New Docs page, Troubleshooting: each first-run error as vx
+  prints it (each string checked in source and in a run), then the
+  surprises and platforms, linking each guide's own list.
+
+- **R-23** Troubleshooting adds the graph and CLI errors a first run
+  meets (a cycle, a missing `pkg#task`, an undeclared task, an unknown
+  flag), and `site-troubleshooting.unsafe.test.ts` holds every quoted
+  message to core's source (a changed message fails it). Walked from
+  empty bun and pnpm workspaces with the published `@vzn/vx` 0.0.396:
+  install, `init`, its `next:` line (`bunx vx` / `pnpm vx`, as the
+  quickstart says), miss, hit and restore all as the pages say.
+
+- **R-24** The quickstart run literally from empty pnpm and bun repos
+  with the published `@vzn/vx` (0.0.396) and `typescript`: its exact
+  config, every Run line, a restore and an edit-rebuild all as written,
+  except `vx run test --affected` in a one-commit repo, which has no
+  base. The line now says what it compares with, and Common problems
+  has the error.
+
+- **R-25** README order: benchmark table, what vx is (three lines),
+  install, quick start, then the rest. Cut what no source holds: the
+  status table's maturity labels (pre-alpha says it), the comparison's
+  "daemon required for speed" (now what each tool runs: vx none, Turbo
+  none for `turbo run`, Nx on by default, as comparison.md has it) and
+  its uncited OTel row. The migrate guide already matches `vx init` and
+  vx-migrate byte for byte (R-15's pins).
+
+- **R-26** Migration framing: the guide's transcripts and written config
+  still match a run byte for byte (`try-it.unsafe.test.ts`, 10/10 with
+  `examples`). The vx-migrate README's `turbo()` / `nx()` sections said
+  "Then `vx run build --all` runs … the way turbo/nx would"; they now
+  say it maps that until the migrator writes native config, and the
+  guide's try-it block names its first runs the bridge.
+
+- **R-27** The landing's "Start in a minute" promised "up-to-date in
+  milliseconds" on the second build right after `vx init`, which writes
+  no cache block (both scratch walkthroughs re-ran every task). Its
+  comments now name the step between; the landing test pins it.
+
+- **R-28** Plugin pages against source: every `@vzn/vx-*` import in a
+  README or guide names a live export; every option-table row exists in
+  source, and every option a plugin accepts is documented except test
+  seams (otel `post`, github `fetchFn` / `sizeOf`). #2535 had already
+  documented `reapi()`'s metadata options and made it refuse the PEM-text
+  ones and `onWarn`; its new `WireOnly` type sat in the plugin-API record
+  unnamed, which reddened `plugin-exports-documented` on main. The
+  README now names it.
+
+- **R-29** Both starters (`examples/basic`, `examples/turbo`) open their
+  README with `npm install`, which failed: `app` declared
+  `"lib": "workspace:*"`, a pnpm protocol npm refuses
+  (EUNSUPPORTEDPROTOCOL). The examples test links node_modules instead
+  of installing, so nothing ran it. Now `"*"` (npm resolves the
+  workspace package); `examples/basic` installs from npm with the
+  published vx and runs 3 miss, then 3 up-to-date. A row in
+  `examples.unsafe.test.ts` refuses a `workspace:` spec in an npm
+  starter (fails with the old spec).
+
+- **R-30** Benchmark numbers against data: README and landing cells are
+  generated from `results.json` (`update-site.ts --check` passes); every
+  Turbo/Nx figure a post or guide states is on `benchmarks.md`; every
+  hand-typed vx % there matches the generated table. New
+  `site-bench-percent.unsafe.test.ts` holds each `<figure> (vx N% …)` on
+  a page to the same pair on `benchmarks.md`, so a new run cannot leave
+  a stale % behind (a planted 36% for 37% fails it). The Linux head-to-
+  head tables cite their runs (dates, harness, command) but have no
+  committed data file; the headline rerun lead covers them.
+
+- **R-31** examples/: both starters already ran in
+  `examples.unsafe.test.ts` (cold, warm, an edit; turbo through the
+  bridge, then migrated and native) from a fresh copy, with no build
+  output committed. The suite named them by hand, so a new starter
+  would ship unrun: a row now requires every directory under
+  `examples/` to have its `describe('examples/<name>')` (a planted
+  `examples/zz` fails it), and the npm-install row reads the tree too.
+
+- **R-32** Link sweep: the built site already holds every internal link
+  and anchor (`vx-docs/tests/site-links.test.ts`, item 711, green), and
+  `doc-references` holds docs/ prose links. The READMEs outside docs/
+  (root, CONTRIBUTING, each package, each starter) had no row; none was
+  dead. `readme-links.unsafe.test.ts` now holds their relative links,
+  `github.com/vznjs/vx/(tree|blob)/main` paths and `.md` anchors (a
+  planted `clix.md` fails it).
+
+- **R-33** Migrate guides against `vx init` / `bunx @vzn/vx-migrate`
+  today: every Turbo and Nx sample already matched (try-it rows, green).
+  The "Try it in five minutes" comments (`3 miss`, `3 up-to-date`, the
+  migrate count) had no row; `examples.unsafe.test.ts` now compares them
+  to the run's cache legend (a planted `3 local` fails it).
+
+- **R-34** Benchmark % law: `update-site.ts --check` holds the generated
+  tables (README, landing, the 3,270-task section) to `results.json`;
+  benchmarks.md's five hand-typed runner tables had no row.
+  `bench-percent.test.ts` recomputes each of their 36 % cells from the
+  figures the row shows (all agreed; a planted `10%` fails it). README:
+  re-read against sources, nothing to change.
+
+- **R-35** Wording sweep (README, docs/, site, package and example
+  READMEs): no page said vx works in, runs or speeds up a Turbo or Nx
+  repo, and no mapped run carried a speed claim.
+  `turbo-nx-wording.unsafe.test.ts` now holds that (a planted line fails
+  it). Windows now reads "native Windows" plus WSL in `runner.md`,
+  `util-paths.md` and the sandbox cell of the choosing table. The Nx
+  executor table (the migrate guide, vx-migrate README, from-nx and
+  one-command-per-task posts, schema.md) still describes the shipped
+  translation; it changes with P2's code change to nx-exec.
+
+- **R-36** Guides run as written on a fixture (examples/basic copy, the
+  checkout's vx). The CI guide's block runs from the root, where three
+  lines refused ("not inside a project"): `--graph=g.dot`,
+  `-- --bail` and `vx watch test`; each now passes `--all`, and
+  `vx-docs/tests/ci-guide-commands.test.ts` holds every line to a
+  selector. Held as written: the flag table against `vx run --help`,
+  the `--dry` and `vx why` samples' shape, forwarding (`args: --bail`),
+  and the sandbox guide's steps 1–5 (`sandbox: {}` fails naming the
+  write, then the read; read `.` + write `dist/**` succeeds). The
+  plugins and configure samples already have pins.
+
+- **R-37** Nx guide after P2-39 (#2632, every executor but
+  run-commands, run-script and noop through `nx-exec`): the try-it rows
+  (`vx init`, `bunx @vzn/vx-migrate`, the written lib config) pass; the
+  guide's `nx-exec @nx/jest:jest …` sample is the line
+  `nx-migrate-nx-exec.test.ts` asserts; from-nx's server list is
+  `KNOWN_EXECUTORS`' persistent set. The choosing table's adoption cell
+  now says the written config runs executors through `nx-exec` until
+  each line is rewritten.
+
+- **R-38** Plugin READMEs against code (three read-only audits, each
+  finding checked before the edit). vx-otel: `vx.cache.source` has
+  `none`. vx-github: the Checks API cap is bytes; the summary follows
+  what the step already wrote. vx-lockfile: install names key bun and
+  npm only; berry folds `__metadata`'s `version` and `cacheKey`;
+  `--affected` narrows only at `scope: 'project'`. vx-schedule-history:
+  vx's CI assumes four tasks; `criticalPathPriorities` takes `assume`.
+  vx-mcp: four methods (`ping`). vx-reapi: resolver-target endpoints,
+  `tls: false` beats a PEM, ~51% (not 45) for 390 → 590 ms (README and
+  `wire.ts`), the design doc's path, small puts read whole, when
+  `executeTimeoutMs` is checked, SHA256 only, priority and salt not
+  plugin options, the execution suites' env vars. The Turbo guide's
+  try-it and examples rows pass on main.
+
+- **R-39** Stale tool mentions: "moon-style" dropped from the run report's
+  docs and comments; versioning-1.0's contract named a `lage-worker` bin
+  that no longer exists. Kept: lerna and wireit lines that describe what
+  vx does (`vx init`'s `lerna.json` note, the foreign-field refusal
+  hints, the script mapper's runner list); design/history records.
+
+- **R-40** "Upgrading to 1.0" (`guides/upgrading.md`, in the Docs
+  sidebar): one entry per breaking commit, newest first, its
+  `BREAKING CHANGE:` footer as what changed and what to do, generated by
+  `packages/vx/scripts/upgrading.ts` from git log (squash `(#N)` and
+  workstream ids dropped; a squash body that repeats an earlier footer
+  keeps it on the commit that made the change). Since the last tag
+  (every merge tags a 0.0.x) there were none, so the page covers all of
+  pre-1.0. `site-upgrading.unsafe.test.ts` compares the footers, not the
+  titles, since a squash titles the commit after its PR (an edited
+  footer fails it). The first push was generated in a shallow clone (11 entries)
+  and CI's full history held 28: generate from an unshallowed checkout.
+- **R-41** Site laws: `vx-docs/tests/site-edit-orphans.test.ts` holds every
+  built page (redirect stubs, landing, 404 and the blog's generated
+  listings aside) to an edit link naming a real file (this project's, or
+  an imported page's `editUrl`) and to at least one inbound link from
+  another page; both held on the first run (a renamed edit target and a
+  page nothing links to each fail it). The playground already plans as
+  the CLI does for its page workspace, three labs per state and the
+  scenarios (`playground-parity.unsafe.test.ts`), so nothing was added.
 
 ## Leads
 
@@ -60,3 +286,5 @@
   real-repo sections) measured `turbo()` / `nx()`, not native config.
   Rerun each repo after `bunx @vzn/vx-migrate` writes native configs
   before any of them is quoted again.
+- benchmarks.md's dated head-to-head sections still read as multiples
+  (`(1.6×)`); they are hand-typed records, converted only with a rerun.

@@ -75,7 +75,7 @@ readers that reach it here.
   next attempt), and the error thrown is the first in that order. A hit
   is taken synchronously, so the warm path is unchanged.
 - The default export must be a non-null object. Anything else throws
-  `"Project config at <path> did not export a default object"`
+  `"Project config at <path> did not export a default object"` (a function default export adds `: it exports a function, …`, D-110)
   (`Workspace config at …` for a workspace file) — from
   the same check on both paths.
 - Both paths read the same environment: each Worker request carries the
@@ -99,8 +99,14 @@ readers that reach it here.
   real `process.exit` in place only once the last has left. An exit a
   config schedules for later (a timer) is not covered.
 - A first load may not change the built-ins vx runs on:
-  `Object.prototype`, `Array.prototype`, `String`, `Map`, `Set` and
-  `Promise` prototypes, `Bun`, `Bun.hash`, `JSON` and `Math`. Every
+  `Object.prototype`, `Array.prototype`, `String`, `Map`, `Set`,
+  `Promise`, `RegExp`, `Function`, `Number` and `Date` prototypes,
+  `Object`, `Array`, `Reflect`, `Date`, `Bun`, `Bun.hash`, `JSON` and
+  `Math`. The check reads through primitives taken before any config runs,
+  in indexed loops: a config that set `Reflect.ownKeys = () => []` (or
+  `Array.prototype.forEach`) blinded it before, and its
+  `Object.prototype.exec` ran in another project's task (D-124; +2 ms on a
+  cold 300-config load, none warm). Every
   config is read through them and cache keys are made with them
   (`Bun.hash.xxHash3 = () => 7n` keyed every task 00000000, D-75), and
   the key folds each config's own JSON, so `Object.prototype.exec` set in one config ran in another
@@ -109,19 +115,77 @@ readers that reach it here.
   before its round evaluates anything, before anything reads through
   them (a replaced `Array.prototype.includes` broke the JSON-data walk
   itself); what changed is put back, a failed load's too, and the load
-  is refused naming the property. A round where every config hits takes
+  is refused naming the property. Loads overlap (`LOAD_WIDTH` at a time),
+  so the load that sees a change may not be the one that made it: when
+  more than one evaluation was in flight, the round evaluates each of its
+  configs alone in a throwaway worker that reports what it changed, and
+  names the first that changes something (it named an innocent config
+  before, D-119); none found, it says "a project config". While loads
+  overlap, each one is checked against only the built-ins the loader
+  itself reads through between loads (`Object.prototype`, `JSON`, the
+  `Promise`, `Map` and `Set` prototypes, `Bun.hash`), and the rest once,
+  at the round's end: all of them after every load was ~73 µs a config,
+  a quarter of a cold load of 1,000. A change found at the end may have
+  broken another config's load, so it is refused first, and a round that
+  changed anything stores none of its evaluations. A lone load checks
+  them all. A round where every config hits takes
   no snapshot: reading every descriptor of `Bun` builds its lazy
   members, 7 ms of a warm run (E-88).
+- A first load may not move the process either: a config's
+  `process.chdir()` left every relative path vx resolved after it reading
+  from the config's choice; the working directory is put back and the load
+  refused, naming `process.cwd (a chdir)` (D-120).
+- `vx.workspace.ts` gets the same guard: it runs in this process too, and
+  its `Object.prototype.exec` ran in a project's group task. Built-ins,
+  `process.env`, the cwd and the umask are snapshotted around its load, put
+  back, and the load refused naming the file, a failed load's change
+  included (D-126): the workspace config's bytes are in no key, so a
+  removed `Object.prototype.exec` replayed the old command. Globals are
+  left out: it loads first in every run, filtered or not. Of `Bun` it reads
+  the descriptors of the members vx reads (`BUN_MEMBERS_VX_READS`, held to
+  every `Bun.<name>` in `src/`) and keeps the rest's keys and order: some
+  members are built on their first read (`Bun.postgres` loads `bun:sql`),
+  and the full read was 4.4–5 ms of every warm run. A replaced member vx
+  does not read is not caught here.
+- Nor change the umask: a config's `process.umask(0o777)` left every file
+  vx and its tasks wrote after it `000`, a cache artifact a user other than
+  root could not read back. A worker shares the process's umask (a
+  `chdir` there stays the worker's), so a repeat load is checked too, and
+  the load is refused naming `process.umask` (D-125). Bun reads the umask
+  by setting 0 and putting it back, so two threads reading it at once see
+  each other's 0 and can leave the process there: the main thread alone
+  reads it, around a load that is alone in its round or before and after
+  a round of several, and the worker only when blaming a config, the one
+  evaluation in flight, putting it back before it answers; the round puts it
+  back after each blame too, as a worker ended at its budget restores
+  nothing (`config-umask-concurrent.test.ts`).
+- A first load may not add or replace a global either: one config's
+  `globalThis.x = …` reached every config loaded after it in the process,
+  so `vx run --all` read it and a `--filter` of the reader alone did not
+  (D-122). `globalThis` is watched with the built-ins above: put back,
+  refused naming `globalThis.<key>`; a constant configs share goes in a
+  module each one imports. Cost: +3 ms on a cold 300-config load, none warm.
+  Not covered: first loads share the module registry, so a config that
+  mutates an imported module's state is read the same way by the configs
+  loaded after it (probed: `--all` read `leaked`, `--filter` of the reader
+  `none`). Isolating it would take a worker per config, which D-68 measured
+  out; keep shared modules constant.
 - A first load may not change `process.env` either: a config that set
   a variable gave it to every project's `passThrough` and to vx's own
   `VX_*` reads, and a repeat load, in a worker, gave it to neither
   (D-76). The same snapshot, compare, put back and refuse; a task gets
-  a value through `exec.env.define` or the host's `passThrough`.
+  a value through `exec.env.define` or the host's `passThrough`. While
+  loads overlap it is compared once, at the round's end, as most
+  built-ins are: reading every variable after every load was 15–25 µs a
+  config.
 - A first load has the Worker's deadline too (`VX_CONFIG_WORKER_TIMEOUT_MS`,
   30 s): a top-level await that never settles fails the load, naming
   the config and the budget, where it hung `vx run` silently (D-66).
   The evaluation itself cannot be cancelled; a timer it left running
-  still holds the process open after the run reports.
+  still holds the process open after the run reports. A synchronous
+  loop (`while (true) {}`) holds the thread the deadline fires on, so it
+  hangs until killed; a repeat load, in its Worker, still fails at the
+  budget. Bounding it would take the worker per config D-68 measured out.
 - A Promise default export is awaited on both paths, so an async
   config resolves to its object on the first load and in the Worker
   alike (D-5). The awaited value is checked again, a workspace
@@ -156,6 +220,11 @@ What `onLoad` source cannot be, it is not handed:
   `exports`, `require`, `this` or `__dirname` at the top) would lose its
   exports. `hasEsmExport` (config-imports.ts) asks Bun's own parser for
   an ESM `export`; without one, the config takes Bun's path, `?vx-bust=`.
+  Source that spells none of those names and holds no backslash (an
+  escaped `\u006dodule` is CommonJS to Bun too) is a module on either
+  path and skips the parse: 18–20 ms off 1,000 cold configs (median of
+  30, interleaved, 2026-10-03). A syntax error then reaches the served
+  path, and its position's query is stripped like a `ResolveMessage`'s.
 - **Only UTF-8.** Bun's loader reads invalid UTF-8 as Latin-1 and a
   decoder would repair it to U+FFFD, a different string; a strict decode
   that fails sends the config down Bun's path. And the source goes over

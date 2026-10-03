@@ -43,6 +43,7 @@ export interface ApplyMigrationArgs {
   force: boolean
   init?: boolean
   notes?: readonly string[]
+  unmapped?: boolean
   format?: MigrationFormat
 }
 ```
@@ -527,6 +528,20 @@ export interface ExecutorContext extends BaseContext {
 }
 ```
 
+## `executorFallback`
+
+function · `src/exec/executor.ts`
+
+What a remote executor rejects with when it gives a task back: core runs
+the same request on the local floor and says `reason` once (a remote that
+never started it, B-100). A task placed `remote: 'only'` must not run
+here, so it fails naming `reason` instead. Matched by name, as
+`isUserError` is: a plugin's `@vzn/vx` can be another copy of this class.
+
+```ts
+export function executorFallback(reason: string): Error
+```
+
 ## `exitSignal`
 
 function · `src/exec/runner.ts`
@@ -684,6 +699,7 @@ type · `src/orchestrator/history.ts`
 ```ts
 export interface HistoryProvider {
   loadFor(taskIds: readonly string[]): Promise<HistoryTable>
+  p50sFor?(taskIds: readonly string[]): Promise<ReadonlyMap<string, number>>
 }
 ```
 
@@ -984,6 +1000,7 @@ export class LocalHistoryProvider implements HistoryProvider {
     private readonly recent: number = DEFAULT_RECENT,
   ) {}
   async loadFor(taskIds: readonly string[]): Promise<HistoryTable>
+  async p50sFor(taskIds: readonly string[]): Promise<ReadonlyMap<string, number>>
 }
 ```
 
@@ -1370,6 +1387,21 @@ What a plugin author writes: every hook, and no name.
 export type PluginHooks = Omit<VxPlugin, 'name'>
 ```
 
+## `PluginOptionKinds`
+
+type · `src/orchestrator/plugin.ts`
+
+Every option a factory takes, each with the one kind its type allows
+(`'any'` for a union of kinds, such as `false | { … }`). Derived from
+the options interface, so the type checker refuses a missing option, an
+extra one or a wrong kind.
+
+```ts
+export type PluginOptionKinds<T> = {
+  readonly [K in keyof Required<T>]-?: OptionKind<Required<T>[K]>
+}
+```
+
 ## `PluginOrigin`
 
 type · `src/orchestrator/plugin.ts`
@@ -1564,6 +1596,25 @@ export interface ReachGraph {
   readonly material: readonly string[]
   readonly edges: ReadonlyArray<readonly number[]>
 }
+```
+
+## `refuseUnknownOptions`
+
+function · `src/orchestrator/plugin.ts`
+
+Refuse an option a plugin factory does not take, or a value of the wrong
+kind, as core refuses an unknown config field. Bun strips a config's
+types, so a misspelt option (`reapi({ endpont })`) reached the factory,
+which read it as unset and quietly declined, and a string where a number
+or a boolean belongs (`process.env.X`) was misread or threw a bare
+TypeError. `factory` names the call in the message (`reapi()`).
+
+```ts
+export function refuseUnknownOptions<T>(
+  factory: string,
+  options: unknown,
+  kinds: PluginOptionKinds<T>,
+): void
 ```
 
 ## `RemoteCacheLayer`
@@ -1790,6 +1841,7 @@ export interface RunSummary {
   ok: boolean
   outcomes: TaskOutcome[]
   persistent?: HeldPersistent
+  refused?: string
 }
 ```
 

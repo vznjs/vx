@@ -8,6 +8,7 @@
   "run: --graph to an unwritable path: vx run build --all --graph=package.json/g.dot": 1,
   "an unknown verb: vx no-such-verb": 1,
   "watch: a rejected flag: vx watch build --all --dry": 1,
+  "watch: nothing affected since the ref: vx watch build --affected=HEAD": 0,
   "cache prune: no policy: vx cache prune": 1,
   "cache prune: a policy: vx cache prune --older-than 1d": 0,
   "lock: write: vx lock": 0,

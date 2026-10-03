@@ -39,9 +39,28 @@ In order of harm:
    (`needsNetworkRestriction` and `needsNetworkProxy` are both
    `allowedDomains !== undefined`), so vx cannot ask for an isolated
    network without them. Seen in an execve trace of one sandboxed
-   `true` (2026-10-02); their cost per task is unmeasured.
+   `true` (2026-10-02). Measured (2026-10-03): 100 sandboxed `true`
+   tasks at concurrency 1, min of 5 interleaved, 2795 ms with the
+   network isolated against 2331 ms with no network config (host network,
+   no bridges): about 4.6 ms a task, the namespace, both bridges and their
+   shells. vx cannot drop the bridges alone: with them gone a refused host
+   reads "connection refused" and the proxy's record (B-77) is lost.
+8. Upstream (SRT): the mandatory-deny scan spawns its ripgrep on every
+   wrap whenever a write config is set (always, for vx), though vx scans
+   the same paths itself (B-40) and hands SRT `true` (B-75). The spawn
+   is 1.09 ms median a wrap against 0.32 for a command that fails to
+   start (300 interleaved), but SRT's dependency check reads the same
+   setting, so a missing one would mark the sandbox unavailable. A
+   switch to skip the scan would save ~0.8 ms a sandboxed task.
 
 ## Leads for other streams
+
+- **A:** a file an uncached task creates in its project mid-run is not
+  in the run's git snapshot, so a same-project uncached dependant's key
+  misses it on that run and sees it on the next: its key drifts once
+  (a spurious miss for a cached task folding it, not a stale hit). Seen
+  as `c#w` (`echo made > made.txt`) → `c#r`, the same on origin/main
+  (2026-10-03, B-91).
 
 - **A:** a local save decodes and re-parses the artifact it just packed
   (`save: scan`, about 0.1 ms per save, B-37). The checks there guard
@@ -1282,3 +1301,261 @@ to many servers SIGHUP means "reload"), so a spawned task stopped by one
 exits 143, while one stopped before its spawn (B-55, B-72) read 129.
 `stopSignal` now follows `forwardedSignal`. Rows:
 `stop-signal-before-spawn.test.ts` (the SIGHUP row red without the fix).
+
+B-75. Per-task cost, ranked: an unsandboxed no-cache task sits at the
+spawn floor; a cached miss adds the save and the output clean (stream
+A's); a sandboxed `true` cost 27.6 ms (bwrap ~14 with SRT's chain, wrap
+~6, trace ~5). In the wrap, SRT spawned its `rg` on every task (3.8 ms
+against 1.0 for `true`), and with the deny scan scoped (B-40) it finds
+nothing the scoped walk misses, so vx hands SRT `true` as its ripgrep.
+100 sandboxed tasks at concurrency 1: 3.95 s → 3.50 s (−4.4 ms a task,
+interleaved A/B against a worktree of main). Rows: the deny-scan parity
+rows arm SRT as vx does, with a root `.ZshRC` only a scan finds; a row
+pins the no-op config.
+
+B-76. Under `-y` (B-71) strace names a directory descriptor by its
+path (`4</ws/q"d>`), and the parse read that path only up to its first
+quote: a read through a directory named with one, under a widened
+grant, went unjudged (`grep -r` reported `q"d` and not `q"d/f`), and a
+denial through one named the wrong path. The descriptor's path is now
+taken up to the `, "` that opens the file argument. Rows:
+`sandbox-dirfd-quote.unsafe.test.ts` (both red without the fix). Also
+measured (#2324, #2355): a sandboxed `true` costs ~28 ms, of which vx's
+wrapper is ~1.3 ms and its JS ~3; an unsandboxed one ~1.7 ms a task in
+a run, the `sh` layer (+0.8 ms) being the kill guard's (B-9). A CPU
+profile's top items there (`rmSync`, `realpathSync`) timed in place at
+0.4 and 0.23 ms a task.
+
+B-77. SRT's proxy records a refused host (`deny network-outbound
+<host>:<port> (<reason>)`) on both platforms, but on Linux vx read only
+the write observer's records: a task denied a host failed through its
+own `403` with no report, and one that survived it passed. The line has
+no `deny(<n>)`, so `ignore.network` could not silence it on macOS
+either. `refusedConnections` reads it; the classifier takes its shape
+(#2378). `@vzn/vx-migrate#test` ignores the host its degrade row dials.
+Rows: `sandbox-proxy-denials.unsafe.test.ts`.
+
+B-78. The write observer records strace's own log as `deny openat
+/dev/fd/5`, and `refusedWrites` resolved it in vx's process: a vx
+started with `5>out.log` in a single-package workspace failed a clean
+task on a write to `out.log`. Records under `/dev/` and `/proc/` are
+skipped (#2380). Rows: `sandbox-fd-records.test.ts`.
+
+B-79. bwrap's `--tmpfs` is writable, and SRT lays one over each
+read-denied directory: a sandboxed write to the workspace root or an
+ungranted cwd succeeded and vanished, so the task went green with its
+output gone, where seatbelt refuses it. `readOnlyMasks` remounts each
+read-only before bwrap's `--`; the mask a pending write glob's scratch
+lies in stays writable (#2371). Rows:
+`sandbox-readonly-masks.unsafe.test.ts`.
+
+B-80. SRT's `initialize` does not run its own `NetworkConfigSchema`: a
+URL or a dotless host in `allow.network` matched nothing with no word,
+and `'*'` opened every host to every sandboxed task of the run.
+`initSandbox` refuses such an entry by name. The refusal, the first
+failure thrown past the Linux probe, left the runtime up and the process
+hung after the summary; `arm()` now resets it on any failure (#2383).
+Rows: `sandbox-network-patterns.unsafe.test.ts` (the hang row is killed
+at 20 s without the reset).
+
+B-81. A sandboxed task that failed on a read the wall refused said only
+what its tool says for a missing file. A failed task now names the
+hidden paths that exist on the host, with the grant (`hiddenReadsOutside`);
+never counted, never on a pass. macOS logs the seatbelt record late, so
+its row holds the hint on Linux only (#2387). Rows:
+`sandbox-hidden-reads.unsafe.test.ts`.
+
+B-82. The unsandboxed per-task cost, in a run (300 `true` tasks,
+concurrency 1, `VX_TIMING`, 3 runs): 1.75 ms of graph time a task, of
+which `runCommand` 1.40–1.47 (the spawn floor and the kill guard's
+shell, #2355), `task hash` 0.17 (computed twice, lead for A above), the
+rest 0.15. `miss: execute` outside `runCommand` is 0.05. Nothing in
+`exec` is cut: the shell is the task's API and the guard must run in it
+before the command (B-9).
+
+B-83. A write refused under the host's temp directory was told to grant
+it (`allow: { write: ['/tmp/'] }`), opening the shared temp directory to
+every write of the task. Outside the workspace, the hint names the task's
+own `$TMPDIR`; a workspace kept under `/tmp` still gets the grant
+(#2424). Rows: `sandbox-temp-hint.unsafe.test.ts`. Weighed and dropped:
+a grant hint beside every in-project violation (13 rows pin the exact
+lines, several reading `runSandboxed`'s list directly; the violation
+line already names the path).
+
+B-84. A server is never traced, so a sandboxed dev server that died on
+a path outside its grants read only as the tool's own "not found". A
+sandboxed server that exits failing before it is ready is told the
+sandbox reports nothing for it, and where to look (#2451). Rows:
+`persistent-sandbox-hint.unsafe.test.ts`.
+
+B-85. On Linux the port bridge's listen wait read `/proc/net/tcp`, and a
+host process already on a `localBinding` port counted as the bridge: its
+own bind failed unseen, the task passed, and a client of the port
+reached the other process. The wrap refuses such a port by name
+(`portsHeld`, #2464). Rows: `sandbox-port-held.unsafe.test.ts`. Also
+measured (2026-10-03, 400 interleaved spawns): `/usr/bin/true` direct
+0.90 ms median, behind `sh -c 'exec …'` 1.68, with the guard line 1.72.
+The guard costs ~0.03 ms; the shell's own start ~0.75 is the task's API
+and the guard's host (B-9), so nothing in `exec` is cut.
+
+B-86. On Linux every sandbox mask and bind is a mount point, and git's
+discovery stops at one: a task granted the repository's `.git` read "not
+a git repository … Stopping at filesystem boundary". A task whose grants
+name a `.git` gets `GIT_DISCOVERY_ACROSS_FILESYSTEM=1` unless it sets
+it; only such a task, since git-aware tools read it (vx's own repo probe
+spawned an extra `rev-parse` in the sandboxed shards when every task got
+it) (#2474). Rows: `sandbox-git-discovery.unsafe.test.ts`.
+
+B-87. A refused write in the workspace was told to grant its absolute
+path, which a committed config holds only on the machine that printed
+it, and a path holding a quote came out as no JS string. Grants are
+spelled from the project in the workspace and quoted safely (#2481).
+Rows: `sandbox-hint-spelling.unsafe.test.ts`. Also measured (500
+interleaved, in process): `runCommand('true')` 1.08 ms median against a
+bare `Bun.spawn` of `sh -c 'exec true'` reading both pipes through
+`Response` at 1.65: the runner's own work is below the spawn floor, so
+the unsandboxed task path in `exec` has nothing left to cut (B-82, B-85).
+
+B-88. Where a sandboxed task's own time goes (100 sandboxed `true`
+tasks, concurrency 1, in place, 3 runs): wrap 3.1 ms (SRT's
+`wrapWithSandbox` 2.9, of it ~1.0 the ripgrep spawn, lead 8), before the
+spawn 0.34, spawn to exit 20.4 (bwrap, SRT's chain, strace), after exit
+1.0. `realpathSync` runs ~147 times a task (the workspace root 34, each
+of SRT's protected dotfiles 4), ~0.2 ms in all: not cut, a memo of
+paths a task may create would cross item 738's limit for under 1%.
+Nothing in vx's half is worth cutting; the wrap's cost is SRT's.
+
+B-89. The write observer records every attempt, so `mkdir -p
+node_modules/.cache/tool` under a grant of `node_modules/.cache/` read
+as a refused write of `node_modules` and failed a clean task: the call
+met EEXIST on a directory bwrap made to mount the bind. `refusedWrites`
+skips a `mkdir` of a directory a write bind lies in (#2504). Rows:
+`sandbox-mkdir-ancestor.unsafe.test.ts`.
+
+B-90. SRT's seccomp filter answers `socket(AF_UNIX)` with EPERM, which
+outranks strace's trace, so a task connecting to a Docker or ssh-agent
+socket without `unixSockets` read only "socket(1, 1, 0): Operation not
+permitted" and no report. The schema names that symptom and the grant
+(#2513, docs only: the refusal is invisible to vx).
+
+B-91. An uncached task's key was derived twice: up front by
+`deriveStableKeys` and again in execute-task. It is reused when nothing
+upstream may write into its project or the workspace and no
+root-anchored output reaches it (#2547, cache-key lead taken over from
+A). 500 uncached tasks, concurrency 1, min of 8: `task hash` 1,000
+calls (31.0 ms) to 500 (10.6 ms), wall within noise. Keys unchanged, no
+`CACHE_VERSION` bump. Rows: `uncached-key-once.test.ts`.
+Then the per-task ranking on cached misses (500 one-file tasks,
+concurrency 1, `--force`): `run graph` 2,248 ms against `miss: execute`
+2,013. The in-run spans overstate each step (an awaited span also counts
+the save lane's work that runs meanwhile), and so does a CPU profile
+(it put `ownRssHighWater` at 106 µs and `secretMask` at 100). Timed in
+isolation: output resolve 22 µs, `secretMask` 25, the RSS floor read 7,
+an uncached key 21 (a run with no saves). Saves (1.7 ms) run on the save
+lane off the slot. No step is worth a cut: each is under 1% of a task,
+below what a min-of-N wall A/B resolves.
+
+B-93. B-92's no-scan file sat in a `mkdtemp` directory per process,
+removed by an exit hook. Two faults: `sandbox-trace-exit` emits `exit`
+mid-run, the hook removed the file, and every later probe read "ripgrep
+(…/rg) not found" from SRT's live config, failing the unsafe suite on
+CI (#2565, fixed there: the probe names a file that exists); and a
+SIGKILLed run left its directory (3 kills, 3 dirs). Now one 0700
+`vx-noscan-<uid>` directory, never removed; another owner, group or
+other bits, a link, or a file that is not an empty executable falls
+back to `true` (#2579). The local gate missed the first: without
+`VX_REQUIRE_SANDBOX` an unavailable sandbox is a skip, so a gate on a
+sandbox change sets it. Rows: `sandbox-noscan-gone.unsafe.test.ts`,
+`sandbox-noscan-dir.unsafe.test.ts`.
+
+B-95. A pass over `exec/`'s sandbox paths, nothing shipped; each probe
+refuted. (1) STATUS item 24's `PTRACE_LISTEN` EIO: 300 children stopping
+themselves then SIGKILLed, and 400 stopped from outside with CONT and
+KILL racing, inside a sandboxed task (strace `--seccomp-bpf -f`): 7 runs,
+no strace error. Still CI-only; `-D` stays unshipped without a failing
+row. (2) strace's default `-s 32` does not cut a path argument: a
+120-character `openat` path printed whole, so the denial report names
+long paths. (3) A strace error as stderr's last, unterminated line is
+still the retry key (`partial` is read at exit). (4) A task's tag folds
+`hrtime`, so two runs of one task in one process never share a TMPDIR.
+(5) A sandboxed task ignoring SIGTERM past its `timeout` is SIGKILLed
+after the grace, reported as timed out, and leaves no process.
+B-94. Probes, nothing shipped. (1) B-92/B-93's noscan rows as the
+non-root `probe` user: 11 pass, the root-only owner row skipped. (2) A
+SIGKILLed vx leaves no process (bwrap's `--die-with-parent` takes the
+tree), but each running sandboxed task leaves its `vx-tasks/vx-task-*`
+directory and often its strace log: 752 entries, 3 MB, from this
+session's killed runs; a clean run leaves none. Not swept: liveness by
+pid in a temp dir that containers of other pid namespaces may share
+could remove a live task's TMPDIR, a worse failure than 3 MB. SRT's own
+sockets and `srt-obs-*` are left the same way, SRT's to clean. (3) The
+largest unsandboxed step, `secretMask` (B-91: 25 µs a miss), memoised
+by value set: 14.1 to 11.9 µs, noise; the cost is walking `process.env`,
+not building the pattern. Reverted. The unsandboxed path's top three
+(`secretMask` 25, output resolve 22, key 21 µs) stay below what a wall
+A/B resolves; that line is closed.
+
+B-96. The sandboxing guide's examples, run as written: the `vite build`
+block (fresh, hit, `--force`), `coverage/`, `*.log`, `gen/**/*.ts`,
+`gen/` and `dist/**` all behave as the guide says. One gap: a literal
+write grant on a missing path is bound as an empty file, and the hint
+beside the failure named only `mkdir -p dist`'s symptom, "File exists";
+a directory made inside it (`mkdir -p coverage/lcov`) reads "Not a
+directory", named nowhere. The hint, the guide, `schema.md` and the
+module page name both (#2616). Row:
+`sandbox-placeholder-nested.unsafe.test.ts`.
+
+B-97. The report of a write glob that matched nothing at the start spelled
+the grant and the directory to grant as absolute paths
+(`/tmp/…/packages/app/*.log`, then `…/app/**`), which a committed config
+holds only on the machine that printed them. Now as the config spells
+them, from the task's directory (`'*.log'`, then
+`allow: { write: ['.'] }`), from `~`, or whole (#2622), as B-87 did for
+the outside-writes hint. Row: `sandbox-empty-grant-spelling.unsafe.test.ts`.
+
+B-98. The unsandboxed per-task cost ranked again without overlap: 500
+uncached `true` tasks at concurrency 1 save nothing, so no save lane
+runs beside a span, and timestamps around each phase (instrumentation
+not committed) sum to the wall. Per task, mean of 3 runs: `runCommand`
+1.24 ms (89%), then vx's own: before the spawn 85 µs (the key 12, the
+path to `secretMask` 21, `secretMask` with the write-reach checks and
+`buildRequest` 47, the executor's own 4), the scheduler and logging
+around a task 41, after the run 37, admission 9. The largest single item
+is still `secretMask`'s walk of `process.env` (~25 µs, B-94). Cutting
+it needs one env snapshot per run shared by the mask and `taskEnv`,
+which both read `process.env` fresh per task; at ~10 ms per 500 tasks
+it sits inside a min-of-8 wall A/B's ±10 ms. Not cut. The unsandboxed
+path has no step a wall A/B resolves.
+
+B-99. vx-reapi's error paths (F stream): exec timeout, UNAVAILABLE retry,
+a partial or aborted CAS upload, a digest mismatch on download, a result
+missing a declared output. None serves wrong bytes: every read is held to
+the digest it asked for, and an ActionCache entry is written only after
+its upload resolves. A result missing a declared literal output is what
+the action produced, as a local run that never writes it saves without
+it, not a stale hit; a record whose blobs are gone executes. An
+integrity failure on the execute path reaches the user through core's
+named `UserError`. Pinned (#2666), each row red with its guard mutated
+away: an upload that never lands records no entry, an entry the server
+refuses to record is a miss, forged artifact bytes are refused, an
+unreadable artifact is a miss, a record replay meeting a forged blob
+executes and writes nothing, and an Execute refused UNAVAILABLE before
+any operation is sent again, then refused after four attempts. Open, a
+decision: the execute stall timer starts at the EXECUTING stage, so a
+server that queues an action and never starts it holds the task until
+Ctrl-C; bounding queue time is a behaviour change.
+
+B-100. The F stream's other plugins, and the queue bound. vx-otel
+(#2689): a collector that is down, answers 500 or never answers leaves
+the run green, its exit inside core's flush deadline, one warning per
+signal. vx-github (#2691): a 403 without `checks: write`, a rate-limit
+403 and no token each leave the run green with the job summary written
+and say why once. vx-mcp (#2696): every malformed request and unknown
+tool was already answered; a non-string method (-32600, id echoed) and a
+5 MB line gained rows. B-99's open decision, taken: vx-reapi's
+`queueTimeoutMs` bounds the wait until EXECUTING (#2716); past it the
+Execute stream is cancelled and the executor rejects with core's new
+`executorFallback(reason)`, which runs the task on the local floor with
+one line, or fails a `remote: 'only'` task naming the reason. Unset, the
+task's `exec.timeout` bounds the queue as a timeout. The client has no
+`CancelOperation`, so a server may still run an orphaned action.

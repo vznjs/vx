@@ -1,6 +1,7 @@
 // `bunx @vzn/vx-migrate --from nx`: the resolved graph snapshot on disk,
 // through the mapper the `nx()` plugin runs live, as a migration plan.
 
+import { stat } from 'node:fs/promises'
 import path from 'node:path'
 import {
   type MigrationFormat,
@@ -10,6 +11,7 @@ import {
 } from '@vzn/vx'
 import { mapNxWorkspace, nxSizeText, parseNxGraph, readNxJson } from './nx/nx-map.js'
 import { trackedFiles, trackedKinds } from './tracked-outputs.js'
+import { adoptedToolNotes } from './workspace-notes.js'
 
 /** What a task's `npm_package_*` read: the manifest, so a bump reaches them. */
 const MANIFEST_IMPORT = "import pkg from './package.json' with { type: 'json' }"
@@ -32,20 +34,83 @@ export async function migrateNx(
     // The file this writes is each task's config.
     ownConfig: () => `vx.config.${format}`,
     manifestField: (key) => ({ raw: `pkg.${key}` }),
+    migration: true,
   })
+  const adopted = await adoptedToolNotes(root, {
+    plugin: 'nx',
+    config: 'nx.json',
+    runner: 'nx',
+    keys: (lock) => `Nx keys each project on the npm packages it depends on in ${lock}`,
+  })
+  const unlisted = await unlistedProjects(root, metas, mapped.projects)
   return {
     headerNotes: [
       'migrating from the resolved project-graph snapshot — plugin-inferred targets ' +
-        'are frozen as static config; executor targets run through `nx-exec` and ' +
-        'targets with `.env` files through `nx-env` (keep @vzn/vx-migrate and nx installed)',
+        'are frozen as static config; `nx:run-commands` targets are their shell lines, and ' +
+        'every other executor runs as itself through `nx-exec` (keep Nx and @vzn/vx-migrate ' +
+        'installed until those targets are rewritten as commands); targets with `.env` files ' +
+        'run through `nx-env`',
+      ...adopted,
     ],
     projects: mapped.projects.map((p) =>
       p.tasks.some((t) => JSON.stringify(t.task ?? {}).includes('"pkg.'))
         ? { ...p, importLines: [MANIFEST_IMPORT, ...(p.importLines ?? [])] }
         : p,
     ),
-    extraFiles: [],
-    notes: [...mapped.notes, ...workspaceNotes((await readNxJson(root).catch(() => null))?.json)],
+    extraFiles: unlisted.manifests,
+    notes: [
+      ...mapped.notes,
+      ...unlisted.notes,
+      ...workspaceNotes((await readNxJson(root).catch(() => null))?.json),
+    ],
+  }
+}
+
+/**
+ * Nx projects no workspace glob lists (an integrated repo's `project.json`
+ * libraries): core finds a project only by a listed package.json, so a
+ * config written there would never run. Each gets a package.json when it
+ * has none, and one note names the globs to add — the root manifest is
+ * the user's to edit, and `applyMigration` never overwrites a file.
+ */
+async function unlistedProjects(
+  root: string,
+  metas: readonly ProjectMeta[],
+  projects: readonly { name: string; dir: string }[],
+): Promise<{ manifests: { relPath: string; contents: string }[]; notes: string[] }> {
+  const listed = new Set(metas.map((m) => path.resolve(m.dir)))
+  const unlisted = projects.filter(
+    (p) => path.resolve(p.dir) !== path.resolve(root) && !listed.has(path.resolve(p.dir)),
+  )
+  if (unlisted.length === 0) return { manifests: [], notes: [] }
+  const rels = unlisted.map((p) => path.relative(root, p.dir).split(path.sep).join('/')).sort()
+  const manifests: { relPath: string; contents: string }[] = []
+  for (const p of unlisted) {
+    const file = path.join(p.dir, 'package.json')
+    if (
+      await stat(file).then(
+        () => true,
+        () => false,
+      )
+    )
+      continue
+    manifests.push({
+      relPath: path.relative(root, file).split(path.sep).join('/'),
+      contents: `${JSON.stringify({ name: p.name, private: true }, null, 2)}\n`,
+    })
+  }
+  const pnpm = await stat(path.join(root, 'pnpm-workspace.yaml')).then(
+    () => true,
+    () => false,
+  )
+  const where = pnpm ? "pnpm-workspace.yaml's `packages`" : 'package.json `workspaces`'
+  const wrote = manifests.length > 0 ? ' (a package.json is written where there was none)' : ''
+  return {
+    manifests,
+    notes: [
+      `${unlisted.length} Nx project${unlisted.length === 1 ? ' is' : 's are'} in no workspace glob${wrote} — ` +
+        `vx finds a project by a package.json the workspace lists: add ${rels.map((r) => JSON.stringify(r)).join(', ')} to ${where}`,
+    ],
   }
 }
 

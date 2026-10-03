@@ -52,22 +52,43 @@ and key derivation logic live here.
  * CacheLayer so callers don't need a discriminated union.
  */
 export interface CacheLayer {
+  readonly local?: Cache | undefined // the local handle this layer wraps (LayeredCache)
+  readonly hasRemote?: boolean
+  remoteHasMany?(hashes: readonly string[]): Promise<Set<string> | null> // one batched probe; null = no batch info, probe per hash
+  markRemoteAbsent?(hashes: Iterable<string>): void
+  drainUploads?(): Promise<void> // await the background write-through uploads
   key(input: CacheKeyInput): Promise<string>
-  get(hash: string): Promise<CacheEntry | null>
+  get(hash: string, ctx?: CacheGetContext): Promise<CacheEntry | null>
+  getMany?(hashes: readonly string[]): Promise<Map<string, CacheEntry>>
+  has(hash: string): Promise<'local' | 'remote' | null>
+  prefetch(hash: string, ctx?: CacheGetContext): Promise<boolean>
+  loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]>
+  isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): Promise<boolean>
+  // The output-directory short-circuit (A-2): record, load, and judge the
+  // stamps of a hit's output dirs, so a current tree is not re-walked.
+  recordOutputDirs?(
+    hash: string,
+    projectDir: string,
+    prefixes: readonly string[],
+    holds?: (files: readonly string[]) => boolean,
+  ): Promise<void>
+  recordOutputStamps?(hash: string, projectDir: string, workspaceRoot: string): void
+  loadOutputDirsBatch?(hashes: readonly string[]): Map<string, OutputDirRow[]>
+  outputDirsCurrent?(projectDir: string, rows: readonly OutputDirRow[]): Promise<boolean>
   // workspaceRoot anchors the artifact's `workspace-outputs/` entries
   // (cache.outputs.workspaceFiles); omitted → only `outputs/` restores.
   restoreOutputs(hash: string, projectDir: string, workspaceRoot?: string): Promise<void>
   save(args: SaveArgs): Promise<void>
+  ingest(hash: string, body: Blob | Response, meta: IngestMeta): Promise<void> // adopt an artifact a remote served
   // The ONE run-history write: a whole `vx run` atomically, the per-task
   // `runs` rows + one `invocations` header row in ONE transaction. The
   // input-fingerprint rows (entry_inputs) do NOT live here — they ride
   // the entry-save transaction (miss path only), so a warm run is free.
   recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void
   stats(opts?: CacheStatsOptions): CacheStats // { project? } narrows both aggregates
+  hashFile(filePath: string): Promise<string>
+  outputsPath(hash: string): string
   prune(options: PruneOptions): Promise<PruneResult>
-  // `Cache` only (not the layer contract): what prune's orphan sweep
-  // would reap right now — `vx info`'s `orphans` row.
-  orphanStats(): Promise<{ orphans: number; orphanBytes: number }>
   close(): void
 }
 
@@ -95,6 +116,13 @@ export class ArtifactVanishedError extends Error {
   readonly hash: string
 }
 
+// The output-directory short-circuit's bounds: a hit with more than
+// OUTPUT_DIRS_CAP directories under its outputs records none and keeps the
+// walk, and a snapshot holding one whose mtime is within
+// OUTPUT_DIRS_RACY_MS of it is dropped (the next hit walks).
+export const OUTPUT_DIRS_CAP = 8192
+export const OUTPUT_DIRS_RACY_MS = 50
+
 // git's racy-clean window, in ms: a file changed this close to when its
 // digest was learned is hashed again rather than trusted by its stat —
 // by the file-hash memo, and by the pre-save input re-check (task-hash.md).
@@ -121,6 +149,9 @@ export class Cache implements CacheLayer {
     mode?: 'open' | 'inspect', // 'inspect' (Cache.inspect): a reading verb, never resets the index
   )
   // ... CacheLayer methods
+  // Not on the layer contract: what prune's orphan sweep would reap right
+  // now — `vx info`'s `orphans` row.
+  orphanStats(): Promise<{ orphans: number; orphanBytes: number }>
 }
 
 export interface PruneOptions {
@@ -147,6 +178,13 @@ export interface CacheKeyInput {
   workspaceRoot: string
   upstreamHashes: string[]
   upstreamIds?: ReadonlyMap<string, string> // (Tier 3) hash → upstream task id, capture-NAMING only (not folded)
+  // The dependency closure with group tasks expanded, for an executor that
+  // ships inputs; never folded.
+  upstreamGraft?: ReadonlyArray<{
+    readonly taskId: string
+    readonly hash: string
+    readonly projectDir: string
+  }>
   workspaceFingerprint: string
   forwardArgs?: readonly string[] // CLI args after `--`
   fileHashes?: ReadonlyMap<string, string> // (v20) abs path → git blob OID; mapped paths skip hashFile
@@ -204,7 +242,11 @@ export interface CacheEntry {
   command: string // exec.command verbatim
   exitCode: number
   durationMs: number
+  cpuMs?: number // the producing run's, from the artifact's sidecar
+  peakRssBytes?: number
   outputFiles: string[] // project-relative POSIX paths
+  outputRows?: OutputFileRow[] // the rows behind outputFiles, when the layer had them
+  outputDirRows?: OutputDirRow[] // the directory short-circuit's rows, from getMany
   stdout: string // stderr is not cached
   storedAt: string // ISO timestamp
   source?: 'local' | 'remote' // (LayeredCache) which layer served the hit
@@ -228,6 +270,12 @@ export interface RunRecord {
   wallclockEndNs?: bigint
   cacheHit?: boolean // convenience for flamegraph color
   attempts?: number // >1 when the task retried (the within-run flaky signal)
+  cached?: boolean // the task declared `cache`
+  // v27: why it failed or was skipped, as the run's footer said it
+  blockedBy?: string
+  timedOut?: true
+  sandboxViolations?: number
+  notReady?: 'timeout' | 'exited' | 'spawn'
 }
 
 export interface CacheStats {
@@ -247,7 +295,7 @@ export const CACHE_VERSION = 'vx-cache-v39' // key-fold.ts
 // identity a file has (A-55); absentOr maps ENOENT/ENOTDIR to it.
 export const ABSENT_INPUT = 'absent' // key-fold.ts
 export function absentOr(err: unknown): string
-export const SCHEMA_VERSION = 'v28'
+export const SCHEMA_VERSION = 'v29'
 export function noteSchemaReset(cache: Cache, warn: (message: string) => void): void
 
 // The two WHERE fragments every history query shares, so "a run that
@@ -354,7 +402,9 @@ a small artifact (≤ 4 MiB) is packed and decoded in one call instead.
 SQLite stores metadata only:
 
 - **`entries`** — one row per cached output:
-  `(hash, project, task, command, exit_code, duration_ms, size_bytes, stdout, created_at, accessed_at, cpu_ms, peak_rss_bytes)`.
+  `(hash, project, task, command, exit_code, duration_ms, size_bytes, created_at, accessed_at, cpu_ms, peak_rss_bytes)`.
+- **`entry_stdout`** — an entry's captured stdout, `(hash, stdout)`, apart
+  so the `accessed_at` bump does not rewrite it (v29).
 - **`runs`** — one row per task execution (hit or miss):
   `(id, hash, project, task, status, exit_code, duration_ms, forward_args, started_at, ended_at)`.
 - **`schema_meta`** — schema version sentinel. Mismatch → drop the
@@ -432,7 +482,8 @@ Reads via `get()` are non-blocking thanks to WAL.
   us.
 - Marks the hash touched; `accessed_at` (the LRU order `prune`'s
   `maxBytes` evicts by) is written in one batch at prune, stats or close.
-- Pure SQL: stdout from the `entries` row, `outputFiles` from the
+- Pure SQL: stdout from its `entry_stdout` row (one LEFT JOIN on the
+  entry; none for an empty one), `outputFiles` from the
   `output_files` rows. The artifact is not opened — the caller decides
   when to call `restoreOutputs`.
 
@@ -487,7 +538,7 @@ Outputs` additionally refuses when the archive cannot produce an output
 ## `CACHE_VERSION` / `SCHEMA_VERSION`
 
 `CACHE_VERSION` is currently `'vx-cache-v39'`; `SCHEMA_VERSION` is
-`'v28'`. Bump `CACHE_VERSION` when:
+`'v29'`. Bump `CACHE_VERSION` when:
 
 - A new field is added to the cache KEY derivation (folded inside
   `key()`).
@@ -515,7 +566,7 @@ there too as the same `UserError`: every lookup, save, prune, retention
 pass, stats read, run record and config-evaluation read or write passes
 through `guard` (A-8). Before, every task of a run failed on it as an
 "internal error" and `vx cache prune` printed a stack. The open that drops them says
-so: `Cache.schemaReset` carries `{ from, to }` on that one open (null on
+so: `Cache.schemaReset` carries a `SchemaReset`, `{ from, to }`, on that one open (null on
 every later one), and `noteSchemaReset` prints one line — on the run's
 status line, or a verb's stderr — ``[vx] cache index reset: schema v24 →
 v25 (vx upgraded); every cached task misses once and re-saves, and

@@ -148,7 +148,12 @@ transitive closures are built on the FIRST query, not with the graph:
 an unscoped run seeds every project and never asks for one, and
 neither does a `^task` walk, and building both eagerly was 12 ms of a
 240 ms warm run at 1000 projects × 30 deps (profiled 2026-09-09) for
-answers nobody read. A closure is a bitset per project, swept once in
+answers nobody read. A scoped run asks one or two seeds' deps, so
+`transitiveDeps` answers its first 8 asks by a search from the seed
+over the REACH lists it visits, each list built on demand (the same
+set in the same order; `--filter pkg-500` at 1,000 projects, load
+configs 18.4 → 11.3 ms median, #2323). Past those, and for every
+`transitiveDependents` ask, a closure is a bitset per project, swept once in
 Kahn topological order (O(E·P/32), where a set-union DFS was O(P²)
 entries on a dense layered graph — 68 ms at 1090 projects), with
 projects indexed in sorted-name order so materialising one answer is a

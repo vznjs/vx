@@ -32,18 +32,18 @@ Every key `turbo.json`, `nx.json` and `project.json` accept, read from the upstr
 | `noUpdateNotifier` | not applicable | Turbo CLI update notice. |
 | `remoteCache` | mapped, with a note | `turboCache()` reads `apiUrl`, `teamId`, `teamSlug`, `enabled`, `signature`, `timeout` and `uploadTimeout`, below env vars and options. |
 | `tags` | not applicable | Package tags feed only Turbo boundaries; never read. |
-| `tasks` | supported | Each task (or Turbo 1 `pipeline`) becomes a vx task for the packages that declare the script. A script that names `$npm_package_name`, `$npm_package_version` or `$npm_lifecycle_event` gets it defined, as the package manager Turbo runs it through sets it. |
+| `tasks` | supported | Each task (or Turbo 1 `pipeline`) becomes a vx task for the packages that declare the script, and a key-only one where a `^` edge reaches a package without it (`dependsOn`, below). A script that names `$npm_package_name`, `$npm_package_version` or `$npm_lifecycle_event` gets it defined, as the package manager Turbo runs it through sets it. |
 | `ui` | not applicable | Terminal UI choice. |
 | `tasks.*.cache` | supported | `cache: false` means no cache block: the task always runs. |
 | `tasks.*.dependsOn` | mapped, with a note | Same syntax; edges to tasks nobody runs are dropped; `$TURBO_ROOT$` deps get a TODO; `$NAME` becomes env. A package without the script of a `^` task others run keys it as Turbo's no-op node does: a cached `true` task with no outputs, its own edges kept. A task name no package has a script for (`ci: { dependsOn: ["lint", "build"] }`) is a group wherever it has an edge, so `vx run ci` runs them as `turbo run ci` does. |
 | `tasks.*.description` | supported | Copied to the task's `description`. |
-| `tasks.*.env` | mapped, with a note | Goes to `cache.inputs.env` and `exec.env.passThrough`; under `turbo()` a `*` name expands over the run's environment, as Turbo does; otherwise wildcards get a TODO. |
+| `tasks.*.env` | mapped, with a note | Goes to `cache.inputs.env` and `exec.env.passThrough`; under `turbo()` a `*` name expands over the run's environment, as Turbo does; the CLI lists the names the package's files spell, and a wildcard nothing spells gets a TODO. |
 | `tasks.*.inputs` | mapped, with a note | Globs translated; `$TURBO_DEFAULT$` becomes `**/*`, `$TURBO_ROOT$` workspace files; unsafe globs get a TODO; a path git ignores is keyed by a `cache.inputs.workspaceRuntime` probe, as for `globalDependencies`; a glob that reaches a workspace package nested in the task's package is also listed in `cache.inputs.workspaceFiles`, since Turbo hashes the nested package's files with its parent's. |
 | `tasks.*.interactive` | not supported | vx gives no task the terminal, so a prompt reads end of input; `true` gets a TODO saying so. |
 | `tasks.*.interruptible` | not applicable | Maps to nothing, silently: `vx watch` stops and re-spawns every persistent task each cycle. |
 | `tasks.*.outputLogs` | mapped, with a note | `new-only` is vx's default; other values get a TODO pointing at `--output-logs`. Turbo 1's `outputMode` is read as it. |
-| `tasks.*.outputs` | mapped, with a note | Become `cache.outputs`, negations kept; vx cleans outputs, so a wildcard first segment leaves the task uncached with a TODO (save one of a kind the package tracks none of: `*.xml`, `**/dist/**`, `dist-*/**`) and a file git tracks under an output, committed or only `git add`ed, is taken back with `!`. |
-| `tasks.*.passThroughEnv` | mapped, with a note | Goes to `exec.env.passThrough`, not hashed; under `turbo()` a `*` name expands over the run's environment; otherwise wildcards get a TODO. |
+| `tasks.*.outputs` | mapped, with a note | Become `cache.outputs`, negations kept; vx cleans outputs, so a wildcard first segment leaves the task uncached with a TODO (save one of a kind the package tracks none of: `*.xml`, `**/dist/**`, `dist-*/**`, and a literal rest such as `*/package.json`, whose committed matches, up to 16, are taken back with `!`) and a file git tracks under an output, committed or only `git add`ed, is taken back with `!`. |
+| `tasks.*.passThroughEnv` | mapped, with a note | Goes to `exec.env.passThrough`, not hashed; under `turbo()` a `*` name expands over the run's environment; the CLI lists the names the package's files spell, and a wildcard nothing spells gets a TODO. |
 | `tasks.*.persistent` | mapped, with a note | An uncached `exec.persistent` task, with a `readyWhen` TODO when something depends on it. |
 | `tasks.*.with` | mapped, with a note | An edge to each persistent sidecar, which vx starts beside the task (ready on spawn); a sidecar that ends is a todo, and a pair naming each other keeps one edge. A task with no script is a group that starts its persistent sidecars. |
 | `tasks.*.inputs[].from` | not supported | Ignored; vx folds each dependency's cache key instead of its outputs. |
@@ -66,12 +66,12 @@ Every key `turbo.json`, `nx.json` and `project.json` accept, read from the upstr
 | `futureFlags.experimentalObservability` | not applicable | Turbo telemetry export; vx's is a telemetry plugin. |
 | `futureFlags.experimentalPythonWorkspaces` | not supported | Ignored; vx discovers projects from `package.json` workspaces only. |
 | `futureFlags.filterUsingTasks` | not supported | Ignored; `--filter` keeps vx's semantics. |
-| `futureFlags.githubActionsRemoteBaseRefFallback` | not supported | Ignored; `--affected` defaults to `origin/HEAD`, then a trunk branch (`origin/main`, `main`, …), else `HEAD~1`. |
+| `futureFlags.githubActionsRemoteBaseRefFallback` | supported | `turbo()` follows it on GitHub Actions: a pull request's base ref the checkout lacks is compared as `origin/<ref>`, as in Turbo. |
 | `futureFlags.globalConfiguration` | supported | The `global` block is read whenever present, flag or not. |
 | `futureFlags.longerSignatureKey` | mapped, with a note | Not read; `turboCache()` always requires a signature key of at least 32 bytes. |
 | `futureFlags.pruneIncludesGlobalFiles` | not applicable | Affects only `turbo prune`; vx has none. |
 | `futureFlags.strictTaskEntrypointSelection` | not supported | Ignored. |
-| `futureFlags.watchUsingTaskInputs` | not supported | Ignored; `vx watch` watches each task's declared inputs. |
+| `futureFlags.watchUsingTaskInputs` | not supported | Ignored; `vx watch` re-runs on any change in a watched project but a declared output, and the cache keys decide what executes. |
 | `boundaries.dependencies` | not applicable | A Turbo boundaries import rule. |
 | `boundaries.dependents` | not applicable | A Turbo boundaries import rule. |
 | `boundaries.implicitDependencies` | not applicable | A Turbo boundaries import rule. |
@@ -104,7 +104,7 @@ Every key `turbo.json`, `nx.json` and `project.json` accept, read from the upstr
 | `useInferencePlugins` | mapped, with a note | Applied by Nx when it builds the graph; vx sees the targets that result. |
 | `analytics` | not applicable | Nx usage analytics. |
 | `release` | not applicable | Nx versioning and publishing; `nx-release-publish` targets still run through `nx-exec`. |
-| `sync` | not supported | Global sync generators never run; vx warns once per run to run `nx sync`. |
+| `sync` | not supported | Global sync generators never run; under `nx()` vx warns once per run to run `nx sync`, and a migration notes keeping their output by hand. |
 | `migrate` | not applicable | Settings for `nx migrate`. |
 | `conformance` | not applicable | Nx Powerpack conformance rules. |
 | `owners` | not applicable | Nx Powerpack CODEOWNERS generation. |
@@ -121,7 +121,7 @@ Every key `turbo.json`, `nx.json` and `project.json` accept, read from the upstr
 | `targetDefaults.*.inputs` | mapped, with a note | Merged into targets by Nx, then expanded as `targets.*.inputs`. |
 | `targetDefaults.*.dependsOn` | mapped, with a note | Merged into targets by Nx, then mapped as `targets.*.dependsOn`. |
 | `targetDefaults.*.cache` | mapped, with a note | Merged into targets by Nx, then read as `targets.*.cache`. |
-| `targetDefaults.*.syncGenerators` | not supported | One workspace note per generator list, counting its tasks, says to run `nx sync`; vx never runs sync generators. |
+| `targetDefaults.*.syncGenerators` | not supported | One workspace note per generator list, counting its tasks, says to run `nx sync` (a migration: keep their output by hand); vx never runs sync generators. |
 
 ## `project.json`
 
@@ -138,9 +138,9 @@ Every key `turbo.json`, `nx.json` and `project.json` accept, read from the upstr
 | `implicitDependencies` | mapped, with a note | Graph edges without a `package.json` link become explicit `pkg#target` edges for `^target`. |
 | `metadata` | mapped, with a note | Only `targetGroups` is read, to find non-atomized targets' `.env` files. |
 | `release` | not applicable | Nx release settings. |
-| `targets.*.executor` | mapped, with a note | `run-commands` and `run-script` become shell lines, `noop` a group task; others run through `nx-exec`. |
-| `targets.*.options` | mapped, with a note | Passed as `nx-exec`'s `--options` or rendered into `run-commands`; `{args.*}` forwarding gets a TODO. |
-| `targets.*.outputs` | mapped, with a note | Tokens and `{options.x}` resolved; paths outside the project become workspace files; negations kept; vx cleans outputs, so a wildcard first segment leaves the task uncached with a TODO (save one of a kind the project tracks none of: `*.xml`, `**/dist/**`, `dist-*/**`) and a file git tracks under an output, committed or only `git add`ed, is taken back with `!`. |
+| `targets.*.executor` | mapped, with a note | `run-commands` and `run-script` become shell lines, `noop` a group task; every other executor runs through `nx-exec`, under `nx()` and in the migrator's written config alike (the migrator translates no executor). |
+| `targets.*.options` | mapped, with a note | Rendered into `run-commands`, or passed as `nx-exec`'s `--options`; `{args.*}` forwarding gets a TODO. |
+| `targets.*.outputs` | mapped, with a note | Tokens and `{options.x}` resolved; paths outside the project become workspace files, and one outside the workspace is dropped with a TODO; negations kept; vx cleans outputs, so a wildcard first segment leaves the task uncached with a TODO (save one of a kind the project tracks none of: `*.xml`, `**/dist/**`, `dist-*/**`) and a file git tracks under an output, committed or only `git add`ed, is taken back with `!`. |
 | `targets.*.defaultConfiguration` | supported | The base task carries the default configuration's options, as `nx run` does. |
 | `targets.*.configurations` | mapped, with a note | One task per configuration (`build:ci`); own, named and `^` edges take the configuration where declared, else the default (a `^` edge becomes one edge per dependency Nx links). |
 | `targets.*.inputs` | mapped, with a note | Expanded into `cache.inputs`; none means `default` and `^default`; forms without an equivalent get TODOs. |
@@ -150,7 +150,7 @@ Every key `turbo.json`, `nx.json` and `project.json` accept, read from the upstr
 | `targets.*.continuous` | mapped, with a note | An uncached `exec.persistent` task, with a `readyWhen` note when something depends on it. |
 | `targets.*.parallelism` | not supported | `parallelism: false` gets a TODO to run with `--concurrency 1`; vx has no per-task exclusivity. |
 | `targets.*.metadata` | mapped, with a note | Only `nonAtomizedTarget` is read, to find `.env` files. |
-| `targets.*.syncGenerators` | not supported | One workspace note per generator list, counting its tasks, says to run `nx sync`; vx never runs sync generators. |
+| `targets.*.syncGenerators` | not supported | One workspace note per generator list, counting its tasks, says to run `nx sync` (a migration: keep their output by hand); vx never runs sync generators. |
 
 ## Nx `inputs` forms
 

@@ -137,11 +137,13 @@ function hashOf(resource: string): string {
 export async function startFakeReapi(
   opts: { credentials?: grpc.ServerCredentials } = {},
 ): Promise<FakeReapi> {
-  const v2 = (
-    grpc.loadPackageDefinition(
-      protoLoader.loadSync('build/bazel/remote/execution/v2/remote_execution.proto', LOAD_OPTIONS),
-    ) as never as { build: { bazel: { remote: { execution: { v2: Services } } } } }
-  ).build.bazel.remote.execution.v2
+  const defs = grpc.loadPackageDefinition(
+    protoLoader.loadSync('build/bazel/remote/execution/v2/remote_execution.proto', LOAD_OPTIONS),
+  ) as never as {
+    build: { bazel: { remote: { execution: { v2: Services } } } }
+    google: { longrunning: Services }
+  }
+  const v2 = defs.build.bazel.remote.execution.v2
   const bs = (
     grpc.loadPackageDefinition(
       protoLoader.loadSync('google/bytestream/bytestream.proto', LOAD_OPTIONS),
@@ -512,6 +514,16 @@ export async function startFakeReapi(
   server.addService(v2['Execution']!.service, {
     Execute: streamExecute('Execute') as grpc.UntypedHandleCall,
     WaitExecution: streamExecute('WaitExecution') as grpc.UntypedHandleCall,
+  })
+  // Only CancelOperation: recorded in `calls`, failable with `fail()`.
+  server.addService(defs.google.longrunning['Operations']!.service, {
+    CancelOperation: ((
+      call: grpc.ServerUnaryCall<unknown, unknown>,
+      cb: grpc.sendUnaryData<unknown>,
+    ) => {
+      if (enter('CancelOperation', call, unaryErr(cb))) return
+      cb(null, {})
+    }) as grpc.UntypedHandleCall,
   })
 
   await new Promise<void>((resolve, reject) => {

@@ -29,12 +29,13 @@ describe('README names every VX_ variable the plugin reads', () => {
     }
     expect(read.size).toBeGreaterThan(1)
     const readme = readFileSync(path.join(pkg, 'README.md'), 'utf8')
-    // The suite's own gates (`VX_REAPI_TEST_ENDPOINT`, `VX_REQUIRE_REAPI`) are
+    // The suite's own gates (`VX_REAPI_TEST_ENDPOINT`, `VX_REAPI_EXEC_ENDPOINT`,
+    // `VX_REQUIRE_REAPI`) are
     // the README's too, but tests read them, not the plugin.
     const named = new Set(
       [...readme.matchAll(/`(VX_REAPI_[A-Z0-9_]+)(?:=[^`]*)?`/g)]
         .map((m) => m[1]!)
-        .filter((n) => n !== 'VX_REAPI_TEST_ENDPOINT'),
+        .filter((n) => n !== 'VX_REAPI_TEST_ENDPOINT' && n !== 'VX_REAPI_EXEC_ENDPOINT'),
     )
     expect([...named].sort()).toEqual([...read].sort())
   })

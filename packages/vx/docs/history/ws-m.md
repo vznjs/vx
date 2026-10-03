@@ -222,6 +222,22 @@ the afterAll's rm of the 2000-project tree took 4.2 s under load; it now
 has a bound matched to that work, as its beforeAll does. No other
 fixture of that size in the suites.
 
+M-22. Under I/O load (as M-21) the unsafe suite's held-server row,
+`sandbox-runtime.unsafe.test.ts` › a held server keeps its port through
+its run's reset, met a refusal on the server's host port right after
+its ready line, and every later row of the file timed out. Cause of the
+first: the host side of a `localBinding` bridge is a socat vx spawned
+and never waited for, so the task, and its ready line, could come first:
+a product race. Fixed: the task starts once each host socat listens
+(`/proc/net/tcp`, 5 s bound, skipped where /proc is not vx's), and the
+host socat is resolved on vx's PATH like every tool vx runs (it was a
+bare name, so the startup PATH's). `sandbox-port-bridge-ready.unsafe.test.ts`:
+a fake `socat` starts the host listener 1 s late and a shell task marks
+itself started at once; red 3 of 3 without the wait. The row's
+`SandboxManager.reset` spy was restored only past its asserts, so the
+red left it on for the rest of the file; it is restored in a `finally`
+now (the file's other nine spies already were). Whether that spy made
+the later rows time out is not proven.
 M-23. `runner.test.ts` › keeps a ready server alive past its readyWhen
 timeout failed on CI (run 37011271243, a PR touching no runner code):
 `persistent task not ready within 150ms`. The row, and its twin › a
@@ -265,6 +281,15 @@ files and their git objects; 11.1 s for the row and its hooks. The row
 11 ms after, under the same load. No other row of the suites makes a
 fixture past 1,500 files.
 
+M-25. `watch-rules.test.ts` › fsClockNow — a write made right after it
+is never "modified before" it timed out at 5 s on macOS CI (run
+36794690005). The row samples 2,000 writes at five syscalls each: 0.36 s
+here, 2.3 s under `strace -f`, past 5 s with load beside that (all
+twelve shards under strace beside four busy loops), the shape a slow
+sandbox gives every syscall. It now samples 2,000 writes or as many as
+2 s holds, at least 100. With 400 µs injected per file syscall
+(`strace -e inject=…:delay_enter=400`) the old row fails (6.8 s), the
+new passes (2.2 s).
 M-26. M-25's sweep (all twelve shards under `strace -f` beside four busy
 loops) also timed out `foreign-flags.test.ts` › a Turbo or Nx verb names
 what does it in vx: 22 `vx` starts in series, 1.6 s idle and past bun's
@@ -357,6 +382,373 @@ between them, green); both glob rows 6 of 6 beside eight busy loops.
 Which `until` timed out was not recorded. `task-glob-brackets.test.ts` ›
 an upstream's hit sets aside the route (F's macOS lead) is M-4 and M-5.
 
+M-32. `runner.test.ts` › a readyWhen timeout sends SIGTERM first, and
+SIGKILL to what ignores it: red on a docs-only PR's CI (run 37052235753,
+`signalCode` null). The row read `child.signalCode` right after
+`waitForDead`, which answers from the kernel (a zombie is dead); Bun sets
+`signalCode` only when it reaps the child on its loop. A SIGKILLed
+`sleep` read null there 4 times in 50, and SIGKILL 50 of 50 after
+`exited`. The row now reads it after `exited`, bounded at 3 s; the only
+site of the pattern.
+
+M-33. `vx-reapi` `executor-sweep.test.ts` › the run stopping cancels the
+Execute stream: found by a scan for fixed sleeps before an assertion,
+not by a failure on record. The row stopped the run on a 200 ms timer
+and read the server's cancel count 50 ms after; beside twelve busy
+loops it failed 6 of 20 with `executes` 0 (the stop came before the
+Execute was sent, so nothing was there to cancel). The fake's
+`onExecute` now stops the run once it holds the call, the cancel count
+is polled as its sibling rows do, and the unheard-stop bound is 5 s:
+0 of 20 under the same load. The same scan's other timer-aborted rows
+(`vx-github` 502 wait, `vx-otel` 503 wait) were 0 of 20 there.
+
+M-34. `keep-alive.test.ts` › a SIGKILLed vx takes …'s backgrounded
+server / child with it, and › a kill -9 while vx is descheduled: the
+last keep-alive grace rows on M-14's fuse. Each grandchild wrote
+`late.txt` one second after it started, and the row read the file as
+"survived vx's kill -9"; the kill comes after the pid poll, so a slow
+poll or kill on a loaded gate turned a correct vx red. With 1.2 s
+before the kill the old rows fail 3 of 3; the grandchild now waits on
+`go`, written once the row has seen it die (5 s bound, a zombie under
+a sandbox's procfs), and the new rows pass 3 of 3 there and fail 3 of 3
+with the guard's kill line made a no-op. The other gate row named with
+it, `sandbox-bridge-socket.unsafe.test.ts` › is removed when the task
+ends, is M-25's (#2255), with no failure on record since: 12 of 12 runs
+of both files beside eight busy loops on four cores, current main.
+
+M-35. `sandbox-bridge-socket.unsafe.test.ts` › is removed when the task
+ends: the gate's text, "Linux HTTP bridge socket does not exist", has a
+second cause, and M-25's cannot have been the gate's: no unsafe file
+that runs before this one leaves a sandboxed server (bun runs them in
+glob order; `repeated-runs`' server is unsandboxed). SRT's first
+`initialize` registers once-only `exit`, SIGINT and SIGTERM listeners,
+each an unawaited `reset()` that kills the bridges at once but clears
+SRT's init promise only after its proxies close; an `initSandbox` in
+between had `initialize` return early on the dying session, and the
+next bridged run threw that text. A `process.emit('exit')` or
+`('SIGINT')`, then an init and a bridged run, fails every time on
+main. vx now takes the listeners over at that init and tracks the
+reset each starts, which `initSandbox` already waits for. Rows (in a
+child, as the emit takes the listener): red on main, the SIGINT row
+with the gate's text; green with the fix. What sent the gate's suite
+an `exit` or a signal before this file is not proven.
+
+M-36. `util-settle.test.ts` › returns false for a promise that settles
+just past the budget: CI read `true` after 97 ms (#2415). Not a stalled
+loop (Bun fires expired timers in deadline order: 0 of 20 `true` with
+the loop held 200 ms). The row armed the 80 ms resolve BEFORE
+`settleWithin` armed its 20 ms deadline, so 60 ms off the CPU between
+the two arms moved the deadline past it: with 70 ms spun there, 20 of
+20 `true`. `pastDeadline` arms the late settle after the call, so it
+always expires later: 0 of 20 with the same gap. Its three siblings of
+the shape (a late rejection, a neighbour's timeout, `ms = 0`) take it
+too; all four are red with the deadline made ten times late.
+
+M-37. Probes, nothing shipped. `select.test.ts` › only an INCLUDED diff
+makes the selection diff-chosen timed out at 5 s on #2412's CI
+(shard-12, "killed 1 dangling process"). Not slowness: the row takes
+0.15-0.41 s under `strace -f` beside eight busy loops (junit, 5 runs),
+the file 211 ms bare. A child outlived it. Not reproduced: 100 bare
+runs and 60 under `strace -f` beside eight busy loops, and 8 forced
+sandboxed runs of its shard (now 11) beside four. The row spawns
+`rev-parse`, `merge-base`, `diff`, and the enumeration's `ls-files`
+and `status`; none read stdin. Bun closes a spawn's stdin for an empty
+buffer too (`cat` exits). Refuted too: `affected.ts`'s `gitPaths`
+reading stdout to its end before stderr, and `mergeBase` never reading
+its piped stderr, as a pipe deadlock. Bun drains a piped stderr on its
+own: a fake git that wrote 200 KB of stderr before its diff settled
+on main. The child's name is what the next sighting needs.
+Also seen once, in this entry's own gate on main:
+`repeated-runs.unsafe.test.ts` › twenty runs … hold their descriptors
+read 18 open descriptors after run five and 17 at the end (listeners
+steady). Not reproduced: 30 runs of the file beside eight busy loops,
+3 of the 34 unsafe files up to it, 2 of the whole unsafe suite with
+each descriptor named. Refuted: a killed child's pidfd still open at
+the snapshot (each run's reset SIGTERMs SRT's socat and does not await
+its exit). Six sandboxed runs read the same pidfd, socket and pipe count
+right after `run()` returned and 300 ms later.
+
+M-38. Probes, nothing shipped. The one other first-attempt CI failure
+in the last 120 runs (2026-10-03, to 02:05): `runner.test.ts` ›
+settle() lets a grandchild that traps the SIGTERM finish inside the
+grace, macOS only (#2405, D's lead), `settle()` back at 133 ms with
+no marker, so the trapping shell was gone within the 600 ms grace.
+Refuted: a memoized grace (`killGraceMs` reads the env each call) and
+`goneGroups` (nothing here marks the group). Not reproduced: 30 runs
+on Linux with `sh` as `bash --posix` beside eight busy loops. macOS's
+`sh` is bash 3.2 and is not here to probe.
+
+M-39. The plugin suites' timed waits (vx-otel, vx-github, vx-mcp,
+vx-lockfile, vx-migrate), swept for a timer standing in for a state.
+Three rows claimed "a deadline during the retry wait ends it" with an
+abort on a 50 ms timer from the call's start and a 150 ms bound on the
+whole call: `collector.test.ts` › a deadline during the wait ends the
+retries and warns the 503, and `github.test.ts` › … warns the 502 and
+› a drop, then the deadline during the wait. The timer could beat the
+first POST, and the bound counted the POST and any stall. The abort is
+now armed by the first POST (vx-otel's from its fake collector, behind
+a 2 s Retry-After), and the bound runs from the abort. With an 80 ms
+collector or a 160 ms stall in the first POST the old rows fail and
+the new pass; each new row fails with the sink or check-run posting
+again after the abort, or with the abort not heard in the wait. The
+rest hold: the other waits are polls on a state or a hang a client
+abort releases.
+
+M-40. Probes, nothing shipped. The core suite's sleeps over 25 ms (64),
+swept for one standing in for "started" or "dead": the kill-after-sleep
+rows are marker-based since M-14 and M-17. Refuted as races:
+`cli-picker.test.ts`'s 50 ms before an answer (a `PassThrough` buffers
+it: 7 of 7 with every sleep at 0); `runner.test.ts` › routes each stream
+to its own callback, 50 ms after `exited` (green with a 60 ms busy spin
+there, 3 of 3: the pipes are read by then); the poll watcher rows' 30 ms
+(the baseline scan is synchronous; the wait keeps the edit off its
+clock tick); `persistent-ready-timeout.test.ts`'s 200 ms before
+`isAlive` (Bun reaps the exec'd sleeper). Closed: the lead five streams
+filed on `output-dirs-snapshot.test.ts` is A-45's (its keep-alive runs
+after the build), 20 of 20 beside eight busy loops.
+
+M-41. `vx init` on plain pnpm and bun workspaces (no Turbo, no Nx),
+reviewed: the configs it writes run (`build`, `test` across members, a
+`^build` edge on each build, servers persistent), cache nothing until a
+TODO's block is added, as the report says, and the odd layouts held (a
+single package, a glob that matches nothing, a member with no scripts,
+broken JSON named with its path, bun's object `workspaces`, a negated
+or `**` glob, init from inside a member, existing configs refused with
+exit 1). One defect: a script chaining this package's own scripts
+(`check: pnpm run build && pnpm run lint`) was written verbatim with no
+TODO, and with `check`'s edge to `build`, `vx run check` built twice
+and ran `lint` outside the graph. Its parts that run an own task are
+now named in a TODO (`init-own-script-chain.test.ts`, red on main).
+
+M-42. M-41's review, its other finding: a workspace whose globs match
+no package (`"workspaces": ["packages/*"]` over an empty `packages/`)
+was told only "no package.json scripts to turn into tasks", which was
+true and named nothing to fix. A note now names the globs that match no
+`package.json`; a member under them, scripts or not, drops it. Row in
+`init.test.ts`, red on main.
+
+M-43. Probes, nothing shipped: more `vx init` layouts held. Root-only
+scripts become the root's tasks (`build` keeps `^build`, `test` waits
+on it) and the run takes them; a root script sharing a member's task
+name is left out, as the report says; a member with no scripts gets no
+config; a member's own `pnpm-workspace.yaml` is not read, so its
+packages are no members, as pnpm itself reads only the outermost one.
+
+M-44. On Bun 1.3.14 (the container's default, below the floor), every
+`vx run` with a local cache exited 1 with "database is locked" from
+`Cache.close()`, after its tasks had passed: found while probing `vx init`
+on a bun workspace with object-form `workspaces` (`packages`, `apps/**`,
+a `!` glob; that layout holds). O-10's `db.close(true)` finalizes live
+statements on 1.4.2 but answers SQLITE_BUSY on 1.3.14 (a five-line
+`bun:sqlite` probe, both ways). `closeDb` falls back to `close()`, the
+pre-O-10 close, when `close(true)` refuses; both 1.3.14 workspaces then
+exit 0. `cache-close-old-bun.test.ts` stands a refusing `close(true)` in
+for the old runtime; without the fallback it fails with the same error.
+M-45. Probes, nothing shipped: a Yarn 4 workspace (`yarn.lock`,
+`packageManager: yarn@4`, no `.yarnrc.yml`). The root `build` over
+`yarn workspaces foreach` is left out as running the members; `prepack`
+gets no task; `b#test`'s `yarn build && jest` gets M-41's own-task TODO;
+init warns that Plug'n'Play hides `node_modules/.bin` and names both
+fixes.
+
+M-46. M-42's note said "match no package.json" of globs that matched
+three: a nameless member and two sharing a name, each left out of
+`metas`, which the note asked. It now asks the globs
+(`reachesManifest`); a negated member still counts as unmatched. Probes
+that held: lifecycle scripts (`install`, `prepare`, `postinstall`,
+`prepublishOnly` dropped; `pre`/`post` folded, except under Yarn
+Berry; `version` kept, a root `changeset version` is user-run), root
+fan-out over `bun --filter`, `pnpm -r`, `npm --workspaces` left out,
+and a malformed member manifest refused with its path.
+`init.test.ts` › does not call a matched but unaddressable member
+unmatched; red without the fix.
+
+M-47. Probes, nothing shipped. Held: edges through `file:../a`,
+`link:../b`, a `peerDependencies` range and an `optionalDependencies`
+`workspace:~` (each orders the run and joins `--filter d...`); a root that
+lists itself (`workspaces: [".", …]`) keeps its `lint` and leaves out its
+`build` under the member-name rule; `vx init` from inside a member finds
+the root. Lead, not changed: init refuses the whole workspace when one
+member already has a vx config, and `--force` would overwrite that
+hand-written file, so a half-adopted workspace has no clean path. Pinned
+on purpose (`init.test.ts` › refuses to overwrite without --force, like
+migrate); keeping such a project and writing the rest is the owner's call.
+
+M-48. M-41's own-task TODO read only `pnpm run x` / `npm run x`
+segments: `build: run-p build:*` and `ci: npm-run-all -s lint test` ran
+this package's own tasks inside the command with no word, though
+`scriptRefs` already reads those runners (D-95, D-113). The check now asks
+`scriptRefs` of a `run-s` / `run-p` / `npm-run-all` segment, counts every
+task it names, and skips a persistent task (`dev: run-p watch:*` has the
+persistent TODO). Probes that held: `--mjs` on M-44's and M-47's layouts.
+`init-own-script-chain.test.ts` › names a run-s / run-p / npm-run-all
+part; red without the fix, and the persistent control red without its
+guard.
+
+M-49. `remote-cache-degrade.test.ts` › a 503 heals on the resend
+(turboCache) › a download answered 503 once timed out at 7,094 ms
+against bun's 5 s on #2504's plugin-packages job (an unrelated diff).
+Cause: `withRetry` waits Turbo's real 2 s backoff before the resend
+(`remote-retry.ts`), so both wires' rows took 2.1 s idle (2.16 and 2.08
+s, junit) on top of two `vx run`s, and a loaded runner crossed the limit.
+The row now swaps `Bun.sleep`, which the plugin reads when the run builds
+it, for one that records the 2 s and resolves at once, and asserts the
+record: 0.14 and 0.06 s. A backoff of 1,999 ms and a 503 not resent each
+fail both rows. The suite's other slow rows (1.45 s) wait their own 700
+ms deadline, which is their claim.
+
+M-50. Probes, nothing shipped. A junit sweep of every suite (core's
+12 shards, each plugin) for M-49's class, a row near bun's 5 s default:
+none past M-49's own. The slowest core rows (10.1 s down to 2.0 s) set
+their own limits (8 to 120 s); the default-limit rows top out at 1.40 s
+(`run-lock.test.ts` › a wait longer than a second; `runner.test.ts`'s
+readiness windows at 1.25 to 1.31 s), whose time is a fixed sleep, the
+claim itself, that load does not stretch as it stretched M-49's two
+runs. vx-reapi's 2.1 s rows run under `--timeout 90000`. `vx init`
+held on odd script names: `a#b`, `^up` and `""` are refused with the
+reason; spaces, `/`, `...`, `run` and non-ASCII names map and run by
+name; `-flag` maps but reads as a flag, so only `a#-flag` reaches it.
+Non-string `scripts` values and a `scripts` that is not an object are
+skipped without a crash, as npm skips them.
+
+M-51. `pnpm-workspace.yaml`'s `packages` decides the members, as pnpm
+reads it, and a root `package.json` whose `workspaces` listed other globs
+was dropped without a word: in a bun or npm repo with a stale yaml,
+`vx init` mapped `packages/*` and lost `apps/*`. Init now names the
+unread list in a note (array or `{ packages }` form) and what to do; the
+same list, or none, says nothing. Probes that held: `pnpm-workspace.yaml`
+in flow style with comments and mixed quotes, a block list with inline
+comments, a `catalog`, and `!**/test/**` under `packages/**`.
+`init.test.ts` › names a package.json workspaces list pnpm-workspace.yaml
+overrides; red without the fix.
+
+M-52. M-47's lead, decided (never overwrite): `vx init` on a workspace
+where some packages already had a vx config refused the whole run, and
+`--force` would have replaced the hand-written file. Init now keeps each
+existing config untouched, writes the missing ones, and lists the kept
+under `kept (each already has a vx config):`; with nothing missing it
+says `no files written`. `--force` still replaces; `@vzn/vx-migrate`
+still refuses. `init.test.ts` › keeps each config it finds (replacing
+the row that pinned the refusal) fails without the fix and without its
+`force` guard; `migration.test.ts`'s refusal row fails without the
+`init` guard.
+
+M-53. `output-memory.unsafe.test.ts` › an opted-down stream does not
+grow went red in a full gate: retained 160 MiB minus 40 MiB read 122
+against a 120 MiB line. Cause: both rows of the file read RSS, the
+allocator's high-water of the chunks pushed through, which JSC does not
+hand back; six quiet runs read −7 to +63 MiB for that delta, and a loaded
+reader lets more chunks pile up (the logger row had already hit 88
+against 80 and carried a min-of-2 for it). `Bun.gc(true)` before an RSS
+read changes nothing (probed). Both probes now read `heapUsed` after
+`Bun.gc(true)`, with the result still referenced: exact and repeatable
+(capture 17 → 17 MiB kept, 1 → 1 dropped; logger `full` 81 → 241,
+`none` / `hash-only` 1 → 1), so the lines drop to a quarter of the
+extra volume and the min-of-2 goes. With retention bounded, volume alone
+could not tell a dropped capture from a kept one (a capture that ignored
+`false` passed the old row), so the row also asserts the dropped side
+holds over 8 MiB less than the kept. Each mutant fails its line: an
+unbounded cap (120), `capture: false` ignored (0), either mode out of
+`discardsOutput` (160). The file passes 3 of 3 under 8 busy loops.
+
+M-54. `vx init` on a single-package repo whose `package.json` has no
+`name` said `not mapped:  — its package.json has no "name"…`: the root's
+own path is the empty relative path. It now says `the root`. Single-package
+probes that held: `prepare` dropped, a `prebuild` folded into `build`, an
+`npm run clean && tsc` chain given M-41's TODO, `start` persistent, one
+config at the root beside `vx.workspace.ts`. `init.test.ts` › names the
+root when a single package has no name; red without the fix.
+
+M-55. Probes, nothing shipped. macOS CI's `@vzn/vx#test.bun.unsafe`
+died by SIGKILL (exit 137) once, on #2557's first head (job
+111139135100), right after #2555 (M-53) merged; the log names no row,
+since the suite had printed only its header. M-53 is not the cause: the
+peak RSS of every process `output-memory.unsafe.test.ts` spawns is 263
+MiB before and after it (twice each, `RUSAGE_CHILDREN`), far under a
+macOS runner's 7 GB, and the same suite with M-53 passed on macOS on
+#2555's own run, on main's push after it, and on #2557's next head. The
+killer is unknown; the next occurrence needs the file that was running.
+
+M-56. `vx run` on a name no near miss reaches said what was wrong and
+nothing to pick from: `No projects declare task(s): deploy.`,
+`nope#build.` with no word that `nope` is no project, and `no projects
+matched filter(s): nope`. Each now says what exists when `nearest` finds
+nothing: `Tasks: build, test.`, `No project is named zzz; projects: a,
+b.`, `a's tasks: build, test.`, `. Projects: a, b` for a filter (also on
+the warning a partly-matched filter prints); eight names, then a count
+(`listed`, `util/edit-distance.ts`). A near miss keeps its one `Did you
+mean`, and a name only projects outside the selection declare keeps its
+`--all` line without a list. Probes that held: a near task typo, a near
+project in `pkg#task`, a near `--filter`, and a workspace with no vx
+config (`run vx init`). Rows: `task-selection.test.ts` › a name past any
+near miss says what exists instead (exact lines; red without the fix),
+`near-miss.test.ts` › listed; four exact messages updated. And a run
+with no `package.json` above it now says what to do, not only what is
+missing: it adds that vx runs inside a project, or that a new one
+needs a package.json (bun init, npm init -y) and `vx init`
+(`workspace.test.ts`, the whole line; red without it). A flag or verb typo already hinted.
+
+M-57. M-56 for `vx show`: an unknown project, task, or bare name with
+no near miss said only what was unknown. It now lists what exists:
+`; projects: app, lib`, `; its tasks: app#build, app#test`, `; projects
+and tasks: …` (`listed`); a near miss keeps its `did you mean`. Probes
+that held: `vx why` on an unknown spec points at `vx last --list` once
+runs exist (and near-misses a spec); `vx watch` reuses `vx run`'s M-56
+message; `vx last` names `--list`; a flag typo hints. Not changed:
+`--filter=zzz...` reads `zzz....` (the filter's own dots, then the
+sentence's). `show-error-prefix.test.ts`'s three exact lines; red
+without the fix.
+
+M-58. The remaining verbs' refusals, scanned: `vx watch` reads `vx run`'s
+flags through `parseRunArgs`, and its unknown-flag line pointed at `vx run
+--help` (the verb's own `vx watch --help` exists and lists what watch
+takes); the parser now takes the verb, for the hint and the pointer. `vx
+cache <word>` with nothing near named no subcommand; it says `The
+subcommand is prune`. Held: `vx cache` bare and `clear` (names prune),
+bad `--max-size` / `--older-than` (an example each), `vx lock` with an
+argument or no lock file, `vx why` and `vx last` (`--format` lists the
+values, a flag typo hints), `vx watch` bare and its refused flags, `vx
+upgrade` with an unknown flag. `cli.test.ts` › vx watch names its own
+help (exact lines; red without the fix).
+
+M-59. `vx init` on a workspace whose scripts could not become tasks (a
+member, or the single package, with no `name`) opened `no package.json
+scripts to turn into tasks.`, over a note naming the scripts it skipped
+(M-46 and M-54 left it). It now opens `no package.json scripts became
+tasks.` when such a note is printed; a workspace with no scripts at all
+keeps its line. Globs that held: `packages/*/`, `./packages/*`,
+`./apps/*`, `apps/*/`. `init.test.ts` › names the root when a single
+package has no name pins the headline; red without the fix.
+
+M-60. A flag before any verb (`vx --all`, `vx -V`, `vx --verison`) was
+refused as `unknown command: --all`, naming the wrong kind of word. It now
+reads `vx: unknown flag: --all; a verb's flags follow the verb`, with
+`did you mean --version?` for a near miss and for `-v` / `-V`. Held, the
+rest of the verbs' refusals: `vx init` (`--frce` hints `--force`, a bare
+`--plugin` lists the seams, an extra argument is named), `vx info`
+(`--json` hints `--format json`), `vx help <word>` (near-misses a verb).
+`cli.test.ts` › a flag before any verb is called a flag (exact lines; red
+without the fix), and `-V` now pins its line.
+
+M-61. Security audit, three classes. (1) Archive extraction held:
+`..`, absolute, drive and NUL names, a pax `path` that renames into a
+traversal, symlinked parents, a planted link or hardlink at the target,
+and symlink, hardlink and device entries (never materialised) each have
+a row in `archive-security.test.ts` / `tar-stream.test.ts`. (2) Secrets
+held: with `API_TOKEN` and `MY_PAT` in `cache.inputs.env` and
+`passThrough`, no value appeared in `vx why` (it shows a 64-bit hash of
+each), `vx last`, `vx show`, `--summarize` or the cache database. Lead,
+not fixed: that hash is unsalted xxh3, so a short secret named in
+`cache.inputs.env` can be guessed from `vx why`'s output; it stays local.
+(3) Outputs linked out held: a file link out (`/etc/hostname`, another
+project's file) refuses the save with its target, and a `dist` linked to
+an outside directory packs none of its files (the containment filter;
+Bun 1.4's glob follows the link) and deletes none. Fixed: in that last
+case the empty-artifact warning blamed the glob; it now names `dist`,
+the target, and that vx keeps only outputs inside the project.
+`cache-declaration-warnings.test.ts` › an output directory linked out of
+the project is named as the cause; red without the fix.
+
 ## Leads for other streams
 
 - A: A-20 let a same-project dependant restore ahead of a producer whose
@@ -370,7 +762,10 @@ an upstream's hit sets aside the route (F's macOS lead) is M-4 and M-5.
   that does not touch the launcher). The launcher exited 130 and the fake
   binary's INT trap never wrote `heard` (ENOENT). Once in the survey; cause
   unproven. The forward is gated on `inForeground()`, which reads `ps` on
-  macOS.
+  macOS. Twice more on main's macOS job (runs 36767290231, 36785326912,
+  2026-09-30), both before the launcher moved to CommonJS and `execve`
+  (#1979, #1981, 2026-10-01); none in the CI runs surveyed after them
+  (2026-10-01 06:00 to 2026-10-02 15:30).
 - B (done, M-14): `keep-alive.test.ts` › a kill -9 in the persistent shutdown's grace
   takes the server a dead shell left. The server writes `late.txt` 1 s
   after its SIGTERM mark, a timed fuse, and the row's kill comes after
@@ -383,3 +778,152 @@ an upstream's hit sets aside the route (F's macOS lead) is M-4 and M-5.
   and 5 runs under 16 CPU hogs. The bridge socket binds 30-60 ms after
   the run starts (120-350 ms under load) against the row's 1 s task
   and 2 s wait. The failure text is needed to go further.
+
+M-62. M-61's lead, fixed: `vx why` printed a secret-named
+`cache.inputs.env` variable's before and after as its 64-bit xxh3, an
+unsalted hash of the value, so a short secret was recoverable from a CI
+log that printed `vx why`. `diffKeyComponents`, the join `vx why` and the
+playground share, now carries `***` for a name the masking rule calls
+secret (`secretNamed`, now exported), and the text row shows the name and
+its change with no hash (supervisor: the safer fix); other env inputs
+keep their hashes. A name made secret by `exec.env.secret` alone, which
+run history did not record, is M-63. `why.test.ts` › a secret-named env input (text and json;
+red without the fix, the `REGION` control unmasked).
+
+M-63. M-62's gap: a name only `exec.env.secret` makes secret (`GH_PAT`)
+still showed its unsalted hash in `vx why`, since the stored row carried
+no word of it. On a miss the captured `env` row of such a name is stored
+as `***<hash>`; `diffKeyComponents` masks a row with that mark as it does
+a secret-named one, and compares the stored text, so a change still
+shows. Rows of names the rule already catches are stored as before (no
+spurious `changed` after the upgrade). `why.test.ts` › a name only
+exec.env.secret makes secret (red without the mark, `REGION` control).
+keep their hashes. Not
+covered: a name made secret by `exec.env.secret` alone, which run history
+does not record. `why.test.ts` › a secret-named env input (text and json;
+red without the fix, the `REGION` control unmasked).
+
+M-64. Audit lead from (1)/(3): a brace arm hid an escape from the glob
+check. `{../shared,src}/**` splits on `/` into `{..`, so it loaded, and
+`{/etc,src}/*` is not `startsWith('/')`. Probed: Bun.Glob matches nothing
+under either arm (`{..,dist}/**` cleaned and saved only `dist`; a file
+beside the project survived), so nothing was deleted outside, but an
+input arm silently left the key. `hasParentSegment` now splits on brace
+delimiters too, and `isAbsoluteGlob` reads each arm, at every site
+(`inputs`/`outputs`, `files`/`workspaceFiles`). `project-loader.test.ts`
+› a brace arm that escapes or is absolute (red without the fix; controls
+`{src,lib}/**`, `{a..b,src}/**`, `a,/b/**` load).
+
+M-65. M-61's warning, the workspace side: a `workspaceFiles` output
+directory that is a symlink out of the workspace (`shared ->
+/elsewhere`) drops every file under it, and the empty-artifact line
+blamed the glob. Probed with the rest of (3): a file link out under
+`workspaceFiles` and a project link into the workspace are refused at
+save, and nothing outside was packed or cleaned. `outputDirLinkedOut`
+now reads the workspace globs against the root and names the base.
+`cache-declaration-warnings.test.ts` › and a workspaceFiles directory
+linked out of the workspace (red without the fix).
+
+M-66. Class (3) probe, the save refusal: a `workspaceFiles` output
+linked out of the project was refused by vx's own entry name,
+`output workspace-outputs/gen/latest`, a path the config never wrote.
+The three save refusals (link out, dangling, not a file) now say
+`workspaceFiles output gen/latest`. `output-shape.test.ts` › to another
+project's file is still refused pins the line (red without the fix).
+
+M-67. Security audit, remote responses that lie about size or digest.
+Held, each pinned: (1) core's `ingest` bounds the compressed body
+before the decode (a `Content-Length` past the ceiling's bound, or a
+body that counts past it while streaming, L-5), decodes no further than
+the artifact ceiling, checks the artifact's own checksum, and refuses
+an artifact stored under another key or none: with that check removed,
+`remote-artifact-names.test.ts`' two key rows fail. (2) `@vzn/vx-reapi`
+holds every read to the digest it ASKED for, never the reply's: batch
+entries, ByteStream reads (the size as bytes pass, the hash at the
+end), zstd replies decoded no further than the declared size (L-3), and
+an inline AC body that fails its digest is streamed instead (F-8);
+`integrity.test.ts`, `read-bounds.test.ts`. `turboCache()` /
+`nxCache()` hand their body to the same `ingest`. Not covered: a
+digest function this runtime cannot compute is checked by size alone
+(`canDigest`); the cache layer addresses its blobs by SHA-256 (`digestOf`).
+
+M-68. `runner.test.ts` › a grandchild that prints within the post-exit
+drain lost `TAIL` on main's macOS job (run 37107310861, #2655, a diff
+that does not touch exec). After the shell's exit the grandchild had to
+wake, fork and exec `sleep 0.05`, then echo, inside the 250 ms drain;
+the row's two earlier shapes overran it the same way on macOS (292 ms,
+317 ms), each by a process exec after the exit. Not reproduced on Linux
+(0 of 15 old and new under 12 CPU hogs), so the exec is the shared shape
+of all three overruns, not a measured cause. The row now holds the only
+reader of the shell's FIFO and releases the grandchild itself, 50 ms
+after the EOF, through a second FIFO the grandchild waits on: nothing
+after the exit forks. 10 of 10 green; a 0 ms drain fails it 5 of 5.
+
+M-69. Security audit, two more classes; no finding. (3) `vx mcp`: the
+server answers `initialize`, `ping`, `tools/list` and `tools/call` only
+(no resources), and no tool takes a path: its arguments are `project`,
+`task`, `taskId`, `runId`, `limit` and `scope`, bound into SQL as
+parameters, never joined into a file path; an unknown argument is
+refused (`unknown-arguments.test.ts`) and `tests/contract/tools.json`
+pins every schema, so a path argument cannot arrive without a contract
+change. (4) Plugin specifiers: vx resolves none. `plugins` holds the
+values the workspace config imported itself, and a string there is
+refused at load, never imported: probed with
+`plugins: ['../../outside-plugin.js']`, the run stops on "`plugins[0]`
+must be an object … not a module name" and the file is not loaded
+(`config-schema-refusals.test.ts` pins the line). What a config imports
+is its author's code, resolved by Bun from the config's directory.
+
+M-70. Main's macOS job, run 37089948846 (#2460, a docs change): two
+`vx watch` rows each saw one cycle start right after `watching`, with
+no edit made. `watch-loop-selfwrite.test.ts` named it, `app run.pid;
+re-running...`; `cli.test.ts` › editor swap files counted it (1) and
+named nothing. The swap-file row now asserts the re-run lines themselves
+(`[]`), so a repeat says which path; driven red by writing `index.txt`
+in place of the swap file, it names `one src/index.txt`. Lead, not a
+cause: the judge drops a first sighting whose mtime and ctime are both
+before `armedAt`, and `armedAt` is stamped after the initial run that
+wrote `run.pid`, so on that runner something moved the file's mtime or
+ctime past the arm, or the stamp read early. Not reproduced on Linux
+(it is FSEvents' path); once in about 400 main runs (2026-10-02 20:25 to
+2026-10-03 10:03).
+
+M-71. Security queue (1), task env isolation: held, now by a law at
+the spawn. A task sees the allowlist (`ESSENTIAL_ENV`), what it names in
+`passThrough` or `define`, `VX_RUN_WORKSPACE` and `VX_RUN_TASK`; probed
+under `vx run` with `SSH_AUTH_SOCK`, `GITHUB_TOKEN`,
+`AWS_SECRET_ACCESS_KEY` and `NPM_TOKEN` set, none reached a plain or a
+sandboxed task. A sandboxed one also gets the sandbox runtime's own proxy
+settings (`HTTPS_PROXY`, `GIT_SSH_COMMAND` and the like, all pointing at
+its localhost proxy with its own credential), the same with the host's
+proxy variables unset. The unit rows held only `buildIsolatedEnv`; the
+new row runs a task and compares the names it saw with the exact set
+(what the child sets itself aside: the shell's `PWD`, `SHLVL`, `_`,
+`OLDPWD`, and on macOS `__CF_USER_TEXT_ENCODING`, which CoreFoundation
+writes into the probe's own `node`; the first macOS run read it as a
+leak). Red when
+`buildIsolatedEnv` forwards `SSH_AUTH_SOCK`. `env.test.ts` › what a task
+sees of the host environment, end to end; `schema.md` names the run's two
+and the row.
+
+M-72. Security queue (2), `vx upgrade`'s verification: the checksum
+half holds. It refuses a release whose asset publishes no `sha256:`
+digest and a download whose SHA-256 differs, before anything is
+replaced; mutation held both (`upgrade.test.ts`: the mismatch guard off
+fails "a download that does not match the release digest replaces
+nothing", the missing-digest guard off fails two `releaseAsset` rows).
+The signature half is not built, as item 1096 records: the digest comes
+from the same release API as the asset, so it guards the transfer, not
+who built the binary. Releases are attested (L-12,
+`actions/attest-build-provenance`) but the binary does not verify the
+attestation; Sigstore verification in-process is a bundle, certificate
+chain and transparency-log check with no dependency to lean on. The
+smaller close is a signed checksum file (ed25519 or minisign) with the
+public key compiled in, which needs a signing key held as a release
+secret: an owner decision, not made here.
+
+M-73. M-72's decision (owner, 2026-10-03): no release signing key for
+now; `vx upgrade` keeps the checksum, and the docs say what it proves.
+`cli.md` and `modules/upgrade.md` already did (item 1096); `security.md`'s
+Releases paragraph said only that the SHA-256 is checked, and now says it
+proves the bytes arrived intact, not who built them.

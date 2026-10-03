@@ -40,7 +40,7 @@ self.onmessage = async (e) => {
     const mod = ns?.default
     const isObject = mod !== null && typeof mod === 'object'
     const nonJson = isObject ? nonJsonPaths(mod) : []
-    postMessage({ ok: true, nonJson, json: isObject && nonJson.length === 0 ? JSON.stringify(mod) : null })
+    postMessage({ ok: true, nonJson, json: isObject && nonJson.length === 0 ? JSON.stringify(mod) : null, fn: typeof mod === 'function' })
   } catch (err) {
     postMessage({ ok: false, error: \`\${err?.name ?? 'Error'}: \${err?.message ?? String(err)}\` })
   }
@@ -52,6 +52,9 @@ const CONFIG_FILE = 'vx.config.mjs'
 
 /** What the CLI says of a config whose default export is not an object (project-loader.ts). */
 export const NOT_AN_OBJECT = `Project config at ${CONFIG_FILE} did not export a default object`
+
+/** ...and of one that exports a function (project-loader.ts's EXPORTED_A_FUNCTION). */
+export const NOT_AN_OBJECT_FUNCTION = `${NOT_AN_OBJECT}: it exports a function, and vx reads the object itself — export what the function returns`
 
 interface Token {
   kind: 'word' | 'string' | 'punct' | 'template' | 'regex'
@@ -247,7 +250,7 @@ export function rewriteConfigImports(
 }
 
 type Reply =
-  | { ok: true; json: string | null; nonJson: NonJsonValue[] }
+  | { ok: true; json: string | null; nonJson: NonJsonValue[]; fn?: boolean }
   | { ok: false; error: string }
 
 const moduleUrl = (source: string): string =>
@@ -305,7 +308,8 @@ function settle(reply: Reply): Evaluated {
   if (!reply.ok) return reply
   const [nonJson] = reply.nonJson
   if (nonJson !== undefined) return { ok: false, error: nonJsonMessage(CONFIG_FILE, nonJson) }
-  if (reply.json === null) return { ok: false, error: NOT_AN_OBJECT }
+  if (reply.json === null)
+    return { ok: false, error: reply.fn ? NOT_AN_OBJECT_FUNCTION : NOT_AN_OBJECT }
   return { ok: true, config: JSON.parse(reply.json) as unknown }
 }
 

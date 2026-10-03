@@ -110,6 +110,8 @@ exports.readProjectsConfigurationFromProjectGraph = (g) => ({
 exports.runExecutor = async (description, overrides, context) => {
   const node = context.projectGraph.nodes[description.project]
   const target = node.data.targets[description.target]
+  // \`throws\`: the executor (or its resolution) throws, as a missing package does.
+  if (typeof target.options.throws === 'string') throw new Error(target.options.throws)
   fs.writeFileSync(path.join(context.root, 'record.json'), JSON.stringify({
     description, overrides, target,
     context: {
@@ -133,7 +135,9 @@ exports.runExecutor = async (description, overrides, context) => {
     fs.writeFileSync(file, target.options.content ?? 'executor wrote this')
   }
   const results = target.options.results ?? [{ success: true }]
-  return (async function* () { for (const r of results) yield r })()
+  // \`returns\`: the generator's return value, which \`nx run\` prefers to the last yield.
+  const returns = target.options.returns
+  return (async function* () { for (const r of results) yield r; return returns })()
 }
 `,
   )

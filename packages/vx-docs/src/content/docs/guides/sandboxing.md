@@ -1,13 +1,13 @@
 ---
 title: Sandboxing tasks
-description: Run a task where only the workspace files you declared exist, so an undeclared read fails the task instead of hiding in the cache.
+description: Run a task where only the workspace files you declared exist, so an undeclared input cannot hide in the cache.
 ---
 
 Prove a task reads only what it declares.
 
 ## Steps
 
-1. Add `sandbox` to the task's `exec`. `sandbox: {}` allows nothing in the workspace, not even the package. Outside the workspace root (`~/.cache`, `/etc`) reads are open and fold into no key: declare what the output depends on as a key input.
+1. Add `sandbox` to the task's `exec`. `sandbox: {}` allows nothing in the workspace, not even the package. Outside the workspace root (`~/.cache`, `/etc`) reads are open and fold into no key: declare what the output depends on as a key input. The credential stores under home (`~/.ssh`, `~/.aws`, `~/.npmrc` and the like) are the exception: denied unless `allow.read` names one.
 2. Grant the package: `allow: { read: ['.'] }`. Its `node_modules` is readable already. Another package of yours, linked there, is readable when the task depends on one of that package's command tasks; an uncached task reads every linked package.
 3. Grant each output directory in `write`, and each host in `network`. The sandbox does not read `cache`: declare both.
 4. Run the task. An undeclared read or write fails it and names the path.
@@ -54,7 +54,7 @@ export default defineProject({
 | `systemInfo`   | sysctl names a tool probes (`vfs.disk-space`)                     |
 | `machLookup`   | macOS services (`com.apple.FSEvents`)                             |
 | `pty`          | a terminal                                                        |
-| `gitConfig`    | inert: SRT drops the per-task flag                                |
+| `gitConfig`    | write the repository's `.git/config`, for this task only          |
 
 ## The boundary is the project
 
@@ -63,7 +63,8 @@ bar the linked packages of step 2.
 That wall is silent. An undeclared touch of the task's own files fails the
 task, and a failed task is never cached. A write refused past the wall
 (a tool filling its cache in your home) is named beside a failed task,
-with the directory to grant.
+with the directory to grant; under the host's temp directory it names
+`$TMPDIR` instead, the empty temp directory the task has of its own.
 
 ## Requirements & platform support
 
@@ -76,10 +77,16 @@ with the directory to grant.
 - A group task: it has no command.
 - A task that itself sandboxes, on macOS (a sandbox cannot nest).
 
+A persistent task (a dev server) runs inside the same walls, but nothing
+traces it: a read outside its grants is refused as missing (`ENOENT`) and
+named nowhere, and step 4's failure does not happen. One that exits
+failing before it is ready says so beside its failure; run its command
+as a one-shot sandboxed task to see what it was refused.
+
 ## Common problems
 
 - **`write /proc/self/uid_map: Operation not permitted`.** You are root in a container. Run as a normal user, or set `weakerWhenNested: true` on every sandboxed task.
-- **`File exists` from the task's own `mkdir`.** A write grant with no trailing slash is a file. Write `'coverage/'`.
+- **`File exists` or `Not a directory` from the task's own `mkdir`.** A write grant with no trailing slash is a file (`mkdir -p coverage` reads the first, `mkdir -p coverage/lcov` the second). Write `'coverage/'`.
 - **A file the task creates later is refused on Linux** ("Read-only file system"). A glob with a file part (`*.log`, `gen/**/*.ts`) is matched when the task starts. Grant its directory (`'gen/'`; `'dist/**'` grants the directory too). A temp directory the tool makes and removes in the package (`.*.tmp/**`) needs only the glob: nothing written there is kept.
 - **`bun build --compile --target=…` fails on a fresh machine** ("Network error downloading executable", then "Failed to extract executable"). Bun fetches the target's runtime from npm into its cache. Grant `network: ['registry.npmjs.org']` and `write: ['~/.bun/install/cache/', '.*.tmp/**']`.
 - **`read packages/ui through packages/app/node_modules/@x/ui, and its key folds no task of @x/ui`.** The task imports a sibling its key never sees. Depend on a command task of it (`dependsOn: ['^source']`, or `^build`), or grant and key the files yourself.

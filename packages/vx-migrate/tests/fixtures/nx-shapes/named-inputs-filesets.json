@@ -1,0 +1,84 @@
+{
+  "graph": {
+    "nodes": {
+      "a": {
+        "name": "a",
+        "data": {
+          "root": "libs/a",
+          "namedInputs": { "production": ["{projectRoot}/src/**/*.ts"] },
+          "targets": {
+            "build": {
+              "executor": "@nx/vite:build",
+              "options": { "outputPath": "dist/libs/a", "configFile": "libs/a/vite.config.ts" },
+              "configurations": {
+                "production": { "mode": "production" },
+                "development": { "mode": "development" }
+              },
+              "cache": true,
+              "dependsOn": ["^build"],
+              "inputs": [
+                "production",
+                "^production",
+                { "fileset": "{projectRoot}/tsconfig.lib.json", "dependencies": true }
+              ],
+              "outputs": ["{options.outputPath}", "!{options.outputPath}/stats.html"]
+            },
+            "typecheck": {
+              "command": "tsc --noEmit -p libs/a/tsconfig.lib.json",
+              "cache": true,
+              "inputs": [{ "input": "production", "projects": ["b", "c"] }, "production"],
+              "outputs": []
+            },
+            "bundle-report": {
+              "command": "node scripts/report.js",
+              "cache": false,
+              "outputs": ["{projectRoot}/report/**/*.html"]
+            },
+            "dts": {
+              "command": "tsc --emitDeclarationOnly",
+              "cache": true,
+              "inputs": [
+                "production",
+                { "dependentTasksOutputFiles": "**/*.d.ts", "transitive": true }
+              ],
+              "outputs": ["{projectRoot}/dist/**/*.d.ts"],
+              "dependsOn": ["^dts"]
+            }
+          }
+        }
+      },
+      "b": {
+        "name": "b",
+        "data": {
+          "root": "libs/b",
+          "targets": {
+            "build": {
+              "command": "tsc -b libs/b",
+              "cache": true,
+              "outputs": ["{projectRoot}/dist"]
+            },
+            "dts": {
+              "command": "tsc --emitDeclarationOnly -p libs/b",
+              "cache": true,
+              "outputs": ["{projectRoot}/dist/**/*.d.ts"]
+            }
+          }
+        }
+      },
+      "c": {
+        "name": "c",
+        "data": {
+          "root": "libs/c",
+          "targets": {
+            "build": {
+              "command": "tsc -b libs/c",
+              "cache": true,
+              "outputs": ["{projectRoot}/dist"]
+            }
+          }
+        }
+      }
+    },
+    "dependencies": { "a": [{ "source": "a", "target": "b", "type": "static" }], "b": [], "c": [] }
+  }
+}

@@ -21,6 +21,8 @@ import {
   type VxPlugin,
   loadResolvedProjects,
   UserError,
+  refuseUnknownOptions,
+  type PluginOptionKinds,
 } from '@vzn/vx'
 import type { CommandContext } from '@vzn/vx'
 import { criticalPathPriorities } from './critical-path.js'
@@ -186,7 +188,17 @@ function assumptions(
   return ok
 }
 
+/** Each option `ScheduleHistoryOptions` names, with its kind: derived from the type, so the two cannot drift. */
+const SCHEDULE_HISTORY_KEYS: PluginOptionKinds<ScheduleHistoryOptions> = {
+  window: 'number',
+  resources: 'any',
+  memory: 'number',
+  reservations: 'object',
+  assume: 'object',
+}
+
 export function scheduleHistoryPlugin(options: ScheduleHistoryOptions = {}): VxPlugin {
+  refuseUnknownOptions('scheduleHistoryPlugin()', options, SCHEDULE_HISTORY_KEYS)
   const hooks: Parameters<typeof definePlugin>[1] = {
     commands: {
       history: {

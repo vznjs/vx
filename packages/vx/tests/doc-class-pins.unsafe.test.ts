@@ -654,10 +654,10 @@ describe('every benchmark figure a blog table quotes is a measured one', () => {
     }
     const FIELDS = ['fresh', 'warmNoRestore', 'freshCpu'] as const
     let checked = 0
-    // The post (2026-09-10) predates the frozen headline: its vx figures
-    // are the run's per-run-eval row, `vx (no lock)` since 2026-09-29.
+    // The post quotes the headline row, `vx` (the frozen lock), as the
+    // README does (2026-10-03).
     for (const [runner, label] of [
-      ['vx (no lock)', 'vx'],
+      ['vx', 'vx'],
       ['turbo', 'Turborepo'],
       ['nx', 'Nx'],
     ] as const) {
@@ -707,16 +707,17 @@ describe('every benchmark figure a blog table quotes is a measured one', () => {
       return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
     }
     let checked = 0
-    // The post (2026-09-10) predates the frozen headline: its vx figures
-    // are the run's per-run-eval row, `vx (no lock)` since 2026-09-29.
+    // The post quotes the headline row, `vx` (the frozen lock), as the
+    // README does (2026-10-03).
     for (const [runner, label] of [
-      ['vx (no lock)', 'vx'],
+      ['vx', 'vx'],
       ['turbo', 'Turborepo'],
       ['nx', 'Nx'],
     ] as const) {
       const fresh = results.rows.find((r) => r['runner'] === runner)!['fresh'] as number
       const over = mmss(fresh - results.baseline['workBoundMs']!)
-      const row = new RegExp(`\\| ${label} +\\|[^|]*\\(\\+(${'[0-9:]+'})\\)`).exec(post)
+      // `(+1:35)`, or `(+1:35, vx 27% faster)` since every cell names vx's %.
+      const row = new RegExp(`\\| ${label} +\\|[^|]*\\(\\+(${'[0-9:]+'})[,)]`).exec(post)
       expect(row).not.toBeNull()
       expect({ runner, over: row![1] }).toEqual({ runner, over })
       checked += 1

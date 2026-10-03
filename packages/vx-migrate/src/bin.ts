@@ -4,7 +4,7 @@
 // on stderr, anything else is a crash worth a stack.
 
 import { isUserError } from '@vzn/vx'
-import { migrateCmd } from './index.js'
+import { migrateCmd } from './migrate.js'
 
 try {
   process.exitCode = await migrateCmd(process.argv.slice(2))

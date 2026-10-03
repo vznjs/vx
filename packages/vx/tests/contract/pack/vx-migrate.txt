@@ -10,6 +10,7 @@ src/index.ts
 src/mapping-cache.ts
 src/migrate-nx.ts
 src/migrate-turbo.ts
+src/migrate.ts
 src/nx-cache/index.ts
 src/nx-command.ts
 src/nx-dotenv.cjs
@@ -34,3 +35,4 @@ src/tracked-outputs.ts
 src/turbo-cache/index.ts
 src/turbo/index.ts
 src/turbo/turbo-map.ts
+src/workspace-notes.ts

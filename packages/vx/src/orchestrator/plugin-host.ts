@@ -372,13 +372,15 @@ export function buildAdmission(
         if (!overridden.has(plugin)) {
           overridden.add(plugin)
           warn(
-            `plugin '${plugin.name}' refused ${id} in admit with nothing running; admitting it, since no completion would ask again`,
+            `[vx] plugin '${plugin.name}' refused ${id} in admit with nothing running; admitting it, since no completion would ask again`,
           )
         }
       } catch (err) {
         broken.add(plugin)
         const m = err instanceof Error ? err.message : String(err)
-        warn(`plugin '${plugin.name}' failed in admit: ${m}; admitting every task from here on`)
+        warn(
+          `[vx] plugin '${plugin.name}' failed in admit: ${m}; admitting every task from here on`,
+        )
       }
     }
     return true
@@ -537,7 +539,7 @@ export async function teardownPlugins(
       }
     } catch (err) {
       warn(
-        `[vx] plugin '${plugin.name}' teardown failed: ${err instanceof Error ? err.message : String(err)}`,
+        `[vx] plugin '${plugin.name}' failed in teardown: ${err instanceof Error ? err.message : String(err)}`,
       )
     }
   }

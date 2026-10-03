@@ -2,7 +2,7 @@
 // handler lives in a sibling `<name>.ts`; tests import its parsers there.
 
 import { VERSION } from '../version.js'
-import { CORE_VERBS, printHelp } from './help.js'
+import { CORE_VERBS, flagHint, printHelp, refusedWord, seeHelp } from './help.js'
 import { FOREIGN_VERBS } from './foreign-flags.js'
 import { isUserError, MOVED_VERBS, nearest, UserError } from '../util/index.js'
 
@@ -28,7 +28,20 @@ export async function run(argv: readonly string[]): Promise<number> {
   }
 
   switch (command) {
-    case undefined:
+    case undefined: {
+      // A bare `vx` where no workspace is printed 151 lines of help, none
+      // of which says the one thing wrong: there is nothing here to run.
+      const { findWorkspaceRoot } = await import('../workspace/index.js')
+      try {
+        await findWorkspaceRoot(process.cwd())
+      } catch (err) {
+        if (!isUserError(err)) throw err
+        process.stderr.write(`vx: ${err.message}; \`vx help\` lists the verbs\n`)
+        return 1
+      }
+      printHelp(await (await plugins()).pluginCommandHelp())
+      return 0
+    }
     case '--help':
     case '-h':
       printHelp(await (await plugins()).pluginCommandHelp())
@@ -49,6 +62,12 @@ export async function run(argv: readonly string[]): Promise<number> {
           process.stderr.write(`${pointer}\n`)
           return 1
         }
+        if (unknown && verb.startsWith('-')) {
+          process.stderr.write(
+            `vx help: unknown flag: ${verb}${flagHint('help', verb)} (see \`vx help\`)\n`,
+          )
+          return 1
+        }
         if (unknown) {
           const declared = resolved === null ? [] : resolved.declaredVerbs
           process.stderr.write(
@@ -61,9 +80,19 @@ export async function run(argv: readonly string[]): Promise<number> {
       return 0
     }
     case '--version':
-    case 'version':
+    case 'version': {
+      // `vx version --hlp` printed the version and exited 0: a word it
+      // takes no more of is refused, as every other verb refuses one.
+      const extra = rest[0]
+      if (extra !== undefined) {
+        process.stderr.write(
+          `vx version: ${refusedWord(extra)}: ${extra}${flagHint('version', extra)}${seeHelp('version')}\n`,
+        )
+        return 1
+      }
       process.stdout.write(`vx ${VERSION}\n`)
       return 0
+    }
     case 'run':
       return await (await import('./run.js')).runCmd(rest)
     case 'watch':
@@ -136,9 +165,15 @@ export async function run(argv: readonly string[]): Promise<number> {
       }
       // A task typed where the verb goes (`turbo build`, `nx build app`),
       // `turbo dev` included: a repo's own `dev` task beats the no-service note.
+      const declaredVerbs =
+        resolved !== null && 'declaredVerbs' in resolved ? resolved.declaredVerbs : []
+      const guess = didYouMeanVerb(command, declaredVerbs)
+      // A typo of a task (`vx biuld`) names the task, unless a verb is closer.
       const task =
         loadNote === ''
-          ? await (await import('./task-verb.js')).taskVerbHint(command, rest, process.cwd())
+          ? await (
+              await import('./task-verb.js')
+            ).taskVerbHint(command, rest, process.cwd(), guess === '' && !command.startsWith('-'))
           : null
       if (task !== null) {
         process.stderr.write(`vx: ${task}\n`)
@@ -167,9 +202,17 @@ export async function run(argv: readonly string[]): Promise<number> {
       // declaring `mcp` read as a plain unknown command, and `vx mcp`
       // before the plugin was declared said nothing about the file that
       // would declare it (2026-09-20).
-      const declaredVerbs =
-        resolved !== null && 'declaredVerbs' in resolved ? resolved.declaredVerbs : []
-      const guess = didYouMeanVerb(command, declaredVerbs)
+      // A word that opens with a dash is a flag, and vx itself takes only
+      // --help and --version: "unknown command: --bogus" named the wrong
+      // thing (M-60).
+      if (command.startsWith('-')) {
+        // `-v` / `-V` is another tool's version flag, far from both names.
+        const flag = /^-v$/i.test(command) ? '--version' : nearest(command, ['--help', '--version'])
+        process.stderr.write(
+          `vx: unknown flag: ${command}${flag === undefined ? '' : ` (did you mean ${flag}?)`}; a verb's flags follow the verb (see \`vx help\`)\n`,
+        )
+        return 1
+      }
       process.stderr.write(
         `vx: unknown command: ${command}${guess}${loadNote} (see \`vx help\`)\n` +
           (guess === '' && loadNote === '' ? verbSourceNote(resolved, declaredVerbs) : ''),

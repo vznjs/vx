@@ -38,6 +38,10 @@ you must bump it; otherwise stale entries can produce wrong restores.
    table with a fallback — `output_dirs`, 2026-09-03 — is not identity).
 6. **Cache tests** (`packages/vx/tests/cache*.test.ts`) — key-derivation
    assertions and storage-layout fixtures.
+7. **`packages/vx/tests/contract/stored-format.json`** — regenerate with
+   `VX_UPDATE_CONTRACT=1 bun test tests/contract-stored-format.test.ts`
+   (from `packages/vx`). It records each stored layout beside its version
+   and fails a layout that moved under an unchanged one.
 
 ## After the bump
 
@@ -56,6 +60,6 @@ you will read it to understand cache invalidation history.
 The current version and the reasoning live in `CLAUDE.md` § Live
 invariants and `docs/caching.md`; the history is in git (the decision log
 was retired 2026-09-02). Current: `vx-cache-v39`, core `SCHEMA_VERSION`
-`v28` (bumped 2026-09-26 for the output rows' inode and ctime stamps; a
+`v29` (bumped 2026-10-02 to move stdout out of `entries`; a
 `SCHEMA_VERSION` bump drops the whole index, so it is taken only when a
 stored shape changes).

@@ -10,7 +10,7 @@ import { unlink } from 'node:fs/promises'
 import path from 'node:path'
 import { executablePath, relPosix, UserError } from '../util/index.js'
 import type { ProjectMeta } from './workspace.js'
-import { loadWorkspace, unreachedHint, unreachedPackages } from './workspace.js'
+import { loadWorkspace, reachesManifest, unreachedHint, unreachedPackages } from './workspace.js'
 import { WORKSPACE_CONFIG_FILENAMES } from './project-loader.js'
 
 /**
@@ -235,6 +235,12 @@ export interface ApplyMigrationArgs {
   /** Report lines printed under the source line (e.g. "turbo.json found and not read"). */
   notes?: readonly string[]
   /**
+   * Scripts exist but no project can carry them (a member without a
+   * `name`): the empty report said "no package.json scripts" of a repo full
+   * of them (M-59).
+   */
+  unmapped?: boolean
+  /**
    * `ts` (default) writes `vx.config.ts` with the type-only import and
    * `satisfies`; `mjs` writes `vx.config.mjs` — the same object, untyped —
    * for a package whose own `tsc --build` includes every `.ts` under it
@@ -256,6 +262,18 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
   const configName = `vx.config.${format}`
   const workspaceName = `vx.workspace.${format}`
   const empty = plan.projects.length === 0
+  // `vx init` never overwrites a member's config: a half-adopted workspace
+  // keeps each one it has, by name, and gets the rest (M-52). It refused
+  // the whole workspace, and `--force` would have replaced the hand-written
+  // file; `--force` still replaces, as asked.
+  const kept: string[] = []
+  const projects = plan.projects.filter((p) => {
+    if (!init || force || p.tasks.length === 0) return true
+    const existing = metas.find((m) => m.dir === p.dir)?.configPath
+    if (!existing) return true
+    kept.push(relPosix(root, existing))
+    return false
+  })
   if (empty && !init) {
     throw new UserError(
       `nothing to migrate: no ${source === 'package.json scripts' ? 'package.json scripts in any workspace member' : 'tasks in ' + source}`,
@@ -263,7 +281,7 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
   }
 
   const files: { relPath: string; abs: string; contents: string }[] = []
-  for (const p of plan.projects) {
+  for (const p of projects) {
     if (p.tasks.length === 0) continue
     const abs = path.join(p.dir, configName)
     files.push({
@@ -291,7 +309,7 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
     const conflicts = new Set<string>()
     // A discovered project with ANY existing vx config (.ts/.mjs/.js) — refuse
     // so we never shadow a hand-written config with a fresh .ts.
-    for (const p of plan.projects) {
+    for (const p of projects) {
       if (p.tasks.length === 0) continue
       const meta = metas.find((m) => m.dir === p.dir)
       if (meta?.configPath) conflicts.add(relPosix(root, meta.configPath))
@@ -316,7 +334,7 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
   // order, and the report said "written" for a file the run never loaded
   // (item 1033).
   const replaced: string[] = []
-  for (const p of plan.projects) {
+  for (const p of projects) {
     if (p.tasks.length === 0) continue
     const existing = metas.find((m) => m.dir === p.dir)?.configPath
     if (existing && existing !== path.join(p.dir, configName)) replaced.push(existing)
@@ -337,7 +355,7 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
   let todoCount = 0
   let clean = 0
   let cached = false
-  for (const p of plan.projects) {
+  for (const p of projects) {
     for (const t of p.tasks) {
       if (t.todos.length === 0 && t.task !== null) clean++
       if (t.task !== null && 'cache' in t.task) cached = true
@@ -352,7 +370,19 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
   const report: string[] = []
   // Single-project mode with packages the root's missing `workspaces` never
   // reaches: the scripts exist, the globs do not (item 248).
-  const unreached = empty ? await unreachedPackages(await loadWorkspace(root)) : []
+  const workspace = empty ? await loadWorkspace(root) : undefined
+  const unreached = workspace === undefined ? [] : await unreachedPackages(workspace)
+  // Globs that reach no package: "no scripts" was true and named nothing
+  // to fix (M-42).
+  const globs = workspace?.packageGlobs.filter((g) => g !== '.') ?? []
+  // Asked of the globs, not of `metas`: a nameless or shared-name member
+  // is matched yet absent from `metas` (M-46).
+  const noMembers =
+    workspace !== undefined && globs.length > 0 && !(await reachesManifest(workspace))
+      ? [
+          `the workspace globs (${globs.map((g) => `"${g}"`).join(', ')}) match no package.json: add a package under one, or fix the glob`,
+        ]
+      : []
   if (empty && unreached.length > 0) {
     report.push(
       `${verb}: ${unreachedHint(unreached)}`,
@@ -364,8 +394,10 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
     )
   } else if (empty) {
     report.push(
-      `${verb}: no package.json scripts to turn into tasks.`,
-      ...(args.notes ?? []).map((n) => `note: ${n}`),
+      args.unmapped === true
+        ? `${verb}: no package.json scripts became tasks.`
+        : `${verb}: no package.json scripts to turn into tasks.`,
+      ...[...noMembers, ...(args.notes ?? [])].map((n) => `note: ${n}`),
       hasWorkspaceFile
         ? `${workspaceName} already exists.`
         : dry
@@ -396,8 +428,13 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
       }
     }
     report.push(...plan.notes)
-    report.push(dry ? 'files (dry run, nothing written):' : 'files written:')
+    if (files.length === 0) report.push(dry ? 'no files (dry run)' : 'no files written')
+    else report.push(dry ? 'files (dry run, nothing written):' : 'files written:')
     for (const f of files) report.push(`  ${f.relPath}`)
+    if (kept.length > 0) {
+      report.push('kept (each already has a vx config):')
+      for (const f of kept) report.push(`  ${f}`)
+    }
     if (replaced.length > 0) {
       report.push(dry ? 'would replace (dry run):' : 'replaced:')
       for (const f of replaced) report.push(`  ${relPosix(root, f)}`)

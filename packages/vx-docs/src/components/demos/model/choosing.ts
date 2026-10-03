@@ -135,10 +135,10 @@ export const CHOICES: readonly Choice[] = [
     cells: {
       vx: {
         chose:
-          'A local sandbox, opt-in per task (exec.sandbox), on Linux and macOS. A read or write outside the grants is denied, and the task fails.',
-        buys: 'An undeclared read turns into a failed task on your own machine and in CI, before it becomes a stale hit.',
+          "A local sandbox, opt-in per task (exec.sandbox), on Linux and macOS. A workspace read or a write outside the grants is denied; one of the task's own files fails it.",
+        buys: "An undeclared read of the task's own files turns into a failed task on your own machine and in CI, before it becomes a stale hit.",
         costs:
-          'It is off until a task opts in. Its grants are a second list next to the inputs, and it proves the key only as far as the two agree. No Windows.',
+          'It is off until a task opts in. Its grants are a second list next to the inputs, and it proves the key only as far as the two agree. No native Windows.',
         sources: [
           { label: 'Sandboxing tasks', href: 'guides/sandboxing/' },
           {
@@ -326,7 +326,7 @@ export const CHOICES: readonly Choice[] = [
     cells: {
       vx: {
         chose:
-          'Bun. The npm package runs a binary with Bun inside, for Linux and macOS on x64 and arm64; from source it needs Bun 1.4 or later. Configs and plugins run on Bun.',
+          "Bun. The npm package runs a binary with Bun inside, for Linux (glibc, not Alpine's musl) and macOS on x64 and arm64; from source it needs Bun 1.4 or later. Configs and plugins run on Bun.",
         buys: 'Bun’s SQLite, process spawning, globbing and compression are built in, and one binary carries all of it.',
         costs:
           'A config or plugin that needs an API only Node has does not run. No native Windows: Windows runs vx under WSL.',
@@ -650,7 +650,7 @@ export const CHOICES: readonly Choice[] = [
           'bunx @vzn/vx-migrate writes vx.config.ts files from turbo.json or the Nx graph; turbo() and nx() are a temporary start until it has.',
         buys: 'A move to native vx config without retyping the graph.',
         costs:
-          'The plugins are not on npm until 0.1.0 is cut. nx() runs Nx executors through a Node bin. Moving to native configs means writing input lists.',
+          'The plugins are not on npm until 0.1.0 is cut. nx() runs Nx executors through a Node bin, and so does the written config until you rewrite each nx-exec line as the command it wraps. Moving to native configs means writing input lists.',
         sources: [
           { label: 'From Turborepo', href: 'guides/migrate/#turborepo' },
           { label: 'From Nx', href: 'guides/migrate/#nx' },

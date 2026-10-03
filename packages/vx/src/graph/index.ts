@@ -10,6 +10,7 @@ export {
 } from './dependency-spec.js'
 export {
   type ContinueMode,
+  deadServerBehind,
   RestoreDemoted,
   runGraph,
   type TaskOutcome,

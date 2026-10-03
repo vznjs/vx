@@ -48,6 +48,22 @@ const never = <T = void>(): Promise<T> => new Promise<T>(() => {})
 const resolveAfter = <T>(ms: number, value: T): Promise<T> =>
   new Promise<T>((resolve) => setTimeout(resolve, ms, value))
 
+/**
+ * `settleWithin` on a promise that settles `lateMs` after the call armed its
+ * `budget` deadline. A late timer armed BEFORE the call lost to a preemption
+ * between the two arms: 60 ms off the CPU there moved the deadline past it,
+ * and CI read `true` after 97 ms (M-36).
+ */
+function pastDeadline(budget: number, lateMs: number, reject?: Error): Promise<boolean> {
+  let settle!: () => void
+  const late = new Promise<void>((resolve, fail) => {
+    settle = reject === undefined ? resolve : () => fail(reject)
+  })
+  const result = settleWithin(late, budget)
+  setTimeout(settle, lateMs)
+  return result
+}
+
 /** Set the env exactly as a shell would, then read the bound back. */
 function timeoutFor(raw: string | undefined): number {
   if (raw === undefined) delete process.env[ENV]
@@ -118,7 +134,7 @@ describe('settleWithin — the deadline wins', () => {
   }, 10_000)
 
   it('returns false for a promise that settles just past the budget', async () => {
-    expect(await settleWithin(resolveAfter(80, undefined), 20)).toBe(false)
+    expect(await pastDeadline(20, 80)).toBe(false)
   })
 
   // A late rejection is the nastiest shape: the race is already settled, so
@@ -132,10 +148,7 @@ describe('settleWithin — the deadline wins', () => {
     }
     process.on('unhandledRejection', count)
     try {
-      const late = new Promise<void>((_resolve, reject) => {
-        setTimeout(() => reject(new Error('late boom')), 60)
-      })
-      expect(await settleWithin(late, 20)).toBe(false)
+      expect(await pastDeadline(20, 60, new Error('late boom'))).toBe(false)
       // Outlive the rejection so an unhandled one would have surfaced.
       await Bun.sleep(90)
       expect(unhandled).toBe(0)
@@ -292,7 +305,7 @@ describe('settleWithin — every call gets its own budget', () => {
   // i.e. the timer is per-call state, never module state.
   it('a neighbouring timeout does not cut short a slower healthy promise', async () => {
     const [timedOut, settled] = await Promise.all([
-      settleWithin(resolveAfter(60, undefined), 20),
+      pastDeadline(20, 60),
       settleWithin(resolveAfter(60, undefined), 95),
     ])
     expect({ timedOut, settled }).toEqual({ timedOut: false, settled: true })
@@ -316,7 +329,7 @@ describe('settleWithin — hostile budgets', () => {
 
   it('gives up at ms = 0 on anything not already settled', async () => {
     expect(await settleWithin(never(), 0)).toBe(false)
-    expect(await settleWithin(resolveAfter(30, undefined), 0)).toBe(false)
+    expect(await pastDeadline(0, 30)).toBe(false)
   })
 
   // The whole point of the primitive: no budget value can make it hang. A

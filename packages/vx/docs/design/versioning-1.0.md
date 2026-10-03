@@ -10,21 +10,22 @@ release notes (`history/release-0.1.0-notes.md` is the model).
 From 1.0, these surfaces follow semver. A patch fixes them, a minor
 adds to them, and only a major removes or changes one.
 
-| Surface                                                                                                                                                                | Defined by                                                                                                                                                                                                                                                                                                 |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| The config schema: every field `vx.config.ts` and `vx.workspace.ts` accept, and what each means                                                                        | `src/workspace/config-schema.ts`, `docs/schema.md`; recorded in `tests/contract/config-schema.json`                                                                                                                                                                                                        |
-| The plugin API: the hooks in `PLUGIN_HOOKS`, `definePlugin`, `CacheLayer` / `RemoteCacheLayer`, `TaskExecutor`, and the telemetry records (`TELEMETRY_SCHEMA_VERSION`) | `src/orchestrator/plugin.ts`, `src/cache/layer.ts`, `src/cache/layered-cache.ts`, `src/exec/executor.ts`, `src/orchestrator/telemetry.ts`; recorded in `tests/contract/package-api.txt`                                                                                                                    |
-| The package's exports                                                                                                                                                  | `src/index.ts`; names pinned by `package-boundaries.unsafe.test.ts`, shapes by `tests/contract/package-api.txt`                                                                                                                                                                                            |
-| The first-party plugin packages' exports (`@vzn/vx-reapi`, `@vzn/vx-otel`, …)                                                                                          | each package's `src/index.ts`; recorded in `tests/contract/plugin-api/`, one file per package                                                                                                                                                                                                              |
-| The CLI: verbs, flags, exit codes, and the machine-readable outputs (`--dry=json`, `--graph`, `--summarize`, `vx mcp`'s tools)                                         | `docs/cli.md`; verbs, flags and their values recorded in `tests/contract/cli-surface.json`; exit codes recorded in `tests/contract/exit-codes.json`; `--dry=json`, `--summarize` and `--graph` recorded in `tests/contract/cli-wire.json`; `vx mcp`'s tools in `packages/vx-mcp/tests/contract/tools.json` |
-| The lock file: `vx-lock.json`, what `vx lock` writes and `vx lock --check` / `--frozen` read                                                                           | `src/workspace/lockfile.ts` (`LOCKFILE_VERSION`), `docs/cli.md`; recorded in `tests/contract/vx-lock.json`                                                                                                                                                                                                 |
-| The environment variables vx reads (`VX_*`)                                                                                                                            | `docs/cli.md` § Environment variables vx reads, held to the source by `tests/env-doc-drift.test.ts`; recorded in `tests/contract/cli-surface.json`                                                                                                                                                         |
-| Workspace discovery: which manifests make a root and list its projects, which root a run from inside a member finds, and which config file names load, in which order  | `src/workspace/workspace.ts`, `src/workspace/project-loader.ts`; recorded in `tests/contract/discovery.json`                                                                                                                                                                                               |
-| What `@vzn/vx-otel` sends: span and metric names, attribute keys and their OTLP value types                                                                            | `packages/vx-otel/src/otlp.ts`; recorded in `packages/vx-otel/tests/contract/otlp.txt`                                                                                                                                                                                                                     |
-| `vx-migrate`'s command lines, and those of `nx-exec`, `nx-env` and `lage-worker`, which the configs it writes call                                                     | each bin's usage in `packages/vx-migrate/src/`; recorded in `packages/vx-migrate/tests/contract/cli.txt`                                                                                                                                                                                                   |
-| The check run `@vzn/vx-github` posts: its default name, conclusion per outcome, endpoint and body keys                                                                 | `packages/vx-github/src/checks.ts`, `src/plugin.ts`; recorded in `packages/vx-github/tests/contract/checks.txt`                                                                                                                                                                                            |
-| What each npm package ships: the files `npm publish` uploads for `@vzn/vx` and every plugin                                                                            | `scripts/build-npm.ts`; recorded in `tests/contract/pack/`                                                                                                                                                                                                                                                 |
-| Task-glob semantics: which paths a pattern selects (item 667 made `[` literal; that reading is now part of the contract)                                               | `docs/schema.md`, `docs/caching.md`                                                                                                                                                                                                                                                                        |
+| Surface                                                                                                                                                                | Defined by                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| The config schema: every field `vx.config.ts` and `vx.workspace.ts` accept, and what each means                                                                        | `src/workspace/config-schema.ts`, `docs/schema.md`; recorded in `tests/contract/config-schema.json`                                                                                                                                                                                                                                                                                                                                              |
+| The plugin API: the hooks in `PLUGIN_HOOKS`, `definePlugin`, `CacheLayer` / `RemoteCacheLayer`, `TaskExecutor`, and the telemetry records (`TELEMETRY_SCHEMA_VERSION`) | `src/orchestrator/plugin.ts`, `src/cache/layer.ts`, `src/cache/layered-cache.ts`, `src/exec/executor.ts`, `src/orchestrator/telemetry.ts`; recorded in `tests/contract/package-api.txt`                                                                                                                                                                                                                                                          |
+| The package's exports                                                                                                                                                  | `src/index.ts`; names pinned by `package-boundaries.unsafe.test.ts`, shapes by `tests/contract/package-api.txt`                                                                                                                                                                                                                                                                                                                                  |
+| The first-party plugin packages' exports (`@vzn/vx-reapi`, `@vzn/vx-otel`, …)                                                                                          | each package's `src/index.ts`; recorded in `tests/contract/plugin-api/`, one file per package                                                                                                                                                                                                                                                                                                                                                    |
+| The CLI: verbs, flags, exit codes, and the machine-readable outputs (`--dry=json`, `--graph`, `--summarize`, `--profile`, `vx mcp`'s tools)                            | `docs/cli.md`; verbs, flags and their values recorded in `tests/contract/cli-surface.json`; exit codes recorded in `tests/contract/exit-codes.json`, `tests/contract/exit-codes-states.json` and `tests/contract/exit-codes-init.json`; `--dry=json`, `--summarize` and `--graph` recorded in `tests/contract/cli-wire.json`; `--profile` in `tests/contract/profile-wire.json`; `vx mcp`'s tools in `packages/vx-mcp/tests/contract/tools.json` |
+| The lock file: `vx-lock.json`, what `vx lock` writes and `vx lock --check` / `--frozen` read                                                                           | `src/workspace/lockfile.ts` (`LOCKFILE_VERSION`), `docs/cli.md`; recorded in `tests/contract/vx-lock.json`                                                                                                                                                                                                                                                                                                                                       |
+| The environment variables vx reads (`VX_*`)                                                                                                                            | `docs/cli.md` § Environment variables vx reads, held to the source by `tests/env-doc-drift.test.ts`; recorded in `tests/contract/cli-surface.json`                                                                                                                                                                                                                                                                                               |
+| Workspace discovery: which manifests make a root and list its projects, which root a run from inside a member finds, and which config file names load, in which order  | `src/workspace/workspace.ts`, `src/workspace/project-loader.ts`; recorded in `tests/contract/discovery.json`                                                                                                                                                                                                                                                                                                                                     |
+| The environment variables the first-party plugins read (`VX_REAPI_*`, `OTEL_*`, `GITHUB_*`, `TURBO_*`, …)                                                              | each package's `src/`; recorded in `tests/contract/plugin-env.txt`                                                                                                                                                                                                                                                                                                                                                                               |
+| What `@vzn/vx-otel` sends: span and metric names, attribute keys and their OTLP value types                                                                            | `packages/vx-otel/src/otlp.ts`; recorded in `packages/vx-otel/tests/contract/otlp.txt`                                                                                                                                                                                                                                                                                                                                                           |
+| `vx-migrate`'s command lines, and those of `nx-exec` and `nx-env`, which the configs it writes call                                                                    | each bin's usage in `packages/vx-migrate/src/`; recorded in `packages/vx-migrate/tests/contract/cli.txt`                                                                                                                                                                                                                                                                                                                                         |
+| The check run `@vzn/vx-github` posts: its default name, conclusion per outcome, endpoint and body keys                                                                 | `packages/vx-github/src/checks.ts`, `src/plugin.ts`; recorded in `packages/vx-github/tests/contract/checks.txt`                                                                                                                                                                                                                                                                                                                                  |
+| What each npm package ships: the files `npm publish` uploads for `@vzn/vx` and every plugin                                                                            | `scripts/build-npm.ts`; recorded in `tests/contract/pack/`                                                                                                                                                                                                                                                                                                                                                                                       |
+| Task-glob semantics: which paths a pattern selects (item 667 made `[` literal; that reading is now part of the contract)                                               | `docs/schema.md`, `docs/caching.md`                                                                                                                                                                                                                                                                                                                                                                                                              |
 
 ## What 1.0 freezes, exactly
 
@@ -174,6 +175,12 @@ on a PR, the same diff between its base and head needs the title marked
   `tests/contract/plugin-api/<package>.txt`; a package without a
   record, or a record without a package, fails. A type the package
   takes from `@vzn/vx` is held by core's record, not again here.
+  A record holds what a package exports; its README says what that is:
+  `tests/plugin-exports-documented.unsafe.test.ts` requires every name a
+  record holds in the package's README, and
+  `tests/plugin-options-documented.unsafe.test.ts` every field of its
+  options types, since `refuseUnknownOptions` accepts each one. A name
+  only tests use is kept off the entry; tests import the module.
 - **Verbs, flags and variables.** `tests/contract-cli-surface.test.ts`
   records each core verb with the flags it accepts (`verbFlags`, which
   `completions.test.ts` holds to the verb's parser both ways) and every
@@ -182,7 +189,23 @@ on a PR, the same diff between its base and head needs the title marked
   when it takes a value no parser could (a path, a ref), else the words
   the CLI's source spells and fixed grammar probes (numbers, durations,
   sizes, cache modes) it takes. A dropped verb, flag, value or variable is
-  a removed line there.
+  a removed line there. `tests/cli-verb-sections.test.ts` holds each
+  verb's `docs/cli.md` section to it: every flag the verb accepts is named
+  there, its synopsis names none it refuses, and it states the exit codes
+  the exit-code records hold for it.
+- **The plugins' variables.** A CI workflow, not a config, sets
+  `VX_REAPI_ENDPOINT` or `OTEL_EXPORTER_OTLP_ENDPOINT`, so a rename
+  drops the remote with no config change to review.
+  `tests/contract-plugin-env.unsafe.test.ts` finds every variable each
+  plugin package's source reads (a write or a comment is not a read),
+  by name or through a helper (`read('concurrency', 'TURBO_CONCURRENCY')`),
+  and holds the set to `tests/contract/plugin-env.txt`, one
+  `<package> <NAME>` line each; a lost line is a break. A name built from
+  a template is recorded with `*` per placeholder
+  (`OTEL_EXPORTER_OTLP_*_PROTOCOL`), which pins its shape, not the words
+  the placeholder takes. `tests/plugin-env-documented.unsafe.test.ts`
+  requires each recorded read in its package's README (a `<SIGNAL>`
+  family, or a named member for a template).
 - **Workspace discovery.** `tests/contract-discovery.test.ts` builds a
   fixture for each layout (`pnpm-workspace.yaml`, `workspaces` as an
   array or `{ packages }`, a negated and a recursive glob, both manifests
@@ -197,8 +220,8 @@ on a PR, the same diff between its base and head needs the title marked
   span kind, units, temporality and severity, never a time, id or
   measurement) with `packages/vx-otel/tests/contract/otlp.txt`.
 - **vx-migrate's command lines.** `vx-migrate`'s
-  `tests/contract-cli.test.ts` spawns `vx-migrate`, `nx-exec`, `nx-env`
-  and `lage-worker` for `--help` and for a usage error, and records the
+  `tests/contract-cli.test.ts` spawns `vx-migrate`, `nx-exec` and `nx-env`
+  for `--help` and for a usage error, and records the
   exit codes, each bin's leading positionals and every flag its usage
   names, and the sources `--from` takes, in
   `packages/vx-migrate/tests/contract/cli.txt`. A config written by
@@ -215,6 +238,15 @@ on a PR, the same diff between its base and head needs the title marked
   policy, `lock --check`, …) through the real binary against one fixture
   workspace and compares each exit code with
   `tests/contract/exit-codes.json`.
+  `tests/contract-exit-codes-init.test.ts` records `vx init`'s: no
+  `package.json`, `--dry`, files written, files already there with and
+  without `--force`, in `tests/contract/exit-codes-init.json`.
+  `tests/contract-exit-codes-states.test.ts` records those that need a
+  state or a signal first: `lock --check` and `run --frozen` with no
+  lock, `lock --check` after a config drifted, `show` of an unknown
+  target, `why` and `last` with and without a recorded run, `completions`
+  of an unknown shell, and a run interrupted by SIGINT, SIGTERM and
+  SIGHUP (130, 143, 129), in `tests/contract/exit-codes-states.json`.
 - **The lock file.** `tests/contract-lockfile.test.ts` locks one fixture
   workspace and compares the file with `tests/contract/vx-lock.json` byte
   for byte, then writes the committed lock back and requires
@@ -241,6 +273,10 @@ on a PR, the same diff between its base and head needs the title marked
   there whole, line by line, for the same fixture plan: its graph name,
   node ids, labels and edge direction (dependency → dependant) are what a
   renderer keys on (H-24).
+  `--profile`'s Chrome trace is read by tools too (Perfetto, a script
+  summing `args.cpuMs`): `tests/contract-profile-wire.test.ts` records
+  its key paths and types in `tests/contract/profile-wire.json`, and
+  holds `cli.md`'s sample to them.
 - **Task-glob semantics.** `tests/contract-task-globs.test.ts`
   resolves 32 input lists and 8 output lists against one fixed project
   tree (dotfiles, a gitignored file, `node_modules`, `[id]`, `(group)`,
@@ -257,6 +293,11 @@ These may change in any release.
 
 - The terminal output: status lines, colours, wording, layout. Scripts
   should read `--summarize` or `--dry=json` instead.
+- `--report`'s markdown (a step summary people read): its columns and
+  wording may change. A script reads `--summarize`.
+- What `vx init` writes: a starting point the user then edits, so a
+  release may write a different one. The config it writes is held to the
+  schema, which is the contract.
 - Anything not exported from `@vzn/vx`: the modules under `src/` are
   internal.
 - The cache's on-disk format and its keys. A `CACHE_VERSION` bump is

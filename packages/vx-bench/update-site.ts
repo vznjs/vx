@@ -64,7 +64,6 @@ function disp(ms: number): string {
   if (ms >= 1000) return `${(ms / 1000).toFixed(2)}s`
   return `${Math.round(ms)}ms`
 }
-const x = (a: Row, key: keyof Row): string => `${(Number(a[key]) / Number(vx[key])).toFixed(1)}×`
 // The number the site leads with (owner, 2026-09-10): what the runner ADDS
 // to a cold build over the ideal schedule of the tasks themselves, as time,
 // never a percentage for one and a multiple for another (a percentage of a
@@ -114,6 +113,11 @@ function versus(ours: number, theirs: number): string {
 }
 const FORMULA =
   'vx N% faster: vx takes N% less time than that tool (1 − vx ÷ theirs); N% slower: N% more (vx ÷ theirs − 1).'
+// The committed run's harness ran every Nx task through `npm run`, where
+// Turbo ran `bun run` (benchmarks.md § Why Nx is slower). Until the run is
+// redone, every table built from it says so, with the fixed harness's read.
+const NX_NOTE =
+  "Nx's column ran every task through npm run (~200 ms of CPU each; Turbo ran bun run), a harness fault since fixed; with bun, on a 4-core Linux box, Nx took 6m 59s cold and 4.50 s fully cached (vx 47% and 92% faster)."
 const vs = (r: Row, n: (r: Row) => number, f: (r: Row) => string): string =>
   `${f(r)} (${versus(n(vx), n(r))})`
 const tableBlock =
@@ -125,14 +129,15 @@ const tableBlock =
     )
     .join('\n') +
   '\n]\n' +
-  `const benchFormula = '${FORMULA}'\n`
+  `const benchFormula = '${FORMULA}'\n` +
+  `const benchNote = ${JSON.stringify(NX_NOTE)}\n`
 
 // ---- landing page ----
 const landingPath = path.join(ROOT, 'packages/vx-docs/src/pages/index.astro')
 let landing = readFileSync(landingPath, 'utf8')
 landing = rewrite(
   landing,
-  /const benchTable = \[\n[\s\S]*?\n\]\nconst benchFormula = '[^'\n]*'\n/,
+  /const benchTable = \[\n[\s\S]*?\n\]\nconst benchFormula = '[^'\n]*'\n(?:const benchNote = "[^"\n]*"\n)?/,
   tableBlock,
   'the benchTable block',
 )
@@ -162,6 +167,8 @@ ${table.map(([label, n, f]) => `| ${label} | **${f(vx)}** | ${vs(turbo, n, f)} |
 
 ${FORMULA}
 
+${NX_NOTE}
+
 Time added is the wall time over the tasks' own ideal schedule (${span(B.fresh)}).
 Same graph, commands and concurrency: [how it is measured](https://vznjs.github.io/vx/benchmarks/).
 
@@ -172,7 +179,8 @@ if (!readmeOut.includes('<!-- bench:start')) throw new Error('README.md: bench m
 
 // ---- benchmarks.md stress section ----
 let doc = docIn
-const cell = (r: Row, key: keyof Row) => `${disp(Number(r[key]))} (${x(r, key)})`
+const cell = (r: Row, key: keyof Row) =>
+  `${disp(Number(r[key]))} (${versus(Number(vx[key]), Number(r[key]))})`
 const section = `## A real monorepo: ${nodes.toLocaleString('en-US')} tasks, 100 layers (${d.date.slice(0, 10)})
 
 The shape that actually stresses a task runner: **100 dependency layers**,
@@ -195,6 +203,10 @@ The committed \`packages/vx-bench/RESULTS.md\` / \`packages/vx-bench/results.jso
 | **CPU burned**, warm (user+sys) | **${disp(vx.warmNoRestoreCpu)}** | ${disp(noLock.warmNoRestoreCpu)} | ${cell(turbo, 'warmNoRestoreCpu')} | ${cell(nx, 'warmNoRestoreCpu')} |
 | _Baseline_ (theoretical best) | ${disp(B.fresh)} cold; 0 warm, restore, CPU | — | — | — |
 | _Measured floors_ (context)  | git walk ${disp(B.warmNoRestore)} · walk + raw copy ${disp(B.warmRestore)} · task shells ${disp(B.freshCpu)} | — | — | — |
+
+${FORMULA}
+
+${NX_NOTE}
 
 **Baseline** is the theoretical best case, so each row shows its overhead:
 cold is the tasks' own durations list-scheduled on 10 workers along the

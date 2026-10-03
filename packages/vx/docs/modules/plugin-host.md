@@ -2,9 +2,11 @@
 
 ## Purpose
 
-Runs the pipeline stages (`config`, `project`, `graph` — each plugin
-edits the object in place, in declaration order; `hasHook` is the
-zero-cost gate that skips a stage nobody declares), consults the
+Runs the pipeline stages: `config`, `project` and `graph`, where each
+plugin edits the object in place in declaration order, and `discover`,
+`key`, `fingerprint` (`claimedAffected`), `schedule` and `admit`, which
+answer (`hasHook` is the zero-cost gate that skips a stage nobody
+declares). It consults the
 run-level capabilities (`executor`, `cache`), and runs each plugin's
 `teardown()` at the end of the run, crash-isolated and time-bounded.
 After the `graph` stage the graph is re-checked the way the builder
@@ -61,12 +63,16 @@ it), so a workspace that declares nothing runs and caches here.
   admit; a throw is warned once, naming the plugin, and that plugin
   admits from then on. A refusal while nothing local is running is
   overridden with one warning per plugin: only a completion asks
-  again, so it stalled the run for good (item 1023).
+  again, so it stalled the run for good (item 1023). Both warnings say
+  `[vx]` first, as every plugin warning on the status line does
+  (`admit-warning-prefix.test.ts`).
 - `teardownPlugins(plugins, warn)` — end-of-run, in declaration order:
   each plugin's `teardown()` under try/catch and a time bound
   (`teardownTimeoutMs()`: `VX_TEARDOWN_TIMEOUT_MS`, 3 s by default; a
   call that never settles is warned by name, never awaited past the
-  bound). Runs on every exit of a run once `prepareRun` has called the
+  bound). A throw is warned as every stage names one (C-84):
+  `plugin '<p>' failed in teardown: <reason>`; the run's verdict stands.
+  Runs on every exit of a run once `prepareRun` has called the
   plugins' factories (an early return, a refused setup, a throw before
   or during the schedule) and at the end of a plan, and `prepareRun`
   itself tears down and closes the cache when a stage or refusal after

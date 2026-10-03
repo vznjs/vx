@@ -9,8 +9,8 @@ tags:
 excerpt: "A daemon answers 'what changed' quickly by keeping a second copy of the truth. vx keeps no copy. Every run pays its own discovery and still wins the warm benchmarks, because the discovery was made cheap instead of being hidden."
 ---
 
-Nx runs a daemon by default. Turborepo shipped one and, as of 2.10, is
-deprecating it. Both exist for the same reason: a warm run needs to
+Nx runs a daemon by default. Turborepo shipped one and, since 2.8.11,
+no longer uses it for `turbo run`. Both exist for the same reason: a warm run needs to
 know what changed since the last one, and walking the filesystem to
 find out is slow. So a background process watches the tree and keeps
 the answer ready.
@@ -43,7 +43,7 @@ stopped mattering:
 - **The hashes are in git's index.** One `git ls-files -s` returns the
   file list and every clean file's blob id. A concurrent `git status`
   names the dirty ones. A clean tree of thousands of files is keyed with
-  no file reads at all ([the details](../keys-from-git/)).
+  no read of a source file ([the details](../keys-from-git/)).
 - **Config evaluation is cached where it is provably safe**, keyed by
   the git blob ids of the import closure, and evaluated live where it
   is not.
@@ -53,9 +53,11 @@ stopped mattering:
   [strict output ownership](../strict-output-ownership/) means vx knows
   what the tree should contain.
 
-The result is a fully cached run of 3,270 tasks in 510ms with no
-process left behind, against Turborepo's 760ms and Nx's 3.59s. vx has
-no daemon to turn on.
+The result is a fully cached run of 3,270 tasks in 476ms with no
+process left behind, against Turborepo's 760ms (vx 37% faster) and
+Nx's 3.59s (vx 86% faster). vx has
+no daemon to turn on. Nx's figures ran every task through npm, a harness fault
+([Benchmarks](../../benchmarks/) has the fixed run).
 
 ## The invariant, stated plainly
 

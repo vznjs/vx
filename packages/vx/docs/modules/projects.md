@@ -26,6 +26,10 @@ export function discoverProjects(
 ): Promise<ProjectMeta[]>
 // The enumeration a discovery's hooks shared, by the array it returned (G-75).
 export function gitOfDiscovery(projects: readonly ProjectMeta[]): LazyGitEnumeration | undefined
+// The package graph a selection pass built over that array with no task edge
+// in it: the graph a run reusing the discovery would build again.
+export function keepDiscoveryGraph(projects: readonly ProjectMeta[], graph: PackageGraph): void
+export function graphOfDiscovery(projects: readonly ProjectMeta[]): PackageGraph | undefined
 
 // The graph is read only for the closure, so only a closure load needs one.
 export type LoadProjectsArgs = LoadProjectsBase &

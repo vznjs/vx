@@ -20,7 +20,7 @@ export default defineWorkspace({
 
 That's the whole setup. On a GitHub Actions runner (`GITHUB_STEP_SUMMARY`
 set) every `vx run` appends a summary block, on its own line after
-anything another step wrote: verdict headline, stats
+anything already written in the step: verdict headline, stats
 (tasks / executed / cache hits / duration), failures called out above the
 per-task table with their exit code, the signal an exit above 128
 stands for (`exit 137 (128 + SIGKILL)`, as the run's own frame and
@@ -36,11 +36,16 @@ nothing, so declaring it unconditionally is safe.
 
 The options type is `GithubPluginOptions`; `renderJobSummary` renders the
 summary lines the plugin posts (the site's CI guide sample is rendered from it).
+The package exports `github`, `renderJobSummary` and the types `GithubPluginOptions`
+and `FetchFn`; nothing else. `fetchFn`, `append` and `sizeOf` are test seams:
+they replace the Checks API transport, the summary writer and its size probe.
 
 ```ts
 github({
   summaryFile: '/path/override.md', // default: $GITHUB_STEP_SUMMARY
   title: 'build & test', // default: 'vx run'
+  checks: true, // default: on with GITHUB_TOKEN; true warns when it is missing, false opts out
+  checkName: 'ci', // default: 'vx', the check run's name
 })
 ```
 
@@ -74,7 +79,7 @@ permissions:
 
 Without the token the check is silently skipped (the job summary still
 writes); pass `checks: true` to warn instead, or `checks: false` to opt
-out entirely. GitHub's own blips (`502`, `503`, `504`, a dropped
+out entirely; a value that is not a boolean is refused. GitHub's own blips (`502`, `503`, `504`, a dropped
 connection) are retried twice, 200 then 800 ms apart, until the flush deadline, which warns the last answer. A failed POST warns and never fails the run — a `403` says
 to check `permissions: checks: write`, a rate limit (`429`, or a `403`
 saying so) says so and is not retried — and a slow API costs the run
@@ -89,5 +94,5 @@ names that variable.
 
 Both artifacts are bounded by GitHub's own limits, because exceeding
 either loses the whole thing rather than its tail: the check-run output
-at 65 535 characters, the job summary at 1 MiB counted in bytes (about 19 000 task rows; fewer when task names are not ASCII), cut on a character boundary. GitHub's cap is the step's whole summary file, so the page fits in what earlier writers in the step left; with no room it is skipped with a warning.
+at 65 535 bytes, the job summary at 1 MiB counted in bytes (about 19 000 task rows; fewer when task names are not ASCII), cut on a character boundary. GitHub's cap is the step's whole summary file, so the page fits in what earlier writers in the step left; with no room it is skipped with a warning.
 Past either, what is written ends with a line saying it was truncated.

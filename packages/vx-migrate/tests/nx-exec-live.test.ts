@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { mapRunCommands } from '../src/nx-command.js'
-import { mapNxWorkspace } from '../src/nx/index.js'
+import { mapNxWorkspace } from '../src/nx/nx-map.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'nx-exec.cjs')
 const NX_ENV = path.resolve(import.meta.dir, '..', 'src', 'nx-env.cjs')
@@ -21,6 +21,15 @@ if (REQUIRED && !MODULES) {
 }
 
 let root: string
+
+/** A target that prints the target Nx hands every task (`getNxEnvVariablesForTask`). */
+const SHOWTGT = {
+  executor: 'nx:run-commands',
+  options: {
+    command: `printf '%s|' "$NX_TASK_TARGET_PROJECT" "$NX_TASK_TARGET_TARGET" "$NX_TASK_TARGET_CONFIGURATION" "$LERNA_PACKAGE_NAME" > tgtout.txt`,
+  },
+  configurations: { ci: {} },
+}
 
 /** A target that prints what its environment holds, with an `envFile` (the dotenv row). */
 const SHOWENV = {
@@ -94,6 +103,7 @@ describe.skipIf(!MODULES)('nx-exec against real Nx', () => {
           },
           here: { executor: 'nx:run-commands', options: { command: 'pwd', cwd: '{projectRoot}' } },
           showenv: SHOWENV,
+          showtgt: SHOWTGT,
         },
       }),
     )
@@ -375,6 +385,83 @@ describe.skipIf(!MODULES)('nx-exec against real Nx', () => {
       } finally {
         for (const f of Object.keys(files)) await rm(path.join(root, f), { force: true })
       }
+    },
+    TIMEOUT,
+  )
+
+  // P-5, P-13: `nx exec -- <cmd>` in a script reads NX_TASK_TARGET_PROJECT,
+  // and unset it starts Nx's own task runner; Lerna documents
+  // LERNA_PACKAGE_NAME to scripts. What the mapped line defines is
+  // what `nx run` hands the task, a configuration's included.
+  it(
+    'a task sees the target `nx run` hands it',
+    async () => {
+      const bare = {
+        PATH: process.env['PATH']!,
+        HOME: process.env['HOME']!,
+        NX_DAEMON: 'false',
+        NX_TUI: 'false',
+        NX_NO_CLOUD: 'true',
+        NX_ISOLATE_PLUGINS: 'false',
+      }
+      const out = path.join(root, 'tgtout.txt')
+      const mapped = await mapNxWorkspace(
+        root,
+        [
+          {
+            name: '@live/lib',
+            dir: path.join(root, 'packages', 'lib'),
+            packageJson: { name: '@live/lib' },
+            configPath: null,
+          },
+        ],
+        {
+          nodes: {
+            lib: { name: 'lib', data: { root: 'packages/lib', targets: { showtgt: SHOWTGT } } },
+          },
+          dependencies: {},
+        },
+        { persistentTodo: 'n/a', cacheable: new Set() },
+      )
+      const seen: Record<string, { nx: string; vx: string }> = {}
+      for (const [nxTarget, vxTask] of [
+        ['lib:showtgt', 'showtgt'],
+        ['lib:showtgt:ci', 'showtgt:ci'],
+      ] as const) {
+        await rm(out, { force: true })
+        const nx = Bun.spawn(
+          [path.join(root, 'node_modules', '.bin', 'nx'), 'run', nxTarget, '--skip-nx-cache'],
+          { cwd: root, env: bare, stdout: 'pipe', stderr: 'pipe' },
+        )
+        const [nxOut, nxErr, nxCode] = await Promise.all([
+          new Response(nx.stdout).text(),
+          new Response(nx.stderr).text(),
+          nx.exited,
+        ])
+        expect({ code: nxCode, tail: nxCode === 0 ? '' : nxOut + nxErr }).toEqual({
+          code: 0,
+          tail: '',
+        })
+        const byNx = await Bun.file(out).text()
+        await rm(out, { force: true })
+        const exec = mapped.projects[0]!.tasks.find((t) => t.name === vxTask)!.task!['exec'] as {
+          command: string
+          env: { define: Record<string, string> }
+        }
+        const vx = Bun.spawn(['sh', '-c', exec.command], {
+          cwd: path.join(root, 'packages', 'lib'),
+          env: { ...bare, ...exec.env.define },
+          stdout: 'pipe',
+          stderr: 'pipe',
+        })
+        const [vxErr, vxCode] = await Promise.all([new Response(vx.stderr).text(), vx.exited])
+        expect({ code: vxCode, err: vxErr }).toEqual({ code: 0, err: '' })
+        seen[nxTarget] = { nx: byNx, vx: await Bun.file(out).text() }
+      }
+      expect(seen).toEqual({
+        'lib:showtgt': { nx: 'lib|showtgt||lib|', vx: 'lib|showtgt||lib|' },
+        'lib:showtgt:ci': { nx: 'lib|showtgt|ci|lib|', vx: 'lib|showtgt|ci|lib|' },
+      })
     },
     TIMEOUT,
   )

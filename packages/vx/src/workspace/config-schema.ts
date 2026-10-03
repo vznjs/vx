@@ -484,8 +484,15 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
       assertKnownFields(cache, CACHE_FIELDS, `${where}.cache`)
       const inputs = (cache as { inputs?: unknown }).inputs
       const outputs = (cache as { outputs?: unknown }).outputs
-      if (!inputs || typeof inputs !== 'object') {
+      // A present field of the wrong shape (`outputs: 'dist'`) was told it
+      // was missing; an array is named in `assertKnownFields`.
+      if (inputs === undefined || inputs === null) {
         throw new UserError(`${where}.cache.inputs is required when \`cache\` is set`)
+      }
+      if (typeof inputs !== 'object') {
+        throw new UserError(
+          `${where}.cache.inputs must be an object — \`inputs: { files: [...] }\``,
+        )
       }
       assertKnownFields(inputs, CACHE_INPUT_FIELDS, `${where}.cache.inputs`)
       if (!Array.isArray((inputs as { files?: unknown }).files)) {
@@ -520,8 +527,13 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
           }
         }
       }
-      if (!outputs || typeof outputs !== 'object') {
+      if (outputs === undefined || outputs === null) {
         throw new UserError(`${where}.cache.outputs is required when \`cache\` is set`)
+      }
+      if (typeof outputs !== 'object') {
+        throw new UserError(
+          `${where}.cache.outputs must be an object — \`outputs: { files: [...] }\``,
+        )
       }
       assertKnownFields(outputs, CACHE_OUTPUT_FIELDS, `${where}.cache.outputs`)
       const outFiles = (outputs as { files?: unknown }).files
@@ -536,7 +548,7 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
         if (typeof g !== 'string' || g.length === 0) {
           throw new UserError(`${where}.cache.outputs.files must be an array of non-empty strings`)
         }
-        if (g.startsWith('/') || g.startsWith('!/')) {
+        if (isAbsoluteGlob(g)) {
           throw new UserError(
             `${where}.cache.outputs.files: absolute paths are not allowed (got "${g}") — ` +
               `outputs must be project-relative globs`,
@@ -574,7 +586,7 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
         if (typeof g !== 'string' || g.length === 0) {
           throw new UserError(`${where}.cache.inputs.files must be an array of non-empty strings`)
         }
-        if (g.startsWith('/')) {
+        if (!g.startsWith('!/') && isAbsoluteGlob(g)) {
           throw new UserError(
             `${where}.cache.inputs.files: absolute paths are not allowed (got "${g}") — ` +
               `inputs must be project-relative globs`,
@@ -775,6 +787,36 @@ const FOREIGN_FIELDS: ReadonlyMap<ReadonlySet<string>, Readonly<Record<string, s
       shell: 'no field: `command` always runs in a shell',
       interactive:
         'a command run outside vx: a task never reads the terminal (its stdin is EOF, or a pipe vx holds under `persistent`)',
+    },
+  ],
+  // wireit's `files` / `output` and include-style spellings written into
+  // a cache block, refused with no word on where they go (D-118).
+  [
+    CACHE_FIELDS,
+    {
+      files: '`inputs.files`',
+      output: '`outputs.files`',
+      env: '`inputs.env`',
+      dependencies: "the task's `dependsOn` (an upstream's key folds into this one)",
+      enabled: 'no field: a task with a `cache` block caches, one without runs every time',
+    },
+  ],
+  [
+    CACHE_INPUT_FIELDS,
+    {
+      globs: '`files`',
+      include: '`files`',
+      patterns: '`files`',
+      exclude: "`files` with a `!` entry (`'!**/*.test.ts'`)",
+      ignore: "`files` with a `!` entry (`'!**/*.test.ts'`)",
+    },
+  ],
+  [
+    CACHE_OUTPUT_FIELDS,
+    {
+      globs: '`files`',
+      include: '`files`',
+      exclude: "`files` with a `!` entry (`'!dist/cache/**'`)",
     },
   ],
   // A package's turbo.json and Nx's project.json keys, written into a
@@ -995,7 +1037,19 @@ function namesDirItself(glob: string): boolean {
  */
 function hasParentSegment(glob: string): boolean {
   const g = glob.startsWith('!') ? glob.slice(1) : glob
-  return g.split('/').some((seg) => seg === '..')
+  // A brace alternative is a segment too: `{../shared,src}/**` splits on `/`
+  // into `{..`, so it passed, and its `..` arm matched nothing — an input
+  // that silently left the key (M-64).
+  return g.split(/[/{},]/).some((seg) => seg === '..')
+}
+
+/**
+ * True when a glob is absolute, or a brace alternative in it is:
+ * `{/etc,dist}/*` matched nothing outside and said so nowhere (M-64).
+ */
+function isAbsoluteGlob(glob: string): boolean {
+  const g = glob.startsWith('!') ? glob.slice(1) : glob
+  return g.startsWith('/') || (g.includes('{') && /[{,]\//.test(g))
 }
 
 /**
@@ -1173,7 +1227,7 @@ function validateWorkspaceGlobs(v: unknown, where: string, negation: boolean): v
     if (typeof g !== 'string' || g.length === 0) {
       throw new UserError(`${where} must be an array of non-empty strings`)
     }
-    if (g.startsWith('/') || g.startsWith('!/')) {
+    if (isAbsoluteGlob(g)) {
       throw new UserError(
         `${where}: absolute paths are not allowed (got "${g}") — ` +
           `entries are workspace-root-relative globs`,

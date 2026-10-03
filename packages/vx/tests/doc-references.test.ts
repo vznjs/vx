@@ -219,3 +219,67 @@ describe("comparison.md states the purity gate's three conditions", () => {
     expect(/any `\/`/.test(text)).toBe(false)
   })
 })
+
+// #2227 dropped every native Windows branch (vx runs under WSL), and two
+// pages still described one: sandbox-runtime.md's Windows row a probe that
+// reported the sandbox unavailable, execution.md an allowlist for Windows.
+describe('no page describes a Windows branch the source dropped', () => {
+  it('src holds no win32 branch, and the pages say WSL', () => {
+    const src = walk(path.join(pkg, 'src'), '.ts').map((f) => readFileSync(f, 'utf8'))
+    expect(src.filter((s) => s.includes("=== 'win32'") || s.includes("!== 'win32'"))).toEqual([])
+    const row = readFileSync(path.join(pkg, 'docs', 'modules', 'sandbox-runtime.md'), 'utf8')
+      .split('\n')
+      .find((l) => l.startsWith('| Windows '))
+    expect(row).toContain('WSL')
+    expect(row).not.toContain('probeSandbox')
+    const exec = readFileSync(path.join(pkg, 'docs', 'execution.md'), 'utf8')
+      .split(/\s+/)
+      .join(' ')
+    expect(exec).not.toContain('/ Windows')
+    // J2-50: util-paths.md framed toPosix as keeping keys stable for a
+    // workspace cloned on native Windows, which vx does not run on.
+    const paths = readFileSync(path.join(pkg, 'docs', 'modules', 'util-paths.md'), 'utf8')
+      .split(/\s+/)
+      .join(' ')
+    expect(paths).not.toContain('across Windows')
+    expect(paths).not.toContain('cloned on Windows')
+    expect(paths).toContain('Windows through WSL')
+  })
+})
+
+// J2-56: execution.md's timeline listed the workspace file's fields
+// without `affectedBase`, which WorkspaceConfig declares.
+describe("execution.md's workspace-config step names every field", () => {
+  it('the parenthesised list is WorkspaceConfig, field for field', () => {
+    const config = readFileSync(path.join(pkg, 'src', 'config.ts'), 'utf8')
+    const body = config.slice(config.indexOf('export interface WorkspaceConfig {'))
+    const fields = [...body.slice(0, body.indexOf('\n}')).matchAll(/^ {2}([a-zA-Z]+)\??:/gm)].map(
+      (m) => m[1]!,
+    )
+    expect(fields.length).toBeGreaterThanOrEqual(6)
+    const doc = readFileSync(path.join(pkg, 'docs', 'execution.md'), 'utf8')
+    const step = doc.slice(doc.indexOf('loadWorkspaceConfig reads'))
+    const list = step
+      .slice(step.indexOf('(') + 1, step.indexOf(')'))
+      .replace(/[│\s]+/g, ' ')
+      .split('/')
+      .map((f) => f.trim())
+    expect(list.sort()).toEqual([...fields].sort())
+  })
+})
+
+// task-graph.md said a `cache.inputs.tasks` name that resolves to no
+// upstream is "silently filtered out"; the schema refuses an exact one
+// (item 994), and only a pattern stays silent (J2-67).
+describe("task-graph.md's account of cache.inputs.tasks misses is the schema's", () => {
+  it('names the refusal of an exact name, and only patterns as silent', () => {
+    const schema = readFileSync(path.join(pkg, 'src', 'workspace', 'config-schema.ts'), 'utf8')
+    expect(schema).toContain('names no task in ${task}.dependsOn')
+    expect(schema).toContain("f.task.includes('*')")
+    const text = readFileSync(path.join(pkg, 'docs', 'modules', 'task-graph.md'), 'utf8')
+      .split(/\s+/)
+      .join(' ')
+    expect(text).toContain('The schema refuses an exact name no `dependsOn` entry names')
+    expect(text).toContain('only a pattern that matches nothing stays silent')
+  })
+})

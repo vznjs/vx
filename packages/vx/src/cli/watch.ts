@@ -35,6 +35,7 @@ import { type CliLoadOptions, discoverCliProjects, loadCliWorkspace } from './wo
 import {
   isIgnoredWatchPath,
   isWorkspaceConfigFile,
+  gitFiles,
   isWorkspaceFingerprintFile,
   makeRootEventFilter,
   makeWatchIgnore,
@@ -42,6 +43,7 @@ import {
 } from './watch-filter.js'
 import { CLOSED, fsClockNow, type WatchHandle, WatcherPool } from './watch-fs.js'
 import { ChangeJudge } from './watch-judge.js'
+import { restartTimings } from '../util/index.js'
 import { memberEntries, sameMembers, sweepConfigs, watchedProjects } from './watch-set.js'
 
 /** One line for a watcher or re-read the OS refused; the loop goes on without it. */
@@ -74,7 +76,7 @@ export function watchRefusal(parsed: RunArgs): string | null {
 }
 
 export async function watchCmd(args: readonly string[]): Promise<number> {
-  const parsed = parseRunArgs(args)
+  const parsed = parseRunArgs(args, 'watch')
   if (parsed.error) {
     process.stderr.write(`vx watch: ${parsed.error}\n`)
     return 1
@@ -178,6 +180,7 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   try {
     const initial = await runOrchestrator(opts)
     held = initial.persistent
+    if (initial.refused !== undefined) process.stderr.write(`vx watch: ${initial.refused}\n`)
     // A run that failed having run nothing refused to start: a requested
     // name no project declares (run() says which, with a "did you mean").
     // `vx run` exits 1 on it; `vx watch buidl` watched on, re-running the
@@ -203,6 +206,11 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   const swept = await sweepConfigs(allProjects, workspaceRoot, load, opts.tasks)
   const watched = await watchedProjects(workspaceRoot, allProjects, scope, load, swept.staged)
   const ws = await loadCliWorkspace(workspaceRoot)
+  const claimsOf = (plugins: Parameters<typeof fingerprintClaims>[0]): Set<string> =>
+    new Set([
+      ...fingerprintClaims(plugins).keys(),
+      ...(opts.frozen === true ? [LOCKFILE_NAME] : []),
+    ])
   return await runWatchLoop({
     opts,
     held,
@@ -230,6 +238,10 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
       const now = await watchedProjects(workspaceRoot, all, inScope(all), load, sweep.staged)
       return {
         projects: now,
+        // A plugin the workspace config gained since claims its file from
+        // the cycle that loaded it; read once, its edits started nothing
+        // until a restart.
+        claimedRootFiles: claimsOf((await loadCliWorkspace(workspaceRoot)).plugins),
         memberBases: memberBaseDirs(workspace),
         workspaceWide: sweep.workspaceWide,
         workspaceInputs: sweep.workspaceInputs,
@@ -244,10 +256,7 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
     // Under --frozen every cycle's configs are the lock's, so a re-lock is
     // the one edit that changes what a cycle runs; unheard, the loop ran
     // the old lock until a restart (item 971).
-    claimedRootFiles: new Set([
-      ...fingerprintClaims(ws.plugins).keys(),
-      ...(opts.frozen === true ? [LOCKFILE_NAME] : []),
-    ]),
+    claimedRootFiles: claimsOf(ws.plugins),
     // The RESOLVED cache dir, not the `.vx` literal — see `makeWatchIgnore`.
     cacheDir: opts.cacheDir ?? ws.cacheDir,
   })
@@ -294,6 +303,7 @@ interface WatchLoopArgs {
 
 interface Rediscovered {
   projects: readonly ProjectMeta[]
+  claimedRootFiles: ReadonlySet<string>
   memberBases: readonly string[]
   workspaceWide: boolean
   workspaceInputs: readonly string[]
@@ -317,6 +327,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
   let outputs = args.outputs
   let inputs = args.inputs
   let uncached = args.uncached
+  let claimedRootFiles = args.claimedRootFiles
   let configImportFiles = args.configImports
   let wsConfigImportFiles = args.workspaceConfigImports
   // A dev server stays up while the loop idles; the cycle that replaces it
@@ -357,8 +368,11 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
         try {
           await held?.stop()
           held = undefined
+          restartTimings()
           const start = Date.now()
-          held = (await runOrchestrator(opts)).persistent
+          const cycle = await runOrchestrator(opts)
+          held = cycle.persistent
+          if (cycle.refused !== undefined) process.stderr.write(`vx watch: ${cycle.refused}\n`)
           changes.lastCycle = { start, end: Date.now() }
           if (reread && !stop.aborted) {
             reread = false
@@ -395,12 +409,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
   // project would otherwise trigger every save during `bun install` —
   // and vx's own cache writes would trigger a cycle that writes again.
   let isIgnoredPath = makeWatchIgnore(cacheDir, outputs, inputs)
-  let matters = makeRootEventFilter(
-    workspaceRoot,
-    projectDirs,
-    workspaceInputs,
-    args.claimedRootFiles,
-  )
+  let matters = makeRootEventFilter(workspaceRoot, projectDirs, workspaceInputs, claimedRootFiles)
   /** Since the last cycle, a member came or went, or a file that shapes the watched set changed (`shapesWatchedSet`). */
   let reread = false
 
@@ -414,15 +423,35 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
 
   /** The instant the watchers go live, on the mtime clock (see `fsClockNow`): a path last modified before it is the initial run's, not an edit. */
   const armedAt = fsClockNow(cacheDir)
+  /** What existed at the arm, so a file born and gone since is no deletion (watch-judge.ts). */
+  const existedAtArm = gitFiles(workspaceRoot)
   /** Which settled paths are changes (watch-judge.ts); `pending` holds what fired since. */
   const changes = new ChangeJudge({
     workspaceRoot,
     armedAt,
     held: () => held !== undefined,
     uncached: () => uncached,
+    ...(existedAtArm !== undefined ? { existedAtArm } : {}),
   })
   /** Per-project arms by directory, so `rearm` can add and drop them. */
   const perProject = new Map<string, WatchHandle>()
+  // An OS watch holds the directory's inode, not its path: one removed and
+  // made again (`rm -rf packages && git checkout packages`) keeps reporting
+  // for the deleted one. Each arm notes the directory it holds, and a
+  // re-arm replaces any whose path now names another. The birth time is
+  // part of the name: a freed inode number is handed straight to the next
+  // directory made (measured on this box's /tmp), so the number alone
+  // said "the same one" of a new directory.
+  const armedAs = new Map<string, string>()
+  const inodeOf = (dir: string): string | undefined => {
+    try {
+      const st = fs.statSync(dir)
+      return `${st.dev}:${st.ino}:${st.birthtimeMs}`
+    } catch {
+      return undefined
+    }
+  }
+  const stale = (dir: string): boolean => armedAs.get(dir) !== inodeOf(dir)
   /** The root arm: recursive when workspace-wide, else the root's own files only. */
   let rootArm: WatchHandle = CLOSED
   const armProject = (proj: ProjectMeta): void => {
@@ -433,6 +462,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
         trigger(`${proj.name} ${filename}`, path.join(proj.dir, filename))
       })
       perProject.set(proj.dir, handle)
+      armedAs.set(proj.dir, inodeOf(proj.dir) ?? '')
     } catch (err) {
       sayCannot(`cannot watch ${proj.dir}`, err)
     }
@@ -460,7 +490,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
               isWorkspaceFingerprintFile(filename) ||
               isWorkspaceConfigFile(filename) ||
               filename === 'package.json' ||
-              args.claimedRootFiles.has(filename)
+              claimedRootFiles.has(filename)
             ) {
               if (shapesWatchedSet(filename) || filename === LOCKFILE_NAME) reread = true
               trigger(`root ${filename}`, path.join(workspaceRoot, filename))
@@ -503,7 +533,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
         if (!packageDirs.has(dir)) want.add(dir)
       }
     for (const [dir, handle] of pending) {
-      if (want.has(dir)) continue
+      if (want.has(dir) && !stale(dir)) continue
       handle.close()
       pending.delete(dir)
     }
@@ -521,6 +551,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
             if (filename === 'package.json') arrived()
           }),
         )
+        armedAs.set(dir, inodeOf(dir) ?? '')
       } catch (err) {
         sayCannot(`cannot watch ${dir}`, err)
         continue
@@ -551,12 +582,14 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
     }
     importNames = want
     for (const [dir, handle] of importArms) {
-      if (want.has(dir)) continue
+      if (want.has(dir) && !stale(dir)) continue
       handle.close()
       importArms.delete(dir)
     }
     for (const dir of want.keys()) {
       if (importArms.has(dir)) continue
+      // Gone for now: its ancestor's arm (`armAncestors`) hears it return.
+      if (inodeOf(dir) === undefined) continue
       try {
         importArms.set(
           dir,
@@ -578,10 +611,12 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
             )
           }),
         )
+        armedAs.set(dir, inodeOf(dir) ?? '')
       } catch (err) {
         sayCannot(`cannot watch ${dir}`, err)
       }
     }
+    armAncestors()
   }
 
   const watchingLine = (count: number): string =>
@@ -602,18 +637,14 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
     outputs = next.outputs
     inputs = next.inputs
     uncached = next.uncached
+    claimedRootFiles = next.claimedRootFiles
     configImportFiles = next.configImports
     wsConfigImportFiles = next.workspaceConfigImports
     packageDirs = next.packageDirs
     memberBases = next.memberBases
     armBases()
     isIgnoredPath = makeWatchIgnore(cacheDir, outputs, inputs)
-    matters = makeRootEventFilter(
-      workspaceRoot,
-      projectDirs,
-      workspaceInputs,
-      args.claimedRootFiles,
-    )
+    matters = makeRootEventFilter(workspaceRoot, projectDirs, workspaceInputs, claimedRootFiles)
     if (next.workspaceWide !== workspaceWide) {
       // A task started or stopped declaring `workspaceFiles`: the other
       // arm's shape. Until item 891 the choice was made once, at start, and
@@ -624,7 +655,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
     } else if (!workspaceWide) {
       const keep = new Set(projectDirs)
       for (const [dir, handle] of perProject) {
-        if (keep.has(dir)) continue
+        if (keep.has(dir) && !stale(dir)) continue
         handle.close()
         perProject.delete(dir)
       }
@@ -650,15 +681,61 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
   // re-read with the set: a glob added to the list watched nothing new
   // until a restart (item 1018).
   const baseArms = new Map<string, WatchHandle>()
+  // A base removed and made again is no event to its own watch (it holds
+  // the deleted directory) nor to the root arm, which drops every name but
+  // its own files: `watching 0 project(s)` and silence until a restart. So
+  // each base, and each directory a config imports from, is watched from
+  // its nearest directory that exists, for the next name on the way down:
+  // its parent while it is there, an ancestor when the parent went too
+  // (`apps/` removed under `apps/web/*`).
+  const ancestorArms = new Map<string, WatchHandle>()
+  let ancestorNames = new Map<string, Set<string>>()
+  const armAncestors = (): void => {
+    ancestorNames = new Map()
+    for (const base of [...memberBases, ...importNames.keys()]) {
+      let dir = path.dirname(base)
+      let name = path.basename(base)
+      while (inodeOf(dir) === undefined && dir !== workspaceRoot && dir !== path.dirname(dir)) {
+        name = path.basename(dir)
+        dir = path.dirname(dir)
+      }
+      ancestorNames.set(dir, (ancestorNames.get(dir) ?? new Set()).add(name))
+    }
+    for (const [dir, handle] of ancestorArms) {
+      if (ancestorNames.has(dir) && !stale(dir)) continue
+      handle.close()
+      ancestorArms.delete(dir)
+    }
+    for (const dir of ancestorNames.keys()) {
+      if (ancestorArms.has(dir)) continue
+      try {
+        ancestorArms.set(
+          dir,
+          arm(dir, false, (filename) => {
+            if (!ancestorNames.get(dir)?.has(filename)) return
+            reread = true
+            const abs = path.join(dir, filename)
+            trigger(path.relative(workspaceRoot, abs), abs)
+          }),
+        )
+        armedAs.set(dir, inodeOf(dir) ?? '')
+      } catch (err) {
+        sayCannot(`cannot watch ${dir}`, err)
+      }
+    }
+  }
   const armBases = (): void => {
+    armAncestors()
     const want = new Set(memberBases)
     for (const [base, handle] of baseArms) {
-      if (want.has(base)) continue
+      if (want.has(base) && !stale(base)) continue
       handle.close()
       baseArms.delete(base)
     }
     for (const base of want) {
       if (baseArms.has(base)) continue
+      // Gone for now: its parent's arm hears it come back.
+      if (inodeOf(base) === undefined) continue
       let members = memberEntries(base)
       try {
         baseArms.set(
@@ -672,12 +749,18 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
             // and cost an uncached task one execution per cycle (CI,
             // 2026-09-10).
             const now = memberEntries(base)
-            if (sameMembers(members, now)) return
+            // The same names, but a directory still without a package made
+            // again (or replaced by a rename): its pending watch holds the
+            // deleted one, and the `package.json` that lands next is heard
+            // only by a new arm.
+            const entry = path.join(base, filename)
+            if (sameMembers(members, now) && !(pending.has(entry) && stale(entry))) return
             members = now
             reread = true
             trigger(`${path.relative(workspaceRoot, base)}/${filename}`, path.join(base, filename))
           }),
         )
+        armedAs.set(base, inodeOf(base) ?? '')
       } catch (err) {
         sayCannot(`cannot watch ${base}`, err)
       }

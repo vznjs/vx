@@ -122,8 +122,8 @@ function seedEntry(
   cache
     .dbHandle()
     .query(
-      `INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, stdout, created_at, accessed_at)
-       VALUES (?, ?, ?, ?, 0, ?, ?, '', ?, ?)`,
+      `INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, created_at, accessed_at)
+       VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?)`,
     )
     .run(e.hash, e.project, e.task, e.command, e.durationMs, e.sizeBytes, e.createdAt, e.createdAt)
 }
@@ -895,20 +895,16 @@ describe('explainCacheKey', () => {
     })
   }
 
-  it('accepts the degenerate but well-formed halves rather than guessing', async () => {
-    // `#build` and `pkg#` contain the separator, so they pass validation and
-    // resolve to an empty project / empty task. Both answer null rather than
-    // matching something by accident — pinned so a future "trim empties"
-    // change has to argue with it.
-    const noProject = (await call(MAIN.root, 'explainCacheKey', { taskId: '#build' })) as Explain
-    expect({ project: noProject.project, task: noProject.task }).toEqual({
-      project: '',
-      task: 'build',
-    })
-    expect(noProject.latestEntry).toBeNull()
-    const noTask = (await call(MAIN.root, 'explainCacheKey', { taskId: '@t/alpha#' })) as Explain
-    expect(noTask.task).toBe('')
-    expect(noTask.latestEntry).toBeNull()
+  it('refuses the degenerate halves rather than answering null', async () => {
+    // `#build` and `pkg#` hold the separator, and were answered with a null
+    // entry an agent reads as "never ran". Refusing guesses nothing either:
+    // no empty half is trimmed into a match (stream F, as core refuses an
+    // `a#` dependency spec). tests/task-id-halves.test.ts holds both tools.
+    for (const taskId of ['#build', '@t/alpha#']) {
+      await expect(call(MAIN.root, 'explainCacheKey', { taskId })).rejects.toThrow(
+        /taskId must be a "project#task" string/,
+      )
+    }
   })
 
   // FINDING — src/cli/mcp-rpc.ts:223 (and the same `split('#', 2)` in
@@ -1543,8 +1539,8 @@ describe('the tools, as their second sweep found them unheld', () => {
         cache
           .dbHandle()
           .query(
-            `INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, stdout, created_at, accessed_at)
-             VALUES ('h9', 'p', 'build', 'make', 3, 12, 34, '', 1234567, 1234567)`,
+            `INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, created_at, accessed_at)
+             VALUES ('h9', 'p', 'build', 'make', 3, 12, 34, 1234567, 1234567)`,
           )
           .run()
       })

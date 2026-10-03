@@ -1,0 +1,16 @@
+{
+  "why: no recorded run: vx why build": 1,
+  "last: no recorded run: vx last": 1,
+  "lock --check: no lock: vx lock --check": 1,
+  "run --frozen: no lock: vx run build --all --frozen": 1,
+  "lock --check: a config drifted: vx lock --check": 1,
+  "show: an unknown target: vx show nope": 1,
+  "why: a recorded run: vx why build": 0,
+  "why: a run with no row for the task: vx why build --run nope": 1,
+  "last: a recorded run: vx last": 0,
+  "last: an unknown run id: vx last nope": 1,
+  "completions: an unknown shell: vx completions nope": 1,
+  "run: interrupted by SIGINT: vx run hang --all": 130,
+  "run: interrupted by SIGTERM: vx run hang --all": 143,
+  "run: interrupted by SIGHUP: vx run hang --all": 129
+}

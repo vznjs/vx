@@ -116,8 +116,10 @@ export async function populateGitFilesCache(
 
 export function runGitLsFiles(cwd: string): GitLsResult // the synchronous per-project fallback
 
-// One `git rev-parse --show-prefix --git-common-dir --show-object-format
-// --git-path index` per directory per process; null (not remembered) when git fails.
+// Read off a plain `.git` directory (no location variable or
+// `GIT_INDEX_FILE`, no include, no `.git` file), else one `git rev-parse
+// --show-prefix --git-common-dir --show-object-format --git-path index`;
+// per directory per process; null (not remembered) when git fails.
 export interface RepoFacts {
   prefix: string
   commonDir: string
@@ -157,9 +159,11 @@ reads outside the tree) concurrently and asks `repoFacts` for the
 prefix and the common dir while they run; the file hasher
 (`file-hashes.ts`) asks the same memo for the object format at the same
 directory (the workspace root, `new Cache(dir, policy, workspaceRoot)`),
-so a cold run spawns ONE `rev-parse` whichever asks first — the
+so a cold run learns them ONCE whichever asks first — the
 enumeration on an unscoped run, the config load on a scoped one
-(`tests/git-spawns-once.test.ts` holds both as exact lists). The config
+(`tests/git-spawns-once.test.ts` holds both as exact lists). A plain
+repository answers off the disk with no spawn at all (~3 ms a run;
+`tests/repo-facts-disk.test.ts` holds it to git's answer). The config
 read stays a spawn of its own: `rev-parse` prints no config value.
 `lazyGitEnumeration` holds a run's whole-tree enumeration: an unscoped
 run starts it at once; a `discover` hook's `worktreeChanges()` starts it

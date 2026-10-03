@@ -5,7 +5,8 @@ description: Install vx, describe one task, and run it from the cache the second
 
 Run your first cached task in five minutes.
 
-You need a git repository on Linux or macOS (on Windows, use WSL). vx is
+You need a git repository on Linux with glibc (not Alpine's musl) or macOS
+(on Windows, use WSL). vx is
 one prebuilt binary. The release binary alone needs neither Node nor Bun;
 installed from npm, the `vx` command is a small Node script that runs
 that binary.
@@ -16,8 +17,10 @@ that binary.
    workspace, `pnpm add -D -w @vzn/vx`: npm refuses `workspace:*`).
 2. Run `npx vx init`. It writes a `vx.config.ts` per package from its
    scripts, and a `vx.workspace.ts`. A root script that checks the whole
-   repo (`lint: eslint .`) becomes a task in a root `vx.config.ts`; one
-   that runs the members (`pnpm -r build`) does not. No task gets a `cache` block, so
+   repo (`format: prettier --check .`) becomes a task in a root
+   `vx.config.ts`; one that runs the members (`pnpm -r build`) does not,
+   nor one named like a package's own task (a root `lint` beside a
+   package's `lint`), so `--all` never runs a check twice. No task gets a `cache` block, so
    nothing is cached yet: add the one each `build`'s TODO shows. A
    repo with `turbo.json` or `nx.json` starts at
    [Coming from Turbo or Nx](#coming-from-turbo-or-nx) instead.
@@ -50,12 +53,15 @@ export default defineProject({
 
 ## Run
 
+Installed from npm, the command is `npx vx` (pnpm: `pnpm vx`, Bun:
+`bunx vx`); the lines below drop the prefix.
+
 ```bash
 vx run build --all        # every package, in dependency order
-vx run test --affected    # what changed, and its dependents
+vx run test --affected    # changed since main or the last commit, and dependents
 vx run build --all --dry  # the plan; runs nothing
 cd packages/app           # without --all, a run takes the package you are in
-vx run build              # ⇢ success local — a hit; restores dist/ if deleted
+vx run build              # ⇢ success local — after dist/ is deleted; else up-to-date
 vx run build --graph      # the task graph as Graphviz DOT
 ```
 
@@ -80,10 +86,13 @@ Start with one package and leave the rest of your tooling as it is.
 `turbo.json` or the Nx graph; from there everything above applies.
 `vx init` in such a repo writes only a `vx.workspace.ts` declaring
 `turbo()` or `nx()`: a temporary start, dropped once the configs exist.
+`@vzn/vx-migrate` is not on npm yet: its first publish is pending, so
+`bunx @vzn/vx-migrate` and the install `vx init` names fail until then.
 [Migrate](../guides/migrate/) has the steps.
 
 ## Common problems
 
+- **`--affected has no base here`.** A repo with one commit has nothing to compare with. Commit again, or name a base: `--affected=<ref>`.
 - **Only one package ran.** `vx run build` runs the package you are in. Add `--all`.
 - **The editor cannot resolve `@vzn/vx`.** Add it as a devDependency. vx itself runs a config without it.
 - **`vx requires git`.** Run `git init` at the workspace root.
@@ -103,3 +112,5 @@ Start with one package and leave the rest of your tooling as it is.
 - A cache hit replays the first and last 8 MiB of a task's output.
 - A `kill -9` of vx leaves its persistent tasks running, except a server
   that exits when its stdin closes (esbuild `--watch`).
+- A process a task detaches into its own session (`setsid … &`) outlives
+  Ctrl-C: vx signals the task's process group.

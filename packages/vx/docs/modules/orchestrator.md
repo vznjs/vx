@@ -56,6 +56,7 @@ export interface RunSummary {
   ok: boolean
   outcomes: TaskOutcome[]
   persistent?: HeldPersistent // { ids, stop() }, set only under holdPersistent
+  refused?: string // why the run refused to start; the caller prints it
 }
 ```
 
@@ -118,8 +119,11 @@ export interface RunSummary {
     their own, not cleanly (`CrashedPersistent`: a non-zero exit or a
     signal): each fails the run, its outcome becomes `failed` with that
     code (a kept server that has already died likewise, item 1071), and
-    a status line names it
-    (`vx: <id> exited with code <n>`, item 892). Read before the stop,
+    a status line after the summary names it
+    (`vx: <id> exited with code <n> before the run stopped it`, item
+    892). One that died while the graph still ran was also named at that
+    moment (`vx: <id> exited with code <n> while the run went on`,
+    #2152), so a dependant failing against it reads why. Read before the stop,
     so the SIGTERM's own 143 is never one; and on a stopped run (Ctrl-C,
     an embedder's abort) only the servers that had ended when the stop
     landed count, since the stop's own teardown kills the rest before
@@ -131,7 +135,10 @@ export interface RunSummary {
     Under `RunOptions.holdPersistent` (the watch loop) the same
     selection applies outside the foreground, and run() returns at
     once with the kept tasks on `RunSummary.persistent`: the caller
-    owns them and its `stop()` is the same teardown.
+    owns them and its `stop()` is the same teardown. One that dies on
+    its own after that is named (`vx: <id> exited with code <n>`,
+    #2442), so a watch loop idling over a dead server says so; the
+    teardown its `stop()` runs is not.
     `RunOptions.signal` aborts a run from outside through the same
     teardown: the scheduler dispatches nothing further (never-started
     tasks complete `aborted`) and run() returns to its caller.
@@ -238,8 +245,11 @@ workspace's lock just before it schedules — after the early exits,
 which touch no tree — and releases it with its cache handle, before a
 persistent task's wait. The lock is keyed by the workspace root's real
 path, so a symlinked spelling and the canonical cwd a CLI gets (macOS's
-`/var` → `/private/var`) name one lock. It lives under the temp
-directory, keyed by the resolved workspace root (`--cache-dir` does not
+`/var` → `/private/var`) name one lock. It lives in this user's own
+directory under the temp directory (`vx-runs-<uid>`, mode 0700; one that
+is a link or another owner's is refused and the run goes on unlocked,
+since a lock in the shared directory was anyone's to plant, L-47),
+keyed by the resolved workspace root (`--cache-dir` does not
 make two runs strangers; a read-only checkout can take it; two
 processes whose `TMPDIR` differs hold two locks, item 970), and is a
 directory HELD exactly while it is not empty. Its one entry,

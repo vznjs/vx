@@ -44,8 +44,8 @@ terminal and a task succeeding or failing. Read it alongside
  │       shared with step 1) and JSON.parse.
  │    3. loadWorkspacePlugins — loadWorkspaceConfig reads the optional
  │       vx.workspace.{ts,mts,js,mjs,cts,cjs} at the root (concurrency /
- │       cacheDir / timeout / cacheRetention / plugins), then the plugin
- │       `config` stage runs on it.
+ │       cacheDir / timeout / cacheRetention / affectedBase / plugins),
+ │       then the plugin `config` stage runs on it.
  │    4. listProjects — globs every workspace member's package.json,
  │       finds sibling vx.config.* files, detects duplicate package
  │       names (hard error with both paths).
@@ -84,16 +84,18 @@ terminal and a task succeeding or failing. Read it alongside
  │   12. Bulk git populate — the enumeration step 1 started is
  │       awaited, or a scoped run starts it here over the projects
  │       that own a task (not the dependency closure step 7 loaded,
- │       which a `lint` of one package does not key). FOUR spawns at the
- │       root, three concurrent and the rev-parse asked while they run
- │       (`ls-files -s -v -z` for the index: every tracked path's OID
- │       and its cache-state flag; `status --porcelain -z -uall` for
- │       the dirty AND untracked sets, the one worktree walk;
- │       `rev-parse --show-prefix --git-common-dir --show-object-format`,
- │       memoized per process and shared with the file hasher, which
- │       would otherwise spawn it again for the object format; `var -l`
+ │       which a `lint` of one package does not key). THREE spawns at
+ │       the root, concurrent, and the repository's facts asked while
+ │       they run (`ls-files -s -v -z` for the index: every tracked
+ │       path's OID and its cache-state flag;
+ │       `status --porcelain -z -uall` for
+ │       the dirty AND untracked sets, the one worktree walk; `var -l`
  │       for core.autocrlf and the attributes files git reads outside
- │       the tree)
+ │       the tree; the facts — prefix, common dir, object format, index
+ │       file — read off a plain `.git` directory, else one
+ │       `rev-parse --show-prefix --git-common-dir --show-object-format
+ │       --git-path index`,
+ │       memoized per process and shared with the file hasher)
  │       fill the per-project GitFilesCache with file lists + index
  │       OIDs. `ls-files --others` is NOT among them — status's
  │       `-uall` already answers untracked, and asking git twice
@@ -334,7 +336,8 @@ terminal and a task succeeding or failing. Read it alongside
        `failed` with its own exit in the rewritten `--summarize` and in the
        outcomes `--report` renders; one a Ctrl-C stopped does not. Under
        `holdPersistent` (the watch loop) run() instead returns them on
-       `RunSummary.persistent`, still running, for the caller to stop.
+       `RunSummary.persistent`, still running, for the caller to stop;
+       one that dies on its own after that is said, its `stop()` is not.
 ```
 
 ## One command per task
@@ -410,8 +413,8 @@ between machines and gives reproducible runs.
 
 The allowlist + isolation contract lives in
 [`modules/env.md`](./modules/env.md) and is the only field the
-contract assumes for "what every command needs to function on
-\*nix / Windows". Adding to the allowlist would be a deliberate
+contract assumes for "what every command needs to function" on
+Linux and macOS (Windows is WSL, which is Linux). Adding to the allowlist would be a deliberate
 schema-extending change (consumer code expects a particular set;
 broader access has cache-stability implications).
 
@@ -423,7 +426,7 @@ broader access has cache-stability implications).
 | `exec.timeout` overrun                                                                                                                                           | SIGTERM to the task's group, SIGKILL for whoever is left after the grace; task is `failed` (timed out), exit 143 (137 when the SIGKILL took it, and the line says so), never cached                                                                                                                                                                                                                                                                       |
 | Child killed by Ctrl-C teardown (SIGINT/SIGTERM/SIGHUP), or by an embedder's `RunOptions.signal` abort — which also completes every never-started task `aborted` | Task is `aborted` — not counted, not recorded. An attempt that ends while the run is stopping is `aborted` whatever its exit: a trap that exits 0 is not cached, and a failure is not retried (item 962). What it printed still shows in its frame. A child killed by a signal while the run is NOT stopping (a supervisor's SIGTERM, a `kill` from another shell) is `failed (exit 143, 128 + SIGTERM)`: retried, shown, and fail-fast trips (item 1100) |
 | `execute()` throws (internal error)                                                                                                                              | Task marked `failed`; stderr written `[vx] internal error in <id>` (a `UserError` reports plainly); a plugin executor's throw reports plainly as `plugin '<p>' (executor '<e>') failed in execute: <reason>` (C-63, C-85)                                                                                                                                                                                                                                 |
-| Persistent task exits before ready                                                                                                                               | Task marked `failed` with `exited before becoming ready (exit N)`; its output already streamed live                                                                                                                                                                                                                                                                                                                                                       |
+| Persistent task exits before ready                                                                                                                               | Task marked `failed` with `exited before becoming ready (exit N)`; its output already streamed live; `aborted` when the run's stop killed it (C-62)                                                                                                                                                                                                                                                                                                       |
 | Upstream task fails                                                                                                                                              | Dependents marked `skipped` (exit 1, durationMs 0); no command runs — EXCEPT a restore-tier task, whose confirmed cache hit still restores (its key is dep-independent)                                                                                                                                                                                                                                                                                   |
 | Sandbox violation (macOS monitor / Linux structural)                                                                                                             | Task is `failed`; violations render in the frame; nothing cached                                                                                                                                                                                                                                                                                                                                                                                          |
 | Remote-cache error (500, timeout, corrupt artifact)                                                                                                              | Degrades to a cache miss; never fails the run                                                                                                                                                                                                                                                                                                                                                                                                             |
@@ -644,7 +647,7 @@ were accepted and wrote nothing until item 992).
   wallclock span. Default path: `profile.json` (cwd-relative). One
   `tid` per project so concurrent tasks render on distinct lanes.
   Open with `chrome://tracing` or https://ui.perfetto.dev.
-- **`--report[=markdown]`** — a moon-style markdown table to stdout
+- **`--report[=markdown]`** — a markdown table to stdout
   after the run (CI step summaries).
 
 Writers live in `orchestrator/run-artifacts.ts:writeRunSummary` /

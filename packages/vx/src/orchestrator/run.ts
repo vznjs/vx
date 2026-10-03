@@ -22,6 +22,7 @@ import { DeferredOutputs } from './deferred-outputs.js'
 import { resolveDownloadModes } from './download-policy.js'
 import type { TaskExecutor } from '../exec/index.js'
 import {
+  deadServerBehind,
   isGroupTask,
   markSurfacedDeps,
   runGraph,
@@ -37,6 +38,7 @@ import {
   parseSize,
   printTimings,
   ulid,
+  listed,
   nearest,
   UserError,
   machineParallelism,
@@ -102,7 +104,11 @@ import type { RunOptions, RunSummary } from './options.js'
 
 // Per run, never shared: a `vx watch` process runs many, and a shared map
 // is one `preProbed.set` away from leaking a hit across cycles.
-const emptyShortCircuit = (): ShortCircuit => ({ preProbed: new Map(), restoreTier: new Set() })
+const emptyShortCircuit = (): ShortCircuit => ({
+  preProbed: new Map(),
+  restoreTier: new Set(),
+  uncachedKeys: new Map(),
+})
 
 /**
  * Parse the `VX_TASK_TIMEOUT` env var (ms) — the "global" run-level task
@@ -185,6 +191,21 @@ export function shouldShortCircuit(
   return nodes.size > 0
 }
 
+function maskInvocation(command: string): string {
+  return secretMask([process.env])?.mask(command) ?? command
+}
+
+/**
+ * A run's `--tag`s, stored on its history row and handed to telemetry
+ * (`vx.tag.<key>`): a tag that carries a secret is masked as the
+ * invocation line that spells it is (L-38).
+ */
+function maskTags(tags: Readonly<Record<string, string>>): Record<string, string> {
+  const mask = secretMask([process.env])
+  if (mask === null) return { ...tags }
+  return Object.fromEntries(Object.entries(tags).map(([k, v]) => [mask.mask(k), mask.mask(v)]))
+}
+
 /**
  * The command line a run hands to its telemetry sinks, with what follows
  * `--` counted, not quoted. Those are the task's arguments,
@@ -192,10 +213,6 @@ export function shouldShortCircuit(
  * GitHub job summary and a check-run posted over the API verbatim (item
  * 1057). Local history (`vx last`) keeps the whole line, on this machine.
  */
-function maskInvocation(command: string): string {
-  return secretMask([process.env])?.mask(command) ?? command
-}
-
 export function invocationCommand(argv: readonly string[]): string {
   const sep = argv.indexOf('--')
   if (sep === -1) return argv.join(' ')
@@ -360,13 +377,13 @@ async function runOnBus(
   // a CI job that renames a task must go red, not silently stop running
   // it. When EVERY name is unresolved this is the `no-tasks-declared`
   // case too; the message is identical, so that branch stays below.
+  // A refusal is the caller's to print (on stderr, as `vx run:`): as a
+  // status line it went to stdout, into whatever a script piped there.
   if (prepared.unresolvedTasks.length > 0) {
-    log.status(
-      `No projects declare task(s): ${prepared.unresolvedTasks.join(', ')}.${elsewhereHint(prepared.declaredElsewhere)}${didYouMean(prepared.unresolvedTasks, prepared.hintProjects)}${await initHint(prepared)}`,
-    )
+    const refused = `no projects declare task(s): ${prepared.unresolvedTasks.join(', ')}.${elsewhereHint(prepared.declaredElsewhere)}${didYouMean(prepared.unresolvedTasks, prepared.hintProjects, prepared.declaredElsewhere)}${await initHint(prepared)}`
     await teardown()
     prepared.cache.close()
-    return { ok: false, outcomes: [] }
+    return { ok: false, outcomes: [], refused }
   }
   if (prepared.empty === 'none-affected') {
     log.status(`No affected project declares task(s): ${options.tasks.join(', ')}.`)
@@ -379,14 +396,13 @@ async function runOnBus(
     // a clear message and return NOT-ok so the script exits 1.
     // `empty-graph` is defensive — unreachable under current
     // buildTaskGraph semantics but logged just in case.
-    const msg =
+    const refused =
       prepared.empty === 'no-tasks-declared'
-        ? `No projects declare task(s): ${options.tasks.join(', ')}.${elsewhereHint(prepared.declaredElsewhere)}${await initHint(prepared)}`
-        : 'No tasks to run.'
-    log.status(msg)
+        ? `no projects declare task(s): ${options.tasks.join(', ')}.${elsewhereHint(prepared.declaredElsewhere)}${await initHint(prepared)}`
+        : 'no tasks to run.'
     await teardown()
     prepared.cache.close()
-    return { ok: false, outcomes: [] }
+    return { ok: false, outcomes: [], refused }
   }
   // Install user plugins as additional bus subscribers BEFORE the run
   // starts emitting events. `installPlugins` runs each plugin's optional
@@ -484,12 +500,19 @@ async function runOnBus(
   // it surfaced as a bare stack, or mid-run from the completion path
   // (item 1022).
   const tellDemand = (executor: TaskExecutor, remaining: ReadonlySet<string>): void => {
-    try {
-      executor.demand!(remaining)
-    } catch (err) {
-      demandOf.delete(executor)
+    const failed = (err: unknown): void => {
+      if (!demandOf.delete(executor)) return
       const m = err instanceof Error ? err.message : String(err)
       log.status(`[vx] ${executorLabel(executor)} failed in demand: ${m}; not asked again this run`)
+    }
+    try {
+      // An `async demand` that rejects did so where no one listened: an
+      // unhandled rejection, a stack, the run killed. Its rejection is a
+      // throw like any other.
+      const ret: unknown = executor.demand!(remaining)
+      if (ret instanceof Promise) ret.catch(failed)
+    } catch (err) {
+      failed(err)
     }
   }
   for (const [executor, remaining] of demandOf) tellDemand(executor, remaining)
@@ -533,7 +556,21 @@ async function runOnBus(
   // (`signals.ts`); the handlers are removed in the finally below so
   // repeated run() calls (test suites) never stack listeners.
   const liveChildren = new Set<ReturnType<typeof Bun.spawn>>()
-  const persistentRegistry = new Map<string, ReturnType<typeof Bun.spawn>>()
+  // A server that ends on its own while the graph still runs is said at
+  // once: its dependants were failing against it, and the end of the run
+  // was the first word of it (C-69). Not once the graph is done (the end
+  // of the run and the keep-alive wait say it) nor under a stop.
+  let graphDone = false
+  const persistentRegistry = new (class extends Map<string, ReturnType<typeof Bun.spawn>> {
+    override set(id: string, child: ReturnType<typeof Bun.spawn>): this {
+      super.set(id, child)
+      void child.exited.then((code) => {
+        if (code !== 0 && !graphDone && !stopRun.signal.aborted)
+          log.status(`vx: ${id} exited with code ${code} while the run went on`)
+      })
+      return this
+    }
+  })()
   // One stop for the run: an embedder's `RunOptions.signal` and a process
   // signal both abort it. The scheduler stops dispatching (it reads the
   // signal), the children are torn down, and run() returns through its own
@@ -682,7 +719,11 @@ async function runOnBus(
         vxVersion: VERSION,
         // An embedder's `command` is redacted as the argv is: it passed a
         // token after `--` to every sink verbatim (C-67).
-        command: invocationCommand(options.command?.split(' ') ?? process.argv.slice(1)),
+        // Masked as the stored line is: `--tag key=$DEPLOY_KEY` sits before
+        // the `--` the count covers (L-44).
+        command: maskInvocation(
+          invocationCommand(options.command?.split(' ') ?? process.argv.slice(1)),
+        ),
         requestedTasks: [...options.tasks],
         cachePolicy: compactCachePolicy(policy),
         concurrency,
@@ -698,7 +739,7 @@ async function runOnBus(
         arch: hostContext.arch,
         workspaceId: wsIdentity.id,
         workspaceName: wsIdentity.name,
-        tags: options.tags ?? {},
+        tags: maskTags(options.tags ?? {}),
       }
       telemetry = await subscribeTelemetry(
         prepared.plugins,
@@ -844,12 +885,29 @@ async function runOnBus(
         `[vx] --exclude-dependencies: ${excluded.unsaved} cached task(s) build on a skipped dependency; what they build is not saved`,
       )
     }
-    const taint = taintTracker(options.continueMode === 'always', excluded.seeds, nodes)
+    // A server that ended on its own is failed (the end of the run says
+    // so); what has not yet started hears it before it dispatches (C-88).
+    const serverDied = (id: string): boolean => {
+      const child = persistentRegistry.get(id)
+      return child !== undefined && hasEnded(child) && child.exitCode !== 0
+    }
+    // Under `always` a task that starts while a server it depends on is
+    // dead runs on a failure the outcomes do not hold yet (the server's
+    // says `success` until the run ends), so it is seeded here, at its
+    // dispatch, and the tracker carries it to what is built on it.
+    const taintSeeds = new Set(excluded.seeds)
+    const taint = taintTracker(options.continueMode === 'always', taintSeeds, nodes)
     const dependedOn = new Set<string>()
     for (const n of nodes.values()) for (const d of n.deps) dependedOn.add(d)
 
     const buildExecuteArgs = (node: TaskNode, upstream: TaskOutcome[], reuseProbe = true) => {
       const probe = reuseProbe ? shortCircuit.preProbed.get(node.id) : undefined
+      const upfrontKey = shortCircuit.uncachedKeys.get(node.id)
+      if (
+        options.continueMode === 'always' &&
+        node.deps.some((d) => deadServerBehind(nodes, serverDied, d) !== undefined)
+      )
+        taintSeeds.add(node.id)
       const tainted = taint.judge(node, upstream)
       return {
         node,
@@ -875,6 +933,7 @@ async function runOnBus(
         gitFilesCache,
         hashCache,
         ...(probe !== undefined ? { preProbed: probe } : {}),
+        ...(upfrontKey !== undefined ? { upfrontKey } : {}),
         ...(tainted ? { taintedUpstream: true } : {}),
         ...(dependedOn.has(node.id) ? {} : { noDependants: true as const }),
         fingerprintWatch,
@@ -911,6 +970,7 @@ async function runOnBus(
       ...(hasPooledExecutor(executors) ? { poolOf: poolOfPlacement(placements) } : {}),
       ...(admit !== undefined ? { admit } : {}),
       ...(options.continueMode !== undefined ? { continueMode: options.continueMode } : {}),
+      serverDied,
       signal: stopRun.signal,
       onStart: (node) => {
         log.taskStart?.(node)
@@ -930,6 +990,7 @@ async function runOnBus(
       // Empty when the short-circuit didn't fire → byte-identical.
       restoreTier: shortCircuit.restoreTier,
     })
+    graphDone = true
 
     // Which persistent children outlive the graph, and the bounded SIGTERM
     // of the rest, before the summary prints. Scoped to the real CLI
@@ -1095,7 +1156,7 @@ async function runOnBus(
       concurrency,
       flow: options.flow ?? null,
       forwardArgs: options.forwardArgs,
-      tags: options.tags ?? {},
+      tags: maskTags(options.tags ?? {}),
       git: gitContext,
       ci: ciContext,
       host: hostContext,
@@ -1183,6 +1244,11 @@ async function runOnBus(
     // Not on a stopped run: one stopped while it waited on another run's
     // lock never held it, and its prune evicted under that run (item 858).
     if (!stopRun.signal.aborted) await applyCacheRetention(prepared, log)
+    // A plugin hears the run until its teardown and nothing after: released
+    // only in the finally, its handlers heard a kept server through the
+    // whole keep-alive wait below (C-66). Idempotent; the finally's stay.
+    disposePlugins?.()
+    telemetry?.dispose()
     await teardown()
     await closeCache()
     mark('close')
@@ -1217,12 +1283,26 @@ async function runOnBus(
     // for it, and an exit 1 with no word about why is a mystery in a log.
     if (keepAlive.children.length > 0 && hold) {
       const held = keepAlive.children
+      // A held server that dies on its own is said, as the foreground's
+      // keep-alive says it: `vx watch` sat on "watching" over a dead dev
+      // server. The holder's own stop() is not such a death.
+      let stopping = false
+      keepAlive.nodes.forEach((n, i) => {
+        // One that died during the graph was said then.
+        if (hasEnded(held[i]!)) return
+        void held[i]!.exited.then((code) => {
+          if (!stopping && code !== 0) log.status(`vx: ${n.id} exited with code ${code}`)
+        })
+      })
       return {
         ok,
         outcomes: list,
         persistent: {
           ids: keepAlive.nodes.map((n) => n.id),
-          stop: (signal) => terminateChildren(() => held, signal),
+          stop: (signal) => {
+            stopping = true
+            return terminateChildren(() => held, signal)
+          },
         },
       }
     }
@@ -1347,7 +1427,7 @@ export async function planRun(options: RunOptions): Promise<RunPlan> {
       return {
         tasks: [],
         unresolvedTasks: prepared.unresolvedTasks,
-        unresolvedHint: `${elsewhereHint(prepared.declaredElsewhere)}${didYouMean(prepared.unresolvedTasks, prepared.hintProjects)}${await initHint(prepared)}`,
+        unresolvedHint: `${elsewhereHint(prepared.declaredElsewhere)}${didYouMean(prepared.unresolvedTasks, prepared.hintProjects, prepared.declaredElsewhere)}${await initHint(prepared)}`,
       }
     }
     if (prepared.empty === 'no-tasks-declared' && prepared.declaredElsewhere.length > 0) {
@@ -1440,12 +1520,16 @@ async function initHint(prepared: {
 function didYouMean(
   unresolved: readonly string[],
   projects: ReadonlyMap<string, ProjectEntry>,
+  elsewhere: readonly string[] = [],
 ): string {
   const tasksOf = (p: ProjectEntry | undefined): string[] => Object.keys(p?.config.tasks ?? {})
   const allTasks = new Set<string>()
   for (const p of projects.values()) for (const t of tasksOf(p)) allTasks.add(t)
   // A Set: two typos of the same task hint it once, not once per typo.
   const hints = new Set<string>()
+  // A typo past two edits named nothing to pick from (M-56): with no near
+  // name, say what exists instead.
+  const lists = new Set<string>()
   for (const spec of unresolved) {
     const at = spec.indexOf('#')
     const nx = nxProjectTarget(spec, projects)
@@ -1456,18 +1540,31 @@ function didYouMean(
     if (at < 0) {
       const t = nearest(spec, allTasks)
       if (t !== undefined) hints.add(t)
+      // A name outside the selection is already said, with `--all`.
+      else if (allTasks.size > 0 && !elsewhere.includes(spec)) {
+        lists.add(`Tasks: ${listed(allTasks)}.`)
+      }
       continue
     }
     const [proj, task] = [spec.slice(0, at), spec.slice(at + 1)]
     if (!projects.has(proj)) {
       const p = projectNamed(proj, projects) ?? nearest(proj, projects.keys())
       if (p !== undefined && tasksOf(projects.get(p)).includes(task)) hints.add(`${p}#${task}`)
+      else if (p === undefined && projects.size > 0) {
+        lists.add(`No project is named ${proj}; projects: ${listed(projects.keys())}.`)
+      }
       continue
     }
     const t = nearest(task, tasksOf(projects.get(proj)))
     if (t !== undefined) hints.add(`${proj}#${t}`)
+    else if (tasksOf(projects.get(proj)).length > 0) {
+      lists.add(`${proj}'s tasks: ${listed(tasksOf(projects.get(proj)))}.`)
+    }
   }
-  return hints.size === 0 ? '' : ` Did you mean ${[...hints].join(', ')}?`
+  return (
+    (hints.size === 0 ? '' : ` Did you mean ${[...hints].join(', ')}?`) +
+    [...lists].map((l) => ` ${l}`).join('')
+  )
 }
 
 /**

@@ -186,6 +186,11 @@ const CASES: Array<[string, () => string | null | Promise<string | null>]> = [
     () => validated({ tasks: { b: { ...ok, dependsOn: 'build' } } }),
   ],
   [
+    'cache.inputs must be an object',
+    () =>
+      validated({ tasks: { b: { ...ok, cache: { outputs: { files: [] }, inputs: 'src/**' } } } }),
+  ],
+  [
     'cache.inputs is required when cache is set',
     () => validated({ tasks: { b: { ...ok, cache: { outputs: { files: [] } } } } }),
   ],
@@ -240,6 +245,10 @@ const CASES: Array<[string, () => string | null | Promise<string | null>]> = [
           },
         },
       }),
+  ],
+  [
+    'cache.outputs must be an object',
+    () => validated({ tasks: { b: { ...ok, cache: { inputs: { files: [] }, outputs: 'dist' } } } }),
   ],
   [
     'cache.outputs is required when cache is set',
@@ -364,6 +373,10 @@ const DISCOVERY_CASES: Array<[string, () => Promise<string | null>]> = [
   [
     '<file>: "name" must be a string with no surrounding whitespace',
     () => failure({ 'package.json': '{"name":123}' }, loadWorkspace),
+  ],
+  [
+    '<file>: "name" cannot hold "#" — vx addresses a task as <name>#<task>',
+    () => failure({ 'package.json': '{"name":"a#b"}' }, loadWorkspace),
   ],
   [
     "<file>: must be a mapping (packages: and pnpm's settings)",

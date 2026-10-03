@@ -16,7 +16,7 @@ import {
   whyDidThisRerunQuery as whyDidThisRerun,
   resolveRunId,
 } from '../orchestrator/index.js'
-import { nearMatches, printable, UserError } from '../util/index.js'
+import { MASKED, nearMatches, printable, UserError } from '../util/index.js'
 import { findWorkspaceRoot } from '../workspace/index.js'
 import { cliCacheDir, parseCacheDirFlag, warnToStderr } from './workspace-config.js'
 
@@ -235,7 +235,17 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
     } else {
       const p = why.previousRun
       lines.push(`  previous   ${fmtWhen(p.startedAt)} · ${p.status} · key ${p.hash}`)
-      lines.push(`  verdict    ${why.note}`)
+      // The key moved and the diff says by what: the verdict names it, so
+      // an env-only change reads as one line, not "inputs differ" above a
+      // table to scan.
+      const moved = diff.entries.map((e) => `${e.kind} ${printable(e.name)}`)
+      lines.push(
+        `  verdict    ${
+          why.hashChanged === true && moved.length > 0
+            ? `cache key changed: ${moved.slice(0, 3).join(', ')}${moved.length > 3 ? ` and ${moved.length - 3} more` : ''}`
+            : why.note
+        }`,
+      )
     }
 
     if (diff.entries.length > 0) {
@@ -245,14 +255,17 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
       )
       const kindW = Math.max(...diff.entries.map((e) => e.kind.length), 4)
       for (const e of diff.entries) {
+        // A secret-named env input shows its name and its change, no hash.
         const beforeAfter =
-          e.change === 'added'
-            ? `+ ${e.after}`
-            : e.change === 'removed'
-              ? `- ${e.before}`
-              : `${e.before} → ${e.after}`
+          e.before === MASKED || e.after === MASKED
+            ? ''
+            : e.change === 'added'
+              ? `+ ${e.after}`
+              : e.change === 'removed'
+                ? `- ${e.before}`
+                : `${e.before} → ${e.after}`
         lines.push(
-          `    ${e.change.padEnd(7)} ${e.kind.padEnd(kindW)}  ${printable(e.name)}  ${beforeAfter}`,
+          `    ${e.change.padEnd(7)} ${e.kind.padEnd(kindW)}  ${printable(e.name)}  ${beforeAfter}`.trimEnd(),
         )
       }
       const kinds = [...new Set(diff.entries.map((e) => e.kind))].filter((k) => k in WHAT_TO_DO)

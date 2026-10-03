@@ -1,131 +1,11 @@
-== class NxRemoteCache (src/nx-cache/index.ts)
-export class NxRemoteCache implements RemoteCacheLayer {
-  readonly endpoint: string
-  constructor(
-    private readonly config: NxCacheConfig,
-    private readonly fetchImpl: typeof fetch = fetch,
-    private readonly wait: (ms: number) => Promise<void> = Bun.sleep,
-  )
-  async get(hash: string): Promise<{ body: Response; durationMs: number | undefined } | null>
-  async has(hash: string): Promise<boolean>
-  async put(hash: string, body: Blob, _meta: { durationMs: number }): Promise<void>
-}
-== class TurboRemoteCache (src/turbo-cache/index.ts)
-export class TurboRemoteCache implements RemoteCacheLayer {
-  readonly endpoint: string
-  constructor(
-    private readonly config: TurboCacheConfig,
-    private readonly fetchImpl: typeof fetch = fetch,
-    private readonly tempDir: string = tmpdir(),
-    private readonly wait: (ms: number) => Promise<void> = Bun.sleep,
-    private readonly maxSignedBody: number = MAX_SIGNED_BODY,
-  )
-  async has(hash: string): Promise<boolean>
-  async hasMany(hashes: readonly string[]): Promise<Set<string> | null>
-  async get(hash: string): Promise<{ body: Response; durationMs: number | undefined } | null>
-  async put(hash: string, body: Blob, meta: { durationMs: number }): Promise<void>
-}
-== const MIN_SIGNATURE_KEY_LENGTH (src/turbo-cache/index.ts)
-export const MIN_SIGNATURE_KEY_LENGTH = 32
-== const VERCEL_API (src/turbo-cache/index.ts)
-export const VERCEL_API = 'https://vercel.com/api'
-== function artifactTag (src/turbo-cache/index.ts)
-export async function artifactTag(
-  key: Uint8Array,
-  hash: string,
-  teamId: string,
-  body: Blob,
-): Promise<string>
-== function mapNxWorkspace (src/nx/nx-map.ts)
-export async function mapNxWorkspace(
-  root: string,
-  metas: readonly ProjectMeta[],
-  graph: NxGraph,
-  opts: MapNxOptions,
-): Promise<NxMapping>
-== function mapTurboWorkspace (src/turbo/turbo-map.ts)
-export async function mapTurboWorkspace(
-  root: string,
-  metas: readonly ProjectMeta[],
-  opts: MapTurboOptions,
-): Promise<TurboMapping>
-== function migrateCmd (src/index.ts)
-export async function migrateCmd(args: readonly string[]): Promise<number>
 == function nx (src/nx/index.ts)
 export function nx(options: NxPluginOptions = {}): VxPlugin
 == function nxCache (src/nx-cache/index.ts)
 export function nxCache(options: NxCacheOptions = {}): VxPlugin
-== function nxExecCommand (src/nx/nx-map.ts)
-export function nxExecCommand(
-  executor: string,
-  project: string,
-  target: string,
-  configuration: string | undefined,
-  options: Record<string, unknown>,
-  dotenv: readonly string[] = [],
-): string
-== function parseMigrateArgs (src/index.ts)
-export function parseMigrateArgs(args: readonly string[]): MigrateArgs
-== function parseNxGraph (src/nx/nx-map.ts)
-export function parseNxGraph(text: string, label: string): NxGraph
-== function readNxJsonFacts (src/nx/nx-map.ts)
-export async function readNxJsonFacts(root: string): Promise<NxJsonFacts>
-== function resolveNxCacheConfig (src/nx-cache/index.ts)
-export function resolveNxCacheConfig(
-  options: NxCacheOptions,
-  env: Record<string, string | undefined> = Bun.env,
-): NxCacheConfig | undefined
-== function resolveTurboCacheConfig (src/turbo-cache/index.ts)
-export function resolveTurboCacheConfig(
-  options: TurboCacheOptions,
-  env: Record<string, string | undefined> = Bun.env,
-  file: TurboJsonRemoteCache = {},
-  local: TurboLocalConfig = {},
-): TurboCacheConfig | undefined
 == function turbo (src/turbo/index.ts)
 export function turbo(options: TurboPluginOptions = {}): VxPlugin
 == function turboCache (src/turbo-cache/index.ts)
 export function turboCache(options: TurboCacheOptions = {}): VxPlugin
-== function turboRemoteAccess (src/turbo-cache/index.ts)
-export function turboRemoteAccess(env: Record<string, string | undefined>):
-== type MapNxOptions (src/nx/nx-map.ts)
-export interface MapNxOptions {
-  readonly persistentTodo: string
-  readonly cacheable: ReadonlySet<string>
-  readonly attached?: ReadonlySet<string>
-  readonly tracked?: (rel: string) => TrackedKinds
-  readonly ownConfig?: (rel: string) => string | null
-  readonly manifestField?: (key: 'name' | 'version') => unknown
-}
-== type MapTurboOptions (src/turbo/turbo-map.ts)
-export interface MapTurboOptions {
-  splice(kind: TurboGlobal, values: readonly string[]): readonly unknown[]
-  persistentTodo: string
-  manifestField?(key: 'name' | 'version'): unknown
-  envNames?: readonly string[]
-  sourceNames?: (dirs: readonly string[]) => Promise<readonly string[]>
-  vendorEnvPrefix?: string
-  envMode?: string
-  tracked?: (rel: string) => TrackedKinds
-  ownConfig?: (rel: string) => string | null
-  ignored?: (rels: readonly string[]) => Promise<ReadonlySet<string>>
-}
-== type MigrateArgs (src/index.ts)
-export interface MigrateArgs {
-  dry: boolean
-  force: boolean
-  mjs: boolean
-  from?: 'turbo' | 'nx'
-  help?: boolean
-  error?: string
-}
-== type NxCacheConfig (src/nx-cache/index.ts)
-export interface NxCacheConfig {
-  server: string
-  accessToken?: string
-  timeoutMs: number
-  retries: number
-}
 == type NxCacheOptions (src/nx-cache/index.ts)
 export interface NxCacheOptions {
   server?: string
@@ -133,69 +13,10 @@ export interface NxCacheOptions {
   timeoutMs?: number
   retries?: number
 }
-== type NxGraph (src/nx/nx-map.ts)
-export interface NxGraph {
-  nodes: Record<string, NxNode>
-  dependencies: unknown
-}
-== type NxJsonFacts (src/nx/nx-map.ts)
-interface NxJsonFacts {
-  readonly namedInputs: Record<string, unknown[]> | null
-  readonly cacheable: ReadonlySet<string>
-  readonly globalSync: readonly string[]
-}
-== type NxMapping (src/nx/nx-map.ts)
-export interface NxMapping {
-  readonly projects: GeneratedProject[]
-  readonly notes: string[]
-}
-== type NxNode (src/nx/nx-map.ts)
-interface NxNode {
-  name?: string
-  data?: {
-    root?: string
-    namedInputs?: Record<string, unknown[]>
-    targets?: Record<string, NxTarget>
-    metadata?: { targetGroups?: unknown }
-  }
-}
 == type NxPluginOptions (src/nx/index.ts)
 export interface NxPluginOptions {
   readonly root?: string
   readonly graph?: string
-}
-== type NxTarget (src/nx/nx-map.ts)
-interface NxTarget {
-  executor?: string
-  command?: string
-  options?: Record<string, unknown>
-  configurations?: Record<string, Record<string, unknown>>
-  defaultConfiguration?: string
-  inputs?: unknown[]
-  outputs?: string[]
-  dependsOn?: unknown[]
-  cache?: boolean
-  continuous?: boolean
-  parallelism?: boolean
-  syncGenerators?: unknown[]
-  metadata?: { nonAtomizedTarget?: unknown }
-}
-== type TrackedKinds (src/tracked-outputs.ts)
-export interface TrackedKinds {
-  readonly exts: ReadonlySet<string>
-  readonly dirs: ReadonlySet<string>
-  readonly tops: ReadonlySet<string>
-}
-== type TurboCacheConfig (src/turbo-cache/index.ts)
-export interface TurboCacheConfig {
-  apiUrl: string
-  token: string
-  teamId?: string
-  teamSlug?: string
-  signatureKey?: string
-  timeoutMs: number
-  uploadTimeoutMs: number
-  retries: number
 }
 == type TurboCacheOptions (src/turbo-cache/index.ts)
 export interface TurboCacheOptions {
@@ -207,44 +28,6 @@ export interface TurboCacheOptions {
   timeoutMs?: number
   uploadTimeoutMs?: number
   retries?: number
-}
-== type TurboGlobal (src/turbo/turbo-map.ts)
-export type TurboGlobal = 'inputs' | 'env' | 'pass'
-== type TurboJsonRemoteCache (src/turbo-cache/index.ts)
-export interface TurboJsonRemoteCache {
-  apiUrl?: unknown
-  signature?: unknown
-  teamId?: unknown
-  teamSlug?: unknown
-  enabled?: unknown
-  timeout?: unknown
-  uploadTimeout?: unknown
-}
-== type TurboLocalConfig (src/turbo-cache/index.ts)
-export interface TurboLocalConfig {
-  apiUrl?: unknown
-  teamId?: unknown
-  teamSlug?: unknown
-  token?: unknown
-}
-== type TurboMappedProject (src/turbo/turbo-map.ts)
-export interface TurboMappedProject {
-  name: string
-  dir: string
-  tasks: TurboMappedTask[]
-}
-== type TurboMappedTask (src/turbo/turbo-map.ts)
-export interface TurboMappedTask {
-  name: string
-  todos: string[]
-  task: Record<string, unknown> | null
-  uses: ReadonlySet<TurboGlobal>
-}
-== type TurboMapping (src/turbo/turbo-map.ts)
-export interface TurboMapping {
-  projects: TurboMappedProject[]
-  notes: string[]
-  globals: { inputs: string[]; env: string[]; pass: string[] }
 }
 == type TurboPluginOptions (src/turbo/index.ts)
 export interface TurboPluginOptions {

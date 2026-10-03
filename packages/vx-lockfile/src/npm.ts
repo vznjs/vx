@@ -5,7 +5,7 @@
 // it, `packages/a` a workspace package, and `node_modules/a` a link to it
 // (`link: true, resolved: "packages/a"`). A dependency `d` of the package
 // at path `p` is `p/node_modules/d` when that key exists, else the nearest
-// ancestor's, else `node_modules/d` — Node's own walk.
+// ancestor directory's, else `node_modules/d` — Node's own walk.
 
 import { reachDigests } from '@vzn/vx'
 
@@ -67,8 +67,9 @@ export function parseLockfile(text: string): Lockfile {
       isWorkspace: p !== '' && !p.startsWith('node_modules/') && !p.includes('/node_modules/'),
     })
   }
-  const root = record((record(d!['packages']) ?? {})[''])
-  const global = JSON.stringify({ lockfileVersion: version, overrides: root?.['overrides'] })
+  // Root `overrides` are not folded: what an override forced is the entry a
+  // workspace reaches, and npm 10 does not write them here at all (D-142).
+  const global = JSON.stringify({ lockfileVersion: version })
   return { version, packages, global }
 }
 
@@ -86,14 +87,23 @@ function record(v: unknown): Json | undefined {
   return v !== null && typeof v === 'object' && !Array.isArray(v) ? (v as Json) : undefined
 }
 
-/** `p/node_modules/name`, up the ancestors, then `node_modules/name`. */
+/**
+ * Node's walk: `p/node_modules/name`, then the same under each ancestor
+ * directory that is not itself a `node_modules`, then `node_modules/name`.
+ * A workspace nested in another's directory (`packages/a/packages/n`)
+ * resolves through `packages/a/node_modules`, where npm nests what only it
+ * needs; stepping from one `/node_modules/` boundary to the next skipped
+ * that directory, and `n` was keyed on its spec alone (D-139).
+ */
 function resolve(lock: Lockfile, from: string, name: string): string | undefined {
   let base = from
   for (;;) {
-    const key = base === '' ? `node_modules/${name}` : `${base}/node_modules/${name}`
-    if (lock.packages.has(key)) return key
+    if (base !== 'node_modules' && !base.endsWith('/node_modules')) {
+      const key = base === '' ? `node_modules/${name}` : `${base}/node_modules/${name}`
+      if (lock.packages.has(key)) return key
+    }
     if (base === '') return undefined
-    const i = base.lastIndexOf('/node_modules/')
+    const i = base.lastIndexOf('/')
     base = i === -1 ? '' : base.slice(0, i)
   }
 }
@@ -110,7 +120,11 @@ export function importerDigests(lock: Lockfile): ReadonlyMap<string, string> {
   const edges: number[][] = []
   for (const [p, e] of lock.packages) {
     index.set(p, material.length)
-    material.push(`${p}\0${e.resolution}`)
+    // An installed package is its install name and what it is, not where
+    // it sits: a re-hoist of one version re-keyed every project reaching it
+    // (D-140). Where it sits decides what it resolves; that is the edges.
+    // The root and a workspace keep their path, which is who they are.
+    material.push(`${p === '' || e.isWorkspace ? p : installName(p)}\0${e.resolution}`)
     edges.push([])
   }
   for (const [p, e] of lock.packages) {
@@ -143,4 +157,10 @@ export function importerDigests(lock: Lockfile): ReadonlyMap<string, string> {
     )
   }
   return out
+}
+
+/** `node_modules/a/node_modules/@s/b` → `@s/b`. */
+function installName(p: string): string {
+  const i = p.lastIndexOf('node_modules/')
+  return i === -1 ? p : p.slice(i + 'node_modules/'.length)
 }

@@ -18,6 +18,10 @@ import { ESSENTIAL_ENV } from '../src/exec/env.js'
 import type { RunPlan } from '../src/orchestrator/plan.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
 import type { TaskOutcome } from '../src/graph/scheduler.js'
+import { IGNORED_SEGMENTS } from '../src/cli/watch-fs.js'
+import { WATCH_REFUSED_FLAGS } from '../src/cli/help.js'
+import { createTelemetrySource } from '../src/orchestrator/telemetry.js'
+import type { RunSummaryRecord, TelemetrySink } from '../src/orchestrator/telemetry.js'
 
 const GUIDES = path.resolve(
   import.meta.dir,
@@ -156,6 +160,35 @@ describe('CONTRIBUTING names what the gate runs on', () => {
   })
 })
 
+// The configure guide said a task sees only the variables you pass and
+// gave `CI` as a passThrough example, and a post said env reaches a task
+// only through `exec.env`: `CI` is essential and reaches every task.
+describe('no page says a task sees only what it declares, past the allowlist', () => {
+  it("the guide's passThrough examples are no essentials, and both pages name the allowlist", () => {
+    const guide = readFileSync(path.join(GUIDES, 'configure.md'), 'utf8')
+    const row = guide.split('\n').find((l) => l.startsWith('| `exec.env.passThrough`'))!
+    expect(row).toBeDefined()
+    const examples = [...row.matchAll(/`([A-Z][A-Z0-9_]+)`/g)].map((m) => m[1]!)
+    expect(examples.length).toBeGreaterThan(0)
+    expect(examples.filter((n) => ESSENTIAL_ENV.includes(n))).toEqual([])
+    expect(guide).toContain('Past a small essential allowlist (below), a task sees only')
+    const post = readFileSync(path.join(DOCS, 'blog', 'explicit-over-magical.md'), 'utf8')
+    expect(post.split(/\s+/).join(' ')).toContain(
+      'Past the essential allowlist every task gets (`PATH`, `HOME`, `CI`, `NODE_OPTIONS` and a few more), env reaches a task only through `exec.env`.',
+    )
+    const one = readFileSync(path.join(DOCS, 'blog', 'one-command-per-task.md'), 'utf8')
+    expect(one.split(/\s+/).join(' ')).toContain(
+      'an isolated environment: a small essential allowlist (`PATH`, `HOME`, `CI`, `NODE_OPTIONS` and a few more), then what `exec.env` says',
+    )
+    // The Troubleshooting page (#2470) came after, with "vx passes only
+    // what you list" (J2-8).
+    const trouble = readFileSync(path.join(GUIDES, 'troubleshooting.md'), 'utf8')
+    expect(trouble.split(/\s+/).join(' ')).toContain(
+      'Past a small essential allowlist (`PATH`, `HOME`, `CI` and a few more), vx passes only what you list',
+    )
+  })
+})
+
 describe('the configure guide names the essential allowlist', () => {
   it('its "always gets a small essential allowlist" sentence names every name in ESSENTIAL_ENV', () => {
     const page = section(
@@ -205,8 +238,8 @@ describe("the README's comparison agrees with comparison.md on Turbo's daemon", 
   it('both say turbo run uses none', () => {
     const repo = path.resolve(import.meta.dir, '..', '..', '..')
     const readme = readFileSync(path.join(repo, 'README.md'), 'utf8')
-    const row = /^\| Daemon required for speed \|[^|]*\| ([^|]*?) +\|/m.exec(readme)![1]
-    expect(row).toBe('No (`turbo run` has none)')
+    const row = /^\| Daemon +\|[^|]*\| ([^|]*?) +\|/m.exec(readme)![1]
+    expect(row).toBe('None for `turbo run`')
     const doc = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'comparison.md'), 'utf8')
     // Bisected over npm: 2.8.10's help still offers --daemon, 2.8.11's marks
     // it deprecated and unused by `turbo run`; 2.10 deprecates neither
@@ -277,6 +310,19 @@ describe('the configure guide states the concurrency default `vx help` states', 
 // The trusting-the-cache guide merged into the caching guide (the site redo,
 // R3), and that into the configure page (the short site); its `vx why`
 // table and sample moved with it.
+describe("comparison.md's Nx flag cells", () => {
+  // Nx 23.2.1's `run-many --help` marks `--all` "[deprecated]" (run-many
+  // takes every project when no -p is given), and `--outputStyle` "defines
+  // how Nx emits outputs tasks logs": no per-run JSON summary (J-112).
+  it('every-project is implicit, and Nx writes no JSON summary', () => {
+    const doc = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'comparison.md'), 'utf8')
+    const nx = (row: string) =>
+      new RegExp(`^\\| ${row} +\\|[^|]*\\| ([^|]*?) +\\|`, 'm').exec(doc)![1]
+    expect(nx('recursive \\(every project\\)')).toBe('implicit (no `-p`); `--all` deprecated')
+    expect(nx('per-run JSON summary')).toBe('—')
+  })
+})
+
 describe('the configure guide quotes what vx why says', () => {
   const guide = section(readFileSync(path.join(GUIDES, 'configure.md'), 'utf8'), 'Caching')
   const post = readFileSync(path.join(DOCS, 'blog', 'why-did-this-rerun.md'), 'utf8')
@@ -291,8 +337,12 @@ describe('the configure guide quotes what vx why says', () => {
     // run never reach it; every other note opens `cache key` or `this task`.
     const from = src.indexOf('function unchangedKeyNote')
     const verdicts = src.slice(from, src.indexOf('\n// ----', from))
-    const notes = [...verdicts.matchAll(/'((?:cache key|this task )[^']*)'/g)].map((m) => m[1]!)
-    expect(notes.length).toBe(9)
+    // A template literal's interpolated group reads `(…)` on the pages: the
+    // continue-taint verdict was one, and a quote-only match missed it (J2-13).
+    const notes = [...verdicts.matchAll(/(['`])((?:cache key|this task )(?:(?!\1)[^\\])*)\1/g)].map(
+      (m) => m[2]!.replace(/\([^()]*\$\{[^}]*\}[^()]*\)/g, '(…)'),
+    )
+    expect(notes.length).toBe(10)
     for (const note of notes) {
       expect(guide).toContain(note)
       expect(post).toContain(note)
@@ -316,7 +366,7 @@ describe('the why-vx-is-fast concept quotes the benchmarks page', () => {
     const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
     for (const figure of [
       '3m 38s',
-      '3m 46s',
+      '3m 47s',
       '5m 13s',
       '34m 44s',
       '1,712 ms per',
@@ -409,7 +459,7 @@ describe('the no-daemon post quotes the benchmarks page', () => {
   it('each warm-run figure it states is on docs/benchmarks.md as written', () => {
     const page = readFileSync(path.join(DOCS, 'blog', 'no-daemon.md'), 'utf8')
     const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
-    for (const figure of ['510ms', '760ms', '3.59s']) {
+    for (const figure of ['476ms', '760ms', '3.59s']) {
       expect(page).toContain(figure)
       expect(bench).toContain(figure)
     }
@@ -526,7 +576,7 @@ describe('the why-vx-is-fast post quotes the benchmarks page', () => {
   it('each figure it states is on docs/benchmarks.md as written', () => {
     const page = readFileSync(path.join(DOCS, 'blog', 'why-vx-is-fast.md'), 'utf8')
     const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
-    for (const figure of ['3m 38s', '3m 46s', '5m 13s', '34m 44s', '510ms', '760ms', '3.59s']) {
+    for (const figure of ['3m 38s', '3m 47s', '5m 13s', '34m 44s', '476ms', '760ms', '3.59s']) {
       expect(page).toContain(figure)
       expect(bench).toContain(figure)
     }
@@ -708,13 +758,13 @@ describe('the honest-benchmarks post quotes the benchmarks page', () => {
     // and 340 fixed on two other posts (item 342, 2026-09-19).
     for (const figure of [
       '3m 38s',
-      '3m 46s',
+      '3m 47s',
       '5m 13s',
       '34m 44s',
-      '510ms',
+      '476ms',
       '760ms',
       '3.59s',
-      '34.61s',
+      '34.33s',
       '1m 13s',
       '114m 06s',
       '67ms',
@@ -803,19 +853,20 @@ describe('the from-nx post says how executors run, and names the servers', () =>
     })
     expect(page.replace(/\s+/g, ' ')).toContain('come through as persistent tasks')
   })
-  it('the post and the guide both say every executor runs through nx-exec', () => {
-    expect(page).toContain('Every executor runs through `nx-exec`')
-    expect(guide).toContain('Executor targets keep running as executors')
-    // The mapper agrees: no executor maps to a bare command any more.
-    expect(src).not.toMatch(/'@nx\/[^']+': \{ command:/)
-    // Every executor line is `nxExecCommand`'s (its `.env` files appended).
+  it('the post and the guide say executors run through nx-exec, in nx() and the migration alike', () => {
+    expect(page).toContain('Each becomes an `nx-exec`')
+    expect(page.replace(/\s+/g, ' ')).toContain('executor target is written as its `nx-exec` line')
+    expect(guide).toContain('An executor target is written as an `nx-exec` line')
+    // The mapper agrees: one executor line, `nxExecCommand`'s (its `.env`
+    // files appended), and no translator beside it (owner, 2026-10-03).
     expect(src).toContain(
       'line(nxExecCommand(executor, projectName, targetName, configuration, options, files))',
     )
+    expect(src).not.toContain('nativeExecutorCommand')
   })
   it('the benchmark figures it states are the benchmarks page’s', () => {
     const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
-    for (const figure of ['510ms', '3.59s', '34.61s', '114m 06s']) {
+    for (const figure of ['476ms', '3.59s (vx 86% faster)', '34.33s', '114m 06s (vx 99% faster)']) {
       expect(page).toContain(figure)
       expect(bench).toContain(figure)
     }
@@ -891,6 +942,29 @@ describe.each([
     expect(src).toContain('deny?: SandboxDenials')
     expect(src).toContain('ignore?: SandboxIgnore')
     for (const field of ['`allow`', '`deny`', '`ignore`']) expect(page).toContain(field)
+  })
+})
+
+// The sandboxing guide called `gitConfig` inert ("SRT drops the per-task
+// flag") after B-41 made it take effect for the task that grants it.
+describe('the sandboxing guide says what gitConfig grants', () => {
+  it('the flag reaches the wrap per task, and the guide does not call it inert', () => {
+    const runtime = readFileSync(
+      path.resolve(import.meta.dir, '..', 'src', 'exec', 'sandbox-runtime.ts'),
+      'utf8',
+    )
+    const binds = readFileSync(
+      path.resolve(import.meta.dir, '..', 'src', 'exec', 'sandbox-binds.ts'),
+      'utf8',
+    )
+    expect(binds).toContain('allowGitConfig: c.gitConfig')
+    expect(runtime).toContain('perTaskRun')
+    const row = readFileSync(path.join(GUIDES, 'sandboxing.md'), 'utf8')
+      .split('\n')
+      .find((l) => l.startsWith('| `gitConfig`'))
+    expect(row).toBeDefined()
+    expect(row).not.toMatch(/inert|drops/)
+    expect(row).toContain('this task only')
   })
 })
 
@@ -1203,7 +1277,7 @@ describe('the caching guide lists what the cache never reads', () => {
   })
   it('its benchmark figures are the benchmarks page’s, as written', () => {
     const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
-    for (const figure of ['510ms', '760ms', '3.59s']) {
+    for (const figure of ['476ms', '760ms', '3.59s']) {
       expect(page).toContain(figure)
       expect(bench).toContain(figure)
     }
@@ -1342,7 +1416,7 @@ describe.each(['pnpm', 'bun'])(
       const set = /const PER_\w+ = new Set\(\[([\s\S]*?)\]\)/.exec(src)
       expect(set).not.toBeNull()
       const keys = [...set![1]!.matchAll(/'(\w+)'/g)].map((m) => m[1]!)
-      expect(keys.length).toBe(manager === 'pnpm' ? 5 : 2)
+      expect(keys.length).toBe(6)
       const page = section(readFileSync(path.join(GUIDES, 'configure.md'), 'utf8'), 'Lockfiles')
       // That manager's OWN row, not the page: a whole-page search lets one
       // row cover for the other's omission — which is how the bun list lost
@@ -1404,20 +1478,19 @@ describe('the plugins guide rosters every hook a shipped plugin fills', () => {
 })
 
 // The migrate-from-nx guide is the migrate page's Nx section (the short site).
-describe('the migrate-from-nx guide shows the nx-exec line the mapper writes', () => {
-  it('its sample is the shape `nxExecCommand` produces, as vx-migrate’s own suite pins it', () => {
-    // The guide's sample and `tests/migrate.test.ts` ("executors") in
-    // vx-migrate spell the same line; a change to the bin's argv shape has
-    // to land in both.
+describe('the migrate-from-nx guide lists no translated executor', () => {
+  it('no executor table, and no translator module behind one', () => {
     const page = section(readFileSync(path.join(GUIDES, 'migrate.md'), 'utf8'), 'Nx')
-    expect(page).toContain(
-      `nx-exec @nx/js:tsc --project lib --target build --options '{"main":"src/index.ts","tsConfig":"tsconfig.lib.json"}'`,
-    )
-    const suite = readFileSync(
-      path.resolve(import.meta.dir, '..', '..', 'vx-migrate', 'tests', 'migrate.test.ts'),
-      'utf8',
-    )
-    expect(suite).toContain('nx-exec @nx/vitest:test --project app --target test')
+    expect([...page.matchAll(/^\| `@[^|]+\|/gm)].map((row) => row[0])).toEqual([])
+    expect(
+      existsSync(
+        path.resolve(import.meta.dir, '..', '..', 'vx-migrate', 'src', 'nx', 'nx-native.ts'),
+      ),
+    ).toBe(false)
+    // The positive: the module the line comes from is there.
+    expect(
+      existsSync(path.resolve(import.meta.dir, '..', '..', 'vx-migrate', 'src', 'nx', 'nx-map.ts')),
+    ).toBe(true)
   })
 })
 
@@ -1603,6 +1676,30 @@ describe('the README and the CI guide say which packages npm has', () => {
   it('the CI guide, which imports @vzn/vx-github, carries it', () => {
     expect(readFileSync(path.join(GUIDES, 'ci.md'), 'utf8')).toContain(NOTE)
   })
+  // Found, not listed: J-93 pinned two pages, and the quickstart's `bunx
+  // @vzn/vx-migrate` and the configure guide's `bun add -d
+  // @vzn/vx-lockfile` sent a reader to a 404 with no word (J2-25).
+  it('every Docs page that installs, runs or imports a plugin says npm has none yet', () => {
+    const packagesDir = path.resolve(import.meta.dir, '..', '..')
+    const plugins = readdirSync(packagesDir)
+      .map((d) => path.join(packagesDir, d, 'package.json'))
+      .filter((f) => existsSync(f))
+      .map((f) => JSON.parse(readFileSync(f, 'utf8')) as { name: string; private?: boolean })
+      .filter((m) => m.private !== true && m.name !== '@vzn/vx')
+      .map((m) => m.name.replace('/', '\\/'))
+    const use = new RegExp(
+      `(?:bunx|npx|add(?: -[dDW])*|install(?: -[DgW])*|from) '?(?:${plugins.join('|')})\\b`,
+    )
+    const pages = handAuthoredSitePages().filter((p) => !p.includes(`${path.sep}blog${path.sep}`))
+    const using = pages.filter((p) => use.test(readFileSync(p, 'utf8')))
+    expect(using.length).toBeGreaterThan(3)
+    const silent = using
+      .filter(
+        (p) => !readFileSync(p, 'utf8').replace(/\s+/g, ' ').includes('first publish is pending'),
+      )
+      .map((p) => p.slice(DOCS.length + 1))
+    expect(silent).toEqual([])
+  })
 })
 
 describe('a config sample imports the schema from @vzn/vx/config', () => {
@@ -1736,5 +1833,765 @@ describe("comparison.md's Turborepo cells say what Turbo hashes and runs", () =>
       'yes — `package.json` is a default input',
     )
     expect(turbo('Pre/post script lifecycle')).toBe('yes — the package manager runs them')
+  })
+})
+
+// Blog links into a guide section kept the titles of the guide pages the
+// short site merged away ("Running tasks", "Dev & long-running tasks"),
+// and one promised readiness patterns for common servers the section
+// never held. A link into a guide section names that section.
+describe("a post's link into a guide section names the section", () => {
+  it('its text holds the heading its anchor lands on', () => {
+    const plain = (s: string): string => s.replace(/[`*_]/g, '').replace(/\s+/g, ' ').toLowerCase()
+    const slug = (h: string): string =>
+      h
+        .toLowerCase()
+        .replace(/[^\p{L}\p{N} _-]/gu, '')
+        .replace(/ /g, '-')
+    const headings = new Map<string, Map<string, string>>()
+    const headingOf = (guide: string, anchor: string): string | undefined => {
+      if (!headings.has(guide)) {
+        const map = new Map<string, string>()
+        for (const m of readFileSync(path.join(GUIDES, `${guide}.md`), 'utf8').matchAll(
+          /^#{2,6}\s+(.*?)\s*$/gm,
+        ))
+          map.set(slug(m[1]!), m[1]!)
+        headings.set(guide, map)
+      }
+      return headings.get(guide)!.get(anchor)
+    }
+    const wrong: string[] = []
+    let checked = 0
+    // A post's pointer to its guide; the glossary's and compare page's
+    // inline links are prose ("remote caching"), not section names.
+    const posts = handAuthoredSitePages().filter((p) => p.includes(`${path.sep}blog${path.sep}`))
+    for (const page of posts) {
+      const text = readFileSync(page, 'utf8')
+      for (const m of text.matchAll(
+        /\[([^\]]+)\]\((?:\.\.\/)+guides\/([a-z-]+)\/#([a-z0-9-]+)\)/g,
+      )) {
+        const heading = headingOf(m[2]!, m[3]!)
+        checked++
+        if (heading === undefined || !plain(m[1]!).includes(plain(heading)))
+          wrong.push(`${path.relative(DOCS, page)}: [${m[1]}] → ${m[2]}#${m[3]}`)
+      }
+    }
+    expect(checked).toBeGreaterThan(5)
+    expect(wrong).toEqual([])
+    const post = readFileSync(path.join(DOCS, 'blog', 'dev-servers-in-the-graph.md'), 'utf8')
+    expect(post).not.toContain('readiness patterns for the common servers')
+  })
+})
+
+describe('the lockfile post measures what the root reaches', () => {
+  // Every project's digest folds the root importer's closure, and this
+  // repository's root links its packages as devDependencies, so a bump
+  // the root reaches re-keys every task. The post claimed a bump re-keys
+  // "that package's own tasks and its dependants'" (J2-11): bumping
+  // protobufjs, under @vzn/vx-reapi, re-keyed all 56.
+  it('names a root-reached bump as every task, and its narrow example outside the root', () => {
+    const repo = path.resolve(import.meta.dir, '..', '..', '..')
+    interface Manifest {
+      name: string
+      dependencies?: Record<string, string>
+      devDependencies?: Record<string, string>
+    }
+    const manifest = (dir: string): Manifest =>
+      JSON.parse(readFileSync(path.join(dir, 'package.json'), 'utf8'))
+    const deps = (m: Manifest): Record<string, string> => ({
+      ...m.dependencies,
+      ...m.devDependencies,
+    })
+    const byName = new Map<string, string>()
+    for (const d of readdirSync(path.join(repo, 'packages'))) {
+      const dir = path.join(repo, 'packages', d)
+      if (existsSync(path.join(dir, 'package.json'))) {
+        byName.set(manifest(dir).name, dir)
+      }
+    }
+    const reached = new Set<string>()
+    for (const [name, range] of Object.entries(deps(manifest(repo)))) {
+      reached.add(name)
+      if (!range.startsWith('workspace:')) continue
+      for (const dep of Object.keys(deps(manifest(byName.get(name)!)))) reached.add(dep)
+    }
+    const post = readFileSync(path.join(DOCS, 'blog', 'lockfile-aware-keys.md'), 'utf8')
+    const sentences = section(post, 'Measured in the repository that ships it')
+      .replace(/\s+/g, ' ')
+      .split(/(?<=\.) /)
+    const claims = sentences.flatMap((s) => {
+      const bumped = /bumping `([^`]+)`/.exec(s)?.[1]
+      return bumped === undefined ? [] : [{ bumped, every: s.includes('every task') }]
+    })
+    expect(claims.filter((c) => c.every).length).toBeGreaterThan(0)
+    expect(claims.filter((c) => !c.every).length).toBeGreaterThan(0)
+    const wrong = claims.filter((c) => reached.has(c.bumped) !== c.every)
+    expect(wrong).toEqual([])
+  })
+})
+
+describe('the cascade post names every way a key is preliminary', () => {
+  // It named the same-project output case alone; stable-keys.ts also
+  // classes root-anchored outputs, undeclared writers and unfolded
+  // in-place rewriters, and a dependant inherits the class (J2-16).
+  it('each case stable-keys.ts classes, and the inheritance', () => {
+    const src = readFileSync(
+      path.resolve(import.meta.dir, '..', 'src', 'orchestrator', 'stable-keys.ts'),
+      'utf8',
+    )
+    const post = readFileSync(path.join(DOCS, 'blog', 'cascade-through-inputs.md'), 'utf8').replace(
+      /\s+/g,
+      ' ',
+    )
+    const cases: [string, string][] = [
+      ['outputs.workspaceFiles', "an upstream's root-anchored `outputs.workspaceFiles`"],
+      ['undeclaredWriteReach', 'an upstream with no `cache` block that may write in the project'],
+      [
+        'commandWriteReach',
+        'rewrites its own inputs in place (a formatter) whose key this one does not fold',
+      ],
+      ['node.deps.some((d) => unstableById.has(d))', 'and every task depending on it'],
+    ]
+    for (const [code, phrase] of cases) {
+      expect(src).toContain(code)
+      expect(post).toContain(phrase)
+    }
+  })
+})
+
+// The remote-execution post said sandboxed and `exec.remote: false` tasks
+// stay local but not their dependants, which placement pins with them,
+// and named nothing of the runtime-probe rule.
+describe('the remote-execution post lists what placement keeps local', () => {
+  it('each pinning rule in pinnedLocalSet is in its list, with its reach', () => {
+    const src = readFileSync(
+      path.resolve(import.meta.dir, '..', 'src', 'orchestrator', 'placement.ts'),
+      'utf8',
+    )
+    for (const field of [
+      'exec?.persistent',
+      'exec?.sandbox',
+      'exec?.remote === false',
+      'inputs?.runtime',
+    ])
+      expect(src).toContain(field)
+    expect(src).toContain('pinned.add(up)') // the walk up the dependant edges
+    const post = readFileSync(path.join(DOCS, 'blog', 'remote-execution.md'), 'utf8')
+      .split(/\s+/)
+      .join(' ')
+    for (const line of [
+      'Not persistent tasks, or anything depending on one.',
+      'Not sandboxed tasks, or anything depending on one.',
+      'Not `exec.remote: false`, or anything depending on it.',
+      'Not a task whose key folds a runtime probe',
+    ])
+      expect(post).toContain(line)
+  })
+})
+
+describe('the bitsets post says when the package graph searches instead', () => {
+  it('a filter seeded by one or two packages is a search (#2323)', () => {
+    const graph = readFileSync(
+      path.resolve(import.meta.dir, '..', 'src', 'workspace', 'package-graph.ts'),
+      'utf8',
+    )
+    expect(graph).toContain('transitiveDeps: makeAccessor(reachDeps, searchDeps)')
+    const post = readFileSync(path.join(DOCS, 'blog', 'bitsets-and-the-scheduler.md'), 'utf8')
+    expect(post.replace(/\s+/g, ' ')).toContain(
+      'A filter seeded by one or two packages (`app...`) searches from them instead',
+    )
+  })
+})
+
+describe('the watch post names what the loop ignores and refuses', () => {
+  // The post's ignore list left out git-ignored paths, which the loop skips
+  // through `git check-ignore`, and called `--verbosity` refused where
+  // `--verbosity 0` is accepted (J2-14).
+  const cli = path.resolve(import.meta.dir, '..', 'src', 'cli')
+  const post = readFileSync(path.join(DOCS, 'blog', 'watch-mode.md'), 'utf8').replace(/\s+/g, ' ')
+  it('every ignored segment and suffix, and git-ignored paths', () => {
+    const filter = readFileSync(path.join(cli, 'watch-filter.ts'), 'utf8')
+    const suffixes = /const IGNORED_SUFFIXES = \[([^\]]*)\]/.exec(filter)?.[1]
+    expect(suffixes).toBeDefined()
+    const named = [...IGNORED_SEGMENTS, ...[...suffixes!.matchAll(/'([^']+)'/g)].map((m) => m[1]!)]
+    expect(named.filter((n) => !post.includes(`\`${n}\``))).toEqual([])
+    expect(filter).toContain("'check-ignore'")
+    expect(post).toContain('any untracked path git ignores (one `git check-ignore`')
+  })
+  it('every refused flag, and --verbosity only above 0', () => {
+    expect(WATCH_REFUSED_FLAGS.filter((f) => !post.includes(`\`${f}\``))).toEqual([])
+    expect(readFileSync(path.join(cli, 'watch.ts'), 'utf8')).toContain('parsed.verbosity > 0')
+    expect(post).toContain('`--verbosity` above 0')
+  })
+})
+
+describe('the keys-from-git post names every way an index id is distrusted', () => {
+  // The post counted three prunes after the blob-size check (A-60) made a
+  // fourth, and left out the stat-weakening config that trusts no id (J2-15).
+  it('the blob-size check and the weakened stat, as git-inputs.ts runs them', () => {
+    const src = readFileSync(
+      path.resolve(import.meta.dir, '..', 'src', 'cache', 'git-inputs.ts'),
+      'utf8',
+    )
+    expect(src).toContain('async function dropResizedOids(')
+    expect(src).toContain("vars.get('core.trustctime')")
+    expect(src).toContain("vars.get('core.checkstat')")
+    const post = readFileSync(path.join(DOCS, 'blog', 'keys-from-git.md'), 'utf8').replace(
+      /\s+/g,
+      ' ',
+    )
+    expect(post).toContain('so four prunes run against it')
+    expect(post).toContain('an id whose blob is not the size the index recorded for the file')
+    expect(post).toContain('(`core.trustctime=false`, `core.checkStat=minimal`) trusts no index id')
+  })
+})
+
+describe('the output-ownership post reads the benchmark rows as they are measured', () => {
+  // It said the restore and no-op rows sit within a few milliseconds and
+  // credited the short-circuit for it; the restore row deletes the outputs
+  // first, so the short-circuit is the no-op row alone (J2-17).
+  it('the no-op row is the short-circuit, and the restore row extracts', () => {
+    const bench = path.resolve(import.meta.dir, '..', '..', 'vx-bench')
+    const harness = readFileSync(path.join(bench, 'run.ts'), 'utf8')
+    expect(harness).toContain('warm-restore   — outputs deleted, cache intact (full extract path)')
+    const results = JSON.parse(readFileSync(path.join(bench, 'results.json'), 'utf8')) as {
+      rows: { runner: string; warmNoRestore: number; warmRestore: number }[]
+    }
+    const vx = results.rows.find((r) => r.runner === 'vx')!
+    expect(vx.warmRestore).toBeGreaterThan(vx.warmNoRestore)
+    const post = readFileSync(
+      path.join(DOCS, 'blog', 'strict-output-ownership.md'),
+      'utf8',
+    ).replace(/\s+/g, ' ')
+    expect(post).toContain('it is the no-op row in the [benchmarks](../../benchmarks/)')
+    expect(post).toContain(
+      'Their restore row deletes the outputs first, so every artifact is extracted',
+    )
+  })
+})
+
+describe('the sandbox post judges a violation against the grants', () => {
+  // It said a read of a file the inputs never named fails, beside a sample
+  // granting `read: ['.']`, which lets that read through: the report
+  // filters denials, and only the grants deny (J2-18).
+  it('a denial inside the project fails the task; the grants decide what is denied', () => {
+    const src = (rel: string): string =>
+      readFileSync(path.resolve(import.meta.dir, '..', 'src', rel), 'utf8')
+    expect(src('orchestrator/execute-task.ts')).toContain(
+      'if (userSandbox && violations.some((v) => v.hint !== true) && code === 0) code = 1',
+    )
+    expect(src('orchestrator/sandbox-request.ts')).toContain('reportWithin: node.projectDir')
+    const post = readFileSync(path.join(DOCS, 'blog', 'the-sandbox.md'), 'utf8').replace(
+      /\s+/g,
+      ' ',
+    )
+    expect(post).toContain("sandbox: { allow: { read: ['.'] } }")
+    expect(post).toContain('the violation is judged against the grants alone')
+    expect(post).not.toContain('reads a file its inputs never named fails')
+    // The Troubleshooting page (#2470) said the sandbox refuses a read you
+    // did not declare, of a file missing from the inputs (J2-37).
+    const trouble = readFileSync(path.join(GUIDES, 'troubleshooting.md'), 'utf8').replace(
+      /\s+/g,
+      ' ',
+    )
+    expect(trouble).toContain('with reads granted no wider than the inputs, refuses that read')
+  })
+})
+
+describe('every arrow chain of the pipeline stages is PLUGIN_HOOKS in order', () => {
+  // The seams post's diagram skipped `discover` while its table, pinned
+  // above, listed it (J2-19). A chain may stop early; it may not skip.
+  it('each `config → …` chain on a page is a prefix of PLUGIN_HOOKS', () => {
+    const coreDocs = path.resolve(import.meta.dir, '..', 'docs')
+    const pages = [
+      ...handAuthoredSitePages(),
+      ...readdirSync(coreDocs)
+        .filter((f) => f.endsWith('.md'))
+        .map((f) => path.join(coreDocs, f)),
+    ]
+    const chains: { page: string; stages: string[] }[] = []
+    for (const page of pages) {
+      const text = readFileSync(page, 'utf8').replace(/\s+/g, ' ')
+      for (const m of text.matchAll(/`?config`?(?: → `?\w+`?)+/g)) {
+        chains.push({
+          page: path.basename(page),
+          stages: [...m[0].matchAll(/\w+/g)].map((w) => w[0]),
+        })
+      }
+    }
+    expect(chains.length).toBeGreaterThan(2)
+    const wrong = chains.filter((c) => c.stages.some((s, i) => PLUGIN_HOOKS[i] !== s))
+    expect(wrong).toEqual([])
+  })
+})
+
+describe('the one-binary post says the npm command is a Node launcher', () => {
+  // It said nothing boots before vx's own code runs, for the npm install it
+  // shows; the npm package's `bin` is a Node script that spawns the binary
+  // (J2-20).
+  it('the published bin is the launcher, and the post names its cost', () => {
+    const core = path.resolve(import.meta.dir, '..')
+    expect(readFileSync(path.join(core, 'scripts', 'build-npm.ts'), 'utf8')).toContain(
+      "bin: { vx: './launcher.cjs' }",
+    )
+    expect(readFileSync(path.join(core, 'npm-launcher.cjs'), 'utf8')).toStartWith(
+      '#!/usr/bin/env node\n',
+    )
+    const post = readFileSync(path.join(DOCS, 'blog', 'one-binary.md'), 'utf8').replace(/\s+/g, ' ')
+    expect(post).toContain("The npm package's `vx` command is a small Node launcher")
+    expect(post).toContain('Through npm, the launcher costs one Node start first.')
+  })
+})
+
+describe('the posts state the daemons as the benchmark ran them', () => {
+  // The no-daemon post dated Turbo's `turbo run` daemon deprecation 2.10
+  // where comparison.md says 2.8.11 (turbo's 2.8.11 release notes), and
+  // the no-choice post measured Nx "with the daemon running" where the
+  // harness runs `CI=1`, Nx's daemon off (J2-21).
+  it("Turbo's version is comparison.md's, and Nx's daemon was off", () => {
+    const core = path.resolve(import.meta.dir, '..')
+    const comparison = readFileSync(path.join(core, 'docs', 'comparison.md'), 'utf8')
+    const version = /not for `turbo run` since (\d+\.\d+\.\d+)/.exec(comparison)?.[1]
+    expect(version).toBe('2.8.11')
+    const post = (name: string): string =>
+      readFileSync(path.join(DOCS, 'blog', name), 'utf8').replace(/\s+/g, ' ')
+    expect(post('no-daemon.md')).toContain(`since ${version}, no longer uses it for \`turbo run\``)
+    const harness = readFileSync(path.join(core, '..', 'vx-bench', 'compare.ts'), 'utf8')
+    expect(harness).toContain("(`CI=1`, so Nx's daemon is off;")
+    expect(post('no-choice-on-the-market.md')).toContain(
+      "(vx 86% and 37% faster), Nx's daemon off as in CI.",
+    )
+    expect(post('honest-benchmarks.md')).toContain(
+      "CI (`CI=1`: Nx's daemon off, and Turbo uses none for `turbo run`)",
+    )
+    expect(post('honest-benchmarks.md')).not.toContain('with their daemons on')
+  })
+})
+
+describe("the concepts page reads run.ts's restore row as it is measured", () => {
+  // J2-17's class on a second page: "a restore costs about the same as an
+  // untouched tree", of a harness whose restore row deletes the outputs
+  // (J2-22).
+  it('the restore row extracts, and the page says so', () => {
+    const harness = readFileSync(
+      path.resolve(import.meta.dir, '..', '..', 'vx-bench', 'run.ts'),
+      'utf8',
+    )
+    expect(harness).toContain('warm-restore   — outputs deleted, cache intact (full extract path)')
+    const page = readFileSync(path.join(DOCS, 'concepts', 'why-vx-is-fast.md'), 'utf8').replace(
+      /\s+/g,
+      ' ',
+    )
+    expect(page).toContain('Its restore row deletes the outputs first and extracts every artifact')
+    expect(page).not.toContain('a restore costs about the same as an untouched tree')
+  })
+})
+
+describe('every page naming what vx-otel exports names each signal', () => {
+  // The telemetry post and the workspace file's comment said traces and
+  // metrics; the plugin exports logs too, on by default (J2-23).
+  it("each sentence on vx-otel's traces names every signal plugin.ts sends", () => {
+    const repo = path.resolve(import.meta.dir, '..', '..', '..')
+    const plugin = readFileSync(path.join(repo, 'packages', 'vx-otel', 'src', 'plugin.ts'), 'utf8')
+    const list = /\(\[('traces'[^\]]*)\] as const\)/.exec(plugin)?.[1]
+    expect(list).toBeDefined()
+    const signals = [...list!.matchAll(/'(\w+)'/g)].map((m) => m[1]!)
+    expect(signals).toEqual(['traces', 'metrics', 'logs'])
+    const coreDocs = path.join(repo, 'packages', 'vx', 'docs')
+    const files = [
+      ...handAuthoredSitePages(),
+      ...readdirSync(coreDocs)
+        .filter((f) => f.endsWith('.md'))
+        .map((f) => path.join(coreDocs, f)),
+      ...readdirSync(path.join(repo, 'packages')).map((d) =>
+        path.join(repo, 'packages', d, 'README.md'),
+      ),
+      path.join(repo, 'README.md'),
+      path.join(repo, 'vx.workspace.ts'),
+    ].filter((f) => existsSync(f))
+    const wrong: string[] = []
+    let seen = 0
+    for (const file of files) {
+      const text = readFileSync(file, 'utf8')
+        .replace(/\s*\/\/\s*/g, ' ')
+        .replace(/\s+/g, ' ')
+      for (const sentence of text.split(/(?<=[.;]) /)) {
+        if (!/vx-otel|otel\(\)/.test(sentence) || !/\btraces\b/.test(sentence)) continue
+        if (/OTEL_LOGS_EXPORTER=none/.test(sentence)) continue
+        seen++
+        if (signals.some((s) => !sentence.includes(s))) {
+          wrong.push(`${path.basename(file)}: ${sentence.slice(0, 100)}`)
+        }
+      }
+    }
+    expect(seen).toBeGreaterThan(2)
+    expect(wrong).toEqual([])
+  })
+})
+
+describe('no migration page times a mapped run', () => {
+  // Owner rule: no speed claims for Turbo/Nx-mapped runs. vx-migrate's
+  // README gave a mapped run's warm wall ("~200 ms warm", "median 284 →
+  // 243 ms") beside the stage costs it may state (J2-24).
+  it('the README, the guide and the from-* posts name no mapped run wall', () => {
+    const repo = path.resolve(import.meta.dir, '..', '..', '..')
+    const pages = [
+      path.join(repo, 'packages', 'vx-migrate', 'README.md'),
+      path.join(GUIDES, 'migrate.md'),
+      path.join(DOCS, 'blog', 'from-turborepo.md'),
+      path.join(DOCS, 'blog', 'from-nx.md'),
+    ]
+    const wall = /~?\d[\d,.]* ?m?s warm\b|median \d[\d,.]* → \d[\d,.]* ?m?s\b/
+    const hits = pages.flatMap((p) => {
+      const m = wall.exec(readFileSync(p, 'utf8').replace(/\s+/g, ' '))
+      return m === null ? [] : [`${path.basename(p)}: ${m[0]}`]
+    })
+    expect(hits).toEqual([])
+  })
+})
+
+describe("the Turbo pages say where a script-less package's task comes from", () => {
+  // The from-turborepo post said the migrator "emits a task only where the
+  // script exists"; a package a `^` edge reaches without it gets a key-only
+  // `true` (G-117, J-97). vx-migrate's migrate.test.ts drives the mapper.
+  it('the post and the support table name the key-only task', () => {
+    const post = readFileSync(path.join(DOCS, 'blog', 'from-turborepo.md'), 'utf8').replace(
+      /\s+/g,
+      ' ',
+    )
+    expect(post).toContain(
+      "and to a package without it that another package's `^` task reaches: a cached `true` with no outputs",
+    )
+    const support = readFileSync(
+      path.resolve(import.meta.dir, '..', 'docs', 'turbo-nx-support.md'),
+      'utf8',
+    )
+    const row = /^\| `tasks` \|.*$/m.exec(support)![0]
+    expect(row).toContain('a key-only one where a `^` edge reaches a package without it')
+  })
+})
+
+describe('the git-index claim names what a clean key still reads', () => {
+  // The README said "no file is read" and the no-daemon post "no file reads
+  // at all", but a warm key reads each project's package.json and the
+  // lockfile (strace of a warm `vx run`, J-99). What the index spares is the
+  // sources.
+  it('the key folds package.json bytes, and both pages say "source"', () => {
+    const hash = readFileSync(
+      path.resolve(import.meta.dir, '..', 'src', 'orchestrator', 'task-hash.ts'),
+      'utf8',
+    )
+    expect(hash).toContain("path: path.join(args.node.projectDir, 'package.json')")
+    const readme = readFileSync(
+      path.resolve(import.meta.dir, '..', '..', '..', 'README.md'),
+      'utf8',
+    )
+    expect(readme.replace(/\s+/g, ' ')).toContain(
+      "**No source-file reads to hash:** on a clean tree, keys come from git's index;",
+    )
+    const post = readFileSync(path.join(DOCS, 'blog', 'no-daemon.md'), 'utf8').replace(/\s+/g, ' ')
+    expect(post).toContain('is keyed with no read of a source file')
+    const flat = (p: string) => readFileSync(p, 'utf8').replace(/\s+/g, ' ')
+    expect(readme).toContain('| **No source reads** (git index OIDs)')
+    expect(flat(path.resolve(import.meta.dir, '..', 'docs', 'README.md'))).toContain(
+      'deriving every cache key costs **zero source-file reads**',
+    )
+    for (const page of [
+      ['blog', 'why-vx-is-fast.md'],
+      ['concepts', 'why-vx-is-fast.md'],
+    ]) {
+      expect(flat(path.join(DOCS, ...page))).toContain(
+        'Clean-tree key derivation costs zero source-file reads',
+      )
+    }
+  })
+})
+
+describe('the install pages name the libc the Linux binary needs', () => {
+  // The Linux binaries request /lib64/ld-linux-x86-64.so.2: in a root
+  // without glibc the npm package's `vx` fails to start (`No such file or
+  // directory`), and with the loader and its libs it prints its version
+  // (J-100). With no musl target, each page that names the platforms says
+  // glibc.
+  it('build-npm ships no musl target, and the README, quickstart and one-binary post say glibc', () => {
+    const build = readFileSync(
+      path.resolve(import.meta.dir, '..', 'scripts', 'build-npm.ts'),
+      'utf8',
+    )
+    const targets = [...build.matchAll(/\{ target: '([a-z0-9-]+)'/g)].map((m) => m[1]!)
+    expect(targets).toEqual(['linux-x64', 'linux-arm64', 'darwin-x64', 'darwin-arm64'])
+    const flat = (p: string) => readFileSync(p, 'utf8').replace(/\s+/g, ' ')
+    expect(flat(path.resolve(import.meta.dir, '..', '..', '..', 'README.md'))).toContain(
+      "prebuilt binary for Linux (glibc, not Alpine's musl) and macOS",
+    )
+    expect(flat(path.join(DOCS, 'quickstart.md'))).toContain(
+      "on Linux with glibc (not Alpine's musl) or macOS",
+    )
+    expect(flat(path.join(DOCS, 'blog', 'one-binary.md'))).toContain(
+      "Linux (glibc, not Alpine's musl) and macOS",
+    )
+    const choosing = path.resolve(DOCS, '..', '..', 'components', 'demos', 'model', 'choosing.ts')
+    expect(readFileSync(choosing, 'utf8')).toContain(
+      "for Linux (glibc, not Alpine's musl) and macOS",
+    )
+  })
+})
+
+describe('the sandbox pitch claims what the sandbox does', () => {
+  // The landing and README said a sandboxed task fails on any undeclared
+  // read; a tolerated sibling read and a read outside the workspace pass
+  // (sandbox-runtime › a tolerated sibling read passes …, J-102).
+  it('the landing, README and sandboxing guide say "out of reach", not "fails"', () => {
+    const repo = path.resolve(import.meta.dir, '..', '..', '..')
+    const flat = (p: string) => readFileSync(p, 'utf8').replace(/\s+/g, ' ')
+    expect(flat(path.join(repo, 'packages', 'vx-docs', 'src', 'pages', 'index.astro'))).toContain(
+      "body: 'A sandboxed task cannot read a workspace file it did not declare.'",
+    )
+    expect(flat(path.join(repo, 'README.md'))).toContain(
+      'a workspace file the task did not declare is out of its reach, so it cannot poison the cache.',
+    )
+    expect(flat(path.join(GUIDES, 'sandboxing.md'))).toContain(
+      'so an undeclared input cannot hide in the cache.',
+    )
+    expect(flat(path.join(DOCS, 'blog', 'the-sandbox.md'))).toContain(
+      'the only workspace files it can touch, and fails the run on an undeclared one of its own.',
+    )
+  })
+})
+
+describe('the README says what Ctrl-C reaches', () => {
+  // "Ctrl-C reaps every child": a task's `setsid sleep … &` outlived a
+  // SIGINT'd `vx run` (exit 130, the sleep still running), since vx signals
+  // the task's process group (J-106).
+  it('the README names the process group, and the quickstart the setsid limit', () => {
+    const repo = path.resolve(import.meta.dir, '..', '..', '..')
+    const flat = (p: string) => readFileSync(p, 'utf8').replace(/\s+/g, ' ')
+    expect(flat(path.join(repo, 'README.md'))).toContain(
+      "**Clean exits:** Ctrl-C reaps each task's process group.",
+    )
+    expect(flat(path.join(DOCS, 'quickstart.md'))).toContain(
+      "A process a task detaches into its own session (`setsid … &`) outlives Ctrl-C: vx signals the task's process group.",
+    )
+  })
+})
+
+// The environment-variables guide is the configure page's section now.
+describe('the lockfile pages say what Turborepo keys', () => {
+  // The post said "every monorepo tool folds the lockfile into every key" and
+  // parity.md "the global hash covers the lockfile"; Turbo 2.5.8's and 2.10.13's dry run,
+  // after an is-odd bump in package a, moved a#build alone and left b#build
+  // and the global external-dependency hash as they were (J-108).
+  it('the post names vx alone, and the parity row the per-package re-key', () => {
+    const post = readFileSync(path.join(DOCS, 'blog', 'lockfile-aware-keys.md'), 'utf8').replace(
+      /\s+/g,
+      ' ',
+    )
+    expect(post).toContain('excerpt: "Out of the box vx folds the lockfile into every key')
+    expect(post).toContain('(Turborepo keys each package on the lockfile changes that reach it)')
+    const parity = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'parity.md'), 'utf8')
+    expect(parity).toContain('| a lockfile change re-keys the packages whose dependencies moved')
+  })
+})
+
+describe('the pages say where an entry stdout lives', () => {
+  // #2392 moved it from the entries row into entry_stdout; the cache module
+  // page, optimizations.md and two posts still put it in the row (J2-26).
+  it('the schema keeps stdout apart, and each page says so', () => {
+    const core = path.resolve(import.meta.dir, '..')
+    const schema = readFileSync(path.join(core, 'src', 'cache', 'schema.ts'), 'utf8')
+    const entries = /CREATE TABLE IF NOT EXISTS entries \(([^;]*?)\n {4}\);/.exec(schema)?.[1]
+    expect(entries).toBeDefined()
+    expect(entries).not.toMatch(/^\s*stdout\b/m)
+    expect(schema).toContain('CREATE TABLE IF NOT EXISTS entry_stdout (')
+    const flat = (p: string): string => readFileSync(p, 'utf8').replace(/\s+/g, ' ')
+    expect(flat(path.join(core, 'docs', 'modules', 'cache.md'))).toContain(
+      'Pure SQL: stdout from its `entry_stdout` row',
+    )
+    expect(flat(path.join(core, 'docs', 'optimizations.md'))).toContain(
+      'Pure-SQL `cache.get`: stdout in `entry_stdout`, joined to the entry;',
+    )
+    expect(flat(path.join(DOCS, 'blog', 'why-vx-is-fast.md'))).toContain(
+      'the captured stdout live in the index (the stdout in a side table',
+    )
+    expect(flat(path.join(DOCS, 'blog', 'one-command-per-task.md'))).toContain(
+      'stores the captured stdout in the cache index',
+    )
+  })
+})
+
+// The headline Nx column paid npm per task; the note under every table
+// built from it quotes the fixed harness's read, which benchmarks.md holds.
+describe('the headline Nx note quotes the fixed-harness figures', () => {
+  it('README and benchmarks.md carry it, and its figures are the table’s', () => {
+    const root = path.resolve(import.meta.dir, '..', '..', '..')
+    const bench = readFileSync(path.join(root, 'packages', 'vx', 'docs', 'benchmarks.md'), 'utf8')
+    const readme = readFileSync(path.join(root, 'README.md'), 'utf8')
+    const note = /^Nx's column ran every task through npm run.*$/m.exec(readme)?.[0]
+    expect(note).toBeDefined()
+    expect(bench).toContain(note!)
+    expect(note).toContain('Nx took 6m 59s cold and 4.50 s fully cached (vx 47% and 92% faster)')
+    expect(bench).toContain('6m 59s (vx 47% faster)')
+    expect(bench).toContain('4.50 s (vx 92% faster)')
+    expect(bench).toContain('`npm run` costs 202 ms of')
+  })
+})
+
+describe('the Nx output pages say one outside the workspace is dropped', () => {
+  // #2417 drops it with a todo (core refuses `..`, so the written config
+  // failed to load); turbo-nx-support.md and the README still made every
+  // output outside the project a workspace file (J2-30).
+  it('nx-outputs.ts drops it, and both pages say so', () => {
+    const repo = path.resolve(import.meta.dir, '..', '..', '..')
+    const src = readFileSync(
+      path.join(repo, 'packages', 'vx-migrate', 'src', 'nx', 'nx-outputs.ts'),
+      'utf8',
+    )
+    expect(src).toContain("'vx caches only inside it; dropped'")
+    const flat = (p: string): string => readFileSync(p, 'utf8').replace(/\s+/g, ' ')
+    expect(flat(path.join(repo, 'packages', 'vx', 'docs', 'turbo-nx-support.md'))).toContain(
+      'paths outside the project become workspace files, and one outside the workspace is dropped with a TODO;',
+    )
+    expect(flat(path.join(repo, 'packages', 'vx-migrate', 'README.md'))).toContain(
+      'an output outside the workspace (an old generator',
+    )
+  })
+})
+
+describe('the sandbox pages say a refused temp write points at $TMPDIR', () => {
+  // #2424 names $TMPDIR, not a grant, for a write refused under the host's
+  // shared temp directory; the module page and the guide still said every
+  // refused write outside the project names the directory to grant (J2-32).
+  it('the hint names $TMPDIR there, and both pages say so', () => {
+    const core = path.resolve(import.meta.dir, '..')
+    expect(readFileSync(path.join(core, 'src', 'exec', 'sandbox-runtime.ts'), 'utf8')).toContain(
+      'The task has its own temp directory, empty at its start: write under',
+    )
+    const flat = (p: string): string => readFileSync(p, 'utf8').replace(/\s+/g, ' ')
+    expect(flat(path.join(core, 'docs', 'modules', 'sandbox-runtime.md'))).toContain(
+      "or, for a path under the host's shared temp directory",
+    )
+    expect(flat(path.join(GUIDES, 'sandboxing.md'))).toContain(
+      "under the host's temp directory it names `$TMPDIR` instead",
+    )
+  })
+})
+
+describe('every plugin README names each option its factory takes', () => {
+  // vx-otel's README showed five of its options, vx-github's had no
+  // `checkName`, and vx-reapi's no `instanceName`, `headers` (where a hosted
+  // server's API key goes) or `tls` (J2-33). Read from each options
+  // interface; a field documented as a test seam is not the user's.
+  const packages = path.resolve(import.meta.dir, '..', '..')
+  const fields = (file: string, iface: string): string[] => {
+    const src = readFileSync(path.join(packages, file), 'utf8')
+    const body = new RegExp(`export interface ${iface}\\b[^{]*\\{([\\s\\S]*?)\\n\\}`).exec(src)?.[1]
+    expect(body).toBeDefined()
+    const out: string[] = []
+    let doc = ''
+    for (const line of body!.split('\n')) {
+      const field = /^ {2}(?:readonly )?(\w+)\??:/.exec(line)
+      if (field === null) {
+        doc += line
+        continue
+      }
+      if (!/Test seam/.test(doc)) out.push(field[1]!)
+      doc = ''
+    }
+    expect(out.length).toBeGreaterThan(0)
+    return out
+  }
+  const cases: [string, string, string, readonly string[]][] = [
+    ['vx-otel', 'vx-otel/src/plugin.ts', 'OtelPluginOptions', []],
+    ['vx-github', 'vx-github/src/plugin.ts', 'GithubPluginOptions', []],
+    ['vx-reapi', 'vx-reapi/src/index.ts', 'ReapiPluginOptions', ['instanceName', 'headers', 'tls']],
+    ['vx-schedule-history', 'vx-schedule-history/src/index.ts', 'ScheduleHistoryOptions', []],
+    ['vx-lockfile', 'vx-lockfile/src/index.ts', 'LockfileOptions', []],
+  ]
+  it.each(cases)('%s', (pkg, file, iface, inherited) => {
+    const readme = readFileSync(path.join(packages, pkg, 'README.md'), 'utf8')
+    const missing = [...fields(file, iface), ...inherited].filter(
+      (f) => !new RegExp(`\\b${f}\\b`).test(readme),
+    )
+    expect(missing).toEqual([])
+  })
+})
+
+describe('the sandboxing guide says a server is never traced', () => {
+  // A persistent task runs inside the walls but untraced, so step 4's
+  // "an undeclared read fails it and names the path" never happens for one;
+  // #2451 tells a failing one so, and the guide had no word (J2-36).
+  it('execute-task names the untraced server, and the guide says so', () => {
+    expect(
+      readFileSync(
+        path.resolve(import.meta.dir, '..', 'src', 'orchestrator', 'execute-task.ts'),
+        'utf8',
+      ),
+    ).toContain('ran in the sandbox, which reports nothing for a server')
+    const guide = readFileSync(path.join(GUIDES, 'sandboxing.md'), 'utf8').replace(/\s+/g, ' ')
+    expect(guide).toContain(
+      'A persistent task (a dev server) runs inside the same walls, but nothing traces it',
+    )
+  })
+})
+
+// J2-45: five pages and the source called a telemetry record immutable;
+// every sink receives the same unfrozen object, so a change one sink makes
+// reaches the next.
+describe('no page calls a telemetry record immutable', () => {
+  it('a sink sees what the sink before it changed', () => {
+    const seen: unknown[] = []
+    const first: TelemetrySink = {
+      onRunSummary: (s) => {
+        ;(s as unknown as { changed: boolean }).changed = true
+      },
+    }
+    const second: TelemetrySink = {
+      onRunSummary: (s) => {
+        seen.push((s as unknown as { changed?: boolean }).changed)
+      },
+    }
+    const source = createTelemetrySource({
+      sinks: [first, second],
+      run: { runId: 'r' } as never,
+    })
+    source.emitSummary({ kind: 'run.summary' } as unknown as RunSummaryRecord)
+    expect(seen).toEqual([true])
+  })
+
+  it('the docs and the site say plain-data records', () => {
+    const core = path.resolve(import.meta.dir, '..')
+    const pages = [
+      path.join(core, 'docs', 'modules', 'telemetry.md'),
+      path.join(core, 'docs', 'architecture.md'),
+      path.join(core, 'src', 'orchestrator', 'telemetry.ts'),
+      path.join(DOCS, 'blog', 'telemetry-never-breaks-a-run.md'),
+      path.join(DOCS, 'blog', 'pipeline-with-seams.md'),
+    ]
+    const claims = pages.filter((p) =>
+      /immutable (run )?records?|an immutable\s+record/.test(readFileSync(p, 'utf8')),
+    )
+    expect(claims).toEqual([])
+    for (const p of pages) expect(readFileSync(p, 'utf8')).toMatch(/plain-data/)
+  })
+})
+
+// J2-46: telemetry.md said consumers reject unknown majors; the version
+// is one integer and no first-party sink reads a record's `v`.
+describe('telemetry.md claims no receiver check the sinks lack', () => {
+  it('no first-party plugin reads a record version, and the page says so', () => {
+    const root = path.resolve(import.meta.dir, '..', '..')
+    const readers: string[] = []
+    for (const pkg of readdirSync(root)) {
+      if (pkg === 'vx' || !existsSync(path.join(root, pkg, 'src'))) continue
+      for (const f of readdirSync(path.join(root, pkg, 'src'), { recursive: true }) as string[]) {
+        if (!f.endsWith('.ts')) continue
+        const text = readFileSync(path.join(root, pkg, 'src', f), 'utf8')
+        if (/\b(record|rec|r|s|summary)\.v\b/.test(text)) readers.push(`${pkg}/${f}`)
+      }
+    }
+    expect(readers).toEqual([])
+    const page = readFileSync(path.join(root, 'vx', 'docs', 'modules', 'telemetry.md'), 'utf8')
+    expect(page).not.toContain('consumers reject unknown majors')
+    expect(page).toContain('no first-party sink checks it')
   })
 })

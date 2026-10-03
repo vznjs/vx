@@ -15,7 +15,13 @@
 // and the diff are core's.
 //
 // Imports core only through the public `@vzn/vx` specifier.
-import { definePlugin, lockfileClaim, type VxPlugin } from '@vzn/vx'
+import {
+  refuseUnknownOptions,
+  type PluginOptionKinds,
+  definePlugin,
+  lockfileClaim,
+  type VxPlugin,
+} from '@vzn/vx'
 import * as pnpmLock from './pnpm.js'
 import * as bunLock from './bun.js'
 import * as npmLock from './npm.js'
@@ -33,7 +39,7 @@ export interface LockfileOptions {
 }
 
 /** Bumps when a digest folds differently (the memo's identity). */
-const DIGEST_VERSION = 8
+const DIGEST_VERSION = 14
 
 interface Manager {
   readonly name: string
@@ -123,24 +129,31 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
   )
 }
 
+/** Each option `LockfileOptions` names, with its kind: derived from the type, so the two cannot drift. */
+const LOCKFILE_KEYS: PluginOptionKinds<LockfileOptions> = {
+  scope: 'string',
+}
+
 /** `pnpm-lock.yaml` (lockfile v5, v6, v9, one document or pnpm 11's two): importers, snapshots, peers, patches, `link:`. */
 export function pnpm(options: LockfileOptions = {}): VxPlugin {
+  refuseUnknownOptions('pnpm()', options, LOCKFILE_KEYS)
   return plugin(MANAGERS.pnpm, options)
 }
 
 /** `bun.lock` (the text lockfile): Bun's hoisted layout, nested versions, `workspace:` links. */
 export function bun(options: LockfileOptions = {}): VxPlugin {
+  refuseUnknownOptions('bun()', options, LOCKFILE_KEYS)
   return plugin(MANAGERS.bun, options)
 }
 
 /** `package-lock.json` (lockfileVersion 2, 3): the `packages` map, nested `node_modules`, workspace links. */
 export function npm(options: LockfileOptions = {}): VxPlugin {
+  refuseUnknownOptions('npm()', options, LOCKFILE_KEYS)
   return plugin(MANAGERS.npm, options)
 }
 
 /** `yarn.lock`: berry (yarn 2+, per workspace) and classic (yarn 1, one digest for the root). */
 export function yarn(options: LockfileOptions = {}): VxPlugin {
+  refuseUnknownOptions('yarn()', options, LOCKFILE_KEYS)
   return plugin(MANAGERS.yarn, options)
 }
-
-export { pnpmLock, bunLock, npmLock, yarnLock }

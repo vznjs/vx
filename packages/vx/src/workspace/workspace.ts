@@ -1,16 +1,17 @@
-import type { Dirent } from 'node:fs'
-import { readdir, stat } from 'node:fs/promises'
+import { constants, type Dirent } from 'node:fs'
+import { access, readdir, realpath, stat } from 'node:fs/promises'
 import path from 'node:path'
 import type { ProjectConfig, WorkspaceConfig } from '../config.js'
 import {
   BUN_GLOB_WILDCARDS,
   isOutOfFds,
+  isPermissionError,
   relPosix,
   slashBraceExpansions,
   UserError,
   normalizeBunGlob,
 } from '../util/index.js'
-import { type LoadReads, readOnce } from './load-reads.js'
+import { type LoadReads, readOnce, unreadable } from './load-reads.js'
 
 export interface PackageJson {
   name: string
@@ -85,6 +86,9 @@ export async function findWorkspaceRoot(
   let dir = path.resolve(start)
   const below: string[] = []
   let nearest: string | null = null
+  // The nearest manifest with workspace globs of its own, once passed: an
+  // outer root claims the tree only by listing this directory itself.
+  let inner: string | null = null
   while (true) {
     let globs: string[] | null
     try {
@@ -98,7 +102,7 @@ export async function findWorkspaceRoot(
     }
     if (globs !== null) {
       nearest ??= dir
-      if (claimsMember(dir, below, globs)) return dir
+      if (claimsMember(dir, inner === null ? below : [inner], globs)) return dir
       // pnpm takes the nearest `pnpm-workspace.yaml` as the root, listed or
       // not. Walking past it, `apps/inner` resolved to the outer workspace
       // while `apps/inner/pkgs/x` resolved to the inner one: two roots and
@@ -112,12 +116,18 @@ export async function findWorkspaceRoot(
     // package below it, and `packages/tools/standalone` ran as a stranger
     // in a workspace that does not list it (item 989).
     if (globs !== null) below.push(dir)
+    // `apps/tool/workspace` with its own `workspaces`, under a root listing
+    // `apps/*`, resolved to the outer root through `apps/tool`, and its
+    // members ran in a workspace that does not list them (D-137). npm makes
+    // an outer root own a nested one only when it lists that directory.
+    if (inner === null && globs !== null && globs.length > 0) inner = dir
     dir = parent
   }
   if (nearest !== null) return nearest
   throw new UserError(
     `Could not find a workspace root in any parent of ${start} ` +
-      `(looked for pnpm-workspace.yaml or package.json)`,
+      `(looked for pnpm-workspace.yaml or package.json): run vx inside a project, ` +
+      `or create a package.json (\`bun init\` or \`npm init -y\`) and run \`vx init\``,
   )
 }
 
@@ -290,6 +300,11 @@ function parsePackageJson(text: string, file: string): PackageJson {
   if (name !== undefined && (typeof name !== 'string' || name.trim() !== name)) {
     throw new UserError(`${file}: "name" must be a string with no surrounding whitespace`)
   }
+  // A task is `<project>#<task>` split at the first `#`: `"a#b"` planned
+  // under `--all` but no run spec or dependsOn could reach it (D-130).
+  if (typeof name === 'string' && name.includes('#')) {
+    throw new UserError(`${file}: "name" cannot hold "#" — vx addresses a task as <name>#<task>`)
+  }
   return pkg as PackageJson
 }
 
@@ -396,6 +411,28 @@ export function memberBaseDirs(workspace: Workspace): string[] {
 }
 
 /**
+ * True when a member glob reaches a `package.json` other than the root's,
+ * addressable or not: a nameless manifest, or two sharing a name, is
+ * matched and left out, not unmatched (M-46).
+ */
+export async function reachesManifest(workspace: Workspace): Promise<boolean> {
+  const { positive, negative } = splitPackageGlobs(workspace.packageGlobs)
+  const root = path.resolve(workspace.root)
+  for (const pattern of positive) {
+    for (const dir of await memberDirs(workspace.root, pattern)) {
+      if (path.resolve(dir) === root) continue
+      if (negative.length > 0 && excludedBy(relPosix(workspace.root, dir), negative)) continue
+      try {
+        if ((await stat(path.join(dir, 'package.json'))).isFile()) return true
+      } catch (err) {
+        absent(err, undefined)
+      }
+    }
+  }
+  return false
+}
+
+/**
  * The directories a workspace glob names. For the `<dir>/*` shape this is
  * one readdir of `<dir>` — the same answer `Bun.Glob` gives, at a third of
  * the cost (measured 2026-09-02: 25 ms → ~2 ms for 1000 members). A
@@ -442,13 +479,28 @@ async function memberDirs(root: string, pattern: string): Promise<string[]> {
     // `pack*/*` did not (item 987). Followed only where the depth is bounded:
     // under `**` the scan would walk every pnpm `node_modules` link.
     const followSymlinks = !expanded.includes('**')
-    for await (const rel of glob.scan({ cwd: root, onlyFiles: true, dot: false, followSymlinks })) {
-      // Skip nested node_modules — workspace package globs shouldn't
-      // ever reach into them, but a pathological pattern like `**`
-      // would. Avoid splitting the path on the hot loop.
-      if (rel.includes(`${path.sep}node_modules${path.sep}`)) continue
-      if (rel.startsWith(`node_modules${path.sep}`)) continue
-      dirs.push(path.dirname(path.resolve(root, rel)))
+    try {
+      for await (const rel of glob.scan({
+        cwd: root,
+        onlyFiles: true,
+        dot: false,
+        followSymlinks,
+      })) {
+        // Skip nested node_modules — workspace package globs shouldn't
+        // ever reach into them, but a pathological pattern like `**`
+        // would. Avoid splitting the path on the hot loop.
+        if (rel.includes(`${path.sep}node_modules${path.sep}`)) continue
+        if (rel.startsWith(`node_modules${path.sep}`)) continue
+        dirs.push(path.dirname(path.resolve(root, rel)))
+      }
+    } catch (err) {
+      // The scan stops at a directory it may not open and cannot skip it,
+      // so the readdir path's skip is not on offer here (D-132).
+      if (!isPermissionError(err)) throw err
+      const where = relPosix(root, path.resolve(root, err.path ?? ''))
+      throw new UserError(
+        `${where}: not readable by this user (${err.code}), and the workspace glob "${pattern}" walks into it`,
+      )
     }
   }
   return dirs
@@ -521,6 +573,30 @@ function absent<T>(err: unknown, value: T): T {
   return value
 }
 
+/**
+ * A member's manifest text, or null when there is none. A manifest this
+ * user may not read is refused, not skipped: its project dropped out of
+ * `--all` and the run went green without it (D-132). A directory it may
+ * not search hides whether a manifest is there at all, so that one is
+ * named and skipped (a service's data directory under `packages/*`).
+ */
+async function readManifest(root: string, dir: string, file: string): Promise<string | null> {
+  try {
+    return await Bun.file(file).text()
+  } catch (err) {
+    if (!isPermissionError(err)) return absent(err, null)
+    const searchable = await access(dir, constants.X_OK).then(
+      () => true,
+      () => false,
+    )
+    if (searchable) unreadable(err, file)
+    process.stderr.write(
+      `vx: ${relPosix(root, dir)} is not readable by this user — skipped, with any project in it\n`,
+    )
+    return null
+  }
+}
+
 export async function listProjects(workspace: Workspace): Promise<ProjectMeta[]> {
   return discoverProjects(workspace)
 }
@@ -564,11 +640,20 @@ export async function discoverProjects(
       const pkgJsonPath = dir + path.sep + 'package.json'
       const [configPath, text] = await Promise.all([
         findConfigFile(dir),
-        Bun.file(pkgJsonPath)
-          .text()
-          .catch((err: unknown) => absent(err, null)),
+        readManifest(workspace.root, dir, pkgJsonPath),
       ])
-      if (text === null) return null
+      if (text === null) {
+        // A member dir with a vx config and no manifest was skipped without
+        // a word: `--all` said no package matched, and a run from inside
+        // it "not inside a project" (D-128). The config was found in the
+        // same flight as the failed read, so naming it costs nothing.
+        if (configPath !== null) {
+          process.stderr.write(
+            `vx: ${relPosix(workspace.root, dir)} has a vx config but no package.json — skipped: vx names a project by its package.json "name"\n`,
+          )
+        }
+        return null
+      }
       const pkg = parsePackageJson(text, pkgJsonPath)
       return { dir, pkg, configPath }
     }),
@@ -598,13 +683,28 @@ export async function discoverProjects(
   }
   const projects: ProjectMeta[] = []
   const shared: string[] = []
-  for (const [name, group] of byName) {
+  let rootReal: string | undefined
+  for (const [name, found] of byName) {
+    // One package reached by two paths (a member and a link to it) is one
+    // project, not a name two packages share: `apps/docs -> ../packages/docs`
+    // was refused as a duplicate and told to rename one (D-135). Resolved
+    // only here, so a workspace without a shared name pays nothing.
+    let group = found
+    if (group.length > 1) {
+      rootReal ??= await realpath(workspace.root)
+      group = await oneEntryPerPackage(group, workspace.root, rootReal)
+    }
     if (group.length === 1) {
       const { dir, pkg, configPath } = group[0]!
       projects.push({ name, dir, packageJson: pkg, configPath })
       continue
     }
-    const dirs = group.map((e) => relPosix(workspace.root, e.dir)).sort()
+    // The root's own manifest is '' relative to itself, and the refusal read
+    // "in workspace:  and packages/a" (D-127).
+    const dirs = group
+      .map((e) => relPosix(workspace.root, e.dir))
+      .sort()
+      .map((d) => (d === '' ? 'the workspace root' : d))
     // pnpm accepts two manifests of one name (vite's playground, sveltejs/kit's
     // test apps); vx cannot, since a project is addressed by it. Like a
     // nameless one, a pair that declares no vx tasks is left out, so the
@@ -631,6 +731,32 @@ export async function discoverProjects(
   // 300 ms warm run at 1000 projects, and a stable deterministic order is
   // all any consumer needs.
   return projects.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
+}
+
+/**
+ * The entries of a name group, one per real directory. Of several paths to
+ * one package, the one that reaches it through no link inside the
+ * workspace is kept, else the first in path order.
+ */
+async function oneEntryPerPackage<T extends { dir: string }>(
+  group: T[],
+  root: string,
+  rootReal: string,
+): Promise<T[]> {
+  const byReal = new Map<string, T[]>()
+  for (const entry of group) {
+    const real = await realpath(entry.dir)
+    const same = byReal.get(real)
+    if (same === undefined) byReal.set(real, [entry])
+    else same.push(entry)
+  }
+  if (byReal.size === group.length) return group
+  const kept: T[] = []
+  for (const [real, paths] of byReal) {
+    const direct = paths.find((e) => relPosix(root, e.dir) === relPosix(rootReal, real))
+    kept.push(direct ?? paths.sort((a, b) => (a.dir < b.dir ? -1 : 1))[0]!)
+  }
+  return kept
 }
 
 /**
@@ -669,9 +795,7 @@ export async function namedProject(
   const pkgJsonPath = dir + path.sep + 'package.json'
   const [configPath, text] = await Promise.all([
     findConfigFile(dir),
-    Bun.file(pkgJsonPath)
-      .text()
-      .catch((err: unknown) => absent(err, null)),
+    readManifest(workspace.root, dir, pkgJsonPath),
   ])
   if (
     text === null &&

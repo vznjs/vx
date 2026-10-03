@@ -33,11 +33,13 @@ import {
   existsSync,
   mkdirSync,
   openSync,
+  readFileSync,
   readlinkSync,
   realpathSync,
   rmSync,
   statSync,
   unlinkSync,
+  writeFileSync,
 } from 'node:fs'
 import { mkdir, unlink } from 'node:fs/promises'
 import type { SandboxConfig } from '../config.js'
@@ -60,6 +62,7 @@ import {
   executablePath,
   grantPrefix,
   isTmpdirRefusal,
+  procfsIsOwn,
   TMPDIR_HINT,
   UserError,
   xxh3hex,
@@ -68,6 +71,7 @@ import {
   bindableReads,
   bindableWrites,
   buildCustomConfig,
+  readOnlyMasks,
   scratchWrites,
   widenedEntries,
 } from './sandbox-binds.js'
@@ -85,7 +89,9 @@ import {
   srtDefaultWritePaths,
 } from './sandbox-deny-scan.js'
 import {
+  hiddenReadsOutside,
   parseStraceViolations,
+  refusedConnections,
   refusedWrites,
   refusedWritesOutside,
   reportableViolations,
@@ -157,7 +163,12 @@ async function probeUncached(weakerNested: boolean): Promise<SandboxAvailability
   if (!SandboxManager.isSupportedPlatform()) {
     return { available: false, reason: `platform ${process.platform} not supported` }
   }
-  const deps = SandboxManager.checkDependencies()
+  // SRT checks the scan command its live config names, and once that is
+  // vx's no-scan file (B-92) a process `exit` hook may have removed it
+  // while the process goes on: name one that is there.
+  const deps = SandboxManager.checkDependencies(
+    noScan === undefined ? undefined : { command: scanCommandAgain() },
+  )
   if (deps.errors.length > 0) return { available: false, reason: dependencyReason(deps.errors) }
   const long = socketPathRefusal()
   if (long !== undefined) return { available: false, reason: long }
@@ -498,14 +509,73 @@ let scopedDenyScan = false
  * 1 the scan finds only the root's entries, which SRT keeps only inside a
  * write grant, where the scoped walk already reaches (the parity rows in
  * `sandbox-deny-scan.unsafe.test.ts`). A no-op in rg's place ends the
- * spawn's 3.8 ms at 1.0; SRT has no way to skip it.
+ * spawn's 3.8 ms at 1.0; SRT has no way to skip it. A file that cannot be
+ * exec'd ends it sooner still: `posix_spawn` refuses it (ENOEXEC) in
+ * 0.32 ms against `true`'s 1.06, SRT reads the refusal as an empty scan,
+ * and its dependency check (`Bun.which`) still finds the file (B-92).
  */
 function scopedScanConfig(): { mandatoryDenySearchDepth: number; ripgrep?: { command: string } } {
   try {
-    return { mandatoryDenySearchDepth: 1, ripgrep: { command: executablePath('true') } }
+    return { mandatoryDenySearchDepth: 1, ripgrep: { command: noScanCommand() } }
   } catch {
-    return { mandatoryDenySearchDepth: 1 }
+    try {
+      return { mandatoryDenySearchDepth: 1, ripgrep: { command: executablePath('true') } }
+    } catch {
+      return { mandatoryDenySearchDepth: 1 }
+    }
   }
+}
+
+let noScan: string | undefined
+
+/** The no-scan file again (made anew if gone), or `true` where it cannot be. */
+function scanCommandAgain(): string {
+  try {
+    return noScanCommand()
+  } catch {
+    return executablePath('true')
+  }
+}
+/**
+ * An empty executable only this user can write: SRT runs it outside the
+ * sandbox on every wrap, so it lives in this user's own 0700 directory under
+ * the OS temp dir, never the shared `/tmp/claude`. One directory per user,
+ * not per process: a per-process one outlived every SIGKILLed run, and the
+ * exit hook that removed it fired under a test's emitted `exit` with the
+ * process going on (B-93). Anything else at the name (another owner, group
+ * or other bits, a link, a non-empty file) is refused, and the caller falls
+ * back to `true`.
+ */
+function noScanCommand(): string {
+  if (noScan !== undefined && existsSync(noScan)) return noScan
+  const uid = process.getuid!()
+  const dir = path.join(os.tmpdir(), `vx-noscan-${uid}`)
+  try {
+    mkdirSync(dir, { mode: 0o700 })
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err
+  }
+  const d = lstatSync(dir)
+  // A link reads mode 0777 here, and a file at the name fails the write
+  // below (ENOTDIR).
+  if (d.uid !== uid || (d.mode & 0o077) !== 0) {
+    throw new Error(`${dir} is not this user's own directory`)
+  }
+  const file = path.join(dir, 'rg')
+  try {
+    writeFileSync(file, '', { mode: 0o700, flag: 'wx' })
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err
+  }
+  const f = lstatSync(file)
+  // SRT's dependency check (`Bun.which`) refuses what is not an executable
+  // file, which would make the sandbox unavailable rather than fall back. A
+  // directory's size is never 0.
+  if (f.size !== 0 || (f.mode & 0o100) === 0) {
+    throw new Error(`${file} is not an empty executable of this user's`)
+  }
+  noScan = file
+  return file
 }
 
 function linuxToolPaths(): { bwrapPath?: string; socatPath?: string } {
@@ -537,6 +607,35 @@ let hasIpv6: boolean | undefined
 function hostHasIpv6(): boolean {
   hasIpv6 ??= existsSync('/proc/net/if_inet6')
   return hasIpv6
+}
+
+/**
+ * Refuse a network entry SRT's own schema refuses, naming it. vx handed
+ * the union over unchecked, and SRT's proxy matched as it could: a URL
+ * (`https://example.com`), a dotless host or a port past 65535 matched
+ * nothing, so the grant silently reached no host, and `'*'`, which the
+ * schema refuses as too broad, opened every host to every sandboxed task
+ * of the run, the allowlist being the run's (2026-10-02).
+ */
+function assertDomains(
+  schema: SrtModule['NetworkConfigSchema'],
+  allowed: readonly string[],
+  denied: readonly string[],
+): void {
+  const bad = [
+    ...allowed
+      .filter((d) => !schema.shape.allowedDomains.safeParse([d]).success)
+      .map((d) => `allow.network "${d}"`),
+    ...denied
+      .filter((d) => !schema.shape.deniedDomains.safeParse([d]).success)
+      .map((d) => `deny.network "${d}"`),
+  ]
+  if (bad.length === 0) return
+  throw new UserError(
+    `sandbox: ${bad.join(', ')} is not a host pattern: name a host ("example.com"), a ` +
+      `subdomain wildcard ("*.example.com") or either with a port ("example.com:443"); no ` +
+      `scheme or path, and "*" or "*.com" is refused as too broad (a bare "*" only in deny)`,
+  )
 }
 
 /**
@@ -582,7 +681,8 @@ export async function initSandbox(opts?: {
   await resetting
   // Before SRT starts, so the very first task already has one.
   await mkdir(sandboxTmpdir(), { recursive: true })
-  const { SandboxManager } = await loadSrt()
+  const { SandboxManager, NetworkConfigSchema } = await loadSrt()
+  assertDomains(NetworkConfigSchema, opts?.allowedDomains ?? [], opts?.deniedDomains ?? [])
   scopedDenyScan = process.platform === 'linux' && canScopeDenyScan(process.cwd())
   const config: Parameters<typeof SandboxManager.initialize>[0] = {
     network: {
@@ -597,12 +697,14 @@ export async function initSandbox(opts?: {
     ...bundledJavaAgent(),
   }
   if (!srtUp) await unlinkStaleMuxSockets()
+  const listening = srtCleanupAdopted ? undefined : cleanupListeners()
   await SandboxManager.initialize(
     config,
     undefined,
     // enableLogMonitor — macOS-only; populates the SandboxViolationStore.
     true,
   )
+  if (listening !== undefined) adoptSrtCleanup(listening)
   srtUp = true
   perTaskRun = opts?.allowAllUnixSockets === true || opts?.gitConfig === true ? config : undefined
   // `initialize()` returns early once SRT is up, and on Linux the
@@ -639,11 +741,21 @@ export async function resetSandbox(): Promise<void> {
   const reset = (async () => {
     const { SandboxManager } = await loadSrt()
     await SandboxManager.reset()
-    srtUp = false
-    perTaskRun = undefined
-    availabilityCache.clear()
-    straceAvailableCache = undefined
+    srtDown()
   })()
+  trackReset(reset)
+  await reset
+}
+
+function srtDown(): void {
+  srtUp = false
+  perTaskRun = undefined
+  availabilityCache.clear()
+  straceAvailableCache = undefined
+}
+
+/** `reset` is the one `initSandbox` waits out before it starts SRT again. */
+function trackReset(reset: Promise<unknown>): void {
   const settled = reset.then(
     () => {},
     () => {},
@@ -652,7 +764,38 @@ export async function resetSandbox(): Promise<void> {
   void settled.then(() => {
     if (resetting === settled) resetting = undefined
   })
-  await reset
+}
+
+const SRT_CLEANUP_EVENTS = ['exit', 'SIGINT', 'SIGTERM'] as const
+let srtCleanupAdopted = false
+
+function cleanupListeners(): Map<string, unknown[]> {
+  return new Map(SRT_CLEANUP_EVENTS.map((ev) => [ev, process.listeners(ev)]))
+}
+
+/**
+ * SRT's first `initialize` registers its own once-only `exit`, SIGINT and
+ * SIGTERM listeners, each an unawaited `reset()`. That reset kills the
+ * bridges at once but clears SRT's init promise only once its proxies
+ * have closed, so an `initSandbox` in between had `initialize` return
+ * early on the dying session, and the next wrap threw "Linux HTTP bridge
+ * socket does not exist" (the bridge-socket row's gate failure, M-35).
+ * Each listener stays, once-only as SRT made it; vx now tracks the reset
+ * it starts, as its own.
+ */
+function adoptSrtCleanup(before: Map<string, unknown[]>): void {
+  for (const ev of SRT_CLEANUP_EVENTS) {
+    const had = before.get(ev)!
+    for (const l of process.listeners(ev) as ((...a: unknown[]) => unknown)[]) {
+      if (had.includes(l)) continue
+      srtCleanupAdopted = true
+      process.removeListener(ev, l)
+      process.once(ev, (...a: unknown[]) => {
+        srtDown()
+        trackReset(Promise.resolve(l(...a)))
+      })
+    }
+  }
 }
 
 export interface SandboxedRunArgs {
@@ -1005,7 +1148,12 @@ export async function wrapSandboxedCommand(
 
   const baselines = canonicalBaselines(args)
   const customConfig = buildCustomConfig(args, baselines)
-  const scratch = pendingWriteGrants(args.config, customConfig!.filesystem!, baselines.denyRead)
+  const scratch = pendingWriteGrants(
+    args.config,
+    customConfig!.filesystem!,
+    baselines.denyRead,
+    baselines.cwd,
+  )
   customConfig!.filesystem!.denyRead!.push(toRealPath(taskTmpRoot()))
   if (process.platform === 'linux' && !cwdMounted(baselines.cwd, customConfig!.filesystem!)) {
     customConfig!.filesystem!.denyRead!.push(baselines.cwd)
@@ -1063,11 +1211,37 @@ export async function wrapSandboxedCommand(
   // sandboxed server and all it forked outlived vx (turborepo#9666). Now
   // the namespace goes with vx, a `setsid` daemon inside included, a
   // traced one-shot task too: its strace runs inside (B-11).
-  if (process.platform === 'linux' && /^\S*bwrap /.test(wrapped)) wrapped = `exec ${wrapped}`
+  // Every mask and bind is a mount point, and git's discovery stops at
+  // one: a task granted the repository's `.git` still read "not a git
+  // repository … Stopping at filesystem boundary" (2026-10-03). The
+  // boundaries are the sandbox's, so a task that names a `.git` may walk
+  // across them; only such a task, since git-aware tools read the variable
+  // (vx's own repoFacts asks git instead of the disk under it). A value the
+  // task's environment sets wins.
+  if (process.platform === 'linux' && /^\S*bwrap /.test(wrapped)) {
+    const gitGranted = [...args.config.allowRead, ...args.config.allowWrite].some((g) =>
+      g.split(/[\\/]/).includes('.git'),
+    )
+    wrapped =
+      (gitGranted ? 'GIT_DISCOVERY_ACROSS_FILESYSTEM=${GIT_DISCOVERY_ACROSS_FILESYSTEM-1} ' : '') +
+      `exec ${readOnlyMasks(wrapped, scratch)}`
+  }
   if (process.platform === 'linux' && !hostHasIpv6())
     wrapped = `SOCAT_DEFAULT_LISTEN_IP=4 ${wrapped}`
+  const held = portsHeld(ports)
+  if (held.length > 0) {
+    throw new UserError(
+      `sandbox: localBinding port${held.length === 1 ? '' : 's'} ${held.join(', ')} ` +
+        `${held.length === 1 ? 'is' : 'are'} already in use on this machine, so the task's own ` +
+        `cannot be exposed there and a client would reach the other listener; stop what ` +
+        `holds ${held.length === 1 ? 'it' : 'them'} or list another port`,
+    )
+  }
   if (args.server === true) liveServers.add(tag)
-  if (ports.length > 0) spawnHostBridges(ports, tag)
+  if (ports.length > 0) {
+    spawnHostBridges(ports, tag)
+    await hostBridgesListen(ports, tag)
+  }
   return {
     wrapped,
     tag,
@@ -1320,12 +1494,79 @@ const hostBridges = new Map<
   { ports: readonly number[]; procs: Array<ReturnType<typeof Bun.spawn>> }
 >()
 
+/**
+ * The ports a host listener already holds where the bridge would bind
+ * (`127.0.0.1`, or every address). The listen wait below reads the same
+ * table and took that listener for the bridge, whose bind had failed: the
+ * task passed and a client of the port reached the other process
+ * (2026-10-03). Linux, own procfs only, as the wait.
+ */
+function portsHeld(ports: readonly number[]): number[] {
+  if (ports.length === 0 || !procfsIsOwn()) return []
+  const held = new Set<string>()
+  for (const [file, any, loop] of [
+    ['/proc/net/tcp', '00000000', '0100007F'],
+    ['/proc/net/tcp6', '00000000000000000000000000000000', '00000000000000000000000001000000'],
+  ] as const) {
+    let table: string
+    try {
+      table = readFileSync(file, 'utf8')
+    } catch {
+      continue
+    }
+    for (const line of table.split('\n')) {
+      const f = line.trim().split(/\s+/)
+      if (f[3] !== '0A' || f[1] === undefined) continue
+      const [addr, port] = f[1].split(':')
+      // `::1` does not hold 127.0.0.1's port; every address does.
+      if (addr === any || (file === '/proc/net/tcp' && addr === loop)) held.add(port!)
+    }
+  }
+  return ports.filter((p) => held.has(p.toString(16).toUpperCase().padStart(4, '0')))
+}
+
+/**
+ * Wait until each host-side bridge listens on its port, so a server that
+ * says it is ready inside the sandbox is reachable on the host: the socat
+ * starts asynchronously, and a held server's port refused a connection
+ * right after its ready line under I/O load (M-22). Read off
+ * /proc/net/tcp (127.0.0.1, state 0A); skipped where /proc is not this
+ * process's (its net table could be another namespace's), ended early by
+ * a bridge that exited, and bounded at 5 s. A port another listener holds
+ * reads as listening here, so the wrap refuses it first (`portsHeld`).
+ */
+async function hostBridgesListen(ports: readonly number[], tag: string): Promise<void> {
+  if (!procfsIsOwn()) return
+  const want = ports.map((p) => `0100007F:${p.toString(16).toUpperCase().padStart(4, '0')}`)
+  const procs = hostBridges.get(tag)?.procs ?? []
+  const until = Date.now() + 5_000
+  while (Date.now() < until && procs.every((p) => p.exitCode === null)) {
+    let table: string
+    try {
+      table = readFileSync('/proc/net/tcp', 'utf8')
+    } catch {
+      return
+    }
+    const listening = new Set<string>()
+    for (const line of table.split('\n')) {
+      const f = line.trim().split(/\s+/)
+      if (f[3] === '0A' && f[1] !== undefined) listening.add(f[1])
+    }
+    if (want.every((w) => listening.has(w))) return
+    await Bun.sleep(5)
+  }
+}
+
 function spawnHostBridges(ports: readonly number[], tag: string): void {
   const procs: Array<ReturnType<typeof Bun.spawn>> = []
   for (const p of ports) {
     // A spawn failure (no socat on the host) is the task's to report:
     // its own side dies the same way, in its frame.
     try {
+      // socat resolved on vx's PATH, as every tool vx spawns: by bare name
+      // Bun.spawn walked the startup PATH (M-22).
+      const [tool, ...rest] = portBridgeHostArgv(tag, p)
+      const argv = [executablePath(tool!), ...rest]
       // Guarded, in a group of its own (kill-tree.ts): a plain child of vx
       // was in no group the guard lists, and a `kill -9` of vx left it
       // listening on the port under init, where the next run's bridge
@@ -1333,7 +1574,7 @@ function spawnHostBridges(ports: readonly number[], tag: string): void {
       procs.push(
         spawnGuarded((guard) =>
           guard === undefined
-            ? Bun.spawn(portBridgeHostArgv(tag, p), {
+            ? Bun.spawn(argv, {
                 stdio: ['ignore', 'ignore', 'ignore'],
                 detached: true,
               })
@@ -1341,7 +1582,7 @@ function spawnHostBridges(ports: readonly number[], tag: string): void {
                 [
                   executablePath('sh'),
                   '-c',
-                  `${guardLine(3)}exec ${portBridgeHostArgv(tag, p).map(shellQuote).join(' ')}`,
+                  `${guardLine(3)}exec ${argv.map(shellQuote).join(' ')}`,
                 ],
                 { stdio: ['ignore', 'ignore', 'ignore', guard], detached: true },
               ),
@@ -1690,6 +1931,7 @@ async function runSandboxedOnce(
             bindableWrites(args.config.allowWrite),
             scratch,
           ),
+          ...refusedConnections(records.map((v) => v.line)),
         ]
       : []
   if (straceLog) {
@@ -1719,7 +1961,8 @@ async function runSandboxedOnce(
       config: args.config,
       skip: [taskTmpRoot(), ...srtDefaultWritePaths()],
     })
-    if (outside.length > 0) violations.push(outsideWritesHint(outside))
+    if (outside.length > 0)
+      violations.push(outsideWritesHint(outside, baselines.denyRead, args.reportWithin))
   }
 
   // The one denial macOS never logs. MEASURED 2026-09-05, same machine, two
@@ -1744,6 +1987,16 @@ async function runSandboxedOnce(
         `reports for that — macOS logs no violation record. Add ` +
         "`sandbox: { allow: { read: ['.'] } }`.",
     })
+  }
+
+  if (exitCode !== 0) {
+    const hidden = hiddenReadsOutside(recorded, {
+      within: args.reportWithin,
+      linked: args.reportLinked,
+      config: args.config,
+      skip: [taskTmpRoot()],
+    })
+    if (hidden.length > 0) violations.push(hiddenReadsHint(hidden, args.reportWithin))
   }
 
   try {
@@ -1777,19 +2030,58 @@ async function runSandboxedOnce(
 }
 
 /** The hint for writes refused outside the project, a few paths named. */
-function outsideWritesHint(paths: readonly string[]): SandboxViolation {
+function outsideWritesHint(
+  paths: readonly string[],
+  walled: readonly string[],
+  within: string,
+): SandboxViolation {
   const shown = paths.slice(0, 5).join(', ')
   const more = paths.length > 5 ? ` and ${paths.length - 5} more` : ''
   const home = toRealPath(os.homedir())
   const dir = path.dirname(paths[0]!)
-  const spelled = atOrUnder(dir, home) ? `~${dir.slice(home.length)}` : dir
+  // In the workspace, from the project, as a committed config spells it:
+  // the absolute path held only on the machine that printed it.
+  const spelled = walled.some((w) => atOrUnder(dir, toRealPath(w)))
+    ? path.relative(toRealPath(within), dir) || '.'
+    : atOrUnder(dir, home)
+      ? `~${dir.slice(home.length)}`
+      : dir
+  const refused =
+    `vx: the sandbox refused writes outside the project, which are not reported as ` +
+    `violations: ${shown}${more}.`
+  // Granting a system temp directory opens it to every write of the task;
+  // the task already has a temp directory of its own. A workspace kept
+  // under one is the workspace, and its directory is the grant.
+  const first = paths[0]!
+  const scratchTemp =
+    hostTempRoots().some((t) => atOrUnder(first, t)) &&
+    !walled.some((w) => atOrUnder(first, toRealPath(w)))
+  const line = scratchTemp
+    ? `${refused} The task has its own temp directory, empty at its start: write under ` +
+      `$TMPDIR (os.tmpdir() in Node and Bun) instead of a fixed path.`
+    : `${refused} If the task needs one, grant its directory, e.g. ` +
+      `\`allow: { write: [${jsString(`${spelled}/`)}] }\`.`
+  return { timestamp: new Date(), hint: true, line }
+}
+
+/** A path as a JS string literal a config can take: a quote in it is escaped. */
+const jsString = (p: string): string => (p.includes("'") ? JSON.stringify(p) : `'${p}'`)
+
+/** The host's shared temp directories, canonical: what a fixed temp path in a tool names. */
+function hostTempRoots(): string[] {
+  return [...new Set(['/tmp', '/var/tmp', os.tmpdir()].map(toRealPath))]
+}
+
+function hiddenReadsHint(paths: readonly string[], within: string): SandboxViolation {
+  const shown = paths.slice(0, 5).join(', ')
+  const more = paths.length > 5 ? ` and ${paths.length - 5} more` : ''
   return {
     timestamp: new Date(),
     hint: true,
     line:
-      `vx: the sandbox refused writes outside the project, which are not reported as ` +
-      `violations: ${shown}${more}. If the task needs one, grant its directory, e.g. ` +
-      `\`allow: { write: ['${spelled}/'] }\`.`,
+      `vx: the sandbox hid paths outside the project that exist on this machine, which are ` +
+      `not reported as violations: ${shown}${more}. If the task reads one, grant it, e.g. ` +
+      `\`allow: { read: [${jsString(path.relative(toRealPath(within), paths[0]!))}] }\`.`,
   }
 }
 
@@ -2113,7 +2405,7 @@ function scanOrNothing(pattern: string, base: string): Iterable<string> {
  * write may still land under, in the sandbox's scratch, returned; the ones
  * a read-only mount or the host's root holds, reported once each
  * (`writeGrantMatchedNothing`). `anchors` are the deny anchors the scratch
- * is made of.
+ * is made of; `within`, the task's directory, which the report spells from.
  */
 export function pendingWriteGrants(
   config: Pick<ResolvedSandboxConfig, 'pendingWrites'>,
@@ -2122,9 +2414,10 @@ export function pendingWriteGrants(
     readonly allowWrite?: readonly string[] | undefined
   },
   anchors: readonly string[],
+  within: string,
 ): string[] {
   const { scratch, mountless } = scratchWrites(config.pendingWrites ?? [], fs, anchors)
-  for (const grant of mountless) writeGrantMatchedNothing(grant)
+  for (const grant of mountless) writeGrantMatchedNothing(grant, within)
   return scratch
 }
 
@@ -2140,16 +2433,27 @@ const warnedEmptyWriteGrant = new Set<string>()
  * the relative pattern keeps its wildcard component), and printing it
  * would tell the user to grant the PARENT of the directory they meant.
  */
-function writeGrantMatchedNothing(grant: string): void {
+function writeGrantMatchedNothing(grant: string, within: string): void {
   if (warnedEmptyWriteGrant.has(grant)) return
   warnedEmptyWriteGrant.add(grant)
+  // As a committed config spells them (B-97): the absolute path held only
+  // on the machine that printed it, as in `outsideWritesHint`.
+  const dir = grantSpelled(grantPrefix(grant), within)
   process.stderr.write(
-    `[vx] sandbox: the write grant ${grant} matches nothing yet, and a read grant mounts its ` +
-      `directory read-only, so a file the task creates under it will fail with "Read-only file ` +
-      `system". A bind mount ` +
-      `covers what exists when the task starts — grant the directory instead: ` +
-      `${grantPrefix(grant)}/**\n`,
+    `[vx] sandbox: the write grant ${jsString(grantSpelled(grant, within))} matches nothing ` +
+      `yet, and a read grant mounts its directory read-only, so a file the task creates under ` +
+      `it will fail with "Read-only file system". A bind mount covers what exists when the ` +
+      `task starts — grant the directory instead: ` +
+      `\`allow: { write: [${jsString(dir === '.' ? '.' : `${dir}/`)}] }\`\n`,
   )
+}
+
+/** An absolute grant path as a config spells it: from `within`, from `~`, or whole. */
+function grantSpelled(p: string, within: string): string {
+  const real = toRealPath(within)
+  if (atOrUnder(p, real)) return path.relative(real, p) || '.'
+  const home = toRealPath(os.homedir())
+  return atOrUnder(p, home) ? `~${p.slice(home.length)}` : p
 }
 
 /**

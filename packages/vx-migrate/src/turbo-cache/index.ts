@@ -21,6 +21,8 @@ import {
   type CacheLayer,
   type RemoteCacheLayer,
   type VxPlugin,
+  refuseUnknownOptions,
+  type PluginOptionKinds,
 } from '@vzn/vx'
 import { deadlineNamed } from '../remote-deadline.js'
 import { withRetry } from '../remote-retry.js'
@@ -277,6 +279,13 @@ export function resolveTurboCacheConfig(
   // A NaN never reaches the bound, and the request would be resent forever.
   if (!Number.isInteger(retries) || retries < 0)
     throw new Error(`vx/turbo-cache: retries must be a whole number ≥ 0, got ${retries}`)
+  // 0 is no deadline, as Turbo reads it; a negative or non-number one made
+  // AbortSignal.timeout throw on every request.
+  for (const name of ['timeoutMs', 'uploadTimeoutMs'] as const) {
+    const ms = options[name]
+    if (ms !== undefined && !(typeof ms === 'number' && Number.isFinite(ms) && ms >= 0))
+      throw new Error(`vx/turbo-cache: ${name} must be ms ≥ 0 (0: none), got ${JSON.stringify(ms)}`)
+  }
   return {
     apiUrl,
     token,
@@ -601,6 +610,18 @@ function remoteCacheOf(root: string): TurboJsonRemoteCache {
   return {}
 }
 
+/** Each option `TurboCacheOptions` names, with its kind: derived from the type, so the two cannot drift. */
+const TURBO_CACHE_KEYS: PluginOptionKinds<TurboCacheOptions> = {
+  apiUrl: 'string',
+  token: 'string',
+  teamId: 'string',
+  teamSlug: 'string',
+  signatureKey: 'string',
+  timeoutMs: 'number',
+  uploadTimeoutMs: 'number',
+  retries: 'number',
+}
+
 /**
  * Declare in `vx.workspace.ts`; the local store stays the floor beneath it:
  *
@@ -611,6 +632,7 @@ function remoteCacheOf(root: string): TurboJsonRemoteCache {
  * Declines without a URL and a token, so it is safe to leave declared.
  */
 export function turboCache(options: TurboCacheOptions = {}): VxPlugin {
+  refuseUnknownOptions('turboCache()', options, TURBO_CACHE_KEYS)
   return definePlugin(import.meta, {
     cache(ctx): CacheLayer | undefined {
       const config = resolveTurboCacheConfig(
@@ -627,7 +649,10 @@ export function turboCache(options: TurboCacheOptions = {}): VxPlugin {
         remoteWrite: ctx.policy.remoteWrite && remote.write,
       }
       if (!policy.remoteRead && !policy.remoteWrite) return undefined
-      return new LayeredCache(ctx.localCache, new TurboRemoteCache(config), {
+      // A signed download waits in a temp until its tag checks: in vx's
+      // cache directory, which the sandbox walls, not the shared temp dir a
+      // sandboxed task may read (L-45).
+      return new LayeredCache(ctx.localCache, new TurboRemoteCache(config, fetch, ctx.cacheDir), {
         policy,
         onRemoteError: (err) => ctx.warn(`vx/turbo-cache: ${err.message}`),
       })

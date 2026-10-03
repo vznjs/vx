@@ -42,6 +42,38 @@ import { nonJsonMessage, nonJsonPaths, type NonJsonValue } from './json-data.js'
 /** Why a config's `process.exit` throws, on both load paths (D-65). */
 export const CONFIG_EXIT = 'a config exports its object; it cannot end the run'
 
+/**
+ * The built-ins a config must not change: vx reads every other config and
+ * makes every cache key through them (D-74, D-75). The loader watches them
+ * in this process; the worker, asked to blame, in its own.
+ */
+export const WATCHED_BUILTIN_NAMES = [
+  'Object.prototype',
+  'Array.prototype',
+  'Bun',
+  'Bun.hash',
+  'JSON',
+  'Math',
+  'String.prototype',
+  'Map.prototype',
+  'Set.prototype',
+  'Promise.prototype',
+  // A global one config set reached every config loaded after it in the
+  // process: `--all` read it, `--filter` of the reader alone did not (D-122).
+  'globalThis',
+  // What the check itself and vx's matching read through: a replaced
+  // `Reflect.ownKeys` blinded the check, and `RegExp.prototype.test` or
+  // `Date.now` ran vx on a config's choice (D-124).
+  'Reflect',
+  'Object',
+  'Array',
+  'RegExp.prototype',
+  'Function.prototype',
+  'Date',
+  'Date.prototype',
+  'Number.prototype',
+] as const
+
 const WORKER_SRC = `
 const nonJsonPaths = ${nonJsonPaths.toString()}
 // The parent's stdout is a verb's JSON or vx mcp's JSON-RPC stream, and a
@@ -83,6 +115,45 @@ self.onmessage = async (e) => {
   const live = globalThis.process.env
   for (const k of Object.keys(live)) if (!(k in env)) delete live[k]
   Object.assign(live, env)
+  // A blame request reports the built-ins and env vars this one evaluation
+  // changed, for a round whose loads overlapped and saw a change (D-119).
+  const watched = e.data.blame
+    ? ${JSON.stringify(WATCHED_BUILTIN_NAMES)}.map((n) => [n, n.split('.').reduce((o, k) => o[k], globalThis)])
+    : null
+  // Taken before the import: a config can replace them (D-124).
+  const RO = Reflect.ownKeys
+  const GD = Object.getOwnPropertyDescriptor
+  const own = (o) => new Map(RO(o).map((k) => [k, GD(o, k)]))
+  const before = watched?.map(([, o]) => own(o))
+  const envBefore = watched ? { ...live } : null
+  const cwdBefore = watched ? globalThis.process.cwd() : null
+  // The umask is the process's, not the worker's: a config's umask(0o777)
+  // here left every file vx wrote after it 000 (D-125). Read only when
+  // blaming, the one evaluation in flight: Bun reads it by setting 0 and
+  // back, so this read beside the main thread's left the process at 0
+  // and blamed an innocent config. An ordinary load's change is the
+  // loader's to see, on the main thread, once the round is done.
+  const umaskIn = watched ? globalThis.process.umask() : null
+  const same = (a, b) =>
+    a !== undefined && b !== undefined && Object.is(a.value, b.value) && a.get === b.get && a.set === b.set &&
+    a.writable === b.writable && a.enumerable === b.enumerable && a.configurable === b.configurable
+  const changed = () => {
+    if (watched === null) return undefined
+    const out = []
+    watched.forEach(([n, o], i) => {
+      const now = own(o)
+      for (const k of new Set([...before[i].keys(), ...now.keys()]))
+        if (!same(before[i].get(k), now.get(k))) out.push(n + '.' + String(k))
+    })
+    for (const k of new Set([...Object.keys(envBefore), ...Object.keys(live)]))
+      if (envBefore[k] !== live[k]) out.push('process.env.' + k)
+    if (globalThis.process.cwd() !== cwdBefore) out.push('process.cwd (a chdir)')
+    if (globalThis.process.umask() !== umaskIn) out.push('process.umask')
+    return out
+  }
+  const umaskBack = () => {
+    if (umaskIn !== null && globalThis.process.umask() !== umaskIn) globalThis.process.umask(umaskIn)
+  }
   try {
     const ns = await import(path)
     // Awaited as the in-process load's async return flattens it: a Promise
@@ -91,19 +162,29 @@ self.onmessage = async (e) => {
     const mod = await ns?.default
     const isObject = mod !== null && typeof mod === 'object'
     const nonJson = isObject ? nonJsonPaths(mod) : []
+    // Seen, then put back, BEFORE the reply: the caller terminates a
+    // blaming worker as soon as it answers, and a restore after the reply
+    // lost that race and left the process at the config's mask.
+    const report = changed()
+    umaskBack()
     postMessage({
       id,
       ok: true,
       nonJson,
       json: isObject && nonJson.length === 0 ? JSON.stringify(mod) : null,
+      fn: typeof mod === 'function',
+      changed: report,
     })
   } catch (err) {
+    const report = changed()
+    umaskBack()
     postMessage({
       id,
       ok: false,
       name: err?.name ?? 'Error',
       message: err?.message ?? String(err),
       stack: err?.stack ?? null,
+      changed: report,
       position:
         err?.position && typeof err.position === 'object'
           ? { file: err.position.file, line: err.position.line, column: err.position.column }
@@ -113,12 +194,16 @@ self.onmessage = async (e) => {
 }
 `
 
+const FUNCTION_EXPORT = (): void => {}
+
 const WORKER_URL = `data:text/javascript,${encodeURIComponent(WORKER_SRC)}`
 
 interface WorkerReply {
   id: number
   ok: boolean
   json: string | null
+  /** The default export is a function, which JSON cannot carry back. */
+  fn?: boolean
   nonJson: NonJsonValue[]
   name: string
   message: string
@@ -134,7 +219,7 @@ interface Pending {
 
 /**
  * How long a single config evaluation may take, in the worker or in process
- * (D-66). Real evaluations are ~10 ms; this exists only so a hung config or a
+ * (D-66); in process a synchronous loop holds the thread the deadline needs. Real evaluations are ~10 ms; this exists only so a hung config or a
  * killed worker cannot stall a run or a long-lived process indefinitely. Read
  * per call so a test can drive the deadline instead of waiting it out.
  */
@@ -282,7 +367,10 @@ export async function evaluateConfigFresh(configPath: string): Promise<unknown> 
     })
     const [nonJson] = reply.nonJson
     if (nonJson !== undefined) throw new UserError(nonJsonMessage(configPath, nonJson))
-    return reply.json === null ? null : (JSON.parse(reply.json) as unknown)
+    // A function stands in for the one the config exported, so the caller's
+    // refusal names it as the in-process load's does.
+    if (reply.json === null) return reply.fn === true ? FUNCTION_EXPORT : null
+    return JSON.parse(reply.json) as unknown
   } finally {
     // In the `finally`, not after the await: a REJECTED evaluation — a config
     // with a typo, the common case while editing — would otherwise skip the
@@ -293,5 +381,33 @@ export async function evaluateConfigFresh(configPath: string): Promise<unknown> 
     clearTimeout(timer)
     pending.delete(id)
     retireIfIdle()
+  }
+}
+
+/**
+ * What evaluating `configPath` alone changes among the watched built-ins
+ * and env vars, in a worker of its own that is then discarded: a round
+ * whose overlapping loads saw a change asks each config in turn, so the
+ * refusal names the one that made it (D-119). Empty when the evaluation
+ * changes nothing, fails before reporting, or outlives the budget.
+ */
+export async function builtinsChangedBy(configPath: string): Promise<string[]> {
+  const w = new Worker(WORKER_URL)
+  try {
+    return await new Promise<string[]>((resolve) => {
+      const timer = setTimeout(() => resolve([]), evalBudgetMs())
+      timer.unref?.()
+      w.onmessage = (event: MessageEvent): void => {
+        clearTimeout(timer)
+        resolve((event.data as { changed?: string[] }).changed ?? [])
+      }
+      w.onerror = (): void => {
+        clearTimeout(timer)
+        resolve([])
+      }
+      w.postMessage({ id: 0, path: path.resolve(configPath), env: { ...process.env }, blame: true })
+    })
+  } finally {
+    w.terminate()
   }
 }

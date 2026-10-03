@@ -72,3 +72,13 @@ export function nearMatches(name: string, candidates: Iterable<string>, limit = 
   }
   return out.slice(0, limit)
 }
+
+/**
+ * The names to offer when no one name is near: sorted, the first `limit`,
+ * then a count. A typo past two edits named nothing to pick from (M-56).
+ */
+export function listed(names: Iterable<string>, limit = 8): string {
+  const all = [...new Set(names)].sort()
+  const more = all.length - limit
+  return all.slice(0, limit).join(', ') + (more > 0 ? `, and ${more} more` : '')
+}

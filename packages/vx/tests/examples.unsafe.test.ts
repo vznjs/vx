@@ -5,6 +5,7 @@
 // sandboxed shard cannot read — hence the unsafe suite.
 import {
   cpSync,
+  readdirSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -56,8 +57,12 @@ function commit(root: string): void {
 }
 
 let n = 0
-/** One `vx run <task> --all`: its exit and each task's status, from --summarize. */
-function run(root: string, task: string): { exit: number; status: Record<string, string> } {
+/** One `vx run <task> --all`: its exit, each task's status from --summarize,
+ *  and the summary's cache legend (`3 miss`). */
+function run(
+  root: string,
+  task: string,
+): { exit: number; status: Record<string, string>; cache: string } {
   const summary = path.join(path.dirname(root), `${path.basename(root)}-${n++}.json`)
   const r = Bun.spawnSync({
     cmd: [process.execPath, BIN, 'run', task, '--all', `--summarize=${summary}`],
@@ -72,7 +77,13 @@ function run(root: string, task: string): { exit: number; status: Record<string,
     }
   ).tasks
   rmSync(summary, { force: true })
-  return { exit: r.exitCode, status: Object.fromEntries(tasks.map((t) => [t.id, t.status])) }
+  const lines = r.stdout.toString().split('\n')
+  const cache = lines[lines.findIndex((l) => l.startsWith('  cache ')) + 1]?.trim() ?? ''
+  return {
+    exit: r.exitCode,
+    status: Object.fromEntries(tasks.map((t) => [t.id, t.status])),
+    cache,
+  }
 }
 
 describe('examples/basic', () => {
@@ -100,10 +111,12 @@ describe('examples/basic', () => {
   })
 })
 
-// The adoption path the README sells: a Turbo repo runs under turbo() with
-// nothing rewritten, and the configs `vx-migrate` writes later derive the
-// same keys, so the cache turbo() filled still hits.
+// The migrate guide's temporary start: turbo() maps the Turbo repo until
+// `vx-migrate` writes native configs, which derive the same keys, so the
+// cache turbo() filled still hits. Each step's output is what the guide's
+// "Try it in five minutes" block says in its comments.
 describe('examples/turbo', () => {
+  const said: string[] = []
   const root = fixture('turbo', ['vx', 'vx-migrate'])
   const all = (status: string) => ({
     'app#build': status,
@@ -111,13 +124,15 @@ describe('examples/turbo', () => {
     'lib#build': status,
   })
 
-  it('runs the Turbo repo unchanged, cold then warm', () => {
+  it('builds through the turbo() bridge, cold then warm', () => {
     const cold = run(root, 'test')
     expect(cold.exit).toBe(0)
     expect(cold.status).toEqual(all('success'))
+    said.push(`${cold.cache}: ${Object.keys(cold.status).toSorted().join(', ')}`)
     const warm = run(root, 'test')
     expect(warm.exit).toBe(0)
     expect(warm.status).toEqual(all('cache-hit'))
+    said.push(warm.cache)
   })
 
   // The migrate guide's steps as written: the workspace file stays (the
@@ -132,7 +147,7 @@ describe('examples/turbo', () => {
     })
     expect(migrate.exitCode).toBe(0)
     const out = migrate.stdout.toString()
-    expect(out).toContain('3 tasks migrated clean, 0 TODOs')
+    said.push(out.split('\n').find((l) => l.includes('migrated'))!)
     expect(out.slice(out.indexOf('files written:')).split('\n').slice(1, 3)).toEqual([
       '  packages/app/vx.config.ts',
       '  packages/lib/vx.config.ts',
@@ -142,12 +157,32 @@ describe('examples/turbo', () => {
     const kept = run(root, 'test')
     expect(kept.exit).toBe(0)
     expect(kept.status).toEqual(all('cache-hit'))
+    said.push(kept.cache)
 
     rmSync(path.join(root, 'vx.workspace.ts'))
     commit(root)
     const alone = run(root, 'test')
     expect(alone.exit).toBe(0)
     expect(alone.status).toEqual(all('cache-hit'))
+    said.push(alone.cache)
+  })
+
+  it('says in the migrate guide what each step printed', () => {
+    const guide = readFileSync(
+      path.join(PACKAGES, 'vx-docs', 'src', 'content', 'docs', 'guides', 'migrate.md'),
+      'utf8',
+    )
+    const block = /### Try it in five minutes[\s\S]*?```sh\n([\s\S]*?)```/.exec(guide)![1]!
+    const comments = block
+      .split('\n')
+      .filter((l) => /^(npx vx run|bunx @vzn\/vx-migrate)/.test(l))
+      .map((l) => l.slice(l.indexOf('# ') + 2))
+    // The first comment lists the tasks that missed; the rest name only the legend.
+    const [legend, missed] = comments[0]!.split(': ')
+    expect([
+      `${legend}: ${missed!.split(', ').toSorted().join(', ')}`,
+      ...comments.slice(1).map((c) => c.split(':')[0]),
+    ]).toEqual(said)
   })
 })
 
@@ -169,4 +204,52 @@ describe('the terminal demo', () => {
     // A whole vx run of the starter: a loaded gate took it past bun's
     // 5 s default (5,006 ms) though it passes alone.
   }, 20_000)
+})
+
+// Each starter's README opens with `npm install`, and the fixtures above
+// link node_modules instead of installing, so nothing ran it: npm refuses
+// pnpm's `workspace:` protocol (EUNSUPPORTEDPROTOCOL), and both starters
+// declared `"lib": "workspace:*"` until 2026-10-03.
+describe('the starters install with the package manager their README names', () => {
+  it('no npm starter declares a workspace: dependency', () => {
+    const bad: string[] = []
+    for (const name of starters()) {
+      expect(readFileSync(path.join(EXAMPLES, name, 'README.md'), 'utf8')).toContain('npm install')
+      for (const pkg of [
+        'package.json',
+        'packages/app/package.json',
+        'packages/lib/package.json',
+      ]) {
+        const json = JSON.parse(readFileSync(path.join(EXAMPLES, name, pkg), 'utf8')) as Record<
+          string,
+          Record<string, string> | undefined
+        >
+        for (const field of ['dependencies', 'devDependencies'])
+          for (const [dep, spec] of Object.entries(json[field] ?? {}))
+            if (spec.startsWith('workspace:')) bad.push(`${name}/${pkg}: ${dep} ${spec}`)
+      }
+    }
+    expect(bad).toEqual([])
+  })
+})
+
+/** Every directory under examples/: what a README can point a reader at. */
+function starters(): string[] {
+  return readdirSync(EXAMPLES, { withFileTypes: true })
+    .filter((e) => e.isDirectory())
+    .map((e) => e.name)
+    .sort()
+}
+
+// The runs above name their starters; one added to examples/ without a
+// describe block here would ship unrun. The set is read from the tree.
+describe('every starter under examples/ has a run in this suite', () => {
+  it('the directories are the ones the describe blocks above drive', () => {
+    const driven = [
+      ...readFileSync(import.meta.path, 'utf8').matchAll(/^describe\('examples\/(\w+)'/gm),
+    ]
+      .map((m) => m[1]!)
+      .sort()
+    expect(starters()).toEqual(driven)
+  })
 })

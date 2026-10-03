@@ -98,7 +98,6 @@ describe('evaluateConfigFresh: what crosses back', () => {
     ['a boolean', 'export default true\n'],
     ['null', 'export default null\n'],
     ['undefined', 'export default undefined\n'],
-    ['a function', 'export default function defineProject() {}\n'],
     ['no default export at all', 'export const tasks = {}\n'],
   ]
 
@@ -107,6 +106,15 @@ describe('evaluateConfigFresh: what crosses back', () => {
       expect(await evaluateConfigFresh(await write(body))).toBeNull()
     })
   }
+
+  it('answers a function, not null, when the config default-exports one (D-110)', async () => {
+    // So the loader's refusal says it is a function, as the in-process path's does.
+    expect(
+      typeof (await evaluateConfigFresh(
+        await write('export default function defineProject() {}\n'),
+      )),
+    ).toBe('function')
+  })
 
   it('passes an array default export through instead of judging it', async () => {
     // Deliberately NOT null: `typeof [] === 'object'`, so the in-process path
@@ -795,34 +803,47 @@ describe('the evaluation deadline', () => {
     // left a timer armed for the DEFAULT 30s; a cycle up to 30 seconds later
     // could die with "config worker did not answer within 30000ms" — naming a
     // budget nobody set for it, for a config that was fine.
-    // The rejected load's budget must not pay for a worker spawn: on a
-    // loaded macOS runner a spawn outlasted 1000 ms (M-10, D), and the
-    // load timed out instead of rejecting. A held round spawns its worker
-    // first, under a generous budget; the budget below then covers only an
-    // import in a live worker. The round shares that worker, which is the
-    // one an orphan timer terminates.
+    // No row here is a race against the clock. A held round spawns its worker
+    // first, under a generous budget, so no budget below pays for a spawn (a
+    // loaded macOS runner took over 1000 ms for one, M-10). The rejected load
+    // gets a budget far past a warm import, so it rejects rather than timing
+    // out. The healthy load then blocks on a release file, and the release
+    // waits on a timer due AFTER the rejected load's own: timers fire in
+    // deadline order, so an orphaned timer has fired, and terminated the
+    // shared worker, before the healthy load can answer.
     const end = beginEvalRound()
     try {
       process.env[BUDGET_ENV] = '10000'
       const warm = await write('export default {}\n')
       expect(await settleOrHang(evaluateConfigFresh(warm), 12_000)).toBe('RESOLVED {}')
 
-      process.env[BUDGET_ENV] = '1000'
+      const rejectedBudget = 3000
+      process.env[BUDGET_ENV] = String(rejectedBudget)
       const broken = await write(`throw new Error('typo in preset')\n`)
-      expect(await settleOrHang(evaluateConfigFresh(broken), 5000)).toBe('REJECTED typo in preset')
-
-      // Started after the rejection, it sleeps past the whole 1000 ms from
-      // the rejected load's start, so an orphaned timer fires while it is
-      // in flight. It must resolve on its own budget.
-      process.env[BUDGET_ENV] = '4000'
-      const slow = await write('await Bun.sleep(1200)\nexport default { tasks: { ok: {} } }\n')
-      expect(await settleOrHang(evaluateConfigFresh(slow), 5000)).toBe(
-        'RESOLVED {"tasks":{"ok":{}}}',
+      expect(await settleOrHang(evaluateConfigFresh(broken), 10_000)).toBe(
+        'REJECTED typo in preset',
       )
+      // Read once the load has settled, after its timer was armed: an
+      // orphan is then due before the release however long the arming took
+      // (a mark taken before the call let a slow arm fall past the release,
+      // and the row passed with the orphan alive).
+      const brokenSettled = Date.now()
+
+      process.env[BUDGET_ENV] = '20000'
+      const release = path.join(root, `release.${seq}`)
+      const held = await write(
+        `import { existsSync } from 'node:fs'\n` +
+          `while (!existsSync(${JSON.stringify(release)})) await Bun.sleep(5)\n` +
+          `export default { tasks: { ok: {} } }\n`,
+      )
+      const healthy = settleOrHang(evaluateConfigFresh(held), 25_000)
+      await Bun.sleep(Math.max(0, brokenSettled + rejectedBudget + 50 - Date.now()))
+      await writeFile(release, '')
+      expect(await healthy).toBe('RESOLVED {"tasks":{"ok":{}}}')
     } finally {
       end()
     }
-  }, 25_000)
+  }, 40_000)
 })
 
 describe('a config is JSON data, on every path (item 701)', () => {

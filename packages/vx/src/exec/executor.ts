@@ -224,6 +224,23 @@ export interface TaskExecutor {
 }
 
 /**
+ * What a remote executor rejects with when it gives a task back: core runs
+ * the same request on the local floor and says `reason` once (a remote that
+ * never started it, B-100). A task placed `remote: 'only'` must not run
+ * here, so it fails naming `reason` instead. Matched by name, as
+ * `isUserError` is: a plugin's `@vzn/vx` can be another copy of this class.
+ */
+export function executorFallback(reason: string): Error {
+  const err = new Error(reason)
+  err.name = 'ExecutorFallback'
+  return err
+}
+
+export function isExecutorFallback(err: unknown): err is Error {
+  return err instanceof Error && err.name === 'ExecutorFallback'
+}
+
+/**
  * The result an executor resolves with is a plugin's, so its shape is a
  * boundary: a plugin that resolved `{}` met `res.violations` in core and
  * became "internal error in <task>: TypeError …" — vx's crash, the plugin's
@@ -278,9 +295,15 @@ export function selectExecutor(
   for (const executor of executors) {
     if (task.pinnedLocal && executor.remote === true) continue
     if (executor.accepts === undefined) return executor
-    let taken: boolean
+    let taken: unknown
     try {
       taken = executor.accepts(task)
+      // An `async accepts` answers a Promise: truthy, so the executor took
+      // every task, and a rejection went unheard (the shape of H-16's admit).
+      if (taken instanceof Promise) {
+        taken.catch(() => {})
+        throw new Error('returned a Promise; accepts is synchronous')
+      }
     } catch (err) {
       const m = err instanceof Error ? err.message : String(err)
       throw new UserError(`${label(executor)} failed in accepts for ${task.taskId}: ${m}`)

@@ -6,7 +6,7 @@ authors:
 tags:
   - correctness
   - sandbox
-excerpt: "A cache is only correct if the declared inputs are the complete set of files the task reads. Instead of inferring that set, vx lets a task run with the declared paths as the only ones it can touch, and fails the run on anything else."
+excerpt: "A cache is only correct if the declared inputs are the complete set of files the task reads. Instead of inferring that set, vx lets a task run with the declared paths as the only workspace files it can touch, and fails the run on an undeclared one of its own."
 ---
 
 The [previous post](../explicit-over-magical/) argued that inputs must
@@ -64,9 +64,11 @@ reads. vx did that once and removed it. `cache.inputs` says what
 one was derived from the other, a path added for caching silently
 widened the sandbox, and a path the task genuinely needed had to be
 laundered through the cache key to become readable. Two declarations,
-and the place they meet is the violation: a sandboxed task that reads a
-file its inputs never named fails on the denied read, which is exactly
-the under-declaration you wanted to find.
+and the violation is judged against the grants alone: a sandboxed task
+that reads a project file its grants never named fails on the denied
+read. `read: ['.']` grants the whole project, inputs or not; grant
+reads no wider than `cache.inputs` (`read: ['src', '.eslintrc']`) and
+that denial is exactly the under-declaration you wanted to find.
 
 ## What a violation looks like
 
