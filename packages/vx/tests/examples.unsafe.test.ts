@@ -5,6 +5,7 @@
 // sandboxed shard cannot read — hence the unsafe suite.
 import {
   cpSync,
+  readdirSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -111,7 +112,7 @@ describe('examples/turbo', () => {
     'lib#build': status,
   })
 
-  it('runs the Turbo repo unchanged, cold then warm', () => {
+  it('builds through the turbo() bridge, cold then warm', () => {
     const cold = run(root, 'test')
     expect(cold.exit).toBe(0)
     expect(cold.status).toEqual(all('success'))
@@ -178,7 +179,7 @@ describe('the terminal demo', () => {
 describe('the starters install with the package manager their README names', () => {
   it('no npm starter declares a workspace: dependency', () => {
     const bad: string[] = []
-    for (const name of ['basic', 'turbo']) {
+    for (const name of starters()) {
       expect(readFileSync(path.join(EXAMPLES, name, 'README.md'), 'utf8')).toContain('npm install')
       for (const pkg of [
         'package.json',
@@ -195,5 +196,26 @@ describe('the starters install with the package manager their README names', () 
       }
     }
     expect(bad).toEqual([])
+  })
+})
+
+/** Every directory under examples/: what a README can point a reader at. */
+function starters(): string[] {
+  return readdirSync(EXAMPLES, { withFileTypes: true })
+    .filter((e) => e.isDirectory())
+    .map((e) => e.name)
+    .sort()
+}
+
+// The runs above name their starters; one added to examples/ without a
+// describe block here would ship unrun. The set is read from the tree.
+describe('every starter under examples/ has a run in this suite', () => {
+  it('the directories are the ones the describe blocks above drive', () => {
+    const driven = [
+      ...readFileSync(import.meta.path, 'utf8').matchAll(/^describe\('examples\/(\w+)'/gm),
+    ]
+      .map((m) => m[1]!)
+      .sort()
+    expect(starters()).toEqual(driven)
   })
 })

@@ -181,6 +181,14 @@ prune` all match. Fixed: the Run blocks used bare `vx`, which a local
   head tables cite their runs (dates, harness, command) but have no
   committed data file; the headline rerun lead covers them.
 
+- **R-31** examples/: both starters already ran in
+  `examples.unsafe.test.ts` (cold, warm, an edit; turbo through the
+  bridge, then migrated and native) from a fresh copy, with no build
+  output committed. The suite named them by hand, so a new starter
+  would ship unrun: a row now requires every directory under
+  `examples/` to have its `describe('examples/<name>')` (a planted
+  `examples/zz` fails it), and the npm-install row reads the tree too.
+
 ## Leads
 
 - Real-repo rows (`packages/vx-bench/real-repos.json`, benchmarks.md's
