@@ -253,6 +253,22 @@ function finish(code) {
 main(process.argv.slice(2)).then(finish, (err) => {
   const message = err && err.message ? err.message : String(err)
   const verbose = process.env.NX_VERBOSE_LOGGING === 'true'
+  // Nx's "Unable to resolve <pkg>:<executor>." over Node's "Cannot find
+  // module '<pkg>/package.json'" and its require stack: the package is not
+  // installed. One line names it, and what to do.
+  const missing =
+    /^Unable to resolve (.+):([^:\n]+)\.\nCannot find module '([^'\n]+)\/package\.json'/.exec(
+      message,
+    )
+  if (!verbose && missing !== null && missing[3] === missing[1]) {
+    process.stderr.write(
+      `nx-exec: executor package ${JSON.stringify(missing[1])} is not installed in this workspace ` +
+        `(${missing[1]}:${missing[2]}) — add it to devDependencies, or write the task as the command ` +
+        'the executor runs\n',
+    )
+    finish(1)
+    return
+  }
   const more =
     err && err.stack
       ? verbose
