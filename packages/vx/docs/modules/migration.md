@@ -99,9 +99,12 @@ export function delegatedScript(command: string): string | null
 - The workspace file is written when no `vx.workspace.{ts,mts,js,mjs,cts,cjs}` exists:
   a migrated workspace declares its plugins, and an empty list is a
   complete workspace (the floor).
-- Nothing is overwritten without `force`: a discovered project with any
-  existing config, and every actual write target (a synthesized root
-  project, the Turbo preset), abort the whole run before a byte lands.
+- Nothing is overwritten without `force`. Under `vx init` (`init`) a
+  project that already has a config keeps it, untouched, and the report
+  lists it under `kept`; the rest are written (M-52). For a migration, a
+  discovered project with any existing config, and under either caller
+  every actual write target (a synthesized root project, the Turbo
+  preset), abort the whole run before a byte lands.
 - `init` distinguishes the two callers on an empty plan: `vx init` on a
   workspace with no scripts still writes the workspace file and shows a
   worked example; a migration with nothing to convert is an error.
