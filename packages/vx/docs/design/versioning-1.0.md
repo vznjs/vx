@@ -20,6 +20,7 @@ adds to them, and only a major removes or changes one.
 | The lock file: `vx-lock.json`, what `vx lock` writes and `vx lock --check` / `--frozen` read                                                                           | `src/workspace/lockfile.ts` (`LOCKFILE_VERSION`), `docs/cli.md`; recorded in `tests/contract/vx-lock.json`                                                                                                                                                                                                 |
 | The environment variables vx reads (`VX_*`)                                                                                                                            | `docs/cli.md` § Environment variables vx reads, held to the source by `tests/env-doc-drift.test.ts`; recorded in `tests/contract/cli-surface.json`                                                                                                                                                         |
 | Workspace discovery: which manifests make a root and list its projects, which root a run from inside a member finds, and which config file names load, in which order  | `src/workspace/workspace.ts`, `src/workspace/project-loader.ts`; recorded in `tests/contract/discovery.json`                                                                                                                                                                                               |
+| The environment variables the first-party plugins read (`VX_REAPI_*`, `OTEL_*`, `GITHUB_*`, `TURBO_*`, …)                                                              | each package's `src/`; recorded in `tests/contract/plugin-env.txt`                                                                                                                                                                                                                                         |
 | What `@vzn/vx-otel` sends: span and metric names, attribute keys and their OTLP value types                                                                            | `packages/vx-otel/src/otlp.ts`; recorded in `packages/vx-otel/tests/contract/otlp.txt`                                                                                                                                                                                                                     |
 | `vx-migrate`'s command lines, and those of `nx-exec`, `nx-env` and `lage-worker`, which the configs it writes call                                                     | each bin's usage in `packages/vx-migrate/src/`; recorded in `packages/vx-migrate/tests/contract/cli.txt`                                                                                                                                                                                                   |
 | The check run `@vzn/vx-github` posts: its default name, conclusion per outcome, endpoint and body keys                                                                 | `packages/vx-github/src/checks.ts`, `src/plugin.ts`; recorded in `packages/vx-github/tests/contract/checks.txt`                                                                                                                                                                                            |
@@ -183,6 +184,13 @@ on a PR, the same diff between its base and head needs the title marked
   the CLI's source spells and fixed grammar probes (numbers, durations,
   sizes, cache modes) it takes. A dropped verb, flag, value or variable is
   a removed line there.
+- **The plugins' variables.** A CI workflow, not a config, sets
+  `VX_REAPI_ENDPOINT` or `OTEL_EXPORTER_OTLP_ENDPOINT`, so a rename
+  drops the remote with no config change to review.
+  `tests/contract-plugin-env.unsafe.test.ts` finds every variable each
+  plugin package's source reads (a write or a comment is not a read) and
+  holds the set to `tests/contract/plugin-env.txt`, one
+  `<package> <NAME>` line each; a lost line is a break.
 - **Workspace discovery.** `tests/contract-discovery.test.ts` builds a
   fixture for each layout (`pnpm-workspace.yaml`, `workspaces` as an
   array or `{ packages }`, a negated and a recursive glob, both manifests
