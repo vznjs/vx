@@ -147,6 +147,11 @@ prune` all match. Fixed: the Run blocks used bare `vx`, which a local
   say it maps that until the migrator writes native config, and the
   guide's try-it block names its first runs the bridge.
 
+- **R-27** The landing's "Start in a minute" promised "up-to-date in
+  milliseconds" on the second build right after `vx init`, which writes
+  no cache block (both scratch walkthroughs re-ran every task). Its
+  comments now name the step between; the landing test pins it.
+
 ## Leads
 
 - Real-repo rows (`packages/vx-bench/real-repos.json`, benchmarks.md's
