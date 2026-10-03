@@ -131,10 +131,13 @@ Each streaming record carries `v` and `kind`, and:
 
 ## Invariants
 
-- **Observe-only by construction**: sinks receive immutable records and
-  a read-only context — no bus, no Cache, no path back into scheduling.
+- **Observe-only by construction**: sinks receive plain-data records and
+  a read-only context. A record is one object every sink receives, and
+  it is not frozen, so a sink must not change it — no bus, no Cache, no path back into scheduling.
 - **Crash isolation**: a throwing sink is disabled for the run, never
   propagates, and so is an `async` hook that rejects; it is said once,
   however many rejections follow (`telemetry-async-hooks.test.ts`).
 - `task.log` is opt-in via `TelemetrySink.wants` (default excludes it).
-- Version bumps are additive-or-bump: consumers reject unknown majors.
+- Version bumps are additive-or-bump: a record whose shape changes bumps
+  `TELEMETRY_SCHEMA_VERSION`, an integer, which a receiver may check to
+  refuse what it cannot read; no first-party sink checks it.
