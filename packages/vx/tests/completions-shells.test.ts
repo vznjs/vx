@@ -1,9 +1,8 @@
 // The completion scripts loaded in the shells themselves. bash is driven
-// in completions.test.ts; here zsh completes a line in an interactive
-// shell (zpty), both ways a user loads it: autoloaded from $fpath, as
-// `vx completions zsh > ~/.zfunc/_vx` sets up, and sourced. Autoloaded,
-// the first Tab defined `_vx` and completed nothing (the bell); the
-// second worked. fish answers `complete -C` for verbs and flags.
+// in completions.test.ts; here zsh loads its script both ways a user does:
+// autoloaded from $fpath, as `vx completions zsh > ~/.zfunc/_vx` sets up,
+// and sourced. Autoloaded, the first Tab defined `_vx` and completed
+// nothing (the bell); the second worked. fish answers `complete -C`.
 //
 // A shell that is not installed skips its row, except zsh on macOS, where
 // it always is: a missing one there is a failure, not a pass.
@@ -27,55 +26,52 @@ afterAll(async () => {
   await rm(dir, { recursive: true, force: true })
 })
 
-/** The line zsh holds after `typed` and a Tab, with `setup` run first. */
-async function zshLine(setup: string, typed: string, tag: string): Promise<string> {
-  const out = path.join(dir, `${tag}.out`)
+/**
+ * What zsh's completion builtins receive when `_vx` runs with `words`, the
+ * script loaded as `how`. `compadd` and `compdef` are stubbed with shell
+ * functions, which zsh runs before a builtin of the same name, so this
+ * needs no terminal: an interactive zsh under zpty answered nothing inside
+ * the macOS sandbox, its control row included.
+ */
+async function zshCalls(
+  how: 'autoload' | 'source',
+  words: string[],
+  tag: string,
+): Promise<string[]> {
+  const fn = path.join(dir, tag)
+  await Bun.write(path.join(fn, '_vx'), completionScript('zsh', [...CORE_VERBS]))
   const driver = path.join(dir, `${tag}.zsh`)
   await writeFile(
     driver,
     [
-      'zmodload zsh/zpty',
-      "zpty z 'zsh -f -i'",
-      // Sent inside the driver's double quotes, so its `$` are escaped to
-      // reach the inner shell. The terminal echoes this line, so neither
-      // marker may appear in it
-      // as typed: `READ""Y` prints READY, `vx''p> ` is the prompt vxp>.
-      `zpty -w z ${JSON.stringify(`PROMPT='vx''p> '; ${setup}; show() { print -r -- "BUF[$BUFFER]" > ${out} }; zle -N show; bindkey '^X' show; echo READ""Y`).replace(/\$/g, '\\$')}`,
-      "zpty -r z x '*READY*'",
-      // Keys typed before the line editor is up are discarded.
-      "zpty -r z x '*vxp> *'",
-      `zpty -w -n z $'${typed}\\t\\x18'`,
-      `for i in {1..200}; do [[ -s ${out} ]] && break; sleep 0.05; done`,
-      'zpty -d z',
-      `cat ${out}`,
+      'compadd() { print -r -- "compadd $*" }',
+      'compdef() { print -r -- "compdef $*" }',
+      how === 'autoload'
+        ? [
+            `fpath=(${fn} $fpath)`,
+            'autoload -Uz _vx',
+            `words=(${words.join(' ')})`,
+            `CURRENT=${words.length}`,
+            '_vx',
+          ].join('\n')
+        : `source ${path.join(fn, '_vx')}`,
     ].join('\n'),
   )
   const p = Bun.spawnSync({ cmd: [ZSH!, '-f', driver], timeout: 20_000 })
-  return p.stdout.toString().trim()
+  return p.stdout.toString().trim().split('\n')
 }
 
 describe.skipIf(ZSH === null)('zsh', () => {
-  let fpathDir = ''
-  let sourced = ''
-  beforeAll(async () => {
-    fpathDir = path.join(dir, 'zfunc')
-    await Bun.write(path.join(fpathDir, '_vx'), completionScript('zsh', [...CORE_VERBS]))
-    sourced = path.join(dir, 'vx.zsh')
-    await writeFile(sourced, completionScript('zsh', [...CORE_VERBS]))
+  it('autoloaded from $fpath, the first call completes a verb and a flag', async () => {
+    const verb = await zshCalls('autoload', ['vx', 'ca'], 'auto-verb')
+    const flag = await zshCalls('autoload', ['vx', 'run', '--conc'], 'auto-flag')
+    expect([verb.length, verb[0]!.startsWith('compadd -- run watch cache')]).toEqual([1, true])
+    expect([flag.length, flag[0]!.split(' ').includes('--concurrency')]).toEqual([1, true])
   })
 
-  it('autoloaded from $fpath, the first Tab completes a verb and a flag', async () => {
-    const setup = `fpath=(${fpathDir} $fpath); autoload -U compinit; compinit -u -D`
-    expect([
-      await zshLine(setup, 'vx ca', 'fpath-verb'),
-      await zshLine(setup, 'vx run --conc', 'fpath-flag'),
-    ]).toEqual(['BUF[vx cache ]', 'BUF[vx run --concurrency ]'])
-  }, 60_000)
-
-  it('sourced, it completes the same (control)', async () => {
-    const setup = `autoload -U compinit; compinit -u -D; source ${sourced}`
-    expect(await zshLine(setup, 'vx ca', 'sourced-verb')).toBe('BUF[vx cache ]')
-  }, 60_000)
+  it('sourced, it registers itself (control)', async () => {
+    expect(await zshCalls('source', [], 'sourced')).toEqual(['compdef _vx vx'])
+  })
 })
 
 describe.skipIf(FISH === null)('fish', () => {
