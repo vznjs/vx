@@ -303,6 +303,35 @@ describe('every name a module index exports is in code on a module page', () => 
   })
 })
 
+// J2-47: upgrade.md said compiled-binary detection uses NOT
+// `import.meta.path`; the check ORs it in last.
+describe("upgrade.md's detection invariant names every path it checks", () => {
+  it('import.meta.path is the last fallback, and the page says so', () => {
+    const check = src('cli/upgrade.ts').match(/function isCompiledBinary\(\)[^}]*\}/)![0]
+    expect(check).toContain('isBunfsPath(Bun.main)')
+    expect(check).toContain('isBunfsPath(import.meta.path)')
+    const rule = blocks('modules/upgrade.md', 'Compiled-binary detection')
+    expect(rule).toHaveLength(1)
+    expect(rule[0]).not.toContain('NOT `import.meta.path`')
+    expect(rule[0]).toContain('`import.meta.path` is only a last fallback')
+  })
+})
+
+// J2-48: plugin.md listed the stages whose throw fails the run naming
+// the plugin as config, project, graph, key and schedule; `discover` and
+// `fingerprint` go through the same guard (`safe` in plugin-host.ts).
+describe("plugin.md's fail-the-run list is the hooks plugin-host guards", () => {
+  it('each hook passed to safe() is named in the bullet', () => {
+    const hooks = [...src('orchestrator/plugin-host.ts').matchAll(/safe\(plugin, '([a-z]+)'/g)].map(
+      (m) => m[1]!,
+    )
+    expect(new Set(hooks).size).toBeGreaterThanOrEqual(9)
+    const rule = blocks('modules/plugin.md', 'A throw in `setup`')
+    expect(rule).toHaveLength(1)
+    expect([...new Set(hooks)].filter((h) => !rule[0]!.includes(`\`${h}\``))).toEqual([])
+  })
+})
+
 // J2-46: task-hash.md said any change to what joins the key needs a
 // CACHE_VERSION bump; caching.md exempts a change in which values flow
 // into an existing field. telemetry.md said consumers reject unknown

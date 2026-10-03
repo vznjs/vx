@@ -59,8 +59,9 @@ type PluginHookName = keyof PluginHookHandlers
 - **Decline-fast**: every capability must return `undefined` cheaply
   when unconfigured — a plain run with declared-but-unconfigured
   plugins is zero-overhead (measured ~116ms unchanged).
-- A throw in `setup`, a stage (`config`, `project`, `graph`, `key`,
-  `schedule`) or an `executor` / `cache` factory fails the run in one
+- A throw in `setup`, a stage (`config`, `discover`, `project`, `graph`,
+  `key`, `fingerprint`'s `affected`, `schedule`) or an `executor` /
+  `cache` factory fails the run in one
   line naming the plugin and the hook: what a plugin shapes is
   load-bearing. The observers are isolated (observability never breaks a
   run): a `telemetry` factory or sink, a `ctx.on` handler and `teardown`
