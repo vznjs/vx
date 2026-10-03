@@ -54,3 +54,47 @@ it("names the parts of a script that run this package's own tasks", () => {
   // The lone delegation stays a group over its target.
   expect(a.tasks.find((t) => t.name === 'verify')!.task).toEqual({ dependsOn: ['lint'] })
 })
+
+it('names a run-s / run-p / npm-run-all part by every task it runs (M-48)', () => {
+  const scripts: Record<string, string> = {
+    'build:js': 'tsc',
+    'build:css': 'postcss x',
+    lint: 'eslint .',
+    build: 'run-p build:*',
+    ci: 'npm-run-all -s lint "build:js"',
+    one: 'run-s lint && vitest',
+    // CONTROLS: a persistent runner (its own TODO says what to do), a
+    // runner over no script of this package, and a plain command.
+    'watch:js': 'tsc -w',
+    dev: 'run-p watch:*',
+    other: 'run-p missing',
+    plain: 'vite build',
+  }
+  const plan = migrateScripts([
+    {
+      name: 'a',
+      dir: '/w/packages/a',
+      packageJson: { name: 'a', scripts } as never,
+      configPath: null,
+    },
+  ])
+  const a = plan.projects.find((p) => p.name === 'a')!
+  const own = Object.fromEntries(
+    a.tasks
+      .map((t) => [t.name, t.todos.filter((s) => s.includes("this package's own task"))] as const)
+      .filter(([, todos]) => todos.length > 0),
+  )
+  expect(own).toEqual({
+    build: [
+      "`run-p build:*` runs this package's own tasks again inside the command, beside those tasks: name them under dependsOn and drop it from the command",
+    ],
+    ci: [
+      '`npm-run-all -s lint "build:js"` runs this package\'s own tasks again inside the command, beside those tasks: name them under dependsOn and drop it from the command',
+    ],
+    one: [
+      "`run-s lint` runs this package's own task again inside the command, beside that task: name it under dependsOn and drop it from the command",
+    ],
+  })
+  // The controls are tasks, so their silence is the rule's, not a gap.
+  for (const n of ['dev', 'other', 'plain']) expect(a.tasks.some((t) => t.name === n)).toBe(true)
+})

@@ -1394,3 +1394,35 @@ Probes (2026-10-03), clean: a `readyWhen` that is no regex is refused at
 load; the lifecycle property row widened to 240 seeds (120 run to the
 end, 120 stopped at a random moment, every kind of server) found no run
 that hung and no child that outlived its run.
+
+## C-94: a watch cycle is named by a path that still exists
+
+`sed -i` (and an editor that saves through a temporary file) fires the
+temporary file's event first, so `vx watch` announced
+`app sedzCKbWc; re-running...`, a name already renamed away, never the
+`vx.config.mjs` the user edited. The judgement now lets a changed path
+that still exists name the cycle before a gone one; a deletion names it
+when nothing else changed. Rows (`watch-label-live-path.test.ts`, the
+judge driven directly): red without the change; the deletion control
+passes both ways. `cli.md` says so.
+
+A temporary file created and removed with nothing else changed (vim's
+`4913` write probe) still started a cycle; C-95 (#2502) takes it.
+
+Lead for E (2026-10-03): a dependency server that dies mid-run is
+counted failed at the run's end (`failServer`, item 1071, C-88), but
+the failure recap never shows its last lines: the terminal logger keeps
+a recap ring only for an outcome that completes `failed`, and a server
+completes `success` when it becomes ready. The footer says `1 failed`
+and `vx: <id> exited with code <n> before the run stopped it`, and the
+"Failed:" section is absent, so why it crashed is nowhere in a broad
+or CI log. The logger needs to keep a running server's ring until the
+run ends and take the late verdict (a `taskFailedLate`-shaped call from
+`run.ts`).
+
+Probes (2026-10-03), clean: `vx watch` with a project added, deleted,
+or moved away and back mid-watch; one added while another's config is
+broken; a held server that crashes while the loop idles, or ignores
+SIGTERM for 1.5 s (the next cycle's server still binds the port); a
+dependency cycle and a self-dependency; two servers and their dependant
+under `--concurrency 1`.

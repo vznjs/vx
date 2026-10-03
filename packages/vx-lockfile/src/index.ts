@@ -157,5 +157,3 @@ export function yarn(options: LockfileOptions = {}): VxPlugin {
   refuseUnknownOptions('yarn()', options, LOCKFILE_KEYS)
   return plugin(MANAGERS.yarn, options)
 }
-
-export { pnpmLock, bunLock, npmLock, yarnLock }
