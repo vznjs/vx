@@ -535,6 +535,50 @@ refused at graph build naming the task (`Task a#build: Invalid dependency
 spec …`), held by `dependency-spec.test.ts`, `task-graph.test.ts` and
 `config-schema-refusals.test.ts`; and `vx stats` was removed in H-19.
 
+## H-45: the variables the plugins read are a record
+
+CI, not a config, sets `VX_REAPI_ENDPOINT`, `OTEL_EXPORTER_OTLP_ENDPOINT`,
+`GITHUB_TOKEN` or `TURBO_TOKEN`, and only core's `VX_*` reads were
+recorded. `tests/contract/plugin-env.txt` holds each plugin package's
+reads, found in its source (a write or a comment is not one).
+Differential: dropping `VX_REAPI_ENDPOINT` from the record failed it
+(#2410).
+
+## H-46: exit codes that need a state or a signal
+
+`exit-codes.json` held only what one fixture reaches as is.
+`exit-codes-states.json` adds a missing or drifted lock, `--frozen`
+without one, `show` of an unknown target, `why`/`last` with and without
+a run, `completions` of an unknown shell, and 130/143/129 on
+SIGINT/SIGTERM/SIGHUP; cli.md states `why`'s, `last`'s and
+`completions`' codes (#2432, from #2412).
+
+## H-47: the `--profile` trace is a record
+
+Perfetto and scripts read it, and renaming `args.exitCode` passed every
+contract test. `profile-wire.json` holds its key paths and types, and
+cli.md's sample is held to them (#2413).
+
+## H-48: what is not the contract
+
+`--report`'s markdown and the files `vx init` writes are for people;
+versioning-1.0.md now says so (#2432, from #2415).
+
+## H-49: `vx init`'s exit codes
+
+Documented in cli.md and recorded in `exit-codes-init.json`: no
+`package.json`, an unknown flag, `--dry`, a write, a refusal over
+existing files, `--force` (#2420).
+
+## H-50: plugin env reads through a helper
+
+H-45's reader saw only reads that name the variable. A name handed to a
+helper (`off('OTEL_TRACES_EXPORTER')`, `read('concurrency',
+'TURBO_CONCURRENCY')`) or built from a template
+(`OTEL_EXPORTER_OTLP_${SIGNAL}_PROTOCOL`) passed a rename. The reader
+takes both; a template is recorded with `*` per placeholder, which pins
+its shape. Differential: the old reader fails the new record (#2435).
+
 ## Leads for other streams
 
 - **A:** a task that rewrites its own input with the same bytes is never
