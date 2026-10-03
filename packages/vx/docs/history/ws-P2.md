@@ -136,6 +136,12 @@ sync`", advice for a repo leaving Nx: they say to keep what the
   testing; the migrated e2e task now depends on that server task, by the
   channel P2-24 added. The URL Nx passed as `baseUrl` stays a TODO
   unless the options set one; `skipServe` starts nothing.
+- **P2-26** `@nx/angular:package` and `ng-packagr-lite`, the Angular
+  library builds in an Nx repo, were failing placeholders. They migrate
+  to the ng-packagr line Nx ran (`ng-packagr -p … -c …` from the
+  workspace root), read from the executors in Nx 23.2.1; Nx's tsconfig
+  path remapping for buildable libraries and its stylesheet processor
+  are TODOs.
 
 ## Leads for other streams
 
