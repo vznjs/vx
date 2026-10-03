@@ -182,10 +182,11 @@ order. One project of 4,000 tasks with outputs built its graph in
 
 ## What this does NOT do
 
-- It doesn't enforce that `cache.inputs.tasks` references resolve to
-  declared upstream — that's
-  [`orchestrator/upstream.ts:filterUpstreamHashes`](./upstream.md).
-  Misses there are silently filtered out.
+- It doesn't check that `cache.inputs.tasks` names resolve to declared
+  upstream. The schema refuses an exact name no `dependsOn` entry names
+  (`workspace/config-schema.ts`, item 994), and
+  [`orchestrator/upstream.ts:filterUpstreamHashes`](./upstream.md)
+  applies the rest; only a pattern that matches nothing stays silent.
 - It doesn't compute a topological order — that's the scheduler's
   job. The graph only encodes "X must finish before Y," not
   "Y runs at step N."

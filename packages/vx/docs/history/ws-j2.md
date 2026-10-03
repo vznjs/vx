@@ -554,3 +554,15 @@ persistent task` and vx exits 1). Row (`site-samples` › a post's link
   refusals), `vx last` (sixteen hits, the 13-character prefix, the
   messages), the `vx prune` and `vx stats` pointers, `vx completions`,
   and Plugin commands.
+- **J2-67** `modules/task-graph.md` said a `cache.inputs.tasks` name
+  that resolves to no declared upstream is "silently filtered out"; the
+  schema refuses an exact name no `dependsOn` entry names (item 994),
+  and only a pattern that matches nothing stays silent. Row
+  (`doc-references` › task-graph.md's account of cache.inputs.tasks
+  misses is the schema's), red without the fix. Checked clean: the
+  "does NOT do" sections of admission, affected, bin, cache, cli,
+  config-schema, env, excluded-keys, execute-task, executor, filter,
+  fingerprint, git-inputs, hit-restore, inputs, kill-tree,
+  layered-cache, lockfile-claim, metrics, migration, nested-dirs,
+  options, package-graph, project-loader, runner, scheduler and
+  signals.
