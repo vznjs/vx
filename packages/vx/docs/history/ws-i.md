@@ -461,6 +461,13 @@ I-56. `node:readline/promises` is imported only when the picker asks
 past the stdout stream. 10 projects, warm no-op, compiled, 41 rounds:
 wall min 44.8 → 43.9 ms, median 50.0 → 48.4 (A/A 44.9 / 49.6).
 
+I-57. The workspace config's guard reads only the `Bun` members vx reads
+(#2538). D-126's full read of `Bun` ran on every warm run and built its
+lazy members (`postgres` loads `bun:sql`, 3.4 ms); it now keeps the rest's
+keys and order. 10 projects, warm no-op, compiled, 31 rounds: wall min
+44.2 → 40.4 ms, median 49.5 → 46.1 (A/A 44.7 / 49.7); `workspace config`
+10.4–11.7 → 5.2–5.7 ms.
+
 ## Leads for other streams
 
 - **A: a cold save commits one SQLite transaction per entry.** The
