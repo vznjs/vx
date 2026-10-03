@@ -617,3 +617,16 @@ walked on fixtures.
   by the discovered root, why by the root package.json's name. Row
   (`root-project.test.ts` › show and why take //#task as the root
   project's task): red with either verb's change reverted.
+- **E-102.** `vx help` was one plain wall of 150 lines (owner,
+  2026-10-03: "add colors to vx help"). On a terminal it now paints
+  headings bold, `vx <verb>` bold cyan and the flag, selector or example
+  each row opens with cyan; the text strips back to `helpText` byte for
+  byte, so the parsers, the verb cut and a piped help are untouched.
+  `NO_COLOR` and `FORCE_COLOR=0` win; `FORCE_COLOR=1` off a TTY does not
+  paint it (the e2e row that holds every non-run verb plain still
+  passes). The Artifacts rows gained a two-space gap so their terms read
+  as terms. Rows: `help-colors.test.ts`, red without the change. Nx
+  compared: it prefixes streamed lines with `project:` in one of ten
+  hues by char-code sum, vx's framed output already hashes a project to
+  a hue; Nx also sets `FORCE_COLOR=true` on every task it spawns unless
+  the user set it, which vx does not (a task gets the variable as set).

@@ -25,6 +25,7 @@ export { forwardedSignal } from './signals.js'
 // `vx cache prune` waits for a run on the workspace before it evicts.
 export { acquireRunLock } from './run-lock.js'
 export { defaultLogger, resolveOutputView } from './logger.js'
+export { detectColors, paint, type ColorSupport } from './colors.js'
 export type { Logger, OutputView } from './logger.js'
 export type { RunPlan, PlannedTask, PlanPrediction, CacheStatus } from './plan.js'
 export { formatDuration } from './summary.js'
