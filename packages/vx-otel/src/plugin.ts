@@ -8,7 +8,13 @@
 // plugin — declare it in vx.workspace.ts. The trade: the env var ALONE no
 // longer auto-exports; you must `defineWorkspace({ plugins: [otel()] })`.
 
-import { definePlugin, type TelemetryContext, type TelemetrySink, type VxPlugin } from '@vzn/vx'
+import {
+  refuseUnknownOptions,
+  definePlugin,
+  type TelemetryContext,
+  type TelemetrySink,
+  type VxPlugin,
+} from '@vzn/vx'
 import { readFileSync } from 'node:fs'
 import { OtelSink, type OtlpTls, type PostFn } from './sink.js'
 
@@ -347,6 +353,21 @@ export function resolveOtelConfig(
   }
 }
 
+/** Every option `OtelPluginOptions` names: the type checker holds the two to each other. */
+const OTEL_PLUGIN_KEYS: Record<keyof OtelPluginOptions, true> = {
+  endpoint: true,
+  tracesEndpoint: true,
+  metricsEndpoint: true,
+  logsEndpoint: true,
+  serviceName: true,
+  headers: true,
+  metrics: true,
+  logs: true,
+  timeoutMs: true,
+  compression: true,
+  post: true,
+}
+
 /**
  * The OpenTelemetry exporter plugin. Declared in vx.workspace.ts via
  * `defineWorkspace({ plugins: [otel()] })`. Contributes a telemetry sink that
@@ -355,6 +376,7 @@ export function resolveOtelConfig(
  * Declines when no OTLP endpoint is set.
  */
 export function otel(opts: OtelPluginOptions = {}): VxPlugin {
+  refuseUnknownOptions('otel()', opts, Object.keys(OTEL_PLUGIN_KEYS))
   return definePlugin(import.meta, {
     telemetry(ctx: TelemetryContext): TelemetrySink | undefined {
       const config = resolveOtelConfig(opts, process.env, (m) => ctx.warn(m))

@@ -17,6 +17,7 @@ import {
   type CacheLayer,
   type RemoteCacheLayer,
   type VxPlugin,
+  refuseUnknownOptions,
 } from '@vzn/vx'
 import { deadlineNamed } from '../remote-deadline.js'
 import { withRetry } from '../remote-retry.js'
@@ -196,6 +197,14 @@ export class NxRemoteCache implements RemoteCacheLayer {
   }
 }
 
+/** Every option `NxCacheOptions` names: the type checker holds the two to each other. */
+const NX_CACHE_KEYS: Record<keyof NxCacheOptions, true> = {
+  server: true,
+  accessToken: true,
+  timeoutMs: true,
+  retries: true,
+}
+
 /**
  * Declare in `vx.workspace.ts`; the local store stays the floor beneath it:
  *
@@ -206,6 +215,7 @@ export class NxRemoteCache implements RemoteCacheLayer {
  * Declines without a server, so it is safe to leave declared.
  */
 export function nxCache(options: NxCacheOptions = {}): VxPlugin {
+  refuseUnknownOptions('nxCache()', options, Object.keys(NX_CACHE_KEYS))
   return definePlugin(import.meta, {
     cache(ctx): CacheLayer | undefined {
       const config = resolveNxCacheConfig(options)

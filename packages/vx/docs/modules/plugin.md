@@ -10,6 +10,14 @@ plugins: [...] })` activates it. Core
 consults capabilities at fixed points and otherwise ignores plugins —
 behavior lives in the plugin package (vite-style), not in core.
 
+A factory that takes options calls `refuseUnknownOptions('name()',
+options, known)` first: Bun strips a config's types, so a misspelt option
+(`reapi({ endpont })`) reached the factory as unset and the plugin
+declined with no word. It refuses the key as core refuses an unknown
+config field, naming the allowed keys and the nearest one. Every
+first-party factory does, its `known` held to its options interface by
+the type checker (a `Record<keyof Options, true>` literal).
+
 ## Capabilities
 
 | Capability             | Consulted by                  | Contract                                                                                                                                                                                                                                                                                                                           |

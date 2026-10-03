@@ -4,7 +4,13 @@
 // and no cost — so declaring `github()` is safe in every environment, the
 // same decline pattern as `otel()`.
 import { appendFile, stat } from 'node:fs/promises'
-import { definePlugin, type RunSummaryRecord, type TelemetrySink, type VxPlugin } from '@vzn/vx'
+import {
+  refuseUnknownOptions,
+  definePlugin,
+  type RunSummaryRecord,
+  type TelemetrySink,
+  type VxPlugin,
+} from '@vzn/vx'
 import {
   buildCheckRunPayload,
   postCheckRun,
@@ -128,7 +134,19 @@ function headerValueFault(value: string): string | null {
   return past ? 'a character past Latin-1' : null
 }
 
+/** Every option `GithubPluginOptions` names: the type checker holds the two to each other. */
+const GITHUB_PLUGIN_KEYS: Record<keyof GithubPluginOptions, true> = {
+  summaryFile: true,
+  title: true,
+  checks: true,
+  checkName: true,
+  append: true,
+  fetchFn: true,
+  sizeOf: true,
+}
+
 export function github(options: GithubPluginOptions = {}): VxPlugin {
+  refuseUnknownOptions('github()', options, Object.keys(GITHUB_PLUGIN_KEYS))
   return definePlugin(import.meta, {
     telemetry(ctx) {
       const file = options.summaryFile ?? process.env['GITHUB_STEP_SUMMARY']
