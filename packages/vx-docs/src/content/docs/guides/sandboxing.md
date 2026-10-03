@@ -63,7 +63,8 @@ bar the linked packages of step 2.
 That wall is silent. An undeclared touch of the task's own files fails the
 task, and a failed task is never cached. A write refused past the wall
 (a tool filling its cache in your home) is named beside a failed task,
-with the directory to grant.
+with the directory to grant; under the host's temp directory it names
+`$TMPDIR` instead, the empty temp directory the task has of its own.
 
 ## Requirements & platform support
 

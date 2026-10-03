@@ -258,3 +258,12 @@ persistent task` and vx exits 1). Row (`site-samples` › a post's link
   `before the run stopped it` the code prints. Row
   (`module-page-claims` › orchestrator.md), both lines read from
   `run.ts`; red without the fix.
+
+- **J2-32** #2424 points a write refused under the host's shared temp
+  directory at `$TMPDIR` (the task's own, empty at its start) instead of
+  a grant, which would open `/tmp` to every write of the task; it
+  updated `schema.md` alone. `modules/sandbox-runtime.md` and the
+  sandboxing guide still said every refused write outside the project
+  names the directory to grant. Row (`site-samples` › the sandbox pages
+  say a refused temp write points at $TMPDIR), gated on the hint's text;
+  red without the fix.

@@ -2421,3 +2421,22 @@ describe('the Nx output pages say one outside the workspace is dropped', () => {
     )
   })
 })
+
+describe('the sandbox pages say a refused temp write points at $TMPDIR', () => {
+  // #2424 names $TMPDIR, not a grant, for a write refused under the host's
+  // shared temp directory; the module page and the guide still said every
+  // refused write outside the project names the directory to grant (J2-32).
+  it('the hint names $TMPDIR there, and both pages say so', () => {
+    const core = path.resolve(import.meta.dir, '..')
+    expect(readFileSync(path.join(core, 'src', 'exec', 'sandbox-runtime.ts'), 'utf8')).toContain(
+      'The task has its own temp directory, empty at its start: write under',
+    )
+    const flat = (p: string): string => readFileSync(p, 'utf8').replace(/\s+/g, ' ')
+    expect(flat(path.join(core, 'docs', 'modules', 'sandbox-runtime.md'))).toContain(
+      "or, for a path under the host's shared temp directory",
+    )
+    expect(flat(path.join(GUIDES, 'sandboxing.md'))).toContain(
+      "under the host's temp directory it names `$TMPDIR` instead",
+    )
+  })
+})
