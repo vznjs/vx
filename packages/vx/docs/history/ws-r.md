@@ -117,6 +117,14 @@ prune` all match. Fixed: the Run blocks used bare `vx`, which a local
   prints it (each string checked in source and in a run), then the
   surprises and platforms, linking each guide's own list.
 
+- **R-23** Troubleshooting adds the graph and CLI errors a first run
+  meets (a cycle, a missing `pkg#task`, an undeclared task, an unknown
+  flag), and `site-troubleshooting.unsafe.test.ts` holds every quoted
+  message to core's source (a changed message fails it). Walked from
+  empty bun and pnpm workspaces with the published `@vzn/vx` 0.0.396:
+  install, `init`, its `next:` line (`bunx vx` / `pnpm vx`, as the
+  quickstart says), miss, hit and restore all as the pages say.
+
 ## Leads
 
 - Real-repo rows (`packages/vx-bench/real-repos.json`, benchmarks.md's
