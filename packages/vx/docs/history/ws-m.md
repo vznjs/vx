@@ -981,3 +981,10 @@ bazel-remote). Every compile now passes the flag; `check-binary.ts`
 runs a config importing a nested-`main` and an `exports` package, red
 without it. `vx show` on this repo: 34.8–37.3 ms with it, 35.6–36.3
 without (min of 25, interleaved), no cost.
+
+M-78. CI's macOS job compiled and probed the binary in two raw shell
+steps (launch after re-sign, a bare-specifier workspace). Both are now
+`check.binary`, the task the Linux gate already runs: the macOS job runs
+`vx run check.binary`, and `check-binary.ts` gained the bare-specifier
+workspace with a plugin package, its second run proven to restore the
+first run's bytes.

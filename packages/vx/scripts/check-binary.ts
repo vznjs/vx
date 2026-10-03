@@ -19,7 +19,15 @@
 // made by `nonJsonPaths` embedded by its source text (item 701). A worker
 // that failed to start, or a source that minified into something else,
 // names a different error, and a worker without the check reports none.
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
@@ -206,3 +214,67 @@ if (resolved.exitCode !== 0 || got2 !== 'via-main,via-exports') {
   process.exit(1)
 }
 console.log(`${path.relative(root, out)} resolves a package's main and exports`)
+
+// A workspace written the way the docs show it: bare `@vzn/vx` and a
+// plugin package resolved through node_modules (symlinks into this repo,
+// as a workspace install makes them). The plugin's own `@vzn/vx` import
+// is a second copy of core beside the binary's, and its `schedule` hook
+// runs across the two. The second run must restore the first run's
+// output bytes (the command writes a fresh stamp) through the binary's
+// own container reader.
+const bare = mkdtempSync(path.join(os.tmpdir(), 'vx-check-bare-'))
+mkdirSync(path.join(bare, 'packages', 'a', 'src'), { recursive: true })
+mkdirSync(path.join(bare, 'node_modules', '@vzn'), { recursive: true })
+symlinkSync(root, path.join(bare, 'node_modules', '@vzn', 'vx'))
+symlinkSync(
+  path.resolve(root, '..', 'vx-schedule-history'),
+  path.join(bare, 'node_modules', '@vzn', 'vx-schedule-history'),
+)
+writeFileSync(path.join(bare, 'package.json'), JSON.stringify({ name: 'ws', private: true }))
+writeFileSync(path.join(bare, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
+writeFileSync(path.join(bare, 'packages', 'a', 'package.json'), JSON.stringify({ name: 'a' }))
+writeFileSync(path.join(bare, 'packages', 'a', 'src', 'x.js'), 'x\n')
+writeFileSync(
+  path.join(bare, 'packages', 'a', 'vx.config.mjs'),
+  `import { defineProject } from '@vzn/vx'
+export default defineProject({ tasks: { build: { exec: { command: 'echo built-$(date +%s%N) > out.txt' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } } } } })
+`,
+)
+writeFileSync(
+  path.join(bare, 'vx.workspace.mjs'),
+  `import { defineWorkspace } from '@vzn/vx'
+import { scheduleHistoryPlugin } from '@vzn/vx-schedule-history'
+export default defineWorkspace({ plugins: [scheduleHistoryPlugin({ assume: { 'a#build': 1000 } })] })
+`,
+)
+writeFileSync(path.join(bare, '.gitignore'), 'node_modules\n.vx\n')
+const git = (...args: string[]): void => {
+  Bun.spawnSync({
+    cmd: ['git', '-c', 'user.email=ci@vx', '-c', 'user.name=ci', ...args],
+    cwd: bare,
+  })
+}
+git('init', '-q')
+git('add', '-A')
+git('commit', '-qm', 'init')
+const build = () =>
+  Bun.spawnSync({ cmd: [out, 'run', 'build', '--all'], cwd: bare, stdout: 'pipe', stderr: 'pipe' })
+const outFile = path.join(bare, 'packages', 'a', 'out.txt')
+const first = build()
+const built = existsSync(outFile) ? readFileSync(outFile, 'utf8').trim() : undefined
+rmSync(outFile, { force: true })
+const second = build()
+const restored = existsSync(outFile) ? readFileSync(outFile, 'utf8').trim() : undefined
+rmSync(bare, { recursive: true, force: true })
+if (
+  first.exitCode !== 0 ||
+  second.exitCode !== 0 ||
+  built?.startsWith('built-') !== true ||
+  restored !== built
+) {
+  process.stderr.write(
+    `binary on a bare-specifier workspace: exits ${first.exitCode}, ${second.exitCode}; out.txt ${JSON.stringify(restored)}, expected the first run's ${JSON.stringify(built)}\n${text(first.stderr)}${text(second.stderr)}`,
+  )
+  process.exit(1)
+}
+console.log(`${path.relative(root, out)} runs a bare-specifier workspace with a plugin package`)

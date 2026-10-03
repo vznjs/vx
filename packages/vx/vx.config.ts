@@ -125,7 +125,8 @@ export default defineProject({
         command: 'bun scripts/check-binary.ts',
         sandbox: {
           allow: {
-            read: ['**/*'],
+            // The bare-specifier workspace links the schedule plugin.
+            read: ['**/*', '../vx-schedule-history/**'],
             write: ['dist/**', ...BUN_RUNTIME_WRITES],
             network: BUN_RUNTIME_NETWORK,
             systemInfo: ['vfs.disk-space'],
@@ -137,7 +138,8 @@ export default defineProject({
       },
       cache: {
         inputs: {
-          files: ['src/**', 'package.json', 'scripts/check-binary.ts'],
+          files: ['src/**', 'index.ts', 'package.json', 'scripts/check-binary.ts'],
+          workspaceFiles: ['packages/vx-schedule-history/**'],
           runtime: BUN_VERSION,
         },
         outputs: { files: [] },

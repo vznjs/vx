@@ -320,56 +320,11 @@ jobs:
           if ls ~/.bun/install/cache/bun-*-v* 2>/dev/null; then echo "::error::the Bun cache is not cold"; exit 1; fi
           bun packages/vx/src/bin.ts run build.bun.darwin-x64 build.bun.linux-x64 --filter @vzn/vx --concurrency 2
 
-      # A compiled binary must LAUNCH on macOS. Bun 1.4.0's `--compile`
-      # signature is rejected by macOS (SIGKILL, exit 137) until it is
-      # re-signed ad hoc — the release workflow does that on a macOS runner.
-      # This pins both halves: the raw build's signature state is reported,
-      # and the re-signed binary answers `--version`. If a future Bun signs
-      # correctly, the first line changes and the re-sign step can go.
-      - name: compiled binary launches after ad-hoc re-sign
-        run: |
-          cd packages/vx
-          bun build --compile --no-compile-autoload-dotenv --compile-autoload-package-json --target=bun-darwin-arm64 src/bin.ts --outfile /tmp/vx-ci
-          codesign --verify /tmp/vx-ci && echo "bun's own signature: valid" || echo "bun's own signature: INVALID (expected on Bun 1.4.0)"
-          codesign -s - --force /tmp/vx-ci
-          # The binary inlines packages/vx/package.json's version; the release
-          # workflows stamp that file and assert this same equality. Proving it
-          # on every push means a layout move cannot silently break the stamp
-          # again (it did, unseen, from 2026-08-26 to 2026-09-03).
-          # This step runs from packages/vx (see the cd above), so name the
-          # manifest from the workspace root — the first run of this assertion
-          # went red on exactly that relative path (2026-09-03).
-          WANT="vx $(bun -e 'console.log((await Bun.file(process.argv[1]).json()).version)' "$GITHUB_WORKSPACE/packages/vx/package.json")"
-          GOT="$(/tmp/vx-ci --version)"
-          test "$GOT" = "$WANT" || { echo "binary reports '$GOT', expected '$WANT'"; exit 1; }
-
-      # …and runs a workspace written the way the docs show it: bare
-      # `@vzn/vx` and plugin-package imports resolved through node_modules.
-      # A compiled Bun 1.4.0 binary ignores package.json `exports` for on-disk
-      # packages and only finds `<pkg>/index.ts` (measured 2026-09-03), which
-      # is why the packages ship root shims — this is the end-to-end proof
-      # that a binary user's config loads. The workspace declares a plugin
-      # package too: its own `@vzn/vx` import is a SECOND copy of core beside
-      # the binary's, and the `schedule` hook it fills runs across the two
-      # (probed by hand 2026-09-10 on Linux; pinned here since).
-      - name: compiled binary runs a bare-specifier workspace
-        run: |
-          W=$(mktemp -d)
-          mkdir -p "$W/packages/a/src" "$W/node_modules/@vzn"
-          ln -s "$GITHUB_WORKSPACE/packages/vx" "$W/node_modules/@vzn/vx"
-          ln -s "$GITHUB_WORKSPACE/packages/vx-schedule-history" "$W/node_modules/@vzn/vx-schedule-history"
-          cd "$W"
-          echo '{"name":"ws","private":true}' > package.json
-          printf 'packages:\n  - "packages/*"\n' > pnpm-workspace.yaml
-          echo '{"name":"a"}' > packages/a/package.json
-          echo x > packages/a/src/x.js
-          printf "import { defineProject } from '@vzn/vx'\nexport default defineProject({ tasks: { build: { exec: { command: 'echo built > out.txt' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } } } } })\n" > packages/a/vx.config.mjs
-          printf "import { defineWorkspace } from '@vzn/vx'\nimport { scheduleHistoryPlugin } from '@vzn/vx-schedule-history'\nexport default defineWorkspace({ plugins: [scheduleHistoryPlugin({ assume: { 'a#build': 1000 } })] })\n" > vx.workspace.mjs
-          printf 'node_modules\n.vx\n' > .gitignore
-          git init -q && git add -A && git -c user.email=ci@vx -c user.name=ci commit -qm init
-          /tmp/vx-ci run build --all
-          # The cached run restores the declared output through the binary's
-          # own container reader: delete it, and it must come back.
-          rm packages/a/out.txt
-          /tmp/vx-ci run build --all | grep -q 'a#build'
-          test "$(cat packages/a/out.txt)" = "built" || { echo "::error::cached run did not restore out.txt"; exit 1; }
+      # The host binary (darwin-arm64), compiled as release.yml compiles it:
+      # it launches (re-signed only if macOS refuses it), reports the
+      # manifest version, runs its config worker, keeps a workspace .env
+      # out, resolves a package's main and exports, and runs a
+      # bare-specifier workspace with a plugin package. The linux job runs
+      # the same task for linux-x64 inside `vx run ci`.
+      - name: compiled binary (check.binary)
+        run: bun packages/vx/src/bin.ts run check.binary --filter @vzn/vx
