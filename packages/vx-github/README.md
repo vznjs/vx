@@ -58,7 +58,7 @@ the default branch from the `GITHUB_EVENT_PATH` payload): a push to the default 
 trusted (reads and writes the task keys), a pull request becomes
 `pr-<n>` and any other branch or tag `ref-<name>`, which read their
 own keys, then the trusted ones, and write only their own. A PR never writes what main
-reads. This is a client-side convention: the real boundary is a cache
+reads. `VX_CACHE_SCOPE` or a `cacheScope` in `vx.workspace.ts` overrides it. This is a client-side convention: the real boundary is a cache
 token the server limits, so give PR jobs one that cannot write the
 trusted keys (`docs/security.md` § Cache poisoning).
 

@@ -1432,7 +1432,7 @@ run` takes `'read-only'` off CI (`CI` unset, `0` or `false`) and
   each other. A scope's key is derived from the task key, so every
   remote wire stores it unchanged. A clamp on `--cache`, never a
   widening. `github()` sets it on Actions: `pr-<n>`, `ref-<name>` off
-  the default branch. A client-side convention, not a security
+  the default branch. `VX_CACHE_SCOPE` beats both. A client-side convention, not a security
   boundary: a run holding a write credential can write any key, so only
   a cache server that scopes writes by token can refuse one
   (`docs/security.md` § Cache poisoning). Not folded into any cache key.

@@ -9,7 +9,8 @@ lacked (research in the project thread, 2026-10-03).
   keys, `'read-only'` writes nothing (the CLI's default off CI, owner), any
   other name reads its own key, then the trusted one (owner: "nested
   lookup first from pr scope"; a batch probe that found only the trusted
-  key skips the scope's GET), and writes its own only (`ScopedRemote` in
+  key skips the scope's GET), and writes its own only. `VX_CACHE_SCOPE` (owner: "allow to use env
+  var") beats the workspace and `github()` (`ScopedRemote` in
   `layered-cache.ts`, a key `xxh3(scope, task key)` so every wire stores
   it unchanged). `github()` sets it from the ref on Actions: the default
   branch trusted, `pr-<n>`, `ref-<name>`, and an unknown default branch

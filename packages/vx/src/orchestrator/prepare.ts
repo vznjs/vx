@@ -30,6 +30,8 @@ import {
   computeNestedProjectDirs,
   computeWorkspaceFingerprints,
   findWorkspaceRoot,
+  cacheScopeEnvError,
+  isCacheScope,
   type LoadReads,
   loadWorkspace,
   FROZEN_WITHOUT_LOCK,
@@ -260,9 +262,13 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
 
   // The local cache opens BEFORE the configs load: it is also where their
   // cached evaluations live.
+  // `VX_CACHE_SCOPE` wins over the workspace (and `github()`'s guess):
+  // a CI job that knows its trust level says so without editing config.
+  const envScope = process.env['VX_CACHE_SCOPE'] || undefined
+  if (envScope !== undefined && !isCacheScope(envScope)) throw cacheScopeEnvError()
   const policy: CachePolicy = scopeCachePolicy(
     options.cache ?? FULL_CACHE_POLICY,
-    workspaceConfig?.cacheScope ?? options.defaultCacheScope,
+    envScope ?? workspaceConfig?.cacheScope ?? options.defaultCacheScope,
   )
   const localCache = new Cache(
     cacheDir,

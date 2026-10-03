@@ -41,7 +41,8 @@ namespace), or none.
 
 `cacheScope` is the client half. `'pr-123'` reads its own keys,
 then the trusted ones, and writes only its own, which `github()` sets on
-Actions (`pr-<n>`, `ref-<name>`; the default branch stays trusted).
+Actions (`pr-<n>`, `ref-<name>`; the default branch stays trusted)
+and `VX_CACHE_SCOPE` sets on any CI.
 It keeps honest runs apart and stops a non-hermetic PR build from
 landing where main reads; it is not a boundary, since the PR's own
 config decides it and any run holding a write credential can write any

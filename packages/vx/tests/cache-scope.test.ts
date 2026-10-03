@@ -195,4 +195,36 @@ describe('cacheScope', () => {
       await rm(fixture.root, { recursive: true, force: true })
     }
   })
+
+  it(
+    'VX_CACHE_SCOPE wins over the workspace, and a bad one is refused',
+    async () => {
+      const fixture = await makeWorkspace('vx-cache-scope-env-')
+      const { layer, store } = memoryRemote()
+      const saved = process.env['VX_CACHE_SCOPE']
+      try {
+        await addProject(fixture.root, 'app', {
+          files: { 'src/in.txt': 'v1' },
+          config: BUILD_CONFIG,
+        })
+        process.env['VX_CACHE_SCOPE'] = 'pr-9'
+        const pr = await runScoped(fixture, layer, 'trusted', 'v1')
+        expect(store.size).toBe(1)
+        expect(store.has(pr.hash)).toBe(false)
+        process.env['VX_CACHE_SCOPE'] = 'pr 9'
+        const refused = await runScoped(fixture, layer, 'trusted', 'v1').then(
+          () => 'ran',
+          (err: Error) => err.message,
+        )
+        expect(refused).toBe(
+          "VX_CACHE_SCOPE must be 'trusted', 'read-only', or a scope name of letters, digits and . _ - / @ (at most 128), like 'pr-123'",
+        )
+      } finally {
+        if (saved === undefined) delete process.env['VX_CACHE_SCOPE']
+        else process.env['VX_CACHE_SCOPE'] = saved
+        await rm(fixture.root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
 })

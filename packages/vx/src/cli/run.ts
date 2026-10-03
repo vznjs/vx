@@ -422,6 +422,11 @@ export function detectFlow(
     : 'focused'
 }
 
+/** `CI=0` / `CI=false` are not CI, as the output flow reads them. */
+function onCI(v: string | undefined): boolean {
+  return v !== undefined && v !== '' && v !== '0' && v !== 'false'
+}
+
 /**
  * Resolve parsed `vx run` argv into the `RunOptions` the orchestrator
  * consumes. Shared between `runCmd` and `watchCmd` so both subcommands
@@ -437,11 +442,6 @@ export function detectFlow(
  * Assumes the caller has already populated `parsed.tasks` (e.g. via
  * the interactive picker for `vx run`).
  */
-/** `CI=0` / `CI=false` are not CI, as the output flow reads them. */
-function onCI(v: string | undefined): boolean {
-  return v !== undefined && v !== '' && v !== '0' && v !== 'false'
-}
-
 export async function resolveRunOptions(
   parsed: RunArgs,
   cwd: string,
