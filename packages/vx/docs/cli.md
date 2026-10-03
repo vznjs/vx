@@ -1870,6 +1870,10 @@ declares it in `vx.workspace.ts`. An existing file is refused without
 core (`src/cli/plugin-templates.ts`) and held equal by
 `tests/plugin-templates.unsafe.test.ts` (H-21).
 
+Exit codes: `0` the files written (or, with `--dry`, printed); `1` no
+`package.json` here or in a parent, a file it would write already there
+without `--force`, or a parse error.
+
 ## `vx migrate`
 
 Moved out of core on 2026-09-10: the Turbo and Nx mappers are
