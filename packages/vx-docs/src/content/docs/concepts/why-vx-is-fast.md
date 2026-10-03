@@ -62,7 +62,7 @@ and faster:
   yields the tracked file list *and* every clean file's blob OID; a
   concurrent `git status` prunes anything that diverges and lists untracked
   files. Clean-tree key derivation
-  costs zero reads, zero stats, zero database lookups. Dirty files get the
+  costs zero source-file reads, zero stats, zero database lookups. Dirty files get the
   identical blob OID computed in-process, so a key never flips across a
   commit boundary — a class of spurious miss the others accept.
 - **Bitset graph algorithms.** Scheduler priority and the package graph

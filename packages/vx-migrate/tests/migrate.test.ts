@@ -138,6 +138,37 @@ async function makeTurboWorkspace(): Promise<string> {
   return root
 }
 
+// The from-turborepo post said the migrator "emits a task only where the
+// script exists"; since G-117 a package a `^` edge reaches without the
+// script gets a key-only `true` (J-97). The README states it.
+describe("vx migrate (turbo): a package without a ^ task's script", () => {
+  it(
+    'gets a cached `true` with no outputs, as the README says',
+    async () => {
+      const root = await makeRoot('vx-migrate-noop-')
+      try {
+        await writeFile(
+          path.join(root, 'turbo.json'),
+          JSON.stringify({ tasks: { build: { dependsOn: ['^build'], outputs: ['dist/**'] } } }),
+        )
+        await addPackage(root, 'ui', {})
+        await addPackage(root, 'web', { build: 'tsc -b' }, { ui: 'workspace:*' })
+        expect((await vx(root, [])).code).toBe(0)
+        const ui = await loadProjectConfig(path.join(root, 'packages', 'ui', 'vx.config.ts'))
+        const build = (ui.tasks as Record<string, TaskConfig>).build!
+        expect([build.exec?.command, build.cache?.outputs?.files]).toEqual(['true', []])
+        const readme = await Bun.file(path.join(import.meta.dir, '..', 'README.md')).text()
+        expect(readme).toContain(
+          'A package without the script of a `^` task others run gets the same key-only task',
+        )
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+})
+
 // Turbo's `//#` root tasks: the CLI writes the root's vx.config.ts, which
 // is what makes core read the root as a project (D-39); the live plugin can
 // only say so. Five of eleven real Turbo repos had root tasks, and 36 edges

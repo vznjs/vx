@@ -5,7 +5,8 @@ description: Install vx, describe one task, and run it from the cache the second
 
 Run your first cached task in five minutes.
 
-You need a git repository on Linux or macOS (on Windows, use WSL). vx is
+You need a git repository on Linux with glibc (not Alpine's musl) or macOS
+(on Windows, use WSL). vx is
 one prebuilt binary. The release binary alone needs neither Node nor Bun;
 installed from npm, the `vx` command is a small Node script that runs
 that binary.
@@ -107,3 +108,5 @@ Start with one package and leave the rest of your tooling as it is.
 - A cache hit replays the first and last 8 MiB of a task's output.
 - A `kill -9` of vx leaves its persistent tasks running, except a server
   that exits when its stdin closes (esbuild `--watch`).
+- A process a task detaches into its own session (`setsid … &`) outlives
+  Ctrl-C: vx signals the task's process group.

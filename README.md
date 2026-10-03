@@ -35,7 +35,7 @@ Same graph, commands and concurrency: [how it is measured](https://vznjs.github.
 ## Why it is faster
 
 - **Nothing boots per task:** no daemon, no Node process; vx spawns your command.
-- **No file reads to hash:** on a clean tree, keys come from git's index.
+- **No source-file reads to hash:** on a clean tree, keys come from git's index; each project's `package.json` and the lockfile are still read.
 - **One pass:** one git walk per run; each stat and lookup happens once.
 
 ## Install
@@ -44,7 +44,7 @@ Same graph, commands and concurrency: [how it is measured](https://vznjs.github.
 npm install -D @vzn/vx     # or: pnpm add -D -w · yarn add -D (-W on Yarn 1) · bun add -d
 ```
 
-A prebuilt binary for Linux and macOS (x64, arm64); no Bun needed. The
+A prebuilt binary for Linux (glibc, not Alpine's musl) and macOS, x64 and arm64; no Bun needed. The
 [release](https://github.com/vznjs/vx/releases) binary needs no Node either.
 Windows: use WSL.
 
@@ -94,18 +94,21 @@ More: [Quickstart](https://vznjs.github.io/vx/quickstart/) ·
 ## Coming from Turbo or Nx
 
 `bunx @vzn/vx-migrate` writes a `vx.config.ts` per package from
-`turbo.json` or the Nx graph. `vx init` there writes a `vx.workspace.ts`
-that reads them in place: a temporary start. The numbers above are native
-vx config. [Migration guide](https://vznjs.github.io/vx/guides/migrate/).
+`turbo.json` or the Nx graph; you keep those and delete the old config.
+Beside `turbo.json` or `nx.json`, `vx init` writes only a
+`vx.workspace.ts` that maps the old config until then: a temporary
+start, not a way to run the repo. The numbers above are native vx
+config. `@vzn/vx-migrate`'s first npm publish is pending.
+[Migration guide](https://vznjs.github.io/vx/guides/migrate/).
 
 ## More than speed
 
 - **A cache you can trust:** TypeScript configs are evaluated before
   hashing, so imports and computed values are in the key. Outputs are
   wiped before every run and restore: no stale file survives.
-- **Sandboxed tasks:** opt in per task; an undeclared read fails the
-  build instead of poisoning the cache.
-- **Clean exits:** Ctrl-C reaps every child.
+- **Sandboxed tasks:** opt in per task; a workspace file the task did
+  not declare is out of its reach, so it cannot poison the cache.
+- **Clean exits:** Ctrl-C reaps each task's process group.
 - **Plugins at every stage:** remote cache, remote execution, telemetry,
   CLI verbs. Core ships none and needs none.
 - **Free:** MIT. No paywall, no cloud, no account.
@@ -116,7 +119,7 @@ vx config. [Migration guide](https://vznjs.github.io/vx/guides/migrate/).
 | ------------------------- | ----------------------------------------- | ------------------------------ | ---------------- |
 | Config                    | TypeScript, evaluated into the cache key  | JSON (static)                  | JSON (static)    |
 | Output ownership          | **Strict**: wiped before exec and restore | Additive (stale files survive) | Additive         |
-| Clean-tree hashing        | **Zero reads** (git index OIDs)           | git OIDs                       | re-hash / daemon |
+| Clean-tree hashing        | **No source reads** (git index OIDs)      | git OIDs                       | re-hash / daemon |
 | Daemon required for speed | **No**                                    | No (`turbo run` has none)      | Yes              |
 | Per-task sandbox          | **Yes**: kernel-level, opt-in             | No                             | No               |
 | Plugin API                | **Yes**: every pipeline stage             | No                             | Yes (TS-tied)    |

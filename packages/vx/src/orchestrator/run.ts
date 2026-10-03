@@ -22,6 +22,7 @@ import { DeferredOutputs } from './deferred-outputs.js'
 import { resolveDownloadModes } from './download-policy.js'
 import type { TaskExecutor } from '../exec/index.js'
 import {
+  deadServerBehind,
   isGroupTask,
   markSurfacedDeps,
   runGraph,
@@ -873,12 +874,28 @@ async function runOnBus(
         `[vx] --exclude-dependencies: ${excluded.unsaved} cached task(s) build on a skipped dependency; what they build is not saved`,
       )
     }
-    const taint = taintTracker(options.continueMode === 'always', excluded.seeds, nodes)
+    // A server that ended on its own is failed (the end of the run says
+    // so); what has not yet started hears it before it dispatches (C-88).
+    const serverDied = (id: string): boolean => {
+      const child = persistentRegistry.get(id)
+      return child !== undefined && hasEnded(child) && child.exitCode !== 0
+    }
+    // Under `always` a task that starts while a server it depends on is
+    // dead runs on a failure the outcomes do not hold yet (the server's
+    // says `success` until the run ends), so it is seeded here, at its
+    // dispatch, and the tracker carries it to what is built on it.
+    const taintSeeds = new Set(excluded.seeds)
+    const taint = taintTracker(options.continueMode === 'always', taintSeeds, nodes)
     const dependedOn = new Set<string>()
     for (const n of nodes.values()) for (const d of n.deps) dependedOn.add(d)
 
     const buildExecuteArgs = (node: TaskNode, upstream: TaskOutcome[], reuseProbe = true) => {
       const probe = reuseProbe ? shortCircuit.preProbed.get(node.id) : undefined
+      if (
+        options.continueMode === 'always' &&
+        node.deps.some((d) => deadServerBehind(nodes, serverDied, d) !== undefined)
+      )
+        taintSeeds.add(node.id)
       const tainted = taint.judge(node, upstream)
       return {
         node,
@@ -940,12 +957,7 @@ async function runOnBus(
       ...(hasPooledExecutor(executors) ? { poolOf: poolOfPlacement(placements) } : {}),
       ...(admit !== undefined ? { admit } : {}),
       ...(options.continueMode !== undefined ? { continueMode: options.continueMode } : {}),
-      // A server that ended on its own is failed (the end of the run says
-      // so); what has not yet started hears it before it dispatches (C-88).
-      serverDied: (id) => {
-        const child = persistentRegistry.get(id)
-        return child !== undefined && hasEnded(child) && child.exitCode !== 0
-      },
+      serverDied,
       signal: stopRun.signal,
       onStart: (node) => {
         log.taskStart?.(node)
