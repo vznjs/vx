@@ -577,3 +577,15 @@ persistent task` and vx exits 1). Row (`site-samples` › a post's link
   refusals), `vx last` (sixteen hits, the 13-character prefix, the
   messages), the `vx prune` and `vx stats` pointers, `vx completions`,
   and Plugin commands.
+- **J2-66** `modules/cli-watch.md` listed "doesn't re-read the package
+  globs" (a new base watched only from the next start) under what watch
+  does not do, though item 1018 made the cycle a glob-list edit starts
+  re-read the bases, as cli.md says. The bullet is gone and the re-read
+  bullet names it. Row (`module-page-claims` › cli-watch.md's account of
+  the package globs is the loop's), red without the fix, its negative
+  proven live alone. Checked clean: every module page's Tests citations
+  resolve, `patterns.md` (the git enumeration), `docs/README.md` (its
+  numbers trace to benchmarks.md), `upstream-ledger.md`'s two open rows
+  (still documented limits), the site's `why-vx-is-fast.md` (its numbers
+  trace), the root README (14 hooks, publish status), CONTRIBUTING and
+  both examples' READMEs.
