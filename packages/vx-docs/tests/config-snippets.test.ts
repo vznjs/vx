@@ -8,7 +8,7 @@
 // is MDX, item 680). A block is a config when it calls one of the two
 // and imports only `@vzn/*` packages; fragments (no import, a relative
 // preset path, a signature sketch) are illustrations and stay out.
-import { mkdtemp, readdir, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { expect, it } from 'bun:test'
@@ -63,7 +63,16 @@ it('every config block on the site type-checks against @vzn/vx', async () => {
   expect(blocks.some((b) => b.page === 'schema.md')).toBe(true)
   const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-config-snippets-'))
   try {
-    await symlink(path.join(ROOT, 'node_modules'), path.join(dir, 'node_modules'), 'dir')
+    // The root's node_modules minus the plugin packages: linked whole, the
+    // checker resolved `@vzn/vx-reapi` through it to the real package
+    // before the ambient `any`, a read of a project the task does not own
+    // (a seatbelt violation on macOS; Linux's sandbox hides it silently).
+    const nm = path.join(dir, 'node_modules')
+    await mkdir(path.join(nm, '@vzn'), { recursive: true })
+    for (const e of await readdir(path.join(ROOT, 'node_modules'))) {
+      if (e !== '@vzn') await symlink(path.join(ROOT, 'node_modules', e), path.join(nm, e))
+    }
+    await symlink(path.join(ROOT, 'node_modules/@vzn/vx'), path.join(nm, '@vzn/vx'), 'dir')
     await writeFile(
       path.join(dir, 'tsconfig.json'),
       JSON.stringify({
