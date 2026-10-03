@@ -533,3 +533,47 @@ describe('the failure recap samples are what the renderer prints', () => {
     ).toBe(elide(rendered))
   })
 })
+
+describe('docs/cli.md — the glyph table is the renderer', () => {
+  // The table gave `⏺` the status words "success/failed", but a failed
+  // task always draws `◼`: no row ever printed `⏺ … failed` (J2-58). The
+  // expected map comes from rendering every outcome, not from a list here.
+  it('each glyph carries the status words a rendered row gives it', async () => {
+    const node = {
+      id: 'a#b',
+      projectName: 'a',
+      taskName: 'b',
+      config: { exec: { command: 'x' }, cache: { inputs: { files: [] }, outputs: { files: [] } } },
+    } as unknown as TaskNode
+    const outcomes: TaskOutcome[] = [
+      { node, status: 'success', exitCode: 0, durationMs: 1 },
+      { node, status: 'failed', exitCode: 1, durationMs: 1 },
+      { node, status: 'skipped', exitCode: 0, durationMs: 0 },
+      ...(['cache-hit', 'cache-hit-remote'] as const).flatMap((status) =>
+        [true, false].map((restored) => ({ node, status, exitCode: 0, durationMs: 1, restored })),
+      ),
+    ]
+    const rendered = new Map<string, Set<string>>()
+    for (const o of outcomes) {
+      const [glyph, ...cells] = formatTaskExecutedLine(node, o)
+        .replaceAll('︎', '')
+        .trim()
+        .split(/\s+/)
+      const word = cells.find((c) => ['success', 'failed', 'skipped'].includes(c))!
+      rendered.set(glyph!, (rendered.get(glyph!) ?? new Set()).add(word))
+    }
+    const doc = await Bun.file(new URL('../docs/cli.md', import.meta.url)).text()
+    const table = doc.slice(doc.indexOf('| Glyph |'))
+    const documented = new Map<string, Set<string>>()
+    for (const row of table.split('\n').slice(2)) {
+      if (!row.startsWith('|')) break
+      const cells = row.split('|').map((c) => c.trim())
+      const glyph = cells[1]!.replaceAll('`', '')
+      // The persistent pin is drawn by the live region, not a task row.
+      if (glyph !== '▸') documented.set(glyph, new Set(cells[3]!.split('/')))
+    }
+    const plain = (m: Map<string, Set<string>>) =>
+      Object.fromEntries([...m].map(([g, s]) => [g, [...s].toSorted()]))
+    expect(plain(documented)).toEqual(plain(rendered))
+  })
+})

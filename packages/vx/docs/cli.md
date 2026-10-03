@@ -561,15 +561,15 @@ Reported task lines share one column grid —
 the glyph SHAPE encodes the cache axis, the glyph COLOR (and the
 status word) the task axis.
 
-| Glyph | Cache axis                 | Status word    |
-| ----- | -------------------------- | -------------- |
-| `⏺`   | miss — the task ran        | success/failed |
-| `►`   | fresh (up-to-date)         | success        |
-| `⇢`   | restored from local cache  | success        |
-| `⇣`   | restored from remote       | success        |
-| `◼`   | failed                     | failed         |
-| `⊘`   | skipped (blocked upstream) | skipped        |
-| `▸`   | persistent (dev server)    | running        |
+| Glyph | Cache axis                 | Status word |
+| ----- | -------------------------- | ----------- |
+| `⏺`   | miss — the task ran        | success     |
+| `►`   | fresh (up-to-date)         | success     |
+| `⇢`   | restored from local cache  | success     |
+| `⇣`   | restored from remote       | success     |
+| `◼`   | failed                     | failed      |
+| `⊘`   | skipped (blocked upstream) | skipped     |
+| `▸`   | persistent (dev server)    | running     |
 
 A live WORKER row carries no glyph: the ticking elapsed time leads it,
 which is the motion the run has instead of a spinner.
@@ -1411,9 +1411,9 @@ Evict old or oversized cache entries. Operates on
 
 `prune` is the only `vx cache` subcommand: the statistics other runners
 put under a `cache` verb — the directory, the entry count, the size —
-are part of [`vx info`](#vx-info), and `vx cache stats`, `clean` and
-their neighbours say so rather than printing a bare "unknown
-subcommand".
+are part of [`vx info`](#vx-info), and `vx cache stats`, `list`, `ls`,
+`clean`, `gc`, `purge` and their neighbours say so (`list` also names
+`vx last --list`) rather than printing a bare "unknown subcommand".
 
 ```
 vx cache prune --older-than <duration>     # Drop entries last accessed before now - duration.
