@@ -164,6 +164,13 @@ sync`", advice for a repo leaving Nx: they say to keep what the
   config, the native end state). The one step that differed from the
   Turborepo list was missing: review the `TODO(vx-migrate)` comments,
   where an untranslated executor's placeholder fails until written.
+- **P2-31** A target with neither an executor nor a command (the
+  TypeScript plugin's `build-deps`, before Nx's normalization) wrote a
+  failing placeholder. The graph parse applies Nx's own rule: `nx:noop`
+  with dependencies, dropped without. An eleventh shape fixture is the
+  `@nx/js/typescript` plugin as Nx 23.2.1 infers it (include globs and
+  exclusions, a `.d.ts` dependency fileset, a `{,.map}` output, a
+  `.tsbuildinfo` output); a run restores exactly the declared outputs.
 
 ## Leads for other streams
 

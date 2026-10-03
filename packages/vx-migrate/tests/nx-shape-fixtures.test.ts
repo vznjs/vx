@@ -283,4 +283,41 @@ describe('vx-migrate on the Nx shapes real repos have: every written config load
     )
     expect(r.configs['b']!['vite:build']!['dependsOn']).toBeUndefined()
   }, 30_000)
+
+  it('the TypeScript plugin as Nx 23 infers it: include globs, a d.ts fileset, a {,.map} output', async () => {
+    const r = await migrate('ts-solution')
+    expect(r.code).toBe(0)
+    expect(r.tasks).toEqual({
+      '@ts/util': [
+        'build',
+        'build-deps',
+        'nx-input:fileset-51a93ecf583099a0',
+        'typecheck',
+        'watch-deps',
+      ],
+      '@ts/core': ['build', 'build-deps', 'typecheck', 'watch-deps'],
+    })
+    const build = r.configs['@ts/core']!['build']!
+    expect(build['cache']).toEqual({
+      inputs: {
+        files: [
+          'package.json',
+          'tsconfig.json',
+          'tsconfig.lib.json',
+          'src/**/*.ts',
+          '!out-tsc/**/*',
+          '!dist/**/*',
+        ],
+        workspaceFiles: ['tsconfig.base.json'],
+      },
+      outputs: {
+        files: [
+          'dist/**/*.{js,cjs,mjs,jsx,d.ts,d.cts,d.mts}{,.map}',
+          'dist/tsconfig.lib.tsbuildinfo',
+        ],
+      },
+    })
+    // Nx's `build-deps` carries no executor: Nx normalizes it to a group (P2-31).
+    expect(r.configs['@ts/core']!['build-deps']).toEqual({ dependsOn: ['^build'] })
+  }, 30_000)
 })
