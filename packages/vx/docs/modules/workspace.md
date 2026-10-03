@@ -8,6 +8,12 @@ subtracts from what the positive globs found — a literal one excludes
 its tree, and a wildcard one is matched against the member's manifest
 (`<pattern>/package.json`) as pnpm matches it, so `!**/test/**` excludes
 `packages/test` itself (item 986) — in both discovery and the root-claim walk.
+A negation applies whatever its position, as pnpm reads its own file: a
+later positive glob does not re-include what it excluded. npm and bun
+read `package.json` `workspaces` in order and disagree with each other
+(npm drops a negation a later pattern matches as text; bun lets the last
+pattern matching a path decide), so a list that re-includes after a
+negation names a member vx leaves out (probed npm 10 and bun 1.4, D-147).
 A read that finds nothing (a missing directory, a dangling link, no
 config) is absent; a read the process could not make, out of file
 descriptors (`EMFILE`, `ENFILE`), fails discovery with the `ulimit -n`
