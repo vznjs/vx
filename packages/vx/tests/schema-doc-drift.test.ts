@@ -186,6 +186,11 @@ const CASES: Array<[string, () => string | null | Promise<string | null>]> = [
     () => validated({ tasks: { b: { ...ok, dependsOn: 'build' } } }),
   ],
   [
+    'cache.inputs must be an object',
+    () =>
+      validated({ tasks: { b: { ...ok, cache: { outputs: { files: [] }, inputs: 'src/**' } } } }),
+  ],
+  [
     'cache.inputs is required when cache is set',
     () => validated({ tasks: { b: { ...ok, cache: { outputs: { files: [] } } } } }),
   ],
@@ -240,6 +245,10 @@ const CASES: Array<[string, () => string | null | Promise<string | null>]> = [
           },
         },
       }),
+  ],
+  [
+    'cache.outputs must be an object',
+    () => validated({ tasks: { b: { ...ok, cache: { inputs: { files: [] }, outputs: 'dist' } } } }),
   ],
   [
     'cache.outputs is required when cache is set',

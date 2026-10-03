@@ -484,8 +484,15 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
       assertKnownFields(cache, CACHE_FIELDS, `${where}.cache`)
       const inputs = (cache as { inputs?: unknown }).inputs
       const outputs = (cache as { outputs?: unknown }).outputs
-      if (!inputs || typeof inputs !== 'object') {
+      // A present field of the wrong shape (`outputs: 'dist'`) was told it
+      // was missing; an array is named in `assertKnownFields`.
+      if (inputs === undefined || inputs === null) {
         throw new UserError(`${where}.cache.inputs is required when \`cache\` is set`)
+      }
+      if (typeof inputs !== 'object') {
+        throw new UserError(
+          `${where}.cache.inputs must be an object — \`inputs: { files: [...] }\``,
+        )
       }
       assertKnownFields(inputs, CACHE_INPUT_FIELDS, `${where}.cache.inputs`)
       if (!Array.isArray((inputs as { files?: unknown }).files)) {
@@ -520,8 +527,13 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
           }
         }
       }
-      if (!outputs || typeof outputs !== 'object') {
+      if (outputs === undefined || outputs === null) {
         throw new UserError(`${where}.cache.outputs is required when \`cache\` is set`)
+      }
+      if (typeof outputs !== 'object') {
+        throw new UserError(
+          `${where}.cache.outputs must be an object — \`outputs: { files: [...] }\``,
+        )
       }
       assertKnownFields(outputs, CACHE_OUTPUT_FIELDS, `${where}.cache.outputs`)
       const outFiles = (outputs as { files?: unknown }).files
