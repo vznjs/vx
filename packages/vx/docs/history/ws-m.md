@@ -786,6 +786,18 @@ log that printed `vx why`. `diffKeyComponents`, the join `vx why` and the
 playground share, now carries `***` for a name the masking rule calls
 secret (`secretNamed`, now exported), and the text row shows the name and
 its change with no hash (supervisor: the safer fix); other env inputs
+keep their hashes. A name made secret by `exec.env.secret` alone, which
+run history did not record, is M-63. `why.test.ts` › a secret-named env input (text and json;
+red without the fix, the `REGION` control unmasked).
+
+M-63. M-62's gap: a name only `exec.env.secret` makes secret (`GH_PAT`)
+still showed its unsalted hash in `vx why`, since the stored row carried
+no word of it. On a miss the captured `env` row of such a name is stored
+as `***<hash>`; `diffKeyComponents` masks a row with that mark as it does
+a secret-named one, and compares the stored text, so a change still
+shows. Rows of names the rule already catches are stored as before (no
+spurious `changed` after the upgrade). `why.test.ts` › a name only
+exec.env.secret makes secret (red without the mark, `REGION` control).
 keep their hashes. Not
 covered: a name made secret by `exec.env.secret` alone, which run history
 does not record. `why.test.ts` › a secret-named env input (text and json;

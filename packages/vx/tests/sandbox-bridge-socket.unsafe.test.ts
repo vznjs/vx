@@ -83,7 +83,13 @@ describe.skipIf(!available || process.platform !== 'linux')('a port bridge’s s
     // The positive first: the socket is there while the task runs.
     const sock = await bound(port, before)
     expect(existsSync(sock)).toBe(true)
-    expect((await running).exitCode).toBe(0)
+    // Stderr rides along: the one failure seen (a gate, "Linux HTTP bridge
+    // socket does not exist") lost its text to a bare exit-code check.
+    const r = await running
+    expect({ exitCode: r.exitCode, stderr: r.exitCode === 0 ? '' : r.stderr }).toEqual({
+      exitCode: 0,
+      stderr: '',
+    })
     expect(sockets(port)).toEqual(before)
     // The file's first sandboxed run: SRT's start and the probe ride on the
     // task's own second, past bun's 5 s default on a loaded gate (B-43).

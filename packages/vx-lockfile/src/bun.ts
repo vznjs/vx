@@ -78,7 +78,13 @@ export function parseLockfile(text: string): Lockfile {
   // allow-list dropped `trustedDependencies`, which decides whose install
   // scripts run (item 933).
   const rest: Json = {}
-  for (const [k, v] of Object.entries(d)) if (!PER_WORKSPACE.has(k)) rest[k] = v
+  // A catalog is how a range was written, and what it resolved to is the
+  // `packages` entry each workspace already reaches: folded here too, one
+  // catalog bump re-keyed every project, the ones that never name it
+  // included (probed; pnpm keys it per importer, D-141).
+  for (const [k, v] of Object.entries(d)) {
+    if (!PER_WORKSPACE.has(k) && k !== 'catalog' && k !== 'catalogs') rest[k] = v
+  }
   const global = JSON.stringify(rest)
   return { version: String(d['lockfileVersion']), workspaces, workspaceDirs, packages, global }
 }
@@ -165,7 +171,11 @@ export function importerDigests(
     }
     return i
   }
-  for (const [p, e] of lock.packages) node(p, `${p}\0${e.id}\0${e.resolution}`)
+  // The name a package is installed under and what it is, not where: a
+  // re-hoist (`is-odd/is-number` → `is-number`, one version) re-keyed
+  // every project reaching it with the same bytes installed (D-140). Where
+  // it sits still decides what it resolves; that is the edges.
+  for (const [p, e] of lock.packages) node(p, `${installName(p)}\0${e.id}\0${e.resolution}`)
   for (const [p, e] of lock.packages) {
     const from = index.get(p)!
     for (const [name, spec] of e.deps) {
@@ -212,4 +222,11 @@ export function importerDigests(
     out.set(dir, Bun.hash.xxHash3(`${global}\0${digests[i]!}`).toString(16).padStart(16, '0'))
   }
   return out
+}
+
+/** The name a package key installs under: its last segment, scope included. */
+function installName(key: string): string {
+  const parts = key.split('/')
+  const scoped = parts.length >= 2 && parts[parts.length - 2]!.startsWith('@')
+  return scoped ? parts.slice(-2).join('/') : parts[parts.length - 1]!
 }
