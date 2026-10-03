@@ -2440,3 +2440,61 @@ describe('the sandbox pages say a refused temp write points at $TMPDIR', () => {
     )
   })
 })
+
+describe('every plugin README names each option its factory takes', () => {
+  // vx-otel's README showed five of its options, vx-github's had no
+  // `checkName`, and vx-reapi's no `instanceName`, `headers` (where a hosted
+  // server's API key goes) or `tls` (J2-33). Read from each options
+  // interface; a field documented as a test seam is not the user's.
+  const packages = path.resolve(import.meta.dir, '..', '..')
+  const fields = (file: string, iface: string): string[] => {
+    const src = readFileSync(path.join(packages, file), 'utf8')
+    const body = new RegExp(`export interface ${iface}\\b[^{]*\\{([\\s\\S]*?)\\n\\}`).exec(src)?.[1]
+    expect(body).toBeDefined()
+    const out: string[] = []
+    let doc = ''
+    for (const line of body!.split('\n')) {
+      const field = /^ {2}(?:readonly )?(\w+)\??:/.exec(line)
+      if (field === null) {
+        doc += line
+        continue
+      }
+      if (!/Test seam/.test(doc)) out.push(field[1]!)
+      doc = ''
+    }
+    expect(out.length).toBeGreaterThan(0)
+    return out
+  }
+  const cases: [string, string, string, readonly string[]][] = [
+    ['vx-otel', 'vx-otel/src/plugin.ts', 'OtelPluginOptions', []],
+    ['vx-github', 'vx-github/src/plugin.ts', 'GithubPluginOptions', []],
+    ['vx-reapi', 'vx-reapi/src/index.ts', 'ReapiPluginOptions', ['instanceName', 'headers', 'tls']],
+    ['vx-schedule-history', 'vx-schedule-history/src/index.ts', 'ScheduleHistoryOptions', []],
+    ['vx-lockfile', 'vx-lockfile/src/index.ts', 'LockfileOptions', []],
+  ]
+  it.each(cases)('%s', (pkg, file, iface, inherited) => {
+    const readme = readFileSync(path.join(packages, pkg, 'README.md'), 'utf8')
+    const missing = [...fields(file, iface), ...inherited].filter(
+      (f) => !new RegExp(`\\b${f}\\b`).test(readme),
+    )
+    expect(missing).toEqual([])
+  })
+})
+
+describe('the sandboxing guide says a server is never traced', () => {
+  // A persistent task runs inside the walls but untraced, so step 4's
+  // "an undeclared read fails it and names the path" never happens for one;
+  // #2451 tells a failing one so, and the guide had no word (J2-36).
+  it('execute-task names the untraced server, and the guide says so', () => {
+    expect(
+      readFileSync(
+        path.resolve(import.meta.dir, '..', 'src', 'orchestrator', 'execute-task.ts'),
+        'utf8',
+      ),
+    ).toContain('ran in the sandbox, which reports nothing for a server')
+    const guide = readFileSync(path.join(GUIDES, 'sandboxing.md'), 'utf8').replace(/\s+/g, ' ')
+    expect(guide).toContain(
+      'A persistent task (a dev server) runs inside the same walls, but nothing traces it',
+    )
+  })
+})

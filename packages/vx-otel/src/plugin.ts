@@ -232,7 +232,10 @@ export function resolveOtelConfig(
         continue
       }
       const k = raw.toLowerCase()
-      const fault = headerValueFault(v)
+      // An option's value may be a number or an object: refused like a
+      // value fetch cannot send, not left to throw `value.trim is not a
+      // function` out of the plugin.
+      const fault = typeof v === 'string' ? headerValueFault(v) : 'a non-string value'
       if (fault === null) out[k] = v
       else if (!dropped.has(k)) {
         dropped.add(k)
@@ -290,6 +293,16 @@ export function resolveOtelConfig(
       }
     }
     return pem.get(file)
+  }
+  // The option is held to the variable's rule: a zero, negative or
+  // non-number timeout aborted every export the moment it started.
+  if (
+    opts.timeoutMs !== undefined &&
+    !(typeof opts.timeoutMs === 'number' && Number.isFinite(opts.timeoutMs) && opts.timeoutMs > 0)
+  ) {
+    throw new Error(
+      `[vx-otel] timeoutMs must be a positive number of ms, got ${JSON.stringify(opts.timeoutMs)}`,
+    )
   }
   const timeoutMs = opts.timeoutMs ?? envTimeout(env['OTEL_EXPORTER_OTLP_TIMEOUT']) ?? 15_000
   const tls: Partial<Record<'traces' | 'metrics' | 'logs', OtlpTls>> = {}
@@ -377,6 +390,13 @@ const OTEL_PLUGIN_KEYS: Record<keyof OtelPluginOptions, true> = {
  */
 export function otel(opts: OtelPluginOptions = {}): VxPlugin {
   refuseUnknownOptions('otel()', opts, Object.keys(OTEL_PLUGIN_KEYS))
+  // A switch read from the environment arrives as a string, and `'false'`
+  // is truthy: the signal was exported though it was turned off.
+  for (const name of ['metrics', 'logs'] as const) {
+    if (opts[name] !== undefined && typeof opts[name] !== 'boolean') {
+      throw new Error(`[vx-otel] ${name} must be true or false, got ${JSON.stringify(opts[name])}`)
+    }
+  }
   return definePlugin(import.meta, {
     telemetry(ctx: TelemetryContext): TelemetrySink | undefined {
       const config = resolveOtelConfig(opts, process.env, (m) => ctx.warn(m))

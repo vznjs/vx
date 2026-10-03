@@ -267,3 +267,34 @@ persistent task` and vx exits 1). Row (`site-samples` › a post's link
   names the directory to grant. Row (`site-samples` › the sandbox pages
   say a refused temp write points at $TMPDIR), gated on the hint's text;
   red without the fix.
+- **J2-33** Plugin READMEs left options out: vx-otel's showed five of
+  its ten (`timeoutMs`, `compression` and the three per-signal
+  endpoints only in the plugins guide), vx-github's had no `checkName`
+  (default `'vx'`), and vx-reapi's no `instanceName` (only its env var),
+  `headers` (gRPC metadata on every call, where a hosted server's API
+  key goes) or `tls` (a bare `host:port` stayed plaintext). Row
+  (`site-samples` › every plugin README names each option its factory
+  takes), the fields read from each options interface, test seams left
+  out; red on the three without the fix.
+
+- **J2-34** vx-mcp's README rows for `explainCacheKey` and
+  `whyDidThisRerun` never named their `taskId` argument (the question
+  showed `pkg#build`, the call needs the key). Row (`vx-mcp`
+  `readme-tools` › README names each tool's arguments), every
+  `inputSchema` property read from `listTools()`; red on both without
+  the fix.
+
+- **J2-35** #2442 names a server `holdPersistent` hands back (the watch
+  loop's) that dies on its own after the run returns; it updated
+  `cli.md` and `execution.md`, and `modules/orchestrator.md`'s
+  `holdPersistent` sentence still had the caller owning the servers
+  with no word of it. Row (`module-page-claims` › orchestrator.md, a
+  held server), gated on `run.ts`; red without the fix.
+
+- **J2-36** The sandboxing guide's step 4 says an undeclared read fails
+  the task and names the path; a persistent task (a dev server) is
+  never traced, so its refusals are named nowhere and read as the
+  tool's own `ENOENT`. #2451 tells a failing one so; the guide had no
+  word of servers at all. It now says it under "What can't be
+  sandboxed". Row (`site-samples` › the sandboxing guide says a server
+  is never traced), gated on `execute-task.ts`; red without the fix.

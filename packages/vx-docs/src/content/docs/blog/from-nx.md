@@ -67,7 +67,7 @@ More explicit, more portable, and one less layer between you and the
 tool's own documentation. `nx:run-commands` targets are the shell they already
 were, and the server executors — `@nx/vite:dev-server`,
 `@nx/vite:preview-server`, `@nx/webpack:dev-server`, `@nx/next:server`,
-`@nx/storybook:storybook`, `@nx/js:node` and
+`@nx/storybook:storybook`, `@nx/js:node`, `@nx/js:verdaccio` and
 `@angular-devkit/build-angular:dev-server`
 — come through as persistent tasks, whatever the target is called.
 Nothing is silently wrong.

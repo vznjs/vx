@@ -1145,6 +1145,15 @@ export async function wrapSandboxedCommand(
     wrapped = `exec ${readOnlyMasks(wrapped, scratch)}`
   if (process.platform === 'linux' && !hostHasIpv6())
     wrapped = `SOCAT_DEFAULT_LISTEN_IP=4 ${wrapped}`
+  const held = portsHeld(ports)
+  if (held.length > 0) {
+    throw new UserError(
+      `sandbox: localBinding port${held.length === 1 ? '' : 's'} ${held.join(', ')} ` +
+        `${held.length === 1 ? 'is' : 'are'} already in use on this machine, so the task's own ` +
+        `cannot be exposed there and a client would reach the other listener; stop what ` +
+        `holds ${held.length === 1 ? 'it' : 'them'} or list another port`,
+    )
+  }
   if (args.server === true) liveServers.add(tag)
   if (ports.length > 0) {
     spawnHostBridges(ports, tag)
@@ -1403,13 +1412,45 @@ const hostBridges = new Map<
 >()
 
 /**
+ * The ports a host listener already holds where the bridge would bind
+ * (`127.0.0.1`, or every address). The listen wait below reads the same
+ * table and took that listener for the bridge, whose bind had failed: the
+ * task passed and a client of the port reached the other process
+ * (2026-10-03). Linux, own procfs only, as the wait.
+ */
+function portsHeld(ports: readonly number[]): number[] {
+  if (ports.length === 0 || !procfsIsOwn()) return []
+  const held = new Set<string>()
+  for (const [file, any, loop] of [
+    ['/proc/net/tcp', '00000000', '0100007F'],
+    ['/proc/net/tcp6', '00000000000000000000000000000000', '00000000000000000000000001000000'],
+  ] as const) {
+    let table: string
+    try {
+      table = readFileSync(file, 'utf8')
+    } catch {
+      continue
+    }
+    for (const line of table.split('\n')) {
+      const f = line.trim().split(/\s+/)
+      if (f[3] !== '0A' || f[1] === undefined) continue
+      const [addr, port] = f[1].split(':')
+      // `::1` does not hold 127.0.0.1's port; every address does.
+      if (addr === any || (file === '/proc/net/tcp' && addr === loop)) held.add(port!)
+    }
+  }
+  return ports.filter((p) => held.has(p.toString(16).toUpperCase().padStart(4, '0')))
+}
+
+/**
  * Wait until each host-side bridge listens on its port, so a server that
  * says it is ready inside the sandbox is reachable on the host: the socat
  * starts asynchronously, and a held server's port refused a connection
  * right after its ready line under I/O load (M-22). Read off
  * /proc/net/tcp (127.0.0.1, state 0A); skipped where /proc is not this
  * process's (its net table could be another namespace's), ended early by
- * a bridge that exited (a port already taken), and bounded at 5 s.
+ * a bridge that exited, and bounded at 5 s. A port another listener holds
+ * reads as listening here, so the wrap refuses it first (`portsHeld`).
  */
 async function hostBridgesListen(ports: readonly number[], tag: string): Promise<void> {
   if (!procfsIsOwn()) return
