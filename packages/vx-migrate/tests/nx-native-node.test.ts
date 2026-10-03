@@ -81,10 +81,11 @@ describe('@nx/js:node', () => {
     )
   })
 
-  it('a build target with no outputPath has no file here: no line', () => {
+  // Nx's own fallback (P2-28): no outputs to read, so `dist/<projectRoot>/main.js`.
+  it('a build target with no outputPath runs Nx’s fallback file', () => {
     expect(
-      nativeExecutorCommand('@nx/js:node', { buildTarget: 'api:build-inferred' }, api),
-    ).toBeNull()
+      nativeExecutorCommand('@nx/js:node', { buildTarget: 'api:build-inferred' }, api)?.command,
+    ).toBe('cd ../.. && node --inspect=localhost:9229 dist/apps/api/main.js')
   })
 })
 

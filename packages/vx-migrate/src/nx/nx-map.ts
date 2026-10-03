@@ -760,6 +760,12 @@ function buildTask(
                 : nodeMap[project]?.data?.targets?.[target]
             return t?.executor ?? (t?.command === undefined ? undefined : 'nx:run-commands')
           },
+          outputs: (spec) => {
+            const [project, target] = spec.split(':')
+            return project === undefined || target === undefined
+              ? undefined
+              : nodeMap[project]?.data?.targets?.[target]?.outputs
+          },
         }
       : null,
   )
@@ -990,6 +996,7 @@ function mapCommand(
   native: {
     readonly options: (spec: string) => Record<string, unknown> | undefined
     readonly executor: (spec: string) => string | undefined
+    readonly outputs: (spec: string) => readonly string[] | undefined
     readonly sourceRoot: () => string | undefined
   } | null,
 ): MappedCommand | null {
@@ -1077,6 +1084,7 @@ function mapCommand(
       projectName,
       targetOptions: native.options,
       targetExecutor: native.executor,
+      targetOutputs: native.outputs,
       sourceRoot: native.sourceRoot,
     })
     if (n === null) {

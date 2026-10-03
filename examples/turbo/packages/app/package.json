@@ -2,7 +2,7 @@
   "name": "app",
   "private": true,
   "dependencies": {
-    "lib": "workspace:*"
+    "lib": "*"
   },
   "scripts": {
     "build": "mkdir -p dist && cat ../lib/dist/*.js src/main.js > dist/app.js",

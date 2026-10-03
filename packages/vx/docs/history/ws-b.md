@@ -55,12 +55,12 @@ In order of harm:
 
 ## Leads for other streams
 
-- **A:** an uncached task's key is derived twice: `deriveStableKeys`
-  (local short-circuit) and again in `executeCachedTask`, which gets no
-  `preProbed` for a task with no `cache`. 300 `true` tasks at
-  concurrency 1: `task hash` 600 calls, 46–53 ms, about 0.08 ms a task
-  for the second (2026-10-03). A non-preliminary stable key could be
-  handed on as it is for a cached one.
+- **A:** a file an uncached task creates in its project mid-run is not
+  in the run's git snapshot, so a same-project uncached dependant's key
+  misses it on that run and sees it on the next: its key drifts once
+  (a spurious miss for a cached task folding it, not a stale hit). Seen
+  as `c#w` (`echo made > made.txt`) → `c#r`, the same on origin/main
+  (2026-10-03, B-91).
 
 - **A:** a local save decodes and re-parses the artifact it just packed
   (`save: scan`, about 0.1 ms per save, B-37). The checks there guard
@@ -1437,3 +1437,18 @@ outranks strace's trace, so a task connecting to a Docker or ssh-agent
 socket without `unixSockets` read only "socket(1, 1, 0): Operation not
 permitted" and no report. The schema names that symptom and the grant
 (#2513, docs only: the refusal is invisible to vx).
+
+B-91. An uncached task's key was derived twice: up front by
+`deriveStableKeys` and again in execute-task. It is reused when nothing
+upstream may write into its project or the workspace and no
+root-anchored output reaches it (#2547, cache-key lead taken over from
+A). 500 uncached tasks, concurrency 1, min of 8: `task hash` 1,000
+calls (31.0 ms) to 500 (10.6 ms), wall within noise. Keys unchanged, no
+`CACHE_VERSION` bump. Rows: `uncached-key-once.test.ts`.
+Then the per-task ranking on cached misses (500 one-file tasks,
+concurrency 1, `--force`): `run graph` 2,248 ms against `miss: execute`
+2,013, so vx's own share is about 0.47 ms a task: output resolve 0.10,
+key 0.07, clean 0.03, recheck 0.02, request 0.02, and `secretMask` 0.025
+(timed in place; a CPU profile put it at 0.1, sampling skew). Saves
+(1.7 ms) run on the save lane off the slot. Nothing above 0.1 ms is
+left to cut outside the spawn.
