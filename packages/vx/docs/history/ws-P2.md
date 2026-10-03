@@ -70,6 +70,11 @@ sync`", advice for a repo leaving Nx: they say to keep what the
   generators wrote (the TypeScript one's tsconfig `references`) by hand.
   `nx()` keeps `nx sync`. Found by a hand-written graph fixture of
   inferred plugin targets.
+- **P2-13** Four hand-written Nx graphs in the shapes real repos have
+  (plugin-inferred targets, explicit executors, continuous and atomized
+  targets with a root project, per-project named inputs and filesets) are
+  test fixtures: `tests/nx-shape-fixtures.test.ts` migrates each through
+  the CLI and loads every written config. They found P2-11 and P2-12.
 
 ## Leads for other streams
 
