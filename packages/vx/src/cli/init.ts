@@ -75,7 +75,8 @@ export async function initCmd(args: readonly string[]): Promise<number> {
     throw err
   })
   const nameless: string[] = []
-  const metas = await discoverProjects(await loadWorkspace(root, reads), nameless)
+  const workspace = await loadWorkspace(root, reads)
+  const metas = await discoverProjects(workspace, nameless)
   // `init` reads scripts only; a runner's own config beside them is the
   // richer source (dependsOn, inputs, outputs) and was ignored without a
   // word — the walkthrough on a Turbo repo (2026-09-09) got the scripts'
@@ -107,7 +108,10 @@ export async function initCmd(args: readonly string[]): Promise<number> {
     ),
     source: 'package.json scripts',
     verb: 'vx init',
-    notes: namelessNotes(root, nameless),
+    notes: [
+      ...(await unreadWorkspaces(root, workspace.packageGlobs)),
+      ...namelessNotes(root, nameless),
+    ],
     dry: parsed.dry,
     force: parsed.force,
     init: true,
@@ -376,6 +380,29 @@ function namelessNotes(root: string, dirs: readonly string[]): string[] {
     (withScripts.length > 3 ? `, and ${withScripts.length - 3} more` : '')
   return [
     `not mapped: ${shown} — ${withScripts.length === 1 ? 'its package.json has' : 'their package.json files have'} no "name", and vx names a project by it; give ${withScripts.length === 1 ? 'it one' : 'each one'} and run \`vx init\` again`,
+  ]
+}
+
+/**
+ * `pnpm-workspace.yaml`'s `packages` decides the members, as pnpm reads it,
+ * and a root `workspaces` that lists other globs was dropped without a word:
+ * a bun or npm repo with a stale yaml lost those members (M-51).
+ */
+async function unreadWorkspaces(root: string, globs: readonly string[]): Promise<string[]> {
+  if (!existsSync(path.join(root, 'pnpm-workspace.yaml'))) return []
+  const ws = (await readRootManifest(root))['workspaces']
+  const list = Array.isArray(ws)
+    ? ws
+    : typeof ws === 'object' &&
+        ws !== null &&
+        Array.isArray((ws as { packages?: unknown }).packages)
+      ? (ws as { packages: unknown[] }).packages
+      : undefined
+  if (list === undefined) return []
+  const pkg = list.filter((g): g is string => typeof g === 'string')
+  if ([...pkg].sort().join('\0') === [...globs].sort().join('\0')) return []
+  return [
+    `pnpm-workspace.yaml's \`packages\` lists the members, as pnpm reads them; package.json's \`workspaces\` (${pkg.map((g) => `"${g}"`).join(', ')}) is not read: if bun, npm or yarn installs this repo, copy those globs into pnpm-workspace.yaml's \`packages\`, or delete that key so package.json decides`,
   ]
 }
 

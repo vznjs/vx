@@ -23,7 +23,7 @@ import { turbo, turboCache } from '@vzn/vx-migrate'
 export default defineWorkspace({ plugins: [turboCache(), turbo()] })
 ```
 
-The package exports `turbo`, `nx`, `turboCache`, `nxCache` and their options types; the mappers and cache clients are internal.
+The package exports `turbo`, `nx`, `turboCache`, `nxCache` and their options types (`TurboPluginOptions`, `NxPluginOptions`, `TurboCacheOptions`, `NxCacheOptions`); the mappers and cache clients are internal.
 
 ## `turbo()` — a Turbo repo, mid-migration
 
@@ -70,9 +70,10 @@ Rules:
 - `outputLogs: "new-only"` maps to nothing: frames for the tasks that ran and a one-liner per cache hit is vx's default flow already. The other values are per-run in vx, so they are a todo naming the flag (`vx run … --output-logs hash-only`).
 - `interruptible` maps to nothing: `vx watch` stops and re-spawns every persistent task each cycle.
 - A task's `tags` (Turbo main, after 2.11.5) map to nothing: Turbo keeps them out of the hash and the run.
-- `envMode: "loose"` (top-level or in `global`) is a note: Turbo hands every task the whole environment, vx only the declared names.
-- The workspace keys vx has a home for, top level or in `global`, fill what `vx.workspace.ts` leaves unset: `concurrency` (`"10"`, `"50%"` of the cores) → `concurrency`; `cacheMaxSize` / `cacheMaxAge` (`"0"` is off; weeks become days, a bare number days; a size in Turbo's grammar, `7.5GB` or bare bytes, restated whole: `7680MB`) → `cacheRetention.maxSize` / `.olderThan`.
-- `TURBO_SCM_BASE`, the base `turbo run --affected` compares with, is `affectedBase` when `vx.workspace.ts` sets none: a bare `vx run build --affected` compares with the same ref.
+- `envMode: "loose"` (top-level or in `global`, or `TURBO_ENV_MODE=loose`, which wins) is a note: Turbo hands every task the whole environment, vx only the declared names.
+- The workspace keys vx has a home for, top level or in `global`, fill what `vx.workspace.ts` leaves unset: `concurrency` (`"10"`, `"50%"` of the cores) → `concurrency`; `cacheMaxSize` / `cacheMaxAge` (`"0"` is off; weeks become days, a bare number days; a size in Turbo's grammar, `7.5GB` or bare bytes, restated whole: `7680MB`) → `cacheRetention.maxSize` / `.olderThan`. `TURBO_CONCURRENCY`, `TURBO_CACHE_MAX_SIZE` and `TURBO_CACHE_MAX_AGE` win over turbo.json, as under Turbo; a set one decides, its `0` included.
+- `TURBO_SCM_BASE`, the base `turbo run --affected` compares with, is `affectedBase` when `vx.workspace.ts` sets none: a bare `vx run build --affected` compares with the same ref. With it unset on GitHub Actions (`GITHUB_ACTIONS`), Turbo's own base applies: a pull request's `GITHUB_BASE_REF`, else the push event's `before` from `GITHUB_EVENT_PATH`.
+- Turbo hashes each package's `microfrontends.json` (or `.jsonc`) into every task, or the one file `VC_MICROFRONTENDS_CONFIG_FILE_NAME` names; so does `turbo()`.
 - Turbo 2.11's `global` block (`futureFlags.globalConfiguration`) is read as the `globalDependencies`, `globalEnv` and `globalPassThroughEnv` it replaces.
 - An unknown Turbo key is a todo naming it; `extends` is accepted and ignored (the overlay order above is what it means).
 
@@ -129,7 +130,7 @@ Two cached tasks on one workspace path cannot both keep their cache, and the fir
 
 ### nx.json `parallel`
 
-`parallel` (or the legacy `tasksRunnerOptions.default.options.parallel`) is the run's `concurrency` when `vx.workspace.ts` sets none: a repo that set `1` for a shared resource ran on every core under vx before.
+`parallel` (or the legacy `tasksRunnerOptions.default.options.parallel`) is the run's `concurrency` when `vx.workspace.ts` sets none, and `NX_PARALLEL` (a count or `50%`) wins over it, as in Nx: a repo that set `1` for a shared resource ran on every core under vx before.
 
 ### nx.json `defaultBase`
 
@@ -161,6 +162,8 @@ nx-env [--dotenv <file>]... [--envFile <file>] -- <command> [args…]
 ```
 
 `nx-exec` is a bin this package installs, and what `nx()` runs for every executor target. It runs under the workspace's Node (executors are Node programs), resolves `nx` from the working directory up to the workspace's `node_modules`, reads Nx's cached project graph for the `ExecutorContext` executors expect (project root, dependencies for buildable libraries; computed in-process when the cache is missing, never through the daemon), **replaces** that project's target in the in-memory graph with the executor and options given, and calls Nx's own public `runExecutor`, so Nx's option merging, schema defaults and validation run unchanged. The executor runs from the workspace root, where Nx forks one, though vx starts the task in its project dir: an executor that resolves against `process.cwd()` (@nx/js's ts transformers, prettier's config) sees what it sees under Nx. Anything else on the line — what `vx run <target> -- --otp=123` appends — is an override, parsed by Nx's own `createOverrides` and handed to the executor as `nx run <p>:<t> --otp=123` would (nx#12165). `--dotenv` files are loaded into its environment first (see `.env` files above). The exit code is the last result's, as `nx run` reports it; a server executor keeps the process alive for as long as it yields. The bin enables Node's on-disk compile cache for its own process (Node ≥ 22.1, a no-op below), which takes about 30 ms off every executed task after the first.
+
+`nx-exec` sets `NX_DAEMON=false` unless set (it never dials the daemon), and `NX_VERBOSE_LOGGING=true` is the context's `isVerbose`.
 
 `nx-env` loads the `.env` files and a run-commands `envFile` with Nx's own functions, then runs the command with `sh -c`, whatever follows it appended as vx appends forwarded arguments; its exit is the shell's.
 

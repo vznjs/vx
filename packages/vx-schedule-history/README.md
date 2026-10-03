@@ -100,7 +100,7 @@ the job of `exec.timeout` and the OS. Design:
 - It fails open: a broken history read warns (`[vx] schedule-history: ordering falls back to the baseline`) and leaves the baseline order and only the declared reservations. Observability never breaks a run.
 - Cost: one history read per run, serving both hooks, paid only by workspaces that declare the plugin. Core applies no plugin by default.
 
-`criticalPathPriorities(nodes, history)`, `resourceEstimates(nodes, history, headroom)`, `withDeclared(learned, declared)` and `admits(id, running, reservations, budgets)` are exported for tests and for policies that want the same scoring over another history source.
+`criticalPathPriorities(nodes, history)`, `resourceEstimates(nodes, history, headroom)`, `withDeclared(learned, declared)` and `admits(id, running, reservations, budgets)` are exported for tests and for policies that want the same scoring over another history source, with the types `ScheduleHistoryOptions`, `ResourceEstimate` and `Budgets`.
 
 ## History
 

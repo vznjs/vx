@@ -1,0 +1,101 @@
+{
+  "unlisted": ["shop", "feature"],
+  "graph": {
+    "nodes": {
+      "acme": {
+        "name": "acme",
+        "data": {
+          "root": ".",
+          "targets": {
+            "format": {
+              "command": "prettier --check ."
+            }
+          }
+        }
+      },
+      "shop": {
+        "name": "shop",
+        "data": {
+          "root": "apps/shop",
+          "targets": {
+            "build": {
+              "executor": "@angular-devkit/build-angular:application",
+              "options": {
+                "outputPath": "dist/apps/shop",
+                "browser": "apps/shop/src/main.ts"
+              },
+              "outputs": ["{options.outputPath}"],
+              "cache": true,
+              "dependsOn": ["^build"]
+            },
+            "test": {
+              "executor": "@nx/jest:jest",
+              "options": {
+                "jestConfig": "apps/shop/jest.config.ts"
+              },
+              "outputs": ["{workspaceRoot}/coverage/{projectRoot}"],
+              "cache": true
+            }
+          }
+        }
+      },
+      "feature": {
+        "name": "feature",
+        "data": {
+          "root": "libs/feature",
+          "targets": {
+            "lint": {
+              "executor": "@nx/eslint:lint",
+              "cache": true
+            },
+            "build": {
+              "executor": "@nx/js:tsc",
+              "options": {
+                "outputPath": "dist/libs/feature",
+                "tsConfig": "libs/feature/tsconfig.lib.json",
+                "main": "libs/feature/src/index.ts"
+              },
+              "outputs": ["{options.outputPath}"],
+              "cache": true,
+              "dependsOn": ["^build"]
+            }
+          }
+        }
+      },
+      "@acme/util": {
+        "name": "@acme/util",
+        "data": {
+          "root": "libs/util",
+          "targets": {
+            "build": {
+              "command": "tsc -b",
+              "options": {
+                "cwd": "{projectRoot}"
+              },
+              "outputs": ["{projectRoot}/dist"],
+              "cache": true
+            }
+          }
+        }
+      }
+    },
+    "dependencies": {
+      "acme": [],
+      "shop": [
+        {
+          "source": "shop",
+          "target": "feature",
+          "type": "static"
+        }
+      ],
+      "feature": [
+        {
+          "source": "feature",
+          "target": "@acme/util",
+          "type": "static"
+        }
+      ],
+      "@acme/util": []
+    }
+  }
+}

@@ -23,7 +23,11 @@ export default defineWorkspace({
 `ReapiRemoteCache` is the layer class behind `reapi()`, for a workspace that
 composes cache layers by hand. The package exports `reapi`, `ReapiPluginOptions`,
 `ReapiRemoteCache` and its `ReapiOptions`; the wire client, the Merkle
-encoders and the executor are internal. With no endpoint configured (or a blank
+encoders and the executor are internal. `ReapiOptions` is the connection
+as the plugin resolves it: the same fields, with the PEM text itself
+(`tlsCaPem`, `tlsClientCertPem`, `tlsClientKeyPem`) in place of the files,
+and `onWarn` for a degraded-but-recovered call; `reapi()` refuses those four,
+reading files and warning through vx. With no endpoint configured (or a blank
 one) the plugin **declines** and costs nothing, so it is
 safe to leave declared. An endpoint that is not `host[:port]`, with an
 optional `grpc(s)://` or `http(s)://` scheme, is refused at startup with a
@@ -35,6 +39,9 @@ boolean: a string (`process.env.X`) is refused.
 `instanceName` is the option form of `VX_REAPI_INSTANCE`, and `headers`
 adds gRPC metadata to every call: a hosted server's API key goes there
 (`headers: { 'x-buildbuddy-api-key': process.env.BB_KEY! }`).
+`toolName` and `toolVersion` (default `vx`, `0.0.0`) fill each call's
+`RequestMetadata.tool_details`, and `correlatedInvocationsId` groups several
+runs as one build in a server's UI.
 
 TLS is on for a `grpcs://` or `https://` endpoint, or with any PEM below;
 a bare `host:port` is plaintext, unless `tls: true` turns it on (`tls: false`
