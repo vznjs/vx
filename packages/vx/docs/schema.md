@@ -35,6 +35,12 @@ export default defineProject({
 })
 ```
 
+```ts
+interface ProjectConfig {
+  tasks?: Record<string, TaskConfig> // keyed by task name
+}
+```
+
 `defineProject` is an identity function — it exists purely so
 TypeScript narrows literal types in your config (clean autocomplete,
 strict validation against the schema). It has zero runtime effect.
@@ -1039,6 +1045,13 @@ interface SandboxGrants {
   machLookup?: string[] // mach global-names (macOS)
   pty?: boolean // acquire a TTY
   gitConfig?: boolean // write the repository's .git/config (this task only)
+}
+
+interface SandboxIgnore {
+  read?: string[] // denied reads to leave out of the report
+  write?: string[]
+  systemInfo?: string[]
+  network?: string[] // '<host>:<port>'
 }
 ```
 
