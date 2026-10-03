@@ -112,7 +112,9 @@ export function parseConcurrency(v: string, cpus = machineParallelism()): number
   return n === null || n < 1 ? null : n
 }
 
-export function parseRunArgs(rawArgs: readonly string[]): RunArgs {
+/** `verb` is the one being parsed for: `vx watch` reads `vx run`'s flags, and
+ * its refusals pointed at `vx run --help` (M-58). */
+export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' = 'run'): RunArgs {
   const out: RunArgs = {
     tasks: [],
     filters: [],
@@ -182,7 +184,7 @@ export function parseRunArgs(rawArgs: readonly string[]): RunArgs {
     } else if (RETIRED_EXCLUDE_DEPENDENCIES.test(a ?? '')) {
       return {
         ...out,
-        error: `unknown flag: ${a} (the flag is --exclude-dependencies)${seeHelp('run')}`,
+        error: `unknown flag: ${a} (the flag is --exclude-dependencies)${seeHelp(verb)}`,
       }
     } else if (a === '--exclude-dependencies') {
       out.excludeDependencies = 'all'
@@ -363,7 +365,7 @@ export function parseRunArgs(rawArgs: readonly string[]): RunArgs {
       }
       out.report = fmt
     } else if (a !== undefined && a.startsWith('-')) {
-      return { ...out, error: `unknown flag: ${a}${flagHint('run', a)}${seeHelp('run')}` }
+      return { ...out, error: `unknown flag: ${a}${flagHint(verb, a)}${seeHelp(verb)}` }
     } else if (a !== undefined) {
       out.tasks.push(a)
     }

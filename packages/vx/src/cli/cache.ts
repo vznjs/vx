@@ -36,7 +36,8 @@ function cacheSubHint(sub: string): string {
   const elsewhere = CACHE_ELSEWHERE[sub]
   if (elsewhere !== undefined) return ` — ${elsewhere}`
   const best = nearest(sub, ['prune'])
-  return best === undefined ? '' : `. Did you mean ${best}?`
+  // `prune` is the one subcommand: name it when nothing is near (M-58).
+  return best === undefined ? '. The subcommand is prune' : `. Did you mean ${best}?`
 }
 
 export async function cacheCmd(args: readonly string[]): Promise<number> {
