@@ -8,6 +8,7 @@ import { readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { TELEMETRY_SCHEMA_VERSION } from '../src/orchestrator/index.js'
+import { PLUGIN_HOOKS } from '../src/config.js'
 
 const pkg = path.resolve(import.meta.dir, '..')
 const doc = readFileSync(path.join(pkg, 'docs', 'architecture.md'), 'utf8')
@@ -112,5 +113,17 @@ describe('architecture.md counts the modules that are on disk', () => {
     const table = doc.slice(start, doc.indexOf('\n\n', start))
     const named = [...table.matchAll(/^\| `(\w+)`/gm)].map((m) => m[1] as string)
     expect(named.sort()).toEqual(modules)
+  })
+})
+
+// J2-54: the "What's intentionally absent" bullet listed the pipeline
+// stages a plugin fills without `discover`, which PLUGIN_HOOKS declares.
+describe("architecture.md's absent-JS-tasks bullet names every hook", () => {
+  it('each PLUGIN_HOOKS entry is in the bullet', () => {
+    const bullet = doc
+      .slice(doc.indexOf('- **No JS-function tasks.**'))
+      .split(/\n- \*\*/)[0]!
+      .replace(/\s+/g, ' ')
+    expect(PLUGIN_HOOKS.filter((h) => !bullet.includes(`\`${h}\``))).toEqual([])
   })
 })

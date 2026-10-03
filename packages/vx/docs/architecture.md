@@ -705,7 +705,8 @@ architecture:
 
 - **No JS-function tasks.** Tasks are shell commands, full stop. The
   plugin system (`VxPlugin`) fills the pipeline stages (`config`,
-  `project`, `graph`, `key`, `fingerprint`, `schedule`, `admit`),
+  `discover`, `project`, `graph`, `key`, `fingerprint`, `schedule`,
+  `admit`),
   `executor`, `cache`, `telemetry`, `setup` / `teardown` and CLI
   `commands`: a `project` stage may add, remove or edit tasks, and an
   executor changes where a command runs, never the command.

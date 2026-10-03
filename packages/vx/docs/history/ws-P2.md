@@ -200,6 +200,12 @@ sync`", advice for a repo leaving Nx: they say to keep what the
   `MapNxOptions.nativeExecutors` is `migration`. P2-35–37 (an
   own-project edge, merge-reports, the Nx 15–16 node aliases) closed
   unmerged under the same directive.
+- **P2-40** `nx-exec` read an executor's outcome with `for await`,
+  which drops a generator's return value; `nx run` prefers it to the
+  last yield (`getLastValueFromAsyncIterableIterator`). An executor
+  that only returned `{ success: true }` exited 1, and a server that
+  yields success then returns failure when it dies exited 0. It reads
+  the outcome as Nx does now.
 
 ## Leads for other streams
 

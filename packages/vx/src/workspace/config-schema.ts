@@ -536,7 +536,7 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
         if (typeof g !== 'string' || g.length === 0) {
           throw new UserError(`${where}.cache.outputs.files must be an array of non-empty strings`)
         }
-        if (g.startsWith('/') || g.startsWith('!/')) {
+        if (isAbsoluteGlob(g)) {
           throw new UserError(
             `${where}.cache.outputs.files: absolute paths are not allowed (got "${g}") — ` +
               `outputs must be project-relative globs`,
@@ -574,7 +574,7 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
         if (typeof g !== 'string' || g.length === 0) {
           throw new UserError(`${where}.cache.inputs.files must be an array of non-empty strings`)
         }
-        if (g.startsWith('/')) {
+        if (!g.startsWith('!/') && isAbsoluteGlob(g)) {
           throw new UserError(
             `${where}.cache.inputs.files: absolute paths are not allowed (got "${g}") — ` +
               `inputs must be project-relative globs`,
@@ -1025,7 +1025,19 @@ function namesDirItself(glob: string): boolean {
  */
 function hasParentSegment(glob: string): boolean {
   const g = glob.startsWith('!') ? glob.slice(1) : glob
-  return g.split('/').some((seg) => seg === '..')
+  // A brace alternative is a segment too: `{../shared,src}/**` splits on `/`
+  // into `{..`, so it passed, and its `..` arm matched nothing — an input
+  // that silently left the key (M-64).
+  return g.split(/[/{},]/).some((seg) => seg === '..')
+}
+
+/**
+ * True when a glob is absolute, or a brace alternative in it is:
+ * `{/etc,dist}/*` matched nothing outside and said so nowhere (M-64).
+ */
+function isAbsoluteGlob(glob: string): boolean {
+  const g = glob.startsWith('!') ? glob.slice(1) : glob
+  return g.startsWith('/') || (g.includes('{') && /[{,]\//.test(g))
 }
 
 /**
@@ -1203,7 +1215,7 @@ function validateWorkspaceGlobs(v: unknown, where: string, negation: boolean): v
     if (typeof g !== 'string' || g.length === 0) {
       throw new UserError(`${where} must be an array of non-empty strings`)
     }
-    if (g.startsWith('/') || g.startsWith('!/')) {
+    if (isAbsoluteGlob(g)) {
       throw new UserError(
         `${where}: absolute paths are not allowed (got "${g}") — ` +
           `entries are workspace-root-relative globs`,

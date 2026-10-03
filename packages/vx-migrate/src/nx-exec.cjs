@@ -196,7 +196,6 @@ async function main(argv) {
   }
   // An executor yields once per result and a server yields for as long as it
   // runs; the exit is the LAST result's, as `nx run` reports it.
-  let ok = false
   const description = { project: args.project, target: args.target }
   if (args.configuration !== undefined) description.configuration = args.configuration
   // Parsed by Nx itself, as `nx run` parses what follows the target. Loaded
@@ -212,9 +211,23 @@ async function main(argv) {
     const { __overrides_unparsed__: _raw, ...parsed } = createOverrides(args.overrides)
     overrides = parsed
   }
-  for await (const result of await runExecutor(description, overrides, context)) {
-    ok = result !== null && typeof result === 'object' && result.success === true
+  // As `nx run` reads it (`getLastValueFromAsyncIterableIterator`): the
+  // generator's RETURN value when it has one, else the last yield. A
+  // `for await` drops the return: an executor that only returns
+  // `{ success: true }` exited 1, and a server that yields success and
+  // returns failure when it dies (@nx/web:file-server) exited 0.
+  const results = await runExecutor(description, overrides, context)
+  const iterator = (results[Symbol.asyncIterator] || results[Symbol.iterator]).call(results)
+  let last
+  for (;;) {
+    const step = await iterator.next()
+    if (step.done) {
+      if (step.value !== undefined) last = step.value
+      break
+    }
+    last = step.value
   }
+  const ok = last !== null && typeof last === 'object' && last.success === true
   return ok ? 0 : 1
 }
 

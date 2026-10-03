@@ -650,7 +650,7 @@ export const CHOICES: readonly Choice[] = [
           'bunx @vzn/vx-migrate writes vx.config.ts files from turbo.json or the Nx graph; turbo() and nx() are a temporary start until it has.',
         buys: 'A move to native vx config without retyping the graph.',
         costs:
-          'The plugins are not on npm until 0.1.0 is cut. nx() runs Nx executors through a Node bin. Moving to native configs means writing input lists.',
+          'The plugins are not on npm until 0.1.0 is cut. nx() runs Nx executors through a Node bin, and so does the written config until you rewrite each nx-exec line as the command it wraps. Moving to native configs means writing input lists.',
         sources: [
           { label: 'From Turborepo', href: 'guides/migrate/#turborepo' },
           { label: 'From Nx', href: 'guides/migrate/#nx' },

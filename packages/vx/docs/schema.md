@@ -712,6 +712,11 @@ cases that genuinely need root-anchored inputs. The hard
 project-boundary rule continues to apply to project-relative `files`
 globs only.
 
+No input or output glob, `files` or `workspaceFiles`, may be absolute
+or hold a `..` segment, and a brace arm counts: `{../shared,src}/**` and
+`{/etc,src}/*` are refused at load, where the glob engine would have
+matched nothing under that arm and said so nowhere.
+
 Still applied: the always-ignored set (`node_modules/**`, `.git/**`,
 `.vx/**`, `*.tsbuildinfo`, `vx-lock.json`, `*.bun-build`, `.<16 hex>-<8 hex>.tmp/**`) and the task's own declared
 `outputs.workspaceFiles` (a task never invalidates itself).
