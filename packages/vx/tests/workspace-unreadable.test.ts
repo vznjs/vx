@@ -2,7 +2,7 @@
 // not writable" (a config), or as no file at all: a member's manifest at
 // mode 000 dropped its project from `--all` and the run went green
 // without it, and D-128's warning said it had no package.json (D-132).
-import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -15,7 +15,8 @@ describe.skipIf(skipAsRoot('a workspace file this user may not read'))(
   () => {
     let root: string
     beforeEach(async () => {
-      root = await mkdtemp(path.join(os.tmpdir(), 'vx-unreadable-'))
+      // Canonical: macOS's temp dir is a symlink, and vx names the real path.
+      root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'vx-unreadable-')))
       Bun.spawnSync(['git', 'init', '-q'], { cwd: root })
       await writeFile(path.join(root, 'package.json'), '{"name":"r","workspaces":["packages/*"]}')
       for (const p of ['a', 'b']) {
