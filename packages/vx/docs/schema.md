@@ -323,7 +323,9 @@ for it to exit. Instead it considers the task "ready":
   (colour, OSC titles), so `^` and `$` anchor to a line as you read
   it and `Local:` matches Vite's bold `Local` under `FORCE_COLOR`.
   The trailing partial line is tested too, so prompt-style banners
-  without a newline (`printf 'Listening on :3000'`) count.
+  without a newline (`printf 'Listening on :3000'`) count. A server
+  not ready after 10 s (`VX_READY_NOTICE_MS`) is said once, naming
+  the pattern it waits for, and whether `exec.timeout` bounds the wait.
 
 ```ts
 dev: {
