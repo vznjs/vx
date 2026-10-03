@@ -81,8 +81,11 @@ function parseBerry(text: string): Lockfile {
       deps: depsOf(e, ['dependencies', 'peerDependencies']),
       resolution: `${resolution}\0${stable(material)}`,
     })
+    // Yarn joins a key's descriptors with ', '; a range's own trailing
+    // space is kept (forge's `p-limit: "npm:^3.1.0 "`), or its lookup
+    // missed and fell back to every entry of the name.
     for (const k of keys.split(',')) {
-      const descriptor = k.trim()
+      const descriptor = k.trimStart()
       descriptors.set(descriptor, resolution)
       const builtin = /@patch:(.+)#optional!builtin<[^>]*>$/.exec(descriptor)
       if (builtin !== null) {
@@ -214,7 +217,12 @@ function record(v: unknown): Json | undefined {
  * Which one the catalog names is `.yarnrc.yml`'s to say, and core folds
  * that file into every key.
  */
-function resolveDescriptor(lock: Lockfile, name: string, range: string): readonly string[] {
+function resolveDescriptor(
+  lock: Lockfile,
+  from: string,
+  name: string,
+  range: string,
+): readonly string[] {
   // A descriptor Yarn compat-patches reaches the patched entry it installs
   // as well as the plain one it keys (item 1074).
   const withPatch = (descriptor: string, id: string): readonly string[] => {
@@ -224,6 +232,11 @@ function resolveDescriptor(lock: Lockfile, name: string, range: string): readonl
   const direct = lock.descriptors.get(`${name}@${range}`)
   if (direct !== undefined) return withPatch(`${name}@${range}`, direct)
   if (lock.generation !== 'berry') return []
+  // A path range (`portal:`, `file:`, `link:`) is keyed bound to the
+  // package that names it, `::locator=<its locator>`; unbound it fell
+  // back to every entry of the name, another workspace's included.
+  const bound = lock.descriptors.get(`${name}@${range}::locator=${encodeURIComponent(from)}`)
+  if (bound !== undefined) return [bound]
   if (range.startsWith('workspace:')) {
     for (const id of lock.workspaces.values()) if (id.startsWith(`${name}@workspace:`)) return [id]
     return []
@@ -260,7 +273,7 @@ export function importerDigests(lock: Lockfile): ReadonlyMap<string, string> {
   for (const [id, e] of lock.entries) {
     const from = index.get(id)!
     for (const [name, range] of e.deps) {
-      const targets = resolveDescriptor(lock, name, range)
+      const targets = resolveDescriptor(lock, id, name, range)
       for (const target of targets) edges[from]!.push(index.get(target)!)
       if (targets.length === 0) material[from] += `\nunresolved\0${name}\0${range}`
     }
