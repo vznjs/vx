@@ -4,7 +4,7 @@
 
 Answer "where did the warm run go?" without a profiler. With
 `VX_TIMING` set to anything but the empty string, `mark(label)` records
-the end of each stage — `prepareRun`'s seven, then `run()`'s, the
+the end of each stage — `prepareRun`'s eight, then `run()`'s, the
 first of which is marked as `prepareRun` returns and holds the graph,
 key and schedule hooks, so a plugin's cost is its own row — and
 `span(label)` accumulates the repeated per-task operations: the probe,
