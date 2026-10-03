@@ -152,6 +152,15 @@ prune` all match. Fixed: the Run blocks used bare `vx`, which a local
   no cache block (both scratch walkthroughs re-ran every task). Its
   comments now name the step between; the landing test pins it.
 
+- **R-28** Plugin pages against source: every `@vzn/vx-*` import in a
+  README or guide names a live export; every option table row exists in
+  source, and every option a plugin's `refuseUnknownOptions` accepts is
+  documented except test seams (otel `post`, github `fetchFn` /
+  `sizeOf`). `reapi()`'s six undocumented ones (`tls*Pem`, `toolName`,
+  `toolVersion`, `correlatedInvocationsId`) are now in its README.
+  Lead: `reapi({ onWarn })` is accepted but the plugin overrides it
+  with `ctx.warn` (index.ts:200, 255), so a user's `onWarn` never runs.
+
 ## Leads
 
 - Real-repo rows (`packages/vx-bench/real-repos.json`, benchmarks.md's
