@@ -802,3 +802,13 @@ keep their hashes. Not
 covered: a name made secret by `exec.env.secret` alone, which run history
 does not record. `why.test.ts` › a secret-named env input (text and json;
 red without the fix, the `REGION` control unmasked).
+
+M-65. M-61's warning, the workspace side: a `workspaceFiles` output
+directory that is a symlink out of the workspace (`shared ->
+/elsewhere`) drops every file under it, and the empty-artifact line
+blamed the glob. Probed with the rest of (3): a file link out under
+`workspaceFiles` and a project link into the workspace are refused at
+save, and nothing outside was packed or cleaned. `outputDirLinkedOut`
+now reads the workspace globs against the root and names the base.
+`cache-declaration-warnings.test.ts` › and a workspaceFiles directory
+linked out of the workspace (red without the fix).

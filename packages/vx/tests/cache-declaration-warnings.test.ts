@@ -115,6 +115,25 @@ describe('cache declarations that match nothing', () => {
     }
   })
 
+  it('and a workspaceFiles directory linked out of the workspace (M-65)', async () => {
+    // The root-anchored side drops every file under a linked-out directory
+    // the same way, and its warning blamed the glob too.
+    const outside = await mkdtemp(path.join(os.tmpdir(), 'vx-decl-wsout-'))
+    try {
+      await writeFile(path.join(outside, 'creds.txt'), 'not yours\n')
+      await writeFile(
+        path.join(root, 'packages', 'app', 'vx.config.mjs'),
+        `export default { tasks: { linked: { exec: { command: 'ln -sfn ${outside} ../../shared' },
+          cache: { inputs: { files: ['src/**'] }, outputs: { files: [], workspaceFiles: ['shared/**'] } } } } }\n`,
+      )
+      expect(await runTask('linked')).toEqual([
+        `[vx] app#linked: cache.outputs matched no files (shared/**) — an empty artifact is saved; a later hit restores nothing — shared is a symlink to ${realpathSync(outside)}, outside the workspace, and vx keeps only outputs inside it: make shared a directory`,
+      ])
+    } finally {
+      await rm(outside, { recursive: true, force: true })
+    }
+  })
+
   it('a hit with no rows is up-to-date while its globs still match nothing, and wipes a stray', async () => {
     // The warned entry holds no rows. Before item 589 its every hit
     // extracted the empty artifact and reported a restore; now the hit is
