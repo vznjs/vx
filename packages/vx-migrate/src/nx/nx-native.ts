@@ -889,7 +889,45 @@ const swc: Translate = (o, ctx, todos) => {
   return o['clean'] === false ? line : `rm -rf ${out} && ${line}`
 }
 
+/**
+ * `@nx/js:verdaccio`: the local registry Nx forks from the workspace root,
+ * `verdaccio --config <config> --listen <listenAddress>:<port>` (port 4873
+ * without a config), with `VERDACCIO_HANDLE_KILL_SIGNALS` set and
+ * `storage` emptied first under `clear` (default true). While it ran, Nx
+ * also pointed npm and yarn at it (`location`, default `user`) and reset
+ * them after; verdaccio alone does not.
+ */
+const verdaccio: Translate = (o, ctx, todos, env) => {
+  env['VERDACCIO_HANDLE_KILL_SIGNALS'] = 'true'
+  const args = ['verdaccio']
+  const config = typeof o['config'] === 'string' ? wsPath(o['config'], ctx) : undefined
+  if (config !== undefined) args.push('--config', shellQuote(config))
+  const port = typeof o['port'] === 'number' ? o['port'] : config === undefined ? 4873 : undefined
+  const host = typeof o['listenAddress'] === 'string' ? o['listenAddress'] : 'localhost'
+  if (port !== undefined) args.push('--listen', shellQuote(`${host}:${port}`))
+  let line = args.join(' ')
+  if (typeof o['storage'] === 'string') {
+    // Nx hands verdaccio the absolute path; `$PWD` is the root after the cd.
+    const storage = shellQuote(wsPath(o['storage'], ctx))
+    line = `VERDACCIO_STORAGE_PATH="$PWD"/${storage} ${line}`
+    if (o['clear'] !== false) line = `rm -rf ${storage} && ${line}`
+  }
+  const location = typeof o['location'] === 'string' ? o['location'] : 'user'
+  if (location !== 'none') {
+    const scopes =
+      Array.isArray(o['scopes']) && o['scopes'].length > 0
+        ? ` (and scopes ${o['scopes'].join(', ')})`
+        : ''
+    todos.push(
+      `@nx/js:verdaccio pointed npm and yarn${scopes} at the registry (\`--location ${location}\`) while it ran, ` +
+        'and reset them after — verdaccio does not; set `npm_config_registry` on the tasks that use it',
+    )
+  }
+  return fromRoot(ctx, line)
+}
+
 const TRANSLATORS: Readonly<Record<string, Translate>> = {
+  '@nx/js:verdaccio': verdaccio,
   '@nx/js:swc': swc,
   '@nx/js:node': node,
   '@nx/esbuild:esbuild': esbuild,

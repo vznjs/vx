@@ -1105,6 +1105,7 @@ const KNOWN_EXECUTORS: Record<string, { persistent: boolean }> = {
   '@nx/eslint:lint': { persistent: false },
   '@nx/js:tsc': { persistent: false },
   '@nx/js:node': { persistent: true },
+  '@nx/js:verdaccio': { persistent: true },
   '@nx/webpack:webpack': { persistent: false },
   '@nx/webpack:dev-server': { persistent: true },
   '@nx/esbuild:esbuild': { persistent: false },
