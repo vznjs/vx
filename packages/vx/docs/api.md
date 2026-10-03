@@ -901,7 +901,7 @@ export class LayeredCache implements CacheLayer {
   readonly hasRemote
   constructor(
     readonly local: Cache,
-    remote: RemoteCacheLayer,
+    private readonly remote: RemoteCacheLayer,
     private readonly options: LayeredCacheOptions = {},
   )
   key(input: CacheKeyInput): Promise<string>
@@ -1749,6 +1749,7 @@ export interface RunOptions {
   cacheDir?: string
   cache?: CachePolicy
   remoteRequested?: boolean
+  defaultCacheScope?: string
   frozen?: boolean
   outputLogs?: 'full' | 'errors-only' | 'none' | 'hash-only'
   download?: 'all' | 'toplevel' | 'none'

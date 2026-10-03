@@ -1421,10 +1421,13 @@ interface WorkspaceConfig {
   `TURBO_SCM_BASE`, else on GitHub Actions from `GITHUB_BASE_REF` or the
   push event's `before`, as Turbo does. Not folded into any cache key.
 - **`cacheScope`** — where this run's remote cache writes land.
-  `'trusted'` (omitted) reads and writes the task keys: the default
-  branch's CI. `'read-only'` reads them and writes nothing: a laptop.
-  Any other name (`'pr-123'`; letters, digits, `. _ - / @`, at most 128) is an untrusted scope: a remote read tries the trusted key, then
-  the scope's, and a write goes to the scope's only, so a pull request
+  `'trusted'` reads and writes the task keys: the default branch's CI.
+  `'read-only'` reads them and writes nothing: a laptop. Omitted, `vx
+run` takes `'read-only'` off CI (`CI` unset, `0` or `false`) and
+  `'trusted'` on CI or when `--cache` names the remote; `run()` takes
+  `RunOptions.defaultCacheScope`, else `'trusted'`.
+  Any other name (`'pr-123'`; letters, digits, `. _ - / @`, at most 128) is an untrusted scope: a remote read tries the scope's key, then
+  the trusted one, and a write goes to the scope's only, so a pull request
   never writes what the default branch reads, and two scopes never see
   each other. A scope's key is derived from the task key, so every
   remote wire stores it unchanged. A clamp on `--cache`, never a

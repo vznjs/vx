@@ -21,8 +21,8 @@ export interface CachePolicy {
   remoteRead: boolean
   remoteWrite: boolean
   /**
-   * An untrusted scope (`cacheScope: 'pr-123'`): remote reads try the
-   * trusted keys, then this scope's; remote writes go to this scope's
+   * An untrusted scope (`cacheScope: 'pr-123'`): remote reads try this
+   * scope's keys, then the trusted ones; remote writes go to this scope's
    * keys only. Absent = trusted. See {@link scopeCachePolicy}.
    */
   remoteScope?: string

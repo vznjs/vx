@@ -71,6 +71,12 @@ export interface RunOptions {
    */
   remoteRequested?: boolean
   /**
+   * The `cacheScope` a run takes when `vx.workspace` names none. The CLI
+   * passes `'read-only'` off CI (`CI` unset, `0` or `false`) unless
+   * `--cache` names the remote; omitted → trusted.
+   */
+  defaultCacheScope?: string
+  /**
    * CI mode: load configs FROM the committed vx-lock.json instead of
    * evaluating them (frozen-env reproducibility). Requires the lock
    * to exist and pass its content-hash tripwire. Local runs default

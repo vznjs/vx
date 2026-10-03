@@ -1,6 +1,6 @@
 // `cacheScope`, end to end over an injected remote: the trusted scope reads
-// and writes the task key; an untrusted scope reads the trusted key, then
-// its own, and writes only its own; `read-only` writes nothing.
+// and writes the task key; an untrusted scope reads its own key, then
+// the trusted one, and writes only its own; `read-only` writes nothing.
 
 import { rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
@@ -13,6 +13,7 @@ import {
   type Fixture,
 } from './helpers/orchestrator-fixture.js'
 import type { RemoteCacheLayer } from '../src/cache/index.js'
+import { parseRunArgs, resolveRunOptions } from '../src/cli/run.js'
 import { run } from '../src/orchestrator/index.js'
 
 const BUILD_CONFIG = `
@@ -57,6 +58,7 @@ async function runScoped(
   remote: RemoteCacheLayer,
   scope: string | undefined,
   input: string,
+  defaultCacheScope?: string,
 ): Promise<{ status: string; hash: string }> {
   await writeFile(
     path.join(fixture.root, 'vx.workspace.mjs'),
@@ -70,6 +72,7 @@ async function runScoped(
     tasks: ['build'],
     log: silentLogger(fixture),
     remoteCache: remote,
+    ...(defaultCacheScope === undefined ? {} : { defaultCacheScope }),
   })
   expect(result.ok).toBe(true)
   const outcome = result.outcomes[0]!
@@ -92,9 +95,10 @@ describe('cacheScope', () => {
         expect(main.status).toBe('success')
         expect([...store.keys()]).toEqual([main.hash])
 
-        // A PR reads what the default branch wrote, asking the trusted key first.
+        // A PR reads what the default branch wrote, asking its own scope first.
         gets.length = 0
         expect((await runScoped(fixture, layer, 'pr-1', 'v1')).status).toBe('cache-hit-remote')
+        // The batch probe found it under the trusted key alone: one GET.
         expect(gets).toEqual([main.hash])
 
         // Its own work lands beside the trusted key, never under it.
@@ -104,7 +108,11 @@ describe('cacheScope', () => {
         expect(store.has(pr.hash)).toBe(false)
 
         // The same scope reads it back; another scope and trusted do not.
+        gets.length = 0
         expect((await runScoped(fixture, layer, 'pr-1', 'v2')).status).toBe('cache-hit-remote')
+        // Its own scope is asked first: one GET, not under the task key.
+        expect(gets.length).toBe(1)
+        expect(gets[0]).not.toBe(pr.hash)
         expect((await runScoped(fixture, layer, 'pr-2', 'v2')).status).toBe('success')
         expect(store.size).toBe(3)
         const trusted = await runScoped(fixture, layer, 'trusted', 'v2')
@@ -140,4 +148,51 @@ describe('cacheScope', () => {
     },
     TIMEOUT,
   )
+
+  it(
+    'a default scope applies only when the workspace names none',
+    async () => {
+      const fixture = await makeWorkspace('vx-cache-scope-default-')
+      const { layer, store } = memoryRemote()
+      try {
+        await addProject(fixture.root, 'app', {
+          files: { 'src/in.txt': 'v1' },
+          config: BUILD_CONFIG,
+        })
+        expect((await runScoped(fixture, layer, undefined, 'v1', 'read-only')).status).toBe(
+          'success',
+        )
+        expect(store.size).toBe(0)
+        expect((await runScoped(fixture, layer, 'trusted', 'v1', 'read-only')).status).toBe(
+          'success',
+        )
+        expect(store.size).toBe(1)
+      } finally {
+        await rm(fixture.root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
+  it('the CLI defaults to read-only off CI, unless --cache names the remote', async () => {
+    const fixture = await makeWorkspace('vx-cache-scope-cli-')
+    const saved = process.env['CI']
+    const scopeOf = async (args: string[], ci: string | undefined): Promise<unknown> => {
+      if (ci === undefined) delete process.env['CI']
+      else process.env['CI'] = ci
+      const opts = await resolveRunOptions(parseRunArgs(args), fixture.root, ['build'])
+      return (opts as { defaultCacheScope?: unknown }).defaultCacheScope
+    }
+    try {
+      await addProject(fixture.root, 'app', { files: { 'src/in.txt': 'v1' }, config: BUILD_CONFIG })
+      expect(await scopeOf(['build', '--all'], undefined)).toBe('read-only')
+      expect(await scopeOf(['build', '--all'], 'false')).toBe('read-only')
+      expect(await scopeOf(['build', '--all'], 'true')).toBeUndefined()
+      expect(await scopeOf(['build', '--all', '--cache=remote:rw'], undefined)).toBeUndefined()
+    } finally {
+      if (saved === undefined) delete process.env['CI']
+      else process.env['CI'] = saved
+      await rm(fixture.root, { recursive: true, force: true })
+    }
+  })
 })

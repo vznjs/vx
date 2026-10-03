@@ -39,8 +39,8 @@ holds a token that writes the trusted keys, and a pull request's job
 holds one that cannot (read-only, or confined by the server to its own
 namespace), or none.
 
-`cacheScope` is the client half. `'pr-123'` reads the trusted keys,
-then its own, and writes only its own, which `github()` sets on
+`cacheScope` is the client half. `'pr-123'` reads its own keys,
+then the trusted ones, and writes only its own, which `github()` sets on
 Actions (`pr-<n>`, `ref-<name>`; the default branch stays trusted).
 It keeps honest runs apart and stops a non-hermetic PR build from
 landing where main reads; it is not a boundary, since the PR's own

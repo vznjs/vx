@@ -22,8 +22,9 @@ via `RunOptions.remoteCache`.
   guarantees **at most one remote GET per key**, and a settled miss
   blocks a second lazy probe.
 - **Scopes**: a policy carrying `remoteScope` (the workspace's
-  `cacheScope`, an untrusted scope) reads the task key, then the
-  scope's key, and writes the scope's key only. The scope's key is
+  `cacheScope`, an untrusted scope) reads the scope's key, then
+  the task key (a batch probe that found only the task key skips the
+  scope's GET), and writes the scope's key only. The scope's key is
   `xxh3(scope, task key)`, 16 hex like a task key, so every wire stores
   it unchanged; what it returns is ingested under the task key, whose
   record check refuses an artifact packed under another.

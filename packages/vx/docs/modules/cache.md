@@ -312,7 +312,7 @@ export interface CachePolicy {
   localWrite: boolean
   remoteRead: boolean
   remoteWrite: boolean
-  remoteScope?: string // an untrusted scope: read trusted then own keys, write own
+  remoteScope?: string // an untrusted scope: read own then trusted keys, write own
 }
 export const FULL_CACHE_POLICY: CachePolicy
 export function parseCachePolicy(spec: string, base?: CachePolicy): CachePolicy

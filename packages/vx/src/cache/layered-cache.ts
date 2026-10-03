@@ -159,8 +159,8 @@ function batchOf(hashes: readonly string[]): { batch: string } {
 }
 
 /**
- * The remote as an untrusted scope sees it: reads try the trusted key,
- * then the scope's; writes go to the scope's key only. A scope's key is
+ * The remote as an untrusted scope sees it: reads try the scope's key,
+ * where a PR's own earlier runs left it, then the trusted one; writes go to the scope's key only. A scope's key is
  * derived from the task key, so every wire stores it unchanged and the
  * trusted keyspace never holds a scoped write. What a scoped read
  * returns is ingested under the TASK key, and ingest refuses an artifact
@@ -169,6 +169,8 @@ function batchOf(hashes: readonly string[]): { batch: string } {
 class ScopedRemote implements RemoteCacheLayer {
   readonly endpoint?: string
   readonly hasMany?: (hashes: readonly string[]) => Promise<Set<string> | null>
+  /** Task keys a batch probe found under the trusted key alone: their GET skips the scope's. */
+  private readonly trustedOnly = new Set<string>()
 
   constructor(
     private readonly remote: RemoteCacheLayer,
@@ -183,7 +185,7 @@ class ScopedRemote implements RemoteCacheLayer {
   }
 
   async has(hash: string): Promise<boolean> {
-    return (await this.remote.has(hash)) || this.remote.has(this.scoped(hash))
+    return (await this.remote.has(this.scoped(hash))) || this.remote.has(hash)
   }
 
   private async scopedHasMany(hashes: readonly string[]): Promise<Set<string> | null> {
@@ -194,14 +196,18 @@ class ScopedRemote implements RemoteCacheLayer {
     ])
     if (trusted == null || own == null) return null
     const found = new Set(trusted)
-    for (let i = 0; i < hashes.length; i++) if (own.has(scoped[i]!)) found.add(hashes[i]!)
+    for (let i = 0; i < hashes.length; i++) {
+      if (own.has(scoped[i]!)) found.add(hashes[i]!)
+      else if (trusted.has(hashes[i]!)) this.trustedOnly.add(hashes[i]!)
+    }
     return found
   }
 
   async get(
     hash: string,
   ): Promise<{ body: Blob | Response; durationMs: number | undefined } | null> {
-    return (await this.remote.get(hash)) ?? this.remote.get(this.scoped(hash))
+    if (this.trustedOnly.has(hash)) return this.remote.get(hash)
+    return (await this.remote.get(this.scoped(hash))) ?? this.remote.get(hash)
   }
 
   put(hash: string, body: Blob, meta: { durationMs: number }): Promise<void> {
@@ -279,16 +285,17 @@ export class LayeredCache implements CacheLayer {
    */
   private readonly reported = new Map<string, { cause: string; repeats: number }>()
 
-  private readonly remote: RemoteCacheLayer
+  /** The remote as this run's scope sees it: `remote` itself when trusted. */
+  private readonly wire: RemoteCacheLayer
 
   constructor(
     readonly local: Cache,
-    remote: RemoteCacheLayer,
+    private readonly remote: RemoteCacheLayer,
     private readonly options: LayeredCacheOptions = {},
   ) {
     this.policy = options.policy ?? FULL_CACHE_POLICY
     const scope = this.policy.remoteScope
-    this.remote = scope === undefined ? remote : new ScopedRemote(remote, scope)
+    this.wire = scope === undefined ? remote : new ScopedRemote(remote, scope)
     this.endpoint = printableEndpoint(remote.endpoint)
   }
 
@@ -315,11 +322,11 @@ export class LayeredCache implements CacheLayer {
    * degrades to "no batch info" and the caller falls back to per-hash.
    */
   async remoteHasMany(hashes: readonly string[]): Promise<Set<string> | null> {
-    if (!this.policy.remoteRead || this.remote.hasMany === undefined) return null
+    if (!this.policy.remoteRead || this.wire.hasMany === undefined) return null
     try {
       // `return await`, deliberately: the catch below is the never-fail
       // contract, and a returned promise's rejection would sail past it.
-      const found: unknown = await this.remote.hasMany(hashes)
+      const found: unknown = await this.wire.hasMany(hashes)
       if (found !== null && found !== undefined && !(found instanceof Set)) {
         this.reportRemoteError(
           'probe',
@@ -398,7 +405,7 @@ export class LayeredCache implements CacheLayer {
     if ((await this.local.has(hash)) === 'local') return 'local'
     if (!this.policy.remoteRead) return null
     try {
-      return (await this.remote.has(hash)) ? 'remote' : null
+      return (await this.wire.has(hash)) ? 'remote' : null
     } catch (err) {
       this.reportRemoteError('probe', hash, err)
       return null
@@ -434,7 +441,7 @@ export class LayeredCache implements CacheLayer {
 
     let remoteResult: unknown
     try {
-      remoteResult = await this.remote.get(hash)
+      remoteResult = await this.wire.get(hash)
     } catch (err) {
       this.reportRemoteError('download', hash, err)
       return false
@@ -539,7 +546,7 @@ export class LayeredCache implements CacheLayer {
       try {
         const body =
           packed !== undefined ? new Blob([packed]) : Bun.file(this.local.outputsPath(hash))
-        await this.remote.put(hash, body, { durationMs })
+        await this.wire.put(hash, body, { durationMs })
       } catch (err) {
         this.reportRemoteError('upload', hash, err)
       }

@@ -437,6 +437,11 @@ export function detectFlow(
  * Assumes the caller has already populated `parsed.tasks` (e.g. via
  * the interactive picker for `vx run`).
  */
+/** `CI=0` / `CI=false` are not CI, as the output flow reads them. */
+function onCI(v: string | undefined): boolean {
+  return v !== undefined && v !== '' && v !== '0' && v !== 'false'
+}
+
 export async function resolveRunOptions(
   parsed: RunArgs,
   cwd: string,
@@ -535,6 +540,11 @@ export async function resolveRunOptions(
     tasks: [...tasks],
     cache: parsed.cache,
     ...(parsed.remoteRequested ? { remoteRequested: true } : {}),
+    // A laptop reads the shared cache and never writes it (owner,
+    // 2026-10-03); naming the remote in `--cache` is asking to.
+    ...(!parsed.remoteRequested && !onCI(process.env['CI'])
+      ? { defaultCacheScope: 'read-only' }
+      : {}),
     flow: detectFlow(parsed),
     ...(parsed.frozen ? { frozen: true } : {}),
     ...(parsed.outputLogs !== undefined ? { outputLogs: parsed.outputLogs } : {}),

@@ -262,7 +262,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   // cached evaluations live.
   const policy: CachePolicy = scopeCachePolicy(
     options.cache ?? FULL_CACHE_POLICY,
-    workspaceConfig?.cacheScope,
+    workspaceConfig?.cacheScope ?? options.defaultCacheScope,
   )
   const localCache = new Cache(
     cacheDir,
