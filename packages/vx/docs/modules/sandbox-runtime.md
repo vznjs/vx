@@ -3,9 +3,11 @@
 ## Purpose
 
 Thin wrapper around `@anthropic-ai/sandbox-runtime` (SRT) for running a
-single task inside a filesystem + network sandbox with strict isolation.
-Used by `executeCachedTask` when the task's config declares
-`exec.sandbox`.
+single task inside a filesystem + network sandbox with strict isolation,
+for a task whose config declares `exec.sandbox`. The local executor
+(`local-executor.ts`) calls `runSandboxed` for the attempt
+`executeCachedTask` builds; a persistent task's path in
+`execute-task.ts` wraps its command with `wrapSandboxedCommand` itself.
 
 Policy: **fail on violation, no cache for failed tasks.** The sandbox
 enforces the declared grants at the kernel level; a task that reads

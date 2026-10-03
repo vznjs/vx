@@ -2,9 +2,11 @@
 
 ## Purpose
 
-Runs the pipeline stages (`config`, `project`, `graph` — each plugin
-edits the object in place, in declaration order; `hasHook` is the
-zero-cost gate that skips a stage nobody declares), consults the
+Runs the pipeline stages: `config`, `project` and `graph`, where each
+plugin edits the object in place in declaration order, and `discover`,
+`key`, `fingerprint` (`claimedAffected`), `schedule` and `admit`, which
+answer (`hasHook` is the zero-cost gate that skips a stage nobody
+declares). It consults the
 run-level capabilities (`executor`, `cache`), and runs each plugin's
 `teardown()` at the end of the run, crash-isolated and time-bounded.
 After the `graph` stage the graph is re-checked the way the builder
