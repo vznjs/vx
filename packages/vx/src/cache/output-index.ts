@@ -9,6 +9,7 @@
 const ABSENT_DIR_MTIME = -1
 
 import type { Database, SQLQueryBindings } from 'bun:sqlite'
+import { lazyStatement } from './schema.js'
 import { lstatSync, statSync } from 'node:fs'
 import { lstat, readdir } from 'node:fs/promises'
 import path from 'node:path'
@@ -42,21 +43,26 @@ export class OutputIndex {
   private readonly pendingStamps = new Map<string, Array<[string, number, number]>>()
 
   constructor(private readonly db: Database) {
-    this.insertOutputFile = this.db.prepare(`
+    this.insertOutputFile = lazyStatement(
+      this.db,
+      `
       INSERT INTO output_files(entry_hash, path, size_bytes, mode, mtime_ms)
       VALUES (?, ?, ?, ?, ?)
       ON CONFLICT(entry_hash, path) DO UPDATE SET
         size_bytes = excluded.size_bytes,
         mode       = excluded.mode,
         mtime_ms   = excluded.mtime_ms
-    `)
-    this.deleteOutputFiles = this.db.prepare('DELETE FROM output_files WHERE entry_hash = ?')
-    this.insertOutputDir = this.db.prepare(
+    `,
+    )
+    this.deleteOutputFiles = lazyStatement(this.db, 'DELETE FROM output_files WHERE entry_hash = ?')
+    this.insertOutputDir = lazyStatement(
+      this.db,
       'INSERT INTO output_dirs(entry_hash, path, mtime_ms) VALUES (?, ?, ?)',
     )
-    this.deleteOutputDirs = this.db.prepare('DELETE FROM output_dirs WHERE entry_hash = ?')
-    this.entryExists = this.db.prepare('SELECT 1 FROM entries WHERE hash = ?')
-    this.stampOutputFile = this.db.prepare(
+    this.deleteOutputDirs = lazyStatement(this.db, 'DELETE FROM output_dirs WHERE entry_hash = ?')
+    this.entryExists = lazyStatement(this.db, 'SELECT 1 FROM entries WHERE hash = ?')
+    this.stampOutputFile = lazyStatement(
+      this.db,
       'UPDATE output_files SET ino = ?, ctime_ms = ? WHERE entry_hash = ? AND path = ?',
     )
   }

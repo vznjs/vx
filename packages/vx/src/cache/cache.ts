@@ -38,7 +38,7 @@ import {
 } from 'node:fs'
 import { readdir, rm, stat, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import { createTables } from './schema.js'
+import { createTables, lazyStatement } from './schema.js'
 import {
   UserError,
   formatBytes,
@@ -451,7 +451,6 @@ export class Cache implements CacheLayer {
   private readonly upsertStdout: ReturnType<Database['prepare']>
   private readonly deleteStdout: ReturnType<Database['prepare']>
   private readonly entryExists: ReturnType<Database['prepare']>
-  private readonly bumpAccessed: ReturnType<Database['prepare']>
   private readonly touched = new Set<string>()
   private readonly insertEntryInput: ReturnType<Database['prepare']>
   /** The per-file (mtime, size) → blob-OID memo behind `hashFile`. */
@@ -706,8 +705,10 @@ export class Cache implements CacheLayer {
 
     createTables(this.db)
 
-    this.deleteEntryRow = this.db.prepare('DELETE FROM entries WHERE hash = ?')
-    this.insertEntry = this.db.prepare(`
+    this.deleteEntryRow = lazyStatement(this.db, 'DELETE FROM entries WHERE hash = ?')
+    this.insertEntry = lazyStatement(
+      this.db,
+      `
       INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, created_at, accessed_at, cpu_ms, peak_rss_bytes)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(hash) DO UPDATE SET
@@ -720,25 +721,29 @@ export class Cache implements CacheLayer {
         accessed_at    = excluded.accessed_at,
         cpu_ms         = excluded.cpu_ms,
         peak_rss_bytes = excluded.peak_rss_bytes
-    `)
-    this.upsertStdout = this.db.prepare(
+    `,
+    )
+    this.upsertStdout = lazyStatement(
+      this.db,
       'INSERT INTO entry_stdout(hash, stdout) VALUES (?, ?) ON CONFLICT(hash) DO UPDATE SET stdout = excluded.stdout',
     )
-    this.deleteStdout = this.db.prepare('DELETE FROM entry_stdout WHERE hash = ?')
-    this.selectEntry = this.db.prepare(`${SELECT_ENTRY} WHERE e.hash = ?`)
+    this.deleteStdout = lazyStatement(this.db, 'DELETE FROM entry_stdout WHERE hash = ?')
+    this.selectEntry = lazyStatement(this.db, `${SELECT_ENTRY} WHERE e.hash = ?`)
     // `has` asks only whether the row is there, with no stdout joined. A
     // column off the index, so the table row is still read and a corrupt
     // table refuses here as it does on `get` (`SELECT 1` answers from the
     // index alone).
-    this.entryExists = this.db.prepare('SELECT exit_code FROM entries WHERE hash = ?')
-    this.bumpAccessed = this.db.prepare('UPDATE entries SET accessed_at = ? WHERE hash = ?')
+    this.entryExists = lazyStatement(this.db, 'SELECT exit_code FROM entries WHERE hash = ?')
     // INSERT OR IGNORE: re-saving the same hash (idempotent ingest /
     // overlapping concurrent saves) leaves the existing rows untouched —
     // identical inputs derive the identical hash, so the rows are too.
-    this.insertEntryInput = this.db.prepare(`
+    this.insertEntryInput = lazyStatement(
+      this.db,
+      `
       INSERT OR IGNORE INTO entry_inputs(entry_hash, kind, name, hash)
       VALUES (?, ?, ?, ?)
-    `)
+    `,
+    )
     // The slices: each owns its statements over this handle and its table(s);
     // the schema above is the one place every table is declared.
     this.files = new FileHashStore(this.db, cacheDir, this.write, repoDir)
