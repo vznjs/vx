@@ -593,13 +593,3 @@ async function loadGraphText(
   }
   return { text: await Bun.file(snapshot).text(), label: path.relative(root, snapshot) }
 }
-
-export {
-  mapNxWorkspace,
-  nxExecCommand,
-  parseNxGraph,
-  readNxJsonFacts,
-  type MapNxOptions,
-  type NxGraph,
-  type NxMapping,
-} from './nx-map.js'

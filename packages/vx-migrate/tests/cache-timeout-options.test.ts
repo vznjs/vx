@@ -3,7 +3,8 @@
 // request (turbo), and a zero one aborted each as it started (nx; Turbo
 // reads 0 as no deadline, so turboCache takes it) (stream F).
 import { expect, it } from 'bun:test'
-import { resolveNxCacheConfig, resolveTurboCacheConfig } from '../src/index.js'
+import { resolveNxCacheConfig } from '../src/nx-cache/index.js'
+import { resolveTurboCacheConfig } from '../src/turbo-cache/index.js'
 
 const said = (make: () => { timeoutMs: number } | undefined): string => {
   try {
