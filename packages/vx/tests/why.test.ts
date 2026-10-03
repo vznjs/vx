@@ -729,9 +729,9 @@ describe('vx why prints a file name (L-31)', () => {
 
 describe('vx why — a secret-named env input', () => {
   // Its hashes are its value, unsalted: a short one is recoverable from a CI
-  // log that printed `vx why` (M-62). The row still says it changed.
+  // log that printed `vx why` (M-62). The row names it and says it changed.
   it(
-    'shows the change and hides both hashes, in text and in json',
+    'shows the name and the change, no hash, in text and in json',
     async () => {
       const root = await makeWorkspaceRoot({ prefix: 'vx-why-secret-', git: false })
       try {
@@ -756,7 +756,7 @@ describe('vx why — a secret-named env input', () => {
             .filter((l) => /^\s+changed\s+env\s/.test(l))
             .map((l) => l.trim().replace(/[0-9a-f]{16}/g, '<hash>')),
         ).toEqual([
-          'changed env   API_TOKEN  *** → ***',
+          'changed env   API_TOKEN',
           // CONTROL: a name with no secret word keeps its hashes.
           'changed env   REGION  <hash> → <hash>',
         ])
