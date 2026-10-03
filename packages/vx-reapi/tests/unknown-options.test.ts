@@ -15,7 +15,7 @@ const refusal = (make: () => unknown): string => {
 
 it('a misspelt option is refused, naming the nearest one', () => {
   expect(refusal(() => reapi({ endpont: 'x' } as never))).toBe(
-    'reapi() has unknown option "endpont" (allowed: callTimeoutMs, capacity, chunkBytes, correlatedInvocationsId, endpoint, execute, executeTimeoutMs, headers, instanceName, metaTimeoutMs, platform, tls, tlsCertificate, tlsClientCertificate, tlsClientKey, toolName, toolVersion) \u2014 did you mean endpoint?',
+    'reapi() has unknown option "endpont" (allowed: callTimeoutMs, capacity, chunkBytes, correlatedInvocationsId, endpoint, execute, executeTimeoutMs, headers, instanceName, metaTimeoutMs, platform, queueTimeoutMs, tls, tlsCertificate, tlsClientCertificate, tlsClientKey, toolName, toolVersion) \u2014 did you mean endpoint?',
   )
 })
 

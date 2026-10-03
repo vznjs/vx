@@ -274,7 +274,9 @@ describe('replaceBinary', () => {
         const message = (caught as Error).message
         expect(message.startsWith(`vx upgrade: could not replace ${dest} (`)).toBe(true)
         expect(
-          message.endsWith(') — check permissions, or reinstall with npm install -g @vzn/vx'),
+          message.endsWith(
+            `) — nothing replaced; check the permissions of ${dest} and its directory`,
+          ),
         ).toBe(true)
         expect(await Array.fromAsync(new Bun.Glob('vx6.upgrade-*').scan({ cwd: dir }))).toEqual([])
         expect(await readdir(dest)).toEqual(['inside'])
