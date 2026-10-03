@@ -125,10 +125,10 @@ describe('workspace digests (npm)', () => {
     expect(after.get('packages/a')).toBe(before.get('packages/a'))
   })
 
-  it('root overrides move every workspace', () => {
+  it('root overrides alone move no workspace: what they force is the entry (D-142)', () => {
     const before = digests(lock())
     const after = digests(lock({ overrides: '4.0.0' }))
-    for (const dir of before.keys()) expect(after.get(dir)).not.toBe(before.get(dir))
+    for (const dir of before.keys()) expect(after.get(dir)).toBe(before.get(dir))
   })
 
   it('refuses what is not an npm v2+ lockfile', () => {

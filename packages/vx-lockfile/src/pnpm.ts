@@ -34,8 +34,11 @@ const DEP_FIELDS = ['dependencies', 'devDependencies', 'optionalDependencies'] a
 /**
  * The top-level fields the digest reads per importer: the importers, the
  * packages and snapshots they reach, their patches, and the catalogs their
- * specifiers resolved. (v5's lone importer, written at the top, may fold
- * as global too: it is the only importer there is.)
+ * specifiers resolved. `overrides` too: what an override did is the
+ * snapshot an importer now reaches, and folded into every digest one
+ * override that only `b` reached re-keyed `a` and the root as well (probed
+ * on pnpm 9, D-142). (v5's lone importer, written at the top, may fold as
+ * global too: it is the only importer there is.)
  */
 const PER_IMPORTER = new Set([
   'importers',
@@ -43,6 +46,7 @@ const PER_IMPORTER = new Set([
   'snapshots',
   'patchedDependencies',
   'catalogs',
+  'overrides',
 ])
 
 export function parseLockfile(text: string): Lockfile {
