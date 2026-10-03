@@ -622,6 +622,17 @@ comments, a `catalog`, and `!**/test/**` under `packages/**`.
 `init.test.ts` › names a package.json workspaces list pnpm-workspace.yaml
 overrides; red without the fix.
 
+M-52. M-47's lead, decided (never overwrite): `vx init` on a workspace
+where some packages already had a vx config refused the whole run, and
+`--force` would have replaced the hand-written file. Init now keeps each
+existing config untouched, writes the missing ones, and lists the kept
+under `kept (each already has a vx config):`; with nothing missing it
+says `no files written`. `--force` still replaces; `@vzn/vx-migrate`
+still refuses. `init.test.ts` › keeps each config it finds (replacing
+the row that pinned the refusal) fails without the fix and without its
+`force` guard; `migration.test.ts`'s refusal row fails without the
+`init` guard.
+
 ## Leads for other streams
 
 - A: A-20 let a same-project dependant restore ahead of a producer whose
