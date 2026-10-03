@@ -682,7 +682,11 @@ mean`, and a name only projects outside the selection declare keeps its
 project in `pkg#task`, a near `--filter`, and a workspace with no vx
 config (`run vx init`). Rows: `task-selection.test.ts` › a name past any
 near miss says what exists instead (exact lines; red without the fix),
-`near-miss.test.ts` › listed; four exact messages updated.
+`near-miss.test.ts` › listed; four exact messages updated. And a run
+with no `package.json` above it now says what to do, not only what is
+missing: it adds that vx runs inside a project, or that a new one
+needs a package.json (bun init, npm init -y) and `vx init`
+(`workspace.test.ts`, the whole line; red without it). A flag or verb typo already hinted.
 
 ## Leads for other streams
 
