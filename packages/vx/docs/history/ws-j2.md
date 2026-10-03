@@ -543,3 +543,14 @@ persistent task` and vx exits 1). Row (`site-samples` › a post's link
   hints, the visibility table, the failure recap's limits and sample,
   the live region's row cap and redraw floor, and the persistent-task
   exit line.
+- **J2-63** `cli.md`'s Environment variables section said it lists "the
+  variables core reads" and named no CI variable, though a truthy `CI`
+  picks the output flow, `GITHUB_ACTIONS` its group framing, and
+  `GITHUB_ACTIONS` / `GITLAB_CI` / `BUILDKITE` / `CIRCLECI` / `CI` name
+  the provider on the `invocations` row. Row (`env-doc-drift` › names
+  the CI variables core reads), generated from `resolveOutputView`'s
+  reads and `CI_PROVIDERS`, red without the fix. Checked clean: the
+  `VX_*` defaults, `vx why` (the verdict after #2668, the row kinds, the
+  refusals), `vx last` (sixteen hits, the 13-character prefix, the
+  messages), the `vx prune` and `vx stats` pointers, `vx completions`,
+  and Plugin commands.
