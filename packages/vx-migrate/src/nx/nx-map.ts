@@ -111,7 +111,24 @@ export function parseNxGraph(text: string, label: string): NxGraph {
     )
   }
   checkNxNodes(nodes as Record<string, unknown>, label)
+  for (const node of Object.values(nodes as Record<string, NxNode>))
+    for (const target of Object.values(node.data?.targets ?? {})) {
+      const canonical = target.executor === undefined ? undefined : LEGACY[target.executor]
+      if (canonical !== undefined) target.executor = canonical
+    }
   return { nodes: nodes as Record<string, NxNode>, dependencies: g.dependencies }
+}
+
+/**
+ * Nx 15–16's names for its own executors, which a graph keeps as the
+ * project wrote them: each re-exported `nx:`'s, and a migration read
+ * them as unknown executors, a failing placeholder each.
+ */
+const LEGACY: Readonly<Record<string, string>> = {
+  '@nrwl/workspace:run-commands': 'nx:run-commands',
+  '@nx/workspace:run-commands': 'nx:run-commands',
+  '@nrwl/workspace:run-script': 'nx:run-script',
+  '@nx/workspace:run-script': 'nx:run-script',
 }
 
 const isRecord = (v: unknown): v is Record<string, unknown> =>
