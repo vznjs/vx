@@ -438,12 +438,19 @@ export async function mapNxWorkspace(
 
   resolveAtomizedWorkspaceOutputs(root, projects, split)
   pruneOrphanPersistentNotes(projects, opts.persistentTodo)
+  // A migration leaves Nx behind, so `nx sync` is no advice there: what a
+  // generator keeps (the TypeScript one's tsconfig `references`) is the
+  // user's to keep. `nx()` runs with Nx installed.
+  const syncAdvice =
+    opts.nativeExecutors === true
+      ? 'keep what they write (`@nx/js:typescript-sync`: the tsconfig `references`) up to date by hand'
+      : 'run `nx sync` when they are out of date'
   const notes: string[] =
     globalSync.length === 0
       ? []
       : [
           `nx.json \`sync.globalGenerators\` (${globalSync.map((g) => JSON.stringify(g)).join(', ')}): ` +
-            'Nx runs them before a run, and vx does not — run `nx sync` when they are out of date',
+            `Nx runs them before a run, and vx does not — ${syncAdvice}`,
         ]
   if (releasePublish > 0)
     notes.push(
@@ -454,7 +461,7 @@ export async function mapNxWorkspace(
   for (const [gens, n] of mapOpts.syncTasks)
     notes.push(
       `\`syncGenerators\` (${gens}) on ${n} task${n === 1 ? '' : 's'}: ` +
-        'Nx runs them before those targets, and vx does not — run `nx sync` when they are out of date',
+        `Nx runs them before those targets, and vx does not — ${syncAdvice}`,
     )
   return { projects, notes }
 }

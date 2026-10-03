@@ -65,6 +65,11 @@ start` (in the build output) with Nx's port and `PORT`, and
   written as `workspaceFiles: ['../../…']`, and vx refused to load the
   migrated config (and an `nx()` run). Found by a hand-written graph
   fixture in the explicit-executor style.
+- **P2-12** A migration's sync-generator notes no longer say "run `nx
+sync`", advice for a repo leaving Nx: they say to keep what the
+  generators wrote (the TypeScript one's tsconfig `references`) by hand.
+  `nx()` keeps `nx sync`. Found by a hand-written graph fixture of
+  inferred plugin targets.
 
 ## Leads for other streams
 

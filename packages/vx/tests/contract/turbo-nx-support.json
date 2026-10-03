@@ -432,7 +432,7 @@
   {
     "key": "nx.json sync",
     "status": "not-supported",
-    "reason": "Global sync generators never run; vx warns once per run to run `nx sync`."
+    "reason": "Global sync generators never run; under `nx()` vx warns once per run to run `nx sync`, and a migration notes keeping their output by hand."
   },
   {
     "key": "nx.json migrate",
@@ -517,7 +517,7 @@
   {
     "key": "nx.json targetDefaults.*.syncGenerators",
     "status": "not-supported",
-    "reason": "One workspace note per generator list, counting its tasks, says to run `nx sync`; vx never runs sync generators."
+    "reason": "One workspace note per generator list, counting its tasks, says to run `nx sync` (a migration: keep their output by hand); vx never runs sync generators."
   },
   {
     "key": "project.json name",
@@ -637,7 +637,7 @@
   {
     "key": "project.json targets.*.syncGenerators",
     "status": "not-supported",
-    "reason": "One workspace note per generator list, counting its tasks, says to run `nx sync`; vx never runs sync generators."
+    "reason": "One workspace note per generator list, counting its tasks, says to run `nx sync` (a migration: keep their output by hand); vx never runs sync generators."
   },
   {
     "key": "inputs: a string",
