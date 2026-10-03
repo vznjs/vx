@@ -301,6 +301,11 @@ describe('the landing page', () => {
     expect(text(/<p class="bench-formula">([\s\S]*?)<\/p>/.exec(bench)![1]!)).toBe(
       'vx N% faster: vx takes N% less time than that tool (1 − vx ÷ theirs); N% slower: N% more (vx ÷ theirs − 1).',
     )
+    const notes = [...bench.matchAll(/<p class="bench-formula">([\s\S]*?)<\/p>/g)].map((m) =>
+      text(m[1]!),
+    )
+    expect(notes).toHaveLength(2)
+    expect(notes[1]).toStartWith("Nx's column ran every task through npm run")
     const reasons = [...bench.matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/g)].map((m) => text(m[1]!))
     expect(reasons).toHaveLength(3)
   })

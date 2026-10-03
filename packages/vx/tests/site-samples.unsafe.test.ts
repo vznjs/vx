@@ -2383,3 +2383,20 @@ describe('the pages say where an entry stdout lives', () => {
     )
   })
 })
+
+// The headline Nx column paid npm per task; the note under every table
+// built from it quotes the fixed harness's read, which benchmarks.md holds.
+describe('the headline Nx note quotes the fixed-harness figures', () => {
+  it('README and benchmarks.md carry it, and its figures are the table’s', () => {
+    const root = path.resolve(import.meta.dir, '..', '..', '..')
+    const bench = readFileSync(path.join(root, 'packages', 'vx', 'docs', 'benchmarks.md'), 'utf8')
+    const readme = readFileSync(path.join(root, 'README.md'), 'utf8')
+    const note = /^Nx's column ran every task through npm run.*$/m.exec(readme)?.[0]
+    expect(note).toBeDefined()
+    expect(bench).toContain(note!)
+    expect(note).toContain('Nx took 6m 59s cold and 4.50 s fully cached (vx 47% and 92% faster)')
+    expect(bench).toContain('6m 59s (vx 47% faster)')
+    expect(bench).toContain('4.50 s (vx 92% faster)')
+    expect(bench).toContain('`npm run` costs 202 ms of')
+  })
+})
