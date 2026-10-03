@@ -433,6 +433,17 @@ child, as the emit takes the listener): red on main, the SIGINT row
 with the gate's text; green with the fix. What sent the gate's suite
 an `exit` or a signal before this file is not proven.
 
+M-36. `util-settle.test.ts` › returns false for a promise that settles
+just past the budget: CI read `true` after 97 ms (#2415). Not a stalled
+loop (Bun fires expired timers in deadline order: 0 of 20 `true` with
+the loop held 200 ms). The row armed the 80 ms resolve BEFORE
+`settleWithin` armed its 20 ms deadline, so 60 ms off the CPU between
+the two arms moved the deadline past it: with 70 ms spun there, 20 of
+20 `true`. `pastDeadline` arms the late settle after the call, so it
+always expires later: 0 of 20 with the same gap. Its three siblings of
+the shape (a late rejection, a neighbour's timeout, `ms = 0`) take it
+too; all four are red with the deadline made ten times late.
+
 ## Leads for other streams
 
 - A: A-20 let a same-project dependant restore ahead of a producer whose
