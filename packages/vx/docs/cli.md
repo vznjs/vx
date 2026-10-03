@@ -1693,7 +1693,9 @@ next command to run. A root
 when `packages/*/package.json` files sit below it unreached, both
 `init` and a run that finds no config say so instead ("package.json
 declares no workspaces … Add "workspaces": ["packages/*"] to
-package.json and re-run") rather than "no scripts" or "run vx init". With
+package.json and re-run") rather than "no scripts" or "run vx init". A
+workspace whose globs match no `package.json` gets a note naming them
+(M-42). With
 no `package.json` here or above, `init` says to create one (`bun init` or
 `npm init -y`) first. Every
 generated config is typed for the editor through
