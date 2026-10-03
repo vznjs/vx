@@ -3,6 +3,6 @@
   "init: an unknown flag: vx init --bogus": 1,
   "init: --dry: vx init --dry": 0,
   "init: files written: vx init": 0,
-  "init: files exist: vx init": 1,
+  "init: files exist: vx init": 0,
   "init: files exist, --force: vx init --force": 0
 }
