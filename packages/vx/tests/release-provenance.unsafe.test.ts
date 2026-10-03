@@ -46,7 +46,7 @@ describe('release.yml attests what it ships (L-12)', () => {
     // The positive: the two uploads the release makes.
     expect(uploads).toEqual([
       'assets: packages/vx/dist/vx-linux-*',
-      'sign-darwin: dist/vx-darwin-*',
+      'sign-darwin: packages/vx/dist/vx-darwin-*',
     ])
     expect(unattested).toEqual([])
   })

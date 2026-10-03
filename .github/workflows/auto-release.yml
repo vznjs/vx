@@ -41,51 +41,16 @@ jobs:
           fetch-depth: 0
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      - run: bun install --frozen-lockfile
+      # `release.auto` declares `exec.sandbox`; see ci.yml.
+      - uses: ./.github/actions/vx-runner
 
-      - name: Decide the version
-        id: version
+      # Decide the version, write the notes, tag, release and dispatch the
+      # two workflows that build and publish it (scripts/auto-release.ts).
+      # The checkout's full history carries every tag, and `concurrency`
+      # keeps another release from landing while this one decides.
+      - name: Release
         env:
-          SHA: ${{ github.event.workflow_run.head_sha }}
-        run: |
-          set -euo pipefail
-          git fetch --quiet --tags --force origin
-          if git tag --points-at "$SHA" | grep -q '^v'; then
-            echo "$SHA is already tagged ($(git tag --points-at "$SHA" | tr '\n' ' ')); nothing to release"
-            echo "release=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          last="$(git tag -l 'v*' | sort -V | tail -1)"
-          if [ -n "$last" ] && ! git merge-base --is-ancestor "$last" "$SHA"; then
-            echo "$last is not an ancestor of $SHA — a newer commit is already released; skipping"
-            echo "release=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          next="$(bun packages/vx/scripts/release-notes.ts --next "$last" "$SHA")"
-          echo "releasing $SHA as v$next (after ${last:-no tag})"
-          echo "release=true" >> "$GITHUB_OUTPUT"
-          echo "version=$next" >> "$GITHUB_OUTPUT"
-          echo "last=$last" >> "$GITHUB_OUTPUT"
-
-      - name: Write the notes
-        if: steps.version.outputs.release == 'true'
-        env:
-          SHA: ${{ github.event.workflow_run.head_sha }}
-          LAST: ${{ steps.version.outputs.last }}
-        run: bun packages/vx/scripts/release-notes.ts "$LAST" "$SHA" > "$RUNNER_TEMP/notes.md"
-
-      # A release created with the workflow token fires no `release` event in
-      # other workflows, so the two that build and publish it are dispatched
-      # explicitly. npm.yml runs as itself, which is what its npm Trusted
-      # Publishers are registered to, so the publish needs no token.
-      - name: Tag, release and dispatch the publish
-        if: steps.version.outputs.release == 'true'
-        env:
+          VX_RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
           GH_TOKEN: ${{ github.token }}
-          SHA: ${{ github.event.workflow_run.head_sha }}
-          VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          set -euo pipefail
-          gh release create "v$VERSION" --target "$SHA" --title "v$VERSION" --notes-file "$RUNNER_TEMP/notes.md"
-          gh workflow run release.yml --ref main -f tag="v$VERSION"
-          gh workflow run npm.yml --ref main -f version="$VERSION" -f ref="v$VERSION"
-          echo "released v$VERSION — assets: release.yml, npm: npm.yml"
+        run: bun packages/vx/src/bin.ts run release.auto --filter @vzn/vx

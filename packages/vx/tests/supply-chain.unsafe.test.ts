@@ -129,14 +129,12 @@ describe('the supply chain', () => {
     ).toEqual([])
   })
 
+  // The publish is scripts/release.ts's (`release.publish.<os>`); a workflow
+  // publishes nothing itself (workflow-runner.unsafe.test.ts).
   it('publishes every npm package with provenance', () => {
-    const publishes = files.flatMap((f) =>
-      readFileSync(f, 'utf8')
-        .split('\n')
-        .filter((l) => /^\s*npm publish\b/.test(l))
-        .map((l) => `${rel(f)}: ${l.trim()}`),
-    )
+    const script = readFileSync(path.join(ROOT, 'packages', 'vx', 'scripts', 'release.ts'), 'utf8')
+    const publishes = [...script.matchAll(/\[npm, 'publish'[^\]]*\]/g)].map((m) => m[0])
     expect(publishes.length).toBeGreaterThan(0)
-    expect(publishes.filter((l) => !/--provenance\b/.test(l))).toEqual([])
+    expect(publishes.filter((p) => !p.includes("'--provenance'"))).toEqual([])
   })
 })

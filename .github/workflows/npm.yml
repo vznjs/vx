@@ -11,8 +11,14 @@ name: npm publish
 # exchanges it for a short-lived, package-scoped credential + provenance.
 # Configure a Trusted Publisher on npmjs.com for EACH of the TWELVE package
 # names (@vzn/vx, the four @vzn/vx-<target>, and the seven plugins the
-# `plugins` step emits: vx-github, vx-lockfile, vx-mcp, vx-migrate, vx-otel,
+# assemble step emits: vx-github, vx-lockfile, vx-mcp, vx-migrate, vx-otel,
 # vx-reapi, vx-schedule-history), linking this repo + this workflow.
+#
+# Every step past the setup is a `release.*` vx task (packages/vx/
+# vx.config.ts, scripts/release.ts): CI runs vx tasks, not commands of its
+# own (owner, 2026-10-03). The version reaches them as VX_RELEASE_VERSION,
+# never pasted into a script, and each refuses one that is not a version
+# (L-28).
 #
 # - release published   → publish the release version
 # - workflow_dispatch   → publish, or dry-run, a chosen version manually.
@@ -20,6 +26,7 @@ name: npm publish
 #   `ref` names, so a release whose publish failed on a workflow bug is
 #   completed by dispatching the fixed workflow at that release's tag
 #   (`version: 0.0.20`, `ref: v0.0.20`) — the tag's code, the fixed steps.
+#   The tag's code must hold the `release.*` tasks this file runs.
 
 on:
   release:
@@ -47,10 +54,11 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # The darwin binaries are built AND SIGNED here. Bun 1.4.0's `--compile`
-  # signature is rejected by macOS (SIGKILL on launch) until re-signed ad hoc,
-  # and only a macOS runner has codesign — so the two darwin platform packages
-  # come from this job, and the ubuntu job publishes @vzn/vx after them.
+  # The darwin binaries are built here, on macOS, where a binary macOS
+  # refuses can be re-signed: Bun 1.4.0's `--compile` signature was rejected
+  # (SIGKILL on launch) until re-signed ad hoc, and only a macOS runner has
+  # codesign. So the two darwin platform packages come from this job, and
+  # the ubuntu job publishes @vzn/vx after them.
   darwin:
     name: build, sign & publish darwin packages
     runs-on: macos-latest
@@ -58,6 +66,8 @@ jobs:
     permissions:
       contents: read
       id-token: write
+    env:
+      VX_RELEASE_VERSION: ${{ github.event.inputs.version || github.event.release.tag_name }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -69,61 +79,15 @@ jobs:
         with:
           node-version: 24
           registry-url: 'https://registry.npmjs.org'
-      - name: Ensure npm publishes with provenance (>= 11.5.1, sigstore intact)
-        run: |
-          set -e
-          current="$(npm --version)"
-          echo "bundled npm: $current"
-          if node -e 'const [a,b,c]=process.argv[1].split("-")[0].split(".").map(Number); process.exit(a>11||(a===11&&(b>5||(b===5&&c>=1)))?0:1)' "$current"; then
-            echo "npm $current already supports trusted publishing — using it as-is"
-          else
-            echo "bundled npm $current too old; upgrading"
-            npm install -g npm@latest
-            npm --version
-          fi
-          # sigstore lives under the active global npm's own node_modules.
-          resolves() { node -e "require.resolve('sigstore', { paths: [require('node:path').join('$(npm root -g)', 'npm')] })" >/dev/null 2>&1; }
-          if resolves; then
-            echo "provenance dep 'sigstore' resolves OK"
-          else
-            echo "'sigstore' missing from npm — repairing with a forced clean reinstall"
-            npm install -g npm@latest --force
-            npm --version
-            if ! resolves; then
-              echo "::error::npm cannot load 'sigstore' for provenance generation; publish would crash. Aborting before the publish loop." >&2
-              exit 1
-            fi
-            echo "repaired — 'sigstore' now resolves"
-          fi
-
-      # The tag or input arrives through env, never pasted into the script,
-      # and must be a version: later steps paste this output (L-28).
-      - name: Resolve version
-        id: version
-        env:
-          RAW: ${{ github.event.inputs.version || github.event.release.tag_name }}
-        run: |
-          if [ -z "$RAW" ]; then echo "no version (not a release and no input)"; exit 1; fi
-          if ! printf '%s' "${RAW#v}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then echo "not a version: $RAW"; exit 1; fi
-          echo "version=${RAW#v}" >> "$GITHUB_OUTPUT"
       - run: bun install --frozen-lockfile
-      # packages/vx/package.json is the manifest `src/version.ts` inlines;
-      # stamping the root one (as this did until 2026-09-03) leaves the
-      # binary at `vx 0.0.0`. The build step asserts the stamp took.
-      - name: Stamp version
-        run: |
-          bun -e 'const f = "packages/vx/package.json"; const p = await Bun.file(f).json(); p.version = process.argv[1]; await Bun.write(f, JSON.stringify(p, null, 2) + "\n")' "${{ steps.version.outputs.version }}"
-      - name: Build, sign and prove the darwin binaries
-        run: |
-          bun packages/vx/src/bin.ts run build.bun.darwin-x64 build.bun.darwin-arm64 --filter @vzn/vx --concurrency 2
-          for f in packages/vx/dist/vx-darwin-*; do codesign -s - --force "$f"; codesign --verify --verbose=2 "$f"; done
-          GOT="$(packages/vx/dist/vx-darwin-arm64 --version)"
-          test "$GOT" = "vx ${{ steps.version.outputs.version }}" || { echo "binary reports '$GOT', expected 'vx ${{ steps.version.outputs.version }}'"; exit 1; }
+      - name: Check npm can publish with provenance, and stamp the version
+        run: bun packages/vx/src/bin.ts run release.npm release.stamp --filter @vzn/vx
+      - name: Build the darwin binaries
+        run: bun packages/vx/src/bin.ts run build.bun.darwin-x64 build.bun.darwin-arm64 --filter @vzn/vx --concurrency 2
+      - name: Prove the darwin binaries launch and report the version
+        run: bun packages/vx/src/bin.ts run release.prove.darwin --filter @vzn/vx
       - name: Assemble the darwin platform packages
-        run: |
-          bun packages/vx/scripts/build-npm.ts "${{ steps.version.outputs.version }}" --only=darwin-x64 --out=dist/npm
-          bun packages/vx/scripts/build-npm.ts "${{ steps.version.outputs.version }}" --only=darwin-arm64 --out=dist/npm-arm64
-          cp -r dist/npm-arm64/@vzn/vx-darwin-arm64 dist/npm/@vzn/
+        run: bun packages/vx/src/bin.ts run release.assemble.darwin --filter @vzn/vx
       - name: Publish darwin platform packages
         if: ${{ github.event.inputs.dry_run != 'true' }}
         # No NODE_AUTH_TOKEN: npm exchanges this job's OIDC token for a
@@ -131,18 +95,7 @@ jobs:
         # and attaches provenance. A set token would take precedence and is
         # what npm now restricts ("tokens that bypass 2FA are being
         # restricted for direct publishing" — the E401 that stopped v0.0.17).
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          set -e
-          for pkg in dist/npm/@vzn/vx-darwin-x64 dist/npm/@vzn/vx-darwin-arm64; do
-            name="$(node -p "require('$(pwd)/$pkg/package.json').name")"
-            if npm view "$name@$VERSION" version >/dev/null 2>&1; then
-              echo "$name@$VERSION already on the registry — skipping"
-            else
-              npm publish "$pkg" --access public --provenance
-            fi
-          done
+        run: bun packages/vx/src/bin.ts run release.publish.darwin --filter @vzn/vx
 
   publish:
     name: build & publish @vzn/vx
@@ -152,6 +105,8 @@ jobs:
     permissions:
       contents: read
       id-token: write # OIDC token for npm Trusted Publishing + provenance
+    env:
+      VX_RELEASE_VERSION: ${{ github.event.inputs.version || github.event.release.tag_name }}
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -162,82 +117,20 @@ jobs:
         with:
           bun-version: 1.4.2
 
-      # Node runs `npm publish`; registry-url points it at npm. No token — auth
-      # comes from the OIDC exchange below. Node 24's BUNDLED npm is already
-      # >= 11.5.1 (trusted-publishing capable), so no in-place self-upgrade is
-      # needed — that upgrade, from node 22's old bundled npm 10.x, corrupted
-      # npm's own dependency tree and left `libnpmpublish` unable to
-      # `require('sigstore')` when it auto-generates provenance under OIDC.
+      # Node runs `npm publish`. No token: auth comes from the OIDC
+      # exchange. Node 24's BUNDLED npm is already >= 11.5.1 (trusted-
+      # publishing capable), so `release.npm` upgrades nothing here.
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
           registry-url: 'https://registry.npmjs.org'
 
-      # Trusted Publishing needs npm >= 11.5.1. Node 24 bundles a new-enough
-      # npm, so this only self-upgrades on the (unexpected) chance the bundled
-      # one is older — the in-place `npm i -g npm@latest` is exactly what broke
-      # sigstore before, so we avoid it whenever the bundled npm already works.
-      #
-      # Then HARD-VERIFY the provenance dependency chain: `libnpmpublish`
-      # `require('sigstore')` to generate provenance (auto-enabled under OIDC),
-      # and a corrupted self-upgrade drops it — the exact failure that aborted
-      # the release mid-publish with a cryptic MODULE_NOT_FOUND. We resolve it
-      # up front: if missing, repair with a forced clean reinstall, then FAIL
-      # THE JOB with a clear message if it still can't load (never let the
-      # publish loop hit it).
-      - name: Ensure npm publishes with provenance (>= 11.5.1, sigstore intact)
-        run: |
-          set -e
-          current="$(npm --version)"
-          echo "bundled npm: $current"
-          if node -e 'const [a,b,c]=process.argv[1].split("-")[0].split(".").map(Number); process.exit(a>11||(a===11&&(b>5||(b===5&&c>=1)))?0:1)' "$current"; then
-            echo "npm $current already supports trusted publishing — using it as-is"
-          else
-            echo "bundled npm $current too old; upgrading"
-            npm install -g npm@latest
-            npm --version
-          fi
-          # sigstore lives under the active global npm's own node_modules.
-          resolves() { node -e "require.resolve('sigstore', { paths: [require('node:path').join('$(npm root -g)', 'npm')] })" >/dev/null 2>&1; }
-          if resolves; then
-            echo "provenance dep 'sigstore' resolves OK"
-          else
-            echo "'sigstore' missing from npm — repairing with a forced clean reinstall"
-            npm install -g npm@latest --force
-            npm --version
-            if ! resolves; then
-              echo "::error::npm cannot load 'sigstore' for provenance generation; publish would crash. Aborting before the publish loop." >&2
-              exit 1
-            fi
-            echo "repaired — 'sigstore' now resolves"
-          fi
-
-      - name: Resolve version
-        id: version
-        env:
-          RAW: ${{ github.event.inputs.version || github.event.release.tag_name }}
-        run: |
-          if [ -z "$RAW" ]; then echo "no version (not a release and no input)"; exit 1; fi
-          if ! printf '%s' "${RAW#v}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then echo "not a version: $RAW"; exit 1; fi
-          VERSION="${RAW#v}"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "Publishing version $VERSION"
-
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      # Stamp the version into packages/vx/package.json BEFORE compiling —
-      # `src/version.ts` inlines THAT manifest under `bun build --compile`,
-      # so the binary must be built with the release version in place (the
-      # root manifest, stamped here until 2026-09-03, is read by nothing).
-      # Ephemeral (CI only, never committed).
-      - name: Stamp version
-        run: |
-          bun -e 'const f = "packages/vx/package.json"; const p = await Bun.file(f).json(); p.version = process.argv[1]; await Bun.write(f, JSON.stringify(p, null, 2) + "\n")' "${{ steps.version.outputs.version }}"
-
       # What a Linux runner needs before `vx run` executes a sandboxed task:
       # the sandbox runtime's deps (bubblewrap, socat, strace, ripgrep) and the
-      # AppArmor userns restriction lifted. Every `build.bun.<target>` declares
+      # AppArmor userns restriction lifted. Every task this job runs declares
       # `exec.sandbox`, and a declared sandbox that cannot be built is a hard
       # error — so without this the compile tasks fail in 0 ms with "sandbox
       # not available: ripgrep (rg) not found; bubblewrap (bwrap) not
@@ -247,56 +140,20 @@ jobs:
       # are named; ci.yml and release.yml use the same one.
       - uses: ./.github/actions/vx-runner
 
-      # Cross-compile the four standalone binaries (fanned out + cached by
-      # vx). --concurrency 2: concurrent `--compile --minify --bytecode`
-      # builds OOM a 7 GB runner.
-      # Linux targets only — the darwin binaries come from the `darwin` job
-      # below, which can sign them. `vx run build.bun.<target>` is one task
-      # per target with its own cache slot.
-      - name: Build linux binaries and prove the stamp took
-        run: |
-          bun packages/vx/src/bin.ts run build.bun.linux-x64 build.bun.linux-arm64 --filter @vzn/vx --concurrency 2
-          GOT="$(packages/vx/dist/vx-linux-x64 --version)"
-          test "$GOT" = "vx ${{ steps.version.outputs.version }}" || { echo "binary reports '$GOT', expected 'vx ${{ steps.version.outputs.version }}' — the stamp missed the manifest the binary inlines"; exit 1; }
-      - name: Assemble npm tree (linux platform packages + @vzn/vx)
-        run: |
-          bun packages/vx/scripts/build-npm.ts "${{ steps.version.outputs.version }}" --only=linux-x64 --out=dist/npm
-          bun packages/vx/scripts/build-npm.ts "${{ steps.version.outputs.version }}" --only=linux-arm64 --out=dist/npm-arm64
-          cp -r dist/npm-arm64/@vzn/vx-linux-arm64 dist/npm/@vzn/
-          # Every other public workspace package, at the same version and
-          # peer-pinned to this @vzn/vx. Discovered by the script, so a new
-          # plugin package is published without an edit here.
-          bun packages/vx/scripts/build-npm.ts "${{ steps.version.outputs.version }}" --only=plugins --out=dist/npm-plugins
+      - name: Check npm can publish with provenance, and stamp the version
+        run: bun packages/vx/src/bin.ts run release.npm release.stamp --filter @vzn/vx
+
+      # Cross-compile the linux binaries (one cached task per target).
+      # --concurrency 2: concurrent `--compile --minify --bytecode` builds
+      # OOM a 7 GB runner. The darwin binaries come from the `darwin` job,
+      # which can sign them.
+      - name: Build the linux binaries
+        run: bun packages/vx/src/bin.ts run build.bun.linux-x64 build.bun.linux-arm64 --filter @vzn/vx --concurrency 2
+      - name: Prove the stamp took
+        run: bun packages/vx/src/bin.ts run release.prove.linux --filter @vzn/vx
+      - name: Assemble npm tree (linux platform packages, @vzn/vx, the plugins)
+        run: bun packages/vx/src/bin.ts run release.assemble.linux --filter @vzn/vx
+      # No NODE_AUTH_TOKEN — see the darwin step: trusted publishing only.
       - name: Publish
         if: ${{ github.event.inputs.dry_run != 'true' }}
-        # No NODE_AUTH_TOKEN — see the darwin step: trusted publishing only.
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          set -e
-          # Order matters: the platform binaries first (so the main package's
-          # optionalDependencies resolve on the registry), then the main
-          # package.
-          #
-          # Idempotent: a 5-package sequential publish can fail partway (a
-          # transient registry error, or an earlier abort), and npm 403s on
-          # republishing an existing version. So skip any package already on
-          # the registry at this version — a re-run then completes the set
-          # instead of aborting on the first already-published one.
-          # The darwin platform packages were published by the `darwin` job;
-          # @vzn/vx goes last so every optionalDependency it names exists.
-          # The plugins come after @vzn/vx: each peer-depends on it.
-          for pkg in \
-            dist/npm/@vzn/vx-linux-x64 \
-            dist/npm/@vzn/vx-linux-arm64 \
-            dist/npm/vx \
-            dist/npm-plugins/plugins/*; do
-            name="$(node -p "require('$(pwd)/$pkg/package.json').name")"
-            echo "::group::npm publish $name@$VERSION ($pkg)"
-            if npm view "$name@$VERSION" version >/dev/null 2>&1; then
-              echo "$name@$VERSION already on the registry — skipping"
-            else
-              npm publish "$pkg" --access public --provenance
-            fi
-            echo "::endgroup::"
-          done
+        run: bun packages/vx/src/bin.ts run release.publish.linux --filter @vzn/vx

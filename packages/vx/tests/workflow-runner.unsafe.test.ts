@@ -55,6 +55,7 @@ for (const file of files) {
 describe('a Linux CI job that runs a vx task', () => {
   it('is every one of these — the pin is not vacuous', () => {
     expect(covered).toEqual([
+      'auto-release.yml#release',
       'ci.yml#ci',
       'ci.yml#packages',
       'docs.yml#build',
@@ -74,6 +75,43 @@ describe('a Linux CI job that runs a vx task', () => {
     )
     const absent = ['bubblewrap', 'socat', 'strace', 'ripgrep'].filter((d) => !action.includes(d))
     expect(absent).toEqual([])
+  })
+})
+
+// CI runs vx tasks, never commands of its own (owner, 2026-10-03): the
+// release logic lives in `release.*` tasks (scripts/release.ts,
+// scripts/auto-release.ts), where it is typed, tested and sandboxed. The
+// three release workflows run nothing but the install and vx tasks, and no
+// workflow inlines a script or does a task's job itself.
+describe('a workflow `run:` step', () => {
+  const steps = files.flatMap((file) =>
+    jobsOf(file).flatMap(([name, job]) =>
+      (job.steps ?? [])
+        .filter((s) => typeof s.run === 'string')
+        .map((s) => ({ at: `${file}#${name}`, run: s.run!.trim() })),
+    ),
+  )
+
+  it("inlines no script and does no release task's job", () => {
+    const offenders = steps
+      .filter(({ run }) => /\b(?:bun|node) -[ep]\b|npm publish|codesign/.test(run))
+      .map(({ at, run }) => `${at}: ${run}`)
+    expect(offenders).toEqual([])
+  })
+
+  it('in a release workflow, is the install or one vx task', () => {
+    const release = steps.filter(({ at }) => /^(?:npm|release|auto-release)\.yml#/.test(at))
+    expect(release.length).toBeGreaterThan(10)
+    const custom = release
+      .filter(
+        ({ run }) =>
+          run !== 'bun install --frozen-lockfile' &&
+          !/^bun packages\/vx\/src\/bin\.ts run [\w. -]+ --filter @vzn\/vx(?: --concurrency \d+)?$/.test(
+            run,
+          ),
+      )
+      .map(({ at, run }) => `${at}: ${run}`)
+    expect(custom).toEqual([])
   })
 })
 

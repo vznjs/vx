@@ -1,21 +1,26 @@
-// auto-release.yml releases every green commit on main: it tags it, creates
-// the GitHub release, and dispatches release.yml and npm.yml — a release made
-// with the workflow token fires no `release` event, so without those
-// dispatches the tag would exist and nothing would be built or published. The
-// rows read the three workflow files, so a renamed input, a dropped trigger or
-// a release.yml that only knows the release event fails here, not on the
-// first merge after it.
+// auto-release.yml releases every green commit on main: its `release.auto`
+// task (scripts/auto-release.ts) tags it, creates the GitHub release, and
+// dispatches release.yml and npm.yml — a release made with the workflow token
+// fires no `release` event, so without those dispatches the tag would exist
+// and nothing would be built or published. The rows read the three workflow
+// files, so a renamed input, a dropped trigger or a release.yml that only
+// knows the release event fails here, not on the first merge after it. Which
+// commit is released is tests/release.test.ts's.
 //
 // `.unsafe`: the workflows live at the repo root, which a sandboxed project
 // task may not read (the cross-project law).
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
+import { dispatches } from '../scripts/auto-release.js'
 
 const workflowDir = path.resolve(import.meta.dir, '..', '..', '..', '.github', 'workflows')
 
 interface Step {
+  uses?: string
   run?: string
+  with?: Record<string, unknown>
+  env?: Record<string, string>
 }
 interface Job {
   if?: string
@@ -37,7 +42,7 @@ const triggers = (wf: Workflow): Record<string, unknown> =>
 
 const auto = parse('auto-release.yml')
 const job = auto.jobs?.['release']
-const script = (job?.steps ?? []).map((s) => s.run ?? '').join('\n')
+const runs = (job?.steps ?? []).filter((s) => s.run !== undefined)
 
 describe('auto-release.yml', () => {
   it('fires when the workflow named by ci.yml completes on main', () => {
@@ -54,10 +59,22 @@ describe('auto-release.yml', () => {
     )
   })
 
-  it('skips a commit the last release is not behind, and one already tagged', () => {
-    expect(script).toContain('git merge-base --is-ancestor "$last" "$SHA"')
-    expect(script).toContain('git tag --points-at "$SHA"')
-    expect(script).not.toContain('refs/heads/main')
+  it('runs release.auto on the commit whose CI went green, with every tag checked out', () => {
+    expect(runs.map((s) => [s.run, s.env])).toEqual([
+      ['bun install --frozen-lockfile', undefined],
+      [
+        'bun packages/vx/src/bin.ts run release.auto --filter @vzn/vx',
+        {
+          VX_RELEASE_SHA: '${{ github.event.workflow_run.head_sha }}',
+          GH_TOKEN: '${{ github.token }}',
+        },
+      ],
+    ])
+    const checkout = job?.steps?.find((s) => s.uses?.startsWith('actions/checkout@'))
+    expect(checkout?.with).toEqual({
+      ref: '${{ github.event.workflow_run.head_sha }}',
+      'fetch-depth': 0,
+    })
   })
 
   it('holds only the two grants it uses, and none at the top', () => {
@@ -66,13 +83,7 @@ describe('auto-release.yml', () => {
   })
 
   it('dispatches release.yml and npm.yml with inputs each of them declares', () => {
-    const dispatched = new Map<string, string[]>()
-    for (const m of script.matchAll(/gh workflow run (\S+\.yml)([^\n]*)/g)) {
-      dispatched.set(
-        m[1]!,
-        [...m[2]!.matchAll(/-f (\w+)=/g)].map((f) => f[1]!),
-      )
-    }
+    const dispatched = new Map(dispatches('1.2.3').map((d) => [d.workflow, Object.keys(d.inputs)]))
     expect([...dispatched.keys()].sort()).toEqual(['npm.yml', 'release.yml'])
     for (const [file, fields] of dispatched) {
       const inputs = Object.keys(

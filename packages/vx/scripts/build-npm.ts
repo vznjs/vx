@@ -15,8 +15,9 @@
 // launcher execs its binary — so `npm i -g @vzn/vx` gives the command with NO
 // Bun and no install-time download.
 //
-// Publishing is done by the workflow (`npm publish` in each emitted dir); this
-// script only builds the tree.
+// A release assembles its tree with these emitters and publishes it from
+// scripts/release.ts (`release.assemble.<os>`, `release.publish.<os>`);
+// this script only builds the tree.
 //
 //   bun packages/vx/scripts/build-npm.ts <version> [--out=dist/npm] [--only=linux-x64|plugins]
 
@@ -30,7 +31,7 @@ interface Target {
   cpu: string
 }
 
-const TARGETS: readonly Target[] = [
+export const TARGETS: readonly Target[] = [
   { target: 'linux-x64', os: 'linux', cpu: 'x64' },
   { target: 'linux-arm64', os: 'linux', cpu: 'arm64' },
   { target: 'darwin-x64', os: 'darwin', cpu: 'x64' },
@@ -85,7 +86,7 @@ function allOptional(mainName: string, version: string): Record<string, string> 
  * carrying the raw binary (named `<base>`) + an os/cpu manifest, copied from
  * `dist/<distPrefix>-<target>`.
  */
-async function emitPlatformPackages(args: {
+export async function emitPlatformPackages(args: {
   mainName: string
   base: string
   distPrefix: string
