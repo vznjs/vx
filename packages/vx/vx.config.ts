@@ -177,7 +177,14 @@ const releaseTasks = {
             command: `bun scripts/release.ts publish ${os}`,
             env: { passThrough: NPM_OIDC_ENV, secret: ['ACTIONS_ID_TOKEN_REQUEST_TOKEN'] },
             sandbox: {
-              allow: { read: ['.'], write: [NPM_HOME], network: NPM_PUBLISH_NETWORK },
+              allow: {
+                read: ['.'],
+                write: [NPM_HOME],
+                network: NPM_PUBLISH_NETWORK,
+                // macOS resolves the registry through configd: the darwin
+                // publish was refused it after its last package (0.0.489).
+                machLookup: ['com.apple.SystemConfiguration.DNSConfiguration'],
+              },
             },
           },
         },
