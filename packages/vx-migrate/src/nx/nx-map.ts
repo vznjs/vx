@@ -7,9 +7,11 @@
 // report line counting edges with no manifest counterpart.
 //
 // Executors: `nx:run-commands`, a plain `command` and `nx:run-script` are
-// shell; `nx:noop` is a group; every other executor runs through this
-// package's `nx-exec` bin with the executor and its resolved options on
-// the command line (design: docs/design/nx-unchanged-2026-09.md). A
+// shell; `nx:noop` is a group; an executor the workspace translates
+// (`nx({ executors })`) is the command its function returns; every other
+// executor runs through this package's `nx-exec` bin with the executor and
+// its resolved options on the command line (design:
+// docs/design/nx-unchanged-2026-09.md). A
 // configuration is a task of its own, `<target>:<configuration>`; the
 // default configuration is folded into the base task.
 
@@ -227,7 +229,48 @@ export interface MapNxOptions {
    * a written config. Executors are `nx-exec` lines either way.
    */
   readonly migration?: boolean
+  /**
+   * The workspace's own translation of an executor to a command, by
+   * executor name; one that returns undefined leaves the target to
+   * `nx-exec`. The live plugin's only: a migration writes no function.
+   */
+  readonly executors?: NxExecutors
 }
+
+/** One target of a translated executor, as the graph resolved it. */
+export interface NxExecutorTarget {
+  readonly executor: string
+  readonly project: string
+  /** The project's directory, workspace-root-relative (`.` at the root). */
+  readonly projectRoot: string
+  readonly target: string
+  /** Set for a `<target>:<configuration>` task; the default one is folded into the base task. */
+  readonly configuration: string | undefined
+  /** The resolved options, the configuration's merged over the target's. */
+  readonly options: Readonly<Record<string, unknown>>
+}
+
+/** What a translated target runs as. The command runs in the project dir. */
+export interface NxExecutorTranslation {
+  readonly command: string
+  /** `exec.timeout`, in ms. */
+  readonly timeout?: number
+  /** Defined in the task's environment, as a run-commands `env` is. */
+  readonly env?: Readonly<Record<string, string>>
+}
+
+/** Undefined runs the target through `nx-exec`, as an untranslated executor does. */
+export type NxExecutorTranslator = (target: NxExecutorTarget) => NxExecutorTranslation | undefined
+
+export type NxExecutors = Readonly<Record<string, NxExecutorTranslator>>
+
+/** Executors the mapper translates itself, which a workspace function may not claim. */
+export const BUILTIN_EXECUTORS: ReadonlySet<string> = new Set([
+  'nx:noop',
+  'nx:run-commands',
+  'nx:run-script',
+  ...Object.keys(LEGACY),
+])
 
 /** The options with what the mapper reads itself: the root's dependency names. */
 type MapOpts = MapNxOptions & {
@@ -746,6 +789,7 @@ function buildTask(
     opts.pnp,
     meta.packageJson,
     opts.manifestField,
+    opts.executors,
   )
 
   const inputs = emptyNxInputs()
@@ -868,6 +912,7 @@ function buildTask(
     ...mapped.env,
   }
   exec.env = env
+  if (mapped.timeout !== undefined) exec.timeout = mapped.timeout
   if (readyWhen !== undefined) {
     exec.persistent = { readyWhen }
   } else if (persistent) {
@@ -937,6 +982,8 @@ interface MappedCommand {
   readonly readyWhen: string | undefined
   /** The `.env` files the command loads, relative to the project dir: key inputs. */
   readonly envInputs: readonly string[]
+  /** A translated executor's `exec.timeout`. */
+  readonly timeout?: number
 }
 
 /**
@@ -958,6 +1005,7 @@ function mapCommand(
   pnp: boolean,
   manifest: { readonly name?: unknown; readonly version?: unknown },
   manifestField: MapNxOptions['manifestField'],
+  executors: NxExecutors | undefined,
 ): MappedCommand | null {
   const executor = target.executor
   if (executor === 'nx:noop') {
@@ -1040,6 +1088,27 @@ function mapCommand(
     todos.push(`target has neither an executor nor a command — options: ${JSON.stringify(options)}`)
     return line(PLACEHOLDER)
   }
+  const translate = executors?.[executor]
+  if (translate !== undefined) {
+    const at = `nx({ executors }): ${JSON.stringify(executor)} for ${projectName}:${targetName}${configuration === undefined ? '' : `:${configuration}`}`
+    const t = translate({
+      executor,
+      project: projectName,
+      projectRoot: projectRel,
+      target: targetName,
+      configuration,
+      options,
+    }) as unknown
+    if (t !== undefined) {
+      const mapped = translation(t, at)
+      // `.env` files load as they do for a run-commands line: Nx loads
+      // them for every executor.
+      return {
+        ...shell(mapped.command, undefined, { env: mapped.env, readyWhen: undefined }),
+        ...(mapped.timeout === undefined ? {} : { timeout: mapped.timeout }),
+      }
+    }
+  }
   // Every other executor runs as itself, one process per task, through
   // this package's `nx-exec` bin: the executor and its options are on the
   // command line, so the key sees them and the line pastes into a shell.
@@ -1048,6 +1117,29 @@ function mapCommand(
     ...line(nxExecCommand(executor, projectName, targetName, configuration, options, files)),
     envInputs: files,
   }
+}
+
+/** A translator's return, held at the boundary: it is the workspace's code. */
+function translation(
+  t: unknown,
+  at: string,
+): { command: string; env: Record<string, unknown>; timeout: number | undefined } {
+  if (!isRecord(t)) throw new UserError(`${at}: must return { command } or undefined`)
+  for (const key of Object.keys(t))
+    if (key !== 'command' && key !== 'timeout' && key !== 'env')
+      throw new UserError(`${at}: unknown field "${key}" (allowed: command, env, timeout)`)
+  if (typeof t.command !== 'string' || t.command.trim() === '')
+    throw new UserError(`${at}: command must be a non-empty string`)
+  const timeout = t.timeout
+  if (
+    timeout !== undefined &&
+    !(typeof timeout === 'number' && Number.isInteger(timeout) && timeout > 0)
+  )
+    throw new UserError(`${at}: timeout must be a positive integer (ms)`)
+  const env = t.env ?? {}
+  if (!isRecord(env) || Object.values(env).some((v) => typeof v !== 'string'))
+    throw new UserError(`${at}: env must map names to strings`)
+  return { command: t.command, env, timeout }
 }
 
 /**
