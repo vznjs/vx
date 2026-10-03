@@ -1,5 +1,6 @@
 // auto-release.yml releases every green commit on main: its `release.auto`
-// task (scripts/auto-release.ts) tags it, creates the GitHub release, and
+// task (scripts/auto-release.ts) tags it, creates the GitHub release as a
+// draft (release.yml's last upload publishes it), and
 // dispatches release.yml and npm.yml — a release made with the workflow token
 // fires no `release` event, so without those dispatches the tag would exist
 // and nothing would be built or published. The rows read the three workflow
@@ -95,9 +96,12 @@ describe('auto-release.yml', () => {
     }
   })
 
-  it('release.yml reads its tag from a dispatch as well as a release event', () => {
+  // An immutable release takes assets only as a draft, so release.yml is
+  // dispatched for one; a `release: published` run could attach nothing.
+  it('release.yml runs on a dispatch alone and reads its tag from it', () => {
+    expect(Object.keys(triggers(parse('release.yml')))).toEqual(['workflow_dispatch'])
     const release = text('release.yml')
-    expect(release.match(/github\.event\.release\.tag_name(?! \|\| inputs\.tag)/g)).toBeNull()
-    expect(release).toContain('github.event.release.tag_name || inputs.tag')
+    expect(release).not.toContain('github.event.release')
+    expect(release).toContain('${{ inputs.tag }}')
   })
 })

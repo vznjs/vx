@@ -14,6 +14,7 @@ const file = path.resolve(import.meta.dir, '..', '..', '..', '.github', 'workflo
 
 interface Step {
   uses?: string
+  run?: string
   with?: Record<string, string>
 }
 interface Workflow {
@@ -31,8 +32,10 @@ describe('release.yml attests what it ships (L-12)', () => {
     for (const [name, job] of Object.entries(wf.jobs)) {
       const steps = job.steps ?? []
       steps.forEach((s, i) => {
-        if (action(s) !== 'softprops/action-gh-release' || s.with?.['files'] === undefined) return
-        const files = s.with['files']
+        // `release.upload.<os>` attaches `dist/vx-<os>-*` (scripts/release-assets.ts).
+        const os = /\brelease\.upload\.(\w+)\b/.exec(s.run ?? '')?.[1]
+        if (os === undefined) return
+        const files = `packages/vx/dist/vx-${os}-*`
         uploads.push(`${name}: ${files}`)
         const attested = steps
           .slice(0, i)

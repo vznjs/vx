@@ -1,6 +1,6 @@
 // auto-release.yml's one step, the `release.auto` task: release a commit
 // whose CI went green on main. It tags it with the next version and creates
-// the GitHub release, both from the Conventional Commits since the last tag
+// the GitHub release as a draft, both from the Conventional Commits since the last tag
 // (release-notes.ts), then dispatches release.yml and npm.yml: a release
 // created with the workflow token fires no `release` event in other
 // workflows, so the two that build and publish it are started explicitly.
@@ -89,11 +89,15 @@ async function main(): Promise<void> {
     }
   }
   console.log(`releasing ${sha} as v${version} (after ${last || 'no tag'})`)
+  // The tag first, then the release as a draft on it: npm.yml checks the
+  // tag out, and an immutable release takes assets only while it is a
+  // draft, so release.yml's last upload publishes it (release-assets.ts).
+  await api('git/refs', { ref: `refs/tags/v${version}`, sha })
   await api('releases', {
     tag_name: `v${version}`,
-    target_commitish: sha,
     name: `v${version}`,
     body: releaseNotes(commits),
+    draft: true,
   })
   for (const { workflow, inputs } of dispatches(version)) {
     await api(`actions/workflows/${workflow}/dispatches`, { ref: 'main', inputs })

@@ -1,27 +1,22 @@
 name: Release assets
 
-# Triggered when a maintainer publishes a release in the GitHub UI
-# (or via `gh release create`), or dispatched by auto-release.yml with
-# the tag it just created. Runs `vx run build.bun` (which fans out
-# to one task per target with per-binary caching), then attaches the
-# four vx-<target> binaries (for the curl installer + `vx upgrade`)
-# to the release.
+# Dispatched by auto-release.yml with the tag it just created (or by hand,
+# for a draft release a maintainer made). Runs `vx run build.bun` (which
+# fans out to one task per target with per-binary caching), then attaches
+# the four vx-<target> binaries (for the curl installer + `vx upgrade`)
+# to the release. This repo's releases are immutable: assets attach only
+# to a draft, so the release arrives as one and the last upload publishes
+# it (scripts/release-assets.ts). A `release: published` trigger would
+# fire only once the release can no longer take assets.
 # A manual release's body is the maintainer's; an auto-release's is
 # written by packages/vx/scripts/release-notes.ts from the Conventional
 # Commits since the last tag.
 
 on:
-  release:
-    types: [published]
-  # auto-release.yml creates its release with the workflow token, and a
-  # release made that way fires no `release` event here (GitHub's rule
-  # against workflows triggering workflows) — so it dispatches this file
-  # with the tag instead: workflow_dispatch is an event that token may
-  # still start.
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Release tag to build and attach binaries to (e.g. v0.0.22).'
+        description: 'Tag of the draft release to build, attach binaries to and publish (e.g. v0.0.22).'
         required: true
 
 permissions:
@@ -38,11 +33,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
-      VX_RELEASE_VERSION: ${{ github.event.release.tag_name || inputs.tag }}
+      VX_RELEASE_VERSION: ${{ inputs.tag }}
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.release.tag_name || inputs.tag }}
+          ref: ${{ inputs.tag }}
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
       - run: bun install --frozen-lockfile
@@ -84,21 +80,19 @@ jobs:
         with:
           subject-path: packages/vx/dist/vx-linux-*
 
-      - uses: softprops/action-gh-release@e598afbe1493e6b1bafb1f389cabb956eab91231 # v3.0.3
-        with:
-          tag_name: ${{ github.event.release.tag_name || inputs.tag }}
-          files: packages/vx/dist/vx-linux-*
+      - run: bun packages/vx/src/bin.ts run release.upload.linux --filter @vzn/vx
 
   sign-darwin:
     needs: assets
     runs-on: macos-latest
     timeout-minutes: 10
     env:
-      VX_RELEASE_VERSION: ${{ github.event.release.tag_name || inputs.tag }}
+      VX_RELEASE_VERSION: ${{ inputs.tag }}
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.release.tag_name || inputs.tag }}
+          ref: ${{ inputs.tag }}
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
       - run: bun install --frozen-lockfile
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -112,7 +106,6 @@ jobs:
         with:
           subject-path: packages/vx/dist/vx-darwin-*
 
-      - uses: softprops/action-gh-release@e598afbe1493e6b1bafb1f389cabb956eab91231 # v3.0.3
-        with:
-          tag_name: ${{ github.event.release.tag_name || inputs.tag }}
-          files: packages/vx/dist/vx-darwin-*
+      # The last upload publishes the draft: an immutable release takes
+      # assets only before it is published (scripts/release-assets.ts).
+      - run: bun packages/vx/src/bin.ts run release.upload.darwin --filter @vzn/vx

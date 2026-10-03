@@ -1008,3 +1008,17 @@ step is the install or one vx task. Proven locally, sandboxed: stamp,
 prove.linux (and its refusal), assemble.linux (byte-identical to the old
 three-call tree), and release.npm's upgrade path. Not provable here: the
 OIDC publish, `codesign` under seatbelt, the GitHub API calls.
+
+M-80. "Release assets" failed on every release: this repo's releases are
+immutable, and GitHub refuses an asset on a published one ("Cannot upload
+asset … to an immutable release"), so no binary since at least 0.0.486
+reached a release and the curl installer and `vx upgrade` served the last
+one that did. `release.auto` now creates the tag ref, then the release as
+a draft; `release.yml` runs on dispatch alone (a `release: published` run
+could attach nothing) and attaches the binaries through two sandboxed vx
+tasks, `release.upload.linux` and `release.upload.darwin`
+(`scripts/release-assets.ts`, replacing `softprops/action-gh-release`);
+darwin's runs last, after the prove and the attestation, and publishes the
+draft. An asset already attached is skipped, so a re-run completes the
+set. `tests/release-provenance.unsafe.test.ts` now reads the upload tasks.
+Not provable here: the GitHub API calls.
