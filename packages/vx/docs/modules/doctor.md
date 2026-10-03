@@ -30,6 +30,13 @@ denies, else null). See
 
 ## Rules
 
+- **The sandbox probe runs under the loads.** It asks nothing of the
+  workspace, so it starts once the root and the workspace config are
+  found (a refusal there comes first, with no probe ahead of it) and is
+  awaited on every path, since the runtime it brings up holds the
+  process open until it resets. The two git facts are asked while it
+  runs: 113.8 → 107.3 ms median for `vx info` at 100 projects.
+
 - **The task count is the run's.** It comes from the same staged load a
   run uses (`loadProjects`, plugin `project` stage applied); a config
   that fails to load counts as zero and never fails the doctor — and is
