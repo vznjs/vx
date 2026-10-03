@@ -1556,7 +1556,7 @@ describe('an output beside the config vx-migrate writes', () => {
 })
 
 describe('migrateNx: an output beside the config it writes', () => {
-  it('`*.mjs` caches beside vx.config.ts, not beside vx.config.mjs', async () => {
+  it('`*.mjs` caches beside vx.config.ts, and beside vx.config.mjs takes it back', async () => {
     const root = await makeRoot('vx-migrate-nx-own-config-')
     try {
       const dir = await addPackage(root, 'a', {})
@@ -1588,11 +1588,21 @@ describe('migrateNx: an output beside the config it writes', () => {
       Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
       Bun.spawnSync({ cmd: ['git', 'add', '-A'], cwd: root })
       const meta = { name: 'a', dir, packageJson: { name: 'a' } as never, configPath: null }
-      const cached = async (format: 'ts' | 'mjs') =>
-        (await migrateNx(root, [meta], format, snapshot)).projects[0]!.tasks.find(
-          (t) => t.name === 'gen',
-        )!.task!['cache'] !== undefined
-      expect([await cached('ts'), await cached('mjs')]).toEqual([true, false])
+      const outputs = async (format: 'ts' | 'mjs') =>
+        (
+          (await migrateNx(root, [meta], format, snapshot)).projects[0]!.tasks.find(
+            (t) => t.name === 'gen',
+          )!.task!['cache'] as { outputs: { files: string[] } }
+        ).outputs.files
+      // Beside the config it covers, the config is taken back.
+      expect([await outputs('ts'), await outputs('mjs')]).toEqual([
+        ['*.mjs'],
+        ['*.mjs', '!vx.config.mjs'],
+      ])
+      // A committed match is taken back in the written config, as nx() does live.
+      await writeFile(path.join(dir, 'keep.mjs'), 'export {}\n')
+      Bun.spawnSync({ cmd: ['git', 'add', '-A'], cwd: root })
+      expect(await outputs('ts')).toEqual(['*.mjs', '!keep.mjs'])
     } finally {
       await rm(root, { recursive: true, force: true })
     }

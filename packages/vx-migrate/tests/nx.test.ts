@@ -7,7 +7,7 @@
 // real, and only Nx's own graph computation is stubbed.
 import { appendFile, mkdir, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { realpathSync } from 'node:fs'
+import { existsSync, realpathSync } from 'node:fs'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { planRun, run, type Logger } from '@vzn/vx'
@@ -145,7 +145,7 @@ const status = (r: Awaited<ReturnType<typeof run>>, id: string) =>
 
 describe('nx(): a wildcard-first output', () => {
   it(
-    'stays cached where the project tracks none of its kind and no config of its spelling, as in turbo()',
+    'stays cached under git: committed matches and the config are taken back, the rest is cleaned',
     async () => {
       const graph = structuredClone(GRAPH) as {
         graph: { nodes: Record<string, { data: { targets: Record<string, unknown> } }> }
@@ -158,9 +158,10 @@ describe('nx(): a wildcard-first output', () => {
       })
       graph.graph.nodes['lib']!.data.targets['test'] = target(['{projectRoot}/*.xml'])
       graph.graph.nodes['lib']!.data.targets['gen'] = target(['{projectRoot}/*.mjs'])
-      graph.graph.nodes['app']!.data.targets['test'] = target(['{projectRoot}/*.xml'])
+      graph.graph.nodes['app']!.data.targets['test'] = target(['{projectRoot}/**/*.xml'])
       await writeFile(path.join(root, 'graph.json'), JSON.stringify(graph))
-      await writeFile(path.join(root, 'packages', 'app', 'pom.xml'), '<project/>\n')
+      const app = path.join(root, 'packages', 'app')
+      await writeFile(path.join(app, 'pom.xml'), '<project/>\n')
       Bun.spawnSync({ cmd: ['git', 'add', '-A'], cwd: root })
       const cacheOf = async (id: string) =>
         (await planRun({ cwd: root, tasks: ['test', 'gen'], log: silent() })).tasks.find(
@@ -168,13 +169,19 @@ describe('nx(): a wildcard-first output', () => {
         )!.node.config.cache
       expect((await cacheOf('lib#test'))?.outputs.files).toEqual(['*.xml'])
       expect((await cacheOf('lib#gen'))?.outputs.files).toEqual(['*.mjs'])
-      // CONTROLS: app tracks an `.xml`; lib gains the config `*.mjs` covers.
-      expect(await cacheOf('app#test')).toBeUndefined()
+      expect((await cacheOf('app#test'))?.outputs.files).toEqual(['**/*.xml', '!pom.xml'])
       await writeFile(
         path.join(root, 'packages', 'lib', 'vx.config.mjs'),
         'export default { tasks: {} }\n',
       )
-      expect(await cacheOf('lib#gen')).toBeUndefined()
+      expect((await cacheOf('lib#gen'))?.outputs.files).toEqual(['*.mjs', '!vx.config.mjs'])
+      // The clean removes what the glob reaches and git does not track.
+      await mkdir(path.join(app, 'reports'), { recursive: true })
+      await writeFile(path.join(app, 'reports', 'stale.xml'), '<old/>\n')
+      const r = await run({ cwd: root, tasks: ['app#test'], log: silent(), handleSignals: false })
+      expect(status(r, 'app#test')).toBe('success')
+      expect(existsSync(path.join(app, 'pom.xml'))).toBe(true)
+      expect(existsSync(path.join(app, 'reports', 'stale.xml'))).toBe(false)
     },
     TIMEOUT,
   )

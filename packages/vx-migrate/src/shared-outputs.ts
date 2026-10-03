@@ -25,7 +25,7 @@ import { relPosix } from './paths.js'
 import type { TrackedKinds } from './tracked-outputs.js'
 
 // Core refuses an output glob that covers the project's own package.json
-// or vx.config (config-schema's `ownFileCovered`): vx cleans outputs before
+// or vx.config (config-schema's `ownFilesCovered`): vx cleans outputs before
 // a run and restores them on a hit, so the manifest would go. Turbo caches
 // it: trpc's client build lists `package.json` (it rewrites `exports`), and
 // the one task made core refuse the whole run (2026-09-28). The façade does
@@ -52,6 +52,22 @@ export function ownFileOutput(
     if (file !== undefined) return { glob, file }
   }
   return undefined
+}
+
+/**
+ * The `!` entries that take the project's own files back from `files`: each
+ * own file a positive glob covers and no `!` already takes back. Taken back,
+ * it is never cleaned, saved or restored (core's A-44), and core loads it.
+ */
+export function ownFileTakeBacks(files: readonly string[], config?: string | null): string[] {
+  const own =
+    config === undefined ? OWN_FILES : config === null ? ['package.json'] : ['package.json', config]
+  const glob = (g: string) => new Bun.Glob(g.replace(/^(\.\/)+/, ''))
+  const positive = files.filter((g) => !g.startsWith('!')).map(glob)
+  const taken = files.filter((g) => g.startsWith('!')).map((g) => glob(g.slice(1)))
+  return own
+    .filter((f) => positive.some((g) => g.match(f)) && !taken.some((g) => g.match(f)))
+    .map((f) => `!${f}`)
 }
 
 export function ownFileTodo(own: { glob: string; file: string }): string {

@@ -5,7 +5,7 @@ import { stat } from 'node:fs/promises'
 import path from 'node:path'
 import { type MigrationFormat, type MigrationPlan, type ProjectMeta } from '@vzn/vx'
 import { mapNxWorkspace, nxSizeText, parseNxGraph, readNxJson } from './nx/nx-map.js'
-import { trackedFiles, trackedKinds } from './tracked-outputs.js'
+import { spareTrackedOutputs, trackedFiles, trackedKinds } from './tracked-outputs.js'
 import { adoptedToolNotes } from './workspace-notes.js'
 
 /** What a task's `npm_package_*` read: the manifest, so a bump reaches them. */
@@ -30,6 +30,15 @@ export async function migrateNx(
     manifestField: (key) => ({ raw: `pkg.${key}` }),
     migration: true,
   })
+  // nx() takes each committed file under an output back every run; a
+  // written config must carry the same `!` entries, or its first run's
+  // clean deletes them.
+  if (tracked !== null)
+    for (const [id, todo] of spareTrackedOutputs(root, mapped.projects, tracked)) {
+      const at = id.lastIndexOf('#')
+      const p = mapped.projects.find((x) => x.name === id.slice(0, at))
+      p?.tasks.find((t) => t.name === id.slice(at + 1))?.todos.push(todo)
+    }
   const adopted = await adoptedToolNotes(root, {
     plugin: 'nx',
     config: 'nx.json',

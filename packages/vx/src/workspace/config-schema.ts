@@ -571,12 +571,16 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
         // A `!` entry takes a path back from the outputs (A-44): it is not
         // cleaned, saved or restored, and it stays an input.
         assertNotDoubleNegated(g, `${where}.cache.outputs.files`)
-        const own = g.startsWith('!') ? null : ownFileCovered(g, configPath)
-        if (own !== null) {
+        // Taken back by a `!`, the file is never cleaned or restored.
+        const own = g.startsWith('!')
+          ? undefined
+          : ownFilesCovered(g, configPath).find((f) => !takenBack(outFiles as unknown[], f))
+        if (own !== undefined) {
           throw new UserError(
             `${where}.cache.outputs.files: "${g}" covers the project's own ${own} — vx deletes a ` +
               `task's outputs before it runs and restores them on a hit, so the project would lose ` +
-              `its manifest and config. Name the directory the task writes, such as "dist/**".`,
+              `its manifest and config. Name the directory the task writes, such as "dist/**", ` +
+              `or take the file back with "!${own}".`,
           )
         }
       }
@@ -953,9 +957,18 @@ function assertTimeoutInRange(ms: number, where: string): void {
  * `package.json` and `vx.config` while the run reported success (item
  * 1002); the message for `'.'` had even suggested `**`.
  */
-function ownFileCovered(glob: string, configPath: string): string | null {
+function ownFilesCovered(glob: string, configPath: string): string[] {
   const g = new Bun.Glob(normalizeGlob(glob))
-  return ['package.json', path.basename(configPath)].find((f) => g.match(f)) ?? null
+  return ['package.json', path.basename(configPath)].filter((f) => g.match(f))
+}
+
+function takenBack(globs: readonly unknown[], file: string): boolean {
+  return globs.some(
+    (n) =>
+      typeof n === 'string' &&
+      n.startsWith('!') &&
+      new Bun.Glob(normalizeGlob(n.slice(1))).match(file),
+  )
 }
 
 /**
