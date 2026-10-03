@@ -1,0 +1,7 @@
+{
+  "namedInputs": {
+    "default": ["{projectRoot}/**/*"],
+    "production": ["default", "!{projectRoot}/**/*.spec.ts"]
+  },
+  "parallel": 3
+}
