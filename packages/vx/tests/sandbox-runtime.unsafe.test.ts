@@ -3716,6 +3716,60 @@ describe('sandbox probe', () => {
     TIMEOUT,
   )
 
+  // cli.md said a missing runtime stops the run before any task; the runtime
+  // arms when a sandboxed task executes, and that task fails alone (J2-60).
+  it.skipIf(process.platform !== 'linux')(
+    'no sandbox runtime: the sandboxed task fails alone, and cli.md says so',
+    async () => {
+      const root = await makeWorkspaceRoot({ prefix: 'vx-sandbox-alone-' })
+      const bin = await mkdtemp(path.join(os.tmpdir(), 'vx-no-srt-bin-'))
+      try {
+        await addProject(root, 'app', {
+          config: `
+            export default {
+              tasks: {
+                plain: { exec: { command: 'echo PLAIN-RAN' } },
+                boxed: { exec: { command: 'echo BOXED-RAN', sandbox: {} } },
+              },
+            }
+          `,
+        })
+        await symlink(process.execPath, path.join(bin, 'bun'))
+        for (const name of ['sh', 'git']) await symlink(Bun.which(name)!, path.join(bin, name))
+        const p = Bun.spawnSync({
+          cmd: [
+            process.execPath,
+            path.resolve(import.meta.dir, '..', 'src', 'bin.ts'),
+            'run',
+            'plain',
+            'boxed',
+            '--all',
+          ],
+          cwd: root,
+          stdout: 'pipe',
+          stderr: 'pipe',
+          env: { ...process.env, NO_COLOR: '1', CI: '', PATH: bin },
+        })
+        const text = new TextDecoder().decode(p.stdout) + new TextDecoder().decode(p.stderr)
+        expect(p.exitCode).toBe(1)
+        expect(text).toContain('success no-cache app#plain')
+        expect(text).toContain('failed  no-cache app#boxed')
+        expect(text.split('\n')).not.toContain('BOXED-RAN')
+        expect(text).toContain('[vx] app#boxed: sandbox not available: ')
+        const doc = await readFile(path.resolve(import.meta.dir, '..', 'docs', 'cli.md'), 'utf8')
+        const section = doc.slice(doc.indexOf('\n## Sandbox\n'), doc.indexOf('\n## `vx watch`\n'))
+        expect(section).not.toContain('before\nany task runs')
+        expect(section.replace(/\s+/g, ' ')).toContain(
+          'that task fails with one line, `sandbox not available: <reason>`',
+        )
+      } finally {
+        await rm(root, { recursive: true, force: true })
+        await rm(bin, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
   // A temp directory that is not there fails the runtime's own mkdtemp;
   // the verdict named the path and no knob (item 243).
   it(

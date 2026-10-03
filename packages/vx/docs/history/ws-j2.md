@@ -503,6 +503,18 @@ persistent task` and vx exits 1). Row (`site-samples` › a post's link
   prints the help text. Both name the workspace condition now. Row
   (`module-page-claims` › a bare vx prints the text only inside a
   workspace), red without the fix.
+- **J2-60** `cli.md`'s Sandbox section said a missing runtime makes the
+  orchestrator error out before any task runs, and named only `bwrap` as
+  Linux's need. The runtime arms when a sandboxed task executes; that
+  task fails alone (`sandbox not available: <reason>`) while the rest
+  run, and Linux needs `bwrap`, `socat` and `rg`. Row
+  (`sandbox-runtime.unsafe` › no sandbox runtime: the sandboxed task
+  fails alone, and cli.md says so) drives a run with the runtime off
+  PATH; red without the fix. Checked clean in the rest of `vx run`:
+  `--output-logs`, `--continue`, `--download`, planning mode's
+  symbols, footer and DOT colours, the `--summarize` and `--profile`
+  shapes, `--report` and `--report-file`, `--tag`; and `vx init` and
+  the Output format section (the footer sections, the colour gates).
 - **J2-59** `cli.md`'s `vx watch` section read against source: its exit
   codes left out that `--affected` selecting nothing prints the note and
   exits 0 without watching. Contract case
