@@ -108,6 +108,30 @@ Nx's own option handling, rendered as one POSIX `sh` line (`vx show` prints it):
 
 `tests/nx-exec-live.test.ts` holds each of these shapes to Nx's own run-commands executor on the same options and arguments.
 
+### Your own executors
+
+A workspace executor that wraps a shell command (a run-commands with your defaults) can be a command instead of an `nx-exec` line, which spares the Node boot each `nx-exec` task pays. Pass `executors` to `nx()`, a function per executor name:
+
+```ts
+import { defineWorkspace } from '@vzn/vx/config'
+import { nx, type NxExecutorTarget } from '@vzn/vx-migrate'
+
+export default defineWorkspace({
+  plugins: [
+    nx({
+      executors: {
+        '@acme/tools:run': ({ options }: NxExecutorTarget) =>
+          typeof options.command === 'string'
+            ? { command: options.command, timeout: options.timeoutMs as number | undefined }
+            : undefined,
+      },
+    }),
+  ],
+})
+```
+
+Each function (`NxExecutorTranslator`) gets one target, an `NxExecutorTarget`: `executor`, `project`, `projectRoot` (workspace-root-relative), `target`, `configuration` (set for a `<target>:<configuration>` task) and the resolved `options`. The option's type is `NxExecutors`. It returns an `NxExecutorTranslation`, `{ command, timeout?, env? }`: the command runs in the project dir, `timeout` is `exec.timeout` in ms, `env` is defined as a run-commands `env` is, and the target's `.env` files load as for a run-commands line. Returning `undefined` runs that target through `nx-exec`, as any executor not named. Inputs, outputs (cleaned before each run), `dependsOn` and caching come from the graph as for every target. `nx:run-commands`, `nx:run-script` and `nx:noop` (and their legacy names) are translated by `nx()` itself and are refused here, and so is a return that is not `undefined` or a valid translation. A function's source text keys the cached mapping, so it should depend on its argument alone. `bunx @vzn/vx-migrate` writes executor targets as `nx-exec` lines regardless.
+
 ### `.env` files
 
 Nx loads a task's `.env` files into its environment — the project's before the workspace root's, the most specific name first (`.env.build.production.local`, `.env.build.production`, …, `.env.local`, `.local.env`, `.env`), a grouped target's named by its group's owner and parent (cypress's atomized `e2e-ci--a.cy.ts` loads `.env.e2e-ci` and `.env.e2e`), the first to define a name winning and the environment winning over every file — unless `NX_LOAD_DOT_ENV_FILES=false`. `nx()` finds the ones that exist from one listing of each project dir per run (about 4 ms at 1,000 projects) and the task loads them when it runs, with Nx's own parser: a shell line runs under `nx-env --dotenv <file>… --`, an executor line passes `--dotenv <file>` to `nx-exec`. Their values never enter a config, so a `.env.local` secret is not in `vx show`, `vx-lock.json` or a migrated `vx.config.ts`. A cached task keys on their bytes through a `cache.inputs.runtime` probe (`for f in …; do echo "$f"; cat -- "$f"; …`), which sees a gitignored file a glob would not; a file added or removed changes the command, and so the key, on the next run. `tests/nx-exec-live.test.ts` compares what the line sees with what `nx run` gives the same target.

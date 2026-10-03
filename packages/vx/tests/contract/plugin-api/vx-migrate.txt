@@ -13,10 +13,30 @@ export interface NxCacheOptions {
   timeoutMs?: number
   retries?: number
 }
+== type NxExecutors (src/nx/nx-map.ts)
+export type NxExecutors = Readonly<Record<string, NxExecutorTranslator>>
+== type NxExecutorTarget (src/nx/nx-map.ts)
+export interface NxExecutorTarget {
+  readonly executor: string
+  readonly project: string
+  readonly projectRoot: string
+  readonly target: string
+  readonly configuration: string | undefined
+  readonly options: Readonly<Record<string, unknown>>
+}
+== type NxExecutorTranslation (src/nx/nx-map.ts)
+export interface NxExecutorTranslation {
+  readonly command: string
+  readonly timeout?: number
+  readonly env?: Readonly<Record<string, string>>
+}
+== type NxExecutorTranslator (src/nx/nx-map.ts)
+export type NxExecutorTranslator = (target: NxExecutorTarget) => NxExecutorTranslation | undefined
 == type NxPluginOptions (src/nx/index.ts)
 export interface NxPluginOptions {
   readonly root?: string
   readonly graph?: string
+  readonly executors?: NxExecutors
 }
 == type TurboCacheOptions (src/turbo-cache/index.ts)
 export interface TurboCacheOptions {
