@@ -45,6 +45,13 @@ In order of harm:
    no bridges): about 4.6 ms a task, the namespace, both bridges and their
    shells. vx cannot drop the bridges alone: with them gone a refused host
    reads "connection refused" and the proxy's record (B-77) is lost.
+8. Upstream (SRT): the mandatory-deny scan spawns its ripgrep on every
+   wrap whenever a write config is set (always, for vx), though vx scans
+   the same paths itself (B-40) and hands SRT `true` (B-75). The spawn
+   is 1.09 ms median a wrap against 0.32 for a command that fails to
+   start (300 interleaved), but SRT's dependency check reads the same
+   setting, so a missing one would mark the sandbox unavailable. A
+   switch to skip the scan would save ~0.8 ms a sandboxed task.
 
 ## Leads for other streams
 
@@ -1374,3 +1381,46 @@ own `$TMPDIR`; a workspace kept under `/tmp` still gets the grant
 a grant hint beside every in-project violation (13 rows pin the exact
 lines, several reading `runSandboxed`'s list directly; the violation
 line already names the path).
+
+B-84. A server is never traced, so a sandboxed dev server that died on
+a path outside its grants read only as the tool's own "not found". A
+sandboxed server that exits failing before it is ready is told the
+sandbox reports nothing for it, and where to look (#2451). Rows:
+`persistent-sandbox-hint.unsafe.test.ts`.
+
+B-85. On Linux the port bridge's listen wait read `/proc/net/tcp`, and a
+host process already on a `localBinding` port counted as the bridge: its
+own bind failed unseen, the task passed, and a client of the port
+reached the other process. The wrap refuses such a port by name
+(`portsHeld`, #2464). Rows: `sandbox-port-held.unsafe.test.ts`. Also
+measured (2026-10-03, 400 interleaved spawns): `/usr/bin/true` direct
+0.90 ms median, behind `sh -c 'exec …'` 1.68, with the guard line 1.72.
+The guard costs ~0.03 ms; the shell's own start ~0.75 is the task's API
+and the guard's host (B-9), so nothing in `exec` is cut.
+
+B-86. On Linux every sandbox mask and bind is a mount point, and git's
+discovery stops at one: a task granted the repository's `.git` read "not
+a git repository … Stopping at filesystem boundary". A task whose grants
+name a `.git` gets `GIT_DISCOVERY_ACROSS_FILESYSTEM=1` unless it sets
+it; only such a task, since git-aware tools read it (vx's own repo probe
+spawned an extra `rev-parse` in the sandboxed shards when every task got
+it) (#2474). Rows: `sandbox-git-discovery.unsafe.test.ts`.
+
+B-87. A refused write in the workspace was told to grant its absolute
+path, which a committed config holds only on the machine that printed
+it, and a path holding a quote came out as no JS string. Grants are
+spelled from the project in the workspace and quoted safely (#2481).
+Rows: `sandbox-hint-spelling.unsafe.test.ts`. Also measured (500
+interleaved, in process): `runCommand('true')` 1.08 ms median against a
+bare `Bun.spawn` of `sh -c 'exec true'` reading both pipes through
+`Response` at 1.65: the runner's own work is below the spawn floor, so
+the unsandboxed task path in `exec` has nothing left to cut (B-82, B-85).
+
+B-88. Where a sandboxed task's own time goes (100 sandboxed `true`
+tasks, concurrency 1, in place, 3 runs): wrap 3.1 ms (SRT's
+`wrapWithSandbox` 2.9, of it ~1.0 the ripgrep spawn, lead 8), before the
+spawn 0.34, spawn to exit 20.4 (bwrap, SRT's chain, strace), after exit
+1.0. `realpathSync` runs ~147 times a task (the workspace root 34, each
+of SRT's protected dotfiles 4), ~0.2 ms in all: not cut, a memo of
+paths a task may create would cross item 738's limit for under 1%.
+Nothing in vx's half is worth cutting; the wrap's cost is SRT's.

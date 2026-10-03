@@ -1141,8 +1141,21 @@ export async function wrapSandboxedCommand(
   // sandboxed server and all it forked outlived vx (turborepo#9666). Now
   // the namespace goes with vx, a `setsid` daemon inside included, a
   // traced one-shot task too: its strace runs inside (B-11).
-  if (process.platform === 'linux' && /^\S*bwrap /.test(wrapped))
-    wrapped = `exec ${readOnlyMasks(wrapped, scratch)}`
+  // Every mask and bind is a mount point, and git's discovery stops at
+  // one: a task granted the repository's `.git` still read "not a git
+  // repository … Stopping at filesystem boundary" (2026-10-03). The
+  // boundaries are the sandbox's, so a task that names a `.git` may walk
+  // across them; only such a task, since git-aware tools read the variable
+  // (vx's own repoFacts asks git instead of the disk under it). A value the
+  // task's environment sets wins.
+  if (process.platform === 'linux' && /^\S*bwrap /.test(wrapped)) {
+    const gitGranted = [...args.config.allowRead, ...args.config.allowWrite].some((g) =>
+      g.split(/[\\/]/).includes('.git'),
+    )
+    wrapped =
+      (gitGranted ? 'GIT_DISCOVERY_ACROSS_FILESYSTEM=${GIT_DISCOVERY_ACROSS_FILESYSTEM-1} ' : '') +
+      `exec ${readOnlyMasks(wrapped, scratch)}`
+  }
   if (process.platform === 'linux' && !hostHasIpv6())
     wrapped = `SOCAT_DEFAULT_LISTEN_IP=4 ${wrapped}`
   const held = portsHeld(ports)
@@ -1878,7 +1891,8 @@ async function runSandboxedOnce(
       config: args.config,
       skip: [taskTmpRoot(), ...srtDefaultWritePaths()],
     })
-    if (outside.length > 0) violations.push(outsideWritesHint(outside, baselines.denyRead))
+    if (outside.length > 0)
+      violations.push(outsideWritesHint(outside, baselines.denyRead, args.reportWithin))
   }
 
   // The one denial macOS never logs. MEASURED 2026-09-05, same machine, two
@@ -1946,12 +1960,22 @@ async function runSandboxedOnce(
 }
 
 /** The hint for writes refused outside the project, a few paths named. */
-function outsideWritesHint(paths: readonly string[], walled: readonly string[]): SandboxViolation {
+function outsideWritesHint(
+  paths: readonly string[],
+  walled: readonly string[],
+  within: string,
+): SandboxViolation {
   const shown = paths.slice(0, 5).join(', ')
   const more = paths.length > 5 ? ` and ${paths.length - 5} more` : ''
   const home = toRealPath(os.homedir())
   const dir = path.dirname(paths[0]!)
-  const spelled = atOrUnder(dir, home) ? `~${dir.slice(home.length)}` : dir
+  // In the workspace, from the project, as a committed config spells it:
+  // the absolute path held only on the machine that printed it.
+  const spelled = walled.some((w) => atOrUnder(dir, toRealPath(w)))
+    ? path.relative(toRealPath(within), dir) || '.'
+    : atOrUnder(dir, home)
+      ? `~${dir.slice(home.length)}`
+      : dir
   const refused =
     `vx: the sandbox refused writes outside the project, which are not reported as ` +
     `violations: ${shown}${more}.`
@@ -1966,9 +1990,12 @@ function outsideWritesHint(paths: readonly string[], walled: readonly string[]):
     ? `${refused} The task has its own temp directory, empty at its start: write under ` +
       `$TMPDIR (os.tmpdir() in Node and Bun) instead of a fixed path.`
     : `${refused} If the task needs one, grant its directory, e.g. ` +
-      `\`allow: { write: ['${spelled}/'] }\`.`
+      `\`allow: { write: [${jsString(`${spelled}/`)}] }\`.`
   return { timestamp: new Date(), hint: true, line }
 }
+
+/** A path as a JS string literal a config can take: a quote in it is escaped. */
+const jsString = (p: string): string => (p.includes("'") ? JSON.stringify(p) : `'${p}'`)
 
 /** The host's shared temp directories, canonical: what a fixed temp path in a tool names. */
 function hostTempRoots(): string[] {
@@ -1984,7 +2011,7 @@ function hiddenReadsHint(paths: readonly string[], within: string): SandboxViola
     line:
       `vx: the sandbox hid paths outside the project that exist on this machine, which are ` +
       `not reported as violations: ${shown}${more}. If the task reads one, grant it, e.g. ` +
-      `\`allow: { read: ['${path.relative(toRealPath(within), paths[0]!)}'] }\`.`,
+      `\`allow: { read: [${jsString(path.relative(toRealPath(within), paths[0]!))}] }\`.`,
   }
 }
 

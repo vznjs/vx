@@ -149,6 +149,7 @@ export type {
   VxPlugin,
   PluginHooks,
   PluginOrigin,
+  PluginOptionKinds,
   CacheContext,
   ExecutorContext,
   CommandContext,

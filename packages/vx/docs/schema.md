@@ -1217,14 +1217,23 @@ project, so every sibling project and every root file is denied. Being
 stopped at that wall is the sandbox working, not a finding: only
 denials INSIDE the project are reported, because those are the reads
 that make a cache key wrong. A write refused past the wall is named
-beside a FAILED task, never counted, with the directory to grant (under
-the host's temp directory, `$TMPDIR`, the task's own, instead): a
+beside a FAILED task, never counted, with the directory to grant, spelled
+from the project when it is in the workspace (under the host's temp
+directory, `$TMPDIR`, the task's own, instead): a
 tool that cannot fill its cache (`~/.bun/install/cache`) rarely says
 where it tried. So is a read the wall hid of a path that exists on the
 host, with the grant spelled from the project (`'../../tsconfig.base.json'`):
 the tool said only "not found". To reach a path outside the project but
 inside the workspace — a workspace-level fixture — declare it; a path
 outside the workspace is not walled (above).
+
+**git in a sandboxed task** reads the repository only if it is granted:
+`read: ['.', '../../.git']` from a project two levels down (`.git` is a
+wall, so `read: ['.']` in a root project leaves it out too). On Linux
+a task whose grants name a `.git` gets `GIT_DISCOVERY_ACROSS_FILESYSTEM=1`
+(a value the task sets wins), since every sandbox mount is a filesystem
+boundary git's discovery stops at. `git rev-parse` and `git log` then answer as outside;
+`git status` reports a file the task may not read as deleted.
 
 **Policy: fail on violation.** An undeclared read, or a write the
 sandbox refuses, fails the task, and a failed task is never cached.

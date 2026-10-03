@@ -154,11 +154,11 @@ A hit after you changed something means that something is not declared.
 
 ## Environment variables
 
-A task sees only the variables you pass it:
+Past a small essential allowlist (below), a task sees only the variables you pass it:
 
 | List                   | The command sees it | The key sees it | Use it for                                          |
 | ---------------------- | ------------------- | --------------- | --------------------------------------------------- |
-| `exec.env.passThrough` | yes                 | no              | secrets and CI flags (`CI`, `GH_TOKEN`); stays on this machine |
+| `exec.env.passThrough` | yes                 | no              | secrets and CI flags (`GITHUB_ACTIONS`, `GH_TOKEN`); stays on this machine |
 | `cache.inputs.env`     | no                  | yes             | with `passThrough`: a variable that changes the output |
 | `exec.env.define`      | yes                 | yes             | a literal value; a remote task gets it too          |
 
