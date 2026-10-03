@@ -68,6 +68,10 @@ scan, and its dependency check (`Bun.which`) still finds the file. SRT
 runs it outside the sandbox, so it lives in a fresh 0700 `mkdtemp`
 directory under the OS temp dir, made once a process and removed at
 exit, never in the shared `/tmp/claude`; `true` stays the fallback.
+The availability probe hands SRT's dependency check that file made anew
+if gone, not the path SRT's live config holds: an `exit` hook run with
+the process still going (a test emits one) removed it, and every probe
+after read "ripgrep not found" (`sandbox-noscan-gone.unsafe.test.ts`).
 100 sandboxed `true` tasks at concurrency 1: 2,846 ms against 2,721
 (min of 8, interleaved; medians 2,948 and 2,812). The parity rows arm
 SRT as vx does, with a root entry (`.ZshRC`) only a scan finds.

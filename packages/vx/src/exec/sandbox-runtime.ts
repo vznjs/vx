@@ -164,7 +164,12 @@ async function probeUncached(weakerNested: boolean): Promise<SandboxAvailability
   if (!SandboxManager.isSupportedPlatform()) {
     return { available: false, reason: `platform ${process.platform} not supported` }
   }
-  const deps = SandboxManager.checkDependencies()
+  // SRT checks the scan command its live config names, and once that is
+  // vx's no-scan file (B-92) a process `exit` hook may have removed it
+  // while the process goes on: name one that is there.
+  const deps = SandboxManager.checkDependencies(
+    noScan === undefined ? undefined : { command: scanCommandAgain() },
+  )
   if (deps.errors.length > 0) return { available: false, reason: dependencyReason(deps.errors) }
   const long = socketPathRefusal()
   if (long !== undefined) return { available: false, reason: long }
@@ -523,6 +528,15 @@ function scopedScanConfig(): { mandatoryDenySearchDepth: number; ripgrep?: { com
 }
 
 let noScan: string | undefined
+
+/** The no-scan file again (made anew if gone), or `true` where it cannot be. */
+function scanCommandAgain(): string {
+  try {
+    return noScanCommand()
+  } catch {
+    return executablePath('true')
+  }
+}
 /**
  * An empty executable only this process can write: SRT runs it outside the
  * sandbox on every wrap, so it lives in a fresh 0700 directory, never in the
