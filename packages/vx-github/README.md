@@ -20,7 +20,7 @@ export default defineWorkspace({
 
 That's the whole setup. On a GitHub Actions runner (`GITHUB_STEP_SUMMARY`
 set) every `vx run` appends a summary block, on its own line after
-anything another step wrote: verdict headline, stats
+anything already written in the step: verdict headline, stats
 (tasks / executed / cache hits / duration), failures called out above the
 per-task table with their exit code, the signal an exit above 128
 stands for (`exit 137 (128 + SIGKILL)`, as the run's own frame and
@@ -94,5 +94,5 @@ names that variable.
 
 Both artifacts are bounded by GitHub's own limits, because exceeding
 either loses the whole thing rather than its tail: the check-run output
-at 65 535 characters, the job summary at 1 MiB counted in bytes (about 19 000 task rows; fewer when task names are not ASCII), cut on a character boundary. GitHub's cap is the step's whole summary file, so the page fits in what earlier writers in the step left; with no room it is skipped with a warning.
+at 65 535 bytes, the job summary at 1 MiB counted in bytes (about 19 000 task rows; fewer when task names are not ASCII), cut on a character boundary. GitHub's cap is the step's whole summary file, so the page fits in what earlier writers in the step left; with no room it is skipped with a warning.
 Past either, what is written ends with a line saying it was truncated.

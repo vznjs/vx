@@ -2,7 +2,7 @@
 
 A vx **remote cache** backed by any server speaking Bazel's
 [Remote Execution API](https://github.com/bazelbuild/remote-apis) — NativeLink,
-BuildBuddy, Buildbarn, bazel-remote. Six mature server implementations, none of
+BuildBuddy, Buildbarn, bazel-remote: mature server implementations, none of
 which we had to write, because a REAPI server is deliberately dumb.
 
 ```sh
@@ -30,8 +30,9 @@ and `onWarn` for a degraded-but-recovered call; `reapi()` refuses those four,
 reading files and warning through vx. With no endpoint configured (or a blank
 one) the plugin **declines** and costs nothing, so it is
 safe to leave declared. An endpoint that is not `host[:port]`, with an
-optional `grpc(s)://` or `http(s)://` scheme, is refused at startup with a
-line naming the setting. `VX_REAPI_ENDPOINT` / `VX_REAPI_INSTANCE` configure it
+optional `grpc(s)://` or `http(s)://` scheme, or a gRPC resolver target
+(`unix:`, `unix-abstract:`, `dns:`, `ipv4:`, `ipv6:`), is refused at startup
+with a line naming the setting. `VX_REAPI_ENDPOINT` / `VX_REAPI_INSTANCE` configure it
 from the environment, and `VX_REAPI_EXECUTE=1` turns on remote execution the
 way `execute: true` does (off by default: a plugin must not move where a
 build runs merely by being configured for caching). `execute` is a
@@ -50,7 +51,7 @@ CA takes `tlsCertificate` (or `VX_REAPI_TLS_CERTIFICATE`), a PEM file of
 that CA; one that asks for mutual TLS takes `tlsClientCertificate` and
 `tlsClientKey` (`VX_REAPI_TLS_CLIENT_CERTIFICATE` / `VX_REAPI_TLS_CLIENT_KEY`)
 — Bazel's `--tls_certificate`, `--tls_client_certificate` and
-`--tls_client_key`. Any of them turns TLS on; a file that cannot be read
+`--tls_client_key`. Any of them turns TLS on unless `tls: false` is set; a file that cannot be read
 is refused at startup, naming the setting.
 
 ## How a vx cache key becomes a REAPI entry
@@ -98,7 +99,7 @@ The default is the one size with no peer-dependence — 65535, the RFC 7540
 default initial window every peer must honour with no `WINDOW_UPDATE` at
 all (`SAFE_CHUNK_BYTES`). 128 KB was the default until it stalled a 1 MiB
 write against bazel-remote in 2 of 12 fresh runs (Bun 1.4.2), each costing
-the call's 30 s deadline; 65535 stalled in none, and costs ~45% on a 32 MiB
+the call's 30 s deadline; 65535 stalled in none, and costs ~51% on a 32 MiB
 upload (390 → 590 ms on loopback). A larger `chunkBytes` is still accepted:
 
 ```ts
@@ -112,7 +113,7 @@ retry instead of a failed task. The deadline counts in either spelling: the
 client's own `DEADLINE_EXCEEDED`, or the `CANCELLED` a grpc-go server such as
 bazel-remote sends when the call's `grpc-timeout` runs out first (a
 `CANCELLED` before the deadline is the server's own and is not retried). The full probe matrix is in
-`docs/design/plugin-executor-reapi-2026-08.md` §14.
+`packages/vx/docs/design/plugin-executor-reapi-2026-08.md` §14.
 
 ## Repeat runs skip the worker
 
@@ -221,7 +222,8 @@ through; a Tree file's setuid and setgid bits are dropped.
 
 ## Artifacts stream
 
-The cache layer never holds an artifact whole. `put` digests the file-backed
+An artifact up to 256 KiB is read whole and sent in one batch, with no
+probe first. Past that the cache layer never holds an artifact whole: `put` digests the file-backed
 `Blob` vx hands it in one pass over its stream, asks `FindMissingBlobs`, and
 uploads from a second pass: past the batch limit (about 4 MiB) the file is
 read `chunkBytes` at a time as the ByteStream write drains, identity-encoded
@@ -251,8 +253,9 @@ buying headroom for that upload also buys every metadata probe the same
 minutes before it can degrade, which is the opposite of what the deadline is
 for.
 
-Each deadline, and the executor's `executeTimeoutMs`, must be a positive
-number of ms; anything else is refused when the plugin starts.
+Each deadline must be a positive number of ms; anything else is refused when
+the plugin starts. `executeTimeoutMs` is held to the same rule when the
+executor starts, so with `execute` off it is not checked.
 
 That is not hypothetical. A NativeLink instance degraded into a state where it
 answered every ActionCache MISS in 3 ms and every HIT never — idle CPU,
@@ -323,7 +326,9 @@ VX_REAPI_TEST_ENDPOINT=127.0.0.1:19092 bun test
 ```
 
 Without an endpoint those tests skip; CI sets `VX_REQUIRE_REAPI=1`, which turns
-an absent endpoint into a failure so the suite cannot silently vanish.
+an absent endpoint into a failure so the suite cannot silently vanish. The
+remote-execution suites need an execution server in `VX_REAPI_EXEC_ENDPOINT`;
+CI sets it with `VX_REQUIRE_REAPI_EXEC=1`.
 
 ## Protocol coverage
 
@@ -341,9 +346,8 @@ Protocol features in use, not just reachable:
 
 - **Digest negotiation** — SHA256 by default (the universal baseline; the
   Merkle encoders must hash with the SAME function as every upload, so
-  auto-upgrading would mix functions inside one action). Another function is
-  an explicit `negotiate({ digestFunction: 'SHA512' })`, and one the server
-  did not advertise is refused rather than uploading blobs it will reject.
+  auto-upgrading would mix functions inside one action). The plugin
+  offers no other.
 - **zstd compression** — `compressed-blobs/zstd/…` resource names on
   ByteStream and `compressor: ZSTD` on batch updates, enabled only when
   `supported_compressors` says so.
@@ -356,9 +360,8 @@ Protocol features in use, not just reachable:
 - **Execution stages** — `QUEUED` / `EXECUTING` / `COMPLETED` decoded from
   `ExecuteOperationMetadata`, so a queued action is distinguishable from a
   hung one.
-- **`ExecutionPolicy.priority`**, **`ResultsCachePolicy.priority`**,
-  **`Action.salt`**, and **`Action.platform`** (v2.2) alongside
-  `Command.platform` for older servers.
+- **`Action.platform`** (v2.2) alongside `Command.platform` for older
+  servers.
 - **`NodeProperties`** — `unix_mode` and `mtime` on tree nodes.
 - **Output directories** via the `Tree` blob an `OutputDirectory.tree_digest`
   addresses, plus **output symlinks** (a v2.0 server's
