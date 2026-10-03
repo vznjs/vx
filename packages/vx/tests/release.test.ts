@@ -1,8 +1,10 @@
 // The decisions the release tasks make before they touch a registry or the
 // GitHub API (scripts/release.ts, scripts/auto-release.ts): which version a
 // tag names, which npm can publish with provenance, what is published in
-// which order and what a re-run skips, and which commit is released.
+// which order and what a re-run skips, which commit is released, and which
+// binaries a draft release still needs (scripts/release-assets.ts).
 import { describe, expect, it } from 'bun:test'
+import { assetsToUpload, releaseFor, type Release } from '../scripts/release-assets.js'
 import { decideRelease, type Git } from '../scripts/auto-release.js'
 import {
   publishAll,
@@ -181,5 +183,39 @@ describe('decideRelease', () => {
     const { git, calls } = repo({})
     expect(decideRelease(SHA, git)).toEqual({ release: true, last: '' })
     expect(calls).toEqual(['tag --points-at abc123', 'tag -l v* --sort=v:refname'])
+  })
+})
+
+describe('release assets (scripts/release-assets.ts)', () => {
+  const release = (tag: string, draft: boolean, assets: string[] = []): Release => ({
+    id: 1,
+    tag_name: tag,
+    draft,
+    assets: assets.map((name) => ({ name })),
+  })
+
+  it('finds the draft that carries the tag', () => {
+    const r = release('v1.2.3', true)
+    expect(releaseFor([release('v1.2.2', true), r], 'v1.2.3')).toBe(r)
+  })
+
+  it('refuses a missing release, and a published one an immutable release cannot extend', () => {
+    expect(message(() => releaseFor([release('v1.2.2', true)], 'v1.2.3'))).toBe(
+      'no release for v1.2.3',
+    )
+    expect(message(() => releaseFor([release('v1.2.3', false)], 'v1.2.3'))).toBe(
+      'v1.2.3 is already published; an immutable release takes assets only as a draft',
+    )
+  })
+
+  it("uploads the os's binaries the release lacks, so a re-run completes the set", () => {
+    const files = ['vx-linux-x64', 'vx-darwin-arm64', 'vx-linux-arm64', 'npm', 'vx-darwin-x64']
+    expect(assetsToUpload('linux', files, release('v1', true))).toEqual([
+      'vx-linux-arm64',
+      'vx-linux-x64',
+    ])
+    expect(assetsToUpload('darwin', files, release('v1', true, ['vx-darwin-arm64']))).toEqual([
+      'vx-darwin-x64',
+    ])
   })
 })

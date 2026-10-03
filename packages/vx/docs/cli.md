@@ -1587,7 +1587,9 @@ Every green merge releases itself. When CI finishes green on a push to
 `main`, `auto-release.yml` tags that commit with the next version and
 creates the GitHub release, both from the Conventional Commits since the
 last tag (`scripts/release-notes.ts`, run by the `release.auto` task,
-`scripts/auto-release.ts`). The version: below 0.1.0 always a
+`scripts/auto-release.ts`). The release is created as a draft: this
+repo's releases are immutable and take assets only before they are
+published, so `release.yml` publishes it after its last upload. The version: below 0.1.0 always a
 patch (cutting 0.1.0 is the owner's, by hand); then before 1.0 a `feat`
 or a breaking change (`type!:`, a `BREAKING CHANGE:` footer) is a minor
 (`v0.4.2` → `v0.5.0`) and anything else a patch (`v0.4.3`); from 1.0 a
@@ -1602,8 +1604,9 @@ higher version; `main`'s CI runs one at a time and drops the queued
 runs between, so a burst of merges yields one release per finished
 run. A commit that already carries a `v*` tag is skipped.
 
-A version can still be cut by hand: publish a GitHub release (say
-`v1.0.0`) and the next auto-release continues from it.
+A version can still be cut by hand: push its tag (say `v1.0.0`),
+create a draft release for it, and dispatch `release.yml` (`tag`) and
+`npm.yml` (`version`, `ref`); the next auto-release continues from it.
 
 A GitHub release publishes everything: `release.yml` builds the four
 binaries, proves the darwin ones on macOS (re-signed ad hoc only where
@@ -1634,13 +1637,15 @@ holds it. The tasks are `@vzn/vx`'s `release.*`, all uncached and in no
 | `release.prove.<os>`    | launches the host's binary (re-signed only if macOS refuses it) and asserts `vx <version>`; on darwin, launches both (x64 under Rosetta) |
 | `release.assemble.<os>` | emits the platform packages under `dist/npm` (linux: also `@vzn/vx` and the plugins)                                                     |
 | `release.publish.<os>`  | `npm publish --provenance` each in order, skipping one the registry holds                                                                |
-| `release.auto`          | decides the version, creates the release with its notes, dispatches the two workflows                                                    |
+| `release.upload.<os>`   | attaches `dist/vx-<os>-*` the draft release lacks; darwin's then publishes it                                                            |
+| `release.auto`          | decides the version, creates the draft release with its notes, dispatches the two workflows                                              |
 
 The version reaches them as `VX_RELEASE_VERSION` (the tag or the
 dispatch input) and each refuses one that is not a version. Every one
 is sandboxed: the publish is granted the registry, the OIDC token host
 and Sigstore, the GitHub-Actions variables npm reads, and `~/.npm`;
-`release.auto` reads `.git` and reaches `api.github.com` with `GH_TOKEN`.
+`release.auto` reads `.git` and reaches `api.github.com` with `GH_TOKEN`;
+`release.upload.<os>` reaches it and `uploads.github.com`.
 A dispatch with `ref` builds that ref's code, so it must hold these tasks.
 
 All Linux jobs go through `.github/actions/vx-runner` before any

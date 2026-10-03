@@ -191,6 +191,28 @@ const releaseTasks = {
       ],
     ]),
   ),
+  ...Object.fromEntries(
+    (['linux', 'darwin'] as const).map((os) => [
+      `release.upload.${os}`,
+      {
+        description: `attach the ${os} binaries to the draft release${os === 'darwin' ? ', then publish it' : ''} (scripts/release-assets.ts)`,
+        exec: {
+          command: `bun scripts/release-assets.ts ${os}${os === 'darwin' ? ' --publish' : ''}`,
+          env: {
+            passThrough: ['VX_RELEASE_VERSION', 'GITHUB_REPOSITORY', 'GH_TOKEN'],
+            secret: ['GH_TOKEN'],
+          },
+          sandbox: {
+            allow: {
+              read: ['.'],
+              network: ['api.github.com', 'uploads.github.com'],
+              machLookup: ['com.apple.SystemConfiguration.DNSConfiguration'],
+            },
+          },
+        },
+      },
+    ]),
+  ),
   'release.auto': {
     description: 'tag a green main commit with its next version, release it, dispatch the publish',
     exec: {
