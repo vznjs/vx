@@ -37,7 +37,8 @@ nothing, so declaring it unconditionally is safe.
 The options type is `GithubPluginOptions`; `renderJobSummary` renders the
 summary lines the plugin posts (the site's CI guide sample is rendered from it).
 The package exports `github`, `renderJobSummary` and the types `GithubPluginOptions`
-and `FetchFn`; nothing else.
+and `FetchFn`; nothing else. `fetchFn`, `append` and `sizeOf` are test seams:
+they replace the Checks API transport, the summary writer and its size probe.
 
 ```ts
 github({
