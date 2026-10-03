@@ -34,7 +34,7 @@ export async function migrateNx(
     // The file this writes is each task's config.
     ownConfig: () => `vx.config.${format}`,
     manifestField: (key) => ({ raw: `pkg.${key}` }),
-    nativeExecutors: true,
+    migration: true,
   })
   const adopted = await adoptedToolNotes(root, {
     plugin: 'nx',
@@ -46,9 +46,10 @@ export async function migrateNx(
   return {
     headerNotes: [
       'migrating from the resolved project-graph snapshot — plugin-inferred targets ' +
-        'are frozen as static config; an executor target becomes the command its executor ' +
-        'runs, or a placeholder the TODOs below list; targets with `.env` files run through ' +
-        '`nx-env` (keep @vzn/vx-migrate installed)',
+        'are frozen as static config; `nx:run-commands` targets are their shell lines, and ' +
+        'every other executor runs as itself through `nx-exec` (keep Nx and @vzn/vx-migrate ' +
+        'installed until those targets are rewritten as commands); targets with `.env` files ' +
+        'run through `nx-env`',
       ...adopted,
     ],
     projects: mapped.projects.map((p) =>

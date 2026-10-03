@@ -190,6 +190,16 @@ sync`", advice for a repo leaving Nx: they say to keep what the
   whole-segment `!(a|b)` is `*` with `!` outputs taking `{a,b}` back,
   other minimatch forms are `minimatchToVx`'s, and one with no vx
   spelling is dropped with a TODO.
+- **P2-39** Owner directive (2026-10-03): the migrator translates only
+  `nx:run-commands` (and `command`), `nx:run-script` and `nx:noop`.
+  `src/nx/nx-native.ts` and its per-executor translations (jest, vitest,
+  vite, eslint, tsc, swc, esbuild, js:node, next, cypress, storybook,
+  playwright, verdaccio, file-server, Angular packaging) and their
+  placeholders are removed: every other executor is its `nx-exec` line,
+  as `nx()` runs it, and the server edges they drew went with them.
+  `MapNxOptions.nativeExecutors` is `migration`. P2-35–37 (an
+  own-project edge, merge-reports, the Nx 15–16 node aliases) closed
+  unmerged under the same directive.
 
 ## Leads for other streams
 

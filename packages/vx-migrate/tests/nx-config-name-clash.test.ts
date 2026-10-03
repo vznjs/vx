@@ -44,7 +44,7 @@ describe('a configuration task named like another target', () => {
     const mapped = await mapNxWorkspace('/w', [meta], parseNxGraph(JSON.stringify(graph), 'g'), {
       persistentTodo: 'p',
       cacheable: new Set(),
-      nativeExecutors: true,
+      migration: true,
     })
     const tasks = new Map(mapped.projects[0]!.tasks.map((t) => [t.name, t]))
     expect([...tasks.keys()].sort()).toEqual([
