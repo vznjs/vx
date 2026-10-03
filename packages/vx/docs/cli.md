@@ -2204,7 +2204,7 @@ exec.sandbox and will fail` says it first: root inside a container
   (no `strace` on PATH, one whose `--version` fails, or one that may not
   attach) adds `, untraced — <why>, so the reads it denies go
 unreported`: the sandbox still enforces, but a task that tolerates a
-  denied read passes and caches with no word of it. The `--json` fact is
+  denied read passes and caches with no word of it. The `--format json` fact is
   `sandbox.untraced`, the reason or `null`.
 - `plugins` names every plugin `vx.workspace.*` declares and the seams
   each fills, in pipeline order (`config`, `discover`, `project`, `graph`, `key`,

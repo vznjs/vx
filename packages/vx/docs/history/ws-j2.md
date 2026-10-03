@@ -525,3 +525,10 @@ persistent task` and vx exits 1). Row (`site-samples` › a post's link
   watch-limit notice, the 150 ms debounce, the three-cycle notice, the
   ignored segments and suffixes, the refused flags and their reasons,
   the signals it forwards, and `cycle failed`.
+- **J2-62** `cli.md`'s `vx info` sandbox bullet called its field "the
+  `--json` fact"; `vx info --json` is refused (the verb takes
+  `--format json`). Row (`cli-doc-drift` › every flag the `vx info`
+  section names, the verb takes), red without the fix. Checked clean:
+  `vx show`'s rows, JSON shapes, near-miss and empty-target refusals and
+  the file-system refusal lines; `vx info`'s sample against the current
+  constants, the sandbox, plugin, workers and orphans rows.
