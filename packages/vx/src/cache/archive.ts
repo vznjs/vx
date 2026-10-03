@@ -41,6 +41,7 @@ import { chmodSync, renameSync, statSync, utimesSync } from 'node:fs'
 import { lstat, mkdir, readlink, realpath, rmdir, stat, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { UserError } from '../util/index.js'
+import { WORKSPACE_OUTPUT_PREFIX } from './layer.js'
 import { TarFormatError, type TarInput, tarEntries, tarPack, tarSize } from './tar-stream.js'
 
 /** Archive entry name carrying the per-output mode/mtime sidecar. */
@@ -236,11 +237,17 @@ export async function planArtifact(args: PackArgs): Promise<ArtifactPlan> {
       // file's bytes and comes back as a regular file. A link to a
       // directory, or a dangling one, has no bytes to pack: refuse loudly
       // rather than store an entry that restores to nothing.
-      const shown = name.startsWith('outputs/') ? name.slice('outputs/'.length) : name
+      // The path as the config spells it: a root-anchored output's entry
+      // name is vx's own `workspace-outputs/…` (M-66).
+      const shown = name.startsWith('outputs/')
+        ? `output ${name.slice('outputs/'.length)}`
+        : name.startsWith(WORKSPACE_OUTPUT_PREFIX)
+          ? `workspaceFiles output ${name.slice(WORKSPACE_OUTPUT_PREFIX.length)}`
+          : `output ${name}`
       const dangling = (err: NodeJS.ErrnoException): never => {
         if (err.code === 'ENOENT') {
           throw new UserError(
-            `output ${shown} is a dangling symlink: vx stores regular files only — emit a file there, or narrow cache.outputs.files to the files the task produces, or take it back with a '!' entry`,
+            `${shown} is a dangling symlink: vx stores regular files only — emit a file there, or narrow cache.outputs.files to the files the task produces, or take it back with a '!' entry`,
           )
         }
         throw err
@@ -256,7 +263,7 @@ export async function planArtifact(args: PackArgs): Promise<ArtifactPlan> {
           const root = await withinReal
           if (!src.startsWith(root + path.sep) && !(await ownOutputs()).has(src)) {
             throw new UserError(
-              `output ${shown} is a symlink to ${src}, outside the project: vx packs a symlinked output as its target's bytes, and a project's outputs come from its own directory — emit a file there, or take it back with a '!' entry`,
+              `${shown} is a symlink to ${src}, outside the project: vx packs a symlinked output as its target's bytes, and a project's outputs come from its own directory — emit a file there, or take it back with a '!' entry`,
             )
           }
         }
@@ -264,7 +271,7 @@ export async function planArtifact(args: PackArgs): Promise<ArtifactPlan> {
       }
       if (!st.isFile()) {
         throw new UserError(
-          `output ${shown} is not a regular file (a symlink to a directory?): vx stores regular files only — emit a file there, or narrow cache.outputs.files to the files the task produces, or take it back with a '!' entry`,
+          `${shown} is not a regular file (a symlink to a directory?): vx stores regular files only — emit a file there, or narrow cache.outputs.files to the files the task produces, or take it back with a '!' entry`,
         )
       }
       const mode = st.mode & 0o777
