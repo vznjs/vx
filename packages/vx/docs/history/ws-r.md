@@ -203,6 +203,13 @@ prune` all match. Fixed: the Run blocks used bare `vx`, which a local
   migrate count) had no row; `examples.unsafe.test.ts` now compares them
   to the run's cache legend (a planted `3 local` fails it).
 
+- **R-34** Benchmark % law: `update-site.ts --check` holds the generated
+  tables (README, landing, the 3,270-task section) to `results.json`;
+  benchmarks.md's five hand-typed runner tables had no row.
+  `bench-percent.test.ts` recomputes each of their 36 % cells from the
+  figures the row shows (all agreed; a planted `10%` fails it). README:
+  re-read against sources, nothing to change.
+
 ## Leads
 
 - Real-repo rows (`packages/vx-bench/real-repos.json`, benchmarks.md's
