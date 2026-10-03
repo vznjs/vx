@@ -7,6 +7,30 @@ import type { Database, SQLQueryBindings } from 'bun:sqlite'
 import { lazyStatement } from './schema.js'
 import type { InvocationRecord, RunRecord } from './layer.js'
 
+const INSERT_RUNS = `
+      INSERT INTO runs(
+        hash, project, task, status, exit_code, duration_ms, forward_args,
+        started_at, ended_at,
+        run_id, cpu_ms, peak_rss_bytes, wallclock_start_ns, wallclock_end_ns,
+        cache_hit, attempts, cached,
+        blocked_by, timed_out, sandbox_violations, not_ready
+      )
+      VALUES `
+/** One `runs` row's placeholders: the 21 columns `bindRun` fills. */
+const RUN_TUPLE = `(${Array(21).fill('?').join(', ')})`
+
+/** An INSERT of `n` `runs` rows. */
+function insertRunsSql(n: number): string {
+  return INSERT_RUNS + Array(n).fill(RUN_TUPLE).join(', ')
+}
+
+/**
+ * Rows per INSERT: 40 × 21 variables stays under 999, the oldest default
+ * ceiling. A statement per row was 8.7 ms of 1,000 rows, 40 at a time 6.4
+ * (2026-10-03).
+ */
+const RUNS_PER_INSERT = 40
+
 export class RunHistory {
   private readonly insertRun: ReturnType<Database['prepare']>
   private readonly insertInvocation: ReturnType<Database['prepare']>
@@ -16,19 +40,7 @@ export class RunHistory {
     /** The store's salted value digest (L-4). */
     private readonly digestValue: (value: string) => string,
   ) {
-    this.insertRun = lazyStatement(
-      this.db,
-      `
-      INSERT INTO runs(
-        hash, project, task, status, exit_code, duration_ms, forward_args,
-        started_at, ended_at,
-        run_id, cpu_ms, peak_rss_bytes, wallclock_start_ns, wallclock_end_ns,
-        cache_hit, attempts, cached,
-        blocked_by, timed_out, sandbox_violations, not_ready
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?,  ?, ?, ?, ?, ?,  ?, ?, ?,  ?, ?, ?, ?)
-    `,
-    )
+    this.insertRun = lazyStatement(this.db, insertRunsSql(1))
     this.insertInvocation = lazyStatement(
       this.db,
       `
@@ -59,11 +71,24 @@ export class RunHistory {
     // `bun:sqlite`'s `transaction()` returns a callable that wraps the
     // body in BEGIN/COMMIT, fsyncing once at the end. For a 200-task
     // run that's one fsync instead of 200.
-    const insert = this.insertRun
-    const tx = this.db.transaction((batch: readonly RunRecord[]) => {
-      for (const r of batch) insert.run(...bindRun(r, this.digestValue))
-    })
-    tx(runs)
+    this.db.transaction(() => this.insertRuns(runs))()
+  }
+
+  /** `runs` as few INSERTs; each distinct forward-args list digested once. */
+  private insertRuns(runs: readonly RunRecord[]): void {
+    const digests = new Map<string, string>()
+    const digest = (value: string): string => {
+      let d = digests.get(value)
+      if (d === undefined) digests.set(value, (d = this.digestValue(value)))
+      return d
+    }
+    for (let i = 0; i < runs.length; i += RUNS_PER_INSERT) {
+      const block = runs.slice(i, i + RUNS_PER_INSERT)
+      const params: SQLQueryBindings[] = []
+      for (const r of block) params.push(...bindRun(r, digest))
+      // `query` caches by text: one statement for every full block.
+      this.db.query(insertRunsSql(block.length)).run(...params)
+    }
   }
 
   recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void {
@@ -73,11 +98,9 @@ export class RunHistory {
     // the entry-save transaction (`save`/`ingest`) so a warm
     // all-cache-hit run — which writes no `runs`-vs-`entry_inputs`
     // mismatch — pays nothing for the moat it isn't refreshing.
-    const insertRun = this.insertRun
-    const insertInvocation = this.insertInvocation
     this.db.transaction(() => {
-      for (const r of bundle.runs) insertRun.run(...bindRun(r, this.digestValue))
-      insertInvocation.run(...bindInvocation(bundle.invocation))
+      this.insertRuns(bundle.runs)
+      this.insertInvocation.run(...bindInvocation(bundle.invocation))
     })()
   }
 
