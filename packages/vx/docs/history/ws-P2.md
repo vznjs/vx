@@ -101,6 +101,11 @@ sync`", advice for a repo leaving Nx: they say to keep what the
   (and `@nx/workspace:`), which an older graph keeps as written, are the
   `nx:` executors they re-exported: the migration wrote each as a
   failing placeholder, and `nx()` ran them through `nx-exec`.
+- **P2-21** A named input neither nx.json nor the project defines (an
+  nx.json `extends` preset not installed where the snapshot is read)
+  wrote an empty input list: a cached task keyed on its config alone, a
+  stale hit after every source edit. It now keys the whole project
+  (`**/*`), its dependency twin too, with the todo kept.
 - **P2-22** An Nx `implicitDependencies: ["!a"]` drops a manifest edge
   from the graph, often to break a cycle; vx's `^build` follows the
   manifest, so the migrated configs brought the cycle back and core
