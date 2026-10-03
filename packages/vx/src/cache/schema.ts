@@ -3,7 +3,21 @@
 // them lives in the store that owns the table (file-hashes, config-evals,
 // output-index, history) or in cache.ts for `entries` and `entry_inputs`.
 
-import type { Database } from 'bun:sqlite'
+import type { Database, SQLQueryBindings } from 'bun:sqlite'
+
+/**
+ * A statement prepared on its first `run` or `get`. A warm run executes few
+ * of the index's statements, and preparing every one at the open cost each
+ * run ~0.4 ms (2026-10-03).
+ */
+export function lazyStatement(db: Database, sql: string): ReturnType<Database['prepare']> {
+  let statement: ReturnType<Database['prepare']> | undefined
+  const prepared = (): ReturnType<Database['prepare']> => (statement ??= db.prepare(sql))
+  return {
+    run: (...params: SQLQueryBindings[]) => prepared().run(...params),
+    get: (...params: SQLQueryBindings[]) => prepared().get(...params),
+  } as unknown as ReturnType<Database['prepare']>
+}
 
 export function createTables(db: Database): void {
   // Cached config evaluations (workspace/config-cache.ts): the validated

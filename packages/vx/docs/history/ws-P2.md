@@ -59,6 +59,12 @@ start` (in the build output) with Nx's port and `PORT`, and
   `vx init` declared, which keeps reading nx.json and filling tasks, and
   a lockfile with no `@vzn/vx-lockfile` plugin, where a bump re-runs
   every task that Nx re-ran per project.
+- **P2-11** An Nx output that resolves outside the workspace (an old
+  generator's `reportsDirectory: "../../coverage/libs/util"`, read from
+  the workspace root as Nx 23 reads it) is dropped with a TODO: it was
+  written as `workspaceFiles: ['../../…']`, and vx refused to load the
+  migrated config (and an `nx()` run). Found by a hand-written graph
+  fixture in the explicit-executor style.
 
 ## Leads for other streams
 
