@@ -272,6 +272,7 @@ where Nx ran it, with the executor's option defaults applied:
 | `@nx/esbuild:esbuild`               | `cd ../.. && rm -rf dist/apps/api && esbuild apps/api/src/main.ts --bundle --packages=external --format=esm …` |
 | `@nx/js:node`                       | `cd ../.. && node --inspect=localhost:9229 dist/apps/api/main.js` (the build target's output) |
 | `@nx/js:swc`                        | `rm -rf ../../dist/libs/a && swc src -d ../../dist/libs/a --config-file=.swcrc` |
+| `@nx/js:verdaccio`                  | `cd ../.. && verdaccio --config .verdaccio/config.yml --listen localhost:4873` (a server) |
 
 What an executor did besides its tool (a type-check before a Vite
 build, a `package.json` or `assets` copied into the output) is a TODO

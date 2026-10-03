@@ -92,6 +92,11 @@ sync`", advice for a repo leaving Nx: they say to keep what the
 - **P2-16** One Nx edge spelled two ways (`ui:gen` and
   `{ projects: ["ui"], target: "gen" }`) was listed twice in the written
   `dependsOn`; `mapNxDeps` now returns each edge once.
+- **P2-18** `@nx/js:verdaccio` (the `local-registry` target Nx's
+  `setup-verdaccio` writes) migrates to the registry it forks:
+  `verdaccio --config … --listen localhost:4873` from the workspace root,
+  a server, its storage cleared under `clear`; the npm and yarn registry
+  Nx set while it ran is a TODO. Read from the executor in Nx 23.2.1.
 
 ## Leads for other streams
 
