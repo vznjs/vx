@@ -161,6 +161,16 @@ prune` all match. Fixed: the Run blocks used bare `vx`, which a local
   unnamed, which reddened `plugin-exports-documented` on main. The
   README now names it.
 
+- **R-29** Both starters (`examples/basic`, `examples/turbo`) open their
+  README with `npm install`, which failed: `app` declared
+  `"lib": "workspace:*"`, a pnpm protocol npm refuses
+  (EUNSUPPORTEDPROTOCOL). The examples test links node_modules instead
+  of installing, so nothing ran it. Now `"*"` (npm resolves the
+  workspace package); `examples/basic` installs from npm with the
+  published vx and runs 3 miss, then 3 up-to-date. A row in
+  `examples.unsafe.test.ts` refuses a `workspace:` spec in an npm
+  starter (fails with the old spec).
+
 ## Leads
 
 - Real-repo rows (`packages/vx-bench/real-repos.json`, benchmarks.md's
