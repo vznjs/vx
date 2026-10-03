@@ -83,6 +83,11 @@
   it, and that vx-migrate is not on npm yet; the npm description says
   fastest.
 
+- **R-17** benchmarks.md: every Turbo/Nx cell of the head-to-head
+  tables shows vx's % (the × multiples went); the sections that timed
+  vx through `turbo()` / `nx()` or migrated configs on real repos are
+  removed until a native-config rerun.
+
 ## Leads
 
 - Real-repo rows (`packages/vx-bench/real-repos.json`, benchmarks.md's
