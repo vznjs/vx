@@ -530,6 +530,19 @@ statements on 1.4.2 but answers SQLITE_BUSY on 1.3.14 (a five-line
 pre-O-10 close, when `close(true)` refuses; both 1.3.14 workspaces then
 exit 0. `cache-close-old-bun.test.ts` stands a refusing `close(true)` in
 for the old runtime; without the fallback it fails with the same error.
+M-42. M-41's review, its other finding: a workspace whose globs match
+no package (`"workspaces": ["packages/*"]` over an empty `packages/`)
+was told only "no package.json scripts to turn into tasks", which was
+true and named nothing to fix. A note now names the globs that match no
+`package.json`; a member under them, scripts or not, drops it. Row in
+`init.test.ts`, red on main.
+
+M-43. Probes, nothing shipped: more `vx init` layouts held. Root-only
+scripts become the root's tasks (`build` keeps `^build`, `test` waits
+on it) and the run takes them; a root script sharing a member's task
+name is left out, as the report says; a member with no scripts gets no
+config; a member's own `pnpm-workspace.yaml` is not read, so its
+packages are no members, as pnpm itself reads only the outermost one.
 
 ## Leads for other streams
 
