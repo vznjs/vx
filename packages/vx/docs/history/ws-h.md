@@ -762,6 +762,25 @@ other passed. `cli-help-synopsis.test.ts` requires each core verb's
 usage lines to be its synopsis lines word for word, and its own help
 cut to print them (#2654).
 
+## H-68: every verb's refusal names the nearest word
+
+`flagHint` read a verb's flags from its usage line, where no verb
+spells `--help`, so `vx upgrade --hlp` and `vx help --hlp` said
+"unknown" with no hint; `vx completions bsh` named no shell, and
+`vx version --hlp` printed the version and exited 0. Every core verb
+now hints `--help`, completions names the nearest shell and refuses a
+flag as a flag, and `vx version` refuses a word (exit 1).
+`cli-hint-every-verb.test.ts` holds a row per verb; 15 of 17 fail
+without the fix (#2656).
+
+## H-69: a bare vx with no workspace says so
+
+A bare `vx` where no workspace is printed the 151-line reference and
+exited 0, none of it saying nothing here can run. It prints the
+refusal every verb gives there, plus where the verbs are listed, and
+exits 1; inside a workspace, and `--help` / `-h` anywhere, it is the
+reference as before (#2658).
+
 ## Leads for other streams
 
 - **A:** a task that rewrites its own input with the same bytes is never

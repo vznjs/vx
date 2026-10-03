@@ -206,6 +206,10 @@ sync`", advice for a repo leaving Nx: they say to keep what the
   that only returned `{ success: true }` exited 1, and a server that
   yields success then returns failure when it dies exited 0. It reads
   the outcome as Nx does now.
+- **P2-42** `nx-exec` printed a thrown error's full stack of Nx
+  internals (an executor's throw, a missing executor package). It
+  reports one as `nx run`'s `handleErrors` does: the message, and the
+  stack only under `NX_VERBOSE_LOGGING=true`; exit 1 either way.
 - **P2-41** A run-commands entry with `prefix`, `prefixColor`, `color`
   or `bgColor` in a serial run (`parallel: false`) is refused by Nx (it
   throws), so the target never ran under Nx; the mapper wrote a working

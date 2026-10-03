@@ -242,7 +242,18 @@ function finish(code) {
   process.stdout.write('', () => process.stderr.write('', () => process.exit(code)))
 }
 
+// As `nx run` reports a thrown error (`handleErrors`): the message, and
+// the stack only under verbose logging. A missing executor package or an
+// executor's own throw printed a stack of Nx internals every time.
 main(process.argv.slice(2)).then(finish, (err) => {
-  process.stderr.write(`nx-exec: ${err && err.stack ? err.stack : String(err)}\n`)
+  const message = err && err.message ? err.message : String(err)
+  const verbose = process.env.NX_VERBOSE_LOGGING === 'true'
+  const more =
+    err && err.stack
+      ? verbose
+        ? `\n${err.stack}`
+        : '\nSet NX_VERBOSE_LOGGING=true to see the stack trace.'
+      : ''
+  process.stderr.write(`nx-exec: ${message}${more}\n`)
   finish(1)
 })

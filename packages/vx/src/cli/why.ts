@@ -235,7 +235,17 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
     } else {
       const p = why.previousRun
       lines.push(`  previous   ${fmtWhen(p.startedAt)} · ${p.status} · key ${p.hash}`)
-      lines.push(`  verdict    ${why.note}`)
+      // The key moved and the diff says by what: the verdict names it, so
+      // an env-only change reads as one line, not "inputs differ" above a
+      // table to scan.
+      const moved = diff.entries.map((e) => `${e.kind} ${printable(e.name)}`)
+      lines.push(
+        `  verdict    ${
+          why.hashChanged === true && moved.length > 0
+            ? `cache key changed: ${moved.slice(0, 3).join(', ')}${moved.length > 3 ? ` and ${moved.length - 3} more` : ''}`
+            : why.note
+        }`,
+      )
     }
 
     if (diff.entries.length > 0) {

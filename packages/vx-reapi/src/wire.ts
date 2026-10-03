@@ -37,7 +37,7 @@ function varintBytes(n: number): Uint8Array {
  * one size with no peer-dependence. 128 KB was the default and stalled a
  * 1 MiB write against bazel-remote in 2 of 12 fresh runs on Bun 1.4.2, each
  * costing the call's 30 s deadline before the downgrade below retried it;
- * 65535 stalled in none (F-20). It costs ~45% on a 32 MiB upload
+ * 65535 stalled in none (F-20). It costs ~51% on a 32 MiB upload
  * (390 → 590 ms on loopback), far below one expected stall. A larger
  * `chunkBytes` stays available, with the downgrade as its net.
  *

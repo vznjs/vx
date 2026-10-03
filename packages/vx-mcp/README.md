@@ -59,8 +59,8 @@ next `vx run` to reset, and old run history is never pruned by a read.
 
 ## Why no SDK
 
-MCP over stdio is newline-delimited JSON-RPC 2.0 and three methods
-(`initialize`, `tools/list`, `tools/call`); a batch, which the 2025-03-26 revision allows, is answered as one array. `src/server.ts` speaks it in
+MCP over stdio is newline-delimited JSON-RPC 2.0 and four methods
+(`initialize`, `tools/list`, `tools/call`, `ping`); a batch, which the 2025-03-26 revision allows, is answered as one array. `src/server.ts` speaks it in
 about 230 lines with no dependencies, where the reference SDK pulls
 in an HTTP stack this transport never touches. `@vzn/vx` is the only peer.
 What a config or plugin stage prints while a tool loads the workspace

@@ -98,7 +98,7 @@ otel({
 - a child `vx.task` span per task — `cicd.pipeline.task.name`,
   `cicd.pipeline.task.run.result` (the convention's enum: `success` for a
   run or a hit, `failure`, `timeout`, `skip`, `cancellation`), vx's own
-  status as `vx.task.status`, `vx.cache.source` (miss/local/remote),
+  status as `vx.task.status`, `vx.cache.source` (miss/local/remote, or none for a task that never ran),
   `vx.task.hash`, duration, CPU ms, peak RSS, and on a skipped task its root
   blocker (`vx.task.blocked_by`), on a timed-out one `vx.task.timed_out`, on
   a sandboxed one its violation count (`vx.task.sandbox_violations`), on a

@@ -774,3 +774,19 @@ status` re-hashes every tracked file, and vx runs it with
   The rest follows the bundle's reach: the same probe with the CLI
   imported but unused is 5.9 ms, used 9.0. One compiled bundle sets up
   every module the CLI reaches, so per-verb lazy imports cut nothing.
+- This repo's warm all-hits `ci --all` (`GIT_CONFIG_GLOBAL=/dev/null`; the
+  container's `core.checkStat=minimal` distrusts every index OID and
+  hashes from disk, 197 ms of keys): ~285 ms. Ranked: keys 74 ms for 58
+  tasks, spread over resolution, hashing and the fold; `check.bun` 74 ms,
+  uncached by design and on every path, ~25 ms of it Bun's own start (the
+  util barrel's imports are 2 of them); the workspace config 14 ms. The 55
+  hits restore in ~1 ms each.
+- The sandbox SDK waits for its socat bridges with a 0/100/200/300 ms
+  backoff, and an isolated probe slept the 100 ms every time (probe and
+  init 158 against 59 ms polled every 5 ms, 12 runs each). In a real run
+  the bridge is up at the first or second check, so the sleep never
+  falls: a `bun patch` measured 341.6 against 348.7 ms cold on a
+  sandboxed 10-project copy (A/A 358.8) and 324 against 336 on the gate
+  (A/A 343); not taken.
+- Cold config load on this repo (11 TS configs, fresh `--cache-dir`):
+  22–36 ms, no part above 4 ms of a profile.
