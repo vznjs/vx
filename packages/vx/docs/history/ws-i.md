@@ -485,6 +485,13 @@ ms per 1,000 configs; output identical over 3,378 inputs. 1,000
 projects, cold, 30 rounds: `load configs` min 174.1 → 161.0 ms, median
 190.3 → 177.6 (A/A 165.7 / 189.6).
 
+I-61. `--dry` reads only p50s from the history (#2618):
+`LocalHistoryProvider.p50sFor`, the window's executed successes'
+durations, 38 → 4 ms at 27,000 rows; `loadFor`'s rates and per-hit entry
+join stay for the scheduler and `vx mcp`. 1,000 projects, warm, 25
+rounds: `plan` median 100.8 → 64.3 ms, the dry run 188.7 → 151.6 (A/A
+102.1 / 191.8).
+
 ## Leads for other streams
 
 - **A: a cold save commits one SQLite transaction per entry.** The
@@ -644,6 +651,14 @@ status` re-hashes every tracked file, and vx runs it with
   the logger to say so before the probe (a contract change), or stdout
   read at replay instead of with the entry.
 
+- **Owner: the first touch of `process.stdout` / `process.stderr`.** A
+  compiled binary that only reads `process.stdout` takes 18 ms against 7
+  for one that does not: Bun builds the Node stream machinery on first
+  use. Inside a warm run the touch (`listenForReadersGone`) is 3.7 ms, ~9%
+  of a 10-project no-op. Writing through `Bun.stdout` instead touches 125
+  sites in 32 files and the drain rules `bin.ts` holds (the 2026-09-15
+  and 2026-09-20 truncations); not taken as a perf PR.
+
 ## Probes refuted (2026-10-02)
 
 - Group commit, sized: the save's statements on the real schema, 1,000
@@ -741,3 +756,9 @@ status` re-hashes every tracked file, and vx runs it with
   25 rounds): the stage waits on `git status`, 35–45 ms in a run.
 - `knownBlobSizes` as one `json_each` query instead of 900-wide chunks:
   2.8 against 3.7 ms for 2,005 sizes; not taken.
+- The dry-run history query's join as two-level grouping (pair and hit
+  hash, then one entry lookup per hash): 34 against 36 ms; as a
+  materialized hit-entry subquery: 54. Same rows both; not taken. The
+  plan's per-task `has()` is 6 µs.
+- `vx --help` loads the plugin layer to list plugin verbs: 20 ms outside
+  a workspace, 11 for `--version`. A rare verb; not taken.
