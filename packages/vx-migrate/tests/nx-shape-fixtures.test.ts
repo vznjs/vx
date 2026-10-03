@@ -3,7 +3,7 @@
 // with a root project, per-project named inputs and filesets, run-commands
 // variants, configurations with run-script, every input kind, token
 // interpolation, an integrated repo of `project.json` projects, the
-// TypeScript plugin, @nx/jest atomized per spec), migrated
+// TypeScript plugin, @nx/jest and @nx/vitest atomized per spec), migrated
 // through the CLI. Every config it writes must load and plan: a written config vx
 // refuses (an output outside the workspace, P2-11) fails the whole repo.
 
@@ -350,5 +350,38 @@ describe('vx-migrate on the Nx shapes real repos have: every written config load
     expect(r.out).toContain(
       'declares the workspace output "coverage/libs/auth" that @ja/auth#test also declares',
     )
+  }, 30_000)
+  it('@nx/vitest atomized: a coverage dir per spec, json and fileset inputs', async () => {
+    const r = await migrate('vitest-atomized')
+    expect(r.code).toBe(0)
+    expect(r.tasks).toEqual({
+      '@va/app': ['test', 'test-ci', 'test-ci--src/app.spec.ts'],
+      '@va/ui': [
+        'nx-input:fileset-b408f97d9dd36e9b',
+        'nx-input:fileset-b5bc262e8cd5876f',
+        'nx-input:production',
+        'test',
+        'test-ci',
+        'test-ci--src/button.spec.ts',
+        'test-ci--src/card.spec.ts',
+      ],
+    })
+    const ui = r.configs['@va/ui']!
+    // Each spec writes its own coverage dir: the atoms keep their cache, and
+    // `test`, whose dir holds them all, is the one that runs uncached.
+    expect(ui['test-ci--src/card.spec.ts']!['cache']).toEqual({
+      inputs: { files: ['**/*'], workspaceFiles: ['tsconfig.base.json'], env: ['CI'] },
+      outputs: { files: [], workspaceFiles: ['coverage/libs/ui/src/card.spec.ts'] },
+    })
+    expect(ui['test']!['cache']).toBeUndefined()
+    expect(r.out).toContain(
+      '@va/ui#test: declares the workspace output "coverage/libs/ui" that @va/ui#test-ci--src/button.spec.ts also declares',
+    )
+    // `{ fileset, dependencies: true }` reaches the dependency's spec tsconfigs.
+    expect(r.configs['@va/app']!['test']!['dependsOn']).toEqual([
+      '@va/ui#nx-input:production',
+      '@va/ui#nx-input:fileset-b5bc262e8cd5876f',
+      '@va/ui#nx-input:fileset-b408f97d9dd36e9b',
+    ])
   }, 30_000)
 })

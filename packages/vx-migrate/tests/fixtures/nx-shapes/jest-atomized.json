@@ -94,7 +94,10 @@
                   "params": "forward",
                   "options": "forward"
                 }
-              ]
+              ],
+              "metadata": {
+                "nonAtomizedTarget": "test"
+              }
             }
           }
         }

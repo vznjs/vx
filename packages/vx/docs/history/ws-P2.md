@@ -183,6 +183,12 @@ sync`", advice for a repo leaving Nx: they say to keep what the
   one `test-ci--<spec>` target per file). It migrates and plans; each
   spec task shares `test`'s coverage dir, so it runs uncached with the
   TODO that says so.
+- **P2-34** A thirteenth shape fixture: `@nx/vitest` with
+  `ciTargetName` as Nx 23.2.1 infers it (a coverage dir per spec,
+  `{ json, fields }`, `{ fileset, dependencies: true }`, `{ env }` and
+  `dependentTasksOutputFiles` inputs, `nonAtomizedTarget` metadata). The
+  atoms keep their cache and `test`, whose dir holds theirs, runs
+  uncached; the jest fixture gains the metadata real graphs carry.
 
 ## Leads for other streams
 

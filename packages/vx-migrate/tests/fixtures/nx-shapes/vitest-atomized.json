@@ -1,0 +1,284 @@
+{
+  "manifests": {
+    "@va/app": {
+      "dependencies": {
+        "@va/ui": "*"
+      }
+    }
+  },
+  "graph": {
+    "nodes": {
+      "@va/app": {
+        "name": "@va/app",
+        "type": "app",
+        "data": {
+          "root": "apps/app",
+          "targets": {
+            "test": {
+              "command": "vitest",
+              "options": {
+                "cwd": "apps/app"
+              },
+              "cache": true,
+              "inputs": [
+                "default",
+                "^production",
+                {
+                  "fileset": "{projectRoot}/tsconfig.spec.json",
+                  "dependencies": true
+                },
+                {
+                  "fileset": "{projectRoot}/tsconfig.storybook.json",
+                  "dependencies": true
+                },
+                {
+                  "json": "{workspaceRoot}/tsconfig.base.json",
+                  "fields": ["compilerOptions"]
+                },
+                {
+                  "externalDependencies": ["vitest"]
+                },
+                {
+                  "env": "CI"
+                },
+                {
+                  "dependentTasksOutputFiles": "**/*.js",
+                  "transitive": true
+                }
+              ],
+              "outputs": ["{workspaceRoot}/coverage/{projectRoot}"]
+            },
+            "test-ci--src/app.spec.ts": {
+              "command": "vitest run src/app.spec.ts --coverage.reportsDirectory=../../coverage/apps/app/src/app.spec.ts",
+              "cache": true,
+              "inputs": [
+                "default",
+                "^production",
+                {
+                  "fileset": "{projectRoot}/tsconfig.spec.json",
+                  "dependencies": true
+                },
+                {
+                  "fileset": "{projectRoot}/tsconfig.storybook.json",
+                  "dependencies": true
+                },
+                {
+                  "json": "{workspaceRoot}/tsconfig.base.json",
+                  "fields": ["compilerOptions"]
+                },
+                {
+                  "externalDependencies": ["vitest"]
+                },
+                {
+                  "env": "CI"
+                },
+                {
+                  "dependentTasksOutputFiles": "**/*.js",
+                  "transitive": true
+                }
+              ],
+              "outputs": ["{workspaceRoot}/coverage/apps/app/src/app.spec.ts"],
+              "options": {
+                "cwd": "apps/app"
+              }
+            },
+            "test-ci": {
+              "executor": "nx:noop",
+              "cache": true,
+              "inputs": [
+                "default",
+                "^production",
+                {
+                  "fileset": "{projectRoot}/tsconfig.spec.json",
+                  "dependencies": true
+                },
+                {
+                  "fileset": "{projectRoot}/tsconfig.storybook.json",
+                  "dependencies": true
+                },
+                {
+                  "json": "{workspaceRoot}/tsconfig.base.json",
+                  "fields": ["compilerOptions"]
+                },
+                {
+                  "externalDependencies": ["vitest"]
+                },
+                {
+                  "env": "CI"
+                },
+                {
+                  "dependentTasksOutputFiles": "**/*.js",
+                  "transitive": true
+                }
+              ],
+              "outputs": ["{workspaceRoot}/coverage/apps/app/src/app.spec.ts"],
+              "dependsOn": ["test-ci--src/app.spec.ts"],
+              "metadata": {
+                "nonAtomizedTarget": "test"
+              }
+            }
+          }
+        }
+      },
+      "@va/ui": {
+        "name": "@va/ui",
+        "type": "lib",
+        "data": {
+          "root": "libs/ui",
+          "targets": {
+            "test": {
+              "command": "vitest",
+              "options": {
+                "cwd": "libs/ui"
+              },
+              "cache": true,
+              "inputs": [
+                "default",
+                "^production",
+                {
+                  "fileset": "{projectRoot}/tsconfig.spec.json",
+                  "dependencies": true
+                },
+                {
+                  "fileset": "{projectRoot}/tsconfig.storybook.json",
+                  "dependencies": true
+                },
+                {
+                  "json": "{workspaceRoot}/tsconfig.base.json",
+                  "fields": ["compilerOptions"]
+                },
+                {
+                  "externalDependencies": ["vitest"]
+                },
+                {
+                  "env": "CI"
+                },
+                {
+                  "dependentTasksOutputFiles": "**/*.js",
+                  "transitive": true
+                }
+              ],
+              "outputs": ["{workspaceRoot}/coverage/{projectRoot}"]
+            },
+            "test-ci--src/button.spec.ts": {
+              "command": "vitest run src/button.spec.ts --coverage.reportsDirectory=../../coverage/libs/ui/src/button.spec.ts",
+              "cache": true,
+              "inputs": [
+                "default",
+                "^production",
+                {
+                  "fileset": "{projectRoot}/tsconfig.spec.json",
+                  "dependencies": true
+                },
+                {
+                  "fileset": "{projectRoot}/tsconfig.storybook.json",
+                  "dependencies": true
+                },
+                {
+                  "json": "{workspaceRoot}/tsconfig.base.json",
+                  "fields": ["compilerOptions"]
+                },
+                {
+                  "externalDependencies": ["vitest"]
+                },
+                {
+                  "env": "CI"
+                },
+                {
+                  "dependentTasksOutputFiles": "**/*.js",
+                  "transitive": true
+                }
+              ],
+              "outputs": ["{workspaceRoot}/coverage/libs/ui/src/button.spec.ts"],
+              "options": {
+                "cwd": "libs/ui"
+              }
+            },
+            "test-ci--src/card.spec.ts": {
+              "command": "vitest run src/card.spec.ts --coverage.reportsDirectory=../../coverage/libs/ui/src/card.spec.ts",
+              "cache": true,
+              "inputs": [
+                "default",
+                "^production",
+                {
+                  "fileset": "{projectRoot}/tsconfig.spec.json",
+                  "dependencies": true
+                },
+                {
+                  "fileset": "{projectRoot}/tsconfig.storybook.json",
+                  "dependencies": true
+                },
+                {
+                  "json": "{workspaceRoot}/tsconfig.base.json",
+                  "fields": ["compilerOptions"]
+                },
+                {
+                  "externalDependencies": ["vitest"]
+                },
+                {
+                  "env": "CI"
+                },
+                {
+                  "dependentTasksOutputFiles": "**/*.js",
+                  "transitive": true
+                }
+              ],
+              "outputs": ["{workspaceRoot}/coverage/libs/ui/src/card.spec.ts"],
+              "options": {
+                "cwd": "libs/ui"
+              }
+            },
+            "test-ci": {
+              "executor": "nx:noop",
+              "cache": true,
+              "inputs": [
+                "default",
+                "^production",
+                {
+                  "fileset": "{projectRoot}/tsconfig.spec.json",
+                  "dependencies": true
+                },
+                {
+                  "fileset": "{projectRoot}/tsconfig.storybook.json",
+                  "dependencies": true
+                },
+                {
+                  "json": "{workspaceRoot}/tsconfig.base.json",
+                  "fields": ["compilerOptions"]
+                },
+                {
+                  "externalDependencies": ["vitest"]
+                },
+                {
+                  "env": "CI"
+                },
+                {
+                  "dependentTasksOutputFiles": "**/*.js",
+                  "transitive": true
+                }
+              ],
+              "outputs": [
+                "{workspaceRoot}/coverage/libs/ui/src/button.spec.ts",
+                "{workspaceRoot}/coverage/libs/ui/src/card.spec.ts"
+              ],
+              "dependsOn": ["test-ci--src/button.spec.ts", "test-ci--src/card.spec.ts"],
+              "metadata": {
+                "nonAtomizedTarget": "test"
+              }
+            }
+          }
+        }
+      }
+    },
+    "dependencies": {
+      "@va/app": [
+        {
+          "source": "@va/app",
+          "target": "@va/ui",
+          "type": "static"
+        }
+      ],
+      "@va/ui": []
+    }
+  }
+}
