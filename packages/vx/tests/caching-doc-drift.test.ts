@@ -174,3 +174,23 @@ describe('caching.md lists the key parts in the order key() folds them', () => {
     }
   })
 })
+
+// J2-55: caching.md defined willRead / willWrite without the remote-only
+// condition execute-task.ts applies to both.
+describe("caching.md's read/write predicates are execute-task's", () => {
+  it('each predicate names every condition the source ANDs', () => {
+    const src = readFileSync(
+      new URL('../src/orchestrator/execute-task.ts', import.meta.url),
+      'utf8',
+    )
+    for (const name of ['willRead', 'willWrite']) {
+      const line = src.match(new RegExp(`const ${name} = ([^\\n]+)`))![1]!
+      expect(line).toContain('!remoteOnly')
+      expect(line).toContain('cfgCacheable')
+      const doc = readFileSync(new URL('../docs/caching.md', import.meta.url), 'utf8')
+      const said = doc.match(new RegExp(`\`${name} = ([^\`]+)\``))![1]!
+      expect(said).toContain('a cache block')
+      expect(said).toContain('not remote-only')
+    }
+  })
+})
