@@ -5,7 +5,8 @@
 // define, mapped by the same mapper `bunx @vzn/vx-migrate --from nx`
 // renders files from — so what runs here is what a migration would have
 // written, minus the file. Executor targets run through `nx-exec` (one
-// executor, one process, Nx's own `runExecutor`); run-commands targets
+// executor, one process, Nx's own `runExecutor`) unless the workspace
+// translates the executor (`executors`); run-commands targets
 // run as the shell they are. A task the package's own vx.config already
 // declares wins; the plugin never overwrites a user's hand.
 //
@@ -31,8 +32,22 @@ import {
 } from '@vzn/vx'
 import { type AdoptionRun, adoptionPlugin } from '../adoption-plugin.js'
 import { collectGaps } from '../plugin-gaps.js'
-import { mapNxWorkspace, type NxGraph, nxSizeText, parseNxGraph, readNxJson } from './nx-map.js'
+import {
+  BUILTIN_EXECUTORS,
+  mapNxWorkspace,
+  type NxExecutors,
+  type NxGraph,
+  nxSizeText,
+  parseNxGraph,
+  readNxJson,
+} from './nx-map.js'
 import { exportGraph } from './export-graph.js'
+export type {
+  NxExecutors,
+  NxExecutorTarget,
+  NxExecutorTranslation,
+  NxExecutorTranslator,
+} from './nx-map.js'
 import { listDotenv } from './nx-dotenv.js'
 import { trackedKinds } from '../tracked-outputs.js'
 import { relPosix } from '../paths.js'
@@ -65,17 +80,39 @@ export interface NxPluginOptions {
    * it is exported again.
    */
   readonly graph?: string
+  /**
+   * Your own executors as commands, by executor name: each function gets
+   * the target (project, root, configuration, resolved options) and
+   * returns `{ command, timeout?, env? }`, or undefined to run that target
+   * through `nx-exec`. `nx:run-commands`, `nx:run-script` and `nx:noop`
+   * are translated already and cannot be named. A function's source text
+   * keys the cached mapping, so it should depend on its argument alone.
+   */
+  readonly executors?: NxExecutors
 }
 
 /** Each option `NxPluginOptions` names, with its kind: derived from the type, so the two cannot drift. */
 const NX_PLUGIN_KEYS: PluginOptionKinds<NxPluginOptions> = {
   root: 'string',
   graph: 'string',
+  executors: 'object',
+}
+
+function refuseExecutors(executors: NxExecutors | undefined): void {
+  for (const [name, fn] of Object.entries(executors ?? {})) {
+    if (BUILTIN_EXECUTORS.has(name))
+      throw new UserError(
+        `nx() option "executors": ${JSON.stringify(name)} is translated by nx() itself`,
+      )
+    if (typeof fn !== 'function')
+      throw new UserError(`nx() option "executors": ${JSON.stringify(name)} must be a function`)
+  }
 }
 
 /** The plugin: the adoption skeleton over `mapNxWorkspace`, one mapping per run. */
 export function nx(options: NxPluginOptions = {}): VxPlugin {
   refuseUnknownOptions('nx()', options, NX_PLUGIN_KEYS)
+  refuseExecutors(options.executors)
   // One graph load per RUN, shared by `discover` and `project`: the run
   // hands both stages the same projects array (discover's, grown by what
   // it named), so its identity is the run's, as the mapping's is.
@@ -97,7 +134,12 @@ export function nx(options: NxPluginOptions = {}): VxPlugin {
     import.meta,
     async (ctx) => {
       const root = options.root ?? ctx.workspaceRoot
-      return mapAll(root, ctx.projects, await graphOf(root, ctx.cacheDir, ctx.projects))
+      return mapAll(
+        root,
+        ctx.projects,
+        await graphOf(root, ctx.cacheDir, ctx.projects),
+        options.executors,
+      )
     },
     // At the workspace root only, as `turbo()` claims its file.
     options.root === undefined ? ['nx.json'] : [],
@@ -232,13 +274,18 @@ async function mapAll(
   root: string,
   metas: readonly ProjectMeta[],
   loaded: LoadedGraph,
+  executors: NxExecutors | undefined,
 ): Promise<AdoptionRun> {
   const { text, graph, notes } = loaded
+  const reads = await nxReads(root, metas, text, graph, notes)
+  // The mapping is cached on what it read; a translator is code it ran.
+  if (executors !== undefined)
+    reads.push(JSON.stringify(Object.entries(executors).map(([k, fn]) => [k, String(fn)])))
   return {
     name: 'nx',
     spareTracked: true,
-    reads: await nxReads(root, metas, text, graph, notes),
-    map: (tracked) => index(root, metas, graph, notes, tracked),
+    reads,
+    map: (tracked) => index(root, metas, graph, notes, tracked, executors),
   }
 }
 
@@ -305,6 +352,7 @@ async function index(
   graph: NxGraph,
   loadNotes: readonly string[],
   trackedFiles: () => Promise<readonly string[] | null>,
+  executors: NxExecutors | undefined,
 ): Promise<AdoptionMapping> {
   const notes = [...loadNotes]
   const tracked = await trackedFiles()
@@ -321,6 +369,7 @@ async function index(
     attached: new Set(metas.map((m) => m.name)),
     ...(tracked === null ? {} : { tracked: trackedKinds(tracked) }),
     ownConfig: (rel) => configs.get(relRoot(rel)) ?? null,
+    ...(executors === undefined ? {} : { executors }),
   })
   notes.push(...mapped.notes)
   const byName = new Map<string, GeneratedProject>()
