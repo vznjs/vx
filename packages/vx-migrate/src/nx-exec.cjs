@@ -114,12 +114,13 @@ function unwrapGraph(g) {
 }
 
 /**
- * The cached graph, or a fresh one when the cache is missing or unreadable.
+ * The cached graph, or a fresh one when the cache is missing, unreadable or
+ * lacks the project.
  * The daemon is never dialed: NX_DAEMON is off for this process before `nx`
  * loads, so the fallback computes in-process — slow, bounded, and it writes
  * Nx's cache for the next task.
  */
-async function loadGraph(nx) {
+async function loadGraph(nx, project) {
   const pg = nx('nx/src/project-graph/project-graph')
   let graph = null
   try {
@@ -127,7 +128,11 @@ async function loadGraph(nx) {
   } catch {
     // No cache, or a shape the reader did not understand: compute below.
   }
-  if (graph === null) graph = unwrapGraph(await pg.createProjectGraphAsync({ exitOnError: false }))
+  // A cache written before the project existed (one added since Nx last
+  // ran) is stale: \`nx run\` computes the graph and finds it, so compute.
+  if (graph === null || graph.nodes[project] === undefined) {
+    graph = unwrapGraph(await pg.createProjectGraphAsync({ exitOnError: false }))
+  }
   if (graph === null) throw new Error('nx produced a project graph with no nodes')
   return { graph, pg }
 }
@@ -159,7 +164,7 @@ async function main(argv) {
   // process, so the task's `.env` files (nx-dotenv.cjs) are its env.
   loadTaskEnv(nx, process.env, args.dotenv, undefined)
 
-  const { graph, pg } = await loadGraph(nx)
+  const { graph, pg } = await loadGraph(nx, args.project)
   const node = graph.nodes[args.project]
   if (node === undefined) {
     process.stderr.write(

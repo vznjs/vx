@@ -258,6 +258,12 @@ export interface RunSummary {
   outcomes: TaskOutcome[]
   /** The persistent tasks `RunOptions.holdPersistent` handed back; absent when none is running. */
   persistent?: HeldPersistent
+  /**
+   * Why the run refused to start, nothing having run (`ok` is false): a
+   * requested task no selected project declares, with what is near. The
+   * caller prints it; `vx run` writes it to stderr.
+   */
+  refused?: string
 }
 
 export interface HeldPersistent {

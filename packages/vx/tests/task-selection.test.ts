@@ -82,8 +82,8 @@ describe('task selection', () => {
       const r = await run({ cwd: root, tasks: ['build', 'totallybogus'], log })
       expect(r.ok).toBe(false)
       expect(r.outcomes).toEqual([])
-      expect(log.lines.join('\n')).toContain('No projects declare task(s): totallybogus.')
-      expect(log.lines.join('\n')).not.toContain('Did you mean') // nothing within two edits
+      expect(r.refused).toContain('no projects declare task(s): totallybogus.')
+      expect(r.refused).not.toContain('Did you mean') // nothing within two edits
     },
     TIMEOUT,
   )
@@ -95,11 +95,9 @@ describe('task selection', () => {
       const log = silent()
       const r = await run({ cwd: root, tasks: ['buidl'], log })
       expect(r.ok).toBe(false)
-      expect(log.lines.join('\n')).toContain(
-        'No projects declare task(s): buidl. Did you mean build?',
-      )
+      expect(r.refused).toContain('no projects declare task(s): buidl. Did you mean build?')
       // a workspace that HAS configs is a typo, not a first run
-      expect(log.lines.join('\n')).not.toContain('vx init')
+      expect(r.refused).not.toContain('vx init')
     },
     TIMEOUT,
   )
@@ -110,9 +108,9 @@ describe('task selection', () => {
       await addProject('app', ['build'])
       const log = silent()
       // Two typos of the same spec hint it ONCE; the old hint repeated it.
-      await run({ cwd: root, tasks: ['ap#build', 'app#buidl'], log })
-      expect(log.lines.join('\n')).toContain(
-        'No projects declare task(s): ap#build, app#buidl. Did you mean app#build?',
+      const r = await run({ cwd: root, tasks: ['ap#build', 'app#buidl'], log })
+      expect(r.refused).toContain(
+        'no projects declare task(s): ap#build, app#buidl. Did you mean app#build?',
       )
     },
     TIMEOUT,
@@ -127,11 +125,11 @@ describe('task selection', () => {
       await addProject('a', ['build'])
       await addProject('b', ['typecheck'])
       const hint =
-        'No projects declare task(s): typecheck. Only projects outside the selection declare typecheck — pass --all, or --filter to pick them.'
+        'no projects declare task(s): typecheck. Only projects outside the selection declare typecheck — pass --all, or --filter to pick them.'
       const log = silent()
       const r = await run({ cwd: root, projects: ['a'], tasks: ['typecheck'], log })
       expect(r.ok).toBe(false)
-      expect(log.lines).toContain(hint)
+      expect(r.refused).toBe(hint)
       const plan = await planRun({
         cwd: root,
         projects: ['a'],
@@ -142,13 +140,11 @@ describe('task selection', () => {
       // A member with no vx config is a scope with nothing to ask.
       await mkdir(path.join(root, 'packages', 'bare'), { recursive: true })
       await writeFile(path.join(root, 'packages', 'bare', 'package.json'), '{"name":"bare"}')
-      const bare = silent()
-      await run({ cwd: root, projects: ['bare'], tasks: ['typecheck'], log: bare })
-      expect(bare.lines).toContain(hint)
-      const none = silent()
-      await run({ cwd: root, projects: ['a'], tasks: ['nosuch'], log: none })
-      expect(none.lines.join('\n')).toContain('No projects declare task(s): nosuch.')
-      expect(none.lines.join('\n')).not.toContain('outside the selection')
+      const bare = await run({ cwd: root, projects: ['bare'], tasks: ['typecheck'], log: silent() })
+      expect(bare.refused).toBe(hint)
+      const none = await run({ cwd: root, projects: ['a'], tasks: ['nosuch'], log: silent() })
+      expect(none.refused).toContain('no projects declare task(s): nosuch.')
+      expect(none.refused).not.toContain('outside the selection')
     },
     TIMEOUT,
   )
@@ -160,7 +156,7 @@ describe('task selection', () => {
       const log = silent()
       const r = await run({ cwd: root, tasks: ['build', 'a#totallybogus'], log })
       expect(r.ok).toBe(false)
-      expect(log.lines.join('\n')).toContain('No projects declare task(s): a#totallybogus.')
+      expect(r.refused).toContain('no projects declare task(s): a#totallybogus.')
     },
     TIMEOUT,
   )
@@ -172,7 +168,7 @@ describe('task selection', () => {
       const log = silent()
       const r = await run({ cwd: root, tasks: ['build', 'nosuchpkg#build'], log })
       expect(r.ok).toBe(false)
-      expect(log.lines.join('\n')).toContain('No projects declare task(s): nosuchpkg#build.')
+      expect(r.refused).toContain('no projects declare task(s): nosuchpkg#build.')
     },
     TIMEOUT,
   )
@@ -183,9 +179,7 @@ describe('task selection', () => {
       await addProject('a', ['build', 'test'])
       await addProject('b', ['build'])
       const said = async (task: string): Promise<string | undefined> => {
-        const log = silent()
-        await run({ cwd: root, tasks: [task], log })
-        return log.lines.find((l) => l.startsWith('No projects declare'))
+        return (await run({ cwd: root, tasks: [task], log: silent() })).refused
       }
       expect([
         await said('deploy'),
@@ -194,10 +188,10 @@ describe('task selection', () => {
         // CONTROL: a near miss still gets the one name, not the list.
         await said('biuld'),
       ]).toEqual([
-        'No projects declare task(s): deploy. Tasks: build, test.',
-        'No projects declare task(s): zzz#build. No project is named zzz; projects: a, b.',
-        "No projects declare task(s): a#deploy. a's tasks: build, test.",
-        'No projects declare task(s): biuld. Did you mean build?',
+        'no projects declare task(s): deploy. Tasks: build, test.',
+        'no projects declare task(s): zzz#build. No project is named zzz; projects: a, b.',
+        "no projects declare task(s): a#deploy. a's tasks: build, test.",
+        'no projects declare task(s): biuld. Did you mean build?',
       ])
     },
     TIMEOUT,
@@ -237,7 +231,7 @@ describe('task selection', () => {
       const r = await run({ cwd: root, tasks: ['build'], projects: [], log })
       expect(r.ok).toBe(false)
       // The generic empty-graph message, NOT a per-name accusation.
-      expect(log.lines.join('\n')).toContain('No projects declare task(s): build.')
+      expect(r.refused).toContain('no projects declare task(s): build.')
     },
     TIMEOUT,
   )

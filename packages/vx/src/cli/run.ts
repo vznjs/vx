@@ -667,6 +667,10 @@ export async function runCmd(args: readonly string[]): Promise<number> {
   // the scheduler, cache, retries and telemetry unchanged above it); there
   // is no whole-run delegation seam to consult.
   const summary = await runOrchestrator(opts)
+  if (summary.refused !== undefined) {
+    process.stderr.write(`vx run: ${summary.refused}\n`)
+    return 1
+  }
   const result: RunResult = { ok: summary.ok, outcomes: summary.outcomes.map(projectOutcome) }
   if (parsed.verbosity > 0) printSummary(result)
   // Report generation is post-run, gated on the flags — zero cost when

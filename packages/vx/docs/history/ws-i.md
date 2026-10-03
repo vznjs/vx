@@ -790,3 +790,14 @@ status` re-hashes every tracked file, and vx runs it with
   (A/A 343); not taken.
 - Cold config load on this repo (11 TS configs, fresh `--cache-dir`):
   22–36 ms, no part above 4 ms of a profile.
+- `vx --help`, timed inside the compiled binary (ms from start): past the
+  `--version` branch at 4.8, Node streams touched by 9.0
+  (`listenForReadersGone`, every verb but `--version`), CLI imported by
+  10.1, plugin layer imported by 12.6, plugin verbs listed by 13.1 outside
+  a workspace (5–8 ms more inside one: it loads the workspace's plugins).
+  Each verb already imports on use; the one cost left is the stream
+  touch, the owner lead above.
+- Idle `vx watch`: 0.2% of a core at 10 and at 1,000 projects (2 ticks in
+  10 s, 4 in 20 s), 12 descriptors and 88 MB at 1,000; one watcher for the
+  tree, and the idle syscalls are the runtime's thread futexes and one
+  `pread64` a second. Nothing to cut.

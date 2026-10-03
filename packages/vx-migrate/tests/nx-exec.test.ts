@@ -175,6 +175,8 @@ describe('nx-exec', () => {
   })
 
   it('a project the graph does not have is exit 1 with its name', async () => {
+    // Not in the cache, so computed (P2-43), and not there either.
+    await writeFile(path.join(root, 'fallback-graph.json'), JSON.stringify(GRAPH))
     const r = await nxExec(['x:y', '--project', 'nope', '--target', 'build'])
     expect(r.code).toBe(1)
     expect(r.err).toContain('no project "nope" in the Nx project graph')
