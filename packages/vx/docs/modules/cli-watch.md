@@ -69,7 +69,7 @@ export function makeRootEventFilter(
   workspaceRoot: string,
   projectDirs: readonly string[],
   workspaceInputs: readonly string[],
-  claimedRootFiles?: ReadonlySet<string>, // fingerprint plugins' claims, and vx.lock under --frozen
+  claimedRootFiles?: ReadonlySet<string>, // fingerprint plugins' claims, and vx-lock.json under --frozen
 ): (filename: string) => boolean
 export function shapesWatchedSet(filename: string): boolean // a manifest, a config or a fingerprint file: re-read the watched set
 export function isWorkspaceFingerprintFile(name: string): boolean
