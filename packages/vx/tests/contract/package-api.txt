@@ -296,6 +296,12 @@ export function pruneOrphanPersistentNotes(
 export function quoteTsLiteral(s: string): string
 == function reachDigests (src/orchestrator/lockfile-claim.ts)
 export function reachDigests(g: ReachGraph): string[]
+== function refuseUnknownOptions (src/orchestrator/plugin.ts)
+export function refuseUnknownOptions(
+  factory: string,
+  options: unknown,
+  known: readonly string[],
+): void
 == function resolveRunId (src/orchestrator/run-id.ts)
 export function resolveRunId(db: Database, raw: string, verb: string): string | null
 == function run (src/orchestrator/run.ts)

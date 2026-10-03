@@ -51,7 +51,7 @@ export type {
   SandboxDenials,
 } from './config.js'
 export { defineProject, defineWorkspace } from './config.js'
-export { definePlugin } from './orchestrator/index.js'
+export { definePlugin, refuseUnknownOptions } from './orchestrator/index.js'
 
 // Programmatic engine API: run / plan / prepare (docs/cli.md § Programmatic
 // API). The graph primitives, the cache-key hashing seam and the git / host

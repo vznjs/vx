@@ -15,7 +15,7 @@ import type { Cache, CacheLayer, CachePolicy } from '../cache/index.js'
 import { PLUGIN_PACKAGE, type ProjectConfig, type WorkspaceConfig } from '../config.js'
 import type { TaskExecutor } from '../exec/index.js'
 import type { TaskNode, TaskOutcome } from '../graph/index.js'
-import { UserError } from '../util/index.js'
+import { nearest, UserError } from '../util/index.js'
 import type { ProjectMeta } from '../workspace/index.js'
 import type { EventBus, RunStartInfo } from './events.js'
 import type { TelemetryContext, TelemetrySink } from './telemetry.js'
@@ -481,6 +481,32 @@ export function definePlugin(origin: PluginOrigin, hooks: PluginHooks): VxPlugin
   }
   const name = pluginPackageName(dir)
   return { ...hooks, name, [PLUGIN_PACKAGE]: name } as VxPlugin
+}
+
+/**
+ * Refuse an option a plugin factory does not take, as core refuses an
+ * unknown config field. Bun strips a config's types, so a misspelt option
+ * (`reapi({ endpont })`) reached the factory, which read it as unset and
+ * quietly declined: the run went local with no word. `factory` names the
+ * call in the message (`reapi()`), `known` is the options the factory reads.
+ */
+export function refuseUnknownOptions(
+  factory: string,
+  options: unknown,
+  known: readonly string[],
+): void {
+  if (options === undefined) return
+  if (options === null || typeof options !== 'object' || Array.isArray(options)) {
+    throw new UserError(`${factory}: options must be an object`)
+  }
+  for (const key of Object.keys(options)) {
+    if (known.includes(key)) continue
+    const near = nearest(key, known)
+    throw new UserError(
+      `${factory} has unknown option "${key}" (allowed: ${[...known].sort().join(', ')})` +
+        (near === undefined ? '' : ` — did you mean ${near}?`),
+    )
+  }
 }
 
 export interface InstallPluginsArgs {
