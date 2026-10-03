@@ -360,6 +360,37 @@ describe('loadProjectConfig', () => {
       await refuses('inputs', '!a/../b/**')
     })
 
+    it('a brace arm that escapes or is absolute is refused too (M-64)', async () => {
+      // `{../shared,src}/**` splits on `/` into `{..`, so it loaded, and the
+      // glob engine matched nothing under its `..` arm: an input that left
+      // the key without a word. The arms are segments, and an absolute arm
+      // is an absolute glob.
+      const load = async (where: 'inputs' | 'outputs', glob: string) => {
+        const file = path.join(dir, 'vx.config.mjs')
+        const inputs = where === 'inputs' ? [glob] : ['src/**']
+        const outputs = where === 'outputs' ? [glob] : ['dist/**']
+        await writeFile(
+          file,
+          `export default { tasks: { build: {
+            exec: { command: 'tsc' },
+            cache: { inputs: { files: ${JSON.stringify(inputs)} }, outputs: { files: ${JSON.stringify(outputs)} } },
+          } } }`,
+        )
+        return loadProjectConfig(file)
+      }
+      for (const glob of ['{../shared,src}/**', '{src,..}/*', 'x{..}/*', '!{../a,b}/**'])
+        await expect(load('inputs', glob)).rejects.toThrow(/path segments are not allowed/)
+      await expect(load('outputs', '{..,dist}/**')).rejects.toThrow(/path segments are not allowed/)
+      for (const glob of ['{/etc,src}/*', 'src/{a,/etc}/*', '!{/etc,b}/*'])
+        await expect(load('inputs', glob)).rejects.toThrow(/absolute paths are not allowed/)
+      await expect(load('outputs', '{dist,/tmp/x}/**')).rejects.toThrow(
+        /absolute paths are not allowed/,
+      )
+      // CONTROL: arms that stay inside, and a name that only holds dots.
+      for (const glob of ['{src,lib}/**', '{a..b,src}/**', 'a,/b/**'])
+        expect((await load('inputs', glob)).tasks?.['build']?.cache?.inputs?.files).toEqual([glob])
+    })
+
     it('a name that merely STARTS with dots is not an escape', async () => {
       // The control: the refusal compares whole segments, and widening it
       // to a prefix test would reject an ordinary directory. `..foo` is a

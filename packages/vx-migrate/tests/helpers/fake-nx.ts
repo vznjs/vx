@@ -133,7 +133,9 @@ exports.runExecutor = async (description, overrides, context) => {
     fs.writeFileSync(file, target.options.content ?? 'executor wrote this')
   }
   const results = target.options.results ?? [{ success: true }]
-  return (async function* () { for (const r of results) yield r })()
+  // \`returns\`: the generator's return value, which \`nx run\` prefers to the last yield.
+  const returns = target.options.returns
+  return (async function* () { for (const r of results) yield r; return returns })()
 }
 `,
   )

@@ -803,6 +803,17 @@ covered: a name made secret by `exec.env.secret` alone, which run history
 does not record. `why.test.ts` › a secret-named env input (text and json;
 red without the fix, the `REGION` control unmasked).
 
+M-64. Audit lead from (1)/(3): a brace arm hid an escape from the glob
+check. `{../shared,src}/**` splits on `/` into `{..`, so it loaded, and
+`{/etc,src}/*` is not `startsWith('/')`. Probed: Bun.Glob matches nothing
+under either arm (`{..,dist}/**` cleaned and saved only `dist`; a file
+beside the project survived), so nothing was deleted outside, but an
+input arm silently left the key. `hasParentSegment` now splits on brace
+delimiters too, and `isAbsoluteGlob` reads each arm, at every site
+(`inputs`/`outputs`, `files`/`workspaceFiles`). `project-loader.test.ts`
+› a brace arm that escapes or is absolute (red without the fix; controls
+`{src,lib}/**`, `{a..b,src}/**`, `a,/b/**` load).
+
 M-65. M-61's warning, the workspace side: a `workspaceFiles` output
 directory that is a symlink out of the workspace (`shared ->
 /elsewhere`) drops every file under it, and the empty-artifact line
