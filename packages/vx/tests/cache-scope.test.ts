@@ -12,7 +12,9 @@ import {
   TIMEOUT,
   type Fixture,
 } from './helpers/orchestrator-fixture.js'
-import type { RemoteCacheLayer } from '../src/cache/index.js'
+import { mkdtemp } from 'node:fs/promises'
+import os from 'node:os'
+import { Cache, LayeredCache, type RemoteCacheLayer } from '../src/cache/index.js'
 import { parseRunArgs, resolveRunOptions } from '../src/cli/run.js'
 import { run } from '../src/orchestrator/index.js'
 
@@ -98,8 +100,10 @@ describe('cacheScope', () => {
         // A PR reads what the default branch wrote, asking its own scope first.
         gets.length = 0
         expect((await runScoped(fixture, layer, 'pr-1', 'v1')).status).toBe('cache-hit-remote')
-        // The batch probe found it under the trusted key alone: one GET.
-        expect(gets).toEqual([main.hash])
+        // The trusted GET answers; the scope's may come first when the GET
+        // beats the batch probe (the unit row below holds the skip).
+        expect(gets.at(-1)).toBe(main.hash)
+        expect(gets.length).toBeLessThanOrEqual(2)
 
         // Its own work lands beside the trusted key, never under it.
         const pr = await runScoped(fixture, layer, 'pr-1', 'v2')
@@ -227,4 +231,31 @@ describe('cacheScope', () => {
     },
     TIMEOUT,
   )
+
+  it('a batch probe that found only the trusted key skips the scope GET', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-cache-scope-unit-'))
+    const { layer, store, gets } = memoryRemote()
+    const key = '0123456789abcdef'
+    // Not an artifact: the ingest refuses it, and only the GETs are counted.
+    store.set(key, new Uint8Array([1, 2, 3]))
+    const local = new Cache(path.join(dir, 'cache'))
+    try {
+      const layered = new LayeredCache(local, layer, {
+        policy: {
+          localRead: true,
+          localWrite: true,
+          remoteRead: true,
+          remoteWrite: true,
+          remoteScope: 'pr-1',
+        },
+        onRemoteError: () => {},
+      })
+      expect(await layered.remoteHasMany([key])).toEqual(new Set([key]))
+      await layered.get(key)
+      expect(gets).toEqual([key])
+    } finally {
+      local.close()
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
 })
