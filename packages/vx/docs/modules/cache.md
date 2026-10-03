@@ -247,7 +247,7 @@ export const CACHE_VERSION = 'vx-cache-v39' // key-fold.ts
 // identity a file has (A-55); absentOr maps ENOENT/ENOTDIR to it.
 export const ABSENT_INPUT = 'absent' // key-fold.ts
 export function absentOr(err: unknown): string
-export const SCHEMA_VERSION = 'v28'
+export const SCHEMA_VERSION = 'v29'
 export function noteSchemaReset(cache: Cache, warn: (message: string) => void): void
 
 // The two WHERE fragments every history query shares, so "a run that
@@ -354,7 +354,9 @@ a small artifact (≤ 4 MiB) is packed and decoded in one call instead.
 SQLite stores metadata only:
 
 - **`entries`** — one row per cached output:
-  `(hash, project, task, command, exit_code, duration_ms, size_bytes, stdout, created_at, accessed_at, cpu_ms, peak_rss_bytes)`.
+  `(hash, project, task, command, exit_code, duration_ms, size_bytes, created_at, accessed_at, cpu_ms, peak_rss_bytes)`.
+- **`entry_stdout`** — an entry's captured stdout, `(hash, stdout)`, apart
+  so the `accessed_at` bump does not rewrite it (v29).
 - **`runs`** — one row per task execution (hit or miss):
   `(id, hash, project, task, status, exit_code, duration_ms, forward_args, started_at, ended_at)`.
 - **`schema_meta`** — schema version sentinel. Mismatch → drop the
@@ -487,7 +489,7 @@ Outputs` additionally refuses when the archive cannot produce an output
 ## `CACHE_VERSION` / `SCHEMA_VERSION`
 
 `CACHE_VERSION` is currently `'vx-cache-v39'`; `SCHEMA_VERSION` is
-`'v28'`. Bump `CACHE_VERSION` when:
+`'v29'`. Bump `CACHE_VERSION` when:
 
 - A new field is added to the cache KEY derivation (folded inside
   `key()`).

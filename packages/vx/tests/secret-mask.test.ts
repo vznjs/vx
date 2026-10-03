@@ -250,7 +250,7 @@ describe('`exec.env.secret` masks a value whatever its name', () => {
     }
     const db = new Database(path.join(root, '.vx', 'cache', 'cache.db'), { readonly: true })
     const stored = db
-      .query<{ stdout: string }, []>('SELECT stdout FROM entries')
+      .query<{ stdout: string }, []>('SELECT stdout FROM entry_stdout')
       .all()
       .map((r) => r.stdout)
       .join('\n')

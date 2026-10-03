@@ -122,8 +122,8 @@ function seedEntry(
   cache
     .dbHandle()
     .query(
-      `INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, stdout, created_at, accessed_at)
-       VALUES (?, ?, ?, ?, 0, ?, ?, '', ?, ?)`,
+      `INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, created_at, accessed_at)
+       VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?)`,
     )
     .run(e.hash, e.project, e.task, e.command, e.durationMs, e.sizeBytes, e.createdAt, e.createdAt)
 }
@@ -1543,8 +1543,8 @@ describe('the tools, as their second sweep found them unheld', () => {
         cache
           .dbHandle()
           .query(
-            `INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, stdout, created_at, accessed_at)
-             VALUES ('h9', 'p', 'build', 'make', 3, 12, 34, '', 1234567, 1234567)`,
+            `INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, created_at, accessed_at)
+             VALUES ('h9', 'p', 'build', 'make', 3, 12, 34, 1234567, 1234567)`,
           )
           .run()
       })

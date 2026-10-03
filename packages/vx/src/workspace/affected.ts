@@ -125,8 +125,11 @@ export interface FingerprintClaims {
 export async function affectedProjects(args: AffectedArgs): Promise<Set<string>> {
   // Turbo's CI spelling, `[origin/main...HEAD]`, is the base alone here:
   // vx already diffs from the merge base (three dots' meaning), and the
-  // working tree it diffs to holds HEAD (D-117). Any other range is refused.
-  const since = /^(.+)\.\.\.HEAD$/.exec(args.since)?.[1] ?? args.since
+  // working tree it diffs to holds HEAD (D-117). Its two-dot `[A..HEAD]`
+  // diffs from A itself (G-145). Any other range is refused.
+  const headRange = /^(.+?)(\.{2,3})HEAD$/s.exec(args.since)
+  const since = headRange?.[1] ?? args.since
+  const fromMergeBase = headRange?.[2] !== '..'
   // The base reaches git as an argument, never through a shell, so `$(…)`
   // is opaque — but an option-like value is not: `--output=<path>` is a
   // real `git diff` option and an arbitrary file write. This is a security
@@ -155,8 +158,9 @@ export async function affectedProjects(args: AffectedArgs): Promise<Set<string>>
   // CI `--affected`), and hides your own edit when the base later landed
   // byte-identical content. Turbo and Nx both diff from the merge base;
   // when there is none (unrelated histories, a detached probe) the ref
-  // itself is the base, as before.
-  const base = await mergeBase(args.workspaceRoot, since)
+  // itself is the base, as before. Turbo's two-dot range `A..HEAD` is the
+  // one form that diffs from A itself.
+  const base = fromMergeBase ? await mergeBase(args.workspaceRoot, since) : since
 
   const [diffed, untracked] = await Promise.all([
     // `--no-renames` is crucial for project-affected detection: with
@@ -674,11 +678,27 @@ function revParse(workspaceRoot: string, ref: string): string | undefined {
     'ignore',
   )
   const sha = new TextDecoder().decode(proc.stdout).trim()
-  return proc.exitCode === 0 && sha.length > 0 ? sha : undefined
+  if (proc.exitCode !== 0 || sha.length === 0) return undefined
+  resolvedRefs.set(`${workspaceRoot}\0${ref}`, sha)
+  return sha
 }
+
+/**
+ * Refs `revParse` resolved to a commit, by workspace: the default base is
+ * found that way, and `verifyRef` asked git about it again, a synchronous
+ * spawn (~3.5 ms) of every bare `--affected`. A ref is fixed for a run.
+ */
+const resolvedRefs = new Map<string, string>()
+
+/** A ref that names an ancestor of HEAD by its own spelling (`HEAD~1`, `HEAD^`). */
+const HEAD_ANCESTOR = /^HEAD(?:~\d*|\^\d*)+$/
 
 /** `git merge-base <ref> HEAD`, or `ref` itself when the two share no ancestor. */
 async function mergeBase(workspaceRoot: string, ref: string): Promise<string> {
+  // HEAD's own ancestor is its merge base with HEAD: the commit it names,
+  // which the default base's search already resolved (`HEAD~1`).
+  const known = HEAD_ANCESTOR.test(ref) ? resolvedRefs.get(`${workspaceRoot}\0${ref}`) : undefined
+  if (known !== undefined) return known
   const proc = spawnGit(['merge-base', '--end-of-options', ref, 'HEAD'], workspaceRoot)
   const [out, exit] = await Promise.all([new Response(proc.stdout).text(), proc.exited])
   const sha = out.trim()
@@ -686,6 +706,7 @@ async function mergeBase(workspaceRoot: string, ref: string): Promise<string> {
 }
 
 async function verifyRef(workspaceRoot: string, ref: string): Promise<void> {
+  if (resolvedRefs.has(`${workspaceRoot}\0${ref}`)) return
   const proc = spawnGitSync(
     ['rev-parse', '--verify', '--quiet', '--end-of-options', ref],
     workspaceRoot,

@@ -1270,7 +1270,7 @@ all-miss run that follows is explained; the artifacts it orphaned are
 `vx cache prune`'s to reap.
 
 ```sql
--- src/cache/schema.ts (SCHEMA_VERSION = 'v28', in cache.ts)
+-- src/cache/schema.ts (SCHEMA_VERSION = 'v29', in cache.ts)
 
 CREATE TABLE schema_meta (
   key   TEXT PRIMARY KEY,  -- 'version', 'cache_version', 'orphans_swept_at', 'file_hashes_swept_at', 'value_salt'
@@ -1294,11 +1294,18 @@ CREATE TABLE entries (
   exit_code    INTEGER NOT NULL,
   duration_ms  INTEGER NOT NULL,
   size_bytes   INTEGER NOT NULL,  -- artifact size
-  stdout       TEXT NOT NULL DEFAULT '',  -- captured stdout (pure-SQL hit replay)
   created_at   INTEGER NOT NULL,  -- ms-epoch
   accessed_at  INTEGER NOT NULL,  -- ms-epoch; bumps batch at flush (LRU)
   cpu_ms         INTEGER,         -- v26: the producing execution's usage, from
   peak_rss_bytes INTEGER          --      the artifact's sidecar (save + ingest)
+);
+
+-- v29: stdout apart from its entry. An UPDATE rewrites a whole record, so
+-- the accessed_at bump rewrote each hit's stdout (up to 16 MB): 200 hits
+-- of 1 MB cost the run's close 125-150 ms.
+CREATE TABLE entry_stdout (
+  hash   TEXT PRIMARY KEY,         -- FK entries(hash) ON DELETE CASCADE
+  stdout TEXT NOT NULL             -- captured stdout (pure-SQL hit replay); no row = ''
 );
 
 CREATE TABLE runs (

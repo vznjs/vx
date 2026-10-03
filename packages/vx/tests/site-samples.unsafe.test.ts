@@ -279,6 +279,19 @@ describe('the configure guide states the concurrency default `vx help` states', 
 // The trusting-the-cache guide merged into the caching guide (the site redo,
 // R3), and that into the configure page (the short site); its `vx why`
 // table and sample moved with it.
+describe("comparison.md's Nx flag cells", () => {
+  // Nx 23.2.1's `run-many --help` marks `--all` "[deprecated]" (run-many
+  // takes every project when no -p is given), and `--outputStyle` "defines
+  // how Nx emits outputs tasks logs": no per-run JSON summary (J-112).
+  it('every-project is implicit, and Nx writes no JSON summary', () => {
+    const doc = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'comparison.md'), 'utf8')
+    const nx = (row: string) =>
+      new RegExp(`^\\| ${row} +\\|[^|]*\\| ([^|]*?) +\\|`, 'm').exec(doc)![1]
+    expect(nx('recursive \\(every project\\)')).toBe('implicit (no `-p`); `--all` deprecated')
+    expect(nx('per-run JSON summary')).toBe('—')
+  })
+})
+
 describe('the configure guide quotes what vx why says', () => {
   const guide = section(readFileSync(path.join(GUIDES, 'configure.md'), 'utf8'), 'Caching')
   const post = readFileSync(path.join(DOCS, 'blog', 'why-did-this-rerun.md'), 'utf8')
@@ -824,7 +837,7 @@ describe('the from-nx post says how executors run, and names the servers', () =>
   })
   it('the benchmark figures it states are the benchmarks page’s', () => {
     const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
-    for (const figure of ['510ms', '3.59s', '34.61s', '114m 06s']) {
+    for (const figure of ['476ms', '3.59s (vx 86% faster)', '34.33s', '114m 06s (vx 99% faster)']) {
       expect(page).toContain(figure)
       expect(bench).toContain(figure)
     }
@@ -2023,5 +2036,94 @@ describe('the sandbox post judges a violation against the grants', () => {
     expect(post).toContain("sandbox: { allow: { read: ['.'] } }")
     expect(post).toContain('the violation is judged against the grants alone')
     expect(post).not.toContain('reads a file its inputs never named fails')
+  })
+})
+
+describe('every arrow chain of the pipeline stages is PLUGIN_HOOKS in order', () => {
+  // The seams post's diagram skipped `discover` while its table, pinned
+  // above, listed it (J2-19). A chain may stop early; it may not skip.
+  it('each `config → …` chain on a page is a prefix of PLUGIN_HOOKS', () => {
+    const coreDocs = path.resolve(import.meta.dir, '..', 'docs')
+    const pages = [
+      ...handAuthoredSitePages(),
+      ...readdirSync(coreDocs)
+        .filter((f) => f.endsWith('.md'))
+        .map((f) => path.join(coreDocs, f)),
+    ]
+    const chains: { page: string; stages: string[] }[] = []
+    for (const page of pages) {
+      const text = readFileSync(page, 'utf8').replace(/\s+/g, ' ')
+      for (const m of text.matchAll(/`?config`?(?: → `?\w+`?)+/g)) {
+        chains.push({
+          page: path.basename(page),
+          stages: [...m[0].matchAll(/\w+/g)].map((w) => w[0]),
+        })
+      }
+    }
+    expect(chains.length).toBeGreaterThan(2)
+    const wrong = chains.filter((c) => c.stages.some((s, i) => PLUGIN_HOOKS[i] !== s))
+    expect(wrong).toEqual([])
+  })
+})
+
+describe('the one-binary post says the npm command is a Node launcher', () => {
+  // It said nothing boots before vx's own code runs, for the npm install it
+  // shows; the npm package's `bin` is a Node script that spawns the binary
+  // (J2-20).
+  it('the published bin is the launcher, and the post names its cost', () => {
+    const core = path.resolve(import.meta.dir, '..')
+    expect(readFileSync(path.join(core, 'scripts', 'build-npm.ts'), 'utf8')).toContain(
+      "bin: { vx: './launcher.cjs' }",
+    )
+    expect(readFileSync(path.join(core, 'npm-launcher.cjs'), 'utf8')).toStartWith(
+      '#!/usr/bin/env node\n',
+    )
+    const post = readFileSync(path.join(DOCS, 'blog', 'one-binary.md'), 'utf8').replace(/\s+/g, ' ')
+    expect(post).toContain("The npm package's `vx` command is a small Node launcher")
+    expect(post).toContain('Through npm, the launcher costs one Node start first.')
+  })
+})
+
+describe('the posts state the daemons as the benchmark ran them', () => {
+  // The no-daemon post dated Turbo's `turbo run` daemon deprecation 2.10
+  // where comparison.md says 2.8.11 (turbo's 2.8.11 release notes), and
+  // the no-choice post measured Nx "with the daemon running" where the
+  // harness runs `CI=1`, Nx's daemon off (J2-21).
+  it("Turbo's version is comparison.md's, and Nx's daemon was off", () => {
+    const core = path.resolve(import.meta.dir, '..')
+    const comparison = readFileSync(path.join(core, 'docs', 'comparison.md'), 'utf8')
+    const version = /not for `turbo run` since (\d+\.\d+\.\d+)/.exec(comparison)?.[1]
+    expect(version).toBe('2.8.11')
+    const post = (name: string): string =>
+      readFileSync(path.join(DOCS, 'blog', name), 'utf8').replace(/\s+/g, ' ')
+    expect(post('no-daemon.md')).toContain(`since ${version}, no longer uses it for \`turbo run\``)
+    const harness = readFileSync(path.join(core, '..', 'vx-bench', 'compare.ts'), 'utf8')
+    expect(harness).toContain("(`CI=1`, so Nx's daemon is off;")
+    expect(post('no-choice-on-the-market.md')).toContain(
+      "Turborepo's 760ms, Nx's daemon off as in CI.",
+    )
+    expect(post('honest-benchmarks.md')).toContain(
+      "CI (`CI=1`: Nx's daemon off, and Turbo uses none for `turbo run`)",
+    )
+    expect(post('honest-benchmarks.md')).not.toContain('with their daemons on')
+  })
+})
+
+describe("the concepts page reads run.ts's restore row as it is measured", () => {
+  // J2-17's class on a second page: "a restore costs about the same as an
+  // untouched tree", of a harness whose restore row deletes the outputs
+  // (J2-22).
+  it('the restore row extracts, and the page says so', () => {
+    const harness = readFileSync(
+      path.resolve(import.meta.dir, '..', '..', 'vx-bench', 'run.ts'),
+      'utf8',
+    )
+    expect(harness).toContain('warm-restore   — outputs deleted, cache intact (full extract path)')
+    const page = readFileSync(path.join(DOCS, 'concepts', 'why-vx-is-fast.md'), 'utf8').replace(
+      /\s+/g,
+      ' ',
+    )
+    expect(page).toContain('Its restore row deletes the outputs first and extracts every artifact')
+    expect(page).not.toContain('a restore costs about the same as an untouched tree')
   })
 })

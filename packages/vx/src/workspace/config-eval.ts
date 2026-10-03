@@ -109,6 +109,7 @@ self.onmessage = async (e) => {
   const own = (o) => new Map(Reflect.ownKeys(o).map((k) => [k, Object.getOwnPropertyDescriptor(o, k)]))
   const before = watched?.map(([, o]) => own(o))
   const envBefore = watched ? { ...live } : null
+  const cwdBefore = watched ? globalThis.process.cwd() : null
   const same = (a, b) =>
     a !== undefined && b !== undefined && a.value === b.value && a.get === b.get && a.set === b.set &&
     a.writable === b.writable && a.enumerable === b.enumerable && a.configurable === b.configurable
@@ -122,6 +123,7 @@ self.onmessage = async (e) => {
     })
     for (const k of new Set([...Object.keys(envBefore), ...Object.keys(live)]))
       if (envBefore[k] !== live[k]) out.push('process.env.' + k)
+    if (globalThis.process.cwd() !== cwdBefore) out.push('process.cwd (a chdir)')
     return out
   }
   try {
@@ -137,6 +139,7 @@ self.onmessage = async (e) => {
       ok: true,
       nonJson,
       json: isObject && nonJson.length === 0 ? JSON.stringify(mod) : null,
+      fn: typeof mod === 'function',
       changed: changed(),
     })
   } catch (err) {
@@ -156,12 +159,16 @@ self.onmessage = async (e) => {
 }
 `
 
+const FUNCTION_EXPORT = (): void => {}
+
 const WORKER_URL = `data:text/javascript,${encodeURIComponent(WORKER_SRC)}`
 
 interface WorkerReply {
   id: number
   ok: boolean
   json: string | null
+  /** The default export is a function, which JSON cannot carry back. */
+  fn?: boolean
   nonJson: NonJsonValue[]
   name: string
   message: string
@@ -325,7 +332,10 @@ export async function evaluateConfigFresh(configPath: string): Promise<unknown> 
     })
     const [nonJson] = reply.nonJson
     if (nonJson !== undefined) throw new UserError(nonJsonMessage(configPath, nonJson))
-    return reply.json === null ? null : (JSON.parse(reply.json) as unknown)
+    // A function stands in for the one the config exported, so the caller's
+    // refusal names it as the in-process load's does.
+    if (reply.json === null) return reply.fn === true ? FUNCTION_EXPORT : null
+    return JSON.parse(reply.json) as unknown
   } finally {
     // In the `finally`, not after the await: a REJECTED evaluation — a config
     // with a typo, the common case while editing — would otherwise skip the

@@ -30,6 +30,15 @@
   `discover` stage it lists through `discoverCliProjects`.
   `modules/logger.md` gained #2054's post-summary server stream. Rows
   (`module-page-claims`), red on each page without the fix.
+- **J2-2** The failure recap's samples. `modules/framed-output.md`
+  headed two tails and `… and 2 more failed` with `2 tasks`; the
+  renderer counts all four. Both samples drew `◼` without the `︎`
+  selector the renderer prints. cli.md said a tail reads stdout then
+  stderr; a live-streamed task's reads as its chunks arrived (probed:
+  `out1 err1 out2` live, `out1 out2 err1` buffered), and it omitted the
+  dropped-capture note and the `, and` join. Rows (`cli-doc-drift` ›
+  the failure recap samples are what the renderer prints), red on both
+  pages without the fix.
 - **J2-3** cli.md's `--report` sample read `8ms saved`, its two hits'
   restore times (5 + 3): the sum the paragraph under it says the header
   does not take (`savedMs` sums the entries' stored exec times). The
@@ -158,3 +167,34 @@ persistent task` and vx exits 1). Row (`site-samples` › a post's link
   reads granted no wider than `cache.inputs` make the denial the
   under-declaration. Row (`site-samples` › the sandbox post judges a
   violation against the grants); red without the fix.
+
+- **J2-19** The pipeline-with-seams post's stage diagram ran
+  `config → project`, skipping `discover`, which its own table (pinned
+  by item 343) lists second. Row (`site-samples` › every arrow chain of
+  the pipeline stages is PLUGIN_HOOKS in order), over every site page
+  and core doc; red on the post without the fix.
+
+- **J2-20** The one-binary post installs from npm and then says no
+  runtime boots before vx's own code runs; the npm package's `bin` is
+  `launcher.cjs`, a Node script that spawns the platform binary (one
+  Node start first, ~65 ms by its own comment). It also said the
+  package ships the binary, which a per-platform optional dependency
+  carries. Both now say so. Row (`site-samples` › the one-binary post
+  says the npm command is a Node launcher), read from `build-npm.ts`
+  and the launcher; red without the fix.
+
+- **J2-21** The no-daemon post said Turborepo is deprecating its daemon
+  "as of 2.10"; turbo's 2.8.11 release notes deprecate it for
+  `turbo run`, as `comparison.md` says. The no-choice post measured Nx's
+  3.59 s "with the daemon running"; `compare.ts` runs every runner with
+  `CI=1`, Nx's daemon off, and the honest-benchmarks post said both
+  ran "with their daemons on". Row (`site-samples` › the posts state the
+  daemons as the benchmark ran them), reading the version from
+  `comparison.md` and the footing from the harness; red without the fix.
+
+- **J2-22** J2-17's class on a second page: the concepts page's "vx
+  alone" bullet said a restore costs about the same as an untouched
+  tree, of `vx-bench/run.ts`, whose restore row deletes the outputs
+  and extracts every artifact (239 against 906 ms at 1,000 projects in
+  `benchmarks.md`). Row (`site-samples` › the concepts page reads
+  run.ts's restore row as it is measured); red without the fix.

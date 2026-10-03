@@ -81,8 +81,8 @@ function seedEntryInputs(
   const db = cache.dbHandle()
   // entry_inputs has an FK to entries(hash); satisfy it with a stub row.
   db.query(
-    `INSERT OR IGNORE INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, stdout, created_at, accessed_at)
-     VALUES (?, 'pkg', 'test', 'cmd', 0, 0, 0, '', 0, 0)`,
+    `INSERT OR IGNORE INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, created_at, accessed_at)
+     VALUES (?, 'pkg', 'test', 'cmd', 0, 0, 0, 0, 0)`,
   ).run(entryHash)
   for (const r of rows) {
     db.query(
@@ -850,8 +850,8 @@ describe('whyDidThisRerunQuery', () => {
             cache
               .dbHandle()
               .query(
-                `INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, stdout, created_at, accessed_at)
-                 VALUES ('h', 'pkg', 'test', 'cmd', 0, 0, 0, '', ?, ?)`,
+                `INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, created_at, accessed_at)
+                 VALUES ('h', 'pkg', 'test', 'cmd', 0, 0, 0, ?, ?)`,
               )
               .run(setup.entryAt, setup.entryAt)
           }

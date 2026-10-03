@@ -16,8 +16,10 @@ that binary.
    workspace, `pnpm add -D -w @vzn/vx`: npm refuses `workspace:*`).
 2. Run `npx vx init`. It writes a `vx.config.ts` per package from its
    scripts, and a `vx.workspace.ts`. A root script that checks the whole
-   repo (`lint: eslint .`) becomes a task in a root `vx.config.ts`; one
-   that runs the members (`pnpm -r build`) does not. No task gets a `cache` block, so
+   repo (`format: prettier --check .`) becomes a task in a root
+   `vx.config.ts`; one that runs the members (`pnpm -r build`) does not,
+   nor one named like a package's own task (a root `lint` beside a
+   package's `lint`), so `--all` never runs a check twice. No task gets a `cache` block, so
    nothing is cached yet: add the one each `build`'s TODO shows. A
    repo with `turbo.json` or `nx.json` starts at
    [Coming from Turbo or Nx](#coming-from-turbo-or-nx) instead.

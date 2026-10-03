@@ -154,6 +154,11 @@ describe('nx-map: what the sweep found unheld', () => {
       '`syncGenerators` ("@nx/js:typescript-sync") on 2 tasks: Nx runs them before those targets, and vx does not — run `nx sync` when they are out of date',
       '`syncGenerators` ("@acme/tools:sync") on 1 task: Nx runs them before those targets, and vx does not — run `nx sync` when they are out of date',
     ])
+    // The README called them a todo per task after G-109 (J-103).
+    const readme = await Bun.file(path.join(import.meta.dir, '..', 'README.md')).text()
+    expect(readme).toContain(
+      '`syncGenerators` (Nx runs them first) is one workspace note per generator list, counting its tasks and naming `nx sync`',
+    )
   })
 
   // Nx runs them before a run's tasks; they were dropped in silence.

@@ -75,7 +75,7 @@ readers that reach it here.
   next attempt), and the error thrown is the first in that order. A hit
   is taken synchronously, so the warm path is unchanged.
 - The default export must be a non-null object. Anything else throws
-  `"Project config at <path> did not export a default object"`
+  `"Project config at <path> did not export a default object"` (a function default export adds `: it exports a function, …`, D-110)
   (`Workspace config at …` for a workspace file) — from
   the same check on both paths.
 - Both paths read the same environment: each Worker request carries the
@@ -117,6 +117,10 @@ readers that reach it here.
   before, D-119); none found, it says "a project config". A round where every config hits takes
   no snapshot: reading every descriptor of `Bun` builds its lazy
   members, 7 ms of a warm run (E-88).
+- A first load may not move the process either: a config's
+  `process.chdir()` left every relative path vx resolved after it reading
+  from the config's choice; the working directory is put back and the load
+  refused, naming `process.cwd (a chdir)` (D-120).
 - A first load may not change `process.env` either: a config that set
   a variable gave it to every project's `passThrough` and to vx's own
   `VX_*` reads, and a repeat load, in a worker, gave it to neither

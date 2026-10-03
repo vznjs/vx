@@ -104,8 +104,8 @@ describe('Cache.getMany agrees with Cache.get', () => {
       await seed(cache, ['aa'])
       const db = cache.dbHandle()
       const clone = db.query(
-        `INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, stdout, created_at, accessed_at)
-         SELECT ?, project, task, command, exit_code, duration_ms, size_bytes, stdout, created_at, accessed_at FROM entries WHERE hash = 'aa'`,
+        `INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, created_at, accessed_at)
+         SELECT ?, project, task, command, exit_code, duration_ms, size_bytes, created_at, accessed_at FROM entries WHERE hash = 'aa'`,
       )
       const hashes = Array.from({ length: 1801 }, (_, i) => `h${i}`)
       db.transaction(() => {
