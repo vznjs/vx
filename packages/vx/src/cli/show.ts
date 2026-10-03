@@ -10,7 +10,7 @@ import path from 'node:path'
 import type { ProjectConfig, TaskConfig } from '../config.js'
 import { declaredTask } from '../graph/index.js'
 import { flagHint, seeHelp } from './help.js'
-import { nearMatches, relPosix, secretMask, UserError } from '../util/index.js'
+import { listed, nearMatches, relPosix, secretMask, UserError } from '../util/index.js'
 import { discoverCliProjects, loadCliProjects } from './workspace-config.js'
 import {
   findWorkspaceRoot,
@@ -94,7 +94,7 @@ export async function showCmd(args: readonly string[]): Promise<number> {
   if (projectName !== undefined && (taskName !== undefined || byName.has(projectName))) {
     if (!byName.has(projectName)) {
       throw new UserError(
-        `vx show: unknown project: "${projectName}"${suggest(projectName, [...byName.keys()])}`,
+        `vx show: unknown project: "${projectName}"${suggest(projectName, [...byName.keys()], '', 'projects')}`,
       )
     }
   }
@@ -121,7 +121,7 @@ export async function showCmd(args: readonly string[]): Promise<number> {
       // `nx show projects` lists them; here a bare `vx show` does.
       const nx = projectName === 'projects' ? ' (`nx show projects` is `vx show` here)' : ''
       throw new UserError(
-        `vx show: unknown project or task: "${projectName}"${nx}${suggest(projectName!, [...byName.keys(), ...names])}`,
+        `vx show: unknown project or task: "${projectName}"${nx}${suggest(projectName!, [...byName.keys(), ...names], '', 'projects and tasks')}`,
       )
     }
     process.stdout.write(renderTaskAcross(root, declaring, projectName!, parsed.format))
@@ -143,7 +143,7 @@ export async function showCmd(args: readonly string[]): Promise<number> {
   const task = declaredTask(config, taskName)
   if (task === undefined) {
     throw new UserError(
-      `vx show: unknown task: "${meta.name}#${taskName}"${suggest(taskName, Object.keys(config?.tasks ?? {}), `${meta.name}#`)}`,
+      `vx show: unknown task: "${meta.name}#${taskName}"${suggest(taskName, Object.keys(config?.tasks ?? {}), `${meta.name}#`, 'its tasks')}`,
     )
   }
   process.stdout.write(renderTask(meta.name, dir, taskName, task, parsed.format))
@@ -154,14 +154,21 @@ export async function showCmd(args: readonly string[]): Promise<number> {
  * Near misses by edit distance, plus partial names in either direction.
  * `prefix` makes each a spec the user can paste (`app#build`, not `build`).
  */
-function suggest(query: string, candidates: readonly string[], prefix = ''): string {
+function suggest(
+  query: string,
+  candidates: readonly string[],
+  prefix = '',
+  label = 'names',
+): string {
   const q = query.toLowerCase()
   const near = new Set(nearMatches(query, candidates))
   for (const c of candidates) {
     const n = c.toLowerCase()
     if (n.includes(q) || q.includes(n)) near.add(c)
   }
-  return near.size > 0 ? ` — did you mean ${[...near].map((n) => prefix + n).join(', ')}?` : ''
+  if (near.size > 0) return ` — did you mean ${[...near].map((n) => prefix + n).join(', ')}?`
+  // Nothing near named nothing to pick from (M-57): say what exists.
+  return candidates.length === 0 ? '' : `; ${label}: ${listed(candidates.map((c) => prefix + c))}`
 }
 
 function projectDir(root: string, meta: ProjectMeta): string {

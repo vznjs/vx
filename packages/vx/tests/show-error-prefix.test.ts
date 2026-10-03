@@ -37,9 +37,13 @@ describe('vx show — a refusal names the verb', () => {
 
   it('unknown project, unknown task, unknown project-or-task', () => {
     expect([show('zzz#build'), show('app#zzz'), show('zzzzzz')]).toEqual([
-      { code: 1, err: 'vx show: unknown project: "zzz"\n' },
-      { code: 1, err: 'vx show: unknown task: "app#zzz"\n' },
-      { code: 1, err: 'vx show: unknown project or task: "zzzzzz"\n' },
+      // Nothing near, so what exists (M-57).
+      { code: 1, err: 'vx show: unknown project: "zzz"; projects: app\n' },
+      { code: 1, err: 'vx show: unknown task: "app#zzz"; its tasks: app#build\n' },
+      {
+        code: 1,
+        err: 'vx show: unknown project or task: "zzzzzz"; projects and tasks: app, build\n',
+      },
     ])
   })
 })

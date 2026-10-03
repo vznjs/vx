@@ -2098,7 +2098,9 @@ Unknown project / task names exit `1` with the same near-miss hint
 every verb gives (two edits, or a partial name); a bare name that is
 neither reads `unknown project or task: "buidl" — did you mean build?`,
 and a `pkg#task` hints whole specs (`unknown task: "app#bui" — did you
-mean app#build?`).
+mean app#build?`). With nothing near, it lists what exists instead: `unknown
+project: "zzz"; projects: app, lib`, `; its tasks: app#build, app#test`,
+or `; projects and tasks: …` (M-57).
 
 An empty target (`vx show ''`) is refused: omit it to list every project.
 
