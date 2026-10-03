@@ -1467,3 +1467,16 @@ back to `true` (#2579). The local gate missed the first: without
 `VX_REQUIRE_SANDBOX` an unavailable sandbox is a skip, so a gate on a
 sandbox change sets it. Rows: `sandbox-noscan-gone.unsafe.test.ts`,
 `sandbox-noscan-dir.unsafe.test.ts`.
+
+B-95. A pass over `exec/`'s sandbox paths, nothing shipped; each probe
+refuted. (1) STATUS item 24's `PTRACE_LISTEN` EIO: 300 children stopping
+themselves then SIGKILLed, and 400 stopped from outside with CONT and
+KILL racing, inside a sandboxed task (strace `--seccomp-bpf -f`): 7 runs,
+no strace error. Still CI-only; `-D` stays unshipped without a failing
+row. (2) strace's default `-s 32` does not cut a path argument: a
+120-character `openat` path printed whole, so the denial report names
+long paths. (3) A strace error as stderr's last, unterminated line is
+still the retry key (`partial` is read at exit). (4) A task's tag folds
+`hrtime`, so two runs of one task in one process never share a TMPDIR.
+(5) A sandboxed task ignoring SIGTERM past its `timeout` is SIGKILLed
+after the grace, reported as timed out, and leaves no process.
