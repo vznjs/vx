@@ -45,7 +45,8 @@ Run the agent from inside the workspace — `vx mcp` finds the workspace
 Arguments are checked, never coerced: `arguments` that is not an object
 (a string, an array), a key the tool does not take (`tsk` for `task`, or a `task` in
 `getCacheStats`' scope),
-a filter that is not a non-empty string, or a `limit` that is not a
+a filter that is not a non-empty string, a task id
+missing a half (`#build`, `app#`) or an empty run id, or a `limit` that is not a
 finite number is refused with a line naming it, rather than answered
 for a question the agent did not ask.
 
