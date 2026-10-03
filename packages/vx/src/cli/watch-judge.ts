@@ -18,8 +18,11 @@ function settledState(abs: string): bigint {
     return ABSENT
   }
   if (!st.isDirectory()) {
+    // The mode too: the key reads it (an executable bit can change what a
+    // task does), and with the bytes alone a judged file's `chmod -x`
+    // settled to "the same" and ran nothing.
     try {
-      return xxh3(fs.readFileSync(abs))
+      return xxh3(`${xxh3(fs.readFileSync(abs))}:${st.mode & 0o7777}`)
     } catch {
       return ABSENT
     }

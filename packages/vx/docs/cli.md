@@ -1247,8 +1247,9 @@ run...` precedes it.
    `**/*` beside `vx watch build` asks nothing) — and neither do `node_modules`,
    `.git` or the cache directory. A write the task did NOT declare (a
    task with no `cache` block declares nothing) is caught by state,
-   judged once the bytes have settled: a file whose bytes did not
-   change since the loop last saw it is not an edit, nor is a directory
+   judged once the bytes have settled: a file whose bytes and mode did
+   not change since the loop last saw it is not an edit (a `chmod` is one,
+   as the key reads the executable bit), nor is a directory
    whose entries (names and sizes) did not, nor a path that stayed
    gone; a path the loop has never judged is an edit only if it was
    modified after the watchers went live (macOS delivers the initial
