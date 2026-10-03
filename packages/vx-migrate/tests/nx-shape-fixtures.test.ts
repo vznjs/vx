@@ -1,6 +1,7 @@
-// Four hand-written Nx graphs in the shapes real repos have (plugin-
+// Five hand-written Nx graphs in the shapes real repos have (plugin-
 // inferred targets, explicit executors, continuous and atomized targets
-// with a root project, per-project named inputs and filesets), migrated
+// with a root project, per-project named inputs and filesets, run-commands
+// variants), migrated
 // through the CLI. Every config it writes must load: a written config vx
 // refuses (an output outside the workspace, P2-11) fails the whole repo.
 
@@ -120,6 +121,15 @@ describe('vx-migrate on the Nx shapes real repos have: every written config load
       a: ['build', 'build:development', 'build:production', 'bundle-report', 'dts', 'typecheck'],
       b: ['build', 'dts', 'nx-input:fileset-ff180853eab36048', 'nx-input:production'],
       c: ['build', 'nx-input:production'],
+    })
+  }, 30_000)
+
+  it('run-commands variants: forwardAllArgs, args, {args.x}, envFile, readyWhen list, target globs, tag projects', async () => {
+    const r = await migrate('run-commands-variants')
+    expect(r.code).toBe(0)
+    expect(r.tasks).toEqual({
+      core: ['build', 'build-cjs', 'build-esm', 'nx-input:default'],
+      cli: ['build', 'dev', 'release'],
     })
   }, 30_000)
 })
