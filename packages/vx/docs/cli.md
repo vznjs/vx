@@ -561,15 +561,15 @@ Reported task lines share one column grid —
 the glyph SHAPE encodes the cache axis, the glyph COLOR (and the
 status word) the task axis.
 
-| Glyph | Cache axis                 | Status word    |
-| ----- | -------------------------- | -------------- |
-| `⏺`   | miss — the task ran        | success/failed |
-| `►`   | fresh (up-to-date)         | success        |
-| `⇢`   | restored from local cache  | success        |
-| `⇣`   | restored from remote       | success        |
-| `◼`   | failed                     | failed         |
-| `⊘`   | skipped (blocked upstream) | skipped        |
-| `▸`   | persistent (dev server)    | running        |
+| Glyph | Cache axis                 | Status word |
+| ----- | -------------------------- | ----------- |
+| `⏺`   | miss — the task ran        | success     |
+| `►`   | fresh (up-to-date)         | success     |
+| `⇢`   | restored from local cache  | success     |
+| `⇣`   | restored from remote       | success     |
+| `◼`   | failed                     | failed      |
+| `⊘`   | skipped (blocked upstream) | skipped     |
+| `▸`   | persistent (dev server)    | running     |
 
 A live WORKER row carries no glyph: the ticking elapsed time leads it,
 which is the motion the run has instead of a spinner.
