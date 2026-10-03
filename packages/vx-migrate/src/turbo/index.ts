@@ -289,14 +289,3 @@ async function mapAll(
   for (const project of mapped.projects) byName.set(project.name, project)
   return { byName, gaps: collectGaps(mapped.projects, mapped.notes) }
 }
-
-// The mapper itself, for tools that render what this plugin runs live
-// (`@vzn/vx-migrate` writes it to files).
-export {
-  mapTurboWorkspace,
-  type MapTurboOptions,
-  type TurboGlobal,
-  type TurboMappedProject,
-  type TurboMappedTask,
-  type TurboMapping,
-} from './turbo-map.js'
