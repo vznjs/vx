@@ -164,6 +164,7 @@ const KNOWN_TASK_KEYS = new Set([
   'passThroughEnv',
   'cache',
   'persistent',
+  'interactive',
   'extends',
   'outputLogs',
   // `outputLogs` as Turbo 1 spells it (renamed in 2.0; 1.13 still reads it).
@@ -1644,22 +1645,12 @@ function buildTask(
       opts.splice(k, globals[k]).some((v) => typeof v !== 'string') ? globals[k] : [],
     )
   const persistent = def.persistent === true
-  const cacheEnabled = def.cache !== false && !persistent
+  // Turbo refuses an interactive task that caches; vx refuses `cache` on one.
+  const interactive = def['interactive'] === true
+  const cacheEnabled = def.cache !== false && !persistent && !interactive
 
   for (const [key, value] of Object.entries(def)) {
     if (KNOWN_TASK_KEYS.has(key)) continue
-    // Turbo hands an interactive task the terminal's stdin in its TUI; vx
-    // hands no task the terminal (runner.ts), so a prompt there reads end
-    // of input (create-t3-turbo's \`drizzle-kit push\`). Nothing to map.
-    if (key === 'interactive') {
-      if (value === true) {
-        todos.push(
-          'turbo key "interactive": vx gives no task the terminal, so a prompt reads end of ' +
-            'input — run a task that asks for input outside vx',
-        )
-      }
-      continue
-    }
     todos.push(
       `turbo key ${JSON.stringify(key)} (${JSON.stringify(value)}) has no vx equivalent — ` +
         'map it manually',
@@ -1806,6 +1797,7 @@ function buildTask(
     exec.persistent = {}
     todos.push(opts.persistentTodo)
   }
+  if (interactive) exec.interactive = true
 
   const task: Record<string, unknown> = { exec }
   if (typeof def['description'] === 'string') task.description = def['description']

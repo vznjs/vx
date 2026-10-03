@@ -1135,7 +1135,7 @@ describe('turbo(): the mapping cache', () => {
     await writeFile(
       path.join(root, 'turbo.json'),
       JSON.stringify({
-        tasks: { ...TURBO_JSON.tasks, lint: { cache: false, interactive: true }, '//#fmt': {} },
+        tasks: { ...TURBO_JSON.tasks, lint: { cache: false, tagz: ['ci'] }, '//#fmt': {} },
       }),
     )
     const warned = async (): Promise<string[]> => {
@@ -1147,7 +1147,7 @@ describe('turbo(): the mapping cache', () => {
     await tamperMapping(root, 'turbo')
     expect({
       hasNote: miss.some((l) => l.includes('//#fmt')),
-      hasTodo: miss.some((l) => l.includes('interactive')),
+      hasTodo: miss.some((l) => l.includes('tagz')),
     }).toEqual({ hasNote: true, hasTodo: true })
     expect(await warned()).toEqual(miss)
   })
