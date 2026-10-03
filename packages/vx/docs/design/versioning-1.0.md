@@ -188,9 +188,13 @@ on a PR, the same diff between its base and head needs the title marked
   `VX_REAPI_ENDPOINT` or `OTEL_EXPORTER_OTLP_ENDPOINT`, so a rename
   drops the remote with no config change to review.
   `tests/contract-plugin-env.unsafe.test.ts` finds every variable each
-  plugin package's source reads (a write or a comment is not a read) and
-  holds the set to `tests/contract/plugin-env.txt`, one
-  `<package> <NAME>` line each; a lost line is a break.
+  plugin package's source reads (a write or a comment is not a read),
+  by name or through a helper (`read('concurrency', 'TURBO_CONCURRENCY')`),
+  and holds the set to `tests/contract/plugin-env.txt`, one
+  `<package> <NAME>` line each; a lost line is a break. A name built from
+  a template is recorded with `*` per placeholder
+  (`OTEL_EXPORTER_OTLP_*_PROTOCOL`), which pins its shape, not the words
+  the placeholder takes.
 - **Workspace discovery.** `tests/contract-discovery.test.ts` builds a
   fixture for each layout (`pnpm-workspace.yaml`, `workspaces` as an
   array or `{ packages }`, a negated and a recursive glob, both manifests
