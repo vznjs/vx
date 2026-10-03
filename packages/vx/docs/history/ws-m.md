@@ -846,3 +846,15 @@ an inline AC body that fails its digest is streamed instead (F-8);
 `nxCache()` hand their body to the same `ingest`. Not covered: a
 digest function this runtime cannot compute is checked by size alone
 (`canDigest`); the cache layer addresses its blobs by SHA-256 (`digestOf`).
+
+M-68. `runner.test.ts` › a grandchild that prints within the post-exit
+drain lost `TAIL` on main's macOS job (run 37107310861, #2655, a diff
+that does not touch exec). After the shell's exit the grandchild had to
+wake, fork and exec `sleep 0.05`, then echo, inside the 250 ms drain;
+the row's two earlier shapes overran it the same way on macOS (292 ms,
+317 ms), each by a process exec after the exit. Not reproduced on Linux
+(0 of 15 old and new under 12 CPU hogs), so the exec is the shared shape
+of all three overruns, not a measured cause. The row now holds the only
+reader of the shell's FIFO and releases the grandchild itself, 50 ms
+after the EOF, through a second FIFO the grandchild waits on: nothing
+after the exit forks. 10 of 10 green; a 0 ms drain fails it 5 of 5.
