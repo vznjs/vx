@@ -134,6 +134,7 @@ describe('package boundaries', () => {
       'defineProject',
       'defineWorkspace',
       'escapeMarkdownCell',
+      'executorFallback',
       'exitSignal',
       'findWorkspaceRoot',
       'foldScriptHooks',
