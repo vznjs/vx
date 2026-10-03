@@ -37,7 +37,6 @@ async function exec(scripts: Record<string, string>, script: string) {
     },
   }
   const m = await mapNxWorkspace(root, [meta], { nodes, dependencies: {} } as NxGraph, {
-    persistentTodo: 'PERSIST',
     cacheable: new Set(),
   })
   const t = m.projects[0]!.tasks.find((x) => x.name === script)!

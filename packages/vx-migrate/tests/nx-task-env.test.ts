@@ -36,7 +36,6 @@ it('every task gets the target Nx names, a configuration task its configuration 
     },
   }
   const m = await mapNxWorkspace(root, [meta], { nodes, dependencies: {} } as NxGraph, {
-    persistentTodo: 'PERSIST',
     cacheable: new Set(),
   })
   const define = (name: string) =>

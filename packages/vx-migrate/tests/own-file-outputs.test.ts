@@ -135,7 +135,7 @@ describe('an output that covers the project’s own package.json', () => {
         },
         dependencies: {},
       } as NxGraph,
-      { persistentTodo: 'PERSIST', cacheable: new Set<string>() },
+      { cacheable: new Set<string>() },
     )
     const t = m.projects[0]!.tasks.find((x) => x.name === 'build')!
     const cache = t.task?.['cache'] as { outputs: { files: string[] } }

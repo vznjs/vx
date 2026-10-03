@@ -3,12 +3,7 @@
 
 import { stat } from 'node:fs/promises'
 import path from 'node:path'
-import {
-  type MigrationFormat,
-  type MigrationPlan,
-  PERSISTENT_TODO,
-  type ProjectMeta,
-} from '@vzn/vx'
+import { type MigrationFormat, type MigrationPlan, type ProjectMeta } from '@vzn/vx'
 import { mapNxWorkspace, nxSizeText, parseNxGraph, readNxJson } from './nx/nx-map.js'
 import { spareTrackedOutputs, trackedFiles, trackedKinds } from './tracked-outputs.js'
 import { adoptedToolNotes } from './workspace-notes.js'
@@ -28,7 +23,6 @@ export async function migrateNx(
   const graph = parseNxGraph(await Bun.file(snapshot).text(), path.relative(root, snapshot))
   const tracked = await trackedFiles(root)
   const mapped = await mapNxWorkspace(root, metas, graph, {
-    persistentTodo: PERSISTENT_TODO,
     cacheable: new Set(),
     ...(tracked === null ? {} : { tracked: trackedKinds(tracked) }),
     // The file this writes is each task's config.

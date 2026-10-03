@@ -54,11 +54,6 @@ import { relPosix } from '../paths.js'
 import type { AdoptionMapping } from '../mapping-cache.js'
 import { yarnrcText } from '../script-command.js'
 
-/** The note every persistent task carries; like every gap, reported once per run for all its tasks. */
-const PERSISTENT_NOTE =
-  'a continuous target (or a server executor) — vx runs it as a persistent task that is ' +
-  'ready on spawn; add `exec.persistent.readyWhen` in a vx.config to gate dependents on its output'
-
 /** The snapshot's name under vx's cache dir — local to the machine, like the cache. */
 const SNAPSHOT = 'nx-project-graph.json'
 /** What the snapshot was exported from (`graphInputKey`), beside it. */
@@ -364,7 +359,6 @@ async function index(
     ),
   )
   const mapped = await mapNxWorkspace(root, metas, graph, {
-    persistentTodo: PERSISTENT_NOTE,
     cacheable: new Set(),
     attached: new Set(metas.map((m) => m.name)),
     ...(tracked === null ? {} : { tracked: trackedKinds(tracked) }),

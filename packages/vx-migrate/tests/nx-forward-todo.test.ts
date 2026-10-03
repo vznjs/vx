@@ -51,7 +51,6 @@ it('one todo per forwarding kind per task, naming no spec', async () => {
     dependencies: {},
   }
   const m = await mapNxWorkspace(root, metas, graph as NxGraph, {
-    persistentTodo: 'PERSIST',
     cacheable: new Set(),
   })
   const todos = m.projects.map((p) => p.tasks.find((t) => t.name === 'e2e-ci')!.todos)

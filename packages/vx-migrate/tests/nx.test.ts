@@ -987,7 +987,7 @@ describe('nx()', () => {
   )
 
   it(
-    'a server executor is a persistent task, reported once for all its tasks',
+    'a server executor is a persistent task with no readiness note, as Nx gates none',
     async () => {
       const log = silent()
       const plan = await planRun({ cwd: root, tasks: ['serve'], log })
@@ -996,10 +996,7 @@ describe('nx()', () => {
       expect(serve.config.exec?.command).toBe(
         `nx-exec @nx/vite:dev-server --project lib --target serve --options '{"port":4200}'`,
       )
-      expect(
-        log.lines.filter((l) => l.includes('lib#serve: a continuous target (or a server executor)'))
-          .length,
-      ).toBe(1)
+      expect(log.lines.filter((l) => l.includes('continuous target'))).toEqual([])
     },
     TIMEOUT,
   )

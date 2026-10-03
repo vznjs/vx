@@ -29,7 +29,6 @@ async function cachedTasks(targets: Record<string, unknown>): Promise<string[]> 
   }
   const graph = { nodes: { e2e: { data: { root: 'apps/e2e', targets } } }, dependencies: {} }
   const m = await mapNxWorkspace(root, [meta], graph as NxGraph, {
-    persistentTodo: 'PERSIST',
     cacheable: new Set(),
   })
   return m.projects[0]!.tasks.filter((t) => t.task?.['cache'] !== undefined).map((t) => t.name)

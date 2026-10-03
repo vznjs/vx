@@ -40,7 +40,6 @@ describe('an undefined named input', () => {
         configPath: null,
       }))
       const mapped = await mapNxWorkspace(root, metas, parseNxGraph(JSON.stringify(graph), 'g'), {
-        persistentTodo: 'p',
         cacheable: new Set(),
         migration: true,
       })

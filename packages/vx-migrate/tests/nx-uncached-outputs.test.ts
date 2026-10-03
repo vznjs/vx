@@ -38,7 +38,6 @@ it('an uncached target carries no output todo; a cached one does', async () => {
       },
     }
     const m = await mapNxWorkspace(root, [meta], { nodes, dependencies: {} } as NxGraph, {
-      persistentTodo: 'PERSIST',
       cacheable: new Set(),
     })
     todos[String(cache)] = m.projects[0]!.tasks.find((t) => t.name === 'build')!.todos

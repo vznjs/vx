@@ -9,7 +9,7 @@ import { mapNxWorkspace, parseNxGraph, readNxJsonFacts, type NxGraph } from '../
 import { trackedKinds } from '../src/tracked-outputs.js'
 
 let root: string
-const OPTS = { persistentTodo: 'PERSIST', cacheable: new Set<string>() }
+const OPTS = { cacheable: new Set<string>() }
 
 beforeEach(async () => {
   root = await mkdtemp(path.join(tmpdir(), 'vx-nx-map-'))

@@ -95,7 +95,6 @@ describe('the mapper waits for every readyWhen string', () => {
       configPath: null,
     }
     const mapped = await mapNxWorkspace(root, [meta], parseNxGraph(JSON.stringify(graph), 'g'), {
-      persistentTodo: 'p',
       cacheable: new Set(),
     })
     const serve = mapped.projects[0]!.tasks.find((t) => t.name === 'serve')!

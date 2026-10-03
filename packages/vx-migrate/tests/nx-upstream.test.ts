@@ -69,7 +69,7 @@ async function graph(opts: {
         Object.entries(edges).map(([s, ts]) => [s, ts.map((t) => ({ source: s, target: t }))]),
       ),
     } as NxGraph,
-    { persistentTodo: 'PERSIST', cacheable: new Set() },
+    { cacheable: new Set() },
   )
   return new Map(m.projects.flatMap((p) => p.tasks.map((t) => [`${p.name}#${t.name}`, t])))
 }
