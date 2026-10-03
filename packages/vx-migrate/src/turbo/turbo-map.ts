@@ -1390,6 +1390,7 @@ export async function mapTurboWorkspace(
         `package and its workspace dependencies spell (${n} task${n === 1 ? '' : 's'}) — add ` +
         'any other a task reads to cache.inputs.env and exec.env.passThrough',
     )
+  literalEnvGapsOnce(projects, notes)
   resolveSharedWorkspaceOutputs(root, projects)
   pruneOrphanPersistentNotes(projects, opts.persistentTodo)
   return { projects, notes, globals }
@@ -1436,6 +1437,25 @@ function nestedInputs(root: string, projects: readonly TurboMappedProject[]): vo
       inputs['workspaceFiles'] = uniq([...(Array.isArray(ws) ? ws : []), ...extra])
     }
   })
+}
+
+/**
+ * A literal env name core cannot key (`\\*`, which Turbo reads as the one
+ * variable `*`) keys nothing in Turbo either unless the run sets it, so it
+ * is no task's to fix: openstatus's root `build` env wrote the same
+ * TODO into 45 configs. Reported once, with how many tasks name it.
+ */
+function literalEnvGapsOnce(projects: readonly TurboMappedProject[], notes: string[]): void {
+  const counts = new Map<string, number>()
+  for (const p of projects)
+    for (const t of p.tasks)
+      t.todos = t.todos.filter((todo) => {
+        if (!/^(env|passThroughEnv) ".*": Turbo reads this as the one variable /s.test(todo))
+          return true
+        counts.set(todo, (counts.get(todo) ?? 0) + 1)
+        return false
+      })
+  for (const [todo, n] of counts) notes.push(`${todo} (${n} task${n === 1 ? '' : 's'})`)
 }
 
 /**
