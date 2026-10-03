@@ -820,10 +820,14 @@ describe('the evaluation deadline', () => {
       const rejectedBudget = 3000
       process.env[BUDGET_ENV] = String(rejectedBudget)
       const broken = await write(`throw new Error('typo in preset')\n`)
-      const brokenStart = Date.now()
       expect(await settleOrHang(evaluateConfigFresh(broken), 10_000)).toBe(
         'REJECTED typo in preset',
       )
+      // Read once the load has settled, after its timer was armed: an
+      // orphan is then due before the release however long the arming took
+      // (a mark taken before the call let a slow arm fall past the release,
+      // and the row passed with the orphan alive).
+      const brokenSettled = Date.now()
 
       process.env[BUDGET_ENV] = '20000'
       const release = path.join(root, `release.${seq}`)
@@ -833,7 +837,7 @@ describe('the evaluation deadline', () => {
           `export default { tasks: { ok: {} } }\n`,
       )
       const healthy = settleOrHang(evaluateConfigFresh(held), 25_000)
-      await Bun.sleep(Math.max(0, brokenStart + rejectedBudget + 50 - Date.now()))
+      await Bun.sleep(Math.max(0, brokenSettled + rejectedBudget + 50 - Date.now()))
       await writeFile(release, '')
       expect(await healthy).toBe('RESOLVED {"tasks":{"ok":{}}}')
     } finally {
