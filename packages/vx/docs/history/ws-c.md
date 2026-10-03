@@ -1519,3 +1519,43 @@ More, clean: exit codes under each `--continue` mode, an unknown task
 and a filter matching nothing (1 each); a 1,000-task workspace plans in
 124 ms and restores warm in 27 ms of `run graph`; a workspace config
 that breaks and is fixed mid-watch.
+
+## C-99: a file gone from a nested repository is a watch deletion
+
+C-95 (#2502) merged before its last commit: `git ls-files` lists a
+nested repository (a submodule, a vendored clone) as one entry and never
+the files inside, which keys read, so a file there that existed at the
+arm and is gone read as born-and-gone and started nothing. Under a
+nested repository (`inNestedRepo`) a gone path is a deletion; an
+untracked one's `dir/` entry is stored without its slash. Row
+(`watch-transient-file.test.ts` › "a file gone from inside a nested
+repository starts one"): red without the change. `modules/cli-watch.md`
+says so. Learned: the PR first carried a port of #2541 while main was red on
+`plugin-exports-documented`; the port changed a plugin-api contract
+record, and `api-break.unsafe.test.ts` failed the PR for a title with no
+`!`. A ported fix that moves a contract record carries its `!`, or the
+base is merged once the fix lands (done here).
+
+## C-101: async plugin hints and sinks never crash a run
+
+`demand` and `accepts` are synchronous executor hints. An `async
+demand()` that rejected was an unhandled rejection: a stack of vx's own
+frames and the run killed, exit 1 (reproduced). An `async accepts()`
+answered a Promise, truthy, so the executor took every task and its
+rejection went unheard (H-16's admit shape). `tellDemand` routes a
+returned Promise's rejection through the throw path (named once, asked
+no more); `selectExecutor` refuses a Promise from `accepts` by name. A
+telemetry sink's `async onRecord` / `onRunSummary` had the same hole
+(exit 1, a stack: observability breaking the run); a rejection now
+disables the sink as a throw does, said once (`disable` gained a guard,
+held by a row whose rejections are in flight together). A grep of
+every plugin hook called without `await` leaves those five, all guarded. Rows (`placement-async-hints.test.ts`, `telemetry-async-hooks.test.ts`):
+async demand and async accepts, red without the change; a sync-throw
+demand control both ways. `modules/executor.md` and `modules/telemetry.md` say so.
+
+Probes (2026-10-03), clean: Ctrl-C while a plugin's `setup` never
+settles exits 130 in 0.1 s, and a settle that nothing can drive is named
+("can never settle"); two `vx watch` loops in one workspace do not wake
+each other. Refuted: a "leftover server" after `vx run … | head -1` was
+the probe shell itself, its command line holding the marker it grepped
+for (CLAUDE.md's `pgrep -f` rule); none outlived its run in 10 tries.
