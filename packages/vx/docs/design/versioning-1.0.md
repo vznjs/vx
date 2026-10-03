@@ -257,6 +257,11 @@ These may change in any release.
 
 - The terminal output: status lines, colours, wording, layout. Scripts
   should read `--summarize` or `--dry=json` instead.
+- `--report`'s markdown (a step summary people read): its columns and
+  wording may change. A script reads `--summarize`.
+- What `vx init` writes: a starting point the user then edits, so a
+  release may write a different one. The config it writes is held to the
+  schema, which is the contract.
 - Anything not exported from `@vzn/vx`: the modules under `src/` are
   internal.
 - The cache's on-disk format and its keys. A `CACHE_VERSION` bump is
