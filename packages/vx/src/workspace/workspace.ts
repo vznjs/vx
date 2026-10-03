@@ -604,7 +604,12 @@ export async function discoverProjects(
       projects.push({ name, dir, packageJson: pkg, configPath })
       continue
     }
-    const dirs = group.map((e) => relPosix(workspace.root, e.dir)).sort()
+    // The root's own manifest is '' relative to itself, and the refusal read
+    // "in workspace:  and packages/a" (D-127).
+    const dirs = group
+      .map((e) => relPosix(workspace.root, e.dir))
+      .sort()
+      .map((d) => (d === '' ? 'the workspace root' : d))
     // pnpm accepts two manifests of one name (vite's playground, sveltejs/kit's
     // test apps); vx cannot, since a project is addressed by it. Like a
     // nameless one, a pair that declares no vx tasks is left out, so the
