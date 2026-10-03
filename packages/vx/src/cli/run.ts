@@ -1,5 +1,6 @@
 import { appendFileSync, mkdirSync } from 'node:fs'
 import path from 'node:path'
+import { isatty } from 'node:tty'
 import { translateForeign } from './foreign-flags.js'
 import { flagHint, seeHelp } from './help.js'
 import { defaultAffectedBase, findWorkspaceRoot } from '../workspace/index.js'
@@ -551,7 +552,9 @@ export async function resolveRunOptions(
     ...(parsed.download !== undefined ? { download: parsed.download } : {}),
     ...(parsed.continueMode !== undefined ? { continueMode: parsed.continueMode } : {}),
     forwardArgs: parsed.forwardArgs,
-    ...(process.stdin.isTTY === true ? { tty: true } : {}),
+    // isatty, not process.stdin: touching the stream opens it, and a config
+    // that throws then reports an extra native stack frame.
+    ...(isatty(0) ? { tty: true } : {}),
   }
   if (parsed.excludeDependencies === 'all') {
     opts.excludeDependencies = 'all'

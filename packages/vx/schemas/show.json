@@ -80,6 +80,7 @@
               "additionalProperties": false,
               "properties": { "readyWhen": { "type": "string" } }
             },
+            "interactive": { "type": "boolean" },
             "sandbox": {
               "type": "object",
               "description": "as declared; its fields are the `exec.sandbox` section of the config schema"

@@ -198,7 +198,7 @@ export interface RunOptions {
   /**
    * vx's stdin is a terminal: each `exec.interactive` task is handed it,
    * alone (placement.ts `terminalHolders`). The CLI sets it from
-   * `process.stdin.isTTY`; absent, an interactive task runs as any task.
+   * `isatty(0)`; absent, an interactive task runs as any task.
    */
   tty?: boolean
   log?: Logger

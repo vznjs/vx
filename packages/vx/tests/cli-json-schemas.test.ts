@@ -101,6 +101,7 @@ const KITCHEN = `export default {
     },
     dev: { exec: { command: 'echo dev', persistent: { readyWhen: 'ready' } } },
     build: { exec: { command: 'true' } },
+    ask: { exec: { command: 'true', interactive: true } },
   },
 }`
 
@@ -600,6 +601,7 @@ describe('each schema object is its source type', () => {
         timeout: true,
         retries: true,
         persistent: true,
+        interactive: true,
         sandbox: true,
       }),
     )
