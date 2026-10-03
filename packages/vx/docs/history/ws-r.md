@@ -125,6 +125,13 @@ prune` all match. Fixed: the Run blocks used bare `vx`, which a local
   install, `init`, its `next:` line (`bunx vx` / `pnpm vx`, as the
   quickstart says), miss, hit and restore all as the pages say.
 
+- **R-24** The quickstart run literally from empty pnpm and bun repos
+  with the published `@vzn/vx` (0.0.396) and `typescript`: its exact
+  config, every Run line, a restore and an edit-rebuild all as written,
+  except `vx run test --affected` in a one-commit repo, which has no
+  base. The line now says what it compares with, and Common problems
+  has the error.
+
 ## Leads
 
 - Real-repo rows (`packages/vx-bench/real-repos.json`, benchmarks.md's
