@@ -246,3 +246,24 @@ describe('no page describes a Windows branch the source dropped', () => {
     expect(paths).toContain('Windows through WSL')
   })
 })
+
+// J2-56: execution.md's timeline listed the workspace file's fields
+// without `affectedBase`, which WorkspaceConfig declares.
+describe("execution.md's workspace-config step names every field", () => {
+  it('the parenthesised list is WorkspaceConfig, field for field', () => {
+    const config = readFileSync(path.join(pkg, 'src', 'config.ts'), 'utf8')
+    const body = config.slice(config.indexOf('export interface WorkspaceConfig {'))
+    const fields = [...body.slice(0, body.indexOf('\n}')).matchAll(/^ {2}([a-zA-Z]+)\??:/gm)].map(
+      (m) => m[1]!,
+    )
+    expect(fields.length).toBeGreaterThanOrEqual(6)
+    const doc = readFileSync(path.join(pkg, 'docs', 'execution.md'), 'utf8')
+    const step = doc.slice(doc.indexOf('loadWorkspaceConfig reads'))
+    const list = step
+      .slice(step.indexOf('(') + 1, step.indexOf(')'))
+      .replace(/[│\s]+/g, ' ')
+      .split('/')
+      .map((f) => f.trim())
+    expect(list.sort()).toEqual([...fields].sort())
+  })
+})
