@@ -86,6 +86,9 @@ export async function findWorkspaceRoot(
   let dir = path.resolve(start)
   const below: string[] = []
   let nearest: string | null = null
+  // The nearest manifest with workspace globs of its own, once passed: an
+  // outer root claims the tree only by listing this directory itself.
+  let inner: string | null = null
   while (true) {
     let globs: string[] | null
     try {
@@ -99,7 +102,7 @@ export async function findWorkspaceRoot(
     }
     if (globs !== null) {
       nearest ??= dir
-      if (claimsMember(dir, below, globs)) return dir
+      if (claimsMember(dir, inner === null ? below : [inner], globs)) return dir
       // pnpm takes the nearest `pnpm-workspace.yaml` as the root, listed or
       // not. Walking past it, `apps/inner` resolved to the outer workspace
       // while `apps/inner/pkgs/x` resolved to the inner one: two roots and
@@ -113,6 +116,11 @@ export async function findWorkspaceRoot(
     // package below it, and `packages/tools/standalone` ran as a stranger
     // in a workspace that does not list it (item 989).
     if (globs !== null) below.push(dir)
+    // `apps/tool/workspace` with its own `workspaces`, under a root listing
+    // `apps/*`, resolved to the outer root through `apps/tool`, and its
+    // members ran in a workspace that does not list them (D-137). npm makes
+    // an outer root own a nested one only when it lists that directory.
+    if (inner === null && globs !== null && globs.length > 0) inner = dir
     dir = parent
   }
   if (nearest !== null) return nearest
