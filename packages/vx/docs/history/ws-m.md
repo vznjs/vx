@@ -574,6 +574,17 @@ hand-written file, so a half-adopted workspace has no clean path. Pinned
 on purpose (`init.test.ts` › refuses to overwrite without --force, like
 migrate); keeping such a project and writing the rest is the owner's call.
 
+M-48. M-41's own-task TODO read only `pnpm run x` / `npm run x`
+segments: `build: run-p build:*` and `ci: npm-run-all -s lint test` ran
+this package's own tasks inside the command with no word, though
+`scriptRefs` already reads those runners (D-95, D-113). The check now asks
+`scriptRefs` of a `run-s` / `run-p` / `npm-run-all` segment, counts every
+task it names, and skips a persistent task (`dev: run-p watch:*` has the
+persistent TODO). Probes that held: `--mjs` on M-44's and M-47's layouts.
+`init-own-script-chain.test.ts` › names a run-s / run-p / npm-run-all
+part; red without the fix, and the persistent control red without its
+guard.
+
 M-49. `remote-cache-degrade.test.ts` › a 503 heals on the resend
 (turboCache) › a download answered 503 once timed out at 7,094 ms
 against bun's 5 s on #2504's plugin-packages job (an unrelated diff).
@@ -585,16 +596,6 @@ it, for one that records the 2 s and resolves at once, and asserts the
 record: 0.14 and 0.06 s. A backoff of 1,999 ms and a 503 not resent each
 fail both rows. The suite's other slow rows (1.45 s) wait their own 700
 ms deadline, which is their claim.
-M-48. M-41's own-task TODO read only `pnpm run x` / `npm run x`
-segments: `build: run-p build:*` and `ci: npm-run-all -s lint test` ran
-this package's own tasks inside the command with no word, though
-`scriptRefs` already reads those runners (D-95, D-113). The check now asks
-`scriptRefs` of a `run-s` / `run-p` / `npm-run-all` segment, counts every
-task it names, and skips a persistent task (`dev: run-p watch:*` has the
-persistent TODO). Probes that held: `--mjs` on M-44's and M-47's layouts.
-`init-own-script-chain.test.ts` › names a run-s / run-p / npm-run-all
-part; red without the fix, and the persistent control red without its
-guard.
 
 ## Leads for other streams
 
