@@ -76,6 +76,13 @@
   (`try-it.unsafe.test.ts`). The from-nx post's figures were the
   no-lock column; now the headline vx column, with vx's %.
 
+- **R-16** README polish, each figure checked: the bench block matches
+  `results.json` (`update-site.ts --check`); the platforms read x64
+  and arm64 for Linux too (build-npm's targets); the Turbo/Nx paragraph
+  says init maps the old config only until the written configs replace
+  it, and that vx-migrate is not on npm yet; the npm description says
+  fastest.
+
 ## Leads
 
 - Real-repo rows (`packages/vx-bench/real-repos.json`, benchmarks.md's
