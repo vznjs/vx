@@ -21,7 +21,15 @@ latestRunId(db, taskId): string | null              // the run a caller without 
 whyDidThisRerun(db, runId, taskId): WhyDidThisRerun // this run vs the previous one
 cacheKeyDiff(db, runId, taskId): CacheKeyDiff       // which key components moved
 diffKeyComponents(before, after): { entries, unchangedCount } // the join, no store
+
+// The argument and row types, exported from the module index:
+ListRunsArgs        // { limit?, project?, task?, runId? }
+ListInvocationsArgs // { limit? }
+CacheEntryRow       // an entries row: hash, project, task, command, exitCode, durationMs, sizeBytes, createdAt, accessedAt
+InputDiffEntry      // one moved component: kind, name, change ('added' | 'removed' | 'changed'), before, after
 ```
+
+The module index re-exports `explainCacheKey` as `explainCacheKeyQuery`.
 
 `run-id.ts` beside it resolves the run id a caller types:
 `resolveRunId(db, raw, verb)` answers the whole id, or the one run it is

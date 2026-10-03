@@ -384,3 +384,14 @@ persistent task` and vx exits 1). Row (`site-samples` › a post's link
   declares. The sentence names the four keys alone. Row
   (`plugin-exports-documented` › names no type-shaped identifier its
   package and core lack), red without the fix.
+
+- **J2-44** Eighteen names the module indexes export were in code on no
+  module page: `SchemaReset`, `OUTPUT_DIRS_CAP` and `OUTPUT_DIRS_RACY_MS`
+  (cache); `formatRunReportMarkdown`, `RunEventSubscriber`,
+  `FlakyCandidate`, `DeriveStableKeysArgs` and `StableKey`, the plugin
+  installer's `InstallPluginsArgs`, `PluginContext`,
+  `PluginHookHandlers` and `PluginHookName`, and the metrics argument
+  and row types with the `explainCacheKeyQuery` alias (orchestrator);
+  `MOVED_VERBS` (util). Each page that owns the file names them now.
+  Row (`module-page-claims` › every name a module index exports is in
+  code on a module page), red without the fix.

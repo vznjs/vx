@@ -116,6 +116,13 @@ export class ArtifactVanishedError extends Error {
   readonly hash: string
 }
 
+// The output-directory short-circuit's bounds: a hit with more than
+// OUTPUT_DIRS_CAP directories under its outputs records none and keeps the
+// walk, and a snapshot holding one whose mtime is within
+// OUTPUT_DIRS_RACY_MS of it is dropped (the next hit walks).
+export const OUTPUT_DIRS_CAP = 8192
+export const OUTPUT_DIRS_RACY_MS = 50
+
 // git's racy-clean window, in ms: a file changed this close to when its
 // digest was learned is hashed again rather than trusted by its stat —
 // by the file-hash memo, and by the pre-save input re-check (task-hash.md).
@@ -559,7 +566,7 @@ there too as the same `UserError`: every lookup, save, prune, retention
 pass, stats read, run record and config-evaluation read or write passes
 through `guard` (A-8). Before, every task of a run failed on it as an
 "internal error" and `vx cache prune` printed a stack. The open that drops them says
-so: `Cache.schemaReset` carries `{ from, to }` on that one open (null on
+so: `Cache.schemaReset` carries a `SchemaReset`, `{ from, to }`, on that one open (null on
 every later one), and `noteSchemaReset` prints one line — on the run's
 status line, or a verb's stderr — ``[vx] cache index reset: schema v24 →
 v25 (vx upgraded); every cached task misses once and re-saves, and

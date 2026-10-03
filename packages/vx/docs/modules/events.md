@@ -12,7 +12,8 @@ run removes on its way out (`orchestrator.md`).
 
 ## Public surface
 
-- `createEventBus()` — synchronous, order-preserving fan-out.
+- `createEventBus()` — synchronous, order-preserving fan-out; its
+  subscribers are `RunEventSubscriber`s, `(event: RunEvent) => void`.
 - `busLogger(bus)` — `Logger`-shaped facade that emits events.
 - `terminalSubscriber(sink)` — drives a concrete renderer.
 - `WireEvent` + `toWireEvent` — the SERIALIZABLE projection (task ids
