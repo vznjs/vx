@@ -1108,7 +1108,8 @@ A Linux WRITE grant that matches nothing when the task starts therefore
 mounts nothing. Where a read grant mounts its directory, the task's first
 write under it fails with `Read-only file system` — a message naming
 neither vx nor the grant — so vx reports that grant itself before the
-task runs, once, and names the directory to grant instead. Where no mount
+task runs, once, and names the directory to grant instead, spelled as
+the config spells it (`allow: { write: ['gen/'] }`). Where no mount
 holds the directory, it is the sandbox's own scratch, the one mask left
 writable: the task may create, write and remove what the glob matches
 (anything else it writes there too), and nothing it leaves there

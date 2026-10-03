@@ -1148,7 +1148,12 @@ export async function wrapSandboxedCommand(
 
   const baselines = canonicalBaselines(args)
   const customConfig = buildCustomConfig(args, baselines)
-  const scratch = pendingWriteGrants(args.config, customConfig!.filesystem!, baselines.denyRead)
+  const scratch = pendingWriteGrants(
+    args.config,
+    customConfig!.filesystem!,
+    baselines.denyRead,
+    baselines.cwd,
+  )
   customConfig!.filesystem!.denyRead!.push(toRealPath(taskTmpRoot()))
   if (process.platform === 'linux' && !cwdMounted(baselines.cwd, customConfig!.filesystem!)) {
     customConfig!.filesystem!.denyRead!.push(baselines.cwd)
@@ -2400,7 +2405,7 @@ function scanOrNothing(pattern: string, base: string): Iterable<string> {
  * write may still land under, in the sandbox's scratch, returned; the ones
  * a read-only mount or the host's root holds, reported once each
  * (`writeGrantMatchedNothing`). `anchors` are the deny anchors the scratch
- * is made of.
+ * is made of; `within`, the task's directory, which the report spells from.
  */
 export function pendingWriteGrants(
   config: Pick<ResolvedSandboxConfig, 'pendingWrites'>,
@@ -2409,9 +2414,10 @@ export function pendingWriteGrants(
     readonly allowWrite?: readonly string[] | undefined
   },
   anchors: readonly string[],
+  within: string,
 ): string[] {
   const { scratch, mountless } = scratchWrites(config.pendingWrites ?? [], fs, anchors)
-  for (const grant of mountless) writeGrantMatchedNothing(grant)
+  for (const grant of mountless) writeGrantMatchedNothing(grant, within)
   return scratch
 }
 
@@ -2427,16 +2433,27 @@ const warnedEmptyWriteGrant = new Set<string>()
  * the relative pattern keeps its wildcard component), and printing it
  * would tell the user to grant the PARENT of the directory they meant.
  */
-function writeGrantMatchedNothing(grant: string): void {
+function writeGrantMatchedNothing(grant: string, within: string): void {
   if (warnedEmptyWriteGrant.has(grant)) return
   warnedEmptyWriteGrant.add(grant)
+  // As a committed config spells them (B-97): the absolute path held only
+  // on the machine that printed it, as in `outsideWritesHint`.
+  const dir = grantSpelled(grantPrefix(grant), within)
   process.stderr.write(
-    `[vx] sandbox: the write grant ${grant} matches nothing yet, and a read grant mounts its ` +
-      `directory read-only, so a file the task creates under it will fail with "Read-only file ` +
-      `system". A bind mount ` +
-      `covers what exists when the task starts — grant the directory instead: ` +
-      `${grantPrefix(grant)}/**\n`,
+    `[vx] sandbox: the write grant ${jsString(grantSpelled(grant, within))} matches nothing ` +
+      `yet, and a read grant mounts its directory read-only, so a file the task creates under ` +
+      `it will fail with "Read-only file system". A bind mount covers what exists when the ` +
+      `task starts — grant the directory instead: ` +
+      `\`allow: { write: [${jsString(dir === '.' ? '.' : `${dir}/`)}] }\`\n`,
   )
+}
+
+/** An absolute grant path as a config spells it: from `within`, from `~`, or whole. */
+function grantSpelled(p: string, within: string): string {
+  const real = toRealPath(within)
+  if (atOrUnder(p, real)) return path.relative(real, p) || '.'
+  const home = toRealPath(os.homedir())
+  return atOrUnder(p, home) ? `~${p.slice(home.length)}` : p
 }
 
 /**
