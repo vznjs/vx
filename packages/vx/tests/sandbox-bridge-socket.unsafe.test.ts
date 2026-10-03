@@ -144,4 +144,46 @@ describe.skipIf(!available || process.platform !== 'linux')('a port bridge’s s
     })
     expect(existsSync(sock)).toBe(false)
   }, 20_000)
+
+  // SRT's own once-only `exit`, SIGINT and SIGTERM listeners each start an
+  // unawaited `reset()`, which kills the bridges at once and clears SRT's
+  // init promise only after its proxies close: an init in between returned
+  // early on the dying session, and the next bridged run threw "Linux HTTP
+  // bridge socket does not exist", this file's gate failure (M-35). In a
+  // child: the emit takes SRT's listener for the rest of the process.
+  it.each(['exit', 'SIGINT'])(
+    'runs after SRT’s own %s cleanup',
+    async (event) => {
+      const script = `
+      const exec = await import(${JSON.stringify(path.resolve(import.meta.dir, '../src/exec/index.ts'))})
+      const dir = ${JSON.stringify(dir)}
+      const run = () => exec.runSandboxed({
+        command: 'true', cwd: dir, env: process.env, baseAllowRead: [dir], baseDenyRead: [],
+        reportWithin: dir, reportLinked: [],
+        config: exec.resolveSandboxConfig({ allow: { localBinding: [${freePort()}] } }, dir),
+      })
+      await exec.initSandbox({ allowAllUnixSockets: true })
+      const first = (await run()).exitCode
+      process.emit(${JSON.stringify(event)}${event === 'exit' ? ', 0' : ''})
+      await exec.initSandbox({ allowAllUnixSockets: true })
+      let after
+      try { after = (await run()).exitCode } catch (e) { after = e.message.slice(0, 80) }
+      await exec.resetSandbox()
+      console.log(JSON.stringify([first, after]))
+      process.exit(0)
+    `
+      const proc = Bun.spawn([process.execPath, '-e', script], {
+        env: { ...process.env },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      const [out, err] = await Promise.all([
+        new Response(proc.stdout).text(),
+        new Response(proc.stderr).text(),
+        proc.exited,
+      ])
+      expect({ out: out.trim(), err }).toEqual({ out: '[0,0]', err: '' })
+    },
+    20_000,
+  )
 })
