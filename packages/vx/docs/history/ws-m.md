@@ -611,6 +611,17 @@ name; `-flag` maps but reads as a flag, so only `a#-flag` reaches it.
 Non-string `scripts` values and a `scripts` that is not an object are
 skipped without a crash, as npm skips them.
 
+M-51. `pnpm-workspace.yaml`'s `packages` decides the members, as pnpm
+reads it, and a root `package.json` whose `workspaces` listed other globs
+was dropped without a word: in a bun or npm repo with a stale yaml,
+`vx init` mapped `packages/*` and lost `apps/*`. Init now names the
+unread list in a note (array or `{ packages }` form) and what to do; the
+same list, or none, says nothing. Probes that held: `pnpm-workspace.yaml`
+in flow style with comments and mixed quotes, a block list with inline
+comments, a `catalog`, and `!**/test/**` under `packages/**`.
+`init.test.ts` › names a package.json workspaces list pnpm-workspace.yaml
+overrides; red without the fix.
+
 ## Leads for other streams
 
 - A: A-20 let a same-project dependant restore ahead of a producer whose

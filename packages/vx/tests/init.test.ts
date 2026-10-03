@@ -1629,6 +1629,36 @@ describe('vx init on a workspace with no scripts', () => {
     }
   })
 
+  it('names a package.json workspaces list pnpm-workspace.yaml overrides (M-51)', async () => {
+    const root = await makeRoot('vx-init-bothws-')
+    try {
+      await addPackage(root, 'a', { build: 'true' })
+      const note = async (): Promise<string[]> =>
+        (await vx(root, ['init', '--dry'])).out
+          .split('\n')
+          .filter((l) => l.includes("package.json's `workspaces`"))
+      const manifest = (workspaces?: unknown) =>
+        writeFile(
+          path.join(root, 'package.json'),
+          JSON.stringify({ name: 'fixture-root', private: true, workspaces }),
+        )
+      await manifest(['apps/*'])
+      expect(await note()).toEqual([
+        "note: pnpm-workspace.yaml's `packages` lists the members, as pnpm reads them; package.json's `workspaces` (\"apps/*\") is not read: if bun, npm or yarn installs this repo, copy those globs into pnpm-workspace.yaml's `packages`, or delete that key so package.json decides",
+      ])
+      // The object form is read too.
+      await manifest({ packages: ['apps/*'] })
+      expect(await note()).toHaveLength(1)
+      // CONTROLS: the same list, and none at all, say nothing.
+      await manifest(['packages/*'])
+      expect(await note()).toEqual([])
+      await manifest(undefined)
+      expect(await note()).toEqual([])
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   it('does not call a matched but unaddressable member unmatched', async () => {
     const root = await makeRoot('vx-init-unaddr-')
     try {
