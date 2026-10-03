@@ -520,6 +520,17 @@ TODO, and with `check`'s edge to `build`, `vx run check` built twice
 and ran `lint` outside the graph. Its parts that run an own task are
 now named in a TODO (`init-own-script-chain.test.ts`, red on main).
 
+M-44. On Bun 1.3.14 (the container's default, below the floor), every
+`vx run` with a local cache exited 1 with "database is locked" from
+`Cache.close()`, after its tasks had passed: found while probing `vx init`
+on a bun workspace with object-form `workspaces` (`packages`, `apps/**`,
+a `!` glob; that layout holds). O-10's `db.close(true)` finalizes live
+statements on 1.4.2 but answers SQLITE_BUSY on 1.3.14 (a five-line
+`bun:sqlite` probe, both ways). `closeDb` falls back to `close()`, the
+pre-O-10 close, when `close(true)` refuses; both 1.3.14 workspaces then
+exit 0. `cache-close-old-bun.test.ts` stands a refusing `close(true)` in
+for the old runtime; without the fallback it fails with the same error.
+
 ## Leads for other streams
 
 - A: A-20 let a same-project dependant restore ahead of a producer whose
