@@ -23,7 +23,7 @@ import { turbo, turboCache } from '@vzn/vx-migrate'
 export default defineWorkspace({ plugins: [turboCache(), turbo()] })
 ```
 
-The package exports `turbo`, `nx`, `turboCache`, `nxCache` and their options types; the mappers and cache clients are internal.
+The package exports `turbo`, `nx`, `turboCache`, `nxCache` and their options types (`TurboPluginOptions`, `NxPluginOptions`, `TurboCacheOptions`, `NxCacheOptions`); the mappers and cache clients are internal.
 
 ## `turbo()` — a Turbo repo, mid-migration
 
