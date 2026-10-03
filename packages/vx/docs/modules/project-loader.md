@@ -168,7 +168,10 @@ readers that reach it here.
   30 s): a top-level await that never settles fails the load, naming
   the config and the budget, where it hung `vx run` silently (D-66).
   The evaluation itself cannot be cancelled; a timer it left running
-  still holds the process open after the run reports.
+  still holds the process open after the run reports. A synchronous
+  loop (`while (true) {}`) holds the thread the deadline fires on, so it
+  hangs until killed; a repeat load, in its Worker, still fails at the
+  budget. Bounding it would take the worker per config D-68 measured out.
 - A Promise default export is awaited on both paths, so an async
   config resolves to its object on the first load and in the Worker
   alike (D-5). The awaited value is checked again, a workspace
