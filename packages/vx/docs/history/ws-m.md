@@ -801,3 +801,12 @@ delimiters too, and `isAbsoluteGlob` reads each arm, at every site
 (`inputs`/`outputs`, `files`/`workspaceFiles`). `project-loader.test.ts`
 › a brace arm that escapes or is absolute (red without the fix; controls
 `{src,lib}/**`, `{a..b,src}/**`, `a,/b/**` load).
+M-65. M-61's warning, the workspace side: a `workspaceFiles` output
+directory that is a symlink out of the workspace (`shared ->
+/elsewhere`) drops every file under it, and the empty-artifact line
+blamed the glob. Probed with the rest of (3): a file link out under
+`workspaceFiles` and a project link into the workspace are refused at
+save, and nothing outside was packed or cleaned. `outputDirLinkedOut`
+now reads the workspace globs against the root and names the base.
+`cache-declaration-warnings.test.ts` › and a workspaceFiles directory
+linked out of the workspace (red without the fix).

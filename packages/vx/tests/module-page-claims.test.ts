@@ -348,6 +348,20 @@ describe('task-hash.md claims the bump rule caching.md states', () => {
   })
 })
 
+// J2-49: cli-help.md's Purpose said the help text is the fall-through
+// after `vx <unknown-command>`; that path prints one line and a pointer.
+describe("cli-help.md's Purpose names the paths that print the text", () => {
+  it('the unknown-command path writes a pointer, and the page says so', () => {
+    const index = src('cli/index.ts')
+    const unknown = index.slice(index.indexOf('`vx: unknown command: ${command}'))
+    expect(unknown.slice(0, unknown.indexOf('return 1'))).not.toContain('printHelp')
+    const purpose = blocks('modules/cli-help.md', 'Static help text')
+    expect(purpose).toHaveLength(1)
+    expect(purpose[0]).not.toContain('fall-through')
+    expect(purpose[0]).toContain('An unknown command prints one line')
+  })
+})
+
 // J2-51: sandbox-runtime.md said executeCachedTask uses it; since the
 // executor seam the local executor calls runSandboxed, and only the
 // persistent path in execute-task.ts wraps a command itself.

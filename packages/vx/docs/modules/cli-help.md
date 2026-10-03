@@ -2,9 +2,10 @@
 
 ## Purpose
 
-Static help text printed by `vx help`, `vx --help`, `vx -h`, and the
-fall-through after `vx <unknown-command>`; `vx <verb> --help` prints
-the same text cut to that verb.
+Static help text printed by `vx help`, `vx --help`, `vx -h` and a bare
+`vx`; `vx <verb> --help` prints the same text cut to that verb. An
+unknown command prints one line naming it and pointing at `vx help`,
+not the text.
 
 ## Public surface
 

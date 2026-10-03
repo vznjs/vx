@@ -1611,3 +1611,27 @@ on the poller (`VX_WATCH_POLL=1`): the output always the final input.
 The day's new timing-sensitive rows (claimed files, per-cycle timing, the Linux tree, async sinks and hints, submodule ignores, transient files, the judge property) ran 8 times idle and 4 beside six CPU burners: no failure.
 Ctrl-C while a cycle stops a held server that takes 1.5 s to exit on SIGTERM: watch waits for it, exits 0 in 1.2 s, nothing left on the port.
 Storm on the C-104 branch with whole-`packages/` restores (in one window and 2.5 s apart) mixed in, each round ending in an edit: 12 rounds, the output always the final input (before C-104 the first slow restore left watch at `watching 0 project(s)`).
+
+## C-105: import and pending directories made again are re-armed
+
+C-105 (#2634, split out after #2620 merged at its first commit), same class: a config import directory (a shared preset
+outside the projects, item 949) restored after a removal kept its dead
+watch; import directories joined the ancestor arms and the re-arm's
+directory check (a sixth row); and a pending package directory (no package.json yet) replaced
+kept its dead watch too; the base's names never change, so its watch
+now re-arms when a pending entry's directory changed. First cut tried a
+removal and a make: it passed locally (the two reached the base as
+separate member changes) and failed in the gate (seen together), so the
+row replaces the directory with one rename (POSIX renames onto an empty
+directory), which no member change can catch; each guard's removal
+fails it.
+
+Probes (2026-10-03), clean, against `cli.md` and `caching.md`: a
+Ctrl-C while a cached task has half-written its outputs leaves no
+entry (the next run is a miss and rebuilds); two `vx run` at once take
+turns on the run lock, the waiter says whom it waits for and is then a
+hit, and a Ctrl-C'd run releases the lock at once; the three
+`--continue` modes over a failing task, an in-flight sibling, a queued
+sibling and a cached dependant at `--concurrency 2` give exactly the
+documented outcomes, `always` saves nothing built on the failure (the
+second run is a miss), and `never` skips a pending cache restore.
