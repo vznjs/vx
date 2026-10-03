@@ -75,7 +75,6 @@ here, itself or in a brace group.
 | [`logger.md`](./logger.md)                         | `src/orchestrator/logger.ts` — default logger (flow-aware policy, frames, replay).                                                                            |
 | [`status-line.md`](./status-line.md)               | `src/orchestrator/status-line.ts` — serialized writer + dynamic bottom status line.                                                                           |
 | [`framed-output.md`](./framed-output.md)           | `src/orchestrator/framed-output.ts` — `┌─ task ─┐` border helpers + one-liners.                                                                               |
-| [`failure-recap.md`](./failure-recap.md)           | `src/orchestrator/failure-recap.ts` — the bounded tail the run's last block repeats for each failed task.                                                     |
 | [`colors.md`](./colors.md)                         | `src/orchestrator/{colors,plain-output}.ts` — ANSI gate + truecolor helpers; task output stripped where vx prints plain.                                      |
 | [`summary.md`](./summary.md)                       | `src/orchestrator/summary.ts` — the footer: `projects` / `tasks` / `cache` meters, `info` and `time` rows.                                                    |
 | [`plan.md`](./plan.md)                             | `src/orchestrator/plan.ts` — `--dry` / `--graph` planning (no exec).                                                                                          |

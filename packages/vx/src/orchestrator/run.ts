@@ -319,7 +319,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   }
   let held = false
   try {
-    const summary = await runOnBus(options, bus, colors, () => terminal?.failureRecap() ?? [])
+    const summary = await runOnBus(options, bus, colors)
     if (summary.persistent === undefined) return summary
     // Servers handed back still running still write: `vx watch dev` printed
     // none of its server's log while it idled, the renderer gone with this
@@ -342,7 +342,6 @@ async function runOnBus(
   options: RunOptions,
   bus: EventBus,
   colors: ColorSupport,
-  failureRecap: () => string[],
 ): Promise<RunSummary> {
   const log = busLogger(bus)
 
@@ -1094,8 +1093,6 @@ async function runOnBus(
         `  Deferred: ${stillDeferred.length} task(s) left outputs remote (--download=none): ${stillDeferred.join(', ')}`,
       )
     }
-    // Last, where a long log's reader lands: each failure's own last lines.
-    for (const line of failureRecap()) log.status(line)
 
     // Optional artifacts. Errors are surfaced to the user but don't
     // change the run's exit code — the run already happened.

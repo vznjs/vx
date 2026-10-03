@@ -70,7 +70,7 @@ describe.skipIf(!available)('a sandboxed task and the host’s services', () => 
     })
     const text = (await new Response(r.stdout).text()) + (await new Response(r.stderr).text())
     // A set: where the refused connect is a violation (seatbelt), the task
-    // fails and the failure recap prints its last line again.
+    // fails and its frame may print the line again.
     const said = [
       ...new Set(
         text

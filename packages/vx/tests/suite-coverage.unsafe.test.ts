@@ -99,11 +99,10 @@ describe('every test file is launched by a task', () => {
     expect(orphans).toEqual([])
   })
 
-  // A failed task's recap is its last 30 lines. With every passing row
-  // printed, a shard's last 30 were Bun's summary: the failing row's
-  // error sat 300 lines up in a 9,500-line job log, past what a log
-  // reader fetches, and item 948 went red three times with no cause on
-  // record (M-1). `--only-failures` puts the error in the recap.
+  // With every passing row printed, the failing row's error sat 300
+  // lines up in a 9,500-line job log, past what a log reader fetches,
+  // and item 948 went red three times with no cause on record (M-1).
+  // `--only-failures` keeps the error near the end.
   it('every task that launches bun test prints only its failures', async () => {
     const launchers: string[] = []
     const verbose: string[] = []

@@ -195,7 +195,7 @@ export interface ScheduleOptions {
   /**
    * Where the line naming a rejected `execute` goes, before its failed
    * outcome lands. Absent = stderr. The run gives it the task's own
-   * stderr, so its frame and the failure recap carry the reason.
+   * stderr, so its frame carries the reason.
    */
   onError?: (node: TaskNode, line: string) => void
   /**

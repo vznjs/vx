@@ -76,7 +76,6 @@
   "execution-doc-drift.test.ts": 2,
   "executor.test.ts": 112,
   "failure-mode.test.ts": 364,
-  "failure-recap.test.ts": 623,
   "filter.test.ts": 278,
   "fingerprint.test.ts": 39,
   "fixture-helpers.test.ts": 768,

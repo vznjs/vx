@@ -522,9 +522,9 @@ describe('executor capability — end-to-end via run()', () => {
     }
   })
 
-  it("an executor's throw reaches the task's own stderr, where its frame and recap read it", async () => {
-    // It went to process.stderr past the logger, and the failure recap
-    // said "(no output)" for a reason vx had printed above.
+  it("an executor's throw reaches the task's own stderr, where its frame reads it", async () => {
+    // It went to process.stderr past the logger, and the task's frame
+    // said nothing of a reason vx had printed above.
     const { workspaceRoot, cleanup } = await writeFixture()
     try {
       await Bun.write(
@@ -540,7 +540,7 @@ describe('executor capability — end-to-end via run()', () => {
         ]),
       )
       await gitInit(workspaceRoot)
-      // Before the completion: the frame and the recap close on it.
+      // Before the completion: the frame closes on it.
       const seen: string[] = []
       const summary = await run({
         cwd: workspaceRoot,
