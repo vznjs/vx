@@ -2072,7 +2072,8 @@ product verb to it under a notice.
 Introspect the workspace's **live resolved configs** — what a run
 would see right now. Configs load through the same path a run uses,
 plugin `config` and `project` stages included, so a package a plugin
-gives tasks to (the zero-migration Turbo shape) shows them; cached
+gives tasks to (`turbo()` or `nx()` from `@vzn/vx-migrate`, a
+temporary start toward native config) shows them; cached
 evaluations are served from the local cache like a run's. `vx show`
 never reads `vx-lock.json` (the lock is already the frozen JSON — open
 it directly if you want the frozen view).

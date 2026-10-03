@@ -525,6 +525,17 @@ persistent task` and vx exits 1). Row (`site-samples` › a post's link
   watch-limit notice, the 150 ms debounce, the three-cycle notice, the
   ignored segments and suffixes, the refused flags and their reasons,
   the signals it forwards, and `cycle failed`.
+- **J2-61** Owner rule: `cli.md`'s `vx show` called a plugin-fed
+  workspace "the zero-migration Turbo shape", and the pipeline blog
+  post's excerpt sold "Zero-migration Turbo support": the mapping as the
+  destination, not a start toward native config. Both reworded; the
+  `turbo-nx-wording` law gains the pattern, red on both pages without
+  the fix. Checked clean: `vx cache prune` (units, zero and bare-number
+  refusals, orphan grace and name rule, messages), `--frozen`, `vx lock`
+  (bare-project note, secret refusal), Releasing (version rule, twelve
+  npm packages), `vx upgrade`'s messages and 10 s start check,
+  `vx migrate`'s pointer, the foreign-verb hints, Machine-readable
+  output.
 - **J2-62** `cli.md`'s `vx info` sandbox bullet called its field "the
   `--json` fact"; `vx info --json` is refused (the verb takes
   `--format json`). Row (`cli-doc-drift` › every flag the `vx info`
