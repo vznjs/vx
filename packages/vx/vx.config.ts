@@ -124,8 +124,18 @@ const releaseTasks = {
             sandbox: {
               allow: {
                 read: ['.'],
+                // A re-sign: codesign writes `<binary>.cstemp` beside the
+                // binary and asks trustd (macOS CI, 2026-10-03).
                 ...(os === 'darwin'
-                  ? { write: ['dist/vx-darwin-x64', 'dist/vx-darwin-arm64'] }
+                  ? {
+                      write: [
+                        'dist/vx-darwin-x64',
+                        'dist/vx-darwin-arm64',
+                        'dist/vx-darwin-x64.cstemp',
+                        'dist/vx-darwin-arm64.cstemp',
+                      ],
+                      machLookup: ['com.apple.trustd.agent'],
+                    }
                   : {}),
               },
             },
