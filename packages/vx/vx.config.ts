@@ -125,7 +125,8 @@ export default defineProject({
         command: 'bun scripts/check-binary.ts',
         sandbox: {
           allow: {
-            read: ['**/*'],
+            // The bare-specifier workspace links the schedule plugin.
+            read: ['**/*', '../vx-schedule-history/**'],
             write: ['dist/**', ...BUN_RUNTIME_WRITES],
             network: BUN_RUNTIME_NETWORK,
             systemInfo: ['vfs.disk-space'],
@@ -137,7 +138,8 @@ export default defineProject({
       },
       cache: {
         inputs: {
-          files: ['src/**', 'package.json', 'scripts/check-binary.ts'],
+          files: ['src/**', 'index.ts', 'package.json', 'scripts/check-binary.ts'],
+          workspaceFiles: ['packages/vx-schedule-history/**'],
           runtime: BUN_VERSION,
         },
         outputs: { files: [] },
@@ -277,7 +279,7 @@ export default defineProject({
       dependsOn: ['install'],
       exec: {
         command:
-          'bun build --compile --no-compile-autoload-dotenv --minify --bytecode --target=bun-linux-x64 src/bin.ts --outfile dist/vx-linux-x64',
+          'bun build --compile --no-compile-autoload-dotenv --compile-autoload-package-json --minify --bytecode --target=bun-linux-x64 src/bin.ts --outfile dist/vx-linux-x64',
         sandbox: {
           allow: {
             systemInfo: ['vfs.disk-space'],
@@ -301,7 +303,7 @@ export default defineProject({
       dependsOn: ['install'],
       exec: {
         command:
-          'bun build --compile --no-compile-autoload-dotenv --minify --bytecode --target=bun-linux-arm64 src/bin.ts --outfile dist/vx-linux-arm64',
+          'bun build --compile --no-compile-autoload-dotenv --compile-autoload-package-json --minify --bytecode --target=bun-linux-arm64 src/bin.ts --outfile dist/vx-linux-arm64',
         sandbox: {
           allow: {
             systemInfo: ['vfs.disk-space'],
@@ -325,7 +327,7 @@ export default defineProject({
       dependsOn: ['install'],
       exec: {
         command:
-          'bun build --compile --no-compile-autoload-dotenv --minify --bytecode --target=bun-darwin-x64 src/bin.ts --outfile dist/vx-darwin-x64',
+          'bun build --compile --no-compile-autoload-dotenv --compile-autoload-package-json --minify --bytecode --target=bun-darwin-x64 src/bin.ts --outfile dist/vx-darwin-x64',
         sandbox: {
           allow: {
             systemInfo: ['vfs.disk-space'],
@@ -349,7 +351,7 @@ export default defineProject({
       dependsOn: ['install'],
       exec: {
         command:
-          'bun build --compile --no-compile-autoload-dotenv --minify --bytecode --target=bun-darwin-arm64 src/bin.ts --outfile dist/vx-darwin-arm64',
+          'bun build --compile --no-compile-autoload-dotenv --compile-autoload-package-json --minify --bytecode --target=bun-darwin-arm64 src/bin.ts --outfile dist/vx-darwin-arm64',
         sandbox: {
           allow: {
             systemInfo: ['vfs.disk-space'],

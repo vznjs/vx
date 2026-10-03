@@ -1,4 +1,5 @@
-// Root entry shim. Bun 1.4.0's `--compile` binaries resolve an on-disk
+// Root entry shim. Bun 1.4.0's `--compile` binaries built without
+// `--compile-autoload-package-json` (vx 0.0.484 and older) resolve an on-disk
 // package by directory convention (`<pkg>/index.ts`, `<pkg>/<subpath>/index.ts`)
 // and ignore package.json `exports` / `main` (measured 2026-09-03: an
 // entry of `./src/index.ts` resolved to the root `index.ts` regardless of the

@@ -971,3 +971,20 @@ and every re-publish was refused with E409 "Cannot publish over
 previously staged version", and then it appeared. The loop's
 `npm view` skip cannot see a version in that window, so a re-run during
 it dies on E409; wait, do not cut a new release for it.
+
+M-77. The npm `vx` (the compiled binary) could not load
+`@vzn/vx-reapi`: a compiled Bun resolves an on-disk package by its
+root `index.*` alone unless built with `--compile-autoload-package-json`,
+so `main` and `exports` went unread and the plugin's `@grpc/grpc-js`
+(`main: build/src/index.js`) was "not found" (#1891, an Nx repo on
+bazel-remote). Every compile now passes the flag; `check-binary.ts`
+runs a config importing a nested-`main` and an `exports` package, red
+without it. `vx show` on this repo: 34.8–37.3 ms with it, 35.6–36.3
+without (min of 25, interleaved), no cost.
+
+M-78. CI's macOS job compiled and probed the binary in two raw shell
+steps (launch after re-sign, a bare-specifier workspace). Both are now
+`check.binary`, the task the Linux gate already runs: the macOS job runs
+`vx run check.binary`, and `check-binary.ts` gained the bare-specifier
+workspace with a plugin package, its second run proven to restore the
+first run's bytes.

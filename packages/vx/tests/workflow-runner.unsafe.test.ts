@@ -38,9 +38,8 @@ function jobsOf(file: string): [string, Job][] {
   return Object.entries(doc.jobs ?? {})
 }
 
-// A vx task, however it is launched: from source (`src/bin.ts run`) or through
-// a compiled binary the job just built (`/tmp/vx-ci run`).
-const runsVxTask = (s: Step) => typeof s.run === 'string' && /\b(bin\.ts|vx-ci) run\b/.test(s.run)
+// A vx task, launched from source (`src/bin.ts run`).
+const runsVxTask = (s: Step) => typeof s.run === 'string' && /\bbin\.ts run\b/.test(s.run)
 
 const covered: string[] = []
 const missing: string[] = []

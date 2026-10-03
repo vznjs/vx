@@ -51,9 +51,9 @@ compiled binary no second copy of core transpiled from `node_modules`
    shebang `#!/usr/bin/env -S bun --no-env-file --no-install`. Bun runs the
    TypeScript directly.
 2. **As a standalone binary** — `bun build --compile
---no-compile-autoload-dotenv --minify --bytecode --target=bun-<target>
-src/bin.ts --outfile dist/vx-<target>`. The cross-target binaries are published on each
-   GitHub release.
+--no-compile-autoload-dotenv --compile-autoload-package-json --minify
+--bytecode --target=bun-<target> src/bin.ts --outfile dist/vx-<target>`.
+   The cross-target binaries are published on each GitHub release.
 
 Both switches keep Bun from loading `.env`, `.env.local` and
 `.env.<NODE_ENV>` from the working directory into vx's own environment,
@@ -61,6 +61,13 @@ where every `passThrough` and essential variable and every `VX_*` switch
 is read: a task saw a value no shell had set (item 1089). Running the
 source as `bun src/bin.ts`, as this repository's own gate does, is not
 the shebang, and Bun loads a `.env` there.
+
+`--compile-autoload-package-json` makes the binary read an on-disk
+package's `package.json` when it resolves one. Without it a compiled
+Bun resolves a package only by its root `index.*`, ignoring `main` and
+`exports`: a config importing `@vzn/vx-reapi` failed on
+`cannot find '@grpc/grpc-js'` (`main: build/src/index.js`), though
+`bun src/bin.ts` loaded it (#1891). `scripts/check-binary.ts` holds it.
 
 `--no-install` keeps Bun from auto-installing a bare import no
 `node_modules` provides: a helper a config imports fetched the package
