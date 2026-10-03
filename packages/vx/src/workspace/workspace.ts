@@ -290,6 +290,11 @@ function parsePackageJson(text: string, file: string): PackageJson {
   if (name !== undefined && (typeof name !== 'string' || name.trim() !== name)) {
     throw new UserError(`${file}: "name" must be a string with no surrounding whitespace`)
   }
+  // A task is `<project>#<task>` split at the first `#`: `"a#b"` planned
+  // under `--all` but no run spec or dependsOn could reach it (D-130).
+  if (typeof name === 'string' && name.includes('#')) {
+    throw new UserError(`${file}: "name" cannot hold "#" — vx addresses a task as <name>#<task>`)
+  }
   return pkg as PackageJson
 }
 
