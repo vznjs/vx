@@ -818,6 +818,35 @@ stderr, stdout empty. No leak was found; the plan path's logger or
 `warnToStderr` sent to stdout each fail rows. `vx run`'s stdout stays
 the run's frame (#2682).
 
+## H-74: colour held end to end
+
+`detectColors` was unit-tested; nothing ran the CLI under the
+variables. `cli-colors-e2e.test.ts` requires `vx run` plain off a TTY,
+painted under `FORCE_COLOR=1`, plain under `FORCE_COLOR=0` and under
+`NO_COLOR`, and every other verb plain even under `FORCE_COLOR=1`;
+cli.md says only a run's own output is painted (#2688).
+
+## H-75: vx last says nothing has run before a run
+
+Bare `vx last` was right. `--failed` before any run said "no recorded
+run failed", a run id pointed at an empty `--list`, and `--list
+--failed` past green runs said "no recorded runs". Every form says
+nothing has run when nothing has, and `--list --failed` says none
+failed (#2692).
+
+## H-76: vx cache list, ls, gc and purge name their verb
+
+`stats` and `clean` already pointed at their verb; `list` and `ls`
+said only "The subcommand is prune". They point at `vx info` and
+`vx last --list` now, and `gc` / `purge` at `prune` (#2702).
+
+## H-77: getWorkspaceInfo's description names its fields
+
+`vx info` and the MCP tool share one collector, and the fields were
+held to cli.md and the schema. The tool's description, what an agent
+reads first, had lost `configErrors` and `sandbox`; it names every
+answer key now, held both ways to `tests/contract/tools.json` (#2710).
+
 ## Leads for other streams
 
 - **A:** a task that rewrites its own input with the same bytes is never
