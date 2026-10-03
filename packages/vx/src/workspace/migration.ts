@@ -235,6 +235,12 @@ export interface ApplyMigrationArgs {
   /** Report lines printed under the source line (e.g. "turbo.json found and not read"). */
   notes?: readonly string[]
   /**
+   * Scripts exist but no project can carry them (a member without a
+   * `name`): the empty report said "no package.json scripts" of a repo full
+   * of them (M-59).
+   */
+  unmapped?: boolean
+  /**
    * `ts` (default) writes `vx.config.ts` with the type-only import and
    * `satisfies`; `mjs` writes `vx.config.mjs` — the same object, untyped —
    * for a package whose own `tsc --build` includes every `.ts` under it
@@ -388,7 +394,9 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
     )
   } else if (empty) {
     report.push(
-      `${verb}: no package.json scripts to turn into tasks.`,
+      args.unmapped === true
+        ? `${verb}: no package.json scripts became tasks.`
+        : `${verb}: no package.json scripts to turn into tasks.`,
       ...[...noMembers, ...(args.notes ?? [])].map((n) => `note: ${n}`),
       hasWorkspaceFile
         ? `${workspaceName} already exists.`
