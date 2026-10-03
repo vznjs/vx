@@ -1631,7 +1631,7 @@ holds it. The tasks are `@vzn/vx`'s `release.*`, all uncached and in no
 | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
 | `release.stamp`         | writes `VX_RELEASE_VERSION` into `packages/vx/package.json`, the manifest the binary inlines                                          |
 | `release.npm`           | checks npm can publish with provenance (>= 11.5.1, `sigstore` loads); else installs npm into `dist/npm-cli/`                          |
-| `release.prove.<os>`    | launches the host's binary (re-signed only if macOS refuses it) and asserts `vx <version>`; on darwin, verifies the other's signature |
+| `release.prove.<os>`    | launches the host's binary (re-signed only if macOS refuses it) and asserts `vx <version>`; on darwin, launches both (x64 under Rosetta) |
 | `release.assemble.<os>` | emits the platform packages under `dist/npm` (linux: also `@vzn/vx` and the plugins)                                                  |
 | `release.publish.<os>`  | `npm publish --provenance` each in order, skipping one the registry holds                                                             |
 | `release.auto`          | decides the version, creates the release with its notes, dispatches the two workflows                                                 |

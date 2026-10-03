@@ -19,7 +19,7 @@ const text = (b: Uint8Array): string => new TextDecoder().decode(b)
 const spawn = (cmd: string[]) => Bun.spawnSync({ cmd, stdout: 'pipe', stderr: 'pipe' })
 
 /** `codesign -s - --force` then `--verify`; the failing step's output, or undefined. */
-export function resign(bin: string): string | undefined {
+function resign(bin: string): string | undefined {
   for (const cmd of [
     ['codesign', '-s', '-', '--force', bin],
     ['codesign', '--verify', '--verbose=2', bin],

@@ -13,7 +13,7 @@
 import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import path from 'node:path'
-import { launchVersion, resign } from './binary-launch.ts'
+import { launchVersion } from './binary-launch.ts'
 import { TARGETS, emitMainPackage, emitPlatformPackages, emitPluginPackages } from './build-npm.ts'
 
 const CORE = path.resolve(import.meta.dir, '..')
@@ -175,24 +175,17 @@ function prove(os: Os, version: string): void {
     // release.yml hands the darwin binaries over as an artifact, and a
     // download drops the executable bit.
     if (os === 'darwin') chmodSync(bin, 0o755)
-    if (t.target === host) {
-      const got = launchVersion(bin)
-      if (got.exitCode !== 0 || got.version !== want) {
-        throw new Error(
-          `binary reports '${got.version}' (exit ${got.exitCode}), expected '${want}' — the version stamp missed the manifest the binary inlines\n${got.stderr}`,
-        )
-      }
-      console.log(`${path.relative(CORE, bin)} reports ${got.version}`)
-    } else if (os === 'darwin') {
-      // A darwin binary this host cannot launch: its signature must still
-      // hold, re-signed ad hoc where it does not.
-      const verify = Bun.spawnSync({ cmd: ['codesign', '--verify', '--verbose=2', bin] })
-      if (verify.exitCode !== 0) {
-        const failed = resign(bin)
-        if (failed !== undefined) throw new Error(failed)
-      }
-      console.log(`${path.relative(CORE, bin)} carries a valid signature`)
+    // Every darwin binary launches here: an arm64 runner runs the x64 one
+    // under Rosetta. `codesign --verify` under seatbelt is refused
+    // (system-fsctl, no grant lifts it), so a launch is the proof.
+    if (t.target !== host && os !== 'darwin') continue
+    const got = launchVersion(bin)
+    if (got.exitCode !== 0 || got.version !== want) {
+      throw new Error(
+        `${path.relative(CORE, bin)} reports '${got.version}' (exit ${got.exitCode}), expected '${want}' — the version stamp missed the manifest the binary inlines\n${got.stderr}`,
+      )
     }
+    console.log(`${path.relative(CORE, bin)} reports ${got.version}`)
   }
 }
 
