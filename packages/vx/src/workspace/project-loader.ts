@@ -9,7 +9,6 @@ import {
   CONFIG_EXIT,
   evalBudgetMs,
   evaluateConfigFresh,
-  UmaskChanged,
   WATCHED_BUILTIN_NAMES,
 } from './config-eval.js'
 import { hasEsmExport, unprovidedBareImports } from './config-imports.js'
@@ -496,7 +495,6 @@ export async function loadProjectConfigs(
     if (repeat) refuseUnprovidedImports(bytes!, configPath, 'Project')
     const mod = repeat
       ? await evaluateConfigFresh(configPath).catch((err: unknown) => {
-          if (err instanceof UmaskChanged) throw builtinsChanged(['process.umask'], configPath)
           throw configLoadError(err, configPath, 'Project') ?? err
         })
       : await loadDefaultExport(configPath, 'Project', bytes!)
@@ -508,7 +506,10 @@ export async function loadProjectConfigs(
           ...restoreBuiltins(builtins, overlapping),
           ...restoreEnv(env),
           ...restoreCwd(cwd),
-          ...restoreUmask(umask),
+          // Alone in the round: nothing else reads the umask now. Beside
+          // other loads the round reads it once they are done (see
+          // `currentUmask`).
+          ...(overlapping ? [] : restoreUmask(umask)),
         ]
     // Loads overlap, so another config's change can surface after this
     // one: named here, the refusal blamed the wrong file (D-119). The round
@@ -604,12 +605,22 @@ export async function loadProjectConfigs(
       for (const i of misses) {
         const configPath = prepared[i]!.configPath
         const own = await builtinsChangedBy(configPath)
+        // The blaming worker is gone, so this thread reads alone; and a
+        // worker that outlived its budget was ended before it could put
+        // the umask back.
+        restoreUmask(umask)
         if (own.length > 0) throw builtinsChanged(own, configPath)
       }
       throw builtinsChanged(changedInRound)
     }
     if (first !== undefined) throw first.failed
-    if (changed.length > 0) throw builtinsChanged(changed)
+    // One load in the round, in the worker (a repeat load), is the one
+    // that moved it: the worker no longer reads the umask to say so.
+    if (changed.length > 0)
+      throw builtinsChanged(
+        changed,
+        misses.length === 1 ? prepared[misses[0]!]!.configPath : undefined,
+      )
     return results.map((r) => (r as Loaded).config)
   } finally {
     endRound()
@@ -906,8 +917,9 @@ function currentUmask(): number {
   // Through globalThis, as restoreCwd: the playground's shim has no umask.
   const proc = globalThis.process as { umask?: (mask?: number) => number }
   if (typeof proc.umask !== 'function') return -1
-  // No argument reads it: setting 0 and back would open a window where a
-  // file written by an overlapping write landed world-writable.
+  // Bun reads it by setting 0 and putting it back (probed on 1.4.2: four
+  // workers reading at once left the process at 0), so it is read on this
+  // thread only, and never while the config worker evaluates.
   return proc.umask()
 }
 
