@@ -195,6 +195,12 @@ export interface RunOptions {
    * is replaced only when the next cycle starts.
    */
   holdPersistent?: boolean
+  /**
+   * vx's stdin is a terminal: each `exec.interactive` task is handed it,
+   * alone (placement.ts `terminalHolders`). The CLI sets it from
+   * `process.stdin.isTTY`; absent, an interactive task runs as any task.
+   */
+  tty?: boolean
   log?: Logger
   /**
    * Inject the run's event bus. When provided, the orchestrator emits

@@ -251,6 +251,13 @@ export interface ScheduleOptions {
    * pooled tasks hold no local resources and are never asked.
    */
   admit?: (id: string, running: ReadonlySet<string>) => boolean
+  /**
+   * Tasks that hold the terminal (`exec.interactive` on a TTY). One starts
+   * only once nothing runs, and nothing starts while it runs. When one is
+   * the next to start, dispatch stops so the running tasks drain. A
+   * persistent one holds it until `execute` resolves, at spawn.
+   */
+  exclusive?: ReadonlySet<string>
 }
 
 /**
@@ -477,7 +484,22 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
     if (pool === undefined) return execRoom()
     return (poolActive.get(pool.name) ?? 0) < pool.capacity
   }
+  const exclusive = options.exclusive
+  let holding = false
+  const busy = (): boolean => {
+    if (active > 0 || activeRestore > 0) return true
+    for (const n of poolActive.values()) if (n > 0) return true
+    return false
+  }
   const admit = (id: string): (() => void) => {
+    if (exclusive?.has(id) === true) {
+      holding = true
+      active++
+      return () => {
+        holding = false
+        active--
+      }
+    }
     if (inRestoreTier(id)) {
       activeRestore++
       return () => {
@@ -643,6 +665,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
       // task returns without asking (finishing it is free); restore
       // tasks are never asked, so they never park.
       const takeFitting = (): string | undefined => {
+        if (holding) return undefined
         // No pools, no policy and a full exec lane: nothing on the
         // exec queue can be admitted, so it is not scanned — scanning it
         // would pop and re-park every ready exec task on every tick, and
@@ -656,6 +679,11 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
             const seq = execReady.peekSeq()
             const id = execReady.pop() as string
             if (willSkip(id)) return id
+            if (exclusive?.has(id) === true) {
+              if (!busy() && (!admitActive || admits(id))) return id
+              parked.push([id, seq])
+              return undefined
+            }
             if (hasRoom(id)) {
               if (!admitActive || admits(id)) return id
               // A free worker, refused by the policy: the hold starts now.

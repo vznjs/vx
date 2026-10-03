@@ -49,6 +49,7 @@ const TASK = [
 const EXEC = [
   'command',
   'env',
+  'interactive',
   'persistent',
   'remote',
   'retries',

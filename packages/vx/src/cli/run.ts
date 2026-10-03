@@ -551,6 +551,7 @@ export async function resolveRunOptions(
     ...(parsed.download !== undefined ? { download: parsed.download } : {}),
     ...(parsed.continueMode !== undefined ? { continueMode: parsed.continueMode } : {}),
     forwardArgs: parsed.forwardArgs,
+    ...(process.stdin.isTTY === true ? { tty: true } : {}),
   }
   if (parsed.excludeDependencies === 'all') {
     opts.excludeDependencies = 'all'

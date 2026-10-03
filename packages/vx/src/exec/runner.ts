@@ -87,6 +87,19 @@ export interface RunOptions {
    * handler can SIGTERM everything still alive mid-run.
    */
   liveChildren?: Set<ReturnType<typeof Bun.spawn>>
+  /**
+   * Hand the child vx's own stdin, stdout and stderr (`exec.interactive` on
+   * a TTY). Nothing passes through vx: the callbacks hear nothing and the
+   * result's streams are empty.
+   */
+  terminal?: boolean
+}
+
+/** A child's descriptors 0–2: vx's own for a task that holds the terminal. */
+function taskStdio(terminal: boolean | undefined, stdin: 'ignore' | 'pipe') {
+  return terminal === true
+    ? (['inherit', 'inherit', 'inherit'] as const)
+    : ([stdin, 'pipe', 'pipe'] as const)
 }
 
 export function shellQuote(arg: string): string {
@@ -492,20 +505,19 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
           // A pipe vx holds and never writes: stdin stays open while vx
           // lives and ends when it does. A dev server that exits on stdin
           // EOF (esbuild --watch, Vite's case in turborepo#8915) became ready
-          // and exited 0 under 'ignore'. Not the terminal: several servers
-          // would steal each other's keystrokes, and a CI's /dev/null stdin
-          // is the same EOF. The one-shot spawn below keeps 'ignore', so a
-          // task that reads stdin can never hang CI.
+          // and exited 0 under 'ignore'. Not the terminal unless the task
+          // asks (`terminal`, one per run): several servers would steal each
+          // other's keystrokes, and a CI's /dev/null stdin is the same EOF.
+          // The one-shot spawn below keeps 'ignore', so a task that reads
+          // stdin can never hang CI.
           stdio: [
-            'pipe',
-            'pipe',
-            'pipe',
+            ...taskStdio(opts.terminal, 'pipe'),
             ...(signalFd ? ['pipe' as const] : []),
             ...(guard === undefined ? [] : [guard]),
           ],
           // Its own session and process group, so a kill reaches what it
-          // forked (kill-tree.ts). stdin is a pipe, so a background group
-          // never stops on a terminal read.
+          // forked (kill-tree.ts). The terminal, when it is handed over, is
+          // not this session's controlling one, so no read stops the group.
           detached: true,
         },
       ),
@@ -712,10 +724,10 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
         ...SH_ARGV0,
         cwd: opts.cwd,
         env: opts.env as Record<string, string>,
-        stdio: ['ignore', 'pipe', 'pipe', ...(guard === undefined ? [] : [guard])],
+        stdio: [...taskStdio(opts.terminal, 'ignore'), ...(guard === undefined ? [] : [guard])],
         // Its own session and process group, so a kill reaches what it
-        // forked (kill-tree.ts). stdin is ignored, so a background group
-        // never stops on a terminal read.
+        // forked (kill-tree.ts). A terminal handed over is not this
+        // session's controlling one, so no read stops the group.
         detached: true,
       }),
     )
@@ -877,11 +889,8 @@ export async function streamToString(
   signal?: AbortSignal,
   retain = true,
 ): Promise<string> {
-  // Bun.spawn types stdout/stderr as `ReadableStream | number | undefined`
-  // — the `number` is for inheritance modes, only present when the caller
-  // chose `'inherit'` instead of `'pipe'`. We only call this with `'pipe'`,
-  // so the runtime value is always a ReadableStream; the `number` branch
-  // is unreachable but typed.
+  // Bun.spawn types stdout/stderr as `ReadableStream | number | undefined`;
+  // a stream the child inherited (`terminal`) is not one, and holds nothing.
   if (!stream || typeof stream === 'number') return ''
   const full = new BoundedCapture()
   const reader = stream.getReader()

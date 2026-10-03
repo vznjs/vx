@@ -29,9 +29,8 @@ it("names vx's home for an exec key another tool spells (D-100)", () => {
     'vx spells it one task each, which vx runs at once, or `a & b; wait` in `command`',
   )
   expect(where('shell')).toBe('vx spells it no field: `command` always runs in a shell')
-  expect(where('interactive')).toBe(
-    'vx spells it a command run outside vx: a task never reads the terminal (its stdin is EOF, or a pipe vx holds under `persistent`)',
-  )
+  // Turbo's spelling is vx's own field.
+  expect(where('interactive')).toBeUndefined()
   // CONTROL: a typo still gets the nearest spelling.
   expect(where('comand')).toBe('did you mean command?')
 })

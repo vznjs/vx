@@ -122,7 +122,7 @@ vite-task `/crates/vite_task/src/cli/mod.rs`; vx `src/cli/run.ts`.
 | Implicit-dependency hash (project `package.json`)                           | yes — `package.json` is a default input              | `externalDependencies`                                   | (via lockfile)                     | **yes** — folded directly (v12)                                                                         |
 | Lockfile-aware invalidation (only the projects a dependency change reaches) | per package: the lockfile changes that affect it     | yes — pruned lockfile per project, in the daemon's graph | (whole lockfile)                   | **`@vzn/vx-lockfile`** — per-project closure digest, memoised by lockfile hash; `--affected` follows it |
 | Resolved-config hash (captures TS imports)                                  | —                                                    | —                                                        | —                                  | **yes** — `node.config` JSON hashed                                                                     |
-| Persistent / long-running tasks (dev servers)                               | `persistent`, `interruptible`, `interactive`, `with` | `continuous`                                             | (handled outside graph)            | `exec.persistent.readyWhen`                                                                             |
+| Persistent / long-running tasks (dev servers)                               | `persistent`, `interruptible`, `interactive`, `with` | `continuous`                                             | (handled outside graph)            | `exec.persistent.readyWhen`, `exec.interactive`                                                         |
 | Configurations (named option sets)                                          | —                                                    | `configurations` + `-c`                                  | —                                  | — **gap**                                                                                               |
 | Per-target metadata (`description`)                                         | `description`                                        | `metadata.description`                                   | —                                  | `description: string`                                                                                   |
 | Target defaults / inheritance                                               | `extends`, task `extends`                            | `targetDefaults` (priority-resolved)                     | (no)                               | rejected by design — presets are TS imports                                                             |
@@ -468,8 +468,9 @@ import()` with a content-hash query string for config cache-busting.
 - **Persistent tasks with regex-readiness.** `readyWhen: 'Local:'`
   for a dev server is a one-liner; downstream tasks unblock on ready,
   not on exit. Turbo's `persistent` is more elaborate (separate
-  `interruptible` / `interactive` / `with` flavors); vx's surface is
-  smaller.
+  `interruptible` / `with` flavors); vx's surface is smaller.
+  `exec.interactive` is Turbo's `interactive`, outside its TUI: on a
+  TTY the task gets the terminal and runs alone.
 - **Explicit `cache + persistent` rejection.** The project loader
   throws — no silent surprise.
 

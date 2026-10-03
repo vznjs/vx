@@ -5,7 +5,8 @@
 // every executor list — what a plugin executor declines runs here.
 // Persistent tasks (`exec.persistent`) never reach an executor: they are local by
 // construction (a worker cannot hand the submitter a listening port) and
-// stay on `runPersistent`.
+// stay on `runPersistent`. An `exec.interactive` task reaches the local one
+// only: no plugin can hand it this terminal.
 //
 // Lives in `exec/` (not `orchestrator/`) so the contract depends only on
 // process primitives — the module-boundary matrix forbids `exec` → `cache`,
@@ -152,6 +153,12 @@ export interface ExecuteRequest {
   /** See `RunOptions.liveChildren`: the run's SIGINT/SIGTERM registry. */
   readonly liveChildren?: Set<ReturnType<typeof Bun.spawn>>
   readonly sandbox?: ExecuteSandbox
+  /**
+   * The task holds vx's terminal (`exec.interactive` on a TTY): its stdin,
+   * stdout and stderr are vx's own, and the callbacks hear nothing. Only
+   * core's local executor is ever handed such a task (placement.ts).
+   */
+  readonly terminal?: true
 }
 
 export interface ExecuteResult extends RunResult {

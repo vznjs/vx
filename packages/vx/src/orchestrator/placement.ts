@@ -2,12 +2,13 @@
 // executors, and the plan-mode view of it. Split from run.ts on 2026-09-10
 // (pure motion). A task is pinned to this machine when it is persistent,
 // depends on a persistent task, is sandboxed, says `exec.remote: false`, or
-// folds a runtime probe into its key;
+// folds a runtime probe into its key; an `exec.interactive` task goes to the
+// local floor directly, as only it can hand over this terminal;
 // everything else asks the executors in declaration order, and the local
 // floor takes what nothing claimed.
 
-import { machineParallelism } from '../util/index.js'
-import { selectExecutor, type TaskExecutor } from '../exec/index.js'
+import { machineParallelism, UserError } from '../util/index.js'
+import { isLocalExecutor, selectExecutor, type TaskExecutor } from '../exec/index.js'
 import { isGroupTask, type TaskNode } from '../graph/index.js'
 import { resolveDownloadModes } from './download-policy.js'
 import type { Logger } from './logger.js'
@@ -75,6 +76,49 @@ function withProbedRuntime(nodes: Map<string, TaskNode>, pinned: Set<string>): S
   return pinned
 }
 
+/**
+ * The tasks that hold the terminal in a run on one: every
+ * `exec.interactive` task when vx's stdin is a TTY, none otherwise. A
+ * persistent one holds it until the run ends, so a run may have one, and
+ * every other interactive task must run before it (a dependency); anything
+ * else would have two tasks reading the same keys. Refused before any task
+ * runs.
+ */
+export function terminalHolders(nodes: Map<string, TaskNode>, tty: boolean): Set<string> {
+  const holders = new Set<string>()
+  if (!tty) return holders
+  for (const node of nodes.values()) {
+    if (node.config.exec?.interactive === true) holders.add(node.id)
+  }
+  const servers = [...holders].filter((id) => nodes.get(id)!.config.exec!.persistent !== undefined)
+  if (servers.length > 1) {
+    throw new UserError(
+      `${servers.join(' and ')} are persistent and interactive: a server holds the terminal ` +
+        `until the run ends, so one run can hold one — run them in separate terminals`,
+    )
+  }
+  if (servers.length === 0) return holders
+  const server = servers[0]!
+  const before = new Set<string>()
+  const stack = [...nodes.get(server)!.deps]
+  while (stack.length > 0) {
+    const id = stack.pop()!
+    if (before.has(id)) continue
+    before.add(id)
+    stack.push(...nodes.get(id)!.deps)
+  }
+  const clash = [...holders].filter((id) => id !== server && !before.has(id))
+  if (clash.length > 0) {
+    throw new UserError(
+      `${server} is persistent and interactive, so it holds the terminal until the run ends, ` +
+        `and ${clash.join(', ')} would ask for it too: make ${server} depend on ` +
+        `${clash.length === 1 ? 'it' : 'them'}, or run ${clash.length === 1 ? 'it' : 'them'} on ` +
+        `${clash.length === 1 ? 'its' : 'their'} own`,
+    )
+  }
+  return holders
+}
+
 export interface Placements {
   executors: Map<string, TaskExecutor>
   /**
@@ -118,8 +162,14 @@ export function placeTasks(
     remoteOnlyNoop: new Set(),
     remoteOnly: new Set(),
   }
+  // `resolveExecutors` puts it last in every list.
+  const floor = executors.find(isLocalExecutor)!
   for (const node of nodes.values()) {
     if (isGroupTask(node) || node.config.exec?.persistent !== undefined) continue
+    if (node.config.exec?.interactive === true) {
+      placements.executors.set(node.id, floor)
+      continue
+    }
     const executor = selectExecutor(
       executors,
       {

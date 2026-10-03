@@ -131,8 +131,8 @@
   },
   {
     "key": "turbo.json tasks.*.interactive",
-    "status": "not-supported",
-    "reason": "vx gives no task the terminal, so a prompt reads end of input; `true` gets a TODO saying so."
+    "status": "mapped",
+    "reason": "`true` becomes `exec.interactive: true`, uncached (Turbo requires `cache: false` of it): the task holds the terminal when vx's stdin is one."
   },
   {
     "key": "turbo.json tasks.*.interruptible",

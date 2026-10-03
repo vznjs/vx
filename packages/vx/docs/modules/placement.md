@@ -12,6 +12,8 @@ running anything.
 
 ```ts
 export function pinnedLocalSet(nodes: Map<string, TaskNode>): Set<string>
+// the exec.interactive tasks when `tty`, else none; throws UserError when two would read the keys at once
+export function terminalHolders(nodes: Map<string, TaskNode>, tty: boolean): Set<string>
 
 export interface Placements {
   executors: Map<string, TaskExecutor> // every placed task → the executor that took it
@@ -55,7 +57,9 @@ export const UNPLACED_EXECUTOR: TaskExecutor
   executor;
   `selectExecutor` is told so and a remote executor declines. A
   persistent task itself, like a group, is not placed at all — it runs
-  on this machine outside the executor list. The pin flows up the
+  on this machine outside the executor list. An `exec.interactive` task
+  goes to core's local executor without asking a plugin: only it can
+  hand over this terminal. Its dependants stay free. The pin flows up the
   dependant edges from the tasks that pin themselves, one walk on an
   explicit stack (a recursion per edge threw `RangeError` from
   `vx run --dry` on a 50,000-deep chain); a graph where nothing pins

@@ -550,6 +550,7 @@ export interface ExecConfig {
   timeout?: number
   retries?: number
   persistent?: PersistentConfig
+  interactive?: boolean
   sandbox?: SandboxConfig
 }
 == type ExecEnv (src/config.ts)
@@ -583,6 +584,7 @@ export interface ExecuteRequest {
   readonly signal?: AbortSignal
   readonly liveChildren?: Set<ReturnType<typeof Bun.spawn>>
   readonly sandbox?: ExecuteSandbox
+  readonly terminal?: true
 }
 == type ExecuteResult (src/exec/executor.ts)
 export interface ExecuteResult extends RunResult {
@@ -1118,6 +1120,7 @@ export interface RunOptions {
   handleSignals?: boolean
   signal?: AbortSignal
   holdPersistent?: boolean
+  tty?: boolean
   log?: Logger
   bus?: EventBus
   inflight?: Map<string, Promise<void>>
