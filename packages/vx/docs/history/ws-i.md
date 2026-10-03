@@ -456,6 +456,11 @@ refuses first and stores nothing. 1,000 projects, cold, 13 rounds:
 `load configs` min 275.7 → 207.5 ms, median 306.6 → 228.8 (A/A 296.8 /
 323.2).
 
+I-56. `node:readline/promises` is imported only when the picker asks
+(#2506): every `vx run` loaded it for the one interactive use, ~0.7 ms
+past the stdout stream. 10 projects, warm no-op, compiled, 41 rounds:
+wall min 44.8 → 43.9 ms, median 50.0 → 48.4 (A/A 44.9 / 49.6).
+
 ## Leads for other streams
 
 - **A: a cold save commits one SQLite transaction per entry.** The
