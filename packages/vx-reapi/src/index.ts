@@ -30,7 +30,14 @@ import { ReapiClient, type ReapiOptions } from './wire.js'
 export { ReapiRemoteCache } from './cache.js'
 export { type ReapiOptions } from './wire.js'
 
-export interface ReapiPluginOptions extends Partial<ReapiOptions> {
+// The connection's wire form, not the plugin's: the plugin reads PEM FILES
+// (`tlsCertificate`, …, checked as a pair) and warns through its own
+// context, so `reapi({ onWarn })` was dropped without a word and
+// `reapi({ tlsClientCertPem })` skipped the pair check. `ReapiRemoteCache`,
+// composed by hand, takes them.
+type WireOnly = 'tlsCaPem' | 'tlsClientCertPem' | 'tlsClientKeyPem' | 'onWarn'
+
+export interface ReapiPluginOptions extends Partial<Omit<ReapiOptions, WireOnly>> {
   /**
    * Client-side bound on one action, from the EXECUTING transition. See
    * `ReapiExecutorOptions.executeTimeoutMs`; `exec.timeout` wins per task.
@@ -176,13 +183,9 @@ const REAPI_PLUGIN_KEYS: PluginOptionKinds<ReapiPluginOptions> = {
   instanceName: 'string',
   headers: 'object',
   tls: 'boolean',
-  tlsCaPem: 'string',
-  tlsClientCertPem: 'string',
-  tlsClientKeyPem: 'string',
   toolName: 'string',
   toolVersion: 'string',
   correlatedInvocationsId: 'string',
-  onWarn: 'function',
   callTimeoutMs: 'number',
   metaTimeoutMs: 'number',
   chunkBytes: 'number',
