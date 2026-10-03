@@ -91,6 +91,10 @@ export interface ProjectEntry {
 export function unreachedPackages(workspace: Workspace): Promise<string[]>
 export function unreachedHint(unreached: readonly string[]): string
 
+// Whether a member glob reaches any package.json but the root's,
+// addressable or not; `vx init` names globs that reach none (M-46).
+export function reachesManifest(workspace: Workspace): Promise<boolean>
+
 // The directories a recursive watch must cover to see every member.
 export function memberBaseDirs(workspace: Workspace): string[]
 

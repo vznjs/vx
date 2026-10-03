@@ -10,7 +10,7 @@ import { unlink } from 'node:fs/promises'
 import path from 'node:path'
 import { executablePath, relPosix, UserError } from '../util/index.js'
 import type { ProjectMeta } from './workspace.js'
-import { loadWorkspace, unreachedHint, unreachedPackages } from './workspace.js'
+import { loadWorkspace, reachesManifest, unreachedHint, unreachedPackages } from './workspace.js'
 import { WORKSPACE_CONFIG_FILENAMES } from './project-loader.js'
 
 /**
@@ -357,8 +357,10 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
   // Globs that reach no package: "no scripts" was true and named nothing
   // to fix (M-42).
   const globs = workspace?.packageGlobs.filter((g) => g !== '.') ?? []
+  // Asked of the globs, not of `metas`: a nameless or shared-name member
+  // is matched yet absent from `metas` (M-46).
   const noMembers =
-    globs.length > 0 && metas.every((m) => path.resolve(m.dir) === path.resolve(root))
+    workspace !== undefined && globs.length > 0 && !(await reachesManifest(workspace))
       ? [
           `the workspace globs (${globs.map((g) => `"${g}"`).join(', ')}) match no package.json: add a package under one, or fix the glob`,
         ]
