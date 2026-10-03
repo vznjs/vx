@@ -670,7 +670,52 @@ interface BuiltinSnapshot {
   readonly props: readonly (OwnProperties | undefined)[]
 }
 
-function builtinSnapshot(leaveOut?: string): BuiltinSnapshot {
+/**
+ * The members of `Bun` vx reads, which the workspace config's guard checks;
+ * of the rest it keeps the keys and their order, not their descriptors.
+ * Some members are built on their first read (`postgres` loaded `bun:sql`,
+ * 3.4 ms), and the guard runs on every warm run, where its full read of
+ * `Bun` was 4.4–5 ms of a 45 ms no-op (compiled, 2026-10-03). A project
+ * config's guard reads them all. Held to every `Bun.<name>` in `src/` by
+ * tests/workspace-guard-bun.test.ts.
+ */
+const BUN_MEMBERS_VX_READS: readonly PropertyKey[] = [
+  'Archive',
+  'BunFile',
+  'CryptoHasher',
+  'Glob',
+  'JSONC',
+  'Subprocess',
+  'Transpiler',
+  'YAML',
+  'color',
+  'deepEquals',
+  'env',
+  'file',
+  'hash',
+  'main',
+  'nanoseconds',
+  'plugin',
+  'randomUUIDv7',
+  'resolveSync',
+  'semver',
+  'serve',
+  'sleep',
+  'spawn',
+  'spawnSync',
+  'stdout',
+  'stringWidth',
+  'version',
+  'which',
+  'write',
+  'zstdCompress',
+  'zstdDecompress',
+]
+
+/** A descriptor the snapshot did not read. */
+const UNREAD: PropertyDescriptor = Object.freeze({})
+
+function builtinSnapshot(leaveOut?: string, onlyBunMembersVxReads = false): BuiltinSnapshot {
   const prims: Primitives = {
     ownKeys: Reflect.ownKeys,
     descriptorOf: Object.getOwnPropertyDescriptor,
@@ -689,7 +734,12 @@ function builtinSnapshot(leaveOut?: string): BuiltinSnapshot {
     const proto = WATCHED_BUILTINS[i]![1]
     const keys = prims.ownKeys(proto)
     const descriptors: PropertyDescriptor[] = []
-    for (let j = 0; j < keys.length; j++) descriptors[j] = prims.descriptorOf(proto, keys[j]!)!
+    const narrow = onlyBunMembersVxReads && proto === Bun
+    for (let j = 0; j < keys.length; j++) {
+      const key = keys[j]!
+      descriptors[j] =
+        narrow && !BUN_MEMBERS_VX_READS.includes(key) ? UNREAD : prims.descriptorOf(proto, key)!
+    }
     props[i] = { keys, descriptors }
   }
   return { prims, props }
@@ -712,7 +762,9 @@ function unchanged(
   for (let j = 0; j < keys.length; j++) {
     const key = keys[j]!
     if (key !== was.keys[j]) return false
-    if (!sameDescriptor(p, was.descriptors[j]!, p.descriptorOf(proto, key)!)) return false
+    const prior = was.descriptors[j]!
+    if (prior === UNREAD) continue
+    if (!sameDescriptor(p, prior, p.descriptorOf(proto, key)!)) return false
   }
   return true
 }
@@ -785,6 +837,7 @@ function restoreBuiltins(before: BuiltinSnapshot | undefined, everyLoadOnly = fa
           break
         }
       }
+      if (prior === UNREAD) continue
       if (prior !== undefined && sameDescriptor(p, prior, p.descriptorOf(proto, key)!)) continue
       changed[changed.length] = name + '.' + p.keyName(key)
       if (prior === undefined) p.deleteOwn(proto, key)
@@ -794,7 +847,8 @@ function restoreBuiltins(before: BuiltinSnapshot | undefined, everyLoadOnly = fa
       const key = was.keys[k]!
       if (p.hasOwn(proto, key)) continue
       changed[changed.length] = name + '.' + p.keyName(key)
-      p.defineOwn(proto, key, was.descriptors[k]!)
+      // An unread member cannot be put back as it was; it is refused all the same.
+      if (was.descriptors[k] !== UNREAD) p.defineOwn(proto, key, was.descriptors[k]!)
     }
   }
   return changed
@@ -933,7 +987,7 @@ export async function loadWorkspaceConfig(root: string): Promise<WorkspaceConfig
     // left out: it loads first in every run, filtered or not, so none
     // depends on what else loaded (D-122's case), and plugins' tests and
     // tools hand state through them.
-    const builtins = builtinSnapshot('globalThis')
+    const builtins = builtinSnapshot('globalThis', true)
     const env = { ...process.env }
     const cwd = process.cwd()
     const umask = currentUmask()
