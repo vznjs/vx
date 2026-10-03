@@ -1215,7 +1215,8 @@ project, so every sibling project and every root file is denied. Being
 stopped at that wall is the sandbox working, not a finding: only
 denials INSIDE the project are reported, because those are the reads
 that make a cache key wrong. A write refused past the wall is named
-beside a FAILED task, never counted, with the directory to grant: a
+beside a FAILED task, never counted, with the directory to grant (under
+the host's temp directory, `$TMPDIR`, the task's own, instead): a
 tool that cannot fill its cache (`~/.bun/install/cache`) rarely says
 where it tried. So is a read the wall hid of a path that exists on the
 host, with the grant spelled from the project (`'../../tsconfig.base.json'`):
