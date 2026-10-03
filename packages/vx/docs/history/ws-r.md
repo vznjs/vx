@@ -189,6 +189,14 @@ prune` all match. Fixed: the Run blocks used bare `vx`, which a local
   `examples/` to have its `describe('examples/<name>')` (a planted
   `examples/zz` fails it), and the npm-install row reads the tree too.
 
+- **R-32** Link sweep: the built site already holds every internal link
+  and anchor (`vx-docs/tests/site-links.test.ts`, item 711, green), and
+  `doc-references` holds docs/ prose links. The READMEs outside docs/
+  (root, CONTRIBUTING, each package, each starter) had no row; none was
+  dead. `readme-links.unsafe.test.ts` now holds their relative links,
+  `github.com/vznjs/vx/(tree|blob)/main` paths and `.md` anchors (a
+  planted `clix.md` fails it).
+
 ## Leads
 
 - Real-repo rows (`packages/vx-bench/real-repos.json`, benchmarks.md's
