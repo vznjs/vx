@@ -242,3 +242,16 @@ export function createTables(db: Database): void {
     );
   `)
 }
+
+/**
+ * A `WHERE <column> …` test against many hashes, as one statement whatever
+ * their number. A list of `?` is a new statement per length, compiled each
+ * run: 2.0 ms against 1.4 for 900 hashes through `json_each` (2026-10-03).
+ * One hash keeps `= ?`, ~3 µs cheaper than parsing a one-element array, on
+ * the per-hit path that asks for one at a time.
+ */
+export function inHashes(hashes: readonly string[]): { test: string; params: string[] } {
+  return hashes.length === 1
+    ? { test: '= ?', params: [hashes[0]!] }
+    : { test: 'IN (SELECT value FROM json_each(?))', params: [JSON.stringify(hashes)] }
+}
