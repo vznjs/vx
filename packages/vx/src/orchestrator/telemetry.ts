@@ -388,9 +388,11 @@ export function createTelemetrySource(args: {
   // Never silently. The standing rule is that a never-fail path must still
   // WARN — telemetry that vanishes without a word is indistinguishable from
   // telemetry nobody configured.
-  // Every hook call site skips a disabled sink first, so this runs at most
-  // once per sink without a guard of its own (item 654).
+  // Every hook call site skips a disabled sink first (item 654), but an
+  // async hook's rejections land later, several records' worth of them
+  // after the first: those are said once too.
   const disable = (sink: TelemetrySink, hook: string, err: unknown): void => {
+    if (disabled.has(sink)) return
     disabled.add(sink)
     warn?.(
       `[vx] telemetry sink '${label(sink)}' threw in ${hook}; disabled for this run: ${err instanceof Error ? err.message : String(err)}`,
@@ -406,7 +408,10 @@ export function createTelemetrySource(args: {
       const kinds = sink.wants ?? DEFAULT_KINDS
       if (!kinds.includes(record.kind)) continue
       try {
-        sink.onRecord(record)
+        // Typed `void`, yet an `async onRecord` rejects where no one
+        // listened: an unhandled rejection killed the run (C-101).
+        const ret: unknown = sink.onRecord(record)
+        if (ret instanceof Promise) ret.catch((err) => disable(sink, 'onRecord', err))
       } catch (err) {
         disable(sink, 'onRecord', err)
       }
@@ -483,7 +488,8 @@ export function createTelemetrySource(args: {
       for (const sink of sinks) {
         if (disabled.has(sink) || sink.onRunSummary === undefined) continue
         try {
-          sink.onRunSummary(summary)
+          const ret: unknown = sink.onRunSummary(summary)
+          if (ret instanceof Promise) ret.catch((err) => disable(sink, 'onRunSummary', err))
         } catch (err) {
           disable(sink, 'onRunSummary', err)
         }

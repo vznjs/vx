@@ -56,6 +56,7 @@ is pre-folded, bigint wallclock spans are decimal strings.
 - **Observe-only by construction**: sinks receive immutable records and
   a read-only context — no bus, no Cache, no path back into scheduling.
 - **Crash isolation**: a throwing sink is disabled for the run, never
-  propagates.
+  propagates, and so is an `async` hook that rejects; it is said once,
+  however many rejections follow (`telemetry-async-hooks.test.ts`).
 - `task.log` is opt-in via `TelemetrySink.wants` (default excludes it).
 - Version bumps are additive-or-bump: consumers reject unknown majors.
