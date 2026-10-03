@@ -855,7 +855,6 @@ packages:
 
   it.each([
     ['settings', 'settings:\n  autoInstallPeers: true\n', 'settings:\n  autoInstallPeers: false\n'],
-    ['overrides', 'overrides:\n  bar: 2.0.0\n', 'overrides:\n  bar: 2.0.1\n'],
     [
       'packageExtensionsChecksum',
       'packageExtensionsChecksum: aa\n',

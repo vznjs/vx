@@ -219,10 +219,10 @@ describe('workspace digests', () => {
     expect(after.get('packages/a')).toBe(before.get('packages/a'))
   })
 
-  it('an install-wide knob (overrides) moves every workspace', () => {
+  it('overrides alone move no workspace: what they force is the entry (D-142)', () => {
     const before = digests(lock())
     const after = digests(lock({ override: '4.0.0' }))
-    for (const dir of before.keys()) expect(after.get(dir)).not.toBe(before.get(dir))
+    for (const dir of before.keys()) expect(after.get(dir)).toBe(before.get(dir))
   })
 
   // bun.lock names a patch by path only: the patch file's CONTENT arrives

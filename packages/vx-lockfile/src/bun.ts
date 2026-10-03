@@ -34,7 +34,11 @@ export interface Entry {
 
 type Json = Record<string, unknown>
 /** The top-level fields the digest reads per workspace. */
-const PER_WORKSPACE = new Set(['workspaces', 'packages'])
+// Read per workspace: the workspaces and packages themselves, and the fields
+// whose whole effect is the `packages` entry a workspace reaches — how a
+// range was written (catalogs, D-141) and what an override forced (D-142).
+// Folded into every workspace, one such edit re-keyed them all.
+const PER_WORKSPACE = new Set(['workspaces', 'packages', 'catalog', 'catalogs', 'overrides'])
 
 const DEP_FIELDS = [
   'dependencies',
@@ -78,13 +82,8 @@ export function parseLockfile(text: string): Lockfile {
   // allow-list dropped `trustedDependencies`, which decides whose install
   // scripts run (item 933).
   const rest: Json = {}
-  // A catalog is how a range was written, and what it resolved to is the
-  // `packages` entry each workspace already reaches: folded here too, one
-  // catalog bump re-keyed every project, the ones that never name it
-  // included (probed; pnpm keys it per importer, D-141).
-  for (const [k, v] of Object.entries(d)) {
-    if (!PER_WORKSPACE.has(k) && k !== 'catalog' && k !== 'catalogs') rest[k] = v
-  }
+  for (const [k, v] of Object.entries(d)) if (!PER_WORKSPACE.has(k)) rest[k] = v
+
   const global = JSON.stringify(rest)
   return { version: String(d['lockfileVersion']), workspaces, workspaceDirs, packages, global }
 }
