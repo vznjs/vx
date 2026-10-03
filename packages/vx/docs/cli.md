@@ -1671,7 +1671,10 @@ stack; so is a release document cut after the headers arrived or not
 JSON (a captive portal's page served with a 200): `could not read the
 release from api.github.com (…) — nothing replaced; …`, and an asset
 download cut the same way: `could not download the release asset from
-github.com (…) — nothing replaced; …`. The new binary
+github.com (…) — nothing replaced; …`. A binary whose directory this
+user cannot write (a root-owned `/usr/local/bin`) is refused before the
+download: `cannot write to <dir> (EACCES), where this vx lives — nothing
+downloaded; re-run as a user who can (sudo vx upgrade), …`. The new binary
 keeps the old one's mode (and, as root, its owner), and must answer
 `--version` before the upgrade reports it installed: one that does not
 start on this machine — or does not answer within 10 s — is swapped back
@@ -1683,7 +1686,8 @@ bare `(403)` (item 1098).
 
 Exit codes: `0` the new binary installed, or already at that version;
 `1` anything refused or swapped back: from source, from npm, a host it
-cannot reach, a digest that does not match, a binary that does not start.
+cannot reach, a directory it cannot write, a digest that does not match,
+a binary that does not start.
 
 ## `vx init`
 
