@@ -1,0 +1,64 @@
+{
+  "graph": {
+    "nodes": {
+      "app": {
+        "name": "app",
+        "data": {
+          "root": "apps/app",
+          "targets": {
+            "build": {
+              "command": "vite build",
+              "options": { "cwd": "{projectRoot}" },
+              "cache": true,
+              "outputs": ["{projectRoot}/dist"],
+              "dependsOn": ["^build"],
+              "inputs": [
+                "default",
+                { "externalDependencies": ["vite"] },
+                { "runtime": "node -v" },
+                { "dependentTasksOutputFiles": "**/*.d.ts", "transitive": true },
+                { "input": "production", "projects": ["util"] },
+                { "fileset": "{workspaceRoot}/tsconfig.base.json" }
+              ]
+            },
+            "typecheck": {
+              "command": "tsc --noEmit",
+              "options": { "cwd": "{projectRoot}" },
+              "cache": true,
+              "dependsOn": [{ "target": "build", "projects": "dependencies" }],
+              "inputs": ["default", "^default"]
+            },
+            "e2e": {
+              "command": "playwright test",
+              "options": { "cwd": "{projectRoot}" },
+              "dependsOn": [{ "target": "build", "projects": ["*"] }]
+            }
+          }
+        }
+      },
+      "util": {
+        "name": "util",
+        "data": {
+          "root": "libs/util",
+          "targets": {
+            "build": {
+              "command": "tsc -b",
+              "options": { "cwd": "{projectRoot}" },
+              "cache": true,
+              "outputs": ["{projectRoot}/dist"]
+            }
+          }
+        }
+      },
+      "docs": {
+        "name": "docs",
+        "data": { "root": "apps/docs", "targets": { "lint": { "command": "echo ok" } } }
+      }
+    },
+    "dependencies": {
+      "app": [{ "source": "app", "target": "util", "type": "static" }],
+      "util": [],
+      "docs": []
+    }
+  }
+}

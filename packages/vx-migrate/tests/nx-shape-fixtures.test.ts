@@ -1,7 +1,8 @@
-// Five hand-written Nx graphs in the shapes real repos have (plugin-
+// Eight hand-written Nx graphs in the shapes real repos have (plugin-
 // inferred targets, explicit executors, continuous and atomized targets
 // with a root project, per-project named inputs and filesets, run-commands
-// variants), migrated
+// variants, configurations with run-script, every input kind, token
+// interpolation), migrated
 // through the CLI. Every config it writes must load: a written config vx
 // refuses (an output outside the workspace, P2-11) fails the whole repo.
 
@@ -20,11 +21,15 @@ interface Node {
   data: { root: string }
 }
 
-async function migrate(
-  shape: string,
-): Promise<{ code: number; out: string; tasks: Record<string, string[]> }> {
+async function migrate(shape: string): Promise<{
+  code: number
+  out: string
+  tasks: Record<string, string[]>
+  configs: Record<string, Record<string, Record<string, unknown>>>
+}> {
   const graph = (await Bun.file(path.join(FIXTURES, `${shape}.json`)).json()) as {
     graph: { nodes: Record<string, Node> }
+    scripts?: Record<string, Record<string, string>>
   }
   const root = await mkdtemp(path.join(os.tmpdir(), 'vx-nx-shape-'))
   try {
@@ -42,7 +47,7 @@ async function migrate(
       await mkdir(path.join(root, rel, 'src'), { recursive: true })
       await writeFile(
         path.join(root, rel, 'package.json'),
-        JSON.stringify({ name, version: '1.0.0' }),
+        JSON.stringify({ name, version: '1.0.0', scripts: graph.scripts?.[name] }),
       )
       await writeFile(path.join(root, rel, 'src', 'index.ts'), 'export {}\n')
     }
@@ -62,12 +67,18 @@ async function migrate(
     })
     const [out, code] = await Promise.all([new Response(proc.stdout).text(), proc.exited])
     const tasks: Record<string, string[]> = {}
+    const configs: Record<string, Record<string, Record<string, unknown>>> = {}
     for (const [name, rel] of roots) {
       const file = path.join(root, rel, 'vx.config.ts')
       if (!(await Bun.file(file).exists())) continue
-      tasks[name] = Object.keys((await loadProjectConfig(file)).tasks ?? {}).sort()
+      const loaded = ((await loadProjectConfig(file)).tasks ?? {}) as Record<
+        string,
+        Record<string, unknown>
+      >
+      tasks[name] = Object.keys(loaded).sort()
+      configs[name] = loaded
     }
-    return { code, out, tasks }
+    return { code, out, tasks, configs }
   } finally {
     await rm(root, { recursive: true, force: true })
   }
@@ -131,5 +142,75 @@ describe('vx-migrate on the Nx shapes real repos have: every written config load
       core: ['build', 'build-cjs', 'build-esm', 'nx-input:default'],
       cli: ['build', 'dev', 'release'],
     })
+  }, 30_000)
+
+  it('configurations, options interpolation in outputs, run-script, implicit dependencies', async () => {
+    const r = await migrate('configurations-scripts')
+    expect(r.code).toBe(0)
+    expect(r.tasks).toEqual({
+      web: ['build', 'build:development', 'lint', 'test'],
+      api: ['build', 'deploy', 'deploy:staging'],
+      shared: ['build', 'nx-input:default', 'nx-input:production'],
+    })
+    const outputs = (t: Record<string, unknown>) => t['cache'] as { outputs: unknown }
+    expect(outputs(r.configs['web']!['build']!).outputs).toEqual({
+      files: [],
+      workspaceFiles: ['dist/apps/web'],
+    })
+    expect(outputs(r.configs['web']!['build:development']!).outputs).toEqual({
+      files: [],
+      workspaceFiles: ['dist/apps/web-dev'],
+    })
+    // An implicit dependency is a dependency: `^build` reaches it.
+    expect(r.configs['api']!['build']!['dependsOn']).toEqual([
+      '^build',
+      'shared#nx-input:default',
+      'shared#build',
+    ])
+    expect(r.configs['web']!['test']!['dependsOn']).toEqual(['build', 'shared#nx-input:default'])
+    // nx:run-script is the script's own line.
+    expect((r.configs['web']!['test']!['exec'] as { command: string }).command).toBe('bun test')
+    expect((r.configs['api']!['build']!['exec'] as { command: string }).command).toBe('tsc')
+  }, 30_000)
+
+  it('input kinds: runtime, workspace filesets, another project’s named input, projects "*"', async () => {
+    const r = await migrate('input-kinds')
+    expect(r.code).toBe(0)
+    expect(r.tasks).toEqual({
+      app: ['build', 'e2e', 'typecheck'],
+      util: ['build', 'nx-input:default', 'nx-input:production'],
+      docs: ['lint'],
+    })
+    const build = r.configs['app']!['build']!
+    expect((build['cache'] as { inputs: unknown }).inputs).toEqual({
+      files: ['**/*'],
+      workspaceFiles: ['.github/workflows/ci.yml', 'tsconfig.base.json'],
+      workspaceRuntime: ['node -v'],
+    })
+    expect(build['dependsOn']).toEqual(['^build', 'util#nx-input:production', 'util#build'])
+    expect(r.configs['app']!['typecheck']!['dependsOn']).toEqual([
+      '^build',
+      'util#nx-input:default',
+      'util#build',
+    ])
+    expect(r.configs['app']!['e2e']!['dependsOn']).toEqual(['app#build', 'util#build'])
+    expect(r.out).toContain('input {externalDependencies: ["vite"]}')
+  }, 30_000)
+
+  it('{projectRoot} and {projectName} in commands and outputs, params ignore, a script calling nx', async () => {
+    const r = await migrate('interpolation')
+    expect(r.code).toBe(0)
+    expect(r.tasks).toEqual({ lib: ['build', 'docs', 'size'] })
+    const lib = r.configs['lib']!
+    expect((lib['build']!['cache'] as { outputs: unknown }).outputs).toEqual({
+      files: ['dist'],
+      workspaceFiles: ['coverage/libs/lib'],
+    })
+    expect((lib['docs']!['exec'] as { command: string }).command).toBe(
+      'cd ../.. && typedoc --out dist/docs/lib libs/lib/src/index.ts',
+    )
+    expect(lib['docs']!['dependsOn']).toEqual(['build'])
+    expect((lib['size']!['exec'] as { command: string }).command).toBe('size-limit')
+    expect(r.out).toContain('the command runs `nx run-many`, which needs Nx installed')
   }, 30_000)
 })
