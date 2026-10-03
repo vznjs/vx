@@ -199,3 +199,48 @@ describe('a module page lists every parameter its function takes', () => {
     expect(off).toEqual([])
   })
 })
+
+// J2-40: interfaces on the module pages had fallen behind their source —
+// CacheLayer listed 9 of its 25 members, plus one only `Cache` has.
+describe('a module page lists exactly the fields its interface has', () => {
+  const strip = (s: string): string =>
+    s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/(?! …)[^\n]*/g, '')
+  /** Each `export interface` → its top-level member names; null when abridged (`// …`). */
+  const interfaces = (text: string): [string, Set<string> | null][] =>
+    [...text.matchAll(/export interface (\w+)(?:<[^{]*>)?(?: extends [^{]+)? \{/g)].map((m) => {
+      let body = ''
+      for (let i = m.index! + m[0].length, d = 1; i < text.length; i++) {
+        const c = text[i]!
+        if (c === '{') d++
+        else if (c === '}' && --d === 0) break
+        body += d === 1 || c === '\n' ? c : ' '
+      }
+      if (body.includes('// …')) return [m[1]!, null]
+      const names = body.matchAll(/^\s*(?:readonly\s+)?['"]?([\w$]+)['"]?\??\s*[:(<]/gm)
+      return [m[1]!, new Set([...names].map((n) => n[1]!))]
+    })
+  const sorted = (s: Set<string>): string => [...s].sort().join(',')
+
+  it('each documented interface matches a source one member for member', () => {
+    const sources = new Map<string, string[]>()
+    for (const rel of readdirSync(SRC, { recursive: true }) as string[]) {
+      if (!rel.endsWith('.ts')) continue
+      for (const [name, fields] of interfaces(strip(readFileSync(path.join(SRC, rel), 'utf8')))) {
+        if (fields) sources.set(name, [...(sources.get(name) ?? []), sorted(fields)])
+      }
+    }
+    const off: string[] = []
+    let seen = 0
+    for (const f of readdirSync(path.join(DOCS, 'modules'))) {
+      const text = strip(readFileSync(path.join(DOCS, 'modules', f), 'utf8'))
+      for (const [name, fields] of interfaces(text)) {
+        const src = sources.get(name)
+        if (src === undefined || fields === null) continue
+        seen++
+        if (!src.includes(sorted(fields))) off.push(`${f}: ${name} {${sorted(fields)}}`)
+      }
+    }
+    expect(seen).toBeGreaterThan(100)
+    expect(off).toEqual([])
+  })
+})
