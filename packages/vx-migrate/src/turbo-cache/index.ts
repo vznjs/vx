@@ -278,6 +278,13 @@ export function resolveTurboCacheConfig(
   // A NaN never reaches the bound, and the request would be resent forever.
   if (!Number.isInteger(retries) || retries < 0)
     throw new Error(`vx/turbo-cache: retries must be a whole number ≥ 0, got ${retries}`)
+  // 0 is no deadline, as Turbo reads it; a negative or non-number one made
+  // AbortSignal.timeout throw on every request.
+  for (const name of ['timeoutMs', 'uploadTimeoutMs'] as const) {
+    const ms = options[name]
+    if (ms !== undefined && !(typeof ms === 'number' && Number.isFinite(ms) && ms >= 0))
+      throw new Error(`vx/turbo-cache: ${name} must be ms ≥ 0 (0: none), got ${JSON.stringify(ms)}`)
+  }
   return {
     apiUrl,
     token,

@@ -291,6 +291,16 @@ export function resolveOtelConfig(
     }
     return pem.get(file)
   }
+  // The option is held to the variable's rule: a zero, negative or
+  // non-number timeout aborted every export the moment it started.
+  if (
+    opts.timeoutMs !== undefined &&
+    !(typeof opts.timeoutMs === 'number' && Number.isFinite(opts.timeoutMs) && opts.timeoutMs > 0)
+  ) {
+    throw new Error(
+      `[vx-otel] timeoutMs must be a positive number of ms, got ${JSON.stringify(opts.timeoutMs)}`,
+    )
+  }
   const timeoutMs = opts.timeoutMs ?? envTimeout(env['OTEL_EXPORTER_OTLP_TIMEOUT']) ?? 15_000
   const tls: Partial<Record<'traces' | 'metrics' | 'logs', OtlpTls>> = {}
   for (const signal of ['traces', 'metrics', 'logs'] as const) {

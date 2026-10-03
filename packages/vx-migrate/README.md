@@ -254,7 +254,7 @@ Every option falls back to the tool's own environment variable; with nothing con
 | ------------- | ------------------------------------------ | ------------------------------------------------------------- |
 | `server`      | `NX_SELF_HOSTED_REMOTE_CACHE_SERVER`       | base URL of the cache server; a `user:pass@` in it is refused |
 | `accessToken` | `NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN` | Bearer token; omit for a server that runs open                |
-| `timeoutMs`   | —                                          | per-request deadline (default 30 s)                           |
+| `timeoutMs`   | —                                          | per-request deadline (default 30 s; a positive number of ms)  |
 | `retries`     | —                                          | resends, as `turboCache()`'s (default 1)                      |
 
 The Nx spec has no existence probe, so `has` (the `--dry` prediction; the prefetch pass calls `get`) is a `GET` whose body is cancelled before it answers. The wire carries no producing-task duration, so a remote hit reports none.
