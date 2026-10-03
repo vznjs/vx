@@ -632,12 +632,14 @@ export async function initSandbox(opts?: {
     ...bundledJavaAgent(),
   }
   if (!srtUp) await unlinkStaleMuxSockets()
+  const listening = srtCleanupAdopted ? undefined : cleanupListeners()
   await SandboxManager.initialize(
     config,
     undefined,
     // enableLogMonitor — macOS-only; populates the SandboxViolationStore.
     true,
   )
+  if (listening !== undefined) adoptSrtCleanup(listening)
   srtUp = true
   perTaskRun = opts?.allowAllUnixSockets === true || opts?.gitConfig === true ? config : undefined
   // `initialize()` returns early once SRT is up, and on Linux the
@@ -674,11 +676,21 @@ export async function resetSandbox(): Promise<void> {
   const reset = (async () => {
     const { SandboxManager } = await loadSrt()
     await SandboxManager.reset()
-    srtUp = false
-    perTaskRun = undefined
-    availabilityCache.clear()
-    straceAvailableCache = undefined
+    srtDown()
   })()
+  trackReset(reset)
+  await reset
+}
+
+function srtDown(): void {
+  srtUp = false
+  perTaskRun = undefined
+  availabilityCache.clear()
+  straceAvailableCache = undefined
+}
+
+/** `reset` is the one `initSandbox` waits out before it starts SRT again. */
+function trackReset(reset: Promise<unknown>): void {
   const settled = reset.then(
     () => {},
     () => {},
@@ -687,7 +699,38 @@ export async function resetSandbox(): Promise<void> {
   void settled.then(() => {
     if (resetting === settled) resetting = undefined
   })
-  await reset
+}
+
+const SRT_CLEANUP_EVENTS = ['exit', 'SIGINT', 'SIGTERM'] as const
+let srtCleanupAdopted = false
+
+function cleanupListeners(): Map<string, unknown[]> {
+  return new Map(SRT_CLEANUP_EVENTS.map((ev) => [ev, process.listeners(ev)]))
+}
+
+/**
+ * SRT's first `initialize` registers its own once-only `exit`, SIGINT and
+ * SIGTERM listeners, each an unawaited `reset()`. That reset kills the
+ * bridges at once but clears SRT's init promise only once its proxies
+ * have closed, so an `initSandbox` in between had `initialize` return
+ * early on the dying session, and the next wrap threw "Linux HTTP bridge
+ * socket does not exist" (the bridge-socket row's gate failure, M-35).
+ * Each listener stays, once-only as SRT made it; vx now tracks the reset
+ * it starts, as its own.
+ */
+function adoptSrtCleanup(before: Map<string, unknown[]>): void {
+  for (const ev of SRT_CLEANUP_EVENTS) {
+    const had = before.get(ev)!
+    for (const l of process.listeners(ev) as ((...a: unknown[]) => unknown)[]) {
+      if (had.includes(l)) continue
+      srtCleanupAdopted = true
+      process.removeListener(ev, l)
+      process.once(ev, (...a: unknown[]) => {
+        srtDown()
+        trackReset(Promise.resolve(l(...a)))
+      })
+    }
+  }
 }
 
 export interface SandboxedRunArgs {
@@ -1794,7 +1837,7 @@ async function runSandboxedOnce(
       config: args.config,
       skip: [taskTmpRoot(), ...srtDefaultWritePaths()],
     })
-    if (outside.length > 0) violations.push(outsideWritesHint(outside))
+    if (outside.length > 0) violations.push(outsideWritesHint(outside, baselines.denyRead))
   }
 
   // The one denial macOS never logs. MEASURED 2026-09-05, same machine, two
@@ -1862,20 +1905,33 @@ async function runSandboxedOnce(
 }
 
 /** The hint for writes refused outside the project, a few paths named. */
-function outsideWritesHint(paths: readonly string[]): SandboxViolation {
+function outsideWritesHint(paths: readonly string[], walled: readonly string[]): SandboxViolation {
   const shown = paths.slice(0, 5).join(', ')
   const more = paths.length > 5 ? ` and ${paths.length - 5} more` : ''
   const home = toRealPath(os.homedir())
   const dir = path.dirname(paths[0]!)
   const spelled = atOrUnder(dir, home) ? `~${dir.slice(home.length)}` : dir
-  return {
-    timestamp: new Date(),
-    hint: true,
-    line:
-      `vx: the sandbox refused writes outside the project, which are not reported as ` +
-      `violations: ${shown}${more}. If the task needs one, grant its directory, e.g. ` +
-      `\`allow: { write: ['${spelled}/'] }\`.`,
-  }
+  const refused =
+    `vx: the sandbox refused writes outside the project, which are not reported as ` +
+    `violations: ${shown}${more}.`
+  // Granting a system temp directory opens it to every write of the task;
+  // the task already has a temp directory of its own. A workspace kept
+  // under one is the workspace, and its directory is the grant.
+  const first = paths[0]!
+  const scratchTemp =
+    hostTempRoots().some((t) => atOrUnder(first, t)) &&
+    !walled.some((w) => atOrUnder(first, toRealPath(w)))
+  const line = scratchTemp
+    ? `${refused} The task has its own temp directory, empty at its start: write under ` +
+      `$TMPDIR (os.tmpdir() in Node and Bun) instead of a fixed path.`
+    : `${refused} If the task needs one, grant its directory, e.g. ` +
+      `\`allow: { write: ['${spelled}/'] }\`.`
+  return { timestamp: new Date(), hint: true, line }
+}
+
+/** The host's shared temp directories, canonical: what a fixed temp path in a tool names. */
+function hostTempRoots(): string[] {
+  return [...new Set(['/tmp', '/var/tmp', os.tmpdir()].map(toRealPath))]
 }
 
 function hiddenReadsHint(paths: readonly string[], within: string): SandboxViolation {

@@ -1,0 +1,124 @@
+{
+  "graph": {
+    "nodes": {
+      "api": {
+        "name": "api",
+        "data": {
+          "root": "apps/api",
+          "sourceRoot": "apps/api/src",
+          "tags": ["type:app"],
+          "implicitDependencies": ["data"],
+          "targets": {
+            "build": {
+              "executor": "@nx/esbuild:esbuild",
+              "options": {
+                "main": "apps/api/src/main.ts",
+                "outputPath": "dist/apps/api",
+                "tsConfig": "apps/api/tsconfig.app.json",
+                "format": ["cjs"],
+                "generatePackageJson": true
+              },
+              "configurations": {
+                "development": { "minify": false },
+                "production": { "minify": true }
+              },
+              "defaultConfiguration": "production",
+              "outputs": ["{options.outputPath}"],
+              "cache": true,
+              "dependsOn": ["^build"],
+              "inputs": ["production", "^production"]
+            },
+            "serve": {
+              "executor": "@nx/js:node",
+              "options": { "buildTarget": "api:build" },
+              "configurations": { "development": { "buildTarget": "api:build:development" } },
+              "defaultConfiguration": "development"
+            },
+            "test": {
+              "executor": "@nx/jest:jest",
+              "options": { "jestConfig": "apps/api/jest.config.ts", "passWithNoTests": true },
+              "configurations": { "ci": { "ci": true, "codeCoverage": true } },
+              "outputs": ["{workspaceRoot}/coverage/{projectRoot}"],
+              "cache": true,
+              "inputs": ["default", "^production"]
+            },
+            "lint": {
+              "executor": "@nx/eslint:lint",
+              "outputs": ["{options.outputFile}"],
+              "cache": true
+            },
+            "deploy": {
+              "executor": "nx:run-commands",
+              "options": {
+                "commands": ["echo deploy {projectName}", "nx run api:build:production"],
+                "parallel": false
+              },
+              "dependsOn": [{ "projects": ["tag:type:lib"], "target": "build" }]
+            }
+          }
+        }
+      },
+      "util": {
+        "name": "util",
+        "data": {
+          "root": "libs/util",
+          "tags": ["type:lib"],
+          "targets": {
+            "build": {
+              "executor": "@nx/js:tsc",
+              "options": {
+                "main": "libs/util/src/index.ts",
+                "outputPath": "dist/libs/util",
+                "tsConfig": "libs/util/tsconfig.lib.json",
+                "assets": ["libs/util/*.md"]
+              },
+              "outputs": ["{options.outputPath}"],
+              "cache": true,
+              "dependsOn": ["^build"],
+              "inputs": ["production", "^production"]
+            },
+            "test": {
+              "executor": "@nx/vite:test",
+              "options": { "reportsDirectory": "../../coverage/libs/util" },
+              "outputs": ["{options.reportsDirectory}"],
+              "cache": true
+            }
+          }
+        }
+      },
+      "data": {
+        "name": "data",
+        "data": {
+          "root": "libs/data",
+          "tags": ["type:lib"],
+          "targets": {
+            "build": {
+              "executor": "@nx/js:swc",
+              "options": {
+                "main": "libs/data/src/index.ts",
+                "outputPath": "dist/libs/data",
+                "tsConfig": "libs/data/tsconfig.lib.json"
+              },
+              "outputs": ["{options.outputPath}"],
+              "cache": true,
+              "dependsOn": ["^build"]
+            },
+            "nx-release-publish": {
+              "executor": "@nx/js:release-publish",
+              "options": {},
+              "dependsOn": ["^nx-release-publish"]
+            }
+          }
+        }
+      }
+    },
+    "dependencies": {
+      "api": [
+        { "source": "api", "target": "util", "type": "static" },
+        { "source": "api", "target": "data", "type": "implicit" }
+      ],
+      "util": [],
+      "data": []
+    }
+  }
+}

@@ -70,6 +70,7 @@ const benchTable = [
   { label: 'Overhead per package', vx: '8 ms', turbo: '88 ms (vx 91% faster)', nx: '1,712 ms (vx 99% faster)' },
 ]
 const benchFormula = 'vx N% faster: vx takes N% less time than that tool (1 − vx ÷ theirs); N% slower: N% more (vx ÷ theirs − 1).'
+const benchNote = "Nx's column ran every task through npm run (~200 ms of CPU each; Turbo ran bun run), a harness fault since fixed; with bun, on a 4-core Linux box, Nx took 6m 59s cold and 4.50 s fully cached (vx 47% and 92% faster)."
 
 /** A competitor cell's value and its "(vx N% faster)", shown on two lines. */
 const vsOf = (c: string): [string, string] => {
@@ -238,6 +239,7 @@ const footCols = {
               </tbody>
             </table>
             <p class="bench-formula">{benchFormula}</p>
+            <p class="bench-formula">{benchNote}</p>
           </div>
           <ul class="reasons">
             {

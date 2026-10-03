@@ -1321,3 +1321,42 @@ server died (C-88) still saves: the taint reads settled outcomes, and a
 ready server's says `success` until the run ends. A fix must record
 whether the server was dead at the task's dispatch, so a grand-dependant
 inherits it; not done.
+
+## C-90: nothing built after a server died is saved under `--continue=always`
+
+The lead filed with C-69's record. Under `always` a task downstream of a
+failure runs but is never saved; a server that died mid-run is such a
+failure (C-88), but its outcome said `success` until the run ended, so a
+task dispatched after the death, and every task built on it, saved under
+healthy keys, and the next healthy run replayed them as hits. `run()`
+now seeds the taint at such a task's dispatch (`deadServerBehind`, now
+shared with the scheduler), and the tracker carries it on. Row:
+`always-dead-server-taint.test.ts`, red without the change (both the
+dependant and its grand-dependant replayed). `cli.md` and
+`modules/admission.md` say so.
+
+Probe (2026-10-03, the supervisor's ask from E2's profile): the warm
+no-op run's `record history` (~4 ms) and `close` (~3 ms), 20 hits.
+Record history: the bundle's 21 inserts 0.85 ms (cold-process first
+calls, index upkeep) and its commit 0.7 ms. Close: `closeDb` 1.1 ms is
+the last connection's WAL checkpoint (0.03 ms with a second handle
+open); `bun:sqlite` has no `db_config`, so `NO_CKPT_ON_CLOSE` is out
+of reach, and holding a handle leaks a descriptor (O-10). The run
+lock's release 0.6 ms (two async fs calls; a sync release would close
+the window `run-lock-fs.test.ts` drives, a rewrite for 0.5 ms). Retention
+plus flushes 0.6 ms; one transaction for them measured no gain (close
+min 2.6 vs 2.6 ms, 15 interleaved runs per arm). Nothing shipped.
+
+## C-91: a server's death held over random graphs
+
+`tests/server-death-properties.test.ts`: 600 seeded graphs with groups
+and servers that die at random points, all three modes. After a death
+nothing depending on the server starts under `deps-ok`, nothing starts
+under `never`, a skip charged to a server names a dead one, and every
+task ends. Red when the `deps-ok` check or the `never` trip is removed.
+The group walk survived here (a group finishes when its server is
+ready, so the shape that needs it is rare in these graphs) and stays
+held by C-89's row. Test only. The sync run-lock release (~0.5 ms) was
+dropped: a sync call cannot be held pending, so the race row could not
+be rewritten as asked, and the refusal rows inject through
+`node:fs/promises`.

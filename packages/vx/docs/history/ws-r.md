@@ -88,6 +88,17 @@
   vx through `turbo()` / `nx()` or migrated configs on real repos are
   removed until a native-config rerun.
 
+- **R-18** The headline Nx column (README, landing, benchmarks.md) paid
+  `npm run` per task, a harness fault. `update-site.ts` now prints one
+  note under each table with the cause and the fixed harness's read
+  (Nx 6m 59s cold, 4.50 s cached; vx 47% / 92% faster), pinned to
+  benchmarks.md. A native rerun of the headline run replaces it.
+
+- **R-19** Site guides audited for claims that vx runs a Turbo or Nx
+  repo or is faster through `turbo()` / `nx()`. One left: the migrate
+  guide's step 3 said the `next:` line "runs what turbo/nx ran"; it now
+  calls that build a check of the mapping, not a way to run the repo.
+
 ## Leads
 
 - Real-repo rows (`packages/vx-bench/real-repos.json`, benchmarks.md's

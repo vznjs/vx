@@ -39,7 +39,12 @@ In order of harm:
    (`needsNetworkRestriction` and `needsNetworkProxy` are both
    `allowedDomains !== undefined`), so vx cannot ask for an isolated
    network without them. Seen in an execve trace of one sandboxed
-   `true` (2026-10-02); their cost per task is unmeasured.
+   `true` (2026-10-02). Measured (2026-10-03): 100 sandboxed `true`
+   tasks at concurrency 1, min of 5 interleaved, 2795 ms with the
+   network isolated against 2331 ms with no network config (host network,
+   no bridges): about 4.6 ms a task, the namespace, both bridges and their
+   shells. vx cannot drop the bridges alone: with them gone a refused host
+   reads "connection refused" and the proxy's record (B-77) is lost.
 
 ## Leads for other streams
 
@@ -1360,3 +1365,12 @@ shell, #2355), `task hash` 0.17 (computed twice, lead for A above), the
 rest 0.15. `miss: execute` outside `runCommand` is 0.05. Nothing in
 `exec` is cut: the shell is the task's API and the guard must run in it
 before the command (B-9).
+
+B-83. A write refused under the host's temp directory was told to grant
+it (`allow: { write: ['/tmp/'] }`), opening the shared temp directory to
+every write of the task. Outside the workspace, the hint names the task's
+own `$TMPDIR`; a workspace kept under `/tmp` still gets the grant
+(#2424). Rows: `sandbox-temp-hint.unsafe.test.ts`. Weighed and dropped:
+a grant hint beside every in-project violation (13 rows pin the exact
+lines, several reading `runSandboxed`'s list directly; the violation
+line already names the path).

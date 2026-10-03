@@ -46,6 +46,21 @@ function envReads(source: string): Set<string> {
   const read =
     /(?:(?:process|Bun)\.env\.([A-Z][A-Z0-9_]*)(?![A-Z0-9_])|\benv\[['"]([A-Z][A-Z0-9_]*)['"]\])(?!\s*=[^=])/g
   for (const m of code.matchAll(read)) names.add(m[1] ?? m[2]!)
+  // A read through a variable (`env[name]`, `process.env[envName]`) reads
+  // the names the file hands it: a literal passed to a helper
+  // (`off('OTEL_TRACES_EXPORTER')`, `read('concurrency', 'TURBO_CONCURRENCY')`)
+  // and a name built from a template, recorded with `*` per placeholder
+  // (`OTEL_EXPORTER_OTLP_*_PROTOCOL`). Both were missed, so renaming them
+  // passed this record. A template pins its shape, not the words its
+  // placeholders take.
+  if (/\benv\[(?!['"])/.test(code)) {
+    for (const m of code.matchAll(
+      /\w\((?:[^()]*?,\s*)?['"]([A-Z][A-Z0-9]*_[A-Z0-9_]+)['"]\s*[,)]/g,
+    ))
+      names.add(m[1]!)
+    for (const m of code.matchAll(/`([A-Z][A-Z0-9_]*(?:\$\{[^}]+\}[A-Z0-9_]*)+)`/g))
+      names.add(m[1]!.replace(/\$\{[^}]+\}/g, '*'))
+  }
   return names
 }
 
@@ -75,6 +90,17 @@ it('the reader finds reads, and skips writes and comments', () => {
     /** env['F_SIX'] */
   `
   expect([...envReads(src)].sort()).toEqual(['A_ONE', 'B_TWO', 'C_THREE'])
+  const indirect = `
+    const off = (name) => env[name] === 'none'
+    off('H_EIGHT')
+    read('key', 'I_NINE')
+    const k = \`J_\${signal.toUpperCase()}_TEN\`
+    warn('K_ELEVEN is set')
+    env['L_TWELVE'] = 'x'
+  `
+  expect([...envReads(indirect)].sort()).toEqual(['H_EIGHT', 'I_NINE', 'J_*_TEN'])
+  // CONTROL: without a read through a variable, a literal is only a literal.
+  expect([...envReads("read('key', 'I_NINE')")]).toEqual([])
 })
 
 it('the plugin packages read the environment tests/contract/plugin-env.txt records', () => {

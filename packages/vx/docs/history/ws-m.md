@@ -416,6 +416,34 @@ it, `sandbox-bridge-socket.unsafe.test.ts` › is removed when the task
 ends, is M-25's (#2255), with no failure on record since: 12 of 12 runs
 of both files beside eight busy loops on four cores, current main.
 
+M-35. `sandbox-bridge-socket.unsafe.test.ts` › is removed when the task
+ends: the gate's text, "Linux HTTP bridge socket does not exist", has a
+second cause, and M-25's cannot have been the gate's: no unsafe file
+that runs before this one leaves a sandboxed server (bun runs them in
+glob order; `repeated-runs`' server is unsandboxed). SRT's first
+`initialize` registers once-only `exit`, SIGINT and SIGTERM listeners,
+each an unawaited `reset()` that kills the bridges at once but clears
+SRT's init promise only after its proxies close; an `initSandbox` in
+between had `initialize` return early on the dying session, and the
+next bridged run threw that text. A `process.emit('exit')` or
+`('SIGINT')`, then an init and a bridged run, fails every time on
+main. vx now takes the listeners over at that init and tracks the
+reset each starts, which `initSandbox` already waits for. Rows (in a
+child, as the emit takes the listener): red on main, the SIGINT row
+with the gate's text; green with the fix. What sent the gate's suite
+an `exit` or a signal before this file is not proven.
+
+M-36. `util-settle.test.ts` › returns false for a promise that settles
+just past the budget: CI read `true` after 97 ms (#2415). Not a stalled
+loop (Bun fires expired timers in deadline order: 0 of 20 `true` with
+the loop held 200 ms). The row armed the 80 ms resolve BEFORE
+`settleWithin` armed its 20 ms deadline, so 60 ms off the CPU between
+the two arms moved the deadline past it: with 70 ms spun there, 20 of
+20 `true`. `pastDeadline` arms the late settle after the call, so it
+always expires later: 0 of 20 with the same gap. Its three siblings of
+the shape (a late rejection, a neighbour's timeout, `ms = 0`) take it
+too; all four are red with the deadline made ten times late.
+
 ## Leads for other streams
 
 - A: A-20 let a same-project dependant restore ahead of a producer whose

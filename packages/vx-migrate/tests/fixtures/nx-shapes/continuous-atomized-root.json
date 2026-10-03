@@ -1,0 +1,119 @@
+{
+  "graph": {
+    "nodes": {
+      "fx3-root": {
+        "name": "fx3-root",
+        "data": {
+          "root": ".",
+          "targets": {
+            "format": { "executor": "nx:run-script", "options": { "script": "format" } },
+            "codegen": {
+              "executor": "nx:run-commands",
+              "options": { "command": "node tools/gen.js" },
+              "cache": true,
+              "inputs": [
+                "{workspaceRoot}/tools/gen.js",
+                { "env": "GEN_MODE" },
+                { "runtime": "node --version" }
+              ],
+              "outputs": ["{workspaceRoot}/libs/db/src/generated"]
+            }
+          }
+        }
+      },
+      "shop": {
+        "name": "shop",
+        "data": {
+          "root": "apps/shop",
+          "targets": {
+            "build": {
+              "executor": "nx:run-commands",
+              "options": { "command": "vite build", "cwd": "apps/shop" },
+              "cache": true,
+              "dependsOn": [{ "dependencies": true, "target": "build" }, "fx3-root:codegen"],
+              "outputs": ["{projectRoot}/dist"]
+            },
+            "serve": {
+              "continuous": true,
+              "executor": "nx:run-commands",
+              "options": {
+                "command": "vite --port 4300",
+                "cwd": "apps/shop",
+                "readyWhen": "Local:"
+              }
+            },
+            "db-migrate": {
+              "executor": "nx:run-commands",
+              "options": { "command": "prisma migrate deploy", "cwd": "apps/shop" },
+              "parallelism": false
+            }
+          }
+        }
+      },
+      "shop-e2e": {
+        "name": "shop-e2e",
+        "data": {
+          "root": "apps/shop-e2e",
+          "implicitDependencies": ["shop"],
+          "metadata": {
+            "targetGroups": { "E2E (CI)": ["e2e-ci--src/a.cy.ts", "e2e-ci--src/b.cy.ts", "e2e-ci"] }
+          },
+          "targets": {
+            "e2e": {
+              "executor": "nx:run-commands",
+              "options": { "command": "cypress run", "cwd": "apps/shop-e2e" },
+              "dependsOn": ["shop:serve"],
+              "cache": true,
+              "inputs": ["default", "^production"],
+              "outputs": ["{workspaceRoot}/dist/cypress/apps/shop-e2e"]
+            },
+            "e2e-ci--src/a.cy.ts": {
+              "executor": "nx:run-commands",
+              "options": { "command": "cypress run --spec src/a.cy.ts", "cwd": "apps/shop-e2e" },
+              "cache": true,
+              "dependsOn": ["shop:serve"],
+              "outputs": ["{workspaceRoot}/dist/cypress/apps/shop-e2e"]
+            },
+            "e2e-ci--src/b.cy.ts": {
+              "executor": "nx:run-commands",
+              "options": { "command": "cypress run --spec src/b.cy.ts", "cwd": "apps/shop-e2e" },
+              "cache": true,
+              "dependsOn": ["shop:serve"],
+              "outputs": ["{workspaceRoot}/dist/cypress/apps/shop-e2e"]
+            },
+            "e2e-ci": {
+              "executor": "nx:noop",
+              "cache": true,
+              "dependsOn": [
+                { "target": "e2e-ci--src/a.cy.ts", "projects": "self", "params": "forward" },
+                { "target": "e2e-ci--src/b.cy.ts", "projects": "self", "params": "forward" }
+              ],
+              "metadata": { "nonAtomizedTarget": "e2e" }
+            }
+          }
+        }
+      },
+      "db": {
+        "name": "db",
+        "data": {
+          "root": "libs/db",
+          "targets": {
+            "build": {
+              "executor": "nx:run-commands",
+              "options": { "command": "tsc -b" },
+              "cache": true,
+              "dependsOn": ["^build"],
+              "outputs": ["{projectRoot}/dist"]
+            }
+          }
+        }
+      }
+    },
+    "dependencies": {
+      "shop": [{ "source": "shop", "target": "db", "type": "static" }],
+      "shop-e2e": [{ "source": "shop-e2e", "target": "shop", "type": "implicit" }],
+      "db": [],
+      "fx3-root": []
+    }
+  }
+}

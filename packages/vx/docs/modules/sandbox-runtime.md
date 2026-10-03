@@ -878,6 +878,13 @@ hot-reloaded it, and had it torn down after (item 884).
 An init also takes the session over: it cancels a reset an earlier run
 deferred, so that run's last server, released later, no longer tears SRT
 down under this run's tasks; this run's own end resets it (M-25).
+SRT's first `initialize` registers its own once-only `exit`, SIGINT and
+SIGTERM listeners, each an unawaited `reset()` that kills the bridges at
+once and clears SRT's init promise only after its proxies close. vx
+takes those listeners over at that init: each still runs SRT's reset,
+once, but as a reset `initSandbox` waits for, so an init under it no
+longer returns early on the dying session ("Linux HTTP bridge socket
+does not exist", M-35).
 Pinned in the unsafe suite on Linux: a sandboxed server on a listed port
 answers a downstream task's fetch and the host's, and after the run the
 port is closed; the control with `localBinding: true` is refused.

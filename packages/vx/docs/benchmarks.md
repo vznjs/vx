@@ -341,6 +341,8 @@ The committed `packages/vx-bench/RESULTS.md` / `packages/vx-bench/results.json` 
 
 vx N% faster: vx takes N% less time than that tool (1 − vx ÷ theirs); N% slower: N% more (vx ÷ theirs − 1).
 
+Nx's column ran every task through npm run (~200 ms of CPU each; Turbo ran bun run), a harness fault since fixed; with bun, on a 4-core Linux box, Nx took 6m 59s cold and 4.50 s fully cached (vx 47% and 92% faster).
+
 **Baseline** is the theoretical best case, so each row shows its overhead:
 cold is the tasks' own durations list-scheduled on 10 workers along the
 exact dependency graph (critical path 1m 40s, total work ÷

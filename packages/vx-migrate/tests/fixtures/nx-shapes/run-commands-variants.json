@@ -1,0 +1,70 @@
+{
+  "graph": {
+    "nodes": {
+      "core": {
+        "name": "core",
+        "data": {
+          "root": "packages/core",
+          "tags": ["scope:core"],
+          "targets": {
+            "build-esm": {
+              "command": "tsc -p tsconfig.esm.json",
+              "options": { "cwd": "{projectRoot}" },
+              "cache": true,
+              "outputs": ["{projectRoot}/dist/esm"]
+            },
+            "build-cjs": {
+              "command": "tsc -p tsconfig.cjs.json",
+              "options": { "cwd": "{projectRoot}" },
+              "cache": true,
+              "outputs": ["{projectRoot}/dist/cjs"]
+            },
+            "build": { "executor": "nx:noop", "dependsOn": ["build-*"] }
+          }
+        }
+      },
+      "cli": {
+        "name": "cli",
+        "data": {
+          "root": "packages/cli",
+          "tags": ["scope:cli"],
+          "targets": {
+            "build": {
+              "executor": "nx:run-commands",
+              "options": {
+                "commands": [
+                  { "command": "tsc -b", "forwardAllArgs": false },
+                  { "command": "node scripts/bundle.mjs", "prefix": "bundle" }
+                ],
+                "parallel": false,
+                "cwd": "packages/cli",
+                "args": "--minify"
+              },
+              "cache": true,
+              "dependsOn": ["^build", { "projects": ["tag:scope:core"], "target": "build-esm" }],
+              "outputs": ["{workspaceRoot}/dist/{projectName}"]
+            },
+            "release": {
+              "executor": "nx:run-commands",
+              "options": {
+                "command": "node scripts/release.mjs --tag {args.tag}",
+                "cwd": "packages/cli",
+                "envFile": ".env.ci"
+              }
+            },
+            "dev": {
+              "continuous": true,
+              "executor": "nx:run-commands",
+              "options": {
+                "commands": ["tsc -b --watch", "node --watch dist/index.js"],
+                "cwd": "packages/cli",
+                "readyWhen": ["Watching for file changes", "Listening"]
+              }
+            }
+          }
+        }
+      }
+    },
+    "dependencies": { "cli": [{ "source": "cli", "target": "core", "type": "static" }], "core": [] }
+  }
+}
