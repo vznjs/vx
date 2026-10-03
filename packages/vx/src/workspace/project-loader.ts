@@ -454,6 +454,7 @@ export async function loadProjectConfigs(
   // More than one evaluation in flight: a change seen after one load may
   // be another's.
   let overlapping = false
+  let tainted = false
   const loadOne = async (entry: (typeof prepared)[number]): Promise<Loaded> => {
     const { configPath, cacheKey } = entry
     // A fast key that missed: the closure is stale or the file changed.
@@ -496,7 +497,11 @@ export async function loadProjectConfigs(
     // turned the JSON-data walk's own check into "a cyclic reference".
     const changed = repeat
       ? []
-      : [...restoreBuiltins(builtins), ...restoreEnv(env), ...restoreCwd(cwd)]
+      : [
+          ...restoreBuiltins(builtins, overlapping ? EVERY_LOAD : undefined),
+          ...restoreEnv(env),
+          ...restoreCwd(cwd),
+        ]
     // Loads overlap, so another config's change can surface after this
     // one: named here, the refusal blamed the wrong file (D-119). The round
     // finds the one that made it.
@@ -571,20 +576,30 @@ export async function loadProjectConfigs(
       misses.length > 0
         ? [...restoreBuiltins(builtins), ...restoreEnv(env), ...restoreCwd(cwd)]
         : []
-    if (first?.failed instanceof ChangedInRound) {
+    // Overlapping loads check most built-ins only here, so a change one
+    // config made may have broken another's load: it is refused first, and
+    // nothing the round evaluated is stored.
+    const changedInRound =
+      first?.failed instanceof ChangedInRound
+        ? first.failed.changed
+        : overlapping && changed.length > 0
+          ? changed
+          : undefined
+    if (changedInRound !== undefined) {
+      tainted = true
       for (const i of misses) {
         const configPath = prepared[i]!.configPath
         const own = await builtinsChangedBy(configPath)
         if (own.length > 0) throw builtinsChanged(own, configPath)
       }
-      throw builtinsChanged(first.failed.changed)
+      throw builtinsChanged(changedInRound)
     }
     if (first !== undefined) throw first.failed
     if (changed.length > 0) throw builtinsChanged(changed)
     return results.map((r) => (r as Loaded).config)
   } finally {
     endRound()
-    if (store !== undefined) {
+    if (store !== undefined && !tainted) {
       if (evals.length > 0) {
         if (store.putConfigEvals !== undefined) store.putConfigEvals(evals)
         else for (const [k, json] of evals) store.putConfigEval(k, json)
@@ -675,10 +690,27 @@ function builtinsChanged(changed: readonly string[], configPath?: string): UserE
   )
 }
 
+/**
+ * The built-ins checked after each of several overlapping loads: the ones
+ * the loader itself reads through between loads (its promises, maps, sets,
+ * JSON and keys). The rest are checked once, at the round's end: all of
+ * them after every load was ~73 µs a config, a quarter of a cold load of
+ * 1,000 (2026-10-03). A lone load checks them all.
+ */
+const EVERY_LOAD: ReadonlySet<string> = new Set<(typeof WATCHED_BUILTIN_NAMES)[number]>([
+  'Object.prototype',
+  'JSON',
+  'Promise.prototype',
+  'Map.prototype',
+  'Set.prototype',
+  'Bun.hash',
+])
+
 /** Puts back what changed since `before`, naming each property it put back. */
-function restoreBuiltins(before: BuiltinSnapshot): string[] {
+function restoreBuiltins(before: BuiltinSnapshot, only?: ReadonlySet<string>): string[] {
   const changed: string[] = []
   WATCHED_BUILTINS.forEach(([name, proto], i) => {
+    if (only !== undefined && !only.has(name)) return
     const keys = Reflect.ownKeys(proto)
     if (unchanged(proto, keys, before[i]!)) return
     const was = before[i]!.byKey
