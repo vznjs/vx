@@ -358,7 +358,21 @@ describe("cli-help.md's Purpose names the paths that print the text", () => {
     const purpose = blocks('modules/cli-help.md', 'Static help text')
     expect(purpose).toHaveLength(1)
     expect(purpose[0]).not.toContain('fall-through')
-    expect(purpose[0]).toContain('An unknown command prints one line')
+    expect(purpose[0]).toContain('an unknown command prints one line')
+  })
+
+  // J2-57: #2658 made a bare `vx` outside a workspace refuse and exit 1;
+  // the Purpose still said a bare `vx` prints the text.
+  it('a bare vx prints the text only inside a workspace, and the page says so', () => {
+    const index = src('cli/index.ts')
+    const bare = index.slice(index.indexOf('case undefined: {'))
+    expect(bare.slice(0, bare.indexOf('return 0'))).toContain('findWorkspaceRoot(')
+    const purpose = blocks('modules/cli-help.md', 'Static help text')[0]!
+    expect(purpose).toContain('a bare `vx` inside a workspace')
+    expect(purpose).toContain('exits 1')
+    expect(page('modules/cli.md')).toContain(
+      '_(empty)_ outside a workspace prints the no-workspace refusal',
+    )
   })
 })
 
