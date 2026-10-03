@@ -781,6 +781,23 @@ refusal every verb gives there, plus where the verbs are listed, and
 exits 1; inside a workspace, and `--help` / `-h` anywhere, it is the
 reference as before (#2658).
 
+## H-70: vx init names the members it leaves without a config
+
+`vx init` on plain pnpm and bun workspaces (brace globs, negations,
+`apps/**`, a member nested in a member, the `workspaces: { packages }`
+form) mapped right; lifecycle hooks are never tasks. A member with no
+script to run (none, or only `postinstall`-style hooks) got no
+`vx.config.ts` and vanished from the report. The report names them now
+and says each is still a project (#2664).
+
+## H-71: vx why's verdict names what moved the key
+
+A key that moved only by a declared env var read "cache key changed
+between the previous run and this one (inputs differ)" above a table.
+When the diff names the components, the verdict names them, three at
+most and a count: `cache key changed: env MODE`. The JSON note is
+unchanged; the control is an unchanged key (#2668).
+
 ## Leads for other streams
 
 - **A:** a task that rewrites its own input with the same bytes is never
