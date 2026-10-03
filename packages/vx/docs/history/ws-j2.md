@@ -226,3 +226,10 @@ persistent task` and vx exits 1). Row (`site-samples` › a post's link
   page that installs, runs or imports a plugin says npm has none yet),
   the plugins read from the manifests and the pages found; red on both
   without the fix.
+
+- **J2-26** #2392 moved an entry's stdout out of the `entries` row into
+  `entry_stdout` (so the run-end `accessed_at` bump stops rewriting up
+  to 16 MB a hit); `modules/cache.md`'s `get` bullet, `optimizations.md`
+  row 17f, the why-vx-is-fast post and the one-command-per-task post
+  still put it in the row. Row (`site-samples` › the pages say where an
+  entry stdout lives), gated on `schema.ts`; red without the fix.

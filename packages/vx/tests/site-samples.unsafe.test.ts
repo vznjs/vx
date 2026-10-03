@@ -2357,3 +2357,29 @@ describe('the lockfile pages say what Turborepo keys', () => {
     expect(parity).toContain('| a lockfile change re-keys the packages whose dependencies moved')
   })
 })
+
+describe('the pages say where an entry stdout lives', () => {
+  // #2392 moved it from the entries row into entry_stdout; the cache module
+  // page, optimizations.md and two posts still put it in the row (J2-26).
+  it('the schema keeps stdout apart, and each page says so', () => {
+    const core = path.resolve(import.meta.dir, '..')
+    const schema = readFileSync(path.join(core, 'src', 'cache', 'schema.ts'), 'utf8')
+    const entries = /CREATE TABLE IF NOT EXISTS entries \(([^;]*?)\n {4}\);/.exec(schema)?.[1]
+    expect(entries).toBeDefined()
+    expect(entries).not.toMatch(/^\s*stdout\b/m)
+    expect(schema).toContain('CREATE TABLE IF NOT EXISTS entry_stdout (')
+    const flat = (p: string): string => readFileSync(p, 'utf8').replace(/\s+/g, ' ')
+    expect(flat(path.join(core, 'docs', 'modules', 'cache.md'))).toContain(
+      'Pure SQL: stdout from its `entry_stdout` row',
+    )
+    expect(flat(path.join(core, 'docs', 'optimizations.md'))).toContain(
+      'Pure-SQL `cache.get`: stdout in `entry_stdout`, joined to the entry;',
+    )
+    expect(flat(path.join(DOCS, 'blog', 'why-vx-is-fast.md'))).toContain(
+      'the captured stdout live in the index (the stdout in a side table',
+    )
+    expect(flat(path.join(DOCS, 'blog', 'one-command-per-task.md'))).toContain(
+      'stores the captured stdout in the cache index',
+    )
+  })
+})

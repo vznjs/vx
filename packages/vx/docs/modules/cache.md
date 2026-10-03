@@ -434,7 +434,8 @@ Reads via `get()` are non-blocking thanks to WAL.
   us.
 - Marks the hash touched; `accessed_at` (the LRU order `prune`'s
   `maxBytes` evicts by) is written in one batch at prune, stats or close.
-- Pure SQL: stdout from the `entries` row, `outputFiles` from the
+- Pure SQL: stdout from its `entry_stdout` row (one LEFT JOIN on the
+  entry; none for an empty one), `outputFiles` from the
   `output_files` rows. The artifact is not opened — the caller decides
   when to call `restoreOutputs`.
 
