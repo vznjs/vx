@@ -361,3 +361,74 @@ describe("cli-help.md's Purpose names the paths that print the text", () => {
     expect(purpose[0]).toContain('An unknown command prints one line')
   })
 })
+
+// J2-51: sandbox-runtime.md said executeCachedTask uses it; since the
+// executor seam the local executor calls runSandboxed, and only the
+// persistent path in execute-task.ts wraps a command itself.
+describe("sandbox-runtime.md's Purpose names who calls it", () => {
+  it('runSandboxed is the local executor’s call, and the page says so', () => {
+    expect(src('exec/local-executor.ts')).toContain('runSandboxed(')
+    expect(src('orchestrator/execute-task.ts')).not.toContain('runSandboxed(')
+    expect(src('orchestrator/execute-task.ts')).toContain('wrapSandboxedCommand(')
+    const purpose = blocks('modules/sandbox-runtime.md', 'Thin wrapper around')
+    expect(purpose).toHaveLength(1)
+    expect(purpose[0]).toContain('`local-executor.ts`')
+    expect(purpose[0]).not.toContain('Used by `executeCachedTask`')
+  })
+})
+
+// J2-52: three Purpose sections behind their source: timing.md counted
+// prepareRun's marks as seven (eight), doctor.md gave `sandbox` without
+// `untraced`, and plugin-host.md named three of the stages it runs.
+describe('timing, doctor and plugin-host Purpose sections match the source', () => {
+  const WORDS = [
+    'zero',
+    'one',
+    'two',
+    'three',
+    'four',
+    'five',
+    'six',
+    'seven',
+    'eight',
+    'nine',
+    'ten',
+  ]
+  it("timing.md's prepareRun count is the marks prepareRun records", () => {
+    const prep = src('orchestrator/prepare.ts')
+    const start = prep.indexOf('export async function prepareRun(')
+    const body = prep.slice(start, prep.indexOf('\n}\n', start))
+    const count = [...body.matchAll(/\bmark\('/g)].length
+    expect(count).toBeGreaterThan(5)
+    expect(page('modules/timing.md')).toContain(`\`prepareRun\`'s ${WORDS[count]},`)
+  })
+
+  it("doctor.md's sandbox shape is InfoFacts'", () => {
+    const shape = src('orchestrator/doctor.ts').match(/sandbox: \{([^}]*)\}/)![1]!
+    const keys = [...shape.matchAll(/(\w+):/g)].map((m) => m[1]!)
+    expect(keys).toContain('untraced')
+    expect(page('modules/doctor.md')).toContain(`(\`{ ${keys.join(', ')} }\`:`)
+  })
+
+  it('plugin-host.md names every stage the host runs', () => {
+    const hooks = src('orchestrator/plugin-host.ts').match(/hook: ('[a-z]+'(?: \| '[a-z]+')*)/)![1]!
+    const names = [...hooks.matchAll(/'([a-z]+)'/g)].map((m) => m[1]!)
+    expect(names.length).toBeGreaterThanOrEqual(7)
+    const purpose = blocks('modules/plugin-host.md', 'Runs the pipeline stages')
+    expect(purpose).toHaveLength(1)
+    expect(names.filter((n) => !purpose[0]!.includes(`\`${n}\``))).toEqual([])
+  })
+})
+
+// J2-53: util-settle.md said two graces share killGraceMs and the
+// variable overrides both; the signal teardown is a third.
+describe('util-settle.md names every grace killGraceMs serves', () => {
+  it('each file that calls killGraceMs for its own grace constant is named', () => {
+    const users = ['exec/runner.ts', 'orchestrator/signals.ts', 'orchestrator/persistent.ts']
+    for (const f of users) expect(src(f)).toMatch(/killGraceMs\([A-Z_]+_GRACE_MS\)/)
+    const rule = blocks('modules/util-settle.md', '`killGraceMs` is the SIGTERM')
+    expect(rule).toHaveLength(1)
+    for (const f of users) expect(rule[0]).toContain(`\`${f}\``)
+    expect(rule[0]).toContain('overrides all three')
+  })
+})
