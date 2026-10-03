@@ -339,6 +339,26 @@ class ReadyHeap {
 }
 
 /**
+ * The dead server a dependency stands for: itself, or one a group reaches.
+ * A group is a name for its deps, and it finished the moment the server
+ * was ready, so a task behind it ran against the dead one.
+ */
+export function deadServerBehind(
+  nodes: ReadonlyMap<string, TaskNode>,
+  serverDied: (id: string) => boolean,
+  id: string,
+): string | undefined {
+  if (serverDied(id)) return id
+  const n = nodes.get(id)
+  if (n === undefined || !isGroupTask(n)) return undefined
+  for (const d of n.deps) {
+    const dead = deadServerBehind(nodes, serverDied, d)
+    if (dead !== undefined) return dead
+  }
+  return undefined
+}
+
+/**
  * Run the task graph. Independent tasks run in parallel up to `concurrency`.
  * If a task fails, its dependents are marked `skipped` but unrelated tasks
  * keep running so the user gets maximum information per invocation.
@@ -572,19 +592,8 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
     // could fail anyway.
     const aborted = (): boolean => options.signal?.aborted === true
     const serverDied = options.serverDied ?? ((): boolean => false)
-    // The dead server a dependency stands for: itself, or one a group
-    // reaches. A group is a name for its deps, and it finished the moment
-    // the server was ready, so a task behind it ran against the dead one.
-    const deadServerVia = (id: string): string | undefined => {
-      if (serverDied(id)) return id
-      const n = nodes.get(id)
-      if (n === undefined || !isGroupTask(n)) return undefined
-      for (const d of n.deps) {
-        const dead = deadServerVia(d)
-        if (dead !== undefined) return dead
-      }
-      return undefined
-    }
+    const deadServerVia = (id: string): string | undefined =>
+      deadServerBehind(nodes, serverDied, id)
     const servers =
       options.serverDied === undefined
         ? []

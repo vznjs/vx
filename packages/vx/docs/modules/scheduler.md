@@ -76,6 +76,13 @@ export interface ScheduleOptions {
 
 export async function runGraph(options: ScheduleOptions): Promise<Map<string, TaskOutcome>>
 
+// The dead server a dependency stands for: itself, or one a group reaches.
+export function deadServerBehind(
+  nodes: ReadonlyMap<string, TaskNode>,
+  serverDied: (id: string) => boolean,
+  id: string,
+): string | undefined
+
 // Thrown by `execute` for a restore-tier task with nothing to restore.
 export class RestoreDemoted extends Error {
   constructor(readonly taskId: string)
