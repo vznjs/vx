@@ -171,3 +171,41 @@ describe('vx watch over a nested base whose parent is made again', () => {
     }
   }, 40_000)
 })
+
+// A config's import from outside the projects (`../../shared/preset.mjs`)
+// is watched by directory (item 949): restored after removal, that watch
+// held the deleted directory, and an edit to the preset ran nothing.
+describe('vx watch over a config import directory made again', () => {
+  it('an edit to a restored preset re-runs under its new value', async () => {
+    const root = await makeWorkspace({ prefix: 'vx-import-dir-' })
+    const outside = await mkdtemp(path.join(os.tmpdir(), 'vx-import-count-'))
+    const log = path.join(outside, 'runs.log')
+    await mkdir(path.join(root, 'shared'))
+    await writeFile(path.join(root, 'shared', 'preset.mjs'), "export const word = 'v1'\n")
+    const dir = path.join(root, 'packages', 'app')
+    await mkdir(dir, { recursive: true })
+    await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'app' }))
+    await writeFile(
+      path.join(dir, 'vx.config.mjs'),
+      `import { word } from '../../shared/preset.mjs'\nexport default { tasks: { build: { exec: { command: 'echo ' + word + ' >> ${log}' } } } }\n`,
+    )
+    const w = startWatch(root)
+    try {
+      await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
+      const copy = await mkdtemp(path.join(os.tmpdir(), 'vx-shared-copy-'))
+      await cp(path.join(root, 'shared'), path.join(copy, 'shared'), { recursive: true })
+      await rm(path.join(root, 'shared'), { recursive: true, force: true })
+      await until(() => w.err().includes('cycle failed'), 'the cycle that cannot load the preset')
+      await cp(path.join(copy, 'shared'), path.join(root, 'shared'), { recursive: true })
+      await rm(copy, { recursive: true, force: true })
+      await until(() => w.out().includes('vx watch: watching 1 project(s)\n'), 'the re-arm')
+      await writeFile(path.join(root, 'shared', 'preset.mjs'), "export const word = 'v2'\n")
+      await until(async () => (await readFile(log, 'utf8')).includes('v2'), 'the run under v2')
+    } finally {
+      w.proc.kill('SIGTERM')
+      await w.proc.exited
+      await rm(root, { recursive: true, force: true })
+      await rm(outside, { recursive: true, force: true })
+    }
+  }, 40_000)
+})
