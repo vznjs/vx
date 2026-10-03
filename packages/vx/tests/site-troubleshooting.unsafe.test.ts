@@ -41,4 +41,15 @@ describe('the Troubleshooting page quotes vx as it prints', () => {
       )
     expect(missing).toEqual([])
   })
+
+  // J2-38: a member dir with a vx config and no package.json is skipped
+  // with a warning (#2492), and the `not inside a project` row's fix does
+  // not reach it — the page names the warning and its fix.
+  it('names the skipped config dir warning', () => {
+    const page = readFileSync(PAGE, 'utf8')
+    const warning = 'has a vx config but no package.json — skipped'
+    expect(readFileSync(path.join(SRC, 'workspace', 'workspace.ts'), 'utf8')).toContain(warning)
+    const row = page.split('\n').find((l) => l.includes(warning))
+    expect(row).toContain('Add a `package.json` with a `"name"`')
+  })
 })

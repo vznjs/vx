@@ -332,3 +332,13 @@ persistent task` and vx exits 1). Row (`site-samples` › a post's link
   judges its grants, so it refuses that read only when reads are
   granted no wider than the inputs. Row (J2-18's, widened to the page);
   red without the fix.
+
+- **J2-38** #2492 warns on a member directory that holds a vx config
+  but no `package.json` and skips it; the Troubleshooting page's
+  `not inside a project` fix does not reach that case. The page quotes
+  the warning and its fix: add a `package.json` with a `"name"`.
+  Audited clean: `schema.md`'s error table and defaults, `caching.md`'s
+  constants, the capture and recap limits, `vx cache prune`'s flags,
+  the module pages' defaults, the `VX_*` names. Row
+  (`site-troubleshooting` › names the skipped config dir warning), red
+  without the fix.
