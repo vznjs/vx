@@ -15,10 +15,8 @@ import { PLUGIN_HOOKS } from '../src/config.js'
 import { CACHE_VERSION, SCHEMA_VERSION } from '../src/cache/index.js'
 import { formatRunSummary } from '../src/orchestrator/summary.js'
 import { parseInfoArgs } from '../src/cli/info.js'
-import { appendRecapRing, createRecapRing, recapTail } from '../src/orchestrator/failure-recap.js'
 import { formatRunReportMarkdown } from '../src/orchestrator/run-report.js'
 import {
-  formatFailureRecap,
   formatTaskBlock,
   formatTaskExecutedLine,
   formatTaskHitLine,
@@ -479,58 +477,6 @@ describe("vx info's plugins row lists the seams the doctor shows", () => {
     const doctor = await Bun.file(new URL('../src/orchestrator/doctor.ts', import.meta.url)).text()
     expect(doctor).toContain("const SEAMS = PLUGIN_HOOKS.filter((h) => h !== 'teardown')")
     expect(named).toEqual(PLUGIN_HOOKS.filter((h) => h !== 'teardown'))
-  })
-})
-
-// The recap samples drew the failed glyph without the text-presentation
-// selector the renderer prints after it (`◼︎`), and cli.md said the tail
-// reads stdout then stderr, which only a buffered task's does. Render
-// both pages' samples; the hundred-line tail's middle is elided in them.
-describe('the failure recap samples are what the renderer prints', () => {
-  const node = (id: string): TaskNode =>
-    ({
-      id,
-      projectName: id.split('#')[0],
-      taskName: id.split('#')[1],
-      config: { exec: { command: 'x' } },
-    }) as unknown as TaskNode
-  const entry = (id: string, exitCode: number, output: string) => {
-    const ring = createRecapRing()
-    appendRecapRing(ring, output)
-    const outcome: TaskOutcome = { node: node(id), status: 'failed', exitCode, durationMs: 5 }
-    return { node: outcome.node, outcome, tail: recapTail(ring), droppedChars: 0 }
-  }
-  const hundred = Array.from({ length: 100 }, (_, i) => `line ${i + 1}\n`).join('')
-  const elide = (lines: string[]): string =>
-    lines
-      .filter((l) => !/^line (7[2-9]|8\d|9\d)$/.test(l) || l === 'line 72')
-      .map((l) => (l === 'line 72' ? '…' : l))
-      .join('\n')
-  const sample = async (rel: string, firstLine: string): Promise<string> => {
-    const doc = await Bun.file(new URL(`../docs/${rel}`, import.meta.url)).text()
-    const start = doc.indexOf(`\`\`\`\n${firstLine}\n`)
-    expect(start).toBeGreaterThan(-1)
-    return doc.slice(start + 4, doc.indexOf('\n```\n', start))
-  }
-
-  it("cli.md's one-failure block", async () => {
-    const rendered = formatFailureRecap([entry('app#fail', 3, hundred)], []).slice(1)
-    expect(await sample('cli.md', '  Failed:   1 task — the last lines it printed')).toBe(
-      elide(rendered),
-    )
-  })
-
-  it("framed-output.md's block, with a silent failure and two past the limit", async () => {
-    const rendered = formatFailureRecap(
-      [entry('app#fail', 3, hundred), entry('app#dep', 1, '')],
-      ['app#f6', 'app#f7'],
-    ).slice(1)
-    expect(
-      await sample(
-        'modules/framed-output.md',
-        '  Failed:   4 tasks — the last lines each one printed',
-      ),
-    ).toBe(elide(rendered))
   })
 })
 

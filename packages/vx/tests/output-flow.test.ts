@@ -591,7 +591,7 @@ describe('GitHub Actions renderer (full mode + gha)', () => {
   const unfenced = (text: string): string =>
     text.replace(/::stop-commands::(\S+)\n[\s\S]*?::\1::\n/g, '')
 
-  it('errors-only fences a failed frame and its recap line on GitHub Actions', () => {
+  it('errors-only fences a failed frame on GitHub Actions', () => {
     // Only `full` fenced: `--output-logs=errors-only` printed a task's
     // `::error::` and `::endgroup::` raw, twice.
     const view = resolveOutputView({ outputLogs: 'errors-only' }, { GITHUB_ACTIONS: 'true' })
@@ -601,9 +601,8 @@ describe('GitHub Actions renderer (full mode + gha)', () => {
     log.taskStdout(n, '::error::injected\n::endgroup::\n')
     log.taskComplete(n, mkOutcome(n, 'failed', { exitCode: 1 }))
     log.runEnd?.()
-    for (const line of log.failureRecap?.() ?? []) out.write(`${line}\n`)
     const text = out.text()
-    expect(text.split('::error::injected').length - 1).toBe(2)
+    expect(text.split('::error::injected').length - 1).toBe(1)
     expect(unfenced(text)).not.toContain('::error::injected')
     expect(unfenced(text)).not.toContain('::endgroup::')
   })

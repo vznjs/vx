@@ -1,7 +1,6 @@
 import type { TaskNode, TaskOutcome } from '../graph/index.js'
 import { detectColors, type ColorSupport } from './colors.js'
 import {
-  formatFailureRecap,
   formatFrameClose,
   formatFrameOpen,
   formatKeptLines,
@@ -10,15 +9,7 @@ import {
   formatTaskExecutedLine,
   formatTaskHitLine,
   formatTaskSkippedLine,
-  type RecapEntry,
 } from './framed-output.js'
-import {
-  appendRecapRing,
-  createRecapRing,
-  RECAP_TASKS,
-  recapTail,
-  type RecapRing,
-} from './failure-recap.js'
 import {
   createOutputWriter,
   formatFailureLine,
@@ -63,13 +54,8 @@ export interface Logger {
   runEnd?(): void
 }
 
-/** The logger `run()` builds when none is passed, and the one that owns the recap. */
+/** The logger `run()` builds when none is passed. */
 export interface DefaultLogger extends Logger {
-  /**
-   * The run's last block: each failed task's last lines (item 706). Empty
-   * when nothing failed, and in the modes that promise no task output.
-   */
-  failureRecap(): string[]
   /**
    * Hand over any output still coalesced, and write straight through from
    * now on. `runEnd` does it; the run's own `finally` does it again for a
@@ -352,13 +338,6 @@ export function defaultLogger(
   }
   const printsKept = (tail: { outcome?: TaskOutcome }): boolean =>
     flushedPersistent && tail.outcome !== undefined && view.mode !== 'errors-only'
-  // The recap's material, decided at each failure so nothing is held for a
-  // task that passed. A buffered task's tail is read off the buffers the
-  // frame drains; a live-streamed one keeps no buffer, so a bounded ring
-  // follows it from its frame-open until its outcome.
-  const recapEntries: RecapEntry[] = []
-  const recapMore: string[] = []
-  const liveRings = new Map<string, RecapRing>()
 
   const refresh = (force: boolean): void => {
     if (statusDead) return
@@ -457,20 +436,6 @@ export function defaultLogger(
       flushKept()
       writer.settle()
     },
-    failureRecap() {
-      if (recapEntries.length === 0) return []
-      // Fenced like a frame: a tail is the task's own text, and a line of it
-      // must not become a workflow command. Never inside a group, so it reads
-      // with every group collapsed.
-      const fence =
-        view.gha === true
-          ? (lines: string[]) =>
-              ghaFence(`${lines.join('\n')}\n`, ghaToken)
-                .slice(0, -1)
-                .split('\n')
-          : undefined
-      return formatFailureRecap(recapEntries, recapMore, colors, fence)
-    },
     status(line) {
       writer.write(`${line}\n`)
     },
@@ -508,7 +473,6 @@ export function defaultLogger(
         // Open the live frame: full task info even when the command
         // streams nothing (or the hit replays nothing).
         emitLine(formatFrameOpen(node, colors))
-        liveRings.set(node.id, createRecapRing())
         return
       }
       // Bound a persistent task's output from its FIRST chunk. Waiting for
@@ -578,8 +542,6 @@ export function defaultLogger(
         streamedSinceBlock = true
         if (chunk.length > 0) streamMidLine = !chunk.endsWith('\n')
         writer.write(chunk)
-        const ring = liveRings.get(node.id)
-        if (ring !== undefined) appendRecapRing(ring, chunk)
         return
       }
       const tail = persistentTails.get(node.id)
@@ -596,8 +558,6 @@ export function defaultLogger(
         streamedSinceBlock = true
         if (chunk.length > 0) streamMidLine = !chunk.endsWith('\n')
         writer.write(chunk)
-        const ring = liveRings.get(node.id)
-        if (ring !== undefined) appendRecapRing(ring, chunk)
         return
       }
       const tail = persistentTails.get(node.id)
@@ -623,28 +583,6 @@ export function defaultLogger(
       // The pre-ready window closed either way: a failed task is over, and
       // a ready one starts a fresh post-ready tail below.
       persistentTails.delete(node.id)
-      const liveRing = liveRings.get(node.id)
-      liveRings.delete(node.id)
-      if (outcome.status === 'failed' && !discardsOutput) {
-        if (recapEntries.length === RECAP_TASKS) recapMore.push(node.id)
-        else {
-          let ring = liveRing
-          if (ring === undefined) {
-            ring = createRecapRing()
-            appendRecapRing(ring, stdout)
-            if (stdout.length > 0 && stderr.length > 0 && !stdout.endsWith('\n')) {
-              appendRecapRing(ring, '\n')
-            }
-            appendRecapRing(ring, stderr)
-          }
-          recapEntries.push({
-            node,
-            outcome,
-            tail: recapTail(ring),
-            droppedChars: (preReady?.out.dropped ?? 0) + (preReady?.err.dropped ?? 0),
-          })
-        }
-      }
       // An aborted task (child killed by a shutdown signal) reverts
       // to pending: free its worker slot, but never count or render it
       // — the run is tearing down and it has no honest outcome.

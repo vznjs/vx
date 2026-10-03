@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## orchestrator: drop the end-of-run failure recap
+
+src/orchestrator/failure-recap.ts leaves the package, with formatFailureRecap and DefaultLogger.failureRecap.
+
 ## cache: move the index schema to v30 for blob_verdicts
 
 SCHEMA_VERSION v29 -> v30; an older index is dropped on first open and its artifacts are left for `vx cache prune`.

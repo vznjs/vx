@@ -1030,3 +1030,10 @@ or `TMPDIR` say (strace, pnpm 12.8.1) and asks trustd on macOS, so
 both. `check.binary`'s fixture commit read the host's git config, which
 signed through 1Password's SSH signer that seatbelt refuses; its git now
 runs on git's defaults. The pnpm row reproduced on Linux with pnpm 12.
+M-81. The run's last block, `Failed: N tasks — the last lines each one
+printed` (item 706), is gone, at the owner's word: each failure's frame
+already prints above the summary, so the block only repeated it.
+Removed `orchestrator/failure-recap.ts`, `formatFailureRecap`, the
+logger's `failureRecap()`, their tests and docs; the per-failure frames
+stay. The two upstream-ledger rows that cited the recap's tests now cite
+the frame tests in `tests/output-flow.test.ts`.

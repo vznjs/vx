@@ -75,7 +75,6 @@ src/orchestrator/events.ts
 src/orchestrator/excluded-keys.ts
 src/orchestrator/execute-task.ts
 src/orchestrator/failure-mode.ts
-src/orchestrator/failure-recap.ts
 src/orchestrator/fingerprint-watch.ts
 src/orchestrator/framed-output.ts
 src/orchestrator/history.ts
