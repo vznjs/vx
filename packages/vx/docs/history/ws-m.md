@@ -633,6 +633,24 @@ the row that pinned the refusal) fails without the fix and without its
 `force` guard; `migration.test.ts`'s refusal row fails without the
 `init` guard.
 
+M-53. `output-memory.unsafe.test.ts` › an opted-down stream does not
+grow went red in a full gate: retained 160 MiB minus 40 MiB read 122
+against a 120 MiB line. Cause: both rows of the file read RSS, the
+allocator's high-water of the chunks pushed through, which JSC does not
+hand back; six quiet runs read −7 to +63 MiB for that delta, and a loaded
+reader lets more chunks pile up (the logger row had already hit 88
+against 80 and carried a min-of-2 for it). `Bun.gc(true)` before an RSS
+read changes nothing (probed). Both probes now read `heapUsed` after
+`Bun.gc(true)`, with the result still referenced: exact and repeatable
+(capture 17 → 17 MiB kept, 1 → 1 dropped; logger `full` 81 → 241,
+`none` / `hash-only` 1 → 1), so the lines drop to a quarter of the
+extra volume and the min-of-2 goes. With retention bounded, volume alone
+could not tell a dropped capture from a kept one (a capture that ignored
+`false` passed the old row), so the row also asserts the dropped side
+holds over 8 MiB less than the kept. Each mutant fails its line: an
+unbounded cap (120), `capture: false` ignored (0), either mode out of
+`discardsOutput` (160). The file passes 3 of 3 under 8 busy loops.
+
 ## Leads for other streams
 
 - A: A-20 let a same-project dependant restore ahead of a producer whose

@@ -148,6 +148,13 @@ sync`", advice for a repo leaving Nx: they say to keep what the
   workspace root), read from the executors in Nx 23.2.1; Nx's tsconfig
   path remapping for buildable libraries and its stylesheet processor
   are TODOs.
+- **P2-28** `@nx/js:node` on a build target with no output options (a
+  Nest app's inferred `webpack-cli build`, the Nx 20+ default) was a
+  failing placeholder with no build edge. It now runs the file Nx's
+  `getFileToRun` names: the target's first `outputs` entry, glob
+  stripped, then `main.js`, else `dist/<projectRoot>/main.js`; a build
+  target with no options still resolves by its executor, so the edge is
+  written.
 
 ## Leads for other streams
 

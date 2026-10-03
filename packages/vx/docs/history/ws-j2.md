@@ -379,3 +379,8 @@ persistent task` and vx exits 1). Row (`site-samples` › a post's link
   a migration refuses. Row (`module-page-claims` › migration.md's
   overwrite guard says vx init keeps a member's config), red without the
   fix.
+- **J2-42** #2537 named "the `WireOnly` keys" in the vx-reapi README
+  while #2541 inlined that type, so the README named a type nothing
+  declares. The sentence names the four keys alone. Row
+  (`plugin-exports-documented` › names no type-shaped identifier its
+  package and core lack), red without the fix.

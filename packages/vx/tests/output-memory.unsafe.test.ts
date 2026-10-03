@@ -24,21 +24,6 @@ const TIMEOUT = 60_000
 const LOGGER = path.join(import.meta.dir, '..', 'src', 'orchestrator', 'logger.ts')
 const RUNNER = path.join(import.meta.dir, '..', 'src', 'exec', 'runner.ts')
 
-/** Run a probe script and read back the `rss_mib=<n>` it prints. */
-function probeRssMib(script: string): number {
-  const p = Bun.spawnSync({
-    cmd: ['bun', '-e', script],
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  const out = new TextDecoder().decode(p.stdout)
-  const err = new TextDecoder().decode(p.stderr)
-  const m = /rss_mib=(\d+)/.exec(out)
-  if (m === null)
-    throw new Error(`probe produced no measurement (exit ${p.exitCode}): ${out}${err}`)
-  return Number(m[1])
-}
-
 /** Run a probe script, awaited, and read back the `heap_mib=<n>` it prints. */
 async function probeHeapMibAsync(script: string): Promise<number> {
   const p = Bun.spawn({ cmd: ['bun', '-e', script], stdout: 'pipe', stderr: 'pipe' })
@@ -60,9 +45,9 @@ const EXTRA_MIB = ((MANY_CHUNKS - FEW_CHUNKS) * CHUNK_BYTES) / 1024 / 1024
 
 /**
  * Feed `chunks` distinct multi-MB chunks through `defaultLogger` in one view
- * mode and report the process RSS while the task is still in flight — i.e.
- * the peak the logger's per-task buffers are responsible for. The chunks are
- * built inline so the probe itself retains none of them.
+ * mode and report the heap after a full collection while the task is still in
+ * flight — what the logger's per-task buffers retain. The chunks are built
+ * inline so the probe itself retains none of them.
  */
 function loggerProbe(mode: string, chunks: number): string {
   return `
@@ -70,46 +55,31 @@ function loggerProbe(mode: string, chunks: number): string {
     const log = defaultLogger({ enabled: false }, { mode: ${JSON.stringify(mode)} }, { write: () => true })
     const node = { id: 'p#t', projectName: 'p', taskName: 't', requested: false, surfaced: false, deps: [], config: { exec: { command: 'noop' } } }
     for (let i = 0; i < ${chunks}; i++) log.taskStdout(node, i + ':' + 'x'.repeat(${CHUNK_BYTES}))
-    console.log('rss_mib=' + Math.round(process.memoryUsage().rss / 1024 / 1024))
+    Bun.gc(true)
+    if (log === undefined) throw new Error('unreachable')
+    console.log('heap_mib=' + Math.round(process.memoryUsage().heapUsed / 1024 / 1024))
   `
 }
 
 describe('logger per-task buffering', () => {
   it(
     '`none` discards chunks on arrival; the printing modes still buffer them',
-    () => {
-      // Assert on how RSS RESPONDS TO VOLUME, not on either absolute figure.
-      // Comparing the two modes at one volume looked like the obvious test and
-      // is not: building each chunk allocates it, so a run's peak also carries
-      // whatever transient garbage GC has not reclaimed yet, and how much that
-      // is differs per machine. It passed here (85 vs 201 MiB) and failed on a
-      // CI runner at 129 vs 206 — where the fix was plainly working, since 129
-      // is far below what 160 MiB of retained chunks costs. Feeding two volumes
-      // to the SAME mode cancels that: the baseline and the garbage are common
-      // to both, so the difference is what the buffers actually retained.
+    async () => {
+      // Assert on how the retained heap RESPONDS TO VOLUME, read after a full
+      // collection. RSS was the allocator's high-water of the chunks the probe
+      // builds, which JSC does not hand back: it passed at 85 vs 201 MiB here,
+      // failed at 129 vs 206 on a CI runner, and reached 88 against an 80 MiB
+      // line under a full gate (2026-09-20) before a min-of-2 reading papered
+      // over it. The heap after `Bun.gc(true)` is exact: `full` 81 → 241 MiB,
+      // `none` and `hash-only` 1 → 1 (M-53).
       //
       // The control runs FIRST so a harness that measured nothing would show it
       // here rather than passing vacuously on the bounded side.
-      const fullFew = probeRssMib(loggerProbe('full', FEW_CHUNKS))
-      const fullMany = probeRssMib(loggerProbe('full', MANY_CHUNKS))
-
-      // The delta for a mode that must NOT grow with volume, MIN-OF-2 and
-      // only on a miss. RSS is a high-water mark, and the residual below is
-      // load-dependent: on this container under a full `vx run ci` it reached
-      // 88 MiB against the 80 MiB bound (2026-09-20), an order of magnitude
-      // above the ~8 MiB the note below estimated from a quiet machine. A
-      // second reading costs nothing when the first already passes, and
-      // min-of-N is this repo's standing answer to a loaded measurement
-      // (CLAUDE.md, perf first). It cannot mask a real regression: retention
-      // costs the FULL 160 MiB every time, so both readings miss.
-      const flatDelta = (mode: string): number => {
-        const once = (): number => {
-          const few = probeRssMib(loggerProbe(mode, FEW_CHUNKS))
-          return probeRssMib(loggerProbe(mode, MANY_CHUNKS)) - few
-        }
-        const first = once()
-        return first < EXTRA_MIB * 0.5 ? first : Math.min(first, once())
-      }
+      const fullFew = await probeHeapMibAsync(loggerProbe('full', FEW_CHUNKS))
+      const fullMany = await probeHeapMibAsync(loggerProbe('full', MANY_CHUNKS))
+      const flatDelta = async (mode: string): Promise<number> =>
+        (await probeHeapMibAsync(loggerProbe(mode, MANY_CHUNKS))) -
+        (await probeHeapMibAsync(loggerProbe(mode, FEW_CHUNKS)))
 
       // `full` prints this output, so it must still hold it — the deliberate
       // boundary, not an oversight: silently truncating a build log is worse
@@ -118,23 +88,9 @@ describe('logger per-task buffering', () => {
       expect(fullMany - fullFew).toBeGreaterThan(EXTRA_MIB * 0.5)
 
       // `none` guarantees "no per-task output at all", so it must not pay for
-      // output it will never print: tripling the volume must not move it much.
-      //
-      // The bound is 0.5 rather than something tight because RSS is a
-      // HIGH-WATER MARK, so this can never be perfectly flat. The probe has to
-      // allocate each 4 MiB chunk before the logger can discard it, and the
-      // 60-chunk run therefore touches more pages than the 20-chunk one even
-      // though nothing is retained. Forcing a collection does not help —
-      // measured `Bun.gc(true)` before the reading: Δ was 8 MiB with it and
-      // 9 without, because JSC does not return the pages to the OS. So the
-      // residual is allocator high-water, not garbage, and it grows with
-      // machine load. A tighter 0.25 bound passed here (measured Δ of −3..+5
-      // across reps) and still failed on a loaded CI runner.
-      //
-      // 0.5 keeps the assertion sharp: retention costs the FULL 160 MiB, which
-      // is 2x this bound. Verified by mutation — making `none` retain fails
-      // this line, on both readings.
-      expect(flatDelta('none')).toBeLessThan(EXTRA_MIB * 0.5)
+      // output it will never print: tripling the volume must not move it.
+      // Retention costs the FULL 160 MiB, 4× this line.
+      expect(await flatDelta('none')).toBeLessThan(EXTRA_MIB * 0.25)
 
       // `hash-only` is the OTHER half of the same boundary — the set is
       // exactly {none, hash-only}, the two modes whose contract promises
@@ -143,7 +99,7 @@ describe('logger per-task buffering', () => {
       // green. It prints one audit line per task and no log bytes ever,
       // so no behaviour row can see it retain them; this measurement is
       // the only thing that can.
-      expect(flatDelta('hash-only')).toBeLessThan(EXTRA_MIB * 0.5)
+      expect(await flatDelta('hash-only')).toBeLessThan(EXTRA_MIB * 0.25)
     },
     TIMEOUT,
   )
@@ -164,10 +120,14 @@ function capturedProbe(retain: boolean, mib: number): string {
       capture: { stdout: ${retain}, stderr: ${retain} },
     })
     if (r.exitCode !== 0) throw new Error('probe exited ' + r.exitCode)
-    // Reference the result so a retained string cannot be collected before
-    // the measurement — otherwise the control could read as flat too.
+    // The heap after a full collection is what the result retains; RSS was
+    // the allocator's high-water of the chunks pushed through, which a
+    // loaded reader raised to 122 MiB of noise against a 120 MiB line (M-53).
+    Bun.gc(true)
+    // Reference the result past the collection so a retained string cannot
+    // be freed before the measurement: the control would read flat too.
     if (r.stdout.length < 0) throw new Error('unreachable')
-    console.log('rss_mib=' + Math.round(process.memoryUsage().rss / 1024 / 1024))
+    console.log('heap_mib=' + Math.round(process.memoryUsage().heapUsed / 1024 / 1024))
   `
 }
 
@@ -178,37 +138,32 @@ const CAP_EXTRA_MIB = CAP_MANY_MIB - CAP_FEW_MIB
 describe('runCommand stream capture', () => {
   it(
     'an opted-down stream does not grow with the volume the child writes',
-    () => {
-      // Same differential shape as the logger test above: assert on how RSS
-      // RESPONDS TO VOLUME, never on an absolute figure, so the bound does
-      // not encode this container's speed or GC timing.
-      //
-      // The retaining control runs FIRST, so a harness that measured nothing
-      // fails here rather than passing vacuously on the opted-down side.
-      const keepFew = probeRssMib(capturedProbe(true, CAP_FEW_MIB))
-      const keepMany = probeRssMib(capturedProbe(true, CAP_MANY_MIB))
-      const dropFew = probeRssMib(capturedProbe(false, CAP_FEW_MIB))
-      const dropMany = probeRssMib(capturedProbe(false, CAP_MANY_MIB))
+    async () => {
+      // Assert on how the retained heap RESPONDS TO VOLUME, never on an
+      // absolute figure. The retaining control runs FIRST, so a harness that
+      // measured nothing fails here rather than passing vacuously on the
+      // opted-down side.
+      const keepFew = await probeHeapMibAsync(capturedProbe(true, CAP_FEW_MIB))
+      const keepMany = await probeHeapMibAsync(capturedProbe(true, CAP_MANY_MIB))
+      const dropFew = await probeHeapMibAsync(capturedProbe(false, CAP_FEW_MIB))
+      const dropMany = await probeHeapMibAsync(capturedProbe(false, CAP_MANY_MIB))
 
       // Retaining is the documented default, and since 2026-09-16 what it
       // retains is BOUNDED (a head and a tail, `CAPTURE_*_CHARS`): the extra
-      // 120 MiB the child writes must not cost the extra 120 MiB. Full
-      // retention cost 141 MiB here (102 → 243); the bounded ring costs the
-      // allocator's high-water of pushing the chunks through it (40 MiB
-      // measured), so the line sits at the volume itself — full retention
-      // fails it, the bound clears it 3× over. `tests/capture-cap.test.ts`
-      // pins that the head and the tail are still there.
-      expect(keepMany - keepFew).toBeLessThan(CAP_EXTRA_MIB)
+      // 120 MiB the child writes must not cost the extra 120 MiB. Measured
+      // 17 → 17 MiB (the two 8 MiB ends); full retention costs the whole
+      // 120, 4× this line. `tests/capture-cap.test.ts` pins that the head
+      // and the tail are still there.
+      expect(keepMany - keepFew).toBeLessThan(CAP_EXTRA_MIB * 0.25)
 
-      // Opted down, the same 120 MiB of extra output must not move it: the
-      // stream is still fully drained, just not retained. Measured 102→243
-      // MiB retaining vs 50→51 MiB not. The bound is the logger test's 0.5,
-      // for its reason: the residual is the allocator's high-water of the
-      // chunks pushed through, and it grows with load — 0.25 read exactly
-      // 30 MiB on the Linux job of #424 under twelve shards (2026-09-16).
-      // Retention costs the full 141 MiB, 2× this line; the noise sits
-      // half below it.
-      expect(dropMany - dropFew).toBeLessThan(CAP_EXTRA_MIB * 0.5)
+      // Opted down, the stream is still fully drained, just not retained:
+      // measured 1 → 1 MiB.
+      expect(dropMany - dropFew).toBeLessThan(CAP_EXTRA_MIB * 0.25)
+      // With retention bounded, volume alone cannot tell a dropped stream
+      // from a kept one (a capture that ignored `false` held 17 → 17 and
+      // passed the line above), so the opted-down side must hold less than
+      // one 8 MiB end below what the retaining side holds.
+      expect(keepFew - dropMany).toBeGreaterThan(8)
     },
     TIMEOUT,
   )
