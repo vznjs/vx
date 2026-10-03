@@ -366,6 +366,10 @@ const DISCOVERY_CASES: Array<[string, () => Promise<string | null>]> = [
     () => failure({ 'package.json': '{"name":123}' }, loadWorkspace),
   ],
   [
+    '<file>: "name" cannot hold "#" — vx addresses a task as <name>#<task>',
+    () => failure({ 'package.json': '{"name":"a#b"}' }, loadWorkspace),
+  ],
+  [
     "<file>: must be a mapping (packages: and pnpm's settings)",
     () => failure({ 'pnpm-workspace.yaml': '- packages/*\n' }, loadWorkspace),
   ],
