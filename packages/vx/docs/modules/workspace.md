@@ -187,7 +187,9 @@ Globs every `package.json` matching the patterns (`Bun.Glob`,
   at mode 000 had dropped its project from `--all` under a green run. A
   member directory it may not search hides whether a manifest is there,
   so it is named on stderr and skipped (a service's data directory under
-  `packages/*`).
+  `packages/*`). Any other glob shape is scanned, and the scan stops at
+  such a directory and cannot skip it, so the load is refused naming the
+  directory and the glob.
 - A name several manifests share: pnpm accepts it (vite's playground,
   sveltejs/kit's test apps); vx cannot, since a project is addressed by
   its name. With no vx config among them they are left out, named on one
