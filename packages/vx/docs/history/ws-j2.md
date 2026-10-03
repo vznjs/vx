@@ -298,3 +298,20 @@ persistent task` and vx exits 1). Row (`site-samples` › a post's link
   word of servers at all. It now says it under "What can't be
   sandboxed". Row (`site-samples` › the sandboxing guide says a server
   is never traced), gated on `execute-task.ts`; red without the fix.
+- **J2-28** The landing said "`bunx @vzn/vx-migrate` or `vx init`
+  gives a temporary start": the migrator writes the native config, the
+  destination, not a temporary start, and npm has no copy of it yet
+  (J2-25's class, on the one page that row cannot see: it scans
+  Markdown). It now says `vx init` is the temporary start and the
+  migrator writes native config, its first publish pending. Row
+  (`landing` › shows how to start, the sentence it pins); red without
+  the fix.
+
+- **J2-29** J-102's class on the landing picture: its fifth callout
+  said "A read you did not declare fails the task", beside a drawing
+  of `app#build` reading `../secrets.env`, a read the sandbox refuses
+  silently (the wall), and a read outside the workspace is allowed.
+  It now says a workspace file you did not declare is out of reach, as
+  J-102 made the pillar say; the trace row that backs it (on the task's
+  own file) names the scope. Row (`landing` › the six lines, the
+  callout it pins); red without the fix.
