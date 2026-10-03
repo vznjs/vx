@@ -177,6 +177,12 @@ sync`", advice for a repo leaving Nx: they say to keep what the
   `404.html` and proxies misses back), its build an edge. A bare
   `buildTarget: "build"` resolved to nothing; specs now resolve as Nx's
   `parseTargetString` does, the current project's target.
+- **P2-33** A twelfth shape fixture: `@nx/jest/plugin` with
+  `ciTargetName` as Nx 23.2.1 infers it (a `jest.preset.js` input,
+  coverage under the workspace root, `test-ci` a cached `nx:noop` over
+  one `test-ci--<spec>` target per file). It migrates and plans; each
+  spec task shares `test`'s coverage dir, so it runs uncached with the
+  TODO that says so.
 
 ## Leads for other streams
 

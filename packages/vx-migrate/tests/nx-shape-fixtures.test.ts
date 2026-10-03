@@ -1,8 +1,9 @@
-// Nine hand-written Nx graphs in the shapes real repos have (plugin-
+// Hand-written Nx graphs in the shapes real repos have (plugin-
 // inferred targets, explicit executors, continuous and atomized targets
 // with a root project, per-project named inputs and filesets, run-commands
 // variants, configurations with run-script, every input kind, token
-// interpolation, an integrated repo of `project.json` projects), migrated
+// interpolation, an integrated repo of `project.json` projects, the
+// TypeScript plugin, @nx/jest atomized per spec), migrated
 // through the CLI. Every config it writes must load and plan: a written config vx
 // refuses (an output outside the workspace, P2-11) fails the whole repo.
 
@@ -321,5 +322,33 @@ describe('vx-migrate on the Nx shapes real repos have: every written config load
     })
     // Nx's `build-deps` carries no executor: Nx normalizes it to a group (P2-31).
     expect(r.configs['@ts/core']!['build-deps']).toEqual({ dependsOn: ['^build'] })
+  }, 30_000)
+  it('@nx/jest atomized: a preset input, coverage outside the project, test-ci per spec', async () => {
+    const r = await migrate('jest-atomized')
+    expect(r.code).toBe(0)
+    expect(r.tasks).toEqual({
+      '@ja/auth': [
+        'test',
+        'test-ci',
+        'test-ci--src/lib/login.spec.ts',
+        'test-ci--src/lib/token.spec.ts',
+      ],
+      '@ja/ui': ['nx-input:production', 'test'],
+    })
+    const auth = r.configs['@ja/auth']!
+    expect(auth['test']!['cache']).toEqual({
+      inputs: { files: ['**/*'], workspaceFiles: ['jest.preset.js'] },
+      outputs: { files: [], workspaceFiles: ['coverage/libs/auth'] },
+    })
+    expect(auth['test-ci']).toEqual({
+      dependsOn: ['test-ci--src/lib/login.spec.ts', 'test-ci--src/lib/token.spec.ts'],
+    })
+    // Each spec shares `test`'s coverage dir: uncached, with the TODO that says why.
+    const spec = auth['test-ci--src/lib/login.spec.ts']!
+    expect((spec['exec'] as { command: string }).command).toBe('jest src/lib/login.spec.ts')
+    expect(spec['cache']).toBeUndefined()
+    expect(r.out).toContain(
+      'declares the workspace output "coverage/libs/auth" that @ja/auth#test also declares',
+    )
   }, 30_000)
 })
