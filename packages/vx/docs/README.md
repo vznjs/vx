@@ -147,7 +147,7 @@ import { defineWorkspace } from '@vzn/vx/config'
 export default defineWorkspace({ plugins: [] })
 ```
 
-Run things:
+Run things (from a local install, prefix `npx` or `bunx`):
 
 ```bash
 vx run build                    # current package (+ its dependency graph)
