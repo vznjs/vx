@@ -10,6 +10,7 @@
 
 import {
   refuseUnknownOptions,
+  type PluginOptionKinds,
   definePlugin,
   type TelemetryContext,
   type TelemetrySink,
@@ -366,19 +367,19 @@ export function resolveOtelConfig(
   }
 }
 
-/** Every option `OtelPluginOptions` names: the type checker holds the two to each other. */
-const OTEL_PLUGIN_KEYS: Record<keyof OtelPluginOptions, true> = {
-  endpoint: true,
-  tracesEndpoint: true,
-  metricsEndpoint: true,
-  logsEndpoint: true,
-  serviceName: true,
-  headers: true,
-  metrics: true,
-  logs: true,
-  timeoutMs: true,
-  compression: true,
-  post: true,
+/** Each option `OtelPluginOptions` names, with its kind: derived from the type, so the two cannot drift. */
+const OTEL_PLUGIN_KEYS: PluginOptionKinds<OtelPluginOptions> = {
+  endpoint: 'string',
+  tracesEndpoint: 'string',
+  metricsEndpoint: 'string',
+  logsEndpoint: 'string',
+  serviceName: 'string',
+  headers: 'object',
+  metrics: 'boolean',
+  logs: 'boolean',
+  timeoutMs: 'number',
+  compression: 'string',
+  post: 'function',
 }
 
 /**
@@ -389,14 +390,7 @@ const OTEL_PLUGIN_KEYS: Record<keyof OtelPluginOptions, true> = {
  * Declines when no OTLP endpoint is set.
  */
 export function otel(opts: OtelPluginOptions = {}): VxPlugin {
-  refuseUnknownOptions('otel()', opts, Object.keys(OTEL_PLUGIN_KEYS))
-  // A switch read from the environment arrives as a string, and `'false'`
-  // is truthy: the signal was exported though it was turned off.
-  for (const name of ['metrics', 'logs'] as const) {
-    if (opts[name] !== undefined && typeof opts[name] !== 'boolean') {
-      throw new Error(`[vx-otel] ${name} must be true or false, got ${JSON.stringify(opts[name])}`)
-    }
-  }
+  refuseUnknownOptions('otel()', opts, OTEL_PLUGIN_KEYS)
   return definePlugin(import.meta, {
     telemetry(ctx: TelemetryContext): TelemetrySink | undefined {
       const config = resolveOtelConfig(opts, process.env, (m) => ctx.warn(m))

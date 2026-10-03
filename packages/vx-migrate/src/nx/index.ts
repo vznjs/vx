@@ -23,6 +23,7 @@ import { availableParallelism } from 'node:os'
 import path from 'node:path'
 import {
   refuseUnknownOptions,
+  type PluginOptionKinds,
   type GeneratedProject,
   type ProjectMeta,
   UserError,
@@ -66,12 +67,15 @@ export interface NxPluginOptions {
   readonly graph?: string
 }
 
-/** Every option `NxPluginOptions` names: the type checker holds the two to each other. */
-const NX_PLUGIN_KEYS: Record<keyof NxPluginOptions, true> = { root: true, graph: true }
+/** Each option `NxPluginOptions` names, with its kind: derived from the type, so the two cannot drift. */
+const NX_PLUGIN_KEYS: PluginOptionKinds<NxPluginOptions> = {
+  root: 'string',
+  graph: 'string',
+}
 
 /** The plugin: the adoption skeleton over `mapNxWorkspace`, one mapping per run. */
 export function nx(options: NxPluginOptions = {}): VxPlugin {
-  refuseUnknownOptions('nx()', options, Object.keys(NX_PLUGIN_KEYS))
+  refuseUnknownOptions('nx()', options, NX_PLUGIN_KEYS)
   // One graph load per RUN, shared by `discover` and `project`: the run
   // hands both stages the same projects array (discover's, grown by what
   // it named), so its identity is the run's, as the mapping's is.

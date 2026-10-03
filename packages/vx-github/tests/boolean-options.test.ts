@@ -14,7 +14,7 @@ const said = (checks: unknown): string => {
 }
 
 it('checks that is not a boolean is refused', () => {
-  expect(said('false')).toBe('vx-github: checks must be true or false, got "false"')
+  expect(said('false')).toBe('github() option "checks" must be a boolean, got "false"')
 })
 
 it('a boolean, or none, is taken', () => {
