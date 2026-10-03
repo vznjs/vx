@@ -1557,5 +1557,6 @@ tool was already answered; a non-string method (-32600, id echoed) and a
 Execute stream is cancelled and the executor rejects with core's new
 `executorFallback(reason)`, which runs the task on the local floor with
 one line, or fails a `remote: 'only'` task naming the reason. Unset, the
-task's `exec.timeout` bounds the queue as a timeout. The client has no
-`CancelOperation`, so a server may still run an orphaned action.
+task's `exec.timeout` bounds the queue as a timeout. Closing the stream
+left the queued action to the server, so the expiry also sends
+`Operations.CancelOperation` for it (#2723), best effort.
