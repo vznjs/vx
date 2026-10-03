@@ -167,6 +167,17 @@ export async function run(argv: readonly string[]): Promise<number> {
       // declaring `mcp` read as a plain unknown command, and `vx mcp`
       // before the plugin was declared said nothing about the file that
       // would declare it (2026-09-20).
+      // A word that opens with a dash is a flag, and vx itself takes only
+      // --help and --version: "unknown command: --bogus" named the wrong
+      // thing (M-60).
+      if (command.startsWith('-')) {
+        // `-v` / `-V` is another tool's version flag, far from both names.
+        const flag = /^-v$/i.test(command) ? '--version' : nearest(command, ['--help', '--version'])
+        process.stderr.write(
+          `vx: unknown flag: ${command}${flag === undefined ? '' : ` (did you mean ${flag}?)`}; a verb's flags follow the verb (see \`vx help\`)\n`,
+        )
+        return 1
+      }
       const declaredVerbs =
         resolved !== null && 'declaredVerbs' in resolved ? resolved.declaredVerbs : []
       const guess = didYouMeanVerb(command, declaredVerbs)

@@ -44,6 +44,22 @@ describe('cli run()', () => {
     expect(stdout).toMatch(/^vx \d/)
   })
 
+  it('a flag before any verb is called a flag, not a command (M-60)', async () => {
+    const said = async (args: string[]): Promise<[number, string]> => {
+      stderr = ''
+      return [await run(args), stderr]
+    }
+    expect([await said(['--verison']), await said(['--all']), await said(['rnu'])]).toEqual([
+      [
+        1,
+        "vx: unknown flag: --verison (did you mean --version?); a verb's flags follow the verb (see `vx help`)\n",
+      ],
+      [1, "vx: unknown flag: --all; a verb's flags follow the verb (see `vx help`)\n"],
+      // CONTROL: a word without a dash is still a command.
+      [1, 'vx: unknown command: rnu. Did you mean run? (see `vx help`)\n'],
+    ])
+  })
+
   it('vx watch names its own help, and vx cache its one subcommand (M-58)', async () => {
     const said = async (args: string[]): Promise<[number, string]> => {
       stderr = ''
@@ -382,9 +398,11 @@ describe('cli run()', () => {
     expect(stdout).toMatch(/^vx \d/)
   })
 
-  it('-V is rejected as unknown', async () => {
+  it('-V is rejected as unknown, pointing at --version (M-60)', async () => {
     expect(await run(['-V'])).toBe(1)
-    expect(stderr).toContain('unknown command')
+    expect(stderr).toBe(
+      "vx: unknown flag: -V (did you mean --version?); a verb's flags follow the verb (see `vx help`)\n",
+    )
   })
 })
 

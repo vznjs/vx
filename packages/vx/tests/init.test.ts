@@ -1636,11 +1636,13 @@ describe('vx init on a workspace with no scripts', () => {
         path.join(root, 'package.json'),
         JSON.stringify({ private: true, scripts: { build: 'tsc' } }),
       )
-      const notes = (await vx(root, ['init', '--dry'])).out
-        .split('\n')
-        .filter((l) => l.startsWith('note: not mapped'))
-      expect(notes).toEqual([
+      const lines = (await vx(root, ['init', '--dry'])).out.split('\n')
+      expect(lines.filter((l) => l.startsWith('note: not mapped'))).toEqual([
         'note: not mapped: the root — its package.json has no "name", and vx names a project by it; give it one and run `vx init` again',
+      ])
+      // The scripts exist: the headline said there were none (M-59).
+      expect(lines.filter((l) => l.startsWith('vx init:'))).toEqual([
+        'vx init: no package.json scripts became tasks.',
       ])
     } finally {
       await rm(root, { recursive: true, force: true })
