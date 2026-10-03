@@ -36,6 +36,7 @@ const WORKSPACE_FIELDS = new Set([
   'timeout',
   'cacheRetention',
   'affectedBase',
+  'cacheScope',
   'plugins',
 ])
 
@@ -110,6 +111,13 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
     // A leading '-' would reach git as an option, not a ref.
     if (typeof config.affectedBase !== 'string' || !/^[^-\s]\S*$/.test(config.affectedBase)) {
       throw new UserError(`${configPath}: \`affectedBase\` must be a git ref like 'origin/main'`)
+    }
+  }
+  if (config.cacheScope !== undefined) {
+    if (typeof config.cacheScope !== 'string' || !/^[\w.@/-]{1,128}$/.test(config.cacheScope)) {
+      throw new UserError(
+        `${configPath}: \`cacheScope\` must be 'trusted', 'read-only', or a scope name of letters, digits and . _ - / @ (at most 128), like 'pr-123'`,
+      )
     }
   }
   if (config.plugins !== undefined) {

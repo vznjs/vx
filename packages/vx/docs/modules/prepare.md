@@ -18,6 +18,7 @@ export interface PreparedRun {
   cache: CacheLayer // caller owns close()
   localCache: Cache // the local handle `cache` may wrap; raw SQLite readers use it
   hasRemoteLayer: boolean // `cache` is more than the local handle — the remote policy axes mean something
+  cachePolicy: CachePolicy // `--cache` with the workspace's `cacheScope` applied
   priorities: ReadonlyMap<string, number> // the `schedule` stage's weights; empty without one
   nodes: Map<string, TaskNode> // empty if `empty !== null`
   keyOnly: ReadonlyMap<string, TaskNode> // what --exclude-dependencies keyed but did not schedule

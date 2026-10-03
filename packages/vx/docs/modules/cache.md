@@ -312,9 +312,12 @@ export interface CachePolicy {
   localWrite: boolean
   remoteRead: boolean
   remoteWrite: boolean
+  remoteScope?: string // an untrusted scope: read trusted then own keys, write own
 }
 export const FULL_CACHE_POLICY: CachePolicy
 export function parseCachePolicy(spec: string, base?: CachePolicy): CachePolicy
+// The workspace's `cacheScope` applied: 'read-only' clears remoteWrite, a name sets remoteScope.
+export function scopeCachePolicy(policy: CachePolicy, scope: string | undefined): CachePolicy
 ```
 
 ## Key derivation (`Cache.key`)

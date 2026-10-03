@@ -33,6 +33,7 @@ import type {
   SaveArgs,
 } from './cache.js'
 import { FULL_CACHE_POLICY, type OutputDirRow } from './cache.js'
+import { xxh3hex } from '../util/index.js'
 
 /**
  * What a remote cache layer must provide — THE plugin seam for remote
@@ -157,6 +158,62 @@ function batchOf(hashes: readonly string[]): { batch: string } {
   return { batch: `of ${hashes.length} artifact${hashes.length === 1 ? '' : 's'}` }
 }
 
+/**
+ * The remote as an untrusted scope sees it: reads try the trusted key,
+ * then the scope's; writes go to the scope's key only. A scope's key is
+ * derived from the task key, so every wire stores it unchanged and the
+ * trusted keyspace never holds a scoped write. What a scoped read
+ * returns is ingested under the TASK key, and ingest refuses an artifact
+ * recording another key, so a derived-key collision degrades to a miss.
+ */
+class ScopedRemote implements RemoteCacheLayer {
+  readonly endpoint?: string
+  readonly hasMany?: (hashes: readonly string[]) => Promise<Set<string> | null>
+
+  constructor(
+    private readonly remote: RemoteCacheLayer,
+    private readonly scope: string,
+  ) {
+    if (remote.endpoint !== undefined) this.endpoint = remote.endpoint
+    if (remote.hasMany !== undefined) this.hasMany = (hashes) => this.scopedHasMany(hashes)
+  }
+
+  private scoped(hash: string): string {
+    return scopedKey(this.scope, hash)
+  }
+
+  async has(hash: string): Promise<boolean> {
+    return (await this.remote.has(hash)) || this.remote.has(this.scoped(hash))
+  }
+
+  private async scopedHasMany(hashes: readonly string[]): Promise<Set<string> | null> {
+    const scoped = hashes.map((h) => this.scoped(h))
+    const [trusted, own] = await Promise.all([
+      this.remote.hasMany!(hashes),
+      this.remote.hasMany!(scoped),
+    ])
+    if (trusted == null || own == null) return null
+    const found = new Set(trusted)
+    for (let i = 0; i < hashes.length; i++) if (own.has(scoped[i]!)) found.add(hashes[i]!)
+    return found
+  }
+
+  async get(
+    hash: string,
+  ): Promise<{ body: Blob | Response; durationMs: number | undefined } | null> {
+    return (await this.remote.get(hash)) ?? this.remote.get(this.scoped(hash))
+  }
+
+  put(hash: string, body: Blob, meta: { durationMs: number }): Promise<void> {
+    return this.remote.put(this.scoped(hash), body, meta)
+  }
+}
+
+/** The key an untrusted scope stores `hash` under: task-key shaped, 16 hex. */
+function scopedKey(scope: string, hash: string): string {
+  return xxh3hex(`vx-cache-scope\0${scope}\0${hash}`)
+}
+
 export interface LayeredCacheOptions {
   /**
    * Called for the remote failures the layer degrades to a miss, once per
@@ -222,12 +279,16 @@ export class LayeredCache implements CacheLayer {
    */
   private readonly reported = new Map<string, { cause: string; repeats: number }>()
 
+  private readonly remote: RemoteCacheLayer
+
   constructor(
     readonly local: Cache,
-    private readonly remote: RemoteCacheLayer,
+    remote: RemoteCacheLayer,
     private readonly options: LayeredCacheOptions = {},
   ) {
     this.policy = options.policy ?? FULL_CACHE_POLICY
+    const scope = this.policy.remoteScope
+    this.remote = scope === undefined ? remote : new ScopedRemote(remote, scope)
     this.endpoint = printableEndpoint(remote.endpoint)
   }
 

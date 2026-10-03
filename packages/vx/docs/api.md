@@ -271,6 +271,7 @@ export interface CachePolicy {
   localWrite: boolean
   remoteRead: boolean
   remoteWrite: boolean
+  remoteScope?: string
 }
 ```
 
@@ -900,7 +901,7 @@ export class LayeredCache implements CacheLayer {
   readonly hasRemote
   constructor(
     readonly local: Cache,
-    private readonly remote: RemoteCacheLayer,
+    remote: RemoteCacheLayer,
     private readonly options: LayeredCacheOptions = {},
   )
   key(input: CacheKeyInput): Promise<string>
@@ -1437,6 +1438,7 @@ export interface PreparedRun {
   cache: CacheLayer
   localCache: Cache
   hasRemoteLayer: boolean
+  cachePolicy: CachePolicy
   priorities: ReadonlyMap<string, number>
   nodes: Map<string, TaskNode>
   keyOnly: ReadonlyMap<string, TaskNode>
@@ -2388,6 +2390,7 @@ export interface WorkspaceConfig {
   timeout?: number
   cacheRetention?: { olderThan?: string; maxSize?: string }
   affectedBase?: string
+  cacheScope?: string
   plugins?: readonly Plugin[]
 }
 ```

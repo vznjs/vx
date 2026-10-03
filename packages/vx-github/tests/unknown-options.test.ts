@@ -15,7 +15,7 @@ const refusal = (make: () => unknown): string => {
 
 it('a misspelt option is refused, naming the nearest one', () => {
   expect(refusal(() => github({ titel: 'x' } as never))).toBe(
-    'github() has unknown option "titel" (allowed: append, checkName, checks, fetchFn, sizeOf, summaryFile, title) \u2014 did you mean title?',
+    'github() has unknown option "titel" (allowed: append, cacheScope, checkName, checks, fetchFn, sizeOf, summaryFile, title) \u2014 did you mean title?',
   )
 })
 

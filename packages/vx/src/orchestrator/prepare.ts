@@ -16,6 +16,7 @@ import {
   type CacheLayer,
   type CachePolicy,
   FULL_CACHE_POLICY,
+  scopeCachePolicy,
   GitFilesCache,
   LayeredCache,
   applyGitEnumeration,
@@ -90,6 +91,8 @@ export interface PreparedRun {
    * would be saved still cleans its outputs before executing.
    */
   hasRemoteLayer: boolean
+  /** `--cache` with the workspace's `cacheScope` applied: what the layers were built under. */
+  cachePolicy: CachePolicy
   /**
    * Scheduling priorities from plugins' `schedule` stage (task id → weight,
    * merged over the structural baseline by the scheduler). Empty when no
@@ -257,7 +260,10 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
 
   // The local cache opens BEFORE the configs load: it is also where their
   // cached evaluations live.
-  const policy: CachePolicy = options.cache ?? FULL_CACHE_POLICY
+  const policy: CachePolicy = scopeCachePolicy(
+    options.cache ?? FULL_CACHE_POLICY,
+    workspaceConfig?.cacheScope,
+  )
   const localCache = new Cache(
     cacheDir,
     { read: policy.localRead, write: policy.localWrite },
@@ -455,6 +461,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
         cache,
         localCache,
         hasRemoteLayer,
+        cachePolicy: policy,
         priorities: new Map(),
         nodes: new Map(),
         keyOnly: new Map(),
@@ -610,6 +617,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       cache,
       localCache,
       hasRemoteLayer,
+      cachePolicy: policy,
       priorities,
       nodes,
       keyOnly,

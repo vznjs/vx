@@ -293,7 +293,7 @@ A verb that throws anything but a `UserError` fails in one line, no stack:
 | `@vzn/vx-lockfile`          | `fingerprint`, `key` ([Lockfiles](../configure/#lockfiles)) |
 | `@vzn/vx-schedule-history`  | `schedule`, `admit`, `commands`            |
 | `@vzn/vx-otel`              | `telemetry` ([below](#opentelemetry))      |
-| `@vzn/vx-github`            | `telemetry` ([GitHub Actions](../ci/#github-actions)) |
+| `@vzn/vx-github`            | `config`, `telemetry` ([GitHub Actions](../ci/#github-actions)) |
 | `@vzn/vx-mcp`               | `commands` ([below](#vx-mcp))              |
 
 Only `@vzn/vx` is on npm today. The seven plugins' first publish is

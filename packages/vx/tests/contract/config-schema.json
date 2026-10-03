@@ -1,7 +1,15 @@
 {
   "workspace": {
     "levels": {
-      "": ["affectedBase", "cacheDir", "cacheRetention", "concurrency", "plugins", "timeout"],
+      "": [
+        "affectedBase",
+        "cacheDir",
+        "cacheRetention",
+        "cacheScope",
+        "concurrency",
+        "plugins",
+        "timeout"
+      ],
       "cacheRetention": ["maxSize", "olderThan"]
     },
     "records": [],
@@ -237,6 +245,38 @@
           "65536",
           "2147483648",
           "\"\"",
+          "[]",
+          "[\"x\"]",
+          "[\"\"]",
+          "[1]",
+          "[3000]",
+          "[\"/x\"]",
+          "[\"!/x\"]",
+          "[\"../x\"]",
+          "[\"!x\"]",
+          "[\"!!x\",\"y\"]",
+          "[\".\"]",
+          "[\"**\"]",
+          "[\"A=B\"]",
+          "[\"A*\"]",
+          "{}",
+          "{\"x\":\"y\"}"
+        ]
+      },
+      "cacheScope": {
+        "ok": ["<absent>", "\"x\"", "\"30d\"", "\"10G\"", "\"10\"", "\"pr-1\""],
+        "$CONFIG: `cacheScope` must be 'trusted', 'read-only', or a scope name of letters, digits and . _ - / @ (at most 128), like 'pr-123'": [
+          "null",
+          "true",
+          "false",
+          "0",
+          "1",
+          "1.5",
+          "-1",
+          "65536",
+          "2147483648",
+          "\"\"",
+          "\"(\"",
           "[]",
           "[\"x\"]",
           "[\"\"]",

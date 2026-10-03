@@ -16,6 +16,7 @@ export {
   type InvocationRecord,
   KEYED_RUNS_SQL,
   parseCachePolicy,
+  scopeCachePolicy,
   type RunRecord,
   type TaskInputRow,
   WORKSPACE_OUTPUT_PREFIX,

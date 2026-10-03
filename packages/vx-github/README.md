@@ -46,8 +46,21 @@ github({
   title: 'build & test', // default: 'vx run'
   checks: true, // default: on with GITHUB_TOKEN; true warns when it is missing, false opts out
   checkName: 'ci', // default: 'vx', the check run's name
+  cacheScope: false, // default: on; scope remote cache writes by ref
 })
 ```
+
+## Cache scope
+
+On Actions (`GITHUB_ACTIONS=true`), when `vx.workspace.ts` sets no `cacheScope`, the plugin's
+`config` stage sets it from the ref (`GITHUB_REF`, `GITHUB_REF_NAME`, and
+the default branch from the `GITHUB_EVENT_PATH` payload): a push to the default branch stays
+trusted (reads and writes the task keys), a pull request becomes
+`pr-<n>` and any other branch or tag `ref-<name>`, which read the
+trusted keys and write only their own. A PR never writes what main
+reads. This is a client-side convention: the real boundary is a cache
+token the server limits, so give PR jobs one that cannot write the
+trusted keys (`docs/security.md` § Cache poisoning).
 
 ## How it works
 
