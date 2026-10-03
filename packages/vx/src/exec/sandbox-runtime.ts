@@ -1141,8 +1141,21 @@ export async function wrapSandboxedCommand(
   // sandboxed server and all it forked outlived vx (turborepo#9666). Now
   // the namespace goes with vx, a `setsid` daemon inside included, a
   // traced one-shot task too: its strace runs inside (B-11).
-  if (process.platform === 'linux' && /^\S*bwrap /.test(wrapped))
-    wrapped = `exec ${readOnlyMasks(wrapped, scratch)}`
+  // Every mask and bind is a mount point, and git's discovery stops at
+  // one: a task granted the repository's `.git` still read "not a git
+  // repository … Stopping at filesystem boundary" (2026-10-03). The
+  // boundaries are the sandbox's, so a task that names a `.git` may walk
+  // across them; only such a task, since git-aware tools read the variable
+  // (vx's own repoFacts asks git instead of the disk under it). A value the
+  // task's environment sets wins.
+  if (process.platform === 'linux' && /^\S*bwrap /.test(wrapped)) {
+    const gitGranted = [...args.config.allowRead, ...args.config.allowWrite].some((g) =>
+      g.split(/[\\/]/).includes('.git'),
+    )
+    wrapped =
+      (gitGranted ? 'GIT_DISCOVERY_ACROSS_FILESYSTEM=${GIT_DISCOVERY_ACROSS_FILESYSTEM-1} ' : '') +
+      `exec ${readOnlyMasks(wrapped, scratch)}`
+  }
   if (process.platform === 'linux' && !hostHasIpv6())
     wrapped = `SOCAT_DEFAULT_LISTEN_IP=4 ${wrapped}`
   const held = portsHeld(ports)
