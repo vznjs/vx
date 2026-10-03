@@ -1700,7 +1700,10 @@ declares no workspaces … Add "workspaces": ["packages/*"] to
 package.json and re-run") rather than "no scripts" or "run vx init". A
 workspace whose globs match no `package.json` gets a note naming them
 (M-42); a nameless member, or two sharing a name, is matched and
-named on its own line instead (M-46). With
+named on its own line instead (M-46). When `pnpm-workspace.yaml` lists the
+members and the root `package.json`'s `workspaces` lists other globs,
+the note names the unread list (M-51): pnpm reads only the yaml, while
+bun, npm and yarn read `package.json`. With
 no `package.json` here or above, `init` says to create one (`bun init` or
 `npm init -y`) first. Every
 generated config is typed for the editor through
