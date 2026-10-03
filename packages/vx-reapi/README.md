@@ -26,7 +26,8 @@ composes cache layers by hand. The package exports `reapi`, `ReapiPluginOptions`
 encoders and the executor are internal. `ReapiOptions` is the connection
 as the plugin resolves it: the same fields, with the PEM text itself
 (`tlsCaPem`, `tlsClientCertPem`, `tlsClientKeyPem`) in place of the files,
-and `onWarn` for a degraded-but-recovered call; `reapi()` refuses those four,
+and `onWarn` for a degraded-but-recovered call; `reapi()` refuses those four
+(the `WireOnly` keys),
 reading files and warning through vx. With no endpoint configured (or a blank
 one) the plugin **declines** and costs nothing, so it is
 safe to leave declared. An endpoint that is not `host[:port]`, with an
