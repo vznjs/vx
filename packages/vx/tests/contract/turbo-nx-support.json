@@ -266,8 +266,8 @@
   },
   {
     "key": "turbo.json futureFlags.githubActionsRemoteBaseRefFallback",
-    "status": "not-supported",
-    "reason": "Ignored; `--affected` defaults to `origin/HEAD`, then a trunk branch (`origin/main`, `main`, …), else `HEAD~1`."
+    "status": "supported",
+    "reason": "`turbo()` follows it on GitHub Actions: a pull request's base ref the checkout lacks is compared as `origin/<ref>`, as in Turbo."
   },
   {
     "key": "turbo.json futureFlags.globalConfiguration",
@@ -292,7 +292,7 @@
   {
     "key": "turbo.json futureFlags.watchUsingTaskInputs",
     "status": "not-supported",
-    "reason": "Ignored; `vx watch` watches each task's declared inputs."
+    "reason": "Ignored; `vx watch` re-runs on any change in a watched project but a declared output, and the cache keys decide what executes."
   },
   {
     "key": "turbo.json boundaries.dependencies",
