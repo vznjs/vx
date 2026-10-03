@@ -503,6 +503,16 @@ persistent task` and vx exits 1). Row (`site-samples` › a post's link
   prints the help text. Both name the workspace condition now. Row
   (`module-page-claims` › a bare vx prints the text only inside a
   workspace), red without the fix.
+- **J2-59** `cli.md`'s `vx watch` section read against source: its exit
+  codes left out that `--affected` selecting nothing prints the note and
+  exits 0 without watching. Contract case
+  (`contract-exit-codes`, `vx watch build --affected=HEAD` → 0) and row
+  (the watch exit codes name the empty --affected exit), the row red
+  without the fix. Checked clean: the lifecycle messages, the probe
+  file, its 2 s timeout and the 250 ms poller, `VX_WATCH_POLL`, the
+  watch-limit notice, the 150 ms debounce, the three-cycle notice, the
+  ignored segments and suffixes, the refused flags and their reasons,
+  the signals it forwards, and `cycle failed`.
 - **J2-58** `cli.md`'s `vx run` section read against source: the glyph
   table gave `⏺` the status words "success/failed", but a failed task
   always draws `◼`. Row (`cli-doc-drift` › the glyph table is the
@@ -514,13 +524,3 @@ persistent task` and vx exits 1). Row (`site-samples` › a post's link
   hints, the visibility table, the failure recap's limits and sample,
   the live region's row cap and redraw floor, and the persistent-task
   exit line.
-- **J2-59** `cli.md`'s `vx watch` section read against source: its exit
-  codes left out that `--affected` selecting nothing prints the note and
-  exits 0 without watching. Contract case
-  (`contract-exit-codes`, `vx watch build --affected=HEAD` → 0) and row
-  (the watch exit codes name the empty --affected exit), the row red
-  without the fix. Checked clean: the lifecycle messages, the probe
-  file, its 2 s timeout and the 250 ms poller, `VX_WATCH_POLL`, the
-  watch-limit notice, the 150 ms debounce, the three-cycle notice, the
-  ignored segments and suffixes, the refused flags and their reasons,
-  the signals it forwards, and `cycle failed`.
