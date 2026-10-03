@@ -305,7 +305,7 @@ keep Nx for those.
 
 ## Common problems
 
-- **No workspace root.** vx finds projects through `pnpm-workspace.yaml` or `package.json` `workspaces`. `nx()` adds each Nx project the graph names that no package glob lists (a `project.json` library, the root project).
+- **No workspace root.** vx finds projects through `pnpm-workspace.yaml` or `package.json` `workspaces`. `nx()` adds each Nx project the graph names that no package glob lists (a `project.json` library, the root project). `bunx @vzn/vx-migrate` writes a `package.json` for each such library that lacks one and prints the directories to add to the globs.
 - **A task always runs.** vx caches only a task with a `cache` block. `vx-migrate` fills it from `turbo.json` or the Nx graph; a Turbo task with `cache: false` has none.
 - **An env var is missing in the command.** vx isolates the environment: list it in `exec.env.passThrough` ([Environment variables](../configure/#environment-variables)).
 - **`vx run build` ran one package.** Without `--all`, vx runs the package you are in.
