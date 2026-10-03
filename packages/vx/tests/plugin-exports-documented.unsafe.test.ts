@@ -52,4 +52,29 @@ describe('every plugin export is named in its README', () => {
     }
     expect(missing).toEqual([])
   })
+
+  // J2-42: the vx-reapi README named "the `WireOnly` keys" after #2541
+  // inlined the type; a type-shaped name a README gives is in the source.
+  it('names no type-shaped identifier its package and core lack', () => {
+    const source = (dir: string): string =>
+      (readdirSync(dir, { recursive: true }) as string[])
+        .filter((f) => f.endsWith('.ts'))
+        .map((f) => readFileSync(path.join(dir, f), 'utf8'))
+        .join('\n')
+    const core = source(path.join(PACKAGES, 'vx', 'src'))
+    const unknown: string[] = []
+    let seen = 0
+    for (const file of records) {
+      const pkg = file.slice(0, -'.txt'.length)
+      const src = source(path.join(PACKAGES, pkg, 'src')) + core
+      const readme = readFileSync(path.join(PACKAGES, pkg, 'README.md'), 'utf8')
+      for (const m of new Set(readme.match(/`[A-Z][a-z0-9]+[A-Z][A-Za-z0-9]*`/g))) {
+        const name = m.slice(1, -1)
+        seen++
+        if (!new RegExp(`\\b${name}\\b`).test(src)) unknown.push(`${pkg}: ${name}`)
+      }
+    }
+    expect(seen).toBeGreaterThan(20)
+    expect(unknown).toEqual([])
+  })
 })
