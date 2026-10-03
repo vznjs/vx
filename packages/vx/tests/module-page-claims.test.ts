@@ -121,6 +121,15 @@ describe('module pages state what their file does since the fix', () => {
     expect(page_).toContain('`vx: <id> exited with code <n> while the run went on`')
   })
 
+  it('orchestrator.md: a held server that dies after the run is named (#2442)', () => {
+    expect(src('orchestrator/run.ts')).toContain(
+      'if (!stopping && code !== 0) log.status(`vx: ${n.id} exited with code ${code}`)',
+    )
+    const held = blocks('modules/orchestrator.md', 'RunOptions.holdPersistent')
+    expect(held.length).toBe(1)
+    expect(held[0]).toContain('One that dies on its own after that is named')
+  })
+
   it("logger.md: a kept server's output streams under its id after the summary (#2054)", () => {
     expect(src('orchestrator/logger.ts')).toContain('formatKeptLines(')
     expect(page('modules/logger.md')).toMatch(
