@@ -16,6 +16,10 @@ specific to one guide stay there: [Sandboxing](../sandboxing/#common-problems),
 | `vx requires git: failed to spawn 'git'`           | Install git.                                                            |
 | `--affected has no base here`                      | Fetch the history (`fetch-depth: 0` in CI), or pass `--affected=<ref>`. |
 | `… has unknown field "<key>"`                      | A typo, or a Turbo or Nx key: the message lists the fields vx allows.  |
+| `Cycle detected in task graph`                     | Remove one `dependsOn` edge of the loop it prints.                      |
+| `depends on … but no such project or task is declared` | Fix the name, or declare that task in that package.                 |
+| `No projects declare task(s)`                      | A typo, or no config declares it: `vx show` lists every task.           |
+| `unknown flag`                                     | `vx run --help` lists the flags.                                        |
 | `vx: command not found`                            | A local install is not on PATH: run `npx vx` or `bunx vx`.              |
 
 ## vx did something unexpected
