@@ -762,3 +762,15 @@ status` re-hashes every tracked file, and vx runs it with
   plan's per-task `has()` is 6 µs.
 - `vx --help` loads the plugin layer to list plugin verbs: 20 ms outside
   a workspace, 11 for `--version`. A rare verb; not taken.
+- A warm no-op spawns git three times, once per question (`ls-files`,
+  `status`, `var -l`); nothing repeats within a run. At 1,000 projects
+  `git status` is 45 ms in the run and 26 standalone; 17 of the 26 are
+  its untracked walk, the input set itself. At 10 projects all three are
+  5–7 ms and overlap the config load: the stage reads 0.5 ms.
+- `vx --version` is 10.0 ms against 6.9 for a compiled binary that
+  imports `version.ts` and writes it. Moving the `beforeExit` guard past
+  `--version` measured 9.5 against 10.0 (A/A 9.8, 40 rounds); not taken.
+  A `--format=cjs` build: 10.2–10.5 either way, the warm no-op unchanged.
+  The rest follows the bundle's reach: the same probe with the CLI
+  imported but unused is 5.9 ms, used 9.0. One compiled bundle sets up
+  every module the CLI reaches, so per-verb lazy imports cut nothing.
