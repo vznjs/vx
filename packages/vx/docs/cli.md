@@ -2051,6 +2051,14 @@ schemas: each `{ … }` a verb's section shows is an object its schema
 closes with those keys, each object the verb prints whole is shown, and
 `vx info`'s field list is its schema's top level.
 
+**Streams.** A verb whose stdout is a product (a `--format json`
+document, `--dry` / `--dry=json`, `--graph`'s DOT, a completion
+script) writes that product alone there; a notice or warning it meets
+on the way (a cache index from an earlier vx, a plugin's warning) goes
+to stderr, as every refusal does. `vx run`'s stdout is the run's frame,
+the tasks' output it carries. `tests/cli-streams.test.ts` holds each
+product verb to it under a notice.
+
 ## `vx show`
 
 Introspect the workspace's **live resolved configs** — what a run
