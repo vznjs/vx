@@ -527,6 +527,13 @@ true and named nothing to fix. A note now names the globs that match no
 `package.json`; a member under them, scripts or not, drops it. Row in
 `init.test.ts`, red on main.
 
+M-43. Probes, nothing shipped: more `vx init` layouts held. Root-only
+scripts become the root's tasks (`build` keeps `^build`, `test` waits
+on it) and the run takes them; a root script sharing a member's task
+name is left out, as the report says; a member with no scripts gets no
+config; a member's own `pnpm-workspace.yaml` is not read, so its
+packages are no members, as pnpm itself reads only the outermost one.
+
 ## Leads for other streams
 
 - A: A-20 let a same-project dependant restore ahead of a producer whose
