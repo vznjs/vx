@@ -269,7 +269,8 @@ prune` all match. Fixed: the Run blocks used bare `vx`, which a local
   (every merge tags a 0.0.x) there were none, so the page covers all of
   pre-1.0. `site-upgrading.unsafe.test.ts` compares the footers, not the
   titles, since a squash titles the commit after its PR (an edited
-  footer fails it).
+  footer fails it). The first push was generated in a shallow clone (11 entries)
+  and CI's full history held 28: generate from an unshallowed checkout.
 
 ## Leads
 
