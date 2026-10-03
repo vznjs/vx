@@ -254,6 +254,12 @@ prune` all match. Fixed: the Run blocks used bare `vx`, which a local
   plugin options, the execution suites' env vars. The Turbo guide's
   try-it and examples rows pass on main.
 
+- **R-39** Stale tool mentions: "moon-style" dropped from the run report's
+  docs and comments; versioning-1.0's contract named a `lage-worker` bin
+  that no longer exists. Kept: lerna and wireit lines that describe what
+  vx does (`vx init`'s `lerna.json` note, the foreign-field refusal
+  hints, the script mapper's runner list); design/history records.
+
 ## Leads
 
 - Real-repo rows (`packages/vx-bench/real-repos.json`, benchmarks.md's

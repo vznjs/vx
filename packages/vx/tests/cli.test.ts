@@ -878,7 +878,7 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
 
     const code = await run(['run', '--all', 'hello', '--report=markdown'])
     expect(code).toBe(0)
-    // Header + the moon-style table with one row for the task.
+    // Header + the table with one row for the task.
     expect(stdout).toContain('## vx run')
     expect(stdout).toContain('| Task | Status | Cache | Duration |')
     expect(stdout).toMatch(/\| one#hello \| success \| miss \|/)
