@@ -551,16 +551,6 @@ gets no task; `b#test`'s `yarn build && jest` gets M-41's own-task TODO;
 init warns that Plug'n'Play hides `node_modules/.bin` and names both
 fixes.
 
-M-48. M-41's own-task TODO read only `pnpm run x` / `npm run x`
-segments: `build: run-p build:*` and `ci: npm-run-all -s lint test` ran
-this package's own tasks inside the command with no word, though
-`scriptRefs` already reads those runners (D-95, D-113). The check now asks
-`scriptRefs` of a `run-s` / `run-p` / `npm-run-all` segment, counts every
-task it names, and skips a persistent task (`dev: run-p watch:*` has the
-persistent TODO). Probes that held: `--mjs` on M-44's and M-47's layouts.
-`init-own-script-chain.test.ts` › names a run-s / run-p / npm-run-all
-part; red without the fix, and the persistent control red without its
-guard.
 M-46. M-42's note said "match no package.json" of globs that matched
 three: a nameless member and two sharing a name, each left out of
 `metas`, which the note asked. It now asks the globs
@@ -584,6 +574,16 @@ hand-written file, so a half-adopted workspace has no clean path. Pinned
 on purpose (`init.test.ts` › refuses to overwrite without --force, like
 migrate); keeping such a project and writing the rest is the owner's call.
 
+M-48. M-41's own-task TODO read only `pnpm run x` / `npm run x`
+segments: `build: run-p build:*` and `ci: npm-run-all -s lint test` ran
+this package's own tasks inside the command with no word, though
+`scriptRefs` already reads those runners (D-95, D-113). The check now asks
+`scriptRefs` of a `run-s` / `run-p` / `npm-run-all` segment, counts every
+task it names, and skips a persistent task (`dev: run-p watch:*` has the
+persistent TODO). Probes that held: `--mjs` on M-44's and M-47's layouts.
+`init-own-script-chain.test.ts` › names a run-s / run-p / npm-run-all
+part; red without the fix, and the persistent control red without its
+guard.
 ## Leads for other streams
 
 - A: A-20 let a same-project dependant restore ahead of a producer whose
