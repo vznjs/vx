@@ -8,9 +8,10 @@
 //
 // A shim first on the child's PATH logs every git call: the real CLI in a
 // subprocess, because which git runs is decided by the PATH vx resolves on.
-import { chmod, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { FILE_HASH_RACY_MS, racyWindowMs } from '../src/cache/index.js'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
@@ -46,6 +47,12 @@ describe('git spawns on a cold run', () => {
     const git = gitIn(root)
     git('add', '-A')
     git('commit', '-q', '-m', 'init')
+    // A run keys the blob verdict only on an index older than the racy
+    // window. A cold run can reach the enumeration inside it (about 100 ms
+    // after the commit here), store no verdict, and leave the warm run to
+    // list `--debug` again.
+    const { ctimeMs } = await stat(path.join(root, '.git', 'index'))
+    while (Date.now() - ctimeMs <= racyWindowMs(ctimeMs, FILE_HASH_RACY_MS)) await Bun.sleep(5)
     shim = path.join(root, '.shim')
     log = path.join(shim, 'calls.log')
     await mkdir(shim)
