@@ -2291,7 +2291,7 @@ $ vx why app#build
 app#build — run 019f5a02-…
   this run   2026-07-13T05:39:20.590Z · success · executed · key f7ee661520…
   previous   2026-07-13T05:37:29.550Z · success · key 8b2e9bb2e8…
-  verdict    cache key changed between the previous run and this one (inputs differ)
+  verdict    cache key changed: file packages/app/src/input.txt
 
   what changed (1 component, 41 unchanged):
     changed file  packages/app/src/input.txt  3fe2a1b0… → 91c47d22…
@@ -2299,6 +2299,11 @@ app#build — run 019f5a02-…
   what to do:
     file  an edit re-runs by design; a file the task does not read belongs out of cache.inputs.files
 ```
+
+A changed key's verdict names what moved, kind and name, three at most
+and then a count (`cache key changed: env MODE`), so a key that moved
+only by an environment variable says so in one line; when neither
+entry kept its components it reads `(inputs differ)`.
 
 Under the rows, `what to do` gives one line per changed kind: what
 moves it and how to stop a move the task does not need. An `upstream`
