@@ -29,9 +29,17 @@ describe.skipIf(!MODULES)('nx-exec names an executor package that is not install
     if (root) await rm(root, { recursive: true, force: true })
   })
 
-  it(
-    'one line, exit 1',
-    async () => {
+  // Without a tsconfig Nx's local-plugin lookup says so; with one, Node's
+  // "Cannot find module" comes through. Both are the same refusal.
+  it.each([
+    ['no tsconfig', undefined],
+    ['a tsconfig.base.json', '{"compilerOptions":{"paths":{}}}'],
+  ])(
+    'one line, exit 1 (%s)',
+    async (_name, tsconfig) => {
+      const base = path.join(root, 'tsconfig.base.json')
+      if (tsconfig === undefined) await rm(base, { force: true })
+      else await writeFile(base, tsconfig)
       const env = {
         PATH: process.env['PATH']!,
         HOME: process.env['HOME']!,

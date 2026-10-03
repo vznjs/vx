@@ -236,6 +236,16 @@ async function main(argv) {
   return ok ? 0 : 1
 }
 
+/** Does `pkg` resolve from the working directory (the workspace root, once Nx runs)? */
+function installed(pkg) {
+  try {
+    createRequire(path.join(process.cwd(), 'package.json')).resolve(`${pkg}/package.json`)
+    return true
+  } catch {
+    return false
+  }
+}
+
 /**
  * Exit once both streams have drained. An executor may leave a worker pool
  * or a timer alive after its last result (Nx's own runner calls
@@ -253,17 +263,21 @@ function finish(code) {
 main(process.argv.slice(2)).then(finish, (err) => {
   const message = err && err.message ? err.message : String(err)
   const verbose = process.env.NX_VERBOSE_LOGGING === 'true'
-  // Nx's "Unable to resolve <pkg>:<executor>." over Node's "Cannot find
-  // module '<pkg>/package.json'" and its require stack: the package is not
-  // installed. One line names it, and what to do.
-  const missing =
-    /^Unable to resolve (.+):([^:\n]+)\.\nCannot find module '([^'\n]+)\/package\.json'/.exec(
-      message,
-    )
-  if (!verbose && missing !== null && missing[3] === missing[1]) {
+  // Nx's "Unable to resolve <pkg>:<executor>." with a package Node cannot
+  // find from the workspace root: not installed. Nx's own second line
+  // varies (Node's "Cannot find module" and its require stack, or the
+  // local-plugin lookup's "unable to find tsconfig.base.json"); either,
+  // with a package Node cannot resolve, is the refusal. A local plugin
+  // Nx found and failed on says something else, and keeps Nx's message.
+  const unresolved = /^Unable to resolve (.+):([^:\n]+)\.\n([^\n]*)/.exec(message)
+  const notFound =
+    unresolved !== null &&
+    (unresolved[3].startsWith(`Cannot find module '${unresolved[1]}/package.json'`) ||
+      unresolved[3].startsWith('unable to find tsconfig'))
+  if (!verbose && notFound && !installed(unresolved[1])) {
     process.stderr.write(
-      `nx-exec: executor package ${JSON.stringify(missing[1])} is not installed in this workspace ` +
-        `(${missing[1]}:${missing[2]}) — add it to devDependencies, or write the task as the command ` +
+      `nx-exec: executor package ${JSON.stringify(unresolved[1])} is not installed in this workspace ` +
+        `(${unresolved[1]}:${unresolved[2]}) — add it to devDependencies, or write the task as the command ` +
         'the executor runs\n',
     )
     finish(1)

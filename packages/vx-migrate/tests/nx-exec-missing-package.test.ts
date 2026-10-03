@@ -1,7 +1,9 @@
 // An executor package that is not installed reached the user as Nx's
 // "Unable to resolve <pkg>:<executor>." over Node's "Cannot find module
-// '<pkg>/package.json'" and its require stack. nx-exec names the package
-// in one line, and what to do; verbose logging keeps the whole error.
+// '<pkg>/package.json'" and its require stack, or over the local-plugin
+// lookup's "unable to find tsconfig" (what real Nx printed on CI). nx-exec
+// names the package in one line, and what to do, when Node cannot resolve
+// it; verbose logging keeps the whole error.
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -18,6 +20,12 @@ const NOT_INSTALLED =
   "Unable to resolve @acme/gone:build.\nCannot find module '@acme/gone/package.json'\nRequire stack:\n- /w/node_modules/nx/src/utils/package-json.js"
 const NOT_IN_FILE =
   "Unable to resolve @acme/here:nope.\nCannot find executor 'nope' in /w/executors.json."
+// What Nx 23 says when the local-plugin lookup runs without a tsconfig.
+const NO_TSCONFIG =
+  'Unable to resolve @acme/gone:build.\nunable to find tsconfig.base.json or tsconfig.json'
+// The not-found wording for a package that IS installed: Nx's text is not trusted alone.
+const INSTALLED =
+  "Unable to resolve @acme/here:build.\nCannot find module '@acme/here/package.json'"
 
 let root: string
 
@@ -32,6 +40,11 @@ beforeEach(async () => {
     JSON.stringify(GRAPH),
   )
   await fakeNx(root)
+  await mkdir(path.join(root, 'node_modules', '@acme', 'here'), { recursive: true })
+  await writeFile(
+    path.join(root, 'node_modules', '@acme', 'here', 'package.json'),
+    '{"name":"@acme/here"}',
+  )
 })
 
 afterEach(async () => {
@@ -77,6 +90,19 @@ describe('nx-exec with an executor package that is not installed', () => {
     const r = await run(NOT_INSTALLED, { NX_VERBOSE_LOGGING: 'true' })
     expect(r.code).toBe(1)
     expect(r.err).toContain('Require stack:')
+  })
+
+  it('Nx’s local-plugin wording for the same package is the same refusal', async () => {
+    expect((await run(NO_TSCONFIG)).err).toBe(
+      'nx-exec: executor package "@acme/gone" is not installed in this workspace (@acme/gone:build) — add it to devDependencies, or write the task as the command the executor runs\n',
+    )
+  })
+
+  // Control: a package Node resolves is never called not installed.
+  it('an installed package keeps Nx’s message, whatever its text', async () => {
+    expect((await run(INSTALLED)).err).toBe(
+      `nx-exec: ${INSTALLED}\nSet NX_VERBOSE_LOGGING=true to see the stack trace.\n`,
+    )
   })
 
   // Control: an installed package without the executor is not "not installed".
