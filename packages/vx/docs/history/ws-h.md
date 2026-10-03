@@ -623,6 +623,31 @@ joined the API record and reddened H-52's law on main; #2537 named it
 in the README, #2541 inlined it (a `!`: v0.0.421 had shipped the
 record).
 
+## H-55: every plugin option named in its README
+
+`refuseUnknownOptions` accepts every field of a plugin's options type,
+and 1.0 freezes them; H-54's two defects hid in unnamed ones.
+`plugin-options-documented.unsafe.test.ts` reads each `…Options` type in
+the plugin-api records and requires every field in a code span or sample
+of the package's README. It found vx-github's three test seams unnamed;
+the README names them as such. Differential: the old README lists exactly
+those three (#2542).
+
+## H-56: the umask read on one thread, never during a load
+
+Bun's `process.umask()` reads the mask by setting 0 and putting it back:
+four workers reading at once left the process at 0 in every run. Config
+loading read it on the main thread around each first load while the
+config worker read it around each repeat load, so a mixed round could
+blame an innocent config (`show-info.test`, red under gate load) or leave
+vx writing world-writable files. The worker reads it only when blaming,
+the one evaluation in flight, and restores before it answers; the main
+thread reads it around a lone load or before and after a round, and after
+each blame. `config-umask-concurrent.test.ts` counts the reads (2 main, 0
+worker; 5 and 6 before) and holds a blame that outlives its budget. The
+first push restored after the blame's reply, which the loader cuts short;
+CI caught it, 1 run in 30 (#2556).
+
 ## Leads for other streams
 
 - **A:** a task that rewrites its own input with the same bytes is never
