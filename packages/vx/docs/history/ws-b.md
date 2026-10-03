@@ -1445,3 +1445,10 @@ root-anchored output reaches it (#2547, cache-key lead taken over from
 A). 500 uncached tasks, concurrency 1, min of 8: `task hash` 1,000
 calls (31.0 ms) to 500 (10.6 ms), wall within noise. Keys unchanged, no
 `CACHE_VERSION` bump. Rows: `uncached-key-once.test.ts`.
+Then the per-task ranking on cached misses (500 one-file tasks,
+concurrency 1, `--force`): `run graph` 2,248 ms against `miss: execute`
+2,013, so vx's own share is about 0.47 ms a task: output resolve 0.10,
+key 0.07, clean 0.03, recheck 0.02, request 0.02, and `secretMask` 0.025
+(timed in place; a CPU profile put it at 0.1, sampling skew). Saves
+(1.7 ms) run on the save lane off the slot. Nothing above 0.1 ms is
+left to cut outside the spawn.
