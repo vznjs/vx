@@ -797,3 +797,12 @@ linked out of the project was refused by vx's own entry name,
 The three save refusals (link out, dangling, not a file) now say
 `workspaceFiles output gen/latest`. `output-shape.test.ts` › to another
 project's file is still refused pins the line (red without the fix).
+M-65. M-61's warning, the workspace side: a `workspaceFiles` output
+directory that is a symlink out of the workspace (`shared ->
+/elsewhere`) drops every file under it, and the empty-artifact line
+blamed the glob. Probed with the rest of (3): a file link out under
+`workspaceFiles` and a project link into the workspace are refused at
+save, and nothing outside was packed or cleaned. `outputDirLinkedOut`
+now reads the workspace globs against the root and names the base.
+`cache-declaration-warnings.test.ts` › and a workspaceFiles directory
+linked out of the workspace (red without the fix).
