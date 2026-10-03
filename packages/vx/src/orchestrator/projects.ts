@@ -68,6 +68,21 @@ export function gitOfDiscovery(projects: readonly ProjectMeta[]): LazyGitEnumera
 }
 
 /**
+ * The package graph a selection pass built over a discovery, by that
+ * discovery's array, when it folded no task edge in: the graph a run that
+ * reuses the discovery (`RunOptions.discovered`) would build again.
+ */
+const discoveredGraph = new WeakMap<readonly ProjectMeta[], PackageGraph>()
+
+export function graphOfDiscovery(projects: readonly ProjectMeta[]): PackageGraph | undefined {
+  return discoveredGraph.get(projects)
+}
+
+export function keepDiscoveryGraph(projects: readonly ProjectMeta[], graph: PackageGraph): void {
+  discoveredGraph.set(projects, graph)
+}
+
+/**
  * The workspace's projects: core's discovery, then the plugin `discover`
  * stage. With no plugin declaring it, `listProjects` alone.
  */
