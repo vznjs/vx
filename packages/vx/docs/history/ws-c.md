@@ -1484,3 +1484,38 @@ Lead for the reapi stream (2026-10-03): `vx-reapi`'s
 `materialise-concurrency.test.ts` › "output files are fetched and written
 at once, each with its own bytes" saw a peak of 4 against 5 in one local
 gate and passed on the re-run (a timing claim on concurrency, unproven).
+
+## C-98: plugin-claimed root files are re-read when watch re-arms
+
+The root files fingerprint plugins claim (item 971's set) were read once
+at start: a plugin added to the workspace config mid-watch claimed its
+file, the cycle ran under it, and an edit to that file started nothing
+until a restart. `rediscover` now recomputes the set from the reloaded
+workspace, and the loop reads it through a variable `rearm` replaces.
+Rows (`watch-claimed-files.test.ts`): the mid-watch plugin, red without
+the change (timed out); the file claimed at start, both ways. `cli.md`
+says so.
+
+## C-100: the admit stage's warnings say `[vx]` first
+
+A plugin hook made to throw at each stage in turn (config, discover,
+project, graph, key, schedule, admit, cache, executor, telemetry,
+setup, teardown): every one names the plugin and the stage, no stack,
+exit 1 where the stage is required and 0 where it fails open. Every
+warning on the status line says `[vx]` first except admit's two, so a
+plugin's failure read as task output in a CI log. Both now do. Rows
+(`admit-warning-prefix.test.ts`, `buildAdmission` driven directly):
+both lines pinned with `toEqual`, red without the change.
+`modules/plugin-host.md` says so.
+
+Probes (2026-10-03), clean: persistent tasks under `--affected` (a
+server in an unaffected project joins as a dependency; a kept dev
+server stays up); a held server's exit codes (0 → 0; 3, a SIGTERM, a
+SIGKILL → 1, each named); watch keeps its server through a failed
+initial cycle; random edit storms against a cached task, fast and with
+edits mid-cycle, 22 rounds, the output always the final input; config
+imports, direct and transitive.
+More, clean: exit codes under each `--continue` mode, an unknown task
+and a filter matching nothing (1 each); a 1,000-task workspace plans in
+124 ms and restores warm in 27 ms of `run graph`; a workspace config
+that breaks and is fixed mid-watch.
