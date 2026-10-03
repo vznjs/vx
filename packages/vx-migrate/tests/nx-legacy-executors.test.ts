@@ -27,12 +27,12 @@ const meta: ProjectMeta = {
 }
 
 describe('legacy run-commands and run-script executors', () => {
-  for (const nativeExecutors of [true, false]) {
-    it(`map as their nx: twin (${nativeExecutors ? 'migration' : 'nx()'})`, async () => {
+  for (const migration of [true, false]) {
+    it(`map as their nx: twin (${migration ? 'migration' : 'nx()'})`, async () => {
       const mapped = await mapNxWorkspace('/w', [meta], parseNxGraph(JSON.stringify(graph), 'g'), {
         persistentTodo: 'p',
         cacheable: new Set(),
-        nativeExecutors,
+        migration,
       })
       const exec = Object.fromEntries(
         mapped.projects[0]!.tasks.map((t) => [t.name, t.task!['exec'] as Record<string, unknown>]),

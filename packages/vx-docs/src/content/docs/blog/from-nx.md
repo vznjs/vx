@@ -6,7 +6,7 @@ authors:
 tags:
   - migration
   - nx
-excerpt: "Moving an Nx repo to vx: `nx()` is a temporary start, executors included, then executors become shell commands in native config. `bunx @vzn/vx-migrate` reads the resolved project graph Nx itself uses, so plugin-inferred targets come along, and an executor target migrates as the command its executor runs."
+excerpt: "Moving an Nx repo to vx: `nx()` is a temporary start, executors included, then executors become shell commands in native config. `bunx @vzn/vx-migrate` reads the resolved project graph Nx itself uses, so plugin-inferred targets come along, and an executor target migrates as an `nx-exec` line for you to rewrite as its command."
 ---
 
 Leaving Nx is a bigger step than leaving Turborepo, and the honest
@@ -51,10 +51,10 @@ behind a JSON options object:
 ```
 
 vx has no executors. A task is a shell command. When you migrate, an
-executor target is written as the command the executor was wrapping
-(jest, vitest, vite build and serve, eslint, tsc, playwright,
-cypress, storybook, next, esbuild, node, swc), and any other
-executor is a placeholder the report lists, for you to write:
+executor target is written as its `nx-exec` line, which still runs the
+executor through Nx; the migrator translates none of them. Rewriting
+each as the command the executor was wrapping is yours, and it is the
+step that lets you remove Nx:
 
 ```ts
 build: {

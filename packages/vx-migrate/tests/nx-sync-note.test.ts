@@ -24,7 +24,7 @@ const graph = {
   dependencies: {},
 }
 
-async function notes(nativeExecutors: boolean): Promise<string[]> {
+async function notes(migration: boolean): Promise<string[]> {
   const root = await mkdtemp(path.join(os.tmpdir(), 'vx-nx-sync-'))
   try {
     await writeFile(path.join(root, 'package.json'), '{"name":"root","private":true}')
@@ -43,7 +43,7 @@ async function notes(nativeExecutors: boolean): Promise<string[]> {
     const mapped = await mapNxWorkspace(root, metas, parseNxGraph(JSON.stringify(graph), 'g'), {
       persistentTodo: 'p',
       cacheable: new Set(),
-      nativeExecutors,
+      migration,
     })
     return mapped.notes
   } finally {
