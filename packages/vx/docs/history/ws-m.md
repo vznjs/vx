@@ -948,3 +948,14 @@ global that importing the shim's source repointed, so on macOS's file
 order (bundle, shim, page) nine docs rows failed; the globals moved to
 `shim/install.ts`, held by `playground-shim-isolation.test.ts` (red
 without the move). Not code: `npm-pack` and `try-it` need npm on PATH.
+
+M-75. After M-74, the Mac gate's one real failure left: `vx-docs#test`
+passed its rows and failed on seatbelt denials. `config-snippets.test.ts`
+linked the root `node_modules` whole into its scratch dir, so the type
+checker resolved `@vzn/vx-reapi` and `@vzn/vx-lockfile` to the real
+packages (projects the task neither owns nor keys) before the ambient
+`any` the row declares; Linux's sandbox hides them without a word. The
+scratch `node_modules` now links every entry but `@vzn/*`, and only
+`@vzn/vx` there (strace: 73 touches of the two packages before, none
+after, only misses in the scratch dir). The run's lint failures were the
+worktree's `.git` file hidden by the sandbox, not code.
