@@ -134,7 +134,7 @@ Every key `turbo.json`, `nx.json` and `project.json` accept, read from the upstr
 | `generators` | not applicable | Per-project generator defaults; vx has no generators. |
 | `namedInputs` | mapped, with a note | Merged over `nx.json`'s and expanded into each task's cache inputs. |
 | `targets` | mapped, with a note | Each target becomes a vx task, plus one per non-default configuration. |
-| `tags` | mapped, with a note | Used only to resolve `tag:` patterns in `dependsOn`; vx has no project tags. |
+| `tags` | supported | Become the project's vx `tags` (a vx.config's own win), so `--filter tag:<name>` or `--projects tag:<name>` selects as `nx run-many -p tag:<name>` does; `tag:` patterns in `dependsOn` resolve against them. |
 | `implicitDependencies` | mapped, with a note | Graph edges without a `package.json` link become explicit `pkg#target` edges for `^target`. |
 | `metadata` | mapped, with a note | Only `targetGroups` is read, to find non-atomized targets' `.env` files. |
 | `release` | not applicable | Nx release settings. |

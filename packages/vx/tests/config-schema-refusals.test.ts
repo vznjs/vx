@@ -638,10 +638,27 @@ describe("a package turbo.json's and Nx project.json's keys (D-56)", () => {
     expect(where({ name: 'a' })).toBe(
       'vx spells it the package.json `name` (a project is named by its package)',
     )
-    expect(where({ tags: ['scope:a'] })).toBe(
-      'vx spells it `--filter` (a name glob or a directory) to select projects',
-    )
     // CONTROL: a typo of `tasks` still gets the nearest spelling.
     expect(where({ taks: {} })).toBe('did you mean tasks?')
+  })
+})
+
+describe('project tags', () => {
+  const refusal = (tags: unknown): string | null => {
+    try {
+      validateProjectConfig({ tags, tasks: {} } as never, CFG)
+    } catch (err) {
+      return (err as Error).message
+    }
+    return null
+  }
+  it('takes an array of non-empty strings', () => {
+    expect(refusal(['ui', 'scope:web'])).toBeNull()
+    expect(refusal([])).toBeNull()
+  })
+  it('refuses anything else, by the field', () => {
+    const msg = `${CFG}: \`tags\` must be an array of non-empty strings`
+    for (const bad of ['ui', ['ui', ''], ['  '], [1], [null], { ui: true }])
+      expect(refusal(bad)).toBe(msg)
   })
 })

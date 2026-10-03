@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os'
 import { existsSync, realpathSync } from 'node:fs'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { planRun, run, type Logger } from '@vzn/vx'
+import { loadResolvedProjects, planRun, run, type Logger } from '@vzn/vx'
 import { fakeNx, fakeNxCli, nxCalls } from './helpers/fake-nx.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { tamperMapping } from './helpers/tamper-mapping.js'
@@ -1555,6 +1555,39 @@ describe('nx(): one git status per run', () => {
       await writeFile(path.join(root, 'packages', 'lib', 'src', 'index.js'), '// edited\n')
       expect(await statuses('run', 'lint', '--all', '--dry')).toBe(1)
       expect(await nxCalls(root)).toBe(2)
+    },
+    TIMEOUT,
+  )
+})
+
+describe("nx(): an Nx project's tags", () => {
+  it(
+    "are its vx tags, a blank one dropped and a vx.config's own winning, kept with the mapping",
+    async () => {
+      await workspace("nx({ graph: 'graph.json' })")
+      const graph = structuredClone(GRAPH) as {
+        graph: { nodes: Record<string, { data: Record<string, unknown> }> }
+      }
+      graph.graph.nodes['lib']!.data['tags'] = ['scope:shared', '', 'type:lib']
+      graph.graph.nodes['app']!.data['tags'] = ['scope:web']
+      await writeFile(path.join(root, 'graph.json'), JSON.stringify(graph))
+      await writeFile(
+        path.join(root, 'packages', 'app', 'vx.config.mjs'),
+        "export default { tags: ['mine'] }\n",
+      )
+      Bun.spawnSync({ cmd: ['git', 'add', '-A'], cwd: root })
+      const load = async () => {
+        const projects = await loadResolvedProjects(root)
+        return {
+          tags: Object.fromEntries([...projects.values()].map((p) => [p.name, p.config.tags])),
+          lint: projects.get('lib')!.config.tasks?.['lint']?.exec?.command,
+        }
+      }
+      const tags = { lib: ['scope:shared', 'type:lib'], app: ['mine'] }
+      expect(await load()).toEqual({ tags, lint: 'echo lint-ran > lint.log' })
+      await tamperMapping(root, 'nx')
+      // Served from the kept mapping (the tampered command), tags intact.
+      expect(await load()).toEqual({ tags, lint: 'echo from-cache' })
     },
     TIMEOUT,
   )

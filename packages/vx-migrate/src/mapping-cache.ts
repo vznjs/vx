@@ -19,11 +19,12 @@ import {
 } from '@vzn/vx'
 import type { Gaps } from './plugin-gaps.js'
 
-/** What the stage uses of a mapping: tasks per package name, and the gaps to report once. */
+/** What the stage uses of a mapping: tags and tasks per package name, and the gaps to report once. */
 export interface AdoptionMapping {
   readonly byName: ReadonlyMap<
     string,
     {
+      readonly tags?: readonly string[]
       readonly tasks: readonly {
         readonly name: string
         readonly task: Record<string, unknown> | null
@@ -57,7 +58,13 @@ function hex(s: string): string {
 
 interface Held {
   readonly key: string
-  readonly byName: [string, { tasks: { name: string; task: Record<string, unknown> | null }[] }][]
+  readonly byName: [
+    string,
+    {
+      tags?: readonly string[]
+      tasks: { name: string; task: Record<string, unknown> | null }[]
+    },
+  ][]
   readonly notes: string[]
   readonly todos: [string, string[]][]
 }
@@ -85,7 +92,10 @@ export async function cachedMapping(
     key,
     byName: [...mapping.byName].map(([name, p]) => [
       name,
-      { tasks: p.tasks.map((t) => ({ name: t.name, task: t.task })) },
+      {
+        ...(p.tags !== undefined ? { tags: p.tags } : {}),
+        tasks: p.tasks.map((t) => ({ name: t.name, task: t.task })),
+      },
     ]),
     notes: [...mapping.gaps.notes],
     todos: [...mapping.gaps.todos].map(([todo, ids]) => [todo, [...ids]]),

@@ -336,7 +336,7 @@
   },
   "project": {
     "levels": {
-      "": ["tasks"],
+      "": ["tags", "tasks"],
       "tasks.*": ["cache", "dependsOn", "description", "exec"],
       "tasks.*.exec": [
         "command",
@@ -383,6 +383,45 @@
     },
     "records": ["tasks", "tasks.*.exec.env.define"],
     "fields": {
+      "tags": {
+        "ok": [
+          "<absent>",
+          "[]",
+          "[\"x\"]",
+          "[\"/x\"]",
+          "[\"!/x\"]",
+          "[\"../x\"]",
+          "[\"!x\"]",
+          "[\"!!x\",\"y\"]",
+          "[\".\"]",
+          "[\"**\"]",
+          "[\"A=B\"]",
+          "[\"A*\"]",
+          "[\"scope:web\"]"
+        ],
+        "$CONFIG: `tags` must be an array of non-empty strings": [
+          "null",
+          "true",
+          "false",
+          "0",
+          "1",
+          "1.5",
+          "-1",
+          "65536",
+          "2147483648",
+          "\"\"",
+          "\"x\"",
+          "\"(\"",
+          "\"30d\"",
+          "\"10G\"",
+          "\"10\"",
+          "[\"\"]",
+          "[1]",
+          "[3000]",
+          "{}",
+          "{\"x\":\"y\"}"
+        ]
+      },
       "tasks": {
         "ok": ["<absent>", "{}", "<seed>"],
         "$CONFIG: `tasks` must be an object keyed by task name": [

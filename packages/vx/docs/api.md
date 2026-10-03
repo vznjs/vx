@@ -657,6 +657,7 @@ export interface GeneratedProject {
   name: string
   dir: string
   importLines: string[]
+  tags?: readonly string[]
   tasks: GeneratedTask[]
 }
 ```
@@ -1482,6 +1483,7 @@ type · `src/config.ts`
 
 ```ts
 export interface ProjectConfig {
+  tags?: readonly string[]
   tasks?: Record<string, TaskConfig>
 }
 ```

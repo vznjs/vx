@@ -203,6 +203,8 @@ export interface GeneratedProject {
   /** absolute project dir */
   dir: string
   importLines: string[]
+  /** The project's `tags` (an Nx project's); none written when empty. */
+  tags?: readonly string[]
   tasks: GeneratedTask[]
 }
 
@@ -599,7 +601,9 @@ function renderConfigFile(
   ]
   if (format === 'ts') lines.push("import type { ProjectConfig } from '@vzn/vx/config'")
   if (p.importLines.length > 0) lines.push(...p.importLines)
-  lines.push('', 'export default {', '  tasks: {')
+  lines.push('', 'export default {')
+  if (p.tags !== undefined && p.tags.length > 0) lines.push(`  tags: ${renderValue(p.tags, '  ')},`)
+  lines.push('  tasks: {')
   for (const t of p.tasks) {
     // A reason can quote a manifest's own text (an Nx `env` key), and a
     // line break there ended the comment: the rest was code in the file

@@ -24,6 +24,7 @@ export interface ParsedFilter {
   pathGlobBase?: Bun.Glob // `./a/**`'s `a`: a trailing `**` matches zero dirs (D-84)
   pathRoot?: string // the workspace root `pathGlob` is relative to
   exactDir?: true // `//`: the project at `matcher` itself, never the ones under it
+  tag?: true // tag:<pattern>: `matcher` is a glob over the projects' tags
 }
 
 export function parseFilter(raw: string, workspaceRoot: string): ParsedFilter
@@ -32,6 +33,8 @@ export interface ApplyFiltersOptions {
   filters: ParsedFilter[]
   projects: ProjectMeta[]
   graph: PackageGraph
+  /** Each project's config `tags`, read by `tag:` selectors (caller-owned: the staged load). */
+  tags?: ReadonlyMap<string, readonly string[]>
   /** Pre-resolved affected sets, one per [<since>] filter (caller-owned). */
   affectedByFilter?: Map<ParsedFilter, Set<string>>
   /** Called once per filter that matched zero projects, before expansion — a typo among several filters otherwise under-selects silently. */
@@ -49,6 +52,7 @@ export function applyFilters(opts: ApplyFiltersOptions): Set<string>
 | `<pattern>`           | Name match. `*` is the sole metacharacter and means any characters — pnpm's rule, so `*core*` crosses the `@scope/` boundary.                                                                                                                                                                                                                                                                  |
 | `./<dir>` / `{<dir>}` | The package whose dir is `<dir>`, alone (`.` is the root project; a nested package is not included, as in Turbo and pnpm, D-43); a `<dir>` that is no package matches the packages under it (workspace-relative). A glob in the path (`./apps/*`, `{apps/**}`) is matched over each project's root-relative dir instead, unless the path selects a project dir literally (`./packages/[abc]`). |
 | `//`                  | The root project alone (Turbo's name for the root package); nothing when the root is no project, never every project under it (D-46).                                                                                                                                                                                                                                                          |
+| `tag:<pattern>`       | The projects whose config `tags` hold a match (`*` as in a name; Nx's `tag:`). Every operator a name takes applies.                                                                                                                                                                                                                                                                            |
 | `<pattern>...`        | Match + all transitive workspace dependencies.                                                                                                                                                                                                                                                                                                                                                 |
 | `...<pattern>`        | Match + all transitive workspace dependents.                                                                                                                                                                                                                                                                                                                                                   |
 | `<pattern>^...`       | Only the transitive deps of pattern (excluding the matched pkg).                                                                                                                                                                                                                                                                                                                               |
@@ -64,8 +68,9 @@ export function applyFilters(opts: ApplyFiltersOptions): Set<string>
    (all-exclude), start with every project name.
 3. **Expand each filter in argv order** (so `onNoMatch` names them as
    typed):
-   - Compute matched names (glob match on `name`, path-prefix or
-     path-glob on `dir`, or the pre-resolved git-affected set); a
+   - Compute matched names (glob match on `name` or on a tag,
+     path-prefix or path-glob on `dir`, or the pre-resolved
+     git-affected set); a
      filter that matched nothing is reported through `onNoMatch`, and one
      that matched but whose walk selected nothing through `onEmptyWalk`
      (item 1030).
@@ -86,7 +91,9 @@ unbraced `./` path keeps its brackets as a glob class; `<name>...[ref]`
 also takes the dependants of what changed, as Turbo reads it), but resolution
 happens upstream (`cli/select.ts` calls
 `workspace/affected.ts:affectedProjects` once per distinct ref and
-passes the result via `affectedByFilter`).
+passes the result via `affectedByFilter`). A tag lives in the config,
+so `cli/select.ts` hands the staged load's tags in through `tags`, and
+loads configs for that only when a `tag:` filter is present.
 
 This makes the filter module fully testable against an in-memory
 project list + package graph.
@@ -95,7 +102,6 @@ project list + package graph.
 
 - No `**/` in name patterns. Names are flat strings; `*` only.
 - No regex.
-- No tag-based selection (pnpm doesn't have it either).
 - `...<pattern>^...` is accepted but undocumented: both flags apply —
   the matched package itself is left out, its dependencies and its
   dependents are taken.

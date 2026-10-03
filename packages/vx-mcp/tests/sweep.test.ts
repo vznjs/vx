@@ -40,7 +40,7 @@ beforeAll(async () => {
   await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
   await pkg(
     'a',
-    `export default { tasks: {
+    `export default { tags: ['ui'], tasks: {
       build: { description: 'compile', exec: { command: 'tsc' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } } },
       dev: { exec: { command: 'vite', persistent: { readyWhen: 'ready' } } },
       all: { dependsOn: ['build'] },
@@ -75,6 +75,7 @@ describe('listTasks, exactly', () => {
         {
           name: 'a',
           dir: path.join(root, 'packages', 'a'),
+          tags: ['ui'],
           tasks: [
             {
               name: 'build',

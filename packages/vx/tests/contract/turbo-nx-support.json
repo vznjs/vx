@@ -556,8 +556,8 @@
   },
   {
     "key": "project.json tags",
-    "status": "mapped",
-    "reason": "Used only to resolve `tag:` patterns in `dependsOn`; vx has no project tags."
+    "status": "supported",
+    "reason": "Become the project's vx `tags` (a vx.config's own win), so `--filter tag:<name>` or `--projects tag:<name>` selects as `nx run-many -p tag:<name>` does; `tag:` patterns in `dependsOn` resolve against them."
   },
   {
     "key": "project.json implicitDependencies",

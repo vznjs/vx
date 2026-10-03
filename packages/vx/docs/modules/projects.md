@@ -76,8 +76,8 @@ export function loadResolvedProjects(
    the cross form. No cross deps → one round. A project present in
    `staged` is taken as is — no evaluation, no stage — and still
    contributes its cross deps; seeding and scoping do not change. The
-   CLI's selection pass (`resolveFilters` → `taskEdges`) is the
-   producer: before it, a graph-walking filter put every config through
+   CLI's selection pass (`resolveFilters` → `taskEdges`, or the tags a
+   `tag:` filter reads) is the producer: before it, a graph-walking filter put every config through
    the `project` stage twice per run (`tests/staged-once.test.ts`).
 
 `prepareRun` passes `closure: true` and the run's lock and eval cache.

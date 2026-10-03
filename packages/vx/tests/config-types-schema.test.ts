@@ -39,7 +39,7 @@ const WORKSPACE = [
   'plugins',
   'timeout',
 ] as const satisfies readonly Keys<WorkspaceConfig>[]
-const PROJECT = ['tasks'] as const satisfies readonly Keys<ProjectConfig>[]
+const PROJECT = ['tags', 'tasks'] as const satisfies readonly Keys<ProjectConfig>[]
 const TASK = [
   'cache',
   'dependsOn',

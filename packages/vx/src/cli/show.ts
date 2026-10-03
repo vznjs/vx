@@ -224,12 +224,13 @@ function renderList(
   const rows = metas.map((meta) => ({
     name: meta.name,
     dir: projectDir(root, meta),
+    tags: projects.get(meta.name)?.config.tags ?? [],
     tasks: Object.keys(projects.get(meta.name)?.config.tasks ?? {}),
     configured: meta.configPath !== null,
   }))
   if (format === 'json') {
     return `${JSON.stringify(
-      rows.map(({ name, dir, tasks }) => ({ name, dir, tasks })),
+      rows.map(({ name, dir, tags, tasks }) => ({ name, dir, tags, tasks })),
       null,
       2,
     )}\n`
@@ -245,7 +246,8 @@ function renderList(
       : n > 0
         ? `${count} (no vx config; from plugins)`
         : '(no vx config)'
-    return `${r.name.padEnd(nameW)}  ${r.dir.padEnd(dirW)}  ${tasks}`
+    const tags = r.tags.length > 0 ? `  [${r.tags.join(', ')}]` : ''
+    return `${r.name.padEnd(nameW)}  ${r.dir.padEnd(dirW)}  ${tasks}${tags}`
   })
   return `${lines.join('\n')}\n`
 }
@@ -263,7 +265,8 @@ function renderProject(
     const shown = shownConfig(config)
     return `${JSON.stringify(JSON.parse(JSON.stringify({ name, dir, config: shown })), null, 2)}\n`
   }
-  const head = `${name} — ${dir}`
+  const tags = config?.tags ?? []
+  const head = `${name} — ${dir}${tags.length > 0 ? `\n  tags: ${tags.join(', ')}` : ''}`
   const tasks = Object.entries(config?.tasks ?? {})
   if (tasks.length === 0)
     return `${head}\n  ${hasConfigFile ? '(no tasks declared)' : '(no vx config)'}\n`

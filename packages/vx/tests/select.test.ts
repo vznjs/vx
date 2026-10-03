@@ -110,6 +110,13 @@ describe('resolveFilters', () => {
     expect(near.stderr).toBe('vx: filter "apq" matched no projects. Did you mean app?\n')
   })
 
+  it('a `tag:` filter in a workspace with no tags says so, not a project name', async () => {
+    const { value } = await quiet(() => resolveFilters(root, ['tag:app']))
+    expect(value).toEqual({
+      error: 'no projects matched filter(s): tag:app. No project declares tags',
+    })
+  })
+
   it('only an INCLUDED diff makes the selection diff-chosen', async () => {
     const { value } = await quiet(() => resolveFilters(root, ['app', '![HEAD]']))
     expect((value as { byDiff: boolean }).byDiff).toBe(false)

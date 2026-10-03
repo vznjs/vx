@@ -13,6 +13,7 @@
       "projects[]",
       "projects[].dir",
       "projects[].name",
+      "projects[].tags",
       "projects[].tasks",
       "projects[].tasks[]",
       "projects[].tasks[].cached",

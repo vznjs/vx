@@ -4,6 +4,7 @@
 //   ./<dir>          the package at <dir>, else the packages under it (relative to workspace root)
 //   {<dir>}          same as ./<dir>
 //   //               the workspace-root project only (Turbo's name for the root)
+//   tag:<pattern>    the projects whose config `tags` hold a match (Nx's `tag:`)
 //   <pattern>...     pattern + its transitive workspace dependencies
 //   ...<pattern>     pattern + its transitive workspace dependents
 //   <pattern>^...    only the transitive deps of pattern (excluding the matched package)
@@ -55,6 +56,8 @@ export interface ParsedFilter {
   pathRoot?: string
   /** `//`: the project at `matcher` itself, never the ones under it. */
   exactDir?: true
+  /** `tag:<pattern>`: `matcher` is a glob over the projects' tags, not their names. */
+  tag?: true
 }
 
 export function parseFilter(raw: string, workspaceRoot: string): ParsedFilter {
@@ -141,6 +144,24 @@ export function parseFilter(raw: string, workspaceRoot: string): ParsedFilter {
     }
   }
 
+  if (s.startsWith('tag:')) {
+    const tag = s.slice(4)
+    if (tag === '') throw new UserError(`filter "${raw}" names no tag`)
+    return {
+      raw,
+      negate,
+      withDeps,
+      withDependents,
+      onlyDeps,
+      onlyDependents,
+      isPath: false,
+      matcher: tag,
+      tag: true,
+      ...(gitSince !== undefined ? { gitSince } : {}),
+      ...(sinceViaDeps ? { sinceViaDeps: true as const } : {}),
+    }
+  }
+
   let isPath = false
   let matcher = s
   let pathGlob: Bun.Glob | undefined
@@ -187,6 +208,7 @@ function matchProjects(
   projects: ProjectMeta[],
   affectedByFilter: Map<ParsedFilter, Set<string>> | undefined,
   graph: PackageGraph,
+  tags: ProjectTags | undefined,
 ): string[] {
   // `[<since>]` selectors are pre-resolved by the caller (the parser
   // is pure; git access happens upstream). Use the provided set as
@@ -199,14 +221,24 @@ function matchProjects(
         for (const d of graph.transitiveDependents(name)) changed.add(d)
     }
     if (filter.matcher === '') return [...changed]
-    return matchSelector(filter, projects).filter((name) => changed.has(name))
+    return matchSelector(filter, projects, tags).filter((name) => changed.has(name))
   }
-  return matchSelector(filter, projects)
+  return matchSelector(filter, projects, tags)
 }
 
-/** The projects a name or path selector names, git ranges aside. */
-function matchSelector(filter: ParsedFilter, projects: ProjectMeta[]): string[] {
+/** The projects a name, path or tag selector names, git ranges aside. */
+function matchSelector(
+  filter: ParsedFilter,
+  projects: ProjectMeta[],
+  tags: ProjectTags | undefined,
+): string[] {
   const out: string[] = []
+  if (filter.tag === true) {
+    const re = compileNameGlob(filter.matcher)
+    for (const p of projects)
+      if (tags?.get(p.name)?.some((t) => re.test(t)) === true) out.push(p.name)
+    return out
+  }
   if (filter.isPath) {
     // A path naming a project's own directory is that project, as Turbo and
     // pnpm read it: `.` is the root project, never every project under the
@@ -268,10 +300,15 @@ function compileNameGlob(pattern: string): RegExp {
   return new RegExp(`^${escaped}$`)
 }
 
+/** Each project's config `tags`, by project name. */
+type ProjectTags = ReadonlyMap<string, readonly string[]>
+
 export interface ApplyFiltersOptions {
   filters: ParsedFilter[]
   projects: ProjectMeta[]
   graph: PackageGraph
+  /** Read by `tag:` selectors; a project absent here carries no tag. */
+  tags?: ProjectTags
   /**
    * Pre-resolved affected-project sets for each `[<since>]` filter.
    * The caller (CLI / programmatic embedder) runs the git work and
@@ -304,7 +341,7 @@ export function applyFilters(opts: ApplyFiltersOptions): Set<string> {
   // taken in argv order, so `onNoMatch` names the filters as typed.
   const excludes: Set<string>[] = []
   for (const f of opts.filters) {
-    const matched = matchProjects(f, opts.projects, opts.affectedByFilter, opts.graph)
+    const matched = matchProjects(f, opts.projects, opts.affectedByFilter, opts.graph, opts.tags)
     if (matched.length === 0) opts.onNoMatch?.(f)
     const expanded = new Set<string>()
     for (const name of matched) {

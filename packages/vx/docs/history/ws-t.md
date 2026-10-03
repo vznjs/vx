@@ -40,3 +40,12 @@ lacked (research in the project thread, 2026-10-03).
     server on a pty; undeclared reads EOF), `status-line.test.ts`.
     Mutants of each gate (start, hold, placement, stdio, request,
     holders, clash, logger, persistent stdio) each fail a row.
+- **T-2.** (owner's ask, Nx #2675). Project `tags`: a
+  vx.config's `tags` (non-empty strings; D-56 refused the key) select
+  by `--filter tag:<pattern>`, every name operator included; Nx's
+  `--projects tag:` aliases it. Read from the staged load, so a
+  `project` plugin's tags count; loaded only when a `tag:` filter is
+  present. In no cache key (only the task config is hashed). `vx show`
+  and `vx mcp`'s `listTasks` list them; `nx()` and the Nx migrator
+  carry each project's Nx `tags`. Rows: `project-tags.test.ts`,
+  `filter.test.ts` › `tag:`, `nx.test.ts` › "an Nx project's tags".

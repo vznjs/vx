@@ -52,7 +52,7 @@ the values it takes and each refusal's exact words are recorded in
 
 | Level                              | Fields                                                                                                    |
 | ---------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| (top)                              | `tasks`                                                                                                   |
+| (top)                              | `tags`, `tasks`                                                                                           |
 | `tasks.<name>`                     | `cache`, `dependsOn`, `description`, `exec`                                                               |
 | `tasks.<name>.exec`                | `command`, `env`, `interactive`, `persistent`, `remote`, `retries`, `sandbox`, `timeout`                  |
 | `tasks.<name>.exec.env`            | `define`, `passThrough`, `secret`                                                                         |
