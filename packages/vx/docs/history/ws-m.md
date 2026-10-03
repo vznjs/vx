@@ -444,6 +444,29 @@ always expires later: 0 of 20 with the same gap. Its three siblings of
 the shape (a late rejection, a neighbour's timeout, `ms = 0`) take it
 too; all four are red with the deadline made ten times late.
 
+M-37. Probes, nothing shipped. `select.test.ts` › only an INCLUDED diff
+makes the selection diff-chosen timed out at 5 s on #2412's CI
+(shard-12, "killed 1 dangling process"). Not slowness: the row takes
+0.15-0.41 s under `strace -f` beside eight busy loops (junit, 5 runs),
+the file 211 ms bare. A child outlived it. Not reproduced: 100 bare
+runs and 60 under `strace -f` beside eight busy loops, and 8 forced
+sandboxed runs of its shard (now 11) beside four. The row spawns
+`rev-parse`, `merge-base`, `diff`, and the enumeration's `ls-files`
+and `status`; none read stdin. Bun closes a spawn's stdin for an empty
+buffer too (`cat` exits). Refuted too: `affected.ts`'s `gitPaths`
+reading stdout to its end before stderr, and `mergeBase` never reading
+its piped stderr, as a pipe deadlock. Bun drains a piped stderr on its
+own: a fake git that wrote 200 KB of stderr before its diff settled
+on main. The child's name is what the next sighting needs.
+Also seen once, in this entry's own gate on main:
+`repeated-runs.unsafe.test.ts` › twenty runs … hold their descriptors
+read 18 open descriptors after run five and 17 at the end (listeners
+steady). Not reproduced: 30 runs of the file beside eight busy loops,
+3 of the 34 unsafe files up to it, 2 of the whole unsafe suite with
+each descriptor named. The suspect, unproven: a killed child's pidfd
+(each run's reset SIGTERMs SRT's socat bridge and does not await its
+exit) still open at the run-five snapshot.
+
 ## Leads for other streams
 
 - A: A-20 let a same-project dependant restore ahead of a producer whose
