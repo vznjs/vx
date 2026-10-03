@@ -509,7 +509,7 @@ export interface ReapiExecutorOptions {
   executeTimeoutMs?: number
   /**
    * Bound on the time an action waits for a worker: from Execute until the
-   * EXECUTING transition. Past it the Execute stream is cancelled and the
+   * EXECUTING transition. Past it the operation is cancelled and the
    * task is given back to run on this machine, said once (B-100). Unset, an
    * action waits for a worker as long as the task's own `exec.timeout`
    * lets it (core's, from the request), and with neither, without bound.
@@ -933,6 +933,7 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
       let stallTimer: ReturnType<typeof setTimeout> | undefined
       // Waiting for a worker, bounded only when `queueTimeoutMs` says so.
       const queued = new AbortController()
+      let operation = ''
       const queueTimer =
         opts.queueTimeoutMs === undefined
           ? undefined
@@ -957,6 +958,9 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
           actionDigest,
           {
             ...(opts.priority === undefined ? {} : { priority: opts.priority }),
+            onOperation: (name) => {
+              operation = name
+            },
             // Stage transitions are consumed, not printed: they arrive many
             // times per action and said nothing a reader could act on.
             onStage: (stage) => {
@@ -972,8 +976,11 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
           )
         }
         if (queued.signal.aborted) {
+          // Best effort: a server without the service, or one that has lost
+          // the operation, still has the task given back.
+          if (operation !== '') await client.cancelOperation(operation).catch(() => undefined)
           throw executorFallback(
-            `vx/reapi: no worker started the action within queueTimeoutMs (${opts.queueTimeoutMs}ms); its Execute stream was cancelled`,
+            `vx/reapi: no worker started the action within queueTimeoutMs (${opts.queueTimeoutMs}ms); its operation was cancelled`,
           )
         }
         if (stall.signal.aborted) {

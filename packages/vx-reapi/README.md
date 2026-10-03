@@ -275,11 +275,12 @@ Execution streams are deliberately NOT bounded by either: queueing behind a
 busy worker pool is legitimate. A wedged server still cannot reach Execute,
 because the deadline-bounded Capabilities call runs first. The wait for a
 worker is bounded by `queueTimeoutMs` when set: no EXECUTING within it, the
-Execute stream is cancelled (the client sends no cancel by operation name; a
-server that keeps a queued action without a listener may still run it,
-and its result lands in the action cache) and the task is given back to
-vx, which runs it here and says so once:
-`[vx] <task>: vx/reapi: no worker started the action within queueTimeoutMs (…ms); its Execute stream was cancelled — running it here`.
+Execute stream is closed, the operation is cancelled with
+`Operations.CancelOperation` (one attempt on `metaTimeoutMs`; a server
+that refuses it, or lacks the service, may still run the action, and its
+result lands in the action cache) and the task is given back to vx, which
+runs it here and says so once:
+`[vx] <task>: vx/reapi: no worker started the action within queueTimeoutMs (…ms); its operation was cancelled — running it here`.
 A task placed `exec.remote: 'only'` fails with that reason instead. Unset,
 the task's own `exec.timeout` bounds the queue as it bounds the run (the
 task fails as timed out); with neither, the wait is unbounded.
