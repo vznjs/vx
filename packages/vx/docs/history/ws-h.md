@@ -798,6 +798,26 @@ When the diff names the components, the verdict names them, three at
 most and a count: `cache key changed: env MODE`. The JSON note is
 unchanged; the control is an unchanged key (#2668).
 
+## H-72: vx run's refusal to start goes to stderr
+
+Every no-match case already named why in one line with a "did you
+mean" or what exists, exit 1; `--filter` typos were hinted too. A run
+printed "No projects declare task(s): …" through the status logger, to
+stdout, while `--dry` and `--graph` said it on stderr as `vx run: …`.
+`run()` returns the refusal as `RunSummary.refused` (additive) and
+`vx run` / `vx watch` print it on stderr; a run and its plan refuse
+alike (#2676).
+
+## H-73: a product verb's stdout holds its product alone
+
+`cli-streams.test.ts` runs each verb whose stdout is a product
+(`show`, `--format json`, `--dry`, `--dry=json`, `--graph`, `cache
+prune`, completions) under a cache index from an older vx: the product
+alone on stdout, the notice on stderr; the reading verbs refuse it on
+stderr, stdout empty. No leak was found; the plan path's logger or
+`warnToStderr` sent to stdout each fail rows. `vx run`'s stdout stays
+the run's frame (#2682).
+
 ## Leads for other streams
 
 - **A:** a task that rewrites its own input with the same bytes is never

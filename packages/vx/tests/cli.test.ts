@@ -1265,10 +1265,11 @@ describe('vx watch end-to-end against a real fixture workspace', () => {
       )
 
       // Give the watch loop a moment; no `re-running` line should appear
-      // after the initial run.
+      // after the initial run. The lines themselves, not their count: a
+      // count of 1 on macOS CI (run 37089948846) did not say which path
+      // started the cycle (M-70).
       await new Promise((r) => setTimeout(r, 400))
-      const reRunCount = (stdout.match(/re-running\.\.\./g) ?? []).length
-      expect(reRunCount).toBe(0)
+      expect(stdout.split('\n').filter((l) => l.includes('re-running...'))).toEqual([])
 
       process.emit('SIGINT')
       await cmd
