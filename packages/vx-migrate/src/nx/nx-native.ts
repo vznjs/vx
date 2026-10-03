@@ -1,7 +1,7 @@
 // What a migrated Nx executor target runs as once Nx is gone: the plain
 // command line the executor drives, read from each executor's source in
 // Nx 23.2 (`@nx/jest`, `@nx/vitest`, `@nx/vite`, `@nx/eslint`, `@nx/js`,
-// `@nx/playwright`). The `nx()` plugin keeps `nx-exec`; a written config
+// `@nx/playwright`, `@nx/angular`). The `nx()` plugin keeps `nx-exec`; a written config
 // is native vx, so an executor with no line here is a placeholder and a
 // TODO naming it, never an `nx-exec` line that needs Nx installed.
 //
@@ -959,7 +959,41 @@ const verdaccio: Translate = (o, ctx, todos, env) => {
   return fromRoot(ctx, line)
 }
 
+/**
+ * `@nx/angular:package` and `ng-packagr-lite`: ng-packagr on the project's
+ * `ng-package.json` (`project`, by default under the project root) with
+ * `tsConfig`, from the workspace root where Nx resolves both. Nx adds two
+ * steps ng-packagr's CLI lacks: it points the tsconfig `paths` of the
+ * buildable libraries this one imports at their built output, and it
+ * swaps in its own stylesheet processor (Tailwind from the project's
+ * config). Both are TODOs.
+ */
+const angularPackage =
+  (executor: string): Translate =>
+  (o, ctx, todos) => {
+    const project =
+      typeof o['project'] === 'string'
+        ? wsPath(o['project'], ctx)
+        : `${ctx.projectRel === '.' ? '' : `${ctx.projectRel}/`}ng-package.json`
+    const args = ['ng-packagr', '-p', shellQuote(project)]
+    if (typeof o['tsConfig'] === 'string') args.push('-c', shellQuote(wsPath(o['tsConfig'], ctx)))
+    if (o['watch'] === true) args.push('--watch')
+    if (o['poll'] !== undefined)
+      todos.push(`${executor} option "poll" has no ng-packagr flag — not carried`)
+    todos.push(
+      `${executor} pointed the tsconfig \`paths\` of buildable workspace libraries this one imports at their built output — ng-packagr reads the tsconfig as written`,
+      `${executor} processed styles with Nx's stylesheet processor (Tailwind from the project's config) — check ng-packagr's own output`,
+    )
+    if (executor === '@nx/angular:ng-packagr-lite')
+      todos.push(
+        "@nx/angular:ng-packagr-lite ran Nx's reduced ng-packagr for incremental builds — ng-packagr builds the full package",
+      )
+    return fromRoot(ctx, args.join(' '))
+  }
+
 const TRANSLATORS: Readonly<Record<string, Translate>> = {
+  '@nx/angular:package': angularPackage('@nx/angular:package'),
+  '@nx/angular:ng-packagr-lite': angularPackage('@nx/angular:ng-packagr-lite'),
   '@nx/js:verdaccio': verdaccio,
   '@nx/js:swc': swc,
   '@nx/js:node': node,

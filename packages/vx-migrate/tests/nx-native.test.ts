@@ -194,7 +194,7 @@ describe('the migrator writes no nx-exec line', () => {
           targets: {
             test: { executor: '@nx/jest:jest', options: { jestConfig: 'libs/a/jest.config.ts' } },
             pack: {
-              executor: '@nx/angular:package',
+              executor: '@nx/angular:application',
               options: { project: 'libs/a/ng-package.json' },
             },
           },
@@ -204,7 +204,7 @@ describe('the migrator writes no nx-exec line', () => {
         name: 'b',
         data: {
           root: 'libs/b',
-          targets: { pack: { executor: '@nx/angular:package', options: {} } },
+          targets: { pack: { executor: '@nx/angular:application', options: {} } },
         },
       },
     },
@@ -236,14 +236,14 @@ describe('the migrator writes no nx-exec line', () => {
       expect(command('a#test')).toBe('cd ../.. && jest --config=libs/a/jest.config.ts')
       expect(tasks['a#test']!.todos).toEqual([])
       expect(command('a#pack')).toBe(
-        `echo 'TODO(vx-migrate): the command @nx/angular:package ran with {"project":"libs/a/ng-package.json"}' >&2 && exit 1`,
+        `echo 'TODO(vx-migrate): the command @nx/angular:application ran with {"project":"libs/a/ng-package.json"}' >&2 && exit 1`,
       )
       expect(command('b#pack')).toBe(
-        "echo 'TODO(vx-migrate): the command @nx/angular:package ran' >&2 && exit 1",
+        "echo 'TODO(vx-migrate): the command @nx/angular:application ran' >&2 && exit 1",
       )
       // The same reason on both: the report prints it once, under both tasks.
       const reason =
-        'executor "@nx/angular:package" has no plain command here — replace the placeholder with the line it runs'
+        'executor "@nx/angular:application" has no plain command here — replace the placeholder with the line it runs'
       expect(tasks['a#pack']!.todos).toEqual([reason])
       expect(tasks['b#pack']!.todos).toEqual([reason])
     } finally {
