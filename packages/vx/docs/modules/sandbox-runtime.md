@@ -282,6 +282,8 @@ export interface DeniedCall {
   syscall: string
   rawPath: string
   errno: string
+  read?: true // a read that succeeded (`reads`)
+  dir?: string // the dir a relative rawPath was opened from, after a chdir
 }
 export function deniedCalls(text: string, cwd?: string, reads?: boolean): DeniedCall[] // strace lines, split calls paired; paths follow each chdir from cwd; reads: successful opens too
 export function parseStraceViolations(
