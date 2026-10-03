@@ -1,5 +1,5 @@
 import { constants, type Dirent } from 'node:fs'
-import { access, readdir, stat } from 'node:fs/promises'
+import { access, readdir, realpath, stat } from 'node:fs/promises'
 import path from 'node:path'
 import type { ProjectConfig, WorkspaceConfig } from '../config.js'
 import {
@@ -675,7 +675,17 @@ export async function discoverProjects(
   }
   const projects: ProjectMeta[] = []
   const shared: string[] = []
-  for (const [name, group] of byName) {
+  let rootReal: string | undefined
+  for (const [name, found] of byName) {
+    // One package reached by two paths (a member and a link to it) is one
+    // project, not a name two packages share: `apps/docs -> ../packages/docs`
+    // was refused as a duplicate and told to rename one (D-135). Resolved
+    // only here, so a workspace without a shared name pays nothing.
+    let group = found
+    if (group.length > 1) {
+      rootReal ??= await realpath(workspace.root)
+      group = await oneEntryPerPackage(group, workspace.root, rootReal)
+    }
     if (group.length === 1) {
       const { dir, pkg, configPath } = group[0]!
       projects.push({ name, dir, packageJson: pkg, configPath })
@@ -713,6 +723,32 @@ export async function discoverProjects(
   // 300 ms warm run at 1000 projects, and a stable deterministic order is
   // all any consumer needs.
   return projects.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
+}
+
+/**
+ * The entries of a name group, one per real directory. Of several paths to
+ * one package, the one that reaches it through no link inside the
+ * workspace is kept, else the first in path order.
+ */
+async function oneEntryPerPackage<T extends { dir: string }>(
+  group: T[],
+  root: string,
+  rootReal: string,
+): Promise<T[]> {
+  const byReal = new Map<string, T[]>()
+  for (const entry of group) {
+    const real = await realpath(entry.dir)
+    const same = byReal.get(real)
+    if (same === undefined) byReal.set(real, [entry])
+    else same.push(entry)
+  }
+  if (byReal.size === group.length) return group
+  const kept: T[] = []
+  for (const [real, paths] of byReal) {
+    const direct = paths.find((e) => relPosix(root, e.dir) === relPosix(rootReal, real))
+    kept.push(direct ?? paths.sort((a, b) => (a.dir < b.dir ? -1 : 1))[0]!)
+  }
+  return kept
 }
 
 /**

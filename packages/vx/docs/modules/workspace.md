@@ -195,6 +195,10 @@ Globs every `package.json` matching the patterns (`Bun.Glob`,
   its name. With no vx config among them they are left out, named on one
   stderr line, and the rest runs; with one, a `UserError` names every
   root-relative path and the way on (rename one, or a `!` glob).
+- One package reached by two paths, a member and a link to it
+  (`apps/docs` linking to `../packages/docs`), is one project, kept at the
+  path that reaches it through no link (D-135); real paths are resolved
+  only for a name several manifests share.
 - Find the first existing `vx.config.{ts,mts,js,mjs,cts,cjs}` sibling; that
   becomes `configPath`. Projects without a config keep
   `configPath: null` — they're still in the workspace graph (so
