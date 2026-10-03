@@ -298,3 +298,37 @@ persistent task` and vx exits 1). Row (`site-samples` › a post's link
   word of servers at all. It now says it under "What can't be
   sandboxed". Row (`site-samples` › the sandboxing guide says a server
   is never traced), gated on `execute-task.ts`; red without the fix.
+- **J2-28** The landing said "`bunx @vzn/vx-migrate` or `vx init`
+  gives a temporary start": the migrator writes the native config, the
+  destination, not a temporary start, and npm has no copy of it yet
+  (J2-25's class, on the one page that row cannot see: it scans
+  Markdown). It now says `vx init` is the temporary start and the
+  migrator writes native config, its first publish pending. Row
+  (`landing` › shows how to start, the sentence it pins); red without
+  the fix.
+
+- **J2-29** J-102's class on the landing picture: its fifth callout
+  said "A read you did not declare fails the task", beside a drawing
+  of `app#build` reading `../secrets.env`, a read the sandbox refuses
+  silently (the wall), and a read outside the workspace is allowed.
+  It now says a workspace file you did not declare is out of reach, as
+  J-102 made the pillar say; the trace row that backs it (on the task's
+  own file) names the scope. Row (`landing` › the six lines, the
+  callout it pins); red without the fix.
+
+- **J2-8** The configure guide said "a task sees only the variables
+  you pass it" and gave `CI` as a `passThrough` example, and the
+  explicit-over-magical post said env reaches a task only through
+  `exec.env` (one-command-per-task: an environment built from it): `CI`, `PATH`, `NODE_OPTIONS` and the rest of
+  `ESSENTIAL_ENV` reach every task undeclared. Both name the allowlist
+  now; the guide's example is `GITHUB_ACTIONS`. Probes, nothing to
+  fix: the-sandbox, values and what-vx-is posts. Row (`site-samples` ›
+  no page says a task sees only what it declares, past the allowlist),
+  red without the fix. The Troubleshooting page (#2470), added since, said "vx passes only what you list" too; it names the allowlist now, and the row holds it.
+
+- **J2-37** J2-18's class on the Troubleshooting page (#2470): for a
+  hit after a change to a file missing from `cache.inputs.files`, it
+  said `exec.sandbox` refuses a read you did not declare; the sandbox
+  judges its grants, so it refuses that read only when reads are
+  granted no wider than the inputs. Row (J2-18's, widened to the page);
+  red without the fix.

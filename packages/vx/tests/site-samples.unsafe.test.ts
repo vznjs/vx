@@ -158,6 +158,35 @@ describe('CONTRIBUTING names what the gate runs on', () => {
   })
 })
 
+// The configure guide said a task sees only the variables you pass and
+// gave `CI` as a passThrough example, and a post said env reaches a task
+// only through `exec.env`: `CI` is essential and reaches every task.
+describe('no page says a task sees only what it declares, past the allowlist', () => {
+  it("the guide's passThrough examples are no essentials, and both pages name the allowlist", () => {
+    const guide = readFileSync(path.join(GUIDES, 'configure.md'), 'utf8')
+    const row = guide.split('\n').find((l) => l.startsWith('| `exec.env.passThrough`'))!
+    expect(row).toBeDefined()
+    const examples = [...row.matchAll(/`([A-Z][A-Z0-9_]+)`/g)].map((m) => m[1]!)
+    expect(examples.length).toBeGreaterThan(0)
+    expect(examples.filter((n) => ESSENTIAL_ENV.includes(n))).toEqual([])
+    expect(guide).toContain('Past a small essential allowlist (below), a task sees only')
+    const post = readFileSync(path.join(DOCS, 'blog', 'explicit-over-magical.md'), 'utf8')
+    expect(post.split(/\s+/).join(' ')).toContain(
+      'Past the essential allowlist every task gets (`PATH`, `HOME`, `CI`, `NODE_OPTIONS` and a few more), env reaches a task only through `exec.env`.',
+    )
+    const one = readFileSync(path.join(DOCS, 'blog', 'one-command-per-task.md'), 'utf8')
+    expect(one.split(/\s+/).join(' ')).toContain(
+      'an isolated environment: a small essential allowlist (`PATH`, `HOME`, `CI`, `NODE_OPTIONS` and a few more), then what `exec.env` says',
+    )
+    // The Troubleshooting page (#2470) came after, with "vx passes only
+    // what you list" (J2-8).
+    const trouble = readFileSync(path.join(GUIDES, 'troubleshooting.md'), 'utf8')
+    expect(trouble.split(/\s+/).join(' ')).toContain(
+      'Past a small essential allowlist (`PATH`, `HOME`, `CI` and a few more), vx passes only what you list',
+    )
+  })
+})
+
 describe('the configure guide names the essential allowlist', () => {
   it('its "always gets a small essential allowlist" sentence names every name in ESSENTIAL_ENV', () => {
     const page = section(
@@ -2060,6 +2089,13 @@ describe('the sandbox post judges a violation against the grants', () => {
     expect(post).toContain("sandbox: { allow: { read: ['.'] } }")
     expect(post).toContain('the violation is judged against the grants alone')
     expect(post).not.toContain('reads a file its inputs never named fails')
+    // The Troubleshooting page (#2470) said the sandbox refuses a read you
+    // did not declare, of a file missing from the inputs (J2-37).
+    const trouble = readFileSync(path.join(GUIDES, 'troubleshooting.md'), 'utf8').replace(
+      /\s+/g,
+      ' ',
+    )
+    expect(trouble).toContain('with reads granted no wider than the inputs, refuses that read')
   })
 })
 

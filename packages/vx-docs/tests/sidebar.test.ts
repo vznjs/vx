@@ -26,6 +26,7 @@ const DOCS_PAGES: [string, string][] = [
   ['CI and remote', 'guides/ci/'],
   ['Migrate', 'guides/migrate/'],
   ['Plugins', 'guides/plugins/'],
+  ['Troubleshooting', 'guides/troubleshooting/'],
 ]
 const REFERENCE_GROUPS = ['CLI', 'Config', 'Benchmarks', 'Compare']
 const INTERNALS_TOP = ['overview/', 'architecture/', 'optimizations/', 'patterns/', 'flows/']

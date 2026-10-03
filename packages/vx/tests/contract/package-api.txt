@@ -297,10 +297,10 @@ export function quoteTsLiteral(s: string): string
 == function reachDigests (src/orchestrator/lockfile-claim.ts)
 export function reachDigests(g: ReachGraph): string[]
 == function refuseUnknownOptions (src/orchestrator/plugin.ts)
-export function refuseUnknownOptions(
+export function refuseUnknownOptions<T>(
   factory: string,
   options: unknown,
-  known: readonly string[],
+  kinds: PluginOptionKinds<T>,
 ): void
 == function resolveRunId (src/orchestrator/run-id.ts)
 export function resolveRunId(db: Database, raw: string, verb: string): string | null
@@ -805,6 +805,18 @@ export interface NamedProject {
   readonly dir: string
   readonly name: string
 }
+== type OptionKind (src/orchestrator/plugin.ts)
+type OptionKind<V> = [V] extends [string]
+  ? 'string'
+  : [V] extends [number]
+    ? 'number'
+    : [V] extends [boolean]
+      ? 'boolean'
+      : [V] extends [(...args: never[]) => unknown]
+        ? 'function'
+        : [V] extends [object]
+          ? 'object'
+          : 'any'
 == type OutcomeView (src/orchestrator/events.ts)
 export interface OutcomeView {
   taskId: string
@@ -912,6 +924,10 @@ export interface PluginCommand {
 export type PluginHook = (typeof PLUGIN_HOOKS)[number]
 == type PluginHooks (src/orchestrator/plugin.ts)
 export type PluginHooks = Omit<VxPlugin, 'name'>
+== type PluginOptionKinds (src/orchestrator/plugin.ts)
+export type PluginOptionKinds<T> = {
+  readonly [K in keyof Required<T>]-?: OptionKind<Required<T>[K]>
+}
 == type PluginOrigin (src/orchestrator/plugin.ts)
 export interface PluginOrigin {
   readonly dir?: string

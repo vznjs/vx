@@ -1392,6 +1392,7 @@ export async function mapTurboWorkspace(
     )
   literalEnvGapsOnce(projects, notes)
   resolveSharedWorkspaceOutputs(root, projects)
+  pruneUnreachedPersistentNotes(projects, metas, opts.persistentTodo)
   pruneOrphanPersistentNotes(projects, opts.persistentTodo)
   return { projects, notes, globals }
 }
@@ -1473,6 +1474,53 @@ function reanchor(glob: string, dir: string): string | null {
     if (!new Bun.Glob(seg).match(ds[i]!)) return null
   }
   return gs.length > ds.length ? gs.slice(ds.length).join('/') : null
+}
+
+/**
+ * The readiness note on a persistent task is for its dependents. Core's
+ * prune matches by name, so any `^dev` kept every persistent `dev`'s note:
+ * create-t3-turbo's root `dev` depends on `^dev`, and its three apps, which
+ * nothing depends on, each carried a note about dependents. A `^name` edge
+ * reaches only the packages its package depends on (transitively, as core
+ * walks past one without the task); `name` its own package; `pkg#name` one.
+ */
+function pruneUnreachedPersistentNotes(
+  projects: readonly TurboMappedProject[],
+  metas: readonly ProjectMeta[],
+  note: string,
+): void {
+  const byName = new Map(metas.map((m) => [m.name, m]))
+  const below = (name: string): Set<string> => {
+    const seen = new Set<string>()
+    const queue = [name]
+    while (queue.length > 0) {
+      const m = byName.get(queue.pop()!)
+      if (m === undefined) continue
+      for (const d of metas)
+        if (!seen.has(d.name) && d.name !== name && declares(m, d.name)) {
+          seen.add(d.name)
+          queue.push(d.name)
+        }
+    }
+    return seen
+  }
+  const reached = new Set<string>()
+  for (const p of projects)
+    for (const t of p.tasks) {
+      const deps = t.task?.['dependsOn']
+      if (!Array.isArray(deps)) continue
+      for (const d of deps) {
+        if (typeof d !== 'string') continue
+        if (d.startsWith('^')) for (const q of below(p.name)) reached.add(`${q}#${d.slice(1)}`)
+        else reached.add(d.includes('#') ? d : `${p.name}#${d}`)
+      }
+    }
+  for (const p of projects)
+    for (const t of p.tasks) {
+      if (reached.has(`${p.name}#${t.name}`)) continue
+      const at = t.todos.indexOf(note)
+      if (at !== -1) t.todos.splice(at, 1)
+    }
 }
 
 /**

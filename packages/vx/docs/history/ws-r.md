@@ -110,6 +110,28 @@ prune` all match. Fixed: the Run blocks used bare `vx`, which a local
   install does not put on PATH (now named once), and the hit comment
   said "a hit" where the default output prints `up-to-date`.
 
+- **R-22** Owner-rules audit of the README and site: every competitor
+  benchmark cell shows vx's %, Windows always means WSL, no page says vx
+  runs a Turbo or Nx repo or is faster through the bridge; nothing left
+  to fix. New Docs page, Troubleshooting: each first-run error as vx
+  prints it (each string checked in source and in a run), then the
+  surprises and platforms, linking each guide's own list.
+
+- **R-23** Troubleshooting adds the graph and CLI errors a first run
+  meets (a cycle, a missing `pkg#task`, an undeclared task, an unknown
+  flag), and `site-troubleshooting.unsafe.test.ts` holds every quoted
+  message to core's source (a changed message fails it). Walked from
+  empty bun and pnpm workspaces with the published `@vzn/vx` 0.0.396:
+  install, `init`, its `next:` line (`bunx vx` / `pnpm vx`, as the
+  quickstart says), miss, hit and restore all as the pages say.
+
+- **R-24** The quickstart run literally from empty pnpm and bun repos
+  with the published `@vzn/vx` (0.0.396) and `typescript`: its exact
+  config, every Run line, a restore and an edit-rebuild all as written,
+  except `vx run test --affected` in a one-commit repo, which has no
+  base. The line now says what it compares with, and Common problems
+  has the error.
+
 ## Leads
 
 - Real-repo rows (`packages/vx-bench/real-repos.json`, benchmarks.md's

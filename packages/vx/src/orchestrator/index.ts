@@ -87,6 +87,7 @@ export {
   type VxPlugin,
   definePlugin,
   refuseUnknownOptions,
+  type PluginOptionKinds,
   type PluginHooks,
   type PluginOrigin,
 } from './plugin.js'

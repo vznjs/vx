@@ -22,6 +22,7 @@ import {
   type RemoteCacheLayer,
   type VxPlugin,
   refuseUnknownOptions,
+  type PluginOptionKinds,
 } from '@vzn/vx'
 import { deadlineNamed } from '../remote-deadline.js'
 import { withRetry } from '../remote-retry.js'
@@ -609,16 +610,16 @@ function remoteCacheOf(root: string): TurboJsonRemoteCache {
   return {}
 }
 
-/** Every option `TurboCacheOptions` names: the type checker holds the two to each other. */
-const TURBO_CACHE_KEYS: Record<keyof TurboCacheOptions, true> = {
-  apiUrl: true,
-  token: true,
-  teamId: true,
-  teamSlug: true,
-  signatureKey: true,
-  timeoutMs: true,
-  uploadTimeoutMs: true,
-  retries: true,
+/** Each option `TurboCacheOptions` names, with its kind: derived from the type, so the two cannot drift. */
+const TURBO_CACHE_KEYS: PluginOptionKinds<TurboCacheOptions> = {
+  apiUrl: 'string',
+  token: 'string',
+  teamId: 'string',
+  teamSlug: 'string',
+  signatureKey: 'string',
+  timeoutMs: 'number',
+  uploadTimeoutMs: 'number',
+  retries: 'number',
 }
 
 /**
@@ -631,7 +632,7 @@ const TURBO_CACHE_KEYS: Record<keyof TurboCacheOptions, true> = {
  * Declines without a URL and a token, so it is safe to leave declared.
  */
 export function turboCache(options: TurboCacheOptions = {}): VxPlugin {
-  refuseUnknownOptions('turboCache()', options, Object.keys(TURBO_CACHE_KEYS))
+  refuseUnknownOptions('turboCache()', options, TURBO_CACHE_KEYS)
   return definePlugin(import.meta, {
     cache(ctx): CacheLayer | undefined {
       const config = resolveTurboCacheConfig(

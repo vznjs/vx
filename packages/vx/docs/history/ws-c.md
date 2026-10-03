@@ -1377,3 +1377,20 @@ Probes (2026-10-03), `vx watch` edge cases, all clean: a server that
 exits before it is ready fails the cycle, watch keeps watching and the
 next change starts it; Ctrl-C while a held server traps TERM and INT
 ends watch 0 after the kill grace with the server gone.
+
+## C-93: a server slow to match `readyWhen` is said
+
+A dependency server whose `readyWhen` never matched held its dependants
+in silence: its output is hidden unless it fails, and with no
+`exec.timeout` the wait never ends (a probe: 5.6 s and not one line). vx
+now says once, after 10 s (`VX_READY_NOTICE_MS`), `vx: <id> not ready
+after 10 s: waiting for a line matching /<re>/ (readyWhen)`, adding
+`, with no exec.timeout` when nothing bounds it; not under a stop.
+Rows (`ready-wait-notice.test.ts`): bounded and unbounded, red without
+the change; a server ready in time says nothing. `schema.md`, the env
+table in `cli.md` and the CLI-surface contract carry the variable.
+
+Probes (2026-10-03), clean: a `readyWhen` that is no regex is refused at
+load; the lifecycle property row widened to 240 seeds (120 run to the
+end, 120 stopped at a random moment, every kind of server) found no run
+that hung and no child that outlived its run.
