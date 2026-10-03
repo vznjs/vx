@@ -1844,7 +1844,11 @@ test` and `bun lint` do run the script. Arguments, flags or a `&&`
 chain make it a real command again and
 it is left verbatim, and so is one whose target becomes no task (a
 lifecycle script, or a hook folded into another script): a group over
-it would name a task nothing defines (D-12).
+it would name a task nothing defines (D-12). A verbatim chain whose
+parts run this package's own scripts (`check: pnpm run build && pnpm run
+lint`) gets a TODO naming those parts: each ran again inside the command,
+beside its own task, so `vx run check` built twice (M-41). Its order may
+matter, so it is not made a group.
 
 The report lists each TODO once per reason: tasks that share one are
 named together (the first five, then a count; the files carry each),

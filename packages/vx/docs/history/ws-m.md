@@ -507,6 +507,19 @@ clock tick); `persistent-ready-timeout.test.ts`'s 200 ms before
 filed on `output-dirs-snapshot.test.ts` is A-45's (its keep-alive runs
 after the build), 20 of 20 beside eight busy loops.
 
+M-41. `vx init` on plain pnpm and bun workspaces (no Turbo, no Nx),
+reviewed: the configs it writes run (`build`, `test` across members, a
+`^build` edge on each build, servers persistent), cache nothing until a
+TODO's block is added, as the report says, and the odd layouts held (a
+single package, a glob that matches nothing, a member with no scripts,
+broken JSON named with its path, bun's object `workspaces`, a negated
+or `**` glob, init from inside a member, existing configs refused with
+exit 1). One defect: a script chaining this package's own scripts
+(`check: pnpm run build && pnpm run lint`) was written verbatim with no
+TODO, and with `check`'s edge to `build`, `vx run check` built twice
+and ran `lint` outside the graph. Its parts that run an own task are
+now named in a TODO (`init-own-script-chain.test.ts`, red on main).
+
 ## Leads for other streams
 
 - A: A-20 let a same-project dependant restore ahead of a producer whose
