@@ -638,6 +638,7 @@ export interface GeneratedProject {
   name: string
   dir: string
   importLines: string[]
+  tags?: readonly string[]
   tasks: GeneratedTask[]
 }
 == type GeneratedTask (src/workspace/migration.ts)
@@ -973,6 +974,7 @@ export interface PreparedRun {
 }
 == type ProjectConfig (src/config.ts)
 export interface ProjectConfig {
+  tags?: readonly string[]
   tasks?: Record<string, TaskConfig>
 }
 == type ProjectEntry (src/workspace/workspace.ts)

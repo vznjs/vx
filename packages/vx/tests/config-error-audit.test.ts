@@ -49,7 +49,7 @@ it.each([
   [
     'an unknown top-level field',
     'export default { taskz: {} }\n',
-    'vx: <root>/p/vx.config.ts has unknown field "taskz" (allowed: tasks) — did you mean tasks?',
+    'vx: <root>/p/vx.config.ts has unknown field "taskz" (allowed: tags, tasks) — did you mean tasks?',
   ],
   [
     'a command of the wrong type',

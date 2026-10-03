@@ -2139,7 +2139,8 @@ app   packages/app   3 tasks  [scope:web]
 bare  packages/bare  (no vx config)
 ```
 
-`vx show <project>` prints its `tags` under the header, then a block per task with every field the run
+Under its header `vx show <project>` prints its `tags`.
+`vx show <project>` prints a block per task with every field the run
 reads: description, command (`(group)` for group tasks), `dependsOn`,
 `timeout`, `retries`, `env.passThrough` / `env.define`, `remote`,
 `sandbox`, `persistent`, and the cache block
