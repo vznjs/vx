@@ -891,6 +891,16 @@ function buildTask(
     todos.push(opts.persistentTodo)
   }
   const task: Record<string, unknown> = { exec }
+  // What the executor ran first, as Nx resolves the spec: an omitted
+  // configuration is the target's default (its base task).
+  for (const spec of mapped?.deps ?? []) {
+    const [project, target, ...rest] = spec.split(':')
+    const m = project === undefined ? undefined : metaByNode.get(project)
+    if (m === undefined || target === undefined) continue
+    const name = (rest.length > 0 && taskNameFor(project!, target, rest.join(':'))) || target
+    const id = `${m.name}#${name}`
+    if (!deps.includes(id)) deps.push(id)
+  }
   if (deps.length > 0) task.dependsOn = deps
   if (cacheEnabled) {
     const cacheInputs: Record<string, unknown> = { files: inputs.files }
@@ -953,6 +963,8 @@ interface MappedCommand {
   readonly readyWhen: string | undefined
   /** The `.env` files the command loads, relative to the project dir: key inputs. */
   readonly envInputs: readonly string[]
+  /** `project:target[:configuration]` specs an executor ran first (a server's `buildTarget`). */
+  readonly deps?: readonly string[]
 }
 
 /**
@@ -1073,7 +1085,8 @@ function mapCommand(
     }
     todos.push(...n.todos)
     argsTodo(options, todos)
-    return shell(n.command, undefined, { env: n.env, readyWhen: undefined })
+    const mapped = shell(n.command, undefined, { env: n.env, readyWhen: undefined })
+    return n.deps === undefined ? mapped : { ...mapped, deps: n.deps }
   }
   // Every other executor runs as itself, one process per task, through
   // this package's `nx-exec` bin: the executor and its options are on the

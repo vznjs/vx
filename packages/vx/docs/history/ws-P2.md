@@ -117,6 +117,13 @@ sync`", advice for a repo leaving Nx: they say to keep what the
   key, and the real build became `vite --x`, uncached. The target keeps
   its name, as Nx resolves `a:vite:build` to it; the configuration is a
   todo, and an edge to it reaches its base task.
+- **P2-24** `@nx/js:node` and `@nx/vite:preview-server` built their
+  `buildTarget` before running, and the migration said so in a TODO: the
+  written `serve` ran `node dist/apps/api/main.cjs` with no edge to the
+  build, a failure on a clean checkout. A translator now hands back the
+  specs its executor ran first, and each is a `dependsOn` edge, its
+  configuration resolved as Nx resolves it; the watch-mode rebuild stays
+  a TODO, and a build target the graph lacks keeps the old one.
 
 ## Leads for other streams
 
