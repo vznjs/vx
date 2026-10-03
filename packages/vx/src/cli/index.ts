@@ -23,7 +23,7 @@ export async function run(argv: readonly string[]): Promise<number> {
   // which is the one place `--help` is not being asked of vx. Core verbs
   // only — a plugin verb owns its own arguments, `--help` included.
   if (command !== undefined && wantsHelp(command, rest)) {
-    printHelp(await (await plugins()).pluginCommandHelp(), command)
+    await printHelp(await (await plugins()).pluginCommandHelp(), command)
     return 0
   }
 
@@ -39,12 +39,12 @@ export async function run(argv: readonly string[]): Promise<number> {
         process.stderr.write(`vx: ${err.message}; \`vx help\` lists the verbs\n`)
         return 1
       }
-      printHelp(await (await plugins()).pluginCommandHelp())
+      await printHelp(await (await plugins()).pluginCommandHelp())
       return 0
     }
     case '--help':
     case '-h':
-      printHelp(await (await plugins()).pluginCommandHelp())
+      await printHelp(await (await plugins()).pluginCommandHelp())
       return 0
     case 'help': {
       // `vx help run` is the same question as `vx run --help`. A plugin verb
@@ -76,7 +76,7 @@ export async function run(argv: readonly string[]): Promise<number> {
           return 1
         }
       }
-      printHelp(await (await plugins()).pluginCommandHelp(), core ? verb : undefined)
+      await printHelp(await (await plugins()).pluginCommandHelp(), core ? verb : undefined)
       return 0
     }
     case '--version':

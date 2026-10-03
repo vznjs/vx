@@ -11,7 +11,15 @@ prints one line naming it and pointing at `vx help`, not the text.
 ## Public surface
 
 ```ts
-export function printHelp(pluginCommands: readonly string[] = [], verb?: string): void
+export async function printHelp(
+  pluginCommands: readonly string[] = [],
+  verb?: string,
+): Promise<void>
+export function helpColors(
+  stream: { isTTY?: boolean },
+  detect: (s: NodeJS.WriteStream) => ColorSupport,
+): ColorSupport
+export function paintHelp(text: string, colors: ColorSupport, paint: typeof Paint): string
 export function helpText(pluginCommands: readonly string[] = []): string
 export function verbHelpText(verb: string): string
 export function documentedFlags(verb: string, text?: string): string[] // text: the help text (default: helpText())
@@ -43,6 +51,16 @@ the verb, and every blank-line-delimited section that is `(for
 help` trailer; a verb the text does not know gets the whole reference.
 There is no second list: the cut reads the text, as `acceptedFlags`
 (the `(did you mean …)` source, via `flagHint`) does.
+
+`printHelp` paints the text it prints, never the text the parsers read:
+`paintHelp` adds accents line by line (headings bold with a dim
+`(for <verb>)`, `vx <verb>` bold cyan, the flag, selector or example a
+row opens with in cyan; prose and continuation lines plain), so the
+painted text strips back to `helpText` byte for byte. `helpColors`
+paints on a TTY only, and `NO_COLOR` / `FORCE_COLOR=0` still win:
+`FORCE_COLOR=1` set for a CI run's log does not paint a piped help.
+A row's term ends at two spaces, so every option row keeps a two-space
+gap before its description.
 
 ## Sections (current)
 

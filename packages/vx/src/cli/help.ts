@@ -1,7 +1,72 @@
-import { nearest } from '../util/index.js'
+import type { ColorSupport, paint as Paint } from '../orchestrator/index.js'
+import { CORE_VERBS, nearest } from '../util/index.js'
 
-export function printHelp(pluginCommands: readonly string[] = [], verb?: string): void {
-  process.stdout.write(verb === undefined ? helpText(pluginCommands) : verbHelpText(verb))
+export async function printHelp(
+  pluginCommands: readonly string[] = [],
+  verb?: string,
+): Promise<void> {
+  const text = verb === undefined ? helpText(pluginCommands) : verbHelpText(verb)
+  // The orchestrator is already loaded by the plugin-verb lookup every
+  // caller awaits first, so this import costs `vx --version` nothing.
+  const { detectColors, paint } = await import('../orchestrator/index.js')
+  process.stdout.write(paintHelp(text, helpColors(process.stdout, detectColors), paint))
+}
+
+/**
+ * Help paints on a terminal only. `FORCE_COLOR=1` set for a run's log in
+ * CI does not paint it: a script that greps `vx help` (or reads the flag
+ * list from it) gets plain text whatever forces colour elsewhere.
+ */
+export function helpColors(
+  stream: { isTTY?: boolean },
+  detect: (s: NodeJS.WriteStream) => ColorSupport,
+): ColorSupport {
+  return { enabled: stream.isTTY === true && detect(stream as NodeJS.WriteStream).enabled }
+}
+
+const VERB = '#06b6d4' // cyan-500 — the orchestrator's accent
+const TERM = '#22d3ee' // cyan-400 — a flag, a selector, an example
+
+/**
+ * The reference with ANSI accents, line by line and never reflowed, so the
+ * painted text strips back to `text` exactly: section headings bold (their
+ * `(for <verb>)` dim), `vx <verb>` bold cyan, and the term an option or
+ * example line opens with cyan. Prose and continuation lines stay plain.
+ */
+export function paintHelp(text: string, colors: ColorSupport, paint: typeof Paint): string {
+  if (!colors.enabled) return text
+  const lines = text.split('\n')
+  return lines
+    .map((line, i) => {
+      if (line === '') return line
+      if (i === 0) {
+        const [name, ...rest] = line.split(' ')
+        return [paint(VERB, name!, colors, { bold: true }), ...rest].join(' ')
+      }
+      const heading = /^([A-Z][^:]*?)( \(for [^)]*\))?:$/.exec(line)
+      if (heading !== null) {
+        const qualifier =
+          heading[2] === undefined ? '' : paint('', heading[2], colors, { dim: true })
+        return `${paint('', heading[1]!, colors, { bold: true })}${qualifier}${paint('', ':', colors, { bold: true })}`
+      }
+      // `  term   description`: a term is a flag, a `vx` form, a selector.
+      const row = /^(\s+)(\S(?:.*?\S)?)(\s{2,}\S.*)?$/.exec(line)
+      if (row === null) return line
+      const [, indent, term, description = ''] = row
+      if (/^vx \S/.test(term!)) {
+        const verb = term!.split(' ')[1]!
+        // Prose that opens with `vx` (`vx core runs tasks…`) is not a form.
+        if (description === '' && !(CORE_VERBS as readonly string[]).includes(verb)) return line
+        const head = `vx ${verb}`
+        const tail = term!.slice(head.length)
+        return `${indent}${paint(VERB, head, colors, { bold: true })}${tail === '' ? '' : paint(TERM, tail, colors)}${description}`
+      }
+      if (description === '') return line
+      if (/^(-|\(|[\w-]+#)/.test(term!))
+        return `${indent}${paint(TERM, term!, colors)}${description}`
+      return line
+    })
+    .join('\n')
 }
 
 /**
@@ -96,11 +161,11 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     '      --graph[=<path>]     Emit Graphviz DOT (stdout if no path).',
     '',
     'Artifacts (for run):',
-    '      --summarize[=<path>] Write per-run JSON to <cacheDir>/runs/<run_id>.json.',
-    '      --profile[=<path>]   Write Chrome-trace JSON (default profile.json).',
-    '      --report[=markdown]  Print a markdown run report to stdout after the run.',
-    '      --report-file <path> Append that report to <path> (for $GITHUB_STEP_SUMMARY).',
-    '      --tag <k=v>          Label this invocation (repeatable); recorded on its history row.',
+    '      --summarize[=<path>]  Write per-run JSON to <cacheDir>/runs/<run_id>.json.',
+    '      --profile[=<path>]    Write Chrome-trace JSON (default profile.json).',
+    '      --report[=markdown]   Print a markdown run report to stdout after the run.',
+    '      --report-file <path>  Append that report to <path> (for $GITHUB_STEP_SUMMARY).',
+    '      --tag <k=v>           Label this invocation (repeatable); recorded on its history row.',
     '',
     'Extensions (plugins):',
     '  vx core runs tasks in-process and nothing else. A dashboard, remote',
