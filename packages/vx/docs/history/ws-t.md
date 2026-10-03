@@ -19,3 +19,24 @@ lacked (research in the project thread, 2026-10-03).
   Rows: `cache-scope.test.ts` (core: scoped writes, own-scope reads,
   own-scope-first, one GET per hit, read-only, the CLI default) and vx-github's `cache-scope.test.ts`, each
   red without its half.
+- **T-3.** (2026-10-03, owner ask: interactive tasks, Turbo #1235, Nx
+  #8269). `exec.interactive: true`. When vx's stdin is a TTY
+  (`RunOptions.tty`, set by the CLI) the task inherits vx's stdin,
+  stdout and stderr, still in its own session; off one it runs as
+  before. It runs alone (scheduler `exclusive`: dispatch stops until
+  the running tasks drain). A persistent one holds the terminal from
+  spawn to run end, so a run takes one and every other interactive
+  task must be its dependency, refused before any task runs
+  (`terminalHolders`). Placed on the local floor past every plugin.
+  `cache`, `sandbox` and `persistent.readyWhen` beside it are
+  refused. bwrap's `--new-session` does not break a terminal
+  (probed), but the sandboxed spawn reads the task's stderr, and
+  macOS cannot be probed here. The logger kills the status region at
+  its start and frames it live. `turbo()` and the CLI migrator map
+  Turbo's `interactive` to it, uncached. schema.md § `interactive`.
+  - Rows: `interactive.test.ts` (refusals, placement, holders, the
+    scheduler's drain, a run on and off a TTY) and
+    `terminal.unsafe.test.ts` (a typed line reaches a one-shot and a
+    server on a pty; undeclared reads EOF), `status-line.test.ts`.
+    Mutants of each gate (start, hold, placement, stdio, request,
+    holders, clash, logger, persistent stdio) each fail a row.
