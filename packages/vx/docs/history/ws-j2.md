@@ -276,3 +276,10 @@ persistent task` and vx exits 1). Row (`site-samples` › a post's link
   (`site-samples` › every plugin README names each option its factory
   takes), the fields read from each options interface, test seams left
   out; red on the three without the fix.
+
+- **J2-34** vx-mcp's README rows for `explainCacheKey` and
+  `whyDidThisRerun` never named their `taskId` argument (the question
+  showed `pkg#build`, the call needs the key). Row (`vx-mcp`
+  `readme-tools` › README names each tool's arguments), every
+  `inputSchema` property read from `listTools()`; red on both without
+  the fix.
