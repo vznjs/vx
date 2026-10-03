@@ -637,7 +637,7 @@ describe('nx-map: `^` inputs fold over the project graph through twins', () => {
     const t = await graph(['^typecheck'])
     expect(t.get('app#test')?.todos).toEqual([])
     expect(t.get('lib#nx-input:typecheck')?.todos).toEqual([
-      'named input "typecheck" not found for "lib" — declare its globs manually',
+      'named input "typecheck" not found for "lib" — keyed on its whole project (`**/*`) until its globs are declared',
     ])
   })
 

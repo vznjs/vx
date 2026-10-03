@@ -97,6 +97,11 @@ sync`", advice for a repo leaving Nx: they say to keep what the
   `verdaccio --config … --listen localhost:4873` from the workspace root,
   a server, its storage cleared under `clear`; the npm and yarn registry
   Nx set while it ran is a TODO. Read from the executor in Nx 23.2.1.
+- **P2-21** A named input neither nx.json nor the project defines (an
+  nx.json `extends` preset not installed where the snapshot is read)
+  wrote an empty input list: a cached task keyed on its config alone, a
+  stale hit after every source edit. It now keys the whole project
+  (`**/*`), its dependency twin too, with the todo kept.
 
 ## Leads for other streams
 
