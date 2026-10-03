@@ -217,7 +217,7 @@ interface Pending {
 
 /**
  * How long a single config evaluation may take, in the worker or in process
- * (D-66). Real evaluations are ~10 ms; this exists only so a hung config or a
+ * (D-66); in process a synchronous loop holds the thread the deadline needs. Real evaluations are ~10 ms; this exists only so a hung config or a
  * killed worker cannot stall a run or a long-lived process indefinitely. Read
  * per call so a test can drive the deadline instead of waiting it out.
  */
