@@ -62,6 +62,10 @@ exported (they used to be POSTed to the traces URL, which a collector
 refuses), and `metrics: true` or `logs: true` without a URL says so once.
 Both are booleans: a string (`'false'` is truthy) is refused.
 
+The package exports `otel` and its options type `OtelPluginOptions`; the
+OTLP builders are internal (the wire they send is the contract,
+`tests/contract/otlp.txt`).
+
 Options override env:
 
 ```ts

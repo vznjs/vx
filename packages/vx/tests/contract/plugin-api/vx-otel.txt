@@ -1,118 +1,5 @@
-== const SEMCONV (src/otlp.ts)
-export const SEMCONV = {
-  pipelineRunId: 'cicd.pipeline.run.id',
-  pipelineResult: 'cicd.pipeline.result',
-  taskName: 'cicd.pipeline.task.name',
-  taskRunResult: 'cicd.pipeline.task.run.result',
-  vcsHeadRevision: 'vcs.ref.head.revision',
-  vcsHeadName: 'vcs.ref.head.name',
-  serviceName: 'service.name',
-  serviceVersion: 'service.version',
-} as const
-== const VX_ATTR (src/otlp.ts)
-export const VX_ATTR = {
-  schema: 'vx.telemetry.schema',
-  workspaceId: 'vx.workspace.id',
-  workspaceName: 'vx.workspace.name',
-  command: 'vx.command',
-  requestedTasks: 'vx.requested_tasks',
-  cachePolicy: 'vx.cache_policy',
-  concurrency: 'vx.concurrency',
-  flow: 'vx.flow',
-  ci: 'vx.ci',
-  ciProvider: 'vx.ci.provider',
-  host: 'vx.host',
-  os: 'vx.os',
-  arch: 'vx.arch',
-  version: 'vx.version',
-  dirty: 'vx.dirty',
-  defaultBranch: 'vx.default_branch',
-  tagPrefix: 'vx.tag.',
-  runStartedAt: 'vx.run.started_at',
-  runEndedAt: 'vx.run.ended_at',
-  runDurationMs: 'vx.run.duration_ms',
-  runTaskCount: 'vx.run.task_count',
-  runFailedCount: 'vx.run.failed_count',
-  runAbortedCount: 'vx.run.aborted_count',
-  runHitCount: 'vx.run.hit_count',
-  runHitLocalCount: 'vx.run.hit_local_count',
-  runHitRemoteCount: 'vx.run.hit_remote_count',
-  runExitOk: 'vx.run.exit_ok',
-  taskProject: 'vx.task.project',
-  taskRunStartedAt: 'vx.task.run_started_at',
-  taskTask: 'vx.task.task',
-  cacheSource: 'vx.cache.source',
-  taskExitCode: 'vx.task.exit_code',
-  taskStatus: 'vx.task.status',
-  taskDurationMs: 'vx.task.duration_ms',
-  taskHash: 'vx.task.hash',
-  cpuMs: 'vx.cpu_ms',
-  taskWhere: 'vx.task.where',
-  taskBlockedBy: 'vx.task.blocked_by',
-  taskTimedOut: 'vx.task.timed_out',
-  taskSandboxViolations: 'vx.task.sandbox_violations',
-  taskNotReady: 'vx.task.not_ready',
-  taskOutputs: 'vx.task.outputs',
-  peakRssBytes: 'vx.peak_rss_bytes',
-  taskAttempts: 'vx.task.attempts',
-  wallclockStartNs: 'vx.task.wallclock_start_ns',
-  wallclockEndNs: 'vx.task.wallclock_end_ns',
-  logCharsFull: 'vx.log.chars_full',
-  logTruncatedHead: 'vx.log.truncated_head',
-  logStatus: 'vx.log.status',
-} as const
-== function buildLogsRequest (src/otlp.ts)
-export function buildLogsRequest(args: {
-  serviceName: string
-  vxVersion: string
-  runId: string
-  workspaceId: string
-  entries: readonly TaskLogEntry[]
-  timeUnixNano: string
-  traceId?: string
-  spanIdFor?: (taskId: string) => string | undefined
-  resource?: Readonly<Record<string, string>>
-}): unknown
-== function buildMetricsRequest (src/otlp.ts)
-export function buildMetricsRequest(
-  serviceName: string,
-  summary: RunSummaryRecord,
-  nowUnixNano: string,
-  startUnixNano: string,
-  resource?: Readonly<Record<string, string>>,
-): unknown
-== function buildTraceRequest (src/otlp.ts)
-export function buildTraceRequest(
-  serviceName: string,
-  vxVersion: string,
-  spans: OtlpSpan[],
-  resource?: Readonly<Record<string, string>>,
-): unknown
 == function otel (src/plugin.ts)
 export function otel(opts: OtelPluginOptions = {}): VxPlugin
-== function resourceAttributes (src/otlp.ts)
-export function resourceAttributes(
-  serviceName: string,
-  vxVersion: string,
-  extra: Readonly<Record<string, string>> = {},
-): KeyValue[]
-== function runSpanAttributes (src/otlp.ts)
-export function runSpanAttributes(run: RunContextRecord, summary?: RunSummaryRecord): KeyValue[]
-== function taskSpanAttributes (src/otlp.ts)
-export function taskSpanAttributes(t: TaskTelemetry, run: TaskSpanRunContext): KeyValue[]
-== function taskStatusCode (src/otlp.ts)
-export function taskStatusCode(t: TaskTelemetry): number
-== type AnyValue (src/otlp.ts)
-type AnyValue =
-  | { stringValue: string }
-  | { intValue: string }
-  | { boolValue: boolean }
-  | { doubleValue: number }
-== type KeyValue (src/otlp.ts)
-export interface KeyValue {
-  key: string
-  value: AnyValue
-}
 == type OtelPluginOptions (src/plugin.ts)
 export interface OtelPluginOptions {
   endpoint?: string
@@ -126,29 +13,6 @@ export interface OtelPluginOptions {
   timeoutMs?: number
   compression?: 'gzip' | 'none'
   post?: PostFn
-}
-== type OtlpLogRecord (src/otlp.ts)
-export interface OtlpLogRecord {
-  timeUnixNano: string
-  observedTimeUnixNano: string
-  severityNumber: number
-  severityText: string
-  body: { stringValue: string }
-  attributes: KeyValue[]
-  traceId?: string
-  spanId?: string
-}
-== type OtlpSpan (src/otlp.ts)
-export interface OtlpSpan {
-  traceId: string
-  spanId: string
-  parentSpanId?: string
-  name: string
-  kind: number
-  startTimeUnixNano: string
-  endTimeUnixNano: string
-  attributes: KeyValue[]
-  status: { code: number }
 }
 == type OtlpTls (src/sink.ts)
 export interface OtlpTls {
@@ -164,9 +28,3 @@ export type PostFn = (
   signal?: AbortSignal,
   tls?: OtlpTls,
 ) => Promise<void>
-== type TaskSpanRunContext (src/otlp.ts)
-interface TaskSpanRunContext {
-  runId: string
-  workspaceId: string
-  startedAt: number
-}
