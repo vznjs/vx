@@ -63,7 +63,8 @@ case it is.
   counted — with no config re-evaluation and no re-hash. Values are
   digests, never the material (an env value can be a secret), and a
   secret-named env input's digest leaves as `***` (unsalted, a short
-  value is recoverable from it, M-62); STATUS
+  value is recoverable from it, M-62), as does one its task's
+  `exec.env.secret` names, whose stored row carries a `***` mark (M-63); STATUS
   § Next 8(g) records why a plugin part's raw value is not stored.
 - `diffKeyComponents` is that join with no store under it: two keys'
   `{ kind, name, hash }` sets in, the entries (ordered by kind, then
