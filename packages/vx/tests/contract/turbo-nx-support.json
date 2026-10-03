@@ -122,7 +122,7 @@
   {
     "key": "turbo.json tasks.*.env",
     "status": "mapped",
-    "reason": "Goes to `cache.inputs.env` and `exec.env.passThrough`; under `turbo()` a `*` name expands over the run's environment, as Turbo does; otherwise wildcards get a TODO."
+    "reason": "Goes to `cache.inputs.env` and `exec.env.passThrough`; under `turbo()` a `*` name expands over the run's environment, as Turbo does; the CLI lists the names the package's files spell, and a wildcard nothing spells gets a TODO."
   },
   {
     "key": "turbo.json tasks.*.inputs",
@@ -152,7 +152,7 @@
   {
     "key": "turbo.json tasks.*.passThroughEnv",
     "status": "mapped",
-    "reason": "Goes to `exec.env.passThrough`, not hashed; under `turbo()` a `*` name expands over the run's environment; otherwise wildcards get a TODO."
+    "reason": "Goes to `exec.env.passThrough`, not hashed; under `turbo()` a `*` name expands over the run's environment; the CLI lists the names the package's files spell, and a wildcard nothing spells gets a TODO."
   },
   {
     "key": "turbo.json tasks.*.persistent",
