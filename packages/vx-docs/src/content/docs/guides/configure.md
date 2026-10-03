@@ -128,7 +128,7 @@ vx why app#build
 app#build — run 019f5a02-…
   this run   2026-07-13T05:39:20.590Z · success · executed · key f7ee661520…
   previous   2026-07-13T05:37:29.550Z · success · key 8b2e9bb2e8…
-  verdict    cache key changed between the previous run and this one (inputs differ)
+  verdict    cache key changed: file packages/app/src/index.ts
 
   what changed (1 component, 41 unchanged):
     changed file  packages/app/src/index.ts  a1b2c3… → d4e5f6…
@@ -139,7 +139,8 @@ app#build — run 019f5a02-…
 
 | The verdict line says | It means |
 | --- | --- |
-| `cache key changed between the previous run and this one (inputs differ)` | the lines below name what changed |
+| `cache key changed: env MODE, file packages/app/src/index.ts` | those inputs moved (three named, then a count); the lines below show each |
+| `cache key changed between the previous run and this one (inputs differ)` | the key moved and neither entry kept its components (pruned, or a failed run saved none) |
 | `cache key unchanged — this run was served from cache, nothing re-ran` | a hit |
 | `cache key unchanged — the previous run on this key failed and saved nothing, so there was nothing to hit` | a failure saves no entry |
 | `cache key unchanged — re-executed because this run did not read the cache (--force, or a --cache without read)` | the run's policy read no cache |
