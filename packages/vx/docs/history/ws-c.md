@@ -1302,3 +1302,22 @@ group ran against a server that died mid-run. The scheduler's check now
 follows groups to the server (`deadServerVia`), and the skip names it.
 Row: `server-crash-through-group.test.ts` (a group over a group), red
 without the change.
+
+## C-69: a server that dies mid-run is said when it dies
+
+A dependency server that crashed while its dependants ran (an `e2e`
+against an `api#dev` that fell over) was named only at the end of the
+run, `vx: api#dev exited with code 1 before the run stopped it`, while
+the dependant's failures scrolled past with no word of why. vx now says
+`vx: <id> exited with code <n> while the run went on` when it happens;
+not once the graph is done (the end of the run and the keep-alive wait
+say it), not under a stop, not for an exit 0. Rows
+(`keep-alive.test.ts` › a persistent server that dies before the run
+stops it): the crash rows read the new line first; each of the three
+guards removed reddens a row. `schema.md` says so.
+
+Open lead (2026-10-02): under `--continue=always` a task dispatched after its
+server died (C-88) still saves: the taint reads settled outcomes, and a
+ready server's says `success` until the run ends. A fix must record
+whether the server was dead at the task's dispatch, so a grand-dependant
+inherits it; not done.

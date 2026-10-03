@@ -67,7 +67,7 @@ fills is not a no-op call, it is no call.
 
 ## What is built on it
 
-- **`@vzn/vx-otel`** maps each run to OTLP traces and metrics over
+- **`@vzn/vx-otel`** maps each run to OTLP traces, metrics and logs over
   HTTP/JSON with no OpenTelemetry SDK dependency. The wire format is
   small and the SDK is not.
 - **`@vzn/vx-github`** writes every run as a GitHub Actions job summary

@@ -10,7 +10,7 @@ import { bun } from '@vzn/vx-lockfile'
 // earlier is consulted first, so a remote cache layer or executor sits
 // ahead of the local floor at the tail.
 //
-//   otel()   — export each run as OpenTelemetry traces + metrics. Activates
+//   otel()   — export each run as OpenTelemetry traces, metrics, logs. Activates
 //              when OTEL_EXPORTER_OTLP_ENDPOINT is set, declines otherwise.
 //   github() — write each run as a GitHub Actions job summary. Activates on
 //              GITHUB_STEP_SUMMARY, declines everywhere else. We dogfood our

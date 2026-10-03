@@ -206,6 +206,9 @@ block. A sandboxed server on Linux lists its port in
 `vx.workspace.ts`, beside the root `package.json`, is optional. Without
 it, vx runs and caches on this machine.
 
+Only `@vzn/vx` is on npm today; the plugins' first publish is pending,
+so installing one of the packages below fails until then.
+
 ```ts
 // vx.workspace.ts
 import { defineWorkspace } from '@vzn/vx/config'
