@@ -27,7 +27,7 @@ export interface ReapiOptions {
   chunkBytes?: number
 }
 == type ReapiPluginOptions (src/index.ts)
-export interface ReapiPluginOptions extends Partial<ReapiOptions> {
+export interface ReapiPluginOptions extends Partial<Omit<ReapiOptions, WireOnly>> {
   executeTimeoutMs?: number
   endpoint?: string
   execute?: boolean
@@ -37,3 +37,5 @@ export interface ReapiPluginOptions extends Partial<ReapiOptions> {
   tlsClientCertificate?: string
   tlsClientKey?: string
 }
+== type WireOnly (src/index.ts)
+type WireOnly = 'tlsCaPem' | 'tlsClientCertPem' | 'tlsClientKeyPem' | 'onWarn'
