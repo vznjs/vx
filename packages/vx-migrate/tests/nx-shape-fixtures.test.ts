@@ -1,8 +1,8 @@
-// Eight hand-written Nx graphs in the shapes real repos have (plugin-
+// Nine hand-written Nx graphs in the shapes real repos have (plugin-
 // inferred targets, explicit executors, continuous and atomized targets
 // with a root project, per-project named inputs and filesets, run-commands
 // variants, configurations with run-script, every input kind, token
-// interpolation), migrated
+// interpolation, an integrated repo of `project.json` projects), migrated
 // through the CLI. Every config it writes must load: a written config vx
 // refuses (an output outside the workspace, P2-11) fails the whole repo.
 
@@ -10,7 +10,7 @@ import { cp, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
-import { loadProjectConfig } from '@vzn/vx'
+import { listProjectMetas, loadProjectConfig, loadWorkspace } from '@vzn/vx'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 const CORE_PKG = path.resolve(import.meta.dir, '..', '..', 'vx')
@@ -26,25 +26,36 @@ async function migrate(shape: string): Promise<{
   out: string
   tasks: Record<string, string[]>
   configs: Record<string, Record<string, Record<string, unknown>>>
+  /** Unlisted shapes: the projects core finds once the note's globs are added. */
+  discovered?: string[]
 }> {
   const graph = (await Bun.file(path.join(FIXTURES, `${shape}.json`)).json()) as {
     graph: { nodes: Record<string, Node> }
     scripts?: Record<string, Record<string, string>>
+    /** Nodes with a `project.json` only: no package.json, in no workspace glob. */
+    unlisted?: string[]
   }
   const root = await mkdtemp(path.join(os.tmpdir(), 'vx-nx-shape-'))
   try {
     const roots = Object.values(graph.graph.nodes).map((n) => [n.name, n.data.root] as const)
+    const unlisted = new Set(graph.unlisted ?? [])
     const members = roots.filter(([, r]) => r !== '.')
-    await writeFile(
-      path.join(root, 'package.json'),
+    const manifest = (workspaces: readonly string[]) =>
       JSON.stringify({
         name: roots.find(([, r]) => r === '.')?.[0] ?? 'root',
         private: true,
-        workspaces: members.map(([, r]) => r),
-      }),
+        workspaces,
+      })
+    await writeFile(
+      path.join(root, 'package.json'),
+      manifest(members.filter(([n]) => !unlisted.has(n)).map(([, r]) => r)),
     )
     for (const [name, rel] of members) {
       await mkdir(path.join(root, rel, 'src'), { recursive: true })
+      if (unlisted.has(name)) {
+        await writeFile(path.join(root, rel, 'project.json'), JSON.stringify({ name }))
+        continue
+      }
       await writeFile(
         path.join(root, rel, 'package.json'),
         JSON.stringify({ name, version: '1.0.0', scripts: graph.scripts?.[name] }),
@@ -78,7 +89,11 @@ async function migrate(shape: string): Promise<{
       tasks[name] = Object.keys(loaded).sort()
       configs[name] = loaded
     }
-    return { code, out, tasks, configs }
+    if (unlisted.size === 0) return { code, out, tasks, configs }
+    // Follow the note: list every member, as it says to.
+    await writeFile(path.join(root, 'package.json'), manifest(members.map(([, r]) => r)))
+    const metas = await listProjectMetas(await loadWorkspace(root))
+    return { code, out, tasks, configs, discovered: metas.map((m) => m.name).sort() }
   } finally {
     await rm(root, { recursive: true, force: true })
   }
@@ -212,5 +227,21 @@ describe('vx-migrate on the Nx shapes real repos have: every written config load
     expect(lib['docs']!['dependsOn']).toEqual(['build'])
     expect((lib['size']!['exec'] as { command: string }).command).toBe('size-limit')
     expect(r.out).toContain('the command runs `nx run-many`, which needs Nx installed')
+  }, 30_000)
+
+  it('an integrated repo: project.json projects in no workspace glob, a root project', async () => {
+    const r = await migrate('integrated')
+    expect(r.code).toBe(0)
+    expect(r.tasks).toEqual({
+      acme: ['format'],
+      shop: ['build', 'test'],
+      feature: ['build', 'lint', 'nx-input:default'],
+      '@acme/util': ['build', 'nx-input:default'],
+    })
+    expect(r.out).toContain(
+      '2 Nx projects are in no workspace glob (a package.json is written where there was none) — vx finds a project by a package.json the workspace lists: add "apps/shop", "libs/feature" to package.json `workspaces`',
+    )
+    // The written package.json files make them projects once listed.
+    expect(r.discovered).toEqual(['@acme/util', 'acme', 'feature', 'shop'])
   }, 30_000)
 })

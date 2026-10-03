@@ -1426,3 +1426,22 @@ broken; a held server that crashes while the loop idles, or ignores
 SIGTERM for 1.5 s (the next cycle's server still binds the port); a
 dependency cycle and a self-dependency; two servers and their dependant
 under `--concurrency 1`.
+
+## C-96: one `VX_TIMING` table per watch cycle
+
+Under `vx watch` the marks lived for the process: each cycle's table
+reprinted every earlier cycle's rows, and its `startup` row ran from the
+previous cycle's last mark, the idle wait included (1.4 s and 3.4 s for
+a 10 ms cycle). `restartTimings()` (util/timing.ts) starts each cycle's
+table. Row (`watch-timing.test.ts`): one `startup` row per table, timed
+below the idle wait; red without the change. `modules/timing.md` and
+the `VX_TIMING` row in `cli.md` say so.
+
+Probes (2026-10-03), clean: a dependency that breaks and is fixed
+mid-watch under `--filter`; a held dev server does not hold the run
+lock; `--concurrency` refuses 0, negatives, fractions and words. By
+design, not changed: under a `--filter` glob a new matching package
+does not join a running watch (`cli.md` says the scope is resolved at
+start); a server that exits 0 after ready is fine (`schema.md`);
+`computeReverseDepCount` is O(E·N/32), 11.5 µs a task at 20,000 tasks
+against 4.3 at 1,000, and runs only without history priorities.

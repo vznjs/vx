@@ -92,6 +92,9 @@ sync`", advice for a repo leaving Nx: they say to keep what the
 - **P2-16** One Nx edge spelled two ways (`ui:gen` and
   `{ projects: ["ui"], target: "gen" }`) was listed twice in the written
   `dependsOn`; `mapNxDeps` now returns each edge once.
+- **P2-17** An integrated repo (a root project, `project.json` projects
+  in no workspace glob, an Angular builder) joins the shape fixtures: the
+  row follows P2-15's note and asserts core then finds every project.
 - **P2-18** `@nx/js:verdaccio` (the `local-registry` target Nx's
   `setup-verdaccio` writes) migrates to the registry it forks:
   `verdaccio --config … --listen localhost:4873` from the workspace root,
@@ -129,6 +132,10 @@ sync`", advice for a repo leaving Nx: they say to keep what the
   specs its executor ran first, and each is a `dependsOn` edge, its
   configuration resolved as Nx resolves it; the watch-mode rebuild stays
   a TODO, and a build target the graph lacks keeps the old one.
+- **P2-25** `@nx/cypress:cypress` started its `devServerTarget` before
+  testing; the migrated e2e task now depends on that server task, by the
+  channel P2-24 added. The URL Nx passed as `baseUrl` stays a TODO
+  unless the options set one; `skipServe` starts nothing.
 
 ## Leads for other streams
 

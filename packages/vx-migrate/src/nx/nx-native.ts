@@ -658,9 +658,10 @@ const CYPRESS_FLAGS: Readonly<Record<string, string>> = {
 /**
  * `@nx/cypress:cypress`: `cypress run` (`open` under `watch`) from the
  * workspace root, on the config file's directory as Nx passes it. A
- * dev server Nx started first is a TODO: vx runs it as a dependency.
+ * dev server Nx started first is a dependency; the URL it printed, which
+ * Nx passed as `baseUrl`, is a TODO.
  */
-const cypress: Translate = (o, ctx, todos) => {
+const cypress: Translate = (o, ctx, todos, _env, deps) => {
   const args = ['cypress', o['watch'] === true ? 'open' : 'run']
   if (typeof o['cypressConfig'] === 'string') {
     const cfg = wsPath(o['cypressConfig'], ctx)
@@ -713,11 +714,21 @@ const cypress: Translate = (o, ctx, todos) => {
       'cypress',
     ),
   )
-  if (typeof o['devServerTarget'] === 'string' && o['skipServe'] !== true)
-    todos.push(
-      `@nx/cypress:cypress started ${JSON.stringify(o['devServerTarget'])} first and tested its URL — ` +
-        'depend on that server task and set its URL as baseUrl',
-    )
+  const server = o['devServerTarget']
+  if (typeof server === 'string' && o['skipServe'] !== true) {
+    // A target with no options still names an executor (a plain `command`).
+    if (ctx.targetExecutor?.(server) !== undefined || ctx.targetOptions?.(server) !== undefined) {
+      deps.push(server)
+      if (typeof o['baseUrl'] !== 'string')
+        todos.push(
+          `@nx/cypress:cypress tested the URL ${JSON.stringify(server)} printed as baseUrl — set baseUrl in the cypress config`,
+        )
+    } else
+      todos.push(
+        `@nx/cypress:cypress started ${JSON.stringify(server)} first and tested its URL — ` +
+          'depend on that server task and set its URL as baseUrl',
+      )
+  }
   if (o['testingType'] === 'component')
     todos.push(
       "@nx/cypress:cypress component testing reads Nx's build target through its preset — check the cypress config",
