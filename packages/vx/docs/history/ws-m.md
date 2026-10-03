@@ -823,3 +823,19 @@ save, and nothing outside was packed or cleaned. `outputDirLinkedOut`
 now reads the workspace globs against the root and names the base.
 `cache-declaration-warnings.test.ts` › and a workspaceFiles directory
 linked out of the workspace (red without the fix).
+
+M-67. Security audit, remote responses that lie about size or digest.
+Held, each pinned: (1) core's `ingest` bounds the compressed body
+before the decode (a `Content-Length` past the ceiling's bound, or a
+body that counts past it while streaming, L-5), decodes no further than
+the artifact ceiling, checks the artifact's own checksum, and refuses
+an artifact stored under another key or none: with that check removed,
+`remote-artifact-names.test.ts`' two key rows fail. (2) `@vzn/vx-reapi`
+holds every read to the digest it ASKED for, never the reply's: batch
+entries, ByteStream reads (the size as bytes pass, the hash at the
+end), zstd replies decoded no further than the declared size (L-3), and
+an inline AC body that fails its digest is streamed instead (F-8);
+`integrity.test.ts`, `read-bounds.test.ts`. `turboCache()` /
+`nxCache()` hand their body to the same `ingest`. Not covered: a
+digest function this runtime cannot compute is checked by size alone
+(`canDigest`); the cache layer addresses its blobs by SHA-256 (`digestOf`).
