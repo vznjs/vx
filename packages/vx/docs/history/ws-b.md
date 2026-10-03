@@ -1482,3 +1482,21 @@ by value set: 14.1 to 11.9 µs, noise; the cost is walking `process.env`,
 not building the pattern. Reverted. The unsandboxed path's top three
 (`secretMask` 25, output resolve 22, key 21 µs) stay below what a wall
 A/B resolves; that line is closed.
+
+B-96. The sandboxing guide's examples, run as written: the `vite build`
+block (fresh, hit, `--force`), `coverage/`, `*.log`, `gen/**/*.ts`,
+`gen/` and `dist/**` all behave as the guide says. One gap: a literal
+write grant on a missing path is bound as an empty file, and the hint
+beside the failure named only `mkdir -p dist`'s symptom, "File exists";
+a directory made inside it (`mkdir -p coverage/lcov`) reads "Not a
+directory", named nowhere. The hint, the guide, `schema.md` and the
+module page name both (#2616). Row:
+`sandbox-placeholder-nested.unsafe.test.ts`.
+
+B-97. The report of a write glob that matched nothing at the start spelled
+the grant and the directory to grant as absolute paths
+(`/tmp/…/packages/app/*.log`, then `…/app/**`), which a committed config
+holds only on the machine that printed them. Now as the config spells
+them, from the task's directory (`'*.log'`, then
+`allow: { write: ['.'] }`), from `~`, or whole (#2622), as B-87 did for
+the outside-writes hint. Row: `sandbox-empty-grant-spelling.unsafe.test.ts`.
