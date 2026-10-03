@@ -1280,7 +1280,9 @@ run...` precedes it.
    that checks every 250 ms, with the notice `vx watch: <dir>: no OS
 watch events within 2000 ms; polling every 250 ms instead`.
 3. **On change.** The triggering path is logged
-   (`vx watch: <project> <relpath>; re-running...`) and the
+   (`vx watch: <project> <relpath>; re-running...`): the first changed
+   path that still exists, so an editor's temporary file renamed away
+   names nothing; a deletion names the cycle when nothing else changed. The
    orchestrator is invoked again with the same options. Events arriving
    while a run is in flight queue and drain after the current cycle.
    Re-runs are debounced ~150ms after the last event.
