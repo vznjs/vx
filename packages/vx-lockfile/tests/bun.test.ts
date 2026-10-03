@@ -226,15 +226,16 @@ describe('workspace digests', () => {
   })
 
   // bun.lock names a patch by path only: the patch file's CONTENT arrives
-  // as `files` from the claim, and an edit to it moves every workspace, as
-  // the path already did (item 1014). No patch, no change to the digest.
-  it("a patch file's content moves every workspace; no patch keys as before", () => {
+  // as `files` from the claim (item 1014), and an edit to it moves the
+  // workspaces reaching the patched entry: bar@2.0.0 is `a`'s, through foo
+  // (D-143). No patch, no change to the digest.
+  it("a patch file's content moves the workspaces reaching it; no patch keys as before", () => {
     const top = '"patchedDependencies": { "bar@2.0.0": "patches/bar@2.0.0.patch" },'
     const text = lock({ top })
     expect(patchFiles(text)).toEqual(['patches/bar@2.0.0.patch'])
     const one = importerDigests(parseLockfile(text), new Map([['patches/bar@2.0.0.patch', 'h1']]))
     const two = importerDigests(parseLockfile(text), new Map([['patches/bar@2.0.0.patch', 'h2']]))
-    for (const dir of one.keys()) expect(two.get(dir)).not.toBe(one.get(dir))
+    expect([...one.keys()].filter((dir) => two.get(dir) !== one.get(dir))).toEqual(['packages/a'])
     expect(patchFiles(lock())).toEqual([])
     expect(importerDigests(parseLockfile(lock()), new Map())).toEqual(digests(lock()))
   })
@@ -501,7 +502,7 @@ describe('vx run with bun() declared', () => {
   // Item 1014 through the plugin: the parser's rows hand `files` in by
   // hand, and dropping the wiring that asks the claim for them (a sweep
   // mutant of index.ts) kept every key when the patch was edited.
-  it('an edit to a patch file bun.lock names re-keys every project', async () => {
+  it('an edit to a patch file bun.lock names re-keys the project reaching it', async () => {
     await mkdir(path.join(root, 'patches'), { recursive: true })
     await writeFile(path.join(root, 'patches', 'bar.patch'), 'v1\n')
     await writeFile(
@@ -510,7 +511,7 @@ describe('vx run with bun() declared', () => {
     )
     const before = await hashes()
     await writeFile(path.join(root, 'patches', 'bar.patch'), 'v2\n')
-    expect(moved(before, await hashes())).toEqual(['a#build', 'b#build', 'c#build'])
+    expect(moved(before, await hashes())).toEqual(['a#build'])
   })
 
   it('`--affected` selects the projects the bump reaches', async () => {
