@@ -136,6 +136,12 @@ sync`", advice for a repo leaving Nx: they say to keep what the
   testing; the migrated e2e task now depends on that server task, by the
   channel P2-24 added. The URL Nx passed as `baseUrl` stays a TODO
   unless the options set one; `skipServe` starts nothing.
+- **P2-27** The shape fixtures now plan every written task through core's
+  `planRun` (git-initialised fixture roots), so a config that loads but
+  that core refuses to plan fails its row: a mutant keeping a `^codegen`
+  no project declares passed the load-only check and fails the plan. A
+  tenth shape pins P2-22 and P2-23 end to end (a manifest cycle Nx
+  breaks with `!a`, a configuration named like another target).
 
 ## Leads for other streams
 

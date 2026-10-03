@@ -3,18 +3,24 @@
 // with a root project, per-project named inputs and filesets, run-commands
 // variants, configurations with run-script, every input kind, token
 // interpolation, an integrated repo of `project.json` projects), migrated
-// through the CLI. Every config it writes must load: a written config vx
+// through the CLI. Every config it writes must load and plan: a written config vx
 // refuses (an output outside the workspace, P2-11) fails the whole repo.
 
 import { cp, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
-import { listProjectMetas, loadProjectConfig, loadWorkspace } from '@vzn/vx'
+import { type Logger, listProjectMetas, loadProjectConfig, loadWorkspace, planRun } from '@vzn/vx'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 const CORE_PKG = path.resolve(import.meta.dir, '..', '..', 'vx')
 const FIXTURES = path.join(import.meta.dir, 'fixtures', 'nx-shapes')
+const silent: Logger = {
+  status: () => undefined,
+  taskStdout: () => undefined,
+  taskStderr: () => undefined,
+  taskComplete: () => undefined,
+}
 
 interface Node {
   name: string
@@ -34,6 +40,8 @@ async function migrate(shape: string): Promise<{
     scripts?: Record<string, Record<string, string>>
     /** Nodes with a `project.json` only: no package.json, in no workspace glob. */
     unlisted?: string[]
+    /** Fields merged into a project's package.json (its workspace dependencies). */
+    manifests?: Record<string, Record<string, unknown>>
   }
   const root = await mkdtemp(path.join(os.tmpdir(), 'vx-nx-shape-'))
   try {
@@ -58,7 +66,12 @@ async function migrate(shape: string): Promise<{
       }
       await writeFile(
         path.join(root, rel, 'package.json'),
-        JSON.stringify({ name, version: '1.0.0', scripts: graph.scripts?.[name] }),
+        JSON.stringify({
+          name,
+          version: '1.0.0',
+          scripts: graph.scripts?.[name],
+          ...graph.manifests?.[name],
+        }),
       )
       await writeFile(path.join(root, rel, 'src', 'index.ts'), 'export {}\n')
     }
@@ -89,11 +102,24 @@ async function migrate(shape: string): Promise<{
       tasks[name] = Object.keys(loaded).sort()
       configs[name] = loaded
     }
-    if (unlisted.size === 0) return { code, out, tasks, configs }
-    // Follow the note: list every member, as it says to.
-    await writeFile(path.join(root, 'package.json'), manifest(members.map(([, r]) => r)))
-    const metas = await listProjectMetas(await loadWorkspace(root))
-    return { code, out, tasks, configs, discovered: metas.map((m) => m.name).sort() }
+    let discovered: string[] | undefined
+    if (unlisted.size > 0) {
+      // Follow the note: list every member, as it says to.
+      await writeFile(path.join(root, 'package.json'), manifest(members.map(([, r]) => r)))
+      discovered = (await listProjectMetas(await loadWorkspace(root))).map((m) => m.name).sort()
+    }
+    // Every written task plans: a config that loads can still be refused
+    // when core builds the graph (a cycle, P2-22; a dropped key, P2-23).
+    await writeFile(path.join(root, '.gitignore'), 'node_modules\n')
+    Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
+    Bun.spawnSync({ cmd: ['git', 'add', '-A'], cwd: root })
+    const ids = Object.entries(tasks).flatMap(([p, ts]) => ts.map((t) => `${p}#${t}`))
+    if (ids.length > 0) {
+      const plan = await planRun({ cwd: root, tasks: ids, log: silent })
+      if ((plan.unresolvedTasks ?? []).length > 0)
+        throw new Error(`unresolved: ${plan.unresolvedTasks!.join(', ')}`)
+    }
+    return { code, out, tasks, configs, ...(discovered === undefined ? {} : { discovered }) }
   } finally {
     await rm(root, { recursive: true, force: true })
   }
@@ -243,5 +269,18 @@ describe('vx-migrate on the Nx shapes real repos have: every written config load
     )
     // The written package.json files make them projects once listed.
     expect(r.discovered).toEqual(['@acme/util', 'acme', 'feature', 'shop'])
+  }, 30_000)
+
+  it('a manifest cycle Nx breaks with `!a`, and a configuration named like another target', async () => {
+    const r = await migrate('cycle-break-colon-targets')
+    expect(r.code).toBe(0)
+    expect(r.tasks).toEqual({
+      a: ['e2e', 'e2e:build', 'vite', 'vite:build'],
+      b: ['nx-input:default', 'vite:build'],
+    })
+    expect((r.configs['a']!['vite:build']!['exec'] as { command: string }).command).toBe(
+      'vite build',
+    )
+    expect(r.configs['b']!['vite:build']!['dependsOn']).toBeUndefined()
   }, 30_000)
 })

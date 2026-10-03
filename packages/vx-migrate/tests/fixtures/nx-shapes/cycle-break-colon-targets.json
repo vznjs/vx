@@ -1,0 +1,89 @@
+{
+  "manifests": {
+    "a": {
+      "dependencies": {
+        "b": "*"
+      }
+    },
+    "b": {
+      "devDependencies": {
+        "a": "*"
+      }
+    }
+  },
+  "graph": {
+    "nodes": {
+      "a": {
+        "name": "a",
+        "data": {
+          "root": "libs/a",
+          "targets": {
+            "vite:build": {
+              "command": "vite build",
+              "options": {
+                "cwd": "libs/a"
+              },
+              "cache": true,
+              "outputs": ["{projectRoot}/dist"],
+              "dependsOn": ["^vite:build", "^codegen"]
+            },
+            "vite": {
+              "command": "vite",
+              "options": {
+                "cwd": "libs/a"
+              },
+              "configurations": {
+                "build": {
+                  "args": "--x"
+                }
+              }
+            },
+            "e2e": {
+              "command": "playwright test",
+              "options": {
+                "cwd": "libs/a"
+              },
+              "dependsOn": [
+                {
+                  "target": "vite",
+                  "projects": "self"
+                }
+              ],
+              "configurations": {
+                "build": {}
+              }
+            }
+          }
+        }
+      },
+      "b": {
+        "name": "b",
+        "data": {
+          "root": "libs/b",
+          "implicitDependencies": ["!a"],
+          "targets": {
+            "vite:build": {
+              "command": "vite build",
+              "options": {
+                "cwd": "libs/b"
+              },
+              "cache": true,
+              "outputs": ["{projectRoot}/dist"],
+              "dependsOn": ["^vite:build"]
+            }
+          }
+        }
+      }
+    },
+    "dependencies": {
+      "a": [
+        {
+          "source": "a",
+          "target": "b",
+          "type": "static"
+        }
+      ],
+      "b": []
+    }
+  }
+}
