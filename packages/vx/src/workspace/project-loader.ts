@@ -668,7 +668,7 @@ function builtinsChanged(changed: readonly string[], configPath?: string): UserE
       ? '; a task runs in its project directory, and `cd <dir> && …` in `exec.command` moves it'
       : '') +
     (changed.some((c) => c.startsWith('globalThis.'))
-      ? '; a value configs share goes in a module each one imports'
+      ? '; a constant configs share goes in a module each one imports'
       : '')
   return new UserError(
     `${who} changed ${changed.join(', ')} while it was evaluated — a config must not change the built-ins vx runs on: other configs are read through them and cache keys are made with them${env}`,

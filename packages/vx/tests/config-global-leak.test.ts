@@ -28,7 +28,7 @@ async function load(sources: string[]): Promise<string> {
 }
 
 const refused = (n: number, key: string) =>
-  `<dir>/p${n}/vx.config.mjs changed globalThis.${key} while it was evaluated — a config must not change the built-ins vx runs on: other configs are read through them and cache keys are made with them; a value configs share goes in a module each one imports`
+  `<dir>/p${n}/vx.config.mjs changed globalThis.${key} while it was evaluated — a config must not change the built-ins vx runs on: other configs are read through them and cache keys are made with them; a constant configs share goes in a module each one imports`
 const innocent = 'export default { tasks: {} }\n'
 
 it('a global a config adds is removed and refused, alone or among others', async () => {
