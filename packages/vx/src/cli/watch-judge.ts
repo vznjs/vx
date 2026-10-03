@@ -111,8 +111,8 @@ export class ChangeJudge {
   // says which side of the arm it belongs to. A path already gone is a
   // change: a deletion has no date to read.
   // One exception: a path git did not list at the arm, and gone now, was
-  // born and removed since (vim's `4913` write probe, a tool's lock file);
-  // it started a cycle with nothing changed. The blind spot: one born in
+  // born and removed since (vim's `4913` write probe, a tool's lock file),
+  // unless a nested repository holds it (`inNestedRepo`); it started a cycle with nothing changed. The blind spot: one born in
   // the moment between a judgement and that cycle's keys, and gone by the
   // next judgement, was read and its deletion re-runs nothing. Git lists
   // no ignored path, so one of those is a deletion as before.
@@ -123,9 +123,19 @@ export class ChangeJudge {
     if (prev !== undefined) return prev === state
     if (state === ABSENT) {
       const listed = this.ctx.existedAtArm
-      return !ignored && listed !== undefined && !listed.has(abs)
+      return !ignored && listed !== undefined && !listed.has(abs) && !this.inNestedRepo(abs)
     }
     return modifiedBefore(abs, this.ctx.armedAt)
+  }
+
+  // Git lists a nested repository (a submodule, a vendored clone) as one
+  // entry, never the files in it, and keys read them: under one, a gone
+  // path the arm did not list may have existed, so it is a deletion.
+  private inNestedRepo(abs: string): boolean {
+    const root = this.ctx.workspaceRoot
+    for (let dir = path.dirname(abs); dir !== root && dir.startsWith(root); dir = path.dirname(dir))
+      if (fs.existsSync(path.join(dir, '.git'))) return true
+    return false
   }
 
   private writtenDuringLastCycle(abs: string, openWhileHeld = false): boolean {
