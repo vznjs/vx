@@ -119,7 +119,11 @@ export function importerDigests(lock: Lockfile): ReadonlyMap<string, string> {
   const edges: number[][] = []
   for (const [p, e] of lock.packages) {
     index.set(p, material.length)
-    material.push(`${p}\0${e.resolution}`)
+    // An installed package is its install name and what it is, not where
+    // it sits: a re-hoist of one version re-keyed every project reaching it
+    // (D-140). Where it sits decides what it resolves; that is the edges.
+    // The root and a workspace keep their path, which is who they are.
+    material.push(`${p === '' || e.isWorkspace ? p : installName(p)}\0${e.resolution}`)
     edges.push([])
   }
   for (const [p, e] of lock.packages) {
@@ -152,4 +156,10 @@ export function importerDigests(lock: Lockfile): ReadonlyMap<string, string> {
     )
   }
   return out
+}
+
+/** `node_modules/a/node_modules/@s/b` → `@s/b`. */
+function installName(p: string): string {
+  const i = p.lastIndexOf('node_modules/')
+  return i === -1 ? p : p.slice(i + 'node_modules/'.length)
 }
