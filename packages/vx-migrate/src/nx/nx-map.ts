@@ -417,14 +417,32 @@ export async function mapNxWorkspace(
       emittedIds.add(`${meta.name}#${t.name}`)
     }
   }
-  const nxEdges = nxDependencyTargets(nodeMap, g.dependencies)
+  const nxDirect = nxDirectDeps(nodeMap, g.dependencies)
+  const nxEdges = nxDependencyTargets(nodeMap, nxDirect)
+  const nxClosureMemo = new Map<string, ReadonlySet<string>>()
+  const nxClosure = (from: string): ReadonlySet<string> => {
+    let r = nxClosureMemo.get(from)
+    if (r !== undefined) return r
+    const seen = new Set<string>()
+    const stack = [...(nxDirect.get(from) ?? [])]
+    while (stack.length > 0) {
+      const n = stack.pop()!
+      if (seen.has(n) || n === from) continue
+      seen.add(n)
+      stack.push(...(nxDirect.get(n) ?? []))
+    }
+    nxClosureMemo.set(from, (r = seen))
+    return r
+  }
   // What vx's `^` already reaches: a manifest path, direct or through
   // another project, orders `^x` and folds its key (item 931). Built once,
   // on the first `^` edge.
+  let pkgGraph: ReturnType<typeof buildPackageGraph> | undefined
+  const packageGraph = () => (pkgGraph ??= buildPackageGraph([...metas]))
   let reach: ((name: string) => ReadonlySet<string>) | undefined
   const reached = (name: string): ReadonlySet<string> => {
     if (reach === undefined) {
-      const graph = buildPackageGraph([...metas])
+      const graph = packageGraph()
       const memo = new Map<string, ReadonlySet<string>>()
       reach = (n) => {
         let r = memo.get(n)
@@ -441,8 +459,19 @@ export async function mapNxWorkspace(
       const c = configured.get(t)
       if (nodeName !== undefined && c !== undefined)
         passConfiguration(t.task, nodeName, c, nxEdges, metaByNode, emittedIds, taskNameFor)
-      if (nodeName !== undefined)
+      if (nodeName !== undefined) {
+        narrowToNxGraph(
+          t.task,
+          nodeName,
+          meta.name,
+          nxClosure,
+          nxEdges,
+          metaByNode,
+          emittedIds,
+          (p) => packageGraph().directDeps(p),
+        )
         followNxGraph(t.task, nodeName, meta.name, nxEdges, metaByNode, emittedIds, reached)
+      }
       dropUnheldDeps(t, emitted, emittedIds)
     }
     projects.push({
@@ -1151,20 +1180,11 @@ function persistentTarget(target: NxTarget): boolean {
   return known?.persistent ?? false
 }
 
-/**
- * The projects Nx links a `^target` edge of `from` to
- * (`processTasksForDependencies`): each dependency on the NX graph that
- * has the target, and through one that lacks it, that one's
- * dependencies. vx's `^target` follows package.json alone, so an edge Nx
- * draws from `implicitDependencies` or a tsconfig path (nx-examples'
- * e2e projects → their apps) ordered nothing and folded nothing: an
- * app's source edit left its e2e `typecheck` a hit. It was reported
- * "not representable"; it is an explicit `pkg#target` edge.
- */
-function nxDependencyTargets(
+/** Each project node's direct dependencies on the Nx graph, projects only. */
+function nxDirectDeps(
   nodeMap: Readonly<Record<string, NxNode>>,
   dependencies: unknown,
-): (from: string, target: string) => readonly string[] {
+): Map<string, string[]> {
   const direct = new Map<string, string[]>()
   if (typeof dependencies === 'object' && dependencies !== null) {
     for (const [source, edges] of Object.entries(dependencies as Record<string, NxEdge[]>)) {
@@ -1178,6 +1198,23 @@ function nxDependencyTargets(
       direct.set(source, [...new Set(to)])
     }
   }
+  return direct
+}
+
+/**
+ * The projects Nx links a `^target` edge of `from` to
+ * (`processTasksForDependencies`): each dependency on the NX graph that
+ * has the target, and through one that lacks it, that one's
+ * dependencies. vx's `^target` follows package.json alone, so an edge Nx
+ * draws from `implicitDependencies` or a tsconfig path (nx-examples'
+ * e2e projects → their apps) ordered nothing and folded nothing: an
+ * app's source edit left its e2e `typecheck` a hit. It was reported
+ * "not representable"; it is an explicit `pkg#target` edge.
+ */
+function nxDependencyTargets(
+  nodeMap: Readonly<Record<string, NxNode>>,
+  direct: ReadonlyMap<string, readonly string[]>,
+): (from: string, target: string) => readonly string[] {
   const memo = new Map<string, readonly string[]>()
   return (from, target) => {
     const key = `${from}\0${target}`
@@ -1238,6 +1275,54 @@ function passConfiguration(
     }
   }
   task['dependsOn'] = out
+}
+
+/**
+ * A `^name` whose manifest reaches a project Nx's graph does not (an
+ * `implicitDependencies: ["!a"]` that breaks a manifest cycle) becomes the
+ * explicit edges Nx draws for it: vx's `^` follows the manifest, and the
+ * edge Nx dropped came back as a task cycle core refused.
+ */
+function narrowToNxGraph(
+  task: Record<string, unknown> | null,
+  nodeName: string,
+  pkgName: string,
+  nxClosure: (node: string) => ReadonlySet<string>,
+  nxEdges: (from: string, target: string) => readonly string[],
+  metaByNode: ReadonlyMap<string, ProjectMeta>,
+  emittedIds: ReadonlySet<string>,
+  directDeps: (pkg: string) => readonly string[],
+): void {
+  const deps = task?.['dependsOn']
+  if (
+    task === null ||
+    !Array.isArray(deps) ||
+    !deps.some((d) => typeof d === 'string' && d.startsWith('^'))
+  )
+    return
+  const nx = new Set<string>()
+  for (const n of nxClosure(nodeName)) {
+    const m = metaByNode.get(n)
+    if (m !== undefined) nx.add(m.name)
+  }
+  if (directDeps(pkgName).every((p) => nx.has(p))) return
+  const out: unknown[] = []
+  for (const d of deps) {
+    if (typeof d !== 'string' || !d.startsWith('^') || d.includes('*')) {
+      out.push(d)
+      continue
+    }
+    const name = d.slice(1)
+    for (const n of nxEdges(nodeName, name)) {
+      const m = metaByNode.get(n)
+      if (m === undefined) continue
+      const id = `${m.name}#${name}`
+      if (emittedIds.has(id) && !out.includes(id)) out.push(id)
+    }
+  }
+  // A group keeps its list, as `dropUnheldDeps` keeps one.
+  if (out.length > 0 || task['exec'] === undefined) task['dependsOn'] = out
+  else delete task['dependsOn']
 }
 
 /** Each `^name` of `task` gains the explicit edges Nx's graph draws for it and vx's `^` does not. */

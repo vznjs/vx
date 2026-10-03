@@ -101,6 +101,11 @@ sync`", advice for a repo leaving Nx: they say to keep what the
   (and `@nx/workspace:`), which an older graph keeps as written, are the
   `nx:` executors they re-exported: the migration wrote each as a
   failing placeholder, and `nx()` ran them through `nx-exec`.
+- **P2-22** An Nx `implicitDependencies: ["!a"]` drops a manifest edge
+  from the graph, often to break a cycle; vx's `^build` follows the
+  manifest, so the migrated configs brought the cycle back and core
+  refused the run. Where a manifest reaches a project the Nx graph does
+  not, the `^target` is the explicit edges Nx draws.
 
 ## Leads for other streams
 
