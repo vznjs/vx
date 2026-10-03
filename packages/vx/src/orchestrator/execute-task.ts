@@ -161,6 +161,12 @@ export interface ExecuteArgs {
    */
   preProbed?: { hash: string; hit: CacheEntry | null }
   /**
+   * An uncached task's key as the up-front pass derived it, present only
+   * when no upstream can change it (`deriveStableKeys`' `uncachedKeys`):
+   * used verbatim instead of deriving the same key again.
+   */
+  upfrontKey?: string
+  /**
    * Start the sandbox runtime, on the first task that executes inside one
    * (run.ts, `prepareSandbox`). Absent when no task in the run declares a
    * sandbox. A cache hit never calls it: a hit needs no sandbox.
@@ -274,7 +280,8 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
   const hash =
     args.noDependants === true
       ? undefined
-      : await computeTaskHash({
+      : (args.upfrontKey ??
+        (await computeTaskHash({
           node,
           upstream: args.upstream,
           workspaceRoot: args.workspaceRoot,
@@ -284,7 +291,7 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
           nestedProjectDirs: args.nestedProjectDirs,
           ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
           ...(args.hashCache !== undefined ? { hashCache: args.hashCache } : {}),
-        })
+        })))
 
   // The args after `--` reach a server as they reach any task. A readyWhen
   // server once got none — "so the matcher sees the unmodified output",
@@ -658,19 +665,19 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // authoritative stable key) and skip the probe below.
   const preProbed = args.preProbed
   const hash =
-    preProbed !== undefined
-      ? preProbed.hash
-      : await computeTaskHash({
-          node,
-          upstream,
-          workspaceRoot: args.workspaceRoot,
-          workspaceFingerprint: args.workspaceFingerprint,
-          cache,
-          forwardArgs: args.forwardArgs,
-          nestedProjectDirs: args.nestedProjectDirs,
-          ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
-          ...(args.hashCache !== undefined ? { hashCache: args.hashCache } : {}),
-        })
+    preProbed?.hash ??
+    args.upfrontKey ??
+    (await computeTaskHash({
+      node,
+      upstream,
+      workspaceRoot: args.workspaceRoot,
+      workspaceFingerprint: args.workspaceFingerprint,
+      cache,
+      forwardArgs: args.forwardArgs,
+      nestedProjectDirs: args.nestedProjectDirs,
+      ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
+      ...(args.hashCache !== undefined ? { hashCache: args.hashCache } : {}),
+    }))
 
   // The local no-op half of `exec.remote: 'only'`: no remote executor took
   // the task, so it succeeds without running. The hash was still computed —

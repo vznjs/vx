@@ -84,9 +84,13 @@ export interface ShortCircuit {
    * with a non-null hit, minus the workspace-outputs exclusion).
    */
   restoreTier: Set<string>
+  /**
+   * Uncached task id → its up-front key, for the tasks whose key no
+   * upstream can change: execute-task reuses it instead of deriving it
+   * again (`deriveStableKeys`' `uncachedKeys`).
+   */
+  uncachedKeys: Map<string, string>
 }
-
-const EMPTY: ShortCircuit = { preProbed: new Map(), restoreTier: new Set() }
 
 /**
  * Classify the graph's stable tasks: derive keys + probe local ONCE,
@@ -99,11 +103,12 @@ const EMPTY: ShortCircuit = { preProbed: new Map(), restoreTier: new Set() }
  */
 export async function startLocalShortCircuit(args: ShortCircuitArgs): Promise<ShortCircuit> {
   let stableKeys
+  const uncachedKeys = new Map<string, string>()
   const endKeys = span('stable keys')
   try {
-    stableKeys = await deriveStableKeys(args)
+    stableKeys = await deriveStableKeys({ ...args, uncachedKeys })
   } catch {
-    return EMPTY
+    return { preProbed: new Map(), restoreTier: new Set(), uncachedKeys: new Map() }
   } finally {
     endKeys()
   }
@@ -111,12 +116,17 @@ export async function startLocalShortCircuit(args: ShortCircuitArgs): Promise<Sh
   // `cacheEnabled && !unstable` (item 640 deleted a second filter here and
   // nothing reddened).
   const candidates = stableKeys
-  if (candidates.length === 0) return EMPTY
-
-  const keptOut = restoreTierExclusions(args.nodes, args.workspaceRoot)
-
   const preProbed = new Map<string, ProbedEntry>()
   const restoreTier = new Set<string>()
+  if (candidates.length === 0 && uncachedKeys.size === 0) {
+    return { preProbed, restoreTier, uncachedKeys }
+  }
+
+  const keptOut = restoreTierExclusions(args.nodes, args.workspaceRoot)
+  // A root-anchored output may land in a project no edge leads from, so an
+  // uncached key there is derived again once the writer may have run.
+  for (const id of keptOut) uncachedKeys.delete(id)
+  if (candidates.length === 0) return { preProbed, restoreTier, uncachedKeys }
 
   // Bounded pool over the stable candidates: probe local ONCE each. A
   // confirmed hit becomes restore-tier (unless workspace outputs disable
@@ -135,7 +145,7 @@ export async function startLocalShortCircuit(args: ShortCircuitArgs): Promise<Sh
         preProbed.set(node.id, { hash, hit })
         if (hit !== null && !keptOut.has(node.id)) restoreTier.add(node.id)
       }
-      return { preProbed, restoreTier }
+      return { preProbed, restoreTier, uncachedKeys }
     } catch {
       // Fall through to the per-hash pool, which isolates a failing probe
       // to its own task.
@@ -159,7 +169,7 @@ export async function startLocalShortCircuit(args: ShortCircuitArgs): Promise<Sh
   }
   await Promise.all(Array.from({ length: workers }, () => pump()))
 
-  return { preProbed, restoreTier }
+  return { preProbed, restoreTier, uncachedKeys }
 }
 
 /**
