@@ -3,7 +3,7 @@
 // short lists). Each surface used to carry its own copy of "within two
 // edits", and `vx why` used a substring rule that found nothing for a typo.
 import { describe, expect, it } from 'bun:test'
-import { nearMatches, nearest } from '../src/util/index.js'
+import { listed, nearMatches, nearest } from '../src/util/index.js'
 
 describe('nearest', () => {
   it('picks the closest candidate within two edits and never the name itself', () => {
@@ -41,5 +41,14 @@ describe('nearMatches', () => {
 
   it('never returns more than the limit, however many are near', () => {
     expect(nearMatches('ab', ['aa', 'bb', 'ac', 'cb', 'ax'])).toEqual(['aa', 'bb', 'ac'])
+  })
+})
+
+describe('listed', () => {
+  it('sorts, dedupes, and counts what is past the limit (M-56)', () => {
+    expect(listed(['b', 'a', 'b'])).toBe('a, b')
+    expect(listed(['e', 'd', 'c', 'b', 'a'], 3)).toBe('a, b, c, and 2 more')
+    // CONTROL: exactly the limit is no "more".
+    expect(listed(['b', 'a', 'c'], 3)).toBe('a, b, c')
   })
 })

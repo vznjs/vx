@@ -60,6 +60,9 @@ project in scope, the run refuses to start — `No projects declare
 task(s): <name>.` on stdout (`vx run: no projects declare task(s):
 <name>.` on stderr under `--dry` / `--graph`), exit 1, with `Did you mean <task>?` when a
 declared task (or, for `pkg#task`, a runnable spec) is within two edits,
+and with no name that near, what exists: `Tasks: build, test.`, `No
+project is named zzz; projects: a, b.`, or `a's tasks: build, test.`
+(M-56),
 and with `Only projects outside the selection declare <name> — pass
 --all, or --filter to pick them.` when the run was scoped (the cwd's
 project, a `--filter`) and a project outside the scope declares it
@@ -162,7 +165,8 @@ facing summary.
 A filter that matches nothing refuses the run (`no projects matched
 filter(s): …`) with `Did you mean <name>?` when a project name is within
 two edits, or when exactly one scoped project's name after its `/` is
-(`--filter vx-mcp` hints `@vzn/vx-mcp`).
+(`--filter vx-mcp` hints `@vzn/vx-mcp`), and `Projects: a, b` otherwise
+(M-56). A list names eight, then a count.
 
 | Form              | Meaning                                                                                                                                                                                                                                                                                                                |
 | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

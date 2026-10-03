@@ -12,6 +12,7 @@ rule, so a typo is hinted the same way wherever it is typed.
 editDistance(a, b, cap = 3): number   // Levenshtein, capped: `cap` or more edits read as `cap`
 nearest(name, candidates, maxEdits = 2): string | undefined
 nearMatches(name, candidates, limit = 3): string[]
+listed(names, limit = 8): string      // sorted, deduped, `, and N more` past the limit
 ```
 
 - `nearest` is THE hint: the closest candidate within `maxEdits`, or
@@ -22,6 +23,8 @@ nearMatches(name, candidates, limit = 3): string[]
 - `nearMatches` is for the inspection verbs (`why`, `show`) that list
   a few candidates instead of picking one: nearest by distance first,
   then case-insensitive containment either way, never `name` itself.
+- `listed` is what an error offers when `nearest` finds nothing: the
+  tasks, a project's tasks, or the projects that exist (M-56).
 
 ## Tests
 

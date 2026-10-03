@@ -669,6 +669,21 @@ macOS runner's 7 GB, and the same suite with M-53 passed on macOS on
 #2555's own run, on main's push after it, and on #2557's next head. The
 killer is unknown; the next occurrence needs the file that was running.
 
+M-56. `vx run` on a name no near miss reaches said what was wrong and
+nothing to pick from: `No projects declare task(s): deploy.`,
+`nope#build.` with no word that `nope` is no project, and `no projects
+matched filter(s): nope`. Each now says what exists when `nearest` finds
+nothing: `Tasks: build, test.`, `No project is named zzz; projects: a,
+b.`, `a's tasks: build, test.`, `. Projects: a, b` for a filter (also on
+the warning a partly-matched filter prints); eight names, then a count
+(`listed`, `util/edit-distance.ts`). A near miss keeps its one `Did you
+mean`, and a name only projects outside the selection declare keeps its
+`--all` line without a list. Probes that held: a near task typo, a near
+project in `pkg#task`, a near `--filter`, and a workspace with no vx
+config (`run vx init`). Rows: `task-selection.test.ts` › a name past any
+near miss says what exists instead (exact lines; red without the fix),
+`near-miss.test.ts` › listed; four exact messages updated.
+
 ## Leads for other streams
 
 - A: A-20 let a same-project dependant restore ahead of a producer whose

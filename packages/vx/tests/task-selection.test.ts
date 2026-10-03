@@ -178,6 +178,32 @@ describe('task selection', () => {
   )
 
   it(
+    'a name past any near miss says what exists instead (M-56)',
+    async () => {
+      await addProject('a', ['build', 'test'])
+      await addProject('b', ['build'])
+      const said = async (task: string): Promise<string | undefined> => {
+        const log = silent()
+        await run({ cwd: root, tasks: [task], log })
+        return log.lines.find((l) => l.startsWith('No projects declare'))
+      }
+      expect([
+        await said('deploy'),
+        await said('zzz#build'),
+        await said('a#deploy'),
+        // CONTROL: a near miss still gets the one name, not the list.
+        await said('biuld'),
+      ]).toEqual([
+        'No projects declare task(s): deploy. Tasks: build, test.',
+        'No projects declare task(s): zzz#build. No project is named zzz; projects: a, b.',
+        "No projects declare task(s): a#deploy. a's tasks: build, test.",
+        'No projects declare task(s): biuld. Did you mean build?',
+      ])
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a bare task declared by only SOME projects stays green (sparse tasks are normal)',
     async () => {
       await addProject('a', ['build', 'lint'])
