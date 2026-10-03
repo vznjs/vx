@@ -587,7 +587,7 @@
   {
     "key": "project.json targets.*.outputs",
     "status": "mapped",
-    "reason": "Tokens and `{options.x}` resolved; paths outside the project become workspace files; negations kept; vx cleans outputs, so a wildcard first segment leaves the task uncached with a TODO (save one of a kind the project tracks none of: `*.xml`, `**/dist/**`, `dist-*/**`) and a file git tracks under an output, committed or only `git add`ed, is taken back with `!`."
+    "reason": "Tokens and `{options.x}` resolved; paths outside the project become workspace files, and one outside the workspace is dropped with a TODO; negations kept; vx cleans outputs, so a wildcard first segment leaves the task uncached with a TODO (save one of a kind the project tracks none of: `*.xml`, `**/dist/**`, `dist-*/**`) and a file git tracks under an output, committed or only `git add`ed, is taken back with `!`."
   },
   {
     "key": "project.json targets.*.defaultConfiguration",

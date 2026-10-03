@@ -241,3 +241,12 @@ persistent task` and vx exits 1). Row (`site-samples` › a post's link
   both spawns unconditional, and its step 2 rendered "- unstaged
   changes" as a nested list item. Row (`module-page-claims` ›
   affected.md), gated on `affected.ts`; red without the fix.
+
+- **J2-30** #2417 (docs untouched) drops an Nx output that resolves
+  outside the workspace (an old generator's
+  `reportsDirectory: "../../coverage/<lib>"`) with a todo, since core
+  refuses `..` and the written config failed to load. The support
+  table, its contract and the vx-migrate README still made every output
+  outside the project a workspace file. Row (`site-samples` › the Nx
+  output pages say one outside the workspace is dropped), gated on
+  `nx-outputs.ts`; red without the fix.
