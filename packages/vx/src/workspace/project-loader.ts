@@ -123,8 +123,14 @@ function servableSource(bytes: Uint8Array, loader: 'ts' | 'js'): string | null {
   } catch {
     return null
   }
-  return hasEsmExport(source, loader) ? source : null
+  return !COMMONJS_HINT.test(source) || hasEsmExport(source, loader) ? source : null
 }
+
+// What makes Bun run a file as CommonJS is one of these names at the top
+// level (an escaped `\u006dodule` too, so any backslash counts). Source
+// with none of them runs as a module whichever path loads it, so it skips
+// the parse: 16–20 µs a config, 1,000 cold configs (2026-10-03).
+const COMMONJS_HINT = /\b(?:module|exports|require|this|__dirname|__filename)\b|\\/
 
 /** vx's module-cache query, which no user wrote: stripped from anything shown to them. */
 const BUST_QUERY = /\?vx-(?:bust|held)=[^'"\s]*/g
@@ -303,7 +309,11 @@ export function configLoadError(err: unknown, configPath: string, kind: string):
   }
   if (name === 'BuildMessage') {
     const pos = (err as { position?: BuildPosition | null }).position ?? {}
-    const file = typeof pos.file === 'string' && pos.file.length > 0 ? pos.file : configPath
+    // A served config's position names its specifier, query and all.
+    const file =
+      typeof pos.file === 'string' && pos.file.length > 0
+        ? pos.file.replace(BUST_QUERY, '')
+        : configPath
     const at =
       typeof pos.line === 'number'
         ? `:${pos.line}${typeof pos.column === 'number' ? `:${pos.column}` : ''}`
