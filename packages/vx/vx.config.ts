@@ -56,9 +56,149 @@ const shardTask = (i: number) => ({
 })
 const shardTasks = Object.fromEntries(SHARDS.map((i) => [`test.bun.shard-${i}`, shardTask(i)]))
 
+// The release steps npm.yml, release.yml and auto-release.yml run
+// (scripts/release.ts, scripts/auto-release.ts). Uncached, since each has a
+// side effect, and in no `ci` graph: only a workflow names them.
+const RELEASE_VERSION = { passThrough: ['VX_RELEASE_VERSION'] }
+// What `npm publish --provenance` reads under trusted publishing: the OIDC
+// token request (npm's lib/utils/oidc.js), the CI detection (ci-info) and
+// the provenance statement (libnpmpublish/lib/provenance.js), npm 12.2.
+const NPM_OIDC_ENV = [
+  'VX_RELEASE_VERSION',
+  'GITHUB_ACTIONS',
+  'ACTIONS_ID_TOKEN_REQUEST_URL',
+  'ACTIONS_ID_TOKEN_REQUEST_TOKEN',
+  'GITHUB_WORKFLOW_REF',
+  'GITHUB_REPOSITORY',
+  'GITHUB_REPOSITORY_ID',
+  'GITHUB_REPOSITORY_OWNER_ID',
+  'GITHUB_SERVER_URL',
+  'GITHUB_EVENT_NAME',
+  'GITHUB_REF',
+  'GITHUB_SHA',
+  'GITHUB_RUN_ID',
+  'GITHUB_RUN_ATTEMPT',
+  'RUNNER_ENVIRONMENT',
+]
+// The token request's host, the registry's exchange and publish, and
+// Sigstore's certificate authority, transparency log and trust root.
+const NPM_PUBLISH_NETWORK = [
+  'registry.npmjs.org',
+  '*.actions.githubusercontent.com',
+  'fulcio.sigstore.dev',
+  'rekor.sigstore.dev',
+  'tuf-repo-cdn.sigstore.dev',
+]
+const NPM_HOME = '~/.npm/'
+const releaseTasks = {
+  'release.stamp': {
+    description: 'stamp VX_RELEASE_VERSION into package.json, the manifest the binary inlines',
+    exec: {
+      command: 'bun scripts/release.ts stamp',
+      env: RELEASE_VERSION,
+      sandbox: { allow: { read: ['.'], write: ['package.json'] } },
+    },
+  },
+  'release.npm': {
+    description: 'make sure npm can publish with provenance (>= 11.5.1, sigstore intact)',
+    exec: {
+      command: 'bun scripts/release.ts npm',
+      sandbox: {
+        allow: {
+          read: ['.'],
+          write: ['dist/npm-cli/', NPM_HOME],
+          network: ['registry.npmjs.org'],
+        },
+      },
+    },
+  },
+  ...Object.fromEntries(
+    (['linux', 'darwin'] as const).flatMap((os) => [
+      [
+        `release.prove.${os}`,
+        {
+          description: `the ${os} binaries launch (re-signed only if macOS refuses) and report VX_RELEASE_VERSION`,
+          exec: {
+            command: `bun scripts/release.ts prove ${os}`,
+            env: RELEASE_VERSION,
+            sandbox: {
+              allow: {
+                read: ['.'],
+                // A re-sign: codesign writes `<binary>.cstemp` beside the
+                // binary and asks trustd (macOS CI, 2026-10-03).
+                ...(os === 'darwin'
+                  ? {
+                      write: [
+                        'dist/vx-darwin-x64',
+                        'dist/vx-darwin-arm64',
+                        'dist/vx-darwin-x64.cstemp',
+                        'dist/vx-darwin-arm64.cstemp',
+                      ],
+                      machLookup: ['com.apple.trustd.agent'],
+                    }
+                  : {}),
+              },
+              // Bun's x64 runtime probes CPU features under Rosetta; the
+              // denied read changes nothing it prints.
+              ...(os === 'darwin'
+                ? { ignore: { systemInfo: ['hw.optional.bmi1', 'hw.optional.avx2_0'] } }
+                : {}),
+            },
+          },
+        },
+      ],
+      [
+        `release.assemble.${os}`,
+        {
+          description: `assemble the ${os} npm packages under dist/npm (scripts/build-npm.ts)`,
+          exec: {
+            command: `bun scripts/release.ts assemble ${os}`,
+            env: RELEASE_VERSION,
+            sandbox: {
+              allow: {
+                // The plugin packages are discovered across packages/, and
+                // @vzn/vx ships the repo's README and LICENSE.
+                read: ['.', '../*', '../../README.md', '../../LICENSE'],
+                write: ['dist/npm/'],
+              },
+            },
+          },
+        },
+      ],
+      [
+        `release.publish.${os}`,
+        {
+          description: `npm publish the ${os} packages under dist/npm, skipping any already on the registry`,
+          exec: {
+            command: `bun scripts/release.ts publish ${os}`,
+            env: { passThrough: NPM_OIDC_ENV, secret: ['ACTIONS_ID_TOKEN_REQUEST_TOKEN'] },
+            sandbox: {
+              allow: { read: ['.'], write: [NPM_HOME], network: NPM_PUBLISH_NETWORK },
+            },
+          },
+        },
+      ],
+    ]),
+  ),
+  'release.auto': {
+    description: 'tag a green main commit with its next version, release it, dispatch the publish',
+    exec: {
+      command: 'bun scripts/auto-release.ts',
+      env: {
+        passThrough: ['VX_RELEASE_SHA', 'GITHUB_REPOSITORY', 'GH_TOKEN'],
+        secret: ['GH_TOKEN'],
+      },
+      sandbox: {
+        allow: { read: ['.', '../../.git'], network: ['api.github.com'] },
+      },
+    },
+  },
+}
+
 export default defineProject({
   tasks: {
     ...shardTasks,
+    ...releaseTasks,
     ci: {
       dependsOn: ['lint', 'test', 'check.binary'],
     },
@@ -138,7 +278,13 @@ export default defineProject({
       },
       cache: {
         inputs: {
-          files: ['src/**', 'index.ts', 'package.json', 'scripts/check-binary.ts'],
+          files: [
+            'src/**',
+            'index.ts',
+            'package.json',
+            'scripts/check-binary.ts',
+            'scripts/binary-launch.ts',
+          ],
           workspaceFiles: ['packages/vx-schedule-history/**'],
           runtime: BUN_VERSION,
         },

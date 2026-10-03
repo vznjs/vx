@@ -988,3 +988,23 @@ steps (launch after re-sign, a bare-specifier workspace). Both are now
 `vx run check.binary`, and `check-binary.ts` gained the bare-specifier
 workspace with a plugin package, its second run proven to restore the
 first run's bytes.
+
+M-79. The three release workflows ran their logic as inline shell, `bun -e`
+and `node -e`: the npm check and sigstore repair, the version check, the
+stamp, the darwin re-sign, the assemble and both publish loops, and
+auto-release's version, notes, tag and dispatch. Owner (2026-10-03): "CI
+should never ever have to exec custom commands." Each is now a sandboxed,
+uncached `@vzn/vx` task (`release.stamp`, `release.npm`,
+`release.prove.<os>`, `release.assemble.<os>`, `release.publish.<os>`,
+`release.auto`; `scripts/release.ts`, `scripts/auto-release.ts`), the
+version arriving as `VX_RELEASE_VERSION`. The darwin launch is
+`check-binary.ts`'s, moved to `scripts/binary-launch.ts`: re-sign only a
+binary macOS refuses. An npm too old or missing `sigstore` is installed
+into `dist/npm-cli/`, never over the runner's own. auto-release drops
+`gh` for two REST calls and its `git fetch --tags` for the checkout's
+full fetch. `tests/workflow-runner.unsafe.test.ts` holds that no workflow
+step inlines a script, publishes or signs, and that a release workflow
+step is the install or one vx task. Proven locally, sandboxed: stamp,
+prove.linux (and its refusal), assemble.linux (byte-identical to the old
+three-call tree), and release.npm's upgrade path. Not provable here: the
+OIDC publish, `codesign` under seatbelt, the GitHub API calls.
