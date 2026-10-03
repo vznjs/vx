@@ -71,6 +71,12 @@ export function resolveNxCacheConfig(
   // A NaN never reaches the bound, and the request would be resent forever.
   if (!Number.isInteger(retries) || retries < 0)
     throw new Error(`vx/nx-cache: retries must be a whole number ≥ 0, got ${retries}`)
+  // A zero timeout aborted every request as it started.
+  const ms = options.timeoutMs
+  if (ms !== undefined && !(typeof ms === 'number' && Number.isFinite(ms) && ms > 0))
+    throw new Error(
+      `vx/nx-cache: timeoutMs must be a positive number of ms, got ${JSON.stringify(ms)}`,
+    )
   return {
     server,
     ...(accessToken ? { accessToken } : {}),

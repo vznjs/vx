@@ -241,6 +241,9 @@ buying headroom for that upload also buys every metadata probe the same
 minutes before it can degrade, which is the opposite of what the deadline is
 for.
 
+Each deadline, and the executor's `executeTimeoutMs`, must be a positive
+number of ms; anything else is refused when the plugin starts.
+
 That is not hypothetical. A NativeLink instance degraded into a state where it
 answered every ActionCache MISS in 3 ms and every HIT never — idle CPU,
 nothing in its logs, cleared by a restart with identical on-disk data. With a

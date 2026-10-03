@@ -483,6 +483,17 @@ export class ReapiClient {
     // not silently lengthen every metadata probe too.
     this.metaTimeoutMs = opts.metaTimeoutMs ?? Math.min(this.callTimeoutMs, META_TIMEOUT_CAP_MS)
     this.onWarn = opts.onWarn ?? (() => undefined)
+    // A zero, negative or non-number deadline ended every call as it began.
+    for (const [name, ms] of [
+      ['callTimeoutMs', this.callTimeoutMs],
+      ['metaTimeoutMs', this.metaTimeoutMs],
+    ] as const) {
+      if (!(typeof ms === 'number' && Number.isFinite(ms) && ms > 0)) {
+        throw new Error(
+          `@vzn/vx-reapi: ${name} must be a positive number of ms (got ${JSON.stringify(ms)})`,
+        )
+      }
+    }
     if (!Number.isInteger(this.chunkBytes) || this.chunkBytes < 1) {
       throw new Error(
         `@vzn/vx-reapi: chunkBytes must be a positive integer (got ${this.chunkBytes})`,
