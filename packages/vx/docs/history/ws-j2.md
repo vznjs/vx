@@ -353,3 +353,21 @@ persistent task` and vx exits 1). Row (`site-samples` › a post's link
   (`module-page-claims` › a module page lists every parameter its
   function takes), generated from every page's `export function` and
   the source's top-level parameter count; red without the fix.
+
+- **J2-40** Six interfaces on the module pages had fallen behind their
+  source. `cache.md`'s `CacheLayer` listed 9 of its 25 members and
+  `orphanStats`, which only `Cache` has; `CacheKeyInput` lacked
+  `upstreamGraft`, `CacheEntry` four fields, `RunRecord` the
+  `cached` and v27 columns, `AffectedArgs` `untracked`, `DeniedCall`
+  `read` and `dir`. Each lists its source's members now
+  (`ExecuteArgs` says it is abridged, and the row honours a `// …`).
+  Row (`module-page-claims` › a module page lists exactly the fields
+  its interface has), red without the fix.
+
+- **J2-41** `cli.md`'s `vx info --format json` bullet gave `sandbox` as
+  `{ available, reason, declared }`; the object carries `untraced` too,
+  which the same section names as a fact. The bullet lists it now. The
+  top-level row held only field names; a sibling row
+  (`cli-doc-drift` › gives each object field the keys the object
+  carries) holds each documented shape to `InfoFacts`, red without the
+  fix.
