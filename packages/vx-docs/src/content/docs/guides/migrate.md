@@ -72,6 +72,7 @@ turboCache(): .github/workflows/ci.yml sets TURBO_TOKEN, so vx shares that remot
 $ bunx @vzn/vx-migrate
 vx-migrate: turbo.json → vx.config.ts
 note: vx.workspace.ts still declares turbo(), which reads turbo.json every run and fills any task a vx.config does not declare; the configs written here declare them all. Once `vx run` does what turbo did, remove turbo() (and its import), then turbo.json
+note: Turbo keys each package on its own package-lock.json entries; vx keys every task on the whole file, so a dependency bump re-runs them all. Declare npm() from @vzn/vx-lockfile in vx.workspace.ts to key each task on its package's dependency closure
 
 3 tasks migrated clean, 0 TODOs
 files written:
@@ -108,8 +109,8 @@ export default {
 ```
 
 Where the repo has a lockfile and `vx.workspace.ts` declares no
-`@vzn/vx-lockfile` plugin, the report names the one for it (`pnpm()` for
-`pnpm-lock.yaml`): Turbo keys each package on its own lockfile entries,
+`@vzn/vx-lockfile` plugin, the report names the one for it (`npm()` above,
+`pnpm()` for `pnpm-lock.yaml`): Turbo keys each package on its own lockfile entries,
 and vx keys every task on the whole file until a plugin claims it.
 
 ### Try it in five minutes
@@ -209,6 +210,7 @@ $ bunx @vzn/vx-migrate
 vx-migrate: nx graph → vx.config.ts
 note: migrating from the resolved project-graph snapshot — plugin-inferred targets are frozen as static config; an executor target becomes the command its executor runs, or a placeholder the TODOs below list; targets with `.env` files run through `nx-env` (keep @vzn/vx-migrate installed)
 note: vx.workspace.ts still declares nx(), which reads nx.json every run and fills any task a vx.config does not declare; the configs written here declare them all. Once `vx run` does what nx did, remove nx() (and its import), then nx.json
+note: Nx keys each project on the npm packages it depends on in package-lock.json; vx keys every task on the whole file, so a dependency bump re-runs them all. Declare npm() from @vzn/vx-lockfile in vx.workspace.ts to key each task on its package's dependency closure
 
 2 tasks migrated clean, 0 TODOs
 files written:
