@@ -111,9 +111,11 @@ export class ChangeJudge {
   // says which side of the arm it belongs to. A path already gone is a
   // change: a deletion has no date to read.
   // One exception: a path git did not list at the arm, and gone now, was
-  // born and removed since (vim's `4913` write probe, a tool's lock file)
-  // and no key ever read it; it started a cycle with nothing changed. Git
-  // lists no ignored path, so one of those is a deletion as before.
+  // born and removed since (vim's `4913` write probe, a tool's lock file);
+  // it started a cycle with nothing changed. The blind spot: one born in
+  // the moment between a judgement and that cycle's keys, and gone by the
+  // next judgement, was read and its deletion re-runs nothing. Git lists
+  // no ignored path, so one of those is a deletion as before.
   private sameState(abs: string, ignored = false): boolean {
     const state = settledState(abs)
     const prev = this.lastState.get(abs)
