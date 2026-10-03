@@ -1374,3 +1374,19 @@ own `$TMPDIR`; a workspace kept under `/tmp` still gets the grant
 a grant hint beside every in-project violation (13 rows pin the exact
 lines, several reading `runSandboxed`'s list directly; the violation
 line already names the path).
+
+B-84. A server is never traced, so a sandboxed dev server that died on
+a path outside its grants read only as the tool's own "not found". A
+sandboxed server that exits failing before it is ready is told the
+sandbox reports nothing for it, and where to look (#2451). Rows:
+`persistent-sandbox-hint.unsafe.test.ts`.
+
+B-85. On Linux the port bridge's listen wait read `/proc/net/tcp`, and a
+host process already on a `localBinding` port counted as the bridge: its
+own bind failed unseen, the task passed, and a client of the port
+reached the other process. The wrap refuses such a port by name
+(`portsHeld`, #2464). Rows: `sandbox-port-held.unsafe.test.ts`. Also
+measured (2026-10-03, 400 interleaved spawns): `/usr/bin/true` direct
+0.90 ms median, behind `sh -c 'exec …'` 1.68, with the guard line 1.72.
+The guard costs ~0.03 ms; the shell's own start ~0.75 is the task's API
+and the guard's host (B-9), so nothing in `exec` is cut.
