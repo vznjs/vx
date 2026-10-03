@@ -29,8 +29,9 @@ export function teardownTimeoutMs(): number {
 
 /**
  * The SIGTERM→SIGKILL grace a run grants a child that ignores SIGTERM: the
- * one-shot timeout escalation (`exec/runner.ts`) and the end-of-run
- * persistent shutdown (`orchestrator/persistent.ts`) share it. Two seconds
+ * one-shot timeout escalation (`exec/runner.ts`), the signal teardown
+ * (`orchestrator/signals.ts`) and the end-of-run persistent shutdown
+ * (`orchestrator/persistent.ts`) share it. Two seconds
  * is generous for a real server's cleanup and is what every run waits when
  * a child wedges. `VX_KILL_GRACE_MS` overrides it, read per call and bounded
  * like the teardown deadline (out of range falls back to the default): the

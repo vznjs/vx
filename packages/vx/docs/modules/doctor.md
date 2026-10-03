@@ -22,9 +22,10 @@ the rendered row only), `git`, `gitStatusCache`, `workspaceRoot`,
 (`{ usableBytes, totalBytes, cgroupLimitBytes }`), `cacheDir`,
 `cacheVersion`, `schemaVersion`, `cacheEntries`, `cacheBytes`,
 `orphans`, `runs24h`, `hits24h`, `flakyTasks`, `lockfile`, `sandbox`
-(`{ available, reason, declared }`: whether this host can run an
-`exec.sandbox`, the probe's reason, and how many loaded tasks declare
-one). See
+(`{ available, reason, declared, untraced }`: whether this host can run
+an `exec.sandbox`, the probe's reason, how many loaded tasks declare
+one, and why an available Linux sandbox cannot report the reads it
+denies, else null). See
 `docs/cli.md` § `vx info` for what each row means.
 
 ## Rules
