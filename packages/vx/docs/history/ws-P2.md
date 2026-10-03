@@ -142,6 +142,12 @@ sync`", advice for a repo leaving Nx: they say to keep what the
   no project declares passed the load-only check and fails the plan. A
   tenth shape pins P2-22 and P2-23 end to end (a manifest cycle Nx
   breaks with `!a`, a configuration named like another target).
+- **P2-26** `@nx/angular:package` and `ng-packagr-lite`, the Angular
+  library builds in an Nx repo, were failing placeholders. They migrate
+  to the ng-packagr line Nx ran (`ng-packagr -p … -c …` from the
+  workspace root), read from the executors in Nx 23.2.1; Nx's tsconfig
+  path remapping for buildable libraries and its stylesheet processor
+  are TODOs.
 
 ## Leads for other streams
 
