@@ -1013,6 +1013,85 @@ const verdaccio: Translate = (o, ctx, todos, env) => {
 }
 
 /**
+ * `@nx/web:file-server` (the `serve-static` Nx infers beside a vite or
+ * webpack build): `http-server` on the build's output from the workspace
+ * root, with the flags Nx's `getHttpServerArgs` passes. The output is
+ * `staticFilePath`, else the build target's `outputPath`, else its first
+ * `outputs` entry, glob stripped. `spa` serves `index.html` as the 404
+ * page and proxies misses back to the server, as Nx does.
+ */
+const fileServer: Translate = (o, ctx, todos, _env, deps) => {
+  const spec = typeof o['buildTarget'] === 'string' ? o['buildTarget'] : undefined
+  let out: string | undefined
+  if (typeof o['staticFilePath'] === 'string') out = wsPath(o['staticFilePath'], ctx)
+  else if (spec !== undefined) {
+    const build = ctx.targetOptions?.(spec)
+    const first = ctx.targetOutputs?.(spec)?.[0]
+    if (typeof build?.['outputPath'] === 'string') out = wsPath(build['outputPath'], ctx)
+    else if (first !== undefined) out = stripGlobToBaseDir(wsPath(first, ctx))
+  }
+  if (out === undefined || out === '') return null
+  const cacheSeconds = typeof o['cacheSeconds'] === 'number' ? o['cacheSeconds'] : -1
+  const args = ['http-server', shellQuote(out), `-c${cacheSeconds}`]
+  const own = new Set([
+    'buildTarget',
+    'parallel',
+    'maxParallel',
+    'host',
+    'port',
+    'proxyUrl',
+    'ssl',
+    'sslCert',
+    'sslKey',
+    'proxyOptions',
+    'watch',
+    'spa',
+    'cacheSeconds',
+    'staticFilePath',
+  ])
+  for (const [key, value] of Object.entries<unknown>({ cors: true, ...o })) {
+    if (own.has(key)) continue
+    if (value === true) args.push(`--${key}`)
+    else if (typeof value === 'string') args.push(shellQuote(`--${key}=${value}`))
+  }
+  args.push(shellQuote(`-a=${typeof o['host'] === 'string' ? o['host'] : 'localhost'}`))
+  if (o['ssl'] === true) args.push('-S')
+  if (typeof o['sslCert'] === 'string') args.push(shellQuote(`-C=${o['sslCert']}`))
+  if (typeof o['sslKey'] === 'string') args.push(shellQuote(`-K=${o['sslKey']}`))
+  const port = typeof o['port'] === 'number' ? o['port'] : 4200
+  const proxy =
+    typeof o['proxyUrl'] === 'string'
+      ? o['proxyUrl']
+      : o['spa'] === true
+        ? `http${o['ssl'] === true ? 's' : ''}://localhost:${port}?`
+        : undefined
+  if (proxy !== undefined) args.push(shellQuote(`-P=${proxy}`))
+  if (typeof o['proxyOptions'] === 'object' && o['proxyOptions'] !== null)
+    for (const [key, value] of Object.entries(o['proxyOptions']))
+      args.push(shellQuote(`--proxy-options.${key}=${String(value)}`))
+  args.push(`-p=${port}`)
+  let line = args.join(' ')
+  if (o['spa'] === true)
+    line = `cp ${shellQuote(`${out}/index.html`)} ${shellQuote(`${out}/404.html`)} && ${line}`
+  todos.push(
+    '@nx/web:file-server ran the `http-server` that came with @nx/web — add http-server to devDependencies',
+  )
+  if (spec !== undefined) {
+    if (ctx.targetOptions?.(spec) !== undefined || ctx.targetExecutor?.(spec) !== undefined) {
+      deps.push(spec)
+      if (o['watch'] !== false)
+        todos.push(
+          `@nx/web:file-server rebuilt ${JSON.stringify(spec)} on change while serving — vx builds it once, first`,
+        )
+    } else
+      todos.push(
+        `@nx/web:file-server built ${JSON.stringify(spec)} first — add its build task to dependsOn`,
+      )
+  }
+  return fromRoot(ctx, line)
+}
+
+/**
  * `@nx/angular:package` and `ng-packagr-lite`: ng-packagr on the project's
  * `ng-package.json` (`project`, by default under the project root) with
  * `tsConfig`, from the workspace root where Nx resolves both. Nx adds two
@@ -1048,6 +1127,7 @@ const TRANSLATORS: Readonly<Record<string, Translate>> = {
   '@nx/angular:package': angularPackage('@nx/angular:package'),
   '@nx/angular:ng-packagr-lite': angularPackage('@nx/angular:ng-packagr-lite'),
   '@nx/js:verdaccio': verdaccio,
+  '@nx/web:file-server': fileServer,
   '@nx/js:swc': swc,
   '@nx/js:node': node,
   '@nx/esbuild:esbuild': esbuild,
