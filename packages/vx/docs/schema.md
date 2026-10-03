@@ -1049,7 +1049,11 @@ patterns per class a denial is reported in — `read`, `write`,
 that would have permitted it; any other name is refused. Every grant is
 the task's own: `unixSockets` (or a `localBinding` port list, whose
 bridge is a unix socket) lifts the `socket(AF_UNIX)` block for the task
-that declares it, never for the run's other sandboxed tasks:
+that declares it, never for the run's other sandboxed tasks. On Linux
+the block is the kernel's answer to the call itself, so it is reported
+nowhere: the task reads only its tool's own `socket(1, 1, 0): Operation
+not permitted` (a Docker, ssh-agent or database socket), and the grant
+is `unixSockets`:
 
 ```ts
 exec: {
