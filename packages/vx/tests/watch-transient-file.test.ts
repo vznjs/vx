@@ -69,6 +69,5 @@ it('a directory that held listed files and is gone starts one', async () => {
   await rm(path.join(dir, 'packages', 'b'), { recursive: true })
   const judge = judgeIn(dir, listed)
   judge.pending.set(path.join(dir, 'packages', 'b'), 'packages/b')
-  judge.pending.set(path.join(dir, 'packages'), 'packages')
   expect(judge.judge()).toBe('packages/b')
 })

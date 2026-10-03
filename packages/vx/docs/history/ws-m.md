@@ -534,6 +534,23 @@ name is left out, as the report says; a member with no scripts gets no
 config; a member's own `pnpm-workspace.yaml` is not read, so its
 packages are no members, as pnpm itself reads only the outermost one.
 
+M-44. On Bun 1.3.14 (the container's default, below the floor), every
+`vx run` with a local cache exited 1 with "database is locked" from
+`Cache.close()`, after its tasks had passed: found while probing `vx init`
+on a bun workspace with object-form `workspaces` (`packages`, `apps/**`,
+a `!` glob; that layout holds). O-10's `db.close(true)` finalizes live
+statements on 1.4.2 but answers SQLITE_BUSY on 1.3.14 (a five-line
+`bun:sqlite` probe, both ways). `closeDb` falls back to `close()`, the
+pre-O-10 close, when `close(true)` refuses; both 1.3.14 workspaces then
+exit 0. `cache-close-old-bun.test.ts` stands a refusing `close(true)` in
+for the old runtime; without the fallback it fails with the same error.
+M-45. Probes, nothing shipped: a Yarn 4 workspace (`yarn.lock`,
+`packageManager: yarn@4`, no `.yarnrc.yml`). The root `build` over
+`yarn workspaces foreach` is left out as running the members; `prepack`
+gets no task; `b#test`'s `yarn build && jest` gets M-41's own-task TODO;
+init warns that Plug'n'Play hides `node_modules/.bin` and names both
+fixes.
+
 ## Leads for other streams
 
 - A: A-20 let a same-project dependant restore ahead of a producer whose

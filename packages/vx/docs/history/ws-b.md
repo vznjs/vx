@@ -45,6 +45,13 @@ In order of harm:
    no bridges): about 4.6 ms a task, the namespace, both bridges and their
    shells. vx cannot drop the bridges alone: with them gone a refused host
    reads "connection refused" and the proxy's record (B-77) is lost.
+8. Upstream (SRT): the mandatory-deny scan spawns its ripgrep on every
+   wrap whenever a write config is set (always, for vx), though vx scans
+   the same paths itself (B-40) and hands SRT `true` (B-75). The spawn
+   is 1.09 ms median a wrap against 0.32 for a command that fails to
+   start (300 interleaved), but SRT's dependency check reads the same
+   setting, so a missing one would mark the sandbox unavailable. A
+   switch to skip the scan would save ~0.8 ms a sandboxed task.
 
 ## Leads for other streams
 
@@ -1408,3 +1415,12 @@ interleaved, in process): `runCommand('true')` 1.08 ms median against a
 bare `Bun.spawn` of `sh -c 'exec true'` reading both pipes through
 `Response` at 1.65: the runner's own work is below the spawn floor, so
 the unsandboxed task path in `exec` has nothing left to cut (B-82, B-85).
+
+B-88. Where a sandboxed task's own time goes (100 sandboxed `true`
+tasks, concurrency 1, in place, 3 runs): wrap 3.1 ms (SRT's
+`wrapWithSandbox` 2.9, of it ~1.0 the ripgrep spawn, lead 8), before the
+spawn 0.34, spawn to exit 20.4 (bwrap, SRT's chain, strace), after exit
+1.0. `realpathSync` runs ~147 times a task (the workspace root 34, each
+of SRT's protected dotfiles 4), ~0.2 ms in all: not cut, a memo of
+paths a task may create would cross item 738's limit for under 1%.
+Nothing in vx's half is worth cutting; the wrap's cost is SRT's.

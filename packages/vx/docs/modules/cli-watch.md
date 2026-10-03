@@ -38,7 +38,7 @@ export interface ConfigSweep {
   workspaceConfigImports: string[]
   staged: Map<string, ProjectEntry> | null
 }
-export async function sweepConfigs(projects, workspaceRoot, load?): Promise<ConfigSweep>
+export async function sweepConfigs(projects, workspaceRoot, load?, tasks?): Promise<ConfigSweep> // tasks: judge only what the run can reach
 export function memberEntries(base: string): ReadonlySet<string>
 export function sameMembers(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean
 
@@ -71,6 +71,7 @@ export function makeRootEventFilter(
   workspaceRoot: string,
   projectDirs: readonly string[],
   workspaceInputs: readonly string[],
+  claimedRootFiles?: ReadonlySet<string>, // fingerprint plugins' claims, and vx-lock.json under --frozen
 ): (filename: string) => boolean
 export function shapesWatchedSet(filename: string): boolean // a manifest, a config or a fingerprint file: re-read the watched set
 export function isWorkspaceFingerprintFile(name: string): boolean
