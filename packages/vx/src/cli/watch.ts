@@ -180,6 +180,7 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   try {
     const initial = await runOrchestrator(opts)
     held = initial.persistent
+    if (initial.refused !== undefined) process.stderr.write(`vx watch: ${initial.refused}\n`)
     // A run that failed having run nothing refused to start: a requested
     // name no project declares (run() says which, with a "did you mean").
     // `vx run` exits 1 on it; `vx watch buidl` watched on, re-running the
@@ -369,7 +370,9 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
           held = undefined
           restartTimings()
           const start = Date.now()
-          held = (await runOrchestrator(opts)).persistent
+          const cycle = await runOrchestrator(opts)
+          held = cycle.persistent
+          if (cycle.refused !== undefined) process.stderr.write(`vx watch: ${cycle.refused}\n`)
           changes.lastCycle = { start, end: Date.now() }
           if (reread && !stop.aborted) {
             reread = false

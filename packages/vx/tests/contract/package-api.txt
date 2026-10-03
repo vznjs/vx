@@ -1182,6 +1182,7 @@ export interface RunSummary {
   ok: boolean
   outcomes: TaskOutcome[]
   persistent?: HeldPersistent
+  refused?: string
 }
 == type RunSummaryRecord (src/orchestrator/telemetry.ts)
 export interface RunSummaryRecord {

@@ -377,13 +377,13 @@ async function runOnBus(
   // a CI job that renames a task must go red, not silently stop running
   // it. When EVERY name is unresolved this is the `no-tasks-declared`
   // case too; the message is identical, so that branch stays below.
+  // A refusal is the caller's to print (on stderr, as `vx run:`): as a
+  // status line it went to stdout, into whatever a script piped there.
   if (prepared.unresolvedTasks.length > 0) {
-    log.status(
-      `No projects declare task(s): ${prepared.unresolvedTasks.join(', ')}.${elsewhereHint(prepared.declaredElsewhere)}${didYouMean(prepared.unresolvedTasks, prepared.hintProjects, prepared.declaredElsewhere)}${await initHint(prepared)}`,
-    )
+    const refused = `no projects declare task(s): ${prepared.unresolvedTasks.join(', ')}.${elsewhereHint(prepared.declaredElsewhere)}${didYouMean(prepared.unresolvedTasks, prepared.hintProjects, prepared.declaredElsewhere)}${await initHint(prepared)}`
     await teardown()
     prepared.cache.close()
-    return { ok: false, outcomes: [] }
+    return { ok: false, outcomes: [], refused }
   }
   if (prepared.empty === 'none-affected') {
     log.status(`No affected project declares task(s): ${options.tasks.join(', ')}.`)
@@ -396,14 +396,13 @@ async function runOnBus(
     // a clear message and return NOT-ok so the script exits 1.
     // `empty-graph` is defensive — unreachable under current
     // buildTaskGraph semantics but logged just in case.
-    const msg =
+    const refused =
       prepared.empty === 'no-tasks-declared'
-        ? `No projects declare task(s): ${options.tasks.join(', ')}.${elsewhereHint(prepared.declaredElsewhere)}${await initHint(prepared)}`
-        : 'No tasks to run.'
-    log.status(msg)
+        ? `no projects declare task(s): ${options.tasks.join(', ')}.${elsewhereHint(prepared.declaredElsewhere)}${await initHint(prepared)}`
+        : 'no tasks to run.'
     await teardown()
     prepared.cache.close()
-    return { ok: false, outcomes: [] }
+    return { ok: false, outcomes: [], refused }
   }
   // Install user plugins as additional bus subscribers BEFORE the run
   // starts emitting events. `installPlugins` runs each plugin's optional

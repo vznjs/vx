@@ -98,12 +98,18 @@ describe('--affected: a task only unchanged projects declare is not a typo', () 
 
   it('a name no project declares is still refused (control)', () => {
     const r = vx(root, 'run', 'tset', '--affected=HEAD~1')
-    expect([r.exitCode, r.out.includes('No projects declare task(s): tset.')]).toEqual([1, true])
+    expect([r.exitCode, r.out.includes('vx run: no projects declare task(s): tset.')]).toEqual([
+      1,
+      true,
+    ])
   })
 
   it('a scope the user named is judged as before (control)', () => {
     const r = vx(root, 'run', 'test', '--filter', 'docs')
-    expect([r.exitCode, r.out.includes('No projects declare task(s): test.')]).toEqual([1, true])
+    expect([r.exitCode, r.out.includes('vx run: no projects declare task(s): test.')]).toEqual([
+      1,
+      true,
+    ])
   })
 })
 
@@ -126,7 +132,7 @@ describe('--affected: a task only an unaffected dependency declares is not a typ
     expect({
       run: [run.exitCode, run.out.includes('No affected project declares task(s): test.')],
       both: [both.exitCode, both.out.includes('docs#lint'), both.out.includes('app#test')],
-      typo: [typo.exitCode, typo.out.includes('No projects declare task(s): tset.')],
+      typo: [typo.exitCode, typo.out.includes('vx run: no projects declare task(s): tset.')],
     }).toEqual({ run: [0, true], both: [0, true, false], typo: [1, true] })
   })
 })
