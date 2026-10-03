@@ -496,6 +496,12 @@ persistent task` and vx exits 1). Row (`site-samples` › a post's link
   table, the repo's own `vx.workspace.ts`, the cache cluster, the
   scheduler, the runner, the data flow, the loader, the replaceability
   paths, the remote-cache subsystem and the `runs` columns.
+- **J2-57** #2658 made a bare `vx` outside a workspace print the
+  no-workspace refusal and exit 1; `cli-help.md`'s Purpose (J2-49's
+  wording) and `modules/cli.md`'s dispatcher row still said a bare `vx`
+  prints the help text. Both name the workspace condition now. Row
+  (`module-page-claims` › a bare vx prints the text only inside a
+  workspace), red without the fix.
 - **J2-58** `cli.md`'s `vx run` section read against source: the glyph
   table gave `⏺` the status words "success/failed", but a failed task
   always draws `◼`. Row (`cli-doc-drift` › the glyph table is the
@@ -507,10 +513,3 @@ persistent task` and vx exits 1). Row (`site-samples` › a post's link
   hints, the visibility table, the failure recap's limits and sample,
   the live region's row cap and redraw floor, and the persistent-task
   exit line.
-
-- **J2-57** #2658 made a bare `vx` outside a workspace print the
-  no-workspace refusal and exit 1; `cli-help.md`'s Purpose (J2-49's
-  wording) and `modules/cli.md`'s dispatcher row still said a bare `vx`
-  prints the help text. Both name the workspace condition now. Row
-  (`module-page-claims` › a bare vx prints the text only inside a
-  workspace), red without the fix.
