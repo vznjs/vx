@@ -959,3 +959,14 @@ scratch `node_modules` now links every entry but `@vzn/*`, and only
 `@vzn/vx` there (strace: 73 touches of the two packages before, none
 after, only misses in the scratch dir). The run's lint failures were the
 worktree's `.git` file hidden by the sandbox, not code.
+
+M-76. The seven plugin packages had never reached npm: trusted
+publishing cannot create a package, so every release's plugin publishes
+failed. On 2026-10-03 each got a `0.0.0` placeholder (package.json
+only, published from the owner's machine) and a GitHub Actions trusted
+publisher for `npm.yml`. Release 0.0.483's run then left
+`@vzn/vx-linux-x64@0.0.483` spent: absent from the registry, no staged
+version listed, and every re-publish refused with E409 "Cannot publish
+over previously staged version", while `@vzn/vx@0.0.483` went out
+naming it. The loop's `npm view` skip cannot see a spent version, so a
+re-run dies on it; the next release publishes the whole set fresh.
