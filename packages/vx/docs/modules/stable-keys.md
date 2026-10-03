@@ -9,7 +9,8 @@ can never drift on the stability gate.
 
 ## Public surface
 
-- `deriveStableKeys(args)` — topo walk deriving every task's key the
+- `deriveStableKeys(args: DeriveStableKeysArgs): StableKey[]` — `StableKey`
+  is `{ hash, node }`; topo walk deriving every task's key the
   same way execute-task does; returns stable+cacheable non-group tasks
   with their keys. A persistent task is keyed as on the live path (the
   two paths must agree, item 727: a key only one path had gave its

@@ -71,7 +71,9 @@ directory the run never used. Plugin warnings go to stderr. A plugin
 verb the dispatcher could never reach — one naming a core verb, or one
 two plugins both declare — is refused by the workspace VALIDATOR
 (`validateWorkspace`, against `util/verbs.ts`), so a run refuses it
-exactly as a reading verb or the plugin-verb lookup does.
+exactly as a reading verb or the plugin-verb lookup does. `MOVED_VERBS`
+there maps a verb a package owns now (`migrate`) or that was removed
+(`prune`) to its pointer; a plugin may still declare one.
 
 ## What this does NOT do
 

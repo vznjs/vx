@@ -259,3 +259,46 @@ describe("migration.md's overwrite guard says vx init keeps a member's config", 
     expect(guard[0]).toContain('under `kept`')
   })
 })
+
+// J2-44: eighteen names the module indexes export (`SchemaReset`,
+// `formatRunReportMarkdown`, the plugin installer's types, …) were named
+// in code on no module page. Each module's contract is its index.
+describe('every name a module index exports is in code on a module page', () => {
+  it('src/<module>/index.ts names each appear in a code span or block', () => {
+    const pages = readdirSync(path.join(DOCS, 'modules'))
+      .map((f) => readFileSync(path.join(DOCS, 'modules', f), 'utf8'))
+      .join('\n')
+    const fenced = pages.split('```').filter((_, i) => i % 2 === 1)
+    const spans = pages
+      .split('```')
+      .filter((_, i) => i % 2 === 0)
+      .flatMap((t) => t.match(/`[^`]+`/g) ?? [])
+    const code = [...fenced, ...spans].join('\n')
+    const missing: string[] = []
+    let seen = 0
+    for (const mod of readdirSync(SRC)) {
+      let text: string
+      try {
+        text = readFileSync(path.join(SRC, mod, 'index.ts'), 'utf8')
+      } catch {
+        continue
+      }
+      text = text.replace(/\/\/[^\n]*/g, '')
+      for (const list of text.matchAll(/export\s*(?:type\s*)?\{([^}]*)\}/g)) {
+        for (const part of list[1]!.split(',')) {
+          const name = part
+            .trim()
+            .replace(/^type\s+/, '')
+            .split(/\s+as\s+/)
+            .pop()!
+            .trim()
+          if (name === '') continue
+          seen++
+          if (!new RegExp(`\\b${name}\\b`).test(code)) missing.push(`${mod}: ${name}`)
+        }
+      }
+    }
+    expect(seen).toBeGreaterThan(300)
+    expect(missing).toEqual([])
+  })
+})

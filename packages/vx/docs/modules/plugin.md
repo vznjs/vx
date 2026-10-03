@@ -43,6 +43,17 @@ names until 0.0.397; it is the kinds record since.
 | `setup(ctx)`           | `installPlugins`              | validate config; throw `UserError`                                                                                                                                                                                                                                                                                                 |
 | `teardown()`           | end-of-run                    | flush/close; crash-isolated, 3s-bounded                                                                                                                                                                                                                                                                                            |
 
+## The installer
+
+```ts
+installPlugins(args: InstallPluginsArgs): Promise<() => void> // runs each setup; resolves to the uninstall
+interface InstallPluginsArgs { plugins; workspaceRoot; cacheDir; bus: EventBus; warn? }
+// What setup(ctx) receives: on(hook, handler) subscribes a lifecycle hook.
+interface PluginContext { workspaceRoot; cacheDir; warn(message); bus; on<K extends PluginHookName>(hook: K, handler: PluginHookHandlers[K]) }
+type PluginHookName = keyof PluginHookHandlers
+// 'onRunStart' | 'onTaskStart' | 'onTaskStdout' | 'onTaskStderr' | 'onTaskComplete' | 'onRunStatus' | 'onRunEnd'
+```
+
 ## Invariants
 
 - **Decline-fast**: every capability must return `undefined` cheaply

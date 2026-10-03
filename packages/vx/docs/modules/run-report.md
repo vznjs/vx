@@ -6,6 +6,13 @@
 per-task table + totals line rendered after the run, machine-clean for
 CI step summaries (`vx run ci --report-file="$GITHUB_STEP_SUMMARY"`).
 
+## Public surface
+
+- `formatRunReportMarkdown(result: RunResult): string` — the report.
+- `escapeMarkdownCell(value: string): string` — a table cell made safe:
+  an unescaped `|` escaped, a line break a space; the façade exports it
+  for a plugin's own table (`@vzn/vx-github`'s summary).
+
 ## Invariants
 
 - Pure: outcomes in, markdown out. No ANSI, no live region.
