@@ -267,3 +267,19 @@ describe("execution.md's workspace-config step names every field", () => {
     expect(list.sort()).toEqual([...fields].sort())
   })
 })
+
+// task-graph.md said a `cache.inputs.tasks` name that resolves to no
+// upstream is "silently filtered out"; the schema refuses an exact one
+// (item 994), and only a pattern stays silent (J2-67).
+describe("task-graph.md's account of cache.inputs.tasks misses is the schema's", () => {
+  it('names the refusal of an exact name, and only patterns as silent', () => {
+    const schema = readFileSync(path.join(pkg, 'src', 'workspace', 'config-schema.ts'), 'utf8')
+    expect(schema).toContain('names no task in ${task}.dependsOn')
+    expect(schema).toContain("f.task.includes('*')")
+    const text = readFileSync(path.join(pkg, 'docs', 'modules', 'task-graph.md'), 'utf8')
+      .split(/\s+/)
+      .join(' ')
+    expect(text).toContain('The schema refuses an exact name no `dependsOn` entry names')
+    expect(text).toContain('only a pattern that matches nothing stays silent')
+  })
+})
