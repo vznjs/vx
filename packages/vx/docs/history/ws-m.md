@@ -651,6 +651,14 @@ holds over 8 MiB less than the kept. Each mutant fails its line: an
 unbounded cap (120), `capture: false` ignored (0), either mode out of
 `discardsOutput` (160). The file passes 3 of 3 under 8 busy loops.
 
+M-54. `vx init` on a single-package repo whose `package.json` has no
+`name` said `not mapped:  — its package.json has no "name"…`: the root's
+own path is the empty relative path. It now says `the root`. Single-package
+probes that held: `prepare` dropped, a `prebuild` folded into `build`, an
+`npm run clean && tsc` chain given M-41's TODO, `start` persistent, one
+config at the root beside `vx.workspace.ts`. `init.test.ts` › names the
+root when a single package has no name; red without the fix.
+
 ## Leads for other streams
 
 - A: A-20 let a same-project dependant restore ahead of a producer whose

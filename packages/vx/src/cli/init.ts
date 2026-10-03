@@ -374,6 +374,9 @@ function namelessNotes(root: string, dirs: readonly string[]): string[] {
     })
     .map((dir) => path.relative(root, dir).split(path.sep).join('/'))
     .sort()
+    // The root's own manifest is the empty relative path: a nameless
+    // single-package repo read `not mapped:  — its package.json…` (M-54).
+    .map((rel) => (rel === '' ? 'the root' : rel))
   if (withScripts.length === 0) return []
   const shown =
     withScripts.slice(0, 3).join(', ') +
