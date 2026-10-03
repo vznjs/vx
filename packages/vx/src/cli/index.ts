@@ -165,9 +165,15 @@ export async function run(argv: readonly string[]): Promise<number> {
       }
       // A task typed where the verb goes (`turbo build`, `nx build app`),
       // `turbo dev` included: a repo's own `dev` task beats the no-service note.
+      const declaredVerbs =
+        resolved !== null && 'declaredVerbs' in resolved ? resolved.declaredVerbs : []
+      const guess = didYouMeanVerb(command, declaredVerbs)
+      // A typo of a task (`vx biuld`) names the task, unless a verb is closer.
       const task =
         loadNote === ''
-          ? await (await import('./task-verb.js')).taskVerbHint(command, rest, process.cwd())
+          ? await (
+              await import('./task-verb.js')
+            ).taskVerbHint(command, rest, process.cwd(), guess === '' && !command.startsWith('-'))
           : null
       if (task !== null) {
         process.stderr.write(`vx: ${task}\n`)
@@ -207,9 +213,6 @@ export async function run(argv: readonly string[]): Promise<number> {
         )
         return 1
       }
-      const declaredVerbs =
-        resolved !== null && 'declaredVerbs' in resolved ? resolved.declaredVerbs : []
-      const guess = didYouMeanVerb(command, declaredVerbs)
       process.stderr.write(
         `vx: unknown command: ${command}${guess}${loadNote} (see \`vx help\`)\n` +
           (guess === '' && loadNote === '' ? verbSourceNote(resolved, declaredVerbs) : ''),

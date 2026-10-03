@@ -448,7 +448,9 @@ A task typed where the verb goes (`turbo build`, `nx build app`) is
 refused with the `vx run` that runs it: `vx build` names
 `vx run build --all` from the root and `vx run build` inside a project,
 `vx build app` names `vx run build --filter app`, and `vx app#build`
-names `vx run app#build`. It stays a refusal: a plugin verb of the same
+names `vx run app#build`. A typo of a task (`vx biuld`) names the task
+and the same `vx run`, unless a verb is as close (`vx rnu` hints `run`).
+It stays a refusal: a plugin verb of the same
 name is the verb, and would change what `vx build` means the day one
 was declared.
 
