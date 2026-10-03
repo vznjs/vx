@@ -48,6 +48,7 @@ export async function sandboxRequestFor(
   workspaceRoot: string,
   keyed: ReadonlySet<string> | undefined, // keyed-projects.ts's set; undefined for a task with no `cache`
   nested?: readonly string[], // dirs of the projects nested in this one: a wall its grants do not reach
+  cacheDir?: string, // the run's cache dir, walled wherever it is
 ): Promise<SandboxRequest>
 
 export async function sweepPlaceholders(placeholders: readonly Placeholder[]): Promise<string[]>

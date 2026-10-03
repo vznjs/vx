@@ -91,6 +91,10 @@ export interface ProjectEntry {
 export function unreachedPackages(workspace: Workspace): Promise<string[]>
 export function unreachedHint(unreached: readonly string[]): string
 
+// Whether a member glob reaches any package.json but the root's,
+// addressable or not; `vx init` names globs that reach none (M-46).
+export function reachesManifest(workspace: Workspace): Promise<boolean>
+
 // The directories a recursive watch must cover to see every member.
 export function memberBaseDirs(workspace: Workspace): string[]
 
@@ -174,6 +178,9 @@ Globs every `package.json` matching the patterns (`Bun.Glob`,
 
 - Skip if no `name` field (`discoverProjects` collects the directory for
   `vx init`, which names one that has scripts, D-106).
+- A member dir (`<dir>/*` shape) with a vx config but no `package.json` is
+  skipped with a stderr line naming it (D-128): `--all` said only that no
+  package matched, and a run from inside it "not inside a project".
 - A name several manifests share: pnpm accepts it (vite's playground,
   sveltejs/kit's test apps); vx cannot, since a project is addressed by
   its name. With no vx config among them they are left out, named on one

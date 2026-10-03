@@ -267,3 +267,107 @@ persistent task` and vx exits 1). Row (`site-samples` › a post's link
   names the directory to grant. Row (`site-samples` › the sandbox pages
   say a refused temp write points at $TMPDIR), gated on the hint's text;
   red without the fix.
+- **J2-33** Plugin READMEs left options out: vx-otel's showed five of
+  its ten (`timeoutMs`, `compression` and the three per-signal
+  endpoints only in the plugins guide), vx-github's had no `checkName`
+  (default `'vx'`), and vx-reapi's no `instanceName` (only its env var),
+  `headers` (gRPC metadata on every call, where a hosted server's API
+  key goes) or `tls` (a bare `host:port` stayed plaintext). Row
+  (`site-samples` › every plugin README names each option its factory
+  takes), the fields read from each options interface, test seams left
+  out; red on the three without the fix.
+
+- **J2-34** vx-mcp's README rows for `explainCacheKey` and
+  `whyDidThisRerun` never named their `taskId` argument (the question
+  showed `pkg#build`, the call needs the key). Row (`vx-mcp`
+  `readme-tools` › README names each tool's arguments), every
+  `inputSchema` property read from `listTools()`; red on both without
+  the fix.
+
+- **J2-35** #2442 names a server `holdPersistent` hands back (the watch
+  loop's) that dies on its own after the run returns; it updated
+  `cli.md` and `execution.md`, and `modules/orchestrator.md`'s
+  `holdPersistent` sentence still had the caller owning the servers
+  with no word of it. Row (`module-page-claims` › orchestrator.md, a
+  held server), gated on `run.ts`; red without the fix.
+
+- **J2-36** The sandboxing guide's step 4 says an undeclared read fails
+  the task and names the path; a persistent task (a dev server) is
+  never traced, so its refusals are named nowhere and read as the
+  tool's own `ENOENT`. #2451 tells a failing one so; the guide had no
+  word of servers at all. It now says it under "What can't be
+  sandboxed". Row (`site-samples` › the sandboxing guide says a server
+  is never traced), gated on `execute-task.ts`; red without the fix.
+- **J2-28** The landing said "`bunx @vzn/vx-migrate` or `vx init`
+  gives a temporary start": the migrator writes the native config, the
+  destination, not a temporary start, and npm has no copy of it yet
+  (J2-25's class, on the one page that row cannot see: it scans
+  Markdown). It now says `vx init` is the temporary start and the
+  migrator writes native config, its first publish pending. Row
+  (`landing` › shows how to start, the sentence it pins); red without
+  the fix.
+
+- **J2-29** J-102's class on the landing picture: its fifth callout
+  said "A read you did not declare fails the task", beside a drawing
+  of `app#build` reading `../secrets.env`, a read the sandbox refuses
+  silently (the wall), and a read outside the workspace is allowed.
+  It now says a workspace file you did not declare is out of reach, as
+  J-102 made the pillar say; the trace row that backs it (on the task's
+  own file) names the scope. Row (`landing` › the six lines, the
+  callout it pins); red without the fix.
+
+- **J2-8** The configure guide said "a task sees only the variables
+  you pass it" and gave `CI` as a `passThrough` example, and the
+  explicit-over-magical post said env reaches a task only through
+  `exec.env` (one-command-per-task: an environment built from it): `CI`, `PATH`, `NODE_OPTIONS` and the rest of
+  `ESSENTIAL_ENV` reach every task undeclared. Both name the allowlist
+  now; the guide's example is `GITHUB_ACTIONS`. Probes, nothing to
+  fix: the-sandbox, values and what-vx-is posts. Row (`site-samples` ›
+  no page says a task sees only what it declares, past the allowlist),
+  red without the fix. The Troubleshooting page (#2470), added since, said "vx passes only what you list" too; it names the allowlist now, and the row holds it.
+
+- **J2-37** J2-18's class on the Troubleshooting page (#2470): for a
+  hit after a change to a file missing from `cache.inputs.files`, it
+  said `exec.sandbox` refuses a read you did not declare; the sandbox
+  judges its grants, so it refuses that read only when reads are
+  granted no wider than the inputs. Row (J2-18's, widened to the page);
+  red without the fix.
+
+- **J2-38** #2492 warns on a member directory that holds a vx config
+  but no `package.json` and skips it; the Troubleshooting page's
+  `not inside a project` fix does not reach that case. The page quotes
+  the warning and its fix: add a `package.json` with a `"name"`.
+  Audited clean: `schema.md`'s error table and defaults, `caching.md`'s
+  constants, the capture and recap limits, `vx cache prune`'s flags,
+  the module pages' defaults, the `VX_*` names. Row
+  (`site-troubleshooting` › names the skipped config dir warning), red
+  without the fix.
+
+- **J2-39** Eight signatures on the module pages lacked a parameter
+  their source takes: `deniedCalls` (`cwd`, `reads`),
+  `resolveSandboxConfig` (`walls`), `parseStraceViolations`
+  (`widened`), `sandboxRequestFor` (`cacheDir`), `streamToString`
+  (`retain`), `migrateScripts` (`outside`, `outsideDir`),
+  `sweepConfigs` (`tasks`), `makeRootEventFilter`
+  (`claimedRootFiles`). Each page lists them now. Row
+  (`module-page-claims` › a module page lists every parameter its
+  function takes), generated from every page's `export function` and
+  the source's top-level parameter count; red without the fix.
+
+- **J2-40** Six interfaces on the module pages had fallen behind their
+  source. `cache.md`'s `CacheLayer` listed 9 of its 25 members and
+  `orphanStats`, which only `Cache` has; `CacheKeyInput` lacked
+  `upstreamGraft`, `CacheEntry` four fields, `RunRecord` the
+  `cached` and v27 columns, `AffectedArgs` `untracked`, `DeniedCall`
+  `read` and `dir`. Each lists its source's members now
+  (`ExecuteArgs` says it is abridged, and the row honours a `// …`).
+  Row (`module-page-claims` › a module page lists exactly the fields
+  its interface has), red without the fix.
+
+- **J2-41** `cli.md`'s `vx info --format json` bullet gave `sandbox` as
+  `{ available, reason, declared }`; the object carries `untraced` too,
+  which the same section names as a fact. The bullet lists it now. The
+  top-level row held only field names; a sibling row
+  (`cli-doc-drift` › gives each object field the keys the object
+  carries) holds each documented shape to `InfoFacts`, red without the
+  fix.

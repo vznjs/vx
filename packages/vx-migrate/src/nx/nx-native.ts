@@ -38,6 +38,8 @@ export interface NativeCommand {
   readonly command: string
   readonly env: Readonly<Record<string, string>>
   readonly todos: readonly string[]
+  /** `project:target[:configuration]` specs the executor ran first: the task's edges. */
+  readonly deps?: readonly string[]
 }
 
 type Options = Readonly<Record<string, unknown>>
@@ -47,6 +49,7 @@ type Translate = (
   ctx: NativeContext,
   todos: string[],
   env: Record<string, string>,
+  deps: string[],
 ) => string | null
 
 /** The plain line for `executor`, or null when it has none here. */
@@ -60,8 +63,10 @@ export function nativeExecutorCommand(
   if (translate === undefined) return null
   const todos: string[] = []
   const env: Record<string, string> = {}
-  const command = translate(options, ctx, todos, env)
-  return command === null ? null : { command, env, todos }
+  const deps: string[] = []
+  const command = translate(options, ctx, todos, env, deps)
+  if (command === null) return null
+  return deps.length > 0 ? { command, env, todos, deps } : { command, env, todos }
 }
 
 /** The TODO an executor with no translator carries; one reason per executor, so the report lists its tasks. */
@@ -430,7 +435,7 @@ const viteDev: Translate = (o, ctx, todos) => {
  * `@nx/vite:preview-server`: `vite preview` over the build target's
  * output dir (or `staticFilePath`, read from the project dir as Nx does).
  */
-const vitePreview: Translate = (o, ctx, todos) => {
+const vitePreview: Translate = (o, ctx, todos, _env, deps) => {
   const build = buildTargetOptions(o, ctx, todos, '@nx/vite:preview-server')
   const args = ['vite', 'preview']
   if (typeof build['configFile'] === 'string')
@@ -460,9 +465,19 @@ const vitePreview: Translate = (o, ctx, todos) => {
       'vite',
     ),
   )
-  todos.push(
-    '@nx/vite:preview-server built the app (in watch mode) before serving it — add its build task to dependsOn',
-  )
+  // Nx built the app first, in watch mode: the build is an edge, the
+  // rebuild while serving is what vx does not do.
+  const spec = o['buildTarget']
+  if (typeof spec === 'string' && ctx.targetOptions?.(spec) !== undefined) {
+    deps.push(spec)
+    if (o['watch'] !== false)
+      todos.push(
+        '@nx/vite:preview-server rebuilt the app in watch mode while serving — vx builds it once, first',
+      )
+  } else
+    todos.push(
+      '@nx/vite:preview-server built the app (in watch mode) before serving it — add its build task to dependsOn',
+    )
   return args.join(' ')
 }
 
@@ -802,7 +817,7 @@ const esbuild: Translate = (o, ctx, todos) => {
  * under the main's directory for a tsc or swc build. A build target with
  * no `outputPath` (an inferred one) has no file here: no line.
  */
-const node: Translate = (o, ctx, todos) => {
+const node: Translate = (o, ctx, todos, _env, deps) => {
   const spec = typeof o['buildTarget'] === 'string' ? o['buildTarget'] : undefined
   if (spec === undefined) return null
   const build = {
@@ -848,11 +863,18 @@ const node: Translate = (o, ctx, todos) => {
   args.push(shellQuote(`${out}/${file}`))
   if (Array.isArray(o['args']))
     for (const a of o['args']) if (typeof a === 'string') args.push(shellQuote(a))
-  todos.push(
-    `@nx/js:node built ${JSON.stringify(spec)} first` +
-      (o['watch'] === false ? '' : ' and rebuilt and restarted on change') +
-      ' — add its build task to dependsOn',
-  )
+  if (ctx.targetOptions?.(spec) !== undefined) {
+    deps.push(spec)
+    if (o['watch'] !== false)
+      todos.push(
+        `@nx/js:node rebuilt ${JSON.stringify(spec)} and restarted on change — vx builds it once, first`,
+      )
+  } else
+    todos.push(
+      `@nx/js:node built ${JSON.stringify(spec)} first` +
+        (o['watch'] === false ? '' : ' and rebuilt and restarted on change') +
+        ' — add its build task to dependsOn',
+    )
   return fromRoot(ctx, args.join(' '))
 }
 
@@ -889,7 +911,45 @@ const swc: Translate = (o, ctx, todos) => {
   return o['clean'] === false ? line : `rm -rf ${out} && ${line}`
 }
 
+/**
+ * `@nx/js:verdaccio`: the local registry Nx forks from the workspace root,
+ * `verdaccio --config <config> --listen <listenAddress>:<port>` (port 4873
+ * without a config), with `VERDACCIO_HANDLE_KILL_SIGNALS` set and
+ * `storage` emptied first under `clear` (default true). While it ran, Nx
+ * also pointed npm and yarn at it (`location`, default `user`) and reset
+ * them after; verdaccio alone does not.
+ */
+const verdaccio: Translate = (o, ctx, todos, env) => {
+  env['VERDACCIO_HANDLE_KILL_SIGNALS'] = 'true'
+  const args = ['verdaccio']
+  const config = typeof o['config'] === 'string' ? wsPath(o['config'], ctx) : undefined
+  if (config !== undefined) args.push('--config', shellQuote(config))
+  const port = typeof o['port'] === 'number' ? o['port'] : config === undefined ? 4873 : undefined
+  const host = typeof o['listenAddress'] === 'string' ? o['listenAddress'] : 'localhost'
+  if (port !== undefined) args.push('--listen', shellQuote(`${host}:${port}`))
+  let line = args.join(' ')
+  if (typeof o['storage'] === 'string') {
+    // Nx hands verdaccio the absolute path; `$PWD` is the root after the cd.
+    const storage = shellQuote(wsPath(o['storage'], ctx))
+    line = `VERDACCIO_STORAGE_PATH="$PWD"/${storage} ${line}`
+    if (o['clear'] !== false) line = `rm -rf ${storage} && ${line}`
+  }
+  const location = typeof o['location'] === 'string' ? o['location'] : 'user'
+  if (location !== 'none') {
+    const scopes =
+      Array.isArray(o['scopes']) && o['scopes'].length > 0
+        ? ` (and scopes ${o['scopes'].join(', ')})`
+        : ''
+    todos.push(
+      `@nx/js:verdaccio pointed npm and yarn${scopes} at the registry (\`--location ${location}\`) while it ran, ` +
+        'and reset them after — verdaccio does not; set `npm_config_registry` on the tasks that use it',
+    )
+  }
+  return fromRoot(ctx, line)
+}
+
 const TRANSLATORS: Readonly<Record<string, Translate>> = {
+  '@nx/js:verdaccio': verdaccio,
   '@nx/js:swc': swc,
   '@nx/js:node': node,
   '@nx/esbuild:esbuild': esbuild,

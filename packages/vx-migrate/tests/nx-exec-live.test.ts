@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { mapRunCommands } from '../src/nx-command.js'
-import { mapNxWorkspace } from '../src/nx/index.js'
+import { mapNxWorkspace } from '../src/nx/nx-map.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'nx-exec.cjs')
 const NX_ENV = path.resolve(import.meta.dir, '..', 'src', 'nx-env.cjs')

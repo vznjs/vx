@@ -13,6 +13,7 @@
 
 import {
   cpSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -81,6 +82,12 @@ function step(root: string, line: string): { code: number | null; out: string } 
         symlinkSync(path.join(PACKAGES, dir, rel), path.join(root, 'node_modules', '.bin', bin))
       }
     }
+    // npm writes its lockfile on an install, and the migrator's report
+    // names the lockfile plugin for it: a stand-in without one printed a
+    // report no user sees.
+    const lock = path.join(root, 'package-lock.json')
+    if (command.startsWith('npm ') && !existsSync(lock))
+      writeFileSync(lock, '{"lockfileVersion":3,"packages":{}}\n')
     return { code: 0, out: '' }
   }
   const r = Bun.spawnSync({

@@ -95,6 +95,43 @@ sync`", advice for a repo leaving Nx: they say to keep what the
 - **P2-17** An integrated repo (a root project, `project.json` projects
   in no workspace glob, an Angular builder) joins the shape fixtures: the
   row follows P2-15's note and asserts core then finds every project.
+- **P2-18** `@nx/js:verdaccio` (the `local-registry` target Nx's
+  `setup-verdaccio` writes) migrates to the registry it forks:
+  `verdaccio --config … --listen localhost:4873` from the workspace root,
+  a server, its storage cleared under `clear`; the npm and yarn registry
+  Nx set while it ran is a TODO. Read from the executor in Nx 23.2.1.
+- **P2-19** `repeated-runs.unsafe.test.ts` compared the open descriptor
+  count exactly between run 5 and run 20, and failed CI on #2455 at
+  18 → 17: a descriptor still closing at run 5. The claim is no growth,
+  so descriptors may fall, never rise; listeners still hold exactly. A
+  per-run descriptor leak and an added listener both still fail it.
+- **P2-20** Nx 15–16's `@nrwl/workspace:run-commands` / `run-script`
+  (and `@nx/workspace:`), which an older graph keeps as written, are the
+  `nx:` executors they re-exported: the migration wrote each as a
+  failing placeholder, and `nx()` ran them through `nx-exec`.
+- **P2-21** A named input neither nx.json nor the project defines (an
+  nx.json `extends` preset not installed where the snapshot is read)
+  wrote an empty input list: a cached task keyed on its config alone, a
+  stale hit after every source edit. It now keys the whole project
+  (`**/*`), its dependency twin too, with the todo kept.
+- **P2-22** An Nx `implicitDependencies: ["!a"]` drops a manifest edge
+  from the graph, often to break a cycle; vx's `^build` follows the
+  manifest, so the migrated configs brought the cycle back and core
+  refused the run. Where a manifest reaches a project the Nx graph does
+  not, the `^target` is the explicit edges Nx draws.
+- **P2-23** A configuration task's name can be another target's: `vite`'s
+  `build` configuration is `vite:build`, which an inferred target with
+  `buildTargetName: "vite:build"` names. The written object kept the last
+  key, and the real build became `vite --x`, uncached. The target keeps
+  its name, as Nx resolves `a:vite:build` to it; the configuration is a
+  todo, and an edge to it reaches its base task.
+- **P2-24** `@nx/js:node` and `@nx/vite:preview-server` built their
+  `buildTarget` before running, and the migration said so in a TODO: the
+  written `serve` ran `node dist/apps/api/main.cjs` with no edge to the
+  build, a failure on a clean checkout. A translator now hands back the
+  specs its executor ran first, and each is a `dependsOn` edge, its
+  configuration resolved as Nx resolves it; the watch-mode rebuild stays
+  a TODO, and a build target the graph lacks keeps the old one.
 
 ## Leads for other streams
 

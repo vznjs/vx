@@ -89,8 +89,12 @@ export function expandNxInputs(
       // Bare string = named-input reference.
       const members = named[s]
       if (members === undefined) {
+        // Over-keyed, never under: an empty input list keyed a cached task
+        // on its config alone, a stale hit after every source edit (an
+        // nx.json `extends` preset not installed where the snapshot is read).
+        if (neg === '') into.files.push('**/*')
         todos.push(
-          `named input ${JSON.stringify(s)} not found in nx.json or the project — declare its globs manually`,
+          `named input ${JSON.stringify(s)} not found in nx.json or the project — keyed on the whole project (\`**/*\`) until its globs are declared`,
         )
         return
       }

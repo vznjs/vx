@@ -10,7 +10,7 @@ import { unlink } from 'node:fs/promises'
 import path from 'node:path'
 import { executablePath, relPosix, UserError } from '../util/index.js'
 import type { ProjectMeta } from './workspace.js'
-import { loadWorkspace, unreachedHint, unreachedPackages } from './workspace.js'
+import { loadWorkspace, reachesManifest, unreachedHint, unreachedPackages } from './workspace.js'
 import { WORKSPACE_CONFIG_FILENAMES } from './project-loader.js'
 
 /**
@@ -352,7 +352,19 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
   const report: string[] = []
   // Single-project mode with packages the root's missing `workspaces` never
   // reaches: the scripts exist, the globs do not (item 248).
-  const unreached = empty ? await unreachedPackages(await loadWorkspace(root)) : []
+  const workspace = empty ? await loadWorkspace(root) : undefined
+  const unreached = workspace === undefined ? [] : await unreachedPackages(workspace)
+  // Globs that reach no package: "no scripts" was true and named nothing
+  // to fix (M-42).
+  const globs = workspace?.packageGlobs.filter((g) => g !== '.') ?? []
+  // Asked of the globs, not of `metas`: a nameless or shared-name member
+  // is matched yet absent from `metas` (M-46).
+  const noMembers =
+    workspace !== undefined && globs.length > 0 && !(await reachesManifest(workspace))
+      ? [
+          `the workspace globs (${globs.map((g) => `"${g}"`).join(', ')}) match no package.json: add a package under one, or fix the glob`,
+        ]
+      : []
   if (empty && unreached.length > 0) {
     report.push(
       `${verb}: ${unreachedHint(unreached)}`,
@@ -365,7 +377,7 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
   } else if (empty) {
     report.push(
       `${verb}: no package.json scripts to turn into tasks.`,
-      ...(args.notes ?? []).map((n) => `note: ${n}`),
+      ...[...noMembers, ...(args.notes ?? [])].map((n) => `note: ${n}`),
       hasWorkspaceFile
         ? `${workspaceName} already exists.`
         : dry

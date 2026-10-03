@@ -204,8 +204,10 @@ export function planNxUpstream(
   }
   const expandOwn = (node: string, name: string, into: NxInputs, todos: string[]): void => {
     if (!isFileset(name) && namedOf(node)[name] === undefined) {
+      // Its whole project, as `expandNxInputs` keys an unknown own input.
+      into.files.push('**/*')
       todos.push(
-        `named input ${JSON.stringify(name)} not found for ${JSON.stringify(node)} — declare its globs manually`,
+        `named input ${JSON.stringify(name)} not found for ${JSON.stringify(node)} — keyed on its whole project (\`**/*\`) until its globs are declared`,
       )
       return
     }

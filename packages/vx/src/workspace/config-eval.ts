@@ -61,6 +61,17 @@ export const WATCHED_BUILTIN_NAMES = [
   // A global one config set reached every config loaded after it in the
   // process: `--all` read it, `--filter` of the reader alone did not (D-122).
   'globalThis',
+  // What the check itself and vx's matching read through: a replaced
+  // `Reflect.ownKeys` blinded the check, and `RegExp.prototype.test` or
+  // `Date.now` ran vx on a config's choice (D-124).
+  'Reflect',
+  'Object',
+  'Array',
+  'RegExp.prototype',
+  'Function.prototype',
+  'Date',
+  'Date.prototype',
+  'Number.prototype',
 ] as const
 
 const WORKER_SRC = `
@@ -109,10 +120,16 @@ self.onmessage = async (e) => {
   const watched = e.data.blame
     ? ${JSON.stringify(WATCHED_BUILTIN_NAMES)}.map((n) => [n, n.split('.').reduce((o, k) => o[k], globalThis)])
     : null
-  const own = (o) => new Map(Reflect.ownKeys(o).map((k) => [k, Object.getOwnPropertyDescriptor(o, k)]))
+  // Taken before the import: a config can replace them (D-124).
+  const RO = Reflect.ownKeys
+  const GD = Object.getOwnPropertyDescriptor
+  const own = (o) => new Map(RO(o).map((k) => [k, GD(o, k)]))
   const before = watched?.map(([, o]) => own(o))
   const envBefore = watched ? { ...live } : null
   const cwdBefore = watched ? globalThis.process.cwd() : null
+  // The umask is the process's, not the worker's: a config's umask(0o777)
+  // here left every file vx wrote after it 000 (D-125). Put back below.
+  const umaskIn = globalThis.process.umask()
   const same = (a, b) =>
     a !== undefined && b !== undefined && Object.is(a.value, b.value) && a.get === b.get && a.set === b.set &&
     a.writable === b.writable && a.enumerable === b.enumerable && a.configurable === b.configurable
@@ -127,7 +144,13 @@ self.onmessage = async (e) => {
     for (const k of new Set([...Object.keys(envBefore), ...Object.keys(live)]))
       if (envBefore[k] !== live[k]) out.push('process.env.' + k)
     if (globalThis.process.cwd() !== cwdBefore) out.push('process.cwd (a chdir)')
+    if (globalThis.process.umask() !== umaskIn) out.push('process.umask')
     return out
+  }
+  const umaskBack = () => {
+    if (globalThis.process.umask() === umaskIn) return false
+    globalThis.process.umask(umaskIn)
+    return true
   }
   try {
     const ns = await import(path)
@@ -144,6 +167,7 @@ self.onmessage = async (e) => {
       json: isObject && nonJson.length === 0 ? JSON.stringify(mod) : null,
       fn: typeof mod === 'function',
       changed: changed(),
+      umask: umaskBack(),
     })
   } catch (err) {
     postMessage({
@@ -153,6 +177,7 @@ self.onmessage = async (e) => {
       message: err?.message ?? String(err),
       stack: err?.stack ?? null,
       changed: changed(),
+      umask: umaskBack(),
       position:
         err?.position && typeof err.position === 'object'
           ? { file: err.position.file, line: err.position.line, column: err.position.column }
@@ -164,6 +189,9 @@ self.onmessage = async (e) => {
 
 const FUNCTION_EXPORT = (): void => {}
 
+/** A repeat load moved the process's umask; the loader names the config (D-125). */
+export class UmaskChanged extends Error {}
+
 const WORKER_URL = `data:text/javascript,${encodeURIComponent(WORKER_SRC)}`
 
 interface WorkerReply {
@@ -172,6 +200,8 @@ interface WorkerReply {
   json: string | null
   /** The default export is a function, which JSON cannot carry back. */
   fn?: boolean
+  /** The evaluation moved the process's umask; the worker put it back. */
+  umask?: boolean
   nonJson: NonJsonValue[]
   name: string
   message: string
@@ -333,6 +363,7 @@ export async function evaluateConfigFresh(configPath: string): Promise<unknown> 
       timer.unref?.()
       w.postMessage({ id, path: abs, env: { ...process.env } })
     })
+    if (reply.umask === true) throw new UmaskChanged()
     const [nonJson] = reply.nonJson
     if (nonJson !== undefined) throw new UserError(nonJsonMessage(configPath, nonJson))
     // A function stands in for the one the config exported, so the caller's

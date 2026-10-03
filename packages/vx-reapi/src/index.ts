@@ -18,54 +18,17 @@ import {
   type VxPlugin,
   UserError,
   refuseUnknownOptions,
+  type PluginOptionKinds,
 } from '@vzn/vx'
 import { ReapiRemoteCache } from './cache.js'
 import { reapiExecutor } from './executor.js'
 import { ReapiClient, type ReapiOptions } from './wire.js'
 
+// `ReapiRemoteCache` is public for a workspace that composes cache
+// layers by hand; the wire, the Merkle encoders and the executor are
+// internal (1.0 freezes what this file exports).
 export { ReapiRemoteCache } from './cache.js'
-export {
-  acceptsTask,
-  globToOutputPath,
-  outputPathSets,
-  reapiExecutor,
-  type OutputPathSets,
-  type ReapiExecutorOptions,
-} from './executor.js'
-export {
-  buildInputTree,
-  canDigest,
-  COMPRESSOR,
-  decodeDirectory,
-  decodeTree,
-  DIGEST_FUNCTION,
-  digestWith,
-  encodeAction,
-  encodeCommand,
-  encodeDigest,
-  encodeDirectory,
-  encodeNodeProperties,
-  OUTPUT_DIRECTORY_FORMAT,
-  sha256,
-  type Blob,
-  type DigestFunctionName,
-  type InputTree,
-  type NodeProperties,
-} from './merkle.js'
-export {
-  assertBunSupportsChunking,
-  CHUNK_BYTES,
-  MIN_BUN,
-  ReapiClient,
-  SAFE_CHUNK_BYTES,
-  type ExecuteOptions,
-  type ExecuteResponse,
-  type Operation,
-  type ServerCapabilities,
-  type ActionResult,
-  type Digest,
-  type ReapiOptions,
-} from './wire.js'
+export { type ReapiOptions } from './wire.js'
 
 export interface ReapiPluginOptions extends Partial<ReapiOptions> {
   /**
@@ -200,33 +163,33 @@ function assertEndpoint(endpoint: string, from: string): void {
   }
 }
 
-/** Every option `ReapiPluginOptions` names: the type checker holds the two to each other. */
-const REAPI_PLUGIN_KEYS: Record<keyof ReapiPluginOptions, true> = {
-  executeTimeoutMs: true,
-  endpoint: true,
-  execute: true,
-  platform: true,
-  capacity: true,
-  tlsCertificate: true,
-  tlsClientCertificate: true,
-  tlsClientKey: true,
-  instanceName: true,
-  headers: true,
-  tls: true,
-  tlsCaPem: true,
-  tlsClientCertPem: true,
-  tlsClientKeyPem: true,
-  toolName: true,
-  toolVersion: true,
-  correlatedInvocationsId: true,
-  onWarn: true,
-  callTimeoutMs: true,
-  metaTimeoutMs: true,
-  chunkBytes: true,
+/** Each option `ReapiPluginOptions` names, with its kind: derived from the type, so the two cannot drift. */
+const REAPI_PLUGIN_KEYS: PluginOptionKinds<ReapiPluginOptions> = {
+  executeTimeoutMs: 'number',
+  endpoint: 'string',
+  execute: 'boolean',
+  platform: 'object',
+  capacity: 'number',
+  tlsCertificate: 'string',
+  tlsClientCertificate: 'string',
+  tlsClientKey: 'string',
+  instanceName: 'string',
+  headers: 'object',
+  tls: 'boolean',
+  tlsCaPem: 'string',
+  tlsClientCertPem: 'string',
+  tlsClientKeyPem: 'string',
+  toolName: 'string',
+  toolVersion: 'string',
+  correlatedInvocationsId: 'string',
+  onWarn: 'function',
+  callTimeoutMs: 'number',
+  metaTimeoutMs: 'number',
+  chunkBytes: 'number',
 }
 
 export function reapi(options: ReapiPluginOptions = {}): VxPlugin {
-  refuseUnknownOptions('reapi()', options, Object.keys(REAPI_PLUGIN_KEYS))
+  refuseUnknownOptions('reapi()', options, REAPI_PLUGIN_KEYS)
   let executorClient: ReapiClient | undefined
   let remoteCache: ReapiRemoteCache | undefined
   return definePlugin(import.meta, {

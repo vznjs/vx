@@ -1141,10 +1141,32 @@ export async function wrapSandboxedCommand(
   // sandboxed server and all it forked outlived vx (turborepo#9666). Now
   // the namespace goes with vx, a `setsid` daemon inside included, a
   // traced one-shot task too: its strace runs inside (B-11).
-  if (process.platform === 'linux' && /^\S*bwrap /.test(wrapped))
-    wrapped = `exec ${readOnlyMasks(wrapped, scratch)}`
+  // Every mask and bind is a mount point, and git's discovery stops at
+  // one: a task granted the repository's `.git` still read "not a git
+  // repository … Stopping at filesystem boundary" (2026-10-03). The
+  // boundaries are the sandbox's, so a task that names a `.git` may walk
+  // across them; only such a task, since git-aware tools read the variable
+  // (vx's own repoFacts asks git instead of the disk under it). A value the
+  // task's environment sets wins.
+  if (process.platform === 'linux' && /^\S*bwrap /.test(wrapped)) {
+    const gitGranted = [...args.config.allowRead, ...args.config.allowWrite].some((g) =>
+      g.split(/[\\/]/).includes('.git'),
+    )
+    wrapped =
+      (gitGranted ? 'GIT_DISCOVERY_ACROSS_FILESYSTEM=${GIT_DISCOVERY_ACROSS_FILESYSTEM-1} ' : '') +
+      `exec ${readOnlyMasks(wrapped, scratch)}`
+  }
   if (process.platform === 'linux' && !hostHasIpv6())
     wrapped = `SOCAT_DEFAULT_LISTEN_IP=4 ${wrapped}`
+  const held = portsHeld(ports)
+  if (held.length > 0) {
+    throw new UserError(
+      `sandbox: localBinding port${held.length === 1 ? '' : 's'} ${held.join(', ')} ` +
+        `${held.length === 1 ? 'is' : 'are'} already in use on this machine, so the task's own ` +
+        `cannot be exposed there and a client would reach the other listener; stop what ` +
+        `holds ${held.length === 1 ? 'it' : 'them'} or list another port`,
+    )
+  }
   if (args.server === true) liveServers.add(tag)
   if (ports.length > 0) {
     spawnHostBridges(ports, tag)
@@ -1403,13 +1425,45 @@ const hostBridges = new Map<
 >()
 
 /**
+ * The ports a host listener already holds where the bridge would bind
+ * (`127.0.0.1`, or every address). The listen wait below reads the same
+ * table and took that listener for the bridge, whose bind had failed: the
+ * task passed and a client of the port reached the other process
+ * (2026-10-03). Linux, own procfs only, as the wait.
+ */
+function portsHeld(ports: readonly number[]): number[] {
+  if (ports.length === 0 || !procfsIsOwn()) return []
+  const held = new Set<string>()
+  for (const [file, any, loop] of [
+    ['/proc/net/tcp', '00000000', '0100007F'],
+    ['/proc/net/tcp6', '00000000000000000000000000000000', '00000000000000000000000001000000'],
+  ] as const) {
+    let table: string
+    try {
+      table = readFileSync(file, 'utf8')
+    } catch {
+      continue
+    }
+    for (const line of table.split('\n')) {
+      const f = line.trim().split(/\s+/)
+      if (f[3] !== '0A' || f[1] === undefined) continue
+      const [addr, port] = f[1].split(':')
+      // `::1` does not hold 127.0.0.1's port; every address does.
+      if (addr === any || (file === '/proc/net/tcp' && addr === loop)) held.add(port!)
+    }
+  }
+  return ports.filter((p) => held.has(p.toString(16).toUpperCase().padStart(4, '0')))
+}
+
+/**
  * Wait until each host-side bridge listens on its port, so a server that
  * says it is ready inside the sandbox is reachable on the host: the socat
  * starts asynchronously, and a held server's port refused a connection
  * right after its ready line under I/O load (M-22). Read off
  * /proc/net/tcp (127.0.0.1, state 0A); skipped where /proc is not this
  * process's (its net table could be another namespace's), ended early by
- * a bridge that exited (a port already taken), and bounded at 5 s.
+ * a bridge that exited, and bounded at 5 s. A port another listener holds
+ * reads as listening here, so the wrap refuses it first (`portsHeld`).
  */
 async function hostBridgesListen(ports: readonly number[], tag: string): Promise<void> {
   if (!procfsIsOwn()) return
@@ -1837,7 +1891,8 @@ async function runSandboxedOnce(
       config: args.config,
       skip: [taskTmpRoot(), ...srtDefaultWritePaths()],
     })
-    if (outside.length > 0) violations.push(outsideWritesHint(outside, baselines.denyRead))
+    if (outside.length > 0)
+      violations.push(outsideWritesHint(outside, baselines.denyRead, args.reportWithin))
   }
 
   // The one denial macOS never logs. MEASURED 2026-09-05, same machine, two
@@ -1905,12 +1960,22 @@ async function runSandboxedOnce(
 }
 
 /** The hint for writes refused outside the project, a few paths named. */
-function outsideWritesHint(paths: readonly string[], walled: readonly string[]): SandboxViolation {
+function outsideWritesHint(
+  paths: readonly string[],
+  walled: readonly string[],
+  within: string,
+): SandboxViolation {
   const shown = paths.slice(0, 5).join(', ')
   const more = paths.length > 5 ? ` and ${paths.length - 5} more` : ''
   const home = toRealPath(os.homedir())
   const dir = path.dirname(paths[0]!)
-  const spelled = atOrUnder(dir, home) ? `~${dir.slice(home.length)}` : dir
+  // In the workspace, from the project, as a committed config spells it:
+  // the absolute path held only on the machine that printed it.
+  const spelled = walled.some((w) => atOrUnder(dir, toRealPath(w)))
+    ? path.relative(toRealPath(within), dir) || '.'
+    : atOrUnder(dir, home)
+      ? `~${dir.slice(home.length)}`
+      : dir
   const refused =
     `vx: the sandbox refused writes outside the project, which are not reported as ` +
     `violations: ${shown}${more}.`
@@ -1925,9 +1990,12 @@ function outsideWritesHint(paths: readonly string[], walled: readonly string[]):
     ? `${refused} The task has its own temp directory, empty at its start: write under ` +
       `$TMPDIR (os.tmpdir() in Node and Bun) instead of a fixed path.`
     : `${refused} If the task needs one, grant its directory, e.g. ` +
-      `\`allow: { write: ['${spelled}/'] }\`.`
+      `\`allow: { write: [${jsString(`${spelled}/`)}] }\`.`
   return { timestamp: new Date(), hint: true, line }
 }
+
+/** A path as a JS string literal a config can take: a quote in it is escaped. */
+const jsString = (p: string): string => (p.includes("'") ? JSON.stringify(p) : `'${p}'`)
 
 /** The host's shared temp directories, canonical: what a fixed temp path in a tool names. */
 function hostTempRoots(): string[] {
@@ -1943,7 +2011,7 @@ function hiddenReadsHint(paths: readonly string[], within: string): SandboxViola
     line:
       `vx: the sandbox hid paths outside the project that exist on this machine, which are ` +
       `not reported as violations: ${shown}${more}. If the task reads one, grant it, e.g. ` +
-      `\`allow: { read: ['${path.relative(toRealPath(within), paths[0]!)}'] }\`.`,
+      `\`allow: { read: [${jsString(path.relative(toRealPath(within), paths[0]!))}] }\`.`,
   }
 }
 

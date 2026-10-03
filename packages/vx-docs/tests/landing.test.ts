@@ -28,7 +28,7 @@ const LINES = [
   ['parallel', '2 Parallel. ui and api build at once.'],
   ['cache', '3 Cache. Unchanged work comes back from the cache.'],
   ['changed', '4 Only what changed. You edited app; only app runs.'],
-  ['sandbox', '5 Sandbox. A read you did not declare fails the task.'],
+  ['sandbox', '5 Sandbox. A workspace file you did not declare is out of reach.'],
   ['plugins', '6 Plugins. Swap the cache, runner or telemetry. No fork.'],
 ]
 
@@ -324,9 +324,14 @@ describe('the landing page', () => {
       'npx vx run build --all',
       'npx vx run build --all',
     ])
+    // `vx init` writes no cache block (its report says so), so the block
+    // that promises a hit on the second build names the step between.
+    expect(/npx vx init +# ([^\n]*)/.exec(start)![1]).toContain('add the cache block')
     const subs = [...start.matchAll(/<p class="sub">([\s\S]*?)<\/p>/g)].map((m) => text(m[1]!))
     expect(subs).toEqual([
-      'Coming from Turbo or Nx: bunx @vzn/vx-migrate or vx init gives a temporary start; move to native vx config.',
+      // `vx init` is the temporary start; the migrator writes the native
+      // config, and npm has no copy of it yet (J2-28).
+      'Coming from Turbo or Nx: vx init gives a temporary start, and bunx @vzn/vx-migrate writes the native vx config (its first publish is pending).',
     ])
     expect(text(start)).not.toMatch(/turbo\.json|nx\.json|unchanged|faster/i)
   })

@@ -57,7 +57,7 @@ describe('server and Storybook executors', () => {
       web,
       'vite preview --config=vite.config.ts --outDir=../../dist/apps/web --port=4300 --mode=staging',
       [
-        '@nx/vite:preview-server built the app (in watch mode) before serving it — add its build task to dependsOn',
+        '@nx/vite:preview-server rebuilt the app in watch mode while serving — vx builds it once, first',
       ],
     ],
     [
@@ -66,9 +66,7 @@ describe('server and Storybook executors', () => {
       { buildTarget: 'web:build', staticFilePath: 'out', watch: false, mode: 'x' },
       web,
       'vite preview --config=vite.config.ts --outDir=out --mode=x',
-      [
-        '@nx/vite:preview-server built the app (in watch mode) before serving it — add its build task to dependsOn',
-      ],
+      [],
     ],
     [
       'storybook dev from the workspace root on Nx’s port 9009',
@@ -107,7 +105,15 @@ describe('server and Storybook executors', () => {
           options,
           ctx as Parameters<typeof nativeExecutorCommand>[2],
         ),
-      ).toEqual({ command, env: {}, todos })
+      ).toEqual({
+        command,
+        env: {},
+        todos,
+        // A preview server's build target is an edge, as Nx built it first.
+        ...(executor === '@nx/vite:preview-server'
+          ? { deps: [String(options['buildTarget'])] }
+          : {}),
+      })
     })
   }
 })

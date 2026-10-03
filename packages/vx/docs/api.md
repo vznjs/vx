@@ -1368,6 +1368,21 @@ What a plugin author writes: every hook, and no name.
 export type PluginHooks = Omit<VxPlugin, 'name'>
 ```
 
+## `PluginOptionKinds`
+
+type · `src/orchestrator/plugin.ts`
+
+Every option a factory takes, each with the one kind its type allows
+(`'any'` for a union of kinds, such as `false | { … }`). Derived from
+the options interface, so the type checker refuses a missing option, an
+extra one or a wrong kind.
+
+```ts
+export type PluginOptionKinds<T> = {
+  readonly [K in keyof Required<T>]-?: OptionKind<Required<T>[K]>
+}
+```
+
 ## `PluginOrigin`
 
 type · `src/orchestrator/plugin.ts`
@@ -1568,17 +1583,18 @@ export interface ReachGraph {
 
 function · `src/orchestrator/plugin.ts`
 
-Refuse an option a plugin factory does not take, as core refuses an
-unknown config field. Bun strips a config's types, so a misspelt option
-(`reapi({ endpont })`) reached the factory, which read it as unset and
-quietly declined: the run went local with no word. `factory` names the
-call in the message (`reapi()`), `known` is the options the factory reads.
+Refuse an option a plugin factory does not take, or a value of the wrong
+kind, as core refuses an unknown config field. Bun strips a config's
+types, so a misspelt option (`reapi({ endpont })`) reached the factory,
+which read it as unset and quietly declined, and a string where a number
+or a boolean belongs (`process.env.X`) was misread or threw a bare
+TypeError. `factory` names the call in the message (`reapi()`).
 
 ```ts
-export function refuseUnknownOptions(
+export function refuseUnknownOptions<T>(
   factory: string,
   options: unknown,
-  known: readonly string[],
+  kinds: PluginOptionKinds<T>,
 ): void
 ```
 

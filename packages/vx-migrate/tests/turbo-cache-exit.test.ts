@@ -22,7 +22,8 @@ await mock.module('node:fs/promises', () => ({
     return real.unlink(p)
   },
 }))
-const { artifactTag, resolveTurboCacheConfig, TurboRemoteCache } = await import('../src/index.js')
+const { artifactTag, resolveTurboCacheConfig, TurboRemoteCache } =
+  await import('../src/turbo-cache/index.js')
 
 const KEY = 'k'.repeat(40)
 

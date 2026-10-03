@@ -162,6 +162,63 @@ describe('docs/cli.md — the `vx info --format json` list is the InfoFacts obje
     const unknown = [...named].filter((k) => !anyKey.has(k) && !literals.has(k)).sort()
     expect({ undocumented, unknown }).toEqual({ undocumented: [], unknown: [] })
   })
+
+  // J2-41: the bullet gave `sandbox` as `{ available, reason, declared }`
+  // after `untraced` joined the object; a shape lists all its keys.
+  it('gives each object field the keys the object carries', async () => {
+    const strip = (s: string): string => s.replace(/\/\*\*[\s\S]*?\*\//g, '')
+    const read = (file: string): Promise<string> =>
+      Bun.file(new URL(`../src/orchestrator/${file}`, import.meta.url)).text()
+    const doctor = strip(await read('doctor.ts'))
+    const flaky = strip(await read('failure-mode.ts'))
+    const info = doctor.slice(doctor.indexOf('export interface InfoFacts {'))
+    const keysOf = (body: string): string =>
+      Array.from(body.matchAll(/(\w+)\??:/g), (m) => m[1]!)
+        .sort()
+        .join(',')
+    /** The keys of `name`'s object type in InfoFacts, an element type's for an array. */
+    const sourceKeys = (name: string): string => {
+      const at = info.search(new RegExp(`^ {2}${name}\\??:`, 'm'))
+      const line = info.slice(at, info.indexOf('\n', at))
+      if (line.includes('FlakyTask[]')) {
+        const open = flaky.indexOf('export interface FlakyTask {')
+        return keysOf(flaky.slice(open + 27, flaky.indexOf('\n}', open)))
+      }
+      let depth = 0
+      let body = ''
+      for (const c of info.slice(info.indexOf('{', at))) {
+        if (c === '{') depth++
+        else if (c === '}' && --depth === 0) break
+        else if (depth > 0) body += c
+      }
+      return keysOf(body)
+    }
+    const doc = await Bun.file(new URL('../docs/cli.md', import.meta.url)).text()
+    const start = doc.indexOf('- `--format json` prints the same facts')
+    const bullet = doc.slice(start, doc.indexOf('\n- ', start + 1)).replace(/\s+/g, ' ')
+    const shapes = Array.from(bullet.matchAll(/`(\w+)` \(`\[?\{([^`}]*)\}/g), (m) => [
+      m[1]!,
+      m[2]!
+        .split(',')
+        .map((k) => k.trim())
+        .sort()
+        .join(','),
+    ])
+    expect(new Set(shapes.map(([name]) => name))).toEqual(
+      new Set([
+        'configErrors',
+        'flakyTasks',
+        'gitStatusCache',
+        'memory',
+        'orphans',
+        'plugins',
+        'sandbox',
+        'workers',
+      ]),
+    )
+    const off = shapes.filter(([name, keys]) => sourceKeys(name!) !== keys)
+    expect(off.map(([name, keys]) => `${name}: {${keys}} vs {${sourceKeys(name!)}}`)).toEqual([])
+  })
 })
 
 // The broad-run sample is the one picture of a run the reference gives, and

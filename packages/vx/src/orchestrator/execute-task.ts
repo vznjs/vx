@@ -396,6 +396,26 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
     if (spawn.child === undefined) void onExit()
     else void spawn.child.exited.then(onExit, onExit)
   }
+  // Said once if readiness is slow: a dependency's output is hidden unless
+  // it fails, and with no `exec.timeout` the wait never ends, so a run
+  // whose `readyWhen` never matched showed nothing at all.
+  const readyWhen = step.persistent.readyWhen
+  const noticeMs = readyNoticeMs()
+  const notice =
+    readyWhen === undefined
+      ? undefined
+      : setTimeout(() => {
+          if (isAborted(args.stopSignal)) return
+          const after = noticeMs < 1000 ? `${noticeMs} ms` : `${noticeMs / 1000} s`
+          const unbounded = effectiveTimeout === undefined ? ', with no exec.timeout' : ''
+          log.status(
+            `vx: ${node.id} not ready after ${after}: waiting for a line matching /${readyWhen}/ (readyWhen)${unbounded}`,
+          )
+        }, noticeMs)
+  if (notice !== undefined) {
+    const quiet = (): void => clearTimeout(notice)
+    void spawn.ready.then(quiet, quiet)
+  }
   try {
     await spawn.ready
   } catch (err) {
@@ -420,6 +440,23 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // reader looks for why a task failed, and a run with a custom logger
     // (an embedder, the MCP server) never saw a bare stderr write at all.
     log.taskStderr(node, `\n[vx] ${node.id}: persistent task failed to become ready: ${message}\n`)
+    // A server is never traced, so the sandbox's refusals reach no report:
+    // a dev server that died on a file outside its grants read only as the
+    // tool's own "not found" (2026-10-03). Said for a sandboxed server that
+    // exited failing, which is the shape a refusal takes.
+    if (
+      step.sandbox !== undefined &&
+      err instanceof PersistentReadyError &&
+      err.reason === 'exited' &&
+      err.exitCode !== 0
+    ) {
+      log.taskStderr(
+        node,
+        `[vx] ${node.id} ran in the sandbox, which reports nothing for a server: a path outside ` +
+          `its grants reads as missing (ENOENT), a refused write as read-only (EROFS). Check ` +
+          `exec.sandbox.allow, or run the command as a one-shot sandboxed task to see what it was refused.\n`,
+      )
+    }
     // The server is dead or being torn down, so the sweep on its exit may
     // already be running: ask the shared one rather than starting a second.
     for (const p of await sweptUntouched()) {
@@ -1319,4 +1356,14 @@ function taskEnv(node: TaskNode, step: ExecConfig, workspaceRoot: string): NodeJ
 
 function isAborted(signal: AbortSignal | undefined): boolean {
   return signal?.aborted === true
+}
+
+/**
+ * How long a server may take to match `readyWhen` before vx says it waits.
+ * `VX_READY_NOTICE_MS` overrides it, as `VX_KILL_GRACE_MS` does the grace.
+ */
+function readyNoticeMs(): number {
+  const raw = process.env['VX_READY_NOTICE_MS']
+  if (raw !== undefined && /^[0-9]+$/.test(raw) && Number(raw) > 0) return Number(raw)
+  return 10_000
 }

@@ -323,7 +323,9 @@ for it to exit. Instead it considers the task "ready":
   (colour, OSC titles), so `^` and `$` anchor to a line as you read
   it and `Local:` matches Vite's bold `Local` under `FORCE_COLOR`.
   The trailing partial line is tested too, so prompt-style banners
-  without a newline (`printf 'Listening on :3000'`) count.
+  without a newline (`printf 'Listening on :3000'`) count. A server
+  not ready after 10 s (`VX_READY_NOTICE_MS`) is said once, naming
+  the pattern it waits for, and whether `exec.timeout` bounds the wait.
 
 ```ts
 dev: {
@@ -1033,7 +1035,7 @@ interface SandboxGrants {
   network?: true | string[] // an allowlist of domains; `true` adds none (below)
   systemInfo?: string[] // sysctl names, e.g. 'vfs.disk-space' (macOS)
   unixSockets?: true | string[] // AF_UNIX bind/connect, all or by path (Linux: any path)
-  localBinding?: boolean | number[] // bind and reach localhost ports (macOS; Linux needs no grant); a list also exposes them to the host
+  localBinding?: boolean | number[] // bind and reach localhost ports (macOS; Linux needs no grant); a list also exposes them to the host (a port the host already holds fails the task)
   machLookup?: string[] // mach global-names (macOS)
   pty?: boolean // acquire a TTY
   gitConfig?: boolean // write the repository's .git/config (this task only)
@@ -1047,7 +1049,11 @@ patterns per class a denial is reported in — `read`, `write`,
 that would have permitted it; any other name is refused. Every grant is
 the task's own: `unixSockets` (or a `localBinding` port list, whose
 bridge is a unix socket) lifts the `socket(AF_UNIX)` block for the task
-that declares it, never for the run's other sandboxed tasks:
+that declares it, never for the run's other sandboxed tasks. On Linux
+the block is the kernel's answer to the call itself, so it is reported
+nowhere: the task reads only its tool's own `socket(1, 1, 0): Operation
+not permitted` (a Docker, ssh-agent or database socket), and the grant
+is `unixSockets`:
 
 ```ts
 exec: {
@@ -1215,14 +1221,23 @@ project, so every sibling project and every root file is denied. Being
 stopped at that wall is the sandbox working, not a finding: only
 denials INSIDE the project are reported, because those are the reads
 that make a cache key wrong. A write refused past the wall is named
-beside a FAILED task, never counted, with the directory to grant (under
-the host's temp directory, `$TMPDIR`, the task's own, instead): a
+beside a FAILED task, never counted, with the directory to grant, spelled
+from the project when it is in the workspace (under the host's temp
+directory, `$TMPDIR`, the task's own, instead): a
 tool that cannot fill its cache (`~/.bun/install/cache`) rarely says
 where it tried. So is a read the wall hid of a path that exists on the
 host, with the grant spelled from the project (`'../../tsconfig.base.json'`):
 the tool said only "not found". To reach a path outside the project but
 inside the workspace — a workspace-level fixture — declare it; a path
 outside the workspace is not walled (above).
+
+**git in a sandboxed task** reads the repository only if it is granted:
+`read: ['.', '../../.git']` from a project two levels down (`.git` is a
+wall, so `read: ['.']` in a root project leaves it out too). On Linux
+a task whose grants name a `.git` gets `GIT_DISCOVERY_ACROSS_FILESYSTEM=1`
+(a value the task sets wins), since every sandbox mount is a filesystem
+boundary git's discovery stops at. `git rev-parse` and `git log` then answer as outside;
+`git status` reports a file the task may not read as deleted.
 
 **Policy: fail on violation.** An undeclared read, or a write the
 sandbox refuses, fails the task, and a failed task is never cached.
@@ -1734,6 +1749,7 @@ Workspace-discovery errors (`src/workspace/workspace.ts`):
 | `<file>: packages must be an array of glob strings`                                  | `pnpm-workspace.yaml` `packages:` is a bare string, etc.                                                                                                                                                                                                   |
 | `<file>: must be a JSON object`                                                      | A `package.json` (the root's or a member's) is `null`, a list or a scalar; it crashed with a TypeError until item 988.                                                                                                                                     |
 | `<file>: "name" must be a string with no surrounding whitespace`                     | A `package.json` `name` is a number, an object, or has surrounding whitespace (npm refuses one too); `{"name":123}` planned `123#build` until item 988.                                                                                                    |
+| `<file>: "name" cannot hold "#" — vx addresses a task as <name>#<task>`              | A `package.json` `name` holds `#` (npm refuses one too): `{"name":"a#b"}` planned `a#b#build` under `--all`, but `vx run a#b#build` and a `dependsOn` split at the first `#` and found nothing.                                                            |
 | `<file>: must be a mapping (packages: and pnpm's settings)`                          | `pnpm-workspace.yaml` is a list or a scalar. A mapping with no `packages:` (pnpm 10 settings or catalogs in a single-package repo) is not an error: the root's `package.json` decides, as without the file (item 984).                                     |
 | `<file>: workspaces must be an array of glob strings`                                | `package.json` `workspaces` holds a non-string entry.                                                                                                                                                                                                      |
 | `<file>: workspaces.packages must be an array of glob strings`                       | The yarn-legacy `workspaces: { packages: [...] }` form holds a non-string entry.                                                                                                                                                                           |

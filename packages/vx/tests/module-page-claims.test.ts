@@ -1,7 +1,7 @@
 // Module pages a fix left behind: the commit updated cli.md or caching.md
 // and the page for the file it changed kept the old claim. Each row holds
 // one page to what its code now does.
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { formatRunSummary } from '../src/orchestrator/summary.js'
@@ -121,10 +121,126 @@ describe('module pages state what their file does since the fix', () => {
     expect(page_).toContain('`vx: <id> exited with code <n> while the run went on`')
   })
 
+  it('orchestrator.md: a held server that dies after the run is named (#2442)', () => {
+    expect(src('orchestrator/run.ts')).toContain(
+      'if (!stopping && code !== 0) log.status(`vx: ${n.id} exited with code ${code}`)',
+    )
+    const held = blocks('modules/orchestrator.md', 'RunOptions.holdPersistent')
+    expect(held.length).toBe(1)
+    expect(held[0]).toContain('One that dies on its own after that is named')
+  })
+
   it("logger.md: a kept server's output streams under its id after the summary (#2054)", () => {
     expect(src('orchestrator/logger.ts')).toContain('formatKeptLines(')
     expect(page('modules/logger.md')).toMatch(
       /streams below the summary a line at a time under its id/,
     )
+  })
+})
+
+// J2-39: eight signatures on the module pages lacked a parameter the
+// source takes (deniedCalls' cwd and reads, migrateScripts' outside, …).
+describe('a module page lists every parameter its function takes', () => {
+  const strip = (s: string): string => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '')
+  /** Top-level parameters of the list at `at` (generics skipped), or null. */
+  const arity = (text: string, at: number): number | null => {
+    let i = at
+    if (text[i] === '<') {
+      for (let d = 0; i < text.length; i++) {
+        if (text[i] === '<') d++
+        else if (text[i] === '>' && text[i - 1] !== '=' && --d === 0) {
+          i++
+          break
+        }
+      }
+    }
+    if (text[i] !== '(') return null
+    let depth = 0
+    let commas = 0
+    let any = false
+    for (i++; i < text.length; i++) {
+      const c = text[i]!
+      if ('([{<'.includes(c)) depth++
+      else if (')]}'.includes(c) || (c === '>' && text[i - 1] !== '=')) {
+        if (depth === 0 && c === ')') return any ? commas + 1 : 0
+        depth--
+      } else if (c === ',' && depth === 0) {
+        if (/^\s*\)/.test(text.slice(i + 1))) return commas + 1
+        commas++
+      } else if (!/\s/.test(c)) any = true
+    }
+    return null
+  }
+  const exported = (text: string): [string, number | null][] =>
+    [...strip(text).matchAll(/export (?:async )?function (\w+)/g)].map((m) => [
+      m[1]!,
+      arity(strip(text), m.index! + m[0].length),
+    ])
+
+  it('each documented export function has a source arity to match', () => {
+    const counts = new Map<string, Set<number | null>>()
+    for (const rel of readdirSync(SRC, { recursive: true }) as string[]) {
+      if (!rel.endsWith('.ts')) continue
+      for (const [name, n] of exported(readFileSync(path.join(SRC, rel), 'utf8'))) {
+        counts.set(name, (counts.get(name) ?? new Set()).add(n))
+      }
+    }
+    const off: string[] = []
+    let seen = 0
+    for (const f of readdirSync(path.join(DOCS, 'modules'))) {
+      for (const [name, n] of exported(readFileSync(path.join(DOCS, 'modules', f), 'utf8'))) {
+        const src = counts.get(name)
+        if (src === undefined) continue
+        seen++
+        if (!src.has(n)) off.push(`${f}: ${name} lists ${n}, source takes ${[...src].join('/')}`)
+      }
+    }
+    expect(seen).toBeGreaterThan(200)
+    expect(off).toEqual([])
+  })
+})
+
+// J2-40: interfaces on the module pages had fallen behind their source —
+// CacheLayer listed 9 of its 25 members, plus one only `Cache` has.
+describe('a module page lists exactly the fields its interface has', () => {
+  const strip = (s: string): string =>
+    s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/(?! …)[^\n]*/g, '')
+  /** Each `export interface` → its top-level member names; null when abridged (`// …`). */
+  const interfaces = (text: string): [string, Set<string> | null][] =>
+    [...text.matchAll(/export interface (\w+)(?:<[^{]*>)?(?: extends [^{]+)? \{/g)].map((m) => {
+      let body = ''
+      for (let i = m.index! + m[0].length, d = 1; i < text.length; i++) {
+        const c = text[i]!
+        if (c === '{') d++
+        else if (c === '}' && --d === 0) break
+        body += d === 1 || c === '\n' ? c : ' '
+      }
+      if (body.includes('// …')) return [m[1]!, null]
+      const names = body.matchAll(/^\s*(?:readonly\s+)?['"]?([\w$]+)['"]?\??\s*[:(<]/gm)
+      return [m[1]!, new Set([...names].map((n) => n[1]!))]
+    })
+  const sorted = (s: Set<string>): string => [...s].sort().join(',')
+
+  it('each documented interface matches a source one member for member', () => {
+    const sources = new Map<string, string[]>()
+    for (const rel of readdirSync(SRC, { recursive: true }) as string[]) {
+      if (!rel.endsWith('.ts')) continue
+      for (const [name, fields] of interfaces(strip(readFileSync(path.join(SRC, rel), 'utf8')))) {
+        if (fields) sources.set(name, [...(sources.get(name) ?? []), sorted(fields)])
+      }
+    }
+    const off: string[] = []
+    let seen = 0
+    for (const f of readdirSync(path.join(DOCS, 'modules'))) {
+      const text = strip(readFileSync(path.join(DOCS, 'modules', f), 'utf8'))
+      for (const [name, fields] of interfaces(text)) {
+        const src = sources.get(name)
+        if (src === undefined || fields === null) continue
+        seen++
+        if (!src.includes(sorted(fields))) off.push(`${f}: ${name} {${sorted(fields)}}`)
+      }
+    }
+    expect(seen).toBeGreaterThan(100)
+    expect(off).toEqual([])
   })
 })

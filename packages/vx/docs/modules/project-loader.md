@@ -99,8 +99,14 @@ readers that reach it here.
   real `process.exit` in place only once the last has left. An exit a
   config schedules for later (a timer) is not covered.
 - A first load may not change the built-ins vx runs on:
-  `Object.prototype`, `Array.prototype`, `String`, `Map`, `Set` and
-  `Promise` prototypes, `Bun`, `Bun.hash`, `JSON` and `Math`. Every
+  `Object.prototype`, `Array.prototype`, `String`, `Map`, `Set`,
+  `Promise`, `RegExp`, `Function`, `Number` and `Date` prototypes,
+  `Object`, `Array`, `Reflect`, `Date`, `Bun`, `Bun.hash`, `JSON` and
+  `Math`. The check reads through primitives taken before any config runs,
+  in indexed loops: a config that set `Reflect.ownKeys = () => []` (or
+  `Array.prototype.forEach`) blinded it before, and its
+  `Object.prototype.exec` ran in another project's task (D-124; +2 ms on a
+  cold 300-config load, none warm). Every
   config is read through them and cache keys are made with them
   (`Bun.hash.xxHash3 = () => 7n` keyed every task 00000000, D-75), and
   the key folds each config's own JSON, so `Object.prototype.exec` set in one config ran in another
@@ -114,13 +120,34 @@ readers that reach it here.
   more than one evaluation was in flight, the round evaluates each of its
   configs alone in a throwaway worker that reports what it changed, and
   names the first that changes something (it named an innocent config
-  before, D-119); none found, it says "a project config". A round where every config hits takes
+  before, D-119); none found, it says "a project config". While loads
+  overlap, each one is checked against only the built-ins the loader
+  itself reads through between loads (`Object.prototype`, `JSON`, the
+  `Promise`, `Map` and `Set` prototypes, `Bun.hash`), and the rest once,
+  at the round's end: all of them after every load was ~73 µs a config,
+  a quarter of a cold load of 1,000. A change found at the end may have
+  broken another config's load, so it is refused first, and a round that
+  changed anything stores none of its evaluations. A lone load checks
+  them all. A round where every config hits takes
   no snapshot: reading every descriptor of `Bun` builds its lazy
   members, 7 ms of a warm run (E-88).
 - A first load may not move the process either: a config's
   `process.chdir()` left every relative path vx resolved after it reading
   from the config's choice; the working directory is put back and the load
   refused, naming `process.cwd (a chdir)` (D-120).
+- `vx.workspace.ts` gets the same guard: it runs in this process too, and
+  its `Object.prototype.exec` ran in a project's group task. Built-ins,
+  `process.env`, the cwd and the umask are snapshotted around its load, put
+  back, and the load refused naming the file, a failed load's change
+  included (D-126): the workspace config's bytes are in no key, so a
+  removed `Object.prototype.exec` replayed the old command. Globals are
+  left out: it loads first in every run, filtered or not.
+- Nor change the umask: a config's `process.umask(0o777)` left every file
+  vx and its tasks wrote after it `000`, a cache artifact a user other than
+  root could not read back. A worker shares the process's umask (a
+  `chdir` there stays the worker's), so a repeat load is checked too: the
+  worker puts it back after every evaluation and the load is refused,
+  naming `process.umask` (D-125).
 - A first load may not add or replace a global either: one config's
   `globalThis.x = …` reached every config loaded after it in the process,
   so `vx run --all` read it and a `--filter` of the reader alone did not

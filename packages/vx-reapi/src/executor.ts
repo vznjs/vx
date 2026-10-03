@@ -529,6 +529,14 @@ export function acceptsTask(task: TaskPlacement): boolean {
 }
 
 export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = {}): TaskExecutor {
+  // A zero or non-number bound stopped every action the moment it began
+  // executing.
+  const ms = opts.executeTimeoutMs
+  if (ms !== undefined && !(typeof ms === 'number' && Number.isFinite(ms) && ms > 0)) {
+    throw new Error(
+      `@vzn/vx-reapi: executeTimeoutMs must be a positive number of ms (got ${JSON.stringify(ms)})`,
+    )
+  }
   const warn = opts.warn ?? (() => undefined)
   // One Capabilities round trip per executor, not per task — the answer
   // cannot change mid-run, and a 400-task graph would otherwise ask 400 times.

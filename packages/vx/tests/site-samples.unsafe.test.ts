@@ -158,6 +158,35 @@ describe('CONTRIBUTING names what the gate runs on', () => {
   })
 })
 
+// The configure guide said a task sees only the variables you pass and
+// gave `CI` as a passThrough example, and a post said env reaches a task
+// only through `exec.env`: `CI` is essential and reaches every task.
+describe('no page says a task sees only what it declares, past the allowlist', () => {
+  it("the guide's passThrough examples are no essentials, and both pages name the allowlist", () => {
+    const guide = readFileSync(path.join(GUIDES, 'configure.md'), 'utf8')
+    const row = guide.split('\n').find((l) => l.startsWith('| `exec.env.passThrough`'))!
+    expect(row).toBeDefined()
+    const examples = [...row.matchAll(/`([A-Z][A-Z0-9_]+)`/g)].map((m) => m[1]!)
+    expect(examples.length).toBeGreaterThan(0)
+    expect(examples.filter((n) => ESSENTIAL_ENV.includes(n))).toEqual([])
+    expect(guide).toContain('Past a small essential allowlist (below), a task sees only')
+    const post = readFileSync(path.join(DOCS, 'blog', 'explicit-over-magical.md'), 'utf8')
+    expect(post.split(/\s+/).join(' ')).toContain(
+      'Past the essential allowlist every task gets (`PATH`, `HOME`, `CI`, `NODE_OPTIONS` and a few more), env reaches a task only through `exec.env`.',
+    )
+    const one = readFileSync(path.join(DOCS, 'blog', 'one-command-per-task.md'), 'utf8')
+    expect(one.split(/\s+/).join(' ')).toContain(
+      'an isolated environment: a small essential allowlist (`PATH`, `HOME`, `CI`, `NODE_OPTIONS` and a few more), then what `exec.env` says',
+    )
+    // The Troubleshooting page (#2470) came after, with "vx passes only
+    // what you list" (J2-8).
+    const trouble = readFileSync(path.join(GUIDES, 'troubleshooting.md'), 'utf8')
+    expect(trouble.split(/\s+/).join(' ')).toContain(
+      'Past a small essential allowlist (`PATH`, `HOME`, `CI` and a few more), vx passes only what you list',
+    )
+  })
+})
+
 describe('the configure guide names the essential allowlist', () => {
   it('its "always gets a small essential allowlist" sentence names every name in ESSENTIAL_ENV', () => {
     const page = section(
@@ -207,8 +236,8 @@ describe("the README's comparison agrees with comparison.md on Turbo's daemon", 
   it('both say turbo run uses none', () => {
     const repo = path.resolve(import.meta.dir, '..', '..', '..')
     const readme = readFileSync(path.join(repo, 'README.md'), 'utf8')
-    const row = /^\| Daemon required for speed \|[^|]*\| ([^|]*?) +\|/m.exec(readme)![1]
-    expect(row).toBe('No (`turbo run` has none)')
+    const row = /^\| Daemon +\|[^|]*\| ([^|]*?) +\|/m.exec(readme)![1]
+    expect(row).toBe('None for `turbo run`')
     const doc = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'comparison.md'), 'utf8')
     // Bisected over npm: 2.8.10's help still offers --daemon, 2.8.11's marks
     // it deprecated and unused by `turbo run`; 2.10 deprecates neither
@@ -2060,6 +2089,13 @@ describe('the sandbox post judges a violation against the grants', () => {
     expect(post).toContain("sandbox: { allow: { read: ['.'] } }")
     expect(post).toContain('the violation is judged against the grants alone')
     expect(post).not.toContain('reads a file its inputs never named fails')
+    // The Troubleshooting page (#2470) said the sandbox refuses a read you
+    // did not declare, of a file missing from the inputs (J2-37).
+    const trouble = readFileSync(path.join(GUIDES, 'troubleshooting.md'), 'utf8').replace(
+      /\s+/g,
+      ' ',
+    )
+    expect(trouble).toContain('with reads granted no wider than the inputs, refuses that read')
   })
 })
 
@@ -2437,6 +2473,64 @@ describe('the sandbox pages say a refused temp write points at $TMPDIR', () => {
     )
     expect(flat(path.join(GUIDES, 'sandboxing.md'))).toContain(
       "under the host's temp directory it names `$TMPDIR` instead",
+    )
+  })
+})
+
+describe('every plugin README names each option its factory takes', () => {
+  // vx-otel's README showed five of its options, vx-github's had no
+  // `checkName`, and vx-reapi's no `instanceName`, `headers` (where a hosted
+  // server's API key goes) or `tls` (J2-33). Read from each options
+  // interface; a field documented as a test seam is not the user's.
+  const packages = path.resolve(import.meta.dir, '..', '..')
+  const fields = (file: string, iface: string): string[] => {
+    const src = readFileSync(path.join(packages, file), 'utf8')
+    const body = new RegExp(`export interface ${iface}\\b[^{]*\\{([\\s\\S]*?)\\n\\}`).exec(src)?.[1]
+    expect(body).toBeDefined()
+    const out: string[] = []
+    let doc = ''
+    for (const line of body!.split('\n')) {
+      const field = /^ {2}(?:readonly )?(\w+)\??:/.exec(line)
+      if (field === null) {
+        doc += line
+        continue
+      }
+      if (!/Test seam/.test(doc)) out.push(field[1]!)
+      doc = ''
+    }
+    expect(out.length).toBeGreaterThan(0)
+    return out
+  }
+  const cases: [string, string, string, readonly string[]][] = [
+    ['vx-otel', 'vx-otel/src/plugin.ts', 'OtelPluginOptions', []],
+    ['vx-github', 'vx-github/src/plugin.ts', 'GithubPluginOptions', []],
+    ['vx-reapi', 'vx-reapi/src/index.ts', 'ReapiPluginOptions', ['instanceName', 'headers', 'tls']],
+    ['vx-schedule-history', 'vx-schedule-history/src/index.ts', 'ScheduleHistoryOptions', []],
+    ['vx-lockfile', 'vx-lockfile/src/index.ts', 'LockfileOptions', []],
+  ]
+  it.each(cases)('%s', (pkg, file, iface, inherited) => {
+    const readme = readFileSync(path.join(packages, pkg, 'README.md'), 'utf8')
+    const missing = [...fields(file, iface), ...inherited].filter(
+      (f) => !new RegExp(`\\b${f}\\b`).test(readme),
+    )
+    expect(missing).toEqual([])
+  })
+})
+
+describe('the sandboxing guide says a server is never traced', () => {
+  // A persistent task runs inside the walls but untraced, so step 4's
+  // "an undeclared read fails it and names the path" never happens for one;
+  // #2451 tells a failing one so, and the guide had no word (J2-36).
+  it('execute-task names the untraced server, and the guide says so', () => {
+    expect(
+      readFileSync(
+        path.resolve(import.meta.dir, '..', 'src', 'orchestrator', 'execute-task.ts'),
+        'utf8',
+      ),
+    ).toContain('ran in the sandbox, which reports nothing for a server')
+    const guide = readFileSync(path.join(GUIDES, 'sandboxing.md'), 'utf8').replace(/\s+/g, ' ')
+    expect(guide).toContain(
+      'A persistent task (a dev server) runs inside the same walls, but nothing traces it',
     )
   })
 })

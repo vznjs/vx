@@ -30,7 +30,7 @@ export const CALLOUTS: readonly Callout[] = [
     id: 'sandbox',
     mark: '⑤',
     term: 'Sandbox.',
-    line: 'A read you did not declare fails the task.',
+    line: 'A workspace file you did not declare is out of reach.',
   },
   {
     id: 'plugins',

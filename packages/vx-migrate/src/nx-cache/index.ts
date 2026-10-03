@@ -18,6 +18,7 @@ import {
   type RemoteCacheLayer,
   type VxPlugin,
   refuseUnknownOptions,
+  type PluginOptionKinds,
 } from '@vzn/vx'
 import { deadlineNamed } from '../remote-deadline.js'
 import { withRetry } from '../remote-retry.js'
@@ -71,6 +72,12 @@ export function resolveNxCacheConfig(
   // A NaN never reaches the bound, and the request would be resent forever.
   if (!Number.isInteger(retries) || retries < 0)
     throw new Error(`vx/nx-cache: retries must be a whole number ≥ 0, got ${retries}`)
+  // A zero timeout aborted every request as it started.
+  const ms = options.timeoutMs
+  if (ms !== undefined && !(typeof ms === 'number' && Number.isFinite(ms) && ms > 0))
+    throw new Error(
+      `vx/nx-cache: timeoutMs must be a positive number of ms, got ${JSON.stringify(ms)}`,
+    )
   return {
     server,
     ...(accessToken ? { accessToken } : {}),
@@ -197,12 +204,12 @@ export class NxRemoteCache implements RemoteCacheLayer {
   }
 }
 
-/** Every option `NxCacheOptions` names: the type checker holds the two to each other. */
-const NX_CACHE_KEYS: Record<keyof NxCacheOptions, true> = {
-  server: true,
-  accessToken: true,
-  timeoutMs: true,
-  retries: true,
+/** Each option `NxCacheOptions` names, with its kind: derived from the type, so the two cannot drift. */
+const NX_CACHE_KEYS: PluginOptionKinds<NxCacheOptions> = {
+  server: 'string',
+  accessToken: 'string',
+  timeoutMs: 'number',
+  retries: 'number',
 }
 
 /**
@@ -215,7 +222,7 @@ const NX_CACHE_KEYS: Record<keyof NxCacheOptions, true> = {
  * Declines without a server, so it is safe to leave declared.
  */
 export function nxCache(options: NxCacheOptions = {}): VxPlugin {
-  refuseUnknownOptions('nxCache()', options, Object.keys(NX_CACHE_KEYS))
+  refuseUnknownOptions('nxCache()', options, NX_CACHE_KEYS)
   return definePlugin(import.meta, {
     cache(ctx): CacheLayer | undefined {
       const config = resolveNxCacheConfig(options)

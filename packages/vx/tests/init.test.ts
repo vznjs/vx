@@ -1611,6 +1611,55 @@ describe('vx init — the generated build is not a cached no-op', () => {
 })
 
 describe('vx init on a workspace with no scripts', () => {
+  // Globs that reach no package said only "no scripts", naming nothing to
+  // fix (M-42).
+  it('names the workspace globs that match no package.json', async () => {
+    const root = await makeRoot('vx-init-noglob-')
+    try {
+      const notes = async (): Promise<string[]> =>
+        (await vx(root, ['init', '--dry'])).out.split('\n').filter((l) => l.startsWith('note: '))
+      expect(await notes()).toEqual([
+        'note: the workspace globs ("packages/*") match no package.json: add a package under one, or fix the glob',
+      ])
+      // CONTROL: a member under the glob, still with no scripts.
+      await addPackage(root, 'app', {})
+      expect(await notes()).toEqual([])
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('does not call a matched but unaddressable member unmatched', async () => {
+    const root = await makeRoot('vx-init-unaddr-')
+    try {
+      const globNote = async (): Promise<string[]> =>
+        (await vx(root, ['init', '--dry'])).out
+          .split('\n')
+          .filter((l) => l.startsWith('note: the workspace globs'))
+      // CONTROL: no member at all is still named (M-42).
+      expect(await globNote()).toHaveLength(1)
+      // Two manifests sharing a name: both matched, both left out (M-46).
+      for (const dir of ['b', 'c']) {
+        await mkdir(path.join(root, 'packages', dir), { recursive: true })
+        await writeFile(
+          path.join(root, 'packages', dir, 'package.json'),
+          JSON.stringify({ name: 'dup', scripts: { build: 'true' } }),
+        )
+      }
+      expect(await globNote()).toEqual([])
+      // A nameless manifest alone: matched, not addressable.
+      await rm(path.join(root, 'packages'), { recursive: true })
+      await mkdir(path.join(root, 'packages', 'a'), { recursive: true })
+      await writeFile(
+        path.join(root, 'packages', 'a', 'package.json'),
+        JSON.stringify({ scripts: { build: 'true' } }),
+      )
+      expect(await globNote()).toEqual([])
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   it('writes the workspace file, prints an example config and the next command', async () => {
     const root = await makeRoot('vx-init-empty-')
     await addPackage(root, 'app', {})

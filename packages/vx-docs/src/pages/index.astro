@@ -87,9 +87,9 @@ const reasons = [
 
 // Start: four commands, native config from the first one.
 const startCommands = `npm install -D @vzn/vx
-npx vx init                 # a vx.config.ts per package, from its scripts
-npx vx run build --all      # builds in dependency order; stores the results
-npx vx run build --all      # again: up-to-date in milliseconds`
+npx vx init                 # a vx.config.ts per package; add the cache block each TODO shows
+npx vx run build --all      # builds in dependency order; stores what is cached
+npx vx run build --all      # again: the cached tasks are up-to-date`
 
 const footCols = {
   docs: [
@@ -264,7 +264,7 @@ const footCols = {
             <h2>Start in a minute.</h2>
           </div>
           <pre class="code"><code>{startCommands}</code></pre>
-          <p class="sub">Coming from Turbo or Nx: <code>bunx @vzn/vx-migrate</code> or <code>vx init</code> gives a temporary start; move to native vx config.</p>
+          <p class="sub">Coming from Turbo or Nx: <code>vx init</code> gives a temporary start, and <code>bunx @vzn/vx-migrate</code> writes the native vx config (its first publish is pending).</p>
           <div class="section-links">
             <a class="section-link" href={href('quickstart/')}>Quickstart: a cache block, the first hit <span class="arr">→</span></a>
             <a class="section-link" href={href('guides/migrate/')}>Migrate from Turbo or Nx <span class="arr">→</span></a>

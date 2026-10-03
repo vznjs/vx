@@ -18,7 +18,7 @@ export {
   OUT_OF_FDS_HINT,
 } from './errors.js'
 export { xxh3, xxh3hex } from './hash.js'
-export { mark, printTimings, span } from './timing.js'
+export { mark, printTimings, restartTimings, span } from './timing.js'
 export { clampInt, formatElapsed, MAX_TIMEOUT_MS, parseDecimalInt } from './num.js'
 export {
   asTrees,

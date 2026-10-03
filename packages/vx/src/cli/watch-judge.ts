@@ -53,6 +53,8 @@ export interface JudgeContext {
   held(): boolean
   /** Projects whose uncached task may read a git-ignored file. */
   uncached(): ReadonlySet<string>
+  /** The files git listed at the arm; absent when git could not answer. */
+  existedAtArm?: ReadonlySet<string>
 }
 
 export class ChangeJudge {
@@ -108,12 +110,22 @@ export class ChangeJudge {
   // and a first sighting used to pass unconditionally; the path's mtime
   // says which side of the arm it belongs to. A path already gone is a
   // change: a deletion has no date to read.
-  private sameState(abs: string): boolean {
+  // One exception: a path git did not list at the arm, and gone now, was
+  // born and removed since (vim's `4913` write probe, a tool's lock file);
+  // it started a cycle with nothing changed. The blind spot: one born in
+  // the moment between a judgement and that cycle's keys, and gone by the
+  // next judgement, was read and its deletion re-runs nothing. Git lists
+  // no ignored path, so one of those is a deletion as before.
+  private sameState(abs: string, ignored = false): boolean {
     const state = settledState(abs)
     const prev = this.lastState.get(abs)
     this.lastState.set(abs, state)
     if (prev !== undefined) return prev === state
-    return state !== ABSENT && modifiedBefore(abs, this.ctx.armedAt)
+    if (state === ABSENT) {
+      const listed = this.ctx.existedAtArm
+      return !ignored && listed !== undefined && !listed.has(abs)
+    }
+    return modifiedBefore(abs, this.ctx.armedAt)
   }
 
   private writtenDuringLastCycle(abs: string, openWhileHeld = false): boolean {
@@ -152,13 +164,21 @@ export class ChangeJudge {
     const editForUncached = (p: string): boolean =>
       [...this.ctx.uncached()].some((dir) => p.startsWith(dir + path.sep)) &&
       !this.writtenDuringLastCycle(p)
+    // A path still there names the cycle before a gone one: an editor or
+    // `sed -i` saving through a temporary file fires that file first, and
+    // the cycle was announced by a name already renamed away.
+    let gone: [label: string, abs: string] | undefined
     for (const [p, l] of this.pending) {
       if (ignored.has(p) && !editForUncached(p)) continue
-      if (!this.sameState(p) && first === undefined) {
-        first = l
-        firstAbs = p
+      if (this.sameState(p, ignored.has(p)) || first !== undefined) continue
+      if (!fs.existsSync(p)) {
+        gone ??= [l, p]
+        continue
       }
+      first = l
+      firstAbs = p
     }
+    if (first === undefined && gone !== undefined) [first, firstAbs] = gone
     this.pending.clear()
     const byServer = firstAbs !== undefined && this.ctx.held()
     if (firstAbs === undefined || !this.writtenDuringLastCycle(firstAbs, true)) {

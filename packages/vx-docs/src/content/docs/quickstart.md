@@ -53,12 +53,15 @@ export default defineProject({
 
 ## Run
 
+Installed from npm, the command is `npx vx` (pnpm: `pnpm vx`, Bun:
+`bunx vx`); the lines below drop the prefix.
+
 ```bash
 vx run build --all        # every package, in dependency order
-vx run test --affected    # what changed, and its dependents
+vx run test --affected    # changed since main or the last commit, and dependents
 vx run build --all --dry  # the plan; runs nothing
 cd packages/app           # without --all, a run takes the package you are in
-vx run build              # ⇢ success local — a hit; restores dist/ if deleted
+vx run build              # ⇢ success local — after dist/ is deleted; else up-to-date
 vx run build --graph      # the task graph as Graphviz DOT
 ```
 
@@ -89,6 +92,7 @@ Start with one package and leave the rest of your tooling as it is.
 
 ## Common problems
 
+- **`--affected has no base here`.** A repo with one commit has nothing to compare with. Commit again, or name a base: `--affected=<ref>`.
 - **Only one package ran.** `vx run build` runs the package you are in. Add `--all`.
 - **The editor cannot resolve `@vzn/vx`.** Add it as a devDependency. vx itself runs a config without it.
 - **`vx requires git`.** Run `git init` at the workspace root.

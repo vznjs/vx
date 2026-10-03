@@ -9,6 +9,7 @@ import {
   CONFIG_EXIT,
   evalBudgetMs,
   evaluateConfigFresh,
+  UmaskChanged,
   WATCHED_BUILTIN_NAMES,
 } from './config-eval.js'
 import { hasEsmExport, unprovidedBareImports } from './config-imports.js'
@@ -448,12 +449,14 @@ export async function loadProjectConfigs(
   // Taken only when a config is evaluated in this process: reading every
   // descriptor of `Bun` makes Bun build its lazy members (`bun:sql`,
   // `node:stream`), ~7 ms of a two-config warm run where every load hit.
-  let builtins: BuiltinSnapshot = []
+  let builtins: BuiltinSnapshot | undefined
   let env: Readonly<Record<string, string | undefined>> = {}
   let cwd = ''
+  let umask = -1
   // More than one evaluation in flight: a change seen after one load may
   // be another's.
   let overlapping = false
+  let tainted = false
   const loadOne = async (entry: (typeof prepared)[number]): Promise<Loaded> => {
     const { configPath, cacheKey } = entry
     // A fast key that missed: the closure is stale or the file changed.
@@ -489,6 +492,7 @@ export async function loadProjectConfigs(
     if (repeat) refuseUnprovidedImports(bytes!, configPath, 'Project')
     const mod = repeat
       ? await evaluateConfigFresh(configPath).catch((err: unknown) => {
+          if (err instanceof UmaskChanged) throw builtinsChanged(['process.umask'], configPath)
           throw configLoadError(err, configPath, 'Project') ?? err
         })
       : await loadDefaultExport(configPath, 'Project', bytes!)
@@ -496,7 +500,12 @@ export async function loadProjectConfigs(
     // turned the JSON-data walk's own check into "a cyclic reference".
     const changed = repeat
       ? []
-      : [...restoreBuiltins(builtins), ...restoreEnv(env), ...restoreCwd(cwd)]
+      : [
+          ...restoreBuiltins(builtins, overlapping),
+          ...restoreEnv(env),
+          ...restoreCwd(cwd),
+          ...restoreUmask(umask),
+        ]
     // Loads overlap, so another config's change can surface after this
     // one: named here, the refusal blamed the wrong file (D-119). The round
     // finds the one that made it.
@@ -549,6 +558,7 @@ export async function loadProjectConfigs(
       builtins = builtinSnapshot()
       env = { ...process.env }
       cwd = process.cwd()
+      umask = currentUmask()
     }
     overlapping = misses.length > 1
     let next = 0
@@ -569,22 +579,37 @@ export async function loadProjectConfigs(
     }
     const changed =
       misses.length > 0
-        ? [...restoreBuiltins(builtins), ...restoreEnv(env), ...restoreCwd(cwd)]
+        ? [
+            ...restoreBuiltins(builtins),
+            ...restoreEnv(env),
+            ...restoreCwd(cwd),
+            ...restoreUmask(umask),
+          ]
         : []
-    if (first?.failed instanceof ChangedInRound) {
+    // Overlapping loads check most built-ins only here, so a change one
+    // config made may have broken another's load: it is refused first, and
+    // nothing the round evaluated is stored.
+    const changedInRound =
+      first?.failed instanceof ChangedInRound
+        ? first.failed.changed
+        : overlapping && changed.length > 0
+          ? changed
+          : undefined
+    if (changedInRound !== undefined) {
+      tainted = true
       for (const i of misses) {
         const configPath = prepared[i]!.configPath
         const own = await builtinsChangedBy(configPath)
         if (own.length > 0) throw builtinsChanged(own, configPath)
       }
-      throw builtinsChanged(first.failed.changed)
+      throw builtinsChanged(changedInRound)
     }
     if (first !== undefined) throw first.failed
     if (changed.length > 0) throw builtinsChanged(changed)
     return results.map((r) => (r as Loaded).config)
   } finally {
     endRound()
-    if (store !== undefined) {
+    if (store !== undefined && !tainted) {
       if (evals.length > 0) {
         if (store.putConfigEvals !== undefined) store.putConfigEvals(evals)
         else for (const [k, json] of evals) store.putConfigEval(k, json)
@@ -618,20 +643,56 @@ const WATCHED_BUILTINS: ReadonlyArray<readonly [string, object]> = WATCHED_BUILT
     ] as const,
 )
 
+// The check reads through these, taken when a round's snapshot is, before
+// any of its configs runs: a config that set `Reflect.ownKeys = () => []`
+// blinded it, and its `Object.prototype.exec` ran in another project's
+// task (D-124). Each round keeps its own, so an overlapping round cannot
+// hand it a replaced one. The compare and put-back use indexed loops only
+// (a replaced `Array.prototype.forEach` skipped them).
+interface Primitives {
+  ownKeys: typeof Reflect.ownKeys
+  descriptorOf: typeof Object.getOwnPropertyDescriptor
+  defineOwn: typeof Object.defineProperty
+  deleteOwn: typeof Reflect.deleteProperty
+  hasOwn: typeof Object.hasOwn
+  same: typeof Object.is
+  keyName: typeof String
+}
+
 interface OwnProperties {
   keys: PropertyKey[]
   descriptors: PropertyDescriptor[]
-  byKey: ReadonlyMap<PropertyKey, PropertyDescriptor>
 }
 
-type BuiltinSnapshot = readonly OwnProperties[]
+interface BuiltinSnapshot {
+  readonly prims: Primitives
+  /** Undefined for a watched name the snapshot leaves out. */
+  readonly props: readonly (OwnProperties | undefined)[]
+}
 
-function builtinSnapshot(): BuiltinSnapshot {
-  return WATCHED_BUILTINS.map(([, proto]) => {
-    const keys = Reflect.ownKeys(proto)
-    const descriptors = keys.map((k) => Object.getOwnPropertyDescriptor(proto, k)!)
-    return { keys, descriptors, byKey: new Map(keys.map((k, j) => [k, descriptors[j]!])) }
-  })
+function builtinSnapshot(leaveOut?: string): BuiltinSnapshot {
+  const prims: Primitives = {
+    ownKeys: Reflect.ownKeys,
+    descriptorOf: Object.getOwnPropertyDescriptor,
+    defineOwn: Object.defineProperty,
+    deleteOwn: Reflect.deleteProperty,
+    hasOwn: Object.hasOwn,
+    same: Object.is,
+    keyName: String,
+  }
+  const props: (OwnProperties | undefined)[] = []
+  for (let i = 0; i < WATCHED_BUILTINS.length; i++) {
+    if (WATCHED_BUILTINS[i]![0] === leaveOut) {
+      props[i] = undefined
+      continue
+    }
+    const proto = WATCHED_BUILTINS[i]![1]
+    const keys = prims.ownKeys(proto)
+    const descriptors: PropertyDescriptor[] = []
+    for (let j = 0; j < keys.length; j++) descriptors[j] = prims.descriptorOf(proto, keys[j]!)!
+    props[i] = { keys, descriptors }
+  }
+  return { prims, props }
 }
 
 /**
@@ -641,13 +702,17 @@ function builtinSnapshot(): BuiltinSnapshot {
  * evaluated config: the full check was ~0.1 ms a config, ~100 ms of a
  * 1,000-config cold load.
  */
-function unchanged(proto: object, keys: readonly PropertyKey[], was: OwnProperties): boolean {
+function unchanged(
+  p: Primitives,
+  proto: object,
+  keys: readonly PropertyKey[],
+  was: OwnProperties,
+): boolean {
   if (keys.length !== was.keys.length) return false
   for (let j = 0; j < keys.length; j++) {
     const key = keys[j]!
     if (key !== was.keys[j]) return false
-    if (!sameDescriptor(was.descriptors[j]!, Object.getOwnPropertyDescriptor(proto, key)!))
-      return false
+    if (!sameDescriptor(p, was.descriptors[j]!, p.descriptorOf(proto, key)!)) return false
   }
   return true
 }
@@ -667,6 +732,9 @@ function builtinsChanged(changed: readonly string[], configPath?: string): UserE
     (changed.some((c) => c.startsWith('process.cwd'))
       ? '; a task runs in its project directory, and `cd <dir> && …` in `exec.command` moves it'
       : '') +
+    (changed.some((c) => c.startsWith('process.umask'))
+      ? '; a task sets its own with `umask <mode> && …` in `exec.command`'
+      : '') +
     (changed.some((c) => c.startsWith('globalThis.'))
       ? '; a constant configs share goes in a module each one imports'
       : '')
@@ -675,28 +743,60 @@ function builtinsChanged(changed: readonly string[], configPath?: string): UserE
   )
 }
 
+/**
+ * The built-ins checked after each of several overlapping loads: the ones
+ * the loader itself reads through between loads (its promises, maps, sets,
+ * JSON and keys). The rest are checked once, at the round's end: all of
+ * them after every load was ~73 µs a config, a quarter of a cold load of
+ * 1,000 (2026-10-03). A lone load checks them all. By index, decided at
+ * module load: a lookup through a `Set` is one a config can replace (D-124).
+ */
+const EVERY_LOAD: readonly boolean[] = WATCHED_BUILTINS.map(([name]) =>
+  [
+    'Object.prototype',
+    'JSON',
+    'Promise.prototype',
+    'Map.prototype',
+    'Set.prototype',
+    'Bun.hash',
+  ].includes(name),
+)
+
 /** Puts back what changed since `before`, naming each property it put back. */
-function restoreBuiltins(before: BuiltinSnapshot): string[] {
+function restoreBuiltins(before: BuiltinSnapshot | undefined, everyLoadOnly = false): string[] {
   const changed: string[] = []
-  WATCHED_BUILTINS.forEach(([name, proto], i) => {
-    const keys = Reflect.ownKeys(proto)
-    if (unchanged(proto, keys, before[i]!)) return
-    const was = before[i]!.byKey
-    for (const key of keys) {
-      const prior = was.get(key)
-      const now = Object.getOwnPropertyDescriptor(proto, key)!
-      if (prior !== undefined && sameDescriptor(prior, now)) continue
-      changed.push(`${name}.${String(key)}`)
-      if (prior === undefined) Reflect.deleteProperty(proto, key)
-      else Object.defineProperty(proto, key, prior)
-    }
-    for (const [key, prior] of was) {
-      if (!Object.hasOwn(proto, key)) {
-        changed.push(`${name}.${String(key)}`)
-        Object.defineProperty(proto, key, prior)
+  if (before === undefined) return changed
+  const p = before.prims
+  for (let i = 0; i < WATCHED_BUILTINS.length; i++) {
+    const name = WATCHED_BUILTINS[i]![0]
+    if (everyLoadOnly && !EVERY_LOAD[i]) continue
+    const proto = WATCHED_BUILTINS[i]![1]
+    const was = before.props[i]
+    if (was === undefined) continue
+    const keys = p.ownKeys(proto)
+    if (unchanged(p, proto, keys, was)) continue
+    // Slow path, a change only: a linear lookup keeps it off `Map`.
+    for (let j = 0; j < keys.length; j++) {
+      const key = keys[j]!
+      let prior: PropertyDescriptor | undefined
+      for (let k = 0; k < was.keys.length; k++) {
+        if (was.keys[k] === key) {
+          prior = was.descriptors[k]
+          break
+        }
       }
+      if (prior !== undefined && sameDescriptor(p, prior, p.descriptorOf(proto, key)!)) continue
+      changed[changed.length] = name + '.' + p.keyName(key)
+      if (prior === undefined) p.deleteOwn(proto, key)
+      else p.defineOwn(proto, key, prior)
     }
-  })
+    for (let k = 0; k < was.keys.length; k++) {
+      const key = was.keys[k]!
+      if (p.hasOwn(proto, key)) continue
+      changed[changed.length] = name + '.' + p.keyName(key)
+      p.defineOwn(proto, key, was.descriptors[k]!)
+    }
+  }
   return changed
 }
 
@@ -739,10 +839,30 @@ function restoreCwd(before: string): string[] {
   return ['process.cwd (a chdir)']
 }
 
-function sameDescriptor(a: PropertyDescriptor, b: PropertyDescriptor): boolean {
+/**
+ * A config's `process.umask()` set the mode of every file vx and its tasks
+ * wrote after it: a cache artifact and a task's outputs landed `000`, which
+ * a user other than root could not read back (D-125). Put back, and named.
+ */
+function currentUmask(): number {
+  // Through globalThis, as restoreCwd: the playground's shim has no umask.
+  const proc = globalThis.process as { umask?: (mask?: number) => number }
+  if (typeof proc.umask !== 'function') return -1
+  // No argument reads it: setting 0 and back would open a window where a
+  // file written by an overlapping write landed world-writable.
+  return proc.umask()
+}
+
+function restoreUmask(before: number): string[] {
+  if (before === -1 || currentUmask() === before) return []
+  ;(globalThis.process as { umask: (mask: number) => number }).umask(before)
+  return ['process.umask']
+}
+
+function sameDescriptor(p: Primitives, a: PropertyDescriptor, b: PropertyDescriptor): boolean {
   return (
     // `globalThis.NaN` is watched (D-122), and NaN !== NaN.
-    Object.is(a.value, b.value) &&
+    p.same(a.value, b.value) &&
     a.get === b.get &&
     a.set === b.set &&
     a.writable === b.writable &&
@@ -807,7 +927,29 @@ export async function loadWorkspaceConfig(root: string): Promise<WorkspaceConfig
     const since = workspaceLoadedAt.get(configPath)
     if (since !== undefined) await refuseStaleWorkspaceImports(configPath, since)
     const startedAt = Date.now()
-    const mod = (await loadDefaultExport(configPath, 'Workspace', bytes)) as WorkspaceConfig
+    // The same guard a project config's first load has: the workspace config
+    // runs in this process too, and its `Object.prototype.exec` ran in a
+    // project's task under a key that never saw it (D-126). Its globals are
+    // left out: it loads first in every run, filtered or not, so none
+    // depends on what else loaded (D-122's case), and plugins' tests and
+    // tools hand state through them.
+    const builtins = builtinSnapshot('globalThis')
+    const env = { ...process.env }
+    const cwd = process.cwd()
+    const umask = currentUmask()
+    let mod: WorkspaceConfig
+    try {
+      mod = (await loadDefaultExport(configPath, 'Workspace', bytes)) as WorkspaceConfig
+    } finally {
+      const changed = [
+        ...restoreBuiltins(builtins),
+        ...restoreEnv(env),
+        ...restoreCwd(cwd),
+        ...restoreUmask(umask),
+      ]
+      // eslint-disable-next-line no-unsafe-finally -- the refusal outranks the load's own error
+      if (changed.length > 0) throw builtinsChanged(changed, configPath)
+    }
     // Checked again once awaited, as a project config is: a Promise default
     // passed the first check, and `Promise.resolve(null)` crashed the
     // validator with a stack while `Promise.resolve(42)` loaded as no

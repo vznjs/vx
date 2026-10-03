@@ -444,6 +444,159 @@ always expires later: 0 of 20 with the same gap. Its three siblings of
 the shape (a late rejection, a neighbour's timeout, `ms = 0`) take it
 too; all four are red with the deadline made ten times late.
 
+M-37. Probes, nothing shipped. `select.test.ts` › only an INCLUDED diff
+makes the selection diff-chosen timed out at 5 s on #2412's CI
+(shard-12, "killed 1 dangling process"). Not slowness: the row takes
+0.15-0.41 s under `strace -f` beside eight busy loops (junit, 5 runs),
+the file 211 ms bare. A child outlived it. Not reproduced: 100 bare
+runs and 60 under `strace -f` beside eight busy loops, and 8 forced
+sandboxed runs of its shard (now 11) beside four. The row spawns
+`rev-parse`, `merge-base`, `diff`, and the enumeration's `ls-files`
+and `status`; none read stdin. Bun closes a spawn's stdin for an empty
+buffer too (`cat` exits). Refuted too: `affected.ts`'s `gitPaths`
+reading stdout to its end before stderr, and `mergeBase` never reading
+its piped stderr, as a pipe deadlock. Bun drains a piped stderr on its
+own: a fake git that wrote 200 KB of stderr before its diff settled
+on main. The child's name is what the next sighting needs.
+Also seen once, in this entry's own gate on main:
+`repeated-runs.unsafe.test.ts` › twenty runs … hold their descriptors
+read 18 open descriptors after run five and 17 at the end (listeners
+steady). Not reproduced: 30 runs of the file beside eight busy loops,
+3 of the 34 unsafe files up to it, 2 of the whole unsafe suite with
+each descriptor named. Refuted: a killed child's pidfd still open at
+the snapshot (each run's reset SIGTERMs SRT's socat and does not await
+its exit). Six sandboxed runs read the same pidfd, socket and pipe count
+right after `run()` returned and 300 ms later.
+
+M-38. Probes, nothing shipped. The one other first-attempt CI failure
+in the last 120 runs (2026-10-03, to 02:05): `runner.test.ts` ›
+settle() lets a grandchild that traps the SIGTERM finish inside the
+grace, macOS only (#2405, D's lead), `settle()` back at 133 ms with
+no marker, so the trapping shell was gone within the 600 ms grace.
+Refuted: a memoized grace (`killGraceMs` reads the env each call) and
+`goneGroups` (nothing here marks the group). Not reproduced: 30 runs
+on Linux with `sh` as `bash --posix` beside eight busy loops. macOS's
+`sh` is bash 3.2 and is not here to probe.
+
+M-39. The plugin suites' timed waits (vx-otel, vx-github, vx-mcp,
+vx-lockfile, vx-migrate), swept for a timer standing in for a state.
+Three rows claimed "a deadline during the retry wait ends it" with an
+abort on a 50 ms timer from the call's start and a 150 ms bound on the
+whole call: `collector.test.ts` › a deadline during the wait ends the
+retries and warns the 503, and `github.test.ts` › … warns the 502 and
+› a drop, then the deadline during the wait. The timer could beat the
+first POST, and the bound counted the POST and any stall. The abort is
+now armed by the first POST (vx-otel's from its fake collector, behind
+a 2 s Retry-After), and the bound runs from the abort. With an 80 ms
+collector or a 160 ms stall in the first POST the old rows fail and
+the new pass; each new row fails with the sink or check-run posting
+again after the abort, or with the abort not heard in the wait. The
+rest hold: the other waits are polls on a state or a hang a client
+abort releases.
+
+M-40. Probes, nothing shipped. The core suite's sleeps over 25 ms (64),
+swept for one standing in for "started" or "dead": the kill-after-sleep
+rows are marker-based since M-14 and M-17. Refuted as races:
+`cli-picker.test.ts`'s 50 ms before an answer (a `PassThrough` buffers
+it: 7 of 7 with every sleep at 0); `runner.test.ts` › routes each stream
+to its own callback, 50 ms after `exited` (green with a 60 ms busy spin
+there, 3 of 3: the pipes are read by then); the poll watcher rows' 30 ms
+(the baseline scan is synchronous; the wait keeps the edit off its
+clock tick); `persistent-ready-timeout.test.ts`'s 200 ms before
+`isAlive` (Bun reaps the exec'd sleeper). Closed: the lead five streams
+filed on `output-dirs-snapshot.test.ts` is A-45's (its keep-alive runs
+after the build), 20 of 20 beside eight busy loops.
+
+M-41. `vx init` on plain pnpm and bun workspaces (no Turbo, no Nx),
+reviewed: the configs it writes run (`build`, `test` across members, a
+`^build` edge on each build, servers persistent), cache nothing until a
+TODO's block is added, as the report says, and the odd layouts held (a
+single package, a glob that matches nothing, a member with no scripts,
+broken JSON named with its path, bun's object `workspaces`, a negated
+or `**` glob, init from inside a member, existing configs refused with
+exit 1). One defect: a script chaining this package's own scripts
+(`check: pnpm run build && pnpm run lint`) was written verbatim with no
+TODO, and with `check`'s edge to `build`, `vx run check` built twice
+and ran `lint` outside the graph. Its parts that run an own task are
+now named in a TODO (`init-own-script-chain.test.ts`, red on main).
+
+M-42. M-41's review, its other finding: a workspace whose globs match
+no package (`"workspaces": ["packages/*"]` over an empty `packages/`)
+was told only "no package.json scripts to turn into tasks", which was
+true and named nothing to fix. A note now names the globs that match no
+`package.json`; a member under them, scripts or not, drops it. Row in
+`init.test.ts`, red on main.
+
+M-43. Probes, nothing shipped: more `vx init` layouts held. Root-only
+scripts become the root's tasks (`build` keeps `^build`, `test` waits
+on it) and the run takes them; a root script sharing a member's task
+name is left out, as the report says; a member with no scripts gets no
+config; a member's own `pnpm-workspace.yaml` is not read, so its
+packages are no members, as pnpm itself reads only the outermost one.
+
+M-44. On Bun 1.3.14 (the container's default, below the floor), every
+`vx run` with a local cache exited 1 with "database is locked" from
+`Cache.close()`, after its tasks had passed: found while probing `vx init`
+on a bun workspace with object-form `workspaces` (`packages`, `apps/**`,
+a `!` glob; that layout holds). O-10's `db.close(true)` finalizes live
+statements on 1.4.2 but answers SQLITE_BUSY on 1.3.14 (a five-line
+`bun:sqlite` probe, both ways). `closeDb` falls back to `close()`, the
+pre-O-10 close, when `close(true)` refuses; both 1.3.14 workspaces then
+exit 0. `cache-close-old-bun.test.ts` stands a refusing `close(true)` in
+for the old runtime; without the fallback it fails with the same error.
+M-45. Probes, nothing shipped: a Yarn 4 workspace (`yarn.lock`,
+`packageManager: yarn@4`, no `.yarnrc.yml`). The root `build` over
+`yarn workspaces foreach` is left out as running the members; `prepack`
+gets no task; `b#test`'s `yarn build && jest` gets M-41's own-task TODO;
+init warns that Plug'n'Play hides `node_modules/.bin` and names both
+fixes.
+
+M-46. M-42's note said "match no package.json" of globs that matched
+three: a nameless member and two sharing a name, each left out of
+`metas`, which the note asked. It now asks the globs
+(`reachesManifest`); a negated member still counts as unmatched. Probes
+that held: lifecycle scripts (`install`, `prepare`, `postinstall`,
+`prepublishOnly` dropped; `pre`/`post` folded, except under Yarn
+Berry; `version` kept, a root `changeset version` is user-run), root
+fan-out over `bun --filter`, `pnpm -r`, `npm --workspaces` left out,
+and a malformed member manifest refused with its path.
+`init.test.ts` › does not call a matched but unaddressable member
+unmatched; red without the fix.
+
+M-47. Probes, nothing shipped. Held: edges through `file:../a`,
+`link:../b`, a `peerDependencies` range and an `optionalDependencies`
+`workspace:~` (each orders the run and joins `--filter d...`); a root that
+lists itself (`workspaces: [".", …]`) keeps its `lint` and leaves out its
+`build` under the member-name rule; `vx init` from inside a member finds
+the root. Lead, not changed: init refuses the whole workspace when one
+member already has a vx config, and `--force` would overwrite that
+hand-written file, so a half-adopted workspace has no clean path. Pinned
+on purpose (`init.test.ts` › refuses to overwrite without --force, like
+migrate); keeping such a project and writing the rest is the owner's call.
+
+M-48. M-41's own-task TODO read only `pnpm run x` / `npm run x`
+segments: `build: run-p build:*` and `ci: npm-run-all -s lint test` ran
+this package's own tasks inside the command with no word, though
+`scriptRefs` already reads those runners (D-95, D-113). The check now asks
+`scriptRefs` of a `run-s` / `run-p` / `npm-run-all` segment, counts every
+task it names, and skips a persistent task (`dev: run-p watch:*` has the
+persistent TODO). Probes that held: `--mjs` on M-44's and M-47's layouts.
+`init-own-script-chain.test.ts` › names a run-s / run-p / npm-run-all
+part; red without the fix, and the persistent control red without its
+guard.
+
+M-49. `remote-cache-degrade.test.ts` › a 503 heals on the resend
+(turboCache) › a download answered 503 once timed out at 7,094 ms
+against bun's 5 s on #2504's plugin-packages job (an unrelated diff).
+Cause: `withRetry` waits Turbo's real 2 s backoff before the resend
+(`remote-retry.ts`), so both wires' rows took 2.1 s idle (2.16 and 2.08
+s, junit) on top of two `vx run`s, and a loaded runner crossed the limit.
+The row now swaps `Bun.sleep`, which the plugin reads when the run builds
+it, for one that records the 2 s and resolves at once, and asserts the
+record: 0.14 and 0.06 s. A backoff of 1,999 ms and a 503 not resent each
+fail both rows. The suite's other slow rows (1.45 s) wait their own 700
+ms deadline, which is their claim.
+
 ## Leads for other streams
 
 - A: A-20 let a same-project dependant restore ahead of a producer whose

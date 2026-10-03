@@ -1,7 +1,8 @@
 // Turbo's resend rule (`turborepo-api-client/src/retry.rs`), as both cache
 // wires apply it: which answers are resent, after how long, how often.
 import { describe, expect, it } from 'bun:test'
-import { resolveNxCacheConfig, resolveTurboCacheConfig } from '../src/index.js'
+import { resolveNxCacheConfig } from '../src/nx-cache/index.js'
+import { resolveTurboCacheConfig } from '../src/turbo-cache/index.js'
 import { withRetry } from '../src/remote-retry.js'
 
 type Answer = Response | Error

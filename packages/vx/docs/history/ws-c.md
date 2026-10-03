@@ -1360,3 +1360,69 @@ held by C-89's row. Test only. The sync run-lock release (~0.5 ms) was
 dropped: a sync call cannot be held pending, so the race row could not
 be rewritten as asked, and the refusal rows inject through
 `node:fs/promises`.
+
+## C-92: a held server that dies after the run is said
+
+`vx watch` sat on "watching" over a dev server that had exited 3: a run
+that hands its servers back (`holdPersistent`) said nothing of a death
+after it returned, while `vx run`'s keep-alive says
+`vx: <id> exited with code <n>`. `run()` now watches each held server
+and says a non-zero exit, but not one the holder's `stop()` caused, nor
+again one that died during the graph. Rows
+(`held-server-exit.test.ts`): the death row red without the change;
+the stop() control red when the stop is not told apart. `cli.md` and
+`execution.md` say so.
+
+Probes (2026-10-03), `vx watch` edge cases, all clean: a server that
+exits before it is ready fails the cycle, watch keeps watching and the
+next change starts it; Ctrl-C while a held server traps TERM and INT
+ends watch 0 after the kill grace with the server gone.
+
+## C-93: a server slow to match `readyWhen` is said
+
+A dependency server whose `readyWhen` never matched held its dependants
+in silence: its output is hidden unless it fails, and with no
+`exec.timeout` the wait never ends (a probe: 5.6 s and not one line). vx
+now says once, after 10 s (`VX_READY_NOTICE_MS`), `vx: <id> not ready
+after 10 s: waiting for a line matching /<re>/ (readyWhen)`, adding
+`, with no exec.timeout` when nothing bounds it; not under a stop.
+Rows (`ready-wait-notice.test.ts`): bounded and unbounded, red without
+the change; a server ready in time says nothing. `schema.md`, the env
+table in `cli.md` and the CLI-surface contract carry the variable.
+
+Probes (2026-10-03), clean: a `readyWhen` that is no regex is refused at
+load; the lifecycle property row widened to 240 seeds (120 run to the
+end, 120 stopped at a random moment, every kind of server) found no run
+that hung and no child that outlived its run.
+
+## C-94: a watch cycle is named by a path that still exists
+
+`sed -i` (and an editor that saves through a temporary file) fires the
+temporary file's event first, so `vx watch` announced
+`app sedzCKbWc; re-running...`, a name already renamed away, never the
+`vx.config.mjs` the user edited. The judgement now lets a changed path
+that still exists name the cycle before a gone one; a deletion names it
+when nothing else changed. Rows (`watch-label-live-path.test.ts`, the
+judge driven directly): red without the change; the deletion control
+passes both ways. `cli.md` says so.
+
+A temporary file created and removed with nothing else changed (vim's
+`4913` write probe) still started a cycle; C-95 (#2502) takes it.
+
+Lead for E (2026-10-03): a dependency server that dies mid-run is
+counted failed at the run's end (`failServer`, item 1071, C-88), but
+the failure recap never shows its last lines: the terminal logger keeps
+a recap ring only for an outcome that completes `failed`, and a server
+completes `success` when it becomes ready. The footer says `1 failed`
+and `vx: <id> exited with code <n> before the run stopped it`, and the
+"Failed:" section is absent, so why it crashed is nowhere in a broad
+or CI log. The logger needs to keep a running server's ring until the
+run ends and take the late verdict (a `taskFailedLate`-shaped call from
+`run.ts`).
+
+Probes (2026-10-03), clean: `vx watch` with a project added, deleted,
+or moved away and back mid-watch; one added while another's config is
+broken; a held server that crashes while the loop idles, or ignores
+SIGTERM for 1.5 s (the next cycle's server still binds the port); a
+dependency cycle and a self-dependency; two servers and their dependant
+under `--concurrency 1`.

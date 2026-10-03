@@ -2,7 +2,7 @@
 // plugin undone. Driven through a stub `fetch`, so a row reads the exact
 // request and serves the exact response it is about.
 import { describe, expect, it } from 'bun:test'
-import { NxRemoteCache, resolveNxCacheConfig } from '../src/index.js'
+import { NxRemoteCache, resolveNxCacheConfig } from '../src/nx-cache/index.js'
 
 interface Call {
   method: string

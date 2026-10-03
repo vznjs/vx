@@ -103,6 +103,55 @@
   guide's step 3 said the `next:` line "runs what turbo/nx ran"; it now
   calls that build a check of the mapping, not a way to run the repo.
 
+- **R-21** The quickstart and overview walked as a new user in a
+  scratch npm workspace: `vx init`'s files and report, every Run line,
+  `--dry` before and after an edit, `--graph`, `why`, `last`, `cache
+prune` all match. Fixed: the Run blocks used bare `vx`, which a local
+  install does not put on PATH (now named once), and the hit comment
+  said "a hit" where the default output prints `up-to-date`.
+
+- **R-22** Owner-rules audit of the README and site: every competitor
+  benchmark cell shows vx's %, Windows always means WSL, no page says vx
+  runs a Turbo or Nx repo or is faster through the bridge; nothing left
+  to fix. New Docs page, Troubleshooting: each first-run error as vx
+  prints it (each string checked in source and in a run), then the
+  surprises and platforms, linking each guide's own list.
+
+- **R-23** Troubleshooting adds the graph and CLI errors a first run
+  meets (a cycle, a missing `pkg#task`, an undeclared task, an unknown
+  flag), and `site-troubleshooting.unsafe.test.ts` holds every quoted
+  message to core's source (a changed message fails it). Walked from
+  empty bun and pnpm workspaces with the published `@vzn/vx` 0.0.396:
+  install, `init`, its `next:` line (`bunx vx` / `pnpm vx`, as the
+  quickstart says), miss, hit and restore all as the pages say.
+
+- **R-24** The quickstart run literally from empty pnpm and bun repos
+  with the published `@vzn/vx` (0.0.396) and `typescript`: its exact
+  config, every Run line, a restore and an edit-rebuild all as written,
+  except `vx run test --affected` in a one-commit repo, which has no
+  base. The line now says what it compares with, and Common problems
+  has the error.
+
+- **R-25** README order: benchmark table, what vx is (three lines),
+  install, quick start, then the rest. Cut what no source holds: the
+  status table's maturity labels (pre-alpha says it), the comparison's
+  "daemon required for speed" (now what each tool runs: vx none, Turbo
+  none for `turbo run`, Nx on by default, as comparison.md has it) and
+  its uncited OTel row. The migrate guide already matches `vx init` and
+  vx-migrate byte for byte (R-15's pins).
+
+- **R-26** Migration framing: the guide's transcripts and written config
+  still match a run byte for byte (`try-it.unsafe.test.ts`, 10/10 with
+  `examples`). The vx-migrate README's `turbo()` / `nx()` sections said
+  "Then `vx run build --all` runs … the way turbo/nx would"; they now
+  say it maps that until the migrator writes native config, and the
+  guide's try-it block names its first runs the bridge.
+
+- **R-27** The landing's "Start in a minute" promised "up-to-date in
+  milliseconds" on the second build right after `vx init`, which writes
+  no cache block (both scratch walkthroughs re-ran every task). Its
+  comments now name the step between; the landing test pins it.
+
 ## Leads
 
 - Real-repo rows (`packages/vx-bench/real-repos.json`, benchmarks.md's

@@ -438,6 +438,24 @@ run executes few of the ~20 statements every open prepared. 10
 projects, compiled, `open cache` min 1.7 → 1.3 ms over 31 rounds,
 median 1.9 → 1.6; whole run within noise.
 
+I-53. The index reads hash batches through `json_each` (#2428). A list
+of `?` is a new statement per length, compiled each run; one JSON array
+keeps one, and a single hash keeps `= ?`. 1,000 projects, warm, 31
+rounds: `probe` min 12.2 → 10.6 ms (A/A 12.1), `close` 7.1 → 6.6.
+
+I-54. A run's history goes 40 rows to an INSERT (#2445), each distinct
+forward-args list digested once. 1,000 projects, warm, 31 rounds:
+`record history` min 13.4 → 11.2 ms, median 18.7 → 15.2 (A/A 13.8 /
+18.9).
+
+I-55. Overlapping config loads check most watched built-ins once per
+round (#2466). After each load, only those the loader reads through
+between loads (`Object.prototype`, `JSON`, the `Promise`, `Map` and
+`Set` prototypes, `Bun.hash`); the rest at the round's end, which
+refuses first and stores nothing. 1,000 projects, cold, 13 rounds:
+`load configs` min 275.7 → 207.5 ms, median 306.6 → 228.8 (A/A 296.8 /
+323.2).
+
 ## Leads for other streams
 
 - **A: a cold save commits one SQLite transaction per entry.** The
@@ -464,6 +482,11 @@ median 1.9 → 1.6; whole run within noise.
   `synchronous = OFF` (a power cut may corrupt the index) or
   `SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE` (bun:sqlite has no `db_config`)
   removes it.
+- **Owner: the `accessed_at` bump is ~2 ms of a 1,000-hit close.** The
+  UPDATE is 1.3 ms and its pages ~0.6 ms more of the checkpoint.
+  Writing only rows older than a window (`AND accessed_at < ?`) would
+  cut it on reruns, but LRU order and the "last used" time shown would
+  hold only to that window.
 - **Any: a warm run's first `process.stdout` touch loads `node:stream`.**
   Writing through `Bun.stdout` instead saved 1.1 ms of main-thread CPU
   and 2.4 ms wall on a 10-project warm run. It needs TTY detection
@@ -633,3 +656,36 @@ status` re-hashes every tracked file, and vx runs it with
 - Cold config load at 100 configs is the imports; the per-config
   built-in check is 25 µs (327 descriptors), the double decode below
   resolution.
+- `discover projects` at 1,000 projects is I/O: the 1,000 readdirs and
+  manifest reads alone take ~9 ms async (15 sync); 16 ms in the stage.
+- `package graph` at 1,000 projects: the per-project loop 3–7 ms, cold
+  JIT in the function's own body; a closure hoisted out of it tied (4.61
+  ms both). Persisting the graph across runs would cut it, at the risk
+  of a stale order; not taken.
+- The cold index's blob-size `cat-file` started as soon as git answers
+  (under the config load): `git enumeration` min 51.8 → 52.1 ms over 13
+  cold rounds at 1,000 projects. Git's own trace shows `ls-files` and
+  `status` done ~30 ms after the spawn, yet the run reads them only once
+  the config load has finished; yielding to the event loop every 16 or 4
+  configs slowed the load by 30–100 ms and did not bring git's answer
+  earlier. What holds it is not found; not taken.
+- `containedIn`'s two `realpath`s a miss (root and output directory)
+  against one `lstat` per component below the root: 9–11 ms against 3–4
+  per 1,000 calls, ~13 ms of a 2.5 s cold run at 1,000 projects. Below
+  what this box resolves on the run; not taken.
+- CLI startup, compiled: `vx --version` min 9.96 ms against 7.04 for an
+  empty compiled binary; the warm no-op `run` (10 projects) 44.8 ms, of
+  which the `run` path's import is 3.1–3.5 ms (~240 bundled modules,
+  module bodies uncounted by the profiler) and the rest the pipeline and
+  the runtime's own exit. The verbs are already imported on use;
+  `git var -l` (the filter gate's config) stays a spawn, since reading
+  git's merged config ourselves would have to match its includes.
+- A warm hit's output check lists nothing: one `lstat` per recorded
+  output directory and one `stat` per output file, ~10 µs a hit; the
+  1,000-hit run graph is ~12 ms of main-thread CPU in all.
+- Lazy loading on the `run` path, compiled probe: `util` 1.6 ms (mostly
+  `node:fs`, `node:os`, `node:path` first loads a run needs anyway),
+  `exec` 0.7, `cache` 0.45, `workspace` 1.15, `orchestrator` 0.6,
+  `cli/select` 1.15. Of the miss-only modules none costs over 0.12 ms;
+  the module barrels load them all, so splitting them would save ~0.5 ms
+  at most. `node:readline/promises` was the one worth moving (#2506).
