@@ -117,7 +117,12 @@ export class WatcherPool {
 delivery before the loop trusts a watcher (a probe file the watcher
 must report within the timeout); `pollWatcher` is the fallback that
 re-walks the tree when the platform's watcher never does, or when the
-OS watch limit refuses one (`ENOSPC` / `EMFILE`, E-49).
+OS watch limit refuses one (`ENOSPC` / `EMFILE`, E-49). On Linux a
+recursive arm is one non-recursive watch per directory that never enters
+`node_modules`, `.git` or `.vx` (whose events the loop drops anyway):
+this repo's root arm went from 4,657 inotify watches to 435 and its arm
+from 75 to 43 ms (min of 6, interleaved); a directory that appears is
+watched and what it already holds reported (`watch-tree-linux.test.ts`).
 
 ## Flag surface
 

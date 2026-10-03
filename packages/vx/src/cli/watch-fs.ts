@@ -26,7 +26,7 @@ export interface WatchHandle {
 }
 
 export interface ArmedWatcher {
-  watcher: fs.FSWatcher
+  watcher: WatchHandle
   /** Resolves `true` once the watcher reported the probe, `false` on timeout. */
   ready: Promise<boolean>
 }
@@ -157,7 +157,7 @@ export function armWatcher(
   const seen = new Promise<boolean>((resolve) => {
     markReady = resolve
   })
-  const watcher = fs.watch(dir, { recursive, persistent: true }, (_event, filename) => {
+  const listener = (filename: string | null): void => {
     if (filename == null || typeof filename !== 'string') return
     // An event naming the watched directory itself (macOS reports the
     // directory a write landed in as its own item) carries nothing a key
@@ -175,7 +175,11 @@ export function armWatcher(
     // proves this stream live.
     if (path.basename(filename) === WATCH_PROBE) return
     onEvent(filename)
-  })
+  }
+  const watcher: WatchHandle =
+    recursive && process.platform === 'linux'
+      ? treeWatcher(dir, listener)
+      : fs.watch(dir, { recursive, persistent: true }, (_event, filename) => listener(filename))
   const probe = path.join(dir, WATCH_PROBE)
   const ready = (async (): Promise<boolean> => {
     // The probe is subject to the very race it detects: a write that lands
@@ -215,6 +219,99 @@ export function armWatcher(
     return ok
   })()
   return { watcher, ready }
+}
+
+/**
+ * A recursive watch on Linux, built from one non-recursive watch per
+ * directory, that never enters `IGNORED_SEGMENTS`. Bun's recursive form is
+ * the same inotify watch per directory and descended into all of them:
+ * this repo's root arm held 4,657 watches where 438 directories can
+ * matter, 40–55 ms of the arm, and a monorepo's `node_modules` met the OS
+ * watch limit (8,192 on many distros) and fell back to polling — for
+ * events the loop drops by name. A directory that appears is watched, and
+ * what it already holds is reported (it may have landed before its watch);
+ * one that goes, or moves, is dropped with everything under it, since an
+ * inotify watch follows the inode and would report the old name. The
+ * arming walk throws at the watch limit, so the pool's fallback still
+ * applies; a subdirectory that vanished mid-walk is simply not watched.
+ */
+function treeWatcher(root: string, listener: (filename: string) => void): WatchHandle {
+  const watchers = new Map<string, fs.FSWatcher>()
+  let closed = false
+  let armed = false
+  let warned = false
+  const drop = (rel: string): void => {
+    for (const [key, w] of watchers) {
+      if (key !== rel && !key.startsWith(rel + '/')) continue
+      w.close()
+      watchers.delete(key)
+    }
+  }
+  const watchDir = (rel: string, report: boolean): void => {
+    if (closed || watchers.has(rel)) return
+    const abs = rel === '' ? root : path.join(root, rel)
+    let w: fs.FSWatcher
+    try {
+      w = fs.watch(abs, { persistent: true }, (_event, name) => {
+        if (name == null || typeof name !== 'string' || name === '' || name === '.') return
+        const child = rel === '' ? name : `${rel}/${name}`
+        listener(child)
+        if (IGNORED_SEGMENTS.includes(name)) return
+        let st: fs.Stats
+        try {
+          st = fs.statSync(path.join(abs, name))
+        } catch {
+          drop(child)
+          return
+        }
+        if (!st.isDirectory()) return
+        if (watchers.has(child)) return
+        watchDir(child, true)
+      })
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code
+      const limit = code === 'ENOSPC' || code === 'EMFILE'
+      // The walk that arms is all or nothing at the watch limit, as the
+      // recursive form was, so the pool's fallback polls instead of a
+      // tree half watched without a word.
+      if (rel === '' || (limit && !armed)) throw err
+      if (limit && !warned) {
+        warned = true
+        process.stderr.write(
+          `vx watch: ${abs}: the OS watch limit is reached (${code}); directories made from here on are not watched — raise it (Linux: sysctl fs.inotify.max_user_watches)\n`,
+        )
+      }
+      return
+    }
+    w.on('error', () => drop(rel))
+    watchers.set(rel, w)
+    let entries: fs.Dirent[]
+    try {
+      entries = fs.readdirSync(abs, { withFileTypes: true })
+    } catch {
+      return
+    }
+    for (const e of entries) {
+      const child = rel === '' ? e.name : `${rel}/${e.name}`
+      if (e.isDirectory()) {
+        if (!IGNORED_SEGMENTS.includes(e.name)) watchDir(child, report)
+      } else if (report) listener(child)
+    }
+  }
+  try {
+    watchDir('', false)
+  } catch (err) {
+    for (const w of watchers.values()) w.close()
+    throw err
+  }
+  armed = true
+  return {
+    close(): void {
+      closed = true
+      for (const w of watchers.values()) w.close()
+      watchers.clear()
+    },
+  }
 }
 
 /** True when `abs` was last modified before `t` (epoch ms); false when it cannot be read. */
