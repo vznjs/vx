@@ -55,10 +55,9 @@ export function expandNxInputs(
         s = s.slice(1)
       }
       if (s.startsWith('^')) {
-        if (neg !== '') {
-          todos.push(`input ${JSON.stringify(entry)}: a negated dependency input — map manually`)
-          return
-        }
+        // vx folds each dependency's key through the dependsOn edges, so
+        // taking a dependency input out (`!^prod`) has nothing to remove.
+        if (neg !== '') return
         into.upstream.push({ name: s.slice(1), of: 'deps' })
         return
       }
