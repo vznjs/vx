@@ -8,7 +8,12 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { parseRunArgs } from '../src/cli/run.js'
-import { FOREIGN_FLAGS, FOREIGN_VERBS, renderForeignFlags } from '../src/cli/foreign-flags.js'
+import {
+  FOREIGN_FLAGS,
+  FOREIGN_VERBS,
+  renderForeignFlags,
+  translateForeign,
+} from '../src/cli/foreign-flags.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 
@@ -319,5 +324,27 @@ describe('Turbo and Nx flags on vx run', () => {
         `${FOREIGN_VERBS[argv[0] === 'help' ? argv[1]! : argv[0]!]}\n`,
       ]),
     )
+  })
+})
+
+// docs/parity.md mapped Nx's `--skipNxCache` to `--no-cache` while vx aliases
+// it to `--force` (J2-65). A flag the map's left column names that vx
+// rewrites is a claim about the rewrite: the vx column names its result.
+describe('docs/parity.md names the flag vx rewrites each aliased flag to', () => {
+  it('holds for every aliased flag in the left column', () => {
+    const doc = readFileSync(path.join(import.meta.dir, '..', 'docs', 'parity.md'), 'utf8')
+    const aliased: string[] = []
+    const wrong: string[] = []
+    for (const line of doc.split('\n').filter((l) => l.startsWith('| `'))) {
+      const [, left, right] = line.split(/(?<!\\)\|/).map((c) => c.trim())
+      for (const m of left!.matchAll(/`(--[A-Za-z-]+(?:=[^`\s]*)?)`/g)) {
+        const to = translateForeign([m[1]!])
+        if ('error' in to || to.join(' ') === m[1]) continue
+        aliased.push(m[1]!)
+        if (!right!.includes(to[0]!.split('=')[0]!)) wrong.push(`${m[1]} → ${to.join(' ')}`)
+      }
+    }
+    expect(aliased.length).toBeGreaterThan(3)
+    expect(wrong).toEqual([])
   })
 })
