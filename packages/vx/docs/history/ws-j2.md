@@ -464,17 +464,6 @@ persistent task` and vx exits 1). Row (`site-samples` › a post's link
   every grace killGraceMs serves), red without the fix. That ends the
   Purpose audit: every module page's Purpose read against its source.
 
-- **J2-55** `caching.md` read against source: it defined `willRead` and
-  `willWrite` without the remote-only condition `execute-task.ts` ANDs
-  into both, an `exec.remote: 'only'` task placed on a remote executor,
-  which never touches this machine's disk. Both predicates name it now.
-  Row (`caching-doc-drift` › caching.md's read/write predicates are
-  execute-task's), red without the fix. Checked clean: the lookup and
-  restore steps, the cache policy flags, the write sequence and the
-  artifact's entry names, the invalidation table, the cross-project
-  boundary, concurrent runs and their messages, the config-evaluation
-  cache's key, the performance notes, the file-hash prune's daily
-  limit, and what is not in the key.
 - **J2-54** `architecture.md` read claim by claim against source: its
   "What's intentionally absent" bullet listed the pipeline stages a
   plugin fills without `discover` (J2-48's drift on another page). Row
@@ -486,3 +475,15 @@ persistent task` and vx exits 1). Row (`site-samples` › a post's link
   table, the repo's own `vx.workspace.ts`, the cache cluster, the
   scheduler, the runner, the data flow, the loader, the replaceability
   paths, the remote-cache subsystem and the `runs` columns.
+
+- **J2-55** `caching.md` read against source: it defined `willRead` and
+  `willWrite` without the remote-only condition `execute-task.ts` ANDs
+  into both, an `exec.remote: 'only'` task placed on a remote executor,
+  which never touches this machine's disk. Both predicates name it now.
+  Row (`caching-doc-drift` › caching.md's read/write predicates are
+  execute-task's), red without the fix. Checked clean: the lookup and
+  restore steps, the cache policy flags, the write sequence and the
+  artifact's entry names, the invalidation table, the cross-project
+  boundary, concurrent runs and their messages, the config-evaluation
+  cache's key, the performance notes, the file-hash prune's daily
+  limit, and what is not in the key.
