@@ -740,6 +740,28 @@ show to be an object its schema closes with those keys, every object
 the verb prints whole to be shown, and `vx info`'s field list to be
 its schema's top level (#2639).
 
+## H-66: a stored layout moves only with its version
+
+`SCHEMA_VERSION` gates the index and `CACHE_VERSION` the artifact, but
+neither layout was tied to its version: a column or a container change
+that forgot the bump passed every test, and the next vx read it as the
+old layout. `contract-stored-format.test.ts` records the index DDL a
+fresh open makes beside `SCHEMA_VERSION`, and a fixture artifact's tar
+entries, sidecar and sha256 beside `CACHE_VERSION`
+(`tests/contract/stored-format.json`). A layout that moves under its
+recorded version fails, and the regeneration refuses it; an added
+column, a sidecar field, the ustar magic and a renamed `.vx-sum` each
+fail unbumped. The bump skill names the regeneration (#2645).
+
+## H-67: each verb's help usage is its cli.md synopsis
+
+The help usage line is what the parser accepts (`acceptedFlags`
+reads it); cli.md's Top-level shape repeats it by hand and was held to
+the dispatcher by verb name only, so a flag on one line and not the
+other passed. `cli-help-synopsis.test.ts` requires each core verb's
+usage lines to be its synopsis lines word for word, and its own help
+cut to print them (#2654).
+
 ## Leads for other streams
 
 - **A:** a task that rewrites its own input with the same bytes is never
