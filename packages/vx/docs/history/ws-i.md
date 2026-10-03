@@ -416,6 +416,23 @@ it now selects one column off the index (the table row is still read,
 so a corrupt table refuses). `--dry` `plan` stage, 200 tasks storing
 1 MB each: 239.4 ms min → 27.3; 1,000 empty-stdout tasks 89.2 → 85.1.
 
+I-49. A bare `--affected` base asks git once (#2288). The ref `revParse`
+resolved is kept per workspace; `verifyRef` and a `HEAD~1`-style merge
+base answer from it. 1,000 projects, warm `--affected`, 15 rounds:
+main 290.7 ms median (min 261.7), patch 277.2 (248.9), A/A 289.5
+(250.9); 11 git spawns → 9.
+
+I-50. The run takes the selection's package graph (#2311). A filtered
+run built the graph in the CLI's selection and again in the run; the
+run now reuses it. One package-graph build (~8 ms at 1,000 projects)
+less per filtered run.
+
+I-51. An entry's stdout lives apart from its `accessed_at` (#2392).
+SQLite rewrites a whole record on UPDATE, so the run-end bump rewrote
+each hit's stored stdout (up to 16 MB). `entry_stdout` holds it;
+`SCHEMA_VERSION` v29. 200 hits storing 1 MB: `close` 136–163 ms → 5–9,
+whole warm run min 548.7 → 399.0; 1,000 empty-stdout tasks a tie.
+
 ## Leads for other streams
 
 - **A: a cold save commits one SQLite transaction per entry.** The
