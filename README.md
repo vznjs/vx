@@ -34,11 +34,11 @@ Same graph, commands and concurrency: [how it is measured](https://vznjs.github.
 
 <!-- bench:end -->
 
-## Why it is faster
+## What vx is
 
-- **Nothing boots per task:** no daemon, no Node process; vx spawns your command.
-- **No source-file reads to hash:** on a clean tree, keys come from git's index; each project's `package.json` and the lockfile are still read.
-- **One pass:** one git walk per run; each stat and lookup happens once.
+A task runner and build cache for JavaScript monorepos.
+Each task is one shell command with declared inputs and outputs; vx runs
+them in dependency order and replays results from a content-addressed cache.
 
 ## Install
 
@@ -103,6 +103,12 @@ start, not a way to run the repo. The numbers above are native vx
 config. `@vzn/vx-migrate`'s first npm publish is pending.
 [Migration guide](https://vznjs.github.io/vx/guides/migrate/).
 
+## Why it is faster
+
+- **Nothing boots per task:** no daemon, no Node process; vx spawns your command.
+- **No source-file reads to hash:** on a clean tree, keys come from git's index; each project's `package.json` and the lockfile are still read.
+- **One pass:** one git walk per run; each stat and lookup happens once.
+
 ## More than speed
 
 - **A cache you can trust:** TypeScript configs are evaluated before
@@ -111,22 +117,21 @@ config. `@vzn/vx-migrate`'s first npm publish is pending.
 - **Sandboxed tasks:** opt in per task; a workspace file the task did
   not declare is out of its reach, so it cannot poison the cache.
 - **Clean exits:** Ctrl-C reaps each task's process group.
-- **Plugins at every stage:** remote cache, remote execution, telemetry,
+- **Plugins at every stage** (14 hooks, `commands` included): remote cache, remote execution, telemetry,
   CLI verbs. Core ships none and needs none.
 - **Free:** MIT. No paywall, no cloud, no account.
 
 ## How it compares
 
-|                           | vx                                        | Turborepo                      | Nx               |
-| ------------------------- | ----------------------------------------- | ------------------------------ | ---------------- |
-| Config                    | TypeScript, evaluated into the cache key  | JSON (static)                  | JSON (static)    |
-| Output ownership          | **Strict**: wiped before exec and restore | Additive (stale files survive) | Additive         |
-| Clean-tree hashing        | **No source reads** (git index OIDs)      | git OIDs                       | re-hash / daemon |
-| Daemon required for speed | **No**                                    | No (`turbo run` has none)      | Yes              |
-| Per-task sandbox          | **Yes**: kernel-level, opt-in             | No                             | No               |
-| Plugin API                | **Yes**: every pipeline stage             | No                             | Yes (TS-tied)    |
-| OTel CI/CD spans          | **Yes**: `otel()` plugin, no OTel SDK     | No                             | Paid             |
-| Install                   | **Single binary**; no Bun, Node optional  | npm + Node                     | npm + Node       |
+|                    | vx                                        | Turborepo                      | Nx               |
+| ------------------ | ----------------------------------------- | ------------------------------ | ---------------- |
+| Config             | TypeScript, evaluated into the cache key  | JSON (static)                  | JSON (static)    |
+| Output ownership   | **Strict**: wiped before exec and restore | Additive (stale files survive) | Additive         |
+| Clean-tree hashing | **No source reads** (git index OIDs)      | git OIDs                       | re-hash / daemon |
+| Daemon             | **None**                                  | None for `turbo run`           | On by default    |
+| Per-task sandbox   | **Yes**: kernel-level, opt-in             | No                             | No               |
+| Plugin API         | **Yes**: every pipeline stage             | No                             | Yes (TS-tied)    |
+| Install            | **Single binary**; no Bun, Node optional  | npm + Node                     | npm + Node       |
 
 Every gap, and when another tool is the better pick:
 [comparison](packages/vx/docs/comparison.md) ·
@@ -156,13 +161,6 @@ Write your own: [plugin guide](https://vznjs.github.io/vx/guides/plugins/) ·
 **Pre-alpha**, dogfooded: this repo lints, tests and builds itself with
 vx. The schema may still change; 1.0's promise:
 [versioning-1.0.md](packages/vx/docs/design/versioning-1.0.md).
-
-| Surface                                            | Maturity             |
-| -------------------------------------------------- | -------------------- |
-| Core task runner + caching                         | **production-ready** |
-| Plugin pipeline (14 hooks, `commands` included)    | **shippable**        |
-| `vx init` / `@vzn/vx-migrate` (scripts; Turbo, Nx) | **shippable**        |
-| First-party plugins (table above)                  | **shippable**        |
 
 ## Contributing
 
