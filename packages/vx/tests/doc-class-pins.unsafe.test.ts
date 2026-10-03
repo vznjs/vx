@@ -654,10 +654,10 @@ describe('every benchmark figure a blog table quotes is a measured one', () => {
     }
     const FIELDS = ['fresh', 'warmNoRestore', 'freshCpu'] as const
     let checked = 0
-    // The post (2026-09-10) predates the frozen headline: its vx figures
-    // are the run's per-run-eval row, `vx (no lock)` since 2026-09-29.
+    // The post quotes the headline row, `vx` (the frozen lock), as the
+    // README does (2026-10-03).
     for (const [runner, label] of [
-      ['vx (no lock)', 'vx'],
+      ['vx', 'vx'],
       ['turbo', 'Turborepo'],
       ['nx', 'Nx'],
     ] as const) {
@@ -707,10 +707,10 @@ describe('every benchmark figure a blog table quotes is a measured one', () => {
       return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
     }
     let checked = 0
-    // The post (2026-09-10) predates the frozen headline: its vx figures
-    // are the run's per-run-eval row, `vx (no lock)` since 2026-09-29.
+    // The post quotes the headline row, `vx` (the frozen lock), as the
+    // README does (2026-10-03).
     for (const [runner, label] of [
-      ['vx (no lock)', 'vx'],
+      ['vx', 'vx'],
       ['turbo', 'Turborepo'],
       ['nx', 'Nx'],
     ] as const) {

@@ -2273,6 +2273,9 @@ change and says so.
 `--format json` emits one machine-readable object (`{ taskId, runId,
 why, diff }`).
 
+Exit codes: `0` the task's run explained; `1` no recorded run of the
+task, a `--run` with no row for it, or a parse error.
+
 ## `vx prune`
 
 Removed (owner, 2026-09-11). It was a core verb until 2026-09-10 and the
@@ -2341,6 +2344,10 @@ or `.vx/cache`). A `--cache-dir` that is not there is refused by name
 ran, `vx why`, `vx last`, `vx info`, `vx show` and `vx cache prune`
 (dry or not) read it as empty and create nothing (item 900, E-7, E-38).
 
+Exit codes: `0` the run (or the list) printed, `--list` with no runs
+included; `1` no recorded run yet, a run id it has no record of, or a
+parse error.
+
 ## `vx completions`
 
 Print a completion script for `bash`, `zsh` or `fish`:
@@ -2361,7 +2368,7 @@ verb's line names in passing (`vx lock --check` beside `--frozen`) is
 not one. A plugin verb completes `--help` only. Task and project
 names are not completed (they are the workspace's, and a completion
 that evaluates configs on every Tab is the wrong price). An unknown
-shell is an error naming the three.
+shell is an error naming the three, exit 1.
 
 ## Plugin commands
 
