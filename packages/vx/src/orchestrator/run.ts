@@ -1270,12 +1270,26 @@ async function runOnBus(
     // for it, and an exit 1 with no word about why is a mystery in a log.
     if (keepAlive.children.length > 0 && hold) {
       const held = keepAlive.children
+      // A held server that dies on its own is said, as the foreground's
+      // keep-alive says it: `vx watch` sat on "watching" over a dead dev
+      // server. The holder's own stop() is not such a death.
+      let stopping = false
+      keepAlive.nodes.forEach((n, i) => {
+        // One that died during the graph was said then.
+        if (hasEnded(held[i]!)) return
+        void held[i]!.exited.then((code) => {
+          if (!stopping && code !== 0) log.status(`vx: ${n.id} exited with code ${code}`)
+        })
+      })
       return {
         ok,
         outcomes: list,
         persistent: {
           ids: keepAlive.nodes.map((n) => n.id),
-          stop: (signal) => terminateChildren(() => held, signal),
+          stop: (signal) => {
+            stopping = true
+            return terminateChildren(() => held, signal)
+          },
         },
       }
     }
