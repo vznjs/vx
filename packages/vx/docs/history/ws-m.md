@@ -468,6 +468,16 @@ the snapshot (each run's reset SIGTERMs SRT's socat and does not await
 its exit). Six sandboxed runs read the same pidfd, socket and pipe count
 right after `run()` returned and 300 ms later.
 
+M-38. Probes, nothing shipped. The one other first-attempt CI failure
+in the last 120 runs (2026-10-03, to 02:05): `runner.test.ts` ›
+settle() lets a grandchild that traps the SIGTERM finish inside the
+grace, macOS only (#2405, D's lead), `settle()` back at 133 ms with
+no marker, so the trapping shell was gone within the 600 ms grace.
+Refuted: a memoized grace (`killGraceMs` reads the env each call) and
+`goneGroups` (nothing here marks the group). Not reproduced: 30 runs
+on Linux with `sh` as `bash --posix` beside eight busy loops. macOS's
+`sh` is bash 3.2 and is not here to probe.
+
 ## Leads for other streams
 
 - A: A-20 let a same-project dependant restore ahead of a producer whose
