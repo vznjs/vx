@@ -23,7 +23,7 @@ const NOT_SECRET = /_(FILE|PATH|DIR)$|^GIT_CONFIG_KEY_\d+$/i
  */
 const secretNames = new Map<string, boolean>()
 
-function secretNamed(name: string): boolean {
+export function secretNamed(name: string): boolean {
   let secret = secretNames.get(name)
   if (secret === undefined) {
     secret = SECRET_NAME.test(name) && !NOT_SECRET.test(name)
