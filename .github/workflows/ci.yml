@@ -92,6 +92,17 @@ jobs:
       # set because a sandboxed shard sees a mount it did not make as
       # read-only (EROFS, the first run), and a disk that cannot be written
       # cannot be filled.
+      # vx's own cache, carried between runs: a run restores the newest
+      # one main saved and replays every task whose key is unchanged, so a
+      # PR re-runs only what it touched (owner, 2026-10-04: cache all that
+      # can be). Only a push to main saves, so a PR's code never writes an
+      # entry another run reads.
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .vx/cache
+          key: vx-${{ runner.os }}-${{ github.sha }}
+          restore-keys: vx-${{ runner.os }}-
+
       - name: Mount a small disk
         run: |
           sudo mkdir -p /tmp/vx-small
@@ -146,6 +157,12 @@ jobs:
           test -s "$GITHUB_STEP_SUMMARY" || { echo "::error::job summary is empty — did @vzn/vx-github decline?"; exit 1; }
           grep -q 'vx run' "$GITHUB_STEP_SUMMARY" || { echo "::error::job summary is not the vx one"; exit 1; }
           exit $code
+
+      - if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .vx/cache
+          key: vx-${{ runner.os }}-${{ github.sha }}
 
       # A cross-compile on a cold Bun cache, in bwrap: nothing warms
       # `~/.bun/install/cache`, so each target's runtime downloads from npm
@@ -287,6 +304,13 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
+      # vx's cache between runs, as in the linux job.
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .vx/cache
+          key: vx-${{ runner.os }}-${{ github.sha }}
+          restore-keys: vx-${{ runner.os }}-
+
       # The core suite through vx, as on Linux: the twelve shard tasks plus
       # the unsafe suite, dealt by weight, run side by side under the
       # scheduler's cap. Several processes, not one, is the point on macOS:
@@ -300,6 +324,12 @@ jobs:
           # quietly if that changes (see the linux job for the reasoning).
           VX_REQUIRE_WATCH_EVENTS: '1'
         run: bun packages/vx/src/bin.ts run test --filter @vzn/vx
+
+      - if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .vx/cache
+          key: vx-${{ runner.os }}-${{ github.sha }}
 
       # DATA COLLECTION, not a gate: the sandbox suites are class-gated on
       # darwin CI because sandbox-exec misbehaves under load here — including
