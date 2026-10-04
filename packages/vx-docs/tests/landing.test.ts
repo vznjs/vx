@@ -19,7 +19,7 @@ const DIST = path.resolve(import.meta.dir, '../dist')
 const BASE = (process.env['BASE_PATH'] ?? '/vx').replace(/\/?$/, '/')
 
 // Every section below the hero, top to bottom.
-const SECTIONS = ['bench', 'try', 'one-run', 'pillars']
+const SECTIONS = ['bench', 'edge', 'try', 'one-run', 'pillars']
 
 // The six lines under the picture, as the design writes them, each at the
 // anchor the old chapters redirect to.
@@ -302,10 +302,12 @@ describe('the landing page', () => {
       expect(Math.max(...bars.map((m) => Number(m[2])))).toBe(100)
       const notes = bars.map((m) => /<span class="vx-bar-note">([\s\S]*?)<\/span>/.exec(m[3]!)?.[1])
       expect(notes[0]).toBeUndefined()
-      expect(notes.slice(1).filter((n) => !/^vx \d+% (?:faster|slower)$/.test(n ?? ''))).toEqual([])
+      expect(notes.slice(1).filter((n) => !/^vx [\d.]+× (?:faster|slower)$/.test(n ?? ''))).toEqual(
+        [],
+      )
     }
     expect(text(/<p class="bench-formula">([\s\S]*?)<\/p>/.exec(bench)![1]!)).toBe(
-      'vx N% faster: vx takes N% less time than that tool (1 − vx ÷ theirs); N% slower: N% more (vx ÷ theirs − 1).',
+      'vx N× faster: that tool takes N times as long as vx (theirs ÷ vx); N× slower: vx takes N times as long (vx ÷ theirs).',
     )
     const notes = [...bench.matchAll(/<p class="bench-formula">([\s\S]*?)<\/p>/g)].map((m) =>
       text(m[1]!),
@@ -314,6 +316,55 @@ describe('the landing page', () => {
     expect(notes[1]).toStartWith("Nx's column ran every task through npm run")
     const reasons = [...bench.matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/g)].map((m) => text(m[1]!))
     expect(reasons).toHaveLength(3)
+  })
+
+  // The hero's three numbers are the chart's own multiples (owner,
+  // 2026-10-04: "show off best traits of vx vs competitors").
+  it('leads with three multiples the chart states', () => {
+    const wins = [
+      ...hero.matchAll(/<li>\s*<strong>([\s\S]*?)<\/strong>\s*<span>([\s\S]*?)<\/span>/g),
+    ]
+    expect(wins.map((m) => text(m[2]!))).toEqual([
+      'less time added to a cold build than Turborepo',
+      'less CPU burned on a cold build than Turborepo',
+      'faster fully cached run than Nx',
+    ])
+    const bench = section(html, 'bench')
+    const notes = [...bench.matchAll(/<span class="vx-bar-note">vx ([\d.]+)× faster<\/span>/g)].map(
+      (m) => `${m[1]}×`,
+    )
+    // Turborepo and Nx per figure, in the chart's order.
+    expect(wins.map((m) => text(m[1]!))).toEqual([notes[0]!, notes[2]!, notes[5]!])
+  })
+
+  // Where vx differs from both, as the choosing page's model says it.
+  it('compares vx, Turborepo and Nx trait by trait', () => {
+    const edge = section(html, 'edge')
+    const cols = [...edge.matchAll(/<th scope="col"[^>]*>([\s\S]*?)<\/th>/g)].map((m) =>
+      text(m[1]!),
+    )
+    expect(cols).toEqual(['', 'vx', 'Turborepo', 'Nx'])
+    const rows = [...edge.matchAll(/<tr>\s*<th scope="row">([\s\S]*?)<\/th>([\s\S]*?)<\/tr>/g)]
+    expect(rows.map((m) => text(m[1]!))).toEqual([
+      'A file sandbox for every task',
+      'Remote execution you host',
+      'A remote cache on any backend',
+      'Config is code',
+      'No background daemon',
+    ])
+    const kinds = rows.map((m) =>
+      [...m[2]!.matchAll(/<td class="(yes|no|paid)" data-tool="([^"]+)"/g)].map(
+        (c) => `${c[2]} ${c[1]}`,
+      ),
+    )
+    expect(kinds).toEqual([
+      ['vx yes', 'Turborepo no', 'Nx paid'],
+      ['vx yes', 'Turborepo no', 'Nx paid'],
+      ['vx yes', 'Turborepo no', 'Nx no'],
+      ['vx yes', 'Turborepo no', 'Nx no'],
+      ['vx yes', 'Turborepo yes', 'Nx no'],
+    ])
+    expect(hrefs(edge)).toEqual([`${BASE}compare/`])
   })
 
   // Four commands on native config, and Turbo or Nx only as a temporary

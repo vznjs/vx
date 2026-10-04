@@ -1,15 +1,16 @@
-// A post or guide that quotes a benchmark figure with vx's % quotes both
+// A post or guide that quotes a benchmark figure with vx's multiple quotes both
 // from docs/benchmarks.md, whose 3,270-task table update-site.ts generates
-// from results.json: a new run regenerates that table, and a hand-typed %
-// beside an old figure would survive it. Each `<figure> (… vx N% faster)`
-// must appear on the page as `<figure> (vx N% faster)`.
+// from results.json: a new run regenerates that table, and a hand-typed multiple
+// beside an old figure would survive it. Each `<figure> (… vx N× faster)`
+// must appear on the page as `<figure> (vx N× faster)`.
 import { readFileSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 
 const DOCS = path.resolve(import.meta.dir, '../../vx-docs/src/content/docs')
 const BENCH = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
-const QUOTE = /(\d+m \d+s|\d+(?:\.\d+)?(?:ms|s))\s*\((?:\+[\d:]+, )?(vx \d+% (?:faster|slower))\)/g
+const QUOTE =
+  /(\d+m \d+s|\d+(?:\.\d+)?(?:ms|s))\s*\((?:\+[\d:]+, )?(vx [\d.]+× (?:faster|slower))\)/g
 
 function pages(): string[] {
   const out: string[] = []
@@ -19,8 +20,8 @@ function pages(): string[] {
   return out
 }
 
-describe('every vx % a page quotes is the benchmarks page’s', () => {
-  it('each figure and its % sit together on docs/benchmarks.md', () => {
+describe('every vx multiple a page quotes is the benchmarks page’s', () => {
+  it('each figure and its multiple sit together on docs/benchmarks.md', () => {
     const wrong: string[] = []
     let checked = 0
     for (const file of pages()) {

@@ -866,7 +866,12 @@ describe('the from-nx post says how executors run, and names the servers', () =>
   })
   it('the benchmark figures it states are the benchmarks page’s', () => {
     const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
-    for (const figure of ['476ms', '3.59s (vx 86% faster)', '34.33s', '114m 06s (vx 99% faster)']) {
+    for (const figure of [
+      '476ms',
+      '3.59s (vx 7.5× faster)',
+      '34.33s',
+      '114m 06s (vx 199× faster)',
+    ]) {
       expect(page).toContain(figure)
       expect(bench).toContain(figure)
     }
@@ -2159,7 +2164,7 @@ describe('the posts state the daemons as the benchmark ran them', () => {
     const harness = readFileSync(path.join(core, '..', 'vx-bench', 'compare.ts'), 'utf8')
     expect(harness).toContain("(`CI=1`, so Nx's daemon is off;")
     expect(post('no-choice-on-the-market.md')).toContain(
-      "(vx 86% and 37% faster), Nx's daemon off as in CI.",
+      "(vx 7.5× and 1.5× faster), Nx's daemon off as in CI.",
     )
     expect(post('honest-benchmarks.md')).toContain(
       "CI (`CI=1`: Nx's daemon off, and Turbo uses none for `turbo run`)",
@@ -2429,9 +2434,9 @@ describe('the headline Nx note quotes the fixed-harness figures', () => {
     const note = /^Nx's column ran every task through npm run.*$/m.exec(readme)?.[0]
     expect(note).toBeDefined()
     expect(bench).toContain(note!)
-    expect(note).toContain('Nx took 6m 59s cold and 4.50 s fully cached (vx 47% and 92% faster)')
-    expect(bench).toContain('6m 59s (vx 47% faster)')
-    expect(bench).toContain('4.50 s (vx 92% faster)')
+    expect(note).toContain('Nx took 6m 59s cold and 4.50 s fully cached (vx 1.9× and 12× faster)')
+    expect(bench).toContain('6m 59s (vx 1.9× faster)')
+    expect(bench).toContain('4.50 s (vx 12× faster)')
     expect(bench).toContain('`npm run` costs 202 ms of')
   })
 })

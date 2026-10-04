@@ -41,7 +41,7 @@ export function parseDuration(text: string): number | null {
   return m[5] === 's' ? v * 1000 : v
 }
 
-/** "10.43 s (vx 1% faster)" → ["10.43 s", "vx 1% faster"]. */
+/** "10.43 s (vx 1.01× faster)" → ["10.43 s", "vx 1.01× faster"]. */
 function splitNote(text: string): [string, string | undefined] {
   const at = text.indexOf(' (')
   if (at === -1 || !text.endsWith(')')) return [text.trim(), undefined]

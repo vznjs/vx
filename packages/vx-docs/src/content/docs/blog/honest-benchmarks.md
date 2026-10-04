@@ -43,10 +43,10 @@ isolate the runner's own overhead from compilation.
 | Runner    | Cold build         | Fully cached | Cold build CPU |
 | --------- | ------------------ | ------------ | -------------- |
 | vx        | **3m 47s** (+0:09) | **476ms**    | **34.33s**     |
-| Turborepo | 5m 13s (+1:35, vx 27% faster) | 760ms (vx 37% faster) | 1m 13s (vx 53% faster) |
-| Nx        | 34m 44s (+31:06, vx 89% faster) | 3.59s (vx 86% faster) | 114m 06s (vx 99% faster) |
+| Turborepo | 5m 13s (+1:35, vx 1.3× faster) | 760ms (vx 1.5× faster) | 1m 13s (vx 2.1× faster) |
+| Nx        | 34m 44s (+31:06, vx 9.2× faster) | 3.59s (vx 7.5× faster) | 114m 06s (vx 199× faster) |
 
-vx N% faster: vx takes N% less time than that tool (1 − vx ÷ theirs).
+vx N× faster: that tool takes N times as long as vx (theirs ÷ vx).
 Nx's figures ran every task through npm, a harness fault ([Benchmarks](../../benchmarks/) has the fixed run).
 
 The first two columns are wall clock; the third is CPU time (user plus
