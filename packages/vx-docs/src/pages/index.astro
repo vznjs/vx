@@ -17,7 +17,7 @@ const href = (p: string) => `${base}${p}`
 const GH = 'https://github.com/vznjs/vx'
 const TITLE = 'vx — the fastest task runner for JS monorepos'
 const DESCRIPTION =
-  'Seconds of overhead where Turborepo and Nx add minutes, each measured in its own native config. MIT, no account.'
+  'Less overhead than Turborepo and Nx in every benchmark column, each measured in its own native config. MIT, no account.'
 // Absolute, as a link preview fetches it from wherever the link was pasted.
 const siteUrl = new URL(base, Astro.site).href
 
@@ -66,13 +66,12 @@ const pillars = [
 ]
 
 const benchTable = [
-  { label: 'Cold build: time the runner adds', vx: '9 s', turbo: '1 min 35 s (vx 11× faster)', nx: '31 min (vx 218× faster)' },
-  { label: 'Cold build: CPU burned', vx: '34 s', turbo: '1 min 13 s (vx 2.1× faster)', nx: '114 min (vx 199× faster)' },
-  { label: 'Fully cached run', vx: '476 ms', turbo: '760 ms (vx 1.5× faster)', nx: '3.59 s (vx 7.5× faster)' },
-  { label: 'Overhead per package', vx: '8 ms', turbo: '88 ms (vx 11× faster)', nx: '1,712 ms (vx 218× faster)' },
+  { label: 'Cold build: time the runner adds', vx: '2 s', turbo: '1 min 21 s (vx 34× faster)', nx: '11 s (vx 4.7× faster)' },
+  { label: 'Cold build: CPU burned', vx: '17 s', turbo: '21 s (vx 1.2× faster)', nx: '52 s (vx 3× faster)' },
+  { label: 'Fully cached run', vx: '393 ms', turbo: '463 ms (vx 1.1× faster)', nx: '6.45 s (vx 16× faster)' },
+  { label: 'Overhead per package', vx: '2 ms', turbo: '74 ms (vx 34× faster)', nx: '10 ms (vx 4.7× faster)' },
 ]
 const benchFormula = 'vx N× faster: that tool takes N times as long as vx (theirs ÷ vx); N× slower: vx takes N times as long (vx ÷ theirs).'
-const benchNote = "Nx's column ran every task through npm run (~200 ms of CPU each; Turbo ran bun run), a harness fault since fixed; with bun, on a 4-core Linux box, Nx took 6m 59s cold and 4.50 s fully cached (vx 1.9× and 12× faster)."
 
 /** A competitor cell's value and its "vx N× faster". */
 const vsOf = (c: string): [string, string] => {
@@ -95,9 +94,7 @@ const benchBars = renderBars(
 )
 
 // The hero's three numbers, each the multiple a benchTable cell already
-// states, so a new run moves them with the chart. Only the columns that
-// flatter Nx least: its cold figures paid npm per task (benchNote); its
-// cached one did not gain from that fault (the fixed harness read 4.50 s).
+// states, so a new run moves them with the chart.
 const timesOf = (cell: string): string => `${/^vx ([\d.]+)× faster$/.exec(vsOf(cell)[1])![1]}×`
 const [addsRow, cpuRow, cachedRow] = benchTable
 const wins = [
@@ -285,12 +282,11 @@ const footCols = {
         <div class="container">
           <div class="section-head">
             <p class="vx-kicker">// 3,270 tasks · 1,090 packages · 100 layers · identical commands, identical concurrency</p>
-            <h2>Seconds of overhead where others add minutes.</h2>
+            <h2>Less overhead in every column.</h2>
           </div>
           <div class="bench-panel">
             <Fragment set:html={benchBars} />
             <p class="bench-formula">{benchFormula}</p>
-            <p class="bench-formula">{benchNote}</p>
           </div>
           <ul class="reasons">
             {

@@ -27,6 +27,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
 import { emitMainPackage, emitPluginPackages } from '../scripts/build-npm.ts'
+import { withNpm } from './helpers/npm.js'
 import { gitIn, gitInit } from './helpers/workspace.js'
 
 const RECORDS = path.join(import.meta.dir, 'contract', 'pack')
@@ -51,7 +52,7 @@ interface Packed {
 function npm(
   cwd: string,
   args: string[],
-  env: NodeJS.ProcessEnv = process.env,
+  env: NodeJS.ProcessEnv = withNpm(),
 ): { code: number | null; stdout: string; out: string } {
   const r = Bun.spawnSync({ cmd: ['npm', ...args], cwd, env, stdout: 'pipe', stderr: 'pipe' })
   const stdout = r.stdout.toString()
@@ -191,6 +192,7 @@ describe('the npm tarballs', () => {
       const r = Bun.spawnSync({
         cmd: ['npx', 'vx', 'last', '--format', 'json'],
         cwd: repo,
+        env: withNpm(),
         stdout: 'pipe',
       })
       const last = JSON.parse(r.stdout.toString()) as {
@@ -202,6 +204,7 @@ describe('the npm tarballs', () => {
       Bun.spawnSync({
         cmd: ['npx', 'vx', 'run', 'build', '--all'],
         cwd: repo,
+        env: withNpm(),
         stdout: 'pipe',
         stderr: 'pipe',
       }).exitCode

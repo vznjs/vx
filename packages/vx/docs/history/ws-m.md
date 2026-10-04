@@ -1045,3 +1045,13 @@ before it ran is `◌ not run <id>`. The tasks legend names both after
 the total (`not counted: 1 aborted, 2 not run`); the total stays the
 count history and telemetry share. A requested task the stop kept from starting no longer
 prints a frame close for a frame it never opened.
+M-82. The gate passes on a Mac with no npm and an M-series CPU. A write
+glob covered only the directories it matched on macOS (SRT compiles a
+glob as an exact regex), so `/tmp/pnpm-store-operation-locks-*/` left
+pnpm 12's lock file refused; each wildcard write grant now adds
+`<glob>/**`, as Linux's bind already did. `git-spawns-once`'s warm row
+failed on every full-file run there: the cold run started inside the
+index's racy window and keyed no verdict, so the fixture now waits the
+window out. The npm and try-it suites drive a pinned root devDependency
+`npm` 11.21.0 rather than the host's, which was missing (21 rows), and
+the lockfile test grants the DNS lookup npm's Node makes offline.

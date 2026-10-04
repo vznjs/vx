@@ -16,8 +16,9 @@ One number first, because it is the one that decides whether a runner
 is worth having. Imagine your tasks take three minutes on their own.
 What does the tool add on top? On the 3,270-task workspace below the
 tasks alone take 3m 38s under an ideal schedule. vx finishes the cold
-build in 3m 47s: **nine seconds of overhead**. Turborepo finishes in
-5m 13s, **a minute and a half**. Nx finishes in 34m 44s, **half an hour**.
+build in 3m 40s: **two seconds of overhead**. Nx finishes in 3m 49s,
+**eleven seconds**. Turborepo finishes in 4m 59s, **a minute and a
+half**.
 Every warm number on
 this page is a consequence of the same discipline, but this is the one
 you feel on every uncached build.
@@ -29,8 +30,9 @@ you feel on every uncached build.
 package and three tasks each, 3,270 task nodes, and runs vx, Turborepo
 and Nx across the same three cache states: cold, warm with outputs
 wiped (restore), and warm with nothing touched (no-op). The run below
-is Turbo 2.10.12 and Nx 23.2.0 on macOS arm64 with 10 cores, every
-runner pinned to concurrency 10. Fairness is deliberate: vx runs as
+is Turbo 2.11.7 and Nx 23.2.1 on Linux x64 with 4 cores, every
+runner pinned to concurrency 10, every Nx task an `nx:run-commands`
+target. Fairness is deliberate: vx runs as
 the compiled binary users install, Turbo and Nx run as they would in
 CI (`CI=1`: Nx's daemon off, and Turbo uses none for `turbo run`), and
 the runners are measured strictly one at a
@@ -42,20 +44,19 @@ isolate the runner's own overhead from compilation.
 
 | Runner    | Cold build         | Fully cached | Cold build CPU |
 | --------- | ------------------ | ------------ | -------------- |
-| vx        | **3m 47s** (+0:09) | **476ms**    | **34.33s**     |
-| Turborepo | 5m 13s (+1:35, vx 1.3× faster) | 760ms (vx 1.5× faster) | 1m 13s (vx 2.1× faster) |
-| Nx        | 34m 44s (+31:06, vx 9.2× faster) | 3.59s (vx 7.5× faster) | 114m 06s (vx 199× faster) |
+| vx        | **3m 40s** (+0:02) | **393ms**    | **17.27s**     |
+| Turborepo | 4m 59s (+1:21, vx 1.3× faster) | 463ms (vx 1.1× faster) | 21.04s (vx 1.2× faster) |
+| Nx        | 3m 49s (+0:11, vx 1.03× faster) | 6.45s (vx 16× faster) | 52.19s (vx 3× faster) |
 
 vx N× faster: that tool takes N times as long as vx (theirs ÷ vx).
-Nx's figures ran every task through npm, a harness fault ([Benchmarks](../../benchmarks/) has the fixed run).
 
 The first two columns are wall clock; the third is CPU time (user plus
 system, of the invocation and every child it waited for), because on a
 synthetic workspace the tasks sleep and that column measures the
 runner's own work per task. A daemon that outlives the invocation is
 not counted, so Turbo's and Nx's are floors. It is the fairest number for "what does
-the tool cost me," and Nx's is not a typo. The wall-clock rows, the
-theoretical baseline and the measured floors (one git walk is 67ms on
+the tool cost me." The wall-clock rows, the
+theoretical baseline and the measured floors (one git walk is 26ms on
 that machine) are in [Benchmarks](../../benchmarks/).
 
 ## Real repositories: rerun pending

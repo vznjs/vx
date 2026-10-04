@@ -123,7 +123,10 @@ absolute, and expand `~` against the user's home. Globs are accepted:
 macOS passes the pattern into the policy (so it matches files created
 during the run); Linux expands it at task start, because a grant there is
 a mount. `<dir>/**` and `<dir>/**/*` collapse to `<dir>` on both, so
-`read: ['**/*']` lets a task list its own cwd.
+`read: ['**/*']` lets a task list its own cwd. A write glob makes each
+directory it matches writable whole on both: Linux binds the hit, and
+macOS grants the glob's subtree beside it, so pnpm 12's lock directory
+grant covers the lock file inside it.
 
 There is **no inheritance** from `vx.workspace.ts`, and nothing is
 derived from `cache`. The single grant core makes is dependencies:
