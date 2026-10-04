@@ -40,7 +40,8 @@ export class DeferredOutputs {
   taken; each producer materialises at most once per run and they run
   concurrently. The closure is walked pre-order on an explicit stack: it
   is as deep as the graph, and a recursion per edge threw `RangeError`
-  at 50,000.
+  at 50,000. With nothing registered it returns before the walk: every
+  miss of every run paid it, O(graph) a task.
 - `pending()` — task ids whose outputs are still remote, for the run
   summary. An entry is cleared only on
   SUCCESS, so this covers both "nothing needed them" and "fetching

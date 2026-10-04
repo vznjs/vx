@@ -1176,8 +1176,27 @@ describe('DeferredOutputs', () => {
       return get(id)
     }
     const deferred = registry(counted)
+    // One deferred task outside the closure, so there is something to look for.
+    deferred.register(
+      'other#x',
+      entry('other#x', async () => {}),
+    )
     await deferred.materializeFor(root)
     expect(lookups).toBe(2 * RUNGS)
+  })
+
+  it('with nothing deferred, a closure is not walked at all', async () => {
+    // Every miss of every run asks; the walk is the size of the graph (Q-1).
+    const nodes = graph(node('app#a'), node('app#use', undefined, ['app#a']))
+    let lookups = 0
+    const counted = new Map(nodes)
+    const get = counted.get.bind(counted)
+    counted.get = (id: string) => {
+      lookups++
+      return get(id)
+    }
+    await registry(counted).materializeFor(nodes.get('app#use')!)
+    expect(lookups).toBe(0)
   })
 
   it('a fetch stays inside its project: a nested project is neither wiped nor saved', async () => {
