@@ -323,6 +323,20 @@ probes each forked task runs cost ~8 ms of it. These tables used to say
 Nx's daemon was on; `CI=1` had always turned it off, and the harness
 keeps it off on purpose: it simulates CI.
 
+### Why Turborepo is slower cold
+
+The order it starts ready tasks in, not its CPU (21 s cold against vx's
+17 s at 3,270 tasks). Turborepo has no ranking: its walker hands out
+tasks as they become ready and each waits for a semaphore slot
+(`crates/turborepo-engine/src/execute.rs`). When a layer's builds finish,
+the next layer's builds become ready together with that layer's tests,
+and in ready order the tests go first, so every build on the 100-layer
+critical path waits about a second. `listSchedule(nodes, 10, 'fifo')`
+replays that order on the benchmark's graph: 4m 58s, against Turborepo's
+measured 4m 59s and 3m 38s ranked (`packages/vx-bench/tests/ideal.test.ts`).
+No `turbo.json` key changes the order. vx ranks ready tasks by remaining
+critical path, Nx by how many tasks wait on each.
+
 ## A real monorepo: 3,270 tasks, 100 layers (2026-10-04)
 
 The shape that actually stresses a task runner: **100 dependency layers**,
