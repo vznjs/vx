@@ -23,6 +23,7 @@ import {
   parseSize,
   UserError,
   BUN_GLOB_WILDCARDS,
+  EXTGLOB,
 } from '../util/index.js'
 import { nonJsonMessage, nonJsonPaths } from './json-data.js'
 
@@ -1065,6 +1066,24 @@ function assertNoForeignToken(glob: string, where: string): void {
       const shown = token.endsWith('.') ? `${token}…}` : token
       throw new UserError(`${where}: "${glob}" holds ${shown}, ${meaning}`)
     }
+  }
+  // A leading `!` is vx's negation, so `!(group)/**` takes back a route group.
+  const body = glob.startsWith('!') ? glob.slice(1) : glob
+  const at = body.search(EXTGLOB)
+  if (at !== -1) {
+    // `@(a|b)` of plain names is exactly `{a,b}`, and `@(a)` is `a`.
+    const group =
+      body[at - 1] === '\\' ? null : /^@\(([^()|]+(?:\|[^()|]+)*)\)/.exec(body.slice(at))
+    const names = group === null ? [] : group[1]!.split('|')
+    const rewrite =
+      group === null || BUN_GLOB_WILDCARDS.test(group[1]!)
+        ? 'braces ("{a,b}") or one entry per alternative'
+        : `"${glob.replace(group[0], names.length === 1 ? names[0]! : `{${names.join(',')}}`)}"`
+    throw new UserError(
+      `${where}: "${glob}" is an extglob, which vx's glob engine reads as literal text or a ` +
+        `plain wildcard, never as the alternatives it lists, so the cache key would miss the ` +
+        `files it names. Write ${rewrite} instead.`,
+    )
   }
 }
 

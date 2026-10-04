@@ -180,6 +180,16 @@ export const GLOB_WILDCARDS = /[*?{}]/
 export const BUN_GLOB_WILDCARDS = /[*?[\]{}]/
 
 /**
+ * An extglob group: `!(…)`, `@(…)`, `+(…)`, `*(…)`, `?(…)`. npm, yarn,
+ * Nx and Turbo read it; `Bun.Glob` has none, and reads the group as
+ * literal text or as a plain wildcard. A task input `src/@(x|y).ts` keyed
+ * no file, so an edit to `src/x.ts` replayed a stale hit, and a member
+ * glob `packages/!(x)` took in x (turborepo#3766). Every glob vx hands
+ * `Bun.Glob` from a config refuses it.
+ */
+export const EXTGLOB = /[!@+*?]\(/
+
+/**
  * Compile a task glob for `Bun.Glob`, with every bare bracket escaped so it
  * matches itself (item 667). Every task glob is compiled here and nowhere
  * else: one site that forgot is a route directory that keys nothing.

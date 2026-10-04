@@ -4,6 +4,7 @@ import path from 'node:path'
 import type { ProjectConfig, WorkspaceConfig } from '../config.js'
 import {
   BUN_GLOB_WILDCARDS,
+  EXTGLOB,
   isOutOfFds,
   isPermissionError,
   relPosix,
@@ -322,16 +323,6 @@ function assertGlobList(value: unknown, file: string, field: string): string[] {
   }
   return value as string[]
 }
-
-/**
- * An extglob group: `!(…)`, `@(…)`, `+(…)`, `*(…)`, `?(…)`. npm (minimatch)
- * and yarn (micromatch) read `packages/!(x)` as "every directory in
- * packages/ but x"; `Bun.Glob` has no extglob, and its scan read the
- * segment as a wildcard, so the excluded package became a project
- * (turborepo#3766) while its match read the same text literally. vx cannot
- * honour the pattern, so it refuses it rather than read it either way.
- */
-const EXTGLOB = /[!@+*?]\(/
 
 function extglobRefusal(pattern: string, file: string, field: string): UserError {
   const head = `${file}: \`${field}\` entry "${pattern}" is an extglob, which vx's glob engine does not read`

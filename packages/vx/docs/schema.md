@@ -703,7 +703,11 @@ directory `app/[id]` (Next.js, SvelteKit, Astro), never `app/i` or
 `app/d`. The escaped spelling `app/\[id\]/**` (Turbo's) means the same
 path. An input brace of one alternative (`{b}.ts`) is refused: it
 would match `b.ts` and never a file named `{b}.ts`; write the one you
-mean, `\{b\}.ts` for the braces. This holds for every task glob — `inputs.files`,
+mean, `\{b\}.ts` for the braces. An extglob (`@(a|b)`, `!(x)`,
+`+(…)`, `*(…)`, `?(…)`) is refused too: `Bun.Glob` reads it as literal
+text or a plain wildcard, so the key would miss the files it names;
+write `{a,b}`. A leading `!` is still the negation, so `!(group)/**`
+takes a route group back. This holds for every task glob — `inputs.files`,
 `inputs.workspaceFiles`, `outputs.files`, `outputs.workspaceFiles` — and
 for everything read from them (`--affected`, `vx watch`, the
 overlapping-output refusal). Package-manager member globs (`workspaces`,

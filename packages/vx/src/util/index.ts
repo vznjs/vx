@@ -23,6 +23,7 @@ export { clampInt, formatElapsed, MAX_TIMEOUT_MS, parseDecimalInt } from './num.
 export {
   asTrees,
   BUN_GLOB_WILDCARDS,
+  EXTGLOB,
   grantPrefix,
   isLiteralPattern,
   GLOB_WILDCARDS,
