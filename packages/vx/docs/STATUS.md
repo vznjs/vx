@@ -268,6 +268,12 @@ at a time (W12, W13, …) takes a queue from the coordinator and records
 its items in the stream file of their area (adoption in `ws-g.md`) or
 its own `ws-W<n>.md`.
 
+**Cold CPU (owner, 2026-10-04: "Make VX cpu burn lower than Vite
+Task"; `docs/history/ws-q.md`).** The 1,090-package cold run read 17.27 s
+of CPU against Vite Task's 12.46. Q-1 cut vx's own CPU by a sixth. The
+rest of the gap is mostly the shell: vx runs every task as `sh -c`,
+one exec more per task than Vite Task, which execs `a && b` itself.
+
 **Positioning (owner, 2026-10-02; `docs/history/ws-r.md`).** vx is the
 fastest task runner, shown by the native-config benchmark with every
 competitor cell as `(vx N× faster|slower)` (owner, 2026-10-04: "say how
