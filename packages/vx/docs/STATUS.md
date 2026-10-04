@@ -527,7 +527,10 @@ next?".
     Turbo's cold gap is its ready order, not its config: no ranking, so a
     layer's tests run before the next layer's builds; a FIFO replay of the
     graph reads 4m 58s against its measured 4m 59s (benchmarks.md § Why
-    Turborepo is slower cold).
+    Turborepo is slower cold). Vite Task (`vp run`, vite-plus 1.0.0) joined
+    the chart (owner, 2026-10-04): 4m 49s cold, 2.49 s cached; it burns
+    less CPU cold than vx (12.46 s against 17.27 s), so the landing claims
+    time added, cold and cached, not every column.
 19. DONE as item 751 — **A sandboxed task's `kill 0` killed the
     sandbox (Linux, found in 736).** The command runs in a session of
     its own inside the sandbox.

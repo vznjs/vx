@@ -344,21 +344,22 @@ The shape that actually stresses a task runner: **100 dependency layers**,
 (`build` + `installDeps` + `test`, `sleep 1` for build and test) — **3,270
 task nodes**, 1,090 packages. Same repo, same hardware, same task commands;
 every runner pinned to concurrency 10. `bun packages/vx-bench/compare.ts 100 11 1`,
-this machine (linux x64, 4 cores), Turbo 2.11.7, Nx 23.2.1, every Nx task an `nx:run-commands` target.
+this machine (linux x64, 4 cores), Turbo 2.11.7, Nx 23.2.1, every Nx task an `nx:run-commands` target,
+Vite Task (`vp run`, vite-plus 1.0.0), its tasks in each package's `vite.config.ts`.
 vx runs from a `vx lock` snapshot (`--frozen`), taken once before the reps,
 as a CI pipeline runs it; _vx, no lock_ is the same run evaluating every
 config per run.
 The committed `packages/vx-bench/RESULTS.md` / `packages/vx-bench/results.json` are this run.
 
-|                                 | vx                                                        | vx, no lock | Turborepo               | Nx                       |
-| ------------------------------- | --------------------------------------------------------- | ----------- | ----------------------- | ------------------------ |
-| **Cold** (nothing cached)       | **3m 40s**                                                | 3m 41s      | 4m 59s (vx 1.3× faster) | 3m 49s (vx 1.03× faster) |
-| **Warm**, nothing to rebuild    | **393ms**                                                 | 473ms       | 463ms (vx 1.1× faster)  | 6.45s (vx 16× faster)    |
-| **Warm**, restore outputs       | **650ms**                                                 | 780ms       | 997ms (vx 1.5× faster)  | 6.25s (vx 9.6× faster)   |
-| **CPU burned**, cold (user+sys) | **17.27s**                                                | 18.79s      | 21.04s (vx 1.2× faster) | 52.19s (vx 3× faster)    |
-| **CPU burned**, warm (user+sys) | **745ms**                                                 | 894ms       | 897ms (vx 1.2× faster)  | 7.52s (vx 10× faster)    |
-| _Baseline_ (theoretical best)   | 3m 38s cold; 0 warm, restore, CPU                         | —           | —                       | —                        |
-| _Measured floors_ (context)     | git walk 26ms · walk + raw copy 111ms · task shells 9.26s | —           | —                       | —                        |
+|                                 | vx                                                       | vx, no lock | Turborepo               | Nx                       | Vite Task               |
+| ------------------------------- | -------------------------------------------------------- | ----------- | ----------------------- | ------------------------ | ----------------------- |
+| **Cold** (nothing cached)       | **3m 40s**                                               | 3m 41s      | 4m 59s (vx 1.3× faster) | 3m 49s (vx 1.03× faster) | 4m 49s (vx 1.3× faster) |
+| **Warm**, nothing to rebuild    | **393ms**                                                | 473ms       | 463ms (vx 1.1× faster)  | 6.45s (vx 16× faster)    | 2.49s (vx 6.3× faster)  |
+| **Warm**, restore outputs       | **650ms**                                                | 780ms       | 997ms (vx 1.5× faster)  | 6.25s (vx 9.6× faster)   | 2.64s (vx 4× faster)    |
+| **CPU burned**, cold (user+sys) | **17.27s**                                               | 18.79s      | 21.04s (vx 1.2× faster) | 52.19s (vx 3× faster)    | 12.46s (vx 1.4× slower) |
+| **CPU burned**, warm (user+sys) | **745ms**                                                | 894ms       | 897ms (vx 1.2× faster)  | 7.52s (vx 10× faster)    | 2.48s (vx 3.3× faster)  |
+| _Baseline_ (theoretical best)   | 3m 38s cold; 0 warm, restore, CPU                        | —           | —                       | —                        | —                       |
+| _Measured floors_ (context)     | git walk 24ms · walk + raw copy 93ms · task shells 9.09s | —           | —                       | —                        | —                       |
 
 vx N× faster: that tool takes N times as long as vx (theirs ÷ vx); N× slower: vx takes N times as long (vx ÷ theirs).
 
@@ -370,8 +371,9 @@ runner burns are 0 in theory, so every measured number in those rows is
 the runner. vx's cold overhead over the ideal schedule is
 2.33s on 3,270 tasks (2 ms per package), 2.52s
 with no lock; Turborepo's is
-1m 21s (74 ms per package) and Nx's 10.98s
-(10 ms per package) — the number to read first, in one unit for every
+1m 21s (74 ms per package), Nx's 10.98s
+(10 ms per package) and Vite Task's 1m 11s
+(65 ms per package) — the number to read first, in one unit for every
 runner: a runner that adds seconds to a three-minute build is a
 different tool from one that adds a minute and a half. For context, the
 **measured floors** row gives what the cheapest possible implementation
@@ -386,7 +388,7 @@ daemon that outlives the invocation (Nx's) is not counted, so Nx's CPU
 is a floor.
 
 > Methodology note: a synthetic graph with `sleep`-based tasks isolates
-> _runner_ overhead from real compilation. All three runners are
+> _runner_ overhead from real compilation. All four runners are
 > configured **identically** — same commands, the same `src/**` inputs and
 > `dist/**` outputs, the same concurrency. (Hashing `**/*` instead would
 > include each task's own output in its inputs and break caching for

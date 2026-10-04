@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 /**
- * Head-to-head benchmark: vx vs Turborepo vs Nx on ONE shared synthetic
+ * Head-to-head benchmark: vx vs Turborepo vs Nx vs Vite Task (`vp run`,
+ * from vite-plus) on ONE shared synthetic
  * monorepo. Writes a committed results file (bench/RESULTS.md +
  * bench/results.json) so the numbers in the docs are reproducible and can
  * be referenced from a commit.
@@ -19,7 +20,9 @@
  * Three tasks per package, IDENTICAL commands across every runner:
  *   build       — `sleep N && mkdir -p dist && touch dist/index.js`  (caches dist/**)
  *   installDeps — no command, dependsOn ^build  (carries the cross-layer ordering;
- *                 vx's group task, Nx's `nx:noop`, a Turbo task with no script)
+ *                 vx's group task, Nx's `nx:noop`, a Turbo task with no script;
+ *                 Vite Task has no command-less task, so its build and test
+ *                 depend on the dependencies' builds directly)
  *   test        — `sleep N`, dependsOn installDeps  (no outputs)
  * `sleep N` (BUILD_SLEEP, default 1s) simulates real work so a warm cache
  * hit visibly skips it; set BUILD_SLEEP=0 for pure-overhead runs.
@@ -232,6 +235,35 @@ async function generate(dir: string): Promise<void> {
           },
         },
       })
+      // Vite Task: the same commands in `vite.config.ts`, explicit inputs and
+      // outputs (no automatic file tracking). Its task names cannot repeat a
+      // package.json script (Turbo's), and `vp run` takes one task, so
+      // `vp-all` (no command) gathers both.
+      const fromDeps = { task: 'vp-build', from: 'dependencies' }
+      await writeFile(
+        path.join(dirAbs, 'vite.config.ts'),
+        `export default ${JSON.stringify(
+          {
+            run: {
+              tasks: {
+                'vp-build': {
+                  command: BUILD_CMD,
+                  dependsOn: [fromDeps],
+                  cache: { input: ['src/**'], output: ['dist/**'] },
+                },
+                'vp-test': {
+                  command: TEST_CMD,
+                  dependsOn: [fromDeps],
+                  cache: { input: ['src/**'], output: [] },
+                },
+                'vp-all': { command: [], dependsOn: ['vp-build', 'vp-test'] },
+              },
+            },
+          },
+          null,
+          2,
+        )}\n`,
+      )
       // vx: same graph. installDeps is a group task (no exec) carrying ^build.
       await writeFile(
         path.join(dirAbs, 'vx.config.ts'),
@@ -357,7 +389,7 @@ async function buildRunners(dir: string): Promise<Runner[]> {
     clear: clearVx,
   })
 
-  // turbo + nx — installed into the generated workspace.
+  // turbo + nx + vite-plus — installed into the generated workspace.
   const bin = (t: string) => path.join(dir, 'node_modules', '.bin', t)
   const turboV = await sh([bin('turbo'), '--version'], dir)
   if (turboV.ok) {
@@ -382,6 +414,18 @@ async function buildRunners(dir: string): Promise<Runner[]> {
       version: (nxV.out.match(/Local:\s*v?([\d.]+)/)?.[1] ?? nxV.out.trim()).slice(0, 12),
       run: [bin('nx'), 'run-many', '-t', 'build', 'test', `--parallel=${CONCURRENCY}`],
       clear: () => sh([bin('nx'), 'reset'], dir).then(() => undefined),
+    })
+  }
+  const vpV = await sh([bin('vp'), '--version'], dir)
+  if (vpV.ok) {
+    runners.push({
+      name: 'vite-task',
+      version: vpV.out.match(/\d+\.\d+\.\d+/)?.[0] ?? vpV.out.trim(),
+      // Flags before the task name: after it they are the task's arguments,
+      // and the run fell back to the default limit of 4.
+      run: [bin('vp'), 'run', '-r', '--concurrency-limit', String(CONCURRENCY), 'vp-all'],
+      clear: () =>
+        rm(path.join(dir, 'node_modules', '.vite', 'task-cache'), { recursive: true, force: true }),
     })
   }
   return runners
@@ -654,9 +698,11 @@ if (BASELINE_ONLY) {
   rows = prior.rows
   await gitInit(ws)
 } else {
-  console.error('installing turbo + nx into the workspace …')
-  const install = await sh(['bun', 'add', '-d', 'turbo', 'nx', '--no-save'], ws).catch(() => null)
-  if (!install || !install.ok) await sh(['bun', 'add', '-d', 'turbo', 'nx'], ws)
+  console.error('installing turbo + nx + vite-plus into the workspace …')
+  const install = await sh(['bun', 'add', '-d', 'turbo', 'nx', 'vite-plus', '--no-save'], ws).catch(
+    () => null,
+  )
+  if (!install || !install.ok) await sh(['bun', 'add', '-d', 'turbo', 'nx', 'vite-plus'], ws)
   runners = await buildRunners(ws)
   // RUNNERS=vx,turbo re-measures a subset and keeps the committed rows of
   // the rest (a vx-only refresh is ~5 minutes; Nx alone is ~40).
@@ -698,7 +744,7 @@ for (const r of runners) {
   }
 }
 
-const ORDER = ['vx', 'vx (no lock)', 'turbo', 'nx']
+const ORDER = ['vx', 'vx (no lock)', 'turbo', 'nx', 'vite-task']
 rows.sort((a, b) => ORDER.indexOf(a.runner) - ORDER.indexOf(b.runner))
 console.error('measuring the baseline (ideal schedule, one git walk, a raw copy) …')
 const baseline = await measureBaseline(ws)
