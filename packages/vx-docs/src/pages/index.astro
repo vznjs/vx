@@ -17,7 +17,7 @@ const href = (p: string) => `${base}${p}`
 const GH = 'https://github.com/vznjs/vx'
 const TITLE = 'vx — the fastest task runner for JS monorepos'
 const DESCRIPTION =
-  'Less overhead than Turborepo and Nx in every benchmark column, each measured in its own native config. MIT, no account.'
+  'Less time added than Turborepo, Nx and Vite Task, cold and cached, each measured in its own native config. MIT, no account.'
 // Absolute, as a link preview fetches it from wherever the link was pasted.
 const siteUrl = new URL(base, Astro.site).href
 
@@ -66,10 +66,10 @@ const pillars = [
 ]
 
 const benchTable = [
-  { label: 'Cold build: time the runner adds', vx: '2 s', turbo: '1 min 21 s (vx 34× faster)', nx: '11 s (vx 4.7× faster)' },
-  { label: 'Cold build: CPU burned', vx: '17 s', turbo: '21 s (vx 1.2× faster)', nx: '52 s (vx 3× faster)' },
-  { label: 'Fully cached run', vx: '393 ms', turbo: '463 ms (vx 1.1× faster)', nx: '6.45 s (vx 16× faster)' },
-  { label: 'Overhead per package', vx: '2 ms', turbo: '74 ms (vx 34× faster)', nx: '10 ms (vx 4.7× faster)' },
+  { label: 'Cold build: time the runner adds', vx: '2 s', turbo: '1 min 21 s (vx 34× faster)', nx: '11 s (vx 4.7× faster)', vt: '1 min 11 s (vx 30× faster)' },
+  { label: 'Cold build: CPU burned', vx: '17 s', turbo: '21 s (vx 1.2× faster)', nx: '52 s (vx 3× faster)', vt: '12 s (vx 1.4× slower)' },
+  { label: 'Fully cached run', vx: '393 ms', turbo: '463 ms (vx 1.1× faster)', nx: '6.45 s (vx 16× faster)', vt: '2.49 s (vx 6.3× faster)' },
+  { label: 'Overhead per package', vx: '2 ms', turbo: '74 ms (vx 34× faster)', nx: '10 ms (vx 4.7× faster)', vt: '65 ms (vx 30× faster)' },
 ]
 const benchFormula = 'vx N× faster: that tool takes N times as long as vx (theirs ÷ vx); N× slower: vx takes N times as long (vx ÷ theirs).'
 
@@ -87,6 +87,7 @@ const benchBars = renderBars(
         [
           ['Turborepo', r.turbo],
           ['Nx', r.nx],
+          ['Vite Task', r.vt],
         ] as const
       ).map(([name, c]) => ({ name, ms: parseDuration(c)!, value: vsOf(c)[0], note: vsOf(c)[1] })),
     ],
@@ -240,7 +241,7 @@ const footCols = {
       <section class="hero">
         <div class="container">
           <h1>The <span class="phosphor">fastest</span> task runner for JS monorepos.</h1>
-          <p class="lede">Measured against Turborepo and Nx, each in its own native config.</p>
+          <p class="lede">Measured against Turborepo, Nx and Vite Task, each in its own native config.</p>
           <ul class="wins">
             {
               wins.map((w) => (
@@ -282,7 +283,7 @@ const footCols = {
         <div class="container">
           <div class="section-head">
             <p class="vx-kicker">// 3,270 tasks · 1,090 packages · 100 layers · identical commands, identical concurrency</p>
-            <h2>Less overhead in every column.</h2>
+            <h2>Least time added, cold and cached.</h2>
           </div>
           <div class="bench-panel">
             <Fragment set:html={benchBars} />

@@ -220,7 +220,7 @@ describe('the landing page', () => {
     expect(h1).toHaveLength(1)
     expect(text(h1[0]![1]!)).toBe('The fastest task runner for JS monorepos.')
     expect(text(/<p class="lede">([\s\S]*?)<\/p>/.exec(hero)![1]!)).toBe(
-      'Measured against Turborepo and Nx, each in its own native config.',
+      'Measured against Turborepo, Nx and Vite Task, each in its own native config.',
     )
     const ids = [...html.matchAll(/<section\b[^>]*\bid="([\w-]+)"/g)]
     expect(ids.map((m) => m[1])).toEqual(SECTIONS)
@@ -279,7 +279,7 @@ describe('the landing page', () => {
   // and three reasons under it.
   it('draws one benchmark chart, vx, Turborepo and Nx, and why it is faster', () => {
     const bench = section(html, 'bench')
-    expect(text(bench)).toContain('Less overhead in every column.')
+    expect(text(bench)).toContain('Least time added, cold and cached.')
     expect([...html.matchAll(/class="bench-panel"/g)]).toHaveLength(1)
     expect(bench).not.toContain('<table')
     const figures = [...bench.matchAll(/<figure class="vx-bars">([\s\S]*?)<\/figure>/g)].map(
@@ -297,8 +297,8 @@ describe('the landing page', () => {
       ]
       expect(
         bars.map((m) => text(/<span class="vx-bar-name">([\s\S]*?)<\/span>/.exec(m[3]!)![1]!)),
-      ).toEqual(['vx', 'Turborepo', 'Nx'])
-      expect(bars.map((m) => m[1])).toEqual([' vx-bar-lead', '', ''])
+      ).toEqual(['vx', 'Turborepo', 'Nx', 'Vite Task'])
+      expect(bars.map((m) => m[1])).toEqual([' vx-bar-lead', '', '', ''])
       expect(Math.max(...bars.map((m) => Number(m[2])))).toBe(100)
       const notes = bars.map((m) => /<span class="vx-bar-note">([\s\S]*?)<\/span>/.exec(m[3]!)?.[1])
       expect(notes[0]).toBeUndefined()
@@ -332,8 +332,8 @@ describe('the landing page', () => {
     const notes = [...bench.matchAll(/<span class="vx-bar-note">vx ([\d.]+)× faster<\/span>/g)].map(
       (m) => `${m[1]}×`,
     )
-    // Turborepo and Nx per figure, in the chart's order.
-    expect(wins.map((m) => text(m[1]!))).toEqual([notes[0]!, notes[2]!, notes[5]!])
+    // The "faster" notes in chart order: Vite Task's cold-CPU note reads "slower".
+    expect(wins.map((m) => text(m[1]!))).toEqual([notes[0]!, notes[3]!, notes[6]!])
   })
 
   // Where vx differs from both, as the choosing page's model says it.

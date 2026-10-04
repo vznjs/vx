@@ -56,7 +56,7 @@ synthetic workspace the tasks sleep and that column measures the
 runner's own work per task. A daemon that outlives the invocation is
 not counted, so Turbo's and Nx's are floors. It is the fairest number for "what does
 the tool cost me." The wall-clock rows, the
-theoretical baseline and the measured floors (one git walk is 26ms on
+theoretical baseline and the measured floors (one git walk is 24ms on
 that machine) are in [Benchmarks](../../benchmarks/).
 
 ## Real repositories: rerun pending

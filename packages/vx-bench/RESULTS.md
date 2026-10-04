@@ -12,11 +12,12 @@
 
 | Runner           | Version  | Fresh (cold)     | Warm (no restore) | Warm (restore)   | CPU, cold         | CPU, warm         |
 | ---------------- | -------- | ---------------- | ----------------- | ---------------- | ----------------- | ----------------- |
-| baseline (ideal) | —        | 3m 38s           | 26 ms             | 111 ms           | 9.26 s            | 32 ms             |
+| baseline (ideal) | —        | 3m 38s           | 24 ms             | 93 ms            | 9.09 s            | 32 ms             |
 | vx               | vx 0.0.0 | 3m 40s           | 393 ms            | 650 ms           | 17.27 s           | 745 ms            |
 | vx (no lock)     | vx 0.0.0 | 3m 41s (1.0× vx) | 473 ms (1.2× vx)  | 780 ms (1.2× vx) | 18.79 s (1.1× vx) | 894 ms (1.2× vx)  |
 | turbo            | 2.11.7   | 4m 59s (1.4× vx) | 463 ms (1.2× vx)  | 997 ms (1.5× vx) | 21.04 s (1.2× vx) | 897 ms (1.2× vx)  |
 | nx               | 23.2.1   | 3m 49s (1.0× vx) | 6.45 s (16.4× vx) | 6.25 s (9.6× vx) | 52.19 s (3.0× vx) | 7.52 s (10.1× vx) |
+| vite-task        | 1.0.0    | 4m 49s (1.3× vx) | 2.49 s (6.3× vx)  | 2.64 s (4.1× vx) | 12.46 s (0.7× vx) | 2.48 s (3.3× vx)  |
 
 **Cache states.** _Fresh_ clears the runner's cache and runs cold (key
 derivation + execution + save). _Warm, no restore_ re-runs with the cache

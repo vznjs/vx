@@ -6,7 +6,7 @@
   "concurrency": 10,
   "reps": 1,
   "buildSleep": "1",
-  "date": "2026-10-04T11:16:52.550Z",
+  "date": "2026-10-04T12:09:29.423Z",
   "machine": "linux x64, 4 cores",
   "rows": [
     {
@@ -48,14 +48,24 @@
       "freshCpu": 52188.618,
       "warmNoRestoreCpu": 7523.407,
       "warmRestoreCpu": 7502.814
+    },
+    {
+      "runner": "vite-task",
+      "version": "1.0.0",
+      "fresh": 289217.770834,
+      "warmNoRestore": 2489.228317,
+      "warmRestore": 2638.751262,
+      "freshCpu": 12462.468,
+      "warmNoRestoreCpu": 2478.417,
+      "warmRestoreCpu": 2631.3
     }
   ],
   "baseline": {
     "fresh": 218000,
-    "warmNoRestore": 25.607047,
-    "warmRestore": 110.96186700000001,
-    "freshCpu": 9258.587,
-    "warmNoRestoreCpu": 32.103,
+    "warmNoRestore": 23.596243,
+    "warmRestore": 92.84044300000001,
+    "freshCpu": 9093.624,
+    "warmNoRestoreCpu": 32.452,
     "criticalPathMs": 100000,
     "workBoundMs": 218000
   }
