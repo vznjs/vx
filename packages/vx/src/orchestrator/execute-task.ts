@@ -72,7 +72,7 @@ export { restoreHit, type RestoreHitArgs } from './hit-restore.js'
 import type { DeferredOutputs } from './deferred-outputs.js'
 import type { Logger } from './logger.js'
 import {
-  computeGroupHash,
+  computeGroupKey,
   computeTaskHash,
   describeTaskInputs,
   type HashCache,
@@ -249,14 +249,25 @@ export async function executeTask(args: ExecuteArgs): Promise<TaskOutcome> {
  * from upstream outcomes so downstream cache keys still cascade
  * through us.
  */
-function executeGroupTask(args: ExecuteArgs): TaskOutcome {
+async function executeGroupTask(args: ExecuteArgs): Promise<TaskOutcome> {
   const wallclockNs = process.hrtime.bigint() - args.runStartHrTimeNs
+  const hash = await computeGroupKey({
+    node: args.node,
+    upstream: args.upstream,
+    workspaceRoot: args.workspaceRoot,
+    workspaceFingerprint: args.workspaceFingerprint,
+    cache: args.cache,
+    forwardArgs: args.forwardArgs,
+    nestedProjectDirs: args.nestedProjectDirs,
+    ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
+    ...(args.hashCache !== undefined ? { hashCache: args.hashCache } : {}),
+  })
   return {
     node: args.node,
     status: 'success',
     exitCode: 0,
     durationMs: 0,
-    hash: computeGroupHash(args.upstream),
+    hash,
     // What this group stands for. A dependent expands it to describe the
     // real tasks in its input closure — see `TaskOutcome.groupUpstream`.
     groupUpstream: args.upstream,

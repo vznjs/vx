@@ -6,6 +6,8 @@
 import path from 'node:path'
 import fs from 'node:fs'
 import {
+  affectedChanges,
+  type AffectedChanges,
   affectedProjects,
   refIsHead,
   applyFilters,
@@ -29,6 +31,7 @@ import {
   claimedAffected,
   fingerprintClaims,
   gitOfDiscovery,
+  isDefaultBuild,
   keepDiscoveryGraph,
 } from '../orchestrator/index.js'
 import {
@@ -177,6 +180,8 @@ export type FilterResolution =
       staged?: ReadonlyMap<string, ProjectEntry>
       /** The discovery this pass made, for the run to reuse (`RunOptions.discovered`). */
       discovered: { root: string; projects: ProjectMeta[] }
+      /** The `affected` filter's diff, for the run to seed its tasks from (`RunOptions.affected`). */
+      affected?: AffectedChanges
     }
   | { error: string }
   | { empty: string }
@@ -224,6 +229,8 @@ export async function resolveFilters(
   cwd: string,
   raw: string[],
   load: CliLoadOptions = {},
+  /** The raw filter `--affected` became: its diff is kept per path for the run. */
+  affected?: string,
 ): Promise<FilterResolution> {
   const root = await findWorkspaceRoot(cwd)
   const projects = await loadWorkspaceProjects(cwd)
@@ -273,19 +280,27 @@ export async function resolveFilters(
   // applyFilters pass runs. One spawn per distinct ref — usually
   // there's only one anyway.
   const affectedByFilter = new Map<(typeof parsed)[number], Set<string>>()
+  let changes: AffectedChanges | undefined
   for (const f of parsed) {
     if (f.gitSince === undefined) continue
     try {
-      const names = await affectedProjects({
+      const args = {
         workspaceRoot: root,
         since: f.gitSince,
         projects,
-        workspaceGlobOwners: (changed) =>
+        workspaceGlobOwners: (changed: readonly string[]) =>
           workspaceGlobOwners(root, projects, changed, load, stagedOnce),
         fingerprintClaims: () => workspaceFingerprintClaims(root, projects, load),
         taskEdges: async () => edges ?? taskEdgesFrom(await stagedOnce()),
         ...(git !== undefined ? { untracked: async () => (await git.start()).untracked } : {}),
-      })
+      }
+      let names: Set<string>
+      if (f.raw === affected) {
+        changes = await affectedChanges(args)
+        names = changes.projects
+      } else {
+        names = await affectedProjects(args)
+      }
       affectedByFilter.set(f, names)
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
@@ -366,6 +381,7 @@ export async function resolveFilters(
     byDiff: parsed.some((f) => !f.negate && f.gitSince !== undefined),
     ...(staged !== undefined ? { staged } : {}),
     discovered: { root, projects },
+    ...(changes !== undefined ? { affected: changes } : {}),
   }
 }
 
@@ -392,7 +408,9 @@ export async function pickTask(
   for (const meta of projects) {
     const config = staged.get(meta.name)?.config
     if (config === undefined) continue
-    const taskNames = Object.keys(config.tasks ?? {}).sort()
+    const taskNames = Object.keys(config.tasks ?? {})
+      .filter((t) => !isDefaultBuild(config.tasks?.[t]))
+      .sort()
     for (const t of taskNames) {
       const desc = config.tasks?.[t]?.description
       entries.push({ project: meta.name, task: t, ...(desc ? { description: desc } : {}) })

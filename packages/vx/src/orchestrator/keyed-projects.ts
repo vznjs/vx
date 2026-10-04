@@ -16,8 +16,9 @@ import { keyedDeps, selectFoldedDeps, type FoldCandidate } from './upstream.js'
  * The fold relation is the hash path's, computed on the graph:
  *   - an exec task folds its dependencies as its own `cache.inputs.tasks`
  *     selects them (absent, or no `cache` at all, means all);
- *   - a group folds every dependency (`computeGroupHash`) and folds no
- *     files of its own;
+ *   - a group folds every dependency (`computeGroupKey`) and folds no
+ *     files of its own, but for the default `build`, which folds every
+ *     file of its project as a task does;
  *   - a persistent task is keyed as a task with no `cache` (A-17).
  *
  * Every exec task reached contributes its project, cached or not: a key
@@ -56,7 +57,7 @@ export function keyedProjects(
       stack.pop()
       const out = new Set<string>()
       for (const { node: dep } of deps) {
-        if (!isGroupTask(dep)) out.add(dep.projectDir)
+        if (!isGroupTask(dep) || dep.config.cache !== undefined) out.add(dep.projectDir)
         for (const dir of below.get(dep.id)!) out.add(dir)
       }
       below.set(node.id, out)
@@ -83,7 +84,7 @@ function folded(node: TaskNode, nodeOf: (id: string) => TaskNode): FoldCandidate
   for (const { node: dep } of node.excludedUpstream ?? []) {
     candidates.push({ node: dep, unit: foldUnit(dep) })
   }
-  if (isGroupTask(node)) return candidates
+  if (isGroupTask(node) && node.config.cache === undefined) return candidates
   return selectFoldedDeps(candidates, node.config.cache?.inputs?.tasks, node.projectName, node.id)
 }
 
@@ -94,5 +95,7 @@ function folded(node: TaskNode, nodeOf: (id: string) => TaskNode): FoldCandidate
  * with no id of its own, so two groups over the same members hash alike.
  */
 function foldUnit(node: TaskNode): string {
-  return isGroupTask(node) ? `group|${[...node.deps].sort().join('|')}` : `task|${node.id}`
+  return isGroupTask(node) && node.config.cache === undefined
+    ? `group|${[...node.deps].sort().join('|')}`
+    : `task|${node.id}`
 }

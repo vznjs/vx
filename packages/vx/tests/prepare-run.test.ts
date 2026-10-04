@@ -348,11 +348,12 @@ describe('a ^name no project declares is refused in a scoped run too', () => {
   it(
     'plans a ^name only a project outside the loaded closure declares',
     async () => {
-      // app → cart, neither declares build; web does and is nobody's dep, so
+      // `pack`, not `build`: every project has a build (the default).
+      // app → cart, neither declares pack; web does and is nobody's dep, so
       // it is loaded only to prove the name is not a typo.
-      await pkg('app', cfg(task('test', ['^build'])), ['cart'])
+      await pkg('app', cfg(task('test', ['^pack'])), ['cart'])
       await pkg('cart', cfg(task('lint')))
-      await pkg('web', marking('web', task('build')))
+      await pkg('web', marking('web', task('pack')))
 
       const p = await prepare({ tasks: ['app#test'] })
       expect([...p.nodes.keys()]).toEqual(['app#test'])
@@ -365,14 +366,14 @@ describe('a ^name no project declares is refused in a scoped run too', () => {
   it(
     'loads nothing more when a loaded project declares the name',
     async () => {
-      // The control for the row above: cart declares build, so nothing is
+      // The control for the row above: cart declares pack, so nothing is
       // left to prove and web's config is never evaluated.
-      await pkg('app', cfg(task('test', ['^build'])), ['cart'])
-      await pkg('cart', cfg(task('build')))
-      await pkg('web', marking('web', task('build')))
+      await pkg('app', cfg(task('test', ['^pack'])), ['cart'])
+      await pkg('cart', cfg(task('pack')))
+      await pkg('web', marking('web', task('pack')))
 
       const p = await prepare({ tasks: ['app#test'] })
-      expect([...p.nodes.keys()].sort()).toEqual(['app#test', 'cart#build'])
+      expect([...p.nodes.keys()].sort()).toEqual(['app#test', 'cart#pack'])
       expect(await Bun.file(path.join(root, 'web.evaluated')).exists()).toBe(false)
     },
     TIMEOUT,
@@ -384,7 +385,7 @@ describe('a ^name no project declares is refused in a scoped run too', () => {
       // Proving the typo needs every config; a broken one out of scope
       // cannot fail a scoped run (the row above this describe), so the name
       // is let through as before.
-      await pkg('app', cfg(task('test', ['^build'])), ['cart'])
+      await pkg('app', cfg(task('test', ['^pack'])), ['cart'])
       await pkg('cart', cfg(task('lint')))
       await pkg('broken', 'export default { tasks: 42 }')
 

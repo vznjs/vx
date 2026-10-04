@@ -15,6 +15,7 @@ import {
   UserError,
   gitSpawnRefusal,
   isExecutableMissing,
+  relPosix,
   taskGlob,
 } from '../util/index.js'
 import { LOCKFILE_NAME } from './lockfile.js'
@@ -123,6 +124,30 @@ export interface FingerprintClaims {
  * or `<since>` doesn't resolve to a commit.
  */
 export async function affectedProjects(args: AffectedArgs): Promise<Set<string>> {
+  return (await affectedChanges(args, false)).projects
+}
+
+/**
+ * What `--affected` seeds its tasks from (owner, 2026-10-04): the changed
+ * projects, each one's changed paths relative to it, and the projects a
+ * change reaches as a whole — every task in one is affected whatever its
+ * inputs say, because the reason was no path of its own (a lockfile claim,
+ * a manifest edge at the base, a config import, a nested repository, a
+ * workspace-wide file).
+ */
+export interface AffectedChanges {
+  projects: Set<string>
+  /** Workspace-relative changed paths. */
+  changed: readonly string[]
+  /** Project → its changed paths, relative to the project's directory. */
+  paths: ReadonlyMap<string, readonly string[]>
+  whole: ReadonlySet<string>
+}
+
+export async function affectedChanges(
+  args: AffectedArgs,
+  perTask = true,
+): Promise<AffectedChanges> {
   // Turbo's CI spelling, `[origin/main...HEAD]`, is the base alone here:
   // vx already diffs from the merge base (three dots' meaning), and the
   // working tree it diffs to holds HEAD (D-117). Its two-dot `[A..HEAD]`
@@ -226,9 +251,11 @@ export async function affectedProjects(args: AffectedArgs): Promise<Set<string>>
   // says per project, so selection asks the plugin the same question, with
   // the bytes at the base ref and in the working tree. Its answer is
   // unioned with the path-owned projects below; only "cannot tell" widens.
-  if (await workspaceConfigChanged(args.workspaceRoot, changed)) {
-    return new Set(args.projects.map((p) => p.name))
+  const everything = (): AffectedChanges => {
+    const all = new Set(args.projects.map((p) => p.name))
+    return { projects: all, changed, paths: new Map(), whole: all }
   }
+  if (await workspaceConfigChanged(args.workspaceRoot, changed)) return everything()
   const fingerprintChanged = changed.filter((p) => FINGERPRINT_SET.has(p))
   // A patch bun.lock names folds into every key, core's fingerprint and
   // `bun()`'s claim alike, so its edit widens as a lockfile edit does. A
@@ -237,7 +264,7 @@ export async function affectedProjects(args: AffectedArgs): Promise<Set<string>>
     const lock = await bytesOrNull(path.join(args.workspaceRoot, 'bun.lock'))
     if (lock !== null) {
       const patches = new Set(bunPatchFiles(lock))
-      if (changed.some((p) => patches.has(p))) return new Set(args.projects.map((p) => p.name))
+      if (changed.some((p) => patches.has(p))) return everything()
     }
   }
   const claimedOwned = new Set<string>()
@@ -256,15 +283,13 @@ export async function affectedProjects(args: AffectedArgs): Promise<Set<string>>
   }
   if (fingerprintChanged.length > 0) {
     for (const file of fingerprintChanged) {
-      if (claims === undefined || !claims.files.has(file)) {
-        return new Set(args.projects.map((p) => p.name))
-      }
+      if (claims === undefined || !claims.files.has(file)) return everything()
       const answer = await claims.affected({
         file,
         before: await gitBytesAt(args.workspaceRoot, base, file),
         after: await bytesOrNull(path.join(args.workspaceRoot, file)),
       })
-      if (answer === undefined) return new Set(args.projects.map((p) => p.name))
+      if (answer === undefined) return everything()
       for (const name of answer) claimedOwned.add(name)
     }
   }
@@ -274,7 +299,24 @@ export async function affectedProjects(args: AffectedArgs): Promise<Set<string>>
       args.projects.map(async (p) => [p.dir, await realpath(p.dir).catch(() => p.dir)] as const),
     ),
   )
-  const owned = projectsContaining(args.workspaceRoot, changed, args.projects, realDirs)
+  const paths = new Map<string, string[]>()
+  const whole = new Set<string>(claimedOwned)
+  const owned = projectsContaining(
+    args.workspaceRoot,
+    changed,
+    args.projects,
+    realDirs,
+    perTask
+      ? {
+          path: (name, rel) => {
+            const list = paths.get(name)
+            if (list) list.push(rel)
+            else paths.set(name, [rel])
+          },
+          repo: (name) => whole.add(name),
+        }
+      : undefined,
+  )
   for (const name of claimedOwned) owned.add(name)
 
   // A manifest edit can drop an edge today's graph no longer shows: a
@@ -293,10 +335,14 @@ export async function affectedProjects(args: AffectedArgs): Promise<Set<string>>
       args.projects,
       args.taskEdges,
     )
-    if (dependents === undefined) return new Set(args.projects.map((p) => p.name))
-    for (const name of dependents) owned.add(name)
+    if (dependents === undefined) return everything()
+    for (const name of dependents) {
+      owned.add(name)
+      whole.add(name)
+    }
     for (const name of parentsOfNewNested(args.workspaceRoot, atBase, args.projects)) {
       owned.add(name)
+      whole.add(name)
     }
   }
 
@@ -306,19 +352,23 @@ export async function affectedProjects(args: AffectedArgs): Promise<Set<string>>
   // runs on the FULL changed set, not just the paths no project owns: the
   // common shape is a config reaching into ANOTHER project
   // (`../../src/index.ts`), whose target is owned.
+  // Per task, a project that owns the changed file still needs to know its
+  // config imported it: that re-keys every task, whatever their inputs.
   for (const name of await configImportOwners({
     workspaceRoot: args.workspaceRoot,
     projects: args.projects,
     changed,
-    skip: owned,
+    skip: perTask ? new Set() : owned,
     realDirs,
   })) {
     owned.add(name)
+    whole.add(name)
   }
 
-  if (changed.length === 0 || args.workspaceGlobOwners === undefined) return owned
+  const done = (): AffectedChanges => ({ projects: owned, changed, paths, whole })
+  if (changed.length === 0 || args.workspaceGlobOwners === undefined) return done()
   for (const name of await args.workspaceGlobOwners(changed)) owned.add(name)
-  return owned
+  return done()
 }
 
 /**
@@ -767,6 +817,8 @@ function projectsContaining(
   changedRelPaths: readonly string[],
   projects: readonly ProjectMeta[],
   realDirs: ReadonlyMap<string, string>,
+  /** Told each owned path relative to its project, and each nested repository's projects. */
+  on?: { path(name: string, rel: string): void; repo(name: string): void },
 ): Set<string> {
   // Index projects by their (canonical) dir, then for each changed path walk
   // its ancestor dirs bottom-up until one is a project dir. The FIRST hit is
@@ -798,6 +850,7 @@ function projectsContaining(
       const name = dirToName.get(dir)
       if (name !== undefined) {
         owned.add(name)
+        on?.path(name, relPosix(dir, path.resolve(workspaceRoot, rel)))
         hit = true
         break
       }
@@ -817,7 +870,11 @@ function projectsContaining(
     const abs = path.resolve(workspaceRoot, rel)
     if (isDirectory(abs)) {
       const prefix = abs + path.sep
-      for (const [dir, name] of dirToName) if (dir.startsWith(prefix)) owned.add(name)
+      for (const [dir, name] of dirToName) {
+        if (!dir.startsWith(prefix)) continue
+        owned.add(name)
+        on?.repo(name)
+      }
     }
   }
   return owned

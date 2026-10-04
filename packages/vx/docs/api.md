@@ -17,6 +17,26 @@ export interface AdmitContext {
 }
 ```
 
+## `AffectedChanges`
+
+type · `src/workspace/affected.ts`
+
+What `--affected` seeds its tasks from (owner, 2026-10-04): the changed
+projects, each one's changed paths relative to it, and the projects a
+change reaches as a whole — every task in one is affected whatever its
+inputs say, because the reason was no path of its own (a lockfile claim,
+a manifest edge at the base, a config import, a nested repository, a
+workspace-wide file).
+
+```ts
+export interface AffectedChanges {
+  projects: Set<string>
+  changed: readonly string[]
+  paths: ReadonlyMap<string, readonly string[]>
+  whole: ReadonlySet<string>
+}
+```
+
 ## `applyMigration`
 
 function · `src/workspace/migration.ts`
@@ -1751,6 +1771,7 @@ export interface RunOptions {
   tasks: readonly string[]
   projects?: string[]
   selectedByDiff?: boolean
+  affected?: AffectedChanges
   staged?: ReadonlyMap<string, ProjectEntry>
   discovered?: { root: string; projects: ProjectMeta[] }
   concurrency?: number

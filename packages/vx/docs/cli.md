@@ -80,7 +80,8 @@ the whole workspace instead, since which projects hold it depends on what
 changed: `vx run test --affected` after a commit that changed only a
 project without `test` exits 0 with `No affected project declares
 task(s): test.`, and a name no project declares is still refused (item
-1024). A diff that touched no project stops before that check:
+1024). A change that reaches no requested task exits 0 with `Nothing
+affected: the change reaches no test task.` A diff that touched no project stops before that check:
 `nothing affected since <ref>` on stderr, exit 0, a typo unseen.
 
 (No `-V` for version; `vx --version` only — matches Turbo.)
@@ -146,14 +147,14 @@ a stack and exit 1 after its task had succeeded.
 
 ### Selection
 
-| Form                          | Effect                                                                          |
-| ----------------------------- | ------------------------------------------------------------------------------- |
-| (default)                     | The project that contains cwd. Errors if cwd is not inside a project.           |
-| `pkg#task`                    | Just that project.                                                              |
-| `//#task`                     | The root project's task (Turbo's spelling; the root is a project, D-39).        |
-| `--all`                       | Every project that declares the task.                                           |
-| `--filter <pat>` (repeatable) | pnpm-style filter DSL (see below).                                              |
-| `--affected[=<base>]`         | Sugar for `--filter '...[<base>]'` — git-changed projects and their dependents. |
+| Form                          | Effect                                                                                             |
+| ----------------------------- | -------------------------------------------------------------------------------------------------- |
+| (default)                     | The project that contains cwd. Errors if cwd is not inside a project.                              |
+| `pkg#task`                    | Just that project.                                                                                 |
+| `//#task`                     | The root project's task (Turbo's spelling; the root is a project, D-39).                           |
+| `--all`                       | Every project that declares the task.                                                              |
+| `--filter <pat>` (repeatable) | pnpm-style filter DSL (see below).                                                                 |
+| `--affected[=<base>]`         | The tasks a git change reaches: the ones it touches and those whose `dependsOn` closure holds one. |
 
 Combining: every include (`--filter <pat>`, `--affected`) is taken
 first and every `!` exclude after them all, as pnpm does, so an
@@ -274,26 +275,43 @@ failed to spawn 'git' … Install git and re-run` — the same the input
   forked (Turbo and Nx do the same). Refs with no common ancestor diff
   from the ref.
 
-**It selects the CHANGED projects and their dependents.** A change in
-`utils` runs `utils`' task and `app`'s when `app` depends on `utils`:
-the gate a CI author reaches for the flag to build must prove nothing
-downstream broke, which is what the flag's name says and what Nx's
-affected does. Until 2026-09-16 the sugar was the changed-only
-`[<base>]` form, and an edit to `utils` never ran `app`'s tests (item
-287). "Only what I touched" is the plain form from the filter table:
+**It selects the tasks the change reaches (owner, 2026-10-04).** A
+change seeds tasks in the projects it touches:
+
+- a cached task when a changed path is one of its declared inputs
+  (`files`, `workspaceFiles`);
+- every task of a project whose `package.json` or `vx.config.*`
+  changed, or that holds a changed path no cached task of its declares
+  (vx cannot prove that path re-keys nothing), or that a lockfile
+  claim, a manifest edge at the base or a config import names;
+- an uncached task whenever its project changed. A group seeds nothing.
+
+A requested task runs when its `dependsOn` closure holds a seeded task,
+so a change reaches another project only along a task edge. With
+`app#test` behind `^build`, an edit to `ui/src/button.ts` that
+`ui#build`'s inputs read runs `ui`'s tasks and `app#test`; an edit to
+`ui/src/button.test.ts` that only `ui#test` reads runs `ui#test` alone,
+and `app#lint`, which depends on nothing, never runs for a change in
+`ui`. A `pkg#task` you name runs whatever the diff. This is the edge
+the cache key folds (a cached `app#test` with no edge to `ui` never
+sees `ui`'s files either). A project that declares no `build` gets one
+keyed on all its files (`schema.md`), so any change there reaches a
+dependant behind `^build`; a package `^name` passes through for want of a
+config reaches it the same way.
+Nx 23.3 (`NX_LEGACY_AFFECTED=false`) and Turbo
+(`affectedUsingTaskInputs`) select tasks the same way, behind flags.
+
+Until 2026-09-16 the sugar was the changed-only `[<base>]` form (item
+287), and until 2026-10-04 it took every task of every manifest
+dependent, which the filter forms still do:
 
 ```bash
-vx run test --affected              # what changed + everything depending on it
-vx run test --filter '[main]'       # only what changed
+vx run test --affected                # the tasks the change reaches
+vx run test --filter '...[main]'      # what changed + every dependent project
+vx run test --filter '[main]'         # only the projects that changed
 ```
 
-The task graph does not close the gap the plain form leaves:
-`dependsOn` pulls a task's DEPENDENCIES in, never its dependents. The
-`...` walk does follow a cross-project `dependsOn` edge, so `--affected`
-reaches an `e2e` that depends on `app#build` without a manifest
-dependency.
-
-It's a pure sugar for `--filter '...[<base>]'`; both are resolved by
+Its candidate projects are `--filter '...[<base>]'`'s; both are resolved by
 `src/workspace/affected.ts`, which unions `git diff` against `<base>`
 with `git ls-files --others` so a brand-new untracked source file counts
 as a change (input hashing sees it, so `--affected` must too). A
@@ -409,7 +427,7 @@ stays clean).
 | ---------------------------------- | -------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `--filter <pattern>`               | repeatable     | (none)                             | pnpm-style filter DSL (see above). `--filter=<pattern>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `--all`                            | boolean        | off                                | Select every project that declares the task.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| `--affected[=<base>]`              | optional value | off                                | Select the projects changed since `<base>` and their dependents (default `affectedBase`, else `origin/HEAD`, else `main` or `master`, else `HEAD~1`); sugar for `--filter "...[<base>]"`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `--affected[=<base>]`              | optional value | off                                | Select the tasks a change since `<base>` reaches: the ones it touches and those whose `dependsOn` closure holds one (default `affectedBase`, else `origin/HEAD`, else `main` or `master`, else `HEAD~1`); candidates are `--filter "...[<base>]"`'s.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `--exclude-dependencies[=<names>]` | optional value | off                                | Drop `dependsOn` edges. No value = all (just the requested task runs; a group's members run as the group); comma-list = drop only those names, each of which some project must declare (a typo is refused with the nearest name, item 1026). An edge to a task the run schedules anyway (`--all` requests it) stays, so the two still run in order, and so does the order through a dropped task: with `gen` dropped from `test → gen → build` and `build` requested, `test` still waits for `build`. An empty `=` value is a parse error (ambiguous — see below). A dropped dependency does not run but is still keyed, so every key is the one a full run derives; a task keyed on one may hit but does not save (`caching.md` step 10). |
 | `--concurrency <n>`                | int or `<n>%`  | cores, capped by the cgroup quota  | Maximum parallel tasks that EXECUTE; confirmed cache-hit restores are disk work and run on their own lane, up to twice this. `1` serializes both; `50%` is half the CPUs (rounded, never below 1; over 100% is allowed for I/O-bound work). `--concurrency=<n>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `--no-cache`                       | boolean        | off                                | Disable caching entirely (no reads, no writes); output globs are NOT cleaned.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |

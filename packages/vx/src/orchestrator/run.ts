@@ -385,7 +385,19 @@ async function runOnBus(
     return { ok: false, outcomes: [], refused }
   }
   if (prepared.empty === 'none-affected') {
-    log.status(`No affected project declares task(s): ${options.tasks.join(', ')}.`)
+    // A changed project declares the task, so `--affected`'s task walk is
+    // what left nothing (affected-tasks.ts), not the scope.
+    const inScope = new Set(options.projects ?? [])
+    const reachedNone =
+      options.affected !== undefined &&
+      [...prepared.projects.values()].some(
+        (p) => inScope.has(p.name) && options.tasks.some((t) => p.config.tasks?.[t] !== undefined),
+      )
+    log.status(
+      reachedNone
+        ? `Nothing affected: the change reaches no ${options.tasks.join(', ')} task.`
+        : `No affected project declares task(s): ${options.tasks.join(', ')}.`,
+    )
     await teardown()
     prepared.cache.close()
     return { ok: true, outcomes: [] }

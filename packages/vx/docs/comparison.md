@@ -421,7 +421,7 @@ Things `@vzn/vx` does that the others don't:
   the lockfile (pnpm, bun, npm, yarn) and keys each project on its own resolved closure
   (name, version, peers, integrity, patches, `link:` reach), so
   `pnpm update foo` re-keys only the projects that reach `foo` and
-  `--affected` selects them (and their dependents). Nx does this inside its daemon's
+  `--affected` selects their tasks (and the tasks behind them). Nx does this inside its daemon's
   project graph; Turbo hashes the lockfile changes that affect each
   package. vx parses once per lockfile
   content and memoises the digests, so a warm run pays a read and a

@@ -35,14 +35,14 @@ export { restoreHit, type RestoreHitArgs } from './hit-restore.js'
 ```
 
 Cache-key derivation (`ComputeHashArgs`, `computeTaskHash`,
-`computeGroupHash`) moved to `src/orchestrator/task-hash.ts` —
+`computeGroupKey`) moved to `src/orchestrator/task-hash.ts` —
 [`task-hash.md`](./task-hash.md).
 
 ## Three execution paths
 
 ### A. Group task (no `exec`)
 
-Return `{ status: 'success', exitCode: 0, durationMs: 0, hash: computeGroupHash(upstream) }`.
+Return `{ status: 'success', exitCode: 0, durationMs: 0, hash: await computeGroupKey(...) }`.
 No spawn, no I/O. The hash is a stable rollup so downstream tasks
 filtering `inputs.tasks` to include this group still invalidate when
 anything beneath it changes.

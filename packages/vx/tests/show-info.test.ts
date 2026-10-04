@@ -404,7 +404,7 @@ describe('vx show under a `project` plugin (e2e)', () => {
       // `(no vx config)` for a package `vx run` would happily run.
       const r = await vx(root, ['show'])
       expect(r.code).toBe(0)
-      expect(r.out).toContain('1 task (no vx config; from plugins)')
+      expect(r.out).toContain('2 tasks (no vx config; from plugins)')
       expect(r.out).not.toContain('(no vx config)\n')
       const one = await vx(root, ['show', 'one#gen'])
       expect(one.code).toBe(0)
@@ -417,7 +417,7 @@ describe('vx show under a `project` plugin (e2e)', () => {
       // one a run would see, not the number of config files.
       const info = await vx(root, ['info'])
       expect(info.code).toBe(0)
-      expect(info.out).toMatch(/^projects: +2 \(2 tasks\)/m)
+      expect(info.out).toMatch(/^projects: +2 \(4 tasks\)/m)
       // The doctor names each plugin and the seams it fills, in pipeline
       // order — the `project` stage here, nothing else.
       expect(info.out).toMatch(/^plugins: +1 — gen \(project\)$/m)

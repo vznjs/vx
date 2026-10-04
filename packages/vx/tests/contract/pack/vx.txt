@@ -67,6 +67,7 @@ src/graph/scheduler.ts
 src/graph/task-graph.ts
 src/index.ts
 src/orchestrator/admission.ts
+src/orchestrator/affected-tasks.ts
 src/orchestrator/colors.ts
 src/orchestrator/deferred-outputs.ts
 src/orchestrator/doctor.ts

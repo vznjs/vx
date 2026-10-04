@@ -4,7 +4,7 @@
 // does it. It stays a refusal: a verb that runs whatever task shares its
 // name would change meaning the day a plugin declares that verb.
 
-import { nxProjectTarget, projectNamed } from '../orchestrator/index.js'
+import { isDefaultBuild, nxProjectTarget, projectNamed } from '../orchestrator/index.js'
 import { findWorkspaceRoot, loadWorkspace } from '../workspace/index.js'
 import { nearest } from '../util/index.js'
 import { findCwdProject } from './select.js'
@@ -66,7 +66,8 @@ export async function taskNamesHere(cwd: string): Promise<string[] | null> {
   const names = new Set<string>()
   for (const p of projects.values())
     if (own === null || p.name === own)
-      for (const t of Object.keys(p.config.tasks ?? {})) names.add(t)
+      for (const [t, task] of Object.entries(p.config.tasks ?? {}))
+        if (!isDefaultBuild(task)) names.add(t)
   return [...names].sort()
 }
 

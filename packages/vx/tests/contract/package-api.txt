@@ -320,6 +320,13 @@ export interface AdmitContext {
   readonly running: readonly TaskNode[]
   readonly concurrency: number
 }
+== type AffectedChanges (src/workspace/affected.ts)
+export interface AffectedChanges {
+  projects: Set<string>
+  changed: readonly string[]
+  paths: ReadonlyMap<string, readonly string[]>
+  whole: ReadonlySet<string>
+}
 == type ApplyMigrationArgs (src/workspace/migration.ts)
 export interface ApplyMigrationArgs {
   root: string
@@ -1106,6 +1113,7 @@ export interface RunOptions {
   tasks: readonly string[]
   projects?: string[]
   selectedByDiff?: boolean
+  affected?: AffectedChanges
   staged?: ReadonlyMap<string, ProjectEntry>
   discovered?: { root: string; projects: ProjectMeta[] }
   concurrency?: number

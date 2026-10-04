@@ -15,7 +15,7 @@
 
 import type { CacheLayer, GitFilesCache } from '../cache/index.js'
 import { isGroupTask, type TaskNode, type TaskOutcome } from '../graph/index.js'
-import { computeGroupHash, computeTaskHash, type HashCache } from './task-hash.js'
+import { computeGroupKey, computeTaskHash, type HashCache } from './task-hash.js'
 import { filterUpstreamHashes, keyedDeps } from './upstream.js'
 
 export interface KeyExcludedArgs {
@@ -53,8 +53,7 @@ export async function keyExcludedDependencies(args: KeyExcludedArgs): Promise<vo
     Promise.all(ids.map(async (id) => synthetic(nodeOf(id), await keys.get(id)!)))
   const derive = async (node: TaskNode): Promise<string | undefined> => {
     const upstream = await outcomes(fullDeps(node))
-    if (isGroupTask(node)) return computeGroupHash(upstream)
-    return computeTaskHash({
+    return (isGroupTask(node) ? computeGroupKey : computeTaskHash)({
       node,
       upstream,
       workspaceRoot: args.workspaceRoot,

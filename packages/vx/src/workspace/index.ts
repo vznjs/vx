@@ -2,6 +2,8 @@
 // docs/design/module-isolation-2026-06.md and tests/module-boundaries.test.ts.
 
 export {
+  affectedChanges,
+  type AffectedChanges,
   affectedProjects,
   defaultAffectedBase,
   type FingerprintClaims,

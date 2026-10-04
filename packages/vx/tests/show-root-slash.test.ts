@@ -44,8 +44,14 @@ function show(cwd: string, target: string): { code: number | null; out: string; 
 describe('vx show //', () => {
   it('shows the root project, as `//#task` shows its task', async () => {
     const root = await workspace(true)
-    const expected = { code: 0, out: 'top — .\n\ncheck\n  command: true\n', err: '' }
-    expect([show(root, '//'), show(root, '//#check')]).toEqual([expected, expected])
+    const check = 'check\n  command: true\n'
+    // The project lists its default build too (a group keyed on its files).
+    const build =
+      'build\n  command:       (group)\n  dependsOn:     ^build\n  inputs.files:  **\n  outputs.files: \n'
+    expect([show(root, '//'), show(root, '//#check')]).toEqual([
+      { code: 0, out: `top — .\n\n${check}\n${build}`, err: '' },
+      { code: 0, out: `top — .\n\n${check}`, err: '' },
+    ])
   })
 
   it('says the root is no project where it is none', async () => {

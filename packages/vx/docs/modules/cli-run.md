@@ -100,9 +100,12 @@ After parsing, `resolveRunOptions` builds the orchestrator's `projects` field:
 | Any bare positional + `--all`              | `undefined` (every project)      |
 | Any bare positional + default              | `[findCwdProject(cwd)]` or error |
 
-`--affected[=<base>]` is sugar for an extra `...[<base>]` filter —
-the changed projects and their dependents (#446) — put first in
-`filterStrings` before `resolveFilters` runs. The no-value form takes
+`--affected[=<base>]` adds a `...[<base>]` filter — the changed
+projects and their dependents, the candidates (#446) — put first in
+`filterStrings` before `resolveFilters` runs, which keeps that filter's
+diff per path (`affectedChanges`) as `RunOptions.affected`; `prepare`
+then keeps a bare request only when the diff reaches its `dependsOn`
+closure (`orchestrator/affected-tasks.ts`, owner 2026-10-04). The no-value form takes
 the workspace's `affectedBase` (a plugin's `config` stage may set it),
 else `defaultAffectedBase(root)`: `origin/HEAD`, else the first of
 `origin/main`, `origin/master`, `main`, `master` that is not HEAD, else

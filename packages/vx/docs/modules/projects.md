@@ -8,9 +8,16 @@ is what a run would see — the plugin `config` and `project` stages
 included. Before this, `show` read config files raw and printed
 `(no vx config)` for a package `turbo()` gives tasks to.
 
+A project whose config and plugins declare no `build` gets one, after the
+`project` stage: a group with `dependsOn: ['^build']` keyed on `**`
+(owner, 2026-10-04; `computeGroupKey`, task-hash.md).
+
 ## Public surface
 
 ```ts
+// the default build; the picker and the "tasks here" hint leave it out
+export function isDefaultBuild(task: TaskConfig | undefined): boolean
+
 export function loadWorkspacePlugins(
   workspaceRoot: string,
   warn: (m: string) => void,
