@@ -1063,3 +1063,13 @@ inputs) and the docs servers. CI was the gap: every run started cold. The
 `ci` and `core-darwin` jobs now restore `.vx/cache` from the newest one
 main saved (`actions/cache`), and only a push to main saves, so a PR's
 code never writes an entry another run reads.
+
+M-86. `@vzn/vx#test.bun.shard-12` failed on every run in a checkout
+holding a stale `packages/vx/.vx`, so it never cached. Three
+`cli run()` rows (an unknown verb, a flag before a verb, `-V`) ran the
+CLI with `packages/vx` as cwd; the suggestion lookup loads the workspace
+there. Unsandboxed that wrote the repo's own `.vx` cache; under the
+shard's sandbox the root `package.json` is hidden, `packages/vx` became
+the workspace, and opening its stale cache was a refused write. Every row
+in the block now runs in an empty temp directory, and bare `vx` in a
+fixture workspace.
