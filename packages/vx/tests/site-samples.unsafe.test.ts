@@ -866,12 +866,7 @@ describe('the from-nx post says how executors run, and names the servers', () =>
   })
   it('the benchmark figures it states are the benchmarks page’s', () => {
     const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
-    for (const figure of [
-      '476ms',
-      '3.59s (vx 7.5× faster)',
-      '34.33s',
-      '114m 06s (vx 199× faster)',
-    ]) {
+    for (const figure of ['392ms', '6.15s (vx 15× faster)', '17.99s', '1m 06s (vx 3.6× faster)']) {
       expect(page).toContain(figure)
       expect(bench).toContain(figure)
     }
@@ -1617,7 +1612,7 @@ describe('the no-choice-on-the-market post quotes the benchmarks page', () => {
   it('its warm figures are on docs/benchmarks.md as written', () => {
     const page = readFileSync(path.join(DOCS, 'blog', 'no-choice-on-the-market.md'), 'utf8')
     const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
-    for (const figure of ['3.59s', '760ms']) {
+    for (const figure of ['6.15s', '450ms']) {
       expect(page).toContain(figure)
       expect(bench).toContain(figure)
     }
@@ -2164,7 +2159,7 @@ describe('the posts state the daemons as the benchmark ran them', () => {
     const harness = readFileSync(path.join(core, '..', 'vx-bench', 'compare.ts'), 'utf8')
     expect(harness).toContain("(`CI=1`, so Nx's daemon is off;")
     expect(post('no-choice-on-the-market.md')).toContain(
-      "(vx 7.5× and 1.5× faster), Nx's daemon off as in CI.",
+      "(vx 15× and 1.1× faster), Nx's daemon off as in CI.",
     )
     expect(post('honest-benchmarks.md')).toContain(
       "CI (`CI=1`: Nx's daemon off, and Turbo uses none for `turbo run`)",
@@ -2424,19 +2419,21 @@ describe('the pages say where an entry stdout lives', () => {
   })
 })
 
-// The headline Nx column paid npm per task; the note under every table
-// built from it quotes the fixed harness's read, which benchmarks.md holds.
-describe('the headline Nx note quotes the fixed-harness figures', () => {
-  it('README and benchmarks.md carry it, and its figures are the table’s', () => {
+// The headline Nx column once paid npm and a Node fork per task
+// (item 735); the harness now gives Nx `nx:run-commands` targets (owner,
+// 2026-10-04), and benchmarks.md keeps the measured why.
+describe('the headline Nx column runs nx:run-commands', () => {
+  it('the harness writes them, and benchmarks.md keeps the run-script read', () => {
     const root = path.resolve(import.meta.dir, '..', '..', '..')
     const bench = readFileSync(path.join(root, 'packages', 'vx', 'docs', 'benchmarks.md'), 'utf8')
-    const readme = readFileSync(path.join(root, 'README.md'), 'utf8')
-    const note = /^Nx's column ran every task through npm run.*$/m.exec(readme)?.[0]
-    expect(note).toBeDefined()
-    expect(bench).toContain(note!)
-    expect(note).toContain('Nx took 6m 59s cold and 4.50 s fully cached (vx 1.9× and 12× faster)')
+    const harness = readFileSync(path.join(root, 'packages', 'vx-bench', 'compare.ts'), 'utf8')
+    expect([...harness.matchAll(/executor: '(nx:[\w-]+)'/g)].map((m) => m[1])).toEqual([
+      'nx:run-commands',
+      'nx:run-commands',
+      'nx:run-commands',
+    ])
+    expect(bench).toContain('every Nx task an `nx:run-commands` target')
     expect(bench).toContain('6m 59s (vx 1.9× faster)')
-    expect(bench).toContain('4.50 s (vx 12× faster)')
     expect(bench).toContain('`npm run` costs 202 ms of')
   })
 })

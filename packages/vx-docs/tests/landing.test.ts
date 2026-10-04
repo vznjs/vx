@@ -312,8 +312,7 @@ describe('the landing page', () => {
     const notes = [...bench.matchAll(/<p class="bench-formula">([\s\S]*?)<\/p>/g)].map((m) =>
       text(m[1]!),
     )
-    expect(notes).toHaveLength(2)
-    expect(notes[1]).toStartWith("Nx's column ran every task through npm run")
+    expect(notes).toHaveLength(1)
     const reasons = [...bench.matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/g)].map((m) => text(m[1]!))
     expect(reasons).toHaveLength(3)
   })

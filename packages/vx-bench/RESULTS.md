@@ -10,17 +10,17 @@
 - **Host:** Linux 6.18.44-fc-v64 · 4 cores · linux/x64
 - **Date:** 2026-10-04
 
-| Runner | Version | Fresh (cold) | Warm (no restore) | Warm (restore) | CPU, cold | CPU, warm |
-| ------ | ------- | ------------ | ----------------- | -------------- | --------- | --------- |
-| baseline (ideal) | — | 3m 38s | 23 ms | 68 ms | 10.74 s | 31 ms |
-| vx | vx 0.0.0 | 3m 41s | 392 ms | 745 ms | 17.99 s | 742 ms |
-| vx (no lock) | vx 0.0.0 | 3m 40s (1.0× vx) | 478 ms (1.2× vx) | 819 ms (1.1× vx) | 18.53 s (1.0× vx) | 903 ms (1.2× vx) |
-| turbo | 2.11.7 | 5m 1s (1.4× vx) | 450 ms (1.1× vx) | 768 ms (1.0× vx) | 27.17 s (1.5× vx) | 903 ms (1.2× vx) |
-| nx | 23.2.1 | 3m 51s (1.0× vx) | 6.15 s (15.7× vx) | 5.85 s (7.8× vx) | 1m 6s (3.7× vx) | 7.18 s (9.7× vx) |
+| Runner           | Version  | Fresh (cold)     | Warm (no restore) | Warm (restore)   | CPU, cold         | CPU, warm        |
+| ---------------- | -------- | ---------------- | ----------------- | ---------------- | ----------------- | ---------------- |
+| baseline (ideal) | —        | 3m 38s           | 23 ms             | 68 ms            | 10.74 s           | 31 ms            |
+| vx               | vx 0.0.0 | 3m 41s           | 392 ms            | 745 ms           | 17.99 s           | 742 ms           |
+| vx (no lock)     | vx 0.0.0 | 3m 40s (1.0× vx) | 478 ms (1.2× vx)  | 819 ms (1.1× vx) | 18.53 s (1.0× vx) | 903 ms (1.2× vx) |
+| turbo            | 2.11.7   | 5m 1s (1.4× vx)  | 450 ms (1.1× vx)  | 768 ms (1.0× vx) | 27.17 s (1.5× vx) | 903 ms (1.2× vx) |
+| nx               | 23.2.1   | 3m 51s (1.0× vx) | 6.15 s (15.7× vx) | 5.85 s (7.8× vx) | 1m 6s (3.7× vx)   | 7.18 s (9.7× vx) |
 
-**Cache states.** *Fresh* clears the runner's cache and runs cold (key
-derivation + execution + save). *Warm, no restore* re-runs with the cache
-warm and outputs intact (the steady-state dev loop). *Warm, restore*
+**Cache states.** _Fresh_ clears the runner's cache and runs cold (key
+derivation + execution + save). _Warm, no restore_ re-runs with the cache
+warm and outputs intact (the steady-state dev loop). _Warm, restore_
 deletes every `dist/` first, so the runner restores outputs from cache.
 
 **Baseline** is the theoretical best case, so each row shows its overhead:
