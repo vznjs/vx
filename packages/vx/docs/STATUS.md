@@ -531,6 +531,8 @@ next?".
     the chart (owner, 2026-10-04): 4m 49s cold, 2.49 s cached; it burns
     less CPU cold than vx (12.46 s against 17.27 s), so the landing claims
     time added, cold and cached, not every column.
+    The chart shows four metrics (owner): cold time added, cold CPU,
+    cached run restored and up-to-date; overhead per package left it.
 19. DONE as item 751 — **A sandboxed task's `kill 0` killed the
     sandbox (Linux, found in 736).** The command runs in a session of
     its own inside the sandbox.

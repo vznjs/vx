@@ -68,8 +68,8 @@ const pillars = [
 const benchTable = [
   { label: 'Cold build: time the runner adds', vx: '2 s', turbo: '1 min 21 s (vx 34× faster)', nx: '11 s (vx 4.7× faster)', vt: '1 min 11 s (vx 30× faster)' },
   { label: 'Cold build: CPU burned', vx: '17 s', turbo: '21 s (vx 1.2× faster)', nx: '52 s (vx 3× faster)', vt: '12 s (vx 1.4× slower)' },
-  { label: 'Fully cached run', vx: '393 ms', turbo: '463 ms (vx 1.1× faster)', nx: '6.45 s (vx 16× faster)', vt: '2.49 s (vx 6.3× faster)' },
-  { label: 'Overhead per package', vx: '2 ms', turbo: '74 ms (vx 34× faster)', nx: '10 ms (vx 4.7× faster)', vt: '65 ms (vx 30× faster)' },
+  { label: 'Fully cached run (restored)', vx: '650 ms', turbo: '997 ms (vx 1.5× faster)', nx: '6.25 s (vx 9.6× faster)', vt: '2.64 s (vx 4× faster)' },
+  { label: 'Fully cached run (up-to-date)', vx: '393 ms', turbo: '463 ms (vx 1.1× faster)', nx: '6.45 s (vx 16× faster)', vt: '2.49 s (vx 6.3× faster)' },
 ]
 const benchFormula = 'vx N× faster: that tool takes N times as long as vx (theirs ÷ vx); N× slower: vx takes N times as long (vx ÷ theirs).'
 
@@ -97,7 +97,7 @@ const benchBars = renderBars(
 // The hero's three numbers, each the multiple a benchTable cell already
 // states, so a new run moves them with the chart.
 const timesOf = (cell: string): string => `${/^vx ([\d.]+)× faster$/.exec(vsOf(cell)[1])![1]}×`
-const [addsRow, cpuRow, cachedRow] = benchTable
+const [addsRow, cpuRow, , cachedRow] = benchTable
 const wins = [
   { n: timesOf(addsRow!.turbo), line: 'less time added to a cold build than Turborepo' },
   { n: timesOf(cpuRow!.turbo), line: 'less CPU burned on a cold build than Turborepo' },
