@@ -35,7 +35,7 @@ futex wake, an eventfd write and an epoll turn per call), the JIT 0.75 s.
 
 - **Q-2.** macOS ran every task through `/bin/sh`, a stub that execs
   bash: two images a task, and bash where Linux CI runs dash. vx runs
-  `/bin/dash` there when present (`taskShell()`), and a sandboxed macOS
+  dash there when its PATH has it (`taskShell()`), and a sandboxed macOS
   task asks the sandbox runtime for it too, which ran bash. On Linux dash
   costs about 1 ms of CPU a task against bash's 1.7 (1,000 `true`s:
   2.32 s vs 2.95 s). Rows: `util-which.test.ts` (dash on macOS, no

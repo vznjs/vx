@@ -39,9 +39,9 @@ export function taskShell(): string
 - The answer is absolute even for a relative PATH entry (`Bun.which`
   resolves one against this process's cwd).
 
-- `taskShell` is the shell every command runs in: `/bin/dash` on macOS
-  when present (macOS's `/bin/sh` is a stub that execs bash), else `sh`
-  resolved by `executablePath`. Kill-tree's guard and the sandbox use it
+- `taskShell` is the shell every command runs in: `dash` on macOS when
+  vx's PATH has it (macOS's `/bin/sh` is a stub that execs bash), else
+  `sh`, both resolved by `executablePath`. Kill-tree's guard and the sandbox use it
   too.
 - `shellArgv` is the task shell's argv: `[taskShell(), '-c', script]`.
 

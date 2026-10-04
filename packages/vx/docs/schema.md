@@ -150,8 +150,8 @@ interface ExecConfig {
 }
 ```
 
-`command` is a string. Run via `sh -c` (`/bin/dash` on macOS, as
-Linux's `sh` is), so POSIX
+`command` is a string. Run via `sh -c` (`dash` on macOS, as Linux's
+`sh` is), so POSIX
 shell semantics work directly — pipes, redirects, `&&` chaining:
 
 ```ts

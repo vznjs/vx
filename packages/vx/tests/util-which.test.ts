@@ -74,14 +74,14 @@ describe('executablePath', () => {
 
 // macOS's /bin/sh is a stub that execs bash: two images a task, and bash
 // where Linux CI runs dash, so a command read one way on a Mac and another
-// on CI. The task shell there is /bin/dash (owner, 2026-10-04).
+// on CI. The task shell there is dash (owner, 2026-10-04).
 describe('taskShell', () => {
   const probe = '[ -n "$BASH_VERSION" ] && echo bash || echo not-bash'
   const answer = (argv: string[]): string =>
     new TextDecoder().decode(Bun.spawnSync(argv).stdout).trim()
 
   it('is dash on macOS and sh on vx PATH elsewhere', () => {
-    const expected = process.platform === 'darwin' ? '/bin/dash' : executablePath('sh')
+    const expected = executablePath(process.platform === 'darwin' ? 'dash' : 'sh')
     expect(taskShell()).toBe(expected)
     expect(shellArgv(probe)).toEqual([expected, '-c', probe])
   })
