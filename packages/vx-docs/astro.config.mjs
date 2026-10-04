@@ -8,6 +8,7 @@ import { defineConfig } from 'astro/config'
 // what it already does for this exact Starlight version.
 import starlightBlog from 'starlight-blog'
 import { SIDEBAR } from './src/nav/sections.ts'
+import remarkDataCharts from './src/plugins/data-charts.ts'
 import remarkMermaid from './src/plugins/remark-mermaid.mjs'
 
 // GitHub Pages project site: https://vznjs.github.io/vx/
@@ -94,7 +95,7 @@ export default defineConfig({
   // site declares itself: without it the build refuses to start (CI,
   // 2026-09-10), and a stale copy in the store hid that locally.
   markdown: {
-    remarkPlugins: [remarkMermaid],
+    remarkPlugins: [remarkMermaid, remarkDataCharts],
   },
   integrations: [
     starlight({
@@ -127,7 +128,7 @@ export default defineConfig({
         Sidebar: './src/components/starlight/Sidebar.astro',
         ThemeProvider: './src/components/starlight/ThemeProvider.astro',
       },
-      customCss: ['./src/styles/theme.css'],
+      customCss: ['./src/styles/theme.css', './src/styles/charts.css'],
       // A code block wraps rather than scrolls: on a phone the end of a
       // command hid past the edge, and nothing said it was there.
       expressiveCode: { defaultProps: { wrap: true } },
