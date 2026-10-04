@@ -991,7 +991,16 @@ export function resolveSandboxConfig(
       (a.write ?? []).map((p) => {
         const real = resolve(p)
         assertWriteStaysHome(p, real, projectDir)
-        return real
+        // A directory a write glob matches is writable whole, as Linux's
+        // bind of the hit makes it: `<glob>/**` collapses below into the
+        // glob and its subtree. SRT compiles a glob as an exact regex, so
+        // `/tmp/pnpm-store-operation-locks-*/` covered the directory and
+        // not the lock file pnpm 12 opens inside it.
+        return process.platform !== 'linux' &&
+          !isMountableLiteral(real) &&
+          !/\/\*\*(?:\/\*)?$/.test(real)
+          ? `${real}/**`
+          : real
       }),
       walls,
       pending,

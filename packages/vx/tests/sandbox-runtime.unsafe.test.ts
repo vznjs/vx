@@ -1058,6 +1058,40 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
   )
 
   it(
+    'a write glob covers what is inside the directories it matches',
+    async () => {
+      // pnpm 12 opens `/tmp/pnpm-store-operation-locks-<uid>/all-stores.lock`,
+      // granted as `/tmp/pnpm-store-operation-locks-*/`. On macOS the glob
+      // covered the directory alone, and pnpm's install failed on EPERM.
+      // `/tmp` is a link to `/private/tmp` there, the shape the grant meets.
+      const stem = `/tmp/vxwg-${process.pid}-${Date.now()}`
+      mkdirSync(`${stem}-1`)
+      try {
+        await addProject(fixture.root, 'wglob', {
+          config: `
+            export default {
+              tasks: {
+                build: {
+                  exec: {
+                    command: 'echo locked > ${stem}-1/all.lock',
+                    sandbox: { allow: { read: ['.'], write: ['${stem}-*/'] } },
+                  },
+                },
+              },
+            }
+          `,
+        })
+        const r = await run({ cwd: fixture.root, tasks: ['build'], log: collectingLogger(fixture) })
+        expectOk(r, fixture)
+        expect(readFileSync(`${stem}-1/all.lock`, 'utf8')).toBe('locked\n')
+      } finally {
+        await rm(`${stem}-1`, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a declared write path is readable too (touch stats before it creates)',
     async () => {
       // `touch` stats the file before creating it, so a write grant that
