@@ -10,10 +10,8 @@ vx's benchmarks measure only that native config. Any other repo starts at the
 [quickstart](../../quickstart/): there `vx init` writes the configs from
 your `package.json` scripts.
 
-> `@vzn/vx-migrate` is not on npm yet: its first publish is pending, so
-> the install in `vx init`'s `next:` line fails until then. The steps
-> below are the ones to run once it is; `examples/turbo` runs them
-> against this repo's packages on every commit.
+> `examples/turbo` runs the steps below against this repo's packages on
+> every commit.
 
 ## Turborepo
 

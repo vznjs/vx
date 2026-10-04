@@ -149,8 +149,6 @@ Declared in `vx.workspace.ts`; without any, vx runs and caches locally.
 | [`@vzn/vx-mcp`](packages/vx-mcp)                           | `vx mcp`: a read-only MCP server for AI coding agents                         |
 | [`@vzn/vx-schedule-history`](packages/vx-schedule-history) | Schedule by the critical path learned from past runs                          |
 
-Only `@vzn/vx` is on npm today; the plugins' first publish is pending.
-
 Write your own: [plugin guide](https://vznjs.github.io/vx/guides/plugins/) ·
 [architecture](packages/vx/docs/architecture.md).
 

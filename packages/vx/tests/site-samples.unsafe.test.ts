@@ -1459,10 +1459,6 @@ describe('the plugins guide rosters every hook a shipped plugin fills', () => {
     const section = /## Plugins that ship\n([\s\S]*?)\n## /.exec(page)![1]!
     const rows = [...section.matchAll(/^\| `(@vzn\/[\w-]+)` /gm)].map((m) => m[1]!)
     expect([...rows].sort()).toEqual(shipped)
-    const words = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine']
-    expect(section.replace(/\s+/g, ' ')).toContain(
-      `Only \`@vzn/vx\` is on npm today. The ${words[shipped.length]} plugins' first publish is pending`,
-    )
   })
   it('its hook interface block is PLUGIN_HOOKS, in order', () => {
     const page = readFileSync(path.join(GUIDES, 'plugins.md'), 'utf8')
@@ -1656,10 +1652,11 @@ describe("the site's Turbo and Nx verb rows say what `vx <verb>` says", () => {
   })
 })
 
-describe('the README and the CI guide say which packages npm has', () => {
-  // Both told readers to install plugins npm answers 404 for (J-93).
-  const NOTE = "Only `@vzn/vx` is on npm today; the plugins' first publish is pending."
-  it("the README's plugin table is every public package but @vzn/vx, under the note", () => {
+describe('the README and the Docs say which packages npm has', () => {
+  // Both once told readers to install plugins npm answered 404 for (J-93),
+  // under a note that said so; every plugin has been published since 0.0.484,
+  // and a note left behind would send a reader away from a working install.
+  it("the README's plugin table is every public package but @vzn/vx", () => {
     const packagesDir = path.resolve(import.meta.dir, '..', '..')
     const shipped = readdirSync(packagesDir)
       .map((d) => path.join(packagesDir, d, 'package.json'))
@@ -1671,15 +1668,10 @@ describe('the README and the CI guide say which packages npm has', () => {
     const readme = readFileSync(path.resolve(packagesDir, '..', 'README.md'), 'utf8')
     const rows = [...readme.matchAll(/^\| \[`(@vzn\/[\w-]+)`\]/gm)].map((m) => m[1]!)
     expect([...rows].sort()).toEqual(shipped)
-    expect(readme).toContain(NOTE)
   })
-  it('the CI guide, which imports @vzn/vx-github, carries it', () => {
-    expect(readFileSync(path.join(GUIDES, 'ci.md'), 'utf8')).toContain(NOTE)
-  })
-  // Found, not listed: J-93 pinned two pages, and the quickstart's `bunx
-  // @vzn/vx-migrate` and the configure guide's `bun add -d
-  // @vzn/vx-lockfile` sent a reader to a 404 with no word (J2-25).
-  it('every Docs page that installs, runs or imports a plugin says npm has none yet', () => {
+  // Found, not listed: a page that installs, runs or imports a plugin is
+  // where a stale "not on npm yet" would sit (J2-25 found two unlisted).
+  it('no page that installs, runs or imports a plugin says it is not on npm', () => {
     const packagesDir = path.resolve(import.meta.dir, '..', '..')
     const plugins = readdirSync(packagesDir)
       .map((d) => path.join(packagesDir, d, 'package.json'))
@@ -1693,12 +1685,14 @@ describe('the README and the CI guide say which packages npm has', () => {
     const pages = handAuthoredSitePages().filter((p) => !p.includes(`${path.sep}blog${path.sep}`))
     const using = pages.filter((p) => use.test(readFileSync(p, 'utf8')))
     expect(using.length).toBeGreaterThan(3)
-    const silent = using
-      .filter(
-        (p) => !readFileSync(p, 'utf8').replace(/\s+/g, ' ').includes('first publish is pending'),
+    const stale = using
+      .filter((p) =>
+        /first publish is pending|not on npm yet|is on npm today/.test(
+          readFileSync(p, 'utf8').replace(/\s+/g, ' '),
+        ),
       )
       .map((p) => p.slice(DOCS.length + 1))
-    expect(silent).toEqual([])
+    expect(stale).toEqual([])
   })
 })
 

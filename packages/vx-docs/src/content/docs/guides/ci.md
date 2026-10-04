@@ -92,8 +92,6 @@ import { github } from '@vzn/vx-github'
 export default defineWorkspace({ plugins: [github()] })
 ```
 
-Only `@vzn/vx` is on npm today; the plugins' first publish is pending.
-
 `github()` writes a job summary, failures first, and a PR check. The
 check needs `GITHUB_TOKEN` in the vx step's `env`, as above (the runner
 sets `GITHUB_REPOSITORY` and `GITHUB_SHA`); without it the check is

@@ -1082,3 +1082,9 @@ carries `restored`, and `RunSummaryRecord` the counts; `vx last`, `info`,
 `why`, `--summarize`, `--report`, vx-mcp, vx-github and vx-otel show it.
 vx-github's footer had called every hit "restored". The dry-run plan
 cannot split: it predicts before anything is restored.
+
+M-88. The README and six site pages still said the plugins were not on
+npm, and a law required the note on every page that installs one; all
+seven have been published since 0.0.484. The notes are gone, and the law
+now holds the opposite: no page that installs, runs or imports a plugin
+says it is not on npm.
