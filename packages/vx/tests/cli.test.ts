@@ -16,10 +16,20 @@ import { editDistance, MOVED_VERBS, nearest } from '../src/util/index.js'
 describe('cli run()', () => {
   let stdout: string
   let stderr: string
+  // Every row runs outside any workspace. An unknown verb or flag looks for
+  // a task of that name to suggest, so it loads the workspace at the cwd:
+  // from `packages/vx` that wrote the repo's own `.vx` cache, and under the
+  // shard's sandbox, which hides the root `package.json`, it opened a stale
+  // `packages/vx/.vx` and the write was refused.
+  let origCwd: string
+  let emptyDir: string
 
-  beforeEach(() => {
+  beforeEach(async () => {
     stdout = ''
     stderr = ''
+    origCwd = process.cwd()
+    emptyDir = await mkdtemp(path.join(os.tmpdir(), 'vx-cli-run-'))
+    process.chdir(emptyDir)
     vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
       stdout += String(chunk)
       return true
@@ -30,12 +40,22 @@ describe('cli run()', () => {
     })
   })
 
-  afterEach(() => {
+  afterEach(async () => {
     vi.restoreAllMocks()
+    process.chdir(origCwd)
+    await rm(emptyDir, { recursive: true, force: true })
   })
 
   it('prints help with no args', async () => {
-    expect(await run([])).toBe(0)
+    // Inside a workspace; outside one, a bare `vx` says there is none.
+    const root = await makeWorkspace({ prefix: 'vx-cli-help-' })
+    process.chdir(root)
+    try {
+      expect(await run([])).toBe(0)
+    } finally {
+      process.chdir(emptyDir)
+      await rm(root, { recursive: true, force: true })
+    }
     expect(stdout).toContain('Usage:')
   })
 
