@@ -745,46 +745,79 @@ body:has(.vx-landing) {
   }
 }
 @media (max-width: 620px) {
+  .section {
+    padding: 56px var(--gutter);
+  }
+  /* A row each: the number, then its line beside it. */
   .wins {
     grid-template-columns: minmax(0, 1fr);
-    gap: 10px;
+    gap: 0;
+    margin-top: 22px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    background: var(--surface-card);
+  }
+  .wins li {
+    grid-template-columns: 4.2rem minmax(0, 1fr);
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    border: 0;
+    border-radius: 0;
+    background: none;
+  }
+  .wins li + li {
+    border-top: 1px solid var(--line-faint);
   }
   .wins strong {
-    font-size: 32px;
+    font-size: 26px;
   }
+  .wins span {
+    font-size: 13px;
+  }
+  /* The recorded run's text is unreadable at phone width. */
+  .hero .demo {
+    display: none;
+  }
+  /* A trait per block: one line per tool, its name, mark and words. */
   .edge-table thead {
     display: none;
   }
   .edge-table tr {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 4px 10px;
-    padding: 14px 0;
+    gap: 8px;
+    padding: 16px 0;
     border-bottom: 1px solid var(--line-faint);
   }
   .edge-table th,
   .edge-table td {
     padding: 0;
     border: 0;
-    font-size: 13px;
+    font-size: 14px;
   }
   .edge-table th[scope='row'] {
-    grid-column: 1 / -1;
-    margin-bottom: 4px;
-    font-size: 15px;
+    margin-bottom: 2px;
+    font-size: 16px;
+  }
+  .edge-table td {
+    display: grid;
+    grid-template-columns: 5.6rem 20px minmax(0, 1fr);
+    align-items: start;
+    column-gap: 8px;
   }
   .edge-table td::before {
     content: attr(data-tool);
-    display: block;
-    margin-bottom: 4px;
     font: var(--fw-semibold) 12px / 1.3 var(--font-mono);
     color: var(--text-faint);
   }
+  .edge-table td[data-tool='vx']::before {
+    color: var(--phosphor-bright);
+  }
+  .edge-table td::before {
+    padding-top: 3px;
+  }
   .edge-table .mark {
-    width: 16px;
-    height: 16px;
-    margin-right: 4px;
-    font-size: 10px;
+    margin: 0;
   }
   .btn-github {
     display: none;
