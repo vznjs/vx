@@ -15,7 +15,7 @@ import type { CacheLayer, CachePolicy, GitFilesCache } from '../cache/index.js'
 import { FULL_CACHE_POLICY } from '../cache/index.js'
 import { isGroupTask, runGraph, type TaskNode, type TaskOutcome } from '../graph/index.js'
 import type { HistoryProvider } from './history.js'
-import { computeGroupHash, computeTaskHash } from './task-hash.js'
+import { computeGroupKey, computeTaskHash } from './task-hash.js'
 import { keyUpstream } from './upstream.js'
 
 export type CacheStatus =
@@ -130,12 +130,7 @@ export async function plan(args: PlanArgs): Promise<RunPlan> {
     concurrency: 1,
     execute: async (node, live) => {
       const upstream = keyUpstream(node, live)
-      if (isGroupTask(node)) {
-        cacheStatusById.set(node.id, 'group')
-        return planOutcome(node, computeGroupHash(upstream))
-      }
-
-      const hash = await computeTaskHash({
+      const hashArgs = {
         node,
         upstream,
         workspaceRoot: args.workspaceRoot,
@@ -145,7 +140,13 @@ export async function plan(args: PlanArgs): Promise<RunPlan> {
         nestedProjectDirs: args.nestedDirsByProject.get(node.projectName) ?? [],
         ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
         ...(args.hashCache !== undefined ? { hashCache: args.hashCache } : {}),
-      })
+      }
+      if (isGroupTask(node)) {
+        cacheStatusById.set(node.id, 'group')
+        return planOutcome(node, await computeGroupKey(hashArgs))
+      }
+
+      const hash = await computeTaskHash(hashArgs)
 
       // Prediction keys off READS: a no-read policy re-executes every task,
       // so nothing is probed. Whether that run is a miss or no cache at all

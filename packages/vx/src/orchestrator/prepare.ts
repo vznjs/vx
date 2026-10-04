@@ -515,7 +515,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     if (options.affected !== undefined) {
       const named = new Set(tasks.filter((t) => t.includes('#')))
       const ids = requested.map((r) => `${r.project}#${r.task}`)
-      const reached = new Set(affectedRoots(nodes, ids, options.affected, projects))
+      const reached = new Set(affectedRoots(nodes, ids, options.affected, projects, packageGraph))
       const kept = requested.filter((_r, i) => named.has(ids[i]!) || reached.has(ids[i]!))
       if (kept.length === 0) return emptyRun('none-reached')
       if (kept.length < requested.length) {

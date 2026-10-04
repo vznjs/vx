@@ -727,7 +727,8 @@ next?".
   holding a path no cached task declares), and a requested task runs
   when its `dependsOn` closure holds one; `--filter '...[<base>]'` keeps
   the project walk (item 287's dependents), `[<base>]` the changed set.
-  `docs/history/ws-t.md` T-5.
+  A project with no `build` gets a group behind `^build` keyed on all its
+  files. `docs/history/ws-t.md` T-5.
 - **Resources are the schedule plugin's (owner, 2026-09-12).** Core
   gates on the worker count and asks the `admit` stage for anything
   finer; it holds no per-task cores or megabytes, no config field for

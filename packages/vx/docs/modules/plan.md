@@ -65,7 +65,7 @@ Piggybacks on `runGraph` with `concurrency: 1` and a planning
 `execute` closure:
 
 1. For each node in topo order, compute the same cache key the real
-   run would (`computeTaskHash` for normal tasks, `computeGroupHash`
+   run would (`computeTaskHash` for normal tasks, `computeGroupKey`
    for groups), through the run's `hashCache` memo.
 2. Probe `cache.has(hash)` — a presence check, never a fetch:
    `'local'` → `'hit-local'`, `'remote'` → `'hit-remote'`, nothing →

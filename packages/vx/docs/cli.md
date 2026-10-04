@@ -294,8 +294,10 @@ so a change reaches another project only along a task edge. With
 and `app#lint`, which depends on nothing, never runs for a change in
 `ui`. A `pkg#task` you name runs whatever the diff. This is the edge
 the cache key folds (a cached `app#test` with no edge to `ui` never
-sees `ui`'s files either), so a project consumed as source needs one:
-give it a `build` (a no-op keyed on its source) and depend on `^build`.
+sees `ui`'s files either). A project that declares no `build` gets one
+keyed on all its files (`schema.md`), so any change there reaches a
+dependant behind `^build`; a package `^name` passes through for want of a
+config reaches it the same way.
 Nx 23.3 (`NX_LEGACY_AFFECTED=false`) and Turbo
 (`affectedUsingTaskInputs`) select tasks the same way, behind flags.
 

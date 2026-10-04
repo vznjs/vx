@@ -257,8 +257,12 @@ describe('scoped config loading', () => {
         warn: () => {},
         staged,
       })
-      // Each project keeps its OWN tasks.
-      expect(Object.keys(loaded.projects.get('b-fresh')!.config.tasks ?? {})).toEqual(['beta'])
+      // Each project keeps its OWN tasks (and the default build, b-fresh's
+      // own load; a staged entry is taken as given).
+      expect(Object.keys(loaded.projects.get('b-fresh')!.config.tasks ?? {})).toEqual([
+        'beta',
+        'build',
+      ])
       expect(Object.keys(loaded.projects.get('a-staged')!.config.tasks ?? {})).toEqual(['alpha'])
       // And the staged entry is taken as given, not re-evaluated: the
       // command is the one the caller staged, not the one on disk.

@@ -5,9 +5,16 @@
 // and a spec edit `ui#build`'s inputs leave out stops at `ui`'s own tasks.
 
 import { declaresInput } from '../cache/index.js'
-import { isGroupTask, type TaskNode } from '../graph/index.js'
+import {
+  compileTaskPattern,
+  isGroupTask,
+  isTaskPattern,
+  parseDependencySpec,
+  type TaskNode,
+} from '../graph/index.js'
 import {
   type AffectedChanges,
+  type PackageGraph,
   PROJECT_CONFIG_FILENAMES,
   type ProjectEntry,
 } from '../workspace/index.js'
@@ -40,21 +47,51 @@ function wholeProjects(
 }
 
 /**
- * The task ids of `ids` whose closure the change reaches, in their order. A group seeds nothing (it runs nothing); an uncached task seeds
- * whenever its project changed; a cached one when a changed path is one of
- * its declared inputs.
+ * The task ids of `ids` whose closure the change reaches, in their order.
+ * A group seeds nothing (it runs nothing) unless it is keyed, as the default
+ * `build` is; an uncached task seeds whenever its project changed; a cached
+ * one when a changed path is one of its declared inputs. A `^name` edge the
+ * graph passes through a package it loaded no config for reaches it as the
+ * default `build` would: any change there reaches the task.
  */
 export function affectedRoots(
   nodes: ReadonlyMap<string, TaskNode>,
   ids: readonly string[],
   changes: AffectedChanges,
   projects: ReadonlyMap<string, ProjectEntry>,
+  packageGraph: PackageGraph,
 ): string[] {
   const whole = wholeProjects(changes, projects)
+  // The builder's `^name` walk (task-graph.ts), keeping only the packages
+  // it passes through: a holder's own node is already in `deps`.
+  const passesChanged = (n: TaskNode): boolean => {
+    for (const raw of n.config.dependsOn ?? []) {
+      const spec = parseDependencySpec(raw)
+      if (spec.kind !== 'deps' || spec.negated) continue
+      const re = isTaskPattern(spec.task) ? compileTaskPattern(spec.task) : null
+      const holds = (name: string): boolean => {
+        const tasks = Object.keys(projects.get(name)?.config.tasks ?? {})
+        return re === null ? tasks.includes(spec.task) : tasks.some((t) => re.test(t))
+      }
+      const visited = new Set([n.projectName])
+      const frontier = [...packageGraph.directDeps(n.projectName)]
+      while (frontier.length > 0) {
+        const target = frontier.pop()!
+        if (visited.has(target)) continue
+        visited.add(target)
+        if (holds(target)) continue
+        if (changes.projects.has(target)) return true
+        frontier.push(...packageGraph.directDeps(target))
+      }
+    }
+    return false
+  }
   const seeded = (n: TaskNode): boolean => {
-    if (isGroupTask(n) || !changes.projects.has(n.projectName)) return false
+    if (!changes.projects.has(n.projectName)) return false
     const cache = n.config.cache
-    if (cache === undefined || whole.has(n.projectName)) return true
+    // A group runs nothing; only the default `build` (projects.ts) is keyed.
+    if (cache === undefined) return !isGroupTask(n)
+    if (whole.has(n.projectName)) return true
     if ((changes.paths.get(n.projectName) ?? []).some((rel) => declaresInput(cache, rel, null))) {
       return true
     }
@@ -68,7 +105,7 @@ export function affectedRoots(
     // stops a diamond being walked twice.
     reached.set(id, false)
     const n = nodes.get(id)
-    const hit = n !== undefined && (seeded(n) || n.deps.some(reaches))
+    const hit = n !== undefined && (seeded(n) || passesChanged(n) || n.deps.some(reaches))
     reached.set(id, hit)
     return hit
   }

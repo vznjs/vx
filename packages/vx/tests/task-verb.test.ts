@@ -128,7 +128,7 @@ describe('a task typed as a verb', () => {
     )
     try {
       expect(bare(many)).toBe(
-        line('t00, t01, t02, t03, t04, t05, t06, t07, t08, t09, t10, t11 and 2 more'),
+        line('build, t00, t01, t02, t03, t04, t05, t06, t07, t08, t09, t10 and 3 more'),
       )
       expect(bare(path.join(root, 'packages', 'lib'))).toBe(line('build, dev'))
     } finally {

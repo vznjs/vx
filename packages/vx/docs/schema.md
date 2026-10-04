@@ -101,9 +101,14 @@ A task either has an `exec` (it does work) or omits `exec` and declares
 rejects a task that has neither — a no-op standalone task is almost
 always a config mistake. `dependsOn: []` is the deliberate form: an
 explicit empty group, for a package that wants a task by that name to
-exist and do nothing — a package consumed as source declares
-`build: { dependsOn: [] }` so a dependant's `^build` finds it and waits
-on nothing.
+exist and do nothing.
+
+A project whose config and plugins declare no `build` gets one (owner,
+2026-10-04): a group with `dependsOn: ['^build']` keyed on every file of
+the project (`cache.inputs.files: ['**']`, no outputs). It runs nothing,
+but a dependant behind `^build` folds its key, so a package consumed as
+source moves its dependants' keys and reaches them under `--affected`.
+It is the one keyed group; a config cannot declare `cache` on one.
 
 ### `description` (optional)
 
@@ -1352,7 +1357,8 @@ A task with no `exec` and a `dependsOn` is a **group task** — a pure
 aggregator. Running a group is equivalent to running its dependencies;
 nothing else happens (no spawn, no I/O, no cache read/write). An empty
 `dependsOn: []` is an explicit no-op group: it exists to be named — by a
-dependant's `^build`, by `vx run build --all` — and runs nothing.
+dependant's `^build`, by `vx run build --all` — and runs nothing. A
+project with no `build` gets a keyed one (above).
 Bare `--exclude-dependencies` keeps a group's edges for the same reason:
 `vx run ci --exclude-dependencies` runs `ci`'s members without their own
 dependencies. A name list (`--exclude-dependencies=lint.oxfmt`) drops a

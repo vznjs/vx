@@ -69,7 +69,7 @@ export async function movedInput(
   cache: CacheLayer,
   commandFrom?: number, // the describe's start, just before the command
 ): Promise<string | undefined>
-export function computeGroupHash(upstream: TaskOutcome[]): string
+export function computeGroupKey(args: ComputeHashArgs): Promise<string>
 ```
 
 - `computeTaskHash` — resolves `cache.inputs.files` (git-backed) and
@@ -98,8 +98,10 @@ export function computeGroupHash(upstream: TaskOutcome[]): string
   an input changed and changed BACK while the command ran matches its
   digest again (item 1015). Returns the first moved path; execute-task then withholds
   the save.
-- `computeGroupHash` — for group tasks (no `exec`): rolls up upstream
-  hashes only, so downstream keys still cascade through the group.
+- `computeGroupKey` — for group tasks (no `exec`): rolls up upstream
+  hashes only, so downstream keys still cascade through the group. The
+  default `build` (projects.ts), the one group with `cache`, is keyed as
+  a task is (`computeTaskHash`), so it folds every file of its project.
 
 ## Invariants
 

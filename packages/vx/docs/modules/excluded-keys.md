@@ -46,7 +46,7 @@ the whole graph as it stands at the start of the run, once per task: a
 dropped task's own dependencies, scheduled or not, fold theirs, and a
 scheduled task that is itself a dropped dependency folds what IT lost.
 A persistent task is keyed as a task with no `cache`, as on the live
-path; a group rolls its members up (`computeGroupHash`).
+path; a group rolls its members up (`computeGroupKey`).
 
 The walk is a post-order on an explicit stack: each task's key promise
 is made after its dependencies' promises exist, so nothing recurses

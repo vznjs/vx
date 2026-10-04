@@ -106,6 +106,13 @@ function planned(tasks: string[], ...args: string[]): string[] | string {
   return (JSON.parse(out) as { tasks: { id: string }[] }).tasks.map((t) => t.id).sort()
 }
 
+function appBuildHash(): string {
+  const r = vx(root, 'run', 'build', '--filter', 'app', '--dry=json')
+  const out = r.stdout.slice(r.stdout.indexOf('{'))
+  const tasks = (JSON.parse(out) as { tasks: { id: string; hash: string }[] }).tasks
+  return tasks.find((t) => t.id === 'app#build')!.hash
+}
+
 async function commitEdit(rel: string, content: string): Promise<void> {
   await write(path.join(root, rel), content)
   git(root, 'add', '-A')
@@ -214,6 +221,35 @@ describe('--affected follows task edges (owner, 2026-10-04)', () => {
       git(root, '-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'unlink')
       await commitEdit('pkgs/lib/src/index.ts', 'export const x = 3')
       expect(planned(['build'], '--affected=HEAD~1')).toEqual(['lib#build'])
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a package without build gets one keyed on all its files',
+    async () => {
+      // lib declares no build, so it gets the default: a group behind ^build
+      // keyed on every file of lib (owner, 2026-10-04).
+      await write(
+        path.join(root, 'pkgs/lib/vx.config.mjs'),
+        `export default { tasks: { test: { exec: { command: 'true' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } } } } }\n`,
+      )
+      git(root, 'add', '-A')
+      git(root, '-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'no build')
+      await commitEdit('pkgs/lib/src/index.test.ts', 'test 2')
+      expect(planned(['test'], '--affected=HEAD~1')).toEqual([
+        'app#build',
+        'app#test',
+        'lib#build',
+        'lib#test',
+      ])
+      // The key follows: app#build folds lib's default build, which folds
+      // every file of lib, the spec too. CONTROL: tool's edit moves nothing.
+      const before = appBuildHash()
+      await commitEdit('pkgs/tool/src/index.test.ts', 'test 3')
+      expect(appBuildHash()).toBe(before)
+      await commitEdit('pkgs/lib/src/index.test.ts', 'test 3')
+      expect(appBuildHash()).not.toBe(before)
     },
     TIMEOUT,
   )
