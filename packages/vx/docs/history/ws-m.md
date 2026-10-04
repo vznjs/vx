@@ -1037,3 +1037,13 @@ Removed `orchestrator/failure-recap.ts`, `formatFailureRecap`, the
 logger's `failureRecap()`, their tests and docs; the per-failure frames
 stay. The two upstream-ledger rows that cited the recap's tests now cite
 the frame tests in `tests/output-flow.test.ts`.
+M-82. The gate passes on a Mac with no npm and an M-series CPU. A write
+glob covered only the directories it matched on macOS (SRT compiles a
+glob as an exact regex), so `/tmp/pnpm-store-operation-locks-*/` left
+pnpm 12's lock file refused; each wildcard write grant now adds
+`<glob>/**`, as Linux's bind already did. `git-spawns-once`'s warm row
+failed on every full-file run there: the cold run started inside the
+index's racy window and keyed no verdict, so the fixture now waits the
+window out. The npm and try-it suites drive a pinned root devDependency
+`npm` 11.21.0 rather than the host's, which was missing (21 rows), and
+the lockfile test grants the DNS lookup npm's Node makes offline.

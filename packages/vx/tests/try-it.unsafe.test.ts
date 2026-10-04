@@ -26,6 +26,7 @@ import {
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
+import { withNpm } from './helpers/npm.js'
 import { gitIn, gitInit } from './helpers/workspace.js'
 
 const CORE = path.resolve(import.meta.dir, '..')
@@ -93,7 +94,7 @@ function step(root: string, line: string): { code: number | null; out: string } 
   const r = Bun.spawnSync({
     cmd: ['sh', '-c', command],
     cwd: root,
-    env: { ...process.env, NO_COLOR: '1', npm_config_yes: 'false' },
+    env: withNpm({ ...process.env, NO_COLOR: '1', npm_config_yes: 'false' }),
     stdout: 'pipe',
     stderr: 'pipe',
   })
