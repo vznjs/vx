@@ -48,6 +48,7 @@ const runA: RunRecord = {
   timedOut: true,
   sandboxViolations: 29,
   notReady: 'timeout',
+  restored: false,
 }
 
 const runB: RunRecord = {
@@ -62,6 +63,7 @@ const runB: RunRecord = {
   runId: 'run-1',
   cacheHit: false,
   cached: false,
+  restored: true,
 }
 
 const invocation: InvocationRecord = {
@@ -79,6 +81,9 @@ const invocation: InvocationRecord = {
   hitCount: 5,
   hitLocalCount: 6,
   hitRemoteCount: 7,
+  upToDateCount: 41,
+  restoredLocalCount: 43,
+  restoredRemoteCount: 47,
   exitOk: false,
   commitSha: 'c0ffee',
   branch: 'main',
@@ -120,7 +125,7 @@ describe('the run history stores each field in its own column', () => {
           `SELECT hash, project, task, status, exit_code, duration_ms, forward_args,
                   started_at, ended_at, run_id, cpu_ms, peak_rss_bytes,
                   wallclock_start_ns, wallclock_end_ns, cache_hit, attempts, cached,
-                  blocked_by, timed_out, sandbox_violations, not_ready
+                  blocked_by, timed_out, sandbox_violations, not_ready, restored
            FROM runs ORDER BY started_at`,
         )
         .all()
@@ -147,6 +152,8 @@ describe('the run history stores each field in its own column', () => {
           timed_out: 1,
           sandbox_violations: 29,
           not_ready: 'timeout',
+          // false is 0 here too: an up-to-date hit, not a row before v31.
+          restored: 0,
         },
         {
           hash: 'bbbbbbbbbbbbbbbb',
@@ -171,13 +178,15 @@ describe('the run history stores each field in its own column', () => {
           timed_out: null,
           sandbox_violations: null,
           not_ready: null,
+          restored: 1,
         },
       ])
       const invocations = db
         .query(
           `SELECT run_id, command, requested_tasks, cache_policy, concurrency, flow,
                   started_at, ended_at, total_duration_ms, task_count, failed_count,
-                  hit_count, hit_local_count, hit_remote_count, exit_ok, commit_sha,
+                  hit_count, hit_local_count, hit_remote_count,
+                  up_to_date_count, restored_local_count, restored_remote_count, exit_ok, commit_sha,
                   branch, dirty, ci, ci_provider, host, os, arch, vx_version, tags
            FROM invocations`,
         )
@@ -198,6 +207,9 @@ describe('the run history stores each field in its own column', () => {
           hit_count: 5,
           hit_local_count: 6,
           hit_remote_count: 7,
+          up_to_date_count: 41,
+          restored_local_count: 43,
+          restored_remote_count: 47,
           exit_ok: 0,
           commit_sha: 'c0ffee',
           branch: 'main',

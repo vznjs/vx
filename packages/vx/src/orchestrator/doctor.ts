@@ -88,6 +88,8 @@ export interface InfoFacts {
   orphans: { artifacts: number; bytes: number }
   runs24h: number
   hits24h: number
+  /** Of `hits24h`, the hits that restored outputs; the rest were up to date. */
+  restored24h: number
   /** Tasks the retained history shows both passing and failing on unchanged inputs. */
   flakyTasks: FlakyTask[]
   lockfile: boolean
@@ -243,6 +245,7 @@ async function collectWorkspaceInfo(
     orphans: { artifacts: orphans.orphans, bytes: orphans.orphanBytes },
     runs24h: stats.runCountLast24h,
     hits24h: stats.hitCountLast24h,
+    restored24h: stats.restoredCountLast24h,
     // Same inputs, both outcomes — the history's definition of flaky, over
     // the 30 days it keeps. A run names its own findings in its footer;
     // this is the workspace's standing list.

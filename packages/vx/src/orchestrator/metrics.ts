@@ -32,6 +32,8 @@ export interface RunSummaryRow {
   startedAt: number
   endedAt: number
   cacheHit: boolean | null
+  /** On a hit: true when outputs were restored, false when up-to-date (v31); null otherwise. */
+  restored: boolean | null
   /** Whether the task declared a `cache` block; null on rows older than the column. */
   cached: boolean | null
   hash: string
@@ -76,9 +78,10 @@ export function listRuns(db: Database, args: ListRunsArgs = {}): RunSummaryRow[]
   const clause = where.length > 0 ? `WHERE ${where.join(' AND ')}` : ''
   type RawRow = Omit<
     RunSummaryRow,
-    'cacheHit' | 'cached' | 'wallclockStartNs' | 'wallclockEndNs' | 'timedOut'
+    'cacheHit' | 'restored' | 'cached' | 'wallclockStartNs' | 'wallclockEndNs' | 'timedOut'
   > & {
     cacheHit: number | null
+    restored: number | null
     cached: number | null
     // NOT bigint: `bun:sqlite` hands these back as JS numbers (the handle
     // does not set `safeIntegers`), so the annotation claimed a precision
@@ -93,7 +96,7 @@ export function listRuns(db: Database, args: ListRunsArgs = {}): RunSummaryRow[]
     .query(
       `SELECT run_id AS runId, project, task, status, exit_code AS exitCode,
               duration_ms AS durationMs, started_at AS startedAt, ended_at AS endedAt,
-              cache_hit AS cacheHit, cached, hash,
+              cache_hit AS cacheHit, restored, cached, hash,
               cpu_ms AS cpuMs, peak_rss_bytes AS peakRssBytes,
               wallclock_start_ns AS wallclockStartNs, wallclock_end_ns AS wallclockEndNs,
               blocked_by AS blockedBy, timed_out AS timedOut,
@@ -104,6 +107,7 @@ export function listRuns(db: Database, args: ListRunsArgs = {}): RunSummaryRow[]
   return rows.map((r) => ({
     ...r,
     cacheHit: r.cacheHit === null ? null : Boolean(r.cacheHit),
+    restored: r.restored === null ? null : Boolean(r.restored),
     cached: r.cached === null ? null : Boolean(r.cached),
     timedOut: r.timedOut === null ? null : Boolean(r.timedOut),
     wallclockStartNs: r.wallclockStartNs === null ? null : r.wallclockStartNs.toString(),
@@ -134,6 +138,10 @@ export interface InvocationDetail {
   hitCount: number
   hitLocalCount: number
   hitRemoteCount: number
+  /** The hits by what they did to the disk (v31); they sum to `hitCount`. */
+  upToDateCount: number
+  restoredLocalCount: number
+  restoredRemoteCount: number
   exitOk: boolean
   commitSha: string | null
   branch: string | null
@@ -162,6 +170,9 @@ interface InvocationRawRow {
   hitCount: number
   hitLocalCount: number
   hitRemoteCount: number
+  upToDateCount: number
+  restoredLocalCount: number
+  restoredRemoteCount: number
   exitOk: number
   commitSha: string | null
   branch: string | null
@@ -181,6 +192,8 @@ const INVOCATION_COLUMNS = `
   started_at AS startedAt, ended_at AS endedAt, total_duration_ms AS totalDurationMs,
   task_count AS taskCount, failed_count AS failedCount, hit_count AS hitCount,
   hit_local_count AS hitLocalCount, hit_remote_count AS hitRemoteCount,
+  up_to_date_count AS upToDateCount, restored_local_count AS restoredLocalCount,
+  restored_remote_count AS restoredRemoteCount,
   exit_ok AS exitOk,
   commit_sha AS commitSha, branch, dirty, ci, ci_provider AS ciProvider,
   host, os, arch, vx_version AS vxVersion, tags`
@@ -215,6 +228,9 @@ function mapInvocation(r: InvocationRawRow): InvocationDetail {
     hitCount: r.hitCount,
     hitLocalCount: r.hitLocalCount,
     hitRemoteCount: r.hitRemoteCount,
+    upToDateCount: r.upToDateCount,
+    restoredLocalCount: r.restoredLocalCount,
+    restoredRemoteCount: r.restoredRemoteCount,
     exitOk: Boolean(r.exitOk),
     commitSha: r.commitSha,
     branch: r.branch,
@@ -340,11 +356,19 @@ export interface WhyDidThisRerun {
     hash: string
     status: string
     cacheHit: boolean | null
+    /** On a hit: outputs restored (true) or up-to-date (false); null otherwise. */
+    restored: boolean | null
     /** Whether the task declared a `cache` block; null on rows older than the column. */
     cached: boolean | null
     startedAt: number
   }
-  previousRun?: { hash: string; status: string; cacheHit: boolean | null; startedAt: number } | null
+  previousRun?: {
+    hash: string
+    status: string
+    cacheHit: boolean | null
+    restored: boolean | null
+    startedAt: number
+  } | null
   hashChanged?: boolean | null
   note: string
 }
@@ -427,7 +451,7 @@ export function whyDidThisRerun(db: Database, runId: string, taskId: string): Wh
   const [project, task] = splitTaskId(taskId)
   const this_ = db
     .query(
-      `SELECT id, hash, status, cache_hit AS cacheHit, cached, started_at AS startedAt
+      `SELECT id, hash, status, cache_hit AS cacheHit, restored, cached, started_at AS startedAt
        FROM runs WHERE run_id = ? AND project = ? AND task = ?`,
     )
     .get(runId, project, task) as
@@ -436,6 +460,7 @@ export function whyDidThisRerun(db: Database, runId: string, taskId: string): Wh
         hash: string
         status: string
         cacheHit: number | null
+        restored: number | null
         cached: number | null
         startedAt: number
       }
@@ -454,7 +479,8 @@ export function whyDidThisRerun(db: Database, runId: string, taskId: string): Wh
   // a key — a statement about inputs, made from no evidence.
   const prev = db
     .query(
-      `SELECT hash, status, cache_hit AS cacheHit, started_at AS startedAt, run_id AS runId
+      `SELECT hash, status, cache_hit AS cacheHit, restored, started_at AS startedAt,
+              run_id AS runId
        FROM runs WHERE project = ? AND task = ? AND id < ? AND ${KEYED_RUNS_SQL}
        ORDER BY id DESC LIMIT 1`,
     )
@@ -463,6 +489,7 @@ export function whyDidThisRerun(db: Database, runId: string, taskId: string): Wh
         hash: string
         status: string
         cacheHit: number | null
+        restored: number | null
         startedAt: number
         runId: string | null
       }
@@ -477,6 +504,7 @@ export function whyDidThisRerun(db: Database, runId: string, taskId: string): Wh
       hash: this_.hash,
       status: this_.status,
       cacheHit: this_.cacheHit === null ? null : Boolean(this_.cacheHit),
+      restored: this_.restored === null ? null : Boolean(this_.restored),
       cached: this_.cached === null ? null : Boolean(this_.cached),
       startedAt: this_.startedAt,
     },
@@ -485,6 +513,7 @@ export function whyDidThisRerun(db: Database, runId: string, taskId: string): Wh
           hash: prev.hash,
           status: prev.status,
           cacheHit: prev.cacheHit === null ? null : Boolean(prev.cacheHit),
+          restored: prev.restored === null ? null : Boolean(prev.restored),
           startedAt: prev.startedAt,
         }
       : null,

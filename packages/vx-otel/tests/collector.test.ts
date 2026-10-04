@@ -549,6 +549,9 @@ describe('the sink, as its second sweep found it unheld', () => {
       hitCount: 0,
       hitLocalCount: 0,
       hitRemoteCount: 0,
+      upToDateCount: 0,
+      restoredLocalCount: 0,
+      restoredRemoteCount: 0,
       exitOk: true,
       tasks: [],
     })

@@ -38,7 +38,7 @@
         "thisRun": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["hash", "status", "cacheHit", "cached", "startedAt"],
+          "required": ["hash", "status", "cacheHit", "restored", "cached", "startedAt"],
           "properties": {
             "hash": {
               "type": "string",
@@ -46,6 +46,10 @@
             },
             "status": { "type": "string" },
             "cacheHit": { "type": ["boolean", "null"] },
+            "restored": {
+              "type": ["boolean", "null"],
+              "description": "on a hit: true when outputs were restored, false when up-to-date"
+            },
             "cached": { "type": ["boolean", "null"] },
             "startedAt": { "type": "integer", "description": "epoch ms" }
           }
@@ -54,11 +58,15 @@
           "type": ["object", "null"],
           "description": "null on the task's first recorded run",
           "additionalProperties": false,
-          "required": ["hash", "status", "cacheHit", "startedAt"],
+          "required": ["hash", "status", "cacheHit", "restored", "startedAt"],
           "properties": {
             "hash": { "type": "string" },
             "status": { "type": "string" },
             "cacheHit": { "type": ["boolean", "null"] },
+            "restored": {
+              "type": ["boolean", "null"],
+              "description": "on a hit: true when outputs were restored, false when up-to-date"
+            },
             "startedAt": { "type": "integer" }
           }
         },

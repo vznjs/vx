@@ -57,6 +57,9 @@ export function assembleRunRecords(input: RunRecordsInput): RunRecords {
   let failedCount = 0
   let hitLocalCount = 0
   let hitRemoteCount = 0
+  let upToDateCount = 0
+  let restoredLocalCount = 0
+  let restoredRemoteCount = 0
   for (const o of outcomes) {
     if (isGroupTask(o.node)) continue
     // aborted (killed by a shutdown signal) isn't a real run.
@@ -91,6 +94,7 @@ export function assembleRunRecords(input: RunRecordsInput): RunRecords {
       ...(o.wallclockStartNs !== undefined ? { wallclockStartNs: o.wallclockStartNs } : {}),
       ...(o.wallclockEndNs !== undefined ? { wallclockEndNs: o.wallclockEndNs } : {}),
       cacheHit: isCacheHit(o.status),
+      ...(isCacheHit(o.status) ? { restored: o.restored === true } : {}),
       ...(o.attempts !== undefined ? { attempts: o.attempts } : {}),
       cached: o.node.config.cache !== undefined,
       ...(o.blockedBy !== undefined ? { blockedBy: o.blockedBy } : {}),
@@ -101,6 +105,11 @@ export function assembleRunRecords(input: RunRecordsInput): RunRecords {
     if (o.status === 'failed') failedCount++
     if (o.status === 'cache-hit') hitLocalCount++
     if (o.status === 'cache-hit-remote') hitRemoteCount++
+    if (isCacheHit(o.status)) {
+      if (o.restored !== true) upToDateCount++
+      else if (o.status === 'cache-hit') restoredLocalCount++
+      else restoredRemoteCount++
+    }
   }
   const invocation: InvocationRecord = {
     runId,
@@ -117,6 +126,9 @@ export function assembleRunRecords(input: RunRecordsInput): RunRecords {
     hitCount: hitLocalCount + hitRemoteCount,
     hitLocalCount,
     hitRemoteCount,
+    upToDateCount,
+    restoredLocalCount,
+    restoredRemoteCount,
     exitOk: input.ok,
     commitSha: input.git.commitSha,
     branch: input.git.branch,

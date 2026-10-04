@@ -14,6 +14,7 @@ import {
   getRun,
   type InvocationDetail,
   listInvocations,
+  outcomeWord,
   type RunSummaryRow,
   resolveRunId,
   shortRunId,
@@ -184,7 +185,14 @@ export function formatTaskRows(tasks: readonly RunSummaryRow[]): string[] {
     // by design; a reader must not take its row for a miss.
     // A failure's row reads as the frame did — `failed (exit 137)` —
     // and above 128 names the signal the number stands for (260).
-    const status = t.status === 'failed' ? `failed (exit ${t.exitCode})` : t.status
+    // A hit reads as the run's own summary said it: up-to-date (nothing
+    // restored) or restored-local / restored-remote.
+    const status =
+      t.status === 'failed'
+        ? `failed (exit ${t.exitCode})`
+        : t.cacheHit === true && t.restored !== null
+          ? outcomeWord({ status: t.status as 'cache-hit', restored: t.restored })
+          : t.status
     lines.push(
       `  ${status.padEnd(17)} ${id.padEnd(idW)}  ${fmtMs(t.durationMs).padStart(8)}` +
         `${t.hash !== '' ? `  ${t.hash}` : ''}${t.cached === false ? '  no-cache' : ''}${fmtUsage(t)}` +
@@ -197,6 +205,25 @@ export function formatTaskRows(tasks: readonly RunSummaryRow[]): string[] {
     )
   }
   return lines
+}
+
+/**
+ * A run's hits by what they did to the disk, as its summary counted them:
+ * `5 hits (3 up-to-date, 2 restored: 1 local, 1 remote)`; the layers only
+ * when something was restored.
+ */
+function hitsLine(
+  inv: Pick<
+    InvocationDetail,
+    'hitCount' | 'upToDateCount' | 'restoredLocalCount' | 'restoredRemoteCount'
+  >,
+): string {
+  const hits = `${inv.hitCount} hit${inv.hitCount === 1 ? '' : 's'}`
+  if (inv.hitCount === 0) return hits
+  const restored = inv.restoredLocalCount + inv.restoredRemoteCount
+  const layers =
+    restored > 0 ? `: ${inv.restoredLocalCount} local, ${inv.restoredRemoteCount} remote` : ''
+  return `${hits} (${inv.upToDateCount} up-to-date, ${restored} restored${layers})`
 }
 
 export async function lastCmd(args: readonly string[]): Promise<number> {
@@ -232,7 +259,7 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
         const verdict = inv.exitOk ? 'ok    ' : 'FAILED'
         process.stdout.write(
           `${verdict} ${fmtWhen(inv.startedAt)}  ${shortRunId(db, inv.runId)}  ` +
-            `${inv.taskCount} task${inv.taskCount === 1 ? '' : 's'} · ${inv.hitCount} hit${inv.hitCount === 1 ? '' : 's'}` +
+            `${inv.taskCount} task${inv.taskCount === 1 ? '' : 's'} · ${hitsLine(inv)}` +
             `${inv.failedCount > 0 ? ` · ${inv.failedCount} failed` : ''} · ${fmtMs(inv.totalDurationMs)}  $ ${inv.command}\n`,
         )
       }
@@ -273,8 +300,7 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
         `${inv.ci ? ` · CI${inv.ciProvider !== null ? ` (${inv.ciProvider})` : ''}` : ''}`,
     )
     lines.push(
-      `  ${inv.taskCount} task${inv.taskCount === 1 ? '' : 's'} · ${inv.hitCount} hit${inv.hitCount === 1 ? '' : 's'}` +
-        ` (${inv.hitLocalCount} local, ${inv.hitRemoteCount} remote)` +
+      `  ${inv.taskCount} task${inv.taskCount === 1 ? '' : 's'} · ${hitsLine(inv)}` +
         `${inv.failedCount > 0 ? ` · ${inv.failedCount} failed` : ''}`,
     )
     lines.push(...formatTaskRows(detail?.tasks ?? []))

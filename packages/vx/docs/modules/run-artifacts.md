@@ -38,6 +38,7 @@ export interface SummaryTaskJson {
   exitCode: number
   durationMs: number
   hash: string | null
+  restored?: boolean // on a hit: outputs restored (true) or already up to date (false)
   noCache?: true
   flaky?: { passes: number; failures: number; attempts: number }
   cpuMs?: number

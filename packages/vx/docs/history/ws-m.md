@@ -1073,3 +1073,12 @@ shard's sandbox the root `package.json` is hidden, `packages/vx` became
 the workspace, and opening its stale cache was a refused write. Every row
 in the block now runs in an empty temp directory, and bare `vx` in a
 fixture workspace.
+
+M-87. Every stats surface splits a cache hit by what it did to the disk:
+up-to-date (outputs already in place) or restored, local or remote, as
+the live summary already did. The run history stores it (SCHEMA_VERSION
+v31: `runs.restored`, the invocation's three counts), `TaskTelemetry`
+carries `restored`, and `RunSummaryRecord` the counts; `vx last`, `info`,
+`why`, `--summarize`, `--report`, vx-mcp, vx-github and vx-otel show it.
+vx-github's footer had called every hit "restored". The dry-run plan
+cannot split: it predicts before anything is restored.

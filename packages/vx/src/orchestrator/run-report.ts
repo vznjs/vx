@@ -139,7 +139,10 @@ export function formatRunReportMarkdown(result: RunResult): string {
     `**${t.total} task${t.total === 1 ? '' : 's'}**`,
     `${t.successful} success`,
     `${t.failed} failed`,
-    `${cached} cached`,
+    // What the hits did to the disk, as the run's summary splits them.
+    cached > 0
+      ? `${cached} cached (${t.upToDate} up-to-date, ${t.restoredLocal + t.restoredRemote} restored)`
+      : '0 cached',
   ]
   if (t.skipped > 0) parts.push(`${t.skipped} skipped`)
   if (t.aborted > 0) parts.push(`${t.aborted} aborted`)

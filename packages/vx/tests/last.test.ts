@@ -125,8 +125,9 @@ describe('vx last (e2e)', () => {
       expect(r.out).toContain('run ')
       expect(r.out).toContain('— ok')
       expect(r.out).toContain('$ ')
-      expect(r.out).toContain('1 task · 1 hit (1 local, 0 remote)')
-      expect(r.out).toMatch(/cache-hit\s+app#build/)
+      // The second run found the output in place: a hit that restored nothing.
+      expect(r.out).toContain('1 task · 1 hit (1 up-to-date, 0 restored)')
+      expect(r.out).toMatch(/up-to-date\s+app#build/)
       // CONTROL: an ok run has nothing to re-run.
       expect(r.out).not.toContain('re-run what failed')
     },
@@ -153,7 +154,7 @@ describe('vx last (e2e)', () => {
       expect(missJson.tasks[0]!.peakRssBytes).toBeLessThan(1024 * 1024 * 1024)
       expect(missJson.tasks[0]!.cpuMs).toBeGreaterThan(0)
       const hit = await vx(root, ['last', hitRun])
-      expect(hit.out).toMatch(/cache-hit\s+app#build\s+\S+\s+\S+$/m)
+      expect(hit.out).toMatch(/up-to-date\s+app#build\s+\S+\s+\S+$/m)
       expect(hit.out).not.toContain('× cpu')
     },
     TIMEOUT,
@@ -346,6 +347,47 @@ describe('vx last (e2e)', () => {
   )
 })
 
+// A hit that wrote its outputs back reads apart from one that found them in
+// place: in the header's counts, by layer, and on the task's own row.
+describe('vx last tells a restored hit from an up-to-date one (e2e)', () => {
+  let root: string
+  beforeAll(async () => {
+    root = await makeWorkspace()
+    await vx(root, ['run', 'build', '--all'])
+    await rm(path.join(root, 'packages', 'app', 'out.txt'))
+    await vx(root, ['run', 'build', '--all']) // the output is gone: restored
+  }, TIMEOUT)
+  afterAll(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it(
+    'counts and names the hit that restored its output',
+    async () => {
+      const r = await vx(root, ['last'])
+      expect(r.out).toContain('1 task · 1 hit (0 up-to-date, 1 restored: 1 local, 0 remote)')
+      expect(r.out).toMatch(/restored-local\s+app#build/)
+      const json = JSON.parse((await vx(root, ['last', '--format', 'json'])).out) as {
+        invocation: {
+          upToDateCount: number
+          restoredLocalCount: number
+          restoredRemoteCount: number
+        }
+        tasks: { restored: boolean | null }[]
+      }
+      expect({
+        counts: [
+          json.invocation.upToDateCount,
+          json.invocation.restoredLocalCount,
+          json.invocation.restoredRemoteCount,
+        ],
+        restored: json.tasks.map((t) => t.restored),
+      }).toEqual({ counts: [0, 1, 0], restored: [true] })
+    },
+    TIMEOUT,
+  )
+})
+
 describe('parseLastArgs', () => {
   it('parses runId, --list in both forms, --format; rejects garbage', () => {
     expect(parseLastArgs([]).format).toBe('pretty')
@@ -419,6 +461,7 @@ describe('formatTaskRows', () => {
       startedAt: 0,
       endedAt: 5,
       cacheHit: false,
+      restored: null,
       cached: true,
       hash: 'h',
       cpuMs: null,
@@ -432,7 +475,7 @@ describe('formatTaskRows', () => {
       ...over,
     }) as RunSummaryRow
   const hit = (n: number, ms: number) =>
-    row(`hit${n}`, { status: 'cache-hit', cacheHit: true, durationMs: ms })
+    row(`hit${n}`, { status: 'cache-hit', cacheHit: true, restored: true, durationMs: ms })
 
   // Item 510, by the age rule: this file's newest dated comment was
   // 2026-08-23. `vx last` exists to REPORT a run accurately, so its
@@ -492,7 +535,7 @@ describe('formatTaskRows', () => {
     ])
     const words = lines.slice(1).map((l) => l.trim().split(/\s+/)[0])
     expect(words.slice(0, 3)).toEqual(['failed', 'success', 'skipped'])
-    expect(words.slice(3, 19).every((w) => w === 'cache-hit')).toBe(true)
+    expect(words.slice(3, 19).every((w) => w === 'restored-local')).toBe(true)
     expect(lines.length).toBe(1 + 3 + 16 + 1)
     // The sixteen shown are the slowest restores, in that order.
     const shown = lines.slice(4, 20).map((l) => /hit(\d+)/.exec(l)![1])

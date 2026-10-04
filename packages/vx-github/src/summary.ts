@@ -16,8 +16,8 @@ import {
 
 const STATUS_LABEL: Record<string, string> = {
   success: '✅ ran',
-  'cache-hit': '⚡ cache',
-  'cache-hit-remote': '☁️ remote cache',
+  'cache-hit': '⚡ restored',
+  'cache-hit-remote': '☁️ restored remote',
   failed: '❌ failed',
   skipped: '⏭️ skipped',
   aborted: '🛑 aborted',
@@ -34,7 +34,17 @@ function fmtMs(ms: number): string {
 }
 
 function statusLabel(t: TaskTelemetry): string {
+  // A hit that found its outputs in place restored nothing: up to date,
+  // whichever layer answered, as vx's own summary says it.
+  if (isCacheHit(t.status) && t.restored !== true) return '✔️ up-to-date'
   return STATUS_LABEL[t.status] ?? t.status
+}
+
+/** `(3 up-to-date, 2 restored)`, with the remote share when any came from there. */
+function hitSplit(s: RunSummaryRecord): string {
+  const restored = s.restoredLocalCount + s.restoredRemoteCount
+  const remote = s.restoredRemoteCount > 0 ? `, ${s.restoredRemoteCount} from remote` : ''
+  return `(${s.upToDateCount} up-to-date, ${restored} restored${remote})`
 }
 
 /**
@@ -104,7 +114,7 @@ export function renderJobSummary(summary: RunSummaryRecord, title = 'vx run'): s
     `**${summary.taskCount}** task${summary.taskCount === 1 ? '' : 's'}`,
     `**${executed}** executed`,
     `**${summary.hitCount}** cache hit${summary.hitCount === 1 ? '' : 's'}` +
-      (summary.hitRemoteCount > 0 ? ` (${summary.hitRemoteCount} remote)` : ''),
+      (summary.hitCount > 0 ? ` ${hitSplit(summary)}` : ''),
     ...(summary.failedCount > 0 ? [`**${summary.failedCount}** failed`] : []),
     ...(summary.abortedCount > 0 ? [`**${summary.abortedCount}** aborted`] : []),
     fmtMs(summary.totalDurationMs),
@@ -153,10 +163,12 @@ export function renderJobSummary(summary: RunSummaryRecord, title = 'vx run'): s
   lines.push('')
 
   // A one-line footer so a page with several vx runs stays attributable.
-  const hits = summary.tasks.filter((t) => isCacheHit(t.status)).length
+  // `restored` counts only the hits that wrote outputs; it once counted
+  // every hit, up-to-date ones included.
+  const restored = summary.restoredLocalCount + summary.restoredRemoteCount
   const passed = summary.tasks.filter((t) => isPassStatus(t.status)).length
   lines.push(
-    `<sub>vx ${summary.run.vxVersion} · ${codeSpan(summary.run.command)} · ${passed}/${summary.taskCount} passed · ${hits} restored</sub>`,
+    `<sub>vx ${summary.run.vxVersion} · ${codeSpan(summary.run.command)} · ${passed}/${summary.taskCount} passed · ${summary.upToDateCount} up-to-date · ${restored} restored</sub>`,
   )
   lines.push('')
   return lines.join('\n')

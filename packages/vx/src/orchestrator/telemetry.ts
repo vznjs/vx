@@ -180,6 +180,12 @@ export interface TaskTelemetry {
   sandboxViolations?: number
   /** On a failed persistent task: why it never became ready. `exitCode` is the child's own when it exited. Additive. */
   notReady?: 'timeout' | 'exited' | 'spawn'
+  /**
+   * On a cache hit: whether outputs were written this run (`true`) or the
+   * disk already matched the entry and nothing was restored (`false`, an
+   * up-to-date hit). Absent on every other status. Additive.
+   */
+  restored?: boolean
   /** bigint hrtime ns relative to run t=0, encoded as a decimal string. */
   wallclockStartNs?: string
   wallclockEndNs?: string
@@ -245,8 +251,17 @@ export interface RunSummaryRecord {
    */
   abortedCount: number
   hitCount: number
+  /** Hits by the layer that answered, up-to-date ones included. */
   hitLocalCount: number
   hitRemoteCount: number
+  /**
+   * Hits by what they did to the disk, as the run's summary counts them:
+   * nothing restored (up-to-date, from either layer), or outputs restored
+   * from the local or the remote layer. The three sum to `hitCount`.
+   */
+  upToDateCount: number
+  restoredLocalCount: number
+  restoredRemoteCount: number
   exitOk: boolean
   tasks: readonly TaskTelemetry[]
 }
@@ -276,10 +291,17 @@ export function assembleRunSummary(
   let failedCount = 0
   let hitLocalCount = 0
   let hitRemoteCount = 0
+  let upToDateCount = 0
+  let restoredLocalCount = 0
+  let restoredRemoteCount = 0
   for (const t of tasks) {
     if (t.status === 'failed') failedCount++
     if (t.cacheSource === 'local') hitLocalCount++
     else if (t.cacheSource === 'remote') hitRemoteCount++
+    else continue
+    if (t.restored !== true) upToDateCount++
+    else if (t.cacheSource === 'local') restoredLocalCount++
+    else restoredRemoteCount++
   }
   return {
     v: TELEMETRY_SCHEMA_VERSION,
@@ -293,6 +315,9 @@ export function assembleRunSummary(
     hitCount: hitLocalCount + hitRemoteCount,
     hitLocalCount,
     hitRemoteCount,
+    upToDateCount,
+    restoredLocalCount,
+    restoredRemoteCount,
     exitOk: timing.exitOk,
     tasks,
   }
@@ -558,6 +583,7 @@ export function taskTelemetryOf(o: TaskOutcome): TaskTelemetry {
   if (o.timedOut === true) t.timedOut = true
   if (o.sandboxViolations !== undefined) t.sandboxViolations = o.sandboxViolations
   if (o.notReady !== undefined) t.notReady = o.notReady
+  if (isCacheHit(o.status)) t.restored = o.restored === true
   if (o.wallclockStartNs !== undefined) t.wallclockStartNs = o.wallclockStartNs.toString()
   if (o.wallclockEndNs !== undefined) t.wallclockEndNs = o.wallclockEndNs.toString()
   return t

@@ -54,9 +54,11 @@
       "entryCount",
       "hitCountLast24h",
       "hitRate24h",
+      "restoredCountLast24h",
       "runCountLast24h",
       "scope",
-      "totalBytes"
+      "totalBytes",
+      "upToDateCountLast24h"
     ]
   },
   "getRunHistory": {
@@ -154,6 +156,7 @@
       "previousRun",
       "previousRun.cacheHit",
       "previousRun.hash",
+      "previousRun.restored",
       "previousRun.startedAt",
       "previousRun.status",
       "runId",
@@ -162,6 +165,7 @@
       "thisRun.cacheHit",
       "thisRun.cached",
       "thisRun.hash",
+      "thisRun.restored",
       "thisRun.startedAt",
       "thisRun.status"
     ]
@@ -195,6 +199,7 @@
       "orphans.bytes",
       "plugins",
       "projects",
+      "restored24h",
       "runs24h",
       "sandbox",
       "sandbox.available",
