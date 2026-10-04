@@ -8,9 +8,10 @@
 //
 // A shim first on the child's PATH logs every git call: the real CLI in a
 // subprocess, because which git runs is decided by the PATH vx resolves on.
-import { chmod, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { FILE_HASH_RACY_MS, racyWindowMs } from '../src/cache/index.js'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
@@ -54,6 +55,13 @@ describe('git spawns on a cold run', () => {
       `#!/bin/sh\necho "$@" >> '${log}'\nexec '${Bun.which('git')}' "$@"\n`,
     )
     await chmod(path.join(shim, 'git'), 0o755)
+    // A cold run that starts inside the index's racy window keys no
+    // verdict, so the warm run lists `--debug` again: an M-series Mac
+    // started it inside the window and failed the warm assertion on every
+    // full-file run, while slower CI runners never did. Wait it out.
+    const { ctimeMs } = await stat(path.join(root, '.git', 'index'))
+    const past = ctimeMs + racyWindowMs(ctimeMs, FILE_HASH_RACY_MS) + 1
+    await Bun.sleep(Math.max(0, past - Date.now()))
   })
 
   afterEach(async () => {
