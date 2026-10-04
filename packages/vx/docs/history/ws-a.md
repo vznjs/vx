@@ -492,3 +492,9 @@ Found by the fuzzer once it made and unmade an embedded repository under a proje
 - Row: `gitlink-without-git.test.ts`, red without the walk.
 - Also probed clean (about 13,000 fuzz steps over five op sets): cache policies per run, two clones sharing a remote layer, two runs sharing a `--cache-dir` at once, index flags, config imports rewritten with the mtime put back, a cached producer read by content.
 - Not a defect: a reader with `tasks: []` and a glob over a gitignored generated directory folds nothing for it, as documented (fold the producer's key).
+
+### A-62 — an extglob in a task glob is refused (2026-10-04)
+
+Found comparing Nx 23.3 (`research/nx-23.3-vs-vx-2026-10.md`). `Bun.Glob` has no extglob: `cache.inputs.files: ['src/@(x|y).ts']` keyed no file, an edit to `src/x.ts` replayed the old output, and `vx why` said the key was unchanged (Bun 1.4.2). The member-glob refusal (item 742) now lives in `util/paths.ts` as `EXTGLOB`, and `config-schema.ts` refuses it in all four task glob fields at load, rewriting `@(a|b)` to `{a,b}`. A leading `!` stays vx's negation, so `!(group)/**` is a route group taken back.
+
+- Row: `config-schema-refusals.test.ts` › "an extglob in a task glob", red without the refusal; its control (route groups) passes both ways.

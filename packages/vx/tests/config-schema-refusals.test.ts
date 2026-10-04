@@ -662,3 +662,50 @@ describe('project tags', () => {
       expect(refusal(bad)).toBe(msg)
   })
 })
+
+// Nx 23.3 compare, 2026-10-04: `Bun.Glob` has no extglob, so an input of
+// `src/@(x|y).ts` keyed no file and an edit to src/x.ts replayed a stale
+// hit with `vx why` reporting the key unchanged.
+describe('an extglob in a task glob', () => {
+  const task = (inputs: object, outputs: object = { files: ['dist/**'] }) => ({
+    exec: { command: 'x' },
+    cache: { inputs, outputs },
+  })
+  const tail =
+    `" is an extglob, which vx's glob engine reads as literal text or a ` +
+    'plain wildcard, never as the alternatives it lists, so the cache key would miss the files it names.'
+
+  it('is refused in every task glob field, with the brace it means when there is one', () => {
+    expect(taskRefusal(task({ files: ['src/@(x|y).ts'] }))).toBe(
+      `${CFG}: tasks.t.cache.inputs.files: "src/@(x|y).ts${tail} Write "src/{x,y}.ts" instead.`,
+    )
+    expect(taskRefusal(task({ files: ['src/@(x).ts'] }))).toBe(
+      `${CFG}: tasks.t.cache.inputs.files: "src/@(x).ts${tail} Write "src/x.ts" instead.`,
+    )
+    const generic = 'Write braces ("{a,b}") or one entry per alternative instead.'
+    for (const g of ['src/!(x).ts', 'src/+(a).ts', 'src/*(a).ts', 'src/?(a).ts', 'src/@(*.a|b)']) {
+      expect(taskRefusal(task({ files: [g] }))).toBe(
+        `${CFG}: tasks.t.cache.inputs.files: "${g}${tail} ${generic}`,
+      )
+    }
+    expect(taskRefusal(task({ files: ['**', '!src/@(x|y).ts'] }))).toBe(
+      `${CFG}: tasks.t.cache.inputs.files: "!src/@(x|y).ts${tail} Write "!src/{x,y}.ts" instead.`,
+    )
+    expect(taskRefusal(task({ files: ['**'], workspaceFiles: ['@(a|b).json'] }))).toBe(
+      `${CFG}: tasks.t.cache.inputs.workspaceFiles: "@(a|b).json${tail} Write "{a,b}.json" instead.`,
+    )
+    expect(taskRefusal(task({ files: ['**'] }, { files: ['@(dist|lib)/**'] }))).toBe(
+      `${CFG}: tasks.t.cache.outputs.files: "@(dist|lib)/**${tail} Write "{dist,lib}/**" instead.`,
+    )
+    expect(
+      taskRefusal(task({ files: ['**'] }, { files: ['dist/**'], workspaceFiles: ['+(x)'] })),
+    ).toBe(`${CFG}: tasks.t.cache.outputs.workspaceFiles: "+(x)${tail} ${generic}`)
+  })
+
+  it('leaves a route group and its negation alone', () => {
+    // CONTROL: `(group)` is a Next.js route group, and a leading `!` is
+    // vx's own negation, so `!(group)/**` takes one back.
+    expect(taskRefusal(task({ files: ['app/(marketing)/**', 'src/{x,y}.ts'] }))).toBeNull()
+    expect(taskRefusal(task({ files: ['**', '!(group)/**'] }))).toBeNull()
+  })
+})

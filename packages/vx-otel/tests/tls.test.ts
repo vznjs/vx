@@ -22,11 +22,12 @@ const openssl = (...args: string[]): void => {
 beforeAll(async () => {
   dir = await mkdtemp(path.join(tmpdir(), 'vx-otel-tls-'))
   await writeFile(file('ext.cnf'), 'subjectAltName=DNS:localhost,IP:127.0.0.1\n')
-  const rsa = ['-newkey', 'rsa:2048', '-nodes']
+  // EC, not RSA: three RSA-2048 prime searches outran the 5 s hook timeout on CI.
+  const key = ['-newkey', 'ec', '-pkeyopt', 'ec_paramgen_curve:prime256v1', '-nodes']
   openssl(
     'req',
     '-x509',
-    ...rsa,
+    ...key,
     '-keyout',
     'ca.key',
     '-out',
@@ -40,7 +41,7 @@ beforeAll(async () => {
     ['server', 'localhost'],
     ['client', 'vx-client'],
   ] as const) {
-    openssl('req', ...rsa, '-keyout', `${name}.key`, '-out', `${name}.csr`, '-subj', `/CN=${cn}`)
+    openssl('req', ...key, '-keyout', `${name}.key`, '-out', `${name}.csr`, '-subj', `/CN=${cn}`)
     openssl(
       'x509',
       '-req',

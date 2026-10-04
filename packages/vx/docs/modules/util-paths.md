@@ -34,6 +34,8 @@ export function taskGlob(pattern: string): Bun.Glob
 export function slashBraceExpansions(pattern: string): string[]
 export const GLOB_WILDCARDS: RegExp // /[*?{}]/ — a task glob's wildcards
 export const BUN_GLOB_WILDCARDS: RegExp // /[*?[\]{}]/ — Bun.Glob's own
+// An extglob group, which Bun.Glob cannot read: refused in member and task globs (A-62).
+export const EXTGLOB: RegExp // /[!@+*?]\(/
 // C0/C1 controls and DEL as `\xNN`, for a file name vx prints (L-31).
 export function printable(s: string): string
 ```
