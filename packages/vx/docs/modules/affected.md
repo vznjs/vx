@@ -29,6 +29,15 @@ export interface AffectedArgs {
 
 export function affectedProjects(args: AffectedArgs): Promise<Set<string>>
 
+/** What `--affected` seeds its tasks from (owner, 2026-10-04). */
+export interface AffectedChanges {
+  projects: Set<string> // what affectedProjects returns
+  changed: readonly string[] // workspace-relative changed paths
+  paths: ReadonlyMap<string, readonly string[]> // project → its changed paths, project-relative
+  whole: ReadonlySet<string> // reached whatever inputs say: lockfile claim, base manifest edge, config import, nested repo
+}
+export function affectedChanges(args: AffectedArgs, perTask?: boolean): Promise<AffectedChanges> // perTask false: affectedProjects' set only
+
 /** Default base when `--affected` has no value. */
 export function defaultAffectedBase(workspaceRoot: string): Promise<string>
 

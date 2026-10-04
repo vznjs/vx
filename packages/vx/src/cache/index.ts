@@ -33,6 +33,7 @@ export { ABSENT_INPUT, absentOr, CACHE_VERSION } from './key-fold.js'
 export {
   cleanOutputs,
   cleanWorkspaceOutputs,
+  declaresInput,
   resolveInputs,
   resolveOutputs,
   resolveWorkspaceOutputs,

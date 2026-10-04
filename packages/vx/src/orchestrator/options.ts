@@ -8,7 +8,7 @@ import type { TaskOutcome } from '../graph/index.js'
 import type { EventBus } from './events.js'
 import type { TelemetrySink } from './telemetry.js'
 import type { Logger } from './logger.js'
-import type { ProjectEntry, ProjectMeta } from '../workspace/index.js'
+import type { AffectedChanges, ProjectEntry, ProjectMeta } from '../workspace/index.js'
 
 export interface RunOptions {
   cwd: string
@@ -29,6 +29,12 @@ export interface RunOptions {
    * `vx run test --affected` red (item 1024).
    */
   selectedByDiff?: boolean
+  /**
+   * `--affected`'s diff: a bare requested task runs only when the change
+   * reaches its `dependsOn` closure (`affected-tasks.ts`; owner,
+   * 2026-10-04). `projects` is the candidate set it narrows.
+   */
+  affected?: AffectedChanges
   /**
    * Configs a selection pass in this same process already loaded and
    * staged with the same `cacheDir` and `frozen` (the CLI walks every

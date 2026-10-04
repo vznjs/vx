@@ -15,6 +15,7 @@ export interface RunOptions {
   tasks: readonly string[] // bare names and `pkg#task` specs
   projects?: string[] // the selection's project names; undefined = no scope needed
   selectedByDiff?: boolean // `projects` came from a git diff: bare names judged workspace-wide (item 1024)
+  affected?: AffectedChanges // --affected's diff: a bare task runs only when it reaches a seeded task (affected-tasks.md)
   staged?: ReadonlyMap<string, ProjectEntry> // the CLI's own selection load, reused once (below)
   discovered?: { root: string; projects: ProjectMeta[] } // the selection pass's discovery, reused once when the root matches
   concurrency?: number

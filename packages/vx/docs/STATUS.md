@@ -722,11 +722,12 @@ next?".
   cost 300 ms per clean sandboxed task and went 2026-09-05 (owner); no
   unprivileged channel reports a denial the child survived. Enforcement
   is unaffected and the Known limits page says so. Not an open item.
-- **`--affected` includes dependents (2026-09-16).** The sugar is
-  `--filter '...[<base>]'`: the changed projects and everything that
-  depends on them, the superset a CI gate needs and what the guides
-  promised; `--filter '[<base>]'` is the changed-only form for "test
-  what I touched". Item 287.
+- **`--affected` follows task edges (owner, 2026-10-04).** A change
+  seeds the tasks whose inputs it touches (every task of a project
+  holding a path no cached task declares), and a requested task runs
+  when its `dependsOn` closure holds one; `--filter '...[<base>]'` keeps
+  the project walk (item 287's dependents), `[<base>]` the changed set.
+  `docs/history/ws-t.md` T-5.
 - **Resources are the schedule plugin's (owner, 2026-09-12).** Core
   gates on the worker count and asks the `admit` stage for anything
   finer; it holds no per-task cores or megabytes, no config field for

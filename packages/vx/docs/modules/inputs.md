@@ -23,6 +23,16 @@ re-exports it for readers that reach it here: `GitFilesCache`,
 the `GitEnumeration` type.
 
 ```ts
+/** Does `cache` declare this changed path an input? A project-relative
+ *  path is matched against `inputs.files`, a workspace-relative one
+ *  against `inputs.workspaceFiles`; own outputs and negations apply.
+ *  null skips that half. `--affected`'s per-task seed. */
+export function declaresInput(
+  cache: CacheConfig,
+  projectRel: string | null,
+  workspaceRel: string | null,
+): boolean
+
 export interface ResolvedInputs {
   files: string[] // absolute paths, sorted
   envValues: Array<[name: string, value: string | undefined]> // sorted by name; undefined = unset

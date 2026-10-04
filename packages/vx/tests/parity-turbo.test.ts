@@ -185,12 +185,9 @@ describe('Turbo parity — `--filter` (package selection)', () => {
         'lib#lint',
         'ui#lint',
       ])
-      // `--affected=<ref>` is that dependents form spelled as a flag (item 287).
-      expect(await planned(root, ['lint', '--affected=HEAD~1'])).toEqual([
-        'app#lint',
-        'lib#lint',
-        'ui#lint',
-      ])
+      // `--affected=<ref>` follows task edges, as Turbo's
+      // `affectedUsingTaskInputs` does: no `lint` depends on lib's (owner, 2026-10-04).
+      expect(await planned(root, ['lint', '--affected=HEAD~1'])).toEqual(['lib#lint'])
     },
     TIMEOUT,
   )

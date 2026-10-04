@@ -19,7 +19,7 @@
 import path from 'node:path'
 import { lstatSync, readdirSync, realpathSync, rmdirSync, rmSync } from 'node:fs'
 import { rm, rmdir } from 'node:fs/promises'
-import type { CacheInputs } from '../config.js'
+import type { CacheConfig, CacheInputs } from '../config.js'
 import {
   asTrees,
   isExecutableMissing,
@@ -1122,6 +1122,61 @@ function filesPlan(
         }
   filesPlans.set(key, plan)
   return plan
+}
+
+/**
+ * Whether a changed path is one of a cached task's declared file inputs:
+ * `projectRel` (the path relative to the project that owns it) against
+ * `files`, `workspaceRel` (relative to the workspace root) against
+ * `workspaceFiles`; null skips that half, by the globs, `!` exclusions and own-output takebacks
+ * the key resolves. `--affected` seeds a task with it (owner, 2026-10-04).
+ */
+export function declaresInput(
+  cache: CacheConfig,
+  projectRel: string | null,
+  workspaceRel: string | null,
+): boolean {
+  if (projectRel !== null) {
+    const plan = filesPlan(cache.inputs.files, cache.outputs.files)
+    if (plan !== null && inPlan(plan, projectRel)) return true
+  }
+  const ws = cache.inputs.workspaceFiles
+  if (workspaceRel === null || ws === undefined || ws.length === 0) return false
+  const matcher = workspaceMatcher(ws, cache.outputs.workspaceFiles ?? [])
+  return matcher(workspaceRel)
+}
+
+function inPlan(plan: FilesPlan, rel: string): boolean {
+  let input = plan.verdicts.get(rel)
+  if (input === undefined) {
+    input =
+      plan.positiveGlobs.some((g) => g.match(rel)) &&
+      !plan.excludeGlobs.some((g) => g.match(rel)) &&
+      !plan.ownOutput(rel)
+    plan.verdicts.set(rel, input)
+  }
+  return input
+}
+
+const workspaceMatchers = new Map<string, (rel: string) => boolean>()
+
+function workspaceMatcher(
+  decl: readonly string[],
+  ownOutputs: readonly string[],
+): (rel: string) => boolean {
+  const key = JSON.stringify([decl, ownOutputs])
+  let m = workspaceMatchers.get(key)
+  if (m !== undefined) return m
+  const { positive, negative } = splitNegations(decl)
+  const positiveGlobs = asTrees(positive).map(globFor)
+  const excludeGlobs = [...ALWAYS_IGNORE, ...asTrees(negative)].map(globFor)
+  const ownOutput = outputMatcher(ownOutputs, globFor)
+  m = (rel) =>
+    positiveGlobs.some((g) => g.match(rel)) &&
+    !excludeGlobs.some((g) => g.match(rel)) &&
+    !ownOutput(rel)
+  workspaceMatchers.set(key, m)
+  return m
 }
 
 async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {

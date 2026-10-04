@@ -65,6 +65,7 @@ import {
   loadWorkspacePlugins,
   type LoadedProjects,
 } from './projects.js'
+import { affectedRoots } from './affected-tasks.js'
 import { keyExcludedDependencies } from './excluded-keys.js'
 import { FingerprintWatch } from './fingerprint-watch.js'
 import type { VxPlugin } from './plugin.js'
@@ -160,11 +161,13 @@ export interface PreparedRun {
    *   - `'none-affected'`     — as `'no-tasks-declared'`, but the scope
    *     came from a diff and every name is declared somewhere else in the
    *     workspace: nothing changed that runs them, a clean outcome.
+   *   - `'none-reached'`      — `--affected`'s diff reaches no requested
+   *     task's `dependsOn` closure: a clean outcome.
    *   - `'empty-graph'`       — `requested` was non-empty but the
    *     graph builder still produced no nodes. Defensive; unreachable
    *     under current `buildTaskGraph` semantics.
    */
-  empty: null | 'no-tasks-declared' | 'none-affected' | 'empty-graph'
+  empty: null | 'no-tasks-declared' | 'none-affected' | 'none-reached' | 'empty-graph'
 }
 
 /**
@@ -458,36 +461,36 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
 
     // Empty-cases bookkeeping. We still construct the cache + fingerprint
     // so the caller's try/finally pattern can close it uniformly.
-    if (requested.length === 0) {
-      return {
-        workspaceRoot,
-        workspaceConfig,
-        plugins,
-        cacheDir,
-        cache,
-        localCache,
-        hasRemoteLayer,
-        cachePolicy: policy,
-        priorities: new Map(),
-        nodes: new Map(),
-        keyOnly: new Map(),
-        unresolvedTasks,
-        declaredElsewhere,
-        projects,
-        hintProjects,
-        anyProjectConfig: projectsWithConfigs.length > 0,
-        workspaceFingerprint,
-        fingerprintWatch,
-        nestedDirsByProject,
-        gitFilesCache: new GitFilesCache(),
-        hashCache,
-        workspaceProjectCount: projectMetas.length,
-        empty:
-          options.selectedByDiff === true && unresolvedTasks.length === 0
-            ? 'none-affected'
-            : 'no-tasks-declared',
-      }
-    }
+    const emptyRun = (reason?: 'none-reached'): PreparedRun => ({
+      workspaceRoot,
+      workspaceConfig,
+      plugins,
+      cacheDir,
+      cache,
+      localCache,
+      hasRemoteLayer,
+      cachePolicy: policy,
+      priorities: new Map(),
+      nodes: new Map(),
+      keyOnly: new Map(),
+      unresolvedTasks,
+      declaredElsewhere,
+      projects,
+      hintProjects,
+      anyProjectConfig: projectsWithConfigs.length > 0,
+      workspaceFingerprint,
+      fingerprintWatch,
+      nestedDirsByProject,
+      gitFilesCache: new GitFilesCache(),
+      hashCache,
+      workspaceProjectCount: projectMetas.length,
+      empty:
+        reason ??
+        (options.selectedByDiff === true && unresolvedTasks.length === 0
+          ? 'none-affected'
+          : 'no-tasks-declared'),
+    })
+    if (requested.length === 0) return emptyRun()
 
     // The whole graph, whatever `--exclude-dependencies` says: the stages
     // below shape and key the tasks it drops as a full run would, because
@@ -496,15 +499,30 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     // by a config the scope left out, so the builder hands it back instead of
     // refusing it, and the rest decide.
     const unproven: Array<[taskId: string, name: string]> = []
-    const nodes = buildTaskGraph({
-      projects,
-      packageGraph,
-      requested,
-      workspaceRoot,
-      ...(projects.size < projectsWithConfigs.length
-        ? { undeclaredDeps: (id: string, name: string) => void unproven.push([id, name]) }
-        : {}),
-    })
+    const graphOf = (req: typeof requested) =>
+      buildTaskGraph({
+        projects,
+        packageGraph,
+        requested: req,
+        workspaceRoot,
+        ...(projects.size < projectsWithConfigs.length
+          ? { undeclaredDeps: (id: string, name: string) => void unproven.push([id, name]) }
+          : {}),
+      })
+    let nodes = graphOf(requested)
+    // `--affected` keeps a bare request only when the diff reaches its
+    // closure; a `pkg#task` the user named runs as it always does.
+    if (options.affected !== undefined) {
+      const named = new Set(tasks.filter((t) => t.includes('#')))
+      const ids = requested.map((r) => `${r.project}#${r.task}`)
+      const reached = new Set(affectedRoots(nodes, ids, options.affected, projects))
+      const kept = requested.filter((_r, i) => named.has(ids[i]!) || reached.has(ids[i]!))
+      if (kept.length === 0) return emptyRun('none-reached')
+      if (kept.length < requested.length) {
+        unproven.length = 0
+        nodes = graphOf(kept)
+      }
+    }
     if (unproven.length > 0) {
       await refuseUndeclaredDeps(unproven, () =>
         loadProjects({ ...loadArgs, seeds: 'all', closure: false, staged: projects }),
