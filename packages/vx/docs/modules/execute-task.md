@@ -215,8 +215,8 @@ sandboxed task a file the host has but no grant reads (`sandboxReads`)
 is named as hidden by the sandbox: it is not there inside, and the
 `#!` line was blamed (B-66). Probed
 2026-09-16: dash and bash 5 exit 127 for a missing interpreter and
-blame the file; macOS's bash 3.2 names the interpreter itself ("bad
-interpreter") and exits 1, so vx adds nothing there. An exit above 128
+blame the file (bash 3.2 names the interpreter itself; macOS runs
+tasks under dash since Q-2, so vx names it there too). An exit above 128
 is a signal's number: a signal the runner saw (`RunResult.signal`) is
 named as definite, a bare code (a pipeline's last command) as "a death
 by SIGSEGV in the last command, or that command exited 139 itself", and

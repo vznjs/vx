@@ -92,8 +92,11 @@ async function zstdDecompressBounded(
   hash: string,
   cap: number = MAX_DECOMPRESSED_ARTIFACT_BYTES,
 ): Promise<Uint8Array> {
-  assertDeclaredSize(compressed, hash, cap)
-  const out = await Bun.zstdDecompress(compressed)
+  const declared = assertDeclaredSize(compressed, hash, cap)
+  const out =
+    declared !== null && declared <= BigInt(ON_THREAD_MAX)
+      ? Bun.zstdDecompressSync(compressed)
+      : await Bun.zstdDecompress(compressed)
   // UNREACHABLE as written, and kept deliberately. `assertDeclaredSize`
   // above refuses any frame DECLARING more than the cap, Bun refuses a
   // frame whose declaration disagrees with its body ("Decompression
@@ -121,6 +124,22 @@ function assertDeclaredSize(
   return declared
 }
 
+/**
+ * At or below this many bytes an artifact's one-call codec and file I/O
+ * run on the calling thread. Each async call is a thread-pool round trip
+ * (a futex wake, an eventfd write, an epoll turn) that cost more CPU than
+ * the work itself for a one-file artifact, several times per save and
+ * per restore.
+ */
+export const ON_THREAD_MAX = 256 * 1024
+
+/** `Bun.zstdCompress`, on this thread when the input is small (`ON_THREAD_MAX`). */
+export async function zstdCompress(bytes: Uint8Array): Promise<Uint8Array> {
+  return bytes.byteLength <= ON_THREAD_MAX
+    ? Bun.zstdCompressSync(bytes)
+    : await Bun.zstdCompress(bytes)
+}
+
 /** Compressed artifacts above this size are decoded as a stream, on restore and on ingest. */
 export const STREAM_DECODE_FROM = 4 * 1024 * 1024
 
@@ -137,7 +156,8 @@ export async function bytesOf(stream: ReadableStream<Uint8Array>): Promise<Uint8
 export const zstdEncoder = (): TransformStream<Uint8Array, Uint8Array> =>
   new CompressionStream('zstd') as unknown as TransformStream<Uint8Array, Uint8Array>
 
-const oneChunk = (bytes: Uint8Array): ReadableStream<Uint8Array> =>
+/** Bytes in memory as a one-chunk stream, for a reader that takes a stream. */
+export const oneChunk = (bytes: Uint8Array): ReadableStream<Uint8Array> =>
   new ReadableStream({
     start(c) {
       c.enqueue(bytes)

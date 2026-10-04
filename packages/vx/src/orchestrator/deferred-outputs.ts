@@ -71,6 +71,10 @@ export class DeferredOutputs {
    * this throws and the caller fails the task naming the producer.
    */
   async materializeFor(node: TaskNode): Promise<void> {
+    // Nothing deferred, nothing to find: the closure walk is the size of
+    // the graph, and every task of a run without `--download=none` paid it
+    // (1.4 s of a 3,270-task cold run's main thread).
+    if (this.entries.size === 0) return
     const needed: string[] = []
     const seen = new Set<string>()
     // Pre-order on an explicit stack of dependency lists: a closure is as

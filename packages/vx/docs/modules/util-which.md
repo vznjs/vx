@@ -14,6 +14,7 @@ git — asks here and hands Bun the absolute path.
 ```ts
 export function executablePath(name: string): string
 export function shellArgv(script: string): string[]
+export function taskShell(): string
 ```
 
 - Resolved on vx's OWN `process.env.PATH`, never a task's. A task's
@@ -38,8 +39,11 @@ export function shellArgv(script: string): string[]
 - The answer is absolute even for a relative PATH entry (`Bun.which`
   resolves one against this process's cwd).
 
-- `shellArgv` is the task shell's argv: `[sh, '-c', script]`, `sh`
-  resolved by `executablePath`.
+- `taskShell` is the shell every command runs in: `dash` on macOS when
+  vx's PATH has it (macOS's `/bin/sh` is a stub that execs bash), else
+  `sh`, both resolved by `executablePath`. Kill-tree's guard and the sandbox use it
+  too.
+- `shellArgv` is the task shell's argv: `[taskShell(), '-c', script]`.
 
 ## Not here
 

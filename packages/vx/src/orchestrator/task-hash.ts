@@ -173,15 +173,21 @@ export async function describeTaskInputs(
   )
   // Output lists come from the local index — one SELECT for every upstream
   // entry. An upstream with no entry (non-cacheable) contributes an empty list.
-  const rows = args.cache.loadOutputFilesBatch(graft.map((g) => g.hash))
-  const upstream = graft.map((g) => {
-    const outputs = (rows.get(g.hash) ?? []).map((r) =>
-      r.path.startsWith(WORKSPACE_OUTPUT_PREFIX)
-        ? r.path.slice(WORKSPACE_OUTPUT_PREFIX.length)
-        : relPosix(input.workspaceRoot, path.join(g.projectDir, r.path)),
-    )
-    return { taskId: g.taskId, hash: g.hash, outputs }
-  })
+  // Read on first access: the local floor never reads it, and its every
+  // miss paid a query over the whole closure (execute-task reads it up
+  // front for a plugin executor).
+  const listUpstream = (): TaskInputs['upstream'] => {
+    const rows = args.cache.loadOutputFilesBatch(graft.map((g) => g.hash))
+    return graft.map((g) => {
+      const outputs = (rows.get(g.hash) ?? []).map((r) =>
+        r.path.startsWith(WORKSPACE_OUTPUT_PREFIX)
+          ? r.path.slice(WORKSPACE_OUTPUT_PREFIX.length)
+          : relPosix(input.workspaceRoot, path.join(g.projectDir, r.path)),
+      )
+      return { taskId: g.taskId, hash: g.hash, outputs }
+    })
+  }
+  let upstream: TaskInputs['upstream'] | undefined
   return {
     hash,
     facts,
@@ -194,7 +200,9 @@ export async function describeTaskInputs(
         command,
         output,
       })),
-      upstream,
+      get upstream() {
+        return (upstream ??= listUpstream())
+      },
       packageJsonDigest: input.projectPackageJsonHash,
       configDigest: input.taskConfigHash,
       workspaceFingerprint: input.workspaceFingerprint,

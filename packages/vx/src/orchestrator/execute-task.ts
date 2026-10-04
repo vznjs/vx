@@ -801,6 +801,9 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       if (c.kind === 'env' && named.includes(c.name) && !secretNamed(c.name))
         c.hash = MASKED + c.hash
   const inputs: TaskInputs | undefined = described?.inputs
+  // A plugin may keep the request past the run (the cache closed): it gets
+  // the upstream outputs read now. Only the local floor leaves them unread.
+  if (inputs !== undefined && !isLocalExecutor(args.executor)) void inputs.upstream
   // A declared input set that resolves to NOTHING is the quiet stale hit:
   // the key stops moving with this project's source and every later run
   // is a hit. Almost always a glob written against the wrong directory

@@ -47,9 +47,31 @@ export function executablePath(name: string): string {
   return at
 }
 
+let dashMissedOn: string | undefined
+
+/**
+ * The shell vx runs commands in: `dash` on macOS when vx's PATH has it,
+ * else `sh` on vx's PATH. macOS's `/bin/sh` is a stub that execs bash, two
+ * images for one shell, and bash where Linux runs dash, so a command read
+ * one way on a Mac and another on Linux CI (owner, 2026-10-04).
+ */
+export function taskShell(): string {
+  if (process.platform === 'darwin') {
+    const PATH = process.env['PATH'] ?? ''
+    if (dashMissedOn !== PATH) {
+      try {
+        return executablePath('dash')
+      } catch {
+        dashMissedOn = PATH
+      }
+    }
+  }
+  return executablePath('sh')
+}
+
 /**
  * The argv that runs `script` in the task shell: `sh -c`.
  */
 export function shellArgv(script: string): string[] {
-  return [executablePath('sh'), '-c', script]
+  return [taskShell(), '-c', script]
 }

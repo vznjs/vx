@@ -5,7 +5,7 @@ import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
-import { executablePath, isExecutableMissing } from '../src/util/index.js'
+import { executablePath, isExecutableMissing, shellArgv, taskShell } from '../src/util/index.js'
 
 describe('executablePath', () => {
   let dir: string
@@ -69,5 +69,27 @@ describe('executablePath', () => {
     // Installed afterwards, under the same PATH: found.
     const at = await tool('vx-which-late')
     expect(executablePath('vx-which-late')).toBe(at)
+  })
+})
+
+// macOS's /bin/sh is a stub that execs bash: two images a task, and bash
+// where Linux CI runs dash, so a command read one way on a Mac and another
+// on CI. The task shell there is dash (owner, 2026-10-04).
+describe('taskShell', () => {
+  const probe = '[ -n "$BASH_VERSION" ] && echo bash || echo not-bash'
+  const answer = (argv: string[]): string =>
+    new TextDecoder().decode(Bun.spawnSync(argv).stdout).trim()
+
+  it('is dash on macOS and sh on vx PATH elsewhere', () => {
+    const expected = executablePath(process.platform === 'darwin' ? 'dash' : 'sh')
+    expect(taskShell()).toBe(expected)
+    expect(shellArgv(probe)).toEqual([expected, '-c', probe])
+  })
+
+  it('runs no bash on macOS', () => {
+    const got = answer(shellArgv(probe))
+    expect(got).toBe(
+      process.platform === 'darwin' ? 'not-bash' : answer([executablePath('sh'), '-c', probe]),
+    )
   })
 })

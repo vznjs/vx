@@ -1787,6 +1787,64 @@ describe('execute-task — the executor input set is ADDRESSED and ORDERED', () 
   )
 
   it(
+    'the local executor never reads the upstream outputs from the index; a plugin gets them',
+    async () => {
+      // The local floor never reads them, and every miss queried its whole
+      // dependency closure for them (Q-1).
+      const b = await bench()
+      try {
+        const log = capturingLogger({ root: '', out: [], err: [] })
+        const producer = node(
+          b,
+          {
+            exec: { command: 'mkdir -p dist && echo p > dist/lib.js' },
+            cache: { inputs: { files: ['package.json'] }, outputs: { files: ['dist/**'] } },
+          },
+          'proj#compile',
+        )
+        const made = await executeTask(baseArgs(b, producer, log))
+        expect(made.status).toBe('success')
+        const read = b.cache.loadOutputFilesBatch.bind(b.cache)
+        let reads = 0
+        b.cache.loadOutputFilesBatch = (hashes) => {
+          reads++
+          return read(hashes)
+        }
+        const runWith = async (look: boolean, id: string): Promise<string[] | undefined> => {
+          let outputs: string[] | undefined
+          const executor: TaskExecutor = look
+            ? {
+                name: 'capture',
+                execute: (req) => {
+                  outputs = req.inputs?.upstream[0]?.outputs.slice()
+                  return localExecutor().execute(req)
+                },
+              }
+            : localExecutor()
+          const consumer = node(
+            b,
+            {
+              dependsOn: ['compile'],
+              exec: { command: `echo ${id}` },
+              cache: { inputs: { files: ['package.json'] }, outputs: { files: [] } },
+            },
+            `proj#${id}`,
+          )
+          await executeTask({ ...baseArgs(b, consumer, log), upstream: [made], executor })
+          return outputs
+        }
+        await runWith(false, 'quiet')
+        expect(reads).toBe(0)
+        expect(await runWith(true, 'shipping')).toEqual(['proj/dist/lib.js'])
+        expect(reads).toBe(1)
+      } finally {
+        await closeBench(b)
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
     'the upstream list is ordered by hash, not by declaration order',
     async () => {
       // The docblock says the list — "and any action digest derived from

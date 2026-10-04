@@ -11,11 +11,14 @@ import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 
-/** A PATH of bun, sh and git alone: no `tsc` from the box. */
+/** A PATH of bun, the shells and git alone: no `tsc` from the box. */
 async function bareBin(): Promise<string> {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-tool-bin-'))
   await symlink(process.execPath, path.join(dir, 'bun'))
   await symlink('/bin/sh', path.join(dir, 'sh'))
+  // macOS's task shell is dash when the PATH has it, as /bin does there.
+  const dash = Bun.which('dash')
+  if (dash !== null) await symlink(dash, path.join(dir, 'dash'))
   const git = Bun.which('git')
   if (git !== null) await symlink(git, path.join(dir, 'git'))
   return dir
@@ -88,9 +91,8 @@ describe('a tool that is not on the PATH vx built', () => {
 
   // A file that EXISTS still gets the shell's "not found" when its #! line
   // names an interpreter that does not (item 258); the line must not blame
-  // the PATH. dash and bash 5 exit 127 and blame the file; macOS's bash 3.2
-  // names the interpreter itself ("bad interpreter") and exits 1, so vx
-  // adds nothing there — pinned as such, not skipped.
+  // the PATH. dash (the task shell, macOS included) exits 127 and blames the
+  // file, so vx names the interpreter.
   it('a script whose #! interpreter is missing has the interpreter named', async () => {
     const script = path.join(root, 'packages', 'app', 'run.sh')
     await writeFile(script, '#!/nonexistent/interp\necho hi\n')
@@ -102,16 +104,10 @@ describe('a tool that is not on the PATH vx built', () => {
     const r = vx(root, bin, ['run', 'build', '--all'])
     expect(r.text).not.toContain('PATH')
     expect(r.text).not.toContain('chmod')
-    if (process.platform === 'darwin') {
-      expect(r.code).toBe(1)
-      expect(r.text).toContain('/nonexistent/interp: bad interpreter')
-      expect(r.text).not.toContain('[vx] exit')
-    } else {
-      expect(r.code).toBe(1)
-      expect(r.text).toContain(
-        `[vx] exit 127 is the shell's "not found": ./run.sh exists, and its #! interpreter /nonexistent/interp does not — install it or fix the line`,
-      )
-    }
+    expect(r.code).toBe(1)
+    expect(r.text).toContain(
+      `[vx] exit 127 is the shell's "not found": ./run.sh exists, and its #! interpreter /nonexistent/interp does not — install it or fix the line`,
+    )
   })
 
   // A script without the execute bit is the shell's 126 under every sh.
