@@ -173,8 +173,9 @@ export async function describeTaskInputs(
   )
   // Output lists come from the local index — one SELECT for every upstream
   // entry. An upstream with no entry (non-cacheable) contributes an empty list.
-  // Read when an executor first asks: only an input-shipping one does, and
-  // the local floor's every miss paid a query over its whole closure.
+  // Read on first access: the local floor never reads it, and its every
+  // miss paid a query over the whole closure (execute-task reads it up
+  // front for a plugin executor).
   const listUpstream = (): TaskInputs['upstream'] => {
     const rows = args.cache.loadOutputFilesBatch(graft.map((g) => g.hash))
     return graft.map((g) => {

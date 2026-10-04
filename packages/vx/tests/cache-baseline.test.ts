@@ -464,13 +464,22 @@ describePerf('cache baseline: save + restore', () => {
       outputFiles: outFiles,
     })
 
+    // A small artifact decodes on the calling thread, a large one off it.
     const origDecompress = Bun.zstdDecompress
+    const origDecompressSync = Bun.zstdDecompressSync
     let decompressCount = 0
-    const bunMut = Bun as unknown as { zstdDecompress: typeof Bun.zstdDecompress }
+    const bunMut = Bun as unknown as {
+      zstdDecompress: typeof Bun.zstdDecompress
+      zstdDecompressSync: typeof Bun.zstdDecompressSync
+    }
     bunMut.zstdDecompress = ((input: Parameters<typeof Bun.zstdDecompress>[0]) => {
       decompressCount++
       return origDecompress(input)
     }) as typeof Bun.zstdDecompress
+    bunMut.zstdDecompressSync = ((input: Parameters<typeof Bun.zstdDecompressSync>[0]) => {
+      decompressCount++
+      return origDecompressSync(input)
+    }) as typeof Bun.zstdDecompressSync
     try {
       decompressCount = 0
       const hit = await cache.get('sd-hot')
@@ -484,6 +493,7 @@ describePerf('cache baseline: save + restore', () => {
       expect(decompressCount).toBe(1)
     } finally {
       bunMut.zstdDecompress = origDecompress
+      bunMut.zstdDecompressSync = origDecompressSync
     }
   })
 
