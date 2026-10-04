@@ -88,7 +88,9 @@ import {
   bytesOf,
   decodedTar,
   MAX_DECOMPRESSED_ARTIFACT_BYTES,
+  oneChunk,
   STREAM_DECODE_FROM,
+  zstdCompress,
   zstdEncoder,
 } from './zstd.js'
 import { ConfigEvalTable } from './config-evals.js'
@@ -1296,7 +1298,7 @@ export class Cache implements CacheLayer {
     // again in `writeArtifactAndIndex` cost every save two thread-pool
     // round trips for an EEXIST and a stat (item 630).
     const endPack = span('save: pack')
-    const compressed = await this.packArtifactToTemp(this.tempPath(args.hash), args).catch(
+    const packed = await this.packArtifactToTemp(this.tempPath(args.hash), args).catch(
       (err: unknown) => {
         // A save that could not open an output names the limit, not only
         // the file, which is fine (A-39).
@@ -1310,12 +1312,17 @@ export class Cache implements CacheLayer {
     )
     endPack()
     await this.guard(() =>
-      this.writeArtifactAndIndex(args.hash, compressed, {
-        taskId: args.entry.taskId,
-        command: args.entry.command,
-        durationMs: args.entry.durationMs,
-        ...(args.inputComponents !== undefined ? { inputComponents: args.inputComponents } : {}),
-      }),
+      this.writeArtifactAndIndex(
+        args.hash,
+        'tar' in packed ? packed.compressed : packed,
+        {
+          taskId: args.entry.taskId,
+          command: args.entry.command,
+          durationMs: args.entry.durationMs,
+          ...(args.inputComponents !== undefined ? { inputComponents: args.inputComponents } : {}),
+        },
+        'tar' in packed ? packed.tar : undefined,
+      ),
     )
   }
 
@@ -1425,8 +1432,7 @@ export class Cache implements CacheLayer {
     // layout is predictable: a successful read finds `stdout` and
     // zero-or-more `outputs/<rel>` / `workspace-outputs/<rel>` entries.
     const plan = await this.planWithin(args)
-    if (plan.size <= STREAM_DECODE_FROM)
-      return await Bun.zstdCompress(await packArtifactBytes(plan))
+    if (plan.size <= STREAM_DECODE_FROM) return await zstdCompress(await packArtifactBytes(plan))
     return bytesOf(packArtifactStream(plan).pipeThrough(zstdEncoder()))
   }
 
@@ -1466,10 +1472,12 @@ export class Cache implements CacheLayer {
   private async packArtifactToTemp(
     tmpPath: string,
     args: Parameters<Cache['packArtifact']>[0],
-  ): Promise<Uint8Array | { tmpPath: string }> {
+  ): Promise<{ compressed: Uint8Array; tar: Uint8Array } | { tmpPath: string }> {
     const plan = await this.planWithin(args)
-    if (plan.size <= STREAM_DECODE_FROM)
-      return await Bun.zstdCompress(await packArtifactBytes(plan))
+    if (plan.size <= STREAM_DECODE_FROM) {
+      const tar = await packArtifactBytes(plan)
+      return { compressed: await zstdCompress(tar), tar }
+    }
     const sink = Bun.file(tmpPath).writer()
     try {
       for await (const chunk of packArtifactStream(plan).pipeThrough(zstdEncoder())) {
@@ -1505,6 +1513,11 @@ export class Cache implements CacheLayer {
     hash: string,
     compressed: Uint8Array | { tmpPath: string },
     meta: IngestMeta,
+    /**
+     * The tar `compressed` was made from, when this process packed it: it is
+     * scanned as is rather than decoded back out of the bytes just encoded.
+     */
+    tar?: Uint8Array,
   ): Promise<void> {
     // Validate BEFORE anything touches the final path. `ingest()` feeds
     // us a temp of network bytes; a truncated/garbage body that went live first
@@ -1527,6 +1540,8 @@ export class Cache implements CacheLayer {
       const endWrite = span('save: write temp')
       // A write that fails part-way (a full disk) leaves the temp behind,
       // and a fresh one is an orphan only an hour on (A-14).
+      // Off this thread even when small: a file's creation on the main
+      // thread cost more CPU and wall than the round trip (A/B, 2026-10-04).
       await writeFile(tmpPath, compressed).catch(async (err: unknown) => {
         await unlink(tmpPath).catch(() => undefined)
         throw err
@@ -1546,7 +1561,9 @@ export class Cache implements CacheLayer {
           ? compressed
           : Bun.file(tmpPath)
       const endScan = span('save: scan')
-      scanned = await scanArtifact(await decodedTar(source, hash, this.artifactCeiling))
+      scanned = await scanArtifact(
+        tar !== undefined ? oneChunk(tar) : await decodedTar(source, hash, this.artifactCeiling),
+      )
       endScan()
       // v17 invariant: every artifact carries a `stdout` entry. Its
       // absence means the bytes decompressed but aren't a vx artifact.

@@ -37,12 +37,21 @@
 // skipped — vx's outputs are regular files, and an artifact that claims
 // otherwise silently loses the claim rather than acting on it.
 
-import { chmodSync, renameSync, statSync, utimesSync } from 'node:fs'
+import {
+  chmodSync,
+  lstatSync,
+  readFileSync,
+  realpathSync,
+  renameSync,
+  statSync,
+  utimesSync,
+} from 'node:fs'
 import { lstat, mkdir, readlink, realpath, rmdir, stat, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { UserError } from '../util/index.js'
 import { WORKSPACE_OUTPUT_PREFIX } from './layer.js'
 import { TarFormatError, type TarInput, tarEntries, tarPack, tarSize } from './tar-stream.js'
+import { ON_THREAD_MAX } from './zstd.js'
 
 /** Archive entry name carrying the per-output mode/mtime sidecar. */
 const META_ENTRY = '.vx-meta.json'
@@ -200,6 +209,9 @@ export interface PackArgs {
   within?: string
 }
 
+/** At or below this many outputs, `planArtifact` stats them on the calling thread. */
+const ON_THREAD_STATS = 32
+
 /** A packed artifact's plan: its entries with their stats, and the tar's exact size. */
 export interface ArtifactPlan {
   inputs: TarInput[]
@@ -216,6 +228,12 @@ export interface ArtifactPlan {
  */
 export async function planArtifact(args: PackArgs): Promise<ArtifactPlan> {
   const meta: MetaFile = { version: 1, files: {} }
+  // A few outputs are stat'ed on this thread: a pool round trip per stat
+  // cost more than the stat. Many go to the pool together, as before.
+  const few = args.outputs.size <= ON_THREAD_STATS
+  const lstatOf = few ? async (p: string) => lstatSync(p) : lstat
+  const statOf = few ? async (p: string) => statSync(p) : stat
+  const realpathOf = few ? async (p: string) => realpathSync(p) : realpath
   let withinReal: Promise<string> | undefined
   // Where this artifact's own non-link outputs really are: a link to one of
   // them packs bytes the task wrote itself. A root-anchored output tree is
@@ -225,7 +243,7 @@ export async function planArtifact(args: PackArgs): Promise<ArtifactPlan> {
   const ownOutputs = (): Promise<Set<string>> =>
     (ownReal ??= Promise.all(
       [...args.outputs.values()].map(async (abs) =>
-        (await lstat(abs)).isSymbolicLink() ? null : realpath(abs),
+        (await lstatOf(abs)).isSymbolicLink() ? null : realpathOf(abs),
       ),
     ).then((all) => new Set(all.filter((p): p is string => p !== null))))
   if (args.key !== undefined) meta.key = args.key
@@ -255,11 +273,11 @@ export async function planArtifact(args: PackArgs): Promise<ArtifactPlan> {
       // lstat, so a regular file costs no second call; only a link is
       // resolved, and its body is read from the path this check resolved.
       let src = abs
-      let st = await lstat(abs)
+      let st = await lstatOf(abs)
       if (st.isSymbolicLink()) {
-        src = await realpath(abs).catch(dangling)
+        src = await realpathOf(abs).catch(dangling)
         if (args.within !== undefined) {
-          withinReal ??= realpath(args.within)
+          withinReal ??= realpathOf(args.within)
           const root = await withinReal
           if (!src.startsWith(root + path.sep) && !(await ownOutputs()).has(src)) {
             throw new UserError(
@@ -267,7 +285,7 @@ export async function planArtifact(args: PackArgs): Promise<ArtifactPlan> {
             )
           }
         }
-        st = await stat(src).catch(dangling)
+        st = await statOf(src).catch(dangling)
       }
       if (!st.isFile()) {
         throw new UserError(
@@ -340,9 +358,16 @@ async function* summed(inputs: readonly TarInput[]): AsyncGenerator<TarInput> {
  * otherwise (measured 2026-09-03: 238 → 293 ms per 1 000 saves).
  */
 export async function packArtifactBytes(plan: ArtifactPlan): Promise<Uint8Array> {
+  // A small artifact's files are read on this thread (`ON_THREAD_MAX`).
+  const onThread = plan.size <= ON_THREAD_MAX
   const inputs = await Promise.all(
     plan.inputs.map(async (i) =>
-      i.body instanceof Blob ? { ...i, body: await i.body.bytes() } : i,
+      i.body instanceof Blob
+        ? {
+            ...i,
+            body: onThread ? readFileSync((i.body as Bun.BunFile).name!) : await i.body.bytes(),
+          }
+        : i,
     ),
   )
   const out = new Uint8Array(plan.size)

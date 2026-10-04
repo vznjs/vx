@@ -407,6 +407,10 @@ lists entries for ingest's index rows, `extractArtifactStream` restores
 through one staging extractor (write beside the target, rename after
 the whole archive is read), so vx holds one chunk at a time either way;
 a small artifact (≤ 4 MiB) is packed and decoded in one call instead.
+At or below 256 KiB (`ON_THREAD_MAX`) that call, and a save's reads of
+its outputs, run on the calling thread: a thread-pool round trip cost
+more CPU than the work for a one-file artifact. A save scans the tar it
+packed rather than decoding its own bytes back; an ingest decodes.
 
 SQLite stores metadata only:
 
