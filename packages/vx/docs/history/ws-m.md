@@ -1055,3 +1055,11 @@ index's racy window and keyed no verdict, so the fixture now waits the
 window out. The npm and try-it suites drive a pinned root devDependency
 `npm` 11.21.0 rather than the host's, which was missing (21 rows), and
 the lockfile test grants the DNS lookup npm's Node makes offline.
+
+M-85. Owner (2026-10-04): cache every task that can be. Locally all do
+but `check.bun` (it prints the machine it ran on, which a hit would
+replay), the `release.*` side effects, `lint.oxfmt.fix` (rewrites its
+inputs) and the docs servers. CI was the gap: every run started cold. The
+`ci` and `core-darwin` jobs now restore `.vx/cache` from the newest one
+main saved (`actions/cache`), and only a push to main saves, so a PR's
+code never writes an entry another run reads.
