@@ -1037,7 +1037,15 @@ Removed `orchestrator/failure-recap.ts`, `formatFailureRecap`, the
 logger's `failureRecap()`, their tests and docs; the per-failure frames
 stay. The two upstream-ledger rows that cited the recap's tests now cite
 the frame tests in `tests/output-flow.test.ts`.
-M-82. The gate passes on a Mac with no npm and an M-series CPU. A write
+
+M-83. The `Aborted:` and `Not started:` sections under the footer are
+gone, at the owner's word: a task a shutdown signal killed is now a row
+in the task list (`✗ <time> aborted <id>`), and one the stop reached
+before it ran is `◌ not run <id>`. The tasks legend names both after
+the total (`not counted: 1 aborted, 2 not run`); the total stays the
+count history and telemetry share. A requested task the stop kept from starting no longer
+prints a frame close for a frame it never opened.
+M-84. The gate passes on a Mac with no npm and an M-series CPU. A write
 glob covered only the directories it matched on macOS (SRT compiles a
 glob as an exact regex), so `/tmp/pnpm-store-operation-locks-*/` left
 pnpm 12's lock file refused; each wildcard write grant now adds

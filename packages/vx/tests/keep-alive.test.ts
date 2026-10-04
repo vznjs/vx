@@ -463,7 +463,7 @@ describe('a persistent server that dies before the run stops it', () => {
     return {
       code,
       said: lines.filter((l) => l.startsWith('vx: ')),
-      tally: lines.find((l) => l.endsWith(' total') && /success|failed|aborted/.test(l))?.trim(),
+      tally: lines.find((l) => / \d+ total( ·|$)/.test(l) && /success|failed/.test(l))?.trim(),
     }
   }
 
@@ -471,7 +471,7 @@ describe('a persistent server that dies before the run stops it', () => {
     expect(await interrupted('touch gone; echo READY; exec sleep 30')).toEqual({
       code: 130,
       said: [],
-      tally: '1 success · 1 total',
+      tally: '1 success · 1 total · not counted: 1 aborted',
     })
   }, 20_000)
 
@@ -484,7 +484,7 @@ describe('a persistent server that dies before the run stops it', () => {
         'vx: app#srv exited with code 3 while the run went on',
         'vx: app#srv exited with code 3 before the run stopped it',
       ],
-      tally: '1 failed · 1 total',
+      tally: '1 failed · 1 total · not counted: 1 aborted',
     })
   }, 20_000)
 
@@ -518,7 +518,7 @@ describe('a persistent server that dies before the run stops it', () => {
     expect(await interrupted('touch gone; echo READY; exec sleep 30', ['srv', 'e2e'])).toEqual({
       code: 130,
       said: [],
-      tally: '1 success · 1 total',
+      tally: '1 success · 1 total · not counted: 1 aborted',
     })
   }, 20_000)
 })

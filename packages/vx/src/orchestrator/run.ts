@@ -90,12 +90,7 @@ import { assembleRunRecords } from './run-records.js'
 import { hasEnded, selectKeepAlive, shutdownPersistent } from './persistent.js'
 import { writeRunProfile, writeRunSummary } from './run-artifacts.js'
 import { createSaveLane } from './save-lane.js'
-import {
-  formatAbortedSection,
-  formatFlakySection,
-  formatRunSummary,
-  formatSkippedSection,
-} from './summary.js'
+import { formatFlakySection, formatRunSummary, formatSkippedSection } from './summary.js'
 import { detectFlaky, type FlakyCandidate } from './failure-mode.js'
 import type { RunOptions, RunSummary } from './options.js'
 
@@ -1063,10 +1058,7 @@ async function runOnBus(
       for (const line of formatPersistentList(stillUp, colors)) log.status(line)
     }
     for (const line of formatRunSummary(list, totalMs, colors, runContext)) log.status(line)
-    // A task killed by a shutdown signal is in no bucket above, yet it makes
-    // `ok` false — name it, or the red exit is undiagnosable.
-    for (const line of formatAbortedSection(list)) log.status(line)
-    // And a dependency-only server that died before the end of the graph
+    // A dependency-only server that died before the end of the graph
     // stopped it: the footer counts it failed, this says why.
     // A signal death is named as its exit code, as the keep-alive wait
     // names it: `code SIGTERM` read beside `code 143` for one event (item

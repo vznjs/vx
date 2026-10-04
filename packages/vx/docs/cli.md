@@ -2660,18 +2660,20 @@ definition and no counter counts it, so the section and the tasks
 legend agree. Absent when nothing was skipped (`--continue=always`
 skips nothing).
 
-**Aborted and Not started sections.** After a stop (a shutdown
-signal), the footer names what it cut short and what it reached first.
-Neither is in the totals:
+**Aborted and not-run rows.** After a stop (a shutdown signal), the
+task list names what it cut short (`aborted`, with its time so far) and
+what it reached first (`not run`). Neither reached the cache:
 
 ```
-  Aborted:  1 task killed by a shutdown signal — not counted above
-    ✗ app#dev — exit 130, nothing cached
-
-  Not started:  2 tasks the run stopped before they ran
-    · web#build
-    · web#test
+ ✗   2.41s aborted          app#dev
+ ◌         not run          web#build
+ ◌         not run          web#test
 ```
+
+The tasks legend names them outside the total, which history and
+telemetry share: `2 success · 2 total · not counted: 1 aborted, 2 not
+run`. A framed task (focused or `full`) that
+printed while it stopped shows its frame instead of a row.
 
 **Flaky section.** After the footer, a run names the tasks it just
 proved nondeterministic — from the local run history alone, no

@@ -36,7 +36,10 @@ export function formatTaskHitLine(node, outcome, colors?): string
 export function formatTaskExecutedLine(node, outcome, colors?): string
 // ` ⊘ <blank> skipped <id> • blocked by <id>` — a skip never ran
 export function formatTaskSkippedLine(node, colors?, blockedBy?): string
-// the grid all three share: `<glyph> <time> <status> <cache> <id>`
+// ` ✗ <time> aborted <id>` — killed by a shutdown signal;
+// ` ◌ <blank> not run <id>` — the stop reached it before it ran
+export function formatTaskAbortedLine(node, outcome, colors?): string
+// the grid they all share: `<glyph> <time> <status> <cache> <id>`
 export function formatTaskRow(
   glyph,
   ms,

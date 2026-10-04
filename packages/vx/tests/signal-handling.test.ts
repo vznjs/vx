@@ -536,8 +536,9 @@ describe('signal handling during vx run (e2e)', () => {
     TIMEOUT,
   )
 
-  // The Aborted section named the dependant a Ctrl-C reached before it ran
-  // as killed, with an exit 1 the scheduler made up (item 1062).
+  // The dependant a Ctrl-C reached before it ran was named as killed, with
+  // an exit 1 the scheduler made up (item 1062). Since M-83 each is a row in
+  // the task list with its own status, not a section under the footer.
   it(
     'a Ctrl-C names the task it killed apart from the one it kept from starting',
     async () => {
@@ -559,14 +560,16 @@ describe('signal handling during vx run (e2e)', () => {
       await waitForPid(path.join(fixture.root, 'packages', 'app', 'pid.txt'), 10_000)
       proc.kill('SIGINT')
       expect(await proc.exited).toBe(130)
-      const lines = (await text).join('').split('\n')
-      const from = lines.findIndex((l) => l.includes('Aborted:'))
-      expect(lines.slice(from, from + 5).map((l) => l.trimEnd())).toEqual([
-        '  Aborted:  1 task killed by a shutdown signal — not counted above',
-        '    ✗ app#t — exit 130, nothing cached',
-        '',
-        '  Not started:  1 task the run stopped before it ran',
-        '    · app#after',
+      // Rows in the task list, each with its own status; the time a killed
+      // task ran is masked, a task that never ran has none.
+      const rows = (await text)
+        .join('')
+        .split('\n')
+        .filter((l) => l.endsWith(' app#t') || l.endsWith(' app#after'))
+        .map((l) => l.replace(/^ (\S+) +[\d.]+m?s /, ' $1 <t> '))
+      expect(rows).toEqual([
+        ' ✗ <t> aborted          app#t',
+        ' ◌         not run          app#after',
       ])
     },
     TIMEOUT,
@@ -602,11 +605,11 @@ describe('signal handling during vx run (e2e)', () => {
       const out = await new Response(proc.stdout).text()
       // On a line of its own: the frame's header echoes the command too.
       expect(out).toContain('\nEND-OF-BIG\n')
-      // Then the whole summary: its time line, and the aborted section that
-      // closes it (the trap exited 0 on the stop; item 962).
+      // Then the whole summary, which names the task aborted (the trap
+      // exited 0 on the stop; item 962), down to its time line.
       const tail = out.slice(out.indexOf('\nEND-OF-BIG\n'))
-      expect(tail).toMatch(/\n *time /)
-      expect(out.trimEnd().split('\n').at(-1)).toBe('    ✗ app#big — exit 0, nothing cached')
+      expect(tail).toContain('\n  tasks     0 tasks\n            not counted: 1 aborted\n')
+      expect(out.trimEnd().split('\n').at(-1)).toMatch(/^ {2}time {6}[\d.]+m?s$/)
     },
     TIMEOUT,
   )

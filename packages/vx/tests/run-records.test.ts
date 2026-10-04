@@ -176,6 +176,8 @@ describe('assembleRunRecords', () => {
     expect(telemetryTasks.map((t) => t.taskId)).toStrictEqual(counted)
     expect(invocation.taskCount).toBe(6)
     const totals = formatRunSummary(outcomes, 10).filter((l) => l.includes(' total'))
-    expect(totals).toStrictEqual(['            1 failed · 4 success · 1 skipped · 6 total'])
+    expect(totals).toStrictEqual([
+      '            1 failed · 4 success · 1 skipped · 6 total · not counted: 1 not run',
+    ])
   })
 })

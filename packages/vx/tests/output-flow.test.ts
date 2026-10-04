@@ -174,12 +174,29 @@ describe('defaultLogger visibility matrix — broad', () => {
     expect(out.text()).toBe('')
   })
 
-  it('aborted (killed by a shutdown signal) → silent, not counted as failed', () => {
+  // The run exits red after a stop, so each task it took down or kept from
+  // starting is a row in the list with its own status (M-83).
+  it('aborted → an `aborted` row with its time, output dropped; never started → `not run`', () => {
     const out = sink()
     const log = defaultLogger(NO_COLORS, { mode: 'broad' }, out)
     const n = mkNode('one#build')
     log.taskStderr(n, 'partial\n')
-    log.taskComplete(n, mkOutcome(n, 'aborted', { exitCode: 143 }))
+    log.taskComplete(n, mkOutcome(n, 'aborted', { exitCode: 143, wallclockStartNs: 1n }))
+    const later = mkNode('one#later')
+    log.taskComplete(later, mkOutcome(later, 'aborted', { exitCode: 1, durationMs: 0 }))
+    log.runEnd?.()
+    expect(out.text()).toBe(
+      [' ✗   100ms aborted          one#build', ' ◌         not run          one#later', ''].join(
+        '\n',
+      ),
+    )
+  })
+
+  it.each(['none', 'hash-only'] as const)('aborted → silent under %s', (mode) => {
+    const out = sink()
+    const log = defaultLogger(NO_COLORS, { mode }, out)
+    const n = mkNode('one#build')
+    log.taskComplete(n, mkOutcome(n, 'aborted', { exitCode: 143, wallclockStartNs: 1n }))
     log.runEnd?.()
     expect(out.text()).toBe('')
   })
@@ -201,6 +218,15 @@ describe('defaultLogger visibility matrix — focused', () => {
     expect(out.text()).toBe(
       '┌─ one#test > $ noop\nline 1\nwarn 1\n└─ one#test ── (100ms) success\n\n',
     )
+  })
+
+  // It opened no frame, so a frame close for it closed nothing.
+  it('requested task the stop kept from starting → a `not run` row, no frame close', () => {
+    const out = sink()
+    const log = defaultLogger(NO_COLORS, { mode: 'focused' }, out)
+    const n = mkNode('one#test', { requested: true })
+    log.taskComplete(n, mkOutcome(n, 'aborted', { exitCode: 1, durationMs: 0 }))
+    expect(out.text()).toBe(' ◌         not run          one#test\n')
   })
 
   it('requested quiet cache hit → full frame, no one-liner (owner: always full frame)', () => {
