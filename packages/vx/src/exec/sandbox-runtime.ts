@@ -60,6 +60,7 @@ import {
 import {
   BUN_GLOB_WILDCARDS,
   executablePath,
+  taskShell,
   grantPrefix,
   isTmpdirRefusal,
   procfsIsOwn,
@@ -236,7 +237,7 @@ async function trySandboxedTrue(
       undefined,
       weakerNested ? { enableWeakerNestedSandbox: true } : undefined,
     )
-    const proc = Bun.spawn([executablePath('sh'), '-c', wrapped], {
+    const proc = Bun.spawn([taskShell(), '-c', wrapped], {
       argv0: 'sh',
       stdout: 'ignore',
       stderr: 'pipe',
@@ -1299,7 +1300,7 @@ function ownGroupCommand(
   // `/bin/sh` is dash (item 964).
   let sh: string
   try {
-    sh = executablePath('sh')
+    sh = taskShell()
   } catch {
     return { command: `: 'vx-${tag}'; ${userCommand}`, forwards: false, traced: false }
   }
@@ -1433,15 +1434,19 @@ function wrapForTask(
   sockets: boolean,
   gitConfig: boolean,
 ): Promise<string> {
+  // macOS: the runtime runs the command under bash unless told, and an
+  // unsandboxed task runs under `taskShell()` (dash). Linux needs no word:
+  // `ownGroupCommand` already puts the task shell inside.
+  const shell = process.platform === 'darwin' ? taskShell() : undefined
   const run = perTaskRun
-  if (run === undefined) return SandboxManager.wrapWithSandbox(command, undefined, customConfig)
+  if (run === undefined) return SandboxManager.wrapWithSandbox(command, shell, customConfig)
   const turn = wrapTurn.then(() => {
     SandboxManager.updateConfig({
       ...run,
       network: { ...run.network, allowAllUnixSockets: sockets },
       filesystem: { ...run.filesystem, allowGitConfig: gitConfig },
     })
-    return SandboxManager.wrapWithSandbox(command, undefined, customConfig)
+    return SandboxManager.wrapWithSandbox(command, shell, customConfig)
   })
   wrapTurn = turn.catch(() => undefined)
   return turn
@@ -1588,11 +1593,7 @@ function spawnHostBridges(ports: readonly number[], tag: string): void {
                 detached: true,
               })
             : Bun.spawn(
-                [
-                  executablePath('sh'),
-                  '-c',
-                  `${guardLine(3)}exec ${argv.map(shellQuote).join(' ')}`,
-                ],
+                [taskShell(), '-c', `${guardLine(3)}exec ${argv.map(shellQuote).join(' ')}`],
                 { stdio: ['ignore', 'ignore', 'ignore', guard], detached: true },
               ),
         ),
@@ -1793,7 +1794,7 @@ async function runSandboxedOnce(
   try {
     // Resolved on vx's own PATH (util/which.ts), not the task's, where a
     // project's node_modules/.bin comes first.
-    const sh = executablePath('sh')
+    const sh = taskShell()
     if (straceLog) traceFd = openSync(straceLog, 'w')
     // Descriptors: 3 the signal channel the in-sandbox watcher reads, 4 the
     // guard's pipe (kill-tree.ts), TRACE_FD the trace log; a gap is 'ignore'.

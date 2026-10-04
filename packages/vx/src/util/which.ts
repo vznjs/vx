@@ -17,6 +17,8 @@
 // not remembered: it ends the spawn that asked, and a long-lived process
 // (`vx watch`) finds the tool once the user installs it.
 
+import { accessSync, constants } from 'node:fs'
+
 let memoPath: string | undefined
 const found = new Map<string, string>()
 
@@ -47,9 +49,32 @@ export function executablePath(name: string): string {
   return at
 }
 
+let darwinDash: string | null | undefined
+
+/**
+ * The shell vx runs commands in: `/bin/dash` on macOS when it is there,
+ * else `sh` on vx's PATH. macOS's `/bin/sh` is a stub that execs bash, two
+ * images for one shell, and bash where Linux runs dash, so a command read
+ * one way on a Mac and another on Linux CI (owner, 2026-10-04).
+ */
+export function taskShell(): string {
+  if (process.platform === 'darwin') {
+    if (darwinDash === undefined) {
+      try {
+        accessSync('/bin/dash', constants.X_OK)
+        darwinDash = '/bin/dash'
+      } catch {
+        darwinDash = null
+      }
+    }
+    if (darwinDash !== null) return darwinDash
+  }
+  return executablePath('sh')
+}
+
 /**
  * The argv that runs `script` in the task shell: `sh -c`.
  */
 export function shellArgv(script: string): string[] {
-  return [executablePath('sh'), '-c', script]
+  return [taskShell(), '-c', script]
 }

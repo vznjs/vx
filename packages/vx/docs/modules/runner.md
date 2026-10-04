@@ -328,6 +328,10 @@ spawn returned left a `kill -9`'s orphan in 4 of 40 runs under load
 - **Doesn't strip ANSI.** Color sequences pass through verbatim,
   enabling color-preserving cache-hit replays.
 - **No native Windows.** `sh -c` only; Windows means WSL.
+- **The shell is `taskShell()`** (`util/which.ts`): `/bin/dash` on macOS
+  when present, else `sh` on vx's own PATH. macOS's `/bin/sh` is a stub
+  that execs bash; a sandboxed macOS task asks the runtime for the same
+  shell (`wrapForTask`).
 
 ## Tests
 
