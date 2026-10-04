@@ -157,12 +157,13 @@ describe('vx why (e2e)', () => {
 
   // Last: it adds a third run, which the tests above must not see.
   it(
-    "a hit's line is its status and key — the status names the hit, nothing repeats it",
+    "a hit's line is its status, what it did to the disk and its key — nothing repeats the hit",
     async () => {
       await vx(root, ['run', 'build', '--all'])
       const r = await vx(root, ['why', 'app#build'])
       expect(r.code).toBe(0)
-      expect(r.out).toMatch(/^  this run   \S+ · cache-hit · key [0-9a-f]+$/m)
+      // The output was in place: a hit that restored nothing says so.
+      expect(r.out).toMatch(/^  this run   \S+ · cache-hit · up-to-date · key [0-9a-f]+$/m)
       expect(r.out).not.toContain('cache hit ·')
       expect(r.out).toContain('served from cache')
     },

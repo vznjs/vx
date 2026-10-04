@@ -17,6 +17,7 @@ import path from 'node:path'
 import { isGroupTask, type TaskOutcome } from '../graph/index.js'
 import { tallyOutcomes, type Tally } from './tally.js'
 import type { FlakyFinding } from './failure-mode.js'
+import { isCacheHit } from './telemetry.js'
 
 export interface SummarizeArgs {
   /** Empty string → default path; otherwise the explicit file path. */
@@ -45,6 +46,7 @@ export interface SummaryTaskJson {
   exitCode: number
   durationMs: number
   hash: string | null
+  restored?: boolean
   noCache?: true
   flaky?: { passes: number; failures: number; attempts: number }
   cpuMs?: number
@@ -83,6 +85,9 @@ function taskEntry(o: TaskOutcome, flaky?: FlakyFinding): SummaryTaskJson {
     exitCode: o.exitCode,
     durationMs: o.durationMs,
     hash: o.hash ?? null,
+    // On a hit: whether it restored outputs or found them up to date, as
+    // `summary`'s restoredLocal / restoredRemote / upToDate count it.
+    ...(isCacheHit(o.status) ? { restored: o.restored === true } : {}),
     // A task with no `cache` block executes every run by design; without
     // the flag a consumer computing a hit rate cannot tell a miss from a
     // task that could never hit (its `hash` is still set — dependents fold

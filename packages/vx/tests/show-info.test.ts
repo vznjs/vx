@@ -549,6 +549,7 @@ describe('vx info (e2e)', () => {
       expect(facts.orphans).toEqual({ artifacts: 0, bytes: 0 })
       expect(facts.runs24h).toBe(0)
       expect(facts.hits24h).toBe(0)
+      expect(facts.restored24h).toBe(0)
       expect(facts.flakyTasks).toEqual([])
       expect(facts.lockfile).toBe(false)
       expect(facts.sandbox).toEqual({
@@ -770,6 +771,7 @@ describe('vx info — the rendered rows', () => {
     orphans: { artifacts: 0, bytes: 0 },
     runs24h: 5,
     hits24h: 2,
+    restored24h: 1,
     flakyTasks: [],
     lockfile: true,
     sandbox: { available: true, reason: '', declared: 1, untraced: null },
@@ -790,7 +792,7 @@ describe('vx info — the rendered rows', () => {
         'cache dir:        /w/.vx',
         'cache versions:   keys vx-cache-v39 · index schema v28',
         'cache entries:    0 (0 B)',
-        'task runs (24h):  5 (2 cache hits)',
+        'task runs (24h):  5 (2 cache hits: 1 up-to-date, 1 restored)',
         'flaky tasks:      none',
         'sandbox:          available (1 task declares exec.sandbox)',
         'vx-lock.json:     yes',
@@ -819,6 +821,7 @@ describe('vx info — the rendered rows', () => {
       orphans: { artifacts: 1, bytes: 512 },
       runs24h: 0,
       hits24h: 0,
+      restored24h: 0,
       flakyTasks: [
         { taskId: 'a#test', project: 'a', task: 'test', keys: 2, passes: 4, failures: 3 },
         { taskId: 'b#e2e', project: 'b', task: 'e2e', keys: 1, passes: 3, failures: 1 },

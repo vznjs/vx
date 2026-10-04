@@ -1284,7 +1284,7 @@ all-miss run that follows is explained; the artifacts it orphaned are
 `vx cache prune`'s to reap.
 
 ```sql
--- src/cache/schema.ts (SCHEMA_VERSION = 'v30', in cache.ts)
+-- src/cache/schema.ts (SCHEMA_VERSION = 'v31', in cache.ts)
 
 CREATE TABLE schema_meta (
   key   TEXT PRIMARY KEY,  -- 'version', 'cache_version', 'orphans_swept_at', 'file_hashes_swept_at', 'value_salt'
@@ -1346,7 +1346,8 @@ CREATE TABLE runs (
   blocked_by          TEXT,             -- a skip's root blocker (a task id)
   timed_out           INTEGER,          -- 1 when vx's own timeout killed it
   sandbox_violations  INTEGER,          -- the sandbox's violation count
-  not_ready           TEXT              -- 'timeout' | 'exited' | 'spawn' (persistent task)
+  not_ready           TEXT,             -- 'timeout' | 'exited' | 'spawn' (persistent task)
+  restored            INTEGER           -- v31, on a hit: 1 = outputs restored, 0 = up to date
 );
 
 -- Two indexes, both append-only under a run's inserts: every row of a run
@@ -1468,6 +1469,9 @@ CREATE TABLE invocations (
   hit_count         INTEGER NOT NULL,         -- cache-hit + cache-hit-remote
   hit_local_count   INTEGER NOT NULL,         -- cache-hit
   hit_remote_count  INTEGER NOT NULL,         -- cache-hit-remote
+  up_to_date_count       INTEGER NOT NULL DEFAULT 0, -- v31: hits that restored nothing
+  restored_local_count   INTEGER NOT NULL DEFAULT 0, -- v31: hits that restored, local layer
+  restored_remote_count  INTEGER NOT NULL DEFAULT 0, -- v31: hits that restored, remote layer
   exit_ok           INTEGER NOT NULL,         -- 1 if the run's `ok`
   commit_sha        TEXT,                     -- nullable: not a git repo / probe failed
   branch            TEXT,

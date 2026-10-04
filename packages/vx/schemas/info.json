@@ -24,6 +24,7 @@
     "orphans",
     "runs24h",
     "hits24h",
+    "restored24h",
     "flakyTasks",
     "lockfile",
     "sandbox"
@@ -97,6 +98,10 @@
     },
     "runs24h": { "type": "integer" },
     "hits24h": { "type": "integer" },
+    "restored24h": {
+      "type": "integer",
+      "description": "of hits24h, the hits that restored outputs; the rest were up to date"
+    },
     "flakyTasks": {
       "type": "array",
       "items": {

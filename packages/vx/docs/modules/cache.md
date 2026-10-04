@@ -213,6 +213,10 @@ export interface InvocationRecord {
   hitCount: number
   hitLocalCount: number
   hitRemoteCount: number
+  // v31: the hits by what they did to the disk; they sum to hitCount
+  upToDateCount: number
+  restoredLocalCount: number
+  restoredRemoteCount: number
   exitOk: boolean
   commitSha: string | null
   branch: string | null
@@ -269,6 +273,7 @@ export interface RunRecord {
   wallclockStartNs?: bigint // hrtime span relative to run t=0
   wallclockEndNs?: bigint
   cacheHit?: boolean // convenience for flamegraph color
+  restored?: boolean // v31, on a hit: outputs restored (true) or already up to date (false)
   attempts?: number // >1 when the task retried (the within-run flaky signal)
   cached?: boolean // the task declared `cache`
   // v27: why it failed or was skipped, as the run's footer said it
@@ -283,6 +288,7 @@ export interface CacheStats {
   totalBytes: number
   runCountLast24h: number
   hitCountLast24h: number
+  restoredCountLast24h: number // of those hits, the ones that restored outputs
 }
 
 // The container and the index, versioned apart. CACHE_VERSION gates
@@ -295,7 +301,7 @@ export const CACHE_VERSION = 'vx-cache-v39' // key-fold.ts
 // identity a file has (A-55); absentOr maps ENOENT/ENOTDIR to it.
 export const ABSENT_INPUT = 'absent' // key-fold.ts
 export function absentOr(err: unknown): string
-export const SCHEMA_VERSION = 'v30'
+export const SCHEMA_VERSION = 'v31'
 export function noteSchemaReset(cache: Cache, warn: (message: string) => void): void
 
 // The two WHERE fragments every history query shares, so "a run that
@@ -508,6 +514,7 @@ interface CacheStats {
   totalBytes: number
   runCountLast24h: number
   hitCountLast24h: number
+  restoredCountLast24h: number // of those hits, the ones that restored outputs
 }
 ```
 
@@ -541,7 +548,7 @@ Outputs` additionally refuses when the archive cannot produce an output
 ## `CACHE_VERSION` / `SCHEMA_VERSION`
 
 `CACHE_VERSION` is currently `'vx-cache-v39'`; `SCHEMA_VERSION` is
-`'v30'`. Bump `CACHE_VERSION` when:
+`'v31'`. Bump `CACHE_VERSION` when:
 
 - A new field is added to the cache KEY derivation (folded inside
   `key()`).

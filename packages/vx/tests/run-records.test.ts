@@ -133,6 +133,10 @@ describe('assembleRunRecords', () => {
       hitCount: 3,
       hitLocalCount: 1,
       hitRemoteCount: 2,
+      // b#build's hit restored nothing; a#build's and c#build's wrote outputs.
+      upToDateCount: 1,
+      restoredLocalCount: 1,
+      restoredRemoteCount: 1,
       exitOk: false,
       commitSha: 'abc123',
       branch: 'main',

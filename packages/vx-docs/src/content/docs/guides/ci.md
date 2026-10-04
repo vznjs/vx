@@ -102,7 +102,7 @@ A test renders this sample:
 
 > ## ❌ vx run
 >
-> **5** tasks · **2** executed · **2** cache hits (1 remote) · **1** failed · 21.4s
+> **5** tasks · **2** executed · **2** cache hits (1 up-to-date, 1 restored, 1 from remote) · **1** failed · 21.4s
 >
 > ### Failures
 >
@@ -112,11 +112,11 @@ A test renders this sample:
 > | --- | --- | --- |
 > | @acme/web#build | ❌ failed | 3.1s |
 > | @acme/web#test | ✅ ran | 4.2s |
-> | @acme/api#build | ☁️ remote cache | 0ms |
-> | @acme/ui#build | ⚡ cache | 0ms |
+> | @acme/api#build | ☁️ restored remote | 0ms |
+> | @acme/ui#build | ✔️ up-to-date | 0ms |
 > | @acme/ui#lint | ⏭️ skipped | 0ms |
 >
-> <sub>vx 0.0.21 · `vx run ci --all` · 3/5 passed · 2 restored</sub>
+> <sub>vx 0.0.21 · `vx run ci --all` · 3/5 passed · 1 up-to-date · 1 restored</sub>
 
 A failure on inputs that passed before is named under the run's footer:
 

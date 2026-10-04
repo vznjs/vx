@@ -1036,7 +1036,7 @@ totals plus a table, one row per task:
 ```markdown
 ## vx run — passed
 
-**3 tasks** · 3 success · 0 failed · 2 cached · 1.23s total · 2.65s saved
+**3 tasks** · 3 success · 0 failed · 2 cached (1 up-to-date, 1 restored) · 1.23s total · 2.65s saved
 
 | Task      | Status  | Cache      | Duration |
 | --------- | ------- | ---------- | -------- |
@@ -2185,7 +2185,7 @@ plugins:          2 — @vzn/vx-reapi (executor, cache); @vzn/vx-otel (telemetry
 workers:          2 — cgroup CPU quota 2 of 8 cores
 memory:           13 GB usable — cgroup limit; the machine has 16 GB
 cache dir:        /work/repo/.vx/cache
-cache versions:   keys vx-cache-v39 · index schema v30
+cache versions:   keys vx-cache-v39 · index schema v31
 cache entries:    42 (1.3 GB)
 orphans:          3 artifacts (12 MB) the index does not know — `vx cache prune` reaps them
 task runs (24h):  7 (5 cache hits)
@@ -2260,7 +2260,8 @@ cpuQuota }`, the source one of `workspace` / `cgroup` / `cores`,
 cgroupLimitBytes }`, the limit null when none binds), `cacheDir`, `cacheVersion`,
   `schemaVersion`, `cacheEntries`, `cacheBytes`, `orphans`
   (`{ artifacts, bytes }`, always present), `runs24h`, `hits24h` (task
-  runs, as the row), `flakyTasks` (`[{ taskId, project, task, keys, passes, failures }]`,
+  runs, as the row), `restored24h` (of those hits, the ones that restored
+  outputs; the rest found them up to date), `flakyTasks` (`[{ taskId, project, task, keys, passes, failures }]`,
   empty when none), `lockfile`, `sandbox` (`{ available, reason,
 declared, untraced }`, `declared` the count of tasks with `exec.sandbox`,
   `untraced` the reason denied reads go unreported or null). The

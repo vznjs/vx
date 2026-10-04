@@ -104,7 +104,13 @@ export function renderInfo(f: InfoFacts): string {
       : []),
     // Task runs, not invocations (which `vx last` calls runs): the count
     // the hits are a share of.
-    ['task runs (24h)', `${f.runs24h} (${f.hits24h} cache hits)`],
+    [
+      'task runs (24h)',
+      `${f.runs24h} (${f.hits24h} cache hits` +
+        (f.hits24h > 0
+          ? `: ${f.hits24h - f.restored24h} up-to-date, ${f.restored24h} restored)`
+          : ')'),
+    ],
     ['flaky tasks', describeFlakyTasks(f.flakyTasks)],
     ['sandbox', describeSandbox(f.sandbox)],
     ['vx-lock.json', f.lockfile ? 'yes' : 'no'],

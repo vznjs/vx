@@ -33,6 +33,9 @@
         "hitCount",
         "hitLocalCount",
         "hitRemoteCount",
+        "upToDateCount",
+        "restoredLocalCount",
+        "restoredRemoteCount",
         "exitOk",
         "commitSha",
         "branch",
@@ -60,6 +63,18 @@
         "hitCount": { "type": "integer" },
         "hitLocalCount": { "type": "integer" },
         "hitRemoteCount": { "type": "integer" },
+        "upToDateCount": {
+          "type": "integer",
+          "description": "hits that restored nothing: the disk already matched"
+        },
+        "restoredLocalCount": {
+          "type": "integer",
+          "description": "hits that restored outputs from the local cache"
+        },
+        "restoredRemoteCount": {
+          "type": "integer",
+          "description": "hits that restored outputs from the remote cache"
+        },
         "exitOk": { "type": "boolean" },
         "commitSha": { "type": ["string", "null"] },
         "branch": { "type": ["string", "null"] },
@@ -86,6 +101,7 @@
         "startedAt",
         "endedAt",
         "cacheHit",
+        "restored",
         "cached",
         "hash",
         "cpuMs",
@@ -107,6 +123,10 @@
         "startedAt": { "type": "integer", "description": "epoch ms" },
         "endedAt": { "type": "integer", "description": "epoch ms" },
         "cacheHit": { "type": ["boolean", "null"] },
+        "restored": {
+          "type": ["boolean", "null"],
+          "description": "on a hit: true when outputs were restored, false when up-to-date"
+        },
         "cached": { "type": ["boolean", "null"] },
         "hash": { "type": "string" },
         "cpuMs": { "type": ["number", "null"] },

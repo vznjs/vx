@@ -101,12 +101,16 @@ const VX_ATTR = {
   runHitCount: 'vx.run.hit_count',
   runHitLocalCount: 'vx.run.hit_local_count',
   runHitRemoteCount: 'vx.run.hit_remote_count',
+  runUpToDateCount: 'vx.run.up_to_date_count',
+  runRestoredLocalCount: 'vx.run.restored_local_count',
+  runRestoredRemoteCount: 'vx.run.restored_remote_count',
   runExitOk: 'vx.run.exit_ok',
   // task
   taskProject: 'vx.task.project',
   taskRunStartedAt: 'vx.task.run_started_at',
   taskTask: 'vx.task.task',
   cacheSource: 'vx.cache.source',
+  cacheRestored: 'vx.cache.restored',
   taskExitCode: 'vx.task.exit_code',
   taskStatus: 'vx.task.status',
   taskDurationMs: 'vx.task.duration_ms',
@@ -217,6 +221,9 @@ export function runSpanAttributes(run: RunContextRecord, summary?: RunSummaryRec
       intAttr(VX_ATTR.runHitCount, summary.hitCount),
       intAttr(VX_ATTR.runHitLocalCount, summary.hitLocalCount),
       intAttr(VX_ATTR.runHitRemoteCount, summary.hitRemoteCount),
+      intAttr(VX_ATTR.runUpToDateCount, summary.upToDateCount),
+      intAttr(VX_ATTR.runRestoredLocalCount, summary.restoredLocalCount),
+      intAttr(VX_ATTR.runRestoredRemoteCount, summary.restoredRemoteCount),
       boolAttr(VX_ATTR.runExitOk, summary.exitOk),
       strAttr(SEMCONV.pipelineResult, pipelineResult(summary)),
     )
@@ -302,6 +309,7 @@ export function taskSpanAttributes(t: TaskTelemetry, run: TaskSpanRunContext): K
     intAttr(VX_ATTR.taskDurationMs, t.durationMs),
   ]
   if (t.hash !== undefined) attrs.push(strAttr(VX_ATTR.taskHash, t.hash))
+  if (t.restored !== undefined) attrs.push(boolAttr(VX_ATTR.cacheRestored, t.restored))
   if (t.cpuMs !== undefined) attrs.push(intAttr(VX_ATTR.cpuMs, t.cpuMs))
   if (t.where !== undefined) attrs.push(strAttr(VX_ATTR.taskWhere, t.where))
   // A skipped task's root blocker (a task id, as the record carries it).
@@ -392,6 +400,13 @@ export function buildMetricsRequest(
                 point(summary.hitLocalCount, [strAttr('source', 'local')]),
                 point(summary.hitRemoteCount, [strAttr('source', 'remote')]),
               ]),
+              // What the hits did to the disk: restored outputs (by the
+              // layer they came from) or found them already in place.
+              sum('vx.tasks.cache_restored', [
+                point(summary.restoredLocalCount, [strAttr('source', 'local')]),
+                point(summary.restoredRemoteCount, [strAttr('source', 'remote')]),
+              ]),
+              sum('vx.tasks.cache_up_to_date', [point(summary.upToDateCount)]),
               gauge('vx.run.duration_ms', summary.totalDurationMs),
             ],
           },

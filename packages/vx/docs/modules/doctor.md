@@ -21,7 +21,7 @@ the rendered row only), `git`, `gitStatusCache`, `workspaceRoot`,
 `workers` (`{ count, source, cores, cpuQuota }`), `memory`
 (`{ usableBytes, totalBytes, cgroupLimitBytes }`), `cacheDir`,
 `cacheVersion`, `schemaVersion`, `cacheEntries`, `cacheBytes`,
-`orphans`, `runs24h`, `hits24h`, `flakyTasks`, `lockfile`, `sandbox`
+`orphans`, `runs24h`, `hits24h`, `restored24h` (of those hits, the ones that restored outputs), `flakyTasks`, `lockfile`, `sandbox`
 (`{ available, reason, declared, untraced }`: whether this host can run
 an `exec.sandbox`, the probe's reason, how many loaded tasks declare
 one, and why an available Linux sandbox cannot report the reads it

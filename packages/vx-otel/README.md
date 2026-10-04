@@ -99,6 +99,7 @@ otel({
   `cicd.pipeline.task.run.result` (the convention's enum: `success` for a
   run or a hit, `failure`, `timeout`, `skip`, `cancellation`), vx's own
   status as `vx.task.status`, `vx.cache.source` (miss/local/remote, or none for a task that never ran),
+  on a hit `vx.cache.restored` (`true` when it restored outputs, `false` when they were already up to date),
   `vx.task.hash`, duration, CPU ms, peak RSS, and on a skipped task its root
   blocker (`vx.task.blocked_by`), on a timed-out one `vx.task.timed_out`, on
   a sandboxed one its violation count (`vx.task.sandbox_violations`), on a
@@ -107,7 +108,11 @@ otel({
   `ERROR`.
 
 **Metrics per run**: `vx.tasks.total`, `vx.tasks.failed`,
-`vx.tasks.cache_hits{source=local|remote}`, and the `vx.run.duration_ms` gauge.
+`vx.tasks.cache_hits{source=local|remote}`, what those hits did to the disk as
+`vx.tasks.cache_restored{source=local|remote}` and `vx.tasks.cache_up_to_date`,
+and the `vx.run.duration_ms` gauge. The `vx.run` span carries the same counts
+(`vx.run.hit_count`, `vx.run.up_to_date_count`, `vx.run.restored_local_count`,
+`vx.run.restored_remote_count`).
 The counts are DELTA sums over the run's own interval (start to end), so a
 backend adds runs rather than reading each as the series' new total.
 

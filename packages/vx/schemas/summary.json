@@ -76,6 +76,10 @@
         "exitCode": { "type": "integer" },
         "durationMs": { "type": "number" },
         "hash": { "type": ["string", "null"] },
+        "restored": {
+          "type": "boolean",
+          "description": "on a hit only: true when outputs were restored, false when they were already up to date"
+        },
         "noCache": {
           "const": true,
           "description": "the task declares no cache block: it could never hit"

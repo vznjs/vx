@@ -1,6 +1,6 @@
 {
   "index": {
-    "version": "v30",
+    "version": "v31",
     "layout": [
       "CREATE INDEX invocations_branch  ON invocations(branch)",
       "",
@@ -92,6 +92,9 @@
       "hit_count         INTEGER NOT NULL,",
       "hit_local_count   INTEGER NOT NULL,",
       "hit_remote_count  INTEGER NOT NULL,",
+      "up_to_date_count       INTEGER NOT NULL DEFAULT 0,",
+      "restored_local_count   INTEGER NOT NULL DEFAULT 0,",
+      "restored_remote_count  INTEGER NOT NULL DEFAULT 0,",
       "exit_ok           INTEGER NOT NULL,",
       "commit_sha        TEXT,",
       "branch            TEXT,",
@@ -147,7 +150,8 @@
       "blocked_by          TEXT,",
       "timed_out           INTEGER,",
       "sandbox_violations  INTEGER,",
-      "not_ready           TEXT",
+      "not_ready           TEXT,",
+      "restored            INTEGER",
       ")",
       "",
       "CREATE TABLE schema_meta (",

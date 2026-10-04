@@ -93,7 +93,10 @@ export function createTables(db: Database): void {
       blocked_by          TEXT,
       timed_out           INTEGER,
       sandbox_violations  INTEGER,
-      not_ready           TEXT
+      not_ready           TEXT,
+      -- v31: on a hit, 1 when outputs were restored, 0 when the disk
+      -- already matched (up-to-date); NULL on every other status.
+      restored            INTEGER
     );
     -- Two whole-table indexes only, and both APPEND: every row of a run carries the
     -- same run_id and a started_at newer than everything before it, so
@@ -214,6 +217,10 @@ export function createTables(db: Database): void {
       hit_count         INTEGER NOT NULL,
       hit_local_count   INTEGER NOT NULL,
       hit_remote_count  INTEGER NOT NULL,
+      -- v31: the hits by what they did to the disk; they sum to hit_count.
+      up_to_date_count       INTEGER NOT NULL DEFAULT 0,
+      restored_local_count   INTEGER NOT NULL DEFAULT 0,
+      restored_remote_count  INTEGER NOT NULL DEFAULT 0,
       exit_ok           INTEGER NOT NULL,
       commit_sha        TEXT,
       branch            TEXT,

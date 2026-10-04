@@ -26,6 +26,17 @@ metrics.resourceMetrics[].scopeMetrics[].metrics[vx.tasks.cache_hits].sum.dataPo
 metrics.resourceMetrics[].scopeMetrics[].metrics[vx.tasks.cache_hits].sum.dataPoints[].startTimeUnixNano: string
 metrics.resourceMetrics[].scopeMetrics[].metrics[vx.tasks.cache_hits].sum.dataPoints[].timeUnixNano: string
 metrics.resourceMetrics[].scopeMetrics[].metrics[vx.tasks.cache_hits].sum.isMonotonic = true
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.tasks.cache_restored].sum.aggregationTemporality = 1
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.tasks.cache_restored].sum.dataPoints[].asInt: string
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.tasks.cache_restored].sum.dataPoints[].attributes.source: stringValue
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.tasks.cache_restored].sum.dataPoints[].startTimeUnixNano: string
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.tasks.cache_restored].sum.dataPoints[].timeUnixNano: string
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.tasks.cache_restored].sum.isMonotonic = true
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.tasks.cache_up_to_date].sum.aggregationTemporality = 1
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.tasks.cache_up_to_date].sum.dataPoints[].asInt: string
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.tasks.cache_up_to_date].sum.dataPoints[].startTimeUnixNano: string
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.tasks.cache_up_to_date].sum.dataPoints[].timeUnixNano: string
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.tasks.cache_up_to_date].sum.isMonotonic = true
 metrics.resourceMetrics[].scopeMetrics[].metrics[vx.tasks.failed].sum.aggregationTemporality = 1
 metrics.resourceMetrics[].scopeMetrics[].metrics[vx.tasks.failed].sum.dataPoints[].asInt: string
 metrics.resourceMetrics[].scopeMetrics[].metrics[vx.tasks.failed].sum.dataPoints[].startTimeUnixNano: string
@@ -66,8 +77,11 @@ traces.resourceSpans[].scopeSpans[].spans[vx.run].attributes.vx.run.failed_count
 traces.resourceSpans[].scopeSpans[].spans[vx.run].attributes.vx.run.hit_count: intValue
 traces.resourceSpans[].scopeSpans[].spans[vx.run].attributes.vx.run.hit_local_count: intValue
 traces.resourceSpans[].scopeSpans[].spans[vx.run].attributes.vx.run.hit_remote_count: intValue
+traces.resourceSpans[].scopeSpans[].spans[vx.run].attributes.vx.run.restored_local_count: intValue
+traces.resourceSpans[].scopeSpans[].spans[vx.run].attributes.vx.run.restored_remote_count: intValue
 traces.resourceSpans[].scopeSpans[].spans[vx.run].attributes.vx.run.started_at: intValue
 traces.resourceSpans[].scopeSpans[].spans[vx.run].attributes.vx.run.task_count: intValue
+traces.resourceSpans[].scopeSpans[].spans[vx.run].attributes.vx.run.up_to_date_count: intValue
 traces.resourceSpans[].scopeSpans[].spans[vx.run].attributes.vx.tag.env: stringValue
 traces.resourceSpans[].scopeSpans[].spans[vx.run].attributes.vx.telemetry.schema: intValue
 traces.resourceSpans[].scopeSpans[].spans[vx.run].attributes.vx.version: stringValue
@@ -82,6 +96,7 @@ traces.resourceSpans[].scopeSpans[].spans[vx.run].traceId: string
 traces.resourceSpans[].scopeSpans[].spans[vx.task].attributes.cicd.pipeline.run.id: stringValue
 traces.resourceSpans[].scopeSpans[].spans[vx.task].attributes.cicd.pipeline.task.name: stringValue
 traces.resourceSpans[].scopeSpans[].spans[vx.task].attributes.cicd.pipeline.task.run.result: stringValue
+traces.resourceSpans[].scopeSpans[].spans[vx.task].attributes.vx.cache.restored: boolValue
 traces.resourceSpans[].scopeSpans[].spans[vx.task].attributes.vx.cache.source: stringValue
 traces.resourceSpans[].scopeSpans[].spans[vx.task].attributes.vx.cpu_ms: intValue
 traces.resourceSpans[].scopeSpans[].spans[vx.task].attributes.vx.peak_rss_bytes: intValue

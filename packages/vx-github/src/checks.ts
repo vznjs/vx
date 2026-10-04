@@ -96,7 +96,10 @@ export function buildCheckRunPayload(args: {
     completed_at: new Date(args.summary.endedAt).toISOString(),
     output: {
       title: ok
-        ? `${args.summary.taskCount} task${args.summary.taskCount === 1 ? '' : 's'} · ${args.summary.hitCount} cached`
+        ? `${args.summary.taskCount} task${args.summary.taskCount === 1 ? '' : 's'} · ${args.summary.hitCount} cached` +
+          (args.summary.hitCount > 0
+            ? ` (${args.summary.upToDateCount} up-to-date, ${args.summary.restoredLocalCount + args.summary.restoredRemoteCount} restored)`
+            : '')
         : cancelled
           ? `cancelled · ${args.summary.abortedCount} aborted`
           : `${args.summary.failedCount} failed`,

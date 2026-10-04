@@ -762,6 +762,7 @@ export interface InfoFacts {
   orphans: { artifacts: number; bytes: number }
   runs24h: number
   hits24h: number
+  restored24h: number
   flakyTasks: FlakyTask[]
   lockfile: boolean
   sandbox: { available: boolean; reason: string; declared: number; untraced: string | null }
@@ -793,6 +794,9 @@ export interface InvocationRecord {
   hitCount: number
   hitLocalCount: number
   hitRemoteCount: number
+  upToDateCount: number
+  restoredLocalCount: number
+  restoredRemoteCount: number
   exitOk: boolean
   commitSha: string | null
   branch: string | null
@@ -1815,6 +1819,7 @@ export interface RunRecord {
   wallclockStartNs?: bigint
   wallclockEndNs?: bigint
   cacheHit?: boolean
+  restored?: boolean
   attempts?: number
   cached?: boolean
   blockedBy?: string
@@ -1875,6 +1880,9 @@ export interface RunSummaryRecord {
   hitCount: number
   hitLocalCount: number
   hitRemoteCount: number
+  upToDateCount: number
+  restoredLocalCount: number
+  restoredRemoteCount: number
   exitOk: boolean
   tasks: readonly TaskTelemetry[]
 }
@@ -2201,6 +2209,7 @@ export interface TaskTelemetry {
   timedOut?: true
   sandboxViolations?: number
   notReady?: 'timeout' | 'exited' | 'spawn'
+  restored?: boolean
   wallclockStartNs?: string
   wallclockEndNs?: string
 }

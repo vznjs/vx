@@ -268,6 +268,28 @@ describe('OTLP builders', () => {
     expect(taskStatusCode({ ...t, status: 'cache-hit' })).toBe(0)
   })
 
+  it('a hit says on its span whether it restored outputs; a miss says nothing', () => {
+    const hit = (restored: boolean): TaskTelemetry => ({
+      taskId: 'a#build',
+      project: 'a',
+      task: 'build',
+      status: 'cache-hit',
+      cacheSource: 'local',
+      exitCode: 0,
+      durationMs: 3,
+      restored,
+    })
+    const restoredOf = (t: TaskTelemetry): unknown =>
+      attrMap(taskSpanAttributes(t, TASK_RUN))['vx.cache.restored']
+    const miss: TaskTelemetry = { ...hit(true), status: 'success', cacheSource: 'miss' }
+    delete miss.restored
+    expect([restoredOf(hit(true)), restoredOf(hit(false)), restoredOf(miss)]).toEqual([
+      true,
+      false,
+      undefined,
+    ])
+  })
+
   it('surfaces retry attempts on the task span', () => {
     const t: TaskTelemetry = {
       taskId: 'a#flaky',
@@ -311,6 +333,9 @@ describe('OTLP builders', () => {
       hitCount: 3,
       hitLocalCount: 2,
       hitRemoteCount: 1,
+      upToDateCount: 1,
+      restoredLocalCount: 1,
+      restoredRemoteCount: 1,
       exitOk: false,
       tasks: [],
     }
@@ -360,6 +385,9 @@ function summaryFor(run: RunContextRecord, tasks: TaskTelemetry[]): RunSummaryRe
     hitCount: 0,
     hitLocalCount: 0,
     hitRemoteCount: 0,
+    upToDateCount: 0,
+    restoredLocalCount: 0,
+    restoredRemoteCount: 0,
     exitOk: true,
     tasks,
   }
@@ -612,6 +640,7 @@ const FULL_TASK: Required<TaskTelemetry> = {
   timedOut: true,
   sandboxViolations: 2,
   notReady: 'timeout',
+  restored: true,
   // Past Number.MAX_SAFE_INTEGER — routing this through a JS number rounds it.
   wallclockStartNs: '9007199254740993',
   wallclockEndNs: '9007199254742000',
@@ -662,6 +691,7 @@ describe('OTLP losslessness', () => {
       'outputs',
       'peakRssBytes',
       'project',
+      'restored',
       'sandboxViolations',
       'status',
       'task',
@@ -711,6 +741,9 @@ describe('OTLP losslessness', () => {
       hitCount: 3,
       hitLocalCount: 2,
       hitRemoteCount: 1,
+      upToDateCount: 1,
+      restoredLocalCount: 1,
+      restoredRemoteCount: 1,
       exitOk: false,
       tasks: [],
     }
@@ -785,6 +818,7 @@ describe('OTLP losslessness', () => {
     expect(a['vx.task.timed_out']).toBe(true)
     expect(a['vx.task.sandbox_violations']).toBe('2')
     expect(a['vx.task.not_ready']).toBe('timeout')
+    expect(a['vx.cache.restored']).toBe(true)
   })
 
   it('makes a task span readable without its root span', () => {
@@ -1085,12 +1119,15 @@ describe('OTLP envelopes, exactly', () => {
       startedAt: 0,
       endedAt: 1000,
       totalDurationMs: 1234,
-      taskCount: 5,
+      taskCount: 8,
       failedCount: 1,
       abortedCount: 0,
-      hitCount: 3,
-      hitLocalCount: 2,
-      hitRemoteCount: 1,
+      hitCount: 6,
+      hitLocalCount: 4,
+      hitRemoteCount: 2,
+      upToDateCount: 3,
+      restoredLocalCount: 2,
+      restoredRemoteCount: 1,
       exitOk: false,
       tasks: [],
     }
@@ -1114,12 +1151,18 @@ describe('OTLP envelopes, exactly', () => {
             {
               scope: { name: 'vx', version: '1.2.3' },
               metrics: [
-                sum('vx.tasks.total', [point(5)]),
+                sum('vx.tasks.total', [point(8)]),
                 sum('vx.tasks.failed', [point(1)]),
                 sum('vx.tasks.cache_hits', [
+                  point(4, [{ key: 'source', value: { stringValue: 'local' } }]),
+                  point(2, [{ key: 'source', value: { stringValue: 'remote' } }]),
+                ]),
+                // What the hits did to the disk: restored, by layer, or up to date.
+                sum('vx.tasks.cache_restored', [
                   point(2, [{ key: 'source', value: { stringValue: 'local' } }]),
                   point(1, [{ key: 'source', value: { stringValue: 'remote' } }]),
                 ]),
+                sum('vx.tasks.cache_up_to_date', [point(3)]),
                 {
                   name: 'vx.run.duration_ms',
                   gauge: { dataPoints: [{ asDouble: 1234, timeUnixNano: '9', attributes: [] }] },

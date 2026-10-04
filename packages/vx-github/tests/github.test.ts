@@ -67,6 +67,11 @@ const summary = (
   hitCount: tasks.filter((t) => t.status.startsWith('cache-hit')).length,
   hitLocalCount: tasks.filter((t) => t.status === 'cache-hit').length,
   hitRemoteCount: tasks.filter((t) => t.status === 'cache-hit-remote').length,
+  upToDateCount: tasks.filter((t) => t.status.startsWith('cache-hit') && t.restored !== true)
+    .length,
+  restoredLocalCount: tasks.filter((t) => t.status === 'cache-hit' && t.restored === true).length,
+  restoredRemoteCount: tasks.filter((t) => t.status === 'cache-hit-remote' && t.restored === true)
+    .length,
   exitOk: tasks.every((t) => t.status !== 'failed'),
   tasks,
   ...over,
@@ -75,12 +80,20 @@ const summary = (
 describe('renderJobSummary', () => {
   it('renders verdict, stats, and one row per task', () => {
     const md = renderJobSummary(
-      summary([task({}), task({ taskId: 'a#test', task: 'test', status: 'cache-hit' })]),
+      summary([
+        task({}),
+        task({ taskId: 'a#test', task: 'test', status: 'cache-hit', restored: true }),
+        task({ taskId: 'a#lint', task: 'lint', status: 'cache-hit', restored: false }),
+        task({ taskId: 'a#e2e', task: 'e2e', status: 'cache-hit-remote', restored: true }),
+      ]),
     )
     expect(md).toContain('## ✅ vx run')
-    expect(md).toContain('**2** tasks')
+    expect(md).toContain('**4** tasks')
     expect(md).toContain('| a#build | ✅ ran | 1.2s |')
-    expect(md).toContain('| a#test | ⚡ cache |')
+    // A hit reads by what it did to the disk, as vx's own summary says it.
+    expect(md).toContain('| a#test | ⚡ restored |')
+    expect(md).toContain('| a#lint | ✔️ up-to-date |')
+    expect(md).toContain('| a#e2e | ☁️ restored remote |')
     expect(md).not.toContain('### Failures')
     expect(md).not.toContain('| Verify |')
   })
@@ -652,7 +665,7 @@ describe('every output the vx-github sweep found unheld', () => {
     // (item 806).
     const { clampJobSummary } = await import('../src/summary.js')
     const many = Array.from({ length: 20_000 }, (_, i) =>
-      task({ taskId: `żółć-żółć-żółć-${i}#build`, status: 'cache-hit' }),
+      task({ taskId: `żółć-żółć-żółć-${i}#build`, status: 'cache-hit', restored: true }),
     )
     const page = renderJobSummary(summary(many))
     expect({ units: page.length < MAX_JOB_SUMMARY_BYTES }).toEqual({ units: true })
@@ -713,12 +726,12 @@ describe('every output the vx-github sweep found unheld', () => {
       summary([
         task({ taskId: 'a#1' }),
         task({ taskId: 'a#2', status: 'failed', exitCode: 1 }),
-        task({ taskId: 'a#3', status: 'cache-hit' }),
-        task({ taskId: 'a#4', status: 'cache-hit-remote' }),
+        task({ taskId: 'a#3', status: 'cache-hit', restored: false }),
+        task({ taskId: 'a#4', status: 'cache-hit-remote', restored: true }),
       ]),
     )
     expect(four.split('\n')[2]).toBe(
-      '**4** tasks · **2** executed · **2** cache hits (1 remote) · **1** failed · 4.3s',
+      '**4** tasks · **2** executed · **2** cache hits (1 up-to-date, 1 restored, 1 from remote) · **1** failed · 4.3s',
     )
     const one = renderJobSummary(summary([task({})]))
     expect(one.split('\n')[2]).toBe('**1** task · **1** executed · **0** cache hits · 4.3s')
@@ -736,7 +749,8 @@ describe('every output the vx-github sweep found unheld', () => {
       summary(
         [
           task({}),
-          task({ taskId: 'a#test', status: 'cache-hit' }),
+          task({ taskId: 'a#test', status: 'cache-hit', restored: true }),
+          task({ taskId: 'a#lint', status: 'cache-hit', restored: false }),
           task({ taskId: 'x#y', status: 'failed', exitCode: 1 }),
           task({ taskId: 'p|q#t', status: 'skipped', blockedBy: 'x#y' }),
         ],
@@ -745,7 +759,8 @@ describe('every output the vx-github sweep found unheld', () => {
     )
     // Outside a table a `|` needs no escape, and `\\|` rendered literally
     // inside the code span (item 1058).
-    expect(md).toContain('· `vx run a|b` · 2/4 passed · 1 restored</sub>')
+    // `restored` counts only the hit that wrote outputs; it counted both.
+    expect(md).toContain('· `vx run a|b` · 3/5 passed · 1 up-to-date · 1 restored</sub>')
     expect(md).toContain('· blocked p\\|q#t')
   })
 
@@ -778,12 +793,14 @@ describe('every output the vx-github sweep found unheld', () => {
     expect(output.title).toBe('1 task · 0 cached')
     expect(output.summary.length).toBeLessThanOrEqual(65_535)
     const two = buildCheckRunPayload({
-      summary: summary([task({}), task({ taskId: 'b#x', status: 'cache-hit' })]),
+      summary: summary([task({}), task({ taskId: 'b#x', status: 'cache-hit', restored: true })]),
       markdown: 'm',
       name: 'vx',
       sha: 'a',
     })
-    expect((two['output'] as { title: string }).title).toBe('2 tasks · 1 cached')
+    expect((two['output'] as { title: string }).title).toBe(
+      '2 tasks · 1 cached (0 up-to-date, 1 restored)',
+    )
   })
 
   it('the POST sends exactly the API headers; a body is cut to 200 chars; an unreadable one still warns', async () => {

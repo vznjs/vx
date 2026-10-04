@@ -13,11 +13,11 @@ const INSERT_RUNS = `
         started_at, ended_at,
         run_id, cpu_ms, peak_rss_bytes, wallclock_start_ns, wallclock_end_ns,
         cache_hit, attempts, cached,
-        blocked_by, timed_out, sandbox_violations, not_ready
+        blocked_by, timed_out, sandbox_violations, not_ready, restored
       )
       VALUES `
-/** One `runs` row's placeholders: the 21 columns `bindRun` fills. */
-const RUN_TUPLE = `(${Array(21).fill('?').join(', ')})`
+/** One `runs` row's placeholders: the 22 columns `bindRun` fills. */
+const RUN_TUPLE = `(${Array(22).fill('?').join(', ')})`
 
 /** An INSERT of `n` `runs` rows. */
 function insertRunsSql(n: number): string {
@@ -25,7 +25,7 @@ function insertRunsSql(n: number): string {
 }
 
 /**
- * Rows per INSERT: 40 × 21 variables stays under 999, the oldest default
+ * Rows per INSERT: 40 × 22 variables stays under 999, the oldest default
  * ceiling. A statement per row was 8.7 ms of 1,000 rows, 40 at a time 6.4
  * (2026-10-03).
  */
@@ -48,11 +48,12 @@ export class RunHistory {
         run_id, command, requested_tasks, cache_policy, concurrency, flow,
         started_at, ended_at, total_duration_ms,
         task_count, failed_count, hit_count, hit_local_count, hit_remote_count,
+        up_to_date_count, restored_local_count, restored_remote_count,
         exit_ok,
         commit_sha, branch, dirty, ci, ci_provider,
         host, os, arch, vx_version, tags
       )
-      VALUES (?, ?, ?, ?, ?, ?,  ?, ?, ?,  ?, ?, ?, ?, ?,  ?,  ?, ?, ?, ?, ?,  ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?,  ?, ?, ?,  ?, ?, ?, ?, ?,  ?, ?, ?,  ?,  ?, ?, ?, ?, ?,  ?, ?, ?, ?, ?)
       ON CONFLICT(run_id) DO NOTHING
     `,
     )
@@ -119,7 +120,7 @@ export class RunHistory {
 
 /**
  * Bind a RunRecord to the positional parameters expected by the
- * `insertRun` prepared statement (21 columns). Shared between the
+ * `insertRun` prepared statement (22 columns). Shared between the
  * single and batched record paths.
  */
 function bindRun(run: RunRecord, digestValue: (v: string) => string): SQLQueryBindings[] {
@@ -150,12 +151,13 @@ function bindRun(run: RunRecord, digestValue: (v: string) => string): SQLQueryBi
     run.timedOut === true ? 1 : null,
     run.sandboxViolations ?? null,
     run.notReady ?? null,
+    run.restored === undefined ? null : run.restored ? 1 : 0,
   ]
 }
 
 /**
  * Bind an InvocationRecord to the positional parameters of the
- * `insertInvocation` prepared statement (25 columns). Booleans map to
+ * `insertInvocation` prepared statement (28 columns). Booleans map to
  * 0/1; null-or-bool columns (`dirty`) keep null distinct from 0.
  */
 function bindInvocation(inv: InvocationRecord): SQLQueryBindings[] {
@@ -174,6 +176,9 @@ function bindInvocation(inv: InvocationRecord): SQLQueryBindings[] {
     inv.hitCount,
     inv.hitLocalCount,
     inv.hitRemoteCount,
+    inv.upToDateCount,
+    inv.restoredLocalCount,
+    inv.restoredRemoteCount,
     inv.exitOk ? 1 : 0,
     inv.commitSha,
     inv.branch,

@@ -231,7 +231,11 @@ export function noteSchemaReset(cache: Cache, warn: (message: string) => void): 
 //   v30: blob_verdicts — the blob-size check's verdict by a hash of the
 //        index file (A-60), so a warm run reads one row. The cache KEY is
 //        unchanged.
-export const SCHEMA_VERSION = 'v30'
+//   v31: runs.restored and invocations' up_to_date / restored_local /
+//        restored_remote counts — a hit that restored outputs apart from
+//        one that found them in place, for every reader after the run.
+//        The cache KEY is unchanged.
+export const SCHEMA_VERSION = 'v31'
 
 /** An entry row with its stdout, which lives apart (v29); none stored reads as ''. */
 const SELECT_ENTRY =
@@ -1744,16 +1748,17 @@ export class Cache implements CacheLayer {
     const since = Date.now() - 24 * 60 * 60 * 1000
     const runs = this.db
       .prepare(
-        `SELECT COUNT(*) AS total, COALESCE(SUM(CASE WHEN status IN ('cache-hit', 'cache-hit-remote') THEN 1 ELSE 0 END), 0) AS hits FROM runs WHERE started_at >= ? AND ${EXECUTED_RUNS_SQL}${
+        `SELECT COUNT(*) AS total, COALESCE(SUM(CASE WHEN status IN ('cache-hit', 'cache-hit-remote') THEN 1 ELSE 0 END), 0) AS hits, COALESCE(SUM(restored = 1), 0) AS restored FROM runs WHERE started_at >= ? AND ${EXECUTED_RUNS_SQL}${
           scoped ? ' AND project = ?' : ''
         }`,
       )
-      .get(since, ...scopeParams) as { total: number; hits: number }
+      .get(since, ...scopeParams) as { total: number; hits: number; restored: number }
     return {
       entryCount: aggregate.n,
       totalBytes: aggregate.bytes,
       runCountLast24h: runs.total,
       hitCountLast24h: runs.hits,
+      restoredCountLast24h: runs.restored,
     }
   }
 

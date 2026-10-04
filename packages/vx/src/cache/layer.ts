@@ -192,6 +192,11 @@ export interface RunRecord {
   wallclockStartNs?: bigint // hrtime span relative to run t=0
   wallclockEndNs?: bigint
   cacheHit?: boolean // convenience for flamegraph color; derivable from status
+  /**
+   * On a hit: whether outputs were written (`true`) or the disk already
+   * matched the entry (`false`, up-to-date). Absent on other statuses (v31).
+   */
+  restored?: boolean
   attempts?: number // >1 when the task retried; the direct within-run flaky signal
   /**
    * Whether the task declared a `cache` block. An uncached task executes
@@ -235,6 +240,10 @@ export interface InvocationRecord {
   hitCount: number
   hitLocalCount: number
   hitRemoteCount: number
+  /** Hits that restored nothing, and hits that restored outputs per layer (v31); they sum to `hitCount`. */
+  upToDateCount: number
+  restoredLocalCount: number
+  restoredRemoteCount: number
   exitOk: boolean
   commitSha: string | null
   branch: string | null
@@ -269,6 +278,8 @@ export interface CacheStats {
   totalBytes: number
   runCountLast24h: number
   hitCountLast24h: number
+  /** Of those hits, the ones that restored outputs; the rest found the disk up to date. */
+  restoredCountLast24h: number
 }
 
 export interface CacheStatsOptions {

@@ -46,7 +46,7 @@ const TOOLS: readonly ToolDef[] = [
   {
     name: 'getCacheStats',
     description:
-      'Aggregate cache statistics: entries, total bytes, and the last 24 hours of task runs and cache hits (task runs, not invocations; getRunHistory lists those).',
+      'Aggregate cache statistics: entries, total bytes, and the last 24 hours of task runs and cache hits, split into hits that found outputs up to date and hits that restored them (task runs, not invocations; getRunHistory lists those).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -107,7 +107,7 @@ const TOOLS: readonly ToolDef[] = [
       'The workspace doctor, the object `vx info --format json` prints: vx, bun, bunSupported, git, ' +
       'gitStatusCache, workspaceRoot, projects, tasks, configErrors, plugins (and the seams each fills), ' +
       'workers and memory (what a run will use, and where each comes from), cacheDir, cacheVersion, ' +
-      'schemaVersion, cacheEntries, cacheBytes, orphans, runs24h, hits24h, flakyTasks, lockfile, sandbox ' +
+      'schemaVersion, cacheEntries, cacheBytes, orphans, runs24h, hits24h, restored24h, flakyTasks, lockfile, sandbox ' +
       '— the facts a bug report needs.',
     inputSchema: { type: 'object', properties: {} },
   },
@@ -231,6 +231,9 @@ async function getCacheStats(
       totalBytes: stats.totalBytes,
       runCountLast24h: stats.runCountLast24h,
       hitCountLast24h: stats.hitCountLast24h,
+      // A hit that restored outputs apart from one that found them in place.
+      upToDateCountLast24h: stats.hitCountLast24h - stats.restoredCountLast24h,
+      restoredCountLast24h: stats.restoredCountLast24h,
       hitRate24h,
     }
   } finally {

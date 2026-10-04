@@ -17,16 +17,26 @@ function task(
   exitCode: number,
   durationMs: number,
   cacheSource: TaskTelemetry['cacheSource'],
+  restored?: boolean,
 ): TaskTelemetry {
   const [project, task] = taskId.split('#') as [string, string]
-  return { taskId, project, task, status, cacheSource, exitCode, durationMs } as TaskTelemetry
+  return {
+    taskId,
+    project,
+    task,
+    status,
+    cacheSource,
+    exitCode,
+    durationMs,
+    ...(restored !== undefined ? { restored } : {}),
+  } as TaskTelemetry
 }
 
 const tasks = [
   task('@acme/web#build', 'failed', 2, 3100, 'miss'),
   task('@acme/web#test', 'success', 0, 4200, 'miss'),
-  task('@acme/api#build', 'cache-hit-remote', 0, 0, 'remote'),
-  task('@acme/ui#build', 'cache-hit', 0, 0, 'local'),
+  task('@acme/api#build', 'cache-hit-remote', 0, 0, 'remote', true),
+  task('@acme/ui#build', 'cache-hit', 0, 0, 'local', false),
   task('@acme/ui#lint', 'skipped', 0, 0, 'none'),
 ]
 const summary = {
@@ -40,6 +50,9 @@ const summary = {
   hitCount: 2,
   hitLocalCount: 1,
   hitRemoteCount: 1,
+  upToDateCount: 1,
+  restoredLocalCount: 0,
+  restoredRemoteCount: 1,
   exitOk: false,
   tasks,
 } as unknown as RunSummaryRecord

@@ -98,6 +98,7 @@ interface TaskTelemetry {
   timedOut?: true // on a failed task, vx's own timeout killed it
   sandboxViolations?: number
   notReady?: 'timeout' | 'exited' | 'spawn' // a persistent task never ready
+  restored?: boolean // on a hit: outputs restored (true) or already up to date (false)
   wallclockStartNs?: string // bigint ns from the run's start, as a decimal string
   wallclockEndNs?: string
 }
@@ -112,8 +113,11 @@ interface RunSummaryRecord {
   failedCount: number
   abortedCount: number // stopped by a signal or an abort, not in `tasks` (v3)
   hitCount: number
-  hitLocalCount: number
+  hitLocalCount: number // hits by the layer that answered, up-to-date ones included
   hitRemoteCount: number
+  upToDateCount: number // hits by what they did to the disk; the three sum to hitCount
+  restoredLocalCount: number
+  restoredRemoteCount: number
   exitOk: boolean
   tasks: readonly TaskTelemetry[]
 }

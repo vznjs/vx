@@ -94,6 +94,8 @@ const TASK: Required<TaskTelemetry> = {
   timedOut: true,
   sandboxViolations: 1,
   notReady: 'timeout',
+  // Every field, so each one's path is recorded; a hit alone carries it.
+  restored: false,
   wallclockStartNs: '1000000000',
   wallclockEndNs: '1040000000',
 }
@@ -150,6 +152,9 @@ it('the OTLP traces, metrics and logs vx-otel sends are shaped as tests/contract
     hitCount: 0,
     hitLocalCount: 0,
     hitRemoteCount: 0,
+    upToDateCount: 0,
+    restoredLocalCount: 0,
+    restoredRemoteCount: 0,
     exitOk: false,
     tasks: [TASK],
   })
