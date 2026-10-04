@@ -65,7 +65,7 @@ same members hash alike and excluding either excludes both).
 ## Groups are transparent to the input closure
 
 A group task has no `exec`, so it produces nothing and has no cache
-entry: its hash is a synthetic roll-up (`computeGroupHash`). That is
+entry: its hash is a synthetic roll-up (`computeGroupKey`). That is
 correct for the KEY — a dependent cascades through the roll-up, and
 anything changing beneath the group moves it. It is wrong for the
 INPUT CLOSURE, where asking the local index what the group produced

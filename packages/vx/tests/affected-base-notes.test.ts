@@ -54,7 +54,8 @@ beforeEach(async () => {
   await writeFile(path.join(root, 'pkgs/app/package.json'), JSON.stringify({ name: 'app' }))
   await writeFile(
     path.join(root, 'pkgs/app/vx.config.mjs'),
-    `export default { tasks: { build: { exec: { command: 'cat src/a.txt > out.txt' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } } } } }\n`,
+    // `^build`: `--affected` reaches a dependent along a task edge.
+    `export default { tasks: { build: { dependsOn: ['^build'], exec: { command: 'cat src/a.txt > out.txt' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } } } } }\n`,
   )
   await writeFile(path.join(root, 'pkgs/app/src/a.txt'), 'a1\n')
   await writeFile(path.join(root, '.gitignore'), 'out.txt\n.vx/\n')

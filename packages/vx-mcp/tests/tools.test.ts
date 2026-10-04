@@ -1618,6 +1618,7 @@ describe('listTasks masks a declared secret in a command', () => {
       expect(r.projects.flatMap((p) => p.tasks.map((t) => [t.id, t.command]))).toEqual([
         ['a#deploy', 'deploy --token ***'],
         ['a#plain', 'echo not-secret'],
+        ['a#build', null],
       ])
     } finally {
       for (const [k, v] of [

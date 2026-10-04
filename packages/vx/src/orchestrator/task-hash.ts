@@ -100,7 +100,7 @@ export interface ComputeHashArgs {
  * Caller is responsible for handling the group-task case before
  * calling this — groups have no `exec` and no `cache.inputs`, so the
  * key-derivation steps below would all fall back to defaults.
- * `computeGroupHash` is exported for that purpose.
+ * `computeGroupKey` is exported for that purpose.
  */
 export async function computeTaskHash(args: ComputeHashArgs): Promise<string> {
   const end = span('task hash')
@@ -380,7 +380,8 @@ function hashTaskConfig(cfg: TaskConfig, hashCache?: HashCache): string {
  * in place. Its one behavioural case is a config with NO `exec`, where
  * the spread would add `exec: {}` — and nothing reaches here that way,
  * proven by throwing on a no-exec config and running the whole suite:
- * a group takes `computeGroupHash` instead. `timeout`/`retries` stay folded — their keys are
+ * a group takes `computeGroupKey`, and the one keyed group (the default
+ * `build`) declares no `remote`. `timeout`/`retries` stay folded — their keys are
  * distinct by design (see the decision log); stripping them retroactively
  * would bump CACHE_VERSION.
  */
@@ -388,6 +389,16 @@ function hashableConfig(cfg: TaskConfig): unknown {
   if (cfg.exec?.remote === undefined) return cfg
   const { remote: _remote, ...execRest } = cfg.exec
   return { ...cfg, exec: execRest }
+}
+
+/**
+ * A group's key: its upstream, and for a keyed group — the default
+ * `build` (projects.ts), the one group with `cache` — its own inputs too,
+ * the way a task's key folds them.
+ */
+export async function computeGroupKey(args: ComputeHashArgs): Promise<string> {
+  if (args.node.config.cache === undefined) return computeGroupHash(args.upstream)
+  return computeTaskHash(args)
 }
 
 /**

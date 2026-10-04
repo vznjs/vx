@@ -152,9 +152,11 @@ describe('the walk (R3)', () => {
     expect(keyedOf(nodes, 'app#test')).toEqual([])
   })
 
-  // `computeGroupHash` folds every member whatever the node says; only a
-  // `graph` plugin could leave a `cache` on a group (the loader refuses it).
-  it('a group folds every dependency even with a `cache.inputs.tasks` on it', () => {
+  // A group with `cache` is keyed as a task is (`computeGroupKey`, the
+  // default `build`'s path): its project counts and `cache.inputs.tasks`
+  // selects what it folds. Only core's default or a `graph` plugin leaves
+  // one; the loader refuses it from a config.
+  it('a group with `cache` folds as a task does', () => {
     const nodes = graph({
       'app#test': [CACHED, ['app#ci']],
       'app#ci': [
@@ -163,7 +165,7 @@ describe('the walk (R3)', () => {
       ],
       'lib#source': [CACHED, []],
     })
-    expect(keyedOf(nodes, 'app#test')).toEqual(['/ws/lib'])
+    expect(keyedOf(nodes, 'app#test')).toEqual(['/ws/app'])
   })
 
   // Walked once: each edge is read once, and a second ask reads none. A

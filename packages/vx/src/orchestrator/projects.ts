@@ -5,7 +5,7 @@
 // wrote a `vx.config.ts`.
 
 import path from 'node:path'
-import type { ProjectConfig } from '../config.js'
+import type { ProjectConfig, TaskConfig } from '../config.js'
 import {
   frozenProjectConfigs,
   loadProjectConfigs,
@@ -283,7 +283,8 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
           (plugin) => validateProjectConfig(config, `${where} (after plugin '${plugin.name}')`),
         )
       }
-      const named = rootName === undefined ? config : rootSpelled(config, rootName)
+      const built = withDefaultBuild(config)
+      const named = rootName === undefined ? built : rootSpelled(built, rootName)
       projects.set(meta.name, { name: meta.name, dir: meta.dir, config: named })
       for (const name of crossDepProjects(named)) {
         if (graph !== null) considerWithDeps(graph, name)
@@ -292,6 +293,32 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
     }
   }
   return { projects, configured }
+}
+
+/**
+ * The `build` a project gets when neither its config nor a plugin declared
+ * one (owner, 2026-10-04): a group behind `^build`, keyed on every file of
+ * the project. A package consumed as source then carries its files to every
+ * dependent behind `^build`, in the key and in `--affected`, and the chain
+ * through it to deeper builds holds. The one keyed group: a config cannot
+ * declare `cache` on a group (config-schema.ts), so nothing else is.
+ */
+const DEFAULT_BUILD: TaskConfig = Object.freeze({
+  dependsOn: Object.freeze(['^build']),
+  cache: Object.freeze({
+    inputs: Object.freeze({ files: Object.freeze(['**']) }),
+    outputs: Object.freeze({ files: Object.freeze([]) }),
+  }),
+}) as unknown as TaskConfig
+
+/** The default `build`, which a menu of the tasks a user declared leaves out. */
+export function isDefaultBuild(task: TaskConfig | undefined): boolean {
+  return task === DEFAULT_BUILD
+}
+
+function withDefaultBuild(config: ProjectConfig): ProjectConfig {
+  if (config.tasks?.['build'] !== undefined) return config
+  return { ...config, tasks: { ...config.tasks, build: DEFAULT_BUILD } }
 }
 
 /**

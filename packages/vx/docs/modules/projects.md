@@ -10,7 +10,14 @@ included. Before this, `show` read config files raw and printed
 
 ## Public surface
 
+A project whose config and plugins declare no `build` gets one, after the
+`project` stage: a group with `dependsOn: ['^build']` keyed on `**`
+(owner, 2026-10-04; `computeGroupKey`, task-hash.md).
+
 ```ts
+// the default build; the picker and the "tasks here" hint leave it out
+export function isDefaultBuild(task: TaskConfig | undefined): boolean
+
 export function loadWorkspacePlugins(
   workspaceRoot: string,
   warn: (m: string) => void,

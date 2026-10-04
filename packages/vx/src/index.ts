@@ -65,6 +65,8 @@ export { run, planRun, prepareRun } from './orchestrator/index.js'
 export { LocalHistoryProvider } from './orchestrator/index.js'
 export type { HistoryProvider, HistoryTable, TaskHistory } from './orchestrator/index.js'
 export type { PreparedRun } from './orchestrator/index.js'
+// `RunOptions.affected`: what `--affected`'s diff changed, per project.
+export type { AffectedChanges } from './workspace/index.js'
 // `planRun` returns these, and an embedder that cannot NAME a return type
 // cannot hold it: `run` and `prepareRun` both had theirs here from the
 // start, so the omission read as "planRun is not really public" while

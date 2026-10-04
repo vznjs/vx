@@ -470,6 +470,7 @@ export async function resolveRunOptions(
   // drops app from either side (item 955 had put it first for that). First
   // it stays, so a message naming the filters names it first.
   const filterStrings = [...parsed.filters]
+  let affectedFilter: string | undefined
   if (parsed.affected !== undefined) {
     const root = await findWorkspaceRoot(cwd)
     let base = parsed.affected
@@ -484,7 +485,8 @@ export async function resolveRunOptions(
         return { error: err.message }
       }
     }
-    filterStrings.unshift(`...[${base}]`)
+    affectedFilter = `...[${base}]`
+    filterStrings.unshift(affectedFilter)
   }
 
   // Project scope applies to bare task names only. Anchored entries
@@ -495,13 +497,19 @@ export async function resolveRunOptions(
   let staged: RunOptions['staged']
   let discovered: RunOptions['discovered']
   let selectedByDiff = false
+  let affected: RunOptions['affected']
   if (bareTasks.length === 0) {
     projects = undefined
   } else if (filterStrings.length > 0) {
-    const resolved = await resolveFilters(cwd, filterStrings, {
-      ...(parsed.cacheDir !== undefined ? { cacheDir: parsed.cacheDir } : {}),
-      ...(parsed.frozen ? { frozen: true } : {}),
-    })
+    const resolved = await resolveFilters(
+      cwd,
+      filterStrings,
+      {
+        ...(parsed.cacheDir !== undefined ? { cacheDir: parsed.cacheDir } : {}),
+        ...(parsed.frozen ? { frozen: true } : {}),
+      },
+      affectedFilter,
+    )
     if ('error' in resolved) return { error: resolved.error }
     if ('empty' in resolved) {
       // "Nothing changed" is a clean exit for the BARE tasks the filter
@@ -519,6 +527,7 @@ export async function resolveRunOptions(
       // instead of evaluating and staging them a second time.
       staged = resolved.staged
       discovered = resolved.discovered
+      affected = resolved.affected
     }
   } else if (parsed.all) {
     projects = undefined
@@ -563,6 +572,7 @@ export async function resolveRunOptions(
   }
   if (projects !== undefined) opts.projects = projects
   if (selectedByDiff) opts.selectedByDiff = true
+  if (affected !== undefined) opts.affected = affected
   if (staged !== undefined) opts.staged = staged
   if (discovered !== undefined) opts.discovered = discovered
   if (parsed.retries !== undefined) opts.retries = parsed.retries
