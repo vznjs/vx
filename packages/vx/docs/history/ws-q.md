@@ -26,7 +26,7 @@ futex wake, an eventfd write and an epoll turn per call), the JIT 0.75 s.
   artifact by decoding the bytes it had just encoded; it scans the tar it
   packed. And `TaskInputs.upstream` queried the index for every
   dependency's outputs on every miss; only an input-shipping executor
-  reads it, so it is read on first access. vx's own CPU 6.85 → 5.7 s
+  reads it, so the local floor never reads it (a plugin executor gets it read up front). vx's own CPU 6.85 → 5.7 s
   (median of five), wall 5.55 → 4.94 s. Rows: `download-policy.test.ts`
   (nothing deferred walks nothing), `zstd-frames.test.ts` (a small frame
   decodes on the thread, a large one off it), `execute-task.test.ts` (the

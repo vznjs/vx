@@ -738,7 +738,9 @@ const BUN_MEMBERS_VX_READS: readonly PropertyKey[] = [
   'which',
   'write',
   'zstdCompress',
+  'zstdCompressSync',
   'zstdDecompress',
+  'zstdDecompressSync',
 ]
 
 /** A descriptor the snapshot did not read. */

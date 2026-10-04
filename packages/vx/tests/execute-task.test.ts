@@ -1787,7 +1787,7 @@ describe('execute-task — the executor input set is ADDRESSED and ORDERED', () 
   )
 
   it(
-    'the upstream outputs are read from the index only when an executor reads them',
+    'the local executor never reads the upstream outputs from the index; a plugin gets them',
     async () => {
       // The local floor never reads them, and every miss queried its whole
       // dependency closure for them (Q-1).
@@ -1812,13 +1812,15 @@ describe('execute-task — the executor input set is ADDRESSED and ORDERED', () 
         }
         const runWith = async (look: boolean, id: string): Promise<string[] | undefined> => {
           let outputs: string[] | undefined
-          const executor: TaskExecutor = {
-            name: 'capture',
-            execute: (req) => {
-              if (look) outputs = req.inputs?.upstream[0]?.outputs.slice()
-              return localExecutor().execute(req)
-            },
-          }
+          const executor: TaskExecutor = look
+            ? {
+                name: 'capture',
+                execute: (req) => {
+                  outputs = req.inputs?.upstream[0]?.outputs.slice()
+                  return localExecutor().execute(req)
+                },
+              }
+            : localExecutor()
           const consumer = node(
             b,
             {
