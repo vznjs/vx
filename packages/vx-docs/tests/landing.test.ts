@@ -1,6 +1,6 @@
 // The landing page is the whole story (owner, 2026-09-28; design/site-short-2026-09.md
 // § Laws; 2026-10-02: vx is its own tool, Turbo and Nx only via migration):
-// the hero, the benchmark table and why, how to start, the one picture with its six
+// the hero, the benchmark chart and why, how to start, the one picture with its six
 // callouts, and the four pillars. These rows read the page as it shipped,
 // `dist/index.html`, which the `build` task writes, and the picture as data
 // (src/components/landing/one-run.ts). What the design says is written out
@@ -273,31 +273,37 @@ describe('the landing page', () => {
     expect(run).not.toMatch(/<script\b|\son[a-z]+=/)
   })
 
-  // The numbers are check.site's; the shape is here: vx first, one row per
-  // number, every other tool's cell saying how vx compares, the formula
-  // under the table, and three reasons under it.
-  it('holds one benchmark table, vx, Turborepo and Nx, and why it is faster', () => {
+  // The numbers are check.site's; the shape is here: one chart per number,
+  // vx's bar first, every other tool's bar saying how vx compares, each bar
+  // as long as its time against the slowest, the formula under the chart,
+  // and three reasons under it.
+  it('draws one benchmark chart, vx, Turborepo and Nx, and why it is faster', () => {
     const bench = section(html, 'bench')
     expect(text(bench)).toContain('Seconds of overhead where others add minutes.')
     expect([...html.matchAll(/class="bench-panel"/g)]).toHaveLength(1)
-    const cols = [...bench.matchAll(/<th scope="col"[^>]*>([\s\S]*?)<\/th>/g)].map((m) =>
-      text(m[1]!),
+    expect(bench).not.toContain('<table')
+    const figures = [...bench.matchAll(/<figure class="vx-bars">([\s\S]*?)<\/figure>/g)].map(
+      (m) => m[1]!,
     )
-    expect(cols).toEqual(['', 'vx', 'Turborepo', 'Nx'])
-    const rows = [...bench.matchAll(/<th scope="row"[^>]*>([\s\S]*?)<\/th>/g)].map((m) =>
-      text(m[1]!),
-    )
-    expect(rows).toEqual([
+    expect(figures.map((f) => text(/<figcaption>([\s\S]*?)<\/figcaption>/.exec(f)![1]!))).toEqual([
       'Cold build: time the runner adds',
       'Cold build: CPU burned',
       'Fully cached run',
       'Overhead per package',
     ])
-    const cells = [...bench.matchAll(/<td\b[^>]*>([\s\S]*?)<\/td>/g)].map((m) => text(m[1]!))
-    expect(cells.filter((_, i) => i % 3 !== 0)).toHaveLength(8)
-    expect(
-      cells.filter((c, i) => i % 3 !== 0 && !/\S ?\(vx \d+% (?:faster|slower)\)$/.test(c)),
-    ).toEqual([])
+    for (const f of figures) {
+      const bars = [
+        ...f.matchAll(/<div class="vx-bar([^"]*)" style="--w:([\d.]+)%">([\s\S]*?)<\/div>/g),
+      ]
+      expect(
+        bars.map((m) => text(/<span class="vx-bar-name">([\s\S]*?)<\/span>/.exec(m[3]!)![1]!)),
+      ).toEqual(['vx', 'Turborepo', 'Nx'])
+      expect(bars.map((m) => m[1])).toEqual([' vx-bar-lead', '', ''])
+      expect(Math.max(...bars.map((m) => Number(m[2])))).toBe(100)
+      const notes = bars.map((m) => /<span class="vx-bar-note">([\s\S]*?)<\/span>/.exec(m[3]!)?.[1])
+      expect(notes[0]).toBeUndefined()
+      expect(notes.slice(1).filter((n) => !/^vx \d+% (?:faster|slower)$/.test(n ?? ''))).toEqual([])
+    }
     expect(text(/<p class="bench-formula">([\s\S]*?)<\/p>/.exec(bench)![1]!)).toBe(
       'vx N% faster: vx takes N% less time than that tool (1 − vx ÷ theirs); N% slower: N% more (vx ÷ theirs − 1).',
     )

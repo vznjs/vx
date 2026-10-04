@@ -45,7 +45,9 @@ pillars, the one-sentence rule and every internal link the page had.
   when either drifted. Edit the generator or its source, not those
   regions. Every competitor cell reads `(vx N% faster)` or
   `(vx N% slower)` (owner, 2026-10-02), and the formula line under the
-  table defines N.
+  table defines N. The page draws them as bars (`renderBars` in
+  `src/plugins/data-charts.ts`), each as long as its time against the
+  slowest tool's.
 
 To check it visually, drive the pre-installed Chromium from a scratch
 directory (never from this package — `playwright-core` is not a
@@ -60,6 +62,15 @@ mkdir -p /tmp/pw && cd /tmp/pw && bun add playwright-core
 # viewport width at 1440 and at 390), document.querySelectorAll('canvas').length (0) and
 # document.getAnimations().length (0).
 ```
+
+## Charts from tables
+
+`src/plugins/data-charts.ts` is a remark plugin: a Markdown table whose
+cells are durations (`476 ms`, `1.17s`, `3m 47s`) is drawn as bar charts
+above it, the table kept under a "The table" toggle. Runners down the side
+make one chart per column, runners across the top one per row; vx's bars
+are the accent. A table inside a blockquote is sample output and is left
+alone. Write the table; the chart follows.
 
 ## Writing a blog post
 

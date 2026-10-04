@@ -1,0 +1,82 @@
+/* Bars drawn by src/plugins/data-charts.ts, on the landing and in the docs.
+   Only --vx-* tokens, so both themes and both pages read alike. */
+
+.vx-charts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr));
+  gap: 14px;
+  margin: 1.25rem 0 0.5rem;
+}
+.vx-charts :is(figure, figcaption, div, span) {
+  margin: 0;
+}
+.vx-bars {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  padding: 16px 18px 18px;
+  background: var(--vx-surface);
+  border: 1px solid var(--vx-border);
+  border-radius: 12px;
+}
+.vx-bars figcaption {
+  font: 600 12px / 1.4 var(--vx-mono);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--vx-muted);
+}
+.vx-bar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 5px 10px;
+  align-items: baseline;
+}
+.vx-bar-name {
+  font: 500 14px / 1.35 var(--vx-font-body);
+  color: var(--vx-text);
+}
+.vx-bar-value {
+  font: 500 14px / 1.35 var(--vx-mono);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: var(--vx-fg);
+  white-space: nowrap;
+}
+.vx-bar-note {
+  padding-left: 0.6em;
+  font-size: 12px;
+  color: var(--vx-muted);
+}
+.vx-bar-track {
+  grid-column: 1 / -1;
+  display: block;
+  height: 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--vx-border) 55%, transparent);
+}
+.vx-bar-fill {
+  display: block;
+  width: var(--w);
+  min-width: 3px;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--vx-muted);
+}
+.vx-bar.vx-bar-lead .vx-bar-name,
+.vx-bar.vx-bar-lead .vx-bar-value {
+  font-weight: 700;
+  color: var(--vx-accent);
+}
+.vx-bar.vx-bar-lead .vx-bar-fill {
+  background: var(--vx-accent);
+}
+
+/* The exact numbers, one click away under each chart. */
+.vx-chart-table > summary {
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: var(--vx-muted);
+}
+.vx-chart-table[open] > summary {
+  margin-bottom: 0.5rem;
+}

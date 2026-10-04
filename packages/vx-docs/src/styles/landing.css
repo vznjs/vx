@@ -520,49 +520,29 @@ body:has(.vx-landing) {
   border-radius: var(--radius-lg);
 }
 
-/* ---- the benchmark table and why ---- */
+/* ---- the benchmark chart and why ---- */
 .bench-formula {
   font: var(--fw-regular) 13px / 1.5 var(--font-body);
   color: var(--text-mut);
   margin: 12px 0 16px;
 }
-.bench-table {
-  width: 100%;
-  border-collapse: collapse;
-  font: var(--fw-regular) 15px / 1.4 var(--font-mono);
-  font-variant-numeric: tabular-nums;
+/* The chart's figures sit in the panel, not in cards of their own. */
+.bench-panel .vx-charts {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr));
+  gap: 4px 48px;
+  margin: 0;
 }
-.bench-table th,
-.bench-table td {
-  padding: 12px 14px;
-  text-align: right;
-  border-bottom: 1px solid var(--line-faint);
-  color: var(--text-mut);
+.bench-panel .vx-bars {
+  padding: 12px 0 16px;
+  background: none;
+  border: 0;
+  border-radius: 0;
 }
-.bench-table tr:last-child th,
-.bench-table tr:last-child td {
-  border-bottom: none;
-}
-.bench-table th[scope='row'] {
-  text-align: left;
-  font-family: var(--font-body);
+.bench-panel .vx-bars figcaption {
+  font: var(--fw-semibold) 15px / 1.4 var(--font-body);
+  letter-spacing: 0;
+  text-transform: none;
   color: var(--text-hi);
-}
-.bench-table thead th {
-  font-weight: var(--fw-semibold);
-  color: var(--text-hi);
-}
-.bench-table td {
-  white-space: nowrap;
-}
-.bench-table .vs {
-  display: block;
-  font-size: 12px;
-  color: var(--text-mut);
-}
-.bench-table .vx {
-  font-weight: var(--fw-bold);
-  color: var(--phosphor-bright);
 }
 .reasons {
   list-style: none;
@@ -698,12 +678,5 @@ body:has(.vx-landing) {
   }
   .bench-panel {
     padding: 16px 16px 4px;
-  }
-  .bench-table {
-    font-size: 13px;
-  }
-  .bench-table th,
-  .bench-table td {
-    padding: 10px 6px;
   }
 }

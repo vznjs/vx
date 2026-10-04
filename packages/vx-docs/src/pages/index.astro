@@ -1,6 +1,6 @@
 ---
 // vx landing page (owner, 2026-10-02: vx is its own tool; Turbo and Nx
-// only through migration): the hero, the benchmark table and why it is
+// only through migration): the hero, the benchmark chart and why it is
 // faster, how to start, then the one diagram with its six callouts and the four pillars.
 // Standalone (its own nav, footer and theme), static, one script for the
 // copy button. The benchTable and benchFormula blocks and the graph's size in the #bench
@@ -9,6 +9,8 @@
 import Diagram from '../components/guide/diagram/Diagram.astro'
 import { CALLOUTS, oneRun } from '../components/landing/one-run.js'
 import '../styles/landing.css'
+import '../styles/charts.css'
+import { parseDuration, renderBars } from '../plugins/data-charts.ts'
 
 const base = import.meta.env.BASE_URL // '/vx/' on Pages, '/' on a custom domain
 const href = (p: string) => `${base}${p}`
@@ -72,11 +74,25 @@ const benchTable = [
 const benchFormula = 'vx N% faster: vx takes N% less time than that tool (1 − vx ÷ theirs); N% slower: N% more (vx ÷ theirs − 1).'
 const benchNote = "Nx's column ran every task through npm run (~200 ms of CPU each; Turbo ran bun run), a harness fault since fixed; with bun, on a 4-core Linux box, Nx took 6m 59s cold and 4.50 s fully cached (vx 47% and 92% faster)."
 
-/** A competitor cell's value and its "(vx N% faster)", shown on two lines. */
+/** A competitor cell's value and its "vx N% faster". */
 const vsOf = (c: string): [string, string] => {
   const at = c.indexOf(' (')
-  return [c.slice(0, at), c.slice(at + 1)]
+  return [c.slice(0, at), c.slice(at + 2, -1)]
 }
+const benchBars = renderBars(
+  benchTable.map((r) => ({
+    title: r.label,
+    bars: [
+      { name: 'vx', ms: parseDuration(r.vx)!, value: r.vx, hero: true },
+      ...(
+        [
+          ['Turborepo', r.turbo],
+          ['Nx', r.nx],
+        ] as const
+      ).map(([name, c]) => ({ name, ms: parseDuration(c)!, value: vsOf(c)[0], note: vsOf(c)[1] })),
+    ],
+  })),
+)
 
 // Why it is faster: three reasons, one short sentence each.
 const reasons = [
@@ -212,32 +228,7 @@ const footCols = {
             <h2>Seconds of overhead where others add minutes.</h2>
           </div>
           <div class="bench-panel">
-            <table class="bench-table">
-              <thead>
-                <tr>
-                  <th scope="col"></th>
-                  <th scope="col" class="vx">vx</th>
-                  <th scope="col">Turborepo</th>
-                  <th scope="col">Nx</th>
-                </tr>
-              </thead>
-              <tbody>
-                {
-                  benchTable.map((r) => (
-                    <tr>
-                      <th scope="row">{r.label}</th>
-                      <td class="vx">{r.vx}</td>
-                      {[r.turbo, r.nx].map((c) => (
-                        <td>
-                          {vsOf(c)[0]}
-                          <span class="vs">{vsOf(c)[1]}</span>
-                        </td>
-                      ))}
-                    </tr>
-                  ))
-                }
-              </tbody>
-            </table>
+            <Fragment set:html={benchBars} />
             <p class="bench-formula">{benchFormula}</p>
             <p class="bench-formula">{benchNote}</p>
           </div>
