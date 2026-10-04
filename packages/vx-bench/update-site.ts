@@ -95,14 +95,14 @@ const table: ReadonlyArray<readonly [string, (r: Row) => number, (r: Row) => str
   ],
   ['Cold build: CPU burned', (r) => r.freshCpu, (r) => span(r.freshCpu)],
   [
-    'Fully cached run',
-    (r) => r.warmNoRestore,
-    (r) => disp(r.warmNoRestore).replace(/(\d)(ms|s)$/, '$1 $2'),
+    'Fully cached run (restored)',
+    (r) => r.warmRestore,
+    (r) => disp(r.warmRestore).replace(/(\d)(ms|s)$/, '$1 $2'),
   ],
   [
-    'Overhead per package',
-    (r) => Number(r.fresh) - B.fresh,
-    (r) => `${perPkg(r).toLocaleString('en-US')} ms`,
+    'Fully cached run (up-to-date)',
+    (r) => r.warmNoRestore,
+    (r) => disp(r.warmNoRestore).replace(/(\d)(ms|s)$/, '$1 $2'),
   ],
 ]
 // Every competitor cell says how vx compares, as how many times as long the

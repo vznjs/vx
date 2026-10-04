@@ -288,8 +288,8 @@ describe('the landing page', () => {
     expect(figures.map((f) => text(/<figcaption>([\s\S]*?)<\/figcaption>/.exec(f)![1]!))).toEqual([
       'Cold build: time the runner adds',
       'Cold build: CPU burned',
-      'Fully cached run',
-      'Overhead per package',
+      'Fully cached run (restored)',
+      'Fully cached run (up-to-date)',
     ])
     for (const f of figures) {
       const bars = [
@@ -333,7 +333,7 @@ describe('the landing page', () => {
       (m) => `${m[1]}×`,
     )
     // The "faster" notes in chart order: Vite Task's cold-CPU note reads "slower".
-    expect(wins.map((m) => text(m[1]!))).toEqual([notes[0]!, notes[3]!, notes[6]!])
+    expect(wins.map((m) => text(m[1]!))).toEqual([notes[0]!, notes[3]!, notes[9]!])
   })
 
   // Where vx differs from both, as the choosing page's model says it.
