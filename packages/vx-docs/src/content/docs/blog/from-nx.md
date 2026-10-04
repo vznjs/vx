@@ -113,9 +113,9 @@ so a shared input list is an import.
 ## What you drop, and what replaces it
 
 - **The daemon.** vx has [none](../no-daemon/). On the 3,270-task
-  benchmark, on native config, a fully cached run is 392ms to Nx's
-  6.15s (vx 15× faster), and the cold run burns 17.99s of CPU to Nx's
-  1m 06s (vx 3.6× faster).
+  benchmark, on native config, a fully cached run is 393ms to Nx's
+  6.45s (vx 16× faster), and the cold run burns 17.27s of CPU to Nx's
+  52.19s (vx 3× faster).
 - **Nx Cloud's distributed execution.** The seam is public:
   `@vzn/vx-reapi` runs tasks on any Bazel Remote Execution API pool.
   There is no first-party service and there will not be one.

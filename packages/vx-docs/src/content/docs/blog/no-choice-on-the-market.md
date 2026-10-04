@@ -51,10 +51,10 @@ open-source runner carries a daemon that is on by default, a heavy
 schema (`project.json`, `nx.json`, `namedInputs`, `targetDefaults`,
 executors wrapping every tool behind a JSON options object), and a
 cached-run cost that is not in the same league: on the same 3,270-task
-workspace, a fully cached run takes 6.15s against Turborepo's 450ms and
-vx's 392ms (vx 15× and 1.1× faster), Nx's daemon off as in CI. Its cold
-build burns 66 seconds of CPU where Turborepo burns 27 and vx 18 (vx
-3.6× and 1.5× faster).
+workspace, a fully cached run takes 6.45s against Turborepo's 463ms and
+vx's 393ms (vx 16× and 1.1× faster), Nx's daemon off as in CI. Its cold
+build burns 52 seconds of CPU where Turborepo burns 21 and vx 17 (vx
+3× and 1.2× faster).
 
 Nx is the right tool if you want the platform. If you want the runner,
 you pay for the platform's weight and are steered toward its price.

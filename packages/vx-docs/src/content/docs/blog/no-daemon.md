@@ -53,9 +53,9 @@ stopped mattering:
   [strict output ownership](../strict-output-ownership/) means vx knows
   what the tree should contain.
 
-The result is a fully cached run of 3,270 tasks in 392ms with no
-process left behind, against Turborepo's 450ms (vx 1.1× faster) and
-Nx's 6.15s (vx 15× faster). vx has
+The result is a fully cached run of 3,270 tasks in 393ms with no
+process left behind, against Turborepo's 463ms (vx 1.1× faster) and
+Nx's 6.45s (vx 16× faster). vx has
 no daemon to turn on.
 
 ## The invariant, stated plainly

@@ -12,13 +12,13 @@ excerpt: 'A fully cached run of 3,270 tasks finishes in about half a second with
 The headline number is the one you pay on every uncached build: what
 the runner adds on top of your tasks. On a synthetic workspace of
 1,090 packages and 3,270 tasks whose ideal schedule is 3m 38s, vx
-finishes the cold build in 3m 41s, three seconds over the schedule.
-Turborepo finishes in 5m 01s (vx 1.3× faster) and Nx in 3m 51s
-(vx 1.04× faster).
-Warm, a fully cached `vx run build test --all` finishes in 392ms,
-Turborepo in 450ms (vx 1.1× faster) and Nx in 6.15s (vx 15× faster); the
-cold build burns 18 s of CPU in vx, 27 s in Turborepo (vx 1.5× faster)
-and 66 s in Nx (vx 3.6× faster), each runner in its own native
+finishes the cold build in 3m 40s, two seconds over the schedule.
+Turborepo finishes in 4m 59s (vx 1.3× faster) and Nx in 3m 49s
+(vx 1.03× faster).
+Warm, a fully cached `vx run build test --all` finishes in 393ms,
+Turborepo in 463ms (vx 1.1× faster) and Nx in 6.45s (vx 16× faster); the
+cold build burns 17 s of CPU in vx, 21 s in Turborepo (vx 1.2× faster)
+and 52 s in Nx (vx 3× faster), each runner in its own native
 config.
 
 None of that comes from a microbenchmark trick. It comes from five

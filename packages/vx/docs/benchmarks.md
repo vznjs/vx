@@ -268,7 +268,11 @@ Two things, both per task, and both measured on the 46-package workspace
    2026-10-04 (owner: "use run commands") the harness gives Nx
    `nx:run-commands` targets, the command line vx runs; the 46-package
    shape then read Nx 11.17 s cold and 3.26 s of CPU against vx's 10.40 s
-   and 0.91 s (median of 3). The two hand-written Linux tables on this page predate it.
+   and 0.91 s (median of 3). The two hand-written Linux tables on this page predate it. `installDeps`, vx's
+   group task, is a cached `nx:noop` for Nx and a script-less task for
+   Turbo: on one 1,090-package workspace (no sleeps, min of 3) an
+   uncached `nx:noop`, or a target with no executor (Nx makes it
+   `nx:noop`), held Nx's warm run at 16.5 s against 5.9 s cached.
 2. **npm, which the harness chose by accident.** `nx:run-script` runs
    the script through the package manager Nx detects from a lockfile.
    The generated workspace had none, so Nx fell back to npm, while Turbo
@@ -334,13 +338,13 @@ The committed `packages/vx-bench/RESULTS.md` / `packages/vx-bench/results.json` 
 
 |                                 | vx                                                        | vx, no lock | Turborepo               | Nx                       |
 | ------------------------------- | --------------------------------------------------------- | ----------- | ----------------------- | ------------------------ |
-| **Cold** (nothing cached)       | **3m 41s**                                                | 3m 40s      | 5m 01s (vx 1.3× faster) | 3m 51s (vx 1.04× faster) |
-| **Warm**, nothing to rebuild    | **392ms**                                                 | 478ms       | 450ms (vx 1.1× faster)  | 6.15s (vx 15× faster)    |
-| **Warm**, restore outputs       | **745ms**                                                 | 819ms       | 768ms (vx 1.03× faster) | 5.85s (vx 7.8× faster)   |
-| **CPU burned**, cold (user+sys) | **17.99s**                                                | 18.53s      | 27.17s (vx 1.5× faster) | 1m 06s (vx 3.6× faster)  |
-| **CPU burned**, warm (user+sys) | **742ms**                                                 | 903ms       | 903ms (vx 1.2× faster)  | 7.18s (vx 9.6× faster)   |
+| **Cold** (nothing cached)       | **3m 40s**                                                | 3m 41s      | 4m 59s (vx 1.3× faster) | 3m 49s (vx 1.03× faster) |
+| **Warm**, nothing to rebuild    | **393ms**                                                 | 473ms       | 463ms (vx 1.1× faster)  | 6.45s (vx 16× faster)    |
+| **Warm**, restore outputs       | **650ms**                                                 | 780ms       | 997ms (vx 1.5× faster)  | 6.25s (vx 9.6× faster)   |
+| **CPU burned**, cold (user+sys) | **17.27s**                                                | 18.79s      | 21.04s (vx 1.2× faster) | 52.19s (vx 3× faster)    |
+| **CPU burned**, warm (user+sys) | **745ms**                                                 | 894ms       | 897ms (vx 1.2× faster)  | 7.52s (vx 10× faster)    |
 | _Baseline_ (theoretical best)   | 3m 38s cold; 0 warm, restore, CPU                         | —           | —                       | —                        |
-| _Measured floors_ (context)     | git walk 23ms · walk + raw copy 68ms · task shells 10.74s | —           | —                       | —                        |
+| _Measured floors_ (context)     | git walk 26ms · walk + raw copy 111ms · task shells 9.26s | —           | —                       | —                        |
 
 vx N× faster: that tool takes N times as long as vx (theirs ÷ vx); N× slower: vx takes N times as long (vx ÷ theirs).
 
@@ -350,10 +354,10 @@ exact dependency graph (critical path 1m 40s, total work ÷
 workers 3m 38s); a cached run, a restore and the CPU a
 runner burns are 0 in theory, so every measured number in those rows is
 the runner. vx's cold overhead over the ideal schedule is
-2.71s on 3,270 tasks (2 ms per package), 2.49s
+2.33s on 3,270 tasks (2 ms per package), 2.52s
 with no lock; Turborepo's is
-1m 23s (76 ms per package) and Nx's 13.34s
-(12 ms per package) — the number to read first, in one unit for every
+1m 21s (74 ms per package) and Nx's 10.98s
+(10 ms per package) — the number to read first, in one unit for every
 runner: a runner that adds seconds to a three-minute build is a
 different tool from one that adds a minute and a half. For context, the
 **measured floors** row gives what the cheapest possible implementation
