@@ -50,11 +50,11 @@ graph visualiser, the analytics, are Nx Cloud, paid and walled. The
 open-source runner carries a daemon that is on by default, a heavy
 schema (`project.json`, `nx.json`, `namedInputs`, `targetDefaults`,
 executors wrapping every tool behind a JSON options object), and a
-cold-run cost that is not in the same league: on the same 3,270-task
-workspace, Nx's cold build burns 114 minutes of CPU where Turborepo
-burns 73 seconds and vx 34 (vx 199× and 2.1× faster). A fully cached run
-takes 3.59s against Turborepo's 760ms and vx's 476ms (vx 7.5× and 1.5×
-faster), Nx's daemon off as in CI. Nx's figures ran every task through npm, a harness fault ([Benchmarks](../../benchmarks/) has the fixed run).
+cached-run cost that is not in the same league: on the same 3,270-task
+workspace, a fully cached run takes 6.15s against Turborepo's 450ms and
+vx's 392ms (vx 15× and 1.1× faster), Nx's daemon off as in CI. Its cold
+build burns 66 seconds of CPU where Turborepo burns 27 and vx 18 (vx
+3.6× and 1.5× faster).
 
 Nx is the right tool if you want the platform. If you want the runner,
 you pay for the platform's weight and are steered toward its price.

@@ -366,10 +366,10 @@ describe('the why-vx-is-fast concept quotes the benchmarks page', () => {
     const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
     for (const figure of [
       '3m 38s',
-      '3m 47s',
-      '5m 13s',
-      '34m 44s',
-      '1,712 ms per',
+      '3m 41s',
+      '5m 01s',
+      '3m 51s',
+      '12 ms per',
       '1,090 packages',
       '100 dependency layers',
       '74 ms',
@@ -459,7 +459,7 @@ describe('the no-daemon post quotes the benchmarks page', () => {
   it('each warm-run figure it states is on docs/benchmarks.md as written', () => {
     const page = readFileSync(path.join(DOCS, 'blog', 'no-daemon.md'), 'utf8')
     const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
-    for (const figure of ['476ms', '760ms', '3.59s']) {
+    for (const figure of ['392ms', '450ms', '6.15s']) {
       expect(page).toContain(figure)
       expect(bench).toContain(figure)
     }
@@ -576,7 +576,7 @@ describe('the why-vx-is-fast post quotes the benchmarks page', () => {
   it('each figure it states is on docs/benchmarks.md as written', () => {
     const page = readFileSync(path.join(DOCS, 'blog', 'why-vx-is-fast.md'), 'utf8')
     const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
-    for (const figure of ['3m 38s', '3m 47s', '5m 13s', '34m 44s', '476ms', '760ms', '3.59s']) {
+    for (const figure of ['3m 38s', '3m 41s', '5m 01s', '3m 51s', '392ms', '450ms', '6.15s']) {
       expect(page).toContain(figure)
       expect(bench).toContain(figure)
     }
@@ -758,23 +758,23 @@ describe('the honest-benchmarks post quotes the benchmarks page', () => {
     // and 340 fixed on two other posts (item 342, 2026-09-19).
     for (const figure of [
       '3m 38s',
-      '3m 47s',
-      '5m 13s',
-      '34m 44s',
-      '476ms',
-      '760ms',
-      '3.59s',
-      '34.33s',
-      '1m 13s',
-      '114m 06s',
-      '67ms',
+      '3m 41s',
+      '5m 01s',
+      '3m 51s',
+      '392ms',
+      '450ms',
+      '6.15s',
+      '17.99s',
+      '27.17s',
+      '1m 06s',
+      '23ms',
     ]) {
       expect(page).toContain(figure)
       expect(bench).toContain(figure)
     }
   })
   it('the runners it names are the versions the benchmarks page ran', () => {
-    for (const version of ['Turbo 2.10.12', 'Nx 23.2.0']) {
+    for (const version of ['Turbo 2.11.7', 'Nx 23.2.1']) {
       expect(page).toContain(version)
       expect(bench).toContain(version)
     }
@@ -1282,7 +1282,7 @@ describe('the caching guide lists what the cache never reads', () => {
   })
   it('its benchmark figures are the benchmarks page’s, as written', () => {
     const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
-    for (const figure of ['476ms', '760ms', '3.59s']) {
+    for (const figure of ['392ms', '450ms', '6.15s']) {
       expect(page).toContain(figure)
       expect(bench).toContain(figure)
     }

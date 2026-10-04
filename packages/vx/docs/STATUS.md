@@ -519,15 +519,11 @@ next?".
     with interleaved arms, find where vx's warm path spends it at that
     size, and fix it or say so on the site. The 3,270-task run on the
     same box reads the same way: Turbo 496 ms warm against vx's 678.
-18. **Re-run the site's benchmark with the fixed harness (item 735).**
-    The landing's Nx numbers (34m 44s cold, 3,270 tasks, macOS) come
-    from the harness that gave Nx npm; npm was two thirds of Nx's cold
-    run at that size on the Linux box. OWNER: re-run `compare.ts 100 11
-1` on the macOS machine and `update-site.ts`, or take the Linux run
-    in `benchmarks.md` for the site. The Linux run of this exact shape
-    (`compare.ts 100 11 1`, 2026-09-25, item 758) has vx leading every
-    column; its generated `RESULTS.md` / `results.json` were not
-    committed over the macOS run the site reads.
+18. DONE (2026-10-04) — **Re-run the site's benchmark with the fixed
+    harness (item 735).** Owner: "use run commands". The harness gives Nx
+    `nx:run-commands` targets (no Node fork per task). The site, README
+    and posts now read the 4-core Linux run of the 3,270-task shape:
+    Nx 3m 51s cold against 6m 59s with `nx:run-script`, vx 3m 41s.
 19. DONE as item 751 — **A sandboxed task's `kill 0` killed the
     sandbox (Linux, found in 736).** The command runs in a session of
     its own inside the sandbox.

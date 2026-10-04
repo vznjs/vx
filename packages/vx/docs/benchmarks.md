@@ -264,7 +264,11 @@ Two things, both per task, and both measured on the 46-package workspace
    gap between the last two rows. `nx:run-commands` runs its command
    from the Nx process itself (`NX_RUN_COMMANDS_DIRECTLY`), and with it
    Nx lands at 11.65 s against an ideal of 10.00. A package-based Nx repo
-   gets `nx:run-script` for every inferred `package.json` script.
+   gets `nx:run-script` for every inferred `package.json` script. Since
+   2026-10-04 (owner: "use run commands") the harness gives Nx
+   `nx:run-commands` targets, the command line vx runs; the 46-package
+   shape then read Nx 11.17 s cold and 3.26 s of CPU against vx's 10.40 s
+   and 0.91 s (median of 3). The two hand-written Linux tables on this page predate it.
 2. **npm, which the harness chose by accident.** `nx:run-script` runs
    the script through the package manager Nx detects from a lockfile.
    The generated workspace had none, so Nx fell back to npm, while Turbo
@@ -286,10 +290,9 @@ The npm share grows with the graph. At 1,090 packages (3,270 tasks,
 `compare.ts 100 11`, same box, one cold run each) Nx took 20m 39s and
 76 min of CPU with npm, and 7m 22s and 23 min of CPU with bun: npm was
 two thirds of the old harness's Nx number there, which is the run the
-site quoted. The site's Nx column (34m 44s cold, § A real monorepo, the
-macOS machine) paid npm per task and is not a fair one; its vx and Turbo
-columns are unaffected. Next 18 re-runs it. The whole 3,270-task shape
-on this box with the fixed harness (2026-09-25, after items 744, 753 and
+site quoted (34m 44s cold, on the macOS machine). § A real monorepo
+is now this box's run with `nx:run-commands`. The whole 3,270-task shape
+on this box with `nx:run-script` and bun (2026-09-25, after items 744, 753 and
 754, median of 1; ideal schedule 3m 38s):
 
 | Runner      | Fresh (cold)            | Warm (no restore)       | Warm (restore)          | CPU, cold               |
@@ -316,32 +319,30 @@ probes each forked task runs cost ~8 ms of it. These tables used to say
 Nx's daemon was on; `CI=1` had always turned it off, and the harness
 keeps it off on purpose: it simulates CI.
 
-## A real monorepo: 3,270 tasks, 100 layers (2026-09-03)
+## A real monorepo: 3,270 tasks, 100 layers (2026-10-04)
 
 The shape that actually stresses a task runner: **100 dependency layers**,
 ~11 packages per layer, ~30 deps per package, three tasks each
 (`build` + `installDeps` + `test`, `sleep 1` for build and test) — **3,270
 task nodes**, 1,090 packages. Same repo, same hardware, same task commands;
 every runner pinned to concurrency 10. `bun packages/vx-bench/compare.ts 100 11 1`,
-this machine (macOS arm64, 10 cores), Turbo 2.10.12, Nx 23.2.0.
+this machine (linux x64, 4 cores), Turbo 2.11.7, Nx 23.2.1, every Nx task an `nx:run-commands` target.
 vx runs from a `vx lock` snapshot (`--frozen`), taken once before the reps,
 as a CI pipeline runs it; _vx, no lock_ is the same run evaluating every
 config per run.
 The committed `packages/vx-bench/RESULTS.md` / `packages/vx-bench/results.json` are this run.
 
-|                                 | vx                                                         | vx, no lock | Turborepo               | Nx                        |
-| ------------------------------- | ---------------------------------------------------------- | ----------- | ----------------------- | ------------------------- |
-| **Cold** (nothing cached)       | **3m 47s**                                                 | 3m 46s      | 5m 13s (vx 1.3× faster) | 34m 44s (vx 9.2× faster)  |
-| **Warm**, nothing to rebuild    | **476ms**                                                  | 510ms       | 760ms (vx 1.5× faster)  | 3.59s (vx 7.5× faster)    |
-| **Warm**, restore outputs       | **743ms**                                                  | 777ms       | 1.17s (vx 1.5× faster)  | 4.15s (vx 5.5× faster)    |
-| **CPU burned**, cold (user+sys) | **34.33s**                                                 | 34.61s      | 1m 13s (vx 2.1× faster) | 114m 06s (vx 199× faster) |
-| **CPU burned**, warm (user+sys) | **1.33s**                                                  | 1.34s       | 4.40s (vx 3.2× faster)  | 5.54s (vx 4.1× faster)    |
-| _Baseline_ (theoretical best)   | 3m 38s cold; 0 warm, restore, CPU                          | —           | —                       | —                         |
-| _Measured floors_ (context)     | git walk 67ms · walk + raw copy 352ms · task shells 33.15s | —           | —                       | —                         |
+|                                 | vx                                                        | vx, no lock | Turborepo               | Nx                       |
+| ------------------------------- | --------------------------------------------------------- | ----------- | ----------------------- | ------------------------ |
+| **Cold** (nothing cached)       | **3m 41s**                                                | 3m 40s      | 5m 01s (vx 1.3× faster) | 3m 51s (vx 1.04× faster) |
+| **Warm**, nothing to rebuild    | **392ms**                                                 | 478ms       | 450ms (vx 1.1× faster)  | 6.15s (vx 15× faster)    |
+| **Warm**, restore outputs       | **745ms**                                                 | 819ms       | 768ms (vx 1.03× faster) | 5.85s (vx 7.8× faster)   |
+| **CPU burned**, cold (user+sys) | **17.99s**                                                | 18.53s      | 27.17s (vx 1.5× faster) | 1m 06s (vx 3.6× faster)  |
+| **CPU burned**, warm (user+sys) | **742ms**                                                 | 903ms       | 903ms (vx 1.2× faster)  | 7.18s (vx 9.6× faster)   |
+| _Baseline_ (theoretical best)   | 3m 38s cold; 0 warm, restore, CPU                         | —           | —                       | —                        |
+| _Measured floors_ (context)     | git walk 23ms · walk + raw copy 68ms · task shells 10.74s | —           | —                       | —                        |
 
 vx N× faster: that tool takes N times as long as vx (theirs ÷ vx); N× slower: vx takes N times as long (vx ÷ theirs).
-
-Nx's column ran every task through npm run (~200 ms of CPU each; Turbo ran bun run), a harness fault since fixed; with bun, on a 4-core Linux box, Nx took 6m 59s cold and 4.50 s fully cached (vx 1.9× and 12× faster).
 
 **Baseline** is the theoretical best case, so each row shows its overhead:
 cold is the tasks' own durations list-scheduled on 10 workers along the
@@ -349,17 +350,17 @@ exact dependency graph (critical path 1m 40s, total work ÷
 workers 3m 38s); a cached run, a restore and the CPU a
 runner burns are 0 in theory, so every measured number in those rows is
 the runner. vx's cold overhead over the ideal schedule is
-8.53s on 3,270 tasks (8 ms per package), 8.45s
+2.71s on 3,270 tasks (2 ms per package), 2.49s
 with no lock; Turborepo's is
-1m 35s (88 ms per package) and Nx's 31m 06s
-(1,712 ms per package) — the number to read first, in one unit for every
+1m 23s (76 ms per package) and Nx's 13.34s
+(12 ms per package) — the number to read first, in one unit for every
 runner: a runner that adds seconds to a three-minute build is a
-different tool from one that adds half an hour. For context, the
+different tool from one that adds a minute and a half. For context, the
 **measured floors** row gives what the cheapest possible implementation
 of each step costs on this machine: one `git status -uall` walk (the
 cost of asking what changed), that walk plus a raw copy of every output
 file, and the task shells themselves under `xargs -P 10` (which vary by
-about two seconds between runs; vx's cold CPU sits within that noise).
+about two seconds between runs).
 
 **CPU** is user + system time of the invocation and every child it
 waited for. The tasks are `sleep`, so this is the runner's own work; a

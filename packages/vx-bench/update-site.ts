@@ -30,6 +30,7 @@ type Results = {
   packages: number
   concurrency: number
   date: string
+  machine: string
   rows: Row[]
   baseline: {
     fresh: number
@@ -119,11 +120,6 @@ function versus(ours: number, theirs: number): string {
 }
 const FORMULA =
   'vx N× faster: that tool takes N times as long as vx (theirs ÷ vx); N× slower: vx takes N times as long (vx ÷ theirs).'
-// The committed run's harness ran every Nx task through `npm run`, where
-// Turbo ran `bun run` (benchmarks.md § Why Nx is slower). Until the run is
-// redone, every table built from it says so, with the fixed harness's read.
-const NX_NOTE =
-  "Nx's column ran every task through npm run (~200 ms of CPU each; Turbo ran bun run), a harness fault since fixed; with bun, on a 4-core Linux box, Nx took 6m 59s cold and 4.50 s fully cached (vx 1.9× and 12× faster)."
 const vs = (r: Row, n: (r: Row) => number, f: (r: Row) => string): string =>
   `${f(r)} (${versus(n(vx), n(r))})`
 const tableBlock =
@@ -135,8 +131,7 @@ const tableBlock =
     )
     .join('\n') +
   '\n]\n' +
-  `const benchFormula = '${FORMULA}'\n` +
-  `const benchNote = ${JSON.stringify(NX_NOTE)}\n`
+  `const benchFormula = '${FORMULA}'\n`
 
 // ---- landing page ----
 const landingPath = path.join(ROOT, 'packages/vx-docs/src/pages/index.astro')
@@ -173,8 +168,6 @@ ${table.map(([label, n, f]) => `| ${label} | **${f(vx)}** | ${vs(turbo, n, f)} |
 
 ${FORMULA}
 
-${NX_NOTE}
-
 Time added is the wall time over the tasks' own ideal schedule (${span(B.fresh)}).
 Same graph, commands and concurrency: [how it is measured](https://vznjs.github.io/vx/benchmarks/).
 
@@ -194,7 +187,7 @@ The shape that actually stresses a task runner: **100 dependency layers**,
 (\`build\` + \`installDeps\` + \`test\`, \`sleep 1\` for build and test) — **${nodes.toLocaleString('en-US')}
 task nodes**, ${d.packages.toLocaleString('en-US')} packages. Same repo, same hardware, same task commands;
 every runner pinned to concurrency ${d.concurrency}. \`bun packages/vx-bench/compare.ts 100 11 1\`,
-this machine (macOS arm64, 10 cores), Turbo ${turbo.version}, Nx ${nx.version}.
+this machine (${d.machine}), Turbo ${turbo.version}, Nx ${nx.version}, every Nx task an \`nx:run-commands\` target.
 vx runs from a \`vx lock\` snapshot (\`--frozen\`), taken once before the reps,
 as a CI pipeline runs it; *vx, no lock* is the same run evaluating every
 config per run.
@@ -212,8 +205,6 @@ The committed \`packages/vx-bench/RESULTS.md\` / \`packages/vx-bench/results.jso
 
 ${FORMULA}
 
-${NX_NOTE}
-
 **Baseline** is the theoretical best case, so each row shows its overhead:
 cold is the tasks' own durations list-scheduled on 10 workers along the
 exact dependency graph (critical path ${disp(B.criticalPathMs)}, total work ÷
@@ -225,12 +216,12 @@ with no lock; Turborepo's is
 ${disp(turbo.fresh - B.fresh)} (${perPkg(turbo)} ms per package) and Nx's ${disp(nx.fresh - B.fresh)}
 (${perPkg(nx).toLocaleString('en-US')} ms per package) — the number to read first, in one unit for every
 runner: a runner that adds seconds to a three-minute build is a
-different tool from one that adds half an hour. For context, the
+different tool from one that adds a minute and a half. For context, the
 **measured floors** row gives what the cheapest possible implementation
 of each step costs on this machine: one \`git status -uall\` walk (the
 cost of asking what changed), that walk plus a raw copy of every output
 file, and the task shells themselves under \`xargs -P 10\` (which vary by
-about two seconds between runs; vx's cold CPU sits within that noise).
+about two seconds between runs).
 
 **CPU** is user + system time of the invocation and every child it
 waited for. The tasks are \`sleep\`, so this is the runner's own work; a

@@ -164,11 +164,6 @@ async function generate(dir: string): Promise<void> {
   await json('nx.json', {
     $schema: './node_modules/nx/schemas/nx-schema.json',
     parallel: CONCURRENCY,
-    // `nx:run-script` runs each script through the package manager Nx
-    // detects from a lockfile; this workspace has none, so Nx fell back to
-    // npm (~200 ms of CPU per task) while Turbo read `packageManager` and
-    // ran `bun run` (~4 ms). Same package manager for both.
-    cli: { packageManager: 'bun' },
     namedInputs: { default: ['{projectRoot}/**/*'], production: ['default'] },
     analytics: false,
   })
@@ -200,7 +195,9 @@ async function generate(dir: string): Promise<void> {
           test: { dependsOn: ['installDeps'], inputs: ['src/**'], outputs: [] },
         },
       })
-      // Nx: same three targets via run-script; deps inferred from package.json.
+      // Nx: same three targets as `nx:run-commands`, the command vx runs.
+      // Nx runs it from its own process; `nx:run-script` forks a Node per
+      // task that loads Nx first (~270 ms of CPU each, item 735).
       await json(path.join(rel, 'project.json'), {
         name,
         $schema: '../../node_modules/nx/schemas/project-schema.json',
@@ -208,24 +205,24 @@ async function generate(dir: string): Promise<void> {
         projectType: 'library',
         targets: {
           build: {
-            executor: 'nx:run-script',
-            options: { script: 'build' },
+            executor: 'nx:run-commands',
+            options: { command: BUILD_CMD, cwd: '{projectRoot}' },
             dependsOn: ['installDeps'],
             inputs: ['{projectRoot}/src/**'],
             outputs: ['{projectRoot}/dist'],
             cache: true,
           },
           installDeps: {
-            executor: 'nx:run-script',
-            options: { script: 'installDeps' },
+            executor: 'nx:run-commands',
+            options: { command: INSTALL_CMD, cwd: '{projectRoot}' },
             dependsOn: ['^build'],
             inputs: [],
             outputs: [],
             cache: true,
           },
           test: {
-            executor: 'nx:run-script',
-            options: { script: 'test' },
+            executor: 'nx:run-commands',
+            options: { command: TEST_CMD, cwd: '{projectRoot}' },
             dependsOn: ['installDeps'],
             inputs: ['{projectRoot}/src/**'],
             outputs: [],
@@ -721,6 +718,7 @@ await writeFile(
       reps: REPS,
       buildSleep: BUILD_SLEEP,
       date: new Date().toISOString(),
+      machine: `${os.platform()} ${os.arch()}, ${os.cpus().length} cores`,
       rows,
       baseline,
     },
