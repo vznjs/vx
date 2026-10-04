@@ -387,7 +387,7 @@ describe('the landing page', () => {
     expect(subs).toEqual([
       // `vx init` is the temporary start; the migrator writes the native
       // config, and npm has no copy of it yet (J2-28).
-      'Coming from Turbo or Nx: vx init gives a temporary start, and bunx @vzn/vx-migrate writes the native vx config (its first publish is pending).',
+      'Coming from Turbo or Nx: vx init gives a temporary start, and bunx @vzn/vx-migrate writes the native vx config.',
     ])
     expect(text(start)).not.toMatch(/turbo\.json|nx\.json|unchanged|faster/i)
   })

@@ -86,8 +86,6 @@ Start with one package and leave the rest of your tooling as it is.
 `turbo.json` or the Nx graph; from there everything above applies.
 `vx init` in such a repo writes only a `vx.workspace.ts` declaring
 `turbo()` or `nx()`: a temporary start, dropped once the configs exist.
-`@vzn/vx-migrate` is not on npm yet: its first publish is pending, so
-`bunx @vzn/vx-migrate` and the install `vx init` names fail until then.
 [Migrate](../guides/migrate/) has the steps.
 
 ## Common problems
