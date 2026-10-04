@@ -523,7 +523,11 @@ next?".
     harness (item 735).** Owner: "use run commands". The harness gives Nx
     `nx:run-commands` targets (no Node fork per task). The site, README
     and posts now read the 4-core Linux run of the 3,270-task shape:
-    Nx 3m 51s cold against 6m 59s with `nx:run-script`, vx 3m 41s.
+    Nx 3m 49s cold against 6m 59s with `nx:run-script`, vx 3m 40s.
+    Turbo's cold gap is its ready order, not its config: no ranking, so a
+    layer's tests run before the next layer's builds; a FIFO replay of the
+    graph reads 4m 58s against its measured 4m 59s (benchmarks.md § Why
+    Turborepo is slower cold).
 19. DONE as item 751 — **A sandboxed task's `kill 0` killed the
     sandbox (Linux, found in 736).** The command runs in a session of
     its own inside the sandbox.

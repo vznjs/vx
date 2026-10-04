@@ -5,7 +5,11 @@
 // next layer — measured 4m 58s against vx's own 3m 46s (2026-09-03). With
 // uniform durations the greedy schedule is never below the true lower bound
 // max(critical path, total work / workers) and never above the work bound
-// by more than one task; `listSchedule` asserts both.
+// by more than one task; `listSchedule` asserts both. `fifo` replays the
+// ready order a runner with no ranking takes: Turborepo's walker hands out
+// ready tasks as they become ready, each waiting on a semaphore slot
+// (crates/turborepo-engine/src/execute.rs), and the benchmark's graph reads
+// 4m 58s that way against its measured 4m 59s.
 
 export interface GraphNode {
   id: string
@@ -16,7 +20,7 @@ export interface GraphNode {
 }
 
 export interface Schedule {
-  /** The greedy critical-path-first makespan in ms. */
+  /** The greedy list-schedule makespan in ms, in the order asked. */
   makespan: number
   /** The longest path by duration — the floor no scheduler can beat. */
   critical: number
@@ -24,7 +28,11 @@ export interface Schedule {
   work: number
 }
 
-export function listSchedule(nodes: readonly GraphNode[], workers: number): Schedule {
+export function listSchedule(
+  nodes: readonly GraphNode[],
+  workers: number,
+  pick: 'critical-path' | 'fifo' = 'critical-path',
+): Schedule {
   const succ: number[][] = nodes.map(() => [])
   const indeg: number[] = nodes.map((n) => n.deps.length)
   nodes.forEach((n, i) => {
@@ -62,6 +70,7 @@ export function listSchedule(nodes: readonly GraphNode[], workers: number): Sche
   let now = 0
   let makespan = 0
   const takeReady = (): number => {
+    if (pick === 'fifo') return ready.shift()!
     let bi = 0
     for (let k = 1; k < ready.length; k++) if (level[ready[k]!]! > level[ready[bi]!]!) bi = k
     return ready.splice(bi, 1)[0]!
