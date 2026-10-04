@@ -17,6 +17,8 @@ export interface SummaryStats {
   failed: number
   successful: number
   skipped: number
+  aborted?: number // killed by a shutdown signal (final summary only); not in `total`
+  notRun?: number // reached by the stop before they ran (final summary only); not in `total`
   total: number
   upToDate: number
   restoredLocal: number
@@ -51,7 +53,7 @@ export function formatRunSummary(
   context?: RunContext,
 ): string[]
 
-export function formatAbortedSection(outcomes: readonly TaskOutcome[]): string[]
+export function neverStarted(o: TaskOutcome): boolean
 export function formatSkippedSection(outcomes: readonly TaskOutcome[]): string[]
 export function formatFlakySection(findings: readonly FlakyFinding[]): string[]
 
@@ -62,17 +64,19 @@ export function formatDuration(ms: number): string
 aborted task) at the root of its chain — `blockedBy` — with fail-fast's
 skips under their own heading; a blocked group is left out, as every
 counter leaves it out, and a long list is capped on one line with the
-rest counted. `formatAbortedSection` lists what a shutdown signal took
-down (`✗ id — exit N, nothing cached`), and under `Not started:` the
-tasks the stop reached before they ran — aborted outcomes with no
-`wallclockStartNs`, which only a started task carries — with no exit,
-since the scheduler's exit 1 on them is not one. Both print after the footer, beside the Flaky section.
+rest counted. An aborted task has no section: the logger lists it as a
+row (`formatTaskAbortedLine`, framed-output.md), and the tasks legend
+names it after the total — `not counted: N aborted, N not run` — since
+`total` is the count history and telemetry share. `aborted` is killed
+by a shutdown signal; `not run` is reached by the stop before it ran.
+`neverStarted` tells them apart: an aborted outcome with no
+`wallclockStartNs`, which only a started task carries.
 
 `formatFlakySection` is the post-footer section naming the tasks this
 run proved flaky (`detectFlaky`, history.md): `✗ id — failed on inputs
 that passed N× before`, `✓ id — passed on inputs that failed N× before`,
 with ` · N attempts this run` when the run retried; empty when nothing
-was. It prints beside `formatAbortedSection`, after the footer.
+was. It prints after the footer, beside the Skipped section.
 
 `formatRunSummary` returns an array of lines (caller writes one per
 `log.status`). Leading blank line is included so the summary stands
@@ -136,6 +140,9 @@ Duration:
   (the frames above carry the names; a run can fail hundreds).
 - The run context folds into the footer (version on the rule, the
   info row, the projects bar); no context keeps a bare `vx` rule.
+- Aborted and not-run tasks: named apart after the total on the tasks
+  legend (under `0 tasks` too), a group in neither; their rows
+  (`formatTaskAbortedLine`) byte for byte.
 - The Skipped section: each skipped task under the failure at the root
   of its chain, fail-fast and an aborted upstream named as such, a
   blocked group left out, the names capped on one line.

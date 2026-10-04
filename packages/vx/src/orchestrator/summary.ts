@@ -19,6 +19,7 @@ const WARN = '#eab308'
 const LOCAL = '#38bdf8' // sky-400
 const REMOTE = '#2563eb' // blue-600
 const ERROR = '#ef4444'
+const ABORTED = '#f97316' // orange-500: red's neighbour, not a failure
 
 const BAR_WIDTH = 50
 // Brand gradient for the rule: identity violet → pink (the project /
@@ -99,6 +100,10 @@ export interface SummaryStats {
   /** Ended OK — executed successes AND cache hits. */
   successful: number
   skipped: number
+  /** Killed by a shutdown signal (final summary only). Not in `total`. */
+  aborted?: number
+  /** Reached by the stop before they ran (final summary only). Not in `total`. */
+  notRun?: number
   total: number
   upToDate: number
   restoredLocal: number
@@ -143,6 +148,8 @@ export function formatSummarySection(
   const miss = stats.miss
   const noCache = stats.noCache ?? 0
   const left = stats.left ?? 0
+  const aborted = stats.aborted ?? 0
+  const notRun = stats.notRun ?? 0
   const remainder = { n: left, color: '', glyph: '\u25b1', dim: true }
 
   const dim = (txt: string) => paint('', txt, colors, { dim: true })
@@ -157,6 +164,12 @@ export function formatSummarySection(
   if (stats.successful > 0) taskParts.push(paint(SUCCESS, `${stats.successful} success`, colors))
   if (stats.skipped > 0) taskParts.push(paint(WARN, `${stats.skipped} skipped`, colors))
   if (stats.total > 0) taskParts.push(dim(`${stats.total} total`))
+  // Rows in the task list, but outside `total`: history and telemetry count
+  // the same tasks the total does, and an aborted task did no work.
+  const uncounted: string[] = []
+  if (aborted > 0) uncounted.push(paint(ABORTED, `${aborted} aborted`, colors))
+  if (notRun > 0) uncounted.push(dim(`${notRun} not run`))
+  if (uncounted.length > 0) taskParts.push(`${dim('not counted:')} ${uncounted.join(dim(', '))}`)
   const taskBar = segmentBar(
     [
       { n: stats.failed, color: ERROR },
@@ -201,6 +214,8 @@ export function formatSummarySection(
     if (taskParts.length > 0) lines.push(legend(taskParts))
   } else {
     lines.push(row('tasks', dim('0 tasks')))
+    // A stop before any task finished still names what it took down.
+    if (taskParts.length > 0) lines.push(legend(taskParts))
   }
 
   // Cache meter + numbers, fixed order: miss · up-to-date · local ·
@@ -324,11 +339,14 @@ export function formatRunSummary(
     .filter((o) => (o.status === 'success' || o.status === 'failed') && !isGroupTask(o.node))
     .map((o) => o.durationMs)
   const heldOutcomes = outcomes.filter((o) => o.admissionHeldMs !== undefined)
+  const notRun = outcomes.filter((o) => neverStarted(o) && !isGroupTask(o.node)).length
   return formatSummarySection(
     {
       failed: t.failed,
       successful: t.successful,
       skipped: t.skipped,
+      aborted: t.aborted - notRun,
+      notRun,
       total: t.total,
       upToDate: t.upToDate,
       restoredLocal: t.restoredLocal,
@@ -360,35 +378,12 @@ export function formatRunSummary(
 }
 
 /**
- * Post-summary section naming the tasks a shutdown signal killed, and those
- * the stop reached before they ran. An aborted task did no work, so it is in
- * no tally bucket and no history row — but the run still exits non-zero, and
- * without this the user reads a red exit over a fully green summary that
- * names nothing. Empty when nothing aborted.
+ * An `aborted` outcome the stop reached before dispatch. The scheduler gives
+ * it an invented exit 1; only a started task carries a wall-clock start, so
+ * that is what tells "never ran" from "killed" (item 1062).
  */
-export function formatAbortedSection(outcomes: readonly TaskOutcome[]): string[] {
-  // The scheduler marks what the stop reached before dispatch `aborted` too,
-  // with an invented exit 1: listed as killed, a task that never ran read as
-  // one the signal cut short (item 1062). Only a started one carries a
-  // wall-clock start. A group is no task here, as in the skipped section.
-  const aborted = outcomes.filter((o) => o.status === 'aborted' && !isGroupTask(o.node))
-  const killed = aborted.filter((o) => o.wallclockStartNs !== undefined)
-  const unstarted = aborted.filter((o) => o.wallclockStartNs === undefined)
-  const tasks = (n: number): string => `${n} task${n === 1 ? '' : 's'}`
-  const lines: string[] = []
-  if (killed.length > 0) {
-    lines.push(
-      '',
-      `  Aborted:  ${tasks(killed.length)} killed by a shutdown signal — not counted above`,
-    )
-    for (const o of killed) lines.push(`    ✗ ${o.node.id} — exit ${o.exitCode}, nothing cached`)
-  }
-  if (unstarted.length > 0) {
-    const they = unstarted.length === 1 ? 'it' : 'they'
-    lines.push('', `  Not started:  ${tasks(unstarted.length)} the run stopped before ${they} ran`)
-    for (const o of unstarted) lines.push(`    · ${o.node.id}`)
-  }
-  return lines
+export function neverStarted(o: TaskOutcome): boolean {
+  return o.status === 'aborted' && o.wallclockStartNs === undefined
 }
 
 /**

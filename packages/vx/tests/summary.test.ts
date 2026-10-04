@@ -1,8 +1,8 @@
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
+import { formatTaskAbortedLine } from '../src/orchestrator/framed-output.js'
 import {
-  formatAbortedSection,
   formatDuration,
   formatFlakySection,
   formatRunSummary,
@@ -233,69 +233,59 @@ describe('formatDuration', () => {
   })
 })
 
-describe('formatAbortedSection', () => {
-  // The section a Ctrl-C produces, and the only place an aborted task is
-  // named: the meters deliberately leave it out ("not counted above"), so
-  // if this section is wrong the task vanishes from the run's report
-  // entirely. It had no rows at all.
+describe('aborted and not-run tasks', () => {
+  // Since M-83 they are rows in the task list; the footer names them outside
+  // `total`, which history and telemetry share. A killed task carries a
+  // wall-clock start; one the stop reached first does not (item 1062).
   const killed = (id: string, exitCode = 130): TaskOutcome => ({
     ...outcome(id, 'aborted', exitCode),
     wallclockStartNs: 1_000n,
   })
+  const group: TaskOutcome = {
+    node: { id: 'a#all', config: {} } as TaskNode,
+    status: 'aborted',
+    exitCode: 1,
+    durationMs: 0,
+  }
+  const run = [
+    killed('a#t'),
+    outcome('a#after', 'aborted', 1),
+    outcome('a#lint', 'aborted', 1),
+    group,
+    outcome('b#x', 'success'),
+  ]
 
-  it('is empty when nothing was aborted — no header on an ordinary run', () => {
-    expect(formatAbortedSection([outcome('a#b', 'success'), outcome('c#d', 'failed', 1)])).toEqual(
-      [],
-    )
+  it('the tasks legend names each apart, outside the total, a group in neither', () => {
+    const ctx = { version: '0.0.0', packageCount: 1, remoteCacheEnabled: false }
+    const lines = formatRunSummary(run, 10, { enabled: false }, ctx)
+    expect(lines[3]).toBe('            1 success · 1 total · not counted: 1 aborted, 2 not run')
+    expect(lines.at(-1)).toBe('  result    1 task · 1 no-cache · 10ms')
   })
 
-  it('names each aborted task with its exit and that nothing was cached', () => {
-    // "nothing cached" is the part a reader acts on: the child died
-    // mid-write, so its outputs are partial and no entry was stored.
-    expect(formatAbortedSection([killed('a#build'), outcome('c#d', 'success')])).toEqual([
-      '',
-      '  Aborted:  1 task killed by a shutdown signal — not counted above',
-      '    ✗ a#build — exit 130, nothing cached',
+  it('a stop before any task finished still names them under `0 tasks`', () => {
+    expect(formatRunSummary([killed('a#t')], 10).slice(2, 4)).toEqual([
+      '  tasks     0 tasks',
+      '            not counted: 1 aborted',
     ])
   })
 
-  it('counts in the plural from two', () => {
-    expect(formatAbortedSection([killed('a#build'), killed('b#build', 143)])[1]).toBe(
-      '  Aborted:  2 tasks killed by a shutdown signal — not counted above',
-    )
-  })
-
-  it('names what the stop reached before it ran apart, with no exit, and no group', () => {
-    // The scheduler marks those `aborted` with an invented exit 1; listed as
-    // killed they read as cut short (item 1062). Not started: no wall-clock
-    // start, which only a task that ran carries.
-    const group: TaskOutcome = {
-      node: { id: 'a#all', config: {} } as TaskNode,
-      status: 'aborted',
-      exitCode: 1,
-      durationMs: 0,
+  it('the rows: `aborted` with its time, `not run` with none, cache blank', () => {
+    const node = (id: string): TaskNode => {
+      const [projectName, taskName] = id.split('#')
+      return { id, projectName, taskName, config: { exec: { command: 'noop' } } } as TaskNode
     }
-    expect(
-      formatAbortedSection([
-        killed('a#t'),
-        outcome('a#after', 'aborted', 1),
-        outcome('a#lint', 'aborted', 1),
-        group,
-      ]),
-    ).toEqual([
-      '',
-      '  Aborted:  1 task killed by a shutdown signal — not counted above',
-      '    ✗ a#t — exit 130, nothing cached',
-      '',
-      '  Not started:  2 tasks the run stopped before they ran',
-      '    · a#after',
-      '    · a#lint',
-    ])
-    expect(formatAbortedSection([outcome('a#after', 'aborted', 1)])).toEqual([
-      '',
-      '  Not started:  1 task the run stopped before it ran',
-      '    · a#after',
-    ])
+    expect(formatTaskAbortedLine(node('a#t'), killed('a#t'))).toBe(
+      ' ✗   100ms aborted          a#t',
+    )
+    expect(formatTaskAbortedLine(node('a#after'), outcome('a#after', 'aborted', 1))).toBe(
+      ' ◌         not run          a#after',
+    )
+  })
+
+  it('a run with nothing aborted reads as before', () => {
+    expect(formatRunSummary([outcome('a#x', 'success')], 10)[3]).toBe(
+      '            1 success · 1 total',
+    )
   })
 })
 

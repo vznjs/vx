@@ -176,8 +176,10 @@ describe('a task killed by a shutdown signal', () => {
       const r = vx(root, 'run', 'fine', 'doomed')
       // Red exit — and the reason has to be on screen.
       expect(r.code).not.toBe(0)
-      expect(r.out).toMatch(/Aborted:\s+1 task killed by a shutdown signal/)
-      expect(r.out).toMatch(/doomed/)
+      // Requested, it printed, so its frame is its entry in the list; the
+      // footer names it outside the total.
+      expect(r.out).toMatch(/\n└─ r#doomed ── \([\d.]+m?s\) aborted\n/)
+      expect(r.out).toContain('\n            1 success · 1 total · not counted: 1 aborted\n')
 
       const rep = vx(root, 'run', 'fine', 'doomed', '--report=markdown')
       expect(rep.out).toMatch(/1 aborted/)
@@ -223,7 +225,7 @@ describe('a task killed by a shutdown signal', () => {
   )
 
   it(
-    'leaves a run with nothing aborted byte-identical — no section, no report column',
+    'leaves a run with nothing aborted byte-identical — no aborted row or count, no report column',
     async () => {
       await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
       await writeLocalWorkspace(root)
@@ -240,7 +242,7 @@ describe('a task killed by a shutdown signal', () => {
 
       const r = vx(root, 'run', 'fine', '--report=markdown')
       expect(r.code).toBe(0)
-      expect(r.out).not.toMatch(/Aborted:/)
+      expect(r.out).not.toMatch(/not run/)
       expect(r.out).not.toMatch(/aborted/)
     },
     TIMEOUT,

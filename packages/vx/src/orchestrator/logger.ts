@@ -5,6 +5,7 @@ import {
   formatFrameOpen,
   formatKeptLines,
   formatPersistentTailBlock,
+  formatTaskAbortedLine,
   formatTaskBlock,
   formatTaskExecutedLine,
   formatTaskHitLine,
@@ -17,7 +18,7 @@ import {
   type StatusStream,
   type WorkerSlot,
 } from './status-line.js'
-import { formatDuration, formatSummarySection, type RunContext } from './summary.js'
+import { formatDuration, formatSummarySection, neverStarted, type RunContext } from './summary.js'
 import { isGroupTask } from '../graph/index.js'
 import { appendTail, createTail, resetTail, tailText, type Tail } from '../util/index.js'
 import { isCacheHit } from './telemetry.js'
@@ -583,9 +584,9 @@ export function defaultLogger(
       // The pre-ready window closed either way: a failed task is over, and
       // a ready one starts a fresh post-ready tail below.
       persistentTails.delete(node.id)
-      // An aborted task (child killed by a shutdown signal) reverts
-      // to pending: free its worker slot, but never count or render it
-      // — the run is tearing down and it has no honest outcome.
+      // An aborted task (killed by a shutdown signal, or reached by the stop
+      // before it ran) frees its worker slot but is never counted live: the
+      // run is tearing down and it has no honest outcome.
       if (outcome.status === 'aborted') {
         const si = slots.findIndex((s) => s !== null && s.id === node.id)
         if (si >= 0) slots[si] = slotQueue.shift() ?? null
@@ -594,24 +595,32 @@ export function defaultLogger(
           if (qi >= 0) slotQueue.splice(qi, 1)
         }
         refresh(true)
+        if (isGroupTask(node)) return
         // What it printed while it stopped (a trap's cleanup) still reaches
         // the terminal where a frame would have: a task that traps Ctrl-C
         // and exits 0 is aborted since item 962, and its frame was dropped
-        // with the count.
+        // with the count. A task that never started opened no frame.
         const framed =
-          view.mode === 'full' ||
-          (view.mode === 'focused' && isPrimary(node)) ||
-          (framesTerminal && holdsTerminal(node))
-        if (framed && !isGroupTask(node)) {
-          if (streamsLive(node)) {
-            if (streamMidLine) {
-              writer.write('\n')
-              streamMidLine = false
-            }
-            emitFrameClose(formatFrameClose(node, outcome, colors))
-          } else if (stdout.length > 0 || stderr.length > 0) {
-            emitBlock(formatTaskBlock(node, outcome, { stdout, stderr, ...dropped }, colors, true))
+          !neverStarted(outcome) &&
+          (view.mode === 'full' ||
+            (view.mode === 'focused' && isPrimary(node)) ||
+            (framesTerminal && holdsTerminal(node)))
+        if (framed && streamsLive(node)) {
+          if (streamMidLine) {
+            writer.write('\n')
+            streamMidLine = false
           }
+          emitFrameClose(formatFrameClose(node, outcome, colors))
+          return
+        }
+        if (framed && (stdout.length > 0 || stderr.length > 0)) {
+          emitBlock(formatTaskBlock(node, outcome, { stdout, stderr, ...dropped }, colors, true))
+          return
+        }
+        // Otherwise a row in the task list, in every view that lists a
+        // failure: the run exits red, and the row names why.
+        if (view.mode !== 'none' && view.mode !== 'hash-only') {
+          emitLine(formatTaskAbortedLine(node, outcome, colors))
         }
         return
       }

@@ -28,7 +28,7 @@
 import { isGroupTask, type TaskNode, type TaskOutcome } from '../graph/index.js'
 import { maskedCommand } from '../util/index.js'
 import { paint, type ColorSupport } from './colors.js'
-import { formatDuration } from './summary.js'
+import { formatDuration, neverStarted } from './summary.js'
 import { outcomeLabel, skippedReason } from './events.js'
 
 const NO_COLOR: ColorSupport = { enabled: false }
@@ -54,6 +54,7 @@ const TASK = '#f472b6' // pink-400 — task part of an id
 const SUCCESS = '#22c55e' // green-500 — success / fresh
 const WARN = '#eab308' // yellow-500 — skipped
 const ERROR = '#ef4444' // red-500 — failed
+const ABORTED = '#f97316' // orange-500 — killed by a shutdown signal
 const LOCAL = '#38bdf8' // sky-400 — local cache hit
 const REMOTE = '#2563eb' // blue-600 — remote cache hit
 
@@ -210,13 +211,13 @@ function paintTaskId(node: TaskNode, colors: ColorSupport, opts: { bold?: boolea
 
 // ── Reported-line grid: glyph · time · status · cache · name ────────
 // glyph SHAPE encodes the cache axis (⏺ miss · ► fresh · ⇢ local · ⇣
-// remote; ◼ failed · ⊘ skipped), glyph COLOR encodes the
+// remote; ◼ failed · ⊘ skipped · ✗ aborted · ◌ not run), glyph COLOR encodes the
 // task axis (green/red/yellow/cyan). The status and cache WORDS spell
 // the two axes out, each in its own color. Time is right-aligned in a
 // fixed cell so durations line up and a ticking elapsed never shifts
 // the row. All detail (exit code, output) lives in the framed block.
 export const TIME_COL = 7 // "0ms" … "999.99s"
-const STATUS_COL = 7 // "success" / "running" / "skipped"
+const STATUS_COL = 7 // "success" / "running" / "skipped" / "aborted" / "not run"
 const CACHE_COL = 8 // "no-cache" / "remote" / "local" / "fresh" / "miss"
 
 /** Right-align the duration in a TIME_COL cell (pad on the left). */
@@ -378,6 +379,41 @@ export function formatTaskSkippedLine(
       paintTaskId(node, colors),
       colors,
     ) + suffix
+  )
+}
+
+/**
+ * One row for a task a shutdown signal killed (`aborted`, its time so far)
+ * or one the stop reached before it ran (`not run`, no time). Neither
+ * reached the cache, so the cache cell is blank, as a skip's is.
+ */
+export function formatTaskAbortedLine(
+  node: TaskNode,
+  o: TaskOutcome,
+  colors: ColorSupport = NO_COLOR,
+): string {
+  const id = paintTaskId(node, colors)
+  if (neverStarted(o)) {
+    return formatTaskRow(
+      paint('', '\u25cc', colors, { dim: true }),
+      null,
+      'not run',
+      '',
+      '',
+      '',
+      id,
+      colors,
+    )
+  }
+  return formatTaskRow(
+    paint(ABORTED, '\u2717', colors),
+    o.durationMs,
+    'aborted',
+    ABORTED,
+    '',
+    '',
+    id,
+    colors,
   )
 }
 
