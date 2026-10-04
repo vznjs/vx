@@ -1480,7 +1480,7 @@ export interface PreparedRun {
   gitFilesCache: GitFilesCache
   workspaceProjectCount: number
   hashCache: HashCache
-  empty: null | 'no-tasks-declared' | 'none-affected' | 'none-reached' | 'empty-graph'
+  empty: null | 'no-tasks-declared' | 'none-affected' | 'empty-graph'
 }
 ```
 

@@ -160,14 +160,14 @@ export interface PreparedRun {
    *     returns NOT-ok.
    *   - `'none-affected'`     — as `'no-tasks-declared'`, but the scope
    *     came from a diff and every name is declared somewhere else in the
-   *     workspace: nothing changed that runs them, a clean outcome.
-   *   - `'none-reached'`      — `--affected`'s diff reaches no requested
-   *     task's `dependsOn` closure: a clean outcome.
+   *     workspace: nothing changed that runs them, a clean outcome. Also
+   *     when `--affected`'s diff reaches no requested task's `dependsOn`
+   *     closure (`affected-tasks.ts`).
    *   - `'empty-graph'`       — `requested` was non-empty but the
    *     graph builder still produced no nodes. Defensive; unreachable
    *     under current `buildTaskGraph` semantics.
    */
-  empty: null | 'no-tasks-declared' | 'none-affected' | 'none-reached' | 'empty-graph'
+  empty: null | 'no-tasks-declared' | 'none-affected' | 'empty-graph'
 }
 
 /**
@@ -461,7 +461,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
 
     // Empty-cases bookkeeping. We still construct the cache + fingerprint
     // so the caller's try/finally pattern can close it uniformly.
-    const emptyRun = (reason?: 'none-reached'): PreparedRun => ({
+    const emptyRun = (reason?: 'none-affected'): PreparedRun => ({
       workspaceRoot,
       workspaceConfig,
       plugins,
@@ -517,7 +517,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       const ids = requested.map((r) => `${r.project}#${r.task}`)
       const reached = new Set(affectedRoots(nodes, ids, options.affected, projects, packageGraph))
       const kept = requested.filter((_r, i) => named.has(ids[i]!) || reached.has(ids[i]!))
-      if (kept.length === 0) return emptyRun('none-reached')
+      if (kept.length === 0) return emptyRun('none-affected')
       if (kept.length < requested.length) {
         unproven.length = 0
         nodes = graphOf(kept)

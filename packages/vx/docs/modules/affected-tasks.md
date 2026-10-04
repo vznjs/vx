@@ -18,7 +18,7 @@ task, so a change reaches another project only along a task edge such as
 seeds as a cached task with `**` as input. A `^name` edge the graph
 passes through a package it loaded no config for reaches it the same way:
 any change there reaches the task. An anchored `pkg#task` always runs. `prepareRun` drops the rest
-and returns `empty: 'none-reached'` when nothing is left.
+and returns `empty: 'none-affected'` when nothing is left.
 
 ## Public surface
 

@@ -384,14 +384,12 @@ async function runOnBus(
     prepared.cache.close()
     return { ok: false, outcomes: [], refused }
   }
-  if (prepared.empty === 'none-reached') {
-    log.status(`Nothing affected: the change reaches no ${options.tasks.join(', ')} task.`)
-    await teardown()
-    prepared.cache.close()
-    return { ok: true, outcomes: [] }
-  }
   if (prepared.empty === 'none-affected') {
-    log.status(`No affected project declares task(s): ${options.tasks.join(', ')}.`)
+    log.status(
+      options.affected !== undefined
+        ? `Nothing affected: the change reaches no ${options.tasks.join(', ')} task.`
+        : `No affected project declares task(s): ${options.tasks.join(', ')}.`,
+    )
     await teardown()
     prepared.cache.close()
     return { ok: true, outcomes: [] }
